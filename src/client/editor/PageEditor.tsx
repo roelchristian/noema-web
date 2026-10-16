@@ -9,6 +9,5 @@ export function PageEditor({page, entities, onChange, onOpenEntity, onCreateEnti
   return <article className="page">
     <input ref={title} id="page-title" aria-label="Page title" placeholder="Untitled" maxLength={500} value={page.title} onChange={e => onChange({title: e.target.value})}/>
     <BlockEditor blocks={page.blocks} entities={entities} onChange={blocks => onChange({blocks})} onOpenEntity={onOpenEntity} onCreateEntity={(name, onCreated) => onCreateEntity({name, onCreated})} onSave={onSave}/>
-    <footer className="editor-footer"><kbd>/</kbd> choose a block <span>·</span><kbd>@</kbd> mention an entity <span>·</span> Enter for a new block</footer>
   </article>;
 }

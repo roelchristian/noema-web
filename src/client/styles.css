@@ -267,3 +267,5 @@ main { margin-left: 224px; }
   .sidebar .section-label { display: none; }
   .sidebar .sidebar-settings { margin-top: auto; }
 }
+
+.page > #page-title { margin-bottom: 24px; }

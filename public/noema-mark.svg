@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" fill="none" stroke="#171717">
+  <!-- OrbitGeometry: top-left origin, scaled from normalized coordinates. -->
+  <g stroke-width="64" stroke-linecap="round">
+    <path d="M186.992768 566.531741 A320 320 0 0 1 533.449108 181.752993"/>
+    <path d="M813.007232 433.468259 A320 320 0 0 1 422.584993 810.494632"/>
+  </g>
+  <g stroke-width="51">
+    <circle cx="247.836559" cy="697.011672" r="70"/>
+    <circle cx="752.163441" cy="302.988328" r="70"/>
+  </g>
+  <circle cx="500" cy="500" r="112" stroke-width="62"/>
+</svg>

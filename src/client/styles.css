@@ -49,3 +49,9 @@ dialog .select-trigger{padding:10px 11px}
 .command-menu button{border-radius:4px}
 .command-menu button.highlight,.command-menu button:hover{background:#f1f1ef}
 @media(max-width:500px){.vault-controls .select-trigger{padding:6px 3px;margin:0;width:100%;gap:3px;font-size:10px}.select-chevron{width:5px;height:5px;margin-right:1px}.library-tools .select-control{width:100%}}
+
+/* Original orbit silhouette, rendered in the workspace's monochrome palette. */
+.brand{gap:8px;letter-spacing:normal}
+.brand-mark{display:block;width:38px;height:38px;flex:none}
+.brand>span{margin-left:0}
+@media(max-width:500px){.brand-mark{width:34px;height:34px}}

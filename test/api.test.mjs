@@ -1,3 +1,5 @@
+import { DatabaseSync } from 'node:sqlite';
+import http from 'node:http';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -8,6 +10,13 @@ import path from 'node:path';
 
 const dir = await mkdtemp(path.join(tmpdir(),'noema-test-'));
 const dbPath = path.join(dir,'test.sqlite');
+// Start with a populated pre-vault database to exercise the additive migration.
+const legacy=new DatabaseSync(dbPath);
+legacy.exec(`CREATE TABLE pages (id TEXT PRIMARY KEY,title TEXT NOT NULL,blocks TEXT NOT NULL,updated_at TEXT NOT NULL);
+ CREATE TABLE entities (id TEXT PRIMARY KEY,name TEXT NOT NULL,type TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',updated_at TEXT NOT NULL);
+ INSERT INTO pages VALUES ('legacy','Existing note','[]','2026-01-01');
+ INSERT INTO entities VALUES ('legacy-person','Existing person','person','','2026-01-01');`);
+legacy.close();
 let child;
 async function start() {
  child = spawn(process.execPath,['server.mjs'],{env:{...process.env,PORT:'0',DB_PATH:dbPath},stdio:['ignore','pipe','pipe']});
@@ -25,6 +34,7 @@ await test('SQLite API: pages, references, relationships, validation, and restar
   const res=await fetch(base+'/api/'+route,{method,headers:{'Content-Type':'application/json',...headers},body:body?JSON.stringify(body):undefined});
   const result=await res.json();assert.equal(res.status,status,JSON.stringify(result));return result;
  }
+ const migrated=await request('pages/legacy');assert.equal(migrated.vault_id,'default');assert.equal(migrated.title,'Existing note');
  const people=await request('entities');assert.ok(people.some(e=>e.id==='ursula'));
  const page=await request('pages','POST',{title:'Test note'},201);
  const person=await request('entities','POST',{name:'Test Person',type:'person'},201);
@@ -51,13 +61,54 @@ await test('SQLite API: pages, references, relationships, validation, and restar
  await request('entities/'+work.id+'/properties','POST',{name:'author',target_id:'missing'},400);
  await request('entities','POST',{name:'Cross origin',type:'person'},403,{Origin:'https://example.com'});
  const invalidJson=await fetch(base+'/api/pages',{method:'POST',body:'{'});assert.equal(invalidJson.status,400);
+ const vault=await request('vaults','POST',{name:'Research'},201);
+ assert.equal(vault.locked,false);assert.equal(vault.password_hash,undefined);
+ const scoped=(route,method='GET',body,status=200)=>request(route,method,body,status,{'X-Vault-Id':vault.id});
+ assert.deepEqual(await scoped('pages'),[]);assert.deepEqual(await scoped('entities'),[]);
+ await scoped('pages/'+page.id,'GET',undefined,404);await scoped('entities/'+person.id,'GET',undefined,404);
+ const note=await scoped('pages','POST',{title:'Research note'},201);
+ const source=await scoped('entities','POST',{name:'Primary reference',type:'source'},201);
+ const localPerson=await scoped('entities','POST',{name:'Local person',type:'person'},201);
+ const sourceBlocks=[{id:'source-block',type:'paragraph',checked:false,content:[{text:'According to '},{entityId:source.id}]}];
+ await scoped('pages/'+note.id,'PUT',{title:note.title,blocks:sourceBlocks,sourceIds:[source.id]});
+ await scoped('pages/'+note.id,'PUT',{title:'Rejected',blocks:sourceBlocks,sourceIds:[localPerson.id]},400);
+ await scoped('pages/'+note.id,'PUT',{title:'Rejected',blocks:[{id:'bad',type:'paragraph',content:[{entityId:person.id}]}]},400);
+ await scoped('pages/'+note.id,'PUT',{title:'Rejected',blocks:sourceBlocks,sourceIds:[work.id]},400);
+ await scoped('entities/'+source.id+'/properties','POST',{name:'author',target_id:person.id},400);
+ await scoped('entities/'+source.id+'/relationships','POST',{label:'cites',target_id:work.id},400);
+ await scoped('entities/'+source.id,'PUT',{name:source.name,type:'person'},400);
+ assert.equal((await scoped('pages/'+note.id)).title,note.title);
+ await request('pages/'+note.id,'GET',undefined,404);
+ await request('vaults/'+vault.id+'/lock','POST',{passphrase:'research passphrase'});
+ for(const route of ['pages','entities','pages/'+note.id,'entities/'+source.id])await scoped(route,'GET',undefined,423);
+ await scoped('pages','POST',{title:'Locked write'},423);
+ await request('vaults/'+vault.id+'/unlock','POST',{passphrase:'wrong'},403);
+ assert.ok((await request('pages')).length); // Other vaults remain accessible.
  await stop();base=await start();
+ assert.equal((await request('vaults')).find(v=>v.id===vault.id).locked,true);
+ await scoped('pages','GET',undefined,423);
+ await request('vaults/'+vault.id+'/unlock','POST',{passphrase:'research passphrase'});
+ const restored=await scoped('pages/'+note.id);assert.deepEqual(restored.sourceIds,[source.id]);assert.deepEqual(restored.blocks,sourceBlocks);
+ await scoped('pages/'+note.id,'PUT',{title:note.title,blocks:sourceBlocks,sourceIds:[]});
+ assert.deepEqual((await scoped('pages/'+note.id)).sourceIds,[]);
+ await request('vaults/'+vault.id+'/lock','POST',{});
+ await request('vaults/'+vault.id+'/unlock','POST',{passphrase:'research passphrase'});
+
+ const beforeConflict=await request('pages/'+page.id);
+ await request('pages/'+page.id,'PUT',{...beforeConflict,title:'Updated with revision'});
+ await request('pages/'+page.id,'PUT',{...beforeConflict,title:'Stale overwrite'},409);
+ assert.equal((await request('pages/'+page.id)).title,'Updated with revision');
+ await request('pages/'+page.id,'PUT',{...beforeConflict,title:'Saved note',revision:beforeConflict.revision+1});
+ const extraRoute=await fetch(base+'/api/vaults/extra/path/more');assert.equal(extraRoute.status,404);
+ const hostileStatus=await new Promise((resolve,reject)=>{http.get(base+'/api/pages',{headers:{Host:'attacker.example'}},res=>{res.resume();resolve(res.statusCode);}).on('error',reject);});assert.equal(hostileStatus,403);
+ const wrongOrigin=await fetch(base+'/api/pages',{headers:{Origin:'https://example.com'}});assert.equal(wrongOrigin.status,403);
+ const font=await fetch(base+'/InterVariable.woff2');assert.equal(font.status,200);assert.equal(font.headers.get('Content-Type'),'font/woff2');
  const saved=await request('pages/'+page.id);assert.equal(saved.title,'Saved note');assert.deepEqual(saved.blocks,blocks);
  assert.equal((await request('entities/'+person.id)).name,'Renamed Person');
  await request('entities/'+person.id+'/relationships/'+relation.id,'DELETE');assert.equal((await request('entities/'+sibling.id)).relationships.length,0);
  const property=book.properties.find(p=>p.name==='author');await request('entities/'+work.id+'/properties/'+property.id,'DELETE');
  assert.equal((await request('entities/'+person.id)).incomingProperties.length,0);
  await request('pages/'+page.id,'DELETE');await request('pages/'+page.id,'GET',undefined,404);
- const asset=await fetch(base+'/');assert.equal(asset.status,200);assert.match(await asset.text(),/noema/);
+ const asset=await fetch(base+'/');assert.equal(asset.status,200);assert.match(await asset.text(),/Noema/i);
  } finally {if(child&&child.exitCode===null)await stop();await rm(dir,{recursive:true,force:true});}
 });

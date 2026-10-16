@@ -19,6 +19,14 @@ To use another port or database:
 PORT=3001 DB_PATH=./data/another.sqlite npm start
 ```
 
+## Images
+
+Paste an image into a page or type `/image` in a text block. The block add menu also includes **Image**. PNG, JPEG, GIF, and WebP files up to 20 MB are supported. Each image becomes a block and follows normal page autosave. Click an image, then press Backspace or Delete to remove it, or choose **Delete block** from its gutter menu. A small image icon below the image toggles its caption field; saved captions remain hidden until opened. An inline loading card shows optimization and saving progress.
+
+**Settings → Images → Automatically compress images** defaults to on. Static images are encoded as WebP (or PNG if WebP encoding is unavailable), with the longest side capped at 2,560 pixels; the original is kept when encoding would make the file larger or cannot decode it. GIF, animated PNG, and animated WebP files keep their animation. Turn compression off to upload the original bytes and dimensions. This setting applies to new uploads and is saved in this browser.
+
+Noema stores image files beside the SQLite database in `assets/<vault-id>/images/<uuid>.<extension>`. Image references belong to that vault, and locked vaults block image reads and uploads. Include this `assets/` folder with the database in backups (the default `data/` folder contains both). Automatic cleanup removes images after their last saved reference is removed or their last referencing note is permanently deleted. Notes in Trash retain their images until permanent deletion, including the normal 30-day expiry. Abandoned uploads get a 24-hour grace period before cleanup on startup or the hourly sweep.
+
 ## Knowledge entity subtypes
 
 Knowledge entities keep a main type (Person, Place, Event, Creative work, Organization, or Source) and can have multiple subtypes under that main type, such as a Person who is both an Actor and a Writer. Built-in subtypes include Actor, Writer, City, Book, Film, Company, and Website. Create custom subtypes under **Knowledge entities → Manage types & subtypes**.

@@ -5,11 +5,11 @@ export type EntityType = typeof entityTypes[number];
 export const entityLabels: Record<EntityType, string> = {
   person: 'Person', place: 'Place', event: 'Event', creativework: 'Creative work', organization: 'Organization', source: 'Source',
 };
-export const blockTypes = ['paragraph', 'heading1', 'heading2', 'bullet', 'quote', 'todo', 'table'] as const;
+export const blockTypes = ['paragraph', 'heading1', 'heading2', 'bullet', 'quote', 'todo', 'table', 'image'] as const;
 export type BlockType = typeof blockTypes[number];
 export interface TextStyle { bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean; code?: boolean; href?: string }
 export type Segment = TextStyle & ( { text: string; entityId?: never } | { entityId: string; text?: never });
-export interface Block { id: string; type: BlockType; checked: boolean; content: Segment[]; rows?: Segment[][][] }
+export interface Block { id: string; type: BlockType; checked: boolean; content: Segment[]; rows?: Segment[][][]; imageId?: string; alt?: string }
 export interface Vault { id: string; name: string; locked: boolean; protected: boolean; updated_at: string }
 export interface PageSummary { id: string; title: string; icon?: PageIconId | null; updated_at: string }
 export interface TrashedPage extends PageSummary { deleted_at: string; expires_at: string }

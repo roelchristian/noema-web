@@ -10,6 +10,6 @@ export function PageEditor({page, entities, onChange, onOpenEntity, onCreateEnti
   return <article className="page">
     <PageIconPicker value={page.icon} onChange={icon => onChange({icon})}/>
     <input ref={title} id="page-title" aria-label="Page title" placeholder="Untitled" maxLength={500} value={page.title} onChange={e => onChange({title: e.target.value})}/>
-    <BlockEditor blocks={page.blocks} entities={entities} onChange={blocks => onChange({blocks})} onOpenEntity={onOpenEntity} onCreateEntity={(name, onCreated) => onCreateEntity({name, onCreated})} onSave={onSave}/>
+    <BlockEditor key={page.vault_id + page.id} vaultId={page.vault_id} blocks={page.blocks} entities={entities} onChange={blocks => onChange({blocks})} onOpenEntity={onOpenEntity} onCreateEntity={(name, onCreated) => onCreateEntity({name, onCreated})} onSave={onSave}/>
   </article>;
 }

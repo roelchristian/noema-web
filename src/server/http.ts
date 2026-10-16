@@ -1,3 +1,4 @@
+import { Images, maxImageBytes } from './modules/images.js';
 import { EntityScans } from './modules/entity-scan.js';
 import type { Segment } from '../shared/domain.js';
 import { AIEnrichments } from './modules/ai-enrichments.js';
@@ -24,6 +25,7 @@ async function readBody(req: IncomingMessage) {
   catch(error) { if(error instanceof HttpError)throw error;throw new HttpError(400,'Invalid JSON'); }
 }
 export function createApp(store: Store, clientRoot: string, intelligence=new Intelligence(keychainFor(store),fetch,()=>Date.now(),intelligencePreferencesFor(store))) {
+  const images=new Images(store);
   const vaults=new Vaults(store),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),organizer=new Organizer(store);
   const activity=new AIActivityLog(store),enrichments=new AIEnrichments(store,pages);
   const scans=new EntityScans(store,pages,knowledge,enrichments);
@@ -31,6 +33,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
   const searchSnippets=new SearchSnippets(pages,knowledge,vaults);
   // Enforce retention on startup, periodically while running, and before scoped API access.
   pages.purgeExpired();
+  images.cleanup();
   let cleanup: ReturnType<typeof setInterval> | undefined;
   let keyCleanup: ReturnType<typeof setInterval> | undefined;
   let embeddingWorker: ReturnType<typeof setInterval> | undefined;
@@ -46,6 +49,21 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
         if((req.headers.origin && req.headers.origin!==`http://${req.headers.host}`)||req.headers['sec-fetch-site']==='cross-site')throw new HttpError(403,'Cross-origin requests are not allowed');
         const aiRoute=url.pathname==='/api/search/snippets'||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|entity-scan|entity-review)$/.test(url.pathname);
         if(aiRoute && (req.headers['x-noema-request']!=='1'||(['POST','PUT'].includes(method)&&!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))))throw new HttpError(403,'AI requests require the Noema client and JSON');
+        if(url.pathname === '/api/images' && method === 'POST' || url.pathname.startsWith('/api/images/') && method === 'GET') {
+          const header=req.headers['x-vault-id'];
+          if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
+          const vault=vaults.requireOpen(header || (method === 'GET' ? url.searchParams.get('vault') : null) || 'default');
+          if(method === 'POST') {
+            if(req.headers['x-noema-request'] !== '1')throw new HttpError(403,'Image uploads require the Noema client');
+            const chunks: Buffer[]=[]; let size=0;
+            for await(const chunk of req) {const bytes=Buffer.from(chunk); size+=bytes.length; if(size>maxImageBytes)throw new HttpError(413,'Images must be 20 MB or smaller'); chunks.push(bytes);}
+            vaults.requireOpen(vault);
+            return send(201,images.add(vault,Buffer.concat(chunks)));
+          }
+          const image=images.get(vault,url.pathname.slice('/api/images/'.length));
+          res.writeHead(200,{'Content-Type':image.mime,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"});
+          return res.end(image.bytes);
+        }
         const body=['POST','PUT'].includes(method)?await readBody(req):{};
         const parts=url.pathname.split('/').filter(Boolean),[,collection,id,child,childId]=parts;
         if(method==='POST' && ((collection==='intelligence' && id==='validate' && parts.length===3) || (collection==='pages' && (child==='summary'||child==='title'||child==='entity-scan') && parts.length===4))) {
@@ -168,7 +186,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
       if(!mime[path.extname(filename)])throw new HttpError(404,'Not found');
       let content:Buffer;
       try {content=readFileSync(filename);}catch{throw new HttpError(404,'Not found');}
-      res.writeHead(200,{'Content-Type':mime[path.extname(filename)]!,'X-Content-Type-Options':'nosniff','Cache-Control':relative.startsWith('assets/')?'public, max-age=31536000, immutable':'no-cache','Content-Security-Policy':"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'"});
+      res.writeHead(200,{'Content-Type':mime[path.extname(filename)]!,'X-Content-Type-Options':'nosniff','Cache-Control':relative.startsWith('assets/')?'public, max-age=31536000, immutable':'no-cache','Content-Security-Policy':"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' data: blob:; base-uri 'none'; frame-ancestors 'none'"});
       res.end(method==='HEAD'?undefined:content);
     }catch(error){
       if(error instanceof HttpError)return send(error.status,{error:error.message});
@@ -176,7 +194,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
     }
   });
   server.on('listening', () => {
-    cleanup = setInterval(() => { try { pages.purgeExpired(); } catch (error) { console.error('Trash cleanup failed',error); } },60 * 60 * 1000);
+    cleanup = setInterval(() => { try { pages.purgeExpired(); images.cleanup(); } catch (error) { console.error('Trash cleanup failed',error); } },60 * 60 * 1000);
     cleanup.unref();
     keyCleanup=setInterval(()=>{try{intelligence.purgeExpired();}catch{/* Keychain may be locked; all AI access still fails closed. */}},60000);keyCleanup.unref();
     embeddingWorker=setInterval(()=>{void embeddings.tick().catch(()=>{/* Durable job history records failures; never log note content. */});},1000);embeddingWorker.unref();

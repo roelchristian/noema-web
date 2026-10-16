@@ -6,6 +6,14 @@ export async function request<T>(route: string, method='GET', body?: unknown, va
   if(!response.ok)throw new ApiError(response.status,typeof result==='object'&&result&&'error' in result?String(result.error):'Request failed');
   return result as T;
 }
+export function imageURL(vault: string, id: string) { return `/api/images/${encodeURIComponent(id)}?vault=${encodeURIComponent(vault)}`; }
+export async function uploadImage(vault: string, file: File): Promise<{id: string}> {
+  if(file.size > 20 * 1024 * 1024) throw new Error('Images must be 20 MB or smaller');
+  const response = await fetch('/api/images', {method:'POST', headers:{'X-Noema-Request':'1','X-Vault-Id':vault,'Content-Type':'application/octet-stream'}, body:file});
+  const result = await response.json();
+  if(!response.ok) throw new ApiError(response.status,result.error || 'Image upload failed');
+  return result;
+}
 export const api={
   scanEntities:(vault:string,id:string,revision:number)=>request<import('../shared/entity-scan').EntityScan>(`pages/${id}/entity-scan`,'POST',{revision},vault),
   reviewEntity:(vault:string,id:string,revision:number,scanId:string,suggestionId:string|string[],decision:'accepted'|'rejected',edits?:import('../shared/entity-scan').EntitySuggestionEdit[])=>request<import('../shared/entity-scan').EntityReview>(`pages/${id}/entity-review`,'POST',{revision,scanId,...(Array.isArray(suggestionId)?{suggestionIds:suggestionId}:{suggestionId}),decision,...(edits?{edits}:{})},vault),

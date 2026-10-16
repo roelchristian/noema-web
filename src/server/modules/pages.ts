@@ -1,3 +1,4 @@
+import { Images } from './images.js';
 import { isPageIconId } from '../../shared/page-icons.js';
 import { randomUUID } from 'node:crypto';
 import { blockTypes, safeHref, type Segment, type Block, type Page, type PageSummary, type TrashedPage } from '../../shared/domain.js';
@@ -8,6 +9,10 @@ type PageRow = Omit<Page, 'blocks' | 'sourceIds'> & {blocks: string};
 export const trashRetentionMs = 30 * 24 * 60 * 60 * 1000;
 export class Pages {
   constructor(private store: Store, private knowledge: Knowledge, private clock: () => Date = () => new Date()) {}
+  private cleanupImages(vault?: string, candidates?: string[]) {
+    try { new Images(this.store).cleanup(vault,candidates); } catch { console.error('Image cleanup deferred'); }
+  }
+  private imageIds(blocks: Block[]) { return blocks.flatMap(block => block.type === 'image' && block.imageId ? [block.imageId] : []); }
   list(vault: string) { return this.store.all<PageSummary>('SELECT id,title,icon,updated_at FROM pages WHERE vault_id=? AND deleted_at IS NULL ORDER BY updated_at DESC',vault); }
   get(vault: string, id: string): Page {
     const row=this.store.get<PageRow>('SELECT * FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',id,vault);
@@ -42,6 +47,11 @@ export class Pages {
         });
       };
       const block: Block = {id,type,checked:!!b.checked,content:segments(b.content)};
+      if(type === 'image') {
+        block.imageId=required(b.imageId);
+        new Images(this.store).require(vault,block.imageId);
+        block.alt=b.alt === undefined ? '' : text(b.alt,1000);
+      }
       if(type === 'table') {
         if(!Array.isArray(b.rows) || !b.rows.length || b.rows.length > 100 || !Array.isArray(b.rows[0]) || !b.rows[0].length || b.rows[0].length > 20) throw new HttpError(400,'Invalid table');
         const width=b.rows[0].length;
@@ -65,6 +75,7 @@ export class Pages {
       this.store.run('DELETE FROM page_sources WHERE page_id=?',id);
       for(const source of new Set(sourceIds as string[]))this.store.run('INSERT INTO page_sources VALUES (?,?)',id,source);
     });
+    this.cleanupImages(vault,this.imageIds(page.blocks));
     return this.get(vault,id);
   }
   delete(vault: string, id: string) {
@@ -74,7 +85,10 @@ export class Pages {
   }
   purgeExpired(vault?: string) {
     const cutoff = new Date(this.clock().getTime() - trashRetentionMs).toISOString();
-    return this.store.run('DELETE FROM pages WHERE deleted_at IS NOT NULL AND julianday(deleted_at)<=julianday(?)' + (vault ? ' AND vault_id=?' : ''),cutoff,...(vault ? [vault] : []));
+    const expired=this.store.all<{vault_id:string; blocks:string}>('SELECT vault_id,blocks FROM pages WHERE deleted_at IS NOT NULL AND julianday(deleted_at)<=julianday(?)' + (vault ? ' AND vault_id=?' : ''),cutoff,...(vault ? [vault] : []));
+    const result=this.store.run('DELETE FROM pages WHERE deleted_at IS NOT NULL AND julianday(deleted_at)<=julianday(?)' + (vault ? ' AND vault_id=?' : ''),cutoff,...(vault ? [vault] : []));
+    for(const page of expired) this.cleanupImages(page.vault_id,this.imageIds(JSON.parse(page.blocks) as Block[]));
+    return result;
   }
   trash(vault: string): TrashedPage[] {
     this.purgeExpired(vault);
@@ -92,7 +106,9 @@ export class Pages {
   }
   permanentlyDelete(vault: string, id: string) {
     this.trashed(vault,id);
+    const row=this.store.get<{blocks:string}>('SELECT blocks FROM pages WHERE id=? AND vault_id=?',id,vault)!;
     this.store.run('DELETE FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NOT NULL',id,vault);
+    this.cleanupImages(vault,this.imageIds(JSON.parse(row.blocks) as Block[]));
     return {ok:true};
   }
 }

@@ -1,3 +1,4 @@
+import { ImageSettings } from './ImageSettings';
 import { useState } from 'react';
 import { AIActivityLog } from './AIActivityLog';
 import { IntelligenceSettings } from './IntelligenceSettings';
@@ -9,6 +10,7 @@ import { defaultAppearance, themes, type Appearance, type DisplayMode } from './
 
 const settingsTabs = [
   {id: 'appearance', label: 'Appearance'},
+  {id: 'images', label: 'Images'},
   {id: 'knowledge', label: 'Knowledge Entities'},
   {id: 'intelligence', label: 'Intelligence'},
 ] as const;
@@ -52,6 +54,9 @@ export function SettingsDialog({appearance, onChange, storageError, onClose, onO
           </button>)}
         </div>
       </section>
+      </div>
+      <div id="settings-panel-images" role="tabpanel" aria-labelledby="settings-tab-images" hidden={tab !== 'images'}>
+        {tab === 'images' && <ImageSettings/>}
       </div>
       <div id="settings-panel-knowledge" role="tabpanel" aria-labelledby="settings-tab-knowledge" hidden={tab !== 'knowledge'}>
         {tab === 'knowledge' && <KnowledgeEntitySettings key={vault?.id} vault={vault} appearance={appearance} onChange={onChange} storageError={storageError}/>}

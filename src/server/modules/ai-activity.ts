@@ -1,3 +1,4 @@
+import { AINotifications } from './ai-notifications.js';
 import { randomUUID } from 'node:crypto';
 import type { AIActivity, IntelligencePreferences } from '../../shared/intelligence.js';
 import { Store } from '../store.js';
@@ -6,6 +7,7 @@ import { HttpError } from '../validation.js';
 // No prompts, generated text, credentials, or raw provider errors enter this table.
 export class AIActivityLog {
   constructor(private store: Store) {
+    for(const row of store.all<{action:string;vault_id:string|null;object_id:string|null}>("SELECT action,vault_id,object_id FROM ai_activity WHERE status='running' AND prompt_bytes IS NOT NULL")) new AINotifications(store).outcome(row.action,row.vault_id,row.object_id,'interrupted');
     store.run("UPDATE ai_activity SET status='interrupted',finished_at=? WHERE status='running'",new Date().toISOString());
     this.prune();
   }
@@ -23,7 +25,9 @@ export class AIActivityLog {
     this.store.run('UPDATE ai_activity SET prompt_bytes=?,revision=? WHERE id=?',promptBytes,revision,id);
   }
   finish(id: string, status: Exclude<AIActivity['status'], 'running'>, httpStatus: number | null) {
+    const previous=this.store.get<{action:string;vault_id:string|null;object_id:string|null;status:string;prompt_bytes:number|null}>('SELECT action,vault_id,object_id,status,prompt_bytes FROM ai_activity WHERE id=?',id);
     this.store.run(`UPDATE ai_activity SET status=?,finished_at=?,duration_ms=MAX(0,CAST((julianday(?)-julianday(started_at))*86400000 AS INTEGER)),http_status=? WHERE id=?`,status,new Date().toISOString(),new Date().toISOString(),httpStatus,id);
+    if(previous?.status==='running'&&previous.prompt_bytes!==null) new AINotifications(this.store).outcome(previous.action,previous.vault_id,previous.object_id,status);
     this.prune();
   }
   clear() {

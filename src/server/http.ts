@@ -1,3 +1,4 @@
+import { AINotifications } from './modules/ai-notifications.js';
 import { Images, maxImageBytes } from './modules/images.js';
 import { EntityScans } from './modules/entity-scan.js';
 import type { Segment } from '../shared/domain.js';
@@ -25,7 +26,7 @@ async function readBody(req: IncomingMessage) {
   catch(error) { if(error instanceof HttpError)throw error;throw new HttpError(400,'Invalid JSON'); }
 }
 export function createApp(store: Store, clientRoot: string, intelligence=new Intelligence(keychainFor(store),fetch,()=>Date.now(),intelligencePreferencesFor(store))) {
-  const images=new Images(store);
+  const images=new Images(store),notifications=new AINotifications(store);
   const vaults=new Vaults(store),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),organizer=new Organizer(store);
   const activity=new AIActivityLog(store),enrichments=new AIEnrichments(store,pages);
   const scans=new EntityScans(store,pages,knowledge,enrichments);
@@ -72,6 +73,8 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
           activityId=activity.start(collection==='pages'?(child==='title'?'page_title':child==='entity-scan'?'entity_scan':'page_summary'):'connection_test',child==='title'?intelligence.titleSelection():intelligence.selection(),collection==='pages'?(header||'default'):null,collection==='pages'?id!:null);
         }
         if(collection==='intelligence') {
+          if(parts.length===3 && id==='notifications' && method==='GET')return send(200,notifications.list());
+          if(parts.length===3 && id==='notifications' && method==='PUT')return send(200,notifications.read(body));
           if(parts.length===3 && id==='activity' && method==='DELETE')return send(200,activity.clear());
           if(parts.length===3 && id==='activity' && method==='GET')return send(200,activity.list(url.searchParams.get('before')));
           if(parts.length===2 && method==='GET')return send(200,intelligence.status());

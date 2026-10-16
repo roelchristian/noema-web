@@ -1,3 +1,4 @@
+import { AINotifications } from './ai-notifications.js';
 import { Images } from './images.js';
 import { isPageIconId } from '../../shared/page-icons.js';
 import { randomUUID } from 'node:crypto';
@@ -74,6 +75,10 @@ export class Pages {
       this.store.run('UPDATE pages SET title=?,icon=?,blocks=?,updated_at=?,revision=revision+1 WHERE id=? AND vault_id=?',title,icon,JSON.stringify(blocks),now(),id,vault);
       this.store.run('DELETE FROM page_sources WHERE page_id=?',id);
       for(const source of new Set(sourceIds as string[]))this.store.run('INSERT INTO page_sources VALUES (?,?)',id,source);
+      if(title!==page.title && (!page.title.trim()||page.title.trim()==='Untitled')) {
+        const generated=this.store.get<{data:string;revision:number}>("SELECT data,revision FROM page_ai_enrichments WHERE page_id=? AND kind='title'",id);
+        if(generated?.revision===page.revision && JSON.parse(generated.data).title===title) new AINotifications(this.store).record(vault,id,'page_title');
+      }
     });
     this.cleanupImages(vault,this.imageIds(page.blocks));
     return this.get(vault,id);

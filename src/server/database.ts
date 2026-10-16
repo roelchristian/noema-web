@@ -66,6 +66,14 @@ db.exec(`CREATE TABLE IF NOT EXISTS ai_activity (
 );
  CREATE INDEX IF NOT EXISTS ai_activity_started ON ai_activity(started_at DESC);`);
 
+// Notifications store references and read state, never generated content or title snapshots.
+db.exec(`CREATE TABLE IF NOT EXISTS ai_notifications (
+ seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE,
+ vault_id TEXT NOT NULL REFERENCES vaults(id), page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+ action TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, read_at TEXT
+);
+ CREATE INDEX IF NOT EXISTS ai_notifications_unread ON ai_notifications(read_at,seq DESC);`);
+
 if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'icon')) db.exec('ALTER TABLE pages ADD COLUMN icon TEXT');
 // Keep generated content separate from page edits and activity-log retention.
 db.exec(`CREATE TABLE IF NOT EXISTS page_ai_enrichments (

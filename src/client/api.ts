@@ -3,6 +3,7 @@ export class ApiError extends Error { constructor(public status: number,message:
 export async function request<T>(route: string, method='GET', body?: unknown, vaultId?: string, signal?: AbortSignal): Promise<T> {
   const response=await fetch('/api/'+route,{method,signal,headers:{'X-Noema-Request':'1',...(body!==undefined?{'Content-Type':'application/json'}:{}),...(vaultId?{'X-Vault-Id':vaultId}:{})},body:body!==undefined?JSON.stringify(body):undefined});
   const result:unknown=await response.json();
+  if(/^pages\/[^/]+\/(title|summary|entity-scan)$/.test(route)&&typeof window!=='undefined')window.dispatchEvent(new Event('noema:ai-activity'));
   if(!response.ok)throw new ApiError(response.status,typeof result==='object'&&result&&'error' in result?String(result.error):'Request failed');
   return result as T;
 }
@@ -15,6 +16,8 @@ export async function uploadImage(vault: string, file: File): Promise<{id: strin
   return result;
 }
 export const api={
+  aiNotifications:(signal?:AbortSignal)=>request<import('../shared/ai-notifications').AINotificationQueue>('intelligence/notifications','GET',undefined,undefined,signal),
+  readAINotifications:(body:{ids:string[]}|{through:number})=>request<import('../shared/ai-notifications').AINotificationQueue>('intelligence/notifications','PUT',body),
   scanEntities:(vault:string,id:string,revision:number)=>request<import('../shared/entity-scan').EntityScan>(`pages/${id}/entity-scan`,'POST',{revision},vault),
   reviewEntity:(vault:string,id:string,revision:number,scanId:string,suggestionId:string|string[],decision:'accepted'|'rejected',edits?:import('../shared/entity-scan').EntitySuggestionEdit[])=>request<import('../shared/entity-scan').EntityReview>(`pages/${id}/entity-review`,'POST',{revision,scanId,...(Array.isArray(suggestionId)?{suggestionIds:suggestionId}:{suggestionId}),decision,...(edits?{edits}:{})},vault),
   searchSnippets:(vault:string,query:string,pageIds:string[],signal?:AbortSignal)=>request<{snippets:Record<string,string>}>('search/snippets','POST',{query,pageIds},vault,signal),

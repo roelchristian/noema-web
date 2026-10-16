@@ -8,6 +8,7 @@ import { compressImage } from './compress-image';
 import { readImageCompression } from '../settings/image-settings';
 import { ImageBlock } from './ImageBlock';
 import { TableBlock } from './TableBlock';
+import { SelectionToolbar } from './SelectionToolbar';
 interface Props {vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[]) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
 const options: {type: BlockType; title: string; detail: string; icon: string}[] = [
   {type: 'paragraph', title: 'Text', detail: 'Plain text for your thoughts', icon: 'T'},
@@ -58,6 +59,21 @@ export function BlockEditor(props: Props) {
     document.addEventListener('mousedown', outside); document.addEventListener('keydown', escape);
     return () => { document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', escape); };
   }, []);
+  function commitSelection() {
+    const list = latest.current.blocks.map(block => {
+      const row = root.current?.querySelector<HTMLElement>(`[data-block-id="${block.id}"]`);
+      if (!row || block.type === 'image') return block;
+      const editors = Array.from(row.querySelectorAll<HTMLElement>('.block-content[contenteditable="true"]'));
+      if (block.type === 'table') {
+        let index = 0;
+        return {...block, rows: block.rows?.map(cells => cells.map(content => {
+          const el = editors[index++]; return el ? readSegments(el) : content;
+        }))};
+      }
+      return editors[0] ? {...block, content: readSegments(editors[0])} : block;
+    });
+    setMenu(null); latest.current.onChange(list);
+  }
   function chooseImages(after?: string, replace?: Block) {
     setMenu(null); imageTarget.current = {after, replace}; fileInput.current?.click();
   }
@@ -212,6 +228,7 @@ export function BlockEditor(props: Props) {
     {block.type === 'todo' ? <input type="checkbox" aria-label="Complete task" checked={block.checked} onChange={e => update(block.id, {checked: e.target.checked})}/> : block.type === 'bullet' ? <span className="bullet-marker">•</span> : null}
     {block.type === 'image' ? <ImageBlock block={block} vaultId={props.vaultId} onChange={alt => update(block.id,{alt})} onDelete={() => removeBlock(block.id)} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'table' ? <TableBlock block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={el => { update(block.id, {content: readSegments(el)}); detect(el, block); }} onKeyDown={e => keyDown(e, block)} onPaste={e => paste(e, block)}/>}
   </div>{uploadCards(block.id)}</Fragment>)}{uploadCards()}</div>
+    <SelectionToolbar editor={root} entities={entities} onCommit={commitSelection} onCreateEntity={onCreateEntity}/>
     {imageError && <div className="image-upload-error" role="alert">{imageError}</div>}
     {menu && <div ref={menuRef} className="command-menu" style={{left: menu.left, top: menu.top}} onMouseDown={e => e.preventDefault()} role="menu"><div className="menu-label">{menu.label}</div>{menu.items.map((item, index) => <button key={index} role="menuitem" className={index === menu.index ? 'highlight' : ''} onClick={item.pick}><span className="menu-icon">{item.entity ? <Icon name={item.icon}/> : item.icon}</span><span>{item.title}<small>{item.detail}</small></span></button>)}</div>}
   </>;

@@ -924,3 +924,23 @@ dialog.vault-search-dialog::backdrop { background: #0005; backdrop-filter: blur(
 
 .ai-activity-table .ai-activity-model { white-space: nowrap; }
 .ai-activity-table .ai-activity-reasoning { display: inline; margin: 0 0 0 8px; }
+
+/* A quiet, selection-only editing surface. */
+.selection-popover { position: fixed; z-index: 45; max-width: calc(100vw - 16px); background: var(--surface-raised); color: var(--text); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 3px 8px #0000000a, 0 8px 28px #00000012; overflow: hidden; }
+.selection-toolbar { display: flex; align-items: center; gap: 2px; padding: 4px; }
+.selection-toolbar button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 30px; height: 30px; padding: 0 8px; border-radius: 4px; font-size: 13px; }
+.selection-toolbar button:hover, .selection-toolbar button[aria-pressed=true], .selection-toolbar button[aria-expanded=true], .selection-entities button:hover { background: var(--surface-hover); }
+.selection-toolbar button[aria-pressed=true] { color: var(--accent, var(--text)); }
+.selection-toolbar button:disabled { cursor: default; opacity: .4; }
+.selection-toolbar .selection-annotate { font-size: 12px; }
+.selection-annotate .icon, .selection-entities .icon { width: 15px; height: 15px; flex-shrink: 0; }
+.selection-divider { width: 1px; height: 18px; margin: 0 3px; background: var(--line); }
+.selection-entities { width: 290px; max-width: calc(100vw - 18px); padding: 8px; border-top: 1px solid var(--line); }
+.selection-entities input { width: 100%; border: 1px solid var(--control-border); border-radius: 5px; background: var(--surface); padding: 8px; font-size: 12px; }
+.selection-entities p { font-size: 10px; color: var(--text-muted); margin: 8px 4px; }
+.selection-entity-results { max-height: min(220px, 30vh); overflow-y: auto; }
+.selection-entities button { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; padding: 8px; border-radius: 4px; font-size: 12px; }
+.selection-entities button span { min-width: 0; overflow-wrap: anywhere; }
+.selection-entities small { display: block; color: var(--text-muted); font-size: 10px; margin-top: 3px; }
+.selection-entities .selection-create { border-top: 1px solid var(--line); border-radius: 0; margin-top: 5px; padding-top: 10px; }
+.selection-empty { padding: 12px 8px; font-size: 12px; color: var(--text-muted); }

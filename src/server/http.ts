@@ -5,6 +5,7 @@ import { Store } from './store.js';
 import { Vaults } from './modules/vaults.js';
 import { Knowledge } from './modules/knowledge.js';
 import { Organizer } from './modules/organization.js';
+import { Intelligence, keychainFor, intelligencePreferencesFor } from './modules/intelligence.js';
 import { Pages } from './modules/pages.js';
 import { HttpError, object } from './validation.js';
 async function readBody(req: IncomingMessage) {
@@ -16,22 +17,33 @@ async function readBody(req: IncomingMessage) {
   try { return object(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
   catch(error) { if(error instanceof HttpError)throw error;throw new HttpError(400,'Invalid JSON'); }
 }
-export function createApp(store: Store, clientRoot: string) {
+export function createApp(store: Store, clientRoot: string, intelligence=new Intelligence(keychainFor(store),fetch,()=>Date.now(),intelligencePreferencesFor(store))) {
   const vaults=new Vaults(store),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),organizer=new Organizer(store);
   // Enforce retention on startup, periodically while running, and before scoped API access.
   pages.purgeExpired();
   let cleanup: ReturnType<typeof setInterval> | undefined;
+  let keyCleanup: ReturnType<typeof setInterval> | undefined;
   const server = http.createServer(async(req,res)=>{
     const send=(status:number,data:unknown)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));};
     try {
       const url=new URL(req.url || '/', 'http://localhost'),method=req.method || 'GET';
       // The app binds to loopback. Reject DNS-rebinding hosts and cross-origin browser access.
+      if(!['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress || ''))throw new HttpError(403,'Only loopback connections are allowed');
       if(!/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.headers.host || ''))throw new HttpError(403,'Host is not allowed');
       if(url.pathname.startsWith('/api/')) {
         if((req.headers.origin && req.headers.origin!==`http://${req.headers.host}`)||req.headers['sec-fetch-site']==='cross-site')throw new HttpError(403,'Cross-origin requests are not allowed');
+        const aiRoute=url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||/^\/api\/pages\/[^/]+\/summary$/.test(url.pathname);
+        if(aiRoute && (req.headers['x-noema-request']!=='1'||(['POST','PUT'].includes(method)&&!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))))throw new HttpError(403,'AI requests require the Noema client and JSON');
         const body=['POST','PUT'].includes(method)?await readBody(req):{};
         const parts=url.pathname.split('/').filter(Boolean),[,collection,id,child,childId]=parts;
-        if(collection==='vaults') {
+        if(collection==='intelligence') {
+          if(parts.length===2 && method==='GET')return send(200,intelligence.status());
+          if(parts.length===3 && id==='preferences' && method==='PUT')return send(200,intelligence.savePreferences(body));
+          if(parts.length===2 && method==='PUT')return send(200,intelligence.save(body));
+          if(parts.length===2 && method==='DELETE')return send(200,intelligence.remove());
+          if(parts.length===3 && id==='validate' && method==='POST') {await intelligence.generate('',true);return send(200,{ok:true,...intelligence.selection()});}
+          throw new HttpError(404,'Not found');
+        } else if(collection==='vaults') {
           if(parts.length===2 && method==='GET')return send(200,vaults.list());
           if(parts.length===2 && method==='POST')return send(201,vaults.create(body));
           if(id && parts.length===4 && method==='POST' && child==='lock')return send(200,vaults.lock(id,body));
@@ -57,6 +69,21 @@ export function createApp(store: Store, clientRoot: string) {
             if(parts.length===3 && method==='PUT' && id==='favourites')return send(200,organizer.favourite(vault,body));
           }
           if(collection==='pages') {
+            if(id && parts.length===4 && child==='summary' && method==='POST') {
+              const page=pages.get(vault,id);
+              if(body.revision!==page.revision)throw new HttpError(409,'Save the latest page before summarizing.');
+              const names=new Map(knowledge.list(vault).map(entity=>[entity.id,entity.name]));
+              let input=page.title+'\n';
+              for(const block of page.blocks) {
+                input+=block.content.map(segment=>segment.entityId?names.get(segment.entityId)||'[mention]':segment.text).join('')+'\n';
+                if(input.length>40000)throw new HttpError(413,'This page exceeds the AI limit of 40,000 characters.');
+              }
+              if(!input.trim())throw new HttpError(400,'Add some page content first.');
+              const summary=await intelligence.generate(input);
+              vaults.requireOpen(vault);
+              if(pages.get(vault,id).revision!==page.revision)throw new HttpError(409,'The page changed. Generate a fresh summary.');
+              return send(200,{summary,revision:page.revision,...intelligence.selection()});
+            }
             if(parts.length===2 && method==='GET')return send(200,pages.list(vault));
             if(parts.length===2 && method==='POST')return send(201,pages.create(vault,body));
             if(id && parts.length===3) {
@@ -98,7 +125,8 @@ export function createApp(store: Store, clientRoot: string) {
   server.on('listening', () => {
     cleanup = setInterval(() => { try { pages.purgeExpired(); } catch (error) { console.error('Trash cleanup failed',error); } },60 * 60 * 1000);
     cleanup.unref();
+    keyCleanup=setInterval(()=>{try{intelligence.purgeExpired();}catch{/* Keychain may be locked; all AI access still fails closed. */}},60000);keyCleanup.unref();
   });
-  server.on('close', () => clearInterval(cleanup));
+  server.on('close', () => {clearInterval(cleanup);clearInterval(keyCleanup);});
   return server;
 }

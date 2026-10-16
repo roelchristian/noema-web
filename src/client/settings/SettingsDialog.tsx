@@ -1,3 +1,4 @@
+import { IntelligenceSettings } from './IntelligenceSettings';
 import { entityLabels, entityTypes } from '../../shared/domain';
 import { ColorPicker } from './ColorPicker';
 import { Icon } from '../components/Icon';
@@ -34,7 +35,8 @@ export function SettingsDialog({appearance, onChange, storageError, onClose}: {
           <ColorPicker id={'color-' + type} label={entityLabels[type] + ' color'} value={appearance.entityColors[type]} onChange={color => onChange({...appearance, entityColors: {...appearance.entityColors, [type]: color}})}/>
         </div>)}</div>
       </section>
-      <footer className="settings-footer"><p role="status">{storageError ? 'Applied for now. Browser storage is unavailable; changes won’t survive a reload.' : 'Changes apply instantly and save in this browser.'}</p><div><button className="button" onClick={() => onChange(defaultAppearance())}>Restore defaults</button><button className="button primary" onClick={onClose}>Done</button></div></footer>
+      <IntelligenceSettings/>
+      <footer className="settings-footer"><p role="status">{storageError ? 'Applied for now. Browser storage is unavailable; changes won’t survive a reload.' : 'Appearance changes apply instantly and save in this browser.'}</p><div><button className="button" onClick={() => onChange(defaultAppearance())}>Restore defaults</button><button className="button primary" onClick={onClose}>Done</button></div></footer>
     </div>
   </Modal>;
 }

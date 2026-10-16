@@ -1,12 +1,18 @@
 import type { Organization, Entity, EntityDetail, EntityInput, PropertyInput, RelationshipInput, Page, PageInput, PageSummary, Vault, TrashedPage } from '../shared/domain';
 export class ApiError extends Error { constructor(public status: number,message: string){super(message);} }
 export async function request<T>(route: string, method='GET', body?: unknown, vaultId?: string): Promise<T> {
-  const response=await fetch('/api/'+route,{method,headers:{...(body!==undefined?{'Content-Type':'application/json'}:{}),...(vaultId?{'X-Vault-Id':vaultId}:{})},body:body!==undefined?JSON.stringify(body):undefined});
+  const response=await fetch('/api/'+route,{method,headers:{'X-Noema-Request':'1',...(body!==undefined?{'Content-Type':'application/json'}:{}),...(vaultId?{'X-Vault-Id':vaultId}:{})},body:body!==undefined?JSON.stringify(body):undefined});
   const result:unknown=await response.json();
   if(!response.ok)throw new ApiError(response.status,typeof result==='object'&&result&&'error' in result?String(result.error):'Request failed');
   return result as T;
 }
 export const api={
+  intelligence:()=>request<import('../shared/domain').IntelligenceStatus>('intelligence'),
+  saveIntelligence:(apiKey:string,days:number)=>request<import('../shared/domain').IntelligenceStatus>('intelligence','PUT',{apiKey,days}),
+  saveIntelligencePreferences:(preferences:import('../shared/intelligence').IntelligencePreferences)=>request<import('../shared/intelligence').IntelligencePreferences>('intelligence/preferences','PUT',preferences),
+  removeIntelligence:()=>request<import('../shared/domain').IntelligenceStatus>('intelligence','DELETE'),
+  validateIntelligence:()=>request<{ok:true}&import('../shared/intelligence').IntelligencePreferences>('intelligence/validate','POST',{}),
+  summarize:(vault:string,id:string,revision:number)=>request<import('../shared/domain').AISummary>(`pages/${id}/summary`,'POST',{revision},vault),
   organization:(vault:string)=>request<Organization>('organization','GET',undefined,vault),
   organize:(vault:string,route:string,body?:unknown,method='PUT')=>request<Organization>('organization/'+route,method,body,vault),
   vaults:()=>request<Vault[]>('vaults'),

@@ -1,3 +1,4 @@
+import type { IntelligencePreferences } from './intelligence.js';
 export const entityTypes = ['person', 'place', 'event', 'creativework', 'organization', 'source'] as const;
 export type EntityType = typeof entityTypes[number];
 export const entityLabels: Record<EntityType, string> = {
@@ -30,3 +31,7 @@ export interface Organization { collections: Collection[]; folders: Folder[]; lo
 
 export interface RecentItem { kind: ItemKind; item_id: string; opened_at: string }
 export interface OrganizationContext { collection: string; folder: string }
+
+export interface IntelligenceStatus extends IntelligencePreferences { configured: boolean; expiresAt: string | null }
+
+export interface AISummary extends IntelligencePreferences { summary: string; revision: number }

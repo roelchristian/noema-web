@@ -1,6 +1,6 @@
 # Noema — local knowledge workspace
 
-A local block editor organized into self-contained vaults, with reusable knowledge entities and a SQLite backend. The interface uses a black accent palette, bundled Inter, and SVG entity icons. No accounts or API keys are required. React and the build tools are installed locally through npm.
+A local block editor organized into self-contained vaults, with reusable knowledge entities and a SQLite backend. The interface uses a black accent palette, bundled Inter, and SVG entity icons. No accounts or API keys are required for local editing. Optional AI summaries use your own OpenAI API key. React and the build tools are installed locally through npm.
 
 ## Run
 
@@ -21,7 +21,7 @@ PORT=3001 DB_PATH=./data/another.sqlite npm start
 
 ## Architecture
 
-Noema is a local-first modular monolith: one Node.js process serves a local SQLite database and the compiled frontend. There are no cloud service dependencies at runtime. Inter and all frontend assets are bundled locally.
+Noema is a local-first modular monolith: one Node.js process serves a local SQLite database and the compiled frontend. Local editing has no cloud service dependencies. Optional AI summaries connect to OpenAI. Inter and all frontend assets are bundled locally.
 
 - `src/server/modules/`: vault access, page persistence, and knowledge operations, each with a separate service boundary.
 - `src/server/database.ts`: schema initialization, backward-compatible migrations, and seed data.
@@ -148,7 +148,7 @@ git push -u origin main
 
 This is a single-user local prototype. Editing the same page in multiple tabs is guarded by revision checks in the bundled client. If a save reports a conflict, keep a copy of your unsaved text before reloading the latest page; automatic conflict merging is deferred. Page deletion is permanent. Entity deletion, drag-and-drop block ordering, rich text formatting, nested blocks, custom entity types, and automatic inverse/symmetric relationship rules are not implemented.
 
-AI enrichment and embeddings are intentionally deferred. Stable entity IDs and separate property/relationship tables leave room for enrichment jobs, provenance, and an embedding table without changing how pages reference entities. Startup includes an additive migration for vault scoping and page source references.
+Page summaries are the first optional AI enrichment feature; embeddings remain deferred. Stable entity IDs and separate property/relationship tables leave room for enrichment jobs, provenance, and an embedding table without changing how pages reference entities. Startup includes an additive migration for vault scoping and page source references.
 
 The server has no user accounts and is intended for this computer only. Keep the loopback binding when running this version.
 
@@ -157,3 +157,37 @@ The server has no user accounts and is intended for this computer only. Keep the
 Use the page toolbar’s **Trash** action to move a note out of the workspace. Open **Trash** at the bottom of the sidebar to restore it or delete it permanently. Restoring a note preserves its blocks, source references, favourites, and surviving folder/collection memberships. Permanent deletion requires confirmation and cannot be undone.
 
 Notes expire 30 days after being moved to Trash. The local server removes expired notes on startup, hourly while running, and before API access. If the app is closed, overdue notes are removed the next time its server starts. Trash belongs to each vault and is unavailable while that vault is locked.
+
+
+## Intelligence and page summaries
+
+Open **Settings → Intelligence** to save an OpenAI project API key. Keys are stored only in **macOS Keychain**, under a Noema service and a random account identifier per database. Other platforms fail closed until an OS credential-store adapter is implemented. SQLite stores only the random account identifier; database backups do not contain the credential. macOS may request Keychain access or require you to unlock your login keychain.
+
+Noema provides no API or UI to reveal the saved key, including partial characters. The input clears on submission, and credentials are never placed in browser storage, process arguments, application logs, or provider error messages. The backend necessarily reads the credential into memory to authenticate HTTPS calls. Keychain protection depends on your macOS account and OS security: this is not protection against malware or an administrator controlling your computer. Local processes running as your user can access the local app; loopback access is not user authentication. Do not expose Noema through a reverse proxy or public tunnel.
+
+The default lifetime is **30 days**, configurable from 1–365 days when saving or replacing a key. Expiry is checked before every AI use and a background sweep attempts removal every minute. When Noema is closed or Keychain is unavailable, physical removal waits until Noema can access Keychain again; expired credentials cannot be used through Noema. **Remove key** deletes the credential and aborts an active AI call. Replacement also invalidates active results. This lifetime is local to Noema: revoke a key in your OpenAI project to invalidate it at the provider. Keep a dedicated, restricted project key and configure project spending controls in OpenAI.
+
+Use **Validate connection** to send a small test request without page content. This checks actual Responses API/model access and can incur a small charge. The existing default model remains `gpt-5-mini`, with reasoning effort defaulting to **low**. **Model** and **Reasoning effort** selectors offer a curated set of Responses API text models: GPT-6 Luna/Sol/Astra, GPT-6.1 Sol, GPT-5.6 Luna/Terra/Sol, and GPT-5 Mini. This catalog was checked against [official OpenAI model and reasoning documentation](https://developers.openai.com/api/docs/guides/latest-model) on October 16, 2026; it is not a live account-specific model list. Only compatible efforts appear, and the server rejects unsupported combinations. If changing models makes the current effort unsupported, the selector resets to low.
+
+Choose **Save AI preferences** to persist model and effort across server restarts without reading, replacing, or extending the saved credential. Non-secret preferences are stored in SQLite; the API key remains in Keychain. Validation and summaries both use the saved selection; summary results display the model and effort used. Saving preferences aborts any active AI request and discards its result. Model availability depends on your OpenAI API project. Requests have a bounded output budget (2,048 tokens for validation; 8,192 for summaries, including reasoning) and the existing 45-second timeout. High effort may need more time or tokens than these limits permit; reduce effort or shorten the page if a response is incomplete.
+
+On a page, choose **AI → Send page & summarize**. Noema first saves pending edits, then sends only that saved page’s title, block text, and names of inline entity mentions. It excludes source bodies, entity properties, and other pages. Summaries appear as escaped plain text, are not automatically saved, and disappear when the sidebar closes or the page/vault changes. A locked vault, deleted page, changed revision, or removed/expired key prevents returning the result. Closing the sidebar hides the result but does not cancel an already transmitted request or its provider charge.
+
+Security controls include loopback binding and peer-address checks; localhost/127.0.0.1 Host validation; same-origin checks; a custom request header and JSON requirement on AI endpoints; no cross-origin access; no response caching; a fixed HTTPS OpenAI endpoint with redirects disabled; no model tools; 40,000 input characters; bounded provider responses and output tokens; a 45-second timeout; one active AI call and five attempts per minute per server process; and sanitized errors. Rate limits are local safeguards, not a billing cap. Page content is treated as untrusted input, and output is never executed.
+
+The summary prompt keeps Noema’s fixed instructions separate from note text. Titles, body text, and mentioned entity names are serialized into a JSON `untrusted_note` string inside a single lower-priority user message. No note text is interpolated into trusted instructions or used to construct roles, tools, model settings, or conversation history. Noema explicitly directs the model to summarize embedded instructions as document content rather than obeying them, including fake roles, delimiter escapes, encoded commands, and authorization claims. Requests explicitly set `tools: []` and `tool_choice: "none"`; results remain inert plain text.
+
+This follows [OpenAI’s guidance on separating untrusted input from trusted instructions](https://developers.openai.com/api/docs/guides/agent-builder-safety). It reduces prompt-injection risk but cannot guarantee model-level immunity. Regression tests use malicious note fixtures to verify request isolation, not to claim live-model robustness; no live attack evaluation was run with a billable API key.
+
+Requests use the [OpenAI Responses API](https://developers.openai.com/api/docs/guides/text) with `store: false`. This does not guarantee zero provider retention; see [OpenAI data controls](https://developers.openai.com/api/docs/guides/your-data) for applicable processing and retention policies.
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/intelligence` | Configuration status, expiry and model only |
+| PUT | `/api/intelligence` | Save/replace `{apiKey, days?: 30}` |
+| PUT | `/api/intelligence/preferences` | Save `{model, reasoningEffort}` independently of the key |
+| DELETE | `/api/intelligence` | Remove saved credential |
+| POST | `/api/intelligence/validate` | Test the saved key and model access |
+| POST | `/api/pages/:id/summary` | Summarize a saved page with `{revision}` and `X-Vault-Id` |
+
+All intelligence routes require `X-Noema-Request: 1`; writes require `Content-Type: application/json`. Tests use an injected credential store and mock provider, never your Keychain or a billable API key. They cover expiry, replacement/removal, request redaction, fixed destinations, storage controls, concurrency, rate limits, host/origin checks, vault isolation, stale revisions, and locking during a request. A native Keychain save/read/remove round-trip was also verified using a unique synthetic credential and then cleaned up. A live OpenAI connection still needs your real key and **Validate connection** on your Mac.

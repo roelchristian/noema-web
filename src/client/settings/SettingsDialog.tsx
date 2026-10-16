@@ -45,6 +45,13 @@ export function SettingsDialog({appearance, onChange, storageError, onClose, onO
         </div>
         <p className="display-hint">{appearance.mode === 'system' ? 'Matches your computer and updates automatically.' : `Always use ${appearance.mode} mode.`}</p>
       </section>
+      <section className="settings-section" aria-labelledby="reading-heading">
+        <h3 id="reading-heading">Focused reading</h3><p>Hide entity icons and highlights in notes. A thin, muted underline keeps connected entities easy to find.</p>
+        <div className="display-options" role="group" aria-label="Entity display in notes">
+          <button type="button" aria-pressed={!appearance.focusedReading} onClick={() => onChange({...appearance, focusedReading: false})}>Highlights</button>
+          <button type="button" aria-pressed={appearance.focusedReading} onClick={() => onChange({...appearance, focusedReading: true})}>Focused reading</button>
+        </div>
+      </section>
       <section className="settings-section" aria-labelledby="theme-heading">
         <h3 id="theme-heading">Theme color</h3><p>A little character for buttons, navigation, and accents.</p>
         <div className="theme-options" role="group" aria-label="Theme color">

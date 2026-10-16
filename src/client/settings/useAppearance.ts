@@ -20,6 +20,7 @@ export function useAppearance() {
     const theme = themes.find(theme => theme.id === appearance.theme)!;
     const mode = resolveDisplayMode(appearance.mode, systemDark);
     root.dataset.mode = mode;
+    root.dataset.focusedReading = String(appearance.focusedReading);
     root.style.setProperty('--accent', mode === 'dark' ? theme.darkColor : theme.color);
     root.style.setProperty('--accent-soft', mode === 'dark' ? theme.darkSoft : theme.soft);
     for (const [id, color] of Object.entries(pillColors)) {

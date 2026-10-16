@@ -16,6 +16,7 @@ test('appearance survives serialization, including individual entity overrides',
   const appearance = defaultAppearance();
   appearance.theme = 'juniper';
   appearance.mode = 'dark';
+  appearance.focusedReading = true;
   appearance.entityColors.person = 'ocean';
   appearance.entityOverrides['entity-a'] = 'rose';
   assert.deepEqual(parseAppearance(JSON.stringify(appearance)), appearance);
@@ -47,6 +48,8 @@ test('system appearance follows the computer while explicit choices take priorit
   assert.equal(resolveDisplayMode('dark', false), 'dark');
   const legacy = parseAppearance(JSON.stringify({theme: 'juniper', entityColors: {person: 'sage'}}));
   assert.equal(legacy.mode, 'system');
+  assert.equal(legacy.focusedReading, false);
+  assert.equal(parseAppearance('{"focusedReading":"true"}').focusedReading, false);
   assert.equal(legacy.entityColors.person, 'sage');
   assert.equal(parseAppearance('{"mode":"invalid"}').mode, 'system');
 });

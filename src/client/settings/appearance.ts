@@ -22,16 +22,17 @@ export const pillColors = {
   honey: {name: 'Honey', background: '#faf2df', text: '#77551e', border: '#e9d9b4', darkBackground: '#423722', darkText: '#ead39d', darkBorder: '#6c5a37'},
 } as const;
 export type PillColor = keyof typeof pillColors;
-export interface Appearance { mode: DisplayMode; theme: ThemeId; entityColors: Record<EntityType, PillColor>; entityOverrides: Record<string, PillColor> }
+export interface Appearance { focusedReading: boolean; mode: DisplayMode; theme: ThemeId; entityColors: Record<EntityType, PillColor>; entityOverrides: Record<string, PillColor> }
 export const appearanceStorageKey = 'noema.appearance.v1';
 export function defaultAppearance(): Appearance {
-  return {mode: 'system', theme: 'ink', entityOverrides: {}, entityColors: Object.fromEntries(entityTypes.map(type => [type, 'graphite'])) as Appearance['entityColors']};
+  return {focusedReading: false, mode: 'system', theme: 'ink', entityOverrides: {}, entityColors: Object.fromEntries(entityTypes.map(type => [type, 'graphite'])) as Appearance['entityColors']};
 }
 export function parseAppearance(raw: string | null): Appearance {
   const result = defaultAppearance();
   try {
     const value = JSON.parse(raw || 'null');
     if (!value || typeof value !== 'object') return result;
+    if (typeof value.focusedReading === 'boolean') result.focusedReading = value.focusedReading;
     if (displayModes.includes(value.mode)) result.mode = value.mode;
     if (themes.some(theme => theme.id === value.theme)) result.theme = value.theme;
     for (const type of entityTypes) {

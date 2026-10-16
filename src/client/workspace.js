@@ -1,8 +1,9 @@
 import { workspaceShell } from './shell';
+import { enhanceDropdowns } from './components/dropdowns';
 import { request } from './api';
 export function startWorkspace(host) {
 host.innerHTML=workspaceShell;
-const cleanups=[];
+const cleanups=[enhanceDropdowns(host)];
 function listen(target,event,handler){target.addEventListener(event,handler);cleanups.push(()=>target.removeEventListener(event,handler));}
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

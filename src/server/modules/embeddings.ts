@@ -1,3 +1,5 @@
+import {AIActivityLog} from './ai-activity.js';
+import type {AIActivity} from '../../shared/intelligence.js';
 import {createHash, randomUUID} from 'node:crypto';
 import {makeSearchSnippet} from '../../shared/search-snippets.js';
 import {pageBodyText} from './search-snippets.js';
@@ -14,7 +16,8 @@ interface JobRow {id: string; vault_id: string; page_id: string | null; content_
 export class Embeddings {
  private busy=false;
  private closed=false;
- constructor(private store: Store, private pages: Pages, private knowledge: Knowledge, private vaults: Vaults, private intelligence: Intelligence) {
+ private activeActivity=new Set<string>();
+ constructor(private store: Store, private pages: Pages, private knowledge: Knowledge, private vaults: Vaults, private intelligence: Intelligence, private activity?: AIActivityLog) {
   this.store.transaction(()=>{
    const interrupted=this.store.all<JobRow & {reason:string}>("SELECT * FROM embedding_jobs WHERE status='running'");
    this.store.run("UPDATE embedding_jobs SET status='interrupted',finished_at=?,error='Server stopped during this attempt.' WHERE status='running'",now());
@@ -26,7 +29,18 @@ export class Embeddings {
    }
   });
  }
- close() {this.closed=true;}
+ close() {
+  this.closed=true;
+  for(const id of this.activeActivity)this.finishActivity(id,'interrupted',null);
+ }
+ private startActivity(action: 'note_embedding' | 'search_embedding',vault: string,page?: Page) {
+  const id=this.activity?.start(action,{model:embeddingModel,reasoningEffort:'none'},vault,page?.id);
+  if(id)this.activeActivity.add(id);
+  return id;
+ }
+ private finishActivity(id: string | undefined,status: Exclude<AIActivity['status'],'running'>,code: number | null) {
+  if(id&&this.activeActivity.delete(id))this.activity?.finish(id,status,code);
+ }
  private settings(vault: string): EmbeddingSettings {
   const row=this.store.get<{automatic:number;min_characters:number}>('SELECT automatic,min_characters FROM embedding_settings WHERE vault_id=?',vault);
   return {automatic:row?!!row.automatic:true,minCharacters:row?.min_characters ?? 20};
@@ -100,24 +114,29 @@ export class Embeddings {
    const job=this.store.get<JobRow>(`SELECT j.* FROM embedding_jobs j JOIN vaults v ON v.id=j.vault_id WHERE j.status='queued' AND j.next_attempt_at<=? AND v.locked=0 ORDER BY j.next_attempt_at,j.created_at LIMIT 1`,now());
    if(!job)return;
    this.store.run("UPDATE embedding_jobs SET status='running',attempts=attempts+1,started_at=?,finished_at=NULL,error=NULL WHERE id=? AND status='queued'",now(),job.id);
+   let activityId: string | undefined;
    try {
     this.vaults.requireOpen(job.vault_id);
     if(!job.page_id){this.finish(job.id,'skipped','Note is unavailable.');return;}
     const page=this.pages.get(job.vault_id,job.page_id),snapshot=this.snapshot(job.vault_id,page);
     if(!snapshot.eligible||snapshot.hash!==job.content_hash||this.fresh(this.vector(page.id),snapshot.hash)){this.finish(job.id,'skipped','Note changed, is ineligible, or already indexed.');return;}
-    const result=await this.intelligence.embed(snapshot.input);
+    activityId=this.startActivity('note_embedding',job.vault_id,page);
+    const result=await this.intelligence.embed(snapshot.input,bytes=>{if(activityId)this.activity?.request(activityId,bytes,page.revision);});
     if(this.closed)return;
-    this.store.transaction(()=>{
+    const persisted=this.store.transaction(()=>{
      this.vaults.requireOpen(job.vault_id);
      const current=this.pages.get(job.vault_id,page.id),fresh=this.snapshot(job.vault_id,current);
-     if(!fresh.eligible||fresh.hash!==snapshot.hash||this.store.get<JobRow>('SELECT status FROM embedding_jobs WHERE id=?',job.id)?.status!=='running'){this.finish(job.id,'skipped','Note changed or indexing was cancelled.');return;}
+     if(!fresh.eligible||fresh.hash!==snapshot.hash||this.store.get<JobRow>('SELECT status FROM embedding_jobs WHERE id=?',job.id)?.status!=='running'){this.finish(job.id,'skipped','Note changed or indexing was cancelled.');return false;}
      if(result.embedding.length!==embeddingDimensions||result.embedding.some(n=>!Number.isFinite(n))||!result.embedding.some(n=>n!==0))throw new HttpError(502,'Invalid embedding response.');
      this.store.run(`INSERT INTO note_embeddings (page_id,model,dimensions,content_hash,revision,vector,tokens,updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(page_id) DO UPDATE SET model=excluded.model,dimensions=excluded.dimensions,content_hash=excluded.content_hash,revision=excluded.revision,vector=excluded.vector,tokens=excluded.tokens,updated_at=excluded.updated_at`,page.id,embeddingModel,embeddingDimensions,fresh.hash,current.revision,JSON.stringify(result.embedding),result.tokens,now());
      this.store.run("UPDATE embedding_jobs SET status='completed',finished_at=?,tokens=? WHERE id=?",now(),result.tokens,job.id);
+     return true;
     });
+    this.finishActivity(activityId,persisted?'completed':'skipped',persisted?200:409);
    }catch(error) {
     if(this.closed)return;
     const code=error instanceof HttpError?error.status:502;
+    this.finishActivity(activityId,code===404||code===423?'skipped':'failed',code);
     if(code===404||code===423){this.finish(job.id,'skipped',code===423?'Vault locked during indexing.':'Note is unavailable.');return;}
     const retryable=code===429||code>=500,attempts=job.attempts+1;
     if(retryable&&attempts<3)this.store.run("UPDATE embedding_jobs SET status='queued',next_attempt_at=?,error='Embedding service unavailable. Automatic retry scheduled.' WHERE id=? AND status='running'",new Date(Date.now()+30000*2**(attempts-1)).toISOString(),job.id);
@@ -135,19 +154,28 @@ export class Embeddings {
    return snapshot.eligible&&this.fresh(this.vector(summary.id),snapshot.hash);
   });
   if(!searchable)return {results:[],model:embeddingModel};
-  const result=await this.intelligence.embed(body.query.trim());this.vaults.requireOpen(vault);
-  const magnitude=(v: number[])=>Math.sqrt(v.reduce((sum,n)=>sum+n*n,0));
-  const qMagnitude=magnitude(result.embedding);
-  if(result.embedding.length!==embeddingDimensions||!qMagnitude||!Number.isFinite(qMagnitude))throw new HttpError(502,'Invalid embedding response.');
-  const results=[];
-  for(const summary of this.pages.list(vault)) {
-   const page=this.pages.get(vault,summary.id),snapshot=this.snapshot(vault,page),row=this.vector(page.id);
-   if(!snapshot.eligible||!this.fresh(row,snapshot.hash))continue;
-   const vector=JSON.parse(row!.vector) as number[],norm=magnitude(vector);
-   if(vector.length!==embeddingDimensions||!norm||!Number.isFinite(norm))continue;
-   const score=vector.reduce((sum,n,i)=>sum+n*result.embedding[i],0)/(norm*qMagnitude);
-   if(Number.isFinite(score))results.push({id:page.id,title:page.title,snippet:makeSearchSnippet(snapshot.body,body.query),updated_at:page.updated_at,score:Math.max(-1,Math.min(1,score))});
+  const activityId=this.startActivity('search_embedding',vault);
+  try {
+   const result=await this.intelligence.embed(body.query.trim(),bytes=>{if(activityId)this.activity?.request(activityId,bytes,null);});
+   if(this.closed)throw new HttpError(503,'Search stopped.');
+   this.vaults.requireOpen(vault);
+   const magnitude=(v: number[])=>Math.sqrt(v.reduce((sum,n)=>sum+n*n,0));
+   const qMagnitude=magnitude(result.embedding);
+   if(result.embedding.length!==embeddingDimensions||!qMagnitude||!Number.isFinite(qMagnitude))throw new HttpError(502,'Invalid embedding response.');
+   const results=[];
+   for(const summary of this.pages.list(vault)) {
+    const page=this.pages.get(vault,summary.id),snapshot=this.snapshot(vault,page),row=this.vector(page.id);
+    if(!snapshot.eligible||!this.fresh(row,snapshot.hash))continue;
+    const vector=JSON.parse(row!.vector) as number[],norm=magnitude(vector);
+    if(vector.length!==embeddingDimensions||!norm||!Number.isFinite(norm))continue;
+    const score=vector.reduce((sum,n,i)=>sum+n*result.embedding[i],0)/(norm*qMagnitude);
+    if(Number.isFinite(score))results.push({id:page.id,title:page.title,snippet:makeSearchSnippet(snapshot.body,body.query),updated_at:page.updated_at,score:Math.max(-1,Math.min(1,score))});
+   }
+   this.finishActivity(activityId,'completed',200);
+   return {results:results.sort((a,b)=>b.score-a.score||a.id.localeCompare(b.id)).slice(0,limit),model:embeddingModel};
+  } catch(error) {
+   this.finishActivity(activityId,'failed',error instanceof HttpError?error.status:502);
+   throw error;
   }
-  return {results:results.sort((a,b)=>b.score-a.score||a.id.localeCompare(b.id)).slice(0,limit),model:embeddingModel};
  }
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { AIActivity, AIActivityPage } from '../../shared/intelligence';
+import { aiActivityLabels, type AIActivity, type AIActivityPage } from '../../shared/intelligence';
 import { Modal } from '../components/Modal';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { api } from '../api';
@@ -61,23 +61,23 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
     <div className="ai-activity-table-wrap" tabIndex={0} role="region" aria-label="AI activity records" aria-busy={busy}>
       <table className="ai-activity-table">
         <caption className="sr-only">AI activity, newest first</caption>
-        <thead><tr>{['Started','Action','Status','Source','Model / reasoning','Prompt bytes','Duration','HTTP'].map(label=><th scope="col" key={label}>{label}</th>)}</tr></thead>
+        <thead><tr>{['Started','Action','Status','Source','Model / reasoning','Input bytes','Duration','HTTP'].map(label=><th scope="col" key={label}>{label}</th>)}</tr></thead>
         <tbody>{data.items.map(item=><tr key={item.id}>
           <td><time dateTime={item.startedAt}>{new Date(item.startedAt).toLocaleString()}</time></td>
-          <td>{item.action==='entity_scan'?'Entity scan':item.action==='page_summary'?'Page summary':item.action==='page_title'?'Page title':'Connection test'}</td>
+          <td>{aiActivityLabels[item.action]}</td>
           <td><span className={'ai-activity-status '+item.status}>{item.status}</span></td>
           <td>{item.objectId?<>
             {item.available?<button className="ai-activity-link" onClick={()=>void open(item)}>{item.objectTitle||'Untitled'}</button>:<span>{item.objectTitle||'Unavailable page'}</span>}
             <small>{item.vaultName} · {item.objectKind} / {item.objectId}{item.revision!==null?` · revision ${item.revision}`:''}</small>
-          </>:<span>Settings → Intelligence</span>}</td>
-          <td>{item.model}<small>{item.reasoningEffort} reasoning</small></td>
+          </>:item.action==='search_embedding'?<span>Vault search<small>{item.vaultName}</small></span>:<span>Settings → Intelligence</span>}</td>
+          <td>{item.model}{item.action!=='note_embedding'&&item.action!=='search_embedding'&&<small>{item.reasoningEffort} reasoning</small>}</td>
           <td>{item.promptBytes===null?'Not sent':item.promptBytes.toLocaleString()}</td>
           <td>{item.durationMs===null?'—':`${(item.durationMs/1000).toFixed(1)}s`}</td>
           <td>{item.httpStatus??'—'}</td>
         </tr>)}</tbody>
       </table>
-      {!busy&&!data.items.length&&!error&&<p className="ai-activity-empty">No AI activity yet. Page titles, summaries, and connection tests will appear here.</p>}
+      {!busy&&!data.items.length&&!error&&<p className="ai-activity-empty">No AI activity yet. Titles, summaries, entity scans, embeddings, and connection tests will appear here.</p>}
     </div>
-    <footer className="ai-activity-footer">{data.nextCursor!==null&&<button className="button" disabled={busy} onClick={()=>void load(data.nextCursor!)}>Load older activity</button>}<p>Export includes all available records, including older rows. Prompt size counts UTF-8 bytes, not tokens. Interrupted means the server stopped before recording an outcome. Refresh to check running actions.</p><button className="button primary" onClick={onClose}>Done</button></footer>
+    <footer className="ai-activity-footer">{data.nextCursor!==null&&<button className="button" disabled={busy} onClick={()=>void load(data.nextCursor!)}>Load older activity</button>}<p>Export includes all available records, including older rows. Input size counts UTF-8 bytes, not tokens. Embedding retries appear as separate attempts; queued jobs remain in embedding settings. Skipped means a note changed or indexing was cancelled. Interrupted means the server stopped before recording an outcome. Refresh to check running actions.</p><button className="button primary" onClick={onClose}>Done</button></footer>
   </Modal>;
 }

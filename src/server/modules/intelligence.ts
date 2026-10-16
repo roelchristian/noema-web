@@ -94,7 +94,7 @@ export class Intelligence {
   }
   remove() {this.active?.abort();for(const request of this.embeddingRequests)request.abort();this.secrets.remove();return {configured:false,expiresAt:null,...this.selection()};}
   purgeExpired() {this.credential();}
-  async embed(input: string): Promise<{embedding:number[];tokens:number}> {
+  async embed(input: string, onRequest?: (inputBytes: number) => void): Promise<{embedding:number[];tokens:number}> {
     if(!input.trim()||Buffer.byteLength(input,'utf8')>8000)throw new HttpError(400,'Embedding input must contain text and be at most 8,000 UTF-8 bytes.');
     const credential=this.credential();
     if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
@@ -104,6 +104,7 @@ export class Intelligence {
     const controller=new AbortController();this.embeddingRequests.add(controller);
     const timer=setTimeout(()=>controller.abort(),Math.min(45000,Date.parse(credential.expiresAt)-this.clock()));
     try {
+      onRequest?.(Buffer.byteLength(input,'utf8'));
       const response=await this.transport('https://api.openai.com/v1/embeddings',{
         method:'POST',redirect:'error',signal:controller.signal,
         headers:{'Content-Type':'application/json',Authorization:`Bearer ${credential.key}`},

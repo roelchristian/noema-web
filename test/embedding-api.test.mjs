@@ -59,6 +59,11 @@ test('embedding API persists indexes and history, rejects stale content, and fol
   let results=await call('embeddings/search','POST',{query:'gardening',limit:10});
   assert.ok(results.results.some(result=>result.id===page.id));
   assert.equal(results.results.find(result=>result.id===page.id).snippet,'Durable semantic knowledge about gardens and careful planting.');
+  const logged=(await call('intelligence/activity')).items;
+  const indexing=logged.find(item=>item.action==='note_embedding'&&item.objectId===page.id);
+  assert.equal(indexing.status,'completed');assert.equal(indexing.model,'text-embedding-3-small');assert.equal(indexing.revision,page.revision);assert.ok(indexing.promptBytes>0);
+  const searching=logged.find(item=>item.action==='search_embedding');
+  assert.equal(searching.status,'completed');assert.equal(searching.vaultId,'default');assert.equal(searching.objectId,null);assert.equal(searching.promptBytes,Buffer.byteLength('gardening'));
   const provider=f.calls[0];assert.equal(provider.url,'https://api.openai.com/v1/embeddings');
   assert.equal(provider.body.model,'text-embedding-3-small');assert.equal(provider.body.dimensions,1536);
   assert.equal(provider.options.redirect,'error');
@@ -67,6 +72,7 @@ test('embedding API persists indexes and history, rejects stale content, and fol
   status=await call('embeddings');
   assert.equal(status.settings.automatic,false);assert.equal(status.notes.find(note=>note.pageId===page.id).state,'indexed');
   assert.ok(status.jobs.some(job=>job.pageId===page.id&&job.status==='completed'));
+  assert.ok((await call('intelligence/activity')).items.some(item=>item.id===indexing.id),'Embedding activity survives restart');
   results=await call('embeddings/search','POST',{query:'gardening'},200,other.id);assert.deepEqual(results.results,[]);
   page=await call('pages/'+page.id,'PUT',{...page,blocks:blocks('Revised knowledge about mountains and climbing safely.')});
   status=await call('embeddings');assert.equal(status.notes.find(note=>note.pageId===page.id).state,'stale');
@@ -107,6 +113,8 @@ test('embedding API enforces client/origin protection, validates requests, and s
   const status=await f.until(value=>value.jobs.some(job=>job.pageId===page.id&&job.status==='failed'));
   const job=status.jobs.find(job=>job.pageId===page.id&&job.status==='failed');
   assert.ok(!JSON.stringify(job).includes('sensitive upstream details'));
+  const failed=(await call('intelligence/activity')).items.find(item=>item.action==='note_embedding'&&item.objectId===page.id);
+  assert.equal(failed.status,'failed');assert.equal(failed.httpStatus,502);
   await call('embeddings/jobs/'+job.id+'/retry','POST',{},404,other.id);
   f.setHandler(async()=>embedded());
   await call('embeddings/jobs/'+job.id+'/retry','POST',{});

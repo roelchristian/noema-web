@@ -27,7 +27,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
   const vaults=new Vaults(store),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),organizer=new Organizer(store);
   const activity=new AIActivityLog(store),enrichments=new AIEnrichments(store,pages);
   const scans=new EntityScans(store,pages,knowledge,enrichments);
-  const embeddings=new Embeddings(store,pages,knowledge,vaults,intelligence);
+  const embeddings=new Embeddings(store,pages,knowledge,vaults,intelligence,activity);
   const searchSnippets=new SearchSnippets(pages,knowledge,vaults);
   // Enforce retention on startup, periodically while running, and before scoped API access.
   pages.purgeExpired();

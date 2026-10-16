@@ -22,7 +22,7 @@ export class AIActivityLog {
   request(id: string, promptBytes: number, revision: number | null) {
     this.store.run('UPDATE ai_activity SET prompt_bytes=?,revision=? WHERE id=?',promptBytes,revision,id);
   }
-  finish(id: string, status: 'completed' | 'failed', httpStatus: number) {
+  finish(id: string, status: Exclude<AIActivity['status'], 'running'>, httpStatus: number | null) {
     this.store.run(`UPDATE ai_activity SET status=?,finished_at=?,duration_ms=MAX(0,CAST((julianday(?)-julianday(started_at))*86400000 AS INTEGER)),http_status=? WHERE id=?`,status,new Date().toISOString(),new Date().toISOString(),httpStatus,id);
     this.prune();
   }

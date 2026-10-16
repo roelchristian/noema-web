@@ -19,6 +19,12 @@ To use another port or database:
 PORT=3001 DB_PATH=./data/another.sqlite npm start
 ```
 
+## Knowledge entity subtypes
+
+Knowledge entities keep a main type (Person, Place, Event, Creative work, Organization, or Source) and can have multiple subtypes under that main type, such as a Person who is both an Actor and a Writer. Built-in subtypes include Actor, Writer, City, Book, Film, Company, and Website. Create custom subtypes under **Knowledge entities → Manage types & subtypes**.
+
+Property names belong to the main type. Built-in fields and any new fields added to the main type are available to every subtype; values remain specific to each entity. Subtypes cannot define new fields. Add fields in the type manager or on an entity without a subtype. Existing entity fields are preserved and imported into their main type’s shared fields. Existing single-subtype selections migrate automatically. Custom subtypes and fields stay within their vault.
+
 ## Architecture
 
 Noema is a local-first modular monolith: one Node.js process serves a local SQLite database and the compiled frontend. Local editing has no cloud service dependencies. Optional AI summaries connect to OpenAI. Inter and all frontend assets are bundled locally.

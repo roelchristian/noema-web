@@ -43,6 +43,21 @@ db.exec(`
  CREATE TRIGGER IF NOT EXISTS entity_organization_cleanup AFTER DELETE ON entities BEGIN DELETE FROM item_locations WHERE kind='entity' AND item_id=OLD.id; DELETE FROM favourites WHERE kind='entity' AND item_id=OLD.id; END;
 `);
 
+// Preserve legacy vault folders and their memberships inside one collection per vault.
+db.exec('BEGIN IMMEDIATE');
+try {
+ const legacyVaults = db.prepare('SELECT DISTINCT vault_id FROM folders WHERE collection_id IS NULL').all();
+ for (const row of legacyVaults) {
+  const vault = String(row.vault_id), collection = randomUUID();
+  db.prepare('INSERT INTO collections (id,vault_id,name) VALUES (?,?,?)').run(collection, vault, 'Imported folders');
+  db.prepare('UPDATE folders SET collection_id=? WHERE vault_id=? AND collection_id IS NULL').run(collection, vault);
+  db.prepare("UPDATE item_locations SET collection_id=? WHERE vault_id=? AND collection_id='' AND folder_id IN (SELECT id FROM folders WHERE vault_id=? AND collection_id=?)").run(collection, vault, vault, collection);
+ }
+ db.exec(`CREATE TRIGGER IF NOT EXISTS folder_requires_collection_insert BEFORE INSERT ON folders WHEN NEW.collection_id IS NULL BEGIN SELECT RAISE(ABORT, 'Folders must belong to a collection'); END;
+ CREATE TRIGGER IF NOT EXISTS folder_requires_collection_update BEFORE UPDATE OF collection_id ON folders WHEN NEW.collection_id IS NULL BEGIN SELECT RAISE(ABORT, 'Folders must belong to a collection'); END;`);
+ db.exec('COMMIT');
+} catch (error) { db.exec('ROLLBACK'); throw error; }
+
 db.exec(`CREATE TABLE IF NOT EXISTS ai_activity (
  id TEXT PRIMARY KEY, action TEXT NOT NULL, status TEXT NOT NULL,
  started_at TEXT NOT NULL, finished_at TEXT, duration_ms INTEGER, http_status INTEGER,

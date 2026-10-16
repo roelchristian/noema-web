@@ -36,7 +36,8 @@ export class Organizer {
     const name = required(body.name);
     const collection = body.collection_id === undefined ? existing?.collection_id ?? null : this.nullable(body.collection_id);
     const parent = body.parent_id === undefined ? existing?.parent_id ?? null : this.nullable(body.parent_id);
-    if (collection) this.collection(vault, collection);
+    if (!collection) throw new HttpError(400, 'Folders must belong to a collection');
+    this.collection(vault, collection);
     if (existing && collection !== existing.collection_id) throw new HttpError(400, 'Folders must remain in their collection context');
     if (parent) {
       let ancestor: Folder | undefined = this.folder(vault, parent);
@@ -67,6 +68,7 @@ export class Organizer {
     const {kind, id} = this.item(vault, body);
     const collection = this.nullable(body.collection_id), folder = this.nullable(body.folder_id);
     if (collection) this.collection(vault, collection);
+    if (folder && !collection) throw new HttpError(400, 'Choose a collection for this folder');
     if (folder && this.folder(vault, folder).collection_id !== collection) throw new HttpError(400, 'Folder must be in the selected context');
     if (body.remove !== undefined && typeof body.remove !== 'boolean') throw new HttpError(400, 'Invalid remove flag');
     if (body.remove || (!collection && !folder)) this.store.run('DELETE FROM item_locations WHERE vault_id=? AND kind=? AND item_id=? AND collection_id=?', vault, kind, id, collection || '');

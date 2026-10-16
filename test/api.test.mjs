@@ -37,6 +37,7 @@ await test('SQLite API: pages, references, relationships, validation, and restar
  const migrated=await request('pages/legacy');assert.equal(migrated.vault_id,'default');assert.equal(migrated.title,'Existing note');
  const people=await request('entities');assert.ok(people.some(e=>e.id==='ursula'));
  const page=await request('pages','POST',{title:'Test note'},201);
+ await request('organization/folders','POST',{name:'No collection'},400);
  const organized = await request('organization/collections','POST',{name:'API collection'},201);
  const collectionId = organized.collections[0].id;
  const folderState = await request('organization/folders','POST',{name:'API folder',collection_id:collectionId},201);

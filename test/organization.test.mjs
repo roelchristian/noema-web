@@ -20,16 +20,18 @@ test('organization: canonical membership, nested folders, favourites, isolation 
     fails(() => org.saveCollection('default', {name: 'Nested', parent_id: a}), 400);
     const root = org.saveFolder('default', {name: 'Books', collection_id: a}).folders[0].id;
     const child = org.saveFolder('default', {name: 'Fiction', collection_id: a, parent_id: root}).folders.find(f => f.id !== root).id;
-    const global = org.saveFolder('default', {name: 'Desk'}).folders.find(f => !f.collection_id).id;
+    fails(() => org.saveFolder('default', {name: 'Desk'}), 400);
+    fails(() => org.saveFolder('default', {name: 'Desk', collection_id: null}), 400);
+    fails(() => org.saveFolder('default', {name: 'Books', collection_id: null}, root), 400);
     fails(() => org.saveFolder('default', {name: 'Cycle', parent_id: child}, root), 400);
     fails(() => org.saveFolder('default', {name: 'Wrong context', collection_id: b, parent_id: root}), 400);
     fails(() => org.saveFolder('default', {name: 'Moved context', collection_id: b}, root), 400);
     const item = {kind: 'page', item_id: 'welcome'};
-    org.locate('default', {...item, folder_id: global});
+    fails(() => org.locate('default', {...item, folder_id: root}), 400);
     org.locate('default', {...item, collection_id: a, folder_id: child});
     org.locate('default', {...item, collection_id: b});
     org.locate('default', {...item, collection_id: b});
-    assert.equal(org.list('default').locations.length, 3);
+    assert.equal(org.list('default').locations.length, 2);
     assert.equal(store.get('SELECT count(*) AS n FROM pages WHERE id=?', 'welcome').n, 1);
     org.favourite('default', {...item, favourite: true});
     org.locate('default', {kind: 'entity', item_id: 'earthsea', collection_id: a});
@@ -39,14 +41,14 @@ test('organization: canonical membership, nested folders, favourites, isolation 
     fails(() => org.locate('default', {kind: 'page', item_id: 'missing', collection_id: a}), 404);
     store.run("INSERT INTO vaults(id,name,updated_at) VALUES ('other','Other','now')");
     fails(() => org.locate('other', {...item, collection_id: a}), 404);
-    fails(() => org.saveFolder('other', {name: 'Invalid', parent_id: root}), 404);
+    fails(() => org.saveFolder('other', {name: 'Invalid', collection_id: a, parent_id: root}), 404);
     fails(() => org.saveCollection('other', {name: 'Invalid'}, a), 404);
     assert.equal(org.list('other').favourites.length, 0);
     org.saveCollection('default', {name: 'Research'}, b);
     org.saveFolder('default', {name: 'Novels', parent_id: null}, child);
     org.saveFolder('default', {name: 'Novels', parent_id: root}, child);
     db.close(); db = openDatabase(filename); store = new Store(db); org = new Organizer(store);
-    assert.equal(org.list('default').locations.length, 4);
+    assert.equal(org.list('default').locations.length, 3);
     assert.equal(org.list('default').favourites.length, 2);
     assert.equal(org.list('default').folders.find(f => f.id === child).parent_id, root);
     org.remove('default', 'folders', root);
@@ -57,12 +59,41 @@ test('organization: canonical membership, nested folders, favourites, isolation 
     assert.equal(org.list('default').favourites.length, 2);
     assert.ok(store.get('SELECT id FROM pages WHERE id=?', 'welcome'));
     org.locate('default', {...item, collection_id: b, remove: true});
-    assert.equal(org.list('default').locations.length, 1);
+    assert.equal(org.list('default').locations.length, 0);
     store.run('DELETE FROM pages WHERE id=?', 'welcome');
     assert.equal(org.list('default').locations.length, 0);
     assert.equal(org.list('default').favourites.length, 1);
     org.favourite('default', {kind: 'entity', item_id: 'earthsea', favourite: false});
     assert.equal(org.list('default').favourites.length, 0);
+    assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+  } finally { db.close(); rmSync(dir, {recursive: true, force: true}); }
+});
+
+test('legacy vault folders migrate with their tree and page locations, once per vault', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'noema-folder-migration-'));
+  const filename = path.join(dir, 'test.sqlite');
+  let db = openDatabase(filename);
+  try {
+    db.exec('DROP TRIGGER folder_requires_collection_insert; DROP TRIGGER folder_requires_collection_update;');
+    db.prepare("INSERT INTO vaults(id,name,updated_at) VALUES ('other','Other','now')").run();
+    const insert = db.prepare('INSERT INTO folders VALUES (?,?,?,?,?)');
+    insert.run('desk', 'default', 'Desk', null, null);
+    insert.run('nested', 'default', 'Notes', null, 'desk');
+    insert.run('other-folder', 'other', 'Other desk', null, null);
+    db.prepare('INSERT INTO item_locations VALUES (?,?,?,?,?)').run('default', 'page', 'welcome', '', 'nested');
+    db.close(); db = openDatabase(filename);
+    const org = new Organizer(new Store(db));
+    const migrated = org.list('default'), other = org.list('other');
+    assert.equal(migrated.collections.length, 1);
+    assert.equal(migrated.collections[0].name, 'Imported folders');
+    assert.ok(migrated.folders.every(folder => folder.collection_id === migrated.collections[0].id));
+    assert.equal(migrated.folders.find(folder => folder.id === 'nested').parent_id, 'desk');
+    assert.deepEqual({...migrated.locations[0]}, {kind: 'page', item_id: 'welcome', collection_id: migrated.collections[0].id, folder_id: 'nested'});
+    assert.notEqual(other.collections[0].id, migrated.collections[0].id);
+    assert.equal(other.folders[0].collection_id, other.collections[0].id);
+    assert.throws(() => db.prepare('INSERT INTO folders VALUES (?,?,?,?,?)').run('invalid', 'default', 'Invalid', null, null), /must belong to a collection/);
+    db.close(); db = openDatabase(filename);
+    assert.equal(new Organizer(new Store(db)).list('default').collections.length, 1);
     assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
   } finally { db.close(); rmSync(dir, {recursive: true, force: true}); }
 });

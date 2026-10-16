@@ -26,7 +26,7 @@ export interface RelationshipInput {label: string; target_id: string}
 
 export type ItemKind = 'page' | 'entity';
 export interface Collection { id: string; name: string }
-export interface Folder { id: string; name: string; collection_id: string | null; parent_id: string | null }
+export interface Folder { id: string; name: string; collection_id: string; parent_id: string | null }
 export interface ItemLocation { kind: ItemKind; item_id: string; collection_id: string; folder_id: string | null }
 export interface Favourite { kind: ItemKind; item_id: string }
 export interface Organization { collections: Collection[]; folders: Folder[]; locations: ItemLocation[]; favourites: Favourite[] }

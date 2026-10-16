@@ -21,8 +21,9 @@ test('Trash preserves content, sources, and organization across restart and rest
     const page = pages.create('default', {title: 'Keep my note'});
     const source = knowledge.create('default', {name: 'Reference', type: 'source'});
     const saved = pages.update('default', page.id, {...page, sourceIds: [source.id]});
-    const folder = org.saveFolder('default', {name: 'Desk'}).folders[0];
-    org.locate('default', {kind: 'page', item_id: page.id, folder_id: folder.id});
+    const collection = org.saveCollection('default', {name: 'Workspace'}).collections[0];
+    const folder = org.saveFolder('default', {name: 'Desk', collection_id: collection.id}).folders[0];
+    org.locate('default', {kind: 'page', item_id: page.id, collection_id: collection.id, folder_id: folder.id});
     org.favourite('default', {kind: 'page', item_id: page.id, favourite: true});
     pages.delete('default', page.id);
     assert.ok(!pages.list('default').some(note => note.id === page.id));

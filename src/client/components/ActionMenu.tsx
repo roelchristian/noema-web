@@ -2,7 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 
 export interface MenuAction {label: string; icon?: string; onSelect: () => void; disabled?: boolean; danger?: boolean}
-export function ActionMenu({label, actions, disabled = false}: {label: string; actions: MenuAction[]; disabled?: boolean}) {
+export function ActionMenu({label, actions, disabled = false, icon = 'more'}: {label: string; actions: MenuAction[]; disabled?: boolean; icon?: string}) {
   const id = useId(), trigger = useRef<HTMLButtonElement>(null), menu = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const focusLast = useRef(false);
@@ -29,7 +29,7 @@ export function ActionMenu({label, actions, disabled = false}: {label: string; a
   return <>
     <button ref={trigger} className="sidebar-menu-trigger" type="button" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open} aria-controls={id} disabled={disabled} onClick={() => { if (open) close(); else { focusLast.current = false; setOpen(true); } }} onKeyDown={event => {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); focusLast.current = event.key === 'ArrowUp'; setOpen(true); }
-    }}><Icon name="more"/></button>
+    }}><Icon name={icon}/></button>
     <div ref={menu} id={id} popover="auto" role="menu" aria-label={label} className="sidebar-action-menu" onToggle={event => { if (!event.currentTarget.matches(':popover-open')) setOpen(false); }} onKeyDown={event => {
       const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role=menuitem]:not(:disabled)')];
       const index = items.indexOf(document.activeElement as HTMLButtonElement);

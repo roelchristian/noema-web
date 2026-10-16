@@ -1,3 +1,4 @@
+import { startPageDrag } from './organization/page-drag';
 import { PageIcon } from './components/PageIcon';
 import { PageOrganizationDialog } from './organization/PageOrganizationDialog';
 import { IntelligencePanel } from './intelligence/IntelligencePanel';
@@ -64,17 +65,17 @@ export function App() {
         <button className={'nav ' + (view === 'pages' ? 'active' : '')} disabled={disabled} aria-label="Pages" title="Pages" onClick={() => run(() => workspace.showPages())}><span data-icon="page"><Icon name="page"/></span><span>Pages</span><kbd>P</kbd></button>
         <button className={'nav ' + (view === 'entities' ? 'active' : '')} disabled={disabled} aria-label="Knowledge entities" title="Knowledge entities" onClick={() => workspace.showEntities()}><span data-icon="knowledge"><Icon name="knowledge"/></span><span>Knowledge entities</span><span className="count">{entities.length}</span></button>
       </nav>
-      <SidebarOrganization key={vault?.id} vaultId={vault?.id} onChanged={workspace.setOrganization} data={organization} context={organizationContext} active={view === 'organization'} disabled={disabled} onOpen={(collection, folder) => workspace.openOrganization(collection, folder)}/>
+      <SidebarOrganization onOpenPage={id => run(() => workspace.openPage(id))} pages={pages} onMovePage={(id, collection, folder) => workspace.locatePage(id, collection, folder)} onError={workspace.report} key={vault?.id} vaultId={vault?.id} onChanged={workspace.setOrganization} data={organization} context={organizationContext} active={view === 'organization'} disabled={disabled} onOpen={(collection, folder) => workspace.openOrganization(collection, folder)}/>
       <div className="section-label">Pages <button title="New page" aria-label="New page" disabled={disabled} onClick={() => run(() => workspace.newPage())}>+</button></div>
       <nav id="page-list">{pages.map(p => {
         const selected = page?.id === p.id && view === 'pages';
         const favourite = organization.favourites.some(item => item.kind === 'page' && item.item_id === p.id);
         return <div key={p.id} className={'sidebar-item-row ' + (selected ? 'is-selected' : '')}>
-          <button className={'page-link ' + (selected ? 'selected' : '')} disabled={disabled} title={p.title || 'Untitled'} onClick={() => run(() => workspace.openPage(p.id))}><span><PageIcon icon={p.icon}/></span><span className="page-link-title">{p.title || 'Untitled'}</span></button>
+          <button draggable={!disabled} onDragStart={event => { if (vault) startPageDrag(event, vault.id, p.id); }} className={'page-link ' + (selected ? 'selected' : '')} disabled={disabled} title={p.title || 'Untitled'} onClick={() => run(() => workspace.openPage(p.id))}><span><PageIcon icon={p.icon}/></span><span className="page-link-title">{p.title || 'Untitled'}</span></button>
           <ActionMenu label={'Options for page: ' + (p.title || 'Untitled')} disabled={disabled} actions={[
             {label: 'Open', icon: 'page', onSelect: () => run(() => workspace.openPage(p.id))},
             {label: 'Rename', icon: 'edit', onSelect: () => setRenameTarget(p)},
-            {label: 'Add to folder / collection', icon: 'folder', onSelect: () => setOrganizeTarget(p)},
+            {label: 'Organize page…', icon: 'folder', onSelect: () => setOrganizeTarget(p)},
             {label: favourite ? 'Remove from favourites' : 'Add to favourites', icon: 'star', onSelect: () => run(() => workspace.togglePageFavourite(p.id))},
             {label: 'Move to Trash', icon: 'trash', danger: true, onSelect: () => setDeleteTarget(p)},
           ]}/>

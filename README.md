@@ -1,6 +1,6 @@
 # Noema — local knowledge workspace
 
-A local block editor organized into self-contained vaults, with reusable knowledge entities and a SQLite backend. The interface uses a black accent palette, bundled Inter, and SVG entity icons. No accounts or API keys are required for local editing. Optional AI summaries use your own OpenAI API key. React and the build tools are installed locally through npm.
+A local block editor organized into self-contained vaults, with reusable knowledge entities and a SQLite backend. The interface uses a black accent palette, bundled Inter, and SVG entity icons. No accounts or API keys are required for local editing. Optional AI summaries and semantic search use your own OpenAI API key. React and the build tools are installed locally through npm.
 
 ## Run
 
@@ -27,7 +27,7 @@ Property names belong to the main type. Built-in fields and any new fields added
 
 ## Architecture
 
-Noema is a local-first modular monolith: one Node.js process serves a local SQLite database and the compiled frontend. Local editing has no cloud service dependencies. Optional AI summaries connect to OpenAI. Inter and all frontend assets are bundled locally.
+Noema is a local-first modular monolith: one Node.js process serves a local SQLite database and the compiled frontend. Local editing has no cloud service dependencies. Optional AI summaries and embeddings connect to OpenAI. Inter and all frontend assets are bundled locally.
 
 - `src/server/modules/`: vault access, page persistence, and knowledge operations, each with a separate service boundary.
 - `src/server/database.ts`: schema initialization, backward-compatible migrations, and seed data.
@@ -155,7 +155,7 @@ git push -u origin main
 
 This is a single-user local prototype. Editing the same page in multiple tabs is guarded by revision checks in the bundled client. If a save reports a conflict, keep a copy of your unsaved text before reloading the latest page; automatic conflict merging is deferred. Page deletion is permanent. Entity deletion, drag-and-drop block ordering, rich text formatting, nested blocks, custom entity types, and automatic inverse/symmetric relationship rules are not implemented.
 
-Page summaries are the first optional AI enrichment feature; embeddings remain deferred. Stable entity IDs and separate property/relationship tables leave room for enrichment jobs, provenance, and an embedding table without changing how pages reference entities. Startup includes an additive migration for vault scoping and page source references.
+Page summaries, generated titles, and note embeddings are optional AI features. Embeddings and their durable job queue use separate SQLite tables without changing how pages reference entities. Startup includes an additive migration for vault scoping and page source references.
 
 The server has no user accounts and is intended for this computer only. Keep the loopback binding when running this version.
 
@@ -212,3 +212,29 @@ Settings → AI activity log shows page summaries, automatic titles, and connect
 The backend retains the latest 1,000 entries, preserving running requests until they finish. Requests left running after a server restart become interrupted. Settings loads 50 entries at a time, offers older activity and manual refresh, and links to available source pages. Page titles are resolved from the current page rather than copied into the log; deleted pages retain only their reference. Activity in locked vaults stays hidden until the vault is unlocked.
 
 `GET /api/intelligence/activity` returns `{items, nextCursor}`; pass `?before=<nextCursor>` for the next page. It uses the same local-origin and `X-Noema-Request: 1` protections as other Intelligence endpoints. Authorized action attempts include local failures such as stale revisions, missing credentials, and rate limits; requests rejected by origin/client checks are not logged.
+
+
+## Semantic search and note embeddings
+
+Open **Settings → Intelligence → Semantic search & embeddings** to manage indexing, eligibility, and queue history. The backend uses OpenAI’s `text-embedding-3-small` model with 1,536 dimensions, independently of the text-generation model preference. Embedding requests have separate safeguards of 30 attempts per minute and two simultaneous requests per server process. It shares the saved OpenAI credential and its expiry/removal protections described above; no separate key is needed. Indexing and searches send text to OpenAI and can incur API charges. Vectors, eligibility settings, and job history persist locally in SQLite.
+
+Automatic indexing is enabled by default. After a successful note save or restoration, the backend queues eligible content. The default minimum is 20 body-text characters; change the threshold (20–2,000 characters) or disable automatic indexing in Settings. Empty, too-short, trashed, or oversized notes are excluded. The input contains the saved title, block text (including tables), and inline entity names, and is bounded to 8,000 UTF-8 bytes. Source documents, entity properties, and other notes are excluded. Content hashes avoid repeat requests when searchable content is unchanged.
+
+Use **Queue missing** to queue eligible existing notes without an embedding, or **Queue eligible / stale** to include stale embeddings. These actions also work with automatic indexing disabled. Automatic indexing waits five seconds after a save; another save replaces the pending job. The persistent queue processes one note at a time and retries temporary failures up to three attempts with 30/60-second backoff. History shows queued, running, completed, failed, skipped, and interrupted jobs, attempt counts, timing, usage, and sanitized failure messages. Failed and interrupted jobs can be retried. History displays the latest 100 jobs. Note text, vectors, provider error bodies, and credentials are excluded from job logs. Closing the app preserves queued work for the next startup; an interrupted request remains in history and resumes automatically with its remaining attempts after restart. Locked vault jobs wait for unlock; exhausted attempts can be retried manually.
+
+The main **All content** search combines immediate page-title and entity-name matches with semantic note results after a 600 ms typing pause. Text matches appear first, semantic-only notes follow in similarity order, and each item appears once with a match label. Results show plain-text note excerpts of up to 240 characters, selected near the query phrase or literal query terms when present. Matching title and excerpt text is highlighted without interpreting note content as HTML. Semantic-only notes are labelled “Related by meaning”; when there is no literal overlap, the excerpt gives note context without artificial highlights. Name matches can load local excerpts even without an embedding or OpenAI credential. Collection, folder, and favourites filters apply to both kinds of result. If semantic search is unavailable, text matching remains usable.
+
+Choose **Search** in the sidebar (or press **⌘K / Ctrl+K**) to open the vault search side panel from any workspace view. The Knowledge panel’s **Search this vault** button opens the same panel. Results open the corresponding page or knowledge entity. Clearing a query, closing the panel, or switching vaults cancels pending client requests and discards late results. Semantic queries are sent to OpenAI and may incur charges.
+
+Semantic search embeds the query and ranks current note vectors with cosine similarity. Results belong to the selected unlocked vault and include the note ID, title, score, and update timestamp. A score describes vector similarity rather than a calibrated probability. Edited content is excluded until its embedding is current; trashed notes disappear immediately. Locked vaults cannot be searched or indexed. Permanent deletion removes the note’s saved vector; history can retain a job without its deleted page reference. The existing name filter in All content remains available while embeddings are missing or unavailable.
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/embeddings` | Read settings, model, eligibility/index counts, note status, and recent queue history |
+| PUT | `/api/embeddings/settings` | Save `{automatic: boolean, minCharacters: number}` for the vault |
+| POST | `/api/embeddings/enqueue` | Queue existing notes with `{mode: "missing"}` or `{mode: "eligible"}` |
+| POST | `/api/embeddings/jobs/:id/retry` | Retry a failed/interrupted/skipped job in the selected vault |
+| POST | `/api/embeddings/search` | Search with `{query, limit?}`; returns `{results: [{id, title, score, updated_at, snippet}], model}` |
+| POST | `/api/search/snippets` | Read local excerpts for `{query, pageIds}` (up to 100 active notes in the selected vault); returns `{snippets: {pageId: text}}` without an AI request |
+
+All embedding endpoints require `X-Noema-Request: 1` and select the vault with `X-Vault-Id` (default: `default`). Writes require JSON and the same origin/host checks as Intelligence endpoints. Tests inject a fake credential store and embedding provider; no real API key or billable requests are used.

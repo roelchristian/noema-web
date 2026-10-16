@@ -1,3 +1,4 @@
+import { PageIcon } from '../components/PageIcon';
 import { Select } from '../components/Select';
 import { useState } from 'react';
 import type { Entity, Folder, ItemKind, Organization, OrganizationContext, PageSummary } from '../../shared/domain';
@@ -5,7 +6,7 @@ import { api } from '../api';
 import { Icon } from '../components/Icon';
 import { Modal } from '../components/Modal';
 
-interface Item { kind: ItemKind; id: string; name: string; label: string }
+interface Item { kind: ItemKind; id: string; name: string; label: string; icon?: string | null }
 interface EditContainer { type: 'collections' | 'folders'; id?: string; name: string; parent: string }
 export function OrganizationLibrary({data, vaultId, pages, entities, favouritesOnly, context, onContextChange, onChanged, onOpenPage, onOpenEntity, onError}: {
   data: Organization; vaultId: string; pages: PageSummary[]; entities: Entity[]; favouritesOnly: boolean;
@@ -25,7 +26,7 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
     finally { setPending(false); }
   }
   const run = (work: () => Promise<unknown>) => { void work().catch(onError); };
-  const items: Item[] = [...pages.map(p => ({kind: 'page' as const, id: p.id, name: p.title || 'Untitled', label: 'Page'})), ...entities.map(e => ({kind: 'entity' as const, id: e.id, name: e.name, label: e.type === 'creativework' ? 'Creative work' : e.type}))];
+  const items: Item[] = [...pages.map(p => ({kind: 'page' as const, id: p.id, name: p.title || 'Untitled', label: 'Page', icon: p.icon})), ...entities.map(e => ({kind: 'entity' as const, id: e.id, name: e.name, label: e.type === 'creativework' ? 'Creative work' : e.type}))];
   const currentCollection = data.collections.find(c => c.id === collection), currentFolder = data.folders.find(f => f.id === folder);
   const isFavourite = (item: Item) => data.favourites.some(f => f.kind === item.kind && f.item_id === item.id);
   const location = (item: Item, context: string) => data.locations.find(l => l.kind === item.kind && l.item_id === item.id && l.collection_id === context);
@@ -64,7 +65,7 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
         <input className="organization-search" aria-label="Search content" placeholder="Find a page or entity…" value={search} onChange={e => setSearch(e.target.value)}/>
         {!favouritesOnly && (collection || folder) && <p className="organization-hint">Showing items directly in this context. Use All content → Organize to add existing items.</p>}
         <div className="organization-items">{visible.map(item => <article className="organization-item" key={item.kind + item.id}>
-          <div className="organization-item-row"><button className={'favourite-button ' + (isFavourite(item) ? 'is-favourite' : '')} disabled={pending} aria-label={(isFavourite(item) ? 'Remove favourite: ' : 'Favourite: ') + item.name} aria-pressed={isFavourite(item)} onClick={() => run(() => mutate('favourites', {kind: item.kind, item_id: item.id, favourite: !isFavourite(item)}))}><Icon name="star"/></button><button className="organization-item-name" onClick={() => item.kind === 'page' ? onOpenPage(item.id) : onOpenEntity(item.id)}>{item.name}<small>{item.label}</small></button><button className="button small" aria-expanded={selected === item.kind + item.id} onClick={() => setSelected(selected === item.kind + item.id ? null : item.kind + item.id)}>Organize</button></div>
+          <div className="organization-item-row"><button className={'favourite-button ' + (isFavourite(item) ? 'is-favourite' : '')} disabled={pending} aria-label={(isFavourite(item) ? 'Remove favourite: ' : 'Favourite: ') + item.name} aria-pressed={isFavourite(item)} onClick={() => run(() => mutate('favourites', {kind: item.kind, item_id: item.id, favourite: !isFavourite(item)}))}><Icon name="star"/></button>{item.kind === 'page' && <PageIcon icon={item.icon}/>}<button className="organization-item-name" onClick={() => item.kind === 'page' ? onOpenPage(item.id) : onOpenEntity(item.id)}>{item.name}<small>{item.label}</small></button><button className="button small" aria-expanded={selected === item.kind + item.id} onClick={() => setSelected(selected === item.kind + item.id ? null : item.kind + item.id)}>Organize</button></div>
           {selected === item.kind + item.id && <fieldset disabled={pending} className="item-organization"><legend>Folders & collection membership</legend><label>Vault folder<Select value={location(item, '')?.folder_id || ''} onChange={e => move(item, '', e.target.value)}><option value="">No folder</option>{folderOptions('')}</Select></label>{data.collections.map(c => {
             const membership = location(item, c.id);
             return <div className="membership-row" key={c.id}><label><input type="checkbox" checked={!!membership} onChange={e => move(item, c.id, null, !e.target.checked)}/>{c.name}</label>{membership && <Select aria-label={'Folder in ' + c.name} value={membership.folder_id || ''} onChange={e => move(item, c.id, e.target.value)}><option value="">Collection root</option>{folderOptions(c.id)}</Select>}</div>;

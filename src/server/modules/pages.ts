@@ -1,3 +1,4 @@
+import { isPageIconId } from '../../shared/page-icons.js';
 import { randomUUID } from 'node:crypto';
 import { blockTypes, safeHref, type Segment, type Block, type Page, type PageSummary, type TrashedPage } from '../../shared/domain.js';
 import { Store } from '../store.js';
@@ -7,7 +8,7 @@ type PageRow = Omit<Page, 'blocks' | 'sourceIds'> & {blocks: string};
 export const trashRetentionMs = 30 * 24 * 60 * 60 * 1000;
 export class Pages {
   constructor(private store: Store, private knowledge: Knowledge, private clock: () => Date = () => new Date()) {}
-  list(vault: string) { return this.store.all<PageSummary>('SELECT id,title,updated_at FROM pages WHERE vault_id=? AND deleted_at IS NULL ORDER BY updated_at DESC',vault); }
+  list(vault: string) { return this.store.all<PageSummary>('SELECT id,title,icon,updated_at FROM pages WHERE vault_id=? AND deleted_at IS NULL ORDER BY updated_at DESC',vault); }
   get(vault: string, id: string): Page {
     const row=this.store.get<PageRow>('SELECT * FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',id,vault);
     if (!row) throw new HttpError(404,'Page not found');
@@ -54,11 +55,13 @@ export class Pages {
   }
   update(vault: string, id: string, body: Record<string, unknown>) {
     const page=this.get(vault,id),blocks=this.blocks(vault,body.blocks),title=text(body.title,500);
+    const icon=body.icon === undefined ? page.icon ?? null : body.icon;
+    if(icon !== null && !isPageIconId(icon)) throw new HttpError(400,'Invalid page icon');
     const sourceIds=body.sourceIds ?? page.sourceIds;
     if(!Array.isArray(sourceIds)||sourceIds.length>1000||sourceIds.some(s=>typeof s!=='string'||this.knowledge.find(vault,s)?.type!=='source'))throw new HttpError(400,'Page sources must be Source entities in this vault');
     if(body.revision!==undefined && (!Number.isInteger(body.revision)||body.revision!==page.revision))throw new HttpError(409,'This page changed in another window. Reload the latest page before saving.');
     this.store.transaction(()=>{
-      this.store.run('UPDATE pages SET title=?,blocks=?,updated_at=?,revision=revision+1 WHERE id=? AND vault_id=?',title,JSON.stringify(blocks),now(),id,vault);
+      this.store.run('UPDATE pages SET title=?,icon=?,blocks=?,updated_at=?,revision=revision+1 WHERE id=? AND vault_id=?',title,icon,JSON.stringify(blocks),now(),id,vault);
       this.store.run('DELETE FROM page_sources WHERE page_id=?',id);
       for(const source of new Set(sourceIds as string[]))this.store.run('INSERT INTO page_sources VALUES (?,?)',id,source);
     });
@@ -75,7 +78,7 @@ export class Pages {
   }
   trash(vault: string): TrashedPage[] {
     this.purgeExpired(vault);
-    return this.store.all<PageSummary & {deleted_at: string}>('SELECT id,title,updated_at,deleted_at FROM pages WHERE vault_id=? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC,id',vault).map(page => ({...page,expires_at:new Date(Date.parse(page.deleted_at) + trashRetentionMs).toISOString()}));
+    return this.store.all<PageSummary & {deleted_at: string}>('SELECT id,title,icon,updated_at,deleted_at FROM pages WHERE vault_id=? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC,id',vault).map(page => ({...page,expires_at:new Date(Date.parse(page.deleted_at) + trashRetentionMs).toISOString()}));
   }
   private trashed(vault: string, id: string) {
     this.purgeExpired(vault);

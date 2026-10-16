@@ -51,6 +51,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS ai_activity (
 );
  CREATE INDEX IF NOT EXISTS ai_activity_started ON ai_activity(started_at DESC);`);
 
+if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'icon')) db.exec('ALTER TABLE pages ADD COLUMN icon TEXT');
+
 if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'deleted_at')) db.exec('ALTER TABLE pages ADD COLUMN deleted_at TEXT');
 db.exec('CREATE INDEX IF NOT EXISTS pages_deleted_at ON pages(deleted_at)');
 

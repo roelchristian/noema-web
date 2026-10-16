@@ -4,10 +4,11 @@ export type EntityType = typeof entityTypes[number];
 export const entityLabels: Record<EntityType, string> = {
   person: 'Person', place: 'Place', event: 'Event', creativework: 'Creative work', organization: 'Organization', source: 'Source',
 };
-export const blockTypes = ['paragraph', 'heading1', 'heading2', 'bullet', 'quote', 'todo'] as const;
+export const blockTypes = ['paragraph', 'heading1', 'heading2', 'bullet', 'quote', 'todo', 'table'] as const;
 export type BlockType = typeof blockTypes[number];
-export type Segment = { text: string; entityId?: never } | { entityId: string; text?: never };
-export interface Block { id: string; type: BlockType; checked: boolean; content: Segment[] }
+export interface TextStyle { bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean; code?: boolean; href?: string }
+export type Segment = TextStyle & ( { text: string; entityId?: never } | { entityId: string; text?: never });
+export interface Block { id: string; type: BlockType; checked: boolean; content: Segment[]; rows?: Segment[][][] }
 export interface Vault { id: string; name: string; locked: boolean; protected: boolean; updated_at: string }
 export interface PageSummary { id: string; title: string; updated_at: string }
 export interface TrashedPage extends PageSummary { deleted_at: string; expires_at: string }
@@ -35,3 +36,6 @@ export interface OrganizationContext { collection: string; folder: string }
 export interface IntelligenceStatus extends IntelligencePreferences { configured: boolean; expiresAt: string | null }
 
 export interface AISummary extends IntelligencePreferences { summary: string; revision: number }
+
+export function blockSegments(block: Block): Segment[] { return block.type === 'table' ? (block.rows ?? []).flat(2) : block.content; }
+export function safeHref(value: string): string | undefined { return /^(https?:|mailto:)/i.test(value.trim()) ? value.trim() : undefined; }

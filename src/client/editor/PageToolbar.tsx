@@ -1,3 +1,4 @@
+import { blockSegments } from '../../shared/domain';
 import { Select } from '../components/Select';
 import { useEffect, useRef, useState } from 'react';
 import type { Entity, Page, Organization } from '../../shared/domain';
@@ -24,7 +25,7 @@ export function PageToolbar({page, entities, onSourcesChange, onOpenEntity, onCr
     document.addEventListener('pointerdown', outside); document.addEventListener('keydown', escape);
     return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', escape); };
   }, [menu]);
-  const connectedIds = new Set(page.blocks.flatMap(block => block.content.flatMap(segment => segment.entityId ? [segment.entityId] : [])));
+  const connectedIds = new Set(page.blocks.flatMap(block => blockSegments(block).flatMap(segment => segment.entityId ? [segment.entityId] : [])));
   const connected = entities.filter(entity => connectedIds.has(entity.id));
   async function toggleFavourite() {
     if (saving) return;

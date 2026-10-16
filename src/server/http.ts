@@ -1,3 +1,4 @@
+import type { Segment } from '../shared/domain.js';
 import http, { type IncomingMessage } from 'node:http';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -75,7 +76,8 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               const names=new Map(knowledge.list(vault).map(entity=>[entity.id,entity.name]));
               let input=page.title+'\n';
               for(const block of page.blocks) {
-                input+=block.content.map(segment=>segment.entityId?names.get(segment.entityId)||'[mention]':segment.text).join('')+'\n';
+                const plain = (content: Segment[]) => content.map(segment=>segment.entityId?names.get(segment.entityId)||'[mention]':segment.text).join('');
+                input+=(block.type === 'table' ? (block.rows ?? []).map(row=>row.map(plain).join('\t')).join('\n') : plain(block.content))+'\n';
                 if(input.length>40000)throw new HttpError(413,'This page exceeds the AI limit of 40,000 characters.');
               }
               if(!input.trim())throw new HttpError(400,'Add some page content first.');

@@ -1,7 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
 import { entityLabels, type Block, type BlockType, type Entity, type Segment } from '../../shared/domain';
 import { Icon } from '../components/Icon';
 import { readSegments, segmentHTML } from './segments';
+import { clipboardBlocks, makeBlock } from './paste';
+import { TableBlock } from './TableBlock';
 interface Props {blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[]) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
 const options: {type: BlockType; title: string; detail: string; icon: string}[] = [
   {type: 'paragraph', title: 'Text', detail: 'Plain text for your thoughts', icon: 'T'},
@@ -9,11 +11,12 @@ const options: {type: BlockType; title: string; detail: string; icon: string}[] 
   {type: 'heading2', title: 'Heading 2', detail: 'A smaller section heading', icon: 'H₂'},
   {type: 'bullet', title: 'Bullet list', detail: 'A simple list of ideas', icon: '•'},
   {type: 'todo', title: 'To-do', detail: 'Keep track of a task', icon: '☑'},
+  {type: 'table', title: 'Table', detail: 'A simple table with rows and columns', icon: '▦'},
   {type: 'quote', title: 'Quote', detail: 'Make a thought stand out', icon: '❝'},
 ];
 interface Choice {title: string; detail?: string; icon: string; entity?: boolean; pick: () => void}
 interface Menu {items: Choice[]; index: number; left: number; top: number; label: string}
-function EditableBlock({block, entities, onInput, onKeyDown, onOpen, register}: {block: Block; entities: Entity[]; onInput: (el: HTMLDivElement) => void; onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => void; onOpen: (id: string) => void; register: (el: HTMLDivElement | null) => void}) {
+function EditableBlock({block, entities, onInput, onKeyDown, onOpen, register, onPaste}: {block: Block; entities: Entity[]; onInput: (el: HTMLDivElement) => void; onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => void; onOpen: (id: string) => void; register: (el: HTMLDivElement | null) => void; onPaste: (e: ClipboardEvent<HTMLDivElement>) => void}) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = ref.current!;
@@ -27,10 +30,7 @@ function EditableBlock({block, entities, onInput, onKeyDown, onOpen, register}: 
   }, [block.content, entities]);
   return <div ref={el => { ref.current = el; register(el); }} className="block-content" contentEditable suppressContentEditableWarning spellCheck data-placeholder="Type / for blocks, @ for entities" onInput={e => onInput(e.currentTarget)} onKeyDown={onKeyDown}
     onClick={e => { const mention = (e.target as Element).closest<HTMLElement>('[data-entity]'); if (mention) onOpen(mention.dataset.entity!); }}
-    onPaste={e => {
-      e.preventDefault(); const selection = getSelection(); if (!selection?.rangeCount) return;
-      const range = selection.getRangeAt(0); range.deleteContents(); const node = document.createTextNode(e.clipboardData.getData('text/plain')); range.insertNode(node); range.setStartAfter(node); range.collapse(true); selection.removeAllRanges(); selection.addRange(range); onInput(e.currentTarget);
-    }}/>;
+    onPaste={onPaste}/>;
 }
 export function BlockEditor(props: Props) {
   const {blocks, entities, onChange, onOpenEntity, onCreateEntity, onSave} = props;
@@ -50,10 +50,10 @@ export function BlockEditor(props: Props) {
   }, []);
   function update(id: string, patch: Partial<Block>) { onChange(latest.current.blocks.map(b => b.id === id ? {...b, ...patch} : b)); }
   function insert(after: string | undefined, type: BlockType = 'paragraph', content: Segment[] = []) {
-    const next: Block = {id: crypto.randomUUID(), type, content, checked: false}, list = [...latest.current.blocks];
+    const next = {...makeBlock(type, content)}, list = [...latest.current.blocks];
     list.splice(after ? list.findIndex(b => b.id === after) + 1 : list.length, 0, next); focusTarget.current = {id: next.id, start: true}; onChange(list);
   }
-  function convert(block: Block, type: BlockType, clear = false) { setMenu(null); focusTarget.current = {id: block.id, start: false}; update(block.id, {type, ...(clear ? {content: []} : {}), checked: false}); }
+  function convert(block: Block, type: BlockType, clear = false) { setMenu(null); focusTarget.current = {id: block.id, start: false}; update(block.id, {type, content: clear ? [] : block.type === 'table' ? (block.rows ?? []).flatMap((row, i) => [...(i ? [{text: '\n'}] : []), ...row.flatMap((cell, col) => [...(col ? [{text: '\t'}] : []), ...cell])]) : block.content, rows: type === 'table' ? block.rows ?? [[clear ? [] : block.content, []], [[], []]] : undefined, checked: false}); }
   function show(el: HTMLElement, items: Choice[], label: string) {
     if (!items.length) { setMenu(null); return; } const box = el.getBoundingClientRect();
     setMenu({items, index: 0, left: Math.max(8, Math.min(box.left, innerWidth - 330)), top: Math.max(8, Math.min(box.bottom + 5, innerHeight - 370)), label});
@@ -81,6 +81,32 @@ export function BlockEditor(props: Props) {
     }
     setMenu(null);
   }
+  function paste(e: ClipboardEvent<HTMLDivElement>, block: Block) {
+    e.preventDefault(); setMenu(null);
+    const el = e.currentTarget, selection = getSelection();
+    if (!selection?.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    if (!el.contains(range.startContainer) || !el.contains(range.endContainer)) return;
+    const incoming = clipboardBlocks(e.clipboardData.getData('text/plain'), e.clipboardData.getData('text/html'));
+    range.deleteContents();
+    if (incoming.length === 1 && incoming[0]!.type === 'paragraph') {
+      const wrapper = document.createElement('div'); wrapper.innerHTML = segmentHTML(incoming[0]!.content, entities);
+      const fragment = document.createDocumentFragment(); while (wrapper.firstChild) fragment.append(wrapper.firstChild);
+      const last = fragment.lastChild;
+      range.insertNode(fragment); if (last) range.setStartAfter(last); range.collapse(true);
+      selection.removeAllRanges(); selection.addRange(range); update(block.id, {content: readSegments(el)}); return;
+    }
+    const before = range.cloneRange(); before.selectNodeContents(el); before.setEnd(range.startContainer, range.startOffset);
+    const after = range.cloneRange(); after.selectNodeContents(el); after.setStart(range.endContainer, range.endOffset);
+    const head = document.createElement('div'), tail = document.createElement('div'); head.append(before.cloneContents()); tail.append(after.cloneContents());
+    const prefix = readSegments(head), suffix = readSegments(tail), replacement: Block[] = [];
+    if (incoming[0]!.type === 'paragraph') incoming[0]!.content.unshift(...prefix);
+    else if (prefix.length) replacement.push({...block, content: prefix});
+    replacement.push(...incoming);
+    if (suffix.length) replacement.push(makeBlock(block.type, suffix));
+    const list = [...latest.current.blocks], index = list.findIndex(b => b.id === block.id);
+    list.splice(index, 1, ...replacement); focusTarget.current = {id: replacement.at(-1)!.id, start: !suffix.length ? false : true}; onChange(list);
+  }
   function keyDown(e: KeyboardEvent<HTMLDivElement>, block: Block) {
     const el = e.currentTarget, mention = (e.target as Element).closest<HTMLElement>('[data-entity]');
     if (mention && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onOpenEntity(mention.dataset.entity!); return; }
@@ -104,10 +130,10 @@ export function BlockEditor(props: Props) {
   return <><div id="blocks" ref={root}>{blocks.map(block => <div key={block.id} className={'block ' + block.type}>
     <div className="block-controls" role="group" aria-label="Block controls">
       <button className="block-add" title="Add block below" aria-label="Add block below" onClick={e => show(e.currentTarget, options.map(option => ({...option, pick: () => { setMenu(null); insert(block.id, option.type); }})), 'ADD BLOCK BELOW')}><Icon name="plus"/></button>
-      <button className="block-handle" title="Block options" aria-label="Block options" onClick={e => show(e.currentTarget, [...options.map(o => ({...o, pick: () => convert(block, o.type)})), {title: 'Delete block', icon: '×', pick: () => { setMenu(null); if (blocks.length > 1) onChange(blocks.filter(b => b.id !== block.id)); else update(block.id, {content: []}); }}], 'BLOCK OPTIONS')}><Icon name="grip"/></button>
+      <button className="block-handle" title="Block options" aria-label="Block options" onClick={e => show(e.currentTarget, [...options.map(o => ({...o, pick: () => convert(block, o.type)})), {title: 'Delete block', icon: '×', pick: () => { setMenu(null); if (blocks.length > 1) onChange(blocks.filter(b => b.id !== block.id)); else update(block.id, {type: 'paragraph', content: [], rows: undefined}); }}], 'BLOCK OPTIONS')}><Icon name="grip"/></button>
     </div>
     {block.type === 'todo' ? <input type="checkbox" aria-label="Complete task" checked={block.checked} onChange={e => update(block.id, {checked: e.target.checked})}/> : block.type === 'bullet' ? <span className="bullet-marker">•</span> : null}
-    <EditableBlock block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={el => { update(block.id, {content: readSegments(el)}); detect(el, block); }} onKeyDown={e => keyDown(e, block)}/>
+    {block.type === 'table' ? <TableBlock block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={el => { update(block.id, {content: readSegments(el)}); detect(el, block); }} onKeyDown={e => keyDown(e, block)} onPaste={e => paste(e, block)}/>}
   </div>)}</div>
     {menu && <div ref={menuRef} className="command-menu" style={{left: menu.left, top: menu.top}} onMouseDown={e => e.preventDefault()} role="menu"><div className="menu-label">{menu.label}</div>{menu.items.map((item, index) => <button key={index} role="menuitem" className={index === menu.index ? 'highlight' : ''} onClick={item.pick}><span className="menu-icon">{item.entity ? <Icon name={item.icon}/> : item.icon}</span><span>{item.title}<small>{item.detail}</small></span></button>)}</div>}
   </>;

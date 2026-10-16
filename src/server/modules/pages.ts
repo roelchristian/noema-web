@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { blockTypes, type Block, type Page, type PageSummary, type TrashedPage } from '../../shared/domain.js';
+import { blockTypes, safeHref, type Segment, type Block, type Page, type PageSummary, type TrashedPage } from '../../shared/domain.js';
 import { Store } from '../store.js';
 import { HttpError, now, object, required, text } from '../validation.js';
 import { Knowledge } from './knowledge.js';
@@ -25,15 +25,31 @@ export class Pages {
       const b=object(value), type=blockTypes.find(t=>t===b.type);
       if (!type || !Array.isArray(b.content) || b.content.length>1000) throw new HttpError(400,'Invalid block');
       const id=required(b.id);if(ids.has(id))throw new HttpError(400,'Duplicate block ID');ids.add(id);
-      return {id,type,checked:!!b.checked,content:b.content.map(value=>{
-        const segment=object(value);
-        if(segment.entityId) {
-          const entityId=required(segment.entityId);
-          if(!this.knowledge.find(vault,entityId))throw new HttpError(400,'Referenced entity does not exist');
-          return {entityId};
-        }
-        return {text:text(segment.text)};
-      })};
+      const segments = (input: unknown): Segment[] => {
+        if (!Array.isArray(input) || input.length > 1000) throw new HttpError(400,'Invalid cell content');
+        return input.map(value => {
+          const segment=object(value);
+          if(segment.entityId) {
+            const entityId=required(segment.entityId);
+            if(!this.knowledge.find(vault,entityId))throw new HttpError(400,'Referenced entity does not exist');
+            return {entityId};
+          }
+          const result: Segment = {text:text(segment.text)};
+          for (const mark of ['bold','italic','underline','strike','code'] as const) if(segment[mark] === true) result[mark]=true;
+          if(typeof segment.href === 'string') { const href=safeHref(segment.href); if(href) result.href=href; }
+          return result;
+        });
+      };
+      const block: Block = {id,type,checked:!!b.checked,content:segments(b.content)};
+      if(type === 'table') {
+        if(!Array.isArray(b.rows) || !b.rows.length || b.rows.length > 100 || !Array.isArray(b.rows[0]) || !b.rows[0].length || b.rows[0].length > 20) throw new HttpError(400,'Invalid table');
+        const width=b.rows[0].length;
+        block.rows=b.rows.map(row => {
+          if(!Array.isArray(row) || row.length !== width) throw new HttpError(400,'Invalid table row');
+          return row.map(segments);
+        });
+      }
+      return block;
     });
   }
   update(vault: string, id: string, body: Record<string, unknown>) {

@@ -18,6 +18,7 @@ import { SidebarOrganization } from './organization/SidebarOrganization';
 import { OrganizationLibrary } from './organization/OrganizationLibrary';
 import { Workspace } from './state/workspace';
 import { Icon } from './components/Icon';
+import { EntityPreview } from './components/EntityPreview';
 import { PageToolbar } from './editor/PageToolbar';
 import { PageEditor } from './editor/PageEditor';
 import { EntityPanel } from './knowledge/EntityPanel';
@@ -97,6 +98,7 @@ export function App() {
     {aiOpen && view==='pages' && page && vault && !vault.locked && !busy && <IntelligencePanel onReview={(scanId,id,decision,edits)=>workspace.reviewEntity(scanId,id,decision,edits)} onSourcesChange={sourceIds => workspace.updatePage({sourceIds})} onCreateEntity={setCreate} entities={entities} onSearch={()=>{setAiOpen(false);setSearchOpen(true);}} onOpenEntity={openEntity} key={vault.id+'/'+page.id} page={page} onClose={()=>setAiOpen(false)} onSettings={()=>setSettingsOpen(true)} onFlush={async()=>{await workspace.saver.flush();return workspace.snapshot().page;}}/>}
     {searchOpen && vault && !vault.locked && !busy && <SearchPanel key={vault.id} vaultId={vault.id} pages={pages} entities={entities} onOpenPage={id=>{setSearchOpen(false);run(()=>workspace.openPage(id));}} onOpenEntity={openEntity} onClose={()=>setSearchOpen(false)}/>}
     {panelId && vault && !vault.locked && !busy && <EntityPanel key={vault.id + '/' + panelId} vaultId={vault.id} id={panelId} entities={entities} onOpen={openEntity} onClose={() => setPanelId(null)} onUpdated={() => workspace.refreshEntities()} onError={workspace.report}/>}
+    {vault && !vault.locked && !busy && !reviewing && !settingsOpen && !create && <EntityPreview key={[vault.id, view, page?.id, panelId].join('/')} entities={entities} onOpen={openEntity}/>}
     {create && vault && <CreateEntityDialog vaultId={vault.id} initial={create} onClose={() => setCreate(null)} onSubmit={async input => {
       const result = await workspace.createEntity(input);
       if (create.source && workspace.snapshot().page) workspace.updatePage({sourceIds: [...new Set([...workspace.snapshot().page!.sourceIds, result.id])]});

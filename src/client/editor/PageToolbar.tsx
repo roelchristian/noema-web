@@ -1,26 +1,19 @@
 import { Select } from '../components/Select';
 import { useEffect, useRef, useState } from 'react';
-import type { Entity, Page } from '../../shared/domain';
+import type { Entity, Page, Organization } from '../../shared/domain';
 import { api } from '../api';
 import { Icon } from '../components/Icon';
 import { Mention } from '../components/Mention';
 import type { CreateEntityRequest } from '../knowledge/CreateEntityDialog';
 
-export function PageToolbar({page, entities, onSourcesChange, onOpenEntity, onCreateEntity, onError, onDelete}: {
-  page: Page; entities: Entity[]; onDelete: () => void; onSourcesChange: (sourceIds: string[]) => void;
+export function PageToolbar({page, entities, onSourcesChange, onOpenEntity, onCreateEntity, onError, onDelete, favourite, onOrganizationChange}: {
+  favourite: boolean; onOrganizationChange: (data: Organization) => void; page: Page; entities: Entity[]; onDelete: () => void; onSourcesChange: (sourceIds: string[]) => void;
   onOpenEntity: (id: string) => void; onCreateEntity: (request: CreateEntityRequest) => void; onError: (error: unknown) => void;
 }) {
-  const [favourite, setFavourite] = useState<boolean | null>(null), [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [menu, setMenu] = useState<'knowledge' | 'sources' | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement | null>(null);
-  useEffect(() => {
-    let active = true;
-    api.organization(page.vault_id).then(data => {
-      if (active) setFavourite(data.favourites.some(item => item.kind === 'page' && item.item_id === page.id));
-    }).catch(onError);
-    return () => { active = false; };
-  }, [page.vault_id, page.id, onError]);
   useEffect(() => {
     if (!menu) return;
     const outside = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) setMenu(null); };
@@ -33,17 +26,17 @@ export function PageToolbar({page, entities, onSourcesChange, onOpenEntity, onCr
   const connectedIds = new Set(page.blocks.flatMap(block => block.content.flatMap(segment => segment.entityId ? [segment.entityId] : [])));
   const connected = entities.filter(entity => connectedIds.has(entity.id));
   async function toggleFavourite() {
-    if (favourite === null || saving) return;
+    if (saving) return;
     setSaving(true);
     try {
       const data = await api.organize(page.vault_id, 'favourites', {kind: 'page', item_id: page.id, favourite: !favourite});
-      setFavourite(data.favourites.some(item => item.kind === 'page' && item.item_id === page.id));
+      onOrganizationChange(data);
     } catch (error) { onError(error); }
     finally { setSaving(false); }
   }
   const openEntity = (id: string) => { setMenu(null); onOpenEntity(id); };
   return <div className="page-toolbar" ref={root} role="group" aria-label="Page tools">
-    <button className={'page-tool favourite-button ' + (favourite ? 'is-favourite' : '')} disabled={favourite === null || saving} aria-pressed={!!favourite} aria-label={favourite ? 'Remove page from favourites' : 'Add page to favourites'} title={favourite ? 'Remove from favourites' : 'Add to favourites'} onClick={() => void toggleFavourite()}><Icon name="star"/></button>
+    <button className={'page-tool favourite-button ' + (favourite ? 'is-favourite' : '')} disabled={saving} aria-pressed={!!favourite} aria-label={favourite ? 'Remove page from favourites' : 'Add page to favourites'} title={favourite ? 'Remove from favourites' : 'Add to favourites'} onClick={() => void toggleFavourite()}><Icon name="star"/></button>
     <button className="page-tool" aria-expanded={menu === 'knowledge'} aria-controls="page-knowledge-popover" aria-label="Connected knowledge" title="Connected knowledge" onClick={event => { trigger.current = event.currentTarget; setMenu(menu === 'knowledge' ? null : 'knowledge'); }}><Icon name="knowledge"/><span className="page-tool-label">Connected knowledge</span><span className="page-tool-count">{connected.length}</span></button>
     <button className="page-tool" aria-expanded={menu === 'sources'} aria-controls="page-sources-popover" aria-label="Page sources" title="Page sources" onClick={event => { trigger.current = event.currentTarget; setMenu(menu === 'sources' ? null : 'sources'); }}><Icon name="source"/><span className="page-tool-label">Sources</span><span className="page-tool-count">{page.sourceIds.length}</span></button>
     <button className="page-tool" aria-label="Move note to Trash" title="Move to Trash" onClick={() => { setMenu(null); onDelete(); }}><Icon name="trash"/><span className="page-tool-label">Trash</span></button>

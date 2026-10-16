@@ -112,6 +112,21 @@ export class Workspace {
       this.patch({trash: await api.trash(vault.id), view: 'trash'});
     });
   }
+  async renamePage(id: string, title: string) {
+    await this.navigate(async () => {
+      const vault = this.state.vault; if (!vault || vault.locked) return;
+      const original = this.pageCache.get(id) || await api.page(vault.id,id);
+      const saved = await api.savePage(vault.id,id,{...original,title});
+      this.pageCache.set(id,saved);
+      this.patch({pages: this.state.pages.map(page => page.id === id ? saved : page), ...(this.state.page?.id === id ? {page: saved} : {})});
+    });
+  }
+  async togglePageFavourite(id: string) {
+    const vault = this.state.vault, sequence = this.loadSequence; if (!vault || vault.locked || this.state.busy) return;
+    const favourite = !this.state.organization.favourites.some(item => item.kind === 'page' && item.item_id === id);
+    const organization = await api.organize(vault.id,'favourites',{kind: 'page',item_id: id,favourite});
+    if (sequence === this.loadSequence) this.setOrganization(organization);
+  }
   async deletePage(id = this.state.page?.id) {
     await this.navigate(async () => {
       const {vault, page, organization} = this.state; if (!id || !vault) return;

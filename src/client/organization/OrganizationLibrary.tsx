@@ -1,5 +1,5 @@
 import { Select } from '../components/Select';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { Entity, Folder, ItemKind, Organization, OrganizationContext, PageSummary } from '../../shared/domain';
 import { api } from '../api';
 import { Icon } from '../components/Icon';
@@ -7,30 +7,24 @@ import { Modal } from '../components/Modal';
 
 interface Item { kind: ItemKind; id: string; name: string; label: string }
 interface EditContainer { type: 'collections' | 'folders'; id?: string; name: string; parent: string }
-export function OrganizationLibrary({vaultId, pages, entities, favouritesOnly, context, onContextChange, onChanged, onOpenPage, onOpenEntity, onError}: {
-  vaultId: string; pages: PageSummary[]; entities: Entity[]; favouritesOnly: boolean;
+export function OrganizationLibrary({data, vaultId, pages, entities, favouritesOnly, context, onContextChange, onChanged, onOpenPage, onOpenEntity, onError}: {
+  data: Organization; vaultId: string; pages: PageSummary[]; entities: Entity[]; favouritesOnly: boolean;
   context: OrganizationContext; onContextChange: (patch: Partial<OrganizationContext>) => void; onChanged: (data: Organization) => void;
   onOpenPage: (id: string) => void; onOpenEntity: (id: string) => void; onError: (error: unknown) => void;
 }) {
-  const [data, setData] = useState<Organization | null>(null), [pending, setPending] = useState(false);
+  const [pending, setPending] = useState(false);
   const {collection, folder} = context;
   const setCollection = (collection: string) => onContextChange({collection, folder: ''});
   const setFolder = (folder: string) => onContextChange({folder});
   const [search, setSearch] = useState(''), [edit, setEdit] = useState<EditContainer | null>(null);
-  const [selected, setSelected] = useState<string | null>(null), [failed, setFailed] = useState(false);
-  useEffect(() => {
-    let active = true;
-    api.organization(vaultId).then(value => { if (active) setData(value); }).catch(error => { if (active) { setFailed(true); onError(error); } });
-    return () => { active = false; };
-  }, [vaultId, onError]);
+  const [selected, setSelected] = useState<string | null>(null);
   async function mutate(route: string, body?: unknown, method = 'PUT') {
     if (pending) return;
     setPending(true);
-    try { const updated = await api.organize(vaultId, route, body, method); setData(updated); onChanged(updated); }
+    try { const updated = await api.organize(vaultId, route, body, method); onChanged(updated); }
     finally { setPending(false); }
   }
   const run = (work: () => Promise<unknown>) => { void work().catch(onError); };
-  if (!data) return <p className="loading-state" role="status">{failed ? 'Could not load organization. Reopen this view to retry.' : 'Loading organization…'}</p>;
   const items: Item[] = [...pages.map(p => ({kind: 'page' as const, id: p.id, name: p.title || 'Untitled', label: 'Page'})), ...entities.map(e => ({kind: 'entity' as const, id: e.id, name: e.name, label: e.type === 'creativework' ? 'Creative work' : e.type}))];
   const currentCollection = data.collections.find(c => c.id === collection), currentFolder = data.folders.find(f => f.id === folder);
   const isFavourite = (item: Item) => data.favourites.some(f => f.kind === item.kind && f.item_id === item.id);

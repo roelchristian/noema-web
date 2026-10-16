@@ -90,3 +90,45 @@ test('moving to Trash flushes pending edits and restoring opens a fresh page', a
     if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor); else delete globalThis.localStorage;
   }
 });
+
+test('sidebar rename flushes the current draft and can rename another page without opening it', async t => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', {configurable: true, value: {getItem: () => null, setItem: () => {}}});
+  const page = id => ({id, vault_id: 'a', title: id, blocks: [], sourceIds: [], revision: 1, updated_at: ''});
+  const stored = new Map([['one', page('one')], ['two', page('two')]]), writes = [];
+  let organization = {collections: [], folders: [], locations: [], favourites: []};
+  t.mock.method(api, 'vaults', async () => [{id: 'a', name: 'A', locked: false}]);
+  t.mock.method(api, 'pages', async () => [...stored.values()]);
+  t.mock.method(api, 'entities', async () => []);
+  t.mock.method(api, 'organization', async () => organization);
+  t.mock.method(api, 'page', async (_vault, id) => stored.get(id));
+  t.mock.method(api, 'savePage', async (_vault, id, input) => {
+    assert.equal(input.revision, stored.get(id).revision);
+    const result = {...input, revision: input.revision + 1}; stored.set(id, result); writes.push({id, title: input.title}); return result;
+  });
+  t.mock.method(api, 'organize', async (_vault, route, input) => {
+    assert.equal(route, 'favourites');
+    organization = {...organization, favourites: input.favourite ? [{kind: input.kind, item_id: input.item_id}] : []};
+    return organization;
+  });
+  const workspace = new Workspace();
+  try {
+    await workspace.selectVault('a');
+    workspace.updatePage({title: 'Unsaved draft'});
+    await workspace.renamePage('two', 'Second note');
+    assert.deepEqual(writes.map(write => write.id), ['one', 'two']);
+    assert.equal(workspace.snapshot().page.id, 'one');
+    assert.equal(workspace.snapshot().page.title, 'Unsaved draft');
+    assert.equal(workspace.snapshot().pages.find(page => page.id === 'two').title, 'Second note');
+    await workspace.renamePage('one', 'First note');
+    assert.equal(workspace.snapshot().page.title, 'First note');
+    assert.equal(workspace.snapshot().page.revision, 3);
+    await workspace.togglePageFavourite('two');
+    assert.equal(workspace.snapshot().organization.favourites[0].item_id, 'two');
+    await workspace.togglePageFavourite('two');
+    assert.deepEqual(workspace.snapshot().organization.favourites, []);
+  } finally {
+    workspace.saver.dispose();
+    if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor); else delete globalThis.localStorage;
+  }
+});

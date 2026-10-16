@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 const paths: Record<string, ReactNode> = {
+  more: <g fill="currentColor" stroke="none"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></g>,
+  edit: <><path d="m16 3 5 5-12 12-6 1 1-6Z M14 5l5 5"/></>,
   trash: <><path d="M3 6h18M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M5 6v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6M10 10v7m4-7v7"/></>,
   plus: <path d="M12 5v14M5 12h14"/>,
   grip: <g fill="currentColor" stroke="none"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></g>,

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { AIActivityLog } from './AIActivityLog';
 import { IntelligenceSettings } from './IntelligenceSettings';
 import { entityLabels, entityTypes } from '../../shared/domain';
@@ -10,9 +11,22 @@ export function SettingsDialog({appearance, onChange, storageError, onClose, onO
   onOpenPage: (vaultId: string, pageId: string) => Promise<void>;
   appearance: Appearance; onChange: (appearance: Appearance) => void; storageError: boolean; onClose: () => void;
 }) {
+  const [tab, setTab] = useState<'appearance' | 'intelligence'>('appearance');
+  const [activityOpen, setActivityOpen] = useState(false);
+  if (activityOpen) return <AIActivityLog onOpenPage={onOpenPage} onClose={() => setActivityOpen(false)}/>;
   return <Modal className="settings-modal" titleId="settings-title" onClose={onClose}>
     <div className="settings-dialog">
       <header className="settings-heading"><div><div className="dialog-eyebrow">MAKE YOURSELF AT HOME</div><h2 id="settings-title">Settings</h2></div><button className="settings-close" aria-label="Close settings" onClick={onClose}>×</button></header>
+      <div className="settings-tabs" role="tablist" aria-label="Settings categories">
+        {(['appearance', 'intelligence'] as const).map(category => <button key={category} id={'settings-tab-' + category} role="tab" aria-selected={tab === category} aria-controls={'settings-panel-' + category} tabIndex={tab === category ? 0 : -1} onClick={() => setTab(category)} onKeyDown={event => {
+          if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+            event.preventDefault();
+            const next = event.key === 'Home' ? 'appearance' : event.key === 'End' ? 'intelligence' : tab === 'appearance' ? 'intelligence' : 'appearance';
+            setTab(next); document.getElementById('settings-tab-' + next)?.focus();
+          }
+        }}>{category === 'appearance' ? 'Appearance' : 'Intelligence'}</button>)}
+      </div>
+      <div id="settings-panel-appearance" role="tabpanel" aria-labelledby="settings-tab-appearance" hidden={tab !== 'appearance'}>
       <section className="settings-section" aria-labelledby="display-heading">
         <h3 id="display-heading">Appearance</h3><p>Choose a light or dark workspace, or follow your computer.</p>
         <div className="display-options" role="group" aria-label="Appearance">
@@ -37,9 +51,12 @@ export function SettingsDialog({appearance, onChange, storageError, onClose, onO
           <ColorPicker id={'color-' + type} label={entityLabels[type] + ' color'} value={appearance.entityColors[type]} onChange={color => onChange({...appearance, entityColors: {...appearance.entityColors, [type]: color}})}/>
         </div>)}</div>
       </section>
-      <IntelligenceSettings/>
-      <AIActivityLog onOpenPage={onOpenPage}/>
-      <footer className="settings-footer"><p role="status">{storageError ? 'Applied for now. Browser storage is unavailable; changes won’t survive a reload.' : 'Appearance changes apply instantly and save in this browser.'}</p><div><button className="button" onClick={() => onChange(defaultAppearance())}>Restore defaults</button><button className="button primary" onClick={onClose}>Done</button></div></footer>
+      </div>
+      <div id="settings-panel-intelligence" role="tabpanel" aria-labelledby="settings-tab-intelligence" hidden={tab !== 'intelligence'}>
+        <IntelligenceSettings/>
+        <section className="settings-section settings-activity-entry"><div><h3>AI activity log</h3><p>Review local AI requests, export a CSV, or clear activity.</p></div><button className="button" aria-haspopup="dialog" onClick={() => setActivityOpen(true)}>Open activity log</button></section>
+      </div>
+      <footer className="settings-footer"><p role="status" hidden={tab !== 'appearance'}>{storageError ? 'Applied for now. Browser storage is unavailable; changes won’t survive a reload.' : 'Appearance changes apply instantly and save in this browser.'}</p><div><button className="button" hidden={tab !== 'appearance'} onClick={() => onChange(defaultAppearance())}>Restore defaults</button><button className="button primary" onClick={onClose}>Done</button></div></footer>
     </div>
   </Modal>;
 }

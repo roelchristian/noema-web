@@ -46,6 +46,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
           activityId=activity.start(collection==='pages'?'page_summary':'connection_test',intelligence.selection(),collection==='pages'?(header||'default'):null,collection==='pages'?id!:null);
         }
         if(collection==='intelligence') {
+          if(parts.length===3 && id==='activity' && method==='DELETE')return send(200,activity.clear());
           if(parts.length===3 && id==='activity' && method==='GET')return send(200,activity.list(url.searchParams.get('before')));
           if(parts.length===2 && method==='GET')return send(200,intelligence.status());
           if(parts.length===3 && id==='preferences' && method==='PUT')return send(200,intelligence.savePreferences(body));

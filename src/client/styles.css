@@ -572,8 +572,14 @@ main { margin-left: 224px; }
 @media (max-width: 500px) { .organization-branch .branch-toggle, .organization-branch .branch-leaf-icon { display: inline-flex; margin-left: 0; } .organization-branch .container-link { display: none; } .organization-page-link { display: none; } }
 
 .entity-type-manager { border: 1px solid var(--line); border-radius: 10px; margin: 24px 0; }
-.entity-type-manager > summary { cursor: pointer; padding: 14px 18px; font-size: 13px; font-weight: 550; }
-.type-manager-body { display: grid; gap: 22px; padding: 4px 18px 20px; }
+.entity-type-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.entity-type-options > button { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 7px; text-align: left; font-size: 12px; }
+.entity-type-options > button[aria-pressed=true] { border-color: var(--accent); background: var(--accent-soft); }
+.entity-type-options .entity-icon { width: 28px; height: 28px; flex-shrink: 0; margin: 0; }
+.type-field-list > span { display: inline-flex; align-items: center; gap: 5px; }
+.type-field-list > span .icon { width: 13px; height: 13px; }
+@media (max-width: 500px) { .entity-type-options { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.type-manager-body { display: grid; gap: 22px; padding: 18px; }
 .type-manager-body > label { display: grid; gap: 8px; max-width: 300px; font-size: 13px; }
 .type-manager-body h3 { margin: 0 0 8px; font-size: 14px; }
 .type-field-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
@@ -755,3 +761,5 @@ main { margin-left: 224px; }
 .search-result-snippet { display: block; margin-top: 7px; max-width: 74ch; color: var(--text-muted); font-size: 12px; font-weight: 400; line-height: 1.6; white-space: normal; overflow-wrap: anywhere; }
 .vault-search-results .search-result-snippet { font-size: 11px; }
 .vault-search-results li>button>span { min-width: 0; flex: 1; }
+
+@media (max-width: 500px) { .settings-tabs { gap: 0; } .settings-tabs button { flex: 1; min-width: 0; padding: 10px 6px; font-size: 12px; } }

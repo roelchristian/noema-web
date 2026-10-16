@@ -1,6 +1,6 @@
 # Noema — local knowledge workspace
 
-A local block editor organized into self-contained vaults, with reusable knowledge entities and a SQLite backend. The interface uses a black accent palette, bundled Inter, and SVG entity icons. No accounts or API keys are required for local editing. Optional AI summaries use your own OpenAI API key. React and the build tools are installed locally through npm.
+A local block editor organized into self-contained vaults, with reusable knowledge entities and a SQLite backend. The interface uses a black accent palette, bundled Inter, and SVG entity icons. No accounts or API keys are required for local editing. Optional AI summaries and entity scans use your own OpenAI API key. React and the build tools are installed locally through npm.
 
 ## Run
 
@@ -27,7 +27,7 @@ Property names belong to the main type. Built-in fields and any new fields added
 
 ## Architecture
 
-Noema is a local-first modular monolith: one Node.js process serves a local SQLite database and the compiled frontend. Local editing has no cloud service dependencies. Optional AI summaries connect to OpenAI. Inter and all frontend assets are bundled locally.
+Noema is a local-first modular monolith: one Node.js process serves a local SQLite database and the compiled frontend. Local editing has no cloud service dependencies. Optional AI summaries and entity scans connect to OpenAI. Inter and all frontend assets are bundled locally.
 
 - `src/server/modules/`: vault access, page persistence, and knowledge operations, each with a separate service boundary.
 - `src/server/database.ts`: schema initialization, backward-compatible migrations, and seed data.
@@ -155,7 +155,7 @@ git push -u origin main
 
 This is a single-user local prototype. Editing the same page in multiple tabs is guarded by revision checks in the bundled client. If a save reports a conflict, keep a copy of your unsaved text before reloading the latest page; automatic conflict merging is deferred. Page deletion is permanent. Entity deletion, drag-and-drop block ordering, rich text formatting, nested blocks, custom entity types, and automatic inverse/symmetric relationship rules are not implemented.
 
-Page summaries are the first optional AI enrichment feature; embeddings remain deferred. Stable entity IDs and separate property/relationship tables leave room for enrichment jobs, provenance, and an embedding table without changing how pages reference entities. Startup includes an additive migration for vault scoping and page source references.
+Page summaries and reviewed entity suggestions are optional AI enrichment features; embeddings remain deferred. Stable entity IDs and separate property/relationship tables leave room for enrichment jobs, provenance, and an embedding table without changing how pages reference entities. Startup includes an additive migration for vault scoping and page source references.
 
 The server has no user accounts and is intended for this computer only. Keep the loopback binding when running this version.
 
@@ -180,6 +180,10 @@ Choose **Save AI preferences** to persist model and effort across server restart
 
 On a page, choose **Knowledge → Summarize page**. Noema first saves pending edits, then sends only that saved page’s title, block text, and names of inline entity mentions. It excludes source bodies, entity properties, and other pages. Successful summaries are saved in SQLite and loaded when the Knowledge panel reopens, including after a server restart. Long summaries show three lines with a Show more / Show less toggle. Failed refreshes retain the previous saved summary. A locked vault, deleted page, changed revision, or removed/expired key prevents saving a new result. Closing the sidebar does not cancel an already transmitted request: a successful result is still saved, and provider charges may apply.
 
+Choose **Knowledge → Scan for entities** to find potential knowledge entities in a note. Scanning saves pending edits and uses the configured model and reasoning effort. It sends the saved title and body text runs, current main types and subtype IDs, and this vault’s entity names, descriptions, and categories to OpenAI. Other notes and entity properties are excluded. Notes are limited to 40,000 body characters, and the full note/schema/catalog input to 80,000 characters.
+
+Review up to 20 suggestions in a dedicated modal table with their category, matching phrase, and reason. Use the pencil action to expand one row and edit its name, category and subtypes, or match it to an existing vault entity. Matching uses the saved entity’s details without modifying it. Edits apply on individual or bulk acceptance, while the original evidence phrase stays unchanged. Search or filter All/Pending/Reviewed, select rows (or all pending), and use **Accept selected** or **Reject selected** for bulk review. Bulk decisions save atomically and update the note without reloading it. **Accept** links an existing entity or creates a new one, replacing the first matching phrase with an inline mention; surrounding text and formatting are retained, including inside tables. **Reject** records the decision without changing the note or creating an entity. Scans and decisions persist with the note. A note edit makes pending suggestions stale and requires a fresh scan. **Scan again** replaces the previous review. Failed scans retain the previous result. No entities are created until accepted. Scan attempts appear as **Entity scan** in the AI activity log.
+
 Page AI results use the shared `page_ai_enrichments` table, with one latest result per page and enrichment kind. Each result stores a JSON payload, source page revision, model, reasoning effort, and timestamp. Summary and generated-title results use this storage; future enrichment handlers can use the same service. Saving an enrichment does not change the editor revision. Later page edits retain results and the summary shows when its source revision is older. Vault scoping and locks protect retrieval; Trash retains results for restoration, and permanent page deletion cascades to them. Clearing the AI activity log does not erase enrichments.
 
 Untitled pages automatically receive a title after a successful save and **three seconds without edits**, once their body contains at least **20 characters**. Opening an existing untitled page resumes this workflow after a reload or vault switch. The title utility sends only that page's text and inline entity names, and uses reasoning effort fixed to **none**, independently of the reasoning preference. It uses the selected model when the existing model catalog supports `none`, otherwise GPT-6 Luna, with a 256-token output budget. The prompt favors compact subject labels of 2–6 words, preferably within 50 characters, rather than summaries of every detail. Titles have a hard limit of 120 characters and are saved through autosave. Edits, manual titles, deletion, and vault changes discard outstanding results. Empty pages and pages with a title are excluded. Temporary provider, rate-limit, and network failures retry up to twice, after 15 seconds and then 60 seconds; edits or a vault switch invalidate pending retries. Missing credentials and permanent failures stay quiet; another saved edit or reopening the page can try again. Automatic title generation can incur API charges and appears as **Page title** in the activity log.
@@ -201,13 +205,15 @@ Requests use the [OpenAI Responses API](https://developers.openai.com/api/docs/g
 | POST | `/api/intelligence/validate` | Test the saved key and model access |
 | POST | `/api/pages/:id/title` | Generate a title for an untitled saved page with `{revision}` and `X-Vault-Id` |
 | POST | `/api/pages/:id/summary` | Generate and persist a summary with `{revision}` and `X-Vault-Id` |
+| POST | `/api/pages/:id/entity-scan` | Generate and save entity suggestions with `{revision}` and `X-Vault-Id` |
+| POST | `/api/pages/:id/entity-review` | Review one pending suggestion with `{revision, scanId, suggestionId, decision}` (or `suggestionIds` for a bulk decision) (`accepted` or `rejected`) |
 | GET | `/api/pages/:id/enrichments` | Load saved AI results for an active page using `X-Vault-Id` |
 
 All intelligence routes require `X-Noema-Request: 1`; writes require `Content-Type: application/json`. Tests use an injected credential store and mock provider, never your Keychain or a billable API key. They cover expiry, replacement/removal, request redaction, fixed destinations, storage controls, concurrency, rate limits, host/origin checks, vault isolation, stale revisions, and locking during a request. A native Keychain save/read/remove round-trip was also verified using a unique synthetic credential and then cleaned up. A live OpenAI connection still needs your real key and **Validate connection** on your Mac.
 
 ### AI activity log
 
-Settings → AI activity log shows page summaries, automatic titles, and connection tests, backed by the local SQLite `ai_activity` table. Each entry records status, start/finish time, duration, HTTP outcome, model and reasoning effort, the page/vault ID and revision (when available), and prompt size in UTF-8 bytes. The size includes instructions and input text, including the note wrapper; it is not a token count. Prompt text, generated text, credentials, and provider error bodies are never stored in the log.
+Settings → AI activity log shows page summaries, entity scans, automatic titles, and connection tests, backed by the local SQLite `ai_activity` table. Each entry records status, start/finish time, duration, HTTP outcome, model and reasoning effort, the page/vault ID and revision (when available), and prompt size in UTF-8 bytes. The size includes instructions and input text, including the note wrapper; it is not a token count. Prompt text, generated text, credentials, and provider error bodies are never stored in the log.
 
 The backend retains the latest 1,000 entries, preserving running requests until they finish. Requests left running after a server restart become interrupted. Settings loads 50 entries at a time, offers older activity and manual refresh, and links to available source pages. Page titles are resolved from the current page rather than copied into the log; deleted pages retain only their reference. Activity in locked vaults stays hidden until the vault is unlocked.
 

@@ -1,0 +1,183 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { once } from 'node:events';
+import path from 'node:path';
+import { openDatabase } from '../src/server/database.ts';
+import { Store } from '../src/server/store.ts';
+import { createApp } from '../src/server/http.ts';
+import { Intelligence } from '../src/server/modules/intelligence.ts';
+import { mentionEvidence } from '../src/shared/entity-scan.ts';
+
+const completed = text => Response.json({status:'completed',output:[{type:'message',content:[{type:'output_text',text}]}]});
+const candidate = (name,type='person',extra={}) => ({name,type,subtypes:[],description:'Mentioned in this note',evidence:name,reason:'Named in the note',existingId:null,...extra});
+test('entity scan reviews are explicit, persistent, scoped and revision safe', async()=>{
+  const db=openDatabase(':memory:');
+  let output, providerBody, finish, calls=0;
+  const secrets={value:null,read(){return this.value;},write(v){this.value=v;},remove(){this.value=null;}};
+  const ai=new Intelligence(secrets,async(_url,options)=>{
+    calls++;providerBody=JSON.parse(options.body);
+    if(finish===true)return new Promise(resolve=>{finish=resolve;});
+    return completed(output);
+  });
+  ai.save({apiKey:'sk-test-entity-scanning-secret'});
+  const server=createApp(new Store(db),path.resolve('dist/client'),ai);
+  server.listen(0,'127.0.0.1');await once(server,'listening');
+  const base=`http://127.0.0.1:${server.address().port}/api/`;
+  async function call(route,method='GET',body,expected=200,vault='default',headers={}){
+    const response=await fetch(base+route,{method,headers:{'X-Noema-Request':'1','Content-Type':'application/json','X-Vault-Id':vault,...headers},body:body===undefined?undefined:JSON.stringify(body)});
+    const data=await response.json();assert.equal(response.status,expected,JSON.stringify(data));return data;
+  }
+  try{
+    const baseline=(await call('entities')).length;
+    const alice=await call('entities','POST',{name:'Alice',type:'person',subtypes:['person:scientist']},201);
+    await call('entity-schema/subtypes','POST',{type:'place',name:'Research station'},201);
+    const schema=await call('entity-schema');
+    let page=await call('pages','POST',{title:'Meeting'},201);
+    page=await call(`pages/${page.id}`,'PUT',{...page,blocks:[{id:'body',type:'paragraph',checked:false,content:[{text:'Alice met '},{text:'Bo',bold:true},{text:'b in Paris.',italic:true}]}]});
+    const route=`pages/${page.id}`;
+    output=JSON.stringify({suggestions:[candidate('Alice'),candidate('Bob'),candidate('Paris','place',{subtypes:[schema.subtypes.find(s=>s.name==='Research station').id]}),candidate('Ghost')]});
+    let scan=await call(route+'/entity-scan','POST',{revision:page.revision});
+    assert.equal(scan.suggestions.length,3,'Unsupported evidence is filtered');
+    assert.equal(scan.suggestions[0].existingId,alice.id,'Exact existing names deduplicate');
+    assert.equal((await call('entities')).length,baseline+1,'Scan creates no entities');
+    assert.deepEqual((await call(route)).blocks,page.blocks,'Scan leaves note unchanged');
+    assert.ok(providerBody.instructions.includes('never instructions'));
+    const prompt=JSON.parse(providerBody.input[0].content[0].text);
+    assert.ok(prompt.schema.subtypes.some(s=>s.name==='Research station'));
+    assert.ok(prompt.existingEntities.some(e=>e.id===alice.id));
+    async function review(index,decision,status=200,extra={}){
+      return call(route+'/entity-review','POST',{scanId:scan.id,suggestionId:scan.suggestions[index].id,revision:page.revision,decision,...extra},status);
+    }
+    let result=await review(0,'accepted');page=result.page;scan=result.scan;
+    assert.equal(result.entities.length,baseline+1);assert.equal(page.blocks[0].content[0].entityId,alice.id);
+    await review(0,'accepted',400);
+    result=await review(1,'accepted');page=result.page;scan=result.scan;
+    const bob=result.entities.find(e=>e.name==='Bob');assert.ok(bob);
+    assert.ok(page.blocks[0].content.some(s=>s.entityId===bob.id));
+    assert.ok(page.blocks[0].content.some(s=>s.text===' in Paris.'&&s.italic),'Surrounding formatting is retained');
+    const beforeReject=page;
+    result=await review(2,'rejected');scan=result.scan;
+    assert.deepEqual(result.page,beforeReject);assert.equal(result.entities.length,baseline+2);
+    const persisted=(await call(route+'/enrichments')).find(e=>e.kind==='entity_scan').data.scan;
+    assert.deepEqual(persisted,scan);assert.equal(calls,1,'Reviews never call AI');
+    assert.equal((await call('intelligence/activity')).items[0].action,'entity_scan');
+    const other=await call('vaults','POST',{name:'Other'},201);
+    await call(route+'/entity-review','POST',{revision:page.revision},404,other.id);
+    await call('vaults/default/lock','POST',{passphrase:'test-lock'});
+    await call(route+'/entity-scan','POST',{revision:page.revision},423);
+    await call('vaults/default/unlock','POST',{passphrase:'test-lock'});
+    await call(route+'/entity-scan','POST',{revision:page.revision},403,'default',{'X-Noema-Request':''});
+    output=JSON.stringify({suggestions:[candidate('Paris','invalid')]});
+    await call(route+'/entity-scan','POST',{revision:page.revision},502);
+    assert.deepEqual((await call(route+'/enrichments')).find(e=>e.kind==='entity_scan').data.scan,scan,'Invalid output retains prior scan');
+    output=JSON.stringify({suggestions:[candidate('Paris','place')]});
+    scan=await call(route+'/entity-scan','POST',{revision:page.revision});
+    await review(0,'accepted',409,{scanId:persisted.id});
+    page=await call(route,'PUT',{...page,title:'Changed'});
+    await review(0,'accepted',409);
+    finish=true;
+    const pending=call(route+'/entity-scan','POST',{revision:page.revision},409);
+    while(typeof finish!=='function')await new Promise(resolve=>setTimeout(resolve,5));
+    page=await call(route,'PUT',{...page,title:'Changed while scanning'});
+    finish(completed(JSON.stringify({suggestions:[]})));await pending;
+    assert.equal((await call('entities')).length,baseline+2);
+  }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();}
+});
+
+test('evidence replacement handles tables, formatting boundaries and existing mentions',()=>{
+  const page={blocks:[{type:'paragraph',content:[{entityId:'already'},{text:'unrelated'}]},{type:'table',rows:[[[{text:'New ',bold:true},{text:'York',italic:true},{text:' City'}]]],content:[]}]};
+  const result=mentionEvidence(page,'New York','ny');
+  assert.deepEqual(result.blocks[1].rows[0][0],[{entityId:'ny'},{text:' City'}]);
+  assert.deepEqual(result.blocks[0],page.blocks[0]);
+  assert.equal(mentionEvidence(page,'unrelatedNew','none'),null);
+  assert.equal(mentionEvidence(page,'','none'),null);
+});
+
+test('bulk entity review is atomic, advances revision once and rejects invalid selections', async()=>{
+  const {EntityScans}=await import('../src/server/modules/entity-scan.ts');
+  const {Knowledge}=await import('../src/server/modules/knowledge.ts');
+  const {Pages}=await import('../src/server/modules/pages.ts');
+  const {AIEnrichments}=await import('../src/server/modules/ai-enrichments.ts');
+  const db=openDatabase(':memory:'),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge);
+  const scans=new EntityScans(store,pages,knowledge,new AIEnrichments(store,pages));
+  const preferences={model:'gpt-5-mini',reasoningEffort:'low'};
+  const baseline=knowledge.list('default').length;
+  let page=pages.create('default',{title:'Bulk review'});
+  page=pages.update('default',page.id,{...page,blocks:[{id:'b',type:'paragraph',checked:false,content:[{text:'Alice and Bob visited New York.'}]}]});
+  try {
+    let scan=scans.save('default',page,JSON.stringify({suggestions:[candidate('Alice'),candidate('Bob'),candidate('New York','place')]}),preferences);
+    const review=(ids,decision,revision=page.revision)=>scans.review('default',page.id,{scanId:scan.id,suggestionIds:ids,decision,revision});
+    assert.throws(()=>review([],'accepted'),e=>e.status===400);
+    assert.throws(()=>review([scan.suggestions[0].id,scan.suggestions[0].id],'accepted'),e=>e.status===400);
+    assert.throws(()=>review([scan.suggestions[0].id,'missing'],'accepted'),e=>e.status===400);
+    const accepted=review(scan.suggestions.slice(0,2).map(s=>s.id),'accepted');
+    assert.equal(accepted.page.revision,page.revision+1,'Bulk acceptance advances revision once');
+    assert.equal(accepted.entities.length,baseline+2);
+    assert.equal(accepted.scan.suggestions.filter(s=>s.status==='accepted').length,2);
+    assert.equal(accepted.page.blocks[0].content.filter(s=>s.entityId).length,2);
+    page=accepted.page;scan=accepted.scan;
+    const rejected=review([scan.suggestions[2].id],'rejected');
+    assert.deepEqual(rejected.page,page);
+    assert.equal(rejected.entities.length,baseline+2);
+    scan=scans.save('default',page,JSON.stringify({suggestions:[candidate('New York','place'),candidate('York','place')]}),preferences);
+    assert.throws(()=>review(scan.suggestions.map(s=>s.id),'accepted'),e=>e.status===409&&e.message.includes('overlap'));
+    assert.equal(knowledge.list('default').length,baseline+2,'Failed batch rolls back newly created entities');
+    assert.deepEqual(pages.get('default',page.id),page,'Failed batch leaves page unchanged');
+    assert.ok(new AIEnrichments(store,pages).list('default',page.id).find(e=>e.kind==='entity_scan').data.scan.suggestions.every(s=>s.status==='pending'));
+    const rejectedAll=review(scan.suggestions.map(s=>s.id),'rejected');
+    assert.ok(rejectedAll.scan.suggestions.every(s=>s.status==='rejected'));
+    assert.deepEqual(rejectedAll.page,page);
+  }finally{db.close();}
+});
+
+test('review edits support renamed entities, category/subtype changes and matching existing entities', async()=>{
+  const {EntityScans}=await import('../src/server/modules/entity-scan.ts');
+  const {Knowledge}=await import('../src/server/modules/knowledge.ts');
+  const {Pages}=await import('../src/server/modules/pages.ts');
+  const {AIEnrichments}=await import('../src/server/modules/ai-enrichments.ts');
+  const {Vaults}=await import('../src/server/modules/vaults.ts');
+  const db=openDatabase(':memory:'),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge);
+  const scans=new EntityScans(store,pages,knowledge,new AIEnrichments(store,pages));
+  const preferences={model:'gpt-5-mini',reasoningEffort:'low'};
+  const existing=knowledge.create('default',{name:'Robert Smith',type:'person',subtypes:['person:scientist'],description:'Saved description'});
+  const foreignVault=new Vaults(store).create({name:'Foreign'});
+  const foreign=knowledge.create(foreignVault.id,{name:'Other vault entity',type:'place'});
+  knowledge.addSubtype('default',{type:'organization',name:'Research group'});
+  const custom=knowledge.schema('default').subtypes.find(s=>s.name==='Research group').id;
+  let page=pages.create('default',{title:'Editable review'});
+  page=pages.update('default',page.id,{...page,blocks:[{id:'b',type:'paragraph',checked:false,content:[{text:'Atlas and Bob met Alice.'}]}]});
+  try {
+    let scan=scans.save('default',page,JSON.stringify({suggestions:[candidate('Atlas','place'),candidate('Bob'),candidate('Alice')]}),preferences);
+    const baseline=knowledge.list('default').length;
+    const atlas=scan.suggestions[0].id,bob=scan.suggestions[1].id;
+    const edit=(id,name,type='person',subtypes=[],existingId=null)=>({id,name,type,subtypes,existingId});
+    const review=(ids,edits,decision='accepted')=>scans.review('default',page.id,{scanId:scan.id,suggestionIds:ids,decision,revision:page.revision,edits});
+    assert.throws(()=>review([atlas],[edit(atlas,' ','organization')]),e=>e.status===400);
+    assert.throws(()=>review([atlas],[edit(atlas,'Atlas','unknown')]),e=>e.status===400);
+    assert.throws(()=>review([atlas],[edit(atlas,'Atlas','organization',['person:scientist'])]),e=>e.status===400);
+    assert.throws(()=>review([atlas],[edit(atlas,'Atlas','organization',['missing'])]),e=>e.status===400);
+    assert.throws(()=>review([atlas],[edit(bob,'Bob')]),e=>e.status===400);
+    assert.throws(()=>review([atlas],[edit(atlas,'Atlas'),edit(atlas,'Atlas')]),e=>e.status===400);
+    assert.throws(()=>review([atlas],[edit(atlas,'Atlas','person',[],foreign.id)]),e=>e.status===404);
+    assert.throws(()=>review([atlas],[edit(atlas,'Atlas')],'rejected'),e=>e.status===400);
+    assert.equal(knowledge.list('default').length,baseline);
+    assert.deepEqual(pages.get('default',page.id),page);
+    const result=review([atlas,bob],[edit(atlas,'Atlas Research','organization',[custom]),edit(bob,'Bob','person',[],existing.id)]);
+    assert.equal(result.entities.length,baseline+1,'Matching an existing entity does not create a duplicate');
+    const created=result.entities.find(e=>e.name==='Atlas Research');
+    assert.equal(created.type,'organization');assert.deepEqual(created.subtypes,[custom]);
+    assert.equal(result.page.blocks[0].content[0].entityId,created.id,'Renaming retains the original evidence match');
+    assert.ok(result.page.blocks[0].content.some(s=>s.entityId===existing.id));
+    assert.deepEqual(knowledge.detail('default',existing.id),existing,'Review matching never edits the saved entity');
+    assert.equal(result.scan.suggestions[0].name,'Atlas Research');assert.equal(result.scan.suggestions[0].evidence,'Atlas');
+    assert.equal(result.scan.suggestions[1].name,'Robert Smith');assert.deepEqual(result.scan.suggestions[1].subtypes,['person:scientist']);
+    page=result.page;scan=result.scan;
+    // Turning an existing match into a new entity remains possible.
+    const other=knowledge.create('default',{name:'Alice',type:'person'});
+    scan=scans.save('default',page,JSON.stringify({suggestions:[candidate('Alice','person',{existingId:other.id})]}),preferences);
+    const final=review([scan.suggestions[0].id],[edit(scan.suggestions[0].id,'Alice Cooper','person',['person:artist'])]);
+    assert.ok(final.entities.some(e=>e.name==='Alice Cooper'&&e.subtypes.includes('person:artist')));
+    assert.equal(knowledge.require('default',other.id).name,'Alice');
+    assert.equal(final.scan.suggestions[0].status,'accepted');
+  }finally{db.close();}
+});

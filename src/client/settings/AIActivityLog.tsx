@@ -64,7 +64,7 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
         <thead><tr>{['Started','Action','Status','Source','Model / reasoning','Prompt bytes','Duration','HTTP'].map(label=><th scope="col" key={label}>{label}</th>)}</tr></thead>
         <tbody>{data.items.map(item=><tr key={item.id}>
           <td><time dateTime={item.startedAt}>{new Date(item.startedAt).toLocaleString()}</time></td>
-          <td>{item.action==='page_summary'?'Page summary':item.action==='page_title'?'Page title':'Connection test'}</td>
+          <td>{item.action==='entity_scan'?'Entity scan':item.action==='page_summary'?'Page summary':item.action==='page_title'?'Page title':'Connection test'}</td>
           <td><span className={'ai-activity-status '+item.status}>{item.status}</span></td>
           <td>{item.objectId?<>
             {item.available?<button className="ai-activity-link" onClick={()=>void open(item)}>{item.objectTitle||'Untitled'}</button>:<span>{item.objectTitle||'Unavailable page'}</span>}

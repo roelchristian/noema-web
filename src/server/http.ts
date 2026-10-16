@@ -1,3 +1,4 @@
+import { EntityScans } from './modules/entity-scan.js';
 import type { Segment } from '../shared/domain.js';
 import { AIEnrichments } from './modules/ai-enrichments.js';
 import { AIActivityLog } from './modules/ai-activity.js';
@@ -23,6 +24,7 @@ async function readBody(req: IncomingMessage) {
 export function createApp(store: Store, clientRoot: string, intelligence=new Intelligence(keychainFor(store),fetch,()=>Date.now(),intelligencePreferencesFor(store))) {
   const vaults=new Vaults(store),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),organizer=new Organizer(store);
   const activity=new AIActivityLog(store),enrichments=new AIEnrichments(store,pages);
+  const scans=new EntityScans(store,pages,knowledge,enrichments);
   // Enforce retention on startup, periodically while running, and before scoped API access.
   pages.purgeExpired();
   let cleanup: ReturnType<typeof setInterval> | undefined;
@@ -37,14 +39,14 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
       if(!/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.headers.host || ''))throw new HttpError(403,'Host is not allowed');
       if(url.pathname.startsWith('/api/')) {
         if((req.headers.origin && req.headers.origin!==`http://${req.headers.host}`)||req.headers['sec-fetch-site']==='cross-site')throw new HttpError(403,'Cross-origin requests are not allowed');
-        const aiRoute=url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||/^\/api\/pages\/[^/]+\/(summary|title)$/.test(url.pathname);
+        const aiRoute=url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||/^\/api\/pages\/[^/]+\/(summary|title|entity-scan|entity-review)$/.test(url.pathname);
         if(aiRoute && (req.headers['x-noema-request']!=='1'||(['POST','PUT'].includes(method)&&!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))))throw new HttpError(403,'AI requests require the Noema client and JSON');
         const body=['POST','PUT'].includes(method)?await readBody(req):{};
         const parts=url.pathname.split('/').filter(Boolean),[,collection,id,child,childId]=parts;
-        if(method==='POST' && ((collection==='intelligence' && id==='validate' && parts.length===3) || (collection==='pages' && (child==='summary'||child==='title') && parts.length===4))) {
+        if(method==='POST' && ((collection==='intelligence' && id==='validate' && parts.length===3) || (collection==='pages' && (child==='summary'||child==='title'||child==='entity-scan') && parts.length===4))) {
           const header=req.headers['x-vault-id'];
           if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
-          activityId=activity.start(collection==='pages'?(child==='title'?'page_title':'page_summary'):'connection_test',child==='title'?intelligence.titleSelection():intelligence.selection(),collection==='pages'?(header||'default'):null,collection==='pages'?id!:null);
+          activityId=activity.start(collection==='pages'?(child==='title'?'page_title':child==='entity-scan'?'entity_scan':'page_summary'):'connection_test',child==='title'?intelligence.titleSelection():intelligence.selection(),collection==='pages'?(header||'default'):null,collection==='pages'?id!:null);
         }
         if(collection==='intelligence') {
           if(parts.length===3 && id==='activity' && method==='DELETE')return send(200,activity.clear());
@@ -86,6 +88,15 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             if(parts.length===3 && method==='PUT' && id==='favourites')return send(200,organizer.favourite(vault,body));
           }
           if(collection==='pages') {
+            if(id && parts.length===4 && child==='entity-review' && method==='POST')return send(200,scans.review(vault,id,body));
+            if(id && parts.length===4 && child==='entity-scan' && method==='POST') {
+              const page=pages.get(vault,id);
+              if(body.revision!==page.revision)throw new HttpError(409,'Save the latest note before scanning.');
+              const input=scans.input(vault,page);
+              const output=await intelligence.generate(input,false,bytes=>activity.request(activityId!,bytes,page.revision),false,true);
+              vaults.requireOpen(vault);
+              return send(200,scans.save(vault,page,output,intelligence.selection()));
+            }
             if(id && parts.length===4 && child==='enrichments' && method==='GET')return send(200,enrichments.list(vault,id));
             if(id && parts.length===4 && (child==='summary'||child==='title') && method==='POST') {
               const page=pages.get(vault,id),isTitle=child==='title';

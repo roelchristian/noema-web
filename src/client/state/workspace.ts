@@ -5,10 +5,10 @@ import { PageSaver, type SaveStatus } from './page-saver';
 export interface WorkspaceState {
   vaults: Vault[]; vault: Vault | null; trash: TrashedPage[]; pages: PageSummary[]; entities: Entity[];
   organization: Organization; organizationContext: OrganizationContext; recent: RecentItem[];
-  page: Page | null; view: 'pages' | 'entities' | 'organization' | 'favourites' | 'recent' | 'trash'; busy: boolean; error: string | null; saveStatus: SaveStatus;
+  page: Page | null; view: 'pages' | 'entities' | 'organization' | 'favourites' | 'recent' | 'trash'; busy: boolean; reviewing: boolean; error: string | null; saveStatus: SaveStatus;
 }
 export class Workspace {
-  private state: WorkspaceState = {vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'pages', busy: true, error: null, saveStatus: 'saved'};
+  private state: WorkspaceState = {vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'pages', busy: true, reviewing: false, error: null, saveStatus: 'saved'};
   private listeners = new Set<() => void>();
   private pageCache = new Map<string, Page>();
   private navigation = false;
@@ -107,7 +107,7 @@ export class Workspace {
   showEntities() { if (!this.state.busy) this.patch({view: 'entities'}); }
   updatePage(patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon'>>) {
     const current = this.state.page;
-    if (!current || this.state.busy || this.state.vault?.locked) return;
+    if (!current || this.state.busy || this.state.reviewing || this.state.vault?.locked) return;
     const page = {...current, ...patch}; this.pageCache.set(page.id, page);
     this.patch({page, pages: this.state.pages.map(p => p.id === page.id ? {...p, title: page.title, icon: page.icon} : p)});
     this.titler.observe(page);
@@ -192,6 +192,30 @@ export class Workspace {
     const result = await api.createEntity(vault.id, input), entities = await api.entities(vault.id);
     if (sequence === this.loadSequence) this.patch({entities});
     return result;
+  }
+  async reviewEntity(scanId: string, suggestionId: string | string[], decision: 'accepted' | 'rejected', edits?: import('../../shared/entity-scan').EntitySuggestionEdit[]) {
+    if (this.navigation) throw new Error('Another note operation is finishing. Try again.');
+    const original = this.state.page;
+    if (!original || this.state.vault?.locked) throw new Error('Open the note to review suggestions.');
+    // Serialize with autosave without entering the workspace loading state. The
+    // editor stays mounted; only editing pauses for the duration of the write.
+    this.navigation = true;
+    this.patch({reviewing:true});
+    this.titler.observe(original);
+    try {
+      await this.saver.flush();
+      const page = this.state.page;
+      if (!page || page.id !== original.id || page.vault_id !== original.vault_id) throw new Error('The selected note changed. Try again.');
+      this.titler.observe(page);
+      const result = await api.reviewEntity(page.vault_id,page.id,page.revision,scanId,suggestionId,decision,edits);
+      this.pageCache.set(page.id,result.page);
+      this.patch({page:result.page,entities:result.entities,pages:this.state.pages.map(p => p.id === page.id ? result.page : p)});
+      return result.scan;
+    } finally {
+      this.navigation = false;
+      this.patch({reviewing:false});
+      if (this.state.page) this.titler.observe(this.state.page,true);
+    }
   }
   async refreshEntities() {
     const vault = this.state.vault!, sequence = this.loadSequence;

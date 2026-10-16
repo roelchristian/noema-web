@@ -23,7 +23,7 @@ export function supportedIntelligencePreferences(value: unknown): value is Intel
 }
 
 export interface AIActivity extends IntelligencePreferences {
-  id: string; action: 'page_title' | 'page_summary' | 'connection_test';
+  id: string; action: 'page_title' | 'page_summary' | 'entity_scan' | 'connection_test';
   status: 'running' | 'completed' | 'failed' | 'interrupted';
   startedAt: string; finishedAt: string | null; durationMs: number | null; httpStatus: number | null;
   vaultId: string | null; vaultName: string | null; objectKind: 'page' | 'entity' | null;

@@ -7,6 +7,8 @@ export async function request<T>(route: string, method='GET', body?: unknown, va
   return result as T;
 }
 export const api={
+  scanEntities:(vault:string,id:string,revision:number)=>request<import('../shared/entity-scan').EntityScan>(`pages/${id}/entity-scan`,'POST',{revision},vault),
+  reviewEntity:(vault:string,id:string,revision:number,scanId:string,suggestionId:string|string[],decision:'accepted'|'rejected',edits?:import('../shared/entity-scan').EntitySuggestionEdit[])=>request<import('../shared/entity-scan').EntityReview>(`pages/${id}/entity-review`,'POST',{revision,scanId,...(Array.isArray(suggestionId)?{suggestionIds:suggestionId}:{suggestionId}),decision,...(edits?{edits}:{})},vault),
   entitySchema:(vault:string)=>request<import('../shared/entity-schema').EntitySchema>('entity-schema','GET',undefined,vault),
   addSubtype:(vault:string,type:EntityInput['type'],name:string)=>request<import('../shared/entity-schema').EntitySchema>('entity-schema/subtypes','POST',{type,name},vault),
   addTypeProperty:(vault:string,type:EntityInput['type'],name:string)=>request<import('../shared/entity-schema').EntitySchema>('entity-schema/properties','POST',{type,name},vault),

@@ -1,3 +1,6 @@
+import { HelpMenu } from '../components/HelpMenu';
+import { EntityScanReview } from './EntityScanReview';
+import type { EntityScan, EntitySuggestionEdit } from '../../shared/entity-scan';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { blockSegments } from '../../shared/domain';
@@ -6,8 +9,9 @@ import { Select } from '../components/Select';
 import type { CreateEntityRequest } from '../knowledge/CreateEntityDialog';
 import { Mention } from '../components/Mention';
 import type { AISummary, Entity, Page } from '../../shared/domain';
-export function IntelligencePanel({page,entities,onOpenEntity,onSourcesChange,onCreateEntity,onClose,onSettings,onFlush}:{page:Page;entities:Entity[];onOpenEntity:(id:string)=>void;onSourcesChange:(sourceIds:string[])=>void;onCreateEntity:(request:CreateEntityRequest)=>void;onClose:()=>void;onSettings:()=>void;onFlush:()=>Promise<Page|null>}) {
+export function IntelligencePanel({page,entities,onOpenEntity,onSourcesChange,onCreateEntity,onClose,onSettings,onFlush,onReview}:{page:Page;entities:Entity[];onOpenEntity:(id:string)=>void;onSourcesChange:(sourceIds:string[])=>void;onCreateEntity:(request:CreateEntityRequest)=>void;onClose:()=>void;onSettings:()=>void;onFlush:()=>Promise<Page|null>;onReview:(scanId:string,id:string|string[],decision:'accepted'|'rejected',edits?:EntitySuggestionEdit[])=>Promise<EntityScan>}) {
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[result,setResult]=useState<AISummary|null>(null);
+  const [scan,setScan] = useState<EntityScan|null>(null);
   const [loading, setLoading] = useState(true);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [summaryOverflow, setSummaryOverflow] = useState(false);
@@ -28,6 +32,8 @@ export function IntelligencePanel({page,entities,onOpenEntity,onSourcesChange,on
     setLoading(true);
     void api.enrichments(page.vault_id, page.id).then(items => {
       if (cancelled) return;
+      const scanResult = items.find(item => item.kind === 'entity_scan');
+      if (scanResult) setScan(scanResult.data.scan as unknown as EntityScan);
       const saved = items.find(item => item.kind === 'summary');
       if (saved && typeof saved.data.summary === 'string') setResult({summary: saved.data.summary, revision: saved.revision, model: saved.model, reasoningEffort: saved.reasoningEffort});
     }).catch(error => { if (!cancelled) setError(error instanceof Error ? error.message : 'Could not load saved knowledge.'); })
@@ -50,12 +56,13 @@ export function IntelligencePanel({page,entities,onOpenEntity,onSourcesChange,on
     <div className="panel-top knowledge-panel-top"><span><Icon name="knowledge"/>Knowledge</span><div className="knowledge-panel-actions"><button className="page-tool" aria-label="Knowledge settings" title="Knowledge settings" onClick={onSettings}><Icon name="settings"/></button><button className="page-tool" ref={close} aria-label="Close Knowledge panel" title="Close Knowledge panel" onClick={onClose}>×</button></div></div>
     <div className="panel-body">
       <section className="knowledge-summary" aria-labelledby="knowledge-summary-heading">
-        <div className="knowledge-section-heading"><h2 id="knowledge-summary-heading"><Icon name="sparkles"/>Summary</h2><details className="summary-help"><summary aria-label="About AI summaries" title="About AI summaries">?</summary><div className="summary-help-content"><p>Summarizing sends this page’s title, text, and mentioned entity names to OpenAI. Attached sources and other pages are excluded. API charges may apply.</p><p>AI can make mistakes. Check the original page. Summaries are saved with this page.</p>{result&&<p>{result.model} · {result.reasoningEffort} reasoning</p>}</div></details></div>
+        <div className="knowledge-section-heading"><h2 id="knowledge-summary-heading"><Icon name="sparkles"/>Summary</h2><HelpMenu label="About AI summaries"><p>Summarizing sends this page’s title, text, and mentioned entity names to OpenAI. Attached sources and other pages are excluded. API charges may apply.</p><p>AI can make mistakes. Check the original page. Summaries are saved with this page.</p>{result&&<p>{result.model} · {result.reasoningEffort} reasoning</p>}</HelpMenu></div>
         <button className="button primary summarize-button" disabled={busy||loading} onClick={()=>void summarize()}><Icon name="sparkles"/>{loading?'Loading…':busy?'Summarizing…':result?'Refresh summary':'Summarize page'}</button>
         {busy&&<p className="section-hint summary-progress" role="status">Creating your summary…</p>}
         {error&&<p role="alert" className="inline-error">{error}</p>}
         {result&&<section className="ai-result" aria-label="Page summary"><div id="knowledge-summary-text" ref={summaryText} className={'ai-summary' + (summaryExpanded ? '' : ' is-collapsed')}>{result.summary}</div>{summaryOverflow&&<button className="summary-toggle" aria-expanded={summaryExpanded} aria-controls="knowledge-summary-text" onClick={()=>setSummaryExpanded(value=>!value)}>{summaryExpanded?'Show less':'Show more'}</button>}{result.revision!==page.revision&&<p className="section-hint">Page changed since this summary.</p>}</section>}
       </section>
+      <EntityScanReview entities={entities} page={page} scan={scan} onScan={setScan} onFlush={onFlush} onReview={onReview} disabled={busy||loading}/>
       <section className="knowledge-connected" aria-labelledby="knowledge-connected-heading"><div className="knowledge-section-heading"><h2 id="knowledge-connected-heading">Connected entities</h2><span className="knowledge-count">{connected.length}</span></div>{connected.length ? <div className="toolbar-entity-list">{connected.map(entity=><Mention key={entity.id} id={entity.id} entities={entities} onOpen={onOpenEntity}/>)}</div> : <p className="section-hint">Mention an entity with @ to connect it here.</p>}</section>
     <section className="knowledge-sources" aria-labelledby="knowledge-sources-heading"><div className="knowledge-section-heading"><h2 id="knowledge-sources-heading">Sources</h2><span className="knowledge-count">{page.sourceIds.length}</span></div><div className="toolbar-source-list">{page.sourceIds.map(id => <div key={id} className="page-source"><Mention id={id} entities={entities} onOpen={onOpenEntity}/><button aria-label={'Remove source from page: ' + (entities.find(entity => entity.id === id)?.name || id)} onClick={() => onSourcesChange(page.sourceIds.filter(source => source !== id))}>×</button></div>)}</div>{!page.sourceIds.length && <p className="empty-small">No sources attached yet.</p>}<div className="toolbar-source-actions"><Select aria-label="Attach existing source" value="" onChange={event => { if (event.target.value) onSourcesChange([...new Set([...page.sourceIds, event.target.value])]); }}><option value="">Add a source…</option>{entities.filter(entity => entity.type === 'source' && !page.sourceIds.includes(entity.id)).map(entity => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</Select><button className="button small" onClick={() => onCreateEntity({source: true})}>+ New source</button></div></section>
     </div>

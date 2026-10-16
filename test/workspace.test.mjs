@@ -215,3 +215,70 @@ test('opening an existing untitled page resumes automatic titling after reload',
     assert.equal(generate.mock.callCount(),1,'Opening a named page never replaces its title');
   } finally {workspace.titler.dispose();workspace.saver.dispose();}
 });
+
+test('reviewing a scanned entity updates in place without entering the workspace loading state', async t => {
+  const original={id:'note',vault_id:'a',title:'Research',blocks:[],sourceIds:[],revision:1,updated_at:''};
+  const order=[];
+  let finishReview;
+  let stored=original;
+  t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false}]);
+  t.mock.method(api,'pages',async()=>[original]);
+  t.mock.method(api,'entities',async()=>[]);
+  t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],favourites:[]}));
+  t.mock.method(api,'page',async()=>stored);
+  t.mock.method(api,'savePage',async(_vault,_id,page)=>{order.push('save');stored={...page,revision:2};return stored;});
+  const scan={id:'scan',revision:3,suggestions:[]}, entity={id:'bob',name:'Bob',type:'person',subtypes:[]};
+  const edits=[{id:'suggestion',name:'Robert',type:'person',subtypes:[],existingId:null}];
+  t.mock.method(api,'reviewEntity',async(vault,id,revision,scanId,suggestionId,decision,receivedEdits)=>{
+    assert.deepEqual(receivedEdits,edits);
+    order.push('review');assert.deepEqual([vault,id,revision,scanId,suggestionId,decision],['a','note',2,'scan','suggestion','accepted']);
+    stored={...stored,revision:3,blocks:[{id:'b',type:'paragraph',content:[{entityId:'bob'}],checked:false}]};
+    return new Promise(resolve=>{finishReview=()=>resolve({page:stored,scan,entities:[entity]});});
+  });
+  const workspace=new Workspace();
+  try{
+    await workspace.selectVault('a');
+    workspace.updatePage({title:'Updated research'});
+    const busyStates=[];
+    const unsubscribe=workspace.subscribe(()=>busyStates.push(workspace.snapshot().busy));
+    const pending=workspace.reviewEntity('scan','suggestion','accepted',edits);
+    while(!finishReview)await Promise.resolve();
+    assert.equal(workspace.snapshot().reviewing,true);
+    assert.equal(workspace.snapshot().busy,false);
+    workspace.updatePage({title:'Concurrent edit'});
+    assert.equal(workspace.snapshot().page.title,'Updated research','Editing pauses during the atomic review write');
+    await assert.rejects(workspace.reviewEntity('scan','other','rejected'),/Another note operation/);
+    finishReview();
+    assert.deepEqual(await pending,scan);
+    assert.equal(workspace.snapshot().reviewing,false);
+    assert.ok(busyStates.every(value=>value===false),'The editor and panel never unmount for a review');
+    unsubscribe();
+    assert.deepEqual(order,['save','review']);
+    assert.deepEqual(workspace.snapshot().page,stored);
+    assert.deepEqual(workspace.snapshot().entities,[entity]);
+    assert.equal(workspace.snapshot().busy,false);
+    await workspace.openPage('note');
+    assert.deepEqual(workspace.snapshot().page,stored,'Opening the note retains the accepted mention');
+  }finally{workspace.saver.dispose();workspace.titler.dispose();}
+});
+
+test('a failed asynchronous review retains the note and releases the editing lock', async t => {
+  const original={id:'note',vault_id:'a',title:'Research',blocks:[],sourceIds:[],revision:1,updated_at:''};
+  t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false}]);
+  t.mock.method(api,'pages',async()=>[original]);
+  t.mock.method(api,'entities',async()=>[]);
+  t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],favourites:[]}));
+  t.mock.method(api,'page',async()=>original);
+  t.mock.method(api,'reviewEntity',async()=>{throw new Error('Connection lost');});
+  const workspace=new Workspace();
+  try {
+    await workspace.selectVault('a');
+    await assert.rejects(workspace.reviewEntity('scan','suggestion','rejected'),/Connection lost/);
+    assert.deepEqual(workspace.snapshot().page,original);
+    assert.equal(workspace.snapshot().busy,false);
+    assert.equal(workspace.snapshot().reviewing,false);
+    workspace.updatePage({title:'Still editable'});
+    assert.equal(workspace.snapshot().page.title,'Still editable');
+
+  } finally {workspace.saver.dispose();workspace.titler.dispose();}
+});

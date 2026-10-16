@@ -89,7 +89,7 @@ export class Intelligence {
   }
   remove() {this.active?.abort();this.secrets.remove();return {configured:false,expiresAt:null,...this.selection()};}
   purgeExpired() {this.credential();}
-  async generate(input: string, validate=false) {
+  async generate(input: string, validate=false, onRequest?: (promptBytes: number) => void) {
     const credential=this.credential(),selection=this.selection(),preferenceRevision=this.preferenceRevision;
     if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
     if(this.active)throw new HttpError(429,'Another AI request is running. Please wait.');
@@ -99,12 +99,15 @@ export class Intelligence {
     const controller=new AbortController();this.active=controller;
     const timer=setTimeout(()=>controller.abort(),Math.min(45000,Date.parse(credential.expiresAt)-this.clock()));
     try {
+      const prompt=validate?{instructions:'Reply with OK.',input:'Connection test.'}:summaryPrompt(input);
+      const inputText=typeof prompt.input==='string'?prompt.input:prompt.input.flatMap(item=>item.content.map(part=>part.text)).join('');
+      onRequest?.(Buffer.byteLength(prompt.instructions+inputText,'utf8'));
       const response=await this.transport('https://api.openai.com/v1/responses',{
         method:'POST',redirect:'error',signal:controller.signal,
         headers:{'Content-Type':'application/json',Authorization:`Bearer ${credential.key}`},
         body:JSON.stringify({model:selection.model,store:false,max_output_tokens:validate?2048:8192,reasoning:{effort:selection.reasoningEffort},
           tools:[],tool_choice:'none',
-          ...(validate?{instructions:'Reply with OK.',input:'Connection test.'}:summaryPrompt(input))}),
+          ...prompt}),
       });
       if(!response.ok) {
         await response.body?.cancel();

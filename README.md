@@ -191,3 +191,11 @@ Requests use the [OpenAI Responses API](https://developers.openai.com/api/docs/g
 | POST | `/api/pages/:id/summary` | Summarize a saved page with `{revision}` and `X-Vault-Id` |
 
 All intelligence routes require `X-Noema-Request: 1`; writes require `Content-Type: application/json`. Tests use an injected credential store and mock provider, never your Keychain or a billable API key. They cover expiry, replacement/removal, request redaction, fixed destinations, storage controls, concurrency, rate limits, host/origin checks, vault isolation, stale revisions, and locking during a request. A native Keychain save/read/remove round-trip was also verified using a unique synthetic credential and then cleaned up. A live OpenAI connection still needs your real key and **Validate connection** on your Mac.
+
+### AI activity log
+
+Settings → AI activity log shows page summaries and connection tests, backed by the local SQLite `ai_activity` table. Each entry records status, start/finish time, duration, HTTP outcome, model and reasoning effort, the page/vault ID and revision (when available), and prompt size in UTF-8 bytes. The size includes instructions and input text, including the note wrapper; it is not a token count. Prompt text, generated text, credentials, and provider error bodies are never stored in the log.
+
+The backend retains the latest 1,000 entries, preserving running requests until they finish. Requests left running after a server restart become interrupted. Settings loads 50 entries at a time, offers older activity and manual refresh, and links to available source pages. Page titles are resolved from the current page rather than copied into the log; deleted pages retain only their reference. Activity in locked vaults stays hidden until the vault is unlocked.
+
+`GET /api/intelligence/activity` returns `{items, nextCursor}`; pass `?before=<nextCursor>` for the next page. It uses the same local-origin and `X-Noema-Request: 1` protections as other Intelligence endpoints. Authorized action attempts include local failures such as stale revisions, missing credentials, and rate limits; requests rejected by origin/client checks are not logged.

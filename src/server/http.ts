@@ -1,4 +1,5 @@
 import type { Segment } from '../shared/domain.js';
+import { AIActivityLog } from './modules/ai-activity.js';
 import http, { type IncomingMessage } from 'node:http';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -20,12 +21,14 @@ async function readBody(req: IncomingMessage) {
 }
 export function createApp(store: Store, clientRoot: string, intelligence=new Intelligence(keychainFor(store),fetch,()=>Date.now(),intelligencePreferencesFor(store))) {
   const vaults=new Vaults(store),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),organizer=new Organizer(store);
+  const activity=new AIActivityLog(store);
   // Enforce retention on startup, periodically while running, and before scoped API access.
   pages.purgeExpired();
   let cleanup: ReturnType<typeof setInterval> | undefined;
   let keyCleanup: ReturnType<typeof setInterval> | undefined;
   const server = http.createServer(async(req,res)=>{
-    const send=(status:number,data:unknown)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));};
+    let activityId: string | undefined;
+    const send=(status:number,data:unknown)=>{if(activityId){activity.finish(activityId,status<400?'completed':'failed',status);activityId=undefined;}res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));};
     try {
       const url=new URL(req.url || '/', 'http://localhost'),method=req.method || 'GET';
       // The app binds to loopback. Reject DNS-rebinding hosts and cross-origin browser access.
@@ -37,12 +40,18 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
         if(aiRoute && (req.headers['x-noema-request']!=='1'||(['POST','PUT'].includes(method)&&!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))))throw new HttpError(403,'AI requests require the Noema client and JSON');
         const body=['POST','PUT'].includes(method)?await readBody(req):{};
         const parts=url.pathname.split('/').filter(Boolean),[,collection,id,child,childId]=parts;
+        if(method==='POST' && ((collection==='intelligence' && id==='validate' && parts.length===3) || (collection==='pages' && child==='summary' && parts.length===4))) {
+          const header=req.headers['x-vault-id'];
+          if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
+          activityId=activity.start(collection==='pages'?'page_summary':'connection_test',intelligence.selection(),collection==='pages'?(header||'default'):null,collection==='pages'?id!:null);
+        }
         if(collection==='intelligence') {
+          if(parts.length===3 && id==='activity' && method==='GET')return send(200,activity.list(url.searchParams.get('before')));
           if(parts.length===2 && method==='GET')return send(200,intelligence.status());
           if(parts.length===3 && id==='preferences' && method==='PUT')return send(200,intelligence.savePreferences(body));
           if(parts.length===2 && method==='PUT')return send(200,intelligence.save(body));
           if(parts.length===2 && method==='DELETE')return send(200,intelligence.remove());
-          if(parts.length===3 && id==='validate' && method==='POST') {await intelligence.generate('',true);return send(200,{ok:true,...intelligence.selection()});}
+          if(parts.length===3 && id==='validate' && method==='POST') {await intelligence.generate('',true,bytes=>activity.request(activityId!,bytes,null));return send(200,{ok:true,...intelligence.selection()});}
           throw new HttpError(404,'Not found');
         } else if(collection==='vaults') {
           if(parts.length===2 && method==='GET')return send(200,vaults.list());
@@ -81,7 +90,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
                 if(input.length>40000)throw new HttpError(413,'This page exceeds the AI limit of 40,000 characters.');
               }
               if(!input.trim())throw new HttpError(400,'Add some page content first.');
-              const summary=await intelligence.generate(input);
+              const summary=await intelligence.generate(input,false,bytes=>activity.request(activityId!,bytes,page.revision));
               vaults.requireOpen(vault);
               if(pages.get(vault,id).revision!==page.revision)throw new HttpError(409,'The page changed. Generate a fresh summary.');
               return send(200,{summary,revision:page.revision,...intelligence.selection()});

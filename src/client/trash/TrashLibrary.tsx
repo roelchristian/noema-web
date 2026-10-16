@@ -1,3 +1,4 @@
+import { PageIcon } from '../components/PageIcon';
 import { useEffect, useState } from 'react';
 import type { TrashedPage } from '../../shared/domain';
 import { Icon } from '../components/Icon';
@@ -21,7 +22,7 @@ export function TrashLibrary({notes, onRestore, onDelete, onRefresh, onError}: {
     <div className="organization-heading"><div><p className="eyebrow">THIS VAULT</p><h1>Trash</h1><p>Restore notes or delete them permanently. Notes in Trash are automatically deleted after 30 days.</p></div></div>
     {!!notes.length && <input className="organization-search" type="search" aria-label="Search Trash" placeholder="Search deleted notes…" value={query} onChange={event => setQuery(event.target.value)}/>}
     <div className="organization-items">{filtered.map(note => <article className="organization-item" key={note.id}>
-      <div className="organization-item-row trash-row"><Icon name="page"/><div className="trash-note"><h2>{note.title || 'Untitled'}</h2><small>Moved to Trash <time dateTime={note.deleted_at}>{new Date(note.deleted_at).toLocaleDateString()}</time> · Deletes <time dateTime={note.expires_at} title={new Date(note.expires_at).toLocaleString()}>{new Date(note.expires_at).toLocaleDateString()}</time></small></div>
+      <div className="organization-item-row trash-row"><PageIcon icon={note.icon}/><div className="trash-note"><h2>{note.title || 'Untitled'}</h2><small>Moved to Trash <time dateTime={note.deleted_at}>{new Date(note.deleted_at).toLocaleDateString()}</time> · Deletes <time dateTime={note.expires_at} title={new Date(note.expires_at).toLocaleString()}>{new Date(note.expires_at).toLocaleDateString()}</time></small></div>
         <div className="trash-actions"><button className="button small" onClick={() => { void onRestore(note.id).catch(onError); }} aria-label={'Restore ' + (note.title || 'Untitled')}>Restore</button><button className="button small" onClick={() => setTarget(note)} aria-label={'Delete permanently: ' + (note.title || 'Untitled')}>Delete permanently</button></div>
       </div>
     </article>)}{!filtered.length && <div className="organization-empty"><Icon name="trash"/><h2>{query ? 'No matching notes' : 'Trash is empty'}</h2><p>{query ? 'Try another search.' : 'Notes you move to Trash will appear here for 30 days.'}</p></div>}</div>

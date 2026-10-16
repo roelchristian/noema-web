@@ -105,11 +105,11 @@ export class Workspace {
     try { localStorage.setItem('noema-recent/' + vault.id, JSON.stringify(recent)); } catch { /* Keep session history when storage is unavailable. */ }
   }
   showEntities() { if (!this.state.busy) this.patch({view: 'entities'}); }
-  updatePage(patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds'>>) {
+  updatePage(patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon'>>) {
     const current = this.state.page;
     if (!current || this.state.busy || this.state.vault?.locked) return;
     const page = {...current, ...patch}; this.pageCache.set(page.id, page);
-    this.patch({page, pages: this.state.pages.map(p => p.id === page.id ? {...p, title: page.title} : p)});
+    this.patch({page, pages: this.state.pages.map(p => p.id === page.id ? {...p, title: page.title, icon: page.icon} : p)});
     this.titler.observe(page);
     this.saver.enqueue(page);
   }

@@ -51,6 +51,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS ai_activity (
 );
  CREATE INDEX IF NOT EXISTS ai_activity_started ON ai_activity(started_at DESC);`);
 
+if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'icon')) db.exec('ALTER TABLE pages ADD COLUMN icon TEXT');
 // Keep generated content separate from page edits and activity-log retention.
 db.exec(`CREATE TABLE IF NOT EXISTS page_ai_enrichments (
  page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,

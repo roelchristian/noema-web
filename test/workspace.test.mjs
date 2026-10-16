@@ -166,6 +166,31 @@ test('new untitled pages receive a generated title through autosave and update n
   } finally {workspace.titler.dispose();workspace.saver.dispose();}
 });
 
+test('page icon changes update navigation immediately and autosave alongside content', async t => {
+  const original = {id: 'icons', vault_id: 'a', title: 'Icon page', blocks: [], sourceIds: [], revision: 1, icon: null, updated_at: ''};
+  t.mock.method(api, 'vaults', async () => [{id: 'a', name: 'A', locked: false}]);
+  t.mock.method(api, 'pages', async () => [original]);
+  t.mock.method(api, 'entities', async () => []);
+  t.mock.method(api, 'page', async () => original);
+  t.mock.method(api, 'organization', async () => ({collections: [], folders: [], locations: [], favourites: []}));
+  const writes = [];
+  t.mock.method(api, 'savePage', async (_vault, _id, page) => { writes.push(page); return {...page, revision: page.revision + 1}; });
+  const workspace = new Workspace();
+  try {
+    await workspace.selectVault('a');
+    workspace.updatePage({icon: 'compass'});
+    assert.equal(workspace.snapshot().pages[0].icon, 'compass');
+    workspace.updatePage({title: 'Directions'});
+    await workspace.saver.flush();
+    assert.equal(writes.at(-1).icon, 'compass');
+    assert.equal(writes.at(-1).title, 'Directions');
+    workspace.updatePage({icon: null});
+    await workspace.saver.flush();
+    assert.equal(workspace.snapshot().pages[0].icon, null);
+    assert.equal(writes.at(-1).icon, null);
+  } finally { workspace.saver.dispose(); workspace.titler.dispose(); }
+});
+
 test('opening an existing untitled page resumes automatic titling after reload', async t => {
   t.mock.timers.enable({apis:['setTimeout']});
   let stored={id:'existing',vault_id:'a',title:'Untitled',revision:2,blocks:[{id:'body',type:'paragraph',content:[{text:'A detailed plan for the community garden.'}]}],sourceIds:[],updated_at:''};

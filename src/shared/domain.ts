@@ -1,3 +1,4 @@
+import type { PageIconId } from './page-icons.js';
 import type { IntelligencePreferences } from './intelligence.js';
 export const entityTypes = ['person', 'place', 'event', 'creativework', 'organization', 'source'] as const;
 export type EntityType = typeof entityTypes[number];
@@ -10,10 +11,10 @@ export interface TextStyle { bold?: boolean; italic?: boolean; underline?: boole
 export type Segment = TextStyle & ( { text: string; entityId?: never } | { entityId: string; text?: never });
 export interface Block { id: string; type: BlockType; checked: boolean; content: Segment[]; rows?: Segment[][][] }
 export interface Vault { id: string; name: string; locked: boolean; protected: boolean; updated_at: string }
-export interface PageSummary { id: string; title: string; updated_at: string }
+export interface PageSummary { id: string; title: string; icon?: PageIconId | null; updated_at: string }
 export interface TrashedPage extends PageSummary { deleted_at: string; expires_at: string }
 export interface Page extends PageSummary { vault_id: string; blocks: Block[]; sourceIds: string[]; revision: number }
-export interface PageInput { title: string; blocks: Block[]; sourceIds?: string[]; revision?: number }
+export interface PageInput { icon?: PageIconId | null; title: string; blocks: Block[]; sourceIds?: string[]; revision?: number }
 export interface Entity { id: string; vault_id: string; name: string; type: EntityType; description: string; updated_at: string }
 export interface EntityInput { name: string; type: EntityType; description?: string }
 export interface Property { id: string; entity_id: string; name: string; value: string | null; target_id: string | null }

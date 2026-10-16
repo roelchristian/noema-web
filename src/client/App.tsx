@@ -1,3 +1,4 @@
+import { PageIcon } from './components/PageIcon';
 import { PageOrganizationDialog } from './organization/PageOrganizationDialog';
 import { IntelligencePanel } from './intelligence/IntelligencePanel';
 import { ActionMenu } from './components/ActionMenu';
@@ -69,7 +70,7 @@ export function App() {
         const selected = page?.id === p.id && view === 'pages';
         const favourite = organization.favourites.some(item => item.kind === 'page' && item.item_id === p.id);
         return <div key={p.id} className={'sidebar-item-row ' + (selected ? 'is-selected' : '')}>
-          <button className={'page-link ' + (selected ? 'selected' : '')} disabled={disabled} title={p.title || 'Untitled'} onClick={() => run(() => workspace.openPage(p.id))}><span><Icon name="page"/></span><span className="page-link-title">{p.title || 'Untitled'}</span></button>
+          <button className={'page-link ' + (selected ? 'selected' : '')} disabled={disabled} title={p.title || 'Untitled'} onClick={() => run(() => workspace.openPage(p.id))}><span><PageIcon icon={p.icon}/></span><span className="page-link-title">{p.title || 'Untitled'}</span></button>
           <ActionMenu label={'Options for page: ' + (p.title || 'Untitled')} disabled={disabled} actions={[
             {label: 'Open', icon: 'page', onSelect: () => run(() => workspace.openPage(p.id))},
             {label: 'Rename', icon: 'edit', onSelect: () => setRenameTarget(p)},

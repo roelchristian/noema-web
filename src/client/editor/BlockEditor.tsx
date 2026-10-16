@@ -102,7 +102,10 @@ export function BlockEditor(props: Props) {
     if (e.key === 'Backspace' && !el.textContent && blocks.length > 1) { e.preventDefault(); const index = blocks.findIndex(b => b.id === block.id); focusTarget.current = {id: blocks[index > 0 ? index - 1 : index + 1]!.id, start: false}; onChange(blocks.filter(b => b.id !== block.id)); setMenu(null); }
   }
   return <><div id="blocks" ref={root}>{blocks.map(block => <div key={block.id} className={'block ' + block.type}>
-    <button className="block-handle" title="Block options" aria-label="Block options" onClick={e => show(e.currentTarget, [...options.map(o => ({...o, pick: () => convert(block, o.type)})), {title: 'Delete block', icon: '×', pick: () => { setMenu(null); if (blocks.length > 1) onChange(blocks.filter(b => b.id !== block.id)); else update(block.id, {content: []}); }}], 'BLOCK OPTIONS')}>⠿</button>
+    <div className="block-controls" role="group" aria-label="Block controls">
+      <button className="block-add" title="Add block below" aria-label="Add block below" onClick={e => show(e.currentTarget, options.map(option => ({...option, pick: () => { setMenu(null); insert(block.id, option.type); }})), 'ADD BLOCK BELOW')}><Icon name="plus"/></button>
+      <button className="block-handle" title="Block options" aria-label="Block options" onClick={e => show(e.currentTarget, [...options.map(o => ({...o, pick: () => convert(block, o.type)})), {title: 'Delete block', icon: '×', pick: () => { setMenu(null); if (blocks.length > 1) onChange(blocks.filter(b => b.id !== block.id)); else update(block.id, {content: []}); }}], 'BLOCK OPTIONS')}><Icon name="grip"/></button>
+    </div>
     {block.type === 'todo' ? <input type="checkbox" aria-label="Complete task" checked={block.checked} onChange={e => update(block.id, {checked: e.target.checked})}/> : block.type === 'bullet' ? <span className="bullet-marker">•</span> : null}
     <EditableBlock block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={el => { update(block.id, {content: readSegments(el)}); detect(el, block); }} onKeyDown={e => keyDown(e, block)}/>
   </div>)}</div><button id="add-block" onClick={() => insert(blocks.at(-1)?.id)}>+ <span>Add a block</span></button>

@@ -214,3 +214,56 @@ body, main { background: var(--surface); }
 :root[data-mode=dark] .block input:checked:after { color: var(--accent-foreground); }
 :root[data-mode=dark] .dialog-error { color: #f0a5a5; }
 :root[data-mode=dark] dialog::backdrop { background: #0009; }
+
+/* Gutter actions are centered on the first line, independent of block height. */
+.block-controls { position: absolute; right: calc(100% + 4px); top: calc((1lh - 24px) / 2); display: flex; align-items: center; gap: 2px; height: 24px; opacity: 0; }
+.block.quote > .block-controls { top: calc(7px + (1lh - 24px) / 2); }
+.block-controls::after { content: ''; position: absolute; left: 100%; width: 6px; height: 100%; }
+.block:hover > .block-controls, .block:focus-within > .block-controls { opacity: 1; }
+.block-controls > button { position: static; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 24px; padding: 0; border-radius: 4px; color: var(--text-muted); font-size: 14px; line-height: 1; opacity: 1; }
+.block-controls > button .icon { width: 16px; height: 16px; }
+.block-controls > button:hover { color: var(--text); background: var(--surface-hover); }
+@media (hover: none) { .block-controls { opacity: 1; } }
+@media (max-width: 750px) { .page { padding-left: 54px; } }
+
+/* Compact sidebar: one inset, quiet group labels, and an independently scrolling page list. */
+.sidebar { width: 224px; padding: 18px 10px 10px; gap: 0; }
+main { margin-left: 224px; }
+.sidebar .brand { margin: 0 8px 18px; gap: 7px; flex-shrink: 0; }
+.sidebar .brand-mark { width: 28px; height: 28px; }
+.sidebar .brand > span { font-size: 23px; }
+.sidebar .vault-controls { margin: 0 8px 12px; flex-shrink: 0; }
+.sidebar .vault-controls > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.sidebar .vault-controls .select-control { margin-top: 0; }
+.sidebar .vault-controls .select-trigger { margin-left: -6px; width: calc(100% + 12px); min-height: 30px; padding: 5px 6px; font-size: 12px; color: var(--text); }
+.sidebar .vault-actions { margin-top: 2px; }
+.sidebar .vault-actions button { font-size: 10px; padding: 3px 0; }
+.sidebar .sidebar-group + .sidebar-group { margin-top: 14px; padding-top: 0; border-top: 0; }
+.sidebar .workspace-label, .sidebar .section-label { margin: 0 0 5px; padding: 0 8px; font-size: 10px; letter-spacing: .2px; font-weight: 550; text-transform: none; color: var(--text-muted); }
+.sidebar .nav { min-height: 32px; padding: 7px 8px; margin-bottom: 1px; gap: 8px; font-size: 12px; line-height: 18px; }
+.sidebar .nav .icon, .sidebar .page-link .icon { width: 15px; height: 15px; }
+.sidebar .nav kbd { border: 0; font-size: 9px; opacity: .6; }
+.sidebar .nav .count { font-size: 10px; opacity: .7; }
+.sidebar .section-label { margin-top: 14px; min-height: 24px; flex-shrink: 0; }
+.sidebar .section-label button { font-size: 18px; padding: 0 3px; }
+.sidebar #page-list { flex: 1 1 auto; min-height: 64px; overflow-y: auto; scrollbar-width: thin; }
+.sidebar .page-link { align-items: center; gap: 8px; padding: 7px 8px; min-height: 32px; line-height: 18px; }
+.sidebar .page-link > span:first-child { display: flex; flex-shrink: 0; }
+.sidebar .page-link .page-link-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; }
+.sidebar .sidebar-settings { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line); }
+.sidebar .sidebar-settings .nav { border: 0; border-radius: 6px; padding: 7px 8px; }
+:root[data-mode=dark] .sidebar .brand-mark { filter: brightness(0) invert(.9); }
+:root[data-mode=dark] .sidebar .vault-controls .select-trigger:hover, :root[data-mode=dark] .sidebar .vault-controls .select-trigger[aria-expanded=true] { background: var(--surface-hover); }
+@media (min-width: 501px) and (max-width: 750px) { .sidebar { width: 200px; } main { margin-left: 200px; } }
+@media (max-width: 500px) {
+  .sidebar { width: 58px; padding: 16px 6px 8px; }
+  main { margin-left: 58px; }
+  .sidebar .brand { margin: 0 auto 18px; }
+  .sidebar .brand-mark { width: 30px; height: 30px; }
+  .sidebar .vault-controls { margin: 0 0 12px; }
+  .sidebar .vault-controls .select-trigger { margin: 0; width: 100%; padding: 5px 2px; font-size: 9px; }
+  .sidebar .vault-actions button { font-size: 9px; }
+  .sidebar .nav { justify-content: center; padding: 8px; min-height: 34px; }
+  .sidebar .section-label { display: none; }
+  .sidebar .sidebar-settings { margin-top: auto; }
+}

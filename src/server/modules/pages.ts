@@ -1,14 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { blockTypes, type Block, type Page, type PageSummary } from '../../shared/domain.js';
+import { blockTypes, type Block, type Page, type PageSummary, type TrashedPage } from '../../shared/domain.js';
 import { Store } from '../store.js';
 import { HttpError, now, object, required, text } from '../validation.js';
 import { Knowledge } from './knowledge.js';
 type PageRow = Omit<Page, 'blocks' | 'sourceIds'> & {blocks: string};
+export const trashRetentionMs = 30 * 24 * 60 * 60 * 1000;
 export class Pages {
-  constructor(private store: Store, private knowledge: Knowledge) {}
-  list(vault: string) { return this.store.all<PageSummary>('SELECT id,title,updated_at FROM pages WHERE vault_id=? ORDER BY updated_at DESC',vault); }
+  constructor(private store: Store, private knowledge: Knowledge, private clock: () => Date = () => new Date()) {}
+  list(vault: string) { return this.store.all<PageSummary>('SELECT id,title,updated_at FROM pages WHERE vault_id=? AND deleted_at IS NULL ORDER BY updated_at DESC',vault); }
   get(vault: string, id: string): Page {
-    const row=this.store.get<PageRow>('SELECT * FROM pages WHERE id=? AND vault_id=?',id,vault);
+    const row=this.store.get<PageRow>('SELECT * FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',id,vault);
     if (!row) throw new HttpError(404,'Page not found');
     return {...row,blocks:JSON.parse(row.blocks) as Block[],sourceIds:this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id)};
   }
@@ -47,5 +48,32 @@ export class Pages {
     });
     return this.get(vault,id);
   }
-  delete(vault: string, id: string) { this.get(vault,id);this.store.run('DELETE FROM pages WHERE id=? AND vault_id=?',id,vault);return {ok:true}; }
+  delete(vault: string, id: string) {
+    this.get(vault,id);
+    this.store.run('UPDATE pages SET deleted_at=?,revision=revision+1 WHERE id=? AND vault_id=? AND deleted_at IS NULL',this.clock().toISOString(),id,vault);
+    return {ok:true};
+  }
+  purgeExpired(vault?: string) {
+    const cutoff = new Date(this.clock().getTime() - trashRetentionMs).toISOString();
+    return this.store.run('DELETE FROM pages WHERE deleted_at IS NOT NULL AND julianday(deleted_at)<=julianday(?)' + (vault ? ' AND vault_id=?' : ''),cutoff,...(vault ? [vault] : []));
+  }
+  trash(vault: string): TrashedPage[] {
+    this.purgeExpired(vault);
+    return this.store.all<PageSummary & {deleted_at: string}>('SELECT id,title,updated_at,deleted_at FROM pages WHERE vault_id=? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC,id',vault).map(page => ({...page,expires_at:new Date(Date.parse(page.deleted_at) + trashRetentionMs).toISOString()}));
+  }
+  private trashed(vault: string, id: string) {
+    this.purgeExpired(vault);
+    const row = this.store.get('SELECT id FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NOT NULL',id,vault);
+    if (!row) throw new HttpError(404,'Note not found in Trash');
+  }
+  restore(vault: string, id: string) {
+    this.trashed(vault,id);
+    this.store.run('UPDATE pages SET deleted_at=NULL,updated_at=?,revision=revision+1 WHERE id=? AND vault_id=?',this.clock().toISOString(),id,vault);
+    return this.get(vault,id);
+  }
+  permanentlyDelete(vault: string, id: string) {
+    this.trashed(vault,id);
+    this.store.run('DELETE FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NOT NULL',id,vault);
+    return {ok:true};
+  }
 }

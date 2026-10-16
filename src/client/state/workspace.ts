@@ -1,13 +1,13 @@
 import { api } from '../api';
-import type { Entity, EntityInput, Page, PageSummary, Vault, Organization, OrganizationContext, RecentItem, ItemKind } from '../../shared/domain';
+import type { Entity, EntityInput, Page, PageSummary, Vault, Organization, OrganizationContext, RecentItem, ItemKind, TrashedPage } from '../../shared/domain';
 import { PageSaver, type SaveStatus } from './page-saver';
 export interface WorkspaceState {
-  vaults: Vault[]; vault: Vault | null; pages: PageSummary[]; entities: Entity[];
+  vaults: Vault[]; vault: Vault | null; trash: TrashedPage[]; pages: PageSummary[]; entities: Entity[];
   organization: Organization; organizationContext: OrganizationContext; recent: RecentItem[];
-  page: Page | null; view: 'pages' | 'entities' | 'organization' | 'favourites' | 'recent'; busy: boolean; error: string | null; saveStatus: SaveStatus;
+  page: Page | null; view: 'pages' | 'entities' | 'organization' | 'favourites' | 'recent' | 'trash'; busy: boolean; error: string | null; saveStatus: SaveStatus;
 }
 export class Workspace {
-  private state: WorkspaceState = {vaults: [], vault: null, pages: [], entities: [], organization: {collections: [], folders: [], locations: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'pages', busy: true, error: null, saveStatus: 'saved'};
+  private state: WorkspaceState = {vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'pages', busy: true, error: null, saveStatus: 'saved'};
   private listeners = new Set<() => void>();
   private pageCache = new Map<string, Page>();
   private navigation = false;
@@ -45,7 +45,7 @@ export class Workspace {
       const vaults = await api.vaults(), vault = vaults.find(v => v.id === id);
       if (!vault) throw new Error('Vault not found');
       ++this.loadSequence;
-      this.pageCache.clear(); this.patch({vaults, vault, pages: [], entities: [], organization: {collections: [], folders: [], locations: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'pages', error: null});
+      this.pageCache.clear(); this.patch({vaults, vault, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'pages', error: null});
       try { localStorage.setItem('noema-vault', id); } catch { /* The app can work without browser storage. */ }
       if (vault.locked) return;
       const [pages, entities, organization] = await Promise.all([api.pages(id), api.entities(id), api.organization(id)]);
@@ -100,12 +100,46 @@ export class Workspace {
       this.pageCache.set(page.id, page); this.patch({page, pages: [page, ...this.state.pages], view: 'pages'}); this.recordRecent('page', page.id);
     });
   }
-  async deletePage() {
+  refreshTrash = async () => {
+    const vault = this.state.vault, sequence = this.loadSequence;
+    if (!vault || vault.locked) return;
+    const trash = await api.trash(vault.id);
+    if (sequence === this.loadSequence && this.state.view === 'trash') this.patch({trash});
+  };
+  async showTrash() {
     await this.navigate(async () => {
-      const {page, vault} = this.state; if (!page || !vault) return;
-      await api.deletePage(vault.id, page.id); this.pageCache.delete(page.id);
-      const pages = this.state.pages.filter(p => p.id !== page.id); this.patch({pages, page: null});
-      if (pages[0]) await this.loadPage(pages[0].id);
+      const vault = this.state.vault; if (!vault || vault.locked) return;
+      this.patch({trash: await api.trash(vault.id), view: 'trash'});
+    });
+  }
+  async deletePage(id = this.state.page?.id) {
+    await this.navigate(async () => {
+      const {vault, page, organization} = this.state; if (!id || !vault) return;
+      await api.deletePage(vault.id, id); this.pageCache.delete(id);
+      const pages = this.state.pages.filter(p => p.id !== id);
+      this.patch({pages, page: page?.id === id ? null : page, organization: {...organization,
+        locations: organization.locations.filter(item => item.kind !== 'page' || item.item_id !== id),
+        favourites: organization.favourites.filter(item => item.kind !== 'page' || item.item_id !== id),
+      }});
+      if (page?.id === id && pages[0]) await this.loadPage(pages[0].id);
+    });
+  }
+  async restorePage(id: string) {
+    await this.navigate(async () => {
+      const vault = this.state.vault; if (!vault || vault.locked) return;
+      const restored = await api.restorePage(vault.id, id);
+      this.pageCache.set(id, restored);
+      this.patch({trash: this.state.trash.filter(note => note.id !== id), pages: [restored, ...this.state.pages.filter(note => note.id !== id)]});
+      await this.loadPage(id);
+      try { this.setOrganization(await api.organization(vault.id)); } catch (error) { this.report(error); }
+    });
+  }
+  async permanentlyDeletePage(id: string) {
+    await this.navigate(async () => {
+      const vault = this.state.vault; if (!vault || vault.locked) return;
+      await api.permanentlyDeletePage(vault.id, id);
+      this.patch({trash: this.state.trash.filter(note => note.id !== id)});
+      this.pageCache.delete(id);
     });
   }
   async createEntity(input: EntityInput) {

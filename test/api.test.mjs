@@ -91,7 +91,7 @@ await test('SQLite API: pages, references, relationships, validation, and restar
  assert.equal((await scoped('pages/'+note.id)).title,note.title);
  await request('pages/'+note.id,'GET',undefined,404);
  await request('vaults/'+vault.id+'/lock','POST',{passphrase:'research passphrase'});
- for(const route of ['organization','pages','entities','pages/'+note.id,'entities/'+source.id])await scoped(route,'GET',undefined,423);
+ for(const route of ['organization','trash','pages','entities','pages/'+note.id,'entities/'+source.id])await scoped(route,'GET',undefined,423);
  await scoped('pages','POST',{title:'Locked write'},423);
  await scoped('organization/collections','POST',{name:'Locked collection'},423);
  await request('vaults/'+vault.id+'/unlock','POST',{passphrase:'wrong'},403);
@@ -124,6 +124,20 @@ await test('SQLite API: pages, references, relationships, validation, and restar
  const property=book.properties.find(p=>p.name==='author');await request('entities/'+work.id+'/properties/'+property.id,'DELETE');
  assert.equal((await request('entities/'+person.id)).incomingProperties.length,0);
  await request('pages/'+page.id,'DELETE');await request('pages/'+page.id,'GET',undefined,404);
+ const trashed = await request('trash');assert.ok(trashed.some(p=>p.id===page.id));
+ assert.ok(!(await request('pages')).some(p=>p.id===page.id));
+ await scoped('trash/'+page.id+'/restore','POST',{},404);
+ await scoped('trash/'+page.id,'DELETE',undefined,404);
+ const recovered = await request('trash/'+page.id+'/restore','POST',{});
+ assert.deepEqual(recovered.blocks,blocks);
+ assert.ok((await request('organization')).favourites.some(f=>f.item_id===page.id));
+ await request('trash/'+page.id,'DELETE',undefined,404); // Active notes cannot be permanently deleted.
+ await request('pages/'+page.id,'DELETE');
+ await stop();base=await start();
+ assert.ok((await request('trash')).some(p=>p.id===page.id));
+ await request('trash/'+page.id,'DELETE');
+ assert.ok(!(await request('trash')).some(p=>p.id===page.id));
+ await request('trash/'+page.id+'/restore','POST',{},404);
  const asset=await fetch(base+'/');assert.equal(asset.status,200);assert.match(await asset.text(),/Noema/i);
  } finally {if(child&&child.exitCode===null)await stop();await rm(dir,{recursive:true,force:true});}
 });

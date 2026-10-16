@@ -43,6 +43,9 @@ db.exec(`
  CREATE TRIGGER IF NOT EXISTS entity_organization_cleanup AFTER DELETE ON entities BEGIN DELETE FROM item_locations WHERE kind='entity' AND item_id=OLD.id; DELETE FROM favourites WHERE kind='entity' AND item_id=OLD.id; END;
 `);
 
+if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'deleted_at')) db.exec('ALTER TABLE pages ADD COLUMN deleted_at TEXT');
+db.exec('CREATE INDEX IF NOT EXISTS pages_deleted_at ON pages(deleted_at)');
+
 if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'revision')) db.exec('ALTER TABLE pages ADD COLUMN revision INTEGER NOT NULL DEFAULT 1');
 if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
  db.exec('BEGIN');

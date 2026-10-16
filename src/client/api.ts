@@ -1,4 +1,4 @@
-import type { Organization, Entity, EntityDetail, EntityInput, PropertyInput, RelationshipInput, Page, PageInput, PageSummary, Vault } from '../shared/domain';
+import type { Organization, Entity, EntityDetail, EntityInput, PropertyInput, RelationshipInput, Page, PageInput, PageSummary, Vault, TrashedPage } from '../shared/domain';
 export class ApiError extends Error { constructor(public status: number,message: string){super(message);} }
 export async function request<T>(route: string, method='GET', body?: unknown, vaultId?: string): Promise<T> {
   const response=await fetch('/api/'+route,{method,headers:{...(body!==undefined?{'Content-Type':'application/json'}:{}),...(vaultId?{'X-Vault-Id':vaultId}:{})},body:body!==undefined?JSON.stringify(body):undefined});
@@ -18,6 +18,9 @@ export const api={
   createPage:(vault:string)=>request<Page>('pages','POST',{title:'Untitled'},vault),
   savePage:(vault:string,id:string,page:PageInput)=>request<Page>(`pages/${id}`,'PUT',page,vault),
   deletePage:(vault:string,id:string)=>request<{ok:true}>(`pages/${id}`,'DELETE',undefined,vault),
+  trash:(vault:string)=>request<TrashedPage[]>('trash','GET',undefined,vault),
+  restorePage:(vault:string,id:string)=>request<Page>(`trash/${id}/restore`,'POST',{},vault),
+  permanentlyDeletePage:(vault:string,id:string)=>request<{ok:true}>(`trash/${id}`,'DELETE',undefined,vault),
   entities:(vault:string)=>request<Entity[]>('entities','GET',undefined,vault),
   entity:(vault:string,id:string)=>request<EntityDetail>(`entities/${id}`,'GET',undefined,vault),
   createEntity:(vault:string,input:EntityInput)=>request<EntityDetail>('entities','POST',input,vault),

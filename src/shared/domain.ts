@@ -9,6 +9,7 @@ export type Segment = { text: string; entityId?: never } | { entityId: string; t
 export interface Block { id: string; type: BlockType; checked: boolean; content: Segment[] }
 export interface Vault { id: string; name: string; locked: boolean; protected: boolean; updated_at: string }
 export interface PageSummary { id: string; title: string; updated_at: string }
+export interface TrashedPage extends PageSummary { deleted_at: string; expires_at: string }
 export interface Page extends PageSummary { vault_id: string; blocks: Block[]; sourceIds: string[]; revision: number }
 export interface PageInput { title: string; blocks: Block[]; sourceIds?: string[]; revision?: number }
 export interface Entity { id: string; vault_id: string; name: string; type: EntityType; description: string; updated_at: string }

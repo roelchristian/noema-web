@@ -9,8 +9,8 @@ export class Organizer {
     return {
       collections: this.store.all('SELECT id,name FROM collections WHERE vault_id=? ORDER BY name,id', vault),
       folders: this.store.all('SELECT id,name,collection_id,parent_id FROM folders WHERE vault_id=? ORDER BY name,id', vault),
-      locations: this.store.all('SELECT kind,item_id,collection_id,folder_id FROM item_locations WHERE vault_id=?', vault),
-      favourites: this.store.all('SELECT kind,item_id FROM favourites WHERE vault_id=?', vault),
+      locations: this.store.all(`SELECT kind,item_id,collection_id,folder_id FROM item_locations WHERE vault_id=? AND (kind='entity' OR EXISTS (SELECT 1 FROM pages WHERE pages.id=item_locations.item_id AND pages.vault_id=item_locations.vault_id AND pages.deleted_at IS NULL))`, vault),
+      favourites: this.store.all(`SELECT kind,item_id FROM favourites WHERE vault_id=? AND (kind='entity' OR EXISTS (SELECT 1 FROM pages WHERE pages.id=favourites.item_id AND pages.vault_id=favourites.vault_id AND pages.deleted_at IS NULL))`, vault),
     };
   }
   private collection(vault: string, id: string) {
@@ -60,7 +60,7 @@ export class Organizer {
     const kind = body.kind;
     if (kind !== 'page' && kind !== 'entity') throw new HttpError(400, 'Invalid item kind');
     const id = required(body.item_id);
-    if (!this.store.get(`SELECT id FROM ${kind === 'page' ? 'pages' : 'entities'} WHERE id=? AND vault_id=?`, id, vault)) throw new HttpError(404, 'Item not found');
+    if (!this.store.get(`SELECT id FROM ${kind === 'page' ? 'pages' : 'entities'} WHERE id=? AND vault_id=?${kind === 'page' ? ' AND deleted_at IS NULL' : ''}`, id, vault)) throw new HttpError(404, 'Item not found');
     return {kind, id};
   }
   locate(vault: string, body: Record<string, unknown>) {

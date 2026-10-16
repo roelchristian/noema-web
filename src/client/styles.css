@@ -269,3 +269,10 @@ main { margin-left: 224px; }
 }
 
 .page > #page-title { margin-bottom: 24px; }
+
+.trash-note { flex: 1; min-width: 0; }
+.trash-note h2 { font-size: 14px; font-weight: 550; margin: 0 0 6px; overflow-wrap: anywhere; color: var(--text); }
+.trash-note small { color: var(--text-muted); font-size: 11px; line-height: 1.7; }
+.trash-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.trash-library .organization-heading p { line-height: 1.8; max-width: 540px; }
+@media (max-width: 800px) { .trash-row { flex-wrap: wrap; } .trash-actions { width: 100%; margin-left: 33px; flex-wrap: wrap; } }

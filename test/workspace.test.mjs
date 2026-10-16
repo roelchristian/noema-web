@@ -44,3 +44,49 @@ test('recent history persists per vault, deduplicates items and clears when lock
     else delete globalThis.localStorage;
   }
 });
+
+
+test('moving to Trash flushes pending edits and restoring opens a fresh page', async t => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', {configurable: true, value: {getItem: () => null, setItem: () => {}}});
+  const original = {id: 'note', vault_id: 'a', title: 'Original', blocks: [], sourceIds: [], revision: 1, updated_at: ''};
+  const org = {collections: [], folders: [], locations: [{kind: 'page', item_id: 'note', collection_id: '', folder_id: 'desk'}], favourites: [{kind: 'page', item_id: 'note'}]};
+  const calls = [];
+  let stored = {...original};
+  t.mock.method(api, 'vaults', async () => [{id: 'a', name: 'A', locked: false}]);
+  t.mock.method(api, 'pages', async () => [original]);
+  t.mock.method(api, 'entities', async () => []);
+  t.mock.method(api, 'organization', async () => org);
+  t.mock.method(api, 'page', async () => stored);
+  t.mock.method(api, 'savePage', async (_vault, _id, page) => { calls.push('save'); stored = {...page, revision: 2}; return stored; });
+  t.mock.method(api, 'deletePage', async () => { calls.push('trash'); return {ok: true}; });
+  t.mock.method(api, 'trash', async () => [{...stored, deleted_at: '2026-01-01', expires_at: '2026-01-31'}]);
+  t.mock.method(api, 'restorePage', async () => ({...stored, revision: 4}));
+  t.mock.method(api, 'permanentlyDeletePage', async () => ({ok: true}));
+  const workspace = new Workspace();
+  try {
+    await workspace.selectVault('a');
+    workspace.updatePage({title: 'Unsaved changes'});
+    await workspace.deletePage();
+    assert.deepEqual(calls, ['save', 'trash']);
+    assert.equal(workspace.snapshot().page, null);
+    assert.deepEqual(workspace.snapshot().pages, []);
+    assert.deepEqual(workspace.snapshot().organization.favourites, []);
+    assert.deepEqual(workspace.snapshot().organization.locations, []);
+    await workspace.showTrash();
+    assert.equal(workspace.snapshot().view, 'trash');
+    assert.equal(workspace.snapshot().trash[0].title, 'Unsaved changes');
+    await workspace.restorePage('note');
+    assert.equal(workspace.snapshot().view, 'pages');
+    assert.equal(workspace.snapshot().page.title, 'Unsaved changes');
+    assert.equal(workspace.snapshot().page.revision, 4);
+    assert.equal(workspace.snapshot().organization.favourites[0].item_id, 'note');
+    assert.deepEqual(workspace.snapshot().trash, []);
+    await workspace.deletePage(); await workspace.showTrash();
+    await workspace.permanentlyDeletePage('note');
+    assert.deepEqual(workspace.snapshot().trash, []);
+  } finally {
+    workspace.saver.dispose();
+    if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor); else delete globalThis.localStorage;
+  }
+});

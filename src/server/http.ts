@@ -18,7 +18,10 @@ async function readBody(req: IncomingMessage) {
 }
 export function createApp(store: Store, clientRoot: string) {
   const vaults=new Vaults(store),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),organizer=new Organizer(store);
-  return http.createServer(async(req,res)=>{
+  // Enforce retention on startup, periodically while running, and before scoped API access.
+  pages.purgeExpired();
+  let cleanup: ReturnType<typeof setInterval> | undefined;
+  const server = http.createServer(async(req,res)=>{
     const send=(status:number,data:unknown)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));};
     try {
       const url=new URL(req.url || '/', 'http://localhost'),method=req.method || 'GET';
@@ -37,6 +40,12 @@ export function createApp(store: Store, clientRoot: string) {
           const header=req.headers['x-vault-id'];
           if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
           const vault=vaults.requireOpen(header || 'default');
+          pages.purgeExpired(vault);
+          if(collection==='trash') {
+            if(parts.length===2 && method==='GET')return send(200,pages.trash(vault));
+            if(id && parts.length===4 && child==='restore' && method==='POST')return send(200,pages.restore(vault,id));
+            if(id && parts.length===3 && method==='DELETE')return send(200,pages.permanentlyDelete(vault,id));
+          }
           if(collection==='organization') {
             if(parts.length===2 && method==='GET')return send(200,organizer.list(vault));
             if((id==='collections'||id==='folders') && (parts.length===3 || parts.length===4)) {
@@ -86,4 +95,10 @@ export function createApp(store: Store, clientRoot: string) {
       console.error(error);send(500,{error:'An unexpected error occurred'});
     }
   });
+  server.on('listening', () => {
+    cleanup = setInterval(() => { try { pages.purgeExpired(); } catch (error) { console.error('Trash cleanup failed',error); } },60 * 60 * 1000);
+    cleanup.unref();
+  });
+  server.on('close', () => clearInterval(cleanup));
+  return server;
 }

@@ -1,4 +1,5 @@
 import type { Segment } from '../shared/domain.js';
+import { AIEnrichments } from './modules/ai-enrichments.js';
 import { AIActivityLog } from './modules/ai-activity.js';
 import http, { type IncomingMessage } from 'node:http';
 import { readFileSync } from 'node:fs';
@@ -21,7 +22,7 @@ async function readBody(req: IncomingMessage) {
 }
 export function createApp(store: Store, clientRoot: string, intelligence=new Intelligence(keychainFor(store),fetch,()=>Date.now(),intelligencePreferencesFor(store))) {
   const vaults=new Vaults(store),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),organizer=new Organizer(store);
-  const activity=new AIActivityLog(store);
+  const activity=new AIActivityLog(store),enrichments=new AIEnrichments(store,pages);
   // Enforce retention on startup, periodically while running, and before scoped API access.
   pages.purgeExpired();
   let cleanup: ReturnType<typeof setInterval> | undefined;
@@ -80,6 +81,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             if(parts.length===3 && method==='PUT' && id==='favourites')return send(200,organizer.favourite(vault,body));
           }
           if(collection==='pages') {
+            if(id && parts.length===4 && child==='enrichments' && method==='GET')return send(200,enrichments.list(vault,id));
             if(id && parts.length===4 && (child==='summary'||child==='title') && method==='POST') {
               const page=pages.get(vault,id),isTitle=child==='title';
               if(isTitle && page.title.trim() && page.title.trim()!=='Untitled')throw new HttpError(409,'This page already has a title.');
@@ -97,7 +99,10 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               const summary=isTitle?await intelligence.generateTitle(input,onRequest):await intelligence.generate(input,false,onRequest);
               vaults.requireOpen(vault);
               if(pages.get(vault,id).revision!==page.revision)throw new HttpError(409,isTitle?'The page changed. Generate a fresh title.':'The page changed. Generate a fresh summary.');
-              return send(200,isTitle?{title:summary,revision:page.revision,...intelligence.titleSelection()}:{summary,revision:page.revision,...intelligence.selection()});
+              const selection=isTitle?intelligence.titleSelection():intelligence.selection();
+              const data=isTitle?{title:summary}:{summary};
+              enrichments.save(vault,id,isTitle?'title':'summary',data,page.revision,selection);
+              return send(200,{...data,revision:page.revision,...selection});
             }
             if(parts.length===2 && method==='GET')return send(200,pages.list(vault));
             if(parts.length===2 && method==='POST')return send(201,pages.create(vault,body));

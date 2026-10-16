@@ -51,6 +51,14 @@ db.exec(`CREATE TABLE IF NOT EXISTS ai_activity (
 );
  CREATE INDEX IF NOT EXISTS ai_activity_started ON ai_activity(started_at DESC);`);
 
+// Keep generated content separate from page edits and activity-log retention.
+db.exec(`CREATE TABLE IF NOT EXISTS page_ai_enrichments (
+ page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+ kind TEXT NOT NULL, data TEXT NOT NULL, revision INTEGER NOT NULL,
+ model TEXT NOT NULL, reasoning_effort TEXT NOT NULL, updated_at TEXT NOT NULL,
+ PRIMARY KEY(page_id,kind)
+);`);
+
 if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'deleted_at')) db.exec('ALTER TABLE pages ADD COLUMN deleted_at TEXT');
 db.exec('CREATE INDEX IF NOT EXISTS pages_deleted_at ON pages(deleted_at)');
 

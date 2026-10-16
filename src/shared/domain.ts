@@ -35,6 +35,9 @@ export interface OrganizationContext { collection: string; folder: string }
 
 export interface IntelligenceStatus extends IntelligencePreferences { configured: boolean; expiresAt: string | null }
 
+export interface AIEnrichment extends IntelligencePreferences {
+  kind: string; data: Record<string, unknown>; revision: number; updated_at: string;
+}
 export interface AISummary extends IntelligencePreferences { summary: string; revision: number }
 
 export function blockSegments(block: Block): Segment[] { return block.type === 'table' ? (block.rows ?? []).flat(2) : block.content; }

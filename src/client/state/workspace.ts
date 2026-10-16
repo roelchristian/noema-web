@@ -79,6 +79,7 @@ export class Workspace {
     const vault = this.state.vault!;
     const page = this.pageCache.get(id) || await api.page(vault.id, id);
     this.pageCache.set(id, page); this.patch({page, view: 'pages'}); this.recordRecent('page', id);
+    this.titler.register(page); this.titler.observe(page, true);
   }
   async openPage(id: string) { await this.navigate(() => this.loadPage(id)); }
   async showPages() { if (this.state.pages.length) await this.openPage(this.state.page?.id || this.state.pages[0]!.id); else await this.newPage(); }

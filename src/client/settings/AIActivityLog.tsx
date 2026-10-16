@@ -32,7 +32,7 @@ export function AIActivityLog({onOpenPage}: {onOpenPage: (vaultId: string, pageI
     {busy&&<p role="status">Loading activity…</p>}
     {!busy&&!data.items.length&&!error&&<p role="status">No AI activity yet. Summaries and connection tests will appear here.</p>}
     <ol className="ai-activity-list">{data.items.map(item=><li key={item.id}>
-      <div className="ai-activity-heading"><strong>{item.action==='page_summary'?'Page summary':'Connection test'}</strong><span className={'ai-activity-status '+item.status}>{item.status}</span></div>
+      <div className="ai-activity-heading"><strong>{item.action==='page_summary'?'Page summary':item.action==='page_title'?'Page title':'Connection test'}</strong><span className={'ai-activity-status '+item.status}>{item.status}</span></div>
       <time dateTime={item.startedAt}>{new Date(item.startedAt).toLocaleString()}</time>
       <div className="ai-activity-source">{item.objectId?<>
         {item.available?<button className="ai-activity-link" onClick={()=>void open(item)}>{item.objectTitle||'Untitled'}</button>:<span>{item.objectTitle||'Unavailable page'}</span>}

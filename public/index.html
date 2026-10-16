@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Noema · Local knowledge workspace</title>
+  <link rel="stylesheet" href="/style.css"><script src="/app.js" type="module"></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/">n<span>noema</span><small>LOCAL</small></a>
+    <div class="workspace-label">YOUR WORKSPACE</div>
+    <button id="pages-nav" class="nav active">▤ <span>Pages</span><kbd>P</kbd></button>
+    <button id="entities-nav" class="nav">◇ <span>Knowledge entities</span><span id="entity-count" class="count"></span></button>
+    <div class="section-label">PAGES <button id="new-page" title="New page" aria-label="New page">+</button></div>
+    <nav id="page-list"></nav>
+    <div class="sidebar-footer"><span class="status-dot"></span> Local workspace <small>Stored in SQLite on this computer</small></div>
+  </aside>
+  <main>
+    <header class="topbar"><div id="breadcrumb">Workspace / Pages</div><div class="top-actions"><span id="save-status" role="status">All changes saved</span><button id="new-entity" class="button small">+ New entity</button></div></header>
+    <div id="content"></div>
+  </main>
+  <aside id="entity-panel" class="entity-panel" hidden></aside>
+  <div id="command-menu" class="command-menu" hidden></div>
+  <dialog id="create-dialog"><form id="create-form"><div class="dialog-eyebrow">KNOWLEDGE ENTITY</div><h2>Create an entity</h2><p>A reusable object you can reference across your pages.</p><label>Name<input name="name" required maxlength="200" placeholder="e.g. Ursula K. Le Guin" autocomplete="off"></label><label>Entity type<select name="type"><option value="person">Person</option><option value="place">Place</option><option value="event">Event</option><option value="creativework">Creative work</option><option value="organization">Organization</option></select></label><div class="dialog-actions"><button type="button" id="cancel-create" class="button">Cancel</button><button class="button primary" type="submit">Create entity</button></div></form></dialog>
+  <div id="toast" role="alert" hidden></div>
+</body>
+</html>

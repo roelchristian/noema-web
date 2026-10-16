@@ -1,7 +1,8 @@
+let serial = 0;
+
 /** Keep native selects as the form/data source while presenting a consistent menu. */
 export function enhanceDropdowns(host: HTMLElement) {
   const controls = new Map<HTMLSelectElement, { sync: () => void; destroy: () => void }>();
-  let serial = 0;
 
   function enhance(select: HTMLSelectElement) {
     if (controls.has(select) || select.multiple || select.size > 1) return;
@@ -41,7 +42,7 @@ export function enhanceDropdowns(host: HTMLElement) {
     const available = (option: HTMLOptionElement) => !option.disabled && !option.hidden && !(option.parentElement instanceof HTMLOptGroupElement && option.parentElement.disabled);
     function sync() {
       value.textContent = select.selectedOptions[0]?.textContent || 'Choose an option…';
-      trigger.disabled = select.disabled;
+      trigger.disabled = select.matches(':disabled');
       trigger.setAttribute('aria-required', String(select.required));
       const label = select.getAttribute('aria-label') || Array.from(select.labels || []).map(label => Array.from(label.childNodes).filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent).join('').trim()).join(' ') || select.name || 'Choose an option';
       trigger.setAttribute('aria-label', label);
@@ -177,5 +178,8 @@ export function enhanceDropdowns(host: HTMLElement) {
     }
   });
   observer.observe(host, { subtree: true, childList: true, attributes: true, attributeFilter: ['disabled', 'hidden', 'selected', 'required', 'label'] });
-  return () => { observer.disconnect(); controls.forEach(control => control.destroy()); controls.clear(); };
+  return {
+    refresh() { controls.forEach(control => control.sync()); },
+    destroy() { observer.disconnect(); controls.forEach(control => control.destroy()); controls.clear(); },
+  };
 }

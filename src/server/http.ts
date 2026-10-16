@@ -4,6 +4,7 @@ import path from 'node:path';
 import { Store } from './store.js';
 import { Vaults } from './modules/vaults.js';
 import { Knowledge } from './modules/knowledge.js';
+import { Organizer } from './modules/organization.js';
 import { Pages } from './modules/pages.js';
 import { HttpError, object } from './validation.js';
 async function readBody(req: IncomingMessage) {
@@ -16,7 +17,7 @@ async function readBody(req: IncomingMessage) {
   catch(error) { if(error instanceof HttpError)throw error;throw new HttpError(400,'Invalid JSON'); }
 }
 export function createApp(store: Store, clientRoot: string) {
-  const vaults=new Vaults(store),knowledge=new Knowledge(store),pages=new Pages(store,knowledge);
+  const vaults=new Vaults(store),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),organizer=new Organizer(store);
   return http.createServer(async(req,res)=>{
     const send=(status:number,data:unknown)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));};
     try {
@@ -36,6 +37,16 @@ export function createApp(store: Store, clientRoot: string) {
           const header=req.headers['x-vault-id'];
           if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
           const vault=vaults.requireOpen(header || 'default');
+          if(collection==='organization') {
+            if(parts.length===2 && method==='GET')return send(200,organizer.list(vault));
+            if((id==='collections'||id==='folders') && (parts.length===3 || parts.length===4)) {
+              if(method==='POST' && !child)return send(201,id==='collections'?organizer.saveCollection(vault,body):organizer.saveFolder(vault,body));
+              if(method==='PUT' && child)return send(200,id==='collections'?organizer.saveCollection(vault,body,child):organizer.saveFolder(vault,body,child));
+              if(method==='DELETE' && child)return send(200,organizer.remove(vault,id,child));
+            }
+            if(parts.length===3 && method==='PUT' && id==='locations')return send(200,organizer.locate(vault,body));
+            if(parts.length===3 && method==='PUT' && id==='favourites')return send(200,organizer.favourite(vault,body));
+          }
           if(collection==='pages') {
             if(parts.length===2 && method==='GET')return send(200,pages.list(vault));
             if(parts.length===2 && method==='POST')return send(201,pages.create(vault,body));

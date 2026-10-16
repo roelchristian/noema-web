@@ -1,3 +1,4 @@
+import { Select } from '../components/Select';
 import { useState, type FormEvent } from 'react';
 import { entityLabels, entityTypes, type EntityInput, type EntityType } from '../../shared/domain';
 import { Modal } from '../components/Modal';
@@ -13,7 +14,7 @@ export function CreateEntityDialog({initial, onSubmit, onClose}: {initial: Creat
   return <Modal onClose={() => { if (!busy) onClose(); }} titleId="create-dialog-title"><form onSubmit={submit}>
     <div className="dialog-eyebrow">KNOWLEDGE ENTITY</div><h2 id="create-dialog-title">Create {initial.source ? 'a source' : 'an entity'}</h2><p>A reusable object you can reference across your vault’s pages.</p>
     <label>Name<input autoFocus required maxLength={200} value={name} onChange={e => setName(e.target.value)} disabled={busy} placeholder="e.g. Ursula K. Le Guin" autoComplete="off"/></label>
-    <label>Entity type<select value={type} onChange={e => setType(e.target.value as EntityType)} disabled={initial.source || busy}>{entityTypes.map(t => <option key={t} value={t}>{entityLabels[t]}</option>)}</select></label>
+    <label>Entity type<Select value={type} onChange={e => setType(e.target.value as EntityType)} disabled={initial.source || busy}>{entityTypes.map(t => <option key={t} value={t}>{entityLabels[t]}</option>)}</Select></label>
     {error && <p className="dialog-error" role="alert">{error}</p>}
     <div className="dialog-actions"><button type="button" className="button" onClick={onClose} disabled={busy}>Cancel</button><button className="button primary" disabled={busy}>Create {initial.source ? 'source' : 'entity'}</button></div>
   </form></Modal>;

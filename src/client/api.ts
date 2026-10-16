@@ -1,4 +1,4 @@
-import type { Entity, EntityDetail, EntityInput, PropertyInput, RelationshipInput, Page, PageInput, PageSummary, Vault } from '../shared/domain';
+import type { Organization, Entity, EntityDetail, EntityInput, PropertyInput, RelationshipInput, Page, PageInput, PageSummary, Vault } from '../shared/domain';
 export class ApiError extends Error { constructor(public status: number,message: string){super(message);} }
 export async function request<T>(route: string, method='GET', body?: unknown, vaultId?: string): Promise<T> {
   const response=await fetch('/api/'+route,{method,headers:{...(body!==undefined?{'Content-Type':'application/json'}:{}),...(vaultId?{'X-Vault-Id':vaultId}:{})},body:body!==undefined?JSON.stringify(body):undefined});
@@ -7,6 +7,8 @@ export async function request<T>(route: string, method='GET', body?: unknown, va
   return result as T;
 }
 export const api={
+  organization:(vault:string)=>request<Organization>('organization','GET',undefined,vault),
+  organize:(vault:string,route:string,body?:unknown,method='PUT')=>request<Organization>('organization/'+route,method,body,vault),
   vaults:()=>request<Vault[]>('vaults'),
   createVault:(name:string)=>request<Vault>('vaults','POST',{name}),
   lock:(id:string,passphrase?:string)=>request<Vault>(`vaults/${id}/lock`,'POST',{passphrase}),

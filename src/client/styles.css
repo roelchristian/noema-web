@@ -55,3 +55,73 @@ dialog .select-trigger{padding:10px 11px}
 .brand-mark{display:block;width:38px;height:38px;flex:none}
 .brand>span{margin-left:0}
 @media(max-width:500px){.brand-mark{width:34px;height:34px}}
+.toast-close{margin-left:14px;color:inherit;font-size:17px}.dialog-error{color:#a12424}.page-link:disabled{cursor:default}#content[aria-busy=true]{min-height:60vh}.loading-state{padding:60px;color:#888}
+
+/* Organization uses canonical pages and entities in every context. */
+.organization-library { max-width: 1120px; margin: 0 auto; padding: 52px 48px; }
+.organization-heading, .organization-toolbar, .organization-item-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.organization-heading { margin-bottom: 32px; }
+.organization-heading h1 { font-size: 30px; margin: 8px 0 10px; letter-spacing: -1px; }
+.organization-heading p, .organization-hint { color: #777; font-size: 13px; }
+.organization-library .eyebrow { font-size: 10px; letter-spacing: 1.5px; font-weight: 600; color: #888; }
+.organization-layout { display: flex; gap: 32px; align-items: flex-start; }
+.organization-tree { width: 200px; flex-shrink: 0; }
+.organization-tree button { display: flex; align-items: center; gap: 8px; text-align: left; width: 100%; padding: 9px 10px; border-radius: 6px; overflow-wrap: anywhere; }
+.organization-tree button span { margin-left: auto; color: #888; font-size: 11px; }
+.organization-tree .selected { background: #eeedea; color: #111; }
+.organization-tree .eyebrow { margin: 24px 10px 8px; }
+.organization-tree small { color: #999; padding: 10px; }
+.organization-content { flex: 1; min-width: 0; }
+.organization-toolbar { min-height: 34px; margin-bottom: 14px; font-size: 13px; }
+.organization-crumb { font-weight: 600; }
+.organization-search { width: 100%; padding: 11px 14px; margin-bottom: 12px; border: 1px solid #e4e3df; border-radius: 7px; background: white; }
+.organization-item { border-bottom: 1px solid #eae9e5; }
+.organization-item-row { padding: 14px 0; }
+.organization-item-name { flex: 1; text-align: left; font-size: 14px; overflow-wrap: anywhere; }
+.organization-item-name small { display: block; font-size: 11px; color: #888; margin-top: 5px; text-transform: capitalize; }
+.favourite-button { color: #aaa; padding: 6px; }
+.favourite-button.is-favourite { color: #9b7018; }
+.favourite-button.is-favourite svg { fill: #f5e8bc; }
+.item-organization { border: 1px solid #e6e5e1; border-radius: 8px; padding: 18px; margin: 0 0 16px; background: #faf9f7; }
+.item-organization legend { font-size: 11px; color: #777; padding: 0 5px; }
+.item-organization label { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.item-organization select { margin-left: auto; max-width: 60%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; }
+.membership-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
+.organization-empty { text-align: center; padding: 65px 20px; color: #888; }
+.organization-empty > svg { width: 30px; height: 30px; }
+.organization-empty h2 { font-size: 18px; font-weight: 500; color: #555; }
+.organization-empty p { font-size: 13px; line-height: 1.7; }
+@media (max-width: 900px) { .organization-library { padding: 32px 24px; } .organization-layout { gap: 16px; } .organization-tree { width: 150px; } .organization-heading { align-items: flex-start; } }
+@media (max-width: 650px) { .organization-layout { flex-direction: column; } .organization-tree, .organization-content { width: 100%; } .organization-heading { flex-direction: column; } }
+
+.topbar { min-height: 70px; height: auto; padding-top: 14px; padding-bottom: 14px; flex-wrap: wrap; }
+.topbar #breadcrumb { min-width: 0; flex: 1 1 140px; }
+.top-actions { gap: 12px; flex-wrap: wrap; }
+.page-toolbar { display: flex; align-items: center; gap: 4px; position: relative; }
+.page-tool { display: inline-flex; align-items: center; gap: 6px; padding: 7px 8px; border-radius: 5px; font-size: 11px; color: #666; }
+.page-tool:hover, .page-tool[aria-expanded=true] { background: #f1f1f1; color: #222; }
+.page-tool-count { color: #888; font-size: 10px; }
+.page-tools-popover { position: absolute; top: calc(100% + 12px); right: 0; z-index: 30; width: 340px; max-width: calc(100vw - 90px); max-height: 65vh; overflow: auto; padding: 20px; border: 1px solid #e4e4e4; border-radius: 9px; background: white; box-shadow: 0 12px 40px #0002; white-space: normal; }
+.page-tools-popover h2 { font-size: 14px; margin: 0 0 8px; color: #333; }
+.page-tools-popover p { font-size: 11px; color: #888; line-height: 1.6; margin: 0 0 14px; }
+.toolbar-entity-list { display: flex; flex-wrap: wrap; gap: 8px; font-size: 13px; }
+.toolbar-source-list { display: flex; flex-direction: column; gap: 10px; }
+.toolbar-source-list .page-source { justify-content: space-between; gap: 12px; }
+.toolbar-source-list .page-source > button { font-size: 18px; flex-shrink: 0; }
+.toolbar-source-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 16px; border-top: 1px solid #eee; padding-top: 14px; }
+.toolbar-source-actions select { width: 100%; min-width: 0; padding: 9px; border: 1px solid #ddd; border-radius: 5px; background: #fafafa; font-size: 12px; }
+@media (max-width: 1100px) { .page-tool-label { display: none; } }
+@media (max-width: 500px) { .topbar .top-actions { width: 100%; justify-content: space-between; gap: 6px; } .page-tools-popover { right: auto; left: 0; } }
+
+.sidebar { overflow-y: auto; }
+.sidebar-group { flex-shrink: 0; }
+.sidebar-group + .sidebar-group { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 20px; }
+.sidebar-group .workspace-label { margin-bottom: 10px; }
+.container-link > span:not([data-icon]) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-empty { margin: 8px 12px; color: #999; font-size: 11px; line-height: 1.7; }
+.recent-time { color: #888; font-size: 11px; flex-shrink: 0; }
+@media (max-width: 500px) { .sidebar-group + .sidebar-group { margin-top: 12px; padding-top: 12px; } .sidebar-empty { display: none; } .organization-sidebar .container-link { padding-left: 8px !important; } }
+
+.select-host{display:contents}
+.toolbar-source-actions .select-control{display:flex;width:100%}
+.membership-row>.select-host>.select-control,.item-organization label>.select-host>.select-control{margin-left:auto;max-width:60%}

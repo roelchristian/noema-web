@@ -29,7 +29,12 @@ Noema is a local-first modular monolith: one Node.js process serves a local SQLi
 - `src/server/http.ts`: HTTP routing, request validation, origin/host checks, and static assets.
 - `src/shared/domain.ts`: shared TypeScript domain and API types.
 - `src/client/main.tsx`: React application entry point.
-- `src/client/workspace.js`: the existing editor and screens, isolated behind a React lifecycle adapter to preserve current behavior during the migration. This adapter remains JavaScript; the server, shared types, API client, and React entry point are TypeScript. Moving each screen into native React components is deferred.
+- `src/client/App.tsx`: native React workspace shell, navigation, and screen composition.
+- `src/client/editor/`: page Sources, block editing, slash commands, and inline entity references.
+- `src/client/knowledge/` and `src/client/vaults/`: typed React screens, forms, and dialogs.
+- `src/client/state/`: workspace state and a serialized autosave queue that keeps each write tied to its vault and revision.
+
+The frontend is entirely TypeScript. React owns the screens and block structure; a small DOM boundary handles browser-owned `contenteditable` text, serialization, and caret ranges. React escapes text and mention markup before it enters that editable surface.
 
 Page responses include a `revision`. Clients send that revision on updates to detect stale writes (HTTP 409). The bundled client does so automatically. Older API clients that omit the revision retain the previous update behavior. SQLite uses WAL, foreign keys, a busy timeout, and transactions for page/source updates. Shutdown signals close the HTTP server and database cleanly.
 
@@ -46,7 +51,7 @@ Vault export/import is planned and is not implemented yet. For a full backup, st
 - Create a page using the sidebar **+**. Rename it by editing its title.
 - Type `/` at the beginning of a block to choose text, heading, bullet list, quote, or to-do. Use arrow keys and Enter in the menu.
 - Press Enter to add a block; Shift+Enter inserts a line break. Hover over a block and click its handle to change its type or delete it.
-- In a page’s **Sources** section, attach an existing Source or create a new one. Remove a page source with **×**; the Source entity remains in the vault.
+- In the top toolbar’s **Sources** menu, attach an existing Source or create a new one. Remove a page source with **×**; the Source entity remains in the vault.
 - Choose **Source** when creating an entity to represent a reference. Add URLs, authors, publication dates, or other metadata through properties. Sources support the same details, relationships, and inline `@` mentions as other entities.
 - Type `@` to find an entity or create one inline. Entity mentions keep the entity's ID, so renaming an entity updates its displayed name across pages.
 - Click a mention, or open **Knowledge entities**, to edit entity details, properties, and relationships.
@@ -55,6 +60,21 @@ Vault export/import is planned and is not implemented yet. For a full backup, st
 - Page edits autosave after a short delay. Entity details use **Save details**; property and relationship forms save when submitted. A failed page save stays pending; click the save status to retry.
 
 The first run seeds a welcome page, a book, two people, and a place. Seeding only happens once per database.
+
+## Organization
+
+The page toolbar includes a favourite toggle, **Connected knowledge** for inline entity mentions, and **Sources** for attaching, creating, opening, and removing page-level references.
+
+The sidebar groups **Favourites** and **Recent items** under **Quick Access**. Recent items remembers the last 50 opened pages and entities per vault in this browser. The separate **Folders & collections** group below lists collections and nested folders; click one to browse its contents.
+
+Open **All content** in that group to organize pages and knowledge entities. **All content** lists canonical items across the vault. Use **Organize** on an item to choose its vault folder, add it to any number of collections, and choose a folder within each collection. Opening an item from any context edits the same underlying record.
+
+- **Collections** are named, flat contexts. Collections cannot contain other collections. Rename or delete one using **Edit** or **Delete** in its toolbar.
+- **Folders** can be nested within a vault or a collection. Choose a parent when creating or editing a folder. Each item has at most one folder per context; folder placement in one collection does not change placement elsewhere. Folders remain within their original context.
+- **Collection membership** is many-to-many and never copies content. Untick a collection under **Organize** to remove only that membership.
+- **Favourites** provide independent quick access. Use the star in a page’s top toolbar or beside an item and open **Favourites** in the sidebar. Moving items or removing collections does not change their favourite status.
+
+Deleting a folder removes its nested folders and returns their items to the context root. Deleting a collection removes its folders and memberships. Both actions preserve canonical content and favourites. Organization is vault-scoped, persisted in SQLite, and unavailable while a vault is locked.
 
 ## Data model
 
@@ -66,6 +86,10 @@ The first run seeds a welcome page, a book, two people, and a place. Seeding onl
 | `entities` | Vault-scoped person, place, event, creative work, organization, or source |
 | `properties` | Named scalar text value or foreign-key entity reference |
 | `relationships` | Directed, labeled entity-to-entity connection |
+| `collections` | Flat vault-scoped named contexts |
+| `folders` | Nested folders within a vault or collection |
+| `item_locations` | Canonical item folder placement and many-to-many collection membership |
+| `favourites` | Independent quick access to pages and entities |
 | `metadata` | Database initialization state |
 
 Block contents are structured text and entity-ID segments, not arbitrary HTML. SQLite foreign keys validate property and relationship targets. Page mention IDs are validated when saved. Data lives in **`data/noema.sqlite`**, with SQLite WAL companion files while running. To back up by copying, stop the server first and copy the `data/` folder.
@@ -81,6 +105,13 @@ All routes are under `/api` and accept/return JSON. Send `X-Vault-Id` to select 
 | POST | `/vaults/:id/unlock` | Unlock with `{passphrase}` |
 | GET / POST | `/pages` | List / create pages |
 | GET / PUT / DELETE | `/pages/:id` | Read / replace / delete a page |
+| GET | `/organization` | Read collections, folders, placements, memberships, and favourites |
+| POST | `/organization/collections` | Create with `{name}` |
+| PUT / DELETE | `/organization/collections/:id` | Rename / remove a collection, preserving content |
+| POST | `/organization/folders` | Create with `{name, collection_id?, parent_id?}` |
+| PUT / DELETE | `/organization/folders/:id` | Rename/reparent within its context / remove folder tree |
+| PUT | `/organization/locations` | Set `{kind, item_id, collection_id?, folder_id?, remove?}`; kind is `page` or `entity` |
+| PUT | `/organization/favourites` | Set `{kind, item_id, favourite: boolean}` |
 | GET / POST | `/entities` | List / create entities |
 | GET / PUT | `/entities/:id` | Read connections / update entity details |
 | POST | `/entities/:id/properties` | Add `{name, value}` or `{name, target_id}` |
@@ -94,7 +125,7 @@ All routes are under `/api` and accept/return JSON. Send `X-Vault-Id` to select 
 npm test
 ```
 
-The integration test launches an isolated server on an available port and uses a temporary database. It covers page persistence across server restarts, entity edits, entity references, property and relationship edits/removals, incoming connections, invalid input, and rejection of cross-origin writes. It leaves your workspace data untouched. It also covers migration of populated pre-vault tables, vault isolation, Source attachments and inline mentions, lock enforcement, incorrect passphrases, and lock/source persistence across restarts. UI validation was skipped for this change as requested.
+The integration test launches an isolated server on an available port and uses a temporary database. It covers page persistence across server restarts, entity edits, entity references, property and relationship edits/removals, incoming connections, invalid input, and rejection of cross-origin writes. It leaves your workspace data untouched. It also covers migration of populated pre-vault tables, vault isolation, Source attachments and inline mentions, lock enforcement, incorrect passphrases, and lock/source persistence across restarts. Organization tests cover shared membership, nested folder cycles, container deletion without content loss, favourites, vault isolation, cleanup, and restart persistence. Autosave unit tests cover edits during an in-flight write, failed-write retries, and vault-scoped snapshots. UI validation was skipped as requested.
 
 ## Git
 

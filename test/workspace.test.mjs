@@ -132,3 +132,36 @@ test('sidebar rename flushes the current draft and can rename another page witho
     if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor); else delete globalThis.localStorage;
   }
 });
+
+test('new untitled pages receive a generated title through autosave and update navigation', async t => {
+  t.mock.timers.enable({apis:['setTimeout']});
+  const vault={id:'a',name:'A',locked:false};
+  let stored={id:'new',vault_id:'a',title:'Untitled',revision:1,blocks:[],sourceIds:[],updated_at:''};
+  const writes=[];
+  t.mock.method(api,'vaults',async()=>[vault]);
+  t.mock.method(api,'pages',async()=>[]);
+  t.mock.method(api,'entities',async()=>[]);
+  t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],favourites:[]}));
+  t.mock.method(api,'createPage',async()=>structuredClone(stored));
+  t.mock.method(api,'savePage',async(_vault,_id,input)=>{
+    assert.equal(input.revision,stored.revision);
+    stored={...structuredClone(input),revision:input.revision+1};writes.push(stored);return structuredClone(stored);
+  });
+  const generate=t.mock.method(api,'generateTitle',async(vault,id,revision)=>{
+    assert.equal(vault,'a');assert.equal(id,'new');assert.equal(revision,stored.revision);
+    return {title:'Community garden plan',revision};
+  });
+  const workspace=new Workspace();
+  try {
+    await workspace.selectVault('a');await workspace.newPage();
+    workspace.updatePage({blocks:[{id:'text',type:'paragraph',content:[{text:'Build raised beds for the community garden.'}]}]});
+    await workspace.saver.flush();t.mock.timers.tick(3000);
+    for(let n=0;n<5;n++)await Promise.resolve();
+    await workspace.saver.flush();
+    assert.equal(generate.mock.callCount(),1);assert.equal(writes.length,2);
+    assert.equal(stored.title,'Community garden plan');
+    assert.equal(workspace.snapshot().page.title,stored.title);
+    assert.equal(workspace.snapshot().pages[0].title,stored.title);
+    assert.equal(workspace.snapshot().page.revision,stored.revision);
+  } finally {workspace.titler.dispose();workspace.saver.dispose();}
+});

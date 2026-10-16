@@ -36,14 +36,14 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
       if(!/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.headers.host || ''))throw new HttpError(403,'Host is not allowed');
       if(url.pathname.startsWith('/api/')) {
         if((req.headers.origin && req.headers.origin!==`http://${req.headers.host}`)||req.headers['sec-fetch-site']==='cross-site')throw new HttpError(403,'Cross-origin requests are not allowed');
-        const aiRoute=url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||/^\/api\/pages\/[^/]+\/summary$/.test(url.pathname);
+        const aiRoute=url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||/^\/api\/pages\/[^/]+\/(summary|title)$/.test(url.pathname);
         if(aiRoute && (req.headers['x-noema-request']!=='1'||(['POST','PUT'].includes(method)&&!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))))throw new HttpError(403,'AI requests require the Noema client and JSON');
         const body=['POST','PUT'].includes(method)?await readBody(req):{};
         const parts=url.pathname.split('/').filter(Boolean),[,collection,id,child,childId]=parts;
-        if(method==='POST' && ((collection==='intelligence' && id==='validate' && parts.length===3) || (collection==='pages' && child==='summary' && parts.length===4))) {
+        if(method==='POST' && ((collection==='intelligence' && id==='validate' && parts.length===3) || (collection==='pages' && (child==='summary'||child==='title') && parts.length===4))) {
           const header=req.headers['x-vault-id'];
           if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
-          activityId=activity.start(collection==='pages'?'page_summary':'connection_test',intelligence.selection(),collection==='pages'?(header||'default'):null,collection==='pages'?id!:null);
+          activityId=activity.start(collection==='pages'?(child==='title'?'page_title':'page_summary'):'connection_test',child==='title'?intelligence.titleSelection():intelligence.selection(),collection==='pages'?(header||'default'):null,collection==='pages'?id!:null);
         }
         if(collection==='intelligence') {
           if(parts.length===3 && id==='activity' && method==='DELETE')return send(200,activity.clear());
@@ -80,21 +80,24 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             if(parts.length===3 && method==='PUT' && id==='favourites')return send(200,organizer.favourite(vault,body));
           }
           if(collection==='pages') {
-            if(id && parts.length===4 && child==='summary' && method==='POST') {
-              const page=pages.get(vault,id);
-              if(body.revision!==page.revision)throw new HttpError(409,'Save the latest page before summarizing.');
+            if(id && parts.length===4 && (child==='summary'||child==='title') && method==='POST') {
+              const page=pages.get(vault,id),isTitle=child==='title';
+              if(isTitle && page.title.trim() && page.title.trim()!=='Untitled')throw new HttpError(409,'This page already has a title.');
+              if(body.revision!==page.revision)throw new HttpError(409,isTitle?'Save the latest page before generating a title.':'Save the latest page before summarizing.');
               const names=new Map(knowledge.list(vault).map(entity=>[entity.id,entity.name]));
-              let input=page.title+'\n';
+              let input=isTitle?'':page.title+'\n';
               for(const block of page.blocks) {
                 const plain = (content: Segment[]) => content.map(segment=>segment.entityId?names.get(segment.entityId)||'[mention]':segment.text).join('');
                 input+=(block.type === 'table' ? (block.rows ?? []).map(row=>row.map(plain).join('\t')).join('\n') : plain(block.content))+'\n';
                 if(input.length>40000)throw new HttpError(413,'This page exceeds the AI limit of 40,000 characters.');
               }
+              if(isTitle && input.trim().length<20)throw new HttpError(400,'Add more page content before generating a title.');
               if(!input.trim())throw new HttpError(400,'Add some page content first.');
-              const summary=await intelligence.generate(input,false,bytes=>activity.request(activityId!,bytes,page.revision));
+              const onRequest=(bytes: number)=>activity.request(activityId!,bytes,page.revision);
+              const summary=isTitle?await intelligence.generateTitle(input,onRequest):await intelligence.generate(input,false,onRequest);
               vaults.requireOpen(vault);
-              if(pages.get(vault,id).revision!==page.revision)throw new HttpError(409,'The page changed. Generate a fresh summary.');
-              return send(200,{summary,revision:page.revision,...intelligence.selection()});
+              if(pages.get(vault,id).revision!==page.revision)throw new HttpError(409,isTitle?'The page changed. Generate a fresh title.':'The page changed. Generate a fresh summary.');
+              return send(200,isTitle?{title:summary,revision:page.revision,...intelligence.titleSelection()}:{summary,revision:page.revision,...intelligence.selection()});
             }
             if(parts.length===2 && method==='GET')return send(200,pages.list(vault));
             if(parts.length===2 && method==='POST')return send(201,pages.create(vault,body));

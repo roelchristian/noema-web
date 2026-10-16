@@ -64,7 +64,7 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
         <thead><tr>{['Started','Action','Status','Source','Model / reasoning','Prompt bytes','Duration','HTTP'].map(label=><th scope="col" key={label}>{label}</th>)}</tr></thead>
         <tbody>{data.items.map(item=><tr key={item.id}>
           <td><time dateTime={item.startedAt}>{new Date(item.startedAt).toLocaleString()}</time></td>
-          <td>{item.action==='page_summary'?'Page summary':'Connection test'}</td>
+          <td>{item.action==='page_summary'?'Page summary':item.action==='page_title'?'Page title':'Connection test'}</td>
           <td><span className={'ai-activity-status '+item.status}>{item.status}</span></td>
           <td>{item.objectId?<>
             {item.available?<button className="ai-activity-link" onClick={()=>void open(item)}>{item.objectTitle||'Untitled'}</button>:<span>{item.objectTitle||'Unavailable page'}</span>}
@@ -76,7 +76,7 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
           <td>{item.httpStatus??'—'}</td>
         </tr>)}</tbody>
       </table>
-      {!busy&&!data.items.length&&!error&&<p className="ai-activity-empty">No AI activity yet. Summaries and connection tests will appear here.</p>}
+      {!busy&&!data.items.length&&!error&&<p className="ai-activity-empty">No AI activity yet. Page titles, summaries, and connection tests will appear here.</p>}
     </div>
     <footer className="ai-activity-footer">{data.nextCursor!==null&&<button className="button" disabled={busy} onClick={()=>void load(data.nextCursor!)}>Load older activity</button>}<p>Export includes all available records, including older rows. Prompt size counts UTF-8 bytes, not tokens. Interrupted means the server stopped before recording an outcome. Refresh to check running actions.</p><button className="button primary" onClick={onClose}>Done</button></footer>
   </Modal>;

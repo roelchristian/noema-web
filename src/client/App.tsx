@@ -31,7 +31,7 @@ export function App() {
   const [panelId, setPanelId] = useState<string | null>(null), [create, setCreate] = useState<CreateEntityRequest | null>(null), [vaultAction, setVaultAction] = useState<VaultAction | null>(null);
   const openEntity = (id: string) => { setAiOpen(false); workspace.recordRecent('entity', id); setPanelId(id); };
   const run = (work: () => Promise<unknown>) => { void work().catch(workspace.report); };
-  useEffect(() => { void workspace.init(); return () => workspace.saver.dispose(); }, [workspace]);
+  useEffect(() => { void workspace.init(); return () => { workspace.saver.dispose(); workspace.titler.dispose(); }; }, [workspace]);
   useEffect(()=>{setAiOpen(false);},[vault?.id,vault?.locked,page?.id,view]);
   useEffect(() => { setPanelId(null); setCreate(null); setDeleteTarget(null); setRenameTarget(null); }, [vault?.id, vault?.locked]);
   useEffect(() => {

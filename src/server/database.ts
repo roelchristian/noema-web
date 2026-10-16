@@ -79,6 +79,26 @@ if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'deleted_
 db.exec('CREATE INDEX IF NOT EXISTS pages_deleted_at ON pages(deleted_at)');
 
 if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'revision')) db.exec('ALTER TABLE pages ADD COLUMN revision INTEGER NOT NULL DEFAULT 1');
+// Embedding content is kept in SQLite; queue logs deliberately contain no note text or provider errors.
+db.exec(`CREATE TABLE IF NOT EXISTS embedding_settings (
+ vault_id TEXT PRIMARY KEY REFERENCES vaults(id) ON DELETE CASCADE,
+ automatic INTEGER NOT NULL DEFAULT 1, min_characters INTEGER NOT NULL DEFAULT 20
+);
+ CREATE TABLE IF NOT EXISTS note_embeddings (
+ page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,
+ model TEXT NOT NULL, dimensions INTEGER NOT NULL, content_hash TEXT NOT NULL,
+ revision INTEGER NOT NULL, vector TEXT NOT NULL, tokens INTEGER NOT NULL, updated_at TEXT NOT NULL
+ );
+ CREATE TABLE IF NOT EXISTS embedding_jobs (
+ id TEXT PRIMARY KEY, vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
+ page_id TEXT REFERENCES pages(id) ON DELETE SET NULL, content_hash TEXT NOT NULL,
+ status TEXT NOT NULL, reason TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
+ created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT, next_attempt_at TEXT NOT NULL,
+ error TEXT, tokens INTEGER
+ );
+ CREATE INDEX IF NOT EXISTS embedding_jobs_queue ON embedding_jobs(status,next_attempt_at);
+ CREATE INDEX IF NOT EXISTS embedding_jobs_vault ON embedding_jobs(vault_id,created_at DESC);
+ CREATE UNIQUE INDEX IF NOT EXISTS embedding_jobs_active ON embedding_jobs(page_id) WHERE status IN ('queued','running');`);
 if (!db.prepare('PRAGMA table_info(entities)').all().some(c => c.name === 'subtype')) db.exec('ALTER TABLE entities ADD COLUMN subtype TEXT');
 // Import the former single selection exactly once; an empty array remains cleared on restart.
 if (!db.prepare('PRAGMA table_info(entities)').all().some(c => c.name === 'subtypes')) {

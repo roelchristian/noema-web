@@ -10,6 +10,8 @@ import { Knowledge } from './modules/knowledge.js';
 import { Organizer } from './modules/organization.js';
 import { Intelligence, keychainFor, intelligencePreferencesFor } from './modules/intelligence.js';
 import { Pages } from './modules/pages.js';
+import { Embeddings } from './modules/embeddings.js';
+import { SearchSnippets } from './modules/search-snippets.js';
 import { HttpError, object } from './validation.js';
 async function readBody(req: IncomingMessage) {
   let size=0;const chunks:Buffer[]=[];
@@ -23,10 +25,13 @@ async function readBody(req: IncomingMessage) {
 export function createApp(store: Store, clientRoot: string, intelligence=new Intelligence(keychainFor(store),fetch,()=>Date.now(),intelligencePreferencesFor(store))) {
   const vaults=new Vaults(store),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),organizer=new Organizer(store);
   const activity=new AIActivityLog(store),enrichments=new AIEnrichments(store,pages);
+  const embeddings=new Embeddings(store,pages,knowledge,vaults,intelligence);
+  const searchSnippets=new SearchSnippets(pages,knowledge,vaults);
   // Enforce retention on startup, periodically while running, and before scoped API access.
   pages.purgeExpired();
   let cleanup: ReturnType<typeof setInterval> | undefined;
   let keyCleanup: ReturnType<typeof setInterval> | undefined;
+  let embeddingWorker: ReturnType<typeof setInterval> | undefined;
   const server = http.createServer(async(req,res)=>{
     let activityId: string | undefined;
     const send=(status:number,data:unknown)=>{if(activityId){activity.finish(activityId,status<400?'completed':'failed',status);activityId=undefined;}res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));};
@@ -37,7 +42,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
       if(!/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.headers.host || ''))throw new HttpError(403,'Host is not allowed');
       if(url.pathname.startsWith('/api/')) {
         if((req.headers.origin && req.headers.origin!==`http://${req.headers.host}`)||req.headers['sec-fetch-site']==='cross-site')throw new HttpError(403,'Cross-origin requests are not allowed');
-        const aiRoute=url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||/^\/api\/pages\/[^/]+\/(summary|title)$/.test(url.pathname);
+        const aiRoute=url.pathname==='/api/search/snippets'||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title)$/.test(url.pathname);
         if(aiRoute && (req.headers['x-noema-request']!=='1'||(['POST','PUT'].includes(method)&&!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))))throw new HttpError(403,'AI requests require the Noema client and JSON');
         const body=['POST','PUT'].includes(method)?await readBody(req):{};
         const parts=url.pathname.split('/').filter(Boolean),[,collection,id,child,childId]=parts;
@@ -65,6 +70,14 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
           if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
           const vault=vaults.requireOpen(header || 'default');
           pages.purgeExpired(vault);
+          if(collection==='search' && parts.length===3 && id==='snippets' && method==='POST')return send(200,searchSnippets.get(vault,body));
+          if(collection==='embeddings') {
+            if(parts.length===2 && method==='GET')return send(200,embeddings.status(vault));
+            if(parts.length===3 && id==='settings' && method==='PUT')return send(200,embeddings.saveSettings(vault,body));
+            if(parts.length===3 && id==='enqueue' && method==='POST')return send(200,embeddings.enqueueExisting(vault,body));
+            if(parts.length===5 && id==='jobs' && child && childId==='retry' && method==='POST')return send(200,embeddings.retry(vault,child));
+            if(parts.length===3 && id==='search' && method==='POST')return send(200,await embeddings.search(vault,body));
+          }
           if(collection==='entity-schema') {
             if(parts.length===2 && method==='GET')return send(200,knowledge.schema(vault));
             if(parts.length===3 && method==='POST' && id==='subtypes')return send(201,knowledge.addSubtype(vault,body));
@@ -72,7 +85,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
           }
           if(collection==='trash') {
             if(parts.length===2 && method==='GET')return send(200,pages.trash(vault));
-            if(id && parts.length===4 && child==='restore' && method==='POST')return send(200,pages.restore(vault,id));
+            if(id && parts.length===4 && child==='restore' && method==='POST'){const page=pages.restore(vault,id);embeddings.onSave(vault,id);return send(200,page);}
             if(id && parts.length===3 && method==='DELETE')return send(200,pages.permanentlyDelete(vault,id));
           }
           if(collection==='organization') {
@@ -110,11 +123,11 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               return send(200,{...data,revision:page.revision,...selection});
             }
             if(parts.length===2 && method==='GET')return send(200,pages.list(vault));
-            if(parts.length===2 && method==='POST')return send(201,pages.create(vault,body));
+            if(parts.length===2 && method==='POST'){const page=pages.create(vault,body);embeddings.onSave(vault,page.id);return send(201,page);}
             if(id && parts.length===3) {
               if(method==='GET')return send(200,pages.get(vault,id));
-              if(method==='PUT')return send(200,pages.update(vault,id,body));
-              if(method==='DELETE')return send(200,pages.delete(vault,id));
+              if(method==='PUT'){const page=pages.update(vault,id,body);embeddings.onSave(vault,id);return send(200,page);}
+              if(method==='DELETE'){const result=pages.delete(vault,id);embeddings.invalidate(vault,id);return send(200,result);}
             }
           }
           if(collection==='entities') {
@@ -151,7 +164,8 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
     cleanup = setInterval(() => { try { pages.purgeExpired(); } catch (error) { console.error('Trash cleanup failed',error); } },60 * 60 * 1000);
     cleanup.unref();
     keyCleanup=setInterval(()=>{try{intelligence.purgeExpired();}catch{/* Keychain may be locked; all AI access still fails closed. */}},60000);keyCleanup.unref();
+    embeddingWorker=setInterval(()=>{void embeddings.tick().catch(()=>{/* Durable job history records failures; never log note content. */});},1000);embeddingWorker.unref();
   });
-  server.on('close', () => {clearInterval(cleanup);clearInterval(keyCleanup);});
+  server.on('close', () => {clearInterval(cleanup);clearInterval(keyCleanup);clearInterval(embeddingWorker);embeddings.close();});
   return server;
 }

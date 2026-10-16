@@ -211,3 +211,48 @@ test('connection validation never incorporates supplied note data',async()=>{
   assert.equal(body.instructions,'Reply with OK.');assert.equal(body.input,'Connection test.');
   assert.ok(!JSON.stringify(body).includes('attacker'));assert.deepEqual(body.tools,[]);assert.equal(body.tool_choice,'none');
 });
+
+test('title utility fixes reasoning to none independently of summary preferences and bounds output',async()=>{
+  const secrets=new Secrets(),requests=[];
+  let output='Community garden plan';
+  const ai=new Intelligence(secrets,async(url,options)=>{requests.push(JSON.parse(options.body));return completed(output);});
+  ai.save({apiKey:key});
+  assert.deepEqual(ai.titleSelection(),{model:'gpt-6-luna',reasoningEffort:'none'});
+  ai.savePreferences({model:'gpt-6-sol',reasoningEffort:'high'});
+  assert.equal(await ai.generateTitle('Plan a community garden with raised beds.'),output);
+  assert.equal(requests[0].model,'gpt-6-sol');assert.deepEqual(requests[0].reasoning,{effort:'none'});
+  assert.equal(requests[0].max_output_tokens,256);assert.equal(requests[0].store,false);
+  assert.deepEqual(requests[0].tools,[]);assert.equal(requests[0].tool_choice,'none');
+  assert.equal(JSON.parse(requests[0].input[0].content[0].text).untrusted_note,'Plan a community garden with raised beds.');
+  assert.deepEqual(ai.selection(),{model:'gpt-6-sol',reasoningEffort:'high'});
+  for(const invalid of ['a'.repeat(121),'Line one\nLine two','Untitled']) {
+    output=invalid;await rejected(()=>ai.generateTitle('Note content'),502);
+  }
+});
+
+test('title endpoint enforces untitled content, revisions, CSRF, and logs fixed reasoning',async()=>{
+  const dir=mkdtempSync(path.join(tmpdir(),'noema-title-')),db=openDatabase(path.join(dir,'test.sqlite'));
+  const secrets=new Secrets();let calls=0,finish;
+  const ai=new Intelligence(secrets,async()=>{calls++;if(finish===true)return new Promise(resolve=>{finish=resolve;});return completed('Garden plan');});ai.save({apiKey:key});
+  const server=createApp(new Store(db),path.resolve('dist/client'),ai);server.listen(0,'127.0.0.1');await once(server,'listening');
+  const base='http://127.0.0.1:'+server.address().port+'/api/';
+  const call=async(route,method='GET',body,expected=200,headers={})=>{
+    const res=await fetch(base+route,{method,headers:{'X-Noema-Request':'1','Content-Type':'application/json',...headers},body:body===undefined?undefined:JSON.stringify(body)});
+    const value=await res.json();assert.equal(res.status,expected,JSON.stringify(value));return value;
+  };
+  try {
+    let page=await call('pages','POST',{},201),route='pages/'+page.id;
+    await call(route+'/title','POST',{revision:page.revision},400);
+    page=await call(route,'PUT',{...page,blocks:[{id:'text',type:'paragraph',content:[{text:'Plans for a community garden with raised beds.'}]}]});
+    await call(route+'/title','POST',{revision:page.revision},403,{'X-Noema-Request':''});
+    await call(route+'/title','POST',{revision:page.revision-1},409);
+    const title=await call(route+'/title','POST',{revision:page.revision});assert.equal(title.title,'Garden plan');assert.equal(title.reasoningEffort,'none');assert.equal(calls,1);
+    assert.equal((await call(route)).title,'Untitled');
+    const activity=(await call('intelligence/activity')).items.find(item=>item.action==='page_title'&&item.status==='completed');
+    assert.equal(activity.reasoningEffort,'none');assert.equal(activity.objectId,page.id);assert.equal(activity.revision,page.revision);
+    finish=true;const pending=call(route+'/title','POST',{revision:page.revision},409);
+    while(typeof finish!=='function')await new Promise(resolve=>setTimeout(resolve,5));
+    page=await call(route,'PUT',{...page,title:'My chosen title'});finish(completed('Stale title'));await pending;
+    await call(route+'/title','POST',{revision:page.revision},409);assert.equal(calls,2);
+  }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();rmSync(dir,{recursive:true,force:true});}
+});

@@ -1,3 +1,4 @@
+import { PageTitler } from './page-titler';
 import { api } from '../api';
 import type { Entity, EntityInput, Page, PageSummary, Vault, Organization, OrganizationContext, RecentItem, ItemKind, TrashedPage } from '../../shared/domain';
 import { PageSaver, type SaveStatus } from './page-saver';
@@ -12,11 +13,27 @@ export class Workspace {
   private pageCache = new Map<string, Page>();
   private navigation = false;
   private loadSequence = 0;
+  readonly titler = new PageTitler(
+    page => api.generateTitle(page.vault_id, page.id, page.revision),
+    (original, title) => {
+      const cached = this.pageCache.get(original.id);
+      if (!cached || cached.vault_id !== original.vault_id || this.state.vault?.locked) return;
+      const page = {...cached, title};
+      this.pageCache.set(page.id, page);
+      this.patch({pages: this.state.pages.map(item => item.id === page.id ? {...item, title} : item),
+        ...(this.state.page?.id === page.id ? {page} : {})});
+      this.saver.enqueue(page);
+    },
+  );
   readonly saver = new PageSaver(
     page => api.savePage(page.vault_id, page.id, page),
     saved => {
       const cached = this.pageCache.get(saved.id);
-      if (cached) this.pageCache.set(saved.id, {...cached, revision: saved.revision});
+      if (cached) {
+        const page = {...cached, revision: saved.revision};
+        this.pageCache.set(saved.id, page);
+        this.titler.observe(page, JSON.stringify(cached.blocks) === JSON.stringify(saved.blocks) && cached.title === saved.title);
+      }
       if (this.state.page?.id === saved.id && this.state.vault?.id === saved.vault_id) this.patch({page: {...this.state.page, revision: saved.revision}});
     },
     (saveStatus, error) => this.patch({saveStatus, ...(error ? {error: error.message} : {})}),
@@ -45,7 +62,7 @@ export class Workspace {
       const vaults = await api.vaults(), vault = vaults.find(v => v.id === id);
       if (!vault) throw new Error('Vault not found');
       ++this.loadSequence;
-      this.pageCache.clear(); this.patch({vaults, vault, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'pages', error: null});
+      this.titler.dispose(); this.pageCache.clear(); this.patch({vaults, vault, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'pages', error: null});
       try { localStorage.setItem('noema-vault', id); } catch { /* The app can work without browser storage. */ }
       if (vault.locked) return;
       const [pages, entities, organization] = await Promise.all([api.pages(id), api.entities(id), api.organization(id)]);
@@ -92,11 +109,13 @@ export class Workspace {
     if (!current || this.state.busy || this.state.vault?.locked) return;
     const page = {...current, ...patch}; this.pageCache.set(page.id, page);
     this.patch({page, pages: this.state.pages.map(p => p.id === page.id ? {...p, title: page.title} : p)});
+    this.titler.observe(page);
     this.saver.enqueue(page);
   }
   async newPage() {
     await this.navigate(async () => {
       const vault = this.state.vault!; const page = await api.createPage(vault.id);
+      this.titler.register(page);
       this.pageCache.set(page.id, page); this.patch({page, pages: [page, ...this.state.pages], view: 'pages'}); this.recordRecent('page', page.id);
     });
   }
@@ -116,7 +135,9 @@ export class Workspace {
     await this.navigate(async () => {
       const vault = this.state.vault; if (!vault || vault.locked) return;
       const original = this.pageCache.get(id) || await api.page(vault.id,id);
+      this.titler.observe({...original,title});
       const saved = await api.savePage(vault.id,id,{...original,title});
+      this.titler.observe(saved);
       this.pageCache.set(id,saved);
       this.patch({pages: this.state.pages.map(page => page.id === id ? saved : page), ...(this.state.page?.id === id ? {page: saved} : {})});
     });
@@ -130,7 +151,9 @@ export class Workspace {
   async deletePage(id = this.state.page?.id) {
     await this.navigate(async () => {
       const {vault, page, organization} = this.state; if (!id || !vault) return;
-      await api.deletePage(vault.id, id); this.pageCache.delete(id);
+      const deleted = this.pageCache.get(id); if (deleted) this.titler.remove(deleted);
+      await api.deletePage(vault.id, id);
+      this.pageCache.delete(id);
       const pages = this.state.pages.filter(p => p.id !== id);
       this.patch({pages, page: page?.id === id ? null : page, organization: {...organization,
         locations: organization.locations.filter(item => item.kind !== 'page' || item.item_id !== id),

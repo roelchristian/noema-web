@@ -79,6 +79,7 @@ export class Workspace {
     const vault = this.state.vault!;
     const page = this.pageCache.get(id) || await api.page(vault.id, id);
     this.pageCache.set(id, page); this.patch({page, view: 'pages'}); this.recordRecent('page', id);
+    this.titler.register(page); this.titler.observe(page, true);
   }
   async openPage(id: string) { await this.navigate(() => this.loadPage(id)); }
   async showPages() { if (this.state.pages.length) await this.openPage(this.state.page?.id || this.state.pages[0]!.id); else await this.newPage(); }
@@ -141,6 +142,12 @@ export class Workspace {
       this.pageCache.set(id,saved);
       this.patch({pages: this.state.pages.map(page => page.id === id ? saved : page), ...(this.state.page?.id === id ? {page: saved} : {})});
     });
+  }
+  async locatePage(id: string, collection: string, folder: string | null, remove = false) {
+    const vault = this.state.vault, sequence = this.loadSequence;
+    if (!vault || vault.locked) return;
+    const organization = await api.organize(vault.id, 'locations', {kind: 'page', item_id: id, collection_id: collection || null, folder_id: folder || null, remove});
+    if (sequence === this.loadSequence) this.setOrganization(organization);
   }
   async togglePageFavourite(id: string) {
     const vault = this.state.vault, sequence = this.loadSequence; if (!vault || vault.locked || this.state.busy) return;

@@ -1,4 +1,5 @@
 import { PageIcon } from '../components/PageIcon';
+import { ItemOrganization } from './ItemOrganization';
 import { Select } from '../components/Select';
 import { useState } from 'react';
 import type { Entity, Folder, ItemKind, Organization, OrganizationContext, PageSummary } from '../../shared/domain';
@@ -42,7 +43,6 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
     return names.join(' / ');
   };
   const descendants = (f: Folder, id: string): boolean => f.id === id || !!f.parent_id && descendants(data.folders.find(p => p.id === f.parent_id)!, id);
-  const folderOptions = (context: string) => data.folders.filter(f => (f.collection_id || '') === context).map(f => <option key={f.id} value={f.id}>{folderPath(f.id)}</option>);
   function move(item: Item, context: string, target: string | null, remove = false) {
     run(() => mutate('locations', {kind: item.kind, item_id: item.id, collection_id: context || null, folder_id: target || null, remove}));
   }
@@ -66,10 +66,7 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
         {!favouritesOnly && (collection || folder) && <p className="organization-hint">Showing items directly in this context. Use All content → Organize to add existing items.</p>}
         <div className="organization-items">{visible.map(item => <article className="organization-item" key={item.kind + item.id}>
           <div className="organization-item-row"><button className={'favourite-button ' + (isFavourite(item) ? 'is-favourite' : '')} disabled={pending} aria-label={(isFavourite(item) ? 'Remove favourite: ' : 'Favourite: ') + item.name} aria-pressed={isFavourite(item)} onClick={() => run(() => mutate('favourites', {kind: item.kind, item_id: item.id, favourite: !isFavourite(item)}))}><Icon name="star"/></button>{item.kind === 'page' && <PageIcon icon={item.icon}/>}<button className="organization-item-name" onClick={() => item.kind === 'page' ? onOpenPage(item.id) : onOpenEntity(item.id)}>{item.name}<small>{item.label}</small></button><button className="button small" aria-expanded={selected === item.kind + item.id} onClick={() => setSelected(selected === item.kind + item.id ? null : item.kind + item.id)}>Organize</button></div>
-          {selected === item.kind + item.id && <fieldset disabled={pending} className="item-organization"><legend>Folders & collection membership</legend><label>Vault folder<Select value={location(item, '')?.folder_id || ''} onChange={e => move(item, '', e.target.value)}><option value="">No folder</option>{folderOptions('')}</Select></label>{data.collections.map(c => {
-            const membership = location(item, c.id);
-            return <div className="membership-row" key={c.id}><label><input type="checkbox" checked={!!membership} onChange={e => move(item, c.id, null, !e.target.checked)}/>{c.name}</label>{membership && <Select aria-label={'Folder in ' + c.name} value={membership.folder_id || ''} onChange={e => move(item, c.id, e.target.value)}><option value="">Collection root</option>{folderOptions(c.id)}</Select>}</div>;
-          })}{!data.collections.length && <small>Create a collection to group this item with related content.</small>}</fieldset>}
+          {selected === item.kind + item.id && <ItemOrganization data={data} kind={item.kind} itemId={item.id} pending={pending} onMove={(context, target, remove) => move(item, context, target, remove)}/>}
         </article>)}{!visible.length && <div className="organization-empty"><Icon name={favouritesOnly ? 'star' : 'folder'}/><h2>{search ? 'No matching content' : favouritesOnly ? 'Keep useful ideas close' : 'Room for related ideas'}</h2><p>{favouritesOnly ? 'Star any page or entity in Collections & folders to find it here.' : collection || folder ? 'Add existing pages and entities using Organize in All content.' : 'Create a page or knowledge entity to get started.'}</p></div>}</div>
       </div>
     </div>

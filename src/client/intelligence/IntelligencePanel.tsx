@@ -8,6 +8,7 @@ import { Mention } from '../components/Mention';
 import type { AISummary, Entity, Page } from '../../shared/domain';
 export function IntelligencePanel({page,entities,onOpenEntity,onSourcesChange,onCreateEntity,onClose,onSettings,onFlush}:{page:Page;entities:Entity[];onOpenEntity:(id:string)=>void;onSourcesChange:(sourceIds:string[])=>void;onCreateEntity:(request:CreateEntityRequest)=>void;onClose:()=>void;onSettings:()=>void;onFlush:()=>Promise<Page|null>}) {
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[result,setResult]=useState<AISummary|null>(null);
+  const [loading, setLoading] = useState(true);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [summaryOverflow, setSummaryOverflow] = useState(false);
   const summaryText = useRef<HTMLDivElement>(null);
@@ -22,24 +23,35 @@ export function IntelligencePanel({page,entities,onOpenEntity,onSourcesChange,on
   }, [result]);
   const active=useRef(true),close=useRef<HTMLButtonElement>(null);
   useEffect(()=>{active.current=true;close.current?.focus();return()=>{active.current=false;};},[]);
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    void api.enrichments(page.vault_id, page.id).then(items => {
+      if (cancelled) return;
+      const saved = items.find(item => item.kind === 'summary');
+      if (saved && typeof saved.data.summary === 'string') setResult({summary: saved.data.summary, revision: saved.revision, model: saved.model, reasoningEffort: saved.reasoningEffort});
+    }).catch(error => { if (!cancelled) setError(error instanceof Error ? error.message : 'Could not load saved knowledge.'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [page.vault_id, page.id]);
   const connectedIds = new Set(page.blocks.flatMap(block => blockSegments(block).flatMap(segment => segment.entityId ? [segment.entityId] : [])));
   const connected = entities.filter(entity => connectedIds.has(entity.id));
   async function summarize() {
-    setBusy(true);setError('');setResult(null);setSummaryExpanded(false);setSummaryOverflow(false);
+    setBusy(true);setError('');
     try {
       const saved=await onFlush();
       if(!active.current)return;
       if(!saved||saved.id!==page.id||saved.vault_id!==page.vault_id)throw new Error('The selected page changed. Try again.');
       const response=await api.summarize(saved.vault_id,saved.id,saved.revision);
-      if(active.current)setResult(response);
+      if(active.current){setResult(response);setSummaryExpanded(false);}
     }catch(error){if(active.current)setError(error instanceof Error?error.message:'Summary failed.');}finally{if(active.current)setBusy(false);}
   }
   return <aside className="entity-panel intelligence-panel" id="intelligence-panel" aria-label="Knowledge" onKeyDown={event=>{if(event.key==='Escape')onClose();}}>
     <div className="panel-top knowledge-panel-top"><span><Icon name="knowledge"/>Knowledge</span><div className="knowledge-panel-actions"><button className="page-tool" aria-label="Knowledge settings" title="Knowledge settings" onClick={onSettings}><Icon name="settings"/></button><button className="page-tool" ref={close} aria-label="Close Knowledge panel" title="Close Knowledge panel" onClick={onClose}>×</button></div></div>
     <div className="panel-body">
       <section className="knowledge-summary" aria-labelledby="knowledge-summary-heading">
-        <div className="knowledge-section-heading"><h2 id="knowledge-summary-heading"><Icon name="sparkles"/>Summary</h2><details className="summary-help"><summary aria-label="About AI summaries" title="About AI summaries">?</summary><div className="summary-help-content"><p>Summarizing sends this page’s title, text, and mentioned entity names to OpenAI. Attached sources and other pages are excluded. API charges may apply.</p><p>AI can make mistakes. Check the original page. Summaries are temporary and are not saved.</p>{result&&<p>{result.model} · {result.reasoningEffort} reasoning</p>}</div></details></div>
-        <button className="button primary summarize-button" disabled={busy} onClick={()=>void summarize()}><Icon name="sparkles"/>{busy?'Summarizing…':result?'Refresh summary':'Summarize page'}</button>
+        <div className="knowledge-section-heading"><h2 id="knowledge-summary-heading"><Icon name="sparkles"/>Summary</h2><details className="summary-help"><summary aria-label="About AI summaries" title="About AI summaries">?</summary><div className="summary-help-content"><p>Summarizing sends this page’s title, text, and mentioned entity names to OpenAI. Attached sources and other pages are excluded. API charges may apply.</p><p>AI can make mistakes. Check the original page. Summaries are saved with this page.</p>{result&&<p>{result.model} · {result.reasoningEffort} reasoning</p>}</div></details></div>
+        <button className="button primary summarize-button" disabled={busy||loading} onClick={()=>void summarize()}><Icon name="sparkles"/>{loading?'Loading…':busy?'Summarizing…':result?'Refresh summary':'Summarize page'}</button>
         {busy&&<p className="section-hint summary-progress" role="status">Creating your summary…</p>}
         {error&&<p role="alert" className="inline-error">{error}</p>}
         {result&&<section className="ai-result" aria-label="Page summary"><div id="knowledge-summary-text" ref={summaryText} className={'ai-summary' + (summaryExpanded ? '' : ' is-collapsed')}>{result.summary}</div>{summaryOverflow&&<button className="summary-toggle" aria-expanded={summaryExpanded} aria-controls="knowledge-summary-text" onClick={()=>setSummaryExpanded(value=>!value)}>{summaryExpanded?'Show less':'Show more'}</button>}{result.revision!==page.revision&&<p className="section-hint">Page changed since this summary.</p>}</section>}

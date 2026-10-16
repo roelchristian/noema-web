@@ -57,6 +57,8 @@ export function intelligencePreferencesFor(store: Store): PreferencesStore {
 }
 export class Intelligence {
   private active: AbortController | null=null;
+  private embeddingRequests=new Set<AbortController>();
+  private embeddingAttempts: number[]=[];
   private attempts: number[]=[];
   private preferences: IntelligencePreferences={...defaultIntelligencePreferences};
   private preferenceRevision=0;
@@ -86,11 +88,38 @@ export class Intelligence {
     const days=body.days === undefined ? 30 : body.days;
     if(typeof days!=='number'||!Number.isInteger(days)||days<1||days>365)throw new HttpError(400,'Choose a lifetime between 1 and 365 days.');
     this.active?.abort();
+    for(const request of this.embeddingRequests)request.abort();
     this.secrets.write({key:body.apiKey,expiresAt:new Date(this.clock()+days*86400000).toISOString(),generation:randomUUID()});
     return this.status();
   }
-  remove() {this.active?.abort();this.secrets.remove();return {configured:false,expiresAt:null,...this.selection()};}
+  remove() {this.active?.abort();for(const request of this.embeddingRequests)request.abort();this.secrets.remove();return {configured:false,expiresAt:null,...this.selection()};}
   purgeExpired() {this.credential();}
+  async embed(input: string): Promise<{embedding:number[];tokens:number}> {
+    if(!input.trim()||Buffer.byteLength(input,'utf8')>8000)throw new HttpError(400,'Embedding input must contain text and be at most 8,000 UTF-8 bytes.');
+    const credential=this.credential();
+    if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
+    this.embeddingAttempts=this.embeddingAttempts.filter(time=>time>this.clock()-60000);
+    if(this.embeddingAttempts.length>=30||this.embeddingRequests.size>=2)throw new HttpError(429,'Embedding request limit reached. Try again shortly.');
+    this.embeddingAttempts.push(this.clock());
+    const controller=new AbortController();this.embeddingRequests.add(controller);
+    const timer=setTimeout(()=>controller.abort(),Math.min(45000,Date.parse(credential.expiresAt)-this.clock()));
+    try {
+      const response=await this.transport('https://api.openai.com/v1/embeddings',{
+        method:'POST',redirect:'error',signal:controller.signal,
+        headers:{'Content-Type':'application/json',Authorization:`Bearer ${credential.key}`},
+        body:JSON.stringify({model:'text-embedding-3-small',input,encoding_format:'float',dimensions:1536}),
+      });
+      if(!response.ok){await response.body?.cancel();throw new HttpError(response.status===429?429:502,response.status===401?'OpenAI rejected the API key. Replace it in Settings.':response.status===429?'OpenAI quota or rate limit reached. Check your OpenAI account.':'OpenAI could not create the embedding. Check API permissions and billing.');}
+      const reader=response.body?.getReader();if(!reader)throw new Error();
+      let raw='',size=0;const decoder=new TextDecoder();
+      while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>128000){await reader.cancel();throw new Error();}raw+=decoder.decode(value,{stream:true});}
+      const result=JSON.parse(raw+decoder.decode()),vector=result.data?.[0]?.embedding;
+      if(result.model!=='text-embedding-3-small'||!Array.isArray(vector)||vector.length!==1536||vector.some((value:unknown)=>typeof value!=='number'||!Number.isFinite(value))||!vector.some((value:number)=>value!==0))throw new HttpError(502,'OpenAI returned an invalid embedding.');
+      if(controller.signal.aborted||this.credential()?.generation!==credential.generation)throw new HttpError(409,'The credential changed or expired. Please try again.');
+      return {embedding:vector,tokens:Number.isSafeInteger(result.usage?.total_tokens)&&result.usage.total_tokens>=0?result.usage.total_tokens:0};
+    }catch(error){if(error instanceof HttpError)throw error;throw new HttpError(502,'The embedding request failed or timed out. Please try again.');}
+    finally{clearTimeout(timer);this.embeddingRequests.delete(controller);}
+  }
   titleSelection(): IntelligencePreferences {
     const model=intelligenceModels.find(option=>option.id===this.preferences.model)?.efforts.includes('none') ? this.preferences.model : 'gpt-6-luna';
     return {model,reasoningEffort:'none'};

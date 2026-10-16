@@ -1,7 +1,7 @@
 import type { Organization, Entity, EntityDetail, EntityInput, PropertyInput, RelationshipInput, Page, PageInput, PageSummary, Vault, TrashedPage } from '../shared/domain';
 export class ApiError extends Error { constructor(public status: number,message: string){super(message);} }
-export async function request<T>(route: string, method='GET', body?: unknown, vaultId?: string): Promise<T> {
-  const response=await fetch('/api/'+route,{method,headers:{'X-Noema-Request':'1',...(body!==undefined?{'Content-Type':'application/json'}:{}),...(vaultId?{'X-Vault-Id':vaultId}:{})},body:body!==undefined?JSON.stringify(body):undefined});
+export async function request<T>(route: string, method='GET', body?: unknown, vaultId?: string, signal?: AbortSignal): Promise<T> {
+  const response=await fetch('/api/'+route,{method,signal,headers:{'X-Noema-Request':'1',...(body!==undefined?{'Content-Type':'application/json'}:{}),...(vaultId?{'X-Vault-Id':vaultId}:{})},body:body!==undefined?JSON.stringify(body):undefined});
   const result:unknown=await response.json();
   if(!response.ok)throw new ApiError(response.status,typeof result==='object'&&result&&'error' in result?String(result.error):'Request failed');
   return result as T;
@@ -9,6 +9,12 @@ export async function request<T>(route: string, method='GET', body?: unknown, va
 export const api={
   scanEntities:(vault:string,id:string,revision:number)=>request<import('../shared/entity-scan').EntityScan>(`pages/${id}/entity-scan`,'POST',{revision},vault),
   reviewEntity:(vault:string,id:string,revision:number,scanId:string,suggestionId:string|string[],decision:'accepted'|'rejected',edits?:import('../shared/entity-scan').EntitySuggestionEdit[])=>request<import('../shared/entity-scan').EntityReview>(`pages/${id}/entity-review`,'POST',{revision,scanId,...(Array.isArray(suggestionId)?{suggestionIds:suggestionId}:{suggestionId}),decision,...(edits?{edits}:{})},vault),
+  searchSnippets:(vault:string,query:string,pageIds:string[],signal?:AbortSignal)=>request<{snippets:Record<string,string>}>('search/snippets','POST',{query,pageIds},vault,signal),
+  embeddings:(vault:string)=>request<import('../shared/embeddings').EmbeddingStatus>('embeddings','GET',undefined,vault),
+  saveEmbeddingSettings:(vault:string,settings:import('../shared/embeddings').EmbeddingSettings)=>request<import('../shared/embeddings').EmbeddingStatus>('embeddings','PUT',settings,vault),
+  enqueueEmbeddings:(vault:string,mode:'missing'|'eligible')=>request<{queued:number;skipped:number}>('embeddings/enqueue','POST',{mode},vault),
+  retryEmbedding:(vault:string,id:string)=>request<{queued:number}>(`embeddings/jobs/${id}/retry`,'POST',{},vault),
+  semanticSearch:(vault:string,query:string,signal?:AbortSignal,limit=20)=>request<import('../shared/embeddings').SemanticSearchResults>('embeddings/search','POST',{query,limit},vault,signal),
   entitySchema:(vault:string)=>request<import('../shared/entity-schema').EntitySchema>('entity-schema','GET',undefined,vault),
   addSubtype:(vault:string,type:EntityInput['type'],name:string)=>request<import('../shared/entity-schema').EntitySchema>('entity-schema/subtypes','POST',{type,name},vault),
   addTypeProperty:(vault:string,type:EntityInput['type'],name:string)=>request<import('../shared/entity-schema').EntitySchema>('entity-schema/properties','POST',{type,name},vault),

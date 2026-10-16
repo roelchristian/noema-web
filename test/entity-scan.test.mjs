@@ -48,15 +48,20 @@ test('entity scan reviews are explicit, persistent, scoped and revision safe', a
     async function review(index,decision,status=200,extra={}){
       return call(route+'/entity-review','POST',{scanId:scan.id,suggestionId:scan.suggestions[index].id,revision:page.revision,decision,...extra},status);
     }
+    const queuedJob=()=>db.prepare("SELECT id FROM embedding_jobs WHERE page_id=? AND status='queued'").get(page.id)?.id;
+    const beforeAcceptJob=queuedJob();assert.ok(beforeAcceptJob);
     let result=await review(0,'accepted');page=result.page;scan=result.scan;
+    assert.notEqual(queuedJob(),beforeAcceptJob,'Accepted entity mentions refresh the embedding queue');
+    assert.equal(db.prepare('SELECT status FROM embedding_jobs WHERE id=?').get(beforeAcceptJob).status,'skipped');
     assert.equal(result.entities.length,baseline+1);assert.equal(page.blocks[0].content[0].entityId,alice.id);
     await review(0,'accepted',400);
     result=await review(1,'accepted');page=result.page;scan=result.scan;
     const bob=result.entities.find(e=>e.name==='Bob');assert.ok(bob);
     assert.ok(page.blocks[0].content.some(s=>s.entityId===bob.id));
     assert.ok(page.blocks[0].content.some(s=>s.text===' in Paris.'&&s.italic),'Surrounding formatting is retained');
-    const beforeReject=page;
+    const beforeReject=page, beforeRejectJob=queuedJob();
     result=await review(2,'rejected');scan=result.scan;
+    assert.equal(queuedJob(),beforeRejectJob,'Rejecting a suggestion leaves indexing unchanged');
     assert.deepEqual(result.page,beforeReject);assert.equal(result.entities.length,baseline+2);
     const persisted=(await call(route+'/enrichments')).find(e=>e.kind==='entity_scan').data.scan;
     assert.deepEqual(persisted,scan);assert.equal(calls,1,'Reviews never call AI');

@@ -1,3 +1,4 @@
+import { SearchPanel } from './search/SearchPanel';
 import { startPageDrag } from './organization/page-drag';
 import { PageIcon } from './components/PageIcon';
 import { PageOrganizationDialog } from './organization/PageOrganizationDialog';
@@ -24,6 +25,7 @@ import { CreateEntityDialog, type CreateEntityRequest } from './knowledge/Create
 import { VaultDialog, type VaultAction } from './vaults/VaultDialog';
 export function App() {
   const [aiOpen,setAiOpen]=useState(false);
+  const [searchOpen,setSearchOpen]=useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<PageSummary | null>(null);
   const [organizeTarget, setOrganizeTarget] = useState<PageSummary | null>(null);
@@ -33,14 +35,16 @@ export function App() {
   const state = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
   const {vaults, vault, pages, entities, page, view, busy, reviewing, error, saveStatus, organization, organizationContext, recent, trash} = state;
   const [panelId, setPanelId] = useState<string | null>(null), [create, setCreate] = useState<CreateEntityRequest | null>(null), [vaultAction, setVaultAction] = useState<VaultAction | null>(null);
-  const openEntity = (id: string) => { setAiOpen(false); workspace.recordRecent('entity', id); setPanelId(id); };
+  const openEntity = (id: string) => { setAiOpen(false); setSearchOpen(false); workspace.recordRecent('entity', id); setPanelId(id); };
   const run = (work: () => Promise<unknown>) => { void work().catch(workspace.report); };
   useEffect(() => { void workspace.init(); return () => { workspace.saver.dispose(); workspace.titler.dispose(); }; }, [workspace]);
   useEffect(()=>{setAiOpen(false);},[vault?.id,vault?.locked,page?.id,view]);
+  useEffect(()=>{setSearchOpen(false);},[vault?.id,vault?.locked]);
   useEffect(() => { setPanelId(null); setCreate(null); setDeleteTarget(null); setRenameTarget(null); setOrganizeTarget(null); }, [vault?.id, vault?.locked]);
   useEffect(() => {
     const beforeUnload = (e: BeforeUnloadEvent) => { if (workspace.saver.hasPending) { e.preventDefault(); e.returnValue = ''; } };
     const keyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' && !document.querySelector('dialog[open]') && workspace.snapshot().vault && !workspace.snapshot().vault?.locked) { e.preventDefault(); setAiOpen(false); setPanelId(null); setSearchOpen(value=>!value); }
       if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); void workspace.saver.flush().catch(workspace.report); }
       if (e.key === 'Escape' && !document.querySelector('dialog[open]')) setPanelId(null);
     };
@@ -57,6 +61,7 @@ export function App() {
         {label: 'Settings', icon: 'settings', onSelect: () => setSettingsOpen(true)},
       ]}/></div></div>
       <nav className="sidebar-group" aria-label="Quick access">
+        <button className={'nav '+(searchOpen?'active':'')} disabled={disabled} onClick={()=>{setPanelId(null);setAiOpen(false);setSearchOpen(value=>!value);}} aria-label="Search vault" aria-expanded={searchOpen}><span><Icon name="search"/></span><span>Search</span><kbd>⌘K</kbd></button>
         <button className={'nav ' + (view === 'favourites' ? 'active' : '')} disabled={disabled} aria-label="Favourites" title="Favourites" onClick={() => workspace.showOrganization(true)}><span data-icon="star"><Icon name="star"/></span><span>Favourites</span></button>
         <button className={'nav ' + (view === 'recent' ? 'active' : '')} disabled={disabled} aria-label="Recent items" title="Recent items" onClick={() => workspace.showRecent()}><span data-icon="recent"><Icon name="recent"/></span><span>Recent items</span></button>
       </nav>
@@ -83,12 +88,13 @@ export function App() {
       })}</nav>
       <div className="sidebar-settings"><button className={'nav ' + (view === 'trash' ? 'active' : '')} aria-label="Trash" title="Trash" disabled={disabled} onClick={() => { setPanelId(null); run(() => workspace.showTrash()); }}><span data-icon="trash"><Icon name="trash"/></span><span>Trash</span></button><button className="nav" aria-label="Settings" title="Settings" aria-haspopup="dialog" onClick={() => setSettingsOpen(true)}><span data-icon="settings"><Icon name="settings"/></span><span>Settings</span></button></div>
     </aside>
-    <main><header className="topbar"><div id="breadcrumb"><span>{vault?.name || 'Noema'}</span>{vault && !vault.locked && <><b>/</b>{view === 'trash' ? 'Trash' : view === 'entities' ? 'Knowledge entities' : view === 'organization' ? 'Collections & folders' : view === 'favourites' ? 'Favourites' : view === 'recent' ? 'Recent items' : 'Pages'}{view === 'pages' && page && <><b>/</b>{page.title || 'Untitled'}</>}</>}</div><div className="top-actions">{view === 'pages' && page && vault && !disabled && <PageToolbar aiOpen={aiOpen} onAI={()=>{setPanelId(null);setAiOpen(value=>!value);}} favourite={organization.favourites.some(item => item.kind === 'page' && item.item_id === page.id)} onOrganizationChange={data => { if (workspace.snapshot().vault?.id === vault.id) workspace.setOrganization(data); }} onDelete={() => setDeleteTarget(page)} key={vault.id + '/' + page.id} page={page} onError={workspace.report}/>}<button id="save-status" className="page-tool" aria-label={status} title={status} disabled={disabled} onClick={() => run(() => workspace.saver.flush())}><Icon name={saveStatus === 'saved' ? 'check' : saveStatus === 'error' ? 'alert' : 'save'}/><span className="sr-only" role="status">{status}</span></button></div></header>
+    <main><header className="topbar"><div id="breadcrumb"><span>{vault?.name || 'Noema'}</span>{vault && !vault.locked && <><b>/</b>{view === 'trash' ? 'Trash' : view === 'entities' ? 'Knowledge entities' : view === 'organization' ? 'Collections & folders' : view === 'favourites' ? 'Favourites' : view === 'recent' ? 'Recent items' : 'Pages'}{view === 'pages' && page && <><b>/</b>{page.title || 'Untitled'}</>}</>}</div><div className="top-actions">{view === 'pages' && page && vault && !disabled && <PageToolbar aiOpen={aiOpen} onAI={()=>{setSearchOpen(false);setPanelId(null);setAiOpen(value=>!value);}} favourite={organization.favourites.some(item => item.kind === 'page' && item.item_id === page.id)} onOrganizationChange={data => { if (workspace.snapshot().vault?.id === vault.id) workspace.setOrganization(data); }} onDelete={() => setDeleteTarget(page)} key={vault.id + '/' + page.id} page={page} onError={workspace.report}/>}<button id="save-status" className="page-tool" aria-label={status} title={status} disabled={disabled} onClick={() => run(() => workspace.saver.flush())}><Icon name={saveStatus === 'saved' ? 'check' : saveStatus === 'error' ? 'alert' : 'save'}/><span className="sr-only" role="status">{status}</span></button></div></header>
       <div id="content" inert={busy||reviewing} aria-busy={busy||reviewing}>
         {busy && view !== 'trash' ? <p className="loading-state" role="status">Loading workspace…</p> : vault?.locked ? <section className="locked-state"><div className="vault-symbol"><Icon name="vault"/></div><h1>{vault.name}</h1><p>This vault is locked. Unlock it to access its pages and knowledge.</p><button className="button primary" onClick={() => setVaultAction('unlock')}>Unlock vault</button><small>Export and import are planned.</small></section> : vault && view === 'trash' ? <TrashLibrary notes={trash} onRestore={id => workspace.restorePage(id)} onDelete={id => workspace.permanentlyDeletePage(id)} onRefresh={workspace.refreshTrash} onError={workspace.report}/> : vault && view === 'recent' ? <RecentLibrary recent={recent} pages={pages} entities={entities} onOpenPage={id => run(() => workspace.openPage(id))} onOpenEntity={openEntity}/> : vault && (view === 'organization' || view === 'favourites') ? <OrganizationLibrary data={organization} key={vault.id + view} vaultId={vault.id} pages={pages} entities={entities} favouritesOnly={view === 'favourites'} context={organizationContext} onContextChange={workspace.setOrganizationContext} onChanged={workspace.setOrganization} onOpenPage={id => run(() => workspace.openPage(id))} onOpenEntity={openEntity} onError={workspace.report}/> : vault && view === 'entities' ? <KnowledgeLibrary onCreate={() => setCreate({})} vaultId={vault.id} key={vault.id} entities={entities} onOpen={openEntity}/> : vault && page ? <PageEditor key={page.id} page={page} entities={entities} onChange={patch => workspace.updatePage(patch)} onOpenEntity={openEntity} onCreateEntity={setCreate} onSave={() => run(() => workspace.saver.flush())}/> : <section className="locked-state"><div className="vault-symbol"><Icon name="vault"/></div><h1>Your space to think</h1><p>A fresh vault for pages, knowledge, and the connections between them.</p><button className="button primary" disabled={!vault} onClick={() => run(() => workspace.newPage())}>Create your first page</button></section>}
       </div>
     </main>
-    {aiOpen && view==='pages' && page && vault && !vault.locked && !busy && <IntelligencePanel onReview={(scanId,id,decision,edits)=>workspace.reviewEntity(scanId,id,decision,edits)} onSourcesChange={sourceIds => workspace.updatePage({sourceIds})} onCreateEntity={setCreate} entities={entities} onOpenEntity={openEntity} key={vault.id+'/'+page.id} page={page} onClose={()=>setAiOpen(false)} onSettings={()=>setSettingsOpen(true)} onFlush={async()=>{await workspace.saver.flush();return workspace.snapshot().page;}}/>}
+    {aiOpen && view==='pages' && page && vault && !vault.locked && !busy && <IntelligencePanel onReview={(scanId,id,decision,edits)=>workspace.reviewEntity(scanId,id,decision,edits)} onSourcesChange={sourceIds => workspace.updatePage({sourceIds})} onCreateEntity={setCreate} entities={entities} onSearch={()=>{setAiOpen(false);setSearchOpen(true);}} onOpenEntity={openEntity} key={vault.id+'/'+page.id} page={page} onClose={()=>setAiOpen(false)} onSettings={()=>setSettingsOpen(true)} onFlush={async()=>{await workspace.saver.flush();return workspace.snapshot().page;}}/>}
+    {searchOpen && vault && !vault.locked && !busy && <SearchPanel key={vault.id} vaultId={vault.id} pages={pages} entities={entities} onOpenPage={id=>{setSearchOpen(false);run(()=>workspace.openPage(id));}} onOpenEntity={openEntity} onClose={()=>setSearchOpen(false)}/>}
     {panelId && vault && !vault.locked && !busy && <EntityPanel key={vault.id + '/' + panelId} vaultId={vault.id} id={panelId} entities={entities} onOpen={openEntity} onClose={() => setPanelId(null)} onUpdated={() => workspace.refreshEntities()} onError={workspace.report}/>}
     {create && vault && <CreateEntityDialog vaultId={vault.id} initial={create} onClose={() => setCreate(null)} onSubmit={async input => {
       const result = await workspace.createEntity(input);
@@ -98,7 +104,7 @@ export function App() {
     {organizeTarget && vault && !vault.locked && <PageOrganizationDialog key={vault.id + organizeTarget.id} page={organizeTarget} data={organization} onMove={(collection, folder, remove) => workspace.locatePage(organizeTarget.id, collection, folder, remove)} onClose={() => setOrganizeTarget(null)}/>}
     {renameTarget && <NameDialog maxLength={500} title="Rename page" value={renameTarget.title} onSave={name => workspace.renamePage(renameTarget.id,name)} onClose={() => setRenameTarget(null)}/>}
     {deleteTarget && <ConfirmDialog title="Move note to Trash?" description={`“${deleteTarget.title || 'Untitled'}” will be kept in Trash for 30 days. You can restore it until then.`} action="Move to Trash" onConfirm={() => workspace.deletePage(deleteTarget.id)} onClose={() => setDeleteTarget(null)}/>}
-    {settingsOpen && <SettingsDialog onOpenPage={async(vaultId,pageId)=>{if(vault?.id!==vaultId)await workspace.selectVault(vaultId);await workspace.openPage(pageId);setSettingsOpen(false);}} appearance={appearance} onChange={setAppearance} storageError={storageError} onClose={() => setSettingsOpen(false)}/>}
+    {settingsOpen && <SettingsDialog vault={vault} onOpenPage={async(vaultId,pageId)=>{if(vault?.id!==vaultId)await workspace.selectVault(vaultId);await workspace.openPage(pageId);setSettingsOpen(false);}} appearance={appearance} onChange={setAppearance} storageError={storageError} onClose={() => setSettingsOpen(false)}/>}
     {vaultAction && <VaultDialog action={vaultAction} onClose={() => setVaultAction(null)} onSubmit={value => vaultAction === 'create' ? workspace.createVault(value) : vaultAction === 'lock' ? workspace.lock(value) : workspace.unlock(value)}/>}
     {error && <div id="toast" role="alert">{error}<button className="toast-close" aria-label="Dismiss error" onClick={workspace.dismissError}>×</button></div>}
   </>;

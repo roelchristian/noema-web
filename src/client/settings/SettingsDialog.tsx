@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { AIActivityLog } from './AIActivityLog';
 import { IntelligenceSettings } from './IntelligenceSettings';
+import { EmbeddingSettings } from './EmbeddingSettings';
+import type { Vault } from '../../shared/domain';
 import { entityLabels, entityTypes } from '../../shared/domain';
 import { ColorPicker } from './ColorPicker';
 import { Icon } from '../components/Icon';
 import { Modal } from '../components/Modal';
 import { defaultAppearance, themes, type Appearance, type DisplayMode } from './appearance';
 
-export function SettingsDialog({appearance, onChange, storageError, onClose, onOpenPage}: {
+export function SettingsDialog({appearance, onChange, storageError, onClose, onOpenPage, vault}: {
+  vault: Vault | null;
   onOpenPage: (vaultId: string, pageId: string) => Promise<void>;
   appearance: Appearance; onChange: (appearance: Appearance) => void; storageError: boolean; onClose: () => void;
 }) {
@@ -54,6 +57,7 @@ export function SettingsDialog({appearance, onChange, storageError, onClose, onO
       </div>
       <div id="settings-panel-intelligence" role="tabpanel" aria-labelledby="settings-tab-intelligence" hidden={tab !== 'intelligence'}>
         <IntelligenceSettings/>
+        {tab === 'intelligence' && <EmbeddingSettings key={vault?.id} vault={vault} onOpenPage={onOpenPage}/>}
         <section className="settings-section settings-activity-entry"><div><h3>AI activity log</h3><p>Review local AI requests, export a CSV, or clear activity.</p></div><button className="button" aria-haspopup="dialog" onClick={() => setActivityOpen(true)}>Open activity log</button></section>
       </div>
       <footer className="settings-footer"><p role="status" hidden={tab !== 'appearance'}>{storageError ? 'Applied for now. Browser storage is unavailable; changes won’t survive a reload.' : 'Appearance changes apply instantly and save in this browser.'}</p><div><button className="button" hidden={tab !== 'appearance'} onClick={() => onChange(defaultAppearance())}>Restore defaults</button><button className="button primary" onClick={onClose}>Done</button></div></footer>

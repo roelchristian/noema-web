@@ -65,6 +65,11 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
           if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
           const vault=vaults.requireOpen(header || 'default');
           pages.purgeExpired(vault);
+          if(collection==='entity-schema') {
+            if(parts.length===2 && method==='GET')return send(200,knowledge.schema(vault));
+            if(parts.length===3 && method==='POST' && id==='subtypes')return send(201,knowledge.addSubtype(vault,body));
+            if(parts.length===3 && method==='POST' && id==='properties')return send(201,knowledge.addTypeProperty(vault,body));
+          }
           if(collection==='trash') {
             if(parts.length===2 && method==='GET')return send(200,pages.trash(vault));
             if(id && parts.length===4 && child==='restore' && method==='POST')return send(200,pages.restore(vault,id));

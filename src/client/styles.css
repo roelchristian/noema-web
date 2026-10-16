@@ -570,3 +570,22 @@ main { margin-left: 224px; }
 .item-organization > .membership-heading:first-of-type { margin-top: 0; }
 @media (hover: none) { .organization-branch .branch-chevron { opacity: 1; } .organization-branch .branch-container-icon { opacity: 0; } }
 @media (max-width: 500px) { .organization-branch .branch-toggle, .organization-branch .branch-leaf-icon { display: inline-flex; margin-left: 0; } .organization-branch .container-link { display: none; } .organization-page-link { display: none; } }
+
+.entity-type-manager { border: 1px solid var(--line); border-radius: 10px; margin: 24px 0; }
+.entity-type-manager > summary { cursor: pointer; padding: 14px 18px; font-size: 13px; font-weight: 550; }
+.type-manager-body { display: grid; gap: 22px; padding: 4px 18px 20px; }
+.type-manager-body > label { display: grid; gap: 8px; max-width: 300px; font-size: 13px; }
+.type-manager-body h3 { margin: 0 0 8px; font-size: 14px; }
+.type-field-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.type-field-list > span { border: 1px solid var(--line); border-radius: 5px; padding: 5px 9px; font-size: 12px; }
+.type-add-form { display: flex; flex-wrap: wrap; gap: 8px; }
+.type-add-form input { min-width: 150px; flex: 1; }
+.type-add-form input { border: 1px solid var(--control-border, #dfdfdf); border-radius: 5px; padding: 9px 11px; font-size: 12px; background: var(--surface-raised, #fafafa); color: var(--text, #222); }
+#entity-form > .select-host { display: inline-block; margin: 0 6px 8px 0; }
+.subtype-picker { min-width: 0; border: 0; padding: 0; margin: 14px 0; }
+.subtype-picker legend { font-size: 11px; color: var(--text-muted, #606060); }
+.subtype-picker .section-hint { margin: 4px 0 8px; }
+.subtype-picker > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.subtype-picker label { display: flex; align-items: center; gap: 6px; margin: 0; border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; font-size: 11px; cursor: pointer; }
+.subtype-picker input[type=checkbox] { display: inline-block; width: 14px; height: 14px; margin: 0; padding: 0; accent-color: var(--text, #222); }
+.subtype-picker label:has(:checked) { background: var(--surface-hover, #efefef); }

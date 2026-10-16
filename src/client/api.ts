@@ -7,6 +7,9 @@ export async function request<T>(route: string, method='GET', body?: unknown, va
   return result as T;
 }
 export const api={
+  entitySchema:(vault:string)=>request<import('../shared/entity-schema').EntitySchema>('entity-schema','GET',undefined,vault),
+  addSubtype:(vault:string,type:EntityInput['type'],name:string)=>request<import('../shared/entity-schema').EntitySchema>('entity-schema/subtypes','POST',{type,name},vault),
+  addTypeProperty:(vault:string,type:EntityInput['type'],name:string)=>request<import('../shared/entity-schema').EntitySchema>('entity-schema/properties','POST',{type,name},vault),
   clearAIActivity:()=>request<{ok:true}>('intelligence/activity','DELETE'),
   aiActivity:(cursor?:number)=>request<import('../shared/intelligence').AIActivityPage>('intelligence/activity'+(cursor?'?before='+cursor:'')),
   intelligence:()=>request<import('../shared/domain').IntelligenceStatus>('intelligence'),

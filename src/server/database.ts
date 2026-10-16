@@ -79,6 +79,20 @@ if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'deleted_
 db.exec('CREATE INDEX IF NOT EXISTS pages_deleted_at ON pages(deleted_at)');
 
 if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'revision')) db.exec('ALTER TABLE pages ADD COLUMN revision INTEGER NOT NULL DEFAULT 1');
+if (!db.prepare('PRAGMA table_info(entities)').all().some(c => c.name === 'subtype')) db.exec('ALTER TABLE entities ADD COLUMN subtype TEXT');
+// Import the former single selection exactly once; an empty array remains cleared on restart.
+if (!db.prepare('PRAGMA table_info(entities)').all().some(c => c.name === 'subtypes')) {
+ db.exec(`ALTER TABLE entities ADD COLUMN subtypes TEXT NOT NULL DEFAULT '[]';
+ UPDATE entities SET subtypes=json_array(subtype) WHERE subtype IS NOT NULL;`);
+}
+db.exec(`CREATE TABLE IF NOT EXISTS entity_subtypes (
+ id TEXT PRIMARY KEY, vault_id TEXT NOT NULL REFERENCES vaults(id), type TEXT NOT NULL, name TEXT NOT NULL COLLATE NOCASE,
+ UNIQUE(vault_id,type,name)
+);
+ CREATE TABLE IF NOT EXISTS entity_type_properties (
+ vault_id TEXT NOT NULL REFERENCES vaults(id), type TEXT NOT NULL, name TEXT NOT NULL COLLATE NOCASE,
+ PRIMARY KEY(vault_id,type,name)
+);`);
 if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
  db.exec('BEGIN');
  try {
@@ -99,7 +113,10 @@ if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
  } catch(e) { db.exec('ROLLBACK'); throw e; }
 }
 
- db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
+// Preserve existing freeform fields as shared property names for their main type.
+ db.exec(`INSERT OR IGNORE INTO entity_type_properties (vault_id,type,name)
+ SELECT e.vault_id,e.type,trim(p.name) FROM properties p JOIN entities e ON e.id=p.entity_id;
+ CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
  INSERT OR IGNORE INTO schema_migrations VALUES (1,datetime('now'));`);
  if (db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Database contains invalid references');
  return db;

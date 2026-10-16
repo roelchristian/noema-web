@@ -17,8 +17,7 @@
     "types": [
       "node",
       "vite/client"
-    ],
-    "allowJs": true
+    ]
   },
   "include": [
     "src",

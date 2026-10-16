@@ -29,7 +29,12 @@ Noema is a local-first modular monolith: one Node.js process serves a local SQLi
 - `src/server/http.ts`: HTTP routing, request validation, origin/host checks, and static assets.
 - `src/shared/domain.ts`: shared TypeScript domain and API types.
 - `src/client/main.tsx`: React application entry point.
-- `src/client/workspace.js`: the existing editor and screens, isolated behind a React lifecycle adapter to preserve current behavior during the migration. This adapter remains JavaScript; the server, shared types, API client, and React entry point are TypeScript. Moving each screen into native React components is deferred.
+- `src/client/App.tsx`: native React workspace shell, navigation, and screen composition.
+- `src/client/editor/`: page Sources, block editing, slash commands, and inline entity references.
+- `src/client/knowledge/` and `src/client/vaults/`: typed React screens, forms, and dialogs.
+- `src/client/state/`: workspace state and a serialized autosave queue that keeps each write tied to its vault and revision.
+
+The frontend is entirely TypeScript. React owns the screens and block structure; a small DOM boundary handles browser-owned `contenteditable` text, serialization, and caret ranges. React escapes text and mention markup before it enters that editable surface.
 
 Page responses include a `revision`. Clients send that revision on updates to detect stale writes (HTTP 409). The bundled client does so automatically. Older API clients that omit the revision retain the previous update behavior. SQLite uses WAL, foreign keys, a busy timeout, and transactions for page/source updates. Shutdown signals close the HTTP server and database cleanly.
 
@@ -94,7 +99,7 @@ All routes are under `/api` and accept/return JSON. Send `X-Vault-Id` to select 
 npm test
 ```
 
-The integration test launches an isolated server on an available port and uses a temporary database. It covers page persistence across server restarts, entity edits, entity references, property and relationship edits/removals, incoming connections, invalid input, and rejection of cross-origin writes. It leaves your workspace data untouched. It also covers migration of populated pre-vault tables, vault isolation, Source attachments and inline mentions, lock enforcement, incorrect passphrases, and lock/source persistence across restarts. UI validation was skipped for this change as requested.
+The integration test launches an isolated server on an available port and uses a temporary database. It covers page persistence across server restarts, entity edits, entity references, property and relationship edits/removals, incoming connections, invalid input, and rejection of cross-origin writes. It leaves your workspace data untouched. It also covers migration of populated pre-vault tables, vault isolation, Source attachments and inline mentions, lock enforcement, incorrect passphrases, and lock/source persistence across restarts. Autosave unit tests cover edits during an in-flight write, failed-write retries, and vault-scoped snapshots. UI validation was skipped as requested.
 
 ## Git
 

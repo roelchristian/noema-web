@@ -1,3 +1,4 @@
+import { PageOrganizationDialog } from './organization/PageOrganizationDialog';
 import { IntelligencePanel } from './intelligence/IntelligencePanel';
 import { ActionMenu } from './components/ActionMenu';
 import { NameDialog } from './components/NameDialog';
@@ -23,6 +24,7 @@ export function App() {
   const [aiOpen,setAiOpen]=useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<PageSummary | null>(null);
+  const [organizeTarget, setOrganizeTarget] = useState<PageSummary | null>(null);
   const [renameTarget, setRenameTarget] = useState<PageSummary | null>(null);
   const {appearance, setAppearance, storageError} = useAppearance();
   const [workspace] = useState(() => new Workspace());
@@ -33,7 +35,7 @@ export function App() {
   const run = (work: () => Promise<unknown>) => { void work().catch(workspace.report); };
   useEffect(() => { void workspace.init(); return () => { workspace.saver.dispose(); workspace.titler.dispose(); }; }, [workspace]);
   useEffect(()=>{setAiOpen(false);},[vault?.id,vault?.locked,page?.id,view]);
-  useEffect(() => { setPanelId(null); setCreate(null); setDeleteTarget(null); setRenameTarget(null); }, [vault?.id, vault?.locked]);
+  useEffect(() => { setPanelId(null); setCreate(null); setDeleteTarget(null); setRenameTarget(null); setOrganizeTarget(null); }, [vault?.id, vault?.locked]);
   useEffect(() => {
     const beforeUnload = (e: BeforeUnloadEvent) => { if (workspace.saver.hasPending) { e.preventDefault(); e.returnValue = ''; } };
     const keyDown = (e: KeyboardEvent) => {
@@ -71,6 +73,7 @@ export function App() {
           <ActionMenu label={'Options for page: ' + (p.title || 'Untitled')} disabled={disabled} actions={[
             {label: 'Open', icon: 'page', onSelect: () => run(() => workspace.openPage(p.id))},
             {label: 'Rename', icon: 'edit', onSelect: () => setRenameTarget(p)},
+            {label: 'Add to folder / collection', icon: 'folder', onSelect: () => setOrganizeTarget(p)},
             {label: favourite ? 'Remove from favourites' : 'Add to favourites', icon: 'star', onSelect: () => run(() => workspace.togglePageFavourite(p.id))},
             {label: 'Move to Trash', icon: 'trash', danger: true, onSelect: () => setDeleteTarget(p)},
           ]}/>
@@ -90,6 +93,7 @@ export function App() {
       if (create.source && workspace.snapshot().page) workspace.updatePage({sourceIds: [...new Set([...workspace.snapshot().page!.sourceIds, result.id])]});
       create.onCreated?.(result.id); openEntity(result.id);
     }}/>}
+    {organizeTarget && vault && !vault.locked && <PageOrganizationDialog key={vault.id + organizeTarget.id} page={organizeTarget} data={organization} onMove={(collection, folder, remove) => workspace.locatePage(organizeTarget.id, collection, folder, remove)} onClose={() => setOrganizeTarget(null)}/>}
     {renameTarget && <NameDialog maxLength={500} title="Rename page" value={renameTarget.title} onSave={name => workspace.renamePage(renameTarget.id,name)} onClose={() => setRenameTarget(null)}/>}
     {deleteTarget && <ConfirmDialog title="Move note to Trash?" description={`“${deleteTarget.title || 'Untitled'}” will be kept in Trash for 30 days. You can restore it until then.`} action="Move to Trash" onConfirm={() => workspace.deletePage(deleteTarget.id)} onClose={() => setDeleteTarget(null)}/>}
     {settingsOpen && <SettingsDialog onOpenPage={async(vaultId,pageId)=>{if(vault?.id!==vaultId)await workspace.selectVault(vaultId);await workspace.openPage(pageId);setSettingsOpen(false);}} appearance={appearance} onChange={setAppearance} storageError={storageError} onClose={() => setSettingsOpen(false)}/>}

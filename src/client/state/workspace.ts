@@ -143,6 +143,12 @@ export class Workspace {
       this.patch({pages: this.state.pages.map(page => page.id === id ? saved : page), ...(this.state.page?.id === id ? {page: saved} : {})});
     });
   }
+  async locatePage(id: string, collection: string, folder: string | null, remove = false) {
+    const vault = this.state.vault, sequence = this.loadSequence;
+    if (!vault || vault.locked) return;
+    const organization = await api.organize(vault.id, 'locations', {kind: 'page', item_id: id, collection_id: collection || null, folder_id: folder || null, remove});
+    if (sequence === this.loadSequence) this.setOrganization(organization);
+  }
   async togglePageFavourite(id: string) {
     const vault = this.state.vault, sequence = this.loadSequence; if (!vault || vault.locked || this.state.busy) return;
     const favourite = !this.state.organization.favourites.some(item => item.kind === 'page' && item.item_id === id);

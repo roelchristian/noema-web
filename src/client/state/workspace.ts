@@ -1,12 +1,13 @@
 import { api } from '../api';
-import type { Entity, EntityInput, Page, PageSummary, Vault } from '../../shared/domain';
+import type { Entity, EntityInput, Page, PageSummary, Vault, Organization, OrganizationContext, RecentItem, ItemKind } from '../../shared/domain';
 import { PageSaver, type SaveStatus } from './page-saver';
 export interface WorkspaceState {
   vaults: Vault[]; vault: Vault | null; pages: PageSummary[]; entities: Entity[];
-  page: Page | null; view: 'pages' | 'entities'; busy: boolean; error: string | null; saveStatus: SaveStatus;
+  organization: Organization; organizationContext: OrganizationContext; recent: RecentItem[];
+  page: Page | null; view: 'pages' | 'entities' | 'organization' | 'favourites' | 'recent'; busy: boolean; error: string | null; saveStatus: SaveStatus;
 }
 export class Workspace {
-  private state: WorkspaceState = {vaults: [], vault: null, pages: [], entities: [], page: null, view: 'pages', busy: true, error: null, saveStatus: 'saved'};
+  private state: WorkspaceState = {vaults: [], vault: null, pages: [], entities: [], organization: {collections: [], folders: [], locations: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'pages', busy: true, error: null, saveStatus: 'saved'};
   private listeners = new Set<() => void>();
   private pageCache = new Map<string, Page>();
   private navigation = false;
@@ -44,21 +45,47 @@ export class Workspace {
       const vaults = await api.vaults(), vault = vaults.find(v => v.id === id);
       if (!vault) throw new Error('Vault not found');
       ++this.loadSequence;
-      this.pageCache.clear(); this.patch({vaults, vault, pages: [], entities: [], page: null, view: 'pages', error: null});
+      this.pageCache.clear(); this.patch({vaults, vault, pages: [], entities: [], organization: {collections: [], folders: [], locations: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'pages', error: null});
       try { localStorage.setItem('noema-vault', id); } catch { /* The app can work without browser storage. */ }
       if (vault.locked) return;
-      const [pages, entities] = await Promise.all([api.pages(id), api.entities(id)]);
-      this.patch({pages, entities});
+      const [pages, entities, organization] = await Promise.all([api.pages(id), api.entities(id), api.organization(id)]);
+      let recent: RecentItem[] = [];
+      try {
+        const stored: unknown = JSON.parse(localStorage.getItem('noema-recent/' + id) || '[]');
+        if (Array.isArray(stored)) recent = stored.filter((item): item is RecentItem => !!item && typeof item === 'object' && (item.kind === 'page' || item.kind === 'entity') && typeof item.item_id === 'string' && typeof item.opened_at === 'string').slice(0, 50);
+      } catch { /* Recent history is optional when storage is unavailable. */ }
+      this.patch({pages, entities, organization, recent});
       if (pages[0]) await this.loadPage(pages[0].id);
     });
   }
   private async loadPage(id: string) {
     const vault = this.state.vault!;
     const page = this.pageCache.get(id) || await api.page(vault.id, id);
-    this.pageCache.set(id, page); this.patch({page, view: 'pages'});
+    this.pageCache.set(id, page); this.patch({page, view: 'pages'}); this.recordRecent('page', id);
   }
   async openPage(id: string) { await this.navigate(() => this.loadPage(id)); }
   async showPages() { if (this.state.pages.length) await this.openPage(this.state.page?.id || this.state.pages[0]!.id); else await this.newPage(); }
+  showOrganization(favourites = false) { if (!this.state.busy) this.patch({view: favourites ? 'favourites' : 'organization'}); }
+  showRecent() { if (!this.state.busy) this.patch({view: 'recent'}); }
+  setOrganization = (organization: Organization) => {
+    const current = this.state.organizationContext;
+    const collection = organization.collections.some(c => c.id === current.collection) ? current.collection : '';
+    const folder = organization.folders.some(f => f.id === current.folder && (f.collection_id || '') === collection) ? current.folder : '';
+    this.patch({organization, organizationContext: {collection, folder}});
+  };
+  setOrganizationContext = (patch: Partial<OrganizationContext>) => {
+    this.patch({organizationContext: {...this.state.organizationContext, ...patch}});
+  };
+  openOrganization(collection = '', folder = '') {
+    if (!this.state.busy) this.patch({view: 'organization', organizationContext: {collection, folder}});
+  }
+  recordRecent(kind: ItemKind, item_id: string) {
+    const vault = this.state.vault;
+    if (!vault || vault.locked) return;
+    const recent = [{kind, item_id, opened_at: new Date().toISOString()}, ...this.state.recent.filter(item => item.kind !== kind || item.item_id !== item_id)].slice(0, 50);
+    this.patch({recent});
+    try { localStorage.setItem('noema-recent/' + vault.id, JSON.stringify(recent)); } catch { /* Keep session history when storage is unavailable. */ }
+  }
   showEntities() { if (!this.state.busy) this.patch({view: 'entities'}); }
   updatePage(patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds'>>) {
     const current = this.state.page;
@@ -70,7 +97,7 @@ export class Workspace {
   async newPage() {
     await this.navigate(async () => {
       const vault = this.state.vault!; const page = await api.createPage(vault.id);
-      this.pageCache.set(page.id, page); this.patch({page, pages: [page, ...this.state.pages], view: 'pages'});
+      this.pageCache.set(page.id, page); this.patch({page, pages: [page, ...this.state.pages], view: 'pages'}); this.recordRecent('page', page.id);
     });
   }
   async deletePage() {

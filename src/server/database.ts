@@ -31,6 +31,18 @@ db.exec('COMMIT');
 } catch(e) { db.exec('ROLLBACK'); throw e; } finally { db.exec('PRAGMA foreign_keys=ON'); }
 db.exec(`CREATE TABLE IF NOT EXISTS page_sources (page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE, source_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE, PRIMARY KEY(page_id,source_id));`);
 
+db.exec(`
+ CREATE TABLE IF NOT EXISTS collections (id TEXT PRIMARY KEY, vault_id TEXT NOT NULL REFERENCES vaults(id), name TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS folders (id TEXT PRIMARY KEY, vault_id TEXT NOT NULL REFERENCES vaults(id), name TEXT NOT NULL, collection_id TEXT REFERENCES collections(id) ON DELETE CASCADE, parent_id TEXT REFERENCES folders(id) ON DELETE CASCADE);
+ CREATE TABLE IF NOT EXISTS item_locations (vault_id TEXT NOT NULL REFERENCES vaults(id), kind TEXT NOT NULL CHECK(kind IN ('page','entity')), item_id TEXT NOT NULL, collection_id TEXT NOT NULL DEFAULT '', folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL, PRIMARY KEY(vault_id,kind,item_id,collection_id));
+ CREATE TABLE IF NOT EXISTS favourites (vault_id TEXT NOT NULL REFERENCES vaults(id), kind TEXT NOT NULL CHECK(kind IN ('page','entity')), item_id TEXT NOT NULL, PRIMARY KEY(vault_id,kind,item_id));
+ CREATE INDEX IF NOT EXISTS folders_vault ON folders(vault_id);
+ CREATE INDEX IF NOT EXISTS collections_vault ON collections(vault_id);
+ CREATE TRIGGER IF NOT EXISTS collection_cleanup AFTER DELETE ON collections BEGIN DELETE FROM item_locations WHERE collection_id=OLD.id; END;
+ CREATE TRIGGER IF NOT EXISTS page_organization_cleanup AFTER DELETE ON pages BEGIN DELETE FROM item_locations WHERE kind='page' AND item_id=OLD.id; DELETE FROM favourites WHERE kind='page' AND item_id=OLD.id; END;
+ CREATE TRIGGER IF NOT EXISTS entity_organization_cleanup AFTER DELETE ON entities BEGIN DELETE FROM item_locations WHERE kind='entity' AND item_id=OLD.id; DELETE FROM favourites WHERE kind='entity' AND item_id=OLD.id; END;
+`);
+
 if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'revision')) db.exec('ALTER TABLE pages ADD COLUMN revision INTEGER NOT NULL DEFAULT 1');
 if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
  db.exec('BEGIN');

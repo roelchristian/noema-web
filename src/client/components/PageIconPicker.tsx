@@ -13,8 +13,7 @@ export function PageIconPicker({value, onChange}: {value?: PageIconId | null; on
   return <>
     <button className={'page-icon-trigger' + (selected ? ' has-icon' : '')} aria-label={selected ? `Change page icon: ${selected.label}` : 'Choose page icon'} title={selected ? `Change icon · ${selected.label}` : 'Choose page icon'} aria-haspopup="dialog" aria-expanded={open} onClick={() => { setSearch(''); setOpen(true); }}><PageIcon icon={value}/><span>{selected ? 'Change icon' : 'Add icon'}</span></button>
     {open && <Modal titleId="page-icon-title" className="page-icon-dialog" onClose={() => setOpen(false)}>
-      <div className="page-icon-heading"><div><p className="dialog-eyebrow">A SMALL SIGN FOR YOUR IDEAS</p><h2 id="page-icon-title">Page icon</h2></div><button className="page-icon-close" aria-label="Close icon picker" onClick={() => setOpen(false)}>×</button></div>
-      <p className="page-icon-intro">Give this page a symbol you’ll recognize.</p>
+      <div className="page-icon-heading"><div><h2 id="page-icon-title">Page icon</h2></div><button className="page-icon-close" aria-label="Close icon picker" onClick={() => setOpen(false)}>×</button></div>
       <input autoFocus type="search" aria-label="Search page icons" placeholder="Search symbols…" value={search} onChange={e => setSearch(e.target.value)}/>
       <div className="page-icon-catalog">
         {groups.map(group => {

@@ -16,7 +16,7 @@ export function CreateEntityDialog({vaultId, initial, onSubmit, onClose}: {vault
     finally { setBusy(false); }
   }
   return <Modal onClose={() => { if (!busy) onClose(); }} titleId="create-dialog-title"><form onSubmit={submit}>
-    <div className="dialog-eyebrow">KNOWLEDGE ENTITY</div><h2 id="create-dialog-title">Create {initial.source ? 'a source' : 'an entity'}</h2><p>A reusable object you can reference across your vault’s pages.</p>
+    <h2 id="create-dialog-title">Create {initial.source ? 'a source' : 'an entity'}</h2>
     <label>Name<input autoFocus required maxLength={200} value={name} onChange={e => setName(e.target.value)} disabled={busy} placeholder="e.g. Ursula K. Le Guin" autoComplete="off"/></label>
     <label>Entity type<Select value={type} onChange={e => { setType(e.target.value as EntityType); setSubtypes([]); }} disabled={initial.source || busy}>{entityTypes.map(t => <option key={t} value={t}>{entityLabels[t]}</option>)}</Select></label>
     <SubtypePicker type={type} value={subtypes} subtypes={schema.subtypes} onChange={setSubtypes} disabled={busy}/>

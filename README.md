@@ -1,6 +1,6 @@
 # Noema — local knowledge workspace
 
-A local block editor organized into self-contained vaults, with reusable knowledge entities and a SQLite backend. The interface uses a black accent palette, bundled Inter, and SVG entity icons. No accounts or API keys are required for local editing. Optional AI summaries, entity scans, and semantic search use your own OpenAI API key. React and the build tools are installed locally through npm.
+A local block editor organized into self-contained vaults, with reusable knowledge entities and a SQLite backend. The interface uses a black accent palette, locally bundled Geist Sans for titles, native system typography (SF on Apple devices) for the interface, and SVG entity icons. No accounts or API keys are required for local editing. Optional AI summaries, entity scans, and semantic search use your own OpenAI API key. React and the build tools are installed locally through npm.
 
 ## Run
 
@@ -35,7 +35,7 @@ Property names belong to the main type. Built-in fields and any new fields added
 
 ## Architecture
 
-Noema is a local-first modular monolith: one Node.js process serves a local SQLite database and the compiled frontend. Local editing has no cloud service dependencies. Optional AI summaries, entity scans, and embeddings connect to OpenAI. Inter and all frontend assets are bundled locally.
+Noema is a local-first modular monolith: one Node.js process serves a local SQLite database and the compiled frontend. Local editing has no cloud service dependencies. Optional AI summaries, entity scans, and embeddings connect to OpenAI. Geist Sans, the Inter fallback, and all frontend assets are bundled locally. Geist is distributed under the SIL Open Font License in `public/Geist-OFL.txt`.
 
 - `src/server/modules/`: vault access, page persistence, and knowledge operations, each with a separate service boundary.
 - `src/server/database.ts`: schema initialization, backward-compatible migrations, and seed data.

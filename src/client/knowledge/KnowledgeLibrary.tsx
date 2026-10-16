@@ -7,7 +7,7 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onCreate}: {vaultId
   const {schema, error} = useEntitySchema(vaultId);
   const [query, setQuery] = useState(''), [type, setType] = useState('');
   const filtered = entities.filter(e => (!type || e.type === type || e.subtypes.includes(type)) && e.name.toLowerCase().includes(query.toLowerCase()));
-  return <section className="library"><div className="page-eyebrow">YOUR KNOWLEDGE, CONNECTED</div><h1>Knowledge entities<span>{entities.length}</span></h1><p>People, places, works, and sources connected within this vault.</p>
+  return <section className="library"><h1>Knowledge entities<span>{entities.length}</span></h1>
     <button className="button primary" onClick={onCreate}>+ New entity</button>
     {error && <p role="alert">{error}</p>}
     <div className="library-tools"><input placeholder="Search your knowledge…" aria-label="Search entities" value={query} onChange={e => setQuery(e.target.value)}/><Select aria-label="Filter entity type" value={type} onChange={e => setType(e.target.value)}><option value="">All types</option>{entityTypes.flatMap(t => [<option key={t} value={t}>{entityLabels[t]} (all)</option>, ...schema.subtypes.filter(s => s.type === t).map(s => <option key={s.id} value={s.id}>{entityLabels[t]} / {s.name}</option>)])}</Select></div>

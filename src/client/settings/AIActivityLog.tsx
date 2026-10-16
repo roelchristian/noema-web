@@ -53,7 +53,7 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
   }
   if(confirmClear) return <ConfirmDialog title="Clear AI activity?" description="Permanently delete all available activity records, including older rows and running entries. This does not cancel running requests. Locked vault activity is kept." action="Clear activity" onClose={()=>setConfirmClear(false)} onConfirm={async()=>{await api.clearAIActivity();setData({items:[],nextCursor:null});setMessage('Activity cleared.');}}/>;
   return <Modal className="ai-activity-modal" titleId="ai-activity-heading" onClose={onClose}>
-    <header className="settings-heading"><div><div className="dialog-eyebrow">INTELLIGENCE</div><h2 id="ai-activity-heading">AI activity log</h2></div><button className="settings-close" aria-label="Close activity log" onClick={onClose}>×</button></header>
+    <header className="settings-heading"><div><h2 id="ai-activity-heading">AI activity log</h2></div><button className="settings-close" aria-label="Close activity log" onClick={onClose}>×</button></header>
     <p className="ai-activity-description">The latest 1,000 actions are stored locally. Prompts and responses are never copied into the log. Locked vault activity is hidden and excluded from export and clear.</p>
     <div className="ai-activity-toolbar"><button className="button" disabled={busy} onClick={()=>void load()}>Refresh</button><button className="button" disabled={busy||!data.items.length} onClick={()=>void exportCSV()}>Export CSV</button><button className="button danger" disabled={busy||!data.items.length} onClick={()=>setConfirmClear(true)}>Clear activity</button></div>
     {error&&<p role="alert">{error}</p>}

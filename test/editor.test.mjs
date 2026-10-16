@@ -62,3 +62,57 @@ test('wrapped Markdown lines remain in one paragraph, separated paragraphs becom
   assert.deepEqual(blocks.map(b => b.type), ['paragraph', 'paragraph', 'heading1']);
   assert.equal(blocks[0].content.map(s => s.text).join(''), 'One paragraph\nwrapped onto another line.');
 });
+
+test('inline math preserves LaTeX commands and code and currency stay literal', () => {
+  const content = markdownInline(String.raw`Area $\pi r^2$ and $x_1 + x_2$; \$5 and \$10; code \`$literal$\`.`.replaceAll('\\`', '`'));
+  assert.deepEqual(content.filter(segment => segment.math).map(segment => segment.text), [String.raw`\pi r^2`, 'x_1 + x_2']);
+  assert.ok(content.some(segment => segment.code && segment.text === '$literal$'));
+  assert.ok(markdownInline('$5 and $10').every(segment => !segment.math));
+  assert.ok(markdownInline('$unfinished').every(segment => !segment.math));
+});
+
+test('display equations paste as independent blocks, with multiline LaTeX intact', () => {
+  const blocks = markdownBlocks(String.raw`Before
+$$\frac{a_1}{b_2}$$
+After
+$$
+\begin{aligned}
+x &= 1 \\
+y &= 2
+\end{aligned}
+$$
+End`);
+  assert.deepEqual(blocks.map(block => block.type), ['paragraph', 'math', 'paragraph', 'math', 'paragraph']);
+  assert.equal(blocks[1].content[0].text, String.raw`\frac{a_1}{b_2}`);
+  assert.match(blocks[3].content[0].text, /\\begin\{aligned\}/);
+  assert.ok(markdownBlocks('```tex\n$$x$$\n```')[0].content[0].code);
+  assert.equal(markdownBlocks('$$unfinished')[0].type, 'paragraph');
+});
+
+test('math rendering is accessible, editable, and does not activate unsafe LaTeX commands', () => {
+  const html = segmentHTML([{text: String.raw`\frac{x}{2}`, math: true}], []);
+  assert.match(html, /class="inline-math"/);
+  assert.match(html, /data-math="\\frac\{x\}\{2\}"/);
+  assert.match(html, /<math /);
+  assert.match(html, /contentEditable="false"/);
+  const unsafe = segmentHTML([{text: String.raw`\href{javascript:alert(1)}{click}`, math: true}], []);
+  assert.doesNotMatch(unsafe, /href="javascript:/);
+  assert.doesNotMatch(segmentHTML([{text: '<script>alert(1)</script>', math: true}], []), /<script>/);
+  assert.doesNotThrow(() => segmentHTML([{text: String.raw`\frac{`, math: true}], []));
+});
+
+test('inline and display equations survive page persistence and entity scans skip formulas', async () => {
+  const { mentionEvidence } = await import('../src/shared/entity-scan.ts');
+  const db = openDatabase(':memory:');
+  try {
+    const store = new Store(db), knowledge = new Knowledge(store), pages = new Pages(store, knowledge);
+    const page = pages.create('default', {title: 'Math'});
+    const blocks = markdownBlocks('Inline $x_1^2$.\n\n$$x_1^2$$');
+    const saved = pages.update('default', page.id, {...page, blocks});
+    assert.deepEqual(saved.blocks, blocks);
+    assert.equal(mentionEvidence(saved, 'x_1', 'ursula'), null);
+    assert.ok(mentionEvidence(saved, 'Inline', 'ursula'));
+    const invalid = [{...blocks[1], content: [{entityId: 'ursula'}]}];
+    assert.throws(() => pages.update('default', page.id, {title: 'Math', blocks: invalid}), error => error.status === 400);
+  } finally { db.close(); }
+});

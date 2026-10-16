@@ -25,12 +25,13 @@ export class EntityScans {
     const collect = (segments: import('../../shared/domain.js').Segment[]) => {
       let run = '';
       for (const segment of segments) {
-        if (segment.entityId) { if (run) runs.push(run); run = ''; }
+        if (segment.entityId || segment.math) { if (run) runs.push(run); run = ''; }
         else run += segment.text;
       }
       if (run) runs.push(run);
     };
     for (const block of page.blocks) {
+      if (block.type === 'math') continue;
       if (block.type === 'table') for (const row of block.rows || []) for (const cell of row) collect(cell);
       else collect(block.content);
     }

@@ -959,3 +959,19 @@ dialog.vault-search-dialog::backdrop { background: #0005; backdrop-filter: blur(
 .entity-preview > button { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 9px 0 0; border-top: 1px solid var(--line); font-size: 11px; color: var(--text-muted); text-align: left; }
 .entity-preview > button:hover { color: var(--text); }
 .entity-preview > button .icon { width: 13px; height: 13px; }
+
+.inline-math { display: inline-block; max-width: 100%; vertical-align: baseline; cursor: pointer; border-radius: 3px; white-space: normal; }
+.inline-math:hover { background: var(--surface-hover); }
+.inline-math:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.block.math { align-items: flex-start; }
+.math-block { width: 100%; min-width: 0; }
+.math-block-render { display: block; width: 100%; padding: 12px 8px; border-radius: 6px; overflow-x: auto; text-align: center; }
+.math-block-render:hover { background: var(--surface-hover); }
+.math-block-render .katex-display { margin: .5em 0; }
+.math-placeholder { color: var(--text-muted); font-size: 13px; }
+.math-block-source { padding: 8px; border: 1px solid var(--line); border-radius: 6px; }
+.math-block-source textarea, .math-dialog textarea { display: block; width: 100%; min-height: 80px; resize: vertical; border: 1px solid var(--control-border); border-radius: 5px; padding: 10px; background: var(--surface); color: var(--text); font: 12px/1.6 ui-monospace, monospace; }
+.math-block-source small { display: block; margin-top: 6px; color: var(--text-muted); font-size: 10px; }
+.math-dialog { width: 500px; }
+.math-dialog textarea { margin-top: 8px; }
+.math-preview { padding: 20px 8px; margin-top: 12px; overflow-x: auto; text-align: center; min-height: 60px; border-radius: 5px; background: var(--surface-hover); }

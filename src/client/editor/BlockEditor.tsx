@@ -9,6 +9,9 @@ import { readImageCompression } from '../settings/image-settings';
 import { ImageBlock } from './ImageBlock';
 import { TableBlock } from './TableBlock';
 import { SelectionToolbar } from './SelectionToolbar';
+import { MathBlock } from './MathBlock';
+import { MathDialog } from './MathDialog';
+import { completeInlineMath, mathElement } from './math';
 interface Props {vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[]) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
 const options: {type: BlockType; title: string; detail: string; icon: string}[] = [
   {type: 'paragraph', title: 'Text', detail: 'Plain text for your thoughts', icon: 'T'},
@@ -17,6 +20,7 @@ const options: {type: BlockType; title: string; detail: string; icon: string}[] 
   {type: 'bullet', title: 'Bullet list', detail: 'A simple list of ideas', icon: '•'},
   {type: 'todo', title: 'To-do', detail: 'Keep track of a task', icon: '☑'},
   {type: 'table', title: 'Table', detail: 'A simple table with rows and columns', icon: '▦'},
+  {type: 'math', title: 'Equation', detail: 'A LaTeX math equation', icon: '∑'},
   {type: 'quote', title: 'Quote', detail: 'Make a thought stand out', icon: '❝'},
 ];
 interface ImageUpload {id:string; after?:string; name:string; message:string; current:number; total:number}
@@ -40,6 +44,7 @@ function EditableBlock({block, entities, onInput, onKeyDown, onOpen, register, o
 }
 export function BlockEditor(props: Props) {
   const {blocks, entities, onChange, onOpenEntity, onCreateEntity, onSave} = props;
+  const [mathTarget, setMathTarget] = useState<{range: Range; initial: string; node?: HTMLElement} | null>(null);
   const [uploads, setUploads] = useState<ImageUpload[]>([]), [imageError, setImageError] = useState('');
   const uploadQueue = useRef(Promise.resolve());
   const mounted = useRef(true);
@@ -51,7 +56,7 @@ export function BlockEditor(props: Props) {
   useLayoutEffect(() => {
     const target = focusTarget.current; if (!target) return;
     const el = elements.current.get(target.id); if (!el) return; focusTarget.current = null;
-    el.focus(); if(!el.isContentEditable) return; const range = document.createRange(); range.selectNodeContents(el); range.collapse(target.start); getSelection()?.removeAllRanges(); getSelection()?.addRange(range);
+    el.focus(); if(!el.isContentEditable) {el.querySelector('textarea')?.focus(); return;} const range = document.createRange(); range.selectNodeContents(el); range.collapse(target.start); getSelection()?.removeAllRanges(); getSelection()?.addRange(range);
   }, [blocks]);
   useEffect(() => {
     const outside = (e: MouseEvent) => { if (!root.current?.contains(e.target as Node) && !menuRef.current?.contains(e.target as Node)) setMenu(null); };
@@ -62,7 +67,7 @@ export function BlockEditor(props: Props) {
   function commitSelection() {
     const list = latest.current.blocks.map(block => {
       const row = root.current?.querySelector<HTMLElement>(`[data-block-id="${block.id}"]`);
-      if (!row || block.type === 'image') return block;
+      if (!row || block.type === 'image' || block.type === 'math') return block;
       const editors = Array.from(row.querySelectorAll<HTMLElement>('.block-content[contenteditable="true"]'));
       if (block.type === 'table') {
         let index = 0;
@@ -73,6 +78,21 @@ export function BlockEditor(props: Props) {
       return editors[0] ? {...block, content: readSegments(editors[0])} : block;
     });
     setMenu(null); latest.current.onChange(list);
+  }
+  function editInlineMath(node: HTMLElement) {
+    const range = document.createRange(); range.selectNode(node);
+    setMathTarget({range, initial: node.dataset.math ?? '', node});
+  }
+  function saveInlineMath(source: string) {
+    if (!mathTarget || !root.current?.contains(mathTarget.range.commonAncestorContainer)) {setMathTarget(null); return;}
+    const {range, node, initial} = mathTarget;
+    if (node ? !node.isConnected || node.dataset.math !== initial : range.toString() !== initial) {setMathTarget(null); return;}
+    range.deleteContents(); const math = mathElement(source); range.insertNode(math);
+    const spacer = document.createTextNode('\u200b'); math.after(spacer);
+    range.setStart(spacer, 1); range.collapse(true);
+    const el = math.closest<HTMLElement>('.block-content');
+    setMathTarget(null); el?.focus(); getSelection()?.removeAllRanges(); getSelection()?.addRange(range);
+    commitSelection();
   }
   function chooseImages(after?: string, replace?: Block) {
     setMenu(null); imageTarget.current = {after, replace}; fileInput.current?.click();
@@ -214,7 +234,13 @@ export function BlockEditor(props: Props) {
     if (e.key === 'Backspace' && !el.textContent && blocks.length > 1) { e.preventDefault(); removeBlock(block.id); }
   }
   return <><input ref={fileInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden aria-label="Choose images" onChange={e => {const files=Array.from(e.currentTarget.files ?? []); e.currentTarget.value=''; void addImages(files,imageTarget.current);}}/>
-    <div id="blocks" ref={root} onPasteCapture={e => {
+    <div id="blocks" ref={root} onClickCapture={e => {
+      const math = (e.target as Element).closest<HTMLElement>('[data-math]');
+      if (math) {e.preventDefault(); e.stopPropagation(); editInlineMath(math);}
+    }} onKeyDownCapture={e => {
+      const math = (e.target as Element).closest<HTMLElement>('[data-math]');
+      if (math && (e.key === 'Enter' || e.key === ' ')) {e.preventDefault(); e.stopPropagation(); editInlineMath(math);}
+    }} onPasteCapture={e => {
       const files=Array.from(e.clipboardData.files).filter(file => file.type.startsWith('image/'));
       if(!files.length) return;
       e.preventDefault(); e.stopPropagation(); setMenu(null);
@@ -226,9 +252,10 @@ export function BlockEditor(props: Props) {
       <button className="block-handle" title="Block options" aria-label="Block options" onClick={e => show(e.currentTarget, [...options.map(o => ({...o, pick: () => convert(block, o.type)})), {title: 'Delete block', icon: '×', pick: () => removeBlock(block.id)}], 'BLOCK OPTIONS')}><Icon name="grip"/></button>
     </div>
     {block.type === 'todo' ? <input type="checkbox" aria-label="Complete task" checked={block.checked} onChange={e => update(block.id, {checked: e.target.checked})}/> : block.type === 'bullet' ? <span className="bullet-marker">•</span> : null}
-    {block.type === 'image' ? <ImageBlock block={block} vaultId={props.vaultId} onChange={alt => update(block.id,{alt})} onDelete={() => removeBlock(block.id)} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'table' ? <TableBlock block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={el => { update(block.id, {content: readSegments(el)}); detect(el, block); }} onKeyDown={e => keyDown(e, block)} onPaste={e => paste(e, block)}/>}
+    {block.type === 'math' ? <MathBlock block={block} onDelete={() => removeBlock(block.id)} onChange={source => update(block.id, {content: [{text: source}]})} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'image' ? <ImageBlock block={block} vaultId={props.vaultId} onChange={alt => update(block.id,{alt})} onDelete={() => removeBlock(block.id)} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'table' ? <TableBlock block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={el => { completeInlineMath(el); update(block.id, {content: readSegments(el)}); detect(el, block); }} onKeyDown={e => keyDown(e, block)} onPaste={e => paste(e, block)}/>}
   </div>{uploadCards(block.id)}</Fragment>)}{uploadCards()}</div>
-    <SelectionToolbar editor={root} entities={entities} onCommit={commitSelection} onCreateEntity={onCreateEntity}/>
+    <SelectionToolbar onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} onCommit={commitSelection} onCreateEntity={onCreateEntity}/>
+    {mathTarget && <MathDialog initial={mathTarget.initial} onSave={saveInlineMath} onClose={() => setMathTarget(null)}/>}
     {imageError && <div className="image-upload-error" role="alert">{imageError}</div>}
     {menu && <div ref={menuRef} className="command-menu" style={{left: menu.left, top: menu.top}} onMouseDown={e => e.preventDefault()} role="menu"><div className="menu-label">{menu.label}</div>{menu.items.map((item, index) => <button key={index} role="menuitem" className={index === menu.index ? 'highlight' : ''} onClick={item.pick}><span className="menu-icon">{item.entity ? <Icon name={item.icon}/> : item.icon}</span><span>{item.title}<small>{item.detail}</small></span></button>)}</div>}
   </>;

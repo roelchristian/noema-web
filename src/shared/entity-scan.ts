@@ -16,9 +16,9 @@ export function mentionEvidence(page: Page, evidence: string, entityId: string):
     if (replaced) return segments;
     const output: Segment[] = [];
     for (let i = 0; i < segments.length;) {
-      if (segments[i]!.entityId) { output.push(segments[i++]!); continue; }
+      if (segments[i]!.entityId || segments[i]!.math) { output.push(segments[i++]!); continue; }
       const run: Extract<Segment, {text: string}>[] = [];
-      while (i < segments.length && !segments[i]!.entityId) run.push(segments[i++]! as Extract<Segment, {text: string}>);
+      while (i < segments.length && !segments[i]!.entityId && !segments[i]!.math) run.push(segments[i++]! as Extract<Segment, {text: string}>);
       const index = replaced ? -1 : run.map(s => s.text || '').join('').indexOf(evidence);
       if (index < 0) { output.push(...run); continue; }
       let offset = 0, inserted = false;
@@ -36,7 +36,7 @@ export function mentionEvidence(page: Page, evidence: string, entityId: string):
     }
     return output;
   }
-  const blocks = page.blocks.map(block => block.type === 'table'
+  const blocks = page.blocks.map(block => block.type === 'math' ? block : block.type === 'table'
     ? {...block, rows: block.rows?.map(row => row.map(replace))}
     : {...block, content: replace(block.content)});
   return replaced ? {...page, blocks} : null;

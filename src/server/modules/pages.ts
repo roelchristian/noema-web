@@ -42,12 +42,16 @@ export class Pages {
             return {entityId};
           }
           const result: Segment = {text:text(segment.text)};
-          for (const mark of ['bold','italic','underline','strike','code'] as const) if(segment[mark] === true) result[mark]=true;
+          for (const mark of ['bold','italic','underline','strike','code','math'] as const) if(segment[mark] === true) result[mark]=true;
           if(typeof segment.href === 'string') { const href=safeHref(segment.href); if(href) result.href=href; }
           return result;
         });
       };
       const block: Block = {id,type,checked:!!b.checked,content:segments(b.content)};
+      if(type === 'math') {
+        if(block.content.some(segment => segment.entityId)) throw new HttpError(400,'Equations must contain LaTeX text');
+        block.content = [{text: block.content.map(segment => segment.text ?? '').join('')}];
+      }
       if(type === 'image') {
         block.imageId=required(b.imageId);
         new Images(this.store).require(vault,block.imageId);

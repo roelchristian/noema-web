@@ -7,6 +7,7 @@ interface Props {
   editor: RefObject<HTMLDivElement | null>;
   entities: Entity[];
   onCommit: () => void;
+  onMath: (range: Range) => void;
   onCreateEntity: (name: string, onCreated: (id: string) => void) => void;
 }
 const formats = [
@@ -18,7 +19,7 @@ const formats = [
 function editable(node: Node) {
   return (node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>('.block-content[contenteditable="true"]');
 }
-export function SelectionToolbar({editor, entities, onCommit, onCreateEntity}: Props) {
+export function SelectionToolbar({editor, entities, onCommit, onCreateEntity, onMath}: Props) {
   const [anchor, setAnchor] = useState<{left: number; top: number; bottom: number} | null>(null);
   const [annotating, setAnnotating] = useState(false), [query, setQuery] = useState('');
   const [active, setActive] = useState<string[]>([]);
@@ -36,7 +37,7 @@ export function SelectionToolbar({editor, entities, onCommit, onCreateEntity}: P
       if (!start || !end || !editor.current?.contains(start) || !editor.current.contains(end)) { dismiss(); return; }
       // Entity references are atomic; do not offer annotation inside an existing reference.
       const parent = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
-      if (parent?.closest('[data-entity]')) { dismiss(); return; }
+      if (parent?.closest('[data-entity],[data-math]')) { dismiss(); return; }
       const box = range.getBoundingClientRect();
       if (!box.width && !box.height) { dismiss(); return; }
       saved.current = range.cloneRange();
@@ -109,6 +110,7 @@ export function SelectionToolbar({editor, entities, onCommit, onCreateEntity}: P
   return <div ref={surface} className="selection-popover" style={position} onMouseDown={event => { if (!(event.target instanceof HTMLInputElement)) event.preventDefault(); }}>
     <div className="selection-toolbar" role="toolbar" aria-label="Selection formatting">
       {formats.map(format => <button key={format.command} type="button" title={format.label} aria-label={format.label} aria-pressed={active.includes(format.command)} onClick={() => applyFormat(format.command)}>{format.glyph}</button>)}
+      <button type="button" aria-label="Inline equation" title="Inline equation" disabled={!single} onClick={() => {const current = saved.current?.cloneRange(); if (current) {dismiss(); onMath(current);}}}>∑</button>
       <span className="selection-divider"/>
       <button type="button" className="selection-annotate" disabled={!single} title={single ? 'Connect selection to a knowledge entity' : 'Select text within one block or table cell to annotate'} aria-expanded={annotating} onClick={() => { picking.current = !annotating; setAnnotating(!annotating); setQuery(''); }}><Icon name="knowledge"/>Annotate</button>
     </div>

@@ -1,0 +1,50 @@
+import { entityTypes, type EntityType } from '../../shared/domain';
+
+export const themes = [
+  {id: 'ink', name: 'Midnight Ink', color: '#171717', soft: '#eaeaea', darkColor: '#e6e6e6', darkSoft: '#303030', description: 'Quiet, classic black'},
+  {id: 'juniper', name: 'Juniper', color: '#2d5947', soft: '#e8f0eb', darkColor: '#a0cbb1', darkSoft: '#23382c', description: 'Grounded forest green'},
+  {id: 'atlantic', name: 'Atlantic', color: '#315b86', soft: '#e8eff7', darkColor: '#a6c8ee', darkSoft: '#25374d', description: 'Deep, considered blue'},
+] as const;
+export const displayModes = ['light', 'dark', 'system'] as const;
+export type DisplayMode = typeof displayModes[number];
+export function resolveDisplayMode(mode: DisplayMode, systemDark: boolean): 'light' | 'dark' {
+  return mode === 'system' ? (systemDark ? 'dark' : 'light') : mode;
+}
+export type ThemeId = typeof themes[number]['id'];
+
+// Dark text on pale backgrounds keeps mentions readable within a paragraph.
+export const pillColors = {
+  graphite: {name: 'Graphite', background: '#f0f0f0', text: '#333333', border: '#d9d9d9', darkBackground: '#303033', darkText: '#dedee3', darkBorder: '#4b4b51'},
+  sage: {name: 'Sage', background: '#eaf2e9', text: '#35563c', border: '#ccdcca', darkBackground: '#263a2c', darkText: '#b9dbbe', darkBorder: '#45654d'},
+  ocean: {name: 'Ocean', background: '#eaf1fa', text: '#305580', border: '#cedded', darkBackground: '#27374c', darkText: '#bed6f5', darkBorder: '#435e7e'},
+  iris: {name: 'Iris', background: '#f0ecf8', text: '#614580', border: '#ddd2ec', darkBackground: '#392e48', darkText: '#dac6ef', darkBorder: '#5f4b77'},
+  rose: {name: 'Rose', background: '#faecef', text: '#884358', border: '#eed1da', darkBackground: '#482e38', darkText: '#efc1cf', darkBorder: '#784c5d'},
+  honey: {name: 'Honey', background: '#faf2df', text: '#77551e', border: '#e9d9b4', darkBackground: '#423722', darkText: '#ead39d', darkBorder: '#6c5a37'},
+} as const;
+export type PillColor = keyof typeof pillColors;
+export interface Appearance { mode: DisplayMode; theme: ThemeId; entityColors: Record<EntityType, PillColor>; entityOverrides: Record<string, PillColor> }
+export const appearanceStorageKey = 'noema.appearance.v1';
+export function defaultAppearance(): Appearance {
+  return {mode: 'system', theme: 'ink', entityOverrides: {}, entityColors: Object.fromEntries(entityTypes.map(type => [type, 'graphite'])) as Appearance['entityColors']};
+}
+export function parseAppearance(raw: string | null): Appearance {
+  const result = defaultAppearance();
+  try {
+    const value = JSON.parse(raw || 'null');
+    if (!value || typeof value !== 'object') return result;
+    if (displayModes.includes(value.mode)) result.mode = value.mode;
+    if (themes.some(theme => theme.id === value.theme)) result.theme = value.theme;
+    for (const type of entityTypes) {
+      const color = value.entityColors?.[type];
+      if (typeof color === 'string' && Object.hasOwn(pillColors, color)) result.entityColors[type] = color as PillColor;
+    }
+    if (value.entityOverrides && typeof value.entityOverrides === 'object') {
+      for (const [id, color] of Object.entries(value.entityOverrides)) {
+        if (typeof color === 'string' && Object.hasOwn(pillColors, color)) {
+          Object.defineProperty(result.entityOverrides, id, {value: color, enumerable: true, configurable: true, writable: true});
+        }
+      }
+    }
+  } catch { /* Invalid or older preferences fall back to the defaults. */ }
+  return result;
+}

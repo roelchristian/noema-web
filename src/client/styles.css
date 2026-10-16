@@ -826,3 +826,28 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-title); }
   #content > :is(.library, .organization-library) { padding: 30px 22px 40px; }
   #content > :is(.library, .organization-library) h1 { font-size: 26px; }
 }
+
+/* Global search floats above the workspace without changing its layout. */
+dialog.vault-search-dialog { width: min(680px, calc(100vw - 32px)); max-width: 680px; max-height: min(72dvh, 700px); margin: min(15dvh, 120px) auto auto; padding: 0; overflow: hidden; border: 1px solid var(--control-border); border-radius: 16px; background: var(--surface-raised); color: var(--text); box-shadow: 0 24px 100px #0004; }
+dialog.vault-search-dialog::backdrop { background: #0005; backdrop-filter: blur(6px); }
+.spotlight-search { display: flex; flex-direction: column; max-height: min(72dvh, 700px); }
+.spotlight-search-input { display: flex; align-items: center; gap: 14px; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+.spotlight-search-input > .icon { width: 23px; height: 23px; flex-shrink: 0; color: var(--text-muted); }
+#root .spotlight-search-input input { flex: 1; min-width: 0; width: 100%; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--text); font-size: 20px; line-height: 1.5; outline: none; }
+.spotlight-search-input input::placeholder { color: var(--text-muted); }
+.spotlight-close { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 28px; height: 28px; padding: 5px; border-radius: 5px; color: var(--text-muted); }
+.spotlight-close:hover { background: var(--surface-hover); color: var(--text); }
+.spotlight-search-body { min-height: 90px; overflow-y: auto; overscroll-behavior: contain; padding: 10px; }
+.spotlight-search-body .spotlight-results-label { margin: 6px 10px 10px; color: var(--text-muted); font-size: 11px; }
+.spotlight-search .vault-search-results { margin: 0; }
+.spotlight-search .vault-search-results li > button { align-items: center; padding: 12px 10px; border: 0; border-radius: 8px; }
+.spotlight-search .vault-search-results li > button[aria-selected=true] { background: var(--surface-hover); }
+.spotlight-search .vault-search-results strong { font-size: 14px; }
+.spotlight-search .vault-search-results small { font-size: 11px; margin-top: 3px; }
+.spotlight-search .vault-search-results .search-result-snippet { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.spotlight-search .vault-search-results .spotlight-open-hint { flex: 0 0 auto; color: var(--text-muted); font-size: 16px; }
+.spotlight-search-body .search-error, .spotlight-search-body .spotlight-empty { margin: 12px 10px; font-size: 12px; line-height: 1.6; color: var(--text-muted); }
+.spotlight-search-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-shrink: 0; padding: 12px 20px; border-top: 1px solid var(--line); font-size: 10px; color: var(--text-muted); }
+.spotlight-search-footer > span:first-child { display: flex; align-items: center; gap: 5px; }
+.spotlight-search-footer kbd { min-width: 16px; padding: 1px 3px; border: 1px solid var(--control-border); border-radius: 3px; text-align: center; font: inherit; }
+@media (max-width: 500px) { dialog.vault-search-dialog { margin-top: 24px; max-height: 80dvh; } .spotlight-search { max-height: 80dvh; } .spotlight-search-input { padding: 14px; gap: 10px; } #root .spotlight-search-input input { font-size: 17px; } .spotlight-search-footer { flex-wrap: wrap; padding: 10px 14px; gap: 8px; } }

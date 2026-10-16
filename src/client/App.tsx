@@ -61,7 +61,7 @@ export function App() {
         {label: 'Settings', icon: 'settings', onSelect: () => setSettingsOpen(true)},
       ]}/></div></div>
       <nav className="sidebar-group" aria-label="Quick access">
-        <button className={'nav '+(searchOpen?'active':'')} disabled={disabled} onClick={()=>{setPanelId(null);setAiOpen(false);setSearchOpen(value=>!value);}} aria-label="Search vault" aria-expanded={searchOpen}><span><Icon name="search"/></span><span>Search</span><kbd>⌘K</kbd></button>
+        <button className={'nav '+(searchOpen?'active':'')} disabled={disabled} onClick={()=>{setPanelId(null);setAiOpen(false);setSearchOpen(value=>!value);}} aria-label="Search vault" aria-haspopup="dialog" aria-expanded={searchOpen}><span><Icon name="search"/></span><span>Search</span><kbd>⌘K</kbd></button>
         <button className={'nav ' + (view === 'favourites' ? 'active' : '')} disabled={disabled} aria-label="Favourites" title="Favourites" onClick={() => workspace.showOrganization(true)}><span data-icon="star"><Icon name="star"/></span><span>Favourites</span></button>
         <button className={'nav ' + (view === 'recent' ? 'active' : '')} disabled={disabled} aria-label="Recent items" title="Recent items" onClick={() => workspace.showRecent()}><span data-icon="recent"><Icon name="recent"/></span><span>Recent items</span></button>
       </nav>

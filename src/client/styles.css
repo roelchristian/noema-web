@@ -794,3 +794,35 @@ main { margin-left: 224px; }
 
 /* Geist gives titles a distinct grotesk voice alongside the native SF interface. */
 h1, h2, h3, h4, h5, h6 { font-family: var(--font-title); }
+
+/* Library views share a left edge and title rhythm when switching sections. */
+#content > :is(.library, .organization-library) {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0;
+  padding: 48px 36px 64px;
+  text-align: left;
+}
+#content > :is(.library, .organization-library) :is(.organization-heading, .library-heading) {
+  align-items: flex-start;
+  margin-bottom: 30px;
+}
+#content > :is(.library, .organization-library) h1 {
+  margin: 0 0 24px;
+  font-size: 32px;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: -1px;
+  text-align: left;
+}
+#content > .organization-library .organization-heading h1 { margin-bottom: 0; }
+.organization-library .organization-empty { text-align: left; }
+.organization-library .organization-empty p { margin-left: 0; margin-right: 0; }
+@media (max-width: 900px) {
+  #content > :is(.library, .organization-library) { padding: 32px 24px 48px; }
+  #content > :is(.library, .organization-library) h1 { font-size: 29px; }
+}
+@media (max-width: 650px) {
+  #content > :is(.library, .organization-library) { padding: 30px 22px 40px; }
+  #content > :is(.library, .organization-library) h1 { font-size: 26px; }
+}

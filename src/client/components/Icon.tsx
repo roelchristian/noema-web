@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
 const paths: Record<string, ReactNode> = {
-  trash: <><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6m4-6v6"/></>,
+  trash: <><path d="M3 6h18M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M5 6v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6M10 10v7m4-7v7"/></>,
   plus: <path d="M12 5v14M5 12h14"/>,
   grip: <g fill="currentColor" stroke="none"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></g>,
-  settings: <><path d="m9 3-1 3-3 1-2 3 2 2-1 3 3 2 2-1 3 1 2-2 3-1v-3l2-2-1-3-3-1-1-3Z"/><circle cx="11" cy="11" r="3"/></>,
+  settings: <><path d="M18.93 9.13L21.85 10.26L21.85 13.74L18.93 14.87L18.93 14.87L20.19 17.74L17.74 20.19L14.87 18.93L14.87 18.93L13.74 21.85L10.26 21.85L9.13 18.93L9.13 18.93L6.26 20.19L3.81 17.74L5.07 14.87L5.07 14.87L2.15 13.74L2.15 10.26L5.07 9.13L5.07 9.13L3.81 6.26L6.26 3.81L9.13 5.07L9.13 5.07L10.26 2.15L13.74 2.15L14.87 5.07L14.87 5.07L17.74 3.81L20.19 6.26L18.93 9.13Z"/><circle cx="12" cy="12" r="3"/></>,
   recent: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
   collection: <><rect x="5" y="7" width="16" height="14" rx="2"/><path d="M3 17V5a2 2 0 0 1 2-2h12"/></>,
   folder: <path d="M3 7V5a2 2 0 0 1 2-2h5l2 4h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>,

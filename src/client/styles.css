@@ -921,3 +921,6 @@ dialog.vault-search-dialog::backdrop { background: #0005; backdrop-filter: blur(
 .ai-notification-dot { position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border: 1px solid var(--surface); border-radius: 50%; background: var(--accent); pointer-events: none; }
 .topbar .top-actions { gap: 4px; width: auto; margin-inline-start: auto; justify-content: flex-end; flex-wrap: nowrap; }
 .ai-notifications-loading { padding: 18px; font-size: 12px; color: var(--text-muted); }
+
+.ai-activity-table .ai-activity-model { white-space: nowrap; }
+.ai-activity-table .ai-activity-reasoning { display: inline; margin: 0 0 0 8px; }

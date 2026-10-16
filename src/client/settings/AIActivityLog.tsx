@@ -68,9 +68,8 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
           <td><span className={'ai-activity-status '+item.status}>{item.status}</span></td>
           <td>{item.objectId?<>
             {item.available?<button className="ai-activity-link" onClick={()=>void open(item)}>{item.objectTitle||'Untitled'}</button>:<span>{item.objectTitle||'Unavailable page'}</span>}
-            <small>{item.vaultName} · {item.objectKind} / {item.objectId}{item.revision!==null?` · revision ${item.revision}`:''}</small>
-          </>:item.action==='search_embedding'?<span>Vault search<small>{item.vaultName}</small></span>:<span>Settings → Intelligence</span>}</td>
-          <td>{item.model}{item.action!=='note_embedding'&&item.action!=='search_embedding'&&<small>{item.reasoningEffort} reasoning</small>}</td>
+          </>:item.action==='search_embedding'?<span>Vault search</span>:<span>Settings → Intelligence</span>}</td>
+          <td className="ai-activity-model">{item.model}{item.action!=='note_embedding'&&item.action!=='search_embedding'&&<small className="ai-activity-reasoning">{item.reasoningEffort==='none'?'no reasoning':`${item.reasoningEffort} reasoning`}</small>}</td>
           <td>{item.promptBytes===null?'Not sent':item.promptBytes.toLocaleString()}</td>
           <td>{item.durationMs===null?'—':`${(item.durationMs/1000).toFixed(1)}s`}</td>
           <td>{item.httpStatus??'—'}</td>

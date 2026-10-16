@@ -1,3 +1,6 @@
+import { SubtypePicker } from './SubtypePicker';
+import { useEntitySchema } from './useEntitySchema';
+import type { EntitySchema } from '../../shared/entity-schema';
 import { Select } from '../components/Select';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api';
@@ -13,15 +16,17 @@ export function EntityPanel(props: Props) {
     void api.entity(vaultId, id).then(e => { if (active) setEntity(e); }).catch(error => { if (active) setLoadingError(String(error)); });
     return () => { active = false; };
   }, [vaultId, id]);
+  const {schema, setSchema, error: schemaError} = useEntitySchema(vaultId);
   const mention = (entityId: string) => <Mention id={entityId} entities={entities} onOpen={onOpen}/>;
   async function mutate(work: () => Promise<EntityDetail>) {
-    try { const result = await work(); setEntity(result); await onUpdated(); } catch (error) { onError(error); throw error; }
+    try { const result = await work(); setEntity(result); setSchema({...schema, properties: {...schema.properties, [result.type]: result.propertyNames}}); await onUpdated(); } catch (error) { onError(error); throw error; }
   }
   return <aside id="entity-panel" className="entity-panel"><div className="panel-top"><span>KNOWLEDGE ENTITY</span><button title="Close entity" aria-label="Close entity" onClick={onClose}>×</button></div>
     {!entity ? <p className="panel-body" role="status">{loadingError || 'Loading entity…'}</p> : <div className="panel-body"><span className={'entity-icon large ' + entity.type}><Icon name={entity.type}/></span>
-      <EntityDetails key={entity.id} entity={entity} onSave={input => mutate(() => api.updateEntity(vaultId, id, input))}/>
-      <section className="panel-section"><h3>Properties <span>{entity.properties.length}</span></h3><p className="section-hint">Describe this entity with values or entity references.</p>
-        <PropertyEditor entity={entity} entities={entities} mention={mention} onSave={(input, propertyId) => mutate(() => api.saveProperty(vaultId, id, input, propertyId))} onRemove={propertyId => mutate(() => api.removeConnection(vaultId, id, 'properties', propertyId))}/>
+      {schemaError && <p role="alert">{schemaError}</p>}
+      <EntityDetails schema={schema} key={entity.id} entity={entity} onSave={input => mutate(() => api.updateEntity(vaultId, id, input))}/>
+      <section className="panel-section"><h3>Properties <span>{entity.properties.length}</span></h3><p className="section-hint">{entity.subtypes.length > 0 ? `Properties inherited from ${entityLabels[entity.type]}. Add new fields on the main type in Knowledge entities.` : 'Describe this entity with values or entity references. New property names become available to all subtypes of this type.'}</p>
+        <PropertyEditor key={entity.type + JSON.stringify(entity.subtypes)} entity={{...entity, propertyNames: [...new Set([...entity.propertyNames, ...schema.properties[entity.type]])]}} entities={entities} mention={mention} onSave={(input, propertyId) => mutate(() => api.saveProperty(vaultId, id, input, propertyId))} onRemove={propertyId => mutate(() => api.removeConnection(vaultId, id, 'properties', propertyId))}/>
       </section>
       <section className="panel-section"><h3>Relationships <span>{entity.relationships.length}</span></h3><p className="section-hint">Named connections, independent of properties.</p>
         <RelationshipEditor entity={entity} entities={entities} mention={mention} onSave={(input, relationId) => mutate(() => api.saveRelationship(vaultId, id, input, relationId))} onRemove={relationId => mutate(() => api.removeConnection(vaultId, id, 'relationships', relationId))}/>
@@ -31,19 +36,20 @@ export function EntityPanel(props: Props) {
     </div>}
   </aside>;
 }
-function EntityDetails({entity, onSave}: {entity: EntityDetail; onSave: (input: Parameters<typeof api.updateEntity>[2]) => Promise<unknown>}) {
+function EntityDetails({entity, schema, onSave}: {schema: EntitySchema; entity: EntityDetail; onSave: (input: Parameters<typeof api.updateEntity>[2]) => Promise<unknown>}) {
   const [name, setName] = useState(entity.name), [type, setType] = useState<EntityType>(entity.type), [description, setDescription] = useState(entity.description), [status, setStatus] = useState(''), [busy, setBusy] = useState(false);
-  async function submit(e: FormEvent) { e.preventDefault(); setBusy(true); setStatus(''); try { await onSave({name, type, description}); setStatus('Saved'); } catch { /* Parent reports the error. */ } finally { setBusy(false); } }
-  return <form id="entity-form" onSubmit={submit}><input className="entity-name" aria-label="Entity name" required maxLength={200} value={name} onChange={e => setName(e.target.value)}/><Select aria-label="Entity type" value={type} onChange={e => setType(e.target.value as EntityType)}>{entityTypes.map(t => <option key={t} value={t}>{entityLabels[t]}</option>)}</Select><textarea aria-label="Entity description" placeholder="Add a description…" value={description} onChange={e => setDescription(e.target.value)}/><button className="button small" disabled={busy}>Save details</button><span id="entity-saved"> {status}</span></form>;
+  const [subtypes, setSubtypes] = useState(entity.subtypes);
+  async function submit(e: FormEvent) { e.preventDefault(); setBusy(true); setStatus(''); try { await onSave({name, type, subtypes, description}); setStatus('Saved'); } catch { /* Parent reports the error. */ } finally { setBusy(false); } }
+  return <form id="entity-form" onSubmit={submit}><input className="entity-name" aria-label="Entity name" required maxLength={200} value={name} onChange={e => setName(e.target.value)}/><Select aria-label="Entity type" value={type} onChange={e => { setType(e.target.value as EntityType); setSubtypes([]); }}>{entityTypes.map(t => <option key={t} value={t}>{entityLabels[t]}</option>)}</Select><SubtypePicker type={type} value={subtypes} subtypes={schema.subtypes} onChange={setSubtypes} disabled={busy}/><textarea aria-label="Entity description" placeholder="Add a description…" value={description} onChange={e => setDescription(e.target.value)}/><button className="button small" disabled={busy}>Save details</button><span id="entity-saved"> {status}</span></form>;
 }
 type MentionRenderer = (id: string) => React.ReactNode;
 function PropertyEditor({entity, entities, mention, onSave, onRemove}: {entity: EntityDetail; entities: Entity[]; mention: MentionRenderer; onSave: (input: Parameters<typeof api.saveProperty>[2], id?: string) => Promise<unknown>; onRemove: (id: string) => Promise<unknown>}) {
   const [edit, setEdit] = useState<string>(), [name, setName] = useState(''), [kind, setKind] = useState('text'), [value, setValue] = useState(''), [target, setTarget] = useState(''), [busy, setBusy] = useState(false);
   function reset() { setEdit(undefined); setName(''); setKind('text'); setValue(''); setTarget(''); }
-  function editing(p: Property) { setEdit(p.id); setName(p.name); setKind(p.target_id ? 'entity' : 'text'); setValue(p.value || ''); setTarget(p.target_id || ''); }
+  function editing(p: Property) { setEdit(p.id); setName(entity.propertyNames.find(name => name.toLowerCase() === p.name.toLowerCase()) || p.name); setKind(p.target_id ? 'entity' : 'text'); setValue(p.value || ''); setTarget(p.target_id || ''); }
   async function submit(e: FormEvent) { e.preventDefault(); setBusy(true); try { await onSave(kind === 'entity' ? {name, target_id: target} : {name, value}, edit); reset(); } catch { /* Parent reports the error. */ } finally { setBusy(false); } }
   return <><div className="property-list">{entity.properties.map(p => <div key={p.id} className="property-row"><span>{p.name}</span><div>{p.target_id ? mention(p.target_id) : p.value}</div><button className="edit-item" aria-label="Edit property" disabled={busy} onClick={() => editing(p)}>Edit</button><button className="remove" aria-label="Remove property" disabled={busy} onClick={() => { setBusy(true); void onRemove(p.id).then(() => { if (edit === p.id) reset(); }).catch(() => {}).finally(() => setBusy(false)); }}>×</button></div>)}{!entity.properties.length && <div className="empty-small">No properties yet.</div>}</div>
-    <form className="add-form" onSubmit={submit}><input required placeholder="Property name" aria-label="Property name" value={name} onChange={e => setName(e.target.value)}/><Select aria-label="Property value type" value={kind} onChange={e => setKind(e.target.value)}><option value="text">Text value</option><option value="entity">Entity reference</option></Select>
+    <form className="add-form" onSubmit={submit}>{entity.subtypes.length > 0 ? <Select required aria-label="Property name" value={name} onChange={e => setName(e.target.value)}><option value="">Choose an inherited property…</option>{entity.propertyNames.map(p => <option key={p} value={p}>{p}</option>)}</Select> : <><input required list="entity-property-names" placeholder="Property name" aria-label="Property name" value={name} onChange={e => setName(e.target.value)}/><datalist id="entity-property-names">{entity.propertyNames.map(p => <option key={p} value={p}/>)}</datalist></>}<Select aria-label="Property value type" value={kind} onChange={e => setKind(e.target.value)}><option value="text">Text value</option><option value="entity">Entity reference</option></Select>
       {kind === 'text' ? <input placeholder="Value" aria-label="Property value" value={value} onChange={e => setValue(e.target.value)}/> : <Select required aria-label="Referenced entity" value={target} onChange={e => setTarget(e.target.value)}><option value="">Choose an entity…</option>{entities.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</Select>}
       <button className="button small" disabled={busy}>{edit ? 'Save property' : '+ Add property'}</button>{edit && <button type="button" className="edit-item" disabled={busy} onClick={reset}>Cancel edit</button>}
     </form></>;

@@ -46,6 +46,18 @@ await test('SQLite API: pages, references, relationships, validation, and restar
  await request('organization/collections','POST',{name:'Invalid',parent_id:collectionId},400);
  await request('organization/folders/'+folderId,'PUT',{name:'Cycle',parent_id:folderId},400);
  await request('organization/favourites','PUT',{kind:'page',item_id:'missing',favourite:true},404);
+ const schema = await request('entity-schema');
+ assert.ok(schema.subtypes.some(s => s.id === 'person:actor'));
+ const customSchema = await request('entity-schema/subtypes','POST',{type:'person',name:'Director'},201);
+ const directorType = customSchema.subtypes.find(s => s.name === 'Director');
+ const director = await request('entities','POST',{name:'Test Director',type:'person',subtypes:[directorType.id,'person:writer']},201);
+ assert.deepEqual(director.subtypes,[directorType.id,'person:writer']);
+ assert.deepEqual((await request('entities')).find(e => e.id === director.id).subtypes,director.subtypes);
+ await request('entities/'+director.id,'PUT',{name:director.name,type:'person',subtypes:['person:actor','place:city']},400);
+ await request('entities/'+director.id+'/properties','POST',{name:'filmography',value:'A film'},400);
+ await request('entity-schema/properties','POST',{type:'person',name:'filmography'},201);
+ await request('entities/'+director.id+'/properties','POST',{name:'filmography',value:'A film'},201);
+ await request('entity-schema/properties','POST',{type:'person',subtype:directorType.id,name:'subtype field'},400);
  const person=await request('entities','POST',{name:'Test Person',type:'person'},201);
  const sibling=await request('entities','POST',{name:'Sibling Person',type:'person'},201);
  const work=await request('entities','POST',{name:'Test Book',type:'creativework'},201);

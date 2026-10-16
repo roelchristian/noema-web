@@ -7,6 +7,7 @@ export async function request<T>(route: string, method='GET', body?: unknown, va
   return result as T;
 }
 export const api={
+  aiActivity:(cursor?:number)=>request<import('../shared/intelligence').AIActivityPage>('intelligence/activity'+(cursor?'?before='+cursor:'')),
   intelligence:()=>request<import('../shared/domain').IntelligenceStatus>('intelligence'),
   saveIntelligence:(apiKey:string,days:number)=>request<import('../shared/domain').IntelligenceStatus>('intelligence','PUT',{apiKey,days}),
   saveIntelligencePreferences:(preferences:import('../shared/intelligence').IntelligencePreferences)=>request<import('../shared/intelligence').IntelligencePreferences>('intelligence/preferences','PUT',preferences),

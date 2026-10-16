@@ -21,3 +21,13 @@ export function supportedIntelligencePreferences(value: unknown): value is Intel
   const {model,reasoningEffort}=value as Record<string,unknown>;
   return typeof model==='string' && typeof reasoningEffort==='string' && !!intelligenceModels.find(option=>option.id===model)?.efforts.includes(reasoningEffort as ReasoningEffort);
 }
+
+export interface AIActivity extends IntelligencePreferences {
+  id: string; action: 'page_summary' | 'connection_test';
+  status: 'running' | 'completed' | 'failed' | 'interrupted';
+  startedAt: string; finishedAt: string | null; durationMs: number | null; httpStatus: number | null;
+  vaultId: string | null; vaultName: string | null; objectKind: 'page' | 'entity' | null;
+  objectId: string | null; objectTitle: string | null; revision: number | null;
+  available: boolean; promptBytes: number | null;
+}
+export interface AIActivityPage { items: AIActivity[]; nextCursor: number | null }

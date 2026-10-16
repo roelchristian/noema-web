@@ -325,3 +325,12 @@ main { margin-left: 224px; }
 .intelligence-panel .inline-error { overflow-wrap: anywhere; font-size: 12px; line-height: 1.7; }
 .intelligence-settings .select-trigger { background: var(--surface-raised, #fff); color: var(--text, #37352f); border-color: var(--control-border, #ddd); }
 .intelligence-settings .select-trigger:hover, .intelligence-settings .select-trigger[aria-expanded=true] { background: var(--surface-hover, #f6f6f5); }
+
+.ai-activity-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ai-activity-list { list-style: none; padding: 0; margin: 16px 0; max-height: 420px; overflow-y: auto; }
+.ai-activity-list li { padding: 14px 0; border-bottom: 1px solid var(--control-border, #ddd); font-size: 12px; overflow-wrap: anywhere; }
+.ai-activity-list time, .ai-activity-list small { display: block; margin-top: 6px; color: var(--text-muted, #777); line-height: 1.6; }
+.ai-activity-source { margin: 8px 0; }
+.ai-activity-link { border: 0; padding: 0; background: none; color: var(--text); text-decoration: underline; cursor: pointer; text-align: left; font: inherit; }
+.ai-activity-status { border: 1px solid var(--control-border, #ddd); border-radius: 12px; padding: 2px 8px; text-transform: capitalize; }
+.ai-activity-status.failed, .ai-activity-status.interrupted { color: var(--danger, #b33b3b); }

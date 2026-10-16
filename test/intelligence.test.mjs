@@ -87,11 +87,31 @@ test('AI HTTP routes enforce CSRF, vault scope, revisions, lock state and privat
     await call('pages/'+page.id+'/summary','POST',{revision:saved.revision},404,{'X-Vault-Id':vault.id});
     const result=await call('pages/'+page.id+'/summary','POST',{revision:saved.revision});assert.equal(result.summary,'A safe summary');assert.equal(result.model,'gpt-6-luna');assert.equal(result.reasoningEffort,'low');assert.equal(lastInput.length,1);assert.equal(lastInput[0].role,'user');assert.equal(JSON.parse(lastInput[0].content[0].text).untrusted_note,'My page\nMy private page text\n');
     assert.equal(providerCalls,2);
+    const activity=await call('intelligence/activity');
+    const summaryActivity=activity.items.find(item=>item.action==='page_summary'&&item.status==='completed');
+    assert.equal(summaryActivity.objectId,page.id);assert.equal(summaryActivity.vaultId,'default');
+    assert.equal(summaryActivity.objectTitle,'My page');assert.equal(summaryActivity.available,true);
+    assert.equal(summaryActivity.revision,saved.revision);assert.equal(summaryActivity.model,'gpt-6-luna');
+    assert.ok(summaryActivity.promptBytes>Buffer.byteLength('My page\nMy private page text\n'));
+    assert.ok(summaryActivity.durationMs>=0);assert.equal(summaryActivity.httpStatus,200);
+    assert.ok(activity.items.some(item=>item.action==='connection_test'&&item.status==='completed'));
+    assert.ok(activity.items.some(item=>item.status==='failed'&&item.httpStatus===409&&item.promptBytes===null));
+    assert.ok(!JSON.stringify(activity).includes('My private page text'));
+    assert.ok(!JSON.stringify(db.prepare('SELECT * FROM ai_activity').all()).includes('My private page text'));
+    await call('intelligence/activity','GET',undefined,403,{'X-Noema-Request':''});
+    await call('intelligence/activity?before=bad','GET',undefined,400);
+
     finish=true;
     const pending=call('pages/'+page.id+'/summary','POST',{revision:saved.revision},423);
     while(typeof finish!=='function')await new Promise(resolve=>setTimeout(resolve,5));
+    const running=(await call('intelligence/activity')).items.find(item=>item.status==='running');
+    assert.equal(running.objectId,page.id);assert.ok(running.promptBytes>0);
     await call('vaults/default/lock','POST',{passphrase:'test-lock'});finish(completed('do not disclose'));await pending;
     await call('pages/'+page.id+'/summary','POST',{revision:saved.revision},423);
+    const lockedActivity=await call('intelligence/activity');
+    assert.ok(lockedActivity.items.every(item=>item.vaultId!=='default'));
+    await call('vaults/default/unlock','POST',{passphrase:'test-lock'});
+    assert.ok((await call('intelligence/activity')).items.some(item=>item.httpStatus===423&&item.status==='failed'));
     await call('intelligence','DELETE');assert.equal(secrets.value,null);
     assert.ok(!JSON.stringify(db.prepare('SELECT * FROM metadata').all()).includes(key));
   }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();rmSync(dir,{recursive:true,force:true});}

@@ -43,6 +43,14 @@ db.exec(`
  CREATE TRIGGER IF NOT EXISTS entity_organization_cleanup AFTER DELETE ON entities BEGIN DELETE FROM item_locations WHERE kind='entity' AND item_id=OLD.id; DELETE FROM favourites WHERE kind='entity' AND item_id=OLD.id; END;
 `);
 
+db.exec(`CREATE TABLE IF NOT EXISTS ai_activity (
+ id TEXT PRIMARY KEY, action TEXT NOT NULL, status TEXT NOT NULL,
+ started_at TEXT NOT NULL, finished_at TEXT, duration_ms INTEGER, http_status INTEGER,
+ vault_id TEXT, object_kind TEXT, object_id TEXT, revision INTEGER,
+ model TEXT NOT NULL, reasoning_effort TEXT NOT NULL, prompt_bytes INTEGER
+);
+ CREATE INDEX IF NOT EXISTS ai_activity_started ON ai_activity(started_at DESC);`);
+
 if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'deleted_at')) db.exec('ALTER TABLE pages ADD COLUMN deleted_at TEXT');
 db.exec('CREATE INDEX IF NOT EXISTS pages_deleted_at ON pages(deleted_at)');
 

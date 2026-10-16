@@ -1,3 +1,4 @@
+import { AIActivityLog } from './AIActivityLog';
 import { IntelligenceSettings } from './IntelligenceSettings';
 import { entityLabels, entityTypes } from '../../shared/domain';
 import { ColorPicker } from './ColorPicker';
@@ -5,7 +6,8 @@ import { Icon } from '../components/Icon';
 import { Modal } from '../components/Modal';
 import { defaultAppearance, themes, type Appearance, type DisplayMode } from './appearance';
 
-export function SettingsDialog({appearance, onChange, storageError, onClose}: {
+export function SettingsDialog({appearance, onChange, storageError, onClose, onOpenPage}: {
+  onOpenPage: (vaultId: string, pageId: string) => Promise<void>;
   appearance: Appearance; onChange: (appearance: Appearance) => void; storageError: boolean; onClose: () => void;
 }) {
   return <Modal className="settings-modal" titleId="settings-title" onClose={onClose}>
@@ -36,6 +38,7 @@ export function SettingsDialog({appearance, onChange, storageError, onClose}: {
         </div>)}</div>
       </section>
       <IntelligenceSettings/>
+      <AIActivityLog onOpenPage={onOpenPage}/>
       <footer className="settings-footer"><p role="status">{storageError ? 'Applied for now. Browser storage is unavailable; changes won’t survive a reload.' : 'Appearance changes apply instantly and save in this browser.'}</p><div><button className="button" onClick={() => onChange(defaultAppearance())}>Restore defaults</button><button className="button primary" onClick={onClose}>Done</button></div></footer>
     </div>
   </Modal>;

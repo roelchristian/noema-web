@@ -16,7 +16,7 @@ const paths: Record<string, ReactNode> = {
   grip: <g fill="currentColor" stroke="none"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></g>,
   settings: <><path d="M18.93 9.13L21.85 10.26L21.85 13.74L18.93 14.87L18.93 14.87L20.19 17.74L17.74 20.19L14.87 18.93L14.87 18.93L13.74 21.85L10.26 21.85L9.13 18.93L9.13 18.93L6.26 20.19L3.81 17.74L5.07 14.87L5.07 14.87L2.15 13.74L2.15 10.26L5.07 9.13L5.07 9.13L3.81 6.26L6.26 3.81L9.13 5.07L9.13 5.07L10.26 2.15L13.74 2.15L14.87 5.07L14.87 5.07L17.74 3.81L20.19 6.26L18.93 9.13Z"/><circle cx="12" cy="12" r="3"/></>,
   recent: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
-  collection: <><rect x="5" y="7" width="16" height="14" rx="2"/><path d="M3 17V5a2 2 0 0 1 2-2h12"/></>,
+  collection: <><path d="M8 3h8M6 6h12"/><rect x="4" y="9" width="16" height="12" rx="2"/></>,
   folder: <path d="M3 7V5a2 2 0 0 1 2-2h5l2 4h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>,
   star: <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z"/>,
   person: <><path d="M20 21v-2a7 7 0 0 0-14 0v2"/><circle cx="13" cy="7" r="4"/></>,

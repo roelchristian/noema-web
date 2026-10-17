@@ -68,15 +68,12 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   }
   const childFolders = data.folders.filter(f => !!collection && (f.collection_id || '') === collection && (f.parent_id || '') === folder && f.name.toLowerCase().includes(query));
   const collectionCards = !collection && !folder ? data.collections.filter(c => c.name.toLowerCase().includes(query)) : [];
-  const ancestors: Folder[] = [];
-  let ancestor = currentFolder;
-  while (ancestor) { ancestors.unshift(ancestor); ancestor = data.folders.find(f => f.id === ancestor!.parent_id); }
   const countLabel = (count: number) => `${count} ${count === 1 ? 'item' : 'items'}`;
   return <section className="organization-library organization-browser">
-    <div className="organization-heading"><div><h1>{favouritesOnly ? 'Favourites' : 'Collections & folders'}</h1></div>{!favouritesOnly && <div className="organization-create-actions">{collection && <button className="button" disabled={pending} onClick={() => setEdit({type: 'folders', name: '', parent: folder})}><Icon name="folder"/>New folder</button>}<button className="button primary" disabled={pending} onClick={() => setEdit({type: 'collections', name: '', parent: ''})}><Icon name="plus"/>New collection</button></div>}</div>
+    {(favouritesOnly || !collection && !folder) && <div className="organization-heading"><div><h1>{favouritesOnly ? 'Favourites' : 'Collections & folders'}</h1></div>{!favouritesOnly && <div className="organization-create-actions"><button className="button primary" disabled={pending} onClick={() => setEdit({type: 'collections', name: '', parent: ''})}><Icon name="plus"/>New collection</button></div>}</div>}
     <div className="organization-content" aria-busy={pending}>
       <div className="organization-browser-toolbar">
-        <nav className="organization-breadcrumbs" aria-label="Folder path"><button aria-current={!collection && !folder ? 'page' : undefined} onClick={() => onContextChange({collection: '', folder: ''})}><Icon name={favouritesOnly ? 'star' : 'collection'}/>{favouritesOnly ? 'Favourites' : 'All content'}</button>{currentCollection && <><Icon name="chevron"/><button aria-current={!folder ? 'page' : undefined} onClick={() => setFolder('')}>{currentCollection.name}</button></>}{ancestors.map(f => <span key={f.id}><Icon name="chevron"/><button aria-current={f.id === folder ? 'page' : undefined} onClick={() => setFolder(f.id)}>{f.name}</button></span>)}</nav>
+        {!favouritesOnly && collection && <div className="organization-create-actions"><button className="button" disabled={pending} onClick={() => setEdit({type: 'folders', name: '', parent: folder})}><Icon name="folder"/>New folder</button><button className="button primary" disabled={pending} onClick={() => setEdit({type: 'collections', name: '', parent: ''})}><Icon name="plus"/>New collection</button></div>}
         <label className="organization-search-box"><Icon name="search"/><input aria-label="Search content by name or meaning" maxLength={2000} placeholder="Search names or meaning…" value={search} onChange={e => setSearch(e.target.value)}/>{search && <button aria-label="Clear search" onClick={() => setSearch('')}><Icon name="close"/></button>}</label>
       </div>
       {!!query && <div className="search-feedback" aria-live="polite">

@@ -37,6 +37,7 @@ db.exec(`
  CREATE TABLE IF NOT EXISTS folders (id TEXT PRIMARY KEY, vault_id TEXT NOT NULL REFERENCES vaults(id), name TEXT NOT NULL, parent_id TEXT REFERENCES folders(id) ON DELETE CASCADE);
  CREATE TABLE IF NOT EXISTS item_locations (vault_id TEXT NOT NULL REFERENCES vaults(id), kind TEXT NOT NULL CHECK(kind IN ('page','entity')), item_id TEXT NOT NULL, folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL, PRIMARY KEY(vault_id,kind,item_id));
  CREATE TABLE IF NOT EXISTS collection_memberships (vault_id TEXT NOT NULL REFERENCES vaults(id), kind TEXT NOT NULL CHECK(kind IN ('page','entity')), item_id TEXT NOT NULL, collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE, PRIMARY KEY(vault_id,kind,item_id,collection_id));
+ CREATE TABLE IF NOT EXISTS collection_folders (vault_id TEXT NOT NULL REFERENCES vaults(id), folder_id TEXT NOT NULL REFERENCES folders(id) ON DELETE CASCADE, collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE, PRIMARY KEY(vault_id,folder_id,collection_id));
  CREATE TABLE IF NOT EXISTS favourites (vault_id TEXT NOT NULL REFERENCES vaults(id), kind TEXT NOT NULL CHECK(kind IN ('page','entity','folder')), item_id TEXT NOT NULL, PRIMARY KEY(vault_id,kind,item_id));
  CREATE INDEX IF NOT EXISTS folders_vault ON folders(vault_id);
  CREATE INDEX IF NOT EXISTS collections_vault ON collections(vault_id);

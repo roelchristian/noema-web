@@ -2117,3 +2117,12 @@ dialog.confirmation-dialog.delete-vault-dialog { width:min(480px,calc(100vw - 32
   .confirmation-dialog .dialog-actions .button { min-height:44px; flex:1 1 auto; }
   .confirmation-dialog .vault-deletion-counts { grid-template-columns:minmax(0,1fr); }
 }
+
+.folder-collection-modes { margin:20px 0 0; padding:0; border:0; }
+.folder-collection-modes legend { font-size:11px; color:var(--text-muted); }
+.folder-collection-dialog .folder-collection-modes label { display:flex; align-items:flex-start; gap:10px; margin-top:12px; padding:10px 12px; border:1px solid var(--line); border-radius:6px; color:var(--text); font-size:12px; line-height:1.6; }
+.folder-collection-modes label:has(input:checked) { background:var(--surface-hover); border-color:var(--control-border); }
+.folder-collection-dialog .folder-collection-modes input { flex:none; width:14px; height:14px; margin:3px 0 0; padding:0; }
+.folder-collection-modes small { display:block; margin-top:3px; font-size:11px; line-height:1.6; color:var(--text-muted); }
+.folder-collection-modes small.folder-collection-suggestion { display:inline; margin-left:5px; font-size:10px; color:var(--text-muted); }
+.linked-folder-label { margin-left:6px; font-size:9px; font-weight:400; color:var(--text-muted); }

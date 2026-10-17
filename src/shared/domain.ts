@@ -48,7 +48,8 @@ export interface ItemLocation { kind: ItemKind; item_id: string; folder_id: stri
 export interface CollectionMembership { kind: ItemKind; item_id: string; collection_id: string }
 export type FavouriteKind = ItemKind | 'folder';
 export interface Favourite { kind: FavouriteKind; item_id: string }
-export interface Organization { collections: Collection[]; folders: Folder[]; locations: ItemLocation[]; memberships: CollectionMembership[]; favourites: Favourite[] }
+export interface CollectionFolderLink {folder_id: string; collection_id: string}
+export interface Organization { folderLinks?: CollectionFolderLink[]; collections: Collection[]; folders: Folder[]; locations: ItemLocation[]; memberships: CollectionMembership[]; favourites: Favourite[] }
 
 export interface RecentItem { kind: ItemKind; item_id: string; opened_at: string }
 export interface OrganizationContext { collection: string; folder: string }

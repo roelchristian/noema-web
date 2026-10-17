@@ -33,6 +33,7 @@ const tables={
   collections:{columns:'id,name',scope:'vault_id=?'},
   folders:{columns:'id,name,parent_id',scope:'vault_id=?'},
   item_locations:{columns:'kind,item_id,folder_id',scope:'vault_id=?'},
+  collection_folders:{columns:'folder_id,collection_id',scope:'vault_id=?'},
   collection_memberships:{columns:'kind,item_id,collection_id',scope:'vault_id=?'},
   favourites:{columns:'kind,item_id',scope:'vault_id=?'},
   page_ai_enrichments:{columns:'page_id,kind,data,revision,model,reasoning_effort,updated_at,content_hash',scope:pageScope},
@@ -104,7 +105,7 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='source_files'||table==='entity_subtype_properties'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     if(total>200000)throw new HttpError(413,'This backup contains too many records.');
     const assets=list(archive.images).map(object);
     const sourceAssets=list(archive.sourceFiles??[]).map(object);
@@ -201,6 +202,7 @@ export class VaultBackups {
         for(const row of rows.folders)insert('folders',{id:ref(folderIds,row.id),vault_id:vault,name:name(row,'name'),parent_id:null});
         for(const row of rows.folders)if(row.parent_id!==null)this.store.run('UPDATE folders SET parent_id=? WHERE id=?',ref(folderIds,row.parent_id),ref(folderIds,row.id));
         for(const row of rows.item_locations)insert('item_locations',{vault_id:vault,...item(row),folder_id:row.folder_id===null?null:ref(folderIds,row.folder_id)});
+        for(const row of rows.collection_folders)insert('collection_folders',{vault_id:vault,folder_id:ref(folderIds,row.folder_id),collection_id:ref(collectionIds,row.collection_id)});
         for(const row of rows.collection_memberships)insert('collection_memberships',{vault_id:vault,...item(row),collection_id:ref(collectionIds,row.collection_id)});
         for(const row of rows.favourites)insert('favourites',{vault_id:vault,...item(row,true)});
         for(const row of rows.page_ai_enrichments) {

@@ -4,7 +4,7 @@ const folderType = 'application/x-noema-folder';
 
 export function startFolderDrag(event: DragEvent, vaultId: string, folderId: string) {
   event.dataTransfer.setData(folderType, JSON.stringify({vaultId, folderId}));
-  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.effectAllowed = 'copyMove';
 }
 
 export function isFolderDrag(event: DragEvent) {

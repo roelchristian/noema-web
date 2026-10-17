@@ -7,6 +7,7 @@ export class Organizer {
   constructor(private store: Store) {}
   list(vault: string): Organization {
     return {
+      folderLinks: this.store.all('SELECT folder_id,collection_id FROM collection_folders WHERE vault_id=? ORDER BY collection_id,folder_id', vault),
       collections: this.store.all('SELECT id,name FROM collections WHERE vault_id=? ORDER BY name,id', vault),
       folders: this.store.all('SELECT id,name,parent_id FROM folders WHERE vault_id=? ORDER BY name,id', vault),
       locations: this.store.all(`SELECT kind,item_id,folder_id FROM item_locations WHERE vault_id=? AND (kind='entity' OR EXISTS (SELECT 1 FROM pages WHERE pages.id=item_locations.item_id AND pages.vault_id=item_locations.vault_id AND pages.deleted_at IS NULL))`, vault),
@@ -79,6 +80,25 @@ export class Organizer {
     if (body.remove !== undefined && typeof body.remove !== 'boolean') throw new HttpError(400, 'Invalid remove flag');
     if (body.remove) this.store.run('DELETE FROM collection_memberships WHERE vault_id=? AND kind=? AND item_id=? AND collection_id=?', vault, kind, id, collection);
     else this.store.run('INSERT OR IGNORE INTO collection_memberships VALUES (?,?,?,?)', vault, kind, id, collection);
+    return this.list(vault);
+  }
+  folderMembership(vault: string, body: Record<string, unknown>) {
+    const folder = this.folder(vault, required(body.folder_id));
+    const collection = this.collection(vault, required(body.collection_id));
+    if (body.remove !== undefined && typeof body.remove !== 'boolean') throw new HttpError(400, 'Invalid remove flag');
+    if (body.remove) {
+      this.store.run('DELETE FROM collection_folders WHERE vault_id=? AND folder_id=? AND collection_id=?', vault, folder.id, collection.id);
+    } else if (body.mode === 'linked') {
+      this.store.run('INSERT OR IGNORE INTO collection_folders VALUES (?,?,?)', vault, folder.id, collection.id);
+    } else if (body.mode === 'pages') {
+      // Copy only current, non-trashed pages; canonical folder locations stay intact.
+      this.store.run(`WITH RECURSIVE subtree(id) AS (
+        SELECT id FROM folders WHERE vault_id=? AND id=?
+        UNION SELECT folders.id FROM folders JOIN subtree ON folders.parent_id=subtree.id WHERE folders.vault_id=?
+      ) INSERT OR IGNORE INTO collection_memberships(vault_id,kind,item_id,collection_id)
+        SELECT l.vault_id,'page',l.item_id,? FROM item_locations l JOIN pages p ON p.id=l.item_id AND p.vault_id=l.vault_id
+        WHERE l.vault_id=? AND l.kind='page' AND l.folder_id IN (SELECT id FROM subtree) AND p.deleted_at IS NULL`, vault, folder.id, vault, collection.id, vault);
+    } else throw new HttpError(400, 'Choose a linked folder or current pages');
     return this.list(vault);
   }
   favourite(vault: string, body: Record<string, unknown>) {

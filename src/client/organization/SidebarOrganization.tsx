@@ -8,10 +8,11 @@ import { NameDialog } from '../components/NameDialog';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { folderBreadcrumbs } from './breadcrumbs';
 import { folderDropHandlers } from './folder-drop';
-import { startFolderDrag } from './folder-drag';
+import {FolderCollectionDialog} from './FolderCollectionDialog';
+import { isFolderDrag, readFolderDrop, startFolderDrag } from './folder-drag';
 import { isPageDrag, readPageDrop, startPageDrag } from './page-drag';
 
-interface Container {type: 'collections' | 'folders'; id?: string; name: string; collection: string; parent: string}
+interface Container {linkedCollection?: string; type: 'collections' | 'folders'; id?: string; name: string; collection: string; parent: string}
 export function SidebarOrganization({vaultId, data, pages, context, active, disabled, available, onOpen, onOpenPage, onMovePage, onChanged, onError}: {
   vaultId?: string; data: Organization; pages: PageSummary[]; context: OrganizationContext; active: boolean; disabled: boolean; available: boolean;
   onOpen: (collection?: string, folder?: string) => void; onOpenPage: (id: string) => void;
@@ -19,6 +20,7 @@ export function SidebarOrganization({vaultId, data, pages, context, active, disa
   onChanged: (data: Organization) => void; onError: (error: unknown) => void;
 }) {
   const [edit, setEdit] = useState<Container | null>(null), [remove, setRemove] = useState<Container | null>(null);
+  const [addFolder, setAddFolder] = useState<{folderId?:string;collectionId?:string}|null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [dropTarget, setDropTarget] = useState<string | null>(null), [dropStatus, setDropStatus] = useState('');
   const dropping = useRef(false);
@@ -34,6 +36,11 @@ export function SidebarOrganization({vaultId, data, pages, context, active, disa
   async function drop(event: DragEvent, container: Container) {
     event.preventDefault(); setDropTarget(null);
     if (disabled || dropping.current || !vaultId) return;
+    if (container.type === 'collections' && isFolderDrag(event)) {
+      const folderId=readFolderDrop(event,vaultId);
+      if (folderId && data.folders.some(folder=>folder.id===folderId)) setAddFolder({folderId,collectionId:container.id});
+      return;
+    }
     const id = readPageDrop(event, vaultId);
     if (!id || !pages.some(page => page.id === id)) return;
     dropping.current = true;
@@ -48,11 +55,11 @@ export function SidebarOrganization({vaultId, data, pages, context, active, disa
   function item(container: Container, depth = 0) {
     const selected = active && (container.type === 'folders' ? context.folder === container.id : context.collection === container.id && !context.folder);
     const open = () => onOpen(container.collection, container.type === 'folders' ? container.id : '');
-    const hasChildren = container.type === 'folders' && data.folders.some(folder => folder.parent_id === container.id) || containedPages(container.collection, container.type === 'folders' ? container.id! : null).length > 0;
+    const hasChildren = container.type === 'collections' && (data.folderLinks ?? []).some(link=>link.collection_id===container.id) || container.type === 'folders' && data.folders.some(folder => folder.parent_id === container.id) || containedPages(container.collection, container.type === 'folders' ? container.id! : null).length > 0;
     const icon = container.type === 'folders' ? 'folder' : 'collection';
     return <div className={'sidebar-item-row organization-branch ' + (selected ? 'is-selected ' : '') + (dropTarget === container.id ? 'is-drop-target' : '')} style={{paddingLeft: Math.min(depth, 5) * 12}}
       draggable={!disabled && container.type === 'folders'} onDragStart={event => { if (container.type === 'folders' && vaultId) startFolderDrag(event, vaultId, container.id!); }}
-      onDragOver={event => { if (!disabled && !dropping.current && isPageDrag(event)) { event.preventDefault(); event.dataTransfer.dropEffect = container.type === 'collections' ? 'copy' : 'move'; setDropTarget(container.id!); } }}
+      onDragOver={event => { if (!disabled && !dropping.current && (isPageDrag(event) || container.type === 'collections' && isFolderDrag(event))) { event.preventDefault(); event.dataTransfer.dropEffect = container.type === 'collections' ? 'copy' : 'move'; setDropTarget(container.id!); } }}
       onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(current => current === container.id ? null : current); }}
       onDrop={event => void drop(event, container)}
       {...(container.type === 'folders' ? folderDropHandlers({
@@ -66,13 +73,14 @@ export function SidebarOrganization({vaultId, data, pages, context, active, disa
       }) : {})}>
 
       {hasChildren ? <button className="branch-toggle" disabled={disabled} aria-label={(expanded.has(container.id!) ? 'Collapse ' : 'Expand ') + container.name} aria-expanded={expanded.has(container.id!)} onClick={() => toggle(container.id!)}><span className="branch-container-icon"><Icon name={icon}/></span><span className="branch-chevron"><Icon name="chevron"/></span></button> : <button className="branch-leaf-icon" disabled={disabled} aria-label={'Open ' + container.name} onClick={open}><Icon name={icon}/></button>}
-      <button className={'nav container-link ' + (selected ? 'active' : '')} disabled={disabled} aria-label={'Open ' + (container.type === 'folders' ? 'folder: ' : 'collection: ') + container.name} title={container.name} onClick={open}><span>{container.name}</span></button>
+      <button className={'nav container-link ' + (selected ? 'active' : '')} disabled={disabled} aria-label={'Open ' + (container.type === 'folders' ? 'folder: ' : 'collection: ') + container.name} title={container.name} onClick={open}><span>{container.name}{container.linkedCollection && <small className="linked-folder-label">Linked</small>}</span></button>
       <ActionMenu label={'Options for ' + container.name} disabled={disabled} actions={[
         {label: 'Open', icon, onSelect: open},
+        {label: container.type === 'folders' ? 'Add to collection…' : 'Add folder…', icon:'collection', onSelect:()=>setAddFolder(container.type==='folders'?{folderId:container.id}:{collectionId:container.id})},
         {label: 'Rename', icon: 'edit', onSelect: () => setEdit(container)},
         ...(container.type === 'folders' ? [{label: data.favourites.some(item => item.kind === 'folder' && item.item_id === container.id) ? 'Remove from favourites' : 'Add to favourites', icon: 'star', onSelect: () => { void api.organize(vaultId!, 'favourites', {kind: 'folder', item_id: container.id, favourite: !data.favourites.some(item => item.kind === 'folder' && item.item_id === container.id)}).then(onChanged).catch(onError); }}] : []),
         ...(container.type === 'folders' ? [{label: 'New subfolder', icon: 'plus', onSelect: () => newFolder('', container.id)}] : []),
-        {label: 'Remove ' + (container.type === 'folders' ? 'folder' : 'collection'), icon: 'trash', danger: true, onSelect: () => setRemove(container)},
+        ...(container.linkedCollection ? [{label:'Unlink from collection',icon:'close',onSelect:()=>{void api.organize(vaultId!,'folder-memberships',{folder_id:container.id,collection_id:container.linkedCollection,remove:true}).then(onChanged).catch(onError);}}] : [{label: 'Remove ' + (container.type === 'folders' ? 'folder' : 'collection'), icon: 'trash', danger: true, onSelect: () => setRemove(container)}]),
       ]}/>
     </div>;
   }
@@ -90,9 +98,13 @@ export function SidebarOrganization({vaultId, data, pages, context, active, disa
       {label: 'New collection', icon: 'collection', onSelect: () => setEdit({type: 'collections', name: '', collection: '', parent: ''})},
     ]}/></div>{data.collections.map(collection => <div key={collection.id}>
       {item({type: 'collections', id: collection.id, name: collection.name, collection: collection.id, parent: ''})}
-      {expanded.has(collection.id) && <div className="sidebar-branch-children">{pageLinks(collection.id, null, 1)}</div>}
+      {expanded.has(collection.id) && <div className="sidebar-branch-children">{(data.folderLinks ?? []).filter(link=>link.collection_id===collection.id).map(link=>{
+        const folder=data.folders.find(folder=>folder.id===link.folder_id);
+        return folder ? <div key={folder.id}>{item({type:'folders',id:folder.id,name:folder.name,collection:'',parent:folder.parent_id||'',linkedCollection:collection.id},1)}{expanded.has(folder.id)&&<div className="sidebar-branch-children">{folders('',folder.id,2)}{pageLinks('',folder.id,2)}</div>}</div> : null;
+      })}{pageLinks(collection.id, null, 1)}</div>}
     </div>)}{!data.collections.length && <button className="sidebar-create" disabled={disabled} onClick={() => setEdit({type: 'collections', name: '', collection: '', parent: ''})}><Icon name="plus"/>Create a collection</button>}</>}
     <span className="sr-only" role="status">{dropStatus}</span>
+    {addFolder && vaultId && <FolderCollectionDialog vaultId={vaultId} data={data} {...addFolder} onChanged={onChanged} onClose={()=>setAddFolder(null)}/>}
     {edit && <NameDialog title={(edit.id ? 'Rename ' : 'New ') + (edit.type === 'collections' ? 'collection' : 'folder')} value={edit.name} onClose={() => setEdit(null)} onSave={async name => {
       const updated = await api.organize(vaultId!, edit.type + (edit.id ? '/' + edit.id : ''), {name, ...(edit.type === 'folders' ? {parent_id: edit.parent || null} : {})}, edit.id ? 'PUT' : 'POST');
       onChanged(updated);

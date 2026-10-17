@@ -1,6 +1,6 @@
 import type { Entity } from '../../shared/domain';
 
-const normalize = (text: string) => text.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+const normalize = (text: string) => text.normalize('NFKC').trim().replace(/\s+/g, ' ').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').toLocaleLowerCase();
 export function annotationSuggestions(entities: Entity[], selection: string, query = '') {
   const selected = normalize(selection), term = normalize(query);
   const exact = entities.filter(entity => selected && normalize(entity.name) === selected);

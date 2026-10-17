@@ -89,3 +89,15 @@ test('editing or leaving the vault cancels a pending retry', async t => {
     cancel(titler);t.mock.timers.tick(120000);await settle();assert.equal(calls,1);titler.dispose();
   }
 });
+
+test('automatic entity references retain eligibility for automatic page titles', async t => {
+  t.mock.timers.enable({apis:['setTimeout']});
+  const tagged={...page(),blocks:[{id:'p',type:'paragraph',content:[{entityId:'ada'},{text:' and '},{entityId:'ursula'}]}]};
+  const names={ada:'Ada Lovelace',ursula:'Ursula K. Le Guin'};
+  const applied=[];
+  const titler=new PageTitler(async p=>({title:'Connected thinkers',revision:p.revision}),(_page,title)=>applied.push(title),id=>names[id]||'');
+  try {
+    titler.register(tagged);titler.observe(tagged,true);t.mock.timers.tick(3000);await settle();
+    assert.deepEqual(applied,['Connected thinkers']);
+  }finally{titler.dispose();}
+});

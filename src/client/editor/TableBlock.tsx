@@ -1,3 +1,5 @@
+import { applySmartQuotes } from './smart-quotes';
+import { replaceEditableHTML } from './preserve-caret';
 import { useLayoutEffect, useRef, type ClipboardEvent, type KeyboardEvent } from 'react';
 import type { Block, Entity, Segment } from '../../shared/domain';
 import { clipboardBlocks } from './paste';
@@ -5,8 +7,8 @@ import { readSegments, segmentHTML } from './segments';
 import { completeInlineMath } from './math';
 function Cell({content, entities, register, onChange, onKeyDown, onPaste, onOpen}: {content: Segment[]; entities: Entity[]; register?: (el: HTMLDivElement | null) => void; onChange: (content: Segment[]) => void; onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => void; onPaste: (e: ClipboardEvent<HTMLDivElement>) => void; onOpen: (id: string) => void}) {
   const ref = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => { const el = ref.current!; if (JSON.stringify(readSegments(el)) !== JSON.stringify(content)) el.innerHTML = segmentHTML(content, entities); }, [content, entities]);
-  return <div className="block-content table-cell" ref={el => {ref.current = el; register?.(el);}} contentEditable suppressContentEditableWarning aria-label="Table cell" onInput={e => {completeInlineMath(e.currentTarget); onChange(readSegments(e.currentTarget));}} onKeyDown={onKeyDown} onPaste={onPaste} onClick={e => {const mention = (e.target as Element).closest<HTMLElement>('[data-entity]'); if(mention) onOpen(mention.dataset.entity!);}}/>;
+  useLayoutEffect(() => { const el = ref.current!; if (JSON.stringify(readSegments(el)) !== JSON.stringify(content)) replaceEditableHTML(el, segmentHTML(content, entities)); }, [content, entities]);
+  return <div className="block-content table-cell" ref={el => {ref.current = el; register?.(el);}} contentEditable suppressContentEditableWarning aria-label="Table cell" onInput={e => {applySmartQuotes(e.currentTarget, e.nativeEvent as InputEvent); completeInlineMath(e.currentTarget); onChange(readSegments(e.currentTarget));}} onKeyDown={onKeyDown} onPaste={onPaste} onClick={e => {const mention = (e.target as Element).closest<HTMLElement>('[data-entity]'); if(mention) onOpen(mention.dataset.entity!);}}/>;
 }
 export function TableBlock({block, entities, onChange, onOpen, onSave, onExit, register}: {block: Block; entities: Entity[]; onChange: (rows: Segment[][][]) => void; onOpen: (id: string) => void; onSave: () => void; onExit: () => void; register: (el: HTMLDivElement | null) => void}) {
   const rows = block.rows ?? [[[], []], [[], []]], root = useRef<HTMLDivElement>(null), pending = useRef<number | null>(null);

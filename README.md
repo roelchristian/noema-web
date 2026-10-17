@@ -39,6 +39,16 @@ The API exposes `organization.locations` separately from `organization.membershi
 
 Existing databases migrate transactionally on startup. Folder IDs, nesting, and all collection memberships survive, while folders become independent of collections. If a legacy note has multiple folder assignments, the migration selects its first non-null folder ordered by collection ID, then folder ID. This is deterministic across restarts. Notes with no folder stay unfiled. The former combined location API is replaced by the two operations above.
 
+## Smart quotes
+
+Straight single and double quotes become curly quotes as you type in notes, table cells, and note titles. Opening and closing quotes follow the surrounding text, and contractions use a curly apostrophe. Pasted text, existing content, undo/redo, code, links, and equations retain their literal characters. Entity matching treats straight and curly quotes as equivalent.
+
+## Automatic entity links
+
+After an idle pause (about 1.2 seconds) and before saves, Noema matches note text against existing entities in the current vault and converts whole-name matches into entity references. Matching is local and case insensitive, prefers longer names, and leaves ambiguous duplicate names as text. It also scans table cells while preserving the surrounding formatting. Existing references, code, links, inline equations, and equation/image blocks are skipped. This utility creates no new entities and makes no AI requests; the separate AI entity review remains available.
+
+Identification defers while text is selected, a menu or dialog is open, or IME composition is active. Matched references are saved through the existing revision-aware autosave queue; newer edits made during a write remain intact. A small footer beneath the editor shows **Identifying entities…**, **Saving…**, and **Automatically saved**, with **Retry** if saving fails.
+
 ## Knowledge entity subtypes
 
 Knowledge entities keep a main type (Person, Place, Event, Creative work, Organization, or Source) and can have multiple subtypes under that main type, such as a Person who is both an Actor and a Writer. Built-in subtypes include Actor, Writer, City, Book, Film, Company, and Website. Create custom subtypes under **Knowledge entities → Manage types & subtypes**.

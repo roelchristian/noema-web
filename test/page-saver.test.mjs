@@ -37,3 +37,54 @@ test('identical page IDs from different vaults retain their original scope', asy
     assert.deepEqual(sent.map(p=>p.vault_id),['vault-a','vault-b']);assert.equal(saver.hasPending,false);
   } finally {saver.dispose();}
 });
+
+test('save preparation reports identification before saving and preserves the original snapshot', async () => {
+  const statuses = [], savedPairs = [], sent = [];
+  const original = {...page(), blocks: [{id:'text', type:'paragraph', content:[{text:'Ada'}]}]};
+  const saver = new PageSaver(async snapshot => { sent.push(snapshot); return {...snapshot, revision: 2}; },
+    (saved, before) => savedPairs.push([saved, before]), status => statuses.push(status),
+    async snapshot => ({...snapshot, blocks: [{...snapshot.blocks[0], content: [{entityId: 'ada'}]}]}));
+  try {
+    saver.enqueue(original); await saver.flush();
+    assert.deepEqual(statuses, ['pending', 'identifying', 'saving', 'saved']);
+    assert.deepEqual(sent[0].blocks[0].content, [{entityId:'ada'}]);
+    assert.deepEqual(savedPairs[0][1].blocks[0].content, [{text:'Ada'}]);
+    assert.equal(saver.hasPending, false);
+  } finally { saver.dispose(); }
+});
+
+test('edits during identification invalidate stale preparation before a write', async () => {
+  let complete;
+  const sent = [];
+  let prepared = 0;
+  const saver = new PageSaver(async snapshot => { sent.push(snapshot); return {...snapshot, revision:2}; }, () => {}, () => {}, async snapshot => {
+    if (++prepared === 1) await new Promise(resolve => { complete = resolve; });
+    return snapshot;
+  });
+  try {
+    saver.enqueue(page()); const writing = saver.flush();
+    saver.enqueue(page('vault-a', 'Latest draft'));
+    complete(); await writing;
+    assert.equal(prepared, 2);
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].title, 'Latest draft');
+    assert.equal(saver.hasPending, false);
+  } finally { saver.dispose(); }
+});
+
+test('failed preparation retains edits for retry', async () => {
+  let fail = true;
+  const sent = [], statuses = [];
+  const saver = new PageSaver(async snapshot => { sent.push(snapshot); return {...snapshot,revision:2}; }, () => {}, status => statuses.push(status), async snapshot => {
+    if (fail) throw new Error('Identification failed');
+    return snapshot;
+  });
+  try {
+    saver.enqueue(page()); await assert.rejects(saver.flush(), /Identification failed/);
+    assert.equal(saver.hasPending, true);
+    assert.equal(sent.length, 0);
+    fail = false; await saver.flush();
+    assert.equal(sent.length, 1);
+    assert.equal(statuses.at(-1), 'saved');
+  } finally { saver.dispose(); }
+});

@@ -1,5 +1,5 @@
 import type { Page } from '../../shared/domain';
-export type SaveStatus = 'saved' | 'pending' | 'saving' | 'error';
+export type SaveStatus = 'saved' | 'pending' | 'identifying' | 'saving' | 'error';
 const key = (page: Page) => `${page.vault_id}/${page.id}`;
 /** Each snapshot keeps its vault and revision, even while navigation or edits continue. */
 export class PageSaver {
@@ -8,8 +8,9 @@ export class PageSaver {
   private timer: ReturnType<typeof setTimeout> | undefined;
   constructor(
     private send: (page: Page) => Promise<Page>,
-    private onSaved: (page: Page) => void,
+    private onSaved: (page: Page, original: Page) => void,
     private onStatus: (status: SaveStatus, error?: Error) => void,
+    private prepare?: (page: Page) => Promise<Page>,
   ) {}
   get hasPending() { return this.pending.size > 0 || this.running !== null; }
   enqueue(page: Page) {
@@ -26,13 +27,19 @@ export class PageSaver {
   private async drain() {
     try {
       while (this.pending.size) {
-        this.onStatus('saving');
         const [id, snapshot] = this.pending.entries().next().value!;
-        const saved = await this.send(snapshot);
+        let prepared = snapshot;
+        if (this.prepare) {
+          this.onStatus('identifying');
+          prepared = await this.prepare(snapshot);
+          if (this.pending.get(id) !== snapshot) continue;
+        }
+        this.onStatus('saving');
+        const saved = await this.send(prepared);
         const newer = this.pending.get(id);
         if (newer === snapshot) this.pending.delete(id);
         else if (newer) newer.revision = saved.revision;
-        this.onSaved(saved);
+        this.onSaved(saved, snapshot);
       }
       this.onStatus('saved');
     } catch (value) {

@@ -8,6 +8,7 @@ export class PageTitler {
   constructor(
     private generate: (page: Page) => Promise<{title: string; revision: number}>,
     private apply: (page: Page, title: string) => void,
+    private entityName: (id: string) => string = () => '',
   ) {}
   register(page: Page) {
     if (untitled(page) && !this.candidates.has(key(page))) this.candidates.set(key(page), {page, version: 0, running: false, retries: 0});
@@ -19,7 +20,7 @@ export class PageTitler {
     if (!untitled(page)) { this.remove(page); return; }
     const text = page.blocks.flatMap(block => block.type === 'table'
       ? (block.rows ?? []).flatMap(row => row.flatMap(cell => cell)) : block.content)
-      .map(segment => segment.text || '').join(' ').trim();
+      .map(segment => segment.entityId ? this.entityName(segment.entityId) : segment.text || '').join(' ').trim();
     if (saved && text.length >= 20) {
       candidate.timer = setTimeout(() => { void this.run(candidate); }, 3000);
     }

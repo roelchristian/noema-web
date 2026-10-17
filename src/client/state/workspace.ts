@@ -1,3 +1,5 @@
+import { identifyEntityMentions } from '../../shared/auto-entities';
+import { canIdentifyEntities, yieldForEntityMatching } from '../editor/auto-entity-matching';
 import { PageTitler } from './page-titler';
 import { api } from '../api';
 import type { Entity, EntityInput, Page, PageSummary, Vault, Organization, OrganizationContext, RecentItem, ItemKind, TrashedPage } from '../../shared/domain';
@@ -24,20 +26,40 @@ export class Workspace {
         ...(this.state.page?.id === page.id ? {page} : {})});
       this.saver.enqueue(page);
     },
+    id => this.state.entities.find(entity => entity.id === id)?.name || '',
   );
   readonly saver = new PageSaver(
     page => api.savePage(page.vault_id, page.id, page),
-    saved => {
+    (saved, original) => {
       const cached = this.pageCache.get(saved.id);
       if (cached) {
-        const page = {...cached, revision: saved.revision, updated_at: saved.updated_at};
+        const unchanged = JSON.stringify(cached.blocks) === JSON.stringify(original.blocks);
+        const page = {...cached, ...(unchanged && !this.state.reviewing && canIdentifyEntities() ? {blocks: saved.blocks} : {}), revision: saved.revision, updated_at: saved.updated_at};
         this.pageCache.set(saved.id, page);
-        this.titler.observe(page, JSON.stringify(cached.blocks) === JSON.stringify(saved.blocks) && cached.title === saved.title);
+        this.titler.observe(page, unchanged && cached.title === saved.title);
       }
-      if (this.state.vault?.id === saved.vault_id) this.patch({pages: this.state.pages.map(page => page.id === saved.id ? {...page, updated_at: saved.updated_at} : page), ...(this.state.page?.id === saved.id ? {page: {...this.state.page, revision: saved.revision, updated_at: saved.updated_at}} : {})});
+      if (this.state.vault?.id === saved.vault_id) this.patch({pages: this.state.pages.map(page => page.id === saved.id ? {...page, updated_at: saved.updated_at} : page), ...(this.state.page?.id === saved.id ? {page: this.pageCache.get(saved.id) || {...this.state.page, revision: saved.revision, updated_at: saved.updated_at}} : {})});
     },
     (saveStatus, error) => this.patch({saveStatus, ...(error ? {error: error.message} : {})}),
+    async page => {
+      await yieldForEntityMatching();
+      if (this.state.vault?.id !== page.vault_id || this.state.vault.locked || this.state.reviewing || !canIdentifyEntities()) return page;
+      const {blocks} = identifyEntityMentions(page.blocks, this.state.entities, page.vault_id);
+      return blocks === page.blocks ? page : {...page, blocks};
+    },
   );
+  identifyEntities = async () => {
+    const page = this.state.page;
+    if (!page || this.state.view !== 'pages' || this.state.busy || this.state.reviewing || this.state.vault?.locked || this.saver.hasPending || !canIdentifyEntities()) return;
+    this.patch({saveStatus: 'identifying'});
+    try {
+      await yieldForEntityMatching();
+      if (this.state.page !== page || this.state.view !== 'pages' || this.state.busy || this.state.reviewing || this.state.vault?.locked || this.saver.hasPending || !canIdentifyEntities()) return;
+      const {blocks, count} = identifyEntityMentions(page.blocks, this.state.entities, page.vault_id);
+      if (count) this.updatePage({blocks});
+    } catch (error) { this.report(error); }
+    finally { if (this.state.saveStatus === 'identifying' && !this.saver.hasPending) this.patch({saveStatus: 'saved'}); }
+  };
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   snapshot = () => this.state;
   private patch(patch: Partial<WorkspaceState>) {

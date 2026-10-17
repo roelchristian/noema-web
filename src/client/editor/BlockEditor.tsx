@@ -1,3 +1,5 @@
+import { applySmartQuotes } from './smart-quotes';
+import { replaceEditableHTML } from './preserve-caret';
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
 import { entityLabels, type Block, type BlockType, type Entity, type Segment } from '../../shared/domain';
 import { uploadImage } from '../api';
@@ -30,7 +32,7 @@ function EditableBlock({block, entities, onInput, onKeyDown, onOpen, register, o
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = ref.current!;
-    if (JSON.stringify(readSegments(el)) !== JSON.stringify(block.content)) el.innerHTML = segmentHTML(block.content, entities);
+    if (JSON.stringify(readSegments(el)) !== JSON.stringify(block.content)) replaceEditableHTML(el, segmentHTML(block.content, entities));
     el.querySelectorAll<HTMLElement>('[data-entity]').forEach(node => {
       const wrapper = document.createElement('span'); wrapper.innerHTML = segmentHTML([{entityId: node.dataset.entity!}], entities);
       const fresh = wrapper.firstElementChild!;
@@ -38,7 +40,7 @@ function EditableBlock({block, entities, onInput, onKeyDown, onOpen, register, o
       node.className = fresh.className;
     });
   }, [block.content, entities]);
-  return <div ref={el => { ref.current = el; register(el); }} className="block-content" contentEditable suppressContentEditableWarning spellCheck data-placeholder="Type / for blocks, @ for entities" onInput={e => onInput(e.currentTarget)} onKeyDown={onKeyDown}
+  return <div ref={el => { ref.current = el; register(el); }} className="block-content" contentEditable suppressContentEditableWarning spellCheck data-placeholder="Type / for blocks, @ for entities" onInput={e => { applySmartQuotes(e.currentTarget, e.nativeEvent as InputEvent); onInput(e.currentTarget); }} onKeyDown={onKeyDown}
     onClick={e => { const mention = (e.target as Element).closest<HTMLElement>('[data-entity]'); if (mention) onOpen(mention.dataset.entity!); }}
     onPaste={onPaste}/>;
 }

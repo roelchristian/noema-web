@@ -1703,6 +1703,9 @@ main {position:relative;}
 .organization-library[data-layout=compact] .trash-actions { flex: none; align-items: center; width: auto; margin: 0; gap: 4px; flex-wrap: nowrap; }
 .organization-library[data-layout=compact] .trash-actions > .button { min-height: 28px; padding: 5px 8px; font-size: 11px; }
 .organization-library[data-layout=compact] .recent-time { font-size: 10px; white-space: nowrap; }
+.organization-library.recent-library[data-layout=compact] .organization-item-name { justify-content: flex-start; gap: 8px; }
+.organization-library.recent-library[data-layout=compact] .organization-page-title { flex: 0 1 auto; }
+.organization-library.recent-library[data-layout=compact] .organization-item-name > small { display: inline; flex: none; }
 .trash-actions > .sidebar-menu-trigger { opacity: 1; margin: 0; }
 
 /* Small icon cards keep navigation and previews together. */

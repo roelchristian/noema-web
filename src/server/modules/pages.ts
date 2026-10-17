@@ -1,3 +1,4 @@
+import { entityMentionName } from '../../shared/domain.js';
 import {blockPageLinks,pageTitleKey} from '../../shared/page-links.js';
 import { isAIExplanation, isSemanticKind } from '../../shared/semantic-blocks.js';
 import { conceptContentHash, summaryContentHash } from './summary-content.js';
@@ -29,7 +30,7 @@ export class Pages {
     const {summary_content_hash: cachedHash, summary_hash_version: hashVersion, ...stored} = row;
     const blocks = JSON.parse(row.blocks) as Block[];
     const names=new Map<string,string|undefined>();
-    const resolveName=(id:string)=>{if(!names.has(id))names.set(id,this.knowledge.find(vault,id)?.name);return names.get(id);};
+    const resolveName=(id:string)=>{if(!names.has(id))names.set(id,entityMentionName(this.knowledge.find(vault,id)));return names.get(id);};
     const classificationRow=this.store.get<{data:string}>("SELECT data FROM page_ai_enrichments WHERE page_id=? AND kind='concept_classification'",id);
     const conceptClassification=classificationRow ? JSON.parse(classificationRow.data) as import('../../shared/domain.js').ConceptClassification : undefined;
     let hash = cachedHash;

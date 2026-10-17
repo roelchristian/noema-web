@@ -1,3 +1,4 @@
+import { entityMentionName } from '../shared/domain.js';
 import { SourceFiles, maxSourceBytes } from './modules/source-files.js';
 import { VaultBackups, maxBackupBytes } from './modules/vault-backups.js';
 import { AINotifications } from './modules/ai-notifications.js';
@@ -205,7 +206,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               const page=pages.get(vault,id);
               // Draft blocks allow explaining current edits without saving or sending other note content.
               const blocks=pages.validateBlocks(vault,body.blocks);
-              const input=summaryInput({title:'',blocks},entityId=>knowledge.find(vault,entityId)?.name,false,true).trim();
+              const input=summaryInput({title:'',blocks},entityId=>entityMentionName(knowledge.find(vault,entityId)),false,true).trim();
               if(!input)throw new HttpError(400,'Select blocks containing text or equations to explain.');
               if(Buffer.byteLength(input,'utf8')>24000)throw new HttpError(400,'Select fewer blocks (at most 24,000 bytes of text).');
               const markdown=await intelligence.generate(input,false,bytes=>activity.request(activityId!,bytes,page.revision),false,false,true);
@@ -240,7 +241,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
                 vaults.requireOpen(vault);return send(200,result);
               }
               if(body.revision!==page.revision)throw new HttpError(409,'Save the latest page before summarizing.');
-              const names=new Map(knowledge.list(vault).map(entity=>[entity.id,entity.name]));
+              const names=new Map(knowledge.list(vault).map(entity=>[entity.id,entityMentionName(entity)]));
               const input=summaryInput(page,id=>names.get(id));
               if(input.length>40000)throw new HttpError(413,'This page exceeds the AI limit of 40,000 characters.');
               if(!input.trim())throw new HttpError(400,'Add some page content first.');

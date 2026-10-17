@@ -23,7 +23,7 @@ const entityScope='entity_id IN (SELECT id FROM entities WHERE vault_id=?)';
 const tables={
   pages:{columns:'id,title,icon,blocks,updated_at,revision,deleted_at',scope:'vault_id=?'},
   source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at',scope:'vault_id=? AND entity_id IS NOT NULL'},
-  entities:{columns:'id,name,aliases,type,subtypes,description,updated_at',scope:'vault_id=?'},
+  entities:{columns:'id,name,aliases,mention_case,type,subtypes,description,updated_at',scope:'vault_id=?'},
   properties:{columns:'id,entity_id,name,value,target_id',scope:entityScope},
   relationships:{columns:'id,source_id,label,target_id',scope:'source_id IN (SELECT id FROM entities WHERE vault_id=?)'},
   page_sources:{columns:'page_id,source_id',scope:pageScope},
@@ -158,7 +158,9 @@ export class VaultBackups {
         for(const row of rows.entities) {
           const type=entityType(row),aliases=list(json(row,'aliases')).map(value=>required(value,200)),subtypes=list(json(row,'subtypes')).map(value=>subtype(value,type));
           if(aliases.length>100||new Set(subtypes).size!==subtypes.length)throw invalid();
-          insert('entities',{id:ref(entityIds,row.id),vault_id:vault,name:name(row,'name'),type,aliases:JSON.stringify(aliases),subtypes:JSON.stringify(subtypes),description:string(row,'description'),updated_at:timestamp(row,'updated_at')});
+          const mentionCase=row.mention_case??'canonical';
+          if(mentionCase!=='canonical'&&mentionCase!=='lowercase')throw invalid();
+          insert('entities',{id:ref(entityIds,row.id),vault_id:vault,name:name(row,'name'),type,aliases:JSON.stringify(aliases),mention_case:mentionCase,subtypes:JSON.stringify(subtypes),description:string(row,'description'),updated_at:timestamp(row,'updated_at')});
         }
         for(const row of rows.source_files) {
           const asset=sourceAssetMap.get(name(row,'id'));if(!asset)throw invalid();

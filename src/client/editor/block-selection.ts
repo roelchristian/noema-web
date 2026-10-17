@@ -1,3 +1,4 @@
+import { entityMentionName } from '../../shared/domain';
 import {randomUUID} from '../../shared/uuid';
 import {isAIExplanation} from '../../shared/semantic-blocks';
 import type { Block, Entity, Segment } from '../../shared/domain';
@@ -67,7 +68,7 @@ function sliceBlock(block: Block, el: HTMLElement, range: Range, part: 'before' 
   const content = clippedSegments(editor, range, part);
   return content.length ? {...block, content} : undefined;
 }
-const textOf = (content: Segment[], entities: Entity[]) => content.map(s => s.entityId ? s.mentionText ?? entities.find(e => e.id === s.entityId)?.name ?? '' : s.text ?? '').join('');
+const textOf = (content: Segment[], entities: Entity[]) => content.map(s => s.entityId ? s.mentionText ?? entityMentionName(entities.find(e => e.id === s.entityId)) ?? '' : s.text ?? '').join('');
 export function editorSelectionClipboard(root: HTMLElement, blocks: Block[], entities: Entity[]) {
   const selected = selectedEditorBlocks(root); if (!selected) return null;
   const slices = selected.elements.flatMap(el => {

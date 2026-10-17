@@ -1,3 +1,4 @@
+import { entityMentionName } from '../../shared/domain';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { entityLabels, type Entity } from '../../shared/domain';
 import { Icon } from './Icon';
@@ -85,7 +86,7 @@ export function EntityPreview({entities, onOpen}: {entities: Entity[]; onOpen: (
       if (!editor || !target.isConnected) return;
       const text = document.createElement('span');
       text.dataset.skipAutoTag = 'true';
-      text.textContent = target.dataset.mentionText || entity.name;
+      text.textContent = target.dataset.mentionText ?? entityMentionName(entity) ?? entity.name;
       target.replaceWith(text);
       dismiss();
       editor.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'deleteContentBackward'}));

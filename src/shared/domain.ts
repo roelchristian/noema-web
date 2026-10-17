@@ -26,8 +26,12 @@ export interface TrashedPage extends PageSummary { deleted_at: string; expires_a
 export interface ConceptClassification { subtypeIds: string[]; contentHash: string }
 export interface Page extends PageSummary { conceptClassification?: ConceptClassification; conceptContentHash?: string; vault_id: string; blocks: Block[]; sourceIds: string[]; revision: number; summaryContentHash?: string; entityMatchCache?: import('./entity-match-cache.js').EntityMatchCache }
 export interface PageInput { icon?: PageIconId | null; title: string; blocks: Block[]; sourceIds?: string[]; revision?: number }
-export interface Entity { id: string; vault_id: string; name: string; aliases?: string[]; type: EntityType; subtypes: string[]; description: string; updated_at: string }
-export interface EntityInput { name: string; aliases?: string[]; type: EntityType; subtypes?: string[]; subtype?: string | null; description?: string; attachmentIds?: string[] }
+export type EntityMentionCase = 'canonical' | 'lowercase';
+export interface Entity { id: string; vault_id: string; name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes: string[]; description: string; updated_at: string }
+export interface EntityInput { name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes?: string[]; subtype?: string | null; description?: string; attachmentIds?: string[] }
+export function entityMentionName(entity: Pick<Entity,'name'|'mentionCase'> | undefined): string | undefined {
+  return entity?.mentionCase === 'lowercase' ? entity.name.toLowerCase() : entity?.name;
+}
 export interface Property { id: string; entity_id: string; name: string; value: string | null; target_id: string | null }
 export interface Relationship { id: string; source_id: string; label: string; target_id: string }
 export interface SourceFile { id: string; vault_id: string; entity_id: string | null; name: string; size: number; status: 'queued' | 'processing' | 'ready' | 'failed'; text: string; error: string | null; progress: number; pages: number; ocr_pages: number; created_at: string }

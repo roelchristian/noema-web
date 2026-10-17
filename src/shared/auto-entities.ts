@@ -65,7 +65,7 @@ export function identifyEntityMentions(blocks: Block[], entities: Entity[], vaul
         }
         if (!entity) continue;
         appendText(start, match.index!);
-        output.push({entityId: entity.id, ...(normalizeEntityName(match[0]) !== normalizeEntityName(entity.name) ? {mentionText: match[0]} : {})}); added++;
+        output.push({entityId: entity.id, mentionText: match[0]}); added++;
         start = match.index! + match[0].length;
       }
       appendText(start, text.length);

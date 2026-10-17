@@ -7,7 +7,7 @@ type ResolveName = (id: string) => string | undefined;
 
 /** Exactly the note text supplied to summary/title generation; styling is excluded. */
 export function summaryInput(page: SummaryPage, name: ResolveName, includeTitle = true, includeAI = false): string {
-  const plain = (content: Segment[]) => content.map(segment => segment.entityId ? name(segment.entityId) || '[mention]' : segment.text).join('');
+  const plain = (content: Segment[]) => content.map(segment => segment.entityId ? segment.mentionText ?? name(segment.entityId) ?? '[mention]' : segment.text).join('');
   return (includeTitle ? page.title + '\n' : '') + page.blocks.filter(block => includeAI || !isAIExplanation(block)).map(block =>
     (block.type === 'table' ? (block.rows ?? []).map(row => row.map(plain).join('\t')).join('\n') : plain(block.content)) + '\n'
   ).join('');

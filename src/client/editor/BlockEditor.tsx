@@ -1,3 +1,4 @@
+import { entityMentionName } from '../../shared/domain';
 import {randomUUID} from '../../shared/uuid';
 import { applySemantic, isAIExplanation, preserveAIExplanationTags, normalizeSemanticGroups, removeSemanticGroup, retagSemanticGroup, semanticDragItems, semanticFunctions, editableSemanticKinds, semanticRuns, type SemanticKind } from '../../shared/semantic-blocks';
 import {pageTitleKey} from '../../shared/page-links';
@@ -183,7 +184,7 @@ export function BlockEditor(props: Props) {
       if(!mounted.current) return;
       const current=latest.current.blocks, sources=current.filter(block=>selectedIds.includes(block.id));
       if(JSON.stringify(sources)!==snapshot) throw new Error('The selected blocks changed. Select them again to generate a fresh explanation.');
-      const excerpt=selected.map(block=>block.type==='image'?block.alt||'Image':(block.type==='table'?(block.rows??[]).flat(2):block.content).map(segment=>segment.entityId?segment.mentionText??latest.current.entities.find(entity=>entity.id===segment.entityId)?.name??'':segment.text??'').join('')).join('\n\n').slice(0,2000);
+      const excerpt=selected.map(block=>block.type==='image'?block.alt||'Image':(block.type==='table'?(block.rows??[]).flat(2):block.content).map(segment=>segment.entityId?segment.mentionText??entityMentionName(latest.current.entities.find(entity=>entity.id===segment.entityId))??'':segment.text??'').join('')).join('\n\n').slice(0,2000);
       const group={id:randomUUID(),kind:'ai-explanation' as const,source:{blockIds:selected.map(block=>block.id),excerpt}};
       const generated=markdownBlocks(markdown).map(block=>({...block,semantic:'ai-explanation' as const,semanticGroup:group}));
       if(!markdown.trim() || !generated.length) throw new Error('AI returned an empty explanation. Please try again.');

@@ -30,7 +30,7 @@ export function mentionEvidence(page: Page, evidence: string, entityId: string):
         if (end <= index || offset >= matchEnd) output.push(segment);
         else {
           if (offset < index) output.push({...segment, text: value.slice(0, index - offset)});
-          if (!inserted) { output.push({entityId, ...(match[0] !== evidence ? {mentionText:match[0]} : {})}); inserted = true; }
+          if (!inserted) { output.push({entityId, mentionText:match[0]}); inserted = true; }
           if (end > matchEnd) output.push({...segment, text: value.slice(matchEnd - offset)});
         }
         offset = end;

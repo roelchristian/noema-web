@@ -1,3 +1,4 @@
+import { entityMentionName } from '../../shared/domain.js';
 import type {AIRequestObserver} from './ai-debug.js';
 import {createHash} from 'node:crypto';
 import type {ConceptClassification,Page} from '../../shared/domain.js';
@@ -28,7 +29,7 @@ export class PageUtility {
     this.running.set(key,work);return work;
   }
   private async generate(vault:string,page:Page,subtypes:{id:string;name:string}[],schemaKey:string,onRequest?:AIRequestObserver):Promise<PageUtilityResult> {
-    const names=new Map(this.knowledge.list(vault).map(entity=>[entity.id,entity.name]));
+    const names=new Map(this.knowledge.list(vault).map(entity=>[entity.id,entityMentionName(entity)]));
     const input=summaryInput(page,id=>names.get(id),false);
     if(!input.trim())throw new HttpError(400,'Add some page content before classifying it.');
     if(input.length>40000)throw new HttpError(413,'This page exceeds the AI limit of 40,000 characters.');

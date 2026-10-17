@@ -170,6 +170,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS embedding_settings (
  CREATE UNIQUE INDEX IF NOT EXISTS embedding_jobs_active ON embedding_jobs(page_id) WHERE status IN ('queued','running');`);
 if (!db.prepare('PRAGMA table_info(entities)').all().some(c => c.name === 'subtype')) db.exec('ALTER TABLE entities ADD COLUMN subtype TEXT');
 if (!db.prepare('PRAGMA table_info(entities)').all().some(c => c.name === 'aliases')) db.exec("ALTER TABLE entities ADD COLUMN aliases TEXT NOT NULL DEFAULT '[]'");
+if (!db.prepare('PRAGMA table_info(entities)').all().some(c => c.name === 'mention_case')) db.exec("ALTER TABLE entities ADD COLUMN mention_case TEXT NOT NULL DEFAULT 'canonical' CHECK (mention_case IN ('canonical','lowercase')); UPDATE pages SET summary_content_hash=NULL;");
+db.exec(`CREATE TRIGGER IF NOT EXISTS entity_mention_case_hash_invalidate AFTER UPDATE OF mention_case ON entities
+ WHEN NEW.mention_case<>OLD.mention_case BEGIN UPDATE pages SET summary_content_hash=NULL WHERE vault_id=NEW.vault_id; END;`);
 // Import the former single selection exactly once; an empty array remains cleared on restart.
 if (!db.prepare('PRAGMA table_info(entities)').all().some(c => c.name === 'subtypes')) {
  db.exec(`ALTER TABLE entities ADD COLUMN subtypes TEXT NOT NULL DEFAULT '[]';

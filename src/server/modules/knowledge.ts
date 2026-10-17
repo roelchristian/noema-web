@@ -4,7 +4,7 @@ import { builtinProperties, builtinSubtypes, inheritedPropertyNames, type Entity
 import { Store } from '../store.js';
 import { HttpError, now, required, text } from '../validation.js';
 import { normalizeEntityName } from '../../shared/auto-entities.js';
-type EntityRow = Omit<Entity, 'subtypes' | 'aliases'> & {subtypes: string; aliases: string; subtype?: string | null};
+type EntityRow = Omit<Entity, 'subtypes' | 'aliases' | 'mentionCase'> & {subtypes: string; aliases: string; mention_case: 'canonical' | 'lowercase'; subtype?: string | null};
 export class Knowledge {
   constructor(private store: Store) {}
   schema(vault: string): EntitySchema {
@@ -42,8 +42,8 @@ export class Knowledge {
     return type;
   }
   private entity(row: EntityRow): Entity {
-    const {subtype: _legacy, subtypes, aliases, ...entity} = row;
-    return {...entity, aliases: JSON.parse(aliases) as string[], subtypes: JSON.parse(subtypes) as string[]};
+    const {subtype: _legacy, subtypes, aliases, mention_case, ...entity} = row;
+    return {...entity, mentionCase: mention_case, aliases: JSON.parse(aliases) as string[], subtypes: JSON.parse(subtypes) as string[]};
   }
   list(vault: string) { return this.store.all<EntityRow>('SELECT * FROM entities WHERE vault_id=? ORDER BY name COLLATE NOCASE',vault).map(row => this.entity(row)); }
   find(vault: string, id: string) {
@@ -74,13 +74,15 @@ export class Knowledge {
     const inputAliases = body.aliases === undefined ? current?.aliases ?? [] : body.aliases;
     if (!Array.isArray(inputAliases) || inputAliases.length > 100 || inputAliases.some(alias => typeof alias !== 'string' || !alias.trim() || alias.trim().length > 200)) throw new HttpError(400,'Aliases must be up to 100 non-empty names of at most 200 characters');
     const aliases = [...new Map(inputAliases.map((alias: string) => [alias.trim().replace(/\s+/g, ' ').toLowerCase(), alias.trim().replace(/\s+/g, ' ')])).values()];
-    return {name:required(body.name),aliases,type,subtypes,description:text(body.description ?? '')};
+    const mentionCase=body.mentionCase===undefined?current?.mentionCase??'canonical':body.mentionCase;
+    if(mentionCase!=='canonical'&&mentionCase!=='lowercase')throw new HttpError(400,'Choose entity-name or lowercase tag casing.');
+    return {name:required(body.name),aliases,mentionCase,type,subtypes,description:text(body.description ?? '')};
   }
   create(vault: string, body: Record<string, unknown>) {
     const e=this.input(vault,body),id=randomUUID();
     const create=() => {
       const attachments=e.type==='source'?this.attachments(vault,body.attachmentIds):[];
-      this.store.run('INSERT INTO entities (id,name,aliases,type,subtypes,description,updated_at,vault_id) VALUES (?,?,?,?,?,?,?,?)',id,e.name,JSON.stringify(e.aliases),e.type,JSON.stringify(e.subtypes),e.description,now(),vault);
+      this.store.run('INSERT INTO entities (id,name,aliases,mention_case,type,subtypes,description,updated_at,vault_id) VALUES (?,?,?,?,?,?,?,?,?)',id,e.name,JSON.stringify(e.aliases),e.mentionCase,e.type,JSON.stringify(e.subtypes),e.description,now(),vault);
       for(const file of attachments)this.store.run('UPDATE source_files SET entity_id=? WHERE id=? AND vault_id=?',id,file,vault);
     };
     if(e.type==='source')this.store.transaction(create);else create();
@@ -101,7 +103,7 @@ export class Knowledge {
     if (e.type==='source' && current.type!=='source') throw new HttpError(400,'Create a source with an attached file instead of changing this entity type');
     if (e.type!=='source' && this.store.get('SELECT 1 FROM page_sources WHERE source_id=? LIMIT 1',id)) throw new HttpError(400,'Remove page source references before changing this Source to another type');
     this.store.transaction(() => {
-      this.store.run('UPDATE entities SET name=?,aliases=?,type=?,subtype=NULL,subtypes=?,description=?,updated_at=? WHERE id=? AND vault_id=?',e.name,JSON.stringify(e.aliases),e.type,JSON.stringify(e.subtypes),e.description,now(),id,vault);
+      this.store.run('UPDATE entities SET name=?,aliases=?,mention_case=?,type=?,subtype=NULL,subtypes=?,description=?,updated_at=? WHERE id=? AND vault_id=?',e.name,JSON.stringify(e.aliases),e.mentionCase,e.type,JSON.stringify(e.subtypes),e.description,now(),id,vault);
     });
     return this.detail(vault,id);
   }

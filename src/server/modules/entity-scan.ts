@@ -1,3 +1,4 @@
+import { entityMentionName } from '../../shared/domain.js';
 import {classifiedConceptSubtypes} from '../../shared/concept-classification.js';
 import { randomUUID } from 'node:crypto';
 import { blockSegments, entityLabels, entityTypes, isEntityTaggingText, type Page, type Segment } from '../../shared/domain.js';
@@ -29,7 +30,7 @@ export class EntityScans {
     const entities = this.knowledge.list(vault);
     const connected = new Set(page.blocks.flatMap(block => blockSegments(block).flatMap(s => s.entityId ? [s.entityId] : [])));
     const runs: string[] = [];
-    const names = new Map(entities.map(entity => [entity.id,entity.name]));
+    const names = new Map(entities.map(entity => [entity.id,entityMentionName(entity)]));
     const contextText = (segments: Segment[]) => segments.map(segment => segment.entityId
       ? segment.mentionText ?? names.get(segment.entityId) ?? ''
       : segment.math ? `\\(${segment.text ?? ''}\\)` : segment.text ?? '').join('');

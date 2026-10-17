@@ -5,7 +5,7 @@ import { inheritedPropertyNames, type EntitySchema } from '../../shared/entity-s
 import { Select } from '../components/Select';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api';
-import { entityLabels, entityTypes, type Entity, type EntityDetail, type EntityType, type Property, type Relationship } from '../../shared/domain';
+import { entityLabels, entityTypes, type Entity, type EntityDetail, type EntityMentionCase, type EntityType, type Property, type Relationship } from '../../shared/domain';
 import { Icon } from '../components/Icon';
 import { Mention } from '../components/Mention';
 import { AliasInput, parseAliases } from './AliasInput';
@@ -102,12 +102,15 @@ function EntityDetails({entity, schema, onSave}: {schema: EntitySchema; entity: 
   const [name, setName] = useState(entity.name), [type, setType] = useState<EntityType>(entity.type), [description, setDescription] = useState(entity.description), [status, setStatus] = useState(''), [busy, setBusy] = useState(false);
   const [subtypes, setSubtypes] = useState(entity.subtypes);
   const [aliases, setAliases] = useState((entity.aliases ?? []).join('\n'));
-  async function submit(e: FormEvent) { e.preventDefault(); setBusy(true); setStatus(''); try { await onSave({name, aliases: parseAliases(aliases), type, subtypes, description}); setStatus('Saved'); } catch { /* Parent reports the error. */ } finally { setBusy(false); } }
+  const [mentionCase,setMentionCase]=useState<EntityMentionCase>(entity.mentionCase??'canonical');
+  async function submit(e: FormEvent) { e.preventDefault(); setBusy(true); setStatus(''); try { await onSave({name, aliases: parseAliases(aliases), mentionCase, type, subtypes, description}); setStatus('Saved'); } catch { /* Parent reports the error. */ } finally { setBusy(false); } }
   return <form id="entity-form" className="entity-detail-form" onSubmit={submit}>
     <label>Name<input className="entity-name" aria-label="Entity name" required maxLength={200} disabled={busy} value={name} onChange={e => {setName(e.target.value);setStatus('');}}/></label>
     <label>Entity type<Select aria-label="Entity type" value={type} disabled={busy} onChange={e => {setType(e.target.value as EntityType);setSubtypes([]);setStatus('');}}>{entityTypes.map(t => <option key={t} value={t} disabled={t!==entity.type&&(t==='source'||entity.type==='source')}>{entityLabels[t]}</option>)}</Select></label>
     <SubtypePicker type={type} value={subtypes} subtypes={schema.subtypes} onChange={value => {setSubtypes(value);setStatus('');}} disabled={busy}/>
     <AliasInput value={aliases} onChange={value => {setAliases(value);setStatus('');}} disabled={busy}/>
+    <label>Default tag casing<Select aria-label="Default tag casing" value={mentionCase} disabled={busy} onChange={event=>{setMentionCase(event.target.value as EntityMentionCase);setStatus('');}}><option value="canonical">Entity name</option><option value="lowercase">Lowercase</option></Select></label>
+    <p className="section-hint">Used when inserting a tag without source text. AI tags and tags made from selected text keep the passage’s original capitalization.</p>
     <label>Description<textarea aria-label="Entity description" placeholder="Add a description…" disabled={busy} value={description} onChange={e => {setDescription(e.target.value);setStatus('');}}/></label>
     <div className="entity-detail-save"><button className="button small" disabled={busy}>{busy ? 'Saving…' : 'Save details'}</button><span id="entity-saved" role="status">{status}</span></div>
   </form>;

@@ -1,18 +1,27 @@
 import { useState } from 'react';
-import type { Page, Organization } from '../../shared/domain';
+import type { Block, Page, Organization } from '../../shared/domain';
 import { api } from '../api';
 import { Icon } from '../components/Icon';
 import { ActionMenu } from '../components/ActionMenu';
+import { CleanupDialog } from './CleanupDialog';
 
-export function PageToolbar({mobile=false, inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, focusedReading, onToggleFocusedReading, onForward, forwardDisabled}: {
+export function PageToolbar({mobile=false, inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, focusedReading, onToggleFocusedReading, onForward, forwardDisabled, onChangeBlocks}: {
   mobile?: boolean;
   onForward?: () => void; forwardDisabled?: boolean;
   inactive?: boolean;
   onAI: () => void; aiOpen: boolean; focusedReading: boolean; onToggleFocusedReading: () => void;
   favourite: boolean; onOrganizationChange: (data: Organization) => void; page: Page; onDelete: () => void;
   onError: (error: unknown) => void;
+  onChangeBlocks: (blocks: Block[]) => void;
 }) {
   const [saving, setSaving] = useState(false);
+  const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [cleanupUndo, setCleanupUndo] = useState<{before: Block[]; after: Block[]} | null>(null);
+  const canUndoCleanup = !!cleanupUndo && JSON.stringify(page.blocks) === JSON.stringify(cleanupUndo.after);
+  const cleanupActions = [
+    {label: 'Clean up spacing…', icon: 'edit', onSelect: () => setCleanupOpen(true)},
+    ...(cleanupUndo ? [{label: 'Undo last cleanup', icon: 'recent', disabled: !canUndoCleanup, onSelect: () => { if (cleanupUndo && canUndoCleanup) { onChangeBlocks(cleanupUndo.before); setCleanupUndo(null); } }}] : []),
+  ];
   async function toggleFavourite() {
     if (saving) return;
     setSaving(true);
@@ -22,7 +31,7 @@ export function PageToolbar({mobile=false, inactive=false, page, onError, onDele
     } catch (error) { onError(error); }
     finally { setSaving(false); }
   }
-  return <div inert={inactive} className="page-toolbar" role="group" aria-label="Page tools">
+  return <><div inert={inactive} className="page-toolbar" role="group" aria-label="Page tools">
     {!mobile && <>
       <button className="page-tool focused-reading-button" aria-label="Focused reading" aria-pressed={focusedReading} title={focusedReading ? 'Turn off focused reading' : 'Turn on focused reading'} onClick={onToggleFocusedReading}><Icon name="creativework"/></button>
       <button className={'page-tool favourite-button ' + (favourite ? 'is-favourite' : '')} disabled={saving} aria-pressed={favourite} aria-label={favourite ? 'Remove page from favourites' : 'Add page to favourites'} title={favourite ? 'Remove from favourites' : 'Add to favourites'} onClick={() => void toggleFavourite()}><Icon name="star"/></button>
@@ -32,7 +41,10 @@ export function PageToolbar({mobile=false, inactive=false, page, onError, onDele
       ...(onForward ? [{label: 'Go forward', icon: 'chevron', disabled: forwardDisabled, onSelect: onForward}] : []),
       {label: focusedReading ? 'Turn off focused reading' : 'Turn on focused reading', icon: 'creativework', onSelect: onToggleFocusedReading},
       {label: favourite ? 'Remove from favourites' : 'Add to favourites', icon: 'star', disabled: saving, onSelect: () => void toggleFavourite()},
+      ...cleanupActions,
       {label: 'Move to Trash', icon: 'trash', danger: true, onSelect: onDelete},
-    ]}/> : <button className="page-tool" aria-label="Move note to Trash" title="Move to Trash" onClick={onDelete}><Icon name="trash"/></button>}
-  </div>;
+    ]}/> : <><ActionMenu label="Clean up note" icon="edit" actions={cleanupActions}/><button className="page-tool" aria-label="Move note to Trash" title="Move to Trash" onClick={onDelete}><Icon name="trash"/></button></>}
+  </div>
+    {cleanupOpen && <CleanupDialog blocks={page.blocks} onClose={() => setCleanupOpen(false)} onApply={blocks => { setCleanupUndo({before: page.blocks, after: blocks}); onChangeBlocks(blocks); }}/>}
+  </>;
 }

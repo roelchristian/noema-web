@@ -1,9 +1,9 @@
 import type { PageIconId } from './page-icons.js';
 import type { IntelligencePreferences } from './intelligence.js';
-export const entityTypes = ['person', 'place', 'event', 'creativework', 'organization', 'source', 'concept'] as const;
+export const entityTypes = ['person', 'place', 'event', 'creativework', 'organization', 'organism', 'culture', 'source', 'concept'] as const;
 export type EntityType = typeof entityTypes[number];
 export const entityLabels: Record<EntityType, string> = {
-  person: 'Person', place: 'Place', event: 'Event', creativework: 'Creative work', organization: 'Organization', source: 'Source', concept: 'Concept',
+  person: 'Person', place: 'Place', event: 'Event', creativework: 'Creative work', organization: 'Organization', organism: 'Organism', culture: 'Culture', source: 'Source', concept: 'Concept',
 };
 export const blockTypes = ['paragraph', 'heading1', 'heading2', 'bullet', 'quote', 'todo', 'table', 'image', 'math'] as const;
 export type BlockType = typeof blockTypes[number];

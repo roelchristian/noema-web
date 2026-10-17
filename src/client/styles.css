@@ -1042,3 +1042,8 @@ dialog.vault-search-dialog::backdrop { background: #0005; backdrop-filter: blur(
 .organization-section-title .organization-section-toggle { display: inline-flex; align-items: center; gap: 8px; padding: 0; font: inherit; text-align: left; border-radius: 3px; outline-offset: 4px; }
 .organization-section-toggle > .icon { width: 12px; height: 12px; flex: none; color: var(--text-muted); }
 .organization-section-toggle[aria-expanded="true"] > .icon { transform: rotate(90deg); }
+
+.selection-popover { overflow-y: auto; }
+.selection-toolbar { position: sticky; top: 0; background: var(--surface-raised); z-index: 1; }
+.selection-entities .selection-create { border-top: 0; margin-top: 0; padding-top: 8px; }
+.selection-entities .selection-back { font-size: 10px; color: var(--text-muted); margin-bottom: 4px; }

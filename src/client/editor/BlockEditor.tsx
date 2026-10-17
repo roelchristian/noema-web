@@ -20,7 +20,7 @@ const options: {type: BlockType; title: string; detail: string; icon: string}[] 
   {type: 'bullet', title: 'Bullet list', detail: 'A simple list of ideas', icon: '•'},
   {type: 'todo', title: 'To-do', detail: 'Keep track of a task', icon: '☑'},
   {type: 'table', title: 'Table', detail: 'A simple table with rows and columns', icon: '▦'},
-  {type: 'math', title: 'Equation', detail: 'A LaTeX math equation', icon: '∑'},
+  {type: 'math', title: 'Equation', detail: 'A LaTeX math equation', icon: 'equation'},
   {type: 'quote', title: 'Quote', detail: 'Make a thought stand out', icon: '❝'},
 ];
 interface ImageUpload {id:string; after?:string; name:string; message:string; current:number; total:number}
@@ -257,6 +257,6 @@ export function BlockEditor(props: Props) {
     <SelectionToolbar onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} onCommit={commitSelection} onCreateEntity={onCreateEntity}/>
     {mathTarget && <MathDialog initial={mathTarget.initial} onSave={saveInlineMath} onClose={() => setMathTarget(null)}/>}
     {imageError && <div className="image-upload-error" role="alert">{imageError}</div>}
-    {menu && <div ref={menuRef} className="command-menu" style={{left: menu.left, top: menu.top}} onMouseDown={e => e.preventDefault()} role="menu"><div className="menu-label">{menu.label}</div>{menu.items.map((item, index) => <button key={index} role="menuitem" className={index === menu.index ? 'highlight' : ''} onClick={item.pick}><span className="menu-icon">{item.entity ? <Icon name={item.icon}/> : item.icon}</span><span>{item.title}<small>{item.detail}</small></span></button>)}</div>}
+    {menu && <div ref={menuRef} className="command-menu" style={{left: menu.left, top: menu.top}} onMouseDown={e => e.preventDefault()} role="menu"><div className="menu-label">{menu.label}</div>{menu.items.map((item, index) => <button key={index} role="menuitem" className={index === menu.index ? 'highlight' : ''} onClick={item.pick}><span className="menu-icon">{item.entity || item.icon === 'equation' ? <Icon name={item.icon}/> : item.icon}</span><span>{item.title}<small>{item.detail}</small></span></button>)}</div>}
   </>;
 }

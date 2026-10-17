@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { entityLabels, type Entity } from '../../shared/domain';
 import { Icon } from '../components/Icon';
+import { annotationSuggestions, selectionPopoverPlacement } from './selection-annotation';
 import { segmentHTML } from './segments';
 
 interface Props {
@@ -20,14 +21,15 @@ function editable(node: Node) {
   return (node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>('.block-content[contenteditable="true"]');
 }
 export function SelectionToolbar({editor, entities, onCommit, onCreateEntity, onMath}: Props) {
-  const [anchor, setAnchor] = useState<{left: number; top: number; bottom: number} | null>(null);
+  const [anchor, setAnchor] = useState<{left: number; right: number; top: number; bottom: number} | null>(null);
   const [annotating, setAnnotating] = useState(false), [query, setQuery] = useState('');
+  const [linking, setLinking] = useState(false);
   const [active, setActive] = useState<string[]>([]);
-  const [position, setPosition] = useState({left: 0, top: 0});
+  const [position, setPosition] = useState<{left: number; top: number; maxHeight?: number}>({left: 0, top: 0});
   const saved = useRef<Range | null>(null), surface = useRef<HTMLDivElement>(null);
   const picking = useRef(false);
   const latest = useRef({entities, onCommit}); latest.current = {entities, onCommit};
-  function dismiss() { saved.current = null; picking.current = false; setAnnotating(false); setAnchor(null); }
+  function dismiss() { saved.current = null; picking.current = false; setAnnotating(false); setLinking(false); setAnchor(null); }
   useEffect(() => {
     function inspect() {
       if (picking.current || surface.current?.contains(document.activeElement)) return;
@@ -42,7 +44,7 @@ export function SelectionToolbar({editor, entities, onCommit, onCreateEntity, on
       if (!box.width && !box.height) { dismiss(); return; }
       saved.current = range.cloneRange();
       setActive(formats.filter(format => document.queryCommandState(format.command)).map(format => format.command));
-      setAnchor({left: box.left + box.width / 2, top: box.top, bottom: box.bottom});
+      setAnchor({left: box.left, right: box.right, top: box.top, bottom: box.bottom});
     }
     function outside(event: PointerEvent) {
       if (surface.current?.contains(event.target as Node)) return;
@@ -76,8 +78,8 @@ export function SelectionToolbar({editor, entities, onCommit, onCreateEntity, on
   useLayoutEffect(() => {
     if (!anchor || !surface.current) return;
     const box = surface.current.getBoundingClientRect();
-    setPosition({left: Math.max(8, Math.min(anchor.left - box.width / 2, innerWidth - box.width - 8)), top: Math.max(8, Math.min(anchor.top >= box.height + 16 ? anchor.top - box.height - 8 : anchor.bottom + 8, innerHeight - box.height - 8))});
-  }, [anchor, annotating, query, entities]);
+    setPosition(selectionPopoverPlacement(anchor, {width: box.width, height: surface.current.scrollHeight + 2}, {width: innerWidth, height: innerHeight}));
+  }, [anchor, annotating, linking, query, entities]);
   function restore(range: Range) {
     if (!range.startContainer.isConnected || !range.endContainer.isConnected) return false;
     editable(range.startContainer)?.focus();
@@ -106,27 +108,36 @@ export function SelectionToolbar({editor, entities, onCommit, onCreateEntity, on
   if (!anchor) return null;
   const range = saved.current;
   const single = range && editable(range.startContainer) === editable(range.endContainer);
-  const matches = entities.filter(entity => entity.name.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 20);
+  const selectedText = range?.toString().trim() || '';
+  const {exact, results} = annotationSuggestions(entities, selectedText, query);
+  const linkEntity = (id: string) => { const current = saved.current; if (current) connect(current.cloneRange(), current.toString(), id); };
+  const createFromSelection = () => {
+    const current = saved.current?.cloneRange(); if (!current) return;
+    const text = current.toString();
+    dismiss();
+    onCreateEntity(text.trim().slice(0, 200), id => connect(current, text, id));
+  };
   return <div ref={surface} className="selection-popover" style={position} onMouseDown={event => { if (!(event.target instanceof HTMLInputElement)) event.preventDefault(); }}>
     <div className="selection-toolbar" role="toolbar" aria-label="Selection formatting">
       {formats.map(format => <button key={format.command} type="button" title={format.label} aria-label={format.label} aria-pressed={active.includes(format.command)} onClick={() => applyFormat(format.command)}>{format.glyph}</button>)}
-      <button type="button" aria-label="Inline equation" title="Inline equation" disabled={!single} onClick={() => {const current = saved.current?.cloneRange(); if (current) {dismiss(); onMath(current);}}}>∑</button>
+      <button type="button" aria-label="Inline equation" title="Inline equation" disabled={!single} onClick={() => {const current = saved.current?.cloneRange(); if (current) {dismiss(); onMath(current);}}}><Icon name="equation"/></button>
       <span className="selection-divider"/>
-      <button type="button" className="selection-annotate" disabled={!single} title={single ? 'Connect selection to a knowledge entity' : 'Select text within one block or table cell to annotate'} aria-expanded={annotating} onClick={() => { picking.current = !annotating; setAnnotating(!annotating); setQuery(''); }}><Icon name="knowledge"/>Annotate</button>
+      <button type="button" className="selection-annotate" disabled={!single} title={single ? 'Connect selection to a knowledge entity' : 'Select text within one block or table cell to annotate'} aria-expanded={annotating} onClick={() => { picking.current = !annotating; setAnnotating(!annotating); setLinking(false); setQuery(''); }}><Icon name="knowledge"/>Annotate</button>
     </div>
     {annotating && <div className="selection-entities" role="region" aria-label="Annotate selection">
-      <input autoFocus aria-label="Search knowledge entities" placeholder="Search knowledge entities…" value={query} onChange={event => setQuery(event.target.value)}/>
-      <p>Replace selection with an entity reference</p>
-      <div className="selection-entity-results">
-        {matches.map(entity => <button type="button" key={entity.id} onClick={() => { const current = saved.current; if (current) connect(current.cloneRange(), current.toString(), entity.id); }}><Icon name={entity.type}/><span>{entity.name}<small>{entityLabels[entity.type]}</small></span></button>)}
-        {!matches.length && <div className="selection-empty">No matching entities</div>}
-      </div>
-      <button type="button" className="selection-create" onClick={() => {
-        const current = saved.current?.cloneRange(); if (!current) return;
-        const text = current.toString();
-        dismiss();
-        onCreateEntity((query.trim() || text.trim()).slice(0, 200), id => connect(current, text, id));
-      }}><Icon name="plus"/><span>Create entity from selection</span></button>
+      {linking ? <>
+        <button type="button" className="selection-back" onClick={() => { setLinking(false); setQuery(''); }}>Back to annotation options</button>
+        <input autoFocus aria-label="Search knowledge entities" placeholder="Find an existing entity…" value={query} onChange={event => setQuery(event.target.value)}/>
+        <p>Link the highlighted text to an existing entity</p>
+        <div className="selection-entity-results">
+          {results.map(entity => <button type="button" key={entity.id} onClick={() => linkEntity(entity.id)}><Icon name={entity.type}/><span>{entity.name}<small>{entityLabels[entity.type]}</small></span></button>)}
+          {!results.length && <div className="selection-empty">No matching entities</div>}
+        </div>
+      </> : <>
+        {!!exact.length && <><p>Matching {exact.length === 1 ? 'entity' : 'entities'}</p><div className="selection-entity-results">{exact.map(entity => <button type="button" key={entity.id} onClick={() => linkEntity(entity.id)}><Icon name={entity.type}/><span>{entity.name}<small>{entityLabels[entity.type]}</small></span></button>)}</div></>}
+        {!exact.length && <button type="button" className="selection-create" onClick={createFromSelection}><Icon name="plus"/><span>Add “{selectedText.length > 60 ? selectedText.slice(0, 60) + '…' : selectedText}” as new entity</span></button>}
+        <button type="button" onClick={() => setLinking(true)}><Icon name="knowledge"/><span>Link to {exact.length ? 'another' : 'existing'} entity</span></button>
+      </>}
     </div>}
   </div>;
 }

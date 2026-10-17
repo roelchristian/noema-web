@@ -29,8 +29,16 @@ export interface AIActivity extends IntelligencePreferences {
   vaultId: string | null; vaultName: string | null; objectKind: 'page' | 'entity' | null;
   objectId: string | null; objectTitle: string | null; revision: number | null;
   available: boolean; promptBytes: number | null;
+  debugRecorded: boolean;
 }
 export interface AIActivityPage { items: AIActivity[]; nextCursor: number | null }
+export interface AIDebugSettings {enabled: boolean}
+export interface AIActivityDebug {
+  activityId: string; status: AIActivity['status']; endpoint: string | null; request: string | null;
+  responseBody: string; response: string | null; responseStatus: number | null;
+  responseHeaders: string | null; error: string | null; updatedAt: string;
+  events: {sequence: number; receivedAt: string; type: string; data: string}[];
+}
 
 export const aiActivityLabels: Record<AIActivity['action'], string> = {
   block_explanation:'AI Explanation', page_title:'Page title & category', page_summary:'Page summary', entity_scan:'Entity scan',

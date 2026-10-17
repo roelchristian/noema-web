@@ -146,6 +146,9 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
         if(collection==='intelligence') {
           if(parts.length===3 && id==='notifications' && method==='GET')return send(200,notifications.list());
           if(parts.length===3 && id==='notifications' && method==='PUT')return send(200,notifications.read(body));
+          if(parts.length===3 && id==='debug' && method==='GET')return send(200,activity.debugSettings());
+          if(parts.length===3 && id==='debug' && method==='PUT')return send(200,activity.saveDebugSettings(body));
+          if(parts.length===4 && id==='activity' && child && method==='GET')return send(200,activity.debug(child));
           if(parts.length===3 && id==='activity' && method==='DELETE')return send(200,activity.clear());
           if(parts.length===3 && id==='activity' && method==='GET')return send(200,activity.list(url.searchParams.get('before')));
           if(parts.length===2 && method==='GET')return send(200,intelligence.status());

@@ -95,6 +95,17 @@ db.exec(`CREATE TABLE IF NOT EXISTS ai_activity (
  model TEXT NOT NULL, reasoning_effort TEXT NOT NULL, prompt_bytes INTEGER
 );
  CREATE INDEX IF NOT EXISTS ai_activity_started ON ai_activity(started_at DESC);`);
+db.exec(`CREATE TABLE IF NOT EXISTS ai_activity_debug (
+ activity_id TEXT PRIMARY KEY REFERENCES ai_activity(id) ON DELETE CASCADE,
+ endpoint TEXT, request TEXT, response_body TEXT NOT NULL DEFAULT '', response TEXT,
+ response_status INTEGER, response_headers TEXT, error TEXT, updated_at TEXT NOT NULL
+);
+ CREATE TABLE IF NOT EXISTS ai_activity_debug_events (
+ sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+ activity_id TEXT NOT NULL REFERENCES ai_activity_debug(activity_id) ON DELETE CASCADE,
+ received_at TEXT NOT NULL, type TEXT NOT NULL, data TEXT NOT NULL
+);
+ CREATE INDEX IF NOT EXISTS ai_activity_debug_event_lookup ON ai_activity_debug_events(activity_id,sequence);`);
 
 // Notifications store references and read state, never generated content or title snapshots.
 db.exec(`CREATE TABLE IF NOT EXISTS ai_notifications (

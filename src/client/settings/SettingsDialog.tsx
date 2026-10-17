@@ -1,3 +1,4 @@
+import { AIDebugSettings } from './AIDebugSettings';
 import { ImageSettings } from './ImageSettings';
 import { SecuritySettings } from './SecuritySettings';
 import { useState } from 'react';
@@ -90,6 +91,7 @@ export function SettingsDialog({appearance, onChange, storageError, onClose, onO
       </div>
       <div id="settings-panel-intelligence" role="tabpanel" aria-labelledby="settings-tab-intelligence" hidden={tab !== 'intelligence'}>
         <IntelligenceSettings/>
+        {tab === 'intelligence' && <AIDebugSettings/>}
         {tab === 'intelligence' && <EmbeddingSettings key={vault?.id} vault={vault} onOpenPage={onOpenPage}/>}
         <section className="settings-section settings-activity-entry"><div><h3>AI activity log</h3><p>Review local AI requests, export a CSV, or clear activity.</p></div><button className="button" aria-haspopup="dialog" onClick={() => setActivityOpen(true)}>Open activity log</button></section>
       </div>

@@ -276,6 +276,10 @@ This follows [OpenAI’s guidance on separating untrusted input from trusted ins
 
 Requests use the [OpenAI Responses API](https://developers.openai.com/api/docs/guides/text) with `store: false`. This does not guarantee zero provider retention; see [OpenAI data controls](https://developers.openai.com/api/docs/guides/your-data) for applicable processing and retention policies.
 
+**Settings → Intelligence → AI debug mode** enables local payload capture for new requests. It is off by default and applies across vaults. Debug traces include the complete request body, provider response body and final JSON, selected response metadata, errors, and timestamped [Responses API stream events](https://developers.openai.com/api/docs/guides/streaming-responses). Authorization headers are excluded and recognizable API keys are redacted. Generation requests use streaming while debug capture is enabled; embedding responses retain their JSON bodies. Existing response-size and timeout safeguards still apply, and failed or interrupted requests retain any received data.
+
+In **AI activity log**, choose **Open payload** to see live output and raw events, refreshed every second, or download the trace as JSON. CSV export contains activity metadata only. Debug payloads include note text and remain stored until their activity rows are cleared or pruned by the existing 1,000-action retention policy. Turning debug mode off stops capture for subsequent requests without deleting previous traces. Vault locks hide payloads; clearing activity and deleting a vault also remove their associated traces. Debug settings and traces are excluded from vault exports.
+
 | Method | Route | Purpose |
 | --- | --- | --- |
 | GET | `/api/intelligence` | Configuration status, expiry and model only |

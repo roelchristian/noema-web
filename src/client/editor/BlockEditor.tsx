@@ -26,6 +26,13 @@ import { MathBlock } from './MathBlock';
 import { MathDialog } from './MathDialog';
 import { completeInlineMath, mathElement } from './math';
 interface Props {pages?:PageSummary[];onOpenPage?:(id:string)=>void;onExplain?: (blocks: Block[]) => Promise<string>; reviewMatches?: EntityReviewItem[]; onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[]) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
+function explanationInsertionIndex(blocks: Block[], ids: string[]) {
+  const last=blocks.filter(block=>ids.includes(block.id)).at(-1);
+  if(!last)return -1;
+  let index=blocks.findIndex(block=>block.id===last.id);
+  if(last.semanticGroup)blocks.forEach((block,i)=>{if(block.semanticGroup?.id===last.semanticGroup!.id)index=i;});
+  return index;
+}
 const options: {type: BlockType; title: string; detail: string; icon: string}[] = [
   {type: 'paragraph', title: 'Text', detail: 'Plain text for your thoughts', icon: 'T'},
   {type: 'heading1', title: 'Heading 1', detail: 'A large section heading', icon: 'H₁'},
@@ -66,6 +73,7 @@ export function BlockEditor(props: Props) {
   const onChange = (next: Block[]) => props.onChange(normalizeSemanticGroups(preserveAIExplanationTags(props.blocks,next)));
   const [pageLinkStatus,setPageLinkStatus]=useState('');
   const [explaining,setExplaining]=useState(false), [explanationError,setExplanationError]=useState('');
+  const [explanationAnchor,setExplanationAnchor]=useState<{ids:string[];index:number}|null>(null);
   const explanationPending=useRef(false), retryExplanation=useRef<string[]>([]);
   const reviewMatches = props.reviewMatches ?? [];
   const [blockDrag, setBlockDrag] = useState<BlockDropPreview | null>(null), [dragStatus, setDragStatus] = useState('');
@@ -161,6 +169,7 @@ export function BlockEditor(props: Props) {
     const draft=commitSelection(), selected=draft.filter(block=>selectedIds.includes(block.id));
     if(!selected.length) return;
     const snapshot=JSON.stringify(selected);
+    setExplanationAnchor({ids:selectedIds,index:explanationInsertionIndex(draft,selectedIds)});
     retryExplanation.current=selectedIds;explanationPending.current=true;setExplaining(true);setExplanationError('');
     try {
       const markdown=await latest.current.onExplain(selected);
@@ -173,9 +182,7 @@ export function BlockEditor(props: Props) {
       if(!markdown.trim() || !generated.length) throw new Error('AI returned an empty explanation. Please try again.');
       if(generated.length>128 || current.length+generated.length>2000) throw new Error('The explanation is too large for this page. Select fewer blocks.');
       // Insert after the last selected parent, so an existing group is never fragmented.
-      const last=sources.at(-1)!, parent=last.semanticGroup?.id;
-      let index=current.findIndex(block=>block.id===last.id);
-      if(parent) current.forEach((block,i)=>{if(block.semanticGroup?.id===parent)index=i;});
+      const index=explanationInsertionIndex(current,selectedIds);
       const next=[...current];next.splice(index+1,0,...generated);latest.current.onChange(next);
     } catch(error) {if(mounted.current)setExplanationError(error instanceof Error?error.message:'Could not explain these blocks.');}
     finally {explanationPending.current=false;if(mounted.current)setExplaining(false);}
@@ -420,6 +427,13 @@ export function BlockEditor(props: Props) {
     }
     if (e.key === 'Backspace' && !el.textContent && blocks.length > 1) { e.preventDefault(); removeBlock(block.id); }
   }
+  const liveExplanationIndex=explanationAnchor?explanationInsertionIndex(blocks,explanationAnchor.ids):-1;
+  const explanationAnchorIndex=liveExplanationIndex>=0?liveExplanationIndex:Math.min(explanationAnchor?.index??-1,blocks.length-1);
+  const explanationAnchorId=blocks[explanationAnchorIndex]?.id;
+  const explanationStatus=(explaining||explanationError)?<div className="ai-explanation-placeholder" style={semanticStyle('ai-explanation')}>
+    <div className="ai-explanation-label">AI Explanation</div>
+    {explaining?<div className="ai-explanation-status" role="status"><span className="scan-spinner" aria-hidden="true"/>Explaining selected blocks…</div>:<div className="ai-explanation-status is-error" role="alert"><span>{explanationError}</span><button type="button" onClick={()=>void explain(retryExplanation.current)}>Retry</button><button type="button" onClick={()=>{setExplanationError('');setExplanationAnchor(null);}}>Dismiss</button></div>}
+  </div>:null;
   const renderBlock = (block: Block) => isAIExplanation(block) ? <ReadOnlyExplanationBlock key={block.id} block={block} entities={entities} onOpen={onOpenEntity} vaultId={props.vaultId}/> : <Fragment key={block.id}><div data-block-id={block.id} data-semantic-kind={block.semantic} style={semanticStyle(block.semantic)} className={'block ' + block.type + (block.semantic ? ' semantic-block' : '') + (blockDrag?.id === block.id ? ' is-block-dragging' : '')} data-drop-before={blockDrag?.valid && blockDrag.beforeId === block.id ? true : undefined} data-drop-after={blockDrag?.valid && blockDrag.beforeId === null && block.id === dropEndId ? true : undefined}>
     {block.semantic && <span className="semantic-accent" aria-hidden="true"/>}
     <div className="block-controls" role="group" aria-label="Block controls">
@@ -466,20 +480,18 @@ export function BlockEditor(props: Props) {
       e.preventDefault(); e.stopPropagation(); setMenu(null);
       const blockElement=(e.target as Element).closest<HTMLElement>('[data-block-id]');
       void addImages(files,{after:blockElement?.dataset.blockId});
-    }}>{semanticRuns(blocks).map(run => run.type==='block' && isAIExplanation(run.block) ? {type:'group' as const,id:run.id,kind:'ai-explanation' as const,blocks:[run.block]} : run).map(run => run.type === 'block' ? renderBlock(run.block) : <section key={run.id} data-block-group-id={run.id} className={'semantic-group'+(blockDrag?.id===run.id?' is-block-dragging':'')} data-semantic-kind={run.kind} style={semanticStyle(run.kind)} aria-label={semanticFunctions[run.kind].label+' semantic group'} data-drop-before={blockDrag?.valid&&blockDrag.beforeId===run.id?true:undefined} data-drop-after={blockDrag?.valid&&blockDrag.beforeId===null&&dropEndId===run.id?true:undefined}>
+    }}>{!explanationAnchorId&&explanationStatus}{semanticRuns(blocks).map(run => run.type==='block' && isAIExplanation(run.block) ? {type:'group' as const,id:run.id,kind:'ai-explanation' as const,blocks:[run.block]} : run).map(run => <Fragment key={run.id}>{run.type === 'block' ? renderBlock(run.block) : <section key={run.id} data-block-group-id={run.id} className={'semantic-group'+(blockDrag?.id===run.id?' is-block-dragging':'')} data-semantic-kind={run.kind} style={semanticStyle(run.kind)} aria-label={semanticFunctions[run.kind].label+' semantic group'} data-drop-before={blockDrag?.valid&&blockDrag.beforeId===run.id?true:undefined} data-drop-after={blockDrag?.valid&&blockDrag.beforeId===null&&dropEndId===run.id?true:undefined}>
       <span className="semantic-accent" aria-hidden="true"/><div className="semantic-parent-controls"><button type="button" className="block-handle semantic-handle" data-semantic-parent-handle draggable={false} aria-describedby="block-drag-help" aria-label={semanticFunctions[run.kind].label+' group options'} aria-pressed={blockDrag?.id===run.id} title={semanticFunctions[run.kind].label+' · Drag group or click for options'} onClick={event=>groupOptions(event.currentTarget,run.id)}>{semanticGlyph(run.kind)}</button></div>
       {run.kind==='ai-explanation' ? <details className="ai-explanation" open>
         <summary className="ai-explanation-label">AI Explanation</summary>
         {run.blocks[0]?.semanticGroup?.source && <div className="ai-explanation-source"><span>Passage explained</span><blockquote>{run.blocks[0].semanticGroup.source.excerpt}</blockquote></div>}
         <div className="semantic-children">{run.blocks.map(renderBlock)}</div>
       </details> : <div className="semantic-children">{run.blocks.map(renderBlock)}</div>}
-    </section>)}{uploadCards()}</div>
+    </section>}{(run.type==='block'?run.block.id===explanationAnchorId:run.blocks.some(block=>block.id===explanationAnchorId))&&explanationStatus}</Fragment>)}{uploadCards()}</div>
     <span id="block-drag-help" className="block-drag-sr">Drag to reorder. Click for options. With the handle focused, press Space to pick up, Up or Down to move, Space or Enter to drop, Escape to cancel.</span>
     <div className="block-drag-sr" role="status" aria-live="polite" aria-atomic="true">{dragStatus}</div>
     <SelectionToolbar mobile={mobile} keyboardInset={keyboardInset} viewportHeight={viewportHeight} onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
     {mathTarget && <MathDialog initial={mathTarget.initial} onSave={saveInlineMath} onClose={() => setMathTarget(null)}/>}
-    {explaining && <div className="ai-explanation-status" role="status"><span className="scan-spinner" aria-hidden="true"/>Explaining selected blocks…</div>}
-    {explanationError && <div className="ai-explanation-status is-error" role="alert"><span>{explanationError}</span><button type="button" onClick={()=>void explain(retryExplanation.current)}>Retry</button><button type="button" onClick={()=>setExplanationError('')}>Dismiss</button></div>}
     {pageLinkStatus && <div className="note-link-status" role="status">{pageLinkStatus}</div>}
     {imageError && <div className="image-upload-error" role="alert">{imageError}</div>}
     {mobile && active && <div ref={mobileToolbar} className="mobile-block-toolbar" role="toolbar" aria-label={`${activeLabel} actions`} style={{bottom: keyboardInset}} onPointerDown={event => { if ((event.target as Element).closest('button')) event.preventDefault(); }}>

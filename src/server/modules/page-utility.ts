@@ -1,3 +1,4 @@
+import type {AIRequestObserver} from './ai-debug.js';
 import {createHash} from 'node:crypto';
 import type {ConceptClassification,Page} from '../../shared/domain.js';
 import {Store} from '../store.js';
@@ -14,7 +15,7 @@ export interface PageUtilityResult {title:string;revision:number;conceptClassifi
 export class PageUtility {
   private running=new Map<string,Promise<PageUtilityResult>>();
   constructor(private store:Store,private pages:Pages,private knowledge:Knowledge,private enrichments:AIEnrichments,private intelligence:Intelligence) {}
-  run(vault:string,page:Page,onRequest?:(bytes:number)=>void):Promise<PageUtilityResult> {
+  run(vault:string,page:Page,onRequest?:AIRequestObserver):Promise<PageUtilityResult> {
     const subtypes=this.knowledge.schema(vault).subtypes.filter(subtype=>subtype.type==='concept').map(({id,name})=>({id,name}));
     const schemaKey=createHash('sha256').update(JSON.stringify(subtypes)).digest('hex');
     const saved=this.store.get<{data:string}>("SELECT data FROM page_ai_enrichments WHERE page_id=? AND kind='concept_classification'",page.id);
@@ -26,7 +27,7 @@ export class PageUtility {
     const work=this.generate(vault,page,subtypes,schemaKey,onRequest).finally(()=>{if(this.running.get(key)===work)this.running.delete(key);});
     this.running.set(key,work);return work;
   }
-  private async generate(vault:string,page:Page,subtypes:{id:string;name:string}[],schemaKey:string,onRequest?:(bytes:number)=>void):Promise<PageUtilityResult> {
+  private async generate(vault:string,page:Page,subtypes:{id:string;name:string}[],schemaKey:string,onRequest?:AIRequestObserver):Promise<PageUtilityResult> {
     const names=new Map(this.knowledge.list(vault).map(entity=>[entity.id,entity.name]));
     const input=summaryInput(page,id=>names.get(id),false);
     if(!input.trim())throw new HttpError(400,'Add some page content before classifying it.');

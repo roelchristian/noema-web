@@ -1,3 +1,5 @@
+import type { AIDebugTrace, AIRequestObserver } from './ai-debug.js';
+import { readOpenAIResponse, redactedTrace } from './openai-response.js';
 import { explanationPrompt } from './explanation-prompt.js';
 import { entityScanPrompt } from './entity-scan.js';
 import { titlePrompt } from './title-prompt.js';
@@ -96,7 +98,7 @@ export class Intelligence {
   }
   remove() {for(const request of this.generationRequests)request.abort();for(const request of this.embeddingRequests)request.abort();this.secrets.remove();return {configured:false,expiresAt:null,...this.selection()};}
   purgeExpired() {this.credential();}
-  async embed(input: string, onRequest?: (inputBytes: number) => void): Promise<{embedding:number[];tokens:number}> {
+  async embed(input: string, onRequest?: AIRequestObserver): Promise<{embedding:number[];tokens:number}> {
     if(!input.trim()||Buffer.byteLength(input,'utf8')>8000)throw new HttpError(400,'Embedding input must contain text and be at most 8,000 UTF-8 bytes.');
     const credential=this.credential();
     if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
@@ -105,40 +107,40 @@ export class Intelligence {
     this.embeddingAttempts.push(this.clock());
     const controller=new AbortController();this.embeddingRequests.add(controller);
     const timer=setTimeout(()=>controller.abort(),Math.min(45000,Date.parse(credential.expiresAt)-this.clock()));
+    let trace: AIDebugTrace | undefined;
     try {
-      onRequest?.(Buffer.byteLength(input,'utf8'));
+      trace=redactedTrace(onRequest?.(Buffer.byteLength(input,'utf8')),credential.key);
+      const payload={model:'text-embedding-3-small',input,encoding_format:'float',dimensions:1536};
+      trace?.request('https://api.openai.com/v1/embeddings',payload);
       const response=await this.transport('https://api.openai.com/v1/embeddings',{
         method:'POST',redirect:'error',signal:controller.signal,
         headers:{'Content-Type':'application/json',Authorization:`Bearer ${credential.key}`},
-        body:JSON.stringify({model:'text-embedding-3-small',input,encoding_format:'float',dimensions:1536}),
+        body:JSON.stringify(payload),
       });
-      if(!response.ok){await response.body?.cancel();throw new HttpError(response.status===429?429:502,response.status===401?'OpenAI rejected the API key. Replace it in Settings.':response.status===429?'OpenAI quota or rate limit reached. Check your OpenAI account.':'OpenAI could not create the embedding. Check API permissions and billing.');}
-      const reader=response.body?.getReader();if(!reader)throw new Error();
-      let raw='',size=0;const decoder=new TextDecoder();
-      while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>128000){await reader.cancel();throw new Error();}raw+=decoder.decode(value,{stream:true});}
-      const result=JSON.parse(raw+decoder.decode()),vector=result.data?.[0]?.embedding;
+      if(!response.ok){if(trace)await readOpenAIResponse(response,trace).catch(()=>{});else await response.body?.cancel();throw new HttpError(response.status===429?429:502,response.status===401?'OpenAI rejected the API key. Replace it in Settings.':response.status===429?'OpenAI quota or rate limit reached. Check your OpenAI account.':'OpenAI could not create the embedding. Check API permissions and billing.');}
+      const result=await readOpenAIResponse(response,trace),vector=result.data?.[0]?.embedding;
       if(result.model!=='text-embedding-3-small'||!Array.isArray(vector)||vector.length!==1536||vector.some((value:unknown)=>typeof value!=='number'||!Number.isFinite(value))||!vector.some((value:number)=>value!==0))throw new HttpError(502,'OpenAI returned an invalid embedding.');
       if(controller.signal.aborted||this.credential()?.generation!==credential.generation)throw new HttpError(409,'The credential changed or expired. Please try again.');
       return {embedding:vector,tokens:Number.isSafeInteger(result.usage?.total_tokens)&&result.usage.total_tokens>=0?result.usage.total_tokens:0};
-    }catch(error){if(error instanceof HttpError)throw error;throw new HttpError(502,'The embedding request failed or timed out. Please try again.');}
+    }catch(error){trace?.error(error instanceof Error?error.message:'Embedding request failed.');if(error instanceof HttpError)throw error;throw new HttpError(502,'The embedding request failed or timed out. Please try again.');}
     finally{clearTimeout(timer);this.embeddingRequests.delete(controller);}
   }
   titleSelection(): IntelligencePreferences {
     const model=intelligenceModels.find(option=>option.id===this.preferences.model)?.efforts.includes('none') ? this.preferences.model : 'gpt-6-luna';
     return {model,reasoningEffort:'none'};
   }
-  async generateTitle(input: string, onRequest?: (promptBytes: number) => void) {
+  async generateTitle(input: string, onRequest?: AIRequestObserver) {
     const title=await this.generate(input,false,onRequest,true);
     if(title.length>120 || /[\r\n]/.test(title) || title==='Untitled')throw new HttpError(502,'OpenAI returned an invalid page title.');
     return title;
   }
-  async generatePageUtility(input:string,subtypes:{id:string;name:string}[],currentTitle:string,onRequest?:(bytes:number)=>void) {
+  async generatePageUtility(input:string,subtypes:{id:string;name:string}[],currentTitle:string,onRequest?:AIRequestObserver) {
     const output=await this.generate(input,false,onRequest,true,false,false,{subtypes,currentTitle});
     let value:unknown;try{value=JSON.parse(output);}catch{throw new HttpError(502,'AI returned invalid title and category data.');}
     if(!value||typeof value!=='object'||!('title' in value)||typeof value.title!=='string'||!value.title.trim()||value.title.length>(currentTitle.trim()&&currentTitle.trim()!=='Untitled'?500:120)||/[\r\n]/.test(value.title)||value.title==='Untitled'||!('conceptSubtypeIds' in value)||!Array.isArray(value.conceptSubtypeIds)||value.conceptSubtypeIds.some(id=>typeof id!=='string'||!subtypes.some(subtype=>subtype.id===id)))throw new HttpError(502,'AI returned invalid title and category data.');
     return {title:currentTitle.trim()&&currentTitle.trim()!=='Untitled'?currentTitle:value.title.trim(),conceptSubtypeIds:[...new Set(value.conceptSubtypeIds as string[])]};
   }
-  async generate(input: string, validate=false, onRequest?: (promptBytes: number) => void, title=false, entityScan=false, explain=false, utility?:{subtypes:{id:string;name:string}[];currentTitle:string}) {
+  async generate(input: string, validate=false, onRequest?: AIRequestObserver, title=false, entityScan=false, explain=false, utility?:{subtypes:{id:string;name:string}[];currentTitle:string}) {
     const credential=this.credential(),selection=title?this.titleSelection():this.selection(),preferenceRevision=this.preferenceRevision;
     if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
     if(!title&&!entityScan&&this.active)throw new HttpError(429,'Another AI request is running. Please wait.');
@@ -147,34 +149,30 @@ export class Intelligence {
     this.attempts.push(this.clock());
     const controller=new AbortController();this.generationRequests.add(controller);if(!title&&!entityScan)this.active=controller;
     const timer=setTimeout(()=>controller.abort(),Math.min(45000,Date.parse(credential.expiresAt)-this.clock()));
+    let trace: AIDebugTrace | undefined;
     try {
       const prompt=validate?{instructions:'Reply with OK.',input:'Connection test.'}:title?titlePrompt(input,utility?.subtypes,utility?.currentTitle):entityScan?entityScanPrompt(input):explain?explanationPrompt(input):summaryPrompt(input);
       const inputText=typeof prompt.input==='string'?prompt.input:prompt.input.flatMap(item=>item.content.map(part=>part.text)).join('');
-      onRequest?.(Buffer.byteLength(prompt.instructions+inputText,'utf8'));
+      trace=redactedTrace(onRequest?.(Buffer.byteLength(prompt.instructions+inputText,'utf8')),credential.key);
+      const payload={model:selection.model,store:false,max_output_tokens:title?512:validate?2048:8192,reasoning:{effort:selection.reasoningEffort},tools:[],tool_choice:'none',...prompt,...(trace?{stream:true}:{})};
+      trace?.request('https://api.openai.com/v1/responses',payload);
       const response=await this.transport('https://api.openai.com/v1/responses',{
         method:'POST',redirect:'error',signal:controller.signal,
         headers:{'Content-Type':'application/json',Authorization:`Bearer ${credential.key}`},
-        body:JSON.stringify({model:selection.model,store:false,max_output_tokens:title?512:validate?2048:8192,reasoning:{effort:selection.reasoningEffort},
-          tools:[],tool_choice:'none',
-          ...prompt}),
+        body:JSON.stringify(payload),
       });
       if(!response.ok) {
-        await response.body?.cancel();
+        if(trace)await readOpenAIResponse(response,trace).catch(()=>{});else await response.body?.cancel();
         throw new HttpError(response.status===429?429:502,response.status===401?'OpenAI rejected the API key. Replace it in Settings.':response.status===429?'OpenAI quota or rate limit reached. Check your OpenAI account.':'OpenAI could not complete the request. Check API permissions, model access, and billing.');
       }
-      // Bound provider output before parsing; never return raw provider errors or headers.
-      const reader=response.body?.getReader();let raw='',size=0;
-      if(!reader)throw new Error();
-      const decoder=new TextDecoder();
-      while(true) {const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>128000){await reader.cancel();throw new Error();}raw+=decoder.decode(value,{stream:true});}
-      raw+=decoder.decode();
-      const result=JSON.parse(raw);
+      const result=await readOpenAIResponse(response,trace);
       const summary=(result.output ?? []).filter((item:{type:string})=>item.type==='message').flatMap((item:{content: {type:string;text?:string}[]})=>item.content ?? []).filter((part:{type:string})=>part.type==='output_text').map((part:{text:string})=>part.text).join('\n').trim();
       if(result.status!=='completed'||!summary||summary.length>12000)throw new HttpError(502,'OpenAI returned an incomplete response. Try a lower reasoning effort or a shorter page.');
       if(controller.signal.aborted||this.credential()?.generation!==credential.generation||this.preferenceRevision!==preferenceRevision)throw new HttpError(409,'The credential or AI settings changed, or the key expired. Please try again.');
       // Defense in depth against accidental credential echo by an upstream service.
       return summary.split(credential.key).join('[redacted]').replace(/sk-[A-Za-z0-9_-]{16,}/g,'[redacted]');
     }catch(error) {
+      trace?.error(error instanceof Error?error.message:'AI request failed.');
       if(error instanceof HttpError)throw error;
       throw new HttpError(502,'The AI request failed or timed out. Please try again.');
     }finally {clearTimeout(timer);this.generationRequests.delete(controller);if(this.active===controller)this.active=null;}

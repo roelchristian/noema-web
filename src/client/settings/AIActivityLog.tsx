@@ -10,14 +10,17 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
   const [data,setData]=useState<AIActivityPage>({items:[],nextCursor:null});
   const [busy,setBusy]=useState(true),[error,setError]=useState('');
   useEffect(()=>{
-    let active=true;
+    let active=true,sequence=0;
     async function refresh() {
-      try {const result=await api.aiActivity();if(active){setData(result);setError('');}}
-      catch(error){if(active)setError(error instanceof Error?error.message:'Could not load activity.');}
-      finally{if(active)setBusy(false);}
+      const version=++sequence;
+      try {const result=await api.aiActivity();if(active&&version===sequence){setData(result);setError('');}}
+      catch(error){if(active&&version===sequence)setError(error instanceof Error?error.message:'Could not load activity.');}
+      finally{if(active&&version===sequence)setBusy(false);}
     }
+    const changed=()=>{void refresh();};
     void refresh();
-    return()=>{active=false;};
+    window.addEventListener('noema:ai-activity',changed);
+    return()=>{active=false;window.removeEventListener('noema:ai-activity',changed);};
   },[]);
   async function load(cursor?:number) {
     setBusy(true);setError('');setMessage('');
@@ -75,7 +78,7 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
           <td>{item.httpStatus??'—'}</td>
         </tr>)}</tbody>
       </table>
-      {!busy&&!data.items.length&&!error&&<p className="ai-activity-empty">No AI activity yet. Titles, summaries, entity scans, embeddings, and connection tests will appear here.</p>}
+      {!busy&&!data.items.length&&!error&&<p className="ai-activity-empty">No AI activity yet. AI explanations, titles, summaries, entity scans, embeddings, and connection tests will appear here.</p>}
     </div>
     <footer className="ai-activity-footer">{data.nextCursor!==null&&<button className="button" disabled={busy} onClick={()=>void load(data.nextCursor!)}>Load older activity</button>}<p>Export includes all available records, including older rows. Input size counts UTF-8 bytes, not tokens. Embedding retries appear as separate attempts; queued jobs remain in embedding settings. Skipped means a note changed or indexing was cancelled. Interrupted means the server stopped before recording an outcome. Refresh to check running actions.</p><button className="button primary" onClick={onClose}>Done</button></footer>
   </Modal>;

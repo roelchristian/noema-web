@@ -114,6 +114,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS page_ai_enrichments (
 
 // Summary freshness is compared by content, independently of editor revisions.
 if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'summary_content_hash')) db.exec('ALTER TABLE pages ADD COLUMN summary_content_hash TEXT');
+if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'summary_hash_version')) db.exec('ALTER TABLE pages ADD COLUMN summary_hash_version INTEGER NOT NULL DEFAULT 1');
 if (!db.prepare('PRAGMA table_info(page_ai_enrichments)').all().some(c => c.name === 'content_hash')) db.exec('ALTER TABLE page_ai_enrichments ADD COLUMN content_hash TEXT');
 db.exec(`CREATE TRIGGER IF NOT EXISTS page_summary_hash_invalidate AFTER UPDATE OF title,blocks ON pages
  WHEN OLD.title<>NEW.title OR OLD.blocks<>NEW.blocks BEGIN

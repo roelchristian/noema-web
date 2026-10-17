@@ -33,6 +33,6 @@ export interface AIActivity extends IntelligencePreferences {
 export interface AIActivityPage { items: AIActivity[]; nextCursor: number | null }
 
 export const aiActivityLabels: Record<AIActivity['action'], string> = {
-  block_explanation:'Block explanation', page_title:'Page title', page_summary:'Page summary', entity_scan:'Entity scan',
+  block_explanation:'AI Explanation', page_title:'Page title', page_summary:'Page summary', entity_scan:'Entity scan',
   note_embedding:'Note embedding', search_embedding:'Search embedding', connection_test:'Connection test',
 };

@@ -8,7 +8,7 @@ import { blockTypes, safeHref, type Segment, type Block, type Page, type PageSum
 import { Store } from '../store.js';
 import { HttpError, now, object, required, text } from '../validation.js';
 import { Knowledge } from './knowledge.js';
-type PageRow = Omit<Page, 'blocks' | 'sourceIds'> & {blocks: string; summary_content_hash: string | null};
+type PageRow = Omit<Page, 'blocks' | 'sourceIds'> & {blocks: string; summary_content_hash: string | null; summary_hash_version:number};
 export const trashRetentionMs = 30 * 24 * 60 * 60 * 1000;
 export class Pages {
   constructor(private store: Store, private knowledge: Knowledge, private clock: () => Date = () => new Date()) {}
@@ -20,16 +20,23 @@ export class Pages {
   get(vault: string, id: string): Page {
     const row=this.store.get<PageRow>('SELECT * FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',id,vault);
     if (!row) throw new HttpError(404,'Page not found');
-    const {summary_content_hash: cachedHash, ...stored} = row;
+    const {summary_content_hash: cachedHash, summary_hash_version: hashVersion, ...stored} = row;
     const blocks = JSON.parse(row.blocks) as Block[];
     let hash = cachedHash;
-    if (!hash) {
+    if (!hash || hashVersion !== 2) {
       const names = new Map<string, string | undefined>();
-      hash = summaryContentHash({...stored, blocks}, entityId => {
+      const resolveName = (entityId:string) => {
         if (!names.has(entityId)) names.set(entityId, this.knowledge.find(vault, entityId)?.name);
         return names.get(entityId);
-      });
-      this.store.run('UPDATE pages SET summary_content_hash=? WHERE id=? AND vault_id=?',hash,id,vault);
+      };
+      hash = summaryContentHash({...stored, blocks}, resolveName);
+      if (hashVersion !== 2) {
+        // Rebase only summaries whose old fingerprint matches the actual note.
+        // Unknown or genuinely stale summaries keep their original fingerprint.
+        const legacy = summaryContentHash({...stored,blocks},resolveName,true);
+        this.store.run("UPDATE page_ai_enrichments SET content_hash=? WHERE page_id=? AND kind='summary' AND content_hash=?",hash,id,legacy);
+      }
+      this.store.run('UPDATE pages SET summary_content_hash=?,summary_hash_version=2 WHERE id=? AND vault_id=?',hash,id,vault);
     }
     return {...stored,blocks,summaryContentHash:hash,sourceIds:this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id)};
   }

@@ -172,11 +172,12 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               const page=pages.get(vault,id);
               // Draft blocks allow explaining current edits without saving or sending other note content.
               const blocks=pages.validateBlocks(vault,body.blocks);
-              const input=summaryInput({title:'',blocks},entityId=>knowledge.find(vault,entityId)?.name,false).trim();
+              const input=summaryInput({title:'',blocks},entityId=>knowledge.find(vault,entityId)?.name,false,true).trim();
               if(!input)throw new HttpError(400,'Select blocks containing text or equations to explain.');
               if(Buffer.byteLength(input,'utf8')>24000)throw new HttpError(400,'Select fewer blocks (at most 24,000 bytes of text).');
               const markdown=await intelligence.generate(input,false,bytes=>activity.request(activityId!,bytes,page.revision),false,false,true);
               vaults.requireOpen(vault);pages.get(vault,id);
+              notifications.record(vault,id,'block_explanation');
               return send(200,{markdown});
             }
             if(id && parts.length===4 && child==='entity-review' && method==='POST') {

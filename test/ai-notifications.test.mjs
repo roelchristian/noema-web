@@ -147,3 +147,17 @@ test('notification copy distinguishes saved results, failures, and running work'
   assert.equal(notificationMessage({action:'page_title',status:'failed',pageTitle:'Earthsea'}),'Title generation failed for Earthsea');
   assert.equal(runningMessage({action:'entity_scan',pageTitle:'Earthsea'}),'Scanning entities in Earthsea');
 });
+
+test('AI explanations appear in running activity and notify on provider failures or interruption',()=>{
+ const {db,store,notifications}=setup();try{
+  let log=new AIActivityLog(store);
+  const id=log.start('block_explanation',selection,'default','welcome');log.request(id,123,1);
+  const running=notifications.list().running;assert.equal(running.length,1);assert.equal(running[0].action,'block_explanation');assert.match(runningMessage(running[0]),/^Explaining blocks in /);
+  log.finish(id,'failed',502);log.finish(id,'failed',502);
+  let queue=notifications.list();assert.equal(queue.running.length,0);assert.equal(queue.items.length,1);assert.equal(queue.items[0].action,'block_explanation');assert.match(notificationMessage(queue.items[0]),/^AI explanation failed for /);
+  const interrupted=log.start('block_explanation',selection,'default','welcome');log.request(interrupted,42,1);log=new AIActivityLog(store);
+  queue=notifications.list();assert.equal(queue.items.length,2);assert.equal(queue.items[0].status,'interrupted');assert.match(notificationMessage(queue.items[0]),/^AI explanation interrupted for /);
+  assert.equal(log.list(null).items[0].action,'block_explanation');assert.equal(log.list(null).items[0].status,'interrupted');
+  notifications.record('default','welcome','block_explanation');queue=notifications.list();assert.match(notificationMessage(queue.items[0]),/^Generated AI explanation for /);
+ }finally{db.close();}
+});

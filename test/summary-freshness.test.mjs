@@ -8,7 +8,7 @@ import {Store} from '../src/server/store.ts';
 import {Knowledge} from '../src/server/modules/knowledge.ts';
 import {Pages} from '../src/server/modules/pages.ts';
 import {AIEnrichments} from '../src/server/modules/ai-enrichments.ts';
-import {summaryContentHash} from '../src/server/modules/summary-content.ts';
+import {summaryInput,summaryContentHash} from '../src/server/modules/summary-content.ts';
 
 const preferences={model:'test',reasoningEffort:'low'};
 const block=(text,extra={})=>({id:'body',type:'paragraph',checked:false,content:[{text}],...extra});
@@ -85,4 +85,45 @@ test('mentioned entity names invalidate cached fingerprints, while repeat reads 
     assert.notEqual(page.summaryContentHash,hash);
     assert.equal(enrichments.list('default',page.id)[0].contentHash,hash);
   } finally {db.close();}
+});
+
+test('summary input and fingerprints exclude AI leaves and semantic children, including equations and tables',()=>{
+ const original={title:'My note',blocks:[block('Original source')]},hash=summaryContentHash(original,()=>undefined);
+ const generated=[block('Explanation',{id:'ai-leaf',semantic:'ai-explanation'}),block('Grouped answer',{id:'ai-child',semanticGroup:{id:'ai-parent',kind:'ai-explanation'}}),block('',{id:'ai-table',type:'table',semantic:'ai-explanation',rows:[[[{entityId:'ai-only-entity'}]]]}),block('x^2',{id:'ai-math',type:'math',semantic:'ai-explanation'})];
+ const augmented={...original,blocks:[...original.blocks,...generated]};
+ const resolve=id=>{throw new Error('AI-only mentions should not be resolved: '+id);};
+ assert.equal(summaryContentHash(augmented,resolve),hash);assert.equal(summaryInput(augmented,resolve),'My note\nOriginal source\n');
+ assert.equal(summaryContentHash({...augmented,blocks:[...generated.reverse(),...original.blocks]},resolve),hash);
+ assert.notEqual(summaryContentHash({...original,blocks:[block('Edited original')]},resolve),hash);
+ assert.notEqual(summaryContentHash({...original,title:'New title'},resolve),hash);
+ assert.match(summaryInput(augmented,()=> 'AI-only name',false,true),/Grouped answer/,'explicit explanation requests can still explain generated blocks');
+});
+test('adding, editing, moving and deleting generated explanation blocks keep a saved summary fresh',()=>{
+ const {db,pages,enrichments}=setup();try{
+  let page=pages.create('default',{title:'Explained note'});page=pages.update('default',page.id,{...page,blocks:[block('Original source')]});
+  enrichments.save('default',page.id,'summary',{summary:'Summary of source'},page.revision,preferences);
+  const hash=page.summaryContentHash,group={id:'ai-parent',kind:'ai-explanation'};
+  const ai=[block('AI explanation',{id:'ai-a',semantic:'ai-explanation',semanticGroup:group}),block('Example',{id:'ai-b',semantic:'ai-explanation',semanticGroup:group})];
+  page=pages.update('default',page.id,{...page,blocks:[...page.blocks,...ai]});assert.equal(page.summaryContentHash,hash);
+  page=pages.update('default',page.id,{...page,blocks:page.blocks.map(b=>b.id==='ai-a'?{...b,content:[{text:'Revised explanation'}]}:b)});assert.equal(page.summaryContentHash,hash);
+  page=pages.update('default',page.id,{...page,blocks:[...page.blocks.slice(1),page.blocks[0]]});assert.equal(page.summaryContentHash,hash);
+  page=pages.update('default',page.id,{...page,blocks:[page.blocks.at(-1)]});assert.equal(page.summaryContentHash,hash);assert.equal(enrichments.list('default',page.id)[0].contentHash,hash);
+  page=pages.update('default',page.id,{...page,blocks:[block('Edited source')]});assert.notEqual(page.summaryContentHash,hash);
+ }finally{db.close();}
+});
+test('legacy cached hashes migrate once, preserve current summaries, and keep truly stale summaries stale',()=>{
+ const {db,store,pages,enrichments}=setup();try{
+  let page=pages.create('default',{title:'Legacy AI content'});
+  const blocks=[block('Original source'),block('AI explanation',{id:'ai',semantic:'ai-explanation'})];
+  page=pages.update('default',page.id,{...page,blocks});
+  enrichments.save('default',page.id,'summary',{summary:'Legacy summary'},page.revision,preferences);
+  const hash=page.summaryContentHash,legacy=summaryContentHash(page,()=>undefined,true);assert.notEqual(legacy,hash);
+  store.run('UPDATE pages SET summary_content_hash=?,summary_hash_version=1 WHERE id=?',legacy,page.id);
+  store.run('UPDATE page_ai_enrichments SET content_hash=? WHERE page_id=?',legacy,page.id);
+  page=pages.get('default',page.id);assert.equal(page.summaryContentHash,hash);assert.equal(enrichments.list('default',page.id)[0].contentHash,hash);
+  assert.equal(store.get('SELECT summary_hash_version AS version FROM pages WHERE id=?',page.id).version,2);
+  store.run('UPDATE pages SET summary_content_hash=?,summary_hash_version=1 WHERE id=?',legacy,page.id);
+  store.run('UPDATE page_ai_enrichments SET content_hash=? WHERE page_id=?','different-source-hash',page.id);
+  page=pages.get('default',page.id);assert.equal(page.summaryContentHash,hash);assert.equal(enrichments.list('default',page.id)[0].contentHash,'different-source-hash');
+ }finally{db.close();}
 });

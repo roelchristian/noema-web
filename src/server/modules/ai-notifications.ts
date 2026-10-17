@@ -3,7 +3,7 @@ import type {AINotification, AINotificationQueue, AIRunningActivity, Notificatio
 import {Store} from '../store.js';
 import {HttpError, now} from '../validation.js';
 
-const actions=['page_title','page_summary','entity_scan','note_embedding'];
+const actions=['block_explanation','page_title','page_summary','entity_scan','note_embedding'];
 export class AINotifications {
   constructor(private store: Store) {}
   record(vault: string, pageId: string, action: NotificationAction, status: AINotification['status']='completed') {
@@ -31,7 +31,7 @@ export class AINotifications {
     const running=this.store.all<AIRunningActivity>(`SELECT a.id,a.action,a.vault_id AS vaultId,a.object_id AS pageId,p.title AS pageTitle,
       (p.id IS NOT NULL AND p.deleted_at IS NULL) AS available,a.started_at AS startedAt
       FROM ai_activity a JOIN vaults v ON v.id=a.vault_id AND v.locked=0 LEFT JOIN pages p ON p.id=a.object_id AND p.vault_id=a.vault_id
-      WHERE a.status='running' AND a.object_kind='page' AND a.action IN ('page_title','page_summary','entity_scan','note_embedding')
+      WHERE a.status='running' AND a.object_kind='page' AND a.action IN ('block_explanation','page_title','page_summary','entity_scan','note_embedding')
       ORDER BY a.rowid DESC LIMIT 100`).map(item=>({...item,available:!!item.available}));
     return {items,running,unreadCount,through};
   }

@@ -57,7 +57,7 @@ const options: {type: BlockType; title: string; detail: string; icon: string}[] 
   {type: 'quote', title: 'Quote', detail: 'Make a thought stand out', icon: '❝'},
 ];
 interface ImageUpload {id:string; after?:string; name:string; message:string; current:number; total:number}
-interface Choice {danger?: boolean; disabled?: boolean; submenu?: boolean; color?:string; title: string; detail?: string; icon: string; entity?: boolean; pick: () => void}
+interface Choice {back?: boolean; danger?: boolean; disabled?: boolean; submenu?: boolean; color?:string; title: string; detail?: string; icon: string; entity?: boolean; pick: () => void}
 interface Menu {items: Choice[]; index: number; left: number; top: number; label: string; sheet?: boolean}
 function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOpen, register, onPaste}: {block: Block; entities: Entity[]; reviewMatches: EntityReviewItem[]; onInput: (el: HTMLElement) => void; onKeyDown: (e: KeyboardEvent<HTMLElement>) => void; onOpen: (id: string) => void; register: (el: HTMLElement | null) => void; onPaste: (e: ClipboardEvent<HTMLElement>) => void}) {
   const ref = useRef<HTMLElement>(null);
@@ -323,17 +323,22 @@ export function BlockEditor(props: Props) {
   function blockOptions(anchor: HTMLElement, block: Block) {
     const selection=root.current ? selectedEditorBlocks(root.current)?.elements.map(el=>el.dataset.blockId!) : undefined;
     const ids=selection?.includes(block.id)?selection:[block.id];
-    const back: Choice = {title:'Back to block actions',icon:'←',submenu:true,pick:()=>blockOptions(anchor,block)};
+    const back: Choice = {title:'Back to block actions',icon:'←',submenu:true,back:true,pick:()=>blockOptions(anchor,block)};
     show(anchor, [
       {title:'Format',detail:'Text, headings, lists, and other block formats',icon:'page',entity:true,submenu:true,pick:()=>show(anchor,[back,...blockOptionsFor(block).map(option=>({...option,pick:()=>convert(block,option.type)})),imageChoice(block.id,block),...(mobile?movementChoices(block.id):[])],'FORMAT',true)},
       ...(!isAIExplanation(block) ? [{title:'Turn into',detail:block.semantic?semanticFunctions[block.semantic].label:'Choose a semantic block',icon:'semantic',entity:true,submenu:true,
-        pick:()=>show(anchor,[back,...semanticChoices(kind=>onChange(applySemantic(latest.current.blocks,ids,kind))),...(block.semantic?[{title:'Remove semantic function',icon:'close',entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:undefined});}}]:[]),...(props.onExplain?[explainChoice(ids)]:[]),...(mobile&&block.semanticGroup?[{title:'Group actions',icon:'semantic',entity:true,submenu:true,pick:()=>{setActiveBlock({id:block.semanticGroup!.id,group:true});groupOptions(anchor,block.semanticGroup!.id);}}]:[])],'TURN INTO SEMANTIC BLOCK', true)}] : []),
+        pick:()=>show(anchor,[back,...semanticChoices(kind=>onChange(applySemantic(latest.current.blocks,ids,kind))),...(block.semantic?[{title:'Remove semantic function',icon:'close',entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:undefined});}}]:[]),...(mobile&&block.semanticGroup?[{title:'Group actions',icon:'semantic',entity:true,submenu:true,pick:()=>{setActiveBlock({id:block.semanticGroup!.id,group:true});groupOptions(anchor,block.semanticGroup!.id);}}]:[])],'TURN INTO SEMANTIC BLOCK', true)}] : []),
+      ...(props.onExplain&&aiExplanationSources(latest.current.blocks,ids).length?[aiActionChoice(anchor,ids,back)]:[]),
       {title:'Delete block',icon:'trash',entity:true,danger:true,pick:()=>removeBlock(block.id)},
     ], 'BLOCK OPTIONS', true);
   }
+  function aiActionChoice(anchor: HTMLElement, ids: string[], back: Choice): Choice {
+    return {title:'AI actions',icon:'sparkles',entity:true,submenu:true,pick:()=>show(anchor,[back,explainChoice(ids)],'AI ACTIONS',true)};
+  }
   function groupOptions(anchor: HTMLElement, id: string) {
     const children=latest.current.blocks.filter(block=>block.semanticGroup?.id===id || block.id===id && isAIExplanation(block)),locked=children.some(isAIExplanation);
-    show(anchor,[...(props.onExplain&&aiExplanationSources(latest.current.blocks,children.map(block=>block.id)).length?[explainChoice(children.map(block=>block.id))]:[]),...(mobile?movementChoices(id):[]),...(!locked?[...semanticChoices(kind=>onChange(retagSemanticGroup(latest.current.blocks,id,kind))),{title:'Ungroup blocks',detail:'Keep all child blocks',icon:'close',entity:true,pick:()=>{setMenu(null);onChange(removeSemanticGroup(latest.current.blocks,id));}}]:[{title:'Delete explanation',danger:true,detail:'Remove this explanation and its subblocks',icon:'close',entity:true,pick:()=>{setMenu(null);const rest=latest.current.blocks.filter(block=>block.semanticGroup?.id!==id && block.id!==id);onChange(rest.length?rest:[makeBlock()]);}}])],'SEMANTIC GROUP', true);
+    const back: Choice = {title:'Back to group actions',icon:'←',submenu:true,back:true,pick:()=>groupOptions(anchor,id)};
+    show(anchor,[...(props.onExplain&&aiExplanationSources(latest.current.blocks,children.map(block=>block.id)).length?[aiActionChoice(anchor,children.map(block=>block.id),back)]:[]),...(mobile?movementChoices(id):[]),...(!locked?[...semanticChoices(kind=>onChange(retagSemanticGroup(latest.current.blocks,id,kind))),{title:'Ungroup blocks',detail:'Keep all child blocks',icon:'close',entity:true,pick:()=>{setMenu(null);onChange(removeSemanticGroup(latest.current.blocks,id));}}]:[{title:'Delete explanation',danger:true,detail:'Remove this explanation and its subblocks',icon:'close',entity:true,pick:()=>{setMenu(null);const rest=latest.current.blocks.filter(block=>block.semanticGroup?.id!==id && block.id!==id);onChange(rest.length?rest:[makeBlock()]);}}])],'SEMANTIC GROUP', true);
   }
   function update(id: string, patch: Partial<Block>) { onChange(latest.current.blocks.map(b => b.id === id ? {...b, ...patch} : b)); }
   function removeBlock(id: string) {
@@ -373,7 +378,7 @@ export function BlockEditor(props: Props) {
 
   function show(el: HTMLElement, items: Choice[], label: string, sheet = false) {
     if (!items.length) { setMenu(null); return; } const box = el.getBoundingClientRect();
-    setMenu({items, index: 0, left: Math.max(8, Math.min(box.left, innerWidth - 330)), top: Math.max(8, Math.min(box.bottom + 5, innerHeight - 370)), label, sheet});
+    setMenu({items, index: 0, left: Math.max(8, Math.min(box.left, innerWidth - 248)), top: Math.max(8, Math.min(box.bottom + 5, innerHeight - 370)), label, sheet});
   }
   function addBelow(anchor: HTMLElement, after: string) {
     show(anchor, [...blockOptionsFor(latest.current.blocks.find(block => block.id === after)).map(option => ({...option, pick: () => { setMenu(null); insert(after, option.type); }})), imageChoice(after)], 'ADD BLOCK BELOW', true);
@@ -399,7 +404,7 @@ export function BlockEditor(props: Props) {
       // Release modal focus before an action focuses a new or converted block.
       if (sheet && !item.submenu) event.currentTarget.closest('dialog')?.close();
       item.pick();
-    }}><span className="menu-icon" style={item.color?{color:item.color}:undefined}>{item.entity || item.icon === 'equation' ? <Icon name={item.icon}/> : item.icon}</span><span>{item.title}<small>{item.detail}</small></span>{item.submenu&&<span className="menu-submenu-arrow" aria-hidden="true"><Icon name="chevron"/></span>}</button>);
+    }}><span className="menu-icon" style={item.color?{color:item.color}:undefined}>{item.entity || item.icon === 'equation' ? <Icon name={item.icon}/> : item.icon}</span><span>{item.title}</span>{item.submenu&&!item.back&&<span className="menu-submenu-arrow" aria-hidden="true"><Icon name="chevron"/></span>}</button>);
   }
   function insertMention(range: Range, id: string, blockId: string) {
     if (!range.startContainer.isConnected) return;
@@ -643,9 +648,9 @@ export function BlockEditor(props: Props) {
     </div>}
     {menu && (mobile && menu.sheet ? <Modal className="mobile-block-sheet" titleId="mobile-block-sheet-title" onClose={() => setMenu(null)} dismissOnBackdrop>
       <div ref={menuRef}>
-        <header><h2 id="mobile-block-sheet-title">{menu.label === 'ADD BLOCK BELOW' ? 'Add a block' : menu.label === 'FORMAT' || menu.label === 'TURN INTO' ? 'Format block' : menu.label === 'TURN INTO SEMANTIC BLOCK' ? 'Turn into' : menu.label === 'SEMANTIC GROUP' ? 'Group actions' : menu.label === 'SEMANTIC FUNCTION' ? 'Semantic function' : 'Block actions'}</h2><button type="button" aria-label="Close block actions" onClick={() => setMenu(null)}><Icon name="close"/></button></header>
-        <div className="mobile-block-sheet-options">{menuChoices(true)}</div>
+        <header><h2 id="mobile-block-sheet-title" className="sr-only">{menu.label === 'ADD BLOCK BELOW' ? 'Add a block' : menu.label === 'FORMAT' || menu.label === 'TURN INTO' ? 'Format block' : menu.label === 'TURN INTO SEMANTIC BLOCK' ? 'Turn into' : menu.label === 'AI ACTIONS' ? 'AI actions' : menu.label === 'SEMANTIC GROUP' ? 'Group actions' : menu.label === 'SEMANTIC FUNCTION' ? 'Semantic function' : 'Block actions'}</h2><button type="button" aria-label="Close block actions" onClick={() => setMenu(null)}><Icon name="close"/></button></header>
+        <div key={menu.label} className="mobile-block-sheet-options">{menuChoices(true)}</div>
       </div>
-    </Modal> : <div ref={menuRef} className="command-menu" style={{left: menu.left, top: menu.top}} onMouseDown={e => e.preventDefault()} role="menu"><div className="menu-label">{menu.label}</div>{menuChoices()}</div>)}
+    </Modal> : <div key={menu.label} ref={menuRef} className="command-menu block-action-menu" style={{left: menu.left, top: menu.top}} onMouseDown={e => e.preventDefault()} role="menu" aria-label={menu.label}>{menuChoices()}</div>)}
   </>;
 }

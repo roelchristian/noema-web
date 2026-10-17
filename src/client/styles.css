@@ -1550,11 +1550,11 @@ main {position:relative;}
     background: var(--surface-raised); color: var(--text);
     overscroll-behavior: contain; scroll-padding-block: 68px 16px;
   }
-  .mobile-block-sheet header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px 8px; border-bottom: 1px solid var(--line); background: var(--surface-raised); }
+  .mobile-block-sheet header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 4px 12px 0; background: var(--surface-raised); }
   .mobile-block-sheet header h2 { margin: 0; font: 600 16px/1.4 var(--font-ui); color: inherit; }
   .mobile-block-sheet header button { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 8px; color: var(--text-muted); }
   .mobile-block-sheet-options { padding: 8px 12px max(16px, env(safe-area-inset-bottom)); }
-  .mobile-block-sheet-options > button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 12px; text-align: left; border-radius: 8px; font-size: 15px; }
+  .mobile-block-sheet-options > button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 8px 12px; text-align: left; border-radius: 8px; font-size: 15px; }
   .mobile-block-sheet-options > button:hover, .mobile-block-sheet header button:hover { background: var(--surface-hover); }
   .mobile-block-sheet-options > button:disabled { cursor: default; }
   .mobile-block-sheet-options .menu-icon { display: flex; justify-content: center; flex: none; width: 26px; margin: 0; }
@@ -2243,3 +2243,48 @@ dialog.confirmation-dialog.delete-vault-dialog { width:min(480px,calc(100vw - 32
 :is(.command-menu, .mobile-block-sheet-options) > button.is-danger:is(:hover, .highlight) { color: #a52e2e; background: #b23b3b12; }
 :root[data-mode=dark] :is(.command-menu, .mobile-block-sheet-options) > button.is-danger { color: #f08a8a; }
 :root[data-mode=dark] :is(.command-menu, .mobile-block-sheet-options) > button.is-danger:is(:hover, .highlight) { color: #ffa0a0; background: #f08a8a18; }
+
+/* Short menu transitions preserve immediate interaction and keyboard navigation. */
+/* Shared action-menu dimensions and surface. */
+:is(.command-menu.block-action-menu, .sidebar-action-menu) { width: 240px; min-width: 0; max-width: calc(100vw - 16px); max-height: min(350px, calc(100dvh - 16px)); padding: 4px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface-raised); color: var(--text); box-shadow: 0 4px 18px #00000014, 0 12px 32px #0000000a; transform-origin: top left; }
+.command-menu.block-action-menu, .sidebar-action-menu:popover-open { animation: block-action-menu-in 140ms cubic-bezier(.2,.8,.2,1) both; }
+.block-action-menu > button, .mobile-block-sheet-options > button { transition: background-color 100ms ease, color 100ms ease; }
+dialog.mobile-block-sheet[open] { animation: block-action-sheet-in 180ms cubic-bezier(.2,.8,.2,1) both; }
+dialog.mobile-block-sheet[open]::backdrop { animation: block-action-backdrop-in 160ms ease-out both; }
+.mobile-block-sheet-options { animation: block-action-page-in 120ms ease-out both; }
+@keyframes block-action-menu-in {
+  from { opacity: 0; transform: translateY(-4px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes block-action-sheet-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes block-action-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes block-action-page-in {
+  from { opacity: 0; transform: translateX(5px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .block-action-menu, dialog.mobile-block-sheet[open], dialog.mobile-block-sheet[open]::backdrop, .mobile-block-sheet-options { animation: none; }
+  .block-action-menu > button, .mobile-block-sheet-options > button { transition: none; }
+}
+
+.block-action-menu > button { gap: 8px; padding: 7px 8px; }
+.block-action-menu .menu-icon { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 20px; }
+.block-action-menu .menu-icon > .icon { width: 16px; height: 16px; }
+
+/* All context actions use the same compact rows, icons, and danger treatment. */
+:is(.block-action-menu, .sidebar-action-menu) > button { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 7px 8px; border-radius: 4px; font-size: 12px; transition: background-color 100ms ease, color 100ms ease; }
+.sidebar-action-menu > button > .icon { flex: none; width: 16px; height: 16px; margin-inline: 2px; }
+.sidebar-action-menu .action-menu-child-arrow .icon { width: 14px; height: 14px; }
+:is(.block-action-menu, .sidebar-action-menu) > button:is(:hover, :focus-visible, .highlight) { background: var(--surface-hover); }
+.sidebar-action-menu > button.danger { margin-top: 0; border-top: 0; border-radius: 4px; padding: 7px 8px; color: #b23b3b; }
+.sidebar-action-menu > button.danger:is(:hover, :focus-visible) { color: #a52e2e; background: #b23b3b12; }
+:root[data-mode=dark] .sidebar-action-menu > button.danger { color: #f08a8a; }
+:root[data-mode=dark] .sidebar-action-menu > button.danger:is(:hover, :focus-visible) { color: #ffa0a0; background: #f08a8a18; }
+@media (max-width: 750px) { .sidebar-action-menu > button { min-height: 44px; } }
+@media (prefers-reduced-motion: reduce) {
+  .command-menu.block-action-menu, .sidebar-action-menu:popover-open { animation: none; }
+  :is(.block-action-menu, .sidebar-action-menu) > button { transition: none; }
+}

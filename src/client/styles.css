@@ -1596,8 +1596,8 @@ main {position:relative;}
 .entity-detail-classification { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; font-size: 11px; line-height: 1.6; color: var(--text-muted); }
 .entity-detail-type { display: inline-flex; padding: 3px 8px; border-radius: 999px; background: var(--surface-hover); color: var(--text); font-weight: 600; }
 .entity-detail-description { margin: 12px 0 0; color: var(--text); font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
-.entity-detail-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 16px 0 4px; border-bottom: 1px solid var(--line); }
-.entity-detail-tabs > button { min-width: 0; min-height: 36px; padding: 8px 0; margin-bottom: -1px; border-bottom: 2px solid transparent; border-radius: 0; color: var(--text-muted); font-size: 12px; text-align: left; }
+.entity-detail-tabs { display: flex; align-items: baseline; gap: 22px; margin: 16px 0 4px; border-bottom: 1px solid var(--line); }
+.entity-detail-tabs > button { flex: none; min-width: 0; min-height: 36px; padding: 8px 0; margin-bottom: -1px; border-bottom: 2px solid transparent; border-radius: 0; color: var(--text-muted); font-size: 12px; text-align: left; white-space: nowrap; }
 .entity-detail-tabs > button:hover { color: var(--text); border-bottom-color: var(--line); }
 .entity-detail-tabs > button[aria-selected=true] { color: var(--text); border-bottom-color: var(--text); font-weight: 600; }
 .entity-detail-tabpanel { min-width: 0; }

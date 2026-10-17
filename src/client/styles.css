@@ -1829,15 +1829,17 @@ main {position:relative;}
 .code-block small { display:block; font-size:10px; color:var(--muted); margin-top:10px; }
 .block.code pre { white-space:pre-wrap; overflow-wrap:anywhere; font:13px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace; }
 
-/* Columns contain ordinary blocks, with space for each block’s gutter controls. */
-.columns-block { display:flex; flex-wrap:wrap; gap:24px; width:100%; min-width:0; }
-.columns-block .column-pane { flex:1 1 0; min-width:0; padding:12px 12px 12px 56px; }
+/* Column text shares the document edge; the gap leaves room for the second gutter. */
+.columns-block { display:flex; flex-wrap:wrap; gap:56px; width:100%; min-width:0; }
+.columns-block .column-pane { flex:1 1 0; min-width:0; padding:0; border-radius:4px; }
+.columns-block:is(:focus-within,[data-active=true]) > .column-pane { --column-active-fill:color-mix(in srgb,var(--surface-hover) 65%,var(--surface)); background:var(--column-active-fill); box-shadow:0 0 0 6px var(--column-active-fill); }
 .columns-block .block-content { width:100%; overflow-wrap:anywhere; white-space:pre-wrap; }
 .columns-block .column-pane > .block { min-width:0; }
+.columns-block .column-pane .image-block img { width:100%; height:auto; max-height:none; }
 .columns-block .column-add { display:flex; align-items:center; gap:6px; color:var(--text-muted); min-height:32px; }
 @media(max-width:750px) {
   .columns-block { flex-direction:column; gap:12px; }
-  .columns-block .column-pane { flex:1 1 auto; width:100%; padding:12px; }
+  .columns-block .column-pane { flex:1 1 auto; width:100%; }
 }
 
 .entity-review-subtype-proposals { padding:20px 28px; border-bottom:1px solid var(--line); }

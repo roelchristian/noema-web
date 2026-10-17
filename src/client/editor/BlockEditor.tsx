@@ -83,7 +83,14 @@ export function BlockEditor(props: Props) {
   const [viewportHeight, setViewportHeight] = useState(() => window.visualViewport?.height ?? window.innerHeight);
   const mobileToolbar = useRef<HTMLDivElement>(null);
   const {entities, onOpenEntity, onCreateEntity, onSave} = props;
-  const blocks = useMemo(() => normalizeSemanticGroups(normalizeColumnBlocks(props.blocks)), [props.blocks]);
+  const blocks = useMemo(() => {
+    const normalized = normalizeSemanticGroups(normalizeColumnBlocks(props.blocks));
+    const last = normalized.at(-1);
+    const hasTrailingText = last?.type === 'paragraph' && !last.column && !last.semantic && !last.semanticGroup && last.content.every(segment => !segment.entityId && segment.text === '');
+    // A regular editable paragraph provides the slash helper after every layout.
+    // It is saved with the next edit, rather than creating a change just by opening a note.
+    return hasTrailingText || normalized.length >= 2000 ? normalized : [...normalized,makeBlock()];
+  }, [props.blocks]);
   const [linkedDeletion, setLinkedDeletion] = useState<string[]>([]);
   const onChange = (next: Block[], featuredImageId?: string | null) => {
     const normalized = normalizeSemanticGroups(normalizeColumnBlocks(preserveAIExplanationTags(blocks,next)));
@@ -534,7 +541,7 @@ export function BlockEditor(props: Props) {
       else runs.push({id: id ?? block.id, column: !!id, blocks: [block]});
     }
     return runs.map((run, index) => run.column
-      ? <div className="columns-block" role="group" aria-label="Two columns" key={run.id + ':' + index}>
+      ? <div className="columns-block" role="group" aria-label="Two columns" data-active={active && run.blocks.some(block => active.group ? block.semanticGroup?.id === active.id || block.id === active.id : block.id === active.id) || undefined} key={run.id + ':' + index}>
           {([0, 1] as const).map(column => <div className="column-pane" data-column-id={run.id} data-column-index={column} key={column} role="group" aria-label={column === 0 ? 'Left column' : 'Right column'}>
             {renderRuns(run.blocks.filter(block => block.column?.index === column))}
             {!run.blocks.some(block => block.column?.index === column) && <button type="button" className="column-add" onClick={() => {

@@ -131,14 +131,12 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   const collectionCards = !collection && !folder ? data.collections.filter(c => c.name.toLowerCase().includes(query)) : [];
   const countLabel = (count: number) => `${count} ${count === 1 ? 'page' : 'pages'}`;
   const isHomepage = !favouritesOnly && !inboxOnly && !collection && !folder;
-  const searchControl = <label className="organization-search-box"><Icon name="search"/><input aria-label="Search content by name or meaning" maxLength={2000} placeholder="Search names or meaning…" value={search} onChange={e => setSearch(e.target.value)}/>{search && <button aria-label="Clear search" onClick={() => setSearch('')}><Icon name="close"/></button>}</label>;
   return <section className="organization-library organization-browser" data-layout={viewMode} onDragEnd={() => setDropTarget(null)}>
     <span className="sr-only" role="status">{dropStatus}</span>
     {(favouritesOnly || !collection && !folder) && <div className={'organization-heading' + (isHomepage ? ' pages-home-heading' : '')}><div className="library-heading-row"><h1 className="page-heading">{favouritesOnly ? 'Favourites' : inboxOnly ? 'Inbox' : 'Library'}</h1></div><div className="pages-home-actions library-heading-actions"><ViewModeSwitch value={viewMode} onChange={setViewMode}/>{isHomepage && <><button className="button" disabled={pending} onClick={() => setEdit({type: 'folders', name: '', parent: ''})}><Icon name="folder"/>New folder</button><button className="button primary" disabled={pending} onClick={onNewNote}><Icon name="compose"/>New Note</button></>}</div></div>}
     <div className="organization-content" aria-busy={pending}>
-      {!isHomepage && <div className="organization-browser-toolbar">
-        {!favouritesOnly && !inboxOnly && !collection && <div className="organization-create-actions"><button className="button" disabled={pending} onClick={() => setEdit({type: 'folders', name: '', parent: folder})}><Icon name="folder"/>New folder</button><button className="button primary" disabled={pending} onClick={() => setEdit({type: 'collections', name: '', parent: ''})}><Icon name="plus"/>New collection</button></div>}
-        {searchControl}
+      {!isHomepage && !favouritesOnly && !inboxOnly && !collection && <div className="organization-browser-toolbar">
+        <div className="organization-create-actions"><button className="button" disabled={pending} onClick={() => setEdit({type: 'folders', name: '', parent: folder})}><Icon name="folder"/>New folder</button><button className="button primary" disabled={pending} onClick={() => setEdit({type: 'collections', name: '', parent: ''})}><Icon name="plus"/>New collection</button></div>
       </div>}
       {!!query && <div className="search-feedback" aria-live="polite">
         {semantic.loading && <p className="search-status" role="status">Searching note meaning… Name matches are available now.</p>}

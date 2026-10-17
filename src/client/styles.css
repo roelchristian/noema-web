@@ -1213,7 +1213,6 @@ dialog:has(.source-attachments) { max-height: calc(100dvh - 40px); overflow-y: a
 .semantic-children > .block.is-block-dragging > .block-controls {opacity:1;}
 
 main {position:relative;}
-.page-navigation-status {position:absolute;top:64px;right:24px;z-index:4;display:flex;align-items:center;gap:8px;max-width:calc(100% - 48px);padding:8px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text-muted);font-size:12px;pointer-events:none;}
 
 .ai-summary .summary-math-inline {white-space:normal;}
 .ai-summary .summary-math-display {display:block;max-width:100%;overflow-x:auto;white-space:normal;}
@@ -1221,9 +1220,3 @@ main {position:relative;}
 
 /* Loading should not flash the application chrome on fast page switches. */
 .sidebar[data-navigating=true] button:disabled { opacity: 1; }
-.page-navigation-status, .navigation-spinner { animation: navigation-feedback .12s ease-out .2s both; }
-.navigation-spinner { animation: navigation-feedback .12s ease-out .2s both, scan-spin .8s linear infinite; }
-@keyframes navigation-feedback { from { opacity: 0; } to { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) {
-  .page-navigation-status, .navigation-spinner { animation: navigation-feedback 0s .2s both; }
-}

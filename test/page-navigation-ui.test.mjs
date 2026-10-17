@@ -36,13 +36,15 @@ test('sidebar note switching preserves mounted shell and outgoing editor until a
    assert.ok(sidebarNodes.every(node=>node.isConnected));assert.equal(scrollRegion.scrollTop,75);
   };
   const select=id=>document.querySelector('#page-list .page-link[title="'+id+'"]');
+  const targetIcon=select('two').querySelector('svg');
+  const navigationStatus=document.querySelector('main > [role="status"]');
   select('two').focus();
   await act(async()=>select('two').dispatchEvent(new MouseEvent('click',{bubbles:true})));
   assert.equal(document.querySelector('.sidebar'),sidebar);assert.equal(document.querySelector('.topbar'),header);assert.equal(document.querySelector('.page'),editor);assert.equal(document.querySelector('#intelligence-panel'),knowledge);assert.equal(document.querySelector('.page-toolbar'),tools);assertOrganizationStable();
   assert.equal(folder.disabled,true);assert.equal(collection.disabled,true);assert.equal(organization.querySelector('[aria-label="Folder actions"]').disabled,true);
-  assert.equal(content.getAttribute('aria-busy'),'true');assert.ok(content.hasAttribute('inert'));assert.match(document.querySelector('.page-navigation-status').textContent,/Opening two/);assert.ok(!document.body.textContent.includes('Loading workspace'));assert.equal(select('one').disabled,false);
+  assert.equal(content.getAttribute('aria-busy'),'true');assert.ok(content.hasAttribute('inert'));assert.equal(select('two').querySelector('svg'),targetIcon);assert.equal(select('two').querySelector('.scan-spinner'),null);assert.equal(document.querySelector('main > [role="status"]'),navigationStatus);assert.ok(navigationStatus.classList.contains('sr-only'));assert.match(navigationStatus.textContent,/Opening two/);assert.equal(document.querySelector('.page-navigation-status'),null);assert.ok(!document.body.textContent.includes('Loading workspace'));assert.equal(select('one').disabled,false);
   await act(async()=>finish(page('two')));
-  assert.equal(document.querySelector('.sidebar'),sidebar);assert.equal(document.querySelector('.topbar'),header);assert.notEqual(document.querySelector('.page'),editor);assert.equal(document.querySelector('#page-title').value,'two');assert.equal(folder.disabled,false);assert.equal(collection.disabled,false);assert.equal(content.getAttribute('aria-busy'),'false');assert.ok(!content.hasAttribute('inert'));assert.equal(document.querySelector('.page-navigation-status'),null);assertOrganizationStable();
+  assert.equal(document.querySelector('.sidebar'),sidebar);assert.equal(document.querySelector('.topbar'),header);assert.notEqual(document.querySelector('.page'),editor);assert.equal(document.querySelector('#page-title').value,'two');assert.equal(folder.disabled,false);assert.equal(collection.disabled,false);assert.equal(content.getAttribute('aria-busy'),'false');assert.ok(!content.hasAttribute('inert'));assert.equal(document.querySelector('.page-navigation-status'),null);assert.equal(select('two').querySelector('svg'),targetIcon);assert.equal(navigationStatus.textContent,'');assertOrganizationStable();
   assert.equal(document.querySelector('#intelligence-panel'),knowledge);
   assert.match(knowledge.textContent,/Saved summary for one/);
   assert.equal(knowledge.getAttribute('aria-busy'),'true');

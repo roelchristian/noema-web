@@ -2,7 +2,7 @@ import { SummaryText } from './SummaryText';
 import { HelpMenu } from '../components/HelpMenu';
 import { EntityScanReview } from './EntityScanReview';
 import type { EntityScan, EntitySuggestionEdit } from '../../shared/entity-scan';
-import { useEffect, useRef, useState, type ComponentProps } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from 'react';
 import { api } from '../api';
 import { ConnectedEntities } from './ConnectedEntities';
 import { Icon } from '../components/Icon';
@@ -21,7 +21,7 @@ function KnowledgePage({inactive=false,initialItems,initialError,page,entities,o
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [summaryOverflow, setSummaryOverflow] = useState(false);
   const summaryText = useRef<HTMLDivElement>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = summaryText.current;
     if (!element) return;
     const measure = () => setSummaryOverflow(element.scrollHeight > parseFloat(getComputedStyle(element).lineHeight) * 3 + 1);

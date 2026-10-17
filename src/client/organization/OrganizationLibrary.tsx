@@ -70,7 +70,7 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   const collectionCards = !collection && !folder ? data.collections.filter(c => c.name.toLowerCase().includes(query)) : [];
   const countLabel = (count: number) => `${count} ${count === 1 ? 'item' : 'items'}`;
   return <section className="organization-library organization-browser">
-    {(favouritesOnly || !collection && !folder) && <div className="organization-heading"><div><h1>{favouritesOnly ? 'Favourites' : 'Collections & folders'}</h1></div>{!favouritesOnly && <div className="organization-create-actions"><button className="button primary" disabled={pending} onClick={() => setEdit({type: 'collections', name: '', parent: ''})}><Icon name="plus"/>New collection</button></div>}</div>}
+    {(favouritesOnly || !collection && !folder) && <div className="organization-heading"><div><h1>{favouritesOnly ? 'Favourites' : 'Pages'}</h1></div>{!favouritesOnly && <div className="organization-create-actions"><button className="button primary" disabled={pending} onClick={() => setEdit({type: 'collections', name: '', parent: ''})}><Icon name="plus"/>New collection</button></div>}</div>}
     <div className="organization-content" aria-busy={pending}>
       <div className="organization-browser-toolbar">
         {!favouritesOnly && collection && <div className="organization-create-actions"><button className="button" disabled={pending} onClick={() => setEdit({type: 'folders', name: '', parent: folder})}><Icon name="folder"/>New folder</button><button className="button primary" disabled={pending} onClick={() => setEdit({type: 'collections', name: '', parent: ''})}><Icon name="plus"/>New collection</button></div>}

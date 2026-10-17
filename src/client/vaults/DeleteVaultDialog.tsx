@@ -46,6 +46,6 @@ export function DeleteVaultDialog({vault,onPreview,onExport,onDelete,onClose}:{v
       </>}
     </>}
     {error&&<p className="dialog-error" role="alert">{error}</p>}
-    <div className="dialog-actions"><button type="button" className="button confirmation-cancel" autoFocus disabled={working} onClick={onClose}>Cancel</button><button className="button confirmation-action" disabled={!ready}>{busy?'Deleting vault…':'Delete permanently'}</button></div>
+    <div className="dialog-actions"><button type="button" className="button confirmation-cancel" autoFocus disabled={working} onClick={onClose}>Cancel</button><button className="button confirmation-action is-danger" disabled={!ready}>{busy?'Deleting vault…':'Delete permanently'}</button></div>
   </form></Modal>;
 }

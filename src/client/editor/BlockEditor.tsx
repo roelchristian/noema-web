@@ -620,7 +620,7 @@ export function BlockEditor(props: Props) {
         })}
       </div>
       <div className="dialog-actions">
-        <button type="button" className="button confirmation-action linked-explanation-delete" onClick={deleteLinkedExplanations}><Icon name="trash"/>{linkedExplanations.length === 1 ? 'Delete explanation' : 'Delete explanations'}</button>
+        <button type="button" className="button confirmation-action is-danger linked-explanation-delete" onClick={deleteLinkedExplanations}><Icon name="trash"/>{linkedExplanations.length === 1 ? 'Delete explanation' : 'Delete explanations'}</button>
         <button type="button" className="button primary" autoFocus onClick={() => setLinkedDeletion([])}>{linkedExplanations.length === 1 ? 'Keep explanation' : 'Keep explanations'}</button>
       </div>
     </Modal>}

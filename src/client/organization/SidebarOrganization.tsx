@@ -109,7 +109,7 @@ export function SidebarOrganization({vaultId, data, pages, context, active, disa
       const updated = await api.organize(vaultId!, edit.type + (edit.id ? '/' + edit.id : ''), {name, ...(edit.type === 'folders' ? {parent_id: edit.parent || null} : {})}, edit.id ? 'PUT' : 'POST');
       onChanged(updated);
     }}/>}
-    {remove && <ConfirmDialog title={'Remove ' + (remove.type === 'folders' ? 'folder?' : 'collection?')} description={remove.type === 'folders' ? `Remove “${remove.name}” and its subfolders? Their contents return to Inbox. Collection memberships and note favourites are kept.` : `Remove “${remove.name}”? Only its memberships are removed. Notes keep their folder locations.`} action="Remove" onClose={() => setRemove(null)} onConfirm={async () => {
+    {remove && <ConfirmDialog danger title={'Remove ' + (remove.type === 'folders' ? 'folder?' : 'collection?')} description={remove.type === 'folders' ? `Remove “${remove.name}” and its subfolders? Their contents return to Inbox. Collection memberships and note favourites are kept.` : `Remove “${remove.name}”? Only its memberships are removed. Notes keep their folder locations.`} action="Remove" onClose={() => setRemove(null)} onConfirm={async () => {
       onChanged(await api.organize(vaultId!, remove.type + '/' + remove.id, undefined, 'DELETE'));
     }}/>}
   </nav>;

@@ -61,7 +61,7 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
     finally{setBusy(false);}
   }
   if(debugId)return <AIActivityDebug id={debugId} onClose={()=>setDebugId(null)}/>;
-  if(confirmClear) return <ConfirmDialog title="Clear AI activity?" description="Permanently delete all available activity records, including older rows and running entries. This does not cancel running requests. Locked vault activity is kept." action="Clear activity" onClose={()=>setConfirmClear(false)} onConfirm={async()=>{await api.clearAIActivity();setData({items:[],nextCursor:null});setMessage('Activity cleared.');}}/>;
+  if(confirmClear) return <ConfirmDialog danger title="Clear AI activity?" description="Permanently delete all available activity records, including older rows and running entries. This does not cancel running requests. Locked vault activity is kept." action="Clear activity" onClose={()=>setConfirmClear(false)} onConfirm={async()=>{await api.clearAIActivity();setData({items:[],nextCursor:null});setMessage('Activity cleared.');}}/>;
   return <Modal className="ai-activity-modal" titleId="ai-activity-heading" onClose={onClose}>
     <header className="settings-heading"><div><h2 id="ai-activity-heading">AI activity log</h2></div><button className="settings-close" aria-label="Close activity log" onClick={onClose}>×</button></header>
     <p className="ai-activity-description">The latest 1,000 actions are stored locally. When AI debug mode is enabled, request and response payloads are also stored locally and can be opened below. Locked vault activity is hidden and excluded from export and clear.</p>

@@ -27,6 +27,6 @@ export function TrashLibrary({vaultId,notes, onRestore, onDelete, onRefresh, onE
         <div className="trash-actions"><button className="button small" onClick={() => { void onRestore(note.id).catch(onError); }} aria-label={'Restore ' + (note.title || 'Untitled')}>Restore</button>{viewMode === 'list' ? <button className="button small" onClick={() => setTarget(note)} aria-label={'Delete permanently: ' + (note.title || 'Untitled')}>Delete permanently</button> : <ActionMenu label={'Actions for ' + (note.title || 'Untitled')} actions={[{label: 'Delete permanently', icon: 'trash', danger: true, onSelect: () => setTarget(note)}]}/>}</div>
       </div>
     </article>)}{!notes.length && <div className="organization-empty"><Icon name="trash"/><h2>Trash is empty</h2><p>Notes you move to Trash will appear here for 30 days.</p></div>}</div>
-    {target && <ConfirmDialog title="Delete permanently?" description={`“${target.title || 'Untitled'}” will be permanently deleted. This cannot be undone.`} action="Delete permanently" onConfirm={() => onDelete(target.id)} onClose={() => setTarget(null)}/>}
+    {target && <ConfirmDialog danger title="Delete permanently?" description={`“${target.title || 'Untitled'}” will be permanently deleted. This cannot be undone.`} action="Delete permanently" onConfirm={() => onDelete(target.id)} onClose={() => setTarget(null)}/>}
   </section>;
 }

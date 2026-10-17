@@ -1,0 +1,39 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { ConnectedEntities, connectedEntityItems } from '../src/client/intelligence/ConnectedEntities.tsx';
+const entities = [
+  {id:'zoe',name:'Zoe',type:'person',vault_id:'vault',updated_at:'2026-01-01'},
+  {id:'ada',name:'Ada',type:'person',vault_id:'vault',updated_at:'2026-03-01'},
+  {id:'paris',name:'Paris',type:'place',vault_id:'vault',updated_at:'2026-02-01'},
+  {id:'missing',name:'Not mentioned',type:'person',vault_id:'vault',updated_at:'2026-04-01'},
+  {id:'foreign',name:'Foreign',type:'person',vault_id:'other',updated_at:'2026-05-01'},
+];
+const page = {id:'note',vault_id:'vault',title:'Notes',sourceIds:[],blocks:[
+  {type:'paragraph',content:[{entityId:'zoe'}, {entityId:'ada',mentionText:'A'}, {entityId:'foreign'}, {text:'Paris'}]},
+  {type:'table',content:[],rows:[[[{entityId:'paris'}, {entityId:'paris'}, {entityId:'paris'}, {entityId:'ada'}]]]},
+]};
+const ids = (type,sort) => connectedEntityItems(page,entities,type,sort).map(entity=>entity.id);
+test('connected entity types include table mentions, deduplicate aliases, and exclude unmentioned and foreign entities', () => {
+  assert.deepEqual(ids('all','name-asc'),['ada','paris','zoe']);
+  assert.deepEqual(ids('person','name-asc'),['ada','zoe']);
+  assert.deepEqual(ids('place','name-asc'),['paris']);
+  assert.deepEqual(ids('source','name-asc'),[]);
+});
+test('connected entity sorting supports name, first mention, mention frequency and modification date', () => {
+  assert.deepEqual(ids('all','name-desc'),['zoe','paris','ada']);
+  assert.deepEqual(ids('all','page-order'),['zoe','ada','paris']);
+  assert.deepEqual(ids('all','mentions'),['paris','ada','zoe']);
+  assert.deepEqual(ids('all','updated'),['ada','paris','zoe']);
+  assert.deepEqual(entities.map(entity=>entity.id),['zoe','ada','paris','missing','foreign']);
+});
+test('sidebar exposes All and every entity type tab with labeled sorting', () => {
+  const html = renderToStaticMarkup(createElement(ConnectedEntities,{page,entities,onOpenEntity(){}}));
+  assert.equal((html.match(/role="tab"/g) ?? []).length,7);
+  assert.match(html,/role="tablist" aria-label="Connected entity types"/);
+  assert.match(html,/aria-selected="true"/);
+  assert.match(html,/Sort connected entities/);
+  for(const label of ['All','Person','Place','Event','Creative work','Organization','Source','Most mentioned','Recently updated']) assert.ok(html.includes(label));
+  assert.match(renderToStaticMarkup(createElement(ConnectedEntities,{page:{...page,blocks:[]},entities,onOpenEntity(){}})),/Mention an entity with @/);
+});

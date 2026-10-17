@@ -3,7 +3,7 @@ import { EntityScanReview } from './EntityScanReview';
 import type { EntityScan, EntitySuggestionEdit } from '../../shared/entity-scan';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
-import { blockSegments } from '../../shared/domain';
+import { ConnectedEntities } from './ConnectedEntities';
 import { Icon } from '../components/Icon';
 import { Select } from '../components/Select';
 import type { CreateEntityRequest } from '../knowledge/CreateEntityDialog';
@@ -40,8 +40,6 @@ export function IntelligencePanel({page,entities,onSearch,onOpenEntity,onSources
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [page.vault_id, page.id]);
-  const connectedIds = new Set(page.blocks.flatMap(block => blockSegments(block).flatMap(segment => segment.entityId ? [segment.entityId] : [])));
-  const connected = entities.filter(entity => connectedIds.has(entity.id));
   async function summarize() {
     setBusy(true);setError('');
     try {
@@ -64,7 +62,7 @@ export function IntelligencePanel({page,entities,onSearch,onOpenEntity,onSources
         {result&&<section className="ai-result" aria-label="Page summary"><div id="knowledge-summary-text" ref={summaryText} className={'ai-summary' + (summaryExpanded ? '' : ' is-collapsed')}>{result.summary}</div>{summaryOverflow&&<button className="summary-toggle" aria-expanded={summaryExpanded} aria-controls="knowledge-summary-text" onClick={()=>setSummaryExpanded(value=>!value)}>{summaryExpanded?'Show less':'Show more'}</button>}{result.revision!==page.revision&&<p className="section-hint">Page changed since this summary.</p>}</section>}
       </section>
       <EntityScanReview entities={entities} page={page} scan={scan} onScan={setScan} onFlush={onFlush} onReview={onReview} disabled={busy||loading}/>
-      <section className="knowledge-connected" aria-labelledby="knowledge-connected-heading"><div className="knowledge-section-heading"><h2 id="knowledge-connected-heading">Connected entities</h2><span className="knowledge-count">{connected.length}</span></div>{connected.length ? <div className="toolbar-entity-list">{connected.map(entity=><Mention key={entity.id} id={entity.id} entities={entities} onOpen={onOpenEntity}/>)}</div> : <p className="section-hint">Mention an entity with @ to connect it here.</p>}</section>
+      <ConnectedEntities page={page} entities={entities} onOpenEntity={onOpenEntity}/>
     <section className="knowledge-sources" aria-labelledby="knowledge-sources-heading"><div className="knowledge-section-heading"><h2 id="knowledge-sources-heading">Sources</h2><span className="knowledge-count">{page.sourceIds.length}</span></div><div className="toolbar-source-list">{page.sourceIds.map(id => <div key={id} className="page-source"><Mention id={id} entities={entities} onOpen={onOpenEntity}/><button aria-label={'Remove source from page: ' + (entities.find(entity => entity.id === id)?.name || id)} onClick={() => onSourcesChange(page.sourceIds.filter(source => source !== id))}>×</button></div>)}</div>{!page.sourceIds.length && <p className="empty-small">No sources attached yet.</p>}<div className="toolbar-source-actions"><Select aria-label="Attach existing source" value="" onChange={event => { if (event.target.value) onSourcesChange([...new Set([...page.sourceIds, event.target.value])]); }}><option value="">Add a source…</option>{entities.filter(entity => entity.type === 'source' && !page.sourceIds.includes(entity.id)).map(entity => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</Select><button className="button small" onClick={() => onCreateEntity({source: true})}>+ New source</button></div></section>
     </div>
   </aside>;

@@ -18,9 +18,10 @@ import { Modal } from '../components/Modal';
 
 interface Item { kind: ItemKind; id: string; name: string; label: string; icon?: string | null; description?: string; updatedAt?: string }
 interface EditContainer { type: 'collections' | 'folders'; id?: string; name: string; parent: string }
-export function OrganizationLibrary({data, vaultId, pages, entities, favouritesOnly, inboxOnly = false, context, onContextChange, onChanged, onOpenPage, onOpenEntity, onRenamePage, onDeletePage, onError}: {
+export function OrganizationLibrary({data, vaultId, pages, entities, favouritesOnly, inboxOnly = false, context, onContextChange, onChanged, onOpenPage, onOpenEntity, onRenamePage, onDeletePage, onNewNote, onError}: {
   data: Organization; vaultId: string; pages: PageSummary[]; entities: Entity[]; favouritesOnly: boolean; inboxOnly?: boolean;
   context: OrganizationContext; onContextChange: (patch: Partial<OrganizationContext>) => void; onChanged: (data: Organization) => void;
+  onNewNote: () => void;
   onRenamePage: (page: PageSummary) => void; onDeletePage: (page: PageSummary) => void;
   onOpenPage: (id: string) => void; onOpenEntity: (id: string) => void; onError: (error: unknown) => void;
 }) {
@@ -100,13 +101,15 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   const childFolders = data.folders.filter(f => !!collection && (f.collection_id || '') === collection && (f.parent_id || '') === folder && f.name.toLowerCase().includes(query));
   const collectionCards = !collection && !folder ? data.collections.filter(c => c.name.toLowerCase().includes(query)) : [];
   const countLabel = (count: number) => `${count} ${count === 1 ? 'page' : 'pages'}`;
+  const isHomepage = !favouritesOnly && !inboxOnly && !collection && !folder;
+  const searchControl = <label className="organization-search-box"><Icon name="search"/><input aria-label="Search content by name or meaning" maxLength={2000} placeholder="Search names or meaning…" value={search} onChange={e => setSearch(e.target.value)}/>{search && <button aria-label="Clear search" onClick={() => setSearch('')}><Icon name="close"/></button>}</label>;
   return <section className="organization-library organization-browser">
-    {(favouritesOnly || !collection && !folder) && <div className="organization-heading"><div><h1>{favouritesOnly ? 'Favourites' : inboxOnly ? 'Inbox' : 'Pages'}</h1></div>{!favouritesOnly && !inboxOnly && <div className="organization-create-actions"><button className="button primary" disabled={pending} onClick={() => setEdit({type: 'collections', name: '', parent: ''})}><Icon name="plus"/>New collection</button></div>}</div>}
+    {(favouritesOnly || !collection && !folder) && <div className={'organization-heading' + (isHomepage ? ' pages-home-heading' : '')}><div><h1>{favouritesOnly ? 'Favourites' : inboxOnly ? 'Inbox' : 'Pages'}</h1></div>{isHomepage && <div className="pages-home-actions">{searchControl}<button className="button primary" disabled={pending} onClick={onNewNote}><Icon name="compose"/>New Note</button></div>}</div>}
     <div className="organization-content" aria-busy={pending}>
-      <div className="organization-browser-toolbar">
+      {!isHomepage && <div className="organization-browser-toolbar">
         {!favouritesOnly && collection && <div className="organization-create-actions"><button className="button" disabled={pending} onClick={() => setEdit({type: 'folders', name: '', parent: folder})}><Icon name="folder"/>New folder</button><button className="button primary" disabled={pending} onClick={() => setEdit({type: 'collections', name: '', parent: ''})}><Icon name="plus"/>New collection</button></div>}
-        <label className="organization-search-box"><Icon name="search"/><input aria-label="Search content by name or meaning" maxLength={2000} placeholder="Search names or meaning…" value={search} onChange={e => setSearch(e.target.value)}/>{search && <button aria-label="Clear search" onClick={() => setSearch('')}><Icon name="close"/></button>}</label>
-      </div>
+        {searchControl}
+      </div>}
       {!!query && <div className="search-feedback" aria-live="polite">
         {semantic.loading && <p className="search-status" role="status">Searching note meaning… Name matches are available now.</p>}
         {semantic.error && <p className="search-error" role="alert">{semantic.error} Name matches are still shown.</p>}

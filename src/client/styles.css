@@ -1027,3 +1027,9 @@ dialog.vault-search-dialog::backdrop { background: #0005; backdrop-filter: blur(
 .sidebar .sidebar-new-note .icon { width: 20px; height: 20px; }
 .sidebar .sidebar-new-note:hover { background: var(--surface-hover); color: var(--text); }
 @media (max-width: 500px) { .sidebar-heading { flex-direction: column; gap: 10px; padding: 0; } }
+
+#content > .organization-library .pages-home-heading { align-items: center; }
+.pages-home-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; min-width: 0; }
+.pages-home-actions .button { flex-shrink: 0; }
+.pages-home-actions .organization-search-box { width: clamp(160px, 22vw, 250px); }
+@media (max-width: 750px) { .pages-home-actions { flex: 1; } .pages-home-actions .organization-search-box { flex: 1; min-width: 100px; } }

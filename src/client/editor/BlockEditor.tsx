@@ -27,7 +27,7 @@ import { SelectionToolbar } from './SelectionToolbar';
 import { MathBlock } from './MathBlock';
 import { MathDialog } from './MathDialog';
 import { completeInlineMath, mathElement } from './math';
-interface Props {pages?:PageSummary[];onOpenPage?:(id:string)=>void;onExplain?: (blocks: Block[]) => Promise<string>; reviewMatches?: EntityReviewItem[]; onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[]) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
+interface Props {featuredImageId?: string | null; pages?:PageSummary[];onOpenPage?:(id:string)=>void;onExplain?: (blocks: Block[]) => Promise<string>; reviewMatches?: EntityReviewItem[]; onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[], featuredImageId?: string | null) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
 function explanationInsertionIndex(blocks: Block[], ids: string[]) {
   const last=blocks.filter(block=>ids.includes(block.id)).at(-1);
   if(!last)return -1;
@@ -83,7 +83,7 @@ export function BlockEditor(props: Props) {
   const [viewportHeight, setViewportHeight] = useState(() => window.visualViewport?.height ?? window.innerHeight);
   const mobileToolbar = useRef<HTMLDivElement>(null);
   const {blocks, entities, onOpenEntity, onCreateEntity, onSave} = props;
-  const onChange = (next: Block[]) => props.onChange(normalizeSemanticGroups(preserveAIExplanationTags(props.blocks,next)));
+  const onChange = (next: Block[], featuredImageId?: string | null) => props.onChange(normalizeSemanticGroups(preserveAIExplanationTags(props.blocks,next)), featuredImageId);
   const [pageLinkStatus,setPageLinkStatus]=useState('');
   const [explaining,setExplaining]=useState(false), [explanationError,setExplanationError]=useState('');
   const [explanationAnchor,setExplanationAnchor]=useState<{ids:string[];index:number}|null>(null);
@@ -219,8 +219,9 @@ export function BlockEditor(props: Props) {
   function chooseImages(after?: string, replace?: Block) {
     setMenu(null); imageTarget.current = {after, replace}; fileInput.current?.click();
   }
-  function addImages(files: File[], target: {after?: string; replace?: Block}) {
+  function addImages(files: File[], target: {after?: string; replace?: Block; featured?: boolean}) {
     if (!files.length) return;
+    const featurePastedImage=!!target.featured;
     const id=randomUUID(), autoCompress=readImageCompression();
     setImageError('');
     setUploads(items => [...items,{id,after:target.after,name:files[0]!.name,message:'Waiting to save…',current:1,total:files.length}]);
@@ -246,7 +247,7 @@ export function BlockEditor(props: Props) {
           const trailing = {...makeBlock(),...(parent?{semanticGroup:parent}:{})};
           list.splice(Math.max(0,position + (replace ? 0 : 1)),replace ? 1 : 0,block,trailing);
           focusTarget.current = {id:trailing.id,start:true};
-          latest.current.onChange(list);
+          latest.current.onChange(list, featurePastedImage && index===0 ? image.id : undefined);
           latest.current = {...latest.current, blocks:list};
           after = block.id; target = {after}; progress({after});
         }
@@ -480,7 +481,7 @@ export function BlockEditor(props: Props) {
         if(event.key === 'Tab') {event.preventDefault(); const el=event.currentTarget, start=el.selectionStart; el.setRangeText('  ', start, el.selectionEnd, 'end'); update(block.id, {content: [{text: el.value}]});}
       }}/>
       <small>Code · Tab to indent · ⌘/Ctrl+Enter to continue below</small>
-    </div> : block.type === 'math' ? <MathBlock block={block} onDelete={() => removeBlock(block.id)} onChange={source => update(block.id, {content: [{text: source}]})} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'image' ? <ImageBlock block={block} vaultId={props.vaultId} onChange={alt => update(block.id,{alt})} onDelete={() => removeBlock(block.id)} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'columns' ? <ColumnsBlock block={block} entities={entities} reviewMatches={reviewMatches} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'table' ? <TableBlock reviewMatches={reviewMatches} block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock reviewMatches={reviewMatches} block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={el => {
+    </div> : block.type === 'math' ? <MathBlock block={block} onDelete={() => removeBlock(block.id)} onChange={source => update(block.id, {content: [{text: source}]})} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'image' ? <ImageBlock block={block} featured={props.featuredImageId===block.imageId} onSetFeatured={() => onChange(latest.current.blocks,props.featuredImageId===block.imageId?null:block.imageId)} vaultId={props.vaultId} onChange={alt => update(block.id,{alt})} onDelete={() => removeBlock(block.id)} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'columns' ? <ColumnsBlock block={block} entities={entities} reviewMatches={reviewMatches} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'table' ? <TableBlock reviewMatches={reviewMatches} block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock reviewMatches={reviewMatches} block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={el => {
       const content = readSegments(el);
       const source = block.type === 'paragraph' && content.every(segment => !segment.entityId && !segment.math && !segment.code)
         ? displayMathSource(content.map(segment => segment.text ?? '').join('')) : undefined;
@@ -518,7 +519,7 @@ export function BlockEditor(props: Props) {
       if(!files.length) return;
       e.preventDefault(); e.stopPropagation(); setMenu(null);
       const blockElement=(e.target as Element).closest<HTMLElement>('[data-block-id]');
-      void addImages(files,{after:blockElement?.dataset.blockId});
+      void addImages(files,{after:blockElement?.dataset.blockId,featured:true});
     }}>{!explanationAnchorId&&explanationStatus}{semanticRuns(blocks).map(run => run.type==='block' && isAIExplanation(run.block) ? {type:'group' as const,id:run.id,kind:'ai-explanation' as const,blocks:[run.block]} : run).map(run => <Fragment key={run.id}>{run.type === 'block' ? renderBlock(run.block) : <section key={run.id} data-block-group-id={run.id} className="semantic-group" data-semantic-kind={run.kind} style={semanticStyle(run.kind)} aria-label={semanticFunctions[run.kind].label+' semantic group'}>
       <span className="semantic-accent" aria-hidden="true"/><div className="semantic-parent-controls"><button type="button" className="block-handle semantic-handle" data-semantic-parent-handle draggable={false} aria-describedby="block-drag-help" aria-label={semanticFunctions[run.kind].label+' group options'} title={semanticFunctions[run.kind].label+' · Drag group or click for options'} onClick={event=>groupOptions(event.currentTarget,run.id)}>{semanticGlyph(run.kind)}</button></div>
       {run.kind==='ai-explanation' ? <details className="ai-explanation" open>

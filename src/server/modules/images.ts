@@ -46,7 +46,8 @@ export class Images {
     let removed=0;
     for(const scope of vaults) {
       const referenced=new Set<string>();
-      for(const page of this.store.all<{blocks:string}>('SELECT blocks FROM pages WHERE vault_id=?',scope)) {
+      for(const page of this.store.all<{blocks:string;featured_image_id:string|null}>('SELECT blocks,featured_image_id FROM pages WHERE vault_id=?',scope)) {
+        if(page.featured_image_id)referenced.add(page.featured_image_id);
         const blocks=JSON.parse(page.blocks) as {type:string; imageId?:string}[];
         for(const block of blocks) if(block.type === 'image' && block.imageId) referenced.add(block.imageId);
       }

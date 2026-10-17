@@ -21,7 +21,7 @@ const pageScope='page_id IN (SELECT id FROM pages WHERE vault_id=?)';
 const entityScope='entity_id IN (SELECT id FROM entities WHERE vault_id=?)';
 // Explicit, versioned allowlist: credentials, app settings, jobs and activity are never archived.
 const tables={
-  pages:{columns:'id,title,icon,blocks,updated_at,revision,deleted_at',scope:'vault_id=?'},
+  pages:{columns:'id,title,icon,featured_image_id,blocks,updated_at,revision,deleted_at',scope:'vault_id=?'},
   source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at',scope:'vault_id=? AND entity_id IS NOT NULL'},
   entities:{columns:'id,name,aliases,mention_case,type,subtypes,description,updated_at',scope:'vault_id=?'},
   properties:{columns:'id,entity_id,name,value,target_id',scope:entityScope},
@@ -71,7 +71,10 @@ export class VaultBackups {
       let estimated=Buffer.byteLength(JSON.stringify(data));
       if(estimated>maxExpandedBytes)throw new HttpError(413,'This vault exceeds the 256 MB expanded backup limit.');
       const imageIds=new Set<string>();
-      for(const page of data.pages)for(const block of JSON.parse(page.blocks as string))if(block.type==='image'&&block.imageId)imageIds.add(block.imageId);
+      for(const page of data.pages) {
+        if(typeof page.featured_image_id==='string')imageIds.add(page.featured_image_id);
+        for(const block of JSON.parse(page.blocks as string))if(block.type==='image'&&block.imageId)imageIds.add(block.imageId);
+      }
       const images=[...imageIds].map(id=>{
         const bytes=this.images.get(vault,id).bytes;
         estimated+=Math.ceil(bytes.length/3)*4+id.length+32;
@@ -187,7 +190,7 @@ export class VaultBackups {
             return block;
           });
           const validated=pages.validateBlocks(vault,blocks);
-          insert('pages',{id:ref(pageIds,row.id),vault_id:vault,title:string(row,'title',500),icon:row.icon as string|null,blocks:JSON.stringify(validated),updated_at:timestamp(row,'updated_at'),revision:integer(row,'revision',1),deleted_at:row.deleted_at===null?null:timestamp(row,'deleted_at')});
+          insert('pages',{id:ref(pageIds,row.id),vault_id:vault,title:string(row,'title',500),icon:row.icon as string|null,featured_image_id:row.featured_image_id==null?null:ref(imageIds,row.featured_image_id),blocks:JSON.stringify(validated),updated_at:timestamp(row,'updated_at'),revision:integer(row,'revision',1),deleted_at:row.deleted_at===null?null:timestamp(row,'deleted_at')});
         }
         for(const row of rows.page_sources) {
           const source=ref(entityIds,row.source_id);

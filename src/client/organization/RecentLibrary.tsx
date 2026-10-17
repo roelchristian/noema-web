@@ -1,3 +1,4 @@
+import {PageCover} from '../components/PageCover';
 import {PageIcon} from '../components/PageIcon';
 import {ViewModeSwitch, useViewMode} from '../components/ViewModeSwitch';
 import {useSearchSnippets} from '../search/useSearchSnippets';
@@ -11,12 +12,13 @@ export function RecentLibrary({vaultId, recent, pages, entities, onOpenPage, onO
   const [viewMode, setViewMode] = useViewMode('recent');
   const items = recent.flatMap(item => {
     const record = item.kind === 'page' ? pages.find(page => page.id === item.item_id) : entities.find(entity => entity.id === item.item_id);
-    return record ? [{...item, icon: 'title' in record ? record.icon : null, name: 'title' in record ? record.title || 'Untitled' : record.name, type: 'type' in record ? record.type : null, description: 'description' in record ? record.description : '', updatedAt: record.updated_at}] : [];
+    return record ? [{...item, icon: 'title' in record ? record.icon : null, featuredImageId:'title' in record?record.featuredImageId:null, name: 'title' in record ? record.title || 'Untitled' : record.name, type: 'type' in record ? record.type : null, description: 'description' in record ? record.description : '', updatedAt: record.updated_at}] : [];
   });
   const previews = useSearchSnippets(vaultId, '', viewMode === 'grid' ? items.filter(item => item.kind === 'page').map(item => item.item_id) : [], viewMode === 'grid', items.map(item => item.item_id + ':' + item.updatedAt).sort().join(','));
   return <section className="organization-library recent-library" data-layout={viewMode}>
     <div className="organization-heading"><div className="library-heading-row"><h1 className="page-heading">Recent items</h1></div><div className="library-heading-actions"><ViewModeSwitch value={viewMode} onChange={setViewMode}/></div></div>
     <div className="organization-items">{items.map(item => <article key={item.kind + item.item_id} className="organization-item"><div className="organization-item-row">
+      {viewMode==='grid' && <PageCover vaultId={vaultId} imageId={item.featuredImageId}/>}
       <span className="organization-item-icon">{item.kind === 'page' ? <PageIcon icon={item.icon}/> : <Icon name={item.type ?? 'knowledge'}/>}</span>
       <button className="organization-item-name" title={item.name} onClick={() => item.kind === 'page' ? onOpenPage(item.item_id) : onOpenEntity(item.item_id)}><span className="organization-page-title">{item.name}</span><small>{item.type ? entityLabels[item.type] : 'Page'}</small>{viewMode === 'grid' && (item.description || previews.snippets[item.item_id]) && <span className="search-result-snippet item-preview">{item.description || previews.snippets[item.item_id]}</span>}</button>
       <time className="recent-time" dateTime={item.opened_at}>{new Date(item.opened_at).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</time>

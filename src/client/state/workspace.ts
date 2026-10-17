@@ -306,11 +306,11 @@ export class Workspace {
     try { localStorage.setItem('noema-recent/' + vault.id, JSON.stringify(recent)); } catch { /* Keep session history when storage is unavailable. */ }
   }
   showEntities() { if (!this.state.busy && this.state.loadingPageId === null) this.patch({view: 'entities'}); }
-  updatePage(patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon'>>) {
+  updatePage(patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon' | 'featuredImageId'>>) {
     const current = this.state.page;
     if (!current || this.state.busy || this.state.loadingPageId !== null || this.state.reviewing || this.state.vault?.locked) return;
     const page = {...current, ...patch,...(patch.blocks&&patch.blocks!==current.blocks?{conceptContentHash:undefined}:{})}; this.pageCache.set(page.id, page);
-    this.patch({page, pages: this.state.pages.map(p => p.id === page.id ? {...p, title: page.title, icon: page.icon} : p)});
+    this.patch({page, pages: this.state.pages.map(p => p.id === page.id ? {...p, title: page.title, icon: page.icon, featuredImageId: page.featuredImageId} : p)});
     this.titler.observe(page);
     this.saver.enqueue(page);
   }

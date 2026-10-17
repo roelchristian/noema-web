@@ -10,7 +10,7 @@ import { blockTypes, safeHref, type Segment, type Block, type Page, type PageSum
 import { Store } from '../store.js';
 import { HttpError, now, object, required, text } from '../validation.js';
 import { Knowledge } from './knowledge.js';
-type PageRow = Omit<Page, 'blocks' | 'sourceIds'> & {blocks: string; summary_content_hash: string | null; summary_hash_version:number};
+type PageRow = Omit<Page, 'blocks' | 'sourceIds' | 'featuredImageId'> & {blocks: string; summary_content_hash: string | null; summary_hash_version:number; featured_image_id:string|null};
 export const trashRetentionMs = 30 * 24 * 60 * 60 * 1000;
 export class Pages {
   constructor(private store: Store, private knowledge: Knowledge, private clock: () => Date = () => new Date()) {}
@@ -18,7 +18,7 @@ export class Pages {
     try { new Images(this.store).cleanup(vault,candidates); } catch { console.error('Image cleanup deferred'); }
   }
   private imageIds(blocks: Block[]) { return blocks.flatMap(block => block.type === 'image' && block.imageId ? [block.imageId] : []); }
-  list(vault: string) { return this.store.all<PageSummary>('SELECT id,title,icon,updated_at FROM pages WHERE vault_id=? AND deleted_at IS NULL ORDER BY updated_at DESC',vault); }
+  list(vault: string) { return this.store.all<PageSummary>('SELECT id,title,icon,featured_image_id AS featuredImageId,updated_at FROM pages WHERE vault_id=? AND deleted_at IS NULL ORDER BY updated_at DESC',vault); }
   backlinks(vault:string,id:string):PageSummary[] {
     const target=pageTitleKey(this.get(vault,id).title);
     const candidates=this.store.all<PageSummary & {blocks:string}>("SELECT id,title,icon,updated_at,blocks FROM pages WHERE vault_id=? AND deleted_at IS NULL AND id<>? AND instr(blocks,'[[')>0 ORDER BY title COLLATE NOCASE,id",vault,id);
@@ -27,7 +27,7 @@ export class Pages {
   get(vault: string, id: string): Page {
     const row=this.store.get<PageRow>('SELECT * FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',id,vault);
     if (!row) throw new HttpError(404,'Page not found');
-    const {summary_content_hash: cachedHash, summary_hash_version: hashVersion, ...stored} = row;
+    const {summary_content_hash: cachedHash, summary_hash_version: hashVersion, featured_image_id: featuredImageId, ...stored} = row;
     const blocks = JSON.parse(row.blocks) as Block[];
     const names=new Map<string,string|undefined>();
     const resolveName=(id:string)=>{if(!names.has(id))names.set(id,entityMentionName(this.knowledge.find(vault,id)));return names.get(id);};
@@ -44,7 +44,7 @@ export class Pages {
       }
       this.store.run('UPDATE pages SET summary_content_hash=?,summary_hash_version=2 WHERE id=? AND vault_id=?',hash,id,vault);
     }
-    return {...stored,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id)};
+    return {...stored,featuredImageId,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id)};
   }
   create(vault: string, body: Record<string, unknown>) {
     const id=randomUUID();
@@ -134,11 +134,13 @@ export class Pages {
     if(blocks.some(block=>protectedIds.has(block.id)&&!isAIExplanation(block)))throw new HttpError(400,'The AI Explanation tag cannot be removed or changed.');
     const icon=body.icon === undefined ? page.icon ?? null : body.icon;
     if(icon !== null && !isPageIconId(icon)) throw new HttpError(400,'Invalid page icon');
+    const featuredImageId=body.featuredImageId===undefined?page.featuredImageId??null:body.featuredImageId===null?null:required(body.featuredImageId);
+    if(featuredImageId!==null)new Images(this.store).require(vault,featuredImageId);
     const sourceIds=body.sourceIds ?? page.sourceIds;
     if(!Array.isArray(sourceIds)||sourceIds.length>1000||sourceIds.some(s=>typeof s!=='string'||this.knowledge.find(vault,s)?.type!=='source'))throw new HttpError(400,'Page sources must be Source entities in this vault');
     if(body.revision!==undefined && (!Number.isInteger(body.revision)||body.revision!==page.revision))throw new HttpError(409,'This page changed in another window. Reload the latest page before saving.');
     this.store.transaction(()=>{
-      this.store.run('UPDATE pages SET title=?,icon=?,blocks=?,updated_at=?,revision=revision+1 WHERE id=? AND vault_id=?',title,icon,JSON.stringify(blocks),now(),id,vault);
+      this.store.run('UPDATE pages SET title=?,icon=?,featured_image_id=?,blocks=?,updated_at=?,revision=revision+1 WHERE id=? AND vault_id=?',title,icon,featuredImageId,JSON.stringify(blocks),now(),id,vault);
       this.store.run('DELETE FROM page_sources WHERE page_id=?',id);
       for(const source of new Set(sourceIds as string[]))this.store.run('INSERT INTO page_sources VALUES (?,?)',id,source);
       if(title!==page.title && (!page.title.trim()||page.title.trim()==='Untitled')) {
@@ -146,7 +148,7 @@ export class Pages {
         if(generated?.revision===page.revision && JSON.parse(generated.data).title===title) new AINotifications(this.store).record(vault,id,'page_title');
       }
     });
-    this.cleanupImages(vault,this.imageIds(page.blocks));
+    this.cleanupImages(vault,[...this.imageIds(page.blocks),...(page.featuredImageId?[page.featuredImageId]:[])]);
     return this.get(vault,id);
   }
   delete(vault: string, id: string) {
@@ -156,14 +158,14 @@ export class Pages {
   }
   purgeExpired(vault?: string) {
     const cutoff = new Date(this.clock().getTime() - trashRetentionMs).toISOString();
-    const expired=this.store.all<{vault_id:string; blocks:string}>('SELECT vault_id,blocks FROM pages WHERE deleted_at IS NOT NULL AND julianday(deleted_at)<=julianday(?)' + (vault ? ' AND vault_id=?' : ''),cutoff,...(vault ? [vault] : []));
+    const expired=this.store.all<{vault_id:string; blocks:string;featured_image_id:string|null}>('SELECT vault_id,blocks,featured_image_id FROM pages WHERE deleted_at IS NOT NULL AND julianday(deleted_at)<=julianday(?)' + (vault ? ' AND vault_id=?' : ''),cutoff,...(vault ? [vault] : []));
     const result=this.store.run('DELETE FROM pages WHERE deleted_at IS NOT NULL AND julianday(deleted_at)<=julianday(?)' + (vault ? ' AND vault_id=?' : ''),cutoff,...(vault ? [vault] : []));
-    for(const page of expired) this.cleanupImages(page.vault_id,this.imageIds(JSON.parse(page.blocks) as Block[]));
+    for(const page of expired) this.cleanupImages(page.vault_id,[...this.imageIds(JSON.parse(page.blocks) as Block[]),...(page.featured_image_id?[page.featured_image_id]:[])]);
     return result;
   }
   trash(vault: string): TrashedPage[] {
     this.purgeExpired(vault);
-    return this.store.all<PageSummary & {deleted_at: string}>('SELECT id,title,icon,updated_at,deleted_at FROM pages WHERE vault_id=? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC,id',vault).map(page => ({...page,expires_at:new Date(Date.parse(page.deleted_at) + trashRetentionMs).toISOString()}));
+    return this.store.all<PageSummary & {deleted_at: string}>('SELECT id,title,icon,featured_image_id AS featuredImageId,updated_at,deleted_at FROM pages WHERE vault_id=? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC,id',vault).map(page => ({...page,expires_at:new Date(Date.parse(page.deleted_at) + trashRetentionMs).toISOString()}));
   }
   private trashed(vault: string, id: string) {
     this.purgeExpired(vault);
@@ -177,9 +179,9 @@ export class Pages {
   }
   permanentlyDelete(vault: string, id: string) {
     this.trashed(vault,id);
-    const row=this.store.get<{blocks:string}>('SELECT blocks FROM pages WHERE id=? AND vault_id=?',id,vault)!;
+    const row=this.store.get<{blocks:string;featured_image_id:string|null}>('SELECT blocks,featured_image_id FROM pages WHERE id=? AND vault_id=?',id,vault)!;
     this.store.run('DELETE FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NOT NULL',id,vault);
-    this.cleanupImages(vault,this.imageIds(JSON.parse(row.blocks) as Block[]));
+    this.cleanupImages(vault,[...this.imageIds(JSON.parse(row.blocks) as Block[]),...(row.featured_image_id?[row.featured_image_id]:[])]);
     return {ok:true};
   }
 }

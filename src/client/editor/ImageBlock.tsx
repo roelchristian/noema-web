@@ -3,8 +3,8 @@ import type { Block } from '../../shared/domain';
 import { imageURL } from '../api';
 import { Icon } from '../components/Icon';
 
-export function ImageBlock({block, vaultId, onChange, onDelete, onExit, onSave, register}: {
-  block: Block; vaultId: string; onChange: (alt: string) => void; onDelete: () => void;
+export function ImageBlock({block, featured, onSetFeatured, vaultId, onChange, onDelete, onExit, onSave, register}: {
+  block: Block; featured: boolean; onSetFeatured: () => void; vaultId: string; onChange: (alt: string) => void; onDelete: () => void;
   onExit: () => void; onSave: () => void; register: (el: HTMLDivElement | null) => void;
 }) {
   const [captionOpen, setCaptionOpen] = useState(false);
@@ -21,6 +21,7 @@ export function ImageBlock({block, vaultId, onChange, onDelete, onExit, onSave, 
   return <div className="image-block" ref={el => {root.current=el; register(el);}} tabIndex={0} role="group" aria-label="Image block" aria-description="Press Backspace or Delete to remove this image. Press Enter to add text below." onKeyDown={keyDown}>
     <img src={imageURL(vaultId,block.imageId!)} alt={block.alt || ''} onClick={() => root.current?.focus()}/>
     <div className="image-block-actions">
+      <button type="button" className="image-caption-toggle" title={featured?'Remove featured image':'Use as featured image'} aria-label={featured?'Remove featured image':'Use as featured image'} aria-pressed={featured} onClick={onSetFeatured}><Icon name="star"/></button>
       <button ref={toggle} className="image-caption-toggle" title={captionOpen ? 'Hide image caption' : 'Show image caption'} aria-label={captionOpen ? 'Hide image caption' : 'Show image caption'} aria-expanded={captionOpen} aria-controls={captionId} onClick={() => setCaptionOpen(open => !open)}><Icon name="image"/></button>
     </div>
     {captionOpen && <input ref={caption} id={captionId} aria-label="Image caption" placeholder="Add an image caption…" maxLength={1000} value={block.alt || ''} onChange={event => onChange(event.target.value)} onKeyDown={event => {

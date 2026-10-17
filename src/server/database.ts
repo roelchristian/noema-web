@@ -115,6 +115,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS ai_notifications (
 );
  CREATE INDEX IF NOT EXISTS ai_notifications_unread ON ai_notifications(read_at,seq DESC);`);
 
+if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'featured_image_id')) db.exec('ALTER TABLE pages ADD COLUMN featured_image_id TEXT');
 if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'icon')) db.exec('ALTER TABLE pages ADD COLUMN icon TEXT');
 // Keep generated content separate from page edits and activity-log retention.
 db.exec(`CREATE TABLE IF NOT EXISTS page_ai_enrichments (

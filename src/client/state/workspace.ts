@@ -7,13 +7,14 @@ import type { Entity, EntityInput, Page, PageSummary, Vault, Organization, Organ
 import { PageSaver, type SaveStatus } from './page-saver';
 export interface WorkspaceState {
   canGoBack: boolean; canGoForward: boolean;
+  entityPanelId: string | null;
   vaults: Vault[]; vault: Vault | null; trash: TrashedPage[]; pages: PageSummary[]; entities: Entity[];
   organization: Organization; organizationContext: OrganizationContext; recent: RecentItem[];
   page: Page | null; view: 'pages' | 'entities' | 'organization' | 'favourites' | 'recent' | 'trash' | 'inbox'; busy: boolean; loadingPageId: string | null; reviewing: boolean; error: string | null; saveStatus: SaveStatus;
 }
-type NavigationAddress = {view: WorkspaceState['view']; pageId: string | null; collection: string; folder: string};
+type NavigationAddress = {view: WorkspaceState['view']; pageId: string | null; entityId: string | null; collection: string; folder: string};
 export class Workspace {
-  private state: WorkspaceState = {canGoBack: false, canGoForward: false, vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
+  private state: WorkspaceState = {entityPanelId: null, canGoBack: false, canGoForward: false, vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
   private history: NavigationAddress[] = [];
   private historyIndex = -1;
   private historyVault: string | null = null;
@@ -72,7 +73,14 @@ export class Workspace {
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   snapshot = () => this.state;
   private patch(patch: Partial<WorkspaceState>) {
+    const previous = this.state;
     this.state = {...this.state, ...patch};
+    if (!this.state.vault || this.state.vault.locked || this.state.vault.id !== previous.vault?.id ||
+      this.state.view !== previous.view || this.state.view === 'pages' && this.state.page?.id !== previous.page?.id ||
+      this.state.view === 'organization' && (this.state.organizationContext.collection !== previous.organizationContext.collection || this.state.organizationContext.folder !== previous.organizationContext.folder) ||
+      this.state.entityPanelId && !this.state.entities.some(entity => entity.id === this.state.entityPanelId)) {
+      this.state = {...this.state, entityPanelId: null};
+    }
     this.updateHistory();
     // Do not replace the saved address with intermediate loading/locked state.
     if (!this.state.busy && this.state.loadingPageId === null && this.state.vault && !this.state.vault.locked &&
@@ -87,6 +95,7 @@ export class Workspace {
     this.listeners.forEach(fn => fn());
   }
   private validAddress(address: NavigationAddress) {
+    if (address.entityId && !this.state.entities.some(entity => entity.id === address.entityId)) return false;
     if (address.view === 'pages') return this.state.pages.some(page => page.id === address.pageId);
     if (address.view !== 'organization') return true;
     return (!address.collection || this.state.organization.collections.some(item => item.id === address.collection)) &&
@@ -101,7 +110,7 @@ export class Workspace {
       const currentIndex = this.historyIndex;
       this.historyIndex = this.history.filter((address, index) => index <= currentIndex && this.validAddress(address)).length - 1;
       this.history = this.history.filter(address => this.validAddress(address));
-      const address: NavigationAddress = {view: this.state.view, pageId: this.state.view === 'pages' ? this.state.page?.id ?? null : null,
+      const address: NavigationAddress = {view: this.state.view, pageId: this.state.view === 'pages' ? this.state.page?.id ?? null : null, entityId: this.state.entityPanelId,
         collection: this.state.view === 'organization' ? this.state.organizationContext.collection : '',
         folder: this.state.view === 'organization' ? this.state.organizationContext.folder : ''};
       if (this.validAddress(address) && JSON.stringify(address) !== JSON.stringify(this.history[this.historyIndex])) {
@@ -122,16 +131,28 @@ export class Workspace {
     this.traversingHistory = true;
     this.patch({});
     try {
-      if (address.view === 'pages') await this.openPage(address.pageId!);
-      else await this.navigate(async () => {
+      const sameView = this.state.view === address.view && (address.view === 'pages' ? this.state.page?.id === address.pageId :
+        address.view !== 'organization' || this.state.organizationContext.collection === address.collection && this.state.organizationContext.folder === address.folder);
+      if (!sameView && address.view === 'pages') await this.openPage(address.pageId!);
+      else if (!sameView) await this.navigate(async () => {
         if (address.view === 'trash') this.patch({trash: await api.trash(this.state.vault!.id)});
         this.patch({view: address.view, organizationContext: {collection: address.collection, folder: address.folder}});
       });
+      this.patch({entityPanelId: address.entityId});
+      if (address.entityId) this.recordRecent('entity', address.entityId);
       this.historyIndex = index;
     } finally {
       this.traversingHistory = false;
       this.patch({});
     }
+  }
+  openEntity(id: string) {
+    if (!this.state.vault || this.state.vault.locked || this.state.busy || this.state.reviewing || this.state.loadingPageId !== null || this.traversingHistory || !this.state.entities.some(entity => entity.id === id)) return;
+    this.patch({entityPanelId: id});
+    this.recordRecent('entity', id);
+  }
+  closeEntity() {
+    if (this.state.entityPanelId) this.patch({entityPanelId: null});
   }
   private async restoreAddress() {
     const {vault, organization, pages} = this.state;

@@ -1219,7 +1219,10 @@ dialog:has(.source-attachments) { max-height: calc(100dvh - 40px); overflow-y: a
 #blocks[data-block-dragging] { cursor: grabbing; user-select: none; -webkit-user-select: none; }
 #blocks[data-block-dragging] * { cursor: grabbing; }
 #blocks .block.is-block-dragging { opacity: .4; }
-#blocks[data-block-dragging] .block-controls { opacity: 1; }
+#blocks[data-block-dragging] .block-controls,
+#blocks[data-block-dragging] .semantic-parent-controls { opacity:0; pointer-events:none; }
+#blocks[data-block-dragging] .is-block-dragging > .block-controls,
+#blocks[data-block-dragging] .is-block-dragging > .semantic-parent-controls { opacity:1; pointer-events:auto; }
 #blocks .block[data-drop-before]::before, #blocks .block[data-drop-after]::after { content: ''; position: absolute; left: 0; right: 0; height: 3px; border-radius: 3px; background: var(--accent, #555); pointer-events: none; z-index: 2; box-shadow: 0 0 0 2px var(--surface, #fff); }
 #blocks .block[data-drop-before]::before { top: -5px; }
 #blocks .block[data-drop-after]::after { bottom: -5px; }
@@ -1870,3 +1873,31 @@ main {position:relative;}
 .editor-entity-counts { display:inline-flex; align-items:center; flex-wrap:wrap; gap:10px; margin-left:8px; }
 .editor-entity-count { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; font-variant-numeric:tabular-nums; }
 .editor-entity-count .icon { width:13px; height:13px; }
+
+.block-drag-preview { position:fixed; top:0; left:0; z-index:1000; width:min(240px,calc(100vw - 16px)); padding:10px 12px; border:1px solid var(--control-border); border-radius:8px; background:var(--surface-raised); color:var(--text); box-shadow:0 8px 28px #0002; pointer-events:none; user-select:none; -webkit-user-select:none; will-change:transform; }
+.block-drag-preview strong { display:block; font-size:11px; font-weight:600; line-height:1.5; }
+.block-drag-preview span { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; margin-top:3px; font-size:12px; line-height:1.5; overflow-wrap:anywhere; color:var(--text-muted); }
+.block-drag-preview[data-valid=false] { opacity:.6; border-style:dashed; }
+#blocks[data-block-dragging] .block-handle[aria-pressed=true] { background:var(--surface-hover); color:var(--text); }
+#blocks :is(.block,.semantic-group)[data-drop-before]::before,
+#blocks :is(.block,.semantic-group)[data-drop-after]::after { height:3px; box-shadow:0 0 0 2px var(--surface); }
+
+/* Reveal only the active row's controls; dragging never opens the whole gutter. */
+.block-controls,.semantic-parent-controls { transition:opacity 140ms ease; }
+@media(hover:hover) {
+  .block.semantic-block > .block-controls,.semantic-parent-controls { opacity:0; }
+  .block.semantic-block:hover > .block-controls,.block.semantic-block:focus-within > .block-controls,
+  .semantic-group:hover > .semantic-parent-controls,.semantic-group:focus-within > .semantic-parent-controls { opacity:1; }
+}
+#blocks[data-block-dragging] .block-add { visibility:hidden; }
+#blocks :is(.block,.semantic-group) { transition:opacity 160ms ease; }
+#blocks :is(.block,.semantic-group)[data-drop-before]::before,
+#blocks :is(.block,.semantic-group)[data-drop-after]::after { transform-origin:left center; animation:block-drop-line-in 140ms ease-out both; }
+.block-drag-preview { animation:block-preview-in 160ms cubic-bezier(.2,.8,.2,1) backwards; transition:opacity 140ms ease; }
+@keyframes block-drop-line-in { from { opacity:0; scale:.96 1; } to { opacity:1; scale:1; } }
+@keyframes block-preview-in { from { opacity:0; scale:.97; } to { opacity:1; scale:1; } }
+@media(prefers-reduced-motion:reduce) {
+  .block-controls,.semantic-parent-controls,#blocks :is(.block,.semantic-group),.block-drag-preview { transition:none; }
+  .block-drag-preview,#blocks :is(.block,.semantic-group)[data-drop-before]::before,
+  #blocks :is(.block,.semantic-group)[data-drop-after]::after { animation:none; }
+}

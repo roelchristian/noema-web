@@ -5,7 +5,7 @@ import {pageTitleKey} from '../../shared/page-links';
 import { completePageLink } from './page-links';
 import { ReadOnlyExplanationBlock } from './ReadOnlyExplanationBlock';
 import { selectedEditorBlocks } from './block-selection';
-import { installBlockDrag, reorderBlock, type BlockDropPreview } from './block-drag';
+import { installBlockDrag, reorderBlock } from './block-drag';
 import { installBlockSelection, setEditorCaret } from './block-selection';
 import { displayMathSource } from './math-delimiters';
 import { applySmartQuotes } from './smart-quotes';
@@ -89,8 +89,8 @@ export function BlockEditor(props: Props) {
   const [explanationAnchor,setExplanationAnchor]=useState<{ids:string[];index:number}|null>(null);
   const explanationPending=useRef(false), retryExplanation=useRef<string[]>([]);
   const reviewMatches = props.reviewMatches ?? [];
-  const [blockDrag, setBlockDrag] = useState<BlockDropPreview | null>(null), [dragStatus, setDragStatus] = useState('');
-  const dropEndId = blockDrag ? semanticDragItems(blocks,blockDrag.id).filter(block => block.id !== blockDrag.id).at(-1)?.id : undefined;
+  const dragStatus = useRef<HTMLDivElement>(null);
+  function announceDrag(message: string) {if (dragStatus.current) dragStatus.current.textContent = message;}
   const [mathTarget, setMathTarget] = useState<{range: Range; initial: string; node?: HTMLElement} | null>(null);
   const [uploads, setUploads] = useState<ImageUpload[]>([]), [imageError, setImageError] = useState('');
   const uploadQueue = useRef(Promise.resolve());
@@ -155,8 +155,8 @@ export function BlockEditor(props: Props) {
     return installBlockDrag(root.current, {
       blocks: () => latest.current.blocks,
       commit: blocks => latest.current.onChange(blocks),
-      preview: drop => {setBlockDrag(drop); if (drop) setMenu(null);},
-      announce: setDragStatus,
+      preview: drop => {if (drop) setMenu(null);},
+      announce: announceDrag,
     });
   }, []);
   function commitSelection() {
@@ -285,7 +285,7 @@ export function BlockEditor(props: Props) {
         if (index < 0 || index + direction < 0 || index + direction >= items.length) return;
         const before = direction === -1 ? items[index - 1]!.id : items[index + 2]?.id ?? null;
         setMenu(null); onChange(reorderBlock(latest.current.blocks, id, before));
-        setDragStatus(`Block moved ${direction === -1 ? 'up' : 'down'}.`);
+        announceDrag(`Block moved ${direction === -1 ? 'up' : 'down'}.`);
       },
     }));
   }
@@ -461,11 +461,11 @@ export function BlockEditor(props: Props) {
     <div className="ai-explanation-label">AI Explanation</div>
     {explaining?<div className="ai-explanation-status" role="status"><span className="scan-spinner" aria-hidden="true"/>Explaining selected blocks…</div>:<div className="ai-explanation-status is-error" role="alert"><span>{explanationError}</span><button type="button" onClick={()=>void explain(retryExplanation.current)}>Retry</button><button type="button" onClick={()=>{setExplanationError('');setExplanationAnchor(null);}}>Dismiss</button></div>}
   </div>:null;
-  const renderBlock = (block: Block) => isAIExplanation(block) ? <ReadOnlyExplanationBlock key={block.id} block={block} blocks={blocks} entities={entities} onOpen={onOpenEntity} vaultId={props.vaultId}/> : <Fragment key={block.id}><div data-block-id={block.id} data-semantic-kind={block.semantic} style={semanticStyle(block.semantic)} className={'block ' + block.type + (block.semantic ? ' semantic-block' : '') + (blockDrag?.id === block.id ? ' is-block-dragging' : '')} data-drop-before={blockDrag?.valid && blockDrag.beforeId === block.id ? true : undefined} data-drop-after={blockDrag?.valid && blockDrag.beforeId === null && block.id === dropEndId ? true : undefined}>
+  const renderBlock = (block: Block) => isAIExplanation(block) ? <ReadOnlyExplanationBlock key={block.id} block={block} blocks={blocks} entities={entities} onOpen={onOpenEntity} vaultId={props.vaultId}/> : <Fragment key={block.id}><div data-block-id={block.id} data-semantic-kind={block.semantic} style={semanticStyle(block.semantic)} className={'block ' + block.type + (block.semantic ? ' semantic-block' : '')}>
     {block.semantic && <span className="semantic-accent" aria-hidden="true"/>}
     <div className="block-controls" role="group" aria-label="Block controls">
       <button className="block-add" title="Add block below" aria-label="Add block below" onClick={e => addBelow(e.currentTarget, block.id)}><Icon name="plus"/></button>
-      <button className={'block-handle' + (block.semantic ? ' semantic-handle' : '')} draggable={false} title={(block.semantic ? semanticFunctions[block.semantic].label+' · ' : '')+'Drag to move · Click for block options'} aria-label={block.semantic ? semanticFunctions[block.semantic].label+' block options' : 'Block options'} aria-describedby="block-drag-help" aria-pressed={blockDrag?.id === block.id} onClick={e => blockOptions(e.currentTarget,block)}>{semanticGlyph(block.semantic)}</button>
+      <button className={'block-handle' + (block.semantic ? ' semantic-handle' : '')} draggable={false} title={(block.semantic ? semanticFunctions[block.semantic].label+' · ' : '')+'Drag to move · Click for block options'} aria-label={block.semantic ? semanticFunctions[block.semantic].label+' block options' : 'Block options'} aria-describedby="block-drag-help" onClick={e => blockOptions(e.currentTarget,block)}>{semanticGlyph(block.semantic)}</button>
     </div>
     {block.type === 'todo' ? <input type="checkbox" aria-label="Complete task" checked={block.checked} onChange={e => update(block.id, {checked: e.target.checked})}/> : block.type === 'bullet' ? <span className="bullet-marker">•</span> : block.type === 'numbered' ? <span className="bullet-marker numbered-marker">{blockListNumber(blocks, block.id)}.</span> : null}
     {block.type === 'divider' ? <div className="divider-block" ref={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}} tabIndex={0} role="separator" aria-label="Divider" onKeyDown={event => {
@@ -493,7 +493,7 @@ export function BlockEditor(props: Props) {
       if((event.nativeEvent as InputEvent).isComposing)return;
       const surface=(event.target as Element).closest<HTMLElement>('.block-content[contenteditable="true"]');
       if(surface)completePageLink(surface);
-    }} data-block-dragging={blockDrag ? true : undefined} onClickCapture={e => {
+    }} onClickCapture={e => {
       // A tap ending a native selection gesture must not open an inline item.
       const selection = getSelection();
       if (mobile && selection && !selection.isCollapsed && root.current?.contains(selection.anchorNode) && (e.target as Element).closest('[data-page-title], [data-entity], [data-entity-review], [data-math]')) { e.stopPropagation(); return; }
@@ -519,8 +519,8 @@ export function BlockEditor(props: Props) {
       e.preventDefault(); e.stopPropagation(); setMenu(null);
       const blockElement=(e.target as Element).closest<HTMLElement>('[data-block-id]');
       void addImages(files,{after:blockElement?.dataset.blockId});
-    }}>{!explanationAnchorId&&explanationStatus}{semanticRuns(blocks).map(run => run.type==='block' && isAIExplanation(run.block) ? {type:'group' as const,id:run.id,kind:'ai-explanation' as const,blocks:[run.block]} : run).map(run => <Fragment key={run.id}>{run.type === 'block' ? renderBlock(run.block) : <section key={run.id} data-block-group-id={run.id} className={'semantic-group'+(blockDrag?.id===run.id?' is-block-dragging':'')} data-semantic-kind={run.kind} style={semanticStyle(run.kind)} aria-label={semanticFunctions[run.kind].label+' semantic group'} data-drop-before={blockDrag?.valid&&blockDrag.beforeId===run.id?true:undefined} data-drop-after={blockDrag?.valid&&blockDrag.beforeId===null&&dropEndId===run.id?true:undefined}>
-      <span className="semantic-accent" aria-hidden="true"/><div className="semantic-parent-controls"><button type="button" className="block-handle semantic-handle" data-semantic-parent-handle draggable={false} aria-describedby="block-drag-help" aria-label={semanticFunctions[run.kind].label+' group options'} aria-pressed={blockDrag?.id===run.id} title={semanticFunctions[run.kind].label+' · Drag group or click for options'} onClick={event=>groupOptions(event.currentTarget,run.id)}>{semanticGlyph(run.kind)}</button></div>
+    }}>{!explanationAnchorId&&explanationStatus}{semanticRuns(blocks).map(run => run.type==='block' && isAIExplanation(run.block) ? {type:'group' as const,id:run.id,kind:'ai-explanation' as const,blocks:[run.block]} : run).map(run => <Fragment key={run.id}>{run.type === 'block' ? renderBlock(run.block) : <section key={run.id} data-block-group-id={run.id} className="semantic-group" data-semantic-kind={run.kind} style={semanticStyle(run.kind)} aria-label={semanticFunctions[run.kind].label+' semantic group'}>
+      <span className="semantic-accent" aria-hidden="true"/><div className="semantic-parent-controls"><button type="button" className="block-handle semantic-handle" data-semantic-parent-handle draggable={false} aria-describedby="block-drag-help" aria-label={semanticFunctions[run.kind].label+' group options'} title={semanticFunctions[run.kind].label+' · Drag group or click for options'} onClick={event=>groupOptions(event.currentTarget,run.id)}>{semanticGlyph(run.kind)}</button></div>
       {run.kind==='ai-explanation' ? <details className="ai-explanation" open>
         <summary className="ai-explanation-label"><Icon name="chevron"/><span>AI explanation</span></summary>
         {run.blocks[0]?.semanticGroup?.source && <div className="ai-explanation-source"><span>Passage explained</span><blockquote>{passagePreview(run.blocks[0].semanticGroup.source.excerpt)}</blockquote></div>}
@@ -528,7 +528,7 @@ export function BlockEditor(props: Props) {
       </details> : <div className="semantic-children">{run.blocks.map(renderBlock)}</div>}
     </section>}{(run.type==='block'?run.block.id===explanationAnchorId:run.blocks.some(block=>block.id===explanationAnchorId))&&explanationStatus}</Fragment>)}{uploadCards()}</div>
     <span id="block-drag-help" className="block-drag-sr">Drag to reorder. Click for options. With the handle focused, press Space to pick up, Up or Down to move, Space or Enter to drop, Escape to cancel.</span>
-    <div className="block-drag-sr" role="status" aria-live="polite" aria-atomic="true">{dragStatus}</div>
+    <div ref={dragStatus} className="block-drag-sr" role="status" aria-live="polite" aria-atomic="true"/>
     <SelectionToolbar mobile={mobile} keyboardInset={keyboardInset} viewportHeight={viewportHeight} onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
     {mathTarget && <MathDialog initial={mathTarget.initial} onSave={saveInlineMath} onClose={() => setMathTarget(null)}/>}
     {pageLinkStatus && <div className="note-link-status" role="status">{pageLinkStatus}</div>}

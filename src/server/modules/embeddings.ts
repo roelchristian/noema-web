@@ -121,7 +121,7 @@ export class Embeddings {
     const page=this.pages.get(job.vault_id,job.page_id),snapshot=this.snapshot(job.vault_id,page);
     if(!snapshot.eligible||snapshot.hash!==job.content_hash||this.fresh(this.vector(page.id),snapshot.hash)){this.finish(job.id,'skipped','Note changed, is ineligible, or already indexed.');return;}
     activityId=this.startActivity('note_embedding',job.vault_id,page);
-    const result=await this.intelligence.embed(snapshot.input,bytes=>activityId?this.activity?.request(activityId,bytes,page.revision):undefined);
+    const result=await this.intelligence.embed(snapshot.input,bytes=>activityId?this.activity?.request(activityId,bytes,page.revision):undefined,true);
     if(this.closed)return;
     const persisted=this.store.transaction(()=>{
      this.vaults.requireOpen(job.vault_id);
@@ -156,7 +156,7 @@ export class Embeddings {
   if(!searchable)return {results:[],model:embeddingModel};
   const activityId=this.startActivity('search_embedding',vault);
   try {
-   const result=await this.intelligence.embed(body.query.trim(),bytes=>activityId?this.activity?.request(activityId,bytes,null):undefined);
+   const result=await this.intelligence.embed(body.query.trim(),bytes=>activityId?this.activity?.request(activityId,bytes,null):undefined,false);
    if(this.closed)throw new HttpError(503,'Search stopped.');
    this.vaults.requireOpen(vault);
    const magnitude=(v: number[])=>Math.sqrt(v.reduce((sum,n)=>sum+n*n,0));

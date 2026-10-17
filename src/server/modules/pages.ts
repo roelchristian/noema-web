@@ -1,3 +1,4 @@
+import {allowedInColumn} from '../../shared/column-blocks.js';
 import { entityMentionName } from '../../shared/domain.js';
 import {blockPageLinks,pageTitleKey} from '../../shared/page-links.js';
 import { isAIExplanation, isSemanticKind } from '../../shared/semantic-blocks.js';
@@ -74,6 +75,12 @@ export class Pages {
         });
       };
       const block: Block = {id,type,checked:!!b.checked,content:segments(b.content)};
+      if (b.column !== undefined) {
+        if (!allowedInColumn(type)) throw new HttpError(400,'Columns cannot contain tables or nested columns');
+        const column=object(b.column);
+        if (column.index !== 0 && column.index !== 1) throw new HttpError(400,'Invalid column index');
+        block.column={id:required(column.id),index:column.index};
+      }
       if (b.semantic !== undefined) {if (!isSemanticKind(b.semantic)) throw new HttpError(400,'Invalid semantic function');block.semantic=b.semantic;}
       if (b.semanticGroup !== undefined) {
         const group=object(b.semanticGroup);

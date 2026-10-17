@@ -110,19 +110,21 @@ export function replaceEditorSelection(root: HTMLElement, options: Options, inco
   if (list.slice(start,end+1).some(isAIExplanation)) return true;
   const prefix = sliceBlock(list[start]!, firstEl, selected.range, 'before'), suffix = sliceBlock(list[end]!, lastEl, selected.range, 'after');
   const parent=list[start]!.semanticGroup, sameParent=parent && parent.id===list[end]!.semanticGroup?.id;
-  const replacement: Block[] = incoming.map(block => ({...block, ...(sameParent?{semanticGroup:parent}:{}), id: randomUUID()}));
+  const column = list[start]!.column;
+  const sameColumn = column && column.id === list[end]!.column?.id && column.index === list[end]!.column?.index;
+  const replacement: Block[] = incoming.map(block => ({...block,...(sameColumn?{column}:{}), ...(sameParent?{semanticGroup:parent}:{}), id: randomUUID()}));
   if (prefix) {
     if (replacement[0]?.type === 'paragraph' && prefix.type !== 'table' && prefix.type !== 'columns') replacement[0] = {...prefix, content: [...prefix.content, ...replacement[0].content]};
     else replacement.unshift(prefix);
   }
   let target = replacement.at(-1), offset = target ? textOf(target.content, options.entities()).length : 0;
   if (suffix) {
-    if (target && target.semanticGroup?.id === suffix.semanticGroup?.id && target.semantic === suffix.semantic && target.type !== 'table' && target.type !== 'columns' && target.type !== 'math' && target.type !== 'image' && suffix.type !== 'table' && suffix.type !== 'columns') target.content = [...target.content, ...suffix.content];
+    if (target && target.semanticGroup?.id === suffix.semanticGroup?.id && target.semantic === suffix.semantic && target.column?.id === suffix.column?.id && target.column?.index === suffix.column?.index && target.type !== 'table' && target.type !== 'columns' && target.type !== 'math' && target.type !== 'image' && suffix.type !== 'table' && suffix.type !== 'columns') target.content = [...target.content, ...suffix.content];
     else {target = {...suffix, id: replacement.some(b => b.id === suffix.id) ? randomUUID() : suffix.id}; replacement.push(target); offset = 0;}
   }
-  if (!replacement.length) {target = makeBlock(); replacement.push(target); offset = 0;}
+  if (!replacement.length) {target = {...makeBlock(),...(sameColumn?{column}:{})}; replacement.push(target); offset = 0;}
   // A sliced table keeps all unselected cells; continue typing in a text block beside it.
-  if (target?.type === 'columns' || target?.type === 'divider' || target?.type === 'code' || target?.type === 'table' || target?.type === 'math' || target?.type === 'image') {const text = makeBlock(); replacement.push(text); target = text; offset = 0;}
+  if (target?.type === 'columns' || target?.type === 'divider' || target?.type === 'code' || target?.type === 'table' || target?.type === 'math' || target?.type === 'image') {const text = {...makeBlock(),column:target.column}; replacement.push(text); target = text; offset = 0;}
   const next = [...list]; next.splice(start, end - start + 1, ...replacement);
   clearEditorSelection(root);
   options.commit(next, {id: target!.id, offset}); return true;

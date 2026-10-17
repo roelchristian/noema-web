@@ -1,6 +1,6 @@
 import { blockListNumber, entityMentionName } from '../../shared/domain';
 import {randomUUID} from '../../shared/uuid';
-import { applySemantic, isAIExplanation, preserveAIExplanationTags, normalizeSemanticGroups, removeSemanticGroup, retagSemanticGroup, semanticDragItems, semanticFunctions, editableSemanticKinds, semanticRuns, type SemanticKind } from '../../shared/semantic-blocks';
+import { explanationsLinkedToDeletedBlocks, applySemantic, isAIExplanation, preserveAIExplanationTags, normalizeSemanticGroups, removeSemanticGroup, retagSemanticGroup, semanticDragItems, semanticFunctions, editableSemanticKinds, semanticRuns, type SemanticKind } from '../../shared/semantic-blocks';
 import {pageTitleKey} from '../../shared/page-links';
 import { completePageLink } from './page-links';
 import { ReadOnlyExplanationBlock } from './ReadOnlyExplanationBlock';
@@ -9,7 +9,7 @@ import { installBlockDrag, reorderBlock } from './block-drag';
 import { installBlockSelection, setEditorCaret } from './block-selection';
 import { displayMathSource } from './math-delimiters';
 import { applySmartQuotes } from './smart-quotes';
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type CSSProperties } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, useMemo, type ReactNode, type ClipboardEvent, type KeyboardEvent, type CSSProperties } from 'react';
 import type { EntityReviewItem } from '../../shared/entity-match-cache';
 import { entityLabels, type Block, type BlockType, type Entity, type PageSummary, type Segment } from '../../shared/domain';
 import { uploadImage } from '../api';
@@ -21,7 +21,7 @@ import { clipboardBlocks, markdownBlocks, makeBlock } from './paste';
 import { compressImage } from './compress-image';
 import { readImageCompression } from '../settings/image-settings';
 import { ImageBlock } from './ImageBlock';
-import { ColumnsBlock } from './ColumnsBlock';
+import {allowedInColumn, normalizeColumnBlocks} from '../../shared/column-blocks';
 import { TableBlock } from './TableBlock';
 import { SelectionToolbar } from './SelectionToolbar';
 import { MathBlock } from './MathBlock';
@@ -82,8 +82,18 @@ export function BlockEditor(props: Props) {
   const [keyboardInset, setKeyboardInset] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(() => window.visualViewport?.height ?? window.innerHeight);
   const mobileToolbar = useRef<HTMLDivElement>(null);
-  const {blocks, entities, onOpenEntity, onCreateEntity, onSave} = props;
-  const onChange = (next: Block[], featuredImageId?: string | null) => props.onChange(normalizeSemanticGroups(preserveAIExplanationTags(props.blocks,next)), featuredImageId);
+  const {entities, onOpenEntity, onCreateEntity, onSave} = props;
+  const blocks = useMemo(() => normalizeSemanticGroups(normalizeColumnBlocks(props.blocks)), [props.blocks]);
+  const [linkedDeletion, setLinkedDeletion] = useState<string[]>([]);
+  const onChange = (next: Block[], featuredImageId?: string | null) => {
+    const normalized = normalizeSemanticGroups(normalizeColumnBlocks(preserveAIExplanationTags(blocks,next)));
+    const linked = explanationsLinkedToDeletedBlocks(blocks, normalized);
+    if (linked.length) {
+      setMenu(null);
+      setLinkedDeletion(current => [...new Set([...current,...linked])]);
+    }
+    props.onChange(normalized, featuredImageId);
+  };
   const [pageLinkStatus,setPageLinkStatus]=useState('');
   const [explaining,setExplaining]=useState(false), [explanationError,setExplanationError]=useState('');
   const [explanationAnchor,setExplanationAnchor]=useState<{ids:string[];index:number}|null>(null);
@@ -98,7 +108,7 @@ export function BlockEditor(props: Props) {
   useEffect(() => {mounted.current=true; return () => {mounted.current=false;};}, []);
   const fileInput = useRef<HTMLInputElement>(null), imageTarget = useRef<{after?: string; replace?: Block}>({});
   const [menu, setMenu] = useState<Menu | null>(null), elements = useRef(new Map<string, HTMLElement>());
-  const root = useRef<HTMLDivElement>(null), menuRef = useRef<HTMLDivElement>(null), latest = useRef(props); latest.current = {...props,onChange};
+  const root = useRef<HTMLDivElement>(null), menuRef = useRef<HTMLDivElement>(null), latest = useRef(props); latest.current = {...props,blocks,onChange};
   useEffect(() => {
     if (!mobile) { setActiveBlock(null); return; }
     const viewport = window.visualViewport;
@@ -191,7 +201,8 @@ export function BlockEditor(props: Props) {
       if(JSON.stringify(sources)!==snapshot) throw new Error('The selected blocks changed. Select them again to generate a fresh explanation.');
       const excerpt=selected.map(block=>block.type==='image'?block.alt||'Image':((block.type==='table'||block.type==='columns')?(block.rows??[]).flat(2):block.content).map(segment=>segment.entityId?segment.mentionText??entityMentionName(latest.current.entities.find(entity=>entity.id===segment.entityId))??'':segment.text??'').join('')).join('\n\n').slice(0,2000);
       const group={id:randomUUID(),kind:'ai-explanation' as const,source:{blockIds:selected.map(block=>block.id),excerpt}};
-      const generated=markdownBlocks(markdown).map(block=>({...block,semantic:'ai-explanation' as const,semanticGroup:group}));
+      const column=sources.at(-1)?.column;
+      const generated=markdownBlocks(markdown).map(block=>({...block,column,semantic:'ai-explanation' as const,semanticGroup:group}));
       if(!markdown.trim() || !generated.length) throw new Error('AI returned an empty explanation. Please try again.');
       if(generated.length>128 || current.length+generated.length>2000) throw new Error('The explanation is too large for this page. Select fewer blocks.');
       // Insert after the last selected parent, so an existing group is never fragmented.
@@ -239,12 +250,13 @@ export function BlockEditor(props: Props) {
           progress({message:'Saving to your vault…'});
           const image = await uploadImage(props.vaultId,prepared);
           if(!mounted.current) return;
-          const parent=latest.current.blocks.find(block=>block.id===after)?.semanticGroup;
-          const block: Block = {...makeBlock('image'),...(parent?{semanticGroup:parent}:{}), imageId:image.id, alt:''};
+          const source=latest.current.blocks.find(block=>block.id===after);
+          const parent=source?.semanticGroup;
+          const block: Block = {...makeBlock('image'),column:source?.column,...(parent?{semanticGroup:parent}:{}), imageId:image.id, alt:''};
           const list = [...latest.current.blocks];
           const position = after ? list.findIndex(b => b.id === after) : list.length - 1;
           const replace = target.replace && list[position] && JSON.stringify(list[position]) === JSON.stringify(target.replace);
-          const trailing = {...makeBlock(),...(parent?{semanticGroup:parent}:{})};
+          const trailing = {...makeBlock(),column:source?.column,...(parent?{semanticGroup:parent}:{})};
           list.splice(Math.max(0,position + (replace ? 0 : 1)),replace ? 1 : 0,block,trailing);
           focusTarget.current = {id:trailing.id,start:true};
           latest.current.onChange(list, featurePastedImage && index===0 ? image.id : undefined);
@@ -290,6 +302,7 @@ export function BlockEditor(props: Props) {
       },
     }));
   }
+  function blockOptionsFor(block?: Block) {return options.filter(option => !block?.column || allowedInColumn(option.type));}
   function blockOptions(anchor: HTMLElement, block: Block) {
     const selection=root.current ? selectedEditorBlocks(root.current)?.elements.map(el=>el.dataset.blockId!) : undefined;
     const ids=selection?.includes(block.id)?selection:[block.id];
@@ -298,7 +311,7 @@ export function BlockEditor(props: Props) {
       ...(!isAIExplanation(block) ? [{submenu:true, title:'Semantic function…', detail:block.semantic ? semanticFunctions[block.semantic].label : 'Question, Definition, Example…', icon:'semantic', entity:true,
         pick:()=>show(anchor,[...semanticChoices(kind=>update(block.id,{semantic:kind})),...(block.semantic?[{title:'Remove semantic function',icon:'close',entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:undefined});}}]:[])],'SEMANTIC FUNCTION', true)}] : []),
       ...(mobile && block.semanticGroup ? [{submenu:true, title:'Group actions…', icon:'semantic', entity:true, pick:()=>{setActiveBlock({id:block.semanticGroup!.id,group:true});groupOptions(anchor,block.semanticGroup!.id);}}] : []),
-      ...(mobile ? movementChoices(block.id) : options.map(option=>({...option,pick:()=>convert(block,option.type)}))),
+      ...(mobile ? movementChoices(block.id) : [...blockOptionsFor(block).map(option=>({...option,pick:()=>convert(block,option.type)})),imageChoice(block.id,block)]),
       {title:'Delete block',icon:'trash',entity:true,pick:()=>removeBlock(block.id)},
     ], 'BLOCK OPTIONS', true);
   }
@@ -313,18 +326,21 @@ export function BlockEditor(props: Props) {
     if(index < 0) return;
     if(list.length === 1) {
       focusTarget.current={id,start:true};
-      onChange([{...makeBlock(),id}]);
+      onChange([{...makeBlock(),id,column:list[index]!.column}]);
     } else {
       focusTarget.current={id:list[index > 0 ? index-1 : index+1]!.id,start:false};
       onChange(list.filter(block => block.id !== id));
     }
   }
   function insert(after: string | undefined, type: BlockType = 'paragraph', content: Segment[] = [], outsideGroup = false) {
-    const parent=outsideGroup ? undefined : latest.current.blocks.find(block=>block.id===after)?.semanticGroup;
-    const next = {...makeBlock(type, content),...(parent?{semanticGroup:parent}:{})}, list = [...latest.current.blocks];
+    const source=latest.current.blocks.find(block=>block.id===after);
+    if (source?.column && !allowedInColumn(type)) return;
+    const parent=outsideGroup ? undefined : source?.semanticGroup;
+    const next = {...makeBlock(type, content),column:source?.column,...(parent?{semanticGroup:parent}:{})}, list = [...latest.current.blocks];
     list.splice(after ? list.findIndex(b => b.id === after) + 1 : list.length, 0, next); focusTarget.current = {id: next.id, start: true}; onChange(list);
   }
   function convert(block: Block, type: BlockType, clear = false) {
+    if (block.column && !allowedInColumn(type)) {setMenu(null); return;}
     if (block.type === type && !clear) {setMenu(null); return;}
     if (type === 'code') {
       const content = clear ? [] : [{text: ((block.type === 'table' || block.type === 'columns') ? (block.rows ?? []).map(row => row.map(cell => cell.map(segment => segment.entityId ? entityMentionName(entities.find(entity => entity.id === segment.entityId)) ?? '' : segment.text ?? '').join('')).join('\t')).join('\n') : block.content.map(segment => segment.entityId ? segment.mentionText ?? entityMentionName(entities.find(entity => entity.id === segment.entityId)) ?? '' : segment.text ?? '').join(''))}];
@@ -344,12 +360,23 @@ export function BlockEditor(props: Props) {
     setMenu({items, index: 0, left: Math.max(8, Math.min(box.left, innerWidth - 330)), top: Math.max(8, Math.min(box.bottom + 5, innerHeight - 370)), label, sheet});
   }
   function addBelow(anchor: HTMLElement, after: string) {
-    show(anchor, [...options.map(option => ({...option, pick: () => { setMenu(null); insert(after, option.type); }})), imageChoice(after)], 'ADD BLOCK BELOW', true);
+    show(anchor, [...blockOptionsFor(latest.current.blocks.find(block => block.id === after)).map(option => ({...option, pick: () => { setMenu(null); insert(after, option.type); }})), imageChoice(after)], 'ADD BLOCK BELOW', true);
   }
   const active = activeBlock && (activeBlock.group
     ? blocks.some(block => block.semanticGroup?.id === activeBlock.id || block.id === activeBlock.id)
     : blocks.some(block => block.id === activeBlock.id)) ? activeBlock : null;
   const currentBlock = active && !active.group ? blocks.find(block => block.id === active.id) : undefined;
+  const linkedExplanations = linkedDeletion.filter(id => blocks.some(block => isAIExplanation(block) && block.semanticGroup?.id === id));
+  function deleteLinkedExplanations() {
+    const ids = new Set(linkedExplanations), current = latest.current.blocks;
+    const rest = current.filter(block => !isAIExplanation(block) || !block.semanticGroup || !ids.has(block.semanticGroup.id));
+    const next = rest.length ? rest : [makeBlock()];
+    setLinkedDeletion([]);
+    const firstDeleted = current.findIndex(block => block.semanticGroup && ids.has(block.semanticGroup.id));
+    const target = next[Math.max(0, Math.min(firstDeleted - 1, next.length - 1))]!;
+    focusTarget.current = {id:target.id,start:false};
+    latest.current.onChange(next);
+  }
   const activeLabel = currentBlock ? options.find(option => option.type === currentBlock.type)?.title ?? 'Image' : 'Group';
   function menuChoices(sheet = false) {
     return menu?.items.map((item, index) => <button key={index} type="button" role={sheet ? undefined : 'menuitem'} disabled={item.disabled} className={index === menu.index && !sheet ? 'highlight' : ''} onClick={event => {
@@ -387,7 +414,7 @@ export function BlockEditor(props: Props) {
     const selection = getSelection(); if (!selection?.rangeCount) { setMenu(null); return; }
     const range = selection.getRangeAt(0); if (!el.contains(range.startContainer)) { setMenu(null); return; }
     if (/^\/[^\n]*$/.test(el.textContent || '')) {
-      const query = el.textContent!.slice(1).toLowerCase(); show(el, [...options.filter(o => o.title.toLowerCase().includes(query)).map(o => ({...o, pick: () => convert(block, o.type, true)})), ...editableSemanticKinds.filter(kind=>kind.includes(query)).map(kind=>({title:semanticFunctions[kind].label,detail:'Semantic function',icon:semanticFunctions[kind].icon,color:semanticFunctions[kind].color,entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:kind,content:[]});}})), ...('image'.includes(query) ? [imageChoice(block.id, block)] : [])], 'TURN INTO'); return;
+      const query = el.textContent!.slice(1).toLowerCase(); show(el, [...blockOptionsFor(block).filter(o => o.title.toLowerCase().includes(query)).map(o => ({...o, pick: () => convert(block, o.type, true)})), ...editableSemanticKinds.filter(kind=>kind.includes(query)).map(kind=>({title:semanticFunctions[kind].label,detail:'Semantic function',icon:semanticFunctions[kind].icon,color:semanticFunctions[kind].color,entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:kind,content:[]});}})), ...('image'.includes(query) ? [imageChoice(block.id, block)] : [])], 'TURN INTO'); return;
     }
     const before = range.cloneRange(); before.selectNodeContents(el); before.setEnd(range.startContainer, range.startOffset);
     const wiki=before.toString().match(/\[\[([^\[\]\n]*)$/);
@@ -414,7 +441,7 @@ export function BlockEditor(props: Props) {
     if (!selection?.rangeCount) return;
     const range = selection.getRangeAt(0);
     if (!el.contains(range.startContainer) || !el.contains(range.endContainer)) return;
-    const incoming = clipboardBlocks(e.clipboardData.getData('text/plain'), e.clipboardData.getData('text/html')).map(incoming=>({...incoming,...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{}),...(isAIExplanation(block)?{semantic:'ai-explanation' as const}:{})}));
+    const incoming = clipboardBlocks(e.clipboardData.getData('text/plain'), e.clipboardData.getData('text/html')).map(incoming=>({...incoming,column:block.column,...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{}),...(isAIExplanation(block)?{semantic:'ai-explanation' as const}:{})}));
     const wasEmpty=!el.textContent?.trim();
     range.deleteContents();
     if (incoming.length === 1 && incoming[0]!.type === 'paragraph') {
@@ -431,7 +458,7 @@ export function BlockEditor(props: Props) {
     if (incoming[0]!.type === 'paragraph') incoming[0]!.content.unshift(...prefix);
     else if (prefix.length) replacement.push({...block, content: prefix});
     replacement.push(...incoming);
-    if (suffix.length) replacement.push({...makeBlock(block.type, suffix),...(isAIExplanation(block)?{semantic:'ai-explanation' as const}:{}),...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{})});
+    if (suffix.length) replacement.push({...makeBlock(block.type, suffix),column:block.column,...(isAIExplanation(block)?{semantic:'ai-explanation' as const}:{}),...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{})});
     const list = [...latest.current.blocks], index = list.findIndex(b => b.id === block.id);
     list.splice(index, 1, ...replacement); focusTarget.current = {id: replacement.at(-1)!.id, start: !suffix.length ? false : true}; onChange(list);
   }
@@ -450,7 +477,7 @@ export function BlockEditor(props: Props) {
       if (!el.textContent && ['bullet', 'numbered', 'todo'].includes(block.type)) { convert(block, 'paragraph'); return; }
       const selection = getSelection(); if (!selection?.rangeCount) return;
       const range = selection.getRangeAt(0); range.deleteContents(); const tail = range.cloneRange(); tail.setEnd(el, el.childNodes.length); const temp = document.createElement('div'); temp.append(tail.extractContents());
-      const next: Block = {...(isAIExplanation(block)?{semantic:'ai-explanation' as const}:{}),...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{}),id: randomUUID(), type: ['bullet', 'numbered', 'todo'].includes(block.type) ? block.type : 'paragraph', checked: false, content: readSegments(temp)};
+      const next: Block = {column:block.column,...(isAIExplanation(block)?{semantic:'ai-explanation' as const}:{}),...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{}),id: randomUUID(), type: ['bullet', 'numbered', 'todo'].includes(block.type) ? block.type : 'paragraph', checked: false, content: readSegments(temp)};
       const list = latest.current.blocks.map(b => b.id === block.id ? {...b, content: readSegments(el)} : b); list.splice(list.findIndex(b => b.id === block.id) + 1, 0, next); focusTarget.current = {id: next.id, start: true}; onChange(list);
     }
     if (e.key === 'Backspace' && !el.textContent && blocks.length > 1) { e.preventDefault(); removeBlock(block.id); }
@@ -481,7 +508,7 @@ export function BlockEditor(props: Props) {
         if(event.key === 'Tab') {event.preventDefault(); const el=event.currentTarget, start=el.selectionStart; el.setRangeText('  ', start, el.selectionEnd, 'end'); update(block.id, {content: [{text: el.value}]});}
       }}/>
       <small>Code · Tab to indent · ⌘/Ctrl+Enter to continue below</small>
-    </div> : block.type === 'math' ? <MathBlock block={block} onDelete={() => removeBlock(block.id)} onChange={source => update(block.id, {content: [{text: source}]})} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'image' ? <ImageBlock block={block} featured={props.featuredImageId===block.imageId} onSetFeatured={() => onChange(latest.current.blocks,props.featuredImageId===block.imageId?null:block.imageId)} vaultId={props.vaultId} onChange={alt => update(block.id,{alt})} onDelete={() => removeBlock(block.id)} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'columns' ? <ColumnsBlock block={block} entities={entities} reviewMatches={reviewMatches} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'table' ? <TableBlock reviewMatches={reviewMatches} block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock reviewMatches={reviewMatches} block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={el => {
+    </div> : block.type === 'math' ? <MathBlock block={block} onDelete={() => removeBlock(block.id)} onChange={source => update(block.id, {content: [{text: source}]})} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'image' ? <ImageBlock block={block} featured={props.featuredImageId===block.imageId} onSetFeatured={() => onChange(latest.current.blocks,props.featuredImageId===block.imageId?null:block.imageId)} vaultId={props.vaultId} onChange={alt => update(block.id,{alt})} onDelete={() => removeBlock(block.id)} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'table' ? <TableBlock reviewMatches={reviewMatches} block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock reviewMatches={reviewMatches} block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={el => {
       const content = readSegments(el);
       const source = block.type === 'paragraph' && content.every(segment => !segment.entityId && !segment.math && !segment.code)
         ? displayMathSource(content.map(segment => segment.text ?? '').join('')) : undefined;
@@ -489,6 +516,37 @@ export function BlockEditor(props: Props) {
       completeInlineMath(el); update(block.id, {content: readSegments(el)}); detect(el, block);
     }} onKeyDown={e => keyDown(e, block)} onPaste={e => paste(e, block)}/>}
   </div>{uploadCards(block.id)}</Fragment>;
+  function renderRuns(list: Block[]) {
+    return semanticRuns(list).map(run => run.type==='block' && isAIExplanation(run.block) ? {type:'group' as const,id:run.id,kind:'ai-explanation' as const,blocks:[run.block]} : run).map(run => <Fragment key={run.id}>{run.type === 'block' ? renderBlock(run.block) : <section key={run.id} data-block-group-id={run.id} className="semantic-group" data-semantic-kind={run.kind} style={semanticStyle(run.kind)} aria-label={semanticFunctions[run.kind].label+' semantic group'}>
+      <span className="semantic-accent" aria-hidden="true"/><div className="semantic-parent-controls"><button type="button" className="block-handle semantic-handle" data-semantic-parent-handle draggable={false} aria-describedby="block-drag-help" aria-label={semanticFunctions[run.kind].label+' group options'} title={semanticFunctions[run.kind].label+' · Drag group or click for options'} onClick={event=>groupOptions(event.currentTarget,run.id)}>{semanticGlyph(run.kind)}</button></div>
+      {run.kind==='ai-explanation' ? <details className="ai-explanation" open>
+        <summary className="ai-explanation-label"><Icon name="chevron"/><span>AI explanation</span></summary>
+        {run.blocks[0]?.semanticGroup?.source && <div className="ai-explanation-source"><span>Passage explained</span><blockquote>{passagePreview(run.blocks[0].semanticGroup.source.excerpt)}</blockquote></div>}
+        <div className="semantic-children">{run.blocks.map(renderBlock)}</div>
+      </details> : <div className="semantic-children">{run.blocks.map(renderBlock)}</div>}
+    </section>}{(run.type==='block'?run.block.id===explanationAnchorId:run.blocks.some(block=>block.id===explanationAnchorId))&&explanationStatus}</Fragment>);
+  }
+  function renderColumnLayout(list: Block[]): ReactNode[] {
+    const runs: {id: string; column: boolean; blocks: Block[]}[] = [];
+    for (const block of list) {
+      const last = runs.at(-1), id = block.column?.id;
+      if (last && (id ? last.column && last.id === id : !last.column)) last.blocks.push(block);
+      else runs.push({id: id ?? block.id, column: !!id, blocks: [block]});
+    }
+    return runs.map((run, index) => run.column
+      ? <div className="columns-block" role="group" aria-label="Two columns" key={run.id + ':' + index}>
+          {([0, 1] as const).map(column => <div className="column-pane" data-column-id={run.id} data-column-index={column} key={column} role="group" aria-label={column === 0 ? 'Left column' : 'Right column'}>
+            {renderRuns(run.blocks.filter(block => block.column?.index === column))}
+            {!run.blocks.some(block => block.column?.index === column) && <button type="button" className="column-add" onClick={() => {
+              const next = {...makeBlock(),column:{id:run.id,index:column}};
+              const list = [...latest.current.blocks], last = run.blocks.at(-1)!;
+              list.splice(list.findIndex(block => block.id === last.id) + 1, 0, next);
+              focusTarget.current = {id:next.id,start:true}; onChange(list);
+            }}><Icon name="plus"/>Add block</button>}
+          </div>)}
+        </div>
+      : <Fragment key={run.id}>{renderRuns(run.blocks)}</Fragment>);
+  }
   return <><input ref={fileInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden aria-label="Choose images" onChange={e => {const files=Array.from(e.currentTarget.files ?? []); e.currentTarget.value=''; void addImages(files,imageTarget.current);}}/>
     <div id="blocks" ref={root} onFocusCapture={event => activateBlock(event.target)} onPointerDownCapture={event => activateBlock(event.target)} onInputCapture={event=>{
       if((event.nativeEvent as InputEvent).isComposing)return;
@@ -520,17 +578,31 @@ export function BlockEditor(props: Props) {
       e.preventDefault(); e.stopPropagation(); setMenu(null);
       const blockElement=(e.target as Element).closest<HTMLElement>('[data-block-id]');
       void addImages(files,{after:blockElement?.dataset.blockId,featured:true});
-    }}>{!explanationAnchorId&&explanationStatus}{semanticRuns(blocks).map(run => run.type==='block' && isAIExplanation(run.block) ? {type:'group' as const,id:run.id,kind:'ai-explanation' as const,blocks:[run.block]} : run).map(run => <Fragment key={run.id}>{run.type === 'block' ? renderBlock(run.block) : <section key={run.id} data-block-group-id={run.id} className="semantic-group" data-semantic-kind={run.kind} style={semanticStyle(run.kind)} aria-label={semanticFunctions[run.kind].label+' semantic group'}>
-      <span className="semantic-accent" aria-hidden="true"/><div className="semantic-parent-controls"><button type="button" className="block-handle semantic-handle" data-semantic-parent-handle draggable={false} aria-describedby="block-drag-help" aria-label={semanticFunctions[run.kind].label+' group options'} title={semanticFunctions[run.kind].label+' · Drag group or click for options'} onClick={event=>groupOptions(event.currentTarget,run.id)}>{semanticGlyph(run.kind)}</button></div>
-      {run.kind==='ai-explanation' ? <details className="ai-explanation" open>
-        <summary className="ai-explanation-label"><Icon name="chevron"/><span>AI explanation</span></summary>
-        {run.blocks[0]?.semanticGroup?.source && <div className="ai-explanation-source"><span>Passage explained</span><blockquote>{passagePreview(run.blocks[0].semanticGroup.source.excerpt)}</blockquote></div>}
-        <div className="semantic-children">{run.blocks.map(renderBlock)}</div>
-      </details> : <div className="semantic-children">{run.blocks.map(renderBlock)}</div>}
-    </section>}{(run.type==='block'?run.block.id===explanationAnchorId:run.blocks.some(block=>block.id===explanationAnchorId))&&explanationStatus}</Fragment>)}{uploadCards()}</div>
+    }}>{!explanationAnchorId&&explanationStatus}{renderColumnLayout(blocks)}{uploadCards()}</div>
     <span id="block-drag-help" className="block-drag-sr">Drag to reorder. Click for options. With the handle focused, press Space to pick up, Up or Down to move, Space or Enter to drop, Escape to cancel.</span>
     <div ref={dragStatus} className="block-drag-sr" role="status" aria-live="polite" aria-atomic="true"/>
     <SelectionToolbar mobile={mobile} keyboardInset={keyboardInset} viewportHeight={viewportHeight} onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
+    {linkedExplanations.length > 0 && <Modal className="confirmation-dialog linked-explanation-dialog" titleId="linked-explanation-delete-title" onClose={() => setLinkedDeletion([])}>
+      <header>
+        <span className="dialog-eyebrow"><Icon name="sparkles"/>AI EXPLANATION</span>
+        <button type="button" className="linked-explanation-close" aria-label="Close and keep explanations" onClick={() => setLinkedDeletion([])}><Icon name="close"/></button>
+      </header>
+      <h2 id="linked-explanation-delete-title">{linkedExplanations.length === 1 ? 'Keep the explanation?' : 'Keep the explanations?'}</h2>
+      <p>{linkedExplanations.length === 1
+        ? 'The source block has been deleted. Its AI explanation can stay in your note, or you can remove it too.'
+        : `The source content has been deleted. You can keep the ${linkedExplanations.length} linked AI explanations in your note, or remove them too.`}</p>
+      <div className="linked-explanation-passages" style={semanticStyle('ai-explanation')}>
+        <span className="linked-explanation-passage-label">{linkedExplanations.length === 1 ? 'Original passage' : 'Original passages'}</span>
+        {linkedExplanations.map(id => {
+          const source = blocks.find(block => block.semanticGroup?.id === id)?.semanticGroup?.source;
+          return source?.excerpt ? <blockquote key={id}>{passagePreview(source.excerpt)}</blockquote> : null;
+        })}
+      </div>
+      <div className="dialog-actions">
+        <button type="button" className="button confirmation-action linked-explanation-delete" onClick={deleteLinkedExplanations}><Icon name="trash"/>{linkedExplanations.length === 1 ? 'Delete explanation' : 'Delete explanations'}</button>
+        <button type="button" className="button primary" autoFocus onClick={() => setLinkedDeletion([])}>{linkedExplanations.length === 1 ? 'Keep explanation' : 'Keep explanations'}</button>
+      </div>
+    </Modal>}
     {mathTarget && <MathDialog initial={mathTarget.initial} onSave={saveInlineMath} onClose={() => setMathTarget(null)}/>}
     {pageLinkStatus && <div className="note-link-status" role="status">{pageLinkStatus}</div>}
     {imageError && <div className="image-upload-error" role="alert">{imageError}</div>}
@@ -544,7 +616,7 @@ export function BlockEditor(props: Props) {
           }
         }}><Icon name="plus"/></button>
         <button type="button" className="mobile-block-type" aria-label={currentBlock ? `Change block type: ${activeLabel}` : 'Group options'} onClick={event => currentBlock
-          ? show(event.currentTarget, options.map(option => ({...option, pick: () => convert(currentBlock, option.type)})), 'TURN INTO', true)
+          ? show(event.currentTarget, [...blockOptionsFor(currentBlock).map(option => ({...option, pick: () => convert(currentBlock, option.type)})),imageChoice(currentBlock.id,currentBlock)], 'TURN INTO', true)
           : groupOptions(event.currentTarget, active.id)}>{activeLabel}<Icon name="chevron"/></button>
         <button type="button" aria-label="More block actions" title="More block actions" onClick={event => currentBlock ? blockOptions(event.currentTarget, currentBlock) : groupOptions(event.currentTarget, active.id)}><Icon name="more"/></button>
       </div>

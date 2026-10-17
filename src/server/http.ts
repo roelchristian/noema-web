@@ -238,7 +238,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               const page=pages.get(vault,id),isTitle=child==='title';
               if(isTitle) {
                 if(body.revision!==page.revision)throw new HttpError(409,'Save the latest page before classification.');
-                const result=await pageUtility.run(vault,page,bytes=>activity.request(activityId!,bytes,page.revision));
+                const result=await pageUtility.run(vault,page,bytes=>activity.request(activityId!,bytes,page.revision),body.background===true);
                 vaults.requireOpen(vault);return send(200,result);
               }
               if(body.revision!==page.revision)throw new HttpError(409,'Save the latest page before summarizing.');

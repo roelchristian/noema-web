@@ -31,7 +31,7 @@ function cleanSegments(segments: Segment[], options: CleanupOptions): Segment[] 
 }
 
 function blankParagraph(block: Block) {
-  return block.type === 'paragraph' && !block.semantic && !block.semanticGroup && block.content.every(segment => !segment.entityId && !segment.code && !segment.math && !(segment.text ?? '').trim());
+  return block.type === 'paragraph' && !block.column && !block.semantic && !block.semanticGroup && block.content.every(segment => !segment.entityId && !segment.code && !segment.math && !(segment.text ?? '').trim());
 }
 
 export function cleanNote(blocks: Block[], options: CleanupOptions) {

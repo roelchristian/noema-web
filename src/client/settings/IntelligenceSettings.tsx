@@ -1,14 +1,14 @@
 import { Select } from '../components/Select';
-import { defaultIntelligencePreferences, intelligenceModels, type IntelligencePreferences, type ReasoningEffort } from '../../shared/intelligence';
+import { defaultIntelligencePreferences, defaultManualRequestsPerMinute, maxManualRequestsPerMinute, intelligenceModels, type IntelligenceConfiguration, type ReasoningEffort } from '../../shared/intelligence';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api';
 import type { IntelligenceStatus } from '../../shared/domain';
 export function IntelligenceSettings() {
   const [status,setStatus]=useState<IntelligenceStatus|null>(null),[key,setKey]=useState(''),[days,setDays]=useState(30),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
-  const [preferences,setPreferences]=useState<IntelligencePreferences>({...defaultIntelligencePreferences});
+  const [preferences,setPreferences]=useState<IntelligenceConfiguration>({...defaultIntelligencePreferences,manualRequestsPerMinute:defaultManualRequestsPerMinute});
   const modelOption=intelligenceModels.find(option=>option.id===preferences.model)!;
-  const changed=!!status&&(preferences.model!==status.model||preferences.reasoningEffort!==status.reasoningEffort);
-  useEffect(()=>{let active=true;void api.intelligence().then(value=>{if(active){setStatus(value);setPreferences({model:value.model,reasoningEffort:value.reasoningEffort});}}).catch(()=>{if(active)setMessage('Secure storage is unavailable. Unlock your macOS login keychain and reopen Settings.');});return()=>{active=false;};},[]);
+  const changed=!!status&&(preferences.model!==status.model||preferences.reasoningEffort!==status.reasoningEffort||preferences.manualRequestsPerMinute!==status.manualRequestsPerMinute);
+  useEffect(()=>{let active=true;void api.intelligence().then(value=>{if(active){setStatus(value);setPreferences({model:value.model,reasoningEffort:value.reasoningEffort,manualRequestsPerMinute:value.manualRequestsPerMinute});}}).catch(()=>{if(active)setMessage('Secure storage is unavailable. Unlock your macOS login keychain and reopen Settings.');});return()=>{active=false;};},[]);
   async function perform(work:()=>Promise<unknown>,success:string) {
     setBusy(true);setMessage('');
     try {await work();setMessage(success);}catch(error){setMessage(error instanceof Error?error.message:'Request failed.');}finally{setBusy(false);}
@@ -18,11 +18,11 @@ export function IntelligenceSettings() {
     <h3 id="intelligence-heading">Intelligence</h3>
     <p>Connect OpenAI for page titles, summaries, and semantic search embeddings. Your key is saved in macOS Keychain and cannot be viewed or retrieved through Noema. This connection is shared across your local vaults.</p>
     <div className="intelligence-status">{status?.configured ? <>API key saved · expires {new Date(status.expiresAt!).toLocaleString()}</> : 'No active API key'}{status && <small>Model: {status.model} · Reasoning: {status.reasoningEffort}</small>}</div>
-    <form onSubmit={event=>{event.preventDefault();void perform(async()=>{const saved=await api.saveIntelligencePreferences(preferences);setStatus(current=>current?{...current,...saved}:current);},'AI preferences saved. Validation and summaries will use this model and effort.');}}>
+    <form onSubmit={event=>{event.preventDefault();void perform(async()=>{const saved=await api.saveIntelligencePreferences(preferences);setStatus(current=>current?{...current,...saved}:current);setPreferences(saved);},'AI preferences saved. Validation and summaries will use this model and effort.');}}>
       <label htmlFor="ai-model">Model</label>
       <Select id="ai-model" value={preferences.model} disabled={busy||!status} onChange={event=>{
         const model=intelligenceModels.find(option=>option.id===event.target.value)!;
-        setPreferences({model:model.id,reasoningEffort:model.efforts.includes(preferences.reasoningEffort)?preferences.reasoningEffort:'low'});
+        setPreferences(current=>({...current,model:model.id,reasoningEffort:model.efforts.includes(current.reasoningEffort)?current.reasoningEffort:'low'}));
       }}>{intelligenceModels.map(model=><option key={model.id} value={model.id}>{model.label}</option>)}</Select>
       <label htmlFor="ai-reasoning">Reasoning effort</label>
       <Select id="ai-reasoning" value={preferences.reasoningEffort} disabled={busy||!status} onChange={event=>setPreferences(current=>({...current,reasoningEffort:event.target.value as ReasoningEffort}))}>
@@ -30,6 +30,9 @@ export function IntelligenceSettings() {
       </Select>
       <p>Low is the default. Higher effort can increase latency and cost; requests still have a 45-second timeout and token limit. Only supported efforts are offered for each model.</p>
       <p>Text models reviewed October 16, 2026 against <a href="https://developers.openai.com/api/docs/guides/latest-model" target="_blank" rel="noreferrer">OpenAI documentation</a>. Model access depends on your API project.</p>
+      <label htmlFor="ai-manual-request-limit">Manual AI requests per minute</label>
+      <input id="ai-manual-request-limit" type="number" min={1} max={maxManualRequestsPerMinute} step={1} required value={preferences.manualRequestsPerMinute || ''} disabled={busy||!status} onChange={event=>setPreferences(current=>({...current,manualRequestsPerMinute:Number(event.target.value)}))}/>
+      <p>Shared across vaults. Applies to manually triggered summaries, explanations, entity scans, semantic searches, and connection tests. Automatic titles and background indexing do not count. Each request sent to AI counts separately.</p>
       <div className="intelligence-actions"><button className="button" disabled={busy||!changed}>Save AI preferences</button></div>
     </form>
     <form onSubmit={save} autoComplete="off">

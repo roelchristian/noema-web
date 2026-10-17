@@ -4,7 +4,7 @@ import { explanationPrompt } from './explanation-prompt.js';
 import { entityScanPrompt } from './entity-scan.js';
 import { titlePrompt } from './title-prompt.js';
 import { summaryPrompt } from './summary-prompt.js';
-import { defaultIntelligencePreferences, intelligenceModels, supportedIntelligencePreferences, type IntelligencePreferences } from '../../shared/intelligence.js';
+import { defaultIntelligencePreferences, defaultManualRequestsPerMinute, maxManualRequestsPerMinute, validManualRequestLimit, intelligenceModels, type IntelligenceConfiguration, supportedIntelligencePreferences, type IntelligencePreferences } from '../../shared/intelligence.js';
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import type { IntelligenceStatus } from '../../shared/domain.js';
@@ -48,7 +48,7 @@ export function keychainFor(store: Store) {
   if(!/^[a-f0-9-]{36}$/.test(account))throw new Error('Invalid intelligence account');
   return new MacKeychain(account);
 }
-export interface PreferencesStore { read(): unknown; write(value: IntelligencePreferences): void }
+export interface PreferencesStore { read(): unknown; write(value: IntelligenceConfiguration): void }
 export function intelligencePreferencesFor(store: Store): PreferencesStore {
   return {
     read() {
@@ -64,19 +64,28 @@ export class Intelligence {
   private embeddingRequests=new Set<AbortController>();
   private embeddingAttempts: number[]=[];
   private attempts: number[]=[];
+  private manualRequestsPerMinute=defaultManualRequestsPerMinute;
   private preferences: IntelligencePreferences={...defaultIntelligencePreferences};
   private preferenceRevision=0;
   constructor(private secrets: SecretStore, private transport: typeof fetch=fetch, private clock=()=>Date.now(), private preferenceStore?: PreferencesStore) {
     const saved=preferenceStore?.read();
-    if(supportedIntelligencePreferences(saved))this.preferences={model:saved.model,reasoningEffort:saved.reasoningEffort};
+    if(supportedIntelligencePreferences(saved)) {
+      this.preferences={model:saved.model,reasoningEffort:saved.reasoningEffort};
+      if ('manualRequestsPerMinute' in saved && validManualRequestLimit(saved.manualRequestsPerMinute)) this.manualRequestsPerMinute=saved.manualRequestsPerMinute;
+    }
   }
   selection(): IntelligencePreferences {return {...this.preferences};}
   savePreferences(body: Record<string,unknown>) {
     if(!supportedIntelligencePreferences(body))throw new HttpError(400,'Choose a supported model and reasoning effort.');
-    const value={model:body.model,reasoningEffort:body.reasoningEffort};
+    const manualRequestsPerMinute=body.manualRequestsPerMinute === undefined ? this.manualRequestsPerMinute : body.manualRequestsPerMinute;
+    if (!validManualRequestLimit(manualRequestsPerMinute)) throw new HttpError(400,`Choose between 1 and ${maxManualRequestsPerMinute} manual AI requests per minute.`);
+    const value={model:body.model,reasoningEffort:body.reasoningEffort,manualRequestsPerMinute};
     this.preferenceStore?.write(value);
-    this.preferences=value;this.preferenceRevision++;for(const request of this.generationRequests)request.abort();
-    return this.selection();
+    const modelChanged=value.model!==this.preferences.model || value.reasoningEffort!==this.preferences.reasoningEffort;
+    this.preferences={model:value.model,reasoningEffort:value.reasoningEffort};
+    this.manualRequestsPerMinute=manualRequestsPerMinute;
+    if (modelChanged) {this.preferenceRevision++;for(const request of this.generationRequests)request.abort();}
+    return {...this.selection(),manualRequestsPerMinute:this.manualRequestsPerMinute};
   }
   private credential() {
     const value=this.secrets.read();
@@ -85,7 +94,7 @@ export class Intelligence {
   }
   status(): IntelligenceStatus {
     const value=this.credential();
-    return {configured:!!value,expiresAt:value?.expiresAt ?? null,...this.selection()};
+    return {configured:!!value,expiresAt:value?.expiresAt ?? null,manualRequestsPerMinute:this.manualRequestsPerMinute,...this.selection()};
   }
   save(body: Record<string,unknown>) {
     if(typeof body.apiKey!=='string'||!/^sk-[A-Za-z0-9_-]{16,500}$/.test(body.apiKey))throw new HttpError(400,'Enter a valid OpenAI API key.');
@@ -96,14 +105,24 @@ export class Intelligence {
     this.secrets.write({key:body.apiKey,expiresAt:new Date(this.clock()+days*86400000).toISOString(),generation:randomUUID()});
     return this.status();
   }
-  remove() {for(const request of this.generationRequests)request.abort();for(const request of this.embeddingRequests)request.abort();this.secrets.remove();return {configured:false,expiresAt:null,...this.selection()};}
+  remove() {for(const request of this.generationRequests)request.abort();for(const request of this.embeddingRequests)request.abort();this.secrets.remove();return {configured:false,expiresAt:null,manualRequestsPerMinute:this.manualRequestsPerMinute,...this.selection()};}
   purgeExpired() {this.credential();}
-  async embed(input: string, onRequest?: AIRequestObserver): Promise<{embedding:number[];tokens:number}> {
+  private reserveManualRequest() {
+    const now=this.clock();
+    this.attempts=this.attempts.filter(time=>time>now-60000);
+    if (this.attempts.length>=this.manualRequestsPerMinute) {
+      const seconds=Math.max(1,Math.ceil((this.attempts[this.attempts.length-this.manualRequestsPerMinute]!+60000-now)/1000));
+      throw new HttpError(429,`Manual AI requests are limited to ${this.manualRequestsPerMinute} per minute. Try again in ${seconds} seconds.`);
+    }
+    this.attempts.push(now);
+  }
+  async embed(input: string, onRequest?: AIRequestObserver, background=false): Promise<{embedding:number[];tokens:number}> {
     if(!input.trim()||Buffer.byteLength(input,'utf8')>8000)throw new HttpError(400,'Embedding input must contain text and be at most 8,000 UTF-8 bytes.');
     const credential=this.credential();
     if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
     this.embeddingAttempts=this.embeddingAttempts.filter(time=>time>this.clock()-60000);
     if(this.embeddingAttempts.length>=30||this.embeddingRequests.size>=2)throw new HttpError(429,'Embedding request limit reached. Try again shortly.');
+    if (!background) this.reserveManualRequest();
     this.embeddingAttempts.push(this.clock());
     const controller=new AbortController();this.embeddingRequests.add(controller);
     const timer=setTimeout(()=>controller.abort(),Math.min(45000,Date.parse(credential.expiresAt)-this.clock()));
@@ -134,19 +153,17 @@ export class Intelligence {
     if(title.length>120 || /[\r\n]/.test(title) || title==='Untitled')throw new HttpError(502,'OpenAI returned an invalid page title.');
     return title;
   }
-  async generatePageUtility(input:string,subtypes:{id:string;name:string}[],currentTitle:string,onRequest?:AIRequestObserver) {
-    const output=await this.generate(input,false,onRequest,true,false,false,{subtypes,currentTitle});
+  async generatePageUtility(input:string,subtypes:{id:string;name:string}[],currentTitle:string,onRequest?:AIRequestObserver,background=false) {
+    const output=await this.generate(input,false,onRequest,true,false,false,{subtypes,currentTitle},background);
     let value:unknown;try{value=JSON.parse(output);}catch{throw new HttpError(502,'AI returned invalid title and category data.');}
     if(!value||typeof value!=='object'||!('title' in value)||typeof value.title!=='string'||!value.title.trim()||value.title.length>(currentTitle.trim()&&currentTitle.trim()!=='Untitled'?500:120)||/[\r\n]/.test(value.title)||value.title==='Untitled'||!('conceptSubtypeIds' in value)||!Array.isArray(value.conceptSubtypeIds)||value.conceptSubtypeIds.some(id=>typeof id!=='string'||!subtypes.some(subtype=>subtype.id===id)))throw new HttpError(502,'AI returned invalid title and category data.');
     return {title:currentTitle.trim()&&currentTitle.trim()!=='Untitled'?currentTitle:value.title.trim(),conceptSubtypeIds:[...new Set(value.conceptSubtypeIds as string[])]};
   }
-  async generate(input: string, validate=false, onRequest?: AIRequestObserver, title=false, entityScan=false, explain=false, utility?:{subtypes:{id:string;name:string}[];currentTitle:string}) {
+  async generate(input: string, validate=false, onRequest?: AIRequestObserver, title=false, entityScan=false, explain=false, utility?:{subtypes:{id:string;name:string}[];currentTitle:string}, background=false) {
     const credential=this.credential(),selection=title?this.titleSelection():this.selection(),preferenceRevision=this.preferenceRevision;
     if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
     if(!title&&!entityScan&&this.active)throw new HttpError(429,'Another AI request is running. Please wait.');
-    this.attempts=this.attempts.filter(t=>t>this.clock()-60000);
-    if(this.attempts.length>=5)throw new HttpError(429,'AI is limited to 5 requests per minute. Try again shortly.');
-    this.attempts.push(this.clock());
+    if (!background) this.reserveManualRequest();
     const controller=new AbortController();this.generationRequests.add(controller);if(!title&&!entityScan)this.active=controller;
     const timer=setTimeout(()=>controller.abort(),Math.min(45000,Date.parse(credential.expiresAt)-this.clock()));
     let trace: AIDebugTrace | undefined;

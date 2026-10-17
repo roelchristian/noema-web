@@ -13,7 +13,7 @@ export type Segment = TextStyle & ( { text: string; entityId?: never; mentionTex
 export function isEntityTaggingText(segment: Segment): segment is Extract<Segment, {text: string}> {
   return !segment.entityId && !segment.math && !segment.skipAutoTag;
 }
-export interface Block { semantic?: import('./semantic-blocks.js').SemanticKind; semanticGroup?: import('./semantic-blocks.js').SemanticGroup; id: string; type: BlockType; checked: boolean; content: Segment[]; rows?: Segment[][][]; imageId?: string; alt?: string }
+export interface Block { column?: {id: string; index: 0 | 1}; semantic?: import('./semantic-blocks.js').SemanticKind; semanticGroup?: import('./semantic-blocks.js').SemanticGroup; id: string; type: BlockType; checked: boolean; content: Segment[]; rows?: Segment[][][]; imageId?: string; alt?: string }
 export interface Vault { id: string; name: string; locked: boolean; protected: boolean; updated_at: string }
 export interface VaultDeletionPreview {
   vault:Vault; fingerprint:string; canDelete:boolean; blockers:string[];
@@ -53,7 +53,8 @@ export interface Organization { collections: Collection[]; folders: Folder[]; lo
 export interface RecentItem { kind: ItemKind; item_id: string; opened_at: string }
 export interface OrganizationContext { collection: string; folder: string }
 
-export interface IntelligenceStatus extends IntelligencePreferences { configured: boolean; expiresAt: string | null }
+export interface IntelligenceStatus extends IntelligencePreferences {
+  manualRequestsPerMinute: number; configured: boolean; expiresAt: string | null }
 
 export interface AIEnrichment extends IntelligencePreferences {
   kind: string; data: Record<string, unknown>; revision: number; updated_at: string; contentHash?: string | null;
@@ -68,6 +69,6 @@ export function blockListNumber(blocks: Block[], id: string): number {
   const index = blocks.findIndex(block => block.id === id);
   if (index < 0) return 1;
   let start = index;
-  while (start > 0 && blocks[start - 1]!.type === 'numbered' && blocks[start - 1]!.semanticGroup?.id === blocks[index]!.semanticGroup?.id) start--;
+  while (start > 0 && blocks[start - 1]!.type === 'numbered' && blocks[start - 1]!.semanticGroup?.id === blocks[index]!.semanticGroup?.id && blocks[start - 1]!.column?.id === blocks[index]!.column?.id && blocks[start - 1]!.column?.index === blocks[index]!.column?.index) start--;
   return index - start + 1;
 }

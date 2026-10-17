@@ -2,6 +2,7 @@ import {randomUUID} from './uuid.js';
 import type { Block } from './domain.js';
 export const semanticKinds = ['question','definition','example','claim','evidence','insight','summary','warning','ai-explanation'] as const;
 export type SemanticKind = typeof semanticKinds[number];
+/** Source block IDs and the original excerpt are optional and persist with the explanation. */
 export interface SemanticGroup {id: string; kind: SemanticKind; source?: {blockIds: string[]; excerpt: string}}
 export const semanticFunctions: Record<SemanticKind, {label: string; icon: string; color: string; description: string}> = {
   'ai-explanation': {label:'AI Explanation',icon:'sparkles',color:'#8b79cf',description:'AI-generated explanation · permanent tag'},
@@ -16,6 +17,16 @@ export const semanticFunctions: Record<SemanticKind, {label: string; icon: strin
 };
 export const editableSemanticKinds = semanticKinds.filter(kind => kind !== 'ai-explanation');
 export function isAIExplanation(block: Block) {return block.semantic === 'ai-explanation' || block.semanticGroup?.kind === 'ai-explanation';}
+/** Find surviving explanations linked to any source block removed by an editor change. */
+export function explanationsLinkedToDeletedBlocks(previous: Block[], next: Block[]): string[] {
+  const remaining = new Set(next.map(block => block.id));
+  const removed = new Set(previous.filter(block => !remaining.has(block.id)).map(block => block.id));
+  if (!removed.size) return [];
+  return [...new Set(next.flatMap(block => {
+    const group = block.semanticGroup;
+    return isAIExplanation(block) && group?.source?.blockIds.some(id => removed.has(id)) ? [group.id] : [];
+  }))];
+}
 /** Keep provenance when editing, splitting, dragging, or detaching generated content. */
 export function preserveAIExplanationTags(previous: Block[], next: Block[]): Block[] {
   const protectedIds = new Set(previous.filter(isAIExplanation).map(block => block.id));
@@ -29,7 +40,7 @@ export function semanticRuns(blocks: Block[]): SemanticRun[] {
   for (const block of blocks) {
     if (!block.semanticGroup) {runs.push({type:'block',id:block.id,block}); continue;}
     const last = runs.at(-1);
-    if (last?.type === 'group' && last.id === block.semanticGroup.id) last.blocks.push(block);
+    if (last?.type === 'group' && last.id === block.semanticGroup.id && last.blocks[0]!.column?.id === block.column?.id && last.blocks[0]!.column?.index === block.column?.index) last.blocks.push(block);
     else runs.push({type:'group',id:block.semanticGroup.id,kind:block.semanticGroup.kind,blocks:[block]});
   }
   return runs;
@@ -85,6 +96,11 @@ export function reorderSemanticBlock(blocks: Block[], source: string, before: st
       const {semanticGroup: _,...block} = original;
       next[index] = parent ? {...block,semanticGroup:parent} : block;
     }
+  }
+  const destination = target?.column;
+  for (let offset = 0; offset < moving.length; offset++) {
+    const block = next[index + offset]!;
+    if (block.column?.id !== destination?.id || block.column?.index !== destination?.index) next[index + offset] = {...block,column:destination};
   }
   return normalizeSemanticGroups(preserveAIExplanationTags(blocks,next));
 }

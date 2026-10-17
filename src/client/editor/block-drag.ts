@@ -1,16 +1,24 @@
+import {allowedInColumn} from '../../shared/column-blocks';
 import { clearEditorSelection } from './block-selection';
 import { reorderSemanticBlock, semanticDragItems } from '../../shared/semantic-blocks';
 import type { Block } from '../../shared/domain';
 
-export interface BlockDropPreview {id: string; beforeId: string | null; valid: boolean; keyboard: boolean}
+export interface BlockDropPreview {id: string; beforeId: string | null; valid: boolean; keyboard: boolean; column?: Block['column'] | null}
 interface Options {blocks: () => Block[]; commit: (blocks: Block[]) => void; preview: (drop: BlockDropPreview | null) => void; announce: (message: string) => void}
-interface Bounds {id: string; top: number; bottom: number}
+interface Bounds {id: string; top: number; bottom: number; left?: number; right?: number}
 /** Resolve insertion in the remaining list, independent of the dragged block's height. */
-export function blockDropBefore(bounds: Bounds[], source: string, y: number): string | null {
-  return bounds.find(block => block.id !== source && y < (block.top + block.bottom) / 2)?.id ?? null;
+export function blockDropBefore(bounds: Bounds[], source: string, y: number, x?: number): string | null {
+  const inColumn = x === undefined ? [] : bounds.filter(block => block.left !== undefined && block.right !== undefined && x >= block.left && x <= block.right);
+  return (inColumn.length ? inColumn : bounds).find(block => block.id !== source && y < (block.top + block.bottom) / 2)?.id ?? null;
 }
-export function reorderBlock(blocks: Block[], source: string, before: string | null): Block[] {
-  return reorderSemanticBlock(blocks,source,before);
+export function reorderBlock(blocks: Block[], source: string, before: string | null, column?: Block['column'] | null): Block[] {
+  const destination=column === undefined ? blocks.find(block => block.id === before || block.semanticGroup?.id === before)?.column : column;
+  if (destination && blocks.some(block => (block.id === source || block.semanticGroup?.id === source) && !allowedInColumn(block.type))) return blocks;
+  const next = reorderSemanticBlock(blocks,source,before);
+  if (column === undefined) return next;
+  const result = next.map(block => (block.id === source || block.semanticGroup?.id === source) &&
+    (block.column?.id !== column?.id || block.column?.index !== column?.index) ? {...block,column:column ?? undefined} : block);
+  return result.every((block, index) => block === blocks[index]) ? blocks : result;
 }
 /** Only the gutter handle starts a drag; a short click retains its options menu. */
 export function installBlockDrag(root: HTMLElement, options: Options) {
@@ -55,12 +63,12 @@ export function installBlockDrag(root: HTMLElement, options: Options) {
     documentBounds = {left:bounds.left+scroll.x,right:bounds.right+scroll.x,top:bounds.top+scroll.y,bottom:bounds.bottom+scroll.y};
     geometry = items.flatMap(item => {
       const element=nodes.get(item.id); if (!element?.isConnected) return [];
-      const box=element.getBoundingClientRect(); return [{id:item.id,top:box.top+scroll.y,bottom:box.bottom+scroll.y}];
+      const box=element.getBoundingClientRect(); return [{id:item.id,top:box.top+scroll.y,bottom:box.bottom+scroll.y,left:box.left+scroll.x,right:box.right+scroll.x}];
     });
     dirty = false;
   }
   function preview(next: BlockDropPreview) {
-    if (active && active.id === next.id && active.beforeId === next.beforeId && active.valid === next.valid && active.keyboard === next.keyboard) return;
+    if (active && active.id === next.id && active.beforeId === next.beforeId && active.valid === next.valid && active.keyboard === next.keyboard && active.column?.id === next.column?.id && active.column?.index === next.column?.index) return;
     active = next;
     // Transient drag feedback stays outside React so contenteditable blocks never rerender on hover.
     root.dataset.blockDragging = 'true';
@@ -88,16 +96,35 @@ export function installBlockDrag(root: HTMLElement, options: Options) {
     if (options.blocks() !== snapshot || !source?.isConnected) {finish(false); return;}
     measure();
     const scroll=offset(), x=pointer.x+scroll.x, y=pointer.y+scroll.y, bounds=documentBounds!;
-    const valid=x>=bounds.left-64 && x<=bounds.right+24 && y>=bounds.top-32 && y<=bounds.bottom+32;
-    let beforeId=blockDropBefore(geometry,pending.id,y);
+    let valid=x>=bounds.left-64 && x<=bounds.right+24 && y>=bounds.top-32 && y<=bounds.bottom+32;
+    const pane = Array.from(root.querySelectorAll<HTMLElement>('[data-column-id]')).find(element => {
+      const box = element.getBoundingClientRect();
+      return pointer.x >= box.left && pointer.x <= box.right && pointer.y >= box.top && pointer.y <= box.bottom;
+    });
+    const column: Block['column'] | null = pane ? {id:pane.dataset.columnId!,index:pane.dataset.columnIndex === '0' ? 0 : 1} : null;
+    if (column && snapshot?.some(block => (block.id === pending!.id || block.semanticGroup?.id === pending!.id) && !allowedInColumn(block.type))) valid=false;
+    let beforeId=blockDropBefore(geometry,pending.id,y,x);
+    if (pane) {
+      const candidates = geometry.filter(item => nodes.get(item.id)?.closest('[data-column-id]') === pane);
+      beforeId = blockDropBefore(candidates,pending.id,y);
+      if (beforeId === null) {
+        const last = candidates.at(-1);
+        if (last) beforeId = items[items.findIndex(item => item.id === last.id) + 1]?.id ?? null;
+        else {
+          const following = snapshot?.find(block => block.column?.id === column!.id && block.column.index > column!.index);
+          const layoutEnd = snapshot?.reduce((last, block, index) => block.column?.id === column!.id ? index : last, -1) ?? -1;
+          beforeId = following?.id ?? snapshot?.[layoutEnd + 1]?.id ?? null;
+        }
+      }
+    }
     // Keep the current slot within a small buffer to prevent midpoint flicker.
-    if (active.valid && beforeId!==active.beforeId) {
+    if (active.valid && active.column?.id === column?.id && active.column?.index === column?.index && beforeId!==active.beforeId && geometry.find(item => item.id === beforeId)?.left === geometry.find(item => item.id === active!.beforeId)?.left) {
       const remaining=geometry.filter(item=>item.id!==pending!.id);
       const index=active.beforeId===null?remaining.length:remaining.findIndex(item=>item.id===active!.beforeId);
       const previous=remaining[index-1], next=remaining[index];
       if (index>=0 && (!previous || y>=(previous.top+previous.bottom)/2-5) && (!next || y<=(next.top+next.bottom)/2+5)) beforeId=active.beforeId;
     }
-    preview({id:pending.id,beforeId,valid,keyboard:false});
+    preview({id:pending.id,beforeId,valid,keyboard:false,column});
     if (ghost) ghost.style.transform=`translate3d(${Math.max(8,Math.min(pointer.x+16,window.innerWidth-248))}px,${Math.max(8,Math.min(pointer.y+12,window.innerHeight-80))}px,0)`;
   }
   function createGhost() {
@@ -137,7 +164,7 @@ export function installBlockDrag(root: HTMLElement, options: Options) {
     if (commit && options.blocks()!==snapshot) commit=false;
     const current = active; if (!current) {pending = undefined; return;}
     if (pending) suppressed = {handle: pending.handle, until: Date.now() + 800};
-    const blocks=options.blocks(), next=commit && current.valid?reorderBlock(blocks,current.id,current.beforeId):blocks;
+    const blocks=options.blocks(), next=commit && current.valid?reorderBlock(blocks,current.id,current.beforeId,current.column):blocks;
     const moving=next!==blocks, positions=new Map<string,{top:number;left:number}>();
     if (moving && !reducedMotion()) for (const item of items) {
       const box=nodes.get(item.id)?.getBoundingClientRect();

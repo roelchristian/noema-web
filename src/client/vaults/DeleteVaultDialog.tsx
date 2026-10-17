@@ -28,17 +28,17 @@ export function DeleteVaultDialog({vault,onPreview,onExport,onDelete,onClose}:{v
     }catch(error){setError(error instanceof Error?error.message:'Could not download a backup.');}
     finally{setExporting(false);}
   }
-  return <Modal className="delete-vault-dialog" titleId="delete-vault-title" onClose={()=>{if(!working)onClose();}}><form onSubmit={submit}>
-    <span className="dialog-eyebrow">Permanent deletion</span>
+  return <Modal className="confirmation-dialog delete-vault-dialog" titleId="delete-vault-title" onClose={()=>{if(!working)onClose();}}><form onSubmit={submit}>
+    <header className="vault-deletion-header"><span className="dialog-eyebrow">VAULT</span><button type="button" className="vault-deletion-refresh" disabled={working||loading} onClick={()=>setVersion(value=>value+1)}>Refresh contents</button></header>
     <h2 id="delete-vault-title">Delete “{vault.name}”?</h2>
-    <p id="delete-vault-warning">This permanently deletes this vault and everything in it, including notes in Trash, knowledge entities, saved AI results, organization, and original attachments. There is no Undo. Other vaults are kept.</p>
+    <p id="delete-vault-warning">Permanently delete this vault and its notes, including Trash, entities, AI results, folders, collections, and original attachments. This cannot be undone.</p>
     {loading&&<p role="status">Saving pending edits and checking vault contents…</p>}
     {!loading&&preview&&<>
       <dl className="vault-deletion-counts" aria-label="Vault contents">{[
         ['Notes',preview.counts.notes],['Notes in Trash',preview.counts.trashedNotes],['Knowledge entities',preview.counts.entities],['Original files and uploads',preview.counts.sourceFiles],['Images and uploads',preview.counts.images],['Folders',preview.counts.folders],['Collections',preview.counts.collections],
       ].map(([label,count])=><div key={label}><dt>{label}</dt><dd>{count}</dd></div>)}</dl>
       {preview.blockers.map(blocker=><p key={blocker} className="vault-deletion-blocker" role="status">{blocker}</p>)}
-      <div className="vault-deletion-backup"><strong>Keep a backup before deleting</strong><p>A .noemabkp file can be imported as a new vault later. Backups include attached originals; unattached uploads are excluded. Backup files are not password encrypted.</p><button type="button" className="button" disabled={working} onClick={()=>void downloadBackup()}>{exporting?'Preparing backup…':backupStarted?'Download backup again':'Download vault backup'}</button>{backupStarted&&<p role="status">Backup download started. Keep the file before continuing.</p>}</div>
+      <div className="vault-deletion-backup"><strong>Save a copy</strong><p>A .noemabkp file can be imported as a new vault later. Backups include attached originals; unattached uploads are excluded. Backup files are not password encrypted.</p><button type="button" className="button" disabled={working} onClick={()=>void downloadBackup()}>{exporting?'Preparing backup…':backupStarted?'Download backup again':'Download backup'}</button>{backupStarted&&<p role="status">Backup download started. Keep the file before continuing.</p>}</div>
       {preview.canDelete&&<>
         <label htmlFor="delete-vault-name">Type <strong>{preview.vault.name}</strong> to confirm<input id="delete-vault-name" autoComplete="off" spellCheck={false} maxLength={200} value={name} disabled={working||needsRefresh} aria-describedby="delete-vault-warning" onChange={event=>setName(event.target.value)}/></label>
         {preview.vault.protected&&<label htmlFor="delete-vault-passphrase">Confirm vault passphrase<input id="delete-vault-passphrase" type="password" autoComplete="current-password" maxLength={500} value={passphrase} disabled={working||needsRefresh} onChange={event=>setPassphrase(event.target.value)}/></label>}
@@ -46,6 +46,6 @@ export function DeleteVaultDialog({vault,onPreview,onExport,onDelete,onClose}:{v
       </>}
     </>}
     {error&&<p className="dialog-error" role="alert">{error}</p>}
-    <div className="dialog-actions"><button type="button" className="button" autoFocus disabled={working} onClick={onClose}>Cancel</button><button type="button" className="button" disabled={working||loading} onClick={()=>setVersion(value=>value+1)}>Refresh contents</button><button className="button danger" disabled={!ready}>{busy?'Deleting vault…':'Delete permanently'}</button></div>
+    <div className="dialog-actions"><button type="button" className="button confirmation-cancel" autoFocus disabled={working} onClick={onClose}>Cancel</button><button className="button confirmation-action" disabled={!ready}>{busy?'Deleting vault…':'Delete permanently'}</button></div>
   </form></Modal>;
 }

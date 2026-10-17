@@ -2,6 +2,12 @@
 // /v1/models does not describe reasoning compatibility; keep the allowlist explicit.
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export interface IntelligencePreferences { model: string; reasoningEffort: ReasoningEffort }
+export interface IntelligenceConfiguration extends IntelligencePreferences {manualRequestsPerMinute: number}
+export const defaultManualRequestsPerMinute = 5;
+export const maxManualRequestsPerMinute = 120;
+export function validManualRequestLimit(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= maxManualRequestsPerMinute;
+}
 interface ModelOption { id: string; label: string; efforts: readonly ReasoningEffort[] }
 const standard = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 const withNone = ['none', ...standard] as const;

@@ -26,7 +26,7 @@ export class Workspace {
   private pageLoadSequence = 0;
   private pageRequest: AbortController | null = null;
   readonly titler = new PageTitler(
-    page => api.generateTitle(page.vault_id, page.id, page.revision),
+    page => api.generateTitle(page.vault_id, page.id, page.revision, true),
     (original, title,conceptClassification) => {
       const cached = this.pageCache.get(original.id);
       if (!cached || cached.vault_id !== original.vault_id || this.state.vault?.locked) return;

@@ -15,10 +15,10 @@ export class AIActivityLog {
   private prune() {
     this.store.run("DELETE FROM ai_activity WHERE rowid NOT IN (SELECT rowid FROM ai_activity ORDER BY rowid DESC LIMIT 1000) AND status!='running'");
   }
-  start(action: AIActivity['action'], selection: IntelligencePreferences, vaultId: string | null=null, objectId: string | null=null) {
+  start(action: AIActivity['action'], selection: IntelligencePreferences, vaultId: string | null=null, objectId: string | null=null, objectKind:'page'|'entity'='page') {
     const id=randomUUID();
     this.store.run(`INSERT INTO ai_activity (id,action,status,started_at,vault_id,object_kind,object_id,model,reasoning_effort)
-      VALUES (?,?,'running',?,?,?,?,?,?)`,id,action,new Date().toISOString(),vaultId,objectId?'page':null,objectId,selection.model,selection.reasoningEffort);
+      VALUES (?,?,'running',?,?,?,?,?,?)`,id,action,new Date().toISOString(),vaultId,objectId?objectKind:null,objectId,selection.model,selection.reasoningEffort);
     this.prune();
     if (this.debugSettings().enabled) this.store.run('INSERT INTO ai_activity_debug (activity_id,updated_at) VALUES (?,?)',id,new Date().toISOString());
     return id;
@@ -65,11 +65,12 @@ export class AIActivityLog {
     if(cursor!==null && (!/^\d+$/.test(cursor)||!Number.isSafeInteger(Number(cursor))||Number(cursor)<1))throw new HttpError(400,'Invalid activity cursor');
     const rows=this.store.all<AIActivity & {cursor:number}>(`SELECT a.id,a.action,a.status,a.started_at AS startedAt,a.finished_at AS finishedAt,
       a.duration_ms AS durationMs,a.http_status AS httpStatus,a.vault_id AS vaultId,v.name AS vaultName,
-      a.object_kind AS objectKind,a.object_id AS objectId,p.title AS objectTitle,a.revision,
+      a.object_kind AS objectKind,a.object_id AS objectId,COALESCE(p.title,e.name) AS objectTitle,a.revision,
       a.model,a.reasoning_effort AS reasoningEffort,a.prompt_bytes AS promptBytes,
       (p.id IS NOT NULL AND p.deleted_at IS NULL) AS available,EXISTS(SELECT 1 FROM ai_activity_debug d WHERE d.activity_id=a.id) AS debugRecorded,a.rowid AS cursor
       FROM ai_activity a LEFT JOIN vaults v ON v.id=a.vault_id
       LEFT JOIN pages p ON a.object_kind='page' AND p.id=a.object_id AND p.vault_id=a.vault_id
+      LEFT JOIN entities e ON a.object_kind='entity' AND e.id=a.object_id AND e.vault_id=a.vault_id
       WHERE (a.vault_id IS NULL OR v.locked=0) AND a.rowid<? ORDER BY a.rowid DESC LIMIT 51`,cursor?Number(cursor):Number.MAX_SAFE_INTEGER);
     const items=rows.slice(0,50);
     return {items:items.map(({cursor:_,...row})=>({...row,available:!!row.available,debugRecorded:!!row.debugRecorded})),nextCursor:rows.length>50?items.at(-1)!.cursor:null};

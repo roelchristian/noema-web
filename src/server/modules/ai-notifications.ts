@@ -12,12 +12,15 @@ export class AINotifications {
       SELECT ?,vault_id,id,?,?,? FROM pages WHERE id=? AND vault_id=?`,randomUUID(),action,status,now(),pageId,vault);
     this.prune();
   }
-  recordSource(vault:string,entityId:string,status:'completed'|'failed') {
+  recordSource(vault:string,entityId:string,status:'completed'|'failed'|'interrupted',action:NotificationAction='source_import') {
+    const id=randomUUID();
     this.store.run(`INSERT INTO ai_notifications (id,vault_id,entity_id,action,status,created_at)
-      SELECT ?,vault_id,id,'source_import',?,? FROM entities WHERE id=? AND vault_id=? AND type='source'`,randomUUID(),status,now(),entityId,vault);
+      SELECT ?,vault_id,id,?,?,? FROM entities WHERE id=? AND vault_id=? AND type='source'`,id,action,status,now(),entityId,vault);
     this.prune();
+    return id;
   }
   outcome(action: string, vault: string | null, pageId: string | null, status: string) {
+    if(action==='create_page_from_source'&&vault&&pageId&&(status==='failed'||status==='interrupted')){this.recordSource(vault,pageId,status,action);return;}
     if(vault && pageId && actions.includes(action) && (status==='failed'||status==='interrupted')) this.record(vault,pageId,action as NotificationAction,status);
   }
   private prune() {
@@ -34,10 +37,11 @@ export class AINotifications {
       ORDER BY n.seq DESC LIMIT 10`).map(item=>({...item,available:!!item.available}));
     const unreadCount=this.store.get<{count:number}>(`SELECT count(*) AS count FROM ai_notifications n JOIN vaults v ON v.id=n.vault_id AND v.locked=0 WHERE n.read_at IS NULL`)!.count;
     const through=this.store.get<{seq:number}>('SELECT COALESCE(MAX(seq),0) AS seq FROM ai_notifications')!.seq;
-    const running=this.store.all<AIRunningActivity>(`SELECT a.id,a.action,a.vault_id AS vaultId,a.object_id AS pageId,p.title AS pageTitle,
-      (p.id IS NOT NULL AND p.deleted_at IS NULL) AS available,a.started_at AS startedAt
-      FROM ai_activity a JOIN vaults v ON v.id=a.vault_id AND v.locked=0 LEFT JOIN pages p ON p.id=a.object_id AND p.vault_id=a.vault_id
-      WHERE a.status='running' AND a.object_kind='page' AND a.action IN ('block_explanation','page_title','page_summary','entity_scan','note_embedding')
+    const running=this.store.all<AIRunningActivity>(`SELECT a.id,a.action,a.vault_id AS vaultId,CASE WHEN a.object_kind='page' THEN a.object_id ELSE '' END AS pageId,CASE WHEN a.object_kind='entity' THEN a.object_id END AS entityId,COALESCE(p.title,e.name) AS pageTitle,
+      CASE WHEN a.object_kind='entity' THEN e.id IS NOT NULL ELSE p.id IS NOT NULL AND p.deleted_at IS NULL END AS available,a.started_at AS startedAt
+      FROM ai_activity a JOIN vaults v ON v.id=a.vault_id AND v.locked=0 LEFT JOIN pages p ON a.object_kind='page' AND p.id=a.object_id AND p.vault_id=a.vault_id
+      LEFT JOIN entities e ON a.object_kind='entity' AND e.id=a.object_id AND e.vault_id=a.vault_id
+      WHERE a.status='running' AND a.object_kind IN ('page','entity') AND a.action IN ('block_explanation','page_title','page_summary','entity_scan','note_embedding','create_page_from_source')
       ORDER BY a.rowid DESC LIMIT 100`).map(item=>({...item,available:!!item.available}));
     const sources=this.store.all<AIRunningActivity>(`SELECT f.id,'source_import' AS action,f.vault_id AS vaultId,'' AS pageId,f.entity_id AS entityId,e.name AS pageTitle,
       1 AS available,f.created_at AS startedAt FROM source_files f JOIN entities e ON e.id=f.entity_id JOIN vaults v ON v.id=f.vault_id AND v.locked=0

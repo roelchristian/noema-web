@@ -7,7 +7,7 @@ import { Select } from '../components/Select';
 import { HighlightedText } from '../search/HighlightedText';
 import { useEntitySchema } from './useEntitySchema';
 
-export function KnowledgeLibrary({vaultId, entities, onOpen, onCreate}: {vaultId: string; entities: Entity[]; onOpen: (id: string) => void; onCreate: () => void}) {
+export function KnowledgeLibrary({vaultId, entities, onOpen, onCreate, onCreatePageFromSource}: {vaultId: string; entities: Entity[]; onOpen: (id: string) => void; onCreate: () => void; onCreatePageFromSource:(source:Entity)=>void}) {
   const [viewMode, setViewMode, libraryRef] = useViewMode('knowledge');
   const {schema, error} = useEntitySchema(vaultId);
   const [search, setSearch] = useState('');
@@ -69,6 +69,7 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onCreate}: {vaultId
             <small>{Number.isFinite(Date.parse(entity.updated_at)) ? <time dateTime={entity.updated_at} title={new Date(entity.updated_at).toLocaleString()}>{new Date(entity.updated_at).toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'})}</time> : 'Date unavailable'}</small>
             {entity.description && <span className="search-result-snippet knowledge-entity-description">{entity.description}</span>}
           </button>
+          {entity.type==='source'&&<button type="button" className="knowledge-source-page" aria-label={'Create page from source: '+entity.name} title={entity.sourceStatus==='ready'&&!entity.inactive?'Create page from source':'Available when source processing finishes successfully'} disabled={entity.sourceStatus!=='ready'||entity.inactive} onClick={()=>onCreatePageFromSource(entity)}><Icon name="sparkles"/></button>}
           <button className="knowledge-open-entity" aria-label={'Open ' + entity.name} onClick={() => onOpen(entity.id)}><Icon name="chevron"/></button>
         </div></article>)}
       </div> : <div className="organization-empty" role="status"><span className="destination-icon"><Icon name={query ? 'search' : 'folder'}/></span><h2>{query ? 'No matching entities' : 'No entities here yet'}</h2><p>{query ? 'Try another name or alias.' : 'Create an entity to get started.'}</p>{query ? <button className="button" onClick={() => setSearch('')}>Clear search</button> : <button className="button" onClick={onCreate}>New entity</button>}</div>}

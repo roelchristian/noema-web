@@ -1,3 +1,5 @@
+import { SourcePages, SourcePageDraft } from './modules/source-pages.js';
+import type { SourcePageEvent } from '../shared/source-page.js';
 import { limitSummaryWords } from '../shared/summary-text.js';
 import { entityMentionName } from '../shared/domain.js';
 import { SourceFiles, maxSourceBytes } from './modules/source-files.js';
@@ -50,6 +52,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
   const pageUtility=new PageUtility(store,pages,knowledge,enrichments,intelligence);
   const entityMatches=new EntityMatches(store,pages,knowledge);
   const embeddings=new Embeddings(store,pages,knowledge,vaults,intelligence,activity);
+  const sourcePages=new SourcePages(store,knowledge,pages);
   const searchSnippets=new SearchSnippets(pages,knowledge,vaults);
   // Enforce retention on startup, periodically while running, and before scoped API access.
   pages.purgeExpired();
@@ -70,7 +73,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
         if((req.headers.origin && req.headers.origin!==`http://${req.headers.host}`)||req.headers['sec-fetch-site']==='cross-site')throw new HttpError(403,'Cross-origin requests are not allowed');
         const securityRoute = url.pathname === '/api/security/network' || /^\/api\/pages\/[^/]+\/edit-lock$/.test(url.pathname) || /^\/api\/vaults\/[^/]+\/passphrase$/.test(url.pathname);
         if (securityRoute && (req.headers['x-noema-request'] !== '1' || method === 'PUT' && !/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))) throw new HttpError(403, 'Security settings require the Noema client and JSON.');
-        const aiRoute=url.pathname==='/api/search/snippets'||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|entity-scan|entity-review|explain)$/.test(url.pathname);
+        const aiRoute=/^\/api\/entities\/[^/]+\/create-page(?:\/(?:accept|reject))?$/.test(url.pathname)||url.pathname==='/api/search/snippets'||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|entity-scan|entity-review|explain)$/.test(url.pathname);
         if(aiRoute && (req.headers['x-noema-request']!=='1'||(['POST','PUT'].includes(method)&&!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))))throw new HttpError(403,'AI requests require the Noema client and JSON');
         if(url.pathname==='/api/source-files' || url.pathname.startsWith('/api/source-files/')) {
           if(req.headers['x-noema-request']!=='1' && method!=='GET')throw new HttpError(403,'Source actions require the Noema client');
@@ -288,6 +291,52 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             }
           }
           if(collection==='entities') {
+            if(id && child==='create-page' && parts.length===4 && method==='GET')return send(200,{draft:sourcePages.latest(vault,id)});
+            if(id && child==='create-page' && parts.length===5 && method==='POST') {
+              if(childId==='reject')return send(200,sourcePages.reject(vault,id,body.requestId));
+              if(childId==='accept') {
+                const result=sourcePages.accept(vault,id,body.requestId);
+                if(result.created){notifications.record(vault,result.page.id,'create_page_from_source');try{embeddings.onSave(vault,result.page.id);}catch{/* The accepted page remains saved if indexing is unavailable. */}}
+                return send(200,result.page);
+              }
+              throw new HttpError(404,'Not found');
+            }
+            if(id && child==='create-page' && parts.length===4 && method==='POST') {
+              const prepared=sourcePages.prepare(vault,id,body);
+              const controller=new AbortController();
+              const disconnected=()=>{if(!res.writableEnded)controller.abort();};
+              res.on('close',disconnected);
+              const emit=(event:SourcePageEvent)=>{
+                if(controller.signal.aborted||res.destroyed)throw new HttpError(499,'Page generation was stopped.');
+                vaults.requireOpen(vault);
+                res.write(JSON.stringify(event)+'\n');
+              };
+              res.writeHead(200,{'Content-Type':'application/x-ndjson; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Accel-Buffering':'no'});
+              res.flushHeaders();
+              let heartbeat:ReturnType<typeof setInterval>|undefined;
+              try {
+                if(prepared.existing){emit({type:'completed',page:prepared.existing});res.end();return;}
+                if(prepared.review){emit({type:'review',draft:prepared.review});res.end();return;}
+                activityId=activity.start('create_page_from_source',intelligence.selection(),vault,id,'entity');
+                emit({type:'status',phase:'thinking'});
+                heartbeat=setInterval(()=>{if(!res.destroyed&&!controller.signal.aborted)res.write('\n');},10000);
+                const draft=new SourcePageDraft(emit,prepared.file.text);
+                await intelligence.generate(prepared.input,false,bytes=>activity.request(activityId!,bytes,null),false,false,false,undefined,false,{signal:controller.signal,onDelta:delta=>draft.feed(delta)});
+                if(controller.signal.aborted)throw new HttpError(499,'Page generation was stopped.');
+                vaults.requireOpen(vault);draft.finish();
+                emit({type:'status',phase:'reviewing'});
+                const review=sourcePages.stage(vault,prepared,draft,activityId);
+                const notificationId=notifications.recordSource(vault,id,'completed','create_page_from_source');
+                store.run('UPDATE source_page_drafts SET notification_id=? WHERE request_id=?',notificationId,prepared.requestId);
+                activity.finish(activityId,'completed',200);activityId=undefined;
+                emit({type:'review',draft:review});res.end();
+              }catch(error){
+                const interrupted=controller.signal.aborted;
+                if(activityId){activity.finish(activityId,interrupted?'interrupted':'failed',error instanceof HttpError?error.status:500);activityId=undefined;}
+                if(!res.destroyed){res.end(JSON.stringify({type:'error',message:interrupted?'Page generation stopped.':error instanceof HttpError?error.message:'Could not create the page. Please try again.'} satisfies SourcePageEvent)+'\n');}
+              }finally{if(heartbeat)clearInterval(heartbeat);res.removeListener('close',disconnected);}
+              return;
+            }
             if(id && child==='aliases' && parts.length===4 && method==='POST')return send(200,knowledge.addAlias(vault,id,body));
             if(parts.length===2 && method==='GET')return send(200,knowledge.list(vault));
             if(parts.length===2 && method==='POST')return send(201,knowledge.create(vault,body));

@@ -16,7 +16,7 @@ export function redactedTrace(trace: AIDebugTrace | void, key: string): AIDebugT
 }
 
 /** Read JSON or SSE, retaining the provider's final response and every stream event. */
-export async function readOpenAIResponse(response: Response, trace?: AIDebugTrace) {
+export async function readOpenAIResponse(response: Response, trace?: AIDebugTrace, onTextDelta?:(delta:string)=>void) {
   const headers: Record<string,string> = {};
   for (const name of ['content-type','x-request-id','openai-processing-ms','retry-after']) {
     const value=response.headers.get(name); if (value !== null) headers[name]=value;
@@ -26,7 +26,7 @@ export async function readOpenAIResponse(response: Response, trace?: AIDebugTrac
   if (!reader) throw new HttpError(502,'OpenAI returned an empty response.');
   const streaming=response.headers.get('content-type')?.includes('text/event-stream');
   const limit=streaming?2*1024*1024:128000;
-  let raw='',pending='',size=0,lastUpdate=0;
+  let raw='',pending='',size=0,lastUpdate=0,complete=false,outputText='';
   let result: ReturnType<typeof JSON.parse>;
   const decoder=new TextDecoder();
   function frame(value: string) {
@@ -36,6 +36,7 @@ export async function readOpenAIResponse(response: Response, trace?: AIDebugTrac
     const event=JSON.parse(data);
     const type=typeof event.type==='string'?event.type:lines.find(line=>line.startsWith('event:'))?.slice(6).trim()||'message';
     trace?.event(type,event);
+    if(type==='response.output_text.delta'&&typeof event.delta==='string'){outputText+=event.delta;onTextDelta?.(event.delta);}
     if (['response.completed','response.failed','response.incomplete'].includes(type) && event.response) {
       result=event.response;
       trace?.response(result);
@@ -68,8 +69,16 @@ export async function readOpenAIResponse(response: Response, trace?: AIDebugTrac
       result=JSON.parse(raw);
       trace?.response(result);
     }
+    if(onTextDelta){
+      const finalText=(result.output??[]).filter((item:{type:string})=>item.type==='message').flatMap((item:{content?:{type:string;text?:string}[]})=>item.content??[]).filter((part:{type:string;text?:string})=>part.type==='output_text'&&typeof part.text==='string').map((part:{text:string})=>part.text).join('\n');
+      if(!outputText)onTextDelta(finalText);
+      else if(finalText.startsWith(outputText))onTextDelta(finalText.slice(outputText.length));
+      else if(finalText.trim()!==outputText.trim())throw new HttpError(502,'The final AI response did not match its streamed blocks. Please retry.');
+    }
+    complete=true;
     return result;
   } finally {
+    if(!complete)await reader.cancel().catch(()=>{});
     trace?.body(raw);
     reader.releaseLock();
   }

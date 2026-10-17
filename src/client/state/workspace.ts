@@ -1,3 +1,5 @@
+import {nextPageAIStatus} from '../../shared/page-ai-status';
+import {entityMentionName} from '../../shared/domain';
 import {entitiesForPage} from '../../shared/concept-classification';
 import { identifyEntityMentions } from '../../shared/auto-entities';
 import { canIdentifyEntities, yieldForEntityMatching } from '../editor/auto-entity-matching';
@@ -45,11 +47,11 @@ export class Workspace {
       const cached = this.pageCache.get(saved.id);
       if (cached) {
         const unchanged = JSON.stringify(cached.blocks) === JSON.stringify(original.blocks);
-        const page = {...cached, ...(unchanged && !this.state.reviewing && canIdentifyEntities() ? {blocks: saved.blocks} : {}), conceptClassification:saved.conceptClassification,conceptContentHash:unchanged?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at};
+        const page = {...cached, aiStatus:nextPageAIStatus(saved,cached,id=>entityMentionName(this.state.entities.find(entity=>entity.id===id))), ...(unchanged && !this.state.reviewing && canIdentifyEntities() ? {blocks: saved.blocks} : {}), conceptClassification:saved.conceptClassification,conceptContentHash:unchanged?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at};
         this.pageCache.set(saved.id, page);
         this.titler.observe(page, unchanged && cached.title === saved.title);
       }
-      if (this.state.vault?.id === saved.vault_id) this.patch({pages: this.state.pages.map(page => page.id === saved.id ? {...page, updated_at: saved.updated_at} : page), ...(this.state.page?.id === saved.id ? {page: this.pageCache.get(saved.id) || {...this.state.page, conceptClassification:saved.conceptClassification,conceptContentHash:JSON.stringify(this.state.page.blocks)===JSON.stringify(original.blocks)?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at}} : {})});
+      if (this.state.vault?.id === saved.vault_id) this.patch({pages: this.state.pages.map(page => page.id === saved.id ? {...page, aiStatus:this.pageCache.get(saved.id)?.aiStatus ?? saved.aiStatus, updated_at: saved.updated_at} : page), ...(this.state.page?.id === saved.id ? {page: this.pageCache.get(saved.id) || {...this.state.page, aiStatus:saved.aiStatus, conceptClassification:saved.conceptClassification,conceptContentHash:JSON.stringify(this.state.page.blocks)===JSON.stringify(original.blocks)?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at}} : {})});
     },
     (saveStatus, error) => this.patch({saveStatus, ...(error ? {error: error.message} : {})}),
     async page => {
@@ -271,7 +273,7 @@ export class Workspace {
       if (!current()) return;
       const page = await api.page(vault.id,id,controller.signal);
       if (!current()) return;
-      this.pageCache.set(id,page); this.patch({page,view:'pages',loadingPageId:null});
+      this.pageCache.set(id,page); this.patch({page,view:'pages',loadingPageId:null,...(!this.state.pages.some(item=>item.id===id)?{pages:[page,...this.state.pages]}:{})});
       this.recordRecent('page',id);
       this.titler.register(page); this.titler.observe(page,true);
     } catch (error) {
@@ -311,9 +313,10 @@ export class Workspace {
     const current = this.state.page;
     if (!current || current.editLocked || this.pageLockPending || this.state.busy || this.state.loadingPageId !== null || this.state.reviewing || this.state.vault?.locked) return;
     const page = {...current, ...patch,...(patch.blocks&&patch.blocks!==current.blocks?{conceptContentHash:undefined}:{})};
+    page.aiStatus=nextPageAIStatus(current,page,id=>entityMentionName(this.state.entities.find(entity=>entity.id===id)));
     if(page.featuredImageId && !page.blocks.some(block=>block.type==='image' && block.imageId===page.featuredImageId))page.featuredImageId=null;
     this.pageCache.set(page.id, page);
-    this.patch({page, pages: this.state.pages.map(p => p.id === page.id ? {...p, title: page.title, icon: page.icon, featuredImageId: page.featuredImageId} : p)});
+    this.patch({page, pages: this.state.pages.map(p => p.id === page.id ? {...p, title: page.title, icon: page.icon, featuredImageId: page.featuredImageId, aiStatus:page.aiStatus} : p)});
     this.titler.observe(page);
     this.saver.enqueue(page);
   }
@@ -332,6 +335,11 @@ export class Workspace {
       if (this.state.page?.id===page.id) this.patch({page});
       this.titler.observe(page,true);
     } finally {this.pageLockPending=false;}
+  }
+  registerGeneratedPage(page:Page) {
+    if(this.state.vault?.id!==page.vault_id||this.state.vault.locked)return;
+    this.pageCache.set(page.id,page);
+    this.patch({pages:[page,...this.state.pages.filter(item=>item.id!==page.id)]});
   }
   async newPage() {
     await this.navigate(async () => {

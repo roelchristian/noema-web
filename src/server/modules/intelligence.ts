@@ -1,3 +1,4 @@
+import { sourcePagePrompt } from './source-page-prompt.js';
 import type { AIDebugTrace, AIRequestObserver } from './ai-debug.js';
 import { readOpenAIResponse, redactedTrace } from './openai-response.js';
 import { explanationPrompt } from './explanation-prompt.js';
@@ -159,19 +160,22 @@ export class Intelligence {
     if(!value||typeof value!=='object'||!('title' in value)||typeof value.title!=='string'||!value.title.trim()||value.title.length>(currentTitle.trim()&&currentTitle.trim()!=='Untitled'?500:120)||/[\r\n]/.test(value.title)||value.title==='Untitled'||!('conceptSubtypeIds' in value)||!Array.isArray(value.conceptSubtypeIds)||value.conceptSubtypeIds.some(id=>typeof id!=='string'||!subtypes.some(subtype=>subtype.id===id)))throw new HttpError(502,'AI returned invalid title and category data.');
     return {title:currentTitle.trim()&&currentTitle.trim()!=='Untitled'?currentTitle:value.title.trim(),conceptSubtypeIds:[...new Set(value.conceptSubtypeIds as string[])]};
   }
-  async generate(input: string, validate=false, onRequest?: AIRequestObserver, title=false, entityScan=false, explain=false, utility?:{subtypes:{id:string;name:string}[];currentTitle:string}, background=false) {
+  async generate(input: string, validate=false, onRequest?: AIRequestObserver, title=false, entityScan=false, explain=false, utility?:{subtypes:{id:string;name:string}[];currentTitle:string}, background=false,sourcePage?:{onDelta:(delta:string)=>void;signal:AbortSignal}) {
     const credential=this.credential(),selection=title?this.titleSelection():this.selection(),preferenceRevision=this.preferenceRevision;
     if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
     if(!title&&!entityScan&&this.active)throw new HttpError(429,'Another AI request is running. Please wait.');
     if (!background) this.reserveManualRequest();
     const controller=new AbortController();this.generationRequests.add(controller);if(!title&&!entityScan)this.active=controller;
-    const timer=setTimeout(()=>controller.abort(),Math.min(45000,Date.parse(credential.expiresAt)-this.clock()));
+    const abort=()=>controller.abort();
+    sourcePage?.signal.addEventListener('abort',abort,{once:true});
+    if(sourcePage?.signal.aborted)controller.abort();
+    const timer=setTimeout(()=>controller.abort(),Math.min(sourcePage?180000:45000,Date.parse(credential.expiresAt)-this.clock()));
     let trace: AIDebugTrace | undefined;
     try {
-      const prompt=validate?{instructions:'Reply with OK.',input:'Connection test.'}:title?titlePrompt(input,utility?.subtypes,utility?.currentTitle):entityScan?entityScanPrompt(input):explain?explanationPrompt(input):summaryPrompt(input);
+      const prompt=sourcePage?sourcePagePrompt(input):validate?{instructions:'Reply with OK.',input:'Connection test.'}:title?titlePrompt(input,utility?.subtypes,utility?.currentTitle):entityScan?entityScanPrompt(input):explain?explanationPrompt(input):summaryPrompt(input);
       const inputText=typeof prompt.input==='string'?prompt.input:prompt.input.flatMap(item=>item.content.map(part=>part.text)).join('');
       trace=redactedTrace(onRequest?.(Buffer.byteLength(prompt.instructions+inputText,'utf8')),credential.key);
-      const payload={model:selection.model,store:false,max_output_tokens:title?512:validate?2048:8192,reasoning:{effort:selection.reasoningEffort},tools:[],tool_choice:'none',...prompt,...(trace?{stream:true}:{})};
+      const payload={model:selection.model,store:false,max_output_tokens:title?512:validate?2048:8192,reasoning:{effort:selection.reasoningEffort},tools:[],tool_choice:'none',...prompt,...(trace||sourcePage?{stream:true}:{})};
       trace?.request('https://api.openai.com/v1/responses',payload);
       const response=await this.transport('https://api.openai.com/v1/responses',{
         method:'POST',redirect:'error',signal:controller.signal,
@@ -182,9 +186,12 @@ export class Intelligence {
         if(trace)await readOpenAIResponse(response,trace).catch(()=>{});else await response.body?.cancel();
         throw new HttpError(response.status===429?429:502,response.status===401?'OpenAI rejected the API key. Replace it in Settings.':response.status===429?'OpenAI quota or rate limit reached. Check your OpenAI account.':'OpenAI could not complete the request. Check API permissions, model access, and billing.');
       }
-      const result=await readOpenAIResponse(response,trace);
+      const result=await readOpenAIResponse(response,trace,sourcePage?delta=>{
+        if(controller.signal.aborted||this.clock()>=Date.parse(credential.expiresAt)||this.preferenceRevision!==preferenceRevision)throw new HttpError(409,'AI generation was stopped or its settings changed.');
+        sourcePage.onDelta(delta.split(credential.key).join('[redacted]').replace(/sk-[A-Za-z0-9_-]{16,}/g,'[redacted]'));
+      }:undefined);
       const summary=(result.output ?? []).filter((item:{type:string})=>item.type==='message').flatMap((item:{content: {type:string;text?:string}[]})=>item.content ?? []).filter((part:{type:string})=>part.type==='output_text').map((part:{text:string})=>part.text).join('\n').trim();
-      if(result.status!=='completed'||!summary||summary.length>12000)throw new HttpError(502,'OpenAI returned an incomplete response. Try a lower reasoning effort or a shorter page.');
+      if(result.status!=='completed'||!summary||summary.length>(sourcePage?60000:12000))throw new HttpError(502,'OpenAI returned an incomplete response. Try a lower reasoning effort or a shorter page.');
       if(controller.signal.aborted||this.credential()?.generation!==credential.generation||this.preferenceRevision!==preferenceRevision)throw new HttpError(409,'The credential or AI settings changed, or the key expired. Please try again.');
       // Defense in depth against accidental credential echo by an upstream service.
       return summary.split(credential.key).join('[redacted]').replace(/sk-[A-Za-z0-9_-]{16,}/g,'[redacted]');
@@ -192,6 +199,6 @@ export class Intelligence {
       trace?.error(error instanceof Error?error.message:'AI request failed.');
       if(error instanceof HttpError)throw error;
       throw new HttpError(502,'The AI request failed or timed out. Please try again.');
-    }finally {clearTimeout(timer);this.generationRequests.delete(controller);if(this.active===controller)this.active=null;}
+    }finally {clearTimeout(timer);sourcePage?.signal.removeEventListener('abort',abort);this.generationRequests.delete(controller);if(this.active===controller)this.active=null;}
   }
 }

@@ -21,7 +21,7 @@ export interface VaultDeletionPreview {
 }
 export interface VaultDeletionConfirmation {name:string;fingerprint:string;acknowledged:boolean;passphrase?:string}
 export interface VaultDeletionResult {vaults:Vault[];cleanupPending:boolean}
-export interface PageSummary { featuredImageId?: string | null; id: string; title: string; icon?: PageIconId | null; updated_at: string }
+export interface PageSummary { aiStatus?: import('./page-ai-status.js').PageAIStatus; featuredImageId?: string | null; id: string; title: string; icon?: PageIconId | null; updated_at: string }
 export interface TrashedPage extends PageSummary { deleted_at: string; expires_at: string }
 export interface ConceptClassification { subtypeIds: string[]; contentHash: string }
 export interface Page extends PageSummary { editLocked?: boolean; editProtected?: boolean; conceptClassification?: ConceptClassification; conceptContentHash?: string; vault_id: string; blocks: Block[]; sourceIds: string[]; revision: number; summaryContentHash?: string; entityMatchCache?: import('./entity-match-cache.js').EntityMatchCache }

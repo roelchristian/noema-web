@@ -1,3 +1,4 @@
+import {pageAIStatusLabels, pageAIStatusDescriptions} from '../../shared/page-ai-status';
 import {ReadOnlyPageBlocks} from './ReadOnlyPageBlocks';
 import { smartQuoteTitle } from './smart-quotes';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -73,6 +74,9 @@ export function PageEditor({pages,onOpenPage,page, entities, onChange, onOpenEnt
   const status = {saved: editedLabel(page.updated_at, now), pending: 'Waiting to save…', identifying: 'Identifying entities…', saving: 'Saving…', error: 'Could not save changes'}[saveStatus];
   return <article className="page" onCompositionStart={event => { event.currentTarget.dataset.entityComposing = 'true'; }} onCompositionEnd={event => { delete event.currentTarget.dataset.entityComposing; }}>
     <h1 className="page-title-heading page-heading" aria-label={page.title || 'Untitled'}><input ref={title} id="page-title" aria-label="Page title" placeholder="Untitled" maxLength={500} readOnly={!!page.editLocked} value={page.title} onChange={e => onChange({title: smartQuoteTitle(e.currentTarget, e.nativeEvent as InputEvent)})}/></h1>
+    <dl className="page-ai-provenance" aria-label="Page properties">
+      <div><dt>AI provenance</dt><dd title={pageAIStatusDescriptions[page.aiStatus ?? 'regular']}><Icon name={page.aiStatus && page.aiStatus !== 'regular' ? 'sparkles' : 'page'}/><span>{pageAIStatusLabels[page.aiStatus ?? 'regular']}</span></dd></div>
+    </dl>
     {page.editLocked && <div className="page-edit-lock-status" role="status"><Icon name="lock"/><span>Locked for editing{page.editProtected ? ' · Password protected' : ''}</span></div>}
     {reviewError && <p className="entity-review-error" role="alert">{reviewError}</p>}
     {!page.editLocked && <EntityMatchReview matches={reviewMatches} entities={entities} disabled={resolving} onResolve={async resolution => {

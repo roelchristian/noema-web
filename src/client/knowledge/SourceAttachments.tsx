@@ -1,3 +1,4 @@
+import { numberedSourceText } from '../../shared/source-text';
 import { useEffect, useRef, useState } from 'react';
 import type { SourceFile } from '../../shared/domain';
 import { request } from '../api';
@@ -5,7 +6,7 @@ import { SourcePolicy } from './SourcePolicy';
 
 export function SourceAttachments({vaultId, entityId, initial=[], onChange, onBusy, disabled=false}: {vaultId:string;entityId?:string;disabled?:boolean;initial?:SourceFile[];onChange?:(files:SourceFile[])=>void;onBusy?:(busy:boolean)=>void}) {
   const [files,setFiles]=useState(initial),[error,setError]=useState('');
-  const [action,setAction]=useState('');
+  const [action,setAction]=useState(''),[expanded,setExpanded]=useState<Record<string,boolean>>({});
   const mounted=useRef(true),filesRef=useRef(files),onChangeRef=useRef(onChange);
   onChangeRef.current=onChange;
   filesRef.current=files;
@@ -25,7 +26,7 @@ export function SourceAttachments({vaultId, entityId, initial=[], onChange, onBu
   async function act(file:SourceFile,kind:'retry'|'remove'){
     setAction(file.id);onBusy?.(true);setError('');
     try {
-      if(kind==='retry'){const updated=await request<SourceFile>('source-files/'+file.id+'/retry','POST',undefined,vaultId);change(filesRef.current.map(f=>f.id===file.id?updated:f));}
+      if(kind==='retry'){setExpanded(current=>({...current,[file.id]:false}));const updated=await request<SourceFile>('source-files/'+file.id+'/retry','POST',undefined,vaultId);change(filesRef.current.map(f=>f.id===file.id?updated:f));}
       else {await request('source-files/'+file.id,'DELETE',undefined,vaultId);change(filesRef.current.filter(f=>f.id!==file.id));}
     }catch(e){setError(e instanceof Error?e.message:String(e));}finally{if(mounted.current){setAction('');onBusy?.(false);}}
   }
@@ -41,7 +42,7 @@ export function SourceAttachments({vaultId, entityId, initial=[], onChange, onBu
         {entityId&&file.status==='failed'&&<button type="button" className="button small" disabled={disabled||!!action} onClick={()=>void act(file,'retry')}>{action===file.id?'Retrying…':'Retry processing'}</button>}
         <button type="button" className="button small" hidden={!!entityId} disabled={disabled||!!action||file.status==='processing'} onClick={()=>void act(file,'remove')}>{action===file.id?'Working…':'Remove'}</button>
       </div>
-      {file.status==='ready'&&<details><summary>Read extracted text</summary><pre className="source-text">{file.text}</pre></details>}
+      {file.status==='ready'&&<details onToggle={event=>{const open=event.currentTarget.open;setExpanded(current=>current[file.id]===open?current:{...current,[file.id]:open});}}><summary>Read extracted text</summary>{expanded[file.id]&&<><p className="section-hint">Line references identify this extracted text, rather than printed document lines or page numbers.</p><pre className="source-text">{numberedSourceText(file.text)}</pre></>}</details>}
     </article>)}</div>
   </section>;
 }

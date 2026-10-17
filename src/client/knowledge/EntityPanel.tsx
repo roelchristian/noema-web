@@ -10,7 +10,7 @@ import { entityLabels, entityTypes, type Entity, type EntityDetail, type EntityM
 import { Icon } from '../components/Icon';
 import { Mention } from '../components/Mention';
 import { AliasInput, parseAliases } from './AliasInput';
-interface Props {onOpenPage: (id: string) => void; refreshKey: string; vaultId: string; id: string; entities: Entity[]; onOpen: (id: string) => void; onClose: () => void; onUpdated: () => Promise<void>; onError: (error: unknown) => void}
+interface Props {onCreatePageFromSource:(source:Entity)=>void;onOpenPage: (id: string) => void; refreshKey: string; vaultId: string; id: string; entities: Entity[]; onOpen: (id: string) => void; onClose: () => void; onUpdated: () => Promise<void>; onError: (error: unknown) => void}
 const entityTabs = [{id: 'overview', label: 'Overview'}, {id: 'connections', label: 'Connections'}, {id: 'edit', label: 'Edit'}] as const;
 type EntityTab = typeof entityTabs[number]['id'];
 interface EntityConnection {key: string; target: string; label: string}
@@ -47,6 +47,7 @@ export function EntityPanel(props: Props) {
     {!entity ? <p className="panel-body" role={loadingError ? 'alert' : 'status'}>{loadingError || 'Loading entity…'}</p> : <div className="panel-body entity-detail-body">
       {loadingError && <p role="alert">{loadingError}</p>}
       <div className="entity-detail-classification"><span className="entity-detail-type">{entityLabels[entity.type]}</span>{entity.type==='source'&&<span>{entity.attachments?.some(file=>file.status==='queued'||file.status==='processing')?'Processing':entity.inactive?'Inactive':'Active'}</span>}{!!subtypeNames.length && <span>{subtypeNames.join(' · ')}</span>}</div>
+      {entity.type==='source'&&<div className="entity-source-workflow"><button type="button" className="button" disabled={entity.inactive||entity.sourceStatus!=='ready'} onClick={()=>props.onCreatePageFromSource(entity)}><Icon name="sparkles"/>Create page from source</button>{entity.sourceStatus!=='ready'&&<p className="section-hint">{entity.inactive?'Retry source processing before creating a page.':'Available once source processing finishes.'}</p>}</div>}
       {entity.description && <p className="entity-detail-description">{entity.description}</p>}
       <div className="entity-detail-tabs" role="tablist" aria-label="Entity details">
         {entityTabs.map(({id: value, label}) => <button type="button" key={value} id={'entity-tab-' + value} role="tab" aria-selected={tab === value} aria-controls={'entity-tabpanel-' + value} tabIndex={tab === value ? 0 : -1} onClick={() => switchTab(value)} onKeyDown={event => {

@@ -1,3 +1,5 @@
+import {isAIExplanation} from '../shared/semantic-blocks.js';
+import type {Block} from '../shared/domain.js';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
@@ -237,6 +239,32 @@ if (!sourceColumns.some(column=>column.name==='admitted')) db.exec('ALTER TABLE 
 if (!sourceColumns.some(column=>column.name==='format')) {
  db.exec("ALTER TABLE source_files ADD COLUMN format TEXT NOT NULL DEFAULT 'txt'");
  db.exec("UPDATE source_files SET format=CASE WHEN name LIKE '%.pdf' THEN 'pdf' WHEN name LIKE '%.md' THEN 'md' WHEN id LIKE '%.html' THEN 'html' ELSE 'txt' END");
+}
+db.exec(`CREATE TABLE IF NOT EXISTS source_page_creations (
+ request_id TEXT PRIMARY KEY,vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
+ source_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,fingerprint TEXT NOT NULL,
+ page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,created_at TEXT NOT NULL
+);`);
+db.exec(`CREATE TABLE IF NOT EXISTS source_page_drafts (
+ request_id TEXT PRIMARY KEY,vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
+ source_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,fingerprint TEXT NOT NULL,
+ source_hash TEXT NOT NULL,focus TEXT NOT NULL,title TEXT NOT NULL,blocks TEXT NOT NULL,
+ status TEXT NOT NULL CHECK(status IN ('pending','accepted','rejected')),
+ activity_id TEXT REFERENCES ai_activity(id) ON DELETE SET NULL,created_at TEXT NOT NULL
+);
+ CREATE INDEX IF NOT EXISTS source_page_drafts_source ON source_page_drafts(vault_id,source_id,status,created_at);`);
+if (!db.prepare('PRAGMA table_info(source_page_drafts)').all().some(column=>column.name==='notification_id')) db.exec('ALTER TABLE source_page_drafts ADD COLUMN notification_id TEXT REFERENCES ai_notifications(id) ON DELETE SET NULL');
+// Backfill provenance once; future saves preserve generated origin even after edits.
+if (!db.prepare('PRAGMA table_info(pages)').all().some(column=>column.name==='ai_status')) {
+ db.exec('BEGIN IMMEDIATE');
+ try {
+  db.exec("ALTER TABLE pages ADD COLUMN ai_status TEXT NOT NULL DEFAULT 'regular' CHECK(ai_status IN ('regular','regular_with_ai_explanations','ai_generated','ai_generated_edited'))");
+  for (const page of db.prepare('SELECT id,blocks FROM pages').all()) {
+   if ((JSON.parse(String(page.blocks)) as Block[]).some(isAIExplanation)) db.prepare("UPDATE pages SET ai_status='regular_with_ai_explanations' WHERE id=?").run(page.id);
+  }
+  db.exec("UPDATE pages SET ai_status='ai_generated' WHERE id IN (SELECT page_id FROM source_page_creations)");
+  db.exec('COMMIT');
+ } catch(error) {db.exec('ROLLBACK');throw error;}
 }
 // Preserve older multi-file sources by separating their extra files into sources.
 if(!db.prepare("SELECT 1 FROM metadata WHERE key='single-file-sources'").get()) {

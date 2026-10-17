@@ -245,7 +245,6 @@ main { margin-left: 224px; }
 .sidebar .nav kbd { border: 0; font-size: 9px; opacity: .6; }
 .sidebar .nav .count { font-size: 10px; opacity: .7; }
 .sidebar .section-label { margin-top: 14px; min-height: 24px; flex-shrink: 0; }
-.sidebar .section-label button { font-size: 18px; padding: 0 3px; }
 .sidebar #page-list { flex: 1 1 auto; min-height: 64px; overflow-y: auto; scrollbar-width: thin; }
 .sidebar .page-link { align-items: center; gap: 8px; padding: 7px 8px; min-height: 32px; line-height: 18px; }
 .sidebar .page-link > span:first-child { display: flex; flex-shrink: 0; }
@@ -295,7 +294,7 @@ main { margin-left: 224px; }
 .vault-picker { display: flex; align-items: center; gap: 4px; }
 .vault-picker > .select-host { display: block; flex: 1; min-width: 0; }
 .sidebar .vault-picker .select-trigger { margin: 0; width: 100%; }
-.sidebar .vault-controls { margin-left: 2px; margin-right: 0; }
+.sidebar .vault-controls { position: sticky; bottom: 0; margin: auto 0 0 2px; padding-top: 10px; border-top: 1px solid var(--line); background: var(--sidebar); z-index: 1; }
 .sidebar .vault-picker .sidebar-menu-trigger { margin-right: 3px; }
 .sidebar-action-menu { position: fixed; inset: auto; margin: 0; padding: 5px; min-width: 210px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow-y: auto; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface-raised); color: var(--text); box-shadow: 0 6px 24px #0003; }
 .sidebar-action-menu::backdrop { background: transparent; }
@@ -536,9 +535,8 @@ main { margin-left: 224px; }
 .branch-toggle[aria-expanded=true] .icon { transform: rotate(90deg); }
 .branch-toggle:hover { background: var(--surface-hover); color: var(--text); }
 .organization-sidebar-label { display: flex; align-items: center; justify-content: space-between; padding: 0 8px; margin: 14px 0 4px; font-size: 10px; color: var(--text-muted); }
-.organization-sidebar-label > .sidebar-menu-trigger { opacity: 1; }
-.organization-sidebar-label > button { display: inline-flex; padding: 1px; color: var(--text-muted); border-radius: 4px; }
-.organization-sidebar-label > button .icon { width: 13px; height: 13px; }
+.sidebar :is(.section-label, .organization-sidebar-label) > .sidebar-menu-trigger { opacity: 1; padding: 5px; }
+.sidebar :is(.section-label, .organization-sidebar-label) > .sidebar-menu-trigger .icon { width: 13px; height: 13px; }
 .sidebar-create { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border-radius: 6px; padding: 8px; font-size: 11px; color: var(--text-muted); }
 .sidebar-create .icon { width: 14px; height: 14px; }
 .sidebar-create:hover { background: var(--surface-hover); color: var(--text); }

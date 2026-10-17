@@ -12,7 +12,8 @@ export function ActionMenu({label, actions, disabled = false, icon = 'more'}: {l
     popup.showPopover();
     const box = button.getBoundingClientRect(), bounds = popup.getBoundingClientRect();
     popup.style.left = Math.max(8,Math.min(box.right - bounds.width,innerWidth - bounds.width - 8)) + 'px';
-    popup.style.top = Math.max(8,Math.min(box.bottom + 5,innerHeight - bounds.height - 8)) + 'px';
+    const top = box.bottom + 5 + bounds.height <= innerHeight - 8 ? box.bottom + 5 : box.top - bounds.height - 5;
+    popup.style.top = Math.max(8,Math.min(top,innerHeight - bounds.height - 8)) + 'px';
     const items = popup.querySelectorAll<HTMLButtonElement>('[role=menuitem]:not(:disabled)');
     (focusLast.current ? items[items.length - 1] : items[0])?.focus({preventScroll: true});
   }, [open]);

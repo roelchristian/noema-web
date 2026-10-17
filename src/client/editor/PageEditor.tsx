@@ -4,6 +4,7 @@ import type { Entity, Page } from '../../shared/domain';
 import type { SaveStatus } from '../state/page-saver';
 import type { CreateEntityRequest } from '../knowledge/CreateEntityDialog';
 import { BlockEditor } from './BlockEditor';
+import { Icon } from '../components/Icon';
 interface Props {page: Page; entities: Entity[]; onChange: (patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon'>>) => void; onOpenEntity: (id: string) => void; onCreateEntity: (request: CreateEntityRequest) => void; onSave: () => void; onIdentify: () => Promise<void>; saveStatus: SaveStatus}
 export function PageEditor({page, entities, onChange, onOpenEntity, onCreateEntity, onSave, onIdentify, saveStatus}: Props) {
   const title = useRef<HTMLInputElement>(null);
@@ -21,6 +22,7 @@ export function PageEditor({page, entities, onChange, onOpenEntity, onCreateEnti
     <input ref={title} id="page-title" aria-label="Page title" placeholder="Untitled" maxLength={500} value={page.title} onChange={e => onChange({title: smartQuoteTitle(e.currentTarget, e.nativeEvent as InputEvent)})}/>
     <BlockEditor key={page.vault_id + page.id} vaultId={page.vault_id} blocks={page.blocks} entities={entities} onChange={blocks => onChange({blocks})} onOpenEntity={onOpenEntity} onCreateEntity={(name, onCreated) => onCreateEntity({name, onCreated})} onSave={onSave}/>
     <footer className={'editor-save-status' + (saveStatus === 'error' ? ' is-error' : '')}>
+      {saveStatus === 'saving' || saveStatus === 'identifying' ? <span className="scan-spinner" aria-hidden="true"/> : <Icon name={saveStatus === 'saved' ? 'check-circle' : saveStatus === 'error' ? 'alert' : 'recent'}/>}
       <span role="status" aria-live="polite" aria-atomic="true">{status}</span>
       {saveStatus === 'error' && <button type="button" onClick={onSave}>Retry</button>}
     </footer>

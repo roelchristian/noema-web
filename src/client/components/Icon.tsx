@@ -7,6 +7,7 @@ const paths: Record<string, ReactNode> = {
   chevron: <path d="m9 5 7 7-7 7"/>,
   close: <path d="m6 6 12 12M6 18 18 6"/>,
   check: <path d="m5 12 4 4L19 6"/>,
+  'check-circle': <><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></>,
   alert: <><circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 4h.01"/></>,
   save: <><path d="m19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2Z"/><path d="M7 3v6h10V3M7 21v-8h10v8"/></>,
   sparkles: <><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z"/></>,

@@ -16,12 +16,6 @@ export function syncEditableSegments(element: HTMLElement, content: Segment[], e
   const key = JSON.stringify(entityReviewRanges(content, entities, location));
   const source = segmentHTML(content, entities);
   const previous = reviewTimers.get(element);
-  if (!previous) {
-    // Preloaded review items belong in the first paint, before any timers or effects.
-    replaceEditableHTML(element, segmentHTML(content, entities, location));
-    reviewTimers.set(element, {source,key});
-    return;
-  }
   if (!changed && previous?.source === source && previous.key === key) return;
   clearTimeout(previous?.timer);
   const selection = document.getSelection();

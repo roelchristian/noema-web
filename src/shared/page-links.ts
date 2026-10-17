@@ -12,6 +12,6 @@ export const pageTitleKey = (title:string) => title.trim().normalize('NFC').toLo
 
 /** Only syntax rendered as note links contributes to the note graph. */
 export function blockPageLinks(blocks:Block[]):PageLinkMatch[] {
-  return blocks.flatMap(block=>block.type==='math'||block.type==='image' ? [] : blockSegments(block).flatMap(segment=>
+  return blocks.flatMap(block=>block.type==='code'||block.type==='divider'||block.type==='math'||block.type==='image' ? [] : blockSegments(block).flatMap(segment=>
     segment.entityId || segment.math || segment.code || segment.href ? [] : pageLinks(segment.text??'')));
 }

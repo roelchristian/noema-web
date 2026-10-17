@@ -5,7 +5,7 @@ export type EntityType = typeof entityTypes[number];
 export const entityLabels: Record<EntityType, string> = {
   person: 'Person', place: 'Place', event: 'Event', creativework: 'Creative work', organization: 'Organization', organism: 'Organism', culture: 'Culture', source: 'Source', concept: 'Concept',
 };
-export const blockTypes = ['paragraph', 'heading1', 'heading2', 'bullet', 'quote', 'todo', 'table', 'image', 'math'] as const;
+export const blockTypes = ['paragraph', 'heading1', 'heading2', 'bullet', 'numbered', 'divider', 'code', 'quote', 'todo', 'table', 'image', 'math'] as const;
 export type BlockType = typeof blockTypes[number];
 export interface TextStyle { math?: boolean; bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean; code?: boolean; href?: string; skipAutoTag?: boolean }
 export type Segment = TextStyle & ( { text: string; entityId?: never; mentionText?: never } | { entityId: string; text?: never; mentionText?: string });
@@ -61,3 +61,12 @@ export interface AISummary extends IntelligencePreferences { summary: string; re
 
 export function blockSegments(block: Block): Segment[] { return block.type === 'table' ? (block.rows ?? []).flat(2) : block.content; }
 export function safeHref(value: string): string | undefined { return /^(https?:|mailto:)/i.test(value.trim()) ? value.trim() : undefined; }
+
+/** Number adjacent list items, restarting across block and semantic group boundaries. */
+export function blockListNumber(blocks: Block[], id: string): number {
+  const index = blocks.findIndex(block => block.id === id);
+  if (index < 0) return 1;
+  let start = index;
+  while (start > 0 && blocks[start - 1]!.type === 'numbered' && blocks[start - 1]!.semanticGroup?.id === blocks[index]!.semanticGroup?.id) start--;
+  return index - start + 1;
+}

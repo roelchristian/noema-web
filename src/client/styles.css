@@ -1806,3 +1806,14 @@ main {position:relative;}
   .organization-library[data-layout=grid] .favourite-button { width: 36px; min-height: 38px; }
   .organization-library[data-layout=grid] .organization-item-row { grid-template-rows: 38px 1fr; }
 }
+
+/* Editor structural blocks. */
+.block.numbered { display:flex; gap:10px; }
+.numbered-marker { min-width:24px; text-align:right; flex-shrink:0; font-variant-numeric:tabular-nums; }
+.block.numbered .block-content { flex:1; min-width:0; }
+.divider-block { width:100%; padding:16px 0; cursor:default; }
+.divider-block hr { border:0; border-top:1px solid var(--line); margin:0; }
+.code-block { width:100%; min-width:0; border:1px solid var(--line); border-radius:8px; background:var(--sidebar); padding:14px; }
+.code-block textarea { display:block; width:100%; resize:vertical; border:0; background:transparent; padding:0; font:13px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace; tab-size:2; white-space:pre; overflow:auto; }
+.code-block small { display:block; font-size:10px; color:var(--muted); margin-top:10px; }
+.block.code pre { white-space:pre-wrap; overflow-wrap:anywhere; font:13px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace; }

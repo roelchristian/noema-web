@@ -85,6 +85,11 @@ export class Pages {
           block.semanticGroup.source={blockIds:source.blockIds.map(id=>required(id)),excerpt:text(source.excerpt,2000)};
         }
       }
+      if(type === 'divider') block.content = [];
+      if(type === 'code') {
+        if(block.content.some(segment => segment.entityId)) throw new HttpError(400,'Code blocks must contain plain text');
+        block.content = [{text: block.content.map(segment => segment.text ?? '').join('')}];
+      }
       if(type === 'math') {
         if(block.content.some(segment => segment.entityId)) throw new HttpError(400,'Equations must contain LaTeX text');
         block.content = [{text: block.content.map(segment => segment.text ?? '').join('')}];

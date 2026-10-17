@@ -56,12 +56,13 @@ export function markdownBlocks(text: string): Block[] {
     if (/^\s*(```|~~~)/.test(line)) {
       const fence = line.trim().slice(0,3), content: string[] = [];
       while (++i < lines.length && !lines[i]!.trim().startsWith(fence)) content.push(lines[i]!);
-      blocks.push(makeBlock('paragraph', [{text: content.join('\n'), code: true}])); continue;
+      blocks.push(makeBlock('code', [{text: content.join('\n')}])); continue;
     }
+    if (/^\s{0,3}(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,})$/.test(line)) { blocks.push(makeBlock('divider')); continue; }
     const heading = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*$/), todo = line.match(/^\s*[-*+]\s+\[([ xX])\]\s*(.*)$/), bullet = line.match(/^\s*(?:[-*+]|\d+[.)])\s+(.*)$/), quote = line.match(/^\s*>\s?(.*)$/);
-    const block = heading ? makeBlock(heading[1]!.length === 1 ? 'heading1' : 'heading2', markdownInline(heading[2]!)) : todo ? {...makeBlock('todo', markdownInline(todo[2]!)), checked: todo[1]!.toLowerCase() === 'x'} : bullet ? makeBlock('bullet', markdownInline(bullet[1]!)) : quote ? makeBlock('quote', markdownInline(quote[1]!)) : makeBlock('paragraph', markdownInline(line));
+    const block = heading ? makeBlock(heading[1]!.length === 1 ? 'heading1' : 'heading2', markdownInline(heading[2]!)) : todo ? {...makeBlock('todo', markdownInline(todo[2]!)), checked: todo[1]!.toLowerCase() === 'x'} : bullet ? makeBlock(/^\s*\d/.test(line) ? 'numbered' : 'bullet', markdownInline(bullet[1]!)) : quote ? makeBlock('quote', markdownInline(quote[1]!)) : makeBlock('paragraph', markdownInline(line));
     if (!heading && !todo && !bullet && !quote) {
-      while (i + 1 < lines.length && lines[i + 1]!.trim() && !/^\s*(?:\$\$|\\\[|#{1,6}\s|[-*+]\s|\d+[.)]\s|>|```|~~~)/.test(lines[i + 1]!) && !(lines[i + 1]!.includes('|') && /^\s*\|?\s*:?-{3,}:?\s*\|/.test(lines[i + 2] ?? ''))) {
+      while (i + 1 < lines.length && lines[i + 1]!.trim() && !/^\s{0,3}(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,})$/.test(lines[i + 1]!) && !/^\s*(?:\$\$|\\\[|#{1,6}\s|[-*+]\s|\d+[.)]\s|>|```|~~~)/.test(lines[i + 1]!) && !(lines[i + 1]!.includes('|') && /^\s*\|?\s*:?-{3,}:?\s*\|/.test(lines[i + 2] ?? ''))) {
         block.content.push({text: '\n'}, ...markdownInline(lines[++i]!));
       }
     }
@@ -104,7 +105,7 @@ export function clipboardMathBlocks(blocks: Block[]): Block[] {
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i]!;
     if (block.type === 'table') { output.push({...block, rows: block.rows?.map(row => row.map(inline))}); continue; }
-    if (block.type === 'math' || block.type === 'image') { output.push(block); continue; }
+    if (block.type === 'code' || block.type === 'divider' || block.type === 'math' || block.type === 'image') { output.push(block); continue; }
     if (!plain(block)) { output.push({...block, content: inline(block.content)}); continue; }
     let content = block.content, text = content.map(s => s.text).join('');
     // Browsers may put each line of a display equation in a separate paragraph.
@@ -155,6 +156,8 @@ export function clipboardBlocks(text: string, html: string): Block[] {
         flush(); const rows = Array.from(node.querySelectorAll('tr')).filter(row => row.closest('table') === node).slice(0,100).map(row => Array.from(row.cells).slice(0,20).map(cell => readSegments(cell, false)));
         const width = Math.max(0,...rows.map(row => row.length));
         if (width) blocks.push({...richBlock('table',[],node), rows: rows.map(row => Array.from({length: width}, (_, i) => row[i] ?? []))});
+      } else if (tag === 'HR') { flush(); blocks.push(richBlock('divider', [], node));
+      } else if (tag === 'PRE') { flush(); blocks.push(richBlock('code', [{text: node.textContent || ''}], node));
       } else if (['UL','OL'].includes(tag)) { flush(); visit(node); }
       else if (['P','DIV','SECTION','ARTICLE','MAIN','BLOCKQUOTE','H1','H2','H3','H4','H5','H6','LI','PRE'].includes(tag)) {
         flush();
@@ -162,7 +165,7 @@ export function clipboardBlocks(text: string, html: string): Block[] {
         else {
           const copy = node.cloneNode(true) as HTMLElement; copy.querySelectorAll('ul,ol').forEach(list => list.remove());
           const checkbox = copy.querySelector<HTMLInputElement>('input[type=checkbox]');
-          const type: BlockType = tag === 'H1' ? 'heading1' : /^H[2-6]$/.test(tag) ? 'heading2' : tag === 'LI' ? checkbox ? 'todo' : 'bullet' : tag === 'BLOCKQUOTE' ? 'quote' : 'paragraph';
+          const type: BlockType = tag === 'H1' ? 'heading1' : /^H[2-6]$/.test(tag) ? 'heading2' : tag === 'LI' ? checkbox ? 'todo' : node.parentElement?.tagName === 'OL' ? 'numbered' : 'bullet' : tag === 'BLOCKQUOTE' ? 'quote' : 'paragraph';
           blocks.push({...richBlock(type, tag === 'PRE' ? [{text: node.textContent || '', code: true}] : readSegments(copy, false), node), checked: checkbox?.checked ?? false});
           if (tag === 'LI') node.querySelectorAll(':scope > ul,:scope > ol').forEach(visit);
         }

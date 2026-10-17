@@ -1,4 +1,4 @@
-import { entityMentionName } from '../../shared/domain';
+import { blockListNumber, entityMentionName } from '../../shared/domain';
 import {randomUUID} from '../../shared/uuid';
 import { applySemantic, isAIExplanation, preserveAIExplanationTags, normalizeSemanticGroups, removeSemanticGroup, retagSemanticGroup, semanticDragItems, semanticFunctions, editableSemanticKinds, semanticRuns, type SemanticKind } from '../../shared/semantic-blocks';
 import {pageTitleKey} from '../../shared/page-links';
@@ -46,6 +46,9 @@ const options: {type: BlockType; title: string; detail: string; icon: string}[] 
   {type: 'heading1', title: 'Heading 1', detail: 'A large section heading', icon: 'H₁'},
   {type: 'heading2', title: 'Heading 2', detail: 'A smaller section heading', icon: 'H₂'},
   {type: 'bullet', title: 'Bullet list', detail: 'A simple list of ideas', icon: '•'},
+  {type: 'numbered', title: 'Numbered list', detail: 'An ordered list of ideas', icon: '1.'},
+  {type: 'divider', title: 'Divider', detail: 'Separate sections with a horizontal line', icon: '―'},
+  {type: 'code', title: 'Code block', detail: 'Write code with preserved whitespace', icon: '</>'},
   {type: 'todo', title: 'To-do', detail: 'Keep track of a task', icon: '☑'},
   {type: 'table', title: 'Table', detail: 'A simple table with rows and columns', icon: '▦'},
   {type: 'math', title: 'Equation', detail: 'A LaTeX math equation', icon: 'equation'},
@@ -318,7 +321,13 @@ export function BlockEditor(props: Props) {
     const next = {...makeBlock(type, content),...(parent?{semanticGroup:parent}:{})}, list = [...latest.current.blocks];
     list.splice(after ? list.findIndex(b => b.id === after) + 1 : list.length, 0, next); focusTarget.current = {id: next.id, start: true}; onChange(list);
   }
-  function convert(block: Block, type: BlockType, clear = false) { setMenu(null); focusTarget.current = {id: block.id, start: false}; update(block.id, {type, content: clear ? [] : block.type === 'table' ? (block.rows ?? []).flatMap((row, i) => [...(i ? [{text: '\n'}] : []), ...row.flatMap((cell, col) => [...(col ? [{text: '\t'}] : []), ...cell])]) : block.content, rows: type === 'table' ? block.rows ?? [[clear ? [] : block.content, []], [[], []]] : undefined, checked: false, imageId: undefined, alt: undefined}); }
+  function convert(block: Block, type: BlockType, clear = false) {
+    if (type === 'code') {
+      const content = clear ? [] : [{text: (block.type === 'table' ? (block.rows ?? []).map(row => row.map(cell => cell.map(segment => segment.entityId ? entityMentionName(entities.find(entity => entity.id === segment.entityId)) ?? '' : segment.text ?? '').join('')).join('\t')).join('\n') : block.content.map(segment => segment.entityId ? segment.mentionText ?? entityMentionName(entities.find(entity => entity.id === segment.entityId)) ?? '' : segment.text ?? '').join(''))}];
+      setMenu(null); focusTarget.current = {id: block.id, start: false}; update(block.id, {type, content, rows: undefined}); return;
+    }
+    if (type === 'divider') clear = true;
+    setMenu(null); focusTarget.current = {id: block.id, start: false}; update(block.id, {type, content: clear ? [] : block.type === 'table' ? (block.rows ?? []).flatMap((row, i) => [...(i ? [{text: '\n'}] : []), ...row.flatMap((cell, col) => [...(col ? [{text: '\t'}] : []), ...cell])]) : block.content, rows: type === 'table' ? block.rows ?? [[clear ? [] : block.content, []], [[], []]] : undefined, checked: false, imageId: undefined, alt: undefined}); }
   function show(el: HTMLElement, items: Choice[], label: string, sheet = false) {
     if (!items.length) { setMenu(null); return; } const box = el.getBoundingClientRect();
     setMenu({items, index: 0, left: Math.max(8, Math.min(box.left, innerWidth - 330)), top: Math.max(8, Math.min(box.bottom + 5, innerHeight - 370)), label, sheet});
@@ -427,10 +436,10 @@ export function BlockEditor(props: Props) {
     if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); onSave(); return; }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault(); setMenu(null);
-      if (!el.textContent && ['bullet', 'todo'].includes(block.type)) { convert(block, 'paragraph'); return; }
+      if (!el.textContent && ['bullet', 'numbered', 'todo'].includes(block.type)) { convert(block, 'paragraph'); return; }
       const selection = getSelection(); if (!selection?.rangeCount) return;
       const range = selection.getRangeAt(0); range.deleteContents(); const tail = range.cloneRange(); tail.setEnd(el, el.childNodes.length); const temp = document.createElement('div'); temp.append(tail.extractContents());
-      const next: Block = {...(isAIExplanation(block)?{semantic:'ai-explanation' as const}:{}),...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{}),id: randomUUID(), type: ['bullet', 'todo'].includes(block.type) ? block.type : 'paragraph', checked: false, content: readSegments(temp)};
+      const next: Block = {...(isAIExplanation(block)?{semantic:'ai-explanation' as const}:{}),...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{}),id: randomUUID(), type: ['bullet', 'numbered', 'todo'].includes(block.type) ? block.type : 'paragraph', checked: false, content: readSegments(temp)};
       const list = latest.current.blocks.map(b => b.id === block.id ? {...b, content: readSegments(el)} : b); list.splice(list.findIndex(b => b.id === block.id) + 1, 0, next); focusTarget.current = {id: next.id, start: true}; onChange(list);
     }
     if (e.key === 'Backspace' && !el.textContent && blocks.length > 1) { e.preventDefault(); removeBlock(block.id); }
@@ -442,14 +451,26 @@ export function BlockEditor(props: Props) {
     <div className="ai-explanation-label">AI Explanation</div>
     {explaining?<div className="ai-explanation-status" role="status"><span className="scan-spinner" aria-hidden="true"/>Explaining selected blocks…</div>:<div className="ai-explanation-status is-error" role="alert"><span>{explanationError}</span><button type="button" onClick={()=>void explain(retryExplanation.current)}>Retry</button><button type="button" onClick={()=>{setExplanationError('');setExplanationAnchor(null);}}>Dismiss</button></div>}
   </div>:null;
-  const renderBlock = (block: Block) => isAIExplanation(block) ? <ReadOnlyExplanationBlock key={block.id} block={block} entities={entities} onOpen={onOpenEntity} vaultId={props.vaultId}/> : <Fragment key={block.id}><div data-block-id={block.id} data-semantic-kind={block.semantic} style={semanticStyle(block.semantic)} className={'block ' + block.type + (block.semantic ? ' semantic-block' : '') + (blockDrag?.id === block.id ? ' is-block-dragging' : '')} data-drop-before={blockDrag?.valid && blockDrag.beforeId === block.id ? true : undefined} data-drop-after={blockDrag?.valid && blockDrag.beforeId === null && block.id === dropEndId ? true : undefined}>
+  const renderBlock = (block: Block) => isAIExplanation(block) ? <ReadOnlyExplanationBlock key={block.id} block={block} blocks={blocks} entities={entities} onOpen={onOpenEntity} vaultId={props.vaultId}/> : <Fragment key={block.id}><div data-block-id={block.id} data-semantic-kind={block.semantic} style={semanticStyle(block.semantic)} className={'block ' + block.type + (block.semantic ? ' semantic-block' : '') + (blockDrag?.id === block.id ? ' is-block-dragging' : '')} data-drop-before={blockDrag?.valid && blockDrag.beforeId === block.id ? true : undefined} data-drop-after={blockDrag?.valid && blockDrag.beforeId === null && block.id === dropEndId ? true : undefined}>
     {block.semantic && <span className="semantic-accent" aria-hidden="true"/>}
     <div className="block-controls" role="group" aria-label="Block controls">
       <button className="block-add" title="Add block below" aria-label="Add block below" onClick={e => addBelow(e.currentTarget, block.id)}><Icon name="plus"/></button>
       <button className={'block-handle' + (block.semantic ? ' semantic-handle' : '')} draggable={false} title={(block.semantic ? semanticFunctions[block.semantic].label+' · ' : '')+'Drag to move · Click for block options'} aria-label={block.semantic ? semanticFunctions[block.semantic].label+' block options' : 'Block options'} aria-describedby="block-drag-help" aria-pressed={blockDrag?.id === block.id} onClick={e => blockOptions(e.currentTarget,block)}>{semanticGlyph(block.semantic)}</button>
     </div>
-    {block.type === 'todo' ? <input type="checkbox" aria-label="Complete task" checked={block.checked} onChange={e => update(block.id, {checked: e.target.checked})}/> : block.type === 'bullet' ? <span className="bullet-marker">•</span> : null}
-    {block.type === 'math' ? <MathBlock block={block} onDelete={() => removeBlock(block.id)} onChange={source => update(block.id, {content: [{text: source}]})} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'image' ? <ImageBlock block={block} vaultId={props.vaultId} onChange={alt => update(block.id,{alt})} onDelete={() => removeBlock(block.id)} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'table' ? <TableBlock reviewMatches={reviewMatches} block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock reviewMatches={reviewMatches} block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={el => {
+    {block.type === 'todo' ? <input type="checkbox" aria-label="Complete task" checked={block.checked} onChange={e => update(block.id, {checked: e.target.checked})}/> : block.type === 'bullet' ? <span className="bullet-marker">•</span> : block.type === 'numbered' ? <span className="bullet-marker numbered-marker">{blockListNumber(blocks, block.id)}.</span> : null}
+    {block.type === 'divider' ? <div className="divider-block" ref={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}} tabIndex={0} role="separator" aria-label="Divider" onKeyDown={event => {
+      if(event.key === 'Enter') {event.preventDefault(); insert(block.id);}
+      if(event.key === 'Backspace' || event.key === 'Delete') {event.preventDefault(); removeBlock(block.id);}
+      if((event.metaKey || event.ctrlKey) && event.key === 's') {event.preventDefault(); onSave();}
+    }}><hr/></div> : block.type === 'code' ? <div className="code-block" ref={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}} tabIndex={-1}>
+      <textarea aria-label="Code block" placeholder="Write code…" spellCheck={false} autoCapitalize="off" autoCorrect="off" maxLength={10000} rows={Math.max(3, block.content.map(segment => segment.text ?? '').join('').split('\n').length)} value={block.content.map(segment => segment.text ?? '').join('')} onChange={event => update(block.id, {content: [{text: event.target.value}]})} onKeyDown={event => {
+        if(event.nativeEvent.isComposing) return;
+        if((event.metaKey || event.ctrlKey) && event.key === 's') {event.preventDefault(); onSave();}
+        if((event.metaKey || event.ctrlKey) && event.key === 'Enter') {event.preventDefault(); insert(block.id);}
+        if(event.key === 'Tab') {event.preventDefault(); const el=event.currentTarget, start=el.selectionStart; el.setRangeText('  ', start, el.selectionEnd, 'end'); update(block.id, {content: [{text: el.value}]});}
+      }}/>
+      <small>Code · Tab to indent · ⌘/Ctrl+Enter to continue below</small>
+    </div> : block.type === 'math' ? <MathBlock block={block} onDelete={() => removeBlock(block.id)} onChange={source => update(block.id, {content: [{text: source}]})} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'image' ? <ImageBlock block={block} vaultId={props.vaultId} onChange={alt => update(block.id,{alt})} onDelete={() => removeBlock(block.id)} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'table' ? <TableBlock reviewMatches={reviewMatches} block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock reviewMatches={reviewMatches} block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={el => {
       const content = readSegments(el);
       const source = block.type === 'paragraph' && content.every(segment => !segment.entityId && !segment.math && !segment.code)
         ? displayMathSource(content.map(segment => segment.text ?? '').join('')) : undefined;

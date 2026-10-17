@@ -118,7 +118,10 @@ await test('SQLite API: pages, references, relationships, validation, and restar
  assert.deepEqual(await scoped('pages'),[]);assert.deepEqual(await scoped('entities'),[]);
  await scoped('pages/'+page.id,'GET',undefined,404);await scoped('entities/'+person.id,'GET',undefined,404);
  const note=await scoped('pages','POST',{title:'Research note'},201);
- const source=await scoped('entities','POST',{name:'Primary reference',type:'source'},201);
+ const attachmentResponse=await fetch(base+'/api/source-files?name=reference.txt',{method:'POST',headers:{'X-Vault-Id':vault.id,'X-Noema-Request':'1'},body:'Primary reference original'});
+ assert.equal(attachmentResponse.status,201);
+ const attachment=await attachmentResponse.json();
+ const source=await scoped('entities','POST',{name:'Primary reference',type:'source',attachmentIds:[attachment.id]},201);
  const localPerson=await scoped('entities','POST',{name:'Local person',type:'person'},201);
  const sourceBlocks=[{id:'source-block',type:'paragraph',checked:false,content:[{text:'According to '},{entityId:source.id}]}];
  await scoped('pages/'+note.id,'PUT',{title:note.title,blocks:sourceBlocks,sourceIds:[source.id]});

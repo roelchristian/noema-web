@@ -1,3 +1,4 @@
+import { SourceFiles } from '../src/server/modules/source-files.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -19,7 +20,7 @@ test('Trash preserves content, sources, and organization across restart and rest
   try {
     let store = new Store(db), knowledge = new Knowledge(store), pages = new Pages(store, knowledge, () => time), org = new Organizer(store);
     const page = pages.create('default', {title: 'Keep my note'});
-    const source = knowledge.create('default', {name: 'Reference', type: 'source'});
+    const source = knowledge.create('default', {name: 'Reference', type: 'source',attachmentIds:[new SourceFiles(store).add('default','reference.txt',Buffer.from('Primary source original')).id]});
     const saved = pages.update('default', page.id, {...page, sourceIds: [source.id]});
     const collection = org.saveCollection('default', {name: 'Workspace'}).collections[0];
     const folder = org.saveFolder('default', {name: 'Desk'}).folders[0];

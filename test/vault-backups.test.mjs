@@ -1,3 +1,4 @@
+import { SourceFiles } from '../src/server/modules/source-files.ts';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync,readdirSync,existsSync} from 'node:fs';
@@ -25,7 +26,7 @@ function fixture() {
   store.run('INSERT INTO entity_type_properties VALUES (?,?,?)',vault.id,'person','research area');
   const author=knowledge.create(vault.id,{name:'A writer',aliases:['Pen name'],type:'person',subtypes:['person:writer',custom]});
   const work=knowledge.create(vault.id,{name:'A novel',type:'creativework',subtypes:['creativework:book']});
-  const source=knowledge.create(vault.id,{name:'Source website',type:'source',subtypes:['source:website']});
+  const source=knowledge.create(vault.id,{name:'Source website',type:'source',subtypes:['source:website'],attachmentIds:[new SourceFiles(store).add(vault.id,'reference.txt',Buffer.from('Primary source original')).id]});
   knowledge.property(vault.id,work.id,{name:'author',target_id:author.id});
   knowledge.relationship(vault.id,author.id,{label:'wrote',target_id:work.id});
   const image=images.add(vault.id,png);

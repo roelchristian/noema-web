@@ -20,10 +20,11 @@ export interface TrashedPage extends PageSummary { deleted_at: string; expires_a
 export interface Page extends PageSummary { vault_id: string; blocks: Block[]; sourceIds: string[]; revision: number; summaryContentHash?: string; entityMatchCache?: import('./entity-match-cache.js').EntityMatchCache }
 export interface PageInput { icon?: PageIconId | null; title: string; blocks: Block[]; sourceIds?: string[]; revision?: number }
 export interface Entity { id: string; vault_id: string; name: string; aliases?: string[]; type: EntityType; subtypes: string[]; description: string; updated_at: string }
-export interface EntityInput { name: string; aliases?: string[]; type: EntityType; subtypes?: string[]; subtype?: string | null; description?: string }
+export interface EntityInput { name: string; aliases?: string[]; type: EntityType; subtypes?: string[]; subtype?: string | null; description?: string; attachmentIds?: string[] }
 export interface Property { id: string; entity_id: string; name: string; value: string | null; target_id: string | null }
 export interface Relationship { id: string; source_id: string; label: string; target_id: string }
-export interface EntityDetail extends Entity { propertyNames: string[]; properties: Property[]; relationships: Relationship[]; incomingProperties: Property[] }
+export interface SourceFile { id: string; vault_id: string; entity_id: string | null; name: string; size: number; status: 'queued' | 'processing' | 'ready' | 'failed'; text: string; error: string | null; progress: number; pages: number; ocr_pages: number; created_at: string }
+export interface EntityDetail extends Entity { attachments?: SourceFile[]; propertyNames: string[]; properties: Property[]; relationships: Relationship[]; incomingProperties: Property[] }
 
 export type PropertyInput = {name: string} & ({value: string; target_id?: never} | {target_id: string; value?: never});
 export interface RelationshipInput {label: string; target_id: string}

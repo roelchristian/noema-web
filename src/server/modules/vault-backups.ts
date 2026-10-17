@@ -1,3 +1,5 @@
+import { readFileSync, unlinkSync } from 'node:fs';
+import { SourceFiles } from './source-files.js';
 import {randomUUID} from 'node:crypto';
 import {promisify} from 'node:util';
 import {gzip,gunzip} from 'node:zlib';
@@ -20,6 +22,7 @@ const entityScope='entity_id IN (SELECT id FROM entities WHERE vault_id=?)';
 // Explicit, versioned allowlist: credentials, app settings, jobs and activity are never archived.
 const tables={
   pages:{columns:'id,title,icon,blocks,updated_at,revision,deleted_at',scope:'vault_id=?'},
+  source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at',scope:'vault_id=? AND entity_id IS NOT NULL'},
   entities:{columns:'id,name,aliases,type,subtypes,description,updated_at',scope:'vault_id=?'},
   properties:{columns:'id,entity_id,name,value,target_id',scope:entityScope},
   relationships:{columns:'id,source_id,label,target_id',scope:'source_id IN (SELECT id FROM entities WHERE vault_id=?)'},
@@ -37,7 +40,7 @@ const tables={
 } as const;
 type Table=keyof typeof tables;
 type Row=Record<string,unknown>;
-type Backup={format:'noema-vault-backup';version:1;createdAt:string;vault:{name:string};tables:Record<Table,Row[]>;images:{id:string;data:string}[]};
+type Backup={format:'noema-vault-backup';version:1;createdAt:string;vault:{name:string};tables:Record<Table,Row[]>;images:{id:string;data:string}[];sourceFiles?:{id:string;data:string}[]};
 const invalid=()=>new HttpError(400,'This backup contains invalid data or missing references.');
 function string(row:Row,key:string,max=10000) {return text(row[key],max);}
 function name(row:Row,key:string) {return required(row[key]);}
@@ -74,7 +77,12 @@ export class VaultBackups {
         if(estimated>maxExpandedBytes)throw new HttpError(413,'This vault exceeds the 256 MB expanded backup limit.');
         return {id,data:bytes.toString('base64')};
       });
-      return {format:'noema-vault-backup',version:1,createdAt:now(),vault:{name},tables:data,images} satisfies Backup;
+      return {format:'noema-vault-backup',version:1,createdAt:now(),vault:{name},tables:data,images,sourceFiles:data.source_files.map(file=>{
+        const bytes=readFileSync(new SourceFiles(this.store).filename(vault,file.id as string));
+        estimated+=Math.ceil(bytes.length/3)*4;
+        if(estimated>maxExpandedBytes)throw new HttpError(413,'This vault exceeds the 256 MB expanded backup limit.');
+        return {id:file.id as string,data:bytes.toString('base64')};
+      })} satisfies Backup;
     });
     const payload=Buffer.from(JSON.stringify(backup));
     if(payload.length>maxExpandedBytes)throw new HttpError(413,'This vault exceeds the 256 MB expanded backup limit.');
@@ -92,9 +100,12 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='source_files'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     if(total>200000)throw new HttpError(413,'This backup contains too many records.');
     const assets=list(archive.images).map(object);
+    const sourceAssets=list(archive.sourceFiles??[]).map(object);
+    const sourceAssetMap=new Map(sourceAssets.map(asset=>[name(asset,'id'),asset]));
+    if(sourceAssetMap.size!==sourceAssets.length||sourceAssets.length!==rows.source_files.length)throw invalid();
     const ids=(records:Row[])=>{
       const map=new Map<string,string>();
       for(const row of records){const id=name(row,'id');if(map.has(id))throw invalid();map.set(id,randomUUID());}return map;
@@ -120,7 +131,8 @@ export class VaultBackups {
       while(ancestor!==null){if(typeof ancestor!=='string'||seen.has(ancestor)||!parents.has(ancestor))throw invalid();if(verified.has(ancestor))break;seen.add(ancestor);ancestor=parents.get(ancestor);}
       for(const ancestor of seen)verified.add(ancestor);
     }
-    const vault=randomUUID(),writtenImages:string[]=[];
+    const vault=randomUUID(),writtenImages:string[]=[],writtenSources:string[]=[];
+    const sourceFiles=new SourceFiles(this.store);
     const insert=(table:Table,values:Record<string,SQLInputValue>)=>{
       const columns=Object.keys(values);
       this.store.run(`INSERT INTO ${table} (${columns.join(',')}) VALUES (${columns.map(()=>'?').join(',')})`,...Object.values(values));
@@ -140,6 +152,14 @@ export class VaultBackups {
           const type=entityType(row),aliases=list(json(row,'aliases')).map(value=>required(value,200)),subtypes=list(json(row,'subtypes')).map(value=>subtype(value,type));
           if(aliases.length>100||new Set(subtypes).size!==subtypes.length)throw invalid();
           insert('entities',{id:ref(entityIds,row.id),vault_id:vault,name:name(row,'name'),type,aliases:JSON.stringify(aliases),subtypes:JSON.stringify(subtypes),description:string(row,'description'),updated_at:timestamp(row,'updated_at')});
+        }
+        for(const row of rows.source_files) {
+          const asset=sourceAssetMap.get(name(row,'id'));if(!asset)throw invalid();
+          const encoded=string(asset,'data',70*1024*1024),bytes=Buffer.from(encoded,'base64');
+          if(bytes.toString('base64')!==encoded || bytes.length!==integer(row,'size',1,50*1024*1024))throw invalid();
+          const added=sourceFiles.add(vault,name(row,'name'),bytes,ref(entityIds,row.entity_id));writtenSources.push(added.id);
+          const status=string(row,'status',20);if(!['queued','processing','ready','failed'].includes(status))throw invalid();
+          this.store.run('UPDATE source_files SET status=?,text=?,error=?,progress=?,pages=?,ocr_pages=?,created_at=? WHERE id=?',status==='processing'?'queued':status,string(row,'text',16*1024*1024),nullable(row,'error',2000),integer(row,'progress',0,100),integer(row,'pages',0,1000),integer(row,'ocr_pages',0,1000),timestamp(row,'created_at'),added.id);
         }
         for(const row of rows.properties)insert('properties',{id:randomUUID(),entity_id:ref(entityIds,row.entity_id),name:name(row,'name'),value:nullable(row,'value'),target_id:row.target_id===null?null:ref(entityIds,row.target_id)});
         for(const row of rows.relationships)insert('relationships',{id:randomUUID(),source_id:ref(entityIds,row.source_id),label:name(row,'label'),target_id:ref(entityIds,row.target_id)});
@@ -194,6 +214,7 @@ export class VaultBackups {
         for(const id of pageIds.values())if(!this.store.get<{deleted_at:string|null}>('SELECT deleted_at FROM pages WHERE id=?',id)!.deleted_at)pages.get(vault,id);
       });
     } catch(error) {
+      for(const id of writtenSources){try{unlinkSync(sourceFiles.filename(vault,id));}catch{/* Rollback removes only newly written files. */}}
       for(const id of writtenImages)this.images.remove(vault,id);
       if(error instanceof HttpError)throw error;
       throw invalid();

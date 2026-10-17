@@ -52,7 +52,7 @@ export class Knowledge {
   }
   detail(vault: string, id: string): EntityDetail {
     const entity = this.require(vault,id);
-    return {...entity, propertyNames: this.schema(vault).properties[entity.type],
+    return {...entity, ...(entity.type==='source'?{attachments:this.store.all<import('../../shared/domain.js').SourceFile>('SELECT * FROM source_files WHERE vault_id=? AND entity_id=? ORDER BY created_at,id',vault,id)}:{}), propertyNames: this.schema(vault).properties[entity.type],
       properties:this.store.all<Property>('SELECT * FROM properties WHERE entity_id=?',id),
       relationships:this.store.all<Relationship>('SELECT * FROM relationships WHERE source_id=? OR target_id=?',id,id),
       incomingProperties:this.store.all<Property>('SELECT * FROM properties WHERE target_id=?',id)};
@@ -73,14 +73,27 @@ export class Knowledge {
   }
   create(vault: string, body: Record<string, unknown>) {
     const e=this.input(vault,body),id=randomUUID();
-    this.store.run('INSERT INTO entities (id,name,aliases,type,subtypes,description,updated_at,vault_id) VALUES (?,?,?,?,?,?,?,?)',id,e.name,JSON.stringify(e.aliases),e.type,JSON.stringify(e.subtypes),e.description,now(),vault);
+    const create=() => {
+      const attachments=e.type==='source'?this.attachments(vault,body.attachmentIds):[];
+      this.store.run('INSERT INTO entities (id,name,aliases,type,subtypes,description,updated_at,vault_id) VALUES (?,?,?,?,?,?,?,?)',id,e.name,JSON.stringify(e.aliases),e.type,JSON.stringify(e.subtypes),e.description,now(),vault);
+      for(const file of attachments)this.store.run('UPDATE source_files SET entity_id=? WHERE id=? AND vault_id=?',id,file,vault);
+    };
+    if(e.type==='source')this.store.transaction(create);else create();
     return this.detail(vault,id);
+  }
+  private attachments(vault:string,value:unknown): string[] {
+    if(!Array.isArray(value)||!value.length||value.length>20||value.some(id=>typeof id!=='string'))throw new HttpError(400,'A source requires at least one attached file (up to 20).');
+    const ids=[...new Set(value as string[])];
+    for(const id of ids)if(!this.store.get('SELECT 1 FROM source_files WHERE id=? AND vault_id=? AND entity_id IS NULL',id,vault))throw new HttpError(400,'Choose an unattached source file from this vault.');
+    return ids;
   }
   update(vault: string, id: string, body: Record<string, unknown>) {
     const current=this.require(vault,id),e=this.input(vault,body,current);
     const properties=this.detail(vault,id).properties;
     const inherited = this.schema(vault).properties[e.type];
     if (e.subtypes.length && properties.some(p => !inherited.some(name => name.toLowerCase() === p.name.toLowerCase()))) throw new HttpError(400,'This entity has properties outside the selected main type. Add those fields to the main type first.');
+    if (e.type!=='source' && this.store.get('SELECT 1 FROM source_files WHERE entity_id=?',id)) throw new HttpError(400,'A source with attached files must remain a Source entity');
+    if (e.type==='source' && current.type!=='source') throw new HttpError(400,'Create a source with an attached file instead of changing this entity type');
     if (e.type!=='source' && this.store.get('SELECT 1 FROM page_sources WHERE source_id=? LIMIT 1',id)) throw new HttpError(400,'Remove page source references before changing this Source to another type');
     this.store.transaction(() => {
       this.store.run('UPDATE entities SET name=?,aliases=?,type=?,subtype=NULL,subtypes=?,description=?,updated_at=? WHERE id=? AND vault_id=?',e.name,JSON.stringify(e.aliases),e.type,JSON.stringify(e.subtypes),e.description,now(),id,vault);

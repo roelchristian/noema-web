@@ -170,6 +170,14 @@ db.exec(`CREATE TABLE IF NOT EXISTS entity_subtypes (
  vault_id TEXT NOT NULL REFERENCES vaults(id), type TEXT NOT NULL, name TEXT NOT NULL COLLATE NOCASE,
  PRIMARY KEY(vault_id,type,name)
 );`);
+db.exec(`CREATE TABLE IF NOT EXISTS source_files (
+ id TEXT PRIMARY KEY, vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
+ entity_id TEXT REFERENCES entities(id) ON DELETE CASCADE,
+ name TEXT NOT NULL, size INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'queued',
+ text TEXT NOT NULL DEFAULT '', error TEXT, progress INTEGER NOT NULL DEFAULT 0,
+ pages INTEGER NOT NULL DEFAULT 0, ocr_pages INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL
+);
+ CREATE INDEX IF NOT EXISTS source_files_entity ON source_files(vault_id,entity_id);`);
 if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
  db.exec('BEGIN');
  try {

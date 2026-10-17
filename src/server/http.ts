@@ -1,3 +1,4 @@
+import { SourceFiles, maxSourceBytes } from './modules/source-files.js';
 import { VaultBackups, maxBackupBytes } from './modules/vault-backups.js';
 import { AINotifications } from './modules/ai-notifications.js';
 import { Images, maxImageBytes } from './modules/images.js';
@@ -28,6 +29,8 @@ async function readBody(req: IncomingMessage) {
   catch(error) { if(error instanceof HttpError)throw error;throw new HttpError(400,'Invalid JSON'); }
 }
 export function createApp(store: Store, clientRoot: string, intelligence=new Intelligence(keychainFor(store),fetch,()=>Date.now(),intelligencePreferencesFor(store))) {
+  const sourceFiles=new SourceFiles(store);
+  sourceFiles.recover();
   const backups=new VaultBackups(store);
   const images=new Images(store),notifications=new AINotifications(store);
   const vaults=new Vaults(store),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),organizer=new Organizer(store);
@@ -39,6 +42,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
   // Enforce retention on startup, periodically while running, and before scoped API access.
   pages.purgeExpired();
   images.cleanup();
+  let sourceWorker: ReturnType<typeof setInterval> | undefined;
   let cleanup: ReturnType<typeof setInterval> | undefined;
   let keyCleanup: ReturnType<typeof setInterval> | undefined;
   let embeddingWorker: ReturnType<typeof setInterval> | undefined;
@@ -54,6 +58,28 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
         if((req.headers.origin && req.headers.origin!==`http://${req.headers.host}`)||req.headers['sec-fetch-site']==='cross-site')throw new HttpError(403,'Cross-origin requests are not allowed');
         const aiRoute=url.pathname==='/api/search/snippets'||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|entity-scan|entity-review)$/.test(url.pathname);
         if(aiRoute && (req.headers['x-noema-request']!=='1'||(['POST','PUT'].includes(method)&&!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))))throw new HttpError(403,'AI requests require the Noema client and JSON');
+        if(url.pathname==='/api/source-files' || url.pathname.startsWith('/api/source-files/')) {
+          if(req.headers['x-noema-request']!=='1' && method!=='GET')throw new HttpError(403,'Source actions require the Noema client');
+          const header=req.headers['x-vault-id'];if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
+          const vault=vaults.requireOpen(header || (method==='GET'?url.searchParams.get('vault'):null) || 'default');
+          const parts=url.pathname.split('/').filter(Boolean),id=parts[2];
+          if(!id && parts.length===2 && method==='POST') {
+            const chunks:Buffer[]=[];let size=0;
+            for await(const chunk of req){const bytes=Buffer.from(chunk);size+=bytes.length;if(size>maxSourceBytes)throw new HttpError(413,'Source files must be 50 MB or smaller');chunks.push(bytes);}
+            vaults.requireOpen(vault);
+            return send(201,sourceFiles.add(vault,url.searchParams.get('name')||'',Buffer.concat(chunks),url.searchParams.get('entity')||undefined));
+          }
+          if(id && parts.length===3 && method==='GET')return send(200,sourceFiles.require(vault,id));
+          if(id && parts.length===3 && method==='DELETE')return send(200,sourceFiles.remove(vault,id));
+          if(id && parts.length===4 && parts[3]==='retry' && method==='POST')return send(200,sourceFiles.retry(vault,id));
+          if(id && parts.length===4 && parts[3]==='download' && method==='GET') {
+            const file=sourceFiles.require(vault,id),bytes=readFileSync(sourceFiles.filename(vault,id));
+            const filename=encodeURIComponent(file.name).replace(/['()*]/g,char=>'%'+char.charCodeAt(0).toString(16).toUpperCase());
+            res.writeHead(200,{'Content-Type':'application/octet-stream','Content-Disposition':`attachment; filename="source.${id.split('.').at(-1)}"; filename*=UTF-8''${filename}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"});
+            return res.end(bytes);
+          }
+          throw new HttpError(404,'Not found');
+        }
         if(url.pathname === '/api/images' && method === 'POST' || url.pathname.startsWith('/api/images/') && method === 'GET') {
           const header=req.headers['x-vault-id'];
           if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
@@ -228,11 +254,12 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
     }
   });
   server.on('listening', () => {
-    cleanup = setInterval(() => { try { pages.purgeExpired(); images.cleanup(); } catch (error) { console.error('Trash cleanup failed',error); } },60 * 60 * 1000);
+    sourceWorker=setInterval(()=>{void sourceFiles.tick().catch(()=>{});},500);sourceWorker.unref();
+    cleanup = setInterval(() => { try { pages.purgeExpired(); images.cleanup(); sourceFiles.cleanup(); } catch (error) { console.error('Trash cleanup failed',error); } },60 * 60 * 1000);
     cleanup.unref();
     keyCleanup=setInterval(()=>{try{intelligence.purgeExpired();}catch{/* Keychain may be locked; all AI access still fails closed. */}},60000);keyCleanup.unref();
     embeddingWorker=setInterval(()=>{void embeddings.tick().catch(()=>{/* Durable job history records failures; never log note content. */});},1000);embeddingWorker.unref();
   });
-  server.on('close', () => {clearInterval(cleanup);clearInterval(keyCleanup);clearInterval(embeddingWorker);embeddings.close();});
+  server.on('close', () => {clearInterval(sourceWorker);sourceFiles.close();clearInterval(cleanup);clearInterval(keyCleanup);clearInterval(embeddingWorker);embeddings.close();});
   return server;
 }

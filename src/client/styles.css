@@ -1129,3 +1129,20 @@ main:has(> #content > .page) { display: flex; flex-direction: column; }
 .sidebar .sidebar-scroll-region #page-list { overflow: visible; min-height: 0; }
 .sidebar .vault-controls { position: relative; flex: 0 0 auto; bottom: auto; margin-top: 0; }
 .select-menu, .sidebar-action-menu { overscroll-behavior: contain; scroll-padding: 5px; }
+
+.source-attachments { margin: 20px 0; }
+.source-upload { display: grid; gap: 8px; padding: 14px; border: 1px dashed var(--control-border, #aaa); border-radius: 8px; cursor: pointer; }
+.source-upload input { max-width: 100%; font: inherit; }
+.source-file-list { display: grid; gap: 12px; margin-top: 14px; }
+.source-file { padding: 12px; border: 1px solid var(--control-border, #aaa); border-radius: 8px; min-width: 0; }
+.source-file strong { display: block; overflow-wrap: anywhere; }
+.source-file small, .source-status { font-size: 12px; opacity: .8; }
+.source-file progress { width: 100%; }
+.source-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 10px 0; font-size: 12px; }
+.source-text { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 13px; line-height: 1.6; max-height: 320px; overflow-y: auto; }
+.source-empty { padding: 12px; font-size: 13px; opacity: .75; }
+.source-file summary { cursor: pointer; font-size: 13px; }
+.source-status.failed { color: var(--danger, #b23b3b); }
+
+dialog:has(.source-attachments) { max-height: calc(100dvh - 40px); overflow-y: auto; }
+.source-actions a { text-decoration: underline; text-underline-offset: 3px; }

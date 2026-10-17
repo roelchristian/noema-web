@@ -15,6 +15,11 @@ export async function uploadImage(vault: string, file: File): Promise<{id: strin
   if(!response.ok) throw new ApiError(response.status,result.error || 'Image upload failed');
   return result;
 }
+export async function uploadSourceFile(vault:string,file:File,entityId?:string):Promise<import('../shared/domain').SourceFile> {
+  const params=new URLSearchParams({name:file.name});if(entityId)params.set('entity',entityId);
+  const response=await fetch('/api/source-files?'+params,{method:'POST',headers:{'X-Noema-Request':'1','X-Vault-Id':vault,'Content-Type':'application/octet-stream'},body:file});
+  const result=await response.json();if(!response.ok)throw new ApiError(response.status,result.error||'Source upload failed');return result;
+}
 const maxBackupBytes=128*1024*1024;
 export async function exportVaultBackup(vault:string):Promise<{blob:Blob;filename:string}> {
   const response=await fetch(`/api/vaults/${encodeURIComponent(vault)}/backup`,{headers:{'X-Noema-Request':'1'}});

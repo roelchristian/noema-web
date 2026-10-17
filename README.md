@@ -95,7 +95,12 @@ Choose **Vault options → Import vault…**, or **Import a .noemabkp backup ins
 - Type `/` at the beginning of a block to choose text, heading, bullet list, quote, or to-do. Use arrow keys and Enter in the menu.
 - Press Enter to add a block; Shift+Enter inserts a line break. Hover over a block and click its handle to change its type or delete it.
 - In the top toolbar’s **Sources** menu, attach an existing Source or create a new one. Remove a page source with **×**; the Source entity remains in the vault.
-- Choose **Source** when creating an entity to represent a reference. Add URLs, authors, publication dates, or other metadata through properties. Sources support the same details, relationships, and inline `@` mentions as other entities.
+- Choose **Source** when creating an entity to represent a reference. Attach at least one original **TXT, MD, or PDF** file before creating it (up to 20 initial files; 50 MB per file). Sources keep the same properties, relationships, subtypes, aliases, and inline `@` mentions as other knowledge entities.
+- Each original is stored with a UUID filename at `assets/<vault-id>/sources/<uuid>.<extension>` beside the database. The original name and extracted text are stored in `source_files`. Text sources must be UTF-8. HTML uploads and extraction are disabled. Existing HTML originals remain available for download or replacement.
+- Extraction runs in a local background queue. The source panel shows waiting, extraction progress, ready, or failure states. You can read extracted text, download the original, retry failed extraction, or attach replacement files. The last attached file cannot be removed. The original remains available even when extraction fails. Interrupted jobs resume on restart; locked vaults do not start new extraction jobs. Unattached uploads expire after 24 hours during startup/hourly cleanup.
+- On **macOS**, PDFKit reads embedded PDF text and Apple Vision OCR reads pages with little or no embedded text, including mixed scanned/digital PDFs. Nothing is sent to an AI provider. The first PDF extraction compiles `scripts/extract-source.swift` using the macOS Command Line Tools (`xcode-select --install` if needed), then caches the executable beside the assets. PDFs support up to 1,000 pages, 16 MB of extracted text, and a 10-minute extraction timeout. Password-protected, damaged, empty, or unreadable PDFs show a retryable error. Other operating systems currently support TXT and MD extraction; PDF originals can still be saved and downloaded but PDF extraction reports the macOS requirement.
+- Existing Source entities remain intact and show an attachment prompt if they have no original. New sources require attachments through the API as well as the UI. To preserve file ownership, file-backed sources cannot change entity type. AI entity scans can link existing sources; create new sources manually with their original files first.
+- Vault backups include attached originals and their extracted text/status, remapping file UUIDs when imported. Older backups without file attachments remain importable.
 - Type `@` to find an entity or create one inline. Entity mentions keep the entity's ID, so renaming an entity updates its displayed name across pages.
 - Click a mention, or open **Knowledge entities**, to edit entity details, properties, and relationships.
 - A property can hold **text** (`type = Book`) or an **entity reference** (`author = @Person`). Click **Edit** to change it.
@@ -124,6 +129,7 @@ Deleting a folder removes its nested folders and returns their items to the cont
 | Table | Purpose |
 | --- | --- |
 | `vaults` | Workspace identity, persisted lock state, and passphrase hash |
+| `source_files` | UUID file metadata, source ownership, extracted text and local extraction status |
 | `page_sources` | Page-level references to Source entities |
 | `pages` | Vault-scoped page title and ordered blocks, serialized as JSON |
 | `entities` | Vault-scoped person, place, event, creative work, organization, or source |
@@ -286,3 +292,6 @@ Semantic search embeds the query and ranks current note vectors with cosine simi
 | POST | `/api/search/snippets` | Read local excerpts for `{query, pageIds}` (up to 100 active notes in the selected vault); returns `{snippets: {pageId: text}}` without an AI request |
 
 All embedding endpoints require `X-Noema-Request: 1` and select the vault with `X-Vault-Id` (default: `default`). Writes require JSON and the same origin/host checks as Intelligence endpoints. Tests inject a fake credential store and embedding provider; no real API key or billable requests are used.
+
+
+Source file API: `POST /api/source-files?name=<filename>[&entity=<source-id>]` accepts the original binary body with `X-Noema-Request: 1` and `X-Vault-Id`. For new sources, upload files first and pass their IDs as `attachmentIds` to `POST /api/entities` with `type: "source"`. Existing-source uploads use the `entity` query parameter. `GET /api/source-files/:id` returns extraction state and text; `GET /api/source-files/:id/download?vault=<vault-id>` downloads the original safely as an attachment; `POST /api/source-files/:id/retry` retries failed extraction; `DELETE /api/source-files/:id` removes a file while enforcing the last-file rule. All actions enforce vault scope and locks.

@@ -1,3 +1,4 @@
+import {NoteConnections} from './NoteConnections';
 import { SummaryText } from './SummaryText';
 import { HelpMenu } from '../components/HelpMenu';
 import { EntityScanReview } from './EntityScanReview';
@@ -9,9 +10,9 @@ import { Icon } from '../components/Icon';
 import { Select } from '../components/Select';
 import type { CreateEntityRequest } from '../knowledge/CreateEntityDialog';
 import { Mention } from '../components/Mention';
-import type { AIEnrichment, AISummary, Entity, Page } from '../../shared/domain';
+import type { AIEnrichment, AISummary, Entity, Page, PageSummary } from '../../shared/domain';
 interface KnowledgeSnapshot { summary:AISummary|null; scan:EntityScan|null }
-function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnapshot,page,entities,onOpenEntity,onSourcesChange,onCreateEntity,onClose,onSettings,onFlush,onReview}:{inactive?:boolean;initialItems:AIEnrichment[];initialError:string;snapshot?:KnowledgeSnapshot;onSnapshot:(snapshot:KnowledgeSnapshot)=>void;page:Page;entities:Entity[];onOpenEntity:(id:string)=>void;onSourcesChange:(sourceIds:string[])=>void;onCreateEntity:(request:CreateEntityRequest)=>void;onClose:()=>void;onSettings:()=>void;onFlush:()=>Promise<Page|null>;onReview:(scanId:string,id:string|string[],decision:'accepted'|'rejected',edits?:EntitySuggestionEdit[])=>Promise<EntityScan>}) {
+function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnapshot,page,pages,onOpenPage,entities,onOpenEntity,onSourcesChange,onCreateEntity,onClose,onSettings,onFlush,onReview}:{inactive?:boolean;initialItems:AIEnrichment[];initialError:string;snapshot?:KnowledgeSnapshot;onSnapshot:(snapshot:KnowledgeSnapshot)=>void;page:Page;pages:PageSummary[];onOpenPage:(id:string)=>void;entities:Entity[];onOpenEntity:(id:string)=>void;onSourcesChange:(sourceIds:string[])=>void;onCreateEntity:(request:CreateEntityRequest)=>void;onClose:()=>void;onSettings:()=>void;onFlush:()=>Promise<Page|null>;onReview:(scanId:string,id:string|string[],decision:'accepted'|'rejected',edits?:EntitySuggestionEdit[])=>Promise<EntityScan>}) {
   const [busy,setBusy]=useState(false),[error,setError]=useState(initialError),[result,setResult]=useState<AISummary|null>(()=>{
     if(snapshot)return snapshot.summary;
     const saved=initialItems.find(item=>item.kind==='summary');
@@ -66,6 +67,7 @@ function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnap
       <ConnectedEntities page={page} entities={entities} onOpenEntity={onOpenEntity}>
         <EntityScanReview entities={entities} page={page} scan={scan} onScan={setScan} onFlush={onFlush} onReview={onReview} disabled={busy||deleting||loading}/>
       </ConnectedEntities>
+    <NoteConnections key={page.vault_id+'/'+page.id} page={page} pages={pages} onOpenPage={onOpenPage} inactive={inactive}/>
     <section className="knowledge-sources" aria-labelledby="knowledge-sources-heading"><div className="knowledge-section-heading"><h2 id="knowledge-sources-heading">Sources</h2><span className="knowledge-count">{page.sourceIds.length}</span></div><div className="toolbar-source-list">{page.sourceIds.map(id => <div key={id} className="page-source"><Mention id={id} entities={entities} onOpen={onOpenEntity}/><button aria-label={'Remove source from page: ' + (entities.find(entity => entity.id === id)?.name || id)} onClick={() => onSourcesChange(page.sourceIds.filter(source => source !== id))}>×</button></div>)}</div>{!page.sourceIds.length && <p className="empty-small">No sources attached yet.</p>}<div className="toolbar-source-actions"><Select aria-label="Attach existing source" value="" onChange={event => { if (event.target.value) onSourcesChange([...new Set([...page.sourceIds, event.target.value])]); }}><option value="">Add a source…</option>{entities.filter(entity => entity.type === 'source' && !page.sourceIds.includes(entity.id)).map(entity => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</Select><button className="button small" onClick={() => onCreateEntity({source: true})}>+ New source</button></div></section>
     </div>
   </aside>;

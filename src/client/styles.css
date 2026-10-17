@@ -1237,3 +1237,13 @@ main {position:relative;}
 .note-link { color: var(--accent, #315b86); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; border-radius: 3px; }
 .note-link:hover { background: var(--accent-soft); }
 .note-link-status { margin: 12px 0; font-size: 12px; color: var(--text-muted); }
+
+.knowledge-note-links { border-top: 1px solid var(--line); padding-top: 24px; margin-top: 28px; }
+.knowledge-note-link-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.knowledge-note-link-list li + li { margin-top: 6px; }
+.knowledge-note-link-list button { display: flex; align-items: flex-start; gap: 8px; width: 100%; text-align: left; padding: 7px 6px; border-radius: 5px; }
+.knowledge-note-link-list button:hover { background: var(--surface-hover); }
+.knowledge-note-link-list button > span { min-width: 0; overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; }
+.knowledge-note-link-list small { display: block; color: var(--text-muted); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.knowledge-link-alias { padding: 0 6px 4px 31px; }
+.knowledge-missing-link { padding: 7px 6px; color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }

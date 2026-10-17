@@ -310,3 +310,5 @@ Select text in one block and choose **Semantic** on the selection toolbar to tag
 ### Links between notes
 
 Type `[[` in the editor to choose a note from the current vault, or type/paste `[[Page title]]` directly. Use `[[Page title|Display alias]]` to show a different label. Click a link or focus it and press Enter to open the note. Links resolve by title within the current vault; duplicate titles offer a choice, and missing titles show a message. Link syntax is preserved when saving and copying. Inline code keeps the syntax literal.
+
+The Knowledge panel lists outgoing links from the current draft and backlinks from other saved notes in the same vault. Outgoing links include display aliases and missing destinations. Repeated links are grouped; trashed notes and syntax inside code or formulas are excluded. Links resolve by title, so duplicate titles may appear as multiple outgoing destinations and share backlinks.

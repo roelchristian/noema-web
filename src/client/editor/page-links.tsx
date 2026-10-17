@@ -1,13 +1,8 @@
 import {renderToStaticMarkup} from 'react-dom/server';
 import type {ReactNode} from 'react';
 
-export interface PageLinkMatch {source:string;title:string;label:string;index:number}
-export function pageLinks(text:string):PageLinkMatch[] {
-  return Array.from(text.matchAll(/\[\[([^\[\]\n|]+)(?:\|([^\]\n]*))?\]\]/g)).flatMap(match=>{
-    const title=match[1]!.trim();
-    return title && title.length<=500 ? [{source:match[0],title,label:match[2]?.trim()||title,index:match.index!}] : [];
-  });
-}
+import {pageLinks, type PageLinkMatch} from '../../shared/page-links';
+
 function PageLink({link}:{link:PageLinkMatch}) {
   return <a className="note-link" href={'#page='+encodeURIComponent(link.title)} data-page-title={link.title} data-wikilink={link.source} contentEditable={false} draggable={false} title={'Open note: '+link.title}>{link.label}</a>;
 }

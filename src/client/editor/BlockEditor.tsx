@@ -1,4 +1,5 @@
 import { applySemantic, isAIExplanation, preserveAIExplanationTags, normalizeSemanticGroups, removeSemanticGroup, retagSemanticGroup, semanticDragItems, semanticFunctions, editableSemanticKinds, semanticRuns, type SemanticKind } from '../../shared/semantic-blocks';
+import {pageTitleKey} from '../../shared/page-links';
 import { completePageLink } from './page-links';
 import { ReadOnlyExplanationBlock } from './ReadOnlyExplanationBlock';
 import { selectedEditorBlocks } from './block-selection';
@@ -255,7 +256,7 @@ export function BlockEditor(props: Props) {
   }
   function openPageLink(anchor:HTMLElement) {
     const title=anchor.dataset.pageTitle!;
-    const matches=(latest.current.pages??[]).filter(page=>page.title.trim().toLocaleLowerCase()===title.toLocaleLowerCase());
+    const matches=(latest.current.pages??[]).filter(page=>pageTitleKey(page.title)===pageTitleKey(title));
     if(matches.length===1 && latest.current.onOpenPage) {setPageLinkStatus('');latest.current.onOpenPage(matches[0]!.id);}
     else if(matches.length>1)show(anchor,matches.map(page=>({title:page.title,detail:'Updated '+new Date(page.updated_at).toLocaleString(),icon:'page',entity:true,pick:()=>{setMenu(null);latest.current.onOpenPage?.(page.id);}})),'CHOOSE NOTE');
     else setPageLinkStatus('Note “'+title+'” was not found in this vault.');

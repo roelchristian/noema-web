@@ -1,3 +1,4 @@
+import {blockPageLinks,pageTitleKey} from '../../shared/page-links.js';
 import { isAIExplanation, isSemanticKind } from '../../shared/semantic-blocks.js';
 import { summaryContentHash } from './summary-content.js';
 import { AINotifications } from './ai-notifications.js';
@@ -17,6 +18,11 @@ export class Pages {
   }
   private imageIds(blocks: Block[]) { return blocks.flatMap(block => block.type === 'image' && block.imageId ? [block.imageId] : []); }
   list(vault: string) { return this.store.all<PageSummary>('SELECT id,title,icon,updated_at FROM pages WHERE vault_id=? AND deleted_at IS NULL ORDER BY updated_at DESC',vault); }
+  backlinks(vault:string,id:string):PageSummary[] {
+    const target=pageTitleKey(this.get(vault,id).title);
+    const candidates=this.store.all<PageSummary & {blocks:string}>("SELECT id,title,icon,updated_at,blocks FROM pages WHERE vault_id=? AND deleted_at IS NULL AND id<>? AND instr(blocks,'[[')>0 ORDER BY title COLLATE NOCASE,id",vault,id);
+    return candidates.flatMap(({blocks,...page})=>blockPageLinks(JSON.parse(blocks) as Block[]).some(link=>pageTitleKey(link.title)===target)?[page]:[]);
+  }
   get(vault: string, id: string): Page {
     const row=this.store.get<PageRow>('SELECT * FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',id,vault);
     if (!row) throw new HttpError(404,'Page not found');

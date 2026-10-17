@@ -168,6 +168,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             if(parts.length===3 && method==='PUT' && id==='favourites')return send(200,organizer.favourite(vault,body));
           }
           if(collection==='pages') {
+            if(id && parts.length===4 && child==='backlinks' && method==='GET')return send(200,pages.backlinks(vault,id));
             if(id && parts.length===4 && child==='explain' && method==='POST') {
               const page=pages.get(vault,id);
               // Draft blocks allow explaining current edits without saving or sending other note content.

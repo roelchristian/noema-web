@@ -1882,7 +1882,7 @@ main {position:relative;}
 
 .editor-save-status { flex-wrap:wrap; }
 .editor-entity-counts { display:inline-flex; align-items:center; flex-wrap:wrap; gap:10px; margin-left:8px; }
-.editor-entity-count { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.editor-entity-count, .editor-word-count { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; font-variant-numeric:tabular-nums; }
 .editor-entity-count .icon { width:13px; height:13px; }
 
 .block-drag-preview { position:fixed; top:0; left:0; z-index:1000; width:min(240px,calc(100vw - 16px)); padding:10px 12px; border:1px solid var(--control-border); border-radius:8px; background:var(--surface-raised); color:var(--text); box-shadow:0 8px 28px #0002; pointer-events:none; user-select:none; -webkit-user-select:none; will-change:transform; }

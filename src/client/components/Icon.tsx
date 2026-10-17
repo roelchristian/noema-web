@@ -34,6 +34,7 @@ const paths: Record<string, ReactNode> = {
   inbox: <><path d="m3 13 3-9h12l3 9v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M3 13h5l2 3h4l2-3h5"/></>,
   collection: <><path d="M8 3h8M6 6h12"/><rect x="4" y="9" width="16" height="12" rx="2"/></>,
   folder: <path d="M3 7V5a2 2 0 0 1 2-2h5l2 4h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>,
+  'folder-linked': <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 4h7a2 2 0 0 1 2 2v2"/><path d="m15.5 18.5 3-3M15 15l1-1a3 3 0 0 1 4.2 4.2l-1 1M17.5 20l-1 1a3 3 0 0 1-4.2-4.2l1-1"/></>,
   star: <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z"/>,
   person: <><path d="M20 21v-2a7 7 0 0 0-14 0v2"/><circle cx="13" cy="7" r="4"/></>,
   place: <><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></>,

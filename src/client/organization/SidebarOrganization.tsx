@@ -56,7 +56,7 @@ export function SidebarOrganization({vaultId, data, pages, context, active, disa
     const selected = active && (container.type === 'folders' ? context.folder === container.id : context.collection === container.id && !context.folder);
     const open = () => onOpen(container.collection, container.type === 'folders' ? container.id : '');
     const hasChildren = container.type === 'collections' && (data.folderLinks ?? []).some(link=>link.collection_id===container.id) || container.type === 'folders' && data.folders.some(folder => folder.parent_id === container.id) || containedPages(container.collection, container.type === 'folders' ? container.id! : null).length > 0;
-    const icon = container.type === 'folders' ? 'folder' : 'collection';
+    const icon = container.type === 'folders' ? container.linkedCollection ? 'folder-linked' : 'folder' : 'collection';
     return <div className={'sidebar-item-row organization-branch ' + (selected ? 'is-selected ' : '') + (dropTarget === container.id ? 'is-drop-target' : '')} style={{paddingLeft: Math.min(depth, 5) * 12}}
       draggable={!disabled && container.type === 'folders'} onDragStart={event => { if (container.type === 'folders' && vaultId) startFolderDrag(event, vaultId, container.id!); }}
       onDragOver={event => { if (!disabled && !dropping.current && (isPageDrag(event) || container.type === 'collections' && isFolderDrag(event))) { event.preventDefault(); event.dataTransfer.dropEffect = container.type === 'collections' ? 'copy' : 'move'; setDropTarget(container.id!); } }}

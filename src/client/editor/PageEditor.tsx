@@ -1,6 +1,6 @@
 import { smartQuoteTitle } from './smart-quotes';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { blockSegments, type Entity, type Page, type PageSummary } from '../../shared/domain';
+import { blockSegments, entityMentionName, type Segment, type Entity, type Page, type PageSummary } from '../../shared/domain';
 import type { SaveStatus } from '../state/page-saver';
 import type { CreateEntityRequest } from '../knowledge/CreateEntityDialog';
 import { BlockEditor } from './BlockEditor';
@@ -10,6 +10,7 @@ import type { EntityMatchCache } from '../../shared/entity-match-cache';
 import { EntityMatchReview } from './EntityMatchReview';
 import { ambiguityReviewDelay } from './auto-entity-matching';
 interface Props {pages:PageSummary[];onOpenPage:(id:string)=>void;onAddAlias: (id: string, alias: string) => Promise<void>; page: Page; entities: Entity[]; onChange: (patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon' | 'featuredImageId'>>) => void; onOpenEntity: (id: string) => void; onCreateEntity: (request: CreateEntityRequest) => void; onSave: () => void; onIdentify: () => Promise<void>; saveStatus: SaveStatus}
+const wordSegmenter = new Intl.Segmenter(undefined, {granularity:'word'});
 function editedLabel(updatedAt: string, now: number): string {
   const timestamp = Date.parse(updatedAt);
   const seconds = Number.isFinite(timestamp) ? Math.max(0, (now - timestamp) / 1000) : 0;
@@ -30,6 +31,17 @@ export function PageEditor({pages,onOpenPage,page, entities, onChange, onOpenEnt
     const mentioned = entities.filter(entity => entity.vault_id === page.vault_id && ids.has(entity.id));
     return mentioned.length;
   }, [page.blocks, page.vault_id, entities]);
+  const wordCount = useMemo(() => {
+    const names = new Map(entities.filter(entity => entity.vault_id === page.vault_id).map(entity => [entity.id,entityMentionName(entity)]));
+    const textOf = (content: Segment[]) => content.map(segment => segment.math ? ' ' : segment.entityId ? segment.mentionText ?? names.get(segment.entityId) ?? '' : segment.text ?? '').join('');
+    const text = page.blocks.map(block => {
+      if (block.type === 'image' || block.type === 'math' || block.type === 'divider') return '';
+      return block.type === 'table' || block.type === 'columns' ? (block.rows ?? []).map(row => row.map(textOf).join(' ')).join(' ') : textOf(block.content);
+    }).join(' ');
+    let count = 0;
+    for (const word of wordSegmenter.segment(text)) if (word.isWordLike) count++;
+    return count;
+  }, [page.blocks,page.vault_id,entities]);
   const [reviewSnapshot, setReviewSnapshot] = useState<{blocks: Page['blocks']; classification:Page['conceptClassification']; entities: Entity[]; cache: EntityMatchCache} | null>(() => page.entityMatchCache?.revision === page.revision ? {blocks:page.blocks,classification:page.conceptClassification,entities,cache:page.entityMatchCache} : null);
   const [reviewError, setReviewError] = useState('');
   const [resolving, setResolving] = useState(false);
@@ -75,8 +87,9 @@ export function PageEditor({pages,onOpenPage,page, entities, onChange, onOpenEnt
       {saveStatus === 'saving' || saveStatus === 'identifying' ? <span className="scan-spinner" aria-hidden="true"/> : <Icon name={saveStatus === 'saved' ? 'recent' : saveStatus === 'error' ? 'alert' : 'recent'}/>}
       <span role="status" aria-live="polite" aria-atomic="true">{saveStatus === 'saved' ? <time dateTime={page.updated_at} title={new Date(page.updated_at).toLocaleString()}>{status}</time> : status}</span>
       {saveStatus === 'error' && <button type="button" onClick={onSave}>Retry</button>}
-      <span className="editor-entity-counts" role="group" aria-label="Entities on this page">
+      <span className="editor-entity-counts" role="group" aria-label="Page statistics">
         <span className="editor-entity-count" title="Distinct entities on this page"><Icon name="knowledge"/><span>{entityCounts} {entityCounts === 1 ? 'entity' : 'entities'}</span></span>
+        <span className="editor-word-count" title="Words in note text">{wordCount.toLocaleString()} {wordCount === 1 ? 'word' : 'words'}</span>
       </span>
     </footer>
   </article>;

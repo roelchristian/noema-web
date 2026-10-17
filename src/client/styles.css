@@ -1122,3 +1122,10 @@ main:has(> #content > .page) { display: flex; flex-direction: column; }
 @media (max-width: 500px) {
   .knowledge-library .knowledge-entity-row .organization-item-icon { display: flex; }
 }
+
+/* Keep the vault picker pinned while navigation scrolls independently. */
+.sidebar { overflow: hidden; }
+.sidebar-scroll-region { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.sidebar .sidebar-scroll-region #page-list { overflow: visible; min-height: 0; }
+.sidebar .vault-controls { position: relative; flex: 0 0 auto; bottom: auto; margin-top: 0; }
+.select-menu, .sidebar-action-menu { overscroll-behavior: contain; scroll-padding: 5px; }

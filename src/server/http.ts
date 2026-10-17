@@ -1,3 +1,4 @@
+import { VaultBackups, maxBackupBytes } from './modules/vault-backups.js';
 import { AINotifications } from './modules/ai-notifications.js';
 import { Images, maxImageBytes } from './modules/images.js';
 import { EntityScans } from './modules/entity-scan.js';
@@ -27,6 +28,7 @@ async function readBody(req: IncomingMessage) {
   catch(error) { if(error instanceof HttpError)throw error;throw new HttpError(400,'Invalid JSON'); }
 }
 export function createApp(store: Store, clientRoot: string, intelligence=new Intelligence(keychainFor(store),fetch,()=>Date.now(),intelligencePreferencesFor(store))) {
+  const backups=new VaultBackups(store);
   const images=new Images(store),notifications=new AINotifications(store);
   const vaults=new Vaults(store),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),organizer=new Organizer(store);
   const activity=new AIActivityLog(store),enrichments=new AIEnrichments(store,pages);
@@ -66,6 +68,21 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
           const image=images.get(vault,url.pathname.slice('/api/images/'.length));
           res.writeHead(200,{'Content-Type':image.mime,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"});
           return res.end(image.bytes);
+        }
+        if(url.pathname==='/api/vaults/import' && method==='POST' || /^\/api\/vaults\/[^/]+\/backup$/.test(url.pathname) && method==='GET') {
+          if(req.headers['x-noema-request']!=='1')throw new HttpError(403,'Vault backups require the Noema client');
+          if(method==='POST') {
+            if(!/^application\/(octet-stream|x-noema-backup)(?:;|$)/i.test(req.headers['content-type']||''))throw new HttpError(415,'Upload a .noemabkp backup file.');
+            const chunks:Buffer[]=[];let size=0;
+            for await(const chunk of req){const bytes=Buffer.from(chunk);size+=bytes.length;if(size>maxBackupBytes)throw new HttpError(413,'Backups must be 128 MB or smaller.');chunks.push(bytes);}
+            return send(201,await backups.import(Buffer.concat(chunks),url.searchParams.get('name')??undefined));
+          }
+          const vault=url.pathname.split('/')[3]!;
+          vaults.requireOpen(vault);pages.purgeExpired(vault);
+          const backup=await backups.export(vault);
+          const filename=encodeURIComponent(backup.filename).replace(/['()*]/g,char=>'%'+char.charCodeAt(0).toString(16).toUpperCase());
+          res.writeHead(200,{'Content-Type':'application/x-noema-backup','Content-Disposition':`attachment; filename="vault.noemabkp"; filename*=UTF-8''${filename}`,'Content-Length':backup.bytes.length,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
+          return res.end(backup.bytes);
         }
         const body=['POST','PUT'].includes(method)?await readBody(req):{};
         const parts=url.pathname.split('/').filter(Boolean),[,collection,id,child,childId]=parts;

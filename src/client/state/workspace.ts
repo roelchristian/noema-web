@@ -293,6 +293,17 @@ export class Workspace {
   async createVault(name: string) {
     await this.saver.flush(); const vault = await api.createVault(name); await this.selectVault(vault.id);
   }
+  async exportVault() {
+    const id=this.state.vault?.id;
+    if(!id||this.state.vault?.locked)throw new Error('Unlock a vault before exporting it.');
+    await this.saver.flush();
+    return api.exportVault(id);
+  }
+  async importVault(file:File,name?:string) {
+    await this.saver.flush();
+    const vault=await api.importVault(file,name);
+    await this.selectVault(vault.id);
+  }
   async lock(passphrase?: string) {
     await this.saver.flush(); const id = this.state.vault!.id; await api.lock(id, passphrase); await this.selectVault(id);
   }

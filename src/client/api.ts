@@ -15,7 +15,23 @@ export async function uploadImage(vault: string, file: File): Promise<{id: strin
   if(!response.ok) throw new ApiError(response.status,result.error || 'Image upload failed');
   return result;
 }
+const maxBackupBytes=128*1024*1024;
+export async function exportVaultBackup(vault:string):Promise<{blob:Blob;filename:string}> {
+  const response=await fetch(`/api/vaults/${encodeURIComponent(vault)}/backup`,{headers:{'X-Noema-Request':'1'}});
+  if(!response.ok){const result=await response.json();throw new ApiError(response.status,result.error||'Vault export failed');}
+  const filename=response.headers.get('Content-Disposition')?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  return {blob:await response.blob(),filename:filename?decodeURIComponent(filename):'vault.noemabkp'};
+}
+export async function importVaultBackup(file:File,name?:string):Promise<Vault> {
+  if(!/\.noemabkp$/i.test(file.name))throw new Error('Choose a .noemabkp backup file.');
+  if(!file.size||file.size>maxBackupBytes)throw new Error('Choose a nonempty backup of 128 MB or smaller.');
+  const params=new URLSearchParams();if(name)params.set('name',name);
+  const response=await fetch('/api/vaults/import?'+params,{method:'POST',headers:{'X-Noema-Request':'1','Content-Type':'application/x-noema-backup'},body:file});
+  const result=await response.json();if(!response.ok)throw new ApiError(response.status,result.error||'Vault import failed');return result;
+}
 export const api={
+  exportVault:exportVaultBackup,
+  importVault:importVaultBackup,
   entityMatches:(vault:string,id:string,revision:number,signal?:AbortSignal)=>request<import('../shared/entity-match-cache').EntityMatchCache>(`pages/${id}/entity-matches?revision=${revision}`,'GET',undefined,vault,signal),
   resolveEntityMatch:(vault:string,id:string,body:{revision:number;key:string;matchId:string;entityId:string;all:boolean})=>request<{blocks:Page['blocks']}>(`pages/${id}/entity-matches`,'POST',body,vault),
   aiNotifications:(signal?:AbortSignal)=>request<import('../shared/ai-notifications').AINotificationQueue>('intelligence/notifications','GET',undefined,undefined,signal),

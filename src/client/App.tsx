@@ -26,6 +26,7 @@ import { PageEditor } from './editor/PageEditor';
 import { EntityPanel } from './knowledge/EntityPanel';
 import { KnowledgeLibrary } from './knowledge/KnowledgeLibrary';
 import { CreateEntityDialog, type CreateEntityRequest } from './knowledge/CreateEntityDialog';
+import { VaultBackupDialog } from './vaults/VaultBackupDialog';
 import { VaultDialog, type VaultAction } from './vaults/VaultDialog';
 export function App() {
   const [aiOpen,setAiOpen]=useState(() => {
@@ -46,6 +47,7 @@ export function App() {
   const state = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
   const {vaults, vault, pages, entities, page, view, busy, reviewing, error, saveStatus, organization, organizationContext, recent, trash} = state;
   const [panelId, setPanelId] = useState<string | null>(null), [create, setCreate] = useState<CreateEntityRequest | null>(null), [vaultAction, setVaultAction] = useState<VaultAction | null>(null);
+  const [backupAction,setBackupAction]=useState<'export'|'import'|null>(null);
   const knowledgeVisible = aiOpen && !searchOpen && !panelId;
   const openEntity = (id: string) => { setSearchOpen(false); workspace.recordRecent('entity', id); setPanelId(id); };
   const run = (work: () => Promise<unknown>) => { void work().catch(workspace.report); };
@@ -89,6 +91,7 @@ export function App() {
   return <>
     <aside className="sidebar"><div className="sidebar-heading"><a className="brand" href="/" aria-label="Noema home"><img className="brand-mark" src="/noema-mark.svg" alt="" width="38" height="38"/><span>noema</span></a>
       <button className="sidebar-new-note" type="button" aria-label="New Note" title="New Note" disabled={disabled || reviewing} onClick={() => { setPanelId(null); setSearchOpen(false); run(() => workspace.newPage()); }}><Icon name="compose"/></button></div>
+      <div className="sidebar-scroll-region">
       <nav className="sidebar-group" aria-label="Quick access">
         <button className={'nav '+(searchOpen?'active':'')} disabled={disabled} onClick={()=>{setPanelId(null);setSearchOpen(value=>!value);}} aria-label="Search vault" aria-haspopup="dialog" aria-expanded={searchOpen}><span><Icon name="search"/></span><span>Search</span><kbd>⌘K</kbd></button>
         <button className={'nav ' + (view === 'favourites' ? 'active' : '')} disabled={disabled} aria-label="Favourites" title="Favourites" onClick={() => workspace.showOrganization(true)}><span data-icon="star"><Icon name="star"/></span><span>Favourites</span></button>
@@ -116,8 +119,11 @@ export function App() {
           ]}/>
         </div>;
       })}</nav>
+      </div>
       <div className="vault-controls"><label htmlFor="vault-select">VAULT</label><div className="vault-picker"><Select id="vault-select" aria-label="Current vault" value={vault?.id || ''} disabled={busy || !vaults.length} onChange={e => run(() => workspace.selectVault(e.target.value))}>{!vault && <option value="">Loading vaults…</option>}{vaults.map(v => <option key={v.id} value={v.id}>{v.locked ? 'Locked · ' : ''}{v.name}</option>)}</Select><ActionMenu label="Vault options" disabled={busy} actions={[
         {label: 'New vault', icon: 'plus', onSelect: () => setVaultAction('create')},
+        {label: 'Import vault…', icon: 'upload', disabled: reviewing, onSelect: () => setBackupAction('import')},
+        {label: 'Export vault backup…', icon: 'download', disabled: !vault || vault.locked || reviewing, onSelect: () => setBackupAction('export')},
         {label: vault?.locked ? 'Unlock vault' : 'Lock vault', icon: 'vault', disabled: !vault, onSelect: () => { if (vault?.locked) setVaultAction('unlock'); else if (vault?.protected) run(() => workspace.lock()); else setVaultAction('lock'); }},
         {label: 'Trash', icon: 'trash', disabled, onSelect: () => { setPanelId(null); run(() => workspace.showTrash()); }},
         {label: 'Settings', icon: 'settings', onSelect: () => setSettingsOpen(true)},
@@ -141,7 +147,8 @@ export function App() {
     {renameTarget && <NameDialog maxLength={500} title="Rename page" value={renameTarget.title} onSave={name => workspace.renamePage(renameTarget.id,name)} onClose={() => setRenameTarget(null)}/>}
     {deleteTarget && <ConfirmDialog title="Move note to Trash?" description={`“${deleteTarget.title || 'Untitled'}” will be kept in Trash for 30 days. You can restore it until then.`} action="Move to Trash" onConfirm={() => workspace.deletePage(deleteTarget.id)} onClose={() => setDeleteTarget(null)}/>}
     {settingsOpen && <SettingsDialog vault={vault} onOpenPage={async(vaultId,pageId)=>{if(vault?.id!==vaultId)await workspace.selectVault(vaultId);await workspace.openPage(pageId);setSettingsOpen(false);}} appearance={appearance} onChange={setAppearance} storageError={storageError} onClose={() => setSettingsOpen(false)}/>}
-    {vaultAction && <VaultDialog action={vaultAction} onClose={() => setVaultAction(null)} onSubmit={value => vaultAction === 'create' ? workspace.createVault(value) : vaultAction === 'lock' ? workspace.lock(value) : workspace.unlock(value)}/>}
+    {backupAction && <VaultBackupDialog action={backupAction} vaultName={vault?.name} onClose={() => setBackupAction(null)} onExport={() => workspace.exportVault()} onImport={(file,name) => workspace.importVault(file,name)}/>}
+    {vaultAction && <VaultDialog onImport={() => { setVaultAction(null); setBackupAction('import'); }} action={vaultAction} onClose={() => setVaultAction(null)} onSubmit={value => vaultAction === 'create' ? workspace.createVault(value) : vaultAction === 'lock' ? workspace.lock(value) : workspace.unlock(value)}/>}
     {error && <div id="toast" role="alert">{error}<button className="toast-close" aria-label="Dismiss error" onClick={workspace.dismissError}>×</button></div>}
   </>;
 }

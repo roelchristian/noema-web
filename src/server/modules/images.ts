@@ -67,6 +67,11 @@ export class Images {
     }
     return removed;
   }
+  // Used only to roll back files written for a newly imported vault.
+  remove(vault: string, id: string) {
+    try {unlinkSync(this.filename(vault,id));}
+    catch(error) {if((error as NodeJS.ErrnoException).code !== 'ENOENT')throw error;}
+  }
   get(vault: string, id: string) {
     return {bytes:readFileSync(this.require(vault,id)), mime:mime[id.split('.').at(-1)!]!};
   }

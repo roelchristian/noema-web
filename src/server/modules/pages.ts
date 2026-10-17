@@ -37,7 +37,7 @@ export class Pages {
     this.store.run('INSERT INTO pages (id,title,blocks,updated_at,vault_id) VALUES (?,?,?,?,?)',id,required(body.title || 'Untitled'),JSON.stringify([{id:randomUUID(),type:'paragraph',checked:false,content:[]}]),now(),vault);
     return this.get(vault,id);
   }
-  private blocks(vault: string, input: unknown): Block[] {
+  validateBlocks(vault: string, input: unknown): Block[] {
     if (!Array.isArray(input) || input.length>2000) throw new HttpError(400,'Invalid blocks');
     const ids=new Set<string>();
     return input.map(value=>{
@@ -81,7 +81,7 @@ export class Pages {
     });
   }
   update(vault: string, id: string, body: Record<string, unknown>) {
-    const page=this.get(vault,id),blocks=this.blocks(vault,body.blocks),title=text(body.title,500);
+    const page=this.get(vault,id),blocks=this.validateBlocks(vault,body.blocks),title=text(body.title,500);
     const icon=body.icon === undefined ? page.icon ?? null : body.icon;
     if(icon !== null && !isPageIconId(icon)) throw new HttpError(400,'Invalid page icon');
     const sourceIds=body.sourceIds ?? page.sourceIds;

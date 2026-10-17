@@ -1,3 +1,5 @@
+import {positionAnchoredMenu,revealMenuItem} from './menu-placement';
+
 let serial = 0;
 
 /** Keep native selects as the form/data source while presenting a consistent menu. */
@@ -49,13 +51,13 @@ export function enhanceDropdowns(host: HTMLElement) {
       menu.setAttribute('aria-label', label);
       wrapper.hidden = select.hidden;
     }
-    function highlight(index: number) {
+    function highlight(index: number, reveal = true) {
       active = index;
       Array.from(menu.children).forEach((row, i) => row.classList.toggle('is-active', i === active));
       const row = menu.children[active];
       if (row) {
         trigger.setAttribute('aria-activedescendant', row.id);
-        row.scrollIntoView({ block: 'nearest' });
+        if (reveal) revealMenuItem(menu, row as HTMLElement);
       } else trigger.removeAttribute('aria-activedescendant');
     }
     function close() {
@@ -66,7 +68,7 @@ export function enhanceDropdowns(host: HTMLElement) {
       select.selectedIndex = index;
       sync();
       close();
-      trigger.focus();
+      trigger.focus({preventScroll:true});
       select.dispatchEvent(new Event('input', { bubbles: true }));
       select.dispatchEvent(new Event('change', { bubbles: true }));
     }
@@ -88,25 +90,18 @@ export function enhanceDropdowns(host: HTMLElement) {
         check.textContent = option.selected ? '✓' : '';
         check.setAttribute('aria-hidden', 'true');
         row.append(text, check);
-        row.addEventListener('pointermove', () => { if (available(option)) highlight(index); });
+        row.addEventListener('pointermove', () => { if (available(option)) highlight(index, false); });
         row.addEventListener('click', event => { event.preventDefault(); choose(index); });
         return row;
       }));
       menu.showPopover();
-      const rect = trigger.getBoundingClientRect();
-      const below = window.innerHeight - rect.bottom - 12;
-      const above = rect.top - 12;
-      const upwards = below < Math.min(menu.scrollHeight, 240) && above > below;
-      menu.style.width = `${Math.min(Math.max(rect.width, 200), window.innerWidth - 24)}px`;
-      menu.style.maxHeight = `${Math.max(0, Math.min(300, upwards ? above : below))}px`;
-      menu.style.left = `${Math.max(12, Math.min(rect.left, window.innerWidth - menu.offsetWidth - 12))}px`;
-      menu.style.top = `${upwards ? rect.top - menu.offsetHeight - 5 : rect.bottom + 5}px`;
+      if (!positionAnchoredMenu(menu, trigger, {maxHeight:300})) {close(); return;}
       trigger.setAttribute('aria-expanded', 'true');
       highlight(select.selectedIndex);
     }
     trigger.addEventListener('click', event => {
       event.preventDefault();
-      trigger.focus();
+      trigger.focus({preventScroll:true});
       if (isOpen()) close(); else open();
     });
     trigger.addEventListener('keydown', event => {
@@ -140,19 +135,24 @@ export function enhanceDropdowns(host: HTMLElement) {
       if (!isOpen()) trigger.removeAttribute('aria-activedescendant');
     });
     const reset = () => queueMicrotask(sync);
-    const invalid = (event: Event) => { event.preventDefault(); trigger.focus(); open(); };
+    const invalid = (event: Event) => { event.preventDefault(); trigger.focus({preventScroll:true}); open(); };
     select.addEventListener('change', sync);
     select.addEventListener('invalid', invalid);
     select.form?.addEventListener('reset', reset);
-    window.addEventListener('resize', close);
-    const onScroll = (event: Event) => { if (!menu.contains(event.target as Node)) close(); };
+    const reposition = () => { if (isOpen() && !positionAnchoredMenu(menu, trigger, {maxHeight:300})) close(); };
+    window.addEventListener('resize', reposition);
+    window.visualViewport?.addEventListener('resize', reposition);
+    window.visualViewport?.addEventListener('scroll', reposition);
+    const onScroll = (event: Event) => { if (!menu.contains(event.target as Node)) reposition(); };
     document.addEventListener('scroll', onScroll, true);
     controls.set(select, { sync, destroy() {
       close();
       select.removeEventListener('change', sync);
       select.removeEventListener('invalid', invalid);
       select.form?.removeEventListener('reset', reset);
-      window.removeEventListener('resize', close);
+      window.removeEventListener('resize', reposition);
+      window.visualViewport?.removeEventListener('resize', reposition);
+      window.visualViewport?.removeEventListener('scroll', reposition);
       document.removeEventListener('scroll', onScroll, true);
       select.classList.remove('select-native');
       select.tabIndex = originalTabIndex;

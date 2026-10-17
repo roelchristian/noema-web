@@ -295,3 +295,5 @@ All embedding endpoints require `X-Noema-Request: 1` and select the vault with `
 
 
 Source file API: `POST /api/source-files?name=<filename>[&entity=<source-id>]` accepts the original binary body with `X-Noema-Request: 1` and `X-Vault-Id`. For new sources, upload files first and pass their IDs as `attachmentIds` to `POST /api/entities` with `type: "source"`. Existing-source uploads use the `entity` query parameter. `GET /api/source-files/:id` returns extraction state and text; `GET /api/source-files/:id/download?vault=<vault-id>` downloads the original safely as an attachment; `POST /api/source-files/:id/retry` retries failed extraction; `DELETE /api/source-files/:id` removes a file while enforcing the last-file rule. All actions enforce vault scope and locks.
+
+Math delimiters: type or paste `\(x^2\)` (or `$x^2$`) for inline equations. Paste standalone `\[x^2\]` (or `$$x^2$$`) for display equations, including multiline LaTeX. Completing a standalone display equation while typing converts its paragraph into an equation block. Code spans and fenced code retain literal delimiters.

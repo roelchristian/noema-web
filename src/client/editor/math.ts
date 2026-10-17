@@ -1,3 +1,4 @@
+import { inlineMathAtCaret } from './math-delimiters';
 import katex from 'katex';
 
 export function renderMath(source: string, displayMode = false) {
@@ -11,17 +12,17 @@ export function mathElement(source: string) {
   el.title = 'Edit equation'; el.innerHTML = renderMath(source);
   return el;
 }
-/** Replace a completed $…$ expression immediately before the caret. */
+/** Replace a completed $…$ or \(...\) expression immediately before the caret. */
 export function completeInlineMath(el: HTMLElement) {
   const selection = getSelection();
   if (!selection?.rangeCount || !selection.isCollapsed) return;
   const range = selection.getRangeAt(0), node = range.startContainer;
   if (node.nodeType !== Node.TEXT_NODE || !el.contains(node) || node.parentElement?.closest('code,[data-math]')) return;
   const before = node.textContent!.slice(0, range.startOffset);
-  const match = before.match(/(?<![\\$])\$(?![\s$])([^$\n]*?\S)\$$/);
+  const match = inlineMathAtCaret(before);
   if (!match) return;
   const replacement = range.cloneRange(); replacement.setStart(node, match.index!);
-  replacement.deleteContents(); const math = mathElement(match[1]!); replacement.insertNode(math);
+  replacement.deleteContents(); const math = mathElement(match.source); replacement.insertNode(math);
   const spacer = document.createTextNode('\u200b'); math.after(spacer);
   replacement.setStart(spacer, 1); replacement.collapse(true);
   selection.removeAllRanges(); selection.addRange(replacement);

@@ -1,15 +1,19 @@
+import { displayMathSource } from './math-delimiters';
 import { safeHref, type Block, type BlockType, type Segment, type TextStyle } from '../../shared/domain';
 import { readSegments } from './segments';
 export function makeBlock(type: BlockType = 'paragraph', content: Segment[] = []): Block {
   return {id: crypto.randomUUID(), type, checked: false, content, ...(type === 'table' ? {rows: [[[], []], [[], []]]} : {})};
 }
 export function markdownInline(text: string, style: TextStyle = {}): Segment[] {
-  const pattern = /(`+)([\s\S]*?)\1|\[([^\]]+)\]\(([^\s)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|\*([^*]+)\*|_([^_]+)_|(?<![\\$])\$(?![\s$])((?:\\.|[^$\n\\])+?)(?<![\s\\])\$(?!\$)/g;
+  const pattern = /(`+)([\s\S]*?)\1|\[([^\]]+)\]\(([^\s)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|\*([^*]+)\*|_([^_]+)_|(?<![\\$])\$(?![\s$])((?:\\.|[^$\n\\])+?)(?<![\s\\])\$(?!\$)|(?<!\\)\\\(([^\n]*?)(?<!\\)\\\)/g;
   const output: Segment[] = []; let start = 0;
   for (const match of text.matchAll(pattern)) {
     if (match.index! > start) output.push({...style, text: text.slice(start, match.index)});
     if (match[1]) output.push({...style, code: true, text: match[2]});
-    else if (match[10]) output.push({...style, math: true, text: match[10]});
+    else if (match[10] || match[11] !== undefined) {
+      const source = (match[10] ?? match[11])!.trim();
+      output.push(source ? {...style, math: true, text: source} : {...style, text: match[0]});
+    }
     else if (match[3]) output.push(...markdownInline(match[3], {...style, ...(safeHref(match[4]!) ? {href: safeHref(match[4]!)} : {})}));
     else output.push(...markdownInline((match[5] ?? match[6] ?? match[7] ?? match[8] ?? match[9])!, {...style, ...(match[5] || match[6] ? {bold: true} : match[7] ? {strike: true} : {italic: true})}));
     start = match.index! + match[0].length;
@@ -23,6 +27,12 @@ export function markdownBlocks(text: string): Block[] {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     if (!line.trim()) continue;
+    if (line.trim().startsWith('\\[')) {
+      let end = i;
+      while (end < lines.length && !lines[end]!.trim().endsWith('\\]')) end++;
+      const source = end < lines.length ? displayMathSource(lines.slice(i, end + 1).join('\n')) : undefined;
+      if (source) { blocks.push(makeBlock('math', [{text: source}])); i = end; continue; }
+    }
     if (line.trim().startsWith('$$')) {
       const first = line.trim().slice(2);
       if (first.endsWith('$$') && first.length > 2) {
@@ -48,7 +58,7 @@ export function markdownBlocks(text: string): Block[] {
     const heading = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*$/), todo = line.match(/^\s*[-*+]\s+\[([ xX])\]\s*(.*)$/), bullet = line.match(/^\s*(?:[-*+]|\d+[.)])\s+(.*)$/), quote = line.match(/^\s*>\s?(.*)$/);
     const block = heading ? makeBlock(heading[1]!.length === 1 ? 'heading1' : 'heading2', markdownInline(heading[2]!)) : todo ? {...makeBlock('todo', markdownInline(todo[2]!)), checked: todo[1]!.toLowerCase() === 'x'} : bullet ? makeBlock('bullet', markdownInline(bullet[1]!)) : quote ? makeBlock('quote', markdownInline(quote[1]!)) : makeBlock('paragraph', markdownInline(line));
     if (!heading && !todo && !bullet && !quote) {
-      while (i + 1 < lines.length && lines[i + 1]!.trim() && !/^\s*(?:\$\$|#{1,6}\s|[-*+]\s|\d+[.)]\s|>|```|~~~)/.test(lines[i + 1]!) && !(lines[i + 1]!.includes('|') && /^\s*\|?\s*:?-{3,}:?\s*\|/.test(lines[i + 2] ?? ''))) {
+      while (i + 1 < lines.length && lines[i + 1]!.trim() && !/^\s*(?:\$\$|\\\[|#{1,6}\s|[-*+]\s|\d+[.)]\s|>|```|~~~)/.test(lines[i + 1]!) && !(lines[i + 1]!.includes('|') && /^\s*\|?\s*:?-{3,}:?\s*\|/.test(lines[i + 2] ?? ''))) {
         block.content.push({text: '\n'}, ...markdownInline(lines[++i]!));
       }
     }

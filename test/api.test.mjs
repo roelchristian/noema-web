@@ -37,13 +37,15 @@ await test('SQLite API: pages, references, relationships, validation, and restar
  const migrated=await request('pages/legacy');assert.equal(migrated.vault_id,'default');assert.equal(migrated.title,'Existing note');
  const people=await request('entities');assert.ok(people.some(e=>e.id==='ursula'));
  const page=await request('pages','POST',{title:'Test note'},201);
- await request('organization/folders','POST',{name:'No collection'},400);
+ await request('organization/folders','POST',{name:'No collection',collection_id:'invalid'},400);
  const organized = await request('organization/collections','POST',{name:'API collection'},201);
  const collectionId = organized.collections[0].id;
- const folderState = await request('organization/folders','POST',{name:'API folder',collection_id:collectionId},201);
+ const folderState = await request('organization/folders','POST',{name:'API folder'},201);
  const folderId = folderState.folders[0].id;
- await request('organization/locations','PUT',{kind:'page',item_id:page.id,collection_id:collectionId,folder_id:folderId});
+ await request('organization/locations','PUT',{kind:'page',item_id:page.id,folder_id:folderId});
+ await request('organization/memberships','PUT',{kind:'page',item_id:page.id,collection_id:collectionId});
  await request('organization/favourites','PUT',{kind:'page',item_id:page.id,favourite:true});
+ await request('organization/favourites','PUT',{kind:'folder',item_id:folderId,favourite:true});
  await request('organization/collections','POST',{name:'Invalid',parent_id:collectionId},400);
  await request('organization/folders/'+folderId,'PUT',{name:'Cycle',parent_id:folderId},400);
  await request('organization/favourites','PUT',{kind:'page',item_id:'missing',favourite:true},404);
@@ -86,8 +88,9 @@ await test('SQLite API: pages, references, relationships, validation, and restar
  const vault=await request('vaults','POST',{name:'Research'},201);
  assert.equal(vault.locked,false);assert.equal(vault.password_hash,undefined);
  const scoped=(route,method='GET',body,status=200)=>request(route,method,body,status,{'X-Vault-Id':vault.id});
- assert.deepEqual(await scoped('organization'),{collections:[],folders:[],locations:[],favourites:[]});
- await scoped('organization/locations','PUT',{kind:'page',item_id:page.id,collection_id:collectionId},404);
+ assert.deepEqual(await scoped('organization'),{collections:[],folders:[],locations:[],memberships:[],favourites:[]});
+ await scoped('organization/favourites','PUT',{kind:'folder',item_id:folderId,favourite:true},404);
+ await scoped('organization/memberships','PUT',{kind:'page',item_id:page.id,collection_id:collectionId},404);
  assert.deepEqual(await scoped('pages'),[]);assert.deepEqual(await scoped('entities'),[]);
  await scoped('pages/'+page.id,'GET',undefined,404);await scoped('entities/'+person.id,'GET',undefined,404);
  const note=await scoped('pages','POST',{title:'Research note'},201);
@@ -112,6 +115,7 @@ await test('SQLite API: pages, references, relationships, validation, and restar
  await stop();base=await start();
  const persistedOrganization = await request('organization');
  assert.equal(persistedOrganization.locations.find(l=>l.item_id===page.id).folder_id,folderId);
+ assert.ok(persistedOrganization.favourites.some(f=>f.kind==='folder'&&f.item_id===folderId));
  assert.ok(persistedOrganization.favourites.some(f=>f.item_id===page.id));
  assert.equal((await request('vaults')).find(v=>v.id===vault.id).locked,true);
  await scoped('pages','GET',undefined,423);

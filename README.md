@@ -27,6 +27,18 @@ Paste an image into a page or type `/image` in a text block. The block add menu 
 
 Noema stores image files beside the SQLite database in `assets/<vault-id>/images/<uuid>.<extension>`. Image references belong to that vault, and locked vaults block image reads and uploads. Include this `assets/` folder with the database in backups (the default `data/` folder contains both). Automatic cleanup removes images after their last saved reference is removed or their last referencing note is permanently deleted. Notes in Trash retain their images until permanent deletion, including the normal 30-day expiry. Abandoned uploads get a 24-hour grace period before cleanup on startup or the hourly sweep.
 
+## Folders and collections
+
+**Library** shows folders and notes together in one content table. The root contains top-level folders and unfiled notes; each folder shows only its immediate subfolders and notes. Open notes show their absolute location in breadcrumbs, starting with **Pages**, followed by ancestor folders and the note title. Collection membership and the route used to open a note do not change this path. Star folders from the table or sidebar to open them from **Favourites**, alongside starred notes and entities. Removing a folder clears its own favourite and those of deleted subfolders while preserving note favourites.
+
+Folders define storage location within a vault. A note has one folder, or is unfiled in **Inbox**. Folders can contain subfolders. Moving a note replaces its location; moving it to Inbox clears the folder. Drag a folder onto another folder in the Library table or sidebar to move its entire subtree. Notes keep their folder IDs, collection memberships, and favourites; their breadcrumb paths follow the new ancestry. Self and descendant drops are rejected. Removing a folder also removes its subfolders and returns their notes to Inbox. Notes, collection memberships, and favourites are kept.
+
+Collections curate notes across folder locations. A note can belong to multiple collections. Collections are flat and contain no folders. Adding or removing a membership never moves the note. Removing a collection removes only its memberships. Use **Organize** for a note or a selection of notes; dropping onto a folder in the Library table or sidebar moves a note from its current location, while dropping onto a collection adds membership. A note in collections remains in Inbox until filed into a folder.
+
+The API exposes `organization.locations` separately from `organization.memberships`. `PUT /api/organization/locations` accepts `{kind, item_id, folder_id}` (null means Inbox); `PUT /api/organization/memberships` accepts `{kind, item_id, collection_id, remove?}`. SQLite enforces one location per vault/item and unique memberships per vault/item/collection. Both operations validate vault scope and preserve canonical note content. Trash hides organization until restore; permanent deletion clears both relations.
+
+Existing databases migrate transactionally on startup. Folder IDs, nesting, and all collection memberships survive, while folders become independent of collections. If a legacy note has multiple folder assignments, the migration selects its first non-null folder ordered by collection ID, then folder ID. This is deterministic across restarts. Notes with no folder stay unfiled. The former combined location API is replaced by the two operations above.
+
 ## Knowledge entity subtypes
 
 Knowledge entities keep a main type (Person, Place, Event, Creative work, Organization, or Source) and can have multiple subtypes under that main type, such as a Person who is both an Actor and a Writer. Built-in subtypes include Actor, Writer, City, Book, Film, Company, and Website. Create custom subtypes under **Knowledge entities → Manage types & subtypes**.
@@ -54,7 +66,7 @@ Page responses include a `revision`. Clients send that revision on updates to de
 
 ## Vaults
 
-Use the sidebar vault selector to switch workspaces, or **New vault** to create one. Each vault contains its own pages, entities, properties, relationships, and source references. Existing databases migrate automatically into **Personal vault** without losing content. New vaults start empty, and the browser remembers the last selected vault.
+Use the sidebar vault selector to switch workspaces, or **New vault** to create one. Each vault contains its own pages, entities, properties, relationships, and source references. Existing databases migrate automatically into **Personal vault** without losing content. New vaults start empty, and the browser remembers the last selected vault and the current location in each vault. Refreshing restores the open folder, collection, note, or library view. Locations are saved by ID, so moved or renamed folders retain their address; deleted locations fall back to the Library root. Locked vaults restore their last address only after unlocking.
 
 Use **Lock** to set a passphrase the first time; subsequent locks reuse that passphrase. Unlocking requires the passphrase. Locks persist across server restarts and block API reads and writes for that vault while allowing access to other vaults. Passphrases are stored as salted scrypt hashes. This is an app access lock, not encryption of the SQLite file; there is no passphrase recovery flow. Lock state is shared by all tabs using this local server. Already rendered content in another tab is not remotely erased.
 

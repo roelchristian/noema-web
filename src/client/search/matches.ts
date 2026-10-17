@@ -1,5 +1,5 @@
 import type {SemanticSearchResult} from '../../shared/embeddings';
-interface SearchItem {id:string;kind:'page'|'entity';name:string}
+interface SearchItem {id:string;kind:'page'|'entity'|'folder';name:string}
 /** Match only the supplied (already scoped) items, retaining text matches first. */
 export function combinedMatches<T extends SearchItem>(items:T[],query:string,semantic:SemanticSearchResult[]):T[] {
   const term=query.trim().toLowerCase();if(!term)return items;

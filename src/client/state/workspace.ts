@@ -8,7 +8,7 @@ export interface WorkspaceState {
   page: Page | null; view: 'pages' | 'entities' | 'organization' | 'favourites' | 'recent' | 'trash' | 'inbox'; busy: boolean; reviewing: boolean; error: string | null; saveStatus: SaveStatus;
 }
 export class Workspace {
-  private state: WorkspaceState = {vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, reviewing: false, error: null, saveStatus: 'saved'};
+  private state: WorkspaceState = {vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, reviewing: false, error: null, saveStatus: 'saved'};
   private listeners = new Set<() => void>();
   private pageCache = new Map<string, Page>();
   private navigation = false;
@@ -40,7 +40,41 @@ export class Workspace {
   );
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   snapshot = () => this.state;
-  private patch(patch: Partial<WorkspaceState>) { this.state = {...this.state, ...patch}; this.listeners.forEach(fn => fn()); }
+  private patch(patch: Partial<WorkspaceState>) {
+    this.state = {...this.state, ...patch};
+    // Do not replace the saved address with intermediate loading/locked state.
+    if (!this.state.busy && this.state.vault && !this.state.vault.locked &&
+      (patch.view !== undefined || patch.organizationContext !== undefined || patch.busy === false)) {
+      try {
+        localStorage.setItem('noema-address/' + this.state.vault.id, JSON.stringify({
+          view: this.state.view, ...this.state.organizationContext,
+          pageId: this.state.view === 'pages' ? this.state.page?.id ?? null : null,
+        }));
+      } catch { /* Navigation still works when browser storage is unavailable. */ }
+    }
+    this.listeners.forEach(fn => fn());
+  }
+  private async restoreAddress() {
+    const {vault, organization, pages} = this.state;
+    if (!vault || vault.locked) return;
+    let stored: Record<string, unknown>;
+    try {
+      const value: unknown = JSON.parse(localStorage.getItem('noema-address/' + vault.id) || 'null');
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+      stored = value as Record<string, unknown>;
+    } catch { return; }
+    if (typeof stored.view !== 'string' || !['pages', 'organization', 'entities', 'favourites', 'recent', 'trash', 'inbox'].includes(stored.view)) return;
+    const collection = organization.collections.some(item => item.id === stored.collection) ? String(stored.collection) : '';
+    const folder = !collection && organization.folders.some(item => item.id === stored.folder) ? String(stored.folder) : '';
+    this.patch({organizationContext: {collection, folder}});
+    if (stored.view === 'pages') {
+      if (typeof stored.pageId === 'string' && pages.some(page => page.id === stored.pageId)) await this.loadPage(stored.pageId, false);
+      else this.patch({organizationContext: {collection: '', folder: ''}});
+      return;
+    }
+    if (stored.view === 'trash') this.patch({trash: await api.trash(vault.id)});
+    this.patch({view: stored.view as WorkspaceState['view']});
+  }
   report = (error: unknown) => this.patch({error: error instanceof Error ? error.message : String(error)});
   dismissError = () => this.patch({error: null});
   async init() {
@@ -62,7 +96,7 @@ export class Workspace {
       const vaults = await api.vaults(), vault = vaults.find(v => v.id === id);
       if (!vault) throw new Error('Vault not found');
       ++this.loadSequence;
-      this.titler.dispose(); this.pageCache.clear(); this.patch({vaults, vault, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', error: null});
+      this.titler.dispose(); this.pageCache.clear(); this.patch({vaults, vault, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', error: null});
       try { localStorage.setItem('noema-vault', id); } catch { /* The app can work without browser storage. */ }
       if (vault.locked) return;
       const [pages, entities, organization] = await Promise.all([api.pages(id), api.entities(id), api.organization(id)]);
@@ -72,12 +106,14 @@ export class Workspace {
         if (Array.isArray(stored)) recent = stored.filter((item): item is RecentItem => !!item && typeof item === 'object' && (item.kind === 'page' || item.kind === 'entity') && typeof item.item_id === 'string' && typeof item.opened_at === 'string').slice(0, 50);
       } catch { /* Recent history is optional when storage is unavailable. */ }
       this.patch({pages, entities, organization, recent});
+      await this.restoreAddress();
     });
   }
-  private async loadPage(id: string) {
+  private async loadPage(id: string, recordRecent = true) {
     const vault = this.state.vault!;
     const page = this.pageCache.get(id) || await api.page(vault.id, id);
-    this.pageCache.set(id, page); this.patch({page, view: 'pages'}); this.recordRecent('page', id);
+    this.pageCache.set(id, page); this.patch({page, view: 'pages'});
+    if (recordRecent) this.recordRecent('page', id);
     this.titler.register(page); this.titler.observe(page, true);
   }
   async openPage(id: string) { await this.navigate(() => this.loadPage(id)); }
@@ -88,7 +124,7 @@ export class Workspace {
   setOrganization = (organization: Organization) => {
     const current = this.state.organizationContext;
     const collection = organization.collections.some(c => c.id === current.collection) ? current.collection : '';
-    const folder = organization.folders.some(f => f.id === current.folder && (f.collection_id || '') === collection) ? current.folder : '';
+    const folder = organization.folders.some(f => f.id === current.folder && !collection) ? current.folder : '';
     this.patch({organization, organizationContext: {collection, folder}});
   };
   setOrganizationContext = (patch: Partial<OrganizationContext>) => {
@@ -146,7 +182,7 @@ export class Workspace {
   async locatePage(id: string, collection: string, folder: string | null, remove = false) {
     const vault = this.state.vault, sequence = this.loadSequence;
     if (!vault || vault.locked) return;
-    const organization = await api.organize(vault.id, 'locations', {kind: 'page', item_id: id, collection_id: collection || null, folder_id: folder || null, remove});
+    const organization = await api.organize(vault.id, collection ? 'memberships' : 'locations', {kind: 'page', item_id: id, ...(collection ? {collection_id: collection, remove} : {folder_id: folder || null, remove})});
     if (sequence === this.loadSequence) this.setOrganization(organization);
   }
   async togglePageFavourite(id: string) {
@@ -164,6 +200,7 @@ export class Workspace {
       const pages = this.state.pages.filter(p => p.id !== id);
       this.patch({pages, page: page?.id === id ? null : page, organization: {...organization,
         locations: organization.locations.filter(item => item.kind !== 'page' || item.item_id !== id),
+        memberships: organization.memberships.filter(item => item.kind !== 'page' || item.item_id !== id),
         favourites: organization.favourites.filter(item => item.kind !== 'page' || item.item_id !== id),
       }});
       if (page?.id === id && pages[0]) await this.loadPage(pages[0].id);

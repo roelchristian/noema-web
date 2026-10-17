@@ -22,8 +22,9 @@ test('Trash preserves content, sources, and organization across restart and rest
     const source = knowledge.create('default', {name: 'Reference', type: 'source'});
     const saved = pages.update('default', page.id, {...page, sourceIds: [source.id]});
     const collection = org.saveCollection('default', {name: 'Workspace'}).collections[0];
-    const folder = org.saveFolder('default', {name: 'Desk', collection_id: collection.id}).folders[0];
-    org.locate('default', {kind: 'page', item_id: page.id, collection_id: collection.id, folder_id: folder.id});
+    const folder = org.saveFolder('default', {name: 'Desk'}).folders[0];
+    org.locate('default', {kind: 'page', item_id: page.id, folder_id: folder.id});
+    org.membership('default', {kind: 'page', item_id: page.id, collection_id: collection.id});
     org.favourite('default', {kind: 'page', item_id: page.id, favourite: true});
     pages.delete('default', page.id);
     assert.ok(!pages.list('default').some(note => note.id === page.id));
@@ -33,6 +34,7 @@ test('Trash preserves content, sources, and organization across restart and rest
     fails(() => org.favourite('default', {kind: 'page', item_id: page.id, favourite: true}), 404);
     assert.deepEqual(org.list('default').favourites, []);
     assert.deepEqual(org.list('default').locations, []);
+    assert.deepEqual(org.list('default').memberships, []);
     assert.equal(pages.trash('default')[0].deleted_at, time.toISOString());
     assert.equal(pages.trash('default')[0].expires_at, new Date(time.getTime() + trashRetentionMs).toISOString());
     db.close(); db = openDatabase(filename); store = new Store(db); knowledge = new Knowledge(store); pages = new Pages(store, knowledge, () => time); org = new Organizer(store);
@@ -42,6 +44,7 @@ test('Trash preserves content, sources, and organization across restart and rest
     assert.deepEqual(restored.sourceIds, [source.id]);
     assert.equal(restored.revision, saved.revision + 2);
     assert.equal(org.list('default').locations[0].folder_id, folder.id);
+    assert.equal(org.list('default').memberships[0].collection_id, collection.id);
     assert.equal(org.list('default').favourites[0].item_id, page.id);
     assert.deepEqual(pages.trash('default'), []);
     fails(() => pages.update('default', page.id, saved), 409);
@@ -54,6 +57,7 @@ test('Trash preserves content, sources, and organization across restart and rest
     assert.equal(store.get('SELECT id FROM pages WHERE id=?', page.id), undefined);
     assert.equal(store.get('SELECT page_id FROM page_sources WHERE page_id=?', page.id), undefined);
     assert.equal(store.get('SELECT item_id FROM item_locations WHERE item_id=?', page.id), undefined);
+    assert.equal(store.get('SELECT item_id FROM collection_memberships WHERE item_id=?', page.id), undefined);
     assert.equal(store.get('SELECT item_id FROM favourites WHERE item_id=?', page.id), undefined);
     assert.ok(knowledge.find('default', source.id));
     assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);

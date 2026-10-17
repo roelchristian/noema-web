@@ -4,14 +4,14 @@ import { inboxPages } from '../src/client/organization/inbox.ts';
 import { Workspace } from '../src/client/state/workspace.ts';
 import { api } from '../src/client/api.ts';
 
-test('Inbox contains only pages without collection membership and ignores entity locations', () => {
+test('Inbox contains only pages without folder locations and ignores entity locations', () => {
   const pages = ['draft', 'organized', 'same-id'].map(id => ({id, title: id, updated_at: ''}));
-  const organization = {collections: [{id: 'research', name: 'Research'}], folders: [], favourites: [], locations: [
-    {kind: 'page', item_id: 'organized', collection_id: 'research', folder_id: null},
-    {kind: 'entity', item_id: 'same-id', collection_id: 'research', folder_id: null},
+  const organization = {collections: [{id: 'research', name: 'Research'}], folders: [], favourites: [], memberships: [{kind: 'page', item_id: 'draft', collection_id: 'research'}], locations: [
+    {kind: 'page', item_id: 'organized', folder_id: 'folder'},
+    {kind: 'entity', item_id: 'same-id', folder_id: 'folder'},
   ]};
   assert.deepEqual(inboxPages(pages, organization).map(page => page.id), ['draft', 'same-id']);
-  organization.locations.push({kind: 'page', item_id: 'draft', collection_id: 'research', folder_id: 'folder'});
+  organization.locations.push({kind: 'page', item_id: 'draft', folder_id: 'folder'});
   assert.deepEqual(inboxPages(pages, organization).map(page => page.id), ['same-id']);
   organization.locations = [];
   assert.deepEqual(inboxPages(pages, organization), pages);
@@ -23,7 +23,7 @@ test('New Note opens the editor from a collection and leaves the note in Inbox',
   t.mock.method(api, 'vaults', async () => [vault]);
   t.mock.method(api, 'pages', async () => []);
   t.mock.method(api, 'entities', async () => []);
-  t.mock.method(api, 'organization', async () => ({collections: [{id: 'research', name: 'Research'}], folders: [], locations: [], favourites: []}));
+  t.mock.method(api, 'organization', async () => ({collections: [{id: 'research', name: 'Research'}], folders: [], locations: [], memberships: [], favourites: []}));
   const create = t.mock.method(api, 'createPage', async () => page);
   const organize = t.mock.method(api, 'organize', async () => { throw new Error('Creating a note must not require organization'); });
   const workspace = new Workspace();

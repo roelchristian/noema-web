@@ -33,30 +33,59 @@ db.exec(`CREATE TABLE IF NOT EXISTS page_sources (page_id TEXT NOT NULL REFERENC
 
 db.exec(`
  CREATE TABLE IF NOT EXISTS collections (id TEXT PRIMARY KEY, vault_id TEXT NOT NULL REFERENCES vaults(id), name TEXT NOT NULL);
- CREATE TABLE IF NOT EXISTS folders (id TEXT PRIMARY KEY, vault_id TEXT NOT NULL REFERENCES vaults(id), name TEXT NOT NULL, collection_id TEXT REFERENCES collections(id) ON DELETE CASCADE, parent_id TEXT REFERENCES folders(id) ON DELETE CASCADE);
- CREATE TABLE IF NOT EXISTS item_locations (vault_id TEXT NOT NULL REFERENCES vaults(id), kind TEXT NOT NULL CHECK(kind IN ('page','entity')), item_id TEXT NOT NULL, collection_id TEXT NOT NULL DEFAULT '', folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL, PRIMARY KEY(vault_id,kind,item_id,collection_id));
- CREATE TABLE IF NOT EXISTS favourites (vault_id TEXT NOT NULL REFERENCES vaults(id), kind TEXT NOT NULL CHECK(kind IN ('page','entity')), item_id TEXT NOT NULL, PRIMARY KEY(vault_id,kind,item_id));
+ CREATE TABLE IF NOT EXISTS folders (id TEXT PRIMARY KEY, vault_id TEXT NOT NULL REFERENCES vaults(id), name TEXT NOT NULL, parent_id TEXT REFERENCES folders(id) ON DELETE CASCADE);
+ CREATE TABLE IF NOT EXISTS item_locations (vault_id TEXT NOT NULL REFERENCES vaults(id), kind TEXT NOT NULL CHECK(kind IN ('page','entity')), item_id TEXT NOT NULL, folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL, PRIMARY KEY(vault_id,kind,item_id));
+ CREATE TABLE IF NOT EXISTS collection_memberships (vault_id TEXT NOT NULL REFERENCES vaults(id), kind TEXT NOT NULL CHECK(kind IN ('page','entity')), item_id TEXT NOT NULL, collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE, PRIMARY KEY(vault_id,kind,item_id,collection_id));
+ CREATE TABLE IF NOT EXISTS favourites (vault_id TEXT NOT NULL REFERENCES vaults(id), kind TEXT NOT NULL CHECK(kind IN ('page','entity','folder')), item_id TEXT NOT NULL, PRIMARY KEY(vault_id,kind,item_id));
  CREATE INDEX IF NOT EXISTS folders_vault ON folders(vault_id);
  CREATE INDEX IF NOT EXISTS collections_vault ON collections(vault_id);
- CREATE TRIGGER IF NOT EXISTS collection_cleanup AFTER DELETE ON collections BEGIN DELETE FROM item_locations WHERE collection_id=OLD.id; END;
- CREATE TRIGGER IF NOT EXISTS page_organization_cleanup AFTER DELETE ON pages BEGIN DELETE FROM item_locations WHERE kind='page' AND item_id=OLD.id; DELETE FROM favourites WHERE kind='page' AND item_id=OLD.id; END;
- CREATE TRIGGER IF NOT EXISTS entity_organization_cleanup AFTER DELETE ON entities BEGIN DELETE FROM item_locations WHERE kind='entity' AND item_id=OLD.id; DELETE FROM favourites WHERE kind='entity' AND item_id=OLD.id; END;
 `);
 
-// Preserve legacy vault folders and their memberships inside one collection per vault.
-db.exec('BEGIN IMMEDIATE');
-try {
- const legacyVaults = db.prepare('SELECT DISTINCT vault_id FROM folders WHERE collection_id IS NULL').all();
- for (const row of legacyVaults) {
-  const vault = String(row.vault_id), collection = randomUUID();
-  db.prepare('INSERT INTO collections (id,vault_id,name) VALUES (?,?,?)').run(collection, vault, 'Imported folders');
-  db.prepare('UPDATE folders SET collection_id=? WHERE vault_id=? AND collection_id IS NULL').run(collection, vault);
-  db.prepare("UPDATE item_locations SET collection_id=? WHERE vault_id=? AND collection_id='' AND folder_id IN (SELECT id FROM folders WHERE vault_id=? AND collection_id=?)").run(collection, vault, vault, collection);
- }
- db.exec(`CREATE TRIGGER IF NOT EXISTS folder_requires_collection_insert BEFORE INSERT ON folders WHEN NEW.collection_id IS NULL BEGIN SELECT RAISE(ABORT, 'Folders must belong to a collection'); END;
- CREATE TRIGGER IF NOT EXISTS folder_requires_collection_update BEFORE UPDATE OF collection_id ON folders WHEN NEW.collection_id IS NULL BEGIN SELECT RAISE(ABORT, 'Folders must belong to a collection'); END;`);
- db.exec('COMMIT');
-} catch (error) { db.exec('ROLLBACK'); throw error; }
+// Split storage from curation once. Retain every collection membership; when a
+// legacy item has several folders, choose the first folder by collection ID then
+// folder ID. Folder IDs and nesting survive unchanged, including unfiled folders.
+if (db.prepare('PRAGMA table_info(folders)').all().some(c => c.name === 'collection_id')) {
+ db.exec('PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE');
+ try {
+  db.exec(`DROP TRIGGER IF EXISTS folder_requires_collection_insert;
+   DROP TRIGGER IF EXISTS folder_requires_collection_update;
+   DROP TRIGGER IF EXISTS collection_cleanup;
+   DROP TRIGGER IF EXISTS page_organization_cleanup;
+   DROP TRIGGER IF EXISTS entity_organization_cleanup;
+   INSERT INTO collection_memberships SELECT vault_id,kind,item_id,collection_id FROM item_locations WHERE collection_id<>'';
+   CREATE TABLE folders_new (id TEXT PRIMARY KEY, vault_id TEXT NOT NULL REFERENCES vaults(id), name TEXT NOT NULL, parent_id TEXT REFERENCES folders(id) ON DELETE CASCADE);
+   INSERT INTO folders_new SELECT id,vault_id,name,parent_id FROM folders;
+   CREATE TABLE locations_new (vault_id TEXT NOT NULL REFERENCES vaults(id), kind TEXT NOT NULL CHECK(kind IN ('page','entity')), item_id TEXT NOT NULL, folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL, PRIMARY KEY(vault_id,kind,item_id));
+   INSERT INTO locations_new SELECT vault_id,kind,item_id,folder_id FROM (
+    SELECT *,row_number() OVER (PARTITION BY vault_id,kind,item_id ORDER BY collection_id,folder_id) AS rank FROM item_locations WHERE folder_id IS NOT NULL
+   ) WHERE rank=1;
+   DROP TABLE item_locations;
+   DROP TABLE folders;
+   ALTER TABLE folders_new RENAME TO folders;
+   ALTER TABLE locations_new RENAME TO item_locations;
+   CREATE INDEX folders_vault ON folders(vault_id);
+   COMMIT;`);
+ } catch (error) { db.exec('ROLLBACK'); throw error; }
+ finally { db.exec('PRAGMA foreign_keys=ON'); }
+}
+// Widen favourites without changing existing page/entity favourites.
+if (!String(db.prepare("SELECT sql FROM sqlite_master WHERE name='favourites'").get()?.sql).includes("'folder'")) {
+ db.exec('BEGIN IMMEDIATE');
+ try {
+  db.exec(`DROP TRIGGER IF EXISTS folder_favourite_cleanup;
+   DROP TRIGGER IF EXISTS page_organization_cleanup;
+   DROP TRIGGER IF EXISTS entity_organization_cleanup;
+   CREATE TABLE favourites_new (vault_id TEXT NOT NULL REFERENCES vaults(id), kind TEXT NOT NULL CHECK(kind IN ('page','entity','folder')), item_id TEXT NOT NULL, PRIMARY KEY(vault_id,kind,item_id));
+   INSERT INTO favourites_new SELECT * FROM favourites;
+   DROP TABLE favourites;
+   ALTER TABLE favourites_new RENAME TO favourites;
+   COMMIT;`);
+ } catch (error) { db.exec('ROLLBACK'); throw error; }
+}
+db.exec(`CREATE TRIGGER IF NOT EXISTS page_organization_cleanup AFTER DELETE ON pages BEGIN DELETE FROM item_locations WHERE kind='page' AND item_id=OLD.id; DELETE FROM collection_memberships WHERE kind='page' AND item_id=OLD.id; DELETE FROM favourites WHERE kind='page' AND item_id=OLD.id; END;
+ CREATE TRIGGER IF NOT EXISTS folder_favourite_cleanup AFTER DELETE ON folders BEGIN DELETE FROM favourites WHERE kind='folder' AND item_id=OLD.id AND vault_id=OLD.vault_id; END;
+ CREATE TRIGGER IF NOT EXISTS entity_organization_cleanup AFTER DELETE ON entities BEGIN DELETE FROM item_locations WHERE kind='entity' AND item_id=OLD.id; DELETE FROM collection_memberships WHERE kind='entity' AND item_id=OLD.id; DELETE FROM favourites WHERE kind='entity' AND item_id=OLD.id; END;
+`);
 
 db.exec(`CREATE TABLE IF NOT EXISTS ai_activity (
  id TEXT PRIMARY KEY, action TEXT NOT NULL, status TEXT NOT NULL,

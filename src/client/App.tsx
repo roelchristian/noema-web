@@ -1,3 +1,4 @@
+import { folderBreadcrumbs, pageBreadcrumbs } from './organization/breadcrumbs';
 import { inboxPages } from './organization/inbox';
 import { AIActivityNotifications } from './intelligence/AIActivityNotifications';
 import { SearchPanel } from './search/SearchPanel';
@@ -60,23 +61,23 @@ export function App() {
     {key: 'vault', label: vault?.name || 'Noema', icon: 'vault', onClick: vault && !vault.locked ? () => run(() => workspace.showPages()) : undefined},
   ];
   if (vault && !vault.locked) {
-    const label = view === 'inbox' ? 'Inbox' : view === 'trash' ? 'Trash' : view === 'entities' ? 'Knowledge entities' : view === 'organization' ? 'Pages' : view === 'favourites' ? 'Favourites' : view === 'recent' ? 'Recent items' : 'Pages';
-    const icon = view === 'inbox' ? 'inbox' : view === 'trash' ? 'trash' : view === 'entities' ? 'knowledge' : view === 'organization' ? 'collection' : view === 'favourites' ? 'star' : view === 'recent' ? 'recent' : 'collection';
-    breadcrumbs.push({key: 'view', label, icon, onClick: view === 'organization' ? () => workspace.openOrganization() : view === 'pages' ? () => run(() => workspace.showPages()) : undefined});
-    if (view === 'organization') {
-      const collection = organization.collections.find(item => item.id === organizationContext.collection);
-      if (collection) breadcrumbs.push({key: 'collection:' + collection.id, label: collection.name, onClick: () => workspace.openOrganization(collection.id)});
-      const folders = [];
-      const visited = new Set<string>();
-      let folder = organization.folders.find(item => item.id === organizationContext.folder);
-      while (folder && !visited.has(folder.id)) {
-        visited.add(folder.id);
-        folders.unshift(folder);
-        folder = organization.folders.find(item => item.id === folder!.parent_id);
+    if (view === 'pages') {
+      for (const crumb of pageBreadcrumbs(organization, page)) {
+        const target = crumb.target;
+        breadcrumbs.push({...crumb, onClick: target ? () => workspace.openOrganization(target.collection, target.folder) : undefined});
       }
-      for (const folder of folders) breadcrumbs.push({key: 'folder:' + folder.id, label: folder.name, onClick: () => workspace.openOrganization(organizationContext.collection, folder.id)});
+    } else {
+      const label = view === 'inbox' ? 'Inbox' : view === 'trash' ? 'Trash' : view === 'entities' ? 'Knowledge entities' : view === 'organization' ? 'Pages' : view === 'favourites' ? 'Favourites' : 'Recent items';
+      const icon = view === 'inbox' ? 'inbox' : view === 'trash' ? 'trash' : view === 'entities' ? 'knowledge' : view === 'organization' ? 'page' : view === 'favourites' ? 'star' : 'recent';
+      breadcrumbs.push({key: 'view', label, icon, onClick: view === 'organization' ? () => workspace.openOrganization() : undefined});
+      if (view === 'organization') {
+        const collection = organization.collections.find(item => item.id === organizationContext.collection);
+        if (collection) breadcrumbs.push({key: 'collection:' + collection.id, label: collection.name, onClick: () => workspace.openOrganization(collection.id)});
+        else for (const crumb of folderBreadcrumbs(organization.folders, organizationContext.folder)) {
+          breadcrumbs.push({...crumb, onClick: () => workspace.openOrganization('', crumb.target!.folder)});
+        }
+      }
     }
-    if (view === 'pages' && page) breadcrumbs.push({key: 'page:' + page.id, label: page.title || 'Untitled'});
   }
   return <>
     <aside className="sidebar"><div className="sidebar-heading"><a className="brand" href="/" aria-label="Noema home"><img className="brand-mark" src="/noema-mark.svg" alt="" width="38" height="38"/><span>noema</span></a>
@@ -88,12 +89,12 @@ export function App() {
       </nav>
       <nav className="sidebar-group" aria-label="Vault library">
         <div className="workspace-label">Workspace</div>
-        <button className={'nav ' + (view === 'pages' || view === 'organization' && !organizationContext.collection && !organizationContext.folder ? 'active' : '')} disabled={disabled} aria-label="Pages" title="Pages" onClick={() => run(() => workspace.showPages())}><span data-icon="page"><Icon name="page"/></span><span>Pages</span><kbd>P</kbd></button>
+        <button className={'nav ' + (view === 'pages' || view === 'organization' && !organizationContext.collection && !organizationContext.folder ? 'active' : '')} disabled={disabled} aria-label="Library" title="Library" onClick={() => run(() => workspace.showPages())}><span data-icon="page"><Icon name="page"/></span><span>Library</span><kbd>P</kbd></button>
         <button className={'nav ' + (view === 'inbox' ? 'active' : '')} disabled={disabled} aria-label="Inbox" title="Inbox" onClick={() => workspace.showInbox()}><span data-icon="inbox"><Icon name="inbox"/></span><span>Inbox</span><span className="count">{inboxPages(pages, organization).length}</span></button>
         <button className={'nav ' + (view === 'entities' ? 'active' : '')} disabled={disabled} aria-label="Knowledge entities" title="Knowledge entities" onClick={() => workspace.showEntities()}><span data-icon="knowledge"><Icon name="knowledge"/></span><span>Knowledge entities</span><span className="count">{entities.length}</span></button>
       </nav>
       <SidebarOrganization onOpenPage={id => run(() => workspace.openPage(id))} pages={pages} onMovePage={(id, collection, folder) => workspace.locatePage(id, collection, folder)} onError={workspace.report} key={vault?.id} vaultId={vault?.id} onChanged={workspace.setOrganization} data={organization} context={organizationContext} active={view === 'organization'} disabled={disabled} onOpen={(collection, folder) => workspace.openOrganization(collection, folder)}/>
-      <div className="section-label">Pages <button className="sidebar-menu-trigger" type="button" title="New page" aria-label="New page" disabled={disabled} onClick={() => run(() => workspace.newPage())}><Icon name="plus"/></button></div>
+      <div className="section-label">Notes <button className="sidebar-menu-trigger" type="button" title="New page" aria-label="New page" disabled={disabled} onClick={() => run(() => workspace.newPage())}><Icon name="plus"/></button></div>
       <nav id="page-list">{pages.map(p => {
         const selected = page?.id === p.id && view === 'pages';
         const favourite = organization.favourites.some(item => item.kind === 'page' && item.item_id === p.id);
@@ -117,7 +118,7 @@ export function App() {
     </aside>
     <main><header className="topbar"><nav id="breadcrumb" className="breadcrumbs" aria-label="Breadcrumb">{breadcrumbs.map((crumb, index) => <span key={crumb.key}>{index > 0 && <Icon name="chevron"/>}{crumb.onClick ? <button onClick={crumb.onClick} disabled={busy || reviewing} aria-current={index === breadcrumbs.length - 1 ? 'page' : undefined}>{crumb.icon && <Icon name={crumb.icon}/>}<span>{crumb.label}</span></button> : <span className="breadcrumb-label" aria-current={index === breadcrumbs.length - 1 ? 'page' : undefined}>{crumb.icon && <Icon name={crumb.icon}/>}<span>{crumb.label}</span></span>}</span>)}</nav><div className="top-actions">{view === 'pages' && page && vault && !disabled && <PageToolbar focusedReading={appearance.focusedReading} onToggleFocusedReading={() => setAppearance(current => ({...current, focusedReading: !current.focusedReading}))} aiOpen={aiOpen} onAI={()=>{setSearchOpen(false);setPanelId(null);setAiOpen(value=>!value);}} favourite={organization.favourites.some(item => item.kind === 'page' && item.item_id === page.id)} onOrganizationChange={data => { if (workspace.snapshot().vault?.id === vault.id) workspace.setOrganization(data); }} onDelete={() => setDeleteTarget(page)} key={vault.id + '/' + page.id} page={page} onError={workspace.report}/>}{saveStatus!=='saved'&&!vault?.locked&&<button className={'save-state-indicator '+(saveStatus==='error'?'is-error':'')} aria-label={status} disabled={disabled} onClick={()=>run(()=>workspace.saver.flush())}><Icon name={saveStatus==='error'?'alert':'save'}/><span role="status">{status}</span></button>}<AIActivityNotifications key={vaults.map(item=>item.id+':'+item.locked).join(',')} refreshKey={saveStatus+':'+(page?.revision??'')} onOpenPage={async(vaultId,pageId)=>{if(workspace.snapshot().vault?.id!==vaultId)await workspace.selectVault(vaultId);await workspace.openPage(pageId);}}/></div></header>
       <div id="content" inert={busy||reviewing} aria-busy={busy||reviewing}>
-        {busy && view !== 'trash' ? <p className="loading-state" role="status">Loading workspace…</p> : vault?.locked ? <section className="locked-state"><div className="vault-symbol"><Icon name="vault"/></div><h1>{vault.name}</h1><button className="button primary" onClick={() => setVaultAction('unlock')}>Unlock vault</button></section> : vault && view === 'trash' ? <TrashLibrary notes={trash} onRestore={id => workspace.restorePage(id)} onDelete={id => workspace.permanentlyDeletePage(id)} onRefresh={workspace.refreshTrash} onError={workspace.report}/> : vault && view === 'recent' ? <RecentLibrary recent={recent} pages={pages} entities={entities} onOpenPage={id => run(() => workspace.openPage(id))} onOpenEntity={openEntity}/> : vault && (view === 'organization' || view === 'favourites' || view === 'inbox') ? <OrganizationLibrary onNewNote={() => { setPanelId(null); setSearchOpen(false); setAiOpen(false); run(() => workspace.newPage()); }} inboxOnly={view === 'inbox'} onRenamePage={setRenameTarget} onDeletePage={setDeleteTarget} data={organization} key={vault.id + view} vaultId={vault.id} pages={pages} entities={entities} favouritesOnly={view === 'favourites'} context={organizationContext} onContextChange={workspace.setOrganizationContext} onChanged={workspace.setOrganization} onOpenPage={id => run(() => workspace.openPage(id))} onOpenEntity={openEntity} onError={workspace.report}/> : vault && view === 'entities' ? <KnowledgeLibrary onCreate={() => setCreate({})} vaultId={vault.id} key={vault.id} entities={entities} onOpen={openEntity}/> : vault && page ? <PageEditor key={page.id} page={page} entities={entities} onChange={patch => workspace.updatePage(patch)} onOpenEntity={openEntity} onCreateEntity={setCreate} onSave={() => run(() => workspace.saver.flush())}/> : <section className="locked-state"><div className="vault-symbol"><Icon name="vault"/></div><h1>Your space to think</h1><button className="button primary" disabled={!vault} onClick={() => run(() => workspace.newPage())}>Create your first page</button></section>}
+        {busy && view !== 'trash' ? <p className="loading-state" role="status">Loading workspace…</p> : vault?.locked ? <section className="locked-state"><div className="vault-symbol"><Icon name="vault"/></div><h1>{vault.name}</h1><button className="button primary" onClick={() => setVaultAction('unlock')}>Unlock vault</button></section> : vault && view === 'trash' ? <TrashLibrary notes={trash} onRestore={id => workspace.restorePage(id)} onDelete={id => workspace.permanentlyDeletePage(id)} onRefresh={workspace.refreshTrash} onError={workspace.report}/> : vault && view === 'recent' ? <RecentLibrary recent={recent} pages={pages} entities={entities} onOpenPage={id => run(() => workspace.openPage(id))} onOpenEntity={openEntity}/> : vault && (view === 'organization' || view === 'favourites' || view === 'inbox') ? <OrganizationLibrary onOpenFolder={id => workspace.openOrganization('', id)} onNewNote={() => { setPanelId(null); setSearchOpen(false); setAiOpen(false); run(() => workspace.newPage()); }} inboxOnly={view === 'inbox'} onRenamePage={setRenameTarget} onDeletePage={setDeleteTarget} data={organization} key={vault.id + view} vaultId={vault.id} pages={pages} entities={entities} favouritesOnly={view === 'favourites'} context={organizationContext} onContextChange={workspace.setOrganizationContext} onChanged={workspace.setOrganization} onOpenPage={id => run(() => workspace.openPage(id))} onOpenEntity={openEntity} onError={workspace.report}/> : vault && view === 'entities' ? <KnowledgeLibrary onCreate={() => setCreate({})} vaultId={vault.id} key={vault.id} entities={entities} onOpen={openEntity}/> : vault && page ? <PageEditor key={page.id} page={page} entities={entities} onChange={patch => workspace.updatePage(patch)} onOpenEntity={openEntity} onCreateEntity={setCreate} onSave={() => run(() => workspace.saver.flush())}/> : <section className="locked-state"><div className="vault-symbol"><Icon name="vault"/></div><h1>Your space to think</h1><button className="button primary" disabled={!vault} onClick={() => run(() => workspace.newPage())}>Create your first page</button></section>}
       </div>
     </main>
     {aiOpen && view==='pages' && page && vault && !vault.locked && !busy && <IntelligencePanel onReview={(scanId,id,decision,edits)=>workspace.reviewEntity(scanId,id,decision,edits)} onSourcesChange={sourceIds => workspace.updatePage({sourceIds})} onCreateEntity={setCreate} entities={entities} onSearch={()=>{setAiOpen(false);setSearchOpen(true);}} onOpenEntity={openEntity} key={vault.id+'/'+page.id} page={page} onClose={()=>setAiOpen(false)} onSettings={()=>setSettingsOpen(true)} onFlush={async()=>{await workspace.saver.flush();return workspace.snapshot().page;}}/>}

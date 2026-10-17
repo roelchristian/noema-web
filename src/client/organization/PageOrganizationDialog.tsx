@@ -20,7 +20,7 @@ export function PageOrganizationDialog({page, data, onMove, onClose}: {
   return <Modal className="organization-dialog" titleId="page-organization-title" onClose={onClose}>
     <div className="organization-dialog-heading"><span className="destination-icon"><Icon name="collection"/></span><button className="page-tool" aria-label="Close organization dialog" disabled={pending} onClick={onClose}><Icon name="close"/></button></div>
     <h2 id="page-organization-title">Organize page</h2>
-    <p>Give this idea a place in your workspace.</p>
+    <p>Choose one folder and any number of collections.</p>
     <div className="organizing-page"><PageIcon icon={page.icon}/><span>{page.title || 'Untitled'}</span></div>
     <ItemOrganization data={data} kind="page" itemId={page.id} pending={pending} onMove={(...args) => void move(...args)}/>
     {error && <p className="dialog-error" role="alert">{error}</p>}

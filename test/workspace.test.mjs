@@ -16,7 +16,7 @@ test('recent history persists per vault, deduplicates items and clears when lock
   t.mock.method(api, 'pages', async vault => vault === 'a' ? [page('one'), page('two')] : []);
   t.mock.method(api, 'entities', async () => []);
   t.mock.method(api, 'page', async (_vault, id) => page(id));
-  t.mock.method(api, 'organization', async () => ({collections: [], folders: [], locations: [], favourites: []}));
+  t.mock.method(api, 'organization', async () => ({collections: [], folders: [], locations: [], memberships: [], favourites: []}));
   const workspace = new Workspace();
   const reloaded = new Workspace();
   try {
@@ -35,8 +35,8 @@ test('recent history persists per vault, deduplicates items and clears when lock
     assert.deepEqual(workspace.snapshot().recent, []);
     workspace.recordRecent('entity', 'other-person');
     await reloaded.selectVault('a');
-    assert.equal(reloaded.snapshot().view, 'organization');
-    assert.equal(reloaded.snapshot().page, null);
+    assert.equal(reloaded.snapshot().view, 'pages');
+    assert.equal(reloaded.snapshot().page.id, 'two');
     await reloaded.openPage('one');
     assert.deepEqual(reloaded.snapshot().recent.map(item => item.item_id), ['one', 'person', 'two']);
     assert.ok(!reloaded.snapshot().recent.some(item => item.item_id === 'other-person'));
@@ -59,7 +59,7 @@ test('moving to Trash flushes pending edits and restoring opens a fresh page', a
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
   Object.defineProperty(globalThis, 'localStorage', {configurable: true, value: {getItem: () => null, setItem: () => {}}});
   const original = {id: 'note', vault_id: 'a', title: 'Original', blocks: [], sourceIds: [], revision: 1, updated_at: ''};
-  const org = {collections: [], folders: [], locations: [{kind: 'page', item_id: 'note', collection_id: '', folder_id: 'desk'}], favourites: [{kind: 'page', item_id: 'note'}]};
+  const org = {collections: [], folders: [], locations: [{kind: 'page', item_id: 'note', folder_id: 'desk'}], memberships: [], favourites: [{kind: 'page', item_id: 'note'}]};
   const calls = [];
   let stored = {...original};
   t.mock.method(api, 'vaults', async () => [{id: 'a', name: 'A', locked: false}]);
@@ -106,7 +106,7 @@ test('sidebar rename flushes the current draft and can rename another page witho
   Object.defineProperty(globalThis, 'localStorage', {configurable: true, value: {getItem: () => null, setItem: () => {}}});
   const page = id => ({id, vault_id: 'a', title: id, blocks: [], sourceIds: [], revision: 1, updated_at: ''});
   const stored = new Map([['one', page('one')], ['two', page('two')]]), writes = [];
-  let organization = {collections: [], folders: [], locations: [], favourites: []};
+  let organization = {collections: [], folders: [], locations: [], memberships: [], favourites: []};
   t.mock.method(api, 'vaults', async () => [{id: 'a', name: 'A', locked: false}]);
   t.mock.method(api, 'pages', async () => [...stored.values()]);
   t.mock.method(api, 'entities', async () => []);
@@ -152,7 +152,7 @@ test('new untitled pages receive a generated title through autosave and update n
   t.mock.method(api,'vaults',async()=>[vault]);
   t.mock.method(api,'pages',async()=>[]);
   t.mock.method(api,'entities',async()=>[]);
-  t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],favourites:[]}));
+  t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],memberships:[],favourites:[]}));
   t.mock.method(api,'createPage',async()=>structuredClone(stored));
   t.mock.method(api,'savePage',async(_vault,_id,input)=>{
     assert.equal(input.revision,stored.revision);
@@ -183,7 +183,7 @@ test('page icon changes update navigation immediately and autosave alongside con
   t.mock.method(api, 'pages', async () => [original]);
   t.mock.method(api, 'entities', async () => []);
   t.mock.method(api, 'page', async () => original);
-  t.mock.method(api, 'organization', async () => ({collections: [], folders: [], locations: [], favourites: []}));
+  t.mock.method(api, 'organization', async () => ({collections: [], folders: [], locations: [], memberships: [], favourites: []}));
   const writes = [];
   t.mock.method(api, 'savePage', async (_vault, _id, page) => { writes.push(page); return {...page, revision: page.revision + 1, updated_at: '2026-10-17T09:30:00.000Z'}; });
   const workspace = new Workspace();
@@ -211,7 +211,7 @@ test('opening an existing untitled page resumes automatic titling after reload',
   t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false}]);
   t.mock.method(api,'pages',async()=>[stored]);
   t.mock.method(api,'entities',async()=>[]);
-  t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],favourites:[]}));
+  t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],memberships:[],favourites:[]}));
   t.mock.method(api,'page',async()=>structuredClone(stored));
   t.mock.method(api,'savePage',async(_vault,_id,input)=>{
     assert.equal(input.revision,stored.revision);
@@ -239,7 +239,7 @@ test('reviewing a scanned entity updates in place without entering the workspace
   t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false}]);
   t.mock.method(api,'pages',async()=>[original]);
   t.mock.method(api,'entities',async()=>[]);
-  t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],favourites:[]}));
+  t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],memberships:[],favourites:[]}));
   t.mock.method(api,'page',async()=>stored);
   t.mock.method(api,'savePage',async(_vault,_id,page)=>{order.push('save');stored={...page,revision:2};return stored;});
   const scan={id:'scan',revision:3,suggestions:[]}, entity={id:'bob',name:'Bob',type:'person',subtypes:[]};
@@ -283,7 +283,7 @@ test('a failed asynchronous review retains the note and releases the editing loc
   t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false}]);
   t.mock.method(api,'pages',async()=>[original]);
   t.mock.method(api,'entities',async()=>[]);
-  t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],favourites:[]}));
+  t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],memberships:[],favourites:[]}));
   t.mock.method(api,'page',async()=>original);
   t.mock.method(api,'reviewEntity',async()=>{throw new Error('Connection lost');});
   const workspace=new Workspace();
@@ -298,4 +298,33 @@ test('a failed asynchronous review retains the note and releases the editing loc
     assert.equal(workspace.snapshot().page.title,'Still editable');
 
   } finally {workspace.saver.dispose();workspace.titler.dispose();}
+});
+
+test('folder moves and collection membership changes use independent API operations', async t => {
+  const vault = {id: 'a', name: 'A', locked: false};
+  const organization = {collections: [{id: 'reading', name: 'Reading'}], folders: [{id: 'desk', name: 'Desk', parent_id: null}], locations: [], memberships: [], favourites: []};
+  t.mock.method(api, 'vaults', async () => [vault]);
+  t.mock.method(api, 'pages', async () => []);
+  t.mock.method(api, 'entities', async () => []);
+  t.mock.method(api, 'organization', async () => organization);
+  const organize = t.mock.method(api, 'organize', async () => organization);
+  const workspace = new Workspace();
+  try {
+    await workspace.selectVault(vault.id);
+    workspace.openOrganization('', 'desk');
+    await workspace.locatePage('note', '', 'desk');
+    await workspace.locatePage('note', 'reading', null);
+    await workspace.locatePage('note', 'reading', null, true);
+    await workspace.locatePage('note', '', null);
+    assert.deepEqual(organize.mock.calls.map(call => call.arguments), [
+      ['a', 'locations', {kind: 'page', item_id: 'note', folder_id: 'desk', remove: false}],
+      ['a', 'memberships', {kind: 'page', item_id: 'note', collection_id: 'reading', remove: false}],
+      ['a', 'memberships', {kind: 'page', item_id: 'note', collection_id: 'reading', remove: true}],
+      ['a', 'locations', {kind: 'page', item_id: 'note', folder_id: null, remove: false}],
+    ]);
+    assert.deepEqual(workspace.snapshot().organizationContext, {collection: '', folder: 'desk'});
+    workspace.openOrganization('reading');
+    workspace.setOrganization(organization);
+    assert.deepEqual(workspace.snapshot().organizationContext, {collection: 'reading', folder: ''});
+  } finally { workspace.titler.dispose(); workspace.saver.dispose(); }
 });

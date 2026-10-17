@@ -118,6 +118,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               if(method==='PUT' && child)return send(200,id==='collections'?organizer.saveCollection(vault,body,child):organizer.saveFolder(vault,body,child));
               if(method==='DELETE' && child)return send(200,organizer.remove(vault,id,child));
             }
+            if(parts.length===3 && method==='PUT' && id==='memberships')return send(200,organizer.membership(vault,body));
             if(parts.length===3 && method==='PUT' && id==='locations')return send(200,organizer.locate(vault,body));
             if(parts.length===3 && method==='PUT' && id==='favourites')return send(200,organizer.favourite(vault,body));
           }

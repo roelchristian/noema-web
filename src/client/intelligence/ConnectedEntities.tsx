@@ -1,4 +1,4 @@
-import { useId, useMemo, useState, type KeyboardEvent } from 'react';
+import { useId, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { blockSegments, entityLabels, entityTypes, type Entity, type EntityType, type Page } from '../../shared/domain';
 import { Icon } from '../components/Icon';
 
@@ -22,7 +22,7 @@ export function connectedEntityItems(page: Page, entities: Entity[], type: Entit
   });
 }
 
-export function ConnectedEntities({page, entities, onOpenEntity}: {page: Page; entities: Entity[]; onOpenEntity: (id: string) => void}) {
+export function ConnectedEntities({page, entities, onOpenEntity, children}: {page: Page; entities: Entity[]; onOpenEntity: (id: string) => void; children?: ReactNode}) {
   const [type, setType] = useState<EntityType | 'all'>('all');
   const [sort, setSort] = useState<'name-asc' | 'name-desc'>('name-asc');
   const id = useId();
@@ -39,6 +39,7 @@ export function ConnectedEntities({page, entities, onOpenEntity}: {page: Page; e
   }
   return <section className="knowledge-connected" aria-labelledby={id + '-heading'}>
     <div className="knowledge-section-heading"><h2 id={id + '-heading'}>Connected entities</h2><span className="knowledge-count">{connected.length}</span></div>
+    {children}
     <div className="knowledge-entity-controls">
       <div className="knowledge-entity-tabs" role="tablist" aria-label="Connected entity types">
         {tabs.map(tab => {

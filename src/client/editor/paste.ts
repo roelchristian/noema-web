@@ -6,11 +6,12 @@ export function makeBlock(type: BlockType = 'paragraph', content: Segment[] = []
   return {id: crypto.randomUUID(), type, checked: false, content, ...(type === 'table' ? {rows: [[[], []], [[], []]]} : {})};
 }
 export function markdownInline(text: string, style: TextStyle = {}): Segment[] {
-  const pattern = /(`+)([\s\S]*?)\1|\[([^\]]+)\]\(([^\s)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|\*([^*]+)\*|_([^_]+)_|(?<![\\$])\$(?![\s$])((?:\\.|[^$\n\\])+?)(?<![\s\\])\$(?!\$)|(?<!\\)\\\(([^\n]*?)(?<!\\)\\\)/g;
+  const pattern = /\[\[[^\]\n]+\]\]|(`+)([\s\S]*?)\1|\[([^\]]+)\]\(([^\s)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|\*([^*]+)\*|_([^_]+)_|(?<![\\$])\$(?![\s$])((?:\\.|[^$\n\\])+?)(?<![\s\\])\$(?!\$)|(?<!\\)\\\(([^\n]*?)(?<!\\)\\\)/g;
   const output: Segment[] = []; let start = 0;
   for (const match of text.matchAll(pattern)) {
     if (match.index! > start) output.push({...style, text: text.slice(start, match.index)});
-    if (match[1]) output.push({...style, code: true, text: match[2]});
+    if (match[0].startsWith('[[')) output.push({...style,text:match[0],skipAutoTag:true});
+    else if (match[1]) output.push({...style, code: true, text: match[2]});
     else if (match[10] || match[11] !== undefined) {
       const source = (match[10] ?? match[11])!.trim();
       output.push(source ? {...style, math: true, text: source} : {...style, text: match[0]});

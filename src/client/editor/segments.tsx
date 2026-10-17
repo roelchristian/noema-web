@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { safeHref, type Entity, type Segment, type TextStyle } from '../../shared/domain';
 import { Mention } from '../components/Mention';
+import { pageLinkNodes } from './page-links';
 import { renderMath } from './math';
 import type { EntityReviewItem } from '../../shared/entity-match-cache';
 import { segmentsEqual } from '../../shared/segments-equal';
@@ -48,11 +49,11 @@ export function segmentHTML(content: Segment[], entities: Entity[], review?: Rev
     let cursor = 0;
     for (const range of ranges.filter(range => range.start < offset && range.end > start)) {
       const from = Math.max(0, range.start - start), to = Math.min(s.text?.length ?? 0, range.end - start);
-      if (from > cursor) parts.push(s.text?.slice(cursor, from));
+      if (from > cursor) parts.push(...(s.code || s.href ? [s.text?.slice(cursor, from)] : pageLinkNodes(s.text?.slice(cursor, from) ?? '')));
       parts.push(<span key={range.id} className={'entity-review-highlight' + (range.start === start + from ? ' is-start' : '')} data-entity-review={range.id} title="Ambiguous entity · click to review">{s.text?.slice(from, to)}</span>);
       cursor = to;
     }
-    parts.push(s.text?.slice(cursor));
+    parts.push(...(s.code || s.href ? [s.text?.slice(cursor)] : pageLinkNodes(s.text?.slice(cursor) ?? '')));
     let node = <>{parts}</>;
     if (s.code) node = <code>{node}</code>;
     if (s.bold) node = <strong>{node}</strong>;
@@ -75,6 +76,7 @@ export function readSegments(el: Node, allowMentions = true): Segment[] {
       }
     } else if (node instanceof HTMLElement) {
       if (['SCRIPT','STYLE','META','LINK','IFRAME','OBJECT'].includes(node.tagName)) return;
+      if (node.dataset.wikilink !== undefined) { walk(document.createTextNode(node.dataset.wikilink), {...style,skipAutoTag:true}); return; }
       if (node.dataset.math !== undefined) { output.push({text: node.dataset.math, math: true}); return; }
       if (allowMentions && node.dataset.entity) { output.push({entityId: node.dataset.entity, ...(node.dataset.mentionText ? {mentionText: node.dataset.mentionText} : {})}); return; }
       if (node.tagName === 'BR') { output.push({text: '\n'}); return; }

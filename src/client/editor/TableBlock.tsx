@@ -12,7 +12,7 @@ function Cell({content, entities, location, register, onChange, onKeyDown, onPas
 }
 export function TableBlock({block, entities, reviewMatches, onChange, onOpen, onSave, onExit, register}: {block: Block; entities: Entity[]; reviewMatches: EntityReviewItem[]; onChange: (rows: Segment[][][]) => void; onOpen: (id: string) => void; onSave: () => void; onExit: () => void; register: (el: HTMLDivElement | null) => void}) {
   const rows = block.rows ?? [[[], []], [[], []]], root = useRef<HTMLDivElement>(null), pending = useRef<number | null>(null);
-  useLayoutEffect(() => { if(pending.current !== null) {root.current?.querySelectorAll<HTMLElement>('[contenteditable]')[pending.current]?.focus(); pending.current = null;} }, [rows]);
+  useLayoutEffect(() => { if(pending.current !== null) {root.current?.querySelectorAll<HTMLElement>('.table-cell[contenteditable="true"]')[pending.current]?.focus(); pending.current = null;} }, [rows]);
   function changeCell(row: number, col: number, content: Segment[]) { onChange(rows.map((cells, r) => cells.map((cell, c) => r === row && c === col ? content : cell))); }
   function paste(e: ClipboardEvent<HTMLDivElement>, row: number, col: number) {
     e.preventDefault(); const blocks = clipboardBlocks(e.clipboardData.getData('text/plain'), e.clipboardData.getData('text/html'));
@@ -35,7 +35,7 @@ export function TableBlock({block, entities, reviewMatches, onChange, onOpen, on
     if(e.key === 'Enter' && !e.shiftKey) {e.preventDefault(); onExit();}
     if(e.key === 'Tab') {
       const index = row * cells.length + col + (e.shiftKey ? -1 : 1);
-      const next = root.current?.querySelectorAll<HTMLElement>('[contenteditable]')[index];
+      const next = root.current?.querySelectorAll<HTMLElement>('.table-cell[contenteditable="true"]')[index];
       if(next) {e.preventDefault(); next.focus();} else if(!e.shiftKey && rows.length < 100) {e.preventDefault(); pending.current = index; onChange([...rows, cells.map(() => [])]);}
     }
   }}/></td>)}</tr>)}</tbody></table></div><div className="table-actions" role="group" aria-label="Table controls">

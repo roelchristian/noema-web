@@ -1,4 +1,5 @@
 import { applySemantic, isAIExplanation, preserveAIExplanationTags, normalizeSemanticGroups, removeSemanticGroup, retagSemanticGroup, semanticDragItems, semanticFunctions, editableSemanticKinds, semanticRuns, type SemanticKind } from '../../shared/semantic-blocks';
+import { completePageLink } from './page-links';
 import { ReadOnlyExplanationBlock } from './ReadOnlyExplanationBlock';
 import { selectedEditorBlocks } from './block-selection';
 import { installBlockDrag, type BlockDropPreview } from './block-drag';
@@ -7,7 +8,7 @@ import { displayMathSource } from './math-delimiters';
 import { applySmartQuotes } from './smart-quotes';
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type CSSProperties } from 'react';
 import type { EntityReviewItem } from '../../shared/entity-match-cache';
-import { entityLabels, type Block, type BlockType, type Entity, type Segment } from '../../shared/domain';
+import { entityLabels, type Block, type BlockType, type Entity, type PageSummary, type Segment } from '../../shared/domain';
 import { uploadImage } from '../api';
 import { Icon } from '../components/Icon';
 import { readSegments, segmentHTML, syncEditableSegments } from './segments';
@@ -20,7 +21,7 @@ import { SelectionToolbar } from './SelectionToolbar';
 import { MathBlock } from './MathBlock';
 import { MathDialog } from './MathDialog';
 import { completeInlineMath, mathElement } from './math';
-interface Props {onExplain?: (blocks: Block[]) => Promise<string>; reviewMatches?: EntityReviewItem[]; onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[]) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
+interface Props {pages?:PageSummary[];onOpenPage?:(id:string)=>void;onExplain?: (blocks: Block[]) => Promise<string>; reviewMatches?: EntityReviewItem[]; onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[]) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
 const options: {type: BlockType; title: string; detail: string; icon: string}[] = [
   {type: 'paragraph', title: 'Text', detail: 'Plain text for your thoughts', icon: 'T'},
   {type: 'heading1', title: 'Heading 1', detail: 'A large section heading', icon: 'H₁'},
@@ -54,6 +55,7 @@ function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOp
 export function BlockEditor(props: Props) {
   const {blocks, entities, onOpenEntity, onCreateEntity, onSave} = props;
   const onChange = (next: Block[]) => props.onChange(normalizeSemanticGroups(preserveAIExplanationTags(props.blocks,next)));
+  const [pageLinkStatus,setPageLinkStatus]=useState('');
   const [explaining,setExplaining]=useState(false), [explanationError,setExplanationError]=useState('');
   const explanationPending=useRef(false), retryExplanation=useRef<string[]>([]);
   const reviewMatches = props.reviewMatches ?? [];
@@ -251,6 +253,24 @@ export function BlockEditor(props: Props) {
     const el = elements.current.get(blockId); el?.focus(); getSelection()?.removeAllRanges(); getSelection()?.addRange(range);
     if (el) update(blockId, {content: readSegments(el)}); setMenu(null);
   }
+  function openPageLink(anchor:HTMLElement) {
+    const title=anchor.dataset.pageTitle!;
+    const matches=(latest.current.pages??[]).filter(page=>page.title.trim().toLocaleLowerCase()===title.toLocaleLowerCase());
+    if(matches.length===1 && latest.current.onOpenPage) {setPageLinkStatus('');latest.current.onOpenPage(matches[0]!.id);}
+    else if(matches.length>1)show(anchor,matches.map(page=>({title:page.title,detail:'Updated '+new Date(page.updated_at).toLocaleString(),icon:'page',entity:true,pick:()=>{setMenu(null);latest.current.onOpenPage?.(page.id);}})),'CHOOSE NOTE');
+    else setPageLinkStatus('Note “'+title+'” was not found in this vault.');
+  }
+  function insertPageLink(range:Range,title:string,alias:string|undefined,blockId:string) {
+    if(!range.startContainer.isConnected)return;
+    range.deleteContents();
+    const source='[['+title+(alias?.trim()?'|'+alias.trim():'')+']]';
+    const wrapper=document.createElement('div');wrapper.innerHTML=segmentHTML([{text:source}],latest.current.entities);
+    const fragment=document.createDocumentFragment();while(wrapper.firstChild)fragment.append(wrapper.firstChild);
+    const last=fragment.lastChild!;range.insertNode(fragment);
+    const space=document.createTextNode(' ');last.after(space);range.setStartAfter(space);range.collapse(true);
+    const el=elements.current.get(blockId);el?.focus();getSelection()?.removeAllRanges();getSelection()?.addRange(range);
+    if(el)update(blockId,{content:readSegments(el)});setMenu(null);
+  }
   function detect(el: HTMLElement, block: Block) {
     const selection = getSelection(); if (!selection?.rangeCount) { setMenu(null); return; }
     const range = selection.getRangeAt(0); if (!el.contains(range.startContainer)) { setMenu(null); return; }
@@ -258,6 +278,15 @@ export function BlockEditor(props: Props) {
       const query = el.textContent!.slice(1).toLowerCase(); show(el, [...options.filter(o => o.title.toLowerCase().includes(query)).map(o => ({...o, pick: () => convert(block, o.type, true)})), ...editableSemanticKinds.filter(kind=>kind.includes(query)).map(kind=>({title:semanticFunctions[kind].label,detail:'Semantic function',icon:semanticFunctions[kind].icon,color:semanticFunctions[kind].color,entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:kind,content:[]});}})), ...('image'.includes(query) ? [imageChoice(block.id, block)] : [])], 'TURN INTO'); return;
     }
     const before = range.cloneRange(); before.selectNodeContents(el); before.setEnd(range.startContainer, range.startOffset);
+    const wiki=before.toString().match(/\[\[([^\[\]\n]*)$/);
+    if(wiki && range.startContainer.nodeType===Node.TEXT_NODE && !(range.startContainer.parentElement?.closest('code,a,[data-math],[data-entity]'))) {
+      const start=range.startOffset-wiki[0].length;
+      if(start>=0) {
+        const [query,...alias]=wiki[1]!.split('|'),saved=range.cloneRange();saved.setStart(range.startContainer,start);
+        const pages=(latest.current.pages??[]).filter(page=>!/[\[\]\n|]/.test(page.title)&&page.title.toLocaleLowerCase().includes(query!.trim().toLocaleLowerCase())).slice(0,8);
+        show(el,pages.map(page=>({title:page.title,detail:alias.length?'Display as '+alias.join('|'):'Link to note',icon:'page',entity:true,pick:()=>insertPageLink(saved,page.title,alias.length?alias.join('|'):undefined,block.id)})),'LINK A NOTE');return;
+      }
+    }
     const match = before.toString().match(/(?:^|\s)@([^@\n]*)$/);
     if (match && range.startContainer.nodeType === Node.TEXT_NODE) {
       const query = match[1]!, start = range.startOffset - query.length - 1; if (start < 0) { setMenu(null); return; }
@@ -330,7 +359,13 @@ export function BlockEditor(props: Props) {
     }} onKeyDown={e => keyDown(e, block)} onPaste={e => paste(e, block)}/>}
   </div>{uploadCards(block.id)}</Fragment>;
   return <><input ref={fileInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden aria-label="Choose images" onChange={e => {const files=Array.from(e.currentTarget.files ?? []); e.currentTarget.value=''; void addImages(files,imageTarget.current);}}/>
-    <div id="blocks" ref={root} data-block-dragging={blockDrag ? true : undefined} onClickCapture={e => {
+    <div id="blocks" ref={root} onInputCapture={event=>{
+      if((event.nativeEvent as InputEvent).isComposing)return;
+      const surface=(event.target as Element).closest<HTMLElement>('.block-content[contenteditable="true"]');
+      if(surface)completePageLink(surface);
+    }} data-block-dragging={blockDrag ? true : undefined} onClickCapture={e => {
+      const pageLink=(e.target as Element).closest<HTMLElement>('[data-page-title]');
+      if(pageLink){e.preventDefault();e.stopPropagation();openPageLink(pageLink);return;}
       const review = (e.target as Element).closest<HTMLElement>('[data-entity-review]');
       if (review) {
         e.preventDefault();
@@ -340,6 +375,8 @@ export function BlockEditor(props: Props) {
       const math = (e.target as Element).closest<HTMLElement>('[data-math]');
       if (math && !(e.target as Element).closest('[data-semantic-kind="ai-explanation"]')) {e.preventDefault(); e.stopPropagation(); editInlineMath(math);}
     }} onKeyDownCapture={e => {
+      const pageLink=(e.target as Element).closest<HTMLElement>('[data-page-title]');
+      if(pageLink && e.key==='Enter'){e.preventDefault();e.stopPropagation();openPageLink(pageLink);return;}
       const math = (e.target as Element).closest<HTMLElement>('[data-math]');
       if (math && !(e.target as Element).closest('[data-semantic-kind="ai-explanation"]') && (e.key === 'Enter' || e.key === ' ')) {e.preventDefault(); e.stopPropagation(); editInlineMath(math);}
     }} onPasteCapture={e => {
@@ -363,6 +400,7 @@ export function BlockEditor(props: Props) {
     {mathTarget && <MathDialog initial={mathTarget.initial} onSave={saveInlineMath} onClose={() => setMathTarget(null)}/>}
     {explaining && <div className="ai-explanation-status" role="status"><span className="scan-spinner" aria-hidden="true"/>Explaining selected blocks…</div>}
     {explanationError && <div className="ai-explanation-status is-error" role="alert"><span>{explanationError}</span><button type="button" onClick={()=>void explain(retryExplanation.current)}>Retry</button><button type="button" onClick={()=>setExplanationError('')}>Dismiss</button></div>}
+    {pageLinkStatus && <div className="note-link-status" role="status">{pageLinkStatus}</div>}
     {imageError && <div className="image-upload-error" role="alert">{imageError}</div>}
     {menu && <div ref={menuRef} className="command-menu" style={{left: menu.left, top: menu.top}} onMouseDown={e => e.preventDefault()} role="menu"><div className="menu-label">{menu.label}</div>{menu.items.map((item, index) => <button key={index} role="menuitem" className={index === menu.index ? 'highlight' : ''} onClick={item.pick}><span className="menu-icon" style={item.color?{color:item.color}:undefined}>{item.entity || item.icon === 'equation' ? <Icon name={item.icon}/> : item.icon}</span><span>{item.title}<small>{item.detail}</small></span></button>)}</div>}
   </>;

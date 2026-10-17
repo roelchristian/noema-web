@@ -1233,3 +1233,7 @@ main {position:relative;}
 .ai-explanation td {border:1px solid var(--line);padding:8px;}
 
 .block > :is(h2,h3).block-content { margin: 0; font: inherit; letter-spacing: inherit; color: inherit; }
+
+.note-link { color: var(--accent, #315b86); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; border-radius: 3px; }
+.note-link:hover { background: var(--accent-soft); }
+.note-link-status { margin: 12px 0; font-size: 12px; color: var(--text-muted); }

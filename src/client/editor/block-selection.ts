@@ -111,8 +111,8 @@ export function replaceEditorSelection(root: HTMLElement, options: Options, inco
 export function setEditorCaret(el: HTMLElement, offset: number) {
   const range = document.createRange(); let remaining = offset;
   function visit(node: Node): boolean {
-    if (node instanceof HTMLElement && (node.dataset.entity || node.dataset.math !== undefined)) {
-      const size = node.dataset.math?.length ?? node.textContent?.length ?? 0;
+    if (node instanceof HTMLElement && (node.dataset.entity || node.dataset.wikilink!==undefined || node.dataset.math !== undefined)) {
+      const size = node.dataset.wikilink?.length ?? node.dataset.math?.length ?? node.textContent?.length ?? 0;
       if (remaining <= size) {if (remaining === 0) range.setStartBefore(node); else range.setStartAfter(node); return true;}
       remaining -= size; return false;
     }
@@ -126,7 +126,7 @@ export function setEditorCaret(el: HTMLElement, offset: number) {
 export function installBlockSelection(root: HTMLElement, options: Options) {
   let progression: Range | undefined, drag: {anchor: Point; host: HTMLElement; cross: boolean} | undefined;
   function atomicPoint(point: Point, x: number): Point {
-    const atom = element(point.node)?.closest<HTMLElement>('[data-entity],[data-math]');
+    const atom = element(point.node)?.closest<HTMLElement>('[data-entity],[data-math],[data-wikilink]');
     if (!atom?.parentNode || !root.contains(atom)) return point;
     const bounds = atom.getBoundingClientRect(), index = Array.from(atom.parentNode.childNodes).indexOf(atom);
     return {node: atom.parentNode, offset: index + Number(x >= (bounds.left + bounds.right) / 2)};

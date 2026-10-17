@@ -1,23 +1,25 @@
-import type { Page } from '../../shared/domain';
+import type { ConceptClassification, Page } from '../../shared/domain';
 const key = (page: Page) => `${page.vault_id}/${page.id}`;
+const needsUtility=(page:Page)=>!page.conceptClassification || !page.conceptContentHash || page.conceptClassification.contentHash!==page.conceptContentHash || untitled(page);
 const untitled = (page: Page) => !page.title.trim() || page.title.trim() === 'Untitled';
 interface Candidate { page: Page; version: number; running: boolean; retries: number; timer?: ReturnType<typeof setTimeout> }
-/** Untitled pages resume when opened; each edit invalidates any outstanding result. */
+/** Title and category share one background pass; edits invalidate outstanding results. */
 export class PageTitler {
   private candidates = new Map<string, Candidate>();
   constructor(
-    private generate: (page: Page) => Promise<{title: string; revision: number}>,
-    private apply: (page: Page, title: string) => void,
+    private generate: (page: Page) => Promise<{title: string; revision: number;conceptClassification?:ConceptClassification}>,
+    private apply: (page: Page, title: string,classification?:ConceptClassification) => void,
     private entityName: (id: string) => string = () => '',
   ) {}
   register(page: Page) {
-    if (untitled(page) && !this.candidates.has(key(page))) this.candidates.set(key(page), {page, version: 0, running: false, retries: 0});
+    if (needsUtility(page) && !this.candidates.has(key(page))) this.candidates.set(key(page), {page, version: 0, running: false, retries: 0});
   }
   observe(page: Page, saved = false) {
+    this.register(page);
     const candidate = this.candidates.get(key(page));
     if (!candidate) return;
     clearTimeout(candidate.timer); candidate.version++; candidate.page = page; candidate.retries = 0;
-    if (!untitled(page)) { this.remove(page); return; }
+    if (!needsUtility(page)) { this.remove(page); return; }
     const text = page.blocks.flatMap(block => block.type === 'table'
       ? (block.rows ?? []).flatMap(row => row.flatMap(cell => cell)) : block.content)
       .map(segment => segment.entityId ? this.entityName(segment.entityId) : segment.text || '').join(' ').trim();
@@ -36,7 +38,7 @@ export class PageTitler {
       const result = await this.generate(page);
       if (this.candidates.get(key(page)) !== candidate || candidate.version !== version || result.revision !== page.revision) return;
       this.remove(page);
-      this.apply(page, result.title);
+      this.apply(page, untitled(page)?result.title:page.title, result.conceptClassification);
     } catch (error) {
       // Retry temporary provider/network failures, but never overwrite a newer edit.
       // Missing credentials and permanent failures wait for a later saved edit/open.

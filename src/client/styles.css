@@ -1247,3 +1247,5 @@ main {position:relative;}
 .knowledge-note-link-list small { display: block; color: var(--text-muted); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
 .knowledge-link-alias { padding: 0 6px 4px 31px; }
 .knowledge-missing-link { padding: 7px 6px; color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }
+
+.knowledge-concept-category { margin-bottom: 24px; }

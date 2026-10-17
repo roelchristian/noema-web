@@ -2,6 +2,7 @@ import { SourceFiles, maxSourceBytes } from './modules/source-files.js';
 import { VaultBackups, maxBackupBytes } from './modules/vault-backups.js';
 import { AINotifications } from './modules/ai-notifications.js';
 import { Images, maxImageBytes } from './modules/images.js';
+import {PageUtility} from './modules/page-utility.js';
 import { EntityScans } from './modules/entity-scan.js';
 import { EntityMatches } from './modules/entity-matches.js';
 import { summaryInput } from './modules/summary-content.js';
@@ -36,6 +37,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
   const vaults=new Vaults(store),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),organizer=new Organizer(store);
   const activity=new AIActivityLog(store),enrichments=new AIEnrichments(store,pages);
   const scans=new EntityScans(store,pages,knowledge,enrichments);
+  const pageUtility=new PageUtility(store,pages,knowledge,enrichments,intelligence);
   const entityMatches=new EntityMatches(store,pages,knowledge);
   const embeddings=new Embeddings(store,pages,knowledge,vaults,intelligence,activity);
   const searchSnippets=new SearchSnippets(pages,knowledge,vaults);
@@ -189,31 +191,38 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             if(id && parts.length===4 && child==='entity-scan' && method==='POST') {
               const page=pages.get(vault,id);
               if(body.revision!==page.revision)throw new HttpError(409,'Save the latest note before scanning.');
-              const input=scans.input(vault,page);
+              await pageUtility.run(vault,page);
+              vaults.requireOpen(vault);
+              const classified=pages.get(vault,id);
+              if(classified.revision!==page.revision)throw new HttpError(409,'The note changed while classifying it. Scan again after saving.');
+              const input=scans.input(vault,classified);
               const output=await intelligence.generate(input,false,bytes=>activity.request(activityId!,bytes,page.revision),false,true);
               vaults.requireOpen(vault);
-              return send(200,scans.save(vault,page,output,intelligence.selection()));
+              return send(200,scans.save(vault,classified,output,intelligence.selection()));
             }
             if(id && parts.length===4 && child==='summary' && method==='DELETE')return send(200,enrichments.removeSummary(vault,id));
             if(id && parts.length===4 && child==='enrichments' && method==='GET')return send(200,enrichments.list(vault,id));
             if(id && parts.length===4 && (child==='summary'||child==='title') && method==='POST') {
               const page=pages.get(vault,id),isTitle=child==='title';
-              if(isTitle && page.title.trim() && page.title.trim()!=='Untitled')throw new HttpError(409,'This page already has a title.');
-              if(body.revision!==page.revision)throw new HttpError(409,isTitle?'Save the latest page before generating a title.':'Save the latest page before summarizing.');
+              if(isTitle) {
+                if(body.revision!==page.revision)throw new HttpError(409,'Save the latest page before classification.');
+                const result=await pageUtility.run(vault,page,bytes=>activity.request(activityId!,bytes,page.revision));
+                vaults.requireOpen(vault);return send(200,result);
+              }
+              if(body.revision!==page.revision)throw new HttpError(409,'Save the latest page before summarizing.');
               const names=new Map(knowledge.list(vault).map(entity=>[entity.id,entity.name]));
-              const input=summaryInput(page,id=>names.get(id),!isTitle);
+              const input=summaryInput(page,id=>names.get(id));
               if(input.length>40000)throw new HttpError(413,'This page exceeds the AI limit of 40,000 characters.');
-              if(isTitle && input.trim().length<20)throw new HttpError(400,'Add more page content before generating a title.');
               if(!input.trim())throw new HttpError(400,'Add some page content first.');
               const onRequest=(bytes: number)=>activity.request(activityId!,bytes,page.revision);
-              const summary=isTitle?await intelligence.generateTitle(input,onRequest):await intelligence.generate(input,false,onRequest);
+              const summary=await intelligence.generate(input,false,onRequest);
               vaults.requireOpen(vault);
               const current=pages.get(vault,id);
-              if(current.revision!==page.revision || current.summaryContentHash!==page.summaryContentHash)throw new HttpError(409,isTitle?'The page changed. Generate a fresh title.':'The page changed. Generate a fresh summary.');
-              const selection=isTitle?intelligence.titleSelection():intelligence.selection();
-              const data=isTitle?{title:summary}:{summary};
-              enrichments.save(vault,id,isTitle?'title':'summary',data,page.revision,selection);
-              return send(200,{...data,revision:page.revision,...selection,...(!isTitle ? {contentHash:page.summaryContentHash} : {})});
+              if(current.revision!==page.revision || current.summaryContentHash!==page.summaryContentHash)throw new HttpError(409,'The page changed. Generate a fresh summary.');
+              const selection=intelligence.selection();
+              const data={summary};
+              enrichments.save(vault,id,'summary',data,page.revision,selection);
+              return send(200,{...data,revision:page.revision,...selection,contentHash:page.summaryContentHash});
             }
             if(id && child==='editor' && parts.length===4 && method==='GET') {
               const page=pages.get(vault,id);

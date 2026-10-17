@@ -1,3 +1,4 @@
+import {entitiesForPage,classifiedConceptSubtypes} from '../../shared/concept-classification.js';
 import { createHash } from 'node:crypto';
 import { identifyEntityMentions } from '../../shared/auto-entities.js';
 import type { EntityMatchCache, EntityReviewItem } from '../../shared/entity-match-cache.js';
@@ -13,8 +14,8 @@ export class EntityMatches {
   get(vault: string, pageId: string, revision?: number): EntityMatchCache {
     const page = this.pages.get(vault,pageId);
     if (revision !== undefined && revision !== page.revision) throw new HttpError(409,'The page changed. Wait for saving to finish before reviewing.');
-    const entities = this.knowledge.list(vault);
-    const key = createHash('sha256').update(JSON.stringify(['entity-match-cache-v1', page.revision, page.blocks, entities.map(({id,name,aliases}) => [id,name,aliases])])).digest('hex');
+    const entities = entitiesForPage(page,this.knowledge.list(vault));
+    const key = createHash('sha256').update(JSON.stringify(['entity-match-cache-v2', classifiedConceptSubtypes(page), page.revision, page.blocks, entities.map(({id,name,aliases,type,subtypes}) => [id,name,aliases,type,subtypes])])).digest('hex');
     const cached = this.store.get<{cache_key: string; matches: string}>('SELECT cache_key,matches FROM page_entity_match_cache WHERE page_id=? AND vault_id=?',pageId,vault);
     if (cached?.cache_key === key) return {revision:page.revision,key,matches:JSON.parse(cached.matches) as EntityReviewItem[]};
     const {ambiguous} = identifyEntityMentions(page.blocks,entities,vault);
@@ -37,7 +38,7 @@ export class EntityMatches {
     const entityId = required(body.entityId);
     if (!match || !match.entityIds.includes(entityId)) throw new HttpError(400,'Choose one of the matching entities.');
     const page = this.pages.get(vault,pageId);
-    const result = identifyEntityMentions(page.blocks,this.knowledge.list(vault),vault,{match,entityId,all:body.all});
+    const result = identifyEntityMentions(page.blocks,entitiesForPage(page,this.knowledge.list(vault)),vault,{match,entityId,all:body.all});
     if (!result.count) throw new HttpError(409,'The matching text could not be linked. Review it after editing.');
     // The normal revision-aware autosave persists this patch, preserving concurrent local edits.
     return {blocks:result.blocks};

@@ -200,6 +200,12 @@ export class VaultBackups {
               return {...suggestion,id:randomUUID(),existingId:suggestion.existingId===null?null:ref(entityIds,suggestion.existingId),subtypes:list(suggestion.subtypes).map(value=>subtype(value,type))};
             });
           }
+          if(kind==='concept_classification') {
+            data.subtypeIds=list(data.subtypeIds).map(value=>subtype(value,'concept'));
+            if(typeof data.contentHash!=='string'||!/^[a-f0-9]{64}$/.test(data.contentHash))throw invalid();
+            if(data.schemaKey!==undefined&&(typeof data.schemaKey!=='string'||!/^[a-f0-9]{64}$/.test(data.schemaKey)))throw invalid();
+            if(data.generatedTitle!==undefined&&(typeof data.generatedTitle!=='string'||data.generatedTitle.length>500))throw invalid();
+          }
           if(kind==='summary'&&typeof data.summary!=='string')throw invalid();
           insert('page_ai_enrichments',{page_id:ref(pageIds,row.page_id),kind,data:JSON.stringify(data),revision:integer(row,'revision',1),model:name(row,'model'),reasoning_effort:string(row,'reasoning_effort',20),updated_at:timestamp(row,'updated_at'),content_hash:nullable(row,'content_hash',100)});
         }

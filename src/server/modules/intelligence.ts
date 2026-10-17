@@ -58,6 +58,7 @@ export function intelligencePreferencesFor(store: Store): PreferencesStore {
 }
 export class Intelligence {
   private active: AbortController | null=null;
+  private generationRequests=new Set<AbortController>();
   private embeddingRequests=new Set<AbortController>();
   private embeddingAttempts: number[]=[];
   private attempts: number[]=[];
@@ -72,7 +73,7 @@ export class Intelligence {
     if(!supportedIntelligencePreferences(body))throw new HttpError(400,'Choose a supported model and reasoning effort.');
     const value={model:body.model,reasoningEffort:body.reasoningEffort};
     this.preferenceStore?.write(value);
-    this.preferences=value;this.preferenceRevision++;this.active?.abort();
+    this.preferences=value;this.preferenceRevision++;for(const request of this.generationRequests)request.abort();
     return this.selection();
   }
   private credential() {
@@ -88,12 +89,12 @@ export class Intelligence {
     if(typeof body.apiKey!=='string'||!/^sk-[A-Za-z0-9_-]{16,500}$/.test(body.apiKey))throw new HttpError(400,'Enter a valid OpenAI API key.');
     const days=body.days === undefined ? 30 : body.days;
     if(typeof days!=='number'||!Number.isInteger(days)||days<1||days>365)throw new HttpError(400,'Choose a lifetime between 1 and 365 days.');
-    this.active?.abort();
+    for(const request of this.generationRequests)request.abort();
     for(const request of this.embeddingRequests)request.abort();
     this.secrets.write({key:body.apiKey,expiresAt:new Date(this.clock()+days*86400000).toISOString(),generation:randomUUID()});
     return this.status();
   }
-  remove() {this.active?.abort();for(const request of this.embeddingRequests)request.abort();this.secrets.remove();return {configured:false,expiresAt:null,...this.selection()};}
+  remove() {for(const request of this.generationRequests)request.abort();for(const request of this.embeddingRequests)request.abort();this.secrets.remove();return {configured:false,expiresAt:null,...this.selection()};}
   purgeExpired() {this.credential();}
   async embed(input: string, onRequest?: (inputBytes: number) => void): Promise<{embedding:number[];tokens:number}> {
     if(!input.trim()||Buffer.byteLength(input,'utf8')>8000)throw new HttpError(400,'Embedding input must contain text and be at most 8,000 UTF-8 bytes.');
@@ -131,23 +132,29 @@ export class Intelligence {
     if(title.length>120 || /[\r\n]/.test(title) || title==='Untitled')throw new HttpError(502,'OpenAI returned an invalid page title.');
     return title;
   }
-  async generate(input: string, validate=false, onRequest?: (promptBytes: number) => void, title=false, entityScan=false, explain=false) {
+  async generatePageUtility(input:string,subtypes:{id:string;name:string}[],currentTitle:string,onRequest?:(bytes:number)=>void) {
+    const output=await this.generate(input,false,onRequest,true,false,false,{subtypes,currentTitle});
+    let value:unknown;try{value=JSON.parse(output);}catch{throw new HttpError(502,'AI returned invalid title and category data.');}
+    if(!value||typeof value!=='object'||!('title' in value)||typeof value.title!=='string'||!value.title.trim()||value.title.length>(currentTitle.trim()&&currentTitle.trim()!=='Untitled'?500:120)||/[\r\n]/.test(value.title)||value.title==='Untitled'||!('conceptSubtypeIds' in value)||!Array.isArray(value.conceptSubtypeIds)||value.conceptSubtypeIds.some(id=>typeof id!=='string'||!subtypes.some(subtype=>subtype.id===id)))throw new HttpError(502,'AI returned invalid title and category data.');
+    return {title:currentTitle.trim()&&currentTitle.trim()!=='Untitled'?currentTitle:value.title.trim(),conceptSubtypeIds:[...new Set(value.conceptSubtypeIds as string[])]};
+  }
+  async generate(input: string, validate=false, onRequest?: (promptBytes: number) => void, title=false, entityScan=false, explain=false, utility?:{subtypes:{id:string;name:string}[];currentTitle:string}) {
     const credential=this.credential(),selection=title?this.titleSelection():this.selection(),preferenceRevision=this.preferenceRevision;
     if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
-    if(this.active)throw new HttpError(429,'Another AI request is running. Please wait.');
+    if(!title&&!entityScan&&this.active)throw new HttpError(429,'Another AI request is running. Please wait.');
     this.attempts=this.attempts.filter(t=>t>this.clock()-60000);
     if(this.attempts.length>=5)throw new HttpError(429,'AI is limited to 5 requests per minute. Try again shortly.');
     this.attempts.push(this.clock());
-    const controller=new AbortController();this.active=controller;
+    const controller=new AbortController();this.generationRequests.add(controller);if(!title&&!entityScan)this.active=controller;
     const timer=setTimeout(()=>controller.abort(),Math.min(45000,Date.parse(credential.expiresAt)-this.clock()));
     try {
-      const prompt=validate?{instructions:'Reply with OK.',input:'Connection test.'}:title?titlePrompt(input):entityScan?entityScanPrompt(input):explain?explanationPrompt(input):summaryPrompt(input);
+      const prompt=validate?{instructions:'Reply with OK.',input:'Connection test.'}:title?titlePrompt(input,utility?.subtypes,utility?.currentTitle):entityScan?entityScanPrompt(input):explain?explanationPrompt(input):summaryPrompt(input);
       const inputText=typeof prompt.input==='string'?prompt.input:prompt.input.flatMap(item=>item.content.map(part=>part.text)).join('');
       onRequest?.(Buffer.byteLength(prompt.instructions+inputText,'utf8'));
       const response=await this.transport('https://api.openai.com/v1/responses',{
         method:'POST',redirect:'error',signal:controller.signal,
         headers:{'Content-Type':'application/json',Authorization:`Bearer ${credential.key}`},
-        body:JSON.stringify({model:selection.model,store:false,max_output_tokens:title?256:validate?2048:8192,reasoning:{effort:selection.reasoningEffort},
+        body:JSON.stringify({model:selection.model,store:false,max_output_tokens:title?512:validate?2048:8192,reasoning:{effort:selection.reasoningEffort},
           tools:[],tool_choice:'none',
           ...prompt}),
       });
@@ -170,6 +177,6 @@ export class Intelligence {
     }catch(error) {
       if(error instanceof HttpError)throw error;
       throw new HttpError(502,'The AI request failed or timed out. Please try again.');
-    }finally {clearTimeout(timer);if(this.active===controller)this.active=null;}
+    }finally {clearTimeout(timer);this.generationRequests.delete(controller);if(this.active===controller)this.active=null;}
   }
 }

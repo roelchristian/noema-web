@@ -1,3 +1,4 @@
+import {PageConceptCategory} from './PageConceptCategory';
 import {NoteConnections} from './NoteConnections';
 import { SummaryText } from './SummaryText';
 import { HelpMenu } from '../components/HelpMenu';
@@ -58,6 +59,7 @@ function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnap
   return <aside inert={inactive} aria-busy={inactive} className="entity-panel intelligence-panel" id="intelligence-panel" aria-label="Knowledge" onKeyDown={event=>{if(event.key==='Escape')onClose();}}>
     <div className="panel-top knowledge-panel-top"><span><Icon name="knowledge"/>Knowledge</span><div className="knowledge-panel-actions"><button className="page-tool" aria-label="Knowledge settings" title="Knowledge settings" onClick={onSettings}><Icon name="settings"/></button><button className="page-tool" aria-label="Close Knowledge panel" title="Close Knowledge panel" onClick={onClose}>×</button></div></div>
     <div className="panel-body">
+      <PageConceptCategory page={page}/>
       <section className="knowledge-summary" aria-labelledby="knowledge-summary-heading">
         <div className="knowledge-section-heading"><h2 id="knowledge-summary-heading">{result?<><Icon name="sparkles"/>AI Summary</>:<button type="button" className="summary-heading-action" disabled={busy||loading} aria-busy={busy} onClick={()=>void summarize()}><Icon name="sparkles"/>{loading?'Loading summary…':busy?'Summarizing…':'Summarize this page'}</button>}</h2><HelpMenu label="About AI summaries"><p>Summarizing sends this page’s title, text, and mentioned entity names to OpenAI. Attached sources and other pages are excluded. API charges may apply.</p><p>AI can make mistakes. Check the original page. Summaries are saved with this page.</p>{result&&<p>{result.model} · {result.reasoningEffort} reasoning</p>}</HelpMenu></div>
         {busy&&<p className="section-hint summary-progress" role="status">Creating your summary…</p>}

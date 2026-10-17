@@ -1,6 +1,6 @@
 import {blockPageLinks,pageTitleKey} from '../../shared/page-links.js';
 import { isAIExplanation, isSemanticKind } from '../../shared/semantic-blocks.js';
-import { summaryContentHash } from './summary-content.js';
+import { conceptContentHash, summaryContentHash } from './summary-content.js';
 import { AINotifications } from './ai-notifications.js';
 import { Images } from './images.js';
 import { isPageIconId } from '../../shared/page-icons.js';
@@ -28,13 +28,12 @@ export class Pages {
     if (!row) throw new HttpError(404,'Page not found');
     const {summary_content_hash: cachedHash, summary_hash_version: hashVersion, ...stored} = row;
     const blocks = JSON.parse(row.blocks) as Block[];
+    const names=new Map<string,string|undefined>();
+    const resolveName=(id:string)=>{if(!names.has(id))names.set(id,this.knowledge.find(vault,id)?.name);return names.get(id);};
+    const classificationRow=this.store.get<{data:string}>("SELECT data FROM page_ai_enrichments WHERE page_id=? AND kind='concept_classification'",id);
+    const conceptClassification=classificationRow ? JSON.parse(classificationRow.data) as import('../../shared/domain.js').ConceptClassification : undefined;
     let hash = cachedHash;
     if (!hash || hashVersion !== 2) {
-      const names = new Map<string, string | undefined>();
-      const resolveName = (entityId:string) => {
-        if (!names.has(entityId)) names.set(entityId, this.knowledge.find(vault, entityId)?.name);
-        return names.get(entityId);
-      };
       hash = summaryContentHash({...stored, blocks}, resolveName);
       if (hashVersion !== 2) {
         // Rebase only summaries whose old fingerprint matches the actual note.
@@ -44,7 +43,7 @@ export class Pages {
       }
       this.store.run('UPDATE pages SET summary_content_hash=?,summary_hash_version=2 WHERE id=? AND vault_id=?',hash,id,vault);
     }
-    return {...stored,blocks,summaryContentHash:hash,sourceIds:this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id)};
+    return {...stored,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id)};
   }
   create(vault: string, body: Record<string, unknown>) {
     const id=randomUUID();

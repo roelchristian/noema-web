@@ -20,3 +20,10 @@ export function summaryContentHash(page: SummaryPage, name: ResolveName, include
   const content = [normalize(page.title), normalize(summaryInput(page, name, false, includeAI))];
   return createHash('sha256').update(JSON.stringify(content)).digest('hex');
 }
+
+/** Classification follows body meaning; automatic title changes do not invalidate it. */
+export function conceptContentHash(page: SummaryPage, name: ResolveName): string {
+  const plain=(segments:Segment[])=>segments.map(segment=>segment.entityId?segment.mentionText??name(segment.entityId)??'[mention]':segment.text??'').join('');
+  const body=page.blocks.filter(block=>!isAIExplanation(block)).map(block=>block.type==='table'?(block.rows??[]).map(row=>row.map(plain).join('\t')).join('\n'):plain(block.content)).join('\n');
+  return createHash('sha256').update(body.replace(/\s+/g,' ').trim().toLowerCase()).digest('hex');
+}

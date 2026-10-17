@@ -1,3 +1,4 @@
+import {entitiesForPage} from '../../shared/concept-classification';
 import { identifyEntityMentions } from '../../shared/auto-entities';
 import { canIdentifyEntities, yieldForEntityMatching } from '../editor/auto-entity-matching';
 import { PageTitler } from './page-titler';
@@ -19,14 +20,14 @@ export class Workspace {
   private pageRequest: AbortController | null = null;
   readonly titler = new PageTitler(
     page => api.generateTitle(page.vault_id, page.id, page.revision),
-    (original, title) => {
+    (original, title,conceptClassification) => {
       const cached = this.pageCache.get(original.id);
       if (!cached || cached.vault_id !== original.vault_id || this.state.vault?.locked) return;
-      const page = {...cached, title};
+      const page = {...cached, title,...(conceptClassification?{conceptClassification}:{})};
       this.pageCache.set(page.id, page);
       this.patch({pages: this.state.pages.map(item => item.id === page.id ? {...item, title} : item),
         ...(this.state.page?.id === page.id ? {page} : {})});
-      this.saver.enqueue(page);
+      if(page.title!==cached.title)this.saver.enqueue(page);
     },
     id => this.state.entities.find(entity => entity.id === id)?.name || '',
   );
@@ -36,17 +37,17 @@ export class Workspace {
       const cached = this.pageCache.get(saved.id);
       if (cached) {
         const unchanged = JSON.stringify(cached.blocks) === JSON.stringify(original.blocks);
-        const page = {...cached, ...(unchanged && !this.state.reviewing && canIdentifyEntities() ? {blocks: saved.blocks} : {}), revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at};
+        const page = {...cached, ...(unchanged && !this.state.reviewing && canIdentifyEntities() ? {blocks: saved.blocks} : {}), conceptClassification:saved.conceptClassification,conceptContentHash:unchanged?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at};
         this.pageCache.set(saved.id, page);
         this.titler.observe(page, unchanged && cached.title === saved.title);
       }
-      if (this.state.vault?.id === saved.vault_id) this.patch({pages: this.state.pages.map(page => page.id === saved.id ? {...page, updated_at: saved.updated_at} : page), ...(this.state.page?.id === saved.id ? {page: this.pageCache.get(saved.id) || {...this.state.page, revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at}} : {})});
+      if (this.state.vault?.id === saved.vault_id) this.patch({pages: this.state.pages.map(page => page.id === saved.id ? {...page, updated_at: saved.updated_at} : page), ...(this.state.page?.id === saved.id ? {page: this.pageCache.get(saved.id) || {...this.state.page, conceptClassification:saved.conceptClassification,conceptContentHash:JSON.stringify(this.state.page.blocks)===JSON.stringify(original.blocks)?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at}} : {})});
     },
     (saveStatus, error) => this.patch({saveStatus, ...(error ? {error: error.message} : {})}),
     async page => {
       await yieldForEntityMatching();
       if (this.state.vault?.id !== page.vault_id || this.state.vault.locked || this.state.reviewing || !canIdentifyEntities()) return page;
-      const {blocks} = identifyEntityMentions(page.blocks, this.state.entities, page.vault_id);
+      const {blocks} = identifyEntityMentions(page.blocks, entitiesForPage(page,this.state.entities), page.vault_id);
       return blocks === page.blocks ? page : {...page, blocks};
     },
   );
@@ -57,7 +58,7 @@ export class Workspace {
     try {
       await yieldForEntityMatching();
       if (this.state.page !== page || this.state.view !== 'pages' || this.state.busy || this.state.loadingPageId !== null || this.state.reviewing || this.state.vault?.locked || this.saver.hasPending || !canIdentifyEntities()) return;
-      const {blocks, count} = identifyEntityMentions(page.blocks, this.state.entities, page.vault_id);
+      const {blocks, count} = identifyEntityMentions(page.blocks, entitiesForPage(page,this.state.entities), page.vault_id);
       if (count) this.updatePage({blocks});
     } catch (error) { this.report(error); }
     finally { if (this.state.saveStatus === 'identifying' && !this.saver.hasPending) this.patch({saveStatus: 'saved'}); }
@@ -231,7 +232,7 @@ export class Workspace {
   updatePage(patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon'>>) {
     const current = this.state.page;
     if (!current || this.state.busy || this.state.loadingPageId !== null || this.state.reviewing || this.state.vault?.locked) return;
-    const page = {...current, ...patch}; this.pageCache.set(page.id, page);
+    const page = {...current, ...patch,...(patch.blocks&&patch.blocks!==current.blocks?{conceptContentHash:undefined}:{})}; this.pageCache.set(page.id, page);
     this.patch({page, pages: this.state.pages.map(p => p.id === page.id ? {...p, title: page.title, icon: page.icon} : p)});
     this.titler.observe(page);
     this.saver.enqueue(page);

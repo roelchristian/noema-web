@@ -66,6 +66,68 @@ export function markdownBlocks(text: string): Block[] {
   }
   return blocks.length ? blocks : [makeBlock('paragraph', text ? [{text}] : [])];
 }
+/** Read math in rich clipboard text without reinterpreting its existing formatting. */
+export function clipboardMathBlocks(blocks: Block[]): Block[] {
+  function slice(content: Segment[], start: number, end: number): Segment[] {
+    let offset = 0;
+    return content.flatMap(segment => {
+      const value = segment.text ?? '', from = Math.max(0, start - offset), to = Math.min(value.length, end - offset);
+      offset += value.length;
+      return to > from ? [{...segment, text: value.slice(from, to)} as Segment] : [];
+    });
+  }
+  function inline(content: Segment[]): Segment[] {
+    const output: Segment[] = [];
+    for (let i = 0; i < content.length;) {
+      const segment = content[i]!;
+      if (segment.entityId || segment.code || segment.math) { output.push(segment); i++; continue; }
+      const run: Segment[] = [];
+      while (i < content.length && !content[i]!.entityId && !content[i]!.code && !content[i]!.math) run.push(content[i++]!);
+      const text = run.map(s => s.text).join(''); let start = 0;
+      // Backtick spans protect literal math in Markdown wrapped by a clipboard span.
+      const pattern = /(`+)[\s\S]*?\1|(?<!\\)\\\(([^\n]*?)(?<!\\)\\\)|(?<![\\$])\$(?![\s$])((?:\\.|[^$\n\\])+?)(?<![\s\\])\$(?!\$)/g;
+      for (const match of text.matchAll(pattern)) {
+        const source = (match[2] ?? match[3])?.trim();
+        if (!source) continue;
+        output.push(...slice(run, start, match.index!), {text: source, math: true});
+        start = match.index! + match[0].length;
+      }
+      output.push(...slice(run, start, text.length));
+    }
+    return output;
+  }
+  const plain = (block: Block) => block.type === 'paragraph' && block.content.every(s => !s.entityId && !s.code && !s.math);
+  const output: Block[] = [];
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i]!;
+    if (block.type === 'table') { output.push({...block, rows: block.rows?.map(row => row.map(inline))}); continue; }
+    if (block.type === 'math' || block.type === 'image') { output.push(block); continue; }
+    if (!plain(block)) { output.push({...block, content: inline(block.content)}); continue; }
+    let content = block.content, text = content.map(s => s.text).join('');
+    // Browsers may put each line of a display equation in a separate paragraph.
+    if (/(?<!\\)\\\[/.test(text) && !/(?<!\\)\\\]/.test(text)) {
+      let end = i + 1, candidate = [...content];
+      while (end < blocks.length && plain(blocks[end]!)) {
+        candidate.push({text: '\n'}, ...blocks[end]!.content);
+        const value = candidate.map(s => s.text).join('');
+        if (/(?<!\\)\\\]/.test(value)) { content = candidate; text = value; i = end; break; }
+        end++;
+      }
+    }
+    let start = 0, split = false;
+    const pattern = /(`+)[\s\S]*?\1|(?<!\\)\\\[([\s\S]*?)(?<!\\)\\\]/g;
+    for (const match of text.matchAll(pattern)) {
+      const source = match[2]?.trim(); if (!source) continue;
+      const before = slice(content, start, match.index!);
+      if (before.some(s => s.text?.trim())) output.push({...block, id: split ? crypto.randomUUID() : block.id, content: inline(before)});
+      output.push(makeBlock('math', [{text: source}])); split = true;
+      start = match.index! + match[0].length;
+    }
+    const remaining = slice(content, start, text.length);
+    if (!split || remaining.some(s => s.text?.trim())) output.push({...block, id: split ? crypto.randomUUID() : block.id, content: inline(remaining)});
+  }
+  return output;
+}
 export function clipboardBlocks(text: string, html: string): Block[] {
   if (!html) return markdownBlocks(text);
   const doc = new DOMParser().parseFromString(html, 'text/html'), blocks: Block[] = [];
@@ -97,5 +159,5 @@ export function clipboardBlocks(text: string, html: string): Block[] {
   }
   visit(doc.body);
   // Some applications wrap plain Markdown in one styled span.
-  return blocks.length ? blocks : markdownBlocks(text);
+  return blocks.length ? clipboardMathBlocks(blocks) : markdownBlocks(text);
 }

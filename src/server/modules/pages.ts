@@ -42,7 +42,7 @@ export class Pages {
             return {entityId};
           }
           const result: Segment = {text:text(segment.text)};
-          for (const mark of ['bold','italic','underline','strike','code','math'] as const) if(segment[mark] === true) result[mark]=true;
+          for (const mark of ['bold','italic','underline','strike','code','math','skipAutoTag'] as const) if(segment[mark] === true) result[mark]=true;
           if(typeof segment.href === 'string') { const href=safeHref(segment.href); if(href) result.href=href; }
           return result;
         });

@@ -997,6 +997,8 @@ dialog.vault-search-dialog::backdrop { background: #0005; backdrop-filter: blur(
 .entity-preview p.is-empty { font-style: italic; }
 .entity-preview > button { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 9px 0 0; border-top: 1px solid var(--line); font-size: 11px; color: var(--text-muted); text-align: left; }
 .entity-preview > button:hover { color: var(--text); }
+.entity-preview > button.remove-entity-tag { color: var(--palette-rose-text); }
+.entity-preview > button + button { margin-top: 9px; }
 .entity-preview > button .icon { width: 13px; height: 13px; }
 
 .inline-math { display: inline-block; max-width: 100%; vertical-align: baseline; cursor: pointer; border-radius: 3px; white-space: normal; }

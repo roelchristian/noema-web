@@ -22,12 +22,12 @@ export function identifyEntityMentions(blocks: Block[], entities: Entity[], vaul
     let added = 0;
     for (let index = 0; index < content.length;) {
       const first = content[index]!;
-      if (first.entityId || first.code || first.math || first.href) { output.push(first); index++; continue; }
+      if (first.entityId || first.code || first.math || first.href || first.skipAutoTag) { output.push(first); index++; continue; }
       const run: {segment: Segment; start: number; end: number}[] = [];
       let text = '';
       while (index < content.length) {
         const segment = content[index]!;
-        if (segment.entityId || segment.code || segment.math || segment.href) break;
+        if (segment.entityId || segment.code || segment.math || segment.href || segment.skipAutoTag) break;
         const start = text.length; text += segment.text ?? '';
         run.push({segment, start, end: text.length}); index++;
       }

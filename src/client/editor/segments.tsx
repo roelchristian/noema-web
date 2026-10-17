@@ -14,7 +14,7 @@ export function segmentHTML(content: Segment[], entities: Entity[]) {
     if (s.underline) node = <u>{node}</u>;
     if (s.strike) node = <s>{node}</s>;
     if (s.href && safeHref(s.href)) node = <a href={safeHref(s.href)}>{node}</a>;
-    return <span key={index}>{node}</span>;
+    return <span key={index} data-skip-auto-tag={s.skipAutoTag ? 'true' : undefined}>{node}</span>;
   })}</>);
 }
 export function readSegments(el: Node, allowMentions = true): Segment[] {
@@ -33,6 +33,7 @@ export function readSegments(el: Node, allowMentions = true): Segment[] {
       if (allowMentions && node.dataset.entity) { output.push({entityId: node.dataset.entity}); return; }
       if (node.tagName === 'BR') { output.push({text: '\n'}); return; }
       const next = {...style}, tag = node.tagName;
+      if (allowMentions && node.dataset.skipAutoTag === 'true') next.skipAutoTag = true;
       if (['STRONG','B'].includes(tag) || /^(bold|[6-9]00)$/.test(node.style.fontWeight)) next.bold = true;
       if (['EM','I'].includes(tag) || node.style.fontStyle === 'italic') next.italic = true;
       if (tag === 'U' || node.style.textDecoration.includes('underline')) next.underline = true;

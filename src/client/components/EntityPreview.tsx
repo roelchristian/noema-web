@@ -80,5 +80,15 @@ export function EntityPreview({entities, onOpen}: {entities: Entity[]; onOpen: (
     <h3 id="entity-preview-title">{entity.name}</h3>
     <p id="entity-preview-description" className={!entity.description.trim() ? 'is-empty' : ''}>{entity.description.trim() || 'No description yet.'}</p>
     <button type="button" onClick={() => { const id = entity.id; dismiss(); onOpen(id); }}>Open full entity<Icon name="chevron"/></button>
+    {target.closest('.page #blocks .block-content[contenteditable="true"]') && <button type="button" className="remove-entity-tag" title="Keep this text and skip automatic tagging for it" onClick={() => {
+      const editor = target.closest<HTMLElement>('.block-content[contenteditable="true"]');
+      if (!editor || !target.isConnected) return;
+      const text = document.createElement('span');
+      text.dataset.skipAutoTag = 'true';
+      text.textContent = entity.name;
+      target.replaceWith(text);
+      dismiss();
+      editor.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'deleteContentBackward'}));
+    }}>Remove entity tag<Icon name="close"/></button>}
   </div>;
 }

@@ -28,6 +28,18 @@ async function setup(t) {
   return {workspace,writes,entity};
 }
 
+test('removed tags remain excluded through idle matching, explicit saves, and reopening', async t => {
+  const {workspace, writes} = await setup(t);
+  const blocks = [{id: 'paragraph', type: 'paragraph', checked: false, content: [{text: 'Ada Lovelace', skipAutoTag: true}, {text: ' and Ada Lovelace'}]}];
+  workspace.updatePage({blocks});
+  await workspace.saver.flush();
+  assert.deepEqual(writes[0].blocks[0].content, [{text: 'Ada Lovelace', skipAutoTag: true}, {text: ' and '}, {entityId: 'ada'}]);
+  await workspace.openPage('note');
+  await workspace.identifyEntities();
+  assert.deepEqual(workspace.snapshot().page.blocks, writes[0].blocks);
+  assert.equal(workspace.saver.hasPending, false);
+});
+
 test('idle identification links existing entities, autosaves them, and remains idempotent', async t => {
   const {workspace,writes} = await setup(t);
   const statuses=[];workspace.subscribe(()=>statuses.push(workspace.snapshot().saveStatus));

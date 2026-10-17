@@ -4,6 +4,17 @@ import { identifyEntityMentions } from '../src/shared/auto-entities.ts';
 const entity = (id, name, vault_id = 'vault') => ({id, name, vault_id});
 const block = content => ({id: 'paragraph', type: 'paragraph', checked: false, content});
 
+test('removed tags stay excluded in paragraphs and tables without suppressing other occurrences', () => {
+  const skipped = {text: 'Ada', skipAutoTag: true, bold: true};
+  const table = {...block([]), id: 'table', type: 'table', rows: [[[skipped, {text: ' and Ada'}]]]};
+  const result = identifyEntityMentions([block([skipped, {text: ' and Ada'}]), table], [entity('ada', 'Ada')], 'vault');
+  assert.equal(result.count, 2);
+  assert.deepEqual(result.blocks[0].content, [skipped, {text: ' and '}, {entityId: 'ada'}]);
+  assert.deepEqual(result.blocks[1].rows[0][0], result.blocks[0].content);
+  assert.equal(identifyEntityMentions(result.blocks, [entity('ada', 'Ada')], 'vault').count, 0);
+  assert.equal(identifyEntityMentions([block([{text: 'Ad'}, {text: 'a', skipAutoTag: true}])], [entity('ada', 'Ada')], 'vault').count, 0);
+});
+
 test('automatic matching prefers longest whole names, including Unicode and punctuation', () => {
   const entities = [entity('new', 'New'), entity('city', 'New York'), entity('ann', 'Ann'), entity('jose', 'José'), entity('cpp', 'C++')];
   const {blocks, count} = identifyEntityMentions([block([{text: 'New York and Ann met José. Annual newness in C++.'}])], entities, 'vault');

@@ -8,6 +8,25 @@ import { Store } from '../src/server/store.ts';
 import { Pages } from '../src/server/modules/pages.ts';
 import { Knowledge } from '../src/server/modules/knowledge.ts';
 
+test('removed entity tag exclusions survive saving and reopening, including table cells', () => {
+  const db = openDatabase(':memory:');
+  try {
+    const store = new Store(db), pages = new Pages(store, new Knowledge(store));
+    const page = pages.create('default', {title: 'Removed tags'});
+    const content = [{text: 'Ursula Le Guin', skipAutoTag: true, italic: true}];
+    const blocks = [
+      {id: 'paragraph', type: 'paragraph', checked: false, content},
+      {id: 'table', type: 'table', checked: false, content: [], rows: [[content]]},
+    ];
+    pages.update('default', page.id, {...page, blocks});
+    assert.deepEqual(pages.get('default', page.id).blocks, blocks);
+    const html = segmentHTML(content, []);
+    assert.match(html, /data-skip-auto-tag="true"/);
+    assert.match(html, /<em>Ursula Le Guin<\/em>/);
+    assert.doesNotMatch(html, /data-entity=/);
+  } finally { db.close(); }
+});
+
 test('Markdown paste creates distinct paragraphs and structural blocks', () => {
   const blocks = markdownBlocks('# Title\n\nFirst **bold** paragraph.\n\nSecond paragraph.\n- Item\n- [x] Done\n> Quote');
   assert.deepEqual(blocks.map(b => b.type), ['heading1', 'paragraph', 'paragraph', 'bullet', 'todo', 'quote']);

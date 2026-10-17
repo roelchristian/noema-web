@@ -7,7 +7,7 @@ export const entityLabels: Record<EntityType, string> = {
 };
 export const blockTypes = ['paragraph', 'heading1', 'heading2', 'bullet', 'quote', 'todo', 'table', 'image', 'math'] as const;
 export type BlockType = typeof blockTypes[number];
-export interface TextStyle { math?: boolean; bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean; code?: boolean; href?: string }
+export interface TextStyle { math?: boolean; bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean; code?: boolean; href?: string; skipAutoTag?: boolean }
 export type Segment = TextStyle & ( { text: string; entityId?: never } | { entityId: string; text?: never });
 export interface Block { id: string; type: BlockType; checked: boolean; content: Segment[]; rows?: Segment[][][]; imageId?: string; alt?: string }
 export interface Vault { id: string; name: string; locked: boolean; protected: boolean; updated_at: string }

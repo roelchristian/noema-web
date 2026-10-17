@@ -6,12 +6,18 @@ import { api, ApiError } from '../api';
 import type { Entity, EntityInput, Page, PageSummary, Vault, Organization, OrganizationContext, RecentItem, ItemKind, TrashedPage } from '../../shared/domain';
 import { PageSaver, type SaveStatus } from './page-saver';
 export interface WorkspaceState {
+  canGoBack: boolean; canGoForward: boolean;
   vaults: Vault[]; vault: Vault | null; trash: TrashedPage[]; pages: PageSummary[]; entities: Entity[];
   organization: Organization; organizationContext: OrganizationContext; recent: RecentItem[];
   page: Page | null; view: 'pages' | 'entities' | 'organization' | 'favourites' | 'recent' | 'trash' | 'inbox'; busy: boolean; loadingPageId: string | null; reviewing: boolean; error: string | null; saveStatus: SaveStatus;
 }
+type NavigationAddress = {view: WorkspaceState['view']; pageId: string | null; collection: string; folder: string};
 export class Workspace {
-  private state: WorkspaceState = {vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
+  private state: WorkspaceState = {canGoBack: false, canGoForward: false, vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
+  private history: NavigationAddress[] = [];
+  private historyIndex = -1;
+  private historyVault: string | null = null;
+  private traversingHistory = false;
   private listeners = new Set<() => void>();
   private pageCache = new Map<string, Page>();
   private navigation = false;
@@ -67,6 +73,7 @@ export class Workspace {
   snapshot = () => this.state;
   private patch(patch: Partial<WorkspaceState>) {
     this.state = {...this.state, ...patch};
+    this.updateHistory();
     // Do not replace the saved address with intermediate loading/locked state.
     if (!this.state.busy && this.state.loadingPageId === null && this.state.vault && !this.state.vault.locked &&
       (patch.view !== undefined || patch.organizationContext !== undefined || patch.busy === false || patch.loadingPageId === null)) {
@@ -78,6 +85,53 @@ export class Workspace {
       } catch { /* Navigation still works when browser storage is unavailable. */ }
     }
     this.listeners.forEach(fn => fn());
+  }
+  private validAddress(address: NavigationAddress) {
+    if (address.view === 'pages') return this.state.pages.some(page => page.id === address.pageId);
+    if (address.view !== 'organization') return true;
+    return (!address.collection || this.state.organization.collections.some(item => item.id === address.collection)) &&
+      (!address.folder || this.state.organization.folders.some(item => item.id === address.folder));
+  }
+  private updateHistory() {
+    const vaultId = this.state.vault && !this.state.vault.locked ? this.state.vault.id : null;
+    if (vaultId !== this.historyVault) {
+      this.history = []; this.historyIndex = -1; this.historyVault = vaultId;
+    }
+    if (!this.traversingHistory && vaultId && !this.state.busy && this.state.loadingPageId === null) {
+      const currentIndex = this.historyIndex;
+      this.historyIndex = this.history.filter((address, index) => index <= currentIndex && this.validAddress(address)).length - 1;
+      this.history = this.history.filter(address => this.validAddress(address));
+      const address: NavigationAddress = {view: this.state.view, pageId: this.state.view === 'pages' ? this.state.page?.id ?? null : null,
+        collection: this.state.view === 'organization' ? this.state.organizationContext.collection : '',
+        folder: this.state.view === 'organization' ? this.state.organizationContext.folder : ''};
+      if (this.validAddress(address) && JSON.stringify(address) !== JSON.stringify(this.history[this.historyIndex])) {
+        this.history = [...this.history.slice(0, this.historyIndex + 1), address];
+        this.historyIndex = this.history.length - 1;
+      }
+    }
+    this.state = {...this.state,
+      canGoBack: !this.traversingHistory && this.history.slice(0, this.historyIndex).some(address => this.validAddress(address)),
+      canGoForward: !this.traversingHistory && this.history.slice(this.historyIndex + 1).some(address => this.validAddress(address))};
+  }
+  async goHistory(direction: -1 | 1) {
+    if (this.traversingHistory || this.state.busy || this.state.reviewing || this.state.loadingPageId !== null || !this.state.vault || this.state.vault.locked) return;
+    let index = this.historyIndex + direction;
+    while (index >= 0 && index < this.history.length && !this.validAddress(this.history[index]!)) index += direction;
+    const address = this.history[index];
+    if (!address) return;
+    this.traversingHistory = true;
+    this.patch({});
+    try {
+      if (address.view === 'pages') await this.openPage(address.pageId!);
+      else await this.navigate(async () => {
+        if (address.view === 'trash') this.patch({trash: await api.trash(this.state.vault!.id)});
+        this.patch({view: address.view, organizationContext: {collection: address.collection, folder: address.folder}});
+      });
+      this.historyIndex = index;
+    } finally {
+      this.traversingHistory = false;
+      this.patch({});
+    }
   }
   private async restoreAddress() {
     const {vault, organization, pages} = this.state;

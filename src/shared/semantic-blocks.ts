@@ -17,6 +17,23 @@ export const semanticFunctions: Record<SemanticKind, {label: string; icon: strin
 };
 export const editableSemanticKinds = semanticKinds.filter(kind => kind !== 'ai-explanation');
 export function isAIExplanation(block: Block) {return block.semantic === 'ai-explanation' || block.semanticGroup?.kind === 'ai-explanation';}
+/** Regenerate a shared explanation for its whole passage, including overlapping legacy explanations. */
+export function aiExplanationSources(blocks: Block[], ids: string[]): Block[] {
+  const sources = new Set(blocks.filter(block => ids.includes(block.id)).flatMap(block => isAIExplanation(block) ? block.semanticGroup?.source?.blockIds ?? [] : [block.id]));
+  let previousSize = -1;
+  while (previousSize !== sources.size) {
+    previousSize = sources.size;
+    for (const block of blocks) {
+      const linked = isAIExplanation(block) ? block.semanticGroup?.source?.blockIds : undefined;
+      if (linked?.some(id => sources.has(id))) linked.forEach(id => sources.add(id));
+    }
+  }
+  return blocks.filter(block => sources.has(block.id) && !isAIExplanation(block));
+}
+export function aiExplanationsForSources(blocks: Block[], ids: string[]): Block[] {
+  const sources = new Set(ids);
+  return blocks.filter(block => isAIExplanation(block) && block.semanticGroup?.source?.blockIds.some(id => sources.has(id)));
+}
 /** Find surviving explanations linked to any source block removed by an editor change. */
 export function explanationsLinkedToDeletedBlocks(previous: Block[], next: Block[]): string[] {
   const remaining = new Set(next.map(block => block.id));

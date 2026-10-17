@@ -13,6 +13,7 @@ interface Props {
   viewportHeight?: number;
   onExplain?: () => void;
   explaining?: boolean;
+  explainLabel?: (ids: string[]) => string;
   editor: RefObject<HTMLDivElement | null>;
   entities: Entity[];
   onCommit: () => void;
@@ -30,7 +31,7 @@ const formats = [
 function editable(node: Node) {
   return (node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>('.block-content[contenteditable="true"]');
 }
-export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHeight, editor, entities, onCommit, onAddAlias, onCreateEntity, onMath, onSemantic, onExplain, explaining}: Props) {
+export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHeight, editor, entities, onCommit, onAddAlias, onCreateEntity, onMath, onSemantic, onExplain, explaining, explainLabel}: Props) {
   const [anchor, setAnchor] = useState<{left: number; right: number; top: number; bottom: number} | null>(null);
   const [annotating, setAnnotating] = useState(false), [query, setQuery] = useState('');
   const [semantic, setSemantic] = useState(false);
@@ -39,6 +40,8 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
   const [savingAlias, setSavingAlias] = useState(false), [aliasError, setAliasError] = useState('');
   const [active, setActive] = useState<string[]>([]);
   const [selectedCount, setSelectedCount] = useState(0);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const explanationAction = explainLabel?.(selectedIds) ?? 'Explain with AI';
   const [position, setPosition] = useState<{left: number; top: number; maxHeight?: number}>({left: 0, top: 0});
   const saved = useRef<Range | null>(null), surface = useRef<HTMLDivElement>(null);
   const picking = useRef(false);
@@ -81,6 +84,7 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
       if (!box.width && !box.height) { dismiss(); return; }
       saved.current = range.cloneRange();
       setSelectedCount(selectedBlocks.elements.length);
+      setSelectedIds(selectedBlocks.elements.map(element=>element.dataset.blockId!));
       setActive(formats.filter(format => document.queryCommandState(format.command)).map(format => format.command));
       setAnchor({left: box.left, right: box.right, top: box.top, bottom: box.bottom});
     }
@@ -192,7 +196,7 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
         releaseSheet(); picking.current = false; setMore(false); applyFormat('strikeThrough');
       }}><s>S</s><span>Strikethrough</span></button>
       <button type="button" disabled={!single} onClick={() => { const current = saved.current?.cloneRange(); if (current) { dismiss(); onMath(current); } }}><Icon name="equation"/><span>Inline equation</span></button>
-      <button type="button" disabled={explaining || !onExplain} onClick={() => { const current = saved.current; releaseSheet(); if (current && restore(current)) onExplain?.(); dismiss(); }}><Icon name="sparkles"/><span>Explain with AI</span></button>
+      <button type="button" disabled={explaining || !onExplain} onClick={() => { const current = saved.current; releaseSheet(); if (current && restore(current)) onExplain?.(); dismiss(); }}><Icon name="sparkles"/><span>{explanationAction}</span></button>
       <button type="button" onClick={() => { setMore(false); setSemantic(true); }}><Icon name="semantic"/><span>Semantic function</span><Icon name="chevron"/></button>
       <button type="button" disabled={!single} onClick={() => { setMore(false); setAnnotating(true); setLinking(false); setQuery(''); setAliasError(''); }}><Icon name="knowledge"/><span>Annotate selection</span><Icon name="chevron"/></button>
     </div>}
@@ -229,7 +233,7 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
         {!mobile && <>
         <button type="button" aria-label="Inline equation" title="Inline equation" disabled={!single} onClick={() => {const current = saved.current?.cloneRange(); if (current) {dismiss(); onMath(current);}}}><Icon name="equation"/></button>
         <span className="selection-divider"/>
-        <button type="button" aria-label="Explain with AI" title="Explain selected blocks with AI" disabled={explaining || !onExplain} onClick={()=>{const range=saved.current;if(range&&restore(range))onExplain?.();dismiss();}}><Icon name="sparkles"/><span className="selection-action-label">Explain with AI</span></button>
+        <button type="button" aria-label={explanationAction} title={explanationAction} disabled={explaining || !onExplain} onClick={()=>{const range=saved.current;if(range&&restore(range))onExplain?.();dismiss();}}><Icon name="sparkles"/><span className="selection-action-label">{explanationAction}</span></button>
         <button type="button" className="selection-semantic" title="Apply a semantic function" aria-expanded={semantic} aria-haspopup={mobile ? 'dialog' : undefined} aria-label="Semantic block function" onClick={()=>{picking.current=!semantic;setSemantic(!semantic);setAnnotating(false);setLinking(false);}}><Icon name="semantic"/><span className="selection-action-label">Semantic</span></button>
         <button type="button" className="selection-annotate" disabled={!single} aria-label="Annotate selection" title={single ? 'Connect selection to a knowledge entity' : 'Select text within one block or table cell to annotate'} aria-haspopup={mobile ? 'dialog' : undefined} aria-expanded={annotating} onClick={() => { picking.current = !annotating; setSemantic(false); setAnnotating(!annotating); setLinking(false); setQuery(''); setAliasError(''); }}><Icon name="knowledge"/><span className="selection-action-label">Annotate</span></button>
         </>}

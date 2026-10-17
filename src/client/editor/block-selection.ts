@@ -1,3 +1,4 @@
+import {randomUUID} from '../../shared/uuid';
 import {isAIExplanation} from '../../shared/semantic-blocks';
 import type { Block, Entity, Segment } from '../../shared/domain';
 import { clipboardBlocks, makeBlock } from './paste';
@@ -92,7 +93,7 @@ export function replaceEditorSelection(root: HTMLElement, options: Options, inco
   if (list.slice(start,end+1).some(isAIExplanation)) return true;
   const prefix = sliceBlock(list[start]!, firstEl, selected.range, 'before'), suffix = sliceBlock(list[end]!, lastEl, selected.range, 'after');
   const parent=list[start]!.semanticGroup, sameParent=parent && parent.id===list[end]!.semanticGroup?.id;
-  const replacement: Block[] = incoming.map(block => ({...block, ...(sameParent?{semanticGroup:parent}:{}), id: crypto.randomUUID()}));
+  const replacement: Block[] = incoming.map(block => ({...block, ...(sameParent?{semanticGroup:parent}:{}), id: randomUUID()}));
   if (prefix) {
     if (replacement[0]?.type === 'paragraph' && prefix.type !== 'table') replacement[0] = {...prefix, content: [...prefix.content, ...replacement[0].content]};
     else replacement.unshift(prefix);
@@ -100,7 +101,7 @@ export function replaceEditorSelection(root: HTMLElement, options: Options, inco
   let target = replacement.at(-1), offset = target ? textOf(target.content, options.entities()).length : 0;
   if (suffix) {
     if (target && target.semanticGroup?.id === suffix.semanticGroup?.id && target.semantic === suffix.semantic && target.type !== 'table' && target.type !== 'math' && target.type !== 'image' && suffix.type !== 'table') target.content = [...target.content, ...suffix.content];
-    else {target = {...suffix, id: replacement.some(b => b.id === suffix.id) ? crypto.randomUUID() : suffix.id}; replacement.push(target); offset = 0;}
+    else {target = {...suffix, id: replacement.some(b => b.id === suffix.id) ? randomUUID() : suffix.id}; replacement.push(target); offset = 0;}
   }
   if (!replacement.length) {target = makeBlock(); replacement.push(target); offset = 0;}
   // A sliced table keeps all unselected cells; continue typing in a text block beside it.

@@ -1,3 +1,4 @@
+import {randomUUID} from '../../shared/uuid';
 import { applySemantic, isAIExplanation, preserveAIExplanationTags, normalizeSemanticGroups, removeSemanticGroup, retagSemanticGroup, semanticDragItems, semanticFunctions, editableSemanticKinds, semanticRuns, type SemanticKind } from '../../shared/semantic-blocks';
 import {pageTitleKey} from '../../shared/page-links';
 import { completePageLink } from './page-links';
@@ -129,7 +130,7 @@ export function BlockEditor(props: Props) {
       const current=latest.current.blocks, sources=current.filter(block=>selectedIds.includes(block.id));
       if(JSON.stringify(sources)!==snapshot) throw new Error('The selected blocks changed. Select them again to generate a fresh explanation.');
       const excerpt=selected.map(block=>block.type==='image'?block.alt||'Image':(block.type==='table'?(block.rows??[]).flat(2):block.content).map(segment=>segment.entityId?segment.mentionText??latest.current.entities.find(entity=>entity.id===segment.entityId)?.name??'':segment.text??'').join('')).join('\n\n').slice(0,2000);
-      const group={id:crypto.randomUUID(),kind:'ai-explanation' as const,source:{blockIds:selected.map(block=>block.id),excerpt}};
+      const group={id:randomUUID(),kind:'ai-explanation' as const,source:{blockIds:selected.map(block=>block.id),excerpt}};
       const generated=markdownBlocks(markdown).map(block=>({...block,semantic:'ai-explanation' as const,semanticGroup:group}));
       if(!markdown.trim() || !generated.length) throw new Error('AI returned an empty explanation. Please try again.');
       if(generated.length>128 || current.length+generated.length>2000) throw new Error('The explanation is too large for this page. Select fewer blocks.');
@@ -162,7 +163,7 @@ export function BlockEditor(props: Props) {
   }
   function addImages(files: File[], target: {after?: string; replace?: Block}) {
     if (!files.length) return;
-    const id=crypto.randomUUID(), autoCompress=readImageCompression();
+    const id=randomUUID(), autoCompress=readImageCompression();
     setImageError('');
     setUploads(items => [...items,{id,after:target.after,name:files[0]!.name,message:'Waiting to save…',current:1,total:files.length}]);
     const progress=(patch:Partial<ImageUpload>) => {if(mounted.current) setUploads(items => items.map(item => item.id === id ? {...item,...patch} : item));};
@@ -339,7 +340,7 @@ export function BlockEditor(props: Props) {
       if (!el.textContent && ['bullet', 'todo'].includes(block.type)) { convert(block, 'paragraph'); return; }
       const selection = getSelection(); if (!selection?.rangeCount) return;
       const range = selection.getRangeAt(0); range.deleteContents(); const tail = range.cloneRange(); tail.setEnd(el, el.childNodes.length); const temp = document.createElement('div'); temp.append(tail.extractContents());
-      const next: Block = {...(isAIExplanation(block)?{semantic:'ai-explanation' as const}:{}),...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{}),id: crypto.randomUUID(), type: ['bullet', 'todo'].includes(block.type) ? block.type : 'paragraph', checked: false, content: readSegments(temp)};
+      const next: Block = {...(isAIExplanation(block)?{semantic:'ai-explanation' as const}:{}),...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{}),id: randomUUID(), type: ['bullet', 'todo'].includes(block.type) ? block.type : 'paragraph', checked: false, content: readSegments(temp)};
       const list = latest.current.blocks.map(b => b.id === block.id ? {...b, content: readSegments(el)} : b); list.splice(list.findIndex(b => b.id === block.id) + 1, 0, next); focusTarget.current = {id: next.id, start: true}; onChange(list);
     }
     if (e.key === 'Backspace' && !el.textContent && blocks.length > 1) { e.preventDefault(); removeBlock(block.id); }

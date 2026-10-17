@@ -19,6 +19,39 @@ To use another port or database:
 PORT=3001 DB_PATH=./data/another.sqlite npm start
 ```
 
+### Access from other devices on your local network
+
+LAN access is opt-in. For the built app and API on port 3000:
+
+```sh
+NOEMA_LAN=1 npm start
+```
+
+For development, expose the Vite frontend on port 5173 and the Node API together:
+
+```sh
+NOEMA_LAN=1 npm run dev
+```
+
+Keep the terminal running and open `http://<your-Mac-LAN-IP>:3000` (built app) or `http://<your-Mac-LAN-IP>:5173` (development) on a device connected to the same network. The terminal prints available LAN addresses. Allow incoming Node connections if macOS asks. A guest Wi-Fi network may block connections between devices.
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `NOEMA_LAN` | `0` | Set to `1` or `true` to accept private IPv4 LAN connections. Without it, both servers remain bound to `127.0.0.1`. |
+| `NOEMA_LAN_HOST` | `0.0.0.0` in LAN mode | Bind both servers to a specific private IPv4 interface instead of every IPv4 interface. Requires LAN mode. |
+| `NOEMA_ALLOWED_HOSTS` | Detected private IPv4 addresses and the machine hostname, including its `.local` name | Replace automatic LAN host detection with a comma-separated list of hostnames/IPs that clients may use. Use bare names without schemes, ports, paths, or wildcards. Localhost and a specific bind address remain allowed. Requires LAN mode. |
+| `PORT` | `3000` | Node API/built-app port. The development proxy follows this setting; Vite normally uses 5173 and prints its actual port. |
+
+For example, to bind only to your Mac's current LAN address:
+
+```sh
+NOEMA_LAN=1 NOEMA_LAN_HOST=192.168.1.25 npm run dev
+```
+
+Use your own address in place of `192.168.1.25`. Restart after changing network settings or the Mac's IP. Stop with Ctrl+C; restart without the LAN settings to return to localhost-only access.
+
+LAN mode keeps peer-address restrictions, an explicit Host allowlist, and same-origin API checks. It does **not** add user accounts or HTTPS: devices on the allowed network can read and change unlocked vaults, vault locks are shared across devices, and optional AI features use the host Mac's configured credentials. Use it on a trusted network and do not forward these ports through your router. Plain HTTP LAN editing uses cryptographically generated UUIDs even when the browser's HTTPS-only `randomUUID` API is unavailable.
+
 ## Images
 
 Paste an image into a page or type `/image` in a text block. The block add menu also includes **Image**. PNG, JPEG, GIF, and WebP files up to 20 MB are supported. Each image becomes a block and follows normal page autosave. Click an image, then press Backspace or Delete to remove it, or choose **Delete block** from its gutter menu. A small image icon below the image toggles its caption field; saved captions remain hidden until opened. An inline loading card shows optimization and saving progress.
@@ -230,7 +263,7 @@ Page AI results use the shared `page_ai_enrichments` table, with one latest resu
 
 Untitled pages automatically receive a title after a successful save and **three seconds without edits**, once their body contains at least **20 characters**. Opening an existing untitled page resumes this workflow after a reload or vault switch. The title utility sends only that page's text and inline entity names, and uses reasoning effort fixed to **none**, independently of the reasoning preference. It uses the selected model when the existing model catalog supports `none`, otherwise GPT-6 Luna, with a 256-token output budget. The prompt favors compact subject labels of 2–6 words, preferably within 50 characters, rather than summaries of every detail. Titles have a hard limit of 120 characters and are saved through autosave. Edits, manual titles, deletion, and vault changes discard outstanding results. Empty pages and pages with a title are excluded. Temporary provider, rate-limit, and network failures retry up to twice, after 15 seconds and then 60 seconds; edits or a vault switch invalidate pending retries. Missing credentials and permanent failures stay quiet; another saved edit or reopening the page can try again. Automatic title generation can incur API charges and appears as **Page title** in the activity log.
 
-Security controls include loopback binding and peer-address checks; localhost/127.0.0.1 Host validation; same-origin checks; a custom request header and JSON requirement on AI endpoints; no cross-origin access; no response caching; a fixed HTTPS OpenAI endpoint with redirects disabled; no model tools; 40,000 input characters; bounded provider responses and output tokens; a 45-second timeout; one active AI call and five attempts per minute per server process; and sanitized errors. Rate limits are local safeguards, not a billing cap. Page content is treated as untrusted input, and output is never executed.
+Security controls include loopback binding by default (opt-in private IPv4 LAN binding); peer-address checks and an explicit Host allowlist; same-origin checks; a custom request header and JSON requirement on AI endpoints; no cross-origin access; no response caching; a fixed HTTPS OpenAI endpoint with redirects disabled; no model tools; 40,000 input characters; bounded provider responses and output tokens; a 45-second timeout; one active AI call and five attempts per minute per server process; and sanitized errors. Rate limits are local safeguards, not a billing cap. Page content is treated as untrusted input, and output is never executed.
 
 The summary prompt keeps Noema’s fixed instructions separate from note text. Titles, body text, and mentioned entity names are serialized into a JSON `untrusted_note` string inside a single lower-priority user message. No note text is interpolated into trusted instructions or used to construct roles, tools, model settings, or conversation history. Noema explicitly directs the model to summarize embedded instructions as document content rather than obeying them, including fake roles, delimiter escapes, encoded commands, and authorization claims. Requests explicitly set `tools: []` and `tool_choice: "none"`; results remain inert plain text.
 

@@ -1,9 +1,10 @@
+import {randomUUID} from '../../shared/uuid';
 import { isSemanticKind, normalizeSemanticGroups } from '../../shared/semantic-blocks';
 import { displayMathSource } from './math-delimiters';
 import { safeHref, type Block, type BlockType, type Segment, type TextStyle } from '../../shared/domain';
 import { readSegments } from './segments';
 export function makeBlock(type: BlockType = 'paragraph', content: Segment[] = []): Block {
-  return {id: crypto.randomUUID(), type, checked: false, content, ...(type === 'table' ? {rows: [[[], []], [[], []]]} : {})};
+  return {id: randomUUID(), type, checked: false, content, ...(type === 'table' ? {rows: [[[], []], [[], []]]} : {})};
 }
 export function markdownInline(text: string, style: TextStyle = {}): Segment[] {
   const pattern = /\[\[[^\]\n]+\]\]|(`+)([\s\S]*?)\1|\[([^\]]+)\]\(([^\s)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|\*([^*]+)\*|_([^_]+)_|(?<![\\$])\$(?![\s$])((?:\\.|[^$\n\\])+?)(?<![\s\\])\$(?!\$)|(?<!\\)\\\(([^\n]*?)(?<!\\)\\\)/g;
@@ -121,12 +122,12 @@ export function clipboardMathBlocks(blocks: Block[]): Block[] {
     for (const match of text.matchAll(pattern)) {
       const source = match[2]?.trim(); if (!source) continue;
       const before = slice(content, start, match.index!);
-      if (before.some(s => s.text?.trim())) output.push({...block, id: split ? crypto.randomUUID() : block.id, content: inline(before)});
+      if (before.some(s => s.text?.trim())) output.push({...block, id: split ? randomUUID() : block.id, content: inline(before)});
       output.push({...makeBlock('math', [{text: source}]),...(block.semantic?{semantic:block.semantic}:{}),...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{})}); split = true;
       start = match.index! + match[0].length;
     }
     const remaining = slice(content, start, text.length);
-    if (!split || remaining.some(s => s.text?.trim())) output.push({...block, id: split ? crypto.randomUUID() : block.id, content: inline(remaining)});
+    if (!split || remaining.some(s => s.text?.trim())) output.push({...block, id: split ? randomUUID() : block.id, content: inline(remaining)});
   }
   return output;
 }
@@ -140,7 +141,7 @@ export function clipboardBlocks(text: string, html: string): Block[] {
     const copiedType=node.getAttribute('data-noema-block-type');
     if (/^H[1-6]$/.test(node.tagName) && (copiedType==='heading1' || copiedType==='heading2')) block.type=copiedType;
     if (isSemanticKind(semantic)) block.semantic=semantic;
-    if (group && group.length<=200 && isSemanticKind(kind)) {const key=JSON.stringify([group,kind]);if(!groups.has(key))groups.set(key,crypto.randomUUID());block.semanticGroup={id:groups.get(key)!,kind};}
+    if (group && group.length<=200 && isSemanticKind(kind)) {const key=JSON.stringify([group,kind]);if(!groups.has(key))groups.set(key,randomUUID());block.semanticGroup={id:groups.get(key)!,kind};}
     return block;
   }
 

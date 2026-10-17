@@ -1,3 +1,4 @@
+import {randomUUID} from './uuid.js';
 import type { Block } from './domain.js';
 export const semanticKinds = ['question','definition','example','claim','evidence','insight','summary','warning','ai-explanation'] as const;
 export type SemanticKind = typeof semanticKinds[number];
@@ -33,7 +34,7 @@ export function semanticRuns(blocks: Block[]): SemanticRun[] {
   }
   return runs;
 }
-export function normalizeSemanticGroups(blocks: Block[], uuid = () => crypto.randomUUID()): Block[] {
+export function normalizeSemanticGroups(blocks: Block[], uuid = () => randomUUID()): Block[] {
   const seen = new Set<string>(); let changed = false;
   const result = semanticRuns(blocks).flatMap(run => {
     if (run.type === 'block') return [run.block];
@@ -46,7 +47,7 @@ export function normalizeSemanticGroups(blocks: Block[], uuid = () => crypto.ran
   });
   return changed ? result : blocks;
 }
-export function applySemantic(blocks: Block[], ids: string[], kind: SemanticKind, uuid = () => crypto.randomUUID()): Block[] {
+export function applySemantic(blocks: Block[], ids: string[], kind: SemanticKind, uuid = () => randomUUID()): Block[] {
   const selected = blocks.map((block,index) => ids.includes(block.id) ? index : -1).filter(index => index >= 0);
   if (!selected.length) return blocks;
   if (selected.length === 1) return blocks.map((block,index) => index === selected[0] && !isAIExplanation(block) ? {...block,semantic:kind} : block);

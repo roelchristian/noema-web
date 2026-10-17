@@ -21,6 +21,7 @@ import { Pages } from './modules/pages.js';
 import { Embeddings } from './modules/embeddings.js';
 import { SearchSnippets } from './modules/search-snippets.js';
 import { HttpError, object } from './validation.js';
+import {networkRequestError, readNetworkConfig, type NetworkConfig} from './network.js';
 async function readBody(req: IncomingMessage) {
   let size=0;const chunks:Buffer[]=[];
   for await(const chunk of req) {
@@ -30,7 +31,7 @@ async function readBody(req: IncomingMessage) {
   try { return object(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
   catch(error) { if(error instanceof HttpError)throw error;throw new HttpError(400,'Invalid JSON'); }
 }
-export function createApp(store: Store, clientRoot: string, intelligence=new Intelligence(keychainFor(store),fetch,()=>Date.now(),intelligencePreferencesFor(store))) {
+export function createApp(store: Store, clientRoot: string, intelligence=new Intelligence(keychainFor(store),fetch,()=>Date.now(),intelligencePreferencesFor(store)), network: NetworkConfig=readNetworkConfig()) {
   const vaultDeletion=new VaultDeletion(store);
   const sourceFiles=new SourceFiles(store);
   sourceFiles.recover();
@@ -55,9 +56,9 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
     const send=(status:number,data:unknown)=>{if(activityId){activity.finish(activityId,status<400?'completed':'failed',status);activityId=undefined;}res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));};
     try {
       const url=new URL(req.url || '/', 'http://localhost'),method=req.method || 'GET';
-      // The app binds to loopback. Reject DNS-rebinding hosts and cross-origin browser access.
-      if(!['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress || ''))throw new HttpError(403,'Only loopback connections are allowed');
-      if(!/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.headers.host || ''))throw new HttpError(403,'Host is not allowed');
+      // LAN mode expands the peer/host allowlist without weakening same-origin API checks.
+      const accessError=networkRequestError(req,network);
+      if(accessError)throw new HttpError(403,accessError);
       if(url.pathname.startsWith('/api/')) {
         if((req.headers.origin && req.headers.origin!==`http://${req.headers.host}`)||req.headers['sec-fetch-site']==='cross-site')throw new HttpError(403,'Cross-origin requests are not allowed');
         const aiRoute=url.pathname==='/api/search/snippets'||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|entity-scan|entity-review|explain)$/.test(url.pathname);

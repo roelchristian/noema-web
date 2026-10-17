@@ -1,3 +1,4 @@
+import { limitSummaryWords } from '../shared/summary-text.js';
 import { entityMentionName } from '../shared/domain.js';
 import { SourceFiles, maxSourceBytes } from './modules/source-files.js';
 import { VaultBackups, maxBackupBytes } from './modules/vault-backups.js';
@@ -246,7 +247,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               if(input.length>40000)throw new HttpError(413,'This page exceeds the AI limit of 40,000 characters.');
               if(!input.trim())throw new HttpError(400,'Add some page content first.');
               const onRequest=(bytes: number)=>activity.request(activityId!,bytes,page.revision);
-              const summary=await intelligence.generate(input,false,onRequest);
+              const summary=limitSummaryWords(await intelligence.generate(input,false,onRequest));
               vaults.requireOpen(vault);
               const current=pages.get(vault,id);
               if(current.revision!==page.revision || current.summaryContentHash!==page.summaryContentHash)throw new HttpError(409,'The page changed. Generate a fresh summary.');

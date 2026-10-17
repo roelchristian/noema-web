@@ -1,3 +1,4 @@
+import { limitSummaryWords } from '../../shared/summary-text.js';
 import { AINotifications } from './ai-notifications.js';
 import type { AIEnrichment } from '../../shared/domain.js';
 import type { IntelligencePreferences } from '../../shared/intelligence.js';
@@ -15,7 +16,11 @@ export class AIEnrichments {
     // Only backfill legacy results when their exact generating revision is known.
     this.store.run("UPDATE page_ai_enrichments SET content_hash=? WHERE page_id=? AND kind='summary' AND content_hash IS NULL AND revision=?",page.summaryContentHash!,pageId,page.revision);
     return this.store.all<EnrichmentRow>('SELECT kind,data,revision,model,reasoning_effort,updated_at,content_hash AS contentHash FROM page_ai_enrichments WHERE page_id=? ORDER BY kind', pageId)
-      .map(({data, reasoning_effort, ...row}) => ({...row, data: JSON.parse(data), reasoningEffort: reasoning_effort}));
+      .map(({data, reasoning_effort, ...row}) => {
+        const parsed = JSON.parse(data) as Record<string, unknown>;
+        if (row.kind === 'summary' && typeof parsed.summary === 'string') parsed.summary = limitSummaryWords(parsed.summary);
+        return {...row, data: parsed, reasoningEffort: reasoning_effort};
+      });
   }
   removeSummary(vault: string, pageId: string) {
     this.pages.get(vault, pageId);
@@ -23,6 +28,7 @@ export class AIEnrichments {
     return {ok: true as const};
   }
   save(vault: string, pageId: string, kind: string, data: Record<string, unknown>, revision: number, preferences: IntelligencePreferences) {
+    if (kind === 'summary' && typeof data.summary === 'string') data = {...data, summary: limitSummaryWords(data.summary)};
     return this.store.transaction(() => {
       const page = this.pages.get(vault, pageId);
       if (page.revision !== revision) throw new HttpError(409, 'The page changed. Generate a fresh result.');

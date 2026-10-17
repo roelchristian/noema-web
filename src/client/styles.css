@@ -1837,3 +1837,17 @@ main {position:relative;}
 .entity-review-subtype-proposals strong,.entity-review-subtype-proposals small { display:block; overflow-wrap:anywhere; }
 .entity-review-subtype-proposals small { margin-top:4px; color:var(--text-muted); font-size:11px; }
 .entity-review-subtype-actions { display:flex; gap:8px; flex-wrap:wrap; }
+
+.ai-summary > :first-child { margin-top:0; }
+.ai-summary > :last-child { margin-bottom:0; }
+.ai-summary p { margin:0 0 .7em; white-space:pre-wrap; }
+.ai-summary ul,.ai-summary ol { margin:.5em 0; padding-left:1.6em; white-space:normal; }
+.ai-summary h3,.ai-summary h4 { margin:.7em 0 .3em; font-size:1em; line-height:1.5; }
+.ai-summary blockquote { margin:.5em 0; padding-left:12px; border-left:2px solid var(--line); }
+.ai-summary code { font: .9em ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--sidebar); border-radius:3px; padding:1px 3px; }
+.ai-summary pre { overflow-x:auto; padding:10px; background:var(--sidebar); white-space:pre; }
+.ai-summary pre code { padding:0; }
+.ai-summary a { text-decoration:underline; text-underline-offset:2px; }
+.ai-summary .summary-table { overflow-x:auto; }
+.ai-summary table { border-collapse:collapse; font-size:inherit; white-space:normal; }
+.ai-summary td { border:1px solid var(--line); padding:4px 6px; }

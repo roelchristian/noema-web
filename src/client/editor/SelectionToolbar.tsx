@@ -131,6 +131,7 @@ export function SelectionToolbar({editor, entities, onCommit, onAddAlias, onCrea
   const single = range && editor.current && editorSelectionRanges(editor.current, range).length === 1;
   const selectedCount = range && editor.current ? new Set(editorSelectionRanges(editor.current,range).map(part=>editable(part.startContainer)?.closest<HTMLElement>('[data-block-id]')?.dataset.blockId)).size : 0;
   const lockedSemantic = range && editor.current ? selectedEditorBlocks(editor.current)?.elements.some(el=>el.dataset.semanticKind==='ai-explanation'||el.closest('[data-block-group-id]')?.getAttribute('data-semantic-kind')==='ai-explanation') : false;
+  if (lockedSemantic) return null;
   const selectedText = range?.toString().trim() || '';
   const {exact, results} = annotationSuggestions(entities, selectedText, query);
   const linkEntity = async (id: string) => {

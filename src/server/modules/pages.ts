@@ -73,6 +73,11 @@ export class Pages {
         const group=object(b.semanticGroup);
         if (!isSemanticKind(group.kind)) throw new HttpError(400,'Invalid semantic group function');
         block.semanticGroup={id:required(group.id),kind:group.kind};
+        if (group.kind === 'ai-explanation' && group.source !== undefined) {
+          const source=object(group.source);
+          if (!Array.isArray(source.blockIds) || source.blockIds.length > 2000) throw new HttpError(400,'Invalid explanation source');
+          block.semanticGroup.source={blockIds:source.blockIds.map(id=>required(id)),excerpt:text(source.excerpt,2000)};
+        }
       }
       if(type === 'math') {
         if(block.content.some(segment => segment.entityId)) throw new HttpError(400,'Equations must contain LaTeX text');

@@ -1,7 +1,7 @@
 import type { Block } from './domain.js';
 export const semanticKinds = ['question','definition','example','claim','evidence','insight','summary','warning','ai-explanation'] as const;
 export type SemanticKind = typeof semanticKinds[number];
-export interface SemanticGroup {id: string; kind: SemanticKind}
+export interface SemanticGroup {id: string; kind: SemanticKind; source?: {blockIds: string[]; excerpt: string}}
 export const semanticFunctions: Record<SemanticKind, {label: string; icon: string; color: string; description: string}> = {
   'ai-explanation': {label:'AI Explanation',icon:'sparkles',color:'#8b79cf',description:'AI-generated explanation · permanent tag'},
   question: {label:'Question',icon:'question-circle',color:'#8b6bd1',description:'Something to investigate or answer'},
@@ -41,7 +41,7 @@ export function normalizeSemanticGroups(blocks: Block[], uuid = () => crypto.ran
       const {semanticGroup: group, ...block} = run.blocks[0]!; changed = true;
       return [{...block, semantic:block.semantic ?? group!.kind}];
     }
-    if (seen.has(run.id)) {changed = true;const id = uuid();return run.blocks.map(block => ({...block,semanticGroup:{id,kind:run.kind}}));}
+    if (seen.has(run.id)) {changed = true;const id = uuid();return run.blocks.map(block => ({...block,semanticGroup:{...run.blocks[0]!.semanticGroup!,id,kind:run.kind}}));}
     seen.add(run.id); return run.blocks;
   });
   return changed ? result : blocks;
@@ -65,12 +65,15 @@ export function retagSemanticGroup(blocks: Block[], id: string, kind: SemanticKi
   return blocks.map(block => block.semanticGroup?.id === id && block.semanticGroup.kind !== 'ai-explanation' ? {...block,semanticGroup:{id,kind}} : block);
 }
 export function semanticDragItems(blocks: Block[], source: string): {id:string}[] {
+  if (blocks.some(block => block.id === source && isAIExplanation(block))) return [];
   return blocks.some(block => block.semanticGroup?.id === source) ? semanticRuns(blocks).map(run => ({id:run.id})) : blocks.map(block => ({id:block.id}));
 }
 export function reorderSemanticBlock(blocks: Block[], source: string, before: string | null): Block[] {
   const moving = blocks.filter(block => block.id === source || block.semanticGroup?.id === source);
-  const target = before === null ? null : blocks.find(block => block.id === before || block.semanticGroup?.id === before);
+  let target = before === null ? null : blocks.find(block => block.id === before || block.semanticGroup?.id === before);
   if (!moving.length || before !== null && !target || target && moving.includes(target)) return blocks;
+  if (moving.some(block => isAIExplanation(block) && block.semanticGroup?.id !== source)) return blocks;
+  if (target?.semanticGroup?.kind === 'ai-explanation') target = blocks.find(block => block.semanticGroup?.id === target!.semanticGroup!.id)!;
   const rest = blocks.filter(block => !moving.includes(block)), index = target ? rest.indexOf(target) : rest.length;
   const next = [...rest]; next.splice(index,0,...moving);
   if (next.every((block,i) => block === blocks[i])) return blocks;

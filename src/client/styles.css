@@ -1220,3 +1220,12 @@ main {position:relative;}
 
 /* Loading should not flash the application chrome on fast page switches. */
 .sidebar[data-navigating=true] button:disabled { opacity: 1; }
+
+.ai-explanation > summary {cursor:pointer;width:fit-content;}
+.ai-explanation-source {margin:8px 0 14px;color:var(--text-muted);font-size:12px;}
+.ai-explanation-source > span {font-weight:500;}
+.ai-explanation-source blockquote {margin:6px 0;padding-left:12px;border-left:2px solid var(--line);white-space:pre-wrap;max-height:9em;overflow:auto;}
+.ai-explanation .inline-math {cursor:text;}
+.ai-explanation .block-content {cursor:text;}
+.ai-explanation table {width:100%;border-collapse:collapse;}
+.ai-explanation td {border:1px solid var(--line);padding:8px;}

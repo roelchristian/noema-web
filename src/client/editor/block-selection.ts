@@ -1,3 +1,4 @@
+import {isAIExplanation} from '../../shared/semantic-blocks';
 import type { Block, Entity, Segment } from '../../shared/domain';
 import { clipboardBlocks, makeBlock } from './paste';
 import { readSegments, segmentHTML } from './segments';
@@ -88,6 +89,7 @@ export function replaceEditorSelection(root: HTMLElement, options: Options, inco
   const list = options.blocks(), firstEl = selected.elements[0]!, lastEl = selected.elements.at(-1)!;
   const start = list.findIndex(b => b.id === firstEl.dataset.blockId), end = list.findIndex(b => b.id === lastEl.dataset.blockId);
   if (start < 0 || end < start) return false;
+  if (list.slice(start,end+1).some(isAIExplanation)) return true;
   const prefix = sliceBlock(list[start]!, firstEl, selected.range, 'before'), suffix = sliceBlock(list[end]!, lastEl, selected.range, 'after');
   const parent=list[start]!.semanticGroup, sameParent=parent && parent.id===list[end]!.semanticGroup?.id;
   const replacement: Block[] = incoming.map(block => ({...block, ...(sameParent?{semanticGroup:parent}:{}), id: crypto.randomUUID()}));

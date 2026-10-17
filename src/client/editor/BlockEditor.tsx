@@ -1,4 +1,5 @@
 import { applySemantic, isAIExplanation, preserveAIExplanationTags, normalizeSemanticGroups, removeSemanticGroup, retagSemanticGroup, semanticDragItems, semanticFunctions, editableSemanticKinds, semanticRuns, type SemanticKind } from '../../shared/semantic-blocks';
+import { ReadOnlyExplanationBlock } from './ReadOnlyExplanationBlock';
 import { selectedEditorBlocks } from './block-selection';
 import { installBlockDrag, type BlockDropPreview } from './block-drag';
 import { installBlockSelection, setEditorCaret } from './block-selection';
@@ -123,7 +124,8 @@ export function BlockEditor(props: Props) {
       if(!mounted.current) return;
       const current=latest.current.blocks, sources=current.filter(block=>selectedIds.includes(block.id));
       if(JSON.stringify(sources)!==snapshot) throw new Error('The selected blocks changed. Select them again to generate a fresh explanation.');
-      const group={id:crypto.randomUUID(),kind:'ai-explanation' as const};
+      const excerpt=selected.map(block=>block.type==='image'?block.alt||'Image':(block.type==='table'?(block.rows??[]).flat(2):block.content).map(segment=>segment.entityId?segment.mentionText??latest.current.entities.find(entity=>entity.id===segment.entityId)?.name??'':segment.text??'').join('')).join('\n\n').slice(0,2000);
+      const group={id:crypto.randomUUID(),kind:'ai-explanation' as const,source:{blockIds:selected.map(block=>block.id),excerpt}};
       const generated=markdownBlocks(markdown).map(block=>({...block,semantic:'ai-explanation' as const,semanticGroup:group}));
       if(!markdown.trim() || !generated.length) throw new Error('AI returned an empty explanation. Please try again.');
       if(generated.length>128 || current.length+generated.length>2000) throw new Error('The explanation is too large for this page. Select fewer blocks.');
@@ -215,8 +217,8 @@ export function BlockEditor(props: Props) {
     show(anchor,[...(props.onExplain?[explainChoice(ids)]:[]),...(!isAIExplanation(block)?[{title:'Semantic function…',detail:block.semantic ? semanticFunctions[block.semantic].label : 'Question, Definition, Example…',icon:'semantic',entity:true,pick:()=>show(anchor,[...semanticChoices(kind=>update(block.id,{semantic:kind})),...(block.semantic?[{title:'Remove semantic function',icon:'close',entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:undefined});}}]:[])],'SEMANTIC FUNCTION')}]:[]),...options.map(o=>({...o,pick:()=>convert(block,o.type)})),{title:'Delete block',icon:'×',pick:()=>removeBlock(block.id)}],'BLOCK OPTIONS');
   }
   function groupOptions(anchor: HTMLElement, id: string) {
-    const children=latest.current.blocks.filter(block=>block.semanticGroup?.id===id),locked=children[0]?.semanticGroup?.kind==='ai-explanation';
-    show(anchor,[...(props.onExplain?[explainChoice(children.map(block=>block.id))]:[]),...(!locked?[...semanticChoices(kind=>onChange(retagSemanticGroup(latest.current.blocks,id,kind))),{title:'Ungroup blocks',detail:'Keep all child blocks',icon:'close',entity:true,pick:()=>{setMenu(null);onChange(removeSemanticGroup(latest.current.blocks,id));}}]:[{title:'Delete explanation',detail:'Remove this explanation and its subblocks',icon:'close',entity:true,pick:()=>{setMenu(null);const rest=latest.current.blocks.filter(block=>block.semanticGroup?.id!==id);onChange(rest.length?rest:[makeBlock()]);}}])],'SEMANTIC GROUP');
+    const children=latest.current.blocks.filter(block=>block.semanticGroup?.id===id || block.id===id && isAIExplanation(block)),locked=children.some(isAIExplanation);
+    show(anchor,[...(props.onExplain?[explainChoice(children.map(block=>block.id))]:[]),...(!locked?[...semanticChoices(kind=>onChange(retagSemanticGroup(latest.current.blocks,id,kind))),{title:'Ungroup blocks',detail:'Keep all child blocks',icon:'close',entity:true,pick:()=>{setMenu(null);onChange(removeSemanticGroup(latest.current.blocks,id));}}]:[{title:'Delete explanation',detail:'Remove this explanation and its subblocks',icon:'close',entity:true,pick:()=>{setMenu(null);const rest=latest.current.blocks.filter(block=>block.semanticGroup?.id!==id && block.id!==id);onChange(rest.length?rest:[makeBlock()]);}}])],'SEMANTIC GROUP');
   }
   function update(id: string, patch: Partial<Block>) { onChange(latest.current.blocks.map(b => b.id === id ? {...b, ...patch} : b)); }
   function removeBlock(id: string) {
@@ -311,7 +313,7 @@ export function BlockEditor(props: Props) {
     }
     if (e.key === 'Backspace' && !el.textContent && blocks.length > 1) { e.preventDefault(); removeBlock(block.id); }
   }
-  const renderBlock = (block: Block) => <Fragment key={block.id}><div data-block-id={block.id} data-semantic-kind={block.semantic} style={semanticStyle(block.semantic)} className={'block ' + block.type + (block.semantic ? ' semantic-block' : '') + (blockDrag?.id === block.id ? ' is-block-dragging' : '')} data-drop-before={blockDrag?.valid && blockDrag.beforeId === block.id ? true : undefined} data-drop-after={blockDrag?.valid && blockDrag.beforeId === null && block.id === dropEndId ? true : undefined}>
+  const renderBlock = (block: Block) => isAIExplanation(block) ? <ReadOnlyExplanationBlock key={block.id} block={block} entities={entities} onOpen={onOpenEntity} vaultId={props.vaultId}/> : <Fragment key={block.id}><div data-block-id={block.id} data-semantic-kind={block.semantic} style={semanticStyle(block.semantic)} className={'block ' + block.type + (block.semantic ? ' semantic-block' : '') + (blockDrag?.id === block.id ? ' is-block-dragging' : '')} data-drop-before={blockDrag?.valid && blockDrag.beforeId === block.id ? true : undefined} data-drop-after={blockDrag?.valid && blockDrag.beforeId === null && block.id === dropEndId ? true : undefined}>
     {block.semantic && <span className="semantic-accent" aria-hidden="true"/>}
     <div className="block-controls" role="group" aria-label="Block controls">
       <button className="block-add" title="Add block below" aria-label="Add block below" onClick={e => show(e.currentTarget, [...options.map(option => ({...option, pick: () => { setMenu(null); insert(block.id, option.type); }})), imageChoice(block.id)], 'ADD BLOCK BELOW')}><Icon name="plus"/></button>
@@ -335,20 +337,24 @@ export function BlockEditor(props: Props) {
         return;
       }
       const math = (e.target as Element).closest<HTMLElement>('[data-math]');
-      if (math) {e.preventDefault(); e.stopPropagation(); editInlineMath(math);}
+      if (math && !(e.target as Element).closest('[data-semantic-kind="ai-explanation"]')) {e.preventDefault(); e.stopPropagation(); editInlineMath(math);}
     }} onKeyDownCapture={e => {
       const math = (e.target as Element).closest<HTMLElement>('[data-math]');
-      if (math && (e.key === 'Enter' || e.key === ' ')) {e.preventDefault(); e.stopPropagation(); editInlineMath(math);}
+      if (math && !(e.target as Element).closest('[data-semantic-kind="ai-explanation"]') && (e.key === 'Enter' || e.key === ' ')) {e.preventDefault(); e.stopPropagation(); editInlineMath(math);}
     }} onPasteCapture={e => {
+      if ((e.target as Element).closest('[data-semantic-kind="ai-explanation"]')) return;
       const files=Array.from(e.clipboardData.files).filter(file => file.type.startsWith('image/'));
       if(!files.length) return;
       e.preventDefault(); e.stopPropagation(); setMenu(null);
       const blockElement=(e.target as Element).closest<HTMLElement>('[data-block-id]');
       void addImages(files,{after:blockElement?.dataset.blockId});
-    }}>{semanticRuns(blocks).map(run => run.type === 'block' ? renderBlock(run.block) : <section key={run.id} data-block-group-id={run.id} className={'semantic-group'+(blockDrag?.id===run.id?' is-block-dragging':'')} data-semantic-kind={run.kind} style={semanticStyle(run.kind)} aria-label={semanticFunctions[run.kind].label+' semantic group'} data-drop-before={blockDrag?.valid&&blockDrag.beforeId===run.id?true:undefined} data-drop-after={blockDrag?.valid&&blockDrag.beforeId===null&&dropEndId===run.id?true:undefined}>
+    }}>{semanticRuns(blocks).map(run => run.type==='block' && isAIExplanation(run.block) ? {type:'group' as const,id:run.id,kind:'ai-explanation' as const,blocks:[run.block]} : run).map(run => run.type === 'block' ? renderBlock(run.block) : <section key={run.id} data-block-group-id={run.id} className={'semantic-group'+(blockDrag?.id===run.id?' is-block-dragging':'')} data-semantic-kind={run.kind} style={semanticStyle(run.kind)} aria-label={semanticFunctions[run.kind].label+' semantic group'} data-drop-before={blockDrag?.valid&&blockDrag.beforeId===run.id?true:undefined} data-drop-after={blockDrag?.valid&&blockDrag.beforeId===null&&dropEndId===run.id?true:undefined}>
       <span className="semantic-accent" aria-hidden="true"/><div className="semantic-parent-controls"><button type="button" className="block-handle semantic-handle" data-semantic-parent-handle draggable={false} aria-describedby="block-drag-help" aria-label={semanticFunctions[run.kind].label+' group options'} aria-pressed={blockDrag?.id===run.id} title={semanticFunctions[run.kind].label+' · Drag group or click for options'} onClick={event=>groupOptions(event.currentTarget,run.id)}>{semanticGlyph(run.kind)}</button></div>
-      {run.kind==='ai-explanation' && <div className="ai-explanation-label" title="This tag cannot be removed or changed">AI Explanation</div>}
-      <div className="semantic-children">{run.blocks.map(renderBlock)}</div>
+      {run.kind==='ai-explanation' ? <details className="ai-explanation" open>
+        <summary className="ai-explanation-label">AI Explanation</summary>
+        {run.blocks[0]?.semanticGroup?.source && <div className="ai-explanation-source"><span>Passage explained</span><blockquote>{run.blocks[0].semanticGroup.source.excerpt}</blockquote></div>}
+        <div className="semantic-children">{run.blocks.map(renderBlock)}</div>
+      </details> : <div className="semantic-children">{run.blocks.map(renderBlock)}</div>}
     </section>)}{uploadCards()}</div>
     <span id="block-drag-help" className="block-drag-sr">Drag to reorder. Click for options. With the handle focused, press Space to pick up, Up or Down to move, Space or Enter to drop, Escape to cancel.</span>
     <div className="block-drag-sr" role="status" aria-live="polite" aria-atomic="true">{dragStatus}</div>

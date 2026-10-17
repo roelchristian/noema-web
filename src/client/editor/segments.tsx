@@ -37,13 +37,13 @@ export function syncEditableSegments(element: HTMLElement, content: Segment[], e
   pending.timer = setTimeout(decorate, 0);
 }
 /** Only escaped text and explicitly supported formatting reach the editable surface. */
-export function segmentHTML(content: Segment[], entities: Entity[], review?: ReviewLocation) {
+export function segmentHTML(content: Segment[], entities: Entity[], review?: ReviewLocation, readOnly = false) {
   const ranges = review ? entityReviewRanges(content, entities, review) : [];
   let offset = 0;
   return renderToStaticMarkup(<>{content.map((s, index) => {
     const start = offset; offset += s.text?.length ?? 0;
     if (s.entityId) return <Mention key={index} id={s.entityId} label={s.mentionText} entities={entities} onOpen={() => {}}/>;
-    if (s.math) return <span key={index} className="inline-math" data-math={s.text} contentEditable={false} role="button" tabIndex={0} title="Edit equation" aria-label={`Edit equation: ${s.text}`} dangerouslySetInnerHTML={{__html: renderMath(s.text ?? '')}}/>;
+    if (s.math) return <span key={index} className="inline-math" data-math={s.text} contentEditable={false} role={readOnly ? undefined : "button"} tabIndex={readOnly ? undefined : 0} title={readOnly ? undefined : "Edit equation"} aria-label={`${readOnly ? "Equation" : "Edit equation"}: ${s.text}`} dangerouslySetInnerHTML={{__html: renderMath(s.text ?? '')}}/>;
     const parts: React.ReactNode[] = [];
     let cursor = 0;
     for (const range of ranges.filter(range => range.start < offset && range.end > start)) {

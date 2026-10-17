@@ -70,12 +70,14 @@ test('server rejects unknown functions, malformed parents, collisions and discon
  }finally{db.close();}
 });
 
-test('AI Explanation tags survive editing and detaching; parents cannot be retagged or ungrouped',()=>{
+test('AI Explanation children cannot move independently; parents cannot be retagged or ungrouped',()=>{
  const group={id:'ai-parent',kind:'ai-explanation'},blocks=[{...block('a'),semantic:'ai-explanation',semanticGroup:group},{...block('b'),semantic:'ai-explanation',semanticGroup:group},block('c')];
  assert.deepEqual(applySemantic(blocks,['a'],'definition'),blocks);assert.deepEqual(applySemantic(blocks,['a','c'],'question'),blocks);
  assert.deepEqual(removeSemanticGroup(blocks,group.id),blocks);assert.deepEqual(retagSemanticGroup(blocks,group.id,'question'),blocks);
  const next=preserveAIExplanationTags(blocks,[{...blocks[0],semantic:undefined,semanticGroup:undefined}]);assert.equal(next[0].semantic,'ai-explanation');
- const moved=reorderSemanticBlock(blocks,'a',null);assert.ok(isAIExplanation(moved.at(-1)));
+ assert.equal(reorderSemanticBlock(blocks,'a',null),blocks);assert.deepEqual(semanticDragItems(blocks,'a'),[]);
+ const moved=reorderSemanticBlock(blocks,group.id,null);assert.deepEqual(moved.map(b=>b.id),['c','a','b']);
+ const inserted=reorderSemanticBlock(blocks,'c','b');assert.deepEqual(inserted.map(b=>b.id),['c','a','b']);assert.equal(inserted[0].semanticGroup,undefined);
  assert.equal(normalizeSemanticGroups([blocks[0]])[0].semanticGroup.id,group.id);
 });
 test('saving cannot strip AI provenance but permits deleting an explanation',()=>{
@@ -86,5 +88,19 @@ test('saving cannot strip AI provenance but permits deleting an explanation',()=
   assert.throws(()=>pages.update('default',page.id,{...saved,blocks:saved.blocks.map(b=>({...b,semantic:undefined,semanticGroup:undefined}))}),/cannot be removed/);
   const edited=pages.update('default',page.id,{...saved,blocks:saved.blocks.map(b=>b.id==='answer'?{...b,content:[{text:'Edited answer'}]}:b)});assert.equal(edited.blocks[1].semantic,'ai-explanation');
   assert.equal(pages.update('default',page.id,{...edited,blocks:[edited.blocks[0]]}).blocks.length,1);
+ }finally{db.close();}
+});
+
+test('explanation passage references persist after source edits and deletion',()=>{
+ const db=openDatabase(':memory:');try {
+  const store=new Store(db),pages=new Pages(store,new Knowledge(store));
+  let page=pages.create('default',{title:'Passage'});
+  const source={blockIds:['passage'],excerpt:'Original passage, before editing.'};
+  const answer={...block('answer'),semantic:'ai-explanation',semanticGroup:{id:'explanation',kind:'ai-explanation',source}};
+  page=pages.update('default',page.id,{...page,blocks:[block('passage',source.excerpt),answer]});
+  assert.deepEqual(page.blocks[1].semanticGroup.source,source);
+  page=pages.update('default',page.id,{...page,blocks:[answer]});
+  assert.deepEqual(pages.get('default',page.id).blocks[0].semanticGroup.source,source);
+  assert.throws(()=>pages.update('default',page.id,{...page,blocks:[{...answer,semanticGroup:{...answer.semanticGroup,source:{blockIds:'invalid',excerpt:'Passage'}}}]}),/Invalid explanation source/);
  }finally{db.close();}
 });

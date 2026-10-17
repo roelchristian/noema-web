@@ -86,8 +86,10 @@ test('Explain with AI on selected blocks inserts one locked semantic parent with
   assert.equal(document.querySelector('.ai-explanation-label').textContent,'AI Explanation');
   await f.click(group.querySelector('[data-semantic-parent-handle]'));
   assert.ok(!document.querySelector('.command-menu').textContent.includes('Ungroup'));assert.ok(!document.querySelector('.command-menu').textContent.includes('Definition'));
-  await f.click(group.querySelector('[data-block-id] .block-handle'));
-  assert.ok(!document.querySelector('.command-menu').textContent.includes('Semantic function'));
+  assert.equal(group.querySelector('[data-block-id] .block-handle'),null);
+  assert.equal(group.querySelector('[contenteditable="true"]'),null);
+  assert.equal(group.querySelector('.ai-explanation-source blockquote').textContent,'First idea\n\nSecond idea');
+  assert.ok(group.querySelector('details[open] > summary'));
  } finally {await f.close();}
 });
 test('block handle explains its own block and failed generation can retry without inserting a placeholder',async()=>{

@@ -2065,3 +2065,7 @@ main {position:relative;}
 @media(prefers-reduced-motion:reduce) {
   .view-mode-switch[data-indicator-ready] > .view-mode-indicator { transition:none; }
 }
+
+.sidebar .nav[aria-label="Search vault"] { background:color-mix(in srgb,var(--surface-hover) 65%,var(--sidebar)); }
+.sidebar .nav[aria-label="Search vault"]:is(:hover,:focus-visible) { background:var(--surface-hover); }
+.sidebar .nav[aria-label="Search vault"].active { background:var(--accent-soft); color:var(--accent); }

@@ -1745,11 +1745,22 @@ main {position:relative;}
 .organization-library[data-layout=compact] .page-row-actions > .sidebar-menu-trigger { width: 28px; height: 28px; }
 .organization-library[data-layout=compact] .knowledge-open-entity { min-height: 28px; }
 .organization-library[data-layout=compact] .organization-container-grid { display: flex; flex-direction: column; gap: 0; }
-.organization-library[data-layout=compact] .organization-container-card { display: flex; align-items: center; gap: 12px; min-height: 38px; padding: 6px 10px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
+.organization-library[data-layout=compact] .organization-container-card { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 6px 10px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
 .organization-library[data-layout=compact] .organization-container-card > .destination-icon { flex: none; width: 24px; height: 24px; border-radius: 5px; }
-.organization-library[data-layout=compact] .organization-container-card > strong { order: 1; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.organization-library[data-layout=compact] .organization-container-card > small { order: 2; flex: none; margin: 0; }
+.organization-library[data-layout=compact] .organization-container-card > strong { order: 1; align-self: center; font-size: 12px; line-height: 1.5; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.organization-library[data-layout=compact] .organization-container-card > small { order: 2; align-self: center; flex: none; margin: 0; font-size: 10px; line-height: 1.5; white-space: nowrap; }
 .organization-library[data-layout=compact] .organization-container-card > .icon { order: 3; flex: none; }
+.organization-library[data-layout=compact] .organization-container-card > .destination-icon > .icon,
+.organization-library[data-layout=compact] .organization-item-icon > .icon,
+.organization-library[data-layout=compact] .page-selection-icon > .icon { width:16px; height:16px; }
+.organization-library[data-layout=compact] .organization-new-card > .icon { order:0; width:24px; height:24px; padding:4px; }
+.organization-library[data-layout=compact] .favourite-button > .icon,
+.organization-library[data-layout=compact] .page-row-actions > .sidebar-menu-trigger > .icon { width:14px; height:14px; }
+@media(min-width:751px) {
+  .organization-library[data-layout=compact] .organization-list-head { grid-template-columns:24px minmax(0,1fr) 160px 28px 28px; gap:8px; padding-inline:10px; }
+  .organization-library[data-layout=compact] .page-selection-header { width:24px; }
+  .organization-library[data-layout=compact] .organization-page-row .organization-item-name { display:grid; grid-template-columns:minmax(0,1fr) 160px; gap:8px; }
+}
 .organization-library[data-layout=compact] .trash-note { display: flex; align-items: baseline; gap: 12px; overflow: hidden; }
 .organization-library[data-layout=compact] .trash-note h2 { flex: 1; min-width: 0; margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; }
 .organization-library[data-layout=compact] .trash-note > small { flex: 0 1 45%; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 10px; }

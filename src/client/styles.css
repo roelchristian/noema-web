@@ -1684,7 +1684,10 @@ main {position:relative;}
 /* Consistent layouts for the main library screens. */
 .library-heading-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 20px; min-width: 0; }
 .library-heading-row > .page-heading { min-width: 0; overflow-wrap: anywhere; }
-.library-heading-row > .view-mode-switch { flex-shrink: 0; }
+.library-heading-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; margin-left: auto; min-width: 0; }
+.library-heading-actions > .view-mode-switch { flex-shrink: 0; }
+.library-heading-actions > .sidebar-menu-trigger { opacity: 1; }
+.organization-context-heading { flex-wrap: wrap; }
 .organization-context-title { flex: 1; min-width: 0; }
 .view-mode-switch { display: inline-flex; gap: 2px; max-width: 100%; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
 .view-mode-switch > button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 6px 9px; border-radius: 5px; color: var(--text-muted); font-size: 11px; }

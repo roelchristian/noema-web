@@ -469,6 +469,13 @@ export class Workspace {
   async lock(passphrase?: string) {
     await this.saver.flush(); const id = this.state.vault!.id; await api.lock(id, passphrase); await this.selectVault(id);
   }
+  async setPassphrase(currentPassphrase: string, passphrase: string | null) {
+    const id = this.state.vault?.id;
+    if (!id || this.state.vault?.locked) throw new Error('Open and unlock a vault before changing its passphrase.');
+    await this.saver.flush();
+    const vault = await api.setVaultPassphrase(id, currentPassphrase, passphrase);
+    this.patch({vaults: this.state.vaults.map(item => item.id === id ? vault : item), ...(this.state.vault?.id === id ? {vault} : {})});
+  }
   async unlock(passphrase: string) {
     const id = this.state.vault!.id; await api.unlock(id, passphrase); await this.selectVault(id);
   }

@@ -9,6 +9,7 @@ import { summaryInput } from './modules/summary-content.js';
 import { AIEnrichments } from './modules/ai-enrichments.js';
 import { AIActivityLog } from './modules/ai-activity.js';
 import http, { type IncomingMessage } from 'node:http';
+import type {Socket} from 'node:net';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { Store } from './store.js';
@@ -21,7 +22,8 @@ import { Pages } from './modules/pages.js';
 import { Embeddings } from './modules/embeddings.js';
 import { SearchSnippets } from './modules/search-snippets.js';
 import { HttpError, object } from './validation.js';
-import {networkRequestError, readNetworkConfig, type NetworkConfig} from './network.js';
+import {isLoopback, networkPeerAllowed, networkRequestError, readNetworkConfig, type NetworkConfig} from './network.js';
+import {NetworkAccess, networkSettingsPath} from './network-settings.js';
 async function readBody(req: IncomingMessage) {
   let size=0;const chunks:Buffer[]=[];
   for await(const chunk of req) {
@@ -31,7 +33,10 @@ async function readBody(req: IncomingMessage) {
   try { return object(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
   catch(error) { if(error instanceof HttpError)throw error;throw new HttpError(400,'Invalid JSON'); }
 }
-export function createApp(store: Store, clientRoot: string, intelligence=new Intelligence(keychainFor(store),fetch,()=>Date.now(),intelligencePreferencesFor(store)), network: NetworkConfig=readNetworkConfig()) {
+export function createApp(store: Store, clientRoot: string, intelligence=new Intelligence(keychainFor(store),fetch,()=>Date.now(),intelligencePreferencesFor(store)), network: NetworkConfig=readNetworkConfig(), access?: NetworkAccess) {
+  const database = store.all<{name: string; file: string}>('PRAGMA database_list').find(item => item.name === 'main')?.file;
+  const networkAccess = access ?? new NetworkAccess(database ? networkSettingsPath(database) : undefined, network, network.lan ? network : undefined);
+  const sockets = new Set<Socket>();
   const vaultDeletion=new VaultDeletion(store);
   const sourceFiles=new SourceFiles(store);
   sourceFiles.recover();
@@ -57,10 +62,12 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
     try {
       const url=new URL(req.url || '/', 'http://localhost'),method=req.method || 'GET';
       // LAN mode expands the peer/host allowlist without weakening same-origin API checks.
-      const accessError=networkRequestError(req,network);
+      const accessError=networkRequestError(req,networkAccess.config());
       if(accessError)throw new HttpError(403,accessError);
       if(url.pathname.startsWith('/api/')) {
         if((req.headers.origin && req.headers.origin!==`http://${req.headers.host}`)||req.headers['sec-fetch-site']==='cross-site')throw new HttpError(403,'Cross-origin requests are not allowed');
+        const securityRoute = url.pathname === '/api/security/network' || /^\/api\/vaults\/[^/]+\/passphrase$/.test(url.pathname);
+        if (securityRoute && (req.headers['x-noema-request'] !== '1' || method === 'PUT' && !/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))) throw new HttpError(403, 'Security settings require the Noema client and JSON.');
         const aiRoute=url.pathname==='/api/search/snippets'||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|entity-scan|entity-review|explain)$/.test(url.pathname);
         if(aiRoute && (req.headers['x-noema-request']!=='1'||(['POST','PUT'].includes(method)&&!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))))throw new HttpError(403,'AI requests require the Noema client and JSON');
         if(url.pathname==='/api/source-files' || url.pathname.startsWith('/api/source-files/')) {
@@ -118,6 +125,19 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
         if(/^\/api\/vaults\/[^/]+\/delete$/.test(url.pathname)&&method==='POST'&&(req.headers['x-noema-request']!=='1'||!/^application\/json(?:;|$)/i.test(req.headers['content-type']||'')))throw new HttpError(403,'Vault deletion requires the Noema client and JSON confirmation.');
         const body=['POST','PUT'].includes(method)?await readBody(req):{};
         const parts=url.pathname.split('/').filter(Boolean),[,collection,id,child,childId]=parts;
+        if (collection === 'security' && id === 'network' && parts.length === 3) {
+          if (method !== 'GET' && method !== 'PUT') throw new HttpError(405, 'Method not allowed');
+          if (method === 'PUT') {
+            networkAccess.save(body.lan);
+            if (!networkAccess.enabled()) res.once('finish', () => {
+              for (const socket of sockets) if (!isLoopback(socket.remoteAddress || '')) {
+                if (socket === req.socket) socket.end(); else socket.destroy();
+              }
+            });
+          }
+          const port = new URL(`http://${req.headers.host}`).port;
+          return send(200, {lan: networkAccess.enabled(), localUrl: `http://localhost${port ? ':' + port : ''}`});
+        }
         if(method==='POST' && ((collection==='intelligence' && id==='validate' && parts.length===3) || (collection==='pages' && (child==='summary'||child==='title'||child==='entity-scan'||child==='explain') && parts.length===4))) {
           const header=req.headers['x-vault-id'];
           if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
@@ -135,6 +155,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
           if(parts.length===3 && id==='validate' && method==='POST') {await intelligence.generate('',true,bytes=>activity.request(activityId!,bytes,null));return send(200,{ok:true,...intelligence.selection()});}
           throw new HttpError(404,'Not found');
         } else if(collection==='vaults') {
+          if(id && parts.length===4 && method==='PUT' && child==='passphrase')return send(200,vaults.setPassphrase(id,body));
           if(parts.length===2 && method==='GET')return send(200,vaults.list());
           if(parts.length===2 && method==='POST')return send(201,vaults.create(body));
           if(id && parts.length===4 && method==='GET' && child==='deletion-preview')return send(200,vaultDeletion.preview(id));
@@ -280,6 +301,10 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
       if(error instanceof HttpError)return send(error.status,{error:error.message});
       console.error(error);send(500,{error:'An unexpected error occurred'});
     }
+  });
+  server.on('connection', socket => {
+    if (!networkPeerAllowed(socket.remoteAddress || '', networkAccess.config(), socket.localAddress)) { socket.destroy(); return; }
+    sockets.add(socket); socket.once('close', () => sockets.delete(socket));
   });
   server.on('listening', () => {
     vaultDeletion.cleanup();

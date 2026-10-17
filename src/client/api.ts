@@ -35,6 +35,9 @@ export async function importVaultBackup(file:File,name?:string):Promise<Vault> {
   const result=await response.json();if(!response.ok)throw new ApiError(response.status,result.error||'Vault import failed');return result;
 }
 export const api={
+  networkSettings:(signal?:AbortSignal)=>request<import('../shared/security').NetworkSettings>('security/network','GET',undefined,undefined,signal),
+  saveNetworkSettings:(lan:boolean)=>request<import('../shared/security').NetworkSettings>('security/network','PUT',{lan}),
+  setVaultPassphrase:(id:string,currentPassphrase:string,passphrase:string|null)=>request<Vault>(`vaults/${encodeURIComponent(id)}/passphrase`,'PUT',{currentPassphrase,passphrase}),
   previewVaultDeletion:(id:string)=>request<import('../shared/domain').VaultDeletionPreview>(`vaults/${encodeURIComponent(id)}/deletion-preview`),
   deleteVault:(id:string,confirmation:import('../shared/domain').VaultDeletionConfirmation)=>request<import('../shared/domain').VaultDeletionResult>(`vaults/${encodeURIComponent(id)}/delete`,'POST',confirmation),
   pageBacklinks:(vault:string,id:string,signal?:AbortSignal)=>request<PageSummary[]>(`pages/${id}/backlinks`,'GET',undefined,vault,signal),

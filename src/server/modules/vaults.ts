@@ -38,4 +38,18 @@ export class Vaults {
     this.store.run('UPDATE vaults SET locked=0,updated_at=? WHERE id=?',now(),id);
     return summary(this.row(id));
   }
+  setPassphrase(id: string, body: Record<string, unknown>) {
+    this.requireOpen(id);
+    const vault = this.row(id);
+    if (vault.password_hash) {
+      if (typeof body.currentPassphrase !== 'string' || !body.currentPassphrase) throw new HttpError(400, 'Enter the current passphrase.');
+      if (!timingSafeEqual(scryptSync(text(body.currentPassphrase,500),vault.salt!,64),Buffer.from(vault.password_hash,'hex'))) throw new HttpError(403, 'Incorrect current passphrase.');
+    }
+    const passphrase = body.passphrase === null ? null : text(body.passphrase,500);
+    if (passphrase !== null && passphrase.length < 4) throw new HttpError(400, 'Use a passphrase of at least 4 characters.');
+    const salt = passphrase === null ? null : randomUUID();
+    const hash = passphrase === null ? null : scryptSync(passphrase,salt!,64).toString('hex');
+    this.store.run('UPDATE vaults SET password_hash=?,salt=?,updated_at=? WHERE id=?',hash,salt,now(),id);
+    return summary(this.row(id));
+  }
 }

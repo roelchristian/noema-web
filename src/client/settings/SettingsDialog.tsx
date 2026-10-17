@@ -1,4 +1,5 @@
 import { ImageSettings } from './ImageSettings';
+import { SecuritySettings } from './SecuritySettings';
 import { useState } from 'react';
 import { AIActivityLog } from './AIActivityLog';
 import { IntelligenceSettings } from './IntelligenceSettings';
@@ -13,9 +14,12 @@ const settingsTabs = [
   {id: 'images', label: 'Images'},
   {id: 'knowledge', label: 'Knowledge Entities'},
   {id: 'intelligence', label: 'Intelligence'},
+  {id: 'security', label: 'Security'},
 ] as const;
 
-export function SettingsDialog({appearance, onChange, storageError, onClose, onOpenPage, vault}: {
+export function SettingsDialog({appearance, onChange, storageError, onClose, onOpenPage, vault, onChangePassphrase, onBeforeNetworkChange}: {
+  onChangePassphrase: (current: string, next: string | null) => Promise<void>;
+  onBeforeNetworkChange: () => Promise<void>;
   vault: Vault | null;
   onOpenPage: (vaultId: string, pageId: string) => Promise<void>;
   appearance: Appearance; onChange: (appearance: Appearance) => void; storageError: boolean; onClose: () => void;
@@ -72,6 +76,9 @@ export function SettingsDialog({appearance, onChange, storageError, onClose, onO
         <IntelligenceSettings/>
         {tab === 'intelligence' && <EmbeddingSettings key={vault?.id} vault={vault} onOpenPage={onOpenPage}/>}
         <section className="settings-section settings-activity-entry"><div><h3>AI activity log</h3><p>Review local AI requests, export a CSV, or clear activity.</p></div><button className="button" aria-haspopup="dialog" onClick={() => setActivityOpen(true)}>Open activity log</button></section>
+      </div>
+      <div id="settings-panel-security" role="tabpanel" aria-labelledby="settings-tab-security" hidden={tab !== 'security'}>
+        {tab === 'security' && <SecuritySettings key={vault?.id} vault={vault} onChangePassphrase={onChangePassphrase} onBeforeNetworkChange={onBeforeNetworkChange}/>}
       </div>
       <footer className="settings-footer"><p role="status" hidden={tab !== 'appearance'}>{storageError ? 'Applied for now. Browser storage is unavailable; changes won’t survive a reload.' : 'Appearance changes apply instantly and save in this browser.'}</p><div><button className="button" hidden={tab !== 'appearance'} onClick={() => onChange({...defaultAppearance(), entityColors: appearance.entityColors, entityOverrides: appearance.entityOverrides})}>Restore defaults</button><button className="button primary" onClick={onClose}>Done</button></div></footer>
     </div>

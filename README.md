@@ -11,7 +11,7 @@ npm install
 npm start
 ```
 
-Open **http://localhost:3000**. The server binds to `127.0.0.1`. Stop it with Ctrl+C. For development, use `npm run dev`: the Node server runs on port 3000 and Vite serves the frontend on http://127.0.0.1:5173, proxying API requests to Node. `npm start` type-checks and builds the app, then serves the frontend and API together from Node. `npm run build` creates production output in `dist/`; `npm run typecheck` checks TypeScript separately.
+Open **http://localhost:3000**. LAN access is enabled by default. Turn it off in **Settings → Security** to accept connections only from this computer. Stop it with Ctrl+C. For development, use `npm run dev`: the Node server runs on port 3000 and Vite serves the frontend on http://127.0.0.1:5173, proxying API requests to Node. `npm start` type-checks and builds the app, then serves the frontend and API together from Node. `npm run build` creates production output in `dist/`; `npm run typecheck` checks TypeScript separately.
 
 To use another port or database:
 
@@ -21,34 +21,35 @@ PORT=3001 DB_PATH=./data/another.sqlite npm start
 
 ### Access from other devices on your local network
 
-LAN access is opt-in. For the built app and API on port 3000:
+LAN access defaults to on (`LAN=1`) for the built app and API on port 3000:
 
 ```sh
-NOEMA_LAN=1 npm start
+npm start
 ```
 
 For development, expose the Vite frontend on port 5173 and the Node API together:
 
 ```sh
-NOEMA_LAN=1 npm run dev
+npm run dev
 ```
 
 Keep the terminal running and open `http://<your-Mac-LAN-IP>:3000` (built app) or `http://<your-Mac-LAN-IP>:5173` (development) on a device connected to the same network. The terminal prints available LAN addresses. Allow incoming Node connections if macOS asks. A guest Wi-Fi network may block connections between devices.
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| `NOEMA_LAN` | `0` | Set to `1` or `true` to accept private IPv4 LAN connections. Without it, both servers remain bound to `127.0.0.1`. |
-| `NOEMA_LAN_HOST` | `0.0.0.0` in LAN mode | Bind both servers to a specific private IPv4 interface instead of every IPv4 interface. Requires LAN mode. |
+| `LAN` | `1` | Initial private IPv4 LAN access (`1`/`true` or `0`/`false`). A saved Settings → Security choice takes precedence. |
+| `NOEMA_LAN` | Unset | Legacy alias for `LAN`; if supplied, takes precedence over `LAN` for the initial setting. |
+| `NOEMA_LAN_HOST` | `0.0.0.0` | Restrict LAN access to a specific private IPv4 interface. Localhost remains available for managing settings. |
 | `NOEMA_ALLOWED_HOSTS` | Detected private IPv4 addresses and the machine hostname, including its `.local` name | Replace automatic LAN host detection with a comma-separated list of hostnames/IPs that clients may use. Use bare names without schemes, ports, paths, or wildcards. Localhost and a specific bind address remain allowed. Requires LAN mode. |
 | `PORT` | `3000` | Node API/built-app port. The development proxy follows this setting; Vite normally uses 5173 and prints its actual port. |
 
-For example, to bind only to your Mac's current LAN address:
+For example, to allow LAN access only through your Mac's current LAN address:
 
 ```sh
 NOEMA_LAN=1 NOEMA_LAN_HOST=192.168.1.25 npm run dev
 ```
 
-Use your own address in place of `192.168.1.25`. Restart after changing network settings or the Mac's IP. Stop with Ctrl+C; restart without the LAN settings to return to localhost-only access.
+Use your own address in place of `192.168.1.25`. Restart after changing environment variables or the Mac's IP. **Settings → Security → Allow LAN connections** applies immediately to the built server and development frontend, and persists across restarts in `<database-path>.network.json`. Turning it off rejects new remote connections and closes existing remote connections; `http://localhost:3000` (or `http://localhost:5173` in development) remains available on the host computer to turn it back on. Pending note edits are saved before the UI changes LAN access. The listeners retain their interface capacity so toggling does not require restarting the server. Before a preference has been saved, start with `LAN=0 npm start` for local-only access.
 
 LAN mode keeps peer-address restrictions, an explicit Host allowlist, and same-origin API checks. It does **not** add user accounts or HTTPS: devices on the allowed network can read and change unlocked vaults, vault locks are shared across devices, and optional AI features use the host Mac's configured credentials. Use it on a trusted network and do not forward these ports through your router. Plain HTTP LAN editing uses cryptographically generated UUIDs even when the browser's HTTPS-only `randomUUID` API is unavailable.
 
@@ -115,7 +116,7 @@ Page responses include a `revision`. Clients send that revision on updates to de
 
 Use the sidebar vault selector to switch workspaces, or **New vault** to create one. Each vault contains its own pages, entities, properties, relationships, and source references. Existing databases migrate automatically into **Personal vault** without losing content. New vaults start empty, and the browser remembers the last selected vault and the current location in each vault. Refreshing restores the open folder, collection, note, or library view. Locations are saved by ID, so moved or renamed folders retain their address; deleted locations fall back to the Library root. Locked vaults restore their last address only after unlocking.
 
-Use **Lock** to set a passphrase the first time; subsequent locks reuse that passphrase. Unlocking requires the passphrase. Locks persist across server restarts and block API reads and writes for that vault while allowing access to other vaults. Passphrases are stored as salted scrypt hashes. This is an app access lock, not encryption of the SQLite file; there is no passphrase recovery flow. Lock state is shared by all tabs using this local server. Already rendered content in another tab is not remotely erased.
+Use **Lock** to set a passphrase the first time; subsequent locks reuse that passphrase. Unlocking requires the passphrase. **Settings → Security → Vault passphrase** lets you add, change, or remove a passphrase without leaving the current note. Changes and removal require the current passphrase; the vault must be unlocked. Adding or changing a passphrase keeps the vault open until you choose Lock. Locks persist across server restarts and block API reads and writes for that vault while allowing access to other vaults. Passphrases are stored as salted scrypt hashes. This is an app access lock, not encryption of the SQLite file; there is no passphrase recovery flow. Lock state is shared by all tabs using this local server. Already rendered content in another tab is not remotely erased.
 
 Use **Vault options → Export vault backup…** to save the current unlocked vault as a single compressed `.noemabkp` file. Pending edits are saved first. Backups include notes (including Trash), images, entities and their aliases/connections, custom categories and fields, folders, collections, memberships, favourites, attached sources, saved AI results, and search embeddings/settings. They exclude API credentials, vault passphrases, activity logs/notifications, queued jobs, browser appearance, and browser recent-history settings. Backups contain readable content after decompression; they are not password encrypted.
 
@@ -185,6 +186,8 @@ All routes are under `/api` and accept/return JSON. Send `X-Vault-Id` to select 
 | GET / POST | `/vaults` | List vaults / create with `{name}` |
 | POST | `/vaults/:id/lock` | Lock; include `{passphrase}` on first use (minimum 4 characters) |
 | POST | `/vaults/:id/unlock` | Unlock with `{passphrase}` |
+| PUT | `/vaults/:id/passphrase` | Add/change with `{currentPassphrase, passphrase}` or remove with `passphrase: null`; requires an unlocked vault and the current passphrase when protected |
+| GET / PUT | `/security/network` | Read network access or save `{lan: boolean}`; changes persist and apply immediately |
 | GET / POST | `/pages` | List / create pages |
 | GET / PUT / DELETE | `/pages/:id` | Read / replace / delete a page |
 | GET | `/organization` | Read collections, folders, placements, memberships, and favourites |
@@ -232,7 +235,7 @@ This is a single-user local prototype. Editing the same page in multiple tabs is
 
 Page summaries, generated titles, reviewed entity suggestions, and note embeddings are optional AI features. Embeddings and their durable job queue use separate SQLite tables without changing how pages reference entities. Startup includes an additive migration for vault scoping and page source references.
 
-The server has no user accounts and is intended for this computer only. Keep the loopback binding when running this version.
+The server has no user accounts. **Settings → Security** controls whether other devices on the local network can connect; turning LAN access off keeps access on the host computer.
 
 ### Trash and note recovery
 
@@ -263,7 +266,7 @@ Page AI results use the shared `page_ai_enrichments` table, with one latest resu
 
 Untitled pages automatically receive a title after a successful save and **three seconds without edits**, once their body contains at least **20 characters**. Opening an existing untitled page resumes this workflow after a reload or vault switch. The title utility sends only that page's text and inline entity names, and uses reasoning effort fixed to **none**, independently of the reasoning preference. It uses the selected model when the existing model catalog supports `none`, otherwise GPT-6 Luna, with a 256-token output budget. The prompt favors compact subject labels of 2–6 words, preferably within 50 characters, rather than summaries of every detail. Titles have a hard limit of 120 characters and are saved through autosave. Edits, manual titles, deletion, and vault changes discard outstanding results. Empty pages and pages with a title are excluded. Temporary provider, rate-limit, and network failures retry up to twice, after 15 seconds and then 60 seconds; edits or a vault switch invalidate pending retries. Missing credentials and permanent failures stay quiet; another saved edit or reopening the page can try again. Automatic title generation can incur API charges and appears as **Page title** in the activity log.
 
-Security controls include loopback binding by default (opt-in private IPv4 LAN binding); peer-address checks and an explicit Host allowlist; same-origin checks; a custom request header and JSON requirement on AI endpoints; no cross-origin access; no response caching; a fixed HTTPS OpenAI endpoint with redirects disabled; no model tools; 40,000 input characters; bounded provider responses and output tokens; a 45-second timeout; one active AI call and five attempts per minute per server process; and sanitized errors. Rate limits are local safeguards, not a billing cap. Page content is treated as untrusted input, and output is never executed.
+Security controls include private IPv4 LAN access enabled by default with a persisted localhost-only toggle in Settings → Security; peer-address checks and an explicit Host allowlist; same-origin checks; a custom request header and JSON requirement on AI endpoints; no cross-origin access; no response caching; a fixed HTTPS OpenAI endpoint with redirects disabled; no model tools; 40,000 input characters; bounded provider responses and output tokens; a 45-second timeout; one active AI call and five attempts per minute per server process; and sanitized errors. Rate limits are local safeguards, not a billing cap. Page content is treated as untrusted input, and output is never executed.
 
 The summary prompt keeps Noema’s fixed instructions separate from note text. Titles, body text, and mentioned entity names are serialized into a JSON `untrusted_note` string inside a single lower-priority user message. No note text is interpolated into trusted instructions or used to construct roles, tools, model settings, or conversation history. Noema explicitly directs the model to summarize embedded instructions as document content rather than obeying them, including fake roles, delimiter escapes, encoded commands, and authorization claims. Requests explicitly set `tools: []` and `tool_choice: "none"`; results remain inert plain text.
 

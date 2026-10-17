@@ -356,6 +356,8 @@ main { margin-left: 224px; }
 .ai-activity-status.failed, .ai-activity-status.interrupted { color: var(--danger, #b33b3b); }
 
 .settings-tabs { display: flex; gap: 6px; margin-top: 24px; border-bottom: 1px solid var(--line); }
+.settings-tabs { overflow-x: auto; }
+.settings-tabs button { flex-shrink: 0; white-space: nowrap; }
 .settings-tabs button { padding: 12px 16px; color: var(--text-muted, #717171); border-bottom: 2px solid transparent; font-size: 13px; }
 .settings-tabs button[aria-selected=true] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
 .settings-activity-entry { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 20px; border-top: 1px solid var(--line); }
@@ -1534,3 +1536,20 @@ main {position:relative;}
   .mobile-selection-sheet .selection-entity-results { max-height: none; overflow: visible; }
   .mobile-selection-sheet .selection-entities input { min-height: 44px; padding: 12px; font-size: 16px; }
 }
+
+.security-passphrase-form { max-width: 440px; }
+.security-passphrase-form > p { color: var(--text-muted); font-size: 12px; line-height: 1.6; }
+.security-passphrase-form > .dialog-error { color: #b75b59; }
+.security-passphrase-form > .button { margin-top: 16px; }
+.security-passphrase-form .display-options { flex-wrap: wrap; }
+.security-passphrase-form label { color: var(--text); }
+.security-passphrase-form input { background: var(--surface); color: var(--text); border-color: var(--control-border); }
+.security-network-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.security-network-row > div { min-width: 0; }
+.security-network-row p, .security-network-state { color: var(--text-muted); font-size: 12px; line-height: 1.6; }
+.security-switch { display: inline-flex; align-items: center; flex: none; width: 48px; height: 44px; padding: 10px 2px; position: relative; border-radius: 6px; }
+.security-switch::before { content: ''; position: absolute; inset: 10px 2px; border: 1px solid var(--control-border); border-radius: 14px; background: var(--surface-hover); }
+.security-switch > span { position: relative; width: 18px; height: 18px; margin-left: 3px; border-radius: 50%; background: var(--text-muted); pointer-events: none; }
+.security-switch[aria-checked=true]::before { background: var(--accent); border-color: var(--accent); }
+.security-switch[aria-checked=true] > span { margin-left: 23px; background: var(--accent-foreground); }
+.security-switch:disabled { cursor: default; }

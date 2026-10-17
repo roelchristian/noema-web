@@ -30,11 +30,11 @@ export class Workspace {
     saved => {
       const cached = this.pageCache.get(saved.id);
       if (cached) {
-        const page = {...cached, revision: saved.revision};
+        const page = {...cached, revision: saved.revision, updated_at: saved.updated_at};
         this.pageCache.set(saved.id, page);
         this.titler.observe(page, JSON.stringify(cached.blocks) === JSON.stringify(saved.blocks) && cached.title === saved.title);
       }
-      if (this.state.page?.id === saved.id && this.state.vault?.id === saved.vault_id) this.patch({page: {...this.state.page, revision: saved.revision}});
+      if (this.state.vault?.id === saved.vault_id) this.patch({pages: this.state.pages.map(page => page.id === saved.id ? {...page, updated_at: saved.updated_at} : page), ...(this.state.page?.id === saved.id ? {page: {...this.state.page, revision: saved.revision, updated_at: saved.updated_at}} : {})});
     },
     (saveStatus, error) => this.patch({saveStatus, ...(error ? {error: error.message} : {})}),
   );

@@ -185,7 +185,7 @@ test('page icon changes update navigation immediately and autosave alongside con
   t.mock.method(api, 'page', async () => original);
   t.mock.method(api, 'organization', async () => ({collections: [], folders: [], locations: [], favourites: []}));
   const writes = [];
-  t.mock.method(api, 'savePage', async (_vault, _id, page) => { writes.push(page); return {...page, revision: page.revision + 1}; });
+  t.mock.method(api, 'savePage', async (_vault, _id, page) => { writes.push(page); return {...page, revision: page.revision + 1, updated_at: '2026-10-17T09:30:00.000Z'}; });
   const workspace = new Workspace();
   try {
     await workspace.selectVault('a');
@@ -196,6 +196,8 @@ test('page icon changes update navigation immediately and autosave alongside con
     await workspace.saver.flush();
     assert.equal(writes.at(-1).icon, 'compass');
     assert.equal(writes.at(-1).title, 'Directions');
+    assert.equal(workspace.snapshot().pages[0].updated_at, '2026-10-17T09:30:00.000Z');
+    assert.equal(workspace.snapshot().page.updated_at, '2026-10-17T09:30:00.000Z');
     workspace.updatePage({icon: null});
     await workspace.saver.flush();
     assert.equal(workspace.snapshot().pages[0].icon, null);

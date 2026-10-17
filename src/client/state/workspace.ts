@@ -107,7 +107,9 @@ export class Workspace {
       const vaults = await api.vaults(); this.patch({vaults});
       let remembered: string | null = null;
       try { remembered = localStorage.getItem('noema-vault'); } catch { /* Storage may be disabled. */ }
-      await this.selectVault(vaults.find(v => v.id === remembered)?.id || vaults[0]!.id);
+      const selected=vaults.find(v=>v.id===remembered)??vaults[0];
+      if(!selected){this.patch({busy:false,view:'organization'});return;}
+      await this.selectVault(selected.id);
     } catch (error) { this.patch({busy: false}); this.report(error); }
   }
   private cancelPageLoad() {
@@ -354,6 +356,26 @@ export class Workspace {
     const vault = this.state.vault!, sequence = this.loadSequence;
     const entities = await api.entities(vault.id);
     if (sequence === this.loadSequence) this.patch({entities});
+  }
+  async previewVaultDeletion(id:string) {
+    if(this.state.vault?.id!==id)throw new Error('The selected vault changed.');
+    await this.saver.flush();
+    return api.previewVaultDeletion(id);
+  }
+  async deleteVault(id:string,confirmation:import('../../shared/domain').VaultDeletionConfirmation) {
+    let result:import('../../shared/domain').VaultDeletionResult|undefined;
+    await this.navigate(async()=>{
+      if(this.state.vault?.id!==id||this.state.vault.locked)throw new Error('Open and unlock this vault before deleting it.');
+      this.titler.dispose();
+      try{result=await api.deleteVault(id,confirmation);}catch(error){if(this.state.page){this.titler.register(this.state.page);this.titler.observe(this.state.page,true);}throw error;}
+      ++this.loadSequence;this.pageCache.clear();
+      this.patch({vaults:result.vaults,vault:null,page:null,pages:[],entities:[],trash:[],organization:{collections:[],folders:[],locations:[],memberships:[],favourites:[]},organizationContext:{collection:'',folder:''},recent:[],view:'organization',error:null});
+      try{localStorage.removeItem('noema-address/'+id);localStorage.removeItem('noema-recent/'+id);localStorage.removeItem('noema-vault');}catch{/* Optional browser history. */}
+    });
+    if(!result)throw new Error('Another operation is in progress. Try again.');
+    const remaining=result.vaults.find(vault=>!vault.locked)??result.vaults[0];
+    if(remaining){try{await this.selectVault(remaining.id);}catch(error){this.report(error);}}
+    return result;
   }
   async createVault(name: string) {
     await this.saver.flush(); const vault = await api.createVault(name); await this.selectVault(vault.id);

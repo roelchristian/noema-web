@@ -12,6 +12,7 @@ import http, { type IncomingMessage } from 'node:http';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { Store } from './store.js';
+import {VaultDeletion} from './modules/vault-deletion.js';
 import { Vaults } from './modules/vaults.js';
 import { Knowledge } from './modules/knowledge.js';
 import { Organizer } from './modules/organization.js';
@@ -30,6 +31,7 @@ async function readBody(req: IncomingMessage) {
   catch(error) { if(error instanceof HttpError)throw error;throw new HttpError(400,'Invalid JSON'); }
 }
 export function createApp(store: Store, clientRoot: string, intelligence=new Intelligence(keychainFor(store),fetch,()=>Date.now(),intelligencePreferencesFor(store))) {
+  const vaultDeletion=new VaultDeletion(store);
   const sourceFiles=new SourceFiles(store);
   sourceFiles.recover();
   const backups=new VaultBackups(store);
@@ -112,6 +114,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
           res.writeHead(200,{'Content-Type':'application/x-noema-backup','Content-Disposition':`attachment; filename="vault.noemabkp"; filename*=UTF-8''${filename}`,'Content-Length':backup.bytes.length,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
           return res.end(backup.bytes);
         }
+        if(/^\/api\/vaults\/[^/]+\/delete$/.test(url.pathname)&&method==='POST'&&(req.headers['x-noema-request']!=='1'||!/^application\/json(?:;|$)/i.test(req.headers['content-type']||'')))throw new HttpError(403,'Vault deletion requires the Noema client and JSON confirmation.');
         const body=['POST','PUT'].includes(method)?await readBody(req):{};
         const parts=url.pathname.split('/').filter(Boolean),[,collection,id,child,childId]=parts;
         if(method==='POST' && ((collection==='intelligence' && id==='validate' && parts.length===3) || (collection==='pages' && (child==='summary'||child==='title'||child==='entity-scan'||child==='explain') && parts.length===4))) {
@@ -133,6 +136,8 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
         } else if(collection==='vaults') {
           if(parts.length===2 && method==='GET')return send(200,vaults.list());
           if(parts.length===2 && method==='POST')return send(201,vaults.create(body));
+          if(id && parts.length===4 && method==='GET' && child==='deletion-preview')return send(200,vaultDeletion.preview(id));
+          if(id && parts.length===4 && method==='POST' && child==='delete')return send(200,vaultDeletion.remove(id,body));
           if(id && parts.length===4 && method==='POST' && child==='lock')return send(200,vaults.lock(id,body));
           if(id && parts.length===4 && method==='POST' && child==='unlock')return send(200,vaults.unlock(id,body));
         } else {
@@ -276,8 +281,9 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
     }
   });
   server.on('listening', () => {
+    vaultDeletion.cleanup();
     sourceWorker=setInterval(()=>{void sourceFiles.tick().catch(()=>{});},500);sourceWorker.unref();
-    cleanup = setInterval(() => { try { pages.purgeExpired(); images.cleanup(); sourceFiles.cleanup(); } catch (error) { console.error('Trash cleanup failed',error); } },60 * 60 * 1000);
+    cleanup = setInterval(() => { try { pages.purgeExpired(); images.cleanup(); sourceFiles.cleanup(); vaultDeletion.cleanup(); } catch (error) { console.error('Trash cleanup failed',error); } },60 * 60 * 1000);
     cleanup.unref();
     keyCleanup=setInterval(()=>{try{intelligence.purgeExpired();}catch{/* Keychain may be locked; all AI access still fails closed. */}},60000);keyCleanup.unref();
     embeddingWorker=setInterval(()=>{void embeddings.tick().catch(()=>{/* Durable job history records failures; never log note content. */});},1000);embeddingWorker.unref();

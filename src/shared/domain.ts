@@ -15,6 +15,12 @@ export function isEntityTaggingText(segment: Segment): segment is Extract<Segmen
 }
 export interface Block { semantic?: import('./semantic-blocks.js').SemanticKind; semanticGroup?: import('./semantic-blocks.js').SemanticGroup; id: string; type: BlockType; checked: boolean; content: Segment[]; rows?: Segment[][][]; imageId?: string; alt?: string }
 export interface Vault { id: string; name: string; locked: boolean; protected: boolean; updated_at: string }
+export interface VaultDeletionPreview {
+  vault:Vault; fingerprint:string; canDelete:boolean; blockers:string[];
+  counts:{notes:number;trashedNotes:number;entities:number;sourceFiles:number;images:number;folders:number;collections:number};
+}
+export interface VaultDeletionConfirmation {name:string;fingerprint:string;acknowledged:boolean;passphrase?:string}
+export interface VaultDeletionResult {vaults:Vault[];cleanupPending:boolean}
 export interface PageSummary { id: string; title: string; icon?: PageIconId | null; updated_at: string }
 export interface TrashedPage extends PageSummary { deleted_at: string; expires_at: string }
 export interface ConceptClassification { subtypeIds: string[]; contentHash: string }

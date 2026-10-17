@@ -1249,3 +1249,21 @@ main {position:relative;}
 .knowledge-missing-link { padding: 7px 6px; color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }
 
 .knowledge-concept-category { margin-bottom: 24px; }
+
+.delete-vault-dialog { width: min(540px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); overflow-y: auto; }
+.delete-vault-dialog h2 { overflow-wrap: anywhere; }
+.vault-deletion-counts { margin: 20px 0; padding: 12px 16px; border: 1px solid var(--line); border-radius: 8px; }
+.vault-deletion-counts > div { display: flex; justify-content: space-between; gap: 16px; padding: 5px 0; font-size: 12px; }
+.vault-deletion-counts dt { color: var(--text-muted); }
+.vault-deletion-counts dd { margin: 0; font-weight: 500; }
+.vault-deletion-backup { margin: 20px 0; padding: 14px; background: var(--surface-hover); border-radius: 8px; }
+.vault-deletion-backup strong { font-size: 12px; }
+.vault-deletion-backup p { margin: 7px 0 12px; }
+.vault-deletion-blocker { padding: 12px; border: 1px solid var(--control-border); border-radius: 6px; }
+.delete-vault-dialog label.vault-deletion-ack { display: flex; align-items: flex-start; gap: 10px; font-size: 12px; line-height: 1.6; }
+.delete-vault-dialog .vault-deletion-ack input { flex: none; width: 16px; height: 16px; margin: 2px 0 0; padding: 0; }
+.delete-vault-dialog .button.danger { background: #a73434; border-color: #a73434; color: white; }
+.delete-vault-dialog .button.danger:hover:not(:disabled) { background: #8d2b2b; }
+.delete-vault-dialog .dialog-actions { flex-wrap: wrap; }
+
+.empty-vault-actions { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 20px; }

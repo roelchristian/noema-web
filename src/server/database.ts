@@ -20,7 +20,8 @@ db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;
  CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT);`);
 // Additive migration preserves existing notebooks in the default vault.
 db.exec(`CREATE TABLE IF NOT EXISTS vaults (id TEXT PRIMARY KEY, name TEXT NOT NULL, locked INTEGER NOT NULL DEFAULT 0, password_hash TEXT, salt TEXT, updated_at TEXT NOT NULL);
- INSERT OR IGNORE INTO vaults (id,name,updated_at) VALUES ('default','Personal vault',datetime('now'));`);
+ INSERT INTO vaults (id,name,updated_at) SELECT 'default','Personal vault',datetime('now') WHERE NOT EXISTS (SELECT 1 FROM vaults) AND NOT EXISTS (SELECT 1 FROM metadata WHERE key='seeded');`);
+db.exec(`CREATE TABLE IF NOT EXISTS vault_deletion_cleanup (vault_id TEXT PRIMARY KEY,created_at TEXT NOT NULL);`);
 db.exec('PRAGMA foreign_keys=OFF; BEGIN');
 try {
 for (const table of ['pages','entities']) {

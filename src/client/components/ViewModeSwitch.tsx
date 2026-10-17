@@ -57,5 +57,25 @@ export function useViewMode(scope: string) {
   return [mode, change, root] as const;
 }
 export function ViewModeSwitch({value, onChange}: {value: ViewMode; onChange: (mode: ViewMode) => void}) {
-  return <div className="view-mode-switch" role="group" aria-label="View layout">{modes.map(mode => <button key={mode.id} type="button" title={mode.label + ' view'} aria-label={mode.label + ' view'} aria-pressed={value === mode.id} onClick={() => onChange(mode.id)}><Icon name={'view-' + mode.id}/><span>{mode.label}</span></button>)}</div>;
+  const root=useRef<HTMLDivElement>(null), indicator=useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const control=root.current, pill=indicator.current;
+    if(!control || !pill)return;
+    function position() {
+      const selected=control!.querySelector<HTMLButtonElement>('button[aria-pressed="true"]');
+      if(!selected)return;
+      pill!.style.transform=`translate(${selected.offsetLeft}px,${selected.offsetTop}px)`;
+      pill!.style.width=selected.offsetWidth+'px';
+      pill!.style.height=selected.offsetHeight+'px';
+      pill!.style.opacity='1';
+    }
+    position();
+    // Position the initial selection immediately; animate subsequent changes only.
+    const frame=requestAnimationFrame(()=>{control.dataset.indicatorReady='true';});
+    const observer=new ResizeObserver(position);
+    observer.observe(control);
+    control.querySelectorAll('button').forEach(button=>observer.observe(button));
+    return()=>{cancelAnimationFrame(frame);observer.disconnect();};
+  },[value]);
+  return <div ref={root} className="view-mode-switch" role="group" aria-label="View layout"><span ref={indicator} className="view-mode-indicator" aria-hidden="true"/>{modes.map(mode => <button key={mode.id} type="button" title={mode.label + ' view'} aria-label={mode.label + ' view'} aria-pressed={value === mode.id} onClick={() => onChange(mode.id)}><Icon name={'view-' + mode.id}/><span>{mode.label}</span></button>)}</div>;
 }

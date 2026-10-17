@@ -7,7 +7,8 @@ import { EmbeddingSettings } from './EmbeddingSettings';
 import type { Vault } from '../../shared/domain';
 import { KnowledgeEntitySettings } from './KnowledgeEntitySettings';
 import { Modal } from '../components/Modal';
-import { defaultAppearance, themes, type Appearance, type DisplayMode } from './appearance';
+import { Select } from '../components/Select';
+import { defaultAppearance, fontOptions, themes, type Appearance, type DisplayMode, type FontId } from './appearance';
 
 const settingsTabs = [
   {id: 'appearance', label: 'Appearance'},
@@ -48,6 +49,21 @@ export function SettingsDialog({appearance, onChange, storageError, onClose, onO
           {(['light', 'dark', 'system'] as DisplayMode[]).map(mode => <button key={mode} type="button" aria-pressed={appearance.mode === mode} onClick={() => onChange({...appearance, mode})}>{mode === 'system' ? 'System' : mode === 'dark' ? 'Dark' : 'Light'}</button>)}
         </div>
         <p className="display-hint">{appearance.mode === 'system' ? 'Matches your computer and updates automatically.' : `Always use ${appearance.mode} mode.`}</p>
+      </section>
+      <section className="settings-section" aria-labelledby="typography-heading">
+        <h3 id="typography-heading">Typography</h3><p>Choose fonts for body text and headings. System body text and Geist headings are the defaults.</p>
+        <div className="font-settings">
+          {([{key: 'bodyFont', label: 'Body font', defaultId: 'system'}, {key: 'headingFont', label: 'Heading font', defaultId: 'geist'}] as const).map(({key, label, defaultId}) => <div className="font-setting" key={key}>
+            <label htmlFor={'settings-' + key}>{label}</label>
+            <Select id={'settings-' + key} aria-label={label} value={appearance[key]} onChange={event => onChange({...appearance, [key]: event.target.value as FontId})}>
+              {fontOptions.map(font => <option key={font.id} value={font.id}>{font.name}{font.id === defaultId ? ' (default)' : ''}</option>)}
+            </Select>
+          </div>)}
+        </div>
+        <div className="font-preview" aria-label="Typography preview">
+          <h4>A space for clear thinking</h4>
+          <p>Capture a thought, connect an idea, and make room for what comes next.</p>
+        </div>
       </section>
       <section className="settings-section" aria-labelledby="reading-heading">
         <h3 id="reading-heading">Focused reading</h3><p>Hide entity icons and highlights in notes. A thin, muted underline keeps connected entities easy to find.</p>

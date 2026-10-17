@@ -1,5 +1,20 @@
 import { entityTypes, type EntityType } from '../../shared/domain';
 
+const systemFont = '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif';
+export const fontOptions = [
+  {id: 'system', name: 'System', family: systemFont},
+  {id: 'geist', name: 'Geist', family: `Geist, ${systemFont}`},
+  {id: 'inter', name: 'Inter', family: `Inter, ${systemFont}`},
+  {id: 'dm-sans', name: 'DM Sans', family: `"DM Sans", ${systemFont}`},
+  {id: 'manrope', name: 'Manrope', family: `Manrope, ${systemFont}`},
+  {id: 'public-sans', name: 'Public Sans', family: `"Public Sans", ${systemFont}`},
+  {id: 'plus-jakarta-sans', name: 'Plus Jakarta Sans', family: `"Plus Jakarta Sans", ${systemFont}`},
+] as const;
+export type FontId = typeof fontOptions[number]['id'];
+export function fontFamily(id: FontId): string {
+  return fontOptions.find(font => font.id === id)?.family ?? systemFont;
+}
+
 export const themes = [
   {id: 'ink', name: 'Midnight Ink', color: '#171717', soft: '#eaeaea', darkColor: '#e6e6e6', darkSoft: '#303030', description: 'Quiet, classic black'},
   {id: 'juniper', name: 'Juniper', color: '#2d5947', soft: '#e8f0eb', darkColor: '#a0cbb1', darkSoft: '#23382c', description: 'Grounded forest green'},
@@ -22,16 +37,18 @@ export const pillColors = {
   honey: {name: 'Honey', background: '#faf2df', text: '#77551e', border: '#e9d9b4', darkBackground: '#423722', darkText: '#ead39d', darkBorder: '#6c5a37'},
 } as const;
 export type PillColor = keyof typeof pillColors;
-export interface Appearance { focusedReading: boolean; mode: DisplayMode; theme: ThemeId; entityColors: Record<EntityType, PillColor>; entityOverrides: Record<string, PillColor> }
+export interface Appearance { bodyFont: FontId; headingFont: FontId; focusedReading: boolean; mode: DisplayMode; theme: ThemeId; entityColors: Record<EntityType, PillColor>; entityOverrides: Record<string, PillColor> }
 export const appearanceStorageKey = 'noema.appearance.v1';
 export function defaultAppearance(): Appearance {
-  return {focusedReading: false, mode: 'system', theme: 'ink', entityOverrides: {}, entityColors: Object.fromEntries(entityTypes.map(type => [type, 'graphite'])) as Appearance['entityColors']};
+  return {bodyFont: 'system', headingFont: 'geist', focusedReading: false, mode: 'system', theme: 'ink', entityOverrides: {}, entityColors: Object.fromEntries(entityTypes.map(type => [type, 'graphite'])) as Appearance['entityColors']};
 }
 export function parseAppearance(raw: string | null): Appearance {
   const result = defaultAppearance();
   try {
     const value = JSON.parse(raw || 'null');
     if (!value || typeof value !== 'object') return result;
+    if (fontOptions.some(font => font.id === value.bodyFont)) result.bodyFont = value.bodyFont;
+    if (fontOptions.some(font => font.id === value.headingFont)) result.headingFont = value.headingFont;
     if (typeof value.focusedReading === 'boolean') result.focusedReading = value.focusedReading;
     if (displayModes.includes(value.mode)) result.mode = value.mode;
     if (themes.some(theme => theme.id === value.theme)) result.theme = value.theme;

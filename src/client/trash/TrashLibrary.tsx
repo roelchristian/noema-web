@@ -22,8 +22,7 @@ export function TrashLibrary({notes, onRestore, onDelete, onRefresh, onError}: {
   }, [notes, onRefresh, onError]);
   const filtered = notes.filter(note => note.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
   return <section className="organization-library trash-library" data-layout={viewMode}>
-    <div className="organization-heading"><div><h1 className="page-heading">Trash</h1></div></div>
-    <div className="library-view-toolbar"><ViewModeSwitch value={viewMode} onChange={setViewMode}/></div>
+    <div className="organization-heading"><div className="library-heading-row"><h1 className="page-heading">Trash</h1><ViewModeSwitch value={viewMode} onChange={setViewMode}/></div></div>
     {!!notes.length && <input className="organization-search" type="search" aria-label="Search Trash" placeholder="Search deleted notes…" value={query} onChange={event => setQuery(event.target.value)}/>}
     <div className="organization-items">{filtered.map(note => <article className="organization-item" key={note.id}>
       <div className="organization-item-row trash-row"><span className="organization-item-icon"><PageIcon icon={note.icon}/></span><div className="trash-note"><h2 title={note.title || 'Untitled'}>{note.title || 'Untitled'}</h2><small>Moved to Trash <time dateTime={note.deleted_at}>{new Date(note.deleted_at).toLocaleDateString()}</time> · Deletes <time dateTime={note.expires_at} title={new Date(note.expires_at).toLocaleString()}>{new Date(note.expires_at).toLocaleDateString()}</time></small></div>

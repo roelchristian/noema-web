@@ -1,0 +1,22 @@
+Locally bundled variable fonts
+
+Geist and Inter retain their existing files and licenses.
+
+The following normal-style variable fonts were obtained from the Google Fonts
+repository and converted from TTF to WOFF2 with FontTools, retaining all glyphs
+and variation axes. Each family is distributed under the SIL Open Font License;
+see the accompanying family-specific OFL text files.
+
+DM Sans (weight 100-1000; optical size 9-40)
+https://github.com/google/fonts/tree/main/ofl/dmsans
+
+Manrope (weight 200-800)
+https://github.com/google/fonts/tree/main/ofl/manrope
+
+Public Sans (weight 100-900)
+https://github.com/google/fonts/tree/main/ofl/publicsans
+
+Plus Jakarta Sans (weight 200-800)
+https://github.com/google/fonts/tree/main/ofl/plusjakartasans
+
+Fonts are served by Noema itself; no external font requests are needed.

@@ -34,11 +34,10 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onCreate}: {vaultId
     setSearch('');
   }
   return <section className="organization-library organization-browser knowledge-library" data-layout={viewMode}>
-    <div className="organization-heading pages-home-heading"><div><h1 className="page-heading">Knowledge entities</h1></div><div className="pages-home-actions">
+    <div className="organization-heading pages-home-heading"><div className="library-heading-row"><h1 className="page-heading">Knowledge entities</h1><ViewModeSwitch value={viewMode} onChange={setViewMode}/></div><div className="pages-home-actions">
       <label className="organization-search-box"><Icon name="search"/><input aria-label="Search entities" placeholder="Search entities…" value={search} onChange={event => setSearch(event.target.value)}/>{search && <button aria-label="Clear search" onClick={() => setSearch('')}><Icon name="close"/></button>}</label>
       <button className="button primary" onClick={onCreate}><Icon name="plus"/>New entity</button>
     </div></div>
-    <div className="library-view-toolbar"><ViewModeSwitch value={viewMode} onChange={setViewMode}/></div>
     {error && <p role="alert">{error}</p>}
     <div className="organization-content">
       <div className="organization-section-title knowledge-browser-controls">

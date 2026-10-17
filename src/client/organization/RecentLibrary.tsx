@@ -15,8 +15,7 @@ export function RecentLibrary({vaultId, recent, pages, entities, onOpenPage, onO
   });
   const previews = useSearchSnippets(vaultId, '', viewMode === 'grid' ? items.filter(item => item.kind === 'page').map(item => item.item_id) : [], viewMode === 'grid', items.map(item => item.item_id + ':' + item.updatedAt).sort().join(','));
   return <section className="organization-library recent-library" data-layout={viewMode}>
-    <div className="organization-heading"><div><h1 className="page-heading">Recent items</h1></div></div>
-    <div className="library-view-toolbar"><ViewModeSwitch value={viewMode} onChange={setViewMode}/></div>
+    <div className="organization-heading"><div className="library-heading-row"><h1 className="page-heading">Recent items</h1><ViewModeSwitch value={viewMode} onChange={setViewMode}/></div></div>
     <div className="organization-items">{items.map(item => <article key={item.kind + item.item_id} className="organization-item"><div className="organization-item-row">
       <span className="organization-item-icon">{item.kind === 'page' ? <PageIcon icon={item.icon}/> : <Icon name={item.type ?? 'knowledge'}/>}</span>
       <button className="organization-item-name" title={item.name} onClick={() => item.kind === 'page' ? onOpenPage(item.item_id) : onOpenEntity(item.item_id)}><span className="organization-page-title">{item.name}</span><small>{item.type ? entityLabels[item.type] : 'Page'}</small>{viewMode === 'grid' && (item.description || previews.snippets[item.item_id]) && <span className="search-result-snippet item-preview">{item.description || previews.snippets[item.item_id]}</span>}</button>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { entityTypes } from '../../shared/domain';
-import { appearanceStorageKey, defaultAppearance, parseAppearance, pillColors, themes, resolveDisplayMode, type Appearance } from './appearance';
+import { appearanceStorageKey, defaultAppearance, fontFamily, parseAppearance, pillColors, themes, resolveDisplayMode, type Appearance } from './appearance';
 
 export function useAppearance() {
   const [appearance, setAppearance] = useState<Appearance>(() => {
@@ -21,6 +21,8 @@ export function useAppearance() {
     const mode = resolveDisplayMode(appearance.mode, systemDark);
     root.dataset.mode = mode;
     root.dataset.focusedReading = String(appearance.focusedReading);
+    root.style.setProperty('--font-ui', fontFamily(appearance.bodyFont));
+    root.style.setProperty('--font-title', fontFamily(appearance.headingFont));
     root.style.setProperty('--accent', mode === 'dark' ? theme.darkColor : theme.color);
     root.style.setProperty('--accent-soft', mode === 'dark' ? theme.darkSoft : theme.soft);
     for (const [id, color] of Object.entries(pillColors)) {

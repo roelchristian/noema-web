@@ -140,6 +140,12 @@ db.exec(`CREATE TRIGGER IF NOT EXISTS page_summary_hash_invalidate AFTER UPDATE 
  UPDATE pages SET summary_content_hash=NULL WHERE vault_id=OLD.vault_id; END;`);
 
 if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'deleted_at')) db.exec('ALTER TABLE pages ADD COLUMN deleted_at TEXT');
+
+db.exec(`CREATE TABLE IF NOT EXISTS page_edit_locks (
+ page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,
+ vault_id TEXT NOT NULL REFERENCES vaults(id), password_hash TEXT, salt TEXT
+);`);
+
 db.exec('CREATE INDEX IF NOT EXISTS pages_deleted_at ON pages(deleted_at)');
 
 if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'revision')) db.exec('ALTER TABLE pages ADD COLUMN revision INTEGER NOT NULL DEFAULT 1');

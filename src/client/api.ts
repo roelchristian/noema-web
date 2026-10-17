@@ -69,6 +69,7 @@ export const api={
   saveIntelligencePreferences:(preferences:import('../shared/intelligence').IntelligenceConfiguration)=>request<import('../shared/intelligence').IntelligenceConfiguration>('intelligence/preferences','PUT',preferences),
   removeIntelligence:()=>request<import('../shared/domain').IntelligenceStatus>('intelligence','DELETE'),
   validateIntelligence:()=>request<{ok:true}&import('../shared/intelligence').IntelligencePreferences>('intelligence/validate','POST',{}),
+  setPageEditLock:(vault:string,id:string,revision:number,locked:boolean,password?:string)=>request<Page>(`pages/${id}/edit-lock`,'PUT',{revision,locked,...(password===undefined?{}:{password})},vault),
   generateTitle:(vault:string,id:string,revision:number,background=false)=>request<{title:string;revision:number;conceptClassification:import('../shared/domain').ConceptClassification}>(`pages/${id}/title`,'POST',{revision,background},vault),
   enrichments:(vault:string,id:string)=>request<import('../shared/domain').AIEnrichment[]>(`pages/${id}/enrichments`,'GET',undefined,vault),
   deleteSummary:(vault:string,id:string)=>request<{ok:true}>(`pages/${id}/summary`,'DELETE',undefined,vault),

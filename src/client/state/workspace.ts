@@ -24,12 +24,13 @@ export class Workspace {
   private navigation = false;
   private loadSequence = 0;
   private pageLoadSequence = 0;
+  private pageLockPending = false;
   private pageRequest: AbortController | null = null;
   readonly titler = new PageTitler(
     page => api.generateTitle(page.vault_id, page.id, page.revision, true),
     (original, title,conceptClassification) => {
       const cached = this.pageCache.get(original.id);
-      if (!cached || cached.vault_id !== original.vault_id || this.state.vault?.locked) return;
+      if (!cached || cached.editLocked || this.pageLockPending || cached.vault_id !== original.vault_id || this.state.vault?.locked) return;
       const page = {...cached, title,...(conceptClassification?{conceptClassification}:{})};
       this.pageCache.set(page.id, page);
       this.patch({pages: this.state.pages.map(item => item.id === page.id ? {...item, title} : item),
@@ -60,7 +61,7 @@ export class Workspace {
   );
   identifyEntities = async () => {
     const page = this.state.page;
-    if (!page || this.state.view !== 'pages' || this.state.busy || this.state.loadingPageId !== null || this.state.reviewing || this.state.vault?.locked || this.saver.hasPending || !canIdentifyEntities()) return;
+    if (!page || page.editLocked || this.pageLockPending || this.state.view !== 'pages' || this.state.busy || this.state.loadingPageId !== null || this.state.reviewing || this.state.vault?.locked || this.saver.hasPending || !canIdentifyEntities()) return;
     this.patch({saveStatus: 'identifying'});
     try {
       await yieldForEntityMatching();
@@ -308,13 +309,29 @@ export class Workspace {
   showEntities() { if (!this.state.busy && this.state.loadingPageId === null) this.patch({view: 'entities'}); }
   updatePage(patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon' | 'featuredImageId'>>) {
     const current = this.state.page;
-    if (!current || this.state.busy || this.state.loadingPageId !== null || this.state.reviewing || this.state.vault?.locked) return;
+    if (!current || current.editLocked || this.pageLockPending || this.state.busy || this.state.loadingPageId !== null || this.state.reviewing || this.state.vault?.locked) return;
     const page = {...current, ...patch,...(patch.blocks&&patch.blocks!==current.blocks?{conceptContentHash:undefined}:{})};
     if(page.featuredImageId && !page.blocks.some(block=>block.type==='image' && block.imageId===page.featuredImageId))page.featuredImageId=null;
     this.pageCache.set(page.id, page);
     this.patch({page, pages: this.state.pages.map(p => p.id === page.id ? {...p, title: page.title, icon: page.icon, featuredImageId: page.featuredImageId} : p)});
     this.titler.observe(page);
     this.saver.enqueue(page);
+  }
+  async setPageEditLock(locked: boolean, password?: string) {
+    const original=this.state.page, sequence=this.loadSequence;
+    if (!original || this.pageLockPending || this.state.vault?.locked) return;
+    this.pageLockPending=true;
+    this.titler.remove(original);
+    try {
+      await this.saver.flush();
+      if (sequence!==this.loadSequence || this.state.page?.id!==original.id) throw new Error('The page changed. Open it again before changing its lock.');
+      const current=this.pageCache.get(original.id) ?? this.state.page;
+      const page=await api.setPageEditLock(original.vault_id,original.id,current.revision,locked,password);
+      if (sequence!==this.loadSequence) return;
+      this.pageCache.set(page.id,page);
+      if (this.state.page?.id===page.id) this.patch({page});
+      this.titler.observe(page,true);
+    } finally {this.pageLockPending=false;}
   }
   async newPage() {
     await this.navigate(async () => {

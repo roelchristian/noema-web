@@ -61,6 +61,10 @@ Paste an image into a page or type `/image` in a text block. The block add menu 
 
 Noema stores image files beside the SQLite database in `assets/<vault-id>/images/<uuid>.<extension>`. Image references belong to that vault, and locked vaults block image reads and uploads. Include this `assets/` folder with the database in backups (the default `data/` folder contains both). Automatic cleanup removes images after their last saved reference is removed or their last referencing note is permanently deleted. Notes in Trash retain their images until permanent deletion, including the normal 30-day expiry. Abandoned uploads get a 24-hour grace period before cleanup on startup or the hourly sweep.
 
+## Page editing locks
+
+Use **More page actions → Lock editing** in the page toolbar to keep a page readable while preventing changes. Choose **Without a password** in the submenu for a simple editing lock or **With a password…** to require a password when unlocking. Pending edits are saved before locking. Titles, blocks, page sources, featured images, and deletion are protected until editing is unlocked; favourites and reading remain available. Passwords are stored only as salted hashes. Editing locks and their password protection survive app restarts and vault backup/restore.
+
 ## Folders and collections
 
 Main list screens offer **List**, **Compact**, and **Grid** layouts. Compact keeps each item on one line; Grid uses small icon cards with local note excerpts, entity descriptions, or folder/collection previews where available. Layout choices are remembered per screen in this browser. Library (including folders, collections, Inbox, and Favourites), Knowledge entities, Recent items, and Trash support these controls. Switching layouts keeps sorting, selection, navigation, and item actions available. Trash cards retain restore and permanent-delete actions rather than opening deleted notes.

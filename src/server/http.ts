@@ -68,7 +68,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
       if(accessError)throw new HttpError(403,accessError);
       if(url.pathname.startsWith('/api/')) {
         if((req.headers.origin && req.headers.origin!==`http://${req.headers.host}`)||req.headers['sec-fetch-site']==='cross-site')throw new HttpError(403,'Cross-origin requests are not allowed');
-        const securityRoute = url.pathname === '/api/security/network' || /^\/api\/vaults\/[^/]+\/passphrase$/.test(url.pathname);
+        const securityRoute = url.pathname === '/api/security/network' || /^\/api\/pages\/[^/]+\/edit-lock$/.test(url.pathname) || /^\/api\/vaults\/[^/]+\/passphrase$/.test(url.pathname);
         if (securityRoute && (req.headers['x-noema-request'] !== '1' || method === 'PUT' && !/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))) throw new HttpError(403, 'Security settings require the Noema client and JSON.');
         const aiRoute=url.pathname==='/api/search/snippets'||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|entity-scan|entity-review|explain)$/.test(url.pathname);
         if(aiRoute && (req.headers['x-noema-request']!=='1'||(['POST','PUT'].includes(method)&&!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))))throw new HttpError(403,'AI requests require the Noema client and JSON');
@@ -203,9 +203,10 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             if(parts.length===3 && method==='PUT' && id==='favourites')return send(200,organizer.favourite(vault,body));
           }
           if(collection==='pages') {
+            if(id && parts.length===4 && child==='edit-lock' && method==='PUT')return send(200,pages.setEditLock(vault,id,body));
             if(id && parts.length===4 && child==='backlinks' && method==='GET')return send(200,pages.backlinks(vault,id));
             if(id && parts.length===4 && child==='explain' && method==='POST') {
-              const page=pages.get(vault,id);
+              const page=pages.requireEditable(vault,id);
               // Draft blocks allow explaining current edits without saving or sending other note content.
               const blocks=pages.validateBlocks(vault,body.blocks);
               const input=summaryInput({title:'',blocks},entityId=>entityMentionName(knowledge.find(vault,entityId)),false,true).trim();
@@ -238,6 +239,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             if(id && parts.length===4 && (child==='summary'||child==='title') && method==='POST') {
               const page=pages.get(vault,id),isTitle=child==='title';
               if(isTitle) {
+                pages.requireEditable(vault,id);
                 if(body.revision!==page.revision)throw new HttpError(409,'Save the latest page before classification.');
                 const result=await pageUtility.run(vault,page,bytes=>activity.request(activityId!,bytes,page.revision),body.background===true);
                 vaults.requireOpen(vault);return send(200,result);

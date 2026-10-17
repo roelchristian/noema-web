@@ -1,6 +1,6 @@
 import type { ConceptClassification, Page } from '../../shared/domain';
 const key = (page: Page) => `${page.vault_id}/${page.id}`;
-const needsUtility=(page:Page)=>!page.conceptClassification || !page.conceptContentHash || page.conceptClassification.contentHash!==page.conceptContentHash || untitled(page);
+const needsUtility=(page:Page)=>!page.editLocked && (!page.conceptClassification || !page.conceptContentHash || page.conceptClassification.contentHash!==page.conceptContentHash || untitled(page));
 const untitled = (page: Page) => !page.title.trim() || page.title.trim() === 'Untitled';
 interface Candidate { page: Page; version: number; running: boolean; retries: number; timer?: ReturnType<typeof setTimeout> }
 /** Title and category share one background pass; edits invalidate outstanding results. */

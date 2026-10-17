@@ -31,6 +31,7 @@ export class EntityMatches {
     return {revision:page.revision,key,matches};
   }
   resolve(vault: string, pageId: string, body: Record<string, unknown>): {blocks: Page['blocks']} {
+    this.pages.requireEditable(vault,pageId);
     if (!Number.isInteger(body.revision) || typeof body.all !== 'boolean') throw new HttpError(400,'Choose a valid review item.');
     const cache = this.get(vault,pageId,body.revision as number);
     if (body.key !== cache.key) throw new HttpError(409,'The page or aliases changed. Refresh the review items.');

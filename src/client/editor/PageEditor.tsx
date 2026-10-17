@@ -1,5 +1,7 @@
+import {ReadOnlyPageBlocks} from './ReadOnlyPageBlocks';
 import { smartQuoteTitle } from './smart-quotes';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import {normalizeColumnBlocks} from '../../shared/column-blocks';
 import { blockSegments, entityMentionName, type Segment, type Entity, type Page, type PageSummary } from '../../shared/domain';
 import type { SaveStatus } from '../state/page-saver';
 import type { CreateEntityRequest } from '../knowledge/CreateEntityDialog';
@@ -49,7 +51,7 @@ export function PageEditor({pages,onOpenPage,page, entities, onChange, onOpenEnt
   const reviewMatches = cache?.matches ?? [];
   const currentPage = useRef(page); currentPage.current = page;
   useEffect(() => {
-    if (cache || saveStatus !== 'saved') return;
+    if (page.editLocked || cache || saveStatus !== 'saved') return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       void api.entityMatches(page.vault_id,page.id,page.revision,controller.signal).then(cache => {
@@ -57,21 +59,23 @@ export function PageEditor({pages,onOpenPage,page, entities, onChange, onOpenEnt
       }).catch(error => { if (!controller.signal.aborted) setReviewError(error instanceof Error ? error.message : String(error)); });
     }, ambiguityReviewDelay);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [page.id, page.vault_id, page.blocks, page.revision, page.conceptClassification, entities, saveStatus]);
-  useEffect(() => { if (page.title === 'Untitled') { title.current?.focus({preventScroll:true}); title.current?.select(); } }, [page.id]);
+  }, [page.id, page.vault_id, page.blocks, page.revision, page.conceptClassification, page.editLocked, entities, saveStatus]);
+  useEffect(() => { if (!page.editLocked && page.title === 'Untitled') { title.current?.focus({preventScroll:true}); title.current?.select(); } }, [page.id]);
   useEffect(() => {
+    if (page.editLocked) return;
     let timer: ReturnType<typeof setTimeout>;
     const schedule = () => { clearTimeout(timer); timer = setTimeout(() => { void onIdentify(); }, 1200); };
     schedule();
     document.addEventListener('selectionchange', schedule);
     document.addEventListener('compositionend', schedule);
     return () => { clearTimeout(timer); document.removeEventListener('selectionchange', schedule); document.removeEventListener('compositionend', schedule); };
-  }, [page.id, page.blocks, page.conceptClassification, page.conceptContentHash, entities, onIdentify]);
+  }, [page.id, page.blocks, page.conceptClassification, page.conceptContentHash, page.editLocked, entities, onIdentify]);
   const status = {saved: editedLabel(page.updated_at, now), pending: 'Waiting to save…', identifying: 'Identifying entities…', saving: 'Saving…', error: 'Could not save changes'}[saveStatus];
   return <article className="page" onCompositionStart={event => { event.currentTarget.dataset.entityComposing = 'true'; }} onCompositionEnd={event => { delete event.currentTarget.dataset.entityComposing; }}>
-    <h1 className="page-title-heading page-heading" aria-label={page.title || 'Untitled'}><input ref={title} id="page-title" aria-label="Page title" placeholder="Untitled" maxLength={500} value={page.title} onChange={e => onChange({title: smartQuoteTitle(e.currentTarget, e.nativeEvent as InputEvent)})}/></h1>
+    <h1 className="page-title-heading page-heading" aria-label={page.title || 'Untitled'}><input ref={title} id="page-title" aria-label="Page title" placeholder="Untitled" maxLength={500} readOnly={!!page.editLocked} value={page.title} onChange={e => onChange({title: smartQuoteTitle(e.currentTarget, e.nativeEvent as InputEvent)})}/></h1>
+    {page.editLocked && <div className="page-edit-lock-status" role="status"><Icon name="lock"/><span>Locked for editing{page.editProtected ? ' · Password protected' : ''}</span></div>}
     {reviewError && <p className="entity-review-error" role="alert">{reviewError}</p>}
-    <EntityMatchReview matches={reviewMatches} entities={entities} disabled={resolving} onResolve={async resolution => {
+    {!page.editLocked && <EntityMatchReview matches={reviewMatches} entities={entities} disabled={resolving} onResolve={async resolution => {
       if (!cache || resolving) return;
       const original = page;
       setResolving(true); setReviewError('');
@@ -81,8 +85,8 @@ export function PageEditor({pages,onOpenPage,page, entities, onChange, onOpenEnt
         else setReviewError('The page changed while resolving this match. Review it again after saving.');
       } catch (error) { setReviewError(error instanceof Error ? error.message : String(error)); }
       finally { setResolving(false); }
-    }}/>
-    <BlockEditor featuredImageId={page.featuredImageId} pages={pages} onOpenPage={onOpenPage} onExplain={async blocks=>(await api.explainBlocks(page.vault_id,page.id,blocks)).markdown} reviewMatches={reviewMatches} onAddAlias={onAddAlias} key={page.vault_id + page.id} vaultId={page.vault_id} blocks={page.blocks} entities={entities} onChange={(blocks, featuredImageId) => onChange({blocks,...(featuredImageId===undefined?{}:{featuredImageId})})} onOpenEntity={onOpenEntity} onCreateEntity={(name, onCreated) => onCreateEntity({name, onCreated})} onSave={onSave}/>
+    }}/>}
+    {page.editLocked ? <ReadOnlyPageBlocks blocks={normalizeColumnBlocks(page.blocks)} entities={entities} pages={pages} vaultId={page.vault_id} onOpenEntity={onOpenEntity} onOpenPage={onOpenPage}/> : <BlockEditor featuredImageId={page.featuredImageId} pages={pages} onOpenPage={onOpenPage} onExplain={async blocks=>(await api.explainBlocks(page.vault_id,page.id,blocks)).markdown} reviewMatches={reviewMatches} onAddAlias={onAddAlias} key={page.vault_id + page.id} vaultId={page.vault_id} blocks={page.blocks} entities={entities} onChange={(blocks, featuredImageId) => onChange({blocks,...(featuredImageId===undefined?{}:{featuredImageId})})} onOpenEntity={onOpenEntity} onCreateEntity={(name, onCreated) => onCreateEntity({name, onCreated})} onSave={onSave}/>}
     <footer className={'editor-save-status' + (saveStatus === 'error' ? ' is-error' : '')}>
       {saveStatus === 'saving' || saveStatus === 'identifying' ? <span className="scan-spinner" aria-hidden="true"/> : <Icon name={saveStatus === 'saved' ? 'recent' : saveStatus === 'error' ? 'alert' : 'recent'}/>}
       <span role="status" aria-live="polite" aria-atomic="true">{saveStatus === 'saved' ? <time dateTime={page.updated_at} title={new Date(page.updated_at).toLocaleString()}>{status}</time> : status}</span>

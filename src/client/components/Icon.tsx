@@ -50,6 +50,8 @@ const paths: Record<string, ReactNode> = {
   'page-incoming': <><path d="M19 9V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2M8 7h6M8 11h3"/><path d="M22 14H12m3-3-3 3 3 3"/></>,
   'page-bidirectional': <g strokeWidth="1.5"><path d="M18 6V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2"/><path d="M10 10h11m-2-2 2 2-2 2M21 16H10m2-2-2 2 2 2"/></g>,
   knowledge: <><circle cx="12" cy="5" r="3"/><circle cx="5" cy="18" r="3"/><circle cx="19" cy="18" r="3"/><path d="m10 8-4 7m8-7 4 7M8 18h8"/></>,
+  lock: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></>,
+  unlock: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 7.5-2M12 14v3"/></>,
   vault: <><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="12" cy="12" r="4"/><path d="M12 8v2m0 4v2m-4-4h2m4 0h2"/></>,
 };
 export function Icon({name}: {name: string}) {

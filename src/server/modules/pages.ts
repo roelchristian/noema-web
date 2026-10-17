@@ -6,7 +6,7 @@ import { conceptContentHash, summaryContentHash } from './summary-content.js';
 import { AINotifications } from './ai-notifications.js';
 import { Images } from './images.js';
 import { isPageIconId } from '../../shared/page-icons.js';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import { blockTypes, safeHref, type Segment, type Block, type Page, type PageSummary, type TrashedPage } from '../../shared/domain.js';
 import { Store } from '../store.js';
 import { HttpError, now, object, required, text } from '../validation.js';
@@ -45,7 +45,33 @@ export class Pages {
       }
       this.store.run('UPDATE pages SET summary_content_hash=?,summary_hash_version=2 WHERE id=? AND vault_id=?',hash,id,vault);
     }
-    return {...stored,featuredImageId,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id)};
+    const editLock=this.store.get<{password_hash:string|null}>('SELECT password_hash FROM page_edit_locks WHERE page_id=? AND vault_id=?',id,vault);
+    return {...stored,editLocked:!!editLock,editProtected:!!editLock?.password_hash,featuredImageId,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id)};
+  }
+  requireEditable(vault: string, id: string) {
+    const page=this.get(vault,id);
+    if (page.editLocked) throw new HttpError(423,'This page is locked for editing. Unlock it to make changes.');
+    return page;
+  }
+  setEditLock(vault: string, id: string, body: Record<string,unknown>) {
+    const page=this.get(vault,id);
+    if (typeof body.locked !== 'boolean') throw new HttpError(400,'Choose whether to lock or unlock editing.');
+    if (body.revision !== page.revision) throw new HttpError(409,'This page changed. Reload it before changing its lock.');
+    if (body.locked && page.editLocked) throw new HttpError(409,'Unlock this page before changing its editing lock.');
+    const existing=this.store.get<{password_hash:string|null;salt:string|null}>('SELECT password_hash,salt FROM page_edit_locks WHERE page_id=? AND vault_id=?',id,vault);
+    if (!body.locked && existing?.password_hash) {
+      if (typeof body.password !== 'string' || !timingSafeEqual(scryptSync(text(body.password,500),existing.salt!,64),Buffer.from(existing.password_hash,'hex'))) throw new HttpError(403,'Incorrect password. The page is still locked.');
+    }
+    const password=body.locked && body.password != null ? text(body.password,500) : null;
+    if (password !== null && password.length < 4) throw new HttpError(400,'Use a password of at least 4 characters.');
+    const salt=password === null ? null : randomUUID();
+    const hash=password === null ? null : scryptSync(password,salt!,64).toString('hex');
+    this.store.transaction(()=>{
+      if (body.locked) this.store.run('INSERT INTO page_edit_locks VALUES (?,?,?,?)',id,vault,hash,salt);
+      else this.store.run('DELETE FROM page_edit_locks WHERE page_id=? AND vault_id=?',id,vault);
+      this.store.run('UPDATE pages SET revision=revision+1 WHERE id=? AND vault_id=?',id,vault);
+    });
+    return this.get(vault,id);
   }
   create(vault: string, body: Record<string, unknown>) {
     const id=randomUUID();
@@ -136,7 +162,7 @@ export class Pages {
     return validated;
   }
   update(vault: string, id: string, body: Record<string, unknown>) {
-    const page=this.get(vault,id),blocks=this.validateBlocks(vault,body.blocks),title=text(body.title,500);
+    const page=this.requireEditable(vault,id),blocks=this.validateBlocks(vault,body.blocks),title=text(body.title,500);
     const protectedIds=new Set(page.blocks.filter(isAIExplanation).map(block=>block.id));
     if(blocks.some(block=>protectedIds.has(block.id)&&!isAIExplanation(block)))throw new HttpError(400,'The AI Explanation tag cannot be removed or changed.');
     const icon=body.icon === undefined ? page.icon ?? null : body.icon;
@@ -160,7 +186,7 @@ export class Pages {
     return this.get(vault,id);
   }
   delete(vault: string, id: string) {
-    this.get(vault,id);
+    this.requireEditable(vault,id);
     this.store.run('UPDATE pages SET deleted_at=?,revision=revision+1 WHERE id=? AND vault_id=? AND deleted_at IS NULL',this.clock().toISOString(),id,vault);
     return {ok:true};
   }

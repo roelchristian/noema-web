@@ -2126,3 +2126,25 @@ dialog.confirmation-dialog.delete-vault-dialog { width:min(480px,calc(100vw - 32
 .folder-collection-modes small { display:block; margin-top:3px; font-size:11px; line-height:1.6; color:var(--text-muted); }
 .folder-collection-modes small.folder-collection-suggestion { display:inline; margin-left:5px; font-size:10px; color:var(--text-muted); }
 .linked-folder-label { margin-left:6px; font-size:9px; font-weight:400; color:var(--text-muted); }
+
+.page-edit-lock-status { display:flex; align-items:center; gap:6px; margin:14px 0 24px; color:var(--text-muted); font-size:11px; }
+.page-edit-lock-status .icon { width:13px; height:13px; flex:none; }
+.page-read-only-blocks { user-select:text; -webkit-user-select:text; }
+.page-read-only-blocks .code-block { flex:1; min-width:0; overflow-x:auto; white-space:pre; }
+.page-read-only-blocks .block.table > table { width:100%; border-collapse:collapse; }
+.page-read-only-blocks .block.table td { padding:8px 10px; border:1px solid var(--line); }
+
+.sidebar-action-menu > button.action-menu-back { color:var(--text-muted); }
+.action-menu-back > .icon { transform:rotate(180deg); }
+.action-menu-heading { padding:8px 10px 5px; font-size:10px; color:var(--text-muted); }
+.action-menu-description { display:block; margin-top:3px; font-size:11px; line-height:1.5; color:var(--text-muted); }
+.sidebar-action-menu .action-menu-child-arrow { display:inline-flex; margin-left:auto; flex:none; }
+.sidebar-action-menu .action-menu-child-arrow .icon { width:12px; height:12px; }
+
+/* Popovers inherit toolbar whitespace unless reset explicitly. */
+.sidebar-action-menu { white-space:normal; }
+.sidebar-action-menu > button > .icon { flex:none; }
+.action-menu-text { flex:1; min-width:0; line-height:1.45; white-space:normal; overflow-wrap:break-word; }
+.sidebar-action-menu > button[data-has-description] { align-items:flex-start; }
+.sidebar-action-menu > button[data-has-description] > .icon { margin-top:2px; }
+.action-menu-description { white-space:normal; overflow-wrap:break-word; }

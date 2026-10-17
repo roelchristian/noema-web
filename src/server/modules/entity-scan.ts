@@ -97,6 +97,7 @@ export class EntityScans {
     return scan;
   }
   review(vault: string, pageId: string, body: Record<string, unknown>): EntityReview {
+    this.pages.requireEditable(vault,pageId);
     return this.store.transaction(() => {
       let page = this.pages.get(vault,pageId);
       const row = this.store.get<{data:string;revision:number}>("SELECT data,revision FROM page_ai_enrichments WHERE page_id=? AND kind='entity_scan'",pageId);

@@ -26,6 +26,7 @@ const tables={
   entities:{columns:'id,name,aliases,mention_case,type,subtypes,description,updated_at',scope:'vault_id=?'},
   properties:{columns:'id,entity_id,name,value,target_id',scope:entityScope},
   relationships:{columns:'id,source_id,label,target_id',scope:'source_id IN (SELECT id FROM entities WHERE vault_id=?)'},
+  page_edit_locks:{columns:'page_id,password_hash,salt',scope:'vault_id=?'},
   page_sources:{columns:'page_id,source_id',scope:pageScope},
   entity_subtypes:{columns:'id,type,name',scope:'vault_id=?'},
   entity_type_properties:{columns:'type,name',scope:'vault_id=?'},
@@ -105,7 +106,7 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     if(total>200000)throw new HttpError(413,'This backup contains too many records.');
     const assets=list(archive.images).map(object);
     const sourceAssets=list(archive.sourceFiles??[]).map(object);
@@ -192,6 +193,11 @@ export class VaultBackups {
           });
           const validated=pages.validateBlocks(vault,blocks);
           insert('pages',{id:ref(pageIds,row.id),vault_id:vault,title:string(row,'title',500),icon:row.icon as string|null,featured_image_id:row.featured_image_id==null?null:ref(imageIds,row.featured_image_id),blocks:JSON.stringify(validated),updated_at:timestamp(row,'updated_at'),revision:integer(row,'revision',1),deleted_at:row.deleted_at===null?null:timestamp(row,'deleted_at')});
+        }
+        for(const row of rows.page_edit_locks) {
+          const passwordHash=row.password_hash, salt=row.salt;
+          if (passwordHash===null ? salt!==null : typeof passwordHash!=='string'||!/^[a-f0-9]{128}$/.test(passwordHash)||typeof salt!=='string'||!/^[a-f0-9-]{36}$/.test(salt)) throw invalid();
+          insert('page_edit_locks',{page_id:ref(pageIds,row.page_id),vault_id:vault,password_hash:passwordHash as string|null,salt:salt as string|null});
         }
         for(const row of rows.page_sources) {
           const source=ref(entityIds,row.source_id);

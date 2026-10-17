@@ -2017,3 +2017,15 @@ main {position:relative;}
 :root[data-mode=dark] .entity-review-highlight { background:var(--palette-honey-bg); color:var(--palette-honey-text); }
 :root[data-mode=dark] .delete-vault-dialog .button.danger { background:var(--palette-rose-bg); border-color:var(--palette-rose-border); color:var(--palette-rose-text); }
 :root[data-mode=dark] .delete-vault-dialog .button.danger:hover:not(:disabled) { background:color-mix(in srgb,var(--palette-rose-bg) 75%,var(--palette-rose-border)); }
+
+/* Open collections and folders align title, count, and view controls explicitly. */
+.organization-context-heading { display:grid; grid-template-columns:36px minmax(0,1fr) auto; align-items:start; gap:12px 14px; margin-bottom:24px; }
+.organization-context-heading > .destination-icon { width:36px; height:38px; }
+.organization-context-heading .library-heading-row { min-height:38px; }
+#content > .organization-library .organization-context-heading .page-heading { margin:0; }
+.organization-context-heading .organization-context-title p { margin:4px 0 0; }
+.organization-context-heading > .library-heading-actions { align-self:start; margin:0; }
+@media(max-width:750px) {
+  .organization-context-heading { grid-template-columns:36px minmax(0,1fr); }
+  .organization-context-heading > .library-heading-actions { grid-column:1 / -1; width:100%; justify-content:space-between; }
+}

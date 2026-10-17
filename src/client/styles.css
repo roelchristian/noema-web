@@ -2041,3 +2041,17 @@ main {position:relative;}
   .view-mode-switch > button:active { transform:none; }
   .view-mode-switch > button[aria-pressed=true] > .icon { animation:none; }
 }
+
+/* Sidebar and document chrome share the same top edge and toolbar sizing. */
+.sidebar { padding-top:0; }
+.sidebar-heading { min-height:var(--workspace-toolbar-height); height:var(--workspace-toolbar-height); margin:0 -10px 12px; padding:0 16px; border-bottom:1px solid var(--line); }
+.sidebar .sidebar-heading .brand { gap:6px; line-height:1; }
+.sidebar .sidebar-heading .brand-mark { width:18px; height:18px; }
+.sidebar .sidebar-heading .brand > span { font-size:16px; letter-spacing:-.6px; }
+.sidebar .sidebar-heading .sidebar-new-note { width:30px; height:30px; padding:6px; border-radius:5px; }
+.sidebar .sidebar-heading .sidebar-new-note .icon { width:17px; height:17px; }
+@media(max-width:750px) {
+  .workspace-navigation .sidebar { padding-top:0; }
+  .workspace-navigation .sidebar-heading { height:auto; min-height:var(--workspace-toolbar-height); margin:0 -14px 12px; padding:max(2px,env(safe-area-inset-top)) 16px 2px; }
+  .workspace-navigation .sidebar .sidebar-heading .sidebar-new-note { width:44px; height:44px; padding:12px; }
+}

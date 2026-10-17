@@ -9,6 +9,7 @@ import { ConfirmDialog } from './components/ConfirmDialog';
 import { TrashLibrary } from './trash/TrashLibrary';
 import type { PageSummary } from '../shared/domain';
 import { Select } from './components/Select';
+import { WorkspaceNavigation, useMobileViewport } from './components/WorkspaceNavigation';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { SettingsDialog } from './settings/SettingsDialog';
 import { useAppearance } from './settings/useAppearance';
@@ -28,6 +29,9 @@ import {DeleteVaultDialog} from './vaults/DeleteVaultDialog';
 import { VaultBackupDialog } from './vaults/VaultBackupDialog';
 import { VaultDialog, type VaultAction } from './vaults/VaultDialog';
 export function App() {
+  const mobile = useMobileViewport();
+  const [navigationOpen, setNavigationOpen] = useState(false);
+  useEffect(() => { if (!mobile) setNavigationOpen(false); }, [mobile]);
   const [aiOpen,setAiOpen]=useState(() => {
     try { return localStorage.getItem('noema-knowledge-panel-open') === 'true'; }
     catch { return false; }
@@ -46,6 +50,7 @@ export function App() {
   const state = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
   const {vaults, vault, pages, entities, page, view, busy, loadingPageId, reviewing, error, saveStatus, organization, organizationContext, recent, trash} = state;
   const panelId = state.entityPanelId;
+  useEffect(() => { setNavigationOpen(false); }, [view, page?.id, organizationContext.collection, organizationContext.folder, panelId, vault?.id]);
   const [create, setCreate] = useState<CreateEntityRequest | null>(null), [vaultAction, setVaultAction] = useState<VaultAction | null>(null);
   const [vaultDeletionOpen,setVaultDeletionOpen]=useState(false),[vaultNotice,setVaultNotice]=useState('');
   const [backupAction,setBackupAction]=useState<'export'|'import'|null>(null);
@@ -91,7 +96,9 @@ export function App() {
     }
   }
   return <>
+    <WorkspaceNavigation mobile={mobile} open={navigationOpen} onClose={() => setNavigationOpen(false)}>
     <aside className="sidebar" data-navigating={loadingPageId !== null}><div className="sidebar-heading"><a className="brand" href="/" aria-label="Noema home"><img className="brand-mark" src="/noema-mark.svg" alt="" width="38" height="38"/><span>noema</span></a>
+      <button className="mobile-navigation-close" type="button" aria-label="Close navigation" onClick={() => setNavigationOpen(false)}><Icon name="close"/></button>
       <button className="sidebar-new-note" type="button" aria-label="New Note" title="New Note" disabled={disabled || reviewing} onClick={() => { workspace.closeEntity(); setSearchOpen(false); run(() => workspace.newPage()); }}><Icon name="compose"/></button></div>
       <div className="sidebar-scroll-region">
       <nav className="sidebar-group" aria-label="Quick access">
@@ -117,7 +124,8 @@ export function App() {
         {label: vault?.locked?'Delete vault… (unlock first)':'Delete vault…',icon:'trash',danger:true,disabled:!vault||vault.locked||reviewing,onSelect:()=>setVaultDeletionOpen(true)},
       ]}/></div></div>
     </aside>
-    <main><header className="topbar"><nav className="workspace-history" aria-label="Navigation history">
+    </WorkspaceNavigation>
+    <main><header className="topbar"><button type="button" className="mobile-navigation-toggle" aria-label="Open navigation" aria-haspopup="dialog" aria-controls="workspace-navigation" aria-expanded={mobile && navigationOpen} onClick={() => setNavigationOpen(true)}><Icon name="menu"/></button><nav className="workspace-history" aria-label="Navigation history">
       <button type="button" className="history-back" aria-label="Go back" title="Go back" disabled={disabled || !state.canGoBack} onClick={() => { setSearchOpen(false); run(() => workspace.goHistory(-1)); }}><Icon name="chevron"/></button>
       <button type="button" aria-label="Go forward" title="Go forward" disabled={disabled || !state.canGoForward} onClick={() => { setSearchOpen(false); run(() => workspace.goHistory(1)); }}><Icon name="chevron"/></button>
     </nav><nav id="breadcrumb" className="breadcrumbs" aria-label="Breadcrumb">{breadcrumbs.map((crumb, index) => <span key={crumb.key}>{index > 0 && <Icon name="chevron"/>}{crumb.onClick ? <button onClick={crumb.onClick} disabled={busy || reviewing} aria-current={index === breadcrumbs.length - 1 ? 'page' : undefined}>{crumb.icon && <Icon name={crumb.icon}/>}<span>{crumb.label}</span></button> : <span className="breadcrumb-label" aria-current={index === breadcrumbs.length - 1 ? 'page' : undefined}>{crumb.icon && <Icon name={crumb.icon}/>}<span>{crumb.label}</span></span>}</span>)}</nav><div className="top-actions">{view === 'pages' && page && vault && !busy && !vault.locked && <PageToolbar inactive={loadingPageId !== null} focusedReading={appearance.focusedReading} onToggleFocusedReading={() => setAppearance(current => ({...current, focusedReading: !current.focusedReading}))} aiOpen={knowledgeVisible} onAI={()=>{setSearchOpen(false);workspace.closeEntity();setAiOpen(!knowledgeVisible);}} favourite={organization.favourites.some(item => item.kind === 'page' && item.item_id === page.id)} onOrganizationChange={data => { if (workspace.snapshot().vault?.id === vault.id) workspace.setOrganization(data); }} onDelete={() => setDeleteTarget(page)} key={vault.id + '/' + page.id} page={page} onError={workspace.report}/>}{view!=='pages'&&saveStatus!=='saved'&&!vault?.locked&&<button className={'save-state-indicator '+(saveStatus==='error'?'is-error':'')} aria-label={status} disabled={disabled} onClick={()=>run(()=>workspace.saver.flush())}><Icon name={saveStatus==='error'?'alert':'save'}/><span role="status">{status}</span></button>}<AIActivityNotifications key={vaults.map(item=>item.id+':'+item.locked).join(',')} refreshKey={saveStatus+':'+(page?.revision??'')} onOpenPage={async(vaultId,pageId)=>{if(workspace.snapshot().vault?.id!==vaultId)await workspace.selectVault(vaultId);await workspace.openPage(pageId);}}/></div></header>

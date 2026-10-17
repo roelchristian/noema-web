@@ -1,12 +1,16 @@
 import { semanticFunctions, editableSemanticKinds, type SemanticKind } from '../../shared/semantic-blocks';
 import { editorSelectionRanges, selectedEditorBlocks } from './block-selection';
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { entityLabels, type Entity } from '../../shared/domain';
 import { Icon } from '../components/Icon';
+import { Modal } from '../components/Modal';
 import { annotationSuggestions, selectionPopoverPlacement } from './selection-annotation';
 import { segmentHTML } from './segments';
 
 interface Props {
+  mobile?: boolean;
+  keyboardInset?: number;
+  viewportHeight?: number;
   onExplain?: () => void;
   explaining?: boolean;
   editor: RefObject<HTMLDivElement | null>;
@@ -26,44 +30,68 @@ const formats = [
 function editable(node: Node) {
   return (node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>('.block-content[contenteditable="true"]');
 }
-export function SelectionToolbar({editor, entities, onCommit, onAddAlias, onCreateEntity, onMath, onSemantic, onExplain, explaining}: Props) {
+export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHeight, editor, entities, onCommit, onAddAlias, onCreateEntity, onMath, onSemantic, onExplain, explaining}: Props) {
   const [anchor, setAnchor] = useState<{left: number; right: number; top: number; bottom: number} | null>(null);
   const [annotating, setAnnotating] = useState(false), [query, setQuery] = useState('');
   const [semantic, setSemantic] = useState(false);
   const [linking, setLinking] = useState(false);
   const [savingAlias, setSavingAlias] = useState(false), [aliasError, setAliasError] = useState('');
   const [active, setActive] = useState<string[]>([]);
+  const [selectedCount, setSelectedCount] = useState(0);
   const [position, setPosition] = useState<{left: number; top: number; maxHeight?: number}>({left: 0, top: 0});
   const saved = useRef<Range | null>(null), surface = useRef<HTMLDivElement>(null);
   const picking = useRef(false);
   const latest = useRef({entities, onCommit}); latest.current = {entities, onCommit};
-  function dismiss() { saved.current = null; picking.current = false; setSemantic(false); setAnnotating(false); setLinking(false); setAnchor(null); }
+  function releaseSheet() { surface.current?.querySelector<HTMLDialogElement>('.mobile-selection-sheet')?.close(); }
+  function dismiss() { releaseSheet(); saved.current = null; picking.current = false; setSemantic(false); setAnnotating(false); setLinking(false); setAnchor(null); }
+  function closePicker() {
+    releaseSheet(); picking.current = false; setSemantic(false); setAnnotating(false); setLinking(false);
+    if (saved.current && !restore(saved.current)) dismiss();
+  }
   useEffect(() => {
+    let frame: number | undefined, collapseTimer: ReturnType<typeof setTimeout> | undefined;
     function inspect() {
+      frame = undefined;
       if (picking.current || surface.current?.contains(document.activeElement)) return;
+      const dialog = document.querySelector('dialog[open]');
+      if (dialog && !surface.current?.contains(dialog)) { dismiss(); return; }
       const selection = getSelection();
-      if (!selection?.rangeCount || selection.isCollapsed) { dismiss(); return; }
+      if (!selection?.rangeCount || selection.isCollapsed) {
+        // Touch selection handles can briefly collapse the range while moving.
+        if (mobile) {
+          if (!collapseTimer) collapseTimer = setTimeout(() => {
+            collapseTimer = undefined;
+            if (!picking.current && (!getSelection()?.rangeCount || getSelection()?.isCollapsed)) dismiss();
+          }, 150);
+        } else dismiss();
+        return;
+      }
+      clearTimeout(collapseTimer); collapseTimer = undefined;
       const range = selection.getRangeAt(0);
       const portions = editor.current ? editorSelectionRanges(editor.current, range) : [];
       const start = editable(range.startContainer) ?? (portions[0] ? editable(portions[0].startContainer) : undefined);
       const end = editable(range.endContainer) ?? (portions.at(-1) ? editable(portions.at(-1)!.endContainer) : undefined);
       const selectedBlocks=editor.current ? selectedEditorBlocks(editor.current,selection) : null;
-      if (!selectedBlocks || (start && !editor.current?.contains(start)) || (end && !editor.current?.contains(end))) { dismiss(); return; }
+      if (!selectedBlocks || !portions.length || (start && !editor.current?.contains(start)) || (end && !editor.current?.contains(end)) || selectedBlocks.elements.some(el => el.dataset.semanticKind === 'ai-explanation' || el.closest('[data-block-group-id]')?.getAttribute('data-semantic-kind') === 'ai-explanation')) { dismiss(); return; }
       // Entity references are atomic; do not offer annotation inside an existing reference.
       const parent = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
       if (parent?.closest('[data-entity],[data-math]')) { dismiss(); return; }
       const box = range.getBoundingClientRect();
       if (!box.width && !box.height) { dismiss(); return; }
       saved.current = range.cloneRange();
+      setSelectedCount(selectedBlocks.elements.length);
       setActive(formats.filter(format => document.queryCommandState(format.command)).map(format => format.command));
       setAnchor({left: box.left, right: box.right, top: box.top, bottom: box.bottom});
     }
     function outside(event: PointerEvent) {
       if (surface.current?.contains(event.target as Node)) return;
+      if (mobile && (editor.current?.contains(event.target as Node) || event.pointerType === 'touch' && editor.current?.contains(document.activeElement) && !(event.target instanceof Element && event.target.closest('button, input, textarea, a')))) return;
       dismiss();
     }
+    function scheduleInspect() { if (frame === undefined) frame = requestAnimationFrame(inspect); }
     function escape(event: globalThis.KeyboardEvent) {
       if (event.key !== 'Escape' || !saved.current) return;
+      if (picking.current) { closePicker(); event.preventDefault(); return; }
       const range = saved.current;
       if (!editable(range.endContainer) && editor.current) {
         const end = editorSelectionRanges(editor.current, range).at(-1);
@@ -71,34 +99,37 @@ export function SelectionToolbar({editor, entities, onCommit, onAddAlias, onCrea
       }
       range.collapse(false);
       dismiss();
-      editable(range.startContainer)?.focus();
+      editable(range.startContainer)?.focus({preventScroll: mobile});
       getSelection()?.removeAllRanges(); getSelection()?.addRange(range);
       event.preventDefault();
     }
-    const hideOnScroll = (event: Event) => { if (!surface.current?.contains(event.target as Node)) dismiss(); };
-    document.addEventListener('selectionchange', inspect);
-    document.addEventListener('pointerup', inspect);
+    const hideOnScroll = (event: Event) => { if (!surface.current?.contains(event.target as Node)) { if (mobile) scheduleInspect(); else dismiss(); } };
+    const resize = () => { if (mobile) scheduleInspect(); else dismiss(); };
+    document.addEventListener('selectionchange', scheduleInspect);
+    document.addEventListener('pointerup', scheduleInspect);
     document.addEventListener('pointerdown', outside);
     document.addEventListener('keydown', escape);
     window.addEventListener('scroll', hideOnScroll, true);
-    window.addEventListener('resize', dismiss);
+    window.addEventListener('resize', resize);
     return () => {
-      document.removeEventListener('selectionchange', inspect);
-      document.removeEventListener('pointerup', inspect);
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      clearTimeout(collapseTimer);
+      document.removeEventListener('selectionchange', scheduleInspect);
+      document.removeEventListener('pointerup', scheduleInspect);
       document.removeEventListener('pointerdown', outside);
       document.removeEventListener('keydown', escape);
       window.removeEventListener('scroll', hideOnScroll, true);
-      window.removeEventListener('resize', dismiss);
+      window.removeEventListener('resize', resize);
     };
-  }, [editor]);
+  }, [editor, mobile]);
   useLayoutEffect(() => {
-    if (!anchor || !surface.current) return;
+    if (mobile || !anchor || !surface.current) return;
     const box = surface.current.getBoundingClientRect();
     setPosition(selectionPopoverPlacement(anchor, {width: box.width, height: surface.current.scrollHeight + 2}, {width: innerWidth, height: innerHeight}));
-  }, [anchor, annotating, semantic, linking, query, entities]);
+  }, [mobile, anchor, annotating, semantic, linking, query, entities]);
   function restore(range: Range) {
     if (!range.startContainer.isConnected || !range.endContainer.isConnected) return false;
-    editable(range.startContainer)?.focus();
+    editable(range.startContainer)?.focus({preventScroll: mobile});
     const selection = getSelection(); selection?.removeAllRanges(); selection?.addRange(range);
     return true;
   }
@@ -118,6 +149,7 @@ export function SelectionToolbar({editor, entities, onCommit, onAddAlias, onCrea
   function connect(range: Range, text: string, id: string) {
     // A create dialog may outlive an edit or page navigation. Never replace stale text.
     if (!range.startContainer.isConnected || !range.endContainer.isConnected || range.toString() !== text || !editor.current?.contains(range.commonAncestorContainer)) return false;
+    releaseSheet();
     range.deleteContents();
     const wrapper = document.createElement('span');
     wrapper.innerHTML = segmentHTML([{entityId: id, mentionText: text}], latest.current.entities);
@@ -129,9 +161,6 @@ export function SelectionToolbar({editor, entities, onCommit, onAddAlias, onCrea
   if (!anchor) return null;
   const range = saved.current;
   const single = range && editor.current && editorSelectionRanges(editor.current, range).length === 1;
-  const selectedCount = range && editor.current ? new Set(editorSelectionRanges(editor.current,range).map(part=>editable(part.startContainer)?.closest<HTMLElement>('[data-block-id]')?.dataset.blockId)).size : 0;
-  const lockedSemantic = range && editor.current ? selectedEditorBlocks(editor.current)?.elements.some(el=>el.dataset.semanticKind==='ai-explanation'||el.closest('[data-block-group-id]')?.getAttribute('data-semantic-kind')==='ai-explanation') : false;
-  if (lockedSemantic) return null;
   const selectedText = range?.toString().trim() || '';
   const {exact, results} = annotationSuggestions(entities, selectedText, query);
   const linkEntity = async (id: string) => {
@@ -152,16 +181,8 @@ export function SelectionToolbar({editor, entities, onCommit, onAddAlias, onCrea
     dismiss();
     onCreateEntity(text.trim().slice(0, 200), id => connect(current, text, id));
   };
-  return <div ref={surface} className="selection-popover" style={position} onMouseDown={event => { if (!(event.target instanceof HTMLInputElement)) event.preventDefault(); }}>
-    <div className="selection-toolbar" role="toolbar" aria-label="Selection formatting">
-      {formats.map(format => <button key={format.command} type="button" title={format.label} aria-label={format.label} aria-pressed={active.includes(format.command)} disabled={!range || !editor.current || !editorSelectionRanges(editor.current,range).length} onClick={() => applyFormat(format.command)}>{format.glyph}</button>)}
-      <button type="button" aria-label="Inline equation" title="Inline equation" disabled={!single} onClick={() => {const current = saved.current?.cloneRange(); if (current) {dismiss(); onMath(current);}}}><Icon name="equation"/></button>
-      <button type="button" aria-label="Explain with AI" title="Explain selected blocks with AI" disabled={explaining || !onExplain} onClick={()=>{const range=saved.current;if(range&&restore(range))onExplain?.();dismiss();}}><Icon name="sparkles"/>Explain with AI</button>
-      <span className="selection-divider"/>
-      <button type="button" className="selection-semantic" disabled={!!lockedSemantic} title={lockedSemantic?'AI Explanation is a permanent tag':'Apply a semantic function'} aria-expanded={semantic} aria-label="Semantic block function" onClick={()=>{picking.current=!semantic;setSemantic(!semantic);setAnnotating(false);setLinking(false);}}><Icon name="semantic"/>Semantic</button>
-      <button type="button" className="selection-annotate" disabled={!single} title={single ? 'Connect selection to a knowledge entity' : 'Select text within one block or table cell to annotate'} aria-expanded={annotating} onClick={() => { picking.current = !annotating; setSemantic(false); setAnnotating(!annotating); setLinking(false); setQuery(''); }}><Icon name="knowledge"/>Annotate</button>
-    </div>
-    {semantic && <div className="semantic-picker" role="region" aria-label="Semantic functions"><p>{selectedCount===1 ? 'Apply a function to this block' : 'Group selected blocks under one function'}</p>{editableSemanticKinds.map(kind=><button type="button" key={kind} onClick={()=>{const range=saved.current;if(range&&restore(range))onSemantic(kind);dismiss();}}><span style={{color:semanticFunctions[kind].color}}><Icon name={semanticFunctions[kind].icon}/></span><span>{semanticFunctions[kind].label}<small>{semanticFunctions[kind].description}</small></span></button>)}</div>}
+  const picker = <>
+    {semantic && <div className="semantic-picker" role="region" aria-label="Semantic functions"><p>{selectedCount===1 ? 'Apply a function to this block' : 'Group selected blocks under one function'}</p>{editableSemanticKinds.map(kind=><button type="button" key={kind} onClick={()=>{const range=saved.current;releaseSheet();if(range&&restore(range))onSemantic(kind);dismiss();}}><span style={{color:semanticFunctions[kind].color}}><Icon name={semanticFunctions[kind].icon}/></span><span>{semanticFunctions[kind].label}<small>{semanticFunctions[kind].description}</small></span></button>)}</div>}
     {annotating && <div className="selection-entities" role="region" aria-label="Annotate selection" aria-busy={savingAlias}>
       {savingAlias && <p role="status">Saving alias…</p>}
       {aliasError && <p role="alert">{aliasError}</p>}
@@ -179,5 +200,37 @@ export function SelectionToolbar({editor, entities, onCommit, onAddAlias, onCrea
         <button type="button" onClick={() => setLinking(true)}><Icon name="knowledge"/><span>Link to {exact.length ? 'another' : 'existing'} entity</span></button>
       </>}
     </div>}
+  </>;
+  return <div ref={surface} className={'selection-popover' + (mobile ? ' mobile-selection-popover' : '')}
+    data-keyboard-open={keyboardInset > 0 ? true : undefined}
+    style={mobile ? {bottom: keyboardInset, '--selection-keyboard-inset': `${keyboardInset}px`, '--selection-viewport-height': `${viewportHeight ?? window.innerHeight}px`} as CSSProperties : position}
+    onPointerDown={event => {
+      // Keep native selection and the keyboard when tapping toolbar buttons.
+      if (mobile && !(event.target as Element).closest('dialog') && (event.target as Element).closest('button')) event.preventDefault();
+    }}
+    onMouseDown={event => { if (!(event.target instanceof HTMLInputElement) && !(event.target as Element).closest('dialog')) event.preventDefault(); }}>
+    <div className="selection-toolbar-row">
+      <div className="selection-toolbar" role="toolbar" aria-label="Selection formatting" aria-orientation="horizontal">
+        {formats.map(format => <button key={format.command} type="button" title={format.label} aria-label={format.label} aria-pressed={active.includes(format.command)} disabled={!range || !editor.current || !editorSelectionRanges(editor.current,range).length} onClick={() => applyFormat(format.command)}>{format.glyph}</button>)}
+        <button type="button" aria-label="Inline equation" title="Inline equation" disabled={!single} onClick={() => {const current = saved.current?.cloneRange(); if (current) {dismiss(); onMath(current);}}}><Icon name="equation"/></button>
+        <span className="selection-divider"/>
+        <button type="button" aria-label="Explain with AI" title="Explain selected blocks with AI" disabled={explaining || !onExplain} onClick={()=>{const range=saved.current;if(range&&restore(range))onExplain?.();dismiss();}}><Icon name="sparkles"/><span className="selection-action-label">Explain with AI</span></button>
+        <button type="button" className="selection-semantic" title="Apply a semantic function" aria-expanded={semantic} aria-haspopup={mobile ? 'dialog' : undefined} aria-label="Semantic block function" onClick={()=>{picking.current=!semantic;setSemantic(!semantic);setAnnotating(false);setLinking(false);}}><Icon name="semantic"/><span className="selection-action-label">Semantic</span></button>
+        <button type="button" className="selection-annotate" disabled={!single} aria-label="Annotate selection" title={single ? 'Connect selection to a knowledge entity' : 'Select text within one block or table cell to annotate'} aria-haspopup={mobile ? 'dialog' : undefined} aria-expanded={annotating} onClick={() => { picking.current = !annotating; setSemantic(false); setAnnotating(!annotating); setLinking(false); setQuery(''); setAliasError(''); }}><Icon name="knowledge"/><span className="selection-action-label">Annotate</span></button>
+      </div>
+      {mobile && <button type="button" className="selection-done" aria-label="Finish text selection" title="Finish text selection" onClick={() => {
+        const current = saved.current?.cloneRange();
+        if (current && editor.current) {
+          const end = editorSelectionRanges(editor.current, current).at(-1)?.cloneRange();
+          if (end) { end.collapse(false); restore(end); }
+        }
+        dismiss();
+      }}><Icon name="check"/></button>}
+    </div>
+    {mobile && (semantic || annotating) ? <Modal className="mobile-selection-sheet" titleId="mobile-selection-sheet-title" onClose={closePicker} dismissOnBackdrop>
+      <header><h2 id="mobile-selection-sheet-title">{semantic ? 'Semantic function' : 'Annotate selection'}</h2><button type="button" aria-label="Back to selection" onClick={closePicker}><Icon name="close"/></button></header>
+      <p className="mobile-selection-preview">{selectedText.length > 120 ? selectedText.slice(0, 120) + '…' : selectedText}</p>
+      {picker}
+    </Modal> : picker}
   </div>;
 }

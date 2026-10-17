@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 const paths: Record<string, ReactNode> = {
+  menu: <path d="M4 6h16M4 12h16M4 18h16"/>,
   semantic: <><path d="M5 4v16M9 5h9l-2 4 2 4H9"/><circle cx="5" cy="4" r="1"/></>,
   quote: <><path d="M5 6h6v7H6c0 3 2 4 4 5M14 6h6v7h-5c0 3 2 4 4 5"/></>,
   lightbulb: <><path d="M9 18h6m-5 3h4M8 15c0-2-3-3-3-7a7 7 0 0 1 14 0c0 4-3 5-3 7Z"/></>,

@@ -4,7 +4,7 @@ import {pageTitleKey} from '../../shared/page-links';
 import { completePageLink } from './page-links';
 import { ReadOnlyExplanationBlock } from './ReadOnlyExplanationBlock';
 import { selectedEditorBlocks } from './block-selection';
-import { installBlockDrag, type BlockDropPreview } from './block-drag';
+import { installBlockDrag, reorderBlock, type BlockDropPreview } from './block-drag';
 import { installBlockSelection, setEditorCaret } from './block-selection';
 import { displayMathSource } from './math-delimiters';
 import { applySmartQuotes } from './smart-quotes';
@@ -13,6 +13,8 @@ import type { EntityReviewItem } from '../../shared/entity-match-cache';
 import { entityLabels, type Block, type BlockType, type Entity, type PageSummary, type Segment } from '../../shared/domain';
 import { uploadImage } from '../api';
 import { Icon } from '../components/Icon';
+import { Modal } from '../components/Modal';
+import { useMobileViewport } from '../components/WorkspaceNavigation';
 import { readSegments, segmentHTML, syncEditableSegments } from './segments';
 import { clipboardBlocks, markdownBlocks, makeBlock } from './paste';
 import { compressImage } from './compress-image';
@@ -35,8 +37,8 @@ const options: {type: BlockType; title: string; detail: string; icon: string}[] 
   {type: 'quote', title: 'Quote', detail: 'Make a thought stand out', icon: '❝'},
 ];
 interface ImageUpload {id:string; after?:string; name:string; message:string; current:number; total:number}
-interface Choice {color?:string; title: string; detail?: string; icon: string; entity?: boolean; pick: () => void}
-interface Menu {items: Choice[]; index: number; left: number; top: number; label: string}
+interface Choice {submenu?: boolean; color?:string; title: string; detail?: string; icon: string; entity?: boolean; pick: () => void}
+interface Menu {items: Choice[]; index: number; left: number; top: number; label: string; sheet?: boolean}
 function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOpen, register, onPaste}: {block: Block; entities: Entity[]; reviewMatches: EntityReviewItem[]; onInput: (el: HTMLElement) => void; onKeyDown: (e: KeyboardEvent<HTMLElement>) => void; onOpen: (id: string) => void; register: (el: HTMLElement | null) => void; onPaste: (e: ClipboardEvent<HTMLElement>) => void}) {
   const ref = useRef<HTMLElement>(null);
   const Content = block.type === 'heading1' ? 'h2' : block.type === 'heading2' ? 'h3' : 'div';
@@ -55,6 +57,11 @@ function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOp
     onPaste={onPaste}/>;
 }
 export function BlockEditor(props: Props) {
+  const mobile = useMobileViewport();
+  const [activeBlock, setActiveBlock] = useState<{id: string; group: boolean} | null>(null);
+  const [keyboardInset, setKeyboardInset] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(() => window.visualViewport?.height ?? window.innerHeight);
+  const mobileToolbar = useRef<HTMLDivElement>(null);
   const {blocks, entities, onOpenEntity, onCreateEntity, onSave} = props;
   const onChange = (next: Block[]) => props.onChange(normalizeSemanticGroups(preserveAIExplanationTags(props.blocks,next)));
   const [pageLinkStatus,setPageLinkStatus]=useState('');
@@ -71,6 +78,37 @@ export function BlockEditor(props: Props) {
   const fileInput = useRef<HTMLInputElement>(null), imageTarget = useRef<{after?: string; replace?: Block}>({});
   const [menu, setMenu] = useState<Menu | null>(null), elements = useRef(new Map<string, HTMLElement>());
   const root = useRef<HTMLDivElement>(null), menuRef = useRef<HTMLDivElement>(null), latest = useRef(props); latest.current = {...props,onChange};
+  useEffect(() => {
+    if (!mobile) { setActiveBlock(null); return; }
+    const viewport = window.visualViewport;
+    const update = () => {
+      setKeyboardInset(viewport ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) : 0);
+      setViewportHeight(viewport?.height ?? window.innerHeight);
+    };
+    update();
+    viewport?.addEventListener('resize', update);
+    viewport?.addEventListener('scroll', update);
+    window.addEventListener('resize', update);
+    const outside = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!root.current?.contains(target) && !mobileToolbar.current?.contains(target) && !menuRef.current?.contains(target) && !(target instanceof Element && target.closest('dialog, .selection-popover'))) setActiveBlock(null);
+    };
+    document.addEventListener('pointerdown', outside);
+    return () => {
+      viewport?.removeEventListener('resize', update);
+      viewport?.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+      document.removeEventListener('pointerdown', outside);
+    };
+  }, [mobile]);
+  function activateBlock(target: EventTarget) {
+    if (!mobile || !(target instanceof Element)) return;
+    const row = target.closest<HTMLElement>('[data-block-id]');
+    const group = target.closest<HTMLElement>('[data-block-group-id]');
+    if (group?.dataset.semanticKind === 'ai-explanation' || !row) {
+      if (group) setActiveBlock({id: group.dataset.blockGroupId!, group: true});
+    } else setActiveBlock({id: row.dataset.blockId!, group: false});
+  }
   const focusTarget = useRef<{id: string; start: boolean; offset?: number} | null>(null);
   useLayoutEffect(() => {
     const target = focusTarget.current; if (!target) return;
@@ -219,11 +257,11 @@ export function BlockEditor(props: Props) {
   function blockOptions(anchor: HTMLElement, block: Block) {
     const selection=root.current ? selectedEditorBlocks(root.current)?.elements.map(el=>el.dataset.blockId!) : undefined;
     const ids=selection?.includes(block.id)?selection:[block.id];
-    show(anchor,[...(props.onExplain?[explainChoice(ids)]:[]),...(!isAIExplanation(block)?[{title:'Semantic function…',detail:block.semantic ? semanticFunctions[block.semantic].label : 'Question, Definition, Example…',icon:'semantic',entity:true,pick:()=>show(anchor,[...semanticChoices(kind=>update(block.id,{semantic:kind})),...(block.semantic?[{title:'Remove semantic function',icon:'close',entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:undefined});}}]:[])],'SEMANTIC FUNCTION')}]:[]),...options.map(o=>({...o,pick:()=>convert(block,o.type)})),{title:'Delete block',icon:'×',pick:()=>removeBlock(block.id)}],'BLOCK OPTIONS');
+    show(anchor,[...(props.onExplain?[explainChoice(ids)]:[]),...(!isAIExplanation(block)?[{submenu:true,title:'Semantic function…',detail:block.semantic ? semanticFunctions[block.semantic].label : 'Question, Definition, Example…',icon:'semantic',entity:true,pick:()=>show(anchor,[...semanticChoices(kind=>update(block.id,{semantic:kind})),...(block.semantic?[{title:'Remove semantic function',icon:'close',entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:undefined});}}]:[])],'SEMANTIC FUNCTION', true)}]:[]),...options.map(o=>({...o,pick:()=>convert(block,o.type)})),{title:'Delete block',icon:'×',pick:()=>removeBlock(block.id)}],'BLOCK OPTIONS', true);
   }
   function groupOptions(anchor: HTMLElement, id: string) {
     const children=latest.current.blocks.filter(block=>block.semanticGroup?.id===id || block.id===id && isAIExplanation(block)),locked=children.some(isAIExplanation);
-    show(anchor,[...(props.onExplain?[explainChoice(children.map(block=>block.id))]:[]),...(!locked?[...semanticChoices(kind=>onChange(retagSemanticGroup(latest.current.blocks,id,kind))),{title:'Ungroup blocks',detail:'Keep all child blocks',icon:'close',entity:true,pick:()=>{setMenu(null);onChange(removeSemanticGroup(latest.current.blocks,id));}}]:[{title:'Delete explanation',detail:'Remove this explanation and its subblocks',icon:'close',entity:true,pick:()=>{setMenu(null);const rest=latest.current.blocks.filter(block=>block.semanticGroup?.id!==id && block.id!==id);onChange(rest.length?rest:[makeBlock()]);}}])],'SEMANTIC GROUP');
+    show(anchor,[...(props.onExplain?[explainChoice(children.map(block=>block.id))]:[]),...(!locked?[...semanticChoices(kind=>onChange(retagSemanticGroup(latest.current.blocks,id,kind))),{title:'Ungroup blocks',detail:'Keep all child blocks',icon:'close',entity:true,pick:()=>{setMenu(null);onChange(removeSemanticGroup(latest.current.blocks,id));}}]:[{title:'Delete explanation',detail:'Remove this explanation and its subblocks',icon:'close',entity:true,pick:()=>{setMenu(null);const rest=latest.current.blocks.filter(block=>block.semanticGroup?.id!==id && block.id!==id);onChange(rest.length?rest:[makeBlock()]);}}])],'SEMANTIC GROUP', true);
   }
   function update(id: string, patch: Partial<Block>) { onChange(latest.current.blocks.map(b => b.id === id ? {...b, ...patch} : b)); }
   function removeBlock(id: string) {
@@ -238,15 +276,39 @@ export function BlockEditor(props: Props) {
       onChange(list.filter(block => block.id !== id));
     }
   }
-  function insert(after: string | undefined, type: BlockType = 'paragraph', content: Segment[] = []) {
-    const parent=latest.current.blocks.find(block=>block.id===after)?.semanticGroup;
+  function insert(after: string | undefined, type: BlockType = 'paragraph', content: Segment[] = [], outsideGroup = false) {
+    const parent=outsideGroup ? undefined : latest.current.blocks.find(block=>block.id===after)?.semanticGroup;
     const next = {...makeBlock(type, content),...(parent?{semanticGroup:parent}:{})}, list = [...latest.current.blocks];
     list.splice(after ? list.findIndex(b => b.id === after) + 1 : list.length, 0, next); focusTarget.current = {id: next.id, start: true}; onChange(list);
   }
   function convert(block: Block, type: BlockType, clear = false) { setMenu(null); focusTarget.current = {id: block.id, start: false}; update(block.id, {type, content: clear ? [] : block.type === 'table' ? (block.rows ?? []).flatMap((row, i) => [...(i ? [{text: '\n'}] : []), ...row.flatMap((cell, col) => [...(col ? [{text: '\t'}] : []), ...cell])]) : block.content, rows: type === 'table' ? block.rows ?? [[clear ? [] : block.content, []], [[], []]] : undefined, checked: false, imageId: undefined, alt: undefined}); }
-  function show(el: HTMLElement, items: Choice[], label: string) {
+  function show(el: HTMLElement, items: Choice[], label: string, sheet = false) {
     if (!items.length) { setMenu(null); return; } const box = el.getBoundingClientRect();
-    setMenu({items, index: 0, left: Math.max(8, Math.min(box.left, innerWidth - 330)), top: Math.max(8, Math.min(box.bottom + 5, innerHeight - 370)), label});
+    setMenu({items, index: 0, left: Math.max(8, Math.min(box.left, innerWidth - 330)), top: Math.max(8, Math.min(box.bottom + 5, innerHeight - 370)), label, sheet});
+  }
+  function addBelow(anchor: HTMLElement, after: string) {
+    show(anchor, [...options.map(option => ({...option, pick: () => { setMenu(null); insert(after, option.type); }})), imageChoice(after)], 'ADD BLOCK BELOW', true);
+  }
+  const active = activeBlock && (activeBlock.group
+    ? blocks.some(block => block.semanticGroup?.id === activeBlock.id || block.id === activeBlock.id)
+    : blocks.some(block => block.id === activeBlock.id)) ? activeBlock : null;
+  const currentBlock = active && !active.group ? blocks.find(block => block.id === active.id) : undefined;
+  const currentGroup = active && (active.group ? active.id : currentBlock?.semanticGroup?.id);
+  const moveItems = active ? currentBlock?.semanticGroup ? semanticDragItems(blocks, active.id) : semanticRuns(blocks).map(run => ({id: run.id})) : [];
+  const moveIndex = active ? moveItems.findIndex(block => block.id === active.id) : -1;
+  const activeLabel = currentBlock ? options.find(option => option.type === currentBlock.type)?.title ?? 'Image' : 'Block group';
+  function moveActive(direction: -1 | 1) {
+    if (!active || moveIndex < 0 || moveIndex + direction < 0 || moveIndex + direction >= moveItems.length) return;
+    const before = direction === -1 ? moveItems[moveIndex - 1]!.id : moveItems[moveIndex + 2]?.id ?? null;
+    onChange(reorderBlock(latest.current.blocks, active.id, before));
+    setDragStatus(`Block moved ${direction === -1 ? 'up' : 'down'}.`);
+  }
+  function menuChoices(sheet = false) {
+    return menu?.items.map((item, index) => <button key={index} type="button" role={sheet ? undefined : 'menuitem'} className={index === menu.index && !sheet ? 'highlight' : ''} onClick={event => {
+      // Release modal focus before an action focuses a new or converted block.
+      if (sheet && !item.submenu) event.currentTarget.closest('dialog')?.close();
+      item.pick();
+    }}><span className="menu-icon" style={item.color?{color:item.color}:undefined}>{item.entity || item.icon === 'equation' ? <Icon name={item.icon}/> : item.icon}</span><span>{item.title}<small>{item.detail}</small></span></button>);
   }
   function insertMention(range: Range, id: string, blockId: string) {
     if (!range.startContainer.isConnected) return;
@@ -348,7 +410,7 @@ export function BlockEditor(props: Props) {
   const renderBlock = (block: Block) => isAIExplanation(block) ? <ReadOnlyExplanationBlock key={block.id} block={block} entities={entities} onOpen={onOpenEntity} vaultId={props.vaultId}/> : <Fragment key={block.id}><div data-block-id={block.id} data-semantic-kind={block.semantic} style={semanticStyle(block.semantic)} className={'block ' + block.type + (block.semantic ? ' semantic-block' : '') + (blockDrag?.id === block.id ? ' is-block-dragging' : '')} data-drop-before={blockDrag?.valid && blockDrag.beforeId === block.id ? true : undefined} data-drop-after={blockDrag?.valid && blockDrag.beforeId === null && block.id === dropEndId ? true : undefined}>
     {block.semantic && <span className="semantic-accent" aria-hidden="true"/>}
     <div className="block-controls" role="group" aria-label="Block controls">
-      <button className="block-add" title="Add block below" aria-label="Add block below" onClick={e => show(e.currentTarget, [...options.map(option => ({...option, pick: () => { setMenu(null); insert(block.id, option.type); }})), imageChoice(block.id)], 'ADD BLOCK BELOW')}><Icon name="plus"/></button>
+      <button className="block-add" title="Add block below" aria-label="Add block below" onClick={e => addBelow(e.currentTarget, block.id)}><Icon name="plus"/></button>
       <button className={'block-handle' + (block.semantic ? ' semantic-handle' : '')} draggable={false} title={(block.semantic ? semanticFunctions[block.semantic].label+' · ' : '')+'Drag to move · Click for block options'} aria-label={block.semantic ? semanticFunctions[block.semantic].label+' block options' : 'Block options'} aria-describedby="block-drag-help" aria-pressed={blockDrag?.id === block.id} onClick={e => blockOptions(e.currentTarget,block)}>{semanticGlyph(block.semantic)}</button>
     </div>
     {block.type === 'todo' ? <input type="checkbox" aria-label="Complete task" checked={block.checked} onChange={e => update(block.id, {checked: e.target.checked})}/> : block.type === 'bullet' ? <span className="bullet-marker">•</span> : null}
@@ -361,11 +423,14 @@ export function BlockEditor(props: Props) {
     }} onKeyDown={e => keyDown(e, block)} onPaste={e => paste(e, block)}/>}
   </div>{uploadCards(block.id)}</Fragment>;
   return <><input ref={fileInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden aria-label="Choose images" onChange={e => {const files=Array.from(e.currentTarget.files ?? []); e.currentTarget.value=''; void addImages(files,imageTarget.current);}}/>
-    <div id="blocks" ref={root} onInputCapture={event=>{
+    <div id="blocks" ref={root} onFocusCapture={event => activateBlock(event.target)} onPointerDownCapture={event => activateBlock(event.target)} onInputCapture={event=>{
       if((event.nativeEvent as InputEvent).isComposing)return;
       const surface=(event.target as Element).closest<HTMLElement>('.block-content[contenteditable="true"]');
       if(surface)completePageLink(surface);
     }} data-block-dragging={blockDrag ? true : undefined} onClickCapture={e => {
+      // A tap ending a native selection gesture must not open an inline item.
+      const selection = getSelection();
+      if (mobile && selection && !selection.isCollapsed && root.current?.contains(selection.anchorNode) && (e.target as Element).closest('[data-page-title], [data-entity], [data-entity-review], [data-math]')) { e.stopPropagation(); return; }
       const pageLink=(e.target as Element).closest<HTMLElement>('[data-page-title]');
       if(pageLink){e.preventDefault();e.stopPropagation();openPageLink(pageLink);return;}
       const review = (e.target as Element).closest<HTMLElement>('[data-entity-review]');
@@ -398,12 +463,40 @@ export function BlockEditor(props: Props) {
     </section>)}{uploadCards()}</div>
     <span id="block-drag-help" className="block-drag-sr">Drag to reorder. Click for options. With the handle focused, press Space to pick up, Up or Down to move, Space or Enter to drop, Escape to cancel.</span>
     <div className="block-drag-sr" role="status" aria-live="polite" aria-atomic="true">{dragStatus}</div>
-    <SelectionToolbar onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
+    <SelectionToolbar mobile={mobile} keyboardInset={keyboardInset} viewportHeight={viewportHeight} onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
     {mathTarget && <MathDialog initial={mathTarget.initial} onSave={saveInlineMath} onClose={() => setMathTarget(null)}/>}
     {explaining && <div className="ai-explanation-status" role="status"><span className="scan-spinner" aria-hidden="true"/>Explaining selected blocks…</div>}
     {explanationError && <div className="ai-explanation-status is-error" role="alert"><span>{explanationError}</span><button type="button" onClick={()=>void explain(retryExplanation.current)}>Retry</button><button type="button" onClick={()=>setExplanationError('')}>Dismiss</button></div>}
     {pageLinkStatus && <div className="note-link-status" role="status">{pageLinkStatus}</div>}
     {imageError && <div className="image-upload-error" role="alert">{imageError}</div>}
-    {menu && <div ref={menuRef} className="command-menu" style={{left: menu.left, top: menu.top}} onMouseDown={e => e.preventDefault()} role="menu"><div className="menu-label">{menu.label}</div>{menu.items.map((item, index) => <button key={index} role="menuitem" className={index === menu.index ? 'highlight' : ''} onClick={item.pick}><span className="menu-icon" style={item.color?{color:item.color}:undefined}>{item.entity || item.icon === 'equation' ? <Icon name={item.icon}/> : item.icon}</span><span>{item.title}<small>{item.detail}</small></span></button>)}</div>}
+    {mobile && active && <div ref={mobileToolbar} className="mobile-block-toolbar" role="toolbar" aria-label={`${activeLabel} actions`} style={{bottom: keyboardInset}} onPointerDown={event => { if ((event.target as Element).closest('button')) event.preventDefault(); }}>
+      <div className="mobile-block-toolbar-actions">
+        <button type="button" aria-label="Add block below" title="Add block below" onClick={event => {
+          const after = active.group ? blocks.filter(block => block.semanticGroup?.id === active.id || block.id === active.id).at(-1)?.id : active.id;
+          if (after) {
+            if (active.group) insert(after, 'paragraph', [], true);
+            else addBelow(event.currentTarget, after);
+          }
+        }}><Icon name="plus"/></button>
+        <button type="button" className="mobile-block-type" aria-label={currentBlock ? `Change block type: ${activeLabel}` : 'Group options'} onClick={event => currentBlock
+          ? show(event.currentTarget, options.map(option => ({...option, pick: () => convert(currentBlock, option.type)})), 'TURN INTO', true)
+          : groupOptions(event.currentTarget, active.id)}>{activeLabel}<Icon name="chevron"/></button>
+        <span className="mobile-block-divider"/>
+        <button type="button" disabled={moveIndex <= 0} aria-label="Move block up" title="Move block up" onClick={() => moveActive(-1)}><span className="mobile-move-up"><Icon name="chevron"/></span></button>
+        <button type="button" disabled={moveIndex < 0 || moveIndex >= moveItems.length - 1} aria-label="Move block down" title="Move block down" onClick={() => moveActive(1)}><span className="mobile-move-down"><Icon name="chevron"/></span></button>
+        <button type="button" aria-label="More block actions" title="More block actions" onClick={event => currentBlock ? blockOptions(event.currentTarget, currentBlock) : groupOptions(event.currentTarget, active.id)}><Icon name="more"/></button>
+        {currentBlock && currentGroup && <button type="button" aria-label="Parent group actions" title="Parent group actions" onClick={event => { setActiveBlock({id: currentGroup, group: true}); groupOptions(event.currentTarget, currentGroup); }}><Icon name="semantic"/></button>}
+      </div>
+      <button type="button" className="mobile-block-done" aria-label="Finish editing" title="Finish editing" onClick={() => {
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+        setMenu(null); setActiveBlock(null);
+      }}><Icon name="check"/></button>
+    </div>}
+    {menu && (mobile && menu.sheet ? <Modal className="mobile-block-sheet" titleId="mobile-block-sheet-title" onClose={() => setMenu(null)} dismissOnBackdrop>
+      <div ref={menuRef}>
+        <header><h2 id="mobile-block-sheet-title">{menu.label === 'ADD BLOCK BELOW' ? 'Add a block' : menu.label === 'TURN INTO' ? 'Change block type' : menu.label === 'SEMANTIC GROUP' ? 'Group actions' : menu.label === 'SEMANTIC FUNCTION' ? 'Semantic function' : 'Block actions'}</h2><button type="button" aria-label="Close block actions" onClick={() => setMenu(null)}><Icon name="close"/></button></header>
+        <div className="mobile-block-sheet-options">{menuChoices(true)}</div>
+      </div>
+    </Modal> : <div ref={menuRef} className="command-menu" style={{left: menu.left, top: menu.top}} onMouseDown={e => e.preventDefault()} role="menu"><div className="menu-label">{menu.label}</div>{menuChoices()}</div>)}
   </>;
 }

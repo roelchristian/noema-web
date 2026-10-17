@@ -536,7 +536,7 @@ main { margin-left: 224px; }
 .branch-toggle[aria-expanded=true] .icon { transform: rotate(90deg); }
 .branch-toggle:hover { background: var(--surface-hover); color: var(--text); }
 .organization-sidebar-label { display: flex; align-items: center; justify-content: space-between; padding: 0 8px; margin: 14px 0 4px; font-size: 10px; color: var(--text-muted); }
-.organization-sidebar-label > span { font-size: 9px; opacity: .7; }
+.organization-sidebar-label > .sidebar-menu-trigger { opacity: 1; }
 .organization-sidebar-label > button { display: inline-flex; padding: 1px; color: var(--text-muted); border-radius: 4px; }
 .organization-sidebar-label > button .icon { width: 13px; height: 13px; }
 .sidebar-create { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border-radius: 6px; padding: 8px; font-size: 11px; color: var(--text-muted); }

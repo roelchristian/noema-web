@@ -59,8 +59,8 @@ export function App() {
     {key: 'vault', label: vault?.name || 'Noema', icon: 'vault', onClick: vault && !vault.locked ? () => run(() => workspace.showPages()) : undefined},
   ];
   if (vault && !vault.locked) {
-    const label = view === 'trash' ? 'Trash' : view === 'entities' ? 'Knowledge entities' : view === 'organization' ? 'All content' : view === 'favourites' ? 'Favourites' : view === 'recent' ? 'Recent items' : 'Pages';
-    const icon = view === 'trash' ? 'trash' : view === 'entities' ? 'knowledge' : view === 'organization' ? 'collection' : view === 'favourites' ? 'star' : view === 'recent' ? 'recent' : 'page';
+    const label = view === 'trash' ? 'Trash' : view === 'entities' ? 'Knowledge entities' : view === 'organization' ? 'Pages' : view === 'favourites' ? 'Favourites' : view === 'recent' ? 'Recent items' : 'Pages';
+    const icon = view === 'trash' ? 'trash' : view === 'entities' ? 'knowledge' : view === 'organization' ? 'collection' : view === 'favourites' ? 'star' : view === 'recent' ? 'recent' : 'collection';
     breadcrumbs.push({key: 'view', label, icon, onClick: view === 'organization' ? () => workspace.openOrganization() : view === 'pages' ? () => run(() => workspace.showPages()) : undefined});
     if (view === 'organization') {
       const collection = organization.collections.find(item => item.id === organizationContext.collection);
@@ -91,7 +91,7 @@ export function App() {
       </nav>
       <nav className="sidebar-group" aria-label="Vault library">
         <div className="workspace-label">Workspace</div>
-        <button className={'nav ' + (view === 'pages' ? 'active' : '')} disabled={disabled} aria-label="Pages" title="Pages" onClick={() => run(() => workspace.showPages())}><span data-icon="page"><Icon name="page"/></span><span>Pages</span><kbd>P</kbd></button>
+        <button className={'nav ' + (view === 'pages' || view === 'organization' && !organizationContext.collection && !organizationContext.folder ? 'active' : '')} disabled={disabled} aria-label="Pages" title="Pages" onClick={() => run(() => workspace.showPages())}><span data-icon="page"><Icon name="page"/></span><span>Pages</span><kbd>P</kbd></button>
         <button className={'nav ' + (view === 'entities' ? 'active' : '')} disabled={disabled} aria-label="Knowledge entities" title="Knowledge entities" onClick={() => workspace.showEntities()}><span data-icon="knowledge"><Icon name="knowledge"/></span><span>Knowledge entities</span><span className="count">{entities.length}</span></button>
       </nav>
       <SidebarOrganization onOpenPage={id => run(() => workspace.openPage(id))} pages={pages} onMovePage={(id, collection, folder) => workspace.locatePage(id, collection, folder)} onError={workspace.report} key={vault?.id} vaultId={vault?.id} onChanged={workspace.setOrganization} data={organization} context={organizationContext} active={view === 'organization'} disabled={disabled} onOpen={(collection, folder) => workspace.openOrganization(collection, folder)}/>

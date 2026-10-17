@@ -21,14 +21,23 @@ test('recent history persists per vault, deduplicates items and clears when lock
   const reloaded = new Workspace();
   try {
     await workspace.selectVault('a');
+    assert.equal(workspace.snapshot().view, 'organization');
+    assert.equal(workspace.snapshot().page, null);
+    assert.deepEqual(workspace.snapshot().organizationContext, {collection: '', folder: ''});
+    await workspace.openPage('one');
     await workspace.openPage('two');
     workspace.recordRecent('entity', 'person');
     workspace.recordRecent('entity', 'person');
     assert.deepEqual(workspace.snapshot().recent.map(item => item.item_id), ['person', 'two', 'one']);
     await workspace.selectVault('b');
+    assert.equal(workspace.snapshot().view, 'organization');
+    assert.equal(workspace.snapshot().page, null);
     assert.deepEqual(workspace.snapshot().recent, []);
     workspace.recordRecent('entity', 'other-person');
     await reloaded.selectVault('a');
+    assert.equal(reloaded.snapshot().view, 'organization');
+    assert.equal(reloaded.snapshot().page, null);
+    await reloaded.openPage('one');
     assert.deepEqual(reloaded.snapshot().recent.map(item => item.item_id), ['one', 'person', 'two']);
     assert.ok(!reloaded.snapshot().recent.some(item => item.item_id === 'other-person'));
     for (let n = 0; n < 60; n++) reloaded.recordRecent('entity', String(n));
@@ -66,6 +75,7 @@ test('moving to Trash flushes pending edits and restoring opens a fresh page', a
   const workspace = new Workspace();
   try {
     await workspace.selectVault('a');
+    if (workspace.snapshot().pages[0]) await workspace.openPage(workspace.snapshot().pages[0].id);
     workspace.updatePage({title: 'Unsaved changes'});
     await workspace.deletePage();
     assert.deepEqual(calls, ['save', 'trash']);
@@ -114,6 +124,7 @@ test('sidebar rename flushes the current draft and can rename another page witho
   const workspace = new Workspace();
   try {
     await workspace.selectVault('a');
+    if (workspace.snapshot().pages[0]) await workspace.openPage(workspace.snapshot().pages[0].id);
     workspace.updatePage({title: 'Unsaved draft'});
     await workspace.renamePage('two', 'Second note');
     assert.deepEqual(writes.map(write => write.id), ['one', 'two']);
@@ -178,6 +189,7 @@ test('page icon changes update navigation immediately and autosave alongside con
   const workspace = new Workspace();
   try {
     await workspace.selectVault('a');
+    if (workspace.snapshot().pages[0]) await workspace.openPage(workspace.snapshot().pages[0].id);
     workspace.updatePage({icon: 'compass'});
     assert.equal(workspace.snapshot().pages[0].icon, 'compass');
     workspace.updatePage({title: 'Directions'});
@@ -207,6 +219,7 @@ test('opening an existing untitled page resumes automatic titling after reload',
   const workspace=new Workspace();
   try {
     await workspace.selectVault('a');
+    if (workspace.snapshot().pages[0]) await workspace.openPage(workspace.snapshot().pages[0].id);
     t.mock.timers.tick(3000);for(let n=0;n<5;n++)await Promise.resolve();
     await workspace.saver.flush();
     assert.equal(generate.mock.callCount(),1);assert.equal(stored.title,'Community garden plan');
@@ -238,6 +251,7 @@ test('reviewing a scanned entity updates in place without entering the workspace
   const workspace=new Workspace();
   try{
     await workspace.selectVault('a');
+    if (workspace.snapshot().pages[0]) await workspace.openPage(workspace.snapshot().pages[0].id);
     workspace.updatePage({title:'Updated research'});
     const busyStates=[];
     const unsubscribe=workspace.subscribe(()=>busyStates.push(workspace.snapshot().busy));
@@ -273,6 +287,7 @@ test('a failed asynchronous review retains the note and releases the editing loc
   const workspace=new Workspace();
   try {
     await workspace.selectVault('a');
+    if (workspace.snapshot().pages[0]) await workspace.openPage(workspace.snapshot().pages[0].id);
     await assert.rejects(workspace.reviewEntity('scan','suggestion','rejected'),/Connection lost/);
     assert.deepEqual(workspace.snapshot().page,original);
     assert.equal(workspace.snapshot().busy,false);

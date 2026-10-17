@@ -16,10 +16,10 @@ export function SidebarOrganization({vaultId, data, pages, context, active, disa
   onChanged: (data: Organization) => void; onError: (error: unknown) => void;
 }) {
   const [edit, setEdit] = useState<Container | null>(null), [remove, setRemove] = useState<Container | null>(null);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [dropTarget, setDropTarget] = useState<string | null>(null), [dropStatus, setDropStatus] = useState('');
   const dropping = useRef(false);
-  const toggle = (id: string) => setCollapsed(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const toggle = (id: string) => setExpanded(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const newFolder = (collection: string, parent = '') => setEdit({type: 'folders', name: '', collection, parent});
   const containedPages = (collection: string, folder: string | null) => pages.filter(page => data.locations.some(location => location.kind === 'page' && location.item_id === page.id && location.collection_id === collection && location.folder_id === folder));
   async function drop(event: DragEvent, container: Container) {
@@ -31,7 +31,7 @@ export function SidebarOrganization({vaultId, data, pages, context, active, disa
     setDropStatus('Saving page location…');
     try {
       await onMovePage(id, container.collection, container.type === 'folders' ? container.id! : null);
-      setCollapsed(previous => { const next = new Set(previous); next.delete(container.id!); return next; });
+      setExpanded(previous => { const next = new Set(previous); next.add(container.id!); return next; });
       setDropStatus(`Page added to ${container.name}`);
     } catch (error) { setDropStatus('Could not move page. Try again.'); onError(error); }
     finally { dropping.current = false; }
@@ -45,7 +45,7 @@ export function SidebarOrganization({vaultId, data, pages, context, active, disa
       onDragOver={event => { if (!disabled && !dropping.current && isPageDrag(event)) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDropTarget(container.id!); } }}
       onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(current => current === container.id ? null : current); }}
       onDrop={event => void drop(event, container)}>
-      {hasChildren ? <button className="branch-toggle" disabled={disabled} aria-label={(collapsed.has(container.id!) ? 'Expand ' : 'Collapse ') + container.name} aria-expanded={!collapsed.has(container.id!)} onClick={() => toggle(container.id!)}><span className="branch-container-icon"><Icon name={icon}/></span><span className="branch-chevron"><Icon name="chevron"/></span></button> : <button className="branch-leaf-icon" disabled={disabled} aria-label={'Open ' + container.name} onClick={open}><Icon name={icon}/></button>}
+      {hasChildren ? <button className="branch-toggle" disabled={disabled} aria-label={(expanded.has(container.id!) ? 'Collapse ' : 'Expand ') + container.name} aria-expanded={expanded.has(container.id!)} onClick={() => toggle(container.id!)}><span className="branch-container-icon"><Icon name={icon}/></span><span className="branch-chevron"><Icon name="chevron"/></span></button> : <button className="branch-leaf-icon" disabled={disabled} aria-label={'Open ' + container.name} onClick={open}><Icon name={icon}/></button>}
       <button className={'nav container-link ' + (selected ? 'active' : '')} disabled={disabled} aria-label={'Open ' + (container.type === 'folders' ? 'folder: ' : 'collection: ') + container.name} title={container.name} onClick={open}><span>{container.name}</span></button>
       <ActionMenu label={'Options for ' + container.name} disabled={disabled} actions={[
         {label: 'Open', icon, onSelect: open},
@@ -61,17 +61,15 @@ export function SidebarOrganization({vaultId, data, pages, context, active, disa
   function folders(collection: string, parent: string | null, depth: number) {
     return data.folders.filter(folder => folder.collection_id === collection && folder.parent_id === parent).map(folder => <div key={folder.id}>
       {item({type: 'folders', id: folder.id, name: folder.name, collection, parent: folder.parent_id || ''}, depth)}
-      {!collapsed.has(folder.id) && <>{folders(collection, folder.id, depth + 1)}{pageLinks(collection, folder.id, depth + 1)}</>}
+      {expanded.has(folder.id) && <>{folders(collection, folder.id, depth + 1)}{pageLinks(collection, folder.id, depth + 1)}</>}
     </div>);
   }
   return <nav className="sidebar-group organization-sidebar" aria-label="Folders and collections" onDragEnd={() => setDropTarget(null)}>
-    <div className="sidebar-section-heading"><div className="workspace-label">Library</div><ActionMenu icon="plus" label="Collection actions" disabled={disabled} actions={[
+    {!disabled && <><div className="organization-sidebar-label">Collections<ActionMenu icon="plus" label="Collection actions" disabled={disabled} actions={[
       {label: 'New collection', icon: 'collection', onSelect: () => setEdit({type: 'collections', name: '', collection: '', parent: ''})},
-    ]}/></div>
-    <button className={'nav ' + (active && !context.collection && !context.folder ? 'active' : '')} disabled={disabled} aria-label="Browse all content" title="All content" onClick={() => onOpen()}><span data-icon="collection"><Icon name="collection"/></span><span>All content</span></button>
-    {!disabled && <><div className="organization-sidebar-label">Collections<span>{data.collections.length}</span></div>{data.collections.map(collection => <div key={collection.id}>
+    ]}/></div>{data.collections.map(collection => <div key={collection.id}>
       {item({type: 'collections', id: collection.id, name: collection.name, collection: collection.id, parent: ''})}
-      {!collapsed.has(collection.id) && <>{folders(collection.id, null, 1)}{pageLinks(collection.id, null, 1)}</>}
+      {expanded.has(collection.id) && <>{folders(collection.id, null, 1)}{pageLinks(collection.id, null, 1)}</>}
     </div>)}{!data.collections.length && <button className="sidebar-create" onClick={() => setEdit({type: 'collections', name: '', collection: '', parent: ''})}><Icon name="plus"/>Create a collection</button>}</>}
     <span className="sr-only" role="status">{dropStatus}</span>
     {edit && <NameDialog title={(edit.id ? 'Rename ' : 'New ') + (edit.type === 'collections' ? 'collection' : 'folder')} value={edit.name} onClose={() => setEdit(null)} onSave={async name => {

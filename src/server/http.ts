@@ -2,7 +2,7 @@ import { AINotifications } from './modules/ai-notifications.js';
 import { Images, maxImageBytes } from './modules/images.js';
 import { EntityScans } from './modules/entity-scan.js';
 import { EntityMatches } from './modules/entity-matches.js';
-import type { Segment } from '../shared/domain.js';
+import { summaryInput } from './modules/summary-content.js';
 import { AIEnrichments } from './modules/ai-enrichments.js';
 import { AIActivityLog } from './modules/ai-activity.js';
 import http, { type IncomingMessage } from 'node:http';
@@ -145,22 +145,19 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               if(isTitle && page.title.trim() && page.title.trim()!=='Untitled')throw new HttpError(409,'This page already has a title.');
               if(body.revision!==page.revision)throw new HttpError(409,isTitle?'Save the latest page before generating a title.':'Save the latest page before summarizing.');
               const names=new Map(knowledge.list(vault).map(entity=>[entity.id,entity.name]));
-              let input=isTitle?'':page.title+'\n';
-              for(const block of page.blocks) {
-                const plain = (content: Segment[]) => content.map(segment=>segment.entityId?names.get(segment.entityId)||'[mention]':segment.text).join('');
-                input+=(block.type === 'table' ? (block.rows ?? []).map(row=>row.map(plain).join('\t')).join('\n') : plain(block.content))+'\n';
-                if(input.length>40000)throw new HttpError(413,'This page exceeds the AI limit of 40,000 characters.');
-              }
+              const input=summaryInput(page,id=>names.get(id),!isTitle);
+              if(input.length>40000)throw new HttpError(413,'This page exceeds the AI limit of 40,000 characters.');
               if(isTitle && input.trim().length<20)throw new HttpError(400,'Add more page content before generating a title.');
               if(!input.trim())throw new HttpError(400,'Add some page content first.');
               const onRequest=(bytes: number)=>activity.request(activityId!,bytes,page.revision);
               const summary=isTitle?await intelligence.generateTitle(input,onRequest):await intelligence.generate(input,false,onRequest);
               vaults.requireOpen(vault);
-              if(pages.get(vault,id).revision!==page.revision)throw new HttpError(409,isTitle?'The page changed. Generate a fresh title.':'The page changed. Generate a fresh summary.');
+              const current=pages.get(vault,id);
+              if(current.revision!==page.revision || current.summaryContentHash!==page.summaryContentHash)throw new HttpError(409,isTitle?'The page changed. Generate a fresh title.':'The page changed. Generate a fresh summary.');
               const selection=isTitle?intelligence.titleSelection():intelligence.selection();
               const data=isTitle?{title:summary}:{summary};
               enrichments.save(vault,id,isTitle?'title':'summary',data,page.revision,selection);
-              return send(200,{...data,revision:page.revision,...selection});
+              return send(200,{...data,revision:page.revision,...selection,...(!isTitle ? {contentHash:page.summaryContentHash} : {})});
             }
             if(id && child==='editor' && parts.length===4 && method==='GET') {
               const page=pages.get(vault,id);

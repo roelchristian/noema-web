@@ -36,7 +36,7 @@ export function IntelligencePanel({page,entities,onOpenEntity,onSourcesChange,on
       const scanResult = items.find(item => item.kind === 'entity_scan');
       if (scanResult) setScan(scanResult.data.scan as unknown as EntityScan);
       const saved = items.find(item => item.kind === 'summary');
-      if (saved && typeof saved.data.summary === 'string') setResult({summary: saved.data.summary, revision: saved.revision, model: saved.model, reasoningEffort: saved.reasoningEffort});
+      if (saved && typeof saved.data.summary === 'string') setResult({summary: saved.data.summary, revision: saved.revision, contentHash: saved.contentHash, model: saved.model, reasoningEffort: saved.reasoningEffort});
     }).catch(error => { if (!cancelled) setError(error instanceof Error ? error.message : 'Could not load saved knowledge.'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -59,6 +59,7 @@ export function IntelligencePanel({page,entities,onOpenEntity,onSourcesChange,on
     }catch(error){if(active.current)setError(error instanceof Error?error.message:'Could not delete summary.');}
     finally{if(active.current)setDeleting(false);}
   }
+  const summaryChanged = !!result && (!result.contentHash || result.contentHash !== page.summaryContentHash);
   return <aside className="entity-panel intelligence-panel" id="intelligence-panel" aria-label="Knowledge" onKeyDown={event=>{if(event.key==='Escape')onClose();}}>
     <div className="panel-top knowledge-panel-top"><span><Icon name="knowledge"/>Knowledge</span><div className="knowledge-panel-actions"><button className="page-tool" aria-label="Knowledge settings" title="Knowledge settings" onClick={onSettings}><Icon name="settings"/></button><button className="page-tool" ref={close} aria-label="Close Knowledge panel" title="Close Knowledge panel" onClick={onClose}>×</button></div></div>
     <div className="panel-body">
@@ -66,7 +67,7 @@ export function IntelligencePanel({page,entities,onOpenEntity,onSourcesChange,on
         <div className="knowledge-section-heading"><h2 id="knowledge-summary-heading">{result?<><Icon name="sparkles"/>AI Summary</>:<button type="button" className="summary-heading-action" disabled={busy||loading} aria-busy={busy} onClick={()=>void summarize()}><Icon name="sparkles"/>{loading?'Loading summary…':busy?'Summarizing…':'Summarize this page'}</button>}</h2><HelpMenu label="About AI summaries"><p>Summarizing sends this page’s title, text, and mentioned entity names to OpenAI. Attached sources and other pages are excluded. API charges may apply.</p><p>AI can make mistakes. Check the original page. Summaries are saved with this page.</p>{result&&<p>{result.model} · {result.reasoningEffort} reasoning</p>}</HelpMenu></div>
         {busy&&<p className="section-hint summary-progress" role="status">Creating your summary…</p>}
         {error&&<p role="alert" className="inline-error">{error}</p>}
-        {result&&<section className="ai-result" aria-label="Page summary"><div id="knowledge-summary-text" ref={summaryText} className={'ai-summary' + (summaryExpanded ? '' : ' is-collapsed')}>{result.summary}</div><div className="summary-actions">{summaryOverflow&&<button type="button" className="summary-toggle" aria-expanded={summaryExpanded} aria-controls="knowledge-summary-text" onClick={()=>setSummaryExpanded(value=>!value)}>{summaryExpanded?'Show less':'Show more'}</button>}<button type="button" className="summary-toggle" disabled={busy||deleting||loading} onClick={()=>void summarize()}>{busy?'Refreshing…':'Refresh'}</button><button type="button" className="summary-toggle summary-delete" disabled={busy||deleting||loading} onClick={()=>void deleteSummary()}>{deleting?'Deleting…':'Delete summary'}</button></div>{result.revision!==page.revision&&<p className="section-hint">Page changed since this summary.</p>}</section>}
+        {result&&<section className="ai-result" aria-label="Page summary"><div id="knowledge-summary-text" ref={summaryText} className={'ai-summary' + (summaryExpanded ? '' : ' is-collapsed')}>{result.summary}</div><div className="summary-actions">{summaryOverflow&&<button type="button" className="summary-toggle" aria-expanded={summaryExpanded} aria-controls="knowledge-summary-text" onClick={()=>setSummaryExpanded(value=>!value)}>{summaryExpanded?'Show less':'Show more'}</button>}{summaryChanged&&<button type="button" className="summary-toggle" disabled={busy||deleting||loading} onClick={()=>void summarize()}>{busy?'Refreshing…':'Refresh'}</button>}<button type="button" className="summary-toggle summary-delete" disabled={busy||deleting||loading} onClick={()=>void deleteSummary()}>{deleting?'Deleting…':'Delete summary'}</button></div>{summaryChanged&&<p className="section-hint">Page changed since this summary.</p>}</section>}
       </section>
       <ConnectedEntities page={page} entities={entities} onOpenEntity={onOpenEntity}>
         <EntityScanReview entities={entities} page={page} scan={scan} onScan={setScan} onFlush={onFlush} onReview={onReview} disabled={busy||deleting||loading}/>

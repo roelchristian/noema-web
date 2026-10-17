@@ -17,7 +17,7 @@ export interface Block { id: string; type: BlockType; checked: boolean; content:
 export interface Vault { id: string; name: string; locked: boolean; protected: boolean; updated_at: string }
 export interface PageSummary { id: string; title: string; icon?: PageIconId | null; updated_at: string }
 export interface TrashedPage extends PageSummary { deleted_at: string; expires_at: string }
-export interface Page extends PageSummary { vault_id: string; blocks: Block[]; sourceIds: string[]; revision: number; entityMatchCache?: import('./entity-match-cache.js').EntityMatchCache }
+export interface Page extends PageSummary { vault_id: string; blocks: Block[]; sourceIds: string[]; revision: number; summaryContentHash?: string; entityMatchCache?: import('./entity-match-cache.js').EntityMatchCache }
 export interface PageInput { icon?: PageIconId | null; title: string; blocks: Block[]; sourceIds?: string[]; revision?: number }
 export interface Entity { id: string; vault_id: string; name: string; aliases?: string[]; type: EntityType; subtypes: string[]; description: string; updated_at: string }
 export interface EntityInput { name: string; aliases?: string[]; type: EntityType; subtypes?: string[]; subtype?: string | null; description?: string }
@@ -43,9 +43,9 @@ export interface OrganizationContext { collection: string; folder: string }
 export interface IntelligenceStatus extends IntelligencePreferences { configured: boolean; expiresAt: string | null }
 
 export interface AIEnrichment extends IntelligencePreferences {
-  kind: string; data: Record<string, unknown>; revision: number; updated_at: string;
+  kind: string; data: Record<string, unknown>; revision: number; updated_at: string; contentHash?: string | null;
 }
-export interface AISummary extends IntelligencePreferences { summary: string; revision: number }
+export interface AISummary extends IntelligencePreferences { summary: string; revision: number; contentHash?: string | null }
 
 export function blockSegments(block: Block): Segment[] { return block.type === 'table' ? (block.rows ?? []).flat(2) : block.content; }
 export function safeHref(value: string): string | undefined { return /^(https?:|mailto:)/i.test(value.trim()) ? value.trim() : undefined; }

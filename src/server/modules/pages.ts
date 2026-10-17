@@ -1,3 +1,4 @@
+import { summaryContentHash } from './summary-content.js';
 import { AINotifications } from './ai-notifications.js';
 import { Images } from './images.js';
 import { isPageIconId } from '../../shared/page-icons.js';
@@ -6,7 +7,7 @@ import { blockTypes, safeHref, type Segment, type Block, type Page, type PageSum
 import { Store } from '../store.js';
 import { HttpError, now, object, required, text } from '../validation.js';
 import { Knowledge } from './knowledge.js';
-type PageRow = Omit<Page, 'blocks' | 'sourceIds'> & {blocks: string};
+type PageRow = Omit<Page, 'blocks' | 'sourceIds'> & {blocks: string; summary_content_hash: string | null};
 export const trashRetentionMs = 30 * 24 * 60 * 60 * 1000;
 export class Pages {
   constructor(private store: Store, private knowledge: Knowledge, private clock: () => Date = () => new Date()) {}
@@ -18,7 +19,18 @@ export class Pages {
   get(vault: string, id: string): Page {
     const row=this.store.get<PageRow>('SELECT * FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',id,vault);
     if (!row) throw new HttpError(404,'Page not found');
-    return {...row,blocks:JSON.parse(row.blocks) as Block[],sourceIds:this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id)};
+    const {summary_content_hash: cachedHash, ...stored} = row;
+    const blocks = JSON.parse(row.blocks) as Block[];
+    let hash = cachedHash;
+    if (!hash) {
+      const names = new Map<string, string | undefined>();
+      hash = summaryContentHash({...stored, blocks}, entityId => {
+        if (!names.has(entityId)) names.set(entityId, this.knowledge.find(vault, entityId)?.name);
+        return names.get(entityId);
+      });
+      this.store.run('UPDATE pages SET summary_content_hash=? WHERE id=? AND vault_id=?',hash,id,vault);
+    }
+    return {...stored,blocks,summaryContentHash:hash,sourceIds:this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id)};
   }
   create(vault: string, body: Record<string, unknown>) {
     const id=randomUUID();

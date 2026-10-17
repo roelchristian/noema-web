@@ -112,6 +112,18 @@ db.exec(`CREATE TABLE IF NOT EXISTS page_ai_enrichments (
  PRIMARY KEY(page_id,kind)
 );`);
 
+// Summary freshness is compared by content, independently of editor revisions.
+if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'summary_content_hash')) db.exec('ALTER TABLE pages ADD COLUMN summary_content_hash TEXT');
+if (!db.prepare('PRAGMA table_info(page_ai_enrichments)').all().some(c => c.name === 'content_hash')) db.exec('ALTER TABLE page_ai_enrichments ADD COLUMN content_hash TEXT');
+db.exec(`CREATE TRIGGER IF NOT EXISTS page_summary_hash_invalidate AFTER UPDATE OF title,blocks ON pages
+ WHEN OLD.title<>NEW.title OR OLD.blocks<>NEW.blocks BEGIN
+ UPDATE pages SET summary_content_hash=NULL WHERE id=NEW.id; END;
+ CREATE TRIGGER IF NOT EXISTS entity_summary_hash_invalidate AFTER UPDATE OF name ON entities
+ WHEN OLD.name<>NEW.name BEGIN
+ UPDATE pages SET summary_content_hash=NULL WHERE vault_id=NEW.vault_id; END;
+ CREATE TRIGGER IF NOT EXISTS entity_summary_hash_delete AFTER DELETE ON entities BEGIN
+ UPDATE pages SET summary_content_hash=NULL WHERE vault_id=OLD.vault_id; END;`);
+
 if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'deleted_at')) db.exec('ALTER TABLE pages ADD COLUMN deleted_at TEXT');
 db.exec('CREATE INDEX IF NOT EXISTS pages_deleted_at ON pages(deleted_at)');
 

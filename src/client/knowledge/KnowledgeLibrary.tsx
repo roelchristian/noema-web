@@ -8,7 +8,7 @@ import { HighlightedText } from '../search/HighlightedText';
 import { useEntitySchema } from './useEntitySchema';
 
 export function KnowledgeLibrary({vaultId, entities, onOpen, onCreate}: {vaultId: string; entities: Entity[]; onOpen: (id: string) => void; onCreate: () => void}) {
-  const [viewMode, setViewMode] = useViewMode('knowledge');
+  const [viewMode, setViewMode, libraryRef] = useViewMode('knowledge');
   const {schema, error} = useEntitySchema(vaultId);
   const [search, setSearch] = useState('');
   const [view, setView] = useState('folders');
@@ -34,7 +34,7 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onCreate}: {vaultId
     setType(nextType);
     setSearch('');
   }
-  return <section className="organization-library organization-browser knowledge-library" data-layout={viewMode}>
+  return <section ref={libraryRef} className="organization-library organization-browser knowledge-library" data-layout={viewMode}>
     <div className="organization-heading pages-home-heading"><div className="library-heading-row"><h1 className="page-heading">Knowledge entities</h1></div><div className="pages-home-actions library-heading-actions"><ViewModeSwitch value={viewMode} onChange={setViewMode}/>
       <button className="button primary" onClick={onCreate}><Icon name="plus"/>New entity</button>
     </div></div>

@@ -2029,3 +2029,15 @@ main {position:relative;}
   .organization-context-heading { grid-template-columns:36px minmax(0,1fr); }
   .organization-context-heading > .library-heading-actions { grid-column:1 / -1; width:100%; justify-content:space-between; }
 }
+
+/* Layout changes animate visible cards without delaying the selected view. */
+.organization-library .organization-item,.organization-library .organization-container-card { transform-origin:top left; }
+.view-mode-switch > button { transition:background-color 160ms ease,color 160ms ease,transform 140ms cubic-bezier(.2,.8,.2,1); }
+.view-mode-switch > button:active { transform:scale(.97); }
+.view-mode-switch > button[aria-pressed=true] > .icon { animation:view-mode-icon-in 180ms cubic-bezier(.2,.8,.2,1); }
+@keyframes view-mode-icon-in { from { opacity:.6; scale:.9; } to { opacity:1; scale:1; } }
+@media(prefers-reduced-motion:reduce) {
+  .view-mode-switch > button { transition:none; }
+  .view-mode-switch > button:active { transform:none; }
+  .view-mode-switch > button[aria-pressed=true] > .icon { animation:none; }
+}

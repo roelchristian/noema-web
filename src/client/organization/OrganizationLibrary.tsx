@@ -29,7 +29,7 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   onRenamePage: (page: PageSummary) => void; onDeletePage: (page: PageSummary) => void;
   onOpenPage: (id: string) => void; onOpenEntity: (id: string) => void; onError: (error: unknown) => void;
 }) {
-  const [viewMode, setViewMode] = useViewMode(favouritesOnly ? 'favourites' : inboxOnly ? 'inbox' : 'library');
+  const [viewMode, setViewMode, libraryRef] = useViewMode(favouritesOnly ? 'favourites' : inboxOnly ? 'inbox' : 'library');
   const [pending, setPending] = useState(false);
   const [dropTarget, setDropTarget] = useState<string | null>(null), [dropStatus, setDropStatus] = useState('');
   const moving = useRef(false);
@@ -132,7 +132,7 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   const collectionCards = !collection && !folder ? data.collections.filter(c => c.name.toLowerCase().includes(query)) : [];
   const countLabel = (count: number) => `${count} ${count === 1 ? 'page' : 'pages'}`;
   const isHomepage = !favouritesOnly && !inboxOnly && !collection && !folder;
-  return <section className="organization-library organization-browser" data-layout={viewMode} onDragEnd={() => setDropTarget(null)}>
+  return <section ref={libraryRef} className="organization-library organization-browser" data-layout={viewMode} onDragEnd={() => setDropTarget(null)}>
     <span className="sr-only" role="status">{dropStatus}</span>
     {(favouritesOnly || !collection && !folder) && <div className={'organization-heading' + (isHomepage ? ' pages-home-heading' : '')}><div className="library-heading-row"><h1 className="page-heading">{favouritesOnly ? 'Favourites' : inboxOnly ? 'Inbox' : 'Library'}</h1></div><div className="pages-home-actions library-heading-actions"><ViewModeSwitch value={viewMode} onChange={setViewMode}/>{isHomepage && <><button className="button" disabled={pending} onClick={() => setEdit({type: 'folders', name: '', parent: ''})}><Icon name="folder"/>New folder</button><button className="button primary" disabled={pending} onClick={onNewNote}><Icon name="compose"/>New Note</button></>}</div></div>}
     <div className="organization-content" aria-busy={pending}>

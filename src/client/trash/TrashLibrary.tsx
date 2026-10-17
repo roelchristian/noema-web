@@ -11,7 +11,7 @@ export function TrashLibrary({vaultId,notes, onRestore, onDelete, onRefresh, onE
   vaultId:string; notes: TrashedPage[]; onRestore: (id: string) => Promise<void>; onDelete: (id: string) => Promise<void>;
   onRefresh: () => Promise<void>; onError: (error: unknown) => void;
 }) {
-  const [viewMode, setViewMode] = useViewMode('trash');
+  const [viewMode, setViewMode, libraryRef] = useViewMode('trash');
   const [target, setTarget] = useState<TrashedPage | null>(null);
   useEffect(() => {
     // A note may reach its expiry while this view is open.
@@ -20,7 +20,7 @@ export function TrashLibrary({vaultId,notes, onRestore, onDelete, onRefresh, onE
     const timer = setTimeout(() => { void onRefresh().catch(onError); },Math.max(1000,Math.min(next - Date.now() + 100,2_147_483_647)));
     return () => clearTimeout(timer);
   }, [notes, onRefresh, onError]);
-  return <section className="organization-library trash-library" data-layout={viewMode}>
+  return <section ref={libraryRef} className="organization-library trash-library" data-layout={viewMode}>
     <div className="organization-heading"><div className="library-heading-row"><h1 className="page-heading">Trash</h1></div><div className="library-heading-actions"><ViewModeSwitch value={viewMode} onChange={setViewMode}/></div></div>
     <div className="organization-items">{notes.map(note => <article className="organization-item" key={note.id}>
       <div className="organization-item-row trash-row">{viewMode==='grid' && <PageCover vaultId={vaultId} imageId={note.featuredImageId}/>}<span className="organization-item-icon"><PageIcon icon={note.icon}/></span><div className="trash-note"><h2 title={note.title || 'Untitled'}>{note.title || 'Untitled'}</h2><small>Moved to Trash <time dateTime={note.deleted_at}>{new Date(note.deleted_at).toLocaleDateString()}</time> · Deletes <time dateTime={note.expires_at} title={new Date(note.expires_at).toLocaleString()}>{new Date(note.expires_at).toLocaleDateString()}</time></small></div>

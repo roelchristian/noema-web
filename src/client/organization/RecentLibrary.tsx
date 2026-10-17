@@ -9,13 +9,13 @@ export function RecentLibrary({vaultId, recent, pages, entities, onOpenPage, onO
   vaultId: string; recent: RecentItem[]; pages: PageSummary[]; entities: Entity[];
   onOpenPage: (id: string) => void; onOpenEntity: (id: string) => void;
 }) {
-  const [viewMode, setViewMode] = useViewMode('recent');
+  const [viewMode, setViewMode, libraryRef] = useViewMode('recent');
   const items = recent.flatMap(item => {
     const record = item.kind === 'page' ? pages.find(page => page.id === item.item_id) : entities.find(entity => entity.id === item.item_id);
     return record ? [{...item, icon: 'title' in record ? record.icon : null, featuredImageId:'title' in record?record.featuredImageId:null, name: 'title' in record ? record.title || 'Untitled' : record.name, type: 'type' in record ? record.type : null, description: 'description' in record ? record.description : '', updatedAt: record.updated_at}] : [];
   });
   const previews = useSearchSnippets(vaultId, '', viewMode === 'grid' ? items.filter(item => item.kind === 'page').map(item => item.item_id) : [], viewMode === 'grid', items.map(item => item.item_id + ':' + item.updatedAt).sort().join(','));
-  return <section className="organization-library recent-library" data-layout={viewMode}>
+  return <section ref={libraryRef} className="organization-library recent-library" data-layout={viewMode}>
     <div className="organization-heading"><div className="library-heading-row"><h1 className="page-heading">Recent items</h1></div><div className="library-heading-actions"><ViewModeSwitch value={viewMode} onChange={setViewMode}/></div></div>
     <div className="organization-items">{items.map(item => <article key={item.kind + item.item_id} className="organization-item"><div className="organization-item-row">
       {viewMode==='grid' && <PageCover vaultId={vaultId} imageId={item.featuredImageId} icon={item.type ?? 'page'}/>}

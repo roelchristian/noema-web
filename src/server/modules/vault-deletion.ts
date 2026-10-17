@@ -37,6 +37,7 @@ export class VaultDeletion {
       memberships:this.store.all('SELECT kind,item_id,collection_id FROM collection_memberships WHERE vault_id=? ORDER BY kind,item_id,collection_id',id),
       subtypes:this.store.all('SELECT id,type,name FROM entity_subtypes WHERE vault_id=? ORDER BY id',id),
       typeProperties:this.store.all('SELECT type,name FROM entity_type_properties WHERE vault_id=? ORDER BY type,name',id),
+      subtypeProperties:this.store.all('SELECT subtype_id,name FROM entity_subtype_properties WHERE vault_id=? ORDER BY subtype_id,name',id),
       properties:this.store.all('SELECT id,name,value,target_id FROM properties WHERE entity_id IN (SELECT id FROM entities WHERE vault_id=?) ORDER BY id',id),
       relationships:this.store.all('SELECT id,source_id,label,target_id FROM relationships WHERE source_id IN (SELECT id FROM entities WHERE vault_id=?) ORDER BY id',id),
     };
@@ -57,7 +58,7 @@ export class VaultDeletion {
       this.store.run(`DELETE FROM properties WHERE entity_id IN (${entityIds}) OR target_id IN (${entityIds})`,id,id);
       this.store.run(`DELETE FROM relationships WHERE source_id IN (${entityIds}) OR target_id IN (${entityIds})`,id,id);
       // Explicit order covers legacy foreign keys without cascade behavior.
-      for(const table of ['source_files','ai_notifications','page_entity_match_cache','embedding_jobs','pages','entities','favourites','item_locations','collection_memberships','folders','collections','entity_subtypes','entity_type_properties','embedding_settings','ai_activity'])this.store.run(`DELETE FROM ${table} WHERE vault_id=?`,id);
+      for(const table of ['source_files','ai_notifications','page_entity_match_cache','embedding_jobs','pages','entities','favourites','item_locations','collection_memberships','folders','collections','entity_subtype_properties','entity_subtypes','entity_type_properties','embedding_settings','ai_activity'])this.store.run(`DELETE FROM ${table} WHERE vault_id=?`,id);
       this.store.run('DELETE FROM vaults WHERE id=?',id);
       this.store.run('INSERT INTO vault_deletion_cleanup (vault_id,created_at) VALUES (?,?)',id,now());
     });

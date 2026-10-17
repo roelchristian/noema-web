@@ -3,7 +3,7 @@ import { api } from '../api';
 import { builtinProperties, builtinSubtypes, type EntitySchema } from '../../shared/entity-schema';
 
 export function useEntitySchema(vaultId: string) {
-  const [schema, updateSchema] = useState<EntitySchema>({properties: builtinProperties, subtypes: builtinSubtypes});
+  const [schema, updateSchema] = useState<EntitySchema>({properties: builtinProperties, subtypes: builtinSubtypes, subtypeProperties: {}});
   const [error, setError] = useState('');
   useEffect(() => {
     let active = true;

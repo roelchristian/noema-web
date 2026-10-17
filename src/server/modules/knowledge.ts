@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { entityTypes, type EntityType, type Entity, type EntityDetail, type Property, type Relationship } from '../../shared/domain.js';
-import { builtinProperties, builtinSubtypes, type EntitySchema, type EntitySubtype } from '../../shared/entity-schema.js';
+import { builtinProperties, builtinSubtypes, inheritedPropertyNames, type EntitySchema, type EntitySubtype } from '../../shared/entity-schema.js';
 import { Store } from '../store.js';
 import { HttpError, now, required, text } from '../validation.js';
 import { normalizeEntityName } from '../../shared/auto-entities.js';
@@ -13,28 +13,33 @@ export class Knowledge {
       const names = [...builtinProperties[type], ...this.store.all<{name: string}>('SELECT name FROM entity_type_properties WHERE vault_id=? AND type=? ORDER BY name',vault,type).map(p => p.name)];
       properties[type] = names.filter((name,index) => names.findIndex(candidate => candidate.toLowerCase() === name.toLowerCase()) === index);
     }
-    return {properties, subtypes: [...builtinSubtypes, ...this.store.all<EntitySubtype>('SELECT id,name,type FROM entity_subtypes WHERE vault_id=? ORDER BY name',vault)]};
+    const subtypeProperties: Record<string, string[]> = Object.create(null);
+    for (const row of this.store.all<{subtype_id: string; name: string}>('SELECT subtype_id,name FROM entity_subtype_properties WHERE vault_id=? ORDER BY name',vault)) {
+      (subtypeProperties[row.subtype_id] ??= []).push(row.name);
+    }
+    return {properties, subtypeProperties, subtypes: [...builtinSubtypes, ...this.store.all<EntitySubtype>('SELECT id,name,type FROM entity_subtypes WHERE vault_id=? ORDER BY name',vault)]};
   }
   addSubtype(vault: string, body: Record<string, unknown>) {
     const type = this.mainType(body.type), name = required(body.name);
-    if (body.properties !== undefined) throw new HttpError(400,'Subtypes inherit properties from their main type');
+    if (body.properties !== undefined) throw new HttpError(400,'Create the subtype before adding its property definitions');
     if (this.schema(vault).subtypes.some(s => s.type === type && s.name.toLowerCase() === name.toLowerCase())) throw new HttpError(409,'This subtype already exists');
     this.store.run('INSERT INTO entity_subtypes VALUES (?,?,?,?)',randomUUID(),vault,type,name);
     return this.schema(vault);
   }
   addTypeProperty(vault: string, body: Record<string, unknown>) {
     const type = this.mainType(body.type);
-    if (body.subtype != null || (body.subtypes !== undefined && (!Array.isArray(body.subtypes) || body.subtypes.length > 0))) throw new HttpError(400,'Add properties to the main type, not a subtype');
-    this.registerProperty(vault,type,required(body.name));
+    const subtype = required(body.subtype), name = required(body.name);
+    const schema = this.schema(vault);
+    if (!schema.subtypes.some(item => item.id === subtype && item.type === type)) throw new HttpError(400,'Choose a subtype in this category');
+    if (!inheritedPropertyNames(schema,type,[subtype]).some(field => field.toLowerCase() === name.toLowerCase())) {
+      this.store.run('INSERT OR IGNORE INTO entity_subtype_properties (vault_id,subtype_id,name) VALUES (?,?,?)',vault,subtype,name);
+    }
     return this.schema(vault);
   }
   private mainType(value: unknown) {
     const type = entityTypes.find(t => t === value);
     if (!type) throw new HttpError(400,'Invalid entity type');
     return type;
-  }
-  private registerProperty(vault: string, type: EntityType, name: string) {
-    this.store.run('INSERT OR IGNORE INTO entity_type_properties VALUES (?,?,?)',vault,type,name);
   }
   private entity(row: EntityRow): Entity {
     const {subtype: _legacy, subtypes, aliases, ...entity} = row;
@@ -52,7 +57,7 @@ export class Knowledge {
   }
   detail(vault: string, id: string): EntityDetail {
     const entity = this.require(vault,id);
-    return {...entity, ...(entity.type==='source'?{attachments:this.store.all<import('../../shared/domain.js').SourceFile>('SELECT * FROM source_files WHERE vault_id=? AND entity_id=? ORDER BY created_at,id',vault,id)}:{}), propertyNames: this.schema(vault).properties[entity.type],
+    return {...entity, ...(entity.type==='source'?{attachments:this.store.all<import('../../shared/domain.js').SourceFile>('SELECT * FROM source_files WHERE vault_id=? AND entity_id=? ORDER BY created_at,id',vault,id)}:{}), propertyNames: inheritedPropertyNames(this.schema(vault),entity.type,entity.subtypes),
       properties:this.store.all<Property>('SELECT * FROM properties WHERE entity_id=?',id),
       relationships:this.store.all<Relationship>('SELECT * FROM relationships WHERE source_id=? OR target_id=?',id,id),
       incomingProperties:this.store.all<Property>('SELECT * FROM properties WHERE target_id=?',id)};
@@ -90,14 +95,13 @@ export class Knowledge {
   update(vault: string, id: string, body: Record<string, unknown>) {
     const current=this.require(vault,id),e=this.input(vault,body,current);
     const properties=this.detail(vault,id).properties;
-    const inherited = this.schema(vault).properties[e.type];
-    if (e.subtypes.length && properties.some(p => !inherited.some(name => name.toLowerCase() === p.name.toLowerCase()))) throw new HttpError(400,'This entity has properties outside the selected main type. Add those fields to the main type first.');
+    const inherited = inheritedPropertyNames(this.schema(vault),e.type,e.subtypes);
+    if (properties.some(p => !inherited.some(name => name.toLowerCase() === p.name.toLowerCase()))) throw new HttpError(400,'This entity has values outside the selected category and subtypes. Clear those values or define the fields on the new subtype first.');
     if (e.type!=='source' && this.store.get('SELECT 1 FROM source_files WHERE entity_id=?',id)) throw new HttpError(400,'A source with attached files must remain a Source entity');
     if (e.type==='source' && current.type!=='source') throw new HttpError(400,'Create a source with an attached file instead of changing this entity type');
     if (e.type!=='source' && this.store.get('SELECT 1 FROM page_sources WHERE source_id=? LIMIT 1',id)) throw new HttpError(400,'Remove page source references before changing this Source to another type');
     this.store.transaction(() => {
       this.store.run('UPDATE entities SET name=?,aliases=?,type=?,subtype=NULL,subtypes=?,description=?,updated_at=? WHERE id=? AND vault_id=?',e.name,JSON.stringify(e.aliases),e.type,JSON.stringify(e.subtypes),e.description,now(),id,vault);
-      if (!e.subtypes.length) for (const p of properties) this.registerProperty(vault,e.type,p.name);
     });
     return this.detail(vault,id);
   }
@@ -115,13 +119,13 @@ export class Knowledge {
     const entity=this.require(vault,id);
     const target=body.target_id ? required(body.target_id) : null;
     if (target && !this.find(vault,target)) throw new HttpError(400,'Target entity not found');
-    const name=required(body.name),value=target?null:text(body.value);
-    if (entity.subtypes.length && !this.schema(vault).properties[entity.type].some(p => p.toLowerCase() === name.toLowerCase())) throw new HttpError(400,'Subtypes can only use properties inherited from their main type');
+    const requestedName=required(body.name),value=target?null:text(body.value);
+    const name=inheritedPropertyNames(this.schema(vault),entity.type,entity.subtypes).find(field => field.toLowerCase() === requestedName.toLowerCase());
+    if (!name) throw new HttpError(400,'Choose an inherited property. Define new fields on the subtype in Settings → Knowledge Entities.');
     return this.store.transaction(() => {
       if (propertyId) {
         if (!this.store.run('UPDATE properties SET name=?,value=?,target_id=? WHERE id=? AND entity_id=?',name,value,target,propertyId,id).changes) throw new HttpError(404,'Property not found');
       } else this.store.run('INSERT INTO properties VALUES (?,?,?,?,?)',randomUUID(),id,name,value,target);
-      if (!entity.subtypes.length) this.registerProperty(vault,entity.type,name);
       return this.detail(vault,id);
     });
   }

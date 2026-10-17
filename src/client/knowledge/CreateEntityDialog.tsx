@@ -26,7 +26,7 @@ export function CreateEntityDialog({vaultId, initial, onSubmit, onClose}: {vault
     <AliasInput value={aliases} onChange={setAliases} disabled={busy}/>
     <label>Entity type<Select value={type} onChange={e => { setType(e.target.value as EntityType); setSubtypes([]); setAttachments([]); }} disabled={initial.source || busy || uploading}>{entityTypes.map(t => <option key={t} value={t}>{entityLabels[t]}</option>)}</Select></label>
     <SubtypePicker type={type} value={subtypes} subtypes={schema.subtypes} onChange={setSubtypes} disabled={busy}/>
-    <p className="section-hint">Subtypes inherit all properties from their main type.</p>
+    <p className="section-hint">Entities inherit category fields and the fields defined on each selected subtype.</p>
     {type==='source'&&<SourceAttachments disabled={busy} vaultId={vaultId} onChange={setAttachments} onBusy={setUploading}/>}
     {schemaError && <p role="alert">{schemaError}</p>}
     {error && <p className="dialog-error" role="alert">{error}</p>}

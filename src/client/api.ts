@@ -58,7 +58,7 @@ export const api={
   semanticSearch:(vault:string,query:string,signal?:AbortSignal,limit=20)=>request<import('../shared/embeddings').SemanticSearchResults>('embeddings/search','POST',{query,limit},vault,signal),
   entitySchema:(vault:string)=>request<import('../shared/entity-schema').EntitySchema>('entity-schema','GET',undefined,vault),
   addSubtype:(vault:string,type:EntityInput['type'],name:string)=>request<import('../shared/entity-schema').EntitySchema>('entity-schema/subtypes','POST',{type,name},vault),
-  addTypeProperty:(vault:string,type:EntityInput['type'],name:string)=>request<import('../shared/entity-schema').EntitySchema>('entity-schema/properties','POST',{type,name},vault),
+  addSubtypeProperty:(vault:string,type:EntityInput['type'],subtype:string,name:string)=>request<import('../shared/entity-schema').EntitySchema>('entity-schema/properties','POST',{type,subtype,name},vault),
   clearAIActivity:()=>request<{ok:true}>('intelligence/activity','DELETE'),
   aiActivity:(cursor?:number)=>request<import('../shared/intelligence').AIActivityPage>('intelligence/activity'+(cursor?'?before='+cursor:'')),
   intelligence:()=>request<import('../shared/domain').IntelligenceStatus>('intelligence'),

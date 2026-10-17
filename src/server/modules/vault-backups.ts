@@ -29,6 +29,7 @@ const tables={
   page_sources:{columns:'page_id,source_id',scope:pageScope},
   entity_subtypes:{columns:'id,type,name',scope:'vault_id=?'},
   entity_type_properties:{columns:'type,name',scope:'vault_id=?'},
+  entity_subtype_properties:{columns:'subtype_id,name',scope:'vault_id=?'},
   collections:{columns:'id,name',scope:'vault_id=?'},
   folders:{columns:'id,name,parent_id',scope:'vault_id=?'},
   item_locations:{columns:'kind,item_id,folder_id',scope:'vault_id=?'},
@@ -100,7 +101,7 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='source_files'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='source_files'||table==='entity_subtype_properties'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     if(total>200000)throw new HttpError(413,'This backup contains too many records.');
     const assets=list(archive.images).map(object);
     const sourceAssets=list(archive.sourceFiles??[]).map(object);
@@ -148,6 +149,12 @@ export class VaultBackups {
         }
         for(const row of rows.entity_subtypes)insert('entity_subtypes',{id:ref(subtypeIds,row.id),vault_id:vault,type:entityType(row),name:name(row,'name')});
         for(const row of rows.entity_type_properties)insert('entity_type_properties',{vault_id:vault,type:entityType(row),name:name(row,'name')});
+        for(const row of rows.entity_subtype_properties) {
+          const id=name(row,'subtype_id');
+          const type=builtinSubtypes.find(item=>item.id===id)?.type ?? subtypeTypes.get(id);
+          if(!entityTypes.includes(type as EntityType))throw invalid();
+          insert('entity_subtype_properties',{vault_id:vault,subtype_id:subtype(id,type as EntityType),name:name(row,'name')});
+        }
         for(const row of rows.entities) {
           const type=entityType(row),aliases=list(json(row,'aliases')).map(value=>required(value,200)),subtypes=list(json(row,'subtypes')).map(value=>subtype(value,type));
           if(aliases.length>100||new Set(subtypes).size!==subtypes.length)throw invalid();

@@ -1,7 +1,7 @@
 import { SourceAttachments } from './SourceAttachments';
 import { SubtypePicker } from './SubtypePicker';
 import { useEntitySchema } from './useEntitySchema';
-import type { EntitySchema } from '../../shared/entity-schema';
+import { inheritedPropertyNames, type EntitySchema } from '../../shared/entity-schema';
 import { Select } from '../components/Select';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api';
@@ -22,15 +22,17 @@ export function EntityPanel(props: Props) {
     void api.entity(vaultId, id).then(e => { if (active) setEntity(e); }).catch(error => { if (active) setLoadingError(String(error)); });
     return () => { active = false; };
   }, [vaultId, id]);
-  const {schema, setSchema, error: schemaError} = useEntitySchema(vaultId);
+  const {schema, error: schemaError} = useEntitySchema(vaultId);
   const mention = (entityId: string) => <Mention id={entityId} entities={entities} onOpen={onOpen}/>;
   async function mutate(work: () => Promise<EntityDetail>) {
-    try { const result = await work(); setEntity(result); setSchema({...schema, properties: {...schema.properties, [result.type]: result.propertyNames}}); await onUpdated(); } catch (error) { onError(error); throw error; }
+    try { const result = await work(); setEntity(result); await onUpdated(); } catch (error) { onError(error); throw error; }
   }
   const relationships: EntityConnection[] = entity?.relationships.map(relation => ({key: relation.id, target: relation.source_id === id ? relation.target_id : relation.source_id, label: relation.source_id === id ? relation.label : 'Incoming · ' + relation.label})) ?? [];
   const references: EntityConnection[] = entity?.properties.filter(property => property.target_id).map(property => ({key: property.id, target: property.target_id!, label: property.name})) ?? [];
   const incoming: EntityConnection[] = entity?.incomingProperties.map(property => ({key: property.id, target: property.entity_id, label: 'Referenced via ' + property.name})) ?? [];
   const subtypeNames = schema.subtypes.filter(subtype => entity?.subtypes.includes(subtype.id)).map(subtype => subtype.name);
+  const propertyNames = entity ? [...new Map([...entity.propertyNames, ...inheritedPropertyNames(schema,entity.type,entity.subtypes)].map(name => [name.toLowerCase(),name])).values()] : [];
+  const unsetProperties = propertyNames.filter(name => !entity?.properties.some(property => property.name.toLowerCase() === name.toLowerCase()));
   function switchTab(next: EntityTab) {
     setTab(next);
     document.getElementById('entity-panel')?.scrollTo({top: 0});
@@ -53,8 +55,8 @@ export function EntityPanel(props: Props) {
         }}>{label}</button>)}
       </div>
       <div id="entity-tabpanel-overview" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-overview" hidden={tab !== 'overview'} tabIndex={0}>
-        <section className="entity-detail-section"><h3>Properties<span>{entity.properties.length}</span></h3>
-          {entity.properties.length ? <dl className="entity-overview-properties">{entity.properties.map(property => <div key={property.id}><dt>{property.name}</dt><dd>{property.target_id ? <EntityReference id={property.target_id} entities={entities} onOpen={onOpen}/> : property.value}</dd></div>)}</dl> : <p className="entity-detail-empty">No properties yet. <button type="button" onClick={() => switchTab('edit')}>Add a property</button></p>}
+        <section className="entity-detail-section"><h3>Properties<span>{entity.properties.length + unsetProperties.length}</span></h3>
+          {entity.properties.length || unsetProperties.length ? <dl className="entity-overview-properties">{entity.properties.map(property => <div key={property.id}><dt>{property.name}</dt><dd>{property.target_id ? <EntityReference id={property.target_id} entities={entities} onOpen={onOpen}/> : property.value}</dd></div>)}{unsetProperties.map(name => <div key={'unset-' + name}><dt>{name}</dt><dd><button type="button" onClick={() => switchTab('edit')}>Not set</button></dd></div>)}</dl> : <p className="entity-detail-empty">No inherited fields yet. Define properties on a subtype in Settings → Knowledge Entities.</p>}
         </section>
         <section className="entity-detail-section"><h3>Related knowledge<span>{relationships.length} {relationships.length === 1 ? 'connection' : 'connections'}</span></h3>
           <EntityConnections items={relationships.slice(0, 4)} entities={entities} onOpen={onOpen} empty="No related knowledge yet."/>
@@ -75,8 +77,8 @@ export function EntityPanel(props: Props) {
         {schemaError && <p role="alert">{schemaError}</p>}
         <section className="entity-detail-section"><h3>Details</h3><EntityDetails schema={schema} key={entity.id} entity={entity} onSave={input => mutate(() => api.updateEntity(vaultId, id, input))}/></section>
         {entity.type==='source'&&<SourceAttachments key={entity.id} vaultId={vaultId} entityId={entity.id} initial={entity.attachments} onChange={attachments => setEntity(current => current ? {...current, attachments} : current)}/>}
-        <section className="panel-section"><h3>Properties <span>{entity.properties.length}</span></h3><p className="section-hint">{entity.subtypes.length > 0 ? `Properties inherited from ${entityLabels[entity.type]}. Add new fields on the main type in Knowledge entities.` : 'Describe this entity with values or entity references. New property names become available to all subtypes of this type.'}</p>
-          <PropertyEditor key={entity.type + JSON.stringify(entity.subtypes)} entity={{...entity, propertyNames: [...new Set([...entity.propertyNames, ...schema.properties[entity.type]])]}} entities={entities} mention={mention} onSave={(input, propertyId) => mutate(() => api.saveProperty(vaultId, id, input, propertyId))} onRemove={propertyId => mutate(() => api.removeConnection(vaultId, id, 'properties', propertyId))}/>
+        <section className="panel-section"><h3>Properties <span>{entity.properties.length}</span></h3><p className="section-hint">Fields are inherited from this category and its selected subtypes. Define new fields in Settings → Knowledge Entities; set each entity’s values here.</p>
+          <PropertyEditor key={entity.type + JSON.stringify(entity.subtypes)} entity={{...entity, propertyNames}} entities={entities} mention={mention} onSave={(input, propertyId) => mutate(() => api.saveProperty(vaultId, id, input, propertyId))} onRemove={propertyId => mutate(() => api.removeConnection(vaultId, id, 'properties', propertyId))}/>
         </section>
         <section className="panel-section"><h3>Relationships <span>{entity.relationships.length}</span></h3><p className="section-hint">Named connections, independent of properties.</p>
           <RelationshipEditor entity={entity} entities={entities} mention={mention} onSave={(input, relationId) => mutate(() => api.saveRelationship(vaultId, id, input, relationId))} onRemove={relationId => mutate(() => api.removeConnection(vaultId, id, 'relationships', relationId))}/>
@@ -117,9 +119,9 @@ function PropertyEditor({entity, entities, mention, onSave, onRemove}: {entity: 
   function editing(p: Property) { setEdit(p.id); setName(entity.propertyNames.find(name => name.toLowerCase() === p.name.toLowerCase()) || p.name); setKind(p.target_id ? 'entity' : 'text'); setValue(p.value || ''); setTarget(p.target_id || ''); }
   async function submit(e: FormEvent) { e.preventDefault(); setBusy(true); try { await onSave(kind === 'entity' ? {name, target_id: target} : {name, value}, edit); reset(); } catch { /* Parent reports the error. */ } finally { setBusy(false); } }
   return <><div className="property-list">{entity.properties.map(p => <div key={p.id} className="property-row"><span>{p.name}</span><div>{p.target_id ? mention(p.target_id) : p.value}</div><button className="edit-item" aria-label="Edit property" disabled={busy} onClick={() => editing(p)}>Edit</button><button className="remove" aria-label="Remove property" disabled={busy} onClick={() => { setBusy(true); void onRemove(p.id).then(() => { if (edit === p.id) reset(); }).catch(() => {}).finally(() => setBusy(false)); }}>×</button></div>)}{!entity.properties.length && <div className="empty-small">No properties yet.</div>}</div>
-    <form className="add-form" onSubmit={submit}>{entity.subtypes.length > 0 ? <Select required aria-label="Property name" value={name} onChange={e => setName(e.target.value)}><option value="">Choose an inherited property…</option>{entity.propertyNames.map(p => <option key={p} value={p}>{p}</option>)}</Select> : <><input required list="entity-property-names" placeholder="Property name" aria-label="Property name" value={name} onChange={e => setName(e.target.value)}/><datalist id="entity-property-names">{entity.propertyNames.map(p => <option key={p} value={p}/>)}</datalist></>}<Select aria-label="Property value type" value={kind} onChange={e => setKind(e.target.value)}><option value="text">Text value</option><option value="entity">Entity reference</option></Select>
+    <form className="add-form" onSubmit={submit}><Select required aria-label="Property name" disabled={busy || !entity.propertyNames.length} value={name} onChange={e => setName(e.target.value)}><option value="">Choose an inherited property…</option>{entity.propertyNames.map(p => <option key={p} value={p}>{p}</option>)}</Select><Select aria-label="Property value type" value={kind} onChange={e => setKind(e.target.value)}><option value="text">Text value</option><option value="entity">Entity reference</option></Select>
       {kind === 'text' ? <input placeholder="Value" aria-label="Property value" value={value} onChange={e => setValue(e.target.value)}/> : <Select required aria-label="Referenced entity" value={target} onChange={e => setTarget(e.target.value)}><option value="">Choose an entity…</option>{entities.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</Select>}
-      <button className="button small" disabled={busy}>{edit ? 'Save property' : '+ Add property'}</button>{edit && <button type="button" className="edit-item" disabled={busy} onClick={reset}>Cancel edit</button>}
+      <button className="button small" disabled={busy || !entity.propertyNames.length}>{edit ? 'Save value' : '+ Add value'}</button>{edit && <button type="button" className="edit-item" disabled={busy} onClick={reset}>Cancel edit</button>}
     </form></>;
 }
 function RelationshipEditor({entity, entities, mention, onSave, onRemove}: {entity: EntityDetail; entities: Entity[]; mention: MentionRenderer; onSave: (input: Parameters<typeof api.saveRelationship>[2], id?: string) => Promise<unknown>; onRemove: (id: string) => Promise<unknown>}) {

@@ -1,7 +1,12 @@
 import type { EntityType } from './domain.js';
 
 export interface EntitySubtype { id: string; name: string; type: EntityType }
-export interface EntitySchema { subtypes: EntitySubtype[]; properties: Record<EntityType, string[]> }
+export interface EntitySchema { subtypes: EntitySubtype[]; properties: Record<EntityType, string[]>; subtypeProperties: Record<string, string[]> }
+
+export function inheritedPropertyNames(schema: EntitySchema, type: EntityType, subtypes: string[]): string[] {
+  const names = [...schema.properties[type], ...subtypes.filter(id => schema.subtypes.some(subtype => subtype.id === id && subtype.type === type)).flatMap(id => schema.subtypeProperties[id] ?? [])];
+  return names.filter((name, index) => names.findIndex(candidate => candidate.toLowerCase() === name.toLowerCase()) === index);
+}
 
 export const builtinSubtypes: EntitySubtype[] = Object.entries({
   person: ['Actor', 'Writer', 'Artist', 'Scientist'],

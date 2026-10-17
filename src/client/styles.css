@@ -1214,3 +1214,7 @@ dialog:has(.source-attachments) { max-height: calc(100dvh - 40px); overflow-y: a
 
 main {position:relative;}
 .page-navigation-status {position:absolute;top:64px;right:24px;z-index:4;display:flex;align-items:center;gap:8px;max-width:calc(100% - 48px);padding:8px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text-muted);font-size:12px;pointer-events:none;}
+
+.ai-summary .summary-math-inline {white-space:normal;}
+.ai-summary .summary-math-display {display:block;max-width:100%;overflow-x:auto;white-space:normal;}
+.ai-summary .katex-display {margin:.65em 0;}

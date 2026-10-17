@@ -134,7 +134,8 @@ export class Pages {
     if(blocks.some(block=>protectedIds.has(block.id)&&!isAIExplanation(block)))throw new HttpError(400,'The AI Explanation tag cannot be removed or changed.');
     const icon=body.icon === undefined ? page.icon ?? null : body.icon;
     if(icon !== null && !isPageIconId(icon)) throw new HttpError(400,'Invalid page icon');
-    const featuredImageId=body.featuredImageId===undefined?page.featuredImageId??null:body.featuredImageId===null?null:required(body.featuredImageId);
+    let featuredImageId=body.featuredImageId===undefined?page.featuredImageId??null:body.featuredImageId===null?null:required(body.featuredImageId);
+    if(featuredImageId!==null && !blocks.some(block=>block.type==='image' && block.imageId===featuredImageId))featuredImageId=null;
     if(featuredImageId!==null)new Images(this.store).require(vault,featuredImageId);
     const sourceIds=body.sourceIds ?? page.sourceIds;
     if(!Array.isArray(sourceIds)||sourceIds.length>1000||sourceIds.some(s=>typeof s!=='string'||this.knowledge.find(vault,s)?.type!=='source'))throw new HttpError(400,'Page sources must be Source entities in this vault');

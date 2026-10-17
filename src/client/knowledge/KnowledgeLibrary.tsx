@@ -1,3 +1,4 @@
+import {PageCover} from '../components/PageCover';
 import {ViewModeSwitch, useViewMode} from '../components/ViewModeSwitch';
 import { useState } from 'react';
 import { entityLabels, entityTypes, type Entity, type EntityType } from '../../shared/domain';
@@ -55,11 +56,13 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onCreate}: {vaultId
           <span aria-hidden="true"/>
         </div>
         {folders.map(folder => <article className="organization-item" key={folder.id}><div className="organization-item-row organization-page-row knowledge-entity-row">
+          {viewMode==='grid' && <PageCover vaultId={vaultId} icon="folder"/>}
           <span className="organization-item-icon"><Icon name="folder"/></span>
           <button className="organization-item-name" onClick={() => navigate(folder.type)} aria-label={`Open ${folder.name}: ${countLabel(folder.count)}`}><span className="organization-page-title">{folder.name}<span className="knowledge-row-detail">{countLabel(folder.count)}</span></span><small aria-hidden="true">—</small></button>
           <Icon name="chevron"/>
         </div></article>)}
         {filtered.map(entity => <article className="organization-item" key={entity.id}><div className="organization-item-row organization-page-row knowledge-entity-row">
+          {viewMode==='grid' && <PageCover vaultId={vaultId} icon={entity.type}/>}
           <span className="organization-item-icon"><Icon name={entity.type}/></span>
           <button className="organization-item-name" title={entity.name} onClick={() => onOpen(entity.id)}>
             <span className="organization-page-title"><HighlightedText text={entity.name} query={search}/><span className="knowledge-row-detail">{[entityLabels[entity.type], ...entity.subtypes.map(id => schema.subtypes.find(item => item.id === id)?.name).filter(Boolean)].join(' / ')}</span></span>

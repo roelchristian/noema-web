@@ -309,7 +309,9 @@ export class Workspace {
   updatePage(patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon' | 'featuredImageId'>>) {
     const current = this.state.page;
     if (!current || this.state.busy || this.state.loadingPageId !== null || this.state.reviewing || this.state.vault?.locked) return;
-    const page = {...current, ...patch,...(patch.blocks&&patch.blocks!==current.blocks?{conceptContentHash:undefined}:{})}; this.pageCache.set(page.id, page);
+    const page = {...current, ...patch,...(patch.blocks&&patch.blocks!==current.blocks?{conceptContentHash:undefined}:{})};
+    if(page.featuredImageId && !page.blocks.some(block=>block.type==='image' && block.imageId===page.featuredImageId))page.featuredImageId=null;
+    this.pageCache.set(page.id, page);
     this.patch({page, pages: this.state.pages.map(p => p.id === page.id ? {...p, title: page.title, icon: page.icon, featuredImageId: page.featuredImageId} : p)});
     this.titler.observe(page);
     this.saver.enqueue(page);

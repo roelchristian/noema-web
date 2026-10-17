@@ -1146,13 +1146,6 @@ main:has(> #content > .page) { display: flex; flex-direction: column; }
 /* Keep the vault picker pinned while navigation scrolls independently. */
 .sidebar { overflow: hidden; }
 .sidebar-scroll-region { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
-.scope-path, .scope-path > span { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.scope-path { flex-wrap: wrap; padding: 4px 8px; color: var(--text-muted); font-size: 10px; }
-.scope-path button { padding: 3px 0; overflow-wrap: anywhere; text-align: left; }
-.scope-path button:hover { color: var(--text); }
-.scope-path .icon { width: 10px; height: 10px; }
-.sidebar .scope-folder { align-items: center; gap: 8px; font-weight: 550; }
-@media (max-width: 500px) { .current-page-scope { display: none; } }
 .sidebar .sidebar-scroll-region #page-list { overflow: visible; min-height: 0; }
 .sidebar .vault-controls { position: relative; flex: 0 0 auto; bottom: auto; margin-top: 0; }
 .select-menu, .sidebar-action-menu { overscroll-behavior: contain; scroll-padding: 5px; }

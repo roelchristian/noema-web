@@ -30,13 +30,29 @@ export function NoteConnections({page,pages,onOpenPage,inactive=false}:{page:Pag
   const outgoingIds=new Set(outgoing.flatMap(link=>link.targets.map(target=>target.id)));
   const incomingIds=new Set(!loading&&!error?backlinks.map(source=>source.id):[]);
   const incomingOnly=backlinks.filter(source=>!outgoingIds.has(source.id));
-  const linkCount=outgoing.reduce((count,link)=>count+Math.max(1,link.targets.length),0)+incomingOnly.length;
+  const links=outgoing.flatMap(link=>{
+    const aliases=!!link.aliases.size&&<small className="knowledge-link-alias">Shown as: {[...link.aliases].join(', ')}</small>;
+    return link.targets.length?link.targets.map(target=><li key={'page-'+target.id}>
+      <button type="button" disabled={inactive} onClick={()=>onOpenPage(target.id)}><LinkDirectionIcon direction={incomingIds.has(target.id)?'bidirectional':'outgoing'}/><span>{target.title}{link.targets.length>1&&<small>Updated {new Date(target.updated_at).toLocaleString()}</small>}</span></button>
+      {aliases}
+    </li>):[<li key={'missing-'+pageTitleKey(link.title)}><div className="knowledge-missing-link"><LinkDirectionIcon direction="outgoing"/><span>{link.title}<small>Note not found in this vault</small></span></div>{aliases}</li>];
+  });
+  if(!loading&&!error)links.push(...incomingOnly.map(source=><li key={'page-'+source.id}><button type="button" disabled={inactive} onClick={()=>onOpenPage(source.id)}><LinkDirectionIcon direction="incoming"/><span>{source.title||'Untitled'}</span></button></li>));
+  const paginationKey=JSON.stringify([page.vault_id,page.id]);
+  const [pagination,setPagination]=useState({key:paginationKey,index:0});
+  const pageSize=10;
+  const pageCount=Math.max(1,Math.ceil(links.length/pageSize));
+  const pageIndex=pagination.key===paginationKey?Math.min(pagination.index,pageCount-1):0;
+  if(pagination.key!==paginationKey||pagination.index!==pageIndex)setPagination({key:paginationKey,index:pageIndex});
+  const pageStart=pageIndex*pageSize;
   return <section className="knowledge-note-links" aria-labelledby={id+'-links'}>
-      <div className="knowledge-section-heading"><h2 id={id+'-links'}>Links</h2>{!loading&&!error&&<span className="knowledge-count">{linkCount}</span>}</div>
-      <ul className="knowledge-note-link-list">{outgoing.map(link=><li key={'outgoing-'+pageTitleKey(link.title)}>
-        {link.targets.length?link.targets.map(target=><button key={target.id} type="button" disabled={inactive} onClick={()=>onOpenPage(target.id)}><LinkDirectionIcon direction={incomingIds.has(target.id)?'bidirectional':'outgoing'}/><span>{target.title}{link.targets.length>1&&<small>Updated {new Date(target.updated_at).toLocaleString()}</small>}</span></button>):<div className="knowledge-missing-link"><LinkDirectionIcon direction="outgoing"/><span>{link.title}<small>Note not found in this vault</small></span></div>}
-        {!!link.aliases.size&&<small className="knowledge-link-alias">Shown as: {[...link.aliases].join(', ')}</small>}
-      </li>)}{!loading&&!error&&incomingOnly.map(source=><li key={'incoming-'+source.id}><button type="button" disabled={inactive} onClick={()=>onOpenPage(source.id)}><LinkDirectionIcon direction="incoming"/><span>{source.title||'Untitled'}</span></button></li>)}</ul>
+      <div className="knowledge-section-heading"><h2 id={id+'-links'}>Links</h2>{!loading&&!error&&<span className="knowledge-count">{links.length}</span>}</div>
+      <ul id={id+'-list'} className="knowledge-note-link-list">{links.slice(pageStart,pageStart+pageSize)}</ul>
+      {pageCount>1&&<nav className="knowledge-entity-pagination" aria-label="Links pagination">
+        <span role="status" aria-live="polite" aria-atomic="true">{pageStart+1}–{Math.min(pageStart+pageSize,links.length)} of {links.length}</span>
+        <button type="button" className="pagination-previous" aria-label="Previous links" title="Previous page" aria-controls={id+'-list'} disabled={inactive||pageIndex===0} onClick={()=>setPagination({key:paginationKey,index:pageIndex-1})}><Icon name="chevron"/></button>
+        <button type="button" aria-label="Next links" title="Next page" aria-controls={id+'-list'} disabled={inactive||pageIndex===pageCount-1} onClick={()=>setPagination({key:paginationKey,index:pageIndex+1})}><Icon name="chevron"/></button>
+      </nav>}
       {loading?<p className="section-hint" role="status">Loading incoming links…</p>:error?<p className="section-hint" role="alert">{error} <button type="button" className="summary-toggle" onClick={()=>setRetry(value=>value+1)}>Retry</button></p>:!outgoing.length&&!backlinks.length&&<p className="section-hint">No links yet. Link to another note with [[Page title]].</p>}
     </section>;
 }

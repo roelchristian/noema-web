@@ -1020,3 +1020,10 @@ dialog.vault-search-dialog::backdrop { background: #0005; backdrop-filter: blur(
   .organization-browser .organization-page-row .organization-item-name { grid-template-columns: minmax(0, 1fr) 120px; gap: 4px 8px; }
 }
 @media (max-width: 500px) { .organization-browser .organization-page-row .page-selection { display: flex; } }
+
+.sidebar-heading { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-shrink: 0; margin-bottom: 18px; padding: 0 6px; background: var(--sidebar); }
+.sidebar .sidebar-heading .brand { margin: 0; }
+.sidebar .sidebar-new-note { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px; padding: 6px; border-radius: 8px; color: var(--text-muted); transition: background .15s, color .15s; }
+.sidebar .sidebar-new-note .icon { width: 20px; height: 20px; }
+.sidebar .sidebar-new-note:hover { background: var(--surface-hover); color: var(--text); }
+@media (max-width: 500px) { .sidebar-heading { flex-direction: column; gap: 10px; padding: 0; } }

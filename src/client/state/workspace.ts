@@ -5,7 +5,7 @@ import { PageSaver, type SaveStatus } from './page-saver';
 export interface WorkspaceState {
   vaults: Vault[]; vault: Vault | null; trash: TrashedPage[]; pages: PageSummary[]; entities: Entity[];
   organization: Organization; organizationContext: OrganizationContext; recent: RecentItem[];
-  page: Page | null; view: 'pages' | 'entities' | 'organization' | 'favourites' | 'recent' | 'trash'; busy: boolean; reviewing: boolean; error: string | null; saveStatus: SaveStatus;
+  page: Page | null; view: 'pages' | 'entities' | 'organization' | 'favourites' | 'recent' | 'trash' | 'inbox'; busy: boolean; reviewing: boolean; error: string | null; saveStatus: SaveStatus;
 }
 export class Workspace {
   private state: WorkspaceState = {vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, reviewing: false, error: null, saveStatus: 'saved'};
@@ -83,6 +83,7 @@ export class Workspace {
   async openPage(id: string) { await this.navigate(() => this.loadPage(id)); }
   async showPages() { this.openOrganization(); }
   showOrganization(favourites = false) { if (!this.state.busy) this.patch({view: favourites ? 'favourites' : 'organization'}); }
+  showInbox() { if (!this.state.busy) this.patch({view: 'inbox'}); }
   showRecent() { if (!this.state.busy) this.patch({view: 'recent'}); }
   setOrganization = (organization: Organization) => {
     const current = this.state.organizationContext;

@@ -10,11 +10,15 @@ import { Icon } from '../components/Icon';
 import { Mention } from '../components/Mention';
 import { AliasInput, parseAliases } from './AliasInput';
 interface Props {vaultId: string; id: string; entities: Entity[]; onOpen: (id: string) => void; onClose: () => void; onUpdated: () => Promise<void>; onError: (error: unknown) => void}
+const entityTabs = [{id: 'overview', label: 'Overview'}, {id: 'connections', label: 'Connections'}, {id: 'edit', label: 'Edit'}] as const;
+type EntityTab = typeof entityTabs[number]['id'];
+interface EntityConnection {key: string; target: string; label: string}
 export function EntityPanel(props: Props) {
   const {vaultId, id, entities, onOpen, onClose, onUpdated, onError} = props;
   const [entity, setEntity] = useState<EntityDetail | null>(null), [loadingError, setLoadingError] = useState('');
+  const [tab, setTab] = useState<EntityTab>('overview');
   useEffect(() => {
-    let active = true; setEntity(null); setLoadingError('');
+    let active = true; setEntity(null); setLoadingError(''); setTab('overview');
     void api.entity(vaultId, id).then(e => { if (active) setEntity(e); }).catch(error => { if (active) setLoadingError(String(error)); });
     return () => { active = false; };
   }, [vaultId, id]);
@@ -23,28 +27,88 @@ export function EntityPanel(props: Props) {
   async function mutate(work: () => Promise<EntityDetail>) {
     try { const result = await work(); setEntity(result); setSchema({...schema, properties: {...schema.properties, [result.type]: result.propertyNames}}); await onUpdated(); } catch (error) { onError(error); throw error; }
   }
-  return <aside id="entity-panel" className="entity-panel"><div className="panel-top"><span>KNOWLEDGE ENTITY</span><button title="Close entity" aria-label="Close entity" onClick={onClose}>×</button></div>
-    {!entity ? <p className="panel-body" role="status">{loadingError || 'Loading entity…'}</p> : <div className="panel-body"><span className={'entity-icon large ' + entity.type}><Icon name={entity.type}/></span>
-      {schemaError && <p role="alert">{schemaError}</p>}
-      <EntityDetails schema={schema} key={entity.id} entity={entity} onSave={input => mutate(() => api.updateEntity(vaultId, id, input))}/>
-      {entity.type==='source'&&<SourceAttachments key={entity.id} vaultId={vaultId} entityId={entity.id} initial={entity.attachments}/>}
-      <section className="panel-section"><h3>Properties <span>{entity.properties.length}</span></h3><p className="section-hint">{entity.subtypes.length > 0 ? `Properties inherited from ${entityLabels[entity.type]}. Add new fields on the main type in Knowledge entities.` : 'Describe this entity with values or entity references. New property names become available to all subtypes of this type.'}</p>
-        <PropertyEditor key={entity.type + JSON.stringify(entity.subtypes)} entity={{...entity, propertyNames: [...new Set([...entity.propertyNames, ...schema.properties[entity.type]])]}} entities={entities} mention={mention} onSave={(input, propertyId) => mutate(() => api.saveProperty(vaultId, id, input, propertyId))} onRemove={propertyId => mutate(() => api.removeConnection(vaultId, id, 'properties', propertyId))}/>
-      </section>
-      <section className="panel-section"><h3>Relationships <span>{entity.relationships.length}</span></h3><p className="section-hint">Named connections, independent of properties.</p>
-        <RelationshipEditor entity={entity} entities={entities} mention={mention} onSave={(input, relationId) => mutate(() => api.saveRelationship(vaultId, id, input, relationId))} onRemove={relationId => mutate(() => api.removeConnection(vaultId, id, 'relationships', relationId))}/>
-      </section>
-      {!!entity.incomingProperties.length && <section className="panel-section"><h3>Referenced by</h3>{entity.incomingProperties.map(p => <div key={p.id} className="backlink">{mention(p.entity_id)}<small>via {p.name}</small></div>)}</section>}
-      <p className="panel-footnote">One entity. Many connections.<br/>Changes are shared across your vault.</p>
+  const relationships: EntityConnection[] = entity?.relationships.map(relation => ({key: relation.id, target: relation.source_id === id ? relation.target_id : relation.source_id, label: relation.source_id === id ? relation.label : 'Incoming · ' + relation.label})) ?? [];
+  const references: EntityConnection[] = entity?.properties.filter(property => property.target_id).map(property => ({key: property.id, target: property.target_id!, label: property.name})) ?? [];
+  const incoming: EntityConnection[] = entity?.incomingProperties.map(property => ({key: property.id, target: property.entity_id, label: 'Referenced via ' + property.name})) ?? [];
+  const subtypeNames = schema.subtypes.filter(subtype => entity?.subtypes.includes(subtype.id)).map(subtype => subtype.name);
+  function switchTab(next: EntityTab) {
+    setTab(next);
+    document.getElementById('entity-panel')?.scrollTo({top: 0});
+    document.getElementById('entity-tab-' + next)?.focus({preventScroll: true});
+  }
+  return <aside id="entity-panel" className="entity-panel entity-detail-panel" aria-label="Knowledge entity"><div className="panel-top"><span>KNOWLEDGE ENTITY</span><button type="button" title="Close entity" aria-label="Close entity" onClick={onClose}><Icon name="close"/></button></div>
+    {!entity ? <p className="panel-body" role={loadingError ? 'alert' : 'status'}>{loadingError || 'Loading entity…'}</p> : <div className="panel-body entity-detail-body">
+      <header className="entity-detail-header">
+        <span className="entity-detail-icon" aria-hidden="true"><Icon name={entity.type}/></span>
+        <div><h2 id="entity-detail-title">{entity.name}</h2><div className="entity-detail-classification"><span className="entity-detail-type">{entityLabels[entity.type]}</span>{!!subtypeNames.length && <span>{subtypeNames.join(' · ')}</span>}</div></div>
+      </header>
+      {entity.description && <p className="entity-detail-description">{entity.description}</p>}
+      <div className="entity-detail-tabs" role="tablist" aria-label="Entity details">
+        {entityTabs.map(({id: value, label}) => <button type="button" key={value} id={'entity-tab-' + value} role="tab" aria-selected={tab === value} aria-controls={'entity-tabpanel-' + value} tabIndex={tab === value ? 0 : -1} onClick={() => switchTab(value)} onKeyDown={event => {
+          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+          event.preventDefault();
+          const index = entityTabs.findIndex(item => item.id === value);
+          const next = event.key === 'Home' ? 0 : event.key === 'End' ? entityTabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + entityTabs.length) % entityTabs.length;
+          switchTab(entityTabs[next]!.id);
+        }}>{label}</button>)}
+      </div>
+      <div id="entity-tabpanel-overview" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-overview" hidden={tab !== 'overview'} tabIndex={0}>
+        <section className="entity-detail-section"><h3>Properties<span>{entity.properties.length}</span></h3>
+          {entity.properties.length ? <dl className="entity-overview-properties">{entity.properties.map(property => <div key={property.id}><dt>{property.name}</dt><dd>{property.target_id ? <EntityReference id={property.target_id} entities={entities} onOpen={onOpen}/> : property.value}</dd></div>)}</dl> : <p className="entity-detail-empty">No properties yet. <button type="button" onClick={() => switchTab('edit')}>Add a property</button></p>}
+        </section>
+        <section className="entity-detail-section"><h3>Related knowledge<span>{relationships.length} {relationships.length === 1 ? 'connection' : 'connections'}</span></h3>
+          <EntityConnections items={relationships.slice(0, 4)} entities={entities} onOpen={onOpen} empty="No related knowledge yet."/>
+          {!!relationships.length && <button type="button" className="entity-detail-more" onClick={() => switchTab('connections')}>{relationships.length > 4 ? 'View all ' + relationships.length + ' connections' : 'View connections'}<Icon name="chevron"/></button>}
+        </section>
+        {!!entity.aliases?.length && <section className="entity-detail-section"><h3>Also known as</h3><ul className="entity-overview-aliases">{entity.aliases.map(alias => <li key={alias}>{alias}</li>)}</ul></section>}
+        {entity.type === 'source' && <section className="entity-detail-section"><h3>Attached sources<span>{entity.attachments?.length ?? 0}</span></h3>
+          {entity.attachments?.length ? <ul className="entity-overview-sources">{entity.attachments.map(file => <li key={file.id}><a href={'/api/source-files/' + encodeURIComponent(file.id) + '/download?vault=' + encodeURIComponent(vaultId)} download><Icon name="source"/><span>{file.name}<small>{(file.size / 1024).toFixed(1)} KB</small></span><Icon name="download"/></a></li>)}</ul> : <p className="entity-detail-empty">No attached files. Add sources in Edit.</p>}
+        </section>}
+      </div>
+      <div id="entity-tabpanel-connections" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-connections" hidden={tab !== 'connections'} tabIndex={0}>
+        <section className="entity-detail-section"><h3>Relationships<span>{relationships.length}</span></h3><EntityConnections items={relationships} entities={entities} onOpen={onOpen} empty="No relationships yet."/></section>
+        <section className="entity-detail-section"><h3>Referenced entities<span>{references.length}</span></h3><EntityConnections items={references} entities={entities} onOpen={onOpen} empty="No entity references in properties."/></section>
+        <section className="entity-detail-section"><h3>Referenced by<span>{incoming.length}</span></h3><EntityConnections items={incoming} entities={entities} onOpen={onOpen} empty="No other entities reference this one yet."/></section>
+        <button type="button" className="button entity-edit-connections" onClick={() => switchTab('edit')}>Edit connections</button>
+      </div>
+      <div id="entity-tabpanel-edit" className="entity-detail-tabpanel entity-detail-edit" role="tabpanel" aria-labelledby="entity-tab-edit" hidden={tab !== 'edit'} tabIndex={0}>
+        {schemaError && <p role="alert">{schemaError}</p>}
+        <section className="entity-detail-section"><h3>Details</h3><EntityDetails schema={schema} key={entity.id} entity={entity} onSave={input => mutate(() => api.updateEntity(vaultId, id, input))}/></section>
+        {entity.type==='source'&&<SourceAttachments key={entity.id} vaultId={vaultId} entityId={entity.id} initial={entity.attachments} onChange={attachments => setEntity(current => current ? {...current, attachments} : current)}/>}
+        <section className="panel-section"><h3>Properties <span>{entity.properties.length}</span></h3><p className="section-hint">{entity.subtypes.length > 0 ? `Properties inherited from ${entityLabels[entity.type]}. Add new fields on the main type in Knowledge entities.` : 'Describe this entity with values or entity references. New property names become available to all subtypes of this type.'}</p>
+          <PropertyEditor key={entity.type + JSON.stringify(entity.subtypes)} entity={{...entity, propertyNames: [...new Set([...entity.propertyNames, ...schema.properties[entity.type]])]}} entities={entities} mention={mention} onSave={(input, propertyId) => mutate(() => api.saveProperty(vaultId, id, input, propertyId))} onRemove={propertyId => mutate(() => api.removeConnection(vaultId, id, 'properties', propertyId))}/>
+        </section>
+        <section className="panel-section"><h3>Relationships <span>{entity.relationships.length}</span></h3><p className="section-hint">Named connections, independent of properties.</p>
+          <RelationshipEditor entity={entity} entities={entities} mention={mention} onSave={(input, relationId) => mutate(() => api.saveRelationship(vaultId, id, input, relationId))} onRemove={relationId => mutate(() => api.removeConnection(vaultId, id, 'relationships', relationId))}/>
+        </section>
+        <p className="panel-footnote">Changes are shared across your vault.</p>
+      </div>
     </div>}
   </aside>;
+}
+function EntityReference({id, entities, onOpen}: {id: string; entities: Entity[]; onOpen: (id: string) => void}) {
+  const entity = entities.find(item => item.id === id);
+  return <button type="button" className="entity-overview-reference" onClick={() => onOpen(id)}><Icon name={entity?.type ?? 'knowledge'}/><span>{entity?.name ?? 'Unknown entity'}</span></button>;
+}
+function EntityConnections({items, entities, onOpen, empty}: {items: EntityConnection[]; entities: Entity[]; onOpen: (id: string) => void; empty: string}) {
+  return items.length ? <ul className="entity-connection-list">{items.map(item => {
+    const entity = entities.find(entity => entity.id === item.target);
+    return <li key={item.key}><button type="button" onClick={() => onOpen(item.target)}><Icon name={entity?.type ?? 'knowledge'}/><span><strong>{entity?.name ?? 'Unknown entity'}</strong><small>{item.label}</small></span><Icon name="chevron"/></button></li>;
+  })}</ul> : <p className="entity-detail-empty">{empty}</p>;
 }
 function EntityDetails({entity, schema, onSave}: {schema: EntitySchema; entity: EntityDetail; onSave: (input: Parameters<typeof api.updateEntity>[2]) => Promise<unknown>}) {
   const [name, setName] = useState(entity.name), [type, setType] = useState<EntityType>(entity.type), [description, setDescription] = useState(entity.description), [status, setStatus] = useState(''), [busy, setBusy] = useState(false);
   const [subtypes, setSubtypes] = useState(entity.subtypes);
   const [aliases, setAliases] = useState((entity.aliases ?? []).join('\n'));
   async function submit(e: FormEvent) { e.preventDefault(); setBusy(true); setStatus(''); try { await onSave({name, aliases: parseAliases(aliases), type, subtypes, description}); setStatus('Saved'); } catch { /* Parent reports the error. */ } finally { setBusy(false); } }
-  return <form id="entity-form" onSubmit={submit}><input className="entity-name" aria-label="Entity name" required maxLength={200} value={name} onChange={e => setName(e.target.value)}/><Select aria-label="Entity type" value={type} onChange={e => { setType(e.target.value as EntityType); setSubtypes([]); }}>{entityTypes.map(t => <option key={t} value={t} disabled={t!==entity.type&&(t==='source'||entity.type==='source')}>{entityLabels[t]}</option>)}</Select><SubtypePicker type={type} value={subtypes} subtypes={schema.subtypes} onChange={setSubtypes} disabled={busy}/><AliasInput value={aliases} onChange={setAliases} disabled={busy}/><textarea aria-label="Entity description" placeholder="Add a description…" value={description} onChange={e => setDescription(e.target.value)}/><button className="button small" disabled={busy}>Save details</button><span id="entity-saved"> {status}</span></form>;
+  return <form id="entity-form" className="entity-detail-form" onSubmit={submit}>
+    <label>Name<input className="entity-name" aria-label="Entity name" required maxLength={200} disabled={busy} value={name} onChange={e => {setName(e.target.value);setStatus('');}}/></label>
+    <label>Entity type<Select aria-label="Entity type" value={type} disabled={busy} onChange={e => {setType(e.target.value as EntityType);setSubtypes([]);setStatus('');}}>{entityTypes.map(t => <option key={t} value={t} disabled={t!==entity.type&&(t==='source'||entity.type==='source')}>{entityLabels[t]}</option>)}</Select></label>
+    <SubtypePicker type={type} value={subtypes} subtypes={schema.subtypes} onChange={value => {setSubtypes(value);setStatus('');}} disabled={busy}/>
+    <AliasInput value={aliases} onChange={value => {setAliases(value);setStatus('');}} disabled={busy}/>
+    <label>Description<textarea aria-label="Entity description" placeholder="Add a description…" disabled={busy} value={description} onChange={e => {setDescription(e.target.value);setStatus('');}}/></label>
+    <div className="entity-detail-save"><button className="button small" disabled={busy}>{busy ? 'Saving…' : 'Save details'}</button><span id="entity-saved" role="status">{status}</span></div>
+  </form>;
 }
 type MentionRenderer = (id: string) => React.ReactNode;
 function PropertyEditor({entity, entities, mention, onSave, onRemove}: {entity: EntityDetail; entities: Entity[]; mention: MentionRenderer; onSave: (input: Parameters<typeof api.saveProperty>[2], id?: string) => Promise<unknown>; onRemove: (id: string) => Promise<unknown>}) {

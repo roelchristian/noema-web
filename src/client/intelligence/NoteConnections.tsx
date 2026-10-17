@@ -2,7 +2,7 @@ import {useEffect,useId,useMemo,useState} from 'react';
 import {blockPageLinks,pageTitleKey} from '../../shared/page-links';
 import type {Page,PageSummary} from '../../shared/domain';
 import {api} from '../api';
-import {PageIcon} from '../components/PageIcon';
+import {Icon} from '../components/Icon';
 
 export function NoteConnections({page,pages,onOpenPage,inactive=false}:{page:Page;pages:PageSummary[];onOpenPage:(id:string)=>void;inactive?:boolean}) {
   const id=useId();
@@ -27,17 +27,21 @@ export function NoteConnections({page,pages,onOpenPage,inactive=false}:{page:Pag
     }
     return [...groups.values()];
   },[page.blocks,pages]);
-  return <>
-    <section className="knowledge-note-links" aria-labelledby={id+'-outgoing'}>
-      <div className="knowledge-section-heading"><h2 id={id+'-outgoing'}>Outgoing links</h2><span className="knowledge-count">{outgoing.length}</span></div>
-      {outgoing.length?<ul className="knowledge-note-link-list">{outgoing.map(link=><li key={pageTitleKey(link.title)}>
-        {link.targets.length?link.targets.map(target=><button key={target.id} type="button" disabled={inactive} onClick={()=>onOpenPage(target.id)}><PageIcon icon={target.icon}/><span>{target.title}{link.targets.length>1&&<small>Updated {new Date(target.updated_at).toLocaleString()}</small>}</span></button>):<div className="knowledge-missing-link"><span>{link.title}</span><small>Note not found in this vault</small></div>}
+  const outgoingIds=new Set(outgoing.flatMap(link=>link.targets.map(target=>target.id)));
+  const incomingIds=new Set(!loading&&!error?backlinks.map(source=>source.id):[]);
+  const incomingOnly=backlinks.filter(source=>!outgoingIds.has(source.id));
+  const linkCount=outgoing.reduce((count,link)=>count+Math.max(1,link.targets.length),0)+incomingOnly.length;
+  return <section className="knowledge-note-links" aria-labelledby={id+'-links'}>
+      <div className="knowledge-section-heading"><h2 id={id+'-links'}>Links</h2>{!loading&&!error&&<span className="knowledge-count">{linkCount}</span>}</div>
+      <ul className="knowledge-note-link-list">{outgoing.map(link=><li key={'outgoing-'+pageTitleKey(link.title)}>
+        {link.targets.length?link.targets.map(target=><button key={target.id} type="button" disabled={inactive} onClick={()=>onOpenPage(target.id)}><LinkDirectionIcon direction={incomingIds.has(target.id)?'bidirectional':'outgoing'}/><span>{target.title}{link.targets.length>1&&<small>Updated {new Date(target.updated_at).toLocaleString()}</small>}</span></button>):<div className="knowledge-missing-link"><LinkDirectionIcon direction="outgoing"/><span>{link.title}<small>Note not found in this vault</small></span></div>}
         {!!link.aliases.size&&<small className="knowledge-link-alias">Shown as: {[...link.aliases].join(', ')}</small>}
-      </li>)}</ul>:<p className="section-hint">Link to another note with [[Page title]].</p>}
-    </section>
-    <section className="knowledge-note-links" aria-labelledby={id+'-backlinks'} aria-busy={loading}>
-      <div className="knowledge-section-heading"><h2 id={id+'-backlinks'}>Backlinks</h2>{!loading&&!error&&<span className="knowledge-count">{backlinks.length}</span>}</div>
-      {loading?<p className="section-hint" role="status">Loading backlinks…</p>:error?<p className="section-hint" role="alert">{error} <button type="button" className="summary-toggle" onClick={()=>setRetry(value=>value+1)}>Retry</button></p>:backlinks.length?<ul className="knowledge-note-link-list">{backlinks.map(source=><li key={source.id}><button type="button" disabled={inactive} onClick={()=>onOpenPage(source.id)}><PageIcon icon={source.icon}/><span>{source.title||'Untitled'}</span></button></li>)}</ul>:<p className="section-hint">No other notes link to this page yet.</p>}
-    </section>
-  </>;
+      </li>)}{!loading&&!error&&incomingOnly.map(source=><li key={'incoming-'+source.id}><button type="button" disabled={inactive} onClick={()=>onOpenPage(source.id)}><LinkDirectionIcon direction="incoming"/><span>{source.title||'Untitled'}</span></button></li>)}</ul>
+      {loading?<p className="section-hint" role="status">Loading incoming links…</p>:error?<p className="section-hint" role="alert">{error} <button type="button" className="summary-toggle" onClick={()=>setRetry(value=>value+1)}>Retry</button></p>:!outgoing.length&&!backlinks.length&&<p className="section-hint">No links yet. Link to another note with [[Page title]].</p>}
+    </section>;
+}
+
+function LinkDirectionIcon({direction}:{direction:'incoming'|'outgoing'|'bidirectional'}) {
+  const label=direction==='bidirectional'?'Incoming and outgoing links':direction==='outgoing'?'Outgoing link':'Incoming link';
+  return <span className="knowledge-link-direction" role="img" aria-label={label} title={label}><Icon name={'page-'+direction}/></span>;
 }

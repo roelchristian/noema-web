@@ -19,6 +19,7 @@ import { RecentLibrary } from './organization/RecentLibrary';
 import { SidebarOrganization } from './organization/SidebarOrganization';
 import { OrganizationLibrary } from './organization/OrganizationLibrary';
 import { Workspace } from './state/workspace';
+import { usePageScroll } from './state/use-page-scroll';
 import { Icon } from './components/Icon';
 import { EntityPreview } from './components/EntityPreview';
 import { PageToolbar } from './editor/PageToolbar';
@@ -44,6 +45,7 @@ export function App() {
   const [renameTarget, setRenameTarget] = useState<PageSummary | null>(null);
   const {appearance, setAppearance, storageError} = useAppearance();
   const [workspace] = useState(() => new Workspace());
+  usePageScroll(workspace);
   const state = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
   const {vaults, vault, pages, entities, page, view, busy, loadingPageId, reviewing, error, saveStatus, organization, organizationContext, recent, trash} = state;
   const [panelId, setPanelId] = useState<string | null>(null), [create, setCreate] = useState<CreateEntityRequest | null>(null), [vaultAction, setVaultAction] = useState<VaultAction | null>(null);

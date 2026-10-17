@@ -11,6 +11,7 @@ test('sidebar note switching preserves mounted shell and outgoing editor until a
  const keys=['window','document','Node','Element','HTMLElement','HTMLInputElement','HTMLTextAreaElement','Range','DOMParser','InputEvent','MouseEvent','Event','PointerEvent','MutationObserver','getSelection','getComputedStyle','innerWidth','innerHeight','localStorage','CSS','ResizeObserver','IS_REACT_ACT_ENVIRONMENT'],previous=keys.map(k=>Object.getOwnPropertyDescriptor(globalThis,k));
  dom.window.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
  for(const key of keys){const value=key==='IS_REACT_ACT_ENVIRONMENT'?true:key==='getSelection'?()=>dom.window.getSelection():key==='ResizeObserver'?class{observe(){}disconnect(){}}:key==='PointerEvent'?dom.window.MouseEvent:key==='CSS'?{escape:value=>value}:dom.window[key];Object.defineProperty(globalThis,key,{configurable:true,writable:true,value});}
+ dom.window.scrollTo=()=>{};
  document.queryCommandState=()=>false;
  Object.defineProperty(dom.window.HTMLElement.prototype,'isContentEditable',{get(){return this.getAttribute('contenteditable')==='true';}});
  localStorage.setItem('noema-knowledge-panel-open','true');localStorage.setItem('noema-address/a',JSON.stringify({view:'pages',pageId:'one'}));

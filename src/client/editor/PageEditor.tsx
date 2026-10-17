@@ -28,7 +28,7 @@ export function PageEditor({page, entities, onChange, onOpenEntity, onCreateEnti
     }, ambiguityReviewDelay);
     return () => { clearTimeout(timer); controller.abort(); };
   }, [page.id, page.vault_id, page.blocks, page.revision, entities, saveStatus]);
-  useEffect(() => { if (page.title === 'Untitled') { title.current?.focus(); title.current?.select(); } }, [page.id]);
+  useEffect(() => { if (page.title === 'Untitled') { title.current?.focus({preventScroll:true}); title.current?.select(); } }, [page.id]);
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     const schedule = () => { clearTimeout(timer); timer = setTimeout(() => { void onIdentify(); }, 1200); };

@@ -138,6 +138,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               vaults.requireOpen(vault);
               return send(200,scans.save(vault,page,output,intelligence.selection()));
             }
+            if(id && parts.length===4 && child==='summary' && method==='DELETE')return send(200,enrichments.removeSummary(vault,id));
             if(id && parts.length===4 && child==='enrichments' && method==='GET')return send(200,enrichments.list(vault,id));
             if(id && parts.length===4 && (child==='summary'||child==='title') && method==='POST') {
               const page=pages.get(vault,id),isTitle=child==='title';

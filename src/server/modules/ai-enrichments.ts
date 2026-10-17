@@ -15,6 +15,11 @@ export class AIEnrichments {
     return this.store.all<EnrichmentRow>('SELECT kind,data,revision,model,reasoning_effort,updated_at FROM page_ai_enrichments WHERE page_id=? ORDER BY kind', pageId)
       .map(({data, reasoning_effort, ...row}) => ({...row, data: JSON.parse(data), reasoningEffort: reasoning_effort}));
   }
+  removeSummary(vault: string, pageId: string) {
+    this.pages.get(vault, pageId);
+    this.store.run('DELETE FROM page_ai_enrichments WHERE page_id=? AND kind=?', pageId, 'summary');
+    return {ok: true as const};
+  }
   save(vault: string, pageId: string, kind: string, data: Record<string, unknown>, revision: number, preferences: IntelligencePreferences) {
     return this.store.transaction(() => {
       if (this.pages.get(vault, pageId).revision !== revision) throw new HttpError(409, 'The page changed. Generate a fresh result.');

@@ -40,6 +40,7 @@ export const api={
   validateIntelligence:()=>request<{ok:true}&import('../shared/intelligence').IntelligencePreferences>('intelligence/validate','POST',{}),
   generateTitle:(vault:string,id:string,revision:number)=>request<{title:string;revision:number}>(`pages/${id}/title`,'POST',{revision},vault),
   enrichments:(vault:string,id:string)=>request<import('../shared/domain').AIEnrichment[]>(`pages/${id}/enrichments`,'GET',undefined,vault),
+  deleteSummary:(vault:string,id:string)=>request<{ok:true}>(`pages/${id}/summary`,'DELETE',undefined,vault),
   summarize:(vault:string,id:string,revision:number)=>request<import('../shared/domain').AISummary>(`pages/${id}/summary`,'POST',{revision},vault),
   organization:(vault:string)=>request<Organization>('organization','GET',undefined,vault),
   organize:(vault:string,route:string,body?:unknown,method='PUT')=>request<Organization>('organization/'+route,method,body,vault),

@@ -39,7 +39,7 @@ export function mentionEvidence(page: Page, evidence: string, entityId: string):
     }
     return output;
   }
-  const blocks = page.blocks.map(block => block.type === 'code' || block.type === 'divider' || block.type === 'math' || block.type === 'image' ? block : block.type === 'table'
+  const blocks = page.blocks.map(block => block.type === 'code' || block.type === 'divider' || block.type === 'math' || block.type === 'image' ? block : (block.type === 'table' || block.type === 'columns')
     ? {...block, rows: block.rows?.map(row => row.map(replace))}
     : {...block, content: replace(block.content)});
   return replaced ? {...page, blocks} : null;

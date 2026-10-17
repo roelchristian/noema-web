@@ -21,6 +21,7 @@ import { clipboardBlocks, markdownBlocks, makeBlock } from './paste';
 import { compressImage } from './compress-image';
 import { readImageCompression } from '../settings/image-settings';
 import { ImageBlock } from './ImageBlock';
+import { ColumnsBlock } from './ColumnsBlock';
 import { TableBlock } from './TableBlock';
 import { SelectionToolbar } from './SelectionToolbar';
 import { MathBlock } from './MathBlock';
@@ -50,6 +51,7 @@ const options: {type: BlockType; title: string; detail: string; icon: string}[] 
   {type: 'divider', title: 'Divider', detail: 'Separate sections with a horizontal line', icon: '―'},
   {type: 'code', title: 'Code block', detail: 'Write code with preserved whitespace', icon: '</>'},
   {type: 'todo', title: 'To-do', detail: 'Keep track of a task', icon: '☑'},
+  {type: 'columns', title: 'Two columns', detail: 'Side by side text that stacks on mobile', icon: '▥'},
   {type: 'table', title: 'Table', detail: 'A simple table with rows and columns', icon: '▦'},
   {type: 'math', title: 'Equation', detail: 'A LaTeX math equation', icon: 'equation'},
   {type: 'quote', title: 'Quote', detail: 'Make a thought stand out', icon: '❝'},
@@ -162,7 +164,7 @@ export function BlockEditor(props: Props) {
       const row = root.current?.querySelector<HTMLElement>(`[data-block-id="${block.id}"]`);
       if (!row || block.type === 'image' || block.type === 'math') return block;
       const editors = Array.from(row.querySelectorAll<HTMLElement>('.block-content[contenteditable="true"]'));
-      if (block.type === 'table') {
+      if (block.type === 'table' || block.type === 'columns') {
         let index = 0;
         return {...block, rows: block.rows?.map(cells => cells.map(content => {
           const el = editors[index++]; return el ? readSegments(el) : content;
@@ -187,7 +189,7 @@ export function BlockEditor(props: Props) {
       if(!mounted.current) return;
       const current=latest.current.blocks, sources=current.filter(block=>selectedIds.includes(block.id));
       if(JSON.stringify(sources)!==snapshot) throw new Error('The selected blocks changed. Select them again to generate a fresh explanation.');
-      const excerpt=selected.map(block=>block.type==='image'?block.alt||'Image':(block.type==='table'?(block.rows??[]).flat(2):block.content).map(segment=>segment.entityId?segment.mentionText??entityMentionName(latest.current.entities.find(entity=>entity.id===segment.entityId))??'':segment.text??'').join('')).join('\n\n').slice(0,2000);
+      const excerpt=selected.map(block=>block.type==='image'?block.alt||'Image':((block.type==='table'||block.type==='columns')?(block.rows??[]).flat(2):block.content).map(segment=>segment.entityId?segment.mentionText??entityMentionName(latest.current.entities.find(entity=>entity.id===segment.entityId))??'':segment.text??'').join('')).join('\n\n').slice(0,2000);
       const group={id:randomUUID(),kind:'ai-explanation' as const,source:{blockIds:selected.map(block=>block.id),excerpt}};
       const generated=markdownBlocks(markdown).map(block=>({...block,semantic:'ai-explanation' as const,semanticGroup:group}));
       if(!markdown.trim() || !generated.length) throw new Error('AI returned an empty explanation. Please try again.');
@@ -322,12 +324,20 @@ export function BlockEditor(props: Props) {
     list.splice(after ? list.findIndex(b => b.id === after) + 1 : list.length, 0, next); focusTarget.current = {id: next.id, start: true}; onChange(list);
   }
   function convert(block: Block, type: BlockType, clear = false) {
+    if (block.type === type && !clear) {setMenu(null); return;}
     if (type === 'code') {
-      const content = clear ? [] : [{text: (block.type === 'table' ? (block.rows ?? []).map(row => row.map(cell => cell.map(segment => segment.entityId ? entityMentionName(entities.find(entity => entity.id === segment.entityId)) ?? '' : segment.text ?? '').join('')).join('\t')).join('\n') : block.content.map(segment => segment.entityId ? segment.mentionText ?? entityMentionName(entities.find(entity => entity.id === segment.entityId)) ?? '' : segment.text ?? '').join(''))}];
+      const content = clear ? [] : [{text: ((block.type === 'table' || block.type === 'columns') ? (block.rows ?? []).map(row => row.map(cell => cell.map(segment => segment.entityId ? entityMentionName(entities.find(entity => entity.id === segment.entityId)) ?? '' : segment.text ?? '').join('')).join('\t')).join('\n') : block.content.map(segment => segment.entityId ? segment.mentionText ?? entityMentionName(entities.find(entity => entity.id === segment.entityId)) ?? '' : segment.text ?? '').join(''))}];
       setMenu(null); focusTarget.current = {id: block.id, start: false}; update(block.id, {type, content, rows: undefined}); return;
     }
     if (type === 'divider') clear = true;
-    setMenu(null); focusTarget.current = {id: block.id, start: false}; update(block.id, {type, content: clear ? [] : block.type === 'table' ? (block.rows ?? []).flatMap((row, i) => [...(i ? [{text: '\n'}] : []), ...row.flatMap((cell, col) => [...(col ? [{text: '\t'}] : []), ...cell])]) : block.content, rows: type === 'table' ? block.rows ?? [[clear ? [] : block.content, []], [[], []]] : undefined, checked: false, imageId: undefined, alt: undefined}); }
+    const content = clear ? [] : (block.type === 'table' || block.type === 'columns')
+      ? (block.rows ?? []).flatMap((row, index) => [...(index ? [{text: '\n'}] : []), ...row.flatMap((cell, col) => [...(col ? [{text: '\t'}] : []), ...cell])])
+      : block.content;
+    const rows = type === 'columns' ? [[content, []]] : type === 'table' ? (!clear ? block.rows : undefined) ?? [[content, []], [[], []]] : undefined;
+    setMenu(null); focusTarget.current = {id: block.id, start: false};
+    update(block.id, {type, content: type === 'columns' ? [] : content, rows, checked: false, imageId: undefined, alt: undefined});
+  }
+
   function show(el: HTMLElement, items: Choice[], label: string, sheet = false) {
     if (!items.length) { setMenu(null); return; } const box = el.getBoundingClientRect();
     setMenu({items, index: 0, left: Math.max(8, Math.min(box.left, innerWidth - 330)), top: Math.max(8, Math.min(box.bottom + 5, innerHeight - 370)), label, sheet});
@@ -470,7 +480,7 @@ export function BlockEditor(props: Props) {
         if(event.key === 'Tab') {event.preventDefault(); const el=event.currentTarget, start=el.selectionStart; el.setRangeText('  ', start, el.selectionEnd, 'end'); update(block.id, {content: [{text: el.value}]});}
       }}/>
       <small>Code · Tab to indent · ⌘/Ctrl+Enter to continue below</small>
-    </div> : block.type === 'math' ? <MathBlock block={block} onDelete={() => removeBlock(block.id)} onChange={source => update(block.id, {content: [{text: source}]})} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'image' ? <ImageBlock block={block} vaultId={props.vaultId} onChange={alt => update(block.id,{alt})} onDelete={() => removeBlock(block.id)} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'table' ? <TableBlock reviewMatches={reviewMatches} block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock reviewMatches={reviewMatches} block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={el => {
+    </div> : block.type === 'math' ? <MathBlock block={block} onDelete={() => removeBlock(block.id)} onChange={source => update(block.id, {content: [{text: source}]})} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'image' ? <ImageBlock block={block} vaultId={props.vaultId} onChange={alt => update(block.id,{alt})} onDelete={() => removeBlock(block.id)} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'columns' ? <ColumnsBlock block={block} entities={entities} reviewMatches={reviewMatches} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'table' ? <TableBlock reviewMatches={reviewMatches} block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock reviewMatches={reviewMatches} block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={el => {
       const content = readSegments(el);
       const source = block.type === 'paragraph' && content.every(segment => !segment.entityId && !segment.math && !segment.code)
         ? displayMathSource(content.map(segment => segment.text ?? '').join('')) : undefined;

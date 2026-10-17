@@ -20,7 +20,7 @@ export class PageTitler {
     if (!candidate) return;
     clearTimeout(candidate.timer); candidate.version++; candidate.page = page; candidate.retries = 0;
     if (!needsUtility(page)) { this.remove(page); return; }
-    const text = page.blocks.flatMap(block => block.type === 'table'
+    const text = page.blocks.flatMap(block => (block.type === 'table' || block.type === 'columns')
       ? (block.rows ?? []).flatMap(row => row.flatMap(cell => cell)) : block.content)
       .map(segment => segment.entityId ? this.entityName(segment.entityId) : segment.text || '').join(' ').trim();
     if (saved && text.length >= 20) {

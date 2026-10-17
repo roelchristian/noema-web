@@ -183,7 +183,7 @@ export class VaultBackups {
             });
             block.content=segments(block.content);
             if(block.type==='image')block.imageId=ref(imageIds,block.imageId);
-            if(block.type==='table')block.rows=list(block.rows).map(row=>list(row).map(segments));
+            if((block.type==='table'||block.type==='columns'))block.rows=list(block.rows).map(row=>list(row).map(segments));
             return block;
           });
           const validated=pages.validateBlocks(vault,blocks);

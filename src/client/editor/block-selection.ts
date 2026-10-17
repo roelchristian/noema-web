@@ -58,7 +58,7 @@ function clippedSegments(el: HTMLElement, selection: Range, part: 'before' | 'se
   return readSegments(range.cloneContents());
 }
 function sliceBlock(block: Block, el: HTMLElement, range: Range, part: 'before' | 'selected' | 'after'): Block | undefined {
-  if (block.type === 'table') {
+  if (block.type === 'table' || block.type === 'columns') {
     const cells = Array.from(el.querySelectorAll<HTMLElement>('.table-cell')); let index = 0;
     const rows = block.rows?.map(row => row.map(() => clippedSegments(cells[index++]!, range, part)));
     return rows?.some(row => row.some(cell => cell.length)) ? {...block, rows} : undefined;
@@ -75,13 +75,14 @@ export function editorSelectionClipboard(root: HTMLElement, blocks: Block[], ent
     const block = blocks.find(b => b.id === el.dataset.blockId);
     const result = block && sliceBlock(block, el, selected.range, 'selected'); return result ? [result] : [];
   });
-  const text = slices.map(block => block.type === 'table' ? block.rows?.map(row => row.map(cell => textOf(cell, entities)).join('\t')).join('\n') : block.type === 'math' ? `\\[${textOf(block.content, entities)}\\]` : block.type === 'image' ? block.alt ?? '' : block.type === 'divider' ? '---' : block.type === 'code' ? '```\n'+textOf(block.content, entities)+'\n```' : textOf(block.content, entities)).join('\n\n');
+  const text = slices.map(block => (block.type === 'table' || block.type === 'columns') ? block.rows?.map(row => row.map(cell => textOf(cell, entities)).join('\t')).join('\n') : block.type === 'math' ? `\\[${textOf(block.content, entities)}\\]` : block.type === 'image' ? block.alt ?? '' : block.type === 'divider' ? '---' : block.type === 'code' ? '```\n'+textOf(block.content, entities)+'\n```' : textOf(block.content, entities)).join('\n\n');
   const escapeAttribute=(value:string)=>value.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
   const html = slices.map(block => {
     const attributes=(block.type === 'heading1' || block.type === 'heading2' ? ` data-noema-block-type="${block.type}"` : '')+(block.semantic?` data-noema-semantic="${block.semantic}"`:'')+(block.semanticGroup?` data-noema-group="${escapeAttribute(block.semanticGroup.id)}" data-noema-group-kind="${block.semanticGroup.kind}"`:'');
     if (block.type === 'divider') return '<hr'+attributes+'>';
     if (block.type === 'code') return '<pre'+attributes+'><code>'+escapeAttribute(textOf(block.content, entities)).replace(/>/g,'&gt;')+'</code></pre>';
     if (block.type === 'numbered' || block.type === 'bullet') {const tag=block.type === 'numbered' ? 'ol' : 'ul'; return `<${tag}><li${attributes}>${segmentHTML(block.content, entities)}</li></${tag}>`;}
+    if (block.type === 'columns') return '<section data-noema-block-type="columns"'+attributes+'>'+(block.rows?.[0] ?? [[],[]]).map(cell => '<div>'+segmentHTML(cell, entities)+'</div>').join('')+'</section>';
     if (block.type === 'table') return '<table'+attributes+'>'+block.rows?.map(row => '<tr>'+row.map(cell => '<td>'+segmentHTML(cell, entities)+'</td>').join('')+'</tr>').join('')+'</table>';
     const tag = block.type === 'heading1' ? 'h2' : block.type === 'heading2' ? 'h3' : block.type === 'quote' ? 'blockquote' : 'p';
     const content = block.type === 'math' ? [{text: `\\[${textOf(block.content, entities)}\\]`}] : block.type === 'image' ? [{text: block.alt ?? ''}] : block.content;
@@ -99,17 +100,17 @@ export function replaceEditorSelection(root: HTMLElement, options: Options, inco
   const parent=list[start]!.semanticGroup, sameParent=parent && parent.id===list[end]!.semanticGroup?.id;
   const replacement: Block[] = incoming.map(block => ({...block, ...(sameParent?{semanticGroup:parent}:{}), id: randomUUID()}));
   if (prefix) {
-    if (replacement[0]?.type === 'paragraph' && prefix.type !== 'table') replacement[0] = {...prefix, content: [...prefix.content, ...replacement[0].content]};
+    if (replacement[0]?.type === 'paragraph' && prefix.type !== 'table' && prefix.type !== 'columns') replacement[0] = {...prefix, content: [...prefix.content, ...replacement[0].content]};
     else replacement.unshift(prefix);
   }
   let target = replacement.at(-1), offset = target ? textOf(target.content, options.entities()).length : 0;
   if (suffix) {
-    if (target && target.semanticGroup?.id === suffix.semanticGroup?.id && target.semantic === suffix.semantic && target.type !== 'table' && target.type !== 'math' && target.type !== 'image' && suffix.type !== 'table') target.content = [...target.content, ...suffix.content];
+    if (target && target.semanticGroup?.id === suffix.semanticGroup?.id && target.semantic === suffix.semantic && target.type !== 'table' && target.type !== 'columns' && target.type !== 'math' && target.type !== 'image' && suffix.type !== 'table' && suffix.type !== 'columns') target.content = [...target.content, ...suffix.content];
     else {target = {...suffix, id: replacement.some(b => b.id === suffix.id) ? randomUUID() : suffix.id}; replacement.push(target); offset = 0;}
   }
   if (!replacement.length) {target = makeBlock(); replacement.push(target); offset = 0;}
   // A sliced table keeps all unselected cells; continue typing in a text block beside it.
-  if (target?.type === 'divider' || target?.type === 'code' || target?.type === 'table' || target?.type === 'math' || target?.type === 'image') {const text = makeBlock(); replacement.push(text); target = text; offset = 0;}
+  if (target?.type === 'columns' || target?.type === 'divider' || target?.type === 'code' || target?.type === 'table' || target?.type === 'math' || target?.type === 'image') {const text = makeBlock(); replacement.push(text); target = text; offset = 0;}
   const next = [...list]; next.splice(start, end - start + 1, ...replacement);
   options.commit(next, {id: target!.id, offset}); return true;
 }

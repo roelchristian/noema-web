@@ -77,7 +77,7 @@ export function identifyEntityMentions(blocks: Block[], entities: Entity[], vaul
   }
   const result = blocks.map(block => {
     if (block.type === 'code' || block.type === 'divider' || block.type === 'math' || block.type === 'image') return block;
-    if (block.type === 'table') {
+    if (block.type === 'table' || block.type === 'columns') {
       let changed = false;
       const rows = block.rows?.map((row, rowIndex) => row.map((cell, colIndex) => { const next = segments(cell, JSON.stringify([block.id, rowIndex, colIndex])); changed ||= next !== cell; return next; }));
       return changed ? {...block, rows} : block;

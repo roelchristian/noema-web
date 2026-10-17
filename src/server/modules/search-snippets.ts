@@ -9,7 +9,7 @@ import {Vaults} from './vaults.js';
 // Titles stay separate, and mention names are resolved inside the active vault.
 export function pageBodyText(vault: string,page: Page,knowledge: Knowledge): string {
  const segments=(items: Segment[])=>items.map(s=>s.entityId ? s.mentionText ?? entityMentionName(knowledge.find(vault,s.entityId)) ?? '' : s.text ?? '').join('');
- return page.blocks.map(b=>b.type==='table' ? (b.rows ?? []).map(row=>row.map(segments).join(' | ')).join('\n') : segments(b.content)).join('\n').trim();
+ return page.blocks.map(b=>(b.type==='table'||b.type==='columns') ? (b.rows ?? []).map(row=>row.map(segments).join(' | ')).join('\n') : segments(b.content)).join('\n').trim();
 }
 export class SearchSnippets {
  constructor(private pages: Pages,private knowledge: Knowledge,private vaults: Vaults) {}

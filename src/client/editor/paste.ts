@@ -4,7 +4,7 @@ import { displayMathSource } from './math-delimiters';
 import { safeHref, type Block, type BlockType, type Segment, type TextStyle } from '../../shared/domain';
 import { readSegments } from './segments';
 export function makeBlock(type: BlockType = 'paragraph', content: Segment[] = []): Block {
-  return {id: randomUUID(), type, checked: false, content, ...(type === 'table' ? {rows: [[[], []], [[], []]]} : {})};
+  return {id: randomUUID(), type, checked: false, content, ...(type === 'columns' ? {rows: [[[], []]]} : type === 'table' ? {rows: [[[], []], [[], []]]} : {})};
 }
 export function markdownInline(text: string, style: TextStyle = {}): Segment[] {
   const pattern = /\[\[[^\]\n]+\]\]|(`+)([\s\S]*?)\1|\[([^\]]+)\]\(([^\s)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|\*([^*]+)\*|_([^_]+)_|(?<![\\$])\$(?![\s$])((?:\\.|[^$\n\\])+?)(?<![\s\\])\$(?!\$)|(?<!\\)\\\(([^\n]*?)(?<!\\)\\\)/g;
@@ -104,7 +104,7 @@ export function clipboardMathBlocks(blocks: Block[]): Block[] {
   const output: Block[] = [];
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i]!;
-    if (block.type === 'table') { output.push({...block, rows: block.rows?.map(row => row.map(inline))}); continue; }
+    if (block.type === 'table' || block.type === 'columns') { output.push({...block, rows: block.rows?.map(row => row.map(inline))}); continue; }
     if (block.type === 'code' || block.type === 'divider' || block.type === 'math' || block.type === 'image') { output.push(block); continue; }
     if (!plain(block)) { output.push({...block, content: inline(block.content)}); continue; }
     let content = block.content, text = content.map(s => s.text).join('');
@@ -152,7 +152,11 @@ export function clipboardBlocks(text: string, html: string): Block[] {
     for (const node of Array.from(parent.childNodes)) {
       if (!(node instanceof HTMLElement)) { inline.append(node.cloneNode(true)); continue; }
       const tag = node.tagName;
-      if (tag === 'TABLE') {
+      if (node.getAttribute('data-noema-block-type') === 'columns') {
+        flush();
+        const cells = Array.from(node.children).slice(0,2).map(cell => readSegments(cell, false));
+        blocks.push({...richBlock('columns', [], node), rows: [[cells[0] ?? [], cells[1] ?? []]]});
+      } else if (tag === 'TABLE') {
         flush(); const rows = Array.from(node.querySelectorAll('tr')).filter(row => row.closest('table') === node).slice(0,100).map(row => Array.from(row.cells).slice(0,20).map(cell => readSegments(cell, false)));
         const width = Math.max(0,...rows.map(row => row.length));
         if (width) blocks.push({...richBlock('table',[],node), rows: rows.map(row => Array.from({length: width}, (_, i) => row[i] ?? []))});

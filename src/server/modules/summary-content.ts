@@ -9,7 +9,7 @@ type ResolveName = (id: string) => string | undefined;
 export function summaryInput(page: SummaryPage, name: ResolveName, includeTitle = true, includeAI = false): string {
   const plain = (content: Segment[]) => content.map(segment => segment.entityId ? segment.mentionText ?? name(segment.entityId) ?? '[mention]' : segment.text).join('');
   return (includeTitle ? page.title + '\n' : '') + page.blocks.filter(block => includeAI || !isAIExplanation(block)).map(block =>
-    (block.type === 'table' ? (block.rows ?? []).map(row => row.map(plain).join('\t')).join('\n') : plain(block.content)) + '\n'
+    ((block.type === 'table' || block.type === 'columns') ? (block.rows ?? []).map(row => row.map(plain).join('\t')).join('\n') : plain(block.content)) + '\n'
   ).join('');
 }
 
@@ -24,6 +24,6 @@ export function summaryContentHash(page: SummaryPage, name: ResolveName, include
 /** Classification follows body meaning; automatic title changes do not invalidate it. */
 export function conceptContentHash(page: SummaryPage, name: ResolveName): string {
   const plain=(segments:Segment[])=>segments.map(segment=>segment.entityId?segment.mentionText??name(segment.entityId)??'[mention]':segment.text??'').join('');
-  const body=page.blocks.filter(block=>!isAIExplanation(block)).map(block=>block.type==='table'?(block.rows??[]).map(row=>row.map(plain).join('\t')).join('\n'):plain(block.content)).join('\n');
+  const body=page.blocks.filter(block=>!isAIExplanation(block)).map(block=>(block.type==='table'||block.type==='columns')?(block.rows??[]).map(row=>row.map(plain).join('\t')).join('\n'):plain(block.content)).join('\n');
   return createHash('sha256').update(body.replace(/\s+/g,' ').trim().toLowerCase()).digest('hex');
 }

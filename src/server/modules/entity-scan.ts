@@ -37,7 +37,7 @@ export class EntityScans {
     const bodyContext = page.blocks.filter(block => block.type !== 'image').map(block => ({
       blockId:block.id, type:block.type,
       text:block.type === 'math' ? `\\[${block.content.map(segment => segment.text ?? '').join('')}\\]`
-        : block.type === 'table' ? (block.rows ?? []).map(row => row.map(contextText).join('\t')).join('\n')
+        : (block.type === 'table' || block.type === 'columns') ? (block.rows ?? []).map(row => row.map(contextText).join('\t')).join('\n')
         : contextText(block.content),
     }));
     const collect = (segments: Segment[]) => {
@@ -50,7 +50,7 @@ export class EntityScans {
     };
     for (const block of page.blocks) {
       if (block.type === 'math' || block.type === 'image') continue;
-      if (block.type === 'table') for (const row of block.rows || []) for (const cell of row) collect(cell);
+      if ((block.type === 'table' || block.type === 'columns')) for (const row of block.rows || []) for (const cell of row) collect(cell);
       else collect(block.content);
     }
     if (!runs.some(run => run.trim())) throw new HttpError(400, 'Add some note text to scan first.');

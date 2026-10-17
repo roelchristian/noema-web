@@ -99,6 +99,11 @@ export class Pages {
         new Images(this.store).require(vault,block.imageId);
         block.alt=b.alt === undefined ? '' : text(b.alt,1000);
       }
+      if(type === 'columns') {
+        if(!Array.isArray(b.rows) || b.rows.length !== 1 || !Array.isArray(b.rows[0]) || b.rows[0].length !== 2) throw new HttpError(400,'Two-column blocks require exactly two columns');
+        block.rows = [b.rows[0].map(segments)];
+        block.content = [];
+      }
       if(type === 'table') {
         if(!Array.isArray(b.rows) || !b.rows.length || b.rows.length > 100 || !Array.isArray(b.rows[0]) || !b.rows[0].length || b.rows[0].length > 20) throw new HttpError(400,'Invalid table');
         const width=b.rows[0].length;

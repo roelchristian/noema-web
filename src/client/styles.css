@@ -1817,3 +1817,12 @@ main {position:relative;}
 .code-block textarea { display:block; width:100%; resize:vertical; border:0; background:transparent; padding:0; font:13px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace; tab-size:2; white-space:pre; overflow:auto; }
 .code-block small { display:block; font-size:10px; color:var(--muted); margin-top:10px; }
 .block.code pre { white-space:pre-wrap; overflow-wrap:anywhere; font:13px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace; }
+
+/* Two-column text uses equal flex panes and stacks in reading order on mobile. */
+.columns-block { display:flex; flex-wrap:wrap; gap:24px; width:100%; min-width:0; }
+.columns-block .column-pane { flex:1 1 0; min-width:0; border:1px solid var(--line); border-radius:6px; padding:12px; }
+.columns-block .block-content { min-height:80px; width:100%; overflow-wrap:anywhere; white-space:pre-wrap; }
+@media(max-width:750px) {
+  .columns-block { flex-direction:column; gap:12px; }
+  .columns-block .column-pane { flex:1 1 auto; width:100%; }
+}

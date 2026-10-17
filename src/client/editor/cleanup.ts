@@ -38,7 +38,7 @@ export function cleanNote(blocks: Block[], options: CleanupOptions) {
   let changedBlocks = 0;
   const normalized = blocks.map(block => {
     if (block.type === 'image' || block.type === 'math' || isAIExplanation(block)) return block;
-    if (block.type === 'table') {
+    if (block.type === 'table' || block.type === 'columns') {
       let changed = false;
       const rows = block.rows?.map(row => row.map(cell => {
         const next = cleanSegments(cell, options);

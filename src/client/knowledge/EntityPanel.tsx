@@ -46,7 +46,7 @@ export function EntityPanel(props: Props) {
   </div>
     {!entity ? <p className="panel-body" role={loadingError ? 'alert' : 'status'}>{loadingError || 'Loading entity…'}</p> : <div className="panel-body entity-detail-body">
       {loadingError && <p role="alert">{loadingError}</p>}
-      <div className="entity-detail-classification"><span className="entity-detail-type">{entityLabels[entity.type]}</span>{!!subtypeNames.length && <span>{subtypeNames.join(' · ')}</span>}</div>
+      <div className="entity-detail-classification"><span className="entity-detail-type">{entityLabels[entity.type]}</span>{entity.type==='source'&&<span>{entity.attachments?.some(file=>file.status==='queued'||file.status==='processing')?'Processing':entity.inactive?'Inactive':'Active'}</span>}{!!subtypeNames.length && <span>{subtypeNames.join(' · ')}</span>}</div>
       {entity.description && <p className="entity-detail-description">{entity.description}</p>}
       <div className="entity-detail-tabs" role="tablist" aria-label="Entity details">
         {entityTabs.map(({id: value, label}) => <button type="button" key={value} id={'entity-tab-' + value} role="tab" aria-selected={tab === value} aria-controls={'entity-tabpanel-' + value} tabIndex={tab === value ? 0 : -1} onClick={() => switchTab(value)} onKeyDown={event => {
@@ -70,9 +70,9 @@ export function EntityPanel(props: Props) {
             <button type="button" onClick={() => onOpenPage(page.id)}><PageIcon icon={page.icon}/><span><span className="entity-mention-heading"><strong title={page.title || 'Untitled'}>{page.title || 'Untitled'}</strong><small className="entity-mention-count" aria-label={`${page.mentionCount} ${page.mentionCount === 1 ? 'mention' : 'mentions'}`}>{page.mentionCount}×</small></span>{page.excerpt && <small className="entity-mention-excerpt" title={page.excerpt}>{page.excerpt}</small>}</span><Icon name="chevron"/></button>
           </li>)}</ul> : <p className="entity-detail-empty">No pages mention this entity yet. Tag it in a page to see it here.</p>}
         </section>
-        {!!entity.aliases?.length && <section className="entity-detail-section"><h3>Also known as</h3><ul className="entity-overview-aliases">{entity.aliases.map(alias => <li key={alias}>{alias}</li>)}</ul></section>}
+        {entity.type!=='source' && !!entity.aliases?.length && <section className="entity-detail-section"><h3>Also known as</h3><ul className="entity-overview-aliases">{entity.aliases.map(alias => <li key={alias}>{alias}</li>)}</ul></section>}
         {entity.type === 'source' && <section className="entity-detail-section"><h3>Attached sources<span>{entity.attachments?.length ?? 0}</span></h3>
-          {entity.attachments?.length ? <ul className="entity-overview-sources">{entity.attachments.map(file => <li key={file.id}><a href={'/api/source-files/' + encodeURIComponent(file.id) + '/download?vault=' + encodeURIComponent(vaultId)} download><Icon name="source"/><span>{file.name}<small>{(file.size / 1024).toFixed(1)} KB</small></span><Icon name="download"/></a></li>)}</ul> : <p className="entity-detail-empty">No attached files. Add sources in Edit.</p>}
+          {entity.attachments?.length ? <ul className="entity-overview-sources">{entity.attachments.map(file => <li key={file.id}>{file.admitted===1?<a href={'/api/source-files/' + encodeURIComponent(file.id) + '/download?vault=' + encodeURIComponent(vaultId)} download><Icon name="source"/><span>{file.name}<small>{(file.size / 1024).toFixed(1)} KB{file.pdf_flattened===1?' · Flattened locally':''}</small></span><Icon name="download"/></a>:<span>{file.name}<small>{file.status==='failed'?'Inactive — processing failed':'Processing in background…'}</small></span>}</li>)}</ul> : <p className="entity-detail-empty">No attached files. Add sources in Edit.</p>}
         </section>}
       </div>
       <div id="entity-tabpanel-connections" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-connections" hidden={tab !== 'connections'} tabIndex={0}>
@@ -84,7 +84,7 @@ export function EntityPanel(props: Props) {
       <div id="entity-tabpanel-edit" className="entity-detail-tabpanel entity-detail-edit" role="tabpanel" aria-labelledby="entity-tab-edit" hidden={tab !== 'edit'} tabIndex={0}>
         {schemaError && <p role="alert">{schemaError}</p>}
         <section className="entity-detail-section"><h3>Details</h3><EntityDetails schema={schema} key={entity.id} entity={entity} onSave={input => mutate(() => api.updateEntity(vaultId, id, input))}/></section>
-        {entity.type==='source'&&<SourceAttachments key={entity.id} vaultId={vaultId} entityId={entity.id} initial={entity.attachments} onChange={attachments => setEntity(current => current ? {...current, attachments} : current)}/>}
+        {entity.type==='source'&&<SourceAttachments key={entity.id} vaultId={vaultId} entityId={entity.id} initial={entity.attachments} onChange={attachments => {setEntity(current => current ? {...current, attachments,inactive:attachments.some(file=>file.status==='failed'),sourceStatus:attachments[0]?.status} : current);if(attachments.every(file=>file.status==='ready'||file.status==='failed'))void api.entity(vaultId,id).then(result=>{setEntity(result);return onUpdated();}).catch(onError);else if(entity.inactive)void onUpdated().catch(onError);}}/>}
         <section className="panel-section"><h3>Properties <span>{entity.properties.length}</span></h3><p className="section-hint">Fields are inherited from this category and its selected subtypes. Define new fields in Settings → Knowledge Entities; set each entity’s values here.</p>
           <PropertyEditor key={entity.type + JSON.stringify(entity.subtypes)} entity={{...entity, propertyNames}} entities={entities} mention={mention} onSave={(input, propertyId) => mutate(() => api.saveProperty(vaultId, id, input, propertyId))} onRemove={propertyId => mutate(() => api.removeConnection(vaultId, id, 'properties', propertyId))}/>
         </section>
@@ -113,14 +113,14 @@ function EntityDetails({entity, schema, onSave}: {schema: EntitySchema; entity: 
   const [mentionCase,setMentionCase]=useState<EntityMentionCase>(entity.mentionCase??'canonical');
   const dirty = name !== entity.name || type !== entity.type || description !== entity.description || mentionCase !== (entity.mentionCase ?? 'canonical') || JSON.stringify(parseAliases(aliases)) !== JSON.stringify(entity.aliases ?? []) || JSON.stringify([...subtypes].sort()) !== JSON.stringify([...entity.subtypes].sort());
   function reset() {setName(entity.name); setType(entity.type); setDescription(entity.description); setSubtypes(entity.subtypes); setAliases((entity.aliases ?? []).join('\n')); setMentionCase(entity.mentionCase ?? 'canonical'); setStatus('');}
-  async function submit(e: FormEvent) { e.preventDefault(); if (busy || !dirty || !name.trim()) return; setBusy(true); setStatus(''); try { await onSave({name: name.trim(), aliases: parseAliases(aliases), mentionCase, type, subtypes, description}); setName(name.trim()); setStatus('Saved'); } catch { /* Parent reports the error. */ } finally { setBusy(false); } }
+  async function submit(e: FormEvent) { e.preventDefault(); if (busy || !dirty || !name.trim()) return; setBusy(true); setStatus(''); try { await onSave({name: name.trim(), aliases: type==='source'?[]:parseAliases(aliases), mentionCase, type, subtypes, description}); setName(name.trim()); setStatus('Saved'); } catch { /* Parent reports the error. */ } finally { setBusy(false); } }
   return <form id="entity-form" className="entity-detail-form" onSubmit={submit}>
     <label>Name<input className="entity-name" aria-label="Entity name" required maxLength={200} disabled={busy} value={name} onChange={e => {setName(e.target.value);setStatus('');}}/></label>
     <h4 className="entity-form-heading">Classification</h4>
     <label>Entity type<Select aria-label="Entity type" value={type} disabled={busy} onChange={e => {setType(e.target.value as EntityType);setSubtypes([]);setStatus('');}}>{entityTypes.map(t => <option key={t} value={t} disabled={t!==entity.type&&(t==='source'||entity.type==='source')}>{entityLabels[t]}</option>)}</Select></label>
     <SubtypePicker type={type} value={subtypes} subtypes={schema.subtypes} onChange={value => {setSubtypes(value);setStatus('');}} disabled={busy}/>
-    <h4 className="entity-form-heading">Mentions & aliases</h4>
-    <AliasInput value={aliases} onChange={value => {setAliases(value);setStatus('');}} disabled={busy}/>
+    <h4 className="entity-form-heading">{type==='source'?'Mentions':'Mentions & aliases'}</h4>
+    {type!=='source'&&<AliasInput value={aliases} onChange={value => {setAliases(value);setStatus('');}} disabled={busy}/>}
     <label>Default tag casing<Select aria-label="Default tag casing" value={mentionCase} disabled={busy} onChange={event=>{setMentionCase(event.target.value as EntityMentionCase);setStatus('');}}><option value="canonical">Entity name</option><option value="lowercase">Lowercase</option></Select></label>
     <p className="section-hint">Used when inserting a tag without source text. AI tags and tags made from selected text keep the passage’s original capitalization.</p>
     <h4 className="entity-form-heading">About this entity</h4>

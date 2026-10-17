@@ -14,7 +14,7 @@ export function identifyEntityMentions(blocks: Block[], entities: Entity[], vaul
   const names = new Map<string, Entity[]>();
   const ambiguous: AmbiguousEntityMatch[] = [];
   for (const entity of entities) {
-    if (entity.vault_id !== vaultId) continue;
+    if (entity.vault_id !== vaultId || entity.inactive) continue;
     for (const value of [entity.name, ...(entity.aliases ?? [])]) {
       const name = normalizeEntityName(value);
       if (!name) continue;

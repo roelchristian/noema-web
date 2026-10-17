@@ -28,6 +28,6 @@ export const builtinProperties: Record<EntityType, string[]> = {
   organization: ['founded', 'headquarters', 'website'],
   organism: [],
   culture: [],
-  source: ['url', 'author', 'publication date', 'accessed date'],
+  source: ['Import method', 'Source URL', 'url', 'author', 'publication date', 'accessed date'],
   concept: [],
 };

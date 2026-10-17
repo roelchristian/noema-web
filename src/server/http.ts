@@ -77,17 +77,25 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
           const header=req.headers['x-vault-id'];if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
           const vault=vaults.requireOpen(header || (method==='GET'?url.searchParams.get('vault'):null) || 'default');
           const parts=url.pathname.split('/').filter(Boolean),id=parts[2];
+          if(id==='url' && parts.length===3 && method==='POST') {
+            if(!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))throw new HttpError(415,'URL imports require JSON.');
+            const body=await readBody(req);
+            if(body.entityId!==undefined&&typeof body.entityId!=='string')throw new HttpError(400,'Invalid source entity.');
+            return send(201,await sourceFiles.addURL(vault,body.url,body.entityId as string|undefined,()=>{vaults.requireOpen(vault);}));
+          }
           if(!id && parts.length===2 && method==='POST') {
             const chunks:Buffer[]=[];let size=0;
             for await(const chunk of req){const bytes=Buffer.from(chunk);size+=bytes.length;if(size>maxSourceBytes)throw new HttpError(413,'Source files must be 50 MB or smaller');chunks.push(bytes);}
             vaults.requireOpen(vault);
-            return send(201,sourceFiles.add(vault,url.searchParams.get('name')||'',Buffer.concat(chunks),url.searchParams.get('entity')||undefined));
+            return send(201,await sourceFiles.admit(vault,url.searchParams.get('name')||'',Buffer.concat(chunks),url.searchParams.get('entity')||undefined,()=>{vaults.requireOpen(vault);}));
           }
           if(id && parts.length===3 && method==='GET')return send(200,sourceFiles.require(vault,id));
           if(id && parts.length===3 && method==='DELETE')return send(200,sourceFiles.remove(vault,id));
           if(id && parts.length===4 && parts[3]==='retry' && method==='POST')return send(200,sourceFiles.retry(vault,id));
           if(id && parts.length===4 && parts[3]==='download' && method==='GET') {
-            const file=sourceFiles.require(vault,id),bytes=readFileSync(sourceFiles.filename(vault,id));
+            const file=sourceFiles.require(vault,id);
+            if(file.admitted!==1)throw new HttpError(409,'This source is not available until safety processing succeeds.');
+            const bytes=readFileSync(sourceFiles.filename(vault,id));
             const filename=encodeURIComponent(file.name).replace(/['()*]/g,char=>'%'+char.charCodeAt(0).toString(16).toUpperCase());
             res.writeHead(200,{'Content-Type':'application/octet-stream','Content-Disposition':`attachment; filename="source.${id.split('.').at(-1)}"; filename*=UTF-8''${filename}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"});
             return res.end(bytes);

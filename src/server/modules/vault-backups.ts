@@ -1,3 +1,4 @@
+import { syncSourceProvenance } from './source-provenance.js';
 import { readFileSync, unlinkSync } from 'node:fs';
 import { SourceFiles } from './source-files.js';
 import {randomUUID} from 'node:crypto';
@@ -22,8 +23,8 @@ const entityScope='entity_id IN (SELECT id FROM entities WHERE vault_id=?)';
 // Explicit, versioned allowlist: credentials, app settings, jobs and activity are never archived.
 const tables={
   pages:{columns:'id,title,icon,featured_image_id,blocks,updated_at,revision,deleted_at',scope:'vault_id=?'},
-  source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at',scope:'vault_id=? AND entity_id IS NOT NULL'},
-  entities:{columns:'id,name,aliases,mention_case,type,subtypes,description,updated_at',scope:'vault_id=?'},
+  source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at,import_method,source_url,pdf_flattened,admitted,format',scope:'vault_id=? AND entity_id IS NOT NULL'},
+  entities:{columns:'id,name,aliases,mention_case,type,subtypes,description,updated_at,inactive',scope:'vault_id=?'},
   properties:{columns:'id,entity_id,name,value,target_id',scope:entityScope},
   relationships:{columns:'id,source_id,label,target_id',scope:'source_id IN (SELECT id FROM entities WHERE vault_id=?)'},
   page_edit_locks:{columns:'page_id,password_hash,salt',scope:'vault_id=?'},
@@ -84,7 +85,7 @@ export class VaultBackups {
         return {id,data:bytes.toString('base64')};
       });
       return {format:'noema-vault-backup',version:1,createdAt:now(),vault:{name},tables:data,images,sourceFiles:data.source_files.map(file=>{
-        const bytes=readFileSync(new SourceFiles(this.store).filename(vault,file.id as string));
+        const bytes=readFileSync(new SourceFiles(this.store).assetFilename(vault,file.id as string));
         estimated+=Math.ceil(bytes.length/3)*4;
         if(estimated>maxExpandedBytes)throw new HttpError(413,'This vault exceeds the 256 MB expanded backup limit.');
         return {id:file.id as string,data:bytes.toString('base64')};
@@ -107,6 +108,21 @@ export class VaultBackups {
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
     for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    const sourceOwners=new Set<unknown>(),legacyEntities=new Map(rows.entities.map(row=>[row.id,row]));
+    const legacyProperties=[...rows.properties],legacyLinks=[...rows.page_sources];
+    for(const file of rows.source_files) {
+      if(!sourceOwners.has(file.entity_id)){sourceOwners.add(file.entity_id);continue;}
+      const owner=legacyEntities.get(file.entity_id);
+      if(!owner||owner.type!=='source')throw invalid();
+      const id=randomUUID(),original=file.entity_id;
+      const properties=legacyProperties.filter(row=>row.entity_id===original),links=legacyLinks.filter(row=>row.source_id===original);
+      total+=1+properties.length+links.length;
+      if(total>200000)throw new HttpError(413,'This backup contains too many records.');
+      rows.entities.push({...owner,id,name:name(file,'name').slice(0,200),aliases:'[]'});
+      rows.properties.push(...properties.map(row=>({...row,id:randomUUID(),entity_id:id})));
+      rows.page_sources.push(...links.map(row=>({...row,source_id:id})));
+      file.entity_id=id;
+    }
     if(total>200000)throw new HttpError(413,'This backup contains too many records.');
     const assets=list(archive.images).map(object);
     const sourceAssets=list(archive.sourceFiles??[]).map(object);
@@ -165,17 +181,32 @@ export class VaultBackups {
           if(aliases.length>100||new Set(subtypes).size!==subtypes.length)throw invalid();
           const mentionCase=row.mention_case??'canonical';
           if(mentionCase!=='canonical'&&mentionCase!=='lowercase')throw invalid();
-          insert('entities',{id:ref(entityIds,row.id),vault_id:vault,name:name(row,'name'),type,aliases:JSON.stringify(aliases),mention_case:mentionCase,subtypes:JSON.stringify(subtypes),description:string(row,'description'),updated_at:timestamp(row,'updated_at')});
+          if(row.inactive!==undefined&&row.inactive!==0&&row.inactive!==1)throw invalid();
+          insert('entities',{inactive:row.inactive??0,id:ref(entityIds,row.id),vault_id:vault,name:name(row,'name'),type,aliases:JSON.stringify(type==='source'?[]:aliases),mention_case:mentionCase,subtypes:JSON.stringify(subtypes),description:string(row,'description'),updated_at:timestamp(row,'updated_at')});
         }
         for(const row of rows.source_files) {
           const asset=sourceAssetMap.get(name(row,'id'));if(!asset)throw invalid();
           const encoded=string(asset,'data',70*1024*1024),bytes=Buffer.from(encoded,'base64');
           if(bytes.toString('base64')!==encoded || bytes.length!==integer(row,'size',1,50*1024*1024))throw invalid();
-          const added=sourceFiles.add(vault,name(row,'name'),bytes,ref(entityIds,row.entity_id));writtenSources.push(added.id);
-          const status=string(row,'status',20);if(!['queued','processing','ready','failed'].includes(status))throw invalid();
+          if(row.import_method!==undefined&&!['url','upload'].includes(String(row.import_method)))throw invalid();
+          const sourceUrl=row.source_url===undefined||row.source_url===null?undefined:string(row,'source_url',4096);
+          if(row.import_method==='url'&&!sourceUrl||row.import_method==='upload'&&sourceUrl)throw invalid();
+          const sourceEntity=ref(entityIds,row.entity_id);
+          if(this.store.get<{type:string}>('SELECT type FROM entities WHERE id=? AND vault_id=?',sourceEntity,vault)?.type!=='source')throw invalid();
+          const pdfFlattened=row.pdf_flattened??0;
+          if(pdfFlattened!==0&&pdfFlattened!==1)throw invalid();
+          const admitted=row.admitted??1;
+          if(admitted!==0&&admitted!==1)throw invalid();
+          const format=row.format??name(row,'name').split('.').at(-1)?.toLowerCase();
+          if(!['txt','md','pdf','html','url'].includes(String(format))||format==='url'&&(!sourceUrl||admitted!==0))throw invalid();
+          const added=sourceFiles.add(vault,name(row,'name'),bytes,undefined,sourceUrl,pdfFlattened===1,admitted===0,format as import('../../shared/domain.js').SourceFile['format']);writtenSources.push(added.id);
+          this.store.run('UPDATE source_files SET entity_id=? WHERE id=?',sourceEntity,added.id);
+          const status=string(row,'status',20);if(!['queued','processing','ready','failed'].includes(status)||status==='ready'&&admitted!==1)throw invalid();
           this.store.run('UPDATE source_files SET status=?,text=?,error=?,progress=?,pages=?,ocr_pages=?,created_at=? WHERE id=?',status==='processing'?'queued':status,string(row,'text',16*1024*1024),nullable(row,'error',2000),integer(row,'progress',0,100),integer(row,'pages',0,1000),integer(row,'ocr_pages',0,1000),timestamp(row,'created_at'),added.id);
         }
+        this.store.run("UPDATE entities SET inactive=CASE WHEN EXISTS (SELECT 1 FROM source_files WHERE entity_id=entities.id AND status='failed') THEN 1 ELSE 0 END WHERE vault_id=? AND type='source'",vault);
         for(const row of rows.properties)insert('properties',{id:randomUUID(),entity_id:ref(entityIds,row.entity_id),name:name(row,'name'),value:nullable(row,'value'),target_id:row.target_id===null?null:ref(entityIds,row.target_id)});
+        for(const entityId of entityIds.values())if(this.store.get<{type:string}>('SELECT type FROM entities WHERE id=?',entityId)?.type==='source')syncSourceProvenance(this.store,vault,entityId);
         for(const row of rows.relationships)insert('relationships',{id:randomUUID(),source_id:ref(entityIds,row.source_id),label:name(row,'label'),target_id:ref(entityIds,row.target_id)});
         const pages=new Pages(this.store,new Knowledge(this.store));
         for(const row of rows.pages) {
@@ -248,7 +279,7 @@ export class VaultBackups {
         for(const id of pageIds.values())if(!this.store.get<{deleted_at:string|null}>('SELECT deleted_at FROM pages WHERE id=?',id)!.deleted_at)pages.get(vault,id);
       });
     } catch(error) {
-      for(const id of writtenSources){try{unlinkSync(sourceFiles.filename(vault,id));}catch{/* Rollback removes only newly written files. */}}
+      for(const id of writtenSources){try{sourceFiles.removeAssets(vault,id);}catch{/* Rollback removes only newly written files. */}}
       for(const id of writtenImages)this.images.remove(vault,id);
       if(error instanceof HttpError)throw error;
       throw invalid();

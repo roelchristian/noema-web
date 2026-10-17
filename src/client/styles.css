@@ -2302,14 +2302,23 @@ dialog.create-entity-dialog { width: 420px; max-width: calc(100vw - 32px); max-h
 .create-entity-header > button { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; padding: 6px; border-radius: 4px; color: var(--text-muted); }
 .create-entity-header > button:hover { background: var(--surface-hover); color: var(--text); }
 .create-entity-header > button > .icon { width: 16px; height: 16px; }
-.create-entity-fields { display: grid; gap: 16px; min-width: 0; padding: 20px; }
-.create-entity-fields > label { display: grid; gap: 7px; margin: 0; min-width: 0; color: var(--text-muted); font-size: 11px; }
-.create-entity-fields > label > input, .create-entity-fields .entity-alias-input textarea { width: 100%; margin: 0; padding: 9px 10px; border: 1px solid var(--control-border); border-radius: 5px; background: var(--surface); color: var(--text); font: 12px/1.6 var(--font-ui); }
+.create-entity-fields { display: grid; gap: 20px; min-width: 0; padding: 20px; }
+.create-entity-fields > label, .create-entity-fields .source-attachments > label { display: grid; gap: 8px; margin: 0; min-width: 0; color: var(--text-muted); font-size: 11px; }
+.create-entity-fields > label > input, .create-entity-fields .source-attachments > label > input:not([type=file]), .create-entity-fields .entity-alias-input textarea { width: 100%; margin: 0; padding: 9px 10px; border: 1px solid var(--control-border); border-radius: 5px; background: var(--surface); color: var(--text); font: 12px/1.6 var(--font-ui); }
 .create-entity-fields .entity-alias-input textarea { min-height: 64px; resize: vertical; }
 .create-entity-fields .entity-alias-input small { color: var(--text-muted); font-size: 10px; line-height: 1.6; }
 .create-entity-fields .select-control { display: flex; width: 100%; margin: 0; }
 .create-entity-fields .select-trigger { min-height: 38px; padding: 9px 10px; border: 1px solid var(--control-border); border-radius: 5px; background: var(--surface); font-size: 12px; }
 .create-entity-fields .subtype-picker { margin: 0; }
+.create-entity-fields .source-attachments { display: grid; gap: 12px; min-width: 0; margin: 0; }
+.create-entity-fields .source-upload { padding: 14px; }
+.create-entity-fields .source-upload input[type=file] { min-width: 0; width: 100%; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; line-height: 1.6; }
+.create-entity-fields .source-upload input::file-selector-button { margin-right: 10px; padding: 6px 10px; }
+.create-entity-fields .source-attachments > .button { justify-self: start; margin: 0; min-height: 36px; }
+.create-entity-fields .source-attachments > .section-hint { margin: 0; font-size: 11px; line-height: 1.7; }
+.create-entity-fields .source-file-list { min-width: 0; margin: 4px 0 0; }
+.create-entity-fields .source-file-list:empty { display: none; }
+
 /* Keep expanded choices inside the modal's scroll flow, clear of its sticky footer. */
 .create-entity-fields .subtype-dropdown { position: static; margin-top: 8px; }
 .create-entity-fields .subtype-options { max-height: 180px; }
@@ -2320,7 +2329,7 @@ dialog.create-entity-dialog { width: 420px; max-width: calc(100vw - 32px); max-h
 .create-entity-actions .button { min-height: 34px; padding: 7px 12px; font-size: 12px; }
 @media (max-width: 750px) {
   .create-entity-header, .create-entity-fields { padding: 16px; }
-  .create-entity-fields > label > input, .create-entity-fields .entity-alias-input textarea { font-size: 16px; }
+  .create-entity-fields > label > input, .create-entity-fields .source-attachments > label > input:not([type=file]), .create-entity-fields .entity-alias-input textarea { font-size: 16px; }
   .create-entity-header > button { width: 44px; height: 44px; padding: 12px; }
   .create-entity-fields .select-trigger, .create-entity-actions .button { min-height: 44px; }
   .create-entity-actions { padding: 12px 16px; }

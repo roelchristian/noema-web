@@ -447,10 +447,11 @@ export class Workspace {
       if (this.state.page) this.titler.observe(this.state.page,true);
     }
   }
-  async refreshEntities() {
-    const vault = this.state.vault!, sequence = this.loadSequence;
-    const entities = await api.entities(vault.id);
-    if (sequence === this.loadSequence) this.patch({entities});
+  async refreshEntities(signal?:AbortSignal) {
+    const vault = this.state.vault, sequence = this.loadSequence;
+    if(!vault||vault.locked||signal?.aborted)return;
+    const entities = await api.entities(vault.id,signal);
+    if (!signal?.aborted&&sequence===this.loadSequence&&this.state.vault?.id===vault.id&&!this.state.vault.locked) this.patch({entities});
   }
   async previewVaultDeletion(id:string) {
     if(this.state.vault?.id!==id)throw new Error('The selected vault changed.');

@@ -1,3 +1,4 @@
+import { syncSourceProvenance } from './source-provenance.js';
 import { randomUUID } from 'node:crypto';
 import { makeSearchSnippet } from '../../shared/search-snippets.js';
 import { blockSegments, entityMentionName, entityTypes, type EntityType, type Entity, type EntityDetail, type EntityPageMention, type Block, type Property, type Relationship } from '../../shared/domain.js';
@@ -5,7 +6,7 @@ import { builtinProperties, builtinSubtypes, inheritedPropertyNames, type Entity
 import { Store } from '../store.js';
 import { HttpError, now, required, text } from '../validation.js';
 import { normalizeEntityName } from '../../shared/auto-entities.js';
-type EntityRow = Omit<Entity, 'subtypes' | 'aliases' | 'mentionCase'> & {subtypes: string; aliases: string; mention_case: 'canonical' | 'lowercase'; subtype?: string | null};
+type EntityRow = Omit<Entity, 'subtypes' | 'aliases' | 'mentionCase' | 'inactive'> & {inactive:number;subtypes: string; aliases: string; mention_case: 'canonical' | 'lowercase'; subtype?: string | null};
 export class Knowledge {
   constructor(private store: Store) {}
   schema(vault: string): EntitySchema {
@@ -44,11 +45,11 @@ export class Knowledge {
   }
   private entity(row: EntityRow): Entity {
     const {subtype: _legacy, subtypes, aliases, mention_case, ...entity} = row;
-    return {...entity, mentionCase: mention_case, aliases: JSON.parse(aliases) as string[], subtypes: JSON.parse(subtypes) as string[]};
+    return {...entity, inactive:!!entity.inactive, mentionCase: mention_case, aliases: entity.type==='source'?[]:JSON.parse(aliases) as string[], subtypes: JSON.parse(subtypes) as string[]};
   }
-  list(vault: string) { return this.store.all<EntityRow>('SELECT * FROM entities WHERE vault_id=? ORDER BY name COLLATE NOCASE',vault).map(row => this.entity(row)); }
+  list(vault: string) { return this.store.all<EntityRow>('SELECT e.*, (SELECT f.status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceStatus FROM entities e WHERE e.vault_id=? ORDER BY e.name COLLATE NOCASE',vault).map(row => this.entity(row)); }
   find(vault: string, id: string) {
-    const row = this.store.get<EntityRow>('SELECT * FROM entities WHERE id=? AND vault_id=?',id,vault);
+    const row = this.store.get<EntityRow>('SELECT e.*, (SELECT f.status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceStatus FROM entities e WHERE e.id=? AND e.vault_id=?',id,vault);
     return row ? this.entity(row) : undefined;
   }
   require(vault: string, id: string) {
@@ -91,7 +92,7 @@ export class Knowledge {
     const subtypes = [...new Set(selection as string[])];
     const available = this.schema(vault).subtypes.filter(s => s.type === type);
     if (subtypes.some(id => !available.some(s => s.id === id))) throw new HttpError(400,'Invalid subtype for this main type');
-    const inputAliases = body.aliases === undefined ? current?.aliases ?? [] : body.aliases;
+    const inputAliases = type==='source'?[]:body.aliases === undefined ? current?.aliases ?? [] : body.aliases;
     if (!Array.isArray(inputAliases) || inputAliases.length > 100 || inputAliases.some(alias => typeof alias !== 'string' || !alias.trim() || alias.trim().length > 200)) throw new HttpError(400,'Aliases must be up to 100 non-empty names of at most 200 characters');
     const aliases = [...new Map(inputAliases.map((alias: string) => [alias.trim().replace(/\s+/g, ' ').toLowerCase(), alias.trim().replace(/\s+/g, ' ')])).values()];
     const mentionCase=body.mentionCase===undefined?current?.mentionCase??'canonical':body.mentionCase;
@@ -99,17 +100,23 @@ export class Knowledge {
     return {name:required(body.name),aliases,mentionCase,type,subtypes,description:text(body.description ?? '')};
   }
   create(vault: string, body: Record<string, unknown>) {
-    const e=this.input(vault,body),id=randomUUID();
+    const attachmentIds=body.type==='source'?this.attachments(vault,body.attachmentIds):[];
+    const filename=attachmentIds.length?this.store.get<{name:string}>('SELECT name FROM source_files WHERE id=? AND vault_id=?',attachmentIds[0]!,vault)?.name:undefined;
+    const e=this.input(vault,{...body,name:typeof body.name==='string'&&body.name.trim()?body.name:filename?.slice(0,200)}),id=randomUUID();
     const create=() => {
-      const attachments=e.type==='source'?this.attachments(vault,body.attachmentIds):[];
+      const attachments=attachmentIds;
       this.store.run('INSERT INTO entities (id,name,aliases,mention_case,type,subtypes,description,updated_at,vault_id) VALUES (?,?,?,?,?,?,?,?,?)',id,e.name,JSON.stringify(e.aliases),e.mentionCase,e.type,JSON.stringify(e.subtypes),e.description,now(),vault);
       for(const file of attachments)this.store.run('UPDATE source_files SET entity_id=? WHERE id=? AND vault_id=?',id,file,vault);
+      if(e.type==='source'){
+        this.store.run("UPDATE entities SET inactive=CASE WHEN EXISTS (SELECT 1 FROM source_files WHERE entity_id=? AND status='failed') THEN 1 ELSE 0 END WHERE id=?",id,id);
+        syncSourceProvenance(this.store,vault,id);
+      }
     };
     if(e.type==='source')this.store.transaction(create);else create();
     return this.detail(vault,id);
   }
   private attachments(vault:string,value:unknown): string[] {
-    if(!Array.isArray(value)||!value.length||value.length>20||value.some(id=>typeof id!=='string'))throw new HttpError(400,'A source requires at least one attached file (up to 20).');
+    if(!Array.isArray(value)||value.length!==1||value.some(id=>typeof id!=='string'))throw new HttpError(400,'A source requires exactly one file or URL.');
     const ids=[...new Set(value as string[])];
     for(const id of ids)if(!this.store.get('SELECT 1 FROM source_files WHERE id=? AND vault_id=? AND entity_id IS NULL',id,vault))throw new HttpError(400,'Choose an unattached source file from this vault.');
     return ids;
@@ -131,6 +138,7 @@ export class Knowledge {
     const alias = required(body.alias,200).replace(/\s+/g, ' ');
     return this.store.transaction(() => {
       const entity = this.require(vault,id), aliases = entity.aliases ?? [];
+      if(entity.type==='source')throw new HttpError(400,'Sources do not support aliases.');
       if ([entity.name, ...aliases].some(name => normalizeEntityName(name) === normalizeEntityName(alias))) return this.detail(vault,id);
       if (aliases.length >= 100) throw new HttpError(400,'This entity already has 100 aliases. Remove an alias before adding another.');
       this.store.run('UPDATE entities SET aliases=?,updated_at=? WHERE id=? AND vault_id=?',JSON.stringify([...aliases,alias]),now(),id,vault);

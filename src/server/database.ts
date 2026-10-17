@@ -30,6 +30,7 @@ for (const table of ['pages','entities']) {
 }
 db.exec('COMMIT');
 } catch(e) { db.exec('ROLLBACK'); throw e; } finally { db.exec('PRAGMA foreign_keys=ON'); }
+if (!db.prepare('PRAGMA table_info(entities)').all().some(column=>column.name==='inactive')) db.exec('ALTER TABLE entities ADD COLUMN inactive INTEGER NOT NULL DEFAULT 0');
 db.exec(`CREATE TABLE IF NOT EXISTS page_sources (page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE, source_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE, PRIMARY KEY(page_id,source_id));`);
 
 db.exec(`
@@ -111,10 +112,32 @@ db.exec(`CREATE TABLE IF NOT EXISTS ai_activity_debug (
 // Notifications store references and read state, never generated content or title snapshots.
 db.exec(`CREATE TABLE IF NOT EXISTS ai_notifications (
  seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE,
- vault_id TEXT NOT NULL REFERENCES vaults(id), page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
- action TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, read_at TEXT
+ vault_id TEXT NOT NULL REFERENCES vaults(id), page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,
+ entity_id TEXT REFERENCES entities(id) ON DELETE CASCADE,
+ action TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, read_at TEXT,
+ CHECK ((page_id IS NULL) != (entity_id IS NULL))
 );
  CREATE INDEX IF NOT EXISTS ai_notifications_unread ON ai_notifications(read_at,seq DESC);`);
+
+// Allow bell updates to point to either a note or a source entity.
+if (!db.prepare('PRAGMA table_info(ai_notifications)').all().some(column=>column.name==='entity_id')) {
+ db.exec('BEGIN IMMEDIATE');
+ try {
+  db.exec(`ALTER TABLE ai_notifications RENAME TO old_ai_notifications;
+   CREATE TABLE ai_notifications (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE,
+    vault_id TEXT NOT NULL REFERENCES vaults(id), page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,
+    entity_id TEXT REFERENCES entities(id) ON DELETE CASCADE,
+    action TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, read_at TEXT,
+    CHECK ((page_id IS NULL) != (entity_id IS NULL))
+   );
+   INSERT INTO ai_notifications (seq,id,vault_id,page_id,action,status,created_at,read_at)
+    SELECT seq,id,vault_id,page_id,action,status,created_at,read_at FROM old_ai_notifications;
+   DROP TABLE old_ai_notifications;
+   CREATE INDEX ai_notifications_unread ON ai_notifications(read_at,seq DESC);`);
+  db.exec('COMMIT');
+ }catch(error){db.exec('ROLLBACK');throw error;}
+}
 
 if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'featured_image_id')) db.exec('ALTER TABLE pages ADD COLUMN featured_image_id TEXT');
 if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'icon')) db.exec('ALTER TABLE pages ADD COLUMN icon TEXT');
@@ -206,6 +229,53 @@ db.exec(`CREATE TABLE IF NOT EXISTS source_files (
  pages INTEGER NOT NULL DEFAULT 0, ocr_pages INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL
 );
  CREATE INDEX IF NOT EXISTS source_files_entity ON source_files(vault_id,entity_id);`);
+const sourceColumns = db.prepare('PRAGMA table_info(source_files)').all() as {name:string}[];
+if (!sourceColumns.some(column=>column.name==='import_method')) db.exec("ALTER TABLE source_files ADD COLUMN import_method TEXT NOT NULL DEFAULT 'upload'");
+if (!sourceColumns.some(column=>column.name==='pdf_flattened')) db.exec('ALTER TABLE source_files ADD COLUMN pdf_flattened INTEGER NOT NULL DEFAULT 0');
+if (!sourceColumns.some(column=>column.name==='source_url')) db.exec('ALTER TABLE source_files ADD COLUMN source_url TEXT');
+if (!sourceColumns.some(column=>column.name==='admitted')) db.exec('ALTER TABLE source_files ADD COLUMN admitted INTEGER NOT NULL DEFAULT 1');
+if (!sourceColumns.some(column=>column.name==='format')) {
+ db.exec("ALTER TABLE source_files ADD COLUMN format TEXT NOT NULL DEFAULT 'txt'");
+ db.exec("UPDATE source_files SET format=CASE WHEN name LIKE '%.pdf' THEN 'pdf' WHEN name LIKE '%.md' THEN 'md' WHEN id LIKE '%.html' THEN 'html' ELSE 'txt' END");
+}
+// Preserve older multi-file sources by separating their extra files into sources.
+if(!db.prepare("SELECT 1 FROM metadata WHERE key='single-file-sources'").get()) {
+db.exec('BEGIN IMMEDIATE');
+try {
+ const extras=db.prepare(`SELECT f.id,f.entity_id,f.vault_id,f.name,f.status,e.subtypes,e.description FROM source_files f JOIN entities e ON e.id=f.entity_id
+  WHERE f.id NOT IN (SELECT first.id FROM source_files first WHERE first.entity_id=f.entity_id ORDER BY first.created_at,first.id LIMIT 1)`).all();
+ for(const file of extras) {
+  const id=randomUUID();
+  db.prepare(`INSERT INTO entities (id,vault_id,name,type,subtypes,description,updated_at,inactive) VALUES (?,?,?,'source',?,?,?,?)`).run(id,file.vault_id,String(file.name).slice(0,200),file.subtypes,file.description,now(),file.status==='failed'?1:0);
+  db.prepare('UPDATE source_files SET entity_id=? WHERE id=?').run(id,file.id);
+  db.prepare('INSERT OR IGNORE INTO page_sources SELECT page_id,? FROM page_sources WHERE source_id=?').run(id,file.entity_id);
+  for(const property of db.prepare("SELECT name,value,target_id FROM properties WHERE entity_id=? AND name NOT IN ('Import method','Source URL')").all(file.entity_id))db.prepare('INSERT INTO properties VALUES (?,?,?,?,?)').run(randomUUID(),id,property.name,property.value,property.target_id);
+ }
+ db.exec("CREATE UNIQUE INDEX IF NOT EXISTS source_files_one_per_entity ON source_files(entity_id) WHERE entity_id IS NOT NULL");
+ db.exec("UPDATE entities SET inactive=CASE WHEN EXISTS (SELECT 1 FROM source_files f WHERE f.entity_id=entities.id AND f.status='failed') THEN 1 ELSE 0 END WHERE type='source'");
+ // Rebuild derived provenance for the sources affected by the split, too.
+ for(const entity of db.prepare("SELECT id FROM entities WHERE type='source'").all()) {
+  db.prepare("DELETE FROM properties WHERE entity_id=? AND name IN ('Import method','Source URL')").run(entity.id);
+  for(const file of db.prepare('SELECT import_method,source_url FROM source_files WHERE entity_id=?').all(entity.id)) {
+   db.prepare('INSERT INTO properties VALUES (?,?,?,?,NULL)').run(randomUUID(),entity.id,'Import method',file.import_method);
+   if(file.source_url)db.prepare('INSERT INTO properties VALUES (?,?,?,?,NULL)').run(randomUUID(),entity.id,'Source URL',file.source_url);
+  }
+ }
+ db.prepare("INSERT INTO metadata (key,value) VALUES ('single-file-sources','1')").run();
+ db.exec('COMMIT');
+}catch(error){db.exec('ROLLBACK');throw error;}
+}
+
+// Pending imports are processing, not inactive. Repair the former pending flag once.
+if(!db.prepare("SELECT 1 FROM metadata WHERE key='source-inactive-on-failure'").get()) {
+ db.exec('BEGIN IMMEDIATE');
+ try {
+  db.exec("UPDATE entities SET inactive=CASE WHEN EXISTS (SELECT 1 FROM source_files f WHERE f.entity_id=entities.id AND f.status='failed') THEN 1 ELSE 0 END WHERE type='source'");
+  db.prepare("INSERT INTO metadata (key,value) VALUES ('source-inactive-on-failure','1')").run();
+  db.exec('COMMIT');
+ }catch(error){db.exec('ROLLBACK');throw error;}
+}
+
 if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
  db.exec('BEGIN');
  try {

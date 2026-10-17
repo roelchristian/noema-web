@@ -65,7 +65,7 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onCreate}: {vaultId
           {viewMode==='grid' && <PageCover vaultId={vaultId} icon={entity.type}/>}
           <span className="organization-item-icon"><Icon name={entity.type}/></span>
           <button className="organization-item-name" title={entity.name} onClick={() => onOpen(entity.id)}>
-            <span className="organization-page-title"><HighlightedText text={entity.name} query={search}/><span className="knowledge-row-detail">{[entityLabels[entity.type], ...entity.subtypes.map(id => schema.subtypes.find(item => item.id === id)?.name).filter(Boolean)].join(' / ')}</span></span>
+            <span className="organization-page-title"><HighlightedText text={entity.name} query={search}/><span className="knowledge-row-detail">{[entityLabels[entity.type], ...(entity.type==='source'?(entity.sourceStatus==='queued'||entity.sourceStatus==='processing'?['Processing']:entity.inactive?['Inactive']:[]):[]), ...entity.subtypes.map(id => schema.subtypes.find(item => item.id === id)?.name).filter(Boolean)].join(' / ')}</span></span>
             <small>{Number.isFinite(Date.parse(entity.updated_at)) ? <time dateTime={entity.updated_at} title={new Date(entity.updated_at).toLocaleString()}>{new Date(entity.updated_at).toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'})}</time> : 'Date unavailable'}</small>
             {entity.description && <span className="search-result-snippet knowledge-entity-description">{entity.description}</span>}
           </button>

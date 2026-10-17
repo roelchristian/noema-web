@@ -1,6 +1,10 @@
+import { AINotifications } from './ai-notifications.js';
+import { scanSourcePDF, fetchSource, sourceURL } from './source-import.js';
+import { syncSourceProvenance } from './source-provenance.js';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync, unlinkSync, existsSync, statSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, unlinkSync, existsSync, statSync, rmSync, renameSync } from 'node:fs';
 import path from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawn, type ChildProcess } from 'node:child_process';
 import type { SourceFile } from '../../shared/domain.js';
@@ -16,7 +20,8 @@ export class SourceFiles {
   readonly root: string;
   private closed = false;
   private running = false;
-  private child?: ChildProcess;
+  private children = new Set<ChildProcess>();
+  private flattenCompiler?: Promise<string>;
   constructor(private store: Store) {
     const database=store.all<{name:string;file:string}>('PRAGMA database_list').find(db=>db.name==='main');
     this.root=path.join(path.dirname(database?.file || ':memory:'),'assets');
@@ -25,44 +30,110 @@ export class SourceFiles {
     if(!/^(default|[0-9a-f-]{36})$/.test(vault)||!filePattern.test(id))throw new HttpError(400,'Invalid source file ID');
     return path.join(this.root,vault,'sources',id);
   }
+  private inboxFilename(vault:string,id:string) {
+    this.filename(vault,id); // Apply the same vault and file identifier checks.
+    return path.join(this.root,vault,'source-inbox',id);
+  }
+  assetFilename(vault:string,id:string) {
+    const file=this.require(vault,id);
+    const inbox=this.inboxFilename(vault,id),admitted=this.filename(vault,id);
+    return file.admitted===1||!existsSync(inbox)?admitted:inbox;
+  }
+  removeAssets(vault:string,id:string) {
+    for(const filename of [this.filename(vault,id),this.inboxFilename(vault,id)])try{unlinkSync(filename);}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
+  }
+  private requireSingle(vault:string,entityId:string|undefined) {
+    if(!entityId)return;
+    if(this.store.get<{type:string}>('SELECT type FROM entities WHERE id=? AND vault_id=?',entityId,vault)?.type!=='source')throw new HttpError(400,'Attach a file to a Source entity in this vault.');
+    if(this.store.get('SELECT 1 FROM source_files WHERE entity_id=?',entityId))throw new HttpError(400,'A source has exactly one file or URL. Create another source instead.');
+  }
   require(vault:string,id:string): SourceFile {
     const row=this.store.get<SourceFile>('SELECT * FROM source_files WHERE vault_id=? AND id=?',vault,id);
     if(!row)throw new HttpError(404,'Source file not found in this vault');
     return row;
   }
-  add(vault:string,name:string,bytes:Buffer,entityId?:string) {
+  add(vault:string,name:string,bytes:Buffer,entityId?:string,sourceUrl?:string,pdfFlattened=false,pending=false,format?:SourceFile['format']) {
     const extension=name.split('.').at(-1)?.toLowerCase();
+    if(format&&format!=='url'&&format!==extension)throw new HttpError(400,'Source format does not match the filename.');
+    if(format==='url'&&(!pending||!sourceUrl))throw new HttpError(400,'A queued URL source needs a URL.');
     if(!extension || !sourceExtensions.includes(extension))throw new HttpError(415,'Choose a TXT, MD, or PDF file');
     if(!bytes.length)throw new HttpError(400,'Choose a nonempty file');
     if(bytes.length>maxSourceBytes)throw new HttpError(413,'Source files must be 50 MB or smaller');
     if(name.length>255 || /[\x00-\x1f\x7f/\\]/.test(name))throw new HttpError(400,'Invalid filename');
-    if(extension==='pdf' && !bytes.subarray(0,1024).includes(Buffer.from('%PDF-')))throw new HttpError(415,'This file is not a PDF');
-    if(extension!=='pdf') {
+    if(!pending&&extension==='pdf')scanSourcePDF(bytes);
+    const origin=sourceUrl?sourceURL(sourceUrl).href:null;
+    if(!pending&&extension!=='pdf') {
       try {new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch{throw new HttpError(415,'Text sources must use UTF-8 encoding');}
       if(bytes.includes(0))throw new HttpError(415,'This file contains binary data');
     }
-    if(entityId && this.store.get<{type:string}>('SELECT type FROM entities WHERE id=? AND vault_id=?',entityId,vault)?.type!=='source')throw new HttpError(400,'Attach files to a Source entity in this vault');
-    const id=randomUUID()+'.'+extension,filename=this.filename(vault,id);
+    this.requireSingle(vault,entityId);
+    const id=randomUUID()+'.'+extension,filename=pending?this.inboxFilename(vault,id):this.filename(vault,id);
     mkdirSync(path.dirname(filename),{recursive:true});
     writeFileSync(filename,bytes,{flag:'wx',mode:0o600});
     try {
-      this.store.run('INSERT INTO source_files (id,vault_id,entity_id,name,size,status,created_at) VALUES (?,?,?,?,?,?,?)',id,vault,entityId??null,name,bytes.length,'queued',now());
+      const insert=()=>this.store.run('INSERT INTO source_files (id,vault_id,entity_id,name,size,status,created_at,import_method,source_url,pdf_flattened,admitted,format) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',id,vault,entityId??null,name,bytes.length,'queued',now(),origin?'url':'upload',origin,pdfFlattened?1:0,pending?0:1,format??extension);
+      if(entityId)this.store.transaction(()=>{this.requireSingle(vault,entityId);insert();this.store.run('UPDATE entities SET inactive=0,updated_at=? WHERE id=?',now(),entityId);syncSourceProvenance(this.store,vault,entityId);});
+      else insert();
     }catch(error){unlinkSync(filename);throw error;}
     return this.require(vault,id);
+  }
+  async admit(vault:string,name:string,bytes:Buffer,entityId:string|undefined,requireOpen:()=>void,sourceUrl?:string) {
+    if(this.closed)throw new HttpError(503,'Source processing is shutting down. Try again after restarting.');
+    requireOpen();
+    return this.add(vault,name,bytes,entityId,sourceUrl,false,true);
+  }
+  private async flattenPDF(bytes:Buffer):Promise<Buffer> {
+    const directory=mkdtempSync(path.join(tmpdir(),'noema-pdf-'));
+    try {
+      const input=path.join(directory,'input.pdf'),output=path.join(directory,'flattened.pdf');
+      writeFileSync(input,bytes,{mode:0o600,flag:'wx'});
+      if(!this.flattenCompiler)this.flattenCompiler=this.compileFlattener().catch(error=>{this.flattenCompiler=undefined;throw error;});
+      const executable=await this.flattenCompiler;
+      await this.command(executable,[input,output],10*60*1000);
+      const size=statSync(output).size;
+      if(!size||size>maxSourceBytes)throw new HttpError(413,'The flattened PDF exceeds the 50 MB limit or is empty. Split it into smaller files and try again.');
+      return readFileSync(output);
+    }catch(error){
+      if(error instanceof HttpError)throw error;
+      throw new HttpError(415,'Local PDF flattening failed. '+(error instanceof Error?error.message:'Try another copy of this PDF.'));
+    }finally{rmSync(directory,{recursive:true,force:true});}
+  }
+  private async compileFlattener() {
+    mkdirSync(this.root,{recursive:true});
+    const executable=path.join(this.root,'source-flattener');
+    const script=fileURLToPath(new URL('../../../scripts/flatten-source.swift',import.meta.url));
+    if(!existsSync(executable)||statSync(script).mtimeMs>statSync(executable).mtimeMs) {
+      const temporary=executable+'-'+randomUUID();
+      try {await this.command('/usr/bin/swiftc',[script,'-o',temporary],120000);renameSync(temporary,executable);}
+      finally{rmSync(temporary,{force:true});}
+    }
+    return executable;
+  }
+  async addURL(vault:string,value:unknown,entityId:string|undefined,requireOpen:()=>void) {
+    const url=sourceURL(value);
+    let name:string;try{name=decodeURIComponent(url.pathname.split('/').at(-1)??'');}catch{name='';}
+    name=(name||url.hostname).replace(/[\x00-\x1f\x7f/\\]/g,'_').slice(0,220);
+    if(!/\.(txt|md|pdf)$/i.test(name))name+='.txt';
+    requireOpen();
+    return this.add(vault,name,Buffer.from(url.href),entityId,url.href,false,true,'url');
   }
   remove(vault:string,id:string) {
     const file=this.require(vault,id);
     if(file.status==='processing')throw new HttpError(409,'Wait for extraction to finish before removing this file');
     if(file.entity_id && this.store.get<{count:number}>('SELECT count(*) AS count FROM source_files WHERE entity_id=?',file.entity_id)!.count<=1)throw new HttpError(400,'A source must keep at least one attached file. Attach a replacement first.');
     // Unlink first so a filesystem failure leaves the database reference available to retry.
-    try {unlinkSync(this.filename(vault,id));}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
+    this.removeAssets(vault,id);
     this.store.run('DELETE FROM source_files WHERE id=? AND vault_id=?',id,vault);
+    if(file.entity_id)syncSourceProvenance(this.store,vault,file.entity_id);
     return {ok:true};
   }
   retry(vault:string,id:string) {
     const file=this.require(vault,id);
     if(file.status==='processing'||file.status==='queued')throw new HttpError(409,'Extraction is already in progress');
-    this.store.run("UPDATE source_files SET status='queued',error=NULL,progress=0 WHERE id=?",id);
+    this.store.transaction(()=>{
+      this.store.run("UPDATE source_files SET status='queued',error=NULL,progress=0 WHERE id=?",id);
+      if(file.entity_id)this.store.run('UPDATE entities SET inactive=0,updated_at=? WHERE id=?',now(),file.entity_id);
+    });
     return this.require(vault,id);
   }
   recover() {
@@ -75,25 +146,73 @@ export class SourceFiles {
   }
   async tick() {
     if(this.closed || this.running)return;
-    const file=this.store.get<SourceFile>("SELECT f.* FROM source_files f JOIN vaults v ON v.id=f.vault_id WHERE f.status='queued' AND v.locked=0 ORDER BY f.created_at LIMIT 1");
+    let file=this.store.get<SourceFile>("SELECT f.* FROM source_files f JOIN vaults v ON v.id=f.vault_id WHERE f.status='queued' AND f.entity_id IS NOT NULL AND v.locked=0 ORDER BY f.created_at LIMIT 1");
     if(!file)return;
     this.running=true;
     this.store.run("UPDATE source_files SET status='processing',error=NULL WHERE id=?",file.id);
+    const open=()=>!!this.store.get('SELECT 1 FROM vaults WHERE id=? AND locked=0',file!.vault_id);
     try {
-      let result:{text:string;pages:number;ocrPages:number};
-      if(file.id.endsWith('.pdf')) result=await this.pdf(this.filename(file.vault_id,file.id),file.id);
-      else {
-        if(file.id.endsWith('.html'))throw new Error('HTML source extraction is disabled. Attach a TXT, MD, or PDF replacement.');
-        const value=readFileSync(this.filename(file.vault_id,file.id),'utf8');
-        result={text:value,pages:0,ocrPages:0};
+      let bytes:Buffer;
+      if(file.format==='url') {
+        const downloaded=await fetchSource(file.source_url);
+        if(this.closed)return;
+        if(!open()){this.store.run("UPDATE source_files SET status='queued',progress=0 WHERE id=?",file.id);return;}
+        bytes=downloaded.bytes;
+        const format=downloaded.name.split('.').at(-1)!.toLowerCase() as SourceFile['format'];
+        this.replaceFile(this.inboxFilename(file.vault_id,file.id),bytes);
+        this.store.transaction(()=>{
+          this.store.run('UPDATE source_files SET name=?,size=?,format=? WHERE id=?',downloaded.name,bytes.length,format,file!.id);
+          this.store.run('UPDATE entities SET name=?,updated_at=? WHERE id=? AND name=?',downloaded.name.slice(0,200),now(),file!.entity_id,file!.name.slice(0,200));
+        });
+        file=this.require(file.vault_id,file.id);
+      }else bytes=readFileSync(this.assetFilename(file.vault_id,file.id));
+      if(file.format==='pdf') {
+        try{scanSourcePDF(bytes);}catch(error){
+          if(!(error instanceof HttpError))throw error;
+          if(process.platform!=='darwin')throw new Error('This PDF needs local flattening, which currently requires macOS.');
+          bytes=await this.flattenPDF(bytes);
+          scanSourcePDF(bytes);
+          if(this.closed)return;
+          this.replaceFile(this.inboxFilename(file.vault_id,file.id),bytes);
+          this.store.run('UPDATE source_files SET pdf_flattened=1,admitted=0,size=? WHERE id=?',bytes.length,file.id);
+          file=this.require(file.vault_id,file.id);
+        }
+      } else {
+        if(file.format==='html')throw new Error('Legacy HTML files need a TXT, Markdown, or URL replacement.');
+        try{new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch{throw new Error('Text sources must use UTF-8 encoding.');}
+        if(bytes.includes(0))throw new Error('This file contains binary data.');
       }
       if(this.closed)return;
+      if(!open()){this.store.run("UPDATE source_files SET status='queued',progress=0 WHERE id=?",file.id);return;}
+      // Only screened bytes move out of the inbox and become downloadable.
+      if(file.admitted!==1) {
+        this.replaceFile(this.filename(file.vault_id,file.id),bytes);
+        this.store.run('UPDATE source_files SET admitted=1,size=? WHERE id=?',bytes.length,file.id);
+        rmSync(this.inboxFilename(file.vault_id,file.id),{force:true});
+      }
+      const result=file.format==='pdf'?await this.pdf(this.filename(file.vault_id,file.id),file.id):{text:bytes.toString('utf8'),pages:0,ocrPages:0};
+      if(this.closed)return;
+      if(!open()){this.store.run("UPDATE source_files SET status='queued',progress=0 WHERE id=?",file.id);return;}
       if(Buffer.byteLength(result.text)>maxText)throw new Error('Extracted text exceeds the 16 MB limit.');
-      if(!result.text.trim())throw new Error('No readable text found. The original is saved; try a clearer file, then retry.');
-      this.store.run("UPDATE source_files SET status='ready',text=?,pages=?,ocr_pages=?,progress=100,error=NULL WHERE id=?",result.text,result.pages,result.ocrPages,file.id);
+      if(!result.text.trim())throw new Error('No readable text found. Try a clearer file.');
+      this.store.transaction(()=>{
+        this.store.run("UPDATE source_files SET status='ready',text=?,pages=?,ocr_pages=?,progress=100,error=NULL WHERE id=?",result.text,result.pages,result.ocrPages,file!.id);
+        this.store.run('UPDATE entities SET inactive=0,updated_at=? WHERE id=? AND vault_id=?',now(),file!.entity_id,file!.vault_id);
+        new AINotifications(this.store).recordSource(file!.vault_id,file!.entity_id!,'completed');
+      });
     }catch(error){
-      if(!this.closed)this.store.run("UPDATE source_files SET status='failed',error=? WHERE id=?",error instanceof Error?error.message:'Text extraction failed. Retry extraction.',file.id);
+      if(!this.closed)this.store.transaction(()=>{
+        this.store.run("UPDATE source_files SET status='failed',text='',error=? WHERE id=?",error instanceof Error?error.message:'Source processing failed. Retry processing.',file!.id);
+        this.store.run('UPDATE entities SET inactive=1,updated_at=? WHERE id=? AND vault_id=?',now(),file!.entity_id,file!.vault_id);
+        new AINotifications(this.store).recordSource(file!.vault_id,file!.entity_id!,'failed');
+      });
     }finally{this.running=false;}
+  }
+  private replaceFile(filename:string,bytes:Buffer) {
+    mkdirSync(path.dirname(filename),{recursive:true});
+    const temporary=filename+'.'+randomUUID()+'.tmp';
+    try{writeFileSync(temporary,bytes,{flag:'wx',mode:0o600});renameSync(temporary,filename);}
+    finally{rmSync(temporary,{force:true});}
   }
   private async pdf(filename:string,id:string):Promise<{text:string;pages:number;ocrPages:number}> {
     if(process.platform!=='darwin')throw new Error('PDF extraction requires macOS with Apple PDFKit and Vision. TXT and MD sources work on this device.');
@@ -108,14 +227,15 @@ export class SourceFiles {
   }
   private command(program:string,args:string[],timeout:number,onProgress?:(line:string)=>void):Promise<string> {
     return new Promise((resolve,reject)=>{
-      const child=spawn(program,args,{stdio:['ignore','pipe','pipe']});this.child=child;
+      if(this.closed){reject(new Error('Local PDF processing stopped. Try importing again.'));return;}
+      const child=spawn(program,args,{stdio:['ignore','pipe','pipe']});this.children.add(child);
       let output='',errors='',pending='',overflow=false;
       const timer=setTimeout(()=>child.kill('SIGKILL'),timeout);
       child.stdout!.on('data',chunk=>{output+=chunk.toString();if(Buffer.byteLength(output)>maxText*2){overflow=true;child.kill('SIGKILL');}});
-      child.stderr!.on('data',chunk=>{const value=chunk.toString();errors=(errors+value).slice(-2000);pending+=value;let newline;while((newline=pending.indexOf('\n'))>=0){onProgress?.(pending.slice(0,newline));pending=pending.slice(newline+1);}});
-      child.on('error',()=>{clearTimeout(timer);reject(new Error('The local PDF extractor could not start. Install the macOS Command Line Tools, then retry.'));});
-      child.on('close',code=>{clearTimeout(timer);this.child=undefined;if(code===0)resolve(output);else reject(new Error(overflow?'Extracted text exceeds the size limit.':errors && !errors.includes('error:')?errors.slice(-500):'Local PDF extraction failed or timed out. Check macOS Command Line Tools, then retry.'));});
+      child.stderr!.on('data',chunk=>{const value=chunk.toString();errors=(errors+value).slice(-2000);pending=(pending+value).slice(-4000);let newline;while((newline=pending.indexOf('\n'))>=0){onProgress?.(pending.slice(0,newline));pending=pending.slice(newline+1);}});
+      child.on('error',()=>{clearTimeout(timer);this.children.delete(child);reject(new Error('Local PDF processing could not start. Install the macOS Command Line Tools, then retry.'));});
+      child.on('close',code=>{clearTimeout(timer);this.children.delete(child);if(code===0)resolve(output);else reject(new Error(overflow?'Extracted text exceeds the size limit.':errors && !errors.includes('error:')?errors.slice(-500):'Local PDF processing failed or timed out. Check macOS Command Line Tools, then retry.'));});
     });
   }
-  close(){this.closed=true;this.child?.kill('SIGKILL');}
+  close(){this.closed=true;for(const child of this.children)child.kill('SIGKILL');}
 }

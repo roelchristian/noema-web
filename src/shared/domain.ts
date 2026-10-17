@@ -27,14 +27,14 @@ export interface ConceptClassification { subtypeIds: string[]; contentHash: stri
 export interface Page extends PageSummary { editLocked?: boolean; editProtected?: boolean; conceptClassification?: ConceptClassification; conceptContentHash?: string; vault_id: string; blocks: Block[]; sourceIds: string[]; revision: number; summaryContentHash?: string; entityMatchCache?: import('./entity-match-cache.js').EntityMatchCache }
 export interface PageInput { featuredImageId?: string | null; icon?: PageIconId | null; title: string; blocks: Block[]; sourceIds?: string[]; revision?: number }
 export type EntityMentionCase = 'canonical' | 'lowercase';
-export interface Entity { id: string; vault_id: string; name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes: string[]; description: string; updated_at: string }
+export interface Entity { sourceStatus?: SourceFile['status'] | null; inactive?: boolean; id: string; vault_id: string; name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes: string[]; description: string; updated_at: string }
 export interface EntityInput { name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes?: string[]; subtype?: string | null; description?: string; attachmentIds?: string[] }
 export function entityMentionName(entity: Pick<Entity,'name'|'mentionCase'> | undefined): string | undefined {
   return entity?.mentionCase === 'lowercase' ? entity.name.toLowerCase() : entity?.name;
 }
 export interface Property { id: string; entity_id: string; name: string; value: string | null; target_id: string | null }
 export interface Relationship { id: string; source_id: string; label: string; target_id: string }
-export interface SourceFile { id: string; vault_id: string; entity_id: string | null; name: string; size: number; status: 'queued' | 'processing' | 'ready' | 'failed'; text: string; error: string | null; progress: number; pages: number; ocr_pages: number; created_at: string }
+export interface SourceFile { admitted: 0 | 1; format: 'txt' | 'md' | 'pdf' | 'html' | 'url'; pdf_flattened: 0 | 1; import_method: 'upload' | 'url'; source_url: string | null; id: string; vault_id: string; entity_id: string | null; name: string; size: number; status: 'queued' | 'processing' | 'ready' | 'failed'; text: string; error: string | null; progress: number; pages: number; ocr_pages: number; created_at: string }
 export interface EntityPageMention extends PageSummary { mentionCount: number; excerpt: string }
 export interface EntityDetail extends Entity { pageMentions?: EntityPageMention[]; attachments?: SourceFile[]; propertyNames: string[]; properties: Property[]; relationships: Relationship[]; incomingProperties: Property[] }
 

@@ -1618,10 +1618,8 @@ main {position:relative;}
 /* Entity details separate browsing, connections, and editing. */
 .entity-detail-panel { color: var(--text); }
 .entity-detail-panel > .entity-detail-toolbar { height: auto; min-height: 56px; gap: 12px; padding: 10px 20px; letter-spacing: 0; }
-.entity-toolbar-heading { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
-.entity-toolbar-copy { min-width: 0; }
-.entity-toolbar-type { display: block; margin-top: 3px; font: 400 11px/1.4 var(--font-ui); color: var(--text-muted); }
-.entity-toolbar-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; font: 600 12px/1.4 var(--font-ui); letter-spacing: normal; color: var(--text); }
+.entity-toolbar-heading { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.entity-toolbar-title { min-width:0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; font: 600 12px/1.4 var(--font-ui); letter-spacing: normal; color: var(--text); }
 .entity-detail-panel .panel-top > button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 8px; border-radius: 6px; }
 .entity-detail-toolbar > button { flex: none; }
 .entity-detail-panel .panel-top > button:hover { background: var(--surface-hover); }
@@ -1932,4 +1930,21 @@ main {position:relative;}
   .sidebar :is(.nav,.page-link,.sidebar-create,.sidebar-new-note):active,
   .sidebar .sidebar-item-row:has(> .container-link:active),.sidebar .sidebar-new-note:hover > .icon { transform:none; }
   .sidebar-branch-children { animation:none; }
+}
+
+/* Keep document and knowledge headers compact and aligned. */
+:root { --workspace-toolbar-height:44px; }
+.topbar { min-height:var(--workspace-toolbar-height); padding-block:4px; }
+.topbar .page-tool,.topbar .page-toolbar > .sidebar-menu-trigger { width:30px; height:30px; padding:6px; }
+.entity-panel > .panel-top { height:auto; min-height:var(--workspace-toolbar-height); padding-block:4px; }
+.entity-detail-panel > .entity-detail-toolbar { min-height:var(--workspace-toolbar-height); padding-block:4px; }
+.entity-detail-panel .panel-top > button { width:30px; height:30px; padding:6px; }
+.entity-panel,html { scroll-padding-top:calc(var(--workspace-toolbar-height) + 16px); }
+@media(max-width:750px) {
+  :root { --workspace-toolbar-height:48px; }
+  .topbar { padding-top:max(2px,env(safe-area-inset-top)); padding-bottom:2px; }
+  .topbar .page-tool,.topbar .page-toolbar > .sidebar-menu-trigger { width:44px; height:44px; padding:12px; }
+  .entity-panel > .panel-top,.entity-detail-panel > .entity-detail-toolbar { padding-top:max(2px,env(safe-area-inset-top)); padding-bottom:2px; }
+  .entity-detail-panel .panel-top > button { width:44px; height:44px; padding:12px; }
+  .entity-panel,html { scroll-padding-top:calc(var(--workspace-toolbar-height) + env(safe-area-inset-top) + 16px); }
 }

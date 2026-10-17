@@ -57,7 +57,7 @@ test('Library and sidebar folder rows are draggable while collections remain cur
   assert.match(row, /Desk/);
   const sidebar = renderToStaticMarkup(createElement(SidebarOrganization, {
     data: {...data, collections: [{id: 'theme', name: 'Theme'}]}, vaultId: 'default', pages: [],
-    context: {collection: '', folder: ''}, active: true, disabled: false,
+    context: {collection: '', folder: ''}, active: true, disabled: false, available: true,
     onOpen: noop, onOpenPage: noop, onMovePage: noop, onChanged: noop, onError: noop,
   }));
   assert.match(sidebar, /draggable="true"[^>]*>[\s\S]*?Open folder: Desk/);

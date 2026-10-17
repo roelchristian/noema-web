@@ -2,19 +2,22 @@ import { SummaryText } from './SummaryText';
 import { HelpMenu } from '../components/HelpMenu';
 import { EntityScanReview } from './EntityScanReview';
 import type { EntityScan, EntitySuggestionEdit } from '../../shared/entity-scan';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ComponentProps } from 'react';
 import { api } from '../api';
 import { ConnectedEntities } from './ConnectedEntities';
 import { Icon } from '../components/Icon';
 import { Select } from '../components/Select';
 import type { CreateEntityRequest } from '../knowledge/CreateEntityDialog';
 import { Mention } from '../components/Mention';
-import type { AISummary, Entity, Page } from '../../shared/domain';
-export function IntelligencePanel({inactive=false,page,entities,onOpenEntity,onSourcesChange,onCreateEntity,onClose,onSettings,onFlush,onReview}:{inactive?:boolean;page:Page;entities:Entity[];onOpenEntity:(id:string)=>void;onSourcesChange:(sourceIds:string[])=>void;onCreateEntity:(request:CreateEntityRequest)=>void;onClose:()=>void;onSettings:()=>void;onFlush:()=>Promise<Page|null>;onReview:(scanId:string,id:string|string[],decision:'accepted'|'rejected',edits?:EntitySuggestionEdit[])=>Promise<EntityScan>}) {
-  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[result,setResult]=useState<AISummary|null>(null);
+import type { AIEnrichment, AISummary, Entity, Page } from '../../shared/domain';
+function KnowledgePage({inactive=false,initialItems,initialError,page,entities,onOpenEntity,onSourcesChange,onCreateEntity,onClose,onSettings,onFlush,onReview}:{inactive?:boolean;initialItems:AIEnrichment[];initialError:string;page:Page;entities:Entity[];onOpenEntity:(id:string)=>void;onSourcesChange:(sourceIds:string[])=>void;onCreateEntity:(request:CreateEntityRequest)=>void;onClose:()=>void;onSettings:()=>void;onFlush:()=>Promise<Page|null>;onReview:(scanId:string,id:string|string[],decision:'accepted'|'rejected',edits?:EntitySuggestionEdit[])=>Promise<EntityScan>}) {
+  const [busy,setBusy]=useState(false),[error,setError]=useState(initialError),[result,setResult]=useState<AISummary|null>(()=>{
+    const saved=initialItems.find(item=>item.kind==='summary');
+    return saved && typeof saved.data.summary==='string' ? {summary:saved.data.summary,revision:saved.revision,contentHash:saved.contentHash,model:saved.model,reasoningEffort:saved.reasoningEffort} : null;
+  });
   const [deleting, setDeleting] = useState(false);
-  const [scan,setScan] = useState<EntityScan|null>(null);
-  const [loading, setLoading] = useState(true);
+  const [scan,setScan] = useState<EntityScan|null>(()=>initialItems.find(item=>item.kind==='entity_scan')?.data.scan as unknown as EntityScan ?? null);
+  const loading = false;
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [summaryOverflow, setSummaryOverflow] = useState(false);
   const summaryText = useRef<HTMLDivElement>(null);
@@ -27,21 +30,8 @@ export function IntelligencePanel({inactive=false,page,entities,onOpenEntity,onS
     observer.observe(element);
     return () => observer.disconnect();
   }, [result]);
-  const active=useRef(true),close=useRef<HTMLButtonElement>(null);
-  useEffect(()=>{active.current=true;close.current?.focus();return()=>{active.current=false;};},[]);
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    void api.enrichments(page.vault_id, page.id).then(items => {
-      if (cancelled) return;
-      const scanResult = items.find(item => item.kind === 'entity_scan');
-      if (scanResult) setScan(scanResult.data.scan as unknown as EntityScan);
-      const saved = items.find(item => item.kind === 'summary');
-      if (saved && typeof saved.data.summary === 'string') setResult({summary: saved.data.summary, revision: saved.revision, contentHash: saved.contentHash, model: saved.model, reasoningEffort: saved.reasoningEffort});
-    }).catch(error => { if (!cancelled) setError(error instanceof Error ? error.message : 'Could not load saved knowledge.'); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [page.vault_id, page.id]);
+  const active=useRef(true);
+  useEffect(()=>{active.current=true;return()=>{active.current=false;};},[]);
   async function summarize() {
     setBusy(true);setError('');
     try {
@@ -62,7 +52,7 @@ export function IntelligencePanel({inactive=false,page,entities,onOpenEntity,onS
   }
   const summaryChanged = !!result && (!result.contentHash || result.contentHash !== page.summaryContentHash);
   return <aside inert={inactive} aria-busy={inactive} className="entity-panel intelligence-panel" id="intelligence-panel" aria-label="Knowledge" onKeyDown={event=>{if(event.key==='Escape')onClose();}}>
-    <div className="panel-top knowledge-panel-top"><span><Icon name="knowledge"/>Knowledge</span><div className="knowledge-panel-actions"><button className="page-tool" aria-label="Knowledge settings" title="Knowledge settings" onClick={onSettings}><Icon name="settings"/></button><button className="page-tool" ref={close} aria-label="Close Knowledge panel" title="Close Knowledge panel" onClick={onClose}>×</button></div></div>
+    <div className="panel-top knowledge-panel-top"><span><Icon name="knowledge"/>Knowledge</span><div className="knowledge-panel-actions"><button className="page-tool" aria-label="Knowledge settings" title="Knowledge settings" onClick={onSettings}><Icon name="settings"/></button><button className="page-tool" aria-label="Close Knowledge panel" title="Close Knowledge panel" onClick={onClose}>×</button></div></div>
     <div className="panel-body">
       <section className="knowledge-summary" aria-labelledby="knowledge-summary-heading">
         <div className="knowledge-section-heading"><h2 id="knowledge-summary-heading">{result?<><Icon name="sparkles"/>AI Summary</>:<button type="button" className="summary-heading-action" disabled={busy||loading} aria-busy={busy} onClick={()=>void summarize()}><Icon name="sparkles"/>{loading?'Loading summary…':busy?'Summarizing…':'Summarize this page'}</button>}</h2><HelpMenu label="About AI summaries"><p>Summarizing sends this page’s title, text, and mentioned entity names to OpenAI. Attached sources and other pages are excluded. API charges may apply.</p><p>AI can make mistakes. Check the original page. Summaries are saved with this page.</p>{result&&<p>{result.model} · {result.reasoningEffort} reasoning</p>}</HelpMenu></div>
@@ -76,4 +66,26 @@ export function IntelligencePanel({inactive=false,page,entities,onOpenEntity,onS
     <section className="knowledge-sources" aria-labelledby="knowledge-sources-heading"><div className="knowledge-section-heading"><h2 id="knowledge-sources-heading">Sources</h2><span className="knowledge-count">{page.sourceIds.length}</span></div><div className="toolbar-source-list">{page.sourceIds.map(id => <div key={id} className="page-source"><Mention id={id} entities={entities} onOpen={onOpenEntity}/><button aria-label={'Remove source from page: ' + (entities.find(entity => entity.id === id)?.name || id)} onClick={() => onSourcesChange(page.sourceIds.filter(source => source !== id))}>×</button></div>)}</div>{!page.sourceIds.length && <p className="empty-small">No sources attached yet.</p>}<div className="toolbar-source-actions"><Select aria-label="Attach existing source" value="" onChange={event => { if (event.target.value) onSourcesChange([...new Set([...page.sourceIds, event.target.value])]); }}><option value="">Add a source…</option>{entities.filter(entity => entity.type === 'source' && !page.sourceIds.includes(entity.id)).map(entity => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</Select><button className="button small" onClick={() => onCreateEntity({source: true})}>+ New source</button></div></section>
     </div>
   </aside>;
+}
+
+// Keep the displayed knowledge intact while the next page's saved data is fetched.
+// Page-local state is reset only when that complete result is ready to display.
+export function IntelligencePanel(props: Omit<ComponentProps<typeof KnowledgePage>, 'initialItems' | 'initialError'>) {
+  const [ready,setReady]=useState<{page:Page;items:AIEnrichment[];error:string}|null>(null);
+  const focused=useRef(false);
+  useEffect(()=>{
+    let cancelled=false;
+    void api.enrichments(props.page.vault_id,props.page.id).then(items=>{
+      if(!cancelled)setReady({page:props.page,items,error:''});
+    }).catch(error=>{
+      if(!cancelled)setReady({page:props.page,items:[],error:error instanceof Error?error.message:'Could not load saved knowledge.'});
+    });
+    return()=>{cancelled=true;};
+  },[props.page.vault_id,props.page.id]);
+  useEffect(()=>{
+    if(ready&&!focused.current){focused.current=true;document.querySelector<HTMLButtonElement>('#intelligence-panel [aria-label="Close Knowledge panel"]')?.focus({preventScroll:true});}
+  },[ready]);
+  if(!ready)return <aside className="entity-panel intelligence-panel" id="intelligence-panel" aria-label="Knowledge" aria-busy="true"><div className="panel-top knowledge-panel-top"><span><Icon name="knowledge"/>Knowledge</span><div className="knowledge-panel-actions"><button className="page-tool" aria-label="Close Knowledge panel" onClick={props.onClose}>×</button></div></div><div className="panel-body"><span className="sr-only" role="status">Loading knowledge…</span></div></aside>;
+  const current=ready.page.id===props.page.id&&ready.page.vault_id===props.page.vault_id;
+  return <KnowledgePage {...props} key={ready.page.vault_id+'/'+ready.page.id} page={current?props.page:ready.page} initialItems={ready.items} initialError={ready.error} inactive={props.inactive||!current}/>;
 }

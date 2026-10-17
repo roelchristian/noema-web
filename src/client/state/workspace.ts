@@ -167,7 +167,7 @@ export class Workspace {
       if (!current()) return;
       const page = await api.page(vault.id,id,controller.signal);
       if (!current()) return;
-      this.pageCache.set(id,page); this.patch({page,view:'pages'});
+      this.pageCache.set(id,page); this.patch({page,view:'pages',loadingPageId:null});
       this.recordRecent('page',id);
       this.titler.register(page); this.titler.observe(page,true);
     } catch (error) {

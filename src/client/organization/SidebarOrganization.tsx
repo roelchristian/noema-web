@@ -12,8 +12,8 @@ import { startFolderDrag } from './folder-drag';
 import { isPageDrag, readPageDrop, startPageDrag } from './page-drag';
 
 interface Container {type: 'collections' | 'folders'; id?: string; name: string; collection: string; parent: string}
-export function SidebarOrganization({vaultId, data, pages, context, active, disabled, onOpen, onOpenPage, onMovePage, onChanged, onError}: {
-  vaultId?: string; data: Organization; pages: PageSummary[]; context: OrganizationContext; active: boolean; disabled: boolean;
+export function SidebarOrganization({vaultId, data, pages, context, active, disabled, available, onOpen, onOpenPage, onMovePage, onChanged, onError}: {
+  vaultId?: string; data: Organization; pages: PageSummary[]; context: OrganizationContext; active: boolean; disabled: boolean; available: boolean;
   onOpen: (collection?: string, folder?: string) => void; onOpenPage: (id: string) => void;
   onMovePage: (id: string, collection: string, folder: string | null) => Promise<void>;
   onChanged: (data: Organization) => void; onError: (error: unknown) => void;
@@ -86,12 +86,12 @@ export function SidebarOrganization({vaultId, data, pages, context, active, disa
     </div>);
   }
   return <nav className="sidebar-group organization-sidebar" aria-label="Folders and collections" onDragEnd={() => setDropTarget(null)}>
-    {!disabled && <><div className="organization-sidebar-label">Folders<ActionMenu icon="plus" label="Folder actions" actions={[{label: 'New folder', icon: 'folder', onSelect: () => newFolder('')}]}/></div>{folders('', null, 0)}{!data.folders.length && <button className="sidebar-create" onClick={() => newFolder('')}><Icon name="plus"/>Create a folder</button>}<div className="organization-sidebar-label">Collections<ActionMenu icon="plus" label="Collection actions" disabled={disabled} actions={[
+    {available && <><div className="organization-sidebar-label">Folders<ActionMenu icon="plus" label="Folder actions" disabled={disabled} actions={[{label: 'New folder', icon: 'folder', onSelect: () => newFolder('')}]}/></div>{folders('', null, 0)}{!data.folders.length && <button className="sidebar-create" disabled={disabled} onClick={() => newFolder('')}><Icon name="plus"/>Create a folder</button>}<div className="organization-sidebar-label">Collections<ActionMenu icon="plus" label="Collection actions" disabled={disabled} actions={[
       {label: 'New collection', icon: 'collection', onSelect: () => setEdit({type: 'collections', name: '', collection: '', parent: ''})},
     ]}/></div>{data.collections.map(collection => <div key={collection.id}>
       {item({type: 'collections', id: collection.id, name: collection.name, collection: collection.id, parent: ''})}
       {expanded.has(collection.id) && <>{pageLinks(collection.id, null, 1)}</>}
-    </div>)}{!data.collections.length && <button className="sidebar-create" onClick={() => setEdit({type: 'collections', name: '', collection: '', parent: ''})}><Icon name="plus"/>Create a collection</button>}</>}
+    </div>)}{!data.collections.length && <button className="sidebar-create" disabled={disabled} onClick={() => setEdit({type: 'collections', name: '', collection: '', parent: ''})}><Icon name="plus"/>Create a collection</button>}</>}
     <span className="sr-only" role="status">{dropStatus}</span>
     {edit && <NameDialog title={(edit.id ? 'Rename ' : 'New ') + (edit.type === 'collections' ? 'collection' : 'folder')} value={edit.name} onClose={() => setEdit(null)} onSave={async name => {
       const updated = await api.organize(vaultId!, edit.type + (edit.id ? '/' + edit.id : ''), {name, ...(edit.type === 'folders' ? {parent_id: edit.parent || null} : {})}, edit.id ? 'PUT' : 'POST');

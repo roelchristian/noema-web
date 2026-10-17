@@ -1211,3 +1211,6 @@ dialog:has(.source-attachments) { max-height: calc(100dvh - 40px); overflow-y: a
 .semantic-children > .block:focus-within > .block-controls,
 .semantic-children > .block:active > .block-controls,
 .semantic-children > .block.is-block-dragging > .block-controls {opacity:1;}
+
+main {position:relative;}
+.page-navigation-status {position:absolute;top:64px;right:24px;z-index:4;display:flex;align-items:center;gap:8px;max-width:calc(100% - 48px);padding:8px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text-muted);font-size:12px;pointer-events:none;}

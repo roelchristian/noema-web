@@ -7,14 +7,16 @@ import { PageSaver, type SaveStatus } from './page-saver';
 export interface WorkspaceState {
   vaults: Vault[]; vault: Vault | null; trash: TrashedPage[]; pages: PageSummary[]; entities: Entity[];
   organization: Organization; organizationContext: OrganizationContext; recent: RecentItem[];
-  page: Page | null; view: 'pages' | 'entities' | 'organization' | 'favourites' | 'recent' | 'trash' | 'inbox'; busy: boolean; reviewing: boolean; error: string | null; saveStatus: SaveStatus;
+  page: Page | null; view: 'pages' | 'entities' | 'organization' | 'favourites' | 'recent' | 'trash' | 'inbox'; busy: boolean; loadingPageId: string | null; reviewing: boolean; error: string | null; saveStatus: SaveStatus;
 }
 export class Workspace {
-  private state: WorkspaceState = {vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, reviewing: false, error: null, saveStatus: 'saved'};
+  private state: WorkspaceState = {vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
   private listeners = new Set<() => void>();
   private pageCache = new Map<string, Page>();
   private navigation = false;
   private loadSequence = 0;
+  private pageLoadSequence = 0;
+  private pageRequest: AbortController | null = null;
   readonly titler = new PageTitler(
     page => api.generateTitle(page.vault_id, page.id, page.revision),
     (original, title) => {
@@ -50,11 +52,11 @@ export class Workspace {
   );
   identifyEntities = async () => {
     const page = this.state.page;
-    if (!page || this.state.view !== 'pages' || this.state.busy || this.state.reviewing || this.state.vault?.locked || this.saver.hasPending || !canIdentifyEntities()) return;
+    if (!page || this.state.view !== 'pages' || this.state.busy || this.state.loadingPageId !== null || this.state.reviewing || this.state.vault?.locked || this.saver.hasPending || !canIdentifyEntities()) return;
     this.patch({saveStatus: 'identifying'});
     try {
       await yieldForEntityMatching();
-      if (this.state.page !== page || this.state.view !== 'pages' || this.state.busy || this.state.reviewing || this.state.vault?.locked || this.saver.hasPending || !canIdentifyEntities()) return;
+      if (this.state.page !== page || this.state.view !== 'pages' || this.state.busy || this.state.loadingPageId !== null || this.state.reviewing || this.state.vault?.locked || this.saver.hasPending || !canIdentifyEntities()) return;
       const {blocks, count} = identifyEntityMentions(page.blocks, this.state.entities, page.vault_id);
       if (count) this.updatePage({blocks});
     } catch (error) { this.report(error); }
@@ -65,8 +67,8 @@ export class Workspace {
   private patch(patch: Partial<WorkspaceState>) {
     this.state = {...this.state, ...patch};
     // Do not replace the saved address with intermediate loading/locked state.
-    if (!this.state.busy && this.state.vault && !this.state.vault.locked &&
-      (patch.view !== undefined || patch.organizationContext !== undefined || patch.busy === false)) {
+    if (!this.state.busy && this.state.loadingPageId === null && this.state.vault && !this.state.vault.locked &&
+      (patch.view !== undefined || patch.organizationContext !== undefined || patch.busy === false || patch.loadingPageId === null)) {
       try {
         localStorage.setItem('noema-address/' + this.state.vault.id, JSON.stringify({
           view: this.state.view, ...this.state.organizationContext,
@@ -107,7 +109,17 @@ export class Workspace {
       await this.selectVault(vaults.find(v => v.id === remembered)?.id || vaults[0]!.id);
     } catch (error) { this.patch({busy: false}); this.report(error); }
   }
+  private cancelPageLoad() {
+    ++this.pageLoadSequence;
+    this.pageRequest?.abort(); this.pageRequest = null;
+    if (this.state.loadingPageId !== null) {
+      this.navigation = false;
+      this.patch({loadingPageId:null});
+    }
+  }
   private async navigate(work: () => Promise<void>) {
+    // Vault changes and destructive operations invalidate any pending note response.
+    this.cancelPageLoad();
     if (this.navigation) return;
     this.navigation = true; this.patch({busy: true});
     try { await this.saver.flush(); await work(); }
@@ -139,11 +151,38 @@ export class Workspace {
     if (recordRecent) this.recordRecent('page', id);
     this.titler.register(page); this.titler.observe(page, true);
   }
-  async openPage(id: string) { await this.navigate(() => this.loadPage(id)); }
+  async openPage(id: string) {
+    const vault = this.state.vault;
+    if (!vault || vault.locked || this.state.busy || this.state.reviewing || this.navigation && this.state.loadingPageId === null) return;
+    // Re-selecting the displayed page should preserve its editor and selection.
+    if (this.state.view === 'pages' && this.state.page?.id === id) {this.cancelPageLoad(); return;}
+    this.pageRequest?.abort();
+    const sequence = ++this.pageLoadSequence, controller = new AbortController();
+    this.pageRequest = controller; this.navigation = true;
+    this.patch({loadingPageId:id,error:null});
+    const current = () => sequence === this.pageLoadSequence && this.state.vault?.id === vault.id && !this.state.vault.locked;
+    try {
+      // Keep the old editor mounted but inert until its pending writes are safe.
+      await this.saver.flush();
+      if (!current()) return;
+      const page = await api.page(vault.id,id,controller.signal);
+      if (!current()) return;
+      this.pageCache.set(id,page); this.patch({page,view:'pages'});
+      this.recordRecent('page',id);
+      this.titler.register(page); this.titler.observe(page,true);
+    } catch (error) {
+      if (current() && !controller.signal.aborted) throw error;
+    } finally {
+      if (sequence === this.pageLoadSequence) {
+        this.navigation = false; this.pageRequest = null;
+        this.patch({loadingPageId:null});
+      }
+    }
+  }
   async showPages() { this.openOrganization(); }
-  showOrganization(favourites = false) { if (!this.state.busy) this.patch({view: favourites ? 'favourites' : 'organization'}); }
-  showInbox() { if (!this.state.busy) this.patch({view: 'inbox'}); }
-  showRecent() { if (!this.state.busy) this.patch({view: 'recent'}); }
+  showOrganization(favourites = false) { if (!this.state.busy && this.state.loadingPageId === null) this.patch({view: favourites ? 'favourites' : 'organization'}); }
+  showInbox() { if (!this.state.busy && this.state.loadingPageId === null) this.patch({view: 'inbox'}); }
+  showRecent() { if (!this.state.busy && this.state.loadingPageId === null) this.patch({view: 'recent'}); }
   setOrganization = (organization: Organization) => {
     const current = this.state.organizationContext;
     const collection = organization.collections.some(c => c.id === current.collection) ? current.collection : '';
@@ -154,7 +193,7 @@ export class Workspace {
     this.patch({organizationContext: {...this.state.organizationContext, ...patch}});
   };
   openOrganization(collection = '', folder = '') {
-    if (!this.state.busy) this.patch({view: 'organization', organizationContext: {collection, folder}});
+    if (!this.state.busy && this.state.loadingPageId === null) this.patch({view: 'organization', organizationContext: {collection, folder}});
   }
   recordRecent(kind: ItemKind, item_id: string) {
     const vault = this.state.vault;
@@ -163,10 +202,10 @@ export class Workspace {
     this.patch({recent});
     try { localStorage.setItem('noema-recent/' + vault.id, JSON.stringify(recent)); } catch { /* Keep session history when storage is unavailable. */ }
   }
-  showEntities() { if (!this.state.busy) this.patch({view: 'entities'}); }
+  showEntities() { if (!this.state.busy && this.state.loadingPageId === null) this.patch({view: 'entities'}); }
   updatePage(patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon'>>) {
     const current = this.state.page;
-    if (!current || this.state.busy || this.state.reviewing || this.state.vault?.locked) return;
+    if (!current || this.state.busy || this.state.loadingPageId !== null || this.state.reviewing || this.state.vault?.locked) return;
     const page = {...current, ...patch}; this.pageCache.set(page.id, page);
     this.patch({page, pages: this.state.pages.map(p => p.id === page.id ? {...p, title: page.title, icon: page.icon} : p)});
     this.titler.observe(page);

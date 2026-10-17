@@ -63,11 +63,15 @@ test('failed alias saves leave the catalog unchanged and propagate errors for re
 test('opening a page waits for its body and review cache before presenting the editor', async t => {
   const {workspace} = await setup(t);
   let finish;
-  const page = {...workspace.snapshot().page, entityMatchCache:{revision:1,key:'hydrated',matches:[]}};
+  const previous = workspace.snapshot().page;
+  const page = {...previous,id:'other-note',entityMatchCache:{revision:1,key:'hydrated',matches:[]}};
   t.mock.method(api, 'page', async () => new Promise(resolve => { finish = resolve; }));
   const opening = workspace.openPage(page.id);
-  while (!finish) await Promise.resolve();
-  assert.equal(workspace.snapshot().busy,true);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(typeof finish,'function');
+  assert.equal(workspace.snapshot().busy,false);
+  assert.equal(workspace.snapshot().loadingPageId,page.id);
+  assert.equal(workspace.snapshot().page,previous);
   finish(page);
   await opening;
   assert.equal(workspace.snapshot().busy,false);

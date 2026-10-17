@@ -1,3 +1,4 @@
+import { PageIcon } from '../components/PageIcon';
 import { SourceAttachments } from './SourceAttachments';
 import { SubtypePicker } from './SubtypePicker';
 import { useEntitySchema } from './useEntitySchema';
@@ -9,19 +10,20 @@ import { entityLabels, entityTypes, type Entity, type EntityDetail, type EntityM
 import { Icon } from '../components/Icon';
 import { Mention } from '../components/Mention';
 import { AliasInput, parseAliases } from './AliasInput';
-interface Props {vaultId: string; id: string; entities: Entity[]; onOpen: (id: string) => void; onClose: () => void; onUpdated: () => Promise<void>; onError: (error: unknown) => void}
+interface Props {onOpenPage: (id: string) => void; refreshKey: string; vaultId: string; id: string; entities: Entity[]; onOpen: (id: string) => void; onClose: () => void; onUpdated: () => Promise<void>; onError: (error: unknown) => void}
 const entityTabs = [{id: 'overview', label: 'Overview'}, {id: 'connections', label: 'Connections'}, {id: 'edit', label: 'Edit'}] as const;
 type EntityTab = typeof entityTabs[number]['id'];
 interface EntityConnection {key: string; target: string; label: string}
 export function EntityPanel(props: Props) {
-  const {vaultId, id, entities, onOpen, onClose, onUpdated, onError} = props;
+  const {vaultId, id, entities, onOpen, onClose, onUpdated, onError, onOpenPage, refreshKey} = props;
   const [entity, setEntity] = useState<EntityDetail | null>(null), [loadingError, setLoadingError] = useState('');
   const [tab, setTab] = useState<EntityTab>('overview');
+  useEffect(() => {setEntity(null); setTab('overview');}, [vaultId, id]);
   useEffect(() => {
-    let active = true; setEntity(null); setLoadingError(''); setTab('overview');
+    let active = true; setLoadingError('');
     void api.entity(vaultId, id).then(e => { if (active) setEntity(e); }).catch(error => { if (active) setLoadingError(String(error)); });
     return () => { active = false; };
-  }, [vaultId, id]);
+  }, [vaultId, id, refreshKey]);
   const {schema, error: schemaError} = useEntitySchema(vaultId);
   const mention = (entityId: string) => <Mention id={entityId} entities={entities} onOpen={onOpen}/>;
   async function mutate(work: () => Promise<EntityDetail>) {
@@ -43,6 +45,7 @@ export function EntityPanel(props: Props) {
     <button type="button" title="Close entity" aria-label="Close entity" onClick={onClose}><Icon name="close"/></button>
   </div>
     {!entity ? <p className="panel-body" role={loadingError ? 'alert' : 'status'}>{loadingError || 'Loading entity…'}</p> : <div className="panel-body entity-detail-body">
+      {loadingError && <p role="alert">{loadingError}</p>}
       <div className="entity-detail-classification"><span className="entity-detail-type">{entityLabels[entity.type]}</span>{!!subtypeNames.length && <span>{subtypeNames.join(' · ')}</span>}</div>
       {entity.description && <p className="entity-detail-description">{entity.description}</p>}
       <div className="entity-detail-tabs" role="tablist" aria-label="Entity details">
@@ -61,6 +64,11 @@ export function EntityPanel(props: Props) {
         <section className="entity-detail-section"><h3>Related knowledge<span>{relationships.length} {relationships.length === 1 ? 'connection' : 'connections'}</span></h3>
           <EntityConnections items={relationships.slice(0, 4)} entities={entities} onOpen={onOpen} empty="No related knowledge yet."/>
           {!!relationships.length && <button type="button" className="entity-detail-more" onClick={() => switchTab('connections')}>{relationships.length > 4 ? 'View all ' + relationships.length + ' connections' : 'View connections'}<Icon name="chevron"/></button>}
+        </section>
+        <section className="entity-detail-section"><h3>Mentions from pages<span>{entity.pageMentions?.length ?? 0}</span></h3>
+          {entity.pageMentions?.length ? <ul className="entity-connection-list entity-page-mentions">{entity.pageMentions.map(page => <li key={page.id}>
+            <button type="button" onClick={() => onOpenPage(page.id)}><PageIcon icon={page.icon}/><span><strong>{page.title || 'Untitled'}</strong><small>{page.mentionCount} {page.mentionCount === 1 ? 'mention' : 'mentions'}</small>{page.excerpt && <small>{page.excerpt}</small>}</span><Icon name="chevron"/></button>
+          </li>)}</ul> : <p className="entity-detail-empty">No pages mention this entity yet. Tag it in a page to see it here.</p>}
         </section>
         {!!entity.aliases?.length && <section className="entity-detail-section"><h3>Also known as</h3><ul className="entity-overview-aliases">{entity.aliases.map(alias => <li key={alias}>{alias}</li>)}</ul></section>}
         {entity.type === 'source' && <section className="entity-detail-section"><h3>Attached sources<span>{entity.attachments?.length ?? 0}</span></h3>

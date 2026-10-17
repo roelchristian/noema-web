@@ -35,7 +35,8 @@ export function entityMentionName(entity: Pick<Entity,'name'|'mentionCase'> | un
 export interface Property { id: string; entity_id: string; name: string; value: string | null; target_id: string | null }
 export interface Relationship { id: string; source_id: string; label: string; target_id: string }
 export interface SourceFile { id: string; vault_id: string; entity_id: string | null; name: string; size: number; status: 'queued' | 'processing' | 'ready' | 'failed'; text: string; error: string | null; progress: number; pages: number; ocr_pages: number; created_at: string }
-export interface EntityDetail extends Entity { attachments?: SourceFile[]; propertyNames: string[]; properties: Property[]; relationships: Relationship[]; incomingProperties: Property[] }
+export interface EntityPageMention extends PageSummary { mentionCount: number; excerpt: string }
+export interface EntityDetail extends Entity { pageMentions?: EntityPageMention[]; attachments?: SourceFile[]; propertyNames: string[]; properties: Property[]; relationships: Relationship[]; incomingProperties: Property[] }
 
 export type PropertyInput = {name: string} & ({value: string; target_id?: never} | {target_id: string; value?: never});
 export interface RelationshipInput {label: string; target_id: string}

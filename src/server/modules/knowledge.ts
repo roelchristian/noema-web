@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { entityTypes, type EntityType, type Entity, type EntityDetail, type Property, type Relationship } from '../../shared/domain.js';
+import { makeSearchSnippet } from '../../shared/search-snippets.js';
+import { blockSegments, entityMentionName, entityTypes, type EntityType, type Entity, type EntityDetail, type EntityPageMention, type Block, type Property, type Relationship } from '../../shared/domain.js';
 import { builtinProperties, builtinSubtypes, inheritedPropertyNames, type EntitySchema, type EntitySubtype } from '../../shared/entity-schema.js';
 import { Store } from '../store.js';
 import { HttpError, now, required, text } from '../validation.js';
@@ -55,9 +56,28 @@ export class Knowledge {
     if (!entity) throw new HttpError(404,'Entity not found');
     return entity;
   }
+  private pageMentions(vault: string, id: string): EntityPageMention[] {
+    const pages = this.store.all<Omit<EntityPageMention, 'excerpt' | 'mentionCount'> & {blocks: string}>(`
+      SELECT p.id,p.title,p.icon,p.updated_at,p.blocks FROM pages p
+      WHERE p.vault_id=? AND p.deleted_at IS NULL
+        AND EXISTS (SELECT 1 FROM json_tree(p.blocks) mention WHERE mention.key='entityId' AND mention.value=?)
+      ORDER BY p.updated_at DESC,p.id`, vault, id);
+    if (!pages.length) return [];
+    const names = new Map(this.list(vault).map(entity => [entity.id, entityMentionName(entity) ?? entity.name]));
+    return pages.map(({blocks, ...page}) => {
+      const parsed = JSON.parse(blocks) as Block[];
+      const mentionCount = parsed.flatMap(blockSegments).filter(segment => segment.entityId === id).length;
+      const match = parsed.find(block => blockSegments(block).some(segment => segment.entityId === id));
+      const segments = match ? blockSegments(match) : [];
+      const mention = segments.find(segment => segment.entityId === id);
+      const label = mention?.mentionText ?? names.get(id) ?? '';
+      const passage = segments.map(segment => segment.entityId ? segment.mentionText ?? names.get(segment.entityId) ?? '' : segment.text ?? '').join('');
+      return {...page, mentionCount, excerpt: makeSearchSnippet(passage, label, 200)};
+    }).filter(page => page.mentionCount > 0);
+  }
   detail(vault: string, id: string): EntityDetail {
     const entity = this.require(vault,id);
-    return {...entity, ...(entity.type==='source'?{attachments:this.store.all<import('../../shared/domain.js').SourceFile>('SELECT * FROM source_files WHERE vault_id=? AND entity_id=? ORDER BY created_at,id',vault,id)}:{}), propertyNames: inheritedPropertyNames(this.schema(vault),entity.type,entity.subtypes),
+    return {...entity, pageMentions: this.pageMentions(vault, id), ...(entity.type==='source'?{attachments:this.store.all<import('../../shared/domain.js').SourceFile>('SELECT * FROM source_files WHERE vault_id=? AND entity_id=? ORDER BY created_at,id',vault,id)}:{}), propertyNames: inheritedPropertyNames(this.schema(vault),entity.type,entity.subtypes),
       properties:this.store.all<Property>('SELECT * FROM properties WHERE entity_id=?',id),
       relationships:this.store.all<Relationship>('SELECT * FROM relationships WHERE source_id=? OR target_id=?',id,id),
       incomingProperties:this.store.all<Property>('SELECT * FROM properties WHERE target_id=?',id)};

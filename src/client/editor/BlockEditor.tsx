@@ -37,7 +37,7 @@ const options: {type: BlockType; title: string; detail: string; icon: string}[] 
   {type: 'quote', title: 'Quote', detail: 'Make a thought stand out', icon: '❝'},
 ];
 interface ImageUpload {id:string; after?:string; name:string; message:string; current:number; total:number}
-interface Choice {submenu?: boolean; color?:string; title: string; detail?: string; icon: string; entity?: boolean; pick: () => void}
+interface Choice {disabled?: boolean; submenu?: boolean; color?:string; title: string; detail?: string; icon: string; entity?: boolean; pick: () => void}
 interface Menu {items: Choice[]; index: number; left: number; top: number; label: string; sheet?: boolean}
 function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOpen, register, onPaste}: {block: Block; entities: Entity[]; reviewMatches: EntityReviewItem[]; onInput: (el: HTMLElement) => void; onKeyDown: (e: KeyboardEvent<HTMLElement>) => void; onOpen: (id: string) => void; register: (el: HTMLElement | null) => void; onPaste: (e: ClipboardEvent<HTMLElement>) => void}) {
   const ref = useRef<HTMLElement>(null);
@@ -254,14 +254,36 @@ export function BlockEditor(props: Props) {
     focusTarget.current={id:ids[0]!,start:true};onChange(applySemantic(latest.current.blocks,ids,kind));
   }
   function semanticChoices(pick: (kind: SemanticKind) => void): Choice[] {return editableSemanticKinds.map(kind=>({title:semanticFunctions[kind].label,detail:semanticFunctions[kind].description,icon:semanticFunctions[kind].icon,color:semanticFunctions[kind].color,entity:true,pick:()=>{setMenu(null);pick(kind);}}));}
+  function movementChoices(id: string): Choice[] {
+    const list = latest.current.blocks, block = list.find(item => item.id === id);
+    const items = block?.semanticGroup ? semanticDragItems(list, id) : semanticRuns(list).map(run => ({id: run.id}));
+    const index = items.findIndex(item => item.id === id);
+    return ([-1, 1] as const).map(direction => ({
+      title: direction === -1 ? 'Move up' : 'Move down', icon: direction === -1 ? 'arrow-up' : 'arrow-down', entity: true,
+      disabled: index < 0 || index + direction < 0 || index + direction >= items.length,
+      pick: () => {
+        if (index < 0 || index + direction < 0 || index + direction >= items.length) return;
+        const before = direction === -1 ? items[index - 1]!.id : items[index + 2]?.id ?? null;
+        setMenu(null); onChange(reorderBlock(latest.current.blocks, id, before));
+        setDragStatus(`Block moved ${direction === -1 ? 'up' : 'down'}.`);
+      },
+    }));
+  }
   function blockOptions(anchor: HTMLElement, block: Block) {
     const selection=root.current ? selectedEditorBlocks(root.current)?.elements.map(el=>el.dataset.blockId!) : undefined;
     const ids=selection?.includes(block.id)?selection:[block.id];
-    show(anchor,[...(props.onExplain?[explainChoice(ids)]:[]),...(!isAIExplanation(block)?[{submenu:true,title:'Semantic function…',detail:block.semantic ? semanticFunctions[block.semantic].label : 'Question, Definition, Example…',icon:'semantic',entity:true,pick:()=>show(anchor,[...semanticChoices(kind=>update(block.id,{semantic:kind})),...(block.semantic?[{title:'Remove semantic function',icon:'close',entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:undefined});}}]:[])],'SEMANTIC FUNCTION', true)}]:[]),...options.map(o=>({...o,pick:()=>convert(block,o.type)})),{title:'Delete block',icon:'×',pick:()=>removeBlock(block.id)}],'BLOCK OPTIONS', true);
+    show(anchor, [
+      ...(props.onExplain ? [explainChoice(ids)] : []),
+      ...(!isAIExplanation(block) ? [{submenu:true, title:'Semantic function…', detail:block.semantic ? semanticFunctions[block.semantic].label : 'Question, Definition, Example…', icon:'semantic', entity:true,
+        pick:()=>show(anchor,[...semanticChoices(kind=>update(block.id,{semantic:kind})),...(block.semantic?[{title:'Remove semantic function',icon:'close',entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:undefined});}}]:[])],'SEMANTIC FUNCTION', true)}] : []),
+      ...(mobile && block.semanticGroup ? [{submenu:true, title:'Group actions…', icon:'semantic', entity:true, pick:()=>{setActiveBlock({id:block.semanticGroup!.id,group:true});groupOptions(anchor,block.semanticGroup!.id);}}] : []),
+      ...(mobile ? movementChoices(block.id) : options.map(option=>({...option,pick:()=>convert(block,option.type)}))),
+      {title:'Delete block',icon:'trash',entity:true,pick:()=>removeBlock(block.id)},
+    ], 'BLOCK OPTIONS', true);
   }
   function groupOptions(anchor: HTMLElement, id: string) {
     const children=latest.current.blocks.filter(block=>block.semanticGroup?.id===id || block.id===id && isAIExplanation(block)),locked=children.some(isAIExplanation);
-    show(anchor,[...(props.onExplain?[explainChoice(children.map(block=>block.id))]:[]),...(!locked?[...semanticChoices(kind=>onChange(retagSemanticGroup(latest.current.blocks,id,kind))),{title:'Ungroup blocks',detail:'Keep all child blocks',icon:'close',entity:true,pick:()=>{setMenu(null);onChange(removeSemanticGroup(latest.current.blocks,id));}}]:[{title:'Delete explanation',detail:'Remove this explanation and its subblocks',icon:'close',entity:true,pick:()=>{setMenu(null);const rest=latest.current.blocks.filter(block=>block.semanticGroup?.id!==id && block.id!==id);onChange(rest.length?rest:[makeBlock()]);}}])],'SEMANTIC GROUP', true);
+    show(anchor,[...(props.onExplain?[explainChoice(children.map(block=>block.id))]:[]),...(mobile?movementChoices(id):[]),...(!locked?[...semanticChoices(kind=>onChange(retagSemanticGroup(latest.current.blocks,id,kind))),{title:'Ungroup blocks',detail:'Keep all child blocks',icon:'close',entity:true,pick:()=>{setMenu(null);onChange(removeSemanticGroup(latest.current.blocks,id));}}]:[{title:'Delete explanation',detail:'Remove this explanation and its subblocks',icon:'close',entity:true,pick:()=>{setMenu(null);const rest=latest.current.blocks.filter(block=>block.semanticGroup?.id!==id && block.id!==id);onChange(rest.length?rest:[makeBlock()]);}}])],'SEMANTIC GROUP', true);
   }
   function update(id: string, patch: Partial<Block>) { onChange(latest.current.blocks.map(b => b.id === id ? {...b, ...patch} : b)); }
   function removeBlock(id: string) {
@@ -293,18 +315,9 @@ export function BlockEditor(props: Props) {
     ? blocks.some(block => block.semanticGroup?.id === activeBlock.id || block.id === activeBlock.id)
     : blocks.some(block => block.id === activeBlock.id)) ? activeBlock : null;
   const currentBlock = active && !active.group ? blocks.find(block => block.id === active.id) : undefined;
-  const currentGroup = active && (active.group ? active.id : currentBlock?.semanticGroup?.id);
-  const moveItems = active ? currentBlock?.semanticGroup ? semanticDragItems(blocks, active.id) : semanticRuns(blocks).map(run => ({id: run.id})) : [];
-  const moveIndex = active ? moveItems.findIndex(block => block.id === active.id) : -1;
-  const activeLabel = currentBlock ? options.find(option => option.type === currentBlock.type)?.title ?? 'Image' : 'Block group';
-  function moveActive(direction: -1 | 1) {
-    if (!active || moveIndex < 0 || moveIndex + direction < 0 || moveIndex + direction >= moveItems.length) return;
-    const before = direction === -1 ? moveItems[moveIndex - 1]!.id : moveItems[moveIndex + 2]?.id ?? null;
-    onChange(reorderBlock(latest.current.blocks, active.id, before));
-    setDragStatus(`Block moved ${direction === -1 ? 'up' : 'down'}.`);
-  }
+  const activeLabel = currentBlock ? options.find(option => option.type === currentBlock.type)?.title ?? 'Image' : 'Group';
   function menuChoices(sheet = false) {
-    return menu?.items.map((item, index) => <button key={index} type="button" role={sheet ? undefined : 'menuitem'} className={index === menu.index && !sheet ? 'highlight' : ''} onClick={event => {
+    return menu?.items.map((item, index) => <button key={index} type="button" role={sheet ? undefined : 'menuitem'} disabled={item.disabled} className={index === menu.index && !sheet ? 'highlight' : ''} onClick={event => {
       // Release modal focus before an action focuses a new or converted block.
       if (sheet && !item.submenu) event.currentTarget.closest('dialog')?.close();
       item.pick();
@@ -481,11 +494,7 @@ export function BlockEditor(props: Props) {
         <button type="button" className="mobile-block-type" aria-label={currentBlock ? `Change block type: ${activeLabel}` : 'Group options'} onClick={event => currentBlock
           ? show(event.currentTarget, options.map(option => ({...option, pick: () => convert(currentBlock, option.type)})), 'TURN INTO', true)
           : groupOptions(event.currentTarget, active.id)}>{activeLabel}<Icon name="chevron"/></button>
-        <span className="mobile-block-divider"/>
-        <button type="button" disabled={moveIndex <= 0} aria-label="Move block up" title="Move block up" onClick={() => moveActive(-1)}><span className="mobile-move-up"><Icon name="chevron"/></span></button>
-        <button type="button" disabled={moveIndex < 0 || moveIndex >= moveItems.length - 1} aria-label="Move block down" title="Move block down" onClick={() => moveActive(1)}><span className="mobile-move-down"><Icon name="chevron"/></span></button>
         <button type="button" aria-label="More block actions" title="More block actions" onClick={event => currentBlock ? blockOptions(event.currentTarget, currentBlock) : groupOptions(event.currentTarget, active.id)}><Icon name="more"/></button>
-        {currentBlock && currentGroup && <button type="button" aria-label="Parent group actions" title="Parent group actions" onClick={event => { setActiveBlock({id: currentGroup, group: true}); groupOptions(event.currentTarget, currentGroup); }}><Icon name="semantic"/></button>}
       </div>
       <button type="button" className="mobile-block-done" aria-label="Finish editing" title="Finish editing" onClick={() => {
         if (document.activeElement instanceof HTMLElement) document.activeElement.blur();

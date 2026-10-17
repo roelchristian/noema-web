@@ -6,6 +6,7 @@ import { entityLabels, entityTypes, type EntityInput, type EntityType } from '..
 import { SubtypePicker } from './SubtypePicker';
 import { useEntitySchema } from './useEntitySchema';
 import { Modal } from '../components/Modal';
+import { Icon } from '../components/Icon';
 import { AliasInput, parseAliases } from './AliasInput';
 export interface CreateEntityRequest {name?: string; source?: boolean; onCreated?: (id: string) => void}
 export function CreateEntityDialog({vaultId, initial, onSubmit, onClose}: {vaultId: string; initial: CreateEntityRequest; onSubmit: (input: EntityInput) => Promise<void>; onClose: () => void}) {
@@ -16,20 +17,22 @@ export function CreateEntityDialog({vaultId, initial, onSubmit, onClose}: {vault
   const [aliases, setAliases] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   async function submit(e: FormEvent) {
-    e.preventDefault(); if(uploading || (type==='source'&&!attachments.length))return; setBusy(true); setError('');
-    try { await onSubmit({name, aliases: parseAliases(aliases), type, subtypes, ...(type==='source'?{attachmentIds:attachments.map(file=>file.id)}:{})}); onClose(); } catch (error) { setError(error instanceof Error ? error.message : String(error)); }
+    e.preventDefault(); if(busy || !name.trim() || uploading || (type==='source'&&!attachments.length))return; setBusy(true); setError('');
+    try { await onSubmit({name:name.trim(), aliases: parseAliases(aliases), type, subtypes, ...(type==='source'?{attachmentIds:attachments.map(file=>file.id)}:{})}); onClose(); } catch (error) { setError(error instanceof Error ? error.message : String(error)); }
     finally { setBusy(false); }
   }
-  return <Modal onClose={() => { if (!busy&&!uploading) onClose(); }} titleId="create-dialog-title"><form onSubmit={submit}>
-    <h2 id="create-dialog-title">Create {initial.source ? 'a source' : 'an entity'}</h2>
-    <label>Name<input autoFocus required maxLength={200} value={name} onChange={e => setName(e.target.value)} disabled={busy} placeholder="e.g. Ursula K. Le Guin" autoComplete="off"/></label>
-    <AliasInput value={aliases} onChange={setAliases} disabled={busy}/>
-    <label>Entity type<Select value={type} onChange={e => { setType(e.target.value as EntityType); setSubtypes([]); setAttachments([]); }} disabled={initial.source || busy || uploading}>{entityTypes.map(t => <option key={t} value={t}>{entityLabels[t]}</option>)}</Select></label>
-    <SubtypePicker type={type} value={subtypes} subtypes={schema.subtypes} onChange={setSubtypes} disabled={busy}/>
-    <p className="section-hint">Entities inherit category fields and the fields defined on each selected subtype.</p>
-    {type==='source'&&<SourceAttachments disabled={busy} vaultId={vaultId} onChange={setAttachments} onBusy={setUploading}/>}
-    {schemaError && <p role="alert">{schemaError}</p>}
-    {error && <p className="dialog-error" role="alert">{error}</p>}
-    <div className="dialog-actions"><button type="button" className="button" onClick={onClose} disabled={busy||uploading}>Cancel</button><button className="button primary" disabled={busy||uploading||(type==='source'&&!attachments.length)}>{busy?'Creating…':type==='source'?'Create source':'Create entity'}</button></div>
+  const namePlaceholder: Partial<Record<EntityType,string>> = {person:'e.g. Ursula K. Le Guin',place:'e.g. Kyoto',organization:'e.g. The Royal Society',event:'e.g. World Expo 2025',creativework:'e.g. The Left Hand of Darkness',organism:'e.g. Ginkgo biloba',culture:'e.g. Japanese',concept:'e.g. Systems thinking',source:'e.g. Interview with Ursula K. Le Guin'};
+  return <Modal className="create-entity-dialog" onClose={() => { if (!busy&&!uploading) onClose(); }} titleId="create-dialog-title"><form onSubmit={submit}>
+    <header className="create-entity-header"><span className="create-entity-icon" aria-hidden="true"><Icon name={type}/></span><div><h2 id="create-dialog-title">{initial.source ? 'New source' : 'New entity'}</h2><p>Add to your knowledge library.</p></div><button type="button" aria-label="Close entity creation" disabled={busy||uploading} onClick={onClose}><Icon name="close"/></button></header>
+    <div className="create-entity-fields">
+      <label>Entity type<Select aria-label="Entity type" value={type} onChange={e => { setType(e.target.value as EntityType); setSubtypes([]); setAttachments([]); setError(''); }} disabled={initial.source || busy || uploading}>{entityTypes.map(t => <option key={t} value={t}>{entityLabels[t]}</option>)}</Select></label>
+      <label>Name<input autoFocus required maxLength={200} value={name} onChange={e => setName(e.target.value)} disabled={busy} placeholder={namePlaceholder[type] ?? 'Entity name'} autoComplete="off"/></label>
+      <SubtypePicker type={type} value={subtypes} subtypes={schema.subtypes} onChange={setSubtypes} disabled={busy}/>
+      <AliasInput value={aliases} onChange={setAliases} disabled={busy}/>
+      {type==='source'&&<SourceAttachments disabled={busy} vaultId={vaultId} onChange={setAttachments} onBusy={setUploading}/>}
+      {schemaError && <p className="dialog-error" role="alert">{schemaError}</p>}
+      {error && <p className="dialog-error" role="alert">{error}</p>}
+    </div>
+    <footer className="dialog-actions create-entity-actions"><button type="button" className="button" onClick={onClose} disabled={busy||uploading}>Cancel</button><button className="button primary" disabled={busy||uploading||!name.trim()||(type==='source'&&!attachments.length)}>{busy?'Creating…':type==='source'?'Create source':'Create entity'}</button></footer>
   </form></Modal>;
 }

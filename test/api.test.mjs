@@ -130,6 +130,12 @@ await test('SQLite API: pages, references, relationships, validation, and restar
  const extraRoute=await fetch(base+'/api/vaults/extra/path/more');assert.equal(extraRoute.status,404);
  const hostileStatus=await new Promise((resolve,reject)=>{http.get(base+'/api/pages',{headers:{Host:'attacker.example'}},res=>{res.resume();resolve(res.statusCode);}).on('error',reject);});assert.equal(hostileStatus,403);
  const wrongOrigin=await fetch(base+'/api/pages',{headers:{Origin:'https://example.com'}});assert.equal(wrongOrigin.status,403);
+ const home=await fetch(base+'/');assert.equal(home.status,200);
+ const html=await home.text();assert.match(html,/href="\/favicon\.ico"/);assert.match(html,/href="\/favicon\.svg"/);
+ const favicon=await fetch(base+'/favicon.ico');assert.equal(favicon.status,200);assert.equal(favicon.headers.get('Content-Type'),'image/x-icon');
+ assert.deepEqual([...new Uint8Array(await favicon.arrayBuffer()).slice(0,6)],[0,0,1,0,3,0]);
+ const svgIcon=await fetch(base+'/favicon.svg');assert.equal(svgIcon.status,200);assert.equal(svgIcon.headers.get('Content-Type'),'image/svg+xml');
+ assert.match(await svgIcon.text(),/<svg/);
  const font=await fetch(base+'/InterVariable.woff2');assert.equal(font.status,200);assert.equal(font.headers.get('Content-Type'),'font/woff2');
  const saved=await request('pages/'+page.id);assert.equal(saved.title,'Saved note');assert.deepEqual(saved.blocks,blocks);
  assert.equal((await request('entities/'+person.id)).name,'Renamed Person');

@@ -9,7 +9,7 @@ import { Select } from '../components/Select';
 import type { CreateEntityRequest } from '../knowledge/CreateEntityDialog';
 import { Mention } from '../components/Mention';
 import type { AISummary, Entity, Page } from '../../shared/domain';
-export function IntelligencePanel({page,entities,onSearch,onOpenEntity,onSourcesChange,onCreateEntity,onClose,onSettings,onFlush,onReview}:{page:Page;entities:Entity[];onSearch:()=>void;onOpenEntity:(id:string)=>void;onSourcesChange:(sourceIds:string[])=>void;onCreateEntity:(request:CreateEntityRequest)=>void;onClose:()=>void;onSettings:()=>void;onFlush:()=>Promise<Page|null>;onReview:(scanId:string,id:string|string[],decision:'accepted'|'rejected',edits?:EntitySuggestionEdit[])=>Promise<EntityScan>}) {
+export function IntelligencePanel({page,entities,onOpenEntity,onSourcesChange,onCreateEntity,onClose,onSettings,onFlush,onReview}:{page:Page;entities:Entity[];onOpenEntity:(id:string)=>void;onSourcesChange:(sourceIds:string[])=>void;onCreateEntity:(request:CreateEntityRequest)=>void;onClose:()=>void;onSettings:()=>void;onFlush:()=>Promise<Page|null>;onReview:(scanId:string,id:string|string[],decision:'accepted'|'rejected',edits?:EntitySuggestionEdit[])=>Promise<EntityScan>}) {
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[result,setResult]=useState<AISummary|null>(null);
   const [scan,setScan] = useState<EntityScan|null>(null);
   const [loading, setLoading] = useState(true);
@@ -53,7 +53,6 @@ export function IntelligencePanel({page,entities,onSearch,onOpenEntity,onSources
   return <aside className="entity-panel intelligence-panel" id="intelligence-panel" aria-label="Knowledge" onKeyDown={event=>{if(event.key==='Escape')onClose();}}>
     <div className="panel-top knowledge-panel-top"><span><Icon name="knowledge"/>Knowledge</span><div className="knowledge-panel-actions"><button className="page-tool" aria-label="Knowledge settings" title="Knowledge settings" onClick={onSettings}><Icon name="settings"/></button><button className="page-tool" ref={close} aria-label="Close Knowledge panel" title="Close Knowledge panel" onClick={onClose}>×</button></div></div>
     <div className="panel-body">
-      <button className="button knowledge-search-button" onClick={onSearch}><Icon name="search"/>Search this vault</button>
       <section className="knowledge-summary" aria-labelledby="knowledge-summary-heading">
         <div className="knowledge-section-heading"><h2 id="knowledge-summary-heading"><Icon name="sparkles"/>Summary</h2><HelpMenu label="About AI summaries"><p>Summarizing sends this page’s title, text, and mentioned entity names to OpenAI. Attached sources and other pages are excluded. API charges may apply.</p><p>AI can make mistakes. Check the original page. Summaries are saved with this page.</p>{result&&<p>{result.model} · {result.reasoningEffort} reasoning</p>}</HelpMenu></div>
         <button className="button primary summarize-button" disabled={busy||loading} onClick={()=>void summarize()}><Icon name="sparkles"/>{loading?'Loading…':busy?'Summarizing…':result?'Refresh summary':'Summarize page'}</button>

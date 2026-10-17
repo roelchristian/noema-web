@@ -1,7 +1,6 @@
 import { useId, useMemo, useState, type KeyboardEvent } from 'react';
 import { blockSegments, entityLabels, entityTypes, type Entity, type EntityType, type Page } from '../../shared/domain';
 import { Icon } from '../components/Icon';
-import { Select } from '../components/Select';
 
 export type ConnectedSort = 'name-asc' | 'name-desc' | 'page-order' | 'mentions' | 'updated';
 export function connectedEntityItems(page: Page, entities: Entity[], type: EntityType | 'all', sort: ConnectedSort) {
@@ -25,7 +24,7 @@ export function connectedEntityItems(page: Page, entities: Entity[], type: Entit
 
 export function ConnectedEntities({page, entities, onOpenEntity}: {page: Page; entities: Entity[]; onOpenEntity: (id: string) => void}) {
   const [type, setType] = useState<EntityType | 'all'>('all');
-  const [sort, setSort] = useState<ConnectedSort>('name-asc');
+  const [sort, setSort] = useState<'name-asc' | 'name-desc'>('name-asc');
   const id = useId();
   const connected = useMemo(() => connectedEntityItems(page, entities, 'all', sort), [page.blocks, page.vault_id, entities, sort]);
   const visible = connected.filter(entity => type === 'all' || entity.type === type);
@@ -40,12 +39,18 @@ export function ConnectedEntities({page, entities, onOpenEntity}: {page: Page; e
   }
   return <section className="knowledge-connected" aria-labelledby={id + '-heading'}>
     <div className="knowledge-section-heading"><h2 id={id + '-heading'}>Connected entities</h2><span className="knowledge-count">{connected.length}</span></div>
-    <div className="knowledge-entity-tabs" role="tablist" aria-label="Connected entity types">
-      {tabs.map(tab => <button key={tab} id={id + '-' + tab} type="button" role="tab" aria-selected={type === tab} aria-controls={id + '-list'} tabIndex={type === tab ? 0 : -1} onKeyDown={navigate} onClick={() => setType(tab)}>{tab === 'all' ? 'All' : entityLabels[tab]}<span>{tab === 'all' ? connected.length : connected.filter(entity => entity.type === tab).length}</span></button>)}
+    <div className="knowledge-entity-controls">
+      <div className="knowledge-entity-tabs" role="tablist" aria-label="Connected entity types">
+        {tabs.map(tab => {
+          const label = tab === 'all' ? 'All' : entityLabels[tab];
+          const count = tab === 'all' ? connected.length : connected.filter(entity => entity.type === tab).length;
+          return <button key={tab} id={id + '-' + tab} type="button" role="tab" aria-label={`${label} (${count})`} title={`${label} (${count})`} aria-selected={type === tab} aria-controls={id + '-list'} tabIndex={type === tab ? 0 : -1} onKeyDown={navigate} onClick={() => setType(tab)}><Icon name={tab === 'all' ? 'knowledge' : tab}/></button>;
+        })}
+      </div>
+      <button type="button" className="knowledge-entity-sort" aria-label="Sort connected entities in reverse alphabetical order" aria-pressed={sort === 'name-desc'} title={sort === 'name-asc' ? 'Sorted A–Z · Switch to Z–A' : 'Sorted Z–A · Switch to A–Z'} onClick={() => setSort(current => current === 'name-asc' ? 'name-desc' : 'name-asc')}>
+        <span aria-hidden="true">{sort === 'name-asc' ? 'A' : 'Z'}<span>→</span>{sort === 'name-asc' ? 'Z' : 'A'}</span>
+      </button>
     </div>
-    <label className="knowledge-entity-sort">Sort<Select aria-label="Sort connected entities" value={sort} onChange={event => setSort(event.target.value as ConnectedSort)}>
-      <option value="name-asc">Name · A–Z</option><option value="name-desc">Name · Z–A</option><option value="page-order">Order in page</option><option value="mentions">Most mentioned</option><option value="updated">Recently updated</option>
-    </Select></label>
     <div id={id + '-list'} role="tabpanel" aria-labelledby={id + '-' + type}>
       {visible.length ? <ul className="knowledge-connected-list">{visible.map(entity => <li key={entity.id}><button type="button" onClick={() => onOpenEntity(entity.id)}><Icon name={entity.type}/><span>{entity.name}</span></button></li>)}</ul> : <p className="section-hint">{!connected.length ? 'Mention an entity with @ to connect it here.' : 'No connected entities of this type.'}</p>}
     </div>

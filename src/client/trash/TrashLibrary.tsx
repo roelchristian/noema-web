@@ -1,3 +1,5 @@
+import {ViewModeSwitch, useViewMode} from '../components/ViewModeSwitch';
+import {ActionMenu} from '../components/ActionMenu';
 import { PageIcon } from '../components/PageIcon';
 import { useEffect, useState } from 'react';
 import type { TrashedPage } from '../../shared/domain';
@@ -8,6 +10,7 @@ export function TrashLibrary({notes, onRestore, onDelete, onRefresh, onError}: {
   notes: TrashedPage[]; onRestore: (id: string) => Promise<void>; onDelete: (id: string) => Promise<void>;
   onRefresh: () => Promise<void>; onError: (error: unknown) => void;
 }) {
+  const [viewMode, setViewMode] = useViewMode('trash');
   const [target, setTarget] = useState<TrashedPage | null>(null);
   const [query, setQuery] = useState('');
   useEffect(() => {
@@ -18,12 +21,13 @@ export function TrashLibrary({notes, onRestore, onDelete, onRefresh, onError}: {
     return () => clearTimeout(timer);
   }, [notes, onRefresh, onError]);
   const filtered = notes.filter(note => note.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
-  return <section className="organization-library trash-library">
+  return <section className="organization-library trash-library" data-layout={viewMode}>
     <div className="organization-heading"><div><h1 className="page-heading">Trash</h1></div></div>
+    <div className="library-view-toolbar"><ViewModeSwitch value={viewMode} onChange={setViewMode}/></div>
     {!!notes.length && <input className="organization-search" type="search" aria-label="Search Trash" placeholder="Search deleted notes…" value={query} onChange={event => setQuery(event.target.value)}/>}
     <div className="organization-items">{filtered.map(note => <article className="organization-item" key={note.id}>
-      <div className="organization-item-row trash-row"><PageIcon icon={note.icon}/><div className="trash-note"><h2>{note.title || 'Untitled'}</h2><small>Moved to Trash <time dateTime={note.deleted_at}>{new Date(note.deleted_at).toLocaleDateString()}</time> · Deletes <time dateTime={note.expires_at} title={new Date(note.expires_at).toLocaleString()}>{new Date(note.expires_at).toLocaleDateString()}</time></small></div>
-        <div className="trash-actions"><button className="button small" onClick={() => { void onRestore(note.id).catch(onError); }} aria-label={'Restore ' + (note.title || 'Untitled')}>Restore</button><button className="button small" onClick={() => setTarget(note)} aria-label={'Delete permanently: ' + (note.title || 'Untitled')}>Delete permanently</button></div>
+      <div className="organization-item-row trash-row"><span className="organization-item-icon"><PageIcon icon={note.icon}/></span><div className="trash-note"><h2 title={note.title || 'Untitled'}>{note.title || 'Untitled'}</h2><small>Moved to Trash <time dateTime={note.deleted_at}>{new Date(note.deleted_at).toLocaleDateString()}</time> · Deletes <time dateTime={note.expires_at} title={new Date(note.expires_at).toLocaleString()}>{new Date(note.expires_at).toLocaleDateString()}</time></small></div>
+        <div className="trash-actions"><button className="button small" onClick={() => { void onRestore(note.id).catch(onError); }} aria-label={'Restore ' + (note.title || 'Untitled')}>Restore</button>{viewMode === 'list' ? <button className="button small" onClick={() => setTarget(note)} aria-label={'Delete permanently: ' + (note.title || 'Untitled')}>Delete permanently</button> : <ActionMenu label={'Actions for ' + (note.title || 'Untitled')} actions={[{label: 'Delete permanently', icon: 'trash', danger: true, onSelect: () => setTarget(note)}]}/>}</div>
       </div>
     </article>)}{!filtered.length && <div className="organization-empty"><Icon name="trash"/><h2>{query ? 'No matching notes' : 'Trash is empty'}</h2><p>{query ? 'Try another search.' : 'Notes you move to Trash will appear here for 30 days.'}</p></div>}</div>
     {target && <ConfirmDialog title="Delete permanently?" description={`“${target.title || 'Untitled'}” will be permanently deleted. This cannot be undone.`} action="Delete permanently" onConfirm={() => onDelete(target.id)} onClose={() => setTarget(null)}/>}

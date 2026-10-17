@@ -1,14 +1,14 @@
 import {useEffect,useState} from 'react';
 import {api} from '../api';
 interface PreviewState {key:string;snippets:Record<string,string>;loading:boolean;error:string}
-export function useSearchSnippets(vaultId:string,query:string,pageIds:string[]):Omit<PreviewState,'key'> {
+export function useSearchSnippets(vaultId:string,query:string,pageIds:string[],allowEmptyQuery=false,revision=''):Omit<PreviewState,'key'> {
   const ids=JSON.stringify([...new Set(pageIds)].sort());
-  const term=query.trim(),key=JSON.stringify([vaultId,term,ids]);
+  const term=query.trim(),enabled=!!term||allowEmptyQuery,key=JSON.stringify([vaultId,term,ids,allowEmptyQuery,revision]);
   const [state,setState]=useState<PreviewState>({key:'',snippets:{},loading:false,error:''});
   useEffect(()=>{
     const controller=new AbortController(),values=JSON.parse(ids) as string[];
-    setState({key,snippets:{},loading:!!term&&values.length>0,error:''});
-    if(!term||!values.length)return()=>controller.abort();
+    setState({key,snippets:{},loading:enabled&&values.length>0,error:''});
+    if(!enabled||!values.length)return()=>controller.abort();
     // Batch local excerpts. These requests never call an AI provider.
     const timer=setTimeout(()=>{
       void (async()=>{
@@ -21,6 +21,6 @@ export function useSearchSnippets(vaultId:string,query:string,pageIds:string[]):
       })().catch(()=>{if(!controller.signal.aborted)setState(current=>current.key===key?{...current,loading:false,error:'Some note previews are unavailable. You can still open the results.'}:current);});
     },150);
     return()=>{clearTimeout(timer);controller.abort();};
-  },[key,vaultId,term,ids]);
-  return state.key===key?state:{snippets:{},loading:!!term&&pageIds.length>0,error:''};
+  },[key,vaultId,term,ids,enabled]);
+  return state.key===key?state:{snippets:{},loading:enabled&&pageIds.length>0,error:''};
 }

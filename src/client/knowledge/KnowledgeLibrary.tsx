@@ -1,3 +1,4 @@
+import {ViewModeSwitch, useViewMode} from '../components/ViewModeSwitch';
 import { useState } from 'react';
 import { entityLabels, entityTypes, type Entity, type EntityType } from '../../shared/domain';
 import { Icon } from '../components/Icon';
@@ -6,6 +7,7 @@ import { HighlightedText } from '../search/HighlightedText';
 import { useEntitySchema } from './useEntitySchema';
 
 export function KnowledgeLibrary({vaultId, entities, onOpen, onCreate}: {vaultId: string; entities: Entity[]; onOpen: (id: string) => void; onCreate: () => void}) {
+  const [viewMode, setViewMode] = useViewMode('knowledge');
   const {schema, error} = useEntitySchema(vaultId);
   const [search, setSearch] = useState('');
   const [view, setView] = useState('folders');
@@ -31,11 +33,12 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onCreate}: {vaultId
     setType(nextType);
     setSearch('');
   }
-  return <section className="organization-library organization-browser knowledge-library">
+  return <section className="organization-library organization-browser knowledge-library" data-layout={viewMode}>
     <div className="organization-heading pages-home-heading"><div><h1 className="page-heading">Knowledge entities</h1></div><div className="pages-home-actions">
       <label className="organization-search-box"><Icon name="search"/><input aria-label="Search entities" placeholder="Search entities…" value={search} onChange={event => setSearch(event.target.value)}/>{search && <button aria-label="Clear search" onClick={() => setSearch('')}><Icon name="close"/></button>}</label>
       <button className="button primary" onClick={onCreate}><Icon name="plus"/>New entity</button>
     </div></div>
+    <div className="library-view-toolbar"><ViewModeSwitch value={viewMode} onChange={setViewMode}/></div>
     {error && <p role="alert">{error}</p>}
     <div className="organization-content">
       <div className="organization-section-title knowledge-browser-controls">
@@ -60,7 +63,7 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onCreate}: {vaultId
         </div></article>)}
         {filtered.map(entity => <article className="organization-item" key={entity.id}><div className="organization-item-row organization-page-row knowledge-entity-row">
           <span className="organization-item-icon"><Icon name={entity.type}/></span>
-          <button className="organization-item-name" onClick={() => onOpen(entity.id)}>
+          <button className="organization-item-name" title={entity.name} onClick={() => onOpen(entity.id)}>
             <span className="organization-page-title"><HighlightedText text={entity.name} query={search}/><span className="knowledge-row-detail">{[entityLabels[entity.type], ...entity.subtypes.map(id => schema.subtypes.find(item => item.id === id)?.name).filter(Boolean)].join(' / ')}</span></span>
             <small>{Number.isFinite(Date.parse(entity.updated_at)) ? <time dateTime={entity.updated_at} title={new Date(entity.updated_at).toLocaleString()}>{new Date(entity.updated_at).toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'})}</time> : 'Date unavailable'}</small>
             {entity.description && <span className="search-result-snippet knowledge-entity-description">{entity.description}</span>}

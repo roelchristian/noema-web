@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react';
 const paths: Record<string, ReactNode> = {
+  'view-list': <><path d="M9 6h12M9 12h12M9 18h12M3 6h1M3 12h1M3 18h1"/></>,
+  'view-compact': <path d="M4 5h16M4 10h16M4 15h16M4 20h16"/>,
+  'view-grid': <><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></>,
   menu: <path d="M4 6h16M4 12h16M4 18h16"/>,
   'arrow-up': <path d="M12 20V4m-6 6 6-6 6 6"/>,
   'arrow-down': <path d="M12 4v16m-6-6 6 6 6-6"/>,

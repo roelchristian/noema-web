@@ -38,12 +38,12 @@ export function EntityPanel(props: Props) {
     document.getElementById('entity-panel')?.scrollTo({top: 0});
     document.getElementById('entity-tab-' + next)?.focus({preventScroll: true});
   }
-  return <aside id="entity-panel" className="entity-panel entity-detail-panel" aria-label="Knowledge entity"><div className="panel-top"><span>KNOWLEDGE ENTITY</span><button type="button" title="Close entity" aria-label="Close entity" onClick={onClose}><Icon name="close"/></button></div>
+  return <aside id="entity-panel" className="entity-panel entity-detail-panel" aria-label="Knowledge entity"><div className="panel-top entity-detail-toolbar">
+    {entity ? <div className="entity-toolbar-heading"><span className="entity-detail-icon" aria-hidden="true"><Icon name={entity.type}/></span><h2 id="entity-detail-title" className="entity-toolbar-title" title={entity.name}>{entity.name}</h2></div> : <span>KNOWLEDGE ENTITY</span>}
+    <button type="button" title="Close entity" aria-label="Close entity" onClick={onClose}><Icon name="close"/></button>
+  </div>
     {!entity ? <p className="panel-body" role={loadingError ? 'alert' : 'status'}>{loadingError || 'Loading entity…'}</p> : <div className="panel-body entity-detail-body">
-      <header className="entity-detail-header">
-        <span className="entity-detail-icon" aria-hidden="true"><Icon name={entity.type}/></span>
-        <div><h2 id="entity-detail-title" className="page-heading">{entity.name}</h2><div className="entity-detail-classification"><span className="entity-detail-type">{entityLabels[entity.type]}</span>{!!subtypeNames.length && <span>{subtypeNames.join(' · ')}</span>}</div></div>
-      </header>
+      <div className="entity-detail-classification"><span className="entity-detail-type">{entityLabels[entity.type]}</span>{!!subtypeNames.length && <span>{subtypeNames.join(' · ')}</span>}</div>
       {entity.description && <p className="entity-detail-description">{entity.description}</p>}
       <div className="entity-detail-tabs" role="tablist" aria-label="Entity details">
         {entityTabs.map(({id: value, label}) => <button type="button" key={value} id={'entity-tab-' + value} role="tab" aria-selected={tab === value} aria-controls={'entity-tabpanel-' + value} tabIndex={tab === value ? 0 : -1} onClick={() => switchTab(value)} onKeyDown={event => {

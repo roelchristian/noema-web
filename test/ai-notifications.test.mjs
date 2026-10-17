@@ -102,14 +102,32 @@ test('Trash disables note links, restores availability, and permanent deletion r
     assert.deepEqual(notifications.list().items,[]);assert.equal(notifications.list().unreadCount,0);
   } finally {db.close();}
 });
-test('notification retention is bounded and returns latest unread items first',()=>{
+test('notification retention keeps only the latest ten in chronological order, including read items',()=>{
   const {db,notifications}=setup();
   try {
-    for(let i=0;i<1005;i++)notifications.record('default','welcome','page_summary');
-    assert.equal(db.prepare('SELECT count(*) AS count FROM ai_notifications').get().count,1000);
-    const queue=notifications.list();assert.equal(queue.items.length,100);assert.equal(queue.unreadCount,1000);
-    const id=queue.items[0].id;notifications.read({ids:[id]});
-    assert.equal(notifications.list().items.every(item=>item.readAt===null),true);
+    for(let i=0;i<15;i++)notifications.record('default','welcome','page_summary');
+    assert.equal(db.prepare('SELECT count(*) AS count FROM ai_notifications').get().count,10);
+    const queue=notifications.list();assert.equal(queue.items.length,10);assert.equal(queue.unreadCount,10);
+    const expected=db.prepare('SELECT id FROM ai_notifications ORDER BY seq DESC').all().map(row=>row.id);
+    assert.deepEqual(queue.items.map(item=>item.id),expected);
+    const newest=queue.items[0].id;
+    const read=notifications.read({ids:[newest]});
+    assert.equal(read.items[0].id,newest);assert.ok(read.items[0].readAt);assert.equal(read.unreadCount,9);
+    notifications.record('default','welcome','entity_scan');
+    const next=notifications.list();
+    assert.equal(next.items.length,10);assert.equal(next.items[0].action,'entity_scan');
+    assert.equal(next.items.some(item=>item.id===queue.items.at(-1).id),false);
+  } finally {db.close();}
+});
+test('listing clears notifications saved before the ten-item retention limit',()=>{
+  const {db,notifications}=setup();
+  try {
+    const insert=db.prepare("INSERT INTO ai_notifications (id,vault_id,page_id,action,status,created_at) VALUES (?,'default','welcome','page_summary','completed',?)");
+    for(let i=0;i<20;i++)insert.run('legacy-'+i,'2026-10-17T00:00:00.000Z');
+    const queue=notifications.list();
+    assert.deepEqual(queue.items.map(item=>item.id),Array.from({length:10},(_,i)=>'legacy-'+(19-i)));
+    assert.equal(queue.unreadCount,10);
+    assert.equal(db.prepare('SELECT count(*) AS count FROM ai_notifications').get().count,10);
   } finally {db.close();}
 });
 test('notification endpoints require the Noema client for writes and block cross-origin access',async()=>{

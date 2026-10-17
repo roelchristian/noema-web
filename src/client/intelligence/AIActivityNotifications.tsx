@@ -3,10 +3,11 @@ import {notificationMessage,runningMessage,type AINotification,type AINotificati
 import {api} from '../api';
 import {Icon} from '../components/Icon';
 import {AIActivityLog} from '../settings/AIActivityLog';
+import {scheduleNotificationRead} from './notification-read-delay';
 
 const empty:AINotificationQueue={items:[],running:[],unreadCount:0,through:0};
 export function AIActivityNotifications({onOpenPage,refreshKey}:{onOpenPage:(vault:string,page:string)=>Promise<void>;refreshKey:string}) {
-  const [data,setData]=useState(empty),[open,setOpen]=useState(false),[tab,setTab]=useState<'unread'|'recent'>('unread');
+  const [data,setData]=useState(empty),[open,setOpen]=useState(false),[tab,setTab]=useState<'unread'|'recent'>('recent');
   const [error,setError]=useState(''),[busy,setBusy]=useState(false),[logOpen,setLogOpen]=useState(false),[loading,setLoading]=useState(true);
   const trigger=useRef<HTMLButtonElement>(null),popup=useRef<HTMLDivElement>(null);
   const active=useRef(true),sequence=useRef(0),request=useRef<AbortController|null>(null),mutating=useRef(false);
@@ -35,6 +36,13 @@ export function AIActivityNotifications({onOpenPage,refreshKey}:{onOpenPage:(vau
     window.addEventListener('resize',position);
     return()=>window.removeEventListener('resize',position);
   },[open]);
+  useEffect(()=>{
+    if(!open||!data.unreadCount)return;
+    // Polling the same queue must not restart the three-second reading delay.
+    return scheduleNotificationRead(()=>{
+      if(popup.current?.matches(':popover-open'))void markRead({through:data.through});
+    });
+  },[open,data.through,data.unreadCount]);
   function close() {popup.current?.hidePopover();setOpen(false);}
   async function markRead(body:{ids:string[]}|{through:number}) {
     if(mutating.current)return;

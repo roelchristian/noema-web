@@ -10,17 +10,22 @@ export class AINotifications {
     // The originating page may have been permanently deleted while a request ran.
     this.store.run(`INSERT INTO ai_notifications (id,vault_id,page_id,action,status,created_at)
       SELECT ?,vault_id,id,?,?,? FROM pages WHERE id=? AND vault_id=?`,randomUUID(),action,status,now(),pageId,vault);
-    this.store.run('DELETE FROM ai_notifications WHERE seq NOT IN (SELECT seq FROM ai_notifications ORDER BY seq DESC LIMIT 1000)');
+    this.prune();
   }
   outcome(action: string, vault: string | null, pageId: string | null, status: string) {
     if(vault && pageId && actions.includes(action) && (status==='failed'||status==='interrupted')) this.record(vault,pageId,action as NotificationAction,status);
   }
+  private prune() {
+    this.store.run('DELETE FROM ai_notifications WHERE seq NOT IN (SELECT seq FROM ai_notifications ORDER BY seq DESC LIMIT 10)');
+  }
   list(): AINotificationQueue {
+    // Also clear old notifications saved before the ten-item limit was introduced.
+    this.prune();
     const items=this.store.all<AINotification>(`SELECT n.id,n.action,n.status,n.vault_id AS vaultId,v.name AS vaultName,n.page_id AS pageId,
       p.title AS pageTitle,(p.id IS NOT NULL AND p.deleted_at IS NULL) AS available,n.created_at AS createdAt,n.read_at AS readAt
       FROM ai_notifications n JOIN vaults v ON v.id=n.vault_id AND v.locked=0
       LEFT JOIN pages p ON p.id=n.page_id AND p.vault_id=n.vault_id
-      ORDER BY (n.read_at IS NULL) DESC,n.seq DESC LIMIT 100`).map(item=>({...item,available:!!item.available}));
+      ORDER BY n.seq DESC LIMIT 10`).map(item=>({...item,available:!!item.available}));
     const unreadCount=this.store.get<{count:number}>(`SELECT count(*) AS count FROM ai_notifications n JOIN vaults v ON v.id=n.vault_id AND v.locked=0 WHERE n.read_at IS NULL`)!.count;
     const through=this.store.get<{seq:number}>('SELECT COALESCE(MAX(seq),0) AS seq FROM ai_notifications')!.seq;
     const running=this.store.all<AIRunningActivity>(`SELECT a.id,a.action,a.vault_id AS vaultId,a.object_id AS pageId,p.title AS pageTitle,

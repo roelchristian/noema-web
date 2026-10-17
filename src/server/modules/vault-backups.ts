@@ -204,9 +204,17 @@ export class VaultBackups {
           const kind=name(row,'kind'),data=object(json(row,'data'));
           if(kind==='entity_scan') {
             const scan=object(data.scan);scan.id=randomUUID();
+            const proposalIds = new Map<string,string>();
+            const proposals = list(scan.subtypeSuggestions ?? []).map(value => {
+              const proposal = {...object(value)}, type = entityType(proposal), id = string(proposal,'id');
+              if (proposalIds.has(id) || !['pending','accepted','rejected'].includes(proposal.status as string)) throw invalid();
+              proposalIds.set(id,randomUUID());
+              return {...proposal,id:proposalIds.get(id),name:string(proposal,'name',200),type,...(proposal.resolvedId === undefined ? {} : {resolvedId:subtype(proposal.resolvedId,type)})};
+            });
+            if (scan.subtypeSuggestions !== undefined) scan.subtypeSuggestions = proposals;
             scan.suggestions=list(scan.suggestions).map(value=>{
               const suggestion={...object(value)},type=entityType(suggestion);
-              return {...suggestion,id:randomUUID(),existingId:suggestion.existingId===null?null:ref(entityIds,suggestion.existingId),subtypes:list(suggestion.subtypes).map(value=>subtype(value,type))};
+              return {...suggestion,...(suggestion.proposedSubtypeIds === undefined ? {} : {proposedSubtypeIds:list(suggestion.proposedSubtypeIds).map(value=>ref(proposalIds,value))}),id:randomUUID(),existingId:suggestion.existingId===null?null:ref(entityIds,suggestion.existingId),subtypes:list(suggestion.subtypes).map(value=>subtype(value,type))};
             });
           }
           if(kind==='concept_classification') {

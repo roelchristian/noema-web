@@ -1,11 +1,13 @@
 import { isEntityTaggingText, type EntityInput, type EntityType, type Page, type Segment, type Entity } from './domain.js';
 export interface EntitySuggestion extends EntityInput {
+  proposedSubtypeIds?: string[];
   id: string; evidence: string; reason: string; existingId: string | null;
   status: 'pending' | 'accepted' | 'rejected';
 }
 export interface EntitySuggestionEdit { id: string; name: string; type: EntityType; subtypes: string[]; existingId: string | null }
-export interface EntityScan { id: string; revision: number; suggestions: EntitySuggestion[] }
-export interface EntityReview { page: Page; scan: EntityScan; entities: Entity[] }
+export interface SubtypeSuggestion { id: string; name: string; type: EntityType; status: 'pending' | 'accepted' | 'rejected'; resolvedId?: string }
+export interface EntityScan { subtypeSuggestions?: SubtypeSuggestion[]; id: string; revision: number; suggestions: EntitySuggestion[] }
+export interface EntityReview { schema?: import('./entity-schema.js').EntitySchema; page: Page; scan: EntityScan; entities: Entity[] }
 
 // Match within adjacent text segments, including phrases spanning formatting.
 // Existing mentions, formulas, and excluded text form boundaries and are never replaced.

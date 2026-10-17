@@ -418,6 +418,7 @@ export class Workspace {
       if (!page || page.id !== original.id || page.vault_id !== original.vault_id) throw new Error('The selected note changed. Try again.');
       this.titler.observe(page);
       const result = await api.reviewEntity(page.vault_id,page.id,page.revision,scanId,suggestionId,decision,edits);
+      if (result.schema) window.dispatchEvent(new CustomEvent('entity-schema-changed', {detail: {vault: page.vault_id, schema: result.schema}}));
       this.pageCache.set(page.id,result.page);
       this.patch({page:result.page,entities:result.entities,pages:this.state.pages.map(p => p.id === page.id ? result.page : p)});
       return result.scan;

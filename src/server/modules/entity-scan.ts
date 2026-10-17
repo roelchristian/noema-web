@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { blockSegments, entityTypes, type Page } from '../../shared/domain.js';
+import { blockSegments, entityTypes, isEntityTaggingText, type Page } from '../../shared/domain.js';
 import { mentionEvidence, type EntityScan, type EntitySuggestion, type EntityReview } from '../../shared/entity-scan.js';
 import { Store } from '../store.js';
 import { HttpError, now, object, required } from '../validation.js';
@@ -25,13 +25,13 @@ export class EntityScans {
     const collect = (segments: import('../../shared/domain.js').Segment[]) => {
       let run = '';
       for (const segment of segments) {
-        if (segment.entityId || segment.math) { if (run) runs.push(run); run = ''; }
+        if (!isEntityTaggingText(segment)) { if (run) runs.push(run); run = ''; }
         else run += segment.text;
       }
       if (run) runs.push(run);
     };
     for (const block of page.blocks) {
-      if (block.type === 'math') continue;
+      if (block.type === 'math' || block.type === 'image') continue;
       if (block.type === 'table') for (const row of block.rows || []) for (const cell of row) collect(cell);
       else collect(block.content);
     }

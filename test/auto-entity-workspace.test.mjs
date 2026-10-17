@@ -40,6 +40,26 @@ test('removed tags remain excluded through idle matching, explicit saves, and re
   assert.equal(workspace.saver.hasPending, false);
 });
 
+test('saving a selection alias refreshes the catalog and tags other occurrences without reload', async t => {
+  const {workspace, writes, entity} = await setup(t);
+  t.mock.method(api, 'addEntityAlias', async (vault, id, alias) => {
+    assert.equal(vault, 'vault'); assert.equal(id, entity.id); assert.equal(alias, 'Zyrus');
+    return {...entity, aliases: ['Zyrus']};
+  });
+  workspace.updatePage({blocks: [{id: 'paragraph', type: 'paragraph', checked: false, content: [{text: 'Zyrus and Zyrus.'}]}]});
+  await workspace.addEntityAlias(entity.id, 'Zyrus');
+  assert.deepEqual(workspace.snapshot().entities[0].aliases, ['Zyrus']);
+  await workspace.saver.flush();
+  assert.deepEqual(writes[0].blocks[0].content, [{entityId: entity.id, mentionText: 'Zyrus'}, {text: ' and '}, {entityId: entity.id, mentionText: 'Zyrus'}, {text: '.'}]);
+});
+
+test('failed alias saves leave the catalog unchanged and propagate errors for retry', async t => {
+  const {workspace, entity} = await setup(t);
+  t.mock.method(api, 'addEntityAlias', async () => { throw new Error('Alias save failed'); });
+  await assert.rejects(workspace.addEntityAlias(entity.id, 'Zyrus'), /Alias save failed/);
+  assert.deepEqual(workspace.snapshot().entities, [entity]);
+});
+
 test('idle identification links existing entities, autosaves them, and remains idempotent', async t => {
   const {workspace,writes} = await setup(t);
   const statuses=[];workspace.subscribe(()=>statuses.push(workspace.snapshot().saveStatus));

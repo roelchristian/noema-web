@@ -137,6 +137,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS embedding_settings (
  CREATE INDEX IF NOT EXISTS embedding_jobs_vault ON embedding_jobs(vault_id,created_at DESC);
  CREATE UNIQUE INDEX IF NOT EXISTS embedding_jobs_active ON embedding_jobs(page_id) WHERE status IN ('queued','running');`);
 if (!db.prepare('PRAGMA table_info(entities)').all().some(c => c.name === 'subtype')) db.exec('ALTER TABLE entities ADD COLUMN subtype TEXT');
+if (!db.prepare('PRAGMA table_info(entities)').all().some(c => c.name === 'aliases')) db.exec("ALTER TABLE entities ADD COLUMN aliases TEXT NOT NULL DEFAULT '[]'");
 // Import the former single selection exactly once; an empty array remains cleared on restart.
 if (!db.prepare('PRAGMA table_info(entities)').all().some(c => c.name === 'subtypes')) {
  db.exec(`ALTER TABLE entities ADD COLUMN subtypes TEXT NOT NULL DEFAULT '[]';

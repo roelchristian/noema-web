@@ -3,6 +3,8 @@ import { entityTypes, type EntityType, type Entity, type EntityDetail, type Prop
 import { builtinProperties, builtinSubtypes, type EntitySchema, type EntitySubtype } from '../../shared/entity-schema.js';
 import { Store } from '../store.js';
 import { HttpError, now, required, text } from '../validation.js';
+import { normalizeEntityName } from '../../shared/auto-entities.js';
+type EntityRow = Omit<Entity, 'subtypes' | 'aliases'> & {subtypes: string; aliases: string; subtype?: string | null};
 export class Knowledge {
   constructor(private store: Store) {}
   schema(vault: string): EntitySchema {
@@ -34,13 +36,13 @@ export class Knowledge {
   private registerProperty(vault: string, type: EntityType, name: string) {
     this.store.run('INSERT OR IGNORE INTO entity_type_properties VALUES (?,?,?)',vault,type,name);
   }
-  private entity(row: Omit<Entity, 'subtypes'> & {subtypes: string; subtype?: string | null}): Entity {
-    const {subtype: _legacy, subtypes, ...entity} = row;
-    return {...entity, subtypes: JSON.parse(subtypes) as string[]};
+  private entity(row: EntityRow): Entity {
+    const {subtype: _legacy, subtypes, aliases, ...entity} = row;
+    return {...entity, aliases: JSON.parse(aliases) as string[], subtypes: JSON.parse(subtypes) as string[]};
   }
-  list(vault: string) { return this.store.all<Omit<Entity, 'subtypes'> & {subtypes: string}>('SELECT * FROM entities WHERE vault_id=? ORDER BY name COLLATE NOCASE',vault).map(row => this.entity(row)); }
+  list(vault: string) { return this.store.all<EntityRow>('SELECT * FROM entities WHERE vault_id=? ORDER BY name COLLATE NOCASE',vault).map(row => this.entity(row)); }
   find(vault: string, id: string) {
-    const row = this.store.get<Omit<Entity, 'subtypes'> & {subtypes: string}>('SELECT * FROM entities WHERE id=? AND vault_id=?',id,vault);
+    const row = this.store.get<EntityRow>('SELECT * FROM entities WHERE id=? AND vault_id=?',id,vault);
     return row ? this.entity(row) : undefined;
   }
   require(vault: string, id: string) {
@@ -64,11 +66,14 @@ export class Knowledge {
     const subtypes = [...new Set(selection as string[])];
     const available = this.schema(vault).subtypes.filter(s => s.type === type);
     if (subtypes.some(id => !available.some(s => s.id === id))) throw new HttpError(400,'Invalid subtype for this main type');
-    return {name:required(body.name),type,subtypes,description:text(body.description ?? '')};
+    const inputAliases = body.aliases === undefined ? current?.aliases ?? [] : body.aliases;
+    if (!Array.isArray(inputAliases) || inputAliases.length > 100 || inputAliases.some(alias => typeof alias !== 'string' || !alias.trim() || alias.trim().length > 200)) throw new HttpError(400,'Aliases must be up to 100 non-empty names of at most 200 characters');
+    const aliases = [...new Map(inputAliases.map((alias: string) => [alias.trim().replace(/\s+/g, ' ').toLowerCase(), alias.trim().replace(/\s+/g, ' ')])).values()];
+    return {name:required(body.name),aliases,type,subtypes,description:text(body.description ?? '')};
   }
   create(vault: string, body: Record<string, unknown>) {
     const e=this.input(vault,body),id=randomUUID();
-    this.store.run('INSERT INTO entities (id,name,type,subtypes,description,updated_at,vault_id) VALUES (?,?,?,?,?,?,?)',id,e.name,e.type,JSON.stringify(e.subtypes),e.description,now(),vault);
+    this.store.run('INSERT INTO entities (id,name,aliases,type,subtypes,description,updated_at,vault_id) VALUES (?,?,?,?,?,?,?,?)',id,e.name,JSON.stringify(e.aliases),e.type,JSON.stringify(e.subtypes),e.description,now(),vault);
     return this.detail(vault,id);
   }
   update(vault: string, id: string, body: Record<string, unknown>) {
@@ -78,10 +83,20 @@ export class Knowledge {
     if (e.subtypes.length && properties.some(p => !inherited.some(name => name.toLowerCase() === p.name.toLowerCase()))) throw new HttpError(400,'This entity has properties outside the selected main type. Add those fields to the main type first.');
     if (e.type!=='source' && this.store.get('SELECT 1 FROM page_sources WHERE source_id=? LIMIT 1',id)) throw new HttpError(400,'Remove page source references before changing this Source to another type');
     this.store.transaction(() => {
-      this.store.run('UPDATE entities SET name=?,type=?,subtype=NULL,subtypes=?,description=?,updated_at=? WHERE id=? AND vault_id=?',e.name,e.type,JSON.stringify(e.subtypes),e.description,now(),id,vault);
+      this.store.run('UPDATE entities SET name=?,aliases=?,type=?,subtype=NULL,subtypes=?,description=?,updated_at=? WHERE id=? AND vault_id=?',e.name,JSON.stringify(e.aliases),e.type,JSON.stringify(e.subtypes),e.description,now(),id,vault);
       if (!e.subtypes.length) for (const p of properties) this.registerProperty(vault,e.type,p.name);
     });
     return this.detail(vault,id);
+  }
+  addAlias(vault: string, id: string, body: Record<string, unknown>) {
+    const alias = required(body.alias,200).replace(/\s+/g, ' ');
+    return this.store.transaction(() => {
+      const entity = this.require(vault,id), aliases = entity.aliases ?? [];
+      if ([entity.name, ...aliases].some(name => normalizeEntityName(name) === normalizeEntityName(alias))) return this.detail(vault,id);
+      if (aliases.length >= 100) throw new HttpError(400,'This entity already has 100 aliases. Remove an alias before adding another.');
+      this.store.run('UPDATE entities SET aliases=?,updated_at=? WHERE id=? AND vault_id=?',JSON.stringify([...aliases,alias]),now(),id,vault);
+      return this.detail(vault,id);
+    });
   }
   property(vault: string, id: string, body: Record<string, unknown>, propertyId?: string) {
     const entity=this.require(vault,id);

@@ -55,6 +55,11 @@ await test('SQLite API: pages, references, relationships, validation, and restar
  const directorType = customSchema.subtypes.find(s => s.name === 'Director');
  const director = await request('entities','POST',{name:'Test Director',type:'person',subtypes:[directorType.id,'person:writer']},201);
  assert.deepEqual(director.subtypes,[directorType.id,'person:writer']);
+ const aliasedDirector=await request('entities/'+director.id+'/aliases','POST',{alias:'Director alias'});
+ assert.deepEqual(aliasedDirector.aliases,['Director alias']);
+ assert.deepEqual(aliasedDirector.subtypes,director.subtypes);
+ assert.deepEqual((await request('entities/'+director.id+'/aliases','POST',{alias:'DIRECTOR ALIAS'})).aliases,['Director alias']);
+ await request('entities/'+director.id+'/aliases','POST',{alias:''},400);
  assert.deepEqual((await request('entities')).find(e => e.id === director.id).subtypes,director.subtypes);
  await request('entities/'+director.id,'PUT',{name:director.name,type:'person',subtypes:['person:actor','place:city']},400);
  await request('entities/'+director.id+'/properties','POST',{name:'filmography',value:'A film'},400);

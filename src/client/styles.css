@@ -1057,3 +1057,13 @@ main:has(> #content > .page) { display: flex; flex-direction: column; }
 .editor-save-status button { padding: 0; font-size: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .editor-save-status > .icon, .editor-save-status > .scan-spinner { width: 14px; height: 14px; flex-shrink: 0; }
 .editor-save-status.is-error { color: var(--palette-rose-text); }
+
+.entity-alias-input { display: block; margin: 16px 0; font-size: 11px; color: var(--text-muted); }
+#entity-form .entity-alias-input textarea, .entity-alias-input textarea { display: block; width: 100%; min-height: 64px; margin: 7px 0; padding: 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--text); font-size: 12px; resize: vertical; }
+.entity-alias-input small { font-size: 10px; line-height: 1.5; }
+.entity-match-review { margin: 32px 0 24px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; }
+.entity-match-review summary { cursor: pointer; font-weight: 550; }
+.entity-match-review p { color: var(--text-muted); line-height: 1.6; overflow-wrap: anywhere; }
+.entity-match-row { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 14px; }
+.entity-match-row .select-control { max-width: 100%; }
+.entity-match-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }

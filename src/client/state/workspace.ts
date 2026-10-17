@@ -252,6 +252,14 @@ export class Workspace {
     if (sequence === this.loadSequence) this.patch({entities});
     return result;
   }
+  addEntityAlias = async (id: string, alias: string) => {
+    const vault = this.state.vault, sequence = this.loadSequence;
+    if (!vault || vault.locked) throw new Error('Unlock the vault to add an alias.');
+    const entity = await api.addEntityAlias(vault.id,id,alias);
+    if (sequence === this.loadSequence && this.state.vault?.id === vault.id && !this.state.vault.locked) {
+      this.patch({entities: this.state.entities.map(current => current.id === id ? entity : current)});
+    }
+  };
   async reviewEntity(scanId: string, suggestionId: string | string[], decision: 'accepted' | 'rejected', edits?: import('../../shared/entity-scan').EntitySuggestionEdit[]) {
     if (this.navigation) throw new Error('Another note operation is finishing. Try again.');
     const original = this.state.page;

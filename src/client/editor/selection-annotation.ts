@@ -3,9 +3,10 @@ import type { Entity } from '../../shared/domain';
 const normalize = (text: string) => text.normalize('NFKC').trim().replace(/\s+/g, ' ').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').toLocaleLowerCase();
 export function annotationSuggestions(entities: Entity[], selection: string, query = '') {
   const selected = normalize(selection), term = normalize(query);
-  const exact = entities.filter(entity => selected && normalize(entity.name) === selected);
-  const results = entities.filter(entity => !term || normalize(entity.name).includes(term)).sort((a, b) => {
-    const score = (entity: Entity) => Number(normalize(entity.name) === (term || selected));
+  const names = (entity: Entity) => [entity.name, ...(entity.aliases ?? [])].map(normalize);
+  const exact = entities.filter(entity => selected && names(entity).includes(selected));
+  const results = entities.filter(entity => !term || names(entity).some(name => name.includes(term))).sort((a, b) => {
+    const score = (entity: Entity) => Number(names(entity).includes(term || selected));
     return score(b) - score(a) || a.name.localeCompare(b.name);
   }).slice(0, 20);
   return {exact, results};

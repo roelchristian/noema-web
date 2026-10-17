@@ -5,7 +5,7 @@ import { renderMath } from './math';
 /** Only escaped text and explicitly supported formatting reach the editable surface. */
 export function segmentHTML(content: Segment[], entities: Entity[]) {
   return renderToStaticMarkup(<>{content.map((s, index) => {
-    if (s.entityId) return <Mention key={index} id={s.entityId} entities={entities} onOpen={() => {}}/>;
+    if (s.entityId) return <Mention key={index} id={s.entityId} label={s.mentionText} entities={entities} onOpen={() => {}}/>;
     if (s.math) return <span key={index} className="inline-math" data-math={s.text} contentEditable={false} role="button" tabIndex={0} title="Edit equation" aria-label={`Edit equation: ${s.text}`} dangerouslySetInnerHTML={{__html: renderMath(s.text ?? '')}}/>;
     let node = <>{s.text}</>;
     if (s.code) node = <code>{node}</code>;
@@ -30,7 +30,7 @@ export function readSegments(el: Node, allowMentions = true): Segment[] {
     } else if (node instanceof HTMLElement) {
       if (['SCRIPT','STYLE','META','LINK','IFRAME','OBJECT'].includes(node.tagName)) return;
       if (node.dataset.math !== undefined) { output.push({text: node.dataset.math, math: true}); return; }
-      if (allowMentions && node.dataset.entity) { output.push({entityId: node.dataset.entity}); return; }
+      if (allowMentions && node.dataset.entity) { output.push({entityId: node.dataset.entity, ...(node.dataset.mentionText ? {mentionText: node.dataset.mentionText} : {})}); return; }
       if (node.tagName === 'BR') { output.push({text: '\n'}); return; }
       const next = {...style}, tag = node.tagName;
       if (allowMentions && node.dataset.skipAutoTag === 'true') next.skipAutoTag = true;

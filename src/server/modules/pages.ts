@@ -39,7 +39,7 @@ export class Pages {
           if(segment.entityId) {
             const entityId=required(segment.entityId);
             if(!this.knowledge.find(vault,entityId))throw new HttpError(400,'Referenced entity does not exist');
-            return {entityId};
+            return {entityId, ...(segment.mentionText !== undefined ? {mentionText: text(segment.mentionText,10000)} : {})};
           }
           const result: Segment = {text:text(segment.text)};
           for (const mark of ['bold','italic','underline','strike','code','math','skipAutoTag'] as const) if(segment[mark] === true) result[mark]=true;

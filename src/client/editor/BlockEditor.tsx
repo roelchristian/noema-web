@@ -5,6 +5,7 @@ import { entityLabels, type Block, type BlockType, type Entity, type Segment } f
 import { uploadImage } from '../api';
 import { Icon } from '../components/Icon';
 import { readSegments, segmentHTML } from './segments';
+import { segmentsEqual } from '../../shared/segments-equal';
 import { clipboardBlocks, makeBlock } from './paste';
 import { compressImage } from './compress-image';
 import { readImageCompression } from '../settings/image-settings';
@@ -14,7 +15,7 @@ import { SelectionToolbar } from './SelectionToolbar';
 import { MathBlock } from './MathBlock';
 import { MathDialog } from './MathDialog';
 import { completeInlineMath, mathElement } from './math';
-interface Props {vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[]) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
+interface Props {onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[]) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
 const options: {type: BlockType; title: string; detail: string; icon: string}[] = [
   {type: 'paragraph', title: 'Text', detail: 'Plain text for your thoughts', icon: 'T'},
   {type: 'heading1', title: 'Heading 1', detail: 'A large section heading', icon: 'H₁'},
@@ -32,9 +33,9 @@ function EditableBlock({block, entities, onInput, onKeyDown, onOpen, register, o
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = ref.current!;
-    if (JSON.stringify(readSegments(el)) !== JSON.stringify(block.content)) replaceEditableHTML(el, segmentHTML(block.content, entities));
+    if (!segmentsEqual(readSegments(el), block.content)) replaceEditableHTML(el, segmentHTML(block.content, entities));
     el.querySelectorAll<HTMLElement>('[data-entity]').forEach(node => {
-      const wrapper = document.createElement('span'); wrapper.innerHTML = segmentHTML([{entityId: node.dataset.entity!}], entities);
+      const wrapper = document.createElement('span'); wrapper.innerHTML = segmentHTML([{entityId: node.dataset.entity!, ...(node.dataset.mentionText ? {mentionText: node.dataset.mentionText} : {})}], entities);
       const fresh = wrapper.firstElementChild!;
       if (node.innerHTML !== fresh.innerHTML) node.innerHTML = fresh.innerHTML;
       node.className = fresh.className;
@@ -184,7 +185,7 @@ export function BlockEditor(props: Props) {
     if (match && range.startContainer.nodeType === Node.TEXT_NODE) {
       const query = match[1]!, start = range.startOffset - query.length - 1; if (start < 0) { setMenu(null); return; }
       const saved = range.cloneRange(); saved.setStart(range.startContainer, start);
-      const items: Choice[] = entities.filter(e => e.name.toLowerCase().includes(query.toLowerCase())).slice(0, 7).map(e => ({title: e.name, detail: entityLabels[e.type], icon: e.type, entity: true, pick: () => insertMention(saved, e.id, block.id)}));
+      const items: Choice[] = entities.filter(e => [e.name, ...(e.aliases ?? [])].some(name => name.toLowerCase().includes(query.toLowerCase()))).slice(0, 7).map(e => ({title: e.name, detail: entityLabels[e.type], icon: e.type, entity: true, pick: () => insertMention(saved, e.id, block.id)}));
       items.push({title: query ? `Create “${query}”` : 'Create a new entity', icon: '+', pick: () => { setMenu(null); onCreateEntity(query, id => insertMention(saved, id, block.id)); }}); show(el, items, 'LINK AN ENTITY'); return;
     }
     setMenu(null);
@@ -256,7 +257,7 @@ export function BlockEditor(props: Props) {
     {block.type === 'todo' ? <input type="checkbox" aria-label="Complete task" checked={block.checked} onChange={e => update(block.id, {checked: e.target.checked})}/> : block.type === 'bullet' ? <span className="bullet-marker">•</span> : null}
     {block.type === 'math' ? <MathBlock block={block} onDelete={() => removeBlock(block.id)} onChange={source => update(block.id, {content: [{text: source}]})} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'image' ? <ImageBlock block={block} vaultId={props.vaultId} onChange={alt => update(block.id,{alt})} onDelete={() => removeBlock(block.id)} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'table' ? <TableBlock block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={el => { completeInlineMath(el); update(block.id, {content: readSegments(el)}); detect(el, block); }} onKeyDown={e => keyDown(e, block)} onPaste={e => paste(e, block)}/>}
   </div>{uploadCards(block.id)}</Fragment>)}{uploadCards()}</div>
-    <SelectionToolbar onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} onCommit={commitSelection} onCreateEntity={onCreateEntity}/>
+    <SelectionToolbar onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} onCommit={commitSelection} onCreateEntity={onCreateEntity}/>
     {mathTarget && <MathDialog initial={mathTarget.initial} onSave={saveInlineMath} onClose={() => setMathTarget(null)}/>}
     {imageError && <div className="image-upload-error" role="alert">{imageError}</div>}
     {menu && <div ref={menuRef} className="command-menu" style={{left: menu.left, top: menu.top}} onMouseDown={e => e.preventDefault()} role="menu"><div className="menu-label">{menu.label}</div>{menu.items.map((item, index) => <button key={index} role="menuitem" className={index === menu.index ? 'highlight' : ''} onClick={item.pick}><span className="menu-icon">{item.entity || item.icon === 'equation' ? <Icon name={item.icon}/> : item.icon}</span><span>{item.title}<small>{item.detail}</small></span></button>)}</div>}

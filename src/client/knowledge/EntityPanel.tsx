@@ -7,6 +7,7 @@ import { api } from '../api';
 import { entityLabels, entityTypes, type Entity, type EntityDetail, type EntityType, type Property, type Relationship } from '../../shared/domain';
 import { Icon } from '../components/Icon';
 import { Mention } from '../components/Mention';
+import { AliasInput, parseAliases } from './AliasInput';
 interface Props {vaultId: string; id: string; entities: Entity[]; onOpen: (id: string) => void; onClose: () => void; onUpdated: () => Promise<void>; onError: (error: unknown) => void}
 export function EntityPanel(props: Props) {
   const {vaultId, id, entities, onOpen, onClose, onUpdated, onError} = props;
@@ -39,8 +40,9 @@ export function EntityPanel(props: Props) {
 function EntityDetails({entity, schema, onSave}: {schema: EntitySchema; entity: EntityDetail; onSave: (input: Parameters<typeof api.updateEntity>[2]) => Promise<unknown>}) {
   const [name, setName] = useState(entity.name), [type, setType] = useState<EntityType>(entity.type), [description, setDescription] = useState(entity.description), [status, setStatus] = useState(''), [busy, setBusy] = useState(false);
   const [subtypes, setSubtypes] = useState(entity.subtypes);
-  async function submit(e: FormEvent) { e.preventDefault(); setBusy(true); setStatus(''); try { await onSave({name, type, subtypes, description}); setStatus('Saved'); } catch { /* Parent reports the error. */ } finally { setBusy(false); } }
-  return <form id="entity-form" onSubmit={submit}><input className="entity-name" aria-label="Entity name" required maxLength={200} value={name} onChange={e => setName(e.target.value)}/><Select aria-label="Entity type" value={type} onChange={e => { setType(e.target.value as EntityType); setSubtypes([]); }}>{entityTypes.map(t => <option key={t} value={t}>{entityLabels[t]}</option>)}</Select><SubtypePicker type={type} value={subtypes} subtypes={schema.subtypes} onChange={setSubtypes} disabled={busy}/><textarea aria-label="Entity description" placeholder="Add a description…" value={description} onChange={e => setDescription(e.target.value)}/><button className="button small" disabled={busy}>Save details</button><span id="entity-saved"> {status}</span></form>;
+  const [aliases, setAliases] = useState((entity.aliases ?? []).join('\n'));
+  async function submit(e: FormEvent) { e.preventDefault(); setBusy(true); setStatus(''); try { await onSave({name, aliases: parseAliases(aliases), type, subtypes, description}); setStatus('Saved'); } catch { /* Parent reports the error. */ } finally { setBusy(false); } }
+  return <form id="entity-form" onSubmit={submit}><input className="entity-name" aria-label="Entity name" required maxLength={200} value={name} onChange={e => setName(e.target.value)}/><Select aria-label="Entity type" value={type} onChange={e => { setType(e.target.value as EntityType); setSubtypes([]); }}>{entityTypes.map(t => <option key={t} value={t}>{entityLabels[t]}</option>)}</Select><SubtypePicker type={type} value={subtypes} subtypes={schema.subtypes} onChange={setSubtypes} disabled={busy}/><AliasInput value={aliases} onChange={setAliases} disabled={busy}/><textarea aria-label="Entity description" placeholder="Add a description…" value={description} onChange={e => setDescription(e.target.value)}/><button className="button small" disabled={busy}>Save details</button><span id="entity-saved"> {status}</span></form>;
 }
 type MentionRenderer = (id: string) => React.ReactNode;
 function PropertyEditor({entity, entities, mention, onSave, onRemove}: {entity: EntityDetail; entities: Entity[]; mention: MentionRenderer; onSave: (input: Parameters<typeof api.saveProperty>[2], id?: string) => Promise<unknown>; onRemove: (id: string) => Promise<unknown>}) {

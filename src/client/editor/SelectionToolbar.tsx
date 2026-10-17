@@ -8,6 +8,7 @@ interface Props {
   editor: RefObject<HTMLDivElement | null>;
   entities: Entity[];
   onCommit: () => void;
+  onAddAlias: (id: string, alias: string) => Promise<void>;
   onMath: (range: Range) => void;
   onCreateEntity: (name: string, onCreated: (id: string) => void) => void;
 }
@@ -20,10 +21,11 @@ const formats = [
 function editable(node: Node) {
   return (node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>('.block-content[contenteditable="true"]');
 }
-export function SelectionToolbar({editor, entities, onCommit, onCreateEntity, onMath}: Props) {
+export function SelectionToolbar({editor, entities, onCommit, onAddAlias, onCreateEntity, onMath}: Props) {
   const [anchor, setAnchor] = useState<{left: number; right: number; top: number; bottom: number} | null>(null);
   const [annotating, setAnnotating] = useState(false), [query, setQuery] = useState('');
   const [linking, setLinking] = useState(false);
+  const [savingAlias, setSavingAlias] = useState(false), [aliasError, setAliasError] = useState('');
   const [active, setActive] = useState<string[]>([]);
   const [position, setPosition] = useState<{left: number; top: number; maxHeight?: number}>({left: 0, top: 0});
   const saved = useRef<Range | null>(null), surface = useRef<HTMLDivElement>(null);
@@ -97,20 +99,32 @@ export function SelectionToolbar({editor, entities, onCommit, onCreateEntity, on
   }
   function connect(range: Range, text: string, id: string) {
     // A create dialog may outlive an edit or page navigation. Never replace stale text.
-    if (!range.startContainer.isConnected || !range.endContainer.isConnected || range.toString() !== text || !editor.current?.contains(range.commonAncestorContainer)) return;
+    if (!range.startContainer.isConnected || !range.endContainer.isConnected || range.toString() !== text || !editor.current?.contains(range.commonAncestorContainer)) return false;
     range.deleteContents();
     const wrapper = document.createElement('span');
-    wrapper.innerHTML = segmentHTML([{entityId: id}], latest.current.entities);
+    wrapper.innerHTML = segmentHTML([{entityId: id, mentionText: text}], latest.current.entities);
     const mention = wrapper.firstChild!; range.insertNode(mention);
     range.setStartAfter(mention); range.collapse(true); restore(range);
     latest.current.onCommit(); dismiss();
+    return true;
   }
   if (!anchor) return null;
   const range = saved.current;
   const single = range && editable(range.startContainer) === editable(range.endContainer);
   const selectedText = range?.toString().trim() || '';
   const {exact, results} = annotationSuggestions(entities, selectedText, query);
-  const linkEntity = (id: string) => { const current = saved.current; if (current) connect(current.cloneRange(), current.toString(), id); };
+  const linkEntity = async (id: string) => {
+    const current = saved.current;
+    if (!current || savingAlias) return;
+    const range = current.cloneRange(), text = current.toString();
+    if (!range.startContainer.isConnected || !range.endContainer.isConnected) return;
+    setSavingAlias(true); setAliasError('');
+    try {
+      await onAddAlias(id,text.trim());
+      if (saved.current === current && !connect(range,text,id)) throw new Error('The selected text changed while saving the alias. Select it again to link it.');
+    } catch (error) { setAliasError(error instanceof Error ? error.message : String(error)); }
+    finally { setSavingAlias(false); }
+  };
   const createFromSelection = () => {
     const current = saved.current?.cloneRange(); if (!current) return;
     const text = current.toString();
@@ -124,17 +138,19 @@ export function SelectionToolbar({editor, entities, onCommit, onCreateEntity, on
       <span className="selection-divider"/>
       <button type="button" className="selection-annotate" disabled={!single} title={single ? 'Connect selection to a knowledge entity' : 'Select text within one block or table cell to annotate'} aria-expanded={annotating} onClick={() => { picking.current = !annotating; setAnnotating(!annotating); setLinking(false); setQuery(''); }}><Icon name="knowledge"/>Annotate</button>
     </div>
-    {annotating && <div className="selection-entities" role="region" aria-label="Annotate selection">
+    {annotating && <div className="selection-entities" role="region" aria-label="Annotate selection" aria-busy={savingAlias}>
+      {savingAlias && <p role="status">Saving alias…</p>}
+      {aliasError && <p role="alert">{aliasError}</p>}
       {linking ? <>
         <button type="button" className="selection-back" onClick={() => { setLinking(false); setQuery(''); }}>Back to annotation options</button>
         <input autoFocus aria-label="Search knowledge entities" placeholder="Find an existing entity…" value={query} onChange={event => setQuery(event.target.value)}/>
-        <p>Link the highlighted text to an existing entity</p>
+        <p>Link the highlighted text and save it as an alias for future tagging.</p>
         <div className="selection-entity-results">
-          {results.map(entity => <button type="button" key={entity.id} onClick={() => linkEntity(entity.id)}><Icon name={entity.type}/><span>{entity.name}<small>{entityLabels[entity.type]}</small></span></button>)}
+          {results.map(entity => <button type="button" key={entity.id} disabled={savingAlias} onClick={() => void linkEntity(entity.id)}><Icon name={entity.type}/><span>{entity.name}<small>{entityLabels[entity.type]}</small></span></button>)}
           {!results.length && <div className="selection-empty">No matching entities</div>}
         </div>
       </> : <>
-        {!!exact.length && <><p>Matching {exact.length === 1 ? 'entity' : 'entities'}</p><div className="selection-entity-results">{exact.map(entity => <button type="button" key={entity.id} onClick={() => linkEntity(entity.id)}><Icon name={entity.type}/><span>{entity.name}<small>{entityLabels[entity.type]}</small></span></button>)}</div></>}
+        {!!exact.length && <><p>Matching {exact.length === 1 ? 'entity' : 'entities'}</p><div className="selection-entity-results">{exact.map(entity => <button type="button" key={entity.id} disabled={savingAlias} onClick={() => void linkEntity(entity.id)}><Icon name={entity.type}/><span>{entity.name}<small>{entityLabels[entity.type]}</small></span></button>)}</div></>}
         {!exact.length && <button type="button" className="selection-create" onClick={createFromSelection}><Icon name="plus"/><span>Add “{selectedText.length > 60 ? selectedText.slice(0, 60) + '…' : selectedText}” as new entity</span></button>}
         <button type="button" onClick={() => setLinking(true)}><Icon name="knowledge"/><span>Link to {exact.length ? 'another' : 'existing'} entity</span></button>
       </>}

@@ -168,6 +168,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             }
           }
           if(collection==='entities') {
+            if(id && child==='aliases' && parts.length===4 && method==='POST')return send(200,knowledge.addAlias(vault,id,body));
             if(parts.length===2 && method==='GET')return send(200,knowledge.list(vault));
             if(parts.length===2 && method==='POST')return send(201,knowledge.create(vault,body));
             if(id && parts.length===3) {

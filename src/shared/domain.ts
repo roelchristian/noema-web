@@ -8,15 +8,19 @@ export const entityLabels: Record<EntityType, string> = {
 export const blockTypes = ['paragraph', 'heading1', 'heading2', 'bullet', 'quote', 'todo', 'table', 'image', 'math'] as const;
 export type BlockType = typeof blockTypes[number];
 export interface TextStyle { math?: boolean; bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean; code?: boolean; href?: string; skipAutoTag?: boolean }
-export type Segment = TextStyle & ( { text: string; entityId?: never } | { entityId: string; text?: never });
+export type Segment = TextStyle & ( { text: string; entityId?: never; mentionText?: never } | { entityId: string; text?: never; mentionText?: string });
+/** Formatting never limits entity matching; semantic content and explicit exclusions do. */
+export function isEntityTaggingText(segment: Segment): segment is Extract<Segment, {text: string}> {
+  return !segment.entityId && !segment.math && !segment.skipAutoTag;
+}
 export interface Block { id: string; type: BlockType; checked: boolean; content: Segment[]; rows?: Segment[][][]; imageId?: string; alt?: string }
 export interface Vault { id: string; name: string; locked: boolean; protected: boolean; updated_at: string }
 export interface PageSummary { id: string; title: string; icon?: PageIconId | null; updated_at: string }
 export interface TrashedPage extends PageSummary { deleted_at: string; expires_at: string }
 export interface Page extends PageSummary { vault_id: string; blocks: Block[]; sourceIds: string[]; revision: number }
 export interface PageInput { icon?: PageIconId | null; title: string; blocks: Block[]; sourceIds?: string[]; revision?: number }
-export interface Entity { id: string; vault_id: string; name: string; type: EntityType; subtypes: string[]; description: string; updated_at: string }
-export interface EntityInput { name: string; type: EntityType; subtypes?: string[]; subtype?: string | null; description?: string }
+export interface Entity { id: string; vault_id: string; name: string; aliases?: string[]; type: EntityType; subtypes: string[]; description: string; updated_at: string }
+export interface EntityInput { name: string; aliases?: string[]; type: EntityType; subtypes?: string[]; subtype?: string | null; description?: string }
 export interface Property { id: string; entity_id: string; name: string; value: string | null; target_id: string | null }
 export interface Relationship { id: string; source_id: string; label: string; target_id: string }
 export interface EntityDetail extends Entity { propertyNames: string[]; properties: Property[]; relationships: Relationship[]; incomingProperties: Property[] }

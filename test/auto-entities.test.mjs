@@ -37,15 +37,15 @@ test('ambiguous names and entities from other vaults stay plain text', () => {
   assert.equal(result.count, 0);
 });
 
-test('existing mentions, code, links, equations, and image blocks are preserved; table cells are scanned', () => {
+test('existing mentions, equations, and image blocks are preserved; code, links and table cells are scanned', () => {
   const entities = [entity('ada', 'Ada')];
   const protectedBlock = block([{entityId: 'ada'}, {text: 'Ada', code: true}, {text: 'Ada', math: true}, {text: 'Ada', href: 'https://example.com'}]);
   const math = {...block([{text: 'Ada'}]), id: 'math', type: 'math'};
   const image = {...block([{text: 'Ada'}]), id: 'image', type: 'image', imageId: 'picture'};
   const table = {...block([]), id: 'table', type: 'table', rows: [[[{text: 'Ada'}], [{text: 'Nothing matches'}]]]};
   const result = identifyEntityMentions([protectedBlock, math, image, table], entities, 'vault');
-  assert.equal(result.count, 1);
-  assert.equal(result.blocks[0], protectedBlock);
+  assert.equal(result.count, 3);
+  assert.deepEqual(result.blocks[0].content, [{entityId: 'ada'}, {entityId: 'ada'}, {text: 'Ada', math: true}, {entityId: 'ada'}]);
   assert.equal(result.blocks[1], math);
   assert.equal(result.blocks[2], image);
   assert.deepEqual(result.blocks[3].rows[0][0], [{entityId: 'ada'}]);

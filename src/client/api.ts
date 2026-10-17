@@ -57,6 +57,7 @@ export const api={
   entity:(vault:string,id:string)=>request<EntityDetail>(`entities/${id}`,'GET',undefined,vault),
   createEntity:(vault:string,input:EntityInput)=>request<EntityDetail>('entities','POST',input,vault),
   updateEntity:(vault:string,id:string,input:EntityInput)=>request<EntityDetail>(`entities/${id}`,'PUT',input,vault),
+  addEntityAlias:(vault:string,id:string,alias:string)=>request<EntityDetail>(`entities/${id}/aliases`,'POST',{alias},vault),
   saveProperty:(vault:string,id:string,input:PropertyInput,propertyId?:string)=>request<EntityDetail>(`entities/${id}/properties${propertyId?'/'+propertyId:''}`,propertyId?'PUT':'POST',input,vault),
   saveRelationship:(vault:string,id:string,input:RelationshipInput,relationshipId?:string)=>request<EntityDetail>(`entities/${id}/relationships${relationshipId?'/'+relationshipId:''}`,relationshipId?'PUT':'POST',input,vault),
   removeConnection:(vault:string,id:string,kind:'properties'|'relationships',childId:string)=>request<EntityDetail>(`entities/${id}/${kind}/${childId}`,'DELETE',undefined,vault),

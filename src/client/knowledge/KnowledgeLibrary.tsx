@@ -6,7 +6,7 @@ import { useEntitySchema } from './useEntitySchema';
 export function KnowledgeLibrary({vaultId, entities, onOpen, onCreate}: {vaultId: string; entities: Entity[]; onOpen: (id: string) => void; onCreate: () => void}) {
   const {schema, error} = useEntitySchema(vaultId);
   const [query, setQuery] = useState(''), [type, setType] = useState('');
-  const filtered = entities.filter(e => (!type || e.type === type || e.subtypes.includes(type)) && e.name.toLowerCase().includes(query.toLowerCase()));
+  const filtered = entities.filter(e => (!type || e.type === type || e.subtypes.includes(type)) && [e.name, ...(e.aliases ?? [])].some(name => name.toLowerCase().includes(query.toLowerCase())));
   return <section className="library"><h1>Knowledge entities<span>{entities.length}</span></h1>
     <button className="button primary" onClick={onCreate}>+ New entity</button>
     {error && <p role="alert">{error}</p>}

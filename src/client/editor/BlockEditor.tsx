@@ -1,4 +1,4 @@
-import { applySemantic, normalizeSemanticGroups, removeSemanticGroup, retagSemanticGroup, semanticDragItems, semanticFunctions, semanticKinds, semanticRuns, type SemanticKind } from '../../shared/semantic-blocks';
+import { applySemantic, isAIExplanation, preserveAIExplanationTags, normalizeSemanticGroups, removeSemanticGroup, retagSemanticGroup, semanticDragItems, semanticFunctions, editableSemanticKinds, semanticRuns, type SemanticKind } from '../../shared/semantic-blocks';
 import { selectedEditorBlocks } from './block-selection';
 import { installBlockDrag, type BlockDropPreview } from './block-drag';
 import { installBlockSelection, setEditorCaret } from './block-selection';
@@ -10,7 +10,7 @@ import { entityLabels, type Block, type BlockType, type Entity, type Segment } f
 import { uploadImage } from '../api';
 import { Icon } from '../components/Icon';
 import { readSegments, segmentHTML, syncEditableSegments } from './segments';
-import { clipboardBlocks, makeBlock } from './paste';
+import { clipboardBlocks, markdownBlocks, makeBlock } from './paste';
 import { compressImage } from './compress-image';
 import { readImageCompression } from '../settings/image-settings';
 import { ImageBlock } from './ImageBlock';
@@ -19,7 +19,7 @@ import { SelectionToolbar } from './SelectionToolbar';
 import { MathBlock } from './MathBlock';
 import { MathDialog } from './MathDialog';
 import { completeInlineMath, mathElement } from './math';
-interface Props {reviewMatches?: EntityReviewItem[]; onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[]) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
+interface Props {onExplain?: (blocks: Block[]) => Promise<string>; reviewMatches?: EntityReviewItem[]; onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[]) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
 const options: {type: BlockType; title: string; detail: string; icon: string}[] = [
   {type: 'paragraph', title: 'Text', detail: 'Plain text for your thoughts', icon: 'T'},
   {type: 'heading1', title: 'Heading 1', detail: 'A large section heading', icon: 'H₁'},
@@ -51,7 +51,9 @@ function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOp
 }
 export function BlockEditor(props: Props) {
   const {blocks, entities, onOpenEntity, onCreateEntity, onSave} = props;
-  const onChange = (next: Block[]) => props.onChange(normalizeSemanticGroups(next));
+  const onChange = (next: Block[]) => props.onChange(normalizeSemanticGroups(preserveAIExplanationTags(props.blocks,next)));
+  const [explaining,setExplaining]=useState(false), [explanationError,setExplanationError]=useState('');
+  const explanationPending=useRef(false), retryExplanation=useRef<string[]>([]);
   const reviewMatches = props.reviewMatches ?? [];
   const [blockDrag, setBlockDrag] = useState<BlockDropPreview | null>(null), [dragStatus, setDragStatus] = useState('');
   const dropEndId = blockDrag ? semanticDragItems(blocks,blockDrag.id).filter(block => block.id !== blockDrag.id).at(-1)?.id : undefined;
@@ -106,7 +108,34 @@ export function BlockEditor(props: Props) {
       return editors[0] ? {...block, content: readSegments(editors[0])} : block;
     });
     setMenu(null); latest.current.onChange(list);
+    return list;
   }
+  async function explain(ids?: string[]) {
+    if(explanationPending.current || !latest.current.onExplain) return;
+    const selectedIds=ids ?? (root.current ? selectedEditorBlocks(root.current)?.elements.map(el=>el.dataset.blockId!) : undefined);
+    if(!selectedIds?.length) return;
+    const draft=commitSelection(), selected=draft.filter(block=>selectedIds.includes(block.id));
+    if(!selected.length) return;
+    const snapshot=JSON.stringify(selected);
+    retryExplanation.current=selectedIds;explanationPending.current=true;setExplaining(true);setExplanationError('');
+    try {
+      const markdown=await latest.current.onExplain(selected);
+      if(!mounted.current) return;
+      const current=latest.current.blocks, sources=current.filter(block=>selectedIds.includes(block.id));
+      if(JSON.stringify(sources)!==snapshot) throw new Error('The selected blocks changed. Select them again to generate a fresh explanation.');
+      const group={id:crypto.randomUUID(),kind:'ai-explanation' as const};
+      const generated=markdownBlocks(markdown).map(block=>({...block,semantic:'ai-explanation' as const,semanticGroup:group}));
+      if(!markdown.trim() || !generated.length) throw new Error('AI returned an empty explanation. Please try again.');
+      if(generated.length>128 || current.length+generated.length>2000) throw new Error('The explanation is too large for this page. Select fewer blocks.');
+      // Insert after the last selected parent, so an existing group is never fragmented.
+      const last=sources.at(-1)!, parent=last.semanticGroup?.id;
+      let index=current.findIndex(block=>block.id===last.id);
+      if(parent) current.forEach((block,i)=>{if(block.semanticGroup?.id===parent)index=i;});
+      const next=[...current];next.splice(index+1,0,...generated);latest.current.onChange(next);
+    } catch(error) {if(mounted.current)setExplanationError(error instanceof Error?error.message:'Could not explain these blocks.');}
+    finally {explanationPending.current=false;if(mounted.current)setExplaining(false);}
+  }
+  function explainChoice(ids: string[]): Choice {return {title:explaining?'Explaining…':'Explain with AI',detail:'Insert an AI Explanation below these blocks',icon:'sparkles',entity:true,pick:()=>{setMenu(null);void explain(ids);}};}
   function editInlineMath(node: HTMLElement) {
     const range = document.createRange(); range.selectNode(node);
     setMathTarget({range, initial: node.dataset.math ?? '', node});
@@ -179,12 +208,15 @@ export function BlockEditor(props: Props) {
     const ids=selected.elements.map(el=>el.dataset.blockId!);
     focusTarget.current={id:ids[0]!,start:true};onChange(applySemantic(latest.current.blocks,ids,kind));
   }
-  function semanticChoices(pick: (kind: SemanticKind) => void): Choice[] {return semanticKinds.map(kind=>({title:semanticFunctions[kind].label,detail:semanticFunctions[kind].description,icon:semanticFunctions[kind].icon,color:semanticFunctions[kind].color,entity:true,pick:()=>{setMenu(null);pick(kind);}}));}
+  function semanticChoices(pick: (kind: SemanticKind) => void): Choice[] {return editableSemanticKinds.map(kind=>({title:semanticFunctions[kind].label,detail:semanticFunctions[kind].description,icon:semanticFunctions[kind].icon,color:semanticFunctions[kind].color,entity:true,pick:()=>{setMenu(null);pick(kind);}}));}
   function blockOptions(anchor: HTMLElement, block: Block) {
-    show(anchor,[{title:'Semantic function…',detail:block.semantic ? semanticFunctions[block.semantic].label : 'Question, Definition, Example…',icon:'semantic',entity:true,pick:()=>show(anchor,[...semanticChoices(kind=>update(block.id,{semantic:kind})),...(block.semantic?[{title:'Remove semantic function',icon:'close',entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:undefined});}}]:[])],'SEMANTIC FUNCTION')},...options.map(o=>({...o,pick:()=>convert(block,o.type)})),{title:'Delete block',icon:'×',pick:()=>removeBlock(block.id)}],'BLOCK OPTIONS');
+    const selection=root.current ? selectedEditorBlocks(root.current)?.elements.map(el=>el.dataset.blockId!) : undefined;
+    const ids=selection?.includes(block.id)?selection:[block.id];
+    show(anchor,[...(props.onExplain?[explainChoice(ids)]:[]),...(!isAIExplanation(block)?[{title:'Semantic function…',detail:block.semantic ? semanticFunctions[block.semantic].label : 'Question, Definition, Example…',icon:'semantic',entity:true,pick:()=>show(anchor,[...semanticChoices(kind=>update(block.id,{semantic:kind})),...(block.semantic?[{title:'Remove semantic function',icon:'close',entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:undefined});}}]:[])],'SEMANTIC FUNCTION')}]:[]),...options.map(o=>({...o,pick:()=>convert(block,o.type)})),{title:'Delete block',icon:'×',pick:()=>removeBlock(block.id)}],'BLOCK OPTIONS');
   }
   function groupOptions(anchor: HTMLElement, id: string) {
-    show(anchor,[...semanticChoices(kind=>onChange(retagSemanticGroup(latest.current.blocks,id,kind))),{title:'Ungroup blocks',detail:'Keep all child blocks',icon:'close',entity:true,pick:()=>{setMenu(null);onChange(removeSemanticGroup(latest.current.blocks,id));}}],'SEMANTIC GROUP');
+    const children=latest.current.blocks.filter(block=>block.semanticGroup?.id===id),locked=children[0]?.semanticGroup?.kind==='ai-explanation';
+    show(anchor,[...(props.onExplain?[explainChoice(children.map(block=>block.id))]:[]),...(!locked?[...semanticChoices(kind=>onChange(retagSemanticGroup(latest.current.blocks,id,kind))),{title:'Ungroup blocks',detail:'Keep all child blocks',icon:'close',entity:true,pick:()=>{setMenu(null);onChange(removeSemanticGroup(latest.current.blocks,id));}}]:[{title:'Delete explanation',detail:'Remove this explanation and its subblocks',icon:'close',entity:true,pick:()=>{setMenu(null);const rest=latest.current.blocks.filter(block=>block.semanticGroup?.id!==id);onChange(rest.length?rest:[makeBlock()]);}}])],'SEMANTIC GROUP');
   }
   function update(id: string, patch: Partial<Block>) { onChange(latest.current.blocks.map(b => b.id === id ? {...b, ...patch} : b)); }
   function removeBlock(id: string) {
@@ -220,7 +252,7 @@ export function BlockEditor(props: Props) {
     const selection = getSelection(); if (!selection?.rangeCount) { setMenu(null); return; }
     const range = selection.getRangeAt(0); if (!el.contains(range.startContainer)) { setMenu(null); return; }
     if (/^\/[^\n]*$/.test(el.textContent || '')) {
-      const query = el.textContent!.slice(1).toLowerCase(); show(el, [...options.filter(o => o.title.toLowerCase().includes(query)).map(o => ({...o, pick: () => convert(block, o.type, true)})), ...semanticKinds.filter(kind=>kind.includes(query)).map(kind=>({title:semanticFunctions[kind].label,detail:'Semantic function',icon:semanticFunctions[kind].icon,color:semanticFunctions[kind].color,entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:kind,content:[]});}})), ...('image'.includes(query) ? [imageChoice(block.id, block)] : [])], 'TURN INTO'); return;
+      const query = el.textContent!.slice(1).toLowerCase(); show(el, [...options.filter(o => o.title.toLowerCase().includes(query)).map(o => ({...o, pick: () => convert(block, o.type, true)})), ...editableSemanticKinds.filter(kind=>kind.includes(query)).map(kind=>({title:semanticFunctions[kind].label,detail:'Semantic function',icon:semanticFunctions[kind].icon,color:semanticFunctions[kind].color,entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:kind,content:[]});}})), ...('image'.includes(query) ? [imageChoice(block.id, block)] : [])], 'TURN INTO'); return;
     }
     const before = range.cloneRange(); before.selectNodeContents(el); before.setEnd(range.startContainer, range.startOffset);
     const match = before.toString().match(/(?:^|\s)@([^@\n]*)$/);
@@ -238,7 +270,7 @@ export function BlockEditor(props: Props) {
     if (!selection?.rangeCount) return;
     const range = selection.getRangeAt(0);
     if (!el.contains(range.startContainer) || !el.contains(range.endContainer)) return;
-    const incoming = clipboardBlocks(e.clipboardData.getData('text/plain'), e.clipboardData.getData('text/html')).map(incoming=>block.semanticGroup?{...incoming,semanticGroup:block.semanticGroup}:incoming);
+    const incoming = clipboardBlocks(e.clipboardData.getData('text/plain'), e.clipboardData.getData('text/html')).map(incoming=>({...incoming,...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{}),...(isAIExplanation(block)?{semantic:'ai-explanation' as const}:{})}));
     const wasEmpty=!el.textContent?.trim();
     range.deleteContents();
     if (incoming.length === 1 && incoming[0]!.type === 'paragraph') {
@@ -255,7 +287,7 @@ export function BlockEditor(props: Props) {
     if (incoming[0]!.type === 'paragraph') incoming[0]!.content.unshift(...prefix);
     else if (prefix.length) replacement.push({...block, content: prefix});
     replacement.push(...incoming);
-    if (suffix.length) replacement.push({...makeBlock(block.type, suffix),...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{})});
+    if (suffix.length) replacement.push({...makeBlock(block.type, suffix),...(isAIExplanation(block)?{semantic:'ai-explanation' as const}:{}),...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{})});
     const list = [...latest.current.blocks], index = list.findIndex(b => b.id === block.id);
     list.splice(index, 1, ...replacement); focusTarget.current = {id: replacement.at(-1)!.id, start: !suffix.length ? false : true}; onChange(list);
   }
@@ -274,7 +306,7 @@ export function BlockEditor(props: Props) {
       if (!el.textContent && ['bullet', 'todo'].includes(block.type)) { convert(block, 'paragraph'); return; }
       const selection = getSelection(); if (!selection?.rangeCount) return;
       const range = selection.getRangeAt(0); range.deleteContents(); const tail = range.cloneRange(); tail.setEnd(el, el.childNodes.length); const temp = document.createElement('div'); temp.append(tail.extractContents());
-      const next: Block = {...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{}),id: crypto.randomUUID(), type: ['bullet', 'todo'].includes(block.type) ? block.type : 'paragraph', checked: false, content: readSegments(temp)};
+      const next: Block = {...(isAIExplanation(block)?{semantic:'ai-explanation' as const}:{}),...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{}),id: crypto.randomUUID(), type: ['bullet', 'todo'].includes(block.type) ? block.type : 'paragraph', checked: false, content: readSegments(temp)};
       const list = latest.current.blocks.map(b => b.id === block.id ? {...b, content: readSegments(el)} : b); list.splice(list.findIndex(b => b.id === block.id) + 1, 0, next); focusTarget.current = {id: next.id, start: true}; onChange(list);
     }
     if (e.key === 'Backspace' && !el.textContent && blocks.length > 1) { e.preventDefault(); removeBlock(block.id); }
@@ -315,12 +347,15 @@ export function BlockEditor(props: Props) {
       void addImages(files,{after:blockElement?.dataset.blockId});
     }}>{semanticRuns(blocks).map(run => run.type === 'block' ? renderBlock(run.block) : <section key={run.id} data-block-group-id={run.id} className={'semantic-group'+(blockDrag?.id===run.id?' is-block-dragging':'')} data-semantic-kind={run.kind} style={semanticStyle(run.kind)} aria-label={semanticFunctions[run.kind].label+' semantic group'} data-drop-before={blockDrag?.valid&&blockDrag.beforeId===run.id?true:undefined} data-drop-after={blockDrag?.valid&&blockDrag.beforeId===null&&dropEndId===run.id?true:undefined}>
       <span className="semantic-accent" aria-hidden="true"/><div className="semantic-parent-controls"><button type="button" className="block-handle semantic-handle" data-semantic-parent-handle draggable={false} aria-describedby="block-drag-help" aria-label={semanticFunctions[run.kind].label+' group options'} aria-pressed={blockDrag?.id===run.id} title={semanticFunctions[run.kind].label+' · Drag group or click for options'} onClick={event=>groupOptions(event.currentTarget,run.id)}>{semanticGlyph(run.kind)}</button></div>
+      {run.kind==='ai-explanation' && <div className="ai-explanation-label" title="This tag cannot be removed or changed">AI Explanation</div>}
       <div className="semantic-children">{run.blocks.map(renderBlock)}</div>
     </section>)}{uploadCards()}</div>
     <span id="block-drag-help" className="block-drag-sr">Drag to reorder. Click for options. With the handle focused, press Space to pick up, Up or Down to move, Space or Enter to drop, Escape to cancel.</span>
     <div className="block-drag-sr" role="status" aria-live="polite" aria-atomic="true">{dragStatus}</div>
-    <SelectionToolbar onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
+    <SelectionToolbar onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
     {mathTarget && <MathDialog initial={mathTarget.initial} onSave={saveInlineMath} onClose={() => setMathTarget(null)}/>}
+    {explaining && <div className="ai-explanation-status" role="status"><span className="scan-spinner" aria-hidden="true"/>Explaining selected blocks…</div>}
+    {explanationError && <div className="ai-explanation-status is-error" role="alert"><span>{explanationError}</span><button type="button" onClick={()=>void explain(retryExplanation.current)}>Retry</button><button type="button" onClick={()=>setExplanationError('')}>Dismiss</button></div>}
     {imageError && <div className="image-upload-error" role="alert">{imageError}</div>}
     {menu && <div ref={menuRef} className="command-menu" style={{left: menu.left, top: menu.top}} onMouseDown={e => e.preventDefault()} role="menu"><div className="menu-label">{menu.label}</div>{menu.items.map((item, index) => <button key={index} role="menuitem" className={index === menu.index ? 'highlight' : ''} onClick={item.pick}><span className="menu-icon" style={item.color?{color:item.color}:undefined}>{item.entity || item.icon === 'equation' ? <Icon name={item.icon}/> : item.icon}</span><span>{item.title}<small>{item.detail}</small></span></button>)}</div>}
   </>;

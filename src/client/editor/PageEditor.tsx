@@ -52,7 +52,7 @@ export function PageEditor({page, entities, onChange, onOpenEntity, onCreateEnti
       } catch (error) { setReviewError(error instanceof Error ? error.message : String(error)); }
       finally { setResolving(false); }
     }}/>
-    <BlockEditor reviewMatches={reviewMatches} onAddAlias={onAddAlias} key={page.vault_id + page.id} vaultId={page.vault_id} blocks={page.blocks} entities={entities} onChange={blocks => onChange({blocks})} onOpenEntity={onOpenEntity} onCreateEntity={(name, onCreated) => onCreateEntity({name, onCreated})} onSave={onSave}/>
+    <BlockEditor onExplain={async blocks=>(await api.explainBlocks(page.vault_id,page.id,blocks)).markdown} reviewMatches={reviewMatches} onAddAlias={onAddAlias} key={page.vault_id + page.id} vaultId={page.vault_id} blocks={page.blocks} entities={entities} onChange={blocks => onChange({blocks})} onOpenEntity={onOpenEntity} onCreateEntity={(name, onCreated) => onCreateEntity({name, onCreated})} onSave={onSave}/>
     <footer className={'editor-save-status' + (saveStatus === 'error' ? ' is-error' : '')}>
       {saveStatus === 'saving' || saveStatus === 'identifying' ? <span className="scan-spinner" aria-hidden="true"/> : <Icon name={saveStatus === 'saved' ? 'check-circle' : saveStatus === 'error' ? 'alert' : 'recent'}/>}
       <span role="status" aria-live="polite" aria-atomic="true">{status}</span>

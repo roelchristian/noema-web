@@ -56,7 +56,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
       if(!/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.headers.host || ''))throw new HttpError(403,'Host is not allowed');
       if(url.pathname.startsWith('/api/')) {
         if((req.headers.origin && req.headers.origin!==`http://${req.headers.host}`)||req.headers['sec-fetch-site']==='cross-site')throw new HttpError(403,'Cross-origin requests are not allowed');
-        const aiRoute=url.pathname==='/api/search/snippets'||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|entity-scan|entity-review)$/.test(url.pathname);
+        const aiRoute=url.pathname==='/api/search/snippets'||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|entity-scan|entity-review|explain)$/.test(url.pathname);
         if(aiRoute && (req.headers['x-noema-request']!=='1'||(['POST','PUT'].includes(method)&&!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))))throw new HttpError(403,'AI requests require the Noema client and JSON');
         if(url.pathname==='/api/source-files' || url.pathname.startsWith('/api/source-files/')) {
           if(req.headers['x-noema-request']!=='1' && method!=='GET')throw new HttpError(403,'Source actions require the Noema client');
@@ -112,10 +112,10 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
         }
         const body=['POST','PUT'].includes(method)?await readBody(req):{};
         const parts=url.pathname.split('/').filter(Boolean),[,collection,id,child,childId]=parts;
-        if(method==='POST' && ((collection==='intelligence' && id==='validate' && parts.length===3) || (collection==='pages' && (child==='summary'||child==='title'||child==='entity-scan') && parts.length===4))) {
+        if(method==='POST' && ((collection==='intelligence' && id==='validate' && parts.length===3) || (collection==='pages' && (child==='summary'||child==='title'||child==='entity-scan'||child==='explain') && parts.length===4))) {
           const header=req.headers['x-vault-id'];
           if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
-          activityId=activity.start(collection==='pages'?(child==='title'?'page_title':child==='entity-scan'?'entity_scan':'page_summary'):'connection_test',child==='title'?intelligence.titleSelection():intelligence.selection(),collection==='pages'?(header||'default'):null,collection==='pages'?id!:null);
+          activityId=activity.start(collection==='pages'?(child==='title'?'page_title':child==='entity-scan'?'entity_scan':child==='explain'?'block_explanation':'page_summary'):'connection_test',child==='title'?intelligence.titleSelection():intelligence.selection(),collection==='pages'?(header||'default'):null,collection==='pages'?id!:null);
         }
         if(collection==='intelligence') {
           if(parts.length===3 && id==='notifications' && method==='GET')return send(200,notifications.list());
@@ -168,6 +168,17 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             if(parts.length===3 && method==='PUT' && id==='favourites')return send(200,organizer.favourite(vault,body));
           }
           if(collection==='pages') {
+            if(id && parts.length===4 && child==='explain' && method==='POST') {
+              const page=pages.get(vault,id);
+              // Draft blocks allow explaining current edits without saving or sending other note content.
+              const blocks=pages.validateBlocks(vault,body.blocks);
+              const input=summaryInput({title:'',blocks},entityId=>knowledge.find(vault,entityId)?.name,false).trim();
+              if(!input)throw new HttpError(400,'Select blocks containing text or equations to explain.');
+              if(Buffer.byteLength(input,'utf8')>24000)throw new HttpError(400,'Select fewer blocks (at most 24,000 bytes of text).');
+              const markdown=await intelligence.generate(input,false,bytes=>activity.request(activityId!,bytes,page.revision),false,false,true);
+              vaults.requireOpen(vault);pages.get(vault,id);
+              return send(200,{markdown});
+            }
             if(id && parts.length===4 && child==='entity-review' && method==='POST') {
               const result=scans.review(vault,id,body);
               if(body.decision==='accepted')embeddings.onSave(vault,id);

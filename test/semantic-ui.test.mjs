@@ -7,13 +7,13 @@ import {BlockEditor} from '../src/client/editor/BlockEditor.tsx';
 import {clipboardBlocks} from '../src/client/editor/paste.ts';
 import {editorSelectionClipboard} from '../src/client/editor/block-selection.ts';
 const block=(id,text)=>({id,type:'paragraph',checked:false,content:[{text}]});
-async function fixture(blocks){
+async function fixture(blocks,onExplain){
  const dom=new JSDOM('<div id="mount"></div>',{pretendToBeVisual:true}),keys=['window','document','Node','Element','HTMLElement','HTMLInputElement','HTMLTextAreaElement','Range','DOMParser','InputEvent','MouseEvent','Event','getSelection','innerWidth','innerHeight','IS_REACT_ACT_ENVIRONMENT'],previous=keys.map(k=>Object.getOwnPropertyDescriptor(globalThis,k));
  for(const key of keys)Object.defineProperty(globalThis,key,{configurable:true,writable:true,value:key==='IS_REACT_ACT_ENVIRONMENT'?true:key==='getSelection'?()=>dom.window.getSelection():dom.window[key]});
  document.queryCommandState=()=>false;dom.window.Range.prototype.getBoundingClientRect=()=>({left:100,right:350,top:200,bottom:240,width:250,height:40});
  Object.defineProperty(dom.window.HTMLElement.prototype,'isContentEditable',{get(){return this.getAttribute('contenteditable')==='true';}});
  let current=blocks;
- function App(){const [value,setValue]=useState(blocks);return React.createElement(BlockEditor,{vaultId:'default',blocks:value,entities:[],onChange:next=>{current=next;setValue(next);},onOpenEntity:()=>{},onCreateEntity:()=>{},onSave:()=>{},onAddAlias:async()=>{}});}
+ function App(){const [value,setValue]=useState(blocks);return React.createElement(BlockEditor,{onExplain,vaultId:'default',blocks:value,entities:[],onChange:next=>{current=next;setValue(next);},onOpenEntity:()=>{},onCreateEntity:()=>{},onSave:()=>{},onAddAlias:async()=>{}});}
  const root=createRoot(document.querySelector('#mount'));await act(async()=>root.render(React.createElement(App)));
  async function click(node){assert.ok(node,'expected control');await act(async()=>node.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true,cancelable:true})));}
  function select(){const contents=document.querySelectorAll('.block-content'),range=document.createRange();range.setStart(contents[0],0);range.setEnd(contents[contents.length-1],contents[contents.length-1].childNodes.length);document.getSelection().removeAllRanges();document.getSelection().addRange(range);return range;}
@@ -67,4 +67,60 @@ test('document selection can group equation and image blocks without text editin
   await f.click(Array.from(document.querySelectorAll('.semantic-picker button')).find(b=>b.textContent.startsWith('Example')));
   assert.equal(f.current()[0].type,'math');assert.equal(f.current()[1].imageId,'example.png');assert.ok(f.current().every(b=>b.semanticGroup.kind==='example'));assert.equal(document.querySelector('[data-block-group-id]').querySelectorAll('[data-block-id]').length,2);
  }finally{await f.close();}
+});
+
+test('Explain with AI on selected blocks inserts one locked semantic parent with formatted subblocks',async()=>{
+ let finish,calls=0,received;
+ const f=await fixture([block('a','First idea'),block('b','Second idea')],blocks=>{calls++;received=blocks;return new Promise(resolve=>finish=resolve);});
+ try {
+  await act(async()=>{f.select();document.dispatchEvent(new Event('selectionchange'));});
+  await f.click(document.querySelector('[aria-label="Explain with AI"]'));
+  assert.equal(calls,1);assert.deepEqual(received.map(b=>b.id),['a','b']);assert.match(document.body.textContent,/Explaining selected blocks/);
+  await f.click(document.querySelector('.block-handle'));
+  await f.click(Array.from(document.querySelectorAll('.command-menu button')).find(b=>b.textContent.includes('Explaining')));
+  assert.equal(calls,1);
+  await act(async()=>finish('The ideas connect.\n\n- A concrete example\n\n\\[x^2\\]'));
+  const next=f.current();assert.deepEqual(next.slice(0,2).map(b=>b.content[0].text),['First idea','Second idea']);
+  assert.equal(next.length,5);assert.ok(next.slice(2).every(b=>b.semantic==='ai-explanation'&&b.semanticGroup.kind==='ai-explanation'));
+  const group=document.querySelector('[data-block-group-id]');assert.equal(group.querySelectorAll('[data-block-id]').length,3);assert.equal(next[4].type,'math');
+  assert.equal(document.querySelector('.ai-explanation-label').textContent,'AI Explanation');
+  await f.click(group.querySelector('[data-semantic-parent-handle]'));
+  assert.ok(!document.querySelector('.command-menu').textContent.includes('Ungroup'));assert.ok(!document.querySelector('.command-menu').textContent.includes('Definition'));
+  await f.click(group.querySelector('[data-block-id] .block-handle'));
+  assert.ok(!document.querySelector('.command-menu').textContent.includes('Semantic function'));
+ } finally {await f.close();}
+});
+test('block handle explains its own block and failed generation can retry without inserting a placeholder',async()=>{
+ let calls=0;
+ const f=await fixture([block('a','Only this'),block('b','Other block')],async selected=>{assert.deepEqual(selected.map(b=>b.id),['a']);if(++calls===1)throw new Error('Provider unavailable');return 'An explanation';});
+ try {
+  await f.click(document.querySelector('.block-handle'));await f.click(Array.from(document.querySelectorAll('.command-menu button')).find(b=>b.textContent.startsWith('Explain with AI')));
+  assert.equal(f.current().length,2);assert.match(document.querySelector('[role="alert"]').textContent,/Provider unavailable/);
+  await f.click(Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='Retry'));
+  assert.equal(f.current().length,3);assert.equal(f.current()[1].semanticGroup.kind,'ai-explanation');assert.equal(f.current()[2].id,'b');
+ } finally {await f.close();}
+});
+test('generation discards changed source blocks and never inserts after unmount',async()=>{
+ let finish;
+ const f=await fixture([block('a','Original')],()=>new Promise(resolve=>finish=resolve));
+ try {
+  await f.click(document.querySelector('.block-handle'));await f.click(Array.from(document.querySelectorAll('.command-menu button')).find(b=>b.textContent.startsWith('Explain with AI')));
+  await act(async()=>{const el=document.querySelector('.block-content');el.textContent='Edited while waiting';el.dispatchEvent(new f.dom.window.InputEvent('input',{bubbles:true}));});
+  await act(async()=>finish('Stale explanation'));
+  assert.equal(f.current().length,1);assert.equal(f.current()[0].content[0].text,'Edited while waiting');assert.match(document.querySelector('[role="alert"]').textContent,/selected blocks changed/);
+ } finally {await f.close();}
+ const other=await fixture([block('a','Navigated away')],()=>new Promise(resolve=>finish=resolve));
+ await other.click(document.querySelector('.block-handle'));await other.click(Array.from(document.querySelectorAll('.command-menu button')).find(b=>b.textContent.startsWith('Explain with AI')));
+ await other.close();finish('Late response');await new Promise(resolve=>setImmediate(resolve));assert.equal(other.current().length,1);
+});
+test('explanations preserve unrelated edits and remain outside the selected semantic parent',async()=>{
+ let finish;
+ const group={id:'source-parent',kind:'question'};
+ const f=await fixture([{...block('a','Question one'),semanticGroup:group},{...block('b','Question two'),semanticGroup:group},block('c','Unrelated')],()=>new Promise(resolve=>finish=resolve));
+ try {
+  await f.click(document.querySelector('[data-block-id="a"] .block-handle'));await f.click(Array.from(document.querySelectorAll('.command-menu button')).find(b=>b.textContent.startsWith('Explain with AI')));
+  await act(async()=>{const el=document.querySelector('[data-block-id="c"] .block-content');el.textContent='Keep this edit';el.dispatchEvent(new f.dom.window.InputEvent('input',{bubbles:true}));});
+  await act(async()=>finish('Explanation'));
+  assert.deepEqual(f.current().map(b=>b.id).slice(0,2),['a','b']);assert.equal(f.current()[2].semanticGroup.kind,'ai-explanation');assert.equal(f.current()[3].content[0].text,'Keep this edit');
+ } finally {await f.close();}
 });

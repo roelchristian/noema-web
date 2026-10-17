@@ -23,7 +23,7 @@ export function supportedIntelligencePreferences(value: unknown): value is Intel
 }
 
 export interface AIActivity extends IntelligencePreferences {
-  id: string; action: 'page_title' | 'page_summary' | 'entity_scan' | 'note_embedding' | 'search_embedding' | 'connection_test';
+  id: string; action: 'block_explanation' | 'page_title' | 'page_summary' | 'entity_scan' | 'note_embedding' | 'search_embedding' | 'connection_test';
   status: 'running' | 'completed' | 'failed' | 'interrupted' | 'skipped';
   startedAt: string; finishedAt: string | null; durationMs: number | null; httpStatus: number | null;
   vaultId: string | null; vaultName: string | null; objectKind: 'page' | 'entity' | null;
@@ -33,6 +33,6 @@ export interface AIActivity extends IntelligencePreferences {
 export interface AIActivityPage { items: AIActivity[]; nextCursor: number | null }
 
 export const aiActivityLabels: Record<AIActivity['action'], string> = {
-  page_title:'Page title', page_summary:'Page summary', entity_scan:'Entity scan',
+  block_explanation:'Block explanation', page_title:'Page title', page_summary:'Page summary', entity_scan:'Entity scan',
   note_embedding:'Note embedding', search_embedding:'Search embedding', connection_test:'Connection test',
 };

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {applySemantic,normalizeSemanticGroups,semanticRuns,removeSemanticGroup,retagSemanticGroup,reorderSemanticBlock,semanticDragItems} from '../src/shared/semantic-blocks.ts';
+import {isAIExplanation,preserveAIExplanationTags,applySemantic,normalizeSemanticGroups,semanticRuns,removeSemanticGroup,retagSemanticGroup,reorderSemanticBlock,semanticDragItems} from '../src/shared/semantic-blocks.ts';
 import {openDatabase} from '../src/server/database.ts';
 import {Store} from '../src/server/store.ts';
 import {Knowledge} from '../src/server/modules/knowledge.ts';
@@ -49,6 +49,7 @@ test('semantic metadata survives saving, restarting and vault backup round trips
  try{
   let store=new Store(db),pages=new Pages(store,new Knowledge(store)),page=pages.create('default',{title:'Semantic notes'});
   const blocks=applySemantic([{...block('definition'),semantic:'definition'},block('question'),{...block('math'),type:'math',content:[{text:'x^2'}]}],['question','math'],'question',()=>parent.id);
+  blocks.push({...block('ai-answer'),semantic:'ai-explanation',semanticGroup:{id:'explanation-parent',kind:'ai-explanation'}});
   page=pages.update('default',page.id,{...page,blocks});assert.deepEqual(page.blocks,blocks);
   db.close();db=openDatabase(filename);store=new Store(db);pages=new Pages(store,new Knowledge(store));assert.deepEqual(pages.get('default',page.id).blocks,blocks);
   const backups=new VaultBackups(store),archive=await backups.export('default'),vault=await backups.import(archive.bytes,'Imported semantics');
@@ -66,5 +67,24 @@ test('server rejects unknown functions, malformed parents, collisions and discon
    [{...block('a'),semanticGroup:parent},block('b'),{...block('c'),semanticGroup:parent}],
    [{...block('a'),semanticGroup:parent},{...block('b'),semanticGroup:{id:'parent',kind:'definition'}}],
   ])assert.throws(()=>pages.validateBlocks('default',blocks),e=>e.status===400);
+ }finally{db.close();}
+});
+
+test('AI Explanation tags survive editing and detaching; parents cannot be retagged or ungrouped',()=>{
+ const group={id:'ai-parent',kind:'ai-explanation'},blocks=[{...block('a'),semantic:'ai-explanation',semanticGroup:group},{...block('b'),semantic:'ai-explanation',semanticGroup:group},block('c')];
+ assert.deepEqual(applySemantic(blocks,['a'],'definition'),blocks);assert.deepEqual(applySemantic(blocks,['a','c'],'question'),blocks);
+ assert.deepEqual(removeSemanticGroup(blocks,group.id),blocks);assert.deepEqual(retagSemanticGroup(blocks,group.id,'question'),blocks);
+ const next=preserveAIExplanationTags(blocks,[{...blocks[0],semantic:undefined,semanticGroup:undefined}]);assert.equal(next[0].semantic,'ai-explanation');
+ const moved=reorderSemanticBlock(blocks,'a',null);assert.ok(isAIExplanation(moved.at(-1)));
+ assert.equal(normalizeSemanticGroups([blocks[0]])[0].semanticGroup.id,group.id);
+});
+test('saving cannot strip AI provenance but permits deleting an explanation',()=>{
+ const db=openDatabase(':memory:');try {
+  const store=new Store(db),pages=new Pages(store,new Knowledge(store)),page=pages.create('default',{title:'Explained'});
+  const group={id:'ai-parent',kind:'ai-explanation'};
+  const saved=pages.update('default',page.id,{...page,blocks:[block('source'),{...block('answer'),semantic:'ai-explanation',semanticGroup:group}]});
+  assert.throws(()=>pages.update('default',page.id,{...saved,blocks:saved.blocks.map(b=>({...b,semantic:undefined,semanticGroup:undefined}))}),/cannot be removed/);
+  const edited=pages.update('default',page.id,{...saved,blocks:saved.blocks.map(b=>b.id==='answer'?{...b,content:[{text:'Edited answer'}]}:b)});assert.equal(edited.blocks[1].semantic,'ai-explanation');
+  assert.equal(pages.update('default',page.id,{...edited,blocks:[edited.blocks[0]]}).blocks.length,1);
  }finally{db.close();}
 });

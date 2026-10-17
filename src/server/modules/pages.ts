@@ -1,4 +1,4 @@
-import { isSemanticKind } from '../../shared/semantic-blocks.js';
+import { isAIExplanation, isSemanticKind } from '../../shared/semantic-blocks.js';
 import { summaryContentHash } from './summary-content.js';
 import { AINotifications } from './ai-notifications.js';
 import { Images } from './images.js';
@@ -102,6 +102,8 @@ export class Pages {
   }
   update(vault: string, id: string, body: Record<string, unknown>) {
     const page=this.get(vault,id),blocks=this.validateBlocks(vault,body.blocks),title=text(body.title,500);
+    const protectedIds=new Set(page.blocks.filter(isAIExplanation).map(block=>block.id));
+    if(blocks.some(block=>protectedIds.has(block.id)&&!isAIExplanation(block)))throw new HttpError(400,'The AI Explanation tag cannot be removed or changed.');
     const icon=body.icon === undefined ? page.icon ?? null : body.icon;
     if(icon !== null && !isPageIconId(icon)) throw new HttpError(400,'Invalid page icon');
     const sourceIds=body.sourceIds ?? page.sourceIds;

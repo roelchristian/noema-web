@@ -1,4 +1,4 @@
-import { semanticFunctions, semanticKinds, type SemanticKind } from '../../shared/semantic-blocks';
+import { semanticFunctions, editableSemanticKinds, type SemanticKind } from '../../shared/semantic-blocks';
 import { editorSelectionRanges, selectedEditorBlocks } from './block-selection';
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { entityLabels, type Entity } from '../../shared/domain';
@@ -7,6 +7,8 @@ import { annotationSuggestions, selectionPopoverPlacement } from './selection-an
 import { segmentHTML } from './segments';
 
 interface Props {
+  onExplain?: () => void;
+  explaining?: boolean;
   editor: RefObject<HTMLDivElement | null>;
   entities: Entity[];
   onCommit: () => void;
@@ -24,7 +26,7 @@ const formats = [
 function editable(node: Node) {
   return (node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>('.block-content[contenteditable="true"]');
 }
-export function SelectionToolbar({editor, entities, onCommit, onAddAlias, onCreateEntity, onMath, onSemantic}: Props) {
+export function SelectionToolbar({editor, entities, onCommit, onAddAlias, onCreateEntity, onMath, onSemantic, onExplain, explaining}: Props) {
   const [anchor, setAnchor] = useState<{left: number; right: number; top: number; bottom: number} | null>(null);
   const [annotating, setAnnotating] = useState(false), [query, setQuery] = useState('');
   const [semantic, setSemantic] = useState(false);
@@ -128,6 +130,7 @@ export function SelectionToolbar({editor, entities, onCommit, onAddAlias, onCrea
   const range = saved.current;
   const single = range && editor.current && editorSelectionRanges(editor.current, range).length === 1;
   const selectedCount = range && editor.current ? new Set(editorSelectionRanges(editor.current,range).map(part=>editable(part.startContainer)?.closest<HTMLElement>('[data-block-id]')?.dataset.blockId)).size : 0;
+  const lockedSemantic = range && editor.current ? selectedEditorBlocks(editor.current)?.elements.some(el=>el.dataset.semanticKind==='ai-explanation'||el.closest('[data-block-group-id]')?.getAttribute('data-semantic-kind')==='ai-explanation') : false;
   const selectedText = range?.toString().trim() || '';
   const {exact, results} = annotationSuggestions(entities, selectedText, query);
   const linkEntity = async (id: string) => {
@@ -152,11 +155,12 @@ export function SelectionToolbar({editor, entities, onCommit, onAddAlias, onCrea
     <div className="selection-toolbar" role="toolbar" aria-label="Selection formatting">
       {formats.map(format => <button key={format.command} type="button" title={format.label} aria-label={format.label} aria-pressed={active.includes(format.command)} disabled={!range || !editor.current || !editorSelectionRanges(editor.current,range).length} onClick={() => applyFormat(format.command)}>{format.glyph}</button>)}
       <button type="button" aria-label="Inline equation" title="Inline equation" disabled={!single} onClick={() => {const current = saved.current?.cloneRange(); if (current) {dismiss(); onMath(current);}}}><Icon name="equation"/></button>
+      <button type="button" aria-label="Explain with AI" title="Explain selected blocks with AI" disabled={explaining || !onExplain} onClick={()=>{const range=saved.current;if(range&&restore(range))onExplain?.();dismiss();}}><Icon name="sparkles"/>Explain with AI</button>
       <span className="selection-divider"/>
-      <button type="button" className="selection-semantic" aria-expanded={semantic} aria-label="Semantic block function" onClick={()=>{picking.current=!semantic;setSemantic(!semantic);setAnnotating(false);setLinking(false);}}><Icon name="semantic"/>Semantic</button>
+      <button type="button" className="selection-semantic" disabled={!!lockedSemantic} title={lockedSemantic?'AI Explanation is a permanent tag':'Apply a semantic function'} aria-expanded={semantic} aria-label="Semantic block function" onClick={()=>{picking.current=!semantic;setSemantic(!semantic);setAnnotating(false);setLinking(false);}}><Icon name="semantic"/>Semantic</button>
       <button type="button" className="selection-annotate" disabled={!single} title={single ? 'Connect selection to a knowledge entity' : 'Select text within one block or table cell to annotate'} aria-expanded={annotating} onClick={() => { picking.current = !annotating; setSemantic(false); setAnnotating(!annotating); setLinking(false); setQuery(''); }}><Icon name="knowledge"/>Annotate</button>
     </div>
-    {semantic && <div className="semantic-picker" role="region" aria-label="Semantic functions"><p>{selectedCount===1 ? 'Apply a function to this block' : 'Group selected blocks under one function'}</p>{semanticKinds.map(kind=><button type="button" key={kind} onClick={()=>{const range=saved.current;if(range&&restore(range))onSemantic(kind);dismiss();}}><span style={{color:semanticFunctions[kind].color}}><Icon name={semanticFunctions[kind].icon}/></span><span>{semanticFunctions[kind].label}<small>{semanticFunctions[kind].description}</small></span></button>)}</div>}
+    {semantic && <div className="semantic-picker" role="region" aria-label="Semantic functions"><p>{selectedCount===1 ? 'Apply a function to this block' : 'Group selected blocks under one function'}</p>{editableSemanticKinds.map(kind=><button type="button" key={kind} onClick={()=>{const range=saved.current;if(range&&restore(range))onSemantic(kind);dismiss();}}><span style={{color:semanticFunctions[kind].color}}><Icon name={semanticFunctions[kind].icon}/></span><span>{semanticFunctions[kind].label}<small>{semanticFunctions[kind].description}</small></span></button>)}</div>}
     {annotating && <div className="selection-entities" role="region" aria-label="Annotate selection" aria-busy={savingAlias}>
       {savingAlias && <p role="status">Saving alias…</p>}
       {aliasError && <p role="alert">{aliasError}</p>}

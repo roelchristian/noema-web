@@ -58,7 +58,7 @@ export function App() {
   const disabled = busy || !vault || vault.locked;
   const status = vault?.locked ? 'Vault locked' : {saved: 'All changes saved', pending: 'Unsaved changes', saving: 'Saving…', error: 'Save failed · click to retry'}[saveStatus];
   const breadcrumbs: {key: string; label: string; icon?: string; onClick?: () => void}[] = [
-    {key: 'vault', label: vault?.name || 'Noema', icon: 'vault', onClick: vault && !vault.locked ? () => run(() => workspace.showPages()) : undefined},
+    {key: 'vault', label: vault?.name || 'Noema', icon: 'vault'},
   ];
   if (vault && !vault.locked) {
     if (view === 'pages') {

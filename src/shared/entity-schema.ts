@@ -10,6 +10,7 @@ export const builtinSubtypes: EntitySubtype[] = Object.entries({
   creativework: ['Book', 'Film', 'Song', 'Article'],
   organization: ['Company', 'University', 'Nonprofit'],
   source: ['Website', 'Journal article', 'Interview'],
+  concept: ['Mathematics', 'Science', 'Social Sciences', 'Technology', 'Philosophy'],
 }).flatMap(([type, names]) => names.map(name => ({id: `${type}:${name.toLowerCase().replaceAll(' ', '-')}`, name, type: type as EntityType})));
 
 export const builtinProperties: Record<EntityType, string[]> = {
@@ -19,4 +20,5 @@ export const builtinProperties: Record<EntityType, string[]> = {
   creativework: ['author', 'release date', 'language', 'type'],
   organization: ['founded', 'headquarters', 'website'],
   source: ['url', 'author', 'publication date', 'accessed date'],
+  concept: [],
 };

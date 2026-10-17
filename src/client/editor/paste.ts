@@ -136,6 +136,8 @@ export function clipboardBlocks(text: string, html: string): Block[] {
   const groups=new Map<string,string>();
   function richBlock(type: BlockType, content: Segment[], node: Element): Block {
     const block=makeBlock(type,content),semantic=node.getAttribute('data-noema-semantic'),group=node.getAttribute('data-noema-group'),kind=node.getAttribute('data-noema-group-kind');
+    const copiedType=node.getAttribute('data-noema-block-type');
+    if (/^H[1-6]$/.test(node.tagName) && (copiedType==='heading1' || copiedType==='heading2')) block.type=copiedType;
     if (isSemanticKind(semantic)) block.semantic=semantic;
     if (group && group.length<=200 && isSemanticKind(kind)) {const key=JSON.stringify([group,kind]);if(!groups.has(key))groups.set(key,crypto.randomUUID());block.semanticGroup={id:groups.get(key)!,kind};}
     return block;
@@ -154,7 +156,7 @@ export function clipboardBlocks(text: string, html: string): Block[] {
       } else if (['UL','OL'].includes(tag)) { flush(); visit(node); }
       else if (['P','DIV','SECTION','ARTICLE','MAIN','BLOCKQUOTE','H1','H2','H3','H4','H5','H6','LI','PRE'].includes(tag)) {
         flush();
-        if (tag !== 'LI' && node.querySelector('p,div,table,ul,ol,h1,h2,blockquote')) visit(node);
+        if (tag !== 'LI' && node.querySelector('p,div,table,ul,ol,h1,h2,h3,h4,h5,h6,blockquote')) visit(node);
         else {
           const copy = node.cloneNode(true) as HTMLElement; copy.querySelectorAll('ul,ol').forEach(list => list.remove());
           const checkbox = copy.querySelector<HTMLInputElement>('input[type=checkbox]');

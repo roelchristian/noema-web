@@ -34,8 +34,9 @@ const options: {type: BlockType; title: string; detail: string; icon: string}[] 
 interface ImageUpload {id:string; after?:string; name:string; message:string; current:number; total:number}
 interface Choice {color?:string; title: string; detail?: string; icon: string; entity?: boolean; pick: () => void}
 interface Menu {items: Choice[]; index: number; left: number; top: number; label: string}
-function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOpen, register, onPaste}: {block: Block; entities: Entity[]; reviewMatches: EntityReviewItem[]; onInput: (el: HTMLDivElement) => void; onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => void; onOpen: (id: string) => void; register: (el: HTMLDivElement | null) => void; onPaste: (e: ClipboardEvent<HTMLDivElement>) => void}) {
-  const ref = useRef<HTMLDivElement>(null);
+function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOpen, register, onPaste}: {block: Block; entities: Entity[]; reviewMatches: EntityReviewItem[]; onInput: (el: HTMLElement) => void; onKeyDown: (e: KeyboardEvent<HTMLElement>) => void; onOpen: (id: string) => void; register: (el: HTMLElement | null) => void; onPaste: (e: ClipboardEvent<HTMLElement>) => void}) {
+  const ref = useRef<HTMLElement>(null);
+  const Content = block.type === 'heading1' ? 'h2' : block.type === 'heading2' ? 'h3' : 'div';
   useLayoutEffect(() => {
     const el = ref.current!;
     syncEditableSegments(el, block.content, entities, {blockId: block.id, matches: reviewMatches});
@@ -46,7 +47,7 @@ function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOp
       node.className = fresh.className;
     });
   });
-  return <div ref={el => { ref.current = el; register(el); }} className="block-content" contentEditable suppressContentEditableWarning spellCheck data-placeholder="Type / for blocks, @ for entities" onInput={e => { applySmartQuotes(e.currentTarget, e.nativeEvent as InputEvent); onInput(e.currentTarget); }} onKeyDown={onKeyDown}
+  return <Content ref={el => { ref.current = el; register(el); }} className="block-content" contentEditable suppressContentEditableWarning spellCheck data-placeholder="Type / for blocks, @ for entities" onInput={e => { applySmartQuotes(e.currentTarget, e.nativeEvent as InputEvent); onInput(e.currentTarget); }} onKeyDown={onKeyDown}
     onClick={e => { const mention = (e.target as Element).closest<HTMLElement>('[data-entity]'); if (mention) onOpen(mention.dataset.entity!); }}
     onPaste={onPaste}/>;
 }
@@ -64,7 +65,7 @@ export function BlockEditor(props: Props) {
   const mounted = useRef(true);
   useEffect(() => {mounted.current=true; return () => {mounted.current=false;};}, []);
   const fileInput = useRef<HTMLInputElement>(null), imageTarget = useRef<{after?: string; replace?: Block}>({});
-  const [menu, setMenu] = useState<Menu | null>(null), elements = useRef(new Map<string, HTMLDivElement>());
+  const [menu, setMenu] = useState<Menu | null>(null), elements = useRef(new Map<string, HTMLElement>());
   const root = useRef<HTMLDivElement>(null), menuRef = useRef<HTMLDivElement>(null), latest = useRef(props); latest.current = {...props,onChange};
   const focusTarget = useRef<{id: string; start: boolean; offset?: number} | null>(null);
   useLayoutEffect(() => {
@@ -250,7 +251,7 @@ export function BlockEditor(props: Props) {
     const el = elements.current.get(blockId); el?.focus(); getSelection()?.removeAllRanges(); getSelection()?.addRange(range);
     if (el) update(blockId, {content: readSegments(el)}); setMenu(null);
   }
-  function detect(el: HTMLDivElement, block: Block) {
+  function detect(el: HTMLElement, block: Block) {
     const selection = getSelection(); if (!selection?.rangeCount) { setMenu(null); return; }
     const range = selection.getRangeAt(0); if (!el.contains(range.startContainer)) { setMenu(null); return; }
     if (/^\/[^\n]*$/.test(el.textContent || '')) {
@@ -266,7 +267,7 @@ export function BlockEditor(props: Props) {
     }
     setMenu(null);
   }
-  function paste(e: ClipboardEvent<HTMLDivElement>, block: Block) {
+  function paste(e: ClipboardEvent<HTMLElement>, block: Block) {
     e.preventDefault(); setMenu(null);
     const el = e.currentTarget, selection = getSelection();
     if (!selection?.rangeCount) return;
@@ -293,7 +294,7 @@ export function BlockEditor(props: Props) {
     const list = [...latest.current.blocks], index = list.findIndex(b => b.id === block.id);
     list.splice(index, 1, ...replacement); focusTarget.current = {id: replacement.at(-1)!.id, start: !suffix.length ? false : true}; onChange(list);
   }
-  function keyDown(e: KeyboardEvent<HTMLDivElement>, block: Block) {
+  function keyDown(e: KeyboardEvent<HTMLElement>, block: Block) {
     const el = e.currentTarget, mention = (e.target as Element).closest<HTMLElement>('[data-entity]');
     if (mention && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onOpenEntity(mention.dataset.entity!); return; }
     if (e.nativeEvent.isComposing) return;

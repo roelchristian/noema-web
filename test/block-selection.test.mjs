@@ -38,7 +38,7 @@ test('cross-block ranges copy only selected text and formatting, and deletion me
   f.select('a',2,'c',3);
   assert.deepEqual(selectedEditorBlocks(f.root).elements.map(e=>e.dataset.blockId),['a','b','c']);
   assert.deepEqual(editorSelectionRanges(f.root,document.getSelection().getRangeAt(0)).map(r=>r.toString()),['pha','Middle','Cha']);
-  const copied=editorSelectionClipboard(f.root,f.state.blocks,[]);assert.equal(copied.text,'pha\n\nMiddle\n\nCha');assert.match(copied.html,/<strong>pha<\/strong>/);assert.match(copied.html,/<h1>/);
+  const copied=editorSelectionClipboard(f.root,f.state.blocks,[]);assert.equal(copied.text,'pha\n\nMiddle\n\nCha');assert.match(copied.html,/<strong>pha<\/strong>/);assert.match(copied.html,/<h2 data-noema-block-type="heading1">/);
   assert.ok(f.fire('a','Backspace').defaultPrevented);assert.equal(f.state.blocks.length,1);
   assert.equal(f.state.blocks[0].content.map(s=>s.text).join(''),'Alrlie');assert.ok(f.state.blocks[0].content[0].bold);
   assert.deepEqual(f.state.focus,{id:'a',offset:2});

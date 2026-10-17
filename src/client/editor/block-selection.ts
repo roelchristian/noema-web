@@ -76,9 +76,9 @@ export function editorSelectionClipboard(root: HTMLElement, blocks: Block[], ent
   const text = slices.map(block => block.type === 'table' ? block.rows?.map(row => row.map(cell => textOf(cell, entities)).join('\t')).join('\n') : block.type === 'math' ? `\\[${textOf(block.content, entities)}\\]` : block.type === 'image' ? block.alt ?? '' : textOf(block.content, entities)).join('\n\n');
   const escapeAttribute=(value:string)=>value.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
   const html = slices.map(block => {
-    const attributes=(block.semantic?` data-noema-semantic="${block.semantic}"`:'')+(block.semanticGroup?` data-noema-group="${escapeAttribute(block.semanticGroup.id)}" data-noema-group-kind="${block.semanticGroup.kind}"`:'');
+    const attributes=(block.type === 'heading1' || block.type === 'heading2' ? ` data-noema-block-type="${block.type}"` : '')+(block.semantic?` data-noema-semantic="${block.semantic}"`:'')+(block.semanticGroup?` data-noema-group="${escapeAttribute(block.semanticGroup.id)}" data-noema-group-kind="${block.semanticGroup.kind}"`:'');
     if (block.type === 'table') return '<table'+attributes+'>'+block.rows?.map(row => '<tr>'+row.map(cell => '<td>'+segmentHTML(cell, entities)+'</td>').join('')+'</tr>').join('')+'</table>';
-    const tag = block.type === 'heading1' ? 'h1' : block.type === 'heading2' ? 'h2' : block.type === 'quote' ? 'blockquote' : 'p';
+    const tag = block.type === 'heading1' ? 'h2' : block.type === 'heading2' ? 'h3' : block.type === 'quote' ? 'blockquote' : 'p';
     const content = block.type === 'math' ? [{text: `\\[${textOf(block.content, entities)}\\]`}] : block.type === 'image' ? [{text: block.alt ?? ''}] : block.content;
     return `<${tag}${attributes}>${segmentHTML(content, entities)}</${tag}>`;
   }).join('');

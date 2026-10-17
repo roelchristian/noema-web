@@ -20,7 +20,7 @@ export function syncEditableSegments(element: HTMLElement, content: Segment[], e
   if (!changed && previous?.source === source && previous.key === key) return;
   clearTimeout(previous?.timer);
   const selection = document.getSelection();
-  const selecting = selection && !selection.isCollapsed && selection.rangeCount && selection.getRangeAt(0).intersectsNode(element);
+  const selecting = element.closest('[data-text-selected]') || selection && !selection.isCollapsed && selection.rangeCount && selection.getRangeAt(0).intersectsNode(element);
   const composing = element.closest('.page[data-entity-composing]');
   if (changed || (!selecting && !composing && element.querySelector('[data-entity-review]'))) {
     // Strip inherited highlight wrappers immediately when typing resumes.

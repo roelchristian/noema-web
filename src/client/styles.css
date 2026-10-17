@@ -1948,3 +1948,7 @@ main {position:relative;}
   .entity-detail-panel .panel-top > button { width:44px; height:44px; padding:12px; }
   .entity-panel,html { scroll-padding-top:calc(var(--workspace-toolbar-height) + env(safe-area-inset-top) + 16px); }
 }
+
+/* Cross-host text selection is tracked independently of native editable roots. */
+#blocks .block[data-text-selected] { background:color-mix(in srgb,var(--accent,#555) 9%,transparent); border-radius:3px; }
+#blocks ::highlight(noema-block-selection) { background-color:color-mix(in srgb,var(--accent,#555) 25%,transparent); color:inherit; }

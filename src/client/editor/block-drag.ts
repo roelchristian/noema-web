@@ -1,3 +1,4 @@
+import { clearEditorSelection } from './block-selection';
 import { reorderSemanticBlock, semanticDragItems } from '../../shared/semantic-blocks';
 import type { Block } from '../../shared/domain';
 
@@ -194,7 +195,7 @@ export function installBlockDrag(root: HTMLElement, options: Options) {
     if (!active && Math.hypot(pointer.x - pending.x, pointer.y - pending.y) < 6) return;
     event.preventDefault();
     if (!active) {
-      document.getSelection()?.removeAllRanges();
+      clearEditorSelection(root); document.getSelection()?.removeAllRanges();
       prepare(pending.id,pending.handle); measure(); createGhost();
       try {pending.handle.setPointerCapture?.(event.pointerId);} catch {/* Document listeners still track the drag. */}
       const index=items.findIndex(item=>item.id===pending!.id);
@@ -231,7 +232,7 @@ export function installBlockDrag(root: HTMLElement, options: Options) {
     if (!handle || !root.contains(handle) || event.key !== ' ' || event.metaKey || event.ctrlKey || event.altKey) return;
     const id = handle.closest<HTMLElement>('[data-block-id],[data-block-group-id]')?.getAttribute(handle.hasAttribute('data-semantic-parent-handle') ? 'data-block-group-id' : 'data-block-id') ?? undefined, blocks = semanticDragItems(options.blocks(),id??''), index = blocks.findIndex(block => block.id === id);
     if (!id || index < 0) return;
-    event.preventDefault(); event.stopPropagation(); document.getSelection()?.removeAllRanges();
+    event.preventDefault(); event.stopPropagation(); clearEditorSelection(root); document.getSelection()?.removeAllRanges();
     prepare(id,handle);
     preview({id, beforeId: blocks[index + 1]?.id ?? null, valid: true, keyboard: true});
     options.announce('Block picked up. Use Up or Down to move, Space or Enter to drop, or Escape to cancel.');

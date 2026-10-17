@@ -10,6 +10,18 @@ type Focus = {id: string; offset: number};
 interface Options {blocks: () => Block[]; entities: () => Entity[]; commit: (blocks: Block[], focus: Focus) => void}
 const element = (node: Node | null) => node instanceof Element ? node : node?.parentElement;
 const surface = (node: Node | null) => element(node)?.closest<HTMLElement>('.block-content[contenteditable="true"]');
+const selections = new WeakMap<HTMLElement, Range>();
+export function editorSelectionRange(root: HTMLElement, selection = document.getSelection()): Range | null {
+  const saved = selections.get(root);
+  if (saved && saved.startContainer.isConnected && saved.endContainer.isConnected && !saved.collapsed) return saved;
+  if (saved) clearEditorSelection(root);
+  return selection?.rangeCount ? selection.getRangeAt(0) : null;
+}
+export function clearEditorSelection(root: HTMLElement) {
+  selections.delete(root);
+  root.querySelectorAll('[data-text-selected]').forEach(element => element.removeAttribute('data-text-selected'));
+  if (typeof CSS !== 'undefined') CSS.highlights?.delete('noema-block-selection');
+}
 const same = (a: Range, b: Range) => a.startContainer === b.startContainer && a.startOffset === b.startOffset && a.endContainer === b.endContainer && a.endOffset === b.endOffset;
 function contentRange(block: HTMLElement): Range {
   const range = document.createRange(), surfaces = block.querySelectorAll<HTMLElement>('.block-content');
@@ -18,13 +30,13 @@ function contentRange(block: HTMLElement): Range {
   return range;
 }
 export function selectedEditorBlocks(root: HTMLElement, selection = document.getSelection()) {
-  if (!selection?.rangeCount || selection.isCollapsed) return null;
-  const range = selection.getRangeAt(0);
+  const range = editorSelectionRange(root, selection);
+  if (!range || range.collapsed) return null;
   if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
   const elements = Array.from(root.querySelectorAll<HTMLElement>('[data-block-id]')).filter(block => {
     if (block.contains(range.startContainer) || block.contains(range.endContainer)) return true;
     const contents = contentRange(block);
-    return range.compareBoundaryPoints(Range.END_TO_START, contents) < 0 && range.compareBoundaryPoints(Range.START_TO_END, contents) > 0;
+    return contents.comparePoint(range.startContainer,range.startOffset)<=0 && contents.comparePoint(range.endContainer,range.endOffset)>=0;
   });
   return elements.length ? {range, elements} : null;
 }
@@ -112,6 +124,7 @@ export function replaceEditorSelection(root: HTMLElement, options: Options, inco
   // A sliced table keeps all unselected cells; continue typing in a text block beside it.
   if (target?.type === 'columns' || target?.type === 'divider' || target?.type === 'code' || target?.type === 'table' || target?.type === 'math' || target?.type === 'image') {const text = makeBlock(); replacement.push(text); target = text; offset = 0;}
   const next = [...list]; next.splice(start, end - start + 1, ...replacement);
+  clearEditorSelection(root);
   options.commit(next, {id: target!.id, offset}); return true;
 }
 export function setEditorCaret(el: HTMLElement, offset: number) {
@@ -130,7 +143,31 @@ export function setEditorCaret(el: HTMLElement, offset: number) {
 }
 /** Extend native selection across the independent contenteditable block hosts. */
 export function installBlockSelection(root: HTMLElement, options: Options) {
-  let progression: Range | undefined, drag: {anchor: Point; host: HTMLElement; cross: boolean} | undefined;
+  let progression: Range | undefined, drag: {anchor: Point; host: HTMLElement; cross: boolean; pointer: number} | undefined;
+  let selectionFrame: number | undefined, lastPointer: {x:number;y:number} | undefined;
+  let scrollHost: HTMLElement | undefined, lastDown: {host:HTMLElement;x:number;y:number;at:number;count:number} | undefined;
+  function paint(range: Range) {
+    root.querySelectorAll('[data-text-selected]').forEach(element=>element.removeAttribute('data-text-selected'));
+    const selected=selectedEditorBlocks(root);
+    if (selected && crossesHosts(selected)) {
+      selected.elements.forEach(element=>element.setAttribute('data-text-selected','true'));
+      if (typeof CSS !== 'undefined' && CSS.highlights && typeof Highlight !== 'undefined') CSS.highlights.set('noema-block-selection',new Highlight(...editorSelectionRanges(root,range)));
+    } else if (typeof CSS !== 'undefined') CSS.highlights?.delete('noema-block-selection');
+    root.dispatchEvent(new Event('noema:editor-selection'));
+  }
+  function extend(caret: Point) {
+    if (!drag || !drag.anchor.node.isConnected) return;
+    const anchor=drag.anchor, start=document.createRange(), end=document.createRange();
+    start.setStart(anchor.node,anchor.offset); start.collapse(true);
+    end.setStart(caret.node,caret.offset); end.collapse(true);
+    const forward=start.compareBoundaryPoints(Range.START_TO_START,end)<=0;
+    const range=document.createRange();
+    range.setStart(forward?anchor.node:caret.node,forward?anchor.offset:caret.offset);
+    range.setEnd(forward?caret.node:anchor.node,forward?caret.offset:anchor.offset);
+    document.getSelection()?.setBaseAndExtent(anchor.node,anchor.offset,caret.node,caret.offset);
+    if (drag.cross && !range.collapsed) {selections.set(root,range);paint(range);}
+    else clearEditorSelection(root);
+  }
   function atomicPoint(point: Point, x: number): Point {
     const atom = element(point.node)?.closest<HTMLElement>('[data-entity],[data-math],[data-wikilink]');
     if (!atom?.parentNode || !root.contains(atom)) return point;
@@ -138,35 +175,112 @@ export function installBlockSelection(root: HTMLElement, options: Options) {
     return {node: atom.parentNode, offset: index + Number(x >= (bounds.left + bounds.right) / 2)};
   }
   function point(x: number, y: number): Point | undefined {
+    // Resolve the destination host independently: WebKit may return a caret in
+    // the focused host even when the pointer has crossed into another block.
+    const hit=document.elementFromPoint(x,y), direct=hit && surface(hit);
+    const hosts=direct && root.contains(direct)?[]:Array.from(root.querySelectorAll<HTMLElement>('.block-content[contenteditable="true"]'));
+    const host=direct && root.contains(direct)?direct:hosts.reduce<HTMLElement|undefined>((best,item)=>{
+      const box=item.getBoundingClientRect(), current=best?.getBoundingClientRect();
+      const distance=Math.max(box.top-y,0,y-box.bottom), previous=current?Math.max(current.top-y,0,y-current.bottom):Infinity;
+      return distance<previous?item:best;
+    },undefined);
+    if(!host)return;
+    const bounds=host.getBoundingClientRect();
+    if(y<bounds.top)return {node:host,offset:0};
+    if(y>bounds.bottom)return {node:host,offset:host.childNodes.length};
+    const px=Math.max(bounds.left+1,Math.min(x,bounds.right-1)), py=Math.max(bounds.top+1,Math.min(y,bounds.bottom-1));
     const doc = document as Document & {caretPositionFromPoint?: (x: number, y: number) => {offsetNode: Node; offset: number} | null; caretRangeFromPoint?: (x: number, y: number) => Range | null};
-    const position = doc.caretPositionFromPoint?.(x, y); if (position) return atomicPoint({node: position.offsetNode, offset: position.offset}, x);
-    const range = doc.caretRangeFromPoint?.(x, y); return range ? atomicPoint({node: range.startContainer, offset: range.startOffset}, x) : undefined;
+    const position=doc.caretPositionFromPoint?.(px,py), range=position?undefined:doc.caretRangeFromPoint?.(px,py);
+    const caret=position?{node:position.offsetNode,offset:position.offset}:range?{node:range.startContainer,offset:range.startOffset}:undefined;
+    if(caret && host.contains(caret.node))return atomicPoint(caret,x);
+    // Fall back to the nearest rendered text boundary instead of staying stuck
+    // in the original editable host. Only the hovered host is measured.
+    const walker=document.createTreeWalker(host,NodeFilter.SHOW_TEXT);
+    let best: Point={node:host,offset:0}, distance=Infinity;
+    while(walker.nextNode()) {
+      const node=walker.currentNode;
+      let low=0, high=node.textContent?.length ?? 0;
+      while(low<=high) {
+        const offset=Math.floor((low+high)/2);
+        const probe=document.createRange();probe.setStart(node,offset);probe.collapse(true);
+        const box=probe.getBoundingClientRect();
+        if(!box.height)break;
+        const score=Math.max(box.top-y,0,y-box.bottom)*1000+Math.abs(box.left-x);
+        if(score<distance){distance=score;best={node,offset};}
+        if(y<box.top || y<=box.bottom && x<box.left)high=offset-1;else low=offset+1;
+      }
+    }
+    return atomicPoint(best,x);
   }
   function down(event: PointerEvent) {
-    progression = undefined; drag = undefined;
-    if (event.button !== 0 || event.pointerType === 'touch' || element(event.target as Node)?.closest('button,input,textarea,[data-math],[data-entity]')) return;
-    const host = surface(event.target as Node), caret = point(event.clientX, event.clientY);
-    if (!host || !root.contains(host) || !caret || !host.contains(caret.node)) return;
-    const selection = document.getSelection();
-    const anchor = event.shiftKey && selection?.anchorNode && root.contains(selection.anchorNode) ? {node: selection.anchorNode, offset: selection.anchorOffset} : caret;
-    drag = {anchor, host, cross: false};
-    if (event.shiftKey && surface(anchor.node) !== host) {event.preventDefault(); selection?.setBaseAndExtent(anchor.node, anchor.offset, caret.node, caret.offset); drag.cross = true;}
+    const target=element(event.target as Node);
+    if(target?.closest('.selection-popover,.command-menu,.block-handle'))return;
+    const previous=editorSelectionRange(root)?.cloneRange();
+    clearEditorSelection(root); progression=undefined; drag=undefined;
+    if (event.button !== 0 || event.isPrimary===false || event.pointerType === 'touch' || event.detail>1 || target?.closest('button,input,textarea,a,[data-math],[data-entity]')) return;
+    const host=surface(event.target as Node);
+    if(!host || !root.contains(host))return;
+    const at=Date.now(), count=lastDown && lastDown.host===host && at-lastDown.at<450 && Math.hypot(event.clientX-lastDown.x,event.clientY-lastDown.y)<4?lastDown.count+1:1;
+    lastDown={host,x:event.clientX,y:event.clientY,at,count};
+    if(count>1)return;
+    scrollHost=undefined;
+    for(let parent=root.parentElement;parent && parent!==document.body;parent=parent.parentElement) {
+      if(/auto|scroll/.test(getComputedStyle(parent).overflowY) && parent.scrollHeight>parent.clientHeight){scrollHost=parent;break;}
+    }
+    const caret=point(event.clientX,event.clientY);
+    if(!caret || !host.contains(caret.node))return;
+    const anchor=event.shiftKey && previous && root.contains(previous.startContainer)?{node:previous.startContainer,offset:previous.startOffset}:caret;
+    drag={anchor,host,cross:surface(anchor.node)!==host,pointer:event.pointerId};
+    root.dataset.textSelecting='true';
+    // Own the gesture before the browser starts host-confined text dragging.
+    event.preventDefault(); host.focus({preventScroll:true}); extend(caret);
   }
-  function move(event: MouseEvent) {
-    if (!drag || !(event.buttons & 1)) return;
-    const caret = point(event.clientX, event.clientY), host = caret && surface(caret.node);
-    if (!caret || !host || !root.contains(host)) return;
-    if (host !== drag.host) drag.cross = true;
-    if (!drag.cross) return;
-    event.preventDefault();
-    document.getSelection()?.setBaseAndExtent(drag.anchor.node, drag.anchor.offset, caret.node, caret.offset);
+  function updateDrag() {
+    selectionFrame=undefined;
+    if(!drag || !lastPointer)return;
+    const caret=point(lastPointer.x,lastPointer.y), host=caret && surface(caret.node);
+    if(!caret || !host || !root.contains(host))return;
+    if(host!==drag.host)drag.cross=true;
+    extend(caret);
+    const viewport=scrollHost?.getBoundingClientRect(), top=Math.max(0,viewport?.top ?? 0), bottom=Math.min(window.innerHeight,viewport?.bottom ?? window.innerHeight), edge=48;
+    const y=lastPointer.y, speed=y<top+edge?-Math.ceil(Math.min(edge,top+edge-y)/4):y>bottom-edge?Math.ceil(Math.min(edge,y-bottom+edge)/4):0;
+    if(speed) {
+      const before=scrollHost?.scrollTop ?? window.scrollY;
+      if(scrollHost)scrollHost.scrollTop+=speed;else window.scrollBy({top:speed,behavior:'instant'});
+      if(before!==(scrollHost?.scrollTop ?? window.scrollY))selectionFrame=requestAnimationFrame(updateDrag);
+    }
   }
-  function up() {drag = undefined;}
+  function move(event: PointerEvent) {
+    if(!drag || event.pointerId!==drag.pointer)return;
+    if(!(event.buttons&1)){up();return;}
+    event.preventDefault(); lastPointer={x:event.clientX,y:event.clientY};
+    if(selectionFrame===undefined)selectionFrame=requestAnimationFrame(updateDrag);
+  }
+  function up(event?: PointerEvent) {
+    if(event && drag && event.pointerId!==drag.pointer)return;
+    if(event && drag)lastPointer={x:event.clientX,y:event.clientY};
+    if(selectionFrame!==undefined)cancelAnimationFrame(selectionFrame);selectionFrame=undefined;
+    if(drag && lastPointer)updateDrag();
+    if(selectionFrame!==undefined)cancelAnimationFrame(selectionFrame);selectionFrame=undefined;
+    if(event && drag?.cross)event.preventDefault();
+    drag=undefined;lastPointer=undefined;scrollHost=undefined;delete root.dataset.textSelecting;
+    root.dispatchEvent(new Event('noema:editor-selection'));
+  }
+  const blur=()=>{if(selectionFrame!==undefined)cancelAnimationFrame(selectionFrame);selectionFrame=undefined;drag=undefined;lastPointer=undefined;delete root.dataset.textSelecting;};
+  function cancelPointer(event:PointerEvent) {if(!drag || event.pointerId===drag.pointer)blur();}
+  function nativeDrag(event: DragEvent) {
+    if(drag){event.preventDefault();}
+  }
+  function refreshSelection() {
+    const range=selections.get(root);
+    if(range && (!range.startContainer.isConnected || !range.endContainer.isConnected))clearEditorSelection(root);
+  }
   function key(event: KeyboardEvent) {
     if (event.isComposing) return;
     const target = element(event.target as Node);
     if (target?.closest('input,textarea,button,select')) return;
     if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'a') {
+      clearEditorSelection(root);
       const selection = document.getSelection();
       const current = selection?.rangeCount ? selection.getRangeAt(0) : undefined;
       const block = element(selection?.focusNode ?? null)?.closest<HTMLElement>('[data-block-id]') ?? target?.closest<HTMLElement>('[data-block-id]');
@@ -177,14 +291,16 @@ export function installBlockSelection(root: HTMLElement, options: Options) {
       event.preventDefault(); event.stopPropagation(); return;
     }
     progression = undefined;
+    if(event.key==='Tab')clearEditorSelection(root);
     if (!event.shiftKey && !event.metaKey && !event.ctrlKey && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) {
       const selected = selectedEditorBlocks(root);
       if (selected && crossesHosts(selected)) {
         const portions = editorSelectionRanges(root, selected.range), left = event.key === 'ArrowLeft' || event.key === 'ArrowUp';
         const edge = (left ? portions[0] : portions.at(-1))?.cloneRange();
-        if (edge) {edge.collapse(left); surface(edge.startContainer)?.focus(); const selection = document.getSelection(); selection?.removeAllRanges(); selection?.addRange(edge); event.preventDefault(); event.stopPropagation(); return;}
+        if (edge) {clearEditorSelection(root);edge.collapse(left); surface(edge.startContainer)?.focus(); const selection = document.getSelection(); selection?.removeAllRanges(); selection?.addRange(edge); event.preventDefault(); event.stopPropagation(); return;}
       }
     }
+    if (event.key.startsWith('Arrow') && event.shiftKey) clearEditorSelection(root);
     if (event.shiftKey && !event.metaKey && !event.ctrlKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
       const selection = document.getSelection(), host = surface(selection?.focusNode ?? null);
       if (selection?.anchorNode && selection.focusNode && host && root.contains(host)) {
@@ -216,7 +332,7 @@ export function installBlockSelection(root: HTMLElement, options: Options) {
     const blocks = clipboardBlocks(event.clipboardData.getData('text/plain'), event.clipboardData.getData('text/html'));
     if (replaceEditorSelection(root, options, blocks)) {event.preventDefault(); event.stopPropagation();}
   }
-  document.addEventListener('pointerdown', down); document.addEventListener('pointermove', move, {passive: false}); document.addEventListener('mousemove', move, {capture: true, passive: false}); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', up);
+  document.addEventListener('pointerdown', down, true); document.addEventListener('pointermove', move, {capture:true,passive:false}); window.addEventListener('blur',blur); root.addEventListener('dragstart',nativeDrag); document.addEventListener('selectionchange',refreshSelection); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', cancelPointer);
   root.addEventListener('keydown', key, true); root.addEventListener('beforeinput', beforeInput, true); root.addEventListener('copy', copy, true); root.addEventListener('cut', copy, true); root.addEventListener('paste', paste, true);
-  return () => {document.removeEventListener('pointerdown', down); document.removeEventListener('pointermove', move); document.removeEventListener('mousemove', move, true); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', up); root.removeEventListener('keydown', key, true); root.removeEventListener('beforeinput', beforeInput, true); root.removeEventListener('copy', copy, true); root.removeEventListener('cut', copy, true); root.removeEventListener('paste', paste, true);};
+  return () => {delete root.dataset.textSelecting;clearEditorSelection(root); if(selectionFrame!==undefined)cancelAnimationFrame(selectionFrame); document.removeEventListener('pointerdown', down, true); document.removeEventListener('pointermove', move, true); window.removeEventListener('blur',blur); root.removeEventListener('dragstart',nativeDrag); document.removeEventListener('selectionchange',refreshSelection); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', cancelPointer); root.removeEventListener('keydown', key, true); root.removeEventListener('beforeinput', beforeInput, true); root.removeEventListener('copy', copy, true); root.removeEventListener('cut', copy, true); root.removeEventListener('paste', paste, true);};
 }

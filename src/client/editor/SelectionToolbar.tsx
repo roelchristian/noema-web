@@ -1,5 +1,5 @@
 import { semanticFunctions, editableSemanticKinds, type SemanticKind } from '../../shared/semantic-blocks';
-import { editorSelectionRanges, selectedEditorBlocks } from './block-selection';
+import { clearEditorSelection, editorSelectionRange, editorSelectionRanges, selectedEditorBlocks } from './block-selection';
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { entityLabels, type Entity } from '../../shared/domain';
 import { Icon } from '../components/Icon';
@@ -53,11 +53,12 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
     let frame: number | undefined, collapseTimer: ReturnType<typeof setTimeout> | undefined;
     function inspect() {
       frame = undefined;
-      if (picking.current || surface.current?.contains(document.activeElement)) return;
+      if (picking.current || surface.current?.contains(document.activeElement) || editor.current?.hasAttribute('data-text-selecting')) return;
       const dialog = document.querySelector('dialog[open]');
       if (dialog && !surface.current?.contains(dialog)) { dismiss(); return; }
       const selection = getSelection();
-      if (!selection?.rangeCount || selection.isCollapsed) {
+      const range = editor.current ? editorSelectionRange(editor.current, selection) : null;
+      if (!range || range.collapsed) {
         // Touch selection handles can briefly collapse the range while moving.
         if (mobile) {
           if (!collapseTimer) collapseTimer = setTimeout(() => {
@@ -68,7 +69,6 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
         return;
       }
       clearTimeout(collapseTimer); collapseTimer = undefined;
-      const range = selection.getRangeAt(0);
       const portions = editor.current ? editorSelectionRanges(editor.current, range) : [];
       const start = editable(range.startContainer) ?? (portions[0] ? editable(portions[0].startContainer) : undefined);
       const end = editable(range.endContainer) ?? (portions.at(-1) ? editable(portions.at(-1)!.endContainer) : undefined);
@@ -99,6 +99,7 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
         if (end) range.setEnd(end.endContainer, end.endOffset);
       }
       range.collapse(false);
+      if(editor.current)clearEditorSelection(editor.current);
       dismiss();
       editable(range.startContainer)?.focus({preventScroll: mobile});
       getSelection()?.removeAllRanges(); getSelection()?.addRange(range);
@@ -106,6 +107,8 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
     }
     const hideOnScroll = (event: Event) => { if (!surface.current?.contains(event.target as Node)) { if (mobile) scheduleInspect(); else dismiss(); } };
     const resize = () => { if (mobile) scheduleInspect(); else dismiss(); };
+    const root=editor.current;
+    root?.addEventListener('noema:editor-selection',scheduleInspect);
     document.addEventListener('selectionchange', scheduleInspect);
     document.addEventListener('pointerup', scheduleInspect);
     document.addEventListener('pointerdown', outside);
@@ -115,6 +118,7 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
     return () => {
       if (frame !== undefined) cancelAnimationFrame(frame);
       clearTimeout(collapseTimer);
+      root?.removeEventListener('noema:editor-selection',scheduleInspect);
       document.removeEventListener('selectionchange', scheduleInspect);
       document.removeEventListener('pointerup', scheduleInspect);
       document.removeEventListener('pointerdown', outside);

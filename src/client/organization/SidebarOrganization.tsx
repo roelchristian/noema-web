@@ -82,7 +82,7 @@ export function SidebarOrganization({vaultId, data, pages, context, active, disa
   function folders(collection: string, parent: string | null, depth: number) {
     return data.folders.filter(folder => folder.parent_id === parent).map(folder => <div key={folder.id}>
       {item({type: 'folders', id: folder.id, name: folder.name, collection, parent: folder.parent_id || ''}, depth)}
-      {expanded.has(folder.id) && <>{folders(collection, folder.id, depth + 1)}{pageLinks(collection, folder.id, depth + 1)}</>}
+      {expanded.has(folder.id) && <div className="sidebar-branch-children">{folders(collection, folder.id, depth + 1)}{pageLinks(collection, folder.id, depth + 1)}</div>}
     </div>);
   }
   return <nav className="sidebar-group organization-sidebar" aria-label="Folders and collections" onDragEnd={() => setDropTarget(null)}>
@@ -90,7 +90,7 @@ export function SidebarOrganization({vaultId, data, pages, context, active, disa
       {label: 'New collection', icon: 'collection', onSelect: () => setEdit({type: 'collections', name: '', collection: '', parent: ''})},
     ]}/></div>{data.collections.map(collection => <div key={collection.id}>
       {item({type: 'collections', id: collection.id, name: collection.name, collection: collection.id, parent: ''})}
-      {expanded.has(collection.id) && <>{pageLinks(collection.id, null, 1)}</>}
+      {expanded.has(collection.id) && <div className="sidebar-branch-children">{pageLinks(collection.id, null, 1)}</div>}
     </div>)}{!data.collections.length && <button className="sidebar-create" disabled={disabled} onClick={() => setEdit({type: 'collections', name: '', collection: '', parent: ''})}><Icon name="plus"/>Create a collection</button>}</>}
     <span className="sr-only" role="status">{dropStatus}</span>
     {edit && <NameDialog title={(edit.id ? 'Rename ' : 'New ') + (edit.type === 'collections' ? 'collection' : 'folder')} value={edit.name} onClose={() => setEdit(null)} onSave={async name => {

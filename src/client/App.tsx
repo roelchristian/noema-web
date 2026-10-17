@@ -1,3 +1,4 @@
+import { animateSidebarClick } from './components/sidebar-motion';
 import { folderBreadcrumbs, pageBreadcrumbs } from './organization/breadcrumbs';
 import { inboxPages } from './organization/inbox';
 import { AIActivityNotifications } from './intelligence/AIActivityNotifications';
@@ -97,7 +98,7 @@ export function App() {
   }
   return <>
     <WorkspaceNavigation mobile={mobile} open={navigationOpen} onClose={() => setNavigationOpen(false)}>
-    <aside className="sidebar" data-navigating={loadingPageId !== null}><div className="sidebar-heading"><a className="brand" href="/" aria-label="Noema home"><img className="brand-mark" src="/noema-mark.svg" alt="" width="38" height="38"/><span>noema</span></a>
+    <aside className="sidebar" onClickCapture={animateSidebarClick} data-navigating={loadingPageId !== null}><div className="sidebar-heading"><a className="brand" href="/" aria-label="Noema home"><img className="brand-mark" src="/noema-mark.svg" alt="" width="38" height="38"/><span>noema</span></a>
       <button className="mobile-navigation-close" type="button" aria-label="Close navigation" onClick={() => setNavigationOpen(false)}><Icon name="close"/></button>
       <button className="sidebar-new-note" type="button" aria-label="New Note" title="New Note" disabled={disabled || reviewing} onClick={() => { workspace.closeEntity(); setSearchOpen(false); run(() => workspace.newPage()); }}><Icon name="compose"/></button></div>
       <div className="sidebar-scroll-region">

@@ -4,7 +4,7 @@ import { SubtypePicker } from './SubtypePicker';
 import { useEntitySchema } from './useEntitySchema';
 import { inheritedPropertyNames, type EntitySchema } from '../../shared/entity-schema';
 import { Select } from '../components/Select';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api } from '../api';
 import { entityLabels, entityTypes, type Entity, type EntityDetail, type EntityMentionCase, type EntityType, type Property, type Relationship } from '../../shared/domain';
 import { Icon } from '../components/Icon';
@@ -111,30 +111,75 @@ function EntityDetails({entity, schema, onSave}: {schema: EntitySchema; entity: 
   const [subtypes, setSubtypes] = useState(entity.subtypes);
   const [aliases, setAliases] = useState((entity.aliases ?? []).join('\n'));
   const [mentionCase,setMentionCase]=useState<EntityMentionCase>(entity.mentionCase??'canonical');
-  async function submit(e: FormEvent) { e.preventDefault(); setBusy(true); setStatus(''); try { await onSave({name, aliases: parseAliases(aliases), mentionCase, type, subtypes, description}); setStatus('Saved'); } catch { /* Parent reports the error. */ } finally { setBusy(false); } }
+  const dirty = name !== entity.name || type !== entity.type || description !== entity.description || mentionCase !== (entity.mentionCase ?? 'canonical') || JSON.stringify(parseAliases(aliases)) !== JSON.stringify(entity.aliases ?? []) || JSON.stringify([...subtypes].sort()) !== JSON.stringify([...entity.subtypes].sort());
+  function reset() {setName(entity.name); setType(entity.type); setDescription(entity.description); setSubtypes(entity.subtypes); setAliases((entity.aliases ?? []).join('\n')); setMentionCase(entity.mentionCase ?? 'canonical'); setStatus('');}
+  async function submit(e: FormEvent) { e.preventDefault(); if (busy || !dirty || !name.trim()) return; setBusy(true); setStatus(''); try { await onSave({name: name.trim(), aliases: parseAliases(aliases), mentionCase, type, subtypes, description}); setName(name.trim()); setStatus('Saved'); } catch { /* Parent reports the error. */ } finally { setBusy(false); } }
   return <form id="entity-form" className="entity-detail-form" onSubmit={submit}>
     <label>Name<input className="entity-name" aria-label="Entity name" required maxLength={200} disabled={busy} value={name} onChange={e => {setName(e.target.value);setStatus('');}}/></label>
+    <h4 className="entity-form-heading">Classification</h4>
     <label>Entity type<Select aria-label="Entity type" value={type} disabled={busy} onChange={e => {setType(e.target.value as EntityType);setSubtypes([]);setStatus('');}}>{entityTypes.map(t => <option key={t} value={t} disabled={t!==entity.type&&(t==='source'||entity.type==='source')}>{entityLabels[t]}</option>)}</Select></label>
     <SubtypePicker type={type} value={subtypes} subtypes={schema.subtypes} onChange={value => {setSubtypes(value);setStatus('');}} disabled={busy}/>
+    <h4 className="entity-form-heading">Mentions & aliases</h4>
     <AliasInput value={aliases} onChange={value => {setAliases(value);setStatus('');}} disabled={busy}/>
     <label>Default tag casing<Select aria-label="Default tag casing" value={mentionCase} disabled={busy} onChange={event=>{setMentionCase(event.target.value as EntityMentionCase);setStatus('');}}><option value="canonical">Entity name</option><option value="lowercase">Lowercase</option></Select></label>
     <p className="section-hint">Used when inserting a tag without source text. AI tags and tags made from selected text keep the passage’s original capitalization.</p>
-    <label>Description<textarea aria-label="Entity description" placeholder="Add a description…" disabled={busy} value={description} onChange={e => {setDescription(e.target.value);setStatus('');}}/></label>
-    <div className="entity-detail-save"><button className="button small" disabled={busy}>{busy ? 'Saving…' : 'Save details'}</button><span id="entity-saved" role="status">{status}</span></div>
+    <h4 className="entity-form-heading">About this entity</h4>
+    <label>Description<textarea aria-label="Entity description" placeholder="Add context to help identify this entity…" rows={4} disabled={busy} value={description} onChange={e => {setDescription(e.target.value);setStatus('');}}/></label>
+    <div className="entity-detail-save"><span id="entity-saved" role="status">{busy ? 'Saving changes…' : dirty ? 'Unsaved changes' : status || 'No unsaved changes'}</span><div><button type="button" className="button small" disabled={busy || !dirty} onClick={reset}>Reset</button><button className="button small primary" disabled={busy || !dirty || !name.trim()}>{busy ? 'Saving…' : 'Save details'}</button></div></div>
   </form>;
 }
 type MentionRenderer = (id: string) => React.ReactNode;
 function PropertyEditor({entity, entities, mention, onSave, onRemove}: {entity: EntityDetail; entities: Entity[]; mention: MentionRenderer; onSave: (input: Parameters<typeof api.saveProperty>[2], id?: string) => Promise<unknown>; onRemove: (id: string) => Promise<unknown>}) {
-  const [edit, setEdit] = useState<string>(), [name, setName] = useState(''), [kind, setKind] = useState('text'), [value, setValue] = useState(''), [target, setTarget] = useState(''), [busy, setBusy] = useState(false);
-  function reset() { setEdit(undefined); setName(''); setKind('text'); setValue(''); setTarget(''); }
-  function editing(p: Property) { setEdit(p.id); setName(entity.propertyNames.find(name => name.toLowerCase() === p.name.toLowerCase()) || p.name); setKind(p.target_id ? 'entity' : 'text'); setValue(p.value || ''); setTarget(p.target_id || ''); }
-  async function submit(e: FormEvent) { e.preventDefault(); setBusy(true); try { await onSave(kind === 'entity' ? {name, target_id: target} : {name, value}, edit); reset(); } catch { /* Parent reports the error. */ } finally { setBusy(false); } }
-  return <><div className="property-list">{entity.properties.map(p => <div key={p.id} className="property-row"><span>{p.name}</span><div>{p.target_id ? mention(p.target_id) : p.value}</div><button className="edit-item" aria-label="Edit property" disabled={busy} onClick={() => editing(p)}>Edit</button><button className="remove" aria-label="Remove property" disabled={busy} onClick={() => { setBusy(true); void onRemove(p.id).then(() => { if (edit === p.id) reset(); }).catch(() => {}).finally(() => setBusy(false)); }}>×</button></div>)}{!entity.properties.length && <div className="empty-small">No properties yet.</div>}</div>
-    <form className="add-form" onSubmit={submit}><Select required aria-label="Property name" disabled={busy || !entity.propertyNames.length} value={name} onChange={e => setName(e.target.value)}><option value="">Choose an inherited property…</option>{entity.propertyNames.map(p => <option key={p} value={p}>{p}</option>)}</Select><Select aria-label="Property value type" value={kind} onChange={e => setKind(e.target.value)}><option value="text">Text value</option><option value="entity">Entity reference</option></Select>
-      {kind === 'text' ? <input placeholder="Value" aria-label="Property value" value={value} onChange={e => setValue(e.target.value)}/> : <Select required aria-label="Referenced entity" value={target} onChange={e => setTarget(e.target.value)}><option value="">Choose an entity…</option>{entities.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</Select>}
-      <button className="button small" disabled={busy || !entity.propertyNames.length}>{edit ? 'Save value' : '+ Add value'}</button>{edit && <button type="button" className="edit-item" disabled={busy} onClick={reset}>Cancel edit</button>}
-    </form></>;
+  const [edit, setEdit] = useState<string>(), [name, setName] = useState(''), [kind, setKind] = useState<'text' | 'entity'>('text'), [value, setValue] = useState(''), [target, setTarget] = useState(''), [busy, setBusy] = useState(false);
+  const [query, setQuery] = useState(''), [status, setStatus] = useState(''), [error, setError] = useState('');
+  const form = useRef<HTMLFormElement>(null);
+  const [focusRequest, setFocusRequest] = useState(0);
+  const unset = entity.propertyNames.filter(name => !entity.properties.some(property => property.name.toLowerCase() === name.toLowerCase()));
+  const names = name && !entity.propertyNames.includes(name) ? [name, ...entity.propertyNames] : entity.propertyNames;
+  const matches = entities.filter(item => item.id === target || `${item.name} ${(item.aliases ?? []).join(' ')} ${entityLabels[item.type]}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+  function reset() {setEdit(undefined); setName(''); setKind('text'); setValue(''); setTarget(''); setQuery(''); setError('');}
+  function focusValue() {form.current?.scrollIntoView({behavior: 'smooth', block: 'nearest'}); form.current?.querySelector<HTMLElement>('textarea, input')?.focus({preventScroll: true});}
+  function editing(property: Property) {setEdit(property.id); setName(entity.propertyNames.find(name => name.toLowerCase() === property.name.toLowerCase()) || property.name); setKind(property.target_id ? 'entity' : 'text'); setValue(property.value || ''); setTarget(property.target_id || ''); setQuery(''); setError(''); setStatus(''); setFocusRequest(current => current + 1);}
+  useEffect(() => {if (focusRequest) focusValue();}, [focusRequest]);
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (busy || !name || !(kind === 'text' ? value.trim() : target)) return;
+    setBusy(true); setError(''); setStatus('');
+    try {await onSave(kind === 'entity' ? {name, target_id: target} : {name, value}, edit); reset(); setStatus(edit ? 'Property updated.' : 'Property added.');}
+    catch {setError('Could not save this property. Your changes are still here; try again.');}
+    finally {setBusy(false);}
+  }
+  async function remove(property: Property) {
+    setBusy(true); setError(''); setStatus('');
+    try {await onRemove(property.id); if (edit === property.id) reset(); setStatus(property.name+' removed.');}
+    catch {setError('Could not remove this property. Try again.');}
+    finally {setBusy(false);}
+  }
+  return <div className="entity-property-editor">
+    <div className="entity-property-list">{entity.properties.map(property => <div key={property.id} className={'entity-property-card'+(edit === property.id ? ' is-editing' : '')}>
+      <div className="entity-property-card-header"><strong>{property.name}</strong><span>{property.target_id ? 'Entity reference' : 'Text'}</span><div>
+        <button type="button" disabled={busy} aria-label={'Edit '+property.name} title="Edit value" onClick={() => editing(property)}><Icon name="edit"/></button>
+        <button type="button" disabled={busy} aria-label={'Remove '+property.name} title="Remove value" onClick={() => void remove(property)}><Icon name="close"/></button>
+      </div></div><div className="entity-property-value">{property.target_id ? mention(property.target_id) : property.value}</div>
+    </div>)}</div>
+    {!!unset.length && <div className="entity-property-unset"><p>Fields without values <span>{unset.length}</span></p><div>{unset.map(field => <button type="button" key={field} disabled={busy} onClick={() => {reset(); setName(field); setStatus(''); setFocusRequest(current => current + 1);}}><Icon name="plus"/>{field}</button>)}</div></div>}
+    {!entity.propertyNames.length && !entity.properties.length && <p className="entity-detail-empty">No property fields yet. Choose subtypes and save the entity’s details, or define fields in Settings → Knowledge Entities.</p>}
+    {(!!entity.propertyNames.length || !!edit) && <form ref={form} className="entity-property-form" aria-label={edit ? 'Edit property' : 'Add property'} onSubmit={submit}>
+      <div className="entity-property-form-heading"><h4>{edit ? 'Edit property' : 'Add a property value'}</h4>{edit && <span>Editing saved value</span>}</div>
+      <label>Property<Select required aria-label="Property name" disabled={busy} value={name} onChange={event => {setName(event.target.value);setStatus('');}}><option value="">Choose a property…</option>{names.map(field => <option key={field} value={field}>{field}</option>)}</Select></label>
+      <fieldset className="property-value-kind" disabled={busy}><legend>Value type</legend><div>{(['text', 'entity'] as const).map(option => <button type="button" key={option} aria-pressed={kind === option} onClick={() => {setKind(option);setStatus('');}}><Icon name={option === 'text' ? 'page' : 'knowledge'}/>{option === 'text' ? 'Text' : 'Entity reference'}</button>)}</div></fieldset>
+      {kind === 'text' ? <label>Value<textarea required rows={3} aria-label="Property value" placeholder="Enter a value…" disabled={busy} value={value} onChange={event => {setValue(event.target.value);setStatus('');}}/></label> : <div className="property-reference-fields">
+        <label>Find an entity<input type="search" aria-label="Search referenced entities" placeholder="Search by name, alias, or type…" disabled={busy} value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => {if(event.key === 'Enter') event.preventDefault();}}/></label>
+        <label>Referenced entity<Select required aria-label="Referenced entity" disabled={busy} value={target} onChange={event => {setTarget(event.target.value);setStatus('');}}><option value="">Choose an entity…</option>{matches.map(item => <option key={item.id} value={item.id}>{item.name} · {entityLabels[item.type]}</option>)}</Select></label>
+        {!matches.length && <p className="section-hint">No entities match your search.</p>}
+      </div>}
+      <div className="entity-property-form-actions"><button type="button" className="button small" disabled={busy || !(edit || name || value || target || query)} onClick={()=>{reset();setStatus('');}}>{edit ? 'Cancel edit' : 'Clear'}</button><button className="button small primary" disabled={busy || !name || !(kind === 'text' ? value.trim() : target)}>{busy ? 'Saving…' : edit ? 'Save changes' : 'Add value'}</button></div>
+      <p className="entity-property-save-hint">Save each property separately from entity details.</p>
+    </form>}
+    {error && <p className="entity-property-error" role="alert">{error}</p>}<p className="entity-property-status" role="status">{status}</p>
+  </div>;
 }
+
 function RelationshipEditor({entity, entities, mention, onSave, onRemove}: {entity: EntityDetail; entities: Entity[]; mention: MentionRenderer; onSave: (input: Parameters<typeof api.saveRelationship>[2], id?: string) => Promise<unknown>; onRemove: (id: string) => Promise<unknown>}) {
   const [edit, setEdit] = useState<string>(), [label, setLabel] = useState(''), [target, setTarget] = useState(''), [busy, setBusy] = useState(false);
   function reset() { setEdit(undefined); setLabel(''); setTarget(''); }

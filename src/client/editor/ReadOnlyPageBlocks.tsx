@@ -10,7 +10,7 @@ export function ReadOnlyPageBlocks({blocks,entities,pages,vaultId,onOpenEntity,o
   const renderBlock=(block:Block)=><ReadOnlyExplanationBlock key={block.id} block={block} blocks={blocks} entities={entities} vaultId={vaultId} onOpen={onOpenEntity} explanation={isAIExplanation(block)}/>;
   function renderRuns(list:Block[]) {
     return semanticRuns(list).map(run=>run.type==='block'?renderBlock(run.block):<section className="semantic-group" data-semantic-kind={run.kind} style={style(run.kind)} key={run.id} aria-label={semanticFunctions[run.kind].label}>
-      <span className="semantic-accent" aria-hidden="true"/>
+      <span className="semantic-callout-icon" aria-hidden="true"><Icon name={semanticFunctions[run.kind].icon}/></span>
       {run.kind==='ai-explanation'?<details className="ai-explanation" open><summary className="ai-explanation-label"><Icon name="chevron"/><span>AI explanation</span></summary>
         {run.blocks[0]?.semanticGroup?.source&&<div className="ai-explanation-source"><span>Passage explained</span><blockquote>{run.blocks[0].semanticGroup.source.excerpt}</blockquote></div>}
         <div className="semantic-children">{run.blocks.map(renderBlock)}</div>

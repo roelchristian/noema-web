@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react';
 const paths: Record<string, ReactNode> = {
+  semantic: <><path d="M5 4v16M9 5h9l-2 4 2 4H9"/><circle cx="5" cy="4" r="1"/></>,
+  quote: <><path d="M5 6h6v7H6c0 3 2 4 4 5M14 6h6v7h-5c0 3 2 4 4 5"/></>,
+  lightbulb: <><path d="M9 18h6m-5 3h4M8 15c0-2-3-3-3-7a7 7 0 0 1 14 0c0 4-3 5-3 7Z"/></>,
   download: <><path d="M12 3v12m-5-5 5 5 5-5M4 15v5h16v-5"/></>,
   upload: <><path d="M12 16V4m-5 5 5-5 5 5M4 15v5h16v-5"/></>,
   equation: <path d="m4 10 8 10m0-10L4 20M15 5a2.5 2.5 0 0 1 5 0c0 1.5-2 2.5-5 5h5"/>,

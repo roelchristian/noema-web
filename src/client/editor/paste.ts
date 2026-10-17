@@ -1,3 +1,4 @@
+import { isSemanticKind, normalizeSemanticGroups } from '../../shared/semantic-blocks';
 import { displayMathSource } from './math-delimiters';
 import { safeHref, type Block, type BlockType, type Segment, type TextStyle } from '../../shared/domain';
 import { readSegments } from './segments';
@@ -120,7 +121,7 @@ export function clipboardMathBlocks(blocks: Block[]): Block[] {
       const source = match[2]?.trim(); if (!source) continue;
       const before = slice(content, start, match.index!);
       if (before.some(s => s.text?.trim())) output.push({...block, id: split ? crypto.randomUUID() : block.id, content: inline(before)});
-      output.push(makeBlock('math', [{text: source}])); split = true;
+      output.push({...makeBlock('math', [{text: source}]),...(block.semantic?{semantic:block.semantic}:{}),...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{})}); split = true;
       start = match.index! + match[0].length;
     }
     const remaining = slice(content, start, text.length);
@@ -132,6 +133,14 @@ export function clipboardBlocks(text: string, html: string): Block[] {
   if (!html) return markdownBlocks(text);
   const doc = new DOMParser().parseFromString(html, 'text/html'), blocks: Block[] = [];
   doc.querySelectorAll('script,style,meta,link,iframe,object').forEach(node => node.remove());
+  const groups=new Map<string,string>();
+  function richBlock(type: BlockType, content: Segment[], node: Element): Block {
+    const block=makeBlock(type,content),semantic=node.getAttribute('data-noema-semantic'),group=node.getAttribute('data-noema-group'),kind=node.getAttribute('data-noema-group-kind');
+    if (isSemanticKind(semantic)) block.semantic=semantic;
+    if (group && group.length<=200 && isSemanticKind(kind)) {const key=JSON.stringify([group,kind]);if(!groups.has(key))groups.set(key,crypto.randomUUID());block.semanticGroup={id:groups.get(key)!,kind};}
+    return block;
+  }
+
   function visit(parent: Element) {
     let inline = document.createElement('div');
     const flush = () => { if (inline.textContent?.trim() || inline.querySelector('br')) blocks.push(makeBlock('paragraph', readSegments(inline, false))); inline = document.createElement('div'); };
@@ -141,7 +150,7 @@ export function clipboardBlocks(text: string, html: string): Block[] {
       if (tag === 'TABLE') {
         flush(); const rows = Array.from(node.querySelectorAll('tr')).filter(row => row.closest('table') === node).slice(0,100).map(row => Array.from(row.cells).slice(0,20).map(cell => readSegments(cell, false)));
         const width = Math.max(0,...rows.map(row => row.length));
-        if (width) blocks.push({...makeBlock('table'), rows: rows.map(row => Array.from({length: width}, (_, i) => row[i] ?? []))});
+        if (width) blocks.push({...richBlock('table',[],node), rows: rows.map(row => Array.from({length: width}, (_, i) => row[i] ?? []))});
       } else if (['UL','OL'].includes(tag)) { flush(); visit(node); }
       else if (['P','DIV','SECTION','ARTICLE','MAIN','BLOCKQUOTE','H1','H2','H3','H4','H5','H6','LI','PRE'].includes(tag)) {
         flush();
@@ -150,7 +159,7 @@ export function clipboardBlocks(text: string, html: string): Block[] {
           const copy = node.cloneNode(true) as HTMLElement; copy.querySelectorAll('ul,ol').forEach(list => list.remove());
           const checkbox = copy.querySelector<HTMLInputElement>('input[type=checkbox]');
           const type: BlockType = tag === 'H1' ? 'heading1' : /^H[2-6]$/.test(tag) ? 'heading2' : tag === 'LI' ? checkbox ? 'todo' : 'bullet' : tag === 'BLOCKQUOTE' ? 'quote' : 'paragraph';
-          blocks.push({...makeBlock(type, tag === 'PRE' ? [{text: node.textContent || '', code: true}] : readSegments(copy, false)), checked: checkbox?.checked ?? false});
+          blocks.push({...richBlock(type, tag === 'PRE' ? [{text: node.textContent || '', code: true}] : readSegments(copy, false), node), checked: checkbox?.checked ?? false});
           if (tag === 'LI') node.querySelectorAll(':scope > ul,:scope > ol').forEach(visit);
         }
       } else inline.append(node.cloneNode(true));
@@ -159,5 +168,5 @@ export function clipboardBlocks(text: string, html: string): Block[] {
   }
   visit(doc.body);
   // Some applications wrap plain Markdown in one styled span.
-  return blocks.length ? clipboardMathBlocks(blocks) : markdownBlocks(text);
+  return blocks.length ? normalizeSemanticGroups(clipboardMathBlocks(blocks)) : markdownBlocks(text);
 }

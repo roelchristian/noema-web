@@ -1146,3 +1146,51 @@ main:has(> #content > .page) { display: flex; flex-direction: column; }
 
 dialog:has(.source-attachments) { max-height: calc(100dvh - 40px); overflow-y: auto; }
 .source-actions a { text-decoration: underline; text-underline-offset: 3px; }
+
+/* Keep editor chrome out of cross-block text selections. */
+#blocks .block-controls, #blocks .bullet-marker, #blocks .table-actions, #blocks .image-block-actions, #blocks .image-upload-card { user-select: none; -webkit-user-select: none; }
+
+/* Block handles retain click menus and expose a separate reorder gesture. */
+.block-controls > .block-handle { cursor: grab; touch-action: none; -webkit-user-drag: none; }
+#blocks[data-block-dragging] { cursor: grabbing; user-select: none; -webkit-user-select: none; }
+#blocks[data-block-dragging] * { cursor: grabbing; }
+#blocks .block.is-block-dragging { opacity: .4; }
+#blocks[data-block-dragging] .block-controls { opacity: 1; }
+#blocks .block[data-drop-before]::before, #blocks .block[data-drop-after]::after { content: ''; position: absolute; left: 0; right: 0; height: 3px; border-radius: 3px; background: var(--accent, #555); pointer-events: none; z-index: 2; box-shadow: 0 0 0 2px var(--surface, #fff); }
+#blocks .block[data-drop-before]::before { top: -5px; }
+#blocks .block[data-drop-after]::after { bottom: -5px; }
+.block-drag-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+/* Semantic function lives in the handle gutter; typography remains a block choice. */
+.semantic-accent { position: absolute; left: -16px; top: 2px; bottom: 2px; width: 2px; border-radius: 2px; background: color-mix(in srgb, var(--semantic-color) 34%, transparent); pointer-events: none; }
+.block.semantic-block > .block-controls { opacity: 1; }
+.block.semantic-block > .block-controls .block-add { opacity: 0; }
+.block.semantic-block:hover > .block-controls .block-add, .block.semantic-block:focus-within > .block-controls .block-add { opacity: 1; }
+.semantic-handle .semantic-function-icon { display: inline-flex; color: var(--semantic-color); }
+.semantic-handle .semantic-grip-icon { display: none; }
+.semantic-handle { border-radius: 4px; background: var(--surface, #fff); z-index: 3; }
+.block:hover > .block-controls .semantic-handle .semantic-function-icon, .block:focus-within > .block-controls .semantic-handle .semantic-function-icon, .semantic-group:hover > .semantic-parent-controls .semantic-function-icon, .semantic-group:focus-within > .semantic-parent-controls .semantic-function-icon { display: none; }
+.block:hover > .block-controls .semantic-handle .semantic-grip-icon, .block:focus-within > .block-controls .semantic-handle .semantic-grip-icon, .semantic-group:hover > .semantic-parent-controls .semantic-grip-icon, .semantic-group:focus-within > .semantic-parent-controls .semantic-grip-icon { display: inline-flex; }
+.semantic-group { position: relative; margin: 14px 0; padding-left: 24px; min-height: 28px; }
+.semantic-parent-controls { position: absolute; left: -27px; top: 1px; width: 22px; height: 24px; user-select: none; -webkit-user-select: none; }
+.semantic-parent-controls > .block-handle { display: inline-flex; position: static; align-items: center; justify-content: center; width: 22px; height: 24px; padding: 0; opacity: 1; color: var(--text-muted); }
+.semantic-parent-controls .icon { width: 16px; height: 16px; }
+.semantic-children > .block:first-child { margin-top: 0; }
+.semantic-children > .block:last-child { margin-bottom: 0; }
+#blocks .semantic-group.is-block-dragging { opacity: .4; }
+#blocks .semantic-group[data-drop-before]::before, #blocks .semantic-group[data-drop-after]::after { content: ''; position: absolute; left: 0; right: 0; height: 3px; border-radius: 3px; background: var(--accent, #555); pointer-events: none; z-index: 4; }
+#blocks .semantic-group[data-drop-before]::before { top: -5px; }
+#blocks .semantic-group[data-drop-after]::after { bottom: -5px; }
+.semantic-picker { padding: 8px; width: 300px; border-top: 1px solid var(--line); }
+.semantic-picker > p { color: var(--text-muted); font-size: 11px; padding: 0 4px; }
+.semantic-picker > button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px; border-radius: 5px; text-align: left; }
+.semantic-picker > button:hover { background: var(--surface-hover); }
+.semantic-picker small { display: block; color: var(--text-muted); font-size: 10px; margin-top: 2px; }
+.selection-semantic .icon { width: 15px; height: 15px; }
+@media (hover: none) { .semantic-handle:focus-visible .semantic-grip-icon { display: inline-flex; } .semantic-handle:focus-visible .semantic-function-icon { display: none; } }
+
+.selection-toolbar { flex-wrap: wrap; }
+.semantic-picker { max-width: 100%; }
+
+.semantic-parent-controls > .block-handle { cursor: grab; touch-action: none; -webkit-user-drag: none; }
+#blocks[data-block-dragging] .semantic-parent-controls > .block-handle { cursor: grabbing; }

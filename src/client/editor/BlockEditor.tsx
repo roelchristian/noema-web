@@ -1,6 +1,10 @@
+import { applySemantic, normalizeSemanticGroups, removeSemanticGroup, retagSemanticGroup, semanticDragItems, semanticFunctions, semanticKinds, semanticRuns, type SemanticKind } from '../../shared/semantic-blocks';
+import { selectedEditorBlocks } from './block-selection';
+import { installBlockDrag, type BlockDropPreview } from './block-drag';
+import { installBlockSelection, setEditorCaret } from './block-selection';
 import { displayMathSource } from './math-delimiters';
 import { applySmartQuotes } from './smart-quotes';
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type CSSProperties } from 'react';
 import type { EntityReviewItem } from '../../shared/entity-match-cache';
 import { entityLabels, type Block, type BlockType, type Entity, type Segment } from '../../shared/domain';
 import { uploadImage } from '../api';
@@ -27,7 +31,7 @@ const options: {type: BlockType; title: string; detail: string; icon: string}[] 
   {type: 'quote', title: 'Quote', detail: 'Make a thought stand out', icon: '❝'},
 ];
 interface ImageUpload {id:string; after?:string; name:string; message:string; current:number; total:number}
-interface Choice {title: string; detail?: string; icon: string; entity?: boolean; pick: () => void}
+interface Choice {color?:string; title: string; detail?: string; icon: string; entity?: boolean; pick: () => void}
 interface Menu {items: Choice[]; index: number; left: number; top: number; label: string}
 function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOpen, register, onPaste}: {block: Block; entities: Entity[]; reviewMatches: EntityReviewItem[]; onInput: (el: HTMLDivElement) => void; onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => void; onOpen: (id: string) => void; register: (el: HTMLDivElement | null) => void; onPaste: (e: ClipboardEvent<HTMLDivElement>) => void}) {
   const ref = useRef<HTMLDivElement>(null);
@@ -46,8 +50,11 @@ function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOp
     onPaste={onPaste}/>;
 }
 export function BlockEditor(props: Props) {
-  const {blocks, entities, onChange, onOpenEntity, onCreateEntity, onSave} = props;
+  const {blocks, entities, onOpenEntity, onCreateEntity, onSave} = props;
+  const onChange = (next: Block[]) => props.onChange(normalizeSemanticGroups(next));
   const reviewMatches = props.reviewMatches ?? [];
+  const [blockDrag, setBlockDrag] = useState<BlockDropPreview | null>(null), [dragStatus, setDragStatus] = useState('');
+  const dropEndId = blockDrag ? semanticDragItems(blocks,blockDrag.id).filter(block => block.id !== blockDrag.id).at(-1)?.id : undefined;
   const [mathTarget, setMathTarget] = useState<{range: Range; initial: string; node?: HTMLElement} | null>(null);
   const [uploads, setUploads] = useState<ImageUpload[]>([]), [imageError, setImageError] = useState('');
   const uploadQueue = useRef(Promise.resolve());
@@ -55,18 +62,35 @@ export function BlockEditor(props: Props) {
   useEffect(() => {mounted.current=true; return () => {mounted.current=false;};}, []);
   const fileInput = useRef<HTMLInputElement>(null), imageTarget = useRef<{after?: string; replace?: Block}>({});
   const [menu, setMenu] = useState<Menu | null>(null), elements = useRef(new Map<string, HTMLDivElement>());
-  const root = useRef<HTMLDivElement>(null), menuRef = useRef<HTMLDivElement>(null), latest = useRef(props); latest.current = props;
-  const focusTarget = useRef<{id: string; start: boolean} | null>(null);
+  const root = useRef<HTMLDivElement>(null), menuRef = useRef<HTMLDivElement>(null), latest = useRef(props); latest.current = {...props,onChange};
+  const focusTarget = useRef<{id: string; start: boolean; offset?: number} | null>(null);
   useLayoutEffect(() => {
     const target = focusTarget.current; if (!target) return;
     const el = elements.current.get(target.id); if (!el) return; focusTarget.current = null;
+    if(target.offset !== undefined && el.isContentEditable) {setEditorCaret(el,target.offset); return;}
     el.focus(); if(!el.isContentEditable) {el.querySelector('textarea')?.focus(); return;} const range = document.createRange(); range.selectNodeContents(el); range.collapse(target.start); getSelection()?.removeAllRanges(); getSelection()?.addRange(range);
   }, [blocks]);
+  useEffect(() => {
+    if (!root.current) return;
+    return installBlockSelection(root.current, {
+      blocks: () => latest.current.blocks, entities: () => latest.current.entities,
+      commit: (blocks, focus) => { setMenu(null); focusTarget.current = {...focus, start: false}; latest.current.onChange(blocks); },
+    });
+  }, []);
   useEffect(() => {
     const outside = (e: MouseEvent) => { if (!root.current?.contains(e.target as Node) && !menuRef.current?.contains(e.target as Node)) setMenu(null); };
     const escape = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape') setMenu(null); };
     document.addEventListener('mousedown', outside); document.addEventListener('keydown', escape);
     return () => { document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', escape); };
+  }, []);
+  useEffect(() => {
+    if (!root.current) return;
+    return installBlockDrag(root.current, {
+      blocks: () => latest.current.blocks,
+      commit: blocks => latest.current.onChange(blocks),
+      preview: drop => {setBlockDrag(drop); if (drop) setMenu(null);},
+      announce: setDragStatus,
+    });
   }, []);
   function commitSelection() {
     const list = latest.current.blocks.map(block => {
@@ -120,11 +144,12 @@ export function BlockEditor(props: Props) {
           progress({message:'Saving to your vault…'});
           const image = await uploadImage(props.vaultId,prepared);
           if(!mounted.current) return;
-          const block: Block = {...makeBlock('image'), imageId:image.id, alt:''};
+          const parent=latest.current.blocks.find(block=>block.id===after)?.semanticGroup;
+          const block: Block = {...makeBlock('image'),...(parent?{semanticGroup:parent}:{}), imageId:image.id, alt:''};
           const list = [...latest.current.blocks];
           const position = after ? list.findIndex(b => b.id === after) : list.length - 1;
           const replace = target.replace && list[position] && JSON.stringify(list[position]) === JSON.stringify(target.replace);
-          const trailing = makeBlock();
+          const trailing = {...makeBlock(),...(parent?{semanticGroup:parent}:{})};
           list.splice(Math.max(0,position + (replace ? 0 : 1)),replace ? 1 : 0,block,trailing);
           focusTarget.current = {id:trailing.id,start:true};
           latest.current.onChange(list);
@@ -146,6 +171,21 @@ export function BlockEditor(props: Props) {
   function imageChoice(after?: string, replace?: Block): Choice {
     return {title:'Image', detail:'Upload an image from your device', icon:'▧', pick:() => chooseImages(after,replace)};
   }
+  function semanticStyle(kind?: SemanticKind): CSSProperties | undefined {return kind ? {'--semantic-color':semanticFunctions[kind].color} as CSSProperties : undefined;}
+  function semanticGlyph(kind?: SemanticKind) {return <>{kind && <span className="semantic-function-icon"><Icon name={semanticFunctions[kind].icon}/></span>}<span className="semantic-grip-icon"><Icon name="grip"/></span></>;}
+  function tagSelection(kind: SemanticKind) {
+    if (!root.current) return;
+    const selected=selectedEditorBlocks(root.current);if (!selected) return;
+    const ids=selected.elements.map(el=>el.dataset.blockId!);
+    focusTarget.current={id:ids[0]!,start:true};onChange(applySemantic(latest.current.blocks,ids,kind));
+  }
+  function semanticChoices(pick: (kind: SemanticKind) => void): Choice[] {return semanticKinds.map(kind=>({title:semanticFunctions[kind].label,detail:semanticFunctions[kind].description,icon:semanticFunctions[kind].icon,color:semanticFunctions[kind].color,entity:true,pick:()=>{setMenu(null);pick(kind);}}));}
+  function blockOptions(anchor: HTMLElement, block: Block) {
+    show(anchor,[{title:'Semantic function…',detail:block.semantic ? semanticFunctions[block.semantic].label : 'Question, Definition, Example…',icon:'semantic',entity:true,pick:()=>show(anchor,[...semanticChoices(kind=>update(block.id,{semantic:kind})),...(block.semantic?[{title:'Remove semantic function',icon:'close',entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:undefined});}}]:[])],'SEMANTIC FUNCTION')},...options.map(o=>({...o,pick:()=>convert(block,o.type)})),{title:'Delete block',icon:'×',pick:()=>removeBlock(block.id)}],'BLOCK OPTIONS');
+  }
+  function groupOptions(anchor: HTMLElement, id: string) {
+    show(anchor,[...semanticChoices(kind=>onChange(retagSemanticGroup(latest.current.blocks,id,kind))),{title:'Ungroup blocks',detail:'Keep all child blocks',icon:'close',entity:true,pick:()=>{setMenu(null);onChange(removeSemanticGroup(latest.current.blocks,id));}}],'SEMANTIC GROUP');
+  }
   function update(id: string, patch: Partial<Block>) { onChange(latest.current.blocks.map(b => b.id === id ? {...b, ...patch} : b)); }
   function removeBlock(id: string) {
     setMenu(null);
@@ -160,7 +200,8 @@ export function BlockEditor(props: Props) {
     }
   }
   function insert(after: string | undefined, type: BlockType = 'paragraph', content: Segment[] = []) {
-    const next = {...makeBlock(type, content)}, list = [...latest.current.blocks];
+    const parent=latest.current.blocks.find(block=>block.id===after)?.semanticGroup;
+    const next = {...makeBlock(type, content),...(parent?{semanticGroup:parent}:{})}, list = [...latest.current.blocks];
     list.splice(after ? list.findIndex(b => b.id === after) + 1 : list.length, 0, next); focusTarget.current = {id: next.id, start: true}; onChange(list);
   }
   function convert(block: Block, type: BlockType, clear = false) { setMenu(null); focusTarget.current = {id: block.id, start: false}; update(block.id, {type, content: clear ? [] : block.type === 'table' ? (block.rows ?? []).flatMap((row, i) => [...(i ? [{text: '\n'}] : []), ...row.flatMap((cell, col) => [...(col ? [{text: '\t'}] : []), ...cell])]) : block.content, rows: type === 'table' ? block.rows ?? [[clear ? [] : block.content, []], [[], []]] : undefined, checked: false, imageId: undefined, alt: undefined}); }
@@ -179,7 +220,7 @@ export function BlockEditor(props: Props) {
     const selection = getSelection(); if (!selection?.rangeCount) { setMenu(null); return; }
     const range = selection.getRangeAt(0); if (!el.contains(range.startContainer)) { setMenu(null); return; }
     if (/^\/[^\n]*$/.test(el.textContent || '')) {
-      const query = el.textContent!.slice(1).toLowerCase(); show(el, [...options.filter(o => o.title.toLowerCase().includes(query)).map(o => ({...o, pick: () => convert(block, o.type, true)})), ...('image'.includes(query) ? [imageChoice(block.id, block)] : [])], 'TURN INTO'); return;
+      const query = el.textContent!.slice(1).toLowerCase(); show(el, [...options.filter(o => o.title.toLowerCase().includes(query)).map(o => ({...o, pick: () => convert(block, o.type, true)})), ...semanticKinds.filter(kind=>kind.includes(query)).map(kind=>({title:semanticFunctions[kind].label,detail:'Semantic function',icon:semanticFunctions[kind].icon,color:semanticFunctions[kind].color,entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:kind,content:[]});}})), ...('image'.includes(query) ? [imageChoice(block.id, block)] : [])], 'TURN INTO'); return;
     }
     const before = range.cloneRange(); before.selectNodeContents(el); before.setEnd(range.startContainer, range.startOffset);
     const match = before.toString().match(/(?:^|\s)@([^@\n]*)$/);
@@ -197,14 +238,15 @@ export function BlockEditor(props: Props) {
     if (!selection?.rangeCount) return;
     const range = selection.getRangeAt(0);
     if (!el.contains(range.startContainer) || !el.contains(range.endContainer)) return;
-    const incoming = clipboardBlocks(e.clipboardData.getData('text/plain'), e.clipboardData.getData('text/html'));
+    const incoming = clipboardBlocks(e.clipboardData.getData('text/plain'), e.clipboardData.getData('text/html')).map(incoming=>block.semanticGroup?{...incoming,semanticGroup:block.semanticGroup}:incoming);
+    const wasEmpty=!el.textContent?.trim();
     range.deleteContents();
     if (incoming.length === 1 && incoming[0]!.type === 'paragraph') {
       const wrapper = document.createElement('div'); wrapper.innerHTML = segmentHTML(incoming[0]!.content, entities);
       const fragment = document.createDocumentFragment(); while (wrapper.firstChild) fragment.append(wrapper.firstChild);
       const last = fragment.lastChild;
       range.insertNode(fragment); if (last) range.setStartAfter(last); range.collapse(true);
-      selection.removeAllRanges(); selection.addRange(range); update(block.id, {content: readSegments(el)}); return;
+      selection.removeAllRanges(); selection.addRange(range); update(block.id, {content: readSegments(el),...(wasEmpty&&incoming[0]!.semantic?{semantic:incoming[0]!.semantic}:{})}); return;
     }
     const before = range.cloneRange(); before.selectNodeContents(el); before.setEnd(range.startContainer, range.startOffset);
     const after = range.cloneRange(); after.selectNodeContents(el); after.setStart(range.endContainer, range.endOffset);
@@ -213,7 +255,7 @@ export function BlockEditor(props: Props) {
     if (incoming[0]!.type === 'paragraph') incoming[0]!.content.unshift(...prefix);
     else if (prefix.length) replacement.push({...block, content: prefix});
     replacement.push(...incoming);
-    if (suffix.length) replacement.push(makeBlock(block.type, suffix));
+    if (suffix.length) replacement.push({...makeBlock(block.type, suffix),...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{})});
     const list = [...latest.current.blocks], index = list.findIndex(b => b.id === block.id);
     list.splice(index, 1, ...replacement); focusTarget.current = {id: replacement.at(-1)!.id, start: !suffix.length ? false : true}; onChange(list);
   }
@@ -232,13 +274,28 @@ export function BlockEditor(props: Props) {
       if (!el.textContent && ['bullet', 'todo'].includes(block.type)) { convert(block, 'paragraph'); return; }
       const selection = getSelection(); if (!selection?.rangeCount) return;
       const range = selection.getRangeAt(0); range.deleteContents(); const tail = range.cloneRange(); tail.setEnd(el, el.childNodes.length); const temp = document.createElement('div'); temp.append(tail.extractContents());
-      const next: Block = {id: crypto.randomUUID(), type: ['bullet', 'todo'].includes(block.type) ? block.type : 'paragraph', checked: false, content: readSegments(temp)};
+      const next: Block = {...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{}),id: crypto.randomUUID(), type: ['bullet', 'todo'].includes(block.type) ? block.type : 'paragraph', checked: false, content: readSegments(temp)};
       const list = latest.current.blocks.map(b => b.id === block.id ? {...b, content: readSegments(el)} : b); list.splice(list.findIndex(b => b.id === block.id) + 1, 0, next); focusTarget.current = {id: next.id, start: true}; onChange(list);
     }
     if (e.key === 'Backspace' && !el.textContent && blocks.length > 1) { e.preventDefault(); removeBlock(block.id); }
   }
+  const renderBlock = (block: Block) => <Fragment key={block.id}><div data-block-id={block.id} data-semantic-kind={block.semantic} style={semanticStyle(block.semantic)} className={'block ' + block.type + (block.semantic ? ' semantic-block' : '') + (blockDrag?.id === block.id ? ' is-block-dragging' : '')} data-drop-before={blockDrag?.valid && blockDrag.beforeId === block.id ? true : undefined} data-drop-after={blockDrag?.valid && blockDrag.beforeId === null && block.id === dropEndId ? true : undefined}>
+    {block.semantic && <span className="semantic-accent" aria-hidden="true"/>}
+    <div className="block-controls" role="group" aria-label="Block controls">
+      <button className="block-add" title="Add block below" aria-label="Add block below" onClick={e => show(e.currentTarget, [...options.map(option => ({...option, pick: () => { setMenu(null); insert(block.id, option.type); }})), imageChoice(block.id)], 'ADD BLOCK BELOW')}><Icon name="plus"/></button>
+      <button className={'block-handle' + (block.semantic ? ' semantic-handle' : '')} draggable={false} title={(block.semantic ? semanticFunctions[block.semantic].label+' · ' : '')+'Drag to move · Click for block options'} aria-label={block.semantic ? semanticFunctions[block.semantic].label+' block options' : 'Block options'} aria-describedby="block-drag-help" aria-pressed={blockDrag?.id === block.id} onClick={e => blockOptions(e.currentTarget,block)}>{semanticGlyph(block.semantic)}</button>
+    </div>
+    {block.type === 'todo' ? <input type="checkbox" aria-label="Complete task" checked={block.checked} onChange={e => update(block.id, {checked: e.target.checked})}/> : block.type === 'bullet' ? <span className="bullet-marker">•</span> : null}
+    {block.type === 'math' ? <MathBlock block={block} onDelete={() => removeBlock(block.id)} onChange={source => update(block.id, {content: [{text: source}]})} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'image' ? <ImageBlock block={block} vaultId={props.vaultId} onChange={alt => update(block.id,{alt})} onDelete={() => removeBlock(block.id)} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'table' ? <TableBlock reviewMatches={reviewMatches} block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock reviewMatches={reviewMatches} block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={el => {
+      const content = readSegments(el);
+      const source = block.type === 'paragraph' && content.every(segment => !segment.entityId && !segment.math && !segment.code)
+        ? displayMathSource(content.map(segment => segment.text ?? '').join('')) : undefined;
+      if (source) { setMenu(null); focusTarget.current = {id: block.id, start: false}; update(block.id, {type: 'math', content: [{text: source}]}); return; }
+      completeInlineMath(el); update(block.id, {content: readSegments(el)}); detect(el, block);
+    }} onKeyDown={e => keyDown(e, block)} onPaste={e => paste(e, block)}/>}
+  </div>{uploadCards(block.id)}</Fragment>;
   return <><input ref={fileInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden aria-label="Choose images" onChange={e => {const files=Array.from(e.currentTarget.files ?? []); e.currentTarget.value=''; void addImages(files,imageTarget.current);}}/>
-    <div id="blocks" ref={root} onClickCapture={e => {
+    <div id="blocks" ref={root} data-block-dragging={blockDrag ? true : undefined} onClickCapture={e => {
       const review = (e.target as Element).closest<HTMLElement>('[data-entity-review]');
       if (review) {
         e.preventDefault();
@@ -256,23 +313,15 @@ export function BlockEditor(props: Props) {
       e.preventDefault(); e.stopPropagation(); setMenu(null);
       const blockElement=(e.target as Element).closest<HTMLElement>('[data-block-id]');
       void addImages(files,{after:blockElement?.dataset.blockId});
-    }}>{blocks.map(block => <Fragment key={block.id}><div data-block-id={block.id} className={'block ' + block.type}>
-    <div className="block-controls" role="group" aria-label="Block controls">
-      <button className="block-add" title="Add block below" aria-label="Add block below" onClick={e => show(e.currentTarget, [...options.map(option => ({...option, pick: () => { setMenu(null); insert(block.id, option.type); }})), imageChoice(block.id)], 'ADD BLOCK BELOW')}><Icon name="plus"/></button>
-      <button className="block-handle" title="Block options" aria-label="Block options" onClick={e => show(e.currentTarget, [...options.map(o => ({...o, pick: () => convert(block, o.type)})), {title: 'Delete block', icon: '×', pick: () => removeBlock(block.id)}], 'BLOCK OPTIONS')}><Icon name="grip"/></button>
-    </div>
-    {block.type === 'todo' ? <input type="checkbox" aria-label="Complete task" checked={block.checked} onChange={e => update(block.id, {checked: e.target.checked})}/> : block.type === 'bullet' ? <span className="bullet-marker">•</span> : null}
-    {block.type === 'math' ? <MathBlock block={block} onDelete={() => removeBlock(block.id)} onChange={source => update(block.id, {content: [{text: source}]})} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'image' ? <ImageBlock block={block} vaultId={props.vaultId} onChange={alt => update(block.id,{alt})} onDelete={() => removeBlock(block.id)} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'table' ? <TableBlock reviewMatches={reviewMatches} block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock reviewMatches={reviewMatches} block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={el => {
-      const content = readSegments(el);
-      const source = block.type === 'paragraph' && content.every(segment => !segment.entityId && !segment.math && !segment.code)
-        ? displayMathSource(content.map(segment => segment.text ?? '').join('')) : undefined;
-      if (source) { setMenu(null); focusTarget.current = {id: block.id, start: false}; update(block.id, {type: 'math', content: [{text: source}]}); return; }
-      completeInlineMath(el); update(block.id, {content: readSegments(el)}); detect(el, block);
-    }} onKeyDown={e => keyDown(e, block)} onPaste={e => paste(e, block)}/>}
-  </div>{uploadCards(block.id)}</Fragment>)}{uploadCards()}</div>
-    <SelectionToolbar onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} onCommit={commitSelection} onCreateEntity={onCreateEntity}/>
+    }}>{semanticRuns(blocks).map(run => run.type === 'block' ? renderBlock(run.block) : <section key={run.id} data-block-group-id={run.id} className={'semantic-group'+(blockDrag?.id===run.id?' is-block-dragging':'')} data-semantic-kind={run.kind} style={semanticStyle(run.kind)} aria-label={semanticFunctions[run.kind].label+' semantic group'} data-drop-before={blockDrag?.valid&&blockDrag.beforeId===run.id?true:undefined} data-drop-after={blockDrag?.valid&&blockDrag.beforeId===null&&dropEndId===run.id?true:undefined}>
+      <span className="semantic-accent" aria-hidden="true"/><div className="semantic-parent-controls"><button type="button" className="block-handle semantic-handle" data-semantic-parent-handle draggable={false} aria-describedby="block-drag-help" aria-label={semanticFunctions[run.kind].label+' group options'} aria-pressed={blockDrag?.id===run.id} title={semanticFunctions[run.kind].label+' · Drag group or click for options'} onClick={event=>groupOptions(event.currentTarget,run.id)}>{semanticGlyph(run.kind)}</button></div>
+      <div className="semantic-children">{run.blocks.map(renderBlock)}</div>
+    </section>)}{uploadCards()}</div>
+    <span id="block-drag-help" className="block-drag-sr">Drag to reorder. Click for options. With the handle focused, press Space to pick up, Up or Down to move, Space or Enter to drop, Escape to cancel.</span>
+    <div className="block-drag-sr" role="status" aria-live="polite" aria-atomic="true">{dragStatus}</div>
+    <SelectionToolbar onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
     {mathTarget && <MathDialog initial={mathTarget.initial} onSave={saveInlineMath} onClose={() => setMathTarget(null)}/>}
     {imageError && <div className="image-upload-error" role="alert">{imageError}</div>}
-    {menu && <div ref={menuRef} className="command-menu" style={{left: menu.left, top: menu.top}} onMouseDown={e => e.preventDefault()} role="menu"><div className="menu-label">{menu.label}</div>{menu.items.map((item, index) => <button key={index} role="menuitem" className={index === menu.index ? 'highlight' : ''} onClick={item.pick}><span className="menu-icon">{item.entity || item.icon === 'equation' ? <Icon name={item.icon}/> : item.icon}</span><span>{item.title}<small>{item.detail}</small></span></button>)}</div>}
+    {menu && <div ref={menuRef} className="command-menu" style={{left: menu.left, top: menu.top}} onMouseDown={e => e.preventDefault()} role="menu"><div className="menu-label">{menu.label}</div>{menu.items.map((item, index) => <button key={index} role="menuitem" className={index === menu.index ? 'highlight' : ''} onClick={item.pick}><span className="menu-icon" style={item.color?{color:item.color}:undefined}>{item.entity || item.icon === 'equation' ? <Icon name={item.icon}/> : item.icon}</span><span>{item.title}<small>{item.detail}</small></span></button>)}</div>}
   </>;
 }

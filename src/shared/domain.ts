@@ -13,7 +13,7 @@ export type Segment = TextStyle & ( { text: string; entityId?: never; mentionTex
 export function isEntityTaggingText(segment: Segment): segment is Extract<Segment, {text: string}> {
   return !segment.entityId && !segment.math && !segment.skipAutoTag;
 }
-export interface Block { id: string; type: BlockType; checked: boolean; content: Segment[]; rows?: Segment[][][]; imageId?: string; alt?: string }
+export interface Block { semantic?: import('./semantic-blocks.js').SemanticKind; semanticGroup?: import('./semantic-blocks.js').SemanticGroup; id: string; type: BlockType; checked: boolean; content: Segment[]; rows?: Segment[][][]; imageId?: string; alt?: string }
 export interface Vault { id: string; name: string; locked: boolean; protected: boolean; updated_at: string }
 export interface PageSummary { id: string; title: string; icon?: PageIconId | null; updated_at: string }
 export interface TrashedPage extends PageSummary { deleted_at: string; expires_at: string }

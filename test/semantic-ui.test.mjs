@@ -1,0 +1,70 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {JSDOM} from 'jsdom';
+import React,{act,useState} from 'react';
+import {createRoot} from 'react-dom/client';
+import {BlockEditor} from '../src/client/editor/BlockEditor.tsx';
+import {clipboardBlocks} from '../src/client/editor/paste.ts';
+import {editorSelectionClipboard} from '../src/client/editor/block-selection.ts';
+const block=(id,text)=>({id,type:'paragraph',checked:false,content:[{text}]});
+async function fixture(blocks){
+ const dom=new JSDOM('<div id="mount"></div>',{pretendToBeVisual:true}),keys=['window','document','Node','Element','HTMLElement','HTMLInputElement','HTMLTextAreaElement','Range','DOMParser','InputEvent','MouseEvent','Event','getSelection','innerWidth','innerHeight','IS_REACT_ACT_ENVIRONMENT'],previous=keys.map(k=>Object.getOwnPropertyDescriptor(globalThis,k));
+ for(const key of keys)Object.defineProperty(globalThis,key,{configurable:true,writable:true,value:key==='IS_REACT_ACT_ENVIRONMENT'?true:key==='getSelection'?()=>dom.window.getSelection():dom.window[key]});
+ document.queryCommandState=()=>false;dom.window.Range.prototype.getBoundingClientRect=()=>({left:100,right:350,top:200,bottom:240,width:250,height:40});
+ Object.defineProperty(dom.window.HTMLElement.prototype,'isContentEditable',{get(){return this.getAttribute('contenteditable')==='true';}});
+ let current=blocks;
+ function App(){const [value,setValue]=useState(blocks);return React.createElement(BlockEditor,{vaultId:'default',blocks:value,entities:[],onChange:next=>{current=next;setValue(next);},onOpenEntity:()=>{},onCreateEntity:()=>{},onSave:()=>{},onAddAlias:async()=>{}});}
+ const root=createRoot(document.querySelector('#mount'));await act(async()=>root.render(React.createElement(App)));
+ async function click(node){assert.ok(node,'expected control');await act(async()=>node.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true,cancelable:true})));}
+ function select(){const contents=document.querySelectorAll('.block-content'),range=document.createRange();range.setStart(contents[0],0);range.setEnd(contents[contents.length-1],contents[contents.length-1].childNodes.length);document.getSelection().removeAllRanges();document.getSelection().addRange(range);return range;}
+ return {dom,current:()=>current,click,select,async close(){await act(async()=>root.unmount());dom.window.close();keys.forEach((k,i)=>{if(previous[i])Object.defineProperty(globalThis,k,previous[i]);else delete globalThis[k];});}};
+}
+test('block options apply a colored semantic function without changing editable text',async()=>{
+ const f=await fixture([block('a','A definition')]);try{
+  await f.click(document.querySelector('.block-handle'));
+  await f.click(Array.from(document.querySelectorAll('.command-menu button')).find(b=>b.textContent.includes('Semantic function')));
+  await f.click(Array.from(document.querySelectorAll('.command-menu button')).find(b=>b.textContent.startsWith('Definition')));
+  assert.equal(f.current()[0].semantic,'definition');assert.equal(document.querySelector('.block-content').textContent,'A definition');
+  const tagged=document.querySelector('.semantic-block');assert.equal(tagged.dataset.semanticKind,'definition');assert.match(tagged.style.getPropertyValue('--semantic-color'),/^#/);assert.ok(tagged.querySelector('.semantic-accent'));assert.ok(tagged.querySelector('.semantic-function-icon'));assert.ok(tagged.querySelector('.semantic-grip-icon'));
+ }finally{await f.close();}
+});
+test('selecting multiple blocks creates a semantic parent, which can be retagged and ungrouped',async()=>{
+ const f=await fixture([block('a','First subblock'),block('b','Second subblock')]);try{
+  await act(async()=>{f.select();document.dispatchEvent(new Event('selectionchange'));});
+  await f.click(document.querySelector('[aria-label="Semantic block function"]'));
+  await f.click(Array.from(document.querySelectorAll('.semantic-picker button')).find(b=>b.textContent.startsWith('Question')));
+  const group=document.querySelector('[data-block-group-id]');assert.ok(group);assert.equal(group.querySelectorAll('[data-block-id]').length,2);assert.deepEqual(f.current().map(b=>b.content[0].text),['First subblock','Second subblock']);
+  assert.ok(f.current().every(b=>b.semanticGroup.kind==='question'));await f.click(group.querySelector('[data-semantic-parent-handle]'));
+  await f.click(Array.from(document.querySelectorAll('.command-menu button')).find(b=>b.textContent.startsWith('Evidence')));assert.ok(f.current().every(b=>b.semanticGroup.kind==='evidence'));
+  await f.click(document.querySelector('[data-semantic-parent-handle]'));
+  await f.click(Array.from(document.querySelectorAll('.command-menu button')).find(b=>b.textContent.startsWith('Ungroup blocks')));assert.equal(document.querySelector('[data-block-group-id]'),null);assert.ok(f.current().every(b=>!b.semanticGroup));
+ }finally{await f.close();}
+});
+test('copy and paste preserve semantic parents, child tags and unique group ownership',async()=>{
+ const parent={id:'original-parent',kind:'question'},blocks=[{...block('a','A'),semantic:'definition',semanticGroup:parent},{...block('b','B'),semanticGroup:parent}];
+ const f=await fixture(blocks);try{
+  f.select();const data=editorSelectionClipboard(document.querySelector('#blocks'),f.current(),[]),pasted=clipboardBlocks(data.text,data.html);
+  assert.equal(pasted[0].semantic,'definition');assert.equal(pasted[0].semanticGroup.kind,'question');assert.equal(pasted[0].semanticGroup.id,pasted[1].semanticGroup.id);assert.notEqual(pasted[0].semanticGroup.id,parent.id);assert.deepEqual(pasted.map(b=>b.content[0].text),['A','B']);
+ }finally{await f.close();}
+});
+
+test('a semantic parent handle reorders all child blocks as one unit',async()=>{
+ const group={id:'g',kind:'example'},blocks=[block('a','Before'),{...block('b','Child one'),semanticGroup:group},{...block('c','Child two'),semanticGroup:group},block('d','After')];
+ const f=await fixture(blocks);try{
+  const handle=document.querySelector('[data-semantic-parent-handle]');
+  async function key(value){await act(async()=>handle.dispatchEvent(new f.dom.window.KeyboardEvent('keydown',{key:value,bubbles:true,cancelable:true})));}
+  await key(' ');await key('End');await key('Enter');
+  assert.deepEqual(f.current().map(b=>b.id),['a','d','b','c']);assert.equal(document.querySelector('[data-block-group-id]').querySelectorAll('[data-block-id]').length,2);
+  assert.deepEqual(f.current().slice(-2).map(b=>b.content[0].text),['Child one','Child two']);
+ }finally{await f.close();}
+});
+
+test('document selection can group equation and image blocks without text editing hosts',async()=>{
+ const blocks=[{...block('math','x^2'),type:'math'},{...block('image',''),type:'image',imageId:'example.png',alt:'Diagram'}];
+ const f=await fixture(blocks);try{
+  await act(async()=>{const range=document.createRange();range.selectNodeContents(document.querySelector('#blocks'));document.getSelection().removeAllRanges();document.getSelection().addRange(range);document.dispatchEvent(new Event('selectionchange'));});
+  await f.click(document.querySelector('[aria-label="Semantic block function"]'));
+  await f.click(Array.from(document.querySelectorAll('.semantic-picker button')).find(b=>b.textContent.startsWith('Example')));
+  assert.equal(f.current()[0].type,'math');assert.equal(f.current()[1].imageId,'example.png');assert.ok(f.current().every(b=>b.semanticGroup.kind==='example'));assert.equal(document.querySelector('[data-block-group-id]').querySelectorAll('[data-block-id]').length,2);
+ }finally{await f.close();}
+});

@@ -1,3 +1,4 @@
+import { isSemanticKind } from '../../shared/semantic-blocks.js';
 import { summaryContentHash } from './summary-content.js';
 import { AINotifications } from './ai-notifications.js';
 import { Images } from './images.js';
@@ -40,7 +41,7 @@ export class Pages {
   validateBlocks(vault: string, input: unknown): Block[] {
     if (!Array.isArray(input) || input.length>2000) throw new HttpError(400,'Invalid blocks');
     const ids=new Set<string>();
-    return input.map(value=>{
+    const validated = input.map(value=>{
       const b=object(value), type=blockTypes.find(t=>t===b.type);
       if (!type || !Array.isArray(b.content) || b.content.length>1000) throw new HttpError(400,'Invalid block');
       const id=required(b.id);if(ids.has(id))throw new HttpError(400,'Duplicate block ID');ids.add(id);
@@ -60,6 +61,12 @@ export class Pages {
         });
       };
       const block: Block = {id,type,checked:!!b.checked,content:segments(b.content)};
+      if (b.semantic !== undefined) {if (!isSemanticKind(b.semantic)) throw new HttpError(400,'Invalid semantic function');block.semantic=b.semantic;}
+      if (b.semanticGroup !== undefined) {
+        const group=object(b.semanticGroup);
+        if (!isSemanticKind(group.kind)) throw new HttpError(400,'Invalid semantic group function');
+        block.semanticGroup={id:required(group.id),kind:group.kind};
+      }
       if(type === 'math') {
         if(block.content.some(segment => segment.entityId)) throw new HttpError(400,'Equations must contain LaTeX text');
         block.content = [{text: block.content.map(segment => segment.text ?? '').join('')}];
@@ -79,6 +86,19 @@ export class Pages {
       }
       return block;
     });
+    const groups=new Map<string,{kind:string;count:number}>(),closed=new Set<string>();let current:string|undefined;
+    for (const block of validated) {
+      const group=block.semanticGroup;
+      if (current && group?.id!==current) closed.add(current);
+      if (group) {
+        if (ids.has(group.id) || closed.has(group.id)) throw new HttpError(400,'Semantic groups must be contiguous and have distinct IDs');
+        const previous=groups.get(group.id);
+        if (previous && previous.kind!==group.kind) throw new HttpError(400,'A semantic parent must have one function');
+        groups.set(group.id,{kind:group.kind,count:(previous?.count??0)+1});
+      }
+      current=group?.id;
+    }
+    return validated;
   }
   update(vault: string, id: string, body: Record<string, unknown>) {
     const page=this.get(vault,id),blocks=this.validateBlocks(vault,body.blocks),title=text(body.title,500);

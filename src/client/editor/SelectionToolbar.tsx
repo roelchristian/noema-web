@@ -1,3 +1,5 @@
+import { semanticFunctions, semanticKinds, type SemanticKind } from '../../shared/semantic-blocks';
+import { editorSelectionRanges, selectedEditorBlocks } from './block-selection';
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { entityLabels, type Entity } from '../../shared/domain';
 import { Icon } from '../components/Icon';
@@ -8,6 +10,7 @@ interface Props {
   editor: RefObject<HTMLDivElement | null>;
   entities: Entity[];
   onCommit: () => void;
+  onSemantic: (kind: SemanticKind) => void;
   onAddAlias: (id: string, alias: string) => Promise<void>;
   onMath: (range: Range) => void;
   onCreateEntity: (name: string, onCreated: (id: string) => void) => void;
@@ -21,9 +24,10 @@ const formats = [
 function editable(node: Node) {
   return (node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>('.block-content[contenteditable="true"]');
 }
-export function SelectionToolbar({editor, entities, onCommit, onAddAlias, onCreateEntity, onMath}: Props) {
+export function SelectionToolbar({editor, entities, onCommit, onAddAlias, onCreateEntity, onMath, onSemantic}: Props) {
   const [anchor, setAnchor] = useState<{left: number; right: number; top: number; bottom: number} | null>(null);
   const [annotating, setAnnotating] = useState(false), [query, setQuery] = useState('');
+  const [semantic, setSemantic] = useState(false);
   const [linking, setLinking] = useState(false);
   const [savingAlias, setSavingAlias] = useState(false), [aliasError, setAliasError] = useState('');
   const [active, setActive] = useState<string[]>([]);
@@ -31,14 +35,18 @@ export function SelectionToolbar({editor, entities, onCommit, onAddAlias, onCrea
   const saved = useRef<Range | null>(null), surface = useRef<HTMLDivElement>(null);
   const picking = useRef(false);
   const latest = useRef({entities, onCommit}); latest.current = {entities, onCommit};
-  function dismiss() { saved.current = null; picking.current = false; setAnnotating(false); setLinking(false); setAnchor(null); }
+  function dismiss() { saved.current = null; picking.current = false; setSemantic(false); setAnnotating(false); setLinking(false); setAnchor(null); }
   useEffect(() => {
     function inspect() {
       if (picking.current || surface.current?.contains(document.activeElement)) return;
       const selection = getSelection();
-      if (!selection?.rangeCount || selection.isCollapsed || !selection.toString().trim()) { dismiss(); return; }
-      const range = selection.getRangeAt(0), start = editable(range.startContainer), end = editable(range.endContainer);
-      if (!start || !end || !editor.current?.contains(start) || !editor.current.contains(end)) { dismiss(); return; }
+      if (!selection?.rangeCount || selection.isCollapsed) { dismiss(); return; }
+      const range = selection.getRangeAt(0);
+      const portions = editor.current ? editorSelectionRanges(editor.current, range) : [];
+      const start = editable(range.startContainer) ?? (portions[0] ? editable(portions[0].startContainer) : undefined);
+      const end = editable(range.endContainer) ?? (portions.at(-1) ? editable(portions.at(-1)!.endContainer) : undefined);
+      const selectedBlocks=editor.current ? selectedEditorBlocks(editor.current,selection) : null;
+      if (!selectedBlocks || (start && !editor.current?.contains(start)) || (end && !editor.current?.contains(end))) { dismiss(); return; }
       // Entity references are atomic; do not offer annotation inside an existing reference.
       const parent = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
       if (parent?.closest('[data-entity],[data-math]')) { dismiss(); return; }
@@ -55,6 +63,10 @@ export function SelectionToolbar({editor, entities, onCommit, onAddAlias, onCrea
     function escape(event: globalThis.KeyboardEvent) {
       if (event.key !== 'Escape' || !saved.current) return;
       const range = saved.current;
+      if (!editable(range.endContainer) && editor.current) {
+        const end = editorSelectionRanges(editor.current, range).at(-1);
+        if (end) range.setEnd(end.endContainer, end.endOffset);
+      }
       range.collapse(false);
       dismiss();
       editable(range.startContainer)?.focus();
@@ -81,7 +93,7 @@ export function SelectionToolbar({editor, entities, onCommit, onAddAlias, onCrea
     if (!anchor || !surface.current) return;
     const box = surface.current.getBoundingClientRect();
     setPosition(selectionPopoverPlacement(anchor, {width: box.width, height: surface.current.scrollHeight + 2}, {width: innerWidth, height: innerHeight}));
-  }, [anchor, annotating, linking, query, entities]);
+  }, [anchor, annotating, semantic, linking, query, entities]);
   function restore(range: Range) {
     if (!range.startContainer.isConnected || !range.endContainer.isConnected) return false;
     editable(range.startContainer)?.focus();
@@ -91,7 +103,11 @@ export function SelectionToolbar({editor, entities, onCommit, onAddAlias, onCrea
   function applyFormat(command: string) {
     const range = saved.current;
     if (!range || !restore(range)) { dismiss(); return; }
-    document.execCommand(command);
+    const ranges = editor.current ? editorSelectionRanges(editor.current, range) : [];
+    const original = range.cloneRange();
+    const enable = !ranges.every(part => {restore(part); return document.queryCommandState(command);});
+    for (const part of ranges) { if (restore(part) && document.queryCommandState(command) !== enable) document.execCommand(command); }
+    restore(original);
     latest.current.onCommit();
     const selection = getSelection();
     if (selection?.rangeCount) saved.current = selection.getRangeAt(0).cloneRange();
@@ -110,7 +126,8 @@ export function SelectionToolbar({editor, entities, onCommit, onAddAlias, onCrea
   }
   if (!anchor) return null;
   const range = saved.current;
-  const single = range && editable(range.startContainer) === editable(range.endContainer);
+  const single = range && editor.current && editorSelectionRanges(editor.current, range).length === 1;
+  const selectedCount = range && editor.current ? new Set(editorSelectionRanges(editor.current,range).map(part=>editable(part.startContainer)?.closest<HTMLElement>('[data-block-id]')?.dataset.blockId)).size : 0;
   const selectedText = range?.toString().trim() || '';
   const {exact, results} = annotationSuggestions(entities, selectedText, query);
   const linkEntity = async (id: string) => {
@@ -133,11 +150,13 @@ export function SelectionToolbar({editor, entities, onCommit, onAddAlias, onCrea
   };
   return <div ref={surface} className="selection-popover" style={position} onMouseDown={event => { if (!(event.target instanceof HTMLInputElement)) event.preventDefault(); }}>
     <div className="selection-toolbar" role="toolbar" aria-label="Selection formatting">
-      {formats.map(format => <button key={format.command} type="button" title={format.label} aria-label={format.label} aria-pressed={active.includes(format.command)} onClick={() => applyFormat(format.command)}>{format.glyph}</button>)}
+      {formats.map(format => <button key={format.command} type="button" title={format.label} aria-label={format.label} aria-pressed={active.includes(format.command)} disabled={!range || !editor.current || !editorSelectionRanges(editor.current,range).length} onClick={() => applyFormat(format.command)}>{format.glyph}</button>)}
       <button type="button" aria-label="Inline equation" title="Inline equation" disabled={!single} onClick={() => {const current = saved.current?.cloneRange(); if (current) {dismiss(); onMath(current);}}}><Icon name="equation"/></button>
       <span className="selection-divider"/>
-      <button type="button" className="selection-annotate" disabled={!single} title={single ? 'Connect selection to a knowledge entity' : 'Select text within one block or table cell to annotate'} aria-expanded={annotating} onClick={() => { picking.current = !annotating; setAnnotating(!annotating); setLinking(false); setQuery(''); }}><Icon name="knowledge"/>Annotate</button>
+      <button type="button" className="selection-semantic" aria-expanded={semantic} aria-label="Semantic block function" onClick={()=>{picking.current=!semantic;setSemantic(!semantic);setAnnotating(false);setLinking(false);}}><Icon name="semantic"/>Semantic</button>
+      <button type="button" className="selection-annotate" disabled={!single} title={single ? 'Connect selection to a knowledge entity' : 'Select text within one block or table cell to annotate'} aria-expanded={annotating} onClick={() => { picking.current = !annotating; setSemantic(false); setAnnotating(!annotating); setLinking(false); setQuery(''); }}><Icon name="knowledge"/>Annotate</button>
     </div>
+    {semantic && <div className="semantic-picker" role="region" aria-label="Semantic functions"><p>{selectedCount===1 ? 'Apply a function to this block' : 'Group selected blocks under one function'}</p>{semanticKinds.map(kind=><button type="button" key={kind} onClick={()=>{const range=saved.current;if(range&&restore(range))onSemantic(kind);dismiss();}}><span style={{color:semanticFunctions[kind].color}}><Icon name={semanticFunctions[kind].icon}/></span><span>{semanticFunctions[kind].label}<small>{semanticFunctions[kind].description}</small></span></button>)}</div>}
     {annotating && <div className="selection-entities" role="region" aria-label="Annotate selection" aria-busy={savingAlias}>
       {savingAlias && <p role="status">Saving alias…</p>}
       {aliasError && <p role="alert">{aliasError}</p>}

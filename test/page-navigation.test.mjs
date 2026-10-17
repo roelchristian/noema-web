@@ -63,3 +63,43 @@ test('vault changes invalidate pending page loads from the previous vault',async
  const navigation=workspace.openPage('two');await new Promise(resolve=>setImmediate(resolve));await workspace.selectVault('b');pending.resolve(page('two'));await navigation;
  assert.equal(workspace.snapshot().vault.id,'b');assert.equal(workspace.snapshot().page,null);assert.equal(workspace.snapshot().loadingPageId,null);assert.equal(workspace.snapshot().busy,false);
 });
+
+test('cached notes display synchronously without publishing a loading state',async t=>{
+ const {workspace}=await fixture(t),one=workspace.snapshot().page;
+ await workspace.openPage('two');const refresh=deferred(),states=[];
+ t.mock.method(api,'page',()=>refresh.promise);workspace.subscribe(()=>states.push(workspace.snapshot()));
+ const navigation=workspace.openPage('one');
+ assert.equal(workspace.snapshot().page,one);assert.equal(workspace.snapshot().loadingPageId,null);
+ assert.ok(states.every(state=>state.loadingPageId===null&&!state.busy));await navigation;
+ refresh.resolve({...page('one'),title:'Updated elsewhere',revision:2});await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(workspace.snapshot().page.title,'Updated elsewhere');assert.equal(workspace.snapshot().page.revision,2);
+});
+test('cached navigation is immediate while outgoing drafts save and failed writes remain retryable',async t=>{
+ const {workspace}=await fixture(t);await workspace.openPage('two');workspace.updatePage({title:'Draft two'});
+ const write=deferred();t.mock.method(api,'savePage',()=>write.promise);
+ const request=t.mock.method(api,'page',async()=>{throw new Error('Should not fetch with pending writes');});
+ const navigation=workspace.openPage('one');assert.equal(workspace.snapshot().page.id,'one');await navigation;
+ await workspace.openPage('two');assert.equal(workspace.snapshot().page.title,'Draft two');assert.equal(request.mock.callCount(),0);
+ write.reject(new Error('Offline save'));await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(workspace.snapshot().page.title,'Draft two');assert.equal(workspace.saver.hasPending,true);assert.equal(workspace.snapshot().saveStatus,'error');
+ t.mock.method(api,'savePage',async(_vault,_id,input)=>({...input,revision:2}));await workspace.saver.flush();
+ assert.equal(workspace.saver.hasPending,false);assert.equal(workspace.snapshot().page.title,'Draft two');
+});
+test('background refresh never overwrites edits or a newer navigation',async t=>{
+ const {workspace}=await fixture(t);await workspace.openPage('two');const stale=deferred();
+ t.mock.method(api,'page',()=>stale.promise);await workspace.openPage('one');workspace.updatePage({title:'Local edit'});
+ stale.resolve({...page('one'),title:'Remote edit',revision:9});await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(workspace.snapshot().page.title,'Local edit');
+ t.mock.method(api,'savePage',async(_vault,_id,input)=>({...input,revision:2}));await workspace.saver.flush();
+ const late=deferred(),latest=deferred();t.mock.method(api,'page',(_vault,id)=>id==='two'?late.promise:latest.promise);
+ await workspace.openPage('two');await workspace.openPage('one');late.resolve({...page('two'),revision:10});await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(workspace.snapshot().page.id,'one');latest.resolve({...page('one'),title:'Local edit',revision:2});
+});
+test('offline cached navigation stays usable and vault switches clear cached bodies',async t=>{
+ const {workspace}=await fixture(t);await workspace.openPage('two');
+ t.mock.method(api,'page',async()=>{throw new Error('Offline');});await workspace.openPage('one');await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(workspace.snapshot().page.id,'one');assert.equal(workspace.snapshot().error,null);
+ await workspace.selectVault('b');const pending=deferred();t.mock.method(api,'page',()=>pending.promise);
+ const navigation=workspace.openPage('one');assert.equal(workspace.snapshot().page,null);assert.equal(workspace.snapshot().loadingPageId,'one');
+ pending.resolve(page('one','b'));await navigation;assert.equal(workspace.snapshot().page.vault_id,'b');
+});

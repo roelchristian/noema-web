@@ -15,7 +15,7 @@ test('sidebar note switching preserves mounted shell and outgoing editor until a
  Object.defineProperty(dom.window.HTMLElement.prototype,'isContentEditable',{get(){return this.getAttribute('contenteditable')==='true';}});
  localStorage.setItem('noema-knowledge-panel-open','true');localStorage.setItem('noema-address/a',JSON.stringify({view:'pages',pageId:'one'}));
  t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false}]);t.mock.method(api,'pages',async()=>[page('one'),page('two')]);t.mock.method(api,'entities',async()=>[]);t.mock.method(api,'organization',async()=>({collections:[{id:'collection',name:'Research'}],folders:[{id:'folder',name:'Projects',parent_id:null}],locations:[{kind:'page',item_id:'one',folder_id:'folder'}],memberships:[],favourites:[]}));
- t.mock.method(api,'aiNotifications',async()=>({items:[],running:[],unreadCount:0,through:0}));let finishKnowledge;t.mock.method(api,'enrichments',async(_vault,id)=>id==='one'?[{kind:'summary',data:{summary:'Saved summary for one'},revision:1}]:new Promise(resolve=>finishKnowledge=resolve));
+ t.mock.method(api,'aiNotifications',async()=>({items:[],running:[],unreadCount:0,through:0}));let finishKnowledge;const knowledgeRequests=t.mock.method(api,'enrichments',async(_vault,id)=>id==='one'?[{kind:'summary',data:{summary:'Saved summary for one'},revision:1}]:new Promise(resolve=>finishKnowledge=resolve));
  let finish;t.mock.method(api,'page',async(_vault,id)=>id==='one'?page('one'):new Promise(resolve=>finish=resolve));
  const root=createRoot(document.querySelector('#mount'));
  try {
@@ -55,6 +55,15 @@ test('sidebar note switching preserves mounted shell and outgoing editor until a
   assert.ok(!updatedKnowledge.textContent.includes('Saved summary for one'));
   assert.equal(updatedKnowledge.getAttribute('aria-busy'),'false');
   assert.equal(document.activeElement,select('two'));
+  const calls=knowledgeRequests.mock.callCount();
+  await act(async()=>select('one').dispatchEvent(new MouseEvent('click',{bubbles:true})));
+  assert.equal(document.querySelector('#page-title').value,'one');
+  assert.match(document.querySelector('#intelligence-panel').textContent,/Saved summary for one/);
+  assert.equal(document.querySelector('#intelligence-panel').getAttribute('aria-busy'),'false');
+  await act(async()=>select('two').dispatchEvent(new MouseEvent('click',{bubbles:true})));
+  assert.equal(document.querySelector('#page-title').value,'two');
+  assert.match(document.querySelector('#intelligence-panel').textContent,/Saved summary for two/);
+  assert.equal(knowledgeRequests.mock.callCount(),calls);
 
  }finally{await act(async()=>root.unmount());dom.window.close();keys.forEach((key,index)=>{if(previous[index])Object.defineProperty(globalThis,key,previous[index]);else delete globalThis[key];});}
 });

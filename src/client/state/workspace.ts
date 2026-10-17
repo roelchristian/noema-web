@@ -1,7 +1,7 @@
 import { identifyEntityMentions } from '../../shared/auto-entities';
 import { canIdentifyEntities, yieldForEntityMatching } from '../editor/auto-entity-matching';
 import { PageTitler } from './page-titler';
-import { api } from '../api';
+import { api, ApiError } from '../api';
 import type { Entity, EntityInput, Page, PageSummary, Vault, Organization, OrganizationContext, RecentItem, ItemKind, TrashedPage } from '../../shared/domain';
 import { PageSaver, type SaveStatus } from './page-saver';
 export interface WorkspaceState {
@@ -159,8 +159,33 @@ export class Workspace {
     this.pageRequest?.abort();
     const sequence = ++this.pageLoadSequence, controller = new AbortController();
     this.pageRequest = controller; this.navigation = true;
-    this.patch({loadingPageId:id,error:null});
     const current = () => sequence === this.pageLoadSequence && this.state.vault?.id === vault.id && !this.state.vault.locked;
+    const cached = this.pageCache.get(id);
+    if (cached?.vault_id === vault.id && this.state.pages.some(page => page.id === id)) {
+      // The saver owns vault-scoped snapshots, so cached navigation need not wait
+      // for outgoing writes. Keep drafts in memory even if a background save fails.
+      this.navigation = false; this.pageRequest = null;
+      this.patch({page:cached,view:'pages',loadingPageId:null,error:null});
+      this.recordRecent('page',id);
+      this.titler.register(cached); this.titler.observe(cached,!this.saver.hasPending);
+      if (this.saver.hasPending) void this.saver.flush().catch(this.report);
+      else {
+        this.pageRequest = controller;
+        void api.page(vault.id,id,controller.signal).then(fresh => {
+          // Ignore revalidation if navigation, editing, or saving has intervened.
+          if (!current() || controller.signal.aborted || this.saver.hasPending || this.pageCache.get(id) !== cached) return;
+          if (fresh.revision < cached.revision || JSON.stringify(fresh) === JSON.stringify(cached)) return;
+          this.pageCache.set(id,fresh);
+          this.patch({page:fresh,pages:this.state.pages.map(page=>page.id===id?fresh:page)});
+        }).catch(error => {
+          if (!current() || controller.signal.aborted) return;
+          if (error instanceof ApiError && error.status === 404) this.pageCache.delete(id);
+          // Keep the cached note usable when offline; writes surface save failures.
+        }).finally(()=>{if(current() && this.pageRequest === controller)this.pageRequest=null;});
+      }
+      return;
+    }
+    this.patch({loadingPageId:id,error:null});
     try {
       // Keep the old editor mounted but inert until its pending writes are safe.
       await this.saver.flush();

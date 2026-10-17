@@ -10,13 +10,16 @@ import { Select } from '../components/Select';
 import type { CreateEntityRequest } from '../knowledge/CreateEntityDialog';
 import { Mention } from '../components/Mention';
 import type { AIEnrichment, AISummary, Entity, Page } from '../../shared/domain';
-function KnowledgePage({inactive=false,initialItems,initialError,page,entities,onOpenEntity,onSourcesChange,onCreateEntity,onClose,onSettings,onFlush,onReview}:{inactive?:boolean;initialItems:AIEnrichment[];initialError:string;page:Page;entities:Entity[];onOpenEntity:(id:string)=>void;onSourcesChange:(sourceIds:string[])=>void;onCreateEntity:(request:CreateEntityRequest)=>void;onClose:()=>void;onSettings:()=>void;onFlush:()=>Promise<Page|null>;onReview:(scanId:string,id:string|string[],decision:'accepted'|'rejected',edits?:EntitySuggestionEdit[])=>Promise<EntityScan>}) {
+interface KnowledgeSnapshot { summary:AISummary|null; scan:EntityScan|null }
+function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnapshot,page,entities,onOpenEntity,onSourcesChange,onCreateEntity,onClose,onSettings,onFlush,onReview}:{inactive?:boolean;initialItems:AIEnrichment[];initialError:string;snapshot?:KnowledgeSnapshot;onSnapshot:(snapshot:KnowledgeSnapshot)=>void;page:Page;entities:Entity[];onOpenEntity:(id:string)=>void;onSourcesChange:(sourceIds:string[])=>void;onCreateEntity:(request:CreateEntityRequest)=>void;onClose:()=>void;onSettings:()=>void;onFlush:()=>Promise<Page|null>;onReview:(scanId:string,id:string|string[],decision:'accepted'|'rejected',edits?:EntitySuggestionEdit[])=>Promise<EntityScan>}) {
   const [busy,setBusy]=useState(false),[error,setError]=useState(initialError),[result,setResult]=useState<AISummary|null>(()=>{
+    if(snapshot)return snapshot.summary;
     const saved=initialItems.find(item=>item.kind==='summary');
     return saved && typeof saved.data.summary==='string' ? {summary:saved.data.summary,revision:saved.revision,contentHash:saved.contentHash,model:saved.model,reasoningEffort:saved.reasoningEffort} : null;
   });
   const [deleting, setDeleting] = useState(false);
-  const [scan,setScan] = useState<EntityScan|null>(()=>initialItems.find(item=>item.kind==='entity_scan')?.data.scan as unknown as EntityScan ?? null);
+  const [scan,setScan] = useState<EntityScan|null>(()=>snapshot?snapshot.scan:initialItems.find(item=>item.kind==='entity_scan')?.data.scan as unknown as EntityScan ?? null);
+  useLayoutEffect(()=>{onSnapshot({summary:result,scan});},[result,scan]);
   const loading = false;
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [summaryOverflow, setSummaryOverflow] = useState(false);
@@ -70,13 +73,18 @@ function KnowledgePage({inactive=false,initialItems,initialError,page,entities,o
 
 // Keep the displayed knowledge intact while the next page's saved data is fetched.
 // Page-local state is reset only when that complete result is ready to display.
-export function IntelligencePanel(props: Omit<ComponentProps<typeof KnowledgePage>, 'initialItems' | 'initialError'>) {
-  const [ready,setReady]=useState<{page:Page;items:AIEnrichment[];error:string}|null>(null);
+export function IntelligencePanel(props: Omit<ComponentProps<typeof KnowledgePage>, 'initialItems' | 'initialError' | 'snapshot' | 'onSnapshot'>) {
+  type Entry={page:Page;items:AIEnrichment[];error:string;snapshot?:KnowledgeSnapshot};
+  const cache=useRef(new Map<string,Entry>());
+  const [ready,setReady]=useState<Entry|null>(null);
+  const key=props.page.vault_id+'/'+props.page.id;
+  const displayed=cache.current.get(key)??ready;
   const focused=useRef(false);
   useEffect(()=>{
+    if(cache.current.has(key))return;
     let cancelled=false;
     void api.enrichments(props.page.vault_id,props.page.id).then(items=>{
-      if(!cancelled)setReady({page:props.page,items,error:''});
+      if(!cancelled){const entry={page:props.page,items,error:''};cache.current.set(key,entry);setReady(entry);}
     }).catch(error=>{
       if(!cancelled)setReady({page:props.page,items:[],error:error instanceof Error?error.message:'Could not load saved knowledge.'});
     });
@@ -85,7 +93,7 @@ export function IntelligencePanel(props: Omit<ComponentProps<typeof KnowledgePag
   useEffect(()=>{
     if(ready&&!focused.current){focused.current=true;document.querySelector<HTMLButtonElement>('#intelligence-panel [aria-label="Close Knowledge panel"]')?.focus({preventScroll:true});}
   },[ready]);
-  if(!ready)return <aside className="entity-panel intelligence-panel" id="intelligence-panel" aria-label="Knowledge" aria-busy="true"><div className="panel-top knowledge-panel-top"><span><Icon name="knowledge"/>Knowledge</span><div className="knowledge-panel-actions"><button className="page-tool" aria-label="Close Knowledge panel" onClick={props.onClose}>×</button></div></div><div className="panel-body"><span className="sr-only" role="status">Loading knowledge…</span></div></aside>;
-  const current=ready.page.id===props.page.id&&ready.page.vault_id===props.page.vault_id;
-  return <KnowledgePage {...props} key={ready.page.vault_id+'/'+ready.page.id} page={current?props.page:ready.page} initialItems={ready.items} initialError={ready.error} inactive={props.inactive||!current}/>;
+  if(!displayed)return <aside className="entity-panel intelligence-panel" id="intelligence-panel" aria-label="Knowledge" aria-busy="true"><div className="panel-top knowledge-panel-top"><span><Icon name="knowledge"/>Knowledge</span><div className="knowledge-panel-actions"><button className="page-tool" aria-label="Close Knowledge panel" onClick={props.onClose}>×</button></div></div><div className="panel-body"><span className="sr-only" role="status">Loading knowledge…</span></div></aside>;
+  const current=displayed.page.id===props.page.id&&displayed.page.vault_id===props.page.vault_id;
+  return <KnowledgePage {...props} key={displayed.page.vault_id+'/'+displayed.page.id} page={current?props.page:displayed.page} initialItems={displayed.items} initialError={displayed.error} snapshot={displayed.snapshot} onSnapshot={snapshot=>{displayed.snapshot=snapshot;}} inactive={props.inactive||!current}/>;
 }

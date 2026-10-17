@@ -39,7 +39,7 @@ export function PageEditor({pages,onOpenPage,page, entities, onChange, onOpenEnt
   }, [page.id, page.blocks, page.conceptClassification, page.conceptContentHash, entities, onIdentify]);
   const status = {saved: 'Automatically saved', pending: 'Waiting to save…', identifying: 'Identifying entities…', saving: 'Saving…', error: 'Could not save changes'}[saveStatus];
   return <article className="page" onCompositionStart={event => { event.currentTarget.dataset.entityComposing = 'true'; }} onCompositionEnd={event => { delete event.currentTarget.dataset.entityComposing; }}>
-    <h1 className="page-title-heading" aria-label={page.title || 'Untitled'}><input ref={title} id="page-title" aria-label="Page title" placeholder="Untitled" maxLength={500} value={page.title} onChange={e => onChange({title: smartQuoteTitle(e.currentTarget, e.nativeEvent as InputEvent)})}/></h1>
+    <h1 className="page-title-heading page-heading" aria-label={page.title || 'Untitled'}><input ref={title} id="page-title" aria-label="Page title" placeholder="Untitled" maxLength={500} value={page.title} onChange={e => onChange({title: smartQuoteTitle(e.currentTarget, e.nativeEvent as InputEvent)})}/></h1>
     {reviewError && <p className="entity-review-error" role="alert">{reviewError}</p>}
     <EntityMatchReview matches={reviewMatches} entities={entities} disabled={resolving} onResolve={async resolution => {
       if (!cache || resolving) return;

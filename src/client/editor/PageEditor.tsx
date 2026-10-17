@@ -1,6 +1,6 @@
 import { smartQuoteTitle } from './smart-quotes';
-import { useEffect, useRef, useState } from 'react';
-import type { Entity, Page, PageSummary } from '../../shared/domain';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { blockSegments, type Entity, type Page, type PageSummary } from '../../shared/domain';
 import type { SaveStatus } from '../state/page-saver';
 import type { CreateEntityRequest } from '../knowledge/CreateEntityDialog';
 import { BlockEditor } from './BlockEditor';
@@ -10,8 +10,26 @@ import type { EntityMatchCache } from '../../shared/entity-match-cache';
 import { EntityMatchReview } from './EntityMatchReview';
 import { ambiguityReviewDelay } from './auto-entity-matching';
 interface Props {pages:PageSummary[];onOpenPage:(id:string)=>void;onAddAlias: (id: string, alias: string) => Promise<void>; page: Page; entities: Entity[]; onChange: (patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon'>>) => void; onOpenEntity: (id: string) => void; onCreateEntity: (request: CreateEntityRequest) => void; onSave: () => void; onIdentify: () => Promise<void>; saveStatus: SaveStatus}
+function editedLabel(updatedAt: string, now: number): string {
+  const timestamp = Date.parse(updatedAt);
+  const seconds = Number.isFinite(timestamp) ? Math.max(0, (now - timestamp) / 1000) : 0;
+  if (seconds < 60) return 'Edited just now';
+  const units = [[31536000, 'year'], [2592000, 'month'], [604800, 'week'], [86400, 'day'], [3600, 'hour'], [60, 'minute']] as const;
+  const [size, unit] = units.find(([size]) => seconds >= size)!;
+  return 'Edited ' + new Intl.RelativeTimeFormat('en', {numeric: 'always'}).format(-Math.floor(seconds / size), unit);
+}
 export function PageEditor({pages,onOpenPage,page, entities, onChange, onOpenEntity, onCreateEntity, onSave, onIdentify, onAddAlias, saveStatus}: Props) {
   const title = useRef<HTMLInputElement>(null);
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+  const entityCounts = useMemo(() => {
+    const ids = new Set(page.blocks.flatMap(block => blockSegments(block).flatMap(segment => segment.entityId ? [segment.entityId] : [])));
+    const mentioned = entities.filter(entity => entity.vault_id === page.vault_id && ids.has(entity.id));
+    return mentioned.length;
+  }, [page.blocks, page.vault_id, entities]);
   const [reviewSnapshot, setReviewSnapshot] = useState<{blocks: Page['blocks']; classification:Page['conceptClassification']; entities: Entity[]; cache: EntityMatchCache} | null>(() => page.entityMatchCache?.revision === page.revision ? {blocks:page.blocks,classification:page.conceptClassification,entities,cache:page.entityMatchCache} : null);
   const [reviewError, setReviewError] = useState('');
   const [resolving, setResolving] = useState(false);
@@ -37,7 +55,7 @@ export function PageEditor({pages,onOpenPage,page, entities, onChange, onOpenEnt
     document.addEventListener('compositionend', schedule);
     return () => { clearTimeout(timer); document.removeEventListener('selectionchange', schedule); document.removeEventListener('compositionend', schedule); };
   }, [page.id, page.blocks, page.conceptClassification, page.conceptContentHash, entities, onIdentify]);
-  const status = {saved: 'Automatically saved', pending: 'Waiting to save…', identifying: 'Identifying entities…', saving: 'Saving…', error: 'Could not save changes'}[saveStatus];
+  const status = {saved: editedLabel(page.updated_at, now), pending: 'Waiting to save…', identifying: 'Identifying entities…', saving: 'Saving…', error: 'Could not save changes'}[saveStatus];
   return <article className="page" onCompositionStart={event => { event.currentTarget.dataset.entityComposing = 'true'; }} onCompositionEnd={event => { delete event.currentTarget.dataset.entityComposing; }}>
     <h1 className="page-title-heading page-heading" aria-label={page.title || 'Untitled'}><input ref={title} id="page-title" aria-label="Page title" placeholder="Untitled" maxLength={500} value={page.title} onChange={e => onChange({title: smartQuoteTitle(e.currentTarget, e.nativeEvent as InputEvent)})}/></h1>
     {reviewError && <p className="entity-review-error" role="alert">{reviewError}</p>}
@@ -54,9 +72,12 @@ export function PageEditor({pages,onOpenPage,page, entities, onChange, onOpenEnt
     }}/>
     <BlockEditor pages={pages} onOpenPage={onOpenPage} onExplain={async blocks=>(await api.explainBlocks(page.vault_id,page.id,blocks)).markdown} reviewMatches={reviewMatches} onAddAlias={onAddAlias} key={page.vault_id + page.id} vaultId={page.vault_id} blocks={page.blocks} entities={entities} onChange={blocks => onChange({blocks})} onOpenEntity={onOpenEntity} onCreateEntity={(name, onCreated) => onCreateEntity({name, onCreated})} onSave={onSave}/>
     <footer className={'editor-save-status' + (saveStatus === 'error' ? ' is-error' : '')}>
-      {saveStatus === 'saving' || saveStatus === 'identifying' ? <span className="scan-spinner" aria-hidden="true"/> : <Icon name={saveStatus === 'saved' ? 'check-circle' : saveStatus === 'error' ? 'alert' : 'recent'}/>}
-      <span role="status" aria-live="polite" aria-atomic="true">{status}</span>
+      {saveStatus === 'saving' || saveStatus === 'identifying' ? <span className="scan-spinner" aria-hidden="true"/> : <Icon name={saveStatus === 'saved' ? 'recent' : saveStatus === 'error' ? 'alert' : 'recent'}/>}
+      <span role="status" aria-live="polite" aria-atomic="true">{saveStatus === 'saved' ? <time dateTime={page.updated_at} title={new Date(page.updated_at).toLocaleString()}>{status}</time> : status}</span>
       {saveStatus === 'error' && <button type="button" onClick={onSave}>Retry</button>}
+      <span className="editor-entity-counts" role="group" aria-label="Entities on this page">
+        <span className="editor-entity-count" title="Distinct entities on this page"><Icon name="knowledge"/><span>{entityCounts} {entityCounts === 1 ? 'entity' : 'entities'}</span></span>
+      </span>
     </footer>
   </article>;
 }

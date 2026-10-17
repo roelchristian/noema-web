@@ -1865,3 +1865,8 @@ main {position:relative;}
 @media(max-width:750px) {
   .entity-page-mentions button { min-height:44px; }
 }
+
+.editor-save-status { flex-wrap:wrap; }
+.editor-entity-counts { display:inline-flex; align-items:center; flex-wrap:wrap; gap:10px; margin-left:8px; }
+.editor-entity-count { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.editor-entity-count .icon { width:13px; height:13px; }

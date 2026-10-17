@@ -1852,3 +1852,16 @@ main {position:relative;}
 .ai-summary .summary-table { overflow-x:auto; }
 .ai-summary table { border-collapse:collapse; font-size:inherit; white-space:normal; }
 .ai-summary td { border:1px solid var(--line); padding:4px 6px; }
+
+/* Compact page references keep the title and count on one line. */
+.entity-mentions-section { padding:12px 0; }
+.entity-page-mentions > li + li { margin-top:0; }
+.entity-page-mentions button { gap:8px; min-height:38px; padding:4px; }
+.entity-page-mentions button > .icon:first-child { width:14px; height:14px; }
+.entity-mention-heading { display:flex; align-items:baseline; gap:8px; min-width:0; }
+.entity-page-mentions .entity-mention-heading strong { flex:1; min-width:0; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.entity-page-mentions .entity-mention-count { flex:none; margin:0; font-size:10px; font-variant-numeric:tabular-nums; }
+.entity-page-mentions .entity-mention-excerpt { margin-top:1px; font-size:11px; line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+@media(max-width:750px) {
+  .entity-page-mentions button { min-height:44px; }
+}

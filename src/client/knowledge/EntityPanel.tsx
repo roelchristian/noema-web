@@ -65,9 +65,9 @@ export function EntityPanel(props: Props) {
           <EntityConnections items={relationships.slice(0, 4)} entities={entities} onOpen={onOpen} empty="No related knowledge yet."/>
           {!!relationships.length && <button type="button" className="entity-detail-more" onClick={() => switchTab('connections')}>{relationships.length > 4 ? 'View all ' + relationships.length + ' connections' : 'View connections'}<Icon name="chevron"/></button>}
         </section>
-        <section className="entity-detail-section"><h3>Mentions from pages<span>{entity.pageMentions?.length ?? 0}</span></h3>
+        <section className="entity-detail-section entity-mentions-section"><h3>Mentions from pages<span>{entity.pageMentions?.length ?? 0}</span></h3>
           {entity.pageMentions?.length ? <ul className="entity-connection-list entity-page-mentions">{entity.pageMentions.map(page => <li key={page.id}>
-            <button type="button" onClick={() => onOpenPage(page.id)}><PageIcon icon={page.icon}/><span><strong>{page.title || 'Untitled'}</strong><small>{page.mentionCount} {page.mentionCount === 1 ? 'mention' : 'mentions'}</small>{page.excerpt && <small>{page.excerpt}</small>}</span><Icon name="chevron"/></button>
+            <button type="button" onClick={() => onOpenPage(page.id)}><PageIcon icon={page.icon}/><span><span className="entity-mention-heading"><strong title={page.title || 'Untitled'}>{page.title || 'Untitled'}</strong><small className="entity-mention-count" aria-label={`${page.mentionCount} ${page.mentionCount === 1 ? 'mention' : 'mentions'}`}>{page.mentionCount}×</small></span>{page.excerpt && <small className="entity-mention-excerpt" title={page.excerpt}>{page.excerpt}</small>}</span><Icon name="chevron"/></button>
           </li>)}</ul> : <p className="entity-detail-empty">No pages mention this entity yet. Tag it in a page to see it here.</p>}
         </section>
         {!!entity.aliases?.length && <section className="entity-detail-section"><h3>Also known as</h3><ul className="entity-overview-aliases">{entity.aliases.map(alias => <li key={alias}>{alias}</li>)}</ul></section>}

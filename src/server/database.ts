@@ -116,6 +116,13 @@ if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'deleted_
 db.exec('CREATE INDEX IF NOT EXISTS pages_deleted_at ON pages(deleted_at)');
 
 if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'revision')) db.exec('ALTER TABLE pages ADD COLUMN revision INTEGER NOT NULL DEFAULT 1');
+db.exec(`CREATE TABLE IF NOT EXISTS page_entity_match_cache (
+ page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,
+ vault_id TEXT NOT NULL REFERENCES vaults(id), cache_key TEXT NOT NULL, matches TEXT NOT NULL
+);
+ CREATE INDEX IF NOT EXISTS page_entity_match_cache_vault ON page_entity_match_cache(vault_id);
+ CREATE TRIGGER IF NOT EXISTS page_entity_match_cache_invalidate AFTER UPDATE ON pages BEGIN
+ DELETE FROM page_entity_match_cache WHERE page_id=NEW.id; END;`);
 // Embedding content is kept in SQLite; queue logs deliberately contain no note text or provider errors.
 db.exec(`CREATE TABLE IF NOT EXISTS embedding_settings (
  vault_id TEXT PRIMARY KEY REFERENCES vaults(id) ON DELETE CASCADE,

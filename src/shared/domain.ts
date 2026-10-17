@@ -17,7 +17,7 @@ export interface Block { id: string; type: BlockType; checked: boolean; content:
 export interface Vault { id: string; name: string; locked: boolean; protected: boolean; updated_at: string }
 export interface PageSummary { id: string; title: string; icon?: PageIconId | null; updated_at: string }
 export interface TrashedPage extends PageSummary { deleted_at: string; expires_at: string }
-export interface Page extends PageSummary { vault_id: string; blocks: Block[]; sourceIds: string[]; revision: number }
+export interface Page extends PageSummary { vault_id: string; blocks: Block[]; sourceIds: string[]; revision: number; entityMatchCache?: import('./entity-match-cache.js').EntityMatchCache }
 export interface PageInput { icon?: PageIconId | null; title: string; blocks: Block[]; sourceIds?: string[]; revision?: number }
 export interface Entity { id: string; vault_id: string; name: string; aliases?: string[]; type: EntityType; subtypes: string[]; description: string; updated_at: string }
 export interface EntityInput { name: string; aliases?: string[]; type: EntityType; subtypes?: string[]; subtype?: string | null; description?: string }

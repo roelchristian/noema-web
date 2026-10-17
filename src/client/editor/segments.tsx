@@ -2,12 +2,64 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { safeHref, type Entity, type Segment, type TextStyle } from '../../shared/domain';
 import { Mention } from '../components/Mention';
 import { renderMath } from './math';
+import type { EntityReviewItem } from '../../shared/entity-match-cache';
+import { segmentsEqual } from '../../shared/segments-equal';
+import { replaceEditableHTML } from './preserve-caret';
+import { canIdentifyEntities } from './auto-entity-matching';
+export interface ReviewLocation {blockId: string; row?: number; col?: number; matches?: EntityReviewItem[]}
+export function entityReviewRanges(_content: Segment[], _entities: Entity[], location: ReviewLocation) {
+  return (location.matches ?? []).filter(match => match.blockId === location.blockId && match.row === location.row && match.col === location.col).map(({start,end,id}) => ({start,end,id}));
+}
+const reviewTimers = new WeakMap<HTMLElement, {source: string; key: string; timer?: ReturnType<typeof setTimeout>}>();
+export function syncEditableSegments(element: HTMLElement, content: Segment[], entities: Entity[], location: ReviewLocation) {
+  const changed = !segmentsEqual(readSegments(element), content);
+  const key = JSON.stringify(entityReviewRanges(content, entities, location));
+  const source = segmentHTML(content, entities);
+  const previous = reviewTimers.get(element);
+  if (!previous) {
+    // Preloaded review items belong in the first paint, before any timers or effects.
+    replaceEditableHTML(element, segmentHTML(content, entities, location));
+    reviewTimers.set(element, {source,key});
+    return;
+  }
+  if (!changed && previous?.source === source && previous.key === key) return;
+  clearTimeout(previous?.timer);
+  const selection = document.getSelection();
+  const selecting = selection && !selection.isCollapsed && selection.rangeCount && element.contains(selection.getRangeAt(0).commonAncestorContainer);
+  const composing = element.closest('.page[data-entity-composing]');
+  if (changed || (!selecting && !composing && element.querySelector('[data-entity-review]'))) {
+    // Strip inherited highlight wrappers immediately when typing resumes.
+    replaceEditableHTML(element, source);
+  }
+  const pending = {source, key, timer: undefined as ReturnType<typeof setTimeout> | undefined};
+  reviewTimers.set(element, pending);
+  if (key === '[]') return;
+  const decorate = () => {
+    if (!element.isConnected || reviewTimers.get(element) !== pending) return;
+    if (!canIdentifyEntities()) { pending.timer = setTimeout(decorate, 300); return; }
+    if (!segmentsEqual(readSegments(element), content)) return;
+    replaceEditableHTML(element, segmentHTML(content, entities, location));
+  };
+  pending.timer = setTimeout(decorate, 0);
+}
 /** Only escaped text and explicitly supported formatting reach the editable surface. */
-export function segmentHTML(content: Segment[], entities: Entity[]) {
+export function segmentHTML(content: Segment[], entities: Entity[], review?: ReviewLocation) {
+  const ranges = review ? entityReviewRanges(content, entities, review) : [];
+  let offset = 0;
   return renderToStaticMarkup(<>{content.map((s, index) => {
+    const start = offset; offset += s.text?.length ?? 0;
     if (s.entityId) return <Mention key={index} id={s.entityId} label={s.mentionText} entities={entities} onOpen={() => {}}/>;
     if (s.math) return <span key={index} className="inline-math" data-math={s.text} contentEditable={false} role="button" tabIndex={0} title="Edit equation" aria-label={`Edit equation: ${s.text}`} dangerouslySetInnerHTML={{__html: renderMath(s.text ?? '')}}/>;
-    let node = <>{s.text}</>;
+    const parts: React.ReactNode[] = [];
+    let cursor = 0;
+    for (const range of ranges.filter(range => range.start < offset && range.end > start)) {
+      const from = Math.max(0, range.start - start), to = Math.min(s.text?.length ?? 0, range.end - start);
+      if (from > cursor) parts.push(s.text?.slice(cursor, from));
+      parts.push(<span key={range.id} className={'entity-review-highlight' + (range.start === start + from ? ' is-start' : '')} data-entity-review={range.id} title="Ambiguous entity · click to review">{s.text?.slice(from, to)}</span>);
+      cursor = to;
+    }
+    parts.push(s.text?.slice(cursor));
+    let node = <>{parts}</>;
     if (s.code) node = <code>{node}</code>;
     if (s.bold) node = <strong>{node}</strong>;
     if (s.italic) node = <em>{node}</em>;

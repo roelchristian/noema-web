@@ -70,7 +70,7 @@ test('moving to Trash flushes pending edits and restoring opens a fresh page', a
   t.mock.method(api, 'savePage', async (_vault, _id, page) => { calls.push('save'); stored = {...page, revision: 2}; return stored; });
   t.mock.method(api, 'deletePage', async () => { calls.push('trash'); return {ok: true}; });
   t.mock.method(api, 'trash', async () => [{...stored, deleted_at: '2026-01-01', expires_at: '2026-01-31'}]);
-  t.mock.method(api, 'restorePage', async () => ({...stored, revision: 4}));
+  t.mock.method(api, 'restorePage', async () => { stored = {...stored, revision: 4}; return stored; });
   t.mock.method(api, 'permanentlyDeletePage', async () => ({ok: true}));
   const workspace = new Workspace();
   try {

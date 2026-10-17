@@ -16,6 +16,8 @@ export async function uploadImage(vault: string, file: File): Promise<{id: strin
   return result;
 }
 export const api={
+  entityMatches:(vault:string,id:string,revision:number,signal?:AbortSignal)=>request<import('../shared/entity-match-cache').EntityMatchCache>(`pages/${id}/entity-matches?revision=${revision}`,'GET',undefined,vault,signal),
+  resolveEntityMatch:(vault:string,id:string,body:{revision:number;key:string;matchId:string;entityId:string;all:boolean})=>request<{blocks:Page['blocks']}>(`pages/${id}/entity-matches`,'POST',body,vault),
   aiNotifications:(signal?:AbortSignal)=>request<import('../shared/ai-notifications').AINotificationQueue>('intelligence/notifications','GET',undefined,undefined,signal),
   readAINotifications:(body:{ids:string[]}|{through:number})=>request<import('../shared/ai-notifications').AINotificationQueue>('intelligence/notifications','PUT',body),
   scanEntities:(vault:string,id:string,revision:number)=>request<import('../shared/entity-scan').EntityScan>(`pages/${id}/entity-scan`,'POST',{revision},vault),
@@ -46,9 +48,12 @@ export const api={
   lock:(id:string,passphrase?:string)=>request<Vault>(`vaults/${id}/lock`,'POST',{passphrase}),
   unlock:(id:string,passphrase:string)=>request<Vault>(`vaults/${id}/unlock`,'POST',{passphrase}),
   pages:(vault:string)=>request<PageSummary[]>('pages','GET',undefined,vault),
-  page:(vault:string,id:string)=>request<Page>(`pages/${id}`,'GET',undefined,vault),
+  page:(vault:string,id:string)=>request<Page>(`pages/${id}/editor`,'GET',undefined,vault),
   createPage:(vault:string)=>request<Page>('pages','POST',{title:'Untitled'},vault),
-  savePage:(vault:string,id:string,page:PageInput)=>request<Page>(`pages/${id}`,'PUT',page,vault),
+  savePage:(vault:string,id:string,page:PageInput)=>{
+    const {entityMatchCache: _reviewCache, ...input} = page as Page;
+    return request<Page>(`pages/${id}`,'PUT',input,vault);
+  },
   deletePage:(vault:string,id:string)=>request<{ok:true}>(`pages/${id}`,'DELETE',undefined,vault),
   trash:(vault:string)=>request<TrashedPage[]>('trash','GET',undefined,vault),
   restorePage:(vault:string,id:string)=>request<Page>(`trash/${id}/restore`,'POST',{},vault),

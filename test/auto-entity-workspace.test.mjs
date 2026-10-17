@@ -60,6 +60,20 @@ test('failed alias saves leave the catalog unchanged and propagate errors for re
   assert.deepEqual(workspace.snapshot().entities, [entity]);
 });
 
+test('opening a page waits for its body and review cache before presenting the editor', async t => {
+  const {workspace} = await setup(t);
+  let finish;
+  const page = {...workspace.snapshot().page, entityMatchCache:{revision:1,key:'hydrated',matches:[]}};
+  t.mock.method(api, 'page', async () => new Promise(resolve => { finish = resolve; }));
+  const opening = workspace.openPage(page.id);
+  while (!finish) await Promise.resolve();
+  assert.equal(workspace.snapshot().busy,true);
+  finish(page);
+  await opening;
+  assert.equal(workspace.snapshot().busy,false);
+  assert.equal(workspace.snapshot().page.entityMatchCache.key,'hydrated');
+});
+
 test('idle identification links existing entities, autosaves them, and remains idempotent', async t => {
   const {workspace,writes} = await setup(t);
   const statuses=[];workspace.subscribe(()=>statuses.push(workspace.snapshot().saveStatus));

@@ -133,7 +133,8 @@ export class Workspace {
   }
   private async loadPage(id: string, recordRecent = true) {
     const vault = this.state.vault!;
-    const page = this.pageCache.get(id) || await api.page(vault.id, id);
+    // Fetch the body and its current review cache together before mounting the editor.
+    const page = await api.page(vault.id, id);
     this.pageCache.set(id, page); this.patch({page, view: 'pages'});
     if (recordRecent) this.recordRecent('page', id);
     this.titler.register(page); this.titler.observe(page, true);

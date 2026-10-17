@@ -75,8 +75,9 @@ test('shared aliases are flagged and can resolve one instance or all matching in
   const one = identifyEntityMentions(blocks, [donald, ivanka], 'default', {match: first.ambiguous[1], entityId: 'ivanka'});
   assert.equal(one.count, 1);
   assert.deepEqual(one.blocks[0].content, [{text: 'Trump spoke. '}, {entityId: 'ivanka', mentionText: 'Trump'}, {text: ' listened.'}]);
-  assert.equal(identifyEntityMentions(one.blocks, [donald, ivanka], 'default').ambiguous.length, 2);
-  const all = identifyEntityMentions(one.blocks, [donald, ivanka], 'default', {match: identifyEntityMentions(one.blocks, [donald, ivanka], 'default').ambiguous[0], entityId: 'donald', all: true});
+  assert.equal(identifyEntityMentions(one.blocks, [donald, ivanka], 'default').ambiguous.length, 0);
+  assert.equal(identifyEntityMentions(one.blocks, [donald, ivanka], 'default').count, 2);
+  const all = identifyEntityMentions(one.blocks, [donald, ivanka], 'default', {match: first.ambiguous[0], entityId: 'donald', all: true});
   assert.equal(all.count, 2); assert.equal(all.ambiguous.length, 0);
   assert.equal(all.blocks[0].content[2].entityId, 'ivanka');
   assert.deepEqual(all.blocks[1].rows[0][0], [{entityId: 'donald', mentionText: 'Trump'}]);
@@ -116,8 +117,14 @@ test('alias labels survive saving and render as their original text with the can
     assert.match(html, /data-mention-text="Trump"/); assert.match(html, /title="Donald Trump"/); assert.match(html, />Trump<\/span>/);
     const ambiguousPage = {...saved, blocks: [block('p', [{text: 'Trump'}])]};
     const reviewHTML = renderToStaticMarkup(createElement(PageEditor, {page: ambiguousPage, entities: [donald, ivanka], saveStatus: 'saved', onChange() {}, onOpenEntity() {}, onCreateEntity() {}, onSave() {}, onIdentify: async () => {}}));
-    assert.match(reviewHTML, /1 entity match needs review/); assert.match(reviewHTML, /Donald Trump/); assert.match(reviewHTML, /Ivanka Trump/);
-    assert.match(reviewHTML, /Link this instance/); assert.match(reviewHTML, /Link all/);
+    assert.doesNotMatch(reviewHTML, /entity-review-notice/, 'Review waits for the ambiguity buffer rather than flagging on the first render');
+    assert.doesNotMatch(reviewHTML, /class="entity-match-review" open/);
+
+    assert.doesNotMatch(reviewHTML, /class="entity-match-popover"/);
+    const hydratedPage = {...ambiguousPage,entityMatchCache:{revision:ambiguousPage.revision,key:'preloaded',matches:[{id:'["p"]:0:0',text:'Trump',context:'Trump',entityIds:['donald','ivanka'],blockId:'p',start:0,end:5}]}};
+    const renderHydrated = page => renderToStaticMarkup(createElement(PageEditor,{page,entities:[donald,ivanka],saveStatus:'saved',onAddAlias:async()=>{},onChange(){},onOpenEntity(){},onCreateEntity(){},onSave(){},onIdentify:async()=>{}}));
+    assert.match(renderHydrated(hydratedPage),/1 entity match needs review/,'Preloaded reviews are present on the first render');
+    assert.doesNotMatch(renderHydrated({...hydratedPage,revision:hydratedPage.revision+1}),/entity-review-notice/,'Outdated preloads cannot decorate a newer revision');
   } finally { db.close(); }
 });
 
@@ -131,4 +138,47 @@ test('case variants resolve together and over-limit resolutions remain flagged f
   const flagged = identifyEntityMentions(large, [donald, ivanka], 'default');
   const capped = identifyEntityMentions(large, [donald, ivanka], 'default', {match: flagged.ambiguous[0], entityId: 'donald', all: true});
   assert.equal(capped.blocks, large); assert.equal(capped.count, 0); assert.equal(capped.ambiguous.length, 600);
+});
+
+test('ambiguous review highlights are rendered across formatting without storing entity links', () => {
+  const content = [{text: 'Before '}, {text: 'Tr', italic: true}, {text: 'ump after', code: true}];
+  const html = segmentHTML(content, [donald, ivanka], {blockId: 'p', matches: [{id: '["p"]:0:7', text: 'Trump', context: 'Before Trump after', entityIds: ['donald','ivanka'], blockId: 'p', start: 7, end: 12}]});
+  assert.equal((html.match(/class="entity-review-highlight/g) ?? []).length, 2);
+  assert.equal((html.match(/entity-review-highlight is-start/g) ?? []).length, 1);
+  assert.match(html, /data-entity-review=/);
+  assert.doesNotMatch(html, /data-entity="/);
+  assert.match(html, /<em>/); assert.match(html, /<code>/);
+  assert.deepEqual(content, [{text: 'Before '}, {text: 'Tr', italic: true}, {text: 'ump after', code: true}]);
+});
+
+test('shared aliases prefer exactly one linked candidate anywhere in the page', () => {
+  const input = [block('before', [{text: 'Trump spoke.'}]), {...block('table', []), type: 'table', rows: [[[{entityId: 'donald'}]]]}, block('after', [{text: 'Trump listened.'}])];
+  const result = identifyEntityMentions(input, [donald, ivanka], 'default');
+  assert.equal(result.count, 2); assert.deepEqual(result.ambiguous, []);
+  assert.deepEqual(result.blocks[0].content, [{entityId: 'donald', mentionText: 'Trump'}, {text: ' spoke.'}]);
+  assert.deepEqual(result.blocks[2].content, [{entityId: 'donald', mentionText: 'Trump'}, {text: ' listened.'}]);
+  const both = [...input, block('ivanka', [{entityId: 'ivanka'}])];
+  const ambiguous = identifyEntityMentions(both, [donald, ivanka], 'default');
+  assert.equal(ambiguous.count, 0); assert.equal(ambiguous.ambiguous.length, 2);
+  const unrelated = [block('ref', [{entityId: 'unrelated'}]), block('p', [{text: 'Trump'}])];
+  assert.equal(identifyEntityMentions(unrelated, [donald, ivanka], 'default').ambiguous.length, 1);
+});
+
+test('page context only counts eligible references and never changes explicit or excluded instances', () => {
+  const input = [block('ref', [{entityId: 'donald'}, {entityId: 'donald'}]), block('p', [{text: 'Trump', skipAutoTag: true}, {text: ' and Trump'}])];
+  const result = identifyEntityMentions(input, [donald, ivanka], 'default');
+  assert.equal(result.count, 1); assert.deepEqual(result.ambiguous, []);
+  assert.deepEqual(result.blocks[1].content, [{text: 'Trump', skipAutoTag: true}, {text: ' and '}, {entityId: 'donald', mentionText: 'Trump'}]);
+  const foreign = {...ivanka, vault_id: 'foreign'};
+  const noCandidate = [block('ref', [{entityId: foreign.id}]), block('p', [{text: 'Trump'}])];
+  assert.equal(identifyEntityMentions(noCandidate, [donald, {...ivanka, id: 'local'}, foreign], 'default').ambiguous.length, 1);
+});
+
+test('inline decorations only render cached records for the matching paragraph or cell', () => {
+  const content = [{text: 'Trump'}], entities = [donald, ivanka];
+  const item = {id: '["p"]:0:0', text: 'Trump', context: 'Trump', entityIds: ['donald','ivanka'], blockId: 'p', start: 0, end: 5};
+  assert.doesNotMatch(segmentHTML(content, entities, {blockId: 'p', matches: []}), /entity-review-highlight/);
+  assert.match(segmentHTML(content, entities, {blockId: 'p', matches: [item]}), /entity-review-highlight/);
+  assert.doesNotMatch(segmentHTML(content, entities, {blockId: 'table', row: 0, col: 1, matches: [item]}), /entity-review-highlight/);
+  assert.match(segmentHTML(content, entities, {blockId: 'table', row: 0, col: 1, matches: [{...item, blockId: 'table', row: 0, col: 1}]}), /entity-review-highlight/);
 });

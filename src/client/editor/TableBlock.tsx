@@ -1,17 +1,16 @@
 import { applySmartQuotes } from './smart-quotes';
-import { replaceEditableHTML } from './preserve-caret';
 import { useLayoutEffect, useRef, type ClipboardEvent, type KeyboardEvent } from 'react';
 import type { Block, Entity, Segment } from '../../shared/domain';
 import { clipboardBlocks } from './paste';
-import { readSegments, segmentHTML } from './segments';
-import { segmentsEqual } from '../../shared/segments-equal';
+import type { EntityReviewItem } from '../../shared/entity-match-cache';
+import { readSegments, segmentHTML, syncEditableSegments, type ReviewLocation } from './segments';
 import { completeInlineMath } from './math';
-function Cell({content, entities, register, onChange, onKeyDown, onPaste, onOpen}: {content: Segment[]; entities: Entity[]; register?: (el: HTMLDivElement | null) => void; onChange: (content: Segment[]) => void; onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => void; onPaste: (e: ClipboardEvent<HTMLDivElement>) => void; onOpen: (id: string) => void}) {
+function Cell({content, entities, location, register, onChange, onKeyDown, onPaste, onOpen}: {content: Segment[]; entities: Entity[]; location: ReviewLocation; register?: (el: HTMLDivElement | null) => void; onChange: (content: Segment[]) => void; onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => void; onPaste: (e: ClipboardEvent<HTMLDivElement>) => void; onOpen: (id: string) => void}) {
   const ref = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => { const el = ref.current!; if (!segmentsEqual(readSegments(el), content)) replaceEditableHTML(el, segmentHTML(content, entities)); }, [content, entities]);
+  useLayoutEffect(() => { syncEditableSegments(ref.current!, content, entities, location); });
   return <div className="block-content table-cell" ref={el => {ref.current = el; register?.(el);}} contentEditable suppressContentEditableWarning aria-label="Table cell" onInput={e => {applySmartQuotes(e.currentTarget, e.nativeEvent as InputEvent); completeInlineMath(e.currentTarget); onChange(readSegments(e.currentTarget));}} onKeyDown={onKeyDown} onPaste={onPaste} onClick={e => {const mention = (e.target as Element).closest<HTMLElement>('[data-entity]'); if(mention) onOpen(mention.dataset.entity!);}}/>;
 }
-export function TableBlock({block, entities, onChange, onOpen, onSave, onExit, register}: {block: Block; entities: Entity[]; onChange: (rows: Segment[][][]) => void; onOpen: (id: string) => void; onSave: () => void; onExit: () => void; register: (el: HTMLDivElement | null) => void}) {
+export function TableBlock({block, entities, reviewMatches, onChange, onOpen, onSave, onExit, register}: {block: Block; entities: Entity[]; reviewMatches: EntityReviewItem[]; onChange: (rows: Segment[][][]) => void; onOpen: (id: string) => void; onSave: () => void; onExit: () => void; register: (el: HTMLDivElement | null) => void}) {
   const rows = block.rows ?? [[[], []], [[], []]], root = useRef<HTMLDivElement>(null), pending = useRef<number | null>(null);
   useLayoutEffect(() => { if(pending.current !== null) {root.current?.querySelectorAll<HTMLElement>('[contenteditable]')[pending.current]?.focus(); pending.current = null;} }, [rows]);
   function changeCell(row: number, col: number, content: Segment[]) { onChange(rows.map((cells, r) => cells.map((cell, c) => r === row && c === col ? content : cell))); }
@@ -30,7 +29,7 @@ export function TableBlock({block, entities, onChange, onOpen, onSave, onExit, r
     const last = fragment.lastChild; range.insertNode(fragment); if(last) range.setStartAfter(last); range.collapse(true); selection.removeAllRanges(); selection.addRange(range);
     changeCell(row, col, readSegments(e.currentTarget));
   }
-  return <div className="table-block" ref={root}><div className="table-scroll"><table style={{minWidth: rows[0]!.length * 140}}><tbody>{rows.map((cells, row) => <tr key={row}>{cells.map((content, col) => <td key={col}><Cell content={content} entities={entities} register={row === 0 && col === 0 ? register : undefined} onOpen={onOpen} onChange={content => changeCell(row, col, content)} onPaste={e => paste(e, row, col)} onKeyDown={e => {
+  return <div className="table-block" ref={root}><div className="table-scroll"><table style={{minWidth: rows[0]!.length * 140}}><tbody>{rows.map((cells, row) => <tr key={row}>{cells.map((content, col) => <td key={col}><Cell location={{blockId: block.id, row, col, matches: reviewMatches}} content={content} entities={entities} register={row === 0 && col === 0 ? register : undefined} onOpen={onOpen} onChange={content => changeCell(row, col, content)} onPaste={e => paste(e, row, col)} onKeyDown={e => {
     if(e.nativeEvent.isComposing) return;
     if((e.metaKey || e.ctrlKey) && e.key === 's') {e.preventDefault(); onSave();}
     if(e.key === 'Enter' && !e.shiftKey) {e.preventDefault(); onExit();}

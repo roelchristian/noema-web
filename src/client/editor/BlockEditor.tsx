@@ -1,11 +1,10 @@
 import { applySmartQuotes } from './smart-quotes';
-import { replaceEditableHTML } from './preserve-caret';
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
+import type { EntityReviewItem } from '../../shared/entity-match-cache';
 import { entityLabels, type Block, type BlockType, type Entity, type Segment } from '../../shared/domain';
 import { uploadImage } from '../api';
 import { Icon } from '../components/Icon';
-import { readSegments, segmentHTML } from './segments';
-import { segmentsEqual } from '../../shared/segments-equal';
+import { readSegments, segmentHTML, syncEditableSegments } from './segments';
 import { clipboardBlocks, makeBlock } from './paste';
 import { compressImage } from './compress-image';
 import { readImageCompression } from '../settings/image-settings';
@@ -15,7 +14,7 @@ import { SelectionToolbar } from './SelectionToolbar';
 import { MathBlock } from './MathBlock';
 import { MathDialog } from './MathDialog';
 import { completeInlineMath, mathElement } from './math';
-interface Props {onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[]) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
+interface Props {reviewMatches?: EntityReviewItem[]; onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[]) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
 const options: {type: BlockType; title: string; detail: string; icon: string}[] = [
   {type: 'paragraph', title: 'Text', detail: 'Plain text for your thoughts', icon: 'T'},
   {type: 'heading1', title: 'Heading 1', detail: 'A large section heading', icon: 'H₁'},
@@ -29,24 +28,25 @@ const options: {type: BlockType; title: string; detail: string; icon: string}[] 
 interface ImageUpload {id:string; after?:string; name:string; message:string; current:number; total:number}
 interface Choice {title: string; detail?: string; icon: string; entity?: boolean; pick: () => void}
 interface Menu {items: Choice[]; index: number; left: number; top: number; label: string}
-function EditableBlock({block, entities, onInput, onKeyDown, onOpen, register, onPaste}: {block: Block; entities: Entity[]; onInput: (el: HTMLDivElement) => void; onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => void; onOpen: (id: string) => void; register: (el: HTMLDivElement | null) => void; onPaste: (e: ClipboardEvent<HTMLDivElement>) => void}) {
+function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOpen, register, onPaste}: {block: Block; entities: Entity[]; reviewMatches: EntityReviewItem[]; onInput: (el: HTMLDivElement) => void; onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => void; onOpen: (id: string) => void; register: (el: HTMLDivElement | null) => void; onPaste: (e: ClipboardEvent<HTMLDivElement>) => void}) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = ref.current!;
-    if (!segmentsEqual(readSegments(el), block.content)) replaceEditableHTML(el, segmentHTML(block.content, entities));
+    syncEditableSegments(el, block.content, entities, {blockId: block.id, matches: reviewMatches});
     el.querySelectorAll<HTMLElement>('[data-entity]').forEach(node => {
       const wrapper = document.createElement('span'); wrapper.innerHTML = segmentHTML([{entityId: node.dataset.entity!, ...(node.dataset.mentionText ? {mentionText: node.dataset.mentionText} : {})}], entities);
       const fresh = wrapper.firstElementChild!;
       if (node.innerHTML !== fresh.innerHTML) node.innerHTML = fresh.innerHTML;
       node.className = fresh.className;
     });
-  }, [block.content, entities]);
+  });
   return <div ref={el => { ref.current = el; register(el); }} className="block-content" contentEditable suppressContentEditableWarning spellCheck data-placeholder="Type / for blocks, @ for entities" onInput={e => { applySmartQuotes(e.currentTarget, e.nativeEvent as InputEvent); onInput(e.currentTarget); }} onKeyDown={onKeyDown}
     onClick={e => { const mention = (e.target as Element).closest<HTMLElement>('[data-entity]'); if (mention) onOpen(mention.dataset.entity!); }}
     onPaste={onPaste}/>;
 }
 export function BlockEditor(props: Props) {
   const {blocks, entities, onChange, onOpenEntity, onCreateEntity, onSave} = props;
+  const reviewMatches = props.reviewMatches ?? [];
   const [mathTarget, setMathTarget] = useState<{range: Range; initial: string; node?: HTMLElement} | null>(null);
   const [uploads, setUploads] = useState<ImageUpload[]>([]), [imageError, setImageError] = useState('');
   const uploadQueue = useRef(Promise.resolve());
@@ -238,6 +238,12 @@ export function BlockEditor(props: Props) {
   }
   return <><input ref={fileInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden aria-label="Choose images" onChange={e => {const files=Array.from(e.currentTarget.files ?? []); e.currentTarget.value=''; void addImages(files,imageTarget.current);}}/>
     <div id="blocks" ref={root} onClickCapture={e => {
+      const review = (e.target as Element).closest<HTMLElement>('[data-entity-review]');
+      if (review) {
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent('noema:entity-review', {detail: {id: review.dataset.entityReview!, element: review}}));
+        return;
+      }
       const math = (e.target as Element).closest<HTMLElement>('[data-math]');
       if (math) {e.preventDefault(); e.stopPropagation(); editInlineMath(math);}
     }} onKeyDownCapture={e => {
@@ -255,7 +261,7 @@ export function BlockEditor(props: Props) {
       <button className="block-handle" title="Block options" aria-label="Block options" onClick={e => show(e.currentTarget, [...options.map(o => ({...o, pick: () => convert(block, o.type)})), {title: 'Delete block', icon: '×', pick: () => removeBlock(block.id)}], 'BLOCK OPTIONS')}><Icon name="grip"/></button>
     </div>
     {block.type === 'todo' ? <input type="checkbox" aria-label="Complete task" checked={block.checked} onChange={e => update(block.id, {checked: e.target.checked})}/> : block.type === 'bullet' ? <span className="bullet-marker">•</span> : null}
-    {block.type === 'math' ? <MathBlock block={block} onDelete={() => removeBlock(block.id)} onChange={source => update(block.id, {content: [{text: source}]})} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'image' ? <ImageBlock block={block} vaultId={props.vaultId} onChange={alt => update(block.id,{alt})} onDelete={() => removeBlock(block.id)} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'table' ? <TableBlock block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={el => { completeInlineMath(el); update(block.id, {content: readSegments(el)}); detect(el, block); }} onKeyDown={e => keyDown(e, block)} onPaste={e => paste(e, block)}/>}
+    {block.type === 'math' ? <MathBlock block={block} onDelete={() => removeBlock(block.id)} onChange={source => update(block.id, {content: [{text: source}]})} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'image' ? <ImageBlock block={block} vaultId={props.vaultId} onChange={alt => update(block.id,{alt})} onDelete={() => removeBlock(block.id)} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'table' ? <TableBlock reviewMatches={reviewMatches} block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock reviewMatches={reviewMatches} block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={el => { completeInlineMath(el); update(block.id, {content: readSegments(el)}); detect(el, block); }} onKeyDown={e => keyDown(e, block)} onPaste={e => paste(e, block)}/>}
   </div>{uploadCards(block.id)}</Fragment>)}{uploadCards()}</div>
     <SelectionToolbar onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} onCommit={commitSelection} onCreateEntity={onCreateEntity}/>
     {mathTarget && <MathDialog initial={mathTarget.initial} onSave={saveInlineMath} onClose={() => setMathTarget(null)}/>}

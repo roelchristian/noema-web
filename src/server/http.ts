@@ -1,6 +1,7 @@
 import { AINotifications } from './modules/ai-notifications.js';
 import { Images, maxImageBytes } from './modules/images.js';
 import { EntityScans } from './modules/entity-scan.js';
+import { EntityMatches } from './modules/entity-matches.js';
 import type { Segment } from '../shared/domain.js';
 import { AIEnrichments } from './modules/ai-enrichments.js';
 import { AIActivityLog } from './modules/ai-activity.js';
@@ -30,6 +31,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
   const vaults=new Vaults(store),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),organizer=new Organizer(store);
   const activity=new AIActivityLog(store),enrichments=new AIEnrichments(store,pages);
   const scans=new EntityScans(store,pages,knowledge,enrichments);
+  const entityMatches=new EntityMatches(store,pages,knowledge);
   const embeddings=new Embeddings(store,pages,knowledge,vaults,intelligence,activity);
   const searchSnippets=new SearchSnippets(pages,knowledge,vaults);
   // Enforce retention on startup, periodically while running, and before scoped API access.
@@ -158,6 +160,18 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               const data=isTitle?{title:summary}:{summary};
               enrichments.save(vault,id,isTitle?'title':'summary',data,page.revision,selection);
               return send(200,{...data,revision:page.revision,...selection});
+            }
+            if(id && child==='editor' && parts.length===4 && method==='GET') {
+              const page=pages.get(vault,id);
+              return send(200,{...page,entityMatchCache:entityMatches.get(vault,id,page.revision)});
+            }
+            if(id && child==='entity-matches' && parts.length===4) {
+              if(method==='GET') {
+                const revision = url.searchParams.has('revision') ? Number(url.searchParams.get('revision')) : undefined;
+                if(revision !== undefined && (!Number.isInteger(revision) || revision < 1)) throw new HttpError(400,'Invalid page revision.');
+                return send(200,entityMatches.get(vault,id,revision));
+              }
+              if(method==='POST') return send(200,entityMatches.resolve(vault,id,body));
             }
             if(parts.length===2 && method==='GET')return send(200,pages.list(vault));
             if(parts.length===2 && method==='POST'){const page=pages.create(vault,body);embeddings.onSave(vault,page.id);return send(201,page);}

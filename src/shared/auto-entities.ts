@@ -1,13 +1,16 @@
-import { isEntityTaggingText, type Block, type Entity, type Segment } from './domain.js';
+import { blockSegments, isEntityTaggingText, type Block, type Entity, type Segment } from './domain.js';
 
 export const normalizeEntityName = (name: string) => name.trim().replace(/\s+/g, ' ').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').toLowerCase();
 const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export interface AmbiguousEntityMatch { id: string; text: string; context: string; entityIds: string[] }
 export interface EntityMatchResolution { match: AmbiguousEntityMatch; entityId: string; all?: boolean }
+export function linkedEntityIds(blocks: Block[]) {
+  return new Set(blocks.filter(block => block.type !== 'math' && block.type !== 'image').flatMap(block => blockSegments(block).flatMap(segment => segment.entityId ? [segment.entityId] : [])));
+}
 
 /** Deterministic links for unique names and aliases; collisions are returned for review. */
-export function identifyEntityMentions(blocks: Block[], entities: Entity[], vaultId: string, resolution?: EntityMatchResolution) {
+export function identifyEntityMentions(blocks: Block[], entities: Entity[], vaultId: string, resolution?: EntityMatchResolution, pageContext = linkedEntityIds(blocks)) {
   const names = new Map<string, Entity[]>();
   const ambiguous: AmbiguousEntityMatch[] = [];
   for (const entity of entities) {
@@ -53,7 +56,10 @@ export function identifyEntityMentions(blocks: Block[], entities: Entity[], vaul
         let entity = matches.length === 1 ? matches[0] : undefined;
         if (matches.length > 1) {
           const candidate: AmbiguousEntityMatch = {id: `${location}:${runStart}:${match.index}`, text: match[0], context: text.slice(Math.max(0, match.index! - 45), match.index! + match[0].length + 45), entityIds: matches.map(item => item.id)};
-          if (resolution && (resolution.all ? normalizeEntityName(candidate.text) === normalizeEntityName(resolution.match.text) : candidate.id === resolution.match.id && candidate.text === resolution.match.text)) entity = matches.find(item => item.id === resolution.entityId);
+          const explicit = resolution && (resolution.all ? normalizeEntityName(candidate.text) === normalizeEntityName(resolution.match.text) : candidate.id === resolution.match.id && candidate.text === resolution.match.text);
+          const onPage = matches.filter(item => pageContext.has(item.id));
+          if (explicit) entity = matches.find(item => item.id === resolution.entityId);
+          else if (onPage.length === 1) entity = onPage[0];
           if (!entity) ambiguous.push(candidate);
           else resolved.push(candidate);
         }

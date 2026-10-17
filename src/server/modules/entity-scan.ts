@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { blockSegments, entityLabels, entityTypes, isEntityTaggingText, type Page } from '../../shared/domain.js';
+import { blockSegments, entityLabels, entityTypes, isEntityTaggingText, type Page, type Segment } from '../../shared/domain.js';
 import { mentionEvidence, type EntityScan, type EntitySuggestion, type EntityReview } from '../../shared/entity-scan.js';
 import { Store } from '../store.js';
 import { HttpError, now, object, required } from '../validation.js';
@@ -14,8 +14,9 @@ export function entityScanPrompt(input: string) {
 Available main entity types: ${entityTypes.map(type => `${entityLabels[type]} ("${type}")`).join(', ')}.
 Concept is a first-class knowledge entity: use type "concept" for a well-defined idea, theory, principle, structure, or method explicitly mentioned in the body. Concepts do not need to be proper names or capitalized. For example, field, integral domain, field of fractions, characteristic zero, isomorphism, binomial coefficient, and homomorphism are mathematical concepts when used in that technical sense. Do not omit these just because they are common nouns. Do not invent concepts from a formula or title when no corresponding body text phrase is present.
 Concept subtypes initially include Mathematics, Science, Social Sciences, Technology, and Philosophy. Select the applicable Concept subtype IDs from the supplied schema; mathematical concepts should use "concept:mathematics". A concept may have multiple applicable subtypes. Reuse an existing Concept entity when it matches.
-Return only JSON: {"suggestions":[{"name":"...","type":"...","subtypes":["subtype ID"],"description":"short description supported by the note","existingId":null,"evidence":"exact phrase from a body text run","reason":"why this is an entity"}]}.
-Use only the supplied main types and subtype IDs, and at most 20 distinct, useful entities. For an existing match, use its exact ID, name, type and subtypes; otherwise set existingId to null. Avoid duplicates and already connected entities. Evidence must be a nonempty exact substring of one body text run, not the title or an existing mention. Sources require original file attachments: only suggest existing Source entities, never new sources. Suggest named people, places, events, creative works, organizations, sources, and well-defined concepts where supported; skip vague words. Return an empty suggestions array if none qualify.`,
+The note includes bodyContext with the original block order, surrounding text, inline LaTeX formulas delimited by \\( and \\), and display LaTeX formulas delimited by \\[ and \\]. Use this context to understand mathematical terminology and relationships. Formulas, existing mentions, and text excluded from tagging are context only: never rewrite them or use them as evidence. Only bodyTextRuns contains eligible text for tagging.
+Return only JSON: {"suggestions":[{"name":"...","type":"...","subtypes":["subtype ID"],"description":"short description supported by the note","existingId":null,"evidence":"phrase quoted from one bodyTextRuns entry","reason":"why this is an entity"}]}.
+Use only the supplied main types and subtype IDs, and at most 20 distinct, useful entities. For an existing match, use its exact ID, name, type and subtypes; otherwise set existingId to null. Avoid duplicates and already connected entities. Evidence must quote a nonempty contiguous phrase from one bodyTextRuns entry, not the title or bodyContext. Preserve the original wording, case, punctuation, and whitespace where possible; ordinary spaces, nonbreaking spaces, tabs, and line breaks are equivalent for matching. Evidence must not cross formulas, existing mentions, or excluded text. Sources require original file attachments: only suggest existing Source entities, never new sources. Suggest named people, places, events, creative works, organizations, sources, and well-defined concepts where supported; skip vague words. Return an empty suggestions array if none qualify.`,
     input: [{role:'user' as const, content:[{type:'input_text' as const, text:input}]}],
   };
 }
@@ -25,7 +26,17 @@ export class EntityScans {
     const entities = this.knowledge.list(vault);
     const connected = new Set(page.blocks.flatMap(block => blockSegments(block).flatMap(s => s.entityId ? [s.entityId] : [])));
     const runs: string[] = [];
-    const collect = (segments: import('../../shared/domain.js').Segment[]) => {
+    const names = new Map(entities.map(entity => [entity.id,entity.name]));
+    const contextText = (segments: Segment[]) => segments.map(segment => segment.entityId
+      ? segment.mentionText ?? names.get(segment.entityId) ?? ''
+      : segment.math ? `\\(${segment.text ?? ''}\\)` : segment.text ?? '').join('');
+    const bodyContext = page.blocks.filter(block => block.type !== 'image').map(block => ({
+      blockId:block.id, type:block.type,
+      text:block.type === 'math' ? `\\[${block.content.map(segment => segment.text ?? '').join('')}\\]`
+        : block.type === 'table' ? (block.rows ?? []).map(row => row.map(contextText).join('\t')).join('\n')
+        : contextText(block.content),
+    }));
+    const collect = (segments: Segment[]) => {
       let run = '';
       for (const segment of segments) {
         if (!isEntityTaggingText(segment)) { if (run) runs.push(run); run = ''; }
@@ -39,7 +50,7 @@ export class EntityScans {
       else collect(block.content);
     }
     if (!runs.some(run => run.trim())) throw new HttpError(400, 'Add some note text to scan first.');
-    const input = JSON.stringify({untrusted_note:{title:page.title,bodyTextRuns:runs},schema:this.knowledge.schema(vault),existingEntities:entities.map(({id,name,type,subtypes,description}) => ({id,name,type,subtypes,description,alreadyConnected:connected.has(id)}))});
+    const input = JSON.stringify({untrusted_note:{title:page.title,bodyTextRuns:runs,bodyContext},schema:this.knowledge.schema(vault),existingEntities:entities.map(({id,name,type,subtypes,description}) => ({id,name,type,subtypes,description,alreadyConnected:connected.has(id)}))});
     if (input.length > 80000 || runs.join('').length > 40000) throw new HttpError(413, 'This note or entity catalog exceeds the scan limit.');
     return input;
   }

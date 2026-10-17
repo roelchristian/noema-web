@@ -28,6 +28,14 @@ export function ConnectedEntities({page, entities, onOpenEntity, children}: {pag
   const id = useId();
   const connected = useMemo(() => connectedEntityItems(page, entities, 'all', sort), [page.blocks, page.vault_id, entities, sort]);
   const visible = connected.filter(entity => type === 'all' || entity.type === type);
+  const paginationKey = JSON.stringify([page.vault_id, page.id, type, sort]);
+  const [pagination, setPagination] = useState({key: paginationKey, index: 0});
+  const pageSize = 10;
+  const pageCount = Math.max(1, Math.ceil(visible.length / pageSize));
+  const pageIndex = pagination.key === paginationKey ? Math.min(pagination.index, pageCount - 1) : 0;
+  if (pagination.key !== paginationKey || pagination.index !== pageIndex) setPagination({key: paginationKey, index: pageIndex});
+  const pageStart = pageIndex * pageSize;
+  const paginated = visible.slice(pageStart, pageStart + pageSize);
   const tabs = ['all', ...entityTypes] as const;
   function navigate(event: KeyboardEvent<HTMLButtonElement>) {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -53,7 +61,12 @@ export function ConnectedEntities({page, entities, onOpenEntity, children}: {pag
       </button>
     </div>
     <div id={id + '-list'} role="tabpanel" aria-labelledby={id + '-' + type}>
-      {visible.length ? <ul className="knowledge-connected-list">{visible.map(entity => <li key={entity.id}><button type="button" onClick={() => onOpenEntity(entity.id)}><Icon name={entity.type}/><span>{entity.name}</span></button></li>)}</ul> : <p className="section-hint">{!connected.length ? 'Mention an entity with @ to connect it here.' : 'No connected entities of this type.'}</p>}
+      {visible.length ? <ul className="knowledge-connected-list">{paginated.map(entity => <li key={entity.id}><button type="button" onClick={() => onOpenEntity(entity.id)}><Icon name={entity.type}/><span>{entity.name}</span></button></li>)}</ul> : <p className="section-hint">{!connected.length ? 'Mention an entity with @ to connect it here.' : 'No connected entities of this type.'}</p>}
+      {pageCount > 1 && <nav className="knowledge-entity-pagination" aria-label="Connected entities pagination">
+        <span role="status" aria-live="polite" aria-atomic="true">{pageStart + 1}–{Math.min(pageStart + pageSize, visible.length)} of {visible.length}</span>
+        <button type="button" className="pagination-previous" aria-label="Previous connected entities" title="Previous page" aria-controls={id + '-list'} disabled={pageIndex === 0} onClick={() => setPagination({key: paginationKey, index: pageIndex - 1})}><Icon name="chevron"/></button>
+        <button type="button" aria-label="Next connected entities" title="Next page" aria-controls={id + '-list'} disabled={pageIndex === pageCount - 1} onClick={() => setPagination({key: paginationKey, index: pageIndex + 1})}><Icon name="chevron"/></button>
+      </nav>}
     </div>
   </section>;
 }

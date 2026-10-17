@@ -189,9 +189,8 @@ button:focus-visible, .button:focus-visible, select:focus-visible, input:focus-v
 :root[data-mode=dark] { color-scheme: dark; background: #19191b; color: #e6e6e9; --surface: #19191b; --surface-raised: #222225; --surface-hover: #303034; --text: #e6e6e9; --text-muted: #aaaab2; --control-border: #48484f; --line: #35353b; --sidebar: #202023; --accent-foreground: #19191b; }
 
 /* Quiet, neutral scrollbars that follow the workspace's light and dark palettes. */
-:root { --scrollbar-thumb: color-mix(in srgb, var(--text-muted) 35%, transparent); --scrollbar-thumb-hover: color-mix(in srgb, var(--text-muted) 60%, transparent); }
+:root { --scrollbar-thumb: color-mix(in srgb, var(--text-muted) 20%, transparent); --scrollbar-thumb-hover: color-mix(in srgb, var(--text-muted) 35%, transparent); }
 * { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
-*:hover { scrollbar-color: var(--scrollbar-thumb-hover) transparent; }
 @supports not (scrollbar-width: thin) {
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
@@ -290,7 +289,7 @@ main { margin-left: 224px; }
 @media (max-width: 800px) { .trash-row { flex-wrap: wrap; } .trash-actions { width: 100%; margin-left: 33px; flex-wrap: wrap; } }
 
 /* Wider navigation with contextual actions beside each item. */
-@media (min-width: 751px) { .sidebar { width: 272px; } main { margin-left: 272px; } }
+@media (min-width: 751px) { .sidebar { width: 288px; } main { margin-left: 288px; } }
 @media (min-width: 501px) and (max-width: 750px) { .sidebar { width: 224px; } main { margin-left: 224px; } }
 .sidebar-item-row { display: flex; align-items: center; min-width: 0; border-radius: 5px; }
 .sidebar-item-row > .nav, .sidebar-item-row > .page-link { flex: 1; min-width: 0; width: auto; margin-bottom: 0; }
@@ -1114,6 +1113,13 @@ main:has(> #content > .page) { display: flex; flex-direction: column; }
 .knowledge-connected-list button > .icon { flex: none; width: 14px; height: 14px; margin-top: 2px; color: var(--text-muted); }
 .knowledge-connected-list button > span { overflow-wrap: anywhere; }
 .knowledge-connected-list button:hover > span { text-decoration: underline; text-underline-offset: 2px; }
+.knowledge-entity-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 3px; margin-top: 8px; color: var(--text-muted); }
+.knowledge-entity-pagination > span { margin-right: 7px; font-size: 10px; font-variant-numeric: tabular-nums; }
+.knowledge-entity-pagination button { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 5px; border-radius: 4px; color: inherit; }
+.knowledge-entity-pagination button:hover:not(:disabled) { background: var(--surface-hover); color: var(--text); }
+.knowledge-entity-pagination button:disabled { opacity: .3; cursor: default; }
+.knowledge-entity-pagination .icon { width: 12px; height: 12px; }
+.knowledge-entity-pagination .pagination-previous .icon { transform: rotate(180deg); }
 
 /* Knowledge entities use the Library list, with top-level type groups. */
 .knowledge-library .knowledge-list-head { grid-template-columns: 34px minmax(0, 1fr) 160px 28px; }
@@ -1140,6 +1146,13 @@ main:has(> #content > .page) { display: flex; flex-direction: column; }
 /* Keep the vault picker pinned while navigation scrolls independently. */
 .sidebar { overflow: hidden; }
 .sidebar-scroll-region { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.scope-path, .scope-path > span { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.scope-path { flex-wrap: wrap; padding: 4px 8px; color: var(--text-muted); font-size: 10px; }
+.scope-path button { padding: 3px 0; overflow-wrap: anywhere; text-align: left; }
+.scope-path button:hover { color: var(--text); }
+.scope-path .icon { width: 10px; height: 10px; }
+.sidebar .scope-folder { align-items: center; gap: 8px; font-weight: 550; }
+@media (max-width: 500px) { .current-page-scope { display: none; } }
 .sidebar .sidebar-scroll-region #page-list { overflow: visible; min-height: 0; }
 .sidebar .vault-controls { position: relative; flex: 0 0 auto; bottom: auto; margin-top: 0; }
 .select-menu, .sidebar-action-menu { overscroll-behavior: contain; scroll-padding: 5px; }

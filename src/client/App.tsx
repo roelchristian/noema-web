@@ -17,6 +17,7 @@ import { SettingsDialog } from './settings/SettingsDialog';
 import { useAppearance } from './settings/useAppearance';
 import { RecentLibrary } from './organization/RecentLibrary';
 import { SidebarOrganization } from './organization/SidebarOrganization';
+import { CurrentPageScope } from './organization/CurrentPageScope';
 import { OrganizationLibrary } from './organization/OrganizationLibrary';
 import { Workspace } from './state/workspace';
 import { usePageScroll } from './state/use-page-scroll';
@@ -109,12 +110,11 @@ export function App() {
         <button className={'nav ' + (view === 'entities' ? 'active' : '')} disabled={disabled} aria-label="Knowledge entities" title="Knowledge entities" onClick={() => workspace.showEntities()}><span data-icon="knowledge"><Icon name="knowledge"/></span><span>Knowledge entities</span><span className="count">{entities.length}</span></button>
       </nav>
       <SidebarOrganization available={!!vault && !vault.locked} onOpenPage={id => run(() => workspace.openPage(id))} pages={pages} onMovePage={(id, collection, folder) => workspace.locatePage(id, collection, folder)} onError={workspace.report} key={vault?.id} vaultId={vault?.id} onChanged={workspace.setOrganization} data={organization} context={organizationContext} active={view === 'organization'} disabled={disabled} onOpen={(collection, folder) => workspace.openOrganization(collection, folder)}/>
-      <div className="section-label">Notes <button className="sidebar-menu-trigger" type="button" title="New page" aria-label="New page" disabled={disabled} onClick={() => run(() => workspace.newPage())}><Icon name="plus"/></button></div>
-      <nav id="page-list">{pages.map(p => {
+      {view === 'pages' && page && vault && !vault.locked && <CurrentPageScope page={page} pages={pages} data={organization} disabled={disabled} onOpenFolder={id => workspace.openOrganization('', id)} renderPage={p => {
         const selected = page?.id === p.id && view === 'pages';
         const favourite = organization.favourites.some(item => item.kind === 'page' && item.item_id === p.id);
         return <div key={p.id} className={'sidebar-item-row ' + (selected ? 'is-selected' : '')}>
-          <button draggable={!disabled} onDragStart={event => { if (vault) startPageDrag(event, vault.id, p.id); }} className={'page-link ' + (selected ? 'selected' : '')} aria-busy={loadingPageId === p.id} disabled={pageLinksDisabled} title={p.title || 'Untitled'} onClick={() => run(() => workspace.openPage(p.id))}><span><PageIcon icon={p.icon}/></span><span className="page-link-title">{p.title || 'Untitled'}</span></button>
+          <button draggable={!disabled} onDragStart={event => { if (vault) startPageDrag(event, vault.id, p.id); }} className={'page-link ' + (selected ? 'selected' : '')} aria-current={selected ? 'page' : undefined} aria-busy={loadingPageId === p.id} disabled={pageLinksDisabled} title={p.title || 'Untitled'} onClick={() => run(() => workspace.openPage(p.id))}><span><PageIcon icon={p.icon}/></span><span className="page-link-title">{p.title || 'Untitled'}</span></button>
           <ActionMenu label={'Options for page: ' + (p.title || 'Untitled')} disabled={disabled} actions={[
             {label: 'Open', icon: 'page', onSelect: () => run(() => workspace.openPage(p.id))},
             {label: 'Rename', icon: 'edit', onSelect: () => setRenameTarget(p)},
@@ -123,7 +123,7 @@ export function App() {
             {label: 'Move to Trash', icon: 'trash', danger: true, onSelect: () => setDeleteTarget(p)},
           ]}/>
         </div>;
-      })}</nav>
+      }}/>}
       </div>
       <div className="vault-controls"><label htmlFor="vault-select">VAULT</label><div className="vault-picker"><Select id="vault-select" aria-label="Current vault" value={vault?.id || ''} disabled={busy || !vaults.length} onChange={e => run(() => workspace.selectVault(e.target.value))}>{!vault && <option value="">{busy?'Loading vaults…':vaults.length?'Choose a vault':'No vaults'}</option>}{vaults.map(v => <option key={v.id} value={v.id}>{v.locked ? 'Locked · ' : ''}{v.name}</option>)}</Select><ActionMenu label="Vault options" disabled={busy} actions={[
         {label: 'New vault', icon: 'plus', onSelect: () => setVaultAction('create')},

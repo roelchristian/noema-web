@@ -1287,10 +1287,16 @@ main {position:relative;}
 /* Loading should not flash the application chrome on fast page switches. */
 .sidebar[data-navigating=true] button:disabled { opacity: 1; }
 
-.ai-explanation > summary {cursor:pointer;width:fit-content;}
-.ai-explanation-source {margin:8px 0 14px;color:var(--text-muted);font-size:12px;}
-.ai-explanation-source > span {font-weight:500;}
-.ai-explanation-source blockquote {margin:6px 0;padding-left:12px;border-left:2px solid var(--line);white-space:pre-wrap;max-height:9em;overflow:auto;}
+.ai-explanation > summary { display: flex; align-items: center; gap: 6px; width: fit-content; min-height: 32px; margin: 0 0 4px; padding: 4px 0; list-style: none; color: var(--text-muted); font-size: 12px; font-weight: 500; cursor: pointer; }
+.ai-explanation > summary::-webkit-details-marker { display: none; }
+.ai-explanation > summary > .icon { width: 12px; height: 12px; }
+.ai-explanation[open] > summary > .icon { transform: rotate(90deg); }
+.ai-explanation > summary:hover { color: var(--text); }
+.ai-explanation > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+.ai-explanation-source { margin: 4px 0 12px; color: var(--text-muted); font-size: 12px; line-height: 1.55; }
+.ai-explanation-source > span { display: block; font-size: 10px; font-weight: 500; }
+.ai-explanation-source blockquote { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin: 4px 0 0; padding: 0; border: 0; }
+@media (max-width: 750px) { .ai-explanation > summary { min-height: 44px; } }
 .ai-explanation .inline-math {cursor:text;}
 .ai-explanation .block-content {cursor:text;}
 .ai-explanation table {width:100%;border-collapse:collapse;}

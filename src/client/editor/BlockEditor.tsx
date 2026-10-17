@@ -33,6 +33,13 @@ function explanationInsertionIndex(blocks: Block[], ids: string[]) {
   if(last.semanticGroup)blocks.forEach((block,i)=>{if(block.semanticGroup?.id===last.semanticGroup!.id)index=i;});
   return index;
 }
+function passagePreview(text: string) {
+  const normalized=text.replace(/\s+/g,' ').trim();
+  if(normalized.length<=180)return normalized;
+  const start=Array.from(normalized).slice(0,180).join('');
+  const boundary=start.lastIndexOf(' ');
+  return (boundary>120?start.slice(0,boundary):start).trimEnd()+'…';
+}
 const options: {type: BlockType; title: string; detail: string; icon: string}[] = [
   {type: 'paragraph', title: 'Text', detail: 'Plain text for your thoughts', icon: 'T'},
   {type: 'heading1', title: 'Heading 1', detail: 'A large section heading', icon: 'H₁'},
@@ -483,8 +490,8 @@ export function BlockEditor(props: Props) {
     }}>{!explanationAnchorId&&explanationStatus}{semanticRuns(blocks).map(run => run.type==='block' && isAIExplanation(run.block) ? {type:'group' as const,id:run.id,kind:'ai-explanation' as const,blocks:[run.block]} : run).map(run => <Fragment key={run.id}>{run.type === 'block' ? renderBlock(run.block) : <section key={run.id} data-block-group-id={run.id} className={'semantic-group'+(blockDrag?.id===run.id?' is-block-dragging':'')} data-semantic-kind={run.kind} style={semanticStyle(run.kind)} aria-label={semanticFunctions[run.kind].label+' semantic group'} data-drop-before={blockDrag?.valid&&blockDrag.beforeId===run.id?true:undefined} data-drop-after={blockDrag?.valid&&blockDrag.beforeId===null&&dropEndId===run.id?true:undefined}>
       <span className="semantic-accent" aria-hidden="true"/><div className="semantic-parent-controls"><button type="button" className="block-handle semantic-handle" data-semantic-parent-handle draggable={false} aria-describedby="block-drag-help" aria-label={semanticFunctions[run.kind].label+' group options'} aria-pressed={blockDrag?.id===run.id} title={semanticFunctions[run.kind].label+' · Drag group or click for options'} onClick={event=>groupOptions(event.currentTarget,run.id)}>{semanticGlyph(run.kind)}</button></div>
       {run.kind==='ai-explanation' ? <details className="ai-explanation" open>
-        <summary className="ai-explanation-label">AI Explanation</summary>
-        {run.blocks[0]?.semanticGroup?.source && <div className="ai-explanation-source"><span>Passage explained</span><blockquote>{run.blocks[0].semanticGroup.source.excerpt}</blockquote></div>}
+        <summary className="ai-explanation-label"><Icon name="chevron"/><span>AI explanation</span></summary>
+        {run.blocks[0]?.semanticGroup?.source && <div className="ai-explanation-source"><span>Passage explained</span><blockquote>{passagePreview(run.blocks[0].semanticGroup.source.excerpt)}</blockquote></div>}
         <div className="semantic-children">{run.blocks.map(renderBlock)}</div>
       </details> : <div className="semantic-children">{run.blocks.map(renderBlock)}</div>}
     </section>}{(run.type==='block'?run.block.id===explanationAnchorId:run.blocks.some(block=>block.id===explanationAnchorId))&&explanationStatus}</Fragment>)}{uploadCards()}</div>

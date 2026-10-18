@@ -9,7 +9,8 @@ import { CleanupDialog } from './CleanupDialog';
 import {rememberMarkdownTyping,useMarkdownTyping} from '../state/markdown-preferences';
 import {formatMarkdownBlocks} from './markdown-typing';
 
-export function PageToolbar({ onRevealInSidebar, inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, focusedReading, onToggleFocusedReading, onForward, forwardDisabled, onChangeBlocks, onFeaturedImageChange,onEditLockChange, onUndo, onRedo, canUndo, canRedo}: {
+export function PageToolbar({ tocAvailable=false, tocVisible=true, onToggleToc, onRevealInSidebar, inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, focusedReading, onToggleFocusedReading, onForward, forwardDisabled, onChangeBlocks, onFeaturedImageChange,onEditLockChange, onUndo, onRedo, canUndo, canRedo}: {
+  tocAvailable?:boolean;tocVisible?:boolean;onToggleToc?:()=>void;
   onRevealInSidebar: () => void;
   onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean;
   onEditLockChange:(locked:boolean,password?:string)=>Promise<void>;
@@ -63,6 +64,7 @@ export function PageToolbar({ onRevealInSidebar, inactive=false, page, onError, 
       ...(onForward ? [{label: 'Go forward', icon: 'chevron', disabled: forwardDisabled, onSelect: onForward}] : []),
       {label: 'Reveal in sidebar', icon: 'folder', onSelect: onRevealInSidebar},
       {label: focusedReading ? 'Turn off focused reading' : 'Turn on focused reading', icon: 'creativework', onSelect: onToggleFocusedReading},
+      ...(tocAvailable&&onToggleToc?[{label:tocVisible?'Hide table of contents':'Show table of contents',icon:'menu',checked:tocVisible,onSelect:onToggleToc}]:[]),
       {label: 'Featured image…', icon: 'image', disabled:!!page.editLocked, onSelect: () => setFeaturedImageOpen(true)},
       {label: 'Editing', icon: 'edit', disabled: !!page.editLocked, children: [
         {label: 'Undo', description: '⌘/Ctrl+Z', disabled: !canUndo, onSelect: onUndo},

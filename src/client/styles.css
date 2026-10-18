@@ -2986,6 +2986,46 @@ dialog.noema-modal.ai-activity-modal .modal-header { position: relative; top: au
 /* Page sources use quiet document rows rather than inline entity chips. */
 .page-sources-list{list-style:none;margin:0;padding:0}
 .related-note-excerpt{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;margin-top:3px;color:var(--text-muted);font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+.page-toc { flex: none; max-height: min(360px, 50dvh); overflow-y: auto; overscroll-behavior: contain; margin: 0 0 28px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; font-family: var(--font-ui); }
+.page-toc h2 { margin: 0 0 8px; color: var(--text-muted); font: 550 11px/1.5 var(--font-ui); }
+.page-toc ol { list-style: none; margin: 0; padding: 0; }
+.page-toc li { margin: 0; padding: 0; }
+.page-toc .is-subheading { padding-left: 16px; }
+.page-toc button { display: block; width: 100%; padding: 5px 7px; border-radius: 4px; color: var(--text-muted); text-align: left; font-size: 12px; line-height: 1.5; white-space: normal; word-break: normal; overflow-wrap: break-word; hyphens: none; text-overflow: clip; }
+.page-toc button:hover, .page-toc button:focus-visible { color: var(--text); background: var(--surface-hover); }
+.page-toc button[aria-current=location] { color: var(--text); background: var(--surface-hover); font-weight: 550; }
+.page-toc.page-toc-document { max-height: none; overflow: visible; margin: 0 0 30px; padding: 0 0 20px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
+.page-toc-document h2 { margin-bottom: 12px; font-size: 11px; font-weight: 500; }
+.page-toc-document ol { border-left: 1px solid var(--line); }
+.page-toc-document li:not(.is-subheading) + li:not(.is-subheading), .page-toc-document .is-subheading + li:not(.is-subheading) { margin-top: 7px; }
+.page-toc-document button { padding: 5px 0 5px 14px; border-radius: 0; color: var(--text); font-size: 13px; line-height: 1.6; font-weight: 500; }
+.page-toc-document .is-subheading { padding-left: 18px; }
+.page-toc-document .is-subheading button { color: var(--text-muted); font-size: 12px; font-weight: 400; }
+.page-toc-document button:hover, .page-toc-document button:focus-visible { color: var(--text); background: transparent; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--text-muted); }
+.page-toc-document button[aria-current=location] { color: var(--text); background: transparent; box-shadow: -1px 0 var(--text-muted); }
+#page-section-guide:empty { display: none; }
+#page-section-guide { flex: none; min-height: 0; }
+.sidebar-scroll-region { transition: opacity 180ms ease; }
+@media (min-width: 751px) and (min-height: 651px) {
+  .sidebar:has(.page-toc-guide[data-visible=true]) .sidebar-scroll-region:not(:hover):not(:focus-within) {
+    opacity: .70;
+    -webkit-mask-image: linear-gradient(to bottom, #000 45%, #000b 100%);
+    mask-image: linear-gradient(to bottom, #000 45%, #000b 100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) { .sidebar-scroll-region { transition: none; } }
+.sidebar .page-toc-guide { max-height: min(280px, 30dvh); margin: 12px 2px; padding: 12px 6px 8px; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; scrollbar-width: thin; animation: page-toc-guide-enter 180ms ease-out; transition: opacity 180ms ease, transform 180ms ease; }
+.page-toc-guide[data-visible=false] { opacity: 0; transform: translateY(6px); pointer-events: none; }
+.page-toc-guide-heading { margin-bottom: 7px; padding: 0 8px; }
+.page-toc-guide .page-toc-guide-heading h2 { margin: 0; padding: 0; font-size: 10px; font-weight: 500; }
+@keyframes page-toc-guide-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .sidebar .page-toc-guide { animation: none; transition: none; } }
+@media (max-width: 750px), (max-height: 650px) { #page-section-guide { display: none; } }
+.page-toc-guide h2 { padding: 0 7px; }
+.page-toc-guide button { padding: 5px 8px; border-radius: 0; font-size: 11px; color: var(--text-muted); }
+.page-toc-guide button[aria-current=location] { color: var(--text); background: transparent; box-shadow: inset 1px 0 var(--text-muted); font-weight: 500; }
+@media (max-width: 750px) { .page-toc { padding: 12px; margin-bottom: 22px; } .page-toc button { min-height: 44px; display: block; } .page-toc-guide { display: none; } }
+@media print { .page-toc-guide { display: none; } }
 .page-sources-row{display:flex;align-items:center;gap:2px;border-radius:7px;transition:background .15s}
 .page-sources-row+.page-sources-row{margin-top:2px}
 .page-sources-row:hover,.page-sources-row:focus-within{background:var(--surface-hover)}

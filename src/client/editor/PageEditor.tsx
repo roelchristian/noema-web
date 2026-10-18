@@ -1,3 +1,5 @@
+import {PageTableOfContents} from './PageTableOfContents';
+import type {PageHeading} from './page-headings';
 import {TitleText,titleHasMath} from '../components/TitleText';
 import {CitationPresentationContext,NoteReferences} from '../sources/CitationPresentation';
 import {noteCitations,type CitationStyle} from '../../shared/citations';
@@ -15,7 +17,7 @@ import { api } from '../api';
 import type { EntityMatchCache } from '../../shared/entity-match-cache';
 import { EntityMatchReview } from './EntityMatchReview';
 import { ambiguityReviewDelay } from './auto-entity-matching';
-interface Props {subjectsSaving?:boolean;citationStyle?:CitationStyle;pages:PageSummary[];onOpenPage:(id:string)=>void;onAddAlias: (id: string, alias: string) => Promise<void>; page: Page; entities: Entity[]; onChange: (patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon' | 'featuredImageId'>>) => void; onOpenEntity: (id: string) => void; onCreateEntity: (request: CreateEntityRequest) => void; onSave: () => void; onIdentify: () => Promise<void>; saveStatus: SaveStatus}
+interface Props {tocVisible?:boolean;headings?:PageHeading[];subjectsSaving?:boolean;citationStyle?:CitationStyle;pages:PageSummary[];onOpenPage:(id:string)=>void;onAddAlias: (id: string, alias: string) => Promise<void>; page: Page; entities: Entity[]; onChange: (patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon' | 'featuredImageId'>>) => void; onOpenEntity: (id: string) => void; onCreateEntity: (request: CreateEntityRequest) => void; onSave: () => void; onIdentify: () => Promise<void>; saveStatus: SaveStatus}
 const wordSegmenter = new Intl.Segmenter(undefined, {granularity:'word'});
 function editedLabel(updatedAt: string, now: number): string {
   const timestamp = Date.parse(updatedAt);
@@ -25,9 +27,10 @@ function editedLabel(updatedAt: string, now: number): string {
   const [size, unit] = units.find(([size]) => seconds >= size)!;
   return 'Edited ' + new Intl.RelativeTimeFormat('en', {numeric: 'always'}).format(-Math.floor(seconds / size), unit);
 }
-export function PageEditor({subjectsSaving=false,citationStyle='references',pages,onOpenPage,page, entities, onChange, onOpenEntity, onCreateEntity, onSave, onIdentify, onAddAlias, saveStatus}: Props) {
+export function PageEditor({tocVisible=true,headings=[],subjectsSaving=false,citationStyle='references',pages,onOpenPage,page, entities, onChange, onOpenEntity, onCreateEntity, onSave, onIdentify, onAddAlias, saveStatus}: Props) {
   const citationPresentation=useMemo(()=>({style:citationStyle,entries:noteCitations(page.blocks)}),[citationStyle,page.blocks]);
   const title = useRef<HTMLInputElement>(null);
+  const article = useRef<HTMLElement>(null);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30000);
@@ -77,8 +80,9 @@ export function PageEditor({subjectsSaving=false,citationStyle='references',page
   }, [page.id, page.blocks, page.pageDomains, page.conceptContentHash, page.editLocked, entities, onIdentify]);
   const hasTitleMath=useMemo(()=>titleHasMath(page.title),[page.title]);
   const status = {saved: editedLabel(page.updated_at, now), pending: 'Waiting to save…', identifying: 'Identifying entities…', saving: 'Saving…', error: 'Could not save changes'}[saveStatus];
-  return <CitationPresentationContext.Provider value={citationPresentation}><article className="page" inert={subjectsSaving} aria-busy={subjectsSaving} onCompositionStart={event => { event.currentTarget.dataset.entityComposing = 'true'; }} onCompositionEnd={event => { delete event.currentTarget.dataset.entityComposing; }}>
+  return <CitationPresentationContext.Provider value={citationPresentation}><article ref={article} className="page" inert={subjectsSaving} aria-busy={subjectsSaving} onCompositionStart={event => { event.currentTarget.dataset.entityComposing = 'true'; }} onCompositionEnd={event => { delete event.currentTarget.dataset.entityComposing; }}>
     <h1 className={"page-title-heading page-heading"+(hasTitleMath?" has-title-math":"")+(page.editLocked?" is-title-locked":"")} aria-label={page.title || 'Untitled'}><input ref={title} id="page-title" aria-label="Page title" title="Use $…$ or \(…\) for math" placeholder="Untitled" maxLength={500} readOnly={!!page.editLocked} onKeyDown={event=>{if(event.key==='Enter'&&!event.nativeEvent.isComposing){event.preventDefault();event.currentTarget.blur();}}} value={page.title} onChange={e => onChange({title: smartQuoteTitle(e.currentTarget, e.nativeEvent as InputEvent)})}/>{hasTitleMath&&<span className="page-title-preview" aria-hidden="true"><TitleText text={page.title}/></span>}</h1>
+    {headings.length>0&&<PageTableOfContents key={page.vault_id+'/'+page.id} headings={headings} showDocument={tocVisible} articleRef={article}/>}
     {page.editLocked && <div className="page-edit-lock-status" role="status"><Icon name="lock"/><span>Locked for editing{page.editProtected ? ' · Password protected' : ''}</span></div>}
     {reviewError && <p className="entity-review-error" role="alert">{reviewError}</p>}
     {!page.editLocked && <EntityMatchReview matches={reviewMatches} entities={entities} disabled={resolving} onResolve={async resolution => {

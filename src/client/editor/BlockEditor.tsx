@@ -1,3 +1,4 @@
+import {CitationPicker} from './CitationPicker';
 import {CitationPresentationContext} from '../sources/CitationPresentation';
 import {mentionMatches,mentionCaretRect} from './mention-picker';
 import {menuPlacement,revealMenuItem} from '../components/menu-placement';
@@ -15,7 +16,7 @@ import { displayMathSource } from './math-delimiters';
 import { applySmartQuotes } from './smart-quotes';
 import { Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, useMemo, type ReactNode, type ClipboardEvent, type KeyboardEvent, type CSSProperties } from 'react';
 import type { EntityReviewItem } from '../../shared/entity-match-cache';
-import { entityLabels, type Block, type BlockType, type Entity, type PageSummary, type Segment } from '../../shared/domain';
+import { entityLabels, type Block, type BlockType, type Entity, type PageSummary, type SourceReference, type Segment } from '../../shared/domain';
 import { uploadImage } from '../api';
 import { Icon } from '../components/Icon';
 import { Modal, ModalHeader } from '../components/Modal';
@@ -118,6 +119,7 @@ export function BlockEditor(props: Props) {
   const reviewMatches = props.reviewMatches ?? [];
   const dragStatus = useRef<HTMLDivElement>(null);
   function announceDrag(message: string) {if (dragStatus.current) dragStatus.current.textContent = message;}
+  const [citationTarget,setCitationTarget]=useState<{range:Range;editor:HTMLElement;blockId:string}|null>(null);
   const [mathTarget, setMathTarget] = useState<{range: Range; initial: string; node?: HTMLElement} | null>(null);
   const [uploads, setUploads] = useState<ImageUpload[]>([]), [imageError, setImageError] = useState('');
   const uploadQueue = useRef(Promise.resolve());
@@ -186,7 +188,7 @@ export function BlockEditor(props: Props) {
   }, [blocks]);
   useEffect(() => {
     const restore = () => {
-      setMenu(null); setMathTarget(null); setLinkedDeletion([]); focusTarget.current = null;
+      setMenu(null); setMathTarget(null); setCitationTarget(null); setLinkedDeletion([]); focusTarget.current = null;
     };
     document.addEventListener('noema:history-restore', restore);
     return () => document.removeEventListener('noema:history-restore', restore);
@@ -468,13 +470,43 @@ export function BlockEditor(props: Props) {
     const el=elements.current.get(blockId);el?.focus();getSelection()?.removeAllRanges();getSelection()?.addRange(range);
     if(el)update(blockId,{content:readSegments(el)});setMenu(null);
   }
+  function closeCitation(restoreFocus=false) {
+    if(restoreFocus&&citationTarget?.range.startContainer.isConnected){
+      const range=citationTarget.range.cloneRange();range.collapse(false);
+      citationTarget.editor.focus({preventScroll:true});getSelection()?.removeAllRanges();getSelection()?.addRange(range);
+    }
+    setCitationTarget(null);
+  }
+  function insertCitations(references:SourceReference[]) {
+    if(!citationTarget)return;
+    const {range,editor,blockId}=citationTarget;
+    if(!range.startContainer.isConnected||!editor.contains(range.startContainer)||!latest.current.blocks.some(block=>block.id===blockId)){setCitationTarget(null);return;}
+    range.deleteContents();
+    const wrapper=document.createElement('div');
+    wrapper.innerHTML=segmentHTML(references.map(sourceReference=>({text:' [ref]',sourceReference})),latest.current.entities);
+    const fragment=document.createDocumentFragment();while(wrapper.firstChild)fragment.append(wrapper.firstChild);
+    const space=document.createTextNode(' ');fragment.append(space);range.insertNode(fragment);range.setStartAfter(space);range.collapse(true);
+    editor.focus({preventScroll:true});getSelection()?.removeAllRanges();getSelection()?.addRange(range);
+    update(blockId,{content:readSegments(editor)});setCitationTarget(null);
+  }
   function detect(el: HTMLElement, block: Block) {
     const selection = getSelection(); if (!selection?.rangeCount) { setMenu(null); return; }
     const range = selection.getRangeAt(0); if (!el.contains(range.startContainer)) { setMenu(null); return; }
-    if (/^\/[^\n]*$/.test(el.textContent || '')) {
-      const query = el.textContent!.slice(1).toLowerCase(); show(el, [...blockOptionsFor(block).filter(o => o.title.toLowerCase().includes(query)).map(o => ({...o, pick: () => convert(block, o.type, true)})), ...editableSemanticKinds.filter(kind=>kind.includes(query)).map(kind=>({title:semanticFunctions[kind].label,detail:'Semantic function',icon:semanticFunctions[kind].icon,color:semanticFunctions[kind].color,entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:kind,content:[]});}})), ...('image'.includes(query) ? [imageChoice(block.id, block)] : [])], 'TURN INTO'); return;
-    }
+    if(!selection.isCollapsed){setMenu(null);return;}
     const before = range.cloneRange(); before.selectNodeContents(el); before.setEnd(range.startContainer, range.startOffset);
+    const cite=before.toString().match(/(?:^|\s)\/(cite|cit|ci|c|)$/i);
+    let citeChoice:Choice[]=[];
+    if(cite&&range.startContainer.nodeType===Node.TEXT_NODE&&!range.startContainer.parentElement?.closest('code,a,[data-math],[data-entity]')) {
+      const start=range.startOffset-cite[1]!.length-1;
+      if(start>=0){
+        const saved=range.cloneRange();saved.setStart(range.startContainer,start);
+        citeChoice=[{title:'Cite',detail:'Add a source, section, or citation range',icon:'source',entity:true,pick:()=>{setMenu(null);setCitationTarget({range:saved,editor:el,blockId:block.id});}}];
+      }
+    }
+    if (/^\/[^\n]*$/.test(el.textContent || '')) {
+      const query = el.textContent!.slice(1).toLowerCase(); show(el, [...blockOptionsFor(block).filter(o => o.title.toLowerCase().includes(query)).map(o => ({...o, pick: () => convert(block, o.type, true)})), ...citeChoice,...editableSemanticKinds.filter(kind=>kind.includes(query)).map(kind=>({title:semanticFunctions[kind].label,detail:'Semantic function',icon:semanticFunctions[kind].icon,color:semanticFunctions[kind].color,entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:kind,content:[]});}})), ...('image'.includes(query) ? [imageChoice(block.id, block)] : [])], 'TURN INTO',false,range.cloneRange()); return;
+    }
+    if(citeChoice.length){show(el,citeChoice,'CITATION',false,range.cloneRange());return;}
     const wiki=before.toString().match(/\[\[([^\[\]\n]*)$/);
     if(wiki && range.startContainer.nodeType===Node.TEXT_NODE && !(range.startContainer.parentElement?.closest('code,a,[data-math],[data-entity]'))) {
       const start=range.startOffset-wiki[0].length;
@@ -676,6 +708,7 @@ export function BlockEditor(props: Props) {
         <button type="button" className="button primary" autoFocus onClick={() => setLinkedDeletion([])}>{linkedExplanations.length === 1 ? 'Keep explanation' : 'Keep explanations'}</button>
       </div>
     </Modal>}
+    {citationTarget && <CitationPicker vaultId={props.vaultId} entities={entities} anchor={citationTarget.range} editor={citationTarget.editor} onInsert={insertCitations} onClose={closeCitation}/>}
     {mathTarget && <MathDialog initial={mathTarget.initial} onSave={saveInlineMath} onClose={() => setMathTarget(null)}/>}
     {pageLinkStatus && <div className="note-link-status" role="status">{pageLinkStatus}</div>}
     {imageError && <div className="image-upload-error" role="alert">{imageError}</div>}

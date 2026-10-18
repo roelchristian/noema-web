@@ -79,7 +79,7 @@ export function enrichCitationPages(store:Store,blocks:Block[]) {
     if(!cleanedHashes.has(file.id))cleanedHashes.set(file.id,sourceTextHash(mathSource(store,file).text));
     const matches=hashes.get(file.id)===ref.sourceHash||cleanedHashes.get(file.id)===ref.sourceHash;
     ref.stale=file.status!=='ready'||!file.admitted||!matches;
-    if(matches){
+    if(matches&&!(ref.userLocator&&ref.startOffset===undefined)){
       Object.assign(ref,referencePages(file,ref.startLine,ref.endLine));
       const key=file.id+':'+ref.sourceHash;
       if(!documents.has(key))documents.set(key,sourceDocumentEntries(processedSourceDocument(hashes.get(file.id)===ref.sourceHash?file:mathSource(store,file))));

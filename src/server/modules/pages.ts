@@ -114,11 +114,12 @@ export class Pages {
           if(segment.sourceReference!==undefined) {
             const ref=object(segment.sourceReference),sourceId=required(ref.sourceId),fileId=required(ref.fileId);
             if(this.knowledge.find(vault,sourceId)?.type!=='source'||!this.store.get('SELECT 1 FROM source_files WHERE id=? AND entity_id=? AND vault_id=?',fileId,sourceId,vault))throw new HttpError(400,'Invalid citation source');
-            if(!Number.isSafeInteger(ref.startLine)||!Number.isSafeInteger(ref.endLine)||(ref.startLine as number)<1||(ref.endLine as number)<(ref.startLine as number)||(ref.nodeId===undefined&&(ref.endLine as number)-(ref.startLine as number)>=30)||typeof ref.sourceHash!=='string'||!/^[a-f0-9]{64}$/.test(ref.sourceHash)||segment.math||segment.code)throw new HttpError(400,'Invalid source reference');
+            if(!Number.isSafeInteger(ref.startLine)||!Number.isSafeInteger(ref.endLine)||(ref.startLine as number)<1||(ref.endLine as number)<(ref.startLine as number)||(ref.nodeId===undefined&&ref.userLocator===undefined&&(ref.endLine as number)-(ref.startLine as number)>=30)||typeof ref.sourceHash!=='string'||!/^[a-f0-9]{64}$/.test(ref.sourceHash)||segment.math||segment.code)throw new HttpError(400,'Invalid source reference');
             if(ref.sourceNumber!==undefined&&(!Number.isSafeInteger(ref.sourceNumber)||(ref.sourceNumber as number)<1||(ref.sourceNumber as number)>1_000_000_000))throw new HttpError(400,'Invalid source number');
             if(ref.startPage!==undefined&&(!Number.isInteger(ref.startPage)||!Number.isInteger(ref.endPage)||(ref.startPage as number)<1||(ref.endPage as number)<(ref.startPage as number)||(ref.endPage as number)>1000))throw new HttpError(400,'Invalid citation page');
             result.sourceReference={...(ref.startPage===undefined?{}:{startPage:ref.startPage as number,endPage:ref.endPage as number}),...(ref.sourceNumber===undefined?{}:{sourceNumber:ref.sourceNumber as number}),id:required(ref.id),sourceId,fileId,startLine:ref.startLine as number,endLine:ref.endLine as number,sourceHash:ref.sourceHash,excerpt:text(ref.excerpt,16*1024*1024)};
             if(ref.nodeId!==undefined)result.sourceReference.nodeId=required(ref.nodeId);
+            if(ref.userLocator!==undefined)result.sourceReference.userLocator=text(ref.userLocator,1000);
             if(ref.appLocator!==undefined)result.sourceReference.appLocator=text(ref.appLocator,1000);
             if(ref.contextLabel!==undefined)result.sourceReference.contextLabel=text(ref.contextLabel,10000);
             if(ref.generationId!==undefined)result.sourceReference.generationId=required(ref.generationId);

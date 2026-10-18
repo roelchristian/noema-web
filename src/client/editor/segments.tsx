@@ -19,13 +19,15 @@ export function syncEditableSegments(element: HTMLElement, content: Segment[], e
   const key = JSON.stringify(entityReviewRanges(content, entities, location));
   const source = segmentHTML(content, entities,undefined,false,citations);
   const previous = reviewTimers.get(element);
-  if (!changed && previous?.source === source && previous.key === key) return;
+  const last=content.at(-1);
+  const missingTrailingCaret=!!(last&&(last.entityId||last.math||last.sourceReference)&&element.lastChild instanceof HTMLElement&&element.lastChild.contentEditable==='false');
+  if (!changed && !missingTrailingCaret && previous?.source === source && previous.key === key) return;
   clearTimeout(previous?.timer);
   const selection = document.getSelection();
   const selecting = element.closest('[data-text-selected]') || selection && !selection.isCollapsed && selection.rangeCount && selection.getRangeAt(0).intersectsNode(element);
   const composing = element.closest('.page[data-entity-composing]');
   const citationDisplayChanged=previous?.source!==source&&content.some(segment=>segment.sourceReference)&&!composing;
-  if (changed || citationDisplayChanged || (!selecting && !composing && element.querySelector('[data-entity-review]'))) {
+  if (changed || missingTrailingCaret || citationDisplayChanged || (!selecting && !composing && element.querySelector('[data-entity-review]'))) {
     // Strip inherited highlight wrappers immediately when typing resumes.
     replaceEditableHTML(element, source);
   }
@@ -46,6 +48,10 @@ export function segmentHTML(content: Segment[], entities: Entity[], review?: Rev
   let offset = 0;
   const numberOf=(ref:NonNullable<Segment['sourceReference']>)=>citations?.style==='references'?citations.entries.get(citationKey(ref))?.number??ref.sourceNumber??1:ref.sourceNumber??1;
   const ordered=sortCitationRuns(content,(left,right)=>numberOf(left)-numberOf(right));
+  const last=ordered.at(-1);
+  // WebKit needs an editable text position after a trailing noneditable atom.
+  // Otherwise an entity-only line can paint its caret at the block's far edge.
+  const trailingCaret=!readOnly&&last&&(last.entityId||last.math||last.sourceReference);
   return renderToStaticMarkup(<>{ordered.map((s, index) => {
     const start = offset; offset += s.text?.length ?? 0;
     if (s.sourceReference) {
@@ -73,7 +79,7 @@ export function segmentHTML(content: Segment[], entities: Entity[], review?: Rev
     if (s.strike) node = <s>{node}</s>;
     if (s.href && safeHref(s.href)) node = <a href={safeHref(s.href)}>{node}</a>;
     return <span key={index} data-skip-auto-tag={s.skipAutoTag ? 'true' : undefined}>{node}</span>;
-  })}</>);
+  })}{trailingCaret ? '\u200b' : null}</>);
 }
 export function readSegments(el: Node, allowMentions = true): Segment[] {
   const output: Segment[] = [];

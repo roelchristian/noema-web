@@ -1,7 +1,7 @@
 import {blockSegments, type Block, type SourceReference} from './domain.js';
 export type CitationStyle='inline'|'references';
 /** A passage is distinct from another page or section in the same source. */
-export function citationKey(ref:SourceReference){return JSON.stringify([ref.fileId,ref.sourceHash,ref.nodeId??ref.startOffset??ref.startLine,ref.nodeId?null:ref.endOffset??ref.endLine]);}
+export function citationKey(ref:SourceReference){return JSON.stringify([ref.fileId,ref.sourceHash,ref.userLocator??null,ref.nodeId??ref.startOffset??ref.startLine,ref.nodeId?null:ref.endOffset??ref.endLine]);}
 /** Compact locators use the most specific named context; full paths stay saved. */
 export function citationContextLabel(context:string):string {
   const parts=context.split(' › ').map(part=>part.trim()).filter(Boolean);
@@ -18,6 +18,7 @@ export function citationContextLabel(context:string):string {
   return plain.length>40?plain.slice(0,39).trimEnd()+'…':plain;
 }
 export function citationLocation(ref:SourceReference){
+  if(ref.userLocator)return ref.userLocator;
   if(ref.appLocator)return ref.appLocator;
   if(ref.contextLabel&&!(ref.startPage&&/^(paragraph|code|equation|list|table|blockquote|footnote)$/i.test(ref.contextLabel)))return citationContextLabel(ref.contextLabel)+(ref.startPage?` · ${ref.startPage===ref.endPage?`p. ${ref.startPage}`:`pp. ${ref.startPage}–${ref.endPage}`}`:'');
   if(ref.startPage)return ref.startPage===ref.endPage?`p. ${ref.startPage}`:`pp. ${ref.startPage}–${ref.endPage}`;

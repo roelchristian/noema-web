@@ -10,7 +10,7 @@ export function citationLabel(reference:SourceReference) {return citationLocatio
 export function semanticPassages(document:SourceDocument,reference:SourceReference) {
   return sourceDocumentEntries(document).filter(({node})=>node.text!==undefined||node.title).map(entry=>{
     const {node}=entry;
-    const cited=reference.nodeId?node.id===reference.nodeId:reference.startOffset!==undefined&&reference.endOffset!==undefined?
+    const cited=reference.nodeId?entry.path.some(node=>node.id===reference.nodeId):reference.startOffset!==undefined&&reference.endOffset!==undefined?
       node.range.startOffset<reference.endOffset&&(node.text!==undefined?node.range.endOffset:node.range.startOffset+(node.title?.length??0))>reference.startOffset:
       node.range.startLine<=reference.endLine&&(node.text!==undefined?node.range.endLine:node.range.startLine)>=reference.startLine;
     return {...entry,cited};
@@ -59,7 +59,7 @@ export function SourceViewer({vaultId,reference,entities,onClose,onOpenEntity}: 
     return()=>controller.abort();
   },[vaultId,reference.fileId,reference.sourceId,reference.sourceHash,retry]);
   useEffect(()=>{close.current?.focus({preventScroll:true});},[]);
-  const passages=useMemo(()=>loaded?.matches&&loaded.document?semanticPassageRows(semanticPassages(loaded.document,reference)):[],[loaded,reference]);
+  const passages=useMemo(()=>loaded?.matches&&loaded.document&&!(reference.userLocator&&reference.startOffset===undefined)?semanticPassageRows(semanticPassages(loaded.document,reference)):[],[loaded,reference]);
   const firstCited=passages.findIndex(isCitedPassage),hasContext=firstCited>=0;
   const lastCited=passages.reduce((last,entry,index)=>isCitedPassage(entry)?index:last,-1);
   const first=Math.max(0,firstCited-before),last=Math.min(passages.length,lastCited+after+1);
@@ -83,7 +83,7 @@ export function SourceViewer({vaultId,reference,entities,onClose,onOpenEntity}: 
       {!loaded&&!error&&<p className="source-viewer-status" role="status">Loading surrounding context…</p>}
       {error&&<p className="source-viewer-status" role="alert">{error} Showing the saved passage. <button type="button" onClick={()=>setRetry(value=>value+1)}>Retry</button></p>}
       {loaded&&!loaded.matches&&<p className="source-viewer-status">The source text has changed. Showing the saved passage excerpt.</p>}
-      {loaded?.matches&&!hasContext&&<p className="source-viewer-status">This passage’s semantic context is unavailable. Showing the saved excerpt.</p>}
+      {loaded?.matches&&!hasContext&&<p className="source-viewer-status">{reference.userLocator&&reference.startOffset===undefined?'This location was added manually. Showing the saved location label.':'This passage’s semantic context is unavailable. Showing the saved excerpt.'}</p>}
       {hasContext&&first>0&&<button type="button" className="source-viewer-more" onClick={()=>setBefore(value=>value+5)}><Icon name="chevron"/>Earlier context</button>}
       <div className="source-viewer-passages">{hasContext?passages.slice(first,last).map(({node,path,cited,inlineHeading})=><section key={node.id} className={'source-viewer-passage'+(node.text===undefined?' is-heading':'')+(cited||inlineHeading?.cited?' is-cited':'')} data-source-locator={sourceNodeLocator(path)} title={sourceNodeLocator(path)} data-cited-node={cited?node.id:inlineHeading?.cited?inlineHeading.node.id:undefined}>
         <div>{node.text===undefined&&node.appNumber&&<span className="source-viewer-node-address">{sourceNodeLocator(path)}</span>}{cited&&node.text!==undefined&&<span className="source-viewer-node-address">{sourceNodeLocator(path)}</span>}{inlineHeading&&<><strong className="source-viewer-inline-heading"><SemanticPassageText text={inlineHeading.node.title!} reference={reference} cited={inlineHeading.cited}/></strong>{' '}</>}<SemanticPassageText text={node.text??node.title??''} reference={reference} cited={cited}/></div>

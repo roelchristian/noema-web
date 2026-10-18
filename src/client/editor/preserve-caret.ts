@@ -23,7 +23,9 @@ export function replaceEditableHTML(element: HTMLElement, html: string) {
     const size = length(node);
     if (node instanceof HTMLElement && (node.dataset.entity || node.dataset.wikilink!==undefined || node.dataset.math !== undefined || node.tagName === 'BR')) {
       if (remaining <= size) {
-        if (remaining === 0) restored.setStartBefore(node); else restored.setStartAfter(node);
+        if (remaining === 0) restored.setStartBefore(node);
+        else if(node.nextSibling?.nodeType===Node.TEXT_NODE) restored.setStart(node.nextSibling,node.nextSibling.textContent?.startsWith('\u200b')?1:0);
+        else restored.setStartAfter(node);
         return true;
       }
       remaining -= size; return false;

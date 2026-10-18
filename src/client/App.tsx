@@ -20,6 +20,7 @@ import { SidebarOrganization } from './organization/SidebarOrganization';
 import { OrganizationLibrary } from './organization/OrganizationLibrary';
 import { Workspace } from './state/workspace';
 import { usePageScroll } from './state/use-page-scroll';
+import {useLibraryScroll} from './state/use-library-scroll';
 import { Icon } from './components/Icon';
 import { EntityPreview } from './components/EntityPreview';
 import { PageToolbar } from './editor/PageToolbar';
@@ -51,6 +52,7 @@ export function App() {
   const [renameTarget, setRenameTarget] = useState<PageSummary | null>(null);
   const {appearance, setAppearance, storageError} = useAppearance();
   const [workspace] = useState(() => new Workspace());
+  useLibraryScroll(workspace);
   usePageScroll(workspace);
   const state = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
   const {vaults, vault, pages, entities, page, view, busy, loadingPageId, reviewing, error, saveStatus, organization, organizationContext, recent, trash, saveFailures, draftStorageFailures, draftRecoveries} = state;

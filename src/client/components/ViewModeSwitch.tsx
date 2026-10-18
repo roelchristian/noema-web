@@ -3,14 +3,15 @@ import {Icon} from './Icon';
 
 export type ViewMode = 'list' | 'compact' | 'grid';
 const modes = [{id: 'list', label: 'List'}, {id: 'compact', label: 'Compact'}, {id: 'grid', label: 'Grid'}] as const;
-function readMode(scope: string): ViewMode {
+function readMode(scope: string, fallbackScope?: string): ViewMode {
   try {
-    const stored = localStorage.getItem('noema-view-mode/' + scope);
+    const stored = localStorage.getItem('noema-view-mode/' + scope) ?? (fallbackScope ? localStorage.getItem('noema-view-mode/' + fallbackScope) : null);
     return stored === 'compact' || stored === 'grid' ? stored : 'list';
   } catch { return 'list'; }
 }
-export function useViewMode(scope: string) {
-  const [mode, setMode] = useState<ViewMode>(() => readMode(scope));
+export function useViewMode(scope: string, fallbackScope?: string) {
+  const [preference, setPreference] = useState(() => ({scope, mode: readMode(scope, fallbackScope)}));
+  const mode = preference.scope === scope ? preference.mode : readMode(scope, fallbackScope);
   const root = useRef<HTMLElement>(null);
   const before = useRef<Map<HTMLElement, DOMRect> | null>(null);
   const animations = useRef(new Set<Animation>());
@@ -37,7 +38,10 @@ export function useViewMode(scope: string) {
       animation.onfinish=animation.oncancel=()=>animations.current.delete(animation);
     }
   }, [mode]);
-  useEffect(() => { setMode(readMode(scope)); }, [scope]);
+  useEffect(() => {
+    const mode = readMode(scope, fallbackScope);
+    setPreference(previous => previous.scope === scope && previous.mode === mode ? previous : {scope, mode});
+  }, [scope, fallbackScope]);
   function change(next: ViewMode) {
     if(next===mode)return;
     let positions:Map<HTMLElement,DOMRect>|null=null;
@@ -51,7 +55,7 @@ export function useViewMode(scope: string) {
     }
     // Capture the current visual position before cancelling an interrupted transition.
     stop(); before.current=positions;
-    setMode(next);
+    setPreference({scope, mode: next});
     try { localStorage.setItem('noema-view-mode/' + scope, next); } catch { /* Layout remains usable without storage. */ }
   }
   return [mode, change, root] as const;

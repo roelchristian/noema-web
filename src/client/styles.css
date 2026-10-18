@@ -2407,9 +2407,16 @@ dialog.source-page-dialog { width: 720px; max-width: calc(100vw - 32px); max-hei
 .page-draft-recovery-dialog .dialog-actions { flex-wrap: wrap; }
 @media (max-width:750px) { .page-persistence-notice button { min-height:44px; } }
 
+/* Align controls with the input row rather than the filter's scope hint. */
+.organization-browser:has(.library-view-filter) { --library-filter-control-height: 38px; }
+.organization-browser .organization-heading:has(.library-view-filter),
+.library-heading-actions:has(> .library-view-filter) { align-items: flex-start; }
+.library-heading-actions:has(> .library-view-filter) > .button,
+.library-heading-actions:has(> .library-view-filter) > .sidebar-menu-trigger { min-height: var(--library-filter-control-height); }
+
 /* Scoped library filters share the view controls and leave vault search discoverable. */
 .library-view-filter { flex: 0 1 290px; width: clamp(200px, 25vw, 290px); min-width: 180px; text-align: left; }
-.library-view-filter-input { display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text-muted); }
+.library-view-filter-input { display: flex; align-items: center; gap: 7px; min-height: var(--library-filter-control-height); padding: 0 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text-muted); }
 .library-view-filter-input:focus-within { border-color: var(--text-muted); outline: 2px solid var(--line); outline-offset: 1px; }
 .library-view-filter-input > .icon { width: 14px; height: 14px; flex: none; }
 .organization-browser .library-view-filter-input input, :root[data-mode=dark] .organization-browser .library-view-filter-input input { width: 100%; min-width: 0; margin: 0; padding: 7px 0; border: 0; outline: none; box-shadow: none; background: transparent; color: var(--text); font: inherit; font-size: 12px; }
@@ -2425,8 +2432,10 @@ dialog.source-page-dialog { width: 720px; max-width: calc(100vw - 32px); max-hei
   .organization-context-heading:has(.library-view-filter) { grid-template-columns: 36px minmax(0, 1fr); }
   .organization-context-heading > .library-heading-actions:has(.library-view-filter) { grid-column: 1 / -1; justify-content: flex-start; width: 100%; }
 }
+@media (max-width: 750px) {
+  .organization-browser:has(.library-view-filter) { --library-filter-control-height: 46px; }
+}
 @media (max-width: 600px) {
   .library-heading-actions > .library-view-filter { flex: 1 1 100%; width: 100%; min-width: 0; }
-  .library-view-filter-input { min-height: 40px; }
   .library-view-filter-input button { min-width: 36px; min-height: 36px; }
 }

@@ -1,3 +1,4 @@
+import {clearLibraryViewStates} from './library-view-state';
 import {clearEntityDrafts, pruneEntityDrafts} from '../knowledge/entity-drafts';
 import {pageDraftJournal, type PageDraftEntry} from './page-draft-journal';
 import {nextPageAIStatus} from '../../shared/page-ai-status';
@@ -343,7 +344,7 @@ export class Workspace {
   pageSaveStatus = (vaultId: string, pageId: string): SaveStatus => this.saver.statusFor(vaultId,pageId);
   private clearVaultDrafts(vaultId: string) {
     try {pageDraftJournal.discardVault(vaultId);} catch (error) {this.report(error);}
-    clearEntityDrafts(vaultId);
+    clearEntityDrafts(vaultId); clearLibraryViewStates(vaultId);
     this.patch({saveFailures:this.state.saveFailures.filter(item=>item.vaultId!==vaultId),draftStorageFailures:this.state.draftStorageFailures.filter(item=>item.vaultId!==vaultId),draftRecoveries:this.state.draftRecoveries.filter(item=>item.vaultId!==vaultId)});
   }
   private async loadPage(id: string, recordRecent = true) {

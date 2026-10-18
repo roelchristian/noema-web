@@ -1,4 +1,5 @@
 import {pageAIStatusLabels, pageAIStatusDescriptions} from '../../shared/page-ai-status';
+import {useLibraryViewState} from '../state/library-view-state';
 import {FolderCollectionDialog} from './FolderCollectionDialog';
 import {PageCover} from '../components/PageCover';
 import {ViewModeSwitch, useViewMode} from '../components/ViewModeSwitch';
@@ -16,7 +17,7 @@ import { PageIcon } from '../components/PageIcon';
 import { ActionMenu } from '../components/ActionMenu';
 import { ItemOrganization } from './ItemOrganization';
 import { Select } from '../components/Select';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type SetStateAction } from 'react';
 import type { Entity, Folder, FavouriteKind, Organization, OrganizationContext, PageSummary } from '../../shared/domain';
 import { api } from '../api';
 import { Icon } from '../components/Icon';
@@ -32,25 +33,34 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   onRenamePage: (page: PageSummary) => void; onDeletePage: (page: PageSummary) => void;
   onOpenPage: (id: string) => void; onOpenEntity: (id: string) => void; onError: (error: unknown) => void;
 }) {
-  const [viewMode, setViewMode, libraryRef] = useViewMode(favouritesOnly ? 'favourites' : inboxOnly ? 'inbox' : 'library');
+  const {collection, folder} = favouritesOnly || inboxOnly ? {collection: '', folder: ''} : context;
+  const destination = favouritesOnly ? 'favourites' : inboxOnly ? 'inbox' : JSON.stringify(['organization', collection, folder]);
+  const [viewState, setViewState] = useLibraryViewState(vaultId, destination);
+  const [viewMode, setViewMode, libraryRef] = useViewMode(JSON.stringify([vaultId, destination]), favouritesOnly ? 'favourites' : inboxOnly ? 'inbox' : 'library');
   const [addFolder,setAddFolder]=useState<{folderId?:string;collectionId?:string}|null>(null);
   const [pending, setPending] = useState(false);
   const [dropTarget, setDropTarget] = useState<string | null>(null), [dropStatus, setDropStatus] = useState('');
   const moving = useRef(false);
-  const {collection, folder} = favouritesOnly || inboxOnly ? {collection: '', folder: ''} : context;
   const setCollection = (collection: string) => onContextChange({collection, folder: ''});
   const setFolder = onOpenFolder;
-  const [search, setSearch] = useState(''), [edit, setEdit] = useState<EditContainer | null>(null);
-  const [sort, setSort] = useState('modified-desc');
-  const [collectionsOpen, setCollectionsOpen] = useState(true), [contentsOpen, setContentsOpen] = useState(true);
+  const search = viewState.query;
+  const setSearch = (query: string) => setViewState(previous => ({...previous, query, selectedIds: [], focusedRow: null}));
+  const [edit, setEdit] = useState<EditContainer | null>(null);
+  const sort = ['modified-desc','modified-asc','title-asc','title-desc'].includes(viewState.sort) ? viewState.sort : 'modified-desc';
+  const setSort = (sort: string) => setViewState(previous => ({...previous, sort}));
+  const collectionsOpen = viewState.expanded.collections ?? true, contentsOpen = viewState.expanded.contents ?? true;
+  const setExpanded = (section: string, action: SetStateAction<boolean>) => setViewState(previous => ({...previous, expanded: {...previous.expanded, [section]: typeof action === 'function' ? action(previous.expanded[section] ?? true) : action}}));
+  const setCollectionsOpen = (action: SetStateAction<boolean>) => setExpanded('collections', action);
+  const setContentsOpen = (action: SetStateAction<boolean>) => setExpanded('contents', action);
   const sectionId = useId();
   const collectionsId = sectionId + '-collections', contentsId = sectionId + '-contents';
-  const [checkedPages, setCheckedPages] = useState<Set<string>>(new Set());
+  const checkedPages = new Set(viewState.selectedIds);
+  const setCheckedPages = (action: SetStateAction<Set<string>>) => setViewState(previous => ({...previous, selectedIds: [...(typeof action === 'function' ? action(new Set(previous.selectedIds)) : action)]}));
   const [bulkOrganize, setBulkOrganize] = useState(false);
   const [bulkMode, setBulkMode] = useState<'folder' | 'collection'>('folder');
   const [bulkRemove, setBulkRemove] = useState(false);
   const [bulkCollection, setBulkCollection] = useState(''), [bulkFolder, setBulkFolder] = useState('');
-  useEffect(() => { setCheckedPages(new Set()); setBulkOrganize(false); }, [collection, folder, search]);
+  useEffect(() => {setBulkOrganize(false); setSelected(null);}, [vaultId, destination, search]);
   function togglePage(id: string) {
     setCheckedPages(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   }
@@ -75,7 +85,10 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   const pagesById = new Map(pages.map(page => [page.id, page]));
   const linkedFolderCount = (id:string) => (data.folderLinks ?? []).filter(link=>link.collection_id===id).length;
   const collectionPreview = (id: string) => [...(data.folderLinks ?? []).filter(link=>link.collection_id===id).map(link=>data.folders.find(folder=>folder.id===link.folder_id)?.name ?? ''), ...data.memberships.filter(member => member.kind === 'page' && member.collection_id === id && pagesById.has(member.item_id)).slice(0, 3).map(member => pagesById.get(member.item_id)!.title || 'Untitled')].filter(Boolean).slice(0,3).join(' · ');
-  const openItem = (item: Item) => item.kind === 'folder' ? onOpenFolder(item.id) : item.kind === 'page' ? onOpenPage(item.id) : onOpenEntity(item.id);
+  const openItem = (item: Item) => {
+    setViewState(previous => ({...previous, focusedRow: item.kind + ':' + item.id}));
+    if (item.kind === 'folder') onOpenFolder(item.id); else if (item.kind === 'page') onOpenPage(item.id); else onOpenEntity(item.id);
+  };
   const folderDescription = (id: string) => {
     const notes = data.locations.filter(location => location.kind === 'page' && location.folder_id === id && pagesById.has(location.item_id)).length;
     const children = data.folders.filter(child => child.parent_id === id).length;
@@ -91,6 +104,15 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
     if (folder) return location(item)?.folder_id === folder;
     return !location(item)?.folder_id;
   });
+  const scopedPageIds = scopedItems.filter(item => item.kind === 'page').map(item => item.id).sort();
+  const scopedPageKey = JSON.stringify(scopedPageIds);
+  useEffect(() => {
+    const valid = new Set<string>(JSON.parse(scopedPageKey));
+    setViewState(previous => {
+      const selectedIds = previous.selectedIds.filter(id => valid.has(id));
+      return selectedIds.length === previous.selectedIds.length ? previous : {...previous, selectedIds};
+    });
+  }, [vaultId, destination, scopedPageKey, setViewState]);
   const textSearch = useTextSearch(vaultId, search, pages.map(page => page.id + ':' + page.updated_at).join(',') + entities.map(entity => entity.id + ':' + entity.updated_at).join(','), {pageIds: scopedItems.filter(item => item.kind === 'page').map(item => item.id), entityIds: scopedItems.filter(item => item.kind === 'entity').map(item => item.id)}, 10000);
   const scopedKeys = new Set(scopedItems.map(item => item.kind + ':' + item.id));
   const textResults = textSearch.results.filter(hit => scopedKeys.has(hit.kind + ':' + hit.id));
@@ -145,7 +167,7 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   const filterHintId = sectionId + '-filter-hint';
   const filterControl = <div className="library-view-filter"><div className="library-view-filter-input"><Icon name="search"/><input type="search" placeholder="Filter this view…" aria-label={`Filter ${filterScope}`} aria-describedby={filterHintId} value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => {if (event.key === 'Escape' && search) {event.preventDefault(); setSearch('');}}}/>{search && <button type="button" aria-label="Clear view filter" onClick={() => setSearch('')}><Icon name="close"/></button>}</div><small id={filterHintId}>{filterScope} · ⌘/Ctrl+K searches the whole vault</small></div>;
   const isHomepage = !favouritesOnly && !inboxOnly && !collection && !folder;
-  return <section ref={libraryRef} className="organization-library organization-browser" data-layout={viewMode} onDragEnd={() => setDropTarget(null)}>
+  return <section ref={libraryRef} data-library-vault={vaultId} data-library-destination={destination} className="organization-library organization-browser" data-layout={viewMode} onDragEnd={() => setDropTarget(null)}>
     <span className="sr-only" role="status">{dropStatus}</span>
     {(favouritesOnly || !collection && !folder) && <div className={'organization-heading' + (isHomepage ? ' pages-home-heading' : '')}><div className="library-heading-row"><h1 className="page-heading">{favouritesOnly ? 'Favourites' : inboxOnly ? 'Inbox' : 'Library'}</h1></div><div className="pages-home-actions library-heading-actions">{filterControl}<ViewModeSwitch value={viewMode} onChange={setViewMode}/>{isHomepage && <><button className="button" disabled={pending} onClick={() => setEdit({type: 'folders', name: '', parent: ''})}><Icon name="folder"/>New folder</button><button className="button primary" disabled={pending} onClick={onNewNote}><Icon name="compose"/>New Note</button></>}</div></div>}
     <div className="organization-content" aria-busy={pending}>
@@ -166,7 +188,7 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
         {label: 'Delete', icon: 'trash', danger: true, onSelect: () => deleteContainer(currentFolder ? 'folders' : 'collections', currentFolder?.id || collection)},
       ]}/></div></div>}
       {!favouritesOnly && !inboxOnly && <>
-        {!collection && !folder && <div className="organization-container-section"><div className="organization-section-title"><h2><button type="button" className="organization-section-toggle" aria-expanded={collectionsOpen} aria-controls={collectionsId} onClick={() => setCollectionsOpen(open => !open)}><Icon name="chevron"/>Collections <span>{collectionCards.length}</span></button></h2></div><div id={collectionsId} hidden={!collectionsOpen} className="organization-container-grid">{collectionCards.map(c => <button className="organization-container-card" key={c.id} onClick={() => setCollection(c.id)}><span className="destination-icon"><Icon name="collection"/></span><Icon name="chevron"/><strong>{c.name}</strong><small>{countLabel(data.memberships.filter(l => l.kind === 'page' && l.collection_id === c.id).length) + (linkedFolderCount(c.id) ? ` · ${linkedFolderCount(c.id)} linked ${linkedFolderCount(c.id)===1?'folder':'folders'}` : '')}</small>{viewMode === 'grid' && <span className="collection-preview">{collectionPreview(c.id)}</span>}</button>)}{!query && <button className="organization-container-card organization-new-card" disabled={pending} onClick={() => setEdit({type: 'collections', name: '', parent: ''})}><Icon name="plus"/><strong>New collection</strong></button>}</div></div>}
+        {!collection && !folder && <div className="organization-container-section"><div className="organization-section-title"><h2><button type="button" className="organization-section-toggle" aria-expanded={collectionsOpen} aria-controls={collectionsId} onClick={() => setCollectionsOpen(open => !open)}><Icon name="chevron"/>Collections <span>{collectionCards.length}</span></button></h2></div><div id={collectionsId} hidden={!collectionsOpen} className="organization-container-grid">{collectionCards.map(c => <button className="organization-container-card" key={c.id} data-library-row={'collection:' + c.id} data-library-focus onClick={() => {setViewState(previous => ({...previous, focusedRow: 'collection:' + c.id})); setCollection(c.id);}}><span className="destination-icon"><Icon name="collection"/></span><Icon name="chevron"/><strong>{c.name}</strong><small>{countLabel(data.memberships.filter(l => l.kind === 'page' && l.collection_id === c.id).length) + (linkedFolderCount(c.id) ? ` · ${linkedFolderCount(c.id)} linked ${linkedFolderCount(c.id)===1?'folder':'folders'}` : '')}</small>{viewMode === 'grid' && <span className="collection-preview">{collectionPreview(c.id)}</span>}</button>)}{!query && <button className="organization-container-card organization-new-card" disabled={pending} onClick={() => setEdit({type: 'collections', name: '', parent: ''})}><Icon name="plus"/><strong>New collection</strong></button>}</div></div>}
       </>}
       {visible.length > 0 ? <>
       {(!folder && !collection) && <div className="organization-section-title organization-content-title"><h2>{isHomepage ? <button type="button" className="organization-section-toggle" aria-expanded={contentsOpen} aria-controls={contentsId} onClick={() => setContentsOpen(open => !open)}><Icon name="chevron"/>Contents <span>{visible.length}</span></button> : <>{favouritesOnly ? 'Saved favourites' : inboxOnly ? 'Inbox' : 'Contents'} <span>{visible.length}</span></>}</h2>{favouritesOnly && <Select aria-label="Sort favourites" value={sort} onChange={event => setSort(event.target.value)}><option value="modified-desc">Last modified · newest first</option><option value="modified-asc">Last modified · oldest first</option><option value="title-asc">Title · A–Z</option><option value="title-desc">Title · Z–A</option></Select>}</div>}
@@ -179,9 +201,9 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
         <button className={sort.startsWith('modified-') ? 'is-sorted' : ''} onClick={() => setSort(sort === 'modified-desc' ? 'modified-asc' : 'modified-desc')} aria-label={`Sort by last modified, ${sort === 'modified-desc' ? 'oldest first' : 'newest first'}`}>Last modified{sort.startsWith('modified-') && <span className={'sort-direction ' + (sort === 'modified-asc' ? 'ascending' : '')}><Icon name="chevron"/></span>}</button>
         <span aria-hidden="true"/><span className="sr-only">Page actions</span>
       </div>}
-      {visible.map(item => <article className={'organization-item' + (item.kind === 'page' && checkedPages.has(item.id) ? ' is-checked' : '') + (dropTarget === item.id && item.kind === 'folder' ? ' is-drop-target' : '')} key={item.kind + item.id}
+      {visible.map(item => <article data-library-row={item.kind + ':' + item.id} className={'organization-item' + (item.kind === 'page' && checkedPages.has(item.id) ? ' is-checked' : '') + (dropTarget === item.id && item.kind === 'folder' ? ' is-drop-target' : '')} key={item.kind + item.id}
         {...(item.kind === 'folder' ? folderDropHandlers({folder: data.folders.find(folder => folder.id === item.id)!, vaultId, pages, data, pending, moving, onHover: setDropTarget, onStatus: setDropStatus, onMove: (pageId, folderId) => mutate('locations', {kind: 'page', item_id: pageId, folder_id: folderId}), onMoveFolder: (source, parentId) => mutate('folders/' + source.id, {name: source.name, parent_id: parentId}), onError}) : {})}>
-        <div className={'organization-item-row' + (favouritesOnly ? '' : ' organization-page-row')} draggable={(item.kind === 'page' || item.kind === 'folder') && !pending && !checked.length} onDragStart={event => { if (item.kind === 'page') startPageDrag(event, vaultId, item.id); else if (item.kind === 'folder') startFolderDrag(event, vaultId, item.id); }}>{viewMode==='grid' && <PageCover vaultId={vaultId} imageId={item.featuredImageId} icon={item.kind==='folder'?(collection?'folder-linked':'folder'):item.entityType ?? 'page'}/>}{!favouritesOnly && item.kind === 'page' ? <label className="organization-item-icon page-selection" draggable={false}><span className="page-selection-icon"><PageIcon icon={item.icon}/></span><input type="checkbox" aria-label={'Select ' + item.name} checked={checkedPages.has(item.id)} disabled={pending} onChange={() => togglePage(item.id)}/><span className="page-selection-check"><Icon name="check"/></span></label> : <span className="organization-item-icon">{item.kind === 'page' ? <PageIcon icon={item.icon}/> : <Icon name={item.kind === 'folder' ? collection ? 'folder-linked' : 'folder' : item.entityType ?? 'knowledge'}/>}</span>}<button className="organization-item-name" title={item.name} onClick={() => openItem(item)}><span className="organization-page-title"><HighlightedText text={item.name} query={search}/></span><small>{favouritesOnly ? item.label : item.kind === 'folder' ? <><span className="sr-only">{folderDescription(item.id)}</span><span aria-hidden="true">{collection ? 'Linked folder' : '—'}</span></> : item.updatedAt && Number.isFinite(Date.parse(item.updatedAt)) ? <time dateTime={item.updatedAt} title={new Date(item.updatedAt).toLocaleString()}>{new Date(item.updatedAt).toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'})}</time> : 'Modified date unavailable'}{item.kind === 'page' && <span className="page-ai-library-status" title={pageAIStatusDescriptions[pagesById.get(item.id)?.aiStatus ?? 'regular']}>{pageAIStatusLabels[pagesById.get(item.id)?.aiStatus ?? 'regular']}</span>}{!!query && <span className="search-match-badge">{matchLabel(item)}</span>}</small>{(!!query || viewMode === 'grid') && !!(item.kind === 'folder' ? folderDescription(item.id) : snippetFor(item)) && <span className="search-result-snippet item-preview"><HighlightedText text={item.kind === 'folder' ? folderDescription(item.id) : snippetFor(item)} query={search}/></span>}</button><button className={'favourite-button ' + (isFavourite(item) ? 'is-favourite' : '')} disabled={pending} aria-label={(isFavourite(item) ? 'Remove favourite: ' : 'Favourite: ') + item.name} aria-pressed={isFavourite(item)} onClick={() => run(() => mutate('favourites', {kind: item.kind, item_id: item.id, favourite: !isFavourite(item)}))}><Icon name="star"/></button><span className="page-row-actions"><ActionMenu label={'Actions for ' + item.name} disabled={pending} actions={[
+        <div className={'organization-item-row' + (favouritesOnly ? '' : ' organization-page-row')} draggable={(item.kind === 'page' || item.kind === 'folder') && !pending && !checked.length} onDragStart={event => { if (item.kind === 'page') startPageDrag(event, vaultId, item.id); else if (item.kind === 'folder') startFolderDrag(event, vaultId, item.id); }}>{viewMode==='grid' && <PageCover vaultId={vaultId} imageId={item.featuredImageId} icon={item.kind==='folder'?(collection?'folder-linked':'folder'):item.entityType ?? 'page'}/>}{!favouritesOnly && item.kind === 'page' ? <label className="organization-item-icon page-selection" draggable={false}><span className="page-selection-icon"><PageIcon icon={item.icon}/></span><input type="checkbox" aria-label={'Select ' + item.name} checked={checkedPages.has(item.id)} disabled={pending} onChange={() => togglePage(item.id)}/><span className="page-selection-check"><Icon name="check"/></span></label> : <span className="organization-item-icon">{item.kind === 'page' ? <PageIcon icon={item.icon}/> : <Icon name={item.kind === 'folder' ? collection ? 'folder-linked' : 'folder' : item.entityType ?? 'knowledge'}/>}</span>}<button data-library-focus className="organization-item-name" title={item.name} onClick={() => openItem(item)}><span className="organization-page-title"><HighlightedText text={item.name} query={search}/></span><small>{favouritesOnly ? item.label : item.kind === 'folder' ? <><span className="sr-only">{folderDescription(item.id)}</span><span aria-hidden="true">{collection ? 'Linked folder' : '—'}</span></> : item.updatedAt && Number.isFinite(Date.parse(item.updatedAt)) ? <time dateTime={item.updatedAt} title={new Date(item.updatedAt).toLocaleString()}>{new Date(item.updatedAt).toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'})}</time> : 'Modified date unavailable'}{item.kind === 'page' && <span className="page-ai-library-status" title={pageAIStatusDescriptions[pagesById.get(item.id)?.aiStatus ?? 'regular']}>{pageAIStatusLabels[pagesById.get(item.id)?.aiStatus ?? 'regular']}</span>}{!!query && <span className="search-match-badge">{matchLabel(item)}</span>}</small>{(!!query || viewMode === 'grid') && !!(item.kind === 'folder' ? folderDescription(item.id) : snippetFor(item)) && <span className="search-result-snippet item-preview"><HighlightedText text={item.kind === 'folder' ? folderDescription(item.id) : snippetFor(item)} query={search}/></span>}</button><button className={'favourite-button ' + (isFavourite(item) ? 'is-favourite' : '')} disabled={pending} aria-label={(isFavourite(item) ? 'Remove favourite: ' : 'Favourite: ') + item.name} aria-pressed={isFavourite(item)} onClick={() => run(() => mutate('favourites', {kind: item.kind, item_id: item.id, favourite: !isFavourite(item)}))}><Icon name="star"/></button><span className="page-row-actions"><ActionMenu label={'Actions for ' + item.name} disabled={pending} actions={[
           {label: 'Open', icon: item.kind === 'folder' ? collection ? 'folder-linked' : 'folder' : item.kind === 'page' ? 'page' : 'knowledge', onSelect: () => openItem(item)},
           ...(item.kind === 'page' ? [{label: 'Rename', icon: 'edit', onSelect: () => onRenamePage(pages.find(page => page.id === item.id)!)}] : []),
           ...(item.kind !== 'folder' && !favouritesOnly && !inboxOnly && (collection || folder) ? [{label: collection ? 'Remove from collection' : 'Move to Inbox', icon: collection ? 'collection' : 'folder', onSelect: () => move(item, collection, null, !!collection)}] : []),

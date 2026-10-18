@@ -7,7 +7,7 @@ export const entityLabels: Record<EntityType, string> = {
 };
 export const blockTypes = ['paragraph', 'heading1', 'heading2', 'bullet', 'numbered', 'divider', 'code', 'quote', 'todo', 'columns', 'table', 'image', 'math'] as const;
 export type BlockType = typeof blockTypes[number];
-export interface SourceReference {startOffset?:number;endOffset?:number;startPage?:number;endPage?:number;sourceNumber?:number;id:string;sourceId:string;fileId:string;startLine:number;endLine:number;sourceHash:string;excerpt:string}
+export interface SourceReference {generationId?:string;passageId?:string;stale?:boolean;startOffset?:number;endOffset?:number;startPage?:number;endPage?:number;sourceNumber?:number;id:string;sourceId:string;fileId:string;startLine:number;endLine:number;sourceHash:string;excerpt:string}
 export interface TextStyle { sourceReference?: SourceReference; math?: boolean; bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean; code?: boolean; href?: string; skipAutoTag?: boolean }
 export type Segment = TextStyle & ( { text: string; entityId?: never; mentionText?: never } | { entityId: string; text?: never; mentionText?: string });
 /** Formatting never limits entity matching; semantic content and explicit exclusions do. */
@@ -35,7 +35,9 @@ export function entityMentionName(entity: Pick<Entity,'name'|'mentionCase'> | un
 }
 export interface Property { id: string; entity_id: string; name: string; value: string | null; target_id: string | null }
 export interface Relationship { id: string; source_id: string; label: string; target_id: string }
-export interface SourceFile { original_filename: string; generated_name: string | null; language: string | null; summary: string | null; enrichment_status: 'pending' | 'running' | 'completed' | 'failed'; enrichment_error: string | null; enrichment_attempts: number; enrichment_next_attempt_at: string; page_start_lines?: string; admitted: 0 | 1; format: 'txt' | 'md' | 'pdf' | 'html' | 'url'; pdf_flattened: 0 | 1; import_method: 'upload' | 'url'; source_url: string | null; id: string; vault_id: string; entity_id: string | null; name: string; size: number; status: 'queued' | 'processing' | 'ready' | 'failed'; text: string; error: string | null; progress: number; pages: number; ocr_pages: number; created_at: string }
+/** Heading positions refer to one-based lines in the extracted source text. */
+export interface SourceStructureNode { text: string; startLine: number; level?: number; kind?: 'heading' }
+export interface SourceFile { structural_nodes?: string; original_filename: string; generated_name: string | null; language: string | null; summary: string | null; enrichment_status: 'pending' | 'running' | 'completed' | 'failed'; enrichment_error: string | null; enrichment_attempts: number; enrichment_next_attempt_at: string; page_start_lines?: string; admitted: 0 | 1; format: 'txt' | 'md' | 'pdf' | 'html' | 'url'; pdf_flattened: 0 | 1; import_method: 'upload' | 'url'; source_url: string | null; id: string; vault_id: string; entity_id: string | null; name: string; size: number; status: 'queued' | 'processing' | 'ready' | 'failed'; text: string; error: string | null; progress: number; pages: number; ocr_pages: number; created_at: string }
 export interface EntityPageMention extends PageSummary { mentionCount: number; excerpt: string }
 export interface EntityDetail extends Entity { pageMentions?: EntityPageMention[]; attachments?: SourceFile[]; propertyNames: string[]; properties: Property[]; relationships: Relationship[]; incomingProperties: Property[] }
 

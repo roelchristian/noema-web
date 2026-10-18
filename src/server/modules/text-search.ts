@@ -1,3 +1,4 @@
+import type {SemanticSearchResult} from '../../shared/embeddings.js';
 import type {TextSearchResult, TextSearchScope} from '../../shared/text-search.js';
 import {makeSearchSnippet} from '../../shared/search-snippets.js';
 import {Store} from '../store.js';
@@ -72,6 +73,30 @@ export class TextSearch {
     }
     this.store.run('DELETE FROM text_search_dirty WHERE vault_id=?', vault);
   }
+  /** Passage-level lexical candidates for evidence retrieval. UI search below
+   * deliberately keeps its existing one-result-per-source grouping. */
+  searchPassages(vault:string,query:unknown,limit=100):SemanticSearchResult[] {
+    this.vaults.requireOpen(vault);
+    if(typeof query!=='string'||query.length>2000)throw new HttpError(400,'Use a search query up to 2,000 characters.');
+    if(!Number.isInteger(limit)||limit<1||limit>10000)throw new HttpError(400,'Choose a search limit between 1 and 10,000.');
+    const tokens=query.match(/[\p{L}\p{N}][\p{L}\p{N}\p{M}]*/gu)??[];
+    if(!tokens.length)return [];
+    if(tokens.length>128)throw new HttpError(400,'Use up to 128 search terms.');
+    const match=tokens.map((token,index)=>`"${token.replace(/"/g,'""')}"${index===tokens.length-1?'*':''}`).join(' AND ');
+    this.passages.synchronize(vault);
+    return this.store.all<SourcePassage & {name:string;updated_at:string;relevance:number}>(`
+      SELECT p.*,e.name,e.updated_at,
+        (f.status<>'ready' OR EXISTS (SELECT 1 FROM source_passage_dirty d WHERE d.file_id=p.file_id)) AS stale,
+        bm25(source_passages_fts,3.0,1.0) AS relevance
+      FROM source_passages_fts
+      JOIN source_passages p ON p.rowid=source_passages_fts.rowid
+      JOIN source_files f ON f.id=p.file_id AND f.entity_id=p.source_id AND f.vault_id=p.vault_id
+      JOIN entities e ON e.id=p.source_id AND e.vault_id=p.vault_id
+      WHERE source_passages_fts MATCH ? AND p.vault_id=? AND f.admitted=1 AND e.type='source' AND e.inactive=0
+      ORDER BY relevance,p.source_id,p.ordinal,p.id LIMIT ?
+    `,match,vault,limit).map(passage=>({id:passage.source_id,kind:'entity',passageId:passage.id,title:passage.name,
+      snippet:makeSearchSnippet(passage.text,query),updated_at:passage.updated_at,score:-passage.relevance,reference:passageReference(passage)}));
+  }
   search(vault: string, query: unknown, limit: unknown = 100, requestedScope?: unknown): {results: TextSearchResult[]; hasMore: boolean} {
     this.vaults.requireOpen(vault);
     if (typeof query !== 'string' || query.length > 2000) throw new HttpError(400, 'Use a search query up to 2,000 characters.');
@@ -106,7 +131,7 @@ export class TextSearch {
       // per source prevents a book from occupying the entire result list.
       const passages = this.store.all<SourcePassage & {name: string; excerpt: string; relevance: number}>(`
         WITH hits AS MATERIALIZED (
-          SELECT p.*,e.name,
+          SELECT p.*,e.name,(f.status<>'ready' OR EXISTS (SELECT 1 FROM source_passage_dirty d WHERE d.file_id=p.file_id)) AS stale,
             snippet(source_passages_fts,1,'','','…',32) AS excerpt,
             bm25(source_passages_fts,3.0,1.0) AS relevance
           FROM source_passages_fts
@@ -114,7 +139,7 @@ export class TextSearch {
           JOIN source_files f ON f.id=p.file_id AND f.entity_id=p.source_id AND f.vault_id=p.vault_id
           JOIN entities e ON e.id=p.source_id AND e.vault_id=p.vault_id
           WHERE source_passages_fts MATCH ? AND p.vault_id=?
-            AND f.status='ready' AND f.admitted=1 AND e.type='source' AND e.inactive=0
+            AND f.admitted=1 AND e.type='source' AND e.inactive=0
             AND (?=0 OR p.source_id IN (SELECT value FROM json_each(?)))
         ), ranked AS (
           SELECT *,row_number() OVER (PARTITION BY source_id ORDER BY relevance,ordinal,id) AS position FROM hits

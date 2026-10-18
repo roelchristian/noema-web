@@ -28,7 +28,7 @@ const entityScope='entity_id IN (SELECT id FROM entities WHERE vault_id=?)';
 // Explicit, versioned allowlist: credentials, app settings, jobs and activity are never archived.
 const tables={
   pages:{columns:'id,title,icon,featured_image_id,blocks,ai_status,language,updated_at,revision,deleted_at',scope:'vault_id=?'},
-  source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at,import_method,source_url,pdf_flattened,admitted,format,page_start_lines,original_filename,language,summary,generated_name,enrichment_status',scope:'vault_id=? AND entity_id IS NOT NULL'},
+  source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at,import_method,source_url,pdf_flattened,admitted,format,page_start_lines,structural_nodes,original_filename,language,summary,generated_name,enrichment_status',scope:'vault_id=? AND entity_id IS NOT NULL'},
   entities:{columns:'id,name,aliases,mention_case,type,subtypes,description,updated_at,inactive',scope:'vault_id=?'},
   properties:{columns:'id,entity_id,name,value,target_id',scope:entityScope},
   relationships:{columns:'id,source_id,label,target_id',scope:'source_id IN (SELECT id FROM entities WHERE vault_id=?)'},
@@ -211,6 +211,17 @@ export class VaultBackups {
             const starts=list(json(row,'page_start_lines'));
             if(starts.length>1000||starts.some((value,index)=>!Number.isSafeInteger(value)||(value as number)<1||index===0&&value!==1||index>0&&(value as number)<=(starts[index-1] as number)))throw invalid();
             this.store.run('UPDATE source_files SET page_start_lines=? WHERE id=?',JSON.stringify(starts),added.id);
+          }
+          if(row.structural_nodes!==undefined) {
+            const nodes=list(json(row,'structural_nodes'));
+            const sourceLineCount=string(row,'text',16*1024*1024).replace(/\r\n?/g,'\n').split('\n').length;
+            if(nodes.length>sourceLineCount)throw invalid();
+            for(const value of nodes) {
+              if(!value||typeof value!=='object'||Array.isArray(value))throw invalid();
+              const node=value as Record<string,unknown>;
+              if(typeof node.text!=='string'||!node.text.trim()||node.text.length>2000||!Number.isSafeInteger(node.startLine)||(node.startLine as number)<1||(node.startLine as number)>sourceLineCount||node.level!==undefined&&(!Number.isSafeInteger(node.level)||(node.level as number)<1||(node.level as number)>6))throw invalid();
+            }
+            this.store.run('UPDATE source_files SET structural_nodes=? WHERE id=?',JSON.stringify(nodes),added.id);
           }
           const enrichmentStatus=row.enrichment_status??'pending';
           if(!['pending','running','completed','failed'].includes(String(enrichmentStatus)))throw invalid();

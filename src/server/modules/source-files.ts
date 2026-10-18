@@ -1,13 +1,14 @@
 import { AINotifications } from './ai-notifications.js';
 import { scanSourcePDF, fetchSource, sourceURL } from './source-import.js';
 import { syncSourceProvenance } from './source-provenance.js';
+import { mergeSourceStructure } from './source-structure.js';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, unlinkSync, existsSync, statSync, rmSync, renameSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawn, type ChildProcess } from 'node:child_process';
-import type { SourceFile } from '../../shared/domain.js';
+import type { SourceFile, SourceStructureNode } from '../../shared/domain.js';
 import { Store } from '../store.js';
 import { HttpError, now } from '../validation.js';
 
@@ -154,11 +155,13 @@ export class SourceFiles {
     const open=()=>!!this.store.get('SELECT 1 FROM vaults WHERE id=? AND locked=0',file!.vault_id);
     try {
       let bytes:Buffer;
+      let downloadedStructure:SourceStructureNode[]|undefined;
       if(file.format==='url') {
         const downloaded=await fetchSource(file.source_url);
         if(this.closed)return;
         if(!open()){this.store.run("UPDATE source_files SET status='queued',progress=0 WHERE id=?",file.id);return;}
         bytes=downloaded.bytes;
+        downloadedStructure=downloaded.structuralNodes;
         const format=downloaded.name.split('.').at(-1)!.toLowerCase() as SourceFile['format'];
         this.replaceFile(this.inboxFilename(file.vault_id,file.id),bytes);
         this.store.transaction(()=>{
@@ -196,15 +199,20 @@ export class SourceFiles {
       if(!open()){this.store.run("UPDATE source_files SET status='queued',progress=0 WHERE id=?",file.id);return;}
       if(Buffer.byteLength(result.text)>maxText)throw new Error('Extracted text exceeds the 16 MB limit.');
       if(!result.text.trim())throw new Error('No readable text found. Try a clearer file.');
+      let explicit:SourceStructureNode[]=[];
+      if(downloadedStructure)explicit=downloadedStructure;
+      else if('structuralNodes' in result&&Array.isArray(result.structuralNodes))explicit=result.structuralNodes;
+      else if(file.text===result.text&&file.structural_nodes)try{const nodes:unknown=JSON.parse(file.structural_nodes);if(Array.isArray(nodes))explicit=nodes;}catch{/* Old metadata can be regenerated from text. */}
+      const structure=mergeSourceStructure(result.text,explicit);
       this.store.transaction(()=>{
-        this.store.run("UPDATE source_files SET enrichment_status='pending',enrichment_attempts=0,enrichment_error=NULL,enrichment_next_attempt_at='',status='ready',text=?,pages=?,ocr_pages=?,page_start_lines=?,progress=100,error=NULL WHERE id=?",result.text,result.pages,result.ocrPages,JSON.stringify(result.pageStartLines??[]),file!.id);
+        this.store.run("UPDATE source_files SET enrichment_status='pending',enrichment_attempts=0,enrichment_error=NULL,enrichment_next_attempt_at='',status='ready',text=?,pages=?,ocr_pages=?,page_start_lines=?,structural_nodes=?,progress=100,error=NULL WHERE id=?",result.text,result.pages,result.ocrPages,JSON.stringify(result.pageStartLines??[]),JSON.stringify(structure),file!.id);
         this.store.run('UPDATE entities SET inactive=0,updated_at=? WHERE id=? AND vault_id=?',now(),file!.entity_id,file!.vault_id);
         new AINotifications(this.store).recordSource(file!.vault_id,file!.entity_id!,'completed');
       });
     }catch(error){
       if(!this.closed)this.store.transaction(()=>{
-        this.store.run("UPDATE source_files SET status='failed',text='',error=? WHERE id=?",error instanceof Error?error.message:'Source processing failed. Retry processing.',file!.id);
-        this.store.run('UPDATE entities SET inactive=1,updated_at=? WHERE id=? AND vault_id=?',now(),file!.entity_id,file!.vault_id);
+        this.store.run("UPDATE source_files SET status='failed',error=? WHERE id=?",error instanceof Error?error.message:'Source processing failed. Retry processing.',file!.id);
+        this.store.run('UPDATE entities SET inactive=CASE WHEN ? THEN inactive ELSE 1 END,updated_at=? WHERE id=? AND vault_id=?',file!.text.trim()?1:0,now(),file!.entity_id,file!.vault_id);
         new AINotifications(this.store).recordSource(file!.vault_id,file!.entity_id!,'failed');
       });
     }finally{this.running=false;}
@@ -231,7 +239,7 @@ export class SourceFiles {
     try{writeFileSync(temporary,bytes,{flag:'wx',mode:0o600});renameSync(temporary,filename);}
     finally{rmSync(temporary,{force:true});}
   }
-  private async pdf(filename:string,id:string,trackProgress=true):Promise<{text:string;pages:number;ocrPages:number;pageStartLines:number[]}> {
+  private async pdf(filename:string,id:string,trackProgress=true):Promise<{text:string;pages:number;ocrPages:number;pageStartLines:number[];structuralNodes?:SourceStructureNode[]}> {
     if(process.platform!=='darwin')throw new Error('PDF extraction requires macOS with Apple PDFKit and Vision. TXT and MD sources work on this device.');
     // Compile once into the local vault data area; no cloud model or remote OCR.
     const executable=path.join(this.root,'source-extractor');

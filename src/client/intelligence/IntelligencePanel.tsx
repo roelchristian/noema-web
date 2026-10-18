@@ -2,7 +2,6 @@ import {PageMetadata} from './PageMetadata';
 import {PageConceptCategory} from './PageConceptCategory';
 import {NoteConnections} from './NoteConnections';
 import { SummaryText } from './SummaryText';
-import { HelpMenu } from '../components/HelpMenu';
 import { EntityScanReview } from './EntityScanReview';
 import type { EntityScan, EntitySuggestionEdit } from '../../shared/entity-scan';
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from 'react';
@@ -30,7 +29,7 @@ function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnap
   useLayoutEffect(() => {
     const element = summaryText.current;
     if (!element) return;
-    const measure = () => setSummaryOverflow(element.scrollHeight > parseFloat(getComputedStyle(element).lineHeight) * 3 + 1);
+    const measure = () => setSummaryOverflow(element.scrollHeight > parseFloat(getComputedStyle(element).lineHeight) * 5 + 1);
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
@@ -64,20 +63,32 @@ function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnap
   }
   const summaryChanged = !!result && (!result.contentHash || result.contentHash !== page.summaryContentHash);
   return <aside inert={inactive} aria-busy={inactive} className="entity-panel intelligence-panel" id="intelligence-panel" aria-label="Knowledge" onKeyDown={event=>{if(event.key==='Escape')onClose();}}>
-    <div className="panel-top knowledge-panel-top"><span><Icon name="knowledge"/>Knowledge</span><div className="knowledge-panel-actions"><button className="page-tool" aria-label="Knowledge settings" title="Knowledge settings" onClick={onSettings}><Icon name="settings"/></button><button className="page-tool" aria-label="Close Knowledge panel" title="Close Knowledge panel" onClick={onClose}>×</button></div></div>
+    <div className="panel-top knowledge-panel-top"><span><Icon name="knowledge"/>Knowledge</span><div className="knowledge-panel-actions"><button className="page-tool" aria-label="Knowledge settings" title="Knowledge settings" onClick={onSettings}><Icon name="settings"/></button><button className="page-tool" aria-label="Close Knowledge panel" title="Close Knowledge panel" onClick={onClose}><Icon name="close"/></button></div></div>
     <div className="panel-body">
       <PageConceptCategory page={page} onDomainsChange={onDomainsChange} onRefresh={refreshDomains}/>
       <section className="knowledge-summary" aria-labelledby="knowledge-summary-heading">
-        <div className="knowledge-section-heading"><h2 id="knowledge-summary-heading">{result?<><Icon name="sparkles"/>AI Summary</>:<button type="button" className="summary-heading-action" disabled={busy||loading} aria-busy={busy} onClick={()=>void summarize()}><Icon name="sparkles"/>{loading?'Loading summary…':busy?'Summarizing…':'Summarize this page'}</button>}</h2><HelpMenu label="About AI summaries"><p>Summarizing sends this page’s title, text, and mentioned entity names to OpenAI. Attached sources and other pages are excluded. API charges may apply.</p><p>AI can make mistakes. Check the original page. Summaries are saved with this page.</p>{result&&<p>{result.model} · {result.reasoningEffort} reasoning</p>}</HelpMenu></div>
-        {busy&&<p className="section-hint summary-progress" role="status">Creating your summary…</p>}
+        <div className="knowledge-section-heading">
+          <h2 id="knowledge-summary-heading"><Icon name="sparkles"/>Summary{summaryChanged&&<span className="knowledge-status-dot" role="status" aria-label="Summary needs refresh" title="Summary needs refresh"/>}</h2>
+          <div className="knowledge-section-actions">
+            {result&&summaryOverflow&&<button type="button" className="knowledge-icon-action" aria-label={summaryExpanded?'Collapse summary':'Expand summary'} title={summaryExpanded?'Collapse summary':'Expand summary'} aria-expanded={summaryExpanded} aria-controls="knowledge-summary-text" onClick={()=>setSummaryExpanded(value=>!value)}><Icon name={summaryExpanded?'collapse':'expand'}/></button>}
+            <button type="button" className={'knowledge-icon-action'+(busy?' is-working':'')} disabled={busy||deleting||loading} aria-busy={busy} aria-label={result?'Refresh summary':'Summarize this page'} title={result?'Refresh summary':'Generate summary'} onClick={()=>void summarize()}><Icon name={busy||result?'refresh':'plus'}/></button>
+            {result&&<button type="button" className="knowledge-icon-action is-destructive" disabled={busy||deleting||loading} aria-label="Delete summary" title="Delete summary" onClick={()=>void deleteSummary()}><Icon name="trash"/></button>}
+          </div>
+        </div>
+        {busy&&<span className="sr-only" role="status">Creating your summary…</span>}
         {error&&<p role="alert" className="inline-error">{error}</p>}
-        {result&&<section className="ai-result" aria-label="Page summary"><div id="knowledge-summary-text" ref={summaryText} className={'ai-summary' + (summaryExpanded ? '' : ' is-collapsed')}><SummaryText text={result.summary}/></div><div className="summary-actions">{summaryOverflow&&<button type="button" className="summary-toggle" aria-expanded={summaryExpanded} aria-controls="knowledge-summary-text" onClick={()=>setSummaryExpanded(value=>!value)}>{summaryExpanded?'Show less':'Show more'}</button>}{summaryChanged&&<button type="button" className="summary-toggle" disabled={busy||deleting||loading} onClick={()=>void summarize()}>{busy?'Refreshing…':'Refresh'}</button>}<button type="button" className="summary-toggle summary-delete" disabled={busy||deleting||loading} onClick={()=>void deleteSummary()}>{deleting?'Deleting…':'Delete summary'}</button></div>{summaryChanged&&<p className="section-hint">Page changed since this summary.</p>}</section>}
+        {result&&<section className="ai-result" aria-label="Page summary"><div id="knowledge-summary-text" ref={summaryText} className={'ai-summary' + (summaryExpanded ? '' : ' is-collapsed')}><SummaryText text={result.summary}/></div></section>}
+
       </section>
       <ConnectedEntities page={page} entities={entities} onOpenEntity={onOpenEntity}>
         <EntityScanReview entities={entities} page={page} scan={scan} onScan={setScan} onFlush={onFlush} onReview={onReview} disabled={!!page.editLocked||busy||deleting||loading}/>
       </ConnectedEntities>
     <NoteConnections key={page.vault_id+'/'+page.id} page={page} pages={pages} onOpenPage={onOpenPage} inactive={inactive}/>
-    <section className="knowledge-sources" aria-labelledby="knowledge-sources-heading"><div className="knowledge-section-heading"><h2 id="knowledge-sources-heading">Sources</h2><span className="knowledge-count">{page.sourceIds.length}</span></div><div className="toolbar-source-list">{page.sourceIds.map(id => <div key={id} className="page-source"><Mention id={id} entities={entities} onOpen={onOpenEntity}/><button disabled={!!page.editLocked} aria-label={'Remove source from page: ' + (entities.find(entity => entity.id === id)?.name || id)} onClick={() => onSourcesChange(page.sourceIds.filter(source => source !== id))}>×</button></div>)}</div>{!page.sourceIds.length && <p className="empty-small">No sources attached yet.</p>}<div className="toolbar-source-actions"><Select disabled={!!page.editLocked} aria-label="Attach existing source" value="" onChange={event => { if (event.target.value) onSourcesChange([...new Set([...page.sourceIds, event.target.value])]); }}><option value="">Add a source…</option>{entities.filter(entity => entity.type === 'source' && !entity.inactive && !page.sourceIds.includes(entity.id)).map(entity => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</Select><button className="button small" disabled={!!page.editLocked} onClick={() => onCreateEntity({source: true})}>+ New source</button></div></section>
+    <section className="knowledge-sources" aria-labelledby="knowledge-sources-heading">
+      <div className="knowledge-section-heading"><h2 id="knowledge-sources-heading"><Icon name="source"/>Sources<span className="knowledge-count">{page.sourceIds.length}</span></h2><button type="button" className="knowledge-icon-action" disabled={!!page.editLocked} aria-label="New source" title="New source" onClick={()=>onCreateEntity({source:true})}><Icon name="plus"/></button></div>
+      {!!page.sourceIds.length&&<div className="toolbar-source-list">{page.sourceIds.map(id=><div key={id} className="page-source"><Mention id={id} entities={entities} onOpen={onOpenEntity}/><button type="button" disabled={!!page.editLocked} title="Detach source" aria-label={'Remove source from page: '+(entities.find(entity=>entity.id===id)?.name||id)} onClick={()=>onSourcesChange(page.sourceIds.filter(source=>source!==id))}><Icon name="close"/></button></div>)}</div>}
+      <div className="toolbar-source-actions"><Select disabled={!!page.editLocked} aria-label="Attach existing source" value="" onChange={event=>{if(event.target.value)onSourcesChange([...new Set([...page.sourceIds,event.target.value])]);}}><option value="">Attach source…</option>{entities.filter(entity=>entity.type==='source'&&!entity.inactive&&!page.sourceIds.includes(entity.id)).map(entity=><option key={entity.id} value={entity.id}>{entity.name}</option>)}</Select></div>
+    </section>
       <PageMetadata page={page}/>
     </div>
   </aside>;
@@ -105,7 +116,7 @@ export function IntelligencePanel(props: Omit<ComponentProps<typeof KnowledgePag
   useEffect(()=>{
     if(ready&&!focused.current){focused.current=true;document.querySelector<HTMLButtonElement>('#intelligence-panel [aria-label="Close Knowledge panel"]')?.focus({preventScroll:true});}
   },[ready]);
-  if(!displayed)return <aside className="entity-panel intelligence-panel" id="intelligence-panel" aria-label="Knowledge" aria-busy="true"><div className="panel-top knowledge-panel-top"><span><Icon name="knowledge"/>Knowledge</span><div className="knowledge-panel-actions"><button className="page-tool" aria-label="Close Knowledge panel" onClick={props.onClose}>×</button></div></div><div className="panel-body"><span className="sr-only" role="status">Loading knowledge…</span></div></aside>;
+  if(!displayed)return <aside className="entity-panel intelligence-panel" id="intelligence-panel" aria-label="Knowledge" aria-busy="true"><div className="panel-top knowledge-panel-top"><span><Icon name="knowledge"/>Knowledge</span><div className="knowledge-panel-actions"><button className="page-tool" aria-label="Close Knowledge panel" onClick={props.onClose}><Icon name="close"/></button></div></div><div className="panel-body"><span className="sr-only" role="status">Loading knowledge…</span></div></aside>;
   const current=displayed.page.id===props.page.id&&displayed.page.vault_id===props.page.vault_id;
   return <KnowledgePage {...props} key={displayed.page.vault_id+'/'+displayed.page.id} page={current?props.page:displayed.page} initialItems={displayed.items} initialError={displayed.error} snapshot={displayed.snapshot} onSnapshot={snapshot=>{displayed.snapshot=snapshot;}} inactive={props.inactive||!current}/>;
 }

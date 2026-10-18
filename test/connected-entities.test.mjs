@@ -30,12 +30,12 @@ test('connected entity sorting supports name, first mention, mention frequency a
 });
 test('sidebar exposes labeled entity icons and an alphabetical sort toggle', () => {
   const html = renderToStaticMarkup(createElement(ConnectedEntities,{page,entities,onOpenEntity(){}}));
-  assert.equal((html.match(/role="tab"/g) ?? []).length,7);
+  assert.equal((html.match(/role="tab"/g) ?? []).length,3);
   assert.match(html,/role="tablist" aria-label="Connected entity types"/);
   assert.match(html,/aria-selected="true"/);
   assert.match(html,/Sort connected entities/);
-  for(const label of ['All','Person','Place','Event','Creative work','Organization','Source']) assert.ok(html.includes(`aria-label="${label} (`));
+  for(const label of ['All','Person','Place']) assert.ok(html.includes(`aria-label="${label} (`));
   assert.match(html,/aria-pressed="false"/);
   assert.doesNotMatch(html,/<select/);
-  assert.match(renderToStaticMarkup(createElement(ConnectedEntities,{page:{...page,blocks:[]},entities,onOpenEntity(){}})),/Mention an entity with @/);
+  assert.match(renderToStaticMarkup(createElement(ConnectedEntities,{page:{...page,blocks:[]},entities,onOpenEntity(){}})),/Entities/);
 });

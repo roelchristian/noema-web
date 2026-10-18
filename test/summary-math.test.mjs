@@ -46,9 +46,9 @@ test('saved and freshly generated summaries both use math rendering without chan
  t.mock.method(api,'summarize',async()=>({summary:fresh,revision:1,contentHash:'current',model:'test',reasoningEffort:'low'}));
  const root=createRoot(document.querySelector('#mount'));
  try{
-  await act(async()=>root.render(React.createElement(IntelligencePanel,{page,entities:[],onFlush:async()=>page,onClose(){},onSettings(){},onReview(){},onSourcesChange(){},onCreateEntity(){},onOpenEntity(){}})));
+  await act(async()=>root.render(React.createElement(IntelligencePanel,{page,pages:[],entities:[],onOpenPage(){},onFlush:async()=>page,onClose(){},onSettings(){},onReview(){},onSourcesChange(){},onCreateEntity(){},onOpenEntity(){}})));
   assert.equal(document.querySelector('#knowledge-summary-text annotation').textContent,'x^2');
-  const refresh=Array.from(document.querySelectorAll('button')).find(button=>button.textContent==='Refresh');assert.ok(refresh);
+  const refresh=document.querySelector('[aria-label="Refresh summary"]');assert.ok(refresh);
   await act(async()=>refresh.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})));
   assert.equal(document.querySelectorAll('#knowledge-summary-text .katex-display').length,1);assert.equal(document.querySelector('#knowledge-summary-text annotation').textContent,String.raw`\frac{a}{b}`);
   assert.equal(saved,String.raw`Saved \(x^2\)`);assert.equal(fresh,String.raw`New $$\frac{a}{b}$$`);

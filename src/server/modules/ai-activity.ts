@@ -10,7 +10,7 @@ export class AIActivityLog {
   constructor(private store: Store) {
     // Recover provider-reported counts from older debug snapshots without retaining payloads.
     for(const row of store.all<{id:string;usage:string|null}>(`SELECT a.id,json_extract(CASE WHEN json_valid(d.response) THEN d.response ELSE '{}' END,'$.usage') AS usage
-      FROM ai_activity a JOIN ai_activity_debug d ON d.activity_id=a.id WHERE a.input_tokens IS NULL OR a.output_tokens IS NULL`)) {
+      FROM ai_activity a JOIN ai_activity_debug d ON d.activity_id=a.id WHERE a.input_tokens IS NULL OR a.output_tokens IS NULL OR a.cached_input_tokens IS NULL OR a.cache_write_tokens IS NULL`)) {
       if(!row.usage)continue;
       let usage:unknown;try{usage=JSON.parse(row.usage);}catch{continue;}
       this.usage(row.id,usage);
@@ -59,9 +59,13 @@ export class AIActivityLog {
     const usage=value as Record<string,unknown>;
     const count=(value:unknown)=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0?value:null;
     const input=count(usage.input_tokens??usage.prompt_tokens),output=count(usage.output_tokens??usage.completion_tokens);
-    if(input===null&&output===null)return;
+    const rawDetails=usage.input_tokens_details??usage.prompt_tokens_details;
+    const details=rawDetails&&typeof rawDetails==='object'&&!Array.isArray(rawDetails)?rawDetails as Record<string,unknown>:{};
+    const cached=count(details.cached_tokens),writes=count(details.cache_write_tokens);
+    if(input===null&&output===null&&cached===null&&writes===null)return;
     this.store.run(`UPDATE ai_activity SET input_tokens=COALESCE(?,input_tokens),
-      output_tokens=COALESCE(?,CASE WHEN action IN ('note_embedding','search_embedding') AND ? IS NOT NULL THEN 0 ELSE output_tokens END) WHERE id=?`,input,output,input,id);
+      output_tokens=COALESCE(?,CASE WHEN action IN ('note_embedding','search_embedding') AND ? IS NOT NULL THEN 0 ELSE output_tokens END),
+      cached_input_tokens=COALESCE(?,cached_input_tokens),cache_write_tokens=COALESCE(?,cache_write_tokens) WHERE id=?`,input,output,input,cached,writes,id);
   }
   debugSettings() { return {enabled: this.store.get<{value:string}>("SELECT value FROM metadata WHERE key='ai_debug'")?.value === 'true'}; }
   saveDebugSettings(body: Record<string,unknown>) {
@@ -93,6 +97,7 @@ export class AIActivityLog {
       a.duration_ms AS durationMs,a.http_status AS httpStatus,a.vault_id AS vaultId,v.name AS vaultName,
       a.object_kind AS objectKind,a.object_id AS objectId,COALESCE(p.title,e.name) AS objectTitle,a.revision,
       a.model,a.reasoning_effort AS reasoningEffort,a.prompt_bytes AS promptBytes,a.input_tokens AS inputTokens,a.output_tokens AS outputTokens,
+      a.cached_input_tokens AS cachedInputTokens,a.cache_write_tokens AS cacheWriteTokens,
       (CASE WHEN a.object_kind='entity' THEN e.id IS NOT NULL ELSE p.id IS NOT NULL AND p.deleted_at IS NULL END) AS available,EXISTS(SELECT 1 FROM ai_activity_debug d WHERE d.activity_id=a.id) AS debugRecorded,a.rowid AS cursor
       FROM ai_activity a LEFT JOIN vaults v ON v.id=a.vault_id
       LEFT JOIN pages p ON a.object_kind='page' AND p.id=a.object_id AND p.vault_id=a.vault_id

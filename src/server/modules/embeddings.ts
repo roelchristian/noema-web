@@ -17,6 +17,7 @@ import {Vaults} from './vaults.js';
 import {Intelligence} from './intelligence.js';
 interface JobRow {id: string; vault_id: string; page_id: string | null; source_id: string | null; content_hash: string; status: string; attempts: number; segment_id:string|null;model:string|null;dimensions:number|null}
 export class Embeddings {
+ private queryVectors=new Map<string,{vault:string;expiresAt:number;work:Promise<{embedding:number[];tokens:number}>}>();
  private pageSegments:PageSegments;
  private pageIndex:PageSegmentIndex;
  private busy=false;
@@ -44,6 +45,7 @@ export class Embeddings {
  }
  close() {
   this.closed=true;
+  this.clearQueryCache();
   this.pageIndex.close();
   this.sourceEmbeddings.close();
   for(const id of this.activeActivity)this.finishActivity(id,'interrupted',null);
@@ -55,6 +57,42 @@ export class Embeddings {
  }
  private finishActivity(id: string | undefined,status: Exclude<AIActivity['status'],'running'>,code: number | null) {
   if(id&&this.activeActivity.delete(id))this.activity?.finish(id,status,code);
+ }
+ clearQueryCache(vault?:string) {
+  for(const [key,entry] of this.queryVectors)if(vault===undefined||entry.vault===vault)this.queryVectors.delete(key);
+ }
+ /** Cache vectors, never result lists: current indexes are searched on every call. */
+ private async queryEmbedding(vault:string,query:string) {
+  this.vaults.requireOpen(vault);
+  if(this.closed)throw new HttpError(503,'Search stopped.');
+  if(!this.intelligence.status().configured)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
+  const key=JSON.stringify([vault,embeddingModel,embeddingDimensions,query.trim()]),time=Date.now();
+  for(const [key,entry] of this.queryVectors)if(entry.expiresAt<=time)this.queryVectors.delete(key);
+  let entry=this.queryVectors.get(key);
+  if(entry){this.queryVectors.delete(key);this.queryVectors.set(key,entry);}
+  else {
+   const work=this.generateQueryEmbedding(vault,query.trim());
+   entry={vault,expiresAt:time+5*60_000,work};
+   this.queryVectors.set(key,entry);
+   while(this.queryVectors.size>128)this.queryVectors.delete(this.queryVectors.keys().next().value!);
+   void work.catch(()=>{if(this.queryVectors.get(key)?.work===work)this.queryVectors.delete(key);});
+  }
+  const result=await entry.work;
+  if(this.closed)throw new HttpError(503,'Search stopped.');
+  this.vaults.requireOpen(vault);
+  return result;
+ }
+ private async generateQueryEmbedding(vault:string,query:string) {
+  const activityId=this.startActivity('search_embedding',vault);
+  try {
+   const result=await this.intelligence.embed(query,bytes=>activityId?this.activity?.request(activityId,bytes,null):undefined,false);
+   if(this.closed)throw new HttpError(503,'Search stopped.');
+   this.vaults.requireOpen(vault);
+   const magnitude=Math.sqrt(result.embedding.reduce((sum,n)=>sum+n*n,0));
+   if(result.embedding.length!==embeddingDimensions||result.embedding.some(n=>!Number.isFinite(n))||!magnitude||!Number.isFinite(magnitude))throw new HttpError(502,'Invalid embedding response.');
+   this.finishActivity(activityId,'completed',200);
+   return result;
+  }catch(error){this.finishActivity(activityId,'failed',error instanceof HttpError?error.status:502);throw error;}
  }
  private settings(vault: string): EmbeddingSettings {
   const row=this.store.get<{automatic:number;min_characters:number}>('SELECT automatic,min_characters FROM embedding_settings WHERE vault_id=?',vault);
@@ -98,7 +136,8 @@ export class Embeddings {
  }
  onSave(vault:string,id:string) {
   // Indexing failures cannot turn a successful Page save into an API failure.
-  try {this.store.run("UPDATE embedding_jobs SET status='skipped',finished_at=?,error='Page changed before indexing completed.' WHERE page_id=? AND status IN ('queued','running')",now(),id);}catch{/* Durable Page triggers retain indexing work. */}
+  // Keep in-flight work until its exact segment hash can be checked after saving.
+  try {this.store.run('INSERT OR IGNORE INTO page_index_dirty(page_id,vault_id) SELECT id,vault_id FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',id,vault);}catch{/* Durable Page triggers retain indexing work. */}
  }
  invalidate(vault:string,id:string) {
   this.store.run("UPDATE embedding_jobs SET status='skipped',finished_at=?,error='Page unavailable.' WHERE vault_id=? AND page_id=? AND status IN ('queued','running')",now(),vault,id);
@@ -158,7 +197,7 @@ export class Embeddings {
     this.pageSegments.synchronize(job.vault_id);
     const persisted=this.store.transaction(()=>{
      const current=this.pageIndex.get(job.vault_id,segment.id);
-     if(!current||current.revision!==segment.revision||current.content_hash!==segment.content_hash||this.store.get<JobRow>('SELECT status FROM embedding_jobs WHERE id=?',job.id)?.status!=='running'){this.finish(job.id,'skipped','Page changed or indexing was cancelled.');return false;}
+     if(!current||current.content_hash!==segment.content_hash||this.store.get<JobRow>('SELECT status FROM embedding_jobs WHERE id=?',job.id)?.status!=='running'){this.finish(job.id,'skipped','Page changed or indexing was cancelled.');return false;}
      if(result.embedding.length!==embeddingDimensions||result.embedding.some(n=>!Number.isFinite(n))||!result.embedding.some(n=>n!==0))throw new HttpError(502,'Invalid embedding response.');
      this.pageIndex.save(current,result.embedding,result.tokens);
      this.store.run("UPDATE embedding_jobs SET status='completed',finished_at=?,tokens=? WHERE id=?",now(),result.tokens,job.id);
@@ -190,16 +229,9 @@ export class Embeddings {
   const semantic:ReturnType<SourcePassageEmbeddings['search']>=[];
   // Lexical evidence remains available when embeddings are not configured.
   if(this.intelligence.status().configured&&(this.sourceEmbeddings.hasSearchable(vault)||this.pageIndex.hasSearchable(vault))) {
-   const activityId=this.startActivity('search_embedding',vault);
-   try {
-    const embedded=await this.intelligence.embed(body.query.trim(),bytes=>activityId?this.activity?.request(activityId,bytes,null):undefined,false);
-    if(this.closed)throw new HttpError(503,'Search stopped.');
-    this.vaults.requireOpen(vault);
-    const magnitude=Math.sqrt(embedded.embedding.reduce((sum,n)=>sum+n*n,0));
-    if(embedded.embedding.length!==embeddingDimensions||embedded.embedding.some(n=>!Number.isFinite(n))||!magnitude||!Number.isFinite(magnitude))throw new HttpError(502,'Invalid embedding response.');
-    semantic.push(...[...this.sourceEmbeddings.search(vault,body.query,embedded.embedding,magnitude),...this.pageIndex.search(vault,body.query,embedded.embedding)].sort((a,b)=>b.score-a.score||(a.passageId??'').localeCompare(b.passageId??'')).slice(0,candidateLimit));
-    this.finishActivity(activityId,'completed',200);
-   }catch(error){this.finishActivity(activityId,'failed',error instanceof HttpError?error.status:502);throw error;}
+   const embedded=await this.queryEmbedding(vault,body.query);
+   const magnitude=Math.sqrt(embedded.embedding.reduce((sum,n)=>sum+n*n,0));
+   semantic.push(...[...this.sourceEmbeddings.search(vault,body.query,embedded.embedding,magnitude),...this.pageIndex.search(vault,body.query,embedded.embedding)].sort((a,b)=>b.score-a.score||(a.passageId??'').localeCompare(b.passageId??'')).slice(0,candidateLimit));
   }
   const fused=new Map<string,PassageRetrievalResult>();
   for(const [kind,rows] of [['lexicalRank',lexical],['semanticRank',semantic]] as const)rows.forEach((row,index)=>{
@@ -219,24 +251,14 @@ export class Embeddings {
   this.pageSegments.synchronize(vault);
   const searchable=this.sourceEmbeddings.hasSearchable(vault)||this.pageIndex.hasSearchable(vault);
   if(!searchable)return {results:[],model:embeddingModel};
-  const activityId=this.startActivity('search_embedding',vault);
-  try {
-   const result=await this.intelligence.embed(body.query.trim(),bytes=>activityId?this.activity?.request(activityId,bytes,null):undefined,false);
-   if(this.closed)throw new HttpError(503,'Search stopped.');
-   this.vaults.requireOpen(vault);
-   const magnitude=(v: number[])=>Math.sqrt(v.reduce((sum,n)=>sum+n*n,0));
-   const qMagnitude=magnitude(result.embedding);
-   if(result.embedding.length!==embeddingDimensions||!qMagnitude||!Number.isFinite(qMagnitude))throw new HttpError(502,'Invalid embedding response.');
-   const results=this.sourceEmbeddings.search(vault,body.query,result.embedding,qMagnitude);
-   this.pageSegments.synchronize(vault);
-   results.push(...this.pageIndex.search(vault,body.query,result.embedding));
-   this.finishActivity(activityId,'completed',200);
-   const seen=new Set<string>();
-   const ranked=results.sort((a,b)=>b.score-a.score||a.id.localeCompare(b.id));
-   return {results:ranked.filter(row=>{const key=`${row.kind??'page'}:${row.id}`;if(seen.has(key))return false;seen.add(key);return true;}).slice(0,limit),model:embeddingModel};
-  } catch(error) {
-   this.finishActivity(activityId,'failed',error instanceof HttpError?error.status:502);
-   throw error;
-  }
+  const result=await this.queryEmbedding(vault,body.query);
+  const magnitude=(v: number[])=>Math.sqrt(v.reduce((sum,n)=>sum+n*n,0));
+  const qMagnitude=magnitude(result.embedding);
+  const results=this.sourceEmbeddings.search(vault,body.query,result.embedding,qMagnitude);
+  this.pageSegments.synchronize(vault);
+  results.push(...this.pageIndex.search(vault,body.query,result.embedding));
+  const seen=new Set<string>();
+  const ranked=results.sort((a,b)=>b.score-a.score||a.id.localeCompare(b.id));
+  return {results:ranked.filter(row=>{const key=`${row.kind??'page'}:${row.id}`;if(seen.has(key))return false;seen.add(key);return true;}).slice(0,limit),model:embeddingModel};
  }
 }

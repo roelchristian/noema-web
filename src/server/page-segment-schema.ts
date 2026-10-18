@@ -33,9 +33,10 @@ export function setupPageSegmentSchema(db:DatabaseSync) {
  CREATE TRIGGER IF NOT EXISTS page_segments_fts_delete AFTER DELETE ON page_segments BEGIN DELETE FROM page_segments_fts WHERE rowid=OLD.rowid; END;
  CREATE TRIGGER IF NOT EXISTS page_index_insert AFTER INSERT ON pages BEGIN
   INSERT OR REPLACE INTO page_index_dirty(page_id,vault_id) VALUES(NEW.id,NEW.vault_id); END;
- CREATE TRIGGER IF NOT EXISTS page_index_update AFTER UPDATE OF title,blocks,revision,deleted_at,vault_id ON pages BEGIN
+ DROP TRIGGER IF EXISTS page_index_update;
+ CREATE TRIGGER page_index_update AFTER UPDATE OF title,blocks,revision,deleted_at,vault_id ON pages BEGIN
   INSERT OR REPLACE INTO page_index_dirty(page_id,vault_id) VALUES(NEW.id,NEW.vault_id);
-  UPDATE embedding_jobs SET status='skipped',finished_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),error='Page changed.' WHERE page_id=NEW.id AND status IN ('queued','running');
+  UPDATE embedding_jobs SET status='skipped',finished_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),error='Page unavailable.' WHERE page_id=NEW.id AND status IN ('queued','running') AND (NEW.deleted_at IS NOT NULL OR OLD.vault_id IS NOT NEW.vault_id);
   DELETE FROM page_segments WHERE page_id=NEW.id AND NEW.deleted_at IS NOT NULL;
   DELETE FROM page_segment_cache WHERE page_id=NEW.id AND NEW.deleted_at IS NOT NULL; END;`);
  for(const event of ['INSERT','UPDATE OF name,mention_case','DELETE']) {

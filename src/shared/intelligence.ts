@@ -36,6 +36,7 @@ export interface AIActivity extends IntelligencePreferences {
   objectId: string | null; objectTitle: string | null; revision: number | null;
   available: boolean; promptBytes: number | null;
   inputTokens: number | null; outputTokens: number | null;
+  cachedInputTokens: number | null; cacheWriteTokens: number | null;
   debugRecorded: boolean;
 }
 export interface AIActivityPage { items: AIActivity[]; nextCursor: number | null }

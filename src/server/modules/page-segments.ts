@@ -116,7 +116,10 @@ export class PageSegments {
    }
    this.store.run(`INSERT INTO page_segment_embeddings SELECT s.id,c.model,c.dimensions,c.content_hash,c.vector,c.tokens,c.updated_at FROM page_segments s JOIN page_segment_cache c ON c.page_id=s.page_id AND c.content_hash=s.content_hash WHERE s.page_id=?`,id);
    this.store.run(`INSERT INTO page_index_state(page_id,vault_id,revision,projection_hash,strategy,policy_hash,token_count,updated_at,error,body_characters) VALUES (?,?,?,?,?,?,?,?,NULL,?) ON CONFLICT(page_id) DO UPDATE SET vault_id=excluded.vault_id,revision=excluded.revision,projection_hash=excluded.projection_hash,strategy=excluded.strategy,policy_hash=excluded.policy_hash,token_count=excluded.token_count,updated_at=excluded.updated_at,error=NULL,body_characters=excluded.body_characters`,id,page.vault_id,page.revision,projectionHash,result.strategy,hash(JSON.stringify(policy)),result.tokenCount,now(),projection.text.trim().length);
-   this.store.run("UPDATE embedding_jobs SET status='skipped',finished_at=?,error='Page segment changed.' WHERE page_id=? AND status IN ('queued','running')",now(),id);
+   this.store.run(`UPDATE embedding_jobs SET status='skipped',finished_at=?,error='Page segment changed.'
+    WHERE page_id=? AND status IN ('queued','running') AND NOT EXISTS (
+     SELECT 1 FROM page_segments s WHERE s.id=embedding_jobs.segment_id AND s.page_id=embedding_jobs.page_id
+      AND s.vault_id=embedding_jobs.vault_id AND s.content_hash=embedding_jobs.content_hash)`,now(),id);
    this.store.run('DELETE FROM page_index_dirty WHERE page_id=?',id);
   });}catch(error){this.store.run('UPDATE page_index_dirty SET error=?,next_attempt_at=? WHERE page_id=?',error instanceof Error?error.message:'Page indexing failed.',new Date(Date.now()+30000).toISOString(),id);}
  }

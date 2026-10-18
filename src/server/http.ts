@@ -179,8 +179,8 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
           if(parts.length===3 && id==='activity' && method==='GET')return send(200,activity.list(url.searchParams.get('before')));
           if(parts.length===2 && method==='GET')return send(200,intelligence.status());
           if(parts.length===3 && id==='preferences' && method==='PUT')return send(200,intelligence.savePreferences(body));
-          if(parts.length===2 && method==='PUT')return send(200,intelligence.save(body));
-          if(parts.length===2 && method==='DELETE')return send(200,intelligence.remove());
+          if(parts.length===2 && method==='PUT'){const result=intelligence.save(body);embeddings.clearQueryCache();return send(200,result);}
+          if(parts.length===2 && method==='DELETE'){const result=intelligence.remove();embeddings.clearQueryCache();return send(200,result);}
           if(parts.length===3 && id==='validate' && method==='POST') {await intelligence.generate('',true,bytes=>activity.request(activityId!,bytes,null));return send(200,{ok:true,...intelligence.selection()});}
           throw new HttpError(404,'Not found');
         } else if(collection==='vaults') {
@@ -189,7 +189,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
           if(parts.length===2 && method==='POST')return send(201,vaults.create(body));
           if(id && parts.length===4 && method==='GET' && child==='deletion-preview')return send(200,vaultDeletion.preview(id));
           if(id && parts.length===4 && method==='POST' && child==='delete')return send(200,vaultDeletion.remove(id,body));
-          if(id && parts.length===4 && method==='POST' && child==='lock')return send(200,vaults.lock(id,body));
+          if(id && parts.length===4 && method==='POST' && child==='lock'){const result=vaults.lock(id,body);embeddings.clearQueryCache(id);return send(200,result);}
           if(id && parts.length===4 && method==='POST' && child==='unlock')return send(200,vaults.unlock(id,body));
         } else {
           const header=req.headers['x-vault-id'];

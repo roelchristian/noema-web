@@ -109,7 +109,7 @@ export class SourcePageDraft {
         return start>=0&&(item.text as string).indexOf(value,start+1)<0?start+value.length:-1;
       };
       const quoteOffset=uniqueOffset(citation.quote),anchorOffset=uniqueOffset(citation.anchor);
-      if(citation.quote&&item.blockType!=='quote'&&quoteOffset<0)content.push({text:` “${citation.quote}”`,italic:true});
+      if(citation.quote&&item.blockType!=='quote'&&quoteOffset<0)content.push({text:` “${citation.quote}”`});
       content.push({text:citation.range?` [L: ${citation.range}]`:' [??]'});
       const offset=quoteOffset>=0?quoteOffset:anchorOffset>=0?anchorOffset:item.text.length;
       // A claim anchor inside a formula must not split its LaTeX delimiters.

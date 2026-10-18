@@ -33,6 +33,7 @@ export const defaultSourcePageOptions:SourcePageOptions = {format:'briefing', pu
 export interface SourcePageRevision {draftId:string;feedback:string;mode:'retry'|'changes'}
 export interface SourcePageReview {language?:string|null;id:string;title:string;blocks:Block[];focus:string;options?:SourcePageOptions}
 export type SourcePageEvent =
+  | {type:'preview_reset'}
   | {type:'status';phase:'thinking'|'reviewing'}
   | {type:'title';title:string;language?:string|null}
   | {type:'block';block:Block}

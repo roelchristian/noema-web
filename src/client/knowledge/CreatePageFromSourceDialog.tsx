@@ -73,6 +73,7 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
     const receivedContent=()=>{clearTimeout(slowTimer);setWaitingLonger(false);};
     const receive=(event:SourcePageEvent)=>{
       if(!active.current||controller.signal.aborted)return;
+      if(event.type==='preview_reset'){clearLive();setTitle('');setBlocks([]);return;}
       if(event.type==='title'||event.type==='block'||event.type==='review'||event.type==='completed'||event.type==='block_delta'&&!event.reset&&!!event.delta)receivedContent();
       if(event.type==='status')setGenerationStage(event.phase==='reviewing'?'checking':'waiting');
       else if(event.type==='title'){setTitle(event.title);setGenerationStage('writing');}

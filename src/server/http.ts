@@ -333,7 +333,20 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
                 emit({type:'status',phase:'thinking'});
                 heartbeat=setInterval(()=>{if(!res.destroyed&&!controller.signal.aborted)res.write('\n');},10000);
                 const draft=new SourcePageDraft(emit,prepared.file.text);
-                await intelligence.generate(prepared.input,false,bytes=>activity.request(activityId!,bytes,null),false,false,false,undefined,false,{signal:controller.signal,onDelta:delta=>draft.feed(delta)});
+                // A preliminary JSON draft can be previewed, but only final-answer records are saved.
+                let preview=new SourcePageDraft(emit,prepared.file.text),previewFailed=false;
+                const resetPreview=()=>{emit({type:'preview_reset'});preview=new SourcePageDraft(emit,prepared.file.text);previewFailed=false;};
+                await intelligence.generate(prepared.input,false,bytes=>activity.request(activityId!,bytes,null),false,false,false,undefined,false,{
+                  signal:controller.signal,onDelta:delta=>draft.feed(delta),onPreviewReset:resetPreview,
+                  onPreviewDelta:delta=>{
+                    if(previewFailed)return;
+                    try{preview.feed(delta);}catch(error){
+                      if(controller.signal.aborted||res.destroyed)throw error;
+                      // Prose or invalid preliminary records must never fail the final answer.
+                      previewFailed=true;emit({type:'preview_reset'});
+                    }
+                  },
+                });
                 if(controller.signal.aborted)throw new HttpError(499,'Page generation was stopped.');
                 vaults.requireOpen(vault);draft.finish();
                 emit({type:'status',phase:'reviewing'});

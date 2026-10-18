@@ -4,7 +4,8 @@ import { SubtypePicker } from './SubtypePicker';
 import { useEntitySchema } from './useEntitySchema';
 import { inheritedPropertyNames, type EntitySchema } from '../../shared/entity-schema';
 import { Select } from '../components/Select';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
+import {clearEntityDraft, entityDraftDirty, entityDraftValues, getEntityDraft, hasEntityDraft, mergeEntityDraft, setEntityDraft, subscribeEntityDrafts, type EntityDraftValues} from './entity-drafts';
 import { api } from '../api';
 import { entityLabels, entityTypes, type Entity, type EntityDetail, type EntityMentionCase, type EntityType, type Property, type Relationship } from '../../shared/domain';
 import { Icon } from '../components/Icon';
@@ -17,8 +18,9 @@ interface EntityConnection {key: string; target: string; label: string}
 export function EntityPanel(props: Props) {
   const {vaultId, id, entities, onOpen, onClose, onUpdated, onError, onOpenPage, refreshKey} = props;
   const [entity, setEntity] = useState<EntityDetail | null>(null), [loadingError, setLoadingError] = useState('');
-  const [tab, setTab] = useState<EntityTab>('overview');
-  useEffect(() => {setEntity(null); setTab('overview');}, [vaultId, id]);
+  const [tab, setTab] = useState<EntityTab>(() => hasEntityDraft(vaultId, id) ? 'edit' : 'overview');
+  const currentEntityKey = useRef({vaultId, id}); currentEntityKey.current = {vaultId, id};
+  useEffect(() => {setEntity(null); setTab(hasEntityDraft(vaultId, id) ? 'edit' : 'overview');}, [vaultId, id]);
   useEffect(() => {
     let active = true; setLoadingError('');
     void api.entity(vaultId, id).then(e => { if (active) setEntity(e); }).catch(error => { if (active) setLoadingError(String(error)); });
@@ -84,7 +86,14 @@ export function EntityPanel(props: Props) {
       </div>
       <div id="entity-tabpanel-edit" className="entity-detail-tabpanel entity-detail-edit" role="tabpanel" aria-labelledby="entity-tab-edit" hidden={tab !== 'edit'} tabIndex={0}>
         {schemaError && <p role="alert">{schemaError}</p>}
-        <section className="entity-detail-section"><h3>Details</h3><EntityDetails schema={schema} key={entity.id} entity={entity} onSave={input => mutate(() => api.updateEntity(vaultId, id, input))}/></section>
+        <section className="entity-detail-section"><h3>Details</h3><EntityDetails vaultId={vaultId} schema={schema} key={vaultId + ':' + entity.id} entity={entity} onSave={async input => {
+          let result: EntityDetail;
+          try {result = await api.updateEntity(vaultId, id, input);} catch (error) {onError(error); throw error;}
+          if (currentEntityKey.current.vaultId === vaultId && currentEntityKey.current.id === id) setEntity(result);
+          // The entity is saved even if refreshing the surrounding workspace fails.
+          void onUpdated().catch(onError);
+          return result;
+        }}/></section>
         {entity.type==='source'&&<SourceAttachments key={entity.id} vaultId={vaultId} entityId={entity.id} initial={entity.attachments} onChange={attachments => {setEntity(current => current ? {...current, attachments,inactive:attachments.some(file=>file.status==='failed'),sourceStatus:attachments[0]?.status} : current);if(attachments.every(file=>file.status==='ready'||file.status==='failed'))void api.entity(vaultId,id).then(result=>{setEntity(result);return onUpdated();}).catch(onError);else if(entity.inactive)void onUpdated().catch(onError);}}/>}
         <section className="panel-section"><h3>Properties <span>{entity.properties.length}</span></h3><p className="section-hint">Fields are inherited from this category and its selected subtypes. Define new fields in Settings → Knowledge Entities; set each entity’s values here.</p>
           <PropertyEditor key={entity.type + JSON.stringify(entity.subtypes)} entity={{...entity, propertyNames}} entities={entities} mention={mention} onSave={(input, propertyId) => mutate(() => api.saveProperty(vaultId, id, input, propertyId))} onRemove={propertyId => mutate(() => api.removeConnection(vaultId, id, 'properties', propertyId))}/>
@@ -107,25 +116,41 @@ function EntityConnections({items, entities, onOpen, empty}: {items: EntityConne
     return <li key={item.key}><button type="button" onClick={() => onOpen(item.target)}><Icon name={entity?.type ?? 'knowledge'}/><span><strong>{entity?.name ?? 'Unknown entity'}</strong><small>{item.label}</small></span><Icon name="chevron"/></button></li>;
   })}</ul> : <p className="entity-detail-empty">{empty}</p>;
 }
-function EntityDetails({entity, schema, onSave}: {schema: EntitySchema; entity: EntityDetail; onSave: (input: Parameters<typeof api.updateEntity>[2]) => Promise<unknown>}) {
-  const [name, setName] = useState(entity.name), [type, setType] = useState<EntityType>(entity.type), [description, setDescription] = useState(entity.description), [status, setStatus] = useState(''), [busy, setBusy] = useState(false);
-  const [subtypes, setSubtypes] = useState(entity.subtypes);
-  const [aliases, setAliases] = useState((entity.aliases ?? []).join('\n'));
-  const [mentionCase,setMentionCase]=useState<EntityMentionCase>(entity.mentionCase??'canonical');
-  const dirty = name !== entity.name || type !== entity.type || description !== entity.description || mentionCase !== (entity.mentionCase ?? 'canonical') || JSON.stringify(parseAliases(aliases)) !== JSON.stringify(entity.aliases ?? []) || JSON.stringify([...subtypes].sort()) !== JSON.stringify([...entity.subtypes].sort());
-  function reset() {setName(entity.name); setType(entity.type); setDescription(entity.description); setSubtypes(entity.subtypes); setAliases((entity.aliases ?? []).join('\n')); setMentionCase(entity.mentionCase ?? 'canonical'); setStatus('');}
-  async function submit(e: FormEvent) { e.preventDefault(); if (busy || !dirty || !name.trim()) return; setBusy(true); setStatus(''); try { await onSave({name: name.trim(), aliases: type==='source'?[]:parseAliases(aliases), mentionCase, type, subtypes, description}); setName(name.trim()); setStatus('Saved'); } catch { /* Parent reports the error. */ } finally { setBusy(false); } }
+function EntityDetails({vaultId, entity, schema, onSave}: {vaultId: string; schema: EntitySchema; entity: EntityDetail; onSave: (input: Parameters<typeof api.updateEntity>[2]) => Promise<EntityDetail>}) {
+  const draft = useSyncExternalStore(subscribeEntityDrafts, () => getEntityDraft(vaultId, entity.id));
+  const server = entityDraftValues(entity), values = mergeEntityDraft(draft, server);
+  const {name, type, description, subtypes, aliases, mentionCase} = values;
+  const [status, setStatus] = useState(''), [busy, setBusy] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => {mounted.current = true; return () => {mounted.current = false;};}, []);
+  const dirty = entityDraftDirty(values, server);
+  function change(patch: Partial<EntityDraftValues>) {
+    setEntityDraft(vaultId, entity.id, server, {...values, ...patch}); setStatus('');
+  }
+  function reset() {if (draft) clearEntityDraft(vaultId, entity.id, draft); setStatus('');}
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (busy || !dirty || !name.trim()) return;
+    const submitted = draft;
+    setBusy(true); setStatus('');
+    try {
+      await onSave({name: name.trim(), aliases: type === 'source' ? [] : parseAliases(aliases), mentionCase, type, subtypes, description});
+      const cleared = submitted && clearEntityDraft(vaultId, entity.id, submitted);
+      if (mounted.current && cleared) setStatus('Saved');
+    } catch { /* Parent reports the error; the draft remains available. */ }
+    finally {if (mounted.current) setBusy(false);}
+  }
   return <form id="entity-form" className="entity-detail-form" onSubmit={submit}>
-    <label>Name<input className="entity-name" aria-label="Entity name" required maxLength={200} disabled={busy} value={name} onChange={e => {setName(e.target.value);setStatus('');}}/></label>
+    <label>Name<input className="entity-name" aria-label="Entity name" required maxLength={200} disabled={busy} value={name} onChange={e => change({name: e.target.value})}/></label>
     <h4 className="entity-form-heading">Classification</h4>
-    <label>Entity type<Select aria-label="Entity type" value={type} disabled={busy} onChange={e => {setType(e.target.value as EntityType);setSubtypes([]);setStatus('');}}>{entityTypes.map(t => <option key={t} value={t} disabled={t!==entity.type&&(t==='source'||entity.type==='source')}>{entityLabels[t]}</option>)}</Select></label>
-    <SubtypePicker type={type} value={subtypes} subtypes={schema.subtypes} onChange={value => {setSubtypes(value);setStatus('');}} disabled={busy}/>
+    <label>Entity type<Select aria-label="Entity type" value={type} disabled={busy} onChange={e => change({type: e.target.value as EntityType, subtypes: []})}>{entityTypes.map(t => <option key={t} value={t} disabled={t!==entity.type&&(t==='source'||entity.type==='source')}>{entityLabels[t]}</option>)}</Select></label>
+    <SubtypePicker type={type} value={subtypes} subtypes={schema.subtypes} onChange={value => change({subtypes: value})} disabled={busy}/>
     <h4 className="entity-form-heading">{type==='source'?'Mentions':'Mentions & aliases'}</h4>
-    {type!=='source'&&<AliasInput value={aliases} onChange={value => {setAliases(value);setStatus('');}} disabled={busy}/>}
-    <label>Default tag casing<Select aria-label="Default tag casing" value={mentionCase} disabled={busy} onChange={event=>{setMentionCase(event.target.value as EntityMentionCase);setStatus('');}}><option value="canonical">Entity name</option><option value="lowercase">Lowercase</option></Select></label>
+    {type!=='source'&&<AliasInput value={aliases} onChange={value => change({aliases: value})} disabled={busy}/>}
+    <label>Default tag casing<Select aria-label="Default tag casing" value={mentionCase} disabled={busy} onChange={event => change({mentionCase: event.target.value as EntityMentionCase})}><option value="canonical">Entity name</option><option value="lowercase">Lowercase</option></Select></label>
     <p className="section-hint">Used when inserting a tag without source text. AI tags and tags made from selected text keep the passage’s original capitalization.</p>
     <h4 className="entity-form-heading">About this entity</h4>
-    <label>Description<textarea aria-label="Entity description" placeholder="Add context to help identify this entity…" rows={4} disabled={busy} value={description} onChange={e => {setDescription(e.target.value);setStatus('');}}/></label>
+    <label>Description<textarea aria-label="Entity description" placeholder="Add context to help identify this entity…" rows={4} disabled={busy} value={description} onChange={e => change({description: e.target.value})}/></label>
     <div className="entity-detail-save"><span id="entity-saved" role="status">{busy ? 'Saving changes…' : dirty ? 'Unsaved changes' : status || 'No unsaved changes'}</span><div><button type="button" className="button small" disabled={busy || !dirty} onClick={reset}>Reset</button><button className="button small primary" disabled={busy || !dirty || !name.trim()}>{busy ? 'Saving…' : 'Save details'}</button></div></div>
   </form>;
 }

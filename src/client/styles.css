@@ -2392,3 +2392,17 @@ dialog.source-page-dialog { width: 720px; max-width: calc(100vw - 32px); max-hei
 .page-ai-provenance dd { margin: 0; display: inline-flex; align-items: center; gap: 6px; color: var(--text); }
 .page-ai-provenance .icon { width: 13px; height: 13px; flex: none; color: var(--text-muted); }
 .page-ai-library-status { display: inline; margin-left: 8px; color: var(--text-muted); }
+
+/* Recovery and failed writes stay visible above the scrolling document. */
+.topbar:has(.page-persistence-notices) { flex-wrap: wrap; }
+.page-persistence-notices { flex: 0 0 100%; min-width: 0; display: grid; gap: 6px; }
+.page-persistence-notice { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text); font-size: 12px; }
+.page-persistence-notice > span { flex: 1 1 180px; overflow-wrap: anywhere; }
+.page-persistence-notice small { display: block; font-size: 11px; color: var(--text-muted); }
+.page-persistence-notice.is-error { border-color: var(--palette-rose-text); }
+.page-persistence-notice button { min-height: 36px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 4px; white-space: nowrap; }
+.page-draft-recovery-dialog { width: min(760px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; }
+.page-draft-preview { max-height: 45vh; overflow: auto; padding: 16px; border: 1px solid var(--line); border-radius: 6px; }
+.page-draft-preview h3 { margin-top: 0; }
+.page-draft-recovery-dialog .dialog-actions { flex-wrap: wrap; }
+@media (max-width:750px) { .page-persistence-notice button { min-height:44px; } }

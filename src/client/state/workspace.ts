@@ -1,3 +1,5 @@
+import {clearEntityDrafts, pruneEntityDrafts} from '../knowledge/entity-drafts';
+import {pageDraftJournal, type PageDraftEntry} from './page-draft-journal';
 import {nextPageAIStatus} from '../../shared/page-ai-status';
 import {entityMentionName} from '../../shared/domain';
 import {entitiesForPage} from '../../shared/concept-classification';
@@ -7,7 +9,17 @@ import { PageTitler } from './page-titler';
 import { api, ApiError } from '../api';
 import type { Entity, EntityInput, Page, PageSummary, Vault, Organization, OrganizationContext, RecentItem, ItemKind, TrashedPage } from '../../shared/domain';
 import { PageSaver, type SaveStatus } from './page-saver';
+export interface PageSaveIssue {vaultId: string; pageId: string; title: string; message: string}
+export interface PageDraftRecovery {vaultId: string; pageId: string; title: string; drafts: PageDraftEntry[]}
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value==='object') return Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,item])=>[key,canonical(item)]));
+  return value;
+}
+const pageContent = (page: Page) => JSON.stringify(canonical({title:page.title,icon:page.icon??null,featuredImageId:page.featuredImageId??null,blocks:page.blocks,sourceIds:page.sourceIds}));
+const applyDraft = (server: Page, draft: Page): Page => ({...server,title:draft.title,icon:draft.icon,featuredImageId:draft.featuredImageId,blocks:structuredClone(draft.blocks),sourceIds:[...draft.sourceIds],entityMatchCache:undefined,conceptContentHash:undefined});
 export interface WorkspaceState {
+  saveFailures: PageSaveIssue[]; draftStorageFailures: PageSaveIssue[]; draftRecoveries: PageDraftRecovery[];
   canGoBack: boolean; canGoForward: boolean;
   entityPanelId: string | null;
   vaults: Vault[]; vault: Vault | null; trash: TrashedPage[]; pages: PageSummary[]; entities: Entity[];
@@ -16,7 +28,7 @@ export interface WorkspaceState {
 }
 type NavigationAddress = {view: WorkspaceState['view']; pageId: string | null; entityId: string | null; collection: string; folder: string};
 export class Workspace {
-  private state: WorkspaceState = {entityPanelId: null, canGoBack: false, canGoForward: false, vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
+  private state: WorkspaceState = {saveFailures: [], draftStorageFailures: [], draftRecoveries: [], entityPanelId: null, canGoBack: false, canGoForward: false, vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
   private history: NavigationAddress[] = [];
   private historyIndex = -1;
   private historyVault: string | null = null;
@@ -32,7 +44,7 @@ export class Workspace {
     page => api.generateTitle(page.vault_id, page.id, page.revision, true),
     (original, title,conceptClassification) => {
       const cached = this.pageCache.get(original.id);
-      if (!cached || cached.editLocked || this.pageLockPending || cached.vault_id !== original.vault_id || this.state.vault?.locked) return;
+      if (!cached || this.state.draftRecoveries.some(item=>item.vaultId===original.vault_id&&item.pageId===original.id) || cached.editLocked || this.pageLockPending || cached.vault_id !== original.vault_id || this.state.vault?.locked) return;
       const page = {...cached, title,...(conceptClassification?{conceptClassification}:{})};
       this.pageCache.set(page.id, page);
       this.patch({pages: this.state.pages.map(item => item.id === page.id ? {...item, title} : item),
@@ -44,6 +56,13 @@ export class Workspace {
   readonly saver = new PageSaver(
     page => api.savePage(page.vault_id, page.id, page),
     (saved, original) => {
+      // A reload may have recovered a journal written by an earlier tab session.
+      try {
+        for (const entry of pageDraftJournal.entries(saved.vault_id,saved.id)) {
+          if (entry.baseRevision <= original.revision && (pageContent(entry.snapshot) === pageContent(original) || pageContent(entry.snapshot) === pageContent(saved))) pageDraftJournal.acknowledge(entry,saved);
+        }
+      } catch (error) {this.report(error);}
+      this.patch({saveFailures:this.state.saveFailures.filter(issue=>issue.vaultId!==saved.vault_id||issue.pageId!==saved.id)});
       const cached = this.pageCache.get(saved.id);
       if (cached) {
         const unchanged = JSON.stringify(cached.blocks) === JSON.stringify(original.blocks);
@@ -53,13 +72,14 @@ export class Workspace {
       }
       if (this.state.vault?.id === saved.vault_id) this.patch({pages: this.state.pages.map(page => page.id === saved.id ? {...page, aiStatus:this.pageCache.get(saved.id)?.aiStatus ?? saved.aiStatus, updated_at: saved.updated_at} : page), ...(this.state.page?.id === saved.id ? {page: this.pageCache.get(saved.id) || {...this.state.page, aiStatus:saved.aiStatus, conceptClassification:saved.conceptClassification,conceptContentHash:JSON.stringify(this.state.page.blocks)===JSON.stringify(original.blocks)?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at}} : {})});
     },
-    (saveStatus, error) => this.patch({saveStatus, ...(error ? {error: error.message} : {})}),
+    (saveStatus, error, failed) => this.patch({saveStatus, ...(error ? {error: error.message} : {}), ...(error && failed ? {saveFailures:[...this.state.saveFailures.filter(issue=>issue.vaultId!==failed.vault_id||issue.pageId!==failed.id),{vaultId:failed.vault_id,pageId:failed.id,title:failed.title,message:error.message}]} : {})}),
     async page => {
       await yieldForEntityMatching();
       if (this.state.vault?.id !== page.vault_id || this.state.vault.locked || this.state.reviewing || !canIdentifyEntities()) return page;
       const {blocks} = identifyEntityMentions(page.blocks, entitiesForPage(page,this.state.entities), page.vault_id);
       return blocks === page.blocks ? page : {...page, blocks};
     },
+    (error, page) => this.patch({draftStorageFailures:[...this.state.draftStorageFailures.filter(issue=>issue.vaultId!==page.vault_id||issue.pageId!==page.id),...(error?[{vaultId:page.vault_id,pageId:page.id,title:page.title,message:error.message}]:[])]}),
   );
   identifyEntities = async () => {
     const page = this.state.page;
@@ -183,6 +203,8 @@ export class Workspace {
   async init() {
     try {
       const vaults = await api.vaults(); this.patch({vaults});
+      try {pageDraftJournal.pruneVaults(new Set(vaults.map(item=>item.id)));} catch (error) {this.report(error);}
+      for (const item of vaults) if(item.locked) this.clearVaultDrafts(item.id);
       let remembered: string | null = null;
       try { remembered = localStorage.getItem('noema-vault'); } catch { /* Storage may be disabled. */ }
       const selected=vaults.find(v=>v.id===remembered)??vaults[0];
@@ -210,24 +232,124 @@ export class Workspace {
     await this.navigate(async () => {
       const vaults = await api.vaults(), vault = vaults.find(v => v.id === id);
       if (!vault) throw new Error('Vault not found');
+      try {pageDraftJournal.pruneVaults(new Set(vaults.map(item=>item.id)));} catch (error) {this.report(error);}
+      for (const item of vaults) if (item.locked) this.clearVaultDrafts(item.id);
       ++this.loadSequence;
       this.titler.dispose(); this.pageCache.clear(); this.patch({vaults, vault, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', error: null});
       try { localStorage.setItem('noema-vault', id); } catch { /* The app can work without browser storage. */ }
-      if (vault.locked) return;
+      if (vault.locked) {this.clearVaultDrafts(id); return;}
       const [pages, entities, organization] = await Promise.all([api.pages(id), api.entities(id), api.organization(id)]);
       let recent: RecentItem[] = [];
       try {
         const stored: unknown = JSON.parse(localStorage.getItem('noema-recent/' + id) || '[]');
         if (Array.isArray(stored)) recent = stored.filter((item): item is RecentItem => !!item && typeof item === 'object' && (item.kind === 'page' || item.kind === 'entity') && typeof item.item_id === 'string' && typeof item.opened_at === 'string').slice(0, 50);
       } catch { /* Recent history is optional when storage is unavailable. */ }
+      try {pageDraftJournal.pruneVault(id,new Set(pages.map(page=>page.id)));} catch (error) {this.report(error);}
+      pruneEntityDrafts(id,entities.map(entity=>entity.id));
       this.patch({pages, entities, organization, recent});
       await this.restoreAddress();
     });
   }
+  private recoverPage(server: Page): Page {
+    const entries = pageDraftJournal.entries(server.vault_id,server.id);
+    const candidates: PageDraftEntry[] = [], unresolved: PageDraftEntry[] = [];
+    for (const entry of entries) {
+      if (server.revision > entry.baseRevision && pageContent(server) === pageContent(entry.snapshot)) {
+        try {pageDraftJournal.acknowledge(entry,server);} catch (error) {this.report(error);} continue;
+      }
+      const sent = entry.lastSent;
+      const acknowledged = sent && server.revision === sent.revision + 1 && pageContent(server) === pageContent(sent);
+      if (!server.editLocked && (entry.baseRevision === server.revision || acknowledged)) candidates.push(entry);
+      else unresolved.push(entry);
+    }
+    const distinct = new Set(candidates.map(entry=>pageContent(entry.snapshot)));
+    const remaining = [...candidates,...unresolved];
+    this.patch({draftRecoveries:[...this.state.draftRecoveries.filter(item=>item.vaultId!==server.vault_id||item.pageId!==server.id),...(remaining.length && (unresolved.length || distinct.size!==1)?[{vaultId:server.vault_id,pageId:server.id,title:server.title,drafts:remaining}]:[])]});
+    if (!unresolved.length && distinct.size === 1) {
+      const draft = applyDraft(server,candidates.sort((a,b)=>b.updatedAt-a.updatedAt)[0]!.snapshot);
+      this.saver.enqueue(draft);
+      return draft;
+    }
+    return server;
+  }
+  async restorePageDraft(entry: PageDraftEntry) {
+    const vault = this.state.vault, sequence = this.loadSequence;
+    if (!vault || vault.locked || vault.id!==entry.vaultId || this.state.page?.id!==entry.pageId) return;
+    // An unrelated failed page cannot block an explicit recovery. A conflict
+    // on this page is resolved by the freshly fetched revision below.
+    if (this.saver.pendingPage(vault.id,entry.pageId)) await this.saver.retry(vault.id,entry.pageId).catch(()=>{});
+    const displayed = this.state.page;
+    const server = await api.page(vault.id,entry.pageId);
+    if (sequence!==this.loadSequence || this.state.vault?.locked || this.state.page?.id!==entry.pageId) throw new Error('The selected page changed. Open the draft review again.');
+    if (this.state.page!==displayed) throw new Error('The page changed while reviewing the draft. Review it again before restoring.');
+    if (server.editLocked) throw new Error('Unlock this page before restoring its draft.');
+    const recovery = this.state.draftRecoveries.find(item=>item.vaultId===vault.id&&item.pageId===entry.pageId);
+    const retained = recovery?.drafts.filter(draft=>draft.id!==entry.id).map(draft=>draft.writerId===pageDraftJournal.writerId?pageDraftJournal.retain(draft):draft) ?? [];
+    const page = applyDraft(server,entry.snapshot);
+    this.pageCache.set(page.id,page);
+    this.patch({page,pages:this.state.pages.map(item=>item.id===page.id?{...item,title:page.title,icon:page.icon,featuredImageId:page.featuredImageId}:item),draftRecoveries:this.state.draftRecoveries.map(item=>item.vaultId===vault.id&&item.pageId===page.id?{...item,drafts:retained}:item).filter(item=>item.drafts.length)});
+    if (typeof document!=='undefined') document.dispatchEvent(new CustomEvent('noema:document-replaced',{detail:page}));
+    this.saver.enqueue(page);
+  }
+  async discardPageDrafts(vaultId: string, pageId: string) {
+    const recovery = this.state.draftRecoveries.find(item=>item.vaultId===vaultId&&item.pageId===pageId);
+    if (!recovery || this.state.vault?.locked || this.state.vault?.id!==vaultId) return;
+    const pending = this.saver.pendingPage(vaultId,pageId);
+    if (pending && recovery.drafts.some(entry=>entry.writerId===pageDraftJournal.writerId&&entry.baseRevision===pending.revision&&pageContent(entry.snapshot)===pageContent(pending))) {
+      const server = await api.page(vaultId,pageId);
+      if (this.state.vault?.id!==vaultId||this.state.vault.locked) throw new Error('The selected vault changed.');
+      const current = this.saver.pendingPage(vaultId,pageId);
+      if (!current || current.revision!==pending.revision || pageContent(current)!==pageContent(pending)) throw new Error('The draft changed. Review it again before discarding.');
+      // Cancel the failed generation as well as its journal; it must never be
+      // resurrected by Retry or a later edit after the user discards it.
+      const activeEntries = pageDraftJournal.entries(vaultId,pageId).filter(entry=>entry.writerId===pageDraftJournal.writerId&&entry.baseRevision===current.revision&&pageContent(entry.snapshot)===pageContent(current));
+      this.saver.discard(vaultId,pageId,false);
+      for (const entry of activeEntries) pageDraftJournal.discard(entry);
+      this.pageCache.set(pageId,server);
+      this.patch({...(this.state.page?.id===pageId?{page:server}:{}),pages:this.state.pages.map(item=>item.id===pageId?server:item),saveFailures:this.state.saveFailures.filter(issue=>issue.vaultId!==vaultId||issue.pageId!==pageId),draftStorageFailures:this.state.draftStorageFailures.filter(issue=>issue.vaultId!==vaultId||issue.pageId!==pageId)});
+      if (typeof document!=='undefined') document.dispatchEvent(new CustomEvent('noema:document-replaced',{detail:server}));
+    }
+    for (const entry of recovery.drafts) pageDraftJournal.discard(entry);
+    this.patch({draftRecoveries:this.state.draftRecoveries.filter(item=>item!==recovery)});
+  }
+  retryPageSave = async (vaultId: string, pageId: string) => {
+    if(this.state.vault?.id!==vaultId||this.state.vault.locked)return;
+    const pending = this.saver.pendingPage(vaultId,pageId);
+    if (!pending) return;
+    const server = await api.page(vaultId,pageId);
+    if(this.state.vault?.id!==vaultId||this.state.vault.locked)return;
+    // A successful PUT may have lost its response while the connection dropped.
+    // Rebase only when its exact payload is confirmed on the server.
+    if (server.revision!==pending.revision) {
+      const entries = pageDraftJournal.entries(vaultId,pageId);
+      const knownSave = pageContent(server)===pageContent(pending) || entries.some(entry=>entry.writerId===pageDraftJournal.writerId&&entry.baseRevision===pending.revision&&pageContent(entry.snapshot)===pageContent(pending)&&entry.lastSent&&server.revision===entry.lastSent.revision+1&&pageContent(server)===pageContent(entry.lastSent));
+      if (knownSave && !server.editLocked) {
+        const current = this.saver.pendingPage(vaultId,pageId);
+        if (!current) return;
+        if (current.revision>server.revision) return this.saver.retry(vaultId,pageId);
+        const cached = this.pageCache.get(pageId);
+        if (cached?.vault_id===vaultId) {
+          const rebased = {...cached,revision:server.revision}; this.pageCache.set(pageId,rebased);
+          if (this.state.page?.id===pageId) this.patch({page:rebased});
+        }
+        this.saver.enqueue({...current,revision:server.revision});
+      } else {
+        if (entries.length) this.patch({draftRecoveries:[...this.state.draftRecoveries.filter(item=>item.vaultId!==vaultId||item.pageId!==pageId),{vaultId,pageId,title:server.title,drafts:entries}]});
+        throw new Error(server.editLocked?'Unlock this page before saving the unfinished draft.':'The saved page has changed. Review the recovered draft before restoring it.');
+      }
+    }
+    await this.saver.retry(vaultId,pageId);
+  };
+  pageSaveStatus = (vaultId: string, pageId: string): SaveStatus => this.saver.statusFor(vaultId,pageId);
+  private clearVaultDrafts(vaultId: string) {
+    try {pageDraftJournal.discardVault(vaultId);} catch (error) {this.report(error);}
+    clearEntityDrafts(vaultId);
+    this.patch({saveFailures:this.state.saveFailures.filter(item=>item.vaultId!==vaultId),draftStorageFailures:this.state.draftStorageFailures.filter(item=>item.vaultId!==vaultId),draftRecoveries:this.state.draftRecoveries.filter(item=>item.vaultId!==vaultId)});
+  }
   private async loadPage(id: string, recordRecent = true) {
     const vault = this.state.vault!;
     // Fetch the body and its current review cache together before mounting the editor.
-    const page = await api.page(vault.id, id);
+    const page = this.recoverPage(await api.page(vault.id, id));
     this.pageCache.set(id, page); this.patch({page, view: 'pages'});
     if (recordRecent) this.recordRecent('page', id);
     this.titler.register(page); this.titler.observe(page, true);
@@ -271,8 +393,9 @@ export class Workspace {
       // Keep the old editor mounted but inert until its pending writes are safe.
       await this.saver.flush();
       if (!current()) return;
-      const page = await api.page(vault.id,id,controller.signal);
+      const server = await api.page(vault.id,id,controller.signal);
       if (!current()) return;
+      const page = this.recoverPage(server);
       this.pageCache.set(id,page); this.patch({page,view:'pages',loadingPageId:null,...(!this.state.pages.some(item=>item.id===id)?{pages:[page,...this.state.pages]}:{})});
       this.recordRecent('page',id);
       this.titler.register(page); this.titler.observe(page,true);
@@ -388,6 +511,8 @@ export class Workspace {
       const {vault, page, organization} = this.state; if (!id || !vault) return;
       const deleted = this.pageCache.get(id); if (deleted) this.titler.remove(deleted);
       await api.deletePage(vault.id, id);
+      try {this.saver.discard(vault.id,id);} catch (error) {this.report(error);}
+      this.patch({saveFailures:this.state.saveFailures.filter(issue=>issue.vaultId!==vault.id||issue.pageId!==id),draftStorageFailures:this.state.draftStorageFailures.filter(issue=>issue.vaultId!==vault.id||issue.pageId!==id),draftRecoveries:this.state.draftRecoveries.filter(item=>item.vaultId!==vault.id||item.pageId!==id)});
       this.pageCache.delete(id);
       const pages = this.state.pages.filter(p => p.id !== id);
       this.patch({pages, page: page?.id === id ? null : page, organization: {...organization,
@@ -412,6 +537,8 @@ export class Workspace {
     await this.navigate(async () => {
       const vault = this.state.vault; if (!vault || vault.locked) return;
       await api.permanentlyDeletePage(vault.id, id);
+      try {this.saver.discard(vault.id,id);} catch (error) {this.report(error);}
+      this.patch({saveFailures:this.state.saveFailures.filter(issue=>issue.vaultId!==vault.id||issue.pageId!==id),draftStorageFailures:this.state.draftStorageFailures.filter(issue=>issue.vaultId!==vault.id||issue.pageId!==id),draftRecoveries:this.state.draftRecoveries.filter(item=>item.vaultId!==vault.id||item.pageId!==id)});
       this.patch({trash: this.state.trash.filter(note => note.id !== id)});
       this.pageCache.delete(id);
     });
@@ -459,7 +586,7 @@ export class Workspace {
     const vault = this.state.vault, sequence = this.loadSequence;
     if(!vault||vault.locked||signal?.aborted)return;
     const entities = await api.entities(vault.id,signal);
-    if (!signal?.aborted&&sequence===this.loadSequence&&this.state.vault?.id===vault.id&&!this.state.vault.locked) this.patch({entities});
+    if (!signal?.aborted&&sequence===this.loadSequence&&this.state.vault?.id===vault.id&&!this.state.vault.locked) {pruneEntityDrafts(vault.id,entities.map(entity=>entity.id));this.patch({entities});}
   }
   async previewVaultDeletion(id:string) {
     if(this.state.vault?.id!==id)throw new Error('The selected vault changed.');
@@ -472,6 +599,7 @@ export class Workspace {
       if(this.state.vault?.id!==id||this.state.vault.locked)throw new Error('Open and unlock this vault before deleting it.');
       this.titler.dispose();
       try{result=await api.deleteVault(id,confirmation);}catch(error){if(this.state.page){this.titler.register(this.state.page);this.titler.observe(this.state.page,true);}throw error;}
+      this.clearVaultDrafts(id);
       ++this.loadSequence;this.pageCache.clear();
       this.patch({vaults:result.vaults,vault:null,page:null,pages:[],entities:[],trash:[],organization:{collections:[],folders:[],locations:[],memberships:[],favourites:[]},organizationContext:{collection:'',folder:''},recent:[],view:'organization',error:null});
       try{localStorage.removeItem('noema-address/'+id);localStorage.removeItem('noema-recent/'+id);localStorage.removeItem('noema-vault');}catch{/* Optional browser history. */}
@@ -496,7 +624,9 @@ export class Workspace {
     await this.selectVault(vault.id);
   }
   async lock(passphrase?: string) {
-    await this.saver.flush(); const id = this.state.vault!.id; await api.lock(id, passphrase); await this.selectVault(id);
+    await this.saver.flush(); const id = this.state.vault!.id; const locked = await api.lock(id, passphrase);
+    this.pageCache.clear(); this.titler.dispose(); this.patch({vault:locked,page:null,pages:[],entities:[]});
+    this.clearVaultDrafts(id); await this.selectVault(id);
   }
   async setPassphrase(currentPassphrase: string, passphrase: string | null) {
     const id = this.state.vault?.id;

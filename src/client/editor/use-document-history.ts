@@ -205,6 +205,13 @@ export function useDocumentHistory(page: Page | null, onChange: (patch: Document
       const state = history.current, pending = state.input;
       queueMicrotask(() => {if (state.input === pending) state.input = null;});
     }
+    function replaced(event: Event) {
+      const page = (event as CustomEvent<Page>).detail;
+      if (!page || `${page.vault_id}:${page.id}`!==history.current.key) return;
+      history.current = emptyHistory(page); resumeEntityRecognition();
+      refresh(value=>value+1);
+    }
+    document.addEventListener('noema:document-replaced', replaced);
     document.addEventListener('keydown', keydown, true);
     document.addEventListener('beforeinput', beforeinput, true);
     document.addEventListener('input', input, true);
@@ -213,6 +220,7 @@ export function useDocumentHistory(page: Page | null, onChange: (patch: Document
     document.addEventListener('compositionstart', compositionstart, true);
     document.addEventListener('compositionend', compositionend, true);
     return () => {
+      document.removeEventListener('noema:document-replaced', replaced);
       document.removeEventListener('keydown', keydown, true);
       document.removeEventListener('beforeinput', beforeinput, true);
       document.removeEventListener('input', input, true);

@@ -1,3 +1,4 @@
+import {EntityScanStream} from './modules/entity-scan-stream.js';
 import {DOMAINS,TAXONOMY_VERSION} from '../shared/domains.js';
 import {Domains} from './modules/domains.js';
 import {createHash} from 'node:crypto';
@@ -276,8 +277,40 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               if(body.revision!==page.revision)throw new HttpError(409,'Save the latest note before scanning.');
               const cached=enrichments.list(vault,id).find(row=>row.kind==='entity_scan'&&row.revision===page.revision)?.data.scan as import('../shared/entity-scan.js').EntityScan|undefined;
               const contextKey=scans.contextKey(vault,page);
-              if(cached?.contextKey===contextKey)return send(200,cached);
+              const streaming=req.headers.accept?.includes('application/x-ndjson');
+              if(!streaming&&cached?.contextKey===contextKey)return send(200,cached);
               const input=scans.input(vault,page);
+              if(streaming) {
+                const controller=new AbortController(),parser=new EntityScanStream();
+                const disconnected=()=>{if(!res.writableEnded)controller.abort();};
+                res.on('close',disconnected);
+                const emit=(event:import('../shared/entity-scan.js').EntityScanEvent)=>{
+                  if(controller.signal.aborted||res.destroyed)throw new HttpError(499,'Entity scanning stopped.');
+                  vaults.requireOpen(vault);res.write(JSON.stringify(event)+'\n');
+                };
+                res.writeHead(200,{'Content-Type':'application/x-ndjson; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Accel-Buffering':'no'});res.flushHeaders();
+                const heartbeat=setInterval(()=>{if(!res.destroyed&&!controller.signal.aborted)res.write('\n');},10000);
+                try {
+                  if(cached?.contextKey===contextKey)emit({type:'completed',scan:cached});
+                  else {
+                    const output=await intelligence.generate(input,false,bytes=>activity.request(activityId!,bytes,page.revision),false,true,false,undefined,false,undefined,false,undefined,{
+                      signal:controller.signal,onDelta:delta=>{
+                        const suggestions=parser.feed(delta);
+                        if(suggestions)emit({type:'progress',scan:scans.save(vault,page,JSON.stringify({suggestions}),intelligence.selection(),false)});
+                      },
+                    });
+                    if(controller.signal.aborted)throw new HttpError(499,'Entity scanning stopped.');
+                    vaults.requireOpen(vault);
+                    if(scans.contextKey(vault,pages.get(vault,id))!==contextKey)throw new HttpError(409,'The note, domains or entity catalog changed. Scan again.');
+                    emit({type:'completed',scan:scans.save(vault,page,output,intelligence.selection())});
+                  }
+                  activity.finish(activityId!,'completed',200);activityId=undefined;res.end();
+                }catch(error){
+                  if(activityId){activity.finish(activityId,controller.signal.aborted?'interrupted':'failed',error instanceof HttpError?error.status:500);activityId=undefined;}
+                  if(!res.destroyed)res.end(JSON.stringify({type:'error',message:error instanceof HttpError?error.message:'Entity scan failed. Please try again.'})+'\n');
+                }finally{clearInterval(heartbeat);res.removeListener('close',disconnected);}
+                return;
+              }
               const output=await intelligence.generate(input,false,bytes=>activity.request(activityId!,bytes,page.revision),false,true);
               vaults.requireOpen(vault);
               if(scans.contextKey(vault,pages.get(vault,id))!==contextKey)throw new HttpError(409,'The note, domains or entity catalog changed. Scan again.');

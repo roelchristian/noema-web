@@ -50,7 +50,7 @@ export const api={
   resolveEntityMatch:(vault:string,id:string,body:{revision:number;key:string;matchId:string;entityId:string;all:boolean})=>request<{blocks:Page['blocks']}>(`pages/${id}/entity-matches`,'POST',body,vault),
   aiNotifications:(signal?:AbortSignal)=>request<import('../shared/ai-notifications').AINotificationQueue>('intelligence/notifications','GET',undefined,undefined,signal),
   readAINotifications:(body:{ids:string[]}|{through:number})=>request<import('../shared/ai-notifications').AINotificationQueue>('intelligence/notifications','PUT',body),
-  scanEntities:(vault:string,id:string,revision:number)=>request<import('../shared/entity-scan').EntityScan>(`pages/${id}/entity-scan`,'POST',{revision},vault),
+  scanEntities:scanEntities,
   reviewEntity:(vault:string,id:string,revision:number,scanId:string,suggestionId:string|string[],decision:'accepted'|'rejected',edits?:import('../shared/entity-scan').EntitySuggestionEdit[])=>request<import('../shared/entity-scan').EntityReview>(`pages/${id}/entity-review`,'POST',{revision,scanId,...(Array.isArray(suggestionId)?{suggestionIds:suggestionId}:{suggestionId}),decision,...(edits?{edits}:{})},vault),
   textSearch:(vault:string,query:string,signal?:AbortSignal,scope?:import('../shared/text-search').TextSearchScope,limit=100)=>request<import('../shared/text-search').TextSearchResults>('search/text','POST',{query,limit,...(scope?{scope}:{})},vault,signal),
   searchSnippets:(vault:string,query:string,pageIds:string[],signal?:AbortSignal)=>request<{snippets:Record<string,string>}>('search/snippets','POST',{query,pageIds},vault,signal),
@@ -134,4 +134,30 @@ export async function createPageFromSource(vault:string,sourceId:string,focus:st
     if(!terminal)throw new Error('The connection ended before the draft was confirmed. Retry to recover the result.');
     finished=true;
   }finally{if(!finished)await reader.cancel().catch(()=>{});reader.releaseLock();window.dispatchEvent(new Event('noema:ai-activity'));}
+}
+
+/** Provisional scan rows are display-only until the completed event confirms persistence. */
+export async function scanEntities(vault:string,id:string,revision:number,onProgress?:(scan:import('../shared/entity-scan').EntityScan)=>void,signal?:AbortSignal):Promise<import('../shared/entity-scan').EntityScan> {
+  const response=await fetch(`/api/pages/${id}/entity-scan`,{method:'POST',signal,headers:{'X-Noema-Request':'1','X-Vault-Id':vault,'Content-Type':'application/json','Accept':'application/x-ndjson'},body:JSON.stringify({revision})});
+  if(!response.ok){const result=await response.json();throw new ApiError(response.status,result.error||'Entity scan failed.');}
+  const reader=response.body?.getReader();if(!reader)throw new Error('The entity scan stream is unavailable.');
+  const decoder=new TextDecoder();let pending='',size=0,completed:import('../shared/entity-scan').EntityScan|undefined;
+  const consume=(line:string)=>{
+    if(!line.trim())return;
+    const event=JSON.parse(line) as import('../shared/entity-scan').EntityScanEvent;
+    if(event.type==='error')throw new Error(event.message);
+    if(event.type==='progress')onProgress?.(event.scan);
+    if(event.type==='completed')completed=event.scan;
+  };
+  try {
+    while(!completed) {
+      const {done,value}=await reader.read();if(done)break;
+      size+=value.byteLength;if(size>1024*1024)throw new Error('The entity scan exceeded its size limit.');
+      pending+=decoder.decode(value,{stream:true});
+      let newline:number;while(!completed&&(newline=pending.indexOf('\n'))>=0){consume(pending.slice(0,newline));pending=pending.slice(newline+1);}
+    }
+    if(!completed){pending+=decoder.decode();if(pending.trim())consume(pending);}
+    if(!completed)throw new Error('The connection ended before the scan finished. Please scan again.');
+    return completed;
+  }finally{await reader.cancel().catch(()=>{});reader.releaseLock();if(typeof window!=='undefined')window.dispatchEvent(new Event('noema:ai-activity'));}
 }

@@ -4,7 +4,7 @@ export interface EntitySuggestion extends EntityInput {
   id: string; evidenceAnchor?: EvidenceAnchor; evidence: string; reason: string; existingId: string | null;
   status: 'pending' | 'accepted' | 'rejected';
 }
-export interface EntitySuggestionEdit { domainIds?:string[]; id: string; name: string; type: EntityType; subtypes: string[]; existingId: string | null }
+export interface EntitySuggestionEdit { domainIds?:string[]; id: string; name: string; aliases?:string[]; type: EntityType; subtypes: string[]; existingId: string | null }
 export interface SubtypeSuggestion { id: string; name: string; type: EntityType; status: 'pending' | 'accepted' | 'rejected'; resolvedId?: string }
 export interface EvidenceAnchor {blockId:string; row?:number; col?:number; start:number; end:number}
 export interface EntityTextRun extends EvidenceAnchor {runId:string; text:string}
@@ -33,6 +33,13 @@ export function entityTextRuns(page:Pick<Page,'blocks'>):EntityTextRun[] {
   return runs;
 }
 const evidencePattern=(evidence:string)=>new RegExp(evidence.trim().split(/\s+/u).map(word=>word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('\\s+'),'gu');
+/** Model offsets are hints: recover a unique quote only inside its supplied eligible run. */
+export function locateRunEvidence(run:EntityTextRun,evidence:string,evidenceStart:number):EvidenceAnchor|null {
+  if(!evidence.trim())return null;
+  const matches=[...run.text.matchAll(evidencePattern(evidence))];
+  const match=matches.find(match=>match.index===evidenceStart)??(matches.length===1?matches[0]:undefined);
+  return match?{blockId:run.blockId,...(run.row===undefined?{}:{row:run.row,col:run.col}),start:run.start+match.index!,end:run.start+match.index!+match[0].length}:null;
+}
 /** Legacy unanchored evidence is safe only when it identifies exactly one occurrence. */
 export function locateEvidence(page:Pick<Page,'blocks'>,evidence:string,anchor?:EvidenceAnchor):EvidenceAnchor|null {
   if(!evidence.trim())return null;
@@ -71,3 +78,5 @@ export function mentionEvidence(page:Page,evidence:string,entityId:string,anchor
   const blocks=page.blocks.map(block=>block.id!==target.blockId?block:target.row===undefined?{...block,content:replace(block.content)}:{...block,rows:block.rows?.map((row,r)=>r!==target.row?row:row.map((cell,c)=>c!==target.col?cell:replace(cell)))});
   return {...page,blocks};
 }
+
+export type EntityScanEvent={type:'progress';scan:EntityScan}|{type:'completed';scan:EntityScan}|{type:'error';message:string};

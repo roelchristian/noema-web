@@ -196,14 +196,14 @@ export class Intelligence {
     try{return parseSourceAuthors(JSON.parse(output)?.authors);}
     catch{throw new HttpError(502,'AI returned invalid source authors. Retry enrichment.');}
   }
-  async generate(input: string, validate=false, onRequest?: AIRequestObserver, title=false, entityScan=false, explain=false, utility?:{domains:{id:string;name:string}[];currentTitle:string}, background=false,sourcePage?:{onDelta:(delta:string)=>void;signal:AbortSignal;onPreviewDelta?:(delta:string)=>void;onPreviewReset?:()=>void},sourceEnrichment:boolean|'authors'=false,enrichment?:PageEnrichmentOptions) {
+  async generate(input: string, validate=false, onRequest?: AIRequestObserver, title=false, entityScan=false, explain=false, utility?:{domains:{id:string;name:string}[];currentTitle:string}, background=false,sourcePage?:{onDelta:(delta:string)=>void;signal:AbortSignal;onPreviewDelta?:(delta:string)=>void;onPreviewReset?:()=>void},sourceEnrichment:boolean|'authors'=false,enrichment?:PageEnrichmentOptions,entityStream?:{onDelta:(delta:string)=>void;signal:AbortSignal}) {
     const credential=this.credential(),selection=enrichment?this.enrichmentSelection():title?this.titleSelection():this.selection(),preferenceRevision=this.preferenceRevision;
     if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
     if(!title&&!entityScan&&!enrichment&&this.active)throw new HttpError(429,'Another AI request is running. Please wait.');
     if (!background) this.reserveManualRequest();
     const controller=new AbortController();this.generationRequests.add(controller);if(!title&&!entityScan&&!enrichment)this.active=controller;
     const abort=()=>controller.abort();
-    const requestSignal=sourcePage?.signal??enrichment?.signal;
+    const requestSignal=entityStream?.signal??sourcePage?.signal??enrichment?.signal;
     requestSignal?.addEventListener('abort',abort,{once:true});
     if(requestSignal?.aborted)controller.abort();
     const timer=setTimeout(()=>controller.abort(),Math.min(sourcePage?180000:45000,Date.parse(credential.expiresAt)-this.clock()));
@@ -213,7 +213,7 @@ export class Intelligence {
       const inputText=typeof prompt.input==='string'?prompt.input:prompt.input.flatMap(item=>item.content.map(part=>part.text)).join('');
       const observer=onRequest?.(Buffer.byteLength(prompt.instructions+inputText,'utf8'));
       trace=redactedTrace(observer,credential.key);
-      const payload={model:selection.model,store:false,max_output_tokens:enrichment?(selection.reasoningEffort!=='none'?4096:enrichment.requestedFields.includes('summary')?768:384):title?512:validate?2048:8192,reasoning:{effort:selection.reasoningEffort},tools:[],tool_choice:'none',...prompt,...(trace||sourcePage?{stream:true}:{})};
+      const payload={model:selection.model,store:false,max_output_tokens:enrichment?(selection.reasoningEffort!=='none'?4096:enrichment.requestedFields.includes('summary')?768:384):title?512:validate?2048:8192,reasoning:{effort:selection.reasoningEffort},tools:[],tool_choice:'none',...prompt,...(trace||sourcePage||entityStream?{stream:true}:{})};
       trace?.request('https://api.openai.com/v1/responses',payload);
       const response=await this.transport('https://api.openai.com/v1/responses',{
         method:'POST',redirect:'error',signal:controller.signal,
@@ -228,7 +228,7 @@ export class Intelligence {
         if(controller.signal.aborted||this.clock()>=Date.parse(credential.expiresAt)||this.preferenceRevision!==preferenceRevision)throw new HttpError(409,'AI generation was stopped or its settings changed.');
         receive(delta.split(credential.key).join('[redacted]').replace(/sk-[A-Za-z0-9_-]{16,}/g,'[redacted]'));
       };
-      const result=await readOpenAIResponse(response,trace,sourcePage?delta=>safeDelta(delta,sourcePage.onDelta):undefined,
+      const result=await readOpenAIResponse(response,trace,entityStream?delta=>safeDelta(delta,entityStream.onDelta):sourcePage?delta=>safeDelta(delta,sourcePage.onDelta):undefined,
         sourcePage?.onPreviewDelta?{onDelta:delta=>safeDelta(delta,sourcePage.onPreviewDelta!),onReset:()=>sourcePage.onPreviewReset?.()}:undefined,observer?.usage);
       const summary=responseOutputText(result).trim();
       if(result.status!=='completed'||!summary||summary.length>(sourcePage?60000:12000))throw new HttpError(502,'OpenAI returned an incomplete response. Try a lower reasoning effort or a shorter page.');

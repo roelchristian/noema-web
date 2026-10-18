@@ -148,14 +148,15 @@ export class Knowledge {
   }
   addAlias(vault: string, id: string, body: Record<string, unknown>) {
     const alias = required(body.alias,200).replace(/\s+/g, ' ');
-    return this.store.transaction(() => {
+    const add = () => {
       const entity = this.require(vault,id), aliases = entity.aliases ?? [];
       if(entity.type==='source')throw new HttpError(400,'Sources do not support aliases.');
       if ([entity.name, ...aliases].some(name => normalizeEntityName(name) === normalizeEntityName(alias))) return this.detail(vault,id);
       if (aliases.length >= 100) throw new HttpError(400,'This entity already has 100 aliases. Remove an alias before adding another.');
       this.store.run('UPDATE entities SET aliases=?,updated_at=? WHERE id=? AND vault_id=?',JSON.stringify([...aliases,alias]),now(),id,vault);
       return this.detail(vault,id);
-    });
+    };
+    return this.store.db.isTransaction?add():this.store.transaction(add);
   }
   property(vault: string, id: string, body: Record<string, unknown>, propertyId?: string) {
     const entity=this.require(vault,id);

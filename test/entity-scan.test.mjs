@@ -186,3 +186,88 @@ test('review edits support renamed entities, category/subtype changes and matchi
     assert.equal(final.scan.suggestions[0].status,'accepted');
   }finally{db.close();}
 });
+
+test('discovery recovers incorrect model offsets for named entities independently of page subjects', async()=>{
+  const {Domains}=await import('../src/server/modules/domains.ts');
+  const {EntityScans}=await import('../src/server/modules/entity-scan.ts');
+  const {Knowledge}=await import('../src/server/modules/knowledge.ts');
+  const {Pages}=await import('../src/server/modules/pages.ts');
+  const {AIEnrichments}=await import('../src/server/modules/ai-enrichments.ts');
+  const db=openDatabase(':memory:'),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge);
+  const scans=new EntityScans(store,pages,knowledge,new AIEnrichments(store,pages));
+  try {
+    let page=pages.create('default',{title:'Céline Dion'});
+    page=pages.update('default',page.id,{...page,blocks:[{id:'bio',type:'paragraph',checked:false,content:[
+      {text:'Born in\u00a0'}, {text:'Charlemagne, Quebec',href:'https://example.com/city'},
+      {text:', she met '},{text:'René Angélil',bold:true},
+      {text:' and won Eurovision Song Contest 1988.'},
+    ]}]});
+    // Named entities remain eligible on both music and unrelated subject classifications.
+    for(const primaryDomainId of ['arts.music','mathematics']) {
+      const domains=new Domains(store);
+      domains.setManual('default',page.id,{primaryDomainId,secondaryDomainIds:[]},page.revision);
+      page=pages.get('default',page.id);
+      const {untrusted_note:{bodyTextRuns:[run]}}=JSON.parse(scans.input('default',page));
+      const suggestions=[candidate('Charlemagne, Quebec','place'),candidate('René Angélil'),candidate('Eurovision Song Contest 1988','event')]
+        .map(s=>({...s,runId:run.runId,evidenceStart:999}));
+      const scan=scans.save('default',page,JSON.stringify({suggestions}),{model:'gpt-5-mini',reasoningEffort:'low'});
+      assert.equal(scan.suggestions.length,3);
+      for(const suggestion of scan.suggestions)assert.equal(suggestion.evidenceAnchor.start,run.text.indexOf(suggestion.evidence));
+    }
+    const {untrusted_note:{bodyTextRuns:[run]}}=JSON.parse(scans.input('default',page));
+    const scan=scans.save('default',page,JSON.stringify({suggestions:[{...candidate('René Angélil'),runId:run.runId,evidenceStart:126}]}),{model:'gpt-5-mini',reasoningEffort:'low'});
+    const result=scans.review('default',page.id,{scanId:scan.id,suggestionIds:scan.suggestions.map(s=>s.id),revision:page.revision,decision:'accepted'});
+    assert.equal(result.page.blocks[0].content.find(s=>s.entityId)?.mentionText,'René Angélil');
+    assert.ok(result.page.blocks[0].content.some(s=>s.href==='https://example.com/city'));
+  }finally{db.close();}
+});
+
+test('model evidence recovery stays within its run, rejects ambiguity and preserves original whitespace',async()=>{
+  const {entityTextRuns,locateRunEvidence}=await import('../src/shared/entity-scan.ts');
+  const page={blocks:[{id:'table',type:'table',content:[],rows:[[
+    [{text:'Paris and Paris. '}],
+    [{text:'Excluded',skipAutoTag:true},{text:'René\u00a0  Angélil and '},{text:'Paris',math:true}],
+  ]]}]};
+  const [repeated,unique]=entityTextRuns(page);
+  assert.equal(locateRunEvidence(repeated,'Paris',999),null);
+  assert.deepEqual(locateRunEvidence(repeated,'Paris',10),{blockId:'table',row:0,col:0,start:10,end:15});
+  assert.equal(locateRunEvidence(unique,'Paris',0),null,'Never searches another run, cell or protected text');
+  assert.equal(locateRunEvidence(unique,'Excluded',0),null);
+  const anchor=locateRunEvidence(unique,'René Angélil',999);
+  assert.deepEqual(anchor,{blockId:'table',row:0,col:1,start:8,end:22});
+  const linked=mentionEvidence(page,'René Angélil','rene',anchor);
+  assert.equal(linked.blocks[0].rows[0][1][1].mentionText,'René\u00a0  Angélil');
+  assert.equal(mentionEvidence(page,'René Angélil','rene',{...anchor,start:9}),null,'Review anchors stay strict');
+});
+
+test('qualified city names and region tags use independent evidence and can be accepted together', async()=>{
+  const {EntityScans,entityScanPrompt}=await import('../src/server/modules/entity-scan.ts');
+  const {Knowledge}=await import('../src/server/modules/knowledge.ts');
+  const {Pages}=await import('../src/server/modules/pages.ts');
+  const {AIEnrichments}=await import('../src/server/modules/ai-enrichments.ts');
+  const db=openDatabase(':memory:'),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge);
+  const scans=new EntityScans(store,pages,knowledge,new AIEnrichments(store,pages));
+  try {
+    let page=pages.create('default',{title:'Birthplace'});
+    page=pages.update('default',page.id,{...page,blocks:[{id:'bio',type:'paragraph',checked:false,content:[
+      {text:'Born in '},{text:'Charlemagne, Quebec',href:'https://example.com/city'},{text:'.'},
+    ]}]});
+    const input=scans.input('default',page),run=JSON.parse(input).untrusted_note.bodyTextRuns[0];
+    const instructions=entityScanPrompt(input).instructions;
+    assert.ok(instructions.includes('canonical name'));
+    assert.ok(instructions.includes('non-overlapping evidence'));
+    const scan=scans.save('default',page,JSON.stringify({suggestions:[
+      candidate('Charlemagne, Quebec','place',{subtypes:['place:city'],evidence:'Charlemagne',runId:run.runId,evidenceStart:8}),
+      candidate('Quebec','place',{subtypes:['place:region-province-state'],runId:run.runId,evidenceStart:21}),
+    ]}),{model:'gpt-5-mini',reasoningEffort:'low'});
+    assert.equal(scan.suggestions.length,2);
+    const review=scans.review('default',page.id,{revision:page.revision,scanId:scan.id,suggestionIds:scan.suggestions.map(s=>s.id),decision:'accepted'});
+    const city=review.entities.find(e=>e.name==='Charlemagne, Quebec'),region=review.entities.find(e=>e.name==='Quebec');
+    assert.ok(city);assert.ok(region);assert.notEqual(city.id,region.id);
+    assert.deepEqual(review.page.blocks[0].content,[
+      {text:'Born in '},{entityId:city.id,mentionText:'Charlemagne'},
+      {text:', ',href:'https://example.com/city'},{entityId:region.id,mentionText:'Quebec'},{text:'.'},
+    ]);
+    assert.ok(review.scan.suggestions.every(s=>s.status==='accepted'));
+  }finally{db.close();}
+});

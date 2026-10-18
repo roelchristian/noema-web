@@ -9,7 +9,7 @@ export function inheritedPropertyNames(schema: EntitySchema, type: EntityType, s
 }
 
 export const builtinSubtypes: EntitySubtype[] = Object.entries({
-  person: ['Actor', 'Writer', 'Artist', 'Scientist'],
+  person: ['Actor', 'Writer', 'Artist', 'Scientist', 'Researcher', 'Philosopher', 'Historian', 'Educator', 'Engineer', 'Physician', 'Entrepreneur', 'Politician', 'Activist', 'Journalist', 'Musician', 'Composer', 'Filmmaker', 'Athlete', 'Religious leader'],
   place: ['City', 'Country', 'Region / province / state', 'Landmark'],
   event: ['Conference', 'Exhibition', 'Historical event'],
   creativework: ['Book', 'Film', 'Song', 'Article'],

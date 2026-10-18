@@ -6,6 +6,7 @@ import {Store} from '../store.js';
 import {HttpError,now,text} from '../validation.js';
 import {Knowledge} from './knowledge.js';
 import {Pages} from './pages.js';
+import {sourcePageDisplayMath,sourcePageMathRanges,sourcePageMathSegments} from './source-page-math.js';
 
 /** Validate record structure and mark evidence that needs the user's review. */
 export class SourcePageDraft {
@@ -77,6 +78,8 @@ export class SourcePageDraft {
     const block:Block={id:randomUUID(),type:item.blockType as typeof sourcePageBlockTypes[number],content:[],checked:false};
     const label=item.basis==='context'?'Additional context: ':'Interpretation: ';
     const literal=block.type==='code'||block.type==='math';
+    const mathRanges=literal||block.type==='quote'?[]:sourcePageMathRanges(item.text);
+    const appendText=(value:string)=>block.content.push(...(literal||block.type==='quote'?[{text:value}]:sourcePageMathSegments(value)));
     if(item.basis!=='source'&&literal){
       const heading:Block={id:randomUUID(),type:'paragraph',content:[{text:label.trim(),bold:true}],checked:false};
       this.blocks.push(heading);this.emit({type:'block',block:heading});
@@ -95,19 +98,22 @@ export class SourcePageDraft {
       const quoteOffset=uniqueOffset(citation.quote),anchorOffset=uniqueOffset(citation.anchor);
       if(citation.quote&&item.blockType!=='quote'&&quoteOffset<0)content.push({text:` “${citation.quote}”`,italic:true});
       content.push({text:citation.range?` [L: ${citation.range}]`:' [??]'});
-      insertions.push({offset:quoteOffset>=0?quoteOffset:anchorOffset>=0?anchorOffset:item.text.length,content});
+      const offset=quoteOffset>=0?quoteOffset:anchorOffset>=0?anchorOffset:item.text.length;
+      // A claim anchor inside a formula must not split its LaTeX delimiters.
+      const formula=mathRanges.find(range=>range.start<offset&&offset<range.end);
+      insertions.push({offset:formula?.end??offset,content});
     }
     insertions.sort((a,b)=>a.offset-b.offset);
     if(literal){
-      block.content.push({text:item.text});
+      appendText(block.type==='math'?sourcePageDisplayMath(item.text):item.text);
       references.push(...insertions.flatMap(insertion=>insertion.content));
     }else{
       let offset=0;
       for(const insertion of insertions){
-        if(insertion.offset>offset)block.content.push({text:item.text.slice(offset,insertion.offset)});
+        if(insertion.offset>offset)appendText(item.text.slice(offset,insertion.offset));
         block.content.push(...insertion.content);offset=insertion.offset;
       }
-      if(offset<item.text.length)block.content.push({text:item.text.slice(offset)});
+      if(offset<item.text.length)appendText(item.text.slice(offset));
     }
     if(literal&&references.length){
       this.blocks.push(block);this.emit({type:'block',block});

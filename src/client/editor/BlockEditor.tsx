@@ -333,6 +333,36 @@ export function BlockEditor(props: Props) {
     const range = document.createRange(); range.selectNode(node);
     setMathTarget({range, initial: node.dataset.math ?? '', node});
   }
+  function inlineMathHost() {
+    if(!mathTarget)return;
+    const container=mathTarget.range.commonAncestorContainer;
+    const editor=(container instanceof Element?container:container.parentElement)?.closest<HTMLElement>('.block-content[contenteditable="true"]');
+    const id=editor?.closest<HTMLElement>('[data-block-id]')?.dataset.blockId;
+    const block=latest.current.blocks.find(block=>block.id===id);
+    if(!editor||!root.current?.contains(editor)||!block||isAIExplanation(block)||!['paragraph','heading1','heading2','bullet','numbered','todo','quote'].includes(block.type)||latest.current.blocks.length>1998)return;
+    return {editor,block};
+  }
+  function makeInlineMathDisplay(source:string) {
+    const host=inlineMathHost();
+    if(!mathTarget||!host||!source.trim()){setMathTarget(null);return;}
+    const {range,node,initial}=mathTarget,{editor,block}=host;
+    if(node?!node.isConnected||node.dataset.math!==initial:range.toString()!==initial){setMathTarget(null);return;}
+    const before=range.cloneRange();before.selectNodeContents(editor);before.setEnd(range.startContainer,range.startOffset);
+    const after=range.cloneRange();after.selectNodeContents(editor);after.setStart(range.endContainer,range.endOffset);
+    const head=document.createElement('div'),tail=document.createElement('div');head.append(before.cloneContents());tail.append(after.cloneContents());
+    const prefix=readSegments(head),suffix=readSegments(tail);
+    const hasContent=(segments:Segment[])=>segments.some(segment=>segment.entityId||segment.math||segment.sourceReference||segment.text?.replace(/\u200b/g,'').trim());
+    const hasPrefix=hasContent(prefix),hasSuffix=hasContent(suffix);
+    const equation:Block={...makeBlock('math',[{text:source.trim()}]),column:block.column,semantic:block.semantic,semanticGroup:block.semanticGroup,...(!hasPrefix&&!hasSuffix?{id:block.id}:{})};
+    const replacement:Block[]=[];
+    if(hasPrefix)replacement.push({...block,content:prefix});
+    replacement.push(equation);
+    if(hasSuffix)replacement.push({...block,id:hasPrefix?randomUUID():block.id,content:suffix});
+    const draft=commitSelection(),index=draft.findIndex(item=>item.id===block.id);
+    if(index<0)return;
+    draft.splice(index,1,...replacement);
+    setMathTarget(null);focusTarget.current={id:equation.id,start:false};onChange(draft);
+  }
   function saveInlineMath(source: string,restoreFocus=true) {
     if (!mathTarget || !root.current?.contains(mathTarget.range.commonAncestorContainer)) {setMathTarget(null); return;}
     const {range, node, initial} = mathTarget;
@@ -786,7 +816,7 @@ export function BlockEditor(props: Props) {
       </div>
     </Modal>}
     {citationTarget && <CitationPicker vaultId={props.vaultId} entities={entities} blocks={blocks} getAnchor={()=>resolveCitationRange(citationTarget.editor,citationTarget.bookmark)} editor={citationTarget.editor} onInsert={insertCitations} onClose={closeCitation}/>}
-    {mathTarget && <InlineMathEditor range={mathTarget.range} node={mathTarget.node} initial={mathTarget.initial} onSave={saveInlineMath} onClose={() => setMathTarget(null)}/>}
+    {mathTarget && <InlineMathEditor onMakeDisplay={inlineMathHost()?makeInlineMathDisplay:undefined} range={mathTarget.range} node={mathTarget.node} initial={mathTarget.initial} onSave={saveInlineMath} onClose={() => setMathTarget(null)}/>}
     {pageLinkStatus && <div className="note-link-status" role="status">{pageLinkStatus}</div>}
     {imageError && <div className="image-upload-error" role="alert">{imageError}</div>}
     {mobile && active && <div ref={mobileToolbar} className="mobile-block-toolbar" role="toolbar" aria-label={`${activeLabel} actions`} style={{bottom: keyboardInset}} onPointerDown={event => { if ((event.target as Element).closest('button')) event.preventDefault(); }}>

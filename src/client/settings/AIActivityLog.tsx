@@ -1,3 +1,4 @@
+import { AIActivityUsage } from './AIActivityUsage';
 import { AIActivityDebug } from './AIActivityDebug';
 import { useEffect, useRef, useState } from 'react';
 import { aiActivityLabels, type AIActivity, type AIActivityPage } from '../../shared/intelligence';
@@ -6,6 +7,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { api } from '../api';
 
 export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpenPage: (vaultId: string, pageId: string) => Promise<void>}) {
+  const [view,setView]=useState<'log'|'usage'>('log');
   const [debugId,setDebugId]=useState<string|null>(null);
   const autoRefresh=useRef(true);
   const [confirmClear,setConfirmClear]=useState(false);
@@ -13,6 +15,7 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
   const [data,setData]=useState<AIActivityPage>({items:[],nextCursor:null});
   const [busy,setBusy]=useState(true),[error,setError]=useState('');
   useEffect(()=>{
+    if(view!=='log')return;
     let active=true,sequence=0;
     async function refresh() {
       if(!autoRefresh.current)return;
@@ -26,7 +29,7 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
     window.addEventListener('noema:ai-activity',changed);
     const timer=setInterval(changed,1000);
     return()=>{active=false;clearInterval(timer);window.removeEventListener('noema:ai-activity',changed);};
-  },[]);
+  },[view]);
   async function load(cursor?:number) {
     autoRefresh.current=cursor===undefined;
     setBusy(true);setError('');setMessage('');
@@ -64,6 +67,16 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
   if(confirmClear) return <ConfirmDialog danger title="Clear AI activity?" description="Delete all activity and debug traces for unlocked vaults. Running requests continue." action="Clear activity" onClose={()=>setConfirmClear(false)} onConfirm={async()=>{await api.clearAIActivity();setData({items:[],nextCursor:null});setMessage('Activity cleared.');}}/>;
   return <Modal className="ai-activity-modal" titleId="ai-activity-heading" onClose={onClose}>
     <ModalHeader titleId="ai-activity-heading">AI activity log</ModalHeader>
+    <div className="settings-tabs ai-activity-views" role="tablist" aria-label="AI activity views">
+      {([{id:'log',label:'Activity log'},{id:'usage',label:'Token usage'}] as const).map(tab=><button key={tab.id} type="button" id={'ai-activity-tab-'+tab.id} role="tab" aria-selected={view===tab.id} aria-controls="ai-activity-panel" tabIndex={view===tab.id?0:-1} onClick={()=>setView(tab.id)} onKeyDown={event=>{
+        if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+        event.preventDefault();
+        const next=event.key==='Home'?'log':event.key==='End'?'usage':view==='log'?'usage':'log';
+        setView(next);document.getElementById('ai-activity-tab-'+next)?.focus();
+      }}>{tab.label}</button>)}
+    </div>
+    <div id="ai-activity-panel" role="tabpanel" aria-labelledby={'ai-activity-tab-'+view} tabIndex={0}>
+    {view==='usage'?<AIActivityUsage/>:<>
     <p className="ai-activity-description">Up to 1,000 recent actions stored locally. Locked vault activity is hidden and excluded from export and clear. Cache reads and writes appear when reported by the provider.</p>
     {data.enrichmentMetrics&&<section aria-label="Page enrichment efficiency" className="ai-activity-description">
       <p><strong>Page enrichment:</strong> {data.enrichmentMetrics.requestsAvoided.toLocaleString()} local decisions avoided a request · {data.enrichmentMetrics.providerRequests.toLocaleString()} provider requests · {data.enrichmentMetrics.completedPages.toLocaleString()} successfully enriched pages.</p>
@@ -101,5 +114,7 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
       {!busy&&!data.items.length&&!error&&<p className="ai-activity-empty">No AI activity yet.</p>}
     </div>
     <footer className="ai-activity-footer">{data.nextCursor!==null&&<button className="button" disabled={busy} onClick={()=>void load(data.nextCursor!)}>Load older activity</button>}<p>Export CSV for all available records, or open a payload for its JSON trace. Loading older activity pauses auto-refresh.</p><button className="button primary" onClick={onClose}>Done</button></footer>
+    </>}
+    </div>
   </Modal>;
 }

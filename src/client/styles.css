@@ -2585,7 +2585,7 @@ dialog.source-page-dialog.has-preview { width: 1200px; }
 :root { --citation-jump-highlight: rgba(242, 210, 96, .24); }
 :root[data-mode=dark] { --citation-jump-highlight: rgba(222, 183, 64, .18); }
 
-/* Modal headers share the workspace toolbar dimensions and active breadcrumb type. */
+/* Modal headers use a roomier toolbar rhythm and the active breadcrumb type. */
 .topbar { height: var(--workspace-toolbar-height); }
 .breadcrumbs [aria-current=page], dialog.noema-modal .modal-header > .modal-title {
   font: 600 12px/1.4 var(--font-ui);
@@ -2595,6 +2595,7 @@ dialog.source-page-dialog.has-preview { width: 1200px; }
 }
 dialog.noema-modal {
   --modal-content-padding: 24px;
+  --modal-header-height: calc(var(--workspace-toolbar-height) * 1.25);
   padding: var(--modal-content-padding);
   border: 1px solid var(--control-border);
   border-radius: 10px;
@@ -2612,10 +2613,10 @@ dialog.noema-modal .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex: 0 0 var(--workspace-toolbar-height);
+  flex: 0 0 var(--modal-header-height);
   gap: 10px;
-  height: var(--workspace-toolbar-height);
-  min-height: var(--workspace-toolbar-height);
+  height: var(--modal-header-height);
+  min-height: var(--modal-header-height);
   margin: calc(-1 * var(--modal-content-padding)) calc(-1 * var(--modal-content-padding)) 20px;
   padding: 0 20px;
   border-bottom: 1px solid var(--line);

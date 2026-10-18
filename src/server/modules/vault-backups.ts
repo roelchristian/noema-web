@@ -27,7 +27,7 @@ const maxExpandedBytes=256*1024*1024;
 const compress=promisify(gzip),expand=promisify(gunzip);
 const pageScope='page_id IN (SELECT id FROM pages WHERE vault_id=?)';
 const entityScope='entity_id IN (SELECT id FROM entities WHERE vault_id=?)';
-// Explicit, versioned allowlist: credentials, app settings, jobs and activity are never archived.
+// Explicit, versioned allowlist: credentials, global app settings, jobs and activity are never archived.
 const tables={
   pages:{columns:'id,title,icon,featured_image_id,blocks,ai_status,language,created_at,updated_at,revision,deleted_at',scope:'vault_id=?'},
   source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at,import_method,source_url,pdf_flattened,admitted,format,page_start_lines,structural_nodes,original_filename,language,summary,generated_name,enrichment_status',scope:'vault_id=? AND entity_id IS NOT NULL'},
@@ -50,6 +50,7 @@ const tables={
   favourites:{columns:'kind,item_id',scope:'vault_id=?'},
   page_ai_enrichments:{columns:'page_id,kind,data,revision,model,reasoning_effort,updated_at,content_hash',scope:pageScope},
   embedding_settings:{columns:'automatic,min_characters,page_policy',scope:'vault_id=?'},
+  page_enrichment_settings:{columns:'automatic_summaries',scope:'vault_id=?'},
   page_segment_cache:{columns:'page_id,content_hash,model,dimensions,vector,tokens,updated_at',scope:pageScope},
   note_embeddings:{columns:'page_id,model,dimensions,content_hash,revision,vector,tokens,updated_at',scope:pageScope},
 } as const;
@@ -118,7 +119,7 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     const sourceOwners=new Set<unknown>(),legacyEntities=new Map(rows.entities.map(row=>[row.id,row]));
     const legacyProperties=[...rows.properties],legacyLinks=[...rows.page_sources];
     for(const file of rows.source_files) {
@@ -339,6 +340,10 @@ export class VaultBackups {
           if(kind==='summary'&&typeof data.summary!=='string')throw invalid();
           insert('page_ai_enrichments',{page_id:ref(pageIds,row.page_id),kind,data:JSON.stringify(data),revision:integer(row,'revision',1),model:name(row,'model'),reasoning_effort:string(row,'reasoning_effort',20),updated_at:timestamp(row,'updated_at'),content_hash:nullable(row,'content_hash',100)});
         }
+        if(rows.page_enrichment_settings.length>1)throw invalid();
+        for(const row of rows.page_enrichment_settings)insert('page_enrichment_settings',{
+          vault_id:vault,automatic_summaries:integer(row,'automatic_summaries',0,1),
+        });
         if(rows.embedding_settings.length>1)throw invalid();
         for(const row of rows.embedding_settings) {
           const policy=row.page_policy==null?null:json(row,'page_policy');

@@ -16,6 +16,7 @@ import {setupSourceAuthorSchema} from './source-author-schema.js';
 import {setupSourcePassageSchema} from './source-passage-schema.js';
 import {setupSourcePassageEmbeddingSchema} from './source-passage-embedding-schema.js';
 import {setupTextSearchSchema} from './text-search-schema.js';
+import {setupPageEnrichmentSchedulerSchema} from './page-enrichment-schema.js';
 
 export function openDatabase(filename: string): DatabaseSync {
  if (filename !== ':memory:') mkdirSync(path.dirname(filename), {recursive: true});
@@ -109,9 +110,11 @@ db.exec(`CREATE TABLE IF NOT EXISTS ai_activity (
  model TEXT NOT NULL, reasoning_effort TEXT NOT NULL, prompt_bytes INTEGER
 );
  CREATE INDEX IF NOT EXISTS ai_activity_started ON ai_activity(started_at DESC);`);
-for(const column of ['input_tokens','output_tokens','cached_input_tokens','cache_write_tokens']) {
+for(const column of ['input_tokens','output_tokens','cached_input_tokens','cache_write_tokens','reasoning_tokens']) {
  if(!db.prepare('PRAGMA table_info(ai_activity)').all().some(field=>field.name===column))db.exec(`ALTER TABLE ai_activity ADD COLUMN ${column} INTEGER CHECK(${column}>=0)`);
 }
+if(!db.prepare('PRAGMA table_info(ai_activity)').all().some(field=>field.name==='estimated_cost'))db.exec('ALTER TABLE ai_activity ADD COLUMN estimated_cost REAL CHECK(estimated_cost>=0)');
+if(!db.prepare('PRAGMA table_info(ai_activity)').all().some(field=>field.name==='pricing_version'))db.exec('ALTER TABLE ai_activity ADD COLUMN pricing_version TEXT');
 db.exec(`CREATE TABLE IF NOT EXISTS ai_activity_debug (
  activity_id TEXT PRIMARY KEY REFERENCES ai_activity(id) ON DELETE CASCADE,
  endpoint TEXT, request TEXT, response_body TEXT NOT NULL DEFAULT '', response TEXT,
@@ -429,6 +432,7 @@ if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
  setupSourcePassageSchema(db);
  setupSourcePassageEmbeddingSchema(db);
  setupTextSearchSchema(db);
+ setupPageEnrichmentSchedulerSchema(db);
  if (db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Database contains invalid references');
  return db;
  } catch(error) { db.close(); throw error; }

@@ -5,6 +5,7 @@ import type { IntelligencePreferences } from '../../shared/intelligence.js';
 import { Store } from '../store.js';
 import { HttpError, now } from '../validation.js';
 import { Pages } from './pages.js';
+import {PageEnrichmentState} from './page-enrichment-state.js';
 
 type EnrichmentRow = Omit<AIEnrichment, 'data' | 'reasoningEffort'> & {data: string; reasoning_effort: AIEnrichment['reasoningEffort']};
 
@@ -24,18 +25,23 @@ export class AIEnrichments {
   }
   removeSummary(vault: string, pageId: string) {
     this.pages.get(vault, pageId);
-    this.store.run('DELETE FROM page_ai_enrichments WHERE page_id=? AND kind=?', pageId, 'summary');
+    this.store.transaction(()=>{
+      this.store.run('DELETE FROM page_ai_enrichments WHERE page_id=? AND kind=?', pageId, 'summary');
+      new PageEnrichmentState(this.store).suppressSummary(pageId);
+      this.store.run("INSERT INTO page_ai_enrichments (page_id,kind,data,revision,model,reasoning_effort,updated_at) VALUES (?,'summary_preferences',?,?, 'local','none',?) ON CONFLICT(page_id,kind) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at",pageId,JSON.stringify({suppressed:true,deletedAt:now()}),this.pages.get(vault,pageId).revision,now());
+    });
     return {ok: true as const};
   }
   save(vault: string, pageId: string, kind: string, data: Record<string, unknown>, revision: number, preferences: IntelligencePreferences) {
     if (kind === 'summary' && typeof data.summary === 'string') data = {...data, summary: limitSummaryWords(data.summary)};
-    return this.store.transaction(() => {
+    const persist = () => {
       const page = this.pages.get(vault, pageId);
       if (page.revision !== revision) throw new HttpError(409, 'The page changed. Generate a fresh result.');
       this.store.run(`INSERT INTO page_ai_enrichments (page_id,kind,data,revision,model,reasoning_effort,updated_at,content_hash) VALUES (?,?,?,?,?,?,?,?)
         ON CONFLICT(page_id,kind) DO UPDATE SET data=excluded.data,revision=excluded.revision,model=excluded.model,reasoning_effort=excluded.reasoning_effort,updated_at=excluded.updated_at,content_hash=excluded.content_hash`,
         pageId, kind, JSON.stringify(data), revision, preferences.model, preferences.reasoningEffort, now(), kind === 'summary' ? page.summaryContentHash! : null);
       if(kind==='summary'||kind==='entity_scan') new AINotifications(this.store).record(vault,pageId,kind==='summary'?'page_summary':'entity_scan');
-    });
+    };
+    return this.store.db.isTransaction ? persist() : this.store.transaction(persist);
   }
 }

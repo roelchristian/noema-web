@@ -1,7 +1,9 @@
 import type { PageDomains, Page } from '../../shared/domain';
 import {TAXONOMY_VERSION} from '../../shared/domains';
 const key = (page: Page) => `${page.vault_id}/${page.id}`;
-const needsUtility=(page:Page)=>!page.editLocked && (untitled(page) || page.pageDomains?.origin!=='manual' && (!page.pageDomains || page.pageDomains.taxonomyVersion!==TAXONOMY_VERSION || !page.conceptContentHash || page.pageDomains.contentHash!==page.conceptContentHash));
+// The server's drift assessment owns freshness; changed bytes alone do not invalidate subjects.
+const needsUtility=(page:Page)=>!page.editLocked && (untitled(page) || page.pageDomains?.origin!=='manual' && (!page.pageDomains || page.pageDomains.taxonomyVersion!==TAXONOMY_VERSION || page.pageDomains.status==='needs_refresh' || page.pageDomains.status==='unclassified'));
+const idleDelay=(page:Page)=>untitled(page)?10_000:!page.pageDomains||page.pageDomains.status==='unclassified'?12_000:40_000;
 const untitled = (page: Page) => !page.title.trim() || page.title.trim() === 'Untitled';
 interface Candidate { page: Page; version: number; running: boolean; retries: number; timer?: ReturnType<typeof setTimeout> }
 /** Title and category share one background pass; edits invalidate outstanding results. */
@@ -25,12 +27,12 @@ export class PageTitler {
       ? (block.rows ?? []).flatMap(row => row.flatMap(cell => cell)) : block.content)
       .map(segment => segment.entityId ? this.entityName(segment.entityId) : segment.text || '').join(' ').trim();
     if (saved && text.length >= 20) {
-      candidate.timer = setTimeout(() => { void this.run(candidate); }, 3000);
+      candidate.timer = setTimeout(() => { void this.run(candidate); }, idleDelay(page));
     }
   }
   private async run(candidate: Candidate) {
     if (candidate.running) {
-      candidate.timer = setTimeout(() => { void this.run(candidate); }, 3000);
+      candidate.timer = setTimeout(() => { void this.run(candidate); }, idleDelay(candidate.page));
       return;
     }
     const {page, version} = candidate;

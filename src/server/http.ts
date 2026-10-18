@@ -9,7 +9,8 @@ import { SourceFiles, maxSourceBytes } from './modules/source-files.js';
 import { VaultBackups, maxBackupBytes } from './modules/vault-backups.js';
 import { AINotifications } from './modules/ai-notifications.js';
 import { Images, maxImageBytes } from './modules/images.js';
-import {PageUtility} from './modules/page-utility.js';
+import {PageEnrichment, type EnrichmentField} from './modules/page-enrichment.js';
+import {PageEnrichmentScheduler} from './modules/page-enrichment-scheduler.js';
 import { EntityScans } from './modules/entity-scan.js';
 import { EntityMatches } from './modules/entity-matches.js';
 import { summaryInput } from './modules/summary-content.js';
@@ -55,7 +56,22 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
   const vaults=new Vaults(store),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),organizer=new Organizer(store);
   const activity=new AIActivityLog(store),enrichments=new AIEnrichments(store,pages);
   const scans=new EntityScans(store,pages,knowledge,enrichments);
-  const pageUtility=new PageUtility(store,pages,knowledge,enrichments,intelligence);
+  const pageEnrichment=new PageEnrichment(store,pages,knowledge,enrichments,intelligence);
+  const enrichmentScheduler=new PageEnrichmentScheduler(store,{
+    prepare:(vault,pageId,job)=>{const snapshot=pageEnrichment.prepare(vault,pageId,{fields:job.fields,explicit:job.explicit,background:true});return snapshot?{...snapshot,explicit:job.explicit}:null;},
+    execute:async(vault,pageId,snapshot,signal)=>{
+      if(signal.aborted)return;
+      const id=activity.start('page_enrichment',intelligence.enrichmentSelection(),vault,pageId);
+      try {
+        const result=await pageEnrichment.run(vault,pages.get(vault,pageId),bytes=>activity.request(id,bytes,snapshot.revision??null),{fields:snapshot.requestedFields,background:true,explicit:snapshot.explicit,signal});
+        const sent=store.get<{prompt_bytes:number|null}>('SELECT prompt_bytes FROM ai_activity WHERE id=?',id)?.prompt_bytes;activity.finish(id,sent==null?'skipped':'completed',200);return {classified:result.classified};
+      }catch(error){activity.finish(id,'failed',error instanceof HttpError?error.status:500);throw error;}
+    },
+  });
+  const scheduleEnrichment=(vault:string,page:import('../shared/domain.js').Page)=>{
+    const initial=!page.title.trim()||page.title==='Untitled'||page.pageDomains?.status==='unclassified';
+    enrichmentScheduler.enqueue(vault,page.id,{delayMs:initial?12_000:page.pageDomains?.status==='needs_refresh'?40_000:25_000});
+  };
   const entityMatches=new EntityMatches(store,pages,knowledge);
   const embeddings=new Embeddings(store,pages,knowledge,vaults,intelligence,activity);
   const sourcePassages=new SourcePassages(store);
@@ -74,7 +90,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
   let sourceEnrichmentWorker: ReturnType<typeof setInterval> | undefined;
   const server = http.createServer(async(req,res)=>{
     let activityId: string | undefined;
-    const send=(status:number,data:unknown)=>{if(activityId){activity.finish(activityId,status<400?'completed':'failed',status);activityId=undefined;}res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));};
+    const send=(status:number,data:unknown)=>{if(activityId){const row=store.get<{prompt_bytes:number|null;action:string}>('SELECT prompt_bytes,action FROM ai_activity WHERE id=?',activityId);activity.finish(activityId,status>=400?'failed':row?.action==='page_enrichment'&&row.prompt_bytes===null?'skipped':'completed',status);activityId=undefined;}res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));};
     try {
       const url=new URL(req.url || '/', 'http://localhost'),method=req.method || 'GET';
       // LAN mode expands the peer/host allowlist without weakening same-origin API checks.
@@ -84,7 +100,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
         if((req.headers.origin && req.headers.origin!==`http://${req.headers.host}`)||req.headers['sec-fetch-site']==='cross-site')throw new HttpError(403,'Cross-origin requests are not allowed');
         const securityRoute = url.pathname === '/api/security/network' || /^\/api\/pages\/[^/]+\/edit-lock$/.test(url.pathname) || /^\/api\/vaults\/[^/]+\/passphrase$/.test(url.pathname);
         if (securityRoute && (req.headers['x-noema-request'] !== '1' || method === 'PUT' && !/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))) throw new HttpError(403, 'Security settings require the Noema client and JSON.');
-        const aiRoute=/^\/api\/entities\/[^/]+\/create-page(?:\/(?:accept|reject))?$/.test(url.pathname)||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|entity-scan|entity-review|explain)$/.test(url.pathname);
+        const aiRoute=/^\/api\/entities\/[^/]+\/create-page(?:\/(?:accept|reject))?$/.test(url.pathname)||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|enrich|enrichment-settings|entity-scan|entity-review|explain)$/.test(url.pathname);
         const searchRoute=url.pathname.startsWith('/api/search/');
         if((aiRoute||searchRoute) && (req.headers['x-noema-request']!=='1'||(['POST','PUT'].includes(method)&&!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))))throw new HttpError(403,searchRoute?'Search requests require the Noema client and JSON':'AI requests require the Noema client and JSON');
         if(url.pathname==='/api/source-files' || url.pathname.startsWith('/api/source-files/')) {
@@ -164,12 +180,18 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
           const port = new URL(`http://${req.headers.host}`).port;
           return send(200, {lan: networkAccess.enabled(), localUrl: `http://localhost${port ? ':' + port : ''}`});
         }
-        if(method==='POST' && ((collection==='intelligence' && id==='validate' && parts.length===3) || (collection==='pages' && (child==='summary'||child==='title'||child==='entity-scan'||child==='explain') && parts.length===4))) {
+        if(method==='POST' && ((collection==='intelligence' && id==='validate' && parts.length===3) || (collection==='pages' && (child==='summary'||child==='title'||child==='enrich'||child==='entity-scan'||child==='explain') && parts.length===4))) {
           const header=req.headers['x-vault-id'];
           if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
-          activityId=activity.start(collection==='pages'?(child==='title'?'page_title':child==='entity-scan'?'entity_scan':child==='explain'?'block_explanation':'page_summary'):'connection_test',child==='title'?intelligence.titleSelection():intelligence.selection(),collection==='pages'?(header||'default'):null,collection==='pages'?id!:null);
+          activityId=activity.start(collection==='pages'?(child==='enrich'||child==='title'||child==='summary'?'page_enrichment':child==='entity-scan'?'entity_scan':child==='explain'?'block_explanation':'page_summary'):'connection_test',child==='title'||child==='summary'||child==='enrich'?intelligence.enrichmentSelection():intelligence.selection(),collection==='pages'?(header||'default'):null,collection==='pages'?id!:null);
         }
         if(collection==='intelligence') {
+          if(parts.length===3&&id==='pricing'&&method==='GET')return send(200,activity.pricing());
+          if(parts.length===3&&id==='pricing'&&method==='PUT')return send(200,activity.savePricing(body));
+          if(parts.length===3&&id==='enrichment-metrics'&&method==='GET') {
+            const header=req.headers['x-vault-id'];if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
+            const vault=vaults.requireOpen(header||'default');return send(200,activity.enrichmentMetrics(vault));
+          }
           if(parts.length===3 && id==='notifications' && method==='GET')return send(200,notifications.list());
           if(parts.length===3 && id==='notifications' && method==='PUT')return send(200,notifications.read(body));
           if(parts.length===3 && id==='debug' && method==='GET')return send(200,activity.debugSettings());
@@ -189,7 +211,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
           if(parts.length===2 && method==='POST')return send(201,vaults.create(body));
           if(id && parts.length===4 && method==='GET' && child==='deletion-preview')return send(200,vaultDeletion.preview(id));
           if(id && parts.length===4 && method==='POST' && child==='delete')return send(200,vaultDeletion.remove(id,body));
-          if(id && parts.length===4 && method==='POST' && child==='lock'){const result=vaults.lock(id,body);embeddings.clearQueryCache(id);return send(200,result);}
+          if(id && parts.length===4 && method==='POST' && child==='lock'){const result=vaults.lock(id,body);enrichmentScheduler.pauseVault(id);pageEnrichment.pauseVault(id);embeddings.clearQueryCache(id);return send(200,result);}
           if(id && parts.length===4 && method==='POST' && child==='unlock')return send(200,vaults.unlock(id,body));
         } else {
           const header=req.headers['x-vault-id'];
@@ -213,7 +235,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
           }
           if(collection==='trash') {
             if(parts.length===2 && method==='GET')return send(200,pages.trash(vault));
-            if(id && parts.length===4 && child==='restore' && method==='POST'){const page=pages.restore(vault,id);embeddings.onSave(vault,id);return send(200,page);}
+            if(id && parts.length===4 && child==='restore' && method==='POST'){const page=pages.restore(vault,id);embeddings.onSave(vault,id);scheduleEnrichment(vault,page);return send(200,page);}
             if(id && parts.length===3 && method==='DELETE')return send(200,pages.permanentlyDelete(vault,id));
           }
           if(collection==='organization') {
@@ -263,28 +285,23 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             }
             if(id && parts.length===4 && child==='summary' && method==='DELETE')return send(200,enrichments.removeSummary(vault,id));
             if(id && parts.length===4 && child==='enrichments' && method==='GET')return send(200,enrichments.list(vault,id));
-            if(id && parts.length===4 && (child==='summary'||child==='title') && method==='POST') {
-              const page=pages.get(vault,id),isTitle=child==='title';
-              if(isTitle) {
-                pages.requireEditable(vault,id);
-                if(body.revision!==page.revision)throw new HttpError(409,'Save the latest page before classification.');
-                const result=await pageUtility.run(vault,page,bytes=>activity.request(activityId!,bytes,page.revision),body.background===true);
-                vaults.requireOpen(vault);return send(200,result);
-              }
-              if(body.revision!==page.revision)throw new HttpError(409,'Save the latest page before summarizing.');
-              const names=new Map(knowledge.list(vault).map(entity=>[entity.id,entityMentionName(entity)]));
-              const input=summaryInput(page,id=>names.get(id));
-              if(input.length>40000)throw new HttpError(413,'This page exceeds the AI limit of 40,000 characters.');
-              if(!input.trim())throw new HttpError(400,'Add some page content first.');
-              const onRequest=(bytes: number)=>activity.request(activityId!,bytes,page.revision);
-              const summary=limitSummaryWords(await intelligence.generate(input,false,onRequest));
-              vaults.requireOpen(vault);
-              const current=pages.get(vault,id);
-              if(current.revision!==page.revision || current.summaryContentHash!==page.summaryContentHash)throw new HttpError(409,'The page changed. Generate a fresh summary.');
-              const selection=intelligence.selection();
-              const data={summary};
-              enrichments.save(vault,id,'summary',data,page.revision,selection);
-              return send(200,{...data,revision:page.revision,...selection,contentHash:page.summaryContentHash});
+            if(id && parts.length===4 && child==='enrichment-settings') {
+              if(method==='GET')return send(200,pageEnrichment.settings(vault));
+              if(method==='PUT'){const settings=pageEnrichment.configure(vault,body);if(settings.automaticSummaries)scheduleEnrichment(vault,pages.get(vault,id));return send(200,settings);}
+            }
+            if(id && parts.length===4 && (child==='summary'||child==='title'||child==='enrich') && method==='POST') {
+              const page=pages.requireEditable(vault,id);
+              if(body.revision!==page.revision)throw new HttpError(409,'Save the latest page before enrichment.');
+              const allowed:EnrichmentField[]=['title','domains','language','summary'];
+              if(body.requestedFields!==undefined&&(!Array.isArray(body.requestedFields)||!body.requestedFields.length||body.requestedFields.some(field=>!allowed.includes(field as EnrichmentField))))throw new HttpError(400,'Choose valid enrichment fields.');
+              const background=body.background===true;
+              const result=await pageEnrichment.run(vault,page,bytes=>activity.request(activityId!,bytes,page.revision),{
+                fields:child==='enrich'?body.requestedFields as EnrichmentField[]|undefined:undefined,
+                explicit:!background,background,refreshFields:child==='summary'?['summary']:child==='title'&&!background?['domains']:body.requestedFields as EnrichmentField[]|undefined,
+              });
+              if(result.classified)enrichmentScheduler.markClassified(id);
+              if(child==='summary')return send(200,{summary:result.summary??'',revision:result.revision,contentHash:result.contentHash,...intelligence.enrichmentSelection()});
+              return send(200,result);
             }
             if(id && child==='editor' && parts.length===4 && method==='GET') {
               const page=pages.get(vault,id);
@@ -299,10 +316,10 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               if(method==='POST') return send(200,entityMatches.resolve(vault,id,body));
             }
             if(parts.length===2 && method==='GET')return send(200,pages.list(vault));
-            if(parts.length===2 && method==='POST'){const page=pages.create(vault,body);embeddings.onSave(vault,page.id);return send(201,page);}
+            if(parts.length===2 && method==='POST'){const page=pages.create(vault,body);embeddings.onSave(vault,page.id);scheduleEnrichment(vault,page);return send(201,page);}
             if(id && parts.length===3) {
               if(method==='GET')return send(200,pages.get(vault,id));
-              if(method==='PUT'){const page=pages.update(vault,id,body);embeddings.onSave(vault,id);return send(200,page);}
+              if(method==='PUT'){const page=pages.update(vault,id,body);embeddings.onSave(vault,id);scheduleEnrichment(vault,page);return send(200,page);}
               if(method==='DELETE'){const result=pages.delete(vault,id);embeddings.invalidate(vault,id);return send(200,result);}
             }
           }
@@ -401,6 +418,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
     sockets.add(socket); socket.once('close', () => sockets.delete(socket));
   });
   server.on('listening', () => {
+    enrichmentScheduler.start();
     vaultDeletion.cleanup();
     sourcePassageWorker=setInterval(()=>{try{sourcePassages.tick();}catch{/* Durable passage state records failures for retry. */}},500);sourcePassageWorker.unref();
     sourceWorker=setInterval(()=>{void sourceFiles.tick().catch(()=>{});},500);sourceWorker.unref();
@@ -410,6 +428,6 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
     keyCleanup=setInterval(()=>{try{intelligence.purgeExpired();}catch{/* Keychain may be locked; all AI access still fails closed. */}},60000);keyCleanup.unref();
     embeddingWorker=setInterval(()=>{void embeddings.tick().catch(()=>{/* Durable job history records failures; never log note content. */});},1000);embeddingWorker.unref();
   });
-  server.on('close', () => {clearInterval(sourceWorker);sourceFiles.close();clearInterval(sourcePassageWorker);clearInterval(sourceEnrichmentWorker);sourceEnrichments.close();clearInterval(cleanup);clearInterval(keyCleanup);clearInterval(embeddingWorker);embeddings.close();});
+  server.on('close', () => {enrichmentScheduler.dispose();clearInterval(sourceWorker);sourceFiles.close();clearInterval(sourcePassageWorker);clearInterval(sourceEnrichmentWorker);sourceEnrichments.close();clearInterval(cleanup);clearInterval(keyCleanup);clearInterval(embeddingWorker);embeddings.close();});
   return server;
 }

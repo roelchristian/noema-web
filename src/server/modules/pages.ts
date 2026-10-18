@@ -1,3 +1,4 @@
+import {PageEnrichmentState} from './page-enrichment-state.js';
 import {Domains} from './domains.js';
 import {enrichCitationPages,syncSourceReferences} from './source-references.js';
 import {pageLanguage} from './page-language.js';
@@ -33,6 +34,11 @@ export class Pages {
     const row=this.store.get<PageRow>('SELECT * FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',id,vault);
     if (!row) throw new HttpError(404,'Page not found');
     const {summary_content_hash: cachedHash, summary_hash_version: hashVersion, featured_image_id: featuredImageId, ai_status: aiStatus, ...stored} = row;
+    // Generated titles remain derived metadata until an authored save accepts them.
+    if(!stored.title.trim()||stored.title.trim()==='Untitled') {
+      const generated=this.store.get<{data:string;revision:number}>("SELECT data,revision FROM page_ai_enrichments WHERE page_id=? AND kind='title'",id);
+      if(generated) {try {const data=JSON.parse(generated.data),title=data.title;const inferred=new PageEnrichmentState(this.store).get(id).fields.title?.origin==='inferred';if((generated.revision===row.revision||inferred)&&typeof title==='string'&&title.trim())stored.title=title;}catch {/* Unknown legacy records do not replace authored text. */}}
+    }
     const blocks = enrichCitationPages(this.store,JSON.parse(row.blocks) as Block[]);
     const names=new Map<string,string|undefined>();
     const resolveName=(id:string)=>{if(!names.has(id))names.set(id,entityMentionName(this.knowledge.find(vault,id)));return names.get(id);};
@@ -50,7 +56,9 @@ export class Pages {
       this.store.run('UPDATE pages SET summary_content_hash=?,summary_hash_version=2 WHERE id=? AND vault_id=?',hash,id,vault);
     }
     const editLock=this.store.get<{password_hash:string|null}>('SELECT password_hash FROM page_edit_locks WHERE page_id=? AND vault_id=?',id,vault);
-    return {...stored,pageDomains:new Domains(this.store).get(id,conceptContentHash({...stored,blocks},resolveName)),aiStatus,editLocked:!!editLock,editProtected:!!editLock?.password_hash,featuredImageId,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id)};
+    const domainService=new Domains(this.store);
+    domainService.assess({...stored,blocks,conceptContentHash:conceptContentHash({...stored,blocks},resolveName)} as Page,resolveName);
+    return {...stored,enrichmentFields:new PageEnrichmentState(this.store).get(id).fields,enrichmentPending:!!this.store.get('SELECT 1 FROM page_enrichment_jobs WHERE page_id=?',id),pageDomains:domainService.get(id,conceptContentHash({...stored,blocks},resolveName)),aiStatus,editLocked:!!editLock,editProtected:!!editLock?.password_hash,featuredImageId,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id)};
   }
   requireEditable(vault: string, id: string) {
     const page=this.get(vault,id);
@@ -80,6 +88,9 @@ export class Pages {
   create(vault: string, body: Record<string, unknown>) {
     const id=randomUUID(),createdAt=now();
     this.store.run('INSERT INTO pages (id,title,language,blocks,updated_at,created_at,vault_id) VALUES (?,?,?,?,?,?,?)',id,required(body.title || 'Untitled'),pageLanguage(body.language),JSON.stringify([{id:randomUUID(),type:'paragraph',checked:false,content:[]}]),createdAt,createdAt,vault);
+    const provenance=new PageEnrichmentState(this.store);
+    if(typeof body.title==='string'&&body.title.trim()&&body.title.trim()!=='Untitled')provenance.markManual(id,'title');
+    if(pageLanguage(body.language))provenance.markManual(id,'language');
     return this.get(vault,id);
   }
   validateBlocks(vault: string, input: unknown): Block[] {
@@ -198,6 +209,12 @@ export class Pages {
       return names.get(id);
     });
     this.store.transaction(()=>{
+      const state=new PageEnrichmentState(this.store);
+      if(title!==page.title)state.markManual(id,'title');
+      if(language!==page.language) {
+        state.markManual(id,'language');
+        this.store.run("INSERT INTO page_ai_enrichments (page_id,kind,data,revision,model,reasoning_effort,updated_at) VALUES (?,'language',?,?,'manual','none',?) ON CONFLICT(page_id,kind) DO UPDATE SET data=excluded.data,revision=excluded.revision,updated_at=excluded.updated_at",id,JSON.stringify({language,origin:'manual'}),page.revision+1,now());
+      }
       syncSourceReferences(this.store,id,blocks);
       this.store.run('UPDATE pages SET title=?,language=?,icon=?,featured_image_id=?,blocks=?,ai_status=?,updated_at=?,revision=revision+1 WHERE id=? AND vault_id=?',title,language,icon,featuredImageId,JSON.stringify(blocks),aiStatus,now(),id,vault);
       this.store.run('DELETE FROM page_sources WHERE page_id=?',id);

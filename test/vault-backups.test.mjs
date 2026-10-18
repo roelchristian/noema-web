@@ -158,3 +158,18 @@ test('an imported vault and its images remain available after restarting the dat
     assert.equal(new AIEnrichments(store,pages).list(restored.id,page.id).find(item=>item.kind==='summary').contentHash,page.summaryContentHash);
   } finally {if(reopened)reopened.close();else state.db.close();rmSync(state.directory,{recursive:true,force:true});}
 });
+
+test('automatic summary preference is portable and legacy backups retain disabled default',async()=>{
+  const state=fixture();
+  try {
+    state.store.run('INSERT INTO page_enrichment_settings(vault_id,automatic_summaries) VALUES (?,1)',state.vault.id);
+    const exported=await state.backups.export(state.vault.id);
+    assert.deepEqual(archive(exported.bytes).tables.page_enrichment_settings,[{automatic_summaries:1}]);
+    const restored=await state.backups.import(exported.bytes,'Restored enrichment settings');
+    assert.equal(state.store.get('SELECT automatic_summaries FROM page_enrichment_settings WHERE vault_id=?',restored.id).automatic_summaries,1);
+    const legacy=await state.backups.import(rewrite(exported.bytes,value=>{delete value.tables.page_enrichment_settings;}),'Legacy enrichment settings');
+    assert.equal(state.store.get('SELECT automatic_summaries FROM page_enrichment_settings WHERE vault_id=?',legacy.id),undefined);
+    await assert.rejects(()=>state.backups.import(rewrite(exported.bytes,value=>{value.tables.page_enrichment_settings=[{automatic_summaries:2}];})),/invalid/i);
+    await assert.rejects(()=>state.backups.import(rewrite(exported.bytes,value=>{value.tables.page_enrichment_settings=[{automatic_summaries:1},{automatic_summaries:0}];})),/invalid/i);
+  } finally {state.close();}
+});

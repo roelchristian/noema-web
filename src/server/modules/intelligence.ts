@@ -5,11 +5,12 @@ import { explanationPrompt } from './explanation-prompt.js';
 import { entityScanPrompt } from './entity-scan.js';
 import { titlePrompt } from './title-prompt.js';
 import { summaryPrompt } from './summary-prompt.js';
+import { pageEnrichmentPrompt, parsePageEnrichment, type PageEnrichmentOptions } from './page-enrichment-prompt.js';
 import type {SourceAuthor} from './source-authors.js';
 import { sourceEnrichmentPrompt, sourceAuthorsPrompt } from './source-enrichment-prompt.js';
 import { limitSummaryWords } from '../../shared/summary-text.js';
 import { pageLanguage } from './page-language.js';
-import { defaultIntelligencePreferences, defaultManualRequestsPerMinute, maxManualRequestsPerMinute, validManualRequestLimit, intelligenceModels, type IntelligenceConfiguration, supportedIntelligencePreferences, type IntelligencePreferences } from '../../shared/intelligence.js';
+import { defaultIntelligencePreferences, defaultPageEnrichmentPreferences, defaultManualRequestsPerMinute, maxManualRequestsPerMinute, validManualRequestLimit, intelligenceModels, type IntelligenceConfiguration, supportedIntelligencePreferences, type IntelligencePreferences } from '../../shared/intelligence.js';
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import type { IntelligenceStatus } from '../../shared/domain.js';
@@ -76,10 +77,12 @@ export class Intelligence {
   private manualRequestsPerMinute=defaultManualRequestsPerMinute;
   private preferences: IntelligencePreferences={...defaultIntelligencePreferences};
   private preferenceRevision=0;
+  private enrichmentPreferences: IntelligencePreferences={...defaultPageEnrichmentPreferences};
   constructor(private secrets: SecretStore, private transport: typeof fetch=fetch, private clock=()=>Date.now(), private preferenceStore?: PreferencesStore) {
     const saved=preferenceStore?.read();
     if(supportedIntelligencePreferences(saved)) {
       this.preferences={model:saved.model,reasoningEffort:saved.reasoningEffort};
+      if ('pageEnrichment' in saved && supportedIntelligencePreferences(saved.pageEnrichment)) this.enrichmentPreferences={model:saved.pageEnrichment.model,reasoningEffort:saved.pageEnrichment.reasoningEffort};
       if ('manualRequestsPerMinute' in saved && validManualRequestLimit(saved.manualRequestsPerMinute)) this.manualRequestsPerMinute=saved.manualRequestsPerMinute;
     }
   }
@@ -88,13 +91,16 @@ export class Intelligence {
     if(!supportedIntelligencePreferences(body))throw new HttpError(400,'Choose a supported model and reasoning effort.');
     const manualRequestsPerMinute=body.manualRequestsPerMinute === undefined ? this.manualRequestsPerMinute : body.manualRequestsPerMinute;
     if (!validManualRequestLimit(manualRequestsPerMinute)) throw new HttpError(400,`Choose between 1 and ${maxManualRequestsPerMinute} manual AI requests per minute.`);
-    const value={model:body.model,reasoningEffort:body.reasoningEffort,manualRequestsPerMinute};
+    if(body.pageEnrichment!==undefined&&!supportedIntelligencePreferences(body.pageEnrichment))throw new HttpError(400,'Choose a supported page enrichment model and reasoning effort.');
+    const pageEnrichment=body.pageEnrichment===undefined?this.enrichmentSelection():body.pageEnrichment as IntelligencePreferences;
+    const value={model:body.model,reasoningEffort:body.reasoningEffort,manualRequestsPerMinute,pageEnrichment};
     this.preferenceStore?.write(value);
-    const modelChanged=value.model!==this.preferences.model || value.reasoningEffort!==this.preferences.reasoningEffort;
+    const modelChanged=value.model!==this.preferences.model || value.reasoningEffort!==this.preferences.reasoningEffort||pageEnrichment.model!==this.enrichmentPreferences.model||pageEnrichment.reasoningEffort!==this.enrichmentPreferences.reasoningEffort;
     this.preferences={model:value.model,reasoningEffort:value.reasoningEffort};
+    this.enrichmentPreferences={model:pageEnrichment.model,reasoningEffort:pageEnrichment.reasoningEffort};
     this.manualRequestsPerMinute=manualRequestsPerMinute;
     if (modelChanged) {this.preferenceRevision++;for(const request of this.generationRequests)request.abort();}
-    return {...this.selection(),manualRequestsPerMinute:this.manualRequestsPerMinute};
+    return {...this.selection(),manualRequestsPerMinute:this.manualRequestsPerMinute,pageEnrichment:this.enrichmentSelection()};
   }
   private credential() {
     const value=this.secrets.read();
@@ -103,7 +109,7 @@ export class Intelligence {
   }
   status(): IntelligenceStatus {
     const value=this.credential();
-    return {configured:!!value,expiresAt:value?.expiresAt ?? null,manualRequestsPerMinute:this.manualRequestsPerMinute,...this.selection()};
+    return {configured:!!value,expiresAt:value?.expiresAt ?? null,manualRequestsPerMinute:this.manualRequestsPerMinute,...this.selection(),pageEnrichment:this.enrichmentSelection()};
   }
   save(body: Record<string,unknown>) {
     if(typeof body.apiKey!=='string'||!/^sk-[A-Za-z0-9_-]{16,500}$/.test(body.apiKey))throw new HttpError(400,'Enter a valid OpenAI API key.');
@@ -114,7 +120,7 @@ export class Intelligence {
     this.secrets.write({key:body.apiKey,expiresAt:new Date(this.clock()+days*86400000).toISOString(),generation:randomUUID()});
     return this.status();
   }
-  remove() {for(const request of this.generationRequests)request.abort();for(const request of this.embeddingRequests)request.abort();this.secrets.remove();return {configured:false,expiresAt:null,manualRequestsPerMinute:this.manualRequestsPerMinute,...this.selection()};}
+  remove() {for(const request of this.generationRequests)request.abort();for(const request of this.embeddingRequests)request.abort();this.secrets.remove();return {configured:false,expiresAt:null,manualRequestsPerMinute:this.manualRequestsPerMinute,...this.selection(),pageEnrichment:this.enrichmentSelection()};}
   purgeExpired() {this.credential();}
   private reserveManualRequest() {
     const now=this.clock();
@@ -154,6 +160,13 @@ export class Intelligence {
     }catch(error){trace?.error(error instanceof Error?error.message:'Embedding request failed.');if(error instanceof HttpError)throw error;throw new HttpError(502,'The embedding request failed or timed out. Please try again.');}
     finally{clearTimeout(timer);this.embeddingRequests.delete(controller);}
   }
+  enrichmentSelection(): IntelligencePreferences {return {...this.enrichmentPreferences};}
+  async generatePageEnrichment(input:string,options:PageEnrichmentOptions,onRequest?:AIRequestObserver,background=false) {
+    // Build/validate field selection before reserving a request or reading credentials.
+    pageEnrichmentPrompt(input,options);
+    const output=await this.generate(input,false,onRequest,false,false,false,undefined,background,undefined,false,options);
+    return parsePageEnrichment(output,options);
+  }
   titleSelection(): IntelligencePreferences {
     const model=intelligenceModels.find(option=>option.id===this.preferences.model)?.efforts.includes('none') ? this.preferences.model : 'gpt-6-luna';
     return {model,reasoningEffort:'none'};
@@ -183,23 +196,24 @@ export class Intelligence {
     try{return parseSourceAuthors(JSON.parse(output)?.authors);}
     catch{throw new HttpError(502,'AI returned invalid source authors. Retry enrichment.');}
   }
-  async generate(input: string, validate=false, onRequest?: AIRequestObserver, title=false, entityScan=false, explain=false, utility?:{domains:{id:string;name:string}[];currentTitle:string}, background=false,sourcePage?:{onDelta:(delta:string)=>void;signal:AbortSignal;onPreviewDelta?:(delta:string)=>void;onPreviewReset?:()=>void},sourceEnrichment:boolean|'authors'=false) {
-    const credential=this.credential(),selection=title?this.titleSelection():this.selection(),preferenceRevision=this.preferenceRevision;
+  async generate(input: string, validate=false, onRequest?: AIRequestObserver, title=false, entityScan=false, explain=false, utility?:{domains:{id:string;name:string}[];currentTitle:string}, background=false,sourcePage?:{onDelta:(delta:string)=>void;signal:AbortSignal;onPreviewDelta?:(delta:string)=>void;onPreviewReset?:()=>void},sourceEnrichment:boolean|'authors'=false,enrichment?:PageEnrichmentOptions) {
+    const credential=this.credential(),selection=enrichment?this.enrichmentSelection():title?this.titleSelection():this.selection(),preferenceRevision=this.preferenceRevision;
     if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
-    if(!title&&!entityScan&&this.active)throw new HttpError(429,'Another AI request is running. Please wait.');
+    if(!title&&!entityScan&&!enrichment&&this.active)throw new HttpError(429,'Another AI request is running. Please wait.');
     if (!background) this.reserveManualRequest();
-    const controller=new AbortController();this.generationRequests.add(controller);if(!title&&!entityScan)this.active=controller;
+    const controller=new AbortController();this.generationRequests.add(controller);if(!title&&!entityScan&&!enrichment)this.active=controller;
     const abort=()=>controller.abort();
-    sourcePage?.signal.addEventListener('abort',abort,{once:true});
-    if(sourcePage?.signal.aborted)controller.abort();
+    const requestSignal=sourcePage?.signal??enrichment?.signal;
+    requestSignal?.addEventListener('abort',abort,{once:true});
+    if(requestSignal?.aborted)controller.abort();
     const timer=setTimeout(()=>controller.abort(),Math.min(sourcePage?180000:45000,Date.parse(credential.expiresAt)-this.clock()));
     let trace: AIDebugTrace | undefined;
     try {
-      const prompt=sourceEnrichment==='authors'?sourceAuthorsPrompt(input):sourceEnrichment?sourceEnrichmentPrompt(input):sourcePage?sourcePagePrompt(input):validate?{instructions:'Reply with OK.',input:'Connection test.'}:title?titlePrompt(input,utility?.domains,utility?.currentTitle):entityScan?entityScanPrompt(input):explain?explanationPrompt(input):summaryPrompt(input);
+      const prompt=enrichment?pageEnrichmentPrompt(input,enrichment):sourceEnrichment==='authors'?sourceAuthorsPrompt(input):sourceEnrichment?sourceEnrichmentPrompt(input):sourcePage?sourcePagePrompt(input):validate?{instructions:'Reply with OK.',input:'Connection test.'}:title?titlePrompt(input,utility?.domains,utility?.currentTitle):entityScan?entityScanPrompt(input):explain?explanationPrompt(input):summaryPrompt(input);
       const inputText=typeof prompt.input==='string'?prompt.input:prompt.input.flatMap(item=>item.content.map(part=>part.text)).join('');
       const observer=onRequest?.(Buffer.byteLength(prompt.instructions+inputText,'utf8'));
       trace=redactedTrace(observer,credential.key);
-      const payload={model:selection.model,store:false,max_output_tokens:title?512:validate?2048:8192,reasoning:{effort:selection.reasoningEffort},tools:[],tool_choice:'none',...prompt,...(trace||sourcePage?{stream:true}:{})};
+      const payload={model:selection.model,store:false,max_output_tokens:enrichment?(selection.reasoningEffort!=='none'?4096:enrichment.requestedFields.includes('summary')?768:384):title?512:validate?2048:8192,reasoning:{effort:selection.reasoningEffort},tools:[],tool_choice:'none',...prompt,...(trace||sourcePage?{stream:true}:{})};
       trace?.request('https://api.openai.com/v1/responses',payload);
       const response=await this.transport('https://api.openai.com/v1/responses',{
         method:'POST',redirect:'error',signal:controller.signal,
@@ -225,6 +239,6 @@ export class Intelligence {
       trace?.error(error instanceof Error?error.message:'AI request failed.');
       if(error instanceof HttpError)throw error;
       throw new HttpError(502,'The AI request failed or timed out. Please try again.');
-    }finally {clearTimeout(timer);sourcePage?.signal.removeEventListener('abort',abort);this.generationRequests.delete(controller);if(this.active===controller)this.active=null;}
+    }finally {clearTimeout(timer);requestSignal?.removeEventListener('abort',abort);this.generationRequests.delete(controller);if(this.active===controller)this.active=null;}
   }
 }

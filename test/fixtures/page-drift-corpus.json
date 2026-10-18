@@ -1,0 +1,14 @@
+[
+  {"id":"math-punctuation","label":"stable","domain":"mathematics","before":"Algebra studies polynomial equations. A theorem needs a proof.","after":"Algebra studies polynomial equations! A theorem needs a proof."},
+  {"id":"math-paraphrase","label":"stable","domain":"mathematics","before":"An algebra theorem has a proof. Polynomial equations describe the examples.","after":"A proof establishes an algebra theorem. The examples describe polynomial equations."},
+  {"id":"math-expansion","label":"stable","domain":"mathematics","before":"Algebra theorem proof polynomial equation.","after":"Algebra theorem proof polynomial equation. Another algebra example has a polynomial equation and a proof. More examples demonstrate the theorem."},
+  {"id":"cs-paraphrase","label":"stable","domain":"computer_science","before":"The compiler uses a recursion algorithm in software.","after":"Software implements the algorithm using recursion within the compiler."},
+  {"id":"history-expansion","label":"stable","domain":"history","before":"Historical sources describe the medieval empire and dynasty.","after":"Historical sources describe the medieval empire and dynasty. Further historical examples explain another medieval dynasty and its empire."},
+  {"id":"theology-expansion","label":"stable","domain":"religion","before":"Theology studies doctrine, scripture and salvation.","after":"Theology studies doctrine, scripture and salvation. Additional biblical examples explore scripture and salvation in doctrine."},
+  {"id":"language-paraphrase","label":"stable","domain":"language","before":"Grammar and syntax support translation of vocabulary.","after":"Translation of vocabulary depends on syntax and grammar."},
+  {"id":"math-to-psychology","label":"drift","domain":"mathematics","before":"Algebra studies polynomial equations. A theorem needs a proof.","after":"Psychological therapy treats anxiety and trauma using cognitive conditioning."},
+  {"id":"math-to-history","label":"drift","domain":"mathematics","before":"Algebra studies polynomial equations. A theorem needs a proof.","after":"Historical chronology describes a medieval empire and colonial revolution."},
+  {"id":"interdisciplinary-section","label":"drift","domain":"mathematics","before":"Algebra theorem proof polynomial equation.","after":"Algebra theorem proof polynomial equation. Cognitive psychology examines perception and memory.","heading":"Cognitive psychology and memory"},
+  {"id":"ambiguous-terms","label":"stable","domain":"mathematics","before":"Algebra theorem proof polynomial equation.","after":"Algebra theorem proof polynomial equation. The field, group and order have examples."},
+  {"id":"large-unknown-replacement","label":"drift","domain":"general","before":"Apples pears oranges lemons grapes peaches apricots cherries berries.","after":"Volcano lava magma basalt granite tectonic plates seismic crust mantle."}
+]

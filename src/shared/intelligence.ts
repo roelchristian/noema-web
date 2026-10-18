@@ -2,7 +2,8 @@
 // /v1/models does not describe reasoning compatibility; keep the allowlist explicit.
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export interface IntelligencePreferences { model: string; reasoningEffort: ReasoningEffort }
-export interface IntelligenceConfiguration extends IntelligencePreferences {manualRequestsPerMinute: number}
+export interface IntelligenceConfiguration extends IntelligencePreferences {manualRequestsPerMinute: number; pageEnrichment?: IntelligencePreferences}
+export const defaultPageEnrichmentPreferences: IntelligencePreferences = {model:'gpt-6-luna',reasoningEffort:'none'};
 export const defaultManualRequestsPerMinute = 5;
 export const maxManualRequestsPerMinute = 120;
 export function validManualRequestLimit(value: unknown): value is number {
@@ -29,7 +30,7 @@ export function supportedIntelligencePreferences(value: unknown): value is Intel
 }
 
 export interface AIActivity extends IntelligencePreferences {
-  id: string; action: 'source_enrichment' | 'block_explanation' | 'page_title' | 'page_summary' | 'entity_scan' | 'note_embedding' | 'search_embedding' | 'connection_test' | 'create_page_from_source';
+  id: string; action: 'page_enrichment' | 'source_enrichment' | 'block_explanation' | 'page_title' | 'page_summary' | 'entity_scan' | 'note_embedding' | 'search_embedding' | 'connection_test' | 'create_page_from_source';
   status: 'running' | 'completed' | 'failed' | 'interrupted' | 'skipped';
   startedAt: string; finishedAt: string | null; durationMs: number | null; httpStatus: number | null;
   vaultId: string | null; vaultName: string | null; objectKind: 'page' | 'entity' | null;
@@ -37,9 +38,19 @@ export interface AIActivity extends IntelligencePreferences {
   available: boolean; promptBytes: number | null;
   inputTokens: number | null; outputTokens: number | null;
   cachedInputTokens: number | null; cacheWriteTokens: number | null;
+  reasoningTokens?: number | null; estimatedCost?: number | null; pricingVersion?: string | null;
   debugRecorded: boolean;
 }
-export interface AIActivityPage { items: AIActivity[]; nextCursor: number | null }
+export interface PageEnrichmentMetrics {
+  decisions: number; requestsAvoided: number; providerRequests: number; completedPages: number;
+  estimatedCost: number | null; costPerCompletedPage: number | null;
+  reasons: {reason:string;count:number}[];
+}
+export interface AIModelPricing {
+  version: string; currency: 'USD';
+  models: Record<string,{inputPerMillion:number;outputPerMillion:number;cachedInputPerMillion?:number}>;
+}
+export interface AIActivityPage { items: AIActivity[]; nextCursor: number | null; enrichmentMetrics?: PageEnrichmentMetrics }
 export interface AIDebugSettings {enabled: boolean}
 export interface AIActivityDebug {
   activityId: string; status: AIActivity['status']; endpoint: string | null; request: string | null;
@@ -49,6 +60,7 @@ export interface AIActivityDebug {
 }
 
 export const aiActivityLabels: Record<AIActivity['action'], string> = {
+  page_enrichment:'Page enrichment',
   source_enrichment:'Source enrichment', block_explanation:'AI Explanation', page_title:'Page title & category', page_summary:'Page summary', entity_scan:'Entity scan',
   create_page_from_source:'Create page from source', note_embedding:'Note embedding', search_embedding:'Search embedding', connection_test:'Connection test',
 };

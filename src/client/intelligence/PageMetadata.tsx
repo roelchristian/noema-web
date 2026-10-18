@@ -9,6 +9,7 @@ function languageLabel(language:string):string {
 }
 
 export function PageMetadata({page}:{page:Page}) {
+  const provenance=(field:'title'|'language')=>page.enrichmentFields?.[field]?.origin==='inferred'?'AI inferred':page.enrichmentFields?.[field]?.origin==='manual'?'Manually set':null;
   const aiStatus=page.aiStatus??'regular';
   const created=page.created_at?new Date(page.created_at):null,validCreatedDate=created!==null&&Number.isFinite(created.getTime());
   const updated=new Date(page.updated_at),validDate=Number.isFinite(updated.getTime());
@@ -16,8 +17,9 @@ export function PageMetadata({page}:{page:Page}) {
   return <details className="knowledge-page-metadata" aria-labelledby="knowledge-page-metadata-heading">
     <summary className="knowledge-section-heading"><h2 id="knowledge-page-metadata-heading"><span>Properties</span><Icon name="chevron"/></h2></summary>
     <dl className="page-metadata-fields">
-      <div><dt>Title</dt><dd className="page-metadata-title" title={page.title}>{page.title||'Untitled'}</dd></div>
-      <div><dt>Language</dt><dd>{page.language?<><span>{languageLabel(page.language)}</span><small>{page.language}</small></>:'Not recorded'}</dd></div>
+      <div><dt>Title</dt><dd className="page-metadata-title" title={page.title}>{page.title||'Untitled'}{provenance('title')&&<small>{provenance('title')}</small>}</dd></div>
+      <div><dt>Language</dt><dd>{page.language?<><span>{languageLabel(page.language)}</span><small>{page.language}</small></>:'Not recorded'}{provenance('language')&&<small>{provenance('language')}</small>}</dd></div>
+      {page.enrichmentPending&&<div><dt>Enrichment</dt><dd>Scheduled</dd></div>}
       <div><dt>AI status</dt><dd title={pageAIStatusDescriptions[aiStatus]}>{pageAIStatusLabels[aiStatus]}</dd></div>
       <div><dt>Created</dt><dd>{validCreatedDate?<time dateTime={page.created_at!} title={created.toLocaleString()}>{created.toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})}<small>{created.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})}</small></time>:'Not available'}</dd></div>
       <div><dt>Updated</dt><dd>{validDate?<time dateTime={page.updated_at} title={updated.toLocaleString()}>{updated.toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})}<small>{updated.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})}</small></time>:'Not available'}</dd></div>

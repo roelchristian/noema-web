@@ -1,14 +1,17 @@
 import { Select } from '../components/Select';
-import { defaultIntelligencePreferences, defaultManualRequestsPerMinute, maxManualRequestsPerMinute, intelligenceModels, type IntelligenceConfiguration, type ReasoningEffort } from '../../shared/intelligence';
+import { defaultIntelligencePreferences, defaultPageEnrichmentPreferences, defaultManualRequestsPerMinute, maxManualRequestsPerMinute, intelligenceModels, type IntelligenceConfiguration, type ReasoningEffort } from '../../shared/intelligence';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api';
 import type { IntelligenceStatus } from '../../shared/domain';
 export function IntelligenceSettings() {
   const [status,setStatus]=useState<IntelligenceStatus|null>(null),[key,setKey]=useState(''),[days,setDays]=useState(30),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
-  const [preferences,setPreferences]=useState<IntelligenceConfiguration>({...defaultIntelligencePreferences,manualRequestsPerMinute:defaultManualRequestsPerMinute});
+  const [preferences,setPreferences]=useState<IntelligenceConfiguration>({...defaultIntelligencePreferences,manualRequestsPerMinute:defaultManualRequestsPerMinute,pageEnrichment:{...defaultPageEnrichmentPreferences}});
   const modelOption=intelligenceModels.find(option=>option.id===preferences.model)!;
-  const changed=!!status&&(preferences.model!==status.model||preferences.reasoningEffort!==status.reasoningEffort||preferences.manualRequestsPerMinute!==status.manualRequestsPerMinute);
-  useEffect(()=>{let active=true;void api.intelligence().then(value=>{if(active){setStatus(value);setPreferences({model:value.model,reasoningEffort:value.reasoningEffort,manualRequestsPerMinute:value.manualRequestsPerMinute});}}).catch(()=>{if(active)setMessage('Secure storage is unavailable. Unlock your macOS login keychain and reopen Settings.');});return()=>{active=false;};},[]);
+  const enrichment=preferences.pageEnrichment??defaultPageEnrichmentPreferences;
+  const savedEnrichment=status?.pageEnrichment??defaultPageEnrichmentPreferences;
+  const enrichmentModelOption=intelligenceModels.find(option=>option.id===enrichment.model)!;
+  const changed=!!status&&(preferences.model!==status.model||preferences.reasoningEffort!==status.reasoningEffort||preferences.manualRequestsPerMinute!==status.manualRequestsPerMinute||enrichment.model!==savedEnrichment.model||enrichment.reasoningEffort!==savedEnrichment.reasoningEffort);
+  useEffect(()=>{let active=true;void api.intelligence().then(value=>{if(active){setStatus(value);setPreferences({model:value.model,reasoningEffort:value.reasoningEffort,manualRequestsPerMinute:value.manualRequestsPerMinute,pageEnrichment:value.pageEnrichment??{...defaultPageEnrichmentPreferences}});}}).catch(()=>{if(active)setMessage('Secure storage is unavailable. Unlock your macOS login keychain and reopen Settings.');});return()=>{active=false;};},[]);
   async function perform(work:()=>Promise<unknown>,success:string) {
     setBusy(true);setMessage('');
     try {await work();setMessage(success);}catch(error){setMessage(error instanceof Error?error.message:'Request failed.');}finally{setBusy(false);}
@@ -29,6 +32,19 @@ export function IntelligenceSettings() {
         {modelOption.efforts.map(effort=><option key={effort} value={effort}>{effort==='low'?'Low (default)':effort==='xhigh'?'Extra high':effort[0]!.toUpperCase()+effort.slice(1)}</option>)}
       </Select>
       <p>Higher effort may take longer and cost more.</p>
+      <label htmlFor="ai-enrichment-model">Page enrichment model</label>
+      <Select id="ai-enrichment-model" value={enrichment.model} disabled={busy||!status} onChange={event=>{
+        const model=intelligenceModels.find(option=>option.id===event.target.value)!;
+        setPreferences(current=>{
+          const selected=current.pageEnrichment??defaultPageEnrichmentPreferences;
+          return {...current,pageEnrichment:{model:model.id,reasoningEffort:model.efforts.includes(selected.reasoningEffort)?selected.reasoningEffort:model.efforts.includes('none')?'none':'low'}};
+        });
+      }}>{intelligenceModels.map(model=><option key={model.id} value={model.id}>{model.label}</option>)}</Select>
+      <label htmlFor="ai-enrichment-reasoning">Page enrichment reasoning effort</label>
+      <Select id="ai-enrichment-reasoning" value={enrichment.reasoningEffort} disabled={busy||!status} onChange={event=>setPreferences(current=>({...current,pageEnrichment:{...(current.pageEnrichment??defaultPageEnrichmentPreferences),reasoningEffort:event.target.value as ReasoningEffort}}))}>
+        {enrichmentModelOption.efforts.map(effort=><option key={effort} value={effort}>{effort==='none'?'None (recommended)':effort==='xhigh'?'Extra high':effort[0]!.toUpperCase()+effort.slice(1)}</option>)}
+      </Select>
+      <p>Used for page titles, subjects, language, and summaries. Defaults to GPT-6 Luna with no reasoning. Choosing a different model or higher effort may increase cost.</p>
       <label htmlFor="ai-manual-request-limit">Manual AI requests per minute</label>
       <input id="ai-manual-request-limit" type="number" min={1} max={maxManualRequestsPerMinute} step={1} required value={preferences.manualRequestsPerMinute || ''} disabled={busy||!status} onChange={event=>setPreferences(current=>({...current,manualRequestsPerMinute:Number(event.target.value)}))}/>
       <p>Shared across vaults. Counts each manual AI request; excludes background tasks.</p>

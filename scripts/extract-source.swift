@@ -52,5 +52,33 @@ for page in pages {
     pageStartLines.append(nextLine)
     nextLine += page.components(separatedBy: "\n").count + 1
 }
-let output = try JSONSerialization.data(withJSONObject: ["text": text, "pages": document.pageCount, "ocrPages": ocrPages, "pageStartLines": pageStartLines])
+// PDF outlines are explicit author-provided structure. Only attach an outline
+// heading when its label can be anchored to an actual extracted line on that page.
+var structuralNodes: [[String: Any]] = []
+func normalizedHeading(_ value: String) -> String {
+    return value.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ").folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+}
+func collectOutline(_ outline: PDFOutline, level: Int) {
+    guard level <= 256 else { return }
+    if let label = outline.label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty,
+       let page = outline.destination?.page {
+        let pageIndex = document.index(for: page)
+        if pageIndex >= 0 && pageIndex < pages.count {
+            let target = normalizedHeading(label)
+            let lines = pages[pageIndex].components(separatedBy: "\n")
+            if let lineIndex = lines.firstIndex(where: { normalizedHeading($0) == target }) {
+                structuralNodes.append(["text": label, "startLine": pageStartLines[pageIndex] + lineIndex, "level": min(6, max(1, level))])
+            }
+        }
+    }
+    for index in 0..<outline.numberOfChildren {
+        if let child = outline.child(at: index) { collectOutline(child, level: level + 1) }
+    }
+}
+if let root = document.outlineRoot {
+    for index in 0..<root.numberOfChildren {
+        if let child = root.child(at: index) { collectOutline(child, level: 1) }
+    }
+}
+let output = try JSONSerialization.data(withJSONObject: ["text": text, "pages": document.pageCount, "ocrPages": ocrPages, "pageStartLines": pageStartLines, "structuralNodes": structuralNodes])
 FileHandle.standardOutput.write(output)

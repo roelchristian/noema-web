@@ -1,3 +1,6 @@
+import {CachedVectorSearch} from '../vector-search.js';
+import {TextSearch} from './text-search.js';
+import type {PassageRetrievalResult} from '../../shared/passage-retrieval.js';
 import {SourcePassageEmbeddings} from './source-passage-embeddings.js';
 import {SourcePassages} from './source-passages.js';
 import {AIActivityLog} from './ai-activity.js';
@@ -16,6 +19,9 @@ interface VectorRow {content_hash: string; model: string; dimensions: number; ve
 interface JobRow {id: string; vault_id: string; page_id: string | null; source_id: string | null; content_hash: string; status: string; attempts: number}
 interface Target {id:string;kind:'page'|'entity';title:string;body:string;updated_at:string;revision:number|null;ready:boolean;summary?:string}
 export class Embeddings {
+ private vectors=new CachedVectorSearch();
+ private pageTargets=new Map<string,{revision:number;mentions:string;target:Target}>();
+ private snapshots=new WeakMap<Target,{minimum:number;value:ReturnType<Embeddings['buildSnapshot']>}>();
  private busy=false;
  private closed=false;
  private sourceTurn=false;
@@ -39,6 +45,8 @@ export class Embeddings {
  }
  close() {
   this.closed=true;
+  this.vectors.clear();
+  this.pageTargets.clear();
   this.sourceEmbeddings.close();
   for(const id of this.activeActivity)this.finishActivity(id,'interrupted',null);
  }
@@ -67,9 +75,27 @@ export class Embeddings {
   const page=this.pages.get(vault,id);return {id,kind:'page',title:page.title,body:pageBodyText(vault,page,this.knowledge),updated_at:page.updated_at,revision:page.revision,ready:true};
  }
  private targets(vault:string):Target[] {
-  return this.pages.list(vault).map(page=>this.target(vault,page.id));
+  // A mention rename changes rendered input without changing the Page revision.
+  const mentions=JSON.stringify(this.store.all<{id:string;name:string;mention_case:string}>('SELECT id,name,mention_case FROM entities WHERE vault_id=? ORDER BY id',vault));
+  const rows=this.store.all<{id:string;revision:number}>('SELECT id,revision FROM pages WHERE vault_id=? AND deleted_at IS NULL',vault);
+  const live=new Set(rows.map(row=>`${vault}:${row.id}`));
+  for(const key of this.pageTargets.keys())if(key.startsWith(`${vault}:`)&&!live.has(key))this.pageTargets.delete(key);
+  return rows.map(row=>{
+   const key=`${vault}:${row.id}`,cached=this.pageTargets.get(key);
+   if(cached&&cached.revision===row.revision&&cached.mentions===mentions)return cached.target;
+   const target=this.target(vault,row.id);
+   this.pageTargets.set(key,{revision:row.revision,mentions,target});
+   return target;
+  });
  }
- private snapshot(vault: string,target: Target) {
+ private snapshot(vault:string,target:Target) {
+  const minimum=this.settings(vault).minCharacters,cached=this.snapshots.get(target);
+  if(cached?.minimum===minimum)return cached.value;
+  const value=this.buildSnapshot(vault,target);
+  this.snapshots.set(target,{minimum,value});
+  return value;
+ }
+ private buildSnapshot(vault: string,target: Target) {
   const body=target.body,fullInput=`${target.title.trim()}\n\n${target.summary?target.summary+'\n\n':''}${body}`;
   const input=fullInput;
   const label=target.kind==='entity'?'Source':'Note';
@@ -184,6 +210,38 @@ export class Embeddings {
    }
   }finally{this.busy=false;}
  }
+ /** Internal hybrid evidence API. Unlike navigation search this preserves
+  * multiple passages from one source, using equal-weight RRF (k=60). */
+ async retrievePassages(vault:string,body:Record<string,unknown>):Promise<{results:PassageRetrievalResult[];model:string}> {
+  this.vaults.requireOpen(vault);
+  if(typeof body.query!=='string'||!body.query.trim()||body.query.length>2000||Buffer.byteLength(body.query,'utf8')>embeddingMaxBytes)throw new HttpError(400,'Enter a search query up to 2,000 characters and 8,000 bytes.');
+  const limit=body.limit??20;
+  if(typeof limit!=='number'||!Number.isInteger(limit)||limit<1||limit>100)throw new HttpError(400,'Choose a result limit between 1 and 100.');
+  const candidateLimit=Math.min(1000,Math.max(100,limit*5));
+  const lexical=new TextSearch(this.store,this.vaults,this.sourcePassages).searchPassages(vault,body.query,candidateLimit);
+  const semantic:ReturnType<SourcePassageEmbeddings['search']>=[];
+  // Lexical evidence remains available when embeddings are not configured.
+  if(this.intelligence.status().configured&&this.sourceEmbeddings.hasSearchable(vault)) {
+   const activityId=this.startActivity('search_embedding',vault);
+   try {
+    const embedded=await this.intelligence.embed(body.query.trim(),bytes=>activityId?this.activity?.request(activityId,bytes,null):undefined,false);
+    if(this.closed)throw new HttpError(503,'Search stopped.');
+    this.vaults.requireOpen(vault);
+    const magnitude=Math.sqrt(embedded.embedding.reduce((sum,n)=>sum+n*n,0));
+    if(embedded.embedding.length!==embeddingDimensions||embedded.embedding.some(n=>!Number.isFinite(n))||!magnitude||!Number.isFinite(magnitude))throw new HttpError(502,'Invalid embedding response.');
+    semantic.push(...this.sourceEmbeddings.search(vault,body.query,embedded.embedding,magnitude).sort((a,b)=>b.score-a.score||(a.passageId??'').localeCompare(b.passageId??'')).slice(0,candidateLimit));
+    this.finishActivity(activityId,'completed',200);
+   }catch(error){this.finishActivity(activityId,'failed',error instanceof HttpError?error.status:502);throw error;}
+  }
+  const fused=new Map<string,PassageRetrievalResult>();
+  for(const [kind,rows] of [['lexicalRank',lexical],['semanticRank',semantic]] as const)rows.forEach((row,index)=>{
+   if(!row.passageId)return;
+   const current=fused.get(row.passageId)??{...row,passageId:row.passageId,score:0};
+   if(current[kind]!==undefined)return;
+   current[kind]=index+1;current.score+=1/(60+index+1);fused.set(row.passageId,current);
+  });
+  return {results:[...fused.values()].sort((a,b)=>b.score-a.score||a.passageId.localeCompare(b.passageId)).slice(0,limit),model:embeddingModel};
+ }
  async search(vault: string,body: Record<string,unknown>): Promise<SemanticSearchResults> {
   this.vaults.requireOpen(vault);
   if(typeof body.query!=='string'||!body.query.trim()||Buffer.byteLength(body.query,'utf8')>embeddingMaxBytes)throw new HttpError(400,'Enter a search query up to 8,000 bytes.');
@@ -207,10 +265,8 @@ export class Embeddings {
    for(const page of this.targets(vault)) {
     const snapshot=this.snapshot(vault,page),row=this.vector(page.id,page.kind);
     if(!snapshot.eligible||!this.fresh(row,snapshot.hash))continue;
-    const vector=JSON.parse(row!.vector) as number[],norm=magnitude(vector);
-    if(vector.length!==embeddingDimensions||!norm||!Number.isFinite(norm))continue;
-    const score=vector.reduce((sum,n,i)=>sum+n*result.embedding[i],0)/(norm*qMagnitude);
-    if(Number.isFinite(score))results.push({id:page.id,kind:page.kind,title:page.title,snippet:makeSearchSnippet(snapshot.body,body.query),updated_at:page.updated_at,score:Math.max(-1,Math.min(1,score))});
+    const score=this.vectors.score(`page:${vault}:${page.id}`,row!.vector,result.embedding,embeddingDimensions);
+    if(score!==undefined)results.push({id:page.id,kind:page.kind,title:page.title,snippet:makeSearchSnippet(snapshot.body,body.query),updated_at:page.updated_at,score:Math.max(-1,Math.min(1,score))});
    }
    this.finishActivity(activityId,'completed',200);
    const seen=new Set<string>();

@@ -2409,10 +2409,6 @@ dialog.source-page-dialog.has-preview { width: 1200px; }
 .source-page-status .scan-spinner { flex: none; width: 14px; height: 14px; }
 .source-page-preview { min-height: 150px; max-height: min(440px, 45dvh); overflow-y: auto; overscroll-behavior: contain; overflow-wrap: anywhere; padding: 24px; border: 0; border-radius: 0; background: var(--surface); scrollbar-gutter: stable; }
 .source-page-live-block { margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); font: 13px/1.8 var(--font-ui); }
-.source-page-live-block.heading1 { font-size: 17px; font-weight: 600; }
-.source-page-live-block.heading2 { font-size: 15px; font-weight: 600; }
-.source-page-live-block:is(.code, .math) { font-family: ui-monospace, monospace; }
-.source-page-live-block.quote { padding-left: 14px; border-left: 2px solid var(--line); }
 .source-page-preview-title { margin: 0 0 20px; font: 600 21px/1.4 var(--font-title); letter-spacing: -.3px; }
 .source-page-preview .block { font-size: 13px; line-height: 1.8; }
 .source-page-preview .block.heading1 { font-size: 17px; }

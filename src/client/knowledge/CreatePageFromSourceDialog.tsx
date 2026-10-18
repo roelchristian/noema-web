@@ -8,6 +8,7 @@ import {Modal,ModalHeader} from '../components/Modal';
 import {Icon} from '../components/Icon';
 import {Select} from '../components/Select';
 import {ReadOnlyPageBlocks} from '../editor/ReadOnlyPageBlocks';
+import {formatMarkdownBlocks} from '../editor/markdown-typing';
 
 function previewText(text:string,streaming=false):string {
   const cleaned=text.replace(/[ \t]*\[(?:L:\s*\d+(?:\s*-\s*\d+)?|\?\?)\]/g,'');
@@ -25,9 +26,14 @@ function previewSegments(content:Segment[]):Segment[] {
 const DraftBlocks=memo(function DraftBlocks({blocks,vaultId}:{blocks:Block[];vaultId:string}) {
   const visible=blocks.map(block=>block.type==='code'||block.type==='math'?block:{...block,content:previewSegments(block.content),...(block.rows?{rows:block.rows.map(row=>row.map(previewSegments))}:{})})
     .filter(block=>block.type!=='paragraph'||block.content.some(segment=>segment.entityId||segment.math||segment.text?.trim()));
-  return <ReadOnlyPageBlocks blocks={visible} entities={[]} pages={[]} vaultId={vaultId} onOpenEntity={()=>{}} onOpenPage={()=>{}}/>;
+  return <ReadOnlyPageBlocks blocks={formatMarkdownBlocks(visible)} entities={[]} pages={[]} vaultId={vaultId} onOpenEntity={()=>{}} onOpenPage={()=>{}}/>;
 });
 type LiveBlock={blockType:Block['type'];text:string};
+const LiveDraftBlock=memo(function LiveDraftBlock({block,vaultId}:{block:LiveBlock;vaultId:string}) {
+  const text=block.blockType==='code'||block.blockType==='math'?block.text:previewText(block.text,true);
+  const blocks:Block[]=[{id:'source-page-live-preview',type:block.blockType,checked:false,content:[{text}]}];
+  return <div className="source-page-live-block" aria-label="Text still being generated"><DraftBlocks blocks={blocks} vaultId={vaultId}/></div>;
+});
 
 type Phase='loading'|'idle'|'generating'|'review'|'accepting'|'rejecting'|'completed'|'failed'|'stopped';
 export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onOpenPage,onSettings}:{vaultId:string;source:Entity;onClose:()=>void;onCreated:(page:Page)=>void;onOpenPage:(id:string)=>Promise<void>;onSettings:()=>void}) {
@@ -126,11 +132,11 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
         {phase!=='loading'&&<div className="source-page-preview" ref={preview} aria-label="Generated page preview" aria-busy={running} onScroll={event=>{const node=event.currentTarget;follow.current=node.scrollHeight-node.scrollTop-node.clientHeight<64;}}>
           {title&&<h3 className="source-page-preview-title">{title}</h3>}
           <DraftBlocks blocks={blocks} vaultId={vaultId}/>
-          {running&&liveBlock&&<div className={'source-page-live-block '+liveBlock.blockType} aria-label="Text still being generated">{liveBlock.blockType==='code'||liveBlock.blockType==='math'?liveBlock.text:previewText(liveBlock.text,true)}</div>}
+          {running&&liveBlock&&<LiveDraftBlock block={liveBlock} vaultId={vaultId}/>}
           {running&&<div className="source-page-skeleton" aria-hidden="true"><span/><span/><span/></div>}
           {!running&&!blocks.length&&<p className="section-hint">No page blocks were generated.</p>}
         </div>}
-        {running&&<p className="section-hint">Live text is provisional. Formatting appears as each block finishes. Citations are hidden in this preview.</p>}
+        {running&&<p className="section-hint">Live text and formatting update as your draft is generated. Citations are hidden in this preview.</p>}
         {(phase==='failed'||phase==='stopped')&&!!blocks.length&&<p className="section-hint">This preview may be incomplete. Retry to recover or generate a complete draft.</p>}
         {draft&&<p className="section-hint">Accept creates an editable page linked to this source. Reject discards this draft without adding a page to your library. Closing keeps it available for later review.</p>}
       </div>}

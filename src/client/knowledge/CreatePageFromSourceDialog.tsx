@@ -1,6 +1,6 @@
 import {memo,useEffect,useRef,useState,type FormEvent} from 'react';
 import type {Block,Entity,Page,Segment} from '../../shared/domain';
-import {defaultSourcePageOptions,sourcePageChoices,sourcePageFormats,sourcePageLanguages,type SourcePageOptions,type SourcePageRevision,type SourcePageEvent,type SourcePageReview} from '../../shared/source-page';
+import {defaultSourcePageOptions,normalizeSourcePageOptions,sourcePageChoices,sourcePageFormats,sourcePageFormatPresets,sourcePageScope,selectSourcePageFormat,sourcePageLanguages,type SourcePageOptions,type SourcePageRevision,type SourcePageEvent,type SourcePageReview} from '../../shared/source-page';
 import {randomUUID} from '../../shared/uuid';
 import {readSourcePagePreferences,rememberSourcePagePreferences} from '../state/source-page-preferences';
 import {createPageFromSource,request as apiRequest} from '../api';
@@ -48,7 +48,7 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
   const running=phase==='generating',mutating=phase==='accepting'||phase==='rejecting',busy=running||mutating||phase==='loading'||opening;
   const route=`entities/${encodeURIComponent(source.id)}/create-page`;
   function clearLive(){if(liveTimer.current!==null)clearTimeout(liveTimer.current);liveTimer.current=null;live.current=null;setLiveBlock(null);}
-  function review(value:SourcePageReview){clearLive();generation.current={id:value.id,settings:JSON.stringify([value.focus,value.options??defaultSourcePageOptions])};setOptions({...defaultSourcePageOptions,...value.options});setDraft(value);setFocus(value.focus);setTitle(value.title);setBlocks(value.blocks);setPhase('review');setRetryOpen(false);setFeedback('');}
+  function review(value:SourcePageReview){clearLive();generation.current={id:value.id,settings:JSON.stringify([value.focus,value.options??defaultSourcePageOptions])};setOptions(normalizeSourcePageOptions(value.options));setDraft(value);setFocus(value.focus);setTitle(value.title);setBlocks(value.blocks);setPhase('review');setRetryOpen(false);setFeedback('');}
   useEffect(()=>{
     active.current=true;const controller=new AbortController();request.current=controller;
     void apiRequest<{draft:SourcePageReview|null}>(route,'GET',undefined,vaultId,controller.signal).then(result=>{if(active.current&&!controller.signal.aborted){if(result.draft)review(result.draft);else setPhase('idle');}}).catch(error=>{if(active.current&&!controller.signal.aborted){setPhase('failed');setError(error instanceof Error?error.message:'Could not check for an existing draft.');}});
@@ -63,9 +63,10 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
     const previousDraft=draft;
     const revision:SourcePageRevision|undefined=previousDraft?{draftId:previousDraft.id,feedback:fresh?'':feedback.trim(),mode:fresh?'retry':'changes'}:undefined;
     if(fresh)setRetryOpen(false);
-    rememberSourcePagePreferences(options);
+    const generationOptions=normalizeSourcePageOptions(options);
+    rememberSourcePagePreferences(generationOptions);
     const controller=new AbortController();request.current=controller;
-    const settings=JSON.stringify([focus.trim(),options,...(revision?[revision]:[])]);
+    const settings=JSON.stringify([focus.trim(),generationOptions,...(revision?[revision]:[])]);
     if(generation.current.settings!==settings)generation.current={id:randomUUID(),settings};
     clearLive();setGenerationStage('waiting');setWaitingLonger(false);
     setPhase('generating');setTitle('');setBlocks([]);setError('');follow.current=true;
@@ -87,7 +88,7 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
       else if(event.type==='review')review(event.draft);
       else if(event.type==='completed'){clearLive();setPage(event.page);setTitle(event.page.title);setBlocks(event.page.blocks);setPhase('completed');onCreated(event.page);}
     };
-    try{await createPageFromSource(vaultId,source.id,focus.trim(),options,generation.current.id,receive,controller.signal,revision);}
+    try{await createPageFromSource(vaultId,source.id,focus.trim(),generationOptions,generation.current.id,receive,controller.signal,revision);}
     catch(error){if(active.current&&!controller.signal.aborted){clearLive();if(previousDraft){setTitle(previousDraft.title);setBlocks(previousDraft.blocks);setPhase('review');}else setPhase('failed');setError(error instanceof Error?error.message:'Could not generate the page. Please retry.');}}
     finally{clearTimeout(slowTimer);if(request.current===controller)request.current=null;}
   }
@@ -114,7 +115,7 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
     <div className="source-page-body">
       <div className="source-page-controls">
       <fieldset className="source-page-formats"><legend>Choose a format</legend><div role="group" aria-label="Page format">
-        {Object.entries(sourcePageFormats).map(([key,format])=><button type="button" key={key} className="source-page-format" aria-pressed={options.format===key} disabled={controlsDisabled} onClick={()=>setOptions(current=>({...current,format:key as SourcePageOptions['format'],organization:format.organization}))}><strong>{format.label}</strong><small>{format.description}</small></button>)}
+        {sourcePageFormatPresets.map(key=>{const format=sourcePageFormats[key];return <button type="button" key={key} className="source-page-format" aria-pressed={options.format===key} disabled={controlsDisabled} onClick={()=>setOptions(current=>selectSourcePageFormat(current,key))}><strong>{format.label}</strong><small>{format.description}</small></button>;})}
       </div></fieldset>
       <div className="source-page-options source-page-essentials">
         <label className="source-page-option">Length<Select aria-label="Length" value={options.detail} disabled={controlsDisabled} onChange={event=>setOptions(current=>({...current,detail:event.target.value as SourcePageOptions['detail']}))}>{Object.entries(sourcePageChoices.detail.options).map(([value,label])=><option key={value} value={value}>{label}</option>)}</Select></label>
@@ -123,14 +124,16 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
           {options.language&&!sourcePageLanguages.some(language=>language===options.language)&&<option value={options.language}>{options.language}</option>}
           {sourcePageLanguages.map(language=><option key={language} value={language}>{language}</option>)}
         </Select></label>
+        <label className="source-page-option">Reader familiarity<Select aria-label="Reader familiarity" value={options.familiarity} disabled={controlsDisabled} onChange={event=>setOptions(current=>({...current,familiarity:event.target.value as SourcePageOptions['familiarity']}))}>{Object.entries(sourcePageChoices.familiarity.options).map(([value,label])=><option key={value} value={value}>{label}</option>)}</Select></label>
       </div>
+      <div className="source-page-scope"><div><span id="source-page-scope-label">Go beyond sources</span><p id="source-page-scope-hint">{options.beyondSources?'Allow clearly labeled AI background knowledge and illustrative examples.':'Use only the supplied source. Any analysis stays grounded in its text.'}</p></div><button type="button" className="source-page-switch" role="switch" aria-checked={options.beyondSources} aria-labelledby="source-page-scope-label" aria-describedby="source-page-scope-hint" disabled={controlsDisabled} onClick={()=>setOptions(current=>sourcePageScope(current,!current.beyondSources))}><span/></button></div>
       <label className="source-page-focus">{options.format==='custom'?'Describe your page':'Anything to focus on?'} <span>Optional</span><textarea autoFocus value={focus} onChange={event=>setFocus(event.target.value)} maxLength={2000} rows={2} disabled={controlsDisabled} placeholder={options.format==='custom'?'Describe the note you want to create…':'Add a topic, question, or emphasis…'} aria-describedby="source-page-focus-hint"/></label>
       {draft&&retryOpen&&<div className="source-page-retry">
         <label className="source-page-focus">What would you like to change? <span>Optional</span><textarea ref={feedbackField} value={feedback} onChange={event=>setFeedback(event.target.value)} maxLength={2000} rows={3} disabled={busy} placeholder="For example: make it shorter, explain the key ideas more clearly, or use a different structure." aria-describedby="source-page-retry-hint"/></label>
         <p className="section-hint" id="source-page-retry-hint">Your current draft stays available until the new version is ready.</p>
         <div className="source-page-retry-actions"><button type="button" className="button" disabled={busy} onClick={()=>setRetryOpen(false)}>Cancel</button><button type="submit" className="button primary" disabled={busy}>Generate revision</button></div>
       </div>}
-      <p className="section-hint source-page-note" id="source-page-focus-hint">Format, length, and language are remembered. Your AI model receives the source and instructions; review the draft before saving.</p>
+      <p className="section-hint source-page-note" id="source-page-focus-hint">Format, length, language, reader familiarity, and source scope are remembered. Your AI model receives the source and instructions; review the draft before saving.</p>
       </div>
       {phase!=='idle'&&<div className="source-page-result">
         <div className={'source-page-status '+phase} role="status" aria-live="polite">{busy&&<span className="scan-spinner" aria-hidden="true"/>}{(phase==='review'||phase==='completed')&&<Icon name="check"/>}<span>{status}</span></div>

@@ -4,7 +4,7 @@ import {sourcePagePreview} from './source-page-preview.js';
 import { numberedSourceText, sourceTextLines } from '../../shared/source-text.js';
 import {createHash,randomUUID} from 'node:crypto';
 import type {Block,Page,SourceFile} from '../../shared/domain.js';
-import {defaultSourcePageOptions,sourcePageChoices,sourcePageFormats,type SourcePageOptions,sourcePageBlockTypes,type SourcePageEvent,type SourcePageReview} from '../../shared/source-page.js';
+import {defaultSourcePageOptions,normalizeSourcePageOptions,sourcePageChoices,sourcePageFormats,sourcePageBlockTypes,type SourcePageEvent,type SourcePageReview} from '../../shared/source-page.js';
 import {Store} from '../store.js';
 import {HttpError,now,text} from '../validation.js';
 import {Knowledge} from './knowledge.js';
@@ -156,6 +156,8 @@ export class SourcePages {
         }
       }
       options.language=text(supplied.language??'',100).trim();
+      if(supplied.beyondSources!==undefined&&typeof supplied.beyondSources!=='boolean')throw new HttpError(400,'Invalid source scope.');
+      options.beyondSources=supplied.beyondSources===true;
     }
     let revisionId:string|null=null,feedback='',revisionMode:'retry'|'changes'='changes';
     if(body.revision!==undefined) {
@@ -182,7 +184,7 @@ export class SourcePages {
     if(Buffer.byteLength(file.text)>160000)throw new HttpError(413,'This source is too long for page generation. Use a shorter source or split it into sections.');
     return {requestId,fingerprint,file,sourceId,revisionId,input:JSON.stringify({user_focus:focus,generation_options:options,format_instructions:sourcePageFormats[options.format].prompt,...(prior&&revisionMode==='changes'?{revision_feedback:feedback,untrusted_previous_draft:{title:prior.title,blocks:JSON.parse(prior.blocks)}}:{}),untrusted_source:{name:source.name,url:file.source_url,filename:file.name,numbered_text:numberedSourceText(file.text)}}),existing:undefined,focus,options,review:undefined};
   }
-  private review(row:DraftRow):SourcePageReview {return {id:row.request_id,title:row.title,blocks:JSON.parse(row.blocks) as Block[],focus:row.focus,language:row.language??null,options:{...defaultSourcePageOptions,...(row.options?JSON.parse(row.options) as Partial<SourcePageOptions>:{})}};}
+  private review(row:DraftRow):SourcePageReview {return {id:row.request_id,title:row.title,blocks:JSON.parse(row.blocks) as Block[],focus:row.focus,language:row.language??null,options:normalizeSourcePageOptions(row.options?JSON.parse(row.options):undefined)};}
   latest(vault:string,sourceId:string):SourcePageReview|null {
     this.knowledge.require(vault,sourceId);
     const row=this.store.get<DraftRow>("SELECT * FROM source_page_drafts WHERE vault_id=? AND source_id=? AND status='pending' ORDER BY created_at DESC LIMIT 1",vault,sourceId);

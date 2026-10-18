@@ -38,6 +38,7 @@ test('one combined request persists fields and summary freshness against the eff
 });
 test('manual title, language and subject decisions survive background work',async()=>{
  const s=fixture();try {
+   s.coordinator.configure('default',{automaticSummaries:false});
    s.store.run('UPDATE pages SET title=?,language=? WHERE id=?','My own title','fr',s.page.id);
    const state=new PageEnrichmentState(s.store);state.markManual(s.page.id,'title');state.markManual(s.page.id,'language');
    const current=s.pages.get('default',s.page.id);
@@ -78,7 +79,7 @@ test('deleted summaries remain suppressed, including while a result is in flight
    const work=s.coordinator.run('default',s.page,undefined,{fields:['summary'],explicit:true});
    s.enrichments.removeSummary('default',s.page.id);gate.resolve({summary:output.summary});await work;
    assert.equal(s.store.get("SELECT 1 FROM page_ai_enrichments WHERE page_id=? AND kind='summary'",s.page.id),undefined);
-   assert.equal(s.coordinator.settings('default').automaticSummaries,false);
+   assert.equal(s.coordinator.settings('default').automaticSummaries,true);
    assert.equal(s.coordinator.prepare('default',s.page.id,{fields:['summary']}),null);
  }finally{s.close();}
 });

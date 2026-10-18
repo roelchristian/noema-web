@@ -38,19 +38,6 @@ function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnap
   }, [result]);
   const active=useRef(true);
   useEffect(()=>{active.current=true;return()=>{active.current=false;};},[]);
-  const [automaticSummaries,setAutomaticSummaries]=useState<boolean|null>(null);
-  const [settingsBusy,setSettingsBusy]=useState(false);
-  useEffect(()=>{
-    let cancelled=false;
-    void api.enrichmentSettings(page.vault_id,page.id).then(settings=>{if(!cancelled)setAutomaticSummaries(settings.automaticSummaries);}).catch(()=>{});
-    return()=>{cancelled=true;};
-  },[page.vault_id,page.id]);
-  async function toggleAutomaticSummaries(enabled:boolean) {
-    setSettingsBusy(true);setError('');
-    try {const settings=await api.saveEnrichmentSettings(page.vault_id,page.id,enabled);if(active.current)setAutomaticSummaries(settings.automaticSummaries);}
-    catch(error){if(active.current)setError(error instanceof Error?error.message:'Could not save summary preference.');}
-    finally{if(active.current)setSettingsBusy(false);}
-  }
   async function refreshDomains() {
     const saved=await onFlush();
     if(!saved||saved.id!==page.id||saved.vault_id!==page.vault_id)throw new Error('The selected page changed. Try again.');
@@ -82,7 +69,6 @@ function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnap
       <PageConceptCategory page={page} onDomainsChange={onDomainsChange} onRefresh={refreshDomains}/>
       <section className="knowledge-summary" aria-labelledby="knowledge-summary-heading">
         <div className="knowledge-section-heading"><h2 id="knowledge-summary-heading">{result?<><Icon name="sparkles"/>AI Summary</>:<button type="button" className="summary-heading-action" disabled={busy||loading} aria-busy={busy} onClick={()=>void summarize()}><Icon name="sparkles"/>{loading?'Loading summary…':busy?'Summarizing…':'Summarize this page'}</button>}</h2><HelpMenu label="About AI summaries"><p>Summarizing sends this page’s title, text, and mentioned entity names to OpenAI. Attached sources and other pages are excluded. API charges may apply.</p><p>AI can make mistakes. Check the original page. Summaries are saved with this page.</p>{result&&<p>{result.model} · {result.reasoningEffort} reasoning</p>}</HelpMenu></div>
-        {automaticSummaries!==null&&<label className="section-hint"><input type="checkbox" checked={automaticSummaries} disabled={settingsBusy||!!page.editLocked} onChange={event=>void toggleAutomaticSummaries(event.target.checked)}/> Automatically refresh summaries in this vault</label>}
         {busy&&<p className="section-hint summary-progress" role="status">Creating your summary…</p>}
         {error&&<p role="alert" className="inline-error">{error}</p>}
         {result&&<section className="ai-result" aria-label="Page summary"><div id="knowledge-summary-text" ref={summaryText} className={'ai-summary' + (summaryExpanded ? '' : ' is-collapsed')}><SummaryText text={result.summary}/></div><div className="summary-actions">{summaryOverflow&&<button type="button" className="summary-toggle" aria-expanded={summaryExpanded} aria-controls="knowledge-summary-text" onClick={()=>setSummaryExpanded(value=>!value)}>{summaryExpanded?'Show less':'Show more'}</button>}{summaryChanged&&<button type="button" className="summary-toggle" disabled={busy||deleting||loading} onClick={()=>void summarize()}>{busy?'Refreshing…':'Refresh'}</button>}<button type="button" className="summary-toggle summary-delete" disabled={busy||deleting||loading} onClick={()=>void deleteSummary()}>{deleting?'Deleting…':'Delete summary'}</button></div>{summaryChanged&&<p className="section-hint">Page changed since this summary.</p>}</section>}

@@ -33,7 +33,7 @@ export class PageEnrichment {
     const row=this.store.get<{data:string}>('SELECT data FROM page_ai_enrichments WHERE page_id=? AND kind=?',pageId,kind);
     if(!row)return {};try{return JSON.parse(row.data);}catch{return {};}
   }
-  settings(vault:string) {new Vaults(this.store).requireOpen(vault);return {automaticSummaries:this.store.get<{automatic_summaries:number}>('SELECT automatic_summaries FROM page_enrichment_settings WHERE vault_id=?',vault)?.automatic_summaries===1};}
+  settings(vault:string) {new Vaults(this.store).requireOpen(vault);return {automaticSummaries:this.store.get<{automatic_summaries:number}>('SELECT automatic_summaries FROM page_enrichment_settings WHERE vault_id=?',vault)?.automatic_summaries!==0};}
   configure(vault:string,input:Record<string,unknown>) {
     if(typeof input.automaticSummaries!=='boolean')throw new HttpError(400,'Choose whether to generate summaries automatically.');
     new Vaults(this.store).requireOpen(vault);

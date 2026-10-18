@@ -14,7 +14,7 @@ export function setupPageEnrichmentSchedulerSchema(db:DatabaseSync) {
     last_classified_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS page_enrichment_settings (
     vault_id TEXT PRIMARY KEY REFERENCES vaults(id) ON DELETE CASCADE,
-    automatic_summaries INTEGER NOT NULL DEFAULT 0 CHECK(automatic_summaries IN (0,1)));
+    automatic_summaries INTEGER NOT NULL DEFAULT 1 CHECK(automatic_summaries IN (0,1)));
     CREATE TABLE IF NOT EXISTS page_enrichment_decisions (
     id INTEGER PRIMARY KEY, page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
     vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,

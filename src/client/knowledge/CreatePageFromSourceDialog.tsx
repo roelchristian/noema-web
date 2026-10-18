@@ -1,5 +1,5 @@
 import {memo,useEffect,useRef,useState,type FormEvent} from 'react';
-import type {Block,Entity,Page} from '../../shared/domain';
+import type {Block,Entity,Page,Segment} from '../../shared/domain';
 import {defaultSourcePageOptions,sourcePageChoices,sourcePageFormats,sourcePageLanguages,type SourcePageOptions,type SourcePageRevision,type SourcePageEvent,type SourcePageReview} from '../../shared/source-page';
 import {randomUUID} from '../../shared/uuid';
 import {readSourcePagePreferences,rememberSourcePagePreferences} from '../state/source-page-preferences';
@@ -9,8 +9,23 @@ import {Icon} from '../components/Icon';
 import {Select} from '../components/Select';
 import {ReadOnlyPageBlocks} from '../editor/ReadOnlyPageBlocks';
 
+function previewText(text:string,streaming=false):string {
+  const cleaned=text.replace(/[ \t]*\[(?:L:\s*\d+(?:\s*-\s*\d+)?|\?\?)\]/g,'');
+  // Keep a citation arriving across multiple deltas out of the live preview too.
+  return streaming?cleaned.replace(/[ \t]*\[(?:L(?::[\s\d-]*)?|\?{1,2})$/,''):cleaned;
+}
+function previewSegments(content:Segment[]):Segment[] {
+  return content.flatMap(segment=>{
+    if(segment.sourceReference)return [];
+    if(segment.text===undefined||segment.code||segment.math)return [segment];
+    const text=previewText(segment.text);
+    return text?[{...segment,text}]:[];
+  });
+}
 const DraftBlocks=memo(function DraftBlocks({blocks,vaultId}:{blocks:Block[];vaultId:string}) {
-  return <ReadOnlyPageBlocks blocks={blocks} entities={[]} pages={[]} vaultId={vaultId} onOpenEntity={()=>{}} onOpenPage={()=>{}}/>;
+  const visible=blocks.map(block=>block.type==='code'||block.type==='math'?block:{...block,content:previewSegments(block.content),...(block.rows?{rows:block.rows.map(row=>row.map(previewSegments))}:{})})
+    .filter(block=>block.type!=='paragraph'||block.content.some(segment=>segment.entityId||segment.math||segment.text?.trim()));
+  return <ReadOnlyPageBlocks blocks={visible} entities={[]} pages={[]} vaultId={vaultId} onOpenEntity={()=>{}} onOpenPage={()=>{}}/>;
 });
 type LiveBlock={blockType:Block['type'];text:string};
 
@@ -111,11 +126,11 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
         {phase!=='loading'&&<div className="source-page-preview" ref={preview} aria-label="Generated page preview" aria-busy={running} onScroll={event=>{const node=event.currentTarget;follow.current=node.scrollHeight-node.scrollTop-node.clientHeight<64;}}>
           {title&&<h3 className="source-page-preview-title">{title}</h3>}
           <DraftBlocks blocks={blocks} vaultId={vaultId}/>
-          {running&&liveBlock&&<div className={'source-page-live-block '+liveBlock.blockType} aria-label="Text still being generated">{liveBlock.text}</div>}
+          {running&&liveBlock&&<div className={'source-page-live-block '+liveBlock.blockType} aria-label="Text still being generated">{liveBlock.blockType==='code'||liveBlock.blockType==='math'?liveBlock.text:previewText(liveBlock.text,true)}</div>}
           {running&&<div className="source-page-skeleton" aria-hidden="true"><span/><span/><span/></div>}
           {!running&&!blocks.length&&<p className="section-hint">No page blocks were generated.</p>}
         </div>}
-        {running&&<p className="section-hint">Live text is provisional. Formatting and references appear as each block finishes.</p>}
+        {running&&<p className="section-hint">Live text is provisional. Formatting appears as each block finishes. Citations are hidden in this preview.</p>}
         {(phase==='failed'||phase==='stopped')&&!!blocks.length&&<p className="section-hint">This preview may be incomplete. Retry to recover or generate a complete draft.</p>}
         {draft&&<p className="section-hint">Accept creates an editable page linked to this source. Reject discards this draft without adding a page to your library. Closing keeps it available for later review.</p>}
       </div>}

@@ -9,7 +9,7 @@ import { ActionMenu } from './components/ActionMenu';
 import { NameDialog } from './components/NameDialog';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { TrashLibrary } from './trash/TrashLibrary';
-import type { Entity, PageSummary } from '../shared/domain';
+import {entityLabels, entityTypes, type Entity, type EntityType, type PageSummary} from '../shared/domain';
 import { Select } from './components/Select';
 import { WorkspaceNavigation, useMobileViewport } from './components/WorkspaceNavigation';
 import { useEffect, useState, useSyncExternalStore } from 'react';
@@ -20,7 +20,8 @@ import { SidebarOrganization } from './organization/SidebarOrganization';
 import { OrganizationLibrary } from './organization/OrganizationLibrary';
 import { Workspace } from './state/workspace';
 import { usePageScroll } from './state/use-page-scroll';
-import {useLibraryScroll} from './state/use-library-scroll';
+import {captureLibraryView, useLibraryScroll} from './state/use-library-scroll';
+import {useLibraryViewState} from './state/library-view-state';
 import { Icon } from './components/Icon';
 import { EntityPreview } from './components/EntityPreview';
 import { PageToolbar } from './editor/PageToolbar';
@@ -56,6 +57,8 @@ export function App() {
   usePageScroll(workspace);
   const state = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
   const {vaults, vault, pages, entities, page, view, busy, loadingPageId, reviewing, error, saveStatus, organization, organizationContext, recent, trash, saveFailures, draftStorageFailures, draftRecoveries} = state;
+  const [knowledgeBrowser, setKnowledgeBrowser] = useLibraryViewState(vault?.id ?? '', 'knowledge');
+  const knowledgeType = entityTypes.includes(knowledgeBrowser.entityType as EntityType) ? knowledgeBrowser.entityType as EntityType : '';
   const editingHistory = useDocumentHistory(view === 'pages' && !busy && !vault?.locked ? page : null, patch => workspace.updatePage(patch), loadingPageId !== null || reviewing);
   // Keep every library view current while source work continues, independently
   // of whether its completion notification remains in the bell's recent items.
@@ -118,7 +121,10 @@ export function App() {
     } else {
       const label = view === 'inbox' ? 'Inbox' : view === 'trash' ? 'Trash' : view === 'entities' ? 'Knowledge entities' : view === 'organization' ? 'Pages' : view === 'favourites' ? 'Favourites' : 'Recent items';
       const icon = view === 'inbox' ? 'inbox' : view === 'trash' ? 'trash' : view === 'entities' ? 'knowledge' : view === 'organization' ? 'page' : view === 'favourites' ? 'star' : 'recent';
-      breadcrumbs.push({key: 'view', label, icon, onClick: view === 'organization' ? () => workspace.openOrganization() : undefined});
+      breadcrumbs.push({key: 'view', label, icon, onClick: view === 'organization' ? () => workspace.openOrganization() : view === 'entities' && knowledgeType ? () => {captureLibraryView(); setKnowledgeBrowser({entityType: ''});} : undefined});
+      if (view === 'entities' && knowledgeType) {
+        breadcrumbs.push({key: 'entity-type:' + knowledgeType, label: entityLabels[knowledgeType], icon: knowledgeType});
+      }
       if (view === 'organization') {
         const collection = organization.collections.find(item => item.id === organizationContext.collection);
         if (collection) breadcrumbs.push({key: 'collection:' + collection.id, label: collection.name, onClick: () => workspace.openOrganization(collection.id)});

@@ -47,10 +47,6 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onCreate, onCreateP
     {error && <p role="alert">{error}</p>}
     <div className="organization-content">
       <div className="organization-section-title knowledge-browser-controls">
-        <nav className="knowledge-breadcrumbs" aria-label="Entity groups">
-          <button onClick={() => navigate()} aria-current={!type ? 'page' : undefined}>Knowledge entities</button>
-          {type && <><Icon name="chevron"/><span aria-current="page">{entityLabels[type]}</span></>}
-        </nav>
         <Select aria-label="Entity grouping" value={view} onChange={event => {captureLibraryView(); setBrowser({grouping: event.target.value, entityType: ''});}}><option value="folders">Browse by type</option><option value="all">Show all</option></Select>
       </div>
       <p className="organization-hint" role="status">{query ? `${countLabel(matches.length)} found` : countLabel(scoped.length)}</p>

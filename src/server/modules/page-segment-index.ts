@@ -47,6 +47,12 @@ export class PageSegmentIndex {
   this.store.run(`INSERT INTO page_segment_cache VALUES (?,?,?,?,?,?,?) ON CONFLICT(page_id,content_hash,model,dimensions) DO UPDATE SET vector=excluded.vector,tokens=excluded.tokens,updated_at=excluded.updated_at`,segment.page_id,segment.content_hash,embeddingModel,embeddingDimensions,serialized,tokens,now());
   this.store.run(`INSERT INTO page_segment_embeddings VALUES (?,?,?,?,?,?,?) ON CONFLICT(segment_id,model,dimensions) DO UPDATE SET content_hash=excluded.content_hash,vector=excluded.vector,tokens=excluded.tokens,updated_at=excluded.updated_at`,segment.id,embeddingModel,embeddingDimensions,segment.content_hash,serialized,tokens,now());
  }
+ /** Reuse only current saved vectors; this never schedules provider work. */
+ savedVectors(vault:string,pageId:string):number[][] {
+  return this.store.all<{vector:string}>(`SELECT b.vector FROM page_segments s JOIN pages p ON p.id=s.page_id JOIN page_segment_embeddings b ON b.segment_id=s.id AND b.content_hash=s.content_hash WHERE s.vault_id=? AND s.page_id=? AND ${current} AND b.model=? AND b.dimensions=?`,vault,pageId,embeddingModel,embeddingDimensions).flatMap(row=>{
+   try {const vector:unknown=JSON.parse(row.vector);return Array.isArray(vector)&&vector.length===embeddingDimensions&&vector.every(n=>typeof n==='number'&&Number.isFinite(n))&&vector.some(n=>n!==0)?[vector as number[]]:[];}catch{return [];}
+  });
+ }
  hasSearchable(vault:string){return !!this.store.get(`SELECT 1 FROM page_segments s JOIN pages p ON p.id=s.page_id JOIN page_segment_embeddings b ON b.segment_id=s.id AND b.content_hash=s.content_hash WHERE s.vault_id=? AND ${current} AND b.model=? AND b.dimensions=? LIMIT 1`,vault,embeddingModel,embeddingDimensions);}
  search(vault:string,query:string,vector:number[]):SemanticSearchResult[] {
   return this.store.all<PageSegment & {title:string;updated_at:string;vector:string}>(`SELECT s.*,p.title,p.updated_at,b.vector FROM page_segments s JOIN pages p ON p.id=s.page_id JOIN page_segment_embeddings b ON b.segment_id=s.id AND b.content_hash=s.content_hash WHERE s.vault_id=? AND ${current} AND b.model=? AND b.dimensions=?`,vault,embeddingModel,embeddingDimensions).flatMap(row=>{

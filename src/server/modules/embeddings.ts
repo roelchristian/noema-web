@@ -242,6 +242,28 @@ export class Embeddings {
   });
   return {results:[...fused.values()].sort((a,b)=>b.score-a.score||a.passageId.localeCompare(b.passageId)).slice(0,limit),model:embeddingModel};
  }
+ /** Page-to-source retrieval uses existing vectors exclusively, without query embedding. */
+ suggestedSources(vault:string,pageId:string):import('../../shared/embeddings.js').SuggestedSource[] {
+  const page=this.pages.get(vault,pageId);
+  this.pageSegments.synchronize(vault);
+  this.sourcePassages.synchronize(vault);
+  const excluded=new Set([...page.sourceIds,...this.store.all<{source_id:string}>('SELECT source_id FROM page_source_dismissals WHERE page_id=?',pageId).map(row=>row.source_id)]);
+  const matches=new Map<string,import('../../shared/embeddings.js').SuggestedSource>();
+  for(const vector of this.pageIndex.savedVectors(vault,pageId)) {
+   for(const result of this.sourceEmbeddings.search(vault,'',vector,1)) {
+    if(excluded.has(result.id)||result.reference?.stale||result.score<0.4)continue;
+    const previous=matches.get(result.id);
+    if(!previous||result.score>previous.score)matches.set(result.id,{sourceId:result.id,score:result.score,excerpt:result.snippet});
+   }
+  }
+  return [...matches.values()].sort((a,b)=>b.score-a.score||a.sourceId.localeCompare(b.sourceId)).slice(0,5);
+ }
+ dismissSource(vault:string,pageId:string,sourceId:unknown) {
+  this.pages.requireEditable(vault,pageId);
+  if(typeof sourceId!=='string'||this.knowledge.find(vault,sourceId)?.type!=='source')throw new HttpError(400,'Choose a source in this vault.');
+  this.store.run('INSERT OR IGNORE INTO page_source_dismissals (page_id,source_id) VALUES (?,?)',pageId,sourceId);
+  return {dismissed:true};
+ }
  async search(vault: string,body: Record<string,unknown>): Promise<SemanticSearchResults> {
   this.vaults.requireOpen(vault);
   if(typeof body.query!=='string'||!body.query.trim()||Buffer.byteLength(body.query,'utf8')>embeddingMaxBytes)throw new HttpError(400,'Enter a search query up to 8,000 bytes.');

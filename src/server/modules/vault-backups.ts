@@ -42,6 +42,7 @@ const tables={
   page_domain_state:{columns:'page_id,origin,content_hash,taxonomy_version,revision',scope:pageScope},
   entity_domains:{columns:'entity_id,domain_id,origin',scope:entityScope},
   page_sources:{columns:'page_id,source_id',scope:pageScope},
+  page_source_dismissals:{columns:'page_id,source_id',scope:pageScope},
   entity_subtypes:{columns:'id,type,name',scope:'vault_id=?'},
   entity_type_properties:{columns:'type,name',scope:'vault_id=?'},
   entity_subtype_properties:{columns:'subtype_id,name',scope:'vault_id=?'},
@@ -122,7 +123,7 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     const sourceOwners=new Set<unknown>(),legacyEntities=new Map(rows.entities.map(row=>[row.id,row]));
     const legacyProperties=[...rows.properties],legacyLinks=[...rows.page_sources];
     for(const file of rows.source_files) {
@@ -316,6 +317,11 @@ export class VaultBackups {
           const source=ref(entityIds,row.source_id);
           if(this.store.get<{type:string}>('SELECT type FROM entities WHERE id=?',source)?.type!=='source')throw invalid();
           insert('page_sources',{page_id:ref(pageIds,row.page_id),source_id:source});
+        }
+        for(const row of rows.page_source_dismissals) {
+          const source=ref(entityIds,row.source_id);
+          if(this.store.get<{type:string}>('SELECT type FROM entities WHERE id=?',source)?.type!=='source')throw invalid();
+          insert('page_source_dismissals',{page_id:ref(pageIds,row.page_id),source_id:source});
         }
         for(const row of rows.collections)insert('collections',{id:ref(collectionIds,row.id),vault_id:vault,name:name(row,'name')});
         for(const row of rows.folders)insert('folders',{id:ref(folderIds,row.id),vault_id:vault,name:name(row,'name'),parent_id:null});

@@ -37,6 +37,7 @@ function fixture() {
     {id:'picture',type:'image',checked:false,content:[],imageId:image.id,alt:'A tiny picture'},
     {id:'equation',type:'math',checked:false,content:[{text:'E=mc^2'}]},
   ]});
+  store.run('INSERT INTO page_source_dismissals VALUES (?,?)',page.id,source.id);
   let trashed=pages.create(vault.id,{title:'Retained in Trash'});
   trashed=pages.update(vault.id,trashed.id,{...trashed,blocks:[{id:'trash-picture',type:'image',checked:false,content:[],imageId:image.id,alt:'Also used here'}]});
   pages.delete(vault.id,trashed.id);
@@ -80,6 +81,7 @@ test('compressed backup round trips the vault, remaps all references, and suppor
     assert.equal(knowledge.detail(restored.id,work.id).properties.find(item=>item.name==='author').target_id,author.id);
     assert.equal(knowledge.detail(restored.id,author.id).relationships[0].target_id,work.id);
     const restoredPage=pages.get(restored.id,pages.list(restored.id)[0].id);
+    assert.equal(store.get('SELECT source_id FROM page_source_dismissals WHERE page_id=?',restoredPage.id).source_id,source.id);
     assert.notEqual(restoredPage.id,page.id);assert.equal(restoredPage.title,page.title);assert.equal(restoredPage.revision,page.revision);
     assert.equal(restoredPage.updated_at,page.updated_at);assert.deepEqual(restoredPage.sourceIds,[source.id]);
     assert.equal(restoredPage.blocks[0].content[0].bold,true);assert.equal(restoredPage.blocks[0].content[1].entityId,work.id);

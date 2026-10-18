@@ -356,6 +356,10 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               if(child==='summary')return send(200,{summary:result.summary??'',revision:result.revision,contentHash:result.contentHash,...intelligence.enrichmentSelection()});
               return send(200,result);
             }
+            if(id && child==='source-suggestions' && parts.length===4) {
+              if(method==='GET')return send(200,embeddings.suggestedSources(vault,id));
+              if(method==='POST')return send(200,embeddings.dismissSource(vault,id,body.sourceId));
+            }
             if(id && child==='editor' && parts.length===4 && method==='GET') {
               const page=pages.get(vault,id);
               return send(200,{...page,entityMatchCache:entityMatches.get(vault,id,page.revision)});

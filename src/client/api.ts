@@ -35,6 +35,8 @@ export async function importVaultBackup(file:File,name?:string):Promise<Vault> {
   const result=await response.json();if(!response.ok)throw new ApiError(response.status,result.error||'Vault import failed');return result;
 }
 export const api={
+  suggestedSources:(vault:string,id:string,signal?:AbortSignal)=>request<import('../shared/embeddings').SuggestedSource[]>(`pages/${id}/source-suggestions`,'GET',undefined,vault,signal),
+  dismissSource:(vault:string,id:string,sourceId:string)=>request<{dismissed:boolean}>(`pages/${id}/source-suggestions`,'POST',{sourceId},vault),
   domains:()=>request<{taxonomyVersion:string;domains:import('../shared/domain').Domain[]}>('domains'),
   setPageDomains:(vault:string,id:string,revision:number,primaryDomainId:string|null,secondaryDomainIds:string[])=>request<Page>(`pages/${id}/domains`,'PUT',{revision,primaryDomainId,secondaryDomainIds},vault),
   networkSettings:(signal?:AbortSignal)=>request<import('../shared/security').NetworkSettings>('security/network','GET',undefined,undefined,signal),

@@ -27,3 +27,5 @@ export interface EmbeddingStatus {
 }
 export interface SemanticSearchResult {pageReference?:PageReference;reference?: SourceReference; passageId?: string; id: string; kind?: 'page' | 'entity'; title: string; snippet: string; score: number; updated_at: string}
 export interface SemanticSearchResults { results: SemanticSearchResult[]; model: string }
+
+export interface SuggestedSource { sourceId:string; score:number; excerpt:string }

@@ -1,4 +1,5 @@
 import {AINotifications} from './ai-notifications.js';
+import {saveSourceAuthors} from './source-authors.js';
 import type {SourceFile} from '../../shared/domain.js';
 import {Store} from '../store.js';
 import {HttpError,now} from '../validation.js';
@@ -46,6 +47,7 @@ export class SourceEnrichments {
      this.store.run("UPDATE source_files SET generated_name=?,language=?,summary=?,enrichment_status='completed',enrichment_error=NULL WHERE id=?",result.name,result.language,result.summary,file.id);
      // A user edit made during the request takes precedence over generated naming.
      this.store.run('UPDATE entities SET name=?,updated_at=? WHERE id=? AND vault_id=? AND name=? AND updated_at=?',result.name,now(),file.entity_id!,file.vault_id,entity!.name,entity!.updated_at);
+     if(saveSourceAuthors(this.store,file.vault_id,file.entity_id!,result.authors))this.store.run('UPDATE entities SET updated_at=? WHERE id=? AND vault_id=?',now(),file.entity_id!,file.vault_id);
     });
     new AINotifications(this.store).recordSource(file.vault_id,file.entity_id!,'completed','source_enrichment');
     this.activity.finish(this.activityId!,'completed',200);

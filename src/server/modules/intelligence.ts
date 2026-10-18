@@ -5,6 +5,7 @@ import { explanationPrompt } from './explanation-prompt.js';
 import { entityScanPrompt } from './entity-scan.js';
 import { titlePrompt } from './title-prompt.js';
 import { summaryPrompt } from './summary-prompt.js';
+import type {SourceAuthor} from './source-authors.js';
 import { sourceEnrichmentPrompt } from './source-enrichment-prompt.js';
 import { limitSummaryWords } from '../../shared/summary-text.js';
 import { pageLanguage } from './page-language.js';
@@ -168,7 +169,9 @@ export class Intelligence {
     try {
       const value=JSON.parse(output);
       if(!value||typeof value.name!=='string'||!value.name.trim()||value.name.length>200||/[\r\n\x00-\x1f]/.test(value.name)||typeof value.summary!=='string'||!value.summary.trim()||!('language' in value))throw new Error();
-      return {name:value.name.trim(),language:pageLanguage(value.language),summary:limitSummaryWords(value.summary)};
+      if(!Array.isArray(value.authors)||value.authors.length>100||value.authors.some((author:unknown)=>!author||typeof author!=='object'||!('name' in author)||typeof author.name!=='string'||!author.name.trim()||author.name.length>200||/[\x00-\x1f\x7f]/.test(author.name)||!('type' in author)||!['person','organization'].includes(String(author.type))))throw new Error();
+      const authors=(value.authors as SourceAuthor[]).map(author=>({name:author.name.trim().replace(/\s+/g,' '),type:author.type}));
+      return {name:value.name.trim(),language:pageLanguage(value.language),summary:limitSummaryWords(value.summary),authors};
     }catch {throw new HttpError(502,'AI returned invalid source metadata. Retry enrichment.');}
   }
   async generate(input: string, validate=false, onRequest?: AIRequestObserver, title=false, entityScan=false, explain=false, utility?:{subtypes:{id:string;name:string}[];currentTitle:string}, background=false,sourcePage?:{onDelta:(delta:string)=>void;signal:AbortSignal},sourceEnrichment=false) {

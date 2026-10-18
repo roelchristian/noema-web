@@ -3007,7 +3007,11 @@ dialog.noema-modal.ai-activity-modal .modal-header { position: relative; top: au
 .page-sources-actions{display:inline-flex;margin-left:auto}
 .page-sources-actions>.sidebar-menu-trigger{opacity:1;margin-right:0}
 .page-source-suggestions{margin-top:10px;padding-top:6px;border-top:1px solid var(--line)}
-.page-sources-row.is-suggested .page-sources-file{border-style:dashed;background:transparent}
+.page-sources-row.is-suggested .page-sources-open{gap:6px;padding:6px;min-height:44px}
+.page-sources-row.is-suggested .page-sources-file{width:18px;height:22px;border:0;background:transparent}
+.page-sources-row.is-suggested .page-sources-file>.icon{width:12px;height:12px}
+.page-sources-row.is-suggested .page-sources-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:400}
+.page-sources-row.is-suggested .page-source-excerpt{display:block;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.3}
 .page-source-status{display:flex;align-items:center;gap:4px;margin-top:4px;color:var(--text-muted);font-size:10px;line-height:1.4}
 .page-source-status>.icon{width:11px;height:11px;flex:none}
 .page-source-accept{opacity:.7}

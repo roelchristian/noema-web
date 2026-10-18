@@ -72,12 +72,12 @@ export function PageSources({page,entities,onOpenEntity,onSourcesChange,onCreate
       {!normalizedQuery&&<p className="page-source-label">Search by name to attach an existing source.</p>}
     </div>}
     {suggested.length>0&&<div className="page-source-suggestions">
-      <p className="page-source-label">Suggested for this page</p>
+      <p className="page-source-label">Suggested</p>
       <ul className="page-sources-list" aria-label="Suggested sources">
         {suggested.map(item=>{const name=byId.get(item.sourceId)!.name;return <li key={item.sourceId} className="page-sources-row is-suggested">
-          <button type="button" className="page-sources-open" onClick={()=>onOpenEntity(item.sourceId)} title={item.excerpt} aria-label={`Preview suggested source: ${name}`}>
-            <span className="page-sources-file" aria-hidden="true"><Icon name="source"/></span>
-            <span className="page-sources-copy"><span className="page-sources-name">{name}</span><span className="page-source-status"><Icon name="lightbulb"/>Suggested</span><span className="page-source-excerpt">{item.excerpt}</span></span>
+          <button type="button" className="page-sources-open" onClick={()=>onOpenEntity(item.sourceId)} title={`${name}\n${item.excerpt}`} aria-label={`Preview suggested source: ${name}`}>
+            <span className="page-sources-file" aria-hidden="true"><Icon name="lightbulb"/></span>
+            <span className="page-sources-copy"><span className="page-sources-name">{name}</span><span className="page-source-excerpt">{item.excerpt}</span></span>
           </button>
           {!page.editLocked&&<><button type="button" className="page-sources-detach page-source-accept" aria-label={`Attach ${name}`} title="Attach source" onClick={()=>attach(item.sourceId)}><Icon name="plus"/></button>
           <button type="button" className="page-sources-detach" disabled={dismissing!==null} aria-label={`Dismiss suggestion: ${name}`} title="Dismiss suggestion" onClick={()=>void dismiss(item.sourceId)}><Icon name="close"/></button></>}

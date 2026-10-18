@@ -64,3 +64,38 @@ test('missing, malformed and outdated embeddings do not become suggestions',t=>{
  assert.deepEqual(f.worker.suggestedSources(f.vault,f.page.id),[]);
  f.store.run('DELETE FROM page_segment_embeddings');assert.deepEqual(f.worker.suggestedSources(f.vault,f.page.id),[]);assert.equal(f.calls(),0);
 });
+function savedNote(f,title,v=vector(),owner=f.vault){
+ let note=f.pages.create(owner,{title});
+ note=f.pages.update(owner,note.id,{...note,blocks:[paragraph('A related note about algebraic structures, fields and inverses.')]});
+ f.segments.process(note.id);
+ for(const segment of f.store.all('SELECT * FROM page_segments WHERE page_id=?',note.id))f.index.save(segment,v,10);
+ return note;
+}
+test('related notes rank saved vectors locally, limit to five, and exclude self, weak, deleted and foreign notes',t=>{
+ const f=fixture(t),best=savedNote(f,'Best',vector(5,0)),next=savedNote(f,'Next',vector(8,6));
+ for(let i=0;i<5;i++)savedNote(f,'More '+i,vector(.6,.8));
+ savedNote(f,'Weak',vector(0,1));
+ const deleted=savedNote(f,'Deleted');f.pages.delete(f.vault,deleted.id);
+ savedNote(f,'Foreign',vector(),f.vaults.create({name:'Other'}).id);
+ const results=f.worker.relatedNotes(f.vault,f.page.id);
+ assert.equal(results.length,5);
+ assert.deepEqual(results.slice(0,2).map(note=>note.pageId),[best.id,next.id]);
+ assert.equal(new Set(results.map(note=>note.pageId)).size,5);
+ assert.equal(results[0].title,'Best');assert.ok(results[0].excerpt);assert.equal(results[0].score,1);
+ assert.equal(results.some(note=>[f.page.id,deleted.id].includes(note.pageId)),false);
+ assert.equal(f.calls(),0);
+});
+test('related notes require current valid embeddings and respect vault access',t=>{
+ const f=fixture(t),note=savedNote(f,'Related');
+ assert.equal(f.worker.relatedNotes(f.vault,f.page.id).length,1);
+ f.store.run("UPDATE page_segment_embeddings SET vector='[1,2]' WHERE segment_id IN (SELECT id FROM page_segments WHERE page_id=?)",note.id);
+ assert.deepEqual(f.worker.relatedNotes(f.vault,f.page.id),[]);
+ for(const segment of f.store.all('SELECT * FROM page_segments WHERE page_id=?',note.id))f.index.save(segment,vector(),10);
+ f.pages.update(f.vault,note.id,{...note,blocks:[paragraph('Completely changed content now requires a new saved embedding.')]});
+ assert.deepEqual(f.worker.relatedNotes(f.vault,f.page.id),[]);
+ savedNote(f,'Another');
+ f.store.run('DELETE FROM page_segment_embeddings WHERE segment_id IN (SELECT id FROM page_segments WHERE page_id=?)',f.page.id);
+ assert.deepEqual(f.worker.relatedNotes(f.vault,f.page.id),[]);assert.equal(f.calls(),0);
+ f.vaults.lock(f.vault,{passphrase:'test-lock'});
+ assert.throws(()=>f.worker.relatedNotes(f.vault,f.page.id),/locked/);
+});

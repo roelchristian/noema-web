@@ -244,6 +244,7 @@ export class Embeddings {
  }
  /** Page-to-source retrieval uses existing vectors exclusively, without query embedding. */
  suggestedSources(vault:string,pageId:string):import('../../shared/embeddings.js').SuggestedSource[] {
+  this.vaults.requireOpen(vault);
   const page=this.pages.get(vault,pageId);
   this.pageSegments.synchronize(vault);
   this.sourcePassages.synchronize(vault);
@@ -257,6 +258,21 @@ export class Embeddings {
    }
   }
   return [...matches.values()].sort((a,b)=>b.score-a.score||a.sourceId.localeCompare(b.sourceId)).slice(0,5);
+ }
+ /** Rank other notes locally by their strongest matching saved segment pair. */
+ relatedNotes(vault:string,pageId:string):import('../../shared/embeddings.js').RelatedNote[] {
+  this.vaults.requireOpen(vault);
+  this.pages.get(vault,pageId);
+  this.pageSegments.synchronize(vault);
+  const matches=new Map<string,import('../../shared/embeddings.js').RelatedNote>();
+  for(const vector of this.pageIndex.savedVectors(vault,pageId)) {
+   for(const result of this.pageIndex.search(vault,'',vector)) {
+    if(result.id===pageId||result.score<0.4)continue;
+    const previous=matches.get(result.id);
+    if(!previous||result.score>previous.score)matches.set(result.id,{pageId:result.id,title:result.title,score:result.score,excerpt:result.snippet});
+   }
+  }
+  return [...matches.values()].sort((a,b)=>b.score-a.score||a.pageId.localeCompare(b.pageId)).slice(0,5);
  }
  dismissSource(vault:string,pageId:string,sourceId:unknown) {
   this.pages.requireEditable(vault,pageId);

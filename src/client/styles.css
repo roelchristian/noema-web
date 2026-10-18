@@ -2985,6 +2985,7 @@ dialog.noema-modal.ai-activity-modal .modal-header { position: relative; top: au
 
 /* Page sources use quiet document rows rather than inline entity chips. */
 .page-sources-list{list-style:none;margin:0;padding:0}
+.related-note-excerpt{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;margin-top:3px;color:var(--text-muted);font-size:11px;line-height:1.5;overflow-wrap:anywhere}
 .page-sources-row{display:flex;align-items:center;gap:2px;border-radius:7px;transition:background .15s}
 .page-sources-row+.page-sources-row{margin-top:2px}
 .page-sources-row:hover,.page-sources-row:focus-within{background:var(--surface-hover)}

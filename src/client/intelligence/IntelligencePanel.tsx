@@ -2,6 +2,7 @@ import {PageSources} from './PageSources';
 import {PageMetadata} from './PageMetadata';
 import {PageConceptCategory} from './PageConceptCategory';
 import {NoteConnections} from './NoteConnections';
+import {RelatedNotes} from './RelatedNotes';
 import { SummaryText } from './SummaryText';
 import { EntityScanReview } from './EntityScanReview';
 import type { EntityScan, EntitySuggestionEdit } from '../../shared/entity-scan';
@@ -83,6 +84,7 @@ function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnap
         <EntityScanReview entities={entities} page={page} scan={scan} onScan={setScan} onFlush={onFlush} onReview={onReview} disabled={!!page.editLocked||busy||deleting||loading}/>
       </ConnectedEntities>
     <NoteConnections key={page.vault_id+'/'+page.id} page={page} pages={pages} onOpenPage={onOpenPage} inactive={inactive}/>
+    <RelatedNotes key={page.vault_id+'/'+page.id} page={page} onOpenPage={onOpenPage} inactive={inactive}/>
     <PageSources key={page.vault_id+'/'+page.id} page={page} entities={entities} onOpenEntity={onOpenEntity} onSourcesChange={onSourcesChange} onCreateSource={()=>onCreateEntity({source:true})}/>
       <PageMetadata page={page}/>
     </div>

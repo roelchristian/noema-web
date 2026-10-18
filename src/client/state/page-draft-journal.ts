@@ -41,7 +41,7 @@ function validPage(value: unknown): value is Page {
   return value.featuredImageId === undefined || value.featuredImageId === null || identifier(value.featuredImageId);
 }
 function minimalPage(page: Page): Page {
-  return clone({id: page.id, vault_id: page.vault_id, title: page.title, blocks: page.blocks, sourceIds: page.sourceIds, revision: page.revision, updated_at: page.updated_at, icon: page.icon ?? null, featuredImageId: page.featuredImageId ?? null});
+  return clone({id: page.id, vault_id: page.vault_id, title: page.title, blocks: page.blocks, sourceIds: page.sourceIds, revision: page.revision, created_at: page.created_at ?? null, updated_at: page.updated_at, icon: page.icon ?? null, featuredImageId: page.featuredImageId ?? null});
 }
 function parse(value: string | null): PageDraftEntry | null {
   if (!value) return null;

@@ -77,8 +77,8 @@ export class Pages {
     return this.get(vault,id);
   }
   create(vault: string, body: Record<string, unknown>) {
-    const id=randomUUID();
-    this.store.run('INSERT INTO pages (id,title,language,blocks,updated_at,vault_id) VALUES (?,?,?,?,?,?)',id,required(body.title || 'Untitled'),pageLanguage(body.language),JSON.stringify([{id:randomUUID(),type:'paragraph',checked:false,content:[]}]),now(),vault);
+    const id=randomUUID(),createdAt=now();
+    this.store.run('INSERT INTO pages (id,title,language,blocks,updated_at,created_at,vault_id) VALUES (?,?,?,?,?,?,?)',id,required(body.title || 'Untitled'),pageLanguage(body.language),JSON.stringify([{id:randomUUID(),type:'paragraph',checked:false,content:[]}]),createdAt,createdAt,vault);
     return this.get(vault,id);
   }
   validateBlocks(vault: string, input: unknown): Block[] {

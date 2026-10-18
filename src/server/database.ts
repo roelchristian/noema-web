@@ -279,6 +279,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS source_page_drafts (
  CREATE INDEX IF NOT EXISTS source_page_drafts_source ON source_page_drafts(vault_id,source_id,status,created_at);`);
 if (!db.prepare('PRAGMA table_info(source_page_drafts)').all().some(column=>column.name==='notification_id')) db.exec('ALTER TABLE source_page_drafts ADD COLUMN notification_id TEXT REFERENCES ai_notifications(id) ON DELETE SET NULL');
 if (!db.prepare('PRAGMA table_info(source_page_drafts)').all().some(column=>column.name==='options')) db.exec("ALTER TABLE source_page_drafts ADD COLUMN options TEXT NOT NULL DEFAULT '{}'");
+// Older pages have no recorded creation time; leave it unknown.
+if (!db.prepare('PRAGMA table_info(pages)').all().some(column=>column.name==='created_at')) db.exec('ALTER TABLE pages ADD COLUMN created_at TEXT');
 // Older pages and pending drafts have no recorded language.
 if (!db.prepare('PRAGMA table_info(pages)').all().some(column=>column.name==='language')) db.exec('ALTER TABLE pages ADD COLUMN language TEXT');
 if (!db.prepare('PRAGMA table_info(source_page_drafts)').all().some(column=>column.name==='language')) db.exec('ALTER TABLE source_page_drafts ADD COLUMN language TEXT');
@@ -346,7 +348,8 @@ if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
  db.prepare('INSERT INTO relationships VALUES (?,?,?,?)').run(randomUUID(), 'ursula', 'child of', 'theodora');
  const block = (type: BlockType, content: string | Segment[]) => ({ id: randomUUID(), type, content: typeof content === 'string' ? [{ text: content }] : content });
  const blocks = [block('paragraph', 'A small space for connected thinking. Write freely, collect ideas, and give the people, places, and works in your notes a life of their own.'), block('heading2', 'Everything starts with a connection'), block('paragraph', [{text:'I’m reading '},{entityId:'earthsea'},{text:' by '},{entityId:'ursula'},{text:'. There’s something compelling about a world in which knowing a true name means understanding its nature.'}]), block('quote', 'To light a candle is to cast a shadow.'), block('heading2', 'A few things to try'), block('bullet', 'Type / on an empty line to choose a block: heading, list, quote, or to-do.'), block('bullet', 'Type @ to reference a knowledge entity, or create a new one.'), block('bullet', 'Click a highlighted entity to explore its properties and connections.'), block('todo', 'Add a connection of your own'), block('paragraph', [])];
- db.prepare('INSERT INTO pages (id,title,blocks,updated_at) VALUES (?,?,?,?)').run('welcome', 'A place for connected ideas', JSON.stringify(blocks), now());
+ const createdAt=now();
+ db.prepare('INSERT INTO pages (id,title,blocks,updated_at,created_at) VALUES (?,?,?,?,?)').run('welcome', 'A place for connected ideas', JSON.stringify(blocks), createdAt, createdAt);
  db.prepare("INSERT INTO metadata VALUES ('seeded','1')").run();
  db.exec('COMMIT');
  } catch(e) { db.exec('ROLLBACK'); throw e; }

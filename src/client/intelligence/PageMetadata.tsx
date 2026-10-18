@@ -10,6 +10,7 @@ function languageLabel(language:string):string {
 
 export function PageMetadata({page}:{page:Page}) {
   const aiStatus=page.aiStatus??'regular';
+  const created=page.created_at?new Date(page.created_at):null,validCreatedDate=created!==null&&Number.isFinite(created.getTime());
   const updated=new Date(page.updated_at),validDate=Number.isFinite(updated.getTime());
   const icon=pageIcons.find(icon=>icon.id===page.icon);
   return <details className="knowledge-page-metadata" aria-labelledby="knowledge-page-metadata-heading">
@@ -18,6 +19,7 @@ export function PageMetadata({page}:{page:Page}) {
       <div><dt>Title</dt><dd className="page-metadata-title" title={page.title}>{page.title||'Untitled'}</dd></div>
       <div><dt>Language</dt><dd>{page.language?<><span>{languageLabel(page.language)}</span><small>{page.language}</small></>:'Not recorded'}</dd></div>
       <div><dt>AI status</dt><dd title={pageAIStatusDescriptions[aiStatus]}>{pageAIStatusLabels[aiStatus]}</dd></div>
+      <div><dt>Created</dt><dd>{validCreatedDate?<time dateTime={page.created_at!} title={created.toLocaleString()}>{created.toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})}<small>{created.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})}</small></time>:'Not available'}</dd></div>
       <div><dt>Updated</dt><dd>{validDate?<time dateTime={page.updated_at} title={updated.toLocaleString()}>{updated.toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})}<small>{updated.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})}</small></time>:'Not available'}</dd></div>
       <div><dt>Revision</dt><dd>{page.revision}</dd></div>
       <div><dt>Editing</dt><dd>{page.editLocked?'Locked':page.editProtected?'Unlocked · password protected':'Editable'}</dd></div>

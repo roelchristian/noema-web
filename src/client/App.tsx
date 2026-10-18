@@ -84,6 +84,21 @@ export function App() {
   const [sourcePage,setSourcePage]=useState<Entity|null>(null);
   const [create, setCreate] = useState<CreateEntityRequest | null>(null), [vaultAction, setVaultAction] = useState<VaultAction | null>(null);
   const [vaultDeletionOpen,setVaultDeletionOpen]=useState(false),[vaultNotice,setVaultNotice]=useState('');
+  const [pendingInsert,setPendingInsert]=useState<{vaultId:string;pageId:string;entityId:string;name:string;insert:(id:string)=>void}|null>(null);
+  const [insertNotice,setInsertNotice]=useState<{entityId:string;name:string}|null>(null);
+  useEffect(()=>{setInsertNotice(null);},[vault?.id,vault?.locked,page?.id]);
+  useEffect(()=>{
+    if(create||!pendingInsert)return;
+    // The creation dialog must release modal focus before the editor restores its saved range.
+    const frame=requestAnimationFrame(()=>{
+      const current=workspace.snapshot();
+      if(current.vault?.id===pendingInsert.vaultId&&!current.vault.locked&&current.page?.id===pendingInsert.pageId) {
+        try{pendingInsert.insert(pendingInsert.entityId);setInsertNotice({entityId:pendingInsert.entityId,name:pendingInsert.name});}catch(error){workspace.report(error);}
+      }
+      setPendingInsert(null);
+    });
+    return()=>cancelAnimationFrame(frame);
+  },[create,pendingInsert,workspace]);
   const [backupAction,setBackupAction]=useState<'export'|'import'|null>(null);
   const knowledgeVisible = aiOpen && !searchOpen && !panelId;
   const beginSourcePage=(source:Entity)=>{workspace.closeEntity();setAiOpen(false);setSearchOpen(false);setNavigationOpen(false);setSourcePage(source);};
@@ -185,7 +200,10 @@ export function App() {
     {create && vault && <CreateEntityDialog vaultId={vault.id} initial={create} onClose={() => setCreate(null)} onSubmit={async input => {
       const result = await workspace.createEntity(input);
       if (create.source && workspace.snapshot().page) workspace.updatePage({sourceIds: [...new Set([...workspace.snapshot().page!.sourceIds, result.id])]});
-      create.onCreated?.(result.id); openEntity(result.id);
+      if(create.intent==='insert'&&create.onCreated) {
+        const current=workspace.snapshot();
+        if(current.vault?.id===vault.id&&current.page)setPendingInsert({vaultId:vault.id,pageId:current.page.id,entityId:result.id,name:result.name,insert:create.onCreated});
+      }else{create.onCreated?.(result.id);openEntity(result.id);}
     }}/>}
     {renameTarget && <NameDialog maxLength={500} title="Rename page" value={renameTarget.title} onSave={name => workspace.renamePage(renameTarget.id,name)} onClose={() => setRenameTarget(null)}/>}
     {deleteTarget && <ConfirmDialog danger title="Move note to Trash?" description={`“${deleteTarget.title || 'Untitled'}” will be kept in Trash for 30 days. You can restore it until then.`} action="Move to Trash" onConfirm={() => workspace.deletePage(deleteTarget.id)} onClose={() => setDeleteTarget(null)}/>}
@@ -197,6 +215,7 @@ export function App() {
     }}/>}
     {!error&&vaultNotice&&<div id="toast" role="status">{vaultNotice}<button className="toast-close" aria-label="Dismiss notification" onClick={()=>setVaultNotice('')}>×</button></div>}
     {vaultAction && <VaultDialog onImport={() => { setVaultAction(null); setBackupAction('import'); }} action={vaultAction} onClose={() => setVaultAction(null)} onSubmit={value => vaultAction === 'create' ? workspace.createVault(value) : vaultAction === 'lock' ? workspace.lock(value) : workspace.unlock(value)}/>}
+    {!error&&!vaultNotice&&insertNotice&&vault&&!vault.locked&&<div id="toast" className="entity-insert-notice" role="status"><span>Created “{insertNotice.name}”.</span><button type="button" className="toast-action" onClick={()=>{openEntity(insertNotice.entityId);setInsertNotice(null);}}>View</button><button type="button" className="toast-close" aria-label="Dismiss notification" onMouseDown={event=>event.preventDefault()} onClick={()=>setInsertNotice(null)}>×</button></div>}
     {error && <div id="toast" role="alert">{error}<button className="toast-close" aria-label="Dismiss error" onClick={workspace.dismissError}>×</button></div>}
   </>;
 }

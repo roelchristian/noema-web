@@ -411,7 +411,7 @@ export function BlockEditor(props: Props) {
       // Release modal focus before an action focuses a new or converted block.
       if (sheet && !item.submenu) event.currentTarget.closest('dialog')?.close();
       item.pick();
-    }}><span className="menu-icon" style={item.color?{color:item.color}:undefined}>{item.entity || item.icon === 'equation' ? <Icon name={item.icon}/> : item.icon}</span><span>{item.title}</span>{item.submenu&&!item.back&&<span className="menu-submenu-arrow" aria-hidden="true"><Icon name="chevron"/></span>}</button>);
+    }}><span className="menu-icon" style={item.color?{color:item.color}:undefined}>{item.entity || item.icon === 'equation' ? <Icon name={item.icon}/> : item.icon}</span><span>{item.title}{item.detail&&<small>{item.detail}</small>}</span>{item.submenu&&!item.back&&<span className="menu-submenu-arrow" aria-hidden="true"><Icon name="chevron"/></span>}</button>);
   }
   function insertMention(range: Range, id: string, blockId: string) {
     if (!range.startContainer.isConnected) return;
@@ -459,7 +459,7 @@ export function BlockEditor(props: Props) {
       const query = match[1]!, start = range.startOffset - query.length - 1; if (start < 0) { setMenu(null); return; }
       const saved = range.cloneRange(); saved.setStart(range.startContainer, start);
       const items: Choice[] = entities.filter(e => [e.name, ...(e.aliases ?? [])].some(name => name.toLowerCase().includes(query.toLowerCase()))).slice(0, 7).map(e => ({title: e.name, detail: entityLabels[e.type], icon: e.type, entity: true, pick: () => insertMention(saved, e.id, block.id)}));
-      items.push({title: query ? `Create “${query}”` : 'Create a new entity', icon: '+', pick: () => { setMenu(null); onCreateEntity(query, id => insertMention(saved, id, block.id)); }}); show(el, items, 'LINK AN ENTITY'); return;
+      items.push({title: query ? `Create and insert “${query}”` : 'Create and insert an entity', icon: '+', pick: () => { setMenu(null); onCreateEntity(query, id => insertMention(saved, id, block.id)); }}); show(el, items, 'LINK AN ENTITY'); return;
     }
     setMenu(null);
   }

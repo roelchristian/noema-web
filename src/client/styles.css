@@ -2486,3 +2486,10 @@ dialog.source-page-dialog.has-preview { width: 1200px; }
   .library-heading-actions > .library-view-filter { flex: 1 1 100%; width: 100%; min-width: 0; }
   .library-view-filter-input button { min-width: 36px; min-height: 36px; }
 }
+
+/* Inline creation returns focus to the note; inspecting the new entity is optional. */
+.entity-insert-notice { display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 32px); }
+.entity-insert-notice > span { min-width: 0; overflow-wrap: anywhere; }
+.entity-insert-notice .toast-action { flex: none; padding: 4px 2px; color: inherit; font: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.entity-insert-notice .toast-close { flex: none; margin-left: 0; }
+:is(.command-menu, .mobile-block-sheet-options) > button > span > small { display: block; margin-top: 2px; color: var(--text-muted); font: 10px/1.4 var(--font-ui); }

@@ -27,7 +27,7 @@ export function normalizeSourceText(text:string,explicit:SourceStructureNode[]=[
    }
   }
   const delimiter=line.match(/^(`{3,}|~{3,})/);
-  const protectedLine=!!fence||math||!!delimiter||/^\s{4}|^\t/.test(raw)||/^(?:#{1,6}\s|>|[-+*]\s|\d+[.)]\s|\|)|^(?:[-*_]\s*){3,}$|^\$\$|\\\[|\\\]/.test(line)||/ {2}$|\\$/.test(raw)||line.includes('\t');
+  const protectedLine=!!fence||math||!!delimiter||/^\s{4}|^\t/.test(raw)||/^(?:#{1,6}\s|>|[-+*]\s|\d+[.)]\s|\||\[\^[^\]]+\]:)|^(?:[-*_]\s*){3,}$|^\$\$|\\\[|\\\]/.test(line)||/ {2}$|\\$/.test(raw)||line.includes('\t');
   if(!line&&!fence&&!math){blank();continue;}
   if(protectedLine) {
    output.push(raw);prose=false;
@@ -40,7 +40,7 @@ export function normalizeSourceText(text:string,explicit:SourceStructureNode[]=[
    // short labels separate too, so later heading detection can locate them.
    if(wrapWidth&&line.length<wrapWidth*.65&&(/[.!?:;”’)]$/.test(line)||line.length<wrapWidth*.4))blank();
   }
-  if(delimiter){if(!fence)fence=delimiter[1]![0];else if(fence===delimiter[1]![0])fence=undefined;}
+  if(delimiter){if(!fence)fence=delimiter[1]!;else if(fence[0]===delimiter[1]![0]&&delimiter[1]!.length>=fence.length)fence=undefined;}
   if(!fence&&(line.match(/\$\$/g)?.length??0)%2===1)math=!math;
   if(!fence&&line==='\\[')math=true;
   if(!fence&&line==='\\]')math=false;

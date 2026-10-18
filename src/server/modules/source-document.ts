@@ -52,7 +52,7 @@ export function processedSourceDocument(file:SourceFile):SourceDocument {
  let fence:string|undefined,math=false;
  for(let index=0;index<lines.length;index++) {
   const line=lines[index]!,delimiter=line.trim().match(/^(`{3,}|~{3,})/);
-  if(delimiter){if(!fence)fence=delimiter[1]![0];else if(fence===delimiter[1]![0])fence=undefined;continue;}
+  if(delimiter){if(!fence)fence=delimiter[1]!;else if(fence[0]===delimiter[1]![0]&&delimiter[1]!.length>=fence.length)fence=undefined;continue;}
   if(fence||/^\s{4}|^\t/.test(line))continue;
   if(line.trim()==='$$'||line.trim()==='\\['||line.trim()==='\\]'){math=!math;continue;}
   if(math)continue;
@@ -83,14 +83,17 @@ export function processedSourceDocument(file:SourceFile):SourceDocument {
    const position=nextPosition,trimmed=raw.trim();
    nextPosition+=raw.length+1;
    if(pageComments.has(position)){flush();continue;}
-   if(!trimmed){if(blockFence||displayMath)parts.push(raw);else flush();continue;}
+   if(!trimmed){if(blockFence||displayMath||kind==='footnote')parts.push(raw);else flush();continue;}
+   const footnote=/^\[\^[^\]]+\]:/.test(trimmed);
+   if(footnote&&kind==='footnote'&&!blockFence&&!displayMath)flush();
    const marker=trimmed.match(/^(`{3,}|~{3,})/);
    const table:boolean=trimmed.includes('|')&&(kind==='table'||/^\s*\|?\s*:?-{3,}:?\s*\|/.test(trimmed)||/^\s*\|?\s*:?-{3,}:?\s*\|/.test(text.slice(nextPosition).split('\n')[0]??''));
-   const lineKind:SourceDocumentNode['kind']=blockFence||marker||/^\s{4}|^\t/.test(raw)?'code':displayMath||/^\$\$|^\\\[/.test(trimmed)?'equation':/^[-+*]\s|^\d+[.)]\s/.test(trimmed)?'list':table?'table':/^>/.test(trimmed)?'blockquote':'paragraph';
+   const continuation=/^ {4}|^\t/.test(raw);
+   const lineKind:SourceDocumentNode['kind']=!blockFence&&!displayMath&&(footnote||kind==='footnote'&&continuation)?'footnote':!blockFence&&!displayMath&&kind==='list'&&continuation?'list':blockFence||marker||/^\s{4}|^\t/.test(raw)?'code':displayMath||/^\$\$|^\\\[/.test(trimmed)?'equation':/^[-+*]\s|^\d+[.)]\s/.test(trimmed)?'list':table?'table':/^>/.test(trimmed)?'blockquote':'paragraph';
    if(chunkStart>=0&&!blockFence&&!displayMath&&lineKind!==kind)flush();
    if(chunkStart<0){chunkStart=position+(lineKind==='code'?0:raw.indexOf(trimmed));kind=lineKind;}
    parts.push(raw);chunkEnd=position+raw.trimEnd().length;
-   if(marker){if(!blockFence)blockFence=marker[1]![0];else if(blockFence===marker[1]![0]){blockFence=undefined;flush();}}
+   if(marker){if(!blockFence)blockFence=marker[1]!;else if(blockFence[0]===marker[1]![0]&&marker[1]!.length>=blockFence.length){blockFence=undefined;flush();}}
    if(!blockFence){if((trimmed.match(/\$\$/g)?.length??0)%2===1)displayMath=!displayMath;if(trimmed==='\\[')displayMath=true;if(trimmed==='\\]')displayMath=false;if(kind==='equation'&&!displayMath)flush();}
   }
   flush();

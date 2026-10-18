@@ -25,8 +25,8 @@ export function sourceStructure(text:string):SourceStructureNode[] {
   for(let index=0;index<lines.length;index++) {
     const line=lines[index]!.trim();
     const marker=line.match(/^(`{3,}|~{3,})/);
-    if(marker){if(!fence)fence=marker[1]![0];else if(marker[1]![0]===fence)fence=undefined;continue;}
-    if(fence||!line)continue;
+    if(marker){if(!fence)fence=marker[1]!;else if(marker[1]![0]===fence[0]&&marker[1]!.length>=fence.length)fence=undefined;continue;}
+    if(fence||!line||/^ {4}|^\t/.test(lines[index]!))continue;
     const semantic=semanticBlockLabel(line);
     if(semantic){nodes.push({text:semantic.label,startLine:index+1,kind:semantic.kind});continue;}
     if(line.length>240)continue;

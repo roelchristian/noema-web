@@ -7,7 +7,7 @@ export interface SourceDocumentRange {
 }
 export interface SourceDocumentNode {
  id:string;
- kind:SourceStructureKind|'paragraph'|'code'|'equation'|'list'|'table'|'blockquote';
+ kind:SourceStructureKind|'paragraph'|'code'|'equation'|'list'|'table'|'blockquote'|'footnote';
  range:SourceDocumentRange;
  title?:string;
  level?:number;

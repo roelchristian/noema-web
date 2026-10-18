@@ -2,7 +2,7 @@ import { lookup } from 'node:dns/promises';
 import http from 'node:http';
 import https from 'node:https';
 import { isIP } from 'node:net';
-import { parse, type DefaultTreeAdapterMap } from 'parse5';
+import {sourceHTML} from './source-html.js';
 import { HttpError } from '../validation.js';
 import type { SourceStructureNode } from '../../shared/domain.js';
 
@@ -57,33 +57,12 @@ export async function fetchSource(value:unknown):Promise<{bytes:Buffer;name:stri
     let bytes=Buffer.concat(chunks);
     let name:string;try{name=decodeURIComponent(url.pathname.split('/').at(-1)??'');}catch{name='source';}
     name=name.replace(/[\x00-\x1f\x7f/\\]/g,'_').slice(0,220)||url.hostname;
-    const extension=mime==='application/pdf'?'pdf':mime==='text/markdown'?'md':'txt';
+    const extension=mime==='application/pdf'?'pdf':mime==='text/markdown'||mime==='text/html'?'md':'txt';
     let structuralNodes:SourceStructureNode[]|undefined;
     if(mime==='text/html') {
       const charset=response.headers['content-type']?.match(/charset\s*=\s*["']?([^\s;"']+)/i)?.[1]??'utf-8';
       let html:string;try{html=new TextDecoder(charset,{fatal:true}).decode(bytes);}catch{throw new HttpError(415,'Unsupported or invalid HTML encoding.');}
-      const document=parse(html);
-      type Node=DefaultTreeAdapterMap['node'];
-      const skip=new Set(['script','style','noscript','template','iframe','object','embed','svg','math']);
-      const blocks=new Set(['p','div','section','article','header','footer','main','li','br','h1','h2','h3','h4','h5','h6','tr','blockquote','pre']);
-      const parts:string[]=[];
-      const visit=(node:Node,inBody=false,depth=0):void=>{
-        if(depth>256)throw new HttpError(415,'HTML nesting exceeds the safe import limit.');
-        if('tagName' in node){if(skip.has(node.tagName)||node.attrs.some(attr=>attr.name==='hidden'||attr.name==='aria-hidden'&&attr.value==='true'))return;inBody ||= node.tagName==='body';if(inBody&&blocks.has(node.tagName))parts.push('\n');if(inBody&&/^h[1-6]$/.test(node.tagName))parts.push('\u0000'+node.tagName+'\u0000');}
-        if(inBody&&node.nodeName==='#text'&&'value' in node)parts.push(node.value.replace(/\u0000/g,''));
-        if('childNodes' in node)for(const child of node.childNodes)visit(child,inBody,depth+1);
-        if(inBody&&'tagName' in node&&blocks.has(node.tagName))parts.push('\n');
-      };
-      visit(document);
-      const lines=parts.join('').replace(/\r\n?/g,'\n').replace(/[\t ]+/g,' ').replace(/ *\n */g,'\n').replace(/\n{3,}/g,'\n\n').trim().split('\n');
-      structuralNodes=[];
-      const text=lines.map((line,index)=>{
-        const heading=line.match(/\u0000h([1-6])\u0000/);
-        const clean=line.replace(/\u0000h[1-6]\u0000/g,'');
-        if(heading&&clean.trim())structuralNodes!.push({text:clean.trim(),startLine:index+1,level:Number(heading[1])});
-        return clean;
-      }).join('\n');
-      bytes=Buffer.from(text);
+      bytes=Buffer.from(sourceHTML(html,url.href));
       if(!bytes.length)throw new HttpError(400,'No readable body text found at this URL.');
     }
     if(!name.toLowerCase().endsWith('.'+extension))name=name.replace(/\.(html?|pdf|txt|md)$/i,'')+'.'+extension;

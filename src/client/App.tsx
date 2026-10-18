@@ -137,12 +137,17 @@ export function App() {
       if(projection.text.slice(reference.startOffset,reference.endOffset)===reference.excerpt)setPagePassage(reference);
     }
   };
+  // Expire the navigation target itself so background updates cannot reapply it.
+  useEffect(()=>{
+    if(!pagePassage)return;
+    const timer=setTimeout(()=>setPagePassage(current=>current===pagePassage?null:current),5000);
+    return()=>clearTimeout(timer);
+  },[pagePassage]);
   useEffect(()=>{
     if(!pagePassage||page?.id!==pagePassage.pageId||page.revision!==pagePassage.revision||vault?.locked||busy||loadingPageId)return;
     let cleanup=()=>{};
     const frame=requestAnimationFrame(()=>{cleanup=highlightPagePassage(pagePassage,page,entities);});
-    const timer=setTimeout(()=>cleanup(),7000);
-    return()=>{cancelAnimationFrame(frame);clearTimeout(timer);cleanup();};
+    return()=>{cancelAnimationFrame(frame);cleanup();};
   },[pagePassage,page?.id,page?.revision,vault?.id,vault?.locked,busy,loadingPageId,entities]);
 
   useEffect(() => { const detachNavigation = workspace.attachBrowserNavigation(); void workspace.init(); return () => { detachNavigation(); workspace.saver.dispose(); workspace.titler.dispose(); }; }, [workspace]);

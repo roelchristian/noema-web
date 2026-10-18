@@ -106,6 +106,12 @@ export class Pages {
             if(ref.sourceNumber!==undefined&&(!Number.isSafeInteger(ref.sourceNumber)||(ref.sourceNumber as number)<1||(ref.sourceNumber as number)>1_000_000_000))throw new HttpError(400,'Invalid source number');
             if(ref.startPage!==undefined&&(!Number.isInteger(ref.startPage)||!Number.isInteger(ref.endPage)||(ref.startPage as number)<1||(ref.endPage as number)<(ref.startPage as number)||(ref.endPage as number)>1000))throw new HttpError(400,'Invalid citation page');
             result.sourceReference={...(ref.startPage===undefined?{}:{startPage:ref.startPage as number,endPage:ref.endPage as number}),...(ref.sourceNumber===undefined?{}:{sourceNumber:ref.sourceNumber as number}),id:required(ref.id),sourceId,fileId,startLine:ref.startLine as number,endLine:ref.endLine as number,sourceHash:ref.sourceHash,excerpt:text(ref.excerpt,16*1024*1024)};
+            if(ref.generationId!==undefined)result.sourceReference.generationId=required(ref.generationId);
+            if(ref.passageId!==undefined)result.sourceReference.passageId=required(ref.passageId);
+            for(const key of ['startOffset','endOffset'] as const)if(ref[key]!==undefined) {
+              if(!Number.isSafeInteger(ref[key])||(ref[key] as number)<0)throw new HttpError(400,'Invalid citation offset');
+              result.sourceReference[key]=ref[key] as number;
+            }
           }
           if(typeof segment.href === 'string') { const href=safeHref(segment.href); if(href) result.href=href; }
           return result;

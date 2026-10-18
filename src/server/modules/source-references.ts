@@ -70,8 +70,9 @@ export function enrichCitationPages(store:Store,blocks:Block[]) {
   for(const block of blocks)for(const segment of [block.content,...(block.rows??[]).flat() ].flat()) {
     const ref=segment.sourceReference;if(!ref)continue;
     if(!files.has(ref.fileId))files.set(ref.fileId,store.get<SourceFile>('SELECT * FROM source_files WHERE id=? AND entity_id=?',ref.fileId,ref.sourceId));
-    const file=files.get(ref.fileId);if(!file)continue;
+    const file=files.get(ref.fileId);if(!file){ref.stale=true;continue;}
     if(!hashes.has(file.id))hashes.set(file.id,createHash('sha256').update(file.text).digest('hex'));
+    ref.stale=file.status!=='ready'||!file.admitted||hashes.get(file.id)!==ref.sourceHash;
     if(hashes.get(file.id)===ref.sourceHash)Object.assign(ref,referencePages(file,ref.startLine,ref.endLine));
   }
   return blocks;

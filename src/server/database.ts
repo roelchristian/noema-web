@@ -252,6 +252,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS source_embeddings (
  vector TEXT NOT NULL, tokens INTEGER NOT NULL, updated_at TEXT NOT NULL
 );
  CREATE UNIQUE INDEX IF NOT EXISTS embedding_jobs_source_active ON embedding_jobs(source_id) WHERE status IN ('queued','running');`);
+if (!sourceColumns.some(column=>column.name==='structural_nodes')) db.exec("ALTER TABLE source_files ADD COLUMN structural_nodes TEXT NOT NULL DEFAULT '[]'");
 if (!sourceColumns.some(column=>column.name==='page_start_lines')) db.exec("ALTER TABLE source_files ADD COLUMN page_start_lines TEXT NOT NULL DEFAULT '[]'");
 if (!sourceColumns.some(column=>column.name==='import_method')) db.exec("ALTER TABLE source_files ADD COLUMN import_method TEXT NOT NULL DEFAULT 'upload'");
 if (!sourceColumns.some(column=>column.name==='pdf_flattened')) db.exec('ALTER TABLE source_files ADD COLUMN pdf_flattened INTEGER NOT NULL DEFAULT 0');

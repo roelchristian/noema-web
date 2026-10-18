@@ -1,3 +1,4 @@
+import {isPageIndexPolicy} from '../../shared/embeddings.js';
 import {syncSourceReferences} from './source-references.js';
 import {limitSummaryWords} from '../../shared/summary-text.js';
 import {pageLanguage} from './page-language.js';
@@ -44,7 +45,8 @@ const tables={
   collection_memberships:{columns:'kind,item_id,collection_id',scope:'vault_id=?'},
   favourites:{columns:'kind,item_id',scope:'vault_id=?'},
   page_ai_enrichments:{columns:'page_id,kind,data,revision,model,reasoning_effort,updated_at,content_hash',scope:pageScope},
-  embedding_settings:{columns:'automatic,min_characters',scope:'vault_id=?'},
+  embedding_settings:{columns:'automatic,min_characters,page_policy',scope:'vault_id=?'},
+  page_segment_cache:{columns:'page_id,content_hash,model,dimensions,vector,tokens,updated_at',scope:pageScope},
   note_embeddings:{columns:'page_id,model,dimensions,content_hash,revision,vector,tokens,updated_at',scope:pageScope},
 } as const;
 type Table=keyof typeof tables;
@@ -112,7 +114,7 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='page_segment_cache'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     const sourceOwners=new Set<unknown>(),legacyEntities=new Map(rows.entities.map(row=>[row.id,row]));
     const legacyProperties=[...rows.properties],legacyLinks=[...rows.page_sources];
     for(const file of rows.source_files) {
@@ -311,7 +313,16 @@ export class VaultBackups {
           insert('page_ai_enrichments',{page_id:ref(pageIds,row.page_id),kind,data:JSON.stringify(data),revision:integer(row,'revision',1),model:name(row,'model'),reasoning_effort:string(row,'reasoning_effort',20),updated_at:timestamp(row,'updated_at'),content_hash:nullable(row,'content_hash',100)});
         }
         if(rows.embedding_settings.length>1)throw invalid();
-        for(const row of rows.embedding_settings)insert('embedding_settings',{vault_id:vault,automatic:integer(row,'automatic',0,1),min_characters:integer(row,'min_characters',20,2000)});
+        for(const row of rows.embedding_settings) {
+          const policy=row.page_policy==null?null:json(row,'page_policy');
+          if(policy!==null&&!isPageIndexPolicy(policy))throw invalid();
+          insert('embedding_settings',{vault_id:vault,automatic:integer(row,'automatic',0,1),min_characters:integer(row,'min_characters',20,2000),page_policy:policy===null?null:JSON.stringify(policy)});
+        }
+        for(const row of rows.page_segment_cache) {
+          const dimensions=integer(row,'dimensions',1,4096),vector=list(json(row,'vector'));
+          if(vector.length!==dimensions||vector.some(value=>typeof value!=='number'||!Number.isFinite(value)))throw invalid();
+          insert('page_segment_cache',{page_id:ref(pageIds,row.page_id),model:name(row,'model'),dimensions,content_hash:string(row,'content_hash',100),vector:JSON.stringify(vector),tokens:integer(row,'tokens'),updated_at:timestamp(row,'updated_at')});
+        }
         for(const row of rows.note_embeddings) {
           const dimensions=integer(row,'dimensions',1,4096),vector=list(json(row,'vector'));
           if(vector.length!==dimensions||vector.some(value=>typeof value!=='number'||!Number.isFinite(value)))throw invalid();

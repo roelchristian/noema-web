@@ -10,6 +10,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { BlockType, Segment } from '../shared/domain.js';
 import { now } from './validation.js';
+import {setupPageSegmentSchema} from './page-segment-schema.js';
 import {setupSourceAuthorSchema} from './source-author-schema.js';
 import {setupSourcePassageSchema} from './source-passage-schema.js';
 import {setupSourcePassageEmbeddingSchema} from './source-passage-embedding-schema.js';
@@ -208,7 +209,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS embedding_settings (
  );
  CREATE INDEX IF NOT EXISTS embedding_jobs_queue ON embedding_jobs(status,next_attempt_at);
  CREATE INDEX IF NOT EXISTS embedding_jobs_vault ON embedding_jobs(vault_id,created_at DESC);
- CREATE UNIQUE INDEX IF NOT EXISTS embedding_jobs_active ON embedding_jobs(page_id) WHERE status IN ('queued','running');`);
+`);
 if (!db.prepare('PRAGMA table_info(entities)').all().some(c => c.name === 'subtype')) db.exec('ALTER TABLE entities ADD COLUMN subtype TEXT');
 if (!db.prepare('PRAGMA table_info(entities)').all().some(c => c.name === 'aliases')) db.exec("ALTER TABLE entities ADD COLUMN aliases TEXT NOT NULL DEFAULT '[]'");
 if (!db.prepare('PRAGMA table_info(entities)').all().some(c => c.name === 'mention_case')) db.exec("ALTER TABLE entities ADD COLUMN mention_case TEXT NOT NULL DEFAULT 'canonical' CHECK (mention_case IN ('canonical','lowercase')); UPDATE pages SET summary_content_hash=NULL;");
@@ -400,6 +401,7 @@ if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
    store.run("INSERT INTO schema_migrations VALUES (4,datetime('now'))");
   });
  }
+ setupPageSegmentSchema(db);
  setupSourceAuthorSchema(db);
  setupSourcePassageSchema(db);
  setupSourcePassageEmbeddingSchema(db);

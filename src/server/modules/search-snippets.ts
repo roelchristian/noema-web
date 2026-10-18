@@ -1,3 +1,4 @@
+import {projectPageText} from '../../shared/page-text.js';
 import {entityMentionName, type Page, type Segment} from '../../shared/domain.js';
 import {makeSearchSnippet} from '../../shared/search-snippets.js';
 import {HttpError} from '../validation.js';
@@ -8,8 +9,7 @@ import {Vaults} from './vaults.js';
 // Search excerpts share the same plain-text representation as embedding input.
 // Titles stay separate, and mention names are resolved inside the active vault.
 export function pageBodyText(vault: string,page: Page,knowledge: Knowledge): string {
- const segments=(items: Segment[])=>items.map(s=>s.entityId ? s.mentionText ?? entityMentionName(knowledge.find(vault,s.entityId)) ?? '' : s.text ?? '').join('');
- return page.blocks.map(b=>(b.type==='table'||b.type==='columns') ? (b.rows ?? []).map(row=>row.map(segments).join(' | ')).join('\n') : segments(b.content)).join('\n').trim();
+ return projectPageText(page.blocks,id=>entityMentionName(knowledge.find(vault,id))).text;
 }
 export class SearchSnippets {
  constructor(private pages: Pages,private knowledge: Knowledge,private vaults: Vaults) {}

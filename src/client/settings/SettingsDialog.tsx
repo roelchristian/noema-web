@@ -1,3 +1,4 @@
+import type {PageReference} from '../../shared/embeddings';
 import { AIDebugSettings } from './AIDebugSettings';
 import { ImageSettings } from './ImageSettings';
 import { SecuritySettings } from './SecuritySettings';
@@ -24,7 +25,7 @@ export function SettingsDialog({appearance, onChange, storageError, onClose, onO
   onBeforeNetworkChange: () => Promise<void>;
   vault: Vault | null;
   onOpenPassage: (vaultId:string,reference:SourceReference)=>Promise<void>;
-  onOpenPage: (vaultId: string, pageId: string) => Promise<void>;
+  onOpenPage: (vaultId: string, pageId: string,reference?:PageReference) => Promise<void>;
   onOpenEntity: (vaultId: string, entityId: string) => Promise<void>;
   appearance: Appearance; onChange: (appearance: Appearance) => void; storageError: boolean; onClose: () => void;
 }) {

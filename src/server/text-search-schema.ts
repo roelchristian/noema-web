@@ -86,6 +86,7 @@ export function setupTextSearchSchema(db: DatabaseSync): void {
         INSERT INTO metadata(key,value) VALUES ('source-passages-fts-v1-backfill','complete');
       `);
     }
+    if (!db.prepare("SELECT 1 FROM metadata WHERE key='page-projection-v1'").get()) {db.exec("INSERT OR REPLACE INTO text_search_dirty SELECT 'page',id,vault_id FROM pages WHERE deleted_at IS NULL; INSERT INTO metadata(key,value) VALUES('page-projection-v1','queued');");}
     if (!db.prepare("SELECT 1 FROM metadata WHERE key='text-search-v1-backfill'").get()) {
       db.exec(`
         INSERT OR REPLACE INTO text_search_dirty SELECT 'page',id,vault_id FROM pages WHERE deleted_at IS NULL;

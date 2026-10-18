@@ -1,4 +1,4 @@
-import {citationSourceIds} from '../../shared/citations';
+import {PageSources} from './PageSources';
 import {PageMetadata} from './PageMetadata';
 import {PageConceptCategory} from './PageConceptCategory';
 import {NoteConnections} from './NoteConnections';
@@ -9,13 +9,10 @@ import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps } fro
 import { api } from '../api';
 import { ConnectedEntities } from './ConnectedEntities';
 import { Icon } from '../components/Icon';
-import { Select } from '../components/Select';
 import type { CreateEntityRequest } from '../knowledge/CreateEntityDialog';
-import { Mention } from '../components/Mention';
 import type { AIEnrichment, AISummary, Entity, Page, PageSummary } from '../../shared/domain';
 interface KnowledgeSnapshot { summary:AISummary|null; scan:EntityScan|null }
 function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnapshot,page,pages,onOpenPage,entities,onOpenEntity,onSourcesChange,onCreateEntity,onClose,onSettings,onFlush,onReview,onDomainsChange}:{onDomainsChange?:(primary:string|null,secondary:string[])=>Promise<void>;inactive?:boolean;initialItems:AIEnrichment[];initialError:string;snapshot?:KnowledgeSnapshot;onSnapshot:(snapshot:KnowledgeSnapshot)=>void;page:Page;pages:PageSummary[];onOpenPage:(id:string)=>void;entities:Entity[];onOpenEntity:(id:string)=>void;onSourcesChange:(sourceIds:string[])=>void;onCreateEntity:(request:CreateEntityRequest)=>void;onClose:()=>void;onSettings:()=>void;onFlush:()=>Promise<Page|null>;onReview:(scanId:string,id:string|string[],decision:'accepted'|'rejected',edits?:EntitySuggestionEdit[])=>Promise<EntityScan>}) {
-  const citedSources=new Set(citationSourceIds(page.blocks));
   const [busy,setBusy]=useState(false),[error,setError]=useState(initialError),[result,setResult]=useState<AISummary|null>(()=>{
     if(snapshot)return snapshot.summary;
     const saved=initialItems.find(item=>item.kind==='summary');
@@ -86,11 +83,7 @@ function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnap
         <EntityScanReview entities={entities} page={page} scan={scan} onScan={setScan} onFlush={onFlush} onReview={onReview} disabled={!!page.editLocked||busy||deleting||loading}/>
       </ConnectedEntities>
     <NoteConnections key={page.vault_id+'/'+page.id} page={page} pages={pages} onOpenPage={onOpenPage} inactive={inactive}/>
-    <section className="knowledge-sources" aria-labelledby="knowledge-sources-heading">
-      <div className="knowledge-section-heading"><h2 id="knowledge-sources-heading"><Icon name="source"/>Sources<span className="knowledge-count">{page.sourceIds.length}</span></h2><button type="button" className="knowledge-icon-action" disabled={!!page.editLocked} aria-label="New source" title="New source" onClick={()=>onCreateEntity({source:true})}><Icon name="plus"/></button></div>
-      {!!page.sourceIds.length&&<div className="toolbar-source-list">{page.sourceIds.map(id=><div key={id} className="page-source"><Mention id={id} entities={entities} onOpen={onOpenEntity}/><button type="button" disabled={!!page.editLocked||citedSources.has(id)} title={citedSources.has(id)?'Cited in this page':'Detach source'} aria-label={'Remove source from page: '+(entities.find(entity=>entity.id===id)?.name||id)} onClick={()=>onSourcesChange(page.sourceIds.filter(source=>source!==id))}><Icon name="close"/></button></div>)}</div>}
-      <div className="toolbar-source-actions"><Select disabled={!!page.editLocked} aria-label="Attach existing source" value="" onChange={event=>{if(event.target.value)onSourcesChange([...new Set([...page.sourceIds,event.target.value])]);}}><option value="">Attach source…</option>{entities.filter(entity=>entity.type==='source'&&!entity.inactive&&!page.sourceIds.includes(entity.id)).map(entity=><option key={entity.id} value={entity.id}>{entity.name}</option>)}</Select></div>
-    </section>
+    <PageSources page={page} entities={entities} onOpenEntity={onOpenEntity} onSourcesChange={onSourcesChange} onCreateSource={()=>onCreateEntity({source:true})}/>
       <PageMetadata page={page}/>
     </div>
   </aside>;

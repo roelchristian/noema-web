@@ -60,6 +60,10 @@ export function syncSourceReferences(store:Store,pageId:string,blocks:Block[]) {
     }
   };
   for(const block of blocks){record(block,block.content);block.rows?.forEach((row,r)=>row.forEach((cell,c)=>record(block,cell,r,c)));}
+  // A file stays linked while any anchor cites it; removing the last one removes the link.
+  store.run(`DELETE FROM note_source_files WHERE page_id=? AND NOT EXISTS (
+    SELECT 1 FROM note_source_references WHERE page_id=note_source_files.page_id AND file_id=note_source_files.file_id
+  )`,pageId);
 }
 
 function referencePages(file:SourceFile,startLine:number,endLine:number) {

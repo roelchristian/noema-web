@@ -47,7 +47,7 @@ export function segmentHTML(content: Segment[], entities: Entity[], review?: Rev
   const ranges = review ? entityReviewRanges(content, entities, review) : [];
   let offset = 0;
   const numberOf=(ref:NonNullable<Segment['sourceReference']>)=>citations?.style==='references'?citations.entries.get(citationKey(ref))?.number??ref.sourceNumber??1:ref.sourceNumber??1;
-  const ordered=sortCitationRuns(content,(left,right)=>numberOf(left)-numberOf(right));
+  const ordered=readOnly?sortCitationRuns(content,(left,right)=>numberOf(left)-numberOf(right)):content;
   const last=ordered.at(-1);
   // WebKit needs an editable text position after a trailing noneditable atom.
   // Otherwise an entity-only line can paint its caret at the block's far edge.

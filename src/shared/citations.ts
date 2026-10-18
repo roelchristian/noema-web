@@ -51,3 +51,40 @@ export function sortCitationRuns(content:import('./domain.js').Segment[], compar
   }
   return result;
 }
+
+/** Normalize only horizontal runs of citations; prose and line breaks separate groups. */
+export function cleanCitationGroups(content:import('./domain.js').Segment[],compare:(left:SourceReference,right:SourceReference)=>number) {
+  const result:import('./domain.js').Segment[]=[];
+  let changed=false;
+  for(let index=0;index<content.length;){
+    if(!content[index]!.sourceReference){result.push(content[index++]!);continue;}
+    const positions=[index];
+    let cursor=index+1;
+    for(;cursor<content.length;cursor++){
+      const segment=content[cursor]!;
+      if(segment.sourceReference)positions.push(cursor);
+      else if(segment.entityId||segment.math||segment.code||segment.href||segment.text===undefined||!/^[^\S\r\n]*$/.test(segment.text))break;
+    }
+    const seen=new Set<string>();
+    const unique=positions.map(position=>content[position]!).filter(segment=>{
+      const key=citationKey(segment.sourceReference!);if(seen.has(key))return false;seen.add(key);return true;
+    }).sort((left,right)=>compare(left.sourceReference!,right.sourceReference!));
+    const last=positions.at(-1)!;
+    const same=unique.length===positions.length&&unique.every((segment,i)=>segment===content[positions[i]!]);
+    if(same)result.push(...content.slice(index,last+1));
+    else {
+      changed=true;
+      unique.forEach((segment,i)=>{
+        if(i)result.push(...content.slice(positions[i-1]!+1,positions[i]!));
+        result.push(segment);
+      });
+    }
+    index=last+1;
+  }
+  return changed?result:content;
+}
+
+/** Source attachments implied by citations, including citations in table cells. */
+export function citationSourceIds(blocks:Block[]):string[] {
+  return [...new Set(blocks.flatMap(block=>blockSegments(block).flatMap(segment=>segment.sourceReference?[segment.sourceReference.sourceId]:[])))];
+}

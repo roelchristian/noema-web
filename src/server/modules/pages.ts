@@ -1,3 +1,4 @@
+import {citationSourceIds} from '../../shared/citations.js';
 import {PageEnrichmentState} from './page-enrichment-state.js';
 import {Domains} from './domains.js';
 import {enrichCitationPages,syncSourceReferences} from './source-references.js';
@@ -58,7 +59,7 @@ export class Pages {
     const editLock=this.store.get<{password_hash:string|null}>('SELECT password_hash FROM page_edit_locks WHERE page_id=? AND vault_id=?',id,vault);
     const domainService=new Domains(this.store);
     domainService.assess({...stored,blocks,conceptContentHash:conceptContentHash({...stored,blocks},resolveName)} as Page,resolveName);
-    return {...stored,enrichmentFields:new PageEnrichmentState(this.store).get(id).fields,enrichmentPending:!!this.store.get('SELECT 1 FROM page_enrichment_jobs WHERE page_id=?',id),pageDomains:domainService.get(id,conceptContentHash({...stored,blocks},resolveName)),aiStatus,editLocked:!!editLock,editProtected:!!editLock?.password_hash,featuredImageId,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id)};
+    return {...stored,enrichmentFields:new PageEnrichmentState(this.store).get(id).fields,enrichmentPending:!!this.store.get('SELECT 1 FROM page_enrichment_jobs WHERE page_id=?',id),pageDomains:domainService.get(id,conceptContentHash({...stored,blocks},resolveName)),aiStatus,editLocked:!!editLock,editProtected:!!editLock?.password_hash,featuredImageId,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:[...new Set([...this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id),...citationSourceIds(blocks).filter(sourceId=>this.knowledge.find(vault,sourceId)?.type==='source')])]};
   }
   requireEditable(vault: string, id: string) {
     const page=this.get(vault,id);
@@ -204,7 +205,9 @@ export class Pages {
     let featuredImageId=body.featuredImageId===undefined?page.featuredImageId??null:body.featuredImageId===null?null:required(body.featuredImageId);
     if(featuredImageId!==null && !blocks.some(block=>block.type==='image' && block.imageId===featuredImageId))featuredImageId=null;
     if(featuredImageId!==null)new Images(this.store).require(vault,featuredImageId);
-    const sourceIds=body.sourceIds ?? page.sourceIds;
+    const requestedSourceIds=body.sourceIds ?? page.sourceIds;
+    if(!Array.isArray(requestedSourceIds))throw new HttpError(400,'Page sources must be Source entities in this vault');
+    const sourceIds=[...new Set([...requestedSourceIds,...citationSourceIds(blocks)])];
     if(!Array.isArray(sourceIds)||sourceIds.length>1000||sourceIds.some(s=>typeof s!=='string'||this.knowledge.find(vault,s)?.type!=='source'))throw new HttpError(400,'Page sources must be Source entities in this vault');
     if(body.revision!==undefined && (!Number.isInteger(body.revision)||body.revision!==page.revision))throw new HttpError(409,'This page changed in another window. Reload the latest page before saving.');
     const names=new Map<string,string|undefined>();

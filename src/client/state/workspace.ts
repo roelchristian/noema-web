@@ -1,3 +1,4 @@
+import {citationSourceIds} from '../../shared/citations';
 import { readWorkspaceURL, workspaceURL, type NavigationAddress, type WorkspaceAddress } from './navigation-address';
 import {clearLibraryViewStates} from './library-view-state';
 import {clearEntityDrafts, pruneEntityDrafts} from '../knowledge/entity-drafts';
@@ -530,6 +531,7 @@ export class Workspace {
     const current = this.state.page;
     if (!current || current.editLocked || this.pageLockPending || this.state.busy || this.state.loadingPageId !== null || this.state.reviewing || this.state.vault?.locked) return;
     const page = {...current, ...patch,...(patch.blocks&&patch.blocks!==current.blocks?{conceptContentHash:undefined}:{})};
+    page.sourceIds=[...new Set([...page.sourceIds,...citationSourceIds(page.blocks)])];
     page.aiStatus=nextPageAIStatus(current,page,id=>entityMentionName(this.state.entities.find(entity=>entity.id===id)));
     if(page.featuredImageId && !page.blocks.some(block=>block.type==='image' && block.imageId===page.featuredImageId))page.featuredImageId=null;
     this.pageCache.set(page.id, page);

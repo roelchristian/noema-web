@@ -11,7 +11,7 @@ import {mentionCaretRect,mentionMatches} from './mention-picker';
 
 type LoadedFile=SourceFile & {textHash:string;document?:SourceDocument};
 type Location={label:string;nodeId?:string;reference?:SourceReference};
-interface Props {vaultId:string;entities:Entity[];blocks:Block[];anchor:Range;editor:HTMLElement;onInsert:(references:SourceReference[])=>void;onClose:(restoreFocus?:boolean)=>void}
+interface Props {vaultId:string;entities:Entity[];blocks:Block[];getAnchor:()=>Range|null;editor:HTMLElement;onInsert:(references:SourceReference[])=>void;onClose:(restoreFocus?:boolean)=>void}
 
 function referenceFor(file:LoadedFile,location:Location):SourceReference {
   const label=location.label.trim(),entries=file.document?sourceDocumentEntries(file.document):[];
@@ -39,7 +39,7 @@ function referenceFor(file:LoadedFile,location:Location):SourceReference {
   return ref;
 }
 
-export function CitationPicker({vaultId,entities,blocks,anchor,editor,onInsert,onClose}:Props) {
+export function CitationPicker({vaultId,entities,blocks,getAnchor,editor,onInsert,onClose}:Props) {
   const popup=useRef<HTMLDivElement>(null),search=useRef<HTMLInputElement>(null),locationInput=useRef<HTMLInputElement>(null);
   const [query,setQuery]=useState(''),[source,setSource]=useState<Entity|null>(null),[files,setFiles]=useState<SourceFile[]|null>(null),[fileId,setFileId]=useState('');
   const [file,setFile]=useState<LoadedFile|null>(null),[error,setError]=useState(''),[retry,setRetry]=useState(0),[index,setIndex]=useState(0);
@@ -88,7 +88,8 @@ export function CitationPicker({vaultId,entities,blocks,anchor,editor,onInsert,o
   useLayoutEffect(()=>{
     const element=popup.current;if(!element)return;
     const position=()=>{
-      if(!anchor.startContainer.isConnected||!editor.isConnected){onClose();return;}
+      const anchor=getAnchor();
+      if(!anchor){onClose();return;}
       const visible=window.visualViewport;
       const viewport={left:visible?.offsetLeft??0,top:visible?.offsetTop??0,width:visible?.width??innerWidth,height:visible?.height??innerHeight};
       const rect=mentionCaretRect(anchor,editor);
@@ -100,14 +101,14 @@ export function CitationPicker({vaultId,entities,blocks,anchor,editor,onInsert,o
     position();const observer=new ResizeObserver(position);observer.observe(element);
     window.addEventListener('scroll',position,true);window.addEventListener('resize',position);window.visualViewport?.addEventListener('resize',position);window.visualViewport?.addEventListener('scroll',position);
     return()=>{observer.disconnect();window.removeEventListener('scroll',position,true);window.removeEventListener('resize',position);window.visualViewport?.removeEventListener('resize',position);window.visualViewport?.removeEventListener('scroll',position);};
-  },[anchor,editor,onClose]);
+  },[getAnchor,editor,onClose]);
   useEffect(()=>{
     const outside=(event:PointerEvent)=>{if(!popup.current?.contains(event.target as Node))onClose();};
     document.addEventListener('pointerdown',outside);return()=>document.removeEventListener('pointerdown',outside);
   },[onClose]);
   const choose=(entity:Entity)=>{setSource(entity);setQuery('');setIndex(0);};
   const insert=()=>{if(file)onInsert(locations.map(location=>location.reference?{...location.reference,id:randomUUID()}:referenceFor(file,location)));};
-  return <div ref={popup} className="citation-picker selection-popover" role="dialog" aria-modal="false" aria-label="Add citation" onKeyDown={event=>{
+  return <div ref={popup} className="citation-picker selection-popover" role="dialog" aria-modal="false" aria-label="Add citation" onMouseDown={event=>{if((event.target as Element).closest('button'))event.preventDefault();}} onKeyDown={event=>{
     if(event.key==='Escape'){event.preventDefault();event.stopPropagation();onClose(true);}
   }}>
     <div className="citation-picker-heading"><Icon name="source"/><strong>Add citation</strong><button type="button" aria-label="Close citation picker" onClick={()=>onClose(true)}><Icon name="close"/></button></div>

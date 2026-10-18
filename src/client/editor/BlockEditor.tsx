@@ -1,4 +1,8 @@
 import {CitationPicker} from './CitationPicker';
+import {citationKey,cleanCitationGroups,noteCitations} from '../../shared/citations';
+import {citationSpace,trimTrailingCitationSpace,trimLeadingCitationSpace} from './citation-spacing';
+import {bookmarkCitationRange,resolveCitationRange,type CitationBookmark} from './citation-bookmark';
+import {deleteEditorCitation} from './citation-deletion';
 import {CitationPresentationContext} from '../sources/CitationPresentation';
 import {mentionMatches,mentionCaretRect} from './mention-picker';
 import {menuPlacement,revealMenuItem} from '../components/menu-placement';
@@ -86,6 +90,8 @@ function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOp
     onPaste={onPaste}/>;
 }
 export function BlockEditor(props: Props) {
+  const presentation=useContext(CitationPresentationContext);
+  const presentationRef=useRef(presentation);presentationRef.current=presentation;
   const markdownTyping=useMarkdownTyping();
   const mobile = useMobileViewport();
   const [activeBlock, setActiveBlock] = useState<{id: string; group: boolean} | null>(null);
@@ -119,7 +125,7 @@ export function BlockEditor(props: Props) {
   const reviewMatches = props.reviewMatches ?? [];
   const dragStatus = useRef<HTMLDivElement>(null);
   function announceDrag(message: string) {if (dragStatus.current) dragStatus.current.textContent = message;}
-  const [citationTarget,setCitationTarget]=useState<{range:Range;editor:HTMLElement;blockId:string}|null>(null);
+  const [citationTarget,setCitationTarget]=useState<{bookmark:CitationBookmark;editor:HTMLElement;blockId:string}|null>(null);
   const [mathTarget, setMathTarget] = useState<{range: Range; initial: string; node?: HTMLElement} | null>(null);
   const [uploads, setUploads] = useState<ImageUpload[]>([]), [imageError, setImageError] = useState('');
   const uploadQueue = useRef(Promise.resolve());
@@ -128,6 +134,47 @@ export function BlockEditor(props: Props) {
   const fileInput = useRef<HTMLInputElement>(null), imageTarget = useRef<{after?: string; replace?: Block}>({});
   const [menu, setMenu] = useState<Menu | null>(null), elements = useRef(new Map<string, HTMLElement>());
   const root = useRef<HTMLDivElement>(null), menuRef = useRef<HTMLDivElement>(null), latest = useRef(props); latest.current = {...props,blocks,onChange};
+  useEffect(()=>{
+    const editor=root.current;if(!editor)return;
+    const owner=(target:EventTarget|null)=>{
+      const row=target instanceof Element?target.closest<HTMLElement>('[data-block-id]'):null;
+      return row&&editor.contains(row)?row.dataset.blockId??null:null;
+    };
+    let activeId=owner(document.activeElement),frame:number|undefined;
+    const cleanup=(id:string)=>{
+      const current=latest.current.blocks,entries=noteCitations(current);
+      const numberOf=(ref:SourceReference)=>presentationRef.current.style==='references'?entries.get(citationKey(ref))?.number??ref.sourceNumber??1:ref.sourceNumber??1;
+      const normalize=(content:Segment[])=>trimTrailingCitationSpace(cleanCitationGroups(content,(left,right)=>numberOf(left)-numberOf(right)));
+      let changed=false;
+      const next=current.map(block=>{
+        if(block.id!==id||isAIExplanation(block))return block;
+        const content=normalize(block.content);
+        const rows=block.rows?.map(row=>row.map(normalize));
+        const rowsChanged=rows?.some((row,r)=>row.some((cell,c)=>cell!==block.rows![r]![c]));
+        if(content===block.content&&!rowsChanged)return block;
+        changed=true;return {...block,content,...(rowsChanged?{rows}:{})};
+      });
+      if(changed)latest.current.onChange(next);
+    };
+    const schedule=(nextId:string|null)=>{
+      if(frame!==undefined)cancelAnimationFrame(frame);
+      frame=requestAnimationFrame(()=>{
+        frame=undefined;
+        if(activeId===nextId)return;
+        const previous=activeId;activeId=nextId;
+        if(previous)cleanup(previous);
+      });
+    };
+    const move=(event:FocusEvent|PointerEvent)=>{
+      const target=event.target;
+      // Pickers and formatting controls continue the current block's editing session.
+      if(target instanceof Element&&target.closest('.selection-popover,.command-menu,.mobile-block-toolbar,dialog'))return;
+      schedule(owner(target));
+    };
+    const blur=()=>schedule(null);
+    document.addEventListener('focusin',move);document.addEventListener('pointerdown',move,true);window.addEventListener('blur',blur);
+    return()=>{if(frame!==undefined)cancelAnimationFrame(frame);document.removeEventListener('focusin',move);document.removeEventListener('pointerdown',move,true);window.removeEventListener('blur',blur);};
+  },[]);
   useLayoutEffect(()=>{
     if(!menu?.anchor||!menu.anchorElement||!menuRef.current)return;
     const popup=menuRef.current,anchor=menu.anchor,editor=menu.anchorElement;
@@ -215,6 +262,18 @@ export function BlockEditor(props: Props) {
       announce: announceDrag,
     });
   }, []);
+  useEffect(()=>{
+    const editor=root.current;if(!editor)return;
+    const beforeInput=(event:InputEvent)=>{
+      if(!event.cancelable||event.isComposing)return;
+      const direction=event.inputType==='deleteContentBackward'?'backward':event.inputType==='deleteContentForward'?'forward':null;
+      if(direction&&deleteEditorCitation(editor,event.target,direction)){
+        event.preventDefault();event.stopPropagation();commitSelection();
+      }
+    };
+    editor.addEventListener('beforeinput',beforeInput);
+    return()=>editor.removeEventListener('beforeinput',beforeInput);
+  },[]);
   function commitSelection() {
     const list = latest.current.blocks.map(block => {
       const row = root.current?.querySelector<HTMLElement>(`[data-block-id="${block.id}"]`);
@@ -471,21 +530,23 @@ export function BlockEditor(props: Props) {
     if(el)update(blockId,{content:readSegments(el)});setMenu(null);
   }
   function closeCitation(restoreFocus=false) {
-    if(restoreFocus&&citationTarget?.range.startContainer.isConnected){
-      const range=citationTarget.range.cloneRange();range.collapse(false);
+    const range=citationTarget?resolveCitationRange(citationTarget.editor,citationTarget.bookmark):null;
+    if(restoreFocus&&range&&citationTarget){
+      range.collapse(false);
       citationTarget.editor.focus({preventScroll:true});getSelection()?.removeAllRanges();getSelection()?.addRange(range);
     }
     setCitationTarget(null);
   }
   function insertCitations(references:SourceReference[]) {
     if(!citationTarget)return;
-    const {range,editor,blockId}=citationTarget;
-    if(!range.startContainer.isConnected||!editor.contains(range.startContainer)||!latest.current.blocks.some(block=>block.id===blockId)){setCitationTarget(null);return;}
+    const {bookmark,editor,blockId}=citationTarget;
+    const range=resolveCitationRange(editor,bookmark);
+    if(!range||!latest.current.blocks.some(block=>block.id===blockId)){setCitationTarget(null);setPageLinkStatus('The insertion text changed. Type /cite again to choose a new position.');return;}
     range.deleteContents();
     const wrapper=document.createElement('div');
-    wrapper.innerHTML=segmentHTML(references.map(sourceReference=>({text:' [ref]',sourceReference})),latest.current.entities);
+    wrapper.innerHTML=segmentHTML(references.flatMap(sourceReference=>[{text:' [ref]',sourceReference},{text:citationSpace}]),latest.current.entities);
     const fragment=document.createDocumentFragment();while(wrapper.firstChild)fragment.append(wrapper.firstChild);
-    const space=document.createTextNode(' ');fragment.append(space);range.insertNode(fragment);range.setStartAfter(space);range.collapse(true);
+    const last=fragment.lastChild!;range.insertNode(fragment);range.selectNodeContents(last);range.collapse(false);
     editor.focus({preventScroll:true});getSelection()?.removeAllRanges();getSelection()?.addRange(range);
     update(blockId,{content:readSegments(editor)});setCitationTarget(null);
   }
@@ -500,7 +561,8 @@ export function BlockEditor(props: Props) {
       const start=range.startOffset-cite[1]!.length-1;
       if(start>=0){
         const saved=range.cloneRange();saved.setStart(range.startContainer,start);
-        citeChoice=[{title:'Cite',detail:'Add a source, section, or citation range',icon:'source',entity:true,pick:()=>{setMenu(null);setCitationTarget({range:saved,editor:el,blockId:block.id});}}];
+        const bookmark=bookmarkCitationRange(el,saved);
+        citeChoice=[{title:'Cite',detail:'Add a source, section, or citation range',icon:'source',entity:true,pick:()=>{setMenu(null);setCitationTarget({bookmark,editor:el,blockId:block.id});}}];
       }
     }
     if (/^\/[^\n]*$/.test(el.textContent || '')) {
@@ -577,8 +639,11 @@ export function BlockEditor(props: Props) {
       if (!el.textContent && ['bullet', 'numbered', 'todo'].includes(block.type)) { convert(block, 'paragraph'); return; }
       const selection = getSelection(); if (!selection?.rangeCount) return;
       const range = selection.getRangeAt(0); range.deleteContents(); const tail = range.cloneRange(); tail.setEnd(el, el.childNodes.length); const temp = document.createElement('div'); temp.append(tail.extractContents());
-      const next: Block = {column:block.column,...(isAIExplanation(block)?{semantic:'ai-explanation' as const}:{}),...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{}),id: randomUUID(), type: ['bullet', 'numbered', 'todo'].includes(block.type) ? block.type : 'paragraph', checked: false, content: readSegments(temp)};
-      const list = latest.current.blocks.map(b => b.id === block.id ? {...b, content: readSegments(el)} : b); list.splice(list.findIndex(b => b.id === block.id) + 1, 0, next); focusTarget.current = {id: next.id, start: true}; onChange(list);
+      const head=trimTrailingCitationSpace(readSegments(el));
+      const tailContent=readSegments(temp);
+      const nextContent=head.at(-1)?.sourceReference?trimLeadingCitationSpace(tailContent):tailContent;
+      const next: Block = {column:block.column,...(isAIExplanation(block)?{semantic:'ai-explanation' as const}:{}),...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{}),id: randomUUID(), type: ['bullet', 'numbered', 'todo'].includes(block.type) ? block.type : 'paragraph', checked: false, content: nextContent};
+      const list = latest.current.blocks.map(b => b.id === block.id ? {...b, content: head} : b); list.splice(list.findIndex(b => b.id === block.id) + 1, 0, next); focusTarget.current = {id: next.id, start: true}; onChange(list);
     }
     if (e.key === 'Backspace' && !el.textContent && blocks.length > 1) { e.preventDefault(); removeBlock(block.id); }
   }
@@ -671,6 +736,9 @@ export function BlockEditor(props: Props) {
       const math = (e.target as Element).closest<HTMLElement>('[data-math]');
       if (math && !(e.target as Element).closest('[data-semantic-kind="ai-explanation"]')) {e.preventDefault(); e.stopPropagation(); editInlineMath(math);}
     }} onKeyDownCapture={e => {
+      if(!e.nativeEvent.isComposing&&!e.metaKey&&!e.ctrlKey&&!e.altKey&&(e.key==='Backspace'||e.key==='Delete')&&root.current&&deleteEditorCitation(root.current,e.target,e.key==='Backspace'?'backward':'forward')){
+        e.preventDefault();e.stopPropagation();commitSelection();return;
+      }
       const command=shortcutTextFormat(e.nativeEvent),editor=root.current;
       if(command&&editor&&!(e.target as Element).closest('input,textarea,button,select,[contenteditable="false"]')) {
         const range=editorSelectionRange(editor);
@@ -708,7 +776,7 @@ export function BlockEditor(props: Props) {
         <button type="button" className="button primary" autoFocus onClick={() => setLinkedDeletion([])}>{linkedExplanations.length === 1 ? 'Keep explanation' : 'Keep explanations'}</button>
       </div>
     </Modal>}
-    {citationTarget && <CitationPicker vaultId={props.vaultId} entities={entities} blocks={blocks} anchor={citationTarget.range} editor={citationTarget.editor} onInsert={insertCitations} onClose={closeCitation}/>}
+    {citationTarget && <CitationPicker vaultId={props.vaultId} entities={entities} blocks={blocks} getAnchor={()=>resolveCitationRange(citationTarget.editor,citationTarget.bookmark)} editor={citationTarget.editor} onInsert={insertCitations} onClose={closeCitation}/>}
     {mathTarget && <MathDialog initial={mathTarget.initial} onSave={saveInlineMath} onClose={() => setMathTarget(null)}/>}
     {pageLinkStatus && <div className="note-link-status" role="status">{pageLinkStatus}</div>}
     {imageError && <div className="image-upload-error" role="alert">{imageError}</div>}

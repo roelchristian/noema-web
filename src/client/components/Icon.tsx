@@ -47,7 +47,7 @@ const paths: Record<string, ReactNode> = {
   organism: <><path d="M5 19C3 7 9 3 21 3c0 12-4 18-16 16Zm0 0L16 8M3 21l2-2"/></>,
   culture: <><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6.5h14M5 17.5h14"/></>,
   concept: <><path d="M9 18h6m-5 3h4M8 15c0-2-3-3-3-7a7 7 0 0 1 14 0c0 4-3 5-3 7Z"/></>,
-  source: <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Zm0 0v6h6M8 13h8m-8 4h5"/>,
+  source: <><rect x="3" y="3" width="4" height="18" rx="1"/><rect x="9" y="3" width="4" height="18" rx="1"/><path d="m15 5 3.8-1 4.1 15.5-3.8 1ZM3 7h4m2 0h4M3 17h4m2 0h4"/></>,
   page: <><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8m-8 4h8m-8 4h5"/></>,
   'page-outgoing': <><path d="M19 9V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2M8 7h6M8 11h3"/><path d="M12 14h10m-3-3 3 3-3 3"/></>,
   'page-incoming': <><path d="M19 9V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2M8 7h6M8 11h3"/><path d="M22 14H12m3-3-3 3 3 3"/></>,

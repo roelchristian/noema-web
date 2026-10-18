@@ -17,6 +17,7 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onOpenPassage, onCr
   const [browser, setBrowser] = useLibraryViewState(vaultId, 'knowledge');
   const view = browser.grouping === 'all' ? 'all' : 'folders';
   const type: EntityType | '' = entityTypes.includes(browser.entityType as EntityType) ? browser.entityType as EntityType : '';
+  const sourcesOnly = type === 'source';
   const destination = JSON.stringify(['knowledge', type]);
   const [viewState, setViewState] = useLibraryViewState(vaultId, destination);
   const [viewMode, setViewMode, libraryRef] = useViewMode(JSON.stringify([vaultId, destination]), 'knowledge');
@@ -26,7 +27,7 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onOpenPassage, onCr
   const setSort = (sort: string) => setViewState({sort});
   const filterScope = type ? `${entityLabels[type]} entities` : 'All knowledge entities';
   const query = search.trim().toLowerCase();
-  const scoped = entities.filter(entity => !type || entity.type === type);
+  const scoped = entities.filter(entity => sourcesOnly ? entity.type === 'source' : entity.type !== 'source' && (!type || entity.type === type));
   const textSearch=useTextSearch(vaultId,search,scoped.map(entity=>entity.id+':'+entity.updated_at+':'+entity.sourceStatus).join(','),{pageIds:[],entityIds:scoped.map(entity=>entity.id)},10000);
   const semantic=useSemanticSearch(vaultId,search,{enabled:!!query&&!textSearch.loading});
   const textHits=new Map(textSearch.results.map(hit=>[hit.id,hit]));
@@ -43,21 +44,21 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onOpenPassage, onCr
     if (!aValid || !bValid) return Number(bValid) - Number(aValid) || titleOrder(a.name, b.name);
     return (sort === 'modified-asc' ? aDate - bDate : bDate - aDate) || titleOrder(a.name, b.name);
   });
-  const countLabel = (count: number) => `${count} ${count === 1 ? 'entity' : 'entities'}`;
+  const countLabel = (count: number) => `${count} ${sourcesOnly ? count === 1 ? 'source' : 'sources' : count === 1 ? 'entity' : 'entities'}`;
   const folders = view === 'folders' && !query && !type
-    ? entityTypes.map(item => ({id: item, name: entityLabels[item], count: entities.filter(entity => entity.type === item).length, type: item})) : [];
+    ? entityTypes.filter(item => item !== 'source').map(item => ({id: item, name: entityLabels[item], count: scoped.filter(entity => entity.type === item).length, type: item})) : [];
   folders.sort((a, b) => titleOrder(a.name, b.name));
   function navigate(nextType: EntityType | '' = '') {
     captureLibraryView();
     setBrowser({entityType: nextType});
   }
   return <section ref={libraryRef} className="organization-library organization-browser knowledge-library" data-layout={viewMode} data-library-vault={vaultId} data-library-destination={destination}>
-    <div className="organization-heading pages-home-heading"><div className="library-heading-row"><h1 className="page-heading">Knowledge entities</h1></div><div className="pages-home-actions library-heading-actions"><div className="library-view-filter"><div className="library-view-filter-input"><Icon name="search"/><input type="search" placeholder="Filter this view…" aria-label={`Filter ${filterScope} by name, alias, or source text`} value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => {if (event.key === 'Escape' && search) {event.preventDefault(); setSearch('');}}}/>{search && <button type="button" aria-label="Clear entity filter" onClick={() => setSearch('')}><Icon name="close"/></button>}</div></div><ViewModeSwitch value={viewMode} onChange={setViewMode}/>
-      <button className="button primary" onClick={onCreate}><Icon name="plus"/>New entity</button>
+    <div className="organization-heading pages-home-heading"><div className="library-heading-row"><h1 className="page-heading">{sourcesOnly?'Sources':'Knowledge entities'}</h1></div><div className="pages-home-actions library-heading-actions"><div className="library-view-filter"><div className="library-view-filter-input"><Icon name="search"/><input type="search" placeholder="Filter this view…" aria-label={`Filter ${filterScope} by name, alias, or source text`} value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => {if (event.key === 'Escape' && search) {event.preventDefault(); setSearch('');}}}/>{search && <button type="button" aria-label="Clear entity filter" onClick={() => setSearch('')}><Icon name="close"/></button>}</div></div><ViewModeSwitch value={viewMode} onChange={setViewMode}/>
+      <button className="button primary" onClick={onCreate}><Icon name="plus"/>{sourcesOnly?'New source':'New entity'}</button>
     </div></div>
     {error && <p role="alert">{error}</p>}{textSearch.error&&<p role="status">Source text search unavailable. Name matches remain available.</p>}{(textSearch.loading||semantic.loading)&&<p role="status">Searching source passages…</p>}
     <div className="organization-content">
-      <div className="organization-section-title knowledge-browser-controls">
+      <div className="organization-section-title knowledge-browser-controls" hidden={sourcesOnly}>
         <Select aria-label="Entity grouping" value={view} onChange={event => {captureLibraryView(); setBrowser({grouping: event.target.value, entityType: ''});}}><option value="folders">Browse by type</option><option value="all">Show all</option></Select>
       </div>
       <p className="organization-hint" role="status">{query ? `${countLabel(matches.length)} found` : countLabel(scoped.length)}</p>
@@ -87,7 +88,7 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onOpenPassage, onCr
           {entity.type==='source'&&<button type="button" className="knowledge-source-page" aria-label={'Create page from source: '+entity.name} title={entity.sourceStatus==='ready'&&!entity.inactive?'Create page from source':'Available when source processing finishes successfully'} disabled={entity.sourceStatus!=='ready'||entity.inactive} onClick={()=>onCreatePageFromSource(entity)}><Icon name="sparkles"/></button>}
           <button className="knowledge-open-entity" aria-label={'Open ' + entity.name} onClick={() => onOpen(entity.id)}><Icon name="chevron"/></button>
         </div></article>)}
-      </div> : <div className="organization-empty" role="status"><span className="destination-icon"><Icon name={query ? 'search' : 'folder'}/></span><h2>{query ? 'No matching entities' : 'No entities here yet'}</h2><p>{query ? 'Try another name, phrase, or idea.' : 'Create an entity to get started.'}</p>{query ? <button className="button" onClick={() => setSearch('')}>Clear filter</button> : <button className="button" onClick={onCreate}>New entity</button>}</div>}
+      </div> : <div className="organization-empty" role="status"><span className="destination-icon"><Icon name={query ? 'search' : 'folder'}/></span><h2>{query ? 'No matching entities' : sourcesOnly?'No sources here yet':'No entities here yet'}</h2><p>{query ? 'Try another name, phrase, or idea.' : sourcesOnly?'Import a source to get started.':'Create an entity to get started.'}</p>{query ? <button className="button" onClick={() => setSearch('')}>Clear filter</button> : <button className="button" onClick={onCreate}>{sourcesOnly?'New source':'New entity'}</button>}</div>}
     </div>
   </section>;
 }

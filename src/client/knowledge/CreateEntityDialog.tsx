@@ -10,9 +10,10 @@ import { useEntitySchema } from './useEntitySchema';
 import { Modal, ModalHeader } from '../components/Modal';
 import { Icon } from '../components/Icon';
 import { AliasInput, parseAliases } from './AliasInput';
-export interface CreateEntityRequest {intent?: 'insert'; name?: string; source?: boolean; onCreated?: (id: string) => void}
+export interface CreateEntityRequest {intent?: 'insert'; name?: string; source?: boolean; excludeSources?: boolean; onCreated?: (id: string) => void}
 export function CreateEntityDialog({vaultId, initial, onSubmit, onClose}: {vaultId: string; initial: CreateEntityRequest; onSubmit: (input: EntityInput) => Promise<void>; onClose: () => void}) {
   const [name, setName] = useState(initial.name || ''), [type, setType] = useState<EntityType>(initial.source ? 'source' : 'person');
+  const allowedTypes = entityTypes.filter(type => initial.source ? type === 'source' : !initial.excludeSources || type !== 'source');
   const {schema, error: schemaError} = useEntitySchema(vaultId);
   const [domainIds, setDomainIds] = useState<string[]>([]);
   const [subtypes, setSubtypes] = useState<string[]>([]);
@@ -42,7 +43,7 @@ export function CreateEntityDialog({vaultId, initial, onSubmit, onClose}: {vault
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if(busy||(type==='source'?!sourceReady:!resolvedName.trim()))return;
+    if(busy||!allowedTypes.includes(type)||(type==='source'?!sourceReady:!resolvedName.trim()))return;
     setBusy(true);setError('');
     try {
       let source=stagedSource;
@@ -59,9 +60,9 @@ export function CreateEntityDialog({vaultId, initial, onSubmit, onClose}: {vault
   }
   const namePlaceholder: Partial<Record<EntityType,string>> = {person:'e.g. Ursula K. Le Guin',place:'e.g. Kyoto',organization:'e.g. The Royal Society',event:'e.g. World Expo 2025',creativework:'e.g. The Left Hand of Darkness',organism:'e.g. Ginkgo biloba',culture:'e.g. Japanese',concept:'e.g. Systems thinking',source:'e.g. Interview with Ursula K. Le Guin'};
   return <Modal className="create-entity-dialog" onClose={() => { if (!busy) onClose(); }} titleId="create-dialog-title"><form onSubmit={submit}>
-    <ModalHeader titleId="create-dialog-title" leading={<Icon name={type}/>} closeDisabled={busy}>{initial.intent==='insert'?'Create and insert':initial.source ? 'New source' : 'New entity'}</ModalHeader><p className="modal-description">{initial.intent==='insert'?'Add an entity and keep writing.':'Add to your knowledge library.'}</p>
+    <ModalHeader titleId="create-dialog-title" leading={<Icon name={type}/>} closeDisabled={busy}>{initial.intent==='insert'?'Create and insert':initial.source ? 'New source' : 'New entity'}</ModalHeader><p className="modal-description">{initial.intent==='insert'?'Add an entity and keep writing.':initial.source?'Add a document to your Sources library.':'Add to your knowledge library.'}</p>
     <div className="create-entity-fields">
-      <label>Entity type<Select aria-label="Entity type" value={type} onChange={e => { setType(e.target.value as EntityType); setSubtypes([]); setDomainIds([]); setSourceFile(null); setSourceUrl(''); setStagedSource(null); setSourceMethod(''); setError(''); }} disabled={initial.source || busy}>{entityTypes.map(t => <option key={t} value={t}>{entityLabels[t]}</option>)}</Select></label>
+      {!initial.source&&<label>Entity type<Select aria-label="Entity type" value={type} onChange={e => { setType(e.target.value as EntityType); setSubtypes([]); setDomainIds([]); setSourceFile(null); setSourceUrl(''); setStagedSource(null); setSourceMethod(''); setError(''); }} disabled={busy}>{allowedTypes.map(t => <option key={t} value={t}>{entityLabels[t]}</option>)}</Select></label>}
       {type==='source'&&<label>Add source from (required)<Select aria-label="Add source from" required value={sourceMethod} onChange={event=>{setSourceMethod(event.target.value as 'file'|'url');setSourceFile(null);setSourceUrl('');setStagedSource(null);setError('');}} disabled={busy}><option value="" disabled>Choose file or URL</option><option value="file">File</option><option value="url">URL</option></Select></label>}
       {type==='source'&&sourceMethod&&<section className="source-attachments">
         {sourceMethod==='file'
@@ -77,6 +78,6 @@ export function CreateEntityDialog({vaultId, initial, onSubmit, onClose}: {vault
       {schemaError && <p className="dialog-error" role="alert">{schemaError}</p>}
       {error && <p className="dialog-error" role="alert">{error}</p>}
     </div>
-    <footer className="dialog-actions create-entity-actions"><button type="button" className="button" onClick={onClose} disabled={busy}>Cancel</button><button className="button primary" disabled={busy||(type==='source'?!sourceReady:!resolvedName.trim())}>{busy?'Creating…':initial.intent==='insert'?'Create and insert':'Create entity'}</button></footer>
+    <footer className="dialog-actions create-entity-actions"><button type="button" className="button" onClick={onClose} disabled={busy}>Cancel</button><button className="button primary" disabled={busy||(type==='source'?!sourceReady:!resolvedName.trim())}>{busy?'Creating…':initial.intent==='insert'?'Create and insert':initial.source?'Create source':'Create entity'}</button></footer>
   </form></Modal>;
 }

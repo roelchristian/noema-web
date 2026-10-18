@@ -28,10 +28,10 @@ export interface WorkspaceState {
   entityPanelId: string | null;
   vaults: Vault[]; vault: Vault | null; trash: TrashedPage[]; pages: PageSummary[]; entities: Entity[];
   organization: Organization; organizationContext: OrganizationContext; recent: RecentItem[];
-  page: Page | null; view: 'pages' | 'entities' | 'organization' | 'favourites' | 'recent' | 'trash' | 'inbox'; busy: boolean; loadingPageId: string | null; reviewing: boolean; error: string | null; saveStatus: SaveStatus;
+  sourceId: string | null; page: Page | null; view: 'source' | 'pages' | 'entities' | 'organization' | 'favourites' | 'recent' | 'trash' | 'inbox'; busy: boolean; loadingPageId: string | null; reviewing: boolean; error: string | null; saveStatus: SaveStatus;
 }
 export class Workspace {
-  private state: WorkspaceState = {domainSavingPageId:null,saveFailures: [], draftStorageFailures: [], draftRecoveries: [], entityPanelId: null, canGoBack: false, canGoForward: false, vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
+  private state: WorkspaceState = {sourceId:null,domainSavingPageId:null,saveFailures: [], draftStorageFailures: [], draftRecoveries: [], entityPanelId: null, canGoBack: false, canGoForward: false, vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
   private browserAttached = false;
   private browserInitialized = false;
   private browserSession = '';
@@ -108,8 +108,12 @@ export class Workspace {
   private patch(patch: Partial<WorkspaceState>) {
     const previous = this.state;
     this.state = {...this.state, ...patch};
+    if (this.state.view !== 'source' || !this.state.vault || this.state.vault.locked) this.state = {...this.state, sourceId:null};
+    else if (!this.state.entities.some(entity => entity.id === this.state.sourceId && entity.type === 'source')) {
+      this.state = {...this.state, view:'entities', sourceId:null};
+    }
     if (!this.state.vault || this.state.vault.locked || this.state.vault.id !== previous.vault?.id ||
-      this.state.view !== previous.view || this.state.view === 'pages' && this.state.page?.id !== previous.page?.id ||
+      this.state.view !== previous.view || this.state.view === 'source' && this.state.sourceId !== previous.sourceId || this.state.view === 'pages' && this.state.page?.id !== previous.page?.id ||
       this.state.view === 'organization' && (this.state.organizationContext.collection !== previous.organizationContext.collection || this.state.organizationContext.folder !== previous.organizationContext.folder) ||
       this.state.entityPanelId && !this.state.entities.some(entity => entity.id === this.state.entityPanelId)) {
       this.state = {...this.state, entityPanelId: null};
@@ -122,6 +126,7 @@ export class Workspace {
         localStorage.setItem('noema-address/' + this.state.vault.id, JSON.stringify({
           view: this.state.view, ...this.state.organizationContext,
           pageId: this.state.view === 'pages' ? this.state.page?.id ?? null : null,
+          sourceId: this.state.view === 'source' ? this.state.sourceId : null,
         }));
       } catch { /* Navigation still works when browser storage is unavailable. */ }
     }
@@ -195,6 +200,7 @@ export class Workspace {
   }
   private validAddress(address: NavigationAddress) {
     if (address.entityId && !this.state.entities.some(entity => entity.id === address.entityId)) return false;
+    if (address.view === 'source') return this.state.entities.some(entity => entity.id === address.sourceId && entity.type === 'source');
     if (address.view === 'pages') return this.state.pages.some(page => page.id === address.pageId);
     if (address.view !== 'organization') return true;
     return (!address.collection || this.state.organization.collections.some(item => item.id === address.collection)) &&
@@ -209,7 +215,8 @@ export class Workspace {
       const currentIndex = this.historyIndex;
       this.historyIndex = this.history.filter((address, index) => index <= currentIndex && this.validAddress(address)).length - 1;
       this.history = this.history.filter(address => this.validAddress(address));
-      const address: NavigationAddress = {view: this.state.view, pageId: this.state.view === 'pages' ? this.state.page?.id ?? null : null, entityId: this.state.entityPanelId,
+      const address: NavigationAddress = {view: this.state.view, pageId: this.state.view === 'pages' ? this.state.page?.id ?? null : null,
+          sourceId: this.state.view === 'source' ? this.state.sourceId : null, entityId: this.state.entityPanelId,
         collection: this.state.view === 'organization' ? this.state.organizationContext.collection : '',
         folder: this.state.view === 'organization' ? this.state.organizationContext.folder : ''};
       if (this.validAddress(address) && JSON.stringify(address) !== JSON.stringify(this.history[this.historyIndex])) {
@@ -218,7 +225,7 @@ export class Workspace {
       }
     }
     if (vaultId && !this.state.busy && this.state.loadingPageId === null) this.syncBrowserNavigation({
-      view:this.state.view, pageId:this.state.view === 'pages' ? this.state.page?.id ?? null : null, entityId:this.state.entityPanelId,
+      view:this.state.view, pageId:this.state.view === 'pages' ? this.state.page?.id ?? null : null, sourceId:this.state.view === 'source' ? this.state.sourceId : null, entityId:this.state.entityPanelId,
       collection:this.state.view === 'organization' ? this.state.organizationContext.collection : '',
       folder:this.state.view === 'organization' ? this.state.organizationContext.folder : '',
     });
@@ -236,9 +243,10 @@ export class Workspace {
     this.traversingHistory = true;
     this.patch({});
     try {
-      const sameView = this.state.view === address.view && (address.view === 'pages' ? this.state.page?.id === address.pageId :
+      const sameView = this.state.view === address.view && (address.view === 'pages' ? this.state.page?.id === address.pageId : address.view === 'source' ? this.state.sourceId === address.sourceId :
         address.view !== 'organization' || this.state.organizationContext.collection === address.collection && this.state.organizationContext.folder === address.folder);
       if (!sameView && address.view === 'pages') await this.openPage(address.pageId!);
+      else if (!sameView && address.view === 'source') await this.openSource(address.sourceId!);
       else if (!sameView) await this.navigate(async () => {
         if (address.view === 'trash') this.patch({trash: await api.trash(this.state.vault!.id)});
         this.patch({view: address.view, organizationContext: {collection: address.collection, folder: address.folder}});
@@ -270,10 +278,20 @@ export class Workspace {
       if (!value || typeof value !== 'object' || Array.isArray(value)) return;
       stored = value as Record<string, unknown>;
     } catch { return; }
-    if (typeof stored.view !== 'string' || !['pages', 'organization', 'entities', 'favourites', 'recent', 'trash', 'inbox'].includes(stored.view)) return;
+    if (typeof stored.view !== 'string' || !['pages', 'source', 'organization', 'entities', 'favourites', 'recent', 'trash', 'inbox'].includes(stored.view)) return;
     const collection = organization.collections.some(item => item.id === stored.collection) ? String(stored.collection) : '';
     const folder = !collection && organization.folders.some(item => item.id === stored.folder) ? String(stored.folder) : '';
     this.patch({organizationContext: {collection, folder}, entityPanelId:null});
+    if (stored.view === 'source') {
+      if (typeof stored.sourceId === 'string' && this.state.entities.some(entity => entity.id === stored.sourceId && entity.type === 'source')) {
+        this.patch({view:'source',sourceId:stored.sourceId});
+        if (typeof stored.entityId === 'string' && this.state.entities.some(entity => entity.id === stored.entityId)) this.patch({entityPanelId:stored.entityId});
+      } else {
+        this.patch({view:'entities'});
+        if (explicit) this.report(new Error('This source is unavailable. It may have been deleted.'));
+      }
+      return;
+    }
     if (stored.view === 'pages') {
       if (typeof stored.pageId === 'string' && pages.some(page => page.id === stored.pageId)) {
         const cached = this.pageCache.get(stored.pageId);
@@ -503,6 +521,19 @@ export class Workspace {
       }
     }
   }
+  async openSource(id: string) {
+    const vault = this.state.vault;
+    if (!vault || vault.locked || this.state.busy || this.state.reviewing || this.pageLockPending ||
+      !this.state.entities.some(entity => entity.id === id && entity.type === 'source')) return;
+    if (this.state.view === 'source' && this.state.sourceId === id) return;
+    // Keep the outgoing note and its journal intact until pending writes finish.
+    await this.navigate(async () => {
+      if (this.state.vault?.id !== vault.id || this.state.vault.locked ||
+        !this.state.entities.some(entity => entity.id === id && entity.type === 'source')) return;
+      this.patch({view:'source',sourceId:id,error:null});
+      this.recordRecent('entity',id);
+    });
+  }
   async showPages() { this.openOrganization(); }
   showOrganization(favourites = false) { if (!this.state.busy && this.state.loadingPageId === null) this.patch({view: favourites ? 'favourites' : 'organization'}); }
   showInbox() { if (!this.state.busy && this.state.loadingPageId === null) this.patch({view: 'inbox'}); }
@@ -529,7 +560,7 @@ export class Workspace {
   showEntities() { if (!this.state.busy && this.state.loadingPageId === null) this.patch({view: 'entities'}); }
   updatePage(patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon' | 'featuredImageId'>>) {
     const current = this.state.page;
-    if (!current || current.editLocked || this.pageLockPending || this.state.busy || this.state.loadingPageId !== null || this.state.reviewing || this.state.vault?.locked) return;
+    if (this.state.view !== 'pages' || !current || current.editLocked || this.pageLockPending || this.state.busy || this.state.loadingPageId !== null || this.state.reviewing || this.state.vault?.locked) return;
     const page = {...current, ...patch,...(patch.blocks&&patch.blocks!==current.blocks?{conceptContentHash:undefined}:{})};
     page.sourceIds=[...new Set([...page.sourceIds,...citationSourceIds(page.blocks)])];
     page.aiStatus=nextPageAIStatus(current,page,id=>entityMentionName(this.state.entities.find(entity=>entity.id===id)));

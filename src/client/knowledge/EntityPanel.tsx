@@ -15,12 +15,12 @@ import { entityLabels, entityTypes, type Entity, type EntityDetail, type EntityT
 import { Icon } from '../components/Icon';
 import { Mention } from '../components/Mention';
 import { AliasInput, parseAliases } from './AliasInput';
-interface Props {onCreatePageFromSource:(source:Entity)=>void;onOpenPage: (id: string) => void; refreshKey: string; vaultId: string; id: string; entities: Entity[]; onOpen: (id: string) => void; onClose: () => void; onUpdated: () => Promise<void>; onError: (error: unknown) => void}
+interface Props {inspector?: boolean;onCreatePageFromSource:(source:Entity)=>void;onOpenPage: (id: string) => void; refreshKey: string; vaultId: string; id: string; entities: Entity[]; onOpen: (id: string) => void; onClose: () => void; onUpdated: () => Promise<void>; onError: (error: unknown) => void}
 const entityTabs = [{id: 'overview', label: 'Overview', icon:'page'}, {id: 'connections', label: 'Connections', icon:'knowledge'}, {id: 'edit', label: 'Edit', icon:'edit'}] as const;
 type EntityTab = typeof entityTabs[number]['id'];
 interface EntityConnection {key: string; target: string; label: string}
 export function EntityPanel(props: Props) {
-  const {vaultId, id, entities, onOpen, onClose, onUpdated, onError, onOpenPage, refreshKey} = props;
+  const {vaultId, id, entities, onOpen, onClose, onUpdated, onError, onOpenPage, refreshKey, inspector = false} = props;
   const [entity, setEntity] = useState<EntityDetail | null>(null), [loadingError, setLoadingError] = useState('');
   const [tab, setTab] = useState<EntityTab>(() => hasEntityDraft(vaultId, id) ? 'edit' : 'overview');
   const currentEntityKey = useRef({vaultId, id}); currentEntityKey.current = {vaultId, id};
@@ -53,25 +53,26 @@ export function EntityPanel(props: Props) {
     document.getElementById('entity-panel')?.scrollTo({top: 0});
     document.getElementById('entity-tab-' + next)?.focus({preventScroll: true});
   }
-  return <aside id="entity-panel" className="entity-panel entity-detail-panel entity-editor-panel" data-entity-tab={tab} aria-label="Knowledge entity"><div className="panel-top entity-detail-toolbar">
-    {entity ? <div className="entity-toolbar-heading"><span className="entity-detail-icon" aria-hidden="true"><Icon name={entity.type}/></span><h2 id="entity-detail-title" className="entity-toolbar-title" title={entity.name}>{entity.name}</h2></div> : <span>KNOWLEDGE ENTITY</span>}
-    <button type="button" title="Close entity" aria-label="Close entity" onClick={onClose}><Icon name="close"/></button>
+  return <aside id="entity-panel" className={"entity-panel entity-detail-panel entity-editor-panel" + (inspector ? " source-inspector" : "")} data-entity-tab={tab} aria-label={inspector ? "Source inspector" : "Knowledge entity"}><div className="panel-top entity-detail-toolbar">
+    {entity ? <div className="entity-toolbar-heading"><span className="entity-detail-icon" aria-hidden="true"><Icon name={entity.type}/></span><h2 id="entity-detail-title" className="entity-toolbar-title" title={entity.name}>{inspector ? "Source inspector" : entity.name}</h2></div> : <span>{inspector ? "SOURCE INSPECTOR" : "KNOWLEDGE ENTITY"}</span>}
+    <button type="button" title={inspector ? "Close source inspector" : "Close entity"} aria-label={inspector ? "Close source inspector" : "Close entity"} onClick={onClose}><Icon name="close"/></button>
   </div>
     {!entity ? <p className="panel-body" role={loadingError ? 'alert' : 'status'}>{loadingError || 'Loading entity…'}</p> : <div className="panel-body entity-detail-body">
       {loadingError && <p role="alert">{loadingError}</p>}
       {tab!=='edit'&&entity.attachments?.map(file=><SourceLoadingProgress key={file.id} file={file}/>)}
       <div className="entity-detail-classification"><span className="entity-detail-type">{entityLabels[entity.type]}</span>{entity.type==='source'&&<span>{entity.attachments?.some(file=>file.status==='queued'||file.status==='processing')?'Processing':entity.inactive?'Inactive':entity.sourceEnrichmentStatus==='pending'||entity.sourceEnrichmentStatus==='running'?'Processed · Enriching with AI':entity.sourceEnrichmentStatus==='failed'?'Processed · AI enrichment failed':'Processed'}</span>}{!!subtypeNames.length && <span>{subtypeNames.join(' · ')}</span>}</div>
-      <div className="entity-detail-tabs" role="tablist" aria-label="Entity details">
+      <div className="entity-detail-tabs" role="tablist" aria-label={inspector ? "Source details" : "Entity details"}>
         {entityTabs.map(({id: value, label,icon}) => <button type="button" key={value} id={'entity-tab-' + value} role="tab" aria-selected={tab === value} aria-controls={'entity-tabpanel-' + value} tabIndex={tab === value ? 0 : -1} onClick={() => switchTab(value)} onKeyDown={event => {
           if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
           event.preventDefault();
           const index = entityTabs.findIndex(item => item.id === value);
           const next = event.key === 'Home' ? 0 : event.key === 'End' ? entityTabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + entityTabs.length) % entityTabs.length;
           switchTab(entityTabs[next]!.id);
-        }}><Icon name={icon}/>{label}</button>)}
+        }}><Icon name={icon}/>{inspector && value === 'edit' ? 'Details' : label}</button>)}
       </div>
       <div id="entity-tabpanel-overview" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-overview" hidden={tab !== 'overview'} tabIndex={0}>
-      {entity.type==='source'&&<div className="entity-source-workflow"><button type="button" className="button" disabled={entity.inactive||entity.sourceStatus!=='ready'} onClick={()=>props.onCreatePageFromSource(entity)}><Icon name="sparkles"/>Create page from source</button>{entity.sourceStatus!=='ready'&&<p className="section-hint">{entity.inactive?'Retry source processing before creating a page.':'Available once source processing finishes.'}</p>}</div>}
+      {inspector && <dl className="source-inspector-counts"><div><dt>Pages mentioning</dt><dd>{entity.pageMentions?.length ?? 0}</dd></div><div><dt>Connections</dt><dd>{relationships.length + references.length + incoming.length}</dd></div></dl>}
+      {!inspector&&entity.type==='source'&&<div className="entity-source-workflow"><button type="button" className="button" disabled={entity.inactive||entity.sourceStatus!=='ready'} onClick={()=>props.onCreatePageFromSource(entity)}><Icon name="sparkles"/>Create page from source</button>{entity.sourceStatus!=='ready'&&<p className="section-hint">{entity.inactive?'Retry source processing before creating a page.':'Available once source processing finishes.'}</p>}</div>}
       {entity.type==='source'&&entity.attachments?.map(file=><div key={file.id}>{file.language&&<p className="section-hint">Language: {file.language}</p>}{file.summary&&<div className="ai-summary-text"><SummaryText text={file.summary}/></div>}</div>)}
       {entity.description && <p className="entity-detail-description">{entity.description}</p>}
         {entity.type==='concept' && <section className="entity-detail-section"><h3>Disciplines</h3><p className="section-hint">{entity.domainIds?.length ? entity.domainIds.map(domainBreadcrumb).join(' · ') : 'No disciplines selected.'}</p></section>}
@@ -94,7 +95,7 @@ export function EntityPanel(props: Props) {
               <a href={'/api/source-files/' + encodeURIComponent(file.id) + '/download?vault=' + encodeURIComponent(vaultId)} download><Icon name="source"/><span>{file.name}<small>{(file.size / 1024).toFixed(1)} KB{file.pdf_flattened===1?' · Flattened locally':''}</small></span><Icon name="download"/></a>
               {file.status==='ready'&&file.text.trim()&&<a href={'/api/source-files/' + encodeURIComponent(file.id) + '/download-processed?vault=' + encodeURIComponent(vaultId)} download><Icon name="page"/><span>Download processed JSON<small>Sections, semantic blocks, and physical pages</small></span><Icon name="download"/></a>}
             </>:<span>{file.name}<small>{file.status==='failed'?'Inactive — processing failed':'Processing in background…'}</small></span>}
-          </li>)}</ul> : <p className="entity-detail-empty">No attached files. Add sources in Edit.</p>}
+          </li>)}</ul> : <p className="entity-detail-empty">No attached files. Add sources in {inspector ? 'Details' : 'Edit'}.</p>}
         </section>}
       </div>
       <div id="entity-tabpanel-connections" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-connections" hidden={tab !== 'connections'} tabIndex={0}>

@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { Modal } from './Modal';
+import { Modal, ModalHeader } from './Modal';
 
 export function ConfirmDialog({title, description, action, onConfirm, onClose, danger = false}: {
   title: string; description: string; action: string; danger?: boolean; onConfirm: () => Promise<void>; onClose: () => void;
 }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   return <Modal className="confirmation-dialog" titleId="confirm-title" onClose={() => { if (!busy) onClose(); }}>
-    <h2 id="confirm-title">{title}</h2><p>{description}</p>
+    <ModalHeader titleId="confirm-title" closeDisabled={busy}>{title}</ModalHeader><p>{description}</p>
     {error && <p className="dialog-error" role="alert">{error}</p>}
     <div className="dialog-actions"><button type="button" autoFocus className="button confirmation-cancel" disabled={busy} onClick={onClose}>Cancel</button><button type="button" className={'button confirmation-action'+(danger?' is-danger':'')} disabled={busy} onClick={async () => {
       setBusy(true); setError('');

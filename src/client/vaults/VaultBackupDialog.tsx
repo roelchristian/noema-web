@@ -1,5 +1,5 @@
 import {useState,type FormEvent} from 'react';
-import {Modal} from '../components/Modal';
+import {Modal,ModalHeader} from '../components/Modal';
 
 export function VaultBackupDialog({action,vaultName,onExport,onImport,onClose}:{action:'export'|'import';vaultName?:string;onExport:()=>Promise<{blob:Blob;filename:string}>;onImport:(file:File,name?:string)=>Promise<void>;onClose:()=>void}) {
   const [file,setFile]=useState<File|null>(null),[name,setName]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
@@ -20,7 +20,7 @@ export function VaultBackupDialog({action,vaultName,onExport,onImport,onClose}:{
     finally{setBusy(false);}
   }
   return <Modal titleId="vault-backup-title" onClose={()=>{if(!busy)onClose();}}><form onSubmit={submit}>
-    <h2 id="vault-backup-title">{importing?'Import vault':'Export vault backup'}</h2>
+    <ModalHeader titleId="vault-backup-title" closeDisabled={busy}>{importing?'Import vault':'Export vault backup'}</ModalHeader>
     <p>{importing?'Restore a .noemabkp file into a new vault. Your existing vaults are kept.':`Download “${vaultName}” as one compressed .noemabkp file, including its notes, entities, organization, saved AI results, and images.`}</p>
     {importing?<>
       <label>Backup file<input autoFocus type="file" accept=".noemabkp" required disabled={busy} onChange={event=>{setFile(event.target.files?.[0]??null);setError('');}}/></label>

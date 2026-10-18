@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { AIActivityDebug as DebugPayload } from '../../shared/intelligence';
-import { Modal } from '../components/Modal';
+import { Modal, ModalHeader } from '../components/Modal';
 import { api } from '../api';
 
 function pretty(value:string|null) {
@@ -38,7 +38,7 @@ export function AIActivityDebug({id,onClose}:{id:string;onClose:()=>void}) {
     const link=document.createElement('a');link.href=url;link.download=`noema-ai-debug-${id}.json`;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
   return <Modal className="ai-debug-modal" titleId="ai-debug-title" onClose={onClose}>
-    <header className="settings-heading"><h2 id="ai-debug-title">AI debug payload</h2><button className="settings-close" aria-label="Close debug payload" onClick={onClose}>×</button></header>
+    <ModalHeader titleId="ai-debug-title">AI debug payload</ModalHeader>
     {error&&<p role="alert">{error}</p>}
     {!data&&!error&&<p role="status">Loading payload…</p>}
     {data&&<>

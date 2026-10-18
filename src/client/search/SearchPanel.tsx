@@ -4,7 +4,7 @@ import {useEffect,useRef,useState, type KeyboardEvent} from 'react';
 import type {Entity,PageSummary} from '../../shared/domain';
 import {Icon} from '../components/Icon';
 import {PageIcon} from '../components/PageIcon';
-import {Modal} from '../components/Modal';
+import {Modal,ModalHeader} from '../components/Modal';
 import {combinedMatches} from './matches';
 import {useSemanticSearch} from './useSemanticSearch';
 import {useTextSearch} from './useTextSearch';
@@ -49,8 +49,8 @@ export function SearchPanel({vaultId,pages,entities,onOpenPage,onOpenEntity,onOp
   }
   return <Modal className="vault-search-dialog" titleId="vault-search-title" onClose={close} dismissOnBackdrop>
     <div className="spotlight-search" onKeyDown={keyDown}>
-      <h2 id="vault-search-title" className="sr-only">Search vault</h2>
-      <div className="spotlight-search-input"><Icon name="search"/><input ref={input} autoFocus type="search" role="combobox" aria-label="Search notes and knowledge" aria-autocomplete="list" aria-expanded="true" aria-controls="vault-search-results" aria-activedescendant={activeId ? 'search-result-'+activeId : undefined} autoComplete="off" maxLength={2000} placeholder="Search names, page and source text, or ideas…" value={query} onChange={event=>{semantic.cancel();setQuery(event.target.value);setSelected(null);setSemanticSuppressed(false);}}/>{(textSearch.loading||semantic.loading)&&<span className="scan-spinner" aria-label={textSearch.loading?"Searching local text":"Finding related pages"}/>}<button className="spotlight-close" aria-label="Close search" title="Close search (Esc)" onClick={close}><Icon name="close"/></button></div>
+      <ModalHeader titleId="vault-search-title">Search vault</ModalHeader>
+      <div className="spotlight-search-input"><Icon name="search"/><input ref={input} autoFocus type="search" role="combobox" aria-label="Search notes and knowledge" aria-autocomplete="list" aria-expanded="true" aria-controls="vault-search-results" aria-activedescendant={activeId ? 'search-result-'+activeId : undefined} autoComplete="off" maxLength={2000} placeholder="Search names, page and source text, or ideas…" value={query} onChange={event=>{semantic.cancel();setQuery(event.target.value);setSelected(null);setSemanticSuppressed(false);}}/>{(textSearch.loading||semantic.loading)&&<span className="scan-spinner" aria-label={textSearch.loading?"Searching local text":"Finding related pages"}/>}</div>
       <div className="spotlight-search-body">
         <p className="spotlight-results-label" role="status">{!term?'Recently updated pages':`${matches.length} ${matches.length===1?'result':'results'}${textSearch.loading?' · Searching local text…':''}${semantic.loading?' · Finding related pages…':''}${textSearch.hasMore?' · More text matches available; narrow your search.':''}`}</p>
         {textSearch.error&&<p className="search-error" role="status">Local text search is unavailable. Name matches and any related pages remain available.</p>}{semantic.error&&<p className="search-error" role="status">Related results are unavailable. Local text matches remain available.</p>}{previews.error&&<p className="search-error" role="status">Some note previews are unavailable. You can still open the results.</p>}

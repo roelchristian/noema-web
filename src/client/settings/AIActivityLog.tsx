@@ -1,7 +1,7 @@
 import { AIActivityDebug } from './AIActivityDebug';
 import { useEffect, useRef, useState } from 'react';
 import { aiActivityLabels, type AIActivity, type AIActivityPage } from '../../shared/intelligence';
-import { Modal } from '../components/Modal';
+import { Modal, ModalHeader } from '../components/Modal';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { api } from '../api';
 
@@ -63,7 +63,7 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
   if(debugId)return <AIActivityDebug id={debugId} onClose={()=>setDebugId(null)}/>;
   if(confirmClear) return <ConfirmDialog danger title="Clear AI activity?" description="Permanently delete all available activity records, including older rows and running entries. This does not cancel running requests. Locked vault activity is kept." action="Clear activity" onClose={()=>setConfirmClear(false)} onConfirm={async()=>{await api.clearAIActivity();setData({items:[],nextCursor:null});setMessage('Activity cleared.');}}/>;
   return <Modal className="ai-activity-modal" titleId="ai-activity-heading" onClose={onClose}>
-    <header className="settings-heading"><div><h2 id="ai-activity-heading">AI activity log</h2></div><button className="settings-close" aria-label="Close activity log" onClick={onClose}>×</button></header>
+    <ModalHeader titleId="ai-activity-heading">AI activity log</ModalHeader>
     <p className="ai-activity-description">The latest 1,000 actions are stored locally. When AI debug mode is enabled, request and response payloads are also stored locally and can be opened below. Locked vault activity is hidden and excluded from export and clear.</p>
     <div className="ai-activity-toolbar"><button className="button" disabled={busy} onClick={()=>void load()}>Refresh</button><button className="button" disabled={busy||!data.items.length} onClick={()=>void exportCSV()}>Export CSV</button><button className="button danger" disabled={busy||!data.items.length} onClick={()=>setConfirmClear(true)}>Clear activity</button></div>
     {error&&<p role="alert">{error}</p>}

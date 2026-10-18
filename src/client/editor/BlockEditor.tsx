@@ -18,7 +18,7 @@ import type { EntityReviewItem } from '../../shared/entity-match-cache';
 import { entityLabels, type Block, type BlockType, type Entity, type PageSummary, type Segment } from '../../shared/domain';
 import { uploadImage } from '../api';
 import { Icon } from '../components/Icon';
-import { Modal } from '../components/Modal';
+import { Modal, ModalHeader } from '../components/Modal';
 import { useMobileViewport } from '../components/WorkspaceNavigation';
 import { readSegments, segmentHTML, syncEditableSegments } from './segments';
 import { clipboardBlocks, markdownBlocks, makeBlock } from './paste';
@@ -648,11 +648,7 @@ export function BlockEditor(props: Props) {
     <div ref={dragStatus} className="block-drag-sr" role="status" aria-live="polite" aria-atomic="true"/>
     <SelectionToolbar explainLabel={explainLabel} mobile={mobile} keyboardInset={keyboardInset} viewportHeight={viewportHeight} onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
     {linkedExplanations.length > 0 && <Modal className="confirmation-dialog linked-explanation-dialog" titleId="linked-explanation-delete-title" onClose={() => setLinkedDeletion([])}>
-      <header>
-        <span className="dialog-eyebrow"><Icon name="sparkles"/>AI EXPLANATION</span>
-        <button type="button" className="linked-explanation-close" aria-label="Close and keep explanations" onClick={() => setLinkedDeletion([])}><Icon name="close"/></button>
-      </header>
-      <h2 id="linked-explanation-delete-title">{linkedExplanations.length === 1 ? 'Keep the explanation?' : 'Keep the explanations?'}</h2>
+      <ModalHeader titleId="linked-explanation-delete-title" leading={<Icon name="sparkles"/>} closeLabel="Close and keep explanations">{linkedExplanations.length === 1 ? 'Keep the explanation?' : 'Keep the explanations?'}</ModalHeader>
       <p>{linkedExplanations.length === 1
         ? 'The source block has been deleted. Its AI explanation can stay in your note, or you can remove it too.'
         : `The source content has been deleted. You can keep the ${linkedExplanations.length} linked AI explanations in your note, or remove them too.`}</p>
@@ -692,7 +688,7 @@ export function BlockEditor(props: Props) {
     </div>}
     {menu && (mobile && menu.sheet ? <Modal className="mobile-block-sheet" titleId="mobile-block-sheet-title" onClose={() => setMenu(null)} dismissOnBackdrop>
       <div ref={menuRef}>
-        <header><h2 id="mobile-block-sheet-title" className="sr-only">{menu.label === 'ADD BLOCK BELOW' ? 'Add a block' : menu.label === 'FORMAT' || menu.label === 'TURN INTO' ? 'Format block' : menu.label === 'TURN INTO SEMANTIC BLOCK' ? 'Turn into' : menu.label === 'AI ACTIONS' ? 'AI actions' : menu.label === 'SEMANTIC GROUP' ? 'Group actions' : menu.label === 'SEMANTIC FUNCTION' ? 'Semantic function' : 'Block actions'}</h2><button type="button" aria-label="Close block actions" onClick={() => setMenu(null)}><Icon name="close"/></button></header>
+        <ModalHeader titleId="mobile-block-sheet-title">{menu.label === 'ADD BLOCK BELOW' ? 'Add a block' : menu.label === 'FORMAT' || menu.label === 'TURN INTO' ? 'Format block' : menu.label === 'TURN INTO SEMANTIC BLOCK' ? 'Turn into' : menu.label === 'AI ACTIONS' ? 'AI actions' : menu.label === 'SEMANTIC GROUP' ? 'Group actions' : menu.label === 'SEMANTIC FUNCTION' ? 'Semantic function' : 'Block actions'}</ModalHeader>
         <div key={menu.label} className="mobile-block-sheet-options">{menuChoices(true)}</div>
       </div>
     </Modal> : <div key={menu.label} ref={menuRef} className="command-menu block-action-menu" style={{left: menu.left, top: menu.top}} onMouseDown={e => e.preventDefault()} role="menu" aria-label={menu.label}>{menuChoices()}</div>)}

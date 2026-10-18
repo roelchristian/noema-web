@@ -1,7 +1,7 @@
 import {useState, type FormEvent} from 'react';
 import type {Organization} from '../../shared/domain';
 import {api} from '../api';
-import {Modal} from '../components/Modal';
+import {Modal,ModalHeader} from '../components/Modal';
 import {Select} from '../components/Select';
 
 export function FolderCollectionDialog({vaultId,data,folderId='',collectionId='',onChanged,onClose}: {
@@ -23,7 +23,7 @@ export function FolderCollectionDialog({vaultId,data,folderId='',collectionId=''
     finally{setBusy(false);}
   }
   return <Modal className="confirmation-dialog folder-collection-dialog" titleId="folder-collection-title" onClose={()=>{if(!busy)onClose();}}><form onSubmit={submit}>
-    <h2 id="folder-collection-title">Add folder to collection</h2>
+    <ModalHeader titleId="folder-collection-title" closeDisabled={busy}>Add folder to collection</ModalHeader>
     <label htmlFor="collection-folder">Folder<Select id="collection-folder" value={folder} disabled={busy} onChange={event=>setFolder(event.target.value)}>{data.folders.map(item=><option key={item.id} value={item.id}>{folderPath(item.id)}</option>)}</Select></label>
     <label htmlFor="folder-collection">Collection<Select id="folder-collection" value={collection} disabled={busy} onChange={event=>setCollection(event.target.value)}>{data.collections.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</Select></label>
     <fieldset className="folder-collection-modes" disabled={busy}><legend>Include as</legend>

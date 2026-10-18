@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Block } from '../../shared/domain';
-import { Modal } from '../components/Modal';
+import { Modal, ModalHeader } from '../components/Modal';
 import { cleanNote, defaultCleanupOptions, type CleanupOptions } from './cleanup';
 
 const choices: {key: keyof CleanupOptions; label: string; detail: string}[] = [
@@ -14,7 +14,7 @@ export function CleanupDialog({blocks, onApply, onClose}: {blocks: Block[]; onAp
   const preview = useMemo(() => cleanNote(blocks, options), [blocks, options]);
   const changed = preview.blocks !== blocks;
   return <Modal className="cleanup-dialog" titleId="cleanup-title" onClose={onClose} dismissOnBackdrop>
-    <h2 id="cleanup-title">Clean up note</h2>
+    <ModalHeader titleId="cleanup-title">Clean up note</ModalHeader>
     <p>Tidy spacing in this note. Formatting, entity links, code, and math are preserved.</p>
     <div className="cleanup-options">
       {choices.map(({key, label, detail}) => <label key={key} className="cleanup-option">

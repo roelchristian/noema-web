@@ -4,7 +4,7 @@ import {defaultSourcePageOptions,sourcePageChoices,sourcePageFormats,sourcePageL
 import {randomUUID} from '../../shared/uuid';
 import {readSourcePagePreferences,rememberSourcePagePreferences} from '../state/source-page-preferences';
 import {createPageFromSource,request as apiRequest} from '../api';
-import {Modal} from '../components/Modal';
+import {Modal,ModalHeader} from '../components/Modal';
 import {Icon} from '../components/Icon';
 import {Select} from '../components/Select';
 import {ReadOnlyPageBlocks} from '../editor/ReadOnlyPageBlocks';
@@ -84,7 +84,7 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
   const hasPreview=running||!!title||!!blocks.length||!!draft||!!page;
   const controlsDisabled=busy||!!draft||!!page;
   return <Modal className={'source-page-dialog'+(hasPreview?' has-preview':'')} titleId="source-page-title" onClose={close}><form onSubmit={start}>
-    <header className="source-page-header"><span className="create-entity-icon" aria-hidden="true"><Icon name="sparkles"/></span><div><h2 id="source-page-title">Create page from source</h2><p title={source.name}>{source.name}</p></div><button type="button" className="page-tool" disabled={mutating||opening} aria-label={running?'Stop generation and close':'Close'} onClick={close}><Icon name="close"/></button></header>
+    <ModalHeader titleId="source-page-title" leading={<Icon name="sparkles"/>} closeDisabled={mutating||opening} closeLabel={running?'Stop generation and close':'Close dialog'}>Create page from source</ModalHeader><p className="modal-description" title={source.name}>{source.name}</p>
     <div className="source-page-body">
       <div className="source-page-controls">
       <fieldset className="source-page-formats"><legend>Choose a format</legend><div role="group" aria-label="Page format">

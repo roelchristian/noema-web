@@ -3,7 +3,7 @@ import { clearEditorSelection, editorSelectionRange, editorSelectionRanges, sele
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { entityLabels, type Entity } from '../../shared/domain';
 import { Icon } from '../components/Icon';
-import { Modal } from '../components/Modal';
+import { Modal, ModalHeader } from '../components/Modal';
 import { annotationSuggestions, selectionPopoverPlacement } from './selection-annotation';
 import { segmentHTML } from './segments';
 
@@ -253,7 +253,7 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
       }}><Icon name="check"/></button>}
     </div>
     {mobile && (more || semantic || annotating) ? <Modal className="mobile-selection-sheet" titleId="mobile-selection-sheet-title" onClose={closePicker} dismissOnBackdrop>
-      <header>{!more && <button type="button" className="selection-picker-back" aria-label="Back to text actions" onClick={() => { setMore(true); setSemantic(false); setAnnotating(false); setLinking(false); }}><Icon name="chevron"/></button>}<h2 id="mobile-selection-sheet-title">{more ? 'Text actions' : semantic ? 'Semantic function' : 'Annotate selection'}</h2><button type="button" aria-label="Back to selection" onClick={closePicker}><Icon name="close"/></button></header>
+      <ModalHeader titleId="mobile-selection-sheet-title" actions={!more&&<button type="button" className="selection-picker-back" aria-label="Back to text actions" onClick={() => { setMore(true); setSemantic(false); setAnnotating(false); setLinking(false); }}><Icon name="chevron"/></button>} closeLabel="Back to selection">{more ? 'Text actions' : semantic ? 'Semantic function' : 'Annotate selection'}</ModalHeader>
       <p className="mobile-selection-preview">{selectedText.length > 120 ? selectedText.slice(0, 120) + '…' : selectedText}</p>
       {picker}
     </Modal> : picker}

@@ -7,7 +7,7 @@ import { IntelligenceSettings } from './IntelligenceSettings';
 import { EmbeddingSettings } from './EmbeddingSettings';
 import type { SourceReference, Vault } from '../../shared/domain';
 import { KnowledgeEntitySettings } from './KnowledgeEntitySettings';
-import { Modal } from '../components/Modal';
+import { Modal, ModalHeader } from '../components/Modal';
 import { Select } from '../components/Select';
 import { defaultAppearance, fontOptions, themes, type Appearance, type DisplayMode, type FontId } from './appearance';
 
@@ -33,7 +33,7 @@ export function SettingsDialog({appearance, onChange, storageError, onClose, onO
   if (activityOpen) return <AIActivityLog onOpenPage={onOpenPage} onClose={() => setActivityOpen(false)}/>;
   return <Modal className="settings-modal" titleId="settings-title" onClose={onClose} dismissOnBackdrop>
     <div className="settings-dialog">
-      <header className="settings-heading"><div><h2 id="settings-title">Settings</h2></div><button className="settings-close" aria-label="Close settings" onClick={onClose}>×</button></header>
+      <ModalHeader titleId="settings-title">Settings</ModalHeader>
       <div className="settings-tabs" role="tablist" aria-label="Settings categories">
         {settingsTabs.map(({id: category, label}) => <button key={category} id={'settings-tab-' + category} role="tab" aria-selected={tab === category} aria-controls={'settings-panel-' + category} tabIndex={tab === category ? 0 : -1} onClick={() => setTab(category)} onKeyDown={event => {
           if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {

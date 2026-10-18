@@ -1,7 +1,7 @@
 import {useEffect,useState,type FormEvent} from 'react';
 import type {Vault,VaultDeletionPreview,VaultDeletionConfirmation} from '../../shared/domain';
 import {ApiError} from '../api';
-import {Modal} from '../components/Modal';
+import {Modal,ModalHeader} from '../components/Modal';
 
 export function DeleteVaultDialog({vault,onPreview,onExport,onDelete,onClose}:{vault:Vault;onPreview:()=>Promise<VaultDeletionPreview>;onExport:()=>Promise<{blob:Blob;filename:string}>;onDelete:(confirmation:VaultDeletionConfirmation)=>Promise<void>;onClose:()=>void}) {
   const [preview,setPreview]=useState<VaultDeletionPreview|null>(null),[loading,setLoading]=useState(true),[version,setVersion]=useState(0);
@@ -29,8 +29,8 @@ export function DeleteVaultDialog({vault,onPreview,onExport,onDelete,onClose}:{v
     finally{setExporting(false);}
   }
   return <Modal className="confirmation-dialog delete-vault-dialog" titleId="delete-vault-title" onClose={()=>{if(!working)onClose();}}><form onSubmit={submit}>
-    <header className="vault-deletion-header"><span className="dialog-eyebrow">VAULT</span><button type="button" className="vault-deletion-refresh" disabled={working||loading} onClick={()=>setVersion(value=>value+1)}>Refresh contents</button></header>
-    <h2 id="delete-vault-title">Delete “{vault.name}”?</h2>
+    <ModalHeader titleId="delete-vault-title" closeDisabled={working}>Delete “{vault.name}”?</ModalHeader>
+    <div className="vault-deletion-header"><span className="dialog-eyebrow">VAULT</span><button type="button" className="vault-deletion-refresh" disabled={working||loading} onClick={()=>setVersion(value=>value+1)}>Refresh contents</button></div>
     <p id="delete-vault-warning">Permanently delete this vault and its notes, including Trash, entities, AI results, folders, collections, and original attachments. This cannot be undone.</p>
     {loading&&<p role="status">Saving pending edits and checking vault contents…</p>}
     {!loading&&preview&&<>

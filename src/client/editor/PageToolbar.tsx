@@ -6,6 +6,8 @@ import { Icon } from '../components/Icon';
 import { ActionMenu, type MenuAction } from '../components/ActionMenu';
 import { FeaturedImageDialog } from './FeaturedImageDialog';
 import { CleanupDialog } from './CleanupDialog';
+import {rememberMarkdownTyping,useMarkdownTyping} from '../state/markdown-preferences';
+import {formatMarkdownBlocks} from './markdown-typing';
 
 export function PageToolbar({ onRevealInSidebar, inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, focusedReading, onToggleFocusedReading, onForward, forwardDisabled, onChangeBlocks, onFeaturedImageChange,onEditLockChange, onUndo, onRedo, canUndo, canRedo}: {
   onRevealInSidebar: () => void;
@@ -24,6 +26,11 @@ export function PageToolbar({ onRevealInSidebar, inactive=false, page, onError, 
   const [saving, setSaving] = useState(false);
   const [featuredImageOpen, setFeaturedImageOpen] = useState(false);
   const [cleanupOpen, setCleanupOpen] = useState(false);
+  const markdownTyping=useMarkdownTyping();
+  function toggleMarkdownTyping() {
+    if(!markdownTyping)onChangeBlocks(formatMarkdownBlocks(page.blocks));
+    rememberMarkdownTyping(!markdownTyping);
+  }
   async function toggleFavourite() {
     if (saving) return;
     setSaving(true);
@@ -60,6 +67,7 @@ export function PageToolbar({ onRevealInSidebar, inactive=false, page, onError, 
       {label: 'Editing', icon: 'edit', disabled: !!page.editLocked, children: [
         {label: 'Undo', description: '⌘/Ctrl+Z', disabled: !canUndo, onSelect: onUndo},
         {label: 'Redo', description: '⌘/Ctrl+Shift+Z or Ctrl+Y', disabled: !canRedo, onSelect: onRedo},
+        {label: 'Format Markdown as you type', checked:markdownTyping, description:markdownTyping?'On · Turning off keeps existing formatting.':'Off · Turning on also formats Markdown already in this page.', onSelect:toggleMarkdownTyping},
         {label: 'Clean up spacing…', onSelect: () => setCleanupOpen(true)},
       ]},
       lockAction,

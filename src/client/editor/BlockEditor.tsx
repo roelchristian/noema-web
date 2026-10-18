@@ -8,7 +8,7 @@ import { aiExplanationSources, aiExplanationsForSources, explanationsLinkedToDel
 import {pageTitleKey} from '../../shared/page-links';
 import { completePageLink } from './page-links';
 import { ReadOnlyExplanationBlock } from './ReadOnlyExplanationBlock';
-import { selectedEditorBlocks } from './block-selection';
+import { editorSelectionRange,selectedEditorBlocks } from './block-selection';
 import { installBlockDrag, reorderBlock } from './block-drag';
 import { installBlockSelection, setEditorCaret } from './block-selection';
 import { displayMathSource } from './math-delimiters';
@@ -31,7 +31,9 @@ import { SelectionToolbar } from './SelectionToolbar';
 import { MathBlock } from './MathBlock';
 import { MathDialog } from './MathDialog';
 import { completeInlineMath, mathElement } from './math';
-import { completeInlineCode } from './inline-code';
+import { completeTypedMarkdown,typedMarkdownBlock } from './markdown-typing';
+import { useMarkdownTyping } from '../state/markdown-preferences';
+import {applyEditorTextFormat,shortcutTextFormat} from './text-formatting';
 interface Props {featuredImageId?: string | null; pages?:PageSummary[];onOpenPage?:(id:string)=>void;onExplain?: (blocks: Block[]) => Promise<string>; reviewMatches?: EntityReviewItem[]; onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[], featuredImageId?: string | null) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
 function explanationInsertionIndex(blocks: Block[], ids: string[]) {
   const last=blocks.filter(block=>ids.includes(block.id)).at(-1);
@@ -64,7 +66,7 @@ const options: {type: BlockType; title: string; detail: string; icon: string}[] 
 interface ImageUpload {id:string; after?:string; name:string; message:string; current:number; total:number}
 interface Choice {back?: boolean; danger?: boolean; disabled?: boolean; submenu?: boolean; color?:string; title: string; detail?: string; icon: string; entity?: boolean; pick: () => void}
 interface Menu {items: Choice[]; index: number; left: number; top: number; label: string; sheet?: boolean; anchor?:Range; anchorElement?:HTMLElement}
-function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOpen, register, onPaste}: {block: Block; entities: Entity[]; reviewMatches: EntityReviewItem[]; onInput: (el: HTMLElement) => void; onKeyDown: (e: KeyboardEvent<HTMLElement>) => void; onOpen: (id: string) => void; register: (el: HTMLElement | null) => void; onPaste: (e: ClipboardEvent<HTMLElement>) => void}) {
+function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOpen, register, onPaste}: {block: Block; entities: Entity[]; reviewMatches: EntityReviewItem[]; onInput: (el: HTMLElement, event:InputEvent) => void; onKeyDown: (e: KeyboardEvent<HTMLElement>) => void; onOpen: (id: string) => void; register: (el: HTMLElement | null) => void; onPaste: (e: ClipboardEvent<HTMLElement>) => void}) {
   const citations=useContext(CitationPresentationContext);
   const ref = useRef<HTMLElement>(null);
   const Content = block.type === 'heading1' ? 'h2' : block.type === 'heading2' ? 'h3' : 'div';
@@ -78,11 +80,12 @@ function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOp
       node.className = fresh.className;
     });
   });
-  return <Content ref={el => { ref.current = el; register(el); }} className="block-content" contentEditable suppressContentEditableWarning spellCheck data-placeholder="Type / for blocks, @ for entities" onInput={e => { applySmartQuotes(e.currentTarget, e.nativeEvent as InputEvent); onInput(e.currentTarget); }} onKeyDown={onKeyDown}
+  return <Content ref={el => { ref.current = el; register(el); }} className="block-content" contentEditable suppressContentEditableWarning spellCheck data-placeholder="Type / for blocks, @ for entities" onInput={e => { applySmartQuotes(e.currentTarget, e.nativeEvent as InputEvent); onInput(e.currentTarget,e.nativeEvent as InputEvent); }} onKeyDown={onKeyDown}
     onClick={e => { const mention = (e.target as Element).closest<HTMLElement>('[data-entity]'); if (mention) onOpen(mention.dataset.entity!); }}
     onPaste={onPaste}/>;
 }
 export function BlockEditor(props: Props) {
+  const markdownTyping=useMarkdownTyping();
   const mobile = useMobileViewport();
   const [activeBlock, setActiveBlock] = useState<{id: string; group: boolean} | null>(null);
   const [keyboardInset, setKeyboardInset] = useState(0);
@@ -573,12 +576,15 @@ export function BlockEditor(props: Props) {
         if(event.key === 'Tab') {event.preventDefault(); const el=event.currentTarget, start=el.selectionStart; el.setRangeText('  ', start, el.selectionEnd, 'end'); update(block.id, {content: [{text: el.value}]});}
       }}/>
       <small>Code · Tab to indent · ⌘/Ctrl+Enter to continue below</small>
-    </div> : block.type === 'math' ? <MathBlock block={block} onDelete={() => removeBlock(block.id)} onChange={source => update(block.id, {content: [{text: source}]})} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'image' ? <ImageBlock block={block} featured={props.featuredImageId===block.imageId} onSetFeatured={() => onChange(latest.current.blocks,props.featuredImageId===block.imageId?null:block.imageId)} vaultId={props.vaultId} onChange={alt => update(block.id,{alt})} onDelete={() => removeBlock(block.id)} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'table' ? <TableBlock reviewMatches={reviewMatches} block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock reviewMatches={reviewMatches} block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={el => {
+    </div> : block.type === 'math' ? <MathBlock block={block} onDelete={() => removeBlock(block.id)} onChange={source => update(block.id, {content: [{text: source}]})} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'image' ? <ImageBlock block={block} featured={props.featuredImageId===block.imageId} onSetFeatured={() => onChange(latest.current.blocks,props.featuredImageId===block.imageId?null:block.imageId)} vaultId={props.vaultId} onChange={alt => update(block.id,{alt})} onDelete={() => removeBlock(block.id)} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'table' ? <TableBlock reviewMatches={reviewMatches} block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock reviewMatches={reviewMatches} block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={(el,event) => {
+      const markdownInput=markdownTyping&&!event.isComposing&&event.inputType==='insertText';
+      const shortcut=markdownInput?typedMarkdownBlock(block,el):undefined;
+      if(shortcut) {setMenu(null);focusTarget.current={id:block.id,start:false};update(block.id,shortcut);return;}
       const content = readSegments(el);
-      const source = block.type === 'paragraph' && content.every(segment => !segment.entityId && !segment.math && !segment.code)
+      const source = markdownInput && block.type === 'paragraph' && content.every(segment => !segment.entityId && !segment.math && !segment.code)
         ? displayMathSource(content.map(segment => segment.text ?? '').join('')) : undefined;
       if (source) { setMenu(null); focusTarget.current = {id: block.id, start: false}; update(block.id, {type: 'math', content: [{text: source}]}); return; }
-      completeInlineMath(el); update(block.id, {content: readSegments(el)}); detect(el, block);
+      if(markdownInput)completeInlineMath(el); update(block.id, {content: readSegments(el)}); detect(el, block);
     }} onKeyDown={e => keyDown(e, block)} onPaste={e => paste(e, block)}/>}
   </div>{uploadCards(block.id)}</Fragment>;
   function renderRuns(list: Block[]) {
@@ -617,7 +623,7 @@ export function BlockEditor(props: Props) {
       if(root.current?.dataset.formattingTransaction) {event.stopPropagation(); return;}
       if((event.nativeEvent as InputEvent).isComposing)return;
       const surface=(event.target as Element).closest<HTMLElement>('.block-content[contenteditable="true"]');
-      if(surface) {completeInlineCode(surface,event.nativeEvent as InputEvent);completePageLink(surface);}
+      if(surface) {if(markdownTyping)completeTypedMarkdown(surface,event.nativeEvent as InputEvent,entities);completePageLink(surface);}
     }} onClickCapture={e => {
       // A tap ending a native selection gesture must not open an inline item.
       const selection = getSelection();
@@ -633,6 +639,11 @@ export function BlockEditor(props: Props) {
       const math = (e.target as Element).closest<HTMLElement>('[data-math]');
       if (math && !(e.target as Element).closest('[data-semantic-kind="ai-explanation"]')) {e.preventDefault(); e.stopPropagation(); editInlineMath(math);}
     }} onKeyDownCapture={e => {
+      const command=shortcutTextFormat(e.nativeEvent),editor=root.current;
+      if(command&&editor&&!(e.target as Element).closest('input,textarea,button,select,[contenteditable="false"]')) {
+        const range=editorSelectionRange(editor);
+        if(range&&applyEditorTextFormat(editor,range,command,commitSelection)) {e.preventDefault();e.stopPropagation();return;}
+      }
       const pageLink=(e.target as Element).closest<HTMLElement>('[data-page-title]');
       if(pageLink && e.key==='Enter'){e.preventDefault();e.stopPropagation();openPageLink(pageLink);return;}
       const math = (e.target as Element).closest<HTMLElement>('[data-math]');

@@ -4,6 +4,7 @@ import { displayMathSource } from './math-delimiters';
 import { safeHref, type Block, type BlockType, type Segment, type TextStyle } from '../../shared/domain';
 import { readSegments } from './segments';
 import { inlineCodeSegments } from './inline-code';
+import { readMarkdownTyping } from '../state/markdown-preferences';
 export function makeBlock(type: BlockType = 'paragraph', content: Segment[] = []): Block {
   return {id: randomUUID(), type, checked: false, content, ...(type === 'columns' ? {rows: [[[], []]]} : type === 'table' ? {rows: [[[], []], [[], []]]} : {})};
 }
@@ -24,6 +25,14 @@ export function markdownInline(text: string, style: TextStyle = {}): Segment[] {
   }
   if (start < text.length) output.push({...style, text: text.slice(start)});
   return output;
+}
+/** Preserve native marks and protected segments while reading literal inline Markdown. */
+export function markdownSegments(content:Segment[]):Segment[] {
+  return inlineCodeSegments(content).flatMap(segment=>{
+    if(segment.entityId||segment.code||segment.math||segment.sourceReference||segment.href||segment.skipAutoTag)return [segment];
+    const {text,...style}=segment;
+    return markdownInline(text??'',style);
+  });
 }
 function tableCells(line: string) { return line.trim().replace(/^\|/, '').replace(/(?<!\\)\|$/, '').split(/(?<!\\)\|/).map(cell => markdownInline(cell.trim().replace(/\\\|/g, '|'))); }
 export function markdownBlocks(text: string): Block[] {
@@ -82,7 +91,7 @@ export function clipboardMathBlocks(blocks: Block[]): Block[] {
     });
   }
   function inline(content: Segment[]): Segment[] {
-    content=inlineCodeSegments(content);
+    content=markdownSegments(content);
     const output: Segment[] = [];
     for (let i = 0; i < content.length;) {
       const segment = content[i]!;
@@ -134,8 +143,9 @@ export function clipboardMathBlocks(blocks: Block[]): Block[] {
   }
   return output;
 }
-export function clipboardBlocks(text: string, html: string): Block[] {
-  if (!html) return markdownBlocks(text);
+export function clipboardBlocks(text: string, html: string, markdown=readMarkdownTyping()): Block[] {
+  const plainBlocks=()=>[makeBlock('paragraph',text?[{text:text.replace(/\r\n?/g,'\n')}]:[])];
+  if (!html) return markdown?markdownBlocks(text):plainBlocks();
   const doc = new DOMParser().parseFromString(html, 'text/html'), blocks: Block[] = [];
   doc.querySelectorAll('script,style,meta,link,iframe,object').forEach(node => node.remove());
   const groups=new Map<string,string>();
@@ -181,5 +191,5 @@ export function clipboardBlocks(text: string, html: string): Block[] {
   }
   visit(doc.body);
   // Some applications wrap plain Markdown in one styled span.
-  return blocks.length ? normalizeSemanticGroups(clipboardMathBlocks(blocks)) : markdownBlocks(text);
+  return blocks.length ? normalizeSemanticGroups(markdown?clipboardMathBlocks(blocks):blocks) : markdown?markdownBlocks(text):plainBlocks();
 }

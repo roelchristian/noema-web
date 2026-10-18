@@ -2,7 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import {positionAnchoredMenu,revealMenuItem} from './menu-placement';
 
-export interface MenuAction {label: string; icon?: string; onSelect?: () => void; children?: MenuAction[]; description?: string; disabled?: boolean; danger?: boolean}
+export interface MenuAction {label: string; checked?: boolean; icon?: string; onSelect?: () => void; children?: MenuAction[]; description?: string; disabled?: boolean; danger?: boolean}
 export function ActionMenu({label, actions, disabled = false, icon = 'more'}: {label: string; actions: MenuAction[]; disabled?: boolean; icon?: string}) {
   const id = useId(), trigger = useRef<HTMLButtonElement>(null), menu = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -23,7 +23,7 @@ export function ActionMenu({label, actions, disabled = false, icon = 'more'}: {l
       popup.getAnimations().forEach(animation=>animation.cancel());
       popup.animate([{opacity:0,transform:'translateY(-4px) scale(.98)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:140,easing:'cubic-bezier(.2,.8,.2,1)'});
     }
-    const items = popup.querySelectorAll<HTMLButtonElement>('[role=menuitem]:not(:disabled)');
+    const items = popup.querySelectorAll<HTMLButtonElement>('[role^=menuitem]:not(:disabled)');
     const restored=restoreAction.current; restoreAction.current=null;
     const item=restored ? [...items].find(item=>item.dataset.menuAction===restored) : focusLast.current ? items[items.length - 1] : items[path.length ? 1 : 0];
     if(item){item.focus({preventScroll:true});revealMenuItem(popup,item);}
@@ -49,7 +49,7 @@ export function ActionMenu({label, actions, disabled = false, icon = 'more'}: {l
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); focusLast.current = event.key === 'ArrowUp'; setOpen(true); }
     }}><Icon name={icon}/></button>
     <div ref={menu} id={id} popover="auto" role="menu" aria-label={currentLabel} className="sidebar-action-menu" onToggle={event => { if (!event.currentTarget.matches(':popover-open')) {setOpen(false);setPath([]);} }} onKeyDown={event => {
-      const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role=menuitem]:not(:disabled)')];
+      const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role^=menuitem]:not(:disabled)')];
       const index = items.indexOf(document.activeElement as HTMLButtonElement);
       const focus = (item:HTMLButtonElement|undefined) => {if(item){item.focus({preventScroll:true});revealMenuItem(event.currentTarget,item);}};
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); focus(items[(index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]); }
@@ -60,6 +60,6 @@ export function ActionMenu({label, actions, disabled = false, icon = 'more'}: {l
       }
       else if (path.length && (event.key === 'ArrowLeft' || event.key === 'Escape')) {event.preventDefault();event.stopPropagation();back();}
       else if (event.key === 'Escape' || event.key === 'Tab') { if (event.key === 'Escape') event.preventDefault(); event.stopPropagation(); close(); trigger.current?.focus({preventScroll:true}); }
-    }}>{path.length > 0 && <><button type="button" role="menuitem" className="action-menu-back" onClick={back}><Icon name="chevron"/><span>Back</span></button></>}{currentActions.map(action => <button type="button" key={action.label} data-menu-action={action.label} title={action.description} aria-description={action.description} role="menuitem" aria-haspopup={action.children?.length?'menu':undefined} aria-expanded={action.children?.length?false:undefined} className={action.danger ? 'danger' : ''} disabled={action.disabled} onClick={() => select(action)}>{action.icon && <Icon name={action.icon}/>}<span className="action-menu-text">{action.label}</span>{action.children?.length&&<span className="action-menu-child-arrow"><Icon name="chevron"/></span>}</button>)}</div>
+    }}>{path.length > 0 && <><button type="button" role="menuitem" className="action-menu-back" onClick={back}><Icon name="chevron"/><span>Back</span></button></>}{currentActions.map(action => <button type="button" key={action.label} data-menu-action={action.label} title={action.description} aria-description={action.description} role={action.checked===undefined?"menuitem":"menuitemcheckbox"} aria-checked={action.checked} aria-haspopup={action.children?.length?'menu':undefined} aria-expanded={action.children?.length?false:undefined} className={action.danger ? 'danger' : ''} disabled={action.disabled} onClick={() => select(action)}>{action.checked!==undefined ? <span aria-hidden="true">{action.checked?"✓":"○"}</span> : action.icon && <Icon name={action.icon}/>}<span className="action-menu-text">{action.label}</span>{action.children?.length&&<span className="action-menu-child-arrow"><Icon name="chevron"/></span>}</button>)}</div>
   </>;
 }

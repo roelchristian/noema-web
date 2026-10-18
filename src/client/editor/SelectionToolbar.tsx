@@ -6,6 +6,7 @@ import { Icon } from '../components/Icon';
 import { Modal, ModalHeader } from '../components/Modal';
 import { annotationSuggestions, selectionPopoverPlacement } from './selection-annotation';
 import { segmentHTML } from './segments';
+import {applyEditorTextFormat,textFormatShortcuts,type TextFormat} from './text-formatting';
 
 interface Props {
   mobile?: boolean;
@@ -27,7 +28,7 @@ const formats = [
   {command: 'italic', label: 'Italic', glyph: <i>I</i>},
   {command: 'underline', label: 'Underline', glyph: <u>U</u>},
   {command: 'strikeThrough', label: 'Strikethrough', glyph: <s>S</s>},
-];
+] as const;
 function editable(node: Node) {
   return (node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>('.block-content[contenteditable="true"]');
 }
@@ -142,21 +143,13 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
     const selection = getSelection(); selection?.removeAllRanges(); selection?.addRange(range);
     return true;
   }
-  function applyFormat(command: string) {
+  function applyFormat(command: TextFormat) {
     const range = saved.current;
     if (!range || !restore(range)) { dismiss(); return; }
-    const ranges = editor.current ? editorSelectionRanges(editor.current, range) : [];
-    const original = range.cloneRange();
-    const enable = !ranges.every(part => {restore(part); return document.queryCommandState(command);});
     const root = editor.current;
-    if (root) root.dataset.formattingTransaction = 'true';
-    try {
-      for (const part of ranges) { if (restore(part) && document.queryCommandState(command) !== enable) document.execCommand(command); }
-    } finally { if (root) delete root.dataset.formattingTransaction; }
-    restore(original);
-    latest.current.onCommit();
+    if(!root||!applyEditorTextFormat(root,range,command,()=>latest.current.onCommit()))return;
     const selection = getSelection();
-    if (selection?.rangeCount) saved.current = selection.getRangeAt(0).cloneRange();
+    if (selection?.rangeCount) saved.current = editorSelectionRange(root,selection)?.cloneRange()??null;
     setActive(formats.filter(item => document.queryCommandState(item.command)).map(item => item.command));
   }
   function connect(range: Range, text: string, id: string) {
@@ -196,7 +189,7 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
   };
   const picker = <>
     {more && <div className="selection-more-actions">
-      <button type="button" aria-pressed={active.includes('strikeThrough')} onClick={() => {
+      <button type="button" aria-pressed={active.includes('strikeThrough')} title={`Strikethrough (${textFormatShortcuts.strikeThrough})`} onClick={() => {
         releaseSheet(); picking.current = false; setMore(false); applyFormat('strikeThrough');
       }}><s>S</s><span>Strikethrough</span></button>
       <button type="button" disabled={!single} onClick={() => { const current = saved.current?.cloneRange(); if (current) { dismiss(); onMath(current); } }}><Icon name="equation"/><span>Inline equation</span></button>
@@ -233,7 +226,7 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
     onMouseDown={event => { if (!(event.target instanceof HTMLInputElement) && !(event.target as Element).closest('dialog')) event.preventDefault(); }}>
     <div className="selection-toolbar-row">
       <div className="selection-toolbar" role="toolbar" aria-label="Selection formatting" aria-orientation="horizontal">
-        {(mobile ? formats.slice(0, 3) : formats).map(format => <button key={format.command} type="button" title={format.label} aria-label={format.label} aria-pressed={active.includes(format.command)} disabled={!range || !editor.current || !editorSelectionRanges(editor.current,range).length} onClick={() => applyFormat(format.command)}>{format.glyph}</button>)}
+        {(mobile ? formats.slice(0, 3) : formats).map(format => <button key={format.command} type="button" title={`${format.label} (${textFormatShortcuts[format.command]})`} aria-label={format.label} aria-pressed={active.includes(format.command)} disabled={!range || !editor.current || !editorSelectionRanges(editor.current,range).length} onClick={() => applyFormat(format.command)}>{format.glyph}</button>)}
         {!mobile && <>
         <button type="button" aria-label="Inline equation" title="Inline equation" disabled={!single} onClick={() => {const current = saved.current?.cloneRange(); if (current) {dismiss(); onMath(current);}}}><Icon name="equation"/></button>
         <span className="selection-divider"/>

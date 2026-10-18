@@ -244,7 +244,7 @@ body, main { background: var(--surface); }
 :root[data-mode=dark] :is(dialog, .entity-panel, .command-menu, .page-tools-popover, .entity-card, .theme-option, .item-organization) { background: var(--surface-raised); border-color: var(--control-border); color: var(--text); }
 :root[data-mode=dark] :is(#page-title, .block, .block.heading1, .block.heading2, .block.quote, .entity-name, .entity-card h3, .library h1, .locked-state h1, dialog h2, .panel-section h3, .page-tools-popover h2, .organization-empty h2, .entity-color-row label) { color: var(--text); }
 :root[data-mode=dark] :is(.nav, .page-link, .page-link > span, .topbar, .topbar #breadcrumb > span, #save-status, .workspace-label, .section-label, .sidebar-empty, .vault-controls label, .vault-actions button, .page-meta, .page-meta button, .panel-top, .panel-top button, .section-hint, .property-row > span, .property-row > div, .relation-label, .backlink small, .panel-footnote, .edit-item, .remove, .library > p, .entity-card p, .entity-card small, .card-arrow, .empty, .empty-small, .locked-state p, .locked-state small, .settings-section > p, .settings-footer p, .theme-option small, .theme-default, .settings-close, .organization-heading p, .organization-hint, .organization-library .eyebrow, .organization-item-name small, .recent-time, .page-tools-popover p, .page-tool, .page-tool-count, .editor-footer, .dialog-eyebrow, dialog p, dialog label, #entity-saved) { color: var(--text-muted); }
-:root[data-mode=dark] :is(.button:not(.primary), input:not(#page-title):not(.entity-name):not([type=checkbox]), select, textarea, #entity-form select, #entity-form textarea, .add-form input, .add-form select, .organization-search, .library-tools input, .library-tools select, .source-actions select, .toolbar-source-actions select) { background: var(--surface-raised); color: var(--text); border-color: var(--control-border); }
+:root[data-mode=dark] :is(.button:not(.primary), input:not(#page-title):not(.entity-name):not([type=checkbox]), select, textarea, #entity-form select, #entity-form textarea, .add-form input, .add-form select, .organization-search, .library-tools input, .library-tools select, .source-actions select, .toolbar-source-actions select):not(.latex-input) { background: var(--surface-raised); color: var(--text); border-color: var(--control-border); }
 :root[data-mode=dark] :is(.brand small, .nav kbd, .editor-footer kbd, .panel-section h3 span, .vault-symbol) { background: var(--surface-hover); color: var(--text-muted); border-color: var(--control-border); }
 :root[data-mode=dark] :is(.nav:hover, .page-link:hover, .entity-card:hover, .button:not(.primary):hover, .page-tool:hover, .page-tool[aria-expanded=true], .settings-close:hover, .command-menu button.highlight, .command-menu button:hover) { background: var(--surface-hover); color: var(--text); }
 :root[data-mode=dark] :is(.nav.active, .page-link.selected, .organization-tree .selected) { color: var(--accent); background: var(--accent-soft); }
@@ -1100,11 +1100,40 @@ dialog.vault-search-dialog::backdrop { background: #0005; backdrop-filter: blur(
 :is(.semantic-block, .semantic-group) .math-block-render:hover { background: color-mix(in srgb, var(--semantic-color) 9%, var(--surface-hover)); }
 .math-block-render .katex-display { margin: .5em 0; }
 .math-placeholder { color: var(--text-muted); font-size: 13px; }
-.math-block-source { padding: 8px; border: 1px solid var(--line); border-radius: 6px; }
-.math-block-source textarea, .math-dialog textarea { display: block; width: 100%; min-height: 80px; resize: vertical; border: 1px solid var(--control-border); border-radius: 5px; padding: 10px; background: var(--surface); color: var(--text); font: 12px/1.6 ui-monospace, monospace; }
-.math-block-source small { display: block; margin-top: 6px; color: var(--text-muted); font-size: 10px; }
-.math-dialog { width: 500px; }
-.math-dialog textarea { margin-top: 8px; }
+.math-block-source,.math-dialog { --math-editor-bg:#fafafa;--math-editor-border:#e5e5e5;--latex-command:#526b86;--latex-bracket:#8b6c49;--latex-number:#607b63;--latex-operator:#87697e;--latex-comment:#8a8a8a; }
+.math-block-source { margin:2px 0 6px;padding:4px 8px;border:1px solid var(--math-editor-border);border-radius:6px;background:var(--math-editor-bg); }
+.math-block-source:focus-within { border-color:color-mix(in srgb,var(--math-editor-border) 65%,var(--text-muted)); }
+.latex-editor { position:relative;min-width:0;color:var(--text); }
+.latex-editor>.latex-highlight,.latex-editor>textarea.latex-input { box-sizing:border-box;margin:0;border:0;border-radius:0;padding:6px 0;font:12px/1.6 ui-monospace,monospace;letter-spacing:normal;tab-size:2;scrollbar-gutter:stable;text-align:left;white-space:pre-wrap;overflow-wrap:break-word;word-break:normal; }
+.latex-editor>.latex-highlight { position:absolute;inset:0;overflow:hidden;pointer-events:none;background:transparent;color:var(--text); }
+.latex-editor>textarea.latex-input { position:relative;display:block;width:100%;min-height:32px;resize:none;overflow:auto;background:transparent;color:transparent;-webkit-text-fill-color:transparent;caret-color:var(--text); }
+.latex-editor>textarea.latex-input:focus { outline:none;box-shadow:none; }
+.latex-editor>textarea.latex-input::placeholder { color:var(--text-muted);-webkit-text-fill-color:var(--text-muted);opacity:.7; }
+.latex-editor>textarea.latex-input::selection { background:color-mix(in srgb,var(--text-muted) 25%,transparent); }
+.latex-token-command { color:var(--latex-command); }
+.latex-token-bracket { color:var(--latex-bracket); }
+.latex-token-number { color:var(--latex-number); }
+.latex-token-operator { color:var(--latex-operator); }
+.latex-token-comment { color:var(--latex-comment); }
+:root[data-mode=dark] :is(.math-block-source,.math-dialog) { --math-editor-bg:#212124;--math-editor-border:#36363b;--latex-command:#b2c9e2;--latex-bracket:#d4bc99;--latex-number:#afcdb4;--latex-operator:#ceb5c8;--latex-comment:#a1a1ab; }
+:root[data-mode=dark] .latex-editor>textarea.latex-input { background:transparent;color:transparent;border-color:transparent; }
+.math-block-source-footer { display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:24px;color:var(--text-muted);font-size:10px; }
+.math-block-done { display:inline-flex;align-items:center;gap:4px;padding:3px 5px;border-radius:4px;color:var(--text-muted);font-size:10px; }
+.math-block-done>.icon { width:12px;height:12px; }
+.math-block-source-footer { flex-wrap:wrap; }
+.math-inline-action { margin-left:auto; }
+.math-inline-action:disabled { opacity:.35;cursor:default; }
+.math-inline-action:disabled:hover { background:transparent;color:var(--text-muted); }
+.math-block-done:hover,.math-block-done:focus-visible { background:var(--surface-hover);color:var(--text); }
+.math-dialog { width:440px; }
+.math-dialog .latex-editor { margin-top:6px;padding:2px 8px;border:1px solid var(--math-editor-border);border-radius:5px;background:var(--math-editor-bg); }
+.math-dialog .latex-editor:focus-within { border-color:color-mix(in srgb,var(--math-editor-border) 65%,var(--text-muted)); }
+.math-dialog .latex-editor>.latex-highlight { inset:2px 8px; }
+@media(forced-colors:active) {
+  .latex-editor>.latex-highlight { display:none; }
+  .latex-editor>textarea.latex-input,:root[data-mode=dark] .latex-editor>textarea.latex-input { color:CanvasText;-webkit-text-fill-color:CanvasText;caret-color:CanvasText; }
+}
+
 .math-preview { padding: 20px 8px; margin-top: 12px; overflow-x: auto; text-align: center; min-height: 60px; border-radius: 5px; background: var(--surface-hover); }
 
 @media (max-width: 750px) {

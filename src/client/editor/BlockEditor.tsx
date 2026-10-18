@@ -1,3 +1,4 @@
+import {inlineMathBlock,mathInlineOptions,recommendedMathInlinePlacement,type MathInlinePlacement} from '../../shared/math-blocks';
 import {TitleText} from '../components/TitleText';
 import {CitationPicker} from './CitationPicker';
 import {citationKey,cleanCitationGroups,noteCitations} from '../../shared/citations';
@@ -440,6 +441,12 @@ export function BlockEditor(props: Props) {
     show(anchor,[...(props.onExplain&&aiExplanationSources(latest.current.blocks,children.map(block=>block.id)).length?[aiActionChoice(anchor,children.map(block=>block.id),back)]:[]),...(mobile?movementChoices(id):[]),...(!locked?[...semanticChoices(kind=>onChange(retagSemanticGroup(latest.current.blocks,id,kind))),{title:'Ungroup blocks',detail:'Keep all child blocks',icon:'close',entity:true,pick:()=>{setMenu(null);onChange(removeSemanticGroup(latest.current.blocks,id));}}]:[{title:'Delete explanation',danger:true,detail:'Remove this explanation and its subblocks',icon:'close',entity:true,pick:()=>{setMenu(null);const rest=latest.current.blocks.filter(block=>block.semanticGroup?.id!==id && block.id!==id);onChange(rest.length?rest:[makeBlock()]);}}])],'SEMANTIC GROUP', true);
   }
   function update(id: string, patch: Partial<Block>) { onChange(latest.current.blocks.map(b => b.id === id ? {...b, ...patch} : b)); }
+  function convertMathToInline(id:string,placement:MathInlinePlacement) {
+    const draft=commitSelection(),result=inlineMathBlock(draft,id,placement);
+    if(!result)return;
+    focusTarget.current={id:result.targetId,start:placement==='next'};
+    onChange(result.blocks);
+  }
   function removeBlock(id: string) {
     setMenu(null);
     const list=latest.current.blocks, index=list.findIndex(block => block.id === id);
@@ -674,7 +681,7 @@ export function BlockEditor(props: Props) {
         if(event.key === 'Tab') {event.preventDefault(); const el=event.currentTarget, start=el.selectionStart; el.setRangeText('  ', start, el.selectionEnd, 'end'); update(block.id, {content: [{text: el.value}]});}
       }}/>
       <small>Code · Tab to indent · ⌘/Ctrl+Enter to continue below</small>
-    </div> : block.type === 'math' ? <MathBlock block={block} onDelete={() => removeBlock(block.id)} onChange={source => update(block.id, {content: [{text: source}]})} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'image' ? <ImageBlock block={block} featured={props.featuredImageId===block.imageId} onSetFeatured={() => onChange(latest.current.blocks,props.featuredImageId===block.imageId?null:block.imageId)} vaultId={props.vaultId} onChange={alt => update(block.id,{alt})} onDelete={() => removeBlock(block.id)} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'table' ? <TableBlock reviewMatches={reviewMatches} block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock reviewMatches={reviewMatches} block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={(el,event) => {
+    </div> : block.type === 'math' ? <MathBlock block={block} inlineOptions={mathInlineOptions(blocks,block.id)} recommendedInline={recommendedMathInlinePlacement(blocks,block.id)} onInline={placement=>convertMathToInline(block.id,placement)} onDelete={() => removeBlock(block.id)} onChange={source => update(block.id, {content: [{text: source}]})} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'image' ? <ImageBlock block={block} featured={props.featuredImageId===block.imageId} onSetFeatured={() => onChange(latest.current.blocks,props.featuredImageId===block.imageId?null:block.imageId)} vaultId={props.vaultId} onChange={alt => update(block.id,{alt})} onDelete={() => removeBlock(block.id)} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'table' ? <TableBlock reviewMatches={reviewMatches} block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock reviewMatches={reviewMatches} block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={(el,event) => {
       const markdownInput=markdownTyping&&!event.isComposing&&event.inputType==='insertText';
       const shortcut=markdownInput?typedMarkdownBlock(block,el):undefined;
       if(shortcut) {setMenu(null);focusTarget.current={id:block.id,start:false};update(block.id,shortcut);return;}

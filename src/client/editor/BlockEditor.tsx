@@ -708,7 +708,7 @@ export function BlockEditor(props: Props) {
         <button type="button" className="button primary" autoFocus onClick={() => setLinkedDeletion([])}>{linkedExplanations.length === 1 ? 'Keep explanation' : 'Keep explanations'}</button>
       </div>
     </Modal>}
-    {citationTarget && <CitationPicker vaultId={props.vaultId} entities={entities} anchor={citationTarget.range} editor={citationTarget.editor} onInsert={insertCitations} onClose={closeCitation}/>}
+    {citationTarget && <CitationPicker vaultId={props.vaultId} entities={entities} blocks={blocks} anchor={citationTarget.range} editor={citationTarget.editor} onInsert={insertCitations} onClose={closeCitation}/>}
     {mathTarget && <MathDialog initial={mathTarget.initial} onSave={saveInlineMath} onClose={() => setMathTarget(null)}/>}
     {pageLinkStatus && <div className="note-link-status" role="status">{pageLinkStatus}</div>}
     {imageError && <div className="image-upload-error" role="alert">{imageError}</div>}

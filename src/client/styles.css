@@ -394,7 +394,8 @@ main { margin-left: 224px; }
 .ai-activity-table th { position: sticky; top: 0; background: var(--surface, #fff); z-index: 1; font-weight: 600; white-space: nowrap; }
 .ai-activity-table :is(th, td) { padding: 13px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .ai-activity-table td { min-width: 100px; }
-.ai-activity-table td:nth-child(4) { min-width: 180px; max-width: 280px; overflow-wrap: anywhere; }
+.ai-activity-table td:nth-child(4) { min-width: 180px; max-width: 280px; }
+.ai-activity-table .ai-activity-title { display: block; width: clamp(156px, 22vw, 256px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ai-activity-table small { display: block; margin-top: 6px; color: var(--text-muted, #717171); line-height: 1.6; }
 .ai-activity-table .ai-activity-status { display: inline-block; white-space: nowrap; }
 .ai-activity-empty { padding: 24px; text-align: center; font-size: 13px; }

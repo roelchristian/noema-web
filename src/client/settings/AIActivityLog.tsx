@@ -77,7 +77,7 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
           <td>{aiActivityLabels[item.action]}</td>
           <td><span className={'ai-activity-status '+item.status}>{item.status}</span></td>
           <td>{item.objectId?<>
-            {item.available?<button className="ai-activity-link" onClick={()=>void open(item)}>{item.objectTitle||'Untitled'}</button>:<span>{item.objectTitle||'Unavailable page'}</span>}
+            {item.available?<button className="ai-activity-link ai-activity-title" title={item.objectTitle||'Untitled'} onClick={()=>void open(item)}>{item.objectTitle||'Untitled'}</button>:<span className="ai-activity-title" title={item.objectTitle||'Unavailable page'}>{item.objectTitle||'Unavailable page'}</span>}
           </>:item.action==='search_embedding'?<span>Vault search</span>:<span>Settings → Intelligence</span>}</td>
           <td className="ai-activity-model">{item.model}{item.action!=='note_embedding'&&item.action!=='search_embedding'&&<small className="ai-activity-reasoning">{item.reasoningEffort==='none'?'no reasoning':`${item.reasoningEffort} reasoning`}</small>}</td>
           <td>{item.promptBytes===null?'Not sent':item.promptBytes.toLocaleString()}</td>

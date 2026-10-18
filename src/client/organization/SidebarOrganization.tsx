@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 import type { Organization, OrganizationContext, PageSummary } from '../../shared/domain';
+import { readSidebarExpansion, saveSidebarExpansion } from './sidebar-expansion';
+import { pageURL } from '../state/navigation-address';
 import { api } from '../api';
 import { Icon } from '../components/Icon';
 import { PageIcon } from '../components/PageIcon';
@@ -12,8 +14,9 @@ import {FolderCollectionDialog} from './FolderCollectionDialog';
 import { isFolderDrag, readFolderDrop, startFolderDrag } from './folder-drag';
 import { isPageDrag, readPageDrop, startPageDrag } from './page-drag';
 
-interface Container {linkedCollection?: string; type: 'collections' | 'folders'; id?: string; name: string; collection: string; parent: string}
-export function SidebarOrganization({vaultId, data, pages, context, active, disabled, available, onOpen, onOpenPage, onMovePage, onChanged, onError}: {
+interface Container {scope?: string; linkedCollection?: string; type: 'collections' | 'folders'; id?: string; name: string; collection: string; parent: string}
+export function SidebarOrganization({vaultId, data, pages, activePageId, activeFolderPath, revealPageId, onRevealed, context, active, disabled, available, onOpen, onOpenPage, onMovePage, onChanged, onError}: {
+  activePageId?: string; activeFolderPath: string[]; revealPageId: string | null; onRevealed: () => void;
   vaultId?: string; data: Organization; pages: PageSummary[]; context: OrganizationContext; active: boolean; disabled: boolean; available: boolean;
   onOpen: (collection?: string, folder?: string) => void; onOpenPage: (id: string) => void;
   onMovePage: (id: string, collection: string, folder: string | null) => Promise<void>;
@@ -21,18 +24,31 @@ export function SidebarOrganization({vaultId, data, pages, context, active, disa
 }) {
   const [edit, setEdit] = useState<Container | null>(null), [remove, setRemove] = useState<Container | null>(null);
   const [addFolder, setAddFolder] = useState<{folderId?:string;collectionId?:string}|null>(null);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(() => readSidebarExpansion(vaultId));
   const [dropTarget, setDropTarget] = useState<string | null>(null), [dropStatus, setDropStatus] = useState('');
   const dropping = useRef(false);
+  const tree = useRef<HTMLElement>(null);
+  useEffect(() => { if (vaultId) saveSidebarExpansion(vaultId, expanded); }, [vaultId, expanded]);
+  useEffect(() => {
+    if (!revealPageId || revealPageId !== activePageId) return;
+    setExpanded(previous => new Set([...previous, ...(activeFolderPath.length ? activeFolderPath.map(id => 'folder:' + id) : ['unfiled'])]));
+    const frame = requestAnimationFrame(() => {
+      const link = Array.from(tree.current?.querySelectorAll<HTMLAnchorElement>('[data-canonical-page]') ?? []).find(item => item.dataset.canonicalPage === revealPageId);
+      link?.scrollIntoView({block:'nearest'});
+      link?.focus({preventScroll:true});
+      onRevealed();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [revealPageId, activePageId, activeFolderPath, onRevealed]);
   useEffect(() => {
     if (!active || !context.folder) return;
     const path = folderBreadcrumbs(data.folders, context.folder);
-    setExpanded(previous => new Set([...previous, ...path.map(crumb => crumb.target!.folder)]));
+    setExpanded(previous => new Set([...previous, ...path.map(crumb => 'folder:' + crumb.target!.folder)]));
   }, [active, context.folder, data.folders]);
   const toggle = (id: string) => setExpanded(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const expand = (id: string) => setExpanded(previous => new Set(previous).add(id));
   const newFolder = (collection: string, parent = '') => setEdit({type: 'folders', name: '', collection, parent});
-  const containedPages = (collection: string, folder: string | null) => pages.filter(page => collection ? data.memberships.some(item => item.kind === 'page' && item.item_id === page.id && item.collection_id === collection) : data.locations.some(item => item.kind === 'page' && item.item_id === page.id && item.folder_id === folder));
+  const containedPages = (collection: string, folder: string | null) => pages.filter(page => collection ? data.memberships.some(item => item.kind === 'page' && item.item_id === page.id && item.collection_id === collection) : folder ? data.locations.some(item => item.kind === 'page' && item.item_id === page.id && item.folder_id === folder) : !data.locations.some(item => item.kind === 'page' && item.item_id === page.id && item.folder_id));
   async function drop(event: DragEvent, container: Container) {
     event.preventDefault(); setDropTarget(null);
     if (disabled || dropping.current || !vaultId) return;
@@ -47,12 +63,13 @@ export function SidebarOrganization({vaultId, data, pages, context, active, disa
     setDropStatus(container.type === 'folders' ? 'Moving page…' : 'Adding to collection…');
     try {
       await onMovePage(id, container.collection, container.type === 'folders' ? container.id! : null);
-      setExpanded(previous => { const next = new Set(previous); next.add(container.id!); return next; });
+      setExpanded(previous => { const next = new Set(previous); next.add(container.type === 'collections' ? 'collection:' + container.id : (container.scope ?? '') + 'folder:' + container.id); return next; });
       setDropStatus(`Page added to ${container.name}`);
     } catch (error) { setDropStatus('Could not move page. Try again.'); onError(error); }
     finally { dropping.current = false; }
   }
   function item(container: Container, depth = 0) {
+    const branch = container.type === 'collections' ? 'collection:' + container.id : (container.scope ?? '') + 'folder:' + container.id;
     const selected = active && (container.type === 'folders' ? context.folder === container.id : context.collection === container.id && !context.folder);
     const open = () => onOpen(container.collection, container.type === 'folders' ? container.id : '');
     const hasChildren = container.type === 'collections' && (data.folderLinks ?? []).some(link=>link.collection_id===container.id) || container.type === 'folders' && data.folders.some(folder => folder.parent_id === container.id) || containedPages(container.collection, container.type === 'folders' ? container.id! : null).length > 0;
@@ -65,14 +82,14 @@ export function SidebarOrganization({vaultId, data, pages, context, active, disa
       {...(container.type === 'folders' ? folderDropHandlers({
         folder: data.folders.find(folder => folder.id === container.id)!, vaultId: vaultId || '', pages, data, pending: disabled, moving: dropping,
         onHover: setDropTarget, onStatus: setDropStatus, onError,
-        onMove: async (pageId, folderId) => { await onMovePage(pageId, '', folderId); expand(folderId); },
+        onMove: async (pageId, folderId) => { await onMovePage(pageId, '', folderId); expand((container.scope ?? '') + 'folder:' + folderId); },
         onMoveFolder: async (source, parentId) => {
           onChanged(await api.organize(vaultId!, 'folders/' + source.id, {name: source.name, parent_id: parentId}));
-          expand(parentId);
+          expand((container.scope ?? '') + 'folder:' + parentId);
         },
       }) : {})}>
 
-      {hasChildren ? <button className="branch-toggle" disabled={disabled} aria-label={(expanded.has(container.id!) ? 'Collapse ' : 'Expand ') + container.name} aria-expanded={expanded.has(container.id!)} onClick={() => toggle(container.id!)}><span className="branch-container-icon"><Icon name={icon}/></span><span className="branch-chevron"><Icon name="chevron"/></span></button> : <button className="branch-leaf-icon" disabled={disabled} aria-label={'Open ' + container.name} onClick={open}><Icon name={icon}/></button>}
+      {hasChildren ? <button className="branch-toggle" disabled={disabled} aria-label={(expanded.has(branch) ? 'Collapse ' : 'Expand ') + container.name} aria-expanded={expanded.has(branch)} onClick={() => toggle(branch)}><span className="branch-container-icon"><Icon name={icon}/></span><span className="branch-chevron"><Icon name="chevron"/></span></button> : <button className="branch-leaf-icon" disabled={disabled} aria-label={'Open ' + container.name} onClick={open}><Icon name={icon}/></button>}
       <button className={'nav container-link ' + (selected ? 'active' : '')} disabled={disabled} aria-label={'Open ' + (container.type === 'folders' ? 'folder: ' : 'collection: ') + container.name} title={container.name} onClick={open}><span>{container.name}{container.linkedCollection && <small className="linked-folder-label">Linked</small>}</span></button>
       <ActionMenu label={'Options for ' + container.name} disabled={disabled} actions={[
         {label: 'Open', icon, onSelect: open},
@@ -84,23 +101,30 @@ export function SidebarOrganization({vaultId, data, pages, context, active, disa
       ]}/>
     </div>;
   }
-  function pageLinks(collection: string, folder: string | null, depth: number) {
-    return containedPages(collection, folder).map(page => <button className="page-link organization-page-link" key={page.id} style={{paddingLeft: 8 + Math.min(depth, 5) * 12}} disabled={disabled} draggable={!disabled} onDragStart={event => startPageDrag(event, vaultId!, page.id)} onClick={() => onOpenPage(page.id)} title={page.title || 'Untitled'}><PageIcon icon={page.icon}/><span className="page-link-title">{page.title || 'Untitled'}</span></button>);
+  function pageLinks(collection: string, folder: string | null, depth: number, scope = '') {
+    return containedPages(collection, folder).map(page => <a className="page-link organization-page-link" key={page.id} href={pageURL(vaultId!, page.id)} aria-current={page.id === activePageId ? 'page' : undefined} aria-disabled={disabled || undefined} tabIndex={disabled ? -1 : undefined} data-canonical-page={!collection && !scope ? page.id : undefined} style={{paddingLeft: 8 + Math.min(depth, 5) * 12}} draggable={!disabled} onDragStart={event => startPageDrag(event, vaultId!, page.id)} onClick={event => {
+      if (disabled) { event.preventDefault(); return; }
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault(); onOpenPage(page.id);
+    }} title={page.title || 'Untitled'}><PageIcon icon={page.icon}/><span className="page-link-title">{page.title || 'Untitled'}</span></a>);
   }
-  function folders(collection: string, parent: string | null, depth: number) {
+  function folders(collection: string, parent: string | null, depth: number, scope = '') {
     return data.folders.filter(folder => folder.parent_id === parent).map(folder => <div key={folder.id}>
-      {item({type: 'folders', id: folder.id, name: folder.name, collection, parent: folder.parent_id || ''}, depth)}
-      {expanded.has(folder.id) && <div className="sidebar-branch-children">{folders(collection, folder.id, depth + 1)}{pageLinks(collection, folder.id, depth + 1)}</div>}
+      {item({type: 'folders', id: folder.id, name: folder.name, collection, parent: folder.parent_id || '', scope}, depth)}
+      {expanded.has(scope + 'folder:' + folder.id) && <div className="sidebar-branch-children">{folders(collection, folder.id, depth + 1, scope)}{pageLinks(collection, folder.id, depth + 1, scope)}</div>}
     </div>);
   }
-  return <nav className="sidebar-group organization-sidebar" aria-label="Folders and collections" onDragEnd={() => setDropTarget(null)}>
-    {available && <><div className="organization-sidebar-label">Folders<ActionMenu icon="plus" label="Folder actions" disabled={disabled} actions={[{label: 'New folder', icon: 'folder', onSelect: () => newFolder('')}]}/></div>{folders('', null, 0)}{!data.folders.length && <button className="sidebar-create" disabled={disabled} onClick={() => newFolder('')}><Icon name="plus"/>Create a folder</button>}<div className="organization-sidebar-label">Collections<ActionMenu icon="plus" label="Collection actions" disabled={disabled} actions={[
+  return <nav ref={tree} className="sidebar-group organization-sidebar" aria-label="Folders and collections" onDragEnd={() => setDropTarget(null)}>
+    {available && <><div className="organization-sidebar-label">Folders<ActionMenu icon="plus" label="Folder actions" disabled={disabled} actions={[{label: 'New folder', icon: 'folder', onSelect: () => newFolder('')}]}/></div>{folders('', null, 0)}{containedPages('', null).length > 0 && <div>
+      <button className="nav sidebar-unfiled-toggle" disabled={disabled} aria-expanded={expanded.has('unfiled')} onClick={() => toggle('unfiled')}><Icon name="inbox"/><span>Unfiled pages</span><Icon name="chevron"/></button>
+      {expanded.has('unfiled') && <div className="sidebar-branch-children">{pageLinks('', null, 1)}</div>}
+    </div>}{!data.folders.length && <button className="sidebar-create" disabled={disabled} onClick={() => newFolder('')}><Icon name="plus"/>Create a folder</button>}<div className="organization-sidebar-label">Collections<ActionMenu icon="plus" label="Collection actions" disabled={disabled} actions={[
       {label: 'New collection', icon: 'collection', onSelect: () => setEdit({type: 'collections', name: '', collection: '', parent: ''})},
     ]}/></div>{data.collections.map(collection => <div key={collection.id}>
       {item({type: 'collections', id: collection.id, name: collection.name, collection: collection.id, parent: ''})}
-      {expanded.has(collection.id) && <div className="sidebar-branch-children">{(data.folderLinks ?? []).filter(link=>link.collection_id===collection.id).map(link=>{
+      {expanded.has('collection:' + collection.id) && <div className="sidebar-branch-children">{(data.folderLinks ?? []).filter(link=>link.collection_id===collection.id).map(link=>{
         const folder=data.folders.find(folder=>folder.id===link.folder_id);
-        return folder ? <div key={folder.id}>{item({type:'folders',id:folder.id,name:folder.name,collection:'',parent:folder.parent_id||'',linkedCollection:collection.id},1)}{expanded.has(folder.id)&&<div className="sidebar-branch-children">{folders('',folder.id,2)}{pageLinks('',folder.id,2)}</div>}</div> : null;
+        return folder ? <div key={folder.id}>{item({type:'folders',id:folder.id,name:folder.name,collection:'',parent:folder.parent_id||'',linkedCollection:collection.id,scope:'collection:' + collection.id + '/'},1)}{expanded.has('collection:' + collection.id + '/folder:' + folder.id)&&<div className="sidebar-branch-children">{folders('',folder.id,2,'collection:' + collection.id + '/')}{pageLinks('',folder.id,2,'collection:' + collection.id + '/')}</div>}</div> : null;
       })}{pageLinks(collection.id, null, 1)}</div>}
     </div>)}{!data.collections.length && <button className="sidebar-create" disabled={disabled} onClick={() => setEdit({type: 'collections', name: '', collection: '', parent: ''})}><Icon name="plus"/>Create a collection</button>}</>}
     <span className="sr-only" role="status">{dropStatus}</span>

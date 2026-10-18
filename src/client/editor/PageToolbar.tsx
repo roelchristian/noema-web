@@ -7,7 +7,8 @@ import { ActionMenu, type MenuAction } from '../components/ActionMenu';
 import { FeaturedImageDialog } from './FeaturedImageDialog';
 import { CleanupDialog } from './CleanupDialog';
 
-export function PageToolbar({ inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, focusedReading, onToggleFocusedReading, onForward, forwardDisabled, onChangeBlocks, onFeaturedImageChange,onEditLockChange, onUndo, onRedo, canUndo, canRedo}: {
+export function PageToolbar({ onRevealInSidebar, inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, focusedReading, onToggleFocusedReading, onForward, forwardDisabled, onChangeBlocks, onFeaturedImageChange,onEditLockChange, onUndo, onRedo, canUndo, canRedo}: {
+  onRevealInSidebar: () => void;
   onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean;
   onEditLockChange:(locked:boolean,password?:string)=>Promise<void>;
   onForward?: () => void; forwardDisabled?: boolean;
@@ -53,6 +54,7 @@ export function PageToolbar({ inactive=false, page, onError, onDelete, favourite
     {page.editLocked && <ActionMenu label="Page locked: unlock editing" icon="lock" disabled={changingLock} actions={lockAction.children ?? []}/>}
     <ActionMenu label="More page actions" disabled={changingLock} actions={[
       ...(onForward ? [{label: 'Go forward', icon: 'chevron', disabled: forwardDisabled, onSelect: onForward}] : []),
+      {label: 'Reveal in sidebar', icon: 'folder', onSelect: onRevealInSidebar},
       {label: focusedReading ? 'Turn off focused reading' : 'Turn on focused reading', icon: 'creativework', onSelect: onToggleFocusedReading},
       {label: 'Featured image…', icon: 'image', disabled:!!page.editLocked, onSelect: () => setFeaturedImageOpen(true)},
       {label: 'Editing', icon: 'edit', disabled: !!page.editLocked, children: [

@@ -15,6 +15,7 @@ export class SourcePageDraft {
   private evidenceBlocks=0;
   private flaggedBlocks=0;
   private recordCount=0;
+  private unreadableRecords=0;
   private quotedCharacters=0;
   title='';
   readonly blocks:Block[]=[];
@@ -31,10 +32,18 @@ export class SourcePageDraft {
     this.pending='';
     if(!this.title||!this.blocks.length)throw new HttpError(502,'AI did not return a complete page. Try again.');
     if(!this.evidenceBlocks&&!this.flaggedBlocks)throw new HttpError(502,'AI did not ground the page in source evidence. Please retry.');
+    if(this.unreadableRecords){
+      const block:Block={id:randomUUID(),type:'paragraph',content:[{text:'[??] Some generated text could not be read and was left out. Review this draft against the source.'}],checked:false};
+      this.blocks.push(block);this.emit({type:'block',block});
+    }
   }
   private record(line:string) {
     if(!line.trim())return;
-    let value:unknown;try{value=JSON.parse(line.replace(/sk-[A-Za-z0-9_-]{16,}/g,'[redacted]'));}catch{throw new HttpError(502,'AI returned an invalid block. Please retry.');}
+    let value:unknown;try{value=JSON.parse(line.replace(/sk-[A-Za-z0-9_-]{16,}/g,'[redacted]'));}catch{
+      // A stray suffix or malformed record must not discard readable blocks.
+      // Keep the omission visible; never guess at broken JSON or source claims.
+      this.unreadableRecords++;return;
+    }
     if(!value||typeof value!=='object'||Array.isArray(value))throw new HttpError(502,'AI returned an invalid page record.');
     const item=value as Record<string,unknown>;
     if(item.type==='title') {

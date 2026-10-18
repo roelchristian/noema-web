@@ -1,6 +1,6 @@
 import { sourcePagePrompt } from './source-page-prompt.js';
 import type { AIDebugTrace, AIRequestObserver } from './ai-debug.js';
-import { readOpenAIResponse, redactedTrace } from './openai-response.js';
+import { readOpenAIResponse, redactedTrace, responseOutputText } from './openai-response.js';
 import { explanationPrompt } from './explanation-prompt.js';
 import { entityScanPrompt } from './entity-scan.js';
 import { titlePrompt } from './title-prompt.js';
@@ -190,7 +190,7 @@ export class Intelligence {
         if(controller.signal.aborted||this.clock()>=Date.parse(credential.expiresAt)||this.preferenceRevision!==preferenceRevision)throw new HttpError(409,'AI generation was stopped or its settings changed.');
         sourcePage.onDelta(delta.split(credential.key).join('[redacted]').replace(/sk-[A-Za-z0-9_-]{16,}/g,'[redacted]'));
       }:undefined);
-      const summary=(result.output ?? []).filter((item:{type:string})=>item.type==='message').flatMap((item:{content: {type:string;text?:string}[]})=>item.content ?? []).filter((part:{type:string})=>part.type==='output_text').map((part:{text:string})=>part.text).join('\n').trim();
+      const summary=responseOutputText(result).trim();
       if(result.status!=='completed'||!summary||summary.length>(sourcePage?60000:12000))throw new HttpError(502,'OpenAI returned an incomplete response. Try a lower reasoning effort or a shorter page.');
       if(controller.signal.aborted||this.credential()?.generation!==credential.generation||this.preferenceRevision!==preferenceRevision)throw new HttpError(409,'The credential or AI settings changed, or the key expired. Please try again.');
       // Defense in depth against accidental credential echo by an upstream service.

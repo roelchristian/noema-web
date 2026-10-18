@@ -62,3 +62,29 @@ test('invalid record structure and drafts without source exposition still fail',
  assert.throws(()=>draftFor([block([],{blockType:'invented'})]),/invalid page block/);
  assert.throws(()=>draftFor([block([],{basis:'context'})]),/source evidence/);
 });
+test('a stray section sign after a complete streamed draft does not discard the draft',()=>{
+ const events=[],draft=new SourcePageDraft(event=>events.push(event),source);
+ const output=[JSON.stringify({type:'title',title:'Group axioms'}),JSON.stringify(block([{startLine:1,endLine:1}])),'§ ',''].join('\n');
+ // Replay character-by-character to exercise provider chunk boundaries too.
+ for(const character of output)draft.feed(character);
+ draft.finish();
+ assert.equal(draft.title,'Group axioms');assert.equal(draft.blocks.length,2);
+ assert.match(draft.blocks[0].content.map(span=>span.text).join(''),/\[L: 1\]/);
+ assert.match(draft.blocks[1].content[0].text,/\[\?\?\].*left out/);
+ assert.deepEqual(events.filter(event=>event.type==='block').map(event=>event.block),draft.blocks);
+});
+test('unreadable records between valid blocks are flagged without losing later blocks',()=>{
+ const draft=new SourcePageDraft(()=>{},source);
+ draft.feed(JSON.stringify({type:'title',title:'Group axioms'})+'\n');
+ draft.feed(JSON.stringify(block([{startLine:1,endLine:1}]))+'\n');
+ draft.feed('{"type":"block","text":broken}\n');
+ draft.feed(JSON.stringify(block([{startLine:2,endLine:2}],{text:'Every element has an inverse.'})));
+ draft.finish();
+ assert.equal(draft.blocks.length,3);assert.equal(draft.blocks[1].content[0].text,'Every element has an inverse.');
+ assert.match(draft.blocks[2].content[0].text,/\[\?\?\]/);
+});
+test('unreadable output alone cannot become a reviewable draft',()=>{
+ const draft=new SourcePageDraft(()=>{},source);
+ draft.feed(JSON.stringify({type:'title',title:'Group axioms'})+'\n§\n{"type":');
+ assert.throws(()=>draft.finish(),/complete page/);assert.equal(draft.blocks.length,0);
+});

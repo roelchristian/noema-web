@@ -1,6 +1,11 @@
 import type { AIDebugTrace } from './ai-debug.js';
 import { HttpError } from '../validation.js';
 
+/** Commentary is a preliminary message, not part of the generated artifact. */
+export function responseOutputText(result:{output?:{type:string;phase?:string;content?:{type:string;text?:string}[]}[]}) {
+  return (result.output??[]).filter(item=>item.type==='message'&&item.phase!=='commentary').flatMap(item=>item.content??[]).filter(part=>part.type==='output_text'&&typeof part.text==='string').map(part=>part.text!).join('\n');
+}
+
 export function redactedTrace(trace: AIDebugTrace | void, key: string): AIDebugTrace | undefined {
   if (!trace) return;
   const text = (value: string) => value.split(key).join('[redacted]').replace(/sk-[A-Za-z0-9_-]{16,}/g,'[redacted]');
@@ -27,6 +32,8 @@ export async function readOpenAIResponse(response: Response, trace?: AIDebugTrac
   const streaming=response.headers.get('content-type')?.includes('text/event-stream');
   const limit=streaming?2*1024*1024:128000;
   let raw='',pending='',size=0,lastUpdate=0,complete=false,outputText='';
+  const phases=new Map<string,string>();
+  let lastTextPart:string|undefined;
   let result: ReturnType<typeof JSON.parse>;
   const decoder=new TextDecoder();
   function frame(value: string) {
@@ -36,7 +43,12 @@ export async function readOpenAIResponse(response: Response, trace?: AIDebugTrac
     const event=JSON.parse(data);
     const type=typeof event.type==='string'?event.type:lines.find(line=>line.startsWith('event:'))?.slice(6).trim()||'message';
     trace?.event(type,event);
-    if(type==='response.output_text.delta'&&typeof event.delta==='string'){outputText+=event.delta;onTextDelta?.(event.delta);}
+    if(type==='response.output_item.added'&&event.item?.type==='message')phases.set(event.item.id,event.item.phase??'');
+    if(type==='response.output_text.delta'&&typeof event.delta==='string'&&phases.get(event.item_id)!=='commentary'){
+      const part=JSON.stringify([event.item_id,event.output_index,event.content_index]);
+      const delta=(lastTextPart!==undefined&&lastTextPart!==part?'\n':'')+event.delta;
+      lastTextPart=part;outputText+=delta;onTextDelta?.(delta);
+    }
     if (['response.completed','response.failed','response.incomplete'].includes(type) && event.response) {
       result=event.response;
       trace?.response(result);
@@ -70,7 +82,7 @@ export async function readOpenAIResponse(response: Response, trace?: AIDebugTrac
       trace?.response(result);
     }
     if(onTextDelta){
-      const finalText=(result.output??[]).filter((item:{type:string})=>item.type==='message').flatMap((item:{content?:{type:string;text?:string}[]})=>item.content??[]).filter((part:{type:string;text?:string})=>part.type==='output_text'&&typeof part.text==='string').map((part:{text:string})=>part.text).join('\n');
+      const finalText=responseOutputText(result);
       if(!outputText)onTextDelta(finalText);
       else if(finalText.startsWith(outputText))onTextDelta(finalText.slice(outputText.length));
       else if(finalText.trim()!==outputText.trim())throw new HttpError(502,'The final AI response did not match its streamed blocks. Please retry.');

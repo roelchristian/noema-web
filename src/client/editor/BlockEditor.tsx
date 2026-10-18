@@ -36,7 +36,7 @@ import {allowedInColumn, normalizeColumnBlocks} from '../../shared/column-blocks
 import { TableBlock } from './TableBlock';
 import { SelectionToolbar } from './SelectionToolbar';
 import { MathBlock } from './MathBlock';
-import { MathDialog } from './MathDialog';
+import {InlineMathEditor} from './InlineMathEditor';
 import { completeInlineMath, mathElement } from './math';
 import { completeTypedMarkdown,typedMarkdownBlock } from './markdown-typing';
 import { useMarkdownTyping } from '../state/markdown-preferences';
@@ -333,7 +333,7 @@ export function BlockEditor(props: Props) {
     const range = document.createRange(); range.selectNode(node);
     setMathTarget({range, initial: node.dataset.math ?? '', node});
   }
-  function saveInlineMath(source: string) {
+  function saveInlineMath(source: string,restoreFocus=true) {
     if (!mathTarget || !root.current?.contains(mathTarget.range.commonAncestorContainer)) {setMathTarget(null); return;}
     const {range, node, initial} = mathTarget;
     if (node ? !node.isConnected || node.dataset.math !== initial : range.toString() !== initial) {setMathTarget(null); return;}
@@ -341,7 +341,8 @@ export function BlockEditor(props: Props) {
     const spacer = document.createTextNode('\u200b'); math.after(spacer);
     range.setStart(spacer, 1); range.collapse(true);
     const el = math.closest<HTMLElement>('.block-content');
-    setMathTarget(null); el?.focus(); getSelection()?.removeAllRanges(); getSelection()?.addRange(range);
+    setMathTarget(null);
+    if(restoreFocus){el?.focus();getSelection()?.removeAllRanges();getSelection()?.addRange(range);}
     commitSelection();
   }
   function chooseImages(after?: string, replace?: Block) {
@@ -785,7 +786,7 @@ export function BlockEditor(props: Props) {
       </div>
     </Modal>}
     {citationTarget && <CitationPicker vaultId={props.vaultId} entities={entities} blocks={blocks} getAnchor={()=>resolveCitationRange(citationTarget.editor,citationTarget.bookmark)} editor={citationTarget.editor} onInsert={insertCitations} onClose={closeCitation}/>}
-    {mathTarget && <MathDialog initial={mathTarget.initial} onSave={saveInlineMath} onClose={() => setMathTarget(null)}/>}
+    {mathTarget && <InlineMathEditor range={mathTarget.range} node={mathTarget.node} initial={mathTarget.initial} onSave={saveInlineMath} onClose={() => setMathTarget(null)}/>}
     {pageLinkStatus && <div className="note-link-status" role="status">{pageLinkStatus}</div>}
     {imageError && <div className="image-upload-error" role="alert">{imageError}</div>}
     {mobile && active && <div ref={mobileToolbar} className="mobile-block-toolbar" role="toolbar" aria-label={`${activeLabel} actions`} style={{bottom: keyboardInset}} onPointerDown={event => { if ((event.target as Element).closest('button')) event.preventDefault(); }}>

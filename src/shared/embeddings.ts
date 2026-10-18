@@ -1,18 +1,19 @@
+import type {SourceReference} from './domain.js';
 export const embeddingModel = 'text-embedding-3-small';
 export const embeddingDimensions = 1536;
 export const embeddingMaxBytes = 8000;
 export interface EmbeddingSettings { automatic: boolean; minCharacters: number }
 export type EmbeddingJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'skipped' | 'interrupted';
 export interface EmbeddingJob {
- id: string; pageId: string | null; sourceId?: string | null; title: string; status: EmbeddingJobStatus; reason: string;
+ id: string; pageId: string | null; sourceId?: string | null; passageId?: string; title: string; status: EmbeddingJobStatus; reason: string;
  attempts: number; createdAt: string; startedAt: string | null; finishedAt: string | null;
  nextAttemptAt: string; error: string | null; tokens: number | null;
 }
-export interface EmbeddingNote { pageId: string; kind?: 'page' | 'entity'; sourceId?: string | null; title: string; eligible: boolean; reason: string; state: 'missing' | 'stale' | 'indexed' | 'ineligible' }
+export interface EmbeddingNote { pageId: string; kind?: 'page' | 'entity'; sourceId?: string | null; title: string; eligible: boolean; reason: string; indexedPassages?: number; totalPassages?: number; state: 'missing' | 'stale' | 'indexed' | 'partial' | 'ineligible' }
 export interface EmbeddingStatus {
  settings: EmbeddingSettings; model: string; dimensions: number; maxBytes: number; configured: boolean;
- counts: {eligible: number; indexed: number; missing: number; stale: number; ineligible: number; queued: number; running: number; failed: number};
+ counts: {eligible: number; indexed: number; missing: number; stale: number; ineligible: number; partial: number; queued: number; running: number; failed: number};
  jobs: EmbeddingJob[]; notes: EmbeddingNote[];
 }
-export interface SemanticSearchResult {id: string; kind?: 'page' | 'entity'; title: string; snippet: string; score: number; updated_at: string}
+export interface SemanticSearchResult {reference?: SourceReference; passageId?: string; id: string; kind?: 'page' | 'entity'; title: string; snippet: string; score: number; updated_at: string}
 export interface SemanticSearchResults { results: SemanticSearchResult[]; model: string }

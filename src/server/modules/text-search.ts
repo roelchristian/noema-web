@@ -3,6 +3,7 @@ import {makeSearchSnippet} from '../../shared/search-snippets.js';
 import {Store} from '../store.js';
 import {setupTextSearchSchema} from '../text-search-schema.js';
 import {HttpError} from '../validation.js';
+import {SourcePassages, passageReference, type SourcePassage} from './source-passages.js';
 import {Vaults} from './vaults.js';
 
 interface PageRow {id: string; vault_id: string; title: string; blocks: string; deleted_at: string | null}
@@ -36,10 +37,10 @@ function scopeValue(input: unknown): TextSearchScope | undefined {
   return {pageIds: ids(input.pageIds), entityIds: ids(input.entityIds)};
 }
 
-/** Saved-content lexical search. Triggers make every writer enqueue index work;
- * synchronization and the subsequent query share one SQLite transaction. */
+/** Saved-content lexical search. Durable passage synchronization runs before
+ * page/entity synchronization and the subsequent transactional query. */
 export class TextSearch {
-  constructor(private store: Store, private vaults: Vaults) {setupTextSearchSchema(store.db);}
+  constructor(private store: Store, private vaults: Vaults, private passages = new SourcePassages(store)) {setupTextSearchSchema(store.db);}
   private remove(kind: 'page' | 'entity', id: string) {
     this.store.run('DELETE FROM text_search_fts WHERE rowid IN (SELECT rowid FROM text_search_documents WHERE kind=? AND id=?)', kind, id);
     this.store.run('DELETE FROM text_search_documents WHERE kind=? AND id=?', kind, id);
@@ -82,6 +83,7 @@ export class TextSearch {
     if (!tokens.length) return {results: [], hasMore: false};
     if (tokens.length > 128) throw new HttpError(400, 'Use up to 128 search terms.');
     const match = tokens.map((token,index) => `"${token.replace(/"/g,'""')}"${index === tokens.length-1 ? '*' : ''}`).join(' AND ');
+    this.passages.synchronize(vault);
     return this.store.transaction(() => {
       this.synchronize(vault);
       const rows = this.store.all<MatchRow>(`
@@ -94,15 +96,52 @@ export class TextSearch {
         LEFT JOIN pages p ON d.kind='page' AND p.id=d.id AND p.vault_id=d.vault_id
         LEFT JOIN entities e ON d.kind='entity' AND e.id=d.id AND e.vault_id=d.vault_id
         WHERE text_search_fts MATCH ? AND d.vault_id=?
-          AND ((d.kind='page' AND p.id IS NOT NULL AND p.deleted_at IS NULL) OR (d.kind='entity' AND e.id IS NOT NULL))
+          AND ((d.kind='page' AND p.id IS NOT NULL AND p.deleted_at IS NULL) OR (d.kind='entity' AND e.id IS NOT NULL AND (e.type<>'source' OR (e.inactive=0 AND EXISTS (SELECT 1 FROM source_files sf WHERE sf.entity_id=e.id AND sf.vault_id=e.vault_id AND sf.status='ready' AND sf.admitted=1)))))
           AND (?=0 OR (d.kind='page' AND d.id IN (SELECT value FROM json_each(?))) OR (d.kind='entity' AND d.id IN (SELECT value FROM json_each(?))))
         ORDER BY nameHit DESC,relevance ASC,text_search_fts.name COLLATE NOCASE,d.kind,d.id
         LIMIT ?
       `, match, vault, scope ? 1 : 0, JSON.stringify(scope?.pageIds ?? []), JSON.stringify(scope?.entityIds ?? []), limit+1);
-      return {results: rows.slice(0,limit).map<TextSearchResult>(row => {
+      // Materialize BM25 before partitioning: FTS ranking functions must run
+      // directly against the matching virtual-table cursor. One best passage
+      // per source prevents a book from occupying the entire result list.
+      const passages = this.store.all<SourcePassage & {name: string; excerpt: string; relevance: number}>(`
+        WITH hits AS MATERIALIZED (
+          SELECT p.*,e.name,
+            snippet(source_passages_fts,1,'','','…',32) AS excerpt,
+            bm25(source_passages_fts,3.0,1.0) AS relevance
+          FROM source_passages_fts
+          JOIN source_passages p ON p.rowid=source_passages_fts.rowid
+          JOIN source_files f ON f.id=p.file_id AND f.entity_id=p.source_id AND f.vault_id=p.vault_id
+          JOIN entities e ON e.id=p.source_id AND e.vault_id=p.vault_id
+          WHERE source_passages_fts MATCH ? AND p.vault_id=?
+            AND f.status='ready' AND f.admitted=1 AND e.type='source' AND e.inactive=0
+            AND (?=0 OR p.source_id IN (SELECT value FROM json_each(?)))
+        ), ranked AS (
+          SELECT *,row_number() OVER (PARTITION BY source_id ORDER BY relevance,ordinal,id) AS position FROM hits
+        )
+        SELECT * FROM ranked WHERE position=1 ORDER BY relevance,name COLLATE NOCASE,source_id LIMIT ?
+      `, match,vault,scope ? 1 : 0,JSON.stringify(scope?.entityIds ?? []),limit+1);
+      const results = rows.map<TextSearchResult>(row => {
         const relevance = Math.max(0,-row.relevance);
         return {id: row.id, kind: row.kind, name: row.name, matchedIn: row.kind === 'page' ? row.nameHit ? 'title' : 'page' : row.nameHit ? 'name' : 'alias', snippet: makeSearchSnippet(row.excerpt,query), score: (row.nameHit ? 1 : 0)+relevance/(1+relevance)};
-      }), hasMore: rows.length > limit};
+      });
+      const bySource = new Map(results.map(result => [`${result.kind}:${result.id}`,result]));
+      for (const passage of passages) {
+        const relevance = Math.max(0,-passage.relevance);
+        const result: TextSearchResult = {id:passage.source_id,kind:'entity',name:passage.name,matchedIn:'source',snippet:makeSearchSnippet(passage.excerpt,query),score:relevance/(1+relevance),reference:passageReference(passage),passageId:passage.id};
+        const key = `entity:${result.id}`;
+        const existing = bySource.get(key);
+        // A source-name hit remains first-class, but still receives the
+        // evidence anchor when the same query also matches a passage.
+        if (existing) {
+          existing.reference=result.reference;
+          existing.passageId=result.passageId;
+          existing.snippet=result.snippet;
+          existing.score=Math.max(existing.score,result.score);
+        } else bySource.set(key,result);
+      }
+      const combined = [...bySource.values()].sort((a,b) => b.score-a.score || a.name.localeCompare(b.name) || a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id));
+      return {results:combined.slice(0,limit),hasMore:combined.length>limit || rows.length>limit || passages.length>limit};
     });
   }
 }

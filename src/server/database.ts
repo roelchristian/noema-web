@@ -10,6 +10,8 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { BlockType, Segment } from '../shared/domain.js';
 import { now } from './validation.js';
+import {setupSourcePassageSchema} from './source-passage-schema.js';
+import {setupSourcePassageEmbeddingSchema} from './source-passage-embedding-schema.js';
 import {setupTextSearchSchema} from './text-search-schema.js';
 
 export function openDatabase(filename: string): DatabaseSync {
@@ -396,6 +398,8 @@ if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
    store.run("INSERT INTO schema_migrations VALUES (4,datetime('now'))");
   });
  }
+ setupSourcePassageSchema(db);
+ setupSourcePassageEmbeddingSchema(db);
  setupTextSearchSchema(db);
  if (db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Database contains invalid references');
  return db;

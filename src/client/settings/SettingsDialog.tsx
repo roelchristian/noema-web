@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { AIActivityLog } from './AIActivityLog';
 import { IntelligenceSettings } from './IntelligenceSettings';
 import { EmbeddingSettings } from './EmbeddingSettings';
-import type { Vault } from '../../shared/domain';
+import type { SourceReference, Vault } from '../../shared/domain';
 import { KnowledgeEntitySettings } from './KnowledgeEntitySettings';
 import { Modal } from '../components/Modal';
 import { Select } from '../components/Select';
@@ -19,10 +19,11 @@ const settingsTabs = [
   {id: 'security', label: 'Security'},
 ] as const;
 
-export function SettingsDialog({appearance, onChange, storageError, onClose, onOpenPage, onOpenEntity, vault, onChangePassphrase, onBeforeNetworkChange}: {
+export function SettingsDialog({appearance, onChange, storageError, onClose, onOpenPage, onOpenEntity, onOpenPassage, vault, onChangePassphrase, onBeforeNetworkChange}: {
   onChangePassphrase: (current: string, next: string | null) => Promise<void>;
   onBeforeNetworkChange: () => Promise<void>;
   vault: Vault | null;
+  onOpenPassage: (vaultId:string,reference:SourceReference)=>Promise<void>;
   onOpenPage: (vaultId: string, pageId: string) => Promise<void>;
   onOpenEntity: (vaultId: string, entityId: string) => Promise<void>;
   appearance: Appearance; onChange: (appearance: Appearance) => void; storageError: boolean; onClose: () => void;
@@ -101,7 +102,7 @@ export function SettingsDialog({appearance, onChange, storageError, onClose, onO
       <div id="settings-panel-intelligence" role="tabpanel" aria-labelledby="settings-tab-intelligence" hidden={tab !== 'intelligence'}>
         <IntelligenceSettings/>
         {tab === 'intelligence' && <AIDebugSettings/>}
-        {tab === 'intelligence' && <EmbeddingSettings key={vault?.id} vault={vault} onOpenPage={onOpenPage} onOpenEntity={onOpenEntity}/>}
+        {tab === 'intelligence' && <EmbeddingSettings onOpenPassage={onOpenPassage} key={vault?.id} vault={vault} onOpenPage={onOpenPage} onOpenEntity={onOpenEntity}/>}
         <section className="settings-section settings-activity-entry"><div><h3>AI activity log</h3><p>Review local AI requests, export a CSV, or clear activity.</p></div><button className="button" aria-haspopup="dialog" onClick={() => setActivityOpen(true)}>Open activity log</button></section>
       </div>
       <div id="settings-panel-security" role="tabpanel" aria-labelledby="settings-tab-security" hidden={tab !== 'security'}>

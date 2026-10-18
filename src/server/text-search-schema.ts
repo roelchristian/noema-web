@@ -62,6 +62,30 @@ export function setupTextSearchSchema(db: DatabaseSync): void {
         DELETE FROM text_search_dirty WHERE vault_id=OLD.id;
       END;
     `);
+    // Passage rowids are stable within their extracted-content revision. Keep
+    // every passage searchable, even when its embedding is still queued.
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS source_passages_fts USING fts5(
+        heading, text, tokenize='unicode61 remove_diacritics 2', prefix='2 3 4'
+      );
+      CREATE TRIGGER IF NOT EXISTS source_passages_fts_insert AFTER INSERT ON source_passages BEGIN
+        INSERT INTO source_passages_fts(rowid,heading,text) VALUES (NEW.rowid,NEW.heading,NEW.text);
+      END;
+      CREATE TRIGGER IF NOT EXISTS source_passages_fts_update AFTER UPDATE ON source_passages BEGIN
+        DELETE FROM source_passages_fts WHERE rowid=OLD.rowid;
+        INSERT INTO source_passages_fts(rowid,heading,text) VALUES (NEW.rowid,NEW.heading,NEW.text);
+      END;
+      CREATE TRIGGER IF NOT EXISTS source_passages_fts_delete AFTER DELETE ON source_passages BEGIN
+        DELETE FROM source_passages_fts WHERE rowid=OLD.rowid;
+      END;
+    `);
+    if (!db.prepare("SELECT 1 FROM metadata WHERE key='source-passages-fts-v1-backfill'").get()) {
+      db.exec(`
+        DELETE FROM source_passages_fts;
+        INSERT INTO source_passages_fts(rowid,heading,text) SELECT rowid,heading,text FROM source_passages;
+        INSERT INTO metadata(key,value) VALUES ('source-passages-fts-v1-backfill','complete');
+      `);
+    }
     if (!db.prepare("SELECT 1 FROM metadata WHERE key='text-search-v1-backfill'").get()) {
       db.exec(`
         INSERT OR REPLACE INTO text_search_dirty SELECT 'page',id,vault_id FROM pages WHERE deleted_at IS NULL;

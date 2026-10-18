@@ -25,6 +25,7 @@ import { Organizer } from './modules/organization.js';
 import { Intelligence, keychainFor, intelligencePreferencesFor } from './modules/intelligence.js';
 import { Pages } from './modules/pages.js';
 import { Embeddings } from './modules/embeddings.js';
+import {SourcePassages} from './modules/source-passages.js';
 import { SourceEnrichments } from './modules/source-enrichments.js';
 import { SearchSnippets } from './modules/search-snippets.js';
 import { TextSearch } from './modules/text-search.js';
@@ -55,6 +56,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
   const pageUtility=new PageUtility(store,pages,knowledge,enrichments,intelligence);
   const entityMatches=new EntityMatches(store,pages,knowledge);
   const embeddings=new Embeddings(store,pages,knowledge,vaults,intelligence,activity);
+  const sourcePassages=new SourcePassages(store);
   const sourceEnrichments=new SourceEnrichments(store,intelligence,activity);
   const sourcePages=new SourcePages(store,knowledge,pages);
   const searchSnippets=new SearchSnippets(pages,knowledge,vaults);
@@ -66,6 +68,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
   let cleanup: ReturnType<typeof setInterval> | undefined;
   let keyCleanup: ReturnType<typeof setInterval> | undefined;
   let embeddingWorker: ReturnType<typeof setInterval> | undefined;
+  let sourcePassageWorker: ReturnType<typeof setInterval> | undefined;
   let sourceEnrichmentWorker: ReturnType<typeof setInterval> | undefined;
   const server = http.createServer(async(req,res)=>{
     let activityId: string | undefined;
@@ -382,6 +385,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
   });
   server.on('listening', () => {
     vaultDeletion.cleanup();
+    sourcePassageWorker=setInterval(()=>{try{sourcePassages.tick();}catch{/* Durable passage state records failures for retry. */}},500);sourcePassageWorker.unref();
     sourceWorker=setInterval(()=>{void sourceFiles.tick().catch(()=>{});},500);sourceWorker.unref();
     sourceEnrichmentWorker=setInterval(()=>{void sourceEnrichments.tick().catch(()=>{});},1000);sourceEnrichmentWorker.unref();
     cleanup = setInterval(() => { try { pages.purgeExpired(); images.cleanup(); sourceFiles.cleanup(); vaultDeletion.cleanup(); } catch (error) { console.error('Trash cleanup failed',error); } },60 * 60 * 1000);
@@ -389,6 +393,6 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
     keyCleanup=setInterval(()=>{try{intelligence.purgeExpired();}catch{/* Keychain may be locked; all AI access still fails closed. */}},60000);keyCleanup.unref();
     embeddingWorker=setInterval(()=>{void embeddings.tick().catch(()=>{/* Durable job history records failures; never log note content. */});},1000);embeddingWorker.unref();
   });
-  server.on('close', () => {clearInterval(sourceWorker);sourceFiles.close();clearInterval(sourceEnrichmentWorker);sourceEnrichments.close();clearInterval(cleanup);clearInterval(keyCleanup);clearInterval(embeddingWorker);embeddings.close();});
+  server.on('close', () => {clearInterval(sourceWorker);sourceFiles.close();clearInterval(sourcePassageWorker);clearInterval(sourceEnrichmentWorker);sourceEnrichments.close();clearInterval(cleanup);clearInterval(keyCleanup);clearInterval(embeddingWorker);embeddings.close();});
   return server;
 }

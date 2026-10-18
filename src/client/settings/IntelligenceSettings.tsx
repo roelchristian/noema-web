@@ -46,7 +46,7 @@ export function IntelligenceSettings() {
         <button className="button danger" type="button" disabled={busy||!status?.configured} onClick={()=>void perform(async()=>setStatus(await api.removeIntelligence()),'Saved key removed from Noema.')}>Remove key</button></div>
     </form>
     {changed&&<p>Save AI preferences before validating the new selection.</p>}
-    <p className="intelligence-note">Noema accepts local connections only (127.0.0.1). Title and summary actions send page text to OpenAI over HTTPS. Processed sources automatically send text or excerpts to generate a name, language, and summary. When automatic embeddings are enabled for a vault, eligible saved notes and source text or excerpts are also sent to OpenAI; bulk indexing and semantic searches send note text or your search query. API charges may apply. Validation sends a small test prompt. Use a dedicated project key with restricted permissions and spending limits in OpenAI.</p>
+    <p className="intelligence-note">Noema accepts local connections only (127.0.0.1). Title and summary actions send page text to OpenAI over HTTPS. Processed sources automatically send text or excerpts to generate a name, language, and summary. When automatic embeddings are enabled for a vault, eligible saved notes and all extracted source passages are also sent to OpenAI; bulk indexing and semantic searches send note text or your search query. API charges may apply. Validation sends a small test prompt. Use a dedicated project key with restricted permissions and spending limits in OpenAI.</p>
     <p role="status" aria-live="polite">{message}</p>
   </section>;
 }

@@ -26,7 +26,7 @@ export class VaultDeletion {
     const images=this.persistent&&existsSync(directory)?readdirSync(directory,{withFileTypes:true}).filter(file=>file.isFile()).map(file=>file.name).sort():[];
     const counts={notes:count('pages','AND deleted_at IS NULL'),trashedNotes:count('pages','AND deleted_at IS NOT NULL'),entities:count('entities'),sourceFiles:count('source_files'),images:images.length,folders:count('folders'),collections:count('collections')};
     const blockers:string[]=[];
-    if(count('source_files',"AND status='processing'")||count('embedding_jobs',"AND status='running'"))blockers.push('A file extraction or embedding job is running. Wait for it to finish, then refresh this summary.');
+    if(count('source_files',"AND status='processing'")||count('embedding_jobs',"AND status='running'")||count('source_passage_embedding_jobs',"AND status='running'"))blockers.push('A file extraction or embedding job is running. Wait for it to finish, then refresh this summary.');
     const revisions=this.store.all('SELECT id,title,revision FROM pages WHERE vault_id=? ORDER BY id',id);
     const entities=this.store.all('SELECT id,updated_at FROM entities WHERE vault_id=? ORDER BY id',id);
     const sources=this.store.all('SELECT id,size,status,entity_id FROM source_files WHERE vault_id=? ORDER BY id',id);

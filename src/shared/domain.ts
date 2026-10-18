@@ -7,7 +7,7 @@ export const entityLabels: Record<EntityType, string> = {
 };
 export const blockTypes = ['paragraph', 'heading1', 'heading2', 'bullet', 'numbered', 'divider', 'code', 'quote', 'todo', 'columns', 'table', 'image', 'math'] as const;
 export type BlockType = typeof blockTypes[number];
-export interface SourceReference {startPage?:number;endPage?:number;sourceNumber?:number;id:string;sourceId:string;fileId:string;startLine:number;endLine:number;sourceHash:string;excerpt:string}
+export interface SourceReference {startOffset?:number;endOffset?:number;startPage?:number;endPage?:number;sourceNumber?:number;id:string;sourceId:string;fileId:string;startLine:number;endLine:number;sourceHash:string;excerpt:string}
 export interface TextStyle { sourceReference?: SourceReference; math?: boolean; bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean; code?: boolean; href?: string; skipAutoTag?: boolean }
 export type Segment = TextStyle & ( { text: string; entityId?: never; mentionText?: never } | { entityId: string; text?: never; mentionText?: string });
 /** Formatting never limits entity matching; semantic content and explicit exclusions do. */

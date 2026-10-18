@@ -1,3 +1,5 @@
+import {citationLocation} from '../../shared/citations';
+import type {SourceReference} from '../../shared/domain';
 import {pageAIStatusLabels, pageAIStatusDescriptions} from '../../shared/page-ai-status';
 import {useLibraryViewState} from '../state/library-view-state';
 import {FolderCollectionDialog} from './FolderCollectionDialog';
@@ -26,12 +28,12 @@ import { Modal } from '../components/Modal';
 
 interface Item { aliases?: string[]; featuredImageId?:string|null; kind: FavouriteKind; id: string; name: string; label: string; icon?: string | null; description?: string; updatedAt?: string; entityType?: string }
 interface EditContainer { type: 'collections' | 'folders'; id?: string; name: string; parent: string }
-export function OrganizationLibrary({data, vaultId, pages, entities, favouritesOnly, inboxOnly = false, context, onContextChange, onChanged, onOpenPage, onOpenEntity, onOpenFolder, onRenamePage, onDeletePage, onNewNote, onError}: {
+export function OrganizationLibrary({data, vaultId, pages, entities, favouritesOnly, inboxOnly = false, context, onContextChange, onChanged, onOpenPage, onOpenEntity, onOpenPassage, onOpenFolder, onRenamePage, onDeletePage, onNewNote, onError}: {
   data: Organization; vaultId: string; pages: PageSummary[]; entities: Entity[]; favouritesOnly: boolean; inboxOnly?: boolean;
   context: OrganizationContext; onContextChange: (patch: Partial<OrganizationContext>) => void; onChanged: (data: Organization) => void;
   onNewNote: () => void; onOpenFolder: (id: string) => void;
   onRenamePage: (page: PageSummary) => void; onDeletePage: (page: PageSummary) => void;
-  onOpenPage: (id: string) => void; onOpenEntity: (id: string) => void; onError: (error: unknown) => void;
+  onOpenPassage:(reference:SourceReference,trigger?:HTMLElement)=>void; onOpenPage: (id: string) => void; onOpenEntity: (id: string) => void; onError: (error: unknown) => void;
 }) {
   const {collection, folder} = favouritesOnly || inboxOnly ? {collection: '', folder: ''} : context;
   const destination = favouritesOnly ? 'favourites' : inboxOnly ? 'inbox' : JSON.stringify(['organization', collection, folder]);
@@ -96,7 +98,7 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   const openItem = (item: Item) => {
     suppressSemantic();
     setViewState(previous => ({...previous, focusedRow: item.kind + ':' + item.id}));
-    if (item.kind === 'folder') onOpenFolder(item.id); else if (item.kind === 'page') onOpenPage(item.id); else onOpenEntity(item.id);
+    if (item.kind === 'folder') onOpenFolder(item.id); else if (item.kind === 'page') onOpenPage(item.id); else {const reference=textHits.get('entity:'+item.id)?.reference??semanticNotes.get(item.id)?.reference;if(query&&reference)onOpenPassage(reference,document.activeElement instanceof HTMLElement?document.activeElement:undefined);else onOpenEntity(item.id);}
   };
   const folderDescription = (id: string) => {
     const notes = data.locations.filter(location => location.kind === 'page' && location.folder_id === id && pagesById.has(location.item_id)).length;
@@ -162,7 +164,8 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   const semanticNotes = new Map(semantic.results.map(result => [result.id, result]));
   const previewPages = (query || viewMode === 'grid' ? visible : []).filter(item => item.kind === 'page' && !textHits.get('page:' + item.id)?.snippet && !semanticNotes.get(item.id)?.snippet);
   const previews = useSearchSnippets(vaultId, search, previewPages.map(item => item.id), viewMode === 'grid', previewPages.map(item => item.id + ':' + (item.updatedAt ?? '')).sort().join(','));
-  const snippetFor = (item: Item) => textHits.get(item.kind + ':' + item.id)?.snippet || semanticNotes.get(item.id)?.snippet || (item.kind === 'page' ? previews.snippets[item.id] ?? semanticNotes.get(item.id)?.snippet ?? '' : makeSearchSnippet(item.description ?? '', search));
+  const passageFor=(item:Item)=>item.kind==='entity'?(textHits.get('entity:'+item.id)?.reference??semanticNotes.get(item.id)?.reference):undefined;
+  const snippetFor = (item: Item) => (passageFor(item)?citationLocation(passageFor(item)!)+': ':'')+(textHits.get(item.kind + ':' + item.id)?.snippet || semanticNotes.get(item.id)?.snippet || (item.kind === 'page' ? previews.snippets[item.id] ?? semanticNotes.get(item.id)?.snippet ?? '' : makeSearchSnippet(item.description ?? '', search)));
   const folderPath = (id: string): string => {
     const names: string[] = []; let f = data.folders.find(value => value.id === id);
     while (f) { names.unshift(f.name); f = data.folders.find(value => value.id === f!.parent_id); }

@@ -1,7 +1,10 @@
+import {mathSource} from './source-math-text.js';
+import {sourceGenerationDocument} from './source-document.js';
+import {SourceDocuments} from './source-documents.js';
 import {linkSourceReferences,syncSourceReferences} from './source-references.js';
 import {pageLanguage} from './page-language.js';
 import {sourcePagePreview} from './source-page-preview.js';
-import { numberedSourceText, sourceTextLines } from '../../shared/source-text.js';
+import { sourceTextLines } from '../../shared/source-text.js';
 import {createHash,randomUUID} from 'node:crypto';
 import type {Block,Page,SourceFile} from '../../shared/domain.js';
 import {defaultSourcePageOptions,normalizeSourcePageOptions,sourcePageChoices,sourcePageFormats,sourcePageBlockTypes,type SourcePageEvent,type SourcePageReview} from '../../shared/source-page.js';
@@ -182,7 +185,7 @@ export class SourcePages {
     if(revisionId&&(!prior||prior.status!=='pending'))throw new HttpError(409,'This draft is no longer available to revise. Reopen the latest draft.');
     if(prior&&prior.source_hash!==createHash('sha256').update(file.text).digest('hex'))throw new HttpError(409,'The source changed. Generate a new draft from the updated source.');
     if(Buffer.byteLength(file.text)>160000)throw new HttpError(413,'This source is too long for page generation. Use a shorter source or split it into sections.');
-    return {requestId,fingerprint,file,sourceId,revisionId,input:JSON.stringify({user_focus:focus,generation_options:options,format_instructions:sourcePageFormats[options.format].prompt,...(prior&&revisionMode==='changes'?{revision_feedback:feedback,untrusted_previous_draft:{title:prior.title,blocks:JSON.parse(prior.blocks)}}:{}),untrusted_source:{name:source.name,url:file.source_url,filename:file.name,numbered_text:numberedSourceText(file.text)}}),existing:undefined,focus,options,review:undefined};
+    return {requestId,fingerprint,file,sourceId,revisionId,input:JSON.stringify({user_focus:focus,generation_options:options,format_instructions:sourcePageFormats[options.format].prompt,...(prior&&revisionMode==='changes'?{revision_feedback:feedback,untrusted_previous_draft:{title:prior.title,blocks:JSON.parse(prior.blocks)}}:{}),untrusted_source:{name:source.name,url:file.source_url,filename:file.name,document:sourceGenerationDocument(new SourceDocuments(this.store).get(file),mathSource(this.store,file).text)}}),existing:undefined,focus,options,review:undefined};
   }
   private review(row:DraftRow):SourcePageReview {return {id:row.request_id,title:row.title,blocks:JSON.parse(row.blocks) as Block[],focus:row.focus,language:row.language??null,options:normalizeSourcePageOptions(row.options?JSON.parse(row.options):undefined)};}
   latest(vault:string,sourceId:string):SourcePageReview|null {
@@ -200,7 +203,7 @@ export class SourcePages {
       try{requestedLanguage=pageLanguage(prepared.options.language);}catch{/* Legacy free-text language names are resolved by the model's language tag. */}
       const language=draft.language??requestedLanguage;
       if(!language)throw new HttpError(502,'AI did not identify the generated page language. Please retry.');
-      const blocks=this.pages.validateBlocks(vault,linkSourceReferences(draft.blocks,prepared.file));
+      const blocks=this.pages.validateBlocks(vault,linkSourceReferences(draft.blocks,mathSource(this.store,prepared.file)));
       const recordedActivity=this.store.get('SELECT 1 FROM ai_activity WHERE id=?',activityId)?activityId:null;
       this.store.run(`INSERT INTO source_page_drafts (request_id,vault_id,source_id,fingerprint,source_hash,focus,options,title,language,blocks,status,activity_id,created_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,'pending',?,?)`,prepared.requestId,vault,prepared.sourceId,prepared.fingerprint,createHash('sha256').update(prepared.file.text).digest('hex'),prepared.focus,JSON.stringify(prepared.options),draft.title,language,JSON.stringify(blocks),recordedActivity,now());

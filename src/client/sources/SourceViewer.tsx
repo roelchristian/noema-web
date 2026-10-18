@@ -35,7 +35,7 @@ export function SourceViewer({vaultId,reference,entities,onClose,onOpenEntity}: 
   const source=entities.find(entity=>entity.id===reference.sourceId);
   useEffect(()=>{
     const controller=new AbortController();setLoaded(null);setError('');
-    void request<SourceFile & {textHash:string}>(`source-files/${encodeURIComponent(reference.fileId)}?fingerprint=1`,'GET',undefined,vaultId,controller.signal).then(file=>{
+    void request<SourceFile & {textHash:string}>(`source-files/${encodeURIComponent(reference.fileId)}?fingerprint=1&sourceHash=${encodeURIComponent(reference.sourceHash)}`,'GET',undefined,vaultId,controller.signal).then(file=>{
       if(file.entity_id!==reference.sourceId)throw new Error('This file no longer belongs to the cited source.');
       const matches=file.status==='ready'&&file.admitted===1&&file.textHash===reference.sourceHash;
       if(!controller.signal.aborted)setLoaded({file,matches});

@@ -1,3 +1,7 @@
+import {sourceProgress} from './modules/source-progress.js';
+import {mathSource} from './modules/source-math-text.js';
+import {sourceGenerationDocument} from './modules/source-document.js';
+import {SourceMath} from './modules/source-math.js';
 import {EntityScanStream} from './modules/entity-scan-stream.js';
 import {DOMAINS,TAXONOMY_VERSION} from '../shared/domains.js';
 import {Domains} from './modules/domains.js';
@@ -7,6 +11,7 @@ import type { SourcePageEvent } from '../shared/source-page.js';
 import { limitSummaryWords } from '../shared/summary-text.js';
 import { entityMentionName } from '../shared/domain.js';
 import { SourceFiles, maxSourceBytes } from './modules/source-files.js';
+import { SourceDocuments } from './modules/source-documents.js';
 import { VaultBackups, maxBackupBytes } from './modules/vault-backups.js';
 import { AINotifications } from './modules/ai-notifications.js';
 import { Images, maxImageBytes } from './modules/images.js';
@@ -121,10 +126,18 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             vaults.requireOpen(vault);
             return send(201,await sourceFiles.admit(vault,url.searchParams.get('name')||'',Buffer.concat(chunks),url.searchParams.get('entity')||undefined,()=>{vaults.requireOpen(vault);}));
           }
-          if(id && parts.length===3 && method==='GET'){const file=sourceFiles.require(vault,id);return send(200,url.searchParams.get('fingerprint')==='1'?{...file,textHash:createHash('sha256').update(file.text).digest('hex')}:file);}
+          if(id && parts.length===3 && method==='GET'){const raw=sourceFiles.require(vault,id);const file=url.searchParams.get('sourceHash')===createHash('sha256').update(raw.text).digest('hex')?raw:mathSource(store,raw);return send(200,url.searchParams.get('fingerprint')==='1'?{...file,processing_detail:sourceProgress.get(file.id),textHash:createHash('sha256').update(file.text).digest('hex')}:{...file,processing_detail:sourceProgress.get(file.id)});}
           if(id && parts.length===3 && method==='DELETE')return send(200,sourceFiles.remove(vault,id));
           if(id && parts.length===4 && parts[3]==='retry' && method==='POST')return send(200,sourceFiles.retry(vault,id));
           if(id && parts.length===4 && parts[3]==='retry-enrichment' && method==='POST')return send(200,sourceEnrichments.retry(vault,id));
+          if(id && parts.length===4 && parts[3]==='download-processed' && method==='GET') {
+            const file=sourceFiles.require(vault,id);
+            if(file.admitted!==1||file.status!=='ready'||!file.text.trim())throw new HttpError(409,'Processed text is available after source processing completes.');
+            const name=(file.name.replace(/\.[^.]+$/,'')||'source')+'.processed.json';
+            const filename=encodeURIComponent(name).replace(/['()*]/g,char=>'%'+char.charCodeAt(0).toString(16).toUpperCase());
+            res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Content-Disposition':`attachment; filename="source.processed.json"; filename*=UTF-8''${filename}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"});
+            return res.end(JSON.stringify(new SourceDocuments(store).get(file),null,2));
+          }
           if(id && parts.length===4 && parts[3]==='download' && method==='GET') {
             const file=sourceFiles.require(vault,id);
             if(file.admitted!==1)throw new HttpError(409,'This source is not available until safety processing succeeds.');
@@ -383,13 +396,29 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               try {
                 if(prepared.existing){emit({type:'completed',page:prepared.existing});res.end();return;}
                 if(prepared.review){emit({type:'review',draft:prepared.review});res.end();return;}
-                activityId=activity.start('create_page_from_source',intelligence.selection(),vault,id,'entity');
                 emit({type:'status',phase:'thinking'});
                 heartbeat=setInterval(()=>{if(!res.destroyed&&!controller.signal.aborted)res.write('\n');},10000);
-                const draft=new SourcePageDraft(emit,prepared.file.text);
+                const input=JSON.parse(prepared.input);
+                const cleanedFile=await new SourceMath(store).prepare(prepared.file,
+                  async text=>{
+                    const mathActivity=activity.start('source_math_preprocessing',intelligence.selection(),vault,id,'entity');
+                    try {
+                      const result=await intelligence.generate(text,false,bytes=>activity.request(mathActivity,bytes,null),false,false,false,undefined,true,{
+                        signal:controller.signal,onDelta:()=>{},mathPreparation:true,
+                      });
+                      activity.finish(mathActivity,'completed',200);return result;
+                    }catch(error){activity.finish(mathActivity,controller.signal.aborted?'interrupted':'failed',error instanceof HttpError?error.status:500);throw error;}
+                  },controller.signal,progress=>emit({type:'status',phase:'preparing_math',progress}));
+                input.untrusted_source.document=sourceGenerationDocument(new SourceDocuments(store).get(cleanedFile),cleanedFile.text);
+                prepared.input=JSON.stringify(input);
+                activityId=activity.start('create_page_from_source',intelligence.selection(),vault,id,'entity');
+                emit({type:'status',phase:'thinking'});
+                const recent=store.all<{duration_ms:number}>(`SELECT duration_ms FROM ai_activity WHERE action='create_page_from_source' AND status='completed' AND model=? AND reasoning_effort=? AND prompt_bytes BETWEEN ? AND ? AND duration_ms>0 ORDER BY started_at DESC LIMIT 8`,intelligence.selection().model,intelligence.selection().reasoningEffort,Buffer.byteLength(prepared.input)*.5,Buffer.byteLength(prepared.input)*2);
+                if(recent.length>=3)emit({type:'estimate',seconds:Math.ceil(recent.map(row=>row.duration_ms).sort((a,b)=>a-b)[Math.floor(recent.length/2)]!/1000)});
+                const draft=new SourcePageDraft(emit,cleanedFile.text);
                 // A preliminary JSON draft can be previewed, but only final-answer records are saved.
-                let preview=new SourcePageDraft(emit,prepared.file.text),previewFailed=false;
-                const resetPreview=()=>{emit({type:'preview_reset'});preview=new SourcePageDraft(emit,prepared.file.text);previewFailed=false;};
+                let preview=new SourcePageDraft(emit,cleanedFile.text),previewFailed=false;
+                const resetPreview=()=>{emit({type:'preview_reset'});preview=new SourcePageDraft(emit,cleanedFile.text);previewFailed=false;};
                 await intelligence.generate(prepared.input,false,bytes=>activity.request(activityId!,bytes,null),false,false,false,undefined,false,{
                   signal:controller.signal,onDelta:delta=>draft.feed(delta),onPreviewReset:resetPreview,
                   onPreviewDelta:delta=>{

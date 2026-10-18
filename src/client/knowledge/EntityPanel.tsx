@@ -1,3 +1,4 @@
+import {SourceLoadingProgress} from './SourceLoadingProgress';
 import {SummaryText} from '../intelligence/SummaryText';
 import { PageIcon } from '../components/PageIcon';
 import { SourceAttachments } from './SourceAttachments';
@@ -28,6 +29,13 @@ export function EntityPanel(props: Props) {
     void api.entity(vaultId, id).then(e => { if (active) setEntity(e); }).catch(error => { if (active) setLoadingError(String(error)); });
     return () => { active = false; };
   }, [vaultId, id, refreshKey]);
+  const sourceBusy=entity?.type==='source'&&entity.attachments?.some(file=>file.status==='queued'||file.status==='processing'||file.status==='ready'&&['pending','running'].includes(file.enrichment_status));
+  useEffect(()=>{
+    if(!sourceBusy||tab==='edit')return;
+    let active=true;
+    const timer=setInterval(()=>{void api.entity(vaultId,id).then(value=>{if(active)setEntity(value);}).catch(()=>{});},2000);
+    return()=>{active=false;clearInterval(timer);};
+  },[vaultId,id,sourceBusy,tab]);
   const {schema, error: schemaError} = useEntitySchema(vaultId);
   const mention = (entityId: string) => <Mention id={entityId} entities={entities} onOpen={onOpen}/>;
   async function mutate(work: () => Promise<EntityDetail>) {
@@ -50,6 +58,7 @@ export function EntityPanel(props: Props) {
   </div>
     {!entity ? <p className="panel-body" role={loadingError ? 'alert' : 'status'}>{loadingError || 'Loading entity…'}</p> : <div className="panel-body entity-detail-body">
       {loadingError && <p role="alert">{loadingError}</p>}
+      {tab!=='edit'&&entity.attachments?.map(file=><SourceLoadingProgress key={file.id} file={file}/>)}
       <div className="entity-detail-classification"><span className="entity-detail-type">{entityLabels[entity.type]}</span>{entity.type==='source'&&<span>{entity.attachments?.some(file=>file.status==='queued'||file.status==='processing')?'Processing':entity.inactive?'Inactive':entity.sourceEnrichmentStatus==='pending'||entity.sourceEnrichmentStatus==='running'?'Processed · Enriching with AI':entity.sourceEnrichmentStatus==='failed'?'Processed · AI enrichment failed':'Processed'}</span>}{!!subtypeNames.length && <span>{subtypeNames.join(' · ')}</span>}</div>
       {entity.type==='source'&&<div className="entity-source-workflow"><button type="button" className="button" disabled={entity.inactive||entity.sourceStatus!=='ready'} onClick={()=>props.onCreatePageFromSource(entity)}><Icon name="sparkles"/>Create page from source</button>{entity.sourceStatus!=='ready'&&<p className="section-hint">{entity.inactive?'Retry source processing before creating a page.':'Available once source processing finishes.'}</p>}</div>}
       {entity.type==='source'&&entity.attachments?.map(file=><div key={file.id}>{file.language&&<p className="section-hint">Language: {file.language}</p>}{file.summary&&<div className="ai-summary-text"><SummaryText text={file.summary}/></div>}</div>)}
@@ -79,7 +88,12 @@ export function EntityPanel(props: Props) {
         </section>
         {entity.type!=='source' && !!entity.aliases?.length && <section className="entity-detail-section"><h3>Also known as</h3><ul className="entity-overview-aliases">{entity.aliases.map(alias => <li key={alias}>{alias}</li>)}</ul></section>}
         {entity.type === 'source' && <section className="entity-detail-section"><h3>Attached sources<span>{entity.attachments?.length ?? 0}</span></h3>
-          {entity.attachments?.length ? <ul className="entity-overview-sources">{entity.attachments.map(file => <li key={file.id}>{file.admitted===1?<a href={'/api/source-files/' + encodeURIComponent(file.id) + '/download?vault=' + encodeURIComponent(vaultId)} download><Icon name="source"/><span>{file.name}<small>{(file.size / 1024).toFixed(1)} KB{file.pdf_flattened===1?' · Flattened locally':''}</small></span><Icon name="download"/></a>:<span>{file.name}<small>{file.status==='failed'?'Inactive — processing failed':'Processing in background…'}</small></span>}</li>)}</ul> : <p className="entity-detail-empty">No attached files. Add sources in Edit.</p>}
+          {entity.attachments?.length ? <ul className="entity-overview-sources">{entity.attachments.map(file => <li key={file.id}>
+            {file.admitted===1?<>
+              <a href={'/api/source-files/' + encodeURIComponent(file.id) + '/download?vault=' + encodeURIComponent(vaultId)} download><Icon name="source"/><span>{file.name}<small>{(file.size / 1024).toFixed(1)} KB{file.pdf_flattened===1?' · Flattened locally':''}</small></span><Icon name="download"/></a>
+              {file.status==='ready'&&file.text.trim()&&<a href={'/api/source-files/' + encodeURIComponent(file.id) + '/download-processed?vault=' + encodeURIComponent(vaultId)} download><Icon name="page"/><span>Download processed JSON<small>Sections, semantic blocks, and physical pages</small></span><Icon name="download"/></a>}
+            </>:<span>{file.name}<small>{file.status==='failed'?'Inactive — processing failed':'Processing in background…'}</small></span>}
+          </li>)}</ul> : <p className="entity-detail-empty">No attached files. Add sources in Edit.</p>}
         </section>}
       </div>
       <div id="entity-tabpanel-connections" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-connections" hidden={tab !== 'connections'} tabIndex={0}>

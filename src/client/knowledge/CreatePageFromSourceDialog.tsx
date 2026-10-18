@@ -1,3 +1,4 @@
+import {sourceDuration,type SourceProcessingProgress} from '../../shared/source-progress';
 import {memo,useEffect,useRef,useState,type FormEvent} from 'react';
 import type {Block,Entity,Page,Segment} from '../../shared/domain';
 import {defaultSourcePageOptions,normalizeSourcePageOptions,sourcePageChoices,sourcePageFormats,sourcePageFormatPresets,sourcePageScope,selectSourcePageFormat,sourcePageLanguages,type SourcePageOptions,type SourcePageRevision,type SourcePageEvent,type SourcePageReview} from '../../shared/source-page';
@@ -40,12 +41,18 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
   const [focus,setFocus]=useState(''),[title,setTitle]=useState(''),[blocks,setBlocks]=useState<Block[]>([]),[phase,setPhase]=useState<Phase>('loading'),[error,setError]=useState(''),[draft,setDraft]=useState<SourcePageReview|null>(null),[page,setPage]=useState<Page|null>(null),[opening,setOpening]=useState(false);
   const [options,setOptions]=useState<SourcePageOptions>(readSourcePagePreferences);
   const [retryOpen,setRetryOpen]=useState(false),[feedback,setFeedback]=useState('');
-  const [liveBlock,setLiveBlock]=useState<LiveBlock|null>(null),[generationStage,setGenerationStage]=useState<'waiting'|'writing'|'checking'>('waiting');
+  const [liveBlock,setLiveBlock]=useState<LiveBlock|null>(null),[generationStage,setGenerationStage]=useState<'waiting'|'writing'|'checking'|'math'>('waiting');
   const [waitingLonger,setWaitingLonger]=useState(false);
+  const [mathProgress,setMathProgress]=useState<SourceProcessingProgress>();
+  const [estimate,setEstimate]=useState<{seconds:number;at:number}>();
+  const [clock,setClock]=useState(Date.now());
+  const startedAt=useRef(Date.now());
+
   const live=useRef<LiveBlock|null>(null),liveTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
   const feedbackField=useRef<HTMLTextAreaElement>(null);
   const request=useRef<AbortController|null>(null),generation=useRef({id:randomUUID(),settings:''}),preview=useRef<HTMLDivElement>(null),follow=useRef(true),active=useRef(true);
   const running=phase==='generating',mutating=phase==='accepting'||phase==='rejecting',busy=running||mutating||phase==='loading'||opening;
+  useEffect(()=>{if(!running)return;const timer=setInterval(()=>setClock(Date.now()),1000);return()=>clearInterval(timer);},[running]);
   const route=`entities/${encodeURIComponent(source.id)}/create-page`;
   function clearLive(){if(liveTimer.current!==null)clearTimeout(liveTimer.current);liveTimer.current=null;live.current=null;setLiveBlock(null);}
   function review(value:SourcePageReview){clearLive();generation.current={id:value.id,settings:JSON.stringify([value.focus,value.options??defaultSourcePageOptions])};setOptions(normalizeSourcePageOptions(value.options));setDraft(value);setFocus(value.focus);setTitle(value.title);setBlocks(value.blocks);setPhase('review');setRetryOpen(false);setFeedback('');}
@@ -68,15 +75,19 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
     const controller=new AbortController();request.current=controller;
     const settings=JSON.stringify([focus.trim(),generationOptions,...(revision?[revision]:[])]);
     if(generation.current.settings!==settings)generation.current={id:randomUUID(),settings};
-    clearLive();setGenerationStage('waiting');setWaitingLonger(false);
+    clearLive();setGenerationStage('waiting');setWaitingLonger(false);setMathProgress(undefined);setEstimate(undefined);startedAt.current=Date.now();setClock(Date.now());
     setPhase('generating');setTitle('');setBlocks([]);setError('');follow.current=true;
-    const slowTimer=setTimeout(()=>{if(active.current&&!controller.signal.aborted&&request.current===controller)setWaitingLonger(true);},5000);
+    const slowTimer=setTimeout(()=>{if(active.current&&!controller.signal.aborted&&request.current===controller)setWaitingLonger(true);},45000);
     const receivedContent=()=>{clearTimeout(slowTimer);setWaitingLonger(false);};
     const receive=(event:SourcePageEvent)=>{
       if(!active.current||controller.signal.aborted)return;
       if(event.type==='preview_reset'){clearLive();setTitle('');setBlocks([]);return;}
       if(event.type==='title'||event.type==='block'||event.type==='review'||event.type==='completed'||event.type==='block_delta'&&!event.reset&&!!event.delta)receivedContent();
-      if(event.type==='status')setGenerationStage(event.phase==='reviewing'?'checking':'waiting');
+      if(event.type==='estimate')setEstimate({seconds:event.seconds,at:Date.now()});
+      else if(event.type==='status'){
+        setGenerationStage(event.phase==='preparing_math'?'math':event.phase==='reviewing'?'checking':'waiting');
+        setMathProgress(event.progress);
+      }
       else if(event.type==='title'){setTitle(event.title);setGenerationStage('writing');}
       else if(event.type==='block_delta'){
         if(event.reset){clearLive();return;}
@@ -107,7 +118,14 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
     try{await apiRequest(route+'/reject','POST',{requestId:draft.id},vaultId,AbortSignal.timeout(30000));window.dispatchEvent(new Event('noema:ai-activity'));if(active.current)onClose();}
     catch(error){if(active.current){setPhase('review');setError(error instanceof Error?error.message:'Could not reject the draft. Please retry.');}}
   }
-  const status=running?(generationStage==='waiting'?(waitingLonger?'Taking longer than usual… Waiting for the first draft text.':'Waiting for your AI model…'):generationStage==='checking'?'Checking references and saving your draft…':`Writing your draft · ${blocks.length} complete ${blocks.length===1?'block':'blocks'}`):phase==='loading'?'Checking for a draft to review…':phase==='accepting'?'Accepting and saving your page…':phase==='rejecting'?'Discarding the draft…':phase==='review'?'Draft ready for review. No page has been created yet.':phase==='completed'?'Page accepted and saved.':phase==='failed'?'Generation could not be completed. Your source is unchanged.':phase==='stopped'?'Generation stopped.':blocks.length?`Writing your draft · ${blocks.length} ${blocks.length===1?'block':'blocks'} received`:'Reading the source and planning your page…';
+  const elapsed=Math.max(0,Math.floor((clock-startedAt.current)/1000));
+  const remaining=generationStage==='math'&&mathProgress?.estimatedRemainingSeconds!==undefined
+    ?mathProgress.estimatedRemainingSeconds-(clock-mathProgress.updatedAt)/1000
+    :estimate&&generationStage!=='math'?estimate.seconds-(clock-estimate.at)/1000:undefined;
+  const timing=`${elapsed<60?`${elapsed}s`:`${Math.floor(elapsed/60)}m ${elapsed%60}s`} elapsed`+(remaining===undefined
+    ?generationStage==='math'?' · Estimating after the first batch…':' · No reliable time estimate yet.'
+    :remaining>0?` · Estimated ${sourceDuration(remaining)} remaining${generationStage==='math'?' for notation':''}`:' · Still working; this is taking longer than estimated.');
+  const status=running?(generationStage==='math'?(mathProgress?`Preparing mathematical notation · ${mathProgress.completed} of ${mathProgress.total} batches complete`:'Preparing mathematical notation…'):generationStage==='waiting'?(waitingLonger?'Still reading and planning. Long sources can take a few minutes.':'Reading the source and planning your draft…'):generationStage==='checking'?'Checking references and saving your draft…':`Writing your draft · ${blocks.length} complete ${blocks.length===1?'block':'blocks'}`):phase==='loading'?'Checking for a draft to review…':phase==='accepting'?'Accepting and saving your page…':phase==='rejecting'?'Discarding the draft…':phase==='review'?'Draft ready for review. No page has been created yet.':phase==='completed'?'Page accepted and saved.':phase==='failed'?'Generation could not be completed. Your source is unchanged.':phase==='stopped'?'Generation stopped.':blocks.length?`Writing your draft · ${blocks.length} ${blocks.length===1?'block':'blocks'} received`:'Reading the source and planning your page…';
   const hasPreview=running||!!title||!!blocks.length||!!draft||!!page;
   const controlsDisabled=busy||!!draft||!!page;
   return <Modal className={'source-page-dialog'+(hasPreview?' has-preview':'')} titleId="source-page-title" onClose={close}><form onSubmit={start}>
@@ -137,6 +155,12 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
       </div>
       {phase!=='idle'&&<div className="source-page-result">
         <div className={'source-page-status '+phase} role="status" aria-live="polite">{busy&&<span className="scan-spinner" aria-hidden="true"/>}{(phase==='review'||phase==='completed')&&<Icon name="check"/>}<span>{status}</span></div>
+        {running&&<div className="section-hint">
+          {generationStage==='math'&&mathProgress&&<progress value={mathProgress.completed} max={mathProgress.total} aria-label="Math preparation batches completed"/>}
+          <p>{timing}</p>
+          {estimate&&generationStage!=='math'&&<p>Estimate based on recent runs with similar source sizes and the same model; it may change.</p>}
+          <p>Keep this dialog open while generating. Stop generation cancels the request; completed math batches are saved for retry.</p>
+        </div>}
         {phase!=='loading'&&<div className="source-page-preview" ref={preview} aria-label="Generated page preview" aria-busy={running} onScroll={event=>{const node=event.currentTarget;follow.current=node.scrollHeight-node.scrollTop-node.clientHeight<64;}}>
           {title&&<h3 className="source-page-preview-title">{title}</h3>}
           <DraftBlocks blocks={blocks} vaultId={vaultId}/>

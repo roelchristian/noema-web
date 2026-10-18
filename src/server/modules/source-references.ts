@@ -1,3 +1,4 @@
+import {mathSource,sourceTextHash} from './source-math-text.js';
 import {createHash, randomUUID} from 'node:crypto';
 import type {Block, Segment, SourceFile} from '../../shared/domain.js';
 import {sourcePageRange,sourceTextLines} from '../../shared/source-text.js';
@@ -66,14 +67,16 @@ function referencePages(file:SourceFile,startLine:number,endLine:number) {
 }
 /** Enrich older citations only against the exact source version they cite. */
 export function enrichCitationPages(store:Store,blocks:Block[]) {
-  const files=new Map<string,SourceFile|undefined>(),hashes=new Map<string,string>();
+  const files=new Map<string,SourceFile|undefined>(),hashes=new Map<string,string>(),cleanedHashes=new Map<string,string>();
   for(const block of blocks)for(const segment of [block.content,...(block.rows??[]).flat() ].flat()) {
     const ref=segment.sourceReference;if(!ref)continue;
     if(!files.has(ref.fileId))files.set(ref.fileId,store.get<SourceFile>('SELECT * FROM source_files WHERE id=? AND entity_id=?',ref.fileId,ref.sourceId));
     const file=files.get(ref.fileId);if(!file){ref.stale=true;continue;}
     if(!hashes.has(file.id))hashes.set(file.id,createHash('sha256').update(file.text).digest('hex'));
-    ref.stale=file.status!=='ready'||!file.admitted||hashes.get(file.id)!==ref.sourceHash;
-    if(hashes.get(file.id)===ref.sourceHash)Object.assign(ref,referencePages(file,ref.startLine,ref.endLine));
+    if(!cleanedHashes.has(file.id))cleanedHashes.set(file.id,sourceTextHash(mathSource(store,file).text));
+    const matches=hashes.get(file.id)===ref.sourceHash||cleanedHashes.get(file.id)===ref.sourceHash;
+    ref.stale=file.status!=='ready'||!file.admitted||!matches;
+    if(matches)Object.assign(ref,referencePages(file,ref.startLine,ref.endLine));
   }
   return blocks;
 }

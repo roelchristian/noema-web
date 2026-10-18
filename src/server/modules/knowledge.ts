@@ -1,3 +1,4 @@
+import {sourceProgress} from './source-progress.js';
 import {validatedDomainIds} from './domains.js';
 import { syncSourceProvenance } from './source-provenance.js';
 import { randomUUID } from 'node:crypto';
@@ -85,7 +86,7 @@ export class Knowledge {
   }
   detail(vault: string, id: string): EntityDetail {
     const entity = this.require(vault,id);
-    return {...entity, pageMentions: this.pageMentions(vault, id), ...(entity.type==='source'?{attachments:this.store.all<import('../../shared/domain.js').SourceFile>('SELECT * FROM source_files WHERE vault_id=? AND entity_id=? ORDER BY created_at,id',vault,id)}:{}), propertyNames: inheritedPropertyNames(this.schema(vault),entity.type,entity.subtypes),
+    return {...entity, pageMentions: this.pageMentions(vault, id), ...(entity.type==='source'?{attachments:this.store.all<import('../../shared/domain.js').SourceFile>('SELECT * FROM source_files WHERE vault_id=? AND entity_id=? ORDER BY created_at,id',vault,id).map(file=>({...file,processing_detail:sourceProgress.get(file.id)}))}:{}), propertyNames: inheritedPropertyNames(this.schema(vault),entity.type,entity.subtypes),
       properties:this.store.all<Property>('SELECT * FROM properties WHERE entity_id=?',id),
       relationships:this.store.all<Relationship>('SELECT * FROM relationships WHERE source_id=? OR target_id=?',id,id),
       incomingProperties:this.store.all<Property>('SELECT * FROM properties WHERE target_id=?',id)};

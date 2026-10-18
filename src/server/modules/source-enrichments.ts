@@ -1,5 +1,7 @@
+import {SourceMath} from './source-math.js';
 import {SourceAuthorBackfill,recordSourceAuthorsProcessed} from './source-author-backfill.js';
-import {sourceEnrichmentText} from './source-enrichment-prompt.js';
+import {sourceEnrichmentLines} from './source-enrichment-prompt.js';
+import {mergeSourceStructure} from './source-structure.js';
 import {AINotifications} from './ai-notifications.js';
 import {saveSourceAuthors} from './source-authors.js';
 import type {SourceFile} from '../../shared/domain.js';
@@ -12,6 +14,7 @@ import {AIActivityLog} from './ai-activity.js';
 export class SourceEnrichments {
  private busy=false;
  private closed=false;
+ private mathController=new AbortController();
  private activityId?:string;
  private authorBackfill:SourceAuthorBackfill;
  constructor(private store:Store,private intelligence:Intelligence,private activity:AIActivityLog) {
@@ -38,7 +41,14 @@ export class SourceEnrichments {
    this.activityId=this.activity.start('source_enrichment',this.intelligence.selection(),file.vault_id,file.entity_id,'entity');
    try {
     // Bound request size while sampling the beginning, middle and end of long uploads.
-    const input=sourceEnrichmentText(file.text);
+    const cleaned=await new SourceMath(this.store).prepare(file,async input=>{
+     const activityId=this.activity.start('source_math_preprocessing',this.intelligence.selection(),file.vault_id,file.entity_id,'entity');
+     try {
+      const output=await this.intelligence.generate(input,false,bytes=>this.activity.request(activityId,bytes,null),false,false,false,undefined,true,{signal:this.mathController.signal,onDelta:()=>{},mathPreparation:true});
+      this.activity.finish(activityId,'completed',200);return output;
+     }catch(error){this.activity.finish(activityId,this.closed?'interrupted':'failed',error instanceof HttpError?error.status:500);throw error;}
+    },this.mathController.signal);
+    const input=sourceEnrichmentLines(cleaned.text);
     const result=await this.intelligence.enrichSource(input,bytes=>this.activity.request(this.activityId!,bytes,null));
     if(this.closed)return;
     const open=this.store.get('SELECT 1 FROM vaults WHERE id=? AND locked=0',file.vault_id);
@@ -48,6 +58,13 @@ export class SourceEnrichments {
      this.activity.finish(this.activityId!,'skipped',409);return;
     }
     this.store.transaction(()=>{
+     let explicit:import('../../shared/domain.js').SourceStructureNode[]=[];
+     try{const parsed:unknown=JSON.parse(current.structural_nodes??'[]');if(Array.isArray(parsed))explicit=parsed;}catch{/* Recover legacy metadata from the text. */}
+     // Preserve known heading locations, while allowing semantic block extents
+     // to refine locally detected labels at the same line.
+     const refined=result.structure.map(node=>({...explicit.find(existing=>existing.startLine===node.startLine),...node}));
+     const structure=mergeSourceStructure(file.text,[...explicit,...refined]);
+     this.store.run('UPDATE source_files SET structural_nodes=? WHERE id=?',JSON.stringify(structure),file.id);
      this.store.run("UPDATE source_files SET generated_name=?,language=?,summary=?,enrichment_status='completed',enrichment_error=NULL WHERE id=?",result.name,result.language,result.summary,file.id);
      // A user edit made during the request takes precedence over generated naming.
      this.store.run('UPDATE entities SET name=?,updated_at=? WHERE id=? AND vault_id=? AND name=? AND updated_at=?',result.name,now(),file.entity_id!,file.vault_id,entity!.name,entity!.updated_at);
@@ -66,7 +83,7 @@ export class SourceEnrichments {
   }finally{this.busy=false;}
  }
  close() {
-  this.closed=true;
+  this.closed=true;this.mathController.abort();
   this.authorBackfill.close();
   if(this.activityId)this.activity.finish(this.activityId,'interrupted',null);
  }

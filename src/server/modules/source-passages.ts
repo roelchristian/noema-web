@@ -1,3 +1,4 @@
+import {mathSource} from './source-math-text.js';
 import {createHash,randomUUID} from 'node:crypto';
 import type {SourceFile,SourceReference,SourceStructureNode} from '../../shared/domain.js';
 import {sourcePageRange,sourceTextLines} from '../../shared/source-text.js';
@@ -144,7 +145,7 @@ export class SourcePassages {
     if(row)this.process(row.file_id);
   }
   private process(fileId:string):void {
-    const file=this.store.get<SourceFile>(`SELECT f.* FROM source_files f JOIN vaults v ON v.id=f.vault_id WHERE f.id=? AND v.locked=0`,fileId);
+    let file=this.store.get<SourceFile>(`SELECT f.* FROM source_files f JOIN vaults v ON v.id=f.vault_id WHERE f.id=? AND v.locked=0`,fileId);
     if(!file)return;
     const updatedAt=new Date().toISOString();
     try {
@@ -163,6 +164,7 @@ export class SourcePassages {
           fileId,file.status==='failed'?'failed':'preparing',file.error,updatedAt);
         this.store.run('DELETE FROM source_passage_dirty WHERE file_id=?',fileId);return;
       }
+      const rawText=file.text;file=mathSource(this.store,file);
       const sourceHash=hash(file.text),contextHash=hash(JSON.stringify([file.entity_id,file.vault_id,file.format,file.pages,file.page_start_lines,file.structural_nodes]));
       const state=this.store.get<{source_hash:string;context_hash:string;chunk_version:number;status:string;active_generation_id:string|null}>('SELECT * FROM source_passage_state WHERE file_id=?',fileId);
       if(state?.active_generation_id&&state.source_hash===sourceHash&&state.context_hash===contextHash&&state.chunk_version===CHUNK_VERSION) {
@@ -189,11 +191,12 @@ export class SourcePassages {
           throw new Error('Replacement passage generation failed validation.');
         ids.add(p.id);
       }
+      const snapshot=file;
       this.store.transaction(()=>{
         // Recheck the extraction snapshot before publishing a replacement.
         const current=this.store.get<SourceFile>('SELECT * FROM source_files WHERE id=?',fileId);
-        if(!current||current.status!=='ready'||current.admitted!==1||current.text!==file.text||
-          JSON.stringify([current.entity_id,current.vault_id,current.format,current.pages,current.page_start_lines,current.structural_nodes])!==JSON.stringify([file.entity_id,file.vault_id,file.format,file.pages,file.page_start_lines,file.structural_nodes]))return;
+        if(!current||current.status!=='ready'||current.admitted!==1||current.text!==rawText||
+          JSON.stringify([current.entity_id,current.vault_id,current.format,current.pages,current.page_start_lines,current.structural_nodes])!==JSON.stringify([snapshot.entity_id,snapshot.vault_id,snapshot.format,snapshot.pages,snapshot.page_start_lines,snapshot.structural_nodes]))return;
         // Preserve the pre-migration generation too. Subsequent generations were
         // already recorded when they were published.
         if(previous.length) {

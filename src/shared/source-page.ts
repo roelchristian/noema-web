@@ -27,7 +27,8 @@ export interface SourcePageRevision {draftId:string;feedback:string;mode:'retry'
 export interface SourcePageReview {language?:string|null;id:string;title:string;blocks:Block[];focus:string;options?:SourcePageOptions}
 export type SourcePageEvent =
   | {type:'preview_reset'}
-  | {type:'status';phase:'thinking'|'reviewing'}
+  | {type:'status';phase:'thinking'|'reviewing'|'preparing_math';progress?:import('./source-progress.js').SourceProcessingProgress}
+  | {type:'estimate';seconds:number}
   | {type:'title';title:string;language?:string|null}
   | {type:'block';block:Block}
   | {type:'block_delta';blockType:typeof sourcePageBlockTypes[number];delta:string;reset?:boolean}

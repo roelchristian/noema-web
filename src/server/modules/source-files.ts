@@ -2,6 +2,7 @@ import { AINotifications } from './ai-notifications.js';
 import { scanSourcePDF, fetchSource, sourceURL } from './source-import.js';
 import { syncSourceProvenance } from './source-provenance.js';
 import { mergeSourceStructure } from './source-structure.js';
+import { normalizeSourceText } from './source-text-normalization.js';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, unlinkSync, existsSync, statSync, rmSync, renameSync } from 'node:fs';
 import path from 'node:path';
@@ -203,9 +204,15 @@ export class SourceFiles {
       if(downloadedStructure)explicit=downloadedStructure;
       else if('structuralNodes' in result&&Array.isArray(result.structuralNodes))explicit=result.structuralNodes;
       else if(file.text===result.text&&file.structural_nodes)try{const nodes:unknown=JSON.parse(file.structural_nodes);if(Array.isArray(nodes))explicit=nodes;}catch{/* Old metadata can be regenerated from text. */}
-      const structure=mergeSourceStructure(result.text,explicit);
+      // Existing references address stored lines. Reprocessing must not renumber
+      // those lines merely to improve formatting.
+      const cited=this.store.get('SELECT 1 FROM note_source_references WHERE file_id=? LIMIT 1',file.id);
+      let savedStructure:SourceStructureNode[]=[];
+      if(cited)try{const nodes:unknown=JSON.parse(file.structural_nodes??'[]');if(Array.isArray(nodes))savedStructure=nodes;}catch{/* Infer headings without changing citation lines. */}
+      const processed=cited?{text:file.text,pageStartLines:JSON.parse(file.page_start_lines??'[]') as number[],structuralNodes:mergeSourceStructure(file.text,savedStructure)}:normalizeSourceText(result.text,explicit,result.pageStartLines??[]);
+      const structure=processed.structuralNodes;
       this.store.transaction(()=>{
-        this.store.run("UPDATE source_files SET enrichment_status='pending',enrichment_attempts=0,enrichment_error=NULL,enrichment_next_attempt_at='',status='ready',text=?,pages=?,ocr_pages=?,page_start_lines=?,structural_nodes=?,progress=100,error=NULL WHERE id=?",result.text,result.pages,result.ocrPages,JSON.stringify(result.pageStartLines??[]),JSON.stringify(structure),file!.id);
+        this.store.run("UPDATE source_files SET enrichment_status='pending',enrichment_attempts=0,enrichment_error=NULL,enrichment_next_attempt_at='',status='ready',text=?,pages=?,ocr_pages=?,page_start_lines=?,structural_nodes=?,progress=100,error=NULL WHERE id=?",processed.text,result.pages,result.ocrPages,JSON.stringify(processed.pageStartLines),JSON.stringify(structure),file!.id);
         this.store.run('UPDATE entities SET inactive=0,updated_at=? WHERE id=? AND vault_id=?',now(),file!.entity_id,file!.vault_id);
         new AINotifications(this.store).recordSource(file!.vault_id,file!.entity_id!,'completed');
       });

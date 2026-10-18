@@ -1,4 +1,6 @@
+import {sourceTextHash} from './source-math-text.js';
 import {domainById} from '../../shared/domains.js';
+import {sourceStructureKinds,type SourceStructureKind} from '../../shared/domain.js';
 import {isPageIndexPolicy} from '../../shared/embeddings.js';
 import {syncSourceReferences} from './source-references.js';
 import {limitSummaryWords} from '../../shared/summary-text.js';
@@ -30,6 +32,7 @@ const entityScope='entity_id IN (SELECT id FROM entities WHERE vault_id=?)';
 // Explicit, versioned allowlist: credentials, global app settings, jobs and activity are never archived.
 const tables={
   pages:{columns:'id,title,icon,featured_image_id,blocks,ai_status,language,created_at,updated_at,revision,deleted_at',scope:'vault_id=?'},
+  source_math_documents:{columns:'file_id,raw_hash,algorithm_version,cleaned_text,uncertainty_json,updated_at',scope:'file_id IN (SELECT id FROM source_files WHERE vault_id=? AND entity_id IS NOT NULL)'},
   source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at,import_method,source_url,pdf_flattened,admitted,format,page_start_lines,structural_nodes,original_filename,language,summary,generated_name,enrichment_status',scope:'vault_id=? AND entity_id IS NOT NULL'},
   entities:{columns:'id,name,aliases,mention_case,type,subtypes,description,updated_at,inactive',scope:'vault_id=?'},
   properties:{columns:'id,entity_id,name,value,target_id',scope:entityScope},
@@ -119,7 +122,7 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     const sourceOwners=new Set<unknown>(),legacyEntities=new Map(rows.entities.map(row=>[row.id,row]));
     const legacyProperties=[...rows.properties],legacyLinks=[...rows.page_sources];
     for(const file of rows.source_files) {
@@ -227,6 +230,7 @@ export class VaultBackups {
               if(!value||typeof value!=='object'||Array.isArray(value))throw invalid();
               const node=value as Record<string,unknown>;
               if(typeof node.text!=='string'||!node.text.trim()||node.text.length>2000||!Number.isSafeInteger(node.startLine)||(node.startLine as number)<1||(node.startLine as number)>sourceLineCount||node.level!==undefined&&(!Number.isSafeInteger(node.level)||(node.level as number)<1||(node.level as number)>6))throw invalid();
+              if(node.kind!==undefined&&!sourceStructureKinds.includes(node.kind as SourceStructureKind)||node.endLine!==undefined&&(!Number.isSafeInteger(node.endLine)||(node.endLine as number)<(node.startLine as number)||(node.endLine as number)>sourceLineCount))throw invalid();
             }
             this.store.run('UPDATE source_files SET structural_nodes=? WHERE id=?',JSON.stringify(nodes),added.id);
           }
@@ -236,6 +240,16 @@ export class VaultBackups {
             row.original_filename===undefined?name(row,'name'):string(row,'original_filename',255),row.generated_name==null?null:string(row,'generated_name',200),pageLanguage(row.language),row.summary==null?null:limitSummaryWords(string(row,'summary',12000)),enrichmentStatus==='running'?'pending':String(enrichmentStatus),added.id);
           const status=string(row,'status',20);if(!['queued','processing','ready','failed'].includes(status)||status==='ready'&&admitted!==1)throw invalid();
           this.store.run('UPDATE source_files SET status=?,text=?,error=?,progress=?,pages=?,ocr_pages=?,created_at=? WHERE id=?',status==='processing'?'queued':status,string(row,'text',16*1024*1024),nullable(row,'error',2000),integer(row,'progress',0,100),integer(row,'pages',0,1000),integer(row,'ocr_pages',0,1000),timestamp(row,'created_at'),added.id);
+        }
+        for(const row of rows.source_math_documents) {
+          const fileId=restoredSourceFiles.get(name(row,'file_id'));if(!fileId)throw invalid();
+          const raw=this.store.get<{text:string}>('SELECT text FROM source_files WHERE id=?',fileId)!;
+          const cleaned=string(row,'cleaned_text',32*1024*1024),rawHash=string(row,'raw_hash',64);
+          if(sourceTextHash(raw.text)!==rawHash||cleaned.split('\n').length!==raw.text.replace(/\r\n?/g,'\n').split('\n').length)throw invalid();
+          const uncertainty=JSON.parse(string(row,'uncertainty_json',4*1024*1024));
+          if(!Array.isArray(uncertainty)||uncertainty.some(issue=>!issue||!Number.isInteger(issue.id)||issue.id<0||issue.id>=cleaned.split('\n').length||typeof issue.text!=='string'||issue.text.length>1000))throw invalid();
+          const algorithmVersion=row.algorithm_version===undefined?1:integer(row,'algorithm_version',1,2);
+          this.store.run('INSERT INTO source_math_documents(file_id,raw_hash,cleaned_text,uncertainty_json,updated_at,algorithm_version) VALUES(?,?,?,?,?,?)',fileId,rawHash,cleaned,JSON.stringify(uncertainty),now(),algorithmVersion);
         }
         this.store.run("UPDATE entities SET inactive=CASE WHEN EXISTS (SELECT 1 FROM source_files WHERE entity_id=entities.id AND status='failed') THEN 1 ELSE 0 END WHERE vault_id=? AND type='source'",vault);
         for(const row of rows.properties)insert('properties',{id:randomUUID(),entity_id:ref(entityIds,row.entity_id),name:name(row,'name'),value:nullable(row,'value'),target_id:row.target_id===null?null:ref(entityIds,row.target_id)});

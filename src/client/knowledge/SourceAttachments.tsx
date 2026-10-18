@@ -1,3 +1,4 @@
+import {SourceLoadingProgress} from './SourceLoadingProgress';
 import {SummaryText} from '../intelligence/SummaryText';
 import { numberedSourceText } from '../../shared/source-text';
 import { useEffect, useRef, useState } from 'react';
@@ -37,9 +38,11 @@ export function SourceAttachments({vaultId, entityId, initial=[], onChange, onBu
     <div className="source-file-list">{files.map(file=><article key={file.id} className="source-file"><strong>{file.generated_name||file.name}</strong><small>Original filename: {file.original_filename||file.name}</small>{file.language&&<small>Language: {file.language}</small>}{file.summary&&<div className="ai-summary-text"><SummaryText text={file.summary}/></div>}<small>{(file.size/1024).toFixed(1)} KB · {file.format==='url'?'URL':file.format.toUpperCase()}</small>
       <small>{file.import_method==='url'?'Imported via URL':'Uploaded file'}{file.pdf_flattened===1?' · Flattened locally for safety':''}{file.source_url&&<> · <a href={file.source_url} target="_blank" rel="noopener noreferrer">Source URL</a></>}</small>
       <p role="status" className={'source-status '+file.status}>{file.status==='queued'?'Waiting for background processing…':file.status==='processing'?`Processing source on this device… ${file.progress}%${file.pages?` · ${file.pages} pages`:''}`:file.status==='ready'?`${file.enrichment_status==='pending'||file.enrichment_status==='running'?'Processed · Enriching with AI':file.enrichment_status==='failed'?'Processed · AI enrichment failed':'Processed'}${file.pages?` · ${file.pages} pages`:''}${file.ocr_pages?` · ${file.ocr_pages} OCR pages`:''}`:'Source inactive — processing failed'}</p>
+      <SourceLoadingProgress file={file}/>
       {file.status==='processing'&&<progress value={file.progress} max={100} aria-label={'Extracting '+file.name}/>}
       {file.enrichment_error&&<p className="dialog-error">{file.enrichment_error}</p>}{file.error&&<p className="dialog-error">{file.error}</p>}
       <div className="source-actions">{file.admitted===1&&<a href={`/api/source-files/${file.id}/download?vault=${encodeURIComponent(vaultId)}`} download>{file.pdf_flattened===1?'Download flattened PDF':file.import_method==='url'&&file.format==='txt'?'Download saved text':'Download original'}</a>}
+        {file.admitted===1&&file.status==='ready'&&file.text.trim()&&<a href={`/api/source-files/${file.id}/download-processed?vault=${encodeURIComponent(vaultId)}`} download>Download processed JSON</a>}
         {entityId&&file.status==='ready'&&file.enrichment_status==='failed'&&<button type="button" className="button small" disabled={disabled||!!action} onClick={()=>void act(file,'retry-enrichment')}>Retry AI enrichment</button>}{entityId&&file.status==='failed'&&<button type="button" className="button small" disabled={disabled||!!action} onClick={()=>void act(file,'retry')}>{action===file.id?'Retrying…':'Retry processing'}</button>}
         <button type="button" className="button small" hidden={!!entityId} disabled={disabled||!!action||file.status==='processing'} onClick={()=>void act(file,'remove')}>{action===file.id?'Working…':'Remove'}</button>
       </div>

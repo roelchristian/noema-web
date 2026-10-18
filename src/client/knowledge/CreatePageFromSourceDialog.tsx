@@ -41,6 +41,7 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
   const [options,setOptions]=useState<SourcePageOptions>(readSourcePagePreferences);
   const [retryOpen,setRetryOpen]=useState(false),[feedback,setFeedback]=useState('');
   const [liveBlock,setLiveBlock]=useState<LiveBlock|null>(null),[generationStage,setGenerationStage]=useState<'waiting'|'writing'|'checking'>('waiting');
+  const [waitingLonger,setWaitingLonger]=useState(false);
   const live=useRef<LiveBlock|null>(null),liveTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
   const feedbackField=useRef<HTMLTextAreaElement>(null);
   const request=useRef<AbortController|null>(null),generation=useRef({id:randomUUID(),settings:''}),preview=useRef<HTMLDivElement>(null),follow=useRef(true),active=useRef(true);
@@ -66,10 +67,13 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
     const controller=new AbortController();request.current=controller;
     const settings=JSON.stringify([focus.trim(),options,...(revision?[revision]:[])]);
     if(generation.current.settings!==settings)generation.current={id:randomUUID(),settings};
-    clearLive();setGenerationStage('waiting');
+    clearLive();setGenerationStage('waiting');setWaitingLonger(false);
     setPhase('generating');setTitle('');setBlocks([]);setError('');follow.current=true;
+    const slowTimer=setTimeout(()=>{if(active.current&&!controller.signal.aborted&&request.current===controller)setWaitingLonger(true);},5000);
+    const receivedContent=()=>{clearTimeout(slowTimer);setWaitingLonger(false);};
     const receive=(event:SourcePageEvent)=>{
       if(!active.current||controller.signal.aborted)return;
+      if(event.type==='title'||event.type==='block'||event.type==='review'||event.type==='completed'||event.type==='block_delta'&&!event.reset&&!!event.delta)receivedContent();
       if(event.type==='status')setGenerationStage(event.phase==='reviewing'?'checking':'waiting');
       else if(event.type==='title'){setTitle(event.title);setGenerationStage('writing');}
       else if(event.type==='block_delta'){
@@ -84,7 +88,7 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
     };
     try{await createPageFromSource(vaultId,source.id,focus.trim(),options,generation.current.id,receive,controller.signal,revision);}
     catch(error){if(active.current&&!controller.signal.aborted){clearLive();if(previousDraft){setTitle(previousDraft.title);setBlocks(previousDraft.blocks);setPhase('review');}else setPhase('failed');setError(error instanceof Error?error.message:'Could not generate the page. Please retry.');}}
-    finally{if(request.current===controller)request.current=null;}
+    finally{clearTimeout(slowTimer);if(request.current===controller)request.current=null;}
   }
   async function openPage(value=page){if(!value||opening)return;setOpening(true);setError('');try{await onOpenPage(value.id);onClose();}catch(error){if(active.current)setError(error instanceof Error?error.message:'Could not open the accepted page.');}finally{if(active.current)setOpening(false);}}
   async function accept(){
@@ -101,7 +105,7 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
     try{await apiRequest(route+'/reject','POST',{requestId:draft.id},vaultId,AbortSignal.timeout(30000));window.dispatchEvent(new Event('noema:ai-activity'));if(active.current)onClose();}
     catch(error){if(active.current){setPhase('review');setError(error instanceof Error?error.message:'Could not reject the draft. Please retry.');}}
   }
-  const status=running?(generationStage==='waiting'?'Waiting for your AI model…':generationStage==='checking'?'Checking references and saving your draft…':`Writing your draft · ${blocks.length} complete ${blocks.length===1?'block':'blocks'}`):phase==='loading'?'Checking for a draft to review…':phase==='accepting'?'Accepting and saving your page…':phase==='rejecting'?'Discarding the draft…':phase==='review'?'Draft ready for review. No page has been created yet.':phase==='completed'?'Page accepted and saved.':phase==='failed'?'Generation could not be completed. Your source is unchanged.':phase==='stopped'?'Generation stopped.':blocks.length?`Writing your draft · ${blocks.length} ${blocks.length===1?'block':'blocks'} received`:'Reading the source and planning your page…';
+  const status=running?(generationStage==='waiting'?(waitingLonger?'Taking longer than usual… Waiting for the first draft text.':'Waiting for your AI model…'):generationStage==='checking'?'Checking references and saving your draft…':`Writing your draft · ${blocks.length} complete ${blocks.length===1?'block':'blocks'}`):phase==='loading'?'Checking for a draft to review…':phase==='accepting'?'Accepting and saving your page…':phase==='rejecting'?'Discarding the draft…':phase==='review'?'Draft ready for review. No page has been created yet.':phase==='completed'?'Page accepted and saved.':phase==='failed'?'Generation could not be completed. Your source is unchanged.':phase==='stopped'?'Generation stopped.':blocks.length?`Writing your draft · ${blocks.length} ${blocks.length===1?'block':'blocks'} received`:'Reading the source and planning your page…';
   const hasPreview=running||!!title||!!blocks.length||!!draft||!!page;
   const controlsDisabled=busy||!!draft||!!page;
   return <Modal className={'source-page-dialog'+(hasPreview?' has-preview':'')} titleId="source-page-title" onClose={close}><form onSubmit={start}>

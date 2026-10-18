@@ -33,7 +33,8 @@ export class SourcePageDraft {
     let newline:number;
     while((newline=this.pending.indexOf('\n'))>=0){this.record(this.pending.slice(0,newline));this.pending=this.pending.slice(newline+1);}
     const preview=sourcePagePreview(this.pending);
-    if(this.title&&preview&&preview.text.startsWith(this.previewText)&&preview.text.length-this.previewText.length>=24) {
+    // Show the first readable fragment immediately; batch subsequent fragments.
+    if(this.title&&preview&&preview.text.startsWith(this.previewText)&&preview.text.length>this.previewText.length&&(!this.previewText||preview.text.length-this.previewText.length>=24)) {
       this.emit({type:'block_delta',blockType:preview.blockType,delta:preview.text.slice(this.previewText.length)});
       this.previewText=preview.text;
     }

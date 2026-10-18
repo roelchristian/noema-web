@@ -10,6 +10,12 @@ import { useEntitySchema } from '../knowledge/useEntitySchema';
 import { Icon } from '../components/Icon';
 import { Modal, ModalHeader } from '../components/Modal';
 
+function ReviewConfirmation({feedback,inline=false}:{feedback:ReviewFeedback;inline?:boolean}) {
+  return <div className={'entity-review-confirmation'+(inline?' entity-review-confirmation-inline':'')} role="status" title={feedback.detail}>
+    <Icon name="check"/><span>{feedback.message}</span><span className="sr-only">{feedback.detail}</span>
+  </div>;
+}
+
 type Decision = 'accepted' | 'rejected';
 export function EntityScanReview({page,scan:savedScan,onScan,onFlush,onReview,disabled,entities}:{entities:Entity[];page:Page;scan:EntityScan|null;onScan:(scan:EntityScan)=>void;onFlush:()=>Promise<Page|null>;onReview:(scanId:string,id:string|string[],decision:Decision,edits?:EntitySuggestionEdit[])=>Promise<EntityScan>;disabled:boolean}) {
   const {schema}=useEntitySchema(page.vault_id);
@@ -84,12 +90,12 @@ export function EntityScanReview({page,scan:savedScan,onScan,onFlush,onReview,di
   function toggleAll(){setSelected(current=>allSelected?current.filter(id=>!visiblePending.includes(id)):[...new Set([...current,...visiblePending])]);}
   return <div className="knowledge-entity-discovery">
     <button type="button" className={'knowledge-icon-action entity-detect-action'+(scanning?' is-working':'')} disabled={disabled} aria-label={scan?`Review detected entities (${pending.length+subtypePending.length})`:'Detect entities with AI'} aria-haspopup="dialog" title={scan?`${pending.length+subtypePending.length} pending suggestions`:'Detect entities with AI'} onClick={()=>{setFeedback(null);setAnnouncement('');setOpen(true);if(!scan&&!running.current)scanNote();}}><Icon name="sparkles"/>{!!scan&&pending.length+subtypePending.length>0&&<span className="knowledge-action-badge">{pending.length+subtypePending.length}</span>}</button>
-    {!open&&feedback&&<div className="entity-review-confirmation entity-review-confirmation-inline" role="status"><span className="review-confirmation-icon"><Icon name="check"/></span><div><strong>{feedback.message}</strong><span>{feedback.detail}</span></div></div>}
+    {!open&&feedback&&<ReviewConfirmation feedback={feedback} inline/>}
     {open&&<Modal className="entity-review-modal" titleId="entity-review-title" onClose={()=>setOpen(false)}>
       <ModalHeader titleId="entity-review-title">Entity review</ModalHeader><p className="modal-description">{page.title||'Untitled'}</p>
       {total>0&&!scanning&&<div className="entity-review-progress"><span>{reviewed} of {total} reviewed</span><div role="progressbar" aria-label="Entity review progress" aria-valuemin={0} aria-valuemax={total} aria-valuenow={reviewed}><span style={{width:`${reviewed/total*100}%`}}/></div></div>}
       <div className="entity-review-toolbar"><div className="entity-review-filters" role="group" aria-label="Filter suggestions">{(['all','pending','reviewed'] as const).map(value=><button key={value} aria-pressed={filter===value} onClick={()=>setFilter(value)}>{value==='all'?'All':value==='pending'?'Pending':'Reviewed'}<span>{value==='all'?total:value==='pending'?pending.length+subtypePending.length:reviewed}</span></button>)}</div><label className="entity-review-search"><Icon name="search"/><input aria-label="Search suggestions" placeholder="Search entities…" value={query} onChange={e=>setQuery(e.target.value)}/></label><button className="knowledge-icon-action" disabled={locked} aria-label={scanning?'Scanning entities':scan?'Scan again':'Scan note'} title={scan?'Scan again':'Scan note'} onClick={scanNote}>{scanning?<span className="scan-spinner"/>:<Icon name={scan?'refresh':'sparkles'}/>}</button></div>
-      <div className="entity-review-messages" aria-live="polite">{announcement&&!feedback&&<span className="sr-only" role="status">{announcement}</span>}{feedback&&<div className="entity-review-confirmation" role="status"><span className="review-confirmation-icon"><Icon name="check"/></span><div><strong>{feedback.message}</strong><span>{feedback.detail}</span></div></div>}{error&&<p className="inline-error" role="alert">{error}</p>}{stale&&<p role="status">Note changed. Scan again to review fresh suggestions.</p>}</div>
+      <div className="entity-review-messages" aria-live="polite">{announcement&&!feedback&&<span className="sr-only" role="status">{announcement}</span>}{feedback&&<ReviewConfirmation feedback={feedback}/>}{error&&<p className="inline-error" role="alert">{error}</p>}{stale&&<p role="status">Note changed. Scan again to review fresh suggestions.</p>}</div>
       {scanning&&visible.length>0&&<p className="entity-scan-live-status" role="status"><span className="scan-spinner"/>{scan?.suggestions.length} entities found · Still scanning…</p>}
       <div className="entity-review-table-wrap" aria-busy={scanning}>
         {!scanning && !!scan?.subtypeSuggestions?.length && <section className="entity-review-subtype-proposals" aria-labelledby="subtype-proposals-title">

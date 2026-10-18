@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import React,{act} from 'react';
 import {createRoot} from 'react-dom/client';
+import {ConnectedEntities} from '../src/client/intelligence/ConnectedEntities.tsx';
 import {EntityScanReview} from '../src/client/intelligence/EntityScanReview.tsx';
 import {api} from '../src/client/api.ts';
 
-test('review renders incoming rows during scanning and enables review only after final persistence',async()=>{
+test('review renders incoming rows during scanning and enables review only after final persistence, then confirms completion outside the heading',async t=>{
   const dom=new JSDOM('<div id="mount"></div>',{pretendToBeVisual:true});
   const keys=['window','document','Node','Element','HTMLElement','MutationObserver','HTMLSelectElement','HTMLInputElement','CustomEvent','Event','IS_REACT_ACT_ENVIRONMENT'];
   const previous=keys.map(key=>Object.getOwnPropertyDescriptor(globalThis,key));
@@ -19,10 +20,10 @@ test('review renders incoming rows during scanning and enables review only after
   let progress,finish,confirmed;
   api.entitySchema=async()=>({properties:{},subtypes:[],subtypeProperties:{}});
   api.scanEntities=async(_vault,_id,_revision,onProgress)=>{progress=onProgress;return new Promise(resolve=>finish=resolve);};
-  const page={id:'page',vault_id:'default',revision:1,title:'Test'};
+  const page={id:'page',vault_id:'default',revision:1,title:'Test',blocks:[],sourceIds:[]};
   const suggestion={id:'city',name:'Charlemagne, Quebec',aliases:['Charlemagne'],type:'place',subtypes:[],evidence:'Charlemagne',reason:'City',status:'pending',existingId:null};
   let scan=null;
-  const render=()=>root.render(React.createElement(EntityScanReview,{page,scan,entities:[],disabled:false,onFlush:async()=>page,onReview:async()=>{},onScan:result=>{confirmed=result;scan=result;render();}}));
+  const render=()=>root.render(React.createElement(ConnectedEntities,{page,entities:[],onOpenEntity(){}},React.createElement(EntityScanReview,{page,scan,entities:[],disabled:false,onFlush:async()=>page,onReview:async(_scanId,ids,decision)=>({...scan,suggestions:scan.suggestions.map(item=>(Array.isArray(ids)?ids:[ids]).includes(item.id)?{...item,status:decision}:item)}),onScan:result=>{confirmed=result;scan=result;render();}})));
   const click=async selector=>act(async()=>document.querySelector(selector).dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})));
   try {
     await act(async()=>render());await click('.entity-detect-action');
@@ -42,6 +43,19 @@ test('review renders incoming rows during scanning and enables review only after
     assert.equal(document.querySelector('[aria-label="Accept Charlemagne, Quebec"]').disabled,false);
     await click('[aria-label="Edit Charlemagne, Quebec"]');
     assert.equal(document.querySelector('[aria-label="Aliases for Charlemagne, Quebec"]').value,'Charlemagne');
+    t.mock.timers.enable({apis:['setTimeout']});
+    await click('[aria-label="Accept Charlemagne, Quebec"]');
+    assert.match(document.querySelector('.entity-review-confirmation').textContent,/Charlemagne, Quebec connected/);
+    await click('[aria-label="Reject Quebec"]');
+    assert.match(document.querySelector('.entity-review-confirmation').textContent,/Review complete/);
+    await act(async()=>t.mock.timers.tick(1100));
+    const confirmation=document.querySelector('.entity-review-confirmation-inline');
+    assert.ok(confirmation);
+    assert.equal(confirmation.closest('.knowledge-section-heading'),null);
+    assert.equal(confirmation.getAttribute('role'),'status');
+    assert.equal(confirmation.querySelector('strong'),null);
+    await act(async()=>t.mock.timers.tick(5000));
+    assert.equal(document.querySelector('.entity-review-confirmation-inline'),null);
   }finally{
     await act(async()=>root.unmount());api.scanEntities=originalScan;api.entitySchema=originalSchema;dom.window.close();
     keys.forEach((key,i)=>{if(previous[i])Object.defineProperty(globalThis,key,previous[i]);else delete globalThis[key];});

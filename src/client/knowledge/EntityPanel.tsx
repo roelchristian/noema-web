@@ -10,12 +10,12 @@ import { Select } from '../components/Select';
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
 import {clearEntityDraft, entityDraftDirty, entityDraftValues, getEntityDraft, hasEntityDraft, mergeEntityDraft, setEntityDraft, subscribeEntityDrafts, type EntityDraftValues} from './entity-drafts';
 import { api } from '../api';
-import { entityLabels, entityTypes, type Entity, type EntityDetail, type EntityMentionCase, type EntityType, type Property, type Relationship } from '../../shared/domain';
+import { entityLabels, entityTypes, type Entity, type EntityDetail, type EntityType, type Property, type Relationship } from '../../shared/domain';
 import { Icon } from '../components/Icon';
 import { Mention } from '../components/Mention';
 import { AliasInput, parseAliases } from './AliasInput';
 interface Props {onCreatePageFromSource:(source:Entity)=>void;onOpenPage: (id: string) => void; refreshKey: string; vaultId: string; id: string; entities: Entity[]; onOpen: (id: string) => void; onClose: () => void; onUpdated: () => Promise<void>; onError: (error: unknown) => void}
-const entityTabs = [{id: 'overview', label: 'Overview'}, {id: 'connections', label: 'Connections'}, {id: 'edit', label: 'Edit'}] as const;
+const entityTabs = [{id: 'overview', label: 'Overview', icon:'page'}, {id: 'connections', label: 'Connections', icon:'knowledge'}, {id: 'edit', label: 'Edit', icon:'edit'}] as const;
 type EntityTab = typeof entityTabs[number]['id'];
 interface EntityConnection {key: string; target: string; label: string}
 export function EntityPanel(props: Props) {
@@ -52,7 +52,7 @@ export function EntityPanel(props: Props) {
     document.getElementById('entity-panel')?.scrollTo({top: 0});
     document.getElementById('entity-tab-' + next)?.focus({preventScroll: true});
   }
-  return <aside id="entity-panel" className="entity-panel entity-detail-panel" aria-label="Knowledge entity"><div className="panel-top entity-detail-toolbar">
+  return <aside id="entity-panel" className="entity-panel entity-detail-panel entity-editor-panel" data-entity-tab={tab} aria-label="Knowledge entity"><div className="panel-top entity-detail-toolbar">
     {entity ? <div className="entity-toolbar-heading"><span className="entity-detail-icon" aria-hidden="true"><Icon name={entity.type}/></span><h2 id="entity-detail-title" className="entity-toolbar-title" title={entity.name}>{entity.name}</h2></div> : <span>KNOWLEDGE ENTITY</span>}
     <button type="button" title="Close entity" aria-label="Close entity" onClick={onClose}><Icon name="close"/></button>
   </div>
@@ -60,19 +60,19 @@ export function EntityPanel(props: Props) {
       {loadingError && <p role="alert">{loadingError}</p>}
       {tab!=='edit'&&entity.attachments?.map(file=><SourceLoadingProgress key={file.id} file={file}/>)}
       <div className="entity-detail-classification"><span className="entity-detail-type">{entityLabels[entity.type]}</span>{entity.type==='source'&&<span>{entity.attachments?.some(file=>file.status==='queued'||file.status==='processing')?'Processing':entity.inactive?'Inactive':entity.sourceEnrichmentStatus==='pending'||entity.sourceEnrichmentStatus==='running'?'Processed · Enriching with AI':entity.sourceEnrichmentStatus==='failed'?'Processed · AI enrichment failed':'Processed'}</span>}{!!subtypeNames.length && <span>{subtypeNames.join(' · ')}</span>}</div>
-      {entity.type==='source'&&<div className="entity-source-workflow"><button type="button" className="button" disabled={entity.inactive||entity.sourceStatus!=='ready'} onClick={()=>props.onCreatePageFromSource(entity)}><Icon name="sparkles"/>Create page from source</button>{entity.sourceStatus!=='ready'&&<p className="section-hint">{entity.inactive?'Retry source processing before creating a page.':'Available once source processing finishes.'}</p>}</div>}
-      {entity.type==='source'&&entity.attachments?.map(file=><div key={file.id}>{file.language&&<p className="section-hint">Language: {file.language}</p>}{file.summary&&<div className="ai-summary-text"><SummaryText text={file.summary}/></div>}</div>)}
-      {entity.description && <p className="entity-detail-description">{entity.description}</p>}
       <div className="entity-detail-tabs" role="tablist" aria-label="Entity details">
-        {entityTabs.map(({id: value, label}) => <button type="button" key={value} id={'entity-tab-' + value} role="tab" aria-selected={tab === value} aria-controls={'entity-tabpanel-' + value} tabIndex={tab === value ? 0 : -1} onClick={() => switchTab(value)} onKeyDown={event => {
+        {entityTabs.map(({id: value, label,icon}) => <button type="button" key={value} id={'entity-tab-' + value} role="tab" aria-selected={tab === value} aria-controls={'entity-tabpanel-' + value} tabIndex={tab === value ? 0 : -1} onClick={() => switchTab(value)} onKeyDown={event => {
           if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
           event.preventDefault();
           const index = entityTabs.findIndex(item => item.id === value);
           const next = event.key === 'Home' ? 0 : event.key === 'End' ? entityTabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + entityTabs.length) % entityTabs.length;
           switchTab(entityTabs[next]!.id);
-        }}>{label}</button>)}
+        }}><Icon name={icon}/>{label}</button>)}
       </div>
       <div id="entity-tabpanel-overview" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-overview" hidden={tab !== 'overview'} tabIndex={0}>
+      {entity.type==='source'&&<div className="entity-source-workflow"><button type="button" className="button" disabled={entity.inactive||entity.sourceStatus!=='ready'} onClick={()=>props.onCreatePageFromSource(entity)}><Icon name="sparkles"/>Create page from source</button>{entity.sourceStatus!=='ready'&&<p className="section-hint">{entity.inactive?'Retry source processing before creating a page.':'Available once source processing finishes.'}</p>}</div>}
+      {entity.type==='source'&&entity.attachments?.map(file=><div key={file.id}>{file.language&&<p className="section-hint">Language: {file.language}</p>}{file.summary&&<div className="ai-summary-text"><SummaryText text={file.summary}/></div>}</div>)}
+      {entity.description && <p className="entity-detail-description">{entity.description}</p>}
         {entity.type==='concept' && <section className="entity-detail-section"><h3>Disciplines</h3><p className="section-hint">{entity.domainIds?.length ? entity.domainIds.map(domainBreadcrumb).join(' · ') : 'No disciplines selected.'}</p></section>}
         <section className="entity-detail-section"><h3>Properties<span>{entity.properties.length + unsetProperties.length}</span></h3>
           {entity.properties.length || unsetProperties.length ? <dl className="entity-overview-properties">{entity.properties.map(property => <div key={property.id}><dt>{property.name}</dt><dd>{property.target_id ? <EntityReference id={property.target_id} entities={entities} onOpen={onOpen}/> : property.value}</dd></div>)}{unsetProperties.map(name => <div key={'unset-' + name}><dt>{name}</dt><dd><button type="button" onClick={() => switchTab('edit')}>Not set</button></dd></div>)}</dl> : <p className="entity-detail-empty">No inherited fields yet. Define properties on a subtype in Settings → Knowledge Entities.</p>}
@@ -104,7 +104,7 @@ export function EntityPanel(props: Props) {
       </div>
       <div id="entity-tabpanel-edit" className="entity-detail-tabpanel entity-detail-edit" role="tabpanel" aria-labelledby="entity-tab-edit" hidden={tab !== 'edit'} tabIndex={0}>
         {schemaError && <p role="alert">{schemaError}</p>}
-        <section className="entity-detail-section"><h3>Details</h3><EntityDetails vaultId={vaultId} schema={schema} key={vaultId + ':' + entity.id} entity={entity} onSave={async input => {
+        <section className="entity-detail-section entity-identity-section"><EntityDetails vaultId={vaultId} schema={schema} key={vaultId + ':' + entity.id} entity={entity} onSave={async input => {
           let result: EntityDetail;
           try {result = await api.updateEntity(vaultId, id, input);} catch (error) {onError(error); throw error;}
           if (currentEntityKey.current.vaultId === vaultId && currentEntityKey.current.id === id) setEntity(result);
@@ -113,13 +113,12 @@ export function EntityPanel(props: Props) {
           return result;
         }}/></section>
         {entity.type==='source'&&<SourceAttachments key={entity.id} vaultId={vaultId} entityId={entity.id} initial={entity.attachments} onChange={attachments => {setEntity(current => current ? {...current, attachments,inactive:attachments.some(file=>file.status==='failed'),sourceStatus:attachments[0]?.status,sourceEnrichmentStatus:attachments[0]?.enrichment_status} : current);if(attachments.every(file=>file.status==='failed'||file.status==='ready'&&file.enrichment_status!=='pending'&&file.enrichment_status!=='running'))void api.entity(vaultId,id).then(result=>{setEntity(result);return onUpdated();}).catch(onError);else if(entity.inactive)void onUpdated().catch(onError);}}/>}
-        <section className="panel-section"><h3>Properties <span>{entity.properties.length}</span></h3><p className="section-hint">Fields are inherited from this category and its selected subtypes. Define new fields in Settings → Knowledge Entities; set each entity’s values here.</p>
+        <section className="panel-section"><h3>Properties <span>{entity.properties.length}</span></h3>
           <PropertyEditor key={entity.type + JSON.stringify(entity.subtypes)} entity={{...entity, propertyNames}} entities={entities} mention={mention} onSave={(input, propertyId) => mutate(() => api.saveProperty(vaultId, id, input, propertyId))} onRemove={propertyId => mutate(() => api.removeConnection(vaultId, id, 'properties', propertyId))}/>
         </section>
-        <section className="panel-section"><h3>Relationships <span>{entity.relationships.length}</span></h3><p className="section-hint">Named connections, independent of properties.</p>
+        <section className="panel-section"><h3>Relationships <span>{entity.relationships.length}</span></h3>
           <RelationshipEditor entity={entity} entities={entities} mention={mention} onSave={(input, relationId) => mutate(() => api.saveRelationship(vaultId, id, input, relationId))} onRemove={relationId => mutate(() => api.removeConnection(vaultId, id, 'relationships', relationId))}/>
         </section>
-        <p className="panel-footnote">Changes are shared across your vault.</p>
       </div>
     </div>}
   </aside>;
@@ -158,20 +157,25 @@ function EntityDetails({vaultId, entity, schema, onSave}: {vaultId: string; sche
     } catch { /* Parent reports the error; the draft remains available. */ }
     finally {if (mounted.current) setBusy(false);}
   }
-  return <form id="entity-form" className="entity-detail-form" onSubmit={submit}>
-    <label>Name<input className="entity-name" aria-label="Entity name" required maxLength={200} disabled={busy} value={name} onChange={e => change({name: e.target.value})}/></label>
-    <h4 className="entity-form-heading">Classification</h4>
-    <label>Entity type<Select aria-label="Entity type" value={type} disabled={busy} onChange={e => change({type: e.target.value as EntityType, subtypes: [], domainIds: []})}>{entityTypes.map(t => <option key={t} value={t} disabled={t!==entity.type&&(t==='source'||entity.type==='source')}>{entityLabels[t]}</option>)}</Select></label>
-    <SubtypePicker type={type} value={subtypes} subtypes={schema.subtypes} onChange={value => change({subtypes: value})} disabled={busy}/>
-    {type==='concept'&&<DomainPicker value={domainIds} onChange={domainIds => change({domainIds})} disabled={busy}/>}
-    <h4 className="entity-form-heading">{type==='source'?'Mentions':'Mentions & aliases'}</h4>
-    {type!=='source'&&<AliasInput value={aliases} onChange={value => change({aliases: value})} disabled={busy}/>}
-    <label>Default tag casing<Select aria-label="Default tag casing" value={mentionCase} disabled={busy} onChange={event => change({mentionCase: event.target.value as EntityMentionCase})}><option value="canonical">Entity name</option><option value="lowercase">Lowercase</option></Select></label>
-    <p className="section-hint">Used when inserting a tag without source text. AI tags and tags made from selected text keep the passage’s original capitalization.</p>
-    <h4 className="entity-form-heading">About this entity</h4>
-    <label>Description<textarea aria-label="Entity description" placeholder="Add context to help identify this entity…" rows={4} disabled={busy} value={description} onChange={e => change({description: e.target.value})}/></label>
-    <div className="entity-detail-save"><span id="entity-saved" role="status">{busy ? 'Saving changes…' : dirty ? 'Unsaved changes' : status || 'No unsaved changes'}</span><div><button type="button" className="button small" disabled={busy || !dirty} onClick={reset}>Reset</button><button className="button small primary" disabled={busy || !dirty || !name.trim()}>{busy ? 'Saving…' : 'Save details'}</button></div></div>
+  return <form id="entity-form" className="entity-detail-form" onSubmit={submit} onKeyDown={event=>{if(event.key==='Enter'&&(event.metaKey||event.ctrlKey)&&!event.nativeEvent.isComposing){event.preventDefault();event.currentTarget.requestSubmit();}}}>
+    <div className="entity-detail-save"><span id="entity-saved" role="status">{busy?'Saving…':dirty?'Unsaved changes':status||'Details'}</span><div><button type="button" className="knowledge-icon-action" aria-label="Discard changes" title="Discard changes" disabled={busy||!dirty} onClick={reset}><Icon name="refresh"/></button><button type="submit" className="button small primary" aria-label="Save entity details" aria-keyshortcuts="Meta+Enter Control+Enter" disabled={busy||!dirty||!name.trim()}><Icon name="check"/>{busy?'Saving…':'Save'}</button></div></div>
+    <div className="entity-form-group">
+      <label>Name<input className="entity-name" aria-label="Entity name" autoComplete="off" required maxLength={200} disabled={busy} value={name} onChange={e=>change({name:e.target.value})}/></label>
+      <label>Description<textarea aria-label="Entity description" placeholder="A short description…" rows={3} disabled={busy} value={description} onChange={e=>change({description:e.target.value})}/></label>
+    </div>
+    <div className="entity-form-group">
+      <h4 className="entity-form-heading"><Icon name="semantic"/>Classification</h4>
+      <label>Type<Select aria-label="Entity type" value={type} disabled={busy} onChange={e=>change({type:e.target.value as EntityType,subtypes:[],domainIds:[]})}>{entityTypes.map(t=><option key={t} value={t} disabled={t!==entity.type&&(t==='source'||entity.type==='source')}>{entityLabels[t]}</option>)}</Select></label>
+      <SubtypePicker type={type} value={subtypes} subtypes={schema.subtypes} onChange={value=>change({subtypes:value})} disabled={busy} compact/>
+      {type==='concept'&&<DomainPicker value={domainIds} onChange={domainIds=>change({domainIds})} disabled={busy}/>}
+    </div>
+    <div className="entity-form-group">
+      <h4 className="entity-form-heading"><Icon name="quote"/>Mentions</h4>
+      {type!=='source'&&<AliasInput value={aliases} onChange={value=>change({aliases:value})} disabled={busy} compact/>}
+      <fieldset className="entity-mention-style" disabled={busy}><legend>Tag casing</legend><div role="group" aria-label="Default tag casing">{(['canonical','lowercase'] as const).map(option=><button type="button" key={option} aria-pressed={mentionCase===option} title={option==='canonical'?'Use the entity name when inserting a tag':'Use lowercase when inserting a tag'} onClick={()=>change({mentionCase:option})}>{option==='canonical'?'Entity name':'lowercase'}</button>)}</div></fieldset>
+    </div>
   </form>;
+
 }
 type MentionRenderer = (id: string) => React.ReactNode;
 function PropertyEditor({entity, entities, mention, onSave, onRemove}: {entity: EntityDetail; entities: Entity[]; mention: MentionRenderer; onSave: (input: Parameters<typeof api.saveProperty>[2], id?: string) => Promise<unknown>; onRemove: (id: string) => Promise<unknown>}) {
@@ -207,10 +211,10 @@ function PropertyEditor({entity, entities, mention, onSave, onRemove}: {entity: 
         <button type="button" disabled={busy} aria-label={'Remove '+property.name} title="Remove value" onClick={() => void remove(property)}><Icon name="close"/></button>
       </div></div><div className="entity-property-value">{property.target_id ? mention(property.target_id) : property.value}</div>
     </div>)}</div>
-    {!!unset.length && <div className="entity-property-unset"><p>Fields without values <span>{unset.length}</span></p><div>{unset.map(field => <button type="button" key={field} disabled={busy} onClick={() => {reset(); setName(field); setStatus(''); setFocusRequest(current => current + 1);}}><Icon name="plus"/>{field}</button>)}</div></div>}
-    {!entity.propertyNames.length && !entity.properties.length && <p className="entity-detail-empty">No property fields yet. Choose subtypes and save the entity’s details, or define fields in Settings → Knowledge Entities.</p>}
-    {(!!entity.propertyNames.length || !!edit) && <form ref={form} className="entity-property-form" aria-label={edit ? 'Edit property' : 'Add property'} onSubmit={submit}>
-      <div className="entity-property-form-heading"><h4>{edit ? 'Edit property' : 'Add a property value'}</h4>{edit && <span>Editing saved value</span>}</div>
+    {!!unset.length && <div className="entity-property-unset"><div>{unset.map(field => <button type="button" key={field} disabled={busy} onClick={() => {reset(); setName(field); setStatus(''); setFocusRequest(current => current + 1);}}><Icon name="plus"/>{field}</button>)}</div></div>}
+    {!entity.propertyNames.length && !entity.properties.length && <p className="entity-detail-empty">No fields for this classification.</p>}
+    {(!!name || !!edit) && <form ref={form} className="entity-property-form" aria-label={edit ? 'Edit property' : 'Add property'} onSubmit={submit}>
+      <div className="entity-property-form-heading"><h4>{edit ? 'Edit property' : name}</h4><button type="button" className="knowledge-icon-action" aria-label="Close property editor" title="Close property editor" disabled={busy} onClick={reset}><Icon name="close"/></button></div>
       <label>Property<Select required aria-label="Property name" disabled={busy} value={name} onChange={event => {setName(event.target.value);setStatus('');}}><option value="">Choose a property…</option>{names.map(field => <option key={field} value={field}>{field}</option>)}</Select></label>
       <fieldset className="property-value-kind" disabled={busy}><legend>Value type</legend><div>{(['text', 'entity'] as const).map(option => <button type="button" key={option} aria-pressed={kind === option} onClick={() => {setKind(option);setStatus('');}}><Icon name={option === 'text' ? 'page' : 'knowledge'}/>{option === 'text' ? 'Text' : 'Entity reference'}</button>)}</div></fieldset>
       {kind === 'text' ? <label>Value<textarea required rows={3} aria-label="Property value" placeholder="Enter a value…" disabled={busy} value={value} onChange={event => {setValue(event.target.value);setStatus('');}}/></label> : <div className="property-reference-fields">
@@ -219,18 +223,44 @@ function PropertyEditor({entity, entities, mention, onSave, onRemove}: {entity: 
         {!matches.length && <p className="section-hint">No entities match your search.</p>}
       </div>}
       <div className="entity-property-form-actions"><button type="button" className="button small" disabled={busy || !(edit || name || value || target || query)} onClick={()=>{reset();setStatus('');}}>{edit ? 'Cancel edit' : 'Clear'}</button><button className="button small primary" disabled={busy || !name || !(kind === 'text' ? value.trim() : target)}>{busy ? 'Saving…' : edit ? 'Save changes' : 'Add value'}</button></div>
-      <p className="entity-property-save-hint">Save each property separately from entity details.</p>
     </form>}
     {error && <p className="entity-property-error" role="alert">{error}</p>}<p className="entity-property-status" role="status">{status}</p>
   </div>;
 }
 
 function RelationshipEditor({entity, entities, mention, onSave, onRemove}: {entity: EntityDetail; entities: Entity[]; mention: MentionRenderer; onSave: (input: Parameters<typeof api.saveRelationship>[2], id?: string) => Promise<unknown>; onRemove: (id: string) => Promise<unknown>}) {
-  const [edit, setEdit] = useState<string>(), [label, setLabel] = useState(''), [target, setTarget] = useState(''), [busy, setBusy] = useState(false);
-  function reset() { setEdit(undefined); setLabel(''); setTarget(''); }
-  function editing(r: Relationship) { setEdit(r.id); setLabel(r.label); setTarget(r.target_id); }
-  async function submit(e: FormEvent) { e.preventDefault(); setBusy(true); try { await onSave({label, target_id: target}, edit); reset(); } catch { /* Parent reports the error. */ } finally { setBusy(false); } }
-  return <>{entity.relationships.map(r => <div key={r.id} className="relationship"><span className="relation-label">{r.source_id === entity.id ? '→ ' + r.label : '← ' + r.label + ' (incoming)'}</span>{mention(r.source_id === entity.id ? r.target_id : r.source_id)}{r.source_id === entity.id && <><button className="edit-item" aria-label="Edit relationship" disabled={busy} onClick={() => editing(r)}>Edit</button><button className="remove" aria-label="Remove relationship" disabled={busy} onClick={() => { setBusy(true); void onRemove(r.id).then(() => { if (edit === r.id) reset(); }).catch(() => {}).finally(() => setBusy(false)); }}>×</button></>}</div>)}{!entity.relationships.length && <div className="empty-small">No relationships yet.</div>}
-    <form className="add-form" onSubmit={submit}><input required placeholder="e.g. sibling, inspired by, member of" aria-label="Relationship name" value={label} onChange={e => setLabel(e.target.value)}/><Select required aria-label="Related entity" value={target} onChange={e => setTarget(e.target.value)}><option value="">Choose an entity…</option>{entities.filter(e => e.id !== entity.id).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</Select><button className="button small" disabled={busy}>{edit ? 'Save relationship' : '+ Add relationship'}</button>{edit && <button type="button" className="edit-item" disabled={busy} onClick={reset}>Cancel edit</button>}</form>
-  </>;
+  const [edit,setEdit]=useState<string>(),[open,setOpen]=useState(false),[label,setLabel]=useState(''),[target,setTarget]=useState(''),[busy,setBusy]=useState(false);
+  const [error,setError]=useState(''),[status,setStatus]=useState('');
+  const input=useRef<HTMLInputElement>(null);
+  useEffect(()=>{if(open)input.current?.focus();},[open,edit]);
+  function reset(){setEdit(undefined);setOpen(false);setLabel('');setTarget('');setError('');}
+  function editing(relation:Relationship){setEdit(relation.id);setLabel(relation.label);setTarget(relation.target_id);setError('');setStatus('');setOpen(true);}
+  async function submit(event:FormEvent){
+    event.preventDefault();if(busy||!label.trim()||!target)return;
+    setBusy(true);setError('');
+    try{await onSave({label:label.trim(),target_id:target},edit);reset();setStatus('Relationship saved.');}
+    catch{setError('Could not save this relationship. Try again.');}
+    finally{setBusy(false);}
+  }
+  async function remove(relation:Relationship){
+    setBusy(true);setError('');
+    try{await onRemove(relation.id);if(edit===relation.id)reset();setStatus('Relationship removed.');}
+    catch{setError('Could not remove this relationship. Try again.');}
+    finally{setBusy(false);}
+  }
+  return <div className="entity-relationship-editor">
+    {!!entity.relationships.length&&<div className="entity-relationship-list">{entity.relationships.map(relation=><div key={relation.id} className={'entity-relationship-card'+(edit===relation.id?' is-editing':'')}>
+      <span className="entity-relationship-direction" title={relation.source_id===entity.id?'Outgoing relationship':'Incoming relationship'}><Icon name={relation.source_id===entity.id?'page-outgoing':'page-incoming'}/></span>
+      <div className="entity-relationship-target"><strong>{relation.label}</strong>{mention(relation.source_id===entity.id?relation.target_id:relation.source_id)}</div>
+      {relation.source_id===entity.id&&<div className="entity-relationship-actions"><button type="button" className="knowledge-icon-action" aria-label={'Edit relationship: '+relation.label} title="Edit relationship" disabled={busy} onClick={()=>editing(relation)}><Icon name="edit"/></button><button type="button" className="knowledge-icon-action" aria-label={'Remove relationship: '+relation.label} title="Remove relationship" disabled={busy} onClick={()=>void remove(relation)}><Icon name="close"/></button></div>}
+    </div>)}</div>}
+    {!open&&<button type="button" className="entity-add-connection" disabled={busy} onClick={()=>{reset();setStatus('');setOpen(true);}}><Icon name="plus"/>Add relationship</button>}
+    {open&&<form className="entity-property-form entity-relationship-form" aria-label={edit?'Edit relationship':'Add relationship'} onSubmit={submit}>
+      <div className="entity-property-form-heading"><h4>{edit?'Edit relationship':'New relationship'}</h4><button type="button" className="knowledge-icon-action" aria-label="Close relationship editor" title="Close relationship editor" disabled={busy} onClick={reset}><Icon name="close"/></button></div>
+      <label>Relationship<input ref={input} required placeholder="e.g. member of" aria-label="Relationship name" disabled={busy} value={label} onChange={event=>setLabel(event.target.value)}/></label>
+      <label>Related entity<Select required aria-label="Related entity" disabled={busy} value={target} onChange={event=>setTarget(event.target.value)}><option value="">Choose an entity…</option>{entities.filter(item=>item.id!==entity.id).map(item=><option key={item.id} value={item.id}>{item.name} · {entityLabels[item.type]}</option>)}</Select></label>
+      <div className="entity-property-form-actions"><button type="button" className="button small" disabled={busy} onClick={reset}>Cancel</button><button type="submit" className="button small primary" disabled={busy||!label.trim()||!target}>{busy?'Saving…':edit?'Save changes':'Add relationship'}</button></div>
+    </form>}
+    {error&&<p className="entity-property-error" role="alert">{error}</p>}{status&&<p className="entity-property-status" role="status">{status}</p>}
+  </div>;
 }

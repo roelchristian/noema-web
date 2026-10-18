@@ -46,7 +46,8 @@ export function ConnectedEntities({page, entities, onOpenEntity, children}: {pag
     event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
   }
   return <section className="knowledge-connected" aria-labelledby={id + '-heading'}>
-    <div className="knowledge-section-heading"><h2 id={id + '-heading'}><Icon name="knowledge"/>Entities<span className="knowledge-count">{connected.length}</span></h2><div className="knowledge-section-actions">{children}</div></div>
+    <div className="knowledge-section-heading"><h2 id={id + '-heading'}><Icon name="knowledge"/>Entities<span className="knowledge-count">{connected.length}</span></h2></div>
+    {children}
     {!!connected.length&&<div className="knowledge-entity-controls">
       <div className="knowledge-entity-tabs" role="tablist" aria-label="Connected entity types">
         {tabs.map(tab => {

@@ -977,18 +977,15 @@ dialog.vault-search-dialog::backdrop { background: #0005; backdrop-filter: blur(
 .entity-review-progress { display: flex; align-items: center; gap: 14px; padding: 0 28px 18px; color: var(--text-muted); font-size: 11px; flex-shrink: 0; }
 .entity-review-progress > div { height: 4px; flex: 1; max-width: 180px; overflow: hidden; border-radius: 4px; background: var(--surface-hover); }
 .entity-review-progress > div > span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width .25s ease; }
-.entity-review-confirmation { display: flex; align-items: center; gap: 11px; margin: 0 28px 16px; padding: 12px 14px; border: 1px solid var(--palette-sage-border); border-radius: 10px; background: var(--palette-sage-bg); color: var(--palette-sage-text); animation: review-confirmation-enter .2s ease-out; }
-.review-confirmation-icon { display: inline-flex; align-items: center; justify-content: center; width: 25px; height: 25px; flex-shrink: 0; border: 1px solid currentColor; border-radius: 50%; }
-.review-confirmation-icon .icon { width: 15px; height: 15px; }
-.entity-review-confirmation strong, .entity-review-confirmation div > span { display: block; overflow-wrap: anywhere; }
-.entity-review-confirmation strong { font-size: 12px; font-weight: 600; }
-.entity-review-confirmation div > span { margin-top: 3px; font-size: 11px; opacity: .85; line-height: 1.5; }
-.entity-review-confirmation-inline { margin: 12px 0 0; }
+.entity-review-confirmation { display: flex; align-items: flex-start; gap: 6px; min-width: 0; margin: 0 28px 12px; padding: 0; color: var(--text-muted); font-size: 11px; line-height: 1.5; animation: review-confirmation-enter .15s ease-out; }
+.entity-review-confirmation > .icon { flex: none; width: 13px; height: 13px; margin-top: 2px; }
+.entity-review-confirmation > span:not(.sr-only) { min-width: 0; overflow-wrap: anywhere; }
+.entity-review-confirmation-inline { margin: 0 0 8px; }
 .entity-review-row-actions .scan-decision:is(.is-accepted, .is-rejected) { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border-radius: 20px; white-space: nowrap; }
 .entity-review-row-actions .scan-decision.is-accepted { background: var(--palette-sage-bg); color: var(--palette-sage-text); }
 .entity-review-row-actions .scan-decision.is-rejected { background: var(--surface-hover); color: var(--text-muted); }
 .entity-review-table tr.was-reviewed td { animation: review-row-confirm 1.1s ease-out; }
-@keyframes review-confirmation-enter { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes review-confirmation-enter { from { opacity: 0; } to { opacity: 1; } }
 @keyframes review-row-confirm { from { background: var(--accent-soft); } to { background: transparent; } }
 @media (max-width: 750px) { .entity-review-progress { padding: 0 20px 16px; } .entity-review-confirmation:not(.entity-review-confirmation-inline) { margin-left: 20px; margin-right: 20px; } }
 @media (prefers-reduced-motion: reduce) { .entity-review-confirmation, .entity-review-table tr.was-reviewed td { animation: none; } .entity-review-progress > div > span { transition: none; } }
@@ -2834,3 +2831,70 @@ dialog.noema-modal.ai-activity-modal .modal-header { position: relative; top: au
   .knowledge-icon-action, .intelligence-panel .entity-detect-action, .intelligence-panel .page-source > button { width: 36px; height: 36px; }
   .intelligence-panel .knowledge-entity-tabs > button, .intelligence-panel .knowledge-entity-sort { min-width: 36px; min-height: 36px; }
 }
+
+/* Entity editing prioritizes identity, classification, and deliberate changes. */
+.entity-editor-panel > .entity-detail-body { padding: 16px; }
+.entity-editor-panel .entity-detail-tabs { gap: 3px; margin: 14px 0 0; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-hover); }
+.entity-editor-panel .entity-detail-tabs > button { display: inline-flex; align-items: center; justify-content: center; flex: 1; gap: 6px; min-height: 32px; margin: 0; padding: 6px 8px; border: 0; border-radius: 5px; font-size: 11px; }
+.entity-editor-panel .entity-detail-tabs > button > .icon { width: 13px; height: 13px; }
+.entity-editor-panel .entity-detail-tabs > button[aria-selected=true] { background: var(--surface-raised); box-shadow: 0 1px 3px #0001; }
+.entity-editor-panel .entity-detail-section > h3, .entity-editor-panel .panel-section > h3 { margin-bottom: 10px; font-size: 12px; }
+.entity-editor-panel .entity-detail-edit .entity-identity-section { padding: 0; border-bottom: 0; }
+.entity-editor-panel .entity-detail-form { position: relative; }
+.entity-editor-panel .entity-detail-save { top: var(--workspace-toolbar-height, 56px); bottom: auto; flex-wrap: nowrap; gap: 8px; margin: 0 -2px; padding: 10px 2px; border-top: 0; border-bottom: 1px solid var(--line); background: var(--surface-raised); }
+.entity-editor-panel .entity-detail-save > span { font-size: 11px; color: var(--text-muted); }
+.entity-editor-panel .entity-detail-save .button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 30px; border-radius: 6px; }
+.entity-editor-panel .entity-detail-save .button > .icon { width: 13px; height: 13px; }
+.entity-form-group { display: grid; gap: 13px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+.entity-form-group:last-child { border-bottom: 0; }
+.entity-editor-panel .entity-form-heading { display: flex; align-items: center; gap: 7px; margin: 0; padding: 0; border: 0; font-size: 12px; }
+.entity-form-heading > .icon { width: 14px; height: 14px; color: var(--text-muted); }
+.entity-form-group > label { display: grid; gap: 7px; min-width: 0; color: var(--text-muted); font-size: 11px; }
+.entity-form-group .select-control { display: flex; width: 100%; }
+.entity-editor-panel #entity-form .entity-form-group :is(input.entity-name,textarea) { width: 100%; min-width: 0; min-height: 36px; margin: 0; padding: 9px 10px; border: 1px solid var(--control-border); border-radius: 7px; background: var(--surface); color: var(--text); font: 12px/1.6 var(--font-ui); resize: vertical; }
+.entity-editor-panel #entity-form .entity-form-group .entity-name { font-size: 14px; font-weight: 500; }
+.entity-editor-panel .entity-form-group .subtype-picker { margin: 0; }
+.entity-editor-panel .entity-form-group .subtype-optional { display: none; }
+.entity-editor-panel .entity-form-group .select-trigger, .entity-editor-panel .subtype-trigger { min-height: 36px; border-radius: 7px; font-size: 12px; }
+.entity-mention-style { min-width: 0; margin: 0; padding: 0; border: 0; }
+.entity-mention-style legend { margin-bottom: 7px; padding: 0; color: var(--text-muted); font-size: 11px; }
+.entity-mention-style > div { display: flex; gap: 3px; padding: 3px; background: var(--surface-hover); border: 1px solid var(--line); border-radius: 7px; }
+.entity-mention-style button { flex: 1; padding: 6px; border-radius: 4px; font-size: 11px; color: var(--text-muted); }
+.entity-mention-style button[aria-pressed=true] { background: var(--surface-raised); color: var(--text); box-shadow: 0 1px 3px #0001; }
+.entity-editor-panel .entity-property-form { gap: 12px; padding: 12px; border-color: var(--line); border-radius: 9px; }
+.entity-editor-panel .entity-property-form-heading { flex-wrap: nowrap; justify-content: space-between; }
+.entity-editor-panel .entity-property-form-heading > .knowledge-icon-action { margin-left: auto; }
+.entity-editor-panel .entity-property-card { padding: 8px 10px; border-radius: 8px; }
+.entity-editor-panel .entity-property-card-header > span { display: none; }
+.entity-editor-panel .entity-property-unset { margin: 10px 0; }
+.entity-add-connection { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 7px 9px; border: 1px dashed var(--control-border); border-radius: 6px; font-size: 11px; color: var(--text-muted); }
+.entity-add-connection:hover { background: var(--surface-hover); color: var(--text); }
+.entity-add-connection > .icon { width: 13px; height: 13px; }
+.entity-relationship-list { display: grid; gap: 6px; }
+.entity-relationship-card { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; }
+.entity-relationship-card.is-editing { border-color: var(--text-muted); }
+.entity-relationship-direction { display: inline-flex; flex: none; color: var(--text-muted); }
+.entity-relationship-direction > .icon { width: 16px; height: 16px; }
+.entity-relationship-target { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.entity-relationship-target > strong { display: block; margin-bottom: 4px; font-size: 11px; font-weight: 500; }
+.entity-relationship-target .mention { font-size: 11px; }
+.entity-relationship-actions { display: flex; flex: none; gap: 2px; }
+.entity-editor-panel .source-attachments { margin-top: 16px; }
+.entity-editor-panel .source-file { padding: 12px; border-radius: 9px; }
+.entity-editor-panel .source-actions a { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 6px; border: 1px solid var(--line); border-radius: 6px; }
+.entity-editor-panel .source-actions a:hover { background: var(--surface-hover); }
+.entity-editor-panel .source-actions a > .icon { width: 15px; height: 15px; }
+@media (max-width: 750px) {
+  .entity-editor-panel .entity-detail-save .button, .entity-mention-style button, .entity-editor-panel .entity-detail-tabs > button { min-height: 40px; }
+  .entity-editor-panel #entity-form .entity-form-group :is(input.entity-name,textarea) { font-size: 16px; }
+  .entity-editor-panel .entity-form-group .select-trigger, .entity-editor-panel .subtype-trigger { min-height: 44px; }
+}
+
+/* Review actions share the heading row; confirmations occupy their own content row. */
+.intelligence-panel .knowledge-connected { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; align-items: start; }
+.intelligence-panel .knowledge-connected > .knowledge-section-heading { grid-area: 1 / 1; }
+.intelligence-panel .knowledge-connected > .knowledge-entity-discovery { display: contents; }
+.intelligence-panel .knowledge-connected > .knowledge-entity-discovery > .entity-detect-action { grid-area: 1 / 2; }
+.intelligence-panel .knowledge-connected > .knowledge-entity-discovery > .entity-review-confirmation-inline,
+.intelligence-panel .knowledge-connected > .knowledge-entity-controls,
+.intelligence-panel .knowledge-connected > [role=tabpanel] { grid-column: 1 / -1; }

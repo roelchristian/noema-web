@@ -1,4 +1,5 @@
 import {syncSourceReferences} from './source-references.js';
+import {limitSummaryWords} from '../../shared/summary-text.js';
 import {pageLanguage} from './page-language.js';
 import {isPageAIStatus} from '../../shared/page-ai-status.js';
 import {isAIExplanation} from '../../shared/semantic-blocks.js';
@@ -27,7 +28,7 @@ const entityScope='entity_id IN (SELECT id FROM entities WHERE vault_id=?)';
 // Explicit, versioned allowlist: credentials, app settings, jobs and activity are never archived.
 const tables={
   pages:{columns:'id,title,icon,featured_image_id,blocks,ai_status,language,updated_at,revision,deleted_at',scope:'vault_id=?'},
-  source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at,import_method,source_url,pdf_flattened,admitted,format,page_start_lines',scope:'vault_id=? AND entity_id IS NOT NULL'},
+  source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at,import_method,source_url,pdf_flattened,admitted,format,page_start_lines,original_filename,language,summary,generated_name,enrichment_status',scope:'vault_id=? AND entity_id IS NOT NULL'},
   entities:{columns:'id,name,aliases,mention_case,type,subtypes,description,updated_at,inactive',scope:'vault_id=?'},
   properties:{columns:'id,entity_id,name,value,target_id',scope:entityScope},
   relationships:{columns:'id,source_id,label,target_id',scope:'source_id IN (SELECT id FROM entities WHERE vault_id=?)'},
@@ -211,6 +212,10 @@ export class VaultBackups {
             if(starts.length>1000||starts.some((value,index)=>!Number.isSafeInteger(value)||(value as number)<1||index===0&&value!==1||index>0&&(value as number)<=(starts[index-1] as number)))throw invalid();
             this.store.run('UPDATE source_files SET page_start_lines=? WHERE id=?',JSON.stringify(starts),added.id);
           }
+          const enrichmentStatus=row.enrichment_status??'pending';
+          if(!['pending','running','completed','failed'].includes(String(enrichmentStatus)))throw invalid();
+          this.store.run('UPDATE source_files SET original_filename=?,generated_name=?,language=?,summary=?,enrichment_status=? WHERE id=?',
+            row.original_filename===undefined?name(row,'name'):string(row,'original_filename',255),row.generated_name==null?null:string(row,'generated_name',200),pageLanguage(row.language),row.summary==null?null:limitSummaryWords(string(row,'summary',12000)),enrichmentStatus==='running'?'pending':String(enrichmentStatus),added.id);
           const status=string(row,'status',20);if(!['queued','processing','ready','failed'].includes(status)||status==='ready'&&admitted!==1)throw invalid();
           this.store.run('UPDATE source_files SET status=?,text=?,error=?,progress=?,pages=?,ocr_pages=?,created_at=? WHERE id=?',status==='processing'?'queued':status,string(row,'text',16*1024*1024),nullable(row,'error',2000),integer(row,'progress',0,100),integer(row,'pages',0,1000),integer(row,'ocr_pages',0,1000),timestamp(row,'created_at'),added.id);
         }

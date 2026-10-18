@@ -237,6 +237,19 @@ db.exec(`CREATE TABLE IF NOT EXISTS source_files (
 );
  CREATE INDEX IF NOT EXISTS source_files_entity ON source_files(vault_id,entity_id);`);
 const sourceColumns = db.prepare('PRAGMA table_info(source_files)').all() as {name:string}[];
+for (const [column, definition] of Object.entries({
+ original_filename:"TEXT NOT NULL DEFAULT ''", language:'TEXT', summary:'TEXT', generated_name:'TEXT',
+ enrichment_status:"TEXT NOT NULL DEFAULT 'pending'", enrichment_error:'TEXT',
+ enrichment_attempts:'INTEGER NOT NULL DEFAULT 0', enrichment_next_attempt_at:"TEXT NOT NULL DEFAULT ''",
+})) if (!sourceColumns.some(item=>item.name===column)) db.exec(`ALTER TABLE source_files ADD COLUMN ${column} ${definition}`);
+db.exec("UPDATE source_files SET original_filename=name WHERE original_filename=''");
+if (!db.prepare('PRAGMA table_info(embedding_jobs)').all().some(column=>column.name==='source_id')) db.exec('ALTER TABLE embedding_jobs ADD COLUMN source_id TEXT REFERENCES entities(id) ON DELETE SET NULL');
+db.exec(`CREATE TABLE IF NOT EXISTS source_embeddings (
+ source_id TEXT PRIMARY KEY REFERENCES entities(id) ON DELETE CASCADE,
+ model TEXT NOT NULL, dimensions INTEGER NOT NULL, content_hash TEXT NOT NULL,
+ vector TEXT NOT NULL, tokens INTEGER NOT NULL, updated_at TEXT NOT NULL
+);
+ CREATE UNIQUE INDEX IF NOT EXISTS embedding_jobs_source_active ON embedding_jobs(source_id) WHERE status IN ('queued','running');`);
 if (!sourceColumns.some(column=>column.name==='page_start_lines')) db.exec("ALTER TABLE source_files ADD COLUMN page_start_lines TEXT NOT NULL DEFAULT '[]'");
 if (!sourceColumns.some(column=>column.name==='import_method')) db.exec("ALTER TABLE source_files ADD COLUMN import_method TEXT NOT NULL DEFAULT 'upload'");
 if (!sourceColumns.some(column=>column.name==='pdf_flattened')) db.exec('ALTER TABLE source_files ADD COLUMN pdf_flattened INTEGER NOT NULL DEFAULT 0');

@@ -5,6 +5,9 @@ import { explanationPrompt } from './explanation-prompt.js';
 import { entityScanPrompt } from './entity-scan.js';
 import { titlePrompt } from './title-prompt.js';
 import { summaryPrompt } from './summary-prompt.js';
+import { sourceEnrichmentPrompt } from './source-enrichment-prompt.js';
+import { limitSummaryWords } from '../../shared/summary-text.js';
+import { pageLanguage } from './page-language.js';
 import { defaultIntelligencePreferences, defaultManualRequestsPerMinute, maxManualRequestsPerMinute, validManualRequestLimit, intelligenceModels, type IntelligenceConfiguration, supportedIntelligencePreferences, type IntelligencePreferences } from '../../shared/intelligence.js';
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -160,7 +163,15 @@ export class Intelligence {
     if(!value||typeof value!=='object'||!('title' in value)||typeof value.title!=='string'||!value.title.trim()||value.title.length>(currentTitle.trim()&&currentTitle.trim()!=='Untitled'?500:120)||/[\r\n]/.test(value.title)||value.title==='Untitled'||!('conceptSubtypeIds' in value)||!Array.isArray(value.conceptSubtypeIds)||value.conceptSubtypeIds.some(id=>typeof id!=='string'||!subtypes.some(subtype=>subtype.id===id)))throw new HttpError(502,'AI returned invalid title and category data.');
     return {title:currentTitle.trim()&&currentTitle.trim()!=='Untitled'?currentTitle:value.title.trim(),conceptSubtypeIds:[...new Set(value.conceptSubtypeIds as string[])]};
   }
-  async generate(input: string, validate=false, onRequest?: AIRequestObserver, title=false, entityScan=false, explain=false, utility?:{subtypes:{id:string;name:string}[];currentTitle:string}, background=false,sourcePage?:{onDelta:(delta:string)=>void;signal:AbortSignal}) {
+  async enrichSource(input:string,onRequest?:AIRequestObserver) {
+    const output=await this.generate(input,false,onRequest,false,false,false,undefined,true,undefined,true);
+    try {
+      const value=JSON.parse(output);
+      if(!value||typeof value.name!=='string'||!value.name.trim()||value.name.length>200||/[\r\n\x00-\x1f]/.test(value.name)||typeof value.summary!=='string'||!value.summary.trim()||!('language' in value))throw new Error();
+      return {name:value.name.trim(),language:pageLanguage(value.language),summary:limitSummaryWords(value.summary)};
+    }catch {throw new HttpError(502,'AI returned invalid source metadata. Retry enrichment.');}
+  }
+  async generate(input: string, validate=false, onRequest?: AIRequestObserver, title=false, entityScan=false, explain=false, utility?:{subtypes:{id:string;name:string}[];currentTitle:string}, background=false,sourcePage?:{onDelta:(delta:string)=>void;signal:AbortSignal},sourceEnrichment=false) {
     const credential=this.credential(),selection=title?this.titleSelection():this.selection(),preferenceRevision=this.preferenceRevision;
     if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
     if(!title&&!entityScan&&this.active)throw new HttpError(429,'Another AI request is running. Please wait.');
@@ -172,7 +183,7 @@ export class Intelligence {
     const timer=setTimeout(()=>controller.abort(),Math.min(sourcePage?180000:45000,Date.parse(credential.expiresAt)-this.clock()));
     let trace: AIDebugTrace | undefined;
     try {
-      const prompt=sourcePage?sourcePagePrompt(input):validate?{instructions:'Reply with OK.',input:'Connection test.'}:title?titlePrompt(input,utility?.subtypes,utility?.currentTitle):entityScan?entityScanPrompt(input):explain?explanationPrompt(input):summaryPrompt(input);
+      const prompt=sourceEnrichment?sourceEnrichmentPrompt(input):sourcePage?sourcePagePrompt(input):validate?{instructions:'Reply with OK.',input:'Connection test.'}:title?titlePrompt(input,utility?.subtypes,utility?.currentTitle):entityScan?entityScanPrompt(input):explain?explanationPrompt(input):summaryPrompt(input);
       const inputText=typeof prompt.input==='string'?prompt.input:prompt.input.flatMap(item=>item.content.map(part=>part.text)).join('');
       trace=redactedTrace(onRequest?.(Buffer.byteLength(prompt.instructions+inputText,'utf8')),credential.key);
       const payload={model:selection.model,store:false,max_output_tokens:title?512:validate?2048:8192,reasoning:{effort:selection.reasoningEffort},tools:[],tool_choice:'none',...prompt,...(trace||sourcePage?{stream:true}:{})};

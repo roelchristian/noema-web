@@ -1,3 +1,4 @@
+import {SummaryText} from '../intelligence/SummaryText';
 import { PageIcon } from '../components/PageIcon';
 import { SourceAttachments } from './SourceAttachments';
 import { SubtypePicker } from './SubtypePicker';
@@ -48,8 +49,9 @@ export function EntityPanel(props: Props) {
   </div>
     {!entity ? <p className="panel-body" role={loadingError ? 'alert' : 'status'}>{loadingError || 'Loading entity…'}</p> : <div className="panel-body entity-detail-body">
       {loadingError && <p role="alert">{loadingError}</p>}
-      <div className="entity-detail-classification"><span className="entity-detail-type">{entityLabels[entity.type]}</span>{entity.type==='source'&&<span>{entity.attachments?.some(file=>file.status==='queued'||file.status==='processing')?'Processing':entity.inactive?'Inactive':'Active'}</span>}{!!subtypeNames.length && <span>{subtypeNames.join(' · ')}</span>}</div>
+      <div className="entity-detail-classification"><span className="entity-detail-type">{entityLabels[entity.type]}</span>{entity.type==='source'&&<span>{entity.attachments?.some(file=>file.status==='queued'||file.status==='processing')?'Processing':entity.inactive?'Inactive':entity.sourceEnrichmentStatus==='pending'||entity.sourceEnrichmentStatus==='running'?'Processed · Enriching with AI':entity.sourceEnrichmentStatus==='failed'?'Processed · AI enrichment failed':'Processed'}</span>}{!!subtypeNames.length && <span>{subtypeNames.join(' · ')}</span>}</div>
       {entity.type==='source'&&<div className="entity-source-workflow"><button type="button" className="button" disabled={entity.inactive||entity.sourceStatus!=='ready'} onClick={()=>props.onCreatePageFromSource(entity)}><Icon name="sparkles"/>Create page from source</button>{entity.sourceStatus!=='ready'&&<p className="section-hint">{entity.inactive?'Retry source processing before creating a page.':'Available once source processing finishes.'}</p>}</div>}
+      {entity.type==='source'&&entity.attachments?.map(file=><div key={file.id}>{file.language&&<p className="section-hint">Language: {file.language}</p>}{file.summary&&<div className="ai-summary-text"><SummaryText text={file.summary}/></div>}</div>)}
       {entity.description && <p className="entity-detail-description">{entity.description}</p>}
       <div className="entity-detail-tabs" role="tablist" aria-label="Entity details">
         {entityTabs.map(({id: value, label}) => <button type="button" key={value} id={'entity-tab-' + value} role="tab" aria-selected={tab === value} aria-controls={'entity-tabpanel-' + value} tabIndex={tab === value ? 0 : -1} onClick={() => switchTab(value)} onKeyDown={event => {
@@ -94,7 +96,7 @@ export function EntityPanel(props: Props) {
           void onUpdated().catch(onError);
           return result;
         }}/></section>
-        {entity.type==='source'&&<SourceAttachments key={entity.id} vaultId={vaultId} entityId={entity.id} initial={entity.attachments} onChange={attachments => {setEntity(current => current ? {...current, attachments,inactive:attachments.some(file=>file.status==='failed'),sourceStatus:attachments[0]?.status} : current);if(attachments.every(file=>file.status==='ready'||file.status==='failed'))void api.entity(vaultId,id).then(result=>{setEntity(result);return onUpdated();}).catch(onError);else if(entity.inactive)void onUpdated().catch(onError);}}/>}
+        {entity.type==='source'&&<SourceAttachments key={entity.id} vaultId={vaultId} entityId={entity.id} initial={entity.attachments} onChange={attachments => {setEntity(current => current ? {...current, attachments,inactive:attachments.some(file=>file.status==='failed'),sourceStatus:attachments[0]?.status,sourceEnrichmentStatus:attachments[0]?.enrichment_status} : current);if(attachments.every(file=>file.status==='failed'||file.status==='ready'&&file.enrichment_status!=='pending'&&file.enrichment_status!=='running'))void api.entity(vaultId,id).then(result=>{setEntity(result);return onUpdated();}).catch(onError);else if(entity.inactive)void onUpdated().catch(onError);}}/>}
         <section className="panel-section"><h3>Properties <span>{entity.properties.length}</span></h3><p className="section-hint">Fields are inherited from this category and its selected subtypes. Define new fields in Settings → Knowledge Entities; set each entity’s values here.</p>
           <PropertyEditor key={entity.type + JSON.stringify(entity.subtypes)} entity={{...entity, propertyNames}} entities={entities} mention={mention} onSave={(input, propertyId) => mutate(() => api.saveProperty(vaultId, id, input, propertyId))} onRemove={propertyId => mutate(() => api.removeConnection(vaultId, id, 'properties', propertyId))}/>
         </section>

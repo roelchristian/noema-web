@@ -3,7 +3,7 @@ import type { Vault } from '../../shared/domain';
 import type { EmbeddingSettings as Preferences, EmbeddingStatus, SemanticSearchResults } from '../../shared/embeddings';
 import { api } from '../api';
 
-export function EmbeddingSettings({vault,onOpenPage}: {vault: Vault | null; onOpenPage: (vaultId:string,pageId:string)=>Promise<void>}) {
+export function EmbeddingSettings({vault,onOpenPage,onOpenEntity}: {vault: Vault | null; onOpenPage: (vaultId:string,pageId:string)=>Promise<void>; onOpenEntity: (vaultId:string,entityId:string)=>Promise<void>}) {
   const [status,setStatus]=useState<EmbeddingStatus|null>(null);
   const [settings,setSettings]=useState<Preferences>({automatic:false,minCharacters:100});
   const [busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState(''),[message,setMessage]=useState('');
@@ -37,46 +37,46 @@ export function EmbeddingSettings({vault,onOpenPage}: {vault: Vault | null; onOp
     catch(reason){setError(reason instanceof Error?reason.message:'Search failed.');}
     finally{setSearchBusy(false);}
   }
-  function open(pageId:string) {void onOpenPage(vaultId!,pageId).catch(reason=>setError(reason instanceof Error?reason.message:'Could not open note.'));}
+  function open(id:string,kind:'page'|'entity'='page') {void (kind==='entity'?onOpenEntity(vaultId!,id):onOpenPage(vaultId!,id)).catch(reason=>setError(reason instanceof Error?reason.message:'Could not open note.'));}
   const changed=!!status&&(settings.automatic!==status.settings.automatic||settings.minCharacters!==status.settings.minCharacters);
   const jobs=status?.jobs.filter(job=>jobView==='queue'?job.status==='queued'||job.status==='running':job.status!=='queued'&&job.status!=='running')??[];
   return <section className="settings-section embedding-settings" aria-labelledby="embedding-heading">
     <h3 id="embedding-heading">Semantic search & embeddings</h3>
-    <p>Create and persist note embeddings in the backend for semantic search. Settings and activity apply to {vault?.name||'the current vault'}.</p>
-    {!vault||vault.locked?<p>Unlock a vault to configure embeddings and search its notes.</p>:<>
+    <p>Create and persist page and source embeddings in the backend for semantic search. Settings and activity apply to {vault?.name||'the current vault'}.</p>
+    {!vault||vault.locked?<p>Unlock a vault to configure embeddings and search its pages and sources.</p>:<>
       {loading&&<p role="status">Loading embeddings…</p>}
       {status&&<>
         <div className="intelligence-status">{status.model} · {status.dimensions.toLocaleString()} dimensions<small>{status.counts.indexed} current · {status.counts.missing} missing · {status.counts.stale} stale · {status.counts.ineligible} ineligible</small></div>
         {!status.configured&&<p className="embedding-notice">Save an OpenAI API key above before processing embeddings or searching. Settings can be saved now.</p>}
         <form onSubmit={save}>
-          <label className="embedding-toggle"><input type="checkbox" checked={settings.automatic} disabled={busy} onChange={event=>setSettings(current=>({...current,automatic:event.target.checked}))}/><span>Automatically create embeddings when eligible notes are saved</span></label>
-          <label htmlFor="embedding-minimum">Minimum note characters</label>
+          <label className="embedding-toggle"><input type="checkbox" checked={settings.automatic} disabled={busy} onChange={event=>setSettings(current=>({...current,automatic:event.target.checked}))}/><span>Automatically create embeddings when eligible pages or sources change</span></label>
+          <label htmlFor="embedding-minimum">Minimum content characters</label>
           <input id="embedding-minimum" type="number" min={20} max={2000} step={1} required value={settings.minCharacters} disabled={busy} onChange={event=>setSettings(current=>({...current,minCharacters:Number(event.target.value)}))}/>
-          <p>Eligibility is checked on saved note text. Empty, trashed, and short notes are excluded. Notes whose title and body exceed {status.maxBytes.toLocaleString()} UTF-8 bytes are excluded. Changed eligible notes are queued again; unchanged notes keep their saved embedding.</p>
+          <p>Eligibility is checked on saved page and extracted source text. Empty, trashed, and short content are excluded. Pages whose title and body exceed {status.maxBytes.toLocaleString()} UTF-8 bytes are excluded. Longer sources use their summary and excerpts from the beginning, middle, and end. Changed eligible notes are queued again; unchanged notes keep their saved embedding.</p>
           <button className="button" disabled={busy||!changed}>Save embedding settings</button>
         </form>
         <div className="embedding-backfill">
-          <h4>Index existing notes</h4><p>Use saved criteria to queue notes in this vault. Active jobs are deduplicated.</p>
+          <h4>Index existing pages and sources</h4><p>Use saved criteria to queue pages and sources in this vault. Active jobs are deduplicated.</p>
           <div className="intelligence-actions">
-            <button className="button" disabled={busy||changed||!status.counts.missing} onClick={()=>void perform(async()=>{const result=await api.enqueueEmbeddings(vaultId!,'missing');return `Queued ${result.queued} notes; skipped ${result.skipped}.`;})}>Queue missing ({status.counts.missing})</button>
-            <button className="button" disabled={busy||changed||!status.counts.eligible} onClick={()=>void perform(async()=>{const result=await api.enqueueEmbeddings(vaultId!,'eligible');return `Queued ${result.queued} notes; skipped ${result.skipped}.`;})}>Queue eligible / stale</button>
+            <button className="button" disabled={busy||changed||!status.counts.missing} onClick={()=>void perform(async()=>{const result=await api.enqueueEmbeddings(vaultId!,'missing');return `Queued ${result.queued} items; skipped ${result.skipped}.`;})}>Queue missing ({status.counts.missing})</button>
+            <button className="button" disabled={busy||changed||!status.counts.eligible} onClick={()=>void perform(async()=>{const result=await api.enqueueEmbeddings(vaultId!,'eligible');return `Queued ${result.queued} items; skipped ${result.skipped}.`;})}>Queue eligible / stale</button>
           </div>
           {changed&&<p>Save your criteria before indexing existing notes.</p>}
-          <details className="embedding-eligibility"><summary>Note eligibility ({status.notes.length})</summary><ul>{status.notes.map(note=><li key={note.pageId}><button className="ai-activity-link" onClick={()=>open(note.pageId)}>{note.title||'Untitled'}</button><small>{note.state} · {note.reason}</small></li>)}</ul>{!status.notes.length&&<p>No saved notes in this vault.</p>}</details>
+          <details className="embedding-eligibility"><summary>Content eligibility ({status.notes.length})</summary><ul>{status.notes.map(note=><li key={(note.kind??'page')+':'+note.pageId}><button className="ai-activity-link" onClick={()=>open(note.pageId,note.kind)}>{note.title||'Untitled'}</button><small>{note.state} · {note.reason}</small></li>)}</ul>{!status.notes.length&&<p>No saved pages or sources in this vault.</p>}</details>
         </div>
         <div className="embedding-search">
-          <h4>Search by meaning</h4><p>Search queries are embedded with the same model and compared with current saved note embeddings.</p>
-          <form onSubmit={event=>void search(event)}><label className="sr-only" htmlFor="semantic-search">Semantic search query</label><input id="semantic-search" type="search" value={query} maxLength={2000} placeholder="Find notes about an idea…" onChange={event=>setQuery(event.target.value)} disabled={searchBusy}/><button className="button primary" disabled={searchBusy||!query.trim()||!status.configured||!status.counts.indexed}>{searchBusy?'Searching…':'Search'}</button></form>
-          {!status.counts.indexed&&<p>Index eligible notes to start searching.</p>}
-          {results&&<div aria-live="polite"><p>{results.results.length} results · similarity is a ranking score</p><ul className="embedding-results">{results.results.map(result=><li key={result.id}><button onClick={()=>open(result.id)}><strong>{result.title||'Untitled'}</strong><small>Similarity {result.score.toFixed(3)} · updated {new Date(result.updated_at).toLocaleDateString()}</small></button></li>)}</ul>{!results.results.length&&<p>No indexed notes match this search.</p>}</div>}
+          <h4>Search by meaning</h4><p>Search queries are embedded with the same model and compared with current saved page and source embeddings.</p>
+          <form onSubmit={event=>void search(event)}><label className="sr-only" htmlFor="semantic-search">Semantic search query</label><input id="semantic-search" type="search" value={query} maxLength={2000} placeholder="Find pages or sources about an idea…" onChange={event=>setQuery(event.target.value)} disabled={searchBusy}/><button className="button primary" disabled={searchBusy||!query.trim()||!status.configured||!status.counts.indexed}>{searchBusy?'Searching…':'Search'}</button></form>
+          {!status.counts.indexed&&<p>Index eligible pages or sources to start searching.</p>}
+          {results&&<div aria-live="polite"><p>{results.results.length} results · similarity is a ranking score</p><ul className="embedding-results">{results.results.map(result=><li key={result.id}><button onClick={()=>open(result.id,result.kind)}><strong>{result.title||'Untitled'}</strong><small>Similarity {result.score.toFixed(3)} · updated {new Date(result.updated_at).toLocaleDateString()}</small></button></li>)}</ul>{!results.results.length&&<p>No indexed pages or sources match this search.</p>}</div>}
         </div>
         <div className="embedding-activity">
           <h4>Queue & history</h4><p>Activity refreshes every 5 seconds. Latest {status.jobs.length} jobs, including timestamps, attempts, token usage, and failure logs.</p>
           <div className="embedding-job-tabs" role="group" aria-label="Embedding activity view"><button className="button" aria-pressed={jobView==='queue'} onClick={()=>setJobView('queue')}>Queue ({status.counts.queued+status.counts.running})</button><button className="button" aria-pressed={jobView==='history'} onClick={()=>setJobView('history')}>History / logs</button><button className="button" disabled={busy} onClick={()=>void perform(async()=> 'Activity refreshed.')}>Refresh</button></div>
-          <ul className="embedding-job-list">{jobs.map(job=><li key={job.id}><div className="embedding-job-heading"><span>{job.pageId?<button className="ai-activity-link" onClick={()=>open(job.pageId!)}>{job.title||'Untitled'}</button>:job.title||'Unavailable note'}</span><span className={'ai-activity-status '+job.status}>{job.status}</span></div><small>Queued {new Date(job.createdAt).toLocaleString()} · {job.attempts} attempts · {job.reason}{job.tokens!==null?` · ${job.tokens.toLocaleString()} tokens`:''}</small>{job.startedAt&&<small>Started {new Date(job.startedAt).toLocaleString()}{job.finishedAt?` · finished ${new Date(job.finishedAt).toLocaleString()}`:''}</small>}{job.status==='queued'&&<small>Next attempt {new Date(job.nextAttemptAt).toLocaleString()}</small>}{job.error&&<p className="embedding-job-error">{job.error}</p>}{(job.status==='failed'||job.status==='interrupted')&&<button className="button" disabled={busy||!job.pageId} onClick={()=>void perform(async()=>{const result=await api.retryEmbedding(vaultId!,job.id);return result.queued?'Job queued for another attempt.':'No job needed: this note is already indexed, ineligible, or queued.';})}>Retry</button>}</li>)}</ul>
-          {!jobs.length&&<p>{jobView==='queue'?'No pending embedding jobs.':'No completed activity yet. Index notes or enable automatic embeddings to begin.'}</p>}
+          <ul className="embedding-job-list">{jobs.map(job=><li key={job.id}><div className="embedding-job-heading"><span>{(job.pageId||job.sourceId)?<button className="ai-activity-link" onClick={()=>open(job.sourceId??job.pageId!,job.sourceId?'entity':'page')}>{job.title||'Untitled'}</button>:job.title||'Unavailable note'}</span><span className={'ai-activity-status '+job.status}>{job.status}</span></div><small>Queued {new Date(job.createdAt).toLocaleString()} · {job.attempts} attempts · {job.reason}{job.tokens!==null?` · ${job.tokens.toLocaleString()} tokens`:''}</small>{job.startedAt&&<small>Started {new Date(job.startedAt).toLocaleString()}{job.finishedAt?` · finished ${new Date(job.finishedAt).toLocaleString()}`:''}</small>}{job.status==='queued'&&<small>Next attempt {new Date(job.nextAttemptAt).toLocaleString()}</small>}{job.error&&<p className="embedding-job-error">{job.error}</p>}{(job.status==='failed'||job.status==='interrupted')&&<button className="button" disabled={busy||(!job.pageId&&!job.sourceId)} onClick={()=>void perform(async()=>{const result=await api.retryEmbedding(vaultId!,job.id);return result.queued?'Job queued for another attempt.':'No job needed: this note is already indexed, ineligible, or queued.';})}>Retry</button>}</li>)}</ul>
+          {!jobs.length&&<p>{jobView==='queue'?'No pending embedding jobs.':'No completed activity yet. Index content or enable automatic embeddings to begin.'}</p>}
         </div>
-        <p className="intelligence-note">Embeddings are saved locally in this vault. Indexing sends eligible note text to OpenAI, and searches send your query. API usage may incur charges.</p>
+        <p className="intelligence-note">Embeddings are saved locally in this vault. Indexing sends eligible page and source text to OpenAI, and searches send your query. API usage may incur charges.</p>
       </>}
       {error&&<p role="alert" className="embedding-job-error">{error}</p>}
       <p role="status" aria-live="polite">{busy?'Working…':message}</p>

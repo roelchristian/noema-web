@@ -16,7 +16,7 @@ export function IntelligenceSettings() {
   function save(event:FormEvent) {event.preventDefault();const value=key;setKey('');void perform(async()=>setStatus(await api.saveIntelligence(value,days)),'API key saved securely. Validate the connection to test access.');}
   return <section className="settings-section intelligence-settings" aria-labelledby="intelligence-heading">
     <h3 id="intelligence-heading">Intelligence</h3>
-    <p>Connect OpenAI for page titles, summaries, and semantic search embeddings. Your key is saved in macOS Keychain and cannot be viewed or retrieved through Noema. This connection is shared across your local vaults.</p>
+    <p>Connect OpenAI for page titles, summaries, source enrichment, and semantic search embeddings. Your key is saved in macOS Keychain and cannot be viewed or retrieved through Noema. This connection is shared across your local vaults.</p>
     <div className="intelligence-status">{status?.configured ? <>API key saved · expires {new Date(status.expiresAt!).toLocaleString()}</> : 'No active API key'}{status && <small>Model: {status.model} · Reasoning: {status.reasoningEffort}</small>}</div>
     <form onSubmit={event=>{event.preventDefault();void perform(async()=>{const saved=await api.saveIntelligencePreferences(preferences);setStatus(current=>current?{...current,...saved}:current);setPreferences(saved);},'AI preferences saved. Validation and summaries will use this model and effort.');}}>
       <label htmlFor="ai-model">Model</label>
@@ -32,7 +32,7 @@ export function IntelligenceSettings() {
       <p>Text models reviewed October 16, 2026 against <a href="https://developers.openai.com/api/docs/guides/latest-model" target="_blank" rel="noreferrer">OpenAI documentation</a>. Model access depends on your API project.</p>
       <label htmlFor="ai-manual-request-limit">Manual AI requests per minute</label>
       <input id="ai-manual-request-limit" type="number" min={1} max={maxManualRequestsPerMinute} step={1} required value={preferences.manualRequestsPerMinute || ''} disabled={busy||!status} onChange={event=>setPreferences(current=>({...current,manualRequestsPerMinute:Number(event.target.value)}))}/>
-      <p>Shared across vaults. Applies to manually triggered summaries, explanations, entity scans, semantic searches, and connection tests. Automatic titles and background indexing do not count. Each request sent to AI counts separately.</p>
+      <p>Shared across vaults. Applies to manually triggered summaries, explanations, entity scans, semantic searches, and connection tests. Automatic titles, source enrichment, and background indexing do not count. Each request sent to AI counts separately.</p>
       <div className="intelligence-actions"><button className="button" disabled={busy||!changed}>Save AI preferences</button></div>
     </form>
     <form onSubmit={save} autoComplete="off">
@@ -46,7 +46,7 @@ export function IntelligenceSettings() {
         <button className="button danger" type="button" disabled={busy||!status?.configured} onClick={()=>void perform(async()=>setStatus(await api.removeIntelligence()),'Saved key removed from Noema.')}>Remove key</button></div>
     </form>
     {changed&&<p>Save AI preferences before validating the new selection.</p>}
-    <p className="intelligence-note">Noema accepts local connections only (127.0.0.1). Title and summary actions send page text to OpenAI over HTTPS. When automatic embeddings are enabled for a vault, eligible saved notes are also sent to OpenAI; bulk indexing and semantic searches send note text or your search query. API charges may apply. Validation sends a small test prompt. Use a dedicated project key with restricted permissions and spending limits in OpenAI.</p>
+    <p className="intelligence-note">Noema accepts local connections only (127.0.0.1). Title and summary actions send page text to OpenAI over HTTPS. Processed sources automatically send text or excerpts to generate a name, language, and summary. When automatic embeddings are enabled for a vault, eligible saved notes and source text or excerpts are also sent to OpenAI; bulk indexing and semantic searches send note text or your search query. API charges may apply. Validation sends a small test prompt. Use a dedicated project key with restricted permissions and spending limits in OpenAI.</p>
     <p role="status" aria-live="polite">{message}</p>
   </section>;
 }

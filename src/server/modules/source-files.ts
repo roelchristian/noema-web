@@ -72,7 +72,7 @@ export class SourceFiles {
     mkdirSync(path.dirname(filename),{recursive:true});
     writeFileSync(filename,bytes,{flag:'wx',mode:0o600});
     try {
-      const insert=()=>this.store.run('INSERT INTO source_files (id,vault_id,entity_id,name,size,status,created_at,import_method,source_url,pdf_flattened,admitted,format) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',id,vault,entityId??null,name,bytes.length,'queued',now(),origin?'url':'upload',origin,pdfFlattened?1:0,pending?0:1,format??extension);
+      const insert=()=>this.store.run('INSERT INTO source_files (id,vault_id,entity_id,name,size,status,created_at,import_method,source_url,pdf_flattened,admitted,format,original_filename) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',id,vault,entityId??null,name,bytes.length,'queued',now(),origin?'url':'upload',origin,pdfFlattened?1:0,pending?0:1,format??extension,name);
       if(entityId)this.store.transaction(()=>{this.requireSingle(vault,entityId);insert();this.store.run('UPDATE entities SET inactive=0,updated_at=? WHERE id=?',now(),entityId);syncSourceProvenance(this.store,vault,entityId);});
       else insert();
     }catch(error){unlinkSync(filename);throw error;}
@@ -132,7 +132,7 @@ export class SourceFiles {
     const file=this.require(vault,id);
     if(file.status==='processing'||file.status==='queued')throw new HttpError(409,'Extraction is already in progress');
     this.store.transaction(()=>{
-      this.store.run("UPDATE source_files SET status='queued',error=NULL,progress=0 WHERE id=?",id);
+      this.store.run("UPDATE source_files SET status='queued',error=NULL,progress=0,enrichment_status='pending',enrichment_attempts=0,enrichment_error=NULL,enrichment_next_attempt_at='' WHERE id=?",id);
       if(file.entity_id)this.store.run('UPDATE entities SET inactive=0,updated_at=? WHERE id=?',now(),file.entity_id);
     });
     return this.require(vault,id);
@@ -197,7 +197,7 @@ export class SourceFiles {
       if(Buffer.byteLength(result.text)>maxText)throw new Error('Extracted text exceeds the 16 MB limit.');
       if(!result.text.trim())throw new Error('No readable text found. Try a clearer file.');
       this.store.transaction(()=>{
-        this.store.run("UPDATE source_files SET status='ready',text=?,pages=?,ocr_pages=?,page_start_lines=?,progress=100,error=NULL WHERE id=?",result.text,result.pages,result.ocrPages,JSON.stringify(result.pageStartLines??[]),file!.id);
+        this.store.run("UPDATE source_files SET enrichment_status='pending',enrichment_attempts=0,enrichment_error=NULL,enrichment_next_attempt_at='',status='ready',text=?,pages=?,ocr_pages=?,page_start_lines=?,progress=100,error=NULL WHERE id=?",result.text,result.pages,result.ocrPages,JSON.stringify(result.pageStartLines??[]),file!.id);
         this.store.run('UPDATE entities SET inactive=0,updated_at=? WHERE id=? AND vault_id=?',now(),file!.entity_id,file!.vault_id);
         new AINotifications(this.store).recordSource(file!.vault_id,file!.entity_id!,'completed');
       });

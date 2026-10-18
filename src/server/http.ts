@@ -25,6 +25,7 @@ import { Organizer } from './modules/organization.js';
 import { Intelligence, keychainFor, intelligencePreferencesFor } from './modules/intelligence.js';
 import { Pages } from './modules/pages.js';
 import { Embeddings } from './modules/embeddings.js';
+import { SourceEnrichments } from './modules/source-enrichments.js';
 import { SearchSnippets } from './modules/search-snippets.js';
 import { TextSearch } from './modules/text-search.js';
 import { HttpError, object } from './validation.js';
@@ -54,6 +55,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
   const pageUtility=new PageUtility(store,pages,knowledge,enrichments,intelligence);
   const entityMatches=new EntityMatches(store,pages,knowledge);
   const embeddings=new Embeddings(store,pages,knowledge,vaults,intelligence,activity);
+  const sourceEnrichments=new SourceEnrichments(store,intelligence,activity);
   const sourcePages=new SourcePages(store,knowledge,pages);
   const searchSnippets=new SearchSnippets(pages,knowledge,vaults);
   const textSearch=new TextSearch(store,vaults);
@@ -64,6 +66,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
   let cleanup: ReturnType<typeof setInterval> | undefined;
   let keyCleanup: ReturnType<typeof setInterval> | undefined;
   let embeddingWorker: ReturnType<typeof setInterval> | undefined;
+  let sourceEnrichmentWorker: ReturnType<typeof setInterval> | undefined;
   const server = http.createServer(async(req,res)=>{
     let activityId: string | undefined;
     const send=(status:number,data:unknown)=>{if(activityId){activity.finish(activityId,status<400?'completed':'failed',status);activityId=undefined;}res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));};
@@ -99,6 +102,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
           if(id && parts.length===3 && method==='GET'){const file=sourceFiles.require(vault,id);return send(200,url.searchParams.get('fingerprint')==='1'?{...file,textHash:createHash('sha256').update(file.text).digest('hex')}:file);}
           if(id && parts.length===3 && method==='DELETE')return send(200,sourceFiles.remove(vault,id));
           if(id && parts.length===4 && parts[3]==='retry' && method==='POST')return send(200,sourceFiles.retry(vault,id));
+          if(id && parts.length===4 && parts[3]==='retry-enrichment' && method==='POST')return send(200,sourceEnrichments.retry(vault,id));
           if(id && parts.length===4 && parts[3]==='download' && method==='GET') {
             const file=sourceFiles.require(vault,id);
             if(file.admitted!==1)throw new HttpError(409,'This source is not available until safety processing succeeds.');
@@ -379,11 +383,12 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
   server.on('listening', () => {
     vaultDeletion.cleanup();
     sourceWorker=setInterval(()=>{void sourceFiles.tick().catch(()=>{});},500);sourceWorker.unref();
+    sourceEnrichmentWorker=setInterval(()=>{void sourceEnrichments.tick().catch(()=>{});},1000);sourceEnrichmentWorker.unref();
     cleanup = setInterval(() => { try { pages.purgeExpired(); images.cleanup(); sourceFiles.cleanup(); vaultDeletion.cleanup(); } catch (error) { console.error('Trash cleanup failed',error); } },60 * 60 * 1000);
     cleanup.unref();
     keyCleanup=setInterval(()=>{try{intelligence.purgeExpired();}catch{/* Keychain may be locked; all AI access still fails closed. */}},60000);keyCleanup.unref();
     embeddingWorker=setInterval(()=>{void embeddings.tick().catch(()=>{/* Durable job history records failures; never log note content. */});},1000);embeddingWorker.unref();
   });
-  server.on('close', () => {clearInterval(sourceWorker);sourceFiles.close();clearInterval(cleanup);clearInterval(keyCleanup);clearInterval(embeddingWorker);embeddings.close();});
+  server.on('close', () => {clearInterval(sourceWorker);sourceFiles.close();clearInterval(sourceEnrichmentWorker);sourceEnrichments.close();clearInterval(cleanup);clearInterval(keyCleanup);clearInterval(embeddingWorker);embeddings.close();});
   return server;
 }

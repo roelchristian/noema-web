@@ -162,7 +162,7 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   const semanticNotes = new Map(semantic.results.map(result => [result.id, result]));
   const previewPages = (query || viewMode === 'grid' ? visible : []).filter(item => item.kind === 'page' && !textHits.get('page:' + item.id)?.snippet && !semanticNotes.get(item.id)?.snippet);
   const previews = useSearchSnippets(vaultId, search, previewPages.map(item => item.id), viewMode === 'grid', previewPages.map(item => item.id + ':' + (item.updatedAt ?? '')).sort().join(','));
-  const snippetFor = (item: Item) => textHits.get(item.kind + ':' + item.id)?.snippet || (item.kind === 'page' ? previews.snippets[item.id] ?? semanticNotes.get(item.id)?.snippet ?? '' : makeSearchSnippet(item.description ?? '', search));
+  const snippetFor = (item: Item) => textHits.get(item.kind + ':' + item.id)?.snippet || semanticNotes.get(item.id)?.snippet || (item.kind === 'page' ? previews.snippets[item.id] ?? semanticNotes.get(item.id)?.snippet ?? '' : makeSearchSnippet(item.description ?? '', search));
   const folderPath = (id: string): string => {
     const names: string[] = []; let f = data.folders.find(value => value.id === id);
     while (f) { names.unshift(f.name); f = data.folders.find(value => value.id === f!.parent_id); }

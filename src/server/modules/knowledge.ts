@@ -47,9 +47,9 @@ export class Knowledge {
     const {subtype: _legacy, subtypes, aliases, mention_case, ...entity} = row;
     return {...entity, inactive:!!entity.inactive, mentionCase: mention_case, aliases: entity.type==='source'?[]:JSON.parse(aliases) as string[], subtypes: JSON.parse(subtypes) as string[]};
   }
-  list(vault: string) { return this.store.all<EntityRow>('SELECT e.*, (SELECT f.status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceStatus FROM entities e WHERE e.vault_id=? ORDER BY e.name COLLATE NOCASE',vault).map(row => this.entity(row)); }
+  list(vault: string) { return this.store.all<EntityRow>('SELECT e.*, (SELECT f.status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceStatus, (SELECT f.enrichment_status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceEnrichmentStatus FROM entities e WHERE e.vault_id=? ORDER BY e.name COLLATE NOCASE',vault).map(row => this.entity(row)); }
   find(vault: string, id: string) {
-    const row = this.store.get<EntityRow>('SELECT e.*, (SELECT f.status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceStatus FROM entities e WHERE e.id=? AND e.vault_id=?',id,vault);
+    const row = this.store.get<EntityRow>('SELECT e.*, (SELECT f.status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceStatus, (SELECT f.enrichment_status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceEnrichmentStatus FROM entities e WHERE e.id=? AND e.vault_id=?',id,vault);
     return row ? this.entity(row) : undefined;
   }
   require(vault: string, id: string) {

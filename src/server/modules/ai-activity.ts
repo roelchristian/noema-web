@@ -75,7 +75,7 @@ export class AIActivityLog {
       a.duration_ms AS durationMs,a.http_status AS httpStatus,a.vault_id AS vaultId,v.name AS vaultName,
       a.object_kind AS objectKind,a.object_id AS objectId,COALESCE(p.title,e.name) AS objectTitle,a.revision,
       a.model,a.reasoning_effort AS reasoningEffort,a.prompt_bytes AS promptBytes,
-      (p.id IS NOT NULL AND p.deleted_at IS NULL) AS available,EXISTS(SELECT 1 FROM ai_activity_debug d WHERE d.activity_id=a.id) AS debugRecorded,a.rowid AS cursor
+      (CASE WHEN a.object_kind='entity' THEN e.id IS NOT NULL ELSE p.id IS NOT NULL AND p.deleted_at IS NULL END) AS available,EXISTS(SELECT 1 FROM ai_activity_debug d WHERE d.activity_id=a.id) AS debugRecorded,a.rowid AS cursor
       FROM ai_activity a LEFT JOIN vaults v ON v.id=a.vault_id
       LEFT JOIN pages p ON a.object_kind='page' AND p.id=a.object_id AND p.vault_id=a.vault_id
       LEFT JOIN entities e ON a.object_kind='entity' AND e.id=a.object_id AND e.vault_id=a.vault_id

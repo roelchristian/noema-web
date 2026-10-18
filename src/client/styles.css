@@ -2898,3 +2898,5 @@ dialog.noema-modal.ai-activity-modal .modal-header { position: relative; top: au
 .intelligence-panel .knowledge-connected > .knowledge-entity-discovery > .entity-review-confirmation-inline,
 .intelligence-panel .knowledge-connected > .knowledge-entity-controls,
 .intelligence-panel .knowledge-connected > [role=tabpanel] { grid-column: 1 / -1; }
+
+.source-viewer-node-address { display: inline; margin-right: 6px; color: var(--text-muted); font-size: 10px; font-weight: 400; font-variant-numeric: tabular-nums; }

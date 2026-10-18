@@ -119,6 +119,7 @@ export class Pages {
             if(ref.startPage!==undefined&&(!Number.isInteger(ref.startPage)||!Number.isInteger(ref.endPage)||(ref.startPage as number)<1||(ref.endPage as number)<(ref.startPage as number)||(ref.endPage as number)>1000))throw new HttpError(400,'Invalid citation page');
             result.sourceReference={...(ref.startPage===undefined?{}:{startPage:ref.startPage as number,endPage:ref.endPage as number}),...(ref.sourceNumber===undefined?{}:{sourceNumber:ref.sourceNumber as number}),id:required(ref.id),sourceId,fileId,startLine:ref.startLine as number,endLine:ref.endLine as number,sourceHash:ref.sourceHash,excerpt:text(ref.excerpt,16*1024*1024)};
             if(ref.nodeId!==undefined)result.sourceReference.nodeId=required(ref.nodeId);
+            if(ref.appLocator!==undefined)result.sourceReference.appLocator=text(ref.appLocator,1000);
             if(ref.contextLabel!==undefined)result.sourceReference.contextLabel=text(ref.contextLabel,10000);
             if(ref.generationId!==undefined)result.sourceReference.generationId=required(ref.generationId);
             if(ref.passageId!==undefined)result.sourceReference.passageId=required(ref.passageId);

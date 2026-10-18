@@ -1,4 +1,4 @@
-import {sourceDocumentEntries,sourceNodeLabel} from '../../shared/source-document.js';
+import {sourceDocumentEntries,sourceNodeLabel,sourceNodeLocator} from '../../shared/source-document.js';
 import {mathSource} from './source-math-text.js';
 import {processedSourceDocument,sourceGenerationDocument} from './source-document.js';
 import {SourceDocuments} from './source-documents.js';
@@ -89,7 +89,7 @@ export class SourcePageDraft {
       const range=matched?(node?node.id:startLine===endLine?String(startLine):`${startLine}-${endLine}`):undefined;
       const reference=matched&&node&&entry&&this.file?.entity_id?{
         id:randomUUID(),sourceNumber:1,sourceId:this.file.entity_id,fileId:this.file.id,
-        nodeId:node.id,contextLabel:sourceNodeLabel(entry.path),sourceHash:createHash('sha256').update(this.file.text).digest('hex'),
+        nodeId:node.id,appLocator:sourceNodeLocator(entry.path),contextLabel:sourceNodeLabel(entry.path),sourceHash:createHash('sha256').update(this.file.text).digest('hex'),
         startLine:node.range.startLine,endLine:node.text!==undefined?node.range.endLine:node.range.startLine,
         startOffset:node.range.startOffset,endOffset:node.text!==undefined?node.range.endOffset:node.range.startOffset+(node.title?.length??0),
         ...(node.range.startPage?{startPage:node.range.startPage,endPage:node.text!==undefined?node.range.endPage??node.range.startPage:node.range.startPage}:{}),

@@ -1,7 +1,7 @@
 import {citationLocation} from '../../shared/citations';
 import {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import type {Entity, SourceFile, SourceReference} from '../../shared/domain';
-import {sourceDocumentEntries,sourceNodeLabel,type SourceDocument} from '../../shared/source-document';
+import {sourceDocumentEntries,sourceNodeLabel,sourceNodeLocator,sourceReferenceLocator,type SourceDocument} from '../../shared/source-document';
 import {request} from '../api';
 import {Icon} from '../components/Icon';
 
@@ -63,6 +63,7 @@ export function SourceViewer({vaultId,reference,entities,onClose,onOpenEntity}: 
   const firstCited=passages.findIndex(isCitedPassage),hasContext=firstCited>=0;
   const lastCited=passages.reduce((last,entry,index)=>isCitedPassage(entry)?index:last,-1);
   const first=Math.max(0,firstCited-before),last=Math.min(passages.length,lastCited+after+1);
+  const appLocator=loaded?.matches&&loaded.document?sourceReferenceLocator(sourceDocumentEntries(loaded.document),reference):reference.appLocator;
   const contextLabel=hasContext?sourceNodeLabel(passages[firstCited]!.path):citationLabel(reference);
   useLayoutEffect(()=>{
     const target=body.current?.querySelector<HTMLElement>('[data-cited-node]'),container=panel.current;
@@ -76,7 +77,7 @@ export function SourceViewer({vaultId,reference,entities,onClose,onOpenEntity}: 
     <div className="panel-top entity-detail-toolbar"><div className="entity-toolbar-heading"><span className="entity-detail-icon"><Icon name="source"/></span><h2 id="source-viewer-title" className="entity-toolbar-title">{reference.sourceNumber?`[${reference.sourceNumber}] `:''}{source?.name??'Source'}</h2></div><button ref={close} type="button" aria-label="Close source viewer" title="Close source viewer" onClick={onClose}><Icon name="close"/></button></div>
     <div ref={body} className="panel-body entity-detail-body">
       <div className="source-viewer-heading">
-        <span className="source-viewer-location" title={contextLabel}>{citationLabel({...reference,contextLabel})}</span>
+        <span className="source-viewer-location" title={contextLabel}>{citationLabel({...reference,contextLabel,appLocator})}</span>
         <button type="button" onClick={()=>onOpenEntity(reference.sourceId)}>Source details<Icon name="chevron"/></button>
       </div>
       {!loaded&&!error&&<p className="source-viewer-status" role="status">Loading surrounding context…</p>}
@@ -84,8 +85,8 @@ export function SourceViewer({vaultId,reference,entities,onClose,onOpenEntity}: 
       {loaded&&!loaded.matches&&<p className="source-viewer-status">The source text has changed. Showing the saved passage excerpt.</p>}
       {loaded?.matches&&!hasContext&&<p className="source-viewer-status">This passage’s semantic context is unavailable. Showing the saved excerpt.</p>}
       {hasContext&&first>0&&<button type="button" className="source-viewer-more" onClick={()=>setBefore(value=>value+5)}><Icon name="chevron"/>Earlier context</button>}
-      <div className="source-viewer-passages">{hasContext?passages.slice(first,last).map(({node,cited,inlineHeading})=><section key={node.id} className={'source-viewer-passage'+(node.text===undefined?' is-heading':'')+(cited||inlineHeading?.cited?' is-cited':'')} data-cited-node={cited?node.id:inlineHeading?.cited?inlineHeading.node.id:undefined}>
-        <div>{inlineHeading&&<><strong className="source-viewer-inline-heading"><SemanticPassageText text={inlineHeading.node.title!} reference={reference} cited={inlineHeading.cited}/></strong>{' '}</>}<SemanticPassageText text={node.text??node.title??''} reference={reference} cited={cited}/></div>
+      <div className="source-viewer-passages">{hasContext?passages.slice(first,last).map(({node,path,cited,inlineHeading})=><section key={node.id} className={'source-viewer-passage'+(node.text===undefined?' is-heading':'')+(cited||inlineHeading?.cited?' is-cited':'')} data-source-locator={sourceNodeLocator(path)} title={sourceNodeLocator(path)} data-cited-node={cited?node.id:inlineHeading?.cited?inlineHeading.node.id:undefined}>
+        <div>{node.text===undefined&&node.appNumber&&<span className="source-viewer-node-address">{sourceNodeLocator(path)}</span>}{cited&&node.text!==undefined&&<span className="source-viewer-node-address">{sourceNodeLocator(path)}</span>}{inlineHeading&&<><strong className="source-viewer-inline-heading"><SemanticPassageText text={inlineHeading.node.title!} reference={reference} cited={inlineHeading.cited}/></strong>{' '}</>}<SemanticPassageText text={node.text??node.title??''} reference={reference} cited={cited}/></div>
       </section>):<div className="source-viewer-passage is-cited"><mark>{reference.excerpt}</mark></div>}</div>
       {hasContext&&last<passages.length&&<button type="button" className="source-viewer-more" onClick={()=>setAfter(value=>value+5)}>More context<Icon name="chevron"/></button>}
       {loaded?.matches&&<p className="source-viewer-range">{loaded.file.name}</p>}

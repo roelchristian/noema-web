@@ -18,6 +18,7 @@ export function citationContextLabel(context:string):string {
   return plain.length>40?plain.slice(0,39).trimEnd()+'…':plain;
 }
 export function citationLocation(ref:SourceReference){
+  if(ref.appLocator)return ref.appLocator;
   if(ref.contextLabel&&!(ref.startPage&&/^(paragraph|code|equation|list|table|blockquote|footnote)$/i.test(ref.contextLabel)))return citationContextLabel(ref.contextLabel)+(ref.startPage?` · ${ref.startPage===ref.endPage?`p. ${ref.startPage}`:`pp. ${ref.startPage}–${ref.endPage}`}`:'');
   if(ref.startPage)return ref.startPage===ref.endPage?`p. ${ref.startPage}`:`pp. ${ref.startPage}–${ref.endPage}`;
   return ref.startLine===ref.endLine?`L${ref.startLine}`:`L${ref.startLine}–${ref.endLine}`;

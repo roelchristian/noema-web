@@ -1,5 +1,5 @@
 import {processedSourceDocument} from './source-document.js';
-import {sourceDocumentEntries,sourceNodeLabel} from '../../shared/source-document.js';
+import {sourceDocumentEntries,sourceNodeLabel,sourceReferenceLocator} from '../../shared/source-document.js';
 import {mathSource,sourceTextHash} from './source-math-text.js';
 import {createHash, randomUUID} from 'node:crypto';
 import type {Block, Segment, SourceFile} from '../../shared/domain.js';
@@ -87,7 +87,7 @@ export function enrichCitationPages(store:Store,blocks:Block[]) {
       const entry=ref.nodeId?entries.find(entry=>entry.node.id===ref.nodeId):entries.filter(({node})=>
         ref.startOffset!==undefined?node.range.startOffset<=ref.startOffset&&node.range.endOffset>(ref.startOffset):node.range.startLine<=ref.startLine&&node.range.endLine>=ref.startLine
       ).sort((a,b)=>(a.node.range.endOffset-a.node.range.startOffset)-(b.node.range.endOffset-b.node.range.startOffset))[0];
-      if(entry)ref.contextLabel=sourceNodeLabel(entry.path);
+      if(entry){ref.contextLabel=sourceNodeLabel(entry.path);ref.appLocator=sourceReferenceLocator(entries,ref);}
     }
   }
   return blocks;

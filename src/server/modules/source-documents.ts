@@ -7,7 +7,7 @@ import {HttpError,now} from '../validation.js';
 import {processedSourceDocument} from './source-document.js';
 
 // Bump when semantic parsing changes, independently of the exported JSON schema.
-export const sourceDocumentBuilderVersion=4;
+export const sourceDocumentBuilderVersion=5;
 export class SourceDocuments {
  constructor(private store:Store) {}
  get(file:SourceFile):SourceDocument {return this.materialize(file).document;}

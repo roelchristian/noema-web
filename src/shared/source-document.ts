@@ -1,4 +1,4 @@
-import type {SourceStructureKind} from './domain.js';
+import type {SourceStructureKind,SourceReference} from './domain.js';
 
 /** Offsets are zero-based UTF-16, end-exclusive; lines and physical pages are one-based. */
 export interface SourceDocumentRange {
@@ -7,6 +7,8 @@ export interface SourceDocumentRange {
 }
 export interface SourceDocumentNode {
  id:string;
+ /** Noema-only ordinal; never a printed source number. Assigned locally. */
+ appNumber?:string;
  kind:SourceStructureKind|'paragraph'|'code'|'equation'|'list'|'table'|'blockquote'|'footnote';
  range:SourceDocumentRange;
  title?:string;
@@ -37,4 +39,52 @@ export function sourceNodeLabel(path:SourceDocumentNode[]) {
  const titles=path.flatMap(node=>node.title?[node.title]:[]);
  const labels=titles.length?titles:path.slice(-1).map(node=>`${node.kind[0]!.toUpperCase()}${node.kind.slice(1)}`);
  return labels.filter((label,index)=>index===0||label!==labels[index-1]).join(' › ');
+}
+
+const sectionKinds=new Set(['chapter','section','subsection','heading']);
+/** Number semantic siblings in document order, independently of source titles or AI output. */
+export function numberSourceNodes(nodes:SourceDocumentNode[],sectionPrefix=''):SourceDocumentNode[] {
+ let section=0;
+ const counts=new Map<SourceDocumentNode['kind'],number>();
+ return nodes.map(node=>{
+  const structural=sectionKinds.has(node.kind);
+  const ordinal=(counts.get(node.kind)??0)+1;counts.set(node.kind,ordinal);
+  const appNumber=structural?[sectionPrefix,++section].filter(Boolean).join('.'):String(ordinal);
+  return {...node,appNumber,...(node.children?{children:numberSourceNodes(node.children,structural?appNumber:sectionPrefix)}:{})};
+ });
+}
+const locatorKinds:Record<SourceDocumentNode['kind'],string>={chapter:'§',section:'§',subsection:'§',heading:'§',paragraph:'¶',theorem:'Thm.',lemma:'Lem.',proposition:'Prop.',corollary:'Cor.',definition:'Def.',proof:'Proof',example:'Ex.',remark:'Rem.',code:'Code',equation:'Eq.',list:'List',table:'Table',blockquote:'Quote',footnote:'Note'};
+/** A complete app locator retains the semantic scope of locally numbered blocks. */
+export function sourceNodeLocator(path:SourceDocumentNode[]):string|undefined {
+ if(!path.length||path.some(node=>!node.appNumber))return;
+ const section=path.reduce((last,node,index)=>sectionKinds.has(node.kind)?index:last,-1);
+ const scoped=path.slice(Math.max(0,section));
+ return scoped.filter((node,index)=>{
+  // A single prose child is already identified by its statement/proof label.
+  const parent=scoped[index-1];
+  return !(node.kind==='paragraph'&&parent&&!sectionKinds.has(parent.kind)&&parent.children?.length===1);
+ }).map(node=>`${locatorKinds[node.kind]} ${node.appNumber}`).join(' · ');
+}
+
+/** Legacy line/offset ranges can span several semantic blocks. Keep both endpoints. */
+export function sourceReferenceLocator(entries:ReturnType<typeof sourceDocumentEntries>,reference:Pick<SourceReference,'nodeId'|'startLine'|'endLine'|'startOffset'|'endOffset'>):string|undefined {
+ if(reference.nodeId){const entry=entries.find(({node})=>node.id===reference.nodeId);return entry?sourceNodeLocator(entry.path):undefined;}
+ const matches=entries.filter(({node})=>{
+  if(reference.startOffset!==undefined&&reference.endOffset!==undefined) {
+   const end=node.text!==undefined?node.range.endOffset:node.range.startOffset+(node.title?.length??0);
+   return node.range.startOffset<reference.endOffset&&end>reference.startOffset;
+  }
+  return node.range.startLine<=reference.endLine&&(node.text!==undefined?node.range.endLine:node.range.startLine)>=reference.startLine;
+ });
+ const leaves=matches.filter(({node})=>node.text!==undefined),selected=leaves.length?leaves:matches;
+ const first=selected[0],last=selected.at(-1);
+ if(!first||!last)return;
+ const start=sourceNodeLocator(first.path),end=sourceNodeLocator(last.path);
+ if(!start||!end||start===end)return start;
+ const prefix=start.match(/^(.*?)(\d+)$/),suffix=end.match(/^(.*?)(\d+)$/);
+ if(prefix&&suffix&&prefix[1]===suffix[1])return `${start}–${suffix[2]}`;
+ const startParts=start.split(' · '),endParts=end.split(' · ');
+ let shared=0;
+ while(shared<Math.min(startParts.length,endParts.length)-1&&startParts[shared]===endParts[shared])shared++;
+ return `${start}–${endParts.slice(shared).join(' · ')}`;
 }

@@ -37,7 +37,7 @@ test('semantic node IDs verify evidence and retain hierarchy without line marker
  const draft=draftFor(file,{nodeId:leaf.node.id,quote:'A group has an identity.'});
  const reference=draft.blocks[0].content.find(segment=>segment.sourceReference)?.sourceReference;
  assert.equal(reference.nodeId,leaf.node.id);
- assert.equal(citationLocation(reference),'Thm. 1');
+ assert.equal(citationLocation(reference),'§ 1.1 · Thm. 1');
  assert.equal(reference.excerpt,leaf.node.text);
  assert.equal(draft.blocks[0].content.some(segment=>segment.text?.includes('[L:')),false);
  assert.equal(semanticPassages(document,reference).filter(entry=>entry.cited).length,1);
@@ -61,10 +61,11 @@ test('semantic citations survive validation, persistence and matching-context HT
   const validated=pages.validateBlocks('default',draft.blocks);
   const reference=validated[0].content.find(segment=>segment.sourceReference).sourceReference;
   assert.equal(reference.nodeId,leaf.node.id);assert.match(reference.contextLabel,/Axioms/);
+  assert.equal(reference.appLocator,'§ 1.1 · Thm. 1');
   const page=pages.create('default',{title:'Citation persistence'});
   store.run('UPDATE pages SET blocks=? WHERE id=?',JSON.stringify(validated),page.id);
   const restored=pages.get('default',page.id).blocks[0].content.find(segment=>segment.sourceReference).sourceReference;
-  assert.equal(restored.nodeId,leaf.node.id);assert.equal(restored.startOffset,reference.startOffset);
+  assert.equal(restored.nodeId,leaf.node.id);assert.equal(restored.startOffset,reference.startOffset);assert.equal(restored.appLocator,reference.appLocator);
   const base='http://127.0.0.1:'+server.address().port;
   const response=await fetch(`${base}/api/source-files/${ready.id}?fingerprint=1&context=1&sourceHash=${reference.sourceHash}`,{headers:{'X-Vault-Id':'default'}});
   assert.equal(response.status,200);const body=await response.json();
@@ -116,7 +117,7 @@ test('citation locations prefer the source’s section and subsection titles',()
 An identity leaves each element unchanged.`};
  const document=processedSourceDocument(sectional),leaf=sourceDocumentEntries(document).find(({node})=>node.text);
  const reference=draftFor(sectional,{nodeId:leaf.node.id}).blocks[0].content.find(segment=>segment.sourceReference).sourceReference;
- assert.equal(citationLocation(reference),'§ 2.1.1');
+ assert.equal(citationLocation(reference),'§ 1.1.1 · ¶ 1');
  assert.ok(!citationLocation(reference).includes('Paragraph'));
 });
 

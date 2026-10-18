@@ -1,5 +1,5 @@
 import type {SourceFile,SourceStructureKind,SourceStructureNode} from '../../shared/domain.js';
-import type {SourceDocument,SourceDocumentNode,SourceDocumentRange} from '../../shared/source-document.js';
+import {numberSourceNodes,sourceNodeLocator,type SourceDocument,type SourceDocumentNode,type SourceDocumentRange} from '../../shared/source-document.js';
 import {isSectionKind,mergeSourceStructure,sectionKind,semanticBlockLabel} from './source-structure.js';
 
 interface Marker {
@@ -124,18 +124,18 @@ export function processedSourceDocument(file:SourceFile):SourceDocument {
   schemaVersion:1,source:{fileId:file.id,name:file.original_filename||file.name,title:file.generated_name||file.name,format:file.format,language:file.language,url:file.source_url},
   coordinates:{offsets:'zero-based UTF-16, end-exclusive',lines:'one-based extracted text',pages:'one-based physical page order, not printed labels'},
   physical:{pageCount:file.pages||null,pages:pageOffsets.map((start,index)=>({number:index+1,range:range(start,pageOffsets[index+1]??text.length)}))},
-  semantic:{kind:'document',children},
+  semantic:{kind:'document',children:numberSourceNodes(children)},
   processing:{text:'stored extraction',structure:'stored markers plus local rules',aiEnrichmentStatus:file.enrichment_status,aiScope:'bounded excerpts for long sources',inferredExtents:true},
  };
 }
 
 /** Preserve semantic identity and hierarchy in the model's evidence document. */
 export function sourceGenerationDocument(document:SourceDocument,_sourceText:string) {
- const convert=(node:SourceDocumentNode):unknown=>({
-  id:node.id,kind:node.kind,
+ const convert=(node:SourceDocumentNode,parents:SourceDocumentNode[]=[]):unknown=>({
+  id:node.id,kind:node.kind,appNumber:node.appNumber,appLocator:sourceNodeLocator([...parents,node]),
   ...(node.title?{title:node.title}:{}),...(node.text!==undefined?{text:node.text}:{}),
   ...(node.extent==='inferred'?{inferred:true}:{}),
-  ...(node.children?{children:node.children.map(convert)}:{}),
+  ...(node.children?{children:node.children.map(child=>convert(child,[...parents,node]))}:{}),
  });
- return {schemaVersion:document.schemaVersion,...(document.processing.math?{mathPreparation:document.processing.math}:{}),content:document.semantic.children.map(convert)};
+ return {schemaVersion:document.schemaVersion,...(document.processing.math?{mathPreparation:document.processing.math}:{}),content:document.semantic.children.map(node=>convert(node))};
 }

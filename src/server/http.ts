@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import { SourcePages, SourcePageDraft } from './modules/source-pages.js';
 import type { SourcePageEvent } from '../shared/source-page.js';
 import { limitSummaryWords } from '../shared/summary-text.js';
@@ -95,7 +96,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             vaults.requireOpen(vault);
             return send(201,await sourceFiles.admit(vault,url.searchParams.get('name')||'',Buffer.concat(chunks),url.searchParams.get('entity')||undefined,()=>{vaults.requireOpen(vault);}));
           }
-          if(id && parts.length===3 && method==='GET')return send(200,sourceFiles.require(vault,id));
+          if(id && parts.length===3 && method==='GET'){const file=sourceFiles.require(vault,id);return send(200,url.searchParams.get('fingerprint')==='1'?{...file,textHash:createHash('sha256').update(file.text).digest('hex')}:file);}
           if(id && parts.length===3 && method==='DELETE')return send(200,sourceFiles.remove(vault,id));
           if(id && parts.length===4 && parts[3]==='retry' && method==='POST')return send(200,sourceFiles.retry(vault,id));
           if(id && parts.length===4 && parts[3]==='download' && method==='GET') {

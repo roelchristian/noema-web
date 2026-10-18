@@ -1,3 +1,4 @@
+import {syncSourceReferences} from './source-references.js';
 import {pageLanguage} from './page-language.js';
 import {nextPageAIStatus, type PageAIStatus} from '../../shared/page-ai-status.js';
 import {allowedInColumn} from '../../shared/column-blocks.js';
@@ -98,6 +99,13 @@ export class Pages {
           }
           const result: Segment = {text:text(segment.text)};
           for (const mark of ['bold','italic','underline','strike','code','math','skipAutoTag'] as const) if(segment[mark] === true) result[mark]=true;
+          if(segment.sourceReference!==undefined) {
+            const ref=object(segment.sourceReference),sourceId=required(ref.sourceId),fileId=required(ref.fileId);
+            if(this.knowledge.find(vault,sourceId)?.type!=='source'||!this.store.get('SELECT 1 FROM source_files WHERE id=? AND entity_id=? AND vault_id=?',fileId,sourceId,vault))throw new HttpError(400,'Invalid citation source');
+            if(!Number.isSafeInteger(ref.startLine)||!Number.isSafeInteger(ref.endLine)||(ref.startLine as number)<1||(ref.endLine as number)<(ref.startLine as number)||(ref.endLine as number)-(ref.startLine as number)>=30||typeof ref.sourceHash!=='string'||!/^[a-f0-9]{64}$/.test(ref.sourceHash)||segment.math||segment.code)throw new HttpError(400,'Invalid source reference');
+            if(ref.sourceNumber!==undefined&&(!Number.isSafeInteger(ref.sourceNumber)||(ref.sourceNumber as number)<1||(ref.sourceNumber as number)>1_000_000_000))throw new HttpError(400,'Invalid source number');
+            result.sourceReference={...(ref.sourceNumber===undefined?{}:{sourceNumber:ref.sourceNumber as number}),id:required(ref.id),sourceId,fileId,startLine:ref.startLine as number,endLine:ref.endLine as number,sourceHash:ref.sourceHash,excerpt:text(ref.excerpt,16*1024*1024)};
+          }
           if(typeof segment.href === 'string') { const href=safeHref(segment.href); if(href) result.href=href; }
           return result;
         });
@@ -182,6 +190,7 @@ export class Pages {
       return names.get(id);
     });
     this.store.transaction(()=>{
+      syncSourceReferences(this.store,id,blocks);
       this.store.run('UPDATE pages SET title=?,language=?,icon=?,featured_image_id=?,blocks=?,ai_status=?,updated_at=?,revision=revision+1 WHERE id=? AND vault_id=?',title,language,icon,featuredImageId,JSON.stringify(blocks),aiStatus,now(),id,vault);
       this.store.run('DELETE FROM page_sources WHERE page_id=?',id);
       for(const source of new Set(sourceIds as string[]))this.store.run('INSERT INTO page_sources VALUES (?,?)',id,source);

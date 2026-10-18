@@ -10,11 +10,11 @@ export function segmentsEqual(left: Segment[], right: Segment[]) {
         continue;
       }
       const value = segment.text ?? '';
-      if (!value && !segment.math) continue;
-      const marks = JSON.stringify([!!segment.bold, !!segment.italic, !!segment.underline, !!segment.strike, !!segment.code, !!segment.math, segment.href ?? '', !!segment.skipAutoTag]);
+      if (!value && !segment.math && !segment.sourceReference) continue;
+      const marks = JSON.stringify([!!segment.bold, !!segment.italic, !!segment.underline, !!segment.strike, !!segment.code, !!segment.math, segment.href ?? '', !!segment.skipAutoTag, segment.sourceReference ?? null]);
       const last = result.at(-1);
-      if (last && !last.entity && !last.atomic && !segment.math && last.marks === marks) last.value += value;
-      else result.push({value, marks, ...(segment.math ? {atomic: true} : {})});
+      if (last && !last.entity && !last.atomic && !segment.math && !segment.sourceReference && last.marks === marks) last.value += value;
+      else result.push({value, marks, ...(segment.math || segment.sourceReference ? {atomic: true} : {})});
     }
     return JSON.stringify(result);
   }

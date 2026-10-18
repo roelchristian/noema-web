@@ -1,3 +1,4 @@
+import {syncSourceReferences} from './source-references.js';
 import { entityMentionName } from '../../shared/domain.js';
 import {classifiedConceptSubtypes} from '../../shared/concept-classification.js';
 import { randomUUID } from 'node:crypto';
@@ -157,6 +158,7 @@ export class EntityScans {
         suggestion.status = body.decision;
       }
       if (body.decision === 'accepted') {
+        syncSourceReferences(this.store,pageId,page.blocks);
         this.store.run('UPDATE pages SET blocks=?,revision=revision+1,updated_at=? WHERE id=? AND vault_id=?',JSON.stringify(page.blocks),now(),pageId,vault);
         page = this.pages.get(vault,pageId);
       }

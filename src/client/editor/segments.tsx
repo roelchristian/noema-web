@@ -43,6 +43,10 @@ export function segmentHTML(content: Segment[], entities: Entity[], review?: Rev
   let offset = 0;
   return renderToStaticMarkup(<>{content.map((s, index) => {
     const start = offset; offset += s.text?.length ?? 0;
+    if (s.sourceReference) {
+      const ref=s.sourceReference, source=entities.find(entity=>entity.id===ref.sourceId);
+      return <span key={index} className="source-reference-tag" contentEditable={false} role="button" tabIndex={0} data-entity={ref.sourceId} data-source-reference={JSON.stringify(ref)} data-source-text={s.text ?? ''} data-source-segment={JSON.stringify(s)} aria-controls="source-viewer" aria-label={`Open reference ${ref.sourceNumber ?? 1}: ${source?.name ?? 'Source'}, extracted lines ${ref.startLine} to ${ref.endLine}`}>[{ref.sourceNumber ?? 1}]</span>;
+    }
     if (s.entityId) return <Mention key={index} id={s.entityId} label={s.mentionText} entities={entities} onOpen={() => {}}/>;
     if (s.math) return <span key={index} className="inline-math" data-math={s.text} contentEditable={false} role={readOnly ? undefined : "button"} tabIndex={readOnly ? undefined : 0} title={readOnly ? undefined : "Edit equation"} aria-label={`${readOnly ? "Equation" : "Edit equation"}: ${s.text}`} dangerouslySetInnerHTML={{__html: renderMath(s.text ?? '')}}/>;
     const parts: React.ReactNode[] = [];
@@ -77,6 +81,10 @@ export function readSegments(el: Node, allowMentions = true): Segment[] {
     } else if (node instanceof HTMLElement) {
       if (['SCRIPT','STYLE','META','LINK','IFRAME','OBJECT'].includes(node.tagName)) return;
       if (node.dataset.wikilink !== undefined) { walk(document.createTextNode(node.dataset.wikilink), {...style,skipAutoTag:true}); return; }
+      if (node.dataset.sourceReference !== undefined) {
+        try {output.push(node.dataset.sourceSegment ? JSON.parse(node.dataset.sourceSegment) : {text:node.dataset.sourceText??'',sourceReference:JSON.parse(node.dataset.sourceReference)});} catch {if(node.textContent)output.push({text:node.textContent});}
+        return;
+      }
       if (node.dataset.math !== undefined) { output.push({text: node.dataset.math, math: true}); return; }
       if (allowMentions && node.dataset.entity) { output.push({entityId: node.dataset.entity, ...(node.dataset.mentionText ? {mentionText: node.dataset.mentionText} : {})}); return; }
       if (node.tagName === 'BR') { output.push({text: '\n'}); return; }

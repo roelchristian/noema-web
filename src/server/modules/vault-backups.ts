@@ -1,3 +1,4 @@
+import {syncSourceReferences} from './source-references.js';
 import {pageLanguage} from './page-language.js';
 import {isPageAIStatus} from '../../shared/page-ai-status.js';
 import {isAIExplanation} from '../../shared/semantic-blocks.js';
@@ -187,6 +188,7 @@ export class VaultBackups {
           if(row.inactive!==undefined&&row.inactive!==0&&row.inactive!==1)throw invalid();
           insert('entities',{inactive:row.inactive??0,id:ref(entityIds,row.id),vault_id:vault,name:name(row,'name'),type,aliases:JSON.stringify(type==='source'?[]:aliases),mention_case:mentionCase,subtypes:JSON.stringify(subtypes),description:string(row,'description'),updated_at:timestamp(row,'updated_at')});
         }
+        const restoredSourceFiles=new Map<string,string>();
         for(const row of rows.source_files) {
           const asset=sourceAssetMap.get(name(row,'id'));if(!asset)throw invalid();
           const encoded=string(asset,'data',70*1024*1024),bytes=Buffer.from(encoded,'base64');
@@ -202,7 +204,7 @@ export class VaultBackups {
           if(admitted!==0&&admitted!==1)throw invalid();
           const format=row.format??name(row,'name').split('.').at(-1)?.toLowerCase();
           if(!['txt','md','pdf','html','url'].includes(String(format))||format==='url'&&(!sourceUrl||admitted!==0))throw invalid();
-          const added=sourceFiles.add(vault,name(row,'name'),bytes,undefined,sourceUrl,pdfFlattened===1,admitted===0,format as import('../../shared/domain.js').SourceFile['format']);writtenSources.push(added.id);
+          const added=sourceFiles.add(vault,name(row,'name'),bytes,undefined,sourceUrl,pdfFlattened===1,admitted===0,format as import('../../shared/domain.js').SourceFile['format']);writtenSources.push(added.id);restoredSourceFiles.set(name(row,'id'),added.id);
           this.store.run('UPDATE source_files SET entity_id=? WHERE id=?',sourceEntity,added.id);
           const status=string(row,'status',20);if(!['queued','processing','ready','failed'].includes(status)||status==='ready'&&admitted!==1)throw invalid();
           this.store.run('UPDATE source_files SET status=?,text=?,error=?,progress=?,pages=?,ocr_pages=?,created_at=? WHERE id=?',status==='processing'?'queued':status,string(row,'text',16*1024*1024),nullable(row,'error',2000),integer(row,'progress',0,100),integer(row,'pages',0,1000),integer(row,'ocr_pages',0,1000),timestamp(row,'created_at'),added.id);
@@ -218,7 +220,14 @@ export class VaultBackups {
             const block={...object(value)};
             if(!blockTypes.includes(block.type as typeof blockTypes[number]))throw invalid();
             const segments=(value:unknown)=>list(value).map(value=>{
-              const segment={...object(value)};if(segment.entityId)segment.entityId=ref(entityIds,segment.entityId);return segment;
+              const segment={...object(value)};
+              if(segment.entityId)segment.entityId=ref(entityIds,segment.entityId);
+              if(segment.sourceReference) {
+                const citation=object(segment.sourceReference),fileId=restoredSourceFiles.get(name(citation,'fileId'));
+                if(!fileId)throw invalid();
+                segment.sourceReference={...citation,id:randomUUID(),sourceId:ref(entityIds,citation.sourceId),fileId};
+              }
+              return segment;
             });
             block.content=segments(block.content);
             if(block.type==='image')block.imageId=ref(imageIds,block.imageId);
@@ -229,6 +238,13 @@ export class VaultBackups {
           if(row.ai_status!==undefined&&!isPageAIStatus(row.ai_status))throw invalid();
           const aiStatus=row.ai_status==='ai_generated'||row.ai_status==='ai_generated_edited'?row.ai_status:validated.some(isAIExplanation)?'regular_with_ai_explanations':'regular';
           insert('pages',{id:ref(pageIds,row.id),vault_id:vault,title:string(row,'title',500),icon:row.icon as string|null,featured_image_id:row.featured_image_id==null?null:ref(imageIds,row.featured_image_id),blocks:JSON.stringify(validated),ai_status:aiStatus,language:pageLanguage(row.language),updated_at:timestamp(row,'updated_at'),revision:integer(row,'revision',1),deleted_at:row.deleted_at===null?null:timestamp(row,'deleted_at')});
+        }
+        for(const row of rows.pages) {
+          const pageId=ref(pageIds,row.id);
+          const saved=this.store.get<{blocks:string}>('SELECT blocks FROM pages WHERE id=?',pageId)!;
+          const blocks=JSON.parse(saved.blocks);
+          syncSourceReferences(this.store,pageId,blocks);
+          this.store.run('UPDATE pages SET blocks=? WHERE id=?',JSON.stringify(blocks),pageId);
         }
         for(const row of rows.page_edit_locks) {
           const passwordHash=row.password_hash, salt=row.salt;

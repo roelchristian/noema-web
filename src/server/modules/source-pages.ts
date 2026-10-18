@@ -1,3 +1,4 @@
+import {linkSourceReferences,syncSourceReferences} from './source-references.js';
 import {pageLanguage} from './page-language.js';
 import {sourcePagePreview} from './source-page-preview.js';
 import { numberedSourceText, sourceTextLines } from '../../shared/source-text.js';
@@ -196,7 +197,7 @@ export class SourcePages {
       try{requestedLanguage=pageLanguage(prepared.options.language);}catch{/* Legacy free-text language names are resolved by the model's language tag. */}
       const language=draft.language??requestedLanguage;
       if(!language)throw new HttpError(502,'AI did not identify the generated page language. Please retry.');
-      const blocks=this.pages.validateBlocks(vault,draft.blocks);
+      const blocks=this.pages.validateBlocks(vault,linkSourceReferences(draft.blocks,prepared.file));
       const recordedActivity=this.store.get('SELECT 1 FROM ai_activity WHERE id=?',activityId)?activityId:null;
       this.store.run(`INSERT INTO source_page_drafts (request_id,vault_id,source_id,fingerprint,source_hash,focus,options,title,language,blocks,status,activity_id,created_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,'pending',?,?)`,prepared.requestId,vault,prepared.sourceId,prepared.fingerprint,createHash('sha256').update(prepared.file.text).digest('hex'),prepared.focus,JSON.stringify(prepared.options),draft.title,language,JSON.stringify(blocks),recordedActivity,now());
@@ -217,8 +218,9 @@ export class SourcePages {
       if(!row||row.status!=='pending')throw new HttpError(409,'This draft is no longer available for acceptance.');
       const file=this.store.get<SourceFile>('SELECT * FROM source_files WHERE vault_id=? AND entity_id=?',vault,sourceId);
       if(!file||file.status!=='ready'||file.admitted!==1||this.knowledge.require(vault,sourceId).inactive||createHash('sha256').update(file.text).digest('hex')!==row.source_hash)throw new HttpError(409,'The source changed. Reject this draft and generate a new one from the ready source.');
-      const blocks=this.pages.validateBlocks(vault,JSON.parse(row.blocks));
+      const blocks=this.pages.validateBlocks(vault,linkSourceReferences(JSON.parse(row.blocks),file));
       const page=this.pages.create(vault,{title:row.title,language:row.language??null});
+      syncSourceReferences(this.store,page.id,blocks);
       this.store.run("UPDATE pages SET blocks=?,ai_status='ai_generated',summary_content_hash=NULL,revision=revision+1 WHERE id=? AND vault_id=?",JSON.stringify(blocks),page.id,vault);
       this.store.run('INSERT INTO page_sources (page_id,source_id) VALUES (?,?)',page.id,sourceId);
       this.store.run('INSERT INTO source_page_creations (request_id,vault_id,source_id,fingerprint,page_id,created_at) VALUES (?,?,?,?,?,?)',requestId,vault,sourceId,row.fingerprint,page.id,now());

@@ -68,7 +68,7 @@ function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOp
   useLayoutEffect(() => {
     const el = ref.current!;
     syncEditableSegments(el, block.content, entities, {blockId: block.id, matches: reviewMatches});
-    el.querySelectorAll<HTMLElement>('[data-entity]').forEach(node => {
+    el.querySelectorAll<HTMLElement>('[data-entity]:not([data-source-reference])').forEach(node => {
       const wrapper = document.createElement('span'); wrapper.innerHTML = segmentHTML([{entityId: node.dataset.entity!, ...(node.dataset.mentionText ? {mentionText: node.dataset.mentionText} : {})}], entities);
       const fresh = wrapper.firstElementChild!;
       if (node.innerHTML !== fresh.innerHTML) node.innerHTML = fresh.innerHTML;

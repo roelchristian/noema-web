@@ -1,3 +1,7 @@
+import {linkSourceReferences,syncSourceReferences} from './modules/source-references.js';
+import {Store} from './store.js';
+import {createHash} from 'node:crypto';
+import type {SourceFile} from '../shared/domain.js';
 import {isAIExplanation} from '../shared/semantic-blocks.js';
 import type {Block} from '../shared/domain.js';
 import { DatabaseSync } from 'node:sqlite';
@@ -338,6 +342,45 @@ if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
    SELECT e.vault_id,e.type,trim(p.name) FROM properties p JOIN entities e ON e.id=p.entity_id;
    INSERT INTO schema_migrations VALUES (2,datetime('now'));
    COMMIT;`);
+ }
+ db.exec(`CREATE TABLE IF NOT EXISTS note_source_files (
+ page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+ file_id TEXT NOT NULL REFERENCES source_files(id) ON DELETE CASCADE,
+ number INTEGER NOT NULL CHECK(number>=1), PRIMARY KEY(page_id,file_id), UNIQUE(page_id,number));
+ CREATE TABLE IF NOT EXISTS note_source_references (
+ id TEXT NOT NULL, page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+ source_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+ file_id TEXT NOT NULL REFERENCES source_files(id) ON DELETE CASCADE,
+ block_id TEXT NOT NULL, row_index INTEGER NOT NULL DEFAULT -1, col_index INTEGER NOT NULL DEFAULT -1,
+ start_offset INTEGER NOT NULL, end_offset INTEGER NOT NULL,
+ start_line INTEGER NOT NULL CHECK(start_line>=1), end_line INTEGER NOT NULL CHECK(end_line>=start_line),
+ source_hash TEXT NOT NULL, excerpt TEXT NOT NULL, PRIMARY KEY(page_id,id));
+ CREATE INDEX IF NOT EXISTS note_source_references_source ON note_source_references(source_id,start_line,end_line);`);
+ if (!db.prepare('SELECT 1 FROM schema_migrations WHERE version=3').get()) {
+  const store=new Store(db);
+  store.transaction(()=>{
+   const notes=store.all<{id:string;blocks:string;source_id:string;source_hash:string|null}>(`SELECT p.id,p.blocks,c.source_id,d.source_hash FROM pages p
+    JOIN source_page_creations c ON c.page_id=p.id LEFT JOIN source_page_drafts d ON d.request_id=c.request_id`);
+   for(const note of notes) {
+    const file=store.get<SourceFile>('SELECT f.* FROM source_files f JOIN pages p ON p.vault_id=f.vault_id WHERE p.id=? AND f.entity_id=?',note.id,note.source_id);
+    if(!file||file.status!=='ready'||!file.admitted||!note.source_hash||createHash('sha256').update(file.text).digest('hex')!==note.source_hash)continue;
+    const blocks=linkSourceReferences(JSON.parse(note.blocks) as Block[],file);
+    syncSourceReferences(store,note.id,blocks);
+    store.run('UPDATE pages SET blocks=?,revision=revision+1 WHERE id=?',JSON.stringify(blocks),note.id);
+   }
+   store.run("INSERT INTO schema_migrations VALUES (3,datetime('now'))");
+  });
+ }
+ if (!db.prepare('SELECT 1 FROM schema_migrations WHERE version=4').get()) {
+  const store=new Store(db);
+  store.transaction(()=>{
+   for(const note of store.all<{id:string;blocks:string}>("SELECT id,blocks FROM pages WHERE instr(blocks,'sourceReference')>0")) {
+    const blocks=JSON.parse(note.blocks) as Block[];
+    syncSourceReferences(store,note.id,blocks);
+    store.run('UPDATE pages SET blocks=?,revision=revision+1 WHERE id=?',JSON.stringify(blocks),note.id);
+   }
+   store.run("INSERT INTO schema_migrations VALUES (4,datetime('now'))");
+  });
  }
  setupTextSearchSchema(db);
  if (db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Database contains invalid references');

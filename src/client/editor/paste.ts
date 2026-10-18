@@ -84,9 +84,9 @@ export function clipboardMathBlocks(blocks: Block[]): Block[] {
     const output: Segment[] = [];
     for (let i = 0; i < content.length;) {
       const segment = content[i]!;
-      if (segment.entityId || segment.code || segment.math) { output.push(segment); i++; continue; }
+      if (segment.entityId || segment.code || segment.math || segment.sourceReference) { output.push(segment); i++; continue; }
       const run: Segment[] = [];
-      while (i < content.length && !content[i]!.entityId && !content[i]!.code && !content[i]!.math) run.push(content[i++]!);
+      while (i < content.length && !content[i]!.entityId && !content[i]!.code && !content[i]!.math && !content[i]!.sourceReference) run.push(content[i++]!);
       const text = run.map(s => s.text).join(''); let start = 0;
       // Backtick spans protect literal math in Markdown wrapped by a clipboard span.
       const pattern = /(`+)[\s\S]*?\1|(?<!\\)\\\(([^\n]*?)(?<!\\)\\\)|(?<![\\$])\$(?![\s$])((?:\\.|[^$\n\\])+?)(?<![\s\\])\$(?!\$)/g;
@@ -100,7 +100,7 @@ export function clipboardMathBlocks(blocks: Block[]): Block[] {
     }
     return output;
   }
-  const plain = (block: Block) => block.type === 'paragraph' && block.content.every(s => !s.entityId && !s.code && !s.math);
+  const plain = (block: Block) => block.type === 'paragraph' && block.content.every(s => !s.entityId && !s.code && !s.math && !s.sourceReference);
   const output: Block[] = [];
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i]!;

@@ -6,7 +6,7 @@ export const defaultCleanupOptions: CleanupOptions = {paragraphBreaks: true, rep
 
 /** Keep each remaining character attached to its original rich-text segment. */
 function cleanSegments(segments: Segment[], options: CleanupOptions): Segment[] {
-  const protectedSegment = (segment: Segment) => !!(segment.entityId || segment.code || segment.math);
+  const protectedSegment = (segment: Segment) => !!(segment.entityId || segment.code || segment.math || segment.sourceReference);
   let characters = segments.flatMap((segment, owner) => (protectedSegment(segment) ? ['\ufffc'] : (segment.text ?? '').split('')).map(text => ({text, owner})));
   function replace(pattern: RegExp, keep: number, replacement?: string) {
     const text = characters.map(character => character.text).join('');
@@ -31,7 +31,7 @@ function cleanSegments(segments: Segment[], options: CleanupOptions): Segment[] 
 }
 
 function blankParagraph(block: Block) {
-  return block.type === 'paragraph' && !block.column && !block.semantic && !block.semanticGroup && block.content.every(segment => !segment.entityId && !segment.code && !segment.math && !(segment.text ?? '').trim());
+  return block.type === 'paragraph' && !block.column && !block.semantic && !block.semanticGroup && block.content.every(segment => !segment.entityId && !segment.code && !segment.math && !segment.sourceReference && !(segment.text ?? '').trim());
 }
 
 export function cleanNote(blocks: Block[], options: CleanupOptions) {

@@ -2663,3 +2663,8 @@ dialog.noema-modal.mobile-selection-sheet { padding-bottom: max(12px, env(safe-a
   dialog.noema-modal .modal-header-actions > .modal-close { width: 44px; height: 44px; padding: 12px; }
   dialog.noema-modal:is(.mobile-block-sheet, .mobile-selection-sheet) { max-width: 100%; }
 }
+
+/* Saved Page search anchors never modify editor text or selection. */
+#content [data-block-id].page-search-passage { background: var(--citation-jump-highlight); box-shadow: -4px 0 0 var(--accent); border-radius: 3px; }
+
+::highlight(page-search-evidence) { background: var(--citation-jump-highlight); color: inherit; }

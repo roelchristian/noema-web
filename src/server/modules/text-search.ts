@@ -1,3 +1,6 @@
+import {projectPageText} from '../../shared/page-text.js';
+import type {Block} from '../../shared/domain.js';
+import {PageSegments,pageSegmentReference,type PageSegment} from './page-segments.js';
 import type {SemanticSearchResult} from '../../shared/embeddings.js';
 import type {TextSearchResult, TextSearchScope} from '../../shared/text-search.js';
 import {makeSearchSnippet} from '../../shared/search-snippets.js';
@@ -14,20 +17,8 @@ const object = (value: unknown): value is Record<string, unknown> => !!value && 
 function arrayJSON(value: string): unknown[] {
   try {const parsed: unknown = JSON.parse(value); return Array.isArray(parsed) ? parsed : [];} catch {return [];}
 }
-function bodyText(blocks: string, names: Map<string,string>): string {
-  const segments = (value: unknown): string => Array.isArray(value) ? value.map(segment => {
-    if (!object(segment)) return '';
-    if (typeof segment.entityId === 'string') return typeof segment.mentionText === 'string' ? segment.mentionText : names.get(segment.entityId) ?? '';
-    return typeof segment.text === 'string' ? segment.text : '';
-  }).join('') : '';
-  return arrayJSON(blocks).map(block => {
-    if (!object(block)) return '';
-    const content = (block.type === 'table' || block.type === 'columns') && Array.isArray(block.rows)
-      ? block.rows.map(row => Array.isArray(row) ? row.map(segments).join(' \n ') : '').join('\n')
-      : segments(block.content);
-    return block.type === 'image' && typeof block.alt === 'string' ? `${content}\n${block.alt}` : content;
-  }).join('\n');
-}
+function bodyText(blocks:string,names:Map<string,string>):string {return projectPageText(arrayJSON(blocks) as Block[],id=>names.get(id)).text;}
+
 function scopeValue(input: unknown): TextSearchScope | undefined {
   if (input === undefined) return undefined;
   if (!object(input)) throw new HttpError(400, 'Choose a valid search scope.');
@@ -41,7 +32,8 @@ function scopeValue(input: unknown): TextSearchScope | undefined {
 /** Saved-content lexical search. Durable passage synchronization runs before
  * page/entity synchronization and the subsequent transactional query. */
 export class TextSearch {
-  constructor(private store: Store, private vaults: Vaults, private passages = new SourcePassages(store)) {setupTextSearchSchema(store.db);}
+  private pageSegments:PageSegments;
+  constructor(private store: Store, private vaults: Vaults, private passages = new SourcePassages(store)) {setupTextSearchSchema(store.db);this.pageSegments=new PageSegments(store);}
   private remove(kind: 'page' | 'entity', id: string) {
     this.store.run('DELETE FROM text_search_fts WHERE rowid IN (SELECT rowid FROM text_search_documents WHERE kind=? AND id=?)', kind, id);
     this.store.run('DELETE FROM text_search_documents WHERE kind=? AND id=?', kind, id);
@@ -84,7 +76,8 @@ export class TextSearch {
     if(tokens.length>128)throw new HttpError(400,'Use up to 128 search terms.');
     const match=tokens.map((token,index)=>`"${token.replace(/"/g,'""')}"${index===tokens.length-1?'*':''}`).join(' AND ');
     this.passages.synchronize(vault);
-    return this.store.all<SourcePassage & {name:string;updated_at:string;relevance:number}>(`
+    this.pageSegments.synchronize(vault);
+    const sources=this.store.all<SourcePassage & {name:string;updated_at:string;relevance:number}>(`
       SELECT p.*,e.name,e.updated_at,
         (f.status<>'ready' OR EXISTS (SELECT 1 FROM source_passage_dirty d WHERE d.file_id=p.file_id)) AS stale,
         bm25(source_passages_fts,3.0,1.0) AS relevance
@@ -94,8 +87,17 @@ export class TextSearch {
       JOIN entities e ON e.id=p.source_id AND e.vault_id=p.vault_id
       WHERE source_passages_fts MATCH ? AND p.vault_id=? AND f.admitted=1 AND e.type='source' AND e.inactive=0
       ORDER BY relevance,p.source_id,p.ordinal,p.id LIMIT ?
-    `,match,vault,limit).map(passage=>({id:passage.source_id,kind:'entity',passageId:passage.id,title:passage.name,
+    `,match,vault,limit).map<SemanticSearchResult>(passage=>({id:passage.source_id,kind:'entity',passageId:passage.id,title:passage.name,
       snippet:makeSearchSnippet(passage.text,query),updated_at:passage.updated_at,score:-passage.relevance,reference:passageReference(passage)}));
+    return [...sources,...this.pagePassages(vault,query,match,limit)].sort((a,b)=>b.score-a.score).slice(0,limit);
+  }
+  private pagePassages(vault:string,query:string,match:string,limit:number,pageIds?:string[]):SemanticSearchResult[] {
+    return this.store.all<PageSegment & {title:string;updated_at:string;relevance:number}>(`SELECT s.*,p.title,p.updated_at,bm25(page_segments_fts,3.0,1.0) AS relevance
+      FROM page_segments_fts JOIN page_segments s ON s.rowid=page_segments_fts.rowid JOIN pages p ON p.id=s.page_id
+      WHERE page_segments_fts MATCH ? AND s.vault_id=? AND p.deleted_at IS NULL AND p.revision=s.revision
+       AND NOT EXISTS(SELECT 1 FROM page_index_dirty d WHERE d.page_id=p.id)
+       ${pageIds?'AND p.id IN (SELECT value FROM json_each(?))':''}
+      ORDER BY relevance,s.page_id,s.ordinal LIMIT ?`,match,vault,...(pageIds?[JSON.stringify(pageIds)]:[]),limit).map(segment=>({id:segment.page_id,kind:'page',passageId:segment.id,title:segment.title,snippet:makeSearchSnippet(segment.text,query),updated_at:segment.updated_at,score:-segment.relevance,pageReference:pageSegmentReference(segment)}));
   }
   search(vault: string, query: unknown, limit: unknown = 100, requestedScope?: unknown): {results: TextSearchResult[]; hasMore: boolean} {
     this.vaults.requireOpen(vault);
@@ -109,6 +111,7 @@ export class TextSearch {
     if (tokens.length > 128) throw new HttpError(400, 'Use up to 128 search terms.');
     const match = tokens.map((token,index) => `"${token.replace(/"/g,'""')}"${index === tokens.length-1 ? '*' : ''}`).join(' AND ');
     this.passages.synchronize(vault);
+    this.pageSegments.synchronize(vault);
     return this.store.transaction(() => {
       this.synchronize(vault);
       const rows = this.store.all<MatchRow>(`
@@ -164,6 +167,13 @@ export class TextSearch {
           existing.snippet=result.snippet;
           existing.score=Math.max(existing.score,result.score);
         } else bySource.set(key,result);
+      }
+      const pageHits=this.pagePassages(vault,query,match,10000,scope?.pageIds),seenPages=new Set<string>();
+      for(const hit of pageHits) {
+        if(seenPages.has(hit.id))continue;seenPages.add(hit.id);
+        const key=`page:${hit.id}`,existing=bySource.get(key);
+        if(existing){existing.pageReference=hit.pageReference;existing.passageId=hit.passageId;existing.snippet=hit.snippet;}
+        else bySource.set(key,{id:hit.id,kind:'page',name:hit.title,matchedIn:'page',snippet:hit.snippet,score:hit.score,pageReference:hit.pageReference,passageId:hit.passageId});
       }
       const combined = [...bySource.values()].sort((a,b) => b.score-a.score || a.name.localeCompare(b.name) || a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id));
       return {results:combined.slice(0,limit),hasMore:combined.length>limit || rows.length>limit || passages.length>limit};

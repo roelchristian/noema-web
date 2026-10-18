@@ -1,3 +1,4 @@
+import type {PageReference} from '../../shared/embeddings';
 import {citationLocation} from '../../shared/citations';
 import type {SourceReference} from '../../shared/domain';
 import {pageAIStatusLabels, pageAIStatusDescriptions} from '../../shared/page-ai-status';
@@ -33,7 +34,7 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   context: OrganizationContext; onContextChange: (patch: Partial<OrganizationContext>) => void; onChanged: (data: Organization) => void;
   onNewNote: () => void; onOpenFolder: (id: string) => void;
   onRenamePage: (page: PageSummary) => void; onDeletePage: (page: PageSummary) => void;
-  onOpenPassage:(reference:SourceReference,trigger?:HTMLElement)=>void; onOpenPage: (id: string) => void; onOpenEntity: (id: string) => void; onError: (error: unknown) => void;
+  onOpenPassage:(reference:SourceReference,trigger?:HTMLElement)=>void; onOpenPage: (id: string,reference?:PageReference) => void; onOpenEntity: (id: string) => void; onError: (error: unknown) => void;
 }) {
   const {collection, folder} = favouritesOnly || inboxOnly ? {collection: '', folder: ''} : context;
   const destination = favouritesOnly ? 'favourites' : inboxOnly ? 'inbox' : JSON.stringify(['organization', collection, folder]);
@@ -98,7 +99,7 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   const openItem = (item: Item) => {
     suppressSemantic();
     setViewState(previous => ({...previous, focusedRow: item.kind + ':' + item.id}));
-    if (item.kind === 'folder') onOpenFolder(item.id); else if (item.kind === 'page') onOpenPage(item.id); else {const reference=textHits.get('entity:'+item.id)?.reference??semanticNotes.get(item.id)?.reference;if(query&&reference)onOpenPassage(reference,document.activeElement instanceof HTMLElement?document.activeElement:undefined);else onOpenEntity(item.id);}
+    if (item.kind === 'folder') onOpenFolder(item.id); else if (item.kind === 'page') onOpenPage(item.id,textHits.get('page:'+item.id)?.pageReference??semanticNotes.get(item.id)?.pageReference); else {const reference=textHits.get('entity:'+item.id)?.reference??semanticNotes.get(item.id)?.reference;if(query&&reference)onOpenPassage(reference,document.activeElement instanceof HTMLElement?document.activeElement:undefined);else onOpenEntity(item.id);}
   };
   const folderDescription = (id: string) => {
     const notes = data.locations.filter(location => location.kind === 'page' && location.folder_id === id && pagesById.has(location.item_id)).length;

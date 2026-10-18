@@ -1,7 +1,9 @@
+import type {PageReference} from './embeddings.js';
 import type {SourceReference} from './domain.js';
 
 /** Local retrieval works independently of embedding availability or freshness. */
 export interface TextSearchResult {
+  pageReference?:PageReference;
   id: string;
   kind: 'page' | 'entity';
   name: string;

@@ -1,3 +1,4 @@
+import type {PageReference} from '../../shared/embeddings';
 import {citationLocation} from '../../shared/citations';
 import type {SourceReference} from '../../shared/domain';
 import {useEffect,useRef,useState, type KeyboardEvent} from 'react';
@@ -11,7 +12,7 @@ import {useTextSearch} from './useTextSearch';
 import {HighlightedText} from './HighlightedText';
 import {useSearchSnippets} from './useSearchSnippets';
 import {makeSearchSnippet} from '../../shared/search-snippets';
-export function SearchPanel({vaultId,pages,entities,onOpenPage,onOpenEntity,onOpenPassage,onClose}:{vaultId:string;pages:PageSummary[];entities:Entity[];onOpenPage:(id:string)=>void;onOpenEntity:(id:string)=>void;onOpenPassage:(reference:SourceReference,trigger?:HTMLElement)=>void;onClose:()=>void}) {
+export function SearchPanel({vaultId,pages,entities,onOpenPage,onOpenEntity,onOpenPassage,onClose}:{vaultId:string;pages:PageSummary[];entities:Entity[];onOpenPage:(id:string,reference?:PageReference)=>void;onOpenEntity:(id:string)=>void;onOpenPassage:(reference:SourceReference,trigger?:HTMLElement)=>void;onClose:()=>void}) {
   const [query,setQuery]=useState(''), [selected,setSelected]=useState<string | null>(null);
   const input=useRef<HTMLInputElement>(null), buttons=useRef(new Map<string,HTMLButtonElement>());
   const [semanticSuppressed,setSemanticSuppressed]=useState(false);
@@ -35,7 +36,7 @@ export function SearchPanel({vaultId,pages,entities,onOpenPage,onOpenEntity,onOp
   function suppressSemantic() {semantic.cancel();setSemanticSuppressed(true);}
   function select(key:string) {suppressSemantic();setSelected(key);}
   function close() {suppressSemantic();onClose();}
-  function open(item:typeof matches[number]) {suppressSemantic();const reference=textNotes.get(item.kind+':'+item.id)?.reference??semanticNotes.get(item.id)?.reference;if(item.kind==='entity'&&reference)onOpenPassage(reference,buttons.current.get(keyFor(item)));else if(item.kind==='page') onOpenPage(item.id); else onOpenEntity(item.id);}
+  function open(item:typeof matches[number]) {suppressSemantic();const reference=textNotes.get(item.kind+':'+item.id)?.reference??semanticNotes.get(item.id)?.reference;if(item.kind==='entity'&&reference)onOpenPassage(reference,buttons.current.get(keyFor(item)));else if(item.kind==='page') onOpenPage(item.id,textNotes.get('page:'+item.id)?.pageReference??semanticNotes.get(item.id)?.pageReference); else onOpenEntity(item.id);}
   function keyDown(event:KeyboardEvent<HTMLDivElement>) {
     if(event.nativeEvent.isComposing) return;
     if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k') {event.preventDefault();event.stopPropagation();close();return;}

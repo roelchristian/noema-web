@@ -45,7 +45,7 @@ export function pageEnrichmentPrompt(input:string,options:PageEnrichmentOptions)
   const tasks:string[]=[];
   if(fields.includes('title')){
     properties.title={type:'string',maxLength:120};
-    tasks.push('title: choose a concise 2–6 word title in the note language, at most 120 characters, with no line breaks. Never return Untitled.');
+    tasks.push('title: choose a concise 2–6 word title in the note language, at most 120 characters, with no line breaks. Never return Untitled. Wrap mathematical notation in the title in $...$ delimiters using LaTeX.');
   }
   if(fields.includes('domains')){
     const ids=options.domains?.filter(domain=>domainById(domain.id)).map(domain=>domain.id)??[];

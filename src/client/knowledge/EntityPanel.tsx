@@ -1,3 +1,4 @@
+import {TitleText} from '../components/TitleText';
 import {SourceLoadingProgress} from './SourceLoadingProgress';
 import {SummaryText} from '../intelligence/SummaryText';
 import { PageIcon } from '../components/PageIcon';
@@ -83,7 +84,7 @@ export function EntityPanel(props: Props) {
         </section>
         <section className="entity-detail-section entity-mentions-section"><h3>Mentions from pages<span>{entity.pageMentions?.length ?? 0}</span></h3>
           {entity.pageMentions?.length ? <ul className="entity-connection-list entity-page-mentions">{entity.pageMentions.map(page => <li key={page.id}>
-            <button type="button" onClick={() => onOpenPage(page.id)}><PageIcon icon={page.icon}/><span><span className="entity-mention-heading"><strong title={page.title || 'Untitled'}>{page.title || 'Untitled'}</strong><small className="entity-mention-count" aria-label={`${page.mentionCount} ${page.mentionCount === 1 ? 'mention' : 'mentions'}`}>{page.mentionCount}×</small></span>{page.excerpt && <small className="entity-mention-excerpt" title={page.excerpt}>{page.excerpt}</small>}</span><Icon name="chevron"/></button>
+            <button type="button" onClick={() => onOpenPage(page.id)}><PageIcon icon={page.icon}/><span><span className="entity-mention-heading"><strong title={page.title || 'Untitled'}><TitleText text={page.title || 'Untitled'}/></strong><small className="entity-mention-count" aria-label={`${page.mentionCount} ${page.mentionCount === 1 ? 'mention' : 'mentions'}`}>{page.mentionCount}×</small></span>{page.excerpt && <small className="entity-mention-excerpt" title={page.excerpt}>{page.excerpt}</small>}</span><Icon name="chevron"/></button>
           </li>)}</ul> : <p className="entity-detail-empty">No pages mention this entity yet. Tag it in a page to see it here.</p>}
         </section>
         {entity.type!=='source' && !!entity.aliases?.length && <section className="entity-detail-section"><h3>Also known as</h3><ul className="entity-overview-aliases">{entity.aliases.map(alias => <li key={alias}>{alias}</li>)}</ul></section>}

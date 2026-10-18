@@ -1,3 +1,4 @@
+import {TitleText} from '../components/TitleText';
 import {useState} from 'react';
 import type {Entity, Page, PageSummary} from '../../shared/domain';
 import type {PageDraftRecovery} from '../state/workspace';
@@ -24,7 +25,7 @@ export function PageDraftRecoveryNotice({recovery,page,entities,pages,onRestore,
       {recovery.drafts.length>1&&<label>Recovered draft<Select value={index} disabled={busy} onChange={event=>setIndex(Number(event.target.value))}>{recovery.drafts.map((draft,i)=><option key={draft.id} value={i}>{new Date(draft.updatedAt).toLocaleString()} · {draft.snapshot.title || 'Untitled'}</option>)}</Select></label>}
       <p>Draft from {new Date(entry.updatedAt).toLocaleString()} · based on revision {entry.baseRevision}</p>
       <section className="page-draft-preview" aria-label="Recovered draft preview">
-        <h3>{entry.snapshot.title || 'Untitled'}</h3>
+        <h3><TitleText text={entry.snapshot.title || 'Untitled'}/></h3>
         <ReadOnlyPageBlocks blocks={entry.snapshot.blocks} entities={entities} pages={pages} vaultId={page.vault_id} onOpenEntity={()=>{}} onOpenPage={()=>{}}/>
       </section>
       {error&&<p role="alert">{error}</p>}

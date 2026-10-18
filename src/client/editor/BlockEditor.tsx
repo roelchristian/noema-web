@@ -1,3 +1,4 @@
+import {TitleText} from '../components/TitleText';
 import {CitationPicker} from './CitationPicker';
 import {citationKey,cleanCitationGroups,noteCitations} from '../../shared/citations';
 import {citationSpace,trimTrailingCitationSpace,trimLeadingCitationSpace} from './citation-spacing';
@@ -502,7 +503,7 @@ export function BlockEditor(props: Props) {
       // Release modal focus before an action focuses a new or converted block.
       if (sheet && !item.submenu) event.currentTarget.closest('dialog')?.close();
       item.pick();
-    }}><span className="menu-icon" style={item.color?{color:item.color}:undefined}>{item.entity || item.icon === 'equation' ? <Icon name={item.icon}/> : item.icon}</span><span>{item.title}{item.detail&&<small>{item.detail}</small>}</span>{item.submenu&&!item.back&&<span className="menu-submenu-arrow" aria-hidden="true"><Icon name="chevron"/></span>}</button>);
+    }}><span className="menu-icon" style={item.color?{color:item.color}:undefined}>{item.entity || item.icon === 'equation' ? <Icon name={item.icon}/> : item.icon}</span><span>{item.icon==='page'?<TitleText text={item.title}/>:item.title}{item.detail&&<small>{item.detail}</small>}</span>{item.submenu&&!item.back&&<span className="menu-submenu-arrow" aria-hidden="true"><Icon name="chevron"/></span>}</button>);
   }
   function insertMention(range: Range, id: string, blockId: string) {
     if (!range.startContainer.isConnected) return;

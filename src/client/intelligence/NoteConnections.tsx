@@ -1,3 +1,4 @@
+import {TitleText} from '../components/TitleText';
 import {useEffect,useId,useMemo,useState} from 'react';
 import {blockPageLinks,pageTitleKey} from '../../shared/page-links';
 import type {Page,PageSummary} from '../../shared/domain';
@@ -33,11 +34,11 @@ export function NoteConnections({page,pages,onOpenPage,inactive=false}:{page:Pag
   const links=outgoing.flatMap(link=>{
     const aliases=!!link.aliases.size&&<small className="knowledge-link-alias">Shown as: {[...link.aliases].join(', ')}</small>;
     return link.targets.length?link.targets.map(target=><li key={'page-'+target.id}>
-      <button type="button" disabled={inactive} onClick={()=>onOpenPage(target.id)}><LinkDirectionIcon direction={incomingIds.has(target.id)?'bidirectional':'outgoing'}/><span>{target.title}{link.targets.length>1&&<small>Updated {new Date(target.updated_at).toLocaleString()}</small>}</span></button>
+      <button type="button" disabled={inactive} onClick={()=>onOpenPage(target.id)}><LinkDirectionIcon direction={incomingIds.has(target.id)?'bidirectional':'outgoing'}/><span><TitleText text={target.title}/>{link.targets.length>1&&<small>Updated {new Date(target.updated_at).toLocaleString()}</small>}</span></button>
       {aliases}
-    </li>):[<li key={'missing-'+pageTitleKey(link.title)}><div className="knowledge-missing-link"><LinkDirectionIcon direction="outgoing"/><span>{link.title}<small>Note not found in this vault</small></span></div>{aliases}</li>];
+    </li>):[<li key={'missing-'+pageTitleKey(link.title)}><div className="knowledge-missing-link"><LinkDirectionIcon direction="outgoing"/><span><TitleText text={link.title}/><small>Note not found in this vault</small></span></div>{aliases}</li>];
   });
-  if(!loading&&!error)links.push(...incomingOnly.map(source=><li key={'page-'+source.id}><button type="button" disabled={inactive} onClick={()=>onOpenPage(source.id)}><LinkDirectionIcon direction="incoming"/><span>{source.title||'Untitled'}</span></button></li>));
+  if(!loading&&!error)links.push(...incomingOnly.map(source=><li key={'page-'+source.id}><button type="button" disabled={inactive} onClick={()=>onOpenPage(source.id)}><LinkDirectionIcon direction="incoming"/><span><TitleText text={source.title||'Untitled'}/></span></button></li>));
   const paginationKey=JSON.stringify([page.vault_id,page.id]);
   const [pagination,setPagination]=useState({key:paginationKey,index:0});
   const pageSize=10;

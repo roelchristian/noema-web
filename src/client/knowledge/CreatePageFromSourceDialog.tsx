@@ -1,3 +1,4 @@
+import {TitleText} from '../components/TitleText';
 import {sourceDuration,type SourceProcessingProgress} from '../../shared/source-progress';
 import {memo,useEffect,useRef,useState,type FormEvent} from 'react';
 import type {Block,Entity,Page,Segment} from '../../shared/domain';
@@ -162,7 +163,7 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
           <p>Keep this dialog open while generating. Stop generation cancels the request; completed math batches are saved for retry.</p>
         </div>}
         {phase!=='loading'&&<div className="source-page-preview" ref={preview} aria-label="Generated page preview" aria-busy={running} onScroll={event=>{const node=event.currentTarget;follow.current=node.scrollHeight-node.scrollTop-node.clientHeight<64;}}>
-          {title&&<h3 className="source-page-preview-title">{title}</h3>}
+          {title&&<h3 className="source-page-preview-title"><TitleText text={title}/></h3>}
           <DraftBlocks blocks={blocks} vaultId={vaultId}/>
           {running&&liveBlock&&<LiveDraftBlock block={liveBlock} vaultId={vaultId}/>}
           {running&&<div className="source-page-skeleton" aria-hidden="true"><span/><span/><span/></div>}

@@ -1,3 +1,4 @@
+import {TitleText} from '../components/TitleText';
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 import type { Organization, OrganizationContext, PageSummary } from '../../shared/domain';
 import { readSidebarExpansion, saveSidebarExpansion } from './sidebar-expansion';
@@ -106,7 +107,7 @@ export function SidebarOrganization({vaultId, data, pages, activePageId, activeF
       if (disabled) { event.preventDefault(); return; }
       if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault(); onOpenPage(page.id);
-    }} title={page.title || 'Untitled'}><PageIcon icon={page.icon}/><span className="page-link-title">{page.title || 'Untitled'}</span></a>);
+    }} title={page.title || 'Untitled'}><PageIcon icon={page.icon}/><span className="page-link-title"><TitleText text={page.title || 'Untitled'}/></span></a>);
   }
   function folders(collection: string, parent: string | null, depth: number, scope = '') {
     return data.folders.filter(folder => folder.parent_id === parent).map(folder => <div key={folder.id}>

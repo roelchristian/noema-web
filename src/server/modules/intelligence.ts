@@ -6,7 +6,7 @@ import { entityScanPrompt } from './entity-scan.js';
 import { titlePrompt } from './title-prompt.js';
 import { summaryPrompt } from './summary-prompt.js';
 import type {SourceAuthor} from './source-authors.js';
-import { sourceEnrichmentPrompt } from './source-enrichment-prompt.js';
+import { sourceEnrichmentPrompt, sourceAuthorsPrompt } from './source-enrichment-prompt.js';
 import { limitSummaryWords } from '../../shared/summary-text.js';
 import { pageLanguage } from './page-language.js';
 import { defaultIntelligencePreferences, defaultManualRequestsPerMinute, maxManualRequestsPerMinute, validManualRequestLimit, intelligenceModels, type IntelligenceConfiguration, supportedIntelligencePreferences, type IntelligencePreferences } from '../../shared/intelligence.js';
@@ -17,6 +17,10 @@ import { Store } from '../store.js';
 import { HttpError } from '../validation.js';
 
 interface Credential { key: string; expiresAt: string; generation: string }
+function parseSourceAuthors(value:unknown):SourceAuthor[] {
+ if(!Array.isArray(value)||value.length>100||value.some((author:unknown)=>!author||typeof author!=='object'||!('name' in author)||typeof author.name!=='string'||!author.name.trim()||author.name.length>200||/[\x00-\x1f\x7f]/.test(author.name)||!('type' in author)||!['person','organization'].includes(String(author.type))))throw new HttpError(502,'AI returned invalid source authors. Retry enrichment.');
+ return (value as SourceAuthor[]).map(author=>({name:author.name.trim().replace(/\s+/g,' '),type:author.type}));
+}
 export interface SecretStore { read(): Credential | null; write(value: Credential): void; remove(): void }
 // The credential never enters SQLite, browser storage, command arguments, or logs.
 export class MacKeychain implements SecretStore {
@@ -169,12 +173,16 @@ export class Intelligence {
     try {
       const value=JSON.parse(output);
       if(!value||typeof value.name!=='string'||!value.name.trim()||value.name.length>200||/[\r\n\x00-\x1f]/.test(value.name)||typeof value.summary!=='string'||!value.summary.trim()||!('language' in value))throw new Error();
-      if(!Array.isArray(value.authors)||value.authors.length>100||value.authors.some((author:unknown)=>!author||typeof author!=='object'||!('name' in author)||typeof author.name!=='string'||!author.name.trim()||author.name.length>200||/[\x00-\x1f\x7f]/.test(author.name)||!('type' in author)||!['person','organization'].includes(String(author.type))))throw new Error();
-      const authors=(value.authors as SourceAuthor[]).map(author=>({name:author.name.trim().replace(/\s+/g,' '),type:author.type}));
+      const authors=parseSourceAuthors(value.authors);
       return {name:value.name.trim(),language:pageLanguage(value.language),summary:limitSummaryWords(value.summary),authors};
     }catch {throw new HttpError(502,'AI returned invalid source metadata. Retry enrichment.');}
   }
-  async generate(input: string, validate=false, onRequest?: AIRequestObserver, title=false, entityScan=false, explain=false, utility?:{subtypes:{id:string;name:string}[];currentTitle:string}, background=false,sourcePage?:{onDelta:(delta:string)=>void;signal:AbortSignal},sourceEnrichment=false) {
+  async extractSourceAuthors(input:string,onRequest?:AIRequestObserver) {
+    const output=await this.generate(input,false,onRequest,false,false,false,undefined,true,undefined,'authors');
+    try{return parseSourceAuthors(JSON.parse(output)?.authors);}
+    catch{throw new HttpError(502,'AI returned invalid source authors. Retry enrichment.');}
+  }
+  async generate(input: string, validate=false, onRequest?: AIRequestObserver, title=false, entityScan=false, explain=false, utility?:{subtypes:{id:string;name:string}[];currentTitle:string}, background=false,sourcePage?:{onDelta:(delta:string)=>void;signal:AbortSignal},sourceEnrichment:boolean|'authors'=false) {
     const credential=this.credential(),selection=title?this.titleSelection():this.selection(),preferenceRevision=this.preferenceRevision;
     if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
     if(!title&&!entityScan&&this.active)throw new HttpError(429,'Another AI request is running. Please wait.');
@@ -186,7 +194,7 @@ export class Intelligence {
     const timer=setTimeout(()=>controller.abort(),Math.min(sourcePage?180000:45000,Date.parse(credential.expiresAt)-this.clock()));
     let trace: AIDebugTrace | undefined;
     try {
-      const prompt=sourceEnrichment?sourceEnrichmentPrompt(input):sourcePage?sourcePagePrompt(input):validate?{instructions:'Reply with OK.',input:'Connection test.'}:title?titlePrompt(input,utility?.subtypes,utility?.currentTitle):entityScan?entityScanPrompt(input):explain?explanationPrompt(input):summaryPrompt(input);
+      const prompt=sourceEnrichment==='authors'?sourceAuthorsPrompt(input):sourceEnrichment?sourceEnrichmentPrompt(input):sourcePage?sourcePagePrompt(input):validate?{instructions:'Reply with OK.',input:'Connection test.'}:title?titlePrompt(input,utility?.subtypes,utility?.currentTitle):entityScan?entityScanPrompt(input):explain?explanationPrompt(input):summaryPrompt(input);
       const inputText=typeof prompt.input==='string'?prompt.input:prompt.input.flatMap(item=>item.content.map(part=>part.text)).join('');
       trace=redactedTrace(onRequest?.(Buffer.byteLength(prompt.instructions+inputText,'utf8')),credential.key);
       const payload={model:selection.model,store:false,max_output_tokens:title?512:validate?2048:8192,reasoning:{effort:selection.reasoningEffort},tools:[],tool_choice:'none',...prompt,...(trace||sourcePage?{stream:true}:{})};

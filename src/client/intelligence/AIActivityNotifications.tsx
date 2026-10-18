@@ -27,7 +27,7 @@ export function AIActivityNotifications({onOpenPage,onOpenEntity,onSourceUpdates
     return()=>{active.current=false;sequence.current++;request.current?.abort();clearInterval(timer);window.removeEventListener('focus',changed);document.removeEventListener('visibilitychange',changed);window.removeEventListener('noema:ai-activity',changed);};
   },[]);
   useEffect(()=>{void refresh();},[refreshKey]);
-  const sourceUpdates=data.items.filter(item=>item.action==='source_import').map(item=>item.id).join(',');
+  const sourceUpdates=data.items.filter(item=>item.action==='source_import'||item.action==='source_enrichment').map(item=>item.id).join(',');
   useEffect(()=>{if(sourceUpdates)void onSourceUpdates?.().catch(()=>{});},[sourceUpdates]);
   useLayoutEffect(()=>{
     if(!open)return;

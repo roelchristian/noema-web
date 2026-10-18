@@ -14,6 +14,7 @@ export function saveSourceAuthors(store:Store,vault:string,sourceId:string,autho
  const unique=[...new Map(authors.map(author=>[`${author.type}:${normalized(author.name)}`,author])).values()];
  const properties=store.all<{id:string;value:string|null;target_id:string|null}>("SELECT id,value,target_id FROM properties WHERE entity_id=? AND name COLLATE NOCASE='author'",sourceId);
  const linked=new Set(properties.flatMap(property=>property.target_id?[property.target_id]:[]));
+ const textCredits=new Set(properties.flatMap(property=>property.value?.split(';').map(normalized).filter(Boolean)??[]));
  let changed=false;
  const resolve=(author:SourceAuthor):Entity|undefined=>{
   const key=normalized(author.name),candidates=entities.filter(entity=>entity.type===author.type);
@@ -25,7 +26,8 @@ export function saveSourceAuthors(store:Store,vault:string,sourceId:string,autho
   const created=knowledge.create(vault,{type:author.type,name:author.name,subtypes:[]});
   entities.push(created);return created;
  };
- const put=(author:SourceAuthor,propertyId?:string)=>{
+ const put=(author:SourceAuthor,propertyId?:string,convertingText=false)=>{
+  if(!propertyId&&!convertingText&&textCredits.has(normalized(author.name)))return;
   const target=resolve(author);
   if(target&&linked.has(target.id)) {
    if(propertyId){store.run('DELETE FROM properties WHERE id=? AND entity_id=?',propertyId,sourceId);changed=true;}
@@ -38,15 +40,24 @@ export function saveSourceAuthors(store:Store,vault:string,sourceId:string,autho
  };
  const populated=properties.filter(property=>property.target_id||property.value?.trim());
  if(populated.length) {
-  // Convert an existing text credit only when it agrees with the document's
-  // explicit authors. Semicolons separate coauthors; commas can be part of names.
+  // Match existing text credits against explicit authors or known names/aliases.
+  // Semicolons separate coauthors; commas can be part of names.
   for(const property of populated) {
    if(property.target_id||!property.value)continue;
    const names=property.value.split(';').map(name=>normalized(name)).filter(Boolean);
-   const matches=names.map(name=>unique.filter(author=>normalized(author.name)===name));
+   const matches=names.map(name=>{
+    const explicit=unique.filter(author=>normalized(author.name)===name);
+    if(explicit.length)return explicit;
+    const canonical=entities.filter(entity=>normalized(entity.name)===name);
+    const known=canonical.length?canonical:entities.filter(entity=>entity.aliases?.some(alias=>normalized(alias)===name));
+    return known.length===1?[{name:known[0]!.name,type:known[0]!.type as SourceAuthor['type']}]:[];
+   });
    if(!names.length||matches.some(match=>match.length!==1))continue;
-   matches.forEach((match,index)=>put(match[0]!,index===0?property.id:undefined));
+   matches.forEach((match,index)=>put(match[0]!,index===0?property.id:undefined,true));
   }
+  // Retain existing links while adding explicitly credited coauthors that are
+  // not yet represented. Unmatched user-entered text is never discarded.
+  for(const author of unique)put(author);
   return changed;
  }
  if(!unique.length)return false;

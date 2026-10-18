@@ -10,6 +10,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { BlockType, Segment } from '../shared/domain.js';
 import { now } from './validation.js';
+import {setupSourceAuthorSchema} from './source-author-schema.js';
 import {setupSourcePassageSchema} from './source-passage-schema.js';
 import {setupSourcePassageEmbeddingSchema} from './source-passage-embedding-schema.js';
 import {setupTextSearchSchema} from './text-search-schema.js';
@@ -398,6 +399,7 @@ if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
    store.run("INSERT INTO schema_migrations VALUES (4,datetime('now'))");
   });
  }
+ setupSourceAuthorSchema(db);
  setupSourcePassageSchema(db);
  setupSourcePassageEmbeddingSchema(db);
  setupTextSearchSchema(db);

@@ -1,3 +1,5 @@
+import {SourceAuthorBackfill,recordSourceAuthorsProcessed} from './source-author-backfill.js';
+import {sourceEnrichmentText} from './source-enrichment-prompt.js';
 import {AINotifications} from './ai-notifications.js';
 import {saveSourceAuthors} from './source-authors.js';
 import type {SourceFile} from '../../shared/domain.js';
@@ -11,7 +13,9 @@ export class SourceEnrichments {
  private busy=false;
  private closed=false;
  private activityId?:string;
+ private authorBackfill:SourceAuthorBackfill;
  constructor(private store:Store,private intelligence:Intelligence,private activity:AIActivityLog) {
+  this.authorBackfill=new SourceAuthorBackfill(store,intelligence,activity);
   store.run("UPDATE source_files SET enrichment_status='pending' WHERE enrichment_status='running'");
  }
  retry(vault:string,id:string) {
@@ -28,13 +32,13 @@ export class SourceEnrichments {
    if(!this.intelligence.status().configured)return;
    const file=this.store.get<SourceFile>(`SELECT f.* FROM source_files f JOIN vaults v ON v.id=f.vault_id JOIN entities e ON e.id=f.entity_id
     WHERE f.status='ready' AND f.enrichment_status='pending' AND f.enrichment_next_attempt_at<=? AND v.locked=0 AND e.type='source' ORDER BY f.created_at LIMIT 1`,now());
-   if(!file)return;
+   if(!file){await this.authorBackfill.tick();return;}
    const entity=this.store.get<{name:string;updated_at:string}>('SELECT name,updated_at FROM entities WHERE id=?',file.entity_id!);
    this.store.run("UPDATE source_files SET enrichment_status='running',enrichment_attempts=enrichment_attempts+1,enrichment_error=NULL WHERE id=?",file.id);
    this.activityId=this.activity.start('source_enrichment',this.intelligence.selection(),file.vault_id,file.entity_id,'entity');
    try {
     // Bound request size while sampling the beginning, middle and end of long uploads.
-    const input=file.text.length<=40000?file.text:`[Source excerpts: beginning, middle, end; omitted text is unavailable.]\n${file.text.slice(0,16000)}\n[Excerpt gap]\n${file.text.slice(Math.max(16000,Math.floor(file.text.length/2)-6000),Math.floor(file.text.length/2)+6000)}\n[Excerpt gap]\n${file.text.slice(-12000)}`;
+    const input=sourceEnrichmentText(file.text);
     const result=await this.intelligence.enrichSource(input,bytes=>this.activity.request(this.activityId!,bytes,null));
     if(this.closed)return;
     const open=this.store.get('SELECT 1 FROM vaults WHERE id=? AND locked=0',file.vault_id);
@@ -48,6 +52,7 @@ export class SourceEnrichments {
      // A user edit made during the request takes precedence over generated naming.
      this.store.run('UPDATE entities SET name=?,updated_at=? WHERE id=? AND vault_id=? AND name=? AND updated_at=?',result.name,now(),file.entity_id!,file.vault_id,entity!.name,entity!.updated_at);
      if(saveSourceAuthors(this.store,file.vault_id,file.entity_id!,result.authors))this.store.run('UPDATE entities SET updated_at=? WHERE id=? AND vault_id=?',now(),file.entity_id!,file.vault_id);
+     recordSourceAuthorsProcessed(this.store,file);
     });
     new AINotifications(this.store).recordSource(file.vault_id,file.entity_id!,'completed','source_enrichment');
     this.activity.finish(this.activityId!,'completed',200);
@@ -62,6 +67,7 @@ export class SourceEnrichments {
  }
  close() {
   this.closed=true;
+  this.authorBackfill.close();
   if(this.activityId)this.activity.finish(this.activityId,'interrupted',null);
  }
 }

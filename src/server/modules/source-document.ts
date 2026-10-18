@@ -89,7 +89,7 @@ export function processedSourceDocument(file:SourceFile):SourceDocument {
    const marker=trimmed.match(/^(`{3,}|~{3,})/);
    const table:boolean=trimmed.includes('|')&&(kind==='table'||/^\s*\|?\s*:?-{3,}:?\s*\|/.test(trimmed)||/^\s*\|?\s*:?-{3,}:?\s*\|/.test(text.slice(nextPosition).split('\n')[0]??''));
    const continuation=/^ {4}|^\t/.test(raw);
-   const lineKind:SourceDocumentNode['kind']=!blockFence&&!displayMath&&(footnote||kind==='footnote'&&continuation)?'footnote':!blockFence&&!displayMath&&kind==='list'&&continuation?'list':blockFence||marker||/^\s{4}|^\t/.test(raw)?'code':displayMath||/^\$\$|^\\\[/.test(trimmed)?'equation':/^[-+*]\s|^\d+[.)]\s/.test(trimmed)?'list':table?'table':/^>/.test(trimmed)?'blockquote':'paragraph';
+   const lineKind:SourceDocumentNode['kind']=!blockFence&&!displayMath&&(footnote||kind==='footnote'&&continuation)?'footnote':!blockFence&&!displayMath&&(kind as SourceDocumentNode['kind'])==='list'&&continuation?'list':blockFence||marker||/^\s{4}|^\t/.test(raw)?'code':displayMath||/^\$\$|^\\\[/.test(trimmed)?'equation':/^[-+*]\s|^\d+[.)]\s/.test(trimmed)?'list':table?'table':/^>/.test(trimmed)?'blockquote':'paragraph';
    if(chunkStart>=0&&!blockFence&&!displayMath&&lineKind!==kind)flush();
    if(chunkStart<0){chunkStart=position+(lineKind==='code'?0:raw.indexOf(trimmed));kind=lineKind;}
    parts.push(raw);chunkEnd=position+raw.trimEnd().length;
@@ -129,39 +129,13 @@ export function processedSourceDocument(file:SourceFile):SourceDocument {
  };
 }
 
-interface GenerationNode {
- kind:SourceDocumentNode['kind'];
- lines:[number,number];
- title?:string;
- text?:string;
- inferred?:true;
- children?:GenerationNode[];
-}
-
-/** The generation request contains each content leaf once, inside its hierarchy.
- * Long leaves are split locally so every evidence range fits the citation limit. */
-export function sourceGenerationDocument(document:SourceDocument,sourceText:string) {
- const text=sourceText.replace(/\r\n?/g,'\n'),lines=text.split('\n'),starts:number[]=[];
- let offset=0;
- for(const line of lines){starts.push(offset);offset+=line.length+1;}
- const convert=(node:SourceDocumentNode):GenerationNode=>{
-  const result:GenerationNode={kind:node.kind,lines:[node.range.startLine,node.range.endLine],
-   ...(node.title?{title:node.title}:{}),...(node.extent==='inferred'?{inferred:true as const}:{})};
-  if(node.children)result.children=node.children.map(convert);
-  else if(node.text!==undefined) {
-   if(node.range.endLine-node.range.startLine<30)result.text=node.text;
-   else {
-    result.children=[];
-    for(let startLine=node.range.startLine;startLine<=node.range.endLine;startLine+=30) {
-     const endLine=Math.min(startLine+29,node.range.endLine);
-     const start=Math.max(node.range.startOffset,starts[startLine-1]!);
-     const end=Math.min(node.range.endOffset,starts[endLine]??text.length);
-     const body=text.slice(start,end);
-     if(body.trim())result.children.push({kind:node.kind,lines:[startLine,endLine],text:node.kind==='paragraph'?body.trim().replace(/\s*\n\s*/g,' '):body});
-    }
-   }
-  }
-  return result;
- };
- return {schemaVersion:document.schemaVersion,...(document.processing.math?{mathPreparation:document.processing.math}:{}),physicalPages:document.physical.pages.map(page=>({number:page.number,lines:[page.range.startLine,page.range.endLine]})),content:document.semantic.children.map(convert)};
+/** Preserve semantic identity and hierarchy in the model's evidence document. */
+export function sourceGenerationDocument(document:SourceDocument,_sourceText:string) {
+ const convert=(node:SourceDocumentNode):unknown=>({
+  id:node.id,kind:node.kind,
+  ...(node.title?{title:node.title}:{}),...(node.text!==undefined?{text:node.text}:{}),
+  ...(node.extent==='inferred'?{inferred:true}:{}),
+  ...(node.children?{children:node.children.map(convert)}:{}),
+ });
+ return {schemaVersion:document.schemaVersion,...(document.processing.math?{mathPreparation:document.processing.math}:{}),content:document.semantic.children.map(convert)};
 }

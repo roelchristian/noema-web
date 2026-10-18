@@ -1,3 +1,5 @@
+import {processedSourceDocument} from './source-document.js';
+import {sourceDocumentEntries,sourceNodeLabel} from '../../shared/source-document.js';
 import {mathSource,sourceTextHash} from './source-math-text.js';
 import {createHash, randomUUID} from 'node:crypto';
 import type {Block, Segment, SourceFile} from '../../shared/domain.js';
@@ -67,6 +69,7 @@ function referencePages(file:SourceFile,startLine:number,endLine:number) {
 }
 /** Enrich older citations only against the exact source version they cite. */
 export function enrichCitationPages(store:Store,blocks:Block[]) {
+  const documents=new Map<string,ReturnType<typeof sourceDocumentEntries>>();
   const files=new Map<string,SourceFile|undefined>(),hashes=new Map<string,string>(),cleanedHashes=new Map<string,string>();
   for(const block of blocks)for(const segment of [block.content,...(block.rows??[]).flat() ].flat()) {
     const ref=segment.sourceReference;if(!ref)continue;
@@ -76,7 +79,16 @@ export function enrichCitationPages(store:Store,blocks:Block[]) {
     if(!cleanedHashes.has(file.id))cleanedHashes.set(file.id,sourceTextHash(mathSource(store,file).text));
     const matches=hashes.get(file.id)===ref.sourceHash||cleanedHashes.get(file.id)===ref.sourceHash;
     ref.stale=file.status!=='ready'||!file.admitted||!matches;
-    if(matches)Object.assign(ref,referencePages(file,ref.startLine,ref.endLine));
+    if(matches){
+      Object.assign(ref,referencePages(file,ref.startLine,ref.endLine));
+      const key=file.id+':'+ref.sourceHash;
+      if(!documents.has(key))documents.set(key,sourceDocumentEntries(processedSourceDocument(hashes.get(file.id)===ref.sourceHash?file:mathSource(store,file))));
+      const entries=documents.get(key)!;
+      const entry=ref.nodeId?entries.find(entry=>entry.node.id===ref.nodeId):entries.filter(({node})=>
+        ref.startOffset!==undefined?node.range.startOffset<=ref.startOffset&&node.range.endOffset>(ref.startOffset):node.range.startLine<=ref.startLine&&node.range.endLine>=ref.startLine
+      ).sort((a,b)=>(a.node.range.endOffset-a.node.range.startOffset)-(b.node.range.endOffset-b.node.range.startOffset))[0];
+      if(entry)ref.contextLabel=sourceNodeLabel(entry.path);
+    }
   }
   return blocks;
 }

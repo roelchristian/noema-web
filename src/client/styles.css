@@ -2534,27 +2534,19 @@ dialog.source-page-dialog.has-preview { width: 1200px; }
 .source-reference-tag:hover, .source-reference-tag:focus-visible { color: var(--text); background: var(--surface-hover); border-bottom-color: var(--text-muted); }
 
 /* Source reading shares the Knowledge sidebar frame, with its own numbered passage. */
-.source-viewer > .panel-body { padding: 18px 16px; }
+.source-viewer > .panel-body { padding: 10px 12px; }
 .source-viewer .entity-toolbar-title { font-size: 13px; font-weight: 500; }
-.source-viewer .section-hint { font-size: 10px; line-height: 1.5; margin: 6px 0 12px; }
-.source-viewer-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 16px; }
-.source-viewer-heading h3 { margin: 0; font-size: 12px; font-weight: 500; }
-.source-viewer-heading button { display: inline-flex; align-items: center; gap: 4px; color: var(--text-muted); font-size: 11px; padding: 6px 0; }
+.source-viewer-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.source-viewer-location { min-width: 0; color: var(--text-muted); font-size: 11px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-viewer-heading button { display: inline-flex; align-items: center; gap: 4px; flex: none; color: var(--text-muted); font-size: 10px; padding: 4px 0; }
 .source-viewer-heading button:hover { color: var(--text); }
 .source-viewer-heading .icon { width: 12px; height: 12px; }
-.source-viewer-lines { min-width: 0; margin: 8px 0; }
-.source-viewer-line { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 8px; padding: 1px 8px 1px 2px; line-height: 1.5; font-size: 12px; color: var(--text-muted); }
-.source-viewer-line-number { padding-top: 1px; color: var(--text-faint, var(--text-muted)); font: 10px/1.6 ui-monospace, SFMono-Regular, monospace; text-align: right; user-select: none; }
-.source-viewer-line-text, .source-viewer-line mark { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.source-viewer-line.is-cited { background: var(--surface-hover); box-shadow: inset 2px 0 var(--line); color: var(--text); }
-.source-viewer-line mark { color: inherit; background: transparent; }
-.source-viewer-line.is-cited .source-viewer-line-number { color: var(--text); }
-.source-viewer-status { margin: 16px 0; padding: 12px; border: 1px solid var(--line); border-radius: 6px; color: var(--text-muted); font-size: 12px; line-height: 1.7; }
+.source-viewer-status { margin: 8px 0; padding: 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--text-muted); font-size: 12px; line-height: 1.7; }
 .source-viewer-status button { text-decoration: underline; text-underline-offset: 3px; }
 .source-viewer-more { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 6px; color: var(--text-muted); border: 0; border-radius: 4px; font-size: 10px; }
 .source-viewer-more:hover { background: var(--surface-hover); color: var(--text); }
 .source-viewer-more .icon { width: 12px; height: 12px; rotate: 90deg; }
-.source-viewer-range { color: var(--text-muted); font-size: 10px; line-height: 1.7; overflow-wrap: anywhere; margin-top: 18px; }
+.source-viewer-range { color: var(--text-muted); font-size: 10px; line-height: 1.7; overflow-wrap: anywhere; margin-top: 8px; }
 .source-reference-preview { width: 320px; padding: 14px; border-radius: 7px; box-shadow: 0 4px 20px #00000012; }
 .source-reference-preview h3 { font-size: 13px; font-weight: 500; margin: 8px 0; }
 .source-reference-preview-passage { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; max-height: 4.8em; margin: 8px 0; color: var(--text-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
@@ -2779,3 +2771,11 @@ dialog.noema-modal.ai-activity-modal .modal-header { position: relative; top: au
   .ai-usage-heading { align-items: flex-start; }
   .ai-usage-heading > button { flex-shrink: 0; }
 }
+
+.source-viewer-passages { min-width: 0; margin: 4px 0; }
+.source-viewer-passage { padding: 6px 10px; color: var(--text-muted); overflow-wrap: anywhere; white-space: pre-wrap; font-size: 12px; line-height: 1.55; }
+.source-viewer-passage.is-heading { padding-top: 10px; padding-bottom: 2px; color: var(--text); font-size: 11px; font-weight: 600; }
+.source-viewer-passage.is-cited { background: var(--surface-hover); box-shadow: inset 2px 0 var(--line); color: var(--text); }
+.source-viewer-passage mark { color: inherit; background: transparent; }
+
+.source-viewer-inline-heading { color: var(--text); font-weight: 600; }

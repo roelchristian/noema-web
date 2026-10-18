@@ -1,5 +1,6 @@
+import {sourceDocumentEntries,sourceNodeLabel} from '../../shared/source-document.js';
 import {mathSource} from './source-math-text.js';
-import {sourceGenerationDocument} from './source-document.js';
+import {processedSourceDocument,sourceGenerationDocument} from './source-document.js';
 import {SourceDocuments} from './source-documents.js';
 import {linkSourceReferences,syncSourceReferences} from './source-references.js';
 import {pageLanguage} from './page-language.js';
@@ -20,6 +21,7 @@ export class SourcePageDraft {
   private previewText='';
   private size=0;
   private readonly sourceLines:string[];
+  private readonly semanticEntries:ReturnType<typeof sourceDocumentEntries>;
   private evidenceBlocks=0;
   private flaggedBlocks=0;
   private recordCount=0;
@@ -28,7 +30,7 @@ export class SourcePageDraft {
   title='';
   language:string|null=null;
   readonly blocks:Block[]=[];
-  constructor(private emit:(event:SourcePageEvent)=>void,sourceText:string) {this.sourceLines=sourceTextLines(sourceText);}
+  constructor(private emit:(event:SourcePageEvent)=>void,sourceText:string,private file?:SourceFile) {this.sourceLines=sourceTextLines(sourceText);this.semanticEntries=file?sourceDocumentEntries(processedSourceDocument(file)):[];}
   feed(delta:string) {
     this.size+=delta.length;
     if(this.size>60000)throw new HttpError(502,'The generated page exceeded the size limit. Try a narrower focus.');
@@ -75,13 +77,25 @@ export class SourcePageDraft {
     let blockNeedsReview=!Array.isArray(suppliedCitations)||suppliedCitations.length>3||!heading&&item.basis!=='context'&&!citations.length;
     const normalize=(value:string)=>value.replace(/\s+/g,' ').trim();
     const evidence=citations.map((citation:unknown)=>{
-      const {startLine,endLine,quote,anchor}=citation&&typeof citation==='object'&&!Array.isArray(citation)?citation as Record<string,unknown>:{};
+      const {startLine,endLine,quote,anchor,nodeId}=citation&&typeof citation==='object'&&!Array.isArray(citation)?citation as Record<string,unknown>:{};
       const validRange=typeof startLine==='number'&&typeof endLine==='number'&&Number.isInteger(startLine)&&Number.isInteger(endLine)&&startLine>=1&&endLine>=startLine&&endLine<=this.sourceLines.length&&endLine-startLine<30;
-      const passage=validRange?normalize(this.sourceLines.slice(startLine-1,endLine).join('\n')):'';
+      const entry=this.file&&typeof nodeId==='string'?this.semanticEntries.find(entry=>entry.node.id===nodeId):undefined;
+      const node=entry?.node;
+      // Containers supply context; only their title or text-bearing leaves are evidence.
+      const nodeText=node?.text??node?.title;
+      const passage=this.file?normalize(nodeText??''):validRange?normalize(this.sourceLines.slice(startLine-1,endLine).join('\n')):'';
       const matched=!!passage&&(quote===undefined||typeof quote==='string'&&!!normalize(quote)&&quote.length<=240&&passage.includes(normalize(quote)))&&(item.blockType!=='quote'||passage.includes(normalize(item.text as string)));
       if(typeof quote==='string')this.quotedCharacters+=quote.length;
-      const range=matched?(startLine===endLine?String(startLine):`${startLine}-${endLine}`):undefined;
-      return {range,quote:typeof quote==='string'?quote:undefined,anchor:typeof anchor==='string'?anchor:undefined};
+      const range=matched?(node?node.id:startLine===endLine?String(startLine):`${startLine}-${endLine}`):undefined;
+      const reference=matched&&node&&entry&&this.file?.entity_id?{
+        id:randomUUID(),sourceNumber:1,sourceId:this.file.entity_id,fileId:this.file.id,
+        nodeId:node.id,contextLabel:sourceNodeLabel(entry.path),sourceHash:createHash('sha256').update(this.file.text).digest('hex'),
+        startLine:node.range.startLine,endLine:node.text!==undefined?node.range.endLine:node.range.startLine,
+        startOffset:node.range.startOffset,endOffset:node.text!==undefined?node.range.endOffset:node.range.startOffset+(node.title?.length??0),
+        ...(node.range.startPage?{startPage:node.range.startPage,endPage:node.text!==undefined?node.range.endPage??node.range.startPage:node.range.startPage}:{}),
+        excerpt:nodeText!,
+      }:undefined;
+      return {range,reference,quote:typeof quote==='string'?quote:undefined,anchor:typeof anchor==='string'?anchor:undefined};
     });
     if(item.blockType==='quote') {
       if(item.basis!=='source'||item.text.length>240||!evidence.some(citation=>citation.range))blockNeedsReview=true;
@@ -113,7 +127,7 @@ export class SourcePageDraft {
       };
       const quoteOffset=uniqueOffset(citation.quote),anchorOffset=uniqueOffset(citation.anchor);
       if(citation.quote&&item.blockType!=='quote'&&quoteOffset<0)content.push({text:` “${citation.quote}”`});
-      content.push({text:citation.range?` [L: ${citation.range}]`:' [??]'});
+      content.push(citation.reference?{text:' [ref]',sourceReference:citation.reference}:{text:citation.range?` [L: ${citation.range}]`:' [??]'});
       const offset=quoteOffset>=0?quoteOffset:anchorOffset>=0?anchorOffset:item.text.length;
       // A claim anchor inside a formula must not split its LaTeX delimiters.
       const formula=mathRanges.find(range=>range.start<offset&&offset<range.end);

@@ -74,10 +74,10 @@ export function SourceReferencePreview({entities,onOpen}: {entities:Entity[];onO
   if(!citation||!target?.isConnected)return null;
   const source=entities.find(entity=>entity.id===citation.sourceId);
   return <div ref={card} id="source-reference-preview" className="entity-preview source-reference-preview" style={position} role="dialog" aria-labelledby="source-reference-preview-title" aria-describedby="source-reference-preview-label">
-    <div className="entity-preview-type"><Icon name="source"/><span>Reference {target.dataset.citationNumber??citation.sourceNumber??1} · {citationLabel(citation)}</span></div>
+    <div className="entity-preview-type"><Icon name="source"/><span title={citation.contextLabel}>Ref. {target.dataset.citationNumber??citation.sourceNumber??1} · {citationLabel(citation)}</span></div>
     <h3 id="source-reference-preview-title">{source?.name??'Source'}</h3>
     <div className="source-reference-preview-passage">{citation.excerpt.replace(/\s+/g,' ').trim()}</div>
-    <small id="source-reference-preview-label">Saved cited passage · extracted text</small>
+    <small id="source-reference-preview-label">Saved cited passage · source context</small>
     <button type="button" onClick={()=>{const element=target;dismiss();open.current(citation,element);}}>Read with context<Icon name="chevron"/></button>
   </div>;
 }

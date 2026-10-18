@@ -1,6 +1,6 @@
 import {sourceProgress} from './modules/source-progress.js';
 import {mathSource} from './modules/source-math-text.js';
-import {sourceGenerationDocument} from './modules/source-document.js';
+import {processedSourceDocument,sourceGenerationDocument} from './modules/source-document.js';
 import {SourceMath} from './modules/source-math.js';
 import {EntityScanStream} from './modules/entity-scan-stream.js';
 import {DOMAINS,TAXONOMY_VERSION} from '../shared/domains.js';
@@ -126,7 +126,14 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             vaults.requireOpen(vault);
             return send(201,await sourceFiles.admit(vault,url.searchParams.get('name')||'',Buffer.concat(chunks),url.searchParams.get('entity')||undefined,()=>{vaults.requireOpen(vault);}));
           }
-          if(id && parts.length===3 && method==='GET'){const raw=sourceFiles.require(vault,id);const file=url.searchParams.get('sourceHash')===createHash('sha256').update(raw.text).digest('hex')?raw:mathSource(store,raw);return send(200,url.searchParams.get('fingerprint')==='1'?{...file,processing_detail:sourceProgress.get(file.id),textHash:createHash('sha256').update(file.text).digest('hex')}:{...file,processing_detail:sourceProgress.get(file.id)});}
+          if(id && parts.length===3 && method==='GET') {
+            const raw=sourceFiles.require(vault,id);
+            const file=url.searchParams.get('sourceHash')===createHash('sha256').update(raw.text).digest('hex')?raw:mathSource(store,raw);
+            return send(200,{...file,processing_detail:sourceProgress.get(file.id),
+              ...(url.searchParams.get('fingerprint')==='1'?{textHash:createHash('sha256').update(file.text).digest('hex')}:{}),
+              ...(url.searchParams.get('context')==='1'&&file.status==='ready'&&file.admitted?{document:processedSourceDocument(file)}:{}),
+            });
+          }
           if(id && parts.length===3 && method==='DELETE')return send(200,sourceFiles.remove(vault,id));
           if(id && parts.length===4 && parts[3]==='retry' && method==='POST')return send(200,sourceFiles.retry(vault,id));
           if(id && parts.length===4 && parts[3]==='retry-enrichment' && method==='POST')return send(200,sourceEnrichments.retry(vault,id));
@@ -415,10 +422,10 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
                 emit({type:'status',phase:'thinking'});
                 const recent=store.all<{duration_ms:number}>(`SELECT duration_ms FROM ai_activity WHERE action='create_page_from_source' AND status='completed' AND model=? AND reasoning_effort=? AND prompt_bytes BETWEEN ? AND ? AND duration_ms>0 ORDER BY started_at DESC LIMIT 8`,intelligence.selection().model,intelligence.selection().reasoningEffort,Buffer.byteLength(prepared.input)*.5,Buffer.byteLength(prepared.input)*2);
                 if(recent.length>=3)emit({type:'estimate',seconds:Math.ceil(recent.map(row=>row.duration_ms).sort((a,b)=>a-b)[Math.floor(recent.length/2)]!/1000)});
-                const draft=new SourcePageDraft(emit,cleanedFile.text);
+                const draft=new SourcePageDraft(emit,cleanedFile.text,cleanedFile);
                 // A preliminary JSON draft can be previewed, but only final-answer records are saved.
-                let preview=new SourcePageDraft(emit,cleanedFile.text),previewFailed=false;
-                const resetPreview=()=>{emit({type:'preview_reset'});preview=new SourcePageDraft(emit,cleanedFile.text);previewFailed=false;};
+                let preview=new SourcePageDraft(emit,cleanedFile.text,cleanedFile),previewFailed=false;
+                const resetPreview=()=>{emit({type:'preview_reset'});preview=new SourcePageDraft(emit,cleanedFile.text,cleanedFile);previewFailed=false;};
                 await intelligence.generate(prepared.input,false,bytes=>activity.request(activityId!,bytes,null),false,false,false,undefined,false,{
                   signal:controller.signal,onDelta:delta=>draft.feed(delta),onPreviewReset:resetPreview,
                   onPreviewDelta:delta=>{

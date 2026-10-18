@@ -24,3 +24,17 @@ export interface SourceDocument {
  semantic:{kind:'document';children:SourceDocumentNode[]};
  processing:{text:'stored extraction'|'LaTeX cleaned extraction';math?:{format:'LaTeX';originalTextHash:string;uncertain:{line:number;text:string}[]};structure:'stored markers plus local rules';aiEnrichmentStatus:string;aiScope:'bounded excerpts for long sources';inferredExtents:true};
 }
+
+/** Semantic paths are shared by citation generation, saved references and the viewer. */
+export function sourceDocumentEntries(document:SourceDocument) {
+ const entries:{node:SourceDocumentNode;path:SourceDocumentNode[]}[]=[];
+ const visit=(nodes:SourceDocumentNode[],parents:SourceDocumentNode[])=>{
+  for(const node of nodes){const path=[...parents,node];entries.push({node,path});if(node.children)visit(node.children,path);}
+ };
+ visit(document.semantic.children,[]);return entries;
+}
+export function sourceNodeLabel(path:SourceDocumentNode[]) {
+ const titles=path.flatMap(node=>node.title?[node.title]:[]);
+ const labels=titles.length?titles:path.slice(-1).map(node=>`${node.kind[0]!.toUpperCase()}${node.kind.slice(1)}`);
+ return labels.filter((label,index)=>index===0||label!==labels[index-1]).join(' › ');
+}

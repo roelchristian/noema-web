@@ -13,11 +13,10 @@ export function NoteReferences({blocks,entities}: {blocks:Block[];entities:Entit
     <header className="note-references-heading"><h2 id="note-references-title">References</h2></header>
     <ol role="list">{entries.map(({number,reference,occurrences})=>{
       const name=names.get(reference.sourceId)??'Source';
-      const lines=reference.startLine===reference.endLine?`L${reference.startLine}`:`L${reference.startLine}–${reference.endLine}`;
-      const location=reference.startPage?`${citationLocation(reference)} · ${lines}`:lines;
+      const location=citationLocation(reference);
       return <li key={citationKey(reference)} id={`note-reference-${number}`} tabIndex={-1}>
         <div className="note-reference-entry">
-          <button type="button" className="note-reference-source" data-citation-number={number} data-source-reference={JSON.stringify(reference)} title={`${name} · ${location}`} aria-label={`Open reference ${number}: ${name}, ${location}`}>
+          <button type="button" className="note-reference-source" data-citation-number={number} data-source-reference={JSON.stringify(reference)} title={`${name} · ${reference.contextLabel??location}`} aria-label={`Open reference ${number}: ${name}, ${location}`}>
             <span className="note-reference-number" aria-hidden="true">[{number}]</span>
             <span className="note-reference-name">{name}</span>
             <span className="note-reference-location">{location}</span>

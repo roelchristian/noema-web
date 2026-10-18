@@ -1,8 +1,24 @@
 import {blockSegments, type Block, type SourceReference} from './domain.js';
 export type CitationStyle='inline'|'references';
 /** A passage is distinct from another page or section in the same source. */
-export function citationKey(ref:SourceReference){return JSON.stringify([ref.fileId,ref.sourceHash,ref.startLine,ref.endLine]);}
+export function citationKey(ref:SourceReference){return JSON.stringify([ref.fileId,ref.sourceHash,ref.nodeId??ref.startOffset??ref.startLine,ref.nodeId?null:ref.endOffset??ref.endLine]);}
+/** Compact locators use the most specific named context; full paths stay saved. */
+export function citationContextLabel(context:string):string {
+  const parts=context.split(' › ').map(part=>part.trim()).filter(Boolean);
+  while(parts.length>1&&/^(paragraph|code|equation|list|table|blockquote|footnote)$/i.test(parts.at(-1)!))parts.pop();
+  const label=parts.at(-1)??context;
+  const abbreviations:Record<string,string>={chapter:'Ch.',section:'§',subsection:'§',theorem:'Thm.',lemma:'Lem.',proposition:'Prop.',corollary:'Cor.',definition:'Def.',example:'Ex.',remark:'Rem.'};
+  const numbered=label.match(/^(chapter|section|subsection|theorem|lemma|proposition|corollary|definition|example|remark)\s+(\d+(?:[.-][A-Z0-9]+)*|[IVXLCDM]+(?:[.-]\d+)*|[A-Z](?:[.-]\d+)*)\b/i);
+  if(numbered)return `${abbreviations[numbered[1]!.toLowerCase()]} ${numbered[2]}`;
+  const section=label.match(/^(\d+(?:\.\d+)*)(?:[.)]?\s|$)/);
+  if(section)return `§ ${section[1]}`;
+  const plain=label.replace(/[.:]$/,'');
+  // Unnumbered proofs still need their enclosing section to locate them.
+  if(/^proof$/i.test(plain)&&parts.length>1)return `${citationContextLabel(parts.slice(0,-1).join(' › '))} · Proof`;
+  return plain.length>40?plain.slice(0,39).trimEnd()+'…':plain;
+}
 export function citationLocation(ref:SourceReference){
+  if(ref.contextLabel&&!(ref.startPage&&/^(paragraph|code|equation|list|table|blockquote|footnote)$/i.test(ref.contextLabel)))return citationContextLabel(ref.contextLabel)+(ref.startPage?` · ${ref.startPage===ref.endPage?`p. ${ref.startPage}`:`pp. ${ref.startPage}–${ref.endPage}`}`:'');
   if(ref.startPage)return ref.startPage===ref.endPage?`p. ${ref.startPage}`:`pp. ${ref.startPage}–${ref.endPage}`;
   return ref.startLine===ref.endLine?`L${ref.startLine}`:`L${ref.startLine}–${ref.endLine}`;
 }

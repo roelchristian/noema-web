@@ -137,7 +137,8 @@ export class Intelligence {
     const timer=setTimeout(()=>controller.abort(),Math.min(45000,Date.parse(credential.expiresAt)-this.clock()));
     let trace: AIDebugTrace | undefined;
     try {
-      trace=redactedTrace(onRequest?.(Buffer.byteLength(input,'utf8')),credential.key);
+      const observer=onRequest?.(Buffer.byteLength(input,'utf8'));
+      trace=redactedTrace(observer,credential.key);
       const payload={model:'text-embedding-3-small',input,encoding_format:'float',dimensions:1536};
       trace?.request('https://api.openai.com/v1/embeddings',payload);
       const response=await this.transport('https://api.openai.com/v1/embeddings',{
@@ -146,7 +147,7 @@ export class Intelligence {
         body:JSON.stringify(payload),
       });
       if(!response.ok){if(trace)await readOpenAIResponse(response,trace).catch(()=>{});else await response.body?.cancel();throw new HttpError(response.status===429?429:502,response.status===401?'OpenAI rejected the API key. Replace it in Settings.':response.status===429?'OpenAI quota or rate limit reached. Check your OpenAI account.':'OpenAI could not create the embedding. Check API permissions and billing.');}
-      const result=await readOpenAIResponse(response,trace),vector=result.data?.[0]?.embedding;
+      const result=await readOpenAIResponse(response,trace,undefined,undefined,observer?.usage),vector=result.data?.[0]?.embedding;
       if(result.model!=='text-embedding-3-small'||!Array.isArray(vector)||vector.length!==1536||vector.some((value:unknown)=>typeof value!=='number'||!Number.isFinite(value))||!vector.some((value:number)=>value!==0))throw new HttpError(502,'OpenAI returned an invalid embedding.');
       if(controller.signal.aborted||this.credential()?.generation!==credential.generation)throw new HttpError(409,'The credential changed or expired. Please try again.');
       return {embedding:vector,tokens:Number.isSafeInteger(result.usage?.total_tokens)&&result.usage.total_tokens>=0?result.usage.total_tokens:0};
@@ -196,7 +197,8 @@ export class Intelligence {
     try {
       const prompt=sourceEnrichment==='authors'?sourceAuthorsPrompt(input):sourceEnrichment?sourceEnrichmentPrompt(input):sourcePage?sourcePagePrompt(input):validate?{instructions:'Reply with OK.',input:'Connection test.'}:title?titlePrompt(input,utility?.subtypes,utility?.currentTitle):entityScan?entityScanPrompt(input):explain?explanationPrompt(input):summaryPrompt(input);
       const inputText=typeof prompt.input==='string'?prompt.input:prompt.input.flatMap(item=>item.content.map(part=>part.text)).join('');
-      trace=redactedTrace(onRequest?.(Buffer.byteLength(prompt.instructions+inputText,'utf8')),credential.key);
+      const observer=onRequest?.(Buffer.byteLength(prompt.instructions+inputText,'utf8'));
+      trace=redactedTrace(observer,credential.key);
       const payload={model:selection.model,store:false,max_output_tokens:title?512:validate?2048:8192,reasoning:{effort:selection.reasoningEffort},tools:[],tool_choice:'none',...prompt,...(trace||sourcePage?{stream:true}:{})};
       trace?.request('https://api.openai.com/v1/responses',payload);
       const response=await this.transport('https://api.openai.com/v1/responses',{
@@ -213,7 +215,7 @@ export class Intelligence {
         receive(delta.split(credential.key).join('[redacted]').replace(/sk-[A-Za-z0-9_-]{16,}/g,'[redacted]'));
       };
       const result=await readOpenAIResponse(response,trace,sourcePage?delta=>safeDelta(delta,sourcePage.onDelta):undefined,
-        sourcePage?.onPreviewDelta?{onDelta:delta=>safeDelta(delta,sourcePage.onPreviewDelta!),onReset:()=>sourcePage.onPreviewReset?.()}:undefined);
+        sourcePage?.onPreviewDelta?{onDelta:delta=>safeDelta(delta,sourcePage.onPreviewDelta!),onReset:()=>sourcePage.onPreviewReset?.()}:undefined,observer?.usage);
       const summary=responseOutputText(result).trim();
       if(result.status!=='completed'||!summary||summary.length>(sourcePage?60000:12000))throw new HttpError(502,'OpenAI returned an incomplete response. Try a lower reasoning effort or a shorter page.');
       if(controller.signal.aborted||this.credential()?.generation!==credential.generation||this.preferenceRevision!==preferenceRevision)throw new HttpError(409,'The credential or AI settings changed, or the key expired. Please try again.');

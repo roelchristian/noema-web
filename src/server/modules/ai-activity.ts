@@ -8,6 +8,13 @@ import { HttpError } from '../validation.js';
 // Summary rows stay lightweight; opt-in payload traces live in cascading child tables.
 export class AIActivityLog {
   constructor(private store: Store) {
+    // Recover provider-reported counts from older debug snapshots without retaining payloads.
+    for(const row of store.all<{id:string;usage:string|null}>(`SELECT a.id,json_extract(CASE WHEN json_valid(d.response) THEN d.response ELSE '{}' END,'$.usage') AS usage
+      FROM ai_activity a JOIN ai_activity_debug d ON d.activity_id=a.id WHERE a.input_tokens IS NULL OR a.output_tokens IS NULL`)) {
+      if(!row.usage)continue;
+      let usage:unknown;try{usage=JSON.parse(row.usage);}catch{continue;}
+      this.usage(row.id,usage);
+    }
     for(const row of store.all<{action:string;vault_id:string|null;object_id:string|null}>("SELECT action,vault_id,object_id FROM ai_activity WHERE status='running' AND prompt_bytes IS NOT NULL")) new AINotifications(store).outcome(row.action,row.vault_id,row.object_id,'interrupted');
     store.run("UPDATE ai_activity SET status='interrupted',finished_at=? WHERE status='running'",new Date().toISOString());
     this.prune();
@@ -25,7 +32,8 @@ export class AIActivityLog {
   }
   request(id: string, promptBytes: number, revision: number | null) {
     this.store.run('UPDATE ai_activity SET prompt_bytes=?,revision=? WHERE id=?',promptBytes,revision,id);
-    if (!this.store.get('SELECT 1 FROM ai_activity_debug WHERE activity_id=?',id)) return;
+    const usage=(value:unknown)=>this.usage(id,value);
+    if (!this.store.get('SELECT 1 FROM ai_activity_debug WHERE activity_id=?',id)) return {usage};
     const update = (columns: string, ...values: (string | number)[]) => this.store.run(`UPDATE ai_activity_debug SET ${columns},updated_at=? WHERE activity_id=?`,...values,new Date().toISOString(),id);
     let events:{receivedAt:string;type:string;data:string}[]=[],lastFlush=Date.now();
     const flushEvents=()=>{
@@ -36,6 +44,7 @@ export class AIActivityLog {
       events=[];lastFlush=Date.now();
     };
     const trace: AIDebugTrace = {
+      usage,
       request: (endpoint,payload) => { update('endpoint=?,request=?',endpoint,JSON.stringify(payload)); },
       headers: (status,headers) => { update('response_status=?,response_headers=?',status,JSON.stringify(headers)); },
       body: text => { flushEvents();update('response_body=?',text); },
@@ -44,6 +53,15 @@ export class AIActivityLog {
       error: message => { flushEvents();update('error=?',message); },
     };
     return trace;
+  }
+  private usage(id:string,value:unknown) {
+    if(!value||typeof value!=='object'||Array.isArray(value))return;
+    const usage=value as Record<string,unknown>;
+    const count=(value:unknown)=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0?value:null;
+    const input=count(usage.input_tokens??usage.prompt_tokens),output=count(usage.output_tokens??usage.completion_tokens);
+    if(input===null&&output===null)return;
+    this.store.run(`UPDATE ai_activity SET input_tokens=COALESCE(?,input_tokens),
+      output_tokens=COALESCE(?,CASE WHEN action IN ('note_embedding','search_embedding') AND ? IS NOT NULL THEN 0 ELSE output_tokens END) WHERE id=?`,input,output,input,id);
   }
   debugSettings() { return {enabled: this.store.get<{value:string}>("SELECT value FROM metadata WHERE key='ai_debug'")?.value === 'true'}; }
   saveDebugSettings(body: Record<string,unknown>) {
@@ -74,7 +92,7 @@ export class AIActivityLog {
     const rows=this.store.all<AIActivity & {cursor:number}>(`SELECT a.id,a.action,a.status,a.started_at AS startedAt,a.finished_at AS finishedAt,
       a.duration_ms AS durationMs,a.http_status AS httpStatus,a.vault_id AS vaultId,v.name AS vaultName,
       a.object_kind AS objectKind,a.object_id AS objectId,COALESCE(p.title,e.name) AS objectTitle,a.revision,
-      a.model,a.reasoning_effort AS reasoningEffort,a.prompt_bytes AS promptBytes,
+      a.model,a.reasoning_effort AS reasoningEffort,a.prompt_bytes AS promptBytes,a.input_tokens AS inputTokens,a.output_tokens AS outputTokens,
       (CASE WHEN a.object_kind='entity' THEN e.id IS NOT NULL ELSE p.id IS NOT NULL AND p.deleted_at IS NULL END) AS available,EXISTS(SELECT 1 FROM ai_activity_debug d WHERE d.activity_id=a.id) AS debugRecorded,a.rowid AS cursor
       FROM ai_activity a LEFT JOIN vaults v ON v.id=a.vault_id
       LEFT JOIN pages p ON a.object_kind='page' AND p.id=a.object_id AND p.vault_id=a.vault_id

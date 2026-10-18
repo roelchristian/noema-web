@@ -47,7 +47,7 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
         const page=await api.aiActivity(cursor);
         items.push(...page.items);cursor=page.nextCursor??undefined;
       } while(cursor!==undefined);
-      const fields: (keyof AIActivity)[]=['id','action','status','startedAt','finishedAt','vaultId','vaultName','objectKind','objectId','objectTitle','revision','model','reasoningEffort','promptBytes','durationMs','httpStatus'];
+      const fields: (keyof AIActivity)[]=['id','action','status','startedAt','finishedAt','vaultId','vaultName','objectKind','objectId','objectTitle','revision','model','reasoningEffort','promptBytes','inputTokens','outputTokens','durationMs','httpStatus'];
       const cell=(value:unknown)=>{
         const text=String(value??'');
         return '"'+(/^[\s]*[=+@-]/.test(text)?"'"+text:text).replace(/"/g,'""')+'"';
@@ -71,7 +71,7 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
     <div className="ai-activity-table-wrap" tabIndex={0} role="region" aria-label="AI activity records" aria-busy={busy}>
       <table className="ai-activity-table">
         <caption className="sr-only">AI activity, newest first</caption>
-        <thead><tr>{['Started','Action','Status','Source','Model / reasoning','Input bytes','Duration','HTTP','Debug'].map(label=><th scope="col" key={label}>{label}</th>)}</tr></thead>
+        <thead><tr>{['Started','Action','Status','Source','Model / reasoning','Input bytes','Input tokens','Output tokens','Duration','HTTP','Debug'].map(label=><th scope="col" key={label}>{label}</th>)}</tr></thead>
         <tbody>{data.items.map(item=><tr key={item.id}>
           <td><time dateTime={item.startedAt}>{new Date(item.startedAt).toLocaleString()}</time></td>
           <td>{aiActivityLabels[item.action]}</td>
@@ -81,6 +81,8 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
           </>:item.action==='search_embedding'?<span>Vault search</span>:<span>Settings → Intelligence</span>}</td>
           <td className="ai-activity-model">{item.model}{item.action!=='note_embedding'&&item.action!=='search_embedding'&&<small className="ai-activity-reasoning">{item.reasoningEffort==='none'?'no reasoning':`${item.reasoningEffort} reasoning`}</small>}</td>
           <td>{item.promptBytes===null?'Not sent':item.promptBytes.toLocaleString()}</td>
+          <td>{item.inputTokens==null?'—':item.inputTokens.toLocaleString()}</td>
+          <td>{item.outputTokens==null?'—':item.outputTokens.toLocaleString()}</td>
           <td>{item.durationMs===null?'—':`${(item.durationMs/1000).toFixed(1)}s`}</td>
           <td>{item.httpStatus??'—'}</td>
           <td>{item.debugRecorded?<button className="ai-activity-link" onClick={()=>setDebugId(item.id)}>Open payload</button>:'Off'}</td>

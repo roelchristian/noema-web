@@ -108,6 +108,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS ai_activity (
  model TEXT NOT NULL, reasoning_effort TEXT NOT NULL, prompt_bytes INTEGER
 );
  CREATE INDEX IF NOT EXISTS ai_activity_started ON ai_activity(started_at DESC);`);
+for(const column of ['input_tokens','output_tokens']) {
+ if(!db.prepare('PRAGMA table_info(ai_activity)').all().some(field=>field.name===column))db.exec(`ALTER TABLE ai_activity ADD COLUMN ${column} INTEGER CHECK(${column}>=0)`);
+}
 db.exec(`CREATE TABLE IF NOT EXISTS ai_activity_debug (
  activity_id TEXT PRIMARY KEY REFERENCES ai_activity(id) ON DELETE CASCADE,
  endpoint TEXT, request TEXT, response_body TEXT NOT NULL DEFAULT '', response TEXT,

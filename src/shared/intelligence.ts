@@ -35,6 +35,7 @@ export interface AIActivity extends IntelligencePreferences {
   vaultId: string | null; vaultName: string | null; objectKind: 'page' | 'entity' | null;
   objectId: string | null; objectTitle: string | null; revision: number | null;
   available: boolean; promptBytes: number | null;
+  inputTokens: number | null; outputTokens: number | null;
   debugRecorded: boolean;
 }
 export interface AIActivityPage { items: AIActivity[]; nextCursor: number | null }

@@ -1,4 +1,4 @@
-import type { AIDebugTrace } from './ai-debug.js';
+import type { AIDebugTrace,AIUsageObserver } from './ai-debug.js';
 import { HttpError } from '../validation.js';
 
 /** Commentary is a preliminary message, not part of the generated artifact. */
@@ -6,8 +6,8 @@ export function responseOutputText(result:{output?:{type:string;phase?:string;co
   return (result.output??[]).filter(item=>item.type==='message'&&item.phase!=='commentary').flatMap(item=>item.content??[]).filter(part=>part.type==='output_text'&&typeof part.text==='string').map(part=>part.text!).join('\n');
 }
 
-export function redactedTrace(trace: AIDebugTrace | void, key: string): AIDebugTrace | undefined {
-  if (!trace) return;
+export function redactedTrace(trace: AIDebugTrace | AIUsageObserver | void, key: string): AIDebugTrace | undefined {
+  if (!trace || !('request' in trace)) return;
   const text = (value: string) => value.split(key).join('[redacted]').replace(/sk-[A-Za-z0-9_-]{16,}/g,'[redacted]');
   const payload = (value: unknown): unknown => JSON.parse(text(JSON.stringify(value)));
   return {
@@ -21,7 +21,7 @@ export function redactedTrace(trace: AIDebugTrace | void, key: string): AIDebugT
 }
 
 /** Read JSON or SSE, retaining the provider's final response and every stream event. */
-export async function readOpenAIResponse(response: Response, trace?: AIDebugTrace, onTextDelta?:(delta:string)=>void, preview?:{onDelta:(delta:string)=>void;onReset:()=>void}) {
+export async function readOpenAIResponse(response: Response, trace?: AIDebugTrace, onTextDelta?:(delta:string)=>void, preview?:{onDelta:(delta:string)=>void;onReset:()=>void}, onUsage?:(usage:unknown)=>void) {
   const headers: Record<string,string> = {};
   for (const name of ['content-type','x-request-id','openai-processing-ms','retry-after']) {
     const value=response.headers.get(name); if (value !== null) headers[name]=value;
@@ -66,6 +66,7 @@ export async function readOpenAIResponse(response: Response, trace?: AIDebugTrac
     }
     if (['response.completed','response.failed','response.incomplete'].includes(type) && event.response) {
       result=event.response;
+      onUsage?.(result.usage);
       trace?.response(result);
     }
   }
@@ -99,6 +100,7 @@ export async function readOpenAIResponse(response: Response, trace?: AIDebugTrac
       if (!result) throw new HttpError(502,'OpenAI stream ended before a final response was received.');
     } else {
       result=JSON.parse(raw);
+      onUsage?.(result.usage);
       trace?.response(result);
     }
     if(onTextDelta){

@@ -61,10 +61,10 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
     finally{setBusy(false);}
   }
   if(debugId)return <AIActivityDebug id={debugId} onClose={()=>setDebugId(null)}/>;
-  if(confirmClear) return <ConfirmDialog danger title="Clear AI activity?" description="Permanently delete all available activity records, including older rows and running entries. This does not cancel running requests. Locked vault activity is kept." action="Clear activity" onClose={()=>setConfirmClear(false)} onConfirm={async()=>{await api.clearAIActivity();setData({items:[],nextCursor:null});setMessage('Activity cleared.');}}/>;
+  if(confirmClear) return <ConfirmDialog danger title="Clear AI activity?" description="Delete all activity and debug traces for unlocked vaults. Running requests continue." action="Clear activity" onClose={()=>setConfirmClear(false)} onConfirm={async()=>{await api.clearAIActivity();setData({items:[],nextCursor:null});setMessage('Activity cleared.');}}/>;
   return <Modal className="ai-activity-modal" titleId="ai-activity-heading" onClose={onClose}>
     <ModalHeader titleId="ai-activity-heading">AI activity log</ModalHeader>
-    <p className="ai-activity-description">The latest 1,000 actions are stored locally. When AI debug mode is enabled, request and response payloads are also stored locally and can be opened below. Locked vault activity is hidden and excluded from export and clear.</p>
+    <p className="ai-activity-description">Up to 1,000 recent actions stored locally. Locked vault activity is hidden and excluded from export and clear.</p>
     <div className="ai-activity-toolbar"><button className="button" disabled={busy} onClick={()=>void load()}>Refresh</button><button className="button" disabled={busy||!data.items.length} onClick={()=>void exportCSV()}>Export CSV</button><button className="button danger" disabled={busy||!data.items.length} onClick={()=>setConfirmClear(true)}>Clear activity</button></div>
     {error&&<p role="alert">{error}</p>}
     <p role="status" aria-live="polite">{busy?'Loading activity…':message||`${data.items.length} records loaded`}</p>
@@ -86,8 +86,8 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
           <td>{item.debugRecorded?<button className="ai-activity-link" onClick={()=>setDebugId(item.id)}>Open payload</button>:'Off'}</td>
         </tr>)}</tbody>
       </table>
-      {!busy&&!data.items.length&&!error&&<p className="ai-activity-empty">No AI activity yet. AI explanations, titles, summaries, entity scans, embeddings, and connection tests will appear here.</p>}
+      {!busy&&!data.items.length&&!error&&<p className="ai-activity-empty">No AI activity yet.</p>}
     </div>
-    <footer className="ai-activity-footer">{data.nextCursor!==null&&<button className="button" disabled={busy} onClick={()=>void load(data.nextCursor!)}>Load older activity</button>}<p>CSV exports activity metadata. Open a payload to download its complete JSON trace. Export includes all available records, including older rows. Input size counts UTF-8 bytes, not tokens. Embedding retries appear as separate attempts; queued jobs remain in embedding settings. Skipped means a note changed or indexing was cancelled. Interrupted means the server stopped before recording an outcome. Newest activity refreshes every second; loading older records pauses refresh.</p><button className="button primary" onClick={onClose}>Done</button></footer>
+    <footer className="ai-activity-footer">{data.nextCursor!==null&&<button className="button" disabled={busy} onClick={()=>void load(data.nextCursor!)}>Load older activity</button>}<p>Export CSV for all available records, or open a payload for its JSON trace. Loading older activity pauses auto-refresh.</p><button className="button primary" onClick={onClose}>Done</button></footer>
   </Modal>;
 }

@@ -2440,10 +2440,7 @@ dialog.source-page-dialog.has-preview { width: 1200px; }
   .knowledge-source-page { width: 44px; height: 44px; }
 }
 
-.page-ai-provenance { margin: -8px 0 28px; font-size: 11px; line-height: 1.6; color: var(--text-muted); }
-.page-ai-provenance > div { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
-.page-ai-provenance dt { flex: none; }
-.page-ai-provenance dd { margin: 0; display: inline-flex; align-items: center; gap: 6px; color: var(--text); }
+.page-ai-provenance { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--text-muted); }
 .page-ai-provenance .icon { width: 13px; height: 13px; flex: none; color: var(--text-muted); }
 .page-ai-library-status { display: inline; margin-left: 8px; color: var(--text-muted); }
 

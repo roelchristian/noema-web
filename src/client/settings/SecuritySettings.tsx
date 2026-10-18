@@ -53,8 +53,8 @@ export function SecuritySettings({vault, onChangePassphrase, onBeforeNetworkChan
   return <>
     <section className="settings-section" aria-labelledby="security-passphrase-heading">
       <h3 id="security-passphrase-heading">Vault passphrase</h3>
-      <p>{vault ? `Manage access to “${vault.name}”. Passphrases lock access in Noema; they do not encrypt the database.` : 'Choose a vault to manage its passphrase.'}</p>
-      {vault?.locked ? <p>Unlock this vault before adding, changing, or removing its passphrase.</p> : vault && <form className="security-passphrase-form" onSubmit={submit}>
+      <p>{vault ? `Control access to “${vault.name}”. Passphrases do not encrypt the database.` : 'Choose a vault to manage its passphrase.'}</p>
+      {vault?.locked ? <p>Unlock this vault to manage its passphrase.</p> : vault && <form className="security-passphrase-form" onSubmit={submit}>
         <p className="security-protection-status">{vault.protected ? 'A passphrase is set for this vault.' : 'This vault has no passphrase.'}</p>
         {vault.protected && <div className="display-options" role="group" aria-label="Passphrase action">
           <button type="button" aria-pressed={mode === 'change'} disabled={busy} onClick={() => { setMode('change'); setError(''); setNotice(''); }}>Change passphrase</button>
@@ -66,17 +66,17 @@ export function SecuritySettings({vault, onChangePassphrase, onBeforeNetworkChan
           <p id="security-passphrase-hint">Use at least 4 characters.</p>
           <label htmlFor="security-confirm-passphrase">Confirm new passphrase<input id="security-confirm-passphrase" type="password" autoComplete="new-password" minLength={4} maxLength={500} required disabled={busy} value={confirmation} onChange={event => setConfirmation(event.target.value)}/></label>
         </>}
-        {mode === 'remove' && vault.protected && <p>Removing the passphrase lets anyone with access to this server open the vault.</p>}
+        {mode === 'remove' && vault.protected && <p>Anyone with server access will be able to open this vault.</p>}
         {error && <p className="dialog-error" role="alert">{error}</p>}
         {notice && <p role="status">{notice}</p>}
         <button type="submit" className="button primary" disabled={busy}>{busy ? 'Saving…' : !vault.protected ? 'Add passphrase' : mode === 'remove' ? 'Remove passphrase' : 'Save passphrase'}</button>
       </form>}
     </section>
     <section className="settings-section" aria-labelledby="security-network-heading">
-      <div className="security-network-row"><div><h3 id="security-network-heading">Allow LAN connections</h3><p id="security-network-description">Let devices on your local network connect to Noema. Unlocked vaults are shared with those devices.</p></div>
+      <div className="security-network-row"><div><h3 id="security-network-heading">Allow LAN connections</h3><p id="security-network-description">Let local network devices connect and access unlocked vaults.</p></div>
         <button type="button" className="security-switch" role="switch" aria-checked={network?.lan ?? false} aria-labelledby="security-network-heading" aria-describedby="security-network-description" disabled={loading || !network || networkBusy} onClick={() => void toggleNetwork()}><span/></button>
       </div>
-      <p className="security-network-state" role="status">{loading ? 'Loading network settings…' : networkBusy ? 'Saving network settings…' : network ? `LAN access is ${network.lan ? 'on' : 'off'}. Changes apply immediately and survive restarts.` : 'Network settings are unavailable.'}</p>
+      <p className="security-network-state" role="status">{loading ? 'Loading network settings…' : networkBusy ? 'Saving network settings…' : network ? `LAN access is ${network.lan ? 'on' : 'off'}.` : 'Network settings are unavailable.'}</p>
       {networkNotice && <p role="status">{networkNotice}</p>}
       {networkError && <p className="dialog-error" role="alert">{networkError} <button type="button" className="summary-toggle" disabled={networkBusy} onClick={() => setReload(value => value + 1)}>Retry</button></p>}
     </section>

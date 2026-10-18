@@ -16,12 +16,12 @@ export function AIDebugSettings() {
   }
   return <section className="settings-section" aria-labelledby="ai-debug-heading">
     <h3 id="ai-debug-heading">AI debug mode</h3>
-    <p>Store full request bodies, provider responses, errors, and timestamped stream events in the local activity log. This includes note text sent to OpenAI. API keys and authorization headers are excluded.</p>
+    <p>Save full AI requests and responses locally, including note text. API keys are excluded.</p>
     <div className="display-options" role="group" aria-label="AI debug mode">
       <button type="button" disabled={!ready||busy} aria-pressed={!enabled} onClick={()=>void change(false)}>Off</button>
       <button type="button" disabled={!ready||busy} aria-pressed={enabled} onClick={()=>void change(true)}>On</button>
     </div>
-    <p className="display-hint">Applies to new AI requests across this app. Open payloads in the activity log to follow responses live. Turning this off keeps existing traces; Clear activity deletes them.</p>
+    <p className="display-hint">Applies to new requests across vaults. Use Clear activity to delete saved traces.</p>
     {error&&<p role="alert">{error}</p>}
   </section>;
 }

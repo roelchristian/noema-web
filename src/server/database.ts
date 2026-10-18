@@ -255,6 +255,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS source_page_drafts (
 );
  CREATE INDEX IF NOT EXISTS source_page_drafts_source ON source_page_drafts(vault_id,source_id,status,created_at);`);
 if (!db.prepare('PRAGMA table_info(source_page_drafts)').all().some(column=>column.name==='notification_id')) db.exec('ALTER TABLE source_page_drafts ADD COLUMN notification_id TEXT REFERENCES ai_notifications(id) ON DELETE SET NULL');
+if (!db.prepare('PRAGMA table_info(source_page_drafts)').all().some(column=>column.name==='options')) db.exec("ALTER TABLE source_page_drafts ADD COLUMN options TEXT NOT NULL DEFAULT '{}'");
 // Backfill provenance once; future saves preserve generated origin even after edits.
 if (!db.prepare('PRAGMA table_info(pages)').all().some(column=>column.name==='ai_status')) {
  db.exec('BEGIN IMMEDIATE');

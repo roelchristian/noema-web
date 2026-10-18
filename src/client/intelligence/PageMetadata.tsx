@@ -1,6 +1,7 @@
 import type {Page} from '../../shared/domain';
 import {pageAIStatusLabels,pageAIStatusDescriptions} from '../../shared/page-ai-status';
 import {pageIcons} from '../../shared/page-icons';
+import {Icon} from '../components/Icon';
 
 function languageLabel(language:string):string {
   try{return new Intl.DisplayNames(['en'],{type:'language'}).of(language)??language;}
@@ -11,8 +12,8 @@ export function PageMetadata({page}:{page:Page}) {
   const aiStatus=page.aiStatus??'regular';
   const updated=new Date(page.updated_at),validDate=Number.isFinite(updated.getTime());
   const icon=pageIcons.find(icon=>icon.id===page.icon);
-  return <section className="knowledge-page-metadata" aria-labelledby="knowledge-page-metadata-heading">
-    <div className="knowledge-section-heading"><h2 id="knowledge-page-metadata-heading">Page metadata</h2></div>
+  return <details className="knowledge-page-metadata" aria-labelledby="knowledge-page-metadata-heading">
+    <summary className="knowledge-section-heading"><h2 id="knowledge-page-metadata-heading"><span>Properties</span><Icon name="chevron"/></h2></summary>
     <dl className="page-metadata-fields">
       <div><dt>Title</dt><dd className="page-metadata-title" title={page.title}>{page.title||'Untitled'}</dd></div>
       <div><dt>Language</dt><dd>{page.language?<><span>{languageLabel(page.language)}</span><small>{page.language}</small></>:'Not recorded'}</dd></div>
@@ -24,5 +25,5 @@ export function PageMetadata({page}:{page:Page}) {
       <div><dt>Cover image</dt><dd>{page.featuredImageId?'Attached':'None'}</dd></div>
       <div><dt>Page ID</dt><dd><code>{page.id}</code></dd></div>
     </dl>
-  </section>;
+  </details>;
 }

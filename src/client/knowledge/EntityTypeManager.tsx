@@ -32,23 +32,23 @@ export function EntityTypeManager({vaultId, schema, onChange, entityColors, onCo
     <div className="entity-type-options" role="group" aria-label="Main entity type">{entityTypes.map(t => <button key={t} type="button" aria-pressed={type === t} disabled={busy} onClick={() => { setType(t); setSelectedSubtype(''); setProperty(''); setError(''); }}><span className={'entity-icon ' + t}><Icon name={t}/></span>{entityLabels[t]}</button>)}</div>
     <div>
       <h3>{entityLabels[type]} color</h3>
-      <p className="section-hint">Used for this type’s icons and mentions, including its subtypes. Colors save in this browser.</p>
+      <p className="section-hint">Applies to icons and mentions, including subtypes.</p>
       <div className="entity-color-row">
         <label htmlFor={'color-' + type}>{entityLabels[type]}</label>
         <span className={'mention ' + type} aria-hidden="true"><Icon name={type}/>{entityLabels[type]}</span>
         <ColorPicker key={type} id={'color-' + type} label={entityLabels[type] + ' color'} value={entityColors[type]} onChange={color => onColorChange(type, color)}/>
       </div>
     </div>
-    <div><h3>Subtypes of {entityLabels[type]}</h3><p className="section-hint">Define fields on a subtype to share them with every entity assigned to it. Values are entered separately on each entity.</p><div className="type-field-list">{schema.subtypes.filter(s => s.type === type).map(s => <span key={s.id}><Icon name={type}/>{s.name}</span>)}</div>
+    <div><h3>Subtypes of {entityLabels[type]}</h3><p className="section-hint">Group entities with shared fields.</p><div className="type-field-list">{schema.subtypes.filter(s => s.type === type).map(s => <span key={s.id}><Icon name={type}/>{s.name}</span>)}</div>
       <form className="type-add-form" onSubmit={e => { void save(e,'subtype'); }}><input required maxLength={200} aria-label="New subtype name" placeholder="e.g. Researcher" value={subtype} disabled={busy} onChange={e => setSubtype(e.target.value)}/><button className="button small" disabled={busy}>Add subtype</button></form>
     </div>
-    <div><h3>Shared category properties</h3><p className="section-hint">Existing category fields are inherited by every entity in this category, alongside its subtype fields.</p><div className="type-field-list">{schema.properties[type].map(name => <span key={name}>{name}</span>)}</div></div>
+    <div><h3>Shared category properties</h3><p className="section-hint">Fields shared by all entities in this category.</p><div className="type-field-list">{schema.properties[type].map(name => <span key={name}>{name}</span>)}</div></div>
     <div><h3>Subtype properties</h3>
       {propertySubtype ? <>
         <Select aria-label="Subtype for property definitions" value={propertySubtype.id} disabled={busy} onChange={event => { setSelectedSubtype(event.target.value); setProperty(''); }}>
           {subtypes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
         </Select>
-        <p className="section-hint">Every {propertySubtype.name} entity inherits these fields and the category fields above.</p>
+        <p className="section-hint">Fields shared by all {propertySubtype.name} entities.</p>
         <div className="type-field-list">{(schema.subtypeProperties[propertySubtype.id] ?? []).map(name => <span key={name}>{name}</span>)}</div>
         <form className="type-add-form" onSubmit={event => { void save(event,'property'); }}><input required maxLength={200} aria-label="New subtype property" placeholder="e.g. occupation" value={property} disabled={busy} onChange={event => setProperty(event.target.value)}/><button className="button small" disabled={busy}>Add property to {propertySubtype.name}</button></form>
       </> : <p className="section-hint">Create a subtype to define its properties.</p>}

@@ -10,7 +10,7 @@ export function KnowledgeEntitySettings({vault, appearance, onChange, storageErr
     <section className="settings-section" aria-labelledby="entity-types-heading">
       <h3 id="entity-types-heading">Types &amp; subtypes</h3>
       {vault ? <><p>Manage subtypes, shared properties, and type colors in {vault.name}.</p><VaultEntityTypes vaultId={vault.id} appearance={appearance} onAppearanceChange={onChange}/></> : <p>Open a vault to manage its types, subtypes, and colors.</p>}
-    <p className="section-hint" role="status">{storageError ? 'Applied for now. Browser storage is unavailable; colors won’t survive a reload.' : 'Entity colors apply instantly and save in this browser.'}</p>
+    <p className="section-hint" role="status">{storageError ? 'Browser storage unavailable. Colors won’t persist after reload.' : 'Colors saved in this browser.'}</p>
     <button className="button" onClick={() => onChange({...appearance, entityColors: defaultAppearance().entityColors})}>Restore entity colors</button>
     </section>
   </>;

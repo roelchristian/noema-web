@@ -1,3 +1,4 @@
+import { readWorkspaceURL, workspaceURL, type NavigationAddress, type WorkspaceAddress } from './navigation-address';
 import {clearLibraryViewStates} from './library-view-state';
 import {clearEntityDrafts, pruneEntityDrafts} from '../knowledge/entity-drafts';
 import {pageDraftJournal, type PageDraftEntry} from './page-draft-journal';
@@ -27,9 +28,15 @@ export interface WorkspaceState {
   organization: Organization; organizationContext: OrganizationContext; recent: RecentItem[];
   page: Page | null; view: 'pages' | 'entities' | 'organization' | 'favourites' | 'recent' | 'trash' | 'inbox'; busy: boolean; loadingPageId: string | null; reviewing: boolean; error: string | null; saveStatus: SaveStatus;
 }
-type NavigationAddress = {view: WorkspaceState['view']; pageId: string | null; entityId: string | null; collection: string; folder: string};
 export class Workspace {
   private state: WorkspaceState = {saveFailures: [], draftStorageFailures: [], draftRecoveries: [], entityPanelId: null, canGoBack: false, canGoForward: false, vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
+  private browserAttached = false;
+  private browserInitialized = false;
+  private browserSession = '';
+  private browserIndex = 0;
+  private browserMaxIndex = 0;
+  private browserRestoring = false;
+  private pendingBrowserAddress: {address: WorkspaceAddress | null; index: number} | null = null;
   private history: NavigationAddress[] = [];
   private historyIndex = -1;
   private historyVault: string | null = null;
@@ -118,6 +125,72 @@ export class Workspace {
     }
     this.listeners.forEach(fn => fn());
   }
+  attachBrowserNavigation() {
+    this.browserAttached = true;
+    this.browserSession = window.history.state?.noemaSession ?? window.crypto?.randomUUID?.() ?? String(Date.now()) + '-' + Math.random().toString(36).slice(2);
+    this.browserIndex = window.history.state?.noemaIndex ?? 0;
+    this.browserMaxIndex = this.browserIndex;
+    try {
+      const maximum = Number(sessionStorage.getItem('noema-history/' + this.browserSession));
+      if (Number.isSafeInteger(maximum)) this.browserMaxIndex = Math.max(this.browserIndex, maximum);
+    } catch { /* Browser traversal still works without session storage. */ }
+    window.history.replaceState({...window.history.state, noemaIndex:this.browserIndex, noemaSession:this.browserSession}, '', window.location.href);
+    const pop = () => {
+      this.pendingBrowserAddress = {address:readWorkspaceURL(), index:window.history.state?.noemaIndex ?? 0};
+      this.cancelPageLoad();
+      void this.restoreBrowserNavigation();
+    };
+    window.addEventListener('popstate', pop);
+    return () => { this.browserAttached = false; window.removeEventListener('popstate', pop); };
+  }
+  private async restoreBrowserNavigation() {
+    if (this.browserRestoring) return;
+    this.browserRestoring = true;
+    this.traversingHistory = true;
+    this.patch({});
+    try {
+      while (this.pendingBrowserAddress && this.browserAttached) {
+        // Finish writes and vault operations before applying a browser traversal.
+        if (this.state.busy || this.state.reviewing || this.navigation) await new Promise<void>(resolve => {
+          const unsubscribe = this.subscribe(() => {
+            if (!this.state.busy && !this.state.reviewing && !this.navigation) { unsubscribe(); resolve(); }
+          });
+        });
+        const target = this.pendingBrowserAddress;
+        this.pendingBrowserAddress = null;
+        this.browserIndex = target.index;
+        this.browserMaxIndex = Math.max(this.browserMaxIndex, target.index);
+        const address = target.address;
+        if (address && address.vaultId !== this.state.vault?.id) await this.selectVault(address.vaultId, address);
+        else if (!this.state.vault?.locked) await this.navigate(async () => {
+          if (address) await this.restoreAddress(address);
+          else this.patch({view:'organization', organizationContext:{collection:'',folder:''}});
+        });
+      }
+    } catch (error) { this.report(error); }
+    finally {
+      this.browserRestoring = false;
+      this.traversingHistory = false;
+      // Canonicalize unavailable/deleted targets without adding another entry.
+      this.browserInitialized = false;
+      this.patch({});
+    }
+  }
+  private syncBrowserNavigation(address: NavigationAddress) {
+    if (!this.browserAttached || this.browserRestoring || this.traversingHistory || !this.state.vault || this.state.vault.locked || this.state.busy || this.state.loadingPageId !== null) return;
+    const url = workspaceURL({...address, vaultId:this.state.vault.id});
+    const changed = window.location.pathname + window.location.search !== url;
+    if (!this.browserInitialized) {
+      window.history.replaceState({...window.history.state, noemaIndex:this.browserIndex, noemaSession:this.browserSession}, '', url);
+      this.browserInitialized = true;
+    } else if (changed) {
+      this.browserIndex++;
+      this.browserMaxIndex = this.browserIndex;
+      window.history.pushState({noemaIndex:this.browserIndex, noemaSession:this.browserSession}, '', url);
+      try { sessionStorage.setItem('noema-history/' + this.browserSession, String(this.browserMaxIndex)); }
+      catch { /* Forward availability can be rediscovered after reload. */ }
+    }
+  }
   private validAddress(address: NavigationAddress) {
     if (address.entityId && !this.state.entities.some(entity => entity.id === address.entityId)) return false;
     if (address.view === 'pages') return this.state.pages.some(page => page.id === address.pageId);
@@ -142,12 +215,18 @@ export class Workspace {
         this.historyIndex = this.history.length - 1;
       }
     }
+    if (vaultId && !this.state.busy && this.state.loadingPageId === null) this.syncBrowserNavigation({
+      view:this.state.view, pageId:this.state.view === 'pages' ? this.state.page?.id ?? null : null, entityId:this.state.entityPanelId,
+      collection:this.state.view === 'organization' ? this.state.organizationContext.collection : '',
+      folder:this.state.view === 'organization' ? this.state.organizationContext.folder : '',
+    });
     this.state = {...this.state,
-      canGoBack: !this.traversingHistory && this.history.slice(0, this.historyIndex).some(address => this.validAddress(address)),
-      canGoForward: !this.traversingHistory && this.history.slice(this.historyIndex + 1).some(address => this.validAddress(address))};
+      canGoBack: !this.traversingHistory && (this.browserAttached ? this.browserIndex > 0 : this.history.slice(0, this.historyIndex).some(address => this.validAddress(address))),
+      canGoForward: !this.traversingHistory && (this.browserAttached ? this.browserIndex < this.browserMaxIndex : this.history.slice(this.historyIndex + 1).some(address => this.validAddress(address)))};
   }
   async goHistory(direction: -1 | 1) {
     if (this.traversingHistory || this.state.busy || this.state.reviewing || this.state.loadingPageId !== null || !this.state.vault || this.state.vault.locked) return;
+    if (this.browserAttached) { window.history.go(direction); return; }
     let index = this.historyIndex + direction;
     while (index >= 0 && index < this.history.length && !this.validAddress(this.history[index]!)) index += direction;
     const address = this.history[index];
@@ -178,26 +257,37 @@ export class Workspace {
   closeEntity() {
     if (this.state.entityPanelId) this.patch({entityPanelId: null});
   }
-  private async restoreAddress() {
+  private async restoreAddress(requested?: WorkspaceAddress) {
     const {vault, organization, pages} = this.state;
     if (!vault || vault.locked) return;
     let stored: Record<string, unknown>;
+    const urlAddress = requested ?? (this.browserAttached ? readWorkspaceURL() : null);
+    const explicit = urlAddress?.vaultId === vault.id ? urlAddress : null;
     try {
-      const value: unknown = JSON.parse(localStorage.getItem('noema-address/' + vault.id) || 'null');
+      const value: unknown = explicit ?? JSON.parse(localStorage.getItem('noema-address/' + vault.id) || 'null');
       if (!value || typeof value !== 'object' || Array.isArray(value)) return;
       stored = value as Record<string, unknown>;
     } catch { return; }
     if (typeof stored.view !== 'string' || !['pages', 'organization', 'entities', 'favourites', 'recent', 'trash', 'inbox'].includes(stored.view)) return;
     const collection = organization.collections.some(item => item.id === stored.collection) ? String(stored.collection) : '';
     const folder = !collection && organization.folders.some(item => item.id === stored.folder) ? String(stored.folder) : '';
-    this.patch({organizationContext: {collection, folder}});
+    this.patch({organizationContext: {collection, folder}, entityPanelId:null});
     if (stored.view === 'pages') {
-      if (typeof stored.pageId === 'string' && pages.some(page => page.id === stored.pageId)) await this.loadPage(stored.pageId, false);
-      else this.patch({organizationContext: {collection: '', folder: ''}});
+      if (typeof stored.pageId === 'string' && pages.some(page => page.id === stored.pageId)) {
+        const cached = this.pageCache.get(stored.pageId);
+        if (cached?.vault_id === vault.id) this.patch({page:cached, view:'pages'});
+        else await this.loadPage(stored.pageId, false);
+      }
+      else {
+        this.patch({view:'organization', organizationContext: {collection: '', folder: ''}});
+        if (explicit) this.report(new Error('This page is unavailable. It may have been moved to Trash or deleted.'));
+      }
+      if (typeof stored.entityId === 'string' && this.state.entities.some(entity => entity.id === stored.entityId)) this.patch({entityPanelId:stored.entityId});
       return;
     }
     if (stored.view === 'trash') this.patch({trash: await api.trash(vault.id)});
     this.patch({view: stored.view as WorkspaceState['view']});
+    if (typeof stored.entityId === 'string' && this.state.entities.some(entity => entity.id === stored.entityId)) this.patch({entityPanelId:stored.entityId});
   }
   report = (error: unknown) => this.patch({error: error instanceof Error ? error.message : String(error)});
   dismissError = () => this.patch({error: null});
@@ -208,7 +298,9 @@ export class Workspace {
       for (const item of vaults) if(item.locked) this.clearVaultDrafts(item.id);
       let remembered: string | null = null;
       try { remembered = localStorage.getItem('noema-vault'); } catch { /* Storage may be disabled. */ }
-      const selected=vaults.find(v=>v.id===remembered)??vaults[0];
+      const requested = this.browserAttached ? readWorkspaceURL() : null;
+      const selected=vaults.find(v=>v.id===requested?.vaultId)??vaults.find(v=>v.id===remembered)??vaults[0];
+      if (requested && !vaults.some(v=>v.id===requested.vaultId)) this.report(new Error('The linked vault is unavailable.'));
       if(!selected){this.patch({busy:false,view:'organization'});return;}
       await this.selectVault(selected.id);
     } catch (error) { this.patch({busy: false}); this.report(error); }
@@ -229,7 +321,7 @@ export class Workspace {
     try { await this.saver.flush(); await work(); }
     finally { this.navigation = false; this.patch({busy: false}); }
   }
-  async selectVault(id: string) {
+  async selectVault(id: string, address?: WorkspaceAddress) {
     await this.navigate(async () => {
       const vaults = await api.vaults(), vault = vaults.find(v => v.id === id);
       if (!vault) throw new Error('Vault not found');
@@ -248,7 +340,7 @@ export class Workspace {
       try {pageDraftJournal.pruneVault(id,new Set(pages.map(page=>page.id)));} catch (error) {this.report(error);}
       pruneEntityDrafts(id,entities.map(entity=>entity.id));
       this.patch({pages, entities, organization, recent});
-      await this.restoreAddress();
+      await this.restoreAddress(address);
     });
   }
   private recoverPage(server: Page): Page {

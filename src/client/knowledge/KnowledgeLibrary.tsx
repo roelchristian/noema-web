@@ -1,6 +1,5 @@
 import {PageCover} from '../components/PageCover';
 import {ViewModeSwitch, useViewMode} from '../components/ViewModeSwitch';
-import { useId } from 'react';
 import { entityLabels, entityTypes, type Entity, type EntityType } from '../../shared/domain';
 import { Icon } from '../components/Icon';
 import { Select } from '../components/Select';
@@ -20,7 +19,6 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onCreate, onCreateP
   const search = viewState.query, sort = viewState.sort;
   const setSearch = (query: string) => setViewState({query});
   const setSort = (sort: string) => setViewState({sort});
-  const filterHintId = useId();
   const filterScope = type ? `${entityLabels[type]} entities` : 'All knowledge entities';
   const query = search.trim().toLowerCase();
   const scoped = entities.filter(entity => !type || entity.type === type);
@@ -43,7 +41,7 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onCreate, onCreateP
     setBrowser({entityType: nextType});
   }
   return <section ref={libraryRef} className="organization-library organization-browser knowledge-library" data-layout={viewMode} data-library-vault={vaultId} data-library-destination={destination}>
-    <div className="organization-heading pages-home-heading"><div className="library-heading-row"><h1 className="page-heading">Knowledge entities</h1></div><div className="pages-home-actions library-heading-actions"><div className="library-view-filter"><div className="library-view-filter-input"><Icon name="search"/><input type="search" placeholder="Filter this view…" aria-label={`Filter ${filterScope} by name or alias`} aria-describedby={filterHintId} value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => {if (event.key === 'Escape' && search) {event.preventDefault(); setSearch('');}}}/>{search && <button type="button" aria-label="Clear entity filter" onClick={() => setSearch('')}><Icon name="close"/></button>}</div><small id={filterHintId}>{filterScope} · ⌘/Ctrl+K searches the whole vault</small></div><ViewModeSwitch value={viewMode} onChange={setViewMode}/>
+    <div className="organization-heading pages-home-heading"><div className="library-heading-row"><h1 className="page-heading">Knowledge entities</h1></div><div className="pages-home-actions library-heading-actions"><div className="library-view-filter"><div className="library-view-filter-input"><Icon name="search"/><input type="search" placeholder="Filter this view…" aria-label={`Filter ${filterScope} by name or alias`} value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => {if (event.key === 'Escape' && search) {event.preventDefault(); setSearch('');}}}/>{search && <button type="button" aria-label="Clear entity filter" onClick={() => setSearch('')}><Icon name="close"/></button>}</div></div><ViewModeSwitch value={viewMode} onChange={setViewMode}/>
       <button className="button primary" onClick={onCreate}><Icon name="plus"/>New entity</button>
     </div></div>
     {error && <p role="alert">{error}</p>}

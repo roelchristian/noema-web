@@ -22,6 +22,7 @@ const pageContent = (page: Page) => JSON.stringify(canonical({title:page.title,i
 const applyDraft = (server: Page, draft: Page): Page => ({...server,title:draft.title,icon:draft.icon,featuredImageId:draft.featuredImageId,blocks:structuredClone(draft.blocks),sourceIds:[...draft.sourceIds],entityMatchCache:undefined,conceptContentHash:undefined});
 export interface WorkspaceState {
   saveFailures: PageSaveIssue[]; draftStorageFailures: PageSaveIssue[]; draftRecoveries: PageDraftRecovery[];
+  domainSavingPageId: string | null;
   canGoBack: boolean; canGoForward: boolean;
   entityPanelId: string | null;
   vaults: Vault[]; vault: Vault | null; trash: TrashedPage[]; pages: PageSummary[]; entities: Entity[];
@@ -29,7 +30,7 @@ export interface WorkspaceState {
   page: Page | null; view: 'pages' | 'entities' | 'organization' | 'favourites' | 'recent' | 'trash' | 'inbox'; busy: boolean; loadingPageId: string | null; reviewing: boolean; error: string | null; saveStatus: SaveStatus;
 }
 export class Workspace {
-  private state: WorkspaceState = {saveFailures: [], draftStorageFailures: [], draftRecoveries: [], entityPanelId: null, canGoBack: false, canGoForward: false, vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
+  private state: WorkspaceState = {domainSavingPageId:null,saveFailures: [], draftStorageFailures: [], draftRecoveries: [], entityPanelId: null, canGoBack: false, canGoForward: false, vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
   private browserAttached = false;
   private browserInitialized = false;
   private browserSession = '';
@@ -50,10 +51,10 @@ export class Workspace {
   private pageRequest: AbortController | null = null;
   readonly titler = new PageTitler(
     page => api.generateTitle(page.vault_id, page.id, page.revision, true),
-    (original, title,conceptClassification) => {
+    (original, title,pageDomains) => {
       const cached = this.pageCache.get(original.id);
-      if (!cached || this.state.draftRecoveries.some(item=>item.vaultId===original.vault_id&&item.pageId===original.id) || cached.editLocked || this.pageLockPending || cached.vault_id !== original.vault_id || this.state.vault?.locked) return;
-      const page = {...cached, title,...(conceptClassification?{conceptClassification}:{})};
+      if (!cached || this.state.draftRecoveries.some(item=>item.vaultId===original.vault_id&&item.pageId===original.id) || cached.editLocked || cached.revision!==original.revision || this.pageLockPending || cached.vault_id !== original.vault_id || this.state.vault?.locked) return;
+      const page = {...cached, title,...(pageDomains && !(cached.pageDomains?.origin==='manual' && pageDomains.origin!=='manual') && pageDomains.revision>=(cached.pageDomains?.revision??0)?{pageDomains}:{})};
       this.pageCache.set(page.id, page);
       this.patch({pages: this.state.pages.map(item => item.id === page.id ? {...item, title} : item),
         ...(this.state.page?.id === page.id ? {page} : {})});
@@ -74,11 +75,11 @@ export class Workspace {
       const cached = this.pageCache.get(saved.id);
       if (cached) {
         const unchanged = JSON.stringify(cached.blocks) === JSON.stringify(original.blocks);
-        const page = {...cached, aiStatus:nextPageAIStatus(saved,cached,id=>entityMentionName(this.state.entities.find(entity=>entity.id===id))), ...(unchanged && !this.state.reviewing && canIdentifyEntities() ? {blocks: saved.blocks} : {}), conceptClassification:saved.conceptClassification,conceptContentHash:unchanged?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at};
+        const page = {...cached, aiStatus:nextPageAIStatus(saved,cached,id=>entityMentionName(this.state.entities.find(entity=>entity.id===id))), ...(unchanged && !this.state.reviewing && canIdentifyEntities() ? {blocks: saved.blocks} : {}), pageDomains:saved.pageDomains,conceptClassification:saved.conceptClassification,conceptContentHash:unchanged?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at};
         this.pageCache.set(saved.id, page);
-        this.titler.observe(page, unchanged && cached.title === saved.title);
+        if(!this.pageLockPending)this.titler.observe(page, unchanged && cached.title === saved.title);
       }
-      if (this.state.vault?.id === saved.vault_id) this.patch({pages: this.state.pages.map(page => page.id === saved.id ? {...page, aiStatus:this.pageCache.get(saved.id)?.aiStatus ?? saved.aiStatus, updated_at: saved.updated_at} : page), ...(this.state.page?.id === saved.id ? {page: this.pageCache.get(saved.id) || {...this.state.page, aiStatus:saved.aiStatus, conceptClassification:saved.conceptClassification,conceptContentHash:JSON.stringify(this.state.page.blocks)===JSON.stringify(original.blocks)?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at}} : {})});
+      if (this.state.vault?.id === saved.vault_id) this.patch({pages: this.state.pages.map(page => page.id === saved.id ? {...page, aiStatus:this.pageCache.get(saved.id)?.aiStatus ?? saved.aiStatus, updated_at: saved.updated_at} : page), ...(this.state.page?.id === saved.id ? {page: this.pageCache.get(saved.id) || {...this.state.page, aiStatus:saved.aiStatus, pageDomains:saved.pageDomains,conceptClassification:saved.conceptClassification,conceptContentHash:JSON.stringify(this.state.page.blocks)===JSON.stringify(original.blocks)?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at}} : {})});
     },
     (saveStatus, error, failed) => this.patch({saveStatus, ...(error ? {error: error.message} : {}), ...(error && failed ? {saveFailures:[...this.state.saveFailures.filter(issue=>issue.vaultId!==failed.vault_id||issue.pageId!==failed.id),{vaultId:failed.vault_id,pageId:failed.id,title:failed.title,message:error.message}]} : {})}),
     async page => {
@@ -535,6 +536,25 @@ export class Workspace {
     this.patch({page, pages: this.state.pages.map(p => p.id === page.id ? {...p, title: page.title, icon: page.icon, featuredImageId: page.featuredImageId, aiStatus:page.aiStatus} : p)});
     this.titler.observe(page);
     this.saver.enqueue(page);
+  }
+  async setPageDomains(primaryDomainId:string|null,secondaryDomainIds:string[]) {
+    const original=this.state.page,sequence=this.loadSequence;
+    if(!original||original.editLocked||this.pageLockPending||this.state.vault?.locked)return;
+    this.pageLockPending=true;
+    this.patch({domainSavingPageId:original.id});
+    this.titler.remove(original);
+    try {
+      await this.saver.flush();
+      if(sequence!==this.loadSequence||this.state.page?.id!==original.id)throw new Error('The page changed. Open it again before editing subjects.');
+      const current=this.pageCache.get(original.id)??this.state.page;
+      this.titler.remove(current);
+      const page=await api.setPageDomains(original.vault_id,original.id,current.revision,primaryDomainId,secondaryDomainIds);
+      if(sequence!==this.loadSequence)return;
+      this.pageCache.set(page.id,page);
+      if(this.state.page?.id===page.id)this.patch({page});
+      this.titler.remove(page);
+      // A domain edit does not schedule title generation or embeddings.
+    } finally {this.pageLockPending=false;this.patch({domainSavingPageId:null});}
   }
   async setPageEditLock(locked: boolean, password?: string) {
     const original=this.state.page, sequence=this.loadSequence;

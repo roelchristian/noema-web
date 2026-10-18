@@ -35,6 +35,8 @@ export async function importVaultBackup(file:File,name?:string):Promise<Vault> {
   const result=await response.json();if(!response.ok)throw new ApiError(response.status,result.error||'Vault import failed');return result;
 }
 export const api={
+  domains:()=>request<{taxonomyVersion:string;domains:import('../shared/domain').Domain[]}>('domains'),
+  setPageDomains:(vault:string,id:string,revision:number,primaryDomainId:string|null,secondaryDomainIds:string[])=>request<Page>(`pages/${id}/domains`,'PUT',{revision,primaryDomainId,secondaryDomainIds},vault),
   networkSettings:(signal?:AbortSignal)=>request<import('../shared/security').NetworkSettings>('security/network','GET',undefined,undefined,signal),
   saveNetworkSettings:(lan:boolean)=>request<import('../shared/security').NetworkSettings>('security/network','PUT',{lan}),
   setVaultPassphrase:(id:string,currentPassphrase:string,passphrase:string|null)=>request<Vault>(`vaults/${encodeURIComponent(id)}/passphrase`,'PUT',{currentPassphrase,passphrase}),
@@ -71,7 +73,7 @@ export const api={
   removeIntelligence:()=>request<import('../shared/domain').IntelligenceStatus>('intelligence','DELETE'),
   validateIntelligence:()=>request<{ok:true}&import('../shared/intelligence').IntelligencePreferences>('intelligence/validate','POST',{}),
   setPageEditLock:(vault:string,id:string,revision:number,locked:boolean,password?:string)=>request<Page>(`pages/${id}/edit-lock`,'PUT',{revision,locked,...(password===undefined?{}:{password})},vault),
-  generateTitle:(vault:string,id:string,revision:number,background=false)=>request<{title:string;revision:number;conceptClassification:import('../shared/domain').ConceptClassification}>(`pages/${id}/title`,'POST',{revision,background},vault),
+  generateTitle:(vault:string,id:string,revision:number,background=false)=>request<{title:string;revision:number;pageDomains:import('../shared/domain').PageDomains}>(`pages/${id}/title`,'POST',{revision,background},vault),
   enrichments:(vault:string,id:string)=>request<import('../shared/domain').AIEnrichment[]>(`pages/${id}/enrichments`,'GET',undefined,vault),
   deleteSummary:(vault:string,id:string)=>request<{ok:true}>(`pages/${id}/summary`,'DELETE',undefined,vault),
   summarize:(vault:string,id:string,revision:number)=>request<import('../shared/domain').AISummary>(`pages/${id}/summary`,'POST',{revision},vault),

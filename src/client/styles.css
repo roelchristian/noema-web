@@ -2672,3 +2672,21 @@ dialog.noema-modal.mobile-selection-sheet { padding-bottom: max(12px, env(safe-a
 #content [data-block-id].page-search-passage { background: var(--citation-jump-highlight); box-shadow: -4px 0 0 var(--accent); border-radius: 3px; }
 
 ::highlight(page-search-evidence) { background: var(--citation-jump-highlight); color: inherit; }
+
+/* Shared disciplinary hierarchy: progressively disclose branches and keep selections visible. */
+.domain-picker .domain-dropdown { position: relative; margin-top: 6px; }
+.domain-breadcrumb { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 8px; color: var(--text-muted); font-size: 11px; }
+.domain-breadcrumb button { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+.domain-option-row { display: flex; align-items: stretch; }
+.domain-option-row .subtype-option { flex: 1; min-width: 0; }
+.domain-expand { flex: none; padding: 8px; border-left: 1px solid var(--line); color: var(--text-muted); }
+.domain-expand:hover { background: var(--surface-hover); }
+.domain-expand .icon { width: 14px; height: 14px; }
+.domain-selection { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.domain-selection > span { display: inline-flex; align-items: center; gap: 7px; padding: 4px 6px; border-radius: 4px; background: var(--surface-hover); font-size: 10px; overflow-wrap: anywhere; }
+.domain-selection button { flex: none; padding: 0 3px; }
+.domain-status { color: var(--text-muted); font-size: 10px; margin-left: auto; }
+.page-domain-summary > p { margin: 8px 0 0; font-size: 12px; }
+.page-domain-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.create-entity-fields .domain-picker { margin: 0; }
+.entity-review-editor .domain-picker { margin: 12px 0; }

@@ -14,7 +14,7 @@ import { api } from '../api';
 import type { EntityMatchCache } from '../../shared/entity-match-cache';
 import { EntityMatchReview } from './EntityMatchReview';
 import { ambiguityReviewDelay } from './auto-entity-matching';
-interface Props {citationStyle?:CitationStyle;pages:PageSummary[];onOpenPage:(id:string)=>void;onAddAlias: (id: string, alias: string) => Promise<void>; page: Page; entities: Entity[]; onChange: (patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon' | 'featuredImageId'>>) => void; onOpenEntity: (id: string) => void; onCreateEntity: (request: CreateEntityRequest) => void; onSave: () => void; onIdentify: () => Promise<void>; saveStatus: SaveStatus}
+interface Props {subjectsSaving?:boolean;citationStyle?:CitationStyle;pages:PageSummary[];onOpenPage:(id:string)=>void;onAddAlias: (id: string, alias: string) => Promise<void>; page: Page; entities: Entity[]; onChange: (patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon' | 'featuredImageId'>>) => void; onOpenEntity: (id: string) => void; onCreateEntity: (request: CreateEntityRequest) => void; onSave: () => void; onIdentify: () => Promise<void>; saveStatus: SaveStatus}
 const wordSegmenter = new Intl.Segmenter(undefined, {granularity:'word'});
 function editedLabel(updatedAt: string, now: number): string {
   const timestamp = Date.parse(updatedAt);
@@ -24,7 +24,7 @@ function editedLabel(updatedAt: string, now: number): string {
   const [size, unit] = units.find(([size]) => seconds >= size)!;
   return 'Edited ' + new Intl.RelativeTimeFormat('en', {numeric: 'always'}).format(-Math.floor(seconds / size), unit);
 }
-export function PageEditor({citationStyle='references',pages,onOpenPage,page, entities, onChange, onOpenEntity, onCreateEntity, onSave, onIdentify, onAddAlias, saveStatus}: Props) {
+export function PageEditor({subjectsSaving=false,citationStyle='references',pages,onOpenPage,page, entities, onChange, onOpenEntity, onCreateEntity, onSave, onIdentify, onAddAlias, saveStatus}: Props) {
   const citationPresentation=useMemo(()=>({style:citationStyle,entries:noteCitations(page.blocks)}),[citationStyle,page.blocks]);
   const title = useRef<HTMLInputElement>(null);
   const [now, setNow] = useState(Date.now);
@@ -48,10 +48,10 @@ export function PageEditor({citationStyle='references',pages,onOpenPage,page, en
     for (const word of wordSegmenter.segment(text)) if (word.isWordLike) count++;
     return count;
   }, [page.blocks,page.vault_id,entities]);
-  const [reviewSnapshot, setReviewSnapshot] = useState<{blocks: Page['blocks']; classification:Page['conceptClassification']; entities: Entity[]; cache: EntityMatchCache} | null>(() => page.entityMatchCache?.revision === page.revision ? {blocks:page.blocks,classification:page.conceptClassification,entities,cache:page.entityMatchCache} : null);
+  const [reviewSnapshot, setReviewSnapshot] = useState<{blocks: Page['blocks']; domains:Page['pageDomains']; entities: Entity[]; cache: EntityMatchCache} | null>(() => page.entityMatchCache?.revision === page.revision ? {blocks:page.blocks,domains:page.pageDomains,entities,cache:page.entityMatchCache} : null);
   const [reviewError, setReviewError] = useState('');
   const [resolving, setResolving] = useState(false);
-  const cache = reviewSnapshot?.blocks === page.blocks && reviewSnapshot.classification===page.conceptClassification && reviewSnapshot.entities === entities && reviewSnapshot.cache.revision === page.revision ? reviewSnapshot.cache : null;
+  const cache = reviewSnapshot?.blocks === page.blocks && reviewSnapshot.domains===page.pageDomains && reviewSnapshot.entities === entities && reviewSnapshot.cache.revision === page.revision ? reviewSnapshot.cache : null;
   const reviewMatches = cache?.matches ?? [];
   const currentPage = useRef(page); currentPage.current = page;
   useEffect(() => {
@@ -59,11 +59,11 @@ export function PageEditor({citationStyle='references',pages,onOpenPage,page, en
     const controller = new AbortController();
     const timer = setTimeout(() => {
       void api.entityMatches(page.vault_id,page.id,page.revision,controller.signal).then(cache => {
-        if (!controller.signal.aborted && cache.revision === page.revision) { setReviewSnapshot({blocks:page.blocks,classification:page.conceptClassification,entities,cache}); setReviewError(''); }
+        if (!controller.signal.aborted && cache.revision === page.revision) { setReviewSnapshot({blocks:page.blocks,domains:page.pageDomains,entities,cache}); setReviewError(''); }
       }).catch(error => { if (!controller.signal.aborted) setReviewError(error instanceof Error ? error.message : String(error)); });
     }, ambiguityReviewDelay);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [page.id, page.vault_id, page.blocks, page.revision, page.conceptClassification, page.editLocked, entities, saveStatus]);
+  }, [page.id, page.vault_id, page.blocks, page.revision, page.pageDomains, page.editLocked, entities, saveStatus]);
   useEffect(() => { if (!page.editLocked && page.title === 'Untitled') { title.current?.focus({preventScroll:true}); title.current?.select(); } }, [page.id]);
   useEffect(() => {
     if (page.editLocked) return;
@@ -73,9 +73,9 @@ export function PageEditor({citationStyle='references',pages,onOpenPage,page, en
     document.addEventListener('selectionchange', schedule);
     document.addEventListener('compositionend', schedule);
     return () => { clearTimeout(timer); document.removeEventListener('selectionchange', schedule); document.removeEventListener('compositionend', schedule); };
-  }, [page.id, page.blocks, page.conceptClassification, page.conceptContentHash, page.editLocked, entities, onIdentify]);
+  }, [page.id, page.blocks, page.pageDomains, page.conceptContentHash, page.editLocked, entities, onIdentify]);
   const status = {saved: editedLabel(page.updated_at, now), pending: 'Waiting to save…', identifying: 'Identifying entities…', saving: 'Saving…', error: 'Could not save changes'}[saveStatus];
-  return <CitationPresentationContext.Provider value={citationPresentation}><article className="page" onCompositionStart={event => { event.currentTarget.dataset.entityComposing = 'true'; }} onCompositionEnd={event => { delete event.currentTarget.dataset.entityComposing; }}>
+  return <CitationPresentationContext.Provider value={citationPresentation}><article className="page" inert={subjectsSaving} aria-busy={subjectsSaving} onCompositionStart={event => { event.currentTarget.dataset.entityComposing = 'true'; }} onCompositionEnd={event => { delete event.currentTarget.dataset.entityComposing; }}>
     <h1 className="page-title-heading page-heading" aria-label={page.title || 'Untitled'}><input ref={title} id="page-title" aria-label="Page title" placeholder="Untitled" maxLength={500} readOnly={!!page.editLocked} value={page.title} onChange={e => onChange({title: smartQuoteTitle(e.currentTarget, e.nativeEvent as InputEvent)})}/></h1>
     {page.editLocked && <div className="page-edit-lock-status" role="status"><Icon name="lock"/><span>Locked for editing{page.editProtected ? ' · Password protected' : ''}</span></div>}
     {reviewError && <p className="entity-review-error" role="alert">{reviewError}</p>}

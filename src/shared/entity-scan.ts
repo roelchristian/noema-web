@@ -1,48 +1,73 @@
 import { isEntityTaggingText, type EntityInput, type EntityType, type Page, type Segment, type Entity } from './domain.js';
 export interface EntitySuggestion extends EntityInput {
   proposedSubtypeIds?: string[];
-  id: string; evidence: string; reason: string; existingId: string | null;
+  id: string; evidenceAnchor?: EvidenceAnchor; evidence: string; reason: string; existingId: string | null;
   status: 'pending' | 'accepted' | 'rejected';
 }
-export interface EntitySuggestionEdit { id: string; name: string; type: EntityType; subtypes: string[]; existingId: string | null }
+export interface EntitySuggestionEdit { domainIds?:string[]; id: string; name: string; type: EntityType; subtypes: string[]; existingId: string | null }
 export interface SubtypeSuggestion { id: string; name: string; type: EntityType; status: 'pending' | 'accepted' | 'rejected'; resolvedId?: string }
-export interface EntityScan { subtypeSuggestions?: SubtypeSuggestion[]; id: string; revision: number; suggestions: EntitySuggestion[] }
+export interface EvidenceAnchor {blockId:string; row?:number; col?:number; start:number; end:number}
+export interface EntityTextRun extends EvidenceAnchor {runId:string; text:string}
+export interface EntityScan { contextKey?:string; subtypeSuggestions?: SubtypeSuggestion[]; id: string; revision: number; suggestions: EntitySuggestion[] }
 export interface EntityReview { schema?: import('./entity-schema.js').EntitySchema; page: Page; scan: EntityScan; entities: Entity[] }
 
-// Match within adjacent text segments, including phrases spanning formatting.
-// Existing mentions, formulas, and excluded text form boundaries and are never replaced.
-// Match whitespace equivalently while slicing the original, unnormalized text.
-export function mentionEvidence(page: Page, evidence: string, entityId: string): Page | null {
-  if (!evidence.trim()) return null;
-  const pattern = new RegExp(evidence.trim().split(/\s+/u).map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+'), 'u');
-  let replaced = false;
-  function replace(segments: Segment[]): Segment[] {
-    if (replaced) return segments;
-    const output: Segment[] = [];
-    for (let i = 0; i < segments.length;) {
-      if (!isEntityTaggingText(segments[i]!)) { output.push(segments[i++]!); continue; }
-      const run: Extract<Segment, {text: string}>[] = [];
-      while (i < segments.length && isEntityTaggingText(segments[i]!)) run.push(segments[i++]! as Extract<Segment, {text: string}>);
-      const match = replaced ? null : pattern.exec(run.map(s => s.text || '').join(''));
-      if (!match) { output.push(...run); continue; }
-      const index = match.index, matchEnd = index + match[0].length;
-      let offset = 0, inserted = false;
-      for (const segment of run) {
-        const value = segment.text || '', end = offset + value.length;
-        if (end <= index || offset >= matchEnd) output.push(segment);
-        else {
-          if (offset < index) output.push({...segment, text: value.slice(0, index - offset)});
-          if (!inserted) { output.push({entityId, mentionText:match[0]}); inserted = true; }
-          if (end > matchEnd) output.push({...segment, text: value.slice(matchEnd - offset)});
-        }
-        offset = end;
-      }
-      replaced = true;
+/** Eligible text runs with occurrence coordinates, preserving protected boundaries. */
+export function entityTextRuns(page:Pick<Page,'blocks'>):EntityTextRun[] {
+  const runs:EntityTextRun[]=[];
+  function collect(segments:Segment[],blockId:string,row?:number,col?:number) {
+    let offset=0,run:EntityTextRun|undefined;
+    for(const segment of segments) {
+      const text=segment.text ?? segment.mentionText ?? '';
+      if(isEntityTaggingText(segment)) {
+        if(!run) {run={blockId,...(row===undefined?{}:{row,col}),start:offset,end:offset,runId:JSON.stringify([blockId,row??null,col??null,offset]),text:''};runs.push(run);}
+        run.text+=text;run.end=offset+text.length;
+      } else run=undefined;
+      offset+=text.length;
     }
+  }
+  for(const block of page.blocks) {
+    if(['code','divider','math','image'].includes(block.type))continue;
+    if(block.type==='table'||block.type==='columns')block.rows?.forEach((row,r)=>row.forEach((cell,c)=>collect(cell,block.id,r,c)));
+    else collect(block.content,block.id);
+  }
+  return runs;
+}
+const evidencePattern=(evidence:string)=>new RegExp(evidence.trim().split(/\s+/u).map(word=>word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('\\s+'),'gu');
+/** Legacy unanchored evidence is safe only when it identifies exactly one occurrence. */
+export function locateEvidence(page:Pick<Page,'blocks'>,evidence:string,anchor?:EvidenceAnchor):EvidenceAnchor|null {
+  if(!evidence.trim())return null;
+  const found:EvidenceAnchor[]=[];
+  for(const run of entityTextRuns(page)) {
+    if(anchor&&(run.blockId!==anchor.blockId||run.row!==anchor.row||run.col!==anchor.col))continue;
+    for(const match of run.text.matchAll(evidencePattern(evidence))) {
+      const candidate={blockId:run.blockId,...(run.row===undefined?{}:{row:run.row,col:run.col}),start:run.start+match.index!,end:run.start+match.index!+match[0].length};
+      if(!anchor||(candidate.start===anchor.start&&candidate.end===anchor.end))found.push(candidate);
+    }
+  }
+  return found.length===1?found[0]!:null;
+}
+/** Insert only into the validated occurrence; formulas, exclusions and mentions survive. */
+export function mentionEvidence(page:Page,evidence:string,entityId:string,anchor?:EvidenceAnchor):Page|null {
+  const target=locateEvidence(page,evidence,anchor);
+  if(!target)return null;
+  function replace(segments:Segment[]):Segment[] {
+    const output:Segment[]=[];let offset=0,inserted=false,mention='';
+    for(const segment of segments) {
+      const text=segment.text??segment.mentionText??'',end=offset+text.length;
+      if(end<=target!.start||offset>=target!.end)output.push(segment);
+      else {
+        if(!isEntityTaggingText(segment))return segments;
+        if(offset<target!.start)output.push({...segment,text:text.slice(0,target!.start-offset)});
+        mention+=text.slice(Math.max(0,target!.start-offset),Math.min(text.length,target!.end-offset));
+        if(!inserted){output.push({entityId,mentionText:''});inserted=true;}
+        if(end>target!.end)output.push({...segment,text:text.slice(target!.end-offset)});
+      }
+      offset=end;
+    }
+    const insertedSegment=output.find(segment=>segment.entityId===entityId&&segment.mentionText==='');
+    if(insertedSegment)insertedSegment.mentionText=mention;
     return output;
   }
-  const blocks = page.blocks.map(block => block.type === 'code' || block.type === 'divider' || block.type === 'math' || block.type === 'image' ? block : (block.type === 'table' || block.type === 'columns')
-    ? {...block, rows: block.rows?.map(row => row.map(replace))}
-    : {...block, content: replace(block.content)});
-  return replaced ? {...page, blocks} : null;
+  const blocks=page.blocks.map(block=>block.id!==target.blockId?block:target.row===undefined?{...block,content:replace(block.content)}:{...block,rows:block.rows?.map((row,r)=>r!==target.row?row:row.map((cell,c)=>c!==target.col?cell:replace(cell)))});
+  return {...page,blocks};
 }

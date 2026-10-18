@@ -24,12 +24,14 @@ export interface VaultDeletionConfirmation {name:string;fingerprint:string;ackno
 export interface VaultDeletionResult {vaults:Vault[];cleanupPending:boolean}
 export interface PageSummary { language?: string | null; aiStatus?: import('./page-ai-status.js').PageAIStatus; featuredImageId?: string | null; id: string; title: string; icon?: PageIconId | null; updated_at: string }
 export interface TrashedPage extends PageSummary { deleted_at: string; expires_at: string }
+export interface Domain {id:string;parent_id:string|null;label:string;lcc_refs?:string[];scope_note?:string;sort_order:number}
+export interface PageDomains {primaryDomainId:string|null;secondaryDomainIds:string[];origin:'manual'|'inferred';status:'manual'|'inferred'|'unclassified'|'needs_refresh';contentHash?:string;taxonomyVersion:string;revision:number}
 export interface ConceptClassification { subtypeIds: string[]; contentHash: string }
-export interface Page extends PageSummary { created_at?: string | null; editLocked?: boolean; editProtected?: boolean; conceptClassification?: ConceptClassification; conceptContentHash?: string; vault_id: string; blocks: Block[]; sourceIds: string[]; revision: number; summaryContentHash?: string; entityMatchCache?: import('./entity-match-cache.js').EntityMatchCache }
+export interface Page extends PageSummary { created_at?: string | null; editLocked?: boolean; editProtected?: boolean; pageDomains?: PageDomains; conceptClassification?: ConceptClassification; conceptContentHash?: string; vault_id: string; blocks: Block[]; sourceIds: string[]; revision: number; summaryContentHash?: string; entityMatchCache?: import('./entity-match-cache.js').EntityMatchCache }
 export interface PageInput { language?: string | null; featuredImageId?: string | null; icon?: PageIconId | null; title: string; blocks: Block[]; sourceIds?: string[]; revision?: number }
 export type EntityMentionCase = 'canonical' | 'lowercase';
-export interface Entity { sourceEnrichmentStatus?: SourceFile['enrichment_status'] | null; sourceStatus?: SourceFile['status'] | null; inactive?: boolean; id: string; vault_id: string; name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes: string[]; description: string; updated_at: string }
-export interface EntityInput { name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes?: string[]; subtype?: string | null; description?: string; attachmentIds?: string[] }
+export interface Entity { domainIds?: string[]; sourceEnrichmentStatus?: SourceFile['enrichment_status'] | null; sourceStatus?: SourceFile['status'] | null; inactive?: boolean; id: string; vault_id: string; name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes: string[]; description: string; updated_at: string }
+export interface EntityInput { domainIds?: string[]; name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes?: string[]; subtype?: string | null; description?: string; attachmentIds?: string[] }
 export function entityMentionName(entity: Pick<Entity,'name'|'mentionCase'> | undefined): string | undefined {
   return entity?.mentionCase === 'lowercase' ? entity.name.toLowerCase() : entity?.name;
 }

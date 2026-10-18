@@ -1,14 +1,15 @@
-import type { ConceptClassification, Page } from '../../shared/domain';
+import type { PageDomains, Page } from '../../shared/domain';
+import {TAXONOMY_VERSION} from '../../shared/domains';
 const key = (page: Page) => `${page.vault_id}/${page.id}`;
-const needsUtility=(page:Page)=>!page.editLocked && (!page.conceptClassification || !page.conceptContentHash || page.conceptClassification.contentHash!==page.conceptContentHash || untitled(page));
+const needsUtility=(page:Page)=>!page.editLocked && (untitled(page) || page.pageDomains?.origin!=='manual' && (!page.pageDomains || page.pageDomains.taxonomyVersion!==TAXONOMY_VERSION || !page.conceptContentHash || page.pageDomains.contentHash!==page.conceptContentHash));
 const untitled = (page: Page) => !page.title.trim() || page.title.trim() === 'Untitled';
 interface Candidate { page: Page; version: number; running: boolean; retries: number; timer?: ReturnType<typeof setTimeout> }
 /** Title and category share one background pass; edits invalidate outstanding results. */
 export class PageTitler {
   private candidates = new Map<string, Candidate>();
   constructor(
-    private generate: (page: Page) => Promise<{title: string; revision: number;conceptClassification?:ConceptClassification}>,
-    private apply: (page: Page, title: string,classification?:ConceptClassification) => void,
+    private generate: (page: Page) => Promise<{title: string; revision: number;pageDomains?:PageDomains}>,
+    private apply: (page: Page, title: string,classification?:PageDomains) => void,
     private entityName: (id: string) => string = () => '',
   ) {}
   register(page: Page) {
@@ -38,7 +39,7 @@ export class PageTitler {
       const result = await this.generate(page);
       if (this.candidates.get(key(page)) !== candidate || candidate.version !== version || result.revision !== page.revision) return;
       this.remove(page);
-      this.apply(page, untitled(page)?result.title:page.title, result.conceptClassification);
+      this.apply(page, untitled(page)?result.title:page.title, result.pageDomains);
     } catch (error) {
       // Retry temporary provider/network failures, but never overwrite a newer edit.
       // Missing credentials and permanent failures wait for a later saved edit/open.

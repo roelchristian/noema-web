@@ -51,7 +51,7 @@ function fixture() {
   store.run('INSERT INTO collection_memberships VALUES (?,?,?,?)',vault.id,'entity',author.id,collection);
   store.run('INSERT INTO favourites VALUES (?,?,?)',vault.id,'folder',child);
   store.run('INSERT INTO favourites VALUES (?,?,?)',vault.id,'entity',author.id);
-  store.run('INSERT INTO embedding_settings VALUES (?,?,?)',vault.id,0,40);
+  store.run('INSERT INTO embedding_settings (vault_id,automatic,min_characters) VALUES (?,?,?)',vault.id,0,40);
   store.run('INSERT INTO note_embeddings VALUES (?,?,?,?,?,?,?,?)',page.id,'test',2,'test-hash',page.revision,JSON.stringify([0.2,0.4]),12,new Date().toISOString());
   store.run('INSERT INTO metadata VALUES (?,?)','private-setting','must-not-export');
   return {directory,filename,db,store,vaults,knowledge,pages,images,backups,vault,page,author,work,source,custom,image,trashed,

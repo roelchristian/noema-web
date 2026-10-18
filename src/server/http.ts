@@ -1,3 +1,5 @@
+import {DOMAINS,TAXONOMY_VERSION} from '../shared/domains.js';
+import {Domains} from './modules/domains.js';
 import {createHash} from 'node:crypto';
 import { SourcePages, SourcePageDraft } from './modules/source-pages.js';
 import type { SourcePageEvent } from '../shared/source-page.js';
@@ -203,6 +205,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             if(parts.length===5 && id==='jobs' && child && childId==='retry' && method==='POST')return send(200,embeddings.retry(vault,child));
             if(parts.length===3 && id==='search' && method==='POST')return send(200,await embeddings.search(vault,body));
           }
+          if(collection==='domains' && parts.length===2 && method==='GET')return send(200,{domains:DOMAINS,taxonomyVersion:TAXONOMY_VERSION});
           if(collection==='entity-schema') {
             if(parts.length===2 && method==='GET')return send(200,knowledge.schema(vault));
             if(parts.length===3 && method==='POST' && id==='subtypes')return send(201,knowledge.addSubtype(vault,body));
@@ -226,6 +229,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             if(parts.length===3 && method==='PUT' && id==='favourites')return send(200,organizer.favourite(vault,body));
           }
           if(collection==='pages') {
+            if(id && parts.length===4 && child==='domains' && method==='PUT'){new Domains(store).setManual(vault,id,body,body.revision);return send(200,pages.get(vault,id));}
             if(id && parts.length===4 && child==='edit-lock' && method==='PUT')return send(200,pages.setEditLock(vault,id,body));
             if(id && parts.length===4 && child==='backlinks' && method==='GET')return send(200,pages.backlinks(vault,id));
             if(id && parts.length===4 && child==='explain' && method==='POST') {
@@ -248,14 +252,14 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             if(id && parts.length===4 && child==='entity-scan' && method==='POST') {
               const page=pages.get(vault,id);
               if(body.revision!==page.revision)throw new HttpError(409,'Save the latest note before scanning.');
-              await pageUtility.run(vault,page);
-              vaults.requireOpen(vault);
-              const classified=pages.get(vault,id);
-              if(classified.revision!==page.revision)throw new HttpError(409,'The note changed while classifying it. Scan again after saving.');
-              const input=scans.input(vault,classified);
+              const cached=enrichments.list(vault,id).find(row=>row.kind==='entity_scan'&&row.revision===page.revision)?.data.scan as import('../shared/entity-scan.js').EntityScan|undefined;
+              const contextKey=scans.contextKey(vault,page);
+              if(cached?.contextKey===contextKey)return send(200,cached);
+              const input=scans.input(vault,page);
               const output=await intelligence.generate(input,false,bytes=>activity.request(activityId!,bytes,page.revision),false,true);
               vaults.requireOpen(vault);
-              return send(200,scans.save(vault,classified,output,intelligence.selection()));
+              if(scans.contextKey(vault,pages.get(vault,id))!==contextKey)throw new HttpError(409,'The note, domains or entity catalog changed. Scan again.');
+              return send(200,scans.save(vault,page,output,intelligence.selection()));
             }
             if(id && parts.length===4 && child==='summary' && method==='DELETE')return send(200,enrichments.removeSummary(vault,id));
             if(id && parts.length===4 && child==='enrichments' && method==='GET')return send(200,enrichments.list(vault,id));

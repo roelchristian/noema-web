@@ -1,6 +1,7 @@
 import {SummaryText} from '../intelligence/SummaryText';
 import { PageIcon } from '../components/PageIcon';
 import { SourceAttachments } from './SourceAttachments';
+import {DomainPicker, domainBreadcrumb} from './DomainPicker';
 import { SubtypePicker } from './SubtypePicker';
 import { useEntitySchema } from './useEntitySchema';
 import { inheritedPropertyNames, type EntitySchema } from '../../shared/entity-schema';
@@ -63,6 +64,7 @@ export function EntityPanel(props: Props) {
         }}>{label}</button>)}
       </div>
       <div id="entity-tabpanel-overview" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-overview" hidden={tab !== 'overview'} tabIndex={0}>
+        {entity.type==='concept' && <section className="entity-detail-section"><h3>Disciplines</h3><p className="section-hint">{entity.domainIds?.length ? entity.domainIds.map(domainBreadcrumb).join(' · ') : 'No disciplines selected.'}</p></section>}
         <section className="entity-detail-section"><h3>Properties<span>{entity.properties.length + unsetProperties.length}</span></h3>
           {entity.properties.length || unsetProperties.length ? <dl className="entity-overview-properties">{entity.properties.map(property => <div key={property.id}><dt>{property.name}</dt><dd>{property.target_id ? <EntityReference id={property.target_id} entities={entities} onOpen={onOpen}/> : property.value}</dd></div>)}{unsetProperties.map(name => <div key={'unset-' + name}><dt>{name}</dt><dd><button type="button" onClick={() => switchTab('edit')}>Not set</button></dd></div>)}</dl> : <p className="entity-detail-empty">No inherited fields yet. Define properties on a subtype in Settings → Knowledge Entities.</p>}
         </section>
@@ -121,7 +123,7 @@ function EntityConnections({items, entities, onOpen, empty}: {items: EntityConne
 function EntityDetails({vaultId, entity, schema, onSave}: {vaultId: string; schema: EntitySchema; entity: EntityDetail; onSave: (input: Parameters<typeof api.updateEntity>[2]) => Promise<EntityDetail>}) {
   const draft = useSyncExternalStore(subscribeEntityDrafts, () => getEntityDraft(vaultId, entity.id));
   const server = entityDraftValues(entity), values = mergeEntityDraft(draft, server);
-  const {name, type, description, subtypes, aliases, mentionCase} = values;
+  const {name, type, description, subtypes, domainIds, aliases, mentionCase} = values;
   const [status, setStatus] = useState(''), [busy, setBusy] = useState(false);
   const mounted = useRef(true);
   useEffect(() => {mounted.current = true; return () => {mounted.current = false;};}, []);
@@ -136,7 +138,7 @@ function EntityDetails({vaultId, entity, schema, onSave}: {vaultId: string; sche
     const submitted = draft;
     setBusy(true); setStatus('');
     try {
-      await onSave({name: name.trim(), aliases: type === 'source' ? [] : parseAliases(aliases), mentionCase, type, subtypes, description});
+      await onSave({name: name.trim(), aliases: type === 'source' ? [] : parseAliases(aliases), mentionCase, type, subtypes, domainIds: type === 'concept' ? domainIds : [], description});
       const cleared = submitted && clearEntityDraft(vaultId, entity.id, submitted);
       if (mounted.current && cleared) setStatus('Saved');
     } catch { /* Parent reports the error; the draft remains available. */ }
@@ -145,8 +147,9 @@ function EntityDetails({vaultId, entity, schema, onSave}: {vaultId: string; sche
   return <form id="entity-form" className="entity-detail-form" onSubmit={submit}>
     <label>Name<input className="entity-name" aria-label="Entity name" required maxLength={200} disabled={busy} value={name} onChange={e => change({name: e.target.value})}/></label>
     <h4 className="entity-form-heading">Classification</h4>
-    <label>Entity type<Select aria-label="Entity type" value={type} disabled={busy} onChange={e => change({type: e.target.value as EntityType, subtypes: []})}>{entityTypes.map(t => <option key={t} value={t} disabled={t!==entity.type&&(t==='source'||entity.type==='source')}>{entityLabels[t]}</option>)}</Select></label>
+    <label>Entity type<Select aria-label="Entity type" value={type} disabled={busy} onChange={e => change({type: e.target.value as EntityType, subtypes: [], domainIds: []})}>{entityTypes.map(t => <option key={t} value={t} disabled={t!==entity.type&&(t==='source'||entity.type==='source')}>{entityLabels[t]}</option>)}</Select></label>
     <SubtypePicker type={type} value={subtypes} subtypes={schema.subtypes} onChange={value => change({subtypes: value})} disabled={busy}/>
+    {type==='concept'&&<DomainPicker value={domainIds} onChange={domainIds => change({domainIds})} disabled={busy}/>}
     <h4 className="entity-form-heading">{type==='source'?'Mentions':'Mentions & aliases'}</h4>
     {type!=='source'&&<AliasInput value={aliases} onChange={value => change({aliases: value})} disabled={busy}/>}
     <label>Default tag casing<Select aria-label="Default tag casing" value={mentionCase} disabled={busy} onChange={event => change({mentionCase: event.target.value as EntityMentionCase})}><option value="canonical">Entity name</option><option value="lowercase">Lowercase</option></Select></label>

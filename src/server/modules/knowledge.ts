@@ -1,3 +1,4 @@
+import {validatedDomainIds} from './domains.js';
 import { syncSourceProvenance } from './source-provenance.js';
 import { randomUUID } from 'node:crypto';
 import { makeSearchSnippet } from '../../shared/search-snippets.js';
@@ -43,11 +44,17 @@ export class Knowledge {
     if (!type) throw new HttpError(400,'Invalid entity type');
     return type;
   }
-  private entity(row: EntityRow): Entity {
+  private entity(row: EntityRow, domainIds?:string[]): Entity {
     const {subtype: _legacy, subtypes, aliases, mention_case, ...entity} = row;
-    return {...entity, inactive:!!entity.inactive, mentionCase: mention_case, aliases: entity.type==='source'?[]:JSON.parse(aliases) as string[], subtypes: JSON.parse(subtypes) as string[]};
+    return {...entity, domainIds:domainIds??this.store.all<{domain_id:string}>('SELECT domain_id FROM entity_domains WHERE entity_id=? ORDER BY domain_id',entity.id).map(row=>row.domain_id), inactive:!!entity.inactive, mentionCase: mention_case, aliases: entity.type==='source'?[]:JSON.parse(aliases) as string[], subtypes: JSON.parse(subtypes) as string[]};
   }
-  list(vault: string) { return this.store.all<EntityRow>('SELECT e.*, (SELECT f.status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceStatus, (SELECT f.enrichment_status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceEnrichmentStatus FROM entities e WHERE e.vault_id=? ORDER BY e.name COLLATE NOCASE',vault).map(row => this.entity(row)); }
+  list(vault: string) {
+    const assignments=new Map<string,string[]>();
+    for(const row of this.store.all<{entity_id:string;domain_id:string}>('SELECT d.entity_id,d.domain_id FROM entity_domains d JOIN entities e ON e.id=d.entity_id WHERE e.vault_id=? ORDER BY d.domain_id',vault)) {
+      const ids=assignments.get(row.entity_id)??[];ids.push(row.domain_id);assignments.set(row.entity_id,ids);
+    }
+    return this.store.all<EntityRow>('SELECT e.*, (SELECT f.status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceStatus, (SELECT f.enrichment_status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceEnrichmentStatus FROM entities e WHERE e.vault_id=? ORDER BY e.name COLLATE NOCASE',vault).map(row => this.entity(row,assignments.get(row.id)??[]));
+  }
   find(vault: string, id: string) {
     const row = this.store.get<EntityRow>('SELECT e.*, (SELECT f.status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceStatus, (SELECT f.enrichment_status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceEnrichmentStatus FROM entities e WHERE e.id=? AND e.vault_id=?',id,vault);
     return row ? this.entity(row) : undefined;
@@ -97,7 +104,9 @@ export class Knowledge {
     const aliases = [...new Map(inputAliases.map((alias: string) => [alias.trim().replace(/\s+/g, ' ').toLowerCase(), alias.trim().replace(/\s+/g, ' ')])).values()];
     const mentionCase=body.mentionCase===undefined?current?.mentionCase??'canonical':body.mentionCase;
     if(mentionCase!=='canonical'&&mentionCase!=='lowercase')throw new HttpError(400,'Choose entity-name or lowercase tag casing.');
-    return {name:required(body.name),aliases,mentionCase,type,subtypes,description:text(body.description ?? '')};
+    const domainIds=validatedDomainIds(body.domainIds??(current?.type===type?current.domainIds??[]:[]));
+    if(type!=='concept'&&domainIds.length)throw new HttpError(400,'Only Concepts support disciplinary domains.');
+    return {domainIds,name:required(body.name),aliases,mentionCase,type,subtypes,description:text(body.description ?? '')};
   }
   create(vault: string, body: Record<string, unknown>) {
     const attachmentIds=body.type==='source'?this.attachments(vault,body.attachmentIds):[];
@@ -106,13 +115,14 @@ export class Knowledge {
     const create=() => {
       const attachments=attachmentIds;
       this.store.run('INSERT INTO entities (id,name,aliases,mention_case,type,subtypes,description,updated_at,vault_id) VALUES (?,?,?,?,?,?,?,?,?)',id,e.name,JSON.stringify(e.aliases),e.mentionCase,e.type,JSON.stringify(e.subtypes),e.description,now(),vault);
+      for(const domainId of e.domainIds)this.store.run("INSERT INTO entity_domains (entity_id,domain_id,origin) VALUES (?,?,'manual')",id,domainId);
       for(const file of attachments)this.store.run('UPDATE source_files SET entity_id=? WHERE id=? AND vault_id=?',id,file,vault);
       if(e.type==='source'){
         this.store.run("UPDATE entities SET inactive=CASE WHEN EXISTS (SELECT 1 FROM source_files WHERE entity_id=? AND status='failed') THEN 1 ELSE 0 END WHERE id=?",id,id);
         syncSourceProvenance(this.store,vault,id);
       }
     };
-    if(e.type==='source')this.store.transaction(create);else create();
+    if(this.store.db.isTransaction)create();else this.store.transaction(create);
     return this.detail(vault,id);
   }
   private attachments(vault:string,value:unknown): string[] {
@@ -131,6 +141,8 @@ export class Knowledge {
     if (e.type!=='source' && this.store.get('SELECT 1 FROM page_sources WHERE source_id=? LIMIT 1',id)) throw new HttpError(400,'Remove page source references before changing this Source to another type');
     this.store.transaction(() => {
       this.store.run('UPDATE entities SET name=?,aliases=?,mention_case=?,type=?,subtype=NULL,subtypes=?,description=?,updated_at=? WHERE id=? AND vault_id=?',e.name,JSON.stringify(e.aliases),e.mentionCase,e.type,JSON.stringify(e.subtypes),e.description,now(),id,vault);
+      this.store.run('DELETE FROM entity_domains WHERE entity_id=?',id);
+      for(const domainId of e.domainIds)this.store.run("INSERT INTO entity_domains (entity_id,domain_id,origin) VALUES (?,?,'manual')",id,domainId);
     });
     return this.detail(vault,id);
   }

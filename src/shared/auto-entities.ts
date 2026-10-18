@@ -1,3 +1,4 @@
+import {conceptAliasNeedsReview,ordinaryConceptUse} from './concept-classification.js';
 import { blockSegments, isEntityTaggingText, type Block, type Entity, type Segment } from './domain.js';
 
 export const normalizeEntityName = (name: string) => name.trim().replace(/\s+/g, ' ').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').toLowerCase();
@@ -54,12 +55,15 @@ export function identifyEntityMentions(blocks: Block[], entities: Entity[], vaul
       for (const match of text.matchAll(pattern)) {
         const matches = names.get(normalizeEntityName(match[0])) ?? [];
         let entity = matches.length === 1 ? matches[0] : undefined;
-        if (matches.length > 1) {
+        if (matches.some(item=>item.type==='concept') && ordinaryConceptUse(text,match.index!,match[0].length,normalizeEntityName(match[0]))) continue;
+        const needsReview=matches.some(item=>item.type==='concept' && conceptAliasNeedsReview(match[0]));
+        if (matches.length > 1 || needsReview) {
+          entity=undefined;
           const candidate: AmbiguousEntityMatch = {id: `${location}:${runStart}:${match.index}`, text: match[0], context: text.slice(Math.max(0, match.index! - 45), match.index! + match[0].length + 45), entityIds: matches.map(item => item.id)};
           const explicit = resolution && (resolution.all ? normalizeEntityName(candidate.text) === normalizeEntityName(resolution.match.text) : candidate.id === resolution.match.id && candidate.text === resolution.match.text);
           const onPage = matches.filter(item => pageContext.has(item.id));
           if (explicit) entity = matches.find(item => item.id === resolution.entityId);
-          else if (onPage.length === 1) entity = onPage[0];
+          else if (!needsReview && !matches.some(item=>item.type==='concept') && onPage.length === 1) entity = onPage[0];
           if (!entity) ambiguous.push(candidate);
           else resolved.push(candidate);
         }

@@ -2,7 +2,7 @@ import type {EntityDetail, EntityMentionCase, EntityType} from '../../shared/dom
 import {parseAliases} from './AliasInput';
 
 export interface EntityDraftValues {
-  name: string; type: EntityType; description: string; subtypes: string[]; aliases: string; mentionCase: EntityMentionCase;
+  name: string; type: EntityType; description: string; subtypes: string[]; domainIds: string[]; aliases: string; mentionCase: EntityMentionCase;
 }
 export interface EntityDraft {baseline: EntityDraftValues; values: EntityDraftValues}
 const drafts = new Map<string, Map<string, EntityDraft>>();
@@ -12,10 +12,10 @@ export function subscribeEntityDrafts(listener: () => void) {listeners.add(liste
 export function getEntityDraft(vaultId: string, entityId: string) {return drafts.get(vaultId)?.get(entityId);}
 export function hasEntityDraft(vaultId: string, entityId: string) {return !!getEntityDraft(vaultId, entityId);}
 export function entityDraftValues(entity: EntityDetail): EntityDraftValues {
-  return {name: entity.name, type: entity.type, description: entity.description, subtypes: [...entity.subtypes], aliases: (entity.aliases ?? []).join('\n'), mentionCase: entity.mentionCase ?? 'canonical'};
+  return {name: entity.name, type: entity.type, description: entity.description, subtypes: [...entity.subtypes], domainIds: [...(entity.domainIds ?? [])], aliases: (entity.aliases ?? []).join('\n'), mentionCase: entity.mentionCase ?? 'canonical'};
 }
 function sameField(key: keyof EntityDraftValues, left: EntityDraftValues, right: EntityDraftValues) {
-  if (key === 'subtypes') return JSON.stringify([...left.subtypes].sort()) === JSON.stringify([...right.subtypes].sort());
+  if (key === 'subtypes' || key === 'domainIds') return JSON.stringify([...(left[key] ?? [])].sort()) === JSON.stringify([...(right[key] ?? [])].sort());
   return left[key] === right[key];
 }
 export function entityDraftDirty(values: EntityDraftValues, baseline: EntityDraftValues) {

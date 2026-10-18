@@ -1,0 +1,1086 @@
+{
+  "taxonomy_id": "noema.disciplinary_domains",
+  "version": "1.0.0",
+  "based_on": "Library of Congress Classification (adapted, not a faithful reproduction)",
+  "source_url": "https://www.loc.gov/aba/cataloging/classification/lcco/",
+  "notes": [
+    "Use same domains for page_domain and entity_domain relationships.",
+    "Each page may have one primary and zero or more secondary domains.",
+    "Each entity may have multiple domains, independent of entity type.",
+    "lcc_refs provide an approximate crosswalk, not canonical LCC classification numbers.",
+    "IDs are immutable after adoption. Reparent a node by changing parent_id without renaming id.",
+    "Domain classification is a contextual prior, not a hard filter for entity scanning.",
+    "Do not represent languages, species, locations, or people as domain nodes; use entity types and properties."
+  ],
+  "domains": [
+    {
+      "label": "General and Information Studies",
+      "lcc_refs": [
+        "A",
+        "Z"
+      ],
+      "id": "general",
+      "parent_id": null,
+      "sort_order": 0
+    },
+    {
+      "label": "Interdisciplinary Studies",
+      "id": "general.interdisciplinary",
+      "parent_id": "general",
+      "sort_order": 0
+    },
+    {
+      "label": "Research Methodology",
+      "id": "general.research_methods",
+      "parent_id": "general",
+      "sort_order": 1
+    },
+    {
+      "label": "Knowledge Organization and Library Science",
+      "id": "general.knowledge_organization",
+      "parent_id": "general",
+      "sort_order": 2
+    },
+    {
+      "label": "Bibliography and Scholarly Reference",
+      "id": "general.bibliography",
+      "parent_id": "general",
+      "sort_order": 3
+    },
+    {
+      "label": "Philosophy",
+      "lcc_refs": [
+        "B",
+        "BC",
+        "BJ"
+      ],
+      "id": "philosophy",
+      "parent_id": null,
+      "sort_order": 1
+    },
+    {
+      "label": "Metaphysics and Ontology",
+      "id": "philosophy.metaphysics",
+      "parent_id": "philosophy",
+      "sort_order": 0
+    },
+    {
+      "label": "Epistemology",
+      "id": "philosophy.epistemology",
+      "parent_id": "philosophy",
+      "sort_order": 1
+    },
+    {
+      "label": "Philosophical Logic",
+      "scope_note": "Logic as a philosophical discipline; philosophical analysis of reasoning.",
+      "id": "philosophy.logic",
+      "parent_id": "philosophy",
+      "sort_order": 2
+    },
+    {
+      "label": "Ethics and Moral Philosophy",
+      "id": "philosophy.ethics",
+      "parent_id": "philosophy",
+      "sort_order": 3
+    },
+    {
+      "label": "Philosophy of Science and Mathematics",
+      "id": "philosophy.philosophy_science",
+      "parent_id": "philosophy",
+      "sort_order": 4
+    },
+    {
+      "label": "Political and Social Philosophy",
+      "id": "philosophy.political_philosophy",
+      "parent_id": "philosophy",
+      "sort_order": 5
+    },
+    {
+      "label": "History of Philosophy",
+      "id": "philosophy.history_philosophy",
+      "parent_id": "philosophy",
+      "sort_order": 6
+    },
+    {
+      "label": "Psychology",
+      "lcc_refs": [
+        "BF"
+      ],
+      "id": "psychology",
+      "parent_id": null,
+      "sort_order": 2
+    },
+    {
+      "label": "Cognitive Psychology",
+      "scope_note": "Memory, attention, perception and cognitive processes.",
+      "id": "psychology.cognitive",
+      "parent_id": "psychology",
+      "sort_order": 0
+    },
+    {
+      "label": "Developmental Psychology",
+      "id": "psychology.developmental",
+      "parent_id": "psychology",
+      "sort_order": 1
+    },
+    {
+      "label": "Social and Personality Psychology",
+      "scope_note": "Social influence, groups, attitudes, personality and psychological field theory.",
+      "id": "psychology.social_personality",
+      "parent_id": "psychology",
+      "sort_order": 2
+    },
+    {
+      "label": "Clinical and Counselling Psychology",
+      "id": "psychology.clinical",
+      "parent_id": "psychology",
+      "sort_order": 3
+    },
+    {
+      "label": "Behavioural Psychology",
+      "id": "psychology.behavioural",
+      "parent_id": "psychology",
+      "sort_order": 4
+    },
+    {
+      "label": "Psychological Methods and Measurement",
+      "id": "psychology.methods",
+      "parent_id": "psychology",
+      "sort_order": 5
+    },
+    {
+      "label": "Religion and Theology",
+      "lcc_refs": [
+        "BL-BX"
+      ],
+      "id": "religion",
+      "parent_id": null,
+      "sort_order": 3
+    },
+    {
+      "label": "Comparative Religion and Religious Studies",
+      "id": "religion.comparative",
+      "parent_id": "religion",
+      "sort_order": 0
+    },
+    {
+      "label": "Christianity",
+      "id": "religion.christianity",
+      "parent_id": "religion",
+      "sort_order": 1
+    },
+    {
+      "label": "Biblical Studies and Exegesis",
+      "id": "religion.christianity.biblical",
+      "parent_id": "religion.christianity",
+      "sort_order": 0
+    },
+    {
+      "label": "Systematic and Dogmatic Theology",
+      "id": "religion.christianity.theology",
+      "parent_id": "religion.christianity",
+      "sort_order": 1
+    },
+    {
+      "label": "Patristics and Church History",
+      "id": "religion.christianity.patristics",
+      "parent_id": "religion.christianity",
+      "sort_order": 2
+    },
+    {
+      "label": "Liturgy and Sacraments",
+      "id": "religion.christianity.liturgy",
+      "parent_id": "religion.christianity",
+      "sort_order": 3
+    },
+    {
+      "label": "Christian Ethics and Social Teaching",
+      "id": "religion.christianity.morals",
+      "parent_id": "religion.christianity",
+      "sort_order": 4
+    },
+    {
+      "label": "Judaism",
+      "id": "religion.judaism",
+      "parent_id": "religion",
+      "sort_order": 2
+    },
+    {
+      "label": "Islam",
+      "id": "religion.islam",
+      "parent_id": "religion",
+      "sort_order": 3
+    },
+    {
+      "label": "Hinduism",
+      "id": "religion.hinduism",
+      "parent_id": "religion",
+      "sort_order": 4
+    },
+    {
+      "label": "Buddhism",
+      "id": "religion.buddhism",
+      "parent_id": "religion",
+      "sort_order": 5
+    },
+    {
+      "label": "East Asian Religious Traditions",
+      "id": "religion.east_asian",
+      "parent_id": "religion",
+      "sort_order": 6
+    },
+    {
+      "label": "Other Religious Traditions",
+      "id": "religion.other_religions",
+      "parent_id": "religion",
+      "sort_order": 7
+    },
+    {
+      "label": "History and Historical Studies",
+      "lcc_refs": [
+        "C",
+        "D",
+        "E",
+        "F"
+      ],
+      "id": "history",
+      "parent_id": null,
+      "sort_order": 4
+    },
+    {
+      "label": "Historiography and Historical Methods",
+      "id": "history.historiography",
+      "parent_id": "history",
+      "sort_order": 0
+    },
+    {
+      "label": "Ancient and Classical History",
+      "id": "history.ancient",
+      "parent_id": "history",
+      "sort_order": 1
+    },
+    {
+      "label": "Greek and Roman History",
+      "id": "history.ancient.greek_roman",
+      "parent_id": "history.ancient",
+      "sort_order": 0
+    },
+    {
+      "label": "Medieval History",
+      "id": "history.medieval",
+      "parent_id": "history",
+      "sort_order": 2
+    },
+    {
+      "label": "Early Modern History",
+      "id": "history.early_modern",
+      "parent_id": "history",
+      "sort_order": 3
+    },
+    {
+      "label": "Modern and Contemporary History",
+      "id": "history.modern",
+      "parent_id": "history",
+      "sort_order": 4
+    },
+    {
+      "label": "Regional and Local History",
+      "id": "history.regional",
+      "parent_id": "history",
+      "sort_order": 5
+    },
+    {
+      "label": "Archaeology and Material Culture",
+      "id": "history.archaeology",
+      "parent_id": "history",
+      "sort_order": 6
+    },
+    {
+      "label": "Geography and Anthropology",
+      "lcc_refs": [
+        "G"
+      ],
+      "id": "geography",
+      "parent_id": null,
+      "sort_order": 5
+    },
+    {
+      "label": "Physical Geography",
+      "id": "geography.physical",
+      "parent_id": "geography",
+      "sort_order": 0
+    },
+    {
+      "label": "Human and Cultural Geography",
+      "id": "geography.human",
+      "parent_id": "geography",
+      "sort_order": 1
+    },
+    {
+      "label": "Cartography and Geographic Information Systems",
+      "id": "geography.cartography",
+      "parent_id": "geography",
+      "sort_order": 2
+    },
+    {
+      "label": "Cultural Anthropology",
+      "id": "geography.cultural_anthropology",
+      "parent_id": "geography",
+      "sort_order": 3
+    },
+    {
+      "label": "Biological Anthropology",
+      "id": "geography.biological_anthropology",
+      "parent_id": "geography",
+      "sort_order": 4
+    },
+    {
+      "label": "Sport, Recreation and Leisure",
+      "id": "geography.sport_recreation",
+      "parent_id": "geography",
+      "sort_order": 5
+    },
+    {
+      "label": "Sociology and Social Sciences",
+      "lcc_refs": [
+        "H"
+      ],
+      "id": "society",
+      "parent_id": null,
+      "sort_order": 6
+    },
+    {
+      "label": "Sociology and Social Theory",
+      "id": "society.sociology",
+      "parent_id": "society",
+      "sort_order": 0
+    },
+    {
+      "label": "Demography and Population Studies",
+      "id": "society.demography",
+      "parent_id": "society",
+      "sort_order": 1
+    },
+    {
+      "label": "Social Policy and Welfare",
+      "id": "society.social_policy",
+      "parent_id": "society",
+      "sort_order": 2
+    },
+    {
+      "label": "Communication and Media Studies",
+      "id": "society.communication",
+      "parent_id": "society",
+      "sort_order": 3
+    },
+    {
+      "label": "Gender and Family Studies",
+      "id": "society.gender_family",
+      "parent_id": "society",
+      "sort_order": 4
+    },
+    {
+      "label": "Criminology",
+      "id": "society.criminology",
+      "parent_id": "society",
+      "sort_order": 5
+    },
+    {
+      "label": "Economics, Business and Finance",
+      "lcc_refs": [
+        "H"
+      ],
+      "id": "economics_business",
+      "parent_id": null,
+      "sort_order": 7
+    },
+    {
+      "label": "Microeconomics",
+      "id": "economics_business.microeconomics",
+      "parent_id": "economics_business",
+      "sort_order": 0
+    },
+    {
+      "label": "Macroeconomics and Economic Policy",
+      "id": "economics_business.macroeconomics",
+      "parent_id": "economics_business",
+      "sort_order": 1
+    },
+    {
+      "label": "Economic History and Development",
+      "id": "economics_business.economic_history",
+      "parent_id": "economics_business",
+      "sort_order": 2
+    },
+    {
+      "label": "Econometrics",
+      "id": "economics_business.econometrics",
+      "parent_id": "economics_business",
+      "sort_order": 3
+    },
+    {
+      "label": "Finance and Investment",
+      "id": "economics_business.finance",
+      "parent_id": "economics_business",
+      "sort_order": 4
+    },
+    {
+      "label": "Accounting, Audit and Controllership",
+      "id": "economics_business.accounting",
+      "parent_id": "economics_business",
+      "sort_order": 5
+    },
+    {
+      "label": "Management and Organisations",
+      "id": "economics_business.management",
+      "parent_id": "economics_business",
+      "sort_order": 6
+    },
+    {
+      "label": "Marketing, Operations and Supply Chains",
+      "id": "economics_business.operations",
+      "parent_id": "economics_business",
+      "sort_order": 7
+    },
+    {
+      "label": "Politics and International Relations",
+      "lcc_refs": [
+        "J"
+      ],
+      "id": "politics",
+      "parent_id": null,
+      "sort_order": 8
+    },
+    {
+      "label": "Political Theory",
+      "id": "politics.theory",
+      "parent_id": "politics",
+      "sort_order": 0
+    },
+    {
+      "label": "Comparative Politics",
+      "id": "politics.comparative",
+      "parent_id": "politics",
+      "sort_order": 1
+    },
+    {
+      "label": "Public Administration and Policy",
+      "id": "politics.public_administration",
+      "parent_id": "politics",
+      "sort_order": 2
+    },
+    {
+      "label": "International Relations and Diplomacy",
+      "id": "politics.international_relations",
+      "parent_id": "politics",
+      "sort_order": 3
+    },
+    {
+      "label": "Security Studies and Geopolitics",
+      "id": "politics.security",
+      "parent_id": "politics",
+      "sort_order": 4
+    },
+    {
+      "label": "Law and Jurisprudence",
+      "lcc_refs": [
+        "K"
+      ],
+      "id": "law",
+      "parent_id": null,
+      "sort_order": 9
+    },
+    {
+      "label": "Legal Theory and Jurisprudence",
+      "id": "law.jurisprudence",
+      "parent_id": "law",
+      "sort_order": 0
+    },
+    {
+      "label": "Constitutional and Administrative Law",
+      "id": "law.constitutional",
+      "parent_id": "law",
+      "sort_order": 1
+    },
+    {
+      "label": "Private and Commercial Law",
+      "id": "law.commercial",
+      "parent_id": "law",
+      "sort_order": 2
+    },
+    {
+      "label": "Criminal Law",
+      "id": "law.criminal",
+      "parent_id": "law",
+      "sort_order": 3
+    },
+    {
+      "label": "International Law",
+      "id": "law.international",
+      "parent_id": "law",
+      "sort_order": 4
+    },
+    {
+      "label": "Religious and Canon Law",
+      "id": "law.religious",
+      "parent_id": "law",
+      "sort_order": 5
+    },
+    {
+      "label": "Education",
+      "lcc_refs": [
+        "L"
+      ],
+      "id": "education",
+      "parent_id": null,
+      "sort_order": 10
+    },
+    {
+      "label": "Educational Theory and Pedagogy",
+      "id": "education.theory",
+      "parent_id": "education",
+      "sort_order": 0
+    },
+    {
+      "label": "Curriculum and Instruction",
+      "id": "education.curriculum",
+      "parent_id": "education",
+      "sort_order": 1
+    },
+    {
+      "label": "Educational Measurement and Assessment",
+      "id": "education.assessment",
+      "parent_id": "education",
+      "sort_order": 2
+    },
+    {
+      "label": "Higher and Professional Education",
+      "id": "education.higher",
+      "parent_id": "education",
+      "sort_order": 3
+    },
+    {
+      "label": "Language Education",
+      "id": "education.language",
+      "parent_id": "education",
+      "sort_order": 4
+    },
+    {
+      "label": "Language and Literature",
+      "lcc_refs": [
+        "P"
+      ],
+      "id": "language_literature",
+      "parent_id": null,
+      "sort_order": 11
+    },
+    {
+      "label": "Linguistics",
+      "id": "language_literature.linguistics",
+      "parent_id": "language_literature",
+      "sort_order": 0
+    },
+    {
+      "label": "Phonetics and Phonology",
+      "id": "language_literature.linguistics.phonetics",
+      "parent_id": "language_literature.linguistics",
+      "sort_order": 0
+    },
+    {
+      "label": "Morphology and Syntax",
+      "id": "language_literature.linguistics.grammar",
+      "parent_id": "language_literature.linguistics",
+      "sort_order": 1
+    },
+    {
+      "label": "Semantics and Pragmatics",
+      "id": "language_literature.linguistics.semantics",
+      "parent_id": "language_literature.linguistics",
+      "sort_order": 2
+    },
+    {
+      "label": "Historical and Sociolinguistics",
+      "id": "language_literature.linguistics.historical",
+      "parent_id": "language_literature.linguistics",
+      "sort_order": 3
+    },
+    {
+      "label": "Philology and Textual Criticism",
+      "id": "language_literature.philology",
+      "parent_id": "language_literature",
+      "sort_order": 1
+    },
+    {
+      "label": "Language Learning and Translation",
+      "id": "language_literature.language_learning",
+      "parent_id": "language_literature",
+      "sort_order": 2
+    },
+    {
+      "label": "Literary Theory and Criticism",
+      "id": "language_literature.literary_theory",
+      "parent_id": "language_literature",
+      "sort_order": 3
+    },
+    {
+      "label": "Literature and Literary History",
+      "id": "language_literature.literature",
+      "parent_id": "language_literature",
+      "sort_order": 4
+    },
+    {
+      "label": "Rhetoric and Writing",
+      "id": "language_literature.rhetoric",
+      "parent_id": "language_literature",
+      "sort_order": 5
+    },
+    {
+      "label": "Arts, Music and Media",
+      "lcc_refs": [
+        "M",
+        "N",
+        "PN"
+      ],
+      "id": "arts",
+      "parent_id": null,
+      "sort_order": 12
+    },
+    {
+      "label": "Visual Arts",
+      "id": "arts.visual",
+      "parent_id": "arts",
+      "sort_order": 0
+    },
+    {
+      "label": "Architecture",
+      "id": "arts.architecture",
+      "parent_id": "arts",
+      "sort_order": 1
+    },
+    {
+      "label": "Music and Musicology",
+      "id": "arts.music",
+      "parent_id": "arts",
+      "sort_order": 2
+    },
+    {
+      "label": "Theatre and Performing Arts",
+      "id": "arts.performing",
+      "parent_id": "arts",
+      "sort_order": 3
+    },
+    {
+      "label": "Film and Digital Media",
+      "id": "arts.film",
+      "parent_id": "arts",
+      "sort_order": 4
+    },
+    {
+      "label": "Design and Applied Arts",
+      "id": "arts.design",
+      "parent_id": "arts",
+      "sort_order": 5
+    },
+    {
+      "label": "Mathematics and Formal Sciences",
+      "lcc_refs": [
+        "QA"
+      ],
+      "id": "mathematics",
+      "parent_id": null,
+      "sort_order": 13
+    },
+    {
+      "label": "Foundations and Mathematical Logic",
+      "id": "mathematics.foundations",
+      "parent_id": "mathematics",
+      "sort_order": 0
+    },
+    {
+      "label": "Mathematical Logic and Set Theory",
+      "id": "mathematics.foundations.logic_set_theory",
+      "parent_id": "mathematics.foundations",
+      "sort_order": 0
+    },
+    {
+      "label": "Category Theory",
+      "id": "mathematics.foundations.category_theory",
+      "parent_id": "mathematics.foundations",
+      "sort_order": 1
+    },
+    {
+      "label": "Algebra",
+      "lcc_refs": [
+        "QA150-QA272.5"
+      ],
+      "id": "mathematics.algebra",
+      "parent_id": "mathematics",
+      "sort_order": 1
+    },
+    {
+      "label": "Linear Algebra",
+      "id": "mathematics.algebra.linear",
+      "parent_id": "mathematics.algebra",
+      "sort_order": 0
+    },
+    {
+      "label": "Abstract Algebra",
+      "scope_note": "Groups, rings, fields, modules, homomorphisms and algebraic structures.",
+      "id": "mathematics.algebra.abstract",
+      "parent_id": "mathematics.algebra",
+      "sort_order": 1
+    },
+    {
+      "label": "Number Theory",
+      "id": "mathematics.number_theory",
+      "parent_id": "mathematics",
+      "sort_order": 2
+    },
+    {
+      "label": "Mathematical Analysis",
+      "lcc_refs": [
+        "QA299.6-QA433"
+      ],
+      "id": "mathematics.analysis",
+      "parent_id": "mathematics",
+      "sort_order": 3
+    },
+    {
+      "label": "Geometry and Topology",
+      "lcc_refs": [
+        "QA440-QA699"
+      ],
+      "id": "mathematics.geometry_topology",
+      "parent_id": "mathematics",
+      "sort_order": 4
+    },
+    {
+      "label": "Probability and Mathematical Statistics",
+      "lcc_refs": [
+        "QA273-QA280"
+      ],
+      "id": "mathematics.probability_statistics",
+      "parent_id": "mathematics",
+      "sort_order": 5
+    },
+    {
+      "label": "Applied Mathematics and Optimisation",
+      "id": "mathematics.applied",
+      "parent_id": "mathematics",
+      "sort_order": 6
+    },
+    {
+      "label": "Computer Science and Artificial Intelligence",
+      "lcc_refs": [
+        "QA75.5-QA76.95"
+      ],
+      "id": "computing",
+      "parent_id": null,
+      "sort_order": 14
+    },
+    {
+      "label": "Algorithms and Data Structures",
+      "id": "computing.algorithms",
+      "parent_id": "computing",
+      "sort_order": 0
+    },
+    {
+      "label": "Programming Languages and Compilers",
+      "id": "computing.programming",
+      "parent_id": "computing",
+      "sort_order": 1
+    },
+    {
+      "label": "Software Engineering and Architecture",
+      "id": "computing.software_engineering",
+      "parent_id": "computing",
+      "sort_order": 2
+    },
+    {
+      "label": "Computer Systems and Networks",
+      "id": "computing.systems",
+      "parent_id": "computing",
+      "sort_order": 3
+    },
+    {
+      "label": "Databases and Information Retrieval",
+      "scope_note": "Database relations, schemas, fields, tables, indexing and retrieval.",
+      "id": "computing.databases",
+      "parent_id": "computing",
+      "sort_order": 4
+    },
+    {
+      "label": "Artificial Intelligence",
+      "id": "computing.ai",
+      "parent_id": "computing",
+      "sort_order": 5
+    },
+    {
+      "label": "Machine Learning",
+      "id": "computing.ai.machine_learning",
+      "parent_id": "computing.ai",
+      "sort_order": 0
+    },
+    {
+      "label": "Knowledge Representation and Reasoning",
+      "id": "computing.ai.knowledge_representation",
+      "parent_id": "computing.ai",
+      "sort_order": 1
+    },
+    {
+      "label": "Natural Language Processing",
+      "id": "computing.ai.nlp",
+      "parent_id": "computing.ai",
+      "sort_order": 2
+    },
+    {
+      "label": "Cybersecurity",
+      "id": "computing.security",
+      "parent_id": "computing",
+      "sort_order": 6
+    },
+    {
+      "label": "Human–Computer Interaction",
+      "id": "computing.hci",
+      "parent_id": "computing",
+      "sort_order": 7
+    },
+    {
+      "label": "Data Science and Analytics",
+      "id": "computing.data_science",
+      "parent_id": "computing",
+      "sort_order": 8
+    },
+    {
+      "label": "Natural Sciences",
+      "lcc_refs": [
+        "Q",
+        "QB",
+        "QC",
+        "QD",
+        "QE",
+        "QH",
+        "QK",
+        "QL",
+        "QM",
+        "QP",
+        "QR"
+      ],
+      "id": "natural_sciences",
+      "parent_id": null,
+      "sort_order": 15
+    },
+    {
+      "label": "Physics",
+      "scope_note": "Mechanics, electromagnetism, quantum theory and physical fields.",
+      "id": "natural_sciences.physics",
+      "parent_id": "natural_sciences",
+      "sort_order": 0
+    },
+    {
+      "label": "Chemistry",
+      "id": "natural_sciences.chemistry",
+      "parent_id": "natural_sciences",
+      "sort_order": 1
+    },
+    {
+      "label": "Biological Sciences",
+      "id": "natural_sciences.biology",
+      "parent_id": "natural_sciences",
+      "sort_order": 2
+    },
+    {
+      "label": "Botany and Plant Science",
+      "id": "natural_sciences.biology.botany",
+      "parent_id": "natural_sciences.biology",
+      "sort_order": 0
+    },
+    {
+      "label": "Zoology and Animal Science",
+      "id": "natural_sciences.biology.zoology",
+      "parent_id": "natural_sciences.biology",
+      "sort_order": 1
+    },
+    {
+      "label": "Genetics and Molecular Biology",
+      "id": "natural_sciences.biology.genetics",
+      "parent_id": "natural_sciences.biology",
+      "sort_order": 2
+    },
+    {
+      "label": "Earth and Space Sciences",
+      "id": "natural_sciences.earth_space",
+      "parent_id": "natural_sciences",
+      "sort_order": 3
+    },
+    {
+      "label": "Ecology and Environmental Science",
+      "id": "natural_sciences.ecology",
+      "parent_id": "natural_sciences",
+      "sort_order": 4
+    },
+    {
+      "label": "Medicine and Health",
+      "lcc_refs": [
+        "R"
+      ],
+      "id": "medicine",
+      "parent_id": null,
+      "sort_order": 16
+    },
+    {
+      "label": "Anatomy and Physiology",
+      "id": "medicine.anatomy",
+      "parent_id": "medicine",
+      "sort_order": 0
+    },
+    {
+      "label": "Clinical Medicine",
+      "id": "medicine.clinical",
+      "parent_id": "medicine",
+      "sort_order": 1
+    },
+    {
+      "label": "Neuroscience",
+      "id": "medicine.neuroscience",
+      "parent_id": "medicine",
+      "sort_order": 2
+    },
+    {
+      "label": "Public Health and Epidemiology",
+      "id": "medicine.public_health",
+      "parent_id": "medicine",
+      "sort_order": 3
+    },
+    {
+      "label": "Pharmacology and Therapeutics",
+      "id": "medicine.pharmacology",
+      "parent_id": "medicine",
+      "sort_order": 4
+    },
+    {
+      "label": "Mental Health and Psychiatry",
+      "id": "medicine.psychiatry",
+      "parent_id": "medicine",
+      "sort_order": 5
+    },
+    {
+      "label": "Engineering and Technology",
+      "lcc_refs": [
+        "T"
+      ],
+      "id": "engineering",
+      "parent_id": null,
+      "sort_order": 17
+    },
+    {
+      "label": "Electrical and Electronic Engineering",
+      "id": "engineering.electrical",
+      "parent_id": "engineering",
+      "sort_order": 0
+    },
+    {
+      "label": "Mechanical and Aerospace Engineering",
+      "id": "engineering.mechanical",
+      "parent_id": "engineering",
+      "sort_order": 1
+    },
+    {
+      "label": "Civil and Structural Engineering",
+      "id": "engineering.civil",
+      "parent_id": "engineering",
+      "sort_order": 2
+    },
+    {
+      "label": "Materials and Chemical Engineering",
+      "id": "engineering.materials",
+      "parent_id": "engineering",
+      "sort_order": 3
+    },
+    {
+      "label": "Industrial and Manufacturing Engineering",
+      "id": "engineering.industrial",
+      "parent_id": "engineering",
+      "sort_order": 4
+    },
+    {
+      "label": "Energy and Environmental Engineering",
+      "id": "engineering.energy",
+      "parent_id": "engineering",
+      "sort_order": 5
+    },
+    {
+      "label": "Technology Management and Innovation",
+      "id": "engineering.innovation",
+      "parent_id": "engineering",
+      "sort_order": 6
+    },
+    {
+      "label": "Agriculture and Food Sciences",
+      "lcc_refs": [
+        "S"
+      ],
+      "id": "agriculture",
+      "parent_id": null,
+      "sort_order": 18
+    },
+    {
+      "label": "Crop Science and Horticulture",
+      "id": "agriculture.crops",
+      "parent_id": "agriculture",
+      "sort_order": 0
+    },
+    {
+      "label": "Animal Husbandry and Veterinary Science",
+      "id": "agriculture.animal",
+      "parent_id": "agriculture",
+      "sort_order": 1
+    },
+    {
+      "label": "Forestry and Natural Resource Management",
+      "id": "agriculture.forestry",
+      "parent_id": "agriculture",
+      "sort_order": 2
+    },
+    {
+      "label": "Food Science and Nutrition",
+      "id": "agriculture.food",
+      "parent_id": "agriculture",
+      "sort_order": 3
+    },
+    {
+      "label": "Defence and Military Studies",
+      "lcc_refs": [
+        "U",
+        "V"
+      ],
+      "id": "defence",
+      "parent_id": null,
+      "sort_order": 19
+    },
+    {
+      "label": "Military Strategy and Doctrine",
+      "id": "defence.strategy",
+      "parent_id": "defence",
+      "sort_order": 0
+    },
+    {
+      "label": "Military Operations and History",
+      "id": "defence.operations",
+      "parent_id": "defence",
+      "sort_order": 1
+    },
+    {
+      "label": "Naval and Maritime Studies",
+      "id": "defence.naval",
+      "parent_id": "defence",
+      "sort_order": 2
+    },
+    {
+      "label": "Defence Technology and Logistics",
+      "id": "defence.technology",
+      "parent_id": "defence",
+      "sort_order": 3
+    }
+  ]
+}

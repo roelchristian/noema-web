@@ -1,3 +1,4 @@
+import {DOMAINS,TAXONOMY_VERSION,validateDomainRegistry} from '../shared/domains.js';
 import {linkSourceReferences,syncSourceReferences} from './modules/source-references.js';
 import {Store} from './store.js';
 import {createHash} from 'node:crypto';
@@ -407,6 +408,22 @@ if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
    store.run("INSERT INTO schema_migrations VALUES (4,datetime('now'))");
   });
  }
+ validateDomainRegistry();
+ db.exec(`CREATE TABLE IF NOT EXISTS domains (id TEXT PRIMARY KEY,parent_id TEXT REFERENCES domains(id),label TEXT NOT NULL,lcc_refs_json TEXT NOT NULL DEFAULT '[]',scope_note TEXT,sort_order INTEGER NOT NULL);
+ CREATE TABLE IF NOT EXISTS page_domains (page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,domain_id TEXT NOT NULL REFERENCES domains(id),role TEXT NOT NULL CHECK(role IN ('primary','secondary')),origin TEXT NOT NULL CHECK(origin IN ('manual','inferred')),updated_at TEXT NOT NULL,PRIMARY KEY(page_id,domain_id));
+ CREATE UNIQUE INDEX IF NOT EXISTS page_domains_primary ON page_domains(page_id) WHERE role='primary';
+ CREATE INDEX IF NOT EXISTS page_domains_domain ON page_domains(domain_id);
+ CREATE TABLE IF NOT EXISTS page_domain_state (page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,origin TEXT NOT NULL CHECK(origin IN ('manual','inferred')),content_hash TEXT,taxonomy_version TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 0);
+ CREATE TABLE IF NOT EXISTS entity_domains (entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,domain_id TEXT NOT NULL REFERENCES domains(id),origin TEXT NOT NULL CHECK(origin IN ('manual','scan','inferred')),PRIMARY KEY(entity_id,domain_id));
+ CREATE INDEX IF NOT EXISTS entity_domains_domain ON entity_domains(domain_id);`);
+ new Store(db).transaction(()=>{
+  const remaining=new Map(DOMAINS.map(domain=>[domain.id,domain]));const inserted=new Set<string>();
+  while(remaining.size)for(const [id,domain] of remaining)if(!domain.parent_id||inserted.has(domain.parent_id)){
+   db.prepare('INSERT INTO domains (id,parent_id,label,lcc_refs_json,scope_note,sort_order) VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET parent_id=excluded.parent_id,label=excluded.label,lcc_refs_json=excluded.lcc_refs_json,scope_note=excluded.scope_note,sort_order=excluded.sort_order').run(id,domain.parent_id,domain.label,JSON.stringify(domain.lcc_refs??[]),domain.scope_note??null,domain.sort_order);
+   inserted.add(id);remaining.delete(id);
+  }
+  db.prepare("INSERT INTO metadata (key,value) VALUES ('domain_taxonomy_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(TAXONOMY_VERSION);
+ });
  setupPageSegmentSchema(db);
  setupSourceAuthorSchema(db);
  setupSourcePassageSchema(db);

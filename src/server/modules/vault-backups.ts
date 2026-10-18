@@ -1,3 +1,4 @@
+import {domainById} from '../../shared/domains.js';
 import {isPageIndexPolicy} from '../../shared/embeddings.js';
 import {syncSourceReferences} from './source-references.js';
 import {limitSummaryWords} from '../../shared/summary-text.js';
@@ -34,6 +35,9 @@ const tables={
   properties:{columns:'id,entity_id,name,value,target_id',scope:entityScope},
   relationships:{columns:'id,source_id,label,target_id',scope:'source_id IN (SELECT id FROM entities WHERE vault_id=?)'},
   page_edit_locks:{columns:'page_id,password_hash,salt',scope:'vault_id=?'},
+  page_domains:{columns:'page_id,domain_id,role,origin,updated_at',scope:pageScope},
+  page_domain_state:{columns:'page_id,origin,content_hash,taxonomy_version,revision',scope:pageScope},
+  entity_domains:{columns:'entity_id,domain_id,origin',scope:entityScope},
   page_sources:{columns:'page_id,source_id',scope:pageScope},
   entity_subtypes:{columns:'id,type,name',scope:'vault_id=?'},
   entity_type_properties:{columns:'type,name',scope:'vault_id=?'},
@@ -114,7 +118,7 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='page_segment_cache'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     const sourceOwners=new Set<unknown>(),legacyEntities=new Map(rows.entities.map(row=>[row.id,row]));
     const legacyProperties=[...rows.properties],legacyLinks=[...rows.page_sources];
     for(const file of rows.source_files) {
@@ -269,6 +273,25 @@ export class VaultBackups {
           syncSourceReferences(this.store,pageId,blocks);
           this.store.run('UPDATE pages SET blocks=? WHERE id=?',JSON.stringify(blocks),pageId);
         }
+        for(const row of rows.page_domain_state) {
+          if(row.origin!=='manual'&&row.origin!=='inferred')throw invalid();
+          const hash=row.content_hash===null?null:string(row,'content_hash',100);
+          if(hash!==null&&!/^[a-f0-9]{64}$/.test(hash))throw invalid();
+          insert('page_domain_state',{page_id:ref(pageIds,row.page_id),origin:row.origin,content_hash:hash,taxonomy_version:name(row,'taxonomy_version'),revision:integer(row,'revision')});
+        }
+        for(const row of rows.page_domains) {
+          const domainId=name(row,'domain_id');
+          if(!domainById(domainId)||!['primary','secondary'].includes(String(row.role))||!['manual','inferred'].includes(String(row.origin)))throw invalid();
+          const pageId=ref(pageIds,row.page_id);
+          const state=rows.page_domain_state.find(state=>state.page_id===row.page_id);
+          if(!state||state.origin!==row.origin)throw invalid();
+          insert('page_domains',{page_id:pageId,domain_id:domainId,role:String(row.role),origin:String(row.origin),updated_at:timestamp(row,'updated_at')});
+        }
+        for(const row of rows.entity_domains) {
+          const domainId=name(row,'domain_id'),entityId=ref(entityIds,row.entity_id);
+          if(!domainById(domainId)||!['manual','scan','inferred'].includes(String(row.origin))||this.store.get<{type:string}>('SELECT type FROM entities WHERE id=?',entityId)?.type!=='concept')throw invalid();
+          insert('entity_domains',{entity_id:entityId,domain_id:domainId,origin:String(row.origin)});
+        }
         for(const row of rows.page_edit_locks) {
           const passwordHash=row.password_hash, salt=row.salt;
           if (passwordHash===null ? salt!==null : typeof passwordHash!=='string'||!/^[a-f0-9]{128}$/.test(passwordHash)||typeof salt!=='string'||!/^[a-f0-9-]{36}$/.test(salt)) throw invalid();
@@ -302,6 +325,10 @@ export class VaultBackups {
               const suggestion={...object(value)},type=entityType(suggestion);
               return {...suggestion,...(suggestion.proposedSubtypeIds === undefined ? {} : {proposedSubtypeIds:list(suggestion.proposedSubtypeIds).map(value=>ref(proposalIds,value))}),id:randomUUID(),existingId:suggestion.existingId===null?null:ref(entityIds,suggestion.existingId),subtypes:list(suggestion.subtypes).map(value=>subtype(value,type))};
             });
+          }
+          if(kind==='domain_classification') {
+            if(data.primaryDomainId!==null&&(typeof data.primaryDomainId!=='string'||!domainById(data.primaryDomainId)))throw invalid();
+            if(list(data.secondaryDomainIds).some(id=>typeof id!=='string'||!domainById(id)))throw invalid();
           }
           if(kind==='concept_classification') {
             data.subtypeIds=list(data.subtypeIds).map(value=>subtype(value,'concept'));

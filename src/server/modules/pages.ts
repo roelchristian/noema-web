@@ -1,3 +1,4 @@
+import {Domains} from './domains.js';
 import {enrichCitationPages,syncSourceReferences} from './source-references.js';
 import {pageLanguage} from './page-language.js';
 import {nextPageAIStatus, type PageAIStatus} from '../../shared/page-ai-status.js';
@@ -49,7 +50,7 @@ export class Pages {
       this.store.run('UPDATE pages SET summary_content_hash=?,summary_hash_version=2 WHERE id=? AND vault_id=?',hash,id,vault);
     }
     const editLock=this.store.get<{password_hash:string|null}>('SELECT password_hash FROM page_edit_locks WHERE page_id=? AND vault_id=?',id,vault);
-    return {...stored,aiStatus,editLocked:!!editLock,editProtected:!!editLock?.password_hash,featuredImageId,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id)};
+    return {...stored,pageDomains:new Domains(this.store).get(id,conceptContentHash({...stored,blocks},resolveName)),aiStatus,editLocked:!!editLock,editProtected:!!editLock?.password_hash,featuredImageId,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id)};
   }
   requireEditable(vault: string, id: string) {
     const page=this.get(vault,id);

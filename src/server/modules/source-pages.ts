@@ -7,12 +7,13 @@ import {HttpError,now,text} from '../validation.js';
 import {Knowledge} from './knowledge.js';
 import {Pages} from './pages.js';
 
-/** Only complete, validated records reach the browser or the persisted page. */
+/** Validate record structure and mark evidence that needs the user's review. */
 export class SourcePageDraft {
   private pending='';
   private size=0;
   private readonly sourceLines:string[];
   private evidenceBlocks=0;
+  private flaggedBlocks=0;
   private recordCount=0;
   private quotedCharacters=0;
   title='';
@@ -29,7 +30,7 @@ export class SourcePageDraft {
     if(this.pending.trim())this.record(this.pending);
     this.pending='';
     if(!this.title||!this.blocks.length)throw new HttpError(502,'AI did not return a complete page. Try again.');
-    if(!this.evidenceBlocks)throw new HttpError(502,'AI did not ground the page in source evidence. Please retry.');
+    if(!this.evidenceBlocks&&!this.flaggedBlocks)throw new HttpError(502,'AI did not ground the page in source evidence. Please retry.');
   }
   private record(line:string) {
     if(!line.trim())return;
@@ -42,27 +43,27 @@ export class SourcePageDraft {
     }
     if(item.type!=='block'||!this.title||!sourcePageBlockTypes.includes(item.blockType as typeof sourcePageBlockTypes[number])||typeof item.text!=='string'||!item.text.trim()||item.text.length>6000||this.recordCount>=100)throw new HttpError(502,'AI returned an invalid page block. Try a narrower focus.');
     if(!['source','context','inference'].includes(String(item.basis)))throw new HttpError(502,'AI did not distinguish source evidence from additional context. Please retry.');
-    const citations=item.citations??[];
-    if(!Array.isArray(citations)||citations.length>3)throw new HttpError(502,'AI returned invalid source citations. Please retry.');
+    const suppliedCitations=item.citations??[];
+    const citations=Array.isArray(suppliedCitations)?suppliedCitations.slice(0,3):[];
     const heading=item.blockType==='heading1'||item.blockType==='heading2';
-    if(!heading&&item.basis!=='context'&&!citations.length)throw new HttpError(502,'AI omitted source citations for a substantive block. Please retry.');
+    let blockNeedsReview=!Array.isArray(suppliedCitations)||suppliedCitations.length>3||!heading&&item.basis!=='context'&&!citations.length;
     const normalize=(value:string)=>value.replace(/\s+/g,' ').trim();
     const evidence=citations.map((citation:unknown)=>{
-      if(!citation||typeof citation!=='object'||Array.isArray(citation))throw new HttpError(502,'AI returned an invalid citation.');
-      const {startLine,endLine,quote}=citation as Record<string,unknown>;
-      if(typeof startLine!=='number'||typeof endLine!=='number'||!Number.isInteger(startLine)||!Number.isInteger(endLine)||startLine<1||endLine<startLine||endLine>this.sourceLines.length||endLine-startLine>=30)throw new HttpError(502,'AI cited lines outside the supplied source. Please retry.');
-      const passage=normalize(this.sourceLines.slice(startLine-1,endLine).join('\n'));
-      if(!passage)throw new HttpError(502,'AI cited an empty source passage. Please retry.');
-      if(quote!==undefined&&(typeof quote!=='string'||!normalize(quote)||quote.length>240||!passage.includes(normalize(quote))))throw new HttpError(502,'AI returned a quotation that does not match the cited source passage. Please retry.');
+      const {startLine,endLine,quote,anchor}=citation&&typeof citation==='object'&&!Array.isArray(citation)?citation as Record<string,unknown>:{};
+      const validRange=typeof startLine==='number'&&typeof endLine==='number'&&Number.isInteger(startLine)&&Number.isInteger(endLine)&&startLine>=1&&endLine>=startLine&&endLine<=this.sourceLines.length&&endLine-startLine<30;
+      const passage=validRange?normalize(this.sourceLines.slice(startLine-1,endLine).join('\n')):'';
+      const matched=!!passage&&(quote===undefined||typeof quote==='string'&&!!normalize(quote)&&quote.length<=240&&passage.includes(normalize(quote)))&&(item.blockType!=='quote'||passage.includes(normalize(item.text as string)));
       if(typeof quote==='string')this.quotedCharacters+=quote.length;
-      return {startLine,endLine,quote:typeof quote==='string'?quote:undefined,passage};
+      const range=matched?(startLine===endLine?String(startLine):`${startLine}-${endLine}`):undefined;
+      return {range,quote:typeof quote==='string'?quote:undefined,anchor:typeof anchor==='string'?anchor:undefined};
     });
     if(item.blockType==='quote') {
-      if(item.basis!=='source'||item.text.length>240||!evidence.some(citation=>citation.passage.includes(normalize(item.text as string))))throw new HttpError(502,'AI returned a quote block that does not match the source. Please retry.');
+      if(item.basis!=='source'||item.text.length>240||!evidence.some(citation=>citation.range))blockNeedsReview=true;
       this.quotedCharacters+=item.text.length;
     }
     if(this.quotedCharacters>1200)throw new HttpError(502,'AI quoted too much of the source. Retry with a narrower focus.');
-    if(item.basis==='source'&&!heading&&evidence.length)this.evidenceBlocks++;
+    if(item.basis==='source'&&!heading&&evidence.some(citation=>citation.range))this.evidenceBlocks++;
+    if(blockNeedsReview||evidence.some(citation=>!citation.range))this.flaggedBlocks++;
     this.recordCount++;
     const block:Block={id:randomUUID(),type:item.blockType as typeof sourcePageBlockTypes[number],content:[],checked:false};
     const label=item.basis==='context'?'Additional context: ':'Interpretation: ';
@@ -71,12 +72,33 @@ export class SourcePageDraft {
       const heading:Block={id:randomUUID(),type:'paragraph',content:[{text:label.trim(),bold:true}],checked:false};
       this.blocks.push(heading);this.emit({type:'block',block:heading});
     }else if(item.basis!=='source')block.content.push({text:label,bold:true});
-    block.content.push({text:item.text});
     const references:Block['content']=[];
+    const insertions:{offset:number;content:Block['content']}[]=[];
+    if(blockNeedsReview&&!evidence.some(citation=>!citation.range))insertions.push({offset:item.text.length,content:[{text:' [??]'}]});
     for(const citation of evidence) {
-      if(citation.quote&&item.blockType!=='quote')references.push({text:` “${citation.quote}”`,italic:true});
-      const range=citation.startLine===citation.endLine?`L${citation.startLine}`:`L${citation.startLine}–L${citation.endLine}`;
-      references.push({text:` [Source text ${range}]`,code:true});
+      const content:Block['content']=[];
+      // Place a reference beside its exact claim or quote, never a guessed span.
+      const uniqueOffset=(value:string|undefined)=>{
+        if(!value)return -1;
+        const start=(item.text as string).indexOf(value);
+        return start>=0&&(item.text as string).indexOf(value,start+1)<0?start+value.length:-1;
+      };
+      const quoteOffset=uniqueOffset(citation.quote),anchorOffset=uniqueOffset(citation.anchor);
+      if(citation.quote&&item.blockType!=='quote'&&quoteOffset<0)content.push({text:` “${citation.quote}”`,italic:true});
+      content.push({text:citation.range?` [L: ${citation.range}]`:' [??]'});
+      insertions.push({offset:quoteOffset>=0?quoteOffset:anchorOffset>=0?anchorOffset:item.text.length,content});
+    }
+    insertions.sort((a,b)=>a.offset-b.offset);
+    if(literal){
+      block.content.push({text:item.text});
+      references.push(...insertions.flatMap(insertion=>insertion.content));
+    }else{
+      let offset=0;
+      for(const insertion of insertions){
+        if(insertion.offset>offset)block.content.push({text:item.text.slice(offset,insertion.offset)});
+        block.content.push(...insertion.content);offset=insertion.offset;
+      }
+      if(offset<item.text.length)block.content.push({text:item.text.slice(offset)});
     }
     if(literal&&references.length){
       this.blocks.push(block);this.emit({type:'block',block});

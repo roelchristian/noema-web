@@ -3,6 +3,7 @@ import { isSemanticKind, normalizeSemanticGroups } from '../../shared/semantic-b
 import { displayMathSource } from './math-delimiters';
 import { safeHref, type Block, type BlockType, type Segment, type TextStyle } from '../../shared/domain';
 import { readSegments } from './segments';
+import { inlineCodeSegments } from './inline-code';
 export function makeBlock(type: BlockType = 'paragraph', content: Segment[] = []): Block {
   return {id: randomUUID(), type, checked: false, content, ...(type === 'columns' ? {rows: [[[], []]]} : type === 'table' ? {rows: [[[], []], [[], []]]} : {})};
 }
@@ -70,7 +71,7 @@ export function markdownBlocks(text: string): Block[] {
   }
   return blocks.length ? blocks : [makeBlock('paragraph', text ? [{text}] : [])];
 }
-/** Read math in rich clipboard text without reinterpreting its existing formatting. */
+/** Read code and math in rich clipboard text while preserving existing formatting. */
 export function clipboardMathBlocks(blocks: Block[]): Block[] {
   function slice(content: Segment[], start: number, end: number): Segment[] {
     let offset = 0;
@@ -81,6 +82,7 @@ export function clipboardMathBlocks(blocks: Block[]): Block[] {
     });
   }
   function inline(content: Segment[]): Segment[] {
+    content=inlineCodeSegments(content);
     const output: Segment[] = [];
     for (let i = 0; i < content.length;) {
       const segment = content[i]!;

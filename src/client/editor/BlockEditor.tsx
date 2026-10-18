@@ -31,6 +31,7 @@ import { SelectionToolbar } from './SelectionToolbar';
 import { MathBlock } from './MathBlock';
 import { MathDialog } from './MathDialog';
 import { completeInlineMath, mathElement } from './math';
+import { completeInlineCode } from './inline-code';
 interface Props {featuredImageId?: string | null; pages?:PageSummary[];onOpenPage?:(id:string)=>void;onExplain?: (blocks: Block[]) => Promise<string>; reviewMatches?: EntityReviewItem[]; onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[], featuredImageId?: string | null) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
 function explanationInsertionIndex(blocks: Block[], ids: string[]) {
   const last=blocks.filter(block=>ids.includes(block.id)).at(-1);
@@ -616,7 +617,7 @@ export function BlockEditor(props: Props) {
       if(root.current?.dataset.formattingTransaction) {event.stopPropagation(); return;}
       if((event.nativeEvent as InputEvent).isComposing)return;
       const surface=(event.target as Element).closest<HTMLElement>('.block-content[contenteditable="true"]');
-      if(surface)completePageLink(surface);
+      if(surface) {completeInlineCode(surface,event.nativeEvent as InputEvent);completePageLink(surface);}
     }} onClickCapture={e => {
       // A tap ending a native selection gesture must not open an inline item.
       const selection = getSelection();

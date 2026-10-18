@@ -7,6 +7,8 @@ import {limitSummaryWords} from '../../shared/summary-text.js';
 import {pageLanguage} from './page-language.js';
 import {isPageAIStatus} from '../../shared/page-ai-status.js';
 import {isAIExplanation} from '../../shared/semantic-blocks.js';
+import {highlightColors,readingNoteMaxWords,readingNoteWordCount,type HighlightColor} from '../../shared/source-reading.js';
+import {projectPageText} from '../../shared/page-text.js';
 import { syncSourceProvenance } from './source-provenance.js';
 import { readFileSync, unlinkSync } from 'node:fs';
 import { SourceFiles } from './source-files.js';
@@ -14,7 +16,7 @@ import {randomUUID} from 'node:crypto';
 import {promisify} from 'node:util';
 import {gzip,gunzip} from 'node:zlib';
 import type {SQLInputValue} from 'node:sqlite';
-import {blockTypes,entityTypes,type EntityType,type Vault} from '../../shared/domain.js';
+import {blockTypes,entityTypes,entityMentionName,type Block,type EntityType,type Vault} from '../../shared/domain.js';
 import {builtinSubtypes} from '../../shared/entity-schema.js';
 import {isPageIconId} from '../../shared/page-icons.js';
 import {Store} from '../store.js';
@@ -34,6 +36,8 @@ const tables={
   pages:{columns:'id,title,icon,featured_image_id,blocks,ai_status,language,created_at,updated_at,revision,deleted_at',scope:'vault_id=?'},
   source_math_documents:{columns:'file_id,raw_hash,algorithm_version,cleaned_text,uncertainty_json,updated_at',scope:'file_id IN (SELECT id FROM source_files WHERE vault_id=? AND entity_id IS NOT NULL)'},
   source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at,import_method,source_url,pdf_flattened,admitted,format,page_start_lines,structural_nodes,original_filename,language,summary,generated_name,enrichment_status',scope:'vault_id=? AND entity_id IS NOT NULL'},
+  highlights:{columns:'id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,color,reference_json,created_at',scope:'vault_id=?'},
+  page_reading_notes:{columns:'page_id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,reference_json,created_at',scope:'vault_id=?'},
   entities:{columns:'id,name,aliases,mention_case,type,subtypes,description,updated_at,inactive',scope:'vault_id=?'},
   properties:{columns:'id,entity_id,name,value,target_id',scope:entityScope},
   relationships:{columns:'id,source_id,label,target_id',scope:'source_id IN (SELECT id FROM entities WHERE vault_id=?)'},
@@ -123,7 +127,7 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     const sourceOwners=new Set<unknown>(),legacyEntities=new Map(rows.entities.map(row=>[row.id,row]));
     const legacyProperties=[...rows.properties],legacyLinks=[...rows.page_sources];
     for(const file of rows.source_files) {
@@ -138,6 +142,12 @@ export class VaultBackups {
       rows.properties.push(...properties.map(row=>({...row,id:randomUUID(),entity_id:id})));
       rows.page_sources.push(...links.map(row=>({...row,source_id:id})));
       file.entity_id=id;
+      // Legacy archives may attach several files to one source entity.
+      for(const record of [...rows.highlights,...rows.page_reading_notes])if(record.file_id===file.id) {
+        record.source_id=id;
+        const reference=object(json(record,'reference_json'));
+        record.reference_json=JSON.stringify({...reference,sourceId:id});
+      }
     }
     if(total>200000)throw new HttpError(413,'This backup contains too many records.');
     const assets=list(archive.images).map(object);
@@ -288,6 +298,40 @@ export class VaultBackups {
           const blocks=JSON.parse(saved.blocks);
           syncSourceReferences(this.store,pageId,blocks);
           this.store.run('UPDATE pages SET blocks=? WHERE id=?',JSON.stringify(blocks),pageId);
+        }
+        const detachedSources=new Map<string,string>(),detachedFiles=new Map<string,string>();
+        const detached=(map:Map<string,string>,value:unknown)=>{
+          if(typeof value!=='string'||!value.trim())throw invalid();
+          if(!map.has(value))map.set(value,randomUUID());
+          return map.get(value)!;
+        };
+        const readingAnchor=(row:Row,allowDetached:boolean)=>{
+          const source=row.source_id===null&&allowDetached?null:ref(entityIds,row.source_id);
+          const file=row.file_id===null&&allowDetached?null:ref(restoredSourceFiles,row.file_id);
+          if(source!==null&&this.store.get<{type:string}>('SELECT type FROM entities WHERE id=?',source)?.type!=='source')throw invalid();
+          if(file!==null) {
+            const owner=this.store.get<{entity_id:string}>('SELECT entity_id FROM source_files WHERE id=?',file);
+            if(!owner||owner.entity_id!==source)throw invalid();
+          }
+          const hash=string(row,'source_hash',64),start=integer(row,'start_offset'),end=integer(row,'end_offset'),excerpt=string(row,'excerpt',65536);
+          if(!/^[a-f0-9]{64}$/.test(hash)||end<=start||!excerpt.trim()||excerpt.length!==end-start)throw invalid();
+          const reference=object(json(row,'reference_json'));
+          const startLine=integer(reference,'startLine',1),endLine=integer(reference,'endLine',startLine);
+          if(reference.sourceHash!==hash||reference.startOffset!==start||reference.endOffset!==end||reference.excerpt!==excerpt)throw invalid();
+          if((source!==null&&reference.sourceId!==row.source_id)||(file!==null&&reference.fileId!==row.file_id))throw invalid();
+          const restoredReference={...reference,id:randomUUID(),sourceId:source??detached(detachedSources,reference.sourceId),fileId:file??detached(detachedFiles,reference.fileId),startLine,endLine,...(source===null||file===null?{stale:true}:{})};
+          return {vault_id:vault,source_id:source,file_id:file,source_hash:hash,start_offset:start,end_offset:end,excerpt,reference_json:JSON.stringify(restoredReference),created_at:timestamp(row,'created_at')};
+        };
+        const highlightIds=ids(rows.highlights);
+        for(const row of rows.highlights) {
+          if(!highlightColors.includes(row.color as HighlightColor))throw invalid();
+          insert('highlights',{id:ref(highlightIds,row.id),...readingAnchor(row,false),color:String(row.color)});
+        }
+        for(const row of rows.page_reading_notes) {
+          const pageId=ref(pageIds,row.page_id),page=this.store.get<{blocks:string}>('SELECT blocks FROM pages WHERE id=?',pageId)!;
+          const content=projectPageText(JSON.parse(page.blocks) as Block[],id=>entityMentionName(new Knowledge(this.store).find(vault,id))).text;
+          if(readingNoteWordCount(content)>readingNoteMaxWords)throw invalid();
+          insert('page_reading_notes',{page_id:pageId,...readingAnchor(row,true)});
         }
         for(const row of rows.page_domain_state) {
           if(row.origin!=='manual'&&row.origin!=='inferred')throw invalid();

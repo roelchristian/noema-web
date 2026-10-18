@@ -1,65 +1,149 @@
-import {Fragment,type ReactNode,useMemo} from 'react';
-import {safeHref,type Segment} from '../../shared/domain';
-import {markdownBlocks} from '../editor/paste';
+import {Fragment,type ReactNode} from 'react';
+import {safeHref} from '../../shared/domain';
+import type {SourceHighlight} from '../../shared/source-reading';
 import {renderMath} from '../editor/math';
 
-/** The source is never converted to editable blocks or shortened for display. */
-export function SourceReaderInline({text}:{text:string}) {
-  const parts:ReactNode[]=[];
-  const expressions=/(`+)([\s\S]*?)\1|(?<!\\)\$\$([\s\S]+?)(?<!\\)\$\$|(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]|(?<![\\$])\$(?![\s$])((?:\\.|[^$\n\\])+?)(?<![\s\\])\$(?![$\d])|(?<!\\)\\\(([^\n]*?)(?<!\\)\\\)/g;
-  let start=0;
-  for(const match of text.matchAll(expressions)) {
-    const source=(match[3]??match[4]??match[5]??match[6])?.trim();
-    if(!source)continue;
-    if(match.index!>start)parts.push(text.slice(start,match.index));
-    const display=match[3]!==undefined||match[4]!==undefined;
-    parts.push(<span key={match.index} className={display?'summary-math-display':'summary-math-inline'} dangerouslySetInnerHTML={{__html:renderMath(source,display)}}/>);
-    start=match.index!+match[0].length;
-  }
-  if(start<text.length)parts.push(text.slice(start));
-  return <>{parts}</>;
+type ReaderProps={text:string;startOffset?:number;highlights?:SourceHighlight[]};
+const expressions=/(`+)([\s\S]*?)\1|\[([^\]]+)\]\(([^\s)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|\*([^*]+)\*|_([^_]+)_|(?<!\\)\$\$([\s\S]+?)(?<!\\)\$\$|(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]|(?<![\\$])\$(?![\s$])((?:\\.|[^$\n\\])+?)(?<![\s\\])\$(?![$\d])|(?<!\\)\\\(([^\n]*?)(?<!\\)\\\)/g;
+
+function activeHighlight(highlights:SourceHighlight[],start:number,end:number) {
+  // Latest-created wins when highlights overlap, independent of query ordering.
+  return highlights.filter(item=>item.startOffset<end&&item.endOffset>start).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)||b.id.localeCompare(a.id))[0];
 }
-function Inline({content}:{content:Segment[]}) {
-  return <>{content.map((segment,index)=>{
-    let node:ReactNode=segment.code?<code>{segment.text}</code>:segment.math?<span className="summary-math-inline" dangerouslySetInnerHTML={{__html:renderMath(segment.text??'')}}/>:<SourceReaderInline text={segment.text??''}/>;
-    if(segment.bold)node=<strong>{node}</strong>;
-    if(segment.italic)node=<em>{node}</em>;
-    if(segment.strike)node=<s>{node}</s>;
-    const href=segment.href?safeHref(segment.href):undefined;
-    if(href)node=<a href={href} target="_blank" rel="noopener noreferrer">{node}</a>;
-    return <Fragment key={index}>{node}</Fragment>;
+function TextLeaf({text,start,highlights}:{text:string;start:number;highlights:SourceHighlight[]}) {
+  const boundaries=[...new Set([start,start+text.length,...highlights.flatMap(item=>[item.startOffset,item.endOffset]).filter(point=>point>start&&point<start+text.length)])].sort((a,b)=>a-b);
+  return <>{boundaries.slice(0,-1).map((from,index)=>{
+    const to=boundaries[index+1]!,highlight=activeHighlight(highlights,from,to),value=text.slice(from-start,to-start);
+    return highlight?<mark key={from} role="button" tabIndex={0} aria-label="Edit highlight" title="Change highlight color or add a reading note" className="source-highlight" data-color={highlight.color} data-highlight-id={highlight.id} data-source-start={from} data-source-end={to}>{value}</mark>:<span key={from} data-source-start={from} data-source-end={to}>{value}</span>;
   })}</>;
 }
-export function SourceReaderText({text,kind}:{text:string;kind?:string}) {
-  const blocks=useMemo(()=>markdownBlocks(text),[text]);
-  if(kind==='code')return <pre><code>{text.replace(/^```[^\n]*\n|\n```$/g,'')}</code></pre>;
-  if(kind==='table') {
-    const rows=text.split('\n').filter(line=>line.trim()&&!/^\s*\|?\s*:?-{3,}:?\s*\|/.test(line));
-    if(rows.some(line=>line.includes('|')))return <div className="source-reader-table"><table><tbody>{rows.map((line,i)=><tr key={i}>{line.trim().replace(/^\|/,'').replace(/(?<!\\)\|$/,'').split(/(?<!\\)\|/).map((cell,j)=><td key={j}><SourceReaderInline text={cell.trim().replace(/\\\|/g,'|')}/></td>)}</tr>)}</tbody></table></div>;
-    return <pre className="source-reader-table">{text}</pre>;
-  }
-  // The editable paste parser caps tables. Fall back to complete source text if
-  // an unstructured document contains a table beyond those editable limits.
-  const tableLines=text.split('\n').filter(line=>line.includes('|'));
-  if(tableLines.length>100||tableLines.some(line=>line.trim().replace(/^\|/,'').replace(/(?<!\\)\|$/,'').split(/(?<!\\)\|/).length>20))return <div className="source-reader-text" style={{whiteSpace:'pre-wrap'}}><SourceReaderInline text={text}/></div>;
-  return <div className="source-reader-text">{blocks.map((block,index)=>{
-    const content=<Inline content={block.content}/>;
-    if(block.type==='heading1')return <h3 key={block.id}>{content}</h3>;
-    if(block.type==='heading2')return <h4 key={block.id}>{content}</h4>;
-    if(block.type==='quote')return <blockquote key={block.id}>{content}</blockquote>;
-    if(block.type==='divider')return <hr key={block.id}/>;
-    if(block.type==='code')return <pre key={block.id}><code>{block.content.map(segment=>segment.text??'').join('')}</code></pre>;
-    if(block.type==='math')return <div key={block.id} className="summary-math-display" dangerouslySetInnerHTML={{__html:renderMath(block.content.map(segment=>segment.text??'').join(''),true)}}/>;
-    if(block.type==='table')return <div className="source-reader-table" key={block.id}><table><tbody>{block.rows?.map((row,i)=><tr key={i}>{row.map((cell,j)=><td key={j}><Inline content={cell}/></td>)}</tr>)}</tbody></table></div>;
-    if(['bullet','numbered','todo'].includes(block.type)) {
-      if(index>0&&blocks[index-1]!.type===block.type)return null;
-      const items=[];
-      for(let i=index;i<blocks.length&&blocks[i]!.type===block.type;i++) {
-        const item=blocks[i]!;
-        items.push(<li key={item.id}>{item.type==='todo'&&<input type="checkbox" checked={item.checked} disabled aria-label="Completed task"/>}<Inline content={item.content}/></li>);
-      }
-      return block.type==='numbered'?<ol key={block.id}>{items}</ol>:<ul key={block.id}>{items}</ul>;
+function MathLeaf({source,display,start,end,highlights}:{source:string;display:boolean;start:number;end:number;highlights:SourceHighlight[]}) {
+  const highlight=activeHighlight(highlights,start,end);
+  return <span role={highlight?'button':undefined} tabIndex={highlight?0:undefined} aria-label={highlight?'Edit highlight':undefined} title={highlight?'Change highlight color or add a reading note':undefined} className={`${display?'summary-math-display':'summary-math-inline'}${highlight?' source-highlight':''}`} data-color={highlight?.color} data-highlight-id={highlight?.id} data-source-start={start} data-source-end={end} data-source-atomic="true" dangerouslySetInnerHTML={{__html:renderMath(source,display)}}/>;
+}
+/** Raw offsets belong to the immutable imported text, including Markdown delimiters. */
+export function SourceReaderInline({text,startOffset=0,highlights=[]}:ReaderProps) {
+  const parts:ReactNode[]=[];
+  const plain=(value:string,offset:number)=>{
+    // An escaped table pipe displays one character but retains its exact raw position.
+    let cursor=0;
+    for(const match of value.matchAll(/\\\|/g)) {
+      if(match.index!>cursor)parts.push(<TextLeaf key={`p${offset+cursor}`} text={value.slice(cursor,match.index)} start={offset+cursor} highlights={highlights}/>);
+      parts.push(<TextLeaf key={`p${offset+match.index!+1}`} text="|" start={offset+match.index!+1} highlights={highlights}/>);
+      cursor=match.index!+2;
     }
-    return <p key={block.id}>{content}</p>;
-  })}</div>;
+    if(cursor<value.length)parts.push(<TextLeaf key={`p${offset+cursor}`} text={value.slice(cursor)} start={offset+cursor} highlights={highlights}/>);
+  };
+  let cursor=0;
+  for(const match of text.matchAll(expressions)) {
+    const index=match.index!,offset=startOffset+index;
+    if(index>cursor)plain(text.slice(cursor,index),startOffset+cursor);
+    let node:ReactNode;
+    if(match[1])node=<code><TextLeaf text={match[2]??''} start={offset+match[1].length} highlights={highlights}/></code>;
+    else if(match[3]!==undefined) {
+      const href=safeHref(match[4]!),label=<SourceReaderInline text={match[3]} startOffset={offset+1} highlights={highlights}/>;
+      node=href?<a href={href} target="_blank" rel="noopener noreferrer">{label}</a>:label;
+    } else if(match[5]!==undefined||match[6]!==undefined||match[7]!==undefined||match[8]!==undefined||match[9]!==undefined) {
+      const value=match[5]??match[6]??match[7]??match[8]??match[9]??'',bold=match[5]!==undefined||match[6]!==undefined,strike=match[7]!==undefined;
+      const child=<SourceReaderInline text={value} startOffset={offset+(bold||strike?2:1)} highlights={highlights}/>;
+      node=bold?<strong>{child}</strong>:strike?<s>{child}</s>:<em>{child}</em>;
+    } else {
+      const source=(match[10]??match[11]??match[12]??match[13]??'').trim();
+      node=<MathLeaf source={source} display={match[10]!==undefined||match[11]!==undefined} start={offset} end={offset+match[0].length} highlights={highlights}/>;
+    }
+    parts.push(<Fragment key={`m${offset}`}>{node}</Fragment>);
+    cursor=index+match[0].length;
+  }
+  if(cursor<text.length)plain(text.slice(cursor),startOffset+cursor);
+  return <>{parts}</>;
+}
+
+type Line={text:string;start:number;end:number};
+function sourceLines(text:string,start:number):Line[] {
+  const result:Line[]=[];
+  for(const match of text.matchAll(/[^\r\n]*(?:\r\n|\r|\n|$)/g)) {
+    if(!match[0])continue;
+    const value=match[0].replace(/[\r\n]+$/,'');
+    result.push({text:value,start:start+match.index!,end:start+match.index!+value.length});
+  }
+  return result;
+}
+const separator=(text:string)=>/^\s*\|?\s*:?-{3,}:?\s*\|/.test(text);
+const divider=(text:string)=>/^\s{0,3}(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,})$/.test(text);
+function tableCells(line:Line,highlights:SourceHighlight[]) {
+  let left=line.text.search(/\S/),right=line.text.trimEnd().length;
+  if(left<0)return [];
+  if(line.text[left]==='|')left++;
+  if(line.text[right-1]==='|'&&line.text[right-2]!=='\\')right--;
+  const raw=line.text.slice(left,right),cells:ReactNode[]=[];
+  let cursor=0;
+  for(const match of [...raw.matchAll(/(?<!\\)\|/g),{index:raw.length}]) {
+    const end=match.index!,cell=raw.slice(cursor,end),leading=cell.length-cell.trimStart().length;
+    cells.push(<td key={cursor}><SourceReaderInline text={cell.trim()} startOffset={line.start+left+cursor+leading} highlights={highlights}/></td>);
+    cursor=end+1;
+  }
+  return cells;
+}
+/** Read-only rendering keeps source positions through Markdown, lists, tables, and math. */
+export function SourceReaderText({text,kind,startOffset=0,highlights=[]}:ReaderProps&{kind?:string}) {
+  const lines=sourceLines(text,startOffset),blocks:ReactNode[]=[];
+  const inline=(value:string,start:number)=><SourceReaderInline text={value} startOffset={start} highlights={highlights}/>;
+  const code=(value:string,start:number)=><pre><code><TextLeaf text={value} start={start} highlights={highlights}/></code></pre>;
+  if(kind==='code') {
+    const opening=text.match(/^\s*(?:```|~~~)[^\r\n]*(?:\r\n|\r|\n)/),closing=text.match(/(?:\r\n|\r|\n)[ \t]*(?:```|~~~)\s*$/);
+    const from=opening?.[0].length??0,to=closing?.index??text.length;
+    return code(text.slice(from,to),startOffset+from);
+  }
+  for(let i=0;i<lines.length;i++) {
+    const line=lines[i]!,trimmed=line.text.trim();
+    if(!trimmed)continue;
+    const key=line.start;
+    if(trimmed.startsWith('$$')||trimmed.startsWith('\\[')) {
+      const delimiter=trimmed.startsWith('$$')?'$$':'\\]',opening=trimmed.startsWith('$$')?'$$':'\\[';
+      let end=i;
+      if(!(trimmed.length>opening.length&&trimmed.endsWith(delimiter))) {
+        end=i+1;
+        while(end<lines.length&&!lines[end]!.text.trim().endsWith(delimiter))end++;
+      }
+      if(end<lines.length) {
+        const from=line.start+line.text.indexOf(opening),last=lines[end]!,to=last.start+last.text.lastIndexOf(delimiter)+delimiter.length;
+        const raw=text.slice(from-startOffset,to-startOffset),source=raw.slice(opening.length,-delimiter.length).trim();
+        blocks.push(<MathLeaf key={key} source={source} display start={from} end={to} highlights={highlights}/>);i=end;continue;
+      }
+    }
+    if(/^\s*(```|~~~)/.test(line.text)) {
+      const fence=trimmed.slice(0,3);let end=i+1;
+      while(end<lines.length&&!lines[end]!.text.trim().startsWith(fence))end++;
+      const from=lines[i+1]?.start??line.end,to=end>i+1?lines[end-1]!.end:from;
+      blocks.push(<Fragment key={key}>{code(text.slice(from-startOffset,to-startOffset),from)}</Fragment>);i=end;continue;
+    }
+    if(line.text.includes('|')&&(kind==='table'||separator(lines[i+1]?.text??''))) {
+      const rows:Line[]=[line];
+      if(separator(lines[i+1]?.text??''))i++;
+      while(i+1<lines.length&&lines[i+1]!.text.includes('|')&&lines[i+1]!.text.trim())rows.push(lines[++i]!);
+      blocks.push(<div className="source-reader-table" key={key}><table><tbody>{rows.map(row=><tr key={row.start}>{tableCells(row,highlights)}</tr>)}</tbody></table></div>);continue;
+    }
+    if(divider(line.text)){blocks.push(<hr key={key}/>);continue;}
+    const heading=line.text.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*$/),quote=line.text.match(/^\s*>\s?(.*)$/),item=line.text.match(/^\s*(?:([-*+])|(\d+)[.)])\s+(?:\[([ xX])\]\s*)?(.*)$/);
+    if(heading) {
+      const content=inline(heading[2]!,line.start+line.text.indexOf(heading[2]!,heading[1]!.length));
+      blocks.push(heading[1]!.length===1?<h3 key={key}>{content}</h3>:<h4 key={key}>{content}</h4>);continue;
+    }
+    if(quote){blocks.push(<blockquote key={key}>{inline(quote[1]!,line.end-quote[1]!.length)}</blockquote>);continue;}
+    if(item) {
+      const ordered=!!item[2],items:ReactNode[]=[];let current=item;
+      while(true) {
+        const currentLine=lines[i]!,value=current[4]??'';
+        items.push(<li key={currentLine.start}>{current[3]!==undefined&&<input type="checkbox" checked={current[3].toLowerCase()==='x'} disabled aria-label="Completed task"/>}{inline(value,currentLine.end-value.length)}</li>);
+        const next=lines[i+1]?.text.match(/^\s*(?:([-*+])|(\d+)[.)])\s+(?:\[([ xX])\]\s*)?(.*)$/);
+        if(!next||!!next[2]!==ordered)break;
+        current=next;i++;
+      }
+      blocks.push(ordered?<ol key={key}>{items}</ol>:<ul key={key}>{items}</ul>);continue;
+    }
+    let end=i;
+    while(end+1<lines.length&&lines[end+1]!.text.trim()&&!/^\s*(?:\$\$|\\\[|#{1,6}\s|[-*+]\s|\d+[.)]\s|>|```|~~~)/.test(lines[end+1]!.text)&&!divider(lines[end+1]!.text)&&!(lines[end+1]!.text.includes('|')&&separator(lines[end+2]?.text??'')))end++;
+    blocks.push(<p key={key}>{inline(text.slice(line.start-startOffset,lines[end]!.end-startOffset),line.start)}</p>);i=end;
+  }
+  return <div className="source-reader-text">{blocks}</div>;
 }

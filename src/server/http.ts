@@ -1,3 +1,4 @@
+import {SourceReading} from './modules/source-reading.js';
 import {sourceProgress} from './modules/source-progress.js';
 import {mathSource} from './modules/source-math-text.js';
 import {processedSourceDocument,sourceGenerationDocument} from './modules/source-document.js';
@@ -56,6 +57,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
   const sockets = new Set<Socket>();
   const vaultDeletion=new VaultDeletion(store);
   const sourceFiles=new SourceFiles(store);
+  const sourceReading=new SourceReading(store);
   sourceFiles.recover();
   const backups=new VaultBackups(store);
   const images=new Images(store),notifications=new AINotifications(store);
@@ -133,6 +135,19 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               ...(url.searchParams.get('fingerprint')==='1'?{textHash:createHash('sha256').update(file.text).digest('hex')}:{}),
               ...(url.searchParams.get('context')==='1'&&file.status==='ready'&&file.admitted?{document:processedSourceDocument(file)}:{}),
             });
+          }
+          if(id && parts.length===4 && parts[3]==='highlights' && method==='GET')return send(200,sourceReading.list(vault,id));
+          if(id && parts.length===4 && parts[3]==='reading-notes' && method==='GET')return send(200,sourceReading.listReadingNotes(vault,id));
+          if(id && parts.length===5 && parts[3]==='highlights' && method==='DELETE')return send(200,sourceReading.removeHighlight(vault,id,parts[4]!));
+          if(id && parts.length===5 && parts[3]==='highlights' && method==='PUT') {
+            if(!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))throw new HttpError(415,'Reading actions require JSON.');
+            const body=await readBody(req);vaults.requireOpen(vault);
+            return send(200,sourceReading.updateHighlight(vault,id,parts[4]!,body));
+          }
+          if(id && parts.length===4 && ['highlights','reading-notes'].includes(parts[3]!) && method==='POST') {
+            if(!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))throw new HttpError(415,'Reading actions require JSON.');
+            const body=await readBody(req);vaults.requireOpen(vault);
+            return send(201,parts[3]==='highlights'?sourceReading.createHighlight(vault,id,body):sourceReading.createReadingNote(vault,id,body));
           }
           if(id && parts.length===3 && method==='DELETE')return send(200,sourceFiles.remove(vault,id));
           if(id && parts.length===4 && parts[3]==='retry' && method==='POST')return send(200,sourceFiles.retry(vault,id));

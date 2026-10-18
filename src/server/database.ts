@@ -14,6 +14,7 @@ import { now } from './validation.js';
 import {setupPageSegmentSchema} from './page-segment-schema.js';
 import {setupSourceAuthorSchema} from './source-author-schema.js';
 import {setupSourcePassageSchema} from './source-passage-schema.js';
+import {setupSourceReadingSchema} from './source-reading-schema.js';
 import {setupSourceDocumentSchema} from './source-document-schema.js';
 import {setupSourcePassageEmbeddingSchema} from './source-passage-embedding-schema.js';
 import {setupTextSearchSchema} from './text-search-schema.js';
@@ -266,6 +267,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS source_embeddings (
 if (!sourceColumns.some(column=>column.name==='structural_nodes')) db.exec("ALTER TABLE source_files ADD COLUMN structural_nodes TEXT NOT NULL DEFAULT '[]'");
 if (!sourceColumns.some(column=>column.name==='page_start_lines')) db.exec("ALTER TABLE source_files ADD COLUMN page_start_lines TEXT NOT NULL DEFAULT '[]'");
 setupSourceDocumentSchema(db);
+setupSourceReadingSchema(db);
 if (!sourceColumns.some(column=>column.name==='import_method')) db.exec("ALTER TABLE source_files ADD COLUMN import_method TEXT NOT NULL DEFAULT 'upload'");
 if (!sourceColumns.some(column=>column.name==='pdf_flattened')) db.exec('ALTER TABLE source_files ADD COLUMN pdf_flattened INTEGER NOT NULL DEFAULT 0');
 if (!sourceColumns.some(column=>column.name==='source_url')) db.exec('ALTER TABLE source_files ADD COLUMN source_url TEXT');

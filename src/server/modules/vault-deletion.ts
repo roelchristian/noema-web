@@ -41,6 +41,8 @@ export class VaultDeletion {
       subtypeProperties:this.store.all('SELECT subtype_id,name FROM entity_subtype_properties WHERE vault_id=? ORDER BY subtype_id,name',id),
       properties:this.store.all('SELECT id,name,value,target_id FROM properties WHERE entity_id IN (SELECT id FROM entities WHERE vault_id=?) ORDER BY id',id),
       relationships:this.store.all('SELECT id,source_id,label,target_id FROM relationships WHERE source_id IN (SELECT id FROM entities WHERE vault_id=?) ORDER BY id',id),
+      highlights:this.store.all('SELECT id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,color,reference_json,created_at FROM highlights WHERE vault_id=? ORDER BY id',id),
+      readingNotes:this.store.all('SELECT page_id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,reference_json,created_at FROM page_reading_notes WHERE vault_id=? ORDER BY page_id',id),
     };
     const fingerprint=createHash('sha256').update(JSON.stringify({vault,counts,revisions,entities,sources,images,organization})).digest('hex');
     return {vault,counts,fingerprint,canDelete:!blockers.length,blockers};
@@ -59,7 +61,7 @@ export class VaultDeletion {
       this.store.run(`DELETE FROM properties WHERE entity_id IN (${entityIds}) OR target_id IN (${entityIds})`,id,id);
       this.store.run(`DELETE FROM relationships WHERE source_id IN (${entityIds}) OR target_id IN (${entityIds})`,id,id);
       // Explicit order covers legacy foreign keys without cascade behavior.
-      for(const table of ['source_files','ai_notifications','page_entity_match_cache','embedding_jobs','page_edit_locks','pages','entities','favourites','item_locations','collection_memberships','collection_folders','folders','collections','entity_subtype_properties','entity_subtypes','entity_type_properties','embedding_settings','ai_activity'])this.store.run(`DELETE FROM ${table} WHERE vault_id=?`,id);
+      for(const table of ['highlights','page_reading_notes','source_files','ai_notifications','page_entity_match_cache','embedding_jobs','page_edit_locks','pages','entities','favourites','item_locations','collection_memberships','collection_folders','folders','collections','entity_subtype_properties','entity_subtypes','entity_type_properties','embedding_settings','ai_activity'])this.store.run(`DELETE FROM ${table} WHERE vault_id=?`,id);
       this.store.run('DELETE FROM vaults WHERE id=?',id);
       this.store.run('INSERT INTO vault_deletion_cleanup (vault_id,created_at) VALUES (?,?)',id,now());
     });

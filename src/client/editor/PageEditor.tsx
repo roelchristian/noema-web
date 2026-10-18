@@ -1,3 +1,5 @@
+import {readingNoteMaxWords,readingNoteWordCount} from '../../shared/source-reading';
+import {projectPageText} from '../../shared/page-text';
 import {PageTableOfContents} from './PageTableOfContents';
 import type {PageHeading} from './page-headings';
 import {TitleText,titleHasMath} from '../components/TitleText';
@@ -82,6 +84,7 @@ export function PageEditor({tocVisible=true,headings=[],subjectsSaving=false,cit
   const status = {saved: editedLabel(page.updated_at, now), pending: 'Waiting to save…', identifying: 'Identifying entities…', saving: 'Saving…', error: 'Could not save changes'}[saveStatus];
   return <CitationPresentationContext.Provider value={citationPresentation}><article ref={article} className="page" inert={subjectsSaving} aria-busy={subjectsSaving} onCompositionStart={event => { event.currentTarget.dataset.entityComposing = 'true'; }} onCompositionEnd={event => { delete event.currentTarget.dataset.entityComposing; }}>
     <h1 className={"page-title-heading page-heading"+(hasTitleMath?" has-title-math":"")+(page.editLocked?" is-title-locked":"")} aria-label={page.title || 'Untitled'}><input ref={title} id="page-title" aria-label="Page title" title="Use $…$ or \(…\) for math" placeholder="Untitled" maxLength={500} readOnly={!!page.editLocked} onKeyDown={event=>{if(event.key==='Enter'&&!event.nativeEvent.isComposing){event.preventDefault();event.currentTarget.blur();}}} value={page.title} onChange={e => onChange({title: smartQuoteTitle(e.currentTarget, e.nativeEvent as InputEvent)})}/>{hasTitleMath&&<span className="page-title-preview" aria-hidden="true"><TitleText text={page.title}/></span>}</h1>
+    {page.readingNote&&<aside className="source-reading-note-context" aria-label="Reading note context"><strong>Reading note · {readingNoteWordCount(projectPageText(page.blocks,id=>entityMentionName(entities.find(entity=>entity.id===id))).text)} / {readingNoteMaxWords} words</strong><p>{page.readingNote.sourceId?<button type="button" onClick={()=>onOpenEntity(page.readingNote!.sourceId!)}>Open source</button>:'Original source unavailable'}</p><blockquote>{page.readingNote.excerpt}</blockquote></aside>}
     {headings.length>0&&<PageTableOfContents key={page.vault_id+'/'+page.id} headings={headings} showDocument={tocVisible} articleRef={article}/>}
     {page.editLocked && <div className="page-edit-lock-status" role="status"><Icon name="lock"/><span>Locked for editing{page.editProtected ? ' · Password protected' : ''}</span></div>}
     {reviewError && <p className="entity-review-error" role="alert">{reviewError}</p>}

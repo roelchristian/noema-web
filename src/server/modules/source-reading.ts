@@ -1,0 +1,104 @@
+import {projectPageText} from '../../shared/page-text.js';
+import {randomUUID} from 'node:crypto';
+import type {Page,SourceFile,SourceReference} from '../../shared/domain.js';
+import {highlightColors,readingNoteMaxWords,readingNoteWordCount,type SourceHighlight,type ReadingNoteAnchor} from '../../shared/source-reading.js';
+import {Store} from '../store.js';
+import {HttpError,now,required,text} from '../validation.js';
+import {mathSource,sourceTextHash} from './source-math-text.js';
+import {processedSourceDocument} from './source-document.js';
+import {sourceDocumentEntries,sourceReferenceLocator,sourceNodeLabel} from '../../shared/source-document.js';
+import {sourcePageRange} from '../../shared/source-text.js';
+import {PageEnrichmentState} from './page-enrichment-state.js';
+import {Pages} from './pages.js';
+import {Knowledge} from './knowledge.js';
+
+type HighlightRow={id:string;source_id:string;file_id:string;source_hash:string;start_offset:number;end_offset:number;excerpt:string;color:SourceHighlight['color'];reference_json:string;created_at:string};
+export class SourceReading {
+ constructor(private store:Store) {}
+ private file(vault:string,fileId:string) {
+  const file=this.store.get<SourceFile>(`SELECT f.* FROM source_files f JOIN entities e ON e.id=f.entity_id AND e.vault_id=f.vault_id WHERE f.id=? AND f.vault_id=? AND e.type='source'`,fileId,vault);
+  if(!file)throw new HttpError(404,'Source file not found in this vault');
+  return file;
+ }
+ private selection(vault:string,fileId:string,body:Record<string,unknown>):SourceReference {
+  const raw=this.file(vault,fileId);
+  if(raw.status!=='ready'||raw.admitted!==1)throw new HttpError(409,'Wait for this source to finish processing.');
+  if(body.sourceId!==raw.entity_id||body.fileId!==fileId)throw new HttpError(400,'This passage does not belong to this source.');
+  const hash=required(body.sourceHash);
+  const file=sourceTextHash(raw.text)===hash?raw:mathSource(this.store,raw);
+  if(sourceTextHash(file.text)!==hash)throw new HttpError(409,'This source changed. Reload it and select the passage again.');
+  const start=body.startOffset,end=body.endOffset;
+  if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||(start as number)<0||(end as number)<=(start as number)||(end as number)>file.text.length)throw new HttpError(400,'Select a valid passage in the source.');
+  const excerpt=text(body.excerpt,65536);
+  if(!excerpt.trim()||file.text.slice(start as number,end as number)!==excerpt)throw new HttpError(400,'The selected passage does not match this source.');
+  const startLine=file.text.slice(0,start as number).split('\n').length,endLine=startLine+excerpt.split('\n').length-1;
+  const ref:SourceReference={id:randomUUID(),sourceId:raw.entity_id!,fileId,sourceHash:hash,startOffset:start as number,endOffset:end as number,startLine,endLine,excerpt};
+  const entries=sourceDocumentEntries(processedSourceDocument(file));
+  const node=typeof body.nodeId==='string'?entries.find(entry=>entry.node.id===body.nodeId&&entry.node.range.startOffset<=ref.startOffset!&&entry.node.range.endOffset>=ref.endOffset!):undefined;
+  if(node){ref.nodeId=node.node.id;ref.contextLabel=sourceNodeLabel(node.path);}
+  ref.appLocator=sourceReferenceLocator(entries,ref);
+  const starts=JSON.parse(file.page_start_lines??'[]') as number[];
+  if(file.format==='pdf')Object.assign(ref,sourcePageRange(starts.length?starts:file.pages===1?[1]:[],startLine,endLine));
+  return ref;
+ }
+ private highlight(row:HighlightRow):SourceHighlight {
+  const ref=JSON.parse(row.reference_json) as SourceReference;
+  return {...ref,id:row.id,sourceId:row.source_id,fileId:row.file_id,sourceHash:row.source_hash,startOffset:row.start_offset,endOffset:row.end_offset,excerpt:row.excerpt,color:row.color,createdAt:row.created_at};
+ }
+ list(vault:string,fileId:string) {
+  this.file(vault,fileId);
+  return this.store.all<HighlightRow>('SELECT * FROM highlights WHERE vault_id=? AND file_id=? ORDER BY start_offset,created_at,id',vault,fileId).map(row=>this.highlight(row));
+ }
+ listReadingNotes(vault:string,fileId:string) {
+  this.file(vault,fileId);
+  return this.store.all<ReadingNoteAnchor>(`SELECT n.page_id AS pageId,p.title,n.source_hash AS sourceHash,n.start_offset AS startOffset,n.end_offset AS endOffset
+   FROM page_reading_notes n JOIN pages p ON p.id=n.page_id AND p.vault_id=n.vault_id
+   WHERE n.vault_id=? AND n.file_id=? AND p.deleted_at IS NULL ORDER BY n.start_offset,n.created_at,n.page_id`,vault,fileId);
+ }
+ createHighlight(vault:string,fileId:string,body:Record<string,unknown>) {
+  if(!highlightColors.includes(body.color as SourceHighlight['color']))throw new HttpError(400,'Choose one of the five highlight colors.');
+  const ref=this.selection(vault,fileId,body),id=randomUUID(),createdAt=now();
+  this.store.run('INSERT INTO highlights (id,vault_id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,color,reference_json,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',id,vault,ref.sourceId,fileId,ref.sourceHash,ref.startOffset!,ref.endOffset!,ref.excerpt,body.color as string,JSON.stringify(ref),createdAt);
+  return this.highlight(this.store.get<HighlightRow>('SELECT * FROM highlights WHERE id=?',id)!);
+ }
+ removeHighlight(vault:string,fileId:string,id:string) {
+  this.file(vault,fileId);
+  if(!this.store.get('SELECT 1 FROM highlights WHERE id=? AND vault_id=? AND file_id=?',id,vault,fileId))throw new HttpError(404,'Highlight not found');
+  this.store.run('DELETE FROM highlights WHERE id=? AND vault_id=? AND file_id=?',id,vault,fileId);
+  return {ok:true};
+ }
+ updateHighlight(vault:string,fileId:string,id:string,body:Record<string,unknown>) {
+  this.file(vault,fileId);
+  if(!highlightColors.includes(body.color as SourceHighlight['color']))throw new HttpError(400,'Choose one of the five highlight colors.');
+  const row=this.store.get<HighlightRow>('SELECT * FROM highlights WHERE id=? AND vault_id=? AND file_id=?',id,vault,fileId);
+  if(!row)throw new HttpError(404,'Highlight not found');
+  this.store.run('UPDATE highlights SET color=? WHERE id=? AND vault_id=? AND file_id=?',body.color as string,id,vault,fileId);
+  return this.highlight({...row,color:body.color as SourceHighlight['color']});
+ }
+ createReadingNote(vault:string,fileId:string,body:Record<string,unknown>):Page {
+  const ref=this.selection(vault,fileId,body),content=text(body.text).trim();
+  if(!content)throw new HttpError(400,'Write a reading note first.');
+  if(readingNoteWordCount(content)>readingNoteMaxWords)throw new HttpError(400,'Reading notes can contain at most 200 words.');
+  const pages=new Pages(this.store,new Knowledge(this.store));
+  const requestId=body.requestId===undefined?undefined:required(body.requestId,36);
+  if(requestId&&!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(requestId))throw new HttpError(400,'Invalid reading note request.');
+  const pageId=requestId??randomUUID(),createdAt=now();
+  // A retry after a lost response returns the original note, without duplicating it.
+  const existing=this.store.get<{vault_id:string;file_id:string|null;source_hash:string;start_offset:number;end_offset:number}>('SELECT vault_id,file_id,source_hash,start_offset,end_offset FROM page_reading_notes WHERE page_id=?',pageId);
+  if(existing){
+   if(existing.vault_id!==vault||existing.file_id!==fileId||existing.source_hash!==ref.sourceHash||existing.start_offset!==ref.startOffset||existing.end_offset!==ref.endOffset)throw new HttpError(409,'This reading note request is already in use.');
+   const saved=pages.get(vault,pageId);
+   if(projectPageText(saved.blocks,()=>undefined).text!==content.split(/\n\s*\n/).join('\n'))throw new HttpError(409,'The previous note was already saved. Open it from your library to make further changes.');
+   return saved;
+  }
+  const name=this.store.get<{name:string}>('SELECT name FROM entities WHERE id=?',ref.sourceId)!.name;
+  const blocks=content.split(/\n\s*\n/).map(value=>({id:randomUUID(),type:'paragraph',checked:false,content:[{text:value}]}));
+  this.store.transaction(()=>{
+   this.store.run('INSERT INTO pages (id,title,blocks,updated_at,created_at,vault_id) VALUES (?,?,?,?,?,?)',pageId,`Reading note · ${name}`.slice(0,500),JSON.stringify(blocks),createdAt,createdAt,vault);
+   this.store.run('INSERT INTO page_sources (page_id,source_id) VALUES (?,?)',pageId,ref.sourceId);
+   new PageEnrichmentState(this.store).markManual(pageId,'title');
+   this.store.run('INSERT INTO page_reading_notes (page_id,vault_id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,reference_json,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',pageId,vault,ref.sourceId,fileId,ref.sourceHash,ref.startOffset!,ref.endOffset!,ref.excerpt,JSON.stringify(ref),createdAt);
+  });
+  return pages.get(vault,pageId);
+ }
+}

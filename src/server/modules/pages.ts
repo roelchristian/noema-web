@@ -1,3 +1,5 @@
+import {readingNoteMaxWords,readingNoteWordCount,type ReadingNoteMetadata} from '../../shared/source-reading.js';
+import {projectPageText} from '../../shared/page-text.js';
 import {citationSourceIds} from '../../shared/citations.js';
 import {PageEnrichmentState} from './page-enrichment-state.js';
 import {Domains} from './domains.js';
@@ -59,7 +61,9 @@ export class Pages {
     const editLock=this.store.get<{password_hash:string|null}>('SELECT password_hash FROM page_edit_locks WHERE page_id=? AND vault_id=?',id,vault);
     const domainService=new Domains(this.store);
     domainService.assess({...stored,blocks,conceptContentHash:conceptContentHash({...stored,blocks},resolveName)} as Page,resolveName);
-    return {...stored,enrichmentFields:new PageEnrichmentState(this.store).get(id).fields,enrichmentPending:!!this.store.get('SELECT 1 FROM page_enrichment_jobs WHERE page_id=?',id),pageDomains:domainService.get(id,conceptContentHash({...stored,blocks},resolveName)),aiStatus,editLocked:!!editLock,editProtected:!!editLock?.password_hash,featuredImageId,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:[...new Set([...this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id),...citationSourceIds(blocks).filter(sourceId=>this.knowledge.find(vault,sourceId)?.type==='source')])]};
+    const readingRow=this.store.get<{source_id:string|null;file_id:string|null;source_hash:string;start_offset:number;end_offset:number;excerpt:string;reference_json:string;created_at:string}>('SELECT * FROM page_reading_notes WHERE page_id=? AND vault_id=?',id,vault);
+    const readingNote:ReadingNoteMetadata|undefined=readingRow?{...JSON.parse(readingRow.reference_json),sourceId:readingRow.source_id,fileId:readingRow.file_id,sourceHash:readingRow.source_hash,startOffset:readingRow.start_offset,endOffset:readingRow.end_offset,excerpt:readingRow.excerpt,createdAt:readingRow.created_at,maxWords:200}:undefined;
+    return {...stored,...(readingNote?{readingNote}:{}),enrichmentFields:new PageEnrichmentState(this.store).get(id).fields,enrichmentPending:!!this.store.get('SELECT 1 FROM page_enrichment_jobs WHERE page_id=?',id),pageDomains:domainService.get(id,conceptContentHash({...stored,blocks},resolveName)),aiStatus,editLocked:!!editLock,editProtected:!!editLock?.password_hash,featuredImageId,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:[...new Set([...this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id),...citationSourceIds(blocks).filter(sourceId=>this.knowledge.find(vault,sourceId)?.type==='source')])]};
   }
   requireEditable(vault: string, id: string) {
     const page=this.get(vault,id);
@@ -197,6 +201,7 @@ export class Pages {
   }
   update(vault: string, id: string, body: Record<string, unknown>) {
     const page=this.requireEditable(vault,id),blocks=this.validateBlocks(vault,body.blocks),title=text(body.title,500);
+    if(page.readingNote&&readingNoteWordCount(projectPageText(blocks,id=>entityMentionName(this.knowledge.find(vault,id))).text)>readingNoteMaxWords)throw new HttpError(400,'Reading notes can contain at most 200 words.');
     const language=body.language===undefined?page.language??null:pageLanguage(body.language);
     const protectedIds=new Set(page.blocks.filter(isAIExplanation).map(block=>block.id));
     if(blocks.some(block=>protectedIds.has(block.id)&&!isAIExplanation(block)))throw new HttpError(400,'The AI Explanation tag cannot be removed or changed.');

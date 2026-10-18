@@ -1,5 +1,9 @@
+import {SourceReadingNoteMarkers} from './SourceReadingNoteMarkers';
+import {SourceReadingNavigation} from './SourceReadingNavigation';
+import {SourceReadingTools} from './SourceReadingTools';
+import type {ReadingNoteAnchor,SourceHighlight} from '../../shared/source-reading';
 import {useEffect,useMemo,useRef,useState} from 'react';
-import type {Entity,EntityDetail,SourceFile,SourceReference} from '../../shared/domain';
+import type {Entity,EntityDetail,Page,SourceFile,SourceReference} from '../../shared/domain';
 import {citationLocation} from '../../shared/citations';
 import {sourceDocumentEntries,sourceNodeLabel,sourceNodeLocator,type SourceDocument} from '../../shared/source-document';
 import {randomUUID} from '../../shared/uuid';
@@ -12,7 +16,7 @@ type Entry=ReturnType<typeof sourceDocumentEntries>[number];
 interface Props {
   vaultId:string;source:Entity;entities:Entity[];onOpenEntity:(id:string)=>void;
   onCreatePageFromSource:(source:Entity)=>void;onError:(message:string)=>void;
-  onAddPassage:(reference:SourceReference)=>void;onAnnotate:(reference:SourceReference)=>void;
+  onAddPassage:(reference:SourceReference)=>void;onAnnotate:(reference:SourceReference)=>void;onReadingNoteCreated:(page:Page)=>void;onOpenReadingNote:(id:string)=>void;
 }
 function passageReference(file:LoadedFile,entry:Entry):SourceReference {
   const {node,path}=entry;
@@ -25,10 +29,13 @@ function passageReference(file:LoadedFile,entry:Entry):SourceReference {
 function passageAnchor(fileId:string,nodeId:string){return `source-passage-${encodeURIComponent(fileId)}-${encodeURIComponent(nodeId)}`;}
 
 /** Reading and citation state is deliberately separate from the editable page lifecycle. */
-export function SourceReader({vaultId,source,onCreatePageFromSource,onError,onAddPassage,onAnnotate}:Props) {
+export function SourceReader({vaultId,source,onCreatePageFromSource,onError,onAddPassage,onAnnotate,onReadingNoteCreated,onOpenReadingNote}:Props) {
   const [files,setFiles]=useState<SourceFile[]|null>(null),[fileId,setFileId]=useState('');
   const [loaded,setLoaded]=useState<LoadedFile|null>(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
   const [selected,setSelected]=useState<string|null>(null),[copied,setCopied]=useState(false);
+  const article=useRef<HTMLElement>(null);
+  const [highlights,setHighlights]=useState<SourceHighlight[]>([]);
+  const [readingNotes,setReadingNotes]=useState<ReadingNoteAnchor[]>([]);
   const copyTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
   useEffect(()=>()=>clearTimeout(copyTimer.current),[]);
   useEffect(()=>{
@@ -58,7 +65,42 @@ export function SourceReader({vaultId,source,onCreatePageFromSource,onError,onAd
     }).catch(cause=>{if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:String(cause));});
     return()=>controller.abort();
   },[vaultId,source.id,attachment?.id,attachment?.status,attachment?.admitted,retry]);
-  const entries=useMemo(()=>loaded?.document?sourceDocumentEntries(loaded.document).filter(({node})=>node.text!==undefined||node.title):[],[loaded]);
+  useEffect(()=>{
+    setHighlights([]);if(!loaded)return;
+    const controller=new AbortController();
+    void request<SourceHighlight[]>(`source-files/${encodeURIComponent(loaded.id)}/highlights`,'GET',undefined,vaultId,controller.signal).then(items=>{if(!controller.signal.aborted)setHighlights(items.filter(item=>item.sourceHash===loaded.textHash));}).catch(cause=>{if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:String(cause));});
+    return()=>controller.abort();
+  },[loaded?.id,loaded?.textHash,vaultId]);
+  useEffect(()=>{
+    setReadingNotes([]);if(!loaded)return;
+    const controller=new AbortController();
+    void request<ReadingNoteAnchor[]>(`source-files/${encodeURIComponent(loaded.id)}/reading-notes`,'GET',undefined,vaultId,controller.signal).then(items=>{
+      if(!controller.signal.aborted)setReadingNotes(current=>[...items.filter(item=>item.sourceHash===loaded.textHash),...current.filter(item=>!items.some(saved=>saved.pageId===item.pageId))]);
+    }).catch(cause=>{if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:String(cause));});
+    return()=>controller.abort();
+  },[loaded?.id,loaded?.textHash,vaultId]);
+  function readingNoteCreated(page:Page){
+    const note=page.readingNote;
+    if(note&&note.fileId===loaded?.id&&note.sourceHash===loaded.textHash)setReadingNotes(items=>[...items.filter(item=>item.pageId!==page.id),{pageId:page.id,title:page.title,sourceHash:note.sourceHash,startOffset:note.startOffset,endOffset:note.endOffset}]);
+    onReadingNoteCreated(page);
+  }
+  const entries=useMemo(()=>{
+    if(!loaded?.document)return [];
+    // The structural view normalizes line endings and joins prose lines. Anchor
+    // selections to the original versioned text, rather than that presentation.
+    const raw=loaded.text,offsets:number[]=[];
+    if(raw.includes('\r'))for(let index=0;index<raw.length;index++){offsets.push(index);if(raw[index]==='\r'&&raw[index+1]==='\n')index++;}
+    const offset=(value:number)=>offsets.length?(offsets[value]??raw.length):value;
+    return sourceDocumentEntries(loaded.document).filter(({node})=>node.text!==undefined||node.title).map(entry=>{
+      const start=offset(entry.node.range.startOffset),end=offset(entry.node.range.endOffset);
+      const titleAt=entry.node.title?raw.indexOf(entry.node.title,start):-1;
+      const firstLineEnd=Math.min(end,raw.indexOf('\n',start)<0?raw.length:raw.indexOf('\n',start));
+      const exactTitle=titleAt>=start&&titleAt<firstLineEnd;
+      const rawHeading=raw.slice(start,firstLineEnd).trimEnd(),prefix=rawHeading.match(/^\s*#{1,6}\s+/)?.[0].length??0;
+      const headingStart=exactTitle?titleAt:start+prefix;
+      return {...entry,node:{...entry.node,range:{...entry.node.range,startOffset:entry.node.text!==undefined?start:headingStart,endOffset:end},...(entry.node.text!==undefined?{text:raw.slice(start,end)}:{title:exactTitle?entry.node.title:rawHeading.slice(prefix)})}};
+    });
+  },[loaded]);
   const selectedEntry=entries.find(({node})=>node.id===selected);
   const reference=useMemo(()=>loaded&&selectedEntry?passageReference(loaded,selectedEntry):null,[loaded,selectedEntry]);
   function selectPassage(nodeId:string){setSelected(nodeId);setCopied(false);}
@@ -87,16 +129,19 @@ export function SourceReader({vaultId,source,onCreatePageFromSource,onError,onAd
     {loaded&&<div className="source-reader-layout">
       <div className="source-reader-content">
         {reference&&<aside className="source-reader-selection" aria-label="Selected passage"><div className="source-reader-selection-heading"><strong>Selected passage</strong><button type="button" aria-label="Clear selected passage" onClick={()=>setSelected(null)}><Icon name="close"/></button></div><small>{citationLocation(reference)}</small><blockquote>{reference.excerpt}</blockquote><div className="source-reader-selection-actions"><button className="button small" type="button" onClick={()=>void copyCitation()}>{copied?'Copied':'Copy citation'}</button><button className="button small" type="button" onClick={()=>onAddPassage(reference)}>Add to page</button><button className="button small" type="button" onClick={()=>onAnnotate(reference)}>Annotate</button></div><span role="status" className="sr-only">{copied?'Citation copied':''}</span></aside>}
-        <article className="source-reader-document" aria-label={source.name}>
+        <SourceReadingTools key={loaded.id+loaded.textHash} file={loaded} article={article} highlights={highlights} onHighlight={highlight=>setHighlights(items=>[...items.filter(item=>item.id!==highlight.id),highlight])} onNoteCreated={readingNoteCreated}/>
+        <article ref={article} className="source-reader-document" aria-label={source.name}>
           {entries.length?entries.map(({node,path})=>{
             const Heading=(node.kind==='chapter'||node.level===1?'h2':node.kind==='subsection'||(node.level??0)>2?'h4':'h3');
             const locator=sourceNodeLocator(path)??`L${node.range.startLine}–${node.range.endLine}`;
             return <section key={node.id} id={passageAnchor(loaded.id,node.id)} className={'source-reader-passage'+(node.text===undefined?' is-heading':'')+(node.id===selected?' is-selected':'')} data-source-node={node.id}>
               <button type="button" className="source-reader-node-address" title={'Select passage '+locator} aria-label={'Select passage '+locator} aria-pressed={node.id===selected} onClick={()=>selectPassage(node.id)}>{locator}</button>
-              {node.text===undefined?<Heading><SourceReaderInline text={node.title??''}/></Heading>:<SourceReaderText text={node.text} kind={node.kind}/>}
+              {node.text===undefined?<Heading><SourceReaderInline text={node.title??''} startOffset={node.range.startOffset} highlights={highlights}/></Heading>:<SourceReaderText text={node.text} kind={node.kind} startOffset={node.range.startOffset} highlights={highlights}/>}
             </section>;
-          }):loaded.text.trim()?<SourceReaderText text={loaded.text}/>:<p className="source-reader-status">No readable text was extracted from this attachment.</p>}
+          }):loaded.text.trim()?<SourceReaderText text={loaded.text} startOffset={0} highlights={highlights}/>:<p className="source-reader-status">No readable text was extracted from this attachment.</p>}
+          <SourceReadingNoteMarkers article={article} notes={readingNotes} onOpen={onOpenReadingNote}/>
         </article>
+        <SourceReadingNavigation key={loaded.id+loaded.textHash} article={article} text={loaded.text} document={loaded.document}/>
       </div>
     </div>}
   </section>;

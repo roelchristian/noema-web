@@ -1,3 +1,5 @@
+import {citationKey,citationLocation,sortCitationRuns} from '../../shared/citations';
+import type {CitationPresentation} from '../sources/CitationPresentation';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { safeHref, type Entity, type Segment, type TextStyle } from '../../shared/domain';
 import { Mention } from '../components/Mention';
@@ -12,17 +14,18 @@ export function entityReviewRanges(_content: Segment[], _entities: Entity[], loc
   return (location.matches ?? []).filter(match => match.blockId === location.blockId && match.row === location.row && match.col === location.col).map(({start,end,id}) => ({start,end,id}));
 }
 const reviewTimers = new WeakMap<HTMLElement, {source: string; key: string; timer?: ReturnType<typeof setTimeout>}>();
-export function syncEditableSegments(element: HTMLElement, content: Segment[], entities: Entity[], location: ReviewLocation) {
+export function syncEditableSegments(element: HTMLElement, content: Segment[], entities: Entity[], location: ReviewLocation, citations?:CitationPresentation) {
   const changed = !segmentsEqual(readSegments(element), content);
   const key = JSON.stringify(entityReviewRanges(content, entities, location));
-  const source = segmentHTML(content, entities);
+  const source = segmentHTML(content, entities,undefined,false,citations);
   const previous = reviewTimers.get(element);
   if (!changed && previous?.source === source && previous.key === key) return;
   clearTimeout(previous?.timer);
   const selection = document.getSelection();
   const selecting = element.closest('[data-text-selected]') || selection && !selection.isCollapsed && selection.rangeCount && selection.getRangeAt(0).intersectsNode(element);
   const composing = element.closest('.page[data-entity-composing]');
-  if (changed || (!selecting && !composing && element.querySelector('[data-entity-review]'))) {
+  const citationDisplayChanged=previous?.source!==source&&content.some(segment=>segment.sourceReference)&&!composing;
+  if (changed || citationDisplayChanged || (!selecting && !composing && element.querySelector('[data-entity-review]'))) {
     // Strip inherited highlight wrappers immediately when typing resumes.
     replaceEditableHTML(element, source);
   }
@@ -33,19 +36,23 @@ export function syncEditableSegments(element: HTMLElement, content: Segment[], e
     if (!element.isConnected || reviewTimers.get(element) !== pending) return;
     if (!canIdentifyEntities()) { pending.timer = setTimeout(decorate, 300); return; }
     if (!segmentsEqual(readSegments(element), content)) return;
-    replaceEditableHTML(element, segmentHTML(content, entities, location));
+    replaceEditableHTML(element, segmentHTML(content, entities, location,false,citations));
   };
   pending.timer = setTimeout(decorate, 0);
 }
 /** Only escaped text and explicitly supported formatting reach the editable surface. */
-export function segmentHTML(content: Segment[], entities: Entity[], review?: ReviewLocation, readOnly = false) {
+export function segmentHTML(content: Segment[], entities: Entity[], review?: ReviewLocation, readOnly = false, citations?:CitationPresentation) {
   const ranges = review ? entityReviewRanges(content, entities, review) : [];
   let offset = 0;
-  return renderToStaticMarkup(<>{content.map((s, index) => {
+  const numberOf=(ref:NonNullable<Segment['sourceReference']>)=>citations?.style==='references'?citations.entries.get(citationKey(ref))?.number??ref.sourceNumber??1:ref.sourceNumber??1;
+  const ordered=sortCitationRuns(content,(left,right)=>numberOf(left)-numberOf(right));
+  return renderToStaticMarkup(<>{ordered.map((s, index) => {
     const start = offset; offset += s.text?.length ?? 0;
     if (s.sourceReference) {
       const ref=s.sourceReference, source=entities.find(entity=>entity.id===ref.sourceId);
-      return <span key={index} className="source-reference-tag" contentEditable={false} role="button" tabIndex={0} data-entity={ref.sourceId} data-source-reference={JSON.stringify(ref)} data-source-text={s.text ?? ''} data-source-segment={JSON.stringify(s)} aria-controls="source-viewer" aria-label={`Open reference ${ref.sourceNumber ?? 1}: ${source?.name ?? 'Source'}, extracted lines ${ref.startLine} to ${ref.endLine}`}>[{ref.sourceNumber ?? 1}]</span>;
+      const entry=citations?.entries.get(citationKey(ref)), footnote=citations?.style==='references'&&entry;
+      const label=footnote?`[${entry.number}]`:`[${ref.sourceNumber??1}, ${citationLocation(ref)}]`;
+      return <span key={index} id={`note-citation-${ref.id}`} className={'source-reference-tag'+(footnote?' is-footnote':'')} data-citation-number={footnote?entry.number:undefined} data-reference-target={footnote?`note-reference-${entry.number}`:undefined} contentEditable={false} role={footnote?'link':'button'} tabIndex={0} data-entity={ref.sourceId} data-source-reference={JSON.stringify(ref)} data-source-text={s.text ?? ''} data-source-segment={JSON.stringify(s)} aria-controls={footnote?`note-reference-${entry.number}`:"source-viewer"} aria-label={`${footnote?`Go to reference ${entry.number}`:`Open reference ${ref.sourceNumber??1}`}: ${source?.name??'Source'}, ${citationLocation(ref)}, extracted lines ${ref.startLine} to ${ref.endLine}`}>{label}</span>;
     }
     if (s.entityId) return <Mention key={index} id={s.entityId} label={s.mentionText} entities={entities} onOpen={() => {}}/>;
     if (s.math) return <span key={index} className="inline-math" data-math={s.text} contentEditable={false} role={readOnly ? undefined : "button"} tabIndex={readOnly ? undefined : 0} title={readOnly ? undefined : "Edit equation"} aria-label={`${readOnly ? "Equation" : "Edit equation"}: ${s.text}`} dangerouslySetInnerHTML={{__html: renderMath(s.text ?? '')}}/>;

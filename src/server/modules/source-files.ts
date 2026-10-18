@@ -20,6 +20,7 @@ export class SourceFiles {
   readonly root: string;
   private closed = false;
   private running = false;
+  private pageMapAttempts=new Set<string>();
   private children = new Set<ChildProcess>();
   private flattenCompiler?: Promise<string>;
   constructor(private store: Store) {
@@ -147,7 +148,7 @@ export class SourceFiles {
   async tick() {
     if(this.closed || this.running)return;
     let file=this.store.get<SourceFile>("SELECT f.* FROM source_files f JOIN vaults v ON v.id=f.vault_id WHERE f.status='queued' AND f.entity_id IS NOT NULL AND v.locked=0 ORDER BY f.created_at LIMIT 1");
-    if(!file)return;
+    if(!file){await this.backfillPageMap();return;}
     this.running=true;
     this.store.run("UPDATE source_files SET status='processing',error=NULL WHERE id=?",file.id);
     const open=()=>!!this.store.get('SELECT 1 FROM vaults WHERE id=? AND locked=0',file!.vault_id);
@@ -190,13 +191,13 @@ export class SourceFiles {
         this.store.run('UPDATE source_files SET admitted=1,size=? WHERE id=?',bytes.length,file.id);
         rmSync(this.inboxFilename(file.vault_id,file.id),{force:true});
       }
-      const result=file.format==='pdf'?await this.pdf(this.filename(file.vault_id,file.id),file.id):{text:bytes.toString('utf8'),pages:0,ocrPages:0};
+      const result=file.format==='pdf'?await this.pdf(this.filename(file.vault_id,file.id),file.id):{text:bytes.toString('utf8'),pages:0,ocrPages:0,pageStartLines:[]};
       if(this.closed)return;
       if(!open()){this.store.run("UPDATE source_files SET status='queued',progress=0 WHERE id=?",file.id);return;}
       if(Buffer.byteLength(result.text)>maxText)throw new Error('Extracted text exceeds the 16 MB limit.');
       if(!result.text.trim())throw new Error('No readable text found. Try a clearer file.');
       this.store.transaction(()=>{
-        this.store.run("UPDATE source_files SET status='ready',text=?,pages=?,ocr_pages=?,progress=100,error=NULL WHERE id=?",result.text,result.pages,result.ocrPages,file!.id);
+        this.store.run("UPDATE source_files SET status='ready',text=?,pages=?,ocr_pages=?,page_start_lines=?,progress=100,error=NULL WHERE id=?",result.text,result.pages,result.ocrPages,JSON.stringify(result.pageStartLines??[]),file!.id);
         this.store.run('UPDATE entities SET inactive=0,updated_at=? WHERE id=? AND vault_id=?',now(),file!.entity_id,file!.vault_id);
         new AINotifications(this.store).recordSource(file!.vault_id,file!.entity_id!,'completed');
       });
@@ -208,20 +209,36 @@ export class SourceFiles {
       });
     }finally{this.running=false;}
   }
+  /** Recover boundaries for old PDFs without changing their stored text or citations. */
+  private async backfillPageMap() {
+    if(process.platform!=='darwin')return;
+    const file=this.store.all<SourceFile>(`SELECT f.* FROM source_files f JOIN vaults v ON v.id=f.vault_id
+      WHERE f.format='pdf' AND f.status='ready' AND f.admitted=1 AND f.page_start_lines='[]' AND v.locked=0
+      AND EXISTS (SELECT 1 FROM note_source_references r WHERE r.file_id=f.id) ORDER BY f.created_at`).find(file=>!this.pageMapAttempts.has(file.id));
+    if(!file)return;
+    this.pageMapAttempts.add(file.id);this.running=true;
+    try {
+      const result=await this.pdf(this.filename(file.vault_id,file.id),file.id,false);
+      if(this.closed||result.text!==file.text)return;
+      this.store.run(`UPDATE source_files SET page_start_lines=? WHERE id=? AND text=? AND status='ready'
+        AND EXISTS (SELECT 1 FROM vaults WHERE id=source_files.vault_id AND locked=0)`,JSON.stringify(result.pageStartLines),file.id,file.text);
+    }catch{/* Keep old citations usable when original files or page boundaries cannot be recovered. */}
+    finally{this.running=false;}
+  }
   private replaceFile(filename:string,bytes:Buffer) {
     mkdirSync(path.dirname(filename),{recursive:true});
     const temporary=filename+'.'+randomUUID()+'.tmp';
     try{writeFileSync(temporary,bytes,{flag:'wx',mode:0o600});renameSync(temporary,filename);}
     finally{rmSync(temporary,{force:true});}
   }
-  private async pdf(filename:string,id:string):Promise<{text:string;pages:number;ocrPages:number}> {
+  private async pdf(filename:string,id:string,trackProgress=true):Promise<{text:string;pages:number;ocrPages:number;pageStartLines:number[]}> {
     if(process.platform!=='darwin')throw new Error('PDF extraction requires macOS with Apple PDFKit and Vision. TXT and MD sources work on this device.');
     // Compile once into the local vault data area; no cloud model or remote OCR.
     const executable=path.join(this.root,'source-extractor');
     const script=fileURLToPath(new URL('../../../scripts/extract-source.swift',import.meta.url));
     if(!existsSync(executable)||statSync(script).mtimeMs>statSync(executable).mtimeMs)await this.command('/usr/bin/swiftc',[script,'-o',executable],120000);
     const output=await this.command(executable,[filename],10*60*1000,line=>{
-      try {const p=JSON.parse(line);if(Number.isInteger(p.page)&&p.pages>0&&!this.closed)this.store.run('UPDATE source_files SET pages=?,progress=? WHERE id=?',p.pages,Math.floor(p.page/p.pages*100),id);}catch{/* Native diagnostics are never stored as source text. */}
+      try {const p=JSON.parse(line);if(trackProgress&&Number.isInteger(p.page)&&p.pages>0&&!this.closed)this.store.run('UPDATE source_files SET pages=?,progress=? WHERE id=?',p.pages,Math.floor(p.page/p.pages*100),id);}catch{/* Native diagnostics are never stored as source text. */}
     });
     try {return JSON.parse(output);}catch{throw new Error('The local PDF extractor returned an invalid result. Retry extraction.');}
   }

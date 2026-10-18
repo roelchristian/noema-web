@@ -27,7 +27,7 @@ const entityScope='entity_id IN (SELECT id FROM entities WHERE vault_id=?)';
 // Explicit, versioned allowlist: credentials, app settings, jobs and activity are never archived.
 const tables={
   pages:{columns:'id,title,icon,featured_image_id,blocks,ai_status,language,updated_at,revision,deleted_at',scope:'vault_id=?'},
-  source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at,import_method,source_url,pdf_flattened,admitted,format',scope:'vault_id=? AND entity_id IS NOT NULL'},
+  source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at,import_method,source_url,pdf_flattened,admitted,format,page_start_lines',scope:'vault_id=? AND entity_id IS NOT NULL'},
   entities:{columns:'id,name,aliases,mention_case,type,subtypes,description,updated_at,inactive',scope:'vault_id=?'},
   properties:{columns:'id,entity_id,name,value,target_id',scope:entityScope},
   relationships:{columns:'id,source_id,label,target_id',scope:'source_id IN (SELECT id FROM entities WHERE vault_id=?)'},
@@ -206,6 +206,11 @@ export class VaultBackups {
           if(!['txt','md','pdf','html','url'].includes(String(format))||format==='url'&&(!sourceUrl||admitted!==0))throw invalid();
           const added=sourceFiles.add(vault,name(row,'name'),bytes,undefined,sourceUrl,pdfFlattened===1,admitted===0,format as import('../../shared/domain.js').SourceFile['format']);writtenSources.push(added.id);restoredSourceFiles.set(name(row,'id'),added.id);
           this.store.run('UPDATE source_files SET entity_id=? WHERE id=?',sourceEntity,added.id);
+          if(row.page_start_lines!==undefined) {
+            const starts=list(json(row,'page_start_lines'));
+            if(starts.length>1000||starts.some((value,index)=>!Number.isSafeInteger(value)||(value as number)<1||index===0&&value!==1||index>0&&(value as number)<=(starts[index-1] as number)))throw invalid();
+            this.store.run('UPDATE source_files SET page_start_lines=? WHERE id=?',JSON.stringify(starts),added.id);
+          }
           const status=string(row,'status',20);if(!['queued','processing','ready','failed'].includes(status)||status==='ready'&&admitted!==1)throw invalid();
           this.store.run('UPDATE source_files SET status=?,text=?,error=?,progress=?,pages=?,ocr_pages=?,created_at=? WHERE id=?',status==='processing'?'queued':status,string(row,'text',16*1024*1024),nullable(row,'error',2000),integer(row,'progress',0,100),integer(row,'pages',0,1000),integer(row,'ocr_pages',0,1000),timestamp(row,'created_at'),added.id);
         }

@@ -1,10 +1,12 @@
+import {sortCitationRuns} from './citations.js';
 import type { Segment } from './domain.js';
 
 /** DOM reads may reorder mark keys and merge adjacent text without changing content. */
 export function segmentsEqual(left: Segment[], right: Segment[]) {
   function canonical(content: Segment[]) {
     const result: {value: string; marks: string; entity?: string; atomic?: boolean}[] = [];
-    for (const segment of content) {
+    // Adjacent citation order is presentation; preserve the editor's content equality.
+    for (const segment of sortCitationRuns(content,(left,right)=>left.id.localeCompare(right.id))) {
       if (segment.entityId) {
         result.push({entity: segment.entityId, value: segment.mentionText ?? '', marks: ''});
         continue;

@@ -2514,19 +2514,16 @@ dialog.source-page-dialog.has-preview { width: 1200px; }
 
 /* Citations stay secondary to the note text. */
 .source-reference-tag {
-  display: inline-block;
-  max-width: min(20em, 100%);
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: inline;
   white-space: nowrap;
   vertical-align: baseline;
-  padding: 0 3px;
-  margin: 0 1px;
+  padding: 0;
+  margin: 0;
   border-bottom: 1px dotted var(--line);
   border-radius: 2px;
   color: var(--text-muted);
-  font-size: .72em;
-  line-height: 1.4;
+  font-size: inherit;
+  line-height: inherit;
   cursor: pointer;
   user-select: all;
 }
@@ -2559,3 +2556,31 @@ dialog.source-page-dialog.has-preview { width: 1200px; }
 .source-reference-preview-passage { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; max-height: 4.8em; margin: 8px 0; color: var(--text-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .source-reference-preview > small { display: block; font-size: 10px; color: var(--text-muted); margin-bottom: 12px; }
 @media (max-width: 750px) { .source-viewer-heading button, .source-viewer-more { min-height: 44px; } }
+
+.source-reference-tag.is-footnote { display: inline; vertical-align: super; font-size: .65em; line-height: 0; padding: 0; margin: 0; border: 0; }
+/* Keep each bibliography entry together instead of spreading it across the page. */
+.note-references { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line); }
+.note-references-heading { margin-bottom: 10px; }
+.note-references-heading h2 { margin: 0; color: var(--text); font-size: 13px; font-weight: 500; }
+.note-references ol { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.note-references li { min-width: 0; border-radius: 4px; scroll-margin-block: 90px; }
+.note-references li:focus-visible { outline: 1px solid var(--line); outline-offset: 3px; }
+.note-reference-entry { display: flex; align-items: baseline; justify-content: flex-start; gap: 10px; min-width: 0; padding: 2px 0; }
+.note-reference-source { display: inline-flex; align-items: baseline; gap: 7px; flex: 0 1 auto; min-width: 0; margin: 0; padding: 0; border-radius: 3px; color: var(--text); text-align: left; font-size: 12px; line-height: 1.5; }
+.note-reference-number { flex: none; min-width: 3.5ch; color: var(--text); font-size: 11px; font-variant-numeric: tabular-nums; text-align: left; }
+.note-reference-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-reference-location { flex: none; color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.note-reference-location::before { content: "·"; margin-right: 7px; color: var(--text-muted); }
+.note-reference-source:hover .note-reference-name, .note-reference-source:focus-visible .note-reference-name { text-decoration: underline; text-underline-offset: 3px; }
+.note-reference-backlinks { display: inline-flex; align-items: center; flex: none; gap: 3px; color: var(--text-muted); line-height: 1; }
+.note-reference-backlinks button { display: inline-flex; align-items: center; justify-content: center; padding: 2px; border-radius: 3px; color: var(--text-muted); font-size: 10px; line-height: 1.2; }
+.note-reference-backlinks .icon { width: 10px; height: 10px; }
+.note-reference-backlinks button:hover, .note-reference-backlinks button:focus-visible { color: var(--text); background: var(--surface-hover); }
+@media (max-width: 600px) {
+  .note-reference-entry { flex-wrap: wrap; column-gap: 8px; row-gap: 2px; }
+  .note-reference-source { max-width: 100%; font-size: 11px; }
+  .note-reference-backlinks { margin-left: 0; }
+}
+
+:root { --citation-jump-highlight: rgba(242, 210, 96, .24); }
+:root[data-mode=dark] { --citation-jump-highlight: rgba(222, 183, 64, .18); }

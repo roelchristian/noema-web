@@ -39,12 +39,18 @@ for index in 0..<document.pageCount {
         }
         extractedBytes += text.utf8.count + 2
         guard extractedBytes <= 16 * 1024 * 1024 else { fail("Extracted text exceeds the 16 MB limit.") }
-        pages.append(text)
+        pages.append(text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n"))
         let progress = try JSONSerialization.data(withJSONObject: ["page": index + 1, "pages": document.pageCount])
         FileHandle.standardError.write(progress + Data([10]))
     } catch { fail("On-device OCR failed. Try a clearer scan or retry extraction.") }
 }
 let text = pages.joined(separator: "\n\n")
 guard text.utf8.count <= 16 * 1024 * 1024 else { fail("Extracted text exceeds the 16 MB limit.") }
-let output = try JSONSerialization.data(withJSONObject: ["text": text, "pages": document.pageCount, "ocrPages": ocrPages])
+var pageStartLines: [Int] = []
+var nextLine = 1
+for page in pages {
+    pageStartLines.append(nextLine)
+    nextLine += page.components(separatedBy: "\n").count + 1
+}
+let output = try JSONSerialization.data(withJSONObject: ["text": text, "pages": document.pageCount, "ocrPages": ocrPages, "pageStartLines": pageStartLines])
 FileHandle.standardOutput.write(output)

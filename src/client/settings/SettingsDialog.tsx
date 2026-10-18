@@ -73,6 +73,14 @@ export function SettingsDialog({appearance, onChange, storageError, onClose, onO
           <button type="button" aria-pressed={appearance.focusedReading} onClick={() => onChange({...appearance, focusedReading: true})}>Focused reading</button>
         </div>
       </section>
+      <section className="settings-section" aria-labelledby="citations-heading">
+        <h3 id="citations-heading">Citations</h3><p>Choose how citations appear in all notes.</p>
+        <div className="display-options" role="group" aria-label="Citation display">
+          <button type="button" aria-pressed={appearance.citationStyle==='inline'} onClick={()=>onChange({...appearance,citationStyle:'inline',citationStyleExplicit:true})}>Inline</button>
+          <button type="button" aria-pressed={appearance.citationStyle==='references'} onClick={()=>onChange({...appearance,citationStyle:'references',citationStyleExplicit:true})}>Wikipedia style</button>
+        </div>
+        <p className="display-hint">{appearance.citationStyle==='inline'?'Show source numbers and page numbers beside the text.':'Number each distinct cited passage and collect its details in References at the bottom of each note.'}</p>
+      </section>
       <section className="settings-section" aria-labelledby="theme-heading">
         <h3 id="theme-heading">Theme color</h3><p>A little character for buttons, navigation, and accents.</p>
         <div className="theme-options" role="group" aria-label="Theme color">

@@ -1,3 +1,4 @@
+import {CitationPresentationContext} from '../sources/CitationPresentation';
 import {mentionMatches,mentionCaretRect} from './mention-picker';
 import {menuPlacement,revealMenuItem} from '../components/menu-placement';
 import {useEntitySchema} from '../knowledge/useEntitySchema';
@@ -12,7 +13,7 @@ import { installBlockDrag, reorderBlock } from './block-drag';
 import { installBlockSelection, setEditorCaret } from './block-selection';
 import { displayMathSource } from './math-delimiters';
 import { applySmartQuotes } from './smart-quotes';
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, useMemo, type ReactNode, type ClipboardEvent, type KeyboardEvent, type CSSProperties } from 'react';
+import { Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, useMemo, type ReactNode, type ClipboardEvent, type KeyboardEvent, type CSSProperties } from 'react';
 import type { EntityReviewItem } from '../../shared/entity-match-cache';
 import { entityLabels, type Block, type BlockType, type Entity, type PageSummary, type Segment } from '../../shared/domain';
 import { uploadImage } from '../api';
@@ -63,11 +64,12 @@ interface ImageUpload {id:string; after?:string; name:string; message:string; cu
 interface Choice {back?: boolean; danger?: boolean; disabled?: boolean; submenu?: boolean; color?:string; title: string; detail?: string; icon: string; entity?: boolean; pick: () => void}
 interface Menu {items: Choice[]; index: number; left: number; top: number; label: string; sheet?: boolean; anchor?:Range; anchorElement?:HTMLElement}
 function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOpen, register, onPaste}: {block: Block; entities: Entity[]; reviewMatches: EntityReviewItem[]; onInput: (el: HTMLElement) => void; onKeyDown: (e: KeyboardEvent<HTMLElement>) => void; onOpen: (id: string) => void; register: (el: HTMLElement | null) => void; onPaste: (e: ClipboardEvent<HTMLElement>) => void}) {
+  const citations=useContext(CitationPresentationContext);
   const ref = useRef<HTMLElement>(null);
   const Content = block.type === 'heading1' ? 'h2' : block.type === 'heading2' ? 'h3' : 'div';
   useLayoutEffect(() => {
     const el = ref.current!;
-    syncEditableSegments(el, block.content, entities, {blockId: block.id, matches: reviewMatches});
+    syncEditableSegments(el, block.content, entities, {blockId: block.id, matches: reviewMatches},citations);
     el.querySelectorAll<HTMLElement>('[data-entity]:not([data-source-reference])').forEach(node => {
       const wrapper = document.createElement('span'); wrapper.innerHTML = segmentHTML([{entityId: node.dataset.entity!, ...(node.dataset.mentionText ? {mentionText: node.dataset.mentionText} : {})}], entities);
       const fresh = wrapper.firstElementChild!;

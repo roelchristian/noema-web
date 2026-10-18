@@ -1,3 +1,4 @@
+import type {CitationStyle} from '../../shared/citations';
 import { entityTypes, type EntityType } from '../../shared/domain';
 
 const systemFont = '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif';
@@ -37,10 +38,10 @@ export const pillColors = {
   honey: {name: 'Honey', background: '#faf2df', text: '#77551e', border: '#e9d9b4', darkBackground: '#423722', darkText: '#ead39d', darkBorder: '#6c5a37'},
 } as const;
 export type PillColor = keyof typeof pillColors;
-export interface Appearance { bodyFont: FontId; headingFont: FontId; focusedReading: boolean; mode: DisplayMode; theme: ThemeId; entityColors: Record<EntityType, PillColor>; entityOverrides: Record<string, PillColor> }
+export interface Appearance { citationStyleExplicit:boolean; citationStyle:CitationStyle; bodyFont: FontId; headingFont: FontId; focusedReading: boolean; mode: DisplayMode; theme: ThemeId; entityColors: Record<EntityType, PillColor>; entityOverrides: Record<string, PillColor> }
 export const appearanceStorageKey = 'noema.appearance.v1';
 export function defaultAppearance(): Appearance {
-  return {bodyFont: 'system', headingFont: 'geist', focusedReading: false, mode: 'system', theme: 'ink', entityOverrides: {}, entityColors: Object.fromEntries(entityTypes.map(type => [type, 'graphite'])) as Appearance['entityColors']};
+  return {citationStyleExplicit:false,citationStyle:'references',bodyFont: 'system', headingFont: 'geist', focusedReading: false, mode: 'system', theme: 'ink', entityOverrides: {}, entityColors: Object.fromEntries(entityTypes.map(type => [type, 'graphite'])) as Appearance['entityColors']};
 }
 export function parseAppearance(raw: string | null): Appearance {
   const result = defaultAppearance();
@@ -49,6 +50,10 @@ export function parseAppearance(raw: string | null): Appearance {
     if (!value || typeof value !== 'object') return result;
     if (fontOptions.some(font => font.id === value.bodyFont)) result.bodyFont = value.bodyFont;
     if (fontOptions.some(font => font.id === value.headingFont)) result.headingFont = value.headingFont;
+    // Earlier versions saved the inline default automatically. Only retain an explicit choice.
+    if ((value.citationStyleExplicit===true||value.citationStyle==='references')&&(value.citationStyle==='inline'||value.citationStyle==='references')) {
+      result.citationStyle=value.citationStyle;result.citationStyleExplicit=true;
+    }
     if (typeof value.focusedReading === 'boolean') result.focusedReading = value.focusedReading;
     if (displayModes.includes(value.mode)) result.mode = value.mode;
     if (themes.some(theme => theme.id === value.theme)) result.theme = value.theme;

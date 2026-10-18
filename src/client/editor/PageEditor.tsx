@@ -1,3 +1,5 @@
+import {CitationPresentationContext,NoteReferences} from '../sources/CitationPresentation';
+import {noteCitations,type CitationStyle} from '../../shared/citations';
 import {pageAIStatusLabels, pageAIStatusDescriptions} from '../../shared/page-ai-status';
 import {ReadOnlyPageBlocks} from './ReadOnlyPageBlocks';
 import { smartQuoteTitle } from './smart-quotes';
@@ -12,7 +14,7 @@ import { api } from '../api';
 import type { EntityMatchCache } from '../../shared/entity-match-cache';
 import { EntityMatchReview } from './EntityMatchReview';
 import { ambiguityReviewDelay } from './auto-entity-matching';
-interface Props {pages:PageSummary[];onOpenPage:(id:string)=>void;onAddAlias: (id: string, alias: string) => Promise<void>; page: Page; entities: Entity[]; onChange: (patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon' | 'featuredImageId'>>) => void; onOpenEntity: (id: string) => void; onCreateEntity: (request: CreateEntityRequest) => void; onSave: () => void; onIdentify: () => Promise<void>; saveStatus: SaveStatus}
+interface Props {citationStyle?:CitationStyle;pages:PageSummary[];onOpenPage:(id:string)=>void;onAddAlias: (id: string, alias: string) => Promise<void>; page: Page; entities: Entity[]; onChange: (patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon' | 'featuredImageId'>>) => void; onOpenEntity: (id: string) => void; onCreateEntity: (request: CreateEntityRequest) => void; onSave: () => void; onIdentify: () => Promise<void>; saveStatus: SaveStatus}
 const wordSegmenter = new Intl.Segmenter(undefined, {granularity:'word'});
 function editedLabel(updatedAt: string, now: number): string {
   const timestamp = Date.parse(updatedAt);
@@ -22,7 +24,8 @@ function editedLabel(updatedAt: string, now: number): string {
   const [size, unit] = units.find(([size]) => seconds >= size)!;
   return 'Edited ' + new Intl.RelativeTimeFormat('en', {numeric: 'always'}).format(-Math.floor(seconds / size), unit);
 }
-export function PageEditor({pages,onOpenPage,page, entities, onChange, onOpenEntity, onCreateEntity, onSave, onIdentify, onAddAlias, saveStatus}: Props) {
+export function PageEditor({citationStyle='references',pages,onOpenPage,page, entities, onChange, onOpenEntity, onCreateEntity, onSave, onIdentify, onAddAlias, saveStatus}: Props) {
+  const citationPresentation=useMemo(()=>({style:citationStyle,entries:noteCitations(page.blocks)}),[citationStyle,page.blocks]);
   const title = useRef<HTMLInputElement>(null);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
@@ -72,7 +75,7 @@ export function PageEditor({pages,onOpenPage,page, entities, onChange, onOpenEnt
     return () => { clearTimeout(timer); document.removeEventListener('selectionchange', schedule); document.removeEventListener('compositionend', schedule); };
   }, [page.id, page.blocks, page.conceptClassification, page.conceptContentHash, page.editLocked, entities, onIdentify]);
   const status = {saved: editedLabel(page.updated_at, now), pending: 'Waiting to save…', identifying: 'Identifying entities…', saving: 'Saving…', error: 'Could not save changes'}[saveStatus];
-  return <article className="page" onCompositionStart={event => { event.currentTarget.dataset.entityComposing = 'true'; }} onCompositionEnd={event => { delete event.currentTarget.dataset.entityComposing; }}>
+  return <CitationPresentationContext.Provider value={citationPresentation}><article className="page" onCompositionStart={event => { event.currentTarget.dataset.entityComposing = 'true'; }} onCompositionEnd={event => { delete event.currentTarget.dataset.entityComposing; }}>
     <h1 className="page-title-heading page-heading" aria-label={page.title || 'Untitled'}><input ref={title} id="page-title" aria-label="Page title" placeholder="Untitled" maxLength={500} readOnly={!!page.editLocked} value={page.title} onChange={e => onChange({title: smartQuoteTitle(e.currentTarget, e.nativeEvent as InputEvent)})}/></h1>
     <dl className="page-ai-provenance" aria-label="Page properties">
       <div><dt>AI provenance</dt><dd title={pageAIStatusDescriptions[page.aiStatus ?? 'regular']}><Icon name={page.aiStatus && page.aiStatus !== 'regular' ? 'sparkles' : 'page'}/><span>{pageAIStatusLabels[page.aiStatus ?? 'regular']}</span></dd></div>
@@ -91,6 +94,7 @@ export function PageEditor({pages,onOpenPage,page, entities, onChange, onOpenEnt
       finally { setResolving(false); }
     }}/>}
     {page.editLocked ? <ReadOnlyPageBlocks blocks={normalizeColumnBlocks(page.blocks)} entities={entities} pages={pages} vaultId={page.vault_id} onOpenEntity={onOpenEntity} onOpenPage={onOpenPage}/> : <BlockEditor featuredImageId={page.featuredImageId} pages={pages} onOpenPage={onOpenPage} onExplain={async blocks=>(await api.explainBlocks(page.vault_id,page.id,blocks)).markdown} reviewMatches={reviewMatches} onAddAlias={onAddAlias} key={page.vault_id + page.id} vaultId={page.vault_id} blocks={page.blocks} entities={entities} onChange={(blocks, featuredImageId) => onChange({blocks,...(featuredImageId===undefined?{}:{featuredImageId})})} onOpenEntity={onOpenEntity} onCreateEntity={(name, onCreated) => onCreateEntity({name, onCreated, intent:'insert'})} onSave={onSave}/>}
+    {citationStyle==='references'&&<NoteReferences blocks={page.blocks} entities={entities}/>}
     <footer className={'editor-save-status' + (saveStatus === 'error' ? ' is-error' : '')}>
       {saveStatus === 'saving' || saveStatus === 'identifying' ? <span className="scan-spinner" aria-hidden="true"/> : <Icon name={saveStatus === 'saved' ? 'recent' : saveStatus === 'error' ? 'alert' : 'recent'}/>}
       <span role="status" aria-live="polite" aria-atomic="true">{saveStatus === 'saved' ? <time dateTime={page.updated_at} title={new Date(page.updated_at).toLocaleString()}>{status}</time> : status}</span>
@@ -100,5 +104,5 @@ export function PageEditor({pages,onOpenPage,page, entities, onChange, onOpenEnt
         <span className="editor-word-count" title="Words in note text">{wordCount.toLocaleString()} {wordCount === 1 ? 'word' : 'words'}</span>
       </span>
     </footer>
-  </article>;
+  </article></CitationPresentationContext.Provider>;
 }

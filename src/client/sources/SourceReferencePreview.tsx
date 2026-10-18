@@ -1,3 +1,4 @@
+import {revealCitationTarget} from './citation-navigation';
 import {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import type {Entity, SourceReference} from '../../shared/domain';
 import {Icon} from '../components/Icon';
@@ -36,7 +37,10 @@ export function SourceReferencePreview({entities,onOpen}: {entities:Entity[];onO
       const element=tag(event.target);
       if(!element||element.closest('[inert],dialog')||event instanceof KeyboardEvent&&!['Enter',' '].includes(event.key))return;
       const citation=reference(element);if(!citation)return;
-      event.preventDefault();event.stopPropagation();dismiss();open.current(citation,element);
+      event.preventDefault();event.stopPropagation();dismiss();
+      const entry=element.dataset.referenceTarget?document.getElementById(element.dataset.referenceTarget):null;
+      if(entry)revealCitationTarget(entry);
+      else open.current(citation,element);
     }
     function key(event:KeyboardEvent){
       if(event.key==='Escape'&&trigger.current){
@@ -70,7 +74,7 @@ export function SourceReferencePreview({entities,onOpen}: {entities:Entity[];onO
   if(!citation||!target?.isConnected)return null;
   const source=entities.find(entity=>entity.id===citation.sourceId);
   return <div ref={card} id="source-reference-preview" className="entity-preview source-reference-preview" style={position} role="dialog" aria-labelledby="source-reference-preview-title" aria-describedby="source-reference-preview-label">
-    <div className="entity-preview-type"><Icon name="source"/><span>Reference {citation.sourceNumber??1} · {citationLabel(citation)}</span></div>
+    <div className="entity-preview-type"><Icon name="source"/><span>Reference {target.dataset.citationNumber??citation.sourceNumber??1} · {citationLabel(citation)}</span></div>
     <h3 id="source-reference-preview-title">{source?.name??'Source'}</h3>
     <div className="source-reference-preview-passage">{citation.excerpt.replace(/\s+/g,' ').trim()}</div>
     <small id="source-reference-preview-label">Saved cited passage · extracted text</small>

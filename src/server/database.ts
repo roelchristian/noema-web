@@ -237,6 +237,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS source_files (
 );
  CREATE INDEX IF NOT EXISTS source_files_entity ON source_files(vault_id,entity_id);`);
 const sourceColumns = db.prepare('PRAGMA table_info(source_files)').all() as {name:string}[];
+if (!sourceColumns.some(column=>column.name==='page_start_lines')) db.exec("ALTER TABLE source_files ADD COLUMN page_start_lines TEXT NOT NULL DEFAULT '[]'");
 if (!sourceColumns.some(column=>column.name==='import_method')) db.exec("ALTER TABLE source_files ADD COLUMN import_method TEXT NOT NULL DEFAULT 'upload'");
 if (!sourceColumns.some(column=>column.name==='pdf_flattened')) db.exec('ALTER TABLE source_files ADD COLUMN pdf_flattened INTEGER NOT NULL DEFAULT 0');
 if (!sourceColumns.some(column=>column.name==='source_url')) db.exec('ALTER TABLE source_files ADD COLUMN source_url TEXT');

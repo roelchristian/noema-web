@@ -1,4 +1,4 @@
-import {syncSourceReferences} from './source-references.js';
+import {enrichCitationPages,syncSourceReferences} from './source-references.js';
 import {pageLanguage} from './page-language.js';
 import {nextPageAIStatus, type PageAIStatus} from '../../shared/page-ai-status.js';
 import {allowedInColumn} from '../../shared/column-blocks.js';
@@ -32,7 +32,7 @@ export class Pages {
     const row=this.store.get<PageRow>('SELECT * FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',id,vault);
     if (!row) throw new HttpError(404,'Page not found');
     const {summary_content_hash: cachedHash, summary_hash_version: hashVersion, featured_image_id: featuredImageId, ai_status: aiStatus, ...stored} = row;
-    const blocks = JSON.parse(row.blocks) as Block[];
+    const blocks = enrichCitationPages(this.store,JSON.parse(row.blocks) as Block[]);
     const names=new Map<string,string|undefined>();
     const resolveName=(id:string)=>{if(!names.has(id))names.set(id,entityMentionName(this.knowledge.find(vault,id)));return names.get(id);};
     const classificationRow=this.store.get<{data:string}>("SELECT data FROM page_ai_enrichments WHERE page_id=? AND kind='concept_classification'",id);
@@ -104,7 +104,8 @@ export class Pages {
             if(this.knowledge.find(vault,sourceId)?.type!=='source'||!this.store.get('SELECT 1 FROM source_files WHERE id=? AND entity_id=? AND vault_id=?',fileId,sourceId,vault))throw new HttpError(400,'Invalid citation source');
             if(!Number.isSafeInteger(ref.startLine)||!Number.isSafeInteger(ref.endLine)||(ref.startLine as number)<1||(ref.endLine as number)<(ref.startLine as number)||(ref.endLine as number)-(ref.startLine as number)>=30||typeof ref.sourceHash!=='string'||!/^[a-f0-9]{64}$/.test(ref.sourceHash)||segment.math||segment.code)throw new HttpError(400,'Invalid source reference');
             if(ref.sourceNumber!==undefined&&(!Number.isSafeInteger(ref.sourceNumber)||(ref.sourceNumber as number)<1||(ref.sourceNumber as number)>1_000_000_000))throw new HttpError(400,'Invalid source number');
-            result.sourceReference={...(ref.sourceNumber===undefined?{}:{sourceNumber:ref.sourceNumber as number}),id:required(ref.id),sourceId,fileId,startLine:ref.startLine as number,endLine:ref.endLine as number,sourceHash:ref.sourceHash,excerpt:text(ref.excerpt,16*1024*1024)};
+            if(ref.startPage!==undefined&&(!Number.isInteger(ref.startPage)||!Number.isInteger(ref.endPage)||(ref.startPage as number)<1||(ref.endPage as number)<(ref.startPage as number)||(ref.endPage as number)>1000))throw new HttpError(400,'Invalid citation page');
+            result.sourceReference={...(ref.startPage===undefined?{}:{startPage:ref.startPage as number,endPage:ref.endPage as number}),...(ref.sourceNumber===undefined?{}:{sourceNumber:ref.sourceNumber as number}),id:required(ref.id),sourceId,fileId,startLine:ref.startLine as number,endLine:ref.endLine as number,sourceHash:ref.sourceHash,excerpt:text(ref.excerpt,16*1024*1024)};
           }
           if(typeof segment.href === 'string') { const href=safeHref(segment.href); if(href) result.href=href; }
           return result;

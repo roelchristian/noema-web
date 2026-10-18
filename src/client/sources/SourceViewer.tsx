@@ -1,3 +1,4 @@
+import {citationLocation} from '../../shared/citations';
 import {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import type {Entity, SourceFile, SourceReference} from '../../shared/domain';
 import {sourceTextLines} from '../../shared/source-text';
@@ -5,7 +6,8 @@ import {request} from '../api';
 import {Icon} from '../components/Icon';
 
 export function citationLabel(reference:SourceReference) {
-  return reference.startLine===reference.endLine?`Line ${reference.startLine}`:`Lines ${reference.startLine}–${reference.endLine}`;
+  const pages=reference.startPage?`${citationLocation(reference)} · `:'';
+  return pages+( reference.startLine===reference.endLine?`Line ${reference.startLine}`:`Lines ${reference.startLine}–${reference.endLine}`);
 }
 export function SourceLines({lines,startLine,reference}: {lines:string[];startLine:number;reference:SourceReference}) {
   return <div className="source-viewer-lines">{lines.map((text,index)=>{
@@ -45,7 +47,7 @@ export function SourceViewer({vaultId,reference,entities,onClose,onOpenEntity}: 
     <div ref={body} className="panel-body entity-detail-body">
       <div className="entity-detail-classification"><span className="entity-detail-type">Source lines</span><span>{citationLabel(reference)}</span></div>
       <div className="source-viewer-heading"><h3>Cited passage</h3><button type="button" onClick={()=>onOpenEntity(reference.sourceId)}>Source details<Icon name="chevron"/></button></div>
-      <p className="section-hint">Highlighted lines support this citation. Line numbers refer to extracted text.</p>
+      <p className="section-hint">Highlighted lines support this citation. Page numbers refer to PDF positions; line numbers refer to extracted text.</p>
       {!loaded&&!error&&<p className="source-viewer-status" role="status">Loading surrounding context…</p>}
       {error&&<p className="source-viewer-status" role="alert">{error} Showing the saved citation. <button type="button" onClick={()=>setRetry(value=>value+1)}>Retry</button></p>}
       {loaded&&!loaded.matches&&<p className="source-viewer-status">The source text has changed. Showing the excerpt saved with this citation.</p>}

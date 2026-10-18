@@ -1,6 +1,6 @@
 import {createHash, randomUUID} from 'node:crypto';
 import type {Block, Segment, SourceFile} from '../../shared/domain.js';
-import {sourceTextLines} from '../../shared/source-text.js';
+import {sourcePageRange,sourceTextLines} from '../../shared/source-text.js';
 import {Store} from '../store.js';
 
 /** Only interpret legacy markers when the generating source is known. */
@@ -13,7 +13,7 @@ export function linkSourceReferences(blocks:Block[], file:SourceFile):Block[] {
       const startLine=Number(match[1]),endLine=Number(match[2]??match[1]);
       if(!file.entity_id||startLine<1||endLine<startLine||endLine>lines.length||endLine-startLine>=30)continue;
       if(match.index>offset)result.push({...segment,text:segment.text!.slice(offset,match.index)});
-      result.push({...segment,text:match[0],sourceReference:{sourceNumber:1,id:randomUUID(),sourceId:file.entity_id,fileId:file.id,startLine,endLine,sourceHash,excerpt:lines.slice(startLine-1,endLine).join('\n')}});
+      result.push({...segment,text:match[0],sourceReference:{sourceNumber:1,id:randomUUID(),sourceId:file.entity_id,fileId:file.id,startLine,endLine,sourceHash,...referencePages(file,startLine,endLine),excerpt:lines.slice(startLine-1,endLine).join('\n')}});
       offset=match.index+match[0].length;
     }
     if(!offset)return [segment];
@@ -25,6 +25,7 @@ export function linkSourceReferences(blocks:Block[], file:SourceFile):Block[] {
 
 /** Reconcile locations on every save; deleted tags disappear and moved tags retain identity. */
 export function syncSourceReferences(store:Store,pageId:string,blocks:Block[]) {
+  enrichCitationPages(store,blocks);
   store.run('DELETE FROM note_source_references WHERE page_id=?',pageId);
   const used=new Set<string>();
   const numbers=new Map(store.all<{file_id:string;number:number}>('SELECT file_id,number FROM note_source_files WHERE page_id=?',pageId).map(row=>[row.file_id,row.number]));
@@ -56,4 +57,22 @@ export function syncSourceReferences(store:Store,pageId:string,blocks:Block[]) {
     }
   };
   for(const block of blocks){record(block,block.content);block.rows?.forEach((row,r)=>row.forEach((cell,c)=>record(block,cell,r,c)));}
+}
+
+function referencePages(file:SourceFile,startLine:number,endLine:number) {
+  if(file.format!=='pdf')return;
+  const starts=JSON.parse(file.page_start_lines??'[]') as number[];
+  return sourcePageRange(starts.length?starts:file.pages===1?[1]:[],startLine,endLine);
+}
+/** Enrich older citations only against the exact source version they cite. */
+export function enrichCitationPages(store:Store,blocks:Block[]) {
+  const files=new Map<string,SourceFile|undefined>(),hashes=new Map<string,string>();
+  for(const block of blocks)for(const segment of [block.content,...(block.rows??[]).flat() ].flat()) {
+    const ref=segment.sourceReference;if(!ref)continue;
+    if(!files.has(ref.fileId))files.set(ref.fileId,store.get<SourceFile>('SELECT * FROM source_files WHERE id=? AND entity_id=?',ref.fileId,ref.sourceId));
+    const file=files.get(ref.fileId);if(!file)continue;
+    if(!hashes.has(file.id))hashes.set(file.id,createHash('sha256').update(file.text).digest('hex'));
+    if(hashes.get(file.id)===ref.sourceHash)Object.assign(ref,referencePages(file,ref.startLine,ref.endLine));
+  }
+  return blocks;
 }

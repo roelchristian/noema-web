@@ -3005,16 +3005,20 @@ dialog.noema-modal.ai-activity-modal .modal-header { position: relative; top: au
 .page-toc-document button[aria-current=location] { color: var(--text); background: transparent; box-shadow: -1px 0 var(--text-muted); }
 #page-section-guide:empty { display: none; }
 #page-section-guide { flex: none; min-height: 0; }
-.sidebar-scroll-region { transition: opacity 180ms ease; }
+@property --sidebar-reading-fade { syntax: '<number>'; inherits: false; initial-value: 0; }
+.sidebar-scroll-region { transition: opacity 360ms ease, --sidebar-reading-fade 360ms ease; }
+.page-toc-guide-presence { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 320ms cubic-bezier(.22, 1, .36, 1) 140ms; }
+.page-toc-guide-presence[data-visible=false] { grid-template-rows: 0fr; }
+.page-toc-guide-clip { min-height: 0; overflow: hidden; }
 @media (min-width: 751px) and (min-height: 651px) {
-  .sidebar:has(.page-toc-guide[data-visible=true]) .sidebar-scroll-region:not(:hover):not(:focus-within) {
-    opacity: .70;
-    -webkit-mask-image: linear-gradient(to bottom, #000 45%, #000b 100%);
-    mask-image: linear-gradient(to bottom, #000 45%, #000b 100%);
+  .sidebar-scroll-region {
+    -webkit-mask-image: linear-gradient(to bottom, #000 45%, rgb(0 0 0 / calc(1 - var(--sidebar-reading-fade) * .27)) 100%);
+    mask-image: linear-gradient(to bottom, #000 45%, rgb(0 0 0 / calc(1 - var(--sidebar-reading-fade) * .27)) 100%);
   }
+  .sidebar:has(.page-toc-guide[data-visible=true]) .sidebar-scroll-region:not(:hover):not(:focus-within) { opacity: .70; --sidebar-reading-fade: 1; }
 }
-@media (prefers-reduced-motion: reduce) { .sidebar-scroll-region { transition: none; } }
-.sidebar .page-toc-guide { max-height: min(280px, 30dvh); margin: 12px 2px; padding: 12px 6px 8px; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; scrollbar-width: thin; animation: page-toc-guide-enter 180ms ease-out; transition: opacity 180ms ease, transform 180ms ease; }
+@media (prefers-reduced-motion: reduce) { .sidebar-scroll-region, .page-toc-guide-presence { transition: none; } }
+.sidebar .page-toc-guide { max-height: min(280px, 30dvh); margin: 12px 2px; padding: 12px 6px 8px; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; scrollbar-width: thin; animation: page-toc-guide-enter 180ms ease-out; transition: opacity 260ms ease-out, transform 320ms cubic-bezier(.22, 1, .36, 1); }
 .page-toc-guide[data-visible=false] { opacity: 0; transform: translateY(6px); pointer-events: none; }
 .page-toc-guide-heading { margin-bottom: 7px; padding: 0 8px; }
 .page-toc-guide .page-toc-guide-heading h2 { margin: 0; padding: 0; font-size: 10px; font-weight: 500; }

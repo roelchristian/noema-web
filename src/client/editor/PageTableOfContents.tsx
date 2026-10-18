@@ -13,7 +13,7 @@ export function PageTableOfContents({headings,showDocument,articleRef}:{headings
   const [guidePresent,setGuidePresent]=useState(false);
   useEffect(()=>{
     if(showGuide){setGuidePresent(true);return;}
-    const timeout=setTimeout(()=>setGuidePresent(false),180);
+    const timeout=setTimeout(()=>setGuidePresent(false),window.matchMedia('(prefers-reduced-motion: reduce)').matches?0:500);
     return()=>clearTimeout(timeout);
   },[showGuide]);
   useEffect(()=>{setGuideHost(document.getElementById('page-section-guide'));},[]);
@@ -82,6 +82,6 @@ export function PageTableOfContents({headings,showDocument,articleRef}:{headings
   const list=()=> <ol>{headings.map(heading=><li className={heading.level===2?'is-subheading':undefined} key={heading.id}><button type="button" aria-current={active===heading.id?'location':undefined} onClick={()=>jump(heading.id)} title={heading.title}><TitleText text={heading.title}/></button></li>)}</ol>;
   return <>
     {showDocument&&<nav className="page-toc page-toc-document" aria-labelledby={labelId}><h2 id={labelId}>Table of contents</h2>{list()}</nav>}
-    {guidePresent&&guideHost&&createPortal(<nav ref={guide} className="page-toc page-toc-guide" data-visible={showGuide} inert={!showGuide} aria-hidden={!showGuide} aria-label="Reading position" onMouseEnter={()=>setHovered(true)} onMouseLeave={()=>setHovered(false)} onFocusCapture={()=>setFocused(true)} onBlurCapture={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null))setFocused(false);}}><div className="page-toc-guide-heading"><h2>On this page</h2></div>{list()}</nav>,guideHost)}
+    {guidePresent&&guideHost&&createPortal(<div className="page-toc-guide-presence" data-visible={showGuide}><div className="page-toc-guide-clip"><nav ref={guide} className="page-toc page-toc-guide" data-visible={showGuide} inert={!showGuide} aria-hidden={!showGuide} aria-label="Reading position" onMouseEnter={()=>setHovered(true)} onMouseLeave={()=>setHovered(false)} onFocusCapture={()=>setFocused(true)} onBlurCapture={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null))setFocused(false);}}><div className="page-toc-guide-heading"><h2>On this page</h2></div>{list()}</nav></div></div>,guideHost)}
   </>;
 }

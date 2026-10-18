@@ -271,3 +271,33 @@ test('qualified city names and region tags use independent evidence and can be a
     assert.ok(review.scan.suggestions.every(s=>s.status==='accepted'));
   }finally{db.close();}
 });
+
+test('bulk acceptance strips disciplines from named entities in both new and previously saved scans',async()=>{
+  const {EntityScans}=await import('../src/server/modules/entity-scan.ts');
+  const {Knowledge}=await import('../src/server/modules/knowledge.ts');
+  const {Pages}=await import('../src/server/modules/pages.ts');
+  const {AIEnrichments}=await import('../src/server/modules/ai-enrichments.ts');
+  const db=openDatabase(':memory:'),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge);
+  const scans=new EntityScans(store,pages,knowledge,new AIEnrichments(store,pages));
+  try {
+    const names=[['Céline Dion','person'],['Paris','place'],['Eurovision Song Contest 1988','event'],['My Heart Will Go On','creativework'],['Disney','organization'],['Homo sapiens','organism'],['French','culture'],['stiff-person syndrome','concept']];
+    let page=pages.create('default',{title:'Mixed entities'});
+    page=pages.update('default',page.id,{...page,blocks:[{id:'mixed',type:'paragraph',checked:false,content:[{text:names.map(([name])=>name).join('; ')}]}]});
+    const output=JSON.stringify({suggestions:names.map(([name,type])=>candidate(name,type,{domainIds:[type==='concept'?'medicine':'arts.music']}))});
+    let scan=scans.save('default',page,output,{model:'gpt-5-mini',reasoningEffort:'low'});
+    assert.equal(scan.suggestions.length,names.length);
+    for(const suggestion of scan.suggestions)assert.deepEqual(suggestion.domainIds,suggestion.type==='concept'?['medicine']:[]);
+    // Reproduce the persisted scan that caused the user's failed bulk acceptance.
+    for(const suggestion of scan.suggestions)if(suggestion.type!=='concept')suggestion.domainIds=['arts.music'];
+    store.run("UPDATE page_ai_enrichments SET data=? WHERE page_id=? AND kind='entity_scan'",JSON.stringify({scan}),page.id);
+    const result=scans.review('default',page.id,{scanId:scan.id,suggestionIds:scan.suggestions.map(s=>s.id),revision:page.revision,decision:'accepted'});
+    assert.ok(result.scan.suggestions.every(s=>s.status==='accepted'));
+    assert.equal(result.page.blocks[0].content.filter(s=>s.entityId).length,names.length);
+    for(const suggestion of result.scan.suggestions){
+      const entity=knowledge.require('default',suggestion.existingId);
+      assert.deepEqual(entity.domainIds,entity.type==='concept'?['medicine']:[]);
+      assert.deepEqual(suggestion.domainIds,entity.domainIds);
+    }
+    assert.equal(result.page.revision,page.revision+1);
+  }finally{db.close();}
+});

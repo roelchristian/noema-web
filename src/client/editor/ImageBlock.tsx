@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { Block } from '../../shared/domain';
 import { imageURL } from '../api';
 import { Icon } from '../components/Icon';
@@ -10,7 +10,13 @@ export function ImageBlock({block, featured, onSetFeatured, vaultId, onChange, o
   const [captionOpen, setCaptionOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null), caption = useRef<HTMLInputElement>(null), toggle = useRef<HTMLButtonElement>(null);
   const captionId = `image-caption-${block.id}`;
-  useEffect(() => {if(captionOpen) caption.current?.focus();}, [captionOpen]);
+  useLayoutEffect(() => {if(captionOpen) caption.current?.focus();}, [captionOpen]);
+  useLayoutEffect(() => {
+    const block = root.current?.closest<HTMLElement>('[data-block-id]');
+    const reveal = (event: Event) => {event.preventDefault(); setCaptionOpen(true);};
+    block?.addEventListener('noema:restore-input', reveal);
+    return () => block?.removeEventListener('noema:restore-input', reveal);
+  }, [block.id]);
   function keyDown(event: KeyboardEvent<HTMLDivElement>) {
     if(event.nativeEvent.isComposing) return;
     if((event.metaKey || event.ctrlKey) && event.key === 's') {event.preventDefault(); onSave(); return;}

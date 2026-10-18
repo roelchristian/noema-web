@@ -7,7 +7,8 @@ import { ActionMenu, type MenuAction } from '../components/ActionMenu';
 import { FeaturedImageDialog } from './FeaturedImageDialog';
 import { CleanupDialog } from './CleanupDialog';
 
-export function PageToolbar({ inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, focusedReading, onToggleFocusedReading, onForward, forwardDisabled, onChangeBlocks, onFeaturedImageChange,onEditLockChange}: {
+export function PageToolbar({ inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, focusedReading, onToggleFocusedReading, onForward, forwardDisabled, onChangeBlocks, onFeaturedImageChange,onEditLockChange, onUndo, onRedo, canUndo, canRedo}: {
+  onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean;
   onEditLockChange:(locked:boolean,password?:string)=>Promise<void>;
   onForward?: () => void; forwardDisabled?: boolean;
   inactive?: boolean;
@@ -22,12 +23,6 @@ export function PageToolbar({ inactive=false, page, onError, onDelete, favourite
   const [saving, setSaving] = useState(false);
   const [featuredImageOpen, setFeaturedImageOpen] = useState(false);
   const [cleanupOpen, setCleanupOpen] = useState(false);
-  const [cleanupUndo, setCleanupUndo] = useState<{before: Block[]; after: Block[]} | null>(null);
-  const canUndoCleanup = !!cleanupUndo && JSON.stringify(page.blocks) === JSON.stringify(cleanupUndo.after);
-  const cleanupActions = [
-    {label: 'Clean up spacing…', icon: 'edit', disabled:!!page.editLocked, onSelect: () => setCleanupOpen(true)},
-    ...(cleanupUndo ? [{label: 'Undo last cleanup', icon: 'recent', disabled: !!page.editLocked || !canUndoCleanup, onSelect: () => { if (cleanupUndo && canUndoCleanup) { onChangeBlocks(cleanupUndo.before); setCleanupUndo(null); } }}] : []),
-  ];
   async function toggleFavourite() {
     if (saving) return;
     setSaving(true);
@@ -60,7 +55,11 @@ export function PageToolbar({ inactive=false, page, onError, onDelete, favourite
       ...(onForward ? [{label: 'Go forward', icon: 'chevron', disabled: forwardDisabled, onSelect: onForward}] : []),
       {label: focusedReading ? 'Turn off focused reading' : 'Turn on focused reading', icon: 'creativework', onSelect: onToggleFocusedReading},
       {label: 'Featured image…', icon: 'image', disabled:!!page.editLocked, onSelect: () => setFeaturedImageOpen(true)},
-      ...cleanupActions,
+      {label: 'Editing', icon: 'edit', disabled: !!page.editLocked, children: [
+        {label: 'Undo', description: '⌘/Ctrl+Z', disabled: !canUndo, onSelect: onUndo},
+        {label: 'Redo', description: '⌘/Ctrl+Shift+Z or Ctrl+Y', disabled: !canRedo, onSelect: onRedo},
+        {label: 'Clean up spacing…', onSelect: () => setCleanupOpen(true)},
+      ]},
       lockAction,
       {label:'Move to Trash',icon:'trash',disabled:!!page.editLocked,danger:true,children:[
         {label:'Move to Trash',icon:'trash',danger:true,description:'You can restore this note within 30 days.',onSelect:()=>{void onDelete().catch(onError);}},
@@ -70,6 +69,6 @@ export function PageToolbar({ inactive=false, page, onError, onDelete, favourite
   </div>
     {lockOpen && <PageEditLockDialog page={page} onChange={onEditLockChange} onClose={()=>setLockOpen(false)}/>}
     {featuredImageOpen && <FeaturedImageDialog page={page} onChange={onFeaturedImageChange} onClose={() => setFeaturedImageOpen(false)}/>}
-    {cleanupOpen && <CleanupDialog blocks={page.blocks} onClose={() => setCleanupOpen(false)} onApply={blocks => { setCleanupUndo({before: page.blocks, after: blocks}); onChangeBlocks(blocks); }}/>}
+    {cleanupOpen && <CleanupDialog blocks={page.blocks} onClose={() => setCleanupOpen(false)} onApply={blocks => { onChangeBlocks(blocks); }}/>}
   </>;
 }

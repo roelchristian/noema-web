@@ -1,10 +1,17 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { Block } from '../../shared/domain';
 import { renderMath } from './math';
 export function MathBlock({block, onChange, onExit, onSave, onDelete, register}: {block: Block; onChange: (source: string) => void; onExit: () => void; onSave: () => void; onDelete: () => void; register: (el: HTMLDivElement | null) => void}) {
   const source = block.content.map(segment => segment.text ?? '').join('');
   const [editing, setEditing] = useState(!source);
-  return <div className="math-block" ref={register} tabIndex={0} role="group" aria-label="Equation block" aria-description="Press Enter to add text below. Press Backspace or Delete to remove this equation." onKeyDown={event => {
+  const root = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const block = root.current?.closest<HTMLElement>('[data-block-id]');
+    const reveal = (event: Event) => {event.preventDefault(); setEditing(true);};
+    block?.addEventListener('noema:restore-input', reveal);
+    return () => block?.removeEventListener('noema:restore-input', reveal);
+  }, [block.id]);
+  return <div className="math-block" ref={el => {root.current = el; register(el);}} tabIndex={0} role="group" aria-label="Equation block" aria-description="Press Enter to add text below. Press Backspace or Delete to remove this equation." onKeyDown={event => {
     if (event.target !== event.currentTarget || event.nativeEvent.isComposing) return;
     if ((event.metaKey || event.ctrlKey) && event.key === 's') {event.preventDefault(); onSave();}
     if (event.key === 'Enter') {event.preventDefault(); onExit();}

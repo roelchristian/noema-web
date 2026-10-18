@@ -155,6 +155,13 @@ export function BlockEditor(props: Props) {
     el.focus(); if(!el.isContentEditable) {el.querySelector('textarea')?.focus(); return;} const range = document.createRange(); range.selectNodeContents(el); range.collapse(target.start); getSelection()?.removeAllRanges(); getSelection()?.addRange(range);
   }, [blocks]);
   useEffect(() => {
+    const restore = () => {
+      setMenu(null); setMathTarget(null); setLinkedDeletion([]); focusTarget.current = null;
+    };
+    document.addEventListener('noema:history-restore', restore);
+    return () => document.removeEventListener('noema:history-restore', restore);
+  }, []);
+  useEffect(() => {
     if (!root.current) return;
     return installBlockSelection(root.current, {
       blocks: () => latest.current.blocks, entities: () => latest.current.entities,
@@ -570,6 +577,7 @@ export function BlockEditor(props: Props) {
   }
   return <><input ref={fileInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden aria-label="Choose images" onChange={e => {const files=Array.from(e.currentTarget.files ?? []); e.currentTarget.value=''; void addImages(files,imageTarget.current);}}/>
     <div id="blocks" ref={root} onFocusCapture={event => activateBlock(event.target)} onPointerDownCapture={event => activateBlock(event.target)} onInputCapture={event=>{
+      if(root.current?.dataset.formattingTransaction) {event.stopPropagation(); return;}
       if((event.nativeEvent as InputEvent).isComposing)return;
       const surface=(event.target as Element).closest<HTMLElement>('.block-content[contenteditable="true"]');
       if(surface)completePageLink(surface);

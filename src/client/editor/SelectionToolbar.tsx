@@ -148,7 +148,11 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
     const ranges = editor.current ? editorSelectionRanges(editor.current, range) : [];
     const original = range.cloneRange();
     const enable = !ranges.every(part => {restore(part); return document.queryCommandState(command);});
-    for (const part of ranges) { if (restore(part) && document.queryCommandState(command) !== enable) document.execCommand(command); }
+    const root = editor.current;
+    if (root) root.dataset.formattingTransaction = 'true';
+    try {
+      for (const part of ranges) { if (restore(part) && document.queryCommandState(command) !== enable) document.execCommand(command); }
+    } finally { if (root) delete root.dataset.formattingTransaction; }
     restore(original);
     latest.current.onCommit();
     const selection = getSelection();

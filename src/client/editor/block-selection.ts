@@ -11,6 +11,15 @@ interface Options {blocks: () => Block[]; entities: () => Entity[]; commit: (blo
 const element = (node: Node | null) => node instanceof Element ? node : node?.parentElement;
 const surface = (node: Node | null) => element(node)?.closest<HTMLElement>('.block-content[contenteditable="true"]');
 const selections = new WeakMap<HTMLElement, Range>();
+/** Keep restored cross-host ranges available on browsers that constrain native selection. */
+export function setEditorSelectionRange(root: HTMLElement, range: Range) {
+  clearEditorSelection(root);
+  if (range.collapsed || !root.contains(range.startContainer) || !root.contains(range.endContainer)) return;
+  selections.set(root, range);
+  const selected = selectedEditorBlocks(root);
+  selected?.elements.forEach(element => element.setAttribute('data-text-selected', 'true'));
+  if (typeof CSS !== 'undefined' && CSS.highlights && typeof Highlight !== 'undefined') CSS.highlights.set('noema-block-selection', new Highlight(...editorSelectionRanges(root, range)));
+}
 export function editorSelectionRange(root: HTMLElement, selection = document.getSelection()): Range | null {
   const saved = selections.get(root);
   if (saved && saved.startContainer.isConnected && saved.endContainer.isConnected && !saved.collapsed) return saved;

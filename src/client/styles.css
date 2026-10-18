@@ -2698,3 +2698,84 @@ dialog.noema-modal.mobile-selection-sheet { padding-bottom: max(12px, env(safe-a
 .source-page-scope > div > span { font-size:12px; color:var(--text); }
 .source-page-scope p { margin:4px 0 0; color:var(--text-muted); font-size:11px; line-height:1.5; }
 .source-page-scope .source-page-switch { flex-shrink:0; }
+
+/* AI consumption follows the settings surfaces and adapts to the active theme. */
+dialog.noema-modal.ai-activity-modal { --modal-header-height: 52px; --modal-content-padding: 20px; }
+dialog.noema-modal.ai-activity-modal .modal-header { position: relative; top: auto; margin-bottom: 10px; }
+.ai-activity-views { margin: 0 0 12px; }
+.ai-activity-modal > [role=tabpanel] { min-width: 0; }
+.ai-activity-modal [role=tabpanel] > [role=status] { font-size: 12px; color: var(--text-muted); }
+.ai-usage { --usage-input: var(--text); --usage-output: #a1a1aa; }
+.ai-usage-heading, .ai-usage-chart-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.ai-usage h3 { font-family: var(--font-title); font-size: 17px; font-weight: 550; letter-spacing: -.3px; margin: 0; }
+.ai-usage-heading p, .ai-usage-note { color: var(--text-muted); font-size: 12px; line-height: 1.7; }
+.ai-usage-heading p { margin: 6px 0 0; }
+.ai-usage-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-top: 12px; }
+.ai-usage-period { flex: 2; min-width: 320px; display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: var(--text-muted); }
+.ai-usage-period .display-options { min-height: 36px; }
+.ai-usage-period button { padding: 5px 9px; white-space: nowrap; }
+.ai-usage-custom { display: flex; gap: 12px; margin-top: 8px; max-width: 380px; }
+.ai-usage-custom label { margin: 0; display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 4px; font-size: 11px; color: var(--text-muted); }
+.ai-usage > [role=status] { margin: 6px 0; font-size: 11px; }
+.ai-usage-filters .select-trigger { min-height: 36px; padding: 7px 10px; line-height: 20px; }
+.ai-usage-visuals { display: grid; grid-template-columns: minmax(0,1.8fr) minmax(260px,1fr); gap: 12px; align-items: start; }
+.ai-usage-filters label { margin: 0; display: flex; flex: 1; min-width: 140px; flex-direction: column; gap: 5px; font-size: 11px; color: var(--text-muted); }
+.ai-usage-filters :is(.select-host,.select-control) { margin: 0; display: flex; width: 100%; min-width: 0; }
+.ai-usage-custom input { margin: 0; width: 100%; min-width: 0; min-height: 36px; background: var(--surface); color: var(--text); border: 1px solid var(--control-border); padding: 7px 10px; border-radius: 6px; font-size: 12px; line-height: 20px; box-shadow: 0 1px 2px #00000004; }
+.ai-usage-custom input:hover { background: var(--surface-hover); }
+.ai-usage-custom input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (pointer: coarse) { .ai-usage-custom input { min-height: 44px; } }
+.ai-usage-stats { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); border: 1px solid var(--line); border-radius: 10px; margin: 10px 0 12px; background: var(--surface-raised); }
+.ai-usage-stat { padding: 12px 16px; min-width: 0; }
+.ai-usage-stat + .ai-usage-stat { border-left: 1px solid var(--line); }
+.ai-usage-stat > span { color: var(--text-muted); font-size: 11px; }
+.ai-usage-stat strong { display: block; font-family: var(--font-title); font-size: clamp(18px,2vw,24px); font-weight: 500; letter-spacing: -1px; margin-top: 5px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.ai-usage h4 { margin: 0; font-size: 13px; font-weight: 550; }
+.ai-usage-chart { padding: 14px; border: 1px solid var(--line); border-radius: 10px; }
+.ai-usage-chart h4 small { display: block; font-size: 11px; font-weight: 400; color: var(--text-muted); margin-top: 5px; }
+.ai-usage-legend { display: flex; gap: 14px; color: var(--text-muted); font-size: 11px; }
+.ai-usage-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.ai-usage-legend i { width: 8px; height: 8px; border-radius: 2px; }
+.ai-usage-input { background: var(--usage-input); }
+.ai-usage-output { background: var(--usage-output); }
+.ai-usage-plot { display: flex; gap: 8px; margin-top: 16px; }
+.ai-usage-axis { height: 125px; display: flex; flex-direction: column; justify-content: space-between; min-width: 34px; color: var(--text-muted); font-size: 10px; }
+.ai-usage-bars { display: flex; flex: 1; min-width: 0; height: 148px; gap: clamp(2px,1vw,14px); }
+.ai-usage-column { flex: 1; min-width: 0; position: relative; }
+.ai-usage-bar { height: 125px; display: flex; flex-direction: column; justify-content: flex-end; border-bottom: 1px solid var(--line); background: repeating-linear-gradient(to top, transparent 0, transparent 61.5px, var(--line) 61.5px, var(--line) 62.5px); }
+.ai-usage-bar span { display: block; width: 100%; flex-shrink: 0; }
+.ai-usage-bar:hover, .ai-usage-bar:focus-visible { opacity: .7; }
+.ai-usage-date { position: absolute; top: 133px; left: 50%; transform: translateX(-50%); white-space: nowrap; color: var(--text-muted); font-size: 9px; }
+.ai-usage-details { margin-top: 8px; color: var(--text-muted); font-size: 11px; }
+.ai-usage-details summary { cursor: pointer; }
+.ai-usage-totals { max-height: 220px; overflow: auto; margin-top: 12px; }
+.ai-usage-totals table { width: 100%; text-align: left; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.ai-usage-totals :is(td,th) { padding: 8px; border-bottom: 1px solid var(--line); }
+.ai-usage-actions { min-width: 0; max-height: 237px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+.ai-usage-action { margin-top: 12px; }
+.ai-usage-action > div:first-child { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
+.ai-usage-action strong { font-weight: 500; white-space: nowrap; }
+.ai-usage-action small { font-weight: 400; color: var(--text-muted); }
+.ai-usage-track { height: 5px; background: var(--surface-hover); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+.ai-usage-track > span { display: block; height: 100%; background: var(--text-muted); border-radius: inherit; }
+.ai-usage-token-details dl { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 10px 0 6px; font-size: 11px; }
+.ai-usage-token-details dl > div { display: flex; gap: 8px; }
+.ai-usage-token-details dt { color: var(--text-muted); }
+.ai-usage-token-details dd { margin: 0; font-variant-numeric: tabular-nums; }
+.ai-usage-about { font-size: 10px; }
+.ai-usage-about summary { cursor: pointer; }
+.ai-usage-about p { margin: 6px 0; }
+@media (max-width: 760px) {
+  .ai-usage-visuals { grid-template-columns: 1fr; }
+  .ai-usage-period { flex-basis: 100%; min-width: 0; }
+  .ai-usage-period button { padding-inline: 6px; }
+}
+@media (max-width: 600px) {
+  .ai-usage-stats { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .ai-usage-stat { padding: 16px; }
+  .ai-usage-stat:nth-child(3) { border-left: 0; }
+  .ai-usage-stat:nth-child(n+3) { border-top: 1px solid var(--line); }
+  .ai-usage-chart { padding: 16px; }
+  .ai-usage-heading { align-items: flex-start; }
+  .ai-usage-heading > button { flex-shrink: 0; }
+}

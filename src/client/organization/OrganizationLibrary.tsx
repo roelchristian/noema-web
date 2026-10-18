@@ -44,7 +44,13 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   const setCollection = (collection: string) => onContextChange({collection, folder: ''});
   const setFolder = onOpenFolder;
   const search = viewState.query;
-  const setSearch = (query: string) => setViewState(previous => ({...previous, query, selectedIds: [], focusedRow: null}));
+  const searchKey = JSON.stringify([vaultId, destination, search]);
+  const [suppressedSearch, setSuppressedSearch] = useState<string | null>(null);
+  const setSearch = (query: string) => {
+    semantic.cancel();
+    setSuppressedSearch(null);
+    setViewState(previous => ({...previous, query, selectedIds: [], focusedRow: null}));
+  };
   const [edit, setEdit] = useState<EditContainer | null>(null);
   const sort = ['modified-desc','modified-asc','title-asc','title-desc'].includes(viewState.sort) ? viewState.sort : 'modified-desc';
   const setSort = (sort: string) => setViewState(previous => ({...previous, sort}));
@@ -55,7 +61,10 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   const sectionId = useId();
   const collectionsId = sectionId + '-collections', contentsId = sectionId + '-contents';
   const checkedPages = new Set(viewState.selectedIds);
-  const setCheckedPages = (action: SetStateAction<Set<string>>) => setViewState(previous => ({...previous, selectedIds: [...(typeof action === 'function' ? action(new Set(previous.selectedIds)) : action)]}));
+  const setCheckedPages = (action: SetStateAction<Set<string>>) => {
+    suppressSemantic();
+    setViewState(previous => ({...previous, selectedIds: [...(typeof action === 'function' ? action(new Set(previous.selectedIds)) : action)]}));
+  };
   const [bulkOrganize, setBulkOrganize] = useState(false);
   const [bulkMode, setBulkMode] = useState<'folder' | 'collection'>('folder');
   const [bulkRemove, setBulkRemove] = useState(false);
@@ -64,7 +73,6 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   function togglePage(id: string) {
     setCheckedPages(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   }
-  const semantic = useSemanticSearch(vaultId, search);
   const query = search.trim().toLowerCase();
   const nameMatches = (item: Item) => item.name.toLowerCase().includes(query);
   const aliasMatches = (item: Item) => item.aliases?.some(alias => alias.toLowerCase().includes(query));
@@ -86,6 +94,7 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   const linkedFolderCount = (id:string) => (data.folderLinks ?? []).filter(link=>link.collection_id===id).length;
   const collectionPreview = (id: string) => [...(data.folderLinks ?? []).filter(link=>link.collection_id===id).map(link=>data.folders.find(folder=>folder.id===link.folder_id)?.name ?? ''), ...data.memberships.filter(member => member.kind === 'page' && member.collection_id === id && pagesById.has(member.item_id)).slice(0, 3).map(member => pagesById.get(member.item_id)!.title || 'Untitled')].filter(Boolean).slice(0,3).join(' · ');
   const openItem = (item: Item) => {
+    suppressSemantic();
     setViewState(previous => ({...previous, focusedRow: item.kind + ':' + item.id}));
     if (item.kind === 'folder') onOpenFolder(item.id); else if (item.kind === 'page') onOpenPage(item.id); else onOpenEntity(item.id);
   };
@@ -114,11 +123,19 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
     });
   }, [vaultId, destination, scopedPageKey, setViewState]);
   const textSearch = useTextSearch(vaultId, search, pages.map(page => page.id + ':' + page.updated_at).join(',') + entities.map(entity => entity.id + ':' + entity.updated_at).join(','), {pageIds: scopedItems.filter(item => item.kind === 'page').map(item => item.id), entityIds: scopedItems.filter(item => item.kind === 'entity').map(item => item.id)}, 10000);
+  const semantic = useSemanticSearch(vaultId, search, {enabled: !!query && !textSearch.loading && suppressedSearch !== searchKey && !checkedPages.size && !viewState.focusedRow, delayMs: 600});
+  function suppressSemantic() {
+    if (suppressedSearch === searchKey) return;
+    semantic.cancel();
+    setSuppressedSearch(searchKey);
+  }
   const scopedKeys = new Set(scopedItems.map(item => item.kind + ':' + item.id));
   const textResults = textSearch.results.filter(hit => scopedKeys.has(hit.kind + ':' + hit.id));
   const textHits = new Map(textResults.map(hit => [hit.kind + ':' + hit.id, hit]));
   const matchLabel = (item: Item) => nameMatches(item) ? item.kind === 'page' ? 'Title' : 'Name' : aliasMatches(item) ? 'Alias' : textHits.get(item.kind + ':' + item.id)?.matchedIn === 'page' ? 'Page text' : textHits.has(item.kind + ':' + item.id) ? 'Text match' : 'Related by meaning';
+  const localMatch = (item: Item) => nameMatches(item) || aliasMatches(item) || textHits.has(item.kind + ':' + item.id);
   const visible = combinedMatches(scopedItems, search, semantic.results, textResults).sort((a, b) => {
+    if (query && !!localMatch(a) !== !!localMatch(b)) return localMatch(a) ? -1 : 1;
     if ((a.kind === 'folder') !== (b.kind === 'folder')) return a.kind === 'folder' ? -1 : 1;
     const titleOrder = a.name.localeCompare(b.name, undefined, {numeric: true, sensitivity: 'base'});
     if (sort === 'title-asc') return titleOrder;
@@ -167,7 +184,11 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   const filterHintId = sectionId + '-filter-hint';
   const filterControl = <div className="library-view-filter"><div className="library-view-filter-input"><Icon name="search"/><input type="search" placeholder="Filter this view…" aria-label={`Filter ${filterScope}`} aria-describedby={filterHintId} value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => {if (event.key === 'Escape' && search) {event.preventDefault(); setSearch('');}}}/>{search && <button type="button" aria-label="Clear view filter" onClick={() => setSearch('')}><Icon name="close"/></button>}</div><small id={filterHintId}>{filterScope} · ⌘/Ctrl+K searches the whole vault</small></div>;
   const isHomepage = !favouritesOnly && !inboxOnly && !collection && !folder;
-  return <section ref={libraryRef} data-library-vault={vaultId} data-library-destination={destination} className="organization-library organization-browser" data-layout={viewMode} onDragEnd={() => setDropTarget(null)}>
+  return <section ref={libraryRef} data-library-vault={vaultId} data-library-destination={destination} className="organization-library organization-browser" data-layout={viewMode}
+    onFocusCapture={event => {if (event.target.closest('[data-library-row]')) suppressSemantic();}}
+    onPointerDownCapture={event => {if ((event.target as Element).closest('[data-library-row]')) suppressSemantic();}}
+    onPointerMoveCapture={event => {if ((event.target as Element).closest('[data-library-row]')) suppressSemantic();}}
+    onDragEnd={() => setDropTarget(null)}>
     <span className="sr-only" role="status">{dropStatus}</span>
     {(favouritesOnly || !collection && !folder) && <div className={'organization-heading' + (isHomepage ? ' pages-home-heading' : '')}><div className="library-heading-row"><h1 className="page-heading">{favouritesOnly ? 'Favourites' : inboxOnly ? 'Inbox' : 'Library'}</h1></div><div className="pages-home-actions library-heading-actions">{filterControl}<ViewModeSwitch value={viewMode} onChange={setViewMode}/>{isHomepage && <><button className="button" disabled={pending} onClick={() => setEdit({type: 'folders', name: '', parent: ''})}><Icon name="folder"/>New folder</button><button className="button primary" disabled={pending} onClick={onNewNote}><Icon name="compose"/>New Note</button></>}</div></div>}
     <div className="organization-content" aria-busy={pending}>

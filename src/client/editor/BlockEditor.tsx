@@ -1,3 +1,6 @@
+import {mentionMatches,mentionCaretRect} from './mention-picker';
+import {menuPlacement,revealMenuItem} from '../components/menu-placement';
+import {useEntitySchema} from '../knowledge/useEntitySchema';
 import { blockListNumber, entityMentionName } from '../../shared/domain';
 import {randomUUID} from '../../shared/uuid';
 import { aiExplanationSources, aiExplanationsForSources, explanationsLinkedToDeletedBlocks, applySemantic, isAIExplanation, preserveAIExplanationTags, normalizeSemanticGroups, removeSemanticGroup, retagSemanticGroup, semanticDragItems, semanticFunctions, editableSemanticKinds, semanticRuns, type SemanticKind } from '../../shared/semantic-blocks';
@@ -58,7 +61,7 @@ const options: {type: BlockType; title: string; detail: string; icon: string}[] 
 ];
 interface ImageUpload {id:string; after?:string; name:string; message:string; current:number; total:number}
 interface Choice {back?: boolean; danger?: boolean; disabled?: boolean; submenu?: boolean; color?:string; title: string; detail?: string; icon: string; entity?: boolean; pick: () => void}
-interface Menu {items: Choice[]; index: number; left: number; top: number; label: string; sheet?: boolean}
+interface Menu {items: Choice[]; index: number; left: number; top: number; label: string; sheet?: boolean; anchor?:Range; anchorElement?:HTMLElement}
 function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOpen, register, onPaste}: {block: Block; entities: Entity[]; reviewMatches: EntityReviewItem[]; onInput: (el: HTMLElement) => void; onKeyDown: (e: KeyboardEvent<HTMLElement>) => void; onOpen: (id: string) => void; register: (el: HTMLElement | null) => void; onPaste: (e: ClipboardEvent<HTMLElement>) => void}) {
   const ref = useRef<HTMLElement>(null);
   const Content = block.type === 'heading1' ? 'h2' : block.type === 'heading2' ? 'h3' : 'div';
@@ -83,6 +86,7 @@ export function BlockEditor(props: Props) {
   const [viewportHeight, setViewportHeight] = useState(() => window.visualViewport?.height ?? window.innerHeight);
   const mobileToolbar = useRef<HTMLDivElement>(null);
   const {entities, onOpenEntity, onCreateEntity, onSave} = props;
+  const {schema}=useEntitySchema(props.vaultId);
   const blocks = useMemo(() => {
     const normalized = normalizeSemanticGroups(normalizeColumnBlocks(props.blocks));
     const last = normalized.at(-1);
@@ -116,6 +120,26 @@ export function BlockEditor(props: Props) {
   const fileInput = useRef<HTMLInputElement>(null), imageTarget = useRef<{after?: string; replace?: Block}>({});
   const [menu, setMenu] = useState<Menu | null>(null), elements = useRef(new Map<string, HTMLElement>());
   const root = useRef<HTMLDivElement>(null), menuRef = useRef<HTMLDivElement>(null), latest = useRef(props); latest.current = {...props,blocks,onChange};
+  useLayoutEffect(()=>{
+    if(!menu?.anchor||!menu.anchorElement||!menuRef.current)return;
+    const popup=menuRef.current,anchor=menu.anchor,editor=menu.anchorElement;
+    const position=()=>{
+      if(!anchor.startContainer.isConnected){setMenu(null);return;}
+      const visible=window.visualViewport;
+      const viewport={left:visible?.offsetLeft??0,top:visible?.offsetTop??0,width:visible?.width??innerWidth,height:visible?.height??innerHeight};
+      const rect=mentionCaretRect(anchor,editor);
+      if(rect.bottom<viewport.top||rect.top>viewport.top+viewport.height){setMenu(null);return;}
+      popup.style.maxHeight='none';
+      const placement=menuPlacement(rect,240,popup.scrollHeight+popup.offsetHeight-popup.clientHeight,viewport,'start',350);
+      popup.style.left=placement.left+'px';popup.style.top=placement.top+'px';popup.style.width=placement.width+'px';popup.style.maxHeight=placement.maxHeight+'px';
+    };
+    position();
+    const selected=popup.children[menu.index];if(selected)revealMenuItem(popup,selected as HTMLElement);
+    const onScroll=(event:Event)=>{if(!(event.target instanceof Node)||!popup.contains(event.target))position();};
+    window.addEventListener('scroll',onScroll,true);window.addEventListener('resize',position);
+    window.visualViewport?.addEventListener('resize',position);window.visualViewport?.addEventListener('scroll',position);
+    return()=>{window.removeEventListener('scroll',onScroll,true);window.removeEventListener('resize',position);window.visualViewport?.removeEventListener('resize',position);window.visualViewport?.removeEventListener('scroll',position);};
+  },[menu]);
   useEffect(() => {
     if (!mobile) { setActiveBlock(null); return; }
     const viewport = window.visualViewport;
@@ -383,9 +407,9 @@ export function BlockEditor(props: Props) {
     update(block.id, {type, content: type === 'columns' ? [] : content, rows, checked: false, imageId: undefined, alt: undefined});
   }
 
-  function show(el: HTMLElement, items: Choice[], label: string, sheet = false) {
+  function show(el: HTMLElement, items: Choice[], label: string, sheet = false, anchor?:Range) {
     if (!items.length) { setMenu(null); return; } const box = el.getBoundingClientRect();
-    setMenu({items, index: 0, left: Math.max(8, Math.min(box.left, innerWidth - 248)), top: Math.max(8, Math.min(box.bottom + 5, innerHeight - 370)), label, sheet});
+    setMenu({items, index: 0, left: Math.max(8, Math.min(box.left, innerWidth - 248)), top: Math.max(8, Math.min(box.bottom + 5, innerHeight - 370)), label, sheet, anchor, anchorElement:anchor?el:undefined});
   }
   function addBelow(anchor: HTMLElement, after: string) {
     show(anchor, [...blockOptionsFor(latest.current.blocks.find(block => block.id === after)).map(option => ({...option, pick: () => { setMenu(null); insert(after, option.type); }})), imageChoice(after)], 'ADD BLOCK BELOW', true);
@@ -458,8 +482,18 @@ export function BlockEditor(props: Props) {
     if (match && range.startContainer.nodeType === Node.TEXT_NODE) {
       const query = match[1]!, start = range.startOffset - query.length - 1; if (start < 0) { setMenu(null); return; }
       const saved = range.cloneRange(); saved.setStart(range.startContainer, start);
-      const items: Choice[] = entities.filter(e => [e.name, ...(e.aliases ?? [])].some(name => name.toLowerCase().includes(query.toLowerCase()))).slice(0, 7).map(e => ({title: e.name, detail: entityLabels[e.type], icon: e.type, entity: true, pick: () => insertMention(saved, e.id, block.id)}));
-      items.push({title: query ? `Create and insert “${query}”` : 'Create and insert an entity', icon: '+', pick: () => { setMenu(null); onCreateEntity(query, id => insertMention(saved, id, block.id)); }}); show(el, items, 'LINK AN ENTITY'); return;
+      const matches=mentionMatches(latest.current.entities,query);
+      const showMatches=(limit=3)=>{
+        const items:Choice[]=matches.slice(0,limit).map(entity=>{
+          const subtype=entity.subtypes.map(id=>schema.subtypes.find(subtype=>subtype.id===id&&subtype.type===entity.type)?.name).find(Boolean);
+          return {title:entity.name,detail:subtype?`${entityLabels[entity.type]} · ${subtype}`:entityLabels[entity.type],icon:entity.type,entity:true,pick:()=>insertMention(saved,entity.id,block.id)};
+        });
+        if(matches.length>limit)items.push({title:`Show more (${matches.length-limit})`,icon:'chevron',entity:true,pick:()=>showMatches(limit+10)});
+        items.push({title:query?`Create and insert “${query}”`:'Create and insert an entity',icon:'+',pick:()=>{setMenu(null);onCreateEntity(query,id=>insertMention(saved,id,block.id));}});
+        show(el,items,'LINK AN ENTITY',false,range.cloneRange());
+        if(limit>3)setMenu(current=>current?{...current,index:limit-10}:current);
+      };
+      showMatches();return;
     }
     setMenu(null);
   }

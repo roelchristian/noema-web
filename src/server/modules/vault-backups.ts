@@ -1,3 +1,4 @@
+import {pageLanguage} from './page-language.js';
 import {isPageAIStatus} from '../../shared/page-ai-status.js';
 import {isAIExplanation} from '../../shared/semantic-blocks.js';
 import { syncSourceProvenance } from './source-provenance.js';
@@ -24,7 +25,7 @@ const pageScope='page_id IN (SELECT id FROM pages WHERE vault_id=?)';
 const entityScope='entity_id IN (SELECT id FROM entities WHERE vault_id=?)';
 // Explicit, versioned allowlist: credentials, app settings, jobs and activity are never archived.
 const tables={
-  pages:{columns:'id,title,icon,featured_image_id,blocks,ai_status,updated_at,revision,deleted_at',scope:'vault_id=?'},
+  pages:{columns:'id,title,icon,featured_image_id,blocks,ai_status,language,updated_at,revision,deleted_at',scope:'vault_id=?'},
   source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at,import_method,source_url,pdf_flattened,admitted,format',scope:'vault_id=? AND entity_id IS NOT NULL'},
   entities:{columns:'id,name,aliases,mention_case,type,subtypes,description,updated_at,inactive',scope:'vault_id=?'},
   properties:{columns:'id,entity_id,name,value,target_id',scope:entityScope},
@@ -227,7 +228,7 @@ export class VaultBackups {
           const validated=pages.validateBlocks(vault,blocks);
           if(row.ai_status!==undefined&&!isPageAIStatus(row.ai_status))throw invalid();
           const aiStatus=row.ai_status==='ai_generated'||row.ai_status==='ai_generated_edited'?row.ai_status:validated.some(isAIExplanation)?'regular_with_ai_explanations':'regular';
-          insert('pages',{id:ref(pageIds,row.id),vault_id:vault,title:string(row,'title',500),icon:row.icon as string|null,featured_image_id:row.featured_image_id==null?null:ref(imageIds,row.featured_image_id),blocks:JSON.stringify(validated),ai_status:aiStatus,updated_at:timestamp(row,'updated_at'),revision:integer(row,'revision',1),deleted_at:row.deleted_at===null?null:timestamp(row,'deleted_at')});
+          insert('pages',{id:ref(pageIds,row.id),vault_id:vault,title:string(row,'title',500),icon:row.icon as string|null,featured_image_id:row.featured_image_id==null?null:ref(imageIds,row.featured_image_id),blocks:JSON.stringify(validated),ai_status:aiStatus,language:pageLanguage(row.language),updated_at:timestamp(row,'updated_at'),revision:integer(row,'revision',1),deleted_at:row.deleted_at===null?null:timestamp(row,'deleted_at')});
         }
         for(const row of rows.page_edit_locks) {
           const passwordHash=row.password_hash, salt=row.salt;

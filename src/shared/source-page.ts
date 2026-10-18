@@ -31,11 +31,12 @@ export type SourcePageChoice = keyof typeof sourcePageChoices;
 export type SourcePageOptions = {[K in SourcePageChoice]: keyof typeof sourcePageChoices[K]['options']} & {language:string};
 export const defaultSourcePageOptions:SourcePageOptions = {format:'briefing', purpose:'summary', detail:'standard', quotations:'phrases', citations:'paragraph', boundaries:'source', familiarity:'familiar', organization:'theme', examples:'source', criticalReading:'off', language:''};
 export interface SourcePageRevision {draftId:string;feedback:string;mode:'retry'|'changes'}
-export interface SourcePageReview {id:string;title:string;blocks:Block[];focus:string;options?:SourcePageOptions}
+export interface SourcePageReview {language?:string|null;id:string;title:string;blocks:Block[];focus:string;options?:SourcePageOptions}
 export type SourcePageEvent =
   | {type:'status';phase:'thinking'|'reviewing'}
-  | {type:'title';title:string}
+  | {type:'title';title:string;language?:string|null}
   | {type:'block';block:Block}
+  | {type:'block_delta';blockType:typeof sourcePageBlockTypes[number];delta:string;reset?:boolean}
   | {type:'review';draft:SourcePageReview}
   | {type:'completed';page:Page}
   | {type:'error';message:string};

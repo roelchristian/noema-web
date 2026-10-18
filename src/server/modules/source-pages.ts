@@ -1,3 +1,5 @@
+import {pageLanguage} from './page-language.js';
+import {sourcePagePreview} from './source-page-preview.js';
 import { numberedSourceText, sourceTextLines } from '../../shared/source-text.js';
 import {createHash,randomUUID} from 'node:crypto';
 import type {Block,Page,SourceFile} from '../../shared/domain.js';
@@ -11,6 +13,7 @@ import {sourcePageDisplayMath,sourcePageMathRanges,sourcePageMathSegments} from 
 /** Validate record structure and mark evidence that needs the user's review. */
 export class SourcePageDraft {
   private pending='';
+  private previewText='';
   private size=0;
   private readonly sourceLines:string[];
   private evidenceBlocks=0;
@@ -19,6 +22,7 @@ export class SourcePageDraft {
   private unreadableRecords=0;
   private quotedCharacters=0;
   title='';
+  language:string|null=null;
   readonly blocks:Block[]=[];
   constructor(private emit:(event:SourcePageEvent)=>void,sourceText:string) {this.sourceLines=sourceTextLines(sourceText);}
   feed(delta:string) {
@@ -27,6 +31,11 @@ export class SourcePageDraft {
     this.pending+=delta;
     let newline:number;
     while((newline=this.pending.indexOf('\n'))>=0){this.record(this.pending.slice(0,newline));this.pending=this.pending.slice(newline+1);}
+    const preview=sourcePagePreview(this.pending);
+    if(this.title&&preview&&preview.text.startsWith(this.previewText)&&preview.text.length-this.previewText.length>=24) {
+      this.emit({type:'block_delta',blockType:preview.blockType,delta:preview.text.slice(this.previewText.length)});
+      this.previewText=preview.text;
+    }
   }
   finish() {
     if(this.pending.trim())this.record(this.pending);
@@ -39,6 +48,7 @@ export class SourcePageDraft {
     }
   }
   private record(line:string) {
+    if(this.previewText){this.emit({type:'block_delta',blockType:'paragraph',delta:'',reset:true});this.previewText='';}
     if(!line.trim())return;
     let value:unknown;try{value=JSON.parse(line.replace(/sk-[A-Za-z0-9_-]{16,}/g,'[redacted]'));}catch{
       // A stray suffix or malformed record must not discard readable blocks.
@@ -49,7 +59,8 @@ export class SourcePageDraft {
     const item=value as Record<string,unknown>;
     if(item.type==='title') {
       if(this.title||this.blocks.length||typeof item.title!=='string'||!item.title.trim()||item.title.trim()==='Untitled'||item.title.trim().length>200||/[\r\n]/.test(item.title))throw new HttpError(502,'AI returned an invalid page title.');
-      this.title=item.title.trim();this.emit({type:'title',title:this.title});return;
+      try{this.language=pageLanguage(item.language);}catch{throw new HttpError(502,'AI returned an invalid page language.');}
+      this.title=item.title.trim();this.emit({type:'title',title:this.title,language:this.language});return;
     }
     if(item.type!=='block'||!this.title||!sourcePageBlockTypes.includes(item.blockType as typeof sourcePageBlockTypes[number])||typeof item.text!=='string'||!item.text.trim()||item.text.length>6000||this.recordCount>=100)throw new HttpError(502,'AI returned an invalid page block. Try a narrower focus.');
     if(!['source','context','inference'].includes(String(item.basis)))throw new HttpError(502,'AI did not distinguish source evidence from additional context. Please retry.');
@@ -169,7 +180,7 @@ export class SourcePages {
     if(Buffer.byteLength(file.text)>160000)throw new HttpError(413,'This source is too long for page generation. Use a shorter source or split it into sections.');
     return {requestId,fingerprint,file,sourceId,revisionId,input:JSON.stringify({user_focus:focus,generation_options:options,format_instructions:sourcePageFormats[options.format].prompt,...(prior&&revisionMode==='changes'?{revision_feedback:feedback,untrusted_previous_draft:{title:prior.title,blocks:JSON.parse(prior.blocks)}}:{}),untrusted_source:{name:source.name,url:file.source_url,filename:file.name,numbered_text:numberedSourceText(file.text)}}),existing:undefined,focus,options,review:undefined};
   }
-  private review(row:DraftRow):SourcePageReview {return {id:row.request_id,title:row.title,blocks:JSON.parse(row.blocks) as Block[],focus:row.focus,options:{...defaultSourcePageOptions,...(row.options?JSON.parse(row.options) as Partial<SourcePageOptions>:{})}};}
+  private review(row:DraftRow):SourcePageReview {return {id:row.request_id,title:row.title,blocks:JSON.parse(row.blocks) as Block[],focus:row.focus,language:row.language??null,options:{...defaultSourcePageOptions,...(row.options?JSON.parse(row.options) as Partial<SourcePageOptions>:{})}};}
   latest(vault:string,sourceId:string):SourcePageReview|null {
     this.knowledge.require(vault,sourceId);
     const row=this.store.get<DraftRow>("SELECT * FROM source_page_drafts WHERE vault_id=? AND source_id=? AND status='pending' ORDER BY created_at DESC LIMIT 1",vault,sourceId);
@@ -181,15 +192,19 @@ export class SourcePages {
       if(!current||current.status!=='ready'||current.text!==prepared.file.text||this.knowledge.require(vault,prepared.sourceId).inactive)throw new HttpError(409,'The source changed during generation. Try again after it finishes processing.');
       const prior=prepared.revisionId?this.store.get<DraftRow>('SELECT * FROM source_page_drafts WHERE request_id=? AND vault_id=? AND source_id=?',prepared.revisionId,vault,prepared.sourceId):undefined;
       if(prepared.revisionId&&(!prior||prior.status!=='pending'))throw new HttpError(409,'The previous draft changed during generation. Reopen the latest draft.');
+      let requestedLanguage:string|null=null;
+      try{requestedLanguage=pageLanguage(prepared.options.language);}catch{/* Legacy free-text language names are resolved by the model's language tag. */}
+      const language=draft.language??requestedLanguage;
+      if(!language)throw new HttpError(502,'AI did not identify the generated page language. Please retry.');
       const blocks=this.pages.validateBlocks(vault,draft.blocks);
       const recordedActivity=this.store.get('SELECT 1 FROM ai_activity WHERE id=?',activityId)?activityId:null;
-      this.store.run(`INSERT INTO source_page_drafts (request_id,vault_id,source_id,fingerprint,source_hash,focus,options,title,blocks,status,activity_id,created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,'pending',?,?)`,prepared.requestId,vault,prepared.sourceId,prepared.fingerprint,createHash('sha256').update(prepared.file.text).digest('hex'),prepared.focus,JSON.stringify(prepared.options),draft.title,JSON.stringify(blocks),recordedActivity,now());
+      this.store.run(`INSERT INTO source_page_drafts (request_id,vault_id,source_id,fingerprint,source_hash,focus,options,title,language,blocks,status,activity_id,created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,'pending',?,?)`,prepared.requestId,vault,prepared.sourceId,prepared.fingerprint,createHash('sha256').update(prepared.file.text).digest('hex'),prepared.focus,JSON.stringify(prepared.options),draft.title,language,JSON.stringify(blocks),recordedActivity,now());
       if(prior) {
         this.store.run("UPDATE source_page_drafts SET status='rejected',blocks='[]',focus='',options='{}' WHERE request_id=? AND vault_id=?",prior.request_id,vault);
         if(prior.notification_id)this.store.run('DELETE FROM ai_notifications WHERE id=?',prior.notification_id);
       }
-      return {id:prepared.requestId,title:draft.title,blocks,focus:prepared.focus,options:prepared.options};
+      return {id:prepared.requestId,title:draft.title,language,blocks,focus:prepared.focus,options:prepared.options};
     });
   }
 
@@ -203,7 +218,7 @@ export class SourcePages {
       const file=this.store.get<SourceFile>('SELECT * FROM source_files WHERE vault_id=? AND entity_id=?',vault,sourceId);
       if(!file||file.status!=='ready'||file.admitted!==1||this.knowledge.require(vault,sourceId).inactive||createHash('sha256').update(file.text).digest('hex')!==row.source_hash)throw new HttpError(409,'The source changed. Reject this draft and generate a new one from the ready source.');
       const blocks=this.pages.validateBlocks(vault,JSON.parse(row.blocks));
-      const page=this.pages.create(vault,{title:row.title});
+      const page=this.pages.create(vault,{title:row.title,language:row.language??null});
       this.store.run("UPDATE pages SET blocks=?,ai_status='ai_generated',summary_content_hash=NULL,revision=revision+1 WHERE id=? AND vault_id=?",JSON.stringify(blocks),page.id,vault);
       this.store.run('INSERT INTO page_sources (page_id,source_id) VALUES (?,?)',page.id,sourceId);
       this.store.run('INSERT INTO source_page_creations (request_id,vault_id,source_id,fingerprint,page_id,created_at) VALUES (?,?,?,?,?,?)',requestId,vault,sourceId,row.fingerprint,page.id,now());
@@ -224,4 +239,4 @@ export class SourcePages {
     });
   }
 }
-interface DraftRow {notification_id:string|null;request_id:string;vault_id:string;source_id:string;fingerprint:string;source_hash:string;focus:string;options?:string;title:string;blocks:string;status:'pending'|'accepted'|'rejected';activity_id:string|null;created_at:string}
+interface DraftRow {language?:string|null;notification_id:string|null;request_id:string;vault_id:string;source_id:string;fingerprint:string;source_hash:string;focus:string;options?:string;title:string;blocks:string;status:'pending'|'accepted'|'rejected';activity_id:string|null;created_at:string}

@@ -102,7 +102,7 @@ export const api={
   removeConnection:(vault:string,id:string,kind:'properties'|'relationships',childId:string)=>request<EntityDetail>(`entities/${id}/${kind}/${childId}`,'DELETE',undefined,vault),
 };
 
-/** Consume complete page blocks as they arrive, retaining the saved page for recovery. */
+/** Consume provisional text deltas and verified blocks, retaining the saved draft for recovery. */
 export async function createPageFromSource(vault:string,sourceId:string,focus:string,options:import('../shared/source-page').SourcePageOptions,requestId:string,onEvent:(event:import('../shared/source-page').SourcePageEvent)=>void,signal:AbortSignal,revision?:import('../shared/source-page').SourcePageRevision):Promise<void> {
   const response=await fetch(`/api/entities/${encodeURIComponent(sourceId)}/create-page`,{method:'POST',signal,headers:{'X-Noema-Request':'1','X-Vault-Id':vault,'Content-Type':'application/json'},body:JSON.stringify({focus,options,requestId,...(revision?{revision}:{})})});
   if(!response.ok){const result=await response.json();throw new ApiError(response.status,result.error||'Could not create a page from this source.');}

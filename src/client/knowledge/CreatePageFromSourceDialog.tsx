@@ -1,4 +1,4 @@
-import {useEffect,useRef,useState,type FormEvent} from 'react';
+import {memo,useEffect,useRef,useState,type FormEvent} from 'react';
 import type {Block,Entity,Page} from '../../shared/domain';
 import {defaultSourcePageOptions,sourcePageChoices,sourcePageFormats,sourcePageLanguages,type SourcePageOptions,type SourcePageRevision,type SourcePageEvent,type SourcePageReview} from '../../shared/source-page';
 import {randomUUID} from '../../shared/uuid';
@@ -9,25 +9,33 @@ import {Icon} from '../components/Icon';
 import {Select} from '../components/Select';
 import {ReadOnlyPageBlocks} from '../editor/ReadOnlyPageBlocks';
 
+const DraftBlocks=memo(function DraftBlocks({blocks,vaultId}:{blocks:Block[];vaultId:string}) {
+  return <ReadOnlyPageBlocks blocks={blocks} entities={[]} pages={[]} vaultId={vaultId} onOpenEntity={()=>{}} onOpenPage={()=>{}}/>;
+});
+type LiveBlock={blockType:Block['type'];text:string};
+
 type Phase='loading'|'idle'|'generating'|'review'|'accepting'|'rejecting'|'completed'|'failed'|'stopped';
 export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onOpenPage,onSettings}:{vaultId:string;source:Entity;onClose:()=>void;onCreated:(page:Page)=>void;onOpenPage:(id:string)=>Promise<void>;onSettings:()=>void}) {
   const [focus,setFocus]=useState(''),[title,setTitle]=useState(''),[blocks,setBlocks]=useState<Block[]>([]),[phase,setPhase]=useState<Phase>('loading'),[error,setError]=useState(''),[draft,setDraft]=useState<SourcePageReview|null>(null),[page,setPage]=useState<Page|null>(null),[opening,setOpening]=useState(false);
   const [options,setOptions]=useState<SourcePageOptions>(readSourcePagePreferences);
   const [retryOpen,setRetryOpen]=useState(false),[feedback,setFeedback]=useState('');
+  const [liveBlock,setLiveBlock]=useState<LiveBlock|null>(null),[generationStage,setGenerationStage]=useState<'waiting'|'writing'|'checking'>('waiting');
+  const live=useRef<LiveBlock|null>(null),liveTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
   const feedbackField=useRef<HTMLTextAreaElement>(null);
   const request=useRef<AbortController|null>(null),generation=useRef({id:randomUUID(),settings:''}),preview=useRef<HTMLDivElement>(null),follow=useRef(true),active=useRef(true);
   const running=phase==='generating',mutating=phase==='accepting'||phase==='rejecting',busy=running||mutating||phase==='loading'||opening;
   const route=`entities/${encodeURIComponent(source.id)}/create-page`;
-  function review(value:SourcePageReview){generation.current={id:value.id,settings:JSON.stringify([value.focus,value.options??defaultSourcePageOptions])};setOptions({...defaultSourcePageOptions,...value.options});setDraft(value);setFocus(value.focus);setTitle(value.title);setBlocks(value.blocks);setPhase('review');setRetryOpen(false);setFeedback('');}
+  function clearLive(){if(liveTimer.current!==null)clearTimeout(liveTimer.current);liveTimer.current=null;live.current=null;setLiveBlock(null);}
+  function review(value:SourcePageReview){clearLive();generation.current={id:value.id,settings:JSON.stringify([value.focus,value.options??defaultSourcePageOptions])};setOptions({...defaultSourcePageOptions,...value.options});setDraft(value);setFocus(value.focus);setTitle(value.title);setBlocks(value.blocks);setPhase('review');setRetryOpen(false);setFeedback('');}
   useEffect(()=>{
     active.current=true;const controller=new AbortController();request.current=controller;
     void apiRequest<{draft:SourcePageReview|null}>(route,'GET',undefined,vaultId,controller.signal).then(result=>{if(active.current&&!controller.signal.aborted){if(result.draft)review(result.draft);else setPhase('idle');}}).catch(error=>{if(active.current&&!controller.signal.aborted){setPhase('failed');setError(error instanceof Error?error.message:'Could not check for an existing draft.');}});
-    return()=>{active.current=false;controller.abort();request.current?.abort();};
+    return()=>{active.current=false;controller.abort();request.current?.abort();if(liveTimer.current!==null)clearTimeout(liveTimer.current);};
   },[vaultId,source.id]);
-  useEffect(()=>{if(follow.current&&preview.current)preview.current.scrollTop=preview.current.scrollHeight;},[blocks.length,phase]);
+  useEffect(()=>{if(follow.current&&preview.current)preview.current.scrollTop=preview.current.scrollHeight;},[blocks.length,phase,liveBlock?.text]);
   useEffect(()=>{if(retryOpen)feedbackField.current?.focus();},[retryOpen]);
   function close(){if(mutating||opening)return;request.current?.abort();onClose();}
-  function stop(){request.current?.abort();if(draft){setTitle(draft.title);setBlocks(draft.blocks);setPhase('review');setError('Revision stopped. Your previous draft is still available.');}else{setPhase('stopped');setError('Generation stopped. No page has been created.');}}
+  function stop(){request.current?.abort();clearLive();if(draft){setTitle(draft.title);setBlocks(draft.blocks);setPhase('review');setError('Revision stopped. Your previous draft is still available.');}else{setPhase('stopped');setError('Generation stopped. No page has been created.');}}
   async function start(event:FormEvent,fresh=false) {
     event.preventDefault();if(busy||page||draft&&!retryOpen&&!fresh)return;
     const previousDraft=draft;
@@ -37,16 +45,24 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
     const controller=new AbortController();request.current=controller;
     const settings=JSON.stringify([focus.trim(),options,...(revision?[revision]:[])]);
     if(generation.current.settings!==settings)generation.current={id:randomUUID(),settings};
+    clearLive();setGenerationStage('waiting');
     setPhase('generating');setTitle('');setBlocks([]);setError('');follow.current=true;
     const receive=(event:SourcePageEvent)=>{
       if(!active.current||controller.signal.aborted)return;
-      if(event.type==='title')setTitle(event.title);
-      else if(event.type==='block')setBlocks(current=>[...current,event.block]);
+      if(event.type==='status')setGenerationStage(event.phase==='reviewing'?'checking':'waiting');
+      else if(event.type==='title'){setTitle(event.title);setGenerationStage('writing');}
+      else if(event.type==='block_delta'){
+        if(event.reset){clearLive();return;}
+        setGenerationStage('writing');
+        live.current={blockType:event.blockType,text:(live.current?.text??'')+event.delta};
+        if(liveTimer.current===null)liveTimer.current=setTimeout(()=>{liveTimer.current=null;if(active.current&&!controller.signal.aborted)setLiveBlock(live.current?{...live.current}:null);},80);
+      }
+      else if(event.type==='block'){clearLive();setGenerationStage('writing');setBlocks(current=>[...current,event.block]);}
       else if(event.type==='review')review(event.draft);
-      else if(event.type==='completed'){setPage(event.page);setTitle(event.page.title);setBlocks(event.page.blocks);setPhase('completed');onCreated(event.page);}
+      else if(event.type==='completed'){clearLive();setPage(event.page);setTitle(event.page.title);setBlocks(event.page.blocks);setPhase('completed');onCreated(event.page);}
     };
     try{await createPageFromSource(vaultId,source.id,focus.trim(),options,generation.current.id,receive,controller.signal,revision);}
-    catch(error){if(active.current&&!controller.signal.aborted){if(previousDraft){setTitle(previousDraft.title);setBlocks(previousDraft.blocks);setPhase('review');}else setPhase('failed');setError(error instanceof Error?error.message:'Could not generate the page. Please retry.');}}
+    catch(error){if(active.current&&!controller.signal.aborted){clearLive();if(previousDraft){setTitle(previousDraft.title);setBlocks(previousDraft.blocks);setPhase('review');}else setPhase('failed');setError(error instanceof Error?error.message:'Could not generate the page. Please retry.');}}
     finally{if(request.current===controller)request.current=null;}
   }
   async function openPage(value=page){if(!value||opening)return;setOpening(true);setError('');try{await onOpenPage(value.id);onClose();}catch(error){if(active.current)setError(error instanceof Error?error.message:'Could not open the accepted page.');}finally{if(active.current)setOpening(false);}}
@@ -64,7 +80,7 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
     try{await apiRequest(route+'/reject','POST',{requestId:draft.id},vaultId,AbortSignal.timeout(30000));window.dispatchEvent(new Event('noema:ai-activity'));if(active.current)onClose();}
     catch(error){if(active.current){setPhase('review');setError(error instanceof Error?error.message:'Could not reject the draft. Please retry.');}}
   }
-  const status=running&&draft?(retryOpen?'Revising your draft…':'Creating another draft…'):phase==='loading'?'Checking for a draft to review…':phase==='accepting'?'Accepting and saving your page…':phase==='rejecting'?'Discarding the draft…':phase==='review'?'Draft ready for review. No page has been created yet.':phase==='completed'?'Page accepted and saved.':phase==='failed'?'Generation could not be completed. Your source is unchanged.':phase==='stopped'?'Generation stopped.':blocks.length?`Writing your draft · ${blocks.length} ${blocks.length===1?'block':'blocks'} received`:'Reading the source and planning your page…';
+  const status=running?(generationStage==='waiting'?'Waiting for your AI model…':generationStage==='checking'?'Checking references and saving your draft…':`Writing your draft · ${blocks.length} complete ${blocks.length===1?'block':'blocks'}`):phase==='loading'?'Checking for a draft to review…':phase==='accepting'?'Accepting and saving your page…':phase==='rejecting'?'Discarding the draft…':phase==='review'?'Draft ready for review. No page has been created yet.':phase==='completed'?'Page accepted and saved.':phase==='failed'?'Generation could not be completed. Your source is unchanged.':phase==='stopped'?'Generation stopped.':blocks.length?`Writing your draft · ${blocks.length} ${blocks.length===1?'block':'blocks'} received`:'Reading the source and planning your page…';
   const hasPreview=running||!!title||!!blocks.length||!!draft||!!page;
   const controlsDisabled=busy||!!draft||!!page;
   return <Modal className={'source-page-dialog'+(hasPreview?' has-preview':'')} titleId="source-page-title" onClose={close}><form onSubmit={start}>
@@ -94,10 +110,12 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
         <div className={'source-page-status '+phase} role="status" aria-live="polite">{busy&&<span className="scan-spinner" aria-hidden="true"/>}{(phase==='review'||phase==='completed')&&<Icon name="check"/>}<span>{status}</span></div>
         {phase!=='loading'&&<div className="source-page-preview" ref={preview} aria-label="Generated page preview" aria-busy={running} onScroll={event=>{const node=event.currentTarget;follow.current=node.scrollHeight-node.scrollTop-node.clientHeight<64;}}>
           {title&&<h3 className="source-page-preview-title">{title}</h3>}
-          <ReadOnlyPageBlocks blocks={blocks} entities={[]} pages={[]} vaultId={vaultId} onOpenEntity={()=>{}} onOpenPage={()=>{}}/>
+          <DraftBlocks blocks={blocks} vaultId={vaultId}/>
+          {running&&liveBlock&&<div className={'source-page-live-block '+liveBlock.blockType} aria-label="Text still being generated">{liveBlock.text}</div>}
           {running&&<div className="source-page-skeleton" aria-hidden="true"><span/><span/><span/></div>}
           {!running&&!blocks.length&&<p className="section-hint">No page blocks were generated.</p>}
         </div>}
+        {running&&<p className="section-hint">Live text is provisional. Formatting and references appear as each block finishes.</p>}
         {(phase==='failed'||phase==='stopped')&&!!blocks.length&&<p className="section-hint">This preview may be incomplete. Retry to recover or generate a complete draft.</p>}
         {draft&&<p className="section-hint">Accept creates an editable page linked to this source. Reject discards this draft without adding a page to your library. Closing keeps it available for later review.</p>}
       </div>}

@@ -27,13 +27,21 @@ export class AIActivityLog {
     this.store.run('UPDATE ai_activity SET prompt_bytes=?,revision=? WHERE id=?',promptBytes,revision,id);
     if (!this.store.get('SELECT 1 FROM ai_activity_debug WHERE activity_id=?',id)) return;
     const update = (columns: string, ...values: (string | number)[]) => this.store.run(`UPDATE ai_activity_debug SET ${columns},updated_at=? WHERE activity_id=?`,...values,new Date().toISOString(),id);
+    let events:{receivedAt:string;type:string;data:string}[]=[],lastFlush=Date.now();
+    const flushEvents=()=>{
+      if(!events.length)return;
+      this.store.transaction(()=>{
+        for(const event of events)this.store.run('INSERT INTO ai_activity_debug_events (activity_id,received_at,type,data) SELECT ?,?,?,? WHERE EXISTS (SELECT 1 FROM ai_activity_debug WHERE activity_id=?)',id,event.receivedAt,event.type,event.data,id);
+      });
+      events=[];lastFlush=Date.now();
+    };
     const trace: AIDebugTrace = {
       request: (endpoint,payload) => { update('endpoint=?,request=?',endpoint,JSON.stringify(payload)); },
       headers: (status,headers) => { update('response_status=?,response_headers=?',status,JSON.stringify(headers)); },
-      body: text => { update('response_body=?',text); },
-      event: (type,data) => { this.store.run('INSERT INTO ai_activity_debug_events (activity_id,received_at,type,data) SELECT ?,?,?,? WHERE EXISTS (SELECT 1 FROM ai_activity_debug WHERE activity_id=?)',id,new Date().toISOString(),type,JSON.stringify(data),id); },
-      response: payload => { update('response=?',JSON.stringify(payload)); },
-      error: message => { update('error=?',message); },
+      body: text => { flushEvents();update('response_body=?',text); },
+      event: (type,data) => { events.push({receivedAt:new Date().toISOString(),type,data:JSON.stringify(data)});if(events.length>=100||Date.now()-lastFlush>=100)flushEvents(); },
+      response: payload => { flushEvents();update('response=?',JSON.stringify(payload)); },
+      error: message => { flushEvents();update('error=?',message); },
     };
     return trace;
   }

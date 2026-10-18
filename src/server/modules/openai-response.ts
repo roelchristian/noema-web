@@ -71,7 +71,7 @@ export async function readOpenAIResponse(response: Response, trace?: AIDebugTrac
       size+=value.length;
       if (size>limit) { await reader.cancel(); throw new HttpError(502,'OpenAI response exceeded the response size limit. The debug trace contains the partial response.'); }
       consume(decoder.decode(value,{stream:true}));
-      if (trace && Date.now()-lastUpdate>=100) { trace.body(raw); lastUpdate=Date.now(); }
+      if (trace && Date.now()-lastUpdate>=500) { trace.body(raw); lastUpdate=Date.now(); }
     }
     consume(decoder.decode());
     if (streaming) {

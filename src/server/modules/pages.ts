@@ -1,3 +1,4 @@
+import {pageLanguage} from './page-language.js';
 import {nextPageAIStatus, type PageAIStatus} from '../../shared/page-ai-status.js';
 import {allowedInColumn} from '../../shared/column-blocks.js';
 import { entityMentionName } from '../../shared/domain.js';
@@ -20,10 +21,10 @@ export class Pages {
     try { new Images(this.store).cleanup(vault,candidates); } catch { console.error('Image cleanup deferred'); }
   }
   private imageIds(blocks: Block[]) { return blocks.flatMap(block => block.type === 'image' && block.imageId ? [block.imageId] : []); }
-  list(vault: string) { return this.store.all<PageSummary>('SELECT id,title,icon,featured_image_id AS featuredImageId,ai_status AS aiStatus,updated_at FROM pages WHERE vault_id=? AND deleted_at IS NULL ORDER BY updated_at DESC',vault); }
+  list(vault: string) { return this.store.all<PageSummary>('SELECT id,title,icon,featured_image_id AS featuredImageId,ai_status AS aiStatus,language,updated_at FROM pages WHERE vault_id=? AND deleted_at IS NULL ORDER BY updated_at DESC',vault); }
   backlinks(vault:string,id:string):PageSummary[] {
     const target=pageTitleKey(this.get(vault,id).title);
-    const candidates=this.store.all<PageSummary & {blocks:string}>("SELECT id,title,icon,ai_status AS aiStatus,updated_at,blocks FROM pages WHERE vault_id=? AND deleted_at IS NULL AND id<>? AND instr(blocks,'[[')>0 ORDER BY title COLLATE NOCASE,id",vault,id);
+    const candidates=this.store.all<PageSummary & {blocks:string}>("SELECT id,title,icon,ai_status AS aiStatus,language,updated_at,blocks FROM pages WHERE vault_id=? AND deleted_at IS NULL AND id<>? AND instr(blocks,'[[')>0 ORDER BY title COLLATE NOCASE,id",vault,id);
     return candidates.flatMap(({blocks,...page})=>blockPageLinks(JSON.parse(blocks) as Block[]).some(link=>pageTitleKey(link.title)===target)?[page]:[]);
   }
   get(vault: string, id: string): Page {
@@ -76,7 +77,7 @@ export class Pages {
   }
   create(vault: string, body: Record<string, unknown>) {
     const id=randomUUID();
-    this.store.run('INSERT INTO pages (id,title,blocks,updated_at,vault_id) VALUES (?,?,?,?,?)',id,required(body.title || 'Untitled'),JSON.stringify([{id:randomUUID(),type:'paragraph',checked:false,content:[]}]),now(),vault);
+    this.store.run('INSERT INTO pages (id,title,language,blocks,updated_at,vault_id) VALUES (?,?,?,?,?,?)',id,required(body.title || 'Untitled'),pageLanguage(body.language),JSON.stringify([{id:randomUUID(),type:'paragraph',checked:false,content:[]}]),now(),vault);
     return this.get(vault,id);
   }
   validateBlocks(vault: string, input: unknown): Block[] {
@@ -164,6 +165,7 @@ export class Pages {
   }
   update(vault: string, id: string, body: Record<string, unknown>) {
     const page=this.requireEditable(vault,id),blocks=this.validateBlocks(vault,body.blocks),title=text(body.title,500);
+    const language=body.language===undefined?page.language??null:pageLanguage(body.language);
     const protectedIds=new Set(page.blocks.filter(isAIExplanation).map(block=>block.id));
     if(blocks.some(block=>protectedIds.has(block.id)&&!isAIExplanation(block)))throw new HttpError(400,'The AI Explanation tag cannot be removed or changed.');
     const icon=body.icon === undefined ? page.icon ?? null : body.icon;
@@ -180,7 +182,7 @@ export class Pages {
       return names.get(id);
     });
     this.store.transaction(()=>{
-      this.store.run('UPDATE pages SET title=?,icon=?,featured_image_id=?,blocks=?,ai_status=?,updated_at=?,revision=revision+1 WHERE id=? AND vault_id=?',title,icon,featuredImageId,JSON.stringify(blocks),aiStatus,now(),id,vault);
+      this.store.run('UPDATE pages SET title=?,language=?,icon=?,featured_image_id=?,blocks=?,ai_status=?,updated_at=?,revision=revision+1 WHERE id=? AND vault_id=?',title,language,icon,featuredImageId,JSON.stringify(blocks),aiStatus,now(),id,vault);
       this.store.run('DELETE FROM page_sources WHERE page_id=?',id);
       for(const source of new Set(sourceIds as string[]))this.store.run('INSERT INTO page_sources VALUES (?,?)',id,source);
       if(title!==page.title && (!page.title.trim()||page.title.trim()==='Untitled')) {
@@ -205,7 +207,7 @@ export class Pages {
   }
   trash(vault: string): TrashedPage[] {
     this.purgeExpired(vault);
-    return this.store.all<PageSummary & {deleted_at: string}>('SELECT id,title,icon,featured_image_id AS featuredImageId,ai_status AS aiStatus,updated_at,deleted_at FROM pages WHERE vault_id=? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC,id',vault).map(page => ({...page,expires_at:new Date(Date.parse(page.deleted_at) + trashRetentionMs).toISOString()}));
+    return this.store.all<PageSummary & {deleted_at: string}>('SELECT id,title,icon,featured_image_id AS featuredImageId,ai_status AS aiStatus,language,updated_at,deleted_at FROM pages WHERE vault_id=? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC,id',vault).map(page => ({...page,expires_at:new Date(Date.parse(page.deleted_at) + trashRetentionMs).toISOString()}));
   }
   private trashed(vault: string, id: string) {
     this.purgeExpired(vault);

@@ -21,11 +21,11 @@ export interface VaultDeletionPreview {
 }
 export interface VaultDeletionConfirmation {name:string;fingerprint:string;acknowledged:boolean;passphrase?:string}
 export interface VaultDeletionResult {vaults:Vault[];cleanupPending:boolean}
-export interface PageSummary { aiStatus?: import('./page-ai-status.js').PageAIStatus; featuredImageId?: string | null; id: string; title: string; icon?: PageIconId | null; updated_at: string }
+export interface PageSummary { language?: string | null; aiStatus?: import('./page-ai-status.js').PageAIStatus; featuredImageId?: string | null; id: string; title: string; icon?: PageIconId | null; updated_at: string }
 export interface TrashedPage extends PageSummary { deleted_at: string; expires_at: string }
 export interface ConceptClassification { subtypeIds: string[]; contentHash: string }
 export interface Page extends PageSummary { editLocked?: boolean; editProtected?: boolean; conceptClassification?: ConceptClassification; conceptContentHash?: string; vault_id: string; blocks: Block[]; sourceIds: string[]; revision: number; summaryContentHash?: string; entityMatchCache?: import('./entity-match-cache.js').EntityMatchCache }
-export interface PageInput { featuredImageId?: string | null; icon?: PageIconId | null; title: string; blocks: Block[]; sourceIds?: string[]; revision?: number }
+export interface PageInput { language?: string | null; featuredImageId?: string | null; icon?: PageIconId | null; title: string; blocks: Block[]; sourceIds?: string[]; revision?: number }
 export type EntityMentionCase = 'canonical' | 'lowercase';
 export interface Entity { sourceStatus?: SourceFile['status'] | null; inactive?: boolean; id: string; vault_id: string; name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes: string[]; description: string; updated_at: string }
 export interface EntityInput { name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes?: string[]; subtype?: string | null; description?: string; attachmentIds?: string[] }

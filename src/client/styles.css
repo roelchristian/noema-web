@@ -1086,6 +1086,8 @@ dialog.vault-search-dialog::backdrop { background: #0005; backdrop-filter: blur(
 .math-block { width: 100%; min-width: 0; }
 .math-block-render { display: block; width: 100%; padding: 12px 8px; border-radius: 6px; overflow-x: auto; text-align: center; }
 .math-block-render:hover { background: var(--surface-hover); }
+/* Keep the muted hover surface tinted by the enclosing explanation or callout. */
+:is(.semantic-block, .semantic-group) .math-block-render:hover { background: color-mix(in srgb, var(--semantic-color) 9%, var(--surface-hover)); }
 .math-block-render .katex-display { margin: .5em 0; }
 .math-placeholder { color: var(--text-muted); font-size: 13px; }
 .math-block-source { padding: 8px; border: 1px solid var(--line); border-radius: 6px; }

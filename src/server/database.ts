@@ -6,6 +6,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { BlockType, Segment } from '../shared/domain.js';
 import { now } from './validation.js';
+import {setupTextSearchSchema} from './text-search-schema.js';
 
 export function openDatabase(filename: string): DatabaseSync {
  if (filename !== ':memory:') mkdirSync(path.dirname(filename), {recursive: true});
@@ -334,6 +335,7 @@ if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
    INSERT INTO schema_migrations VALUES (2,datetime('now'));
    COMMIT;`);
  }
+ setupTextSearchSchema(db);
  if (db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Database contains invalid references');
  return db;
  } catch(error) { db.close(); throw error; }

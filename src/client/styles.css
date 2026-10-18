@@ -2406,3 +2406,27 @@ dialog.source-page-dialog { width: 720px; max-width: calc(100vw - 32px); max-hei
 .page-draft-preview h3 { margin-top: 0; }
 .page-draft-recovery-dialog .dialog-actions { flex-wrap: wrap; }
 @media (max-width:750px) { .page-persistence-notice button { min-height:44px; } }
+
+/* Scoped library filters share the view controls and leave vault search discoverable. */
+.library-view-filter { flex: 0 1 290px; width: clamp(200px, 25vw, 290px); min-width: 180px; text-align: left; }
+.library-view-filter-input { display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text-muted); }
+.library-view-filter-input:focus-within { border-color: var(--text-muted); outline: 2px solid var(--line); outline-offset: 1px; }
+.library-view-filter-input > .icon { width: 14px; height: 14px; flex: none; }
+.organization-browser .library-view-filter-input input, :root[data-mode=dark] .organization-browser .library-view-filter-input input { width: 100%; min-width: 0; margin: 0; padding: 7px 0; border: 0; outline: none; box-shadow: none; background: transparent; color: var(--text); font: inherit; font-size: 12px; }
+.library-view-filter-input input::-webkit-search-cancel-button { display: none; }
+.library-view-filter-input button { display: inline-flex; align-items: center; justify-content: center; flex: none; min-width: 28px; min-height: 28px; padding: 4px; border-radius: 4px; }
+.library-view-filter-input button:hover { color: var(--text); background: var(--surface-hover); }
+.library-view-filter-input button .icon { width: 13px; height: 13px; }
+.library-view-filter > small { display: block; margin-top: 5px; color: var(--text-muted); font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
+.organization-browser .search-match-badge { font-size: 10px; font-weight: 400; }
+@media (max-width: 1000px) {
+  .organization-heading:has(.library-view-filter) { flex-wrap: wrap; }
+  .organization-heading .library-heading-actions:has(.library-view-filter) { flex: 1 1 100%; justify-content: flex-start; margin-left: 0; }
+  .organization-context-heading:has(.library-view-filter) { grid-template-columns: 36px minmax(0, 1fr); }
+  .organization-context-heading > .library-heading-actions:has(.library-view-filter) { grid-column: 1 / -1; justify-content: flex-start; width: 100%; }
+}
+@media (max-width: 600px) {
+  .library-heading-actions > .library-view-filter { flex: 1 1 100%; width: 100%; min-width: 0; }
+  .library-view-filter-input { min-height: 40px; }
+  .library-view-filter-input button { min-width: 36px; min-height: 36px; }
+}

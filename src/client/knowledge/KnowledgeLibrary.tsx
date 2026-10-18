@@ -1,6 +1,6 @@
 import {PageCover} from '../components/PageCover';
 import {ViewModeSwitch, useViewMode} from '../components/ViewModeSwitch';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { entityLabels, entityTypes, type Entity, type EntityType } from '../../shared/domain';
 import { Icon } from '../components/Icon';
 import { Select } from '../components/Select';
@@ -14,6 +14,8 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onCreate, onCreateP
   const [view, setView] = useState('folders');
   const [type, setType] = useState<EntityType | ''>('');
   const [sort, setSort] = useState('modified-desc');
+  const filterHintId = useId();
+  const filterScope = type ? `${entityLabels[type]} entities` : 'All knowledge entities';
   const query = search.trim().toLowerCase();
   const scoped = entities.filter(entity => !type || entity.type === type);
   const matches = scoped.filter(entity => [entity.name, ...(entity.aliases ?? [])].some(name => name.toLowerCase().includes(query)));
@@ -35,7 +37,7 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onCreate, onCreateP
     setSearch('');
   }
   return <section ref={libraryRef} className="organization-library organization-browser knowledge-library" data-layout={viewMode}>
-    <div className="organization-heading pages-home-heading"><div className="library-heading-row"><h1 className="page-heading">Knowledge entities</h1></div><div className="pages-home-actions library-heading-actions"><ViewModeSwitch value={viewMode} onChange={setViewMode}/>
+    <div className="organization-heading pages-home-heading"><div className="library-heading-row"><h1 className="page-heading">Knowledge entities</h1></div><div className="pages-home-actions library-heading-actions"><div className="library-view-filter"><div className="library-view-filter-input"><Icon name="search"/><input type="search" placeholder="Filter this view…" aria-label={`Filter ${filterScope} by name or alias`} aria-describedby={filterHintId} value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => {if (event.key === 'Escape' && search) {event.preventDefault(); setSearch('');}}}/>{search && <button type="button" aria-label="Clear entity filter" onClick={() => setSearch('')}><Icon name="close"/></button>}</div><small id={filterHintId}>{filterScope} · ⌘/Ctrl+K searches the whole vault</small></div><ViewModeSwitch value={viewMode} onChange={setViewMode}/>
       <button className="button primary" onClick={onCreate}><Icon name="plus"/>New entity</button>
     </div></div>
     {error && <p role="alert">{error}</p>}
@@ -66,13 +68,14 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onCreate, onCreateP
           <span className="organization-item-icon"><Icon name={entity.type}/></span>
           <button className="organization-item-name" title={entity.name} onClick={() => onOpen(entity.id)}>
             <span className="organization-page-title"><HighlightedText text={entity.name} query={search}/><span className="knowledge-row-detail">{[entityLabels[entity.type], ...(entity.type==='source'?(entity.sourceStatus==='queued'||entity.sourceStatus==='processing'?['Processing']:entity.inactive?['Inactive']:[]):[]), ...entity.subtypes.map(id => schema.subtypes.find(item => item.id === id)?.name).filter(Boolean)].join(' / ')}</span></span>
-            <small>{Number.isFinite(Date.parse(entity.updated_at)) ? <time dateTime={entity.updated_at} title={new Date(entity.updated_at).toLocaleString()}>{new Date(entity.updated_at).toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'})}</time> : 'Date unavailable'}</small>
+            <small>{Number.isFinite(Date.parse(entity.updated_at)) ? <time dateTime={entity.updated_at} title={new Date(entity.updated_at).toLocaleString()}>{new Date(entity.updated_at).toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'})}</time> : 'Date unavailable'}{!!query && <span className="search-match-badge">{entity.name.toLowerCase().includes(query) ? 'Name' : 'Alias'}</span>}</small>
+            {!!query && !entity.name.toLowerCase().includes(query) && <span className="search-result-snippet knowledge-alias-match">Alias: <HighlightedText text={(entity.aliases ?? []).find(alias => alias.toLowerCase().includes(query)) ?? ''} query={search}/></span>}
             {entity.description && <span className="search-result-snippet knowledge-entity-description">{entity.description}</span>}
           </button>
           {entity.type==='source'&&<button type="button" className="knowledge-source-page" aria-label={'Create page from source: '+entity.name} title={entity.sourceStatus==='ready'&&!entity.inactive?'Create page from source':'Available when source processing finishes successfully'} disabled={entity.sourceStatus!=='ready'||entity.inactive} onClick={()=>onCreatePageFromSource(entity)}><Icon name="sparkles"/></button>}
           <button className="knowledge-open-entity" aria-label={'Open ' + entity.name} onClick={() => onOpen(entity.id)}><Icon name="chevron"/></button>
         </div></article>)}
-      </div> : <div className="organization-empty" role="status"><span className="destination-icon"><Icon name={query ? 'search' : 'folder'}/></span><h2>{query ? 'No matching entities' : 'No entities here yet'}</h2><p>{query ? 'Try another name or alias.' : 'Create an entity to get started.'}</p>{query ? <button className="button" onClick={() => setSearch('')}>Clear search</button> : <button className="button" onClick={onCreate}>New entity</button>}</div>}
+      </div> : <div className="organization-empty" role="status"><span className="destination-icon"><Icon name={query ? 'search' : 'folder'}/></span><h2>{query ? 'No matching entities' : 'No entities here yet'}</h2><p>{query ? 'Try another name or alias.' : 'Create an entity to get started.'}</p>{query ? <button className="button" onClick={() => setSearch('')}>Clear filter</button> : <button className="button" onClick={onCreate}>New entity</button>}</div>}
     </div>
   </section>;
 }

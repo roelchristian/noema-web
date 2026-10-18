@@ -50,6 +50,7 @@ export const api={
   readAINotifications:(body:{ids:string[]}|{through:number})=>request<import('../shared/ai-notifications').AINotificationQueue>('intelligence/notifications','PUT',body),
   scanEntities:(vault:string,id:string,revision:number)=>request<import('../shared/entity-scan').EntityScan>(`pages/${id}/entity-scan`,'POST',{revision},vault),
   reviewEntity:(vault:string,id:string,revision:number,scanId:string,suggestionId:string|string[],decision:'accepted'|'rejected',edits?:import('../shared/entity-scan').EntitySuggestionEdit[])=>request<import('../shared/entity-scan').EntityReview>(`pages/${id}/entity-review`,'POST',{revision,scanId,...(Array.isArray(suggestionId)?{suggestionIds:suggestionId}:{suggestionId}),decision,...(edits?{edits}:{})},vault),
+  textSearch:(vault:string,query:string,signal?:AbortSignal,scope?:import('../shared/text-search').TextSearchScope,limit=100)=>request<import('../shared/text-search').TextSearchResults>('search/text','POST',{query,limit,...(scope?{scope}:{})},vault,signal),
   searchSnippets:(vault:string,query:string,pageIds:string[],signal?:AbortSignal)=>request<{snippets:Record<string,string>}>('search/snippets','POST',{query,pageIds},vault,signal),
   embeddings:(vault:string)=>request<import('../shared/embeddings').EmbeddingStatus>('embeddings','GET',undefined,vault),
   saveEmbeddingSettings:(vault:string,settings:import('../shared/embeddings').EmbeddingSettings)=>request<import('../shared/embeddings').EmbeddingStatus>('embeddings','PUT',settings,vault),

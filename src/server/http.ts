@@ -25,6 +25,7 @@ import { Intelligence, keychainFor, intelligencePreferencesFor } from './modules
 import { Pages } from './modules/pages.js';
 import { Embeddings } from './modules/embeddings.js';
 import { SearchSnippets } from './modules/search-snippets.js';
+import { TextSearch } from './modules/text-search.js';
 import { HttpError, object } from './validation.js';
 import {isLoopback, networkPeerAllowed, networkRequestError, readNetworkConfig, type NetworkConfig} from './network.js';
 import {NetworkAccess, networkSettingsPath} from './network-settings.js';
@@ -54,6 +55,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
   const embeddings=new Embeddings(store,pages,knowledge,vaults,intelligence,activity);
   const sourcePages=new SourcePages(store,knowledge,pages);
   const searchSnippets=new SearchSnippets(pages,knowledge,vaults);
+  const textSearch=new TextSearch(store,vaults);
   // Enforce retention on startup, periodically while running, and before scoped API access.
   pages.purgeExpired();
   images.cleanup();
@@ -73,8 +75,9 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
         if((req.headers.origin && req.headers.origin!==`http://${req.headers.host}`)||req.headers['sec-fetch-site']==='cross-site')throw new HttpError(403,'Cross-origin requests are not allowed');
         const securityRoute = url.pathname === '/api/security/network' || /^\/api\/pages\/[^/]+\/edit-lock$/.test(url.pathname) || /^\/api\/vaults\/[^/]+\/passphrase$/.test(url.pathname);
         if (securityRoute && (req.headers['x-noema-request'] !== '1' || method === 'PUT' && !/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))) throw new HttpError(403, 'Security settings require the Noema client and JSON.');
-        const aiRoute=/^\/api\/entities\/[^/]+\/create-page(?:\/(?:accept|reject))?$/.test(url.pathname)||url.pathname==='/api/search/snippets'||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|entity-scan|entity-review|explain)$/.test(url.pathname);
-        if(aiRoute && (req.headers['x-noema-request']!=='1'||(['POST','PUT'].includes(method)&&!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))))throw new HttpError(403,'AI requests require the Noema client and JSON');
+        const aiRoute=/^\/api\/entities\/[^/]+\/create-page(?:\/(?:accept|reject))?$/.test(url.pathname)||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|entity-scan|entity-review|explain)$/.test(url.pathname);
+        const searchRoute=url.pathname.startsWith('/api/search/');
+        if((aiRoute||searchRoute) && (req.headers['x-noema-request']!=='1'||(['POST','PUT'].includes(method)&&!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))))throw new HttpError(403,searchRoute?'Search requests require the Noema client and JSON':'AI requests require the Noema client and JSON');
         if(url.pathname==='/api/source-files' || url.pathname.startsWith('/api/source-files/')) {
           if(req.headers['x-noema-request']!=='1' && method!=='GET')throw new HttpError(403,'Source actions require the Noema client');
           const header=req.headers['x-vault-id'];if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
@@ -183,6 +186,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
           if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
           const vault=vaults.requireOpen(header || 'default');
           pages.purgeExpired(vault);
+          if(collection==='search' && parts.length===3 && id==='text' && method==='POST')return send(200,textSearch.search(vault,body.query,body.limit,body.scope));
           if(collection==='search' && parts.length===3 && id==='snippets' && method==='POST')return send(200,searchSnippets.get(vault,body));
           if(collection==='embeddings') {
             if(parts.length===2 && method==='GET')return send(200,embeddings.status(vault));

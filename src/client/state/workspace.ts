@@ -51,13 +51,15 @@ export class Workspace {
   private pageLockPending = false;
   private pageRequest: AbortController | null = null;
   readonly titler = new PageTitler(
-    page => api.page(page.vault_id, page.id),
-    (original, title,pageDomains) => {
+    page => api.pageMetadata(page.vault_id, page.id),
+    (original, title,pageDomains,metadata) => {
       const cached = this.pageCache.get(original.id);
       if (!cached || this.state.draftRecoveries.some(item=>item.vaultId===original.vault_id&&item.pageId===original.id) || cached.editLocked || cached.revision!==original.revision || this.pageLockPending || cached.vault_id !== original.vault_id || this.state.vault?.locked) return;
-      const page = {...cached, title,...(pageDomains && !(cached.pageDomains?.origin==='manual' && pageDomains.origin!=='manual') && pageDomains.revision>=(cached.pageDomains?.revision??0)?{pageDomains}:{})};
+      const page = {...cached, title:cached.title===original.title?title:cached.title,...(metadata?{enrichmentPending:metadata.enrichmentPending,enrichmentFields:metadata.enrichmentFields,summaryContentHash:metadata.summaryContentHash,language:metadata.language}:{}),...(pageDomains && !(cached.pageDomains?.origin==='manual' && pageDomains.origin!=='manual') && pageDomains.revision>=(cached.pageDomains?.revision??0)?{pageDomains}:{})};
+      const fields = (value:Page) => [value.title,value.pageDomains,value.enrichmentPending,value.enrichmentFields,value.summaryContentHash,value.language];
+      if(JSON.stringify(fields(page))===JSON.stringify(fields(cached)))return;
       this.pageCache.set(page.id, page);
-      this.patch({pages: this.state.pages.map(item => item.id === page.id ? {...item, title} : item),
+      this.patch({pages: this.state.pages.map(item => item.id === page.id ? {...item, title:page.title} : item),
         ...(this.state.page?.id === page.id ? {page} : {})});
     },
     id => this.state.entities.find(entity => entity.id === id)?.name || '',
@@ -75,11 +77,11 @@ export class Workspace {
       const cached = this.pageCache.get(saved.id);
       if (cached) {
         const unchanged = JSON.stringify(cached.blocks) === JSON.stringify(original.blocks);
-        const page = {...cached, aiReviewAccepted:!!(cached.aiReviewAccepted||saved.aiReviewAccepted), aiStatus:nextPageAIStatus(saved,cached,id=>entityMentionName(this.state.entities.find(entity=>entity.id===id))), ...(unchanged && !this.state.reviewing && canIdentifyEntities() ? {blocks: saved.blocks} : {}), pageDomains:saved.pageDomains,conceptClassification:saved.conceptClassification,conceptContentHash:unchanged?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at};
+        const page = {...cached, title:cached.title===original.title?saved.title:cached.title,enrichmentPending:saved.enrichmentPending,enrichmentFields:saved.enrichmentFields,language:saved.language,aiReviewAccepted:!!(cached.aiReviewAccepted||saved.aiReviewAccepted), aiStatus:nextPageAIStatus(saved,cached,id=>entityMentionName(this.state.entities.find(entity=>entity.id===id))), ...(unchanged && !this.state.reviewing && canIdentifyEntities() ? {blocks: saved.blocks} : {}), pageDomains:saved.pageDomains,conceptClassification:saved.conceptClassification,conceptContentHash:unchanged?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at};
         this.pageCache.set(saved.id, page);
-        if(!this.pageLockPending)this.titler.observe(page, unchanged && cached.title === saved.title);
+        if(!this.pageLockPending)this.titler.observe(page, unchanged);
       }
-      if (this.state.vault?.id === saved.vault_id) this.patch({pages: this.state.pages.map(page => page.id === saved.id ? {...page, aiStatus:this.pageCache.get(saved.id)?.aiStatus ?? saved.aiStatus, updated_at: saved.updated_at} : page), ...(this.state.page?.id === saved.id ? {page: this.pageCache.get(saved.id) || {...this.state.page, aiStatus:saved.aiStatus, pageDomains:saved.pageDomains,conceptClassification:saved.conceptClassification,conceptContentHash:JSON.stringify(this.state.page.blocks)===JSON.stringify(original.blocks)?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at}} : {})});
+      if (this.state.vault?.id === saved.vault_id) this.patch({pages: this.state.pages.map(page => page.id === saved.id ? {...page, title:this.pageCache.get(saved.id)?.title??page.title, aiStatus:this.pageCache.get(saved.id)?.aiStatus ?? saved.aiStatus, updated_at: saved.updated_at} : page), ...(this.state.page?.id === saved.id ? {page: this.pageCache.get(saved.id) || {...this.state.page, aiStatus:saved.aiStatus, pageDomains:saved.pageDomains,conceptClassification:saved.conceptClassification,conceptContentHash:JSON.stringify(this.state.page.blocks)===JSON.stringify(original.blocks)?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at}} : {})});
     },
     (saveStatus, error, failed) => this.patch({saveStatus, ...(error ? {error: error.message} : {}), ...(error && failed ? {saveFailures:[...this.state.saveFailures.filter(issue=>issue.vaultId!==failed.vault_id||issue.pageId!==failed.id),{vaultId:failed.vault_id,pageId:failed.id,title:failed.title,message:error.message}]} : {})}),
     async page => {

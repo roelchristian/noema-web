@@ -34,6 +34,11 @@ test('legacy background requests observe queue state without dispatching or rese
       assert.equal(result.title,'Untitled');assert.equal(result.enrichmentPending,true);
     }
     await call(route);
+    for(let refresh=0;refresh<3;refresh++) {
+      const metadata=await call(`${route}/metadata`);
+      assert.equal(metadata.title,'Untitled');assert.equal(metadata.revision,page.revision);assert.equal(metadata.enrichmentPending,true);
+      assert.equal(metadata.blocks,undefined);assert.equal(metadata.entityMatchCache,undefined);
+    }
     assert.equal(calls,0);
     assert.deepEqual(store.get('SELECT * FROM page_enrichment_jobs WHERE page_id=?',page.id),queued);
     assert.equal(store.get('SELECT count(*) AS n FROM ai_activity').n,0);

@@ -450,6 +450,10 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               const page=pages.get(vault,id);
               return send(200,{...page,entityMatchCache:entityMatches.get(vault,id,page.revision)});
             }
+            if(id && child==='metadata' && parts.length===4 && method==='GET') {
+              const {id:pageId,vault_id,title,revision,pageDomains,summaryContentHash,enrichmentPending,enrichmentFields,language}=pages.get(vault,id);
+              return send(200,{id:pageId,vault_id,title,revision,pageDomains,summaryContentHash,enrichmentPending,enrichmentFields,language});
+            }
             if(id && child==='entity-matches' && parts.length===4) {
               if(method==='GET') {
                 const revision = url.searchParams.has('revision') ? Number(url.searchParams.get('revision')) : undefined;

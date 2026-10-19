@@ -101,7 +101,11 @@ export class PageSaver {
         if ((this.generations.get(id) ?? 0) !== generation) continue;
         const newer = this.pending.get(id);
         if (newer === snapshot) this.pending.delete(id);
-        else if (newer) newer.revision = saved.revision;
+        else if (newer) {
+          newer.revision = saved.revision;
+          // A queued body edit must not send the old title back over a completed title.
+          if(newer.title===snapshot.title)newer.title=saved.title;
+        }
         try {
           if (entry) this.journal.acknowledge(entry, saved, newer && newer !== snapshot ? newer : undefined);
           else if (newer && newer !== snapshot) this.persist(newer);

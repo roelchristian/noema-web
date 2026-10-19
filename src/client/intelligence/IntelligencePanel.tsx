@@ -38,6 +38,26 @@ function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnap
   }, [result]);
   const active=useRef(true);
   useEffect(()=>{active.current=true;return()=>{active.current=false;};},[]);
+  useEffect(()=>{
+    if(inactive||busy||deleting)return;
+    let cancelled=false,reading=false;
+    const refresh=async()=>{
+      if(cancelled||reading||document.hidden)return;
+      reading=true;
+      try {
+        const items=await api.enrichments(page.vault_id,page.id);
+        if(cancelled)return;
+        const saved=items.find(item=>item.kind==='summary');
+        const next=saved&&typeof saved.data.summary==='string'?{summary:saved.data.summary,revision:saved.revision,contentHash:saved.contentHash,model:saved.model,reasoningEffort:saved.reasoningEffort}:null;
+        setResult(current=>JSON.stringify(current)===JSON.stringify(next)?current:next);
+      }catch{/* Keep the last displayed result on a transient read failure. */}
+      finally{reading=false;}
+    };
+    const changed=()=>{void refresh();};
+    const timer=setInterval(changed,2000);
+    window.addEventListener('focus',changed);window.addEventListener('noema:ai-activity',changed);document.addEventListener('visibilitychange',changed);
+    return()=>{cancelled=true;clearInterval(timer);window.removeEventListener('focus',changed);window.removeEventListener('noema:ai-activity',changed);document.removeEventListener('visibilitychange',changed);};
+  },[page.vault_id,page.id,inactive,busy,deleting]);
   async function refreshDomains() {
     const saved=await onFlush();
     if(!saved||saved.id!==page.id||saved.vault_id!==page.vault_id)throw new Error('The selected page changed. Try again.');

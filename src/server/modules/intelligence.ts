@@ -256,7 +256,7 @@ export class Intelligence {
     return this.generate(input,false,onRequest,false,false,false,undefined,true,undefined,false,undefined,undefined,{instructions,signal});
   }
   async generate(input: string, validate=false, onRequest?: AIRequestObserver, title=false, entityScan=false, explain:boolean|(ReadingExplanationOptions&{signal?:AbortSignal})=false, utility?:{domains:{id:string;name:string}[];currentTitle:string}, background=false,sourcePage?:{onDelta:(delta:string)=>void;signal:AbortSignal;onPreviewDelta?:(delta:string)=>void;onPreviewReset?:()=>void;mathPreparation?:boolean},sourceEnrichment:boolean|'authors'=false,enrichment?:PageEnrichmentOptions,entityStream?:{onDelta:(delta:string)=>void;signal:AbortSignal},editorial?:{instructions:string;signal:AbortSignal}) {
-    const credential=this.credential(),selection=editorial?{...this.selection(),reasoningEffort:'medium' as const}:enrichment?this.enrichmentSelection():title?this.titleSelection():this.selection(),preferenceRevision=this.preferenceRevision;
+    const credential=this.credential(),selection=editorial?{...this.selection(),reasoningEffort:'none' as const}:enrichment?this.enrichmentSelection():title?this.titleSelection():this.selection(),preferenceRevision=this.preferenceRevision;
     if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
     if(!title&&!entityScan&&!enrichment&&this.active)throw new HttpError(429,'Another AI request is running. Please wait.');
     if (!background) this.reserveManualRequest();

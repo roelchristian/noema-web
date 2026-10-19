@@ -40,7 +40,8 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   const {collection, folder} = favouritesOnly || inboxOnly ? {collection: '', folder: ''} : context;
   const destination = favouritesOnly ? 'favourites' : inboxOnly ? 'inbox' : JSON.stringify(['organization', collection, folder]);
   const [viewState, setViewState] = useLibraryViewState(vaultId, destination);
-  const [viewMode, setViewMode, libraryRef] = useViewMode(JSON.stringify([vaultId, destination]), favouritesOnly ? 'favourites' : inboxOnly ? 'inbox' : 'library');
+  const readingNotesCollection = !!collection && data.collections.some(item => item.id === collection && item.name === 'Reading Notes');
+  const [viewMode, setViewMode, libraryRef] = useViewMode(JSON.stringify([vaultId, destination]), readingNotesCollection ? undefined : favouritesOnly ? 'favourites' : inboxOnly ? 'inbox' : 'library', readingNotesCollection ? 'grid' : 'list');
   const [addFolder,setAddFolder]=useState<{folderId?:string;collectionId?:string}|null>(null);
   const [pending, setPending] = useState(false);
   const [dropTarget, setDropTarget] = useState<string | null>(null), [dropStatus, setDropStatus] = useState('');

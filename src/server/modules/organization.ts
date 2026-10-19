@@ -2,10 +2,12 @@ import { randomUUID } from 'node:crypto';
 import type { Collection, Folder, ItemKind, Organization } from '../../shared/domain.js';
 import { Store } from '../store.js';
 import { HttpError, required } from '../validation.js';
+import {syncReadingNotesCollection} from './reading-notes-collection.js';
 
 export class Organizer {
   constructor(private store: Store) {}
   list(vault: string): Organization {
+    this.store.transaction(()=>syncReadingNotesCollection(this.store,vault));
     return {
       folderLinks: this.store.all('SELECT folder_id,collection_id FROM collection_folders WHERE vault_id=? ORDER BY collection_id,folder_id', vault),
       collections: this.store.all('SELECT id,name FROM collections WHERE vault_id=? ORDER BY name,id', vault),

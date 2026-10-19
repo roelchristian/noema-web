@@ -3,15 +3,15 @@ import {Icon} from './Icon';
 
 export type ViewMode = 'list' | 'compact' | 'grid';
 const modes = [{id: 'list', label: 'List'}, {id: 'compact', label: 'Compact'}, {id: 'grid', label: 'Grid'}] as const;
-function readMode(scope: string, fallbackScope?: string): ViewMode {
+function readMode(scope: string, fallbackScope: string | undefined, defaultMode: ViewMode): ViewMode {
   try {
     const stored = localStorage.getItem('noema-view-mode/' + scope) ?? (fallbackScope ? localStorage.getItem('noema-view-mode/' + fallbackScope) : null);
-    return stored === 'compact' || stored === 'grid' ? stored : 'list';
-  } catch { return 'list'; }
+    return stored === 'list' || stored === 'compact' || stored === 'grid' ? stored : defaultMode;
+  } catch { return defaultMode; }
 }
-export function useViewMode(scope: string, fallbackScope?: string) {
-  const [preference, setPreference] = useState(() => ({scope, mode: readMode(scope, fallbackScope)}));
-  const mode = preference.scope === scope ? preference.mode : readMode(scope, fallbackScope);
+export function useViewMode(scope: string, fallbackScope?: string, defaultMode: ViewMode = 'list') {
+  const [preference, setPreference] = useState(() => ({scope, mode: readMode(scope, fallbackScope, defaultMode)}));
+  const mode = preference.scope === scope ? preference.mode : readMode(scope, fallbackScope, defaultMode);
   const root = useRef<HTMLElement>(null);
   const before = useRef<Map<HTMLElement, DOMRect> | null>(null);
   const animations = useRef(new Set<Animation>());
@@ -39,9 +39,9 @@ export function useViewMode(scope: string, fallbackScope?: string) {
     }
   }, [mode]);
   useEffect(() => {
-    const mode = readMode(scope, fallbackScope);
+    const mode = readMode(scope, fallbackScope, defaultMode);
     setPreference(previous => previous.scope === scope && previous.mode === mode ? previous : {scope, mode});
-  }, [scope, fallbackScope]);
+  }, [scope, fallbackScope, defaultMode]);
   function change(next: ViewMode) {
     if(next===mode)return;
     let positions:Map<HTMLElement,DOMRect>|null=null;

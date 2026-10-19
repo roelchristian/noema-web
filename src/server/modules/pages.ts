@@ -1,4 +1,5 @@
 import {readingNoteMaxWords,readingNoteWordCount,type ReadingNoteMetadata} from '../../shared/source-reading.js';
+import {syncReadingNotesCollection} from './reading-notes-collection.js';
 import {projectPageText} from '../../shared/page-text.js';
 import {citationSourceIds} from '../../shared/citations.js';
 import {PageEnrichmentState} from './page-enrichment-state.js';
@@ -241,7 +242,10 @@ export class Pages {
   }
   delete(vault: string, id: string) {
     this.requireEditable(vault,id);
-    this.store.run('UPDATE pages SET deleted_at=?,revision=revision+1 WHERE id=? AND vault_id=? AND deleted_at IS NULL',this.clock().toISOString(),id,vault);
+    this.store.transaction(()=>{
+      this.store.run('UPDATE pages SET deleted_at=?,revision=revision+1 WHERE id=? AND vault_id=? AND deleted_at IS NULL',this.clock().toISOString(),id,vault);
+      syncReadingNotesCollection(this.store,vault);
+    });
     return {ok:true};
   }
   purgeExpired(vault?: string) {
@@ -262,7 +266,10 @@ export class Pages {
   }
   restore(vault: string, id: string) {
     this.trashed(vault,id);
-    this.store.run('UPDATE pages SET deleted_at=NULL,updated_at=?,revision=revision+1 WHERE id=? AND vault_id=?',this.clock().toISOString(),id,vault);
+    this.store.transaction(()=>{
+      this.store.run('UPDATE pages SET deleted_at=NULL,updated_at=?,revision=revision+1 WHERE id=? AND vault_id=?',this.clock().toISOString(),id,vault);
+      syncReadingNotesCollection(this.store,vault);
+    });
     return this.get(vault,id);
   }
   permanentlyDelete(vault: string, id: string) {

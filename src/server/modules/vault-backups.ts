@@ -1,4 +1,5 @@
 import {sourceTextHash} from './source-math-text.js';
+import {syncReadingNotesCollection} from './reading-notes-collection.js';
 import {domainById} from '../../shared/domains.js';
 import {sourceStructureKinds,type SourceStructureKind} from '../../shared/domain.js';
 import {isPageIndexPolicy} from '../../shared/embeddings.js';
@@ -427,6 +428,7 @@ export class VaultBackups {
           insert('note_embeddings',{page_id:ref(pageIds,row.page_id),model:name(row,'model'),dimensions,content_hash:string(row,'content_hash',100),revision:integer(row,'revision',1),vector:JSON.stringify(vector),tokens:integer(row,'tokens'),updated_at:timestamp(row,'updated_at')});
         }
         // Recompute after validation/remapping instead of trusting a supplied page fingerprint.
+        syncReadingNotesCollection(this.store,vault);
         for(const id of pageIds.values())if(!this.store.get<{deleted_at:string|null}>('SELECT deleted_at FROM pages WHERE id=?',id)!.deleted_at)pages.get(vault,id);
       });
     } catch(error) {

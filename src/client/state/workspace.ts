@@ -609,6 +609,12 @@ export class Workspace {
     if(this.state.vault?.id!==page.vault_id||this.state.vault.locked)return;
     this.pageCache.set(page.id,page);
     this.patch({pages:[page,...this.state.pages.filter(item=>item.id!==page.id)]});
+    if(page.readingNote) {
+      const sequence=this.loadSequence;
+      void api.organization(page.vault_id).then(organization=>{
+        if(sequence===this.loadSequence&&this.state.vault?.id===page.vault_id&&!this.state.vault.locked)this.setOrganization(organization);
+      }).catch(error=>{if(sequence===this.loadSequence)this.report(error);});
+    }
   }
   async newPage() {
     await this.navigate(async () => {
@@ -667,6 +673,7 @@ export class Workspace {
         favourites: organization.favourites.filter(item => item.kind !== 'page' || item.item_id !== id),
       }});
       if (page?.id === id && pages[0]) await this.loadPage(pages[0].id);
+      try { this.setOrganization(await api.organization(vault.id)); } catch (error) { this.report(error); }
     });
   }
   async restorePage(id: string) {

@@ -11,6 +11,7 @@ import {sourcePageRange} from '../../shared/source-text.js';
 import {PageEnrichmentState} from './page-enrichment-state.js';
 import {Pages} from './pages.js';
 import {Knowledge} from './knowledge.js';
+import {syncReadingNotesCollection} from './reading-notes-collection.js';
 
 type HighlightRow={id:string;source_id:string;file_id:string;source_hash:string;start_offset:number;end_offset:number;excerpt:string;color:SourceHighlight['color'];reference_json:string;created_at:string};
 export class SourceReading {
@@ -98,6 +99,7 @@ export class SourceReading {
    this.store.run('INSERT INTO page_sources (page_id,source_id) VALUES (?,?)',pageId,ref.sourceId);
    new PageEnrichmentState(this.store).markManual(pageId,'title');
    this.store.run('INSERT INTO page_reading_notes (page_id,vault_id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,reference_json,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',pageId,vault,ref.sourceId,fileId,ref.sourceHash,ref.startOffset!,ref.endOffset!,ref.excerpt,JSON.stringify(ref),createdAt);
+   syncReadingNotesCollection(this.store,vault);
   });
   return pages.get(vault,pageId);
  }

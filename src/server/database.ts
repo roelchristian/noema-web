@@ -11,6 +11,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { BlockType, Segment } from '../shared/domain.js';
 import { now } from './validation.js';
+import {setupSuggestionVersionSchema} from './suggestion-version-schema.js';
 import {setupPageSegmentSchema} from './page-segment-schema.js';
 import {setupSourceAuthorSchema} from './source-author-schema.js';
 import {setupSourcePassageSchema} from './source-passage-schema.js';
@@ -439,6 +440,7 @@ if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
  setupSourcePassageEmbeddingSchema(db);
  setupTextSearchSchema(db);
  setupPageEnrichmentSchedulerSchema(db);
+ setupSuggestionVersionSchema(db);
  if (db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Database contains invalid references');
  return db;
  } catch(error) { db.close(); throw error; }

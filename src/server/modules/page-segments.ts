@@ -87,15 +87,23 @@ export function segmentPage(projection:PageProjection,title:string,policy:PageIn
 
 export class PageSegments {
  constructor(private store:Store) {}
- synchronize(vault:string) {for(const row of this.store.all<{page_id:string}>('SELECT page_id FROM page_index_dirty WHERE vault_id=? AND next_attempt_at<=?',vault,now()))this.process(row.page_id);}
- tick(){const row=this.store.get<{page_id:string}>('SELECT d.page_id FROM page_index_dirty d JOIN vaults v ON v.id=d.vault_id WHERE v.locked=0 AND d.next_attempt_at<=? LIMIT 1',now());if(row)this.process(row.page_id);}
- private process(id:string) {
+ /** A foreground page operation can synchronize just its own projection. */
+ synchronize(vault:string,pageId?:string) {
+  const namesByVault=new Map<string,Map<string,string|undefined>>();
+  for(const row of this.store.all<{page_id:string}>(`SELECT d.page_id FROM page_index_dirty d JOIN vaults v ON v.id=d.vault_id WHERE d.vault_id=? AND v.locked=0 AND d.next_attempt_at<=? ${pageId?'AND d.page_id=?':''} ORDER BY d.next_attempt_at,d.page_id LIMIT 16`,vault,now(),...(pageId?[pageId]:[])))this.process(row.page_id,namesByVault);
+ }
+ tick(){const row=this.store.get<{page_id:string}>('SELECT d.page_id FROM page_index_dirty d JOIN vaults v ON v.id=d.vault_id WHERE v.locked=0 AND d.next_attempt_at<=? ORDER BY d.next_attempt_at,d.page_id LIMIT 1',now());if(row)this.process(row.page_id,new Map());}
+ private process(id:string,namesByVault:Map<string,Map<string,string|undefined>>) {
   try {this.store.transaction(()=>{
    const page=this.store.get<{id:string;vault_id:string;title:string;blocks:string;revision:number;deleted_at:string|null}>('SELECT p.* FROM pages p JOIN vaults v ON v.id=p.vault_id WHERE p.id=? AND v.locked=0',id);
    if(!page)return;
    if(page.deleted_at){this.store.run('DELETE FROM page_segments WHERE page_id=?',id);this.store.run('DELETE FROM page_index_state WHERE page_id=?',id);this.store.run('DELETE FROM page_index_dirty WHERE page_id=?',id);return;}
-   const names=new Map(this.store.all<{id:string;name:string;mention_case:string}>('SELECT id,name,mention_case FROM entities WHERE vault_id=?',page.vault_id).map(entity=>[entity.id,entityMentionName({name:entity.name,mentionCase:entity.mention_case as 'canonical'|'lowercase'})]));
-   const projection=projectPageText(JSON.parse(page.blocks) as Block[],id=>names.get(id));
+   let names=namesByVault.get(page.vault_id);
+   if(!names){
+    names=new Map(this.store.all<{id:string;name:string;mention_case:string}>('SELECT id,name,mention_case FROM entities WHERE vault_id=?',page.vault_id).map(entity=>[entity.id,entityMentionName({name:entity.name,mentionCase:entity.mention_case as 'canonical'|'lowercase'})]));
+    namesByVault.set(page.vault_id,names);
+   }
+   const projection=projectPageText(JSON.parse(page.blocks) as Block[],entityId=>names.get(entityId));
    const policy=pageIndexPolicy(this.store,page.vault_id),previous=this.store.get<{strategy:PageStrategy;projection_hash:string;policy_hash:string}>('SELECT strategy,projection_hash,policy_hash FROM page_index_state WHERE page_id=?',id);
    const projectionHash=hash(JSON.stringify([page.title,projection]));
    if(previous?.projection_hash===projectionHash&&previous.policy_hash===hash(JSON.stringify(policy))) {

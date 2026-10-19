@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {embeddingModel,embeddingDimensions,embeddingMaxBytes,type EmbeddingSettings,type EmbeddingNote,type EmbeddingJob,type SemanticSearchResult} from '../../shared/embeddings.js';
+import {embeddingModel,embeddingDimensions,embeddingMaxBytes,type EmbeddingSettings,type SuggestedSource,type EmbeddingNote,type EmbeddingJob,type SemanticSearchResult} from '../../shared/embeddings.js';
 import {makeSearchSnippet} from '../../shared/search-snippets.js';
 import {CachedVectorSearch} from '../vector-search.js';
 import {Store} from '../store.js';
@@ -144,6 +144,22 @@ export class SourcePassageEmbeddings {
  }
  private endActivity(id:string|undefined,status:'completed'|'failed'|'skipped',code:number){if(id&&this.activityIds.delete(id))this.activity?.finish(id,status,code);}
  hasSearchable(vault:string){return !!this.store.get(`SELECT 1 ${joins} JOIN source_passage_embeddings b ON b.passage_id=p.id WHERE p.vault_id=? AND ${searchable} AND ${fresh} LIMIT 1`,vault,embeddingModel,embeddingDimensions);}
+ /** Score every saved query segment against one candidate scan; build only winning excerpts. */
+ suggested(vault:string,queryVectors:number[][],excludedSourceIds:Set<string>,limit=5):SuggestedSource[] {
+  if(!queryVectors.length||limit<=0)return [];
+  type Candidate={id:string;source_id:string;content_hash:string;text:string;vector:string};
+  const rows=this.store.all<Candidate>(`SELECT p.id,p.source_id,p.content_hash,p.text,b.vector ${joins} JOIN source_passage_embeddings b ON b.passage_id=p.id WHERE p.vault_id=? AND e.type='source' AND ${eligible} AND ${fresh}`,vault,embeddingModel,embeddingDimensions);
+  const matches=new Map<string,{row:Candidate;score:number}>();
+  for(const row of rows) {
+   if(excludedSourceIds.has(row.source_id))continue;
+   let best:number|undefined;
+   for(const query of queryVectors){const score=this.vectors.score(`${vault}:${row.id}:${row.content_hash}`,row.vector,query,embeddingDimensions);if(score!==undefined&&(best===undefined||score>best))best=score;}
+   if(best===undefined||best<0.4)continue;
+   const previous=matches.get(row.source_id);
+   if(!previous||best>previous.score||best===previous.score&&row.id.localeCompare(previous.row.id)<0)matches.set(row.source_id,{row,score:best});
+  }
+  return [...matches.values()].sort((a,b)=>b.score-a.score||a.row.source_id.localeCompare(b.row.source_id)).slice(0,limit).map(({row,score})=>({sourceId:row.source_id,score,excerpt:makeSearchSnippet(row.text,'')}));
+ }
  search(vault:string,query:string,queryVector:number[],_queryMagnitude:number):SemanticSearchResult[]{
   const rows=this.store.all<SourcePassage & {vector:string;name:string;updated_at:string}>(`SELECT p.*,b.vector,e.name,e.updated_at,(f.status<>'ready' OR EXISTS(SELECT 1 FROM source_passage_dirty d WHERE d.file_id=p.file_id)) AS stale ${joins} JOIN source_passage_embeddings b ON b.passage_id=p.id WHERE p.vault_id=? AND ${searchable} AND ${fresh}`,vault,embeddingModel,embeddingDimensions);
   const results:SemanticSearchResult[]=[];

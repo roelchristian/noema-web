@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {embeddingModel,embeddingDimensions,type EmbeddingNote,type SemanticSearchResult} from '../../shared/embeddings.js';
+import {embeddingModel,embeddingDimensions,type EmbeddingNote,type RelatedNote,type SemanticSearchResult} from '../../shared/embeddings.js';
 import {makeSearchSnippet} from '../../shared/search-snippets.js';
 import {Store} from '../store.js';
 import {now} from '../validation.js';
@@ -54,6 +54,21 @@ export class PageSegmentIndex {
   });
  }
  hasSearchable(vault:string){return !!this.store.get(`SELECT 1 FROM page_segments s JOIN pages p ON p.id=s.page_id JOIN page_segment_embeddings b ON b.segment_id=s.id AND b.content_hash=s.content_hash WHERE s.vault_id=? AND ${current} AND b.model=? AND b.dimensions=? LIMIT 1`,vault,embeddingModel,embeddingDimensions);}
+ /** Load each candidate once, then compare all saved query segments while its vector is prepared. */
+ related(vault:string,queryVectors:number[][],excludedPageId:string,limit=5):RelatedNote[] {
+  if(!queryVectors.length||limit<=0)return [];
+  type Candidate={id:string;page_id:string;title:string;text:string;vector:string};
+  const rows=this.store.all<Candidate>(`SELECT s.id,s.page_id,s.text,p.title,b.vector FROM page_segments s JOIN pages p ON p.id=s.page_id JOIN page_segment_embeddings b ON b.segment_id=s.id AND b.content_hash=s.content_hash WHERE s.vault_id=? AND s.page_id<>? AND ${current} AND b.model=? AND b.dimensions=?`,vault,excludedPageId,embeddingModel,embeddingDimensions);
+  const matches=new Map<string,{row:Candidate;score:number}>();
+  for(const row of rows) {
+   let best:number|undefined;
+   for(const query of queryVectors){const score=this.vectors.score(`page-segment:${row.id}`,row.vector,query,embeddingDimensions);if(score!==undefined&&(best===undefined||score>best))best=score;}
+   if(best===undefined||best<0.4)continue;
+   const previous=matches.get(row.page_id);
+   if(!previous||best>previous.score||best===previous.score&&row.id.localeCompare(previous.row.id)<0)matches.set(row.page_id,{row,score:best});
+  }
+  return [...matches.values()].sort((a,b)=>b.score-a.score||a.row.page_id.localeCompare(b.row.page_id)).slice(0,limit).map(({row,score})=>({pageId:row.page_id,title:row.title,score,excerpt:makeSearchSnippet(row.text,'')}));
+ }
  search(vault:string,query:string,vector:number[]):SemanticSearchResult[] {
   return this.store.all<PageSegment & {title:string;updated_at:string;vector:string}>(`SELECT s.*,p.title,p.updated_at,b.vector FROM page_segments s JOIN pages p ON p.id=s.page_id JOIN page_segment_embeddings b ON b.segment_id=s.id AND b.content_hash=s.content_hash WHERE s.vault_id=? AND ${current} AND b.model=? AND b.dimensions=?`,vault,embeddingModel,embeddingDimensions).flatMap(row=>{
    const score=this.vectors.score(`page-segment:${row.id}`,row.vector,vector,embeddingDimensions);

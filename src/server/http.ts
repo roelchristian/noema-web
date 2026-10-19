@@ -374,6 +374,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               if(child==='summary')return send(200,{summary:result.summary??'',revision:result.revision,contentHash:result.contentHash,...intelligence.enrichmentSelection()});
               return send(200,result);
             }
+            if(id && child==='suggestion-version' && parts.length===4 && method==='GET')return send(200,embeddings.suggestionVersion(vault,id));
             if(id && child==='related-notes' && parts.length===4 && method==='GET')return send(200,embeddings.relatedNotes(vault,id));
             if(id && child==='source-suggestions' && parts.length===4) {
               if(method==='GET')return send(200,embeddings.suggestedSources(vault,id));

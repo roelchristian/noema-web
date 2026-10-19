@@ -17,7 +17,9 @@ import {Vaults} from './vaults.js';
 import {Intelligence,EmbeddingAdmissionError,embeddingBatchMaxInputs,embeddingBatchMaxBytes} from './intelligence.js';
 import type {PageSegment} from './page-segments.js';
 interface JobRow {id: string; vault_id: string; page_id: string | null; source_id: string | null; content_hash: string; status: string; attempts: number; segment_id:string|null;model:string|null;dimensions:number|null}
+type SuggestionResults={sources:import('../../shared/embeddings.js').SuggestedSource[];notes:import('../../shared/embeddings.js').RelatedNote[]};
 export class Embeddings {
+ private suggestionCache=new Map<string,{version:string;results:Partial<SuggestionResults>}>();
  private queryVectors=new Map<string,{vault:string;expiresAt:number;work:Promise<{embedding:number[];tokens:number}>}>();
  private pageSegments:PageSegments;
  private pageIndex:PageSegmentIndex;
@@ -47,6 +49,7 @@ export class Embeddings {
  }
  close() {
   this.closed=true;
+  this.suggestionCache.clear();
   this.clearQueryCache();
   this.pageIndex.close();
   this.sourceEmbeddings.close();
@@ -61,6 +64,7 @@ export class Embeddings {
   if(id&&this.activeActivity.delete(id))this.activity?.finish(id,status,code);
  }
  clearQueryCache(vault?:string) {
+  for(const key of this.suggestionCache.keys())if(vault===undefined||JSON.parse(key)[0]===vault)this.suggestionCache.delete(key);
   for(const [key,entry] of this.queryVectors)if(vault===undefined||entry.vault===vault)this.queryVectors.delete(key);
  }
  /** Cache vectors, never result lists: current indexes are searched on every call. */
@@ -269,37 +273,39 @@ export class Embeddings {
   });
   return {results:[...fused.values()].sort((a,b)=>b.score-a.score||a.passageId.localeCompare(b.passageId)).slice(0,limit),model:embeddingModel};
  }
- /** Page-to-source retrieval uses existing vectors exclusively, without query embedding. */
- suggestedSources(vault:string,pageId:string):import('../../shared/embeddings.js').SuggestedSource[] {
+ /** This check never projects pages, loads vectors, or scores the corpus. */
+ suggestionVersion(vault:string,pageId:string):{version:string} {
   this.vaults.requireOpen(vault);
-  const page=this.pages.get(vault,pageId);
-  this.pageSegments.synchronize(vault);
-  this.sourcePassages.synchronize(vault);
-  const excluded=new Set([...page.sourceIds,...this.store.all<{source_id:string}>('SELECT source_id FROM page_source_dismissals WHERE page_id=?',pageId).map(row=>row.source_id)]);
-  const matches=new Map<string,import('../../shared/embeddings.js').SuggestedSource>();
-  for(const vector of this.pageIndex.savedVectors(vault,pageId)) {
-   for(const result of this.sourceEmbeddings.search(vault,'',vector,1)) {
-    if(excluded.has(result.id)||result.reference?.stale||result.score<0.4)continue;
-    const previous=matches.get(result.id);
-    if(!previous||result.score>previous.score)matches.set(result.id,{sourceId:result.id,score:result.score,excerpt:result.snippet});
-   }
-  }
-  return [...matches.values()].sort((a,b)=>b.score-a.score||a.sourceId.localeCompare(b.sourceId)).slice(0,5);
+  const page=this.store.get<{revision:number}>('SELECT revision FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',pageId,vault);
+  if(!page)throw new HttpError(404,'Page is unavailable.');
+  const revision=this.store.get<{version:number}>('SELECT version FROM suggestion_versions WHERE vault_id=?',vault)?.version??0;
+  return {version:JSON.stringify([page.revision,revision])};
+ }
+ private cachedSuggestions<K extends keyof SuggestionResults>(vault:string,pageId:string,kind:K,compute:()=>SuggestionResults[K]):SuggestionResults[K] {
+  const {version}=this.suggestionVersion(vault,pageId),key=JSON.stringify([vault,pageId]);
+  let entry=this.suggestionCache.get(key);
+  if(!entry||entry.version!==version)entry={version,results:{}};
+  const result=entry.results[kind]??compute();
+  entry.results[kind]=result;
+  this.suggestionCache.delete(key);this.suggestionCache.set(key,entry);
+  while(this.suggestionCache.size>128)this.suggestionCache.delete(this.suggestionCache.keys().next().value!);
+  return result;
+ }
+ /** Page-to-source retrieval uses existing vectors exclusively, without query embedding. */
+ suggestedSources(vault:string,pageId:string):SuggestionResults['sources'] {
+  this.vaults.requireOpen(vault);
+  this.pageSegments.synchronize(vault,pageId);
+  return this.cachedSuggestions(vault,pageId,'sources',()=>{
+   const page=this.pages.get(vault,pageId);
+   const excluded=new Set([...page.sourceIds,...this.store.all<{source_id:string}>('SELECT source_id FROM page_source_dismissals WHERE page_id=?',pageId).map(row=>row.source_id)]);
+   return this.sourceEmbeddings.suggested(vault,this.pageIndex.savedVectors(vault,pageId),excluded);
+  });
  }
  /** Rank other notes locally by their strongest matching saved segment pair. */
- relatedNotes(vault:string,pageId:string):import('../../shared/embeddings.js').RelatedNote[] {
+ relatedNotes(vault:string,pageId:string):SuggestionResults['notes'] {
   this.vaults.requireOpen(vault);
-  this.pages.get(vault,pageId);
-  this.pageSegments.synchronize(vault);
-  const matches=new Map<string,import('../../shared/embeddings.js').RelatedNote>();
-  for(const vector of this.pageIndex.savedVectors(vault,pageId)) {
-   for(const result of this.pageIndex.search(vault,'',vector)) {
-    if(result.id===pageId||result.score<0.4)continue;
-    const previous=matches.get(result.id);
-    if(!previous||result.score>previous.score)matches.set(result.id,{pageId:result.id,title:result.title,score:result.score,excerpt:result.snippet});
-   }
-  }
-  return [...matches.values()].sort((a,b)=>b.score-a.score||a.pageId.localeCompare(b.pageId)).slice(0,5);
+  this.pageSegments.synchronize(vault,pageId);
+  return this.cachedSuggestions(vault,pageId,'notes',()=>this.pageIndex.related(vault,this.pageIndex.savedVectors(vault,pageId),pageId));
  }
  dismissSource(vault:string,pageId:string,sourceId:unknown) {
   this.pages.requireEditable(vault,pageId);

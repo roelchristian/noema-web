@@ -4,6 +4,7 @@ import {Icon} from '../components/Icon';
 import {ActionMenu} from '../components/ActionMenu';
 import {useEffect,useState} from 'react';
 import {api} from '../api';
+import {watchSuggestions} from './suggestion-refresh';
 import type {SuggestedSource} from '../../shared/embeddings';
 
 interface Props {
@@ -20,9 +21,17 @@ export function PageSources({page,entities,onOpenEntity,onSourcesChange,onCreate
   useEffect(()=>{
     setLoading(true);
     const controller=new AbortController();
-    const load=()=>{if(document.hidden)return;void api.suggestedSources(page.vault_id,page.id,controller.signal).then(items=>{if(!controller.signal.aborted){setSuggestions(items);setError('');}}).catch(reason=>{if(!controller.signal.aborted)setError(reason instanceof Error?reason.message:'Could not load source suggestions.');}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});};
-    const timeout=setTimeout(load,400),interval=setInterval(load,15000);
-    return()=>{controller.abort();clearTimeout(timeout);clearInterval(interval);};
+    const stop=watchSuggestions(page.vault_id,page.id,async()=>{
+      try {
+        const items=await api.suggestedSources(page.vault_id,page.id,controller.signal);
+        if(controller.signal.aborted)return false;
+        setSuggestions(items);setError('');return true;
+      } catch(reason) {
+        if(!controller.signal.aborted)setError(reason instanceof Error?reason.message:'Could not load source suggestions.');
+        return false;
+      } finally {if(!controller.signal.aborted)setLoading(false);}
+    },reason=>{if(!controller.signal.aborted){setError(reason instanceof Error?reason.message:'Could not load source suggestions.');setLoading(false);}});
+    return()=>{controller.abort();stop();};
   },[page.vault_id,page.id,page.revision]);
   async function dismiss(id:string) {
     setDismissing(id);setError('');

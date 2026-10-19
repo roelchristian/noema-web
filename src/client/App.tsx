@@ -198,9 +198,7 @@ export function App() {
   const vaultSaveFailures = saveFailures.filter(issue=>issue.vaultId===vault?.id);
   const vaultStorageFailures = draftStorageFailures.filter(issue=>issue.vaultId===vault?.id);
   const status = vault?.locked ? 'Vault locked' : {saved: 'All changes saved', pending: 'Unsaved changes', identifying: 'Identifying entities…', saving: 'Saving…', error: 'Save failed · click to retry'}[saveStatus];
-  const breadcrumbs: {key: string; label: string; icon?: string; onClick?: () => void}[] = [
-    {key: 'vault', label: vault?.name || uiText("Noema"), icon: 'vault'},
-  ];
+  const breadcrumbs: {key: string; label: string; icon?: string; onClick?: () => void}[] = [];
   if (vault && !vault.locked) {
     if (view === 'source') {
       breadcrumbs.push({key:'sources',get label(){return uiText("Sources")},icon:'source',onClick:()=>{setKnowledgeBrowser({entityType:'source'});workspace.showEntities();}});

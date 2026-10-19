@@ -67,7 +67,7 @@ export function PageToolbar({ tocAvailable=false, tocVisible=true, onToggleToc, 
     </div>
     <div className="page-toolbar-reading page-toolbar-secondary" role="group" aria-label={uiText("View")}>
       {tocAvailable&&onToggleToc&&<button type="button" className="page-tool" aria-label={contentsLabel} title={contentsLabel} aria-pressed={tocVisible} onClick={onToggleToc}><Icon name="view-list"/></button>}
-      <button type="button" className="page-tool focused-reading-button" aria-label={readingLabel} title={readingLabel} aria-pressed={focusedReading} onClick={onToggleFocusedReading}><Icon name="creativework"/></button>
+      <button type="button" className="page-tool focused-reading-button" aria-label={readingLabel} title={readingLabel} aria-pressed={focusedReading} onClick={onToggleFocusedReading}><Icon name="scan-eye"/></button>
     </div>
     <button type="button" className={'page-tool favourite-button ' + (favourite ? 'is-favourite' : '')} disabled={saving} aria-busy={saving} aria-pressed={favourite} aria-label={favourite ? uiText("Remove page from favourites") : uiText("Add page to favourites")} title={favourite ? uiText("Remove from favourites") : uiText("Add to favourites")} onClick={() => void toggleFavourite()}><Icon name="star"/></button>
     <button type="button" className="page-tool page-tool-labeled knowledge-toggle" aria-expanded={aiOpen} aria-controls="intelligence-panel" aria-label={uiText("Knowledge")} title={uiText("Knowledge")} onClick={onAI}><Icon name="knowledge"/><span>{uiText("Knowledge")}</span></button>
@@ -75,7 +75,7 @@ export function PageToolbar({ tocAvailable=false, tocVisible=true, onToggleToc, 
     <ActionMenu label={uiText("More page actions")} disabled={changingLock} actions={[
       ...(onForward ? [{get label(){return uiText("Go forward")}, icon: 'chevron', disabled: forwardDisabled, onSelect: onForward}] : []),
       {label: uiText("Reveal in sidebar"), icon: 'folder', onSelect: onRevealInSidebar},
-      {label:uiText("Focused reading"),icon:'creativework',checked:focusedReading,onSelect:onToggleFocusedReading},
+      {label:uiText("Focused reading"),icon:'scan-eye',checked:focusedReading,onSelect:onToggleFocusedReading},
       ...(tocAvailable&&onToggleToc?[{label:uiText("Table of contents"),icon:'view-list',checked:tocVisible,onSelect:onToggleToc}]:[]),
       {label: uiText("Featured image…"), icon: 'image', disabled:editingDisabled, onSelect: () => setFeaturedImageOpen(true)},
       {get label(){return uiText("Editing")}, icon: 'edit', disabled: editingDisabled, children: [

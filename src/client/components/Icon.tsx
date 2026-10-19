@@ -27,6 +27,7 @@ const paths: Record<string, ReactNode> = {
   bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></>,
   image: <><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 5-5 4 4 4-6 5 7"/></>,
   search: <><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></>,
+  'scan-eye': <><path d="M7 3H5a2 2 0 0 0-2 2v2m14-4h2a2 2 0 0 1 2 2v2M3 17v2a2 2 0 0 0 2 2h2m10 0h2a2 2 0 0 0 2-2v-2"/><path d="M6 12s2-4 6-4 6 4 6 4-2 4-6 4-6-4-6-4Z"/><circle cx="12" cy="12" r="1.5"/></>,
   chevron: <path d="m9 5 7 7-7 7"/>,
   undo: <><path d="M9 5 4 10l5 5M4 10h10a6 6 0 0 1 6 6v3"/></>,
   redo: <><path d="m15 5 5 5-5 5M20 10H10a6 6 0 0 0-6 6v3"/></>,

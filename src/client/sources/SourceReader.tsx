@@ -3,7 +3,8 @@ import {SourceReadingNavigation} from './SourceReadingNavigation';
 import {SourceReadingTools} from './SourceReadingTools';
 import type {ReadingNoteAnchor,SourceHighlight} from '../../shared/source-reading';
 import {useEffect,useMemo,useRef,useState} from 'react';
-import type {Entity,EntityDetail,Page,SourceFile,SourceReference} from '../../shared/domain';
+import {entityMentionName,type Entity,type EntityDetail,type Page,type SourceFile,type SourceReference} from '../../shared/domain';
+import {projectPageText} from '../../shared/page-text';
 import {citationLocation} from '../../shared/citations';
 import {sourceDocumentEntries,sourceNodeLabel,sourceNodeLocator,type SourceDocument} from '../../shared/source-document';
 import {randomUUID} from '../../shared/uuid';
@@ -14,7 +15,7 @@ import {SourceReaderInline,SourceReaderText} from './SourceReaderText';
 type LoadedFile=SourceFile&{textHash:string;document?:SourceDocument};
 type Entry=ReturnType<typeof sourceDocumentEntries>[number];
 interface Props {
-  vaultId:string;source:Entity;entities:Entity[];onOpenEntity:(id:string)=>void;
+  vaultId:string;source:Entity;entities:Entity[];onOpenEntity:(id:string)=>void;inspectorOpen?:boolean;
   onCreatePageFromSource:(source:Entity)=>void;onError:(message:string)=>void;
   onAddPassage:(reference:SourceReference)=>void;onAnnotate:(reference:SourceReference)=>void;onReadingNoteCreated:(page:Page)=>void;onOpenReadingNote:(id:string)=>void;onRemoveReadingNote:(note:ReadingNoteAnchor)=>void;
 }
@@ -29,7 +30,7 @@ function passageReference(file:LoadedFile,entry:Entry):SourceReference {
 function passageAnchor(fileId:string,nodeId:string){return `source-passage-${encodeURIComponent(fileId)}-${encodeURIComponent(nodeId)}`;}
 
 /** Reading and citation state is deliberately separate from the editable page lifecycle. */
-export function SourceReader({vaultId,source,onCreatePageFromSource,onError,onAddPassage,onAnnotate,onReadingNoteCreated,onOpenReadingNote,onRemoveReadingNote}:Props) {
+export function SourceReader({vaultId,source,entities,inspectorOpen=false,onCreatePageFromSource,onError,onAddPassage,onAnnotate,onReadingNoteCreated,onOpenReadingNote,onRemoveReadingNote}:Props) {
   const [files,setFiles]=useState<SourceFile[]|null>(null),[fileId,setFileId]=useState('');
   const [loaded,setLoaded]=useState<LoadedFile|null>(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
   const [selected,setSelected]=useState<string|null>(null),[copied,setCopied]=useState(false);
@@ -81,7 +82,7 @@ export function SourceReader({vaultId,source,onCreatePageFromSource,onError,onAd
   },[loaded?.id,loaded?.textHash,vaultId]);
   function readingNoteCreated(page:Page){
     const note=page.readingNote;
-    if(note&&note.fileId===loaded?.id&&note.sourceHash===loaded.textHash)setReadingNotes(items=>[...items.filter(item=>item.pageId!==page.id),{pageId:page.id,title:page.title,sourceHash:note.sourceHash,startOffset:note.startOffset,endOffset:note.endOffset}]);
+    if(note&&note.fileId===loaded?.id&&note.sourceHash===loaded.textHash)setReadingNotes(items=>[...items.filter(item=>item.pageId!==page.id),{pageId:page.id,title:page.title,text:projectPageText(page.blocks,id=>entityMentionName(entities.find(entity=>entity.id===id))).text,sourceHash:note.sourceHash,startOffset:note.startOffset,endOffset:note.endOffset}]);
     onReadingNoteCreated(page);
   }
   const entries=useMemo(()=>{
@@ -111,7 +112,7 @@ export function SourceReader({vaultId,source,onCreatePageFromSource,onError,onAd
       setCopied(true);clearTimeout(copyTimer.current);copyTimer.current=setTimeout(()=>setCopied(false),2500);
     }catch{onError('Unable to copy the citation. Clipboard access may be unavailable.');}
   }
-  return <section className="source-reader" aria-label="Source reading view">
+  return <section className={'source-reader'+(inspectorOpen?' has-inspector':'')} aria-label="Source reading view">
     <header className="source-workspace-header"><span className="source-workspace-eyebrow">{source.subtypes.length?source.subtypes.join(' · '):'Source'}</span><h1 className="page-heading source-workspace-title"><SourceReaderInline text={source.name}/></h1></header>
     <div className="source-reader-toolbar">
       <span className="source-reader-mode"><Icon name="source"/>Reading · Read-only</span>

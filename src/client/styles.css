@@ -3084,7 +3084,7 @@ dialog.noema-modal.ai-activity-modal .modal-header { position: relative; top: au
 @media(prefers-reduced-motion:reduce){.page-sources-row,.page-sources-open>.icon,.page-sources-detach{transition:none}}
 
 /* Imported sources share the document canvas while retaining their own reading lifecycle. */
-main.source-workspace > #content > .source-reader { width: 100%; max-width: 1080px; margin: 0 auto; padding: 48px 48px 64px; color: var(--text); }
+main.source-workspace > #content > .source-reader { width: 100%; max-width: 1240px; margin: 0 auto; padding: 48px 48px 64px; color: var(--text); container: source-reader / inline-size; }
 .source-workspace-header { margin-bottom: 24px; }
 .source-workspace-title { margin: 0 0 14px; font: var(--page-heading-weight) var(--page-heading-size)/var(--page-heading-line-height) var(--font-title); letter-spacing: var(--page-heading-letter-spacing); overflow-wrap: anywhere; }
 .source-workspace-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; color: var(--text-muted); font-size: 12px; line-height: 1.7; }
@@ -3235,6 +3235,7 @@ dialog:has(.source-passage-preview) form > p { color: var(--text-muted); font-si
 .source-reading-note-marker>button:hover,.source-reading-note-marker>button:focus-visible,.source-reading-note-marker>button[aria-expanded=true]{color:var(--text);background:var(--surface-hover);border-color:var(--text-muted)}
 .source-reading-note-marker .icon{width:12px;height:12px}
 .source-reading-note-marker>button>.icon{width:16px;height:16px}
+.source-reading-note-inline-text{display:none}
 .source-reading-note-marker small{position:absolute;top:-5px;right:-5px;min-width:15px;height:15px;padding:0 3px;border:1px solid var(--control-border);border-radius:8px;background:var(--surface-raised);color:var(--text);font:500 9px/13px var(--font-ui);font-variant-numeric:tabular-nums}
 .source-reading-note-marker:has(>.source-reading-note-marker-list){z-index:5}
 .source-reading-note-marker-list{position:absolute;top:34px;right:0;width:240px;max-width:calc(100vw - 64px);padding:8px;border:1px solid var(--control-border);border-radius:10px;background:var(--surface-raised);box-shadow:0 2px 6px #00000008,0 12px 36px #00000014;font:11px/1.5 var(--font-ui)}
@@ -3243,8 +3244,17 @@ dialog:has(.source-passage-preview) form > p { color: var(--text-muted); font-si
 .source-reading-note-row button{padding:7px 5px;border-radius:4px}
 .source-reading-note-row button:hover{background:var(--surface-hover)}
 .source-reading-note-open{flex:1;min-width:0;text-align:start;overflow-wrap:anywhere}
+.source-reading-note-open>span{display:block}
+.source-reading-note-open>small{position:static;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;height:auto;margin-top:4px;padding:0;border:0;border-radius:0;background:transparent;color:var(--text-muted);font:11px/1.5 var(--font-ui)}
 .source-reading-remove-action{display:flex;align-items:center;gap:6px;color:var(--danger,#a12424)}
 .source-reading-note-row .source-reading-remove-action{flex-shrink:0;min-width:32px;min-height:32px;justify-content:center}
+@container source-reader (min-width:1040px){
+  .source-reader:not(.has-inspector) .source-reader-document{width:calc(100% - 240px)}
+  .source-reader:not(.has-inspector) .source-reading-note-marker:not(.is-crowded)>button{width:248px;height:auto;min-height:28px;align-items:flex-start;justify-content:flex-start;gap:8px;padding:6px 8px;text-align:left}
+  .source-reader:not(.has-inspector) .source-reading-note-marker:not(.is-crowded)>button>.icon{flex:none;margin-top:1px}
+  .source-reader:not(.has-inspector) .source-reading-note-marker:not(.is-crowded) .source-reading-note-inline-text{display:-webkit-box;flex:1;min-width:0;-webkit-box-orient:vertical;-webkit-line-clamp:var(--reading-note-lines,3);overflow:hidden;overflow-wrap:anywhere;white-space:normal;color:var(--text-muted);font:11px/18px var(--font-ui)}
+  .source-reader:not(.has-inspector) .source-reading-note-marker-list{right:auto;left:0}
+}
 
 .create-entity-fields label.source-math-option{display:flex;align-items:flex-start;gap:8px;font-weight:400;line-height:1.5}
 .create-entity-fields .source-math-option input[type="checkbox"]{width:16px;height:16px;flex:0 0 16px;margin:2px 0 0;padding:0}

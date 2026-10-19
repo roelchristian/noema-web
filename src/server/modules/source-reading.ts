@@ -1,6 +1,6 @@
 import {projectPageText} from '../../shared/page-text.js';
 import {randomUUID} from 'node:crypto';
-import type {Page,SourceFile,SourceReference} from '../../shared/domain.js';
+import {entityMentionName,type Block,type Page,type SourceFile,type SourceReference} from '../../shared/domain.js';
 import {highlightColors,readingNoteMaxWords,readingNoteWordCount,type SourceHighlight,type ReadingNoteAnchor} from '../../shared/source-reading.js';
 import {Store} from '../store.js';
 import {HttpError,now,required,text} from '../validation.js';
@@ -52,9 +52,10 @@ export class SourceReading {
  }
  listReadingNotes(vault:string,fileId:string) {
   this.file(vault,fileId);
-  return this.store.all<ReadingNoteAnchor>(`SELECT n.page_id AS pageId,p.title,n.source_hash AS sourceHash,n.start_offset AS startOffset,n.end_offset AS endOffset
+  const knowledge=new Knowledge(this.store);
+  return this.store.all<ReadingNoteAnchor & {blocks:string}>(`SELECT n.page_id AS pageId,p.title,p.blocks,n.source_hash AS sourceHash,n.start_offset AS startOffset,n.end_offset AS endOffset
    FROM page_reading_notes n JOIN pages p ON p.id=n.page_id AND p.vault_id=n.vault_id
-   WHERE n.vault_id=? AND n.file_id=? AND p.deleted_at IS NULL ORDER BY n.start_offset,n.created_at,n.page_id`,vault,fileId);
+   WHERE n.vault_id=? AND n.file_id=? AND p.deleted_at IS NULL ORDER BY n.start_offset,n.created_at,n.page_id`,vault,fileId).map(({blocks,...note})=>({...note,text:projectPageText(JSON.parse(blocks) as Block[],id=>entityMentionName(knowledge.find(vault,id))).text}));
  }
  createHighlight(vault:string,fileId:string,body:Record<string,unknown>) {
   if(!highlightColors.includes(body.color as SourceHighlight['color']))throw new HttpError(400,'Choose one of the five highlight colors.');

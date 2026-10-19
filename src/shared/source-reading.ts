@@ -8,7 +8,7 @@ export interface SourceSelection {
  startLine?:number;endLine?:number;nodeId?:string;contextLabel?:string;appLocator?:string;
 }
 export interface SourceHighlight extends SourceSelection {id:string;color:HighlightColor;createdAt:string}
-export interface ReadingNoteAnchor {pageId:string;title:string;sourceHash:string;startOffset:number;endOffset:number}
+export interface ReadingNoteAnchor {pageId:string;title:string;text?:string;sourceHash:string;startOffset:number;endOffset:number}
 export interface ReadingNoteMetadata extends Omit<SourceSelection,'sourceId'|'fileId'> {
  sourceId:string|null;fileId:string|null;startLine:number;endLine:number;createdAt:string;maxWords:200;
 }

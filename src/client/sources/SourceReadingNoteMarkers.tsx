@@ -1,4 +1,4 @@
-import {useEffect,useLayoutEffect,useRef,useState,type RefObject} from 'react';
+import {useEffect,useLayoutEffect,useRef,useState,type CSSProperties,type RefObject} from 'react';
 import type {ReadingNoteAnchor} from '../../shared/source-reading';
 import {Icon} from '../components/Icon';
 
@@ -38,6 +38,7 @@ export function SourceReadingNoteMarkers({article,notes,onOpen,onRemove}:{articl
         const sameLine=next.find(marker=>Math.abs(marker.top-top)<4&&Math.abs(marker.left-left)<4);
         if(sameLine)sameLine.notes.push(note);else next.push({top,left,notes:[note]});
       }
+      next.sort((a,b)=>a.top-b.top);
       setMarkers(previous=>JSON.stringify(previous)===JSON.stringify(next)?previous:next);
       const ids=new Set<string>(JSON.parse(previewIds)),boxes:PreviewBox[]=[];
       for(const note of notes.filter(note=>ids.has(note.pageId)))for(const leaf of leaves) {
@@ -71,15 +72,17 @@ export function SourceReadingNoteMarkers({article,notes,onOpen,onRemove}:{articl
   },[article,notes,previewIds]);
   return <div ref={container} className="source-reading-note-markers">
     {!!previewBoxes.length&&<svg className="source-reading-note-preview" aria-hidden="true" focusable="false">{previewBoxes.map((box,index)=><rect key={index} x={box.left} y={box.top} width={box.width} height={box.height} rx="2"/>)}</svg>}
-    {markers.map(marker=>{
+    {markers.map((marker,index)=>{
     const id=marker.notes[0]!.pageId,label=marker.notes.length===1?'Show reading note actions':`Show ${marker.notes.length} reading notes`;
     const ids=marker.notes.map(note=>note.pageId);
-    return <div key={id} className="source-reading-note-marker" style={{top:marker.top,left:marker.left}} onPointerEnter={()=>setHovered(ids)} onPointerLeave={()=>setHovered(null)} onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))setFocused(null);}}>
-      <button type="button" aria-label={label} title={label} aria-haspopup="dialog" aria-expanded={open===id} onFocus={()=>setFocused(ids)} onClick={event=>{trigger.current=event.currentTarget;setOpen(current=>current===id?null:id);}}><Icon name="annotation"/>{marker.notes.length>1&&<small>{marker.notes.length}</small>}</button>
+    const text=marker.notes.map(note=>note.text||note.title).join(' · ');
+    const lines=Math.max(0,Math.min(3,Math.floor(((markers[index+1]?.top??marker.top+80)-marker.top-22)/18)));
+    return <div key={id} className={'source-reading-note-marker'+(!lines?' is-crowded':'')} style={{top:marker.top,left:marker.left,'--reading-note-lines':lines} as CSSProperties} onPointerEnter={()=>setHovered(ids)} onPointerLeave={()=>setHovered(null)} onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))setFocused(null);}}>
+      <button type="button" aria-label={label} title={text} aria-haspopup="dialog" aria-expanded={open===id} onFocus={()=>setFocused(ids)} onClick={event=>{trigger.current=event.currentTarget;setOpen(current=>current===id?null:id);}}><Icon name="annotation"/><span className="source-reading-note-inline-text">{text}</span>{marker.notes.length>1&&<small>{marker.notes.length}</small>}</button>
       {open===id&&<div className="source-reading-note-marker-list" role="dialog" aria-label="Reading notes on this line" onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();close();}}}>
         <header><strong>Reading notes</strong><button type="button" autoFocus aria-label="Close reading notes" onClick={close}><Icon name="close"/></button></header>
         {marker.notes.map(note=><div className="source-reading-note-row" key={note.pageId} onPointerEnter={()=>setHovered([note.pageId])} onPointerLeave={()=>setHovered(ids)} onFocus={()=>setFocused([note.pageId])}>
-          <button type="button" className="source-reading-note-open" onClick={()=>{setOpen(null);onOpen(note.pageId);}}>{note.title}</button>
+          <button type="button" className="source-reading-note-open" onClick={()=>{setOpen(null);onOpen(note.pageId);}}><span>{note.title}</span>{note.text&&<small>{note.text}</small>}</button>
           <button type="button" className="source-reading-remove-action" aria-label={`Move ${note.title} to Trash`} title="Move reading note to Trash" onClick={()=>{close();onRemove(note);}}><Icon name="trash"/></button>
         </div>)}
       </div>}

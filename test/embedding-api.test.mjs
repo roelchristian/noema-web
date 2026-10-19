@@ -34,7 +34,8 @@ async function fixture(run) {
     const value=await response.json();assert.equal(response.status,expected,JSON.stringify(value));return value;
   }
   async function until(predicate) {
-    const end=Date.now()+7000;
+    // Allow source discovery (5s), Page debounce (5s), and worker ticks.
+    const end=Date.now()+15000;
     while(Date.now()<end){const status=await call('embeddings');if(predicate(status))return status;await new Promise(resolve=>setTimeout(resolve,25));}
     assert.fail('Embedding queue did not reach expected state: '+JSON.stringify(await call('embeddings')));
   }
@@ -61,7 +62,7 @@ test('embedding API persists indexes and history, rejects stale content, and fol
   assert.equal(results.results.find(result=>result.id===page.id).snippet,'Durable semantic knowledge about gardens and careful planting.');
   const logged=(await call('intelligence/activity')).items;
   const indexing=logged.find(item=>item.action==='note_embedding'&&item.objectId===page.id);
-  assert.equal(indexing.status,'completed');assert.equal(indexing.model,'text-embedding-3-small');assert.equal(indexing.revision,page.revision);assert.ok(indexing.promptBytes>0);
+  assert.equal(indexing.status,'completed');assert.equal(indexing.model,'text-embedding-3-small');assert.equal(indexing.revision,null);assert.ok(indexing.promptBytes>0);
   const searching=logged.find(item=>item.action==='search_embedding');
   assert.equal(searching.status,'completed');assert.equal(searching.vaultId,'default');assert.equal(searching.objectId,null);assert.equal(searching.promptBytes,Buffer.byteLength('gardening'));
   const provider=f.calls[0];assert.equal(provider.url,'https://api.openai.com/v1/embeddings');
@@ -75,7 +76,7 @@ test('embedding API persists indexes and history, rejects stale content, and fol
   assert.ok((await call('intelligence/activity')).items.some(item=>item.id===indexing.id),'Embedding activity survives restart');
   results=await call('embeddings/search','POST',{query:'gardening'},200,other.id);assert.deepEqual(results.results,[]);
   page=await call('pages/'+page.id,'PUT',{...page,blocks:blocks('Revised knowledge about mountains and climbing safely.')});
-  status=await call('embeddings');assert.equal(status.notes.find(note=>note.pageId===page.id).state,'stale');
+  status=await call('embeddings');assert.equal(status.notes.find(note=>note.pageId===page.id).state,'missing');
   results=await call('embeddings/search','POST',{query:'gardening'});assert.ok(!results.results.some(result=>result.id===page.id));
   await call('embeddings/enqueue','POST',{mode:'eligible'});
   await until(value=>value.notes.find(note=>note.pageId===page.id)?.state==='indexed');
@@ -89,7 +90,7 @@ test('embedding API persists indexes and history, rejects stale content, and fol
   await call('embeddings','GET',undefined,423);await call('embeddings/search','POST',{query:'gardens'},423);
   await call('vaults/default/unlock','POST',{passphrase:'embedding-lock'});
   await call('pages/'+page.id,'DELETE');await call('trash/'+page.id,'DELETE');
-  assert.equal(f.db.prepare('SELECT count(*) AS n FROM note_embeddings WHERE page_id=?').get(page.id).n,0);
+  assert.equal(f.db.prepare('SELECT count(*) AS n FROM page_segment_embeddings WHERE segment_id IN (SELECT id FROM page_segments WHERE page_id=?)').get(page.id).n,0);
 }));
 
 test('embedding API enforces client/origin protection, validates requests, and scopes job retries',async()=>fixture(async f=>{

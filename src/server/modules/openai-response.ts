@@ -1,6 +1,10 @@
 import type { AIDebugTrace,AIUsageObserver } from './ai-debug.js';
 import { HttpError } from '../validation.js';
 
+export class OpenAIResponseSizeError extends HttpError {
+  constructor() {super(502,'OpenAI response exceeded the response size limit. The debug trace contains the partial response.');this.name='OpenAIResponseSizeError';}
+}
+
 /** Commentary is a preliminary message, not part of the generated artifact. */
 export function responseOutputText(result:{output?:{type:string;phase?:string;content?:{type:string;text?:string}[]}[]}) {
   return (result.output??[]).filter(item=>item.type==='message'&&item.phase!=='commentary').flatMap(item=>item.content??[]).filter(part=>part.type==='output_text'&&typeof part.text==='string').map(part=>part.text!).join('\n');
@@ -90,7 +94,7 @@ export async function readOpenAIResponse(response: Response, trace?: AIDebugTrac
       const {done,value}=await reader.read();
       if (done) break;
       size+=value.length;
-      if (size>limit) { await reader.cancel(); throw new HttpError(502,'OpenAI response exceeded the response size limit. The debug trace contains the partial response.'); }
+      if (size>limit) { await reader.cancel(); throw new OpenAIResponseSizeError(); }
       consume(decoder.decode(value,{stream:true}));
       if (trace && Date.now()-lastUpdate>=1000) { trace.body(raw); lastUpdate=Date.now(); }
     }

@@ -5,12 +5,15 @@ import {Store} from '../src/server/store.ts';
 import {Pages} from '../src/server/modules/pages.ts';
 import {Knowledge} from '../src/server/modules/knowledge.ts';
 import {Vaults} from '../src/server/modules/vaults.ts';
+import {PageSegments} from '../src/server/modules/page-segments.ts';
+import {PageSegmentIndex} from '../src/server/modules/page-segment-index.ts';
 import {Embeddings} from '../src/server/modules/embeddings.ts';
 const vector=Array.from({length:1536},(_,i)=>i===0?1:0);
 function setup() {
  const db=openDatabase(':memory:'),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),vaults=new Vaults(store);
  let calls=0,finish;
  const ai={status:()=>({configured:true}),embed:async()=>{calls++;return finish?new Promise(resolve=>finish=resolve):{embedding:vector,tokens:10};}};
+ ai.embedBatch=async(inputs,onRequest)=>{onRequest?.(inputs.reduce((n,input)=>n+Buffer.byteLength(input),0));const results=await Promise.all(inputs.map(input=>ai.embed(input)));return {embeddings:results.map(result=>result.embedding),tokens:results.reduce((n,result)=>n+result.tokens,0)};};
  const create=()=>new Embeddings(store,pages,knowledge,vaults,ai);
  let worker=create();
  let page=pages.create('default',{title:'Working note'});
@@ -24,14 +27,14 @@ test('embeddings deduplicate exact content, exclude stale vectors, and reject in
   assert.equal(f.calls,2); // Seed welcome note and the new note.
   assert.equal(f.worker.status('default').counts.indexed,2);
   assert.equal(f.worker.enqueueExisting('default',{mode:'eligible'}).queued,0);
-  f.update('A changed substantive note with entirely different content.');f.worker.onSave('default',f.page.id);
-  assert.equal(f.worker.status('default').counts.stale,1);
+  f.update('A changed substantive note with entirely different content.');f.worker.onSave('default',f.page.id);new PageSegments(f.store).synchronize('default',f.page.id);new PageSegmentIndex(f.store).enqueue('default',f.page.id,'save',0);
+  assert.equal(f.worker.status('default').counts.missing,1);
   f.store.run("UPDATE embedding_jobs SET next_attempt_at='2000-01-01' WHERE status='queued'");
   f.pause();const pending=f.worker.tick();
   await Promise.resolve();
-  f.update('Another substantive edit while a request is running.');f.worker.onSave('default',f.page.id);
+  f.update('Another substantive edit while a request is running.');f.worker.onSave('default',f.page.id);new PageSegments(f.store).synchronize('default',f.page.id);new PageSegmentIndex(f.store).enqueue('default',f.page.id,'save',0);
   f.release();await pending;
-  assert.equal(f.worker.status('default').counts.stale,1);
+  assert.equal(f.worker.status('default').counts.missing,1);
   assert.equal(f.worker.status('default').counts.queued,1);
   assert.ok(f.worker.status('default').jobs.some(job=>job.status==='skipped'));
  }finally{f.close();}
@@ -48,23 +51,24 @@ test('interrupted attempts resume from a persisted queue and wait for vault unlo
   assert.equal(f.worker.status('default').counts.indexed,2);
  }finally{f.close();}
 });
-test('eligibility excludes short or oversized bodies and close prevents pending persistence',async()=>{
+test('eligibility excludes short bodies, segments oversized bodies and close prevents pending persistence',async()=>{
  const f=setup();try {
   f.update('short');assert.equal(f.worker.status('default').notes.find(n=>n.pageId===f.page.id).eligible,false);
-  f.update('界'.repeat(3000));assert.equal(f.worker.status('default').notes.find(n=>n.pageId===f.page.id).eligible,false);
+  f.update('oversized body '.repeat(600));assert.equal(f.worker.status('default').notes.find(n=>n.pageId===f.page.id).eligible,true);
   f.update('Eligible content for a request that will close before completion.');
-  f.worker.onSave('default',f.page.id);f.store.run("UPDATE embedding_jobs SET next_attempt_at='2000-01-01' WHERE status='queued'");
+  f.worker.onSave('default',f.page.id);new PageSegments(f.store).synchronize('default',f.page.id);new PageSegmentIndex(f.store).enqueue('default',f.page.id,'save',0);f.store.run("UPDATE embedding_jobs SET next_attempt_at='2000-01-01' WHERE status='queued'");
   f.pause();const pending=f.worker.tick();await Promise.resolve();f.worker.close();f.release();await pending;
-  assert.equal(f.store.get('SELECT count(*) AS n FROM note_embeddings').n,0);
+  assert.equal(f.store.get('SELECT count(*) AS n FROM page_segment_embeddings').n,0);
  }finally{f.close();}
 });
 test('retry backoff stops after three attempts and never logs provider text',async()=>{
  const f=setup();try {
   f.worker.close();
+  f.pages.delete('default','welcome');
   let calls=0;
-  const ai={status:()=>({configured:true}),embed:async()=>{calls++;throw new Error('secret provider payload');}};
+  const ai={status:()=>({configured:true}),embedBatch:async(_inputs,onRequest)=>{onRequest?.(100);calls++;throw new Error('secret provider payload');}};
   f.worker=new Embeddings(f.store,f.pages,new Knowledge(f.store),f.vaults,ai);
-  f.worker.onSave('default',f.page.id);
+  f.worker.onSave('default',f.page.id);new PageSegments(f.store).synchronize('default',f.page.id);new PageSegmentIndex(f.store).enqueue('default',f.page.id,'save',0);
   for(let i=0;i<3;i++) {
    f.store.run("UPDATE embedding_jobs SET next_attempt_at='2000-01-01' WHERE status='queued'");
    await f.worker.tick();

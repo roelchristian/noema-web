@@ -15,10 +15,10 @@ const paragraph=(text,id='body')=>({id,type:'paragraph',checked:false,content:[{
 function fixture(t,embed=async()=>vector(),blocks=[paragraph('A field has multiplicative inverses and forms an algebraic structure.')]) {
  const db=openDatabase(':memory:'),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),vaults=new Vaults(store),vault=vaults.create({name:'Efficiency'}).id;
  let calls=0,configured=true;
- const ai={status:()=>({configured}),embed:async(...args)=>{calls++;return embed(...args);}};
+ const ai={status:()=>({configured}),embed:async(...args)=>{calls++;return embed(...args);},embedBatch:async(inputs,onRequest)=>{onRequest?.(inputs.reduce((n,input)=>n+Buffer.byteLength(input),0));calls++;const results=await Promise.all(inputs.map(input=>embed(input)));return {embeddings:results.map(result=>result.embedding),tokens:results.reduce((n,result)=>n+result.tokens,0)};}};
  const log=new AIActivityLog(store),worker=new Embeddings(store,pages,knowledge,vaults,ai,log),segments=new PageSegments(store),index=new PageSegmentIndex(store);
  worker.saveSettings('default',{automatic:false});
- let page=pages.create(vault,{title:'Algebra'});page=pages.update(vault,page.id,{...page,blocks});segments.process(page.id);
+ let page=pages.create(vault,{title:'Algebra'});page=pages.update(vault,page.id,{...page,blocks});segments.synchronize(vault,page.id);
  t.after(()=>{worker.close();db.close();});
  return {db,store,pages,vaults,vault,worker,segments,index,page,log,calls:()=>calls,setConfigured:value=>{configured=value;}};
 }
@@ -29,7 +29,7 @@ test('in-flight embedding survives manual subjects and an unchanged save without
  new Domains(f.store).setManual(f.vault,f.page.id,{primaryDomainId:'mathematics.algebra.abstract',secondaryDomainIds:[]},f.page.revision);
  f.worker.onSave(f.vault,f.page.id);finish();await pending;
  assert.equal(f.calls(),1);assert.equal(f.store.get('SELECT status FROM embedding_jobs WHERE page_id=?',f.page.id).status,'completed');
- let current=f.pages.get(f.vault,f.page.id);f.pages.update(f.vault,current.id,{...current});f.worker.onSave(f.vault,current.id);f.segments.process(current.id);
+ let current=f.pages.get(f.vault,f.page.id);f.pages.update(f.vault,current.id,{...current});f.worker.onSave(f.vault,current.id);f.segments.synchronize(f.vault,current.id);
  assert.equal(f.index.enqueue(f.vault,current.id,'test',0),0);
  assert.equal(f.store.get('SELECT revision FROM page_segments WHERE page_id=?',current.id).revision,f.pages.get(f.vault,current.id).revision);
 });
@@ -61,7 +61,7 @@ test('concurrent and repeated queries share one vector across search and retriev
  let finish;const f=fixture(t,()=>new Promise(resolve=>{finish=()=>resolve(vector());}));ready(f);
  const first=f.worker.search(f.vault,{query:'inverses'}),second=f.worker.search(f.vault,{query:' inverses ',limit:1});
  assert.equal(f.calls(),1);finish();await Promise.all([first,second]);
- const added=f.pages.create(f.vault,{title:'Another note'});f.pages.update(f.vault,added.id,{...added,blocks:[paragraph('Multiplicative inverses provide useful evidence in this new note.')]});f.segments.process(added.id);
+ const added=f.pages.create(f.vault,{title:'Another note'});f.pages.update(f.vault,added.id,{...added,blocks:[paragraph('Multiplicative inverses provide useful evidence in this new note.')]});f.segments.synchronize(f.vault,added.id);
  f.index.save(f.store.get('SELECT * FROM page_segments WHERE page_id=?',added.id),vector().embedding,12);
  const results=await f.worker.search(f.vault,{query:'inverses'});assert.ok(results.results.some(result=>result.id===added.id));
  await f.worker.retrievePassages(f.vault,{query:'inverses'});
@@ -71,7 +71,7 @@ test('query cache is vault-scoped, expires, is bounded, and clears explicitly',a
  t.mock.timers.enable({apis:['Date'],now:Date.parse('2026-10-18T12:00:00Z')});
  const f=fixture(t);ready(f);
  await f.worker.search(f.vault,{query:'inverses'});await f.worker.search(f.vault,{query:'inverses'});assert.equal(f.calls(),1);
- const other=f.vaults.create({name:'Other'}).id,p=f.pages.create(other,{title:'Other algebra'});f.pages.update(other,p.id,{...p,blocks:[paragraph('Multiplicative inverses are discussed in a different vault.')]});f.segments.process(p.id);
+ const other=f.vaults.create({name:'Other'}).id,p=f.pages.create(other,{title:'Other algebra'});f.pages.update(other,p.id,{...p,blocks:[paragraph('Multiplicative inverses are discussed in a different vault.')]});f.segments.synchronize(other,p.id);
  f.index.save(f.store.get('SELECT * FROM page_segments WHERE page_id=?',p.id),vector().embedding,12);
  await f.worker.search(other,{query:'inverses'});assert.equal(f.calls(),2);
  f.worker.clearQueryCache(f.vault);await f.worker.search(f.vault,{query:'inverses'});assert.equal(f.calls(),3);
@@ -94,7 +94,7 @@ test('database restart upgrades the old blanket cancellation trigger without los
  const {mkdtempSync,rmSync}=await import('node:fs'),{tmpdir}=await import('node:os'),path=await import('node:path');
  const dir=mkdtempSync(path.join(tmpdir(),'noema-embedding-migration-')),filename=path.join(dir,'test.sqlite');let db=openDatabase(filename);
  try {
-  let store=new Store(db);const segments=new PageSegments(store);segments.process('welcome');new PageSegmentIndex(store).enqueue('default','welcome','save',0);
+  let store=new Store(db);const segments=new PageSegments(store);segments.synchronize('default','welcome');new PageSegmentIndex(store).enqueue('default','welcome','save',0);
   const job=store.get("SELECT id FROM embedding_jobs WHERE page_id='welcome' AND status='queued'");assert.ok(job);
   db.exec("DROP TRIGGER page_index_update; CREATE TRIGGER page_index_update AFTER UPDATE OF revision ON pages BEGIN UPDATE embedding_jobs SET status='skipped' WHERE page_id=NEW.id AND status IN ('queued','running'); END;");
   db.close();db=openDatabase(filename);store=new Store(db);store.run("UPDATE pages SET revision=revision+1 WHERE id='welcome'");

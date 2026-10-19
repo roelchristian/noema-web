@@ -1,3 +1,4 @@
+import {OpenAIResponseSizeError} from './openai-response.js';
 import {randomUUID} from 'node:crypto';
 import {embeddingModel,embeddingDimensions,embeddingMaxBytes,type EmbeddingSettings,type SuggestedSource,type EmbeddingNote,type EmbeddingJob,type SemanticSearchResult} from '../../shared/embeddings.js';
 import {makeSearchSnippet} from '../../shared/search-snippets.js';
@@ -9,7 +10,7 @@ import {Vaults} from './vaults.js';
 import {AIActivityLog} from './ai-activity.js';
 import {passageReference,type SourcePassage} from './source-passages.js';
 
-type Job={id:string;vault_id:string;passage_id:string;file_id:string|null;generation_id:string;source_id:string;content_hash:string;model:string;dimensions:number;reason:string;status:string;attempts:number};
+type Job={batch_max_inputs:number;id:string;vault_id:string;passage_id:string;file_id:string|null;generation_id:string;source_id:string;content_hash:string;model:string;dimensions:number;reason:string;status:string;attempts:number};
 const searchable=`f.vault_id=p.vault_id AND f.admitted=1 AND e.type='source' AND e.inactive=0 AND length(substr(f.text,1,2000))>=coalesce(s.min_characters,20)`;
 const eligible=`f.vault_id=p.vault_id AND NOT EXISTS (SELECT 1 FROM source_passage_dirty d WHERE d.file_id=p.file_id) AND f.status='ready' AND f.admitted=1 AND e.inactive=0 AND length(substr(f.text,1,2000))>=coalesce(s.min_characters,20)`;
 const joins=`FROM source_passages p JOIN source_files f ON f.id=p.file_id AND f.entity_id=p.source_id JOIN entities e ON e.id=p.source_id AND e.vault_id=p.vault_id LEFT JOIN embedding_settings s ON s.vault_id=p.vault_id`;
@@ -80,8 +81,11 @@ export class SourcePassageEmbeddings {
   this.lastSource={vault:selected.vault_id,source:selected.source_id};
   const candidates=this.store.all<Job>(`SELECT * FROM source_passage_embedding_jobs WHERE vault_id=? AND source_id=? AND status='queued' AND next_attempt_at<=? ORDER BY next_attempt_at,created_at,rowid LIMIT ?`,selected.vault_id,selected.source_id,now(),embeddingBatchMaxInputs);
   const batch:{job:Job;input:string;bytes:number}[]=[];
+  let maxInputs=embeddingBatchMaxInputs;
   let batchBytes=0,activityId:string|undefined;
   for(const job of candidates){
+   maxInputs=Math.min(maxInputs,job.batch_max_inputs);
+   if(batch.length>=maxInputs)break;
    const passage=this.passage(job);
    let skipped:string|undefined;
    if(!passage||passage.content_hash!==job.content_hash||job.model!==embeddingModel||job.dimensions!==embeddingDimensions)skipped='Passage changed or is unavailable.';
@@ -133,6 +137,10 @@ export class SourcePassageEmbeddings {
    if(this.closed)return true;
    const code=error instanceof HttpError?error.status:502;this.endActivity(activityId,code===404||code===423?'skipped':'failed',code);
    for(const {job} of batch){
+    // Shrinking is bounded by the singleton case and survives worker restarts.
+    if(error instanceof OpenAIResponseSizeError&&batch.length>1) {
+     this.store.run("UPDATE source_passage_embedding_jobs SET status='queued',started_at=NULL,next_attempt_at=?,batch_max_inputs=?,error='Response size limit reached. Retrying a smaller batch.' WHERE id=? AND status='running'",now(),Math.ceil(batch.length/2),job.id);continue;
+    }
     if(error instanceof EmbeddingAdmissionError)this.store.run("UPDATE source_passage_embedding_jobs SET status='queued',started_at=NULL,next_attempt_at=?,error='Waiting for embedding capacity.' WHERE id=? AND status='running'",new Date(Date.now()+Math.max(1,error.retryAfterMs)).toISOString(),job.id);
     else if(code===423)this.store.run("UPDATE source_passage_embedding_jobs SET status='queued',next_attempt_at=?,error='Waiting for vault to unlock.' WHERE id=? AND status='running'",now(),job.id);
     else if((code===429||code>=500)&&job.attempts<3)this.store.run("UPDATE source_passage_embedding_jobs SET status='queued',next_attempt_at=?,error='Embedding service unavailable. Automatic retry scheduled.' WHERE id=? AND status='running'",new Date(Date.now()+30000*2**Math.max(0,job.attempts-1)).toISOString(),job.id);

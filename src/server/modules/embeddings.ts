@@ -1,3 +1,4 @@
+import {OpenAIResponseSizeError} from './openai-response.js';
 import {PageSegments,pageIndexPolicy} from './page-segments.js';
 import {PageSegmentIndex} from './page-segment-index.js';
 import {defaultPageIndexPolicy,isPageIndexPolicy,type PageIndexPolicy} from '../../shared/embeddings.js';
@@ -16,7 +17,7 @@ import {Knowledge} from './knowledge.js';
 import {Vaults} from './vaults.js';
 import {Intelligence,EmbeddingAdmissionError,embeddingBatchMaxInputs,embeddingBatchMaxBytes} from './intelligence.js';
 import type {PageSegment} from './page-segments.js';
-interface JobRow {id: string; vault_id: string; page_id: string | null; source_id: string | null; content_hash: string; status: string; attempts: number; segment_id:string|null;model:string|null;dimensions:number|null}
+interface JobRow {batch_max_inputs:number;id: string; vault_id: string; page_id: string | null; source_id: string | null; content_hash: string; status: string; attempts: number; segment_id:string|null;model:string|null;dimensions:number|null}
 type SuggestionResults={sources:import('../../shared/embeddings.js').SuggestedSource[];notes:import('../../shared/embeddings.js').RelatedNote[]};
 export class Embeddings {
  private suggestionCache=new Map<string,{version:string;results:Partial<SuggestionResults>}>();
@@ -43,7 +44,7 @@ export class Embeddings {
     if((!job.page_id&&!job.source_id)||job.attempts>=3||(job.reason==='save'&&!this.settings(job.vault_id).automatic))continue;
     // Retain the interrupted attempt in history while its replacement waits for
     // an unlocked vault. The worker rechecks current content before any API call.
-    this.store.run("INSERT OR IGNORE INTO embedding_jobs (id,vault_id,page_id,source_id,segment_id,content_hash,status,reason,attempts,created_at,next_attempt_at,model,dimensions) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",randomUUID(),job.vault_id,job.page_id,job.source_id,job.segment_id,job.content_hash,'queued',job.reason,job.attempts,now(),now(),job.model,job.dimensions);
+    this.store.run("INSERT OR IGNORE INTO embedding_jobs (id,vault_id,page_id,source_id,segment_id,content_hash,status,reason,attempts,created_at,next_attempt_at,model,dimensions,batch_max_inputs) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",randomUUID(),job.vault_id,job.page_id,job.source_id,job.segment_id,job.content_hash,'queued',job.reason,job.attempts,now(),now(),job.model,job.dimensions,job.batch_max_inputs);
    }
   });
  }
@@ -196,8 +197,11 @@ export class Embeddings {
  }
  private async embedPageBatch(jobs:JobRow[]) {
   const batch:{job:JobRow;segment:PageSegment}[]=[];
+  let maxInputs=embeddingBatchMaxInputs;
   let bytes=0,activityId:string|undefined,admitted=false;
   for(const job of jobs) {
+   maxInputs=Math.min(maxInputs,job.batch_max_inputs);
+   if(batch.length>=maxInputs)break;
    const segment=job.segment_id?this.pageIndex.get(job.vault_id,job.segment_id):undefined;
    if(segment&&bytes+Buffer.byteLength(segment.input,'utf8')>embeddingBatchMaxBytes)break;
    this.store.run("UPDATE embedding_jobs SET status='running',started_at=?,finished_at=NULL,error=NULL WHERE id=? AND status='queued'",now(),job.id);
@@ -236,6 +240,10 @@ export class Embeddings {
    const code=error instanceof HttpError?error.status:502;
    this.finishActivity(activityId,code===404||code===423?'skipped':'failed',code);
    for(const {job} of batch) {
+    // Shrinking is bounded by the singleton case and survives worker restarts.
+    if(error instanceof OpenAIResponseSizeError&&batch.length>1) {
+     this.store.run("UPDATE embedding_jobs SET status='queued',started_at=NULL,next_attempt_at=?,batch_max_inputs=?,error='Response size limit reached. Retrying a smaller batch.' WHERE id=? AND status='running'",now(),Math.ceil(batch.length/2),job.id);continue;
+    }
     if(error instanceof EmbeddingAdmissionError) {
      this.store.run("UPDATE embedding_jobs SET status='queued',started_at=NULL,next_attempt_at=?,error='Waiting for embedding capacity.' WHERE id=? AND status='running'",new Date(Date.now()+error.retryAfterMs).toISOString(),job.id);continue;
     }

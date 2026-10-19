@@ -74,6 +74,7 @@ export function setupPageSegmentSchema(db:DatabaseSync) {
    SELECT p.id,j.value FROM pages p,json_tree(CASE WHEN json_valid(p.blocks) THEN p.blocks ELSE '[]' END) j
    WHERE j.key='entityId' AND j.type='text' AND length(j.value)>0;
   INSERT INTO metadata(key,value) VALUES('page-mentioned-entities-v1','ready');`);
+ if(!db.prepare('PRAGMA table_info(embedding_jobs)').all().some(c=>c.name==='batch_max_inputs'))db.exec('ALTER TABLE embedding_jobs ADD COLUMN batch_max_inputs INTEGER NOT NULL DEFAULT 16 CHECK(batch_max_inputs BETWEEN 1 AND 16)');
  if(!db.prepare('PRAGMA table_info(page_index_state)').all().some(c=>c.name==='body_characters'))db.exec('ALTER TABLE page_index_state ADD COLUMN body_characters INTEGER NOT NULL DEFAULT 0');
  if(!db.prepare('PRAGMA table_info(embedding_settings)').all().some(c=>c.name==='page_policy'))db.exec("ALTER TABLE embedding_settings ADD COLUMN page_policy TEXT");
  if(!db.prepare('PRAGMA table_info(embedding_jobs)').all().some(c=>c.name==='segment_id'))db.exec('ALTER TABLE embedding_jobs ADD COLUMN segment_id TEXT');

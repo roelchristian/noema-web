@@ -48,6 +48,7 @@ export function setupSourcePassageEmbeddingSchema(db:DatabaseSync) {
     FROM source_passage_embedding_jobs_legacy j LEFT JOIN source_passages p ON p.id=j.passage_id;
    DROP TABLE source_passage_embedding_jobs_legacy;`);
  }
+ if(!db.prepare('PRAGMA table_info(source_passage_embedding_jobs)').all().some(c=>c.name==='batch_max_inputs'))db.exec('ALTER TABLE source_passage_embedding_jobs ADD COLUMN batch_max_inputs INTEGER NOT NULL DEFAULT 16 CHECK(batch_max_inputs BETWEEN 1 AND 16)');
  db.exec(`CREATE INDEX IF NOT EXISTS source_passage_jobs_queue ON source_passage_embedding_jobs(status,next_attempt_at);
  CREATE INDEX IF NOT EXISTS source_passage_jobs_source ON source_passage_embedding_jobs(source_id,created_at DESC);
  CREATE UNIQUE INDEX IF NOT EXISTS source_passage_jobs_active ON source_passage_embedding_jobs(passage_id) WHERE status IN ('queued','running');

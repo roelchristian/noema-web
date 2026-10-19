@@ -1,3 +1,4 @@
+import {reviewTexts,parseEditorReview} from './modules/editor-review.js';
 import {SourcePageImages} from './modules/source-page-images.js';
 import {SourceLifecycleService} from './modules/source-lifecycle.js';
 import {SourceReprocessing} from './modules/source-reprocessing.js';
@@ -116,7 +117,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
         if((req.headers.origin && req.headers.origin!==`http://${req.headers.host}`)||req.headers['sec-fetch-site']==='cross-site')throw new HttpError(403,'Cross-origin requests are not allowed');
         const securityRoute = url.pathname === '/api/security/network' || /^\/api\/pages\/[^/]+\/edit-lock$/.test(url.pathname) || /^\/api\/vaults\/[^/]+\/passphrase$/.test(url.pathname);
         if (securityRoute && (req.headers['x-noema-request'] !== '1' || method === 'PUT' && !/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))) throw new HttpError(403, 'Security settings require the Noema client and JSON.');
-        const aiRoute=/^\/api\/entities\/[^/]+\/create-page(?:\/(?:accept|reject))?$/.test(url.pathname)||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|enrich|enrichment-settings|entity-scan|entity-review|explain)$/.test(url.pathname);
+        const aiRoute=/^\/api\/entities\/[^/]+\/create-page(?:\/(?:accept|reject))?$/.test(url.pathname)||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|enrich|enrichment-settings|entity-scan|entity-review|explain|review)$/.test(url.pathname);
         const searchRoute=url.pathname.startsWith('/api/search/');
         if((aiRoute||searchRoute) && (req.headers['x-noema-request']!=='1'||(['POST','PUT'].includes(method)&&!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))))throw new HttpError(403,searchRoute?'Search requests require the Noema client and JSON':'AI requests require the Noema client and JSON');
         if(url.pathname==='/api/source-files' || url.pathname.startsWith('/api/source-files/')) {
@@ -275,10 +276,10 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
           const port = new URL(`http://${req.headers.host}`).port;
           return send(200, {lan: networkAccess.enabled(), localUrl: `http://localhost${port ? ':' + port : ''}`});
         }
-        if(method==='POST' && ((collection==='intelligence' && id==='validate' && parts.length===3) || (collection==='pages' && (child==='summary'||child==='title'||child==='enrich'||child==='entity-scan'||child==='explain') && !(body.background===true&&(child==='summary'||child==='title'||child==='enrich')) && parts.length===4))) {
+        if(method==='POST' && ((collection==='intelligence' && id==='validate' && parts.length===3) || (collection==='pages' && (child==='summary'||child==='title'||child==='enrich'||child==='entity-scan'||child==='explain'||child==='review') && !(body.background===true&&(child==='summary'||child==='title'||child==='enrich')) && parts.length===4))) {
           const header=req.headers['x-vault-id'];
           if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
-          activityId=activity.start(collection==='pages'?(child==='enrich'||child==='title'||child==='summary'?'page_enrichment':child==='entity-scan'?'entity_scan':child==='explain'?'block_explanation':'page_summary'):'connection_test',child==='title'||child==='summary'||child==='enrich'?intelligence.enrichmentSelection():intelligence.selection(),collection==='pages'?(header||'default'):null,collection==='pages'?id!:null);
+          activityId=activity.start(collection==='pages'?(child==='enrich'||child==='title'||child==='summary'?'page_enrichment':child==='entity-scan'?'entity_scan':child==='review'?'text_review':child==='explain'?'block_explanation':'page_summary'):'connection_test',child==='title'||child==='summary'||child==='enrich'?intelligence.enrichmentSelection():intelligence.selection(),collection==='pages'?(header||'default'):null,collection==='pages'?id!:null);
         }
         if(collection==='intelligence') {
           if(parts.length===3&&id==='pricing'&&method==='GET')return send(200,activity.pricing());
@@ -349,6 +350,12 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             if(id && parts.length===4 && child==='domains' && method==='PUT'){new Domains(store).setManual(vault,id,body,body.revision);return send(200,pages.get(vault,id));}
             if(id && parts.length===4 && child==='edit-lock' && method==='PUT')return send(200,pages.setEditLock(vault,id,body));
             if(id && parts.length===4 && child==='backlinks' && method==='GET')return send(200,pages.backlinks(vault,id));
+            if(id && parts.length===4 && child==='review' && method==='POST') {
+              const page=pages.requireEditable(vault,id),texts=reviewTexts(body.texts);
+              const output=await intelligence.generate(JSON.stringify({untrusted_texts:texts}),false,bytes=>activity.request(activityId!,bytes,page.revision),false,false,false,undefined,false,undefined,false,undefined,undefined,undefined,true);
+              vaults.requireOpen(vault);pages.requireEditable(vault,id);
+              return send(200,{suggestions:parseEditorReview(output,texts)});
+            }
             if(id && parts.length===4 && child==='explain' && method==='POST') {
               const page=pages.requireEditable(vault,id);
               // Draft blocks allow explaining current edits without saving or sending other note content.

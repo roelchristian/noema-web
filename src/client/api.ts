@@ -1,9 +1,10 @@
+import type {EditorReviewText,EditorReviewSuggestion} from '../shared/editor-review';
 import type { Organization, Entity, EntityDetail, EntityInput, PropertyInput, RelationshipInput, Page, PageInput, PageSummary, Vault, TrashedPage } from '../shared/domain';
 export class ApiError extends Error { constructor(public status: number,message: string){super(message);} }
 export async function request<T>(route: string, method='GET', body?: unknown, vaultId?: string, signal?: AbortSignal): Promise<T> {
   const response=await fetch('/api/'+route,{method,signal,headers:{'X-Noema-Request':'1',...(body!==undefined?{'Content-Type':'application/json'}:{}),...(vaultId?{'X-Vault-Id':vaultId}:{})},body:body!==undefined?JSON.stringify(body):undefined});
   const result:unknown=await response.json();
-  if(/^pages\/[^/]+\/(title|summary|entity-scan|explain)$/.test(route)&&typeof window!=='undefined')window.dispatchEvent(new Event('noema:ai-activity'));
+  if(/^pages\/[^/]+\/(title|summary|entity-scan|explain|review)$/.test(route)&&typeof window!=='undefined')window.dispatchEvent(new Event('noema:ai-activity'));
   if(!response.ok)throw new ApiError(response.status,typeof result==='object'&&result&&'error' in result?String(result.error):'Request failed');
   return result as T;
 }
@@ -47,6 +48,7 @@ export const api={
   previewVaultDeletion:(id:string)=>request<import('../shared/domain').VaultDeletionPreview>(`vaults/${encodeURIComponent(id)}/deletion-preview`),
   deleteVault:(id:string,confirmation:import('../shared/domain').VaultDeletionConfirmation)=>request<import('../shared/domain').VaultDeletionResult>(`vaults/${encodeURIComponent(id)}/delete`,'POST',confirmation),
   pageBacklinks:(vault:string,id:string,signal?:AbortSignal)=>request<PageSummary[]>(`pages/${id}/backlinks`,'GET',undefined,vault,signal),
+  reviewText:(vault:string,id:string,texts:EditorReviewText[])=>request<{suggestions:EditorReviewSuggestion[]}>(`pages/${id}/review`,'POST',{texts},vault),
   explainBlocks:(vault:string,id:string,blocks:Page['blocks'])=>request<{markdown:string}>(`pages/${id}/explain`,'POST',{blocks},vault),
   exportVault:exportVaultBackup,
   importVault:importVaultBackup,

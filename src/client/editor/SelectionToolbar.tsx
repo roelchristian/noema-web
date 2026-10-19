@@ -12,6 +12,8 @@ interface Props {
   mobile?: boolean;
   keyboardInset?: number;
   viewportHeight?: number;
+  onReview?:()=>void;
+  reviewing?:boolean;
   onExplain?: () => void;
   explaining?: boolean;
   explainLabel?: (ids: string[]) => string;
@@ -32,7 +34,7 @@ const formats = [
 function editable(node: Node) {
   return (node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>('.block-content[contenteditable="true"]');
 }
-export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHeight, editor, entities, onCommit, onAddAlias, onCreateEntity, onMath, onSemantic, onExplain, explaining, explainLabel}: Props) {
+export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHeight, editor, entities, onCommit, onAddAlias, onCreateEntity, onMath, onSemantic, onExplain, explaining, explainLabel, onReview, reviewing}: Props) {
   const [anchor, setAnchor] = useState<{left: number; right: number; top: number; bottom: number} | null>(null);
   const [annotating, setAnnotating] = useState(false), [query, setQuery] = useState('');
   const [semantic, setSemantic] = useState(false);
@@ -193,6 +195,7 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
         releaseSheet(); picking.current = false; setMore(false); applyFormat('strikeThrough');
       }}><s>S</s><span>Strikethrough</span></button>
       <button type="button" disabled={!single} onClick={() => { const current = saved.current?.cloneRange(); if (current) { dismiss(); onMath(current); } }}><Icon name="equation"/><span>Inline equation</span></button>
+      {onReview&&<button type="button" disabled={reviewing} onClick={()=>{const current=saved.current;releaseSheet();if(current&&restore(current))onReview();dismiss();}}><Icon name="sparkles"/><span>Review with AI</span></button>}
       <button type="button" disabled={explaining || !onExplain} onClick={() => { const current = saved.current; releaseSheet(); if (current && restore(current)) onExplain?.(); dismiss(); }}><Icon name="sparkles"/><span>{explanationAction}</span></button>
       <button type="button" onClick={() => { setMore(false); setSemantic(true); }}><Icon name="semantic"/><span>Semantic function</span><Icon name="chevron"/></button>
       <button type="button" disabled={!single} onClick={() => { setMore(false); setAnnotating(true); setLinking(false); setQuery(''); setAliasError(''); }}><Icon name="knowledge"/><span>Annotate selection</span><Icon name="chevron"/></button>
@@ -230,6 +233,7 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
         {!mobile && <>
         <button type="button" aria-label="Inline equation" title="Inline equation" disabled={!single} onClick={() => {const current = saved.current?.cloneRange(); if (current) {dismiss(); onMath(current);}}}><Icon name="equation"/></button>
         <span className="selection-divider"/>
+        {onReview&&<button type="button" aria-label="Review with AI" title="Review with AI" disabled={reviewing} onClick={()=>{const current=saved.current;if(current&&restore(current))onReview();dismiss();}}><Icon name="sparkles"/><span className="selection-action-label">Review with AI</span></button>}
         <button type="button" aria-label={explanationAction} title={explanationAction} disabled={explaining || !onExplain} onClick={()=>{const range=saved.current;if(range&&restore(range))onExplain?.();dismiss();}}><Icon name="sparkles"/><span className="selection-action-label">{explanationAction}</span></button>
         <button type="button" className="selection-semantic" title="Apply a semantic function" aria-expanded={semantic} aria-haspopup={mobile ? 'dialog' : undefined} aria-label="Semantic block function" onClick={()=>{picking.current=!semantic;setSemantic(!semantic);setAnnotating(false);setLinking(false);}}><Icon name="semantic"/><span className="selection-action-label">Semantic</span></button>
         <button type="button" className="selection-annotate" disabled={!single} aria-label="Annotate selection" title={single ? 'Connect selection to a knowledge entity' : 'Select text within one block or table cell to annotate'} aria-haspopup={mobile ? 'dialog' : undefined} aria-expanded={annotating} onClick={() => { picking.current = !annotating; setSemantic(false); setAnnotating(!annotating); setLinking(false); setQuery(''); setAliasError(''); }}><Icon name="knowledge"/><span className="selection-action-label">Annotate</span></button>

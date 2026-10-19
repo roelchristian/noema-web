@@ -3401,3 +3401,18 @@ summary.disclosure-summary:focus-visible { outline: 2px solid var(--accent); out
 .source-lifecycle-dialog > p + p { margin-top: 12px; }
 .source-lifecycle-dialog label { display: grid; gap: 8px; margin-top: 16px; font-size: 12px; }
 .source-lifecycle-dialog input { width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--control-border); border-radius: 5px; background: var(--surface-raised); }
+
+.writing-review-modal{width:min(760px,calc(100vw - 32px));max-height:85dvh;padding:0}
+.writing-review-body{padding:20px;overflow:auto;max-height:calc(85dvh - 80px)}
+.writing-review-body>p{margin:0 0 16px;color:var(--text-muted)}
+.writing-review-list{display:grid;gap:16px;margin-top:16px}
+.writing-review-card{border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
+.writing-review-card header,.writing-review-card footer{display:flex;gap:12px;align-items:center;justify-content:space-between}
+.writing-review-card footer{justify-content:flex-start;margin-top:16px;flex-wrap:wrap}
+.writing-review-card summary{cursor:pointer;padding:8px 0}
+.writing-review-text{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65}
+.writing-review-comparison{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.writing-review-comparison>div{min-width:0}
+.writing-review-comparison h3{font-size:13px;color:var(--text-muted)}
+.writing-review-card [role=alert]{color:#b44242}
+@media(max-width:600px){.writing-review-comparison{grid-template-columns:1fr}.writing-review-body{padding:16px}}

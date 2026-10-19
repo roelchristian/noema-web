@@ -1,3 +1,6 @@
+import type {EditorReviewText,EditorReviewSuggestion} from '../../shared/editor-review';
+import {WritingReview} from './WritingReview';
+import {captureWritingReview,writingReviewChanges,type WritingReviewChange} from './writing-review';
 import {inlineMathBlock,mathInlineOptions,recommendedMathInlinePlacement,type MathInlinePlacement} from '../../shared/math-blocks';
 import {TitleText} from '../components/TitleText';
 import {CitationPicker} from './CitationPicker';
@@ -41,7 +44,7 @@ import { completeInlineMath, mathElement } from './math';
 import { completeTypedMarkdown,typedMarkdownBlock } from './markdown-typing';
 import { useMarkdownTyping } from '../state/markdown-preferences';
 import {applyEditorTextFormat,shortcutTextFormat} from './text-formatting';
-interface Props {featuredImageId?: string | null; pages?:PageSummary[];onOpenPage?:(id:string)=>void;onExplain?: (blocks: Block[]) => Promise<string>; reviewMatches?: EntityReviewItem[]; onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[], featuredImageId?: string | null) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
+interface Props {onReview?:(texts:EditorReviewText[])=>Promise<EditorReviewSuggestion[]>;featuredImageId?: string | null; pages?:PageSummary[];onOpenPage?:(id:string)=>void;onExplain?: (blocks: Block[]) => Promise<string>; reviewMatches?: EntityReviewItem[]; onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[], featuredImageId?: string | null) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
 function explanationInsertionIndex(blocks: Block[], ids: string[]) {
   const last=blocks.filter(block=>ids.includes(block.id)).at(-1);
   if(!last)return -1;
@@ -120,6 +123,32 @@ export function BlockEditor(props: Props) {
     }
     props.onChange(normalized, featuredImageId);
   };
+  const [writingReview,setWritingReview]=useState<{loading:boolean;error:string;changes:WritingReviewChange[]}|null>(null);
+  const reviewRequest=useRef(0),reviewPending=useRef(false),reviewBlocks=useRef<Block[]|null>(null);
+  useLayoutEffect(()=>{reviewBlocks.current=null;},[blocks]);
+  async function reviewWriting(ids?:string[]) {
+    if(reviewPending.current||!latest.current.onReview||!root.current)return;
+    const targets=captureWritingReview(root.current,latest.current.blocks,ids);
+    const draft=commitSelection();
+    targets.forEach(target=>{const block=draft.find(block=>block.id===target.blockId);if(block)target.snapshot=JSON.stringify(block.content);});
+    setMenu(null);reviewBlocks.current=null;
+    if(!targets.length){setWritingReview({loading:false,error:'Select prose to review. Code, equations, references, and entity mentions are preserved.',changes:[]});return;}
+    const request=++reviewRequest.current;reviewPending.current=true;
+    setWritingReview({loading:true,error:'',changes:[]});
+    try {
+      const suggestions=await latest.current.onReview(targets.flatMap(target=>target.texts));
+      if(mounted.current&&request===reviewRequest.current)setWritingReview({loading:false,error:'',changes:writingReviewChanges(targets,suggestions)});
+    }catch(error){if(mounted.current&&request===reviewRequest.current)setWritingReview({loading:false,error:error instanceof Error?error.message:'Could not review this text.',changes:[]});}
+    finally{reviewPending.current=false;}
+  }
+  function acceptWritingReview(change:WritingReviewChange) {
+    // Accept-all may apply several corrections before React renders the updated props.
+    const current=reviewBlocks.current??latest.current.blocks;
+    const block=current.find(block=>block.id===change.blockId);
+    if(!block||isAIExplanation(block)||JSON.stringify(block.content)!==change.snapshot)return 'This text changed after the review. Select it again for a fresh review.';
+    const next=current.map(block=>block.id===change.blockId?{...block,content:[...change.before,...change.replacement,...change.after]}:block);
+    reviewBlocks.current=next;latest.current.onChange(next);return null;
+  }
   const [pageLinkStatus,setPageLinkStatus]=useState('');
   const [explaining,setExplaining]=useState(false), [explanationError,setExplanationError]=useState('');
   const [explanationAnchor,setExplanationAnchor]=useState<{ids:string[];index:number}|null>(null);
@@ -464,7 +493,7 @@ export function BlockEditor(props: Props) {
     ], 'BLOCK OPTIONS', true);
   }
   function aiActionChoice(anchor: HTMLElement, ids: string[], back: Choice): Choice {
-    return {title:'AI actions',icon:'sparkles',entity:true,submenu:true,pick:()=>show(anchor,[back,explainChoice(ids)],'AI ACTIONS',true)};
+    return {title:'AI actions',icon:'sparkles',entity:true,submenu:true,pick:()=>show(anchor,[back,...(props.onReview?[{title:reviewPending.current?'Reviewing…':'Review with AI',detail:'Suggest spelling, punctuation, grammar, and phrasing corrections',icon:'sparkles',entity:true,disabled:reviewPending.current,pick:()=>void reviewWriting(ids)}]:[]),explainChoice(ids)],'AI ACTIONS',true)};
   }
   function groupOptions(anchor: HTMLElement, id: string) {
     const children=latest.current.blocks.filter(block=>block.semanticGroup?.id===id || block.id===id && isAIExplanation(block)),locked=children.some(isAIExplanation);
@@ -797,7 +826,8 @@ export function BlockEditor(props: Props) {
     }}>{!explanationAnchorId&&explanationStatus}{renderColumnLayout(blocks)}{uploadCards()}</div>
     <span id="block-drag-help" className="block-drag-sr">Drag to reorder. Click for options. With the handle focused, press Space to pick up, Up or Down to move, Space or Enter to drop, Escape to cancel.</span>
     <div ref={dragStatus} className="block-drag-sr" role="status" aria-live="polite" aria-atomic="true"/>
-    <SelectionToolbar explainLabel={explainLabel} mobile={mobile} keyboardInset={keyboardInset} viewportHeight={viewportHeight} onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
+    {writingReview&&<WritingReview loading={writingReview.loading} error={writingReview.error} changes={writingReview.changes} entities={entities} onAccept={acceptWritingReview} onClose={()=>{++reviewRequest.current;reviewBlocks.current=null;setWritingReview(null);}}/>}
+    <SelectionToolbar onReview={props.onReview?()=>void reviewWriting():undefined} reviewing={writingReview?.loading} explainLabel={explainLabel} mobile={mobile} keyboardInset={keyboardInset} viewportHeight={viewportHeight} onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
     {linkedExplanations.length > 0 && <Modal className="confirmation-dialog linked-explanation-dialog" titleId="linked-explanation-delete-title" onClose={() => setLinkedDeletion([])}>
       <ModalHeader titleId="linked-explanation-delete-title" leading={<Icon name="sparkles"/>} closeLabel="Close and keep explanations">{linkedExplanations.length === 1 ? 'Keep the explanation?' : 'Keep the explanations?'}</ModalHeader>
       <p>{linkedExplanations.length === 1

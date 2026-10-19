@@ -1,3 +1,4 @@
+import {editorReviewInstructions} from './editor-review.js';
 import {sourceMathInstructions} from './source-math.js';
 import { sourcePagePrompt } from './source-page-prompt.js';
 import type { AIDebugTrace, AIRequestObserver } from './ai-debug.js';
@@ -255,7 +256,7 @@ export class Intelligence {
   async reeditSource(input:string,instructions:string,signal:AbortSignal,onRequest?:AIRequestObserver) {
     return this.generate(input,false,onRequest,false,false,false,undefined,true,undefined,false,undefined,undefined,{instructions,signal});
   }
-  async generate(input: string, validate=false, onRequest?: AIRequestObserver, title=false, entityScan=false, explain:boolean|(ReadingExplanationOptions&{signal?:AbortSignal})=false, utility?:{domains:{id:string;name:string}[];currentTitle:string}, background=false,sourcePage?:{onDelta:(delta:string)=>void;signal:AbortSignal;onPreviewDelta?:(delta:string)=>void;onPreviewReset?:()=>void;mathPreparation?:boolean},sourceEnrichment:boolean|'authors'=false,enrichment?:PageEnrichmentOptions,entityStream?:{onDelta:(delta:string)=>void;signal:AbortSignal},editorial?:{instructions:string;signal:AbortSignal}) {
+  async generate(input: string, validate=false, onRequest?: AIRequestObserver, title=false, entityScan=false, explain:boolean|(ReadingExplanationOptions&{signal?:AbortSignal})=false, utility?:{domains:{id:string;name:string}[];currentTitle:string}, background=false,sourcePage?:{onDelta:(delta:string)=>void;signal:AbortSignal;onPreviewDelta?:(delta:string)=>void;onPreviewReset?:()=>void;mathPreparation?:boolean},sourceEnrichment:boolean|'authors'=false,enrichment?:PageEnrichmentOptions,entityStream?:{onDelta:(delta:string)=>void;signal:AbortSignal},editorial?:{instructions:string;signal:AbortSignal},review=false) {
     const credential=this.credential(),selection=editorial?{...this.selection(),reasoningEffort:'none' as const}:enrichment?this.enrichmentSelection():title?this.titleSelection():this.selection(),preferenceRevision=this.preferenceRevision;
     if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
     if(!title&&!entityScan&&!enrichment&&this.active)throw new HttpError(429,'Another AI request is running. Please wait.');
@@ -268,7 +269,7 @@ export class Intelligence {
     const timer=setTimeout(()=>controller.abort(),Math.min(sourcePage||editorial?180000:45000,Date.parse(credential.expiresAt)-this.clock()));
     let trace: AIDebugTrace | undefined;
     try {
-      const prompt=editorial?{instructions:editorial.instructions,input}:sourcePage?.mathPreparation?{instructions:sourceMathInstructions,input:[{role:'user' as const,content:[{type:'input_text' as const,text:input}]}]}:enrichment?pageEnrichmentPrompt(input,enrichment):sourceEnrichment==='authors'?sourceAuthorsPrompt(input):sourceEnrichment?sourceEnrichmentPrompt(input):sourcePage?sourcePagePrompt(input):validate?{instructions:'Reply with OK.',input:'Connection test.'}:title?titlePrompt(input,utility?.domains,utility?.currentTitle):entityScan?entityScanPrompt(input):explain?explanationPrompt(input,typeof explain==='object'?explain:undefined):summaryPrompt(input);
+      const prompt=review?{instructions:editorReviewInstructions,input}:editorial?{instructions:editorial.instructions,input}:sourcePage?.mathPreparation?{instructions:sourceMathInstructions,input:[{role:'user' as const,content:[{type:'input_text' as const,text:input}]}]}:enrichment?pageEnrichmentPrompt(input,enrichment):sourceEnrichment==='authors'?sourceAuthorsPrompt(input):sourceEnrichment?sourceEnrichmentPrompt(input):sourcePage?sourcePagePrompt(input):validate?{instructions:'Reply with OK.',input:'Connection test.'}:title?titlePrompt(input,utility?.domains,utility?.currentTitle):entityScan?entityScanPrompt(input):explain?explanationPrompt(input,typeof explain==='object'?explain:undefined):summaryPrompt(input);
       const inputText=typeof prompt.input==='string'?prompt.input:prompt.input.flatMap(item=>item.content.map(part=>part.text)).join('');
       const observer=onRequest?.(Buffer.byteLength(prompt.instructions+inputText,'utf8'));
       trace=redactedTrace(observer,credential.key);

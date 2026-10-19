@@ -16,7 +16,7 @@ type Entry=ReturnType<typeof sourceDocumentEntries>[number];
 interface Props {
   vaultId:string;source:Entity;entities:Entity[];onOpenEntity:(id:string)=>void;
   onCreatePageFromSource:(source:Entity)=>void;onError:(message:string)=>void;
-  onAddPassage:(reference:SourceReference)=>void;onAnnotate:(reference:SourceReference)=>void;onReadingNoteCreated:(page:Page)=>void;onOpenReadingNote:(id:string)=>void;
+  onAddPassage:(reference:SourceReference)=>void;onAnnotate:(reference:SourceReference)=>void;onReadingNoteCreated:(page:Page)=>void;onOpenReadingNote:(id:string)=>void;onRemoveReadingNote:(note:ReadingNoteAnchor)=>void;
 }
 function passageReference(file:LoadedFile,entry:Entry):SourceReference {
   const {node,path}=entry;
@@ -29,7 +29,7 @@ function passageReference(file:LoadedFile,entry:Entry):SourceReference {
 function passageAnchor(fileId:string,nodeId:string){return `source-passage-${encodeURIComponent(fileId)}-${encodeURIComponent(nodeId)}`;}
 
 /** Reading and citation state is deliberately separate from the editable page lifecycle. */
-export function SourceReader({vaultId,source,onCreatePageFromSource,onError,onAddPassage,onAnnotate,onReadingNoteCreated,onOpenReadingNote}:Props) {
+export function SourceReader({vaultId,source,onCreatePageFromSource,onError,onAddPassage,onAnnotate,onReadingNoteCreated,onOpenReadingNote,onRemoveReadingNote}:Props) {
   const [files,setFiles]=useState<SourceFile[]|null>(null),[fileId,setFileId]=useState('');
   const [loaded,setLoaded]=useState<LoadedFile|null>(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
   const [selected,setSelected]=useState<string|null>(null),[copied,setCopied]=useState(false);
@@ -129,7 +129,7 @@ export function SourceReader({vaultId,source,onCreatePageFromSource,onError,onAd
     {loaded&&<div className="source-reader-layout">
       <div className="source-reader-content">
         {reference&&<aside className="source-reader-selection" aria-label="Selected passage"><div className="source-reader-selection-heading"><strong>Selected passage</strong><button type="button" aria-label="Clear selected passage" onClick={()=>setSelected(null)}><Icon name="close"/></button></div><small>{citationLocation(reference)}</small><blockquote>{reference.excerpt}</blockquote><div className="source-reader-selection-actions"><button className="button small" type="button" onClick={()=>void copyCitation()}>{copied?'Copied':'Copy citation'}</button><button className="button small" type="button" onClick={()=>onAddPassage(reference)}>Add to page</button><button className="button small" type="button" onClick={()=>onAnnotate(reference)}>Annotate</button></div><span role="status" className="sr-only">{copied?'Citation copied':''}</span></aside>}
-        <SourceReadingTools key={`tools:${loaded.id}:${loaded.textHash}`} file={loaded} article={article} highlights={highlights} onHighlight={highlight=>setHighlights(items=>[...items.filter(item=>item.id!==highlight.id),highlight])} onNoteCreated={readingNoteCreated}/>
+        <SourceReadingTools key={`tools:${loaded.id}:${loaded.textHash}`} file={loaded} article={article} highlights={highlights} onHighlight={highlight=>setHighlights(items=>[...items.filter(item=>item.id!==highlight.id),highlight])} onHighlightRemoved={id=>setHighlights(items=>items.filter(item=>item.id!==id))} onNoteCreated={readingNoteCreated}/>
         <article ref={article} className="source-reader-document" aria-label={source.name}>
           {entries.length?entries.map(({node,path})=>{
             const Heading=(node.kind==='chapter'||node.level===1?'h2':node.kind==='subsection'||(node.level??0)>2?'h4':'h3');
@@ -139,7 +139,7 @@ export function SourceReader({vaultId,source,onCreatePageFromSource,onError,onAd
               {node.text===undefined?<Heading><SourceReaderInline text={node.title??''} startOffset={node.range.startOffset} highlights={highlights}/></Heading>:<SourceReaderText text={node.text} kind={node.kind} startOffset={node.range.startOffset} highlights={highlights}/>}
             </section>;
           }):loaded.text.trim()?<SourceReaderText text={loaded.text} startOffset={0} highlights={highlights}/>:<p className="source-reader-status">No readable text was extracted from this attachment.</p>}
-          <SourceReadingNoteMarkers article={article} notes={readingNotes} onOpen={onOpenReadingNote}/>
+          <SourceReadingNoteMarkers article={article} notes={readingNotes} onOpen={onOpenReadingNote} onRemove={onRemoveReadingNote}/>
         </article>
         <SourceReadingNavigation key={`navigation:${loaded.id}:${loaded.textHash}`} article={article} text={loaded.text} document={loaded.document}/>
       </div>

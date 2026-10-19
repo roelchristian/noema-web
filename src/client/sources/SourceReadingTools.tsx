@@ -31,7 +31,7 @@ function selectedPassage(root:HTMLElement,file:ReadingFile):SelectedPassage|null
   const box=range.getBoundingClientRect();if(!box.width&&!box.height)return null;
   return {selection:{sourceId:file.entity_id!,fileId:file.id,sourceHash:file.textHash,startOffset:start,endOffset:end,excerpt},box:{left:box.left,right:box.right,top:box.top,bottom:box.bottom}};
 }
-export function SourceReadingTools({file,article,highlights,onHighlight,onNoteCreated}:{file:ReadingFile;highlights:SourceHighlight[];article:RefObject<HTMLElement|null>;onHighlight:(highlight:SourceHighlight)=>void;onNoteCreated:(page:Page)=>void}) {
+export function SourceReadingTools({file,article,highlights,onHighlight,onHighlightRemoved,onNoteCreated}:{file:ReadingFile;highlights:SourceHighlight[];article:RefObject<HTMLElement|null>;onHighlight:(highlight:SourceHighlight)=>void;onHighlightRemoved:(id:string)=>void;onNoteCreated:(page:Page)=>void}) {
   const [selected,setSelected]=useState<SelectedPassage|null>(null),[note,setNote]=useState<SourceSelection|null>(null);
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
   const menu=useRef<HTMLDivElement>(null),selectionRef=useRef(selected);selectionRef.current=selected;
@@ -110,6 +110,15 @@ export function SourceReadingTools({file,article,highlights,onHighlight,onNoteCr
     }catch(cause){setError(cause instanceof Error?cause.message:String(cause));}
     finally{busyRef.current=false;setBusy(false);}
   }
+  async function removeHighlight() {
+    const id=selectionRef.current?.highlightId;if(!id||busyRef.current)return;
+    busyRef.current=true;setBusy(true);setError('');setNotice('');
+    try {
+      await request<{ok:true}>(`source-files/${encodeURIComponent(file.id)}/highlights/${encodeURIComponent(id)}`,'DELETE',undefined,file.vault_id);
+      dismissSelection();setNotice('Highlight removed.');onHighlightRemoved(id);
+    }catch(cause){setError(cause instanceof Error?cause.message:String(cause));}
+    finally{busyRef.current=false;setBusy(false);}
+  }
   return <>
     {selected&&<div ref={menu} className={"source-reading-menu"+(note?" is-composing":"")} role={note?"dialog":"toolbar"} aria-label={note?"Add reading note":"Source selection actions"} aria-modal={note?false:undefined} style={position} onPointerDown={event=>{if(!note)event.preventDefault();}} onKeyDown={event=>{
       if(note){if(event.key==='Escape'){event.preventDefault();event.stopPropagation();}return;}
@@ -121,6 +130,7 @@ export function SourceReadingTools({file,article,highlights,onHighlight,onNoteCr
       <span className="source-reading-menu-label">{selected.highlightId?'Change highlight color':'Highlight passage'}</span>
       <div className="source-highlight-colors">{highlightColors.map(color=><button type="button" key={color} className="source-highlight-color" data-color={color} title={`Highlight ${color}`} aria-label={`${selected.highlightId?'Change highlight to':'Highlight passage'} ${color}`} aria-pressed={selected.highlightId?selected.color===color:undefined} disabled={busy} onClick={()=>void highlight(color)}/>)}</div>
       <button type="button" className="source-reading-note-action" disabled={busy} onClick={()=>{setNote(selected.selection);setError('');}}>Add reading note</button>
+      {selected.highlightId&&<button type="button" className="source-reading-note-action source-reading-remove-action" disabled={busy} onClick={()=>void removeHighlight()}><Icon name="trash"/>Remove highlight</button>}
       {error&&<p role="alert">{error}</p>}
       </>}
     </div>}

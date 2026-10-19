@@ -55,8 +55,8 @@ export class Workspace {
     (original, title,pageDomains,metadata) => {
       const cached = this.pageCache.get(original.id);
       if (!cached || this.state.draftRecoveries.some(item=>item.vaultId===original.vault_id&&item.pageId===original.id) || cached.editLocked || cached.revision!==original.revision || this.pageLockPending || cached.vault_id !== original.vault_id || this.state.vault?.locked) return;
-      const page = {...cached, title:cached.title===original.title?title:cached.title,...(metadata?{enrichmentPending:metadata.enrichmentPending,enrichmentFields:metadata.enrichmentFields,summaryContentHash:metadata.summaryContentHash,language:metadata.language}:{}),...(pageDomains && !(cached.pageDomains?.origin==='manual' && pageDomains.origin!=='manual') && pageDomains.revision>=(cached.pageDomains?.revision??0)?{pageDomains}:{})};
-      const fields = (value:Page) => [value.title,value.pageDomains,value.enrichmentPending,value.enrichmentFields,value.summaryContentHash,value.language];
+      const page = {...cached, title:cached.title===original.title?title:cached.title,...(metadata?{enrichmentPending:metadata.enrichmentPending,enrichmentPendingFields:metadata.enrichmentPendingFields,enrichmentFields:metadata.enrichmentFields,summaryContentHash:metadata.summaryContentHash,language:metadata.language}:{}),...(pageDomains && !(cached.pageDomains?.origin==='manual' && pageDomains.origin!=='manual') && pageDomains.revision>=(cached.pageDomains?.revision??0)?{pageDomains}:{})};
+      const fields = (value:Page) => [value.title,value.pageDomains,value.enrichmentPending,value.enrichmentPendingFields,value.enrichmentFields,value.summaryContentHash,value.language];
       if(JSON.stringify(fields(page))===JSON.stringify(fields(cached)))return;
       this.pageCache.set(page.id, page);
       this.patch({pages: this.state.pages.map(item => item.id === page.id ? {...item, title:page.title} : item),
@@ -77,7 +77,7 @@ export class Workspace {
       const cached = this.pageCache.get(saved.id);
       if (cached) {
         const unchanged = JSON.stringify(cached.blocks) === JSON.stringify(original.blocks);
-        const page = {...cached, title:cached.title===original.title?saved.title:cached.title,enrichmentPending:saved.enrichmentPending,enrichmentFields:saved.enrichmentFields,language:saved.language,aiReviewAccepted:!!(cached.aiReviewAccepted||saved.aiReviewAccepted), aiStatus:nextPageAIStatus(saved,cached,id=>entityMentionName(this.state.entities.find(entity=>entity.id===id))), ...(unchanged && !this.state.reviewing && canIdentifyEntities() ? {blocks: saved.blocks} : {}), pageDomains:saved.pageDomains,conceptClassification:saved.conceptClassification,conceptContentHash:unchanged?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at};
+        const page = {...cached, title:cached.title===original.title?saved.title:cached.title,enrichmentPending:saved.enrichmentPending,enrichmentPendingFields:saved.enrichmentPendingFields,enrichmentFields:saved.enrichmentFields,language:saved.language,aiReviewAccepted:!!(cached.aiReviewAccepted||saved.aiReviewAccepted), aiStatus:nextPageAIStatus(saved,cached,id=>entityMentionName(this.state.entities.find(entity=>entity.id===id))), ...(unchanged && !this.state.reviewing && canIdentifyEntities() ? {blocks: saved.blocks} : {}), pageDomains:saved.pageDomains,conceptClassification:saved.conceptClassification,conceptContentHash:unchanged?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at};
         this.pageCache.set(saved.id, page);
         if(!this.pageLockPending)this.titler.observe(page, unchanged);
       }

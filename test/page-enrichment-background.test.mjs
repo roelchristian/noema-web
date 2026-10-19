@@ -24,6 +24,7 @@ test('legacy background requests observe queue state without dispatching or rese
   }
   try {
     let page=await call('pages','POST',{title:'Untitled'},201);
+    assert.equal(page.enrichmentPending,true);assert.ok(page.enrichmentPendingFields.includes('summary'));assert.ok(page.enrichmentPendingFields.includes('domains'));
     page=await call(`pages/${page.id}`,'PUT',{...page,blocks:[{id:'body',type:'paragraph',content:[{text:'A substantial page about mathematical proofs and polynomial equations.'}]}]});
     const route=`pages/${page.id}`;
     // A retrying server generation is the sole owner of this saved snapshot's budget.
@@ -38,6 +39,7 @@ test('legacy background requests observe queue state without dispatching or rese
       const metadata=await call(`${route}/metadata`);
       assert.equal(metadata.title,'Untitled');assert.equal(metadata.revision,page.revision);assert.equal(metadata.enrichmentPending,true);
       assert.equal(metadata.blocks,undefined);assert.equal(metadata.entityMatchCache,undefined);
+      assert.deepEqual(metadata.enrichmentPendingFields,['title','domains','language','summary']);
     }
     assert.equal(calls,0);
     assert.deepEqual(store.get('SELECT * FROM page_enrichment_jobs WHERE page_id=?',page.id),queued);

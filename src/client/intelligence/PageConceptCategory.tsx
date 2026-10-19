@@ -10,6 +10,7 @@ export function PageConceptCategory({page, onDomainsChange,onRefresh}: {page: Pa
   const [refreshed,setRefreshed]=useState<PageDomains|null>(null);
   useEffect(()=>{setRefreshed(null);},[page.id,page.revision,page.pageDomains?.revision]);
   const domains = refreshed??page.pageDomains;
+  const categorizing=busy||domains?.origin!=='manual'&&!!page.enrichmentPendingFields?.includes('domains');
   const status = domains?.status === 'needs_refresh' ? 'Needs refresh' : domains?.status === 'manual' ? 'Manual' : domains?.status === 'inferred' ? 'Inferred' : 'Unclassified';
   async function refresh() {
     setBusy(true);setError('');
@@ -30,6 +31,6 @@ export function PageConceptCategory({page, onDomainsChange,onRefresh}: {page: Pa
       <DomainPicker label={uiText("Secondary subjects")} value={secondary} max={2} onChange={value => setSecondary(value.filter(id => id !== primary[0]))} disabled={busy}/>
       {error && <p className="inline-error" role="alert">{error}</p>}
       <div className="page-domain-actions"><button type="button" className="button small" disabled={busy} onClick={() => setEditing(false)}>{uiText("Cancel")}</button><button type="button" className="button small primary" disabled={busy} onClick={() => void save()}>{busy ? uiText("Saving…") : uiText("Save subjects")}</button></div>
-    </div> : <div className="page-domain-summary">{[...(domains?.primaryDomainId?[domains.primaryDomainId]:[]),...(domains?.secondaryDomainIds??[])].map((id,index)=><span className={'knowledge-subject-chip'+(index===0&&domains?.primaryDomainId?' is-primary':'')} key={id} title={domainBreadcrumb(id)}>{domainBreadcrumb(id).split(' → ').at(-1)}</span>)}{!domains?.primaryDomainId&&!domains?.secondaryDomainIds.length&&<span className="knowledge-empty">{uiText("Unclassified")}</span>}{error&&<p className="inline-error" role="alert">{error}</p>}</div>}
+    </div> : <div className="page-domain-summary">{[...(domains?.primaryDomainId?[domains.primaryDomainId]:[]),...(domains?.secondaryDomainIds??[])].map((id,index)=><span className={'knowledge-subject-chip'+(index===0&&domains?.primaryDomainId?' is-primary':'')} key={id} title={domainBreadcrumb(id)}>{domainBreadcrumb(id).split(' → ').at(-1)}</span>)}{!domains?.primaryDomainId&&!domains?.secondaryDomainIds.length&&<span className="knowledge-empty" role={categorizing?'status':undefined}>{uiText(categorizing?"Categorizing this page...":"Unclassified")}</span>}{error&&<p className="inline-error" role="alert">{error}</p>}</div>}
   </section>;
 }

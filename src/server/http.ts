@@ -331,7 +331,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
           }
           if(collection==='trash') {
             if(parts.length===2 && method==='GET')return send(200,pages.trash(vault));
-            if(id && parts.length===4 && child==='restore' && method==='POST'){const page=pages.restore(vault,id);embeddings.onSave(vault,id);scheduleEnrichment(vault,page);return send(200,page);}
+            if(id && parts.length===4 && child==='restore' && method==='POST'){const page=pages.restore(vault,id);embeddings.onSave(vault,id);scheduleEnrichment(vault,page);return send(200,pages.get(vault,page.id));}
             if(id && parts.length===3 && method==='DELETE')return send(200,pages.permanentlyDelete(vault,id));
           }
           if(collection==='organization') {
@@ -451,8 +451,8 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               return send(200,{...page,entityMatchCache:entityMatches.get(vault,id,page.revision)});
             }
             if(id && child==='metadata' && parts.length===4 && method==='GET') {
-              const {id:pageId,vault_id,title,revision,pageDomains,summaryContentHash,enrichmentPending,enrichmentFields,language}=pages.get(vault,id);
-              return send(200,{id:pageId,vault_id,title,revision,pageDomains,summaryContentHash,enrichmentPending,enrichmentFields,language});
+              const {id:pageId,vault_id,title,revision,pageDomains,summaryContentHash,enrichmentPending,enrichmentPendingFields,enrichmentFields,language}=pages.get(vault,id);
+              return send(200,{id:pageId,vault_id,title,revision,pageDomains,summaryContentHash,enrichmentPending,enrichmentPendingFields,enrichmentFields,language});
             }
             if(id && child==='entity-matches' && parts.length===4) {
               if(method==='GET') {
@@ -463,10 +463,10 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               if(method==='POST') return send(200,entityMatches.resolve(vault,id,body));
             }
             if(parts.length===2 && method==='GET')return send(200,pages.list(vault));
-            if(parts.length===2 && method==='POST'){const page=pages.create(vault,body);embeddings.onSave(vault,page.id);scheduleEnrichment(vault,page);return send(201,page);}
+            if(parts.length===2 && method==='POST'){const page=pages.create(vault,body);embeddings.onSave(vault,page.id);scheduleEnrichment(vault,page);return send(201,pages.get(vault,page.id));}
             if(id && parts.length===3) {
               if(method==='GET')return send(200,pages.get(vault,id));
-              if(method==='PUT'){const page=pages.update(vault,id,body);embeddings.onSave(vault,id);scheduleEnrichment(vault,page);return send(200,page);}
+              if(method==='PUT'){const page=pages.update(vault,id,body);embeddings.onSave(vault,id);scheduleEnrichment(vault,page);return send(200,pages.get(vault,page.id));}
               if(method==='DELETE'){const result=pages.delete(vault,id);embeddings.invalidate(vault,id);return send(200,result);}
             }
           }

@@ -112,3 +112,33 @@ test('the visible summary refreshes on its timer without any activity notificati
     await act(async()=>t.mock.timers.tick(1));assert.equal(document.querySelector('#knowledge-summary-text').textContent,'Completed summary');
   });
 });
+test('empty summary and subject placeholders reflect only their queued fields and clear when results arrive',async t=>{
+  await panelFixture(t,async({render})=>{
+    let items=[];t.mock.method(api,'enrichments',async()=>items);
+    const pending={...note(),enrichmentPending:true,enrichmentPendingFields:['summary','domains']};
+    await act(async()=>render(pending));
+    assert.equal(document.querySelector('.knowledge-summary [role="status"]').textContent,'Generating summary...');
+    assert.equal(document.querySelector('.page-domain-summary [role="status"]').textContent,'Categorizing this page...');
+    assert.doesNotMatch(document.querySelector('.page-domain-summary').textContent,/Unclassified/);
+    // A classification-only cooldown must not claim summary generation is running.
+    await act(async()=>render({...pending,enrichmentPendingFields:['domains']}));
+    assert.equal(document.querySelector('.knowledge-summary .knowledge-empty').textContent,'No AI summary available yet.');
+    assert.equal(document.querySelector('.page-domain-summary [role="status"]').textContent,'Categorizing this page...');
+    items=summary('Completed summary');
+    await act(async()=>{render({...pending,pageDomains:domains,enrichmentPending:false,enrichmentPendingFields:[]});window.dispatchEvent(new Event('focus'));});
+    assert.equal(document.querySelector('#knowledge-summary-text').textContent,'Completed summary');
+    assert.doesNotMatch(document.querySelector('#intelligence-panel').textContent,/Generating summary\.\.\.|Categorizing this page\.\.\./);
+  });
+});
+test('manual summary generation shows the same visible progress placeholder before its result arrives',async t=>{
+  await panelFixture(t,async({dom,render})=>{
+    t.mock.method(api,'enrichments',async()=>[]);
+    let finish;t.mock.method(api,'summarize',async()=>new Promise(resolve=>{finish=resolve;}));
+    await act(async()=>render(note()));
+    await act(async()=>document.querySelector('[aria-label="Summarize this page"]').dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})));
+    assert.equal(document.querySelector('.knowledge-summary [role="status"]').textContent,'Generating summary...');
+    await act(async()=>finish({summary:'Manual summary',revision:1,model:'test',reasoningEffort:'low'}));
+    assert.equal(document.querySelector('#knowledge-summary-text').textContent,'Manual summary');
+    assert.equal(document.querySelector('.knowledge-summary .knowledge-empty'),null);
+  });
+});

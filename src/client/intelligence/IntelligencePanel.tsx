@@ -83,6 +83,7 @@ function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnap
     finally{if(active.current)setDeleting(false);}
   }
   const summaryChanged = !!result && (!result.contentHash || result.contentHash !== page.summaryContentHash);
+  const generatingSummary=busy||!!page.enrichmentPendingFields?.includes('summary');
   return <aside inert={inactive} aria-busy={inactive} className="entity-panel intelligence-panel" id="intelligence-panel" aria-label={uiText("Knowledge")} onKeyDown={event=>{if(event.key==='Escape')onClose();}}>
     <div className="panel-top knowledge-panel-top"><span><Icon name="knowledge"/>{uiText("Knowledge")}</span><div className="knowledge-panel-actions"><button className="page-tool" aria-label={uiText("Knowledge settings")} title={uiText("Knowledge settings")} onClick={onSettings}><Icon name="settings"/></button><button className="page-tool" data-close-knowledge aria-label={uiText("Close Knowledge panel")} title={uiText("Close Knowledge panel")} onClick={onClose}><Icon name="close"/></button></div></div>
     <div className="panel-body">
@@ -96,7 +97,8 @@ function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnap
             {result&&<button type="button" className="knowledge-icon-action is-destructive" disabled={busy||deleting||loading} aria-label={uiText("Delete summary")} title={uiText("Delete summary")} onClick={()=>void deleteSummary()}><Icon name="trash"/></button>}
           </div>
         </div>
-        {busy&&<span className="sr-only" role="status">{uiText("Creating your summary…")}</span>}
+        {busy&&result&&<span className="sr-only" role="status">{uiText("Creating your summary…")}</span>}
+        {!result&&<p className="knowledge-empty" role={generatingSummary?'status':undefined}>{uiText(generatingSummary?"Generating summary...":"No AI summary available yet.")}</p>}
         {error&&<p role="alert" className="inline-error">{error}</p>}
         {result&&<section className="ai-result" aria-label={uiText("Page summary")}><div id="knowledge-summary-text" ref={summaryText} className={'ai-summary' + (summaryExpanded ? '' : ' is-collapsed')}><SummaryText text={result.summary}/></div></section>}
 

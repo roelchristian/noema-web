@@ -2684,6 +2684,16 @@
     "Deine Zusammenfassung wird erstellt…",
     "Creando tu resumen…"
   ],
+  "Generating summary...": [
+    "Génération du résumé…",
+    "Zusammenfassung wird erstellt…",
+    "Generando resumen…"
+  ],
+  "Categorizing this page...": [
+    "Catégorisation de cette page…",
+    "Diese Seite wird kategorisiert…",
+    "Categorizando esta página…"
+  ],
   "Summary needs refresh": [
     "Le résumé doit être actualisé",
     "Zusammenfassung muss aktualisiert werden",

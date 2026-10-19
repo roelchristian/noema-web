@@ -9,6 +9,7 @@ import { api } from '../api';
 import { useEntitySchema } from '../knowledge/useEntitySchema';
 import { Icon } from '../components/Icon';
 import { Modal, ModalHeader } from '../components/Modal';
+import {AliasInput,parseAliases} from '../knowledge/AliasInput';
 
 function ReviewConfirmation({feedback,inline=false}:{feedback:ReviewFeedback;inline?:boolean}) {
   return <div className={'entity-review-confirmation'+(inline?' entity-review-confirmation-inline':'')} role="status" title={feedback.detail}>
@@ -26,9 +27,8 @@ export function EntityScanReview({page,scan:savedScan,onScan,onFlush,onReview,di
   const [open,setOpen]=useState(false),[operation,setOperation]=useState<{ids:string[];decision?:Decision}|null>(null);
   const [selected,setSelected]=useState<string[]>([]),[filter,setFilter]=useState<'all'|'pending'|'reviewed'>('all'),[query,setQuery]=useState('');
   const [editingId,setEditingId]=useState<string|null>(null);
-  const [aliasInputs,setAliasInputs]=useState<Record<string,string>>({});
   const [drafts,setDrafts]=useState<Record<string,EntitySuggestionEdit>>({});
-  useEffect(()=>{setDrafts({});setAliasInputs({});setEditingId(null);},[scan?.id]);
+  useEffect(()=>{setDrafts({});setEditingId(null);},[scan?.id]);
   const [feedback,setFeedback]=useState<ReviewFeedback|null>(null);
   useEffect(()=>{
     if(!feedback) return;
@@ -123,7 +123,7 @@ export function EntityScanReview({page,scan:savedScan,onScan,onFlush,onReview,di
                 editSuggestion(entity?{id:s.id,name:entity.name,aliases:draft.aliases??[],type:entity.type,subtypes:entity.subtypes,domainIds:entity.domainIds||[],existingId:entity.id}:{...draft,existingId:null});
               }}><option value="">Create new entity</option>{entities.map(entity=><option key={entity.id} value={entity.id}>{entity.name} · {entityLabels[entity.type]}</option>)}</Select></label>
               <label>Name<input aria-label={'Entity name for '+s.name} maxLength={200} value={draft.name} readOnly={!!draft.existingId} disabled={locked||stale} onChange={e=>editSuggestion({...draft,name:e.target.value})}/></label>
-              <label>Aliases<input aria-label={'Aliases for '+s.name} placeholder="Separate aliases with semicolons" value={aliasInputs[s.id]??(draft.aliases??[]).join('; ')} disabled={locked||stale||draft.type==='source'} onChange={e=>{setAliasInputs(current=>({...current,[s.id]:e.target.value}));editSuggestion({...draft,aliases:e.target.value.split(';').map(alias=>alias.trim()).filter(Boolean)});}}/></label>
+              <AliasInput value={(draft.aliases??[]).join('\n')} onChange={value=>editSuggestion({...draft,aliases:parseAliases(value)})} disabled={locked||stale||draft.type==='source'} maxAliases={20} compact/>
               <label>Category<Select aria-label={'Category for '+s.name} value={draft.type} disabled={locked||stale||!!draft.existingId} onChange={e=>editSuggestion({...draft,type:e.target.value as EntityType,subtypes:[],domainIds:[]})}>{entityTypes.map(type=><option value={type} key={type}>{entityLabels[type]}</option>)}</Select></label>
             </div>
             <fieldset className="entity-review-edit-subtypes" disabled={locked||stale||!!draft.existingId}><legend>Subtypes</legend><div>{schema.subtypes.filter(type=>type.type===draft.type).map(type=><label key={type.id}><input type="checkbox" checked={draft.subtypes.includes(type.id)} onChange={e=>editSuggestion({...draft,subtypes:e.target.checked?[...draft.subtypes,type.id]:draft.subtypes.filter(id=>id!==type.id)})}/>{type.name}</label>)}{!schema.subtypes.some(type=>type.type===draft.type)&&<span>No subtypes available</span>}</div></fieldset>

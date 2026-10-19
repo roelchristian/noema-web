@@ -1175,9 +1175,24 @@ main:has(> #content > .page) { display: flex; flex-direction: column; }
 .editor-save-status > .icon, .editor-save-status > .scan-spinner { width: 14px; height: 14px; flex-shrink: 0; }
 .editor-save-status.is-error { color: var(--palette-rose-text); }
 
-.entity-alias-input { display: block; margin: 16px 0; font-size: 11px; color: var(--text-muted); }
-#entity-form .entity-alias-input textarea, .entity-alias-input textarea { display: block; width: 100%; min-height: 64px; margin: 7px 0; padding: 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--text); font-size: 12px; resize: vertical; }
+.entity-alias-input { display: grid; align-content: start; gap: 7px; min-width: 0; margin: 16px 0; font-size: 11px; color: var(--text-muted); }
+.entity-alias-input > label { margin: 0; font-size: 11px; color: var(--text-muted); }
+.entity-alias-input .entity-alias-list { display: grid; gap: 0; max-height: 216px; overflow-y: auto; margin: 0; padding: 0; list-style: none; border: 1px solid var(--control-border); border-radius: 7px; }
+.entity-alias-list > li { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 3px 5px 3px 10px; color: var(--text); font-size: 12px; }
+.entity-alias-list > li + li { border-top: 1px solid var(--line); }
+.entity-alias-list > li > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.entity-alias-list button { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 6px; border-radius: 5px; color: var(--text-muted); }
+.entity-alias-list button:hover:not(:disabled) { background: var(--surface-hover); color: var(--text); }
+.entity-alias-list .icon { width: 16px; height: 16px; }
+.entity-alias-add { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.entity-alias-input .entity-alias-add > input { display: block; flex: 1; width: 100%; min-width: 0; min-height: 36px; margin: 0; padding: 8px 10px; border: 1px solid var(--control-border); border-radius: 7px; background: var(--surface); color: var(--text); font: 12px/1.5 var(--font-ui); }
+.entity-alias-add > button { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 4px; min-height: 36px; padding: 7px 9px; border: 1px solid var(--control-border); border-radius: 7px; background: var(--surface-raised); color: var(--text); font-size: 11px; }
+.entity-alias-add > button:hover:not(:disabled) { background: var(--surface-hover); }
+.entity-alias-add .icon { width: 14px; height: 14px; }
+.entity-alias-input button:disabled { cursor: default; }
 .entity-alias-input small { font-size: 10px; line-height: 1.5; }
+.create-entity-fields > .entity-alias-input, .entity-form-group > .entity-alias-input, .entity-review-editor-fields > .entity-alias-input { margin: 0; }
+@media(max-width:750px) { .entity-alias-input .entity-alias-add > input { font-size: 16px; min-height: 44px; } .entity-alias-add > button { min-height: 44px; } .entity-alias-list button { width: 36px; height: 36px; } }
 .entity-match-review { --review-ink: #8a6719; --review-fill: #fff8df; margin: 0 0 24px; padding: 10px 12px; border: 1px solid #e9d99f; border-radius: 6px; background: var(--review-fill); color: var(--review-ink); font-size: 11px; }
 .entity-review-notice { width: 100%; padding: 0; color: inherit; text-align: left; display: flex; align-items: center; gap: 7px; cursor: pointer; font-weight: 500; list-style: none; }
 
@@ -2338,8 +2353,7 @@ dialog.create-entity-dialog { width: 420px; max-width: calc(100vw - 32px); max-h
 .create-entity-header > button > .icon { width: 16px; height: 16px; }
 .create-entity-fields { display: grid; gap: 20px; min-width: 0; padding: 20px; }
 .create-entity-fields > label, .create-entity-fields .source-attachments > label { display: grid; gap: 8px; margin: 0; min-width: 0; color: var(--text-muted); font-size: 11px; }
-.create-entity-fields > label > input, .create-entity-fields .source-attachments > label > input:not([type=file]), .create-entity-fields .entity-alias-input textarea { width: 100%; margin: 0; padding: 9px 10px; border: 1px solid var(--control-border); border-radius: 5px; background: var(--surface); color: var(--text); font: 12px/1.6 var(--font-ui); }
-.create-entity-fields .entity-alias-input textarea { min-height: 64px; resize: vertical; }
+.create-entity-fields > label > input, .create-entity-fields .source-attachments > label > input:not([type=file]) { width: 100%; margin: 0; padding: 9px 10px; border: 1px solid var(--control-border); border-radius: 5px; background: var(--surface); color: var(--text); font: 12px/1.6 var(--font-ui); }
 .create-entity-fields .entity-alias-input small { color: var(--text-muted); font-size: 10px; line-height: 1.6; }
 .create-entity-fields .select-control { display: flex; width: 100%; margin: 0; }
 .create-entity-fields .select-trigger { min-height: 38px; padding: 9px 10px; border: 1px solid var(--control-border); border-radius: 5px; background: var(--surface); font-size: 12px; }
@@ -2363,7 +2377,7 @@ dialog.create-entity-dialog { width: 420px; max-width: calc(100vw - 32px); max-h
 .create-entity-actions .button { min-height: 34px; padding: 7px 12px; font-size: 12px; }
 @media (max-width: 750px) {
   .create-entity-header, .create-entity-fields { padding: 16px; }
-  .create-entity-fields > label > input, .create-entity-fields .source-attachments > label > input:not([type=file]), .create-entity-fields .entity-alias-input textarea { font-size: 16px; }
+  .create-entity-fields > label > input, .create-entity-fields .source-attachments > label > input:not([type=file]) { font-size: 16px; }
   .create-entity-header > button { width: 44px; height: 44px; padding: 12px; }
   .create-entity-fields .select-trigger, .create-entity-actions .button { min-height: 44px; }
   .create-entity-actions { padding: 12px 16px; }

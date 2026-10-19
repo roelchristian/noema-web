@@ -7,6 +7,7 @@
   /* Fonts and shared theme colors */
   --font-ui: -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;
   --font-title: Geist,var(--font-ui);
+  --font-mono: "IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   --green: #171717;
   --muted: #888;
   --line: #e9e9e9;
@@ -23,10 +24,16 @@
   --scrollbar-thumb: color-mix(in srgb, var(--text-muted) 20%, transparent);
   --scrollbar-thumb-hover: color-mix(in srgb, var(--text-muted) 35%, transparent);
 
-  /* Editor body text; independent of interface labels and document headings. */
-  --editor-font-size: 14px;
-  --editor-line-height: 1.75;
-  --editor-letter-spacing: -0.005em;
+  /* Shared editor and source-reader prose; width excludes layout gutters. */
+  --document-line-width: 630px;
+  --document-font-size: 15px;
+  --document-line-height: 1.75;
+  --document-letter-spacing: -0.01em;
+
+  /* Each view adds its own gutters around the shared prose width. */
+  --editor-page-padding-inline: 65px;
+  --source-reader-address-gutter: 100px;
+  --source-reader-note-gutter: 40px;
 
   /* Document headings stay separate from UI text */
   --page-heading-size: 1.25rem;
@@ -112,9 +119,17 @@
   --action-border: color-mix(in srgb,var(--accent) 28%,var(--control-border));
 }
 
+@media (max-width: 1150px) {
+  :root {
+    --editor-page-padding-inline: 45px;
+  }
+}
+
 @media (max-width: 750px) {
   :root {
-    --editor-font-size: 17px;
+    --document-font-size: 17px;
+    --editor-page-padding-inline: 24px;
+    --source-reader-address-gutter: 64px;
     --page-heading-size: 26px;
     --page-heading-line-height: 1.35;
     --workspace-toolbar-height: 48px;

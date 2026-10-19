@@ -23,6 +23,20 @@ function fixture(env) {
   ]});
   return {donald,ivanka,page};
 }
+test('obsolete review caches are replaced and unique one-word concepts do not need review', () => {
+  const env = setup();
+  try {
+    const entity = env.knowledge.create('default',{name:'Puritanism',type:'concept'});
+    const page = env.pages.create('default',{title:'Concept matching'});
+    // Model a materialization left behind by the former blanket single-word rule.
+    env.store.run('INSERT INTO page_entity_match_cache (page_id,vault_id,cache_key,matches) VALUES (?,?,?,?)',page.id,'default','obsolete-policy',JSON.stringify([{id:'old',text:'Puritanism',entityIds:[entity.id]}]));
+    const cache = env.matches.get('default',page.id);
+    assert.notEqual(cache.key,'obsolete-policy');
+    assert.deepEqual(cache.matches,[]);
+    const updated = env.pages.update('default',page.id,{...page,blocks:[{id:'p',type:'paragraph',checked:false,content:[{text:'Puritanism and PURITANISM.'}]}]});
+    assert.deepEqual(env.matches.get('default',page.id,updated.revision).matches,[]);
+  } finally { env.db.close(); }
+});
 test('review items materialize once per revision and catalog and survive server restart', () => {
   const dir = mkdtempSync(path.join(tmpdir(),'noema-match-cache-')), filename = path.join(dir,'cache.sqlite');
   let env = setup(filename);

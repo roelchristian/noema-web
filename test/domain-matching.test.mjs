@@ -6,6 +6,23 @@ import {entityTextRuns,locateEvidence,mentionEvidence} from '../src/shared/entit
 const concept=(id,name,aliases=[],domainIds=['mathematics.algebra.abstract'])=>({id,name,aliases,domainIds,type:'concept',subtypes:[],vault_id:'v',description:'',updated_at:''});
 const block=(text,id='p')=>({id,type:'paragraph',checked:false,content:[{text}]});
 const field=concept('field','Field (algebra)',['field']);
+test('distinctive single-word canonical concepts and aliases link regardless of capitalization',()=>{
+ const entities=[concept('salvation','salvation',['SALVATION']),concept('puritanism','Puritanism'),concept('amyraldism','Amyraldism',['Amyraldianism'])];
+ const input=[block('salvation, Salvation, SALVATION; Puritanism; amyraldism; AMYRALDIANISM.')];
+ const result=identifyEntityMentions(input,entities,'v');
+ assert.equal(result.count,6);assert.deepEqual(result.ambiguous,[]);
+ assert.deepEqual(result.blocks[0].content.filter(item=>item.entityId).map(({entityId,mentionText})=>[entityId,mentionText]),[
+  ['salvation','salvation'],['salvation','Salvation'],['salvation','SALVATION'],['puritanism','Puritanism'],['amyraldism','amyraldism'],['amyraldism','AMYRALDIANISM'],
+ ]);
+ assert.equal(identifyEntityMentions(result.blocks,entities,'v').count,0);
+});
+test('single-word canonical and alias collisions remain ambiguous after case normalization',()=>{
+ const entities=[concept('a','Salvation'),concept('b','Another concept',['SALVATION'])];
+ const result=identifyEntityMentions([block('salvation')],entities,'v');
+ assert.equal(result.count,0);assert.deepEqual(result.ambiguous[0].entityIds,['a','b']);
+ const generic=identifyEntityMentions([block('FIELD')],[concept('generic','Field')],'v');
+ assert.equal(generic.count,0);assert.equal(generic.ambiguous.length,1);
+});
 test('unique polysemous aliases need review and ordinary uses are excluded on the same page',()=>{
  const blocks=[block('A field has multiplicative inverses. The field of research is broad.')];
  const result=identifyEntityMentions(blocks,[field],'v');

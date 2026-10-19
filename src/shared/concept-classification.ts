@@ -6,9 +6,11 @@ export function classifiedConceptSubtypes(page:Page):string[] {
 }
 /** Retrieve across disciplines: a subject assignment is contextual evidence, never a gate. */
 export function entitiesForPage(_page:Page,entities:Entity[]):Entity[] { return entities; }
-export const ALIAS_POLICY_VERSION = 'contextual-concepts-v1';
+export const ALIAS_POLICY_VERSION = 'contextual-concepts-v2';
+/** Word count alone is not ambiguity: distinctive one-word concepts can link normally.
+ * Keep generic, polysemous terms in review even when the catalog has one candidate. */
 export function conceptAliasNeedsReview(alias:string):boolean {
-  return alias.trim().split(/\s+/u).length === 1 || /^(?:field|group|order|class|object|characteristic|ring|set|space|type|model|structure|system|theory|method)$/iu.test(alias.trim());
+  return /^(?:field|group|order|class|object|characteristic|ring|set|space|type|model|structure|system|theory|method)$/iu.test(alias.trim());
 }
 /** Conservative ordinary-language senses, checked before any inferred link or review. */
 export function ordinaryConceptUse(text:string,start:number,length:number,alias:string):boolean {

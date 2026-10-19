@@ -2,13 +2,14 @@ import {createHash} from 'node:crypto';
 import type {Page,Segment} from '../../shared/domain.js';
 import {isAIExplanation} from '../../shared/semantic-blocks.js';
 import {conceptContentHash} from './summary-content.js';
+import {tokenHistogram,compareTokenHistograms,validTokenHistogram} from './token-histogram.js';
 
-export const CLASSIFICATION_VERSION='semantic-drift-v1';
+export const CLASSIFICATION_VERSION='semantic-drift-v2';
 type DriftPage=Pick<Page,'title'|'blocks'>;
 type ResolveName=(id:string)=>string|undefined;
 export interface CachedPageEmbedding {contentHash:string;vector:number[];model?:string}
 export interface ClassificationBaseline {
-  version:1;contentHash:string;title:string;body:string;headings:string[];
+  version:1|2;contentHash:string;title:string;body:string;headings:string[];
   tokenCounts:Record<string,number>;tokenCount:number;sampled:boolean;embedding?:CachedPageEmbedding;
 }
 export type DriftReason='unchanged'|'formatting_only'|'insignificant_drift'|'semantic_stable'|'manual_override'|'initial_enrichment'|'significant_drift'|'explicit_refresh';
@@ -24,6 +25,9 @@ const disciplineTerms:Record<string,readonly string[]>={
 };
 const normalize=(text:string)=>text.normalize('NFKC').toLowerCase().replace(/\s+/gu,' ').trim();
 const tokens=(text:string)=>normalize(text).match(/[\p{L}\p{N}]+|[^\s\p{L}\p{N}\p{P}]/gu)??[];
+const baselineTokens=new WeakMap<ClassificationBaseline,readonly string[]>();
+/** Full current-body tokens are transient; persisted snapshots remain bounded. */
+export function classificationBaselineTokens(baseline:ClassificationBaseline):readonly string[]|undefined {return baselineTokens.get(baseline);}
 function subjects(text:string):string[] {
   const words=new Set(tokens(text));
   return Object.entries(disciplineTerms).filter(([,terms])=>terms.filter(term=>words.has(term)).length>=2).map(([subject])=>subject);
@@ -42,16 +46,17 @@ export function createClassificationBaseline(page:DriftPage,resolveName:ResolveN
   const plain=(segments:Segment[])=>segments.map(segment=>segment.entityId?segment.mentionText??resolveName(segment.entityId)??'[mention]':segment.text??'').join('');
   const blocks=page.blocks.filter(block=>!isAIExplanation(block));
   const body=normalize(blocks.map(block=>block.type==='table'||block.type==='columns'?(block.rows??[]).map(row=>row.map(plain).join(' ')).join(' '):plain(block.content)).join(' '));
-  const allTokens=tokens(body),counts=new Map<string,number>();
-  for(const token of allTokens)if(counts.has(token)||counts.size<4096)counts.set(token,(counts.get(token)??0)+1);
+  const allTokens=tokens(body);
   const contentHash=conceptContentHash(page,resolveName);
   // Include start, middle and end, instead of silently discarding the end of a long note.
   const sampled=body.length>24000;
   const snapshot=sampled?body.slice(0,8000)+' '+body.slice(Math.max(0,Math.floor(body.length/2)-4000),Math.floor(body.length/2)+4000)+' '+body.slice(-8000):body;
-  return {version:1,contentHash,title:normalize(page.title).slice(0,500),body:snapshot,
+  const baseline:ClassificationBaseline={version:2,contentHash,title:normalize(page.title).slice(0,500),body:snapshot,
     headings:blocks.filter(block=>block.type==='heading1'||block.type==='heading2').map(block=>normalize(plain(block.content)).slice(0,300)).slice(0,128),
-    tokenCounts:Object.fromEntries(counts),tokenCount:allTokens.length,sampled,
+    tokenCounts:tokenHistogram(allTokens),tokenCount:allTokens.length,sampled,
     ...(validEmbedding(embedding,contentHash)?{embedding:{...embedding,vector:[...embedding.vector]}}:{})};
+  baselineTokens.set(baseline,allTokens);
+  return baseline;
 }
 export function assessSemanticDrift(input:{page:DriftPage;baseline?:ClassificationBaseline;currentDomainIds?:readonly string[];origin?:'manual'|'inferred';explicit?:boolean;embedding?:CachedPageEmbedding;resolveName?:ResolveName}):DriftDecision {
   const current=createClassificationBaseline(input.page,input.resolveName,input.embedding),baseline=input.baseline;
@@ -59,10 +64,9 @@ export function assessSemanticDrift(input:{page:DriftPage;baseline?:Classificati
   if(input.origin==='manual')return decision(false,'manual_override');
   if(input.explicit)return decision(true,'explicit_refresh',1);
   if(!baseline)return decision(true,'initial_enrichment',1);
+  if(!validTokenHistogram(baseline))return decision(true,'significant_drift',1);
   if(baseline.contentHash===current.contentHash&&baseline.title===current.title&&JSON.stringify(baseline.headings)===JSON.stringify(current.headings))return decision(false,'unchanged');
-  let overlap=0;
-  for(const [token,count] of Object.entries(current.tokenCounts))overlap+=Math.min(count,Object.hasOwn(baseline.tokenCounts,token)?baseline.tokenCounts[token]!:0);
-  const score=1-overlap/Math.max(1,baseline.tokenCount,current.tokenCount);
+  const {score,retainedFraction}=compareTokenHistograms(current,baseline,classificationBaselineTokens(current));
   const before=subjects(baseline.body),after=subjects(current.body);
   const represented=(subject:string)=>(input.currentDomainIds??[]).some(id=>id.startsWith(subject)||subject==='computing'&&/computer|computing/.test(id)||subject==='language'&&/lingu|language/.test(id)||subject==='theology'&&/religion|theolog/.test(id));
   const newSubjects=after.filter(subject=>!before.includes(subject)&&!represented(subject));
@@ -79,7 +83,7 @@ export function assessSemanticDrift(input:{page:DriftPage;baseline?:Classificati
   const sameDiscipline=before.length>0&&after.some(subject=>before.includes(subject));
   // 30% is a candidate signal. Same-discipline expansion retains assignments;
   // major replacement with little retained evidence still gets another look.
-  if(score>=0.3&&(!sameDiscipline||overlap/Math.max(1,baseline.tokenCount)<0.25))return decision(true,'significant_drift',score,extra);
+  if(score>=0.3&&(!sameDiscipline||retainedFraction<0.25))return decision(true,'significant_drift',score,extra);
   return decision(false,sameDiscipline?'semantic_stable':'insignificant_drift',score,extra);
 }
 /** Stable diagnostic fingerprint; raw note text must never be written to routine logs. */

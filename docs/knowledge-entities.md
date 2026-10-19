@@ -1,0 +1,34 @@
+# Knowledge entities
+
+[Documentation index](README.md) · [Noema home](../README.md)
+
+## Mentions, properties, and relationships
+
+- Type `@` to find an entity or create one inline. Entity mentions keep the entity's ID, so renaming an entity updates its displayed name across pages.
+- Click a mention, or open **Knowledge entities**, to edit entity details, properties, and relationships.
+- A property can hold **text** (`type = Book`) or an **entity reference** (`author = @Person`). Click **Edit** to change it.
+- A relationship holds a free-form label and a target (`@Person → sibling → @Person`). Incoming connections appear on the target entity too. The arrow shows the stored direction; reciprocal relationships are not automatically inferred.
+
+## Automatic entity links
+
+After an idle pause (about 1.2 seconds) and before saves, Noema matches note text against existing entities in the current vault and converts whole-name matches into entity references. Matching is local and case insensitive, prefers longer names, and leaves ambiguous duplicate names as text. It also scans table cells while preserving the surrounding formatting. Formatting (including code and link styling) does not affect matching, even when a name spans differently styled segments. Existing references, explicitly excluded text, inline equations, and equation/image blocks are skipped. Both the local matcher and AI entity scanning use these same text eligibility rules. This utility creates no new entities and makes no AI requests; the separate AI entity review remains available.
+
+Add aliases when creating an entity or in its details, one per line. Aliases can be shared: if Donald Trump and Ivanka Trump both have the alias “Trump,” the matcher prefers a candidate only when exactly one is already linked in the page (including table cells). If none or multiple candidates are linked, those occurrences stay as text and are flagged for review. Choose an entity and link one instance or all matching instances on the current page. Unique aliases link automatically. Alias links retain the original wording; highlighting text and choosing **Annotate → Link to existing entity** also saves the selected wording as an alias, refreshes the matcher immediately, and preserves that wording in the link. Alias saving errors stay visible in the annotation menu so you can retry. Removing a tag from its hover card keeps its text and excludes that occurrence from future automatic matching.
+
+Ambiguity review items are stored in the backend's disposable `page_entity_match_cache` table, keyed by note revision, body, and entity names/aliases. Empty results are cached too. Edits invalidate the note's cache, catalog changes replace stale results on retrieval, and deleted pages lose their cache. Opening a page loads its body and current cache together, so review notices and highlights are present on the first paint. After typing, the editor refreshes these records following the typing buffer and renders the supplied highlight offsets; it does not rescan text to build review items. Resolutions are validated against the cache key and revision, then saved through the normal autosave queue. The cache is safe to rebuild and survives server restarts.
+
+Identification defers while text is selected, a menu or dialog is open, or IME composition is active. Matched references are saved through the existing revision-aware autosave queue; newer edits made during a write remain intact. A small footer beneath the editor shows **Identifying entities…**, **Saving…**, and **Automatically saved**, with **Retry** if saving fails.
+
+## Knowledge entity subtypes
+
+Knowledge entities keep a main type (Person, Place, Event, Creative work, Organization, Source, or Concept) and can have multiple subtypes under that main type, such as a Person who is both an Actor and a Writer. Person defaults include Actor, Writer, Artist, Scientist, Researcher, Philosopher, Historian, Educator, Engineer, Physician, Entrepreneur, Politician, Activist, Journalist, Musician, Composer, Filmmaker, Athlete, and Religious leader. Other built-in subtypes include City, Book, Film, Company, and Website. Concept starts with Mathematics, Science, Social Sciences, Technology, and Philosophy subtypes. AI entity scanning includes inline and display formulas as context while tagging only eligible text. Evidence matching treats spaces, nonbreaking spaces, tabs, and line breaks equivalently and preserves the original surrounding text and formulas. Create custom subtypes under **Knowledge entities → Manage types & subtypes**.
+
+Property names belong to the main type. Built-in fields and any new fields added to the main type are available to every subtype; values remain specific to each entity. Subtypes cannot define new fields. Add fields in the type manager or on an entity without a subtype. Existing entity fields are preserved and imported into their main type’s shared fields. Existing single-subtype selections migrate automatically. Custom subtypes and fields stay within their vault.
+
+## Subjects and disciplines
+
+Page titles and inferred Subjects share one background utility request. The fixed disciplinary registry (`src/shared/noema-domains-v1.json`, version 1.0.0) contains 162 domains under 20 roots. Requests include roots and locally relevant descendants rather than the full registry. Subjects use their own content fingerprint, taxonomy version and assignment revision; historical Concept subtype classifications remain readable.
+
+Choose a primary Subject and up to two secondary Subjects in Knowledge, or leave a page unclassified. Manual selections survive content changes and background classification. Manual edits flush pending note saves, check the page revision, and invalidate domain-sensitive matching without requesting a title or embedding. Concept entities have a separate Disciplines field; Subtypes and inherited Properties keep their existing meaning. Registry and manual assignments are available through `GET /api/domains` and `PUT /api/pages/:id/domains` (with `revision`, `primaryDomainId` and `secondaryDomainIds`). Vault backups include assignments and preserve their origins.
+
+Known-entity matching runs locally across all disciplines. Unique single-word Concept aliases still require review; ordinary phrases such as “field of research” are excluded conservatively. A page subject provides context without excluding interdisciplinary mentions. Existing mentions and excluded text remain protected. Explicit AI scans separately propose entities for review, supply lexically relevant existing candidates, validate all domain IDs, and anchor evidence to a specific block, cell and occurrence. Matching and scan caches include domain, taxonomy, alias and policy dependencies. Unchanged scans reuse saved results; edits made during generation or before acceptance reject stale outputs.

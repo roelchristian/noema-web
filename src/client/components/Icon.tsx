@@ -50,7 +50,7 @@ const paths: Record<string, ReactNode> = {
   concept: <><path d="M9 18h6m-5 3h4M8 15c0-2-3-3-3-7a7 7 0 0 1 14 0c0 4-3 5-3 7Z"/></>,
   source: <><rect x="3" y="3" width="4" height="18" rx="1"/><rect x="9" y="3" width="4" height="18" rx="1"/><path d="m15 5 3.8-1 4.1 15.5-3.8 1ZM3 7h4m2 0h4M3 17h4m2 0h4"/></>,
   page: <><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8m-8 4h8m-8 4h5"/></>,
-  pages: <><path d="M17 3H5a2 2 0 0 0-2 2v12"/><rect x="7" y="7" width="14" height="15" rx="2"/><path d="M11 12h6m-6 4h4"/></>,
+  pages: <><path d="M7 3h12a2 2 0 0 1 2 2v12"/><rect x="3" y="7" width="14" height="15" rx="2"/><path d="M7 12h6m-6 4h4"/></>,
   'page-outgoing': <><path d="M19 9V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2M8 7h6M8 11h3"/><path d="M12 14h10m-3-3 3 3-3 3"/></>,
   'page-incoming': <><path d="M19 9V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2M8 7h6M8 11h3"/><path d="M22 14H12m3-3-3 3 3 3"/></>,
   'page-bidirectional': <g strokeWidth="1.5"><path d="M18 6V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2"/><path d="M10 10h11m-2-2 2 2-2 2M21 16H10m2-2-2 2 2 2"/></g>,

@@ -8278,5 +8278,50 @@
     "Note indisponible",
     "Notiz nicht verfügbar",
     "Nota no disponible"
+  ],
+  "Display mode": [
+    "Mode d’affichage",
+    "Anzeigemodus",
+    "Modo de visualización"
+  ],
+  "Entity display": [
+    "Affichage des entités",
+    "Entitätsdarstellung",
+    "Visualización de entidades"
+  ],
+  "Underlines": [
+    "Soulignements",
+    "Unterstreichungen",
+    "Subrayados"
+  ],
+  "Numbered": [
+    "Numérotées",
+    "Nummeriert",
+    "Numeradas"
+  ],
+  "Accent color": [
+    "Couleur d’accentuation",
+    "Akzentfarbe",
+    "Color de acento"
+  ],
+  "AI diagnostics": [
+    "Diagnostics IA",
+    "KI-Diagnose",
+    "Diagnóstico de IA"
+  ],
+  "Applies to menus and labels. Your content keeps its original language.": [
+    "S’applique aux menus et aux libellés. Votre contenu conserve sa langue d’origine.",
+    "Gilt für Menüs und Beschriftungen. Deine Inhalte behalten ihre ursprüngliche Sprache.",
+    "Se aplica a los menús y las etiquetas. Tu contenido conserva su idioma original."
+  ],
+  "Advanced AI options": [
+    "Options IA avancées",
+    "Erweiterte KI-Optionen",
+    "Opciones avanzadas de IA"
+  ],
+  "API key & connection": [
+    "Clé API et connexion",
+    "API-Schlüssel und Verbindung",
+    "Clave API y conexión"
   ]
 }

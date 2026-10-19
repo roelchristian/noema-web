@@ -17,8 +17,8 @@ import { defaultAppearance, fontOptions, themes, type Appearance, type DisplayMo
 const settingsTabs = [
   {id: 'appearance', get label(){return uiText("Appearance")}},
   {id: 'images', get label(){return uiText("Images")}},
-  {id: 'knowledge', get label(){return uiText("Knowledge Entities")}},
-  {id: 'intelligence', get label(){return uiText("Intelligence")}},
+  {id: 'knowledge', get label(){return uiText("Entities")}},
+  {id: 'intelligence', get label(){return uiText("AI")}},
   {id: 'security', get label(){return uiText("Security")}},
 ] as const;
 
@@ -49,23 +49,23 @@ export function SettingsDialog({appearance, onChange, storageError, onClose, onO
           }
         }}>{label}</button>)}
       </div>
+      <div className="settings-panels">
       <div id="settings-panel-appearance" role="tabpanel" aria-labelledby="settings-tab-appearance" hidden={tab !== 'appearance'}>
-      <section className="settings-section" aria-labelledby="interface-language-heading">
-        <h3 id="interface-language-heading">{uiText("Interface language")}</h3>
-        <label htmlFor="settings-interface-language">{uiText("Language")}</label>
+      <section className="settings-section appearance-setting" aria-labelledby="interface-language-heading">
+        <h3 id="interface-language-heading"><label htmlFor="settings-interface-language">{uiText("Language")}</label></h3>
         <Select id="settings-interface-language" value={language} onChange={event=>setLanguage(event.target.value as typeof language)}>
           {interfaceLanguages.map(option=><option key={option.id} value={option.id} lang={option.id}>{option.name}</option>)}
         </Select>
-        <p>{uiText("Changes the app interface. Notes and source text stay in their original language.")}</p>
+        <p>{uiText("Applies to menus and labels. Your content keeps its original language.")}</p>
         {languageStorageError&&<p role="status">{uiText("Browser storage unavailable. Changes won’t persist after reload.")}</p>}
       </section>
-      <section className="settings-section" aria-labelledby="display-heading">
-        <h3 id="display-heading">{uiText("Appearance")}</h3>
-        <div className="display-options" role="group" aria-label={uiText("Appearance")}>
+      <section className="settings-section appearance-setting" aria-labelledby="display-heading">
+        <h3 id="display-heading">{uiText("Display mode")}</h3>
+        <div className="display-options" role="group" aria-label={uiText("Display mode")}>
           {(['light', 'dark', 'system'] as DisplayMode[]).map(mode => <button key={mode} type="button" aria-pressed={appearance.mode === mode} onClick={() => onChange({...appearance, mode})}>{mode === 'system' ? uiText("System") : mode === 'dark' ? uiText("Dark") : uiText("Light")}</button>)}
         </div>
       </section>
-      <section className="settings-section" aria-labelledby="typography-heading">
+      <section className="settings-section appearance-setting" aria-labelledby="typography-heading">
         <h3 id="typography-heading">{uiText("Typography")}</h3>
         <div className="font-settings">
           {([{key: 'bodyFont', get label(){return uiText("Body font")}, defaultId: 'system'}, {key: 'headingFont', get label(){return uiText("Heading font")}, defaultId: 'geist'}] as const).map(({key, label, defaultId}) => <div className="font-setting" key={key}>
@@ -80,27 +80,27 @@ export function SettingsDialog({appearance, onChange, storageError, onClose, onO
           <p>{uiText("Capture a thought, connect an idea, and make room for what comes next.")}</p>
         </div>
       </section>
-      <section className="settings-section" aria-labelledby="reading-heading">
-        <h3 id="reading-heading">{uiText("Focused reading")}</h3><p>{uiText("Replace entity icons and highlights with subtle underlines.")}</p>
+      <section className="settings-section appearance-setting" aria-labelledby="reading-heading">
+        <h3 id="reading-heading">{uiText("Entity display")}</h3>
         <div className="display-options" role="group" aria-label={uiText("Entity display in notes")}>
           <button type="button" aria-pressed={!appearance.focusedReading} onClick={() => onChange({...appearance, focusedReading: false})}>{uiText("Highlights")}</button>
-          <button type="button" aria-pressed={appearance.focusedReading} onClick={() => onChange({...appearance, focusedReading: true})}>{uiText("Focused reading")}</button>
+          <button type="button" aria-pressed={appearance.focusedReading} onClick={() => onChange({...appearance, focusedReading: true})}>{uiText("Underlines")}</button>
         </div>
       </section>
-      <section className="settings-section" aria-labelledby="citations-heading">
+      <section className="settings-section appearance-setting" aria-labelledby="citations-heading">
         <h3 id="citations-heading">{uiText("Citations")}</h3>
         <div className="display-options" role="group" aria-label={uiText("Citation display")}>
           <button type="button" aria-pressed={appearance.citationStyle==='inline'} onClick={()=>onChange({...appearance,citationStyle:'inline',citationStyleExplicit:true})}>{uiText("Inline")}</button>
-          <button type="button" aria-pressed={appearance.citationStyle==='references'} onClick={()=>onChange({...appearance,citationStyle:'references',citationStyleExplicit:true})}>{uiText("Wikipedia style")}</button>
+          <button type="button" aria-pressed={appearance.citationStyle==='references'} onClick={()=>onChange({...appearance,citationStyle:'references',citationStyleExplicit:true})}>{uiText("Numbered")}</button>
         </div>
         <p className="display-hint">{appearance.citationStyle==='inline'?uiText("Source and page numbers beside the text."):uiText("Numbered citations with references at the end of each note.")}</p>
       </section>
-      <section className="settings-section" aria-labelledby="theme-heading">
-        <h3 id="theme-heading">{uiText("Theme color")}</h3>
-        <div className="theme-options" role="group" aria-label={uiText("Theme color")}>
-          {themes.map(theme => <button key={theme.id} className="theme-option" aria-pressed={appearance.theme === theme.id} onClick={() => onChange({...appearance, theme: theme.id})}>
+      <section className="settings-section appearance-setting" aria-labelledby="theme-heading">
+        <h3 id="theme-heading">{uiText("Accent color")}</h3>
+        <div className="theme-options" role="group" aria-label={uiText("Accent color")}>
+          {themes.map(theme => <button key={theme.id} className="theme-option" title={uiText(theme.description)} aria-pressed={appearance.theme === theme.id} onClick={() => onChange({...appearance, theme: theme.id})}>
             <span className="theme-swatch" style={{background: theme.soft, color: theme.color}}><span style={{background: theme.color}}/>{appearance.theme === theme.id && <span className="theme-check">✓</span>}</span>
-            <strong>{uiText(theme.name)}</strong><small>{uiText(theme.description)}</small>{theme.id === 'ink' && <span className="theme-default">{uiText("Default")}</span>}
+            <strong>{uiText(theme.name)}</strong>{theme.id === 'ink' && <span className="theme-default">{uiText("Default")}</span>}
           </button>)}
         </div>
       </section>
@@ -113,12 +113,13 @@ export function SettingsDialog({appearance, onChange, storageError, onClose, onO
       </div>
       <div id="settings-panel-intelligence" role="tabpanel" aria-labelledby="settings-tab-intelligence" hidden={tab !== 'intelligence'}>
         <IntelligenceSettings/>
-        {tab === 'intelligence' && <AIDebugSettings/>}
-        {tab === 'intelligence' && <EmbeddingSettings onOpenPassage={onOpenPassage} key={vault?.id} vault={vault} onOpenPage={onOpenPage} onOpenEntity={onOpenEntity}/>}
+        {tab === 'intelligence' && <details className="settings-advanced"><summary>{uiText("AI diagnostics")}</summary><AIDebugSettings/></details>}
+        {tab === 'intelligence' && <details className="settings-advanced"><summary>{uiText("Search indexing")}</summary><EmbeddingSettings onOpenPassage={onOpenPassage} key={vault?.id} vault={vault} onOpenPage={onOpenPage} onOpenEntity={onOpenEntity}/></details>}
         <section className="settings-section settings-activity-entry"><div><h3>{uiText("AI activity log")}</h3></div><button className="button" aria-haspopup="dialog" onClick={() => setActivityOpen(true)}>{uiText("Open activity log")}</button></section>
       </div>
       <div id="settings-panel-security" role="tabpanel" aria-labelledby="settings-tab-security" hidden={tab !== 'security'}>
         {tab === 'security' && <SecuritySettings key={vault?.id} vault={vault} onChangePassphrase={onChangePassphrase} onBeforeNetworkChange={onBeforeNetworkChange}/>}
+      </div>
       </div>
       <footer className="settings-footer"><p role="status" hidden={tab !== 'appearance'}>{storageError ? uiText("Browser storage unavailable. Changes won’t persist after reload.") : uiText("Changes saved in this browser.")}</p><div><button className="button" hidden={tab !== 'appearance'} onClick={() => onChange({...defaultAppearance(), entityColors: appearance.entityColors, entityOverrides: appearance.entityOverrides})}>{uiText("Restore defaults")}</button><button className="button primary" onClick={onClose}>{uiText("Done")}</button></div></footer>
     </div>

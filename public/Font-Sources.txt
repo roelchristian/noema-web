@@ -20,3 +20,153 @@ Plus Jakarta Sans (weight 200-800)
 https://github.com/google/fonts/tree/main/ofl/plusjakartasans
 
 Fonts are served by Noema itself; no external font requests are needed.
+
+Italic variable faces
+=====================
+
+The following genuine italic faces include the full weight axis, including bold
+italics. Original WOFF2 files are retained; TTF sources are converted to WOFF2
+using FontTools without subsetting or modifying glyph outlines. Existing
+family-specific SIL Open Font License files also cover these italic faces.
+
+Geist — GeistItalicVariable.woff2
+https://raw.githubusercontent.com/vercel/geist-font/main/fonts/Geist/webfonts/Geist-Italic%5Bwght%5D.woff2
+Upstream Git blob: 987f7f14c9b20396a46ead274eb9e6a37caf271b
+Bundled SHA-256: eb18db540bc7229f801861f02bc625a8a66a20f401a414a058431f6606edec82
+Axes: wght 100-900
+
+Inter — InterItalicVariable.woff2
+https://raw.githubusercontent.com/rsms/inter/master/docs/font-files/InterVariable-Italic.woff2
+Upstream Git blob: b3530f3f5269165314114a9e1c2f129e20fddcbd
+Bundled SHA-256: e564f652916db6c139570fefb9524a77c4d48f30c92928de9db19b6b5c7a262a
+Axes: opsz 14-32, wght 100-900
+
+DM Sans — DMSansItalicVariable.woff2
+https://raw.githubusercontent.com/google/fonts/main/ofl/dmsans/DMSans-Italic%5Bopsz%2Cwght%5D.ttf
+Upstream Git blob: bf6819b0f811026ecf98d66183509b7302c0bf61
+Bundled SHA-256: fdc4e1210bc6e5f1b4377803d0c75e6e9aeb015ff89b73777ca374f0261d3358
+Axes: opsz 9-40, wght 100-1000
+
+Public Sans — PublicSansItalicVariable.woff2
+https://raw.githubusercontent.com/google/fonts/main/ofl/publicsans/PublicSans-Italic%5Bwght%5D.ttf
+Upstream Git blob: b5e5f4c2025e6e86e484582f7199f6b09a5116ea
+Bundled SHA-256: 17737b1e3ec400c1eae289813dd42f4009ce48b3dd43059981d06e6d4e955712
+Axes: wght 100-900
+
+Plus Jakarta Sans — PlusJakartaSansItalicVariable.woff2
+https://raw.githubusercontent.com/google/fonts/main/ofl/plusjakartasans/PlusJakartaSans-Italic%5Bwght%5D.ttf
+Upstream Git blob: 82b042caaaf271beb9e3cbd95ba4741a3d5b8926
+Bundled SHA-256: 7b6c9d6e8fe08d555d7e718d03dca67e0cff376c31b0101ead29f896f72c715b
+Axes: wght 200-800
+
+Manrope exception
+-----------------
+The bundled open-source Manrope release supplies upright faces only:
+https://github.com/google/fonts/tree/main/ofl/manrope
+Its italic CSS face intentionally uses InterItalicVariable.woff2 for weights
+200-800. This is genuine Inter italic, not a Manrope italic or a synthetic slant.
+Upright Manrope remains unchanged. The existing Inter-LICENSE.txt covers this
+fallback. No font files have been relabeled internally or duplicated.
+
+All italic assets are served locally, including this fallback. No font files
+are fetched from third-party servers when the app runs.
+
+IBM Plex Mono
+=============
+
+Source: Google Fonts (https://github.com/google/fonts/tree/main/ofl/ibmplexmono).
+Static weights 100, 200, 300, 400, 500, 600 and 700, each with normal and genuine
+italic faces, including bold italic. Converted from TTF to WOFF2 with FontTools
+without subsetting or changing glyph outlines. Served locally.
+License: SIL Open Font License; see IBMPlexMono-OFL.txt.
+
+IBMPlexMono-Bold.woff2
+  Source: https://raw.githubusercontent.com/google/fonts/main/ofl/ibmplexmono/IBMPlexMono-Bold.ttf
+  Upstream Git blob: 17b406d221e7f27179344707bd543fb8470728ac
+  Bundled SHA-256: e171f7e7e4b519adc6511883ce3a3d86adce22ba01e94de1999e405fc8b0be15
+
+IBMPlexMono-BoldItalic.woff2
+  Source: https://raw.githubusercontent.com/google/fonts/main/ofl/ibmplexmono/IBMPlexMono-BoldItalic.ttf
+  Upstream Git blob: f0291778c969fca0c255fe7e06c90eb97b34770d
+  Bundled SHA-256: 7fe5ffc3922f1a94b0b925b7e876146766da59df8439973ffc1c321bde89b0e5
+
+IBMPlexMono-ExtraLight.woff2
+  Source: https://raw.githubusercontent.com/google/fonts/main/ofl/ibmplexmono/IBMPlexMono-ExtraLight.ttf
+  Upstream Git blob: 26877b8175e03ac26581afb2bf0eb4f7b9190594
+  Bundled SHA-256: 1a6a4af57812776c9d5eb025a16f9712f5519b21f7f15d7a5ac0f1a0c36dd6e3
+
+IBMPlexMono-ExtraLightItalic.woff2
+  Source: https://raw.githubusercontent.com/google/fonts/main/ofl/ibmplexmono/IBMPlexMono-ExtraLightItalic.ttf
+  Upstream Git blob: bd50df2f9d7397e9772c75836277023d6e8e95b1
+  Bundled SHA-256: 0a2612d0b17a93965da86467a851704a9248d1107d68470b1da89f835d3eb5aa
+
+IBMPlexMono-Italic.woff2
+  Source: https://raw.githubusercontent.com/google/fonts/main/ofl/ibmplexmono/IBMPlexMono-Italic.ttf
+  Upstream Git blob: d7f69134614ebdcaa10ebd36b0be1a44a035e157
+  Bundled SHA-256: 6988e95dc18c41cbd4ea3d296ab4f3159152b0d08d9695e6daeb0c2db7bbb8e8
+
+IBMPlexMono-Light.woff2
+  Source: https://raw.githubusercontent.com/google/fonts/main/ofl/ibmplexmono/IBMPlexMono-Light.ttf
+  Upstream Git blob: 61d43577842179cdffeb38b6c1928786981db0da
+  Bundled SHA-256: 67e8cb13518cca8f275939faaa6e7b2e756cbec22a600f071a92624c7a70e30f
+
+IBMPlexMono-LightItalic.woff2
+  Source: https://raw.githubusercontent.com/google/fonts/main/ofl/ibmplexmono/IBMPlexMono-LightItalic.ttf
+  Upstream Git blob: ecb1f6f52575afd8296df722ed4e7b395f9847b0
+  Bundled SHA-256: ba6ad1963e8198922f0779a40d0f9f584db1ff7374f27679521ad838f02485ad
+
+IBMPlexMono-Medium.woff2
+  Source: https://raw.githubusercontent.com/google/fonts/main/ofl/ibmplexmono/IBMPlexMono-Medium.ttf
+  Upstream Git blob: 33c546f68b6007a45a3f10e845523abb2db25399
+  Bundled SHA-256: 208fea41ab1e31ff75438fb47ae76300a13348486b0abb47b789312b07a70735
+
+IBMPlexMono-MediumItalic.woff2
+  Source: https://raw.githubusercontent.com/google/fonts/main/ofl/ibmplexmono/IBMPlexMono-MediumItalic.ttf
+  Upstream Git blob: d08961658e199bcabdb2fcb4f59abf06ab599fb3
+  Bundled SHA-256: e8775f8d5083988ecbc880fbe2a8d8cbd2bdbbf13ffc293d746f2c8f62283f63
+
+IBMPlexMono-Regular.woff2
+  Source: https://raw.githubusercontent.com/google/fonts/main/ofl/ibmplexmono/IBMPlexMono-Regular.ttf
+  Upstream Git blob: 0c9770d5183ba60dc4350d3e011b782a320761ae
+  Bundled SHA-256: 898ef13b0976f11f3b47fb23cd207fa0ce0e052470d6a7d8e9385ed63ff59804
+
+IBMPlexMono-SemiBold.woff2
+  Source: https://raw.githubusercontent.com/google/fonts/main/ofl/ibmplexmono/IBMPlexMono-SemiBold.ttf
+  Upstream Git blob: 8f8998a139d8f61d3b96bdd3b512fca501a1f6b9
+  Bundled SHA-256: 36fb85fb26f962b4e5a0f48d91550916dd5c88304acc281f7f11c9a0496bbbbc
+
+IBMPlexMono-SemiBoldItalic.woff2
+  Source: https://raw.githubusercontent.com/google/fonts/main/ofl/ibmplexmono/IBMPlexMono-SemiBoldItalic.ttf
+  Upstream Git blob: 50e47fa895a99c816061ad3b2bf433850a5f713b
+  Bundled SHA-256: 4795e05ff1823c72bd0d6ec125c35c0697640966b98f2c32a471280d61636582
+
+IBMPlexMono-Thin.woff2
+  Source: https://raw.githubusercontent.com/google/fonts/main/ofl/ibmplexmono/IBMPlexMono-Thin.ttf
+  Upstream Git blob: 44475c9d3e39e6f7e211ff7ce8a6fa711ab307ea
+  Bundled SHA-256: 877594f7f154a12fbc0db1be531ee6cecafa1bc1a3ee4aa1cfb260cf528750e5
+
+IBMPlexMono-ThinItalic.woff2
+  Source: https://raw.githubusercontent.com/google/fonts/main/ofl/ibmplexmono/IBMPlexMono-ThinItalic.ttf
+  Upstream Git blob: 89eac6d51d5fb51874f1404980d64bd3f482f4a5
+  Bundled SHA-256: 065fd85ad22d77aa4299de3d58166ba531b1379f7cbdc5660cf13f2677217edf
+
+IBM Plex Sans
+=============
+
+Source: Google Fonts (https://github.com/google/fonts/tree/main/ofl/ibmplexsans).
+Variable normal and genuine italic faces, including bold italic. Weight and
+width axes retained. Converted from TTF to WOFF2 with FontTools without
+subsetting or changing glyph outlines. Served locally.
+License: SIL Open Font License; see IBMPlexSans-OFL.txt.
+
+IBMPlexSansItalicVariable.woff2
+  Source: https://raw.githubusercontent.com/google/fonts/main/ofl/ibmplexsans/IBMPlexSans-Italic%5Bwdth%2Cwght%5D.ttf
+  Upstream Git blob: 35722e5e79e3616407f479ece5c60c39c1efd68f
+  Bundled SHA-256: 00ecec0ffcc4351221060ad04820d47fe63d7457d97f0e31d8c1d2b249b85902
+  Axes: wght 100-700, wdth 75-100
+
+IBMPlexSansVariable.woff2
+  Source: https://raw.githubusercontent.com/google/fonts/main/ofl/ibmplexsans/IBMPlexSans%5Bwdth%2Cwght%5D.ttf
+  Upstream Git blob: 30f837e8b02e8ecddce6cbebc425b1f422392515
+  Bundled SHA-256: 1e834b1c56d3827f669e59a82a96650dd60aa0318b25d8f69049e13eca55c8f4
+  Axes: wght 100-700, wdth 75-100

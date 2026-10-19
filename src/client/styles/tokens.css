@@ -23,11 +23,16 @@
   --scrollbar-thumb: color-mix(in srgb, var(--text-muted) 20%, transparent);
   --scrollbar-thumb-hover: color-mix(in srgb, var(--text-muted) 35%, transparent);
 
+  /* Editor body text; independent of interface labels and document headings. */
+  --editor-font-size: 14px;
+  --editor-line-height: 1.75;
+  --editor-letter-spacing: -0.005em;
+
   /* Document headings stay separate from UI text */
-  --page-heading-size: 21px;
+  --page-heading-size: 1.25rem;
   --page-heading-weight: 500;
-  --page-heading-line-height: 1.2;
-  --page-heading-letter-spacing: -.4px;
+  --page-heading-line-height: 1.75rem;
+  --page-heading-letter-spacing: -.01em;
 
   /* Interface sizing */
   --workspace-toolbar-height: 44px;
@@ -35,7 +40,7 @@
   --ui-text-sm: 12px;
   --ui-text-md: 13px;
   --ui-text-lg: 14px;
-  --ui-text-body: 15px;
+  --ui-text-body: 16px;
 
   /* Spacing: existing values retained to preserve layout */
   --space-0-5: 2px;
@@ -109,6 +114,7 @@
 
 @media (max-width: 750px) {
   :root {
+    --editor-font-size: 17px;
     --page-heading-size: 26px;
     --page-heading-line-height: 1.35;
     --workspace-toolbar-height: 48px;

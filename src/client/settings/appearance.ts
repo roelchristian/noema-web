@@ -10,6 +10,8 @@ export const fontOptions = [
   {id: 'manrope', name: 'Manrope', family: `Manrope, ${systemFont}`},
   {id: 'public-sans', name: 'Public Sans', family: `"Public Sans", ${systemFont}`},
   {id: 'plus-jakarta-sans', name: 'Plus Jakarta Sans', family: `"Plus Jakarta Sans", ${systemFont}`},
+  {id: 'ibm-plex-mono', name: 'IBM Plex Mono', family: '"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'},
+  {id: 'ibm-plex-sans', name: 'IBM Plex Sans', family: `"IBM Plex Sans", ${systemFont}`},
 ] as const;
 export type FontId = typeof fontOptions[number]['id'];
 export function fontFamily(id: FontId): string {

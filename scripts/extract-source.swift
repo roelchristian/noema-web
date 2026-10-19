@@ -68,6 +68,15 @@ func nativeDuplicate(_ candidate: OCRLine, native: [OCRLine]) -> Bool {
     let normalized = candidate.text.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
     return coverage(candidate.bounds, by: native) >= 0.9 && native.contains { $0.text.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ") == normalized }
 }
+func nativeFallbackEvidence(_ native: [String: Any], error: Error) throws -> [String: Any] {
+    // A coverage probe must not discard selectable source text. Image-only
+    // pages still fail rather than being admitted with no transcription.
+    guard let text = native["text"] as? String, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw error }
+    var evidence = native
+    evidence["coverage"] = ["status": "ocr-unavailable", "error": String(describing: error)]
+    evidence["findings"] = ["Embedded text preserved. The on-device OCR coverage check failed; scanned or image-only regions may be missing. Compare the page image before relying on completeness."]
+    return evidence
+}
 if CommandLine.arguments.count == 2 && CommandLine.arguments[1] == "--test-coverage" {
     let known = OCRLine(text: "A known line", bounds: CGRect(x: 0.1, y: 0.8, width: 0.7, height: 0.02), confidence: 1, alternatives: [], method: "ocr")
     let missing = CGRect(x: 0.1, y: 0.76, width: 0.15, height: 0.02)
@@ -83,6 +92,15 @@ if CommandLine.arguments.count == 2 && CommandLine.arguments[1] == "--test-cover
     var ordered = [known, partial]
     insertByPosition(OCRLine(text: "New line", bounds: missing, confidence: 1, alternatives: [], method: "region-retry"), into: &ordered)
     precondition(ordered.filter { $0.text != "New line" }.map { $0.text } == [known.text, partial.text])
+    let failure = NSError(domain: "OCRTest", code: 1)
+    let native: [String: Any] = ["page": 3, "method": "native", "text": "Selectable equation and proof", "blocks": [["text": "Selectable equation and proof", "bounds": [1, 2, 3, 4]]], "coordinateSystem": "pdf-points-bottom-left"]
+    let fallback = try nativeFallbackEvidence(native, error: failure)
+    precondition(fallback["text"] as? String == native["text"] as? String)
+    precondition(NSArray(array: fallback["blocks"] as! [[String: Any]]).isEqual(to: native["blocks"] as! [[String: Any]]))
+    precondition(fallback["coordinateSystem"] as? String == "pdf-points-bottom-left")
+    precondition((fallback["coverage"] as? [String: String])?["status"] == "ocr-unavailable")
+    do { _ = try nativeFallbackEvidence(["text": " \n"], error: failure); preconditionFailure("Image-only OCR failures must remain failures") } catch {}
+    print("native OCR fallback preserves text and evidence; image-only failures remain failures")
     print("coverage geometry, duplicate suppression, low-confidence review and safe recovery passed")
     exit(0)
 }
@@ -102,6 +120,10 @@ for index in 0..<document.pageCount {
             let pageBounds = page.bounds(for: .mediaBox)
             let nativeSelections = page.selection(for: pageBounds)?.selectionsByLine() ?? []
             let nativeCharacters = embedded.filter({ $0.isLetter || $0.isNumber }).count
+            let nativeBlocks = nativeSelections.map { selection -> [String: Any] in
+                ["text": selection.string ?? "", "bounds": rectangle(selection.bounds(for: page))]
+            }
+            let nativeEvidence: [String: Any] = ["page": index + 1, "method": "native", "text": embedded, "blocks": nativeBlocks, "coordinateSystem": "pdf-points-bottom-left", "coverage": ["status": "native-text-not-raster-verified"], "findings": ["Embedded text preserved without OCR. Native text length does not verify coverage of any scanned or image-only regions; compare the page image if content appears missing."]]
             let nativeArea = nativeSelections.reduce(CGFloat(0)) { total, selection in
                 let box = selection.bounds(for: page).intersection(pageBounds)
                 return total + box.width * box.height
@@ -110,11 +132,7 @@ for index in 0..<document.pageCount {
             // body was extracted. Sparse native pages receive a coverage pass.
             let reliableNative = nativeCharacters >= 1000 || (nativeCharacters >= 200 && nativeArea >= pageBounds.width * pageBounds.height * 0.15)
             if reliableNative {
-                let blocks = nativeSelections.map { selection -> [String: Any] in
-                    let box = selection.bounds(for: page)
-                    return ["text": selection.string ?? "", "bounds": rectangle(box)]
-                }
-                pageEvidence.append(["page": index + 1, "method": "native", "text": embedded, "blocks": blocks, "coordinateSystem": "pdf-points-bottom-left", "coverage": ["status": "native-text-not-raster-verified"], "findings": ["Embedded text preserved without OCR. Native text length does not verify coverage of any scanned or image-only regions; compare the page image if content appears missing."]])
+                pageEvidence.append(nativeEvidence)
                 return embedded
             }
             let bounds = page.bounds(for: .mediaBox)
@@ -124,7 +142,12 @@ for index in 0..<document.pageCount {
             var rect = CGRect(origin: .zero, size: image.size)
             guard let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else { fail("A PDF page could not be rendered for OCR.") }
             let started = Date()
-            let initial = try recognize(cgImage)
+            let initial: [OCRLine]
+            do { initial = try recognize(cgImage) }
+            catch {
+                pageEvidence.append(try nativeFallbackEvidence(nativeEvidence, error: error))
+                return embedded
+            }
             var lines = initial
             let nativeLines: [OCRLine] = nativeSelections.compactMap { selection in
                 guard let text = selection.string, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
@@ -194,7 +217,7 @@ for index in 0..<document.pageCount {
         pages.append(text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n"))
         let progress = try JSONSerialization.data(withJSONObject: ["page": index + 1, "pages": document.pageCount])
         FileHandle.standardError.write(progress + Data([10]))
-    } catch { fail("On-device OCR failed. Try a clearer scan or retry extraction.") }
+    } catch { fail("On-device OCR failed on page \(index + 1), which needs OCR to extract its text. Try a clearer scan or retry extraction.") }
 }
 let text = pages.joined(separator: "\n\n")
 guard text.utf8.count <= 16 * 1024 * 1024 else { fail("Extracted text exceeds the 16 MB limit.") }

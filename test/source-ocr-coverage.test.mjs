@@ -8,12 +8,14 @@ import {fileURLToPath} from 'node:url';
 
 // Vision integration is opt-in because it requires Apple's system OCR services
 // outside restrictive CI sandboxes. Geometry guards always run on macOS.
-test('OCR region coverage rejects duplicate, partial-native and unrelated recovery matches',{skip:process.platform!=='darwin',timeout:180000},()=>{
+test('OCR coverage preserves native evidence on recognition failure and rejects unsafe recovery matches',{skip:process.platform!=='darwin',timeout:180000},()=>{
  const directory=mkdtempSync(path.join(tmpdir(),'noema-ocr-test-'));
  try{
   const executable=path.join(directory,'extract');
   execFileSync('/usr/bin/swiftc',[fileURLToPath(new URL('../scripts/extract-source.swift',import.meta.url)),'-module-cache-path',path.join(tmpdir(),'noema-swift-module-cache'),'-o',executable],{timeout:120000});
-  assert.match(execFileSync(executable,['--test-coverage'],{encoding:'utf8'}),/safe recovery passed/);
+  const guards=execFileSync(executable,['--test-coverage'],{encoding:'utf8'});
+  assert.match(guards,/safe recovery passed/);
+  assert.match(guards,/native OCR fallback preserves text and evidence; image-only failures remain failures/);
   if(process.env.NOEMA_TEST_OCR==='1'){
    const builder=path.join(directory,'builder'),pdf=path.join(directory,'mixed.pdf');
    execFileSync('/usr/bin/swiftc',[fileURLToPath(new URL('./fixtures/source-ocr/make-mixed-pdf.swift',import.meta.url)),'-module-cache-path',path.join(tmpdir(),'noema-swift-module-cache'),'-o',builder],{timeout:120000});

@@ -1,3 +1,4 @@
+import {DisclosureSummary} from '../components/DisclosureSummary';
 import {defaultPageIndexPolicy} from '../../shared/embeddings';
 import type {PageReference} from '../../shared/embeddings';
 import { useEffect, useState, type FormEvent } from 'react';
@@ -55,7 +56,7 @@ export function EmbeddingSettings({vault,onOpenPage,onOpenEntity,onOpenPassage}:
           <label htmlFor="embedding-minimum">Minimum content length (characters)</label>
           <input id="embedding-minimum" type="number" min={20} max={2000} step={1} required value={settings.minCharacters} disabled={busy} onChange={event=>setSettings(current=>({...current,minCharacters:Number(event.target.value)}))}/>
           <p>Skip empty, trashed, or short content. Pages and sources are indexed in passages as needed.</p>
-          <details><summary>Adaptive Page indexing</summary><p>Thresholds use tokens. Hysteresis prevents repeated strategy changes while editing.</p>{([
+          <details><DisclosureSummary>Adaptive Page indexing</DisclosureSummary><p>Thresholds use tokens. Hysteresis prevents repeated strategy changes while editing.</p>{([
             ['smallTokens','Small Page token threshold',100,4000],['mediumTokens','Medium Page token threshold',801,50000],['targetTokens','Passage target tokens',100,2000],['overlapTokens','Passage overlap tokens',0,999],['hysteresisTokens','Threshold hysteresis tokens',0,1999],['debounceMs','Re-index debounce (milliseconds)',5000,15000]
           ] as const).map(([key,label,min,max])=><label key={key}>{label}<input type="number" min={min} max={max} required disabled={busy} value={(settings.pagePolicy??defaultPageIndexPolicy)[key]} onChange={event=>setSettings(current=>({...current,pagePolicy:{...defaultPageIndexPolicy,...current.pagePolicy,[key]:Number(event.target.value)}}))}/></label>)}</details>
           <button className="button" disabled={busy||!changed}>Save embedding settings</button>
@@ -67,7 +68,7 @@ export function EmbeddingSettings({vault,onOpenPage,onOpenEntity,onOpenPassage}:
             <button className="button" disabled={busy||changed||!status.counts.eligible} onClick={()=>void perform(async()=>{const result=await api.enqueueEmbeddings(vaultId!,'eligible');return `Queued ${result.queued} items; skipped ${result.skipped}.`;})}>Queue eligible / stale</button>
           </div>
           {changed&&<p>Save your criteria before indexing existing notes.</p>}
-          <details className="embedding-eligibility"><summary>Content eligibility ({status.notes.length})</summary><ul>{status.notes.map(note=><li key={(note.kind??'page')+':'+note.pageId}><button className="ai-activity-link" onClick={()=>open(note.pageId,note.kind)}>{note.title||'Untitled'}</button><small>{note.indexingStatus??note.state}{note.strategy?` · ${note.strategy}`:''} · {note.reason}{note.totalPassages!==undefined?` · ${note.indexedPassages??0}/${note.totalPassages} ${note.kind==='page'?'segments':'passages'} indexed`:null}</small></li>)}</ul>{!status.notes.length&&<p>No saved pages or sources in this vault.</p>}</details>
+          <details className="embedding-eligibility"><DisclosureSummary>Content eligibility ({status.notes.length})</DisclosureSummary><ul>{status.notes.map(note=><li key={(note.kind??'page')+':'+note.pageId}><button className="ai-activity-link" onClick={()=>open(note.pageId,note.kind)}>{note.title||'Untitled'}</button><small>{note.indexingStatus??note.state}{note.strategy?` · ${note.strategy}`:''} · {note.reason}{note.totalPassages!==undefined?` · ${note.indexedPassages??0}/${note.totalPassages} ${note.kind==='page'?'segments':'passages'} indexed`:null}</small></li>)}</ul>{!status.notes.length&&<p>No saved pages or sources in this vault.</p>}</details>
         </div>
         <div className="embedding-search">
           <h4>Search by meaning</h4>

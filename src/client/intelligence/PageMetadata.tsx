@@ -1,3 +1,4 @@
+import {DisclosureSummary} from '../components/DisclosureSummary';
 import {sourcePageChoices,sourcePageFormats} from '../../shared/source-page';
 import type {Page} from '../../shared/domain';
 import {pageAIStatusLabels} from '../../shared/page-ai-status';
@@ -39,7 +40,7 @@ export function PageMetadata({page}:{page:Page}) {
           <div><dt>Custom prompt</dt><dd className="page-generation-text">{sourceGeneration.userPrompt||'None'}</dd></div>
           {!!sourceGeneration.revisionFeedback.length&&<div><dt>Revisions</dt><dd><ol>{sourceGeneration.revisionFeedback.map((feedback,index)=><li key={index} className="page-generation-text">{feedback||'Fresh revision'}</li>)}</ol></dd></div>}
         </>}
-        {sourceGeneration&&<div><dt>Prompt</dt><dd><details className="page-generation-prompt"><summary>View prompt</summary><p>{sourceGeneration.formatPrompt}</p></details></dd></div>}
+        {sourceGeneration&&<div><dt>Prompt</dt><dd><details className="page-generation-prompt"><DisclosureSummary>View prompt</DisclosureSummary><p>{sourceGeneration.formatPrompt}</p></details></dd></div>}
       </dl>:<p className="page-generation-unavailable">Not available</p>}
     </section>}
   </details>;

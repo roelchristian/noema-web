@@ -3385,3 +3385,15 @@ dialog.source-page-dialog.has-preview { height: min(780px, calc(100dvh - 32px));
   .source-inspector-header { padding-top: env(safe-area-inset-top); }
   .source-inspector-header .entity-detail-tabs > button, .source-inspector-links > button, .source-inspector .entity-detail-more, .source-inspector-status-failure .button, .source-inspector details > summary { min-height: 44px; }
 }
+
+/* Native disclosures share the sidebar's right/down chevron. */
+summary.disclosure-summary { display: flex; align-items: baseline; gap: 7px; list-style: none; cursor: pointer; }
+summary.disclosure-summary::-webkit-details-marker { display: none; }
+summary.disclosure-summary::marker { content: ''; }
+summary.disclosure-summary > .icon { flex: none; width: 13px; height: 13px; align-self: flex-start; margin-top: .2em; color: var(--text-muted); transition: transform 200ms cubic-bezier(.2,.8,.2,1); }
+details[open] > summary.disclosure-summary > .icon { transform: rotate(90deg); }
+.disclosure-summary-label { min-width: 0; overflow-wrap: anywhere; }
+summary.disclosure-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  summary.disclosure-summary > .icon { transition: none; }
+}

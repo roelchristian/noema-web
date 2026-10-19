@@ -1,3 +1,4 @@
+import {DisclosureSummary} from '../components/DisclosureSummary';
 import {TitleText} from '../components/TitleText';
 import {SourceInspectorStatus} from './SourceInspectorStatus';
 import {SourceLoadingProgress} from './SourceLoadingProgress';
@@ -100,7 +101,7 @@ export function EntityPanel(props: Props) {
             {entity.properties.filter(property=>!property.target_id).slice(0,5).map(property=><div key={property.id}><dt>{property.name}</dt><dd>{property.value}</dd></div>)}
           </dl>
           {!attachment&&!entity.properties.length&&!subtypeNames.length&&<p className="entity-detail-empty">Add source details to make this reference easier to find.</p>}
-          {entity.properties.filter(property=>!property.target_id).length>5&&<details className="source-inspector-disclosure"><summary>More metadata</summary><dl className="entity-overview-properties">{entity.properties.filter(property=>!property.target_id).slice(5).map(property=><div key={property.id}><dt>{property.name}</dt><dd>{property.value}</dd></div>)}</dl></details>}
+          {entity.properties.filter(property=>!property.target_id).length>5&&<details className="source-inspector-disclosure"><DisclosureSummary>More metadata</DisclosureSummary><dl className="entity-overview-properties">{entity.properties.filter(property=>!property.target_id).slice(5).map(property=><div key={property.id}><dt>{property.name}</dt><dd>{property.value}</dd></div>)}</dl></details>}
         </section>
         <nav className="source-inspector-links" aria-label="Source connections">
           <button type="button" onClick={()=>switchTab('connections')}><Icon name="page"/><span>Mentioned in {pageMentions.length} {pageMentions.length===1?'page':'pages'}</span><Icon name="chevron"/></button>

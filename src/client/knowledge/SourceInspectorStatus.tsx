@@ -1,3 +1,4 @@
+import {DisclosureSummary} from '../components/DisclosureSummary';
 import {useEffect, useRef, useState} from 'react';
 import type {SourceFile} from '../../shared/domain';
 import {request} from '../api';
@@ -32,6 +33,6 @@ export function SourceInspectorStatus({files,vaultId,onChange,onError}:{files:So
   return <section className="source-inspector-status" aria-label="Source processing">
     <div className="source-inspector-status-row"><span role="status">{label}</span></div>
     {failed.map(file=><div className="source-inspector-status-failure" key={file.id}><span><strong>{file.generated_name||file.name}</strong><small>{status(file)}</small></span><button type="button" className="button small" disabled={!!pending} onClick={()=>void retry(file)}>{pending===file.id?'Retrying…':file.status==='failed'?'Retry processing':'Retry AI'}</button></div>)}
-    {!!files.length&&<details><summary>Processing details</summary><div className="source-inspector-status-files">{files.map(file=><div key={file.id}><strong>{file.generated_name||file.name}</strong><p>{status(file)}</p><SourceLoadingProgress file={file}/>{file.error&&<p className="dialog-error">{file.error}</p>}{file.enrichment_error&&<p className="dialog-error">{file.enrichment_error}</p>}</div>)}</div></details>}
+    {!!files.length&&<details><DisclosureSummary>Processing details</DisclosureSummary><div className="source-inspector-status-files">{files.map(file=><div key={file.id}><strong>{file.generated_name||file.name}</strong><p>{status(file)}</p><SourceLoadingProgress file={file}/>{file.error&&<p className="dialog-error">{file.error}</p>}{file.enrichment_error&&<p className="dialog-error">{file.enrichment_error}</p>}</div>)}</div></details>}
   </section>;
 }

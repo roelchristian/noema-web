@@ -1,3 +1,4 @@
+import {DisclosureSummary} from '../components/DisclosureSummary';
 import { useEffect, useState } from 'react';
 import type { AIActivityDebug as DebugPayload } from '../../shared/intelligence';
 import { Modal, ModalHeader } from '../components/Modal';
@@ -45,12 +46,12 @@ export function AIActivityDebug({id,onClose}:{id:string;onClose:()=>void}) {
       <p className="ai-debug-status" role="status">{data.status} · {data.events.length} stream events · updates every second</p>
       <p className="ai-debug-endpoint">{data.endpoint??'Request not sent yet.'}{data.responseStatus!==null&&` · HTTP ${data.responseStatus}`}</p>
       {data.error&&<p role="alert">{data.error}</p>}
-      {data.endpoint?.endsWith('/responses')&&<details open><summary>Live output</summary><pre>{outputText(data)||'Waiting for output…'}</pre></details>}
-      <details open><summary>Request body</summary><pre>{pretty(data.request)}</pre></details>
-      <details open><summary>Provider response {data.status==='running'?'so far':''}</summary><pre>{data.response?pretty(data.response):data.responseBody||'Waiting for response…'}</pre></details>
-      <details><summary>Raw response body</summary><pre>{data.responseBody||'Waiting for response…'}</pre></details>
-      <details><summary>Response metadata</summary><pre>{pretty(data.responseHeaders)}</pre></details>
-      <details><summary>Stream events ({data.events.length})</summary><ol className="ai-debug-events">{data.events.map(event=><li key={event.sequence}><details><summary><time dateTime={event.receivedAt}>{new Date(event.receivedAt).toLocaleTimeString()}</time> · {event.type}</summary><pre>{pretty(event.data)}</pre></details></li>)}</ol></details>
+      {data.endpoint?.endsWith('/responses')&&<details open><DisclosureSummary>Live output</DisclosureSummary><pre>{outputText(data)||'Waiting for output…'}</pre></details>}
+      <details open><DisclosureSummary>Request body</DisclosureSummary><pre>{pretty(data.request)}</pre></details>
+      <details open><DisclosureSummary>Provider response {data.status==='running'?'so far':''}</DisclosureSummary><pre>{data.response?pretty(data.response):data.responseBody||'Waiting for response…'}</pre></details>
+      <details><DisclosureSummary>Raw response body</DisclosureSummary><pre>{data.responseBody||'Waiting for response…'}</pre></details>
+      <details><DisclosureSummary>Response metadata</DisclosureSummary><pre>{pretty(data.responseHeaders)}</pre></details>
+      <details><DisclosureSummary>Stream events ({data.events.length})</DisclosureSummary><ol className="ai-debug-events">{data.events.map(event=><li key={event.sequence}><details><DisclosureSummary><time dateTime={event.receivedAt}>{new Date(event.receivedAt).toLocaleTimeString()}</time> · {event.type}</DisclosureSummary><pre>{pretty(event.data)}</pre></details></li>)}</ol></details>
     </>}
     <div className="dialog-actions"><button className="button" disabled={!data} onClick={download}>Download JSON</button><button className="button primary" onClick={onClose}>Back to activity</button></div>
   </Modal>;

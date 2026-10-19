@@ -1,3 +1,4 @@
+import {DisclosureSummary} from '../components/DisclosureSummary';
 import { AIActivityUsage } from './AIActivityUsage';
 import { AIActivityDebug } from './AIActivityDebug';
 import { useEffect, useRef, useState } from 'react';
@@ -82,7 +83,7 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
       <p><strong>Page enrichment:</strong> {data.enrichmentMetrics.requestsAvoided.toLocaleString()} local decisions avoided a request · {data.enrichmentMetrics.providerRequests.toLocaleString()} provider requests · {data.enrichmentMetrics.completedPages.toLocaleString()} successfully enriched pages.</p>
       {data.enrichmentMetrics.estimatedCost!==null&&<p>Estimated cost: ${data.enrichmentMetrics.estimatedCost.toFixed(6)} USD{data.enrichmentMetrics.costPerCompletedPage!==null?` · $${data.enrichmentMetrics.costPerCompletedPage.toFixed(6)} per successfully enriched page`:''}.</p>}
       <p>Recent retained records across unlocked vaults. Cost appears when versioned model rates and provider token counts are available.</p>
-      {!!data.enrichmentMetrics.reasons.length&&<details><summary>Local decision reasons</summary><ul>{data.enrichmentMetrics.reasons.map(item=><li key={item.reason}>{item.reason.replaceAll('_',' ')}: {item.count.toLocaleString()}</li>)}</ul></details>}
+      {!!data.enrichmentMetrics.reasons.length&&<details><DisclosureSummary>Local decision reasons</DisclosureSummary><ul>{data.enrichmentMetrics.reasons.map(item=><li key={item.reason}>{item.reason.replaceAll('_',' ')}: {item.count.toLocaleString()}</li>)}</ul></details>}
     </section>}
     <div className="ai-activity-toolbar"><button className="button" disabled={busy} onClick={()=>void load()}>Refresh</button><button className="button" disabled={busy||!data.items.length} onClick={()=>void exportCSV()}>Export CSV</button><button className="button danger" disabled={busy||!data.items.length} onClick={()=>setConfirmClear(true)}>Clear activity</button></div>
     {error&&<p role="alert">{error}</p>}

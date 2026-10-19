@@ -35,7 +35,7 @@ const entityScope='entity_id IN (SELECT id FROM entities WHERE vault_id=?)';
 const tables={
   pages:{columns:'id,title,icon,featured_image_id,blocks,ai_status,language,created_at,updated_at,revision,deleted_at',scope:'vault_id=?'},
   source_math_documents:{columns:'file_id,raw_hash,algorithm_version,cleaned_text,uncertainty_json,updated_at',scope:'file_id IN (SELECT id FROM source_files WHERE vault_id=? AND entity_id IS NOT NULL)'},
-  source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at,import_method,source_url,pdf_flattened,admitted,format,page_start_lines,structural_nodes,original_filename,language,summary,generated_name,enrichment_status',scope:'vault_id=? AND entity_id IS NOT NULL'},
+  source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at,import_method,source_url,pdf_flattened,admitted,format,page_start_lines,structural_nodes,original_filename,language,summary,generated_name,enrichment_status,contains_math',scope:'vault_id=? AND entity_id IS NOT NULL'},
   highlights:{columns:'id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,color,reference_json,created_at',scope:'vault_id=?'},
   page_reading_notes:{columns:'page_id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,reference_json,created_at',scope:'vault_id=?'},
   entities:{columns:'id,name,aliases,mention_case,type,subtypes,description,updated_at,inactive',scope:'vault_id=?'},
@@ -222,11 +222,13 @@ export class VaultBackups {
           if(this.store.get<{type:string}>('SELECT type FROM entities WHERE id=? AND vault_id=?',sourceEntity,vault)?.type!=='source')throw invalid();
           const pdfFlattened=row.pdf_flattened??0;
           if(pdfFlattened!==0&&pdfFlattened!==1)throw invalid();
+          const containsMath=row.contains_math??0;
+          if(containsMath!==0&&containsMath!==1)throw invalid();
           const admitted=row.admitted??1;
           if(admitted!==0&&admitted!==1)throw invalid();
           const format=row.format??name(row,'name').split('.').at(-1)?.toLowerCase();
           if(!['txt','md','pdf','html','url'].includes(String(format))||format==='url'&&(!sourceUrl||admitted!==0))throw invalid();
-          const added=sourceFiles.add(vault,name(row,'name'),bytes,undefined,sourceUrl,pdfFlattened===1,admitted===0,format as import('../../shared/domain.js').SourceFile['format']);writtenSources.push(added.id);restoredSourceFiles.set(name(row,'id'),added.id);
+          const added=sourceFiles.add(vault,name(row,'name'),bytes,undefined,sourceUrl,pdfFlattened===1,admitted===0,format as import('../../shared/domain.js').SourceFile['format'],containsMath===1);writtenSources.push(added.id);restoredSourceFiles.set(name(row,'id'),added.id);
           this.store.run('UPDATE source_files SET entity_id=? WHERE id=?',sourceEntity,added.id);
           if(row.page_start_lines!==undefined) {
             const starts=list(json(row,'page_start_lines'));

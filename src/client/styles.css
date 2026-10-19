@@ -3205,3 +3205,7 @@ dialog:has(.source-passage-preview) form > p { color: var(--text-muted); font-si
 .source-reading-note-open{flex:1;min-width:0;text-align:start;overflow-wrap:anywhere}
 .source-reading-remove-action{display:flex;align-items:center;gap:6px;color:var(--danger,#a12424)}
 .source-reading-note-row .source-reading-remove-action{flex-shrink:0;min-width:32px;min-height:32px;justify-content:center}
+
+.create-entity-fields label.source-math-option{display:flex;align-items:flex-start;gap:8px;font-weight:400;line-height:1.5}
+.create-entity-fields .source-math-option input[type="checkbox"]{width:16px;height:16px;flex:0 0 16px;margin:2px 0 0;padding:0}
+.source-math-help{margin:4px 0 12px;color:var(--text-muted);font-size:12px;line-height:1.5}

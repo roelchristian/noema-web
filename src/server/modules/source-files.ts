@@ -55,7 +55,7 @@ export class SourceFiles {
     if(!row)throw new HttpError(404,'Source file not found in this vault');
     return row;
   }
-  add(vault:string,name:string,bytes:Buffer,entityId?:string,sourceUrl?:string,pdfFlattened=false,pending=false,format?:SourceFile['format']) {
+  add(vault:string,name:string,bytes:Buffer,entityId?:string,sourceUrl?:string,pdfFlattened=false,pending=false,format?:SourceFile['format'],containsMath=false) {
     const extension=name.split('.').at(-1)?.toLowerCase();
     if(format&&format!=='url'&&format!==extension)throw new HttpError(400,'Source format does not match the filename.');
     if(format==='url'&&(!pending||!sourceUrl))throw new HttpError(400,'A queued URL source needs a URL.');
@@ -74,16 +74,16 @@ export class SourceFiles {
     mkdirSync(path.dirname(filename),{recursive:true});
     writeFileSync(filename,bytes,{flag:'wx',mode:0o600});
     try {
-      const insert=()=>this.store.run('INSERT INTO source_files (id,vault_id,entity_id,name,size,status,created_at,import_method,source_url,pdf_flattened,admitted,format,original_filename) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',id,vault,entityId??null,name,bytes.length,'queued',now(),origin?'url':'upload',origin,pdfFlattened?1:0,pending?0:1,format??extension,name);
+      const insert=()=>this.store.run('INSERT INTO source_files (id,vault_id,entity_id,name,size,status,created_at,import_method,source_url,pdf_flattened,admitted,format,original_filename,contains_math) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',id,vault,entityId??null,name,bytes.length,'queued',now(),origin?'url':'upload',origin,pdfFlattened?1:0,pending?0:1,format??extension,name,containsMath?1:0);
       if(entityId)this.store.transaction(()=>{this.requireSingle(vault,entityId);insert();this.store.run('UPDATE entities SET inactive=0,updated_at=? WHERE id=?',now(),entityId);syncSourceProvenance(this.store,vault,entityId);});
       else insert();
     }catch(error){unlinkSync(filename);throw error;}
     return this.require(vault,id);
   }
-  async admit(vault:string,name:string,bytes:Buffer,entityId:string|undefined,requireOpen:()=>void,sourceUrl?:string) {
+  async admit(vault:string,name:string,bytes:Buffer,entityId:string|undefined,requireOpen:()=>void,sourceUrl?:string,containsMath=false) {
     if(this.closed)throw new HttpError(503,'Source processing is shutting down. Try again after restarting.');
     requireOpen();
-    return this.add(vault,name,bytes,entityId,sourceUrl,false,true);
+    return this.add(vault,name,bytes,entityId,sourceUrl,false,true,undefined,containsMath);
   }
   private async flattenPDF(bytes:Buffer):Promise<Buffer> {
     const directory=mkdtempSync(path.join(tmpdir(),'noema-pdf-'));
@@ -112,13 +112,13 @@ export class SourceFiles {
     }
     return executable;
   }
-  async addURL(vault:string,value:unknown,entityId:string|undefined,requireOpen:()=>void) {
+  async addURL(vault:string,value:unknown,entityId:string|undefined,requireOpen:()=>void,containsMath=false) {
     const url=sourceURL(value);
     let name:string;try{name=decodeURIComponent(url.pathname.split('/').at(-1)??'');}catch{name='';}
     name=(name||url.hostname).replace(/[\x00-\x1f\x7f/\\]/g,'_').slice(0,220);
     if(!/\.(txt|md|pdf)$/i.test(name))name+='.txt';
     requireOpen();
-    return this.add(vault,name,Buffer.from(url.href),entityId,url.href,false,true,'url');
+    return this.add(vault,name,Buffer.from(url.href),entityId,url.href,false,true,'url',containsMath);
   }
   remove(vault:string,id:string) {
     const file=this.require(vault,id);

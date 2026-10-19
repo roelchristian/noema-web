@@ -252,6 +252,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS source_files (
  CREATE INDEX IF NOT EXISTS source_files_entity ON source_files(vault_id,entity_id);`);
 const sourceColumns = db.prepare('PRAGMA table_info(source_files)').all() as {name:string}[];
 for (const [column, definition] of Object.entries({
+ contains_math:"INTEGER NOT NULL DEFAULT 0 CHECK (contains_math IN (0,1))",
  original_filename:"TEXT NOT NULL DEFAULT ''", language:'TEXT', summary:'TEXT', generated_name:'TEXT',
  enrichment_status:"TEXT NOT NULL DEFAULT 'pending'", enrichment_error:'TEXT',
  enrichment_attempts:'INTEGER NOT NULL DEFAULT 0', enrichment_next_attempt_at:"TEXT NOT NULL DEFAULT ''",

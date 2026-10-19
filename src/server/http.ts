@@ -119,14 +119,17 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
           if(id==='url' && parts.length===3 && method==='POST') {
             if(!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))throw new HttpError(415,'URL imports require JSON.');
             const body=await readBody(req);
+            if(body.containsMath!==undefined&&typeof body.containsMath!=='boolean')throw new HttpError(400,'Invalid math notation choice.');
             if(body.entityId!==undefined&&typeof body.entityId!=='string')throw new HttpError(400,'Invalid source entity.');
-            return send(201,await sourceFiles.addURL(vault,body.url,body.entityId as string|undefined,()=>{vaults.requireOpen(vault);}));
+            return send(201,await sourceFiles.addURL(vault,body.url,body.entityId as string|undefined,()=>{vaults.requireOpen(vault);},body.containsMath===true));
           }
           if(!id && parts.length===2 && method==='POST') {
+            const containsMath=url.searchParams.get('containsMath');
+            if(containsMath!==null&&containsMath!=='true'&&containsMath!=='false')throw new HttpError(400,'Invalid math notation choice.');
             const chunks:Buffer[]=[];let size=0;
             for await(const chunk of req){const bytes=Buffer.from(chunk);size+=bytes.length;if(size>maxSourceBytes)throw new HttpError(413,'Source files must be 50 MB or smaller');chunks.push(bytes);}
             vaults.requireOpen(vault);
-            return send(201,await sourceFiles.admit(vault,url.searchParams.get('name')||'',Buffer.concat(chunks),url.searchParams.get('entity')||undefined,()=>{vaults.requireOpen(vault);}));
+            return send(201,await sourceFiles.admit(vault,url.searchParams.get('name')||'',Buffer.concat(chunks),url.searchParams.get('entity')||undefined,()=>{vaults.requireOpen(vault);},undefined,containsMath==='true'));
           }
           if(id && parts.length===3 && method==='GET') {
             const raw=sourceFiles.require(vault,id);

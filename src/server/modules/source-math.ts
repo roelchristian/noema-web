@@ -12,13 +12,6 @@ Convert mathematical notation into KaTeX-compatible inline $...$ or display $$..
 
 interface Edit {id:number;find:string;latex:string}
 interface MathResult {edits:Edit[];uncertain:{id:number;text:string}[]}
-export function hasSubstantialMath(text:string) {
- text=text.replace(/(`{3,}|~{3,})[^\n]*\n[\s\S]*?\1/g,'');
- const symbols=(text.match(/[=∈∉⊂⊆∪∩∀∃∑∏∫→↦≅≡≤≥∞ℤℝℚℂ]|\\(?:frac|sum|int|mathbb|begin)\b|\$[^$\n]+\$/g)??[]).length;
- const labels=(text.match(/\b(?:theorem|lemma|corollary|proposition|proof)\b/gi)??[]).length;
- const density=symbols/Math.max(1,text.length)*1000;
- return symbols>=3&&density>=8 || symbols>=8&&density>=1 || labels>=3&&symbols>=3;
-}
 // Keep symbol formatting flexible, but never invent/repair variable names or numbers.
 // Unknown commands remain visible to this comparison (e.g. adding a bar changes meaning).
 function literalContent(text:string) {
@@ -32,7 +25,8 @@ export class SourceMath {
  constructor(private store:Store) {}
  async prepare(file:SourceFile,generate:(input:string)=>Promise<string>,signal:AbortSignal,onProgress?:(progress:SourceProcessingProgress)=>void):Promise<SourceFile> {
   const cached=mathSource(this.store,file);
-  if(cached!==file||!hasSubstantialMath(file.text))return cached;
+  // Only an explicit import choice starts math preparation; retain existing cached text.
+  if(cached!==file||file.contains_math!==1)return cached;
   if(Buffer.byteLength(file.text,'utf8')>160000)throw new HttpError(413,'This math source is too long to prepare in one job. Split it into smaller sources (under 160 KB of extracted text).');
   const nodes=file.text.replace(/\r\n?/g,'\n').split('\n').map(text=>({text}));
   let result:MathResult;

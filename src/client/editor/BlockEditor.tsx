@@ -62,21 +62,21 @@ function passagePreview(text: string) {
   return (boundary>120?start.slice(0,boundary):start).trimEnd()+'…';
 }
 const options: {type: BlockType; title: string; detail: string; icon: string}[] = [
-  {type: 'paragraph', get title(){return uiText("Text")}, get detail(){return uiText("Plain text for your thoughts")}, icon: 'T'},
-  {type: 'heading1', get title(){return uiText("Heading 1")}, get detail(){return uiText("A large section heading")}, icon: 'H₁'},
-  {type: 'heading2', get title(){return uiText("Heading 2")}, get detail(){return uiText("A smaller section heading")}, icon: 'H₂'},
-  {type: 'bullet', get title(){return uiText("Bullet list")}, get detail(){return uiText("A simple list of ideas")}, icon: '•'},
-  {type: 'numbered', get title(){return uiText("Numbered list")}, get detail(){return uiText("An ordered list of ideas")}, icon: '1.'},
-  {type: 'divider', get title(){return uiText("Divider")}, get detail(){return uiText("Separate sections with a horizontal line")}, icon: '―'},
-  {type: 'code', get title(){return uiText("Code block")}, get detail(){return uiText("Write code with preserved whitespace")}, icon: '</>'},
-  {type: 'todo', get title(){return uiText("To-do")}, get detail(){return uiText("Keep track of a task")}, icon: '☑'},
-  {type: 'columns', get title(){return uiText("Two columns")}, get detail(){return uiText("Side by side text that stacks on mobile")}, icon: '▥'},
-  {type: 'table', get title(){return uiText("Table")}, get detail(){return uiText("A simple table with rows and columns")}, icon: '▦'},
+  {type: 'paragraph', get title(){return uiText("Text")}, get detail(){return uiText("Plain text for your thoughts")}, icon: 'text'},
+  {type: 'heading1', get title(){return uiText("Heading 1")}, get detail(){return uiText("A large section heading")}, icon: 'heading-1'},
+  {type: 'heading2', get title(){return uiText("Heading 2")}, get detail(){return uiText("A smaller section heading")}, icon: 'heading-2'},
+  {type: 'bullet', get title(){return uiText("Bullet list")}, get detail(){return uiText("A simple list of ideas")}, icon: 'list-bullet'},
+  {type: 'numbered', get title(){return uiText("Numbered list")}, get detail(){return uiText("An ordered list of ideas")}, icon: 'list-numbered'},
+  {type: 'divider', get title(){return uiText("Divider")}, get detail(){return uiText("Separate sections with a horizontal line")}, icon: 'divider'},
+  {type: 'code', get title(){return uiText("Code block")}, get detail(){return uiText("Write code with preserved whitespace")}, icon: 'code'},
+  {type: 'todo', get title(){return uiText("To-do")}, get detail(){return uiText("Keep track of a task")}, icon: 'checklist'},
+  {type: 'columns', get title(){return uiText("Two columns")}, get detail(){return uiText("Side by side text that stacks on mobile")}, icon: 'columns'},
+  {type: 'table', get title(){return uiText("Table")}, get detail(){return uiText("A simple table with rows and columns")}, icon: 'table'},
   {type: 'math', get title(){return uiText("Equation")}, get detail(){return uiText("A LaTeX math equation")}, icon: 'equation'},
-  {type: 'quote', get title(){return uiText("Quote")}, get detail(){return uiText("Make a thought stand out")}, icon: '❝'},
+  {type: 'quote', get title(){return uiText("Quote")}, get detail(){return uiText("Make a thought stand out")}, icon: 'quote'},
 ];
 interface ImageUpload {id:string; after?:string; name:string; message:string; current:number; total:number}
-interface Choice {back?: boolean; danger?: boolean; disabled?: boolean; submenu?: boolean; color?:string; title: string; detail?: string; icon: string; entity?: boolean; pick: () => void}
+interface Choice {back?: boolean; danger?: boolean; disabled?: boolean; submenu?: boolean; color?:string; title: string; detail?: string; icon: string; pick: () => void}
 interface Menu {items: Choice[]; index: number; left: number; top: number; label: string; sheet?: boolean; anchor?:Range; anchorElement?:HTMLElement}
 function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOpen, register, onPaste}: {block: Block; entities: Entity[]; reviewMatches: EntityReviewItem[]; onInput: (el: HTMLElement, event:InputEvent) => void; onKeyDown: (e: KeyboardEvent<HTMLElement>) => void; onOpen: (id: string) => void; register: (el: HTMLElement | null) => void; onPaste: (e: ClipboardEvent<HTMLElement>) => void}) {
   const citations=useContext(CitationPresentationContext);
@@ -395,7 +395,7 @@ export function BlockEditor(props: Props) {
   }
   function explainChoice(ids: string[]): Choice {
     const regenerate=explainLabel(ids)===uiText('Regenerate AI explanation');
-    return {title:explaining?uiText("Explaining…"):explainLabel(ids),detail:regenerate?uiText("Replace the existing explanation for the full linked passage"):uiText("Add an explanation below these blocks"),icon:'sparkles',entity:true,pick:()=>{setMenu(null);void explain(ids);}};
+    return {title:explaining?uiText("Explaining…"):explainLabel(ids),detail:regenerate?uiText("Replace the existing explanation for the full linked passage"):uiText("Add an explanation below these blocks"),icon:'sparkles',pick:()=>{setMenu(null);void explain(ids);}};
   }
   function editInlineMath(node: HTMLElement) {
     const range = document.createRange(); range.selectNode(node);
@@ -492,7 +492,7 @@ export function BlockEditor(props: Props) {
       </div>);
   }
   function imageChoice(after?: string, replace?: Block): Choice {
-    return {title:uiText("Image"), detail:uiText("Upload an image from your device"), icon:'▧', pick:() => chooseImages(after,replace)};
+    return {title:uiText("Image"), detail:uiText("Upload an image from your device"), icon:'image', pick:() => chooseImages(after,replace)};
   }
   function semanticStyle(kind?: SemanticKind): CSSProperties | undefined {return kind ? {'--semantic-color':semanticFunctions[kind].color} as CSSProperties : undefined;}
   function semanticGlyph(kind?: SemanticKind) {return <>{kind && <span className="semantic-function-icon"><Icon name={semanticFunctions[kind].icon}/></span>}<span className="semantic-grip-icon"><Icon name="grip"/></span></>;}
@@ -502,13 +502,13 @@ export function BlockEditor(props: Props) {
     const ids=selected.elements.map(el=>el.dataset.blockId!);
     focusTarget.current={id:ids[0]!,start:true};onChange(applySemantic(latest.current.blocks,ids,kind));
   }
-  function semanticChoices(pick: (kind: SemanticKind) => void): Choice[] {return editableSemanticKinds.map(kind=>({title:uiText(semanticFunctions[kind].label),detail:uiText(semanticFunctions[kind].description),icon:semanticFunctions[kind].icon,color:semanticFunctions[kind].color,entity:true,pick:()=>{setMenu(null);pick(kind);}}));}
+  function semanticChoices(pick: (kind: SemanticKind) => void): Choice[] {return editableSemanticKinds.map(kind=>({title:uiText(semanticFunctions[kind].label),detail:uiText(semanticFunctions[kind].description),icon:semanticFunctions[kind].icon,color:semanticFunctions[kind].color,pick:()=>{setMenu(null);pick(kind);}}));}
   function movementChoices(id: string): Choice[] {
     const list = latest.current.blocks, block = list.find(item => item.id === id);
     const items = block?.semanticGroup ? semanticDragItems(list, id) : semanticRuns(list).map(run => ({id: run.id}));
     const index = items.findIndex(item => item.id === id);
     return ([-1, 1] as const).map(direction => ({
-      title: direction === -1 ? uiText("Move up") : uiText("Move down"), icon: direction === -1 ? 'arrow-up' : 'arrow-down', entity: true,
+      title: direction === -1 ? uiText("Move up") : uiText("Move down"), icon: direction === -1 ? 'arrow-up' : 'arrow-down',
       disabled: index < 0 || index + direction < 0 || index + direction >= items.length,
       pick: () => {
         if (index < 0 || index + direction < 0 || index + direction >= items.length) return;
@@ -522,22 +522,22 @@ export function BlockEditor(props: Props) {
   function blockOptions(anchor: HTMLElement, block: Block) {
     const selection=root.current ? selectedEditorBlocks(root.current)?.elements.map(el=>el.dataset.blockId!) : undefined;
     const ids=selection?.includes(block.id)?selection:[block.id];
-    const back: Choice = {title:uiText("Back to block actions"),icon:'←',submenu:true,back:true,pick:()=>blockOptions(anchor,block)};
+    const back: Choice = {title:uiText("Back to block actions"),icon:'arrow-left',submenu:true,back:true,pick:()=>blockOptions(anchor,block)};
     show(anchor, [
-      {get title(){return uiText("Format")},detail:uiText("Text, headings, lists, and other block formats"),icon:'page',entity:true,submenu:true,pick:()=>show(anchor,[back,...blockOptionsFor(block).map(option=>({...option,pick:()=>convert(block,option.type)})),imageChoice(block.id,block),...(mobile?movementChoices(block.id):[])],'FORMAT',true)},
-      ...(!isAIExplanation(block) ? [{get title(){return uiText("Turn into")},detail:block.semantic?semanticFunctions[block.semantic].label:uiText("Choose a semantic block"),icon:'semantic',entity:true,submenu:true,
-        pick:()=>show(anchor,[back,...semanticChoices(kind=>onChange(applySemantic(latest.current.blocks,ids,kind))),...(block.semantic?[{title:uiText("Remove semantic function"),icon:'close',entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:undefined});}}]:[]),...(mobile&&block.semanticGroup?[{get title(){return uiText("Group actions")},icon:'semantic',entity:true,submenu:true,pick:()=>{setActiveBlock({id:block.semanticGroup!.id,group:true});groupOptions(anchor,block.semanticGroup!.id);}}]:[])],'TURN INTO SEMANTIC BLOCK', true)}] : []),
+      {get title(){return uiText("Format")},detail:uiText("Text, headings, lists, and other block formats"),icon:'text',submenu:true,pick:()=>show(anchor,[back,...blockOptionsFor(block).map(option=>({...option,pick:()=>convert(block,option.type)})),imageChoice(block.id,block),...(mobile?movementChoices(block.id):[])],'FORMAT',true)},
+      ...(!isAIExplanation(block) ? [{get title(){return uiText("Turn into")},detail:block.semantic?semanticFunctions[block.semantic].label:uiText("Choose a semantic block"),icon:'semantic',submenu:true,
+        pick:()=>show(anchor,[back,...semanticChoices(kind=>onChange(applySemantic(latest.current.blocks,ids,kind))),...(block.semantic?[{title:uiText("Remove semantic function"),icon:'close',pick:()=>{setMenu(null);update(block.id,{semantic:undefined});}}]:[]),...(mobile&&block.semanticGroup?[{get title(){return uiText("Group actions")},icon:'semantic',submenu:true,pick:()=>{setActiveBlock({id:block.semanticGroup!.id,group:true});groupOptions(anchor,block.semanticGroup!.id);}}]:[])],'TURN INTO SEMANTIC BLOCK', true)}] : []),
       ...(props.onExplain&&aiExplanationSources(latest.current.blocks,ids).length?[aiActionChoice(anchor,ids,back)]:[]),
-      {title:uiText("Delete block"),icon:'trash',entity:true,danger:true,pick:()=>removeBlock(block.id)},
+      {title:uiText("Delete block"),icon:'trash',danger:true,pick:()=>removeBlock(block.id)},
     ], 'BLOCK OPTIONS', true);
   }
   function aiActionChoice(anchor: HTMLElement, ids: string[], back: Choice): Choice {
-    return {get title(){return uiText("AI actions")},icon:'sparkles',entity:true,submenu:true,pick:()=>show(anchor,[back,...(props.onReview?[{title:reviewPending.current?uiText("Reviewing…"):uiText("Review with AI"),detail:uiText("Suggest spelling, punctuation, grammar, and phrasing corrections"),icon:'sparkles',entity:true,disabled:reviewPending.current,pick:()=>void reviewWriting(ids)}]:[]),explainChoice(ids)],'AI ACTIONS',true)};
+    return {get title(){return uiText("AI actions")},icon:'sparkles',submenu:true,pick:()=>show(anchor,[back,...(props.onReview?[{title:reviewPending.current?uiText("Reviewing…"):uiText("Review with AI"),detail:uiText("Suggest spelling, punctuation, grammar, and phrasing corrections"),icon:'sparkles',disabled:reviewPending.current,pick:()=>void reviewWriting(ids)}]:[]),explainChoice(ids)],'AI ACTIONS',true)};
   }
   function groupOptions(anchor: HTMLElement, id: string) {
     const children=latest.current.blocks.filter(block=>block.semanticGroup?.id===id || block.id===id && isAIExplanation(block)),locked=children.some(isAIExplanation);
-    const back: Choice = {title:uiText("Back to group actions"),icon:'←',submenu:true,back:true,pick:()=>groupOptions(anchor,id)};
-    show(anchor,[...(props.onExplain&&aiExplanationSources(latest.current.blocks,children.map(block=>block.id)).length?[aiActionChoice(anchor,children.map(block=>block.id),back)]:[]),...(mobile?movementChoices(id):[]),...(!locked?[...semanticChoices(kind=>onChange(retagSemanticGroup(latest.current.blocks,id,kind))),{title:uiText("Ungroup blocks"),detail:uiText("Keep all child blocks"),icon:'close',entity:true,pick:()=>{setMenu(null);onChange(removeSemanticGroup(latest.current.blocks,id));}}]:[{get title(){return uiText("Delete explanation")},danger:true,detail:uiText("Remove this explanation and its subblocks"),icon:'close',entity:true,pick:()=>{setMenu(null);const rest=latest.current.blocks.filter(block=>block.semanticGroup?.id!==id && block.id!==id);onChange(rest.length?rest:[makeBlock()]);}}])],'SEMANTIC GROUP', true);
+    const back: Choice = {title:uiText("Back to group actions"),icon:'arrow-left',submenu:true,back:true,pick:()=>groupOptions(anchor,id)};
+    show(anchor,[...(props.onExplain&&aiExplanationSources(latest.current.blocks,children.map(block=>block.id)).length?[aiActionChoice(anchor,children.map(block=>block.id),back)]:[]),...(mobile?movementChoices(id):[]),...(!locked?[...semanticChoices(kind=>onChange(retagSemanticGroup(latest.current.blocks,id,kind))),{title:uiText("Ungroup blocks"),detail:uiText("Keep all child blocks"),icon:'close',pick:()=>{setMenu(null);onChange(removeSemanticGroup(latest.current.blocks,id));}}]:[{get title(){return uiText("Delete explanation")},danger:true,detail:uiText("Remove this explanation and its subblocks"),icon:'close',pick:()=>{setMenu(null);const rest=latest.current.blocks.filter(block=>block.semanticGroup?.id!==id && block.id!==id);onChange(rest.length?rest:[makeBlock()]);}}])],'SEMANTIC GROUP', true);
   }
   function update(id: string, patch: Partial<Block>) { onChange(latest.current.blocks.map(b => b.id === id ? {...b, ...patch} : b)); }
   function convertMathToInline(id:string,placement:MathInlinePlacement) {
@@ -609,7 +609,7 @@ export function BlockEditor(props: Props) {
       // Release modal focus before an action focuses a new or converted block.
       if (sheet && !item.submenu) event.currentTarget.closest('dialog')?.close();
       item.pick();
-    }}><span className="menu-icon" style={item.color?{color:item.color}:undefined}>{item.entity || item.icon === 'equation' ? <Icon name={item.icon}/> : item.icon}</span><span>{item.icon==='page'?<TitleText text={item.title}/>:item.title}{item.detail&&<small>{item.detail}</small>}</span>{item.submenu&&!item.back&&<span className="menu-submenu-arrow" aria-hidden="true"><Icon name="chevron"/></span>}</button>);
+    }}><span className="menu-icon" aria-hidden="true" style={item.color?{color:item.color}:undefined}><Icon name={item.icon}/></span><span>{item.icon==='page'?<TitleText text={item.title}/>:item.title}{item.detail&&<small>{item.detail}</small>}</span>{item.submenu&&!item.back&&<span className="menu-submenu-arrow" aria-hidden="true"><Icon name="chevron"/></span>}</button>);
   }
   function insertMention(range: Range, id: string, blockId: string) {
     if (!range.startContainer.isConnected) return;
@@ -622,7 +622,7 @@ export function BlockEditor(props: Props) {
     const title=anchor.dataset.pageTitle!;
     const matches=(latest.current.pages??[]).filter(page=>pageTitleKey(page.title)===pageTitleKey(title));
     if(matches.length===1 && latest.current.onOpenPage) {setPageLinkStatus('');latest.current.onOpenPage(matches[0]!.id);}
-    else if(matches.length>1)show(anchor,matches.map(page=>({title:page.title,detail:'Updated '+new Date(page.updated_at).toLocaleString(getLocale()),icon:'page',entity:true,pick:()=>{setMenu(null);latest.current.onOpenPage?.(page.id);}})),'CHOOSE NOTE');
+    else if(matches.length>1)show(anchor,matches.map(page=>({title:page.title,detail:'Updated '+new Date(page.updated_at).toLocaleString(getLocale()),icon:'page',pick:()=>{setMenu(null);latest.current.onOpenPage?.(page.id);}})),'CHOOSE NOTE');
     else setPageLinkStatus('Note “'+title+'” was not found in this vault.');
   }
   function insertPageLink(range:Range,title:string,alias:string|undefined,blockId:string) {
@@ -669,11 +669,11 @@ export function BlockEditor(props: Props) {
       if(start>=0){
         const saved=range.cloneRange();saved.setStart(range.startContainer,start);
         const bookmark=bookmarkCitationRange(el,saved);
-        citeChoice=[{title:uiText("Cite"),detail:uiText("Add a source, section, or citation range"),icon:'source',entity:true,pick:()=>{setMenu(null);setCitationTarget({bookmark,editor:el,blockId:block.id});}}];
+        citeChoice=[{title:uiText("Cite"),detail:uiText("Add a source, section, or citation range"),icon:'source',pick:()=>{setMenu(null);setCitationTarget({bookmark,editor:el,blockId:block.id});}}];
       }
     }
     if (/^\/[^\n]*$/.test(el.textContent || '')) {
-      const query = el.textContent!.slice(1).toLowerCase(); show(el, [...blockOptionsFor(block).filter(o => o.title.toLowerCase().includes(query)).map(o => ({...o, pick: () => convert(block, o.type, true)})), ...citeChoice,...editableSemanticKinds.filter(kind=>kind.includes(query)).map(kind=>({title:semanticFunctions[kind].label,get detail(){return uiText("Semantic function")},icon:semanticFunctions[kind].icon,color:semanticFunctions[kind].color,entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:kind,content:[]});}})), ...('image'.includes(query) ? [imageChoice(block.id, block)] : [])], 'TURN INTO',false,range.cloneRange()); return;
+      const query = el.textContent!.slice(1).toLowerCase(); show(el, [...blockOptionsFor(block).filter(o => o.title.toLowerCase().includes(query)).map(o => ({...o, pick: () => convert(block, o.type, true)})), ...citeChoice,...editableSemanticKinds.filter(kind=>kind.includes(query)).map(kind=>({title:semanticFunctions[kind].label,get detail(){return uiText("Semantic function")},icon:semanticFunctions[kind].icon,color:semanticFunctions[kind].color,pick:()=>{setMenu(null);update(block.id,{semantic:kind,content:[]});}})), ...('image'.includes(query) ? [imageChoice(block.id, block)] : [])], 'TURN INTO',false,range.cloneRange()); return;
     }
     if(citeChoice.length){show(el,citeChoice,'CITATION',false,range.cloneRange());return;}
     const wiki=before.toString().match(/\[\[([^\[\]\n]*)$/);
@@ -682,7 +682,7 @@ export function BlockEditor(props: Props) {
       if(start>=0) {
         const [query,...alias]=wiki[1]!.split('|'),saved=range.cloneRange();saved.setStart(range.startContainer,start);
         const pages=(latest.current.pages??[]).filter(page=>!/[\[\]\n|]/.test(page.title)&&page.title.toLocaleLowerCase().includes(query!.trim().toLocaleLowerCase())).slice(0,8);
-        show(el,pages.map(page=>({title:page.title,detail:alias.length?'Display as '+alias.join('|'):uiText("Link to note"),icon:'page',entity:true,pick:()=>insertPageLink(saved,page.title,alias.length?alias.join('|'):undefined,block.id)})),'LINK A NOTE');return;
+        show(el,pages.map(page=>({title:page.title,detail:alias.length?'Display as '+alias.join('|'):uiText("Link to note"),icon:'page',pick:()=>insertPageLink(saved,page.title,alias.length?alias.join('|'):undefined,block.id)})),'LINK A NOTE');return;
       }
     }
     const match = before.toString().match(/(?:^|\s)@([^@\n]*)$/);
@@ -693,10 +693,10 @@ export function BlockEditor(props: Props) {
       const showMatches=(limit=3)=>{
         const items:Choice[]=matches.slice(0,limit).map(entity=>{
           const subtype=entity.subtypes.map(id=>schema.subtypes.find(subtype=>subtype.id===id&&subtype.type===entity.type)?.name).find(Boolean);
-          return {title:entity.name,detail:subtype?`${entityLabels[entity.type]} · ${subtype}`:entityLabels[entity.type],icon:entity.type,entity:true,pick:()=>insertMention(saved,entity.id,block.id)};
+          return {title:entity.name,detail:subtype?`${entityLabels[entity.type]} · ${subtype}`:entityLabels[entity.type],icon:entity.type,pick:()=>insertMention(saved,entity.id,block.id)};
         });
-        if(matches.length>limit)items.push({title:`Show more (${matches.length-limit})`,icon:'chevron',entity:true,pick:()=>showMatches(limit+10)});
-        items.push({title:query?`Create and insert “${query}”`:uiText("Create and insert an entity"),icon:'+',pick:()=>{setMenu(null);onCreateEntity(query,id=>insertMention(saved,id,block.id));}});
+        if(matches.length>limit)items.push({title:`Show more (${matches.length-limit})`,icon:'chevron',pick:()=>showMatches(limit+10)});
+        items.push({title:query?`Create and insert “${query}”`:uiText("Create and insert an entity"),icon:'plus',pick:()=>{setMenu(null);onCreateEntity(query,id=>insertMention(saved,id,block.id));}});
         show(el,items,'LINK AN ENTITY',false,range.cloneRange());
         if(limit>3)setMenu(current=>current?{...current,index:limit-10}:current);
       };

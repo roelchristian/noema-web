@@ -3266,6 +3266,12 @@ dialog:has(.source-passage-preview) form > p { color: var(--text-muted); font-si
 .create-entity-fields label.source-math-option{display:flex;align-items:flex-start;gap:8px;font-weight:400;line-height:1.5}
 .create-entity-fields .source-math-option input[type="checkbox"]{width:16px;height:16px;flex:0 0 16px;margin:2px 0 0;padding:0}
 .source-math-help{margin:4px 0 12px;color:var(--text-muted);font-size:12px;line-height:1.5}
+.source-policy>.section-hint{margin:6px 0}
+.source-policy-details{margin-top:10px;font-size:12px;line-height:1.5;color:var(--text-muted)}
+.source-policy-details>summary{width:fit-content;cursor:pointer;color:var(--text)}
+.source-policy-details>summary:hover{text-decoration:underline}
+.source-policy-details>summary:focus-visible{outline:2px solid currentColor;outline-offset:4px;border-radius:2px}
+.source-policy-details[open]>summary{margin-bottom:8px}
 
 /* A quiet request rail beside a fixed, scrollable reading surface. */
 .source-page-dialog .modal-title { display: flex; align-items: baseline; gap: 16px; min-width: 0; }

@@ -1,7 +1,16 @@
 export function SourcePolicy({method}:{method?:'file'|'url'}) {
-  return <p className="section-hint">{method==='url'
-      ? 'Use a public HTTP or HTTPS URL for a web page, TXT, Markdown, or PDF, up to 50 MB. Web pages are saved as structured Markdown, preserving headings, quotations, footnotes, and links without running scripts or downloading embedded content. The source URL is saved with the entity.'
+  return <div className="source-policy">
+    <p className="section-hint">{method==='url'
+      ? 'Public web page, TXT, MD, or PDF URL · up to 50 MB.'
       : method==='file'
-        ? 'TXT, MD, or PDF · up to 50 MB. The file and extracted text stay in this vault.'
-        : 'Attach TXT, MD, or PDF files, or import a public HTTP or HTTPS URL · up to 50 MB. Web pages are saved as structured Markdown, preserving headings, quotations, footnotes, and links without running scripts or downloading embedded content. Original files, extracted text, and source URLs stay in this vault.'} Each source has one file or URL. Once extraction finishes, AI generates a source name, language, and summary of up to 75 words, and links credited authors to matching people (including aliases) or creates author entities when none match; the original filename is preserved. With an Intelligence connection configured, source text (or excerpts for long uploads) is sent to OpenAI for enrichment. When automatic semantic indexing is enabled, all extracted source text is indexed as passages and sent to OpenAI for embeddings. Downloading, safety screening, PDF flattening, and text extraction run in the background after creation. The bell menu reports success or failure; failed sources remain inactive. On macOS, PDFs that fail screening are flattened into static pages and screened again before becoming available. Flattening removes interactive features and selectable text; OCR recovers the text locally. Password-locked or unreadable PDFs stay inactive.</p>;
+        ? 'TXT, MD, or PDF · up to 50 MB.'
+        : 'One file or public URL per source · TXT, MD, or PDF · up to 50 MB.'} Processing runs in the background; check the bell menu for results.</p>
+    <p className="section-hint">With Intelligence connected, source text is sent to OpenAI for enrichment. Automatic semantic indexing also sends extracted text for embeddings when enabled.</p>
+    <details className="source-policy-details">
+      <summary>Processing and storage details</summary>
+      <p className="section-hint">Each source has one file or URL. Files, extracted text, and source URLs are stored in this vault. Web pages are saved as structured Markdown without running scripts or downloading embedded content.</p>
+      <p className="section-hint">After extraction, AI generates a name, language, and summary of up to 75 words, and matches credited authors to people in your library or creates them. The original filename is preserved. Long sources may use excerpts for enrichment; indexing uses all extracted text.</p>
+      <p className="section-hint">Sources are screened before use; failed sources stay inactive. On macOS, PDFs that fail screening are flattened and screened again. Flattening removes interactive features and selectable text; local OCR recovers text. Password-locked or unreadable PDFs stay inactive.</p>
+    </details>
+  </div>;
 }

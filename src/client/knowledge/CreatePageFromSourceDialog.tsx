@@ -171,7 +171,7 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
         </div>}
         {running&&<p className="section-hint">Live text and formatting update as your draft is generated. Citations are hidden in this preview.</p>}
         {(phase==='failed'||phase==='stopped')&&!!blocks.length&&<p className="section-hint">This preview may be incomplete. Retry to recover or generate a complete draft.</p>}
-        {draft&&<p className="section-hint">Accept creates an editable page linked to this source. Reject discards this draft without adding a page to your library. Closing keeps it available for later review.</p>}
+        {draft&&<p className="section-hint">Accept creates an editable page linked to this source. Reject discards this draft without adding it to Pages. Closing keeps it available for later review.</p>}
       </div>}
       {error&&<p className="dialog-error" role="alert">{error}</p>}
     </div>

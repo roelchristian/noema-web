@@ -200,7 +200,7 @@ export function App() {
       }
     } else {
       const label = view==='entities'&&knowledgeType==='source'?'Sources':view === 'inbox' ? 'Inbox' : view === 'trash' ? 'Trash' : view === 'entities' ? 'Knowledge entities' : view === 'organization' ? 'Pages' : view === 'favourites' ? 'Favourites' : 'Recent items';
-      const icon = view==='entities'&&knowledgeType==='source'?'source':view === 'inbox' ? 'inbox' : view === 'trash' ? 'trash' : view === 'entities' ? 'knowledge' : view === 'organization' ? 'page' : view === 'favourites' ? 'star' : 'recent';
+      const icon = view==='entities'&&knowledgeType==='source'?'source':view === 'inbox' ? 'inbox' : view === 'trash' ? 'trash' : view === 'entities' ? 'knowledge' : view === 'organization' ? 'pages' : view === 'favourites' ? 'star' : 'recent';
       breadcrumbs.push({key: 'view', label, icon, onClick: view === 'organization' ? () => workspace.openOrganization() : view === 'entities' && knowledgeType && knowledgeType!=='source' ? () => {captureLibraryView(); setKnowledgeBrowser({entityType: ''});} : undefined});
       if (view === 'entities' && knowledgeType && knowledgeType!=='source') {
         breadcrumbs.push({key: 'entity-type:' + knowledgeType, label: entityLabels[knowledgeType], icon: knowledgeType});
@@ -227,7 +227,7 @@ export function App() {
       </nav>
       <nav className="sidebar-group" aria-label="Vault library">
         <div className="workspace-label">Workspace</div>
-        <button className={'nav ' + (view === 'pages' || view === 'organization' && !organizationContext.collection && !organizationContext.folder ? 'active' : '')} disabled={disabled} aria-label="Library" title="Library" onClick={() => run(() => workspace.showPages())}><span data-icon="page"><Icon name="page"/></span><span>Library</span><kbd>P</kbd></button>
+        <button className={'nav ' + (view === 'pages' || view === 'organization' && !organizationContext.collection && !organizationContext.folder ? 'active' : '')} disabled={disabled} aria-label="Pages" title="Pages" onClick={() => run(() => workspace.showPages())}><span data-icon="pages"><Icon name="pages"/></span><span>Pages</span><kbd>P</kbd></button>
         <button className={'nav ' + (view === 'inbox' ? 'active' : '')} disabled={disabled} aria-label="Inbox" title="Inbox" onClick={() => workspace.showInbox()}><span data-icon="inbox"><Icon name="inbox"/></span><span>Inbox</span><span className="count">{inboxPages(pages, organization).length}</span></button>
         <button className={'nav ' + (view === 'source' || view === 'entities' && knowledgeType === 'source' ? 'active' : '')} disabled={disabled} aria-label="Sources" title="Sources" onClick={() => {captureLibraryView();setKnowledgeBrowser({entityType:'source'});workspace.showEntities();}}><span data-icon="source"><Icon name="source"/></span><span>Sources</span><span className="count">{entities.filter(entity=>entity.type==='source').length}</span></button>
         <button className={'nav ' + (view === 'entities' && knowledgeType !== 'source' ? 'active' : '')} disabled={disabled} aria-label="Knowledge entities" title="Knowledge entities" onClick={() => {if(knowledgeType==='source'){captureLibraryView();setKnowledgeBrowser({entityType:''});}workspace.showEntities();}}><span data-icon="knowledge"><Icon name="knowledge"/></span><span>Knowledge entities</span><span className="count">{entities.filter(entity=>entity.type!=='source').length}</span></button>

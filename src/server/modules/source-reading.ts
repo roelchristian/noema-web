@@ -90,7 +90,7 @@ export class SourceReading {
   if(existing){
    if(existing.vault_id!==vault||existing.file_id!==fileId||existing.source_hash!==ref.sourceHash||existing.start_offset!==ref.startOffset||existing.end_offset!==ref.endOffset)throw new HttpError(409,'This reading note request is already in use.');
    const saved=pages.get(vault,pageId);
-   if(projectPageText(saved.blocks,()=>undefined).text!==content.split(/\n\s*\n/).join('\n'))throw new HttpError(409,'The previous note was already saved. Open it from your library to make further changes.');
+   if(projectPageText(saved.blocks,()=>undefined).text!==content.split(/\n\s*\n/).join('\n'))throw new HttpError(409,'The previous note was already saved. Open it from Pages to make further changes.');
    return saved;
   }
   const name=this.store.get<{name:string}>('SELECT name FROM entities WHERE id=?',ref.sourceId)!.name;

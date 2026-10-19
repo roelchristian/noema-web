@@ -1,4 +1,5 @@
 import {TitleText} from '../components/TitleText';
+import {SourceInspectorStatus} from './SourceInspectorStatus';
 import {SourceLoadingProgress} from './SourceLoadingProgress';
 import {SummaryText} from '../intelligence/SummaryText';
 import { PageIcon } from '../components/PageIcon';
@@ -15,14 +16,16 @@ import { entityLabels, entityTypes, type Entity, type EntityDetail, type EntityT
 import { Icon } from '../components/Icon';
 import { Mention } from '../components/Mention';
 import { AliasInput, parseAliases } from './AliasInput';
-interface Props {inspector?: boolean;onCreatePageFromSource:(source:Entity)=>void;onOpenPage: (id: string) => void; refreshKey: string; vaultId: string; id: string; entities: Entity[]; onOpen: (id: string) => void; onClose: () => void; onUpdated: () => Promise<void>; onError: (error: unknown) => void}
+interface Props {activeAttachmentId?:string;inspectorTab?:EntityTab;onInspectorTabChange?:(tab:EntityTab)=>void;inspector?: boolean;onCreatePageFromSource:(source:Entity)=>void;onOpenPage: (id: string) => void; refreshKey: string; vaultId: string; id: string; entities: Entity[]; onOpen: (id: string) => void; onClose: () => void; onUpdated: () => Promise<void>; onError: (error: unknown) => void}
 const entityTabs = [{id: 'overview', label: 'Overview', icon:'page'}, {id: 'connections', label: 'Connections', icon:'knowledge'}, {id: 'edit', label: 'Edit', icon:'edit'}] as const;
 type EntityTab = typeof entityTabs[number]['id'];
 interface EntityConnection {key: string; target: string; label: string}
 export function EntityPanel(props: Props) {
   const {vaultId, id, entities, onOpen, onClose, onUpdated, onError, onOpenPage, refreshKey, inspector = false} = props;
   const [entity, setEntity] = useState<EntityDetail | null>(null), [loadingError, setLoadingError] = useState('');
-  const [tab, setTab] = useState<EntityTab>(() => hasEntityDraft(vaultId, id) ? 'edit' : 'overview');
+  const [localTab, setTab] = useState<EntityTab>(() => hasEntityDraft(vaultId, id) ? 'edit' : 'overview');
+  const tab = inspector ? props.inspectorTab ?? localTab : localTab;
+  const [showAllMentions, setShowAllMentions] = useState(false);
   const currentEntityKey = useRef({vaultId, id}); currentEntityKey.current = {vaultId, id};
   useEffect(() => {setEntity(null); setTab(hasEntityDraft(vaultId, id) ? 'edit' : 'overview');}, [vaultId, id]);
   useEffect(() => {
@@ -50,18 +53,20 @@ export function EntityPanel(props: Props) {
   const unsetProperties = propertyNames.filter(name => !entity?.properties.some(property => property.name.toLowerCase() === name.toLowerCase()));
   function switchTab(next: EntityTab) {
     setTab(next);
+    if(inspector)props.onInspectorTabChange?.(next);
     document.getElementById('entity-panel')?.scrollTo({top: 0});
     document.getElementById('entity-tab-' + next)?.focus({preventScroll: true});
   }
-  return <aside id="entity-panel" className={"entity-panel entity-detail-panel entity-editor-panel" + (inspector ? " source-inspector" : "")} data-entity-tab={tab} aria-label={inspector ? "Source inspector" : "Knowledge entity"}><div className="panel-top entity-detail-toolbar">
-    {entity ? <div className="entity-toolbar-heading"><span className="entity-detail-icon" aria-hidden="true"><Icon name={entity.type}/></span><h2 id="entity-detail-title" className="entity-toolbar-title" title={entity.name}>{inspector ? "Source inspector" : entity.name}</h2></div> : <span>{inspector ? "SOURCE INSPECTOR" : "KNOWLEDGE ENTITY"}</span>}
-    <button type="button" title={inspector ? "Close source inspector" : "Close entity"} aria-label={inspector ? "Close source inspector" : "Close entity"} onClick={onClose}><Icon name="close"/></button>
-  </div>
-    {!entity ? <p className="panel-body" role={loadingError ? 'alert' : 'status'}>{loadingError || 'Loading entity…'}</p> : <div className="panel-body entity-detail-body">
-      {loadingError && <p role="alert">{loadingError}</p>}
-      {tab!=='edit'&&entity.attachments?.map(file=><SourceLoadingProgress key={file.id} file={file}/>)}
-      <div className="entity-detail-classification"><span className="entity-detail-type">{entityLabels[entity.type]}</span>{entity.type==='source'&&<span>{entity.attachments?.some(file=>file.status==='queued'||file.status==='processing')?'Processing':entity.inactive?'Inactive':entity.sourceEnrichmentStatus==='pending'||entity.sourceEnrichmentStatus==='running'?'Processed · Enriching with AI':entity.sourceEnrichmentStatus==='failed'?'Processed · AI enrichment failed':'Processed'}</span>}{!!subtypeNames.length && <span>{subtypeNames.join(' · ')}</span>}</div>
-      <div className="entity-detail-tabs" role="tablist" aria-label={inspector ? "Source details" : "Entity details"}>
+  const attachment = entity?.attachments?.find(file=>file.id===props.activeAttachmentId)
+    ?? entity?.attachments?.find(file=>file.status==='ready'&&file.admitted===1) ?? entity?.attachments?.[0];
+  const connectionCount = relationships.length + references.length + incoming.length;
+  const pageMentions = entity?.pageMentions ?? [];
+  const mentionsSection = <section className="entity-detail-section entity-mentions-section"><h3>{inspector ? 'Mentioned in pages' : 'Mentions from pages'}<span>{pageMentions.length}</span></h3>
+    {pageMentions.length ? <><ul className="entity-connection-list entity-page-mentions">{(inspector&&!showAllMentions?pageMentions.slice(0,4):pageMentions).map(page=><li key={page.id}>
+      <button type="button" onClick={()=>onOpenPage(page.id)}><PageIcon icon={page.icon}/><span><span className="entity-mention-heading"><strong title={page.title||'Untitled'}><TitleText text={page.title||'Untitled'}/></strong><small className="entity-mention-count" aria-label={`${page.mentionCount} ${page.mentionCount===1?'mention':'mentions'}`}>{page.mentionCount}×</small></span>{page.excerpt&&<small className="entity-mention-excerpt" title={page.excerpt}>{page.excerpt}</small>}</span><Icon name="chevron"/></button>
+    </li>)}</ul>{inspector&&pageMentions.length>4&&<button type="button" className="entity-detail-more" aria-expanded={showAllMentions} onClick={()=>setShowAllMentions(value=>!value)}>{showAllMentions?'Show fewer pages':`View all ${pageMentions.length} pages`}</button>}</> : <p className="entity-detail-empty">{inspector?'No pages reference this source yet. Add a passage to a page while reading to connect your notes.':'No pages mention this entity yet. Tag it in a page to see it here.'}</p>}
+  </section>;
+  const tabNavigation = <div className="entity-detail-tabs" role="tablist" aria-label={inspector ? "Source details" : "Entity details"}>
         {entityTabs.map(({id: value, label,icon}) => <button type="button" key={value} id={'entity-tab-' + value} role="tab" aria-selected={tab === value} aria-controls={'entity-tabpanel-' + value} tabIndex={tab === value ? 0 : -1} onClick={() => switchTab(value)} onKeyDown={event => {
           if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
           event.preventDefault();
@@ -69,9 +74,40 @@ export function EntityPanel(props: Props) {
           const next = event.key === 'Home' ? 0 : event.key === 'End' ? entityTabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + entityTabs.length) % entityTabs.length;
           switchTab(entityTabs[next]!.id);
         }}><Icon name={icon}/>{inspector && value === 'edit' ? 'Details' : label}</button>)}
-      </div>
+      </div>;
+  const panelToolbar = <div className="panel-top entity-detail-toolbar">
+    {entity ? <div className="entity-toolbar-heading"><span className="entity-detail-icon" aria-hidden="true"><Icon name={entity.type}/></span><div className="entity-toolbar-identity">{inspector&&<span className="source-inspector-eyebrow">Source</span>}<h2 id="entity-detail-title" className="entity-toolbar-title" title={entity.name}>{entity.name}</h2></div></div> : <span>{inspector ? "SOURCE INSPECTOR" : "KNOWLEDGE ENTITY"}</span>}
+    <button type="button" title={inspector ? "Close source inspector" : "Close entity"} aria-label={inspector ? "Close source inspector" : "Close entity"} onClick={onClose}><Icon name="close"/></button>
+  </div>;
+  return <aside id="entity-panel" className={"entity-panel entity-detail-panel entity-editor-panel" + (inspector ? " source-inspector" : "")} data-entity-tab={tab} aria-label={inspector ? "Source inspector" : "Knowledge entity"}>{inspector?<div className="source-inspector-header">{panelToolbar}{entity&&tabNavigation}</div>:panelToolbar}
+    {!entity ? <p className="panel-body" role={loadingError ? 'alert' : 'status'}>{loadingError || (inspector?'Loading source…':'Loading entity…')}</p> : <div className="panel-body entity-detail-body">
+      {loadingError && <p role="alert">{loadingError}</p>}
+      {!inspector&&tab!=='edit'&&entity.attachments?.map(file=><SourceLoadingProgress key={file.id} file={file}/>)}
+      {!inspector&&<div className="entity-detail-classification"><span className="entity-detail-type">{entityLabels[entity.type]}</span>{entity.type==='source'&&<span>{entity.attachments?.some(file=>file.status==='queued'||file.status==='processing')?'Processing':entity.inactive?'Inactive':entity.sourceEnrichmentStatus==='pending'||entity.sourceEnrichmentStatus==='running'?'Processed · Enriching with AI':entity.sourceEnrichmentStatus==='failed'?'Processed · AI enrichment failed':'Processed'}</span>}{!!subtypeNames.length && <span>{subtypeNames.join(' · ')}</span>}</div>}
+      {!inspector && tabNavigation}
       <div id="entity-tabpanel-overview" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-overview" hidden={tab !== 'overview'} tabIndex={0}>
-      {inspector && <dl className="source-inspector-counts"><div><dt>Pages mentioning</dt><dd>{entity.pageMentions?.length ?? 0}</dd></div><div><dt>Connections</dt><dd>{relationships.length + references.length + incoming.length}</dd></div></dl>}
+      {inspector&&<>
+        <SourceInspectorStatus files={entity.attachments??[]} vaultId={vaultId} onError={onError} onChange={file=>{
+          setEntity(current=>current?{...current,attachments:current.attachments?.map(item=>item.id===file.id?file:item)}:current);
+          void onUpdated().catch(onError);
+        }}/>
+        {attachment&&<SourceInspectorSummary key={attachment.id} name={attachment.generated_name||attachment.name} summary={attachment.summary}/>}
+        {entity.description&&<section className="entity-detail-section"><h3>Description</h3><p className="entity-detail-description">{entity.description}</p></section>}
+        <section className="entity-detail-section source-inspector-metadata"><h3>Source details<button type="button" className="entity-detail-more" onClick={()=>switchTab('edit')}>Edit<Icon name="edit"/></button></h3>
+          <dl className="entity-overview-properties">
+            {!!subtypeNames.length&&<div><dt>Type</dt><dd>{subtypeNames.join(' · ')}</dd></div>}
+            {attachment&&<><div><dt>Format</dt><dd>{attachment.format.toUpperCase()}{attachment.pages?` · ${attachment.pages} pages`:''}</dd></div>{attachment.language&&<div><dt>Language</dt><dd>{attachment.language}</dd></div>}</>}
+            {entity.properties.filter(property=>!property.target_id).slice(0,5).map(property=><div key={property.id}><dt>{property.name}</dt><dd>{property.value}</dd></div>)}
+          </dl>
+          {!attachment&&!entity.properties.length&&!subtypeNames.length&&<p className="entity-detail-empty">Add source details to make this reference easier to find.</p>}
+          {entity.properties.filter(property=>!property.target_id).length>5&&<details className="source-inspector-disclosure"><summary>More metadata</summary><dl className="entity-overview-properties">{entity.properties.filter(property=>!property.target_id).slice(5).map(property=><div key={property.id}><dt>{property.name}</dt><dd>{property.value}</dd></div>)}</dl></details>}
+        </section>
+        <nav className="source-inspector-links" aria-label="Source connections">
+          <button type="button" onClick={()=>switchTab('connections')}><Icon name="page"/><span>Mentioned in {pageMentions.length} {pageMentions.length===1?'page':'pages'}</span><Icon name="chevron"/></button>
+          <button type="button" onClick={()=>switchTab('connections')}><Icon name="knowledge"/><span>{connectionCount} {connectionCount===1?'connection':'connections'}</span><Icon name="chevron"/></button>
+        </nav>
+      </>}
+      {!inspector&&<>
       {!inspector&&entity.type==='source'&&<div className="entity-source-workflow"><button type="button" className="button" disabled={entity.inactive||entity.sourceStatus!=='ready'} onClick={()=>props.onCreatePageFromSource(entity)}><Icon name="sparkles"/>Create page from source</button>{entity.sourceStatus!=='ready'&&<p className="section-hint">{entity.inactive?'Retry source processing before creating a page.':'Available once source processing finishes.'}</p>}</div>}
       {entity.type==='source'&&entity.attachments?.map(file=><div key={file.id}>{file.language&&<p className="section-hint">Language: {file.language}</p>}{file.summary&&<div className="ai-summary-text"><SummaryText text={file.summary}/></div>}</div>)}
       {entity.description && <p className="entity-detail-description">{entity.description}</p>}
@@ -83,11 +119,7 @@ export function EntityPanel(props: Props) {
           <EntityConnections items={relationships.slice(0, 4)} entities={entities} onOpen={onOpen} empty="No related knowledge yet."/>
           {!!relationships.length && <button type="button" className="entity-detail-more" onClick={() => switchTab('connections')}>{relationships.length > 4 ? 'View all ' + relationships.length + ' connections' : 'View connections'}<Icon name="chevron"/></button>}
         </section>
-        <section className="entity-detail-section entity-mentions-section"><h3>Mentions from pages<span>{entity.pageMentions?.length ?? 0}</span></h3>
-          {entity.pageMentions?.length ? <ul className="entity-connection-list entity-page-mentions">{entity.pageMentions.map(page => <li key={page.id}>
-            <button type="button" onClick={() => onOpenPage(page.id)}><PageIcon icon={page.icon}/><span><span className="entity-mention-heading"><strong title={page.title || 'Untitled'}><TitleText text={page.title || 'Untitled'}/></strong><small className="entity-mention-count" aria-label={`${page.mentionCount} ${page.mentionCount === 1 ? 'mention' : 'mentions'}`}>{page.mentionCount}×</small></span>{page.excerpt && <small className="entity-mention-excerpt" title={page.excerpt}>{page.excerpt}</small>}</span><Icon name="chevron"/></button>
-          </li>)}</ul> : <p className="entity-detail-empty">No pages mention this entity yet. Tag it in a page to see it here.</p>}
-        </section>
+        {mentionsSection}
         {entity.type!=='source' && !!entity.aliases?.length && <section className="entity-detail-section"><h3>Also known as</h3><ul className="entity-overview-aliases">{entity.aliases.map(alias => <li key={alias}>{alias}</li>)}</ul></section>}
         {entity.type === 'source' && <section className="entity-detail-section"><h3>Attached sources<span>{entity.attachments?.length ?? 0}</span></h3>
           {entity.attachments?.length ? <ul className="entity-overview-sources">{entity.attachments.map(file => <li key={file.id}>
@@ -97,12 +129,15 @@ export function EntityPanel(props: Props) {
             </>:<span>{file.name}<small>{file.status==='failed'?'Inactive — processing failed':'Processing in background…'}</small></span>}
           </li>)}</ul> : <p className="entity-detail-empty">No attached files. Add sources in {inspector ? 'Details' : 'Edit'}.</p>}
         </section>}
+      </>}
       </div>
       <div id="entity-tabpanel-connections" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-connections" hidden={tab !== 'connections'} tabIndex={0}>
-        <section className="entity-detail-section"><h3>Relationships<span>{relationships.length}</span></h3><EntityConnections items={relationships} entities={entities} onOpen={onOpen} empty="No relationships yet."/></section>
-        <section className="entity-detail-section"><h3>Referenced entities<span>{references.length}</span></h3><EntityConnections items={references} entities={entities} onOpen={onOpen} empty="No entity references in properties."/></section>
-        <section className="entity-detail-section"><h3>Referenced by<span>{incoming.length}</span></h3><EntityConnections items={incoming} entities={entities} onOpen={onOpen} empty="No other entities reference this one yet."/></section>
-        <button type="button" className="button entity-edit-connections" onClick={() => switchTab('edit')}>Edit connections</button>
+        {inspector&&mentionsSection}
+        <section className="entity-detail-section"><h3>Relationships<span>{relationships.length}</span></h3>{inspector?<RelationshipEditor entity={entity} entities={entities} mention={mention} onSave={(input,relationId)=>mutate(()=>api.saveRelationship(vaultId,id,input,relationId))} onRemove={relationId=>mutate(()=>api.removeConnection(vaultId,id,'relationships',relationId))}/>:<EntityConnections items={relationships} entities={entities} onOpen={onOpen} empty="No relationships yet."/>}</section>
+        <section hidden={inspector&&!references.length} className="entity-detail-section"><h3>Referenced entities<span>{references.length}</span></h3><EntityConnections items={references} entities={entities} onOpen={onOpen} empty="No entity references in properties."/></section>
+        <section hidden={inspector&&!incoming.length} className="entity-detail-section"><h3>Referenced by<span>{incoming.length}</span></h3><EntityConnections items={incoming} entities={entities} onOpen={onOpen} empty="No other entities reference this one yet."/></section>
+        {!inspector&&<button type="button" className="button entity-edit-connections" onClick={()=>switchTab('edit')}>Edit connections</button>}
+        {inspector&&!!(references.length+incoming.length)&&<button type="button" className="entity-detail-more" onClick={()=>switchTab('edit')}>Edit property references<Icon name="chevron"/></button>}
       </div>
       <div id="entity-tabpanel-edit" className="entity-detail-tabpanel entity-detail-edit" role="tabpanel" aria-labelledby="entity-tab-edit" hidden={tab !== 'edit'} tabIndex={0}>
         {schemaError && <p role="alert">{schemaError}</p>}
@@ -114,16 +149,23 @@ export function EntityPanel(props: Props) {
           void onUpdated().catch(onError);
           return result;
         }}/></section>
-        {entity.type==='source'&&<SourceAttachments key={entity.id} vaultId={vaultId} entityId={entity.id} initial={entity.attachments} onChange={attachments => {setEntity(current => current ? {...current, attachments,inactive:attachments.some(file=>file.status==='failed'),sourceStatus:attachments[0]?.status,sourceEnrichmentStatus:attachments[0]?.enrichment_status} : current);if(attachments.every(file=>file.status==='failed'||file.status==='ready'&&file.enrichment_status!=='pending'&&file.enrichment_status!=='running'))void api.entity(vaultId,id).then(result=>{setEntity(result);return onUpdated();}).catch(onError);else if(entity.inactive)void onUpdated().catch(onError);}}/>}
+        {entity.type==='source'&&<SourceAttachments compact={inspector} key={entity.id} vaultId={vaultId} entityId={entity.id} initial={entity.attachments} onChange={attachments => {setEntity(current => current ? {...current, attachments,inactive:attachments.some(file=>file.status==='failed'),sourceStatus:attachments[0]?.status,sourceEnrichmentStatus:attachments[0]?.enrichment_status} : current);if(attachments.every(file=>file.status==='failed'||file.status==='ready'&&file.enrichment_status!=='pending'&&file.enrichment_status!=='running'))void api.entity(vaultId,id).then(result=>{setEntity(result);return onUpdated();}).catch(onError);else if(entity.inactive)void onUpdated().catch(onError);}}/>}
         <section className="panel-section"><h3>Properties <span>{entity.properties.length}</span></h3>
           <PropertyEditor key={entity.type + JSON.stringify(entity.subtypes)} entity={{...entity, propertyNames}} entities={entities} mention={mention} onSave={(input, propertyId) => mutate(() => api.saveProperty(vaultId, id, input, propertyId))} onRemove={propertyId => mutate(() => api.removeConnection(vaultId, id, 'properties', propertyId))}/>
         </section>
-        <section className="panel-section"><h3>Relationships <span>{entity.relationships.length}</span></h3>
+        {!inspector&&<section className="panel-section"><h3>Relationships <span>{entity.relationships.length}</span></h3>
           <RelationshipEditor entity={entity} entities={entities} mention={mention} onSave={(input, relationId) => mutate(() => api.saveRelationship(vaultId, id, input, relationId))} onRemove={relationId => mutate(() => api.removeConnection(vaultId, id, 'relationships', relationId))}/>
-        </section>
+        </section>}
       </div>
     </div>}
   </aside>;
+}
+function SourceInspectorSummary({name,summary}:{name:string;summary?:string|null}) {
+  const [expanded,setExpanded]=useState(false);
+  const long=!!summary&&summary.length>600;
+  return <section className="entity-detail-section source-inspector-summary"><h3>AI summary</h3><p className="source-inspector-filename" title={name}>{name}</p>
+    {summary?<><div id="source-inspector-summary-text" className={"ai-summary-text"+(long&&!expanded?" is-collapsed":"")}><SummaryText text={summary}/></div>{long&&<button type="button" className="entity-detail-more" aria-expanded={expanded} aria-controls="source-inspector-summary-text" onClick={()=>setExpanded(value=>!value)}>{expanded?'Show less':'Show more'}</button>}</>:<p className="entity-detail-empty">No AI summary available yet.</p>}
+  </section>;
 }
 function EntityReference({id, entities, onOpen}: {id: string; entities: Entity[]; onOpen: (id: string) => void}) {
   const entity = entities.find(item => item.id === id);

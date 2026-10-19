@@ -15,7 +15,7 @@ import {SourceReaderInline,SourceReaderText} from './SourceReaderText';
 type LoadedFile=SourceFile&{textHash:string;document?:SourceDocument};
 type Entry=ReturnType<typeof sourceDocumentEntries>[number];
 interface Props {
-  vaultId:string;source:Entity;entities:Entity[];onOpenEntity:(id:string)=>void;inspectorOpen?:boolean;
+  vaultId:string;source:Entity;entities:Entity[];onOpenEntity:(id:string)=>void;inspectorOpen?:boolean;refreshKey?:number;onActiveAttachmentChange?:(fileId:string)=>void;
   onCreatePageFromSource:(source:Entity)=>void;onError:(message:string)=>void;
   onAddPassage:(reference:SourceReference)=>void;onAnnotate:(reference:SourceReference)=>void;onReadingNoteCreated:(page:Page)=>void;onOpenReadingNote:(id:string)=>void;onRemoveReadingNote:(note:ReadingNoteAnchor)=>void;
 }
@@ -30,7 +30,7 @@ function passageReference(file:LoadedFile,entry:Entry):SourceReference {
 function passageAnchor(fileId:string,nodeId:string){return `source-passage-${encodeURIComponent(fileId)}-${encodeURIComponent(nodeId)}`;}
 
 /** Reading and citation state is deliberately separate from the editable page lifecycle. */
-export function SourceReader({vaultId,source,entities,inspectorOpen=false,onCreatePageFromSource,onError,onAddPassage,onAnnotate,onReadingNoteCreated,onOpenReadingNote,onRemoveReadingNote}:Props) {
+export function SourceReader({vaultId,source,entities,inspectorOpen=false,refreshKey,onActiveAttachmentChange,onCreatePageFromSource,onError,onAddPassage,onAnnotate,onReadingNoteCreated,onOpenReadingNote,onRemoveReadingNote}:Props) {
   const [files,setFiles]=useState<SourceFile[]|null>(null),[fileId,setFileId]=useState('');
   const [loaded,setLoaded]=useState<LoadedFile|null>(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
   const [selected,setSelected]=useState<string|null>(null),[copied,setCopied]=useState(false);
@@ -39,9 +39,10 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onCrea
   const [readingNotes,setReadingNotes]=useState<ReadingNoteAnchor[]>([]);
   const copyTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
   useEffect(()=>()=>clearTimeout(copyTimer.current),[]);
+  useEffect(()=>{onActiveAttachmentChange?.(fileId);},[fileId,onActiveAttachmentChange]);
+  useEffect(()=>{setFiles(null);setFileId('');setError('');setLoaded(null);setSelected(null);},[vaultId,source.id,retry]);
   useEffect(()=>{
     const controller=new AbortController();let timer:ReturnType<typeof setTimeout>;
-    setFiles(null);setFileId('');setError('');setLoaded(null);setSelected(null);
     async function refresh() {
       try {
         const detail=await request<EntityDetail>('entities/'+encodeURIComponent(source.id),'GET',undefined,vaultId,controller.signal);
@@ -54,7 +55,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onCrea
     }
     void refresh();
     return()=>{controller.abort();clearTimeout(timer);};
-  },[vaultId,source.id,retry]);
+  },[vaultId,source.id,source.updated_at,source.sourceStatus,refreshKey,retry]);
   const attachment=files?.find(file=>file.id===fileId);
   useEffect(()=>{
     const controller=new AbortController();setLoaded(null);setSelected(null);setCopied(false);

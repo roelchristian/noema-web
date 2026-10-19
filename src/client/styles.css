@@ -3119,10 +3119,6 @@ main.source-workspace > #content > .source-reader { width: 100%; max-width: 1240
 .source-reader-selection > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .source-reader-status { padding: 16px 0; color: var(--text-muted); font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
 .source-reader-status[role=alert] { color: var(--danger, #a12424); }
-.source-inspector-counts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 18px 0 8px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
-.source-inspector-counts > div { display: flex; flex-direction: column-reverse; gap: 5px; }
-.source-inspector-counts dt { color: var(--text-muted); font-size: 10px; }
-.source-inspector-counts dd { margin: 0; color: var(--text); font-size: 18px; font-variant-numeric: tabular-nums; }
 @media (min-width: 751px) and (max-width: 1250px) {
   main.source-workspace > #content > .source-reader { padding-inline: 32px; }
 }
@@ -3340,3 +3336,52 @@ dialog.source-page-dialog.has-preview { height: min(780px, calc(100dvh - 32px));
 .page-generation-prompt summary { cursor: pointer; color: var(--text-muted); }
 .page-generation-prompt p { max-height: 240px; margin: 8px 0 0; padding: 10px; overflow-y: auto; white-space: pre-wrap; border: 1px solid var(--line); border-radius: 5px; background: var(--sidebar); font: 11px/1.7 var(--font-ui); }
 .page-generation-unavailable { margin: 0; color: var(--text-muted); font-size: 11px; }
+
+/* The source inspector stays a quiet companion to the document. */
+.source-inspector-header { position: sticky; top: 0; z-index: 3; background: inherit; }
+.entity-toolbar-identity { min-width: 0; }
+.source-inspector { scroll-padding-top: 150px; }
+.source-inspector-header { padding: 0 16px 12px; border-bottom: 1px solid var(--line); }
+.source-inspector-header > .entity-detail-toolbar { height: auto; min-height: 78px; align-items: flex-start; gap: 12px; padding: 16px 0 0; border: 0; letter-spacing: 0; }
+.source-inspector-header .entity-toolbar-heading { align-items: flex-start; flex: 1; }
+.source-inspector-header .entity-detail-icon { margin-top: 20px; color: var(--text-muted); }
+.source-inspector-eyebrow { display: block; margin-bottom: 5px; color: var(--text-muted); font-size: 11px; font-weight: 400; }
+.source-inspector-header .entity-toolbar-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; font: 500 15px/1.45 var(--font-title); }
+.source-inspector-header .entity-detail-tabs { margin-top: 14px; }
+.source-inspector > .entity-detail-body { padding: 16px 20px 28px; }
+.source-inspector .entity-detail-section { padding: 20px 0; }
+.source-inspector .entity-detail-section > h3 { font-size: 12px; font-weight: 550; }
+.source-inspector .entity-detail-empty, .source-inspector .entity-overview-properties, .source-inspector .entity-overview-properties dt, .source-inspector .entity-overview-properties dd { font-size: 12px; line-height: 1.6; }
+.source-inspector .entity-detail-description { margin: 0; }
+.source-inspector .entity-detail-more { min-height: 32px; font-size: 12px; }
+.source-inspector .entity-detail-section > h3 .entity-detail-more { margin: -6px 0; }
+.source-inspector-summary .ai-summary-text { font-size: 13px; line-height: 1.7; }
+.source-inspector-summary .ai-summary-text.is-collapsed { max-height: 13.6em; overflow: hidden; mask-image: linear-gradient(to bottom, #000 85%, transparent); }
+.source-inspector-filename { margin: -3px 0 12px; color: var(--text-muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.source-inspector-links { display: grid; gap: 4px; padding: 12px 0; }
+.source-inspector-links > button { display: flex; align-items: center; gap: 9px; min-height: 38px; padding: 8px; margin-inline: -8px; text-align: left; border-radius: 6px; font-size: 12px; }
+.source-inspector-links > button:hover { background: var(--surface-hover); }
+.source-inspector-links > button > span { flex: 1; }
+.source-inspector-links .icon { width: 14px; height: 14px; color: var(--text-muted); }
+.source-inspector-status { padding-bottom: 12px; border-bottom: 1px solid var(--line); font-size: 12px; line-height: 1.6; }
+.source-inspector-status-row { display: flex; align-items: center; gap: 8px; color: var(--text-muted); }
+.source-inspector-status-row .icon { width: 14px; height: 14px; }
+.source-inspector-status-row > span { flex: 1; }
+.source-inspector-status-failure { display: flex; align-items: center; gap: 10px; padding: 10px 0 4px; }
+.source-inspector-status-failure > span { flex: 1; min-width: 0; }
+.source-inspector-status-failure strong, .source-inspector-status-failure small { display: block; overflow-wrap: anywhere; }
+.source-inspector-status-failure strong { font-size: 12px; font-weight: 500; }
+.source-inspector-status-failure small { color: var(--text-muted); font-size: 11px; }
+.source-inspector-status-failure .button { flex: none; min-height: 32px; }
+.source-inspector-status-files { display: grid; gap: 12px; margin-top: 8px; }
+.source-inspector-status-files > div { min-width: 0; overflow-wrap: anywhere; }
+.source-inspector-status-files strong { font-size: 12px; font-weight: 500; }
+.source-inspector-status .section-hint { margin-bottom: 0; font-size: 12px; }
+.source-inspector details > summary { padding: 8px 0; color: var(--text-muted); cursor: pointer; font-size: 12px; line-height: 1.5; }
+.source-inspector details > summary:hover { color: var(--text); }
+.source-inspector .entity-detail-save { position: static; background: transparent; }
+.source-inspector .source-actions details a { width: auto; height: auto; padding: 7px; font-size: 12px; gap: 6px; }
+@media (max-width: 750px) {
+  .source-inspector-header { padding-top: env(safe-area-inset-top); }
+  .source-inspector-header .entity-detail-tabs > button, .source-inspector-links > button, .source-inspector .entity-detail-more, .source-inspector-status-failure .button, .source-inspector details > summary { min-height: 44px; }
+}

@@ -2,23 +2,28 @@ import {useEffect,useState} from 'react';
 import {request} from '../api';
 import {DisclosureSummary} from '../components/DisclosureSummary';
 
-interface EvidencePage {page:number;method:string;text:string;findings?:string[]}
+interface EvidenceRegion {bounds:number[];reason:string;status:string;recoveredText?:string;confidence?:number;candidates?:{text:string;confidence?:number}[]}
+interface EvidencePage {page:number;method:string;text:string;findings?:string[];coordinateSystem?:string;coverage?:{detectedRegions:number;unmatchedRegions:number;retriedRegions:number;recoveredRegions:number;unresolvedRegions:number};regions?:EvidenceRegion[]}
 interface Evidence {
  originalAvailable?:boolean;originalHash?:string;originalBytes?:number;admittedBytes?:number;findings?:string[];
- flattening?:{reason?:string;discardedFeatures?:string[]};
+ flattening?:{reason?:string;discardedFeatures?:string[];compression?:string;durationMs?:number;cacheHit?:boolean};
  rawExtraction?:{ocrPages?:number;pageEvidence?:EvidencePage[];unresolvedOutlines?:string[]};
 }
 export function SourceEvidence({vaultId,fileId,pageCount,page,onPage}:{vaultId:string;fileId:string;pageCount:number;page:number|null;onPage:(page:number|null)=>void}){
- const [evidence,setEvidence]=useState<Evidence|null>(null),[error,setError]=useState(''),[imageFailed,setImageFailed]=useState(false);
+ const [evidence,setEvidence]=useState<Evidence|null>(null),[error,setError]=useState(''),[imageFailed,setImageFailed]=useState(false),[selectedRegion,setSelectedRegion]=useState<number|null>(null);
  useEffect(()=>{setEvidence(null);setError('');},[vaultId,fileId]);
  useEffect(()=>{
-  if(page===null||evidence)return;
+  if(page===null)return;
+  setEvidence(null);setError('');
   const controller=new AbortController();
-  void request<Evidence>(`source-files/${encodeURIComponent(fileId)}/evidence`,'GET',undefined,vaultId,controller.signal).then(value=>{if(!controller.signal.aborted)setEvidence(value);}).catch(cause=>{if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:String(cause));});
+  void request<Evidence>(`source-files/${encodeURIComponent(fileId)}/evidence?page=${page}`,'GET',undefined,vaultId,controller.signal).then(value=>{if(!controller.signal.aborted)setEvidence(value);}).catch(cause=>{if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:String(cause));});
   return()=>controller.abort();
- },[vaultId,fileId,page,evidence]);
- useEffect(()=>setImageFailed(false),[vaultId,fileId,page]);
+ },[vaultId,fileId,page]);
+ useEffect(()=>{setImageFailed(false);setSelectedRegion(null);},[vaultId,fileId,page]);
  const raw=evidence?.rawExtraction?.pageEvidence?.find(item=>item.page===page);
+ const region=selectedRegion===null?undefined:raw?.regions?.[selectedRegion];
+ const box=region?.bounds;
+ const validBox=raw?.coordinateSystem==='normalized-bottom-left'&&box?.length===4&&box.every(Number.isFinite)&&box[0]>=0&&box[1]>=0&&box[2]>0&&box[3]>0&&box[0]+box[2]<=1.001&&box[1]+box[3]<=1.001;
  const findings=[...(evidence?.findings??[]),...(evidence?.rawExtraction?.unresolvedOutlines??[]),...(raw?.findings??[])];
  return <details className="source-evidence" open={page!==null} onToggle={event=>{if(event.currentTarget.open&&page===null)onPage(1);else if(!event.currentTarget.open&&page!==null)onPage(null);}}>
   <DisclosureSummary>Compare with PDF and extraction evidence</DisclosureSummary>
@@ -29,9 +34,11 @@ export function SourceEvidence({vaultId,fileId,pageCount,page,onPage}:{vaultId:s
    {evidence&&<><p>{evidence.originalAvailable?'Original file preserved separately.':'Original file unavailable for this legacy import; re-upload to recover it.'} {evidence.rawExtraction?.ocrPages!==undefined&&`${evidence.rawExtraction.ocrPages} pages used OCR.`}</p>
     {evidence.flattening&&<p>A separate viewing copy was flattened for safety. Text and structure are extracted from the preserved original when available.</p>}
     {!!findings.length&&<ul className="reprocessing-warning">{findings.map((finding,i)=><li key={i}>{finding}</li>)}</ul>}
+    {raw?.coverage&&<p>OCR region check: {raw.coverage.detectedRegions} detected · {raw.coverage.retriedRegions} retried · {raw.coverage.recoveredRegions} recovered · {raw.coverage.unresolvedRegions} unresolved. Region detection can also miss text; this is not a completeness guarantee.</p>}
+    {!!raw?.regions?.length&&<details><DisclosureSummary>Review OCR regions ({raw.regions.length})</DisclosureSummary><ul className="source-evidence-regions">{raw.regions.map((item,i)=><li key={i}><button type="button" aria-pressed={selectedRegion===i} onClick={()=>setSelectedRegion(selectedRegion===i?null:i)}>Region {i+1}: {item.status}</button> <span>{item.reason==='unmatched-detected-text'?'Detected text was missing from the first OCR pass.':item.reason==='low-confidence'?'OCR confidence was low.':item.reason}</span>{item.recoveredText&&<blockquote>{item.recoveredText}</blockquote>}{item.status!=='recovered'&&!!item.candidates?.length&&<p>Retry readings (not applied): {[...new Set(item.candidates.map(candidate=>candidate.text))].slice(0,3).join(' · ')}</p>}</li>)}</ul></details>}
    </>}
-   <div className="source-evidence-comparison"><div>{imageFailed?<p role="alert">The page image could not load. Change pages to retry, or download the safe PDF.</p>:<img src={`/api/source-files/${encodeURIComponent(fileId)}/page-image/${page}?vault=${encodeURIComponent(vaultId)}`} alt={`Source PDF physical page ${page}`} onError={()=>setImageFailed(true)}/>}</div><div><h4>Raw {raw?.method==='native'?'embedded text':raw?.method==='ocr'?'OCR text':'extraction'}</h4>{raw?<pre>{raw.text}</pre>:<p>{evidence?'Raw page evidence is unavailable for this import.':'Loading extraction evidence…'}</p>}</div></div>
-   {evidence?.originalHash&&<details><DisclosureSummary>Preservation details</DisclosureSummary><p>Original SHA-256: <code>{evidence.originalHash}</code></p><p>Original: {evidence.originalBytes?.toLocaleString()} bytes · Viewing copy: {evidence.admittedBytes?.toLocaleString()} bytes</p>{evidence.flattening?.discardedFeatures&&<p>Removed from the viewing copy: {evidence.flattening.discardedFeatures.join(', ')}.</p>}</details>}
+   <div className="source-evidence-comparison"><div>{imageFailed?<p role="alert">The page image could not load. Change pages to retry, or download the safe PDF.</p>:<div className="source-evidence-image"><img src={`/api/source-files/${encodeURIComponent(fileId)}/page-image/${page}?vault=${encodeURIComponent(vaultId)}`} alt={`Source PDF physical page ${page}`} onError={()=>setImageFailed(true)}/>{validBox&&<span className="source-evidence-region-box" role="img" aria-label={`Highlighted OCR region ${selectedRegion!+1}`} style={{left:`${box![0]*100}%`,top:`${(1-box![1]-box![3])*100}%`,width:`${box![2]*100}%`,height:`${box![3]*100}%`}}/>}</div>}</div><div><h4>Raw {raw?.method==='native'?'embedded text':raw?.method==='ocr'?'OCR text':raw?.method==='mixed'?'native and OCR text':'extraction'}</h4>{raw?<pre>{raw.text}</pre>:<p>{evidence?'Raw page evidence is unavailable for this import.':'Loading extraction evidence…'}</p>}</div></div>
+   {evidence?.originalHash&&<details><DisclosureSummary>Preservation details</DisclosureSummary><p>Original SHA-256: <code>{evidence.originalHash}</code></p><p>Original: {evidence.originalBytes?.toLocaleString()} bytes · Viewing copy: {evidence.admittedBytes?.toLocaleString()} bytes</p>{evidence.flattening?.compression&&<p>Viewing compression: {evidence.flattening.compression}. {evidence.flattening.cacheHit?'Reused a verified viewing copy.':evidence.flattening.durationMs!==undefined?`Prepared in ${(evidence.flattening.durationMs/1000).toFixed(2)} seconds.`:''}</p>}{evidence.flattening?.discardedFeatures&&<p>Removed from the viewing copy: {evidence.flattening.discardedFeatures.join(', ')}.</p>}</details>}
   </>}
  </details>;
 }

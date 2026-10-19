@@ -5,7 +5,7 @@ import {HttpError,now} from '../validation.js';
 import {SourceFiles} from './source-files.js';
 import {Intelligence} from './intelligence.js';
 import {mathSource} from './source-math-text.js';
-import {SourceDocuments} from './source-documents.js';
+import {SourceDocuments,sourceDocumentBuilderVersion} from './source-documents.js';
 import {sourceStructureKinds} from '../../shared/domain.js';
 import {editorialDiagnostics,pageBoundaryDiagnostics} from './source-reprocessing-diagnostics.js';
 import type {SourceFile} from '../../shared/domain.js';
@@ -79,6 +79,7 @@ export function materializeSourceRevision(r:SourceReprocessingRevision){
  }
 
 export class SourceReprocessing {
+ private hashCache:{vault:string;id:string;inputs:unknown[];hash:string}|null=null;
  private running=false;private closed=false;private controller:AbortController|null=null;private activeRevisionId:string|null=null;
  constructor(private store:Store,private files:SourceFiles,private intelligence:Intelligence,private requireOpen:(vault:string)=>unknown,private activity:AIActivityLog) {
   for(const row of store.all<Row>("SELECT * FROM source_reprocessing WHERE status IN ('queued','running')")){
@@ -88,15 +89,26 @@ export class SourceReprocessing {
  }
  private save(vault:string,r:SourceReprocessingRevision){r.updatedAt=new Date(Math.max(Date.now(),Date.parse(r.updatedAt)+1)).toISOString();this.store.run('UPDATE source_reprocessing SET status=?,updated_at=?,payload=? WHERE id=? AND vault_id=?',r.status,r.updatedAt,JSON.stringify(r),r.id,vault);}
  private snapshot(vault:string,id:string){const file=this.files.require(vault,id),text=mathSource(this.store,file).text;return {text,document:documentWithRawRanges(new SourceDocuments(this.store).get(file),text)};}
- private baseHash(vault:string,id:string){return sourceRevisionBaseHash(this.snapshot(vault,id));}
+ private baseHash(vault:string,id:string){
+  this.requireOpen(vault);const file=this.files.require(vault,id);
+  // Compare authoritative inputs, including math rows, rather than relying on timestamps.
+  // Strings are compared directly: no repeated document construction/JSON serialization/hash.
+  const math=this.store.get<{raw_hash:string;cleaned_text:string;uncertainty_json:string;algorithm_version:number}>('SELECT raw_hash,cleaned_text,uncertainty_json,algorithm_version FROM source_math_documents WHERE file_id=?',id);
+  const inputs=[sourceDocumentBuilderVersion,file.text,file.structural_nodes,file.page_start_lines,file.pages,file.name,file.original_filename,file.generated_name,file.format,file.language,file.source_url,file.enrichment_status,file.status,file.admitted,math?.raw_hash,math?.cleaned_text,math?.uncertainty_json,math?.algorithm_version];
+  const cached=this.hashCache;if(cached?.vault===vault&&cached.id===id&&inputs.every((value,index)=>value===cached.inputs[index]))return cached.hash;
+  const value=sourceRevisionBaseHash(this.snapshot(vault,id));this.hashCache={vault,id,inputs,hash:value};return value;
+ }
  private currentHash(vault:string,id:string){try{return this.baseHash(vault,id);}catch{return null;}}
  list(vault:string,id:string):SourceReprocessingSummary[]{this.files.require(vault,id);const current=this.currentHash(vault,id);return this.store.all<Row>('SELECT * FROM source_reprocessing WHERE file_id=? AND vault_id=? ORDER BY created_at DESC',id,vault).map(row=>{const {original:_,reprocessed:__,nodeLinks:___,patches,...r}=JSON.parse(row.payload) as SourceReprocessingRevision;return {...r,stale:r.baseHash!==current,patchCount:patches.length,pendingCount:patches.filter(p=>p.decision==='pending').length};});}
  detail(vault:string,id:string,revisionId:string){this.files.require(vault,id);const row=this.store.get<Row>('SELECT * FROM source_reprocessing WHERE id=? AND file_id=? AND vault_id=?',revisionId,id,vault);if(!row)throw new HttpError(404,'Editorial pass not found.');const r=JSON.parse(row.payload) as SourceReprocessingRevision;r.stale=r.baseHash!==this.currentHash(vault,id);return r;}
  status(vault:string,id:string,revisionId:string){
-  this.files.require(vault,id);const row=this.store.get<Row>('SELECT * FROM source_reprocessing WHERE id=? AND file_id=? AND vault_id=?',revisionId,id,vault);
-  if(!row)throw new HttpError(404,'Editorial pass not found.');
-  const r=JSON.parse(row.payload) as SourceReprocessingRevision;
-  return {id:r.id,status:r.status,updatedAt:r.updatedAt,chunksCompleted:r.report.chunksCompleted,chunksTotal:r.report.chunksTotal,charactersReviewed:r.report.charactersReviewed,charactersTotal:r.report.charactersTotal,error:r.report.error};
+  this.files.require(vault,id);
+  // Read only status fields rather than transferring/parsing both full document snapshots.
+  const status=this.store.get<{id:string;status:SourceReprocessingRevision['status'];updatedAt:string;chunksCompleted:number;chunksTotal:number;charactersReviewed:number;charactersTotal:number;error:string|null}>(`SELECT id,status,updated_at AS updatedAt,
+   json_extract(payload,'$.report.chunksCompleted') AS chunksCompleted,json_extract(payload,'$.report.chunksTotal') AS chunksTotal,
+   json_extract(payload,'$.report.charactersReviewed') AS charactersReviewed,json_extract(payload,'$.report.charactersTotal') AS charactersTotal,
+   json_extract(payload,'$.report.error') AS error FROM source_reprocessing WHERE id=? AND file_id=? AND vault_id=?`,revisionId,id,vault);
+  if(!status)throw new HttpError(404,'Editorial pass not found.');return status;
  }
  start(vault:string,id:string,body:Record<string,unknown>){
   this.requireOpen(vault);if(this.closed)throw new HttpError(503,'Editorial processing is shutting down.');
@@ -112,7 +124,7 @@ export class SourceReprocessing {
   const original=this.snapshot(vault,id),timestamp=now();
   if(sourceDocumentEntries(original.document).length>5000)throw new HttpError(413,'This beta supports at most 5,000 semantic nodes per source.');
   if(original.text.length>512000||this.chunks(original.text,original.document.physical.pages.map(p=>p.range.startOffset)).length>128)throw new HttpError(413,'This beta supports at most 512,000 extracted characters and 128 editorial excerpts. No partial pass was started.');
-  const revision:SourceReprocessingRevision={id:randomUUID(),fileId:id,createdAt:timestamp,updatedAt:timestamp,status:'queued',acceptanceMode,acceptanceThreshold,instructions:typeof body.instructions==='string'?body.instructions:'',baseHash:sourceRevisionBaseHash(original),stale:false,patches:[],original,reprocessed:structuredClone(original),report:{promptVersion,model:this.intelligence.selection().model,reasoningEffort:'none',startedAt:null,finishedAt:null,durationMs:null,chunksTotal:this.chunks(original.text,original.document.physical.pages.map(p=>p.range.startOffset)).length,chunksCompleted:0,charactersTotal:original.text.length,charactersReviewed:0,inputTokens:null,outputTokens:null,reasoningTokens:null,cachedInputTokens:null,diagnostics:['Beta derivative: original extraction remains canonical. Only accepted changes appear in the reading version.'],error:null}};
+  const revision:SourceReprocessingRevision={id:randomUUID(),fileId:id,createdAt:timestamp,updatedAt:timestamp,status:'queued',acceptanceMode,acceptanceThreshold,instructions:typeof body.instructions==='string'?body.instructions:'',baseHash:sourceRevisionBaseHash(original),stale:false,patches:[],original,reprocessed:structuredClone(original),report:{completedChunkIndexes:[],concurrency:2,promptVersion,model:this.intelligence.selection().model,reasoningEffort:'none',startedAt:null,finishedAt:null,durationMs:null,chunksTotal:this.chunks(original.text,original.document.physical.pages.map(p=>p.range.startOffset)).length,chunksCompleted:0,charactersTotal:original.text.length,charactersReviewed:0,inputTokens:null,outputTokens:null,reasoningTokens:null,cachedInputTokens:null,diagnostics:['Beta derivative: original extraction remains canonical. Only accepted changes appear in the reading version.'],error:null}};
   this.store.run('INSERT INTO source_reprocessing (id,file_id,vault_id,status,created_at,updated_at,payload) VALUES (?,?,?,?,?,?,?)',revision.id,id,vault,revision.status,timestamp,timestamp,JSON.stringify(revision));return revision;
  }
  private chunks(text:string,boundaries:number[]=[]){const chunks:{start:number;end:number}[]=[];for(let start=0;start<text.length;){let end=Math.min(start+8000,text.length,boundaries.find(boundary=>boundary>start)??text.length);if(end<text.length){const newline=text.lastIndexOf('\n',end-1);if(newline>start+4000)end=newline+1;else if(/[\uD800-\uDBFF]/.test(text[end-1]!))end--; }chunks.push({start,end});start=end;}return chunks;}
@@ -149,13 +161,22 @@ export class SourceReprocessing {
   const started=Date.now();r.status='running';r.report.reasoningEffort='none';r.report.startedAt??=now();r.report.error=null;r.report.finishedAt=null;this.save(row.vault_id,r);
   const guard=()=>{this.requireOpen(row.vault_id);if(this.closed||controller.signal.aborted)throw new HttpError(409,'Editorial pass interrupted.');if(this.baseHash(row.vault_id,r.fileId)!==r.baseHash)throw new HttpError(409,'Canonical source changed during this pass.');if(this.intelligence.selection().model!==r.report.model)throw new HttpError(409,'AI model changed. Start a new pass.');};
   const timer=setInterval(()=>{try{this.requireOpen(row.vault_id);if(this.closed)controller.abort();}catch{controller.abort();}},250);timer.unref();
-  try {
-   for(const chunk of this.chunks(r.original.text,r.original.document.physical.pages.map(p=>p.range.startOffset)).slice(r.report.chunksCompleted)){
-    guard();const editableText=r.original.text.slice(chunk.start,chunk.end);let usage:{inputTokens:number|null;outputTokens:number|null;reasoningTokens:number|null;cachedInputTokens:number|null}={inputTokens:null,outputTokens:null,reasoningTokens:null,cachedInputTokens:null};
+  const chunks=this.chunks(r.original.text,r.original.document.physical.pages.map(p=>p.range.startOffset));
+  const completed=new Set(r.report.completedChunkIndexes??Array.from({length:r.report.chunksCompleted},(_,index)=>index));
+  r.report.completedChunkIndexes=[...completed].sort((a,b)=>a-b);r.report.concurrency=2;
+  const originalNodes=sourceDocumentEntries(r.original.document);
+  type Usage={inputTokens:number|null;outputTokens:number|null;reasoningTokens:number|null;cachedInputTokens:number|null};
+  type Result={index:number;patches:SourceEditorialPatch[];diagnostics:string[];usage:Usage;error?:unknown};
+  const process=async(index:number):Promise<Result>=>{
+   const chunk=chunks[index]!,diagnostics:string[]=[],usage:Usage={inputTokens:null,outputTokens:null,reasoningTokens:null,cachedInputTokens:null};
+   // Each task owns its response and usage; only the ordered coordinator mutates the revision.
+   let observedUsage:Usage=usage;
+   try {
+    guard();const editableText=r.original.text.slice(chunk.start,chunk.end);
     let output:string;const activityId=this.activity.start('source_reprocessing',{...this.intelligence.selection(),reasoningEffort:'none'},row.vault_id,this.files.require(row.vault_id,r.fileId).entity_id??r.fileId,'entity');
-    try{output=await this.intelligence.reeditSource(JSON.stringify({preferences:r.instructions,sourceTitle:r.original.document.source.title,physicalPage:this.range(r,chunk.start,chunk.end).startPage,canonicalRange:this.range(r,chunk.start,chunk.end),contextBefore:r.original.text.slice(Math.max(0,chunk.start-1000),chunk.start),editableText,contextAfter:r.original.text.slice(chunk.end,chunk.end+1000)}),instructions,controller.signal,bytes=>{const observer=this.activity.request(activityId,bytes,null);return {...observer,usage:(value:unknown)=>{observer.usage?.(value);if(!value||typeof value!=='object')return;const v=value as Record<string,any>;const count=(n:unknown)=>typeof n==='number'&&Number.isSafeInteger(n)&&n>=0?n:null;usage={inputTokens:count(v.input_tokens),outputTokens:count(v.output_tokens),reasoningTokens:count(v.output_tokens_details?.reasoning_tokens),cachedInputTokens:count(v.input_tokens_details?.cached_tokens)};}};});this.activity.finish(activityId,'completed',200);}
+    try{output=await this.intelligence.reeditSource(JSON.stringify({preferences:r.instructions,sourceTitle:r.original.document.source.title,physicalPage:this.range(r,chunk.start,chunk.end).startPage,canonicalRange:this.range(r,chunk.start,chunk.end),contextBefore:r.original.text.slice(Math.max(0,chunk.start-1000),chunk.start),editableText,contextAfter:r.original.text.slice(chunk.end,chunk.end+1000)}),instructions,controller.signal,bytes=>{const observer=this.activity.request(activityId,bytes,null);return {...observer,usage:(value:unknown)=>{observer.usage?.(value);if(!value||typeof value!=='object')return;const v=value as Record<string,any>;const count=(n:unknown)=>typeof n==='number'&&Number.isSafeInteger(n)&&n>=0?n:null;observedUsage={inputTokens:count(v.input_tokens),outputTokens:count(v.output_tokens),reasoningTokens:count(v.output_tokens_details?.reasoning_tokens),cachedInputTokens:count(v.input_tokens_details?.cached_tokens)};}};});this.activity.finish(activityId,'completed',200);}
     catch(error){this.activity.finish(activityId,'failed',error instanceof HttpError?error.status:500);throw error;}
-    finally{if(usage.inputTokens===null||usage.outputTokens===null)r.report.diagnostics.push(`Excerpt ${r.report.chunksCompleted+1}: provider usage was unavailable; token totals include only reported usage and may be incomplete.`);for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'] as const)if(usage[key]!==null)r.report[key]=(r.report[key]??0)+usage[key]!;this.save(row.vault_id,r);}
+
     guard();let parsed:unknown;try{parsed=JSON.parse(output.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''));}catch{throw new HttpError(502,'AI returned invalid editorial JSON.');}
     if(!parsed||typeof parsed!=='object'||!Array.isArray((parsed as any).patches)||(parsed as any).patches.length>50)throw new HttpError(502,'Invalid editorial patch response.');
     const data=parsed as {patches:Record<string,unknown>[];diagnostics?:unknown};
@@ -167,29 +188,60 @@ export class SourceReprocessing {
      const local=editableText.indexOf(item.original);if(local<0||editableText.indexOf(item.original,local+1)!==-1)throw new HttpError(502,'AI patch did not match a unique canonical excerpt.');
      const start=chunk.start+local,end=start+item.original.length;
      if(r.original.document.physical.pages.some(page=>page.range.startOffset>start&&page.range.startOffset<end))throw new HttpError(502,'AI patch crosses a physical page boundary.');
-     if([...r.patches,...chunkPatches].some(p=>p.range.startOffset<end&&p.range.endOffset>start))throw new HttpError(502,'AI returned overlapping editorial patches.');
+     if(chunkPatches.some(p=>p.range.startOffset<end&&p.range.endOffset>start))throw new HttpError(502,'AI returned overlapping editorial patches.');
      const category=item.category as SourceEditorialPatch['category'];
      const candidate=r.original.text.slice(0,start)+item.replacement+r.original.text.slice(end);
      if(pageBoundaryDiagnostics(r.original.text,candidate).length)throw new HttpError(502,'AI patch joins a physical page marker to prose.');
-     const structural=sourceDocumentEntries(r.original.document).some(({node})=>sourceStructureKinds.includes(node.kind as typeof sourceStructureKinds[number])&&node.range.startOffset<end&&node.range.startOffset>=start);
+     const structural=originalNodes.some(({node})=>sourceStructureKinds.includes(node.kind as typeof sourceStructureKinds[number])&&node.range.startOffset<end&&node.range.startOffset>=start);
      const riskReasons=editorialPatchRisk(item.original,item.replacement,category,structural);
-     chunkPatches.push({id:hash(`${r.baseHash}:${start}:${end}:${item.replacement}`).slice(0,24),range:this.range(r,start,end),nodeIds:sourceDocumentEntries(r.original.document).filter(({node})=>node.range.startOffset<end&&node.range.endOffset>start).map(({node})=>node.id),original:item.original,replacement:item.replacement,category,reason:item.reason,riskReasons,confidence:item.confidence,decision:r.acceptanceMode==='safe_formatting'&&!riskReasons.length&&r.acceptanceThreshold!==undefined&&item.confidence>=r.acceptanceThreshold?'accepted':'pending'});
+     chunkPatches.push({id:hash(`${r.baseHash}:${start}:${end}:${item.replacement}`).slice(0,24),range:this.range(r,start,end),nodeIds:originalNodes.filter(({node})=>node.range.startOffset<end&&node.range.endOffset>start).map(({node})=>node.id),original:item.original,replacement:item.replacement,category,reason:item.reason,riskReasons,confidence:item.confidence,decision:r.acceptanceMode==='safe_formatting'&&!riskReasons.length&&r.acceptanceThreshold!==undefined&&item.confidence>=r.acceptanceThreshold?'accepted':'pending'});
      }catch(error){
       if(!(error instanceof HttpError)||error.status!==502)throw error;
       const rejected=JSON.stringify(item);
       const excerpt=rejected.length>8000?`${rejected.slice(0,8000)}… [diagnostic preview truncated]`:rejected;
-      r.report.diagnostics.push(`Excerpt ${r.report.chunksCompleted+1}, suggestion ${patchIndex+1}: excluded from review — ${error.message} Original text remains unchanged. Returned suggestion: ${excerpt}`);
+      diagnostics.push(`Excerpt ${index+1}, suggestion ${patchIndex+1}: excluded from review — ${error.message} Original text remains unchanged. Returned suggestion: ${excerpt}`);
      }
     }
-    const checkpoint=structuredClone(r);checkpoint.patches.push(...chunkPatches);
-    materializeSourceRevision(checkpoint);
-    r.patches=checkpoint.patches;r.reprocessed=checkpoint.reprocessed;r.nodeLinks=checkpoint.nodeLinks;r.report.validationDiagnostics=checkpoint.report.validationDiagnostics;
-    if(Array.isArray(data.diagnostics))r.report.diagnostics.push(...data.diagnostics.filter((v):v is string=>typeof v==='string').slice(0,30).map(v=>`Excerpt ${r.report.chunksCompleted+1}: ${v.slice(0,2000)}`));
-    r.report.chunksCompleted++;r.report.charactersReviewed+=chunk.end-chunk.start;this.save(row.vault_id,r);
+
+    if(Array.isArray(data.diagnostics))diagnostics.push(...data.diagnostics.filter((v):v is string=>typeof v==='string').slice(0,30).map(v=>`Excerpt ${index+1}: ${v.slice(0,2000)}`));
+    return {index,patches:chunkPatches,diagnostics,usage:observedUsage};
+   }catch(error){return {index,patches:[],diagnostics,usage:observedUsage,error};}
+  };
+  try {
+   // Bounded waves permit deterministic checkpoints and stop scheduling promptly after failure.
+   // A successful sibling remains durable even if an earlier excerpt failed.
+   const remaining=chunks.map((_,index)=>index).filter(index=>!completed.has(index));
+   for(let at=0;at<remaining.length;at+=2){
+    guard();const results=await Promise.all(remaining.slice(at,at+2).map(process));
+    let failure:unknown;
+    for(const result of results){
+     if(result.usage.inputTokens===null||result.usage.outputTokens===null)result.diagnostics.push(`Excerpt ${result.index+1}: provider usage was unavailable; token totals include only reported usage and may be incomplete.`);
+     for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'] as const)if(result.usage[key]!==null)r.report[key]=(r.report[key]??0)+result.usage[key]!;
+     r.report.diagnostics.push(...result.diagnostics);
+     if(result.error){failure??=result.error;continue;}
+     try {
+      guard();
+      const patches=[...r.patches,...result.patches].sort((a,b)=>a.range.startOffset-b.range.startOffset);
+      if(patches.some((patch,index)=>index>0&&patch.range.startOffset<patches[index-1]!.range.endOffset))throw new HttpError(502,'Editorial checkpoint contains overlapping patches. Start a new pass.');
+      // Pending/rejected suggestions cannot alter the reading version. Rebuild only for accepted edits.
+      if(result.patches.some(patch=>patch.decision==='accepted')){
+       const checkpoint={...r,patches,report:{...r.report}};
+       materializeSourceRevision(checkpoint);
+       r.reprocessed=checkpoint.reprocessed;r.nodeLinks=checkpoint.nodeLinks;r.report.validationDiagnostics=checkpoint.report.validationDiagnostics;
+      }
+      r.patches=patches;completed.add(result.index);
+      r.report.completedChunkIndexes=[...completed].sort((a,b)=>a-b);r.report.chunksCompleted=completed.size;
+      r.report.charactersReviewed=r.report.completedChunkIndexes.reduce((total,index)=>total+chunks[index]!.end-chunks[index]!.start,0);
+     }catch(error){failure??=error;}
+    }
+    // One durable checkpoint per wave, including successful siblings and usage from failed calls.
+    this.save(row.vault_id,r);
+    if(failure)throw failure;
    }
+   materializeSourceRevision(r);
    guard();r.status='completed';
   }catch(error){r.status=controller.signal.aborted?'interrupted':'failed';r.report.error=error instanceof Error?error.message:'Editorial pass failed.';r.report.diagnostics.push('Partial pass: completed excerpts and suggestions are retained; coverage is incomplete.');}
   finally{clearInterval(timer);r.report.finishedAt=now();r.report.durationMs=(r.report.durationMs??0)+Date.now()-started;this.save(row.vault_id,r);this.controller=null;this.activeRevisionId=null;this.running=false;}
  }
- close(){this.closed=true;this.controller?.abort();}
+ close(){this.hashCache=null;this.closed=true;this.controller?.abort();}
 }

@@ -25,7 +25,8 @@ export class SourceFiles {
   private running = false;
   private pageMapAttempts=new Set<string>();
   private children = new Set<ChildProcess>();
-  private flattenCompiler?: Promise<string>;
+  private flattenCompiler?: {hash:string;promise:Promise<string>};
+  private lastSanitization:Record<string,unknown>={};
   constructor(private store: Store) {
     const database=store.all<{name:string;file:string}>('PRAGMA database_list').find(db=>db.name==='main');
     this.root=path.join(path.dirname(database?.file || ':memory:'),'assets');
@@ -61,6 +62,7 @@ export class SourceFiles {
     const {originalData,...manifest}=value as Record<string,unknown>;
     // Restored extraction remains evidence, but must never become a trusted executable-version cache.
     delete manifest.extractorHash;
+    delete manifest.sanitizerHash;
     if(Buffer.byteLength(JSON.stringify(manifest))>maxText*4)throw new HttpError(413,'Source evidence exceeds the size limit');
     if(originalData!==undefined) {
       if(typeof originalData!=='string'||originalData.length>70*1024*1024)throw new HttpError(400,'Invalid original source bytes');
@@ -121,15 +123,42 @@ export class SourceFiles {
     requireOpen();
     return this.add(vault,name,bytes,entityId,sourceUrl,false,true,undefined,containsMath);
   }
+  private sanitizerHash() {return this.hash(readFileSync(fileURLToPath(new URL('../../../scripts/flatten-source.swift',import.meta.url))));}
+  private cachedSanitized(vault:string,originalHash:unknown,sanitizerHash:string) {
+    if(typeof originalHash!=='string')return undefined;
+    for(const row of this.store.all<{id:string}>("SELECT id FROM source_files WHERE vault_id=? AND format='pdf' AND status='ready' AND admitted=1 AND pdf_flattened=1",vault)) {
+      try {
+        const manifest=this.evidence(vault,row.id);
+        if(manifest.originalHash!==originalHash||manifest.sanitizerHash!==sanitizerHash)continue;
+        const bytes=readFileSync(this.filename(vault,row.id));
+        if(this.hash(bytes)!==manifest.admittedHash)continue;
+        scanSourcePDF(bytes); // Cached viewing assets never bypass admission screening.
+        return {bytes,fileId:row.id,flattening:manifest.flattening as Record<string,unknown>|undefined};
+      }catch{/* Missing/corrupt cache sources are regenerated from preserved originals. */}
+    }
+    return undefined;
+  }
   private async flattenPDF(bytes:Buffer):Promise<Buffer> {
     const directory=mkdtempSync(path.join(tmpdir(),'noema-pdf-'));
     try {
       const input=path.join(directory,'input.pdf'),output=path.join(directory,'flattened.pdf');
       writeFileSync(input,bytes,{mode:0o600,flag:'wx'});
-      if(!this.flattenCompiler)this.flattenCompiler=this.compileFlattener().catch(error=>{this.flattenCompiler=undefined;throw error;});
-      const executable=await this.flattenCompiler;
+      const hash=this.sanitizerHash();
+      if(this.flattenCompiler?.hash!==hash)this.flattenCompiler={hash,promise:this.compileFlattener().catch(error=>{this.flattenCompiler=undefined;throw error;})};
+      const executable=await this.flattenCompiler.promise;
       const profile='(version 1)(allow default)(deny network*)(deny file-write*)(allow file-write* (literal '+JSON.stringify(path.join(realpathSync(directory),'flattened.pdf'))+'))(deny process-fork)(deny process-exec)(allow process-exec (literal '+JSON.stringify(realpathSync(executable))+'))(deny file-read* (subpath "/Users"))(allow file-read* (literal '+JSON.stringify(realpathSync(executable))+') (literal '+JSON.stringify(realpathSync(input))+'))';
-      await this.command('/usr/bin/sandbox-exec',['-p',profile,executable,input,output],10*60*1000);
+      this.lastSanitization={};
+      try {
+        const metrics=await this.command('/usr/bin/sandbox-exec',['-p',profile,executable,input,output,'passive-rebuild'],10*60*1000);
+        scanSourcePDF(readFileSync(output));
+        this.lastSanitization=JSON.parse(metrics);
+      }catch(error) {
+        if(this.closed)throw error;
+        const fallbackReason=error instanceof Error?error.message:'Passive reconstruction failed.';
+        const metrics=await this.command('/usr/bin/sandbox-exec',['-p',profile,executable,input,output,'raster'],10*60*1000);
+        scanSourcePDF(readFileSync(output));
+        this.lastSanitization={...JSON.parse(metrics),fallbackReason};
+      }
       const size=statSync(output).size;
       if(!size||size>maxSourceBytes)throw new HttpError(413,'The flattened PDF exceeds the 50 MB limit or is empty. Split it into smaller files and try again.');
       return readFileSync(output);
@@ -140,12 +169,13 @@ export class SourceFiles {
   }
   private async compileFlattener() {
     mkdirSync(this.root,{recursive:true});
-    const executable=path.join(this.root,'source-flattener');
-    const script=fileURLToPath(new URL('../../../scripts/flatten-source.swift',import.meta.url));
-    if(!existsSync(executable)||statSync(script).mtimeMs>statSync(executable).mtimeMs) {
-      const temporary=executable+'-'+randomUUID();
-      try {await this.command('/usr/bin/swiftc',[script,'-module-cache-path',path.join(tmpdir(),'noema-swift-module-cache'),'-o',temporary],120000);renameSync(temporary,executable);}
-      finally{rmSync(temporary,{force:true});}
+    const source=readFileSync(fileURLToPath(new URL('../../../scripts/flatten-source.swift',import.meta.url)));
+    const executable=path.join(this.root,'source-flattener-'+this.hash(source).slice(0,20));
+    if(!existsSync(executable)) {
+      const temporary=executable+'-'+randomUUID(),script=temporary+'.swift';
+      writeFileSync(script,source,{flag:'wx',mode:0o600});
+      try {await this.command('/usr/bin/swiftc',[script,'-O','-module-cache-path',path.join(tmpdir(),'noema-swift-module-cache'),'-o',temporary],120000);renameSync(temporary,executable);}
+      finally{rmSync(temporary,{force:true});rmSync(script,{force:true});}
     }
     return executable;
   }
@@ -229,13 +259,20 @@ export class SourceFiles {
         }
       }
       if(file.format==='pdf') {
-        try{scanSourcePDF(bytes);}catch(error){
-          if(!(error instanceof HttpError))throw error;
+        const sanitizerHash=this.sanitizerHash();
+        let reason:string|undefined;
+        try{scanSourcePDF(bytes);}catch(error){if(!(error instanceof HttpError))throw error;reason=error.message;}
+        if(file.pdf_flattened===1&&existsSync(originalFilename)&&(evidence.sanitizerHash!==sanitizerHash||evidence.admittedHash!==this.hash(bytes)))reason='Sanitizer version updated; rebuilt from the preserved original.';
+        if(reason) {
           if(process.platform!=='darwin')throw new Error('This PDF needs local flattening, which currently requires macOS.');
-          evidence={...evidence,flattening:{reason:error.message,method:'raster',dpi:200,maxDimension:3000,discardedFeatures:['embedded text','PDF outline','annotations','document metadata'],startedAt:now()}};
-          bytes=await this.flattenPDF(bytes);
+          const start=performance.now(),original=existsSync(originalFilename)?readFileSync(originalFilename):bytes;
+          const cached=this.cachedSanitized(file.vault_id,evidence.originalHash,sanitizerHash);
+          this.lastSanitization={method:'raster',compression:'quartz-lossless-raster',dpi:200,maxDimension:3000};
+          bytes=cached?.bytes??await this.flattenPDF(original);
           scanSourcePDF(bytes);
+          evidence={...evidence,sanitizerHash,admittedHash:this.hash(bytes),admittedBytes:bytes.length,flattening:{reason,...(cached?.flattening??this.lastSanitization),discardedFeatures:(cached?.flattening??this.lastSanitization).method==='passive-rebuild'?['PDF outline','annotations','document metadata']:['embedded text','PDF outline','annotations','document metadata'],completedAt:now(),durationMs:Math.round(performance.now()-start),inputBytes:original.length,outputBytes:bytes.length,cacheHit:!!cached,...(cached?{reusedFrom:cached.fileId}:{})}};
           if(this.closed)return;
+          this.replaceFile(path.join(this.evidenceDirectory(file.vault_id,file.id),'manifest.json'),Buffer.from(JSON.stringify(evidence)));
           this.replaceFile(this.inboxFilename(file.vault_id,file.id),bytes);
           this.store.run('UPDATE source_files SET pdf_flattened=1,admitted=0,size=? WHERE id=?',bytes.length,file.id);
           file=this.require(file.vault_id,file.id);
@@ -311,9 +348,14 @@ export class SourceFiles {
   private async pdf(filename:string,id:string,trackProgress=true):Promise<{text:string;pages:number;ocrPages:number;pageStartLines:number[];structuralNodes?:SourceStructureNode[];pageEvidence?:unknown[];unresolvedOutlines?:string[]}> {
     if(process.platform!=='darwin')throw new Error('PDF extraction requires macOS with Apple PDFKit and Vision. TXT and MD sources work on this device.');
     // Compile once into the local vault data area; no cloud model or remote OCR.
-    const executable=path.join(this.root,'source-extractor');
-    const script=fileURLToPath(new URL('../../../scripts/extract-source.swift',import.meta.url));
-    if(!existsSync(executable)||statSync(script).mtimeMs>statSync(executable).mtimeMs)await this.command('/usr/bin/swiftc',[script,'-module-cache-path',path.join(tmpdir(),'noema-swift-module-cache'),'-o',executable],120000);
+    const source=readFileSync(fileURLToPath(new URL('../../../scripts/extract-source.swift',import.meta.url)));
+    const executable=path.join(this.root,'source-extractor-'+this.hash(source).slice(0,20));
+    if(!existsSync(executable)) {
+      const temporary=executable+'-'+randomUUID(),script=temporary+'.swift';
+      writeFileSync(script,source,{flag:'wx',mode:0o600});
+      try{await this.command('/usr/bin/swiftc',[script,'-module-cache-path',path.join(tmpdir(),'noema-swift-module-cache'),'-o',temporary],120000);renameSync(temporary,executable);}
+      finally{rmSync(temporary,{force:true});rmSync(script,{force:true});}
+    }
     // No networking, child executables, or filesystem writes while parsing untrusted PDF bytes.
     const profile='(version 1)(allow default)(deny network*)(deny file-write*)(deny process-fork)(deny process-exec)(allow process-exec (literal '+JSON.stringify(realpathSync(executable))+'))(deny file-read* (subpath "/Users"))(allow file-read* (literal '+JSON.stringify(realpathSync(filename))+') (literal '+JSON.stringify(realpathSync(executable))+'))';
     const output=await this.command('/usr/bin/sandbox-exec',['-p',profile,executable,filename],10*60*1000,line=>{

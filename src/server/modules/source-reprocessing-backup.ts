@@ -98,6 +98,12 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  for(const key of ['startedAt','finishedAt'])if(report[key]!==null)timestamp(report[key]);
  for(const key of ['durationMs','inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])if(report[key]!==null)integer(report[key],0,Number.MAX_SAFE_INTEGER);
  const chunks=integer(report.chunksTotal,0,128);integer(report.chunksCompleted,0,chunks);
+ if(report.concurrency!==undefined)integer(report.concurrency,1,2);
+ if(report.completedChunkIndexes!==undefined){
+  const indexes=array(report.completedChunkIndexes,128).map(value=>integer(value,0,chunks-1));
+  if(new Set(indexes).size!==indexes.length||indexes.length!==report.chunksCompleted||indexes.some((value,index)=>index>0&&value<=indexes[index-1]!))throw invalid();
+ }
+
  if(report.charactersTotal!==text.length)throw invalid();integer(report.charactersReviewed,0,text.length);
  if(report.error!==null)string(report.error,10000);
  for(const diagnostic of array(report.diagnostics,11000))string(diagnostic,10000);

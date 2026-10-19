@@ -150,7 +150,18 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             vaults.requireOpen(vault);
             return send(201,await sourceFiles.admit(vault,url.searchParams.get('name')||'',Buffer.concat(chunks),url.searchParams.get('entity')||undefined,()=>{vaults.requireOpen(vault);},undefined,containsMath==='true'));
           }
-          if(id && parts.length===4 && parts[3]==='evidence' && method==='GET')return send(200,sourceFiles.evidence(vault,id));
+          if(id && parts.length===4 && parts[3]==='evidence' && method==='GET') {
+            const evidence=sourceFiles.evidence(vault,id),pageQuery=url.searchParams.get('page');
+            if(pageQuery===null)return send(200,evidence);
+            const page=Number(pageQuery),file=sourceFiles.require(vault,id);
+            if(!Number.isSafeInteger(page)||page<1||page>(file.pages??0))throw new HttpError(400,'Choose a valid evidence page.');
+            // The comparison panel needs one page, not the full raw text and
+            // normalization offset map for the entire document on every click.
+            const raw=evidence.rawExtraction as {ocrPages?:number;pageEvidence?:{page:number}[];unresolvedOutlines?:string[]}|undefined;
+            const {originalAvailable,originalHash,originalBytes,admittedBytes,flattening,findings}=evidence;
+            return send(200,{originalAvailable,originalHash,originalBytes,admittedBytes,flattening,findings,
+              rawExtraction:raw?{ocrPages:raw.ocrPages,unresolvedOutlines:raw.unresolvedOutlines,pageEvidence:raw.pageEvidence?.filter(item=>item.page===page)}:undefined});
+          }
           if(id && parts.length===5 && parts[3]==='page-image' && method==='GET') {
             const bytes=await sourcePageImages.get(vault,id,Number(parts[4]));
             vaults.requireOpen(vault);sourceFiles.require(vault,id);

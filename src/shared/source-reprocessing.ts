@@ -7,6 +7,8 @@ export interface SourceEditorialPatch {
 }
 export interface SourceReprocessingReport {
  promptVersion:string;model:string;reasoningEffort:'none'|'medium';startedAt:string|null;finishedAt:string|null;durationMs:number|null;
+ /** Completed excerpt indexes, including out-of-order successes. Missing means a legacy completed prefix. */
+ completedChunkIndexes?:number[];concurrency?:number;
  chunksTotal:number;chunksCompleted:number;charactersTotal:number;charactersReviewed:number;
  inputTokens:number|null;outputTokens:number|null;reasoningTokens:number|null;cachedInputTokens:number|null;
  diagnostics:string[];validationDiagnostics?:string[];error:string|null;

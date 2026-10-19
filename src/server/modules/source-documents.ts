@@ -15,9 +15,10 @@ export class SourceDocuments {
   file=mathSource(this.store,file);
   if(!this.store.get('SELECT 1 FROM vaults WHERE id=? AND locked=0',file.vault_id))throw new HttpError(423,'Unlock this vault to process its sources.');
   if(file.status!=='ready'||file.admitted!==1||!file.text.trim())throw new HttpError(409,'Wait for source extraction to complete.');
+  const math=mathMetadata(this.store,file.id,file.text);
   const inputHash=createHash('sha256').update(JSON.stringify([
    file.id,file.text,file.structural_nodes,file.page_start_lines,file.pages,file.name,
-   file.original_filename,file.generated_name,file.format,file.language,file.source_url,file.enrichment_status,
+   file.original_filename,file.generated_name,file.format,file.language,file.source_url,file.enrichment_status,math,
   ])).digest('hex');
   const cached=this.store.get<{document_json:string;input_hash:string;builder_version:number}>('SELECT document_json,input_hash,builder_version FROM source_documents WHERE file_id=?',file.id);
   if(cached?.input_hash===inputHash&&cached.builder_version===sourceDocumentBuilderVersion) {
@@ -27,7 +28,6 @@ export class SourceDocuments {
    }catch{/* Rebuild a damaged derived cache from authoritative source text. */}
   }
   const document=processedSourceDocument(file);
-  const math=mathMetadata(this.store,file.id,file.text);
   if(math)document.processing={...document.processing,text:'LaTeX cleaned extraction',math};
   this.store.run(`INSERT INTO source_documents (file_id,builder_version,input_hash,document_json,updated_at) VALUES (?,?,?,?,?)
    ON CONFLICT(file_id) DO UPDATE SET builder_version=excluded.builder_version,input_hash=excluded.input_hash,document_json=excluded.document_json,updated_at=excluded.updated_at`,file.id,sourceDocumentBuilderVersion,inputHash,JSON.stringify(document),now());

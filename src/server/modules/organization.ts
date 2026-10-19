@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Collection, Folder, ItemKind, Organization } from '../../shared/domain.js';
+import type { Collection, CollectionMembership, Folder, ItemKind, Organization } from '../../shared/domain.js';
 import { Store } from '../store.js';
 import { HttpError, required } from '../validation.js';
 import {syncReadingNotesCollection} from './reading-notes-collection.js';
@@ -13,7 +13,11 @@ export class Organizer {
       collections: this.store.all('SELECT id,name FROM collections WHERE vault_id=? ORDER BY name,id', vault),
       folders: this.store.all('SELECT id,name,parent_id FROM folders WHERE vault_id=? ORDER BY name,id', vault),
       locations: this.store.all(`SELECT kind,item_id,folder_id FROM item_locations WHERE vault_id=? AND (kind='entity' OR EXISTS (SELECT 1 FROM pages WHERE pages.id=item_locations.item_id AND pages.vault_id=item_locations.vault_id AND pages.deleted_at IS NULL))`, vault),
-      memberships: this.store.all(`SELECT kind,item_id,collection_id FROM collection_memberships WHERE vault_id=? AND (kind='entity' OR EXISTS (SELECT 1 FROM pages WHERE pages.id=collection_memberships.item_id AND pages.vault_id=collection_memberships.vault_id AND pages.deleted_at IS NULL))`, vault),
+      memberships: this.store.all<Omit<CollectionMembership,'automatic'> & {automatic:number}>(`SELECT kind,item_id,collection_id,
+        EXISTS (SELECT 1 FROM collections c JOIN page_reading_notes n ON n.vault_id=c.vault_id
+          WHERE c.id=collection_memberships.collection_id AND c.name='Reading Notes'
+          AND n.page_id=collection_memberships.item_id AND collection_memberships.kind='page') AS automatic
+        FROM collection_memberships WHERE vault_id=? AND (kind='entity' OR EXISTS (SELECT 1 FROM pages WHERE pages.id=collection_memberships.item_id AND pages.vault_id=collection_memberships.vault_id AND pages.deleted_at IS NULL))`, vault).map(row=>({...row,automatic:!!row.automatic})),
       favourites: this.store.all(`SELECT kind,item_id FROM favourites WHERE vault_id=? AND (kind IN ('entity','folder') OR EXISTS (SELECT 1 FROM pages WHERE pages.id=favourites.item_id AND pages.vault_id=favourites.vault_id AND pages.deleted_at IS NULL))`, vault),
     };
   }
@@ -77,9 +81,10 @@ export class Organizer {
   membership(vault: string, body: Record<string, unknown>) {
     const {kind, id} = this.item(vault, body);
     const collection = required(body.collection_id);
-    this.collection(vault, collection);
+    const target=this.collection(vault, collection);
     if (body.folder_id != null) throw new HttpError(400, 'Collection membership cannot change a folder');
     if (body.remove !== undefined && typeof body.remove !== 'boolean') throw new HttpError(400, 'Invalid remove flag');
+    if (body.remove && kind==='page' && target.name==='Reading Notes' && this.store.get('SELECT 1 FROM page_reading_notes WHERE vault_id=? AND page_id=?',vault,id)) throw new HttpError(400,'Reading notes belong to Reading Notes automatically.');
     if (body.remove) this.store.run('DELETE FROM collection_memberships WHERE vault_id=? AND kind=? AND item_id=? AND collection_id=?', vault, kind, id, collection);
     else this.store.run('INSERT OR IGNORE INTO collection_memberships VALUES (?,?,?,?)', vault, kind, id, collection);
     return this.list(vault);

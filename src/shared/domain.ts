@@ -54,7 +54,7 @@ export type ItemKind = 'page' | 'entity';
 export interface Collection { id: string; name: string }
 export interface Folder { id: string; name: string; parent_id: string | null }
 export interface ItemLocation { kind: ItemKind; item_id: string; folder_id: string | null }
-export interface CollectionMembership { kind: ItemKind; item_id: string; collection_id: string }
+export interface CollectionMembership { kind: ItemKind; item_id: string; collection_id: string; automatic?: boolean }
 export type FavouriteKind = ItemKind | 'folder';
 export interface Favourite { kind: FavouriteKind; item_id: string }
 export interface CollectionFolderLink {folder_id: string; collection_id: string}

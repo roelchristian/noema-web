@@ -152,6 +152,39 @@ export function setEditorCaret(el: HTMLElement, offset: number) {
   if (!visit(el)) {range.selectNodeContents(el); range.collapse(false);}
   range.collapse(true); el.focus(); const selection = document.getSelection(); selection?.removeAllRanges(); selection?.addRange(range);
 }
+/** Independent editing hosts cannot natively delete the paragraph break between them. */
+export function deleteEditorBlockBoundary(root: HTMLElement, options: Options, direction: 'backward' | 'forward') {
+  const range = editorSelectionRange(root);
+  if (!range?.collapsed) return false;
+  const host = surface(range.startContainer), row = host?.closest<HTMLElement>('[data-block-id]');
+  if (!host || !row || !root.contains(host) || host.closest('[inert],[data-semantic-kind="ai-explanation"]')) return false;
+  const edge = range.cloneRange();
+  if (direction === 'backward') edge.setStart(host, 0); else edge.setEnd(host, host.childNodes.length);
+  if (readSegments(edge.cloneContents()).length) return false;
+  const blocks = options.blocks(), index = blocks.findIndex(block => block.id === row.dataset.blockId);
+  const leftIndex = direction === 'backward' ? index - 1 : index;
+  const left = blocks[leftIndex], right = blocks[leftIndex + 1];
+  const textTypes = ['paragraph', 'heading1', 'heading2', 'bullet', 'numbered', 'todo', 'quote'];
+  if (index < 0 || !left || !right || !textTypes.includes(left.type) || !textTypes.includes(right.type)) return false;
+  if (isAIExplanation(left) || isAIExplanation(right) || left.semantic !== right.semantic || left.semanticGroup?.id !== right.semanticGroup?.id || left.column?.id !== right.column?.id || left.column?.index !== right.column?.index) return false;
+  const editors = Array.from(root.querySelectorAll<HTMLElement>('[data-block-id]'));
+  const leftHost = editors.find(el => el.dataset.blockId === left.id)?.querySelector<HTMLElement>('.block-content[contenteditable="true"]');
+  const rightHost = editors.find(el => el.dataset.blockId === right.id)?.querySelector<HTMLElement>('.block-content[contenteditable="true"]');
+  if (!leftHost || !rightHost) return false;
+  const prefix = readSegments(leftHost), suffix = readSegments(rightHost);
+  // Match setEditorCaret's displayed atom lengths, including citation labels.
+  const caretLength = (node: Node): number => {
+    if (node instanceof HTMLElement && node.dataset.wikilink !== undefined) return node.dataset.wikilink.length;
+    if (node instanceof HTMLElement && node.dataset.math !== undefined) return node.dataset.math.length;
+    if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? '').replace(/\u200b/g, '').length;
+    return Array.from(node.childNodes).reduce((total, child) => total + caretLength(child), 0);
+  };
+  const offset = caretLength(leftHost);
+  const next = [...blocks]; next.splice(leftIndex, 2, {...left, content: [...prefix, ...suffix]});
+  clearEditorSelection(root);
+  options.commit(next, {id: left.id, offset});
+  return true;
+}
 /** Extend native selection across the independent contenteditable block hosts. */
 export function installBlockSelection(root: HTMLElement, options: Options) {
   let progression: Range | undefined, drag: {anchor: Point; host: HTMLElement; cross: boolean; pointer: number} | undefined;
@@ -325,10 +358,13 @@ export function installBlockSelection(root: HTMLElement, options: Options) {
         }
       }
     }
-    if ((event.key === 'Backspace' || event.key === 'Delete' || event.key === 'Enter') && replaceEditorSelection(root, options, event.key === 'Enter' ? [makeBlock(), makeBlock()] : [])) {event.preventDefault(); event.stopPropagation();}
+    if ((event.key === 'Backspace' || event.key === 'Delete' || event.key === 'Enter') && replaceEditorSelection(root, options, event.key === 'Enter' ? [makeBlock(), makeBlock()] : [])) {event.preventDefault(); event.stopPropagation(); return;}
+    if (!event.metaKey && !event.ctrlKey && !event.altKey && (event.key === 'Backspace' || event.key === 'Delete') && deleteEditorBlockBoundary(root, options, event.key === 'Backspace' ? 'backward' : 'forward')) {event.preventDefault(); event.stopPropagation();}
   }
   function beforeInput(event: InputEvent) {
     if (event.cancelable && event.inputType.startsWith('delete') && replaceEditorSelection(root, options)) {event.preventDefault(); event.stopPropagation(); return;}
+    const direction = event.inputType === 'deleteContentBackward' ? 'backward' : event.inputType === 'deleteContentForward' ? 'forward' : null;
+    if (event.cancelable && !event.isComposing && direction && deleteEditorBlockBoundary(root, options, direction)) {event.preventDefault(); event.stopPropagation(); return;}
     if (!event.cancelable || !event.inputType.startsWith('insert') || event.inputType === 'insertFromPaste' || !event.data) return;
     if (replaceEditorSelection(root, options, [makeBlock('paragraph', [{text: event.data}])])) {event.preventDefault(); event.stopPropagation();}
   }

@@ -2,9 +2,10 @@ import {editorSelectionRange} from './block-selection';
 
 const surfaceOf=(node:Node|null)=>(node instanceof Element?node:node?.parentElement)?.closest<HTMLElement>('.block-content[contenteditable="true"]');
 
-/** Treat a citation as one editable unit, including when its link has keyboard focus. */
-export function deleteEditorCitation(root:HTMLElement,target:EventTarget|null,direction:'backward'|'forward'):boolean {
-  const focused=target instanceof Element?target.closest<HTMLElement>('[data-source-reference]'):null;
+/** Delete entity mentions and references as whole units at noneditable boundaries.
+ * WebKit can leave the caret inside an atom or refuse native deletion beside it. */
+export function deleteEditorReference(root:HTMLElement,target:EventTarget|null,direction:'backward'|'forward'):boolean {
+  const focused=target instanceof Element?target.closest<HTMLElement>('[data-entity],[data-source-reference]'):null;
   const selection=document.getSelection();
   if(!selection)return false;
   const current=editorSelectionRange(root,selection);
@@ -16,23 +17,23 @@ export function deleteEditorCitation(root:HTMLElement,target:EventTarget|null,di
   else {
     if(!current||surfaceOf(current.endContainer)!==host)return false;
     range.setStart(current.startContainer,current.startOffset);range.setEnd(current.endContainer,current.endOffset);
-    const citations=Array.from(host.querySelectorAll<HTMLElement>('[data-source-reference]'));
+    const references=Array.from(host.querySelectorAll<HTMLElement>('[data-entity],[data-source-reference]'));
     if(!range.collapsed) {
-      const selected=citations.filter(citation=>range.intersectsNode(citation));
+      const selected=references.filter(reference=>range.intersectsNode(reference));
       if(!selected.length)return false;
-      for(const citation of selected){
-        if(citation.contains(range.startContainer))range.setStartBefore(citation);
-        if(citation.contains(range.endContainer))range.setEndAfter(citation);
+      for(const reference of selected){
+        if(reference.contains(range.startContainer))range.setStartBefore(reference);
+        if(reference.contains(range.endContainer))range.setEndAfter(reference);
       }
     } else {
-      const candidates=direction==='backward'?citations.reverse():citations;
-      const adjacent=candidates.find(citation=>{
-        if(citation.contains(range.startContainer))return true;
-        const parent=citation.parentNode!,index=Array.from(parent.childNodes).indexOf(citation);
+      const candidates=direction==='backward'?references.reverse():references;
+      const adjacent=candidates.find(reference=>{
+        if(reference.contains(range.startContainer))return true;
+        const parent=reference.parentNode!,index=Array.from(parent.childNodes).indexOf(reference);
         const side=range.comparePoint(parent,index+(direction==='backward'?1:0));
         if(direction==='backward'?side>0:side<0)return false;
         const gap=range.cloneRange();
-        if(direction==='backward')gap.setStartAfter(citation);else gap.setEndBefore(citation);
+        if(direction==='backward')gap.setStartAfter(reference);else gap.setEndBefore(reference);
         const contents=gap.cloneContents();
         // Skip only invisible caret spacers, never prose, spaces, or other atoms.
         return !(contents.textContent??'').replace(/\u200b/g,'')&&!contents.querySelector('[contenteditable="false"],br');

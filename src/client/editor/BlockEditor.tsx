@@ -9,7 +9,7 @@ import {CitationPicker} from './CitationPicker';
 import {citationKey,cleanCitationGroups,noteCitations} from '../../shared/citations';
 import {citationSpace,trimTrailingCitationSpace,trimLeadingCitationSpace} from './citation-spacing';
 import {bookmarkCitationRange,resolveCitationRange,type CitationBookmark} from './citation-bookmark';
-import {deleteEditorCitation} from './citation-deletion';
+import {deleteEditorReference} from './reference-deletion';
 import {CitationPresentationContext} from '../sources/CitationPresentation';
 import {mentionMatches,mentionCaretRect} from './mention-picker';
 import {menuPlacement,revealMenuItem} from '../components/menu-placement';
@@ -330,7 +330,7 @@ export function BlockEditor(props: Props) {
     const beforeInput=(event:InputEvent)=>{
       if(!event.cancelable||event.isComposing)return;
       const direction=event.inputType==='deleteContentBackward'?'backward':event.inputType==='deleteContentForward'?'forward':null;
-      if(direction&&deleteEditorCitation(editor,event.target,direction)){
+      if(direction&&deleteEditorReference(editor,event.target,direction)){
         event.preventDefault();event.stopPropagation();commitSelection();
       }
     };
@@ -845,7 +845,7 @@ export function BlockEditor(props: Props) {
       const math = (e.target as Element).closest<HTMLElement>('[data-math]');
       if (math && !(e.target as Element).closest('[data-semantic-kind="ai-explanation"]')) {e.preventDefault(); e.stopPropagation(); editInlineMath(math);}
     }} onKeyDownCapture={e => {
-      if(!e.nativeEvent.isComposing&&!e.metaKey&&!e.ctrlKey&&!e.altKey&&(e.key==='Backspace'||e.key==='Delete')&&root.current&&deleteEditorCitation(root.current,e.target,e.key==='Backspace'?'backward':'forward')){
+      if(!e.nativeEvent.isComposing&&!e.metaKey&&!e.ctrlKey&&!e.altKey&&(e.key==='Backspace'||e.key==='Delete')&&root.current&&deleteEditorReference(root.current,e.target,e.key==='Backspace'?'backward':'forward')){
         e.preventDefault();e.stopPropagation();commitSelection();return;
       }
       const command=shortcutTextFormat(e.nativeEvent),editor=root.current;

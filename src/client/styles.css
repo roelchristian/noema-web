@@ -2646,11 +2646,12 @@ dialog.noema-modal {
   max-width: calc(100vw - 32px);
   max-height: calc(100dvh - 32px);
   overflow-y: auto;
+  font: 13px/1.5 var(--font-ui);
 }
 dialog.noema-modal > form, dialog.noema-modal > .settings-dialog { display: flow-root; }
 dialog.noema-modal .modal-header {
   position: sticky;
-  top: 0;
+  top: calc(-1 * var(--modal-content-padding));
   z-index: 4;
   display: flex;
   align-items: center;
@@ -2664,6 +2665,41 @@ dialog.noema-modal .modal-header {
   border-bottom: 1px solid var(--line);
   background: var(--surface-raised);
 }
+/* Keep the first field clear of the shared header, including forms without a body wrapper. */
+dialog.noema-modal .modal-header + label { margin-top: 20px; }
+dialog.noema-modal > form > label {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+dialog.noema-modal > form > label > :is(input:not([type=checkbox]):not([type=radio]):not([type=file]), textarea) {
+  width: 100%;
+  min-height: 38px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: 13px/1.5 var(--font-ui);
+}
+dialog.noema-modal > form > label > :is(input, textarea):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+dialog.noema-modal > form > label > .select-host .select-trigger {
+  min-height: 38px;
+  padding: 8px 10px;
+  border-color: var(--control-border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: 13px/1.5 var(--font-ui);
+}
+dialog.noema-modal > form > label > .select-host .select-trigger:hover:not(:disabled) { background: var(--surface-hover); }
+dialog.noema-modal .dialog-actions { align-items: center; gap: 8px; margin-top: 24px; }
+dialog.noema-modal .dialog-actions > .button { min-height: 34px; padding: 7px 12px; font: 13px/1.4 var(--font-ui); }
+dialog.noema-modal .dialog-actions > .button:disabled { cursor: default; }
 dialog.noema-modal .modal-header > .modal-title {
   flex: 1;
   min-width: 0;
@@ -2703,6 +2739,9 @@ dialog.noema-modal.mobile-selection-sheet { padding-bottom: max(12px, env(safe-a
   dialog.noema-modal { --modal-content-padding: 18px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); }
   dialog.noema-modal .modal-header { padding-inline: 12px; }
   dialog.noema-modal .modal-header-actions > .modal-close { width: 44px; height: 44px; padding: 12px; }
+  dialog.noema-modal .dialog-actions > .button { min-height: 44px; }
+  dialog.noema-modal > form > label > :is(input:not([type=checkbox]):not([type=radio]):not([type=file]), textarea),
+  dialog.noema-modal > form > label > .select-host .select-trigger { min-height: 44px; font-size: 16px; }
   dialog.noema-modal:is(.mobile-block-sheet, .mobile-selection-sheet) { max-width: 100%; }
 }
 

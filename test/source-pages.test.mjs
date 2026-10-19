@@ -88,3 +88,17 @@ test('unreadable output alone cannot become a reviewable draft',()=>{
  draft.feed(JSON.stringify({type:'title',title:'Group axioms'})+'\n§\n{"type":');
  assert.throws(()=>draft.finish(),/complete page/);assert.equal(draft.blocks.length,0);
 });
+
+
+test('explicit output language rejects mismatched or missing language before streaming a title',()=>{
+ for(const language of ['es',undefined]) {
+  const events=[],draft=new SourcePageDraft(event=>events.push(event),'Una biografía española.',undefined,'English');
+  assert.throws(()=>draft.feed(JSON.stringify({type:'title',title:'Una biografía',language})+'\n'),/selected output language/);
+  assert.deepEqual(events,[]);
+ }
+ const events=[],draft=new SourcePageDraft(event=>events.push(event),'Una biografía española.',undefined,'English');
+ draft.feed(JSON.stringify({type:'title',title:'A biography',language:'en-US'})+'\n');
+ assert.equal(events[0].title,'A biography');
+ const matching=new SourcePageDraft(()=>{},'Una biografía española.');
+ assert.doesNotThrow(()=>matching.feed(JSON.stringify({type:'title',title:'Una biografía',language:'es'})+'\n'));
+});

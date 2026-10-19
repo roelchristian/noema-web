@@ -466,10 +466,10 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
                 emit({type:'status',phase:'thinking'});
                 const recent=store.all<{duration_ms:number}>(`SELECT duration_ms FROM ai_activity WHERE action='create_page_from_source' AND status='completed' AND model=? AND reasoning_effort=? AND prompt_bytes BETWEEN ? AND ? AND duration_ms>0 ORDER BY started_at DESC LIMIT 8`,intelligence.selection().model,intelligence.selection().reasoningEffort,Buffer.byteLength(prepared.input)*.5,Buffer.byteLength(prepared.input)*2);
                 if(recent.length>=3)emit({type:'estimate',seconds:Math.ceil(recent.map(row=>row.duration_ms).sort((a,b)=>a-b)[Math.floor(recent.length/2)]!/1000)});
-                const draft=new SourcePageDraft(emit,cleanedFile.text,cleanedFile);
+                const draft=new SourcePageDraft(emit,cleanedFile.text,cleanedFile,prepared.options.language);
                 // A preliminary JSON draft can be previewed, but only final-answer records are saved.
-                let preview=new SourcePageDraft(emit,cleanedFile.text,cleanedFile),previewFailed=false;
-                const resetPreview=()=>{emit({type:'preview_reset'});preview=new SourcePageDraft(emit,cleanedFile.text,cleanedFile);previewFailed=false;};
+                let preview=new SourcePageDraft(emit,cleanedFile.text,cleanedFile,prepared.options.language),previewFailed=false;
+                const resetPreview=()=>{emit({type:'preview_reset'});preview=new SourcePageDraft(emit,cleanedFile.text,cleanedFile,prepared.options.language);previewFailed=false;};
                 await intelligence.generate(prepared.input,false,bytes=>activity.request(activityId!,bytes,null),false,false,false,undefined,false,{
                   signal:controller.signal,onDelta:delta=>draft.feed(delta),onPreviewReset:resetPreview,
                   onPreviewDelta:delta=>{

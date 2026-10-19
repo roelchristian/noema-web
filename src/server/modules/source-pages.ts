@@ -15,6 +15,16 @@ import {Knowledge} from './knowledge.js';
 import {Pages} from './pages.js';
 import {sourcePageDisplayMath,sourcePageMathRanges,sourcePageMathSegments} from './source-page-math.js';
 
+/** Explicit selections must agree with the model's declared output language. */
+function verifyOutputLanguage(requested:string,actual:string|null) {
+  let expected:string|null=null;
+  try{expected=pageLanguage(requested);}catch{return;/* Legacy free-text language names. */}
+  if(!expected)return;
+  const target=new Intl.Locale(expected),output=actual?new Intl.Locale(actual):null;
+  if(!output||target.language!==output.language||target.script&&target.script!==output.maximize().script)
+    throw new HttpError(502,'AI did not use the selected output language. Please retry.');
+}
+
 /** Validate record structure and mark evidence that needs the user's review. */
 export class SourcePageDraft {
   private pending='';
@@ -30,7 +40,7 @@ export class SourcePageDraft {
   title='';
   language:string|null=null;
   readonly blocks:Block[]=[];
-  constructor(private emit:(event:SourcePageEvent)=>void,sourceText:string,private file?:SourceFile) {this.sourceLines=sourceTextLines(sourceText);this.semanticEntries=file?sourceDocumentEntries(processedSourceDocument(file)):[];}
+  constructor(private emit:(event:SourcePageEvent)=>void,sourceText:string,private file?:SourceFile,private outputLanguage='') {this.sourceLines=sourceTextLines(sourceText);this.semanticEntries=file?sourceDocumentEntries(processedSourceDocument(file)):[];}
   feed(delta:string) {
     this.size+=delta.length;
     if(this.size>60000)throw new HttpError(502,'The generated page exceeded the size limit. Try a narrower focus.');
@@ -67,6 +77,7 @@ export class SourcePageDraft {
     if(item.type==='title') {
       if(this.title||this.blocks.length||typeof item.title!=='string'||!item.title.trim()||item.title.trim()==='Untitled'||item.title.trim().length>200||/[\r\n]/.test(item.title))throw new HttpError(502,'AI returned an invalid page title.');
       try{this.language=pageLanguage(item.language);}catch{throw new HttpError(502,'AI returned an invalid page language.');}
+      verifyOutputLanguage(this.outputLanguage,this.language);
       this.title=item.title.trim();this.emit({type:'title',title:this.title,language:this.language});return;
     }
     if(item.type!=='block'||!this.title||!sourcePageBlockTypes.includes(item.blockType as typeof sourcePageBlockTypes[number])||typeof item.text!=='string'||!item.text.trim()||item.text.length>6000||this.recordCount>=100)throw new HttpError(502,'AI returned an invalid page block. Try a narrower focus.');
@@ -215,6 +226,7 @@ export class SourcePages {
       if(prepared.revisionId&&(!prior||prior.status!=='pending'))throw new HttpError(409,'The previous draft changed during generation. Reopen the latest draft.');
       let requestedLanguage:string|null=null;
       try{requestedLanguage=pageLanguage(prepared.options.language);}catch{/* Legacy free-text language names are resolved by the model's language tag. */}
+      verifyOutputLanguage(prepared.options.language,draft.language);
       const language=draft.language??requestedLanguage;
       if(!language)throw new HttpError(502,'AI did not identify the generated page language. Please retry.');
       const blocks=this.pages.validateBlocks(vault,linkSourceReferences(draft.blocks,mathSource(this.store,prepared.file)));

@@ -2613,7 +2613,7 @@ dialog.source-page-dialog.has-preview { width: 1200px; }
 :root { --citation-jump-highlight: rgba(242, 210, 96, .24); }
 :root[data-mode=dark] { --citation-jump-highlight: rgba(222, 183, 64, .18); }
 
-/* Modal headers use a roomier toolbar rhythm and the active breadcrumb type. */
+/* Modal headers share the toolbar height and active breadcrumb type. */
 .topbar { height: var(--workspace-toolbar-height); }
 .breadcrumbs [aria-current=page], dialog.noema-modal .modal-header > .modal-title {
   font: 600 12px/1.4 var(--font-ui);
@@ -2623,7 +2623,7 @@ dialog.source-page-dialog.has-preview { width: 1200px; }
 }
 dialog.noema-modal {
   --modal-content-padding: 24px;
-  --modal-header-height: calc(var(--workspace-toolbar-height) * 1.25);
+  --modal-header-height: var(--workspace-toolbar-height);
   padding: var(--modal-content-padding);
   border: 1px solid var(--control-border);
   border-radius: 10px;
@@ -2642,11 +2642,11 @@ dialog.noema-modal .modal-header {
   align-items: center;
   justify-content: space-between;
   flex: 0 0 var(--modal-header-height);
-  gap: 10px;
+  gap: 8px;
   height: var(--modal-header-height);
   min-height: var(--modal-header-height);
-  margin: calc(-1 * var(--modal-content-padding)) calc(-1 * var(--modal-content-padding)) 20px;
-  padding: 0 20px;
+  margin: calc(-1 * var(--modal-content-padding)) calc(-1 * var(--modal-content-padding)) 16px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--line);
   background: var(--surface-raised);
 }
@@ -2654,7 +2654,7 @@ dialog.noema-modal .modal-header > .modal-title {
   flex: 1;
   min-width: 0;
   margin: 0;
-  padding: 5px 3px;
+  padding: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2724,7 +2724,7 @@ dialog.noema-modal.mobile-selection-sheet { padding-bottom: max(12px, env(safe-a
 .source-page-scope .source-page-switch { flex-shrink:0; }
 
 /* AI consumption follows the settings surfaces and adapts to the active theme. */
-dialog.noema-modal.ai-activity-modal { --modal-header-height: 52px; --modal-content-padding: 20px; }
+dialog.noema-modal.ai-activity-modal { --modal-content-padding: 20px; }
 dialog.noema-modal.ai-activity-modal .modal-header { position: relative; top: auto; margin-bottom: 10px; }
 .ai-activity-views { margin: 0 0 12px; }
 .ai-activity-modal > [role=tabpanel] { min-width: 0; }

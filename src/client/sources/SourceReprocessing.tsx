@@ -4,6 +4,7 @@ import type {SourceEditorialPatch,SourceReprocessingRevision,SourceReprocessingS
 import {request} from '../api';
 import {DisclosureSummary} from '../components/DisclosureSummary';
 import {SourceReaderText,SourceReaderInline} from './SourceReaderText';
+import {SourcePatchComparison,type ComparisonLayout} from './SourcePatchComparison';
 import './source-reprocessing.css';
 
 type Props={vaultId:string;fileId:string;visible:boolean;onShow:()=>void;onOriginal:(nodeId?:string)=>void;onCompare?:(page:number)=>void};
@@ -35,17 +36,27 @@ function RevisionDocument({revision,onOriginal}:{revision:SourceReprocessingRevi
     {!entries.length&&<SourceReaderText text={revision.reprocessed.text} footnotePrefix={revision.id}/>}
   </article>;
 }
-function PatchReview({patch,disabled,selected,onSelect,onCompare,onDecision}:{patch:SourceEditorialPatch;disabled:boolean;selected:boolean;onCompare?:(page:number)=>void;onSelect:(selected:boolean)=>void;onDecision:(patch:SourceEditorialPatch,decision:'accepted'|'rejected'|'pending',replacement?:string)=>Promise<void>}){
+function PatchReview({patch,disabled,selected,layout,onSelect,onCompare,onDecision}:{patch:SourceEditorialPatch;layout:ComparisonLayout;disabled:boolean;selected:boolean;onCompare?:(page:number)=>void;onSelect:(selected:boolean)=>void;onDecision:(patch:SourceEditorialPatch,decision:'accepted'|'rejected'|'pending',replacement?:string)=>Promise<void>}){
   const [editing,setEditing]=useState(false),[replacement,setReplacement]=useState(patch.userReplacement??patch.replacement);
+  const changeTypes={ocr:'OCR correction',line_breaks:'Line breaks',footnote:'Footnote',apparatus:'Page apparatus',metadata:'Metadata',citation:'Citation',math:'Math',formatting:'Formatting'};
+  const hasRisks=!!patch.riskReasons?.length;
   useEffect(()=>{if(!editing)setReplacement(patch.userReplacement??patch.replacement);},[patch.userReplacement,patch.replacement,editing]);
   return <details className="reprocessing-patch" open={patch.decision==='pending'?true:undefined}>
-    <DisclosureSummary><span>{label(patch.category)} · {patch.decision}</span><small>{Math.round(patch.confidence*100)}% confidence</small></DisclosureSummary>
-    <label className="reprocessing-select"><input type="checkbox" checked={selected} disabled={disabled} onChange={event=>onSelect(event.target.checked)}/> Select this change for review</label>
-    {!!patch.riskReasons?.length&&<ul className="reprocessing-warning">{patch.riskReasons.map(reason=><li key={reason}>{reason}</li>)}</ul>}
-    <p>{patch.reason}</p><small>Original {patch.range.startPage?`page ${patch.range.startPage} · `:''}lines {patch.range.startLine}–{patch.range.endLine}</small>
-    {onCompare&&patch.range.startPage&&<button className="button small" onClick={()=>onCompare(patch.range.startPage!)}>Compare PDF page {patch.range.startPage}</button>}
-    <div className="reprocessing-comparison"><div><h4>Original processed</h4><pre>{patch.original}</pre></div><div><h4>Suggested revision</h4>{editing?<textarea aria-label="Edit suggested replacement" value={replacement} onChange={e=>setReplacement(e.target.value)}/>:<pre>{(patch.userReplacement??patch.replacement)||'(Removed from reading text; preserved in provenance)'}</pre>}</div></div>
-    <div className="reprocessing-actions"><button className="button small" disabled={disabled} onClick={()=>void onDecision(patch,'accepted',editing?replacement:undefined)}>Accept{editing?' edit':''}</button><button className="button small" disabled={disabled} onClick={()=>void onDecision(patch,'rejected')}>Keep original</button><button className="button small" disabled={disabled} onClick={()=>setEditing(value=>!value)}>{editing?'Cancel edit':'Edit suggestion'}</button>{patch.decision!=='pending'&&<button className="button small" disabled={disabled} onClick={()=>void onDecision(patch,'pending')}>Return to review</button>}</div>
+    <DisclosureSummary><span className="reprocessing-change-type">{changeTypes[patch.category]}</span><span className="reprocessing-decision">{patch.decision==='pending'?'Pending review':patch.decision==='accepted'?'Accepted':'Rejected · original kept'}</span>{hasRisks&&<span className="reprocessing-risk-badge">Review carefully</span>}</DisclosureSummary>
+    <div className="reprocessing-patch-location"><span>Original {patch.range.startPage?`page ${patch.range.startPage}${patch.range.endPage&&patch.range.endPage!==patch.range.startPage?`–${patch.range.endPage}`:''} · `:''}lines {patch.range.startLine}–{patch.range.endLine}</span>
+      {onCompare&&patch.range.startPage&&<button type="button" className="reprocessing-quiet-action" onClick={()=>onCompare(patch.range.startPage!)}>Compare PDF page {patch.range.startPage}</button>}
+    </div>
+    <SourcePatchComparison original={patch.original} replacement={editing?replacement:patch.userReplacement??patch.replacement} layout={layout}/>
+    {editing&&<label className="reprocessing-edit">Edit suggested replacement<textarea aria-label="Edit suggested replacement" disabled={disabled} value={replacement} onChange={e=>setReplacement(e.target.value)}/></label>}
+    <div className="reprocessing-patch-explanation">
+      {hasRisks&&<div className="reprocessing-patch-risks"><strong>Review carefully</strong><ul>{patch.riskReasons!.map(reason=><li key={reason}>{reason}</li>)}</ul></div>}
+      <p>{patch.reason}</p>
+      <small className="reprocessing-confidence">AI confidence: {Math.round(patch.confidence*100)}%</small>
+    </div>
+    <div className="reprocessing-patch-footer">
+      <div className="reprocessing-actions"><button type="button" className="button primary small" disabled={disabled} onClick={()=>void onDecision(patch,'accepted',editing?replacement:undefined)}>{editing?'Accept edited change':'Accept change'}</button><button type="button" className="button small" disabled={disabled} onClick={()=>void onDecision(patch,'rejected')}>Keep original</button><button type="button" className="reprocessing-quiet-action" disabled={disabled} onClick={()=>setEditing(value=>!value)}>{editing?'Cancel edit':'Edit'}</button>{patch.decision!=='pending'&&<button type="button" className="reprocessing-quiet-action" disabled={disabled} onClick={()=>void onDecision(patch,'pending')}>Return to review</button>}</div>
+      <label className="reprocessing-select"><input type="checkbox" checked={selected} disabled={disabled} onChange={event=>onSelect(event.target.checked)}/> Select for bulk review</label>
+    </div>
   </details>;
 }
 function exportVariant(revision:SourceReprocessingRevision,variant:'original'|'reprocessed'){
@@ -83,7 +94,7 @@ function Report({revision}:{revision:SourceReprocessingRevision}){
   </details>;
 }
 export function SourceReprocessing({vaultId,fileId,visible,onShow,onOriginal,onCompare}:Props){
-  const [summaries,setSummaries]=useState<SourceReprocessingSummary[]>([]),[revisionId,setRevisionId]=useState(''),[revision,setRevision]=useState<SourceReprocessingRevision|null>(null),[prompt,setPrompt]=useState(false),[instructions,setInstructions]=useState(''),[acceptanceThreshold,setAcceptanceThreshold]=useState('90'),[acceptanceMode,setAcceptanceMode]=useState<'review_all'|'safe_formatting'>('review_all'),[filter,setFilter]=useState<'all'|'pending'|'accepted'|'rejected'>('pending'),[selected,setSelected]=useState<string[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState(''),[reload,setReload]=useState(0),[tab,setTab]=useState<'read'|'review'>('read');
+  const [summaries,setSummaries]=useState<SourceReprocessingSummary[]>([]),[revisionId,setRevisionId]=useState(''),[revision,setRevision]=useState<SourceReprocessingRevision|null>(null),[prompt,setPrompt]=useState(false),[instructions,setInstructions]=useState(''),[acceptanceThreshold,setAcceptanceThreshold]=useState('90'),[acceptanceMode,setAcceptanceMode]=useState<'review_all'|'safe_formatting'>('review_all'),[filter,setFilter]=useState<'all'|'pending'|'accepted'|'rejected'>('pending'),[comparisonLayout,setComparisonLayout]=useState<ComparisonLayout>('auto'),[selected,setSelected]=useState<string[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState(''),[reload,setReload]=useState(0),[tab,setTab]=useState<'read'|'review'>('read');
   const actionRunning=useRef(false);
   function beginAction(){if(actionRunning.current)return false;actionRunning.current=true;setBusy(true);setError('');return true;}
   function finishAction(){actionRunning.current=false;setBusy(false);}
@@ -122,6 +133,9 @@ export function SourceReprocessing({vaultId,fileId,visible,onShow,onOriginal,onC
     catch(cause){setError(cause instanceof Error?cause.message:String(cause));}finally{finishAction();}
   }
   const shownPatches=revision?.patches.filter(patch=>filter==='all'||patch.decision===filter)??[];
+  const reviewFilters=['pending','accepted','rejected','all'] as const;
+  const reviewLabels={pending:'Pending',accepted:'Accepted',rejected:'Rejected',all:'All changes'};
+  const emptyReviewMessages={pending:'No pending changes to review.',accepted:'No accepted changes yet.',rejected:'No rejected changes. Rejected suggestions keep the original text.',all:'No editorial changes recorded.'};
   return <section className="source-reprocessing" aria-label="Beta source reprocessing">
     <div className="reprocessing-bar"><div className="reprocessing-switch" aria-label="Processed version"><button type="button" aria-pressed={!visible} onClick={()=>onOriginal()}>Original processed</button><button type="button" aria-pressed={visible} onClick={onShow}>Reprocessed <span>Beta</span></button></div><button type="button" className="button small reprocessing-loading-button" aria-busy={running} disabled={busy||running} onClick={()=>{setPrompt(true);onShow();}}>{running&&<span className="scan-spinner" aria-hidden="true"/>}{running?'Reprocessing…':'Reprocess with AI'}</button></div>
     {error&&<p className="dialog-error" role="alert">{error} <button onClick={()=>{setError('');setReload(n=>n+1);}}>Refresh</button></p>}
@@ -135,7 +149,18 @@ export function SourceReprocessing({vaultId,fileId,visible,onShow,onOriginal,onC
         {['failed','interrupted'].includes(revision.status)&&!stale&&<button type="button" className="button small" disabled={busy||running} onClick={()=>void control('resume')}>Resume remaining excerpts</button>}
         <Report revision={revision}/>
         <div className="reprocessing-tabs"><button aria-pressed={tab==='read'} onClick={()=>setTab('read')}>Read revision</button><button aria-pressed={tab==='review'} onClick={()=>setTab('review')}>Review changes ({revision.patches.length})</button></div>
-        {tab==='read'?<RevisionDocument revision={revision} onOriginal={onOriginal}/>:<div className="reprocessing-reviews">{!revision.patches.length&&<p>No editorial changes recorded.</p>}<div className="reprocessing-actions"><label>Show changes <select aria-label="Filter editorial changes" value={filter} onChange={event=>{setFilter(event.target.value as typeof filter);setSelected([]);}}><option value="pending">Pending</option><option value="all">All</option><option value="accepted">Accepted</option><option value="rejected">Kept original</option></select></label><button className="button small" disabled={!selected.length||busy||!!stale||active(revision.status)} onClick={()=>void decideSelected('accepted')}>Accept selected ({selected.length})</button><button className="button small" disabled={!selected.length||busy||!!stale||active(revision.status)} onClick={()=>void decideSelected('rejected')}>Keep original for selected</button></div>{!shownPatches.length&&revision.patches.length>0&&<p>No changes in this filter.</p>}{shownPatches.map(patch=><PatchReview key={`${revision.id}:${patch.id}`} patch={patch} onCompare={onCompare} selected={selected.includes(patch.id)} onSelect={checked=>setSelected(ids=>checked?[...ids,patch.id]:ids.filter(id=>id!==patch.id))} disabled={busy||!!stale||active(revision.status)} onDecision={decide}/>)}</div>}
+        {tab==='read'?<RevisionDocument revision={revision} onOriginal={onOriginal}/>:<div className="reprocessing-reviews">
+          <div className="reprocessing-tabs reprocessing-review-filters" role="group" aria-label="Review status">
+            {reviewFilters.map(value=><button key={value} type="button" aria-pressed={filter===value} onClick={()=>{setFilter(value);setSelected([]);}}>{reviewLabels[value]} <span className="reprocessing-filter-count">{value==='all'?revision.patches.length:revision.patches.filter(patch=>patch.decision===value).length}</span></button>)}
+          </div>
+          <div className="reprocessing-actions reprocessing-review-toolbar">
+            <label className="reprocessing-layout-picker">Comparison <select aria-label="Comparison layout" value={comparisonLayout} onChange={event=>setComparisonLayout(event.target.value as ComparisonLayout)}><option value="auto">Auto (unified on narrow screens)</option><option value="split">Side by side</option><option value="unified">Unified</option></select></label>
+            <button className="button small" disabled={!selected.length||busy||!!stale||active(revision.status)} onClick={()=>void decideSelected('accepted')}>Accept selected ({selected.length})</button><button className="button small" disabled={!selected.length||busy||!!stale||active(revision.status)} onClick={()=>void decideSelected('rejected')}>Keep original for selected</button>
+          </div>
+          {filter==='rejected'&&shownPatches.length>0&&<p className="reprocessing-hint">These suggestions were rejected. The original text is kept in the reading version.</p>}
+          {!shownPatches.length&&<p role="status">{emptyReviewMessages[filter]}</p>}
+          {shownPatches.map(patch=><PatchReview key={`${revision.id}:${patch.id}`} patch={patch} layout={comparisonLayout} onCompare={onCompare} selected={selected.includes(patch.id)} onSelect={checked=>setSelected(ids=>checked?[...ids,patch.id]:ids.filter(id=>id!==patch.id))} disabled={busy||!!stale||active(revision.status)} onDecision={decide}/>)}
+        </div>}
       </>}
     </>}
   </section>;

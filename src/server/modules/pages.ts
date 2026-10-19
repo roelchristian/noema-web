@@ -4,6 +4,7 @@ import {syncReadingNotesCollection} from './reading-notes-collection.js';
 import {projectPageText} from '../../shared/page-text.js';
 import {citationSourceIds} from '../../shared/citations.js';
 import {PageEnrichmentState} from './page-enrichment-state.js';
+import {resolvePageTitle} from './page-title.js';
 import {Domains} from './domains.js';
 import {enrichCitationPages,syncSourceReferences} from './source-references.js';
 import {pageLanguage} from './page-language.js';
@@ -39,11 +40,7 @@ export class Pages {
     const row=this.store.get<PageRow>('SELECT * FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',id,vault);
     if (!row) throw new HttpError(404,'Page not found');
     const {summary_content_hash: cachedHash, summary_hash_version: hashVersion, featured_image_id: featuredImageId, ai_status: aiStatus, ai_review_accepted: aiReviewAccepted, generation_metadata: generationMetadata, ...stored} = row;
-    // Generated titles remain derived metadata until an authored save accepts them.
-    if(!stored.title.trim()||stored.title.trim()==='Untitled') {
-      const generated=this.store.get<{data:string;revision:number}>("SELECT data,revision FROM page_ai_enrichments WHERE page_id=? AND kind='title'",id);
-      if(generated) {try {const data=JSON.parse(generated.data),title=data.title;const inferred=new PageEnrichmentState(this.store).get(id).fields.title?.origin==='inferred';if((generated.revision===row.revision||inferred)&&typeof title==='string'&&title.trim())stored.title=title;}catch {/* Unknown legacy records do not replace authored text. */}}
-    }
+    stored.title=resolvePageTitle(this.store,stored);
     const blocks = enrichCitationPages(this.store,JSON.parse(row.blocks) as Block[]);
     const names=new Map<string,string|undefined>();
     const resolveName=(id:string)=>{if(!names.has(id))names.set(id,entityMentionName(this.knowledge.find(vault,id)));return names.get(id);};

@@ -1,4 +1,5 @@
 import { AINotifications } from './ai-notifications.js';
+import {pageTitleResolver} from './page-title.js';
 import { randomUUID } from 'node:crypto';
 import type { AIActivity, AIActivityDebug, IntelligencePreferences, AIModelPricing, PageEnrichmentMetrics } from '../../shared/intelligence.js';
 import type { AIDebugTrace } from './ai-debug.js';
@@ -149,6 +150,7 @@ export class AIActivityLog {
       LEFT JOIN entities e ON a.object_kind='entity' AND e.id=a.object_id AND e.vault_id=a.vault_id
       WHERE (a.vault_id IS NULL OR v.locked=0) AND a.rowid<? ORDER BY a.rowid DESC LIMIT 51`,cursor?Number(cursor):Number.MAX_SAFE_INTEGER);
     const items=rows.slice(0,50);
-    return {items:items.map(({cursor:_,...row})=>({...row,available:!!row.available,debugRecorded:!!row.debugRecorded})),nextCursor:rows.length>50?items.at(-1)!.cursor:null,enrichmentMetrics:this.enrichmentMetrics()};
+    const titleFor=pageTitleResolver(this.store);
+    return {items:items.map(({cursor:_,...row})=>({...row,objectTitle:row.objectKind==='page'&&row.vaultId&&row.objectId?titleFor(row.vaultId,row.objectId,row.objectTitle):row.objectTitle,available:!!row.available,debugRecorded:!!row.debugRecorded})),nextCursor:rows.length>50?items.at(-1)!.cursor:null,enrichmentMetrics:this.enrichmentMetrics()};
   }
 }

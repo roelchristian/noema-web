@@ -36,7 +36,7 @@ export function TableBlock({block, entities, reviewMatches, onChange, onOpen, on
   return <div className="table-block" ref={root}><div className="table-scroll"><table style={{minWidth: rows[0]!.length * 140}}><tbody>{rows.map((cells, row) => <tr key={row}>{cells.map((content, col) => <td key={col}><Cell location={{blockId: block.id, row, col, matches: reviewMatches}} content={content} entities={entities} register={row === 0 && col === 0 ? register : undefined} onOpen={onOpen} onChange={content => changeCell(row, col, content)} onPaste={e => paste(e, row, col)} onKeyDown={e => {
     if(e.nativeEvent.isComposing) return;
     if((e.metaKey || e.ctrlKey) && e.key === 's') {e.preventDefault(); onSave();}
-    if(e.key === 'Enter' && !e.shiftKey) {e.preventDefault(); onExit();}
+    if(e.key === 'Enter') {e.preventDefault(); onExit();}
     if(e.key === 'Tab') {
       const index = row * cells.length + col + (e.shiftKey ? -1 : 1);
       const next = root.current?.querySelectorAll<HTMLElement>('.table-cell[contenteditable="true"]')[index];

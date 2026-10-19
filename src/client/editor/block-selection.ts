@@ -10,6 +10,15 @@ type Focus = {id: string; offset: number};
 interface Options {blocks: () => Block[]; entities: () => Entity[]; commit: (blocks: Block[], focus: Focus) => void}
 const element = (node: Node | null) => node instanceof Element ? node : node?.parentElement;
 const surface = (node: Node | null) => element(node)?.closest<HTMLElement>('.block-content[contenteditable="true"]');
+function paragraphJoinSpace(left: string, right: string): Segment[] {
+  const before = left.replace(/\u200b/g, ''), after = right.replace(/\u200b/g, '');
+  if (!before || !after || /\s$/u.test(before) || /^\s/u.test(after)) return [];
+  if (/[\p{Ps}\p{Pi}\-/]$/u.test(before) || /^[\p{Pe}\p{Pf},.;:!?%…，。；：！？、]/u.test(after)) return [];
+  if (/^['’](?:s|t|re|ve|ll|d|m)\b/iu.test(after)) return [];
+  // Chinese and Japanese prose does not separate adjacent characters with spaces.
+  if (/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]$/u.test(before) && /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(after)) return [];
+  return [{text: ' '}];
+}
 const selections = new WeakMap<HTMLElement, Range>();
 /** Keep restored cross-host ranges available on browsers that constrain native selection. */
 export function setEditorSelectionRange(root: HTMLElement, range: Range) {
@@ -179,8 +188,9 @@ export function deleteEditorBlockBoundary(root: HTMLElement, options: Options, d
     if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? '').replace(/\u200b/g, '').length;
     return Array.from(node.childNodes).reduce((total, child) => total + caretLength(child), 0);
   };
-  const offset = caretLength(leftHost);
-  const next = [...blocks]; next.splice(leftIndex, 2, {...left, content: [...prefix, ...suffix]});
+  const space = paragraphJoinSpace(leftHost.textContent ?? '', rightHost.textContent ?? '');
+  const offset = caretLength(leftHost) + space.length;
+  const next = [...blocks]; next.splice(leftIndex, 2, {...left, content: [...prefix, ...space, ...suffix]});
   clearEditorSelection(root);
   options.commit(next, {id: left.id, offset});
   return true;

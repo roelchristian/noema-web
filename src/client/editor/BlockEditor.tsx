@@ -196,6 +196,7 @@ export function BlockEditor(props: Props) {
   const fileInput = useRef<HTMLInputElement>(null), imageTarget = useRef<{after?: string; replace?: Block}>({});
   const [menu, setMenu] = useState<Menu | null>(null), elements = useRef(new Map<string, HTMLElement>());
   const root = useRef<HTMLDivElement>(null), menuRef = useRef<HTMLDivElement>(null), latest = useRef(props); latest.current = {...props,blocks,onChange};
+  const splitBlockRef = useRef(splitBlock); splitBlockRef.current = splitBlock;
   useEffect(()=>{
     const editor=root.current;if(!editor)return;
     const owner=(target:EventTarget|null)=>{
@@ -329,6 +330,12 @@ export function BlockEditor(props: Props) {
     const editor=root.current;if(!editor)return;
     const beforeInput=(event:InputEvent)=>{
       if(!event.cancelable||event.isComposing)return;
+      if(event.inputType==='insertLineBreak'||event.inputType==='insertParagraph'){
+        const host=(event.target as Element).closest<HTMLElement>('.block-content[contenteditable="true"]');
+        const id=host?.closest<HTMLElement>('[data-block-id]')?.dataset.blockId;
+        const block=latest.current.blocks.find(block=>block.id===id);
+        if(host&&block){event.preventDefault();event.stopPropagation();splitBlockRef.current(host,block);return;}
+      }
       const direction=event.inputType==='deleteContentBackward'?'backward':event.inputType==='deleteContentForward'?'forward':null;
       if(direction&&deleteEditorReference(editor,event.target,direction)){
         event.preventDefault();event.stopPropagation();commitSelection();
@@ -734,18 +741,23 @@ export function BlockEditor(props: Props) {
       if (e.key === 'Escape') { e.preventDefault(); setMenu(null); return; }
     }
     if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); onSave(); return; }
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault(); setMenu(null);
-      if (!el.textContent && ['bullet', 'numbered', 'todo'].includes(block.type)) { convert(block, 'paragraph'); return; }
-      const selection = getSelection(); if (!selection?.rangeCount) return;
-      const range = selection.getRangeAt(0); range.deleteContents(); const tail = range.cloneRange(); tail.setEnd(el, el.childNodes.length); const temp = document.createElement('div'); temp.append(tail.extractContents());
-      const head=trimTrailingCitationSpace(readSegments(el));
-      const tailContent=readSegments(temp);
-      const nextContent=head.at(-1)?.sourceReference?trimLeadingCitationSpace(tailContent):tailContent;
-      const next: Block = {column:block.column,...(isAIExplanation(block)?{semantic:'ai-explanation' as const}:{}),...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{}),id: randomUUID(), type: ['bullet', 'numbered', 'todo'].includes(block.type) ? block.type : 'paragraph', checked: false, content: nextContent};
-      const list = latest.current.blocks.map(b => b.id === block.id ? {...b, content: head} : b); list.splice(list.findIndex(b => b.id === block.id) + 1, 0, next); focusTarget.current = {id: next.id, start: true}; onChange(list);
+    if (e.key === 'Enter') {
+      e.preventDefault(); splitBlock(el,block);
     }
     if (e.key === 'Backspace' && !el.textContent && blocks.length > 1) { e.preventDefault(); removeBlock(block.id); }
+  }
+  function splitBlock(el:HTMLElement,block:Block) {
+    setMenu(null);
+    if(block.type==='table'){insert(block.id);return;}
+    if (!el.textContent && ['bullet', 'numbered', 'todo'].includes(block.type)) { convert(block, 'paragraph'); return; }
+    const selection = getSelection(); if (!selection?.rangeCount) return;
+    const range = selection.getRangeAt(0); if(!el.contains(range.commonAncestorContainer))return;
+    range.deleteContents(); const tail = range.cloneRange(); tail.setEnd(el, el.childNodes.length); const temp = document.createElement('div'); temp.append(tail.extractContents());
+    const head=trimTrailingCitationSpace(readSegments(el));
+    const tailContent=readSegments(temp);
+    const nextContent=head.at(-1)?.sourceReference?trimLeadingCitationSpace(tailContent):tailContent;
+    const next: Block = {column:block.column,...(isAIExplanation(block)?{semantic:'ai-explanation' as const}:{}),...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{}),id: randomUUID(), type: ['bullet', 'numbered', 'todo'].includes(block.type) ? block.type : 'paragraph', checked: false, content: nextContent};
+    const list = latest.current.blocks.map(b => b.id === block.id ? {...b, content: head} : b); list.splice(list.findIndex(b => b.id === block.id) + 1, 0, next); focusTarget.current = {id: next.id, start: true}; onChange(list);
   }
   const liveExplanationIndex=explanationAnchor?explanationInsertionIndex(blocks,explanationAnchor.ids):-1;
   const explanationAnchorIndex=liveExplanationIndex>=0?liveExplanationIndex:Math.min(explanationAnchor?.index??-1,blocks.length-1);

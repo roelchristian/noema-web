@@ -240,7 +240,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
           const port = new URL(`http://${req.headers.host}`).port;
           return send(200, {lan: networkAccess.enabled(), localUrl: `http://localhost${port ? ':' + port : ''}`});
         }
-        if(method==='POST' && ((collection==='intelligence' && id==='validate' && parts.length===3) || (collection==='pages' && (child==='summary'||child==='title'||child==='enrich'||child==='entity-scan'||child==='explain') && parts.length===4))) {
+        if(method==='POST' && ((collection==='intelligence' && id==='validate' && parts.length===3) || (collection==='pages' && (child==='summary'||child==='title'||child==='enrich'||child==='entity-scan'||child==='explain') && !(body.background===true&&(child==='summary'||child==='title'||child==='enrich')) && parts.length===4))) {
           const header=req.headers['x-vault-id'];
           if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
           activityId=activity.start(collection==='pages'?(child==='enrich'||child==='title'||child==='summary'?'page_enrichment':child==='entity-scan'?'entity_scan':child==='explain'?'block_explanation':'page_summary'):'connection_test',child==='title'||child==='summary'||child==='enrich'?intelligence.enrichmentSelection():intelligence.selection(),collection==='pages'?(header||'default'):null,collection==='pages'?id!:null);
@@ -387,6 +387,9 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               const allowed:EnrichmentField[]=['title','domains','language','summary'];
               if(body.requestedFields!==undefined&&(!Array.isArray(body.requestedFields)||!body.requestedFields.length||body.requestedFields.some(field=>!allowed.includes(field as EnrichmentField))))throw new HttpError(400,'Choose valid enrichment fields.');
               const background=body.background===true;
+              // Compatibility for old clients: saved pages are already queued. A browser
+              // background call must not dispatch work or reset the queue's retry budget.
+              if(background)return send(200,{title:page.title,revision:page.revision,pageDomains:page.pageDomains,enrichmentPending:page.enrichmentPending});
               const result=await pageEnrichment.run(vault,page,bytes=>activity.request(activityId!,bytes,page.revision),{
                 fields:child==='enrich'?body.requestedFields as EnrichmentField[]|undefined:undefined,
                 explicit:!background,background,refreshFields:child==='summary'?['summary']:child==='title'&&!background?['domains']:body.requestedFields as EnrichmentField[]|undefined,

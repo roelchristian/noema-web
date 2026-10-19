@@ -51,7 +51,7 @@ export class Workspace {
   private pageLockPending = false;
   private pageRequest: AbortController | null = null;
   readonly titler = new PageTitler(
-    page => api.generateTitle(page.vault_id, page.id, page.revision, true),
+    page => api.page(page.vault_id, page.id),
     (original, title,pageDomains) => {
       const cached = this.pageCache.get(original.id);
       if (!cached || this.state.draftRecoveries.some(item=>item.vaultId===original.vault_id&&item.pageId===original.id) || cached.editLocked || cached.revision!==original.revision || this.pageLockPending || cached.vault_id !== original.vault_id || this.state.vault?.locked) return;
@@ -59,7 +59,6 @@ export class Workspace {
       this.pageCache.set(page.id, page);
       this.patch({pages: this.state.pages.map(item => item.id === page.id ? {...item, title} : item),
         ...(this.state.page?.id === page.id ? {page} : {})});
-      if(page.title!==cached.title)this.saver.enqueue(page);
     },
     id => this.state.entities.find(entity => entity.id === id)?.name || '',
   );

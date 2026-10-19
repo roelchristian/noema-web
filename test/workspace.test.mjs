@@ -144,7 +144,7 @@ test('sidebar rename flushes the current draft and can rename another page witho
   }
 });
 
-test('new untitled pages receive a generated title through autosave and update navigation', async t => {
+test('new untitled pages observe server titles without another autosave', async t => {
   t.mock.timers.enable({apis:['setTimeout']});
   const vault={id:'a',name:'A',locked:false};
   let stored={id:'new',vault_id:'a',title:'Untitled',revision:1,blocks:[],sourceIds:[],updated_at:''};
@@ -158,18 +158,20 @@ test('new untitled pages receive a generated title through autosave and update n
     assert.equal(input.revision,stored.revision);
     stored={...structuredClone(input),revision:input.revision+1};writes.push(stored);return structuredClone(stored);
   });
-  const generate=t.mock.method(api,'generateTitle',async(vault,id,revision)=>{
-    assert.equal(vault,'a');assert.equal(id,'new');assert.equal(revision,stored.revision);
-    return {title:'Community garden plan',revision};
+  const generate=t.mock.method(api,'generateTitle',async()=>assert.fail('Browser dispatched enrichment'));
+  const read=t.mock.method(api,'page',async(vault,id)=>{
+    assert.equal(vault,'a');assert.equal(id,'new');
+    stored={...stored,title:'Community garden plan'};
+    return structuredClone(stored);
   });
   const workspace=new Workspace();
   try {
     await workspace.selectVault('a');await workspace.newPage();
     workspace.updatePage({blocks:[{id:'text',type:'paragraph',content:[{text:'Build raised beds for the community garden.'}]}]});
-    await workspace.saver.flush();t.mock.timers.tick(3000);
+    await workspace.saver.flush();t.mock.timers.tick(10000);
     for(let n=0;n<5;n++)await Promise.resolve();
     await workspace.saver.flush();
-    assert.equal(generate.mock.callCount(),1);assert.equal(writes.length,2);
+    assert.equal(generate.mock.callCount(),0);assert.equal(read.mock.callCount(),1);assert.equal(writes.length,1);
     assert.equal(stored.title,'Community garden plan');
     assert.equal(workspace.snapshot().page.title,stored.title);
     assert.equal(workspace.snapshot().pages[0].title,stored.title);
@@ -205,7 +207,7 @@ test('page icon changes update navigation immediately and autosave alongside con
   } finally { workspace.saver.dispose(); workspace.titler.dispose(); }
 });
 
-test('opening an existing untitled page resumes automatic titling after reload', async t => {
+test('opening an existing untitled page observes server enrichment after reload', async t => {
   t.mock.timers.enable({apis:['setTimeout']});
   let stored={id:'existing',vault_id:'a',title:'Untitled',revision:2,blocks:[{id:'body',type:'paragraph',content:[{text:'A detailed plan for the community garden.'}]}],sourceIds:[],updated_at:''};
   t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false}]);
@@ -217,17 +219,18 @@ test('opening an existing untitled page resumes automatic titling after reload',
     assert.equal(input.revision,stored.revision);
     stored={...structuredClone(input),revision:input.revision+1};return structuredClone(stored);
   });
-  const generate=t.mock.method(api,'generateTitle',async(_vault,_id,revision)=>({title:'Community garden plan',revision}));
+  const generate=t.mock.method(api,'generateTitle',async()=>assert.fail('Browser dispatched enrichment'));
   const workspace=new Workspace();
   try {
     await workspace.selectVault('a');
     if (workspace.snapshot().pages[0]) await workspace.openPage(workspace.snapshot().pages[0].id);
-    t.mock.timers.tick(3000);for(let n=0;n<5;n++)await Promise.resolve();
+    stored={...stored,title:'Community garden plan'};
+    t.mock.timers.tick(10000);for(let n=0;n<5;n++)await Promise.resolve();
     await workspace.saver.flush();
-    assert.equal(generate.mock.callCount(),1);assert.equal(stored.title,'Community garden plan');
+    assert.equal(generate.mock.callCount(),0);assert.equal(stored.title,'Community garden plan');
     assert.equal(workspace.snapshot().page.title,stored.title);
     await workspace.openPage(stored.id);t.mock.timers.tick(6000);
-    assert.equal(generate.mock.callCount(),1,'Opening a named page never replaces its title');
+    assert.equal(generate.mock.callCount(),0,'Opening a named page never dispatches enrichment');
   } finally {workspace.titler.dispose();workspace.saver.dispose();}
 });
 

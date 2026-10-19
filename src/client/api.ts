@@ -77,7 +77,7 @@ export const api={
   removeIntelligence:()=>request<import('../shared/domain').IntelligenceStatus>('intelligence','DELETE'),
   validateIntelligence:()=>request<{ok:true}&import('../shared/intelligence').IntelligencePreferences>('intelligence/validate','POST',{}),
   setPageEditLock:(vault:string,id:string,revision:number,locked:boolean,password?:string)=>request<Page>(`pages/${id}/edit-lock`,'PUT',{revision,locked,...(password===undefined?{}:{password})},vault),
-  generateTitle:(vault:string,id:string,revision:number,background=false)=>request<{title:string;revision:number;pageDomains:import('../shared/domain').PageDomains}>(`pages/${id}/title`,'POST',{revision,background},vault),
+  generateTitle:(vault:string,id:string,revision:number)=>request<{title:string;revision:number;pageDomains:import('../shared/domain').PageDomains}>(`pages/${id}/title`,'POST',{revision},vault),
   generateEnrichment:(vault:string,id:string,revision:number,requestedFields:('title'|'domains'|'language'|'summary')[])=>request<{title:string;revision:number;pageDomains:import('../shared/domain').PageDomains;summary?:string;contentHash?:string}>(`pages/${id}/enrich`,'POST',{revision,requestedFields},vault),
   enrichmentSettings:(vault:string,id:string)=>request<{automaticSummaries:boolean}>(`pages/${id}/enrichment-settings`,'GET',undefined,vault),
   saveEnrichmentSettings:(vault:string,id:string,automaticSummaries:boolean)=>request<{automaticSummaries:boolean}>(`pages/${id}/enrichment-settings`,'PUT',{automaticSummaries},vault),

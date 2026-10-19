@@ -185,7 +185,10 @@ export class Intelligence {
         body:JSON.stringify(payload),
       });
       if(!response.ok){if(trace)await readOpenAIResponse(response,trace).catch(()=>{});else await response.body?.cancel();throw new HttpError(response.status===429?429:502,response.status===401?'OpenAI rejected the API key. Replace it in Settings.':response.status===429?'OpenAI quota or rate limit reached. Check your OpenAI account.':'OpenAI could not create the embedding. Check API permissions and billing.');}
-      const result=await readOpenAIResponse(response,trace,undefined,undefined,observer?.usage);
+      // Float JSON grows with the number of returned dimensions, not input bytes.
+      // Allow 32 bytes per number plus envelope overhead, bounded by the batch cap.
+      const maxJsonBytes=Math.max(128000,16000+inputs.length*1536*32);
+      const result=await readOpenAIResponse(response,trace,undefined,undefined,observer?.usage,{maxJsonBytes});
       if(result.model!=='text-embedding-3-small'||!Array.isArray(result.data)||result.data.length!==inputs.length)throw new HttpError(502,'OpenAI returned invalid embeddings.');
       const embeddings:number[][]=new Array(inputs.length),seen=new Set<number>();
       for(const item of result.data) {

@@ -21,7 +21,7 @@ export function redactedTrace(trace: AIDebugTrace | AIUsageObserver | void, key:
 }
 
 /** Read JSON or SSE, retaining the provider's final response and every stream event. */
-export async function readOpenAIResponse(response: Response, trace?: AIDebugTrace, onTextDelta?:(delta:string)=>void, preview?:{onDelta:(delta:string)=>void;onReset:()=>void}, onUsage?:(usage:unknown)=>void) {
+export async function readOpenAIResponse(response: Response, trace?: AIDebugTrace, onTextDelta?:(delta:string)=>void, preview?:{onDelta:(delta:string)=>void;onReset:()=>void}, onUsage?:(usage:unknown)=>void, options?:{maxJsonBytes:number}) {
   const headers: Record<string,string> = {};
   for (const name of ['content-type','x-request-id','openai-processing-ms','retry-after']) {
     const value=response.headers.get(name); if (value !== null) headers[name]=value;
@@ -32,7 +32,7 @@ export async function readOpenAIResponse(response: Response, trace?: AIDebugTrac
   const streaming=response.headers.get('content-type')?.includes('text/event-stream');
   // SSE envelopes, obfuscation, and final snapshots repeat generated text many times.
   // Bound transport, individual frames, generated text, and debug retention separately.
-  const limit=streaming?32*1024*1024:128000,frameLimit=2*1024*1024,textLimit=1024*1024,debugLimit=2*1024*1024;
+  const limit=streaming?32*1024*1024:options?.maxJsonBytes??128000,frameLimit=2*1024*1024,textLimit=1024*1024,debugLimit=2*1024*1024;
   let raw='',pending='',size=0,textSize=0,lastUpdate=0,complete=false,outputText='',debugTruncated=false;
   const phases=new Map<string,string>();
   let previewItem:string|undefined,previewVisible=false;

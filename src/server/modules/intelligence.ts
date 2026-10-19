@@ -252,24 +252,27 @@ export class Intelligence {
     try{return parseSourceAuthors(JSON.parse(output)?.authors);}
     catch{throw new HttpError(502,'AI returned invalid source authors. Retry enrichment.');}
   }
-  async generate(input: string, validate=false, onRequest?: AIRequestObserver, title=false, entityScan=false, explain:boolean|(ReadingExplanationOptions&{signal?:AbortSignal})=false, utility?:{domains:{id:string;name:string}[];currentTitle:string}, background=false,sourcePage?:{onDelta:(delta:string)=>void;signal:AbortSignal;onPreviewDelta?:(delta:string)=>void;onPreviewReset?:()=>void;mathPreparation?:boolean},sourceEnrichment:boolean|'authors'=false,enrichment?:PageEnrichmentOptions,entityStream?:{onDelta:(delta:string)=>void;signal:AbortSignal}) {
-    const credential=this.credential(),selection=enrichment?this.enrichmentSelection():title?this.titleSelection():this.selection(),preferenceRevision=this.preferenceRevision;
+  async reeditSource(input:string,instructions:string,signal:AbortSignal,onRequest?:AIRequestObserver) {
+    return this.generate(input,false,onRequest,false,false,false,undefined,true,undefined,false,undefined,undefined,{instructions,signal});
+  }
+  async generate(input: string, validate=false, onRequest?: AIRequestObserver, title=false, entityScan=false, explain:boolean|(ReadingExplanationOptions&{signal?:AbortSignal})=false, utility?:{domains:{id:string;name:string}[];currentTitle:string}, background=false,sourcePage?:{onDelta:(delta:string)=>void;signal:AbortSignal;onPreviewDelta?:(delta:string)=>void;onPreviewReset?:()=>void;mathPreparation?:boolean},sourceEnrichment:boolean|'authors'=false,enrichment?:PageEnrichmentOptions,entityStream?:{onDelta:(delta:string)=>void;signal:AbortSignal},editorial?:{instructions:string;signal:AbortSignal}) {
+    const credential=this.credential(),selection=editorial?{...this.selection(),reasoningEffort:'medium' as const}:enrichment?this.enrichmentSelection():title?this.titleSelection():this.selection(),preferenceRevision=this.preferenceRevision;
     if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
     if(!title&&!entityScan&&!enrichment&&this.active)throw new HttpError(429,'Another AI request is running. Please wait.');
     if (!background) this.reserveManualRequest();
     const controller=new AbortController();this.generationRequests.add(controller);if(!title&&!entityScan&&!enrichment)this.active=controller;
     const abort=()=>controller.abort();
-    const requestSignal=entityStream?.signal??sourcePage?.signal??enrichment?.signal??(typeof explain==='object'?explain.signal:undefined);
+    const requestSignal=editorial?.signal??entityStream?.signal??sourcePage?.signal??enrichment?.signal??(typeof explain==='object'?explain.signal:undefined);
     requestSignal?.addEventListener('abort',abort,{once:true});
     if(requestSignal?.aborted)controller.abort();
-    const timer=setTimeout(()=>controller.abort(),Math.min(sourcePage?180000:45000,Date.parse(credential.expiresAt)-this.clock()));
+    const timer=setTimeout(()=>controller.abort(),Math.min(sourcePage||editorial?180000:45000,Date.parse(credential.expiresAt)-this.clock()));
     let trace: AIDebugTrace | undefined;
     try {
-      const prompt=sourcePage?.mathPreparation?{instructions:sourceMathInstructions,input:[{role:'user' as const,content:[{type:'input_text' as const,text:input}]}]}:enrichment?pageEnrichmentPrompt(input,enrichment):sourceEnrichment==='authors'?sourceAuthorsPrompt(input):sourceEnrichment?sourceEnrichmentPrompt(input):sourcePage?sourcePagePrompt(input):validate?{instructions:'Reply with OK.',input:'Connection test.'}:title?titlePrompt(input,utility?.domains,utility?.currentTitle):entityScan?entityScanPrompt(input):explain?explanationPrompt(input,typeof explain==='object'?explain:undefined):summaryPrompt(input);
+      const prompt=editorial?{instructions:editorial.instructions,input}:sourcePage?.mathPreparation?{instructions:sourceMathInstructions,input:[{role:'user' as const,content:[{type:'input_text' as const,text:input}]}]}:enrichment?pageEnrichmentPrompt(input,enrichment):sourceEnrichment==='authors'?sourceAuthorsPrompt(input):sourceEnrichment?sourceEnrichmentPrompt(input):sourcePage?sourcePagePrompt(input):validate?{instructions:'Reply with OK.',input:'Connection test.'}:title?titlePrompt(input,utility?.domains,utility?.currentTitle):entityScan?entityScanPrompt(input):explain?explanationPrompt(input,typeof explain==='object'?explain:undefined):summaryPrompt(input);
       const inputText=typeof prompt.input==='string'?prompt.input:prompt.input.flatMap(item=>item.content.map(part=>part.text)).join('');
       const observer=onRequest?.(Buffer.byteLength(prompt.instructions+inputText,'utf8'));
       trace=redactedTrace(observer,credential.key);
-      const payload={model:selection.model,store:false,max_output_tokens:enrichment?(selection.reasoningEffort!=='none'?4096:enrichment.requestedFields.includes('summary')?768:384):title?512:validate?2048:8192,reasoning:{effort:selection.reasoningEffort},tools:[],tool_choice:'none',...prompt,...(trace||sourcePage||entityStream?{stream:true}:{})};
+      const payload={model:selection.model,store:false,max_output_tokens:editorial?16000:enrichment?(selection.reasoningEffort!=='none'?4096:enrichment.requestedFields.includes('summary')?768:384):title?512:validate?2048:8192,reasoning:{effort:selection.reasoningEffort},tools:[],tool_choice:'none',...prompt,...(trace||sourcePage||entityStream?{stream:true}:{})};
       trace?.request('https://api.openai.com/v1/responses',payload);
       const response=await this.transport('https://api.openai.com/v1/responses',{
         method:'POST',redirect:'error',signal:controller.signal,
@@ -287,7 +290,7 @@ export class Intelligence {
       const result=await readOpenAIResponse(response,trace,entityStream?delta=>safeDelta(delta,entityStream.onDelta):sourcePage?delta=>safeDelta(delta,sourcePage.onDelta):undefined,
         sourcePage?.onPreviewDelta?{onDelta:delta=>safeDelta(delta,sourcePage.onPreviewDelta!),onReset:()=>sourcePage.onPreviewReset?.()}:undefined,observer?.usage);
       const summary=responseOutputText(result).trim();
-      if(result.status!=='completed'||!summary||summary.length>(sourcePage?60000:sourceEnrichment===true?20000:12000))throw new HttpError(502,'OpenAI returned an incomplete response. Try a lower reasoning effort or a shorter page.');
+      if(result.status!=='completed'||!summary||summary.length>(sourcePage||editorial?60000:sourceEnrichment===true?20000:12000))throw new HttpError(502,'OpenAI returned an incomplete response. Try a lower reasoning effort or a shorter page.');
       if(controller.signal.aborted||this.credential()?.generation!==credential.generation||this.preferenceRevision!==preferenceRevision)throw new HttpError(409,'The credential or AI settings changed, or the key expired. Please try again.');
       // Defense in depth against accidental credential echo by an upstream service.
       return summary.split(credential.key).join('[redacted]').replace(/sk-[A-Za-z0-9_-]{16,}/g,'[redacted]');

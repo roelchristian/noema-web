@@ -1,3 +1,4 @@
+import {restoreSourceRevision} from './source-reprocessing-backup.js';
 import {parsePageGenerationMetadata} from '../../shared/page-generation.js';
 import {sourceTextHash} from './source-math-text.js';
 import {syncReadingNotesCollection} from './reading-notes-collection.js';
@@ -33,9 +34,11 @@ const maxExpandedBytes=256*1024*1024;
 const compress=promisify(gzip),expand=promisify(gunzip);
 const pageScope='page_id IN (SELECT id FROM pages WHERE vault_id=?)';
 const entityScope='entity_id IN (SELECT id FROM entities WHERE vault_id=?)';
-// Explicit, versioned allowlist: credentials, global app settings, jobs and activity are never archived.
+// Explicit, versioned allowlist: credentials, global settings and activity are never archived.
+// Editorial evidence is retained, but restored revisions never resume paid background jobs.
 const tables={
   pages:{columns:'id,title,icon,featured_image_id,blocks,ai_status,generation_metadata,language,created_at,updated_at,revision,deleted_at',scope:'vault_id=?'},
+  source_reprocessing:{columns:'id,file_id,status,created_at,updated_at,payload',scope:'vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL)'},
   source_math_documents:{columns:'file_id,raw_hash,algorithm_version,cleaned_text,uncertainty_json,updated_at',scope:'file_id IN (SELECT id FROM source_files WHERE vault_id=? AND entity_id IS NOT NULL)'},
   source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at,import_method,source_url,pdf_flattened,admitted,format,page_start_lines,structural_nodes,original_filename,language,summary,generated_name,enrichment_status,contains_math',scope:'vault_id=? AND entity_id IS NOT NULL'},
   highlights:{columns:'id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,color,reference_json,created_at',scope:'vault_id=?'},
@@ -129,7 +132,7 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     const sourceOwners=new Set<unknown>(),legacyEntities=new Map(rows.entities.map(row=>[row.id,row]));
     const legacyProperties=[...rows.properties],legacyLinks=[...rows.page_sources];
     for(const file of rows.source_files) {
@@ -265,6 +268,13 @@ export class VaultBackups {
           if(!Array.isArray(uncertainty)||uncertainty.some(issue=>!issue||!Number.isInteger(issue.id)||issue.id<0||issue.id>=cleaned.split('\n').length||typeof issue.text!=='string'||issue.text.length>1000))throw invalid();
           const algorithmVersion=row.algorithm_version===undefined?1:integer(row,'algorithm_version',1,2);
           this.store.run('INSERT INTO source_math_documents(file_id,raw_hash,cleaned_text,uncertainty_json,updated_at,algorithm_version) VALUES(?,?,?,?,?,?)',fileId,rawHash,cleaned,JSON.stringify(uncertainty),now(),algorithmVersion);
+        }
+        const editorialIds=ids(rows.source_reprocessing);
+        for(const row of rows.source_reprocessing) {
+          const oldId=name(row,'id'),oldFile=name(row,'file_id'),fileId=ref(restoredSourceFiles,oldFile);
+          const payload=object(json(row,'payload')),revision=restoreSourceRevision(payload,oldId,oldFile,ref(editorialIds,oldId),fileId);
+          if(row.status!==payload.status||timestamp(row,'created_at')!==revision.createdAt||timestamp(row,'updated_at')!==revision.updatedAt)throw invalid();
+          insert('source_reprocessing',{id:revision.id,file_id:fileId,vault_id:vault,status:revision.status,created_at:revision.createdAt,updated_at:revision.updatedAt,payload:JSON.stringify(revision)});
         }
         this.store.run("UPDATE entities SET inactive=CASE WHEN EXISTS (SELECT 1 FROM source_files WHERE entity_id=entities.id AND status='failed') THEN 1 ELSE 0 END WHERE vault_id=? AND type='source'",vault);
         for(const row of rows.properties)insert('properties',{id:randomUUID(),entity_id:ref(entityIds,row.entity_id),name:name(row,'name'),value:nullable(row,'value'),target_id:row.target_id===null?null:ref(entityIds,row.target_id)});

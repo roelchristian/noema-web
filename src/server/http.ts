@@ -1,3 +1,4 @@
+import {SourceReprocessing} from './modules/source-reprocessing.js';
 import {SourceReading} from './modules/source-reading.js';
 import {readingNoteMaxWords,readingNoteWordCount} from '../shared/source-reading.js';
 import {sourceProgress} from './modules/source-progress.js';
@@ -64,6 +65,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
   const images=new Images(store),notifications=new AINotifications(store);
   const vaults=new Vaults(store),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),organizer=new Organizer(store);
   const activity=new AIActivityLog(store),enrichments=new AIEnrichments(store,pages);
+  const sourceReprocessing=new SourceReprocessing(store,sourceFiles,intelligence,vault=>vaults.requireOpen(vault),activity);
   const scans=new EntityScans(store,pages,knowledge,enrichments);
   const pageEnrichment=new PageEnrichment(store,pages,knowledge,enrichments,intelligence);
   const enrichmentScheduler=new PageEnrichmentScheduler(store,{
@@ -92,6 +94,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
   // Enforce retention on startup, periodically while running, and before scoped API access.
   pages.purgeExpired();
   images.cleanup();
+  let sourceReprocessingWorker: ReturnType<typeof setInterval> | undefined;
   let sourceWorker: ReturnType<typeof setInterval> | undefined;
   let cleanup: ReturnType<typeof setInterval> | undefined;
   let keyCleanup: ReturnType<typeof setInterval> | undefined;
@@ -118,6 +121,14 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
           const header=req.headers['x-vault-id'];if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
           const vault=vaults.requireOpen(header || (method==='GET'?url.searchParams.get('vault'):null) || 'default');
           const parts=url.pathname.split('/').filter(Boolean),id=parts[2];
+          if(id && parts[3]==='reprocessing') {
+            if(method==='POST'&&!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))throw new HttpError(415,'Editorial requests require JSON.');
+            if(parts.length===4&&method==='GET')return send(200,sourceReprocessing.list(vault,id));
+            if(parts.length===4&&method==='POST'){const body=await readBody(req);vaults.requireOpen(vault);return send(202,sourceReprocessing.start(vault,id,body));}
+            if(parts.length===5&&method==='GET')return send(200,sourceReprocessing.detail(vault,id,parts[4]!));
+            if(parts.length===6&&parts[5]==='review'&&method==='POST'){const body=await readBody(req);vaults.requireOpen(vault);return send(200,sourceReprocessing.review(vault,id,parts[4]!,body));}
+            throw new HttpError(404,'Editorial endpoint not found.');
+          }
           if(id==='url' && parts.length===3 && method==='POST') {
             if(!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))throw new HttpError(415,'URL imports require JSON.');
             const body=await readBody(req);
@@ -536,6 +547,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
   });
   server.on('listening', () => {
     enrichmentScheduler.start();
+    sourceReprocessingWorker=setInterval(()=>{void sourceReprocessing.tick().catch(()=>{});},1000);sourceReprocessingWorker.unref();
     vaultDeletion.cleanup();
     sourcePassageWorker=setInterval(()=>{try{sourcePassages.tick();}catch{/* Durable passage state records failures for retry. */}},500);sourcePassageWorker.unref();
     sourceWorker=setInterval(()=>{void sourceFiles.tick().catch(()=>{});},500);sourceWorker.unref();
@@ -545,6 +557,6 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
     keyCleanup=setInterval(()=>{try{intelligence.purgeExpired();}catch{/* Keychain may be locked; all AI access still fails closed. */}},60000);keyCleanup.unref();
     embeddingWorker=setInterval(()=>{void embeddings.tick().catch(()=>{/* Durable job history records failures; never log note content. */});},1000);embeddingWorker.unref();
   });
-  server.on('close', () => {enrichmentScheduler.dispose();clearInterval(sourceWorker);sourceFiles.close();clearInterval(sourcePassageWorker);clearInterval(sourceEnrichmentWorker);sourceEnrichments.close();clearInterval(cleanup);clearInterval(keyCleanup);clearInterval(embeddingWorker);embeddings.close();});
+  server.on('close', () => {clearInterval(sourceReprocessingWorker);sourceReprocessing.close();enrichmentScheduler.dispose();clearInterval(sourceWorker);sourceFiles.close();clearInterval(sourcePassageWorker);clearInterval(sourceEnrichmentWorker);sourceEnrichments.close();clearInterval(cleanup);clearInterval(keyCleanup);clearInterval(embeddingWorker);embeddings.close();});
   return server;
 }

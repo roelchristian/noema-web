@@ -251,6 +251,12 @@ db.exec(`CREATE TABLE IF NOT EXISTS source_files (
  pages INTEGER NOT NULL DEFAULT 0, ocr_pages INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL
 );
  CREATE INDEX IF NOT EXISTS source_files_entity ON source_files(vault_id,entity_id);`);
+db.exec(`CREATE TABLE IF NOT EXISTS source_reprocessing (
+ id TEXT PRIMARY KEY, file_id TEXT NOT NULL REFERENCES source_files(id) ON DELETE CASCADE,
+ vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE, status TEXT NOT NULL,
+ created_at TEXT NOT NULL, updated_at TEXT NOT NULL, payload TEXT NOT NULL);
+ CREATE INDEX IF NOT EXISTS source_reprocessing_file ON source_reprocessing(file_id,created_at);
+ CREATE UNIQUE INDEX IF NOT EXISTS source_reprocessing_active ON source_reprocessing(file_id) WHERE status IN ('queued','running');`);
 const sourceColumns = db.prepare('PRAGMA table_info(source_files)').all() as {name:string}[];
 for (const [column, definition] of Object.entries({
  contains_math:"INTEGER NOT NULL DEFAULT 0 CHECK (contains_math IN (0,1))",

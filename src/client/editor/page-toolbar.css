@@ -1,14 +1,14 @@
 /* Document controls, scoped separately from the shared workspace toolbar. */
 .topbar .page-toolbar {
   flex: none;
-  gap: 4px;
+  gap: var(--space-1);
   color: var(--text-muted);
 }
 .topbar .page-toolbar :is(.page-toolbar-history, .page-toolbar-reading) {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding-inline-end: 6px;
+  gap: var(--space-0-5);
+  padding-inline-end: var(--space-1-5);
   margin-inline-end: 2px;
   border-inline-end: 1px solid var(--line);
 }
@@ -17,21 +17,21 @@
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 32px;
-  height: 32px;
+  width: var(--control-height);
+  height: var(--control-height);
   margin: 0;
-  padding: 7px;
-  border-radius: 7px;
+  padding: var(--toolbar-control-padding);
+  border-radius: var(--radius-toolbar);
   color: var(--text-muted);
-  transition: background-color 120ms ease, color 120ms ease;
+  transition: background-color var(--duration-control) ease, color var(--duration-control) ease;
 }
 .topbar .page-toolbar :is(.page-tool, .sidebar-menu-trigger):hover:not(:disabled) {
   background: var(--surface-hover);
   color: var(--text);
 }
 .topbar .page-toolbar :is(.page-tool, .sidebar-menu-trigger):focus-visible {
-  outline: 2px solid var(--accent, currentColor);
-  outline-offset: 2px;
+  outline: var(--focus-width) solid var(--accent, currentColor);
+  outline-offset: var(--focus-offset-control);
 }
 .topbar .page-toolbar :is(.page-tool, .sidebar-menu-trigger):disabled {
   opacity: .35;
@@ -46,37 +46,37 @@
 .topbar .page-toolbar .favourite-button[aria-pressed=true] .icon { fill: currentColor; }
 .topbar .page-toolbar .page-tool-labeled {
   width: auto;
-  gap: 6px;
+  gap: var(--space-1-5);
   padding-inline: 9px;
-  font-size: 12px;
+  font-size: var(--ui-text-sm);
   font-weight: 500;
   white-space: nowrap;
 }
-.topbar .page-toolbar .page-tool-labeled .icon { width: 17px; height: 17px; }
+.topbar .page-toolbar .page-tool-labeled .icon { width: var(--icon-size); height: var(--icon-size); }
 .topbar .page-toolbar .page-toolbar-lock {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding-inline-end: 6px;
-  border-radius: 7px;
+  gap: var(--space-0-5);
+  padding-inline-end: var(--space-1-5);
+  border-radius: var(--radius-toolbar);
   background: var(--surface-hover);
-  font-size: 11px;
+  font-size: var(--ui-text-xs);
   white-space: nowrap;
 }
 @media (max-width: 1100px) {
   .topbar .page-toolbar .page-toolbar-secondary { display: none; }
-  .topbar .page-toolbar .page-tool-labeled { width: 32px; padding: 7px; }
+  .topbar .page-toolbar .page-tool-labeled { width: var(--control-height); padding: var(--toolbar-control-padding); }
   .topbar .page-toolbar .page-tool-labeled > span,
   .topbar .page-toolbar .page-toolbar-lock > span { display: none; }
   .topbar .page-toolbar .page-toolbar-lock { padding-inline-end: 0; }
 }
 @media (max-width: 750px) {
-  .topbar .page-toolbar { gap: 2px; }
+  .topbar .page-toolbar { gap: var(--space-0-5); }
   .topbar .page-toolbar :is(.page-tool, .sidebar-menu-trigger) {
-    width: 44px;
-    height: 44px;
-    padding: 12px;
-    border-radius: 8px;
+    width: var(--touch-target-size);
+    height: var(--touch-target-size);
+    padding: var(--toolbar-control-padding-touch);
+    border-radius: var(--radius-md);
   }
 }
 @media (prefers-reduced-motion: reduce) {

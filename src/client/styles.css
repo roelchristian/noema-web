@@ -3438,11 +3438,11 @@ summary.disclosure-summary:focus-visible { outline: 2px solid var(--accent); out
 
 /* Settings keep navigation and actions visible while long panels scroll. */
 dialog.noema-modal.settings-modal { width: 660px; padding: 0; overflow: hidden; }
-dialog.noema-modal > .settings-dialog { display: flex; flex-direction: column; max-height: calc(100dvh - 32px); }
+dialog.noema-modal > .settings-dialog { display: flex; flex-direction: column; height: min(680px, calc(100dvh - 34px)); }
 dialog.settings-modal .modal-header { position: static; margin: 0; flex-shrink: 0; }
 .settings-dialog .settings-tabs { flex-shrink: 0; margin: 0; padding: 0 16px; gap: 4px; }
 .settings-dialog .settings-tabs button { padding: 11px 12px; }
-.settings-panels { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 20px; scrollbar-gutter: stable; }
+.settings-panels { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 20px; scrollbar-gutter: stable; }
 .settings-dialog .settings-section { margin-top: 18px; }
 .settings-panels > [role=tabpanel] { padding-bottom: 18px; }
 .settings-dialog .settings-section > p { line-height: 1.5; margin-bottom: 10px; }

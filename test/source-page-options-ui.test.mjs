@@ -27,11 +27,11 @@ test('dialog submits familiarity and source scope, remembers them, and shows six
   dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
   dom.window.HTMLElement.prototype.attachEvent=function(){};dom.window.HTMLElement.prototype.detachEvent=function(){};
   rememberSourcePagePreferences({...defaultSourcePageOptions});
-  let submitted;
+  let submitted,streamController;
   globalThis.fetch=async(_url,options)=>{
     if(options.method==='GET')return Response.json({draft:null});
     submitted=JSON.parse(options.body);
-    return new Response(JSON.stringify({type:'review',draft:{id:'draft',title:'Critique',blocks:[],focus:'',options:submitted.options}})+'\n');
+    return new Response(new ReadableStream({start(controller){streamController=controller;}}));
   };
   const root=createRoot(document.querySelector('#mount'));
   const click=async target=>act(async()=>target.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})));
@@ -49,7 +49,18 @@ test('dialog submits familiarity and source scope, remembers them, and shows six
     await act(async()=>document.querySelector('form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));
     assert.equal(submitted.options.language,'English');
     assert.equal(submitted.options.format,'critique');assert.equal(submitted.options.familiarity,'expert');assert.equal(submitted.options.beyondSources,true);assert.deepEqual(Object.keys(submitted.options).sort(),['beyondSources','detail','familiarity','format','language']);
-    assert.equal(toggle.disabled,true,'Settings lock when a draft awaits review');
+    const summary=document.querySelector('[aria-label="Submitted request"]');
+    assert.ok(summary,'Submitted selections appear while generation is running');
+    assert.deepEqual([...summary.querySelectorAll('dd')].map(node=>node.querySelector('.source-page-format-name')?.textContent??node.textContent),['Critique','Standard','English','Expert','Include AI background knowledge']);
+    assert.equal(document.querySelectorAll('.source-page-controls select, .source-page-format, .source-page-controls [role="switch"], .source-page-controls textarea').length,0,'The original form is removed during generation');
+    assert.ok(document.querySelector('.source-page-dialog.has-preview'));
+    await act(async()=>{
+      streamController.enqueue(new TextEncoder().encode(JSON.stringify({type:'review',draft:{id:'draft',title:'Critique',blocks:[],focus:'',options:submitted.options}})+'\n'));
+      streamController.close();
+    });
+    assert.ok(document.querySelector('[aria-label="Submitted request"]'),'Read-only summary remains during review');
+    assert.equal(document.querySelectorAll('.source-page-format').length,0);
+    assert.ok(document.querySelector('.source-page-status').textContent.includes('Draft ready for review.'));
     const remembered=readSourcePagePreferences();assert.equal(remembered.familiarity,'expert');assert.equal(remembered.beyondSources,true);assert.equal(remembered.format,'critique');
     localStorage.setItem('noema-source-page-options',JSON.stringify({format:'timeline',familiarity:'invalid',boundaries:'invalid'}));
     const migrated=readSourcePagePreferences();assert.equal(migrated.format,'custom');assert.equal(migrated.familiarity,'familiar');assert.equal(migrated.beyondSources,false);

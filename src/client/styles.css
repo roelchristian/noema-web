@@ -3266,3 +3266,60 @@ dialog:has(.source-passage-preview) form > p { color: var(--text-muted); font-si
 .create-entity-fields label.source-math-option{display:flex;align-items:flex-start;gap:8px;font-weight:400;line-height:1.5}
 .create-entity-fields .source-math-option input[type="checkbox"]{width:16px;height:16px;flex:0 0 16px;margin:2px 0 0;padding:0}
 .source-math-help{margin:4px 0 12px;color:var(--text-muted);font-size:12px;line-height:1.5}
+
+/* A quiet request rail beside a fixed, scrollable reading surface. */
+.source-page-dialog .modal-title { display: flex; align-items: baseline; gap: 16px; min-width: 0; }
+.source-page-dialog .modal-title > span:first-child { flex: none; }
+.source-page-header-source { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 12px/1.5 var(--font-ui); color: var(--text-muted); padding-left: 16px; border-left: 1px solid var(--line); }
+dialog.source-page-dialog.has-preview { height: min(780px, calc(100dvh - 32px)); overflow: hidden; }
+.source-page-dialog.has-preview > form { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.source-page-dialog.has-preview .modal-header, .source-page-dialog.has-preview .source-page-actions { flex: none; }
+.source-page-dialog.has-preview .source-page-body { flex: 1; min-height: 0; overflow: hidden; align-items: stretch; grid-template-columns: 280px minmax(0, 1fr); gap: 20px; padding: 12px 20px 16px; background: var(--surface-raised); }
+.source-page-dialog.has-preview .source-page-controls { min-height: 0; max-height: none; padding: 0; gap: 20px; }
+.source-page-dialog.has-preview .source-page-result { display: flex; flex-direction: column; min-height: 0; gap: 12px; border: 0; padding: 0; }
+.source-page-request { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.source-page-request > .source-page-eyebrow { display: flex; align-items: center; height: 44px; flex: none; padding-bottom: 12px; }
+.source-page-eyebrow { margin: 0; font: 500 10px/1.5 var(--font-ui); letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted); }
+.source-page-selection { margin: 0; padding: 18px; border: 1px solid var(--line); border-radius: 6px; background: var(--sidebar); font: 12px/1.5 var(--font-ui); }
+.source-page-selection > div { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; min-width: 0; padding: 13px 0; border-bottom: 1px solid var(--line); }
+.source-page-selection > div:last-child { border-bottom: 0; padding-bottom: 0; }
+.source-page-selection dt { flex: none; font-size: 11px; color: var(--text-muted); }
+.source-page-selection dd { margin: 0; color: var(--text); text-align: right; white-space: pre-wrap; overflow-wrap: anywhere; font-weight: 500; }
+.source-page-selection .source-page-request-format { display: block; padding: 0 0 22px; margin-bottom: 3px; }
+.source-page-request-format dt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.source-page-request-format dd { display: grid; grid-template-columns: 30px minmax(0, 1fr); align-items: center; column-gap: 12px; text-align: left; }
+.source-page-format-mark { display: grid; place-items: center; width: 30px; height: 34px; grid-row: 1 / 3; border-radius: 5px; background: var(--surface-hover); color: var(--text-muted); }
+.source-page-format-mark .icon { width: 18px; height: 18px; }
+.source-page-format-name { font: 500 16px/1.4 var(--font-title); letter-spacing: -.2px; }
+.source-page-request-format small { margin-top: 3px; color: var(--text-muted); font: 11px/1.5 var(--font-ui); }
+.source-page-selection > div:nth-child(n+6) { display: block; }
+.source-page-selection > div:nth-child(n+6) dd { margin-top: 8px; text-align: left; font-weight: 400; line-height: 1.7; }
+.source-page-progress { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex: 0 0 44px; min-height: 44px; padding-bottom: 12px; }
+.source-page-status { padding: 0; font-size: 11px; }
+.source-page-status .icon { width: 13px; height: 13px; }
+.source-page-status.review, .source-page-status.completed { color: var(--text-muted); }
+.source-page-timing { position: absolute; bottom: 0; right: 0; margin: 0; text-align: right; color: var(--text-muted); font: 10px/1.5 var(--font-ui); }
+.source-page-progress progress { position: absolute; bottom: -5px; left: 0; width: 100%; height: 3px; margin: 0; }
+.source-page-dialog.has-preview .source-page-preview { flex: 1; min-height: 0; max-height: none; padding: 18px 24px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-raised); }
+.source-page-dialog.has-preview .source-page-preview-title { margin: 0 0 18px; padding-bottom: 18px; border-bottom: 1px solid var(--line); font-size: 20px; font-weight: 500; line-height: 1.4; letter-spacing: -.4px; }
+.source-page-dialog.has-preview .source-page-result > .section-hint { flex: none; min-height: 18px; padding: 0 2px; font-size: 10px; line-height: 1.6; }
+.source-page-dialog.has-preview .source-page-body > .dialog-error { grid-column: 1 / -1; }
+@media (max-width: 900px) {
+  .source-page-dialog.has-preview .source-page-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 14px; padding: 16px; }
+  .source-page-dialog.has-preview .source-page-controls { max-height: 180px; overflow-y: auto; }
+  .source-page-request { gap: 8px; }
+  .source-page-request > .source-page-eyebrow { height: auto; padding: 0; }
+  .source-page-selection { display: flex; flex-wrap: wrap; gap: 10px 24px; margin: 0; padding: 14px 16px; }
+  .source-page-selection > div { display: block; border: 0; padding: 0; }
+  .source-page-selection .source-page-request-format { margin: 0; padding: 0 20px 0 0; border-right: 1px solid var(--line); }
+  .source-page-selection dd { margin-top: 3px; text-align: left; }
+  .source-page-request-format dd { margin: 0; }
+  .source-page-selection > div:nth-child(n+6) { flex-basis: 100%; }
+}
+@media (max-width: 550px) {
+  .source-page-dialog .modal-title { gap: 8px; }
+  .source-page-header-source { padding-left: 8px; font-size: 11px; }
+  .source-page-dialog.has-preview .source-page-preview { padding: 20px; }
+  .source-page-dialog.has-preview .source-page-preview-title { font-size: 21px; }
+  .source-page-selection { gap: 10px 16px; }
+}

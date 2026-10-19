@@ -1,6 +1,8 @@
 import {useEffect,useLayoutEffect,useRef,useState,type FormEvent,type RefObject} from 'react';
 import type {Page} from '../../shared/domain';
-import {highlightColors,readingNoteMaxWords,readingNoteWordCount,type HighlightColor,type SourceHighlight,type SourceSelection} from '../../shared/source-reading';
+import {highlightColors,readingNoteMaxWords,readingNoteWordCount,readingExplanationFamiliarities,type ReadingExplanationOptions,type HighlightColor,type SourceHighlight,type SourceSelection} from '../../shared/source-reading';
+import {sourcePageLanguages} from '../../shared/source-page';
+import {Select} from '../components/Select';
 import {request} from '../api';
 import {randomUUID} from '../../shared/uuid';
 import {Icon} from '../components/Icon';
@@ -34,6 +36,7 @@ function selectedPassage(root:HTMLElement,file:ReadingFile):SelectedPassage|null
 }
 export function SourceReadingTools({file,article,highlights,onHighlight,onHighlightRemoved,onNoteCreated}:{file:ReadingFile;highlights:SourceHighlight[];article:RefObject<HTMLElement|null>;onHighlight:(highlight:SourceHighlight)=>void;onHighlightRemoved:(id:string)=>void;onNoteCreated:(page:Page)=>void}) {
   const [selected,setSelected]=useState<SelectedPassage|null>(null),[note,setNote]=useState<SourceSelection|null>(null);
+  const [explain,setExplain]=useState(false);
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
   const [pendingColor,setPendingColor]=useState<HighlightColor|null>(null);
   const menu=useRef<HTMLDivElement>(null),selectionRef=useRef(selected);selectionRef.current=selected;
@@ -92,8 +95,15 @@ export function SourceReadingTools({file,article,highlights,onHighlight,onHighli
   },[article,file,note,highlights]);
   useLayoutEffect(()=>{
     if(!selected)return;
-    const bounds=menu.current?.getBoundingClientRect();
-    setPosition(selectionPopoverPlacement(selected.box,{width:bounds?.width??280,height:menu.current?.scrollHeight??bounds?.height??130},{width:window.innerWidth,height:window.innerHeight}));
+    const element=menu.current;if(!element)return;
+    function place(){
+      const bounds=element!.getBoundingClientRect();
+      const next=selectionPopoverPlacement(selected!.box,{width:bounds.width,height:element!.scrollHeight},{width:window.innerWidth,height:window.innerHeight});
+      setPosition(previous=>JSON.stringify(previous)===JSON.stringify(next)?previous:next);
+    }
+    place();const resize=new ResizeObserver(place);resize.observe(element);
+    window.addEventListener('resize',place);
+    return()=>{resize.disconnect();window.removeEventListener('resize',place);};
   },[selected,error,busy,note]);
   function dismissSelection() {
     // Ignore queued selection inspections until the next deliberate selection.
@@ -124,17 +134,18 @@ export function SourceReadingTools({file,article,highlights,onHighlight,onHighli
   }
   return <>
     <SourceSelectionPaint article={article}/>
-    {selected&&<div ref={menu} className={"source-reading-menu"+(note?" is-composing":"")} role={note?"dialog":"toolbar"} aria-label={note?"Add reading note":"Source selection actions"} aria-modal={note?false:undefined} style={position} onPointerDown={event=>{if(!note)event.preventDefault();}} onKeyDown={event=>{
+    {selected&&<div ref={menu} className={"source-reading-menu"+(note?" is-composing":"")} role={note?"dialog":"toolbar"} aria-label={note?(explain?"Explain with AI":"Add reading note"):"Source selection actions"} aria-modal={note?false:undefined} style={position} onPointerDown={event=>{if(!note)event.preventDefault();}} onKeyDown={event=>{
       if(note){if(event.key==='Escape'){event.preventDefault();event.stopPropagation();}return;}
       if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key))return;
       const buttons=Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));const index=buttons.indexOf(document.activeElement as HTMLButtonElement);if(!buttons.length)return;
       event.preventDefault();buttons[event.key==='Home'?0:event.key==='End'?buttons.length-1:(index+(['ArrowRight','ArrowDown'].includes(event.key)?1:-1)+buttons.length)%buttons.length]?.focus();
     }}>
-      {note?<ReadingNotePopover selection={note} vaultId={file.vault_id} onClose={()=>{setNote(null);requestAnimationFrame(()=>menu.current?.querySelector<HTMLButtonElement>('.source-reading-note-action')?.focus());}} onCreated={page=>{dismissSelection();setNotice('Reading note saved.');onNoteCreated(page);}}/>:<>
+      {note?<ReadingNotePopover key={explain?'explain':'note'} explain={explain} selection={note} vaultId={file.vault_id} onClose={()=>{setNote(null);requestAnimationFrame(()=>menu.current?.querySelector<HTMLButtonElement>(explain?'.source-reading-explain-action':'.source-reading-note-action')?.focus());}} onCreated={page=>{dismissSelection();setNotice(explain?'AI explanation saved to Reading Notes.':'Reading note saved.');onNoteCreated(page);}}/>:<>
       <div className="source-reading-toolbar">
       <div className="source-highlight-colors" role="group" aria-label="Highlight color" aria-busy={busy}>{highlightColors.map(color=><button type="button" key={color} className="source-highlight-color" data-color={color} title={`Highlight ${color}`} aria-label={`${selected.highlightId?'Change highlight to':'Highlight passage'} ${color}`} aria-pressed={(pendingColor??selected.color)===color} disabled={busy} onClick={()=>void highlight(color)}>{(pendingColor??selected.color)===color&&<Icon name="check"/>}</button>)}</div>
       <div className="source-reading-menu-actions">
-      <button type="button" className="source-reading-note-action" title="Add reading note" aria-label="Add reading note" disabled={busy} onClick={()=>{setNote(selected.selection);setError('');}}><Icon name="compose"/></button>
+      <button type="button" className="source-reading-note-action" title="Add reading note" aria-label="Add reading note" disabled={busy} onClick={()=>{setExplain(false);setNote(selected.selection);setError('');}}><Icon name="compose"/></button>
+      <button type="button" className="source-reading-note-action source-reading-explain-action" title="Explain with AI" aria-label="Explain with AI" disabled={busy} onClick={()=>{setExplain(true);setNote(selected.selection);setError('');}}><Icon name="sparkles"/></button>
       {selected.highlightId&&<button type="button" className="source-reading-note-action source-reading-remove-action" title="Remove highlight" aria-label="Remove highlight" disabled={busy} onClick={()=>void removeHighlight()}><Icon name="trash"/></button>}
       </div>
       </div>
@@ -144,19 +155,20 @@ export function SourceReadingTools({file,article,highlights,onHighlight,onHighli
     {notice&&<p className="source-reading-notice" role="status">{notice}</p>}
   </>;
 }
-function ReadingNotePopover({selection,vaultId,onCreated,onClose}:{selection:SourceSelection;vaultId:string;onCreated:(page:Page)=>void;onClose:()=>void}) {
+function ReadingNotePopover({selection,vaultId,onCreated,onClose,explain=false}:{selection:SourceSelection;vaultId:string;onCreated:(page:Page)=>void;onClose:()=>void;explain?:boolean}) {
   const [text,setText]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
-  const [requestId]=useState(randomUUID);
+  const [requestId,setRequestId]=useState(randomUUID);
+  const [language,setLanguage]=useState(''),[familiarity,setFamiliarity]=useState<ReadingExplanationOptions['familiarity']>('familiar');
   const inFlight=useRef<AbortController|null>(null),mounted=useRef(true);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;inFlight.current?.abort();};},[]);
-  const words=readingNoteWordCount(text),valid=words>0&&words<=readingNoteMaxWords;
+  const words=readingNoteWordCount(text),valid=explain||words>0&&words<=readingNoteMaxWords;
   async function submit(event:FormEvent){
     event.preventDefault();if(inFlight.current||!valid)return;
     const controller=new AbortController();inFlight.current=controller;setBusy(true);setError('');
-    const timeout=setTimeout(()=>controller.abort(),15000);
+    const timeout=setTimeout(()=>controller.abort(),explain?60000:15000);
     let saved:Page|undefined;
     try {
-      saved=await request<Page>(`source-files/${encodeURIComponent(selection.fileId)}/reading-notes`,'POST',{...selection,text:text.trim(),requestId},vaultId,controller.signal);
+      saved=await request<Page>(`source-files/${encodeURIComponent(selection.fileId)}/reading-notes${explain?'/explain':''}`,'POST',{...selection,...(explain?{language,familiarity}:{text:text.trim()}),requestId},vaultId,controller.signal);
     }catch(cause){
       if(mounted.current)setError(controller.signal.aborted?'Couldn’t confirm the save. Please try again.':cause instanceof Error?cause.message:String(cause));
     }finally{clearTimeout(timeout);inFlight.current=null;if(mounted.current)setBusy(false);}
@@ -164,16 +176,21 @@ function ReadingNotePopover({selection,vaultId,onCreated,onClose}:{selection:Sou
     if(saved&&mounted.current)onCreated(saved);
   }
   return <form className="source-reading-note-popover" onSubmit={submit} onKeyDown={event=>{
-    if(event.key==='Escape'){event.preventDefault();event.stopPropagation();if(!busy)onClose();}
+    if(event.key==='Escape'){event.preventDefault();event.stopPropagation();if(!busy||explain)onClose();}
     if(event.key==='Enter'&&(event.metaKey||event.ctrlKey)&&!event.nativeEvent.isComposing){event.preventDefault();if(valid&&!busy)event.currentTarget.requestSubmit();}
   }}>
-    <header><span className="reading-note-form-title"><Icon name="annotation"/><strong>Reading note</strong></span><button type="button" title="Close reading note" aria-label="Close reading note" disabled={busy} onClick={onClose}><Icon name="close"/></button></header>
+    <header><span className="reading-note-form-title"><Icon name={explain?'sparkles':'annotation'}/><strong>{explain?'Explain with AI':'Reading note'}</strong></span><button type="button" title={busy&&explain?'Cancel explanation':'Close reading note'} aria-label={busy&&explain?'Cancel explanation':'Close reading note'} disabled={busy&&!explain} onClick={onClose}><Icon name="close"/></button></header>
     <div className="reading-note-excerpt"><span>Selected passage</span><blockquote>{selection.excerpt}</blockquote></div>
-    <div className="reading-note-writing-area">
+    {explain?<div className="reading-explanation-options">
+      <label>Language<Select autoFocus value={language} disabled={busy} onChange={event=>{setLanguage(event.target.value);setRequestId(randomUUID());}}><option value="">Same as passage</option>{sourcePageLanguages.map(language=><option key={language} value={language}>{language}</option>)}</Select></label>
+      <label>Reader familiarity<Select value={familiarity} disabled={busy} onChange={event=>{setFamiliarity(event.target.value as ReadingExplanationOptions['familiarity']);setRequestId(randomUUID());}}>{Object.entries(readingExplanationFamiliarities).map(([value,label])=><option key={value} value={value}>{label}</option>)}</Select></label>
+      <p className="reading-explanation-help">Creates an AI-generated reading note explaining only this passage. Up to {readingNoteMaxWords} words.</p>
+      {busy&&<span className="reading-explanation-status" role="status">Explaining the passage… You can cancel with ×.</span>}
+    </div>:<div className="reading-note-writing-area">
     <label htmlFor="source-reading-note-text">Your note</label>
     <textarea id="source-reading-note-text" autoFocus rows={5} maxLength={10000} value={text} readOnly={busy} onChange={event=>setText(event.target.value)} aria-invalid={words>readingNoteMaxWords||undefined} aria-describedby="reading-note-words" placeholder="What stands out to you?" required/>
-    </div>
+    </div>}
     {error&&<p className="dialog-error" role="alert">{error}</p>}
-    <footer><span id="reading-note-words" className={words>readingNoteMaxWords?'dialog-error':''}>{words}<span> / {readingNoteMaxWords} words</span></span><button className="button primary small" title="Save note (⌘ / Ctrl + Enter)" disabled={busy||!valid}>{busy?'Saving…':'Save note'}</button></footer>
+    <footer><span id="reading-note-words" className={!explain&&words>readingNoteMaxWords?'dialog-error':''}>{explain?`Up to ${readingNoteMaxWords} words`:<>{words}<span> / {readingNoteMaxWords} words</span></>}</span><button className="button primary small" title={explain?'Explain and save as a reading note':'Save note (⌘ / Ctrl + Enter)'} disabled={busy||!valid}>{busy?(explain?'Explaining…':'Saving…'):explain?'Explain & save':'Save note'}</button></footer>
   </form>;
 }

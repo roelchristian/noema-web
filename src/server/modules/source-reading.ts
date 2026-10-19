@@ -1,7 +1,9 @@
 import {projectPageText} from '../../shared/page-text.js';
 import {randomUUID} from 'node:crypto';
 import {entityMentionName,type Block,type Page,type SourceFile,type SourceReference} from '../../shared/domain.js';
-import {highlightColors,readingNoteMaxWords,readingNoteWordCount,type SourceHighlight,type ReadingNoteAnchor} from '../../shared/source-reading.js';
+import {highlightColors,readingNoteMaxWords,readingNoteWordCount,readingExplanationFamiliarities,type ReadingExplanationOptions,type SourceHighlight,type ReadingNoteAnchor} from '../../shared/source-reading.js';
+import {sourcePageLanguages} from '../../shared/source-page.js';
+import {pageLanguage} from './page-language.js';
 import {Store} from '../store.js';
 import {HttpError,now,required,text} from '../validation.js';
 import {mathSource,sourceTextHash} from './source-math-text.js';
@@ -14,6 +16,11 @@ import {Knowledge} from './knowledge.js';
 import {syncReadingNotesCollection} from './reading-notes-collection.js';
 
 type HighlightRow={id:string;source_id:string;file_id:string;source_hash:string;start_offset:number;end_offset:number;excerpt:string;color:SourceHighlight['color'];reference_json:string;created_at:string};
+function readingNoteRequestId(value:unknown) {
+ const id=required(value,36);
+ if(!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(id))throw new HttpError(400,'Invalid reading note request.');
+ return id;
+}
 export class SourceReading {
  constructor(private store:Store) {}
  private file(vault:string,fileId:string) {
@@ -77,13 +84,29 @@ export class SourceReading {
   this.store.run('UPDATE highlights SET color=? WHERE id=? AND vault_id=? AND file_id=?',body.color as string,id,vault,fileId);
   return this.highlight({...row,color:body.color as SourceHighlight['color']});
  }
- createReadingNote(vault:string,fileId:string,body:Record<string,unknown>):Page {
+ prepareExplanation(vault:string,fileId:string,body:Record<string,unknown>) {
+  const ref=this.selection(vault,fileId,body),requestId=readingNoteRequestId(body.requestId);
+  const language=body.language??'',familiarity=body.familiarity??'familiar';
+  if(typeof language!=='string'||language!==''&&!sourcePageLanguages.some(value=>value===language))throw new HttpError(400,'Choose a supported explanation language.');
+  if(typeof familiarity!=='string'||!Object.hasOwn(readingExplanationFamiliarities,familiarity))throw new HttpError(400,'Choose a reader familiarity.');
+  if(Buffer.byteLength(ref.excerpt,'utf8')>24000)throw new HttpError(400,'Select a shorter passage (at most 24,000 bytes of text).');
+  const options:ReadingExplanationOptions={language,familiarity:familiarity as ReadingExplanationOptions['familiarity']};
+  let saved:Page|undefined;
+  const existing=this.store.get<{vault_id:string}>('SELECT vault_id FROM page_reading_notes WHERE page_id=?',requestId);
+  if(existing) {
+   if(existing.vault_id!==vault)throw new HttpError(409,'This reading note request is already in use.');
+   saved=new Pages(this.store,new Knowledge(this.store)).get(vault,requestId);
+   const note=saved.readingNote;
+   if(!note?.explanation||note.fileId!==fileId||note.sourceHash!==ref.sourceHash||note.startOffset!==ref.startOffset||note.endOffset!==ref.endOffset||note.explanation.language!==language||note.explanation.familiarity!==familiarity)throw new HttpError(409,'This reading note request is already in use.');
+  }
+  return {ref,options,requestId,saved};
+ }
+ createReadingNote(vault:string,fileId:string,body:Record<string,unknown>,explanation?:ReadingExplanationOptions):Page {
   const ref=this.selection(vault,fileId,body),content=text(body.text).trim();
   if(!content)throw new HttpError(400,'Write a reading note first.');
   if(readingNoteWordCount(content)>readingNoteMaxWords)throw new HttpError(400,'Reading notes can contain at most 200 words.');
   const pages=new Pages(this.store,new Knowledge(this.store));
-  const requestId=body.requestId===undefined?undefined:required(body.requestId,36);
-  if(requestId&&!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(requestId))throw new HttpError(400,'Invalid reading note request.');
+  const requestId=body.requestId===undefined?undefined:readingNoteRequestId(body.requestId);
   const pageId=requestId??randomUUID(),createdAt=now();
   // A retry after a lost response returns the original note, without duplicating it.
   const existing=this.store.get<{vault_id:string;file_id:string|null;source_hash:string;start_offset:number;end_offset:number}>('SELECT vault_id,file_id,source_hash,start_offset,end_offset FROM page_reading_notes WHERE page_id=?',pageId);
@@ -95,11 +118,13 @@ export class SourceReading {
   }
   const name=this.store.get<{name:string}>('SELECT name FROM entities WHERE id=?',ref.sourceId)!.name;
   const blocks=content.split(/\n\s*\n/).map(value=>({id:randomUUID(),type:'paragraph',checked:false,content:[{text:value}]}));
+  const reference=explanation?{...ref,explanation}:ref;
+  const language=explanation?pageLanguage(explanation.language||this.file(vault,fileId).language):null;
   this.store.transaction(()=>{
-   this.store.run('INSERT INTO pages (id,title,blocks,updated_at,created_at,vault_id) VALUES (?,?,?,?,?,?)',pageId,`Reading note · ${name}`.slice(0,500),JSON.stringify(blocks),createdAt,createdAt,vault);
+   this.store.run('INSERT INTO pages (id,title,blocks,updated_at,created_at,vault_id,ai_status,language) VALUES (?,?,?,?,?,?,?,?)',pageId,`${explanation?'AI explanation':'Reading note'} · ${name}`.slice(0,500),JSON.stringify(blocks),createdAt,createdAt,vault,explanation?'ai_generated':'regular',language);
    this.store.run('INSERT INTO page_sources (page_id,source_id) VALUES (?,?)',pageId,ref.sourceId);
    new PageEnrichmentState(this.store).markManual(pageId,'title');
-   this.store.run('INSERT INTO page_reading_notes (page_id,vault_id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,reference_json,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',pageId,vault,ref.sourceId,fileId,ref.sourceHash,ref.startOffset!,ref.endOffset!,ref.excerpt,JSON.stringify(ref),createdAt);
+   this.store.run('INSERT INTO page_reading_notes (page_id,vault_id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,reference_json,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',pageId,vault,ref.sourceId,fileId,ref.sourceHash,ref.startOffset!,ref.endOffset!,ref.excerpt,JSON.stringify(reference),createdAt);
    syncReadingNotesCollection(this.store,vault);
   });
   return pages.get(vault,pageId);

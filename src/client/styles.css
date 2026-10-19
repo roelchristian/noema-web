@@ -3212,6 +3212,13 @@ dialog:has(.source-passage-preview) form > p { color: var(--text-muted); font-si
 .source-reading-note-popover footer{display:flex;align-items:center;gap:8px;margin:0;padding:10px 16px;border-top:1px solid var(--line);font-size:10px;color:var(--text-muted)}
 .source-reading-note-popover footer>span{font-variant-numeric:tabular-nums}
 .source-reading-note-popover footer .button{margin-left:auto}
+.reading-explanation-options{display:grid;gap:12px;padding:0 16px 14px}
+.reading-explanation-options>label{display:grid;gap:6px;color:var(--text-muted);font-size:11px}
+.reading-explanation-options .select-host,.reading-explanation-options .select-control{width:100%;min-width:0}
+.reading-explanation-options .select-trigger{min-height:36px;border:1px solid var(--control-border);border-radius:7px;background:var(--surface);font-size:12px}
+.source-reading-note-popover .reading-explanation-help{margin:0;color:var(--text-muted);font-size:11px;line-height:1.6}
+.reading-explanation-status{color:var(--text-muted);font-size:11px;line-height:1.6}
+@media(max-width:750px){.reading-explanation-options .select-trigger{min-height:44px}}
 .source-reading-note-popover .reading-note-saved{color:var(--text-muted)}
 @media(max-width:750px){.source-reading-note-popover textarea{font-size:16px}.source-reading-note-popover header button{min-height:32px;min-width:32px;align-items:center;justify-content:center}}
 .source-highlight[data-highlight-id]{cursor:pointer}

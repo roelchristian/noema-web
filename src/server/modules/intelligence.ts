@@ -3,6 +3,7 @@ import { sourcePagePrompt } from './source-page-prompt.js';
 import type { AIDebugTrace, AIRequestObserver } from './ai-debug.js';
 import { readOpenAIResponse, redactedTrace, responseOutputText } from './openai-response.js';
 import { explanationPrompt } from './explanation-prompt.js';
+import type {ReadingExplanationOptions} from '../../shared/source-reading.js';
 import { entityScanPrompt } from './entity-scan.js';
 import { titlePrompt } from './title-prompt.js';
 import { summaryPrompt } from './summary-prompt.js';
@@ -251,20 +252,20 @@ export class Intelligence {
     try{return parseSourceAuthors(JSON.parse(output)?.authors);}
     catch{throw new HttpError(502,'AI returned invalid source authors. Retry enrichment.');}
   }
-  async generate(input: string, validate=false, onRequest?: AIRequestObserver, title=false, entityScan=false, explain=false, utility?:{domains:{id:string;name:string}[];currentTitle:string}, background=false,sourcePage?:{onDelta:(delta:string)=>void;signal:AbortSignal;onPreviewDelta?:(delta:string)=>void;onPreviewReset?:()=>void;mathPreparation?:boolean},sourceEnrichment:boolean|'authors'=false,enrichment?:PageEnrichmentOptions,entityStream?:{onDelta:(delta:string)=>void;signal:AbortSignal}) {
+  async generate(input: string, validate=false, onRequest?: AIRequestObserver, title=false, entityScan=false, explain:boolean|(ReadingExplanationOptions&{signal?:AbortSignal})=false, utility?:{domains:{id:string;name:string}[];currentTitle:string}, background=false,sourcePage?:{onDelta:(delta:string)=>void;signal:AbortSignal;onPreviewDelta?:(delta:string)=>void;onPreviewReset?:()=>void;mathPreparation?:boolean},sourceEnrichment:boolean|'authors'=false,enrichment?:PageEnrichmentOptions,entityStream?:{onDelta:(delta:string)=>void;signal:AbortSignal}) {
     const credential=this.credential(),selection=enrichment?this.enrichmentSelection():title?this.titleSelection():this.selection(),preferenceRevision=this.preferenceRevision;
     if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
     if(!title&&!entityScan&&!enrichment&&this.active)throw new HttpError(429,'Another AI request is running. Please wait.');
     if (!background) this.reserveManualRequest();
     const controller=new AbortController();this.generationRequests.add(controller);if(!title&&!entityScan&&!enrichment)this.active=controller;
     const abort=()=>controller.abort();
-    const requestSignal=entityStream?.signal??sourcePage?.signal??enrichment?.signal;
+    const requestSignal=entityStream?.signal??sourcePage?.signal??enrichment?.signal??(typeof explain==='object'?explain.signal:undefined);
     requestSignal?.addEventListener('abort',abort,{once:true});
     if(requestSignal?.aborted)controller.abort();
     const timer=setTimeout(()=>controller.abort(),Math.min(sourcePage?180000:45000,Date.parse(credential.expiresAt)-this.clock()));
     let trace: AIDebugTrace | undefined;
     try {
-      const prompt=sourcePage?.mathPreparation?{instructions:sourceMathInstructions,input:[{role:'user' as const,content:[{type:'input_text' as const,text:input}]}]}:enrichment?pageEnrichmentPrompt(input,enrichment):sourceEnrichment==='authors'?sourceAuthorsPrompt(input):sourceEnrichment?sourceEnrichmentPrompt(input):sourcePage?sourcePagePrompt(input):validate?{instructions:'Reply with OK.',input:'Connection test.'}:title?titlePrompt(input,utility?.domains,utility?.currentTitle):entityScan?entityScanPrompt(input):explain?explanationPrompt(input):summaryPrompt(input);
+      const prompt=sourcePage?.mathPreparation?{instructions:sourceMathInstructions,input:[{role:'user' as const,content:[{type:'input_text' as const,text:input}]}]}:enrichment?pageEnrichmentPrompt(input,enrichment):sourceEnrichment==='authors'?sourceAuthorsPrompt(input):sourceEnrichment?sourceEnrichmentPrompt(input):sourcePage?sourcePagePrompt(input):validate?{instructions:'Reply with OK.',input:'Connection test.'}:title?titlePrompt(input,utility?.domains,utility?.currentTitle):entityScan?entityScanPrompt(input):explain?explanationPrompt(input,typeof explain==='object'?explain:undefined):summaryPrompt(input);
       const inputText=typeof prompt.input==='string'?prompt.input:prompt.input.flatMap(item=>item.content.map(part=>part.text)).join('');
       const observer=onRequest?.(Buffer.byteLength(prompt.instructions+inputText,'utf8'));
       trace=redactedTrace(observer,credential.key);

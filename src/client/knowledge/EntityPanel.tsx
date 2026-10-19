@@ -109,7 +109,7 @@ export function EntityPanel(props: Props) {
         </nav>
       </>}
       {!inspector&&<>
-      {!inspector&&entity.type==='source'&&<div className="entity-source-workflow"><button type="button" className="button" disabled={entity.inactive||entity.sourceStatus!=='ready'} onClick={()=>props.onCreatePageFromSource(entity)}><Icon name="sparkles"/>Create page from source</button>{entity.sourceStatus!=='ready'&&<p className="section-hint">{entity.inactive?'Retry source processing before creating a page.':'Available once source processing finishes.'}</p>}</div>}
+      {!inspector&&entity.type==='source'&&<div className="entity-source-workflow"><button type="button" className="button" disabled={!!entity.archived_at||entity.inactive||entity.sourceStatus!=='ready'} onClick={()=>props.onCreatePageFromSource(entity)}><Icon name="sparkles"/>Create page from source</button>{entity.sourceStatus!=='ready'&&<p className="section-hint">{entity.inactive?'Retry source processing before creating a page.':'Available once source processing finishes.'}</p>}</div>}
       {entity.type==='source'&&entity.attachments?.map(file=><div key={file.id}>{file.language&&<p className="section-hint">Language: {file.language}</p>}{file.summary&&<div className="ai-summary-text"><SummaryText text={file.summary}/></div>}</div>)}
       {entity.description && <p className="entity-detail-description">{entity.description}</p>}
         {entity.type==='concept' && <section className="entity-detail-section"><h3>Disciplines</h3><p className="section-hint">{entity.domainIds?.length ? entity.domainIds.map(domainBreadcrumb).join(' · ') : 'No disciplines selected.'}</p></section>}

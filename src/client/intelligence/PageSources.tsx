@@ -46,7 +46,7 @@ export function PageSources({page,entities,onOpenEntity,onSourcesChange,onCreate
   }
   const byId=new Map(entities.map(entity=>[entity.id,entity]));
   const sourceIds=[...new Set(page.sourceIds)];
-  const available=entities.filter(entity=>entity.vault_id===page.vault_id&&entity.type==='source'&&!entity.inactive&&!sourceIds.includes(entity.id)).sort((left,right)=>left.name.localeCompare(right.name));
+  const available=entities.filter(entity=>entity.vault_id===page.vault_id&&entity.type==='source'&&!entity.archived_at&&!entity.inactive&&!sourceIds.includes(entity.id)).sort((left,right)=>left.name.localeCompare(right.name));
   const suggested=suggestions.filter(item=>!dismissed.has(item.sourceId)&&available.some(entity=>entity.id===item.sourceId));
   const ranks=new Map(suggested.map((item,index)=>[item.sourceId,index]));
   const normalizedQuery=query.trim().toLocaleLowerCase();

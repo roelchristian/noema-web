@@ -45,7 +45,7 @@ export function CitationPicker({vaultId,entities,blocks,getAnchor,editor,onInser
   const [file,setFile]=useState<LoadedFile|null>(null),[error,setError]=useState(''),[retry,setRetry]=useState(0),[index,setIndex]=useState(0);
   const [locations,setLocations]=useState<Location[]>([{label:''}]),[active,setActive]=useState(0);
   const pageCitations=useMemo(()=>[...noteCitations(blocks).values()],[blocks]);
-  const availableSources=entities.filter(entity=>entity.vault_id===vaultId&&entity.type==='source'&&!entity.inactive);
+  const availableSources=entities.filter(entity=>entity.vault_id===vaultId&&entity.type==='source'&&!entity.archived_at&&!entity.inactive);
   const citedSourceOrder=new Map<string,number>();
   pageCitations.forEach(({reference},index)=>{if(!citedSourceOrder.has(reference.sourceId))citedSourceOrder.set(reference.sourceId,index);});
   const sources=mentionMatches(availableSources,query).sort((left,right)=>(citedSourceOrder.get(left.id)??Infinity)-(citedSourceOrder.get(right.id)??Infinity));

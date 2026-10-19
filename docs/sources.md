@@ -15,6 +15,16 @@
 - Existing Source entities remain intact and show an attachment prompt if they have no original. New sources require attachments through the API as well as the UI. To preserve file ownership, file-backed sources cannot change entity type. AI entity scans can link existing sources; create new sources manually with their original files first.
 - Vault backups include attached originals and their extracted text/status, remapping file UUIDs when imported. Older backups without file attachments remain importable.
 
+## Archive or delete an unused source
+
+In **Sources**, choose **Manage** on a source to check its linked pages and archive it. Switch **Active sources** to **Archived sources** to restore an archived source or permanently delete it. Archiving keeps original files, highlights, metadata, and connections; archive status is included in vault backups.
+
+For now, sources with linked pages cannot be archived or deleted. This check includes pages in Trash, attached page sources, citations, reading notes, generated pages, and inline mentions. The server rechecks links inside the mutation transaction, so a stale dialog cannot bypass the restriction. Source processing and pending page drafts also block removal; finish processing and accept or discard the draft first.
+
+Permanent deletion requires archiving first and typing the exact current source name. It removes the source, its highlights and metadata, and entity connections. Original file records are detached in the same transaction and retained for the existing orphan-file cleanup, which removes them after 24 hours at startup or on an hourly cleanup run. Deletion has no restore action; export a vault backup beforehand if needed.
+
+Lifecycle API (with the usual vault access checks and mutation headers): `GET /api/entities/:id/lifecycle` returns eligibility and a linked-page count; `POST` to the same endpoint accepts `{action: "archive"}`, `{action: "restore"}`, or `{action: "delete", confirmation: "<exact source name>"}`. Linked or busy sources return HTTP 409 on removal.
+
 ## Processing and page generation
 
 Long-source progress distinguishes extraction, math preparation, AI planning, streaming, and reference checks. Extraction estimates use observed progress; math preparation reports completed batches and estimates remaining uncached work from measured batch durations. Page generation shows elapsed time and, when at least three similar completed requests exist for the same model and reasoning effort, a historical duration estimate. Estimates are approximate, never fabricated percentages, and overdue estimates become a still-working message. Source extraction/enrichment continues after leaving its panel; closing page generation cancels that request while retaining completed math checkpoints.

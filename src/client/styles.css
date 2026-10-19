@@ -3397,3 +3397,7 @@ summary.disclosure-summary:focus-visible { outline: 2px solid var(--accent); out
 @media (prefers-reduced-motion: reduce) {
   summary.disclosure-summary > .icon { transition: none; }
 }
+
+.source-lifecycle-dialog > p + p { margin-top: 12px; }
+.source-lifecycle-dialog label { display: grid; gap: 8px; margin-top: 16px; font-size: 12px; }
+.source-lifecycle-dialog input { width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--control-border); border-radius: 5px; background: var(--surface-raised); }

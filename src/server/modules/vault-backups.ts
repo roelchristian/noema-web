@@ -43,7 +43,7 @@ const tables={
   source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at,import_method,source_url,pdf_flattened,admitted,format,page_start_lines,structural_nodes,original_filename,language,summary,generated_name,enrichment_status,contains_math',scope:'vault_id=? AND entity_id IS NOT NULL'},
   highlights:{columns:'id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,color,reference_json,created_at',scope:'vault_id=?'},
   page_reading_notes:{columns:'page_id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,reference_json,created_at',scope:'vault_id=?'},
-  entities:{columns:'id,name,aliases,mention_case,type,subtypes,description,updated_at,inactive',scope:'vault_id=?'},
+  entities:{columns:'id,name,aliases,mention_case,type,subtypes,description,updated_at,inactive,archived_at',scope:'vault_id=?'},
   properties:{columns:'id,entity_id,name,value,target_id',scope:entityScope},
   relationships:{columns:'id,source_id,label,target_id',scope:'source_id IN (SELECT id FROM entities WHERE vault_id=?)'},
   page_edit_locks:{columns:'page_id,password_hash,salt',scope:'vault_id=?'},
@@ -213,7 +213,7 @@ export class VaultBackups {
           const mentionCase=row.mention_case??'canonical';
           if(mentionCase!=='canonical'&&mentionCase!=='lowercase')throw invalid();
           if(row.inactive!==undefined&&row.inactive!==0&&row.inactive!==1)throw invalid();
-          insert('entities',{inactive:row.inactive??0,id:ref(entityIds,row.id),vault_id:vault,name:name(row,'name'),type,aliases:JSON.stringify(type==='source'?[]:aliases),mention_case:mentionCase,subtypes:JSON.stringify(subtypes),description:string(row,'description'),updated_at:timestamp(row,'updated_at')});
+          insert('entities',{archived_at:row.archived_at==null?null:timestamp(row,'archived_at'),inactive:row.inactive??0,id:ref(entityIds,row.id),vault_id:vault,name:name(row,'name'),type,aliases:JSON.stringify(type==='source'?[]:aliases),mention_case:mentionCase,subtypes:JSON.stringify(subtypes),description:string(row,'description'),updated_at:timestamp(row,'updated_at')});
         }
         const restoredSourceFiles=new Map<string,string>();
         for(const row of rows.source_files) {

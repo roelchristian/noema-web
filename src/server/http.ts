@@ -1,3 +1,4 @@
+import {SourceLifecycleService} from './modules/source-lifecycle.js';
 import {SourceReprocessing} from './modules/source-reprocessing.js';
 import {SourceReading} from './modules/source-reading.js';
 import {readingNoteMaxWords,readingNoteWordCount} from '../shared/source-reading.js';
@@ -436,6 +437,15 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             }
           }
           if(collection==='entities') {
+            if(id && child==='lifecycle' && parts.length===4) {
+              const lifecycle=new SourceLifecycleService(store);
+              if(method==='GET')return send(200,lifecycle.preview(vault,id));
+              if(method==='POST') {
+                if(body.action==='archive'||body.action==='restore')return send(200,lifecycle.archive(vault,id,body.action==='restore'));
+                if(body.action==='delete')return send(200,lifecycle.delete(vault,id,body.confirmation));
+                throw new HttpError(400,'Choose archive, restore, or delete.');
+              }
+            }
             if(id && child==='create-page' && parts.length===4 && method==='GET')return send(200,{draft:sourcePages.latest(vault,id)});
             if(id && child==='create-page' && parts.length===5 && method==='POST') {
               if(childId==='reject')return send(200,sourcePages.reject(vault,id,body.requestId));

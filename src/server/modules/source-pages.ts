@@ -171,6 +171,7 @@ export class SourcePages {
   constructor(private store:Store,private knowledge:Knowledge,private pages:Pages) {}
   prepare(vault:string,sourceId:string,body:Record<string,unknown>) {
     const source=this.knowledge.require(vault,sourceId);
+    if(source.archived_at)throw new HttpError(409,'Restore this archived source before creating a page.');
     if(source.type!=='source')throw new HttpError(400,'Choose a Source entity.');
     const file=this.store.get<SourceFile>('SELECT * FROM source_files WHERE vault_id=? AND entity_id=?',vault,sourceId);
     if(!file||source.inactive||file.status!=='ready'||file.admitted!==1||!file.text.trim())throw new HttpError(409,'Wait until the source finishes processing successfully before creating a page.');

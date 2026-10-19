@@ -34,6 +34,7 @@ db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;
  CREATE INDEX IF NOT EXISTS properties_entity ON properties(entity_id);
  CREATE INDEX IF NOT EXISTS relationships_source ON relationships(source_id);
  CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT);`);
+if (!db.prepare('PRAGMA table_info(entities)').all().some(column=>column.name==='archived_at')) db.exec('ALTER TABLE entities ADD COLUMN archived_at TEXT');
 // Additive migration preserves existing notebooks in the default vault.
 db.exec(`CREATE TABLE IF NOT EXISTS vaults (id TEXT PRIMARY KEY, name TEXT NOT NULL, locked INTEGER NOT NULL DEFAULT 0, password_hash TEXT, salt TEXT, updated_at TEXT NOT NULL);
  INSERT INTO vaults (id,name,updated_at) SELECT 'default','Personal vault',datetime('now') WHERE NOT EXISTS (SELECT 1 FROM vaults) AND NOT EXISTS (SELECT 1 FROM metadata WHERE key='seeded');`);

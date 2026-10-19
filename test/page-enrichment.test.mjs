@@ -9,6 +9,7 @@ import {Pages} from '../src/server/modules/pages.ts';
 import {Knowledge} from '../src/server/modules/knowledge.ts';
 import {AIEnrichments} from '../src/server/modules/ai-enrichments.ts';
 import {PageEnrichment} from '../src/server/modules/page-enrichment.ts';
+import {PageEnrichmentScheduler} from '../src/server/modules/page-enrichment-scheduler.ts';
 import {PageEnrichmentState} from '../src/server/modules/page-enrichment-state.ts';
 import {Domains} from '../src/server/modules/domains.ts';
 import {summaryContentHash} from '../src/server/modules/summary-content.ts';
@@ -108,4 +109,61 @@ test('manual summary state blocks automatic regeneration when vault summaries ar
    s.coordinator.configure('default',{automaticSummaries:true});new PageEnrichmentState(s.store).markManual(s.page.id,'summary');
    assert.equal(s.coordinator.prepare('default',s.page.id,{fields:['summary']}),null);
  }finally{s.close();}
+});
+
+test('presentation saves reuse active enrichment and commit against the latest persistence revision',async()=>{
+ const gate=deferred(),s=fixture(()=>gate.promise);try {
+   const work=s.coordinator.run('default',s.page,undefined,{fields:['summary'],explicit:true});
+   const blocks=s.page.blocks.map(block=>({...block,content:block.content.map(segment=>({...segment,bold:true}))}));
+   const current=s.pages.update('default',s.page.id,{title:s.page.title,blocks,revision:s.page.revision});
+   s.coordinator.cancelObsolete('default',s.page.id);
+   assert.equal(s.requests[0].options.signal.aborted,false);
+   const shared=s.coordinator.run('default',current,undefined,{fields:['summary'],explicit:true});
+   assert.equal(s.calls,1);
+   gate.resolve({summary:output.summary});
+   const results=await Promise.all([work,shared]);
+   assert.equal(results[0].revision,current.revision);
+   assert.equal(results[1].summary,output.summary);
+   assert.equal(s.enrichments.list('default',s.page.id).find(item=>item.kind==='summary').revision,current.revision);
+ }finally{s.close();}
+});
+
+test('substantive saves promptly abort active requests even when classification hashes are unchanged',async()=>{
+ const gate=deferred(),s=fixture(()=>gate.promise);try {
+   const work=s.coordinator.run('default',s.page,undefined,{fields:['summary'],explicit:true});
+   const blocks=s.page.blocks.map(block=>({...block,content:block.content.map(segment=>({...segment,text:segment.text.toUpperCase()}))}));
+   const current=s.pages.update('default',s.page.id,{title:s.page.title,blocks,revision:s.page.revision});
+   assert.equal(current.conceptContentHash,s.page.conceptContentHash);
+   s.coordinator.cancelObsolete('default',s.page.id);
+   assert.equal(s.requests[0].options.signal.aborted,true);
+   gate.resolve({summary:output.summary});
+   await assert.rejects(work,{status:409});
+   assert.equal(s.enrichments.list('default',s.page.id).some(item=>item.kind==='summary'),false);
+ }finally{s.close();}
+});
+
+
+test('scheduler uses real field dependencies to reuse presentation saves and dispatch the latest content',async()=>{
+ const gate=deferred(),s=fixture((_input,_options)=>s.calls===1?gate.promise:{summary:output.summary});
+ const scheduler=new PageEnrichmentScheduler(s.store,{
+   prepare:(vault,id,job)=>s.coordinator.prepare(vault,id,{fields:job.fields}),
+   execute:(vault,id,snapshot,signal)=>s.coordinator.run(vault,snapshot.page,undefined,{fields:snapshot.requestedFields,signal}),
+ },{clock:()=>100});
+ try {
+   scheduler.enqueue('default',s.page.id,{fields:['summary'],delayMs:0});
+   const work=scheduler.drain();
+   let page=s.pages.update('default',s.page.id,{title:s.page.title,blocks:s.page.blocks,revision:s.page.revision});
+   scheduler.enqueue('default',page.id,{fields:['summary'],delayMs:0});
+   assert.equal(s.requests[0].options.signal.aborted,false);
+   page=s.pages.update('default',page.id,{title:page.title,blocks:page.blocks.map(block=>({...block,content:[{text:'New substantive content about psychology, attention and memory formation.'}]})),revision:page.revision});
+   scheduler.enqueue('default',page.id,{fields:['summary'],delayMs:0});
+   assert.equal(s.requests[0].options.signal.aborted,true);
+   gate.resolve({summary:'Obsolete summary'});await work;
+   assert.equal(s.store.get('SELECT generation FROM page_enrichment_jobs WHERE page_id=?',page.id).generation,3);
+   await scheduler.drain();
+   assert.equal(s.calls,2);
+   assert.match(s.requests[1].input,/New substantive content/);
+   assert.equal(s.store.get('SELECT 1 FROM page_enrichment_jobs WHERE page_id=?',page.id),undefined);
+   assert.equal(s.enrichments.list('default',page.id).find(item=>item.kind==='summary').data.summary,output.summary);
+ }finally{scheduler.dispose();s.close();}
 });

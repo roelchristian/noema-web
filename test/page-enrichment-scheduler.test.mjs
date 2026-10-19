@@ -51,6 +51,56 @@ test('saves during in-flight work survive completion and overlapping drain calls
   scheduler.dispose();db.close();
 });
 
+test('presentation revisions and additional queued fields preserve a compatible active request',async()=>{
+  const {db,store}=fixture();let revision=1,finish,signal;const calls=[];
+  const scheduler=new PageEnrichmentScheduler(store,{
+    prepare:(_v,_p,job)=>({...snapshot(job),revision,dependencyIdentity:'same field dependencies'}),
+    execute:async(_v,_p,value,requestSignal)=>{calls.push(value.requestedFields);signal=requestSignal;await new Promise(resolve=>{finish=resolve;});}
+  },{clock:()=>100});
+  scheduler.enqueue('v','p',{fields:['title'],delayMs:0});const pending=scheduler.drain();
+  revision++;scheduler.enqueue('v','p',{fields:['summary'],delayMs:0});
+  assert.equal(signal.aborted,false);
+  assert.deepEqual(calls,[['title']]);
+  finish();await pending;
+  assert.equal(store.get('SELECT generation FROM page_enrichment_jobs').generation,2);
+  scheduler.dispose();db.close();
+});
+
+test('dependency changes immediately abort obsolete work and retain the newest queued snapshot',async()=>{
+  const {db,store}=fixture();let dependencyIdentity='original',signal,finish;const calls=[];
+  const scheduler=new PageEnrichmentScheduler(store,{
+    prepare:(_v,_p,job)=>({...snapshot(job),dependencyIdentity}),
+    execute:async(_v,_p,value,requestSignal)=>{
+      calls.push(value.dependencyIdentity);signal=requestSignal;
+      if(calls.length===1)await new Promise(resolve=>{finish=resolve;});
+    }
+  },{clock:()=>100});
+  scheduler.enqueue('v','p',{fields:['summary'],delayMs:0});const pending=scheduler.drain();
+  dependencyIdentity='edited';scheduler.enqueue('v','p',{fields:['summary'],delayMs:0});
+  assert.equal(signal.aborted,true);
+  dependencyIdentity='newest';scheduler.enqueue('v','p',{fields:['summary'],delayMs:0});
+  // A provider that settles after abort must not consume the newer generation.
+  finish();await pending;
+  assert.equal(store.get('SELECT generation FROM page_enrichment_jobs').generation,3);
+  await scheduler.drain();assert.deepEqual(calls,['original','newest']);
+  assert.equal(store.get('SELECT count(*) AS n FROM page_enrichment_jobs').n,0);
+  scheduler.dispose();db.close();
+});
+
+test('losing field eligibility aborts the active request without recording late classification',async()=>{
+  const {db,store}=fixture();let eligible=true,signal,finish;
+  const scheduler=new PageEnrichmentScheduler(store,{
+    prepare:(_v,_p,job)=>eligible?snapshot(job):null,
+    execute:async(_v,_p,_value,requestSignal)=>{signal=requestSignal;await new Promise(resolve=>{finish=resolve;});return {classified:true};}
+  },{clock:()=>100});
+  scheduler.enqueue('v','p',{fields:['domains'],delayMs:0});const pending=scheduler.drain();
+  eligible=false;scheduler.enqueue('v','p',{fields:['domains'],delayMs:0});
+  assert.equal(signal.aborted,true);finish();await pending;
+  assert.equal(store.get('SELECT count(*) AS n FROM page_enrichment_cooldowns').n,0);
+  await scheduler.drain();assert.equal(store.get('SELECT count(*) AS n FROM page_enrichment_jobs').n,0);
+  scheduler.dispose();db.close();
+});
+
 test('locked vaults pause dispatch and permanent errors are never retried',async()=>{
   const {db,store}=fixture();let calls=0;
   const scheduler=new PageEnrichmentScheduler(store,{prepare:(_v,_p,job)=>snapshot(job),execute:async()=>{calls++;throw Object.assign(new Error('Missing credentials'),{status:400});}},{clock:()=>100});

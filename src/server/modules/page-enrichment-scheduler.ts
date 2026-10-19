@@ -7,12 +7,12 @@ export interface EnrichmentJob {
 }
 export interface EnrichmentSnapshot {
   contentHash:string; schemaVersion:string; modelProfile:string;
-  requestedFields:EnrichmentField[]; revision?:number;
+  requestedFields:EnrichmentField[]; revision?:number; dependencyIdentity?:string;
 }
 export interface EnrichmentSchedulerCallbacks<T extends EnrichmentSnapshot> {
-  /** Re-read the latest revision, hashes, manual overrides and field freshness. Null drops obsolete work. */
+  /** Re-read field dependencies, manual overrides and freshness. Null drops obsolete work. */
   prepare:(vault:string,pageId:string,job:EnrichmentJob)=>T|null;
-  /** Must also revalidate revision, manual overrides and vault lock immediately before committing. */
+  /** Must also revalidate field dependencies, manual overrides and vault lock immediately before committing. */
   execute:(vault:string,pageId:string,snapshot:T,signal:AbortSignal)=>Promise<{classified?:boolean}|void>;
 }
 interface JobRow {page_id:string;vault_id:string;fields:string;explicit:number;due_at:number;attempts:number;generation:number}
@@ -23,7 +23,7 @@ export interface EnrichmentSchedulerOptions {
 /** Durable coalescing queue. A crashed in-flight job remains queued and is reassessed after restart. */
 export class PageEnrichmentScheduler<T extends EnrichmentSnapshot=EnrichmentSnapshot> {
   private timer?:ReturnType<typeof setInterval>;
-  private active=new Map<string,{controller:AbortController;fingerprint?:string}>();
+  private active=new Map<string,{controller:AbortController;fingerprint?:string;job:EnrichmentJob}>();
   private disposed=false;
   private clock:()=>number;
   private cooldown:number;
@@ -67,6 +67,25 @@ export class PageEnrichmentScheduler<T extends EnrichmentSnapshot=EnrichmentSnap
       VALUES (?,?,?,?,?,0,1,?) ON CONFLICT(page_id) DO UPDATE SET fields=excluded.fields,explicit=excluded.explicit,
       due_at=excluded.due_at,attempts=0,generation=page_enrichment_jobs.generation+1,updated_at=excluded.updated_at`,
       pageId,vault,JSON.stringify(fields),Number(explicit),explicit?Math.min(existing?.due_at??due,due):due,now);
+    // Compare the running request's fields, not the expanded queue: newly requested
+    // fields can wait without invalidating compatible work already at the provider.
+    this.revalidateActive(pageId);
+  }
+  private fingerprint(snapshot:T) {
+    return JSON.stringify([snapshot.dependencyIdentity??snapshot.contentHash,snapshot.schemaVersion,snapshot.modelProfile,[...snapshot.requestedFields].sort()]);
+  }
+  private revalidateActive(pageId:string) {
+    const active=this.active.get(pageId);
+    if(!active?.fingerprint||active.controller.signal.aborted)return;
+    if(!this.available(active.job.vault,pageId)){active.controller.abort();return;}
+    try {
+      const latest=this.callbacks.prepare(active.job.vault,pageId,active.job);
+      if(!latest||this.fingerprint(latest)!==active.fingerprint)active.controller.abort();
+    } catch {
+      // The queued generation remains durable and will reassess availability on
+      // dispatch; an inaccessible or invalid snapshot cannot keep running safely.
+      active.controller.abort();
+    }
   }
   markClassified(pageId:string) {
     this.store.run(`INSERT INTO page_enrichment_cooldowns (page_id,last_classified_at) VALUES (?,?)
@@ -98,7 +117,7 @@ export class PageEnrichmentScheduler<T extends EnrichmentSnapshot=EnrichmentSnap
   }
   private async run(row:JobRow) {
     const controller=new AbortController();
-    const active:{controller:AbortController;fingerprint?:string}={controller};
+    const active:{controller:AbortController;fingerprint?:string;job:EnrichmentJob}={controller,job:{pageId:row.page_id,vault:row.vault_id,fields:this.fields(row),explicit:!!row.explicit,attempts:row.attempts}};
     this.active.set(row.page_id,active);
     try {
       if(!this.available(row.vault_id,row.page_id))return;
@@ -111,12 +130,15 @@ export class PageEnrichmentScheduler<T extends EnrichmentSnapshot=EnrichmentSnap
       const deferred=fields.includes('domains')&&!row.explicit&&classificationDue>this.clock();
       if(deferred)fields=fields.filter(field=>field!=='domains');
       if(!fields.length){this.defer(row,classificationDue);return;}
-      const snapshot=this.callbacks.prepare(row.vault_id,row.page_id,{pageId:row.page_id,vault:row.vault_id,fields,explicit:!!row.explicit,attempts:row.attempts});
+      active.job.fields=fields;
+      const snapshot=this.callbacks.prepare(row.vault_id,row.page_id,active.job);
       if(!snapshot){if(deferred)this.defer(row,classificationDue);else this.remove(row);return;}
       // Keep the dispatch identity explicit. Per-page exclusion also prevents equivalent overlapping calls.
-      active.fingerprint=JSON.stringify([snapshot.contentHash,snapshot.schemaVersion,snapshot.modelProfile,[...snapshot.requestedFields].sort()]);
+      active.job.fields=snapshot.requestedFields;
+      active.fingerprint=this.fingerprint(snapshot);
       if(!this.available(row.vault_id,row.page_id)||controller.signal.aborted)return;
       const result=await this.callbacks.execute(row.vault_id,row.page_id,snapshot,controller.signal);
+      if(controller.signal.aborted)return;
       if(result?.classified)this.markClassified(row.page_id);
       if(deferred)this.defer(row,classificationDue);else this.remove(row);
     } catch(error) {

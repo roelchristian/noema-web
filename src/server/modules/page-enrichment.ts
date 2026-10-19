@@ -25,8 +25,31 @@ const untitled=(page:Page)=>!page.title.trim()||page.title.trim()==='Untitled';
 const cooldown=30*60*1000;
 /** Each field is selected and committed independently; content is shared once per request. */
 export class PageEnrichment {
-  private controllers=new Map<string,{vault:string;controller:AbortController}>();
+  private controllers=new Map<string,{vault:string;controller:AbortController;fields:EnrichmentField[];identity:string}>();
   pauseVault(vault:string) {for(const operation of this.controllers.values())if(operation.vault===vault)operation.controller.abort();}
+  /** Saves may advance persistence without changing the inputs of an active request. */
+  cancelObsolete(vault:string,pageId:string) {
+    const active=this.controllers.get(pageId);
+    if(!active||active.vault!==vault)return;
+    try {
+      const page=this.pages.get(vault,pageId);
+      if(page.editLocked||this.dependencyIdentity(page,active.fields)!==active.identity)active.controller.abort();
+    }catch {active.controller.abort();}
+  }
+  private contentIdentity(page:Page,fields:readonly EnrichmentField[]) {
+    const names=this.names(page.vault_id),resolve=(id:string)=>names.get(id);
+    return JSON.stringify([summaryContentHash(page,resolve),
+      // Heading levels affect the prompt's representative passage selection.
+      page.blocks.filter(block=>block.type==='heading1'||block.type==='heading2').map(block=>[block.type,summaryInput({title:'',blocks:[block]},resolve,false).replace(/\s+/gu,' ').trim()]).filter(([,text])=>text),
+      fields.includes('language')?page.language:undefined,
+      fields.includes('domains')?[page.pageDomains?.primaryDomainId,page.pageDomains?.secondaryDomainIds,page.pageDomains?.origin]:undefined]);
+  }
+  private dependencyIdentity(page:Page,fields:readonly EnrichmentField[]) {
+    const state=new PageEnrichmentState(this.store).get(page.id);
+    return JSON.stringify([this.contentIdentity(page,fields),this.intelligence.enrichmentSelection(),
+      [...fields].sort().map(field=>[field,state.fields[field]]),
+      fields.includes('summary')?this.data(page.id,'summary_preferences'):undefined]);
+  }
   private running=new Map<string,{promise:Promise<PageEnrichmentResult>;revision:number;fields:EnrichmentField[];identity:string}>();
   constructor(private store:Store,private pages:Pages,private knowledge:Knowledge,private enrichments:AIEnrichments,private intelligence:Intelligence) {}
   private names(vault:string) {return new Map(this.knowledge.list(vault).map(entity=>[entity.id,entityMentionName(entity)]));}
@@ -94,7 +117,7 @@ export class PageEnrichment {
     if(eligible('summary')&&state.eligible(page.id,'summary',options.explicit)&&(!suppressed||options.explicit)&&(options.explicit&&(options.refreshFields??options.fields)?.includes('summary')||this.settings(vault).automaticSummaries&&!suppressed&&summaryStale))fields.push('summary');
     this.recordDecision(vault,page.id,fields.length?(options.explicit?'explicit_refresh':decision.reason):decision.needsClassification&&last&&Date.now()-last<cooldown?'cooldown':decision.reason,fields);
     if(!fields.length)return null;
-    return {page,requestedFields:fields,contentHash:page.conceptContentHash!,schemaVersion:'page-enrichment-v1',modelProfile:JSON.stringify(this.intelligence.enrichmentSelection()),ownership:JSON.stringify([state.get(page.id).fields,this.data(page.id,'summary_preferences')]),revision:page.revision};
+    return {page,requestedFields:fields,contentHash:page.conceptContentHash!,schemaVersion:'page-enrichment-v1',modelProfile:JSON.stringify(this.intelligence.enrichmentSelection()),ownership:JSON.stringify([state.get(page.id).fields,this.data(page.id,'summary_preferences')]),dependencyIdentity:this.dependencyIdentity(page,fields),revision:page.revision};
   }
   private recordDecision(vault:string,pageId:string,reason:string,fields:EnrichmentField[]) {
     this.store.run('INSERT INTO page_enrichment_decisions (page_id,vault_id,reason,requested_fields,assessed_at,provider_requested) VALUES (?,?,?,?,?,0)',pageId,vault,reason,JSON.stringify(fields),now());
@@ -104,15 +127,15 @@ export class PageEnrichment {
   async run(vault:string,page:Page,onRequest?:AIRequestObserver,options:EnrichmentOptions={}):Promise<PageEnrichmentResult> {
     const snapshot=this.prepare(vault,page.id,options);
     if(!snapshot)return {title:this.pages.get(vault,page.id).title,revision:page.revision,pageDomains:new Domains(this.store).get(page.id,page.conceptContentHash)};
-    if(snapshot.revision!==page.revision)throw new HttpError(409,'The page changed. Enrichment will use the latest saved version.');
+    if(this.contentIdentity(snapshot.page,snapshot.requestedFields)!==this.contentIdentity(page,snapshot.requestedFields))throw new HttpError(409,'The page changed. Enrichment will use the latest saved version.');
     const key=JSON.stringify([vault,page.id]);
-    const identity=JSON.stringify([snapshot.revision,snapshot.contentHash,snapshot.schemaVersion,snapshot.modelProfile,snapshot.ownership]);
+    const identity=snapshot.dependencyIdentity;
     const pending=this.running.get(key);
     if(pending) {
-      if(pending.identity===identity&&snapshot.requestedFields.every(field=>pending.fields.includes(field)))return pending.promise;
+      if(pending.identity===this.dependencyIdentity(snapshot.page,pending.fields)&&snapshot.requestedFields.every(field=>pending.fields.includes(field)))return pending.promise;
       await pending.promise.catch(()=>{});
       const current=this.pages.get(vault,page.id);
-      if(current.revision!==page.revision)throw new HttpError(409,'The page changed while waiting for enrichment.');
+      if(this.contentIdentity(current,snapshot.requestedFields)!==this.contentIdentity(page,snapshot.requestedFields))throw new HttpError(409,'The page changed while waiting for enrichment.');
       return this.run(vault,current,onRequest,options);
     }
     const work=this.generate(vault,snapshot.page,snapshot.requestedFields,onRequest,options).finally(()=>{if(this.running.get(key)?.promise===work)this.running.delete(key);});
@@ -134,7 +157,8 @@ export class PageEnrichment {
     const controller=new AbortController(),abort=()=>controller.abort();
     options.signal?.addEventListener('abort',abort,{once:true});
     if(options.signal?.aborted)controller.abort();
-    this.controllers.set(page.id,{vault,controller});
+    const contentIdentity=this.contentIdentity(page,fields),selection=this.intelligence.enrichmentSelection();
+    this.controllers.set(page.id,{vault,controller,fields,identity:this.dependencyIdentity(page,fields)});
     let output:Awaited<ReturnType<Intelligence['generatePageEnrichment']>>;
     try {
       output=await this.intelligence.generatePageEnrichment(input,{requestedFields:fields,domains:shortlist,currentTitle:page.title,currentPrimaryDomainId:page.pageDomains?.primaryDomainId,currentSecondaryDomainIds:page.pageDomains?.secondaryDomainIds,changedPassages,signal:controller.signal},onRequest,options.background);
@@ -146,8 +170,7 @@ export class PageEnrichment {
     new Vaults(this.store).requireOpen(vault);
     return this.store.transaction(()=>{
       const current=this.pages.get(vault,page.id);
-      if(current.editLocked||current.revision!==page.revision||current.conceptContentHash!==page.conceptContentHash||current.title!==page.title||current.language!==page.language)throw new HttpError(409,'The page changed. Generate fresh enrichment.');
-      const selection=this.intelligence.enrichmentSelection();
+      if(current.editLocked||this.contentIdentity(current,fields)!==contentIdentity||JSON.stringify(this.intelligence.enrichmentSelection())!==JSON.stringify(selection))throw new HttpError(409,'The page changed. Generate fresh enrichment.');
       const state=new PageEnrichmentState(this.store);
       let title=current.title;
       if(fields.includes('title')&&output.title&&untitled(current)&&state.eligible(page.id,'title')) {

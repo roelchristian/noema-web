@@ -78,6 +78,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
     },
   });
   const scheduleEnrichment=(vault:string,page:import('../shared/domain.js').Page)=>{
+    pageEnrichment.cancelObsolete(vault,page.id);
     const initial=!page.title.trim()||page.title==='Untitled'||page.pageDomains?.status==='unclassified';
     enrichmentScheduler.enqueue(vault,page.id,{delayMs:initial?12_000:page.pageDomains?.status==='needs_refresh'?40_000:25_000});
   };

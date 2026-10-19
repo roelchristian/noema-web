@@ -5,6 +5,7 @@ import {request} from '../api';
 import {randomUUID} from '../../shared/uuid';
 import {Icon} from '../components/Icon';
 import {selectionPopoverPlacement} from '../editor/selection-annotation';
+import {SourceSelectionPaint} from './SourceSelectionPaint';
 
 interface ReadingFile {vault_id:string;id:string;entity_id:string|null;text:string;textHash:string}
 interface SelectedPassage {highlightId?:string;color?:HighlightColor;selection:SourceSelection;box:{left:number;right:number;top:number;bottom:number}}
@@ -34,6 +35,7 @@ function selectedPassage(root:HTMLElement,file:ReadingFile):SelectedPassage|null
 export function SourceReadingTools({file,article,highlights,onHighlight,onHighlightRemoved,onNoteCreated}:{file:ReadingFile;highlights:SourceHighlight[];article:RefObject<HTMLElement|null>;onHighlight:(highlight:SourceHighlight)=>void;onHighlightRemoved:(id:string)=>void;onNoteCreated:(page:Page)=>void}) {
   const [selected,setSelected]=useState<SelectedPassage|null>(null),[note,setNote]=useState<SourceSelection|null>(null);
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
+  const [pendingColor,setPendingColor]=useState<HighlightColor|null>(null);
   const menu=useRef<HTMLDivElement>(null),selectionRef=useRef(selected);selectionRef.current=selected;
   const pinnedHighlight=useRef(false),selectionDismissed=useRef(false);
   const busyRef=useRef(busy);busyRef.current=busy;
@@ -101,6 +103,7 @@ export function SourceReadingTools({file,article,highlights,onHighlight,onHighli
   async function highlight(color:HighlightColor) {
     const passage=selectionRef.current;if(!passage||busyRef.current)return;
     busyRef.current=true;setBusy(true);setError('');setNotice('');
+    setPendingColor(color);
     try {
       const route=`source-files/${encodeURIComponent(file.id)}/highlights`;
       const saved=await request<SourceHighlight>(passage.highlightId?`${route}/${encodeURIComponent(passage.highlightId)}`:route,passage.highlightId?'PUT':'POST',passage.highlightId?{color}:{...passage.selection,color},file.vault_id);
@@ -108,7 +111,7 @@ export function SourceReadingTools({file,article,highlights,onHighlight,onHighli
       setNotice(passage.highlightId?'Highlight color updated.':'Passage highlighted.');
       onHighlight(saved);
     }catch(cause){setError(cause instanceof Error?cause.message:String(cause));}
-    finally{busyRef.current=false;setBusy(false);}
+    finally{busyRef.current=false;setBusy(false);setPendingColor(null);}
   }
   async function removeHighlight() {
     const id=selectionRef.current?.highlightId;if(!id||busyRef.current)return;
@@ -120,6 +123,7 @@ export function SourceReadingTools({file,article,highlights,onHighlight,onHighli
     finally{busyRef.current=false;setBusy(false);}
   }
   return <>
+    <SourceSelectionPaint article={article}/>
     {selected&&<div ref={menu} className={"source-reading-menu"+(note?" is-composing":"")} role={note?"dialog":"toolbar"} aria-label={note?"Add reading note":"Source selection actions"} aria-modal={note?false:undefined} style={position} onPointerDown={event=>{if(!note)event.preventDefault();}} onKeyDown={event=>{
       if(note){if(event.key==='Escape'){event.preventDefault();event.stopPropagation();}return;}
       if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key))return;
@@ -127,10 +131,13 @@ export function SourceReadingTools({file,article,highlights,onHighlight,onHighli
       event.preventDefault();buttons[event.key==='Home'?0:event.key==='End'?buttons.length-1:(index+(['ArrowRight','ArrowDown'].includes(event.key)?1:-1)+buttons.length)%buttons.length]?.focus();
     }}>
       {note?<ReadingNotePopover selection={note} vaultId={file.vault_id} onClose={()=>{setNote(null);requestAnimationFrame(()=>menu.current?.querySelector<HTMLButtonElement>('.source-reading-note-action')?.focus());}} onCreated={page=>{dismissSelection();setNotice('Reading note saved.');onNoteCreated(page);}}/>:<>
-      <span className="source-reading-menu-label">{selected.highlightId?'Change highlight color':'Highlight passage'}</span>
-      <div className="source-highlight-colors">{highlightColors.map(color=><button type="button" key={color} className="source-highlight-color" data-color={color} title={`Highlight ${color}`} aria-label={`${selected.highlightId?'Change highlight to':'Highlight passage'} ${color}`} aria-pressed={selected.highlightId?selected.color===color:undefined} disabled={busy} onClick={()=>void highlight(color)}/>)}</div>
-      <button type="button" className="source-reading-note-action" disabled={busy} onClick={()=>{setNote(selected.selection);setError('');}}>Add reading note</button>
-      {selected.highlightId&&<button type="button" className="source-reading-note-action source-reading-remove-action" disabled={busy} onClick={()=>void removeHighlight()}><Icon name="trash"/>Remove highlight</button>}
+      <div className="source-reading-toolbar">
+      <div className="source-highlight-colors" role="group" aria-label="Highlight color" aria-busy={busy}>{highlightColors.map(color=><button type="button" key={color} className="source-highlight-color" data-color={color} title={`Highlight ${color}`} aria-label={`${selected.highlightId?'Change highlight to':'Highlight passage'} ${color}`} aria-pressed={(pendingColor??selected.color)===color} disabled={busy} onClick={()=>void highlight(color)}>{(pendingColor??selected.color)===color&&<Icon name="check"/>}</button>)}</div>
+      <div className="source-reading-menu-actions">
+      <button type="button" className="source-reading-note-action" title="Add reading note" aria-label="Add reading note" disabled={busy} onClick={()=>{setNote(selected.selection);setError('');}}><Icon name="compose"/></button>
+      {selected.highlightId&&<button type="button" className="source-reading-note-action source-reading-remove-action" title="Remove highlight" aria-label="Remove highlight" disabled={busy} onClick={()=>void removeHighlight()}><Icon name="trash"/></button>}
+      </div>
+      </div>
       {error&&<p role="alert">{error}</p>}
       </>}
     </div>}
@@ -156,12 +163,17 @@ function ReadingNotePopover({selection,vaultId,onCreated,onClose}:{selection:Sou
     // End the pending state before notifying the reader and updating note markers.
     if(saved&&mounted.current)onCreated(saved);
   }
-  return <form className="source-reading-note-popover" onSubmit={submit} onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();if(!busy)onClose();}}}>
-    <header><strong>Reading note</strong><button type="button" title="Close reading note" aria-label="Close reading note" disabled={busy} onClick={onClose}><Icon name="close"/></button></header>
-    <blockquote>{selection.excerpt}</blockquote>
-    <label className="sr-only" htmlFor="source-reading-note-text">Reading note</label>
-    <textarea id="source-reading-note-text" autoFocus rows={4} maxLength={10000} value={text} disabled={busy} onChange={event=>setText(event.target.value)} aria-describedby="reading-note-words" placeholder="Add your thoughts…" required/>
+  return <form className="source-reading-note-popover" onSubmit={submit} onKeyDown={event=>{
+    if(event.key==='Escape'){event.preventDefault();event.stopPropagation();if(!busy)onClose();}
+    if(event.key==='Enter'&&(event.metaKey||event.ctrlKey)&&!event.nativeEvent.isComposing){event.preventDefault();if(valid&&!busy)event.currentTarget.requestSubmit();}
+  }}>
+    <header><span className="reading-note-form-title"><Icon name="annotation"/><strong>Reading note</strong></span><button type="button" title="Close reading note" aria-label="Close reading note" disabled={busy} onClick={onClose}><Icon name="close"/></button></header>
+    <div className="reading-note-excerpt"><span>Selected passage</span><blockquote>{selection.excerpt}</blockquote></div>
+    <div className="reading-note-writing-area">
+    <label htmlFor="source-reading-note-text">Your note</label>
+    <textarea id="source-reading-note-text" autoFocus rows={5} maxLength={10000} value={text} readOnly={busy} onChange={event=>setText(event.target.value)} aria-invalid={words>readingNoteMaxWords||undefined} aria-describedby="reading-note-words" placeholder="What stands out to you?" required/>
+    </div>
     {error&&<p className="dialog-error" role="alert">{error}</p>}
-    <footer><span id="reading-note-words" className={words>readingNoteMaxWords?'dialog-error':''}>{words} / {readingNoteMaxWords} words</span><button className="button small" disabled={busy||!valid}>{busy?'Saving…':'Save note'}</button></footer>
+    <footer><span id="reading-note-words" className={words>readingNoteMaxWords?'dialog-error':''}>{words}<span> / {readingNoteMaxWords} words</span></span><button className="button primary small" title="Save note (⌘ / Ctrl + Enter)" disabled={busy||!valid}>{busy?'Saving…':'Save note'}</button></footer>
   </form>;
 }

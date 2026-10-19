@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import {useEffect,useMemo,useRef,useState,type RefObject} from 'react';
 import type {SourceDocument} from '../../shared/source-document';
 import {sourceDocumentEntries} from '../../shared/source-document';
@@ -57,9 +58,9 @@ export function SourceReadingNavigation({article,text,document:sourceDocument}:P
     window.addEventListener('scroll',schedule,{passive:true});window.addEventListener('resize',schedule);
     return()=>{cancelAnimationFrame(frame);observer.disconnect();resize.disconnect();window.removeEventListener('scroll',schedule);window.removeEventListener('resize',schedule);jump.current=()=>{};};
   },[article,navigation]);
-  return <nav className="source-reading-navigation" aria-label="Source reading navigation" style={{left:left??'50%'}}>
-    <button type="button" className="source-reading-prev" aria-label={`Previous ${navigation.unit.toLowerCase()}`} title={`Previous ${navigation.unit.toLowerCase()}`} disabled={current===0} onClick={()=>jump.current(current-1)}><Icon name="chevron"/></button>
+  return <nav className="source-reading-navigation" aria-label={uiText("Source reading navigation")} style={{left:left??'50%'}}>
+    <button type="button" className="source-reading-prev" aria-label={uiText("Previous {value0}",{value0: navigation.unit.toLowerCase()})} title={uiText("Previous {value0}",{value0: navigation.unit.toLowerCase()})} disabled={current===0} onClick={()=>jump.current(current-1)}><Icon name="chevron"/></button>
     <span aria-live="polite" aria-atomic="true">{navigation.unit} {navigation.stops[current]?.number??1} <span className="source-reading-total">/ {navigation.stops.length}</span></span>
-    <button type="button" aria-label={`Next ${navigation.unit.toLowerCase()}`} title={`Next ${navigation.unit.toLowerCase()}`} disabled={current>=navigation.stops.length-1} onClick={()=>jump.current(current+1)}><Icon name="chevron"/></button>
+    <button type="button" aria-label={uiText("Next {value0}",{value0: navigation.unit.toLowerCase()})} title={uiText("Next {value0}",{value0: navigation.unit.toLowerCase()})} disabled={current>=navigation.stops.length-1} onClick={()=>jump.current(current+1)}><Icon name="chevron"/></button>
   </nav>;
 }

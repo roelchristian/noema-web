@@ -1,3 +1,5 @@
+import {getLocale} from '../i18n';
+import {t as uiText} from '../i18n';
 import {DisclosureSummary} from '../components/DisclosureSummary';
 import { AIActivityUsage } from './AIActivityUsage';
 import { AIActivityDebug } from './AIActivityDebug';
@@ -65,11 +67,11 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
     finally{setBusy(false);}
   }
   if(debugId)return <AIActivityDebug id={debugId} onClose={()=>setDebugId(null)}/>;
-  if(confirmClear) return <ConfirmDialog danger title="Clear AI activity?" description="Delete all activity and debug traces for unlocked vaults. Running requests continue." action="Clear activity" onClose={()=>setConfirmClear(false)} onConfirm={async()=>{await api.clearAIActivity();setData({items:[],nextCursor:null});setMessage('Activity cleared.');}}/>;
+  if(confirmClear) return <ConfirmDialog danger title={uiText("Clear AI activity?")} description={uiText("Delete all activity and debug traces for unlocked vaults. Running requests continue.")} action={uiText("Clear activity")} onClose={()=>setConfirmClear(false)} onConfirm={async()=>{await api.clearAIActivity();setData({items:[],nextCursor:null});setMessage('Activity cleared.');}}/>;
   return <Modal className="ai-activity-modal" titleId="ai-activity-heading" onClose={onClose}>
-    <ModalHeader titleId="ai-activity-heading">AI activity log</ModalHeader>
-    <div className="settings-tabs ai-activity-views" role="tablist" aria-label="AI activity views">
-      {([{id:'log',label:'Activity log'},{id:'usage',label:'Token usage'}] as const).map(tab=><button key={tab.id} type="button" id={'ai-activity-tab-'+tab.id} role="tab" aria-selected={view===tab.id} aria-controls="ai-activity-panel" tabIndex={view===tab.id?0:-1} onClick={()=>setView(tab.id)} onKeyDown={event=>{
+    <ModalHeader titleId="ai-activity-heading">{uiText("AI activity log")}</ModalHeader>
+    <div className="settings-tabs ai-activity-views" role="tablist" aria-label={uiText("AI activity views")}>
+      {([{id:'log',label:uiText("Activity log")},{id:'usage',label:uiText("Token usage")}] as const).map(tab=><button key={tab.id} type="button" id={'ai-activity-tab-'+tab.id} role="tab" aria-selected={view===tab.id} aria-controls="ai-activity-panel" tabIndex={view===tab.id?0:-1} onClick={()=>setView(tab.id)} onKeyDown={event=>{
         if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
         event.preventDefault();
         const next=event.key==='Home'?'log':event.key==='End'?'usage':view==='log'?'usage':'log';
@@ -78,43 +80,43 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
     </div>
     <div id="ai-activity-panel" role="tabpanel" aria-labelledby={'ai-activity-tab-'+view} tabIndex={0}>
     {view==='usage'?<AIActivityUsage/>:<>
-    <p className="ai-activity-description">Up to 1,000 recent actions stored locally. Locked vault activity is hidden and excluded from export and clear. Cache reads and writes appear when reported by the provider.</p>
-    {data.enrichmentMetrics&&<section aria-label="Page enrichment efficiency" className="ai-activity-description">
-      <p><strong>Page enrichment:</strong> {data.enrichmentMetrics.requestsAvoided.toLocaleString()} local decisions avoided a request · {data.enrichmentMetrics.providerRequests.toLocaleString()} provider requests · {data.enrichmentMetrics.completedPages.toLocaleString()} successfully enriched pages.</p>
-      {data.enrichmentMetrics.estimatedCost!==null&&<p>Estimated cost: ${data.enrichmentMetrics.estimatedCost.toFixed(6)} USD{data.enrichmentMetrics.costPerCompletedPage!==null?` · $${data.enrichmentMetrics.costPerCompletedPage.toFixed(6)} per successfully enriched page`:''}.</p>}
-      <p>Recent retained records across unlocked vaults. Cost appears when versioned model rates and provider token counts are available.</p>
-      {!!data.enrichmentMetrics.reasons.length&&<details><DisclosureSummary>Local decision reasons</DisclosureSummary><ul>{data.enrichmentMetrics.reasons.map(item=><li key={item.reason}>{item.reason.replaceAll('_',' ')}: {item.count.toLocaleString()}</li>)}</ul></details>}
+    <p className="ai-activity-description">{uiText("Up to 1,000 recent actions stored locally. Locked vault activity is hidden and excluded from export and clear. Cache reads and writes appear when reported by the provider.")}</p>
+    {data.enrichmentMetrics&&<section aria-label={uiText("Page enrichment efficiency")} className="ai-activity-description">
+      <p><strong>{uiText("Page enrichment:")}</strong> {data.enrichmentMetrics.requestsAvoided.toLocaleString(getLocale())}{" " + uiText("local decisions avoided a request ·") + " "}{data.enrichmentMetrics.providerRequests.toLocaleString(getLocale())}{" " + uiText("provider requests ·") + " "}{data.enrichmentMetrics.completedPages.toLocaleString(getLocale())}{" " + uiText("successfully enriched pages.")}</p>
+      {data.enrichmentMetrics.estimatedCost!==null&&<p>{uiText("Estimated cost: $")}{data.enrichmentMetrics.estimatedCost.toFixed(6)}{" " + uiText("USD")}{data.enrichmentMetrics.costPerCompletedPage!==null?uiText(" · ${value0} per successfully enriched page",{value0: data.enrichmentMetrics.costPerCompletedPage.toFixed(6)}):''}.</p>}
+      <p>{uiText("Recent retained records across unlocked vaults. Cost appears when versioned model rates and provider token counts are available.")}</p>
+      {!!data.enrichmentMetrics.reasons.length&&<details><DisclosureSummary>{uiText("Local decision reasons")}</DisclosureSummary><ul>{data.enrichmentMetrics.reasons.map(item=><li key={item.reason}>{item.reason.replaceAll('_',' ')}: {item.count.toLocaleString(getLocale())}</li>)}</ul></details>}
     </section>}
-    <div className="ai-activity-toolbar"><button className="button" disabled={busy} onClick={()=>void load()}>Refresh</button><button className="button" disabled={busy||!data.items.length} onClick={()=>void exportCSV()}>Export CSV</button><button className="button danger" disabled={busy||!data.items.length} onClick={()=>setConfirmClear(true)}>Clear activity</button></div>
+    <div className="ai-activity-toolbar"><button className="button" disabled={busy} onClick={()=>void load()}>{uiText("Refresh")}</button><button className="button" disabled={busy||!data.items.length} onClick={()=>void exportCSV()}>{uiText("Export CSV")}</button><button className="button danger" disabled={busy||!data.items.length} onClick={()=>setConfirmClear(true)}>{uiText("Clear activity")}</button></div>
     {error&&<p role="alert">{error}</p>}
-    <p role="status" aria-live="polite">{busy?'Loading activity…':message||`${data.items.length} records loaded`}</p>
-    <div className="ai-activity-table-wrap" tabIndex={0} role="region" aria-label="AI activity records" aria-busy={busy}>
+    <p role="status" aria-live="polite">{busy?uiText("Loading activity…"):message||uiText("{value0} records loaded",{value0: data.items.length})}</p>
+    <div className="ai-activity-table-wrap" tabIndex={0} role="region" aria-label={uiText("AI activity records")} aria-busy={busy}>
       <table className="ai-activity-table">
-        <caption className="sr-only">AI activity, newest first</caption>
-        <thead><tr>{['Started','Action','Status','Source','Model / reasoning','Input bytes','Input tokens','Cached input','Cache writes','Output tokens','Reasoning tokens','Estimated USD','Duration','HTTP','Debug'].map(label=><th scope="col" key={label}>{label}</th>)}</tr></thead>
+        <caption className="sr-only">{uiText("AI activity, newest first")}</caption>
+        <thead><tr>{['Started','Action','Status','Source','Model / reasoning','Input bytes','Input tokens','Cached input','Cache writes','Output tokens','Reasoning tokens','Estimated USD','Duration','HTTP','Debug'].map(label=><th scope="col" key={label}>{uiText(label)}</th>)}</tr></thead>
         <tbody>{data.items.map(item=><tr key={item.id}>
-          <td><time dateTime={item.startedAt}>{new Date(item.startedAt).toLocaleString()}</time></td>
-          <td>{aiActivityLabels[item.action]}</td>
-          <td><span className={'ai-activity-status '+item.status}>{item.status}</span></td>
+          <td><time dateTime={item.startedAt}>{new Date(item.startedAt).toLocaleString(getLocale())}</time></td>
+          <td>{uiText(aiActivityLabels[item.action])}</td>
+          <td><span className={'ai-activity-status '+item.status}>{uiText(item.status)}</span></td>
           <td>{item.objectId?<>
-            {item.available?<button className="ai-activity-link ai-activity-title" title={item.objectTitle||'Untitled'} onClick={()=>void open(item)}>{item.objectTitle||'Untitled'}</button>:<span className="ai-activity-title" title={item.objectTitle||'Unavailable page'}>{item.objectTitle||'Unavailable page'}</span>}
-          </>:item.action==='search_embedding'?<span>Vault search</span>:<span>Settings → Intelligence</span>}</td>
-          <td className="ai-activity-model">{item.model}{item.action!=='note_embedding'&&item.action!=='search_embedding'&&<small className="ai-activity-reasoning">{item.reasoningEffort==='none'?'no reasoning':`${item.reasoningEffort} reasoning`}</small>}</td>
-          <td>{item.promptBytes===null?'Not sent':item.promptBytes.toLocaleString()}</td>
-          <td>{item.inputTokens==null?'—':item.inputTokens.toLocaleString()}</td>
-          <td>{item.cachedInputTokens==null?'—':item.cachedInputTokens.toLocaleString()}</td>
-          <td>{item.cacheWriteTokens==null?'—':item.cacheWriteTokens.toLocaleString()}</td>
-          <td>{item.outputTokens==null?'—':item.outputTokens.toLocaleString()}</td>
-          <td>{item.reasoningTokens==null?'—':item.reasoningTokens.toLocaleString()}</td>
-          <td title={item.pricingVersion?`Pricing: ${item.pricingVersion}`:'No configured price estimate'}>{item.estimatedCost==null?'—':`$${item.estimatedCost.toFixed(6)}`}</td>
+            {item.available?<button className="ai-activity-link ai-activity-title" title={item.objectTitle||uiText("Untitled")} onClick={()=>void open(item)}>{item.objectTitle||uiText("Untitled")}</button>:<span className="ai-activity-title" title={item.objectTitle||uiText("Unavailable page")}>{item.objectTitle||uiText("Unavailable page")}</span>}
+          </>:item.action==='search_embedding'?<span>{uiText("Vault search")}</span>:<span>{uiText("Settings → Intelligence")}</span>}</td>
+          <td className="ai-activity-model">{item.model}{item.action!=='note_embedding'&&item.action!=='search_embedding'&&<small className="ai-activity-reasoning">{item.reasoningEffort==='none'?uiText("no reasoning"):uiText("{value0} reasoning",{value0: item.reasoningEffort})}</small>}</td>
+          <td>{item.promptBytes===null?uiText("Not sent"):item.promptBytes.toLocaleString(getLocale())}</td>
+          <td>{item.inputTokens==null?'—':item.inputTokens.toLocaleString(getLocale())}</td>
+          <td>{item.cachedInputTokens==null?'—':item.cachedInputTokens.toLocaleString(getLocale())}</td>
+          <td>{item.cacheWriteTokens==null?'—':item.cacheWriteTokens.toLocaleString(getLocale())}</td>
+          <td>{item.outputTokens==null?'—':item.outputTokens.toLocaleString(getLocale())}</td>
+          <td>{item.reasoningTokens==null?'—':item.reasoningTokens.toLocaleString(getLocale())}</td>
+          <td title={item.pricingVersion?uiText("Pricing: {value0}",{value0: item.pricingVersion}):uiText("No configured price estimate")}>{item.estimatedCost==null?'—':`$${item.estimatedCost.toFixed(6)}`}</td>
           <td>{item.durationMs===null?'—':`${(item.durationMs/1000).toFixed(1)}s`}</td>
           <td>{item.httpStatus??'—'}</td>
-          <td>{item.debugRecorded?<button className="ai-activity-link" onClick={()=>setDebugId(item.id)}>Open payload</button>:'Off'}</td>
+          <td>{item.debugRecorded?<button className="ai-activity-link" onClick={()=>setDebugId(item.id)}>{uiText("Open payload")}</button>:uiText("Off")}</td>
         </tr>)}</tbody>
       </table>
-      {!busy&&!data.items.length&&!error&&<p className="ai-activity-empty">No AI activity yet.</p>}
+      {!busy&&!data.items.length&&!error&&<p className="ai-activity-empty">{uiText("No AI activity yet.")}</p>}
     </div>
-    <footer className="ai-activity-footer">{data.nextCursor!==null&&<button className="button" disabled={busy} onClick={()=>void load(data.nextCursor!)}>Load older activity</button>}<p>Export CSV for all available records, or open a payload for its JSON trace. Loading older activity pauses auto-refresh.</p><button className="button primary" onClick={onClose}>Done</button></footer>
+    <footer className="ai-activity-footer">{data.nextCursor!==null&&<button className="button" disabled={busy} onClick={()=>void load(data.nextCursor!)}>{uiText("Load older activity")}</button>}<p>{uiText("Export CSV for all available records, or open a payload for its JSON trace. Loading older activity pauses auto-refresh.")}</p><button className="button primary" onClick={onClose}>{uiText("Done")}</button></footer>
     </>}
     </div>
   </Modal>;

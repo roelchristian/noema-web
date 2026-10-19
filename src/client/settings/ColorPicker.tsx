@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import { useEffect, useLayoutEffect, useId, useRef, useState } from 'react';
 import { Icon } from '../components/Icon';
 import { pillColors, type PillColor } from './appearance';
@@ -36,9 +37,9 @@ export function ColorPicker({id, label, value, onChange}: {id: string; label: st
     };
   }, [open]);
   return <div ref={root} className="color-picker">
-    <button ref={trigger} type="button" id={id} className="color-picker-trigger" aria-label={label + ': ' + pillColors[value].name} aria-haspopup="listbox" aria-expanded={open} aria-controls={open ? listId : undefined}
+    <button ref={trigger} type="button" id={id} className="color-picker-trigger" aria-label={label + ': ' + uiText(pillColors[value].name)} aria-haspopup="listbox" aria-expanded={open} aria-controls={open ? listId : undefined}
       onClick={() => { setActive(colors.indexOf(value)); setOpen(!open); }} onKeyDown={event => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setActive(colors.indexOf(value)); setOpen(true); } }}>
-      <span className="pill-preview" style={previewStyle(value)}><Icon name="knowledge"/>{pillColors[value].name}</span><span aria-hidden="true">⌄</span>
+      <span className="pill-preview" style={previewStyle(value)}><Icon name="knowledge"/>{uiText(pillColors[value].name)}</span><span aria-hidden="true">⌄</span>
     </button>
     {open && <div ref={list} id={listId} role="listbox" aria-label={label} aria-activedescendant={listId + '-' + active} tabIndex={-1} className="color-picker-list" style={position} onKeyDown={event => {
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
@@ -48,7 +49,7 @@ export function ColorPicker({id, label, value, onChange}: {id: string; label: st
       else if (event.key === 'Tab') setOpen(false);
     }}>
       {colors.map((color, index) => <button key={color} type="button" id={listId + '-' + index} role="option" aria-selected={color === value} tabIndex={-1} className={index === active ? 'active' : ''} onPointerMove={() => setActive(index)} onClick={() => choose(color)}>
-        <span className="pill-preview" style={previewStyle(color)}><Icon name="knowledge"/>{pillColors[color].name}</span><span aria-hidden="true">{color === value ? '✓' : ''}</span>
+        <span className="pill-preview" style={previewStyle(color)}><Icon name="knowledge"/>{uiText(pillColors[color].name)}</span><span aria-hidden="true">{color === value ? '✓' : ''}</span>
       </button>)}
     </div>}
   </div>;

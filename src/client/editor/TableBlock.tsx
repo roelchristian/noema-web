@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import {CitationPresentationContext} from '../sources/CitationPresentation';
 import { applySmartQuotes } from './smart-quotes';
 import { useContext, useLayoutEffect, useRef, type ClipboardEvent, type KeyboardEvent } from 'react';
@@ -41,10 +42,10 @@ export function TableBlock({block, entities, reviewMatches, onChange, onOpen, on
       const next = root.current?.querySelectorAll<HTMLElement>('.table-cell[contenteditable="true"]')[index];
       if(next) {e.preventDefault(); next.focus();} else if(!e.shiftKey && rows.length < 100) {e.preventDefault(); pending.current = index; onChange([...rows, cells.map(() => [])]);}
     }
-  }}/></td>)}</tr>)}</tbody></table></div><div className="table-actions" role="group" aria-label="Table controls">
-    <button disabled={rows.length >= 100} onClick={() => onChange([...rows, rows[0]!.map(() => [])])}>+ Row</button>
-    <button disabled={rows[0]!.length >= 20} onClick={() => onChange(rows.map(row => [...row, []]))}>+ Column</button>
-    <button disabled={rows.length <= 1} onClick={() => onChange(rows.slice(0,-1))}>Remove last row</button>
-    <button disabled={rows[0]!.length <= 1} onClick={() => onChange(rows.map(row => row.slice(0,-1)))}>Remove last column</button>
+  }}/></td>)}</tr>)}</tbody></table></div><div className="table-actions" role="group" aria-label={uiText("Table controls")}>
+    <button disabled={rows.length >= 100} onClick={() => onChange([...rows, rows[0]!.map(() => [])])}>{uiText("+ Row")}</button>
+    <button disabled={rows[0]!.length >= 20} onClick={() => onChange(rows.map(row => [...row, []]))}>{uiText("+ Column")}</button>
+    <button disabled={rows.length <= 1} onClick={() => onChange(rows.slice(0,-1))}>{uiText("Remove last row")}</button>
+    <button disabled={rows[0]!.length <= 1} onClick={() => onChange(rows.map(row => row.slice(0,-1)))}>{uiText("Remove last column")}</button>
   </div></div>;
 }

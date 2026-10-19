@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import {PageEditLockDialog} from './PageEditLockDialog';
 import { useState } from 'react';
 import type { Block, Page, Organization } from '../../shared/domain';
@@ -48,34 +49,34 @@ export function PageToolbar({ tocAvailable=false, tocVisible=true, onToggleToc, 
     finally {setChangingLock(false);}
   }
   const lockAction:MenuAction = page.editLocked
-    ? {label:'Unlock editing',icon:'lock',disabled:changingLock,children:[
-        {label:page.editProtected?'Unlock with password…':'Unlock editing',icon:'unlock',onSelect:()=>page.editProtected?setLockOpen(true):void changeLock(false)},
-        {label:'Keep locked',onSelect:()=>{}},
+    ? {get label(){return uiText("Unlock editing")},icon:'lock',disabled:changingLock,children:[
+        {label:page.editProtected?uiText("Unlock with password…"):uiText("Unlock editing"),icon:'unlock',onSelect:()=>page.editProtected?setLockOpen(true):void changeLock(false)},
+        {label:uiText("Keep locked"),onSelect:()=>{}},
       ]}
-    : {label:'Lock editing',icon:'unlock',disabled:changingLock,children:[
-        {label:'Without a password',icon:'lock',description:'Lock editing. The page stays readable.',onSelect:()=>void changeLock(true)},
-        {label:'With a password…',icon:'lock',description:'Require a password to unlock editing.',onSelect:()=>setLockOpen(true)},
+    : {get label(){return uiText("Lock editing")},icon:'unlock',disabled:changingLock,children:[
+        {label:uiText("Without a password"),icon:'lock',description:uiText("Lock editing. The page stays readable."),onSelect:()=>void changeLock(true)},
+        {label:uiText("With a password…"),icon:'lock',description:uiText("Require a password to unlock editing."),onSelect:()=>setLockOpen(true)},
       ]};
-  return <><div inert={inactive} className="page-toolbar" role="group" aria-label="Page tools">
-    <button type="button" className={'page-tool favourite-button ' + (favourite ? 'is-favourite' : '')} disabled={saving} aria-pressed={favourite} aria-label={favourite ? 'Remove page from favourites' : 'Add page to favourites'} title={favourite ? 'Remove from favourites' : 'Add to favourites'} onClick={() => void toggleFavourite()}><Icon name="star"/></button>
-    <button type="button" className="page-tool" aria-expanded={aiOpen} aria-controls="intelligence-panel" aria-label="Knowledge" title="Knowledge" onClick={onAI}><Icon name="knowledge"/></button>
-    {page.editLocked && <ActionMenu label="Page locked: unlock editing" icon="lock" disabled={changingLock} actions={lockAction.children ?? []}/>}
-    <ActionMenu label="More page actions" disabled={changingLock} actions={[
-      ...(onForward ? [{label: 'Go forward', icon: 'chevron', disabled: forwardDisabled, onSelect: onForward}] : []),
-      {label: 'Reveal in sidebar', icon: 'folder', onSelect: onRevealInSidebar},
-      {label: focusedReading ? 'Turn off focused reading' : 'Turn on focused reading', icon: 'creativework', onSelect: onToggleFocusedReading},
-      ...(tocAvailable&&onToggleToc?[{label:tocVisible?'Hide table of contents':'Show table of contents',icon:'menu',checked:tocVisible,onSelect:onToggleToc}]:[]),
-      {label: 'Featured image…', icon: 'image', disabled:!!page.editLocked, onSelect: () => setFeaturedImageOpen(true)},
-      {label: 'Editing', icon: 'edit', disabled: !!page.editLocked, children: [
-        {label: 'Undo', description: '⌘/Ctrl+Z', disabled: !canUndo, onSelect: onUndo},
-        {label: 'Redo', description: '⌘/Ctrl+Shift+Z or Ctrl+Y', disabled: !canRedo, onSelect: onRedo},
-        {label: 'Format Markdown as you type', checked:markdownTyping, description:markdownTyping?'On · Turning off keeps existing formatting.':'Off · Turning on also formats Markdown already in this page.', onSelect:toggleMarkdownTyping},
-        {label: 'Clean up spacing…', onSelect: () => setCleanupOpen(true)},
+  return <><div inert={inactive} className="page-toolbar" role="group" aria-label={uiText("Page tools")}>
+    <button type="button" className={'page-tool favourite-button ' + (favourite ? 'is-favourite' : '')} disabled={saving} aria-pressed={favourite} aria-label={favourite ? uiText("Remove page from favourites") : uiText("Add page to favourites")} title={favourite ? uiText("Remove from favourites") : uiText("Add to favourites")} onClick={() => void toggleFavourite()}><Icon name="star"/></button>
+    <button type="button" className="page-tool" aria-expanded={aiOpen} aria-controls="intelligence-panel" aria-label={uiText("Knowledge")} title={uiText("Knowledge")} onClick={onAI}><Icon name="knowledge"/></button>
+    {page.editLocked && <ActionMenu label={uiText("Page locked: unlock editing")} icon="lock" disabled={changingLock} actions={lockAction.children ?? []}/>}
+    <ActionMenu label={uiText("More page actions")} disabled={changingLock} actions={[
+      ...(onForward ? [{get label(){return uiText("Go forward")}, icon: 'chevron', disabled: forwardDisabled, onSelect: onForward}] : []),
+      {label: uiText("Reveal in sidebar"), icon: 'folder', onSelect: onRevealInSidebar},
+      {label: focusedReading ? uiText("Turn off focused reading") : uiText("Turn on focused reading"), icon: 'creativework', onSelect: onToggleFocusedReading},
+      ...(tocAvailable&&onToggleToc?[{label:tocVisible?uiText("Hide table of contents"):uiText("Show table of contents"),icon:'menu',checked:tocVisible,onSelect:onToggleToc}]:[]),
+      {label: uiText("Featured image…"), icon: 'image', disabled:!!page.editLocked, onSelect: () => setFeaturedImageOpen(true)},
+      {get label(){return uiText("Editing")}, icon: 'edit', disabled: !!page.editLocked, children: [
+        {label: uiText("Undo"), description: uiText("⌘/Ctrl+Z"), disabled: !canUndo, onSelect: onUndo},
+        {label: uiText("Redo"), description: uiText("⌘/Ctrl+Shift+Z or Ctrl+Y"), disabled: !canRedo, onSelect: onRedo},
+        {label: uiText("Format Markdown as you type"), checked:markdownTyping, description:markdownTyping?uiText("On · Turning off keeps existing formatting."):uiText("Off · Turning on also formats Markdown already in this page."), onSelect:toggleMarkdownTyping},
+        {label: uiText("Clean up spacing…"), onSelect: () => setCleanupOpen(true)},
       ]},
       lockAction,
-      {label:'Move to Trash',icon:'trash',disabled:!!page.editLocked,danger:true,children:[
-        {label:'Move to Trash',icon:'trash',danger:true,description:'You can restore this note within 30 days.',onSelect:()=>{void onDelete().catch(onError);}},
-        {label:'Keep note',onSelect:()=>{}},
+      {label:uiText("Move to Trash"),icon:'trash',disabled:!!page.editLocked,danger:true,children:[
+        {label:uiText("Move to Trash"),icon:'trash',danger:true,description:uiText("You can restore this note within 30 days."),onSelect:()=>{void onDelete().catch(onError);}},
+        {label:uiText("Keep note"),onSelect:()=>{}},
       ]},
     ]}/>
   </div>

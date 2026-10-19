@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import {useMemo} from 'react';
 
 export type ComparisonLayout='auto'|'split'|'unified';
@@ -61,11 +62,11 @@ export function SourcePatchComparison({original,replacement,layout}:{original:st
     (side==='original'&&change.kind==='added')||(side==='replacement'&&change.kind==='removed')
       ?null:<ChangeText key={index} change={change}/>);
   return <div className="reprocessing-diff" data-layout={layout}>
-    <div className="reprocessing-diff-legend" aria-label="Change highlighting"><span className="reprocessing-diff-removed">Deletions</span><span className="reprocessing-diff-added">Additions</span></div>
+    <div className="reprocessing-diff-legend" aria-label={uiText("Change highlighting")}><span className="reprocessing-diff-removed">{uiText("Deletions")}</span><span className="reprocessing-diff-added">{uiText("Additions")}</span></div>
     <div className="reprocessing-comparison reprocessing-diff-split">
-      <div><h4>Original processed</h4><pre>{original?render('original'):<span className="reprocessing-diff-context">(Empty passage)</span>}</pre></div>
-      <div><h4>Suggested revision</h4><pre>{replacement?render('replacement'):<span className="reprocessing-diff-context">(Removed from reading text; preserved in provenance)</span>}</pre></div>
+      <div><h4>{uiText("Original processed")}</h4><pre>{original?render('original'):<span className="reprocessing-diff-context">{uiText("(Empty passage)")}</span>}</pre></div>
+      <div><h4>{uiText("Suggested revision")}</h4><pre>{replacement?render('replacement'):<span className="reprocessing-diff-context">{uiText("(Removed from reading text; preserved in provenance)")}</span>}</pre></div>
     </div>
-    <div className="reprocessing-comparison reprocessing-diff-unified"><div><h4>Original → Suggested revision</h4><pre>{render()}</pre></div></div>
+    <div className="reprocessing-comparison reprocessing-diff-unified"><div><h4>{uiText("Original → Suggested revision")}</h4><pre>{render()}</pre></div></div>
   </div>;
 }

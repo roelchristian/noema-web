@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import {positionAnchoredMenu,revealMenuItem} from './menu-placement';
@@ -60,6 +61,6 @@ export function ActionMenu({label, actions, disabled = false, icon = 'more'}: {l
       }
       else if (path.length && (event.key === 'ArrowLeft' || event.key === 'Escape')) {event.preventDefault();event.stopPropagation();back();}
       else if (event.key === 'Escape' || event.key === 'Tab') { if (event.key === 'Escape') event.preventDefault(); event.stopPropagation(); close(); trigger.current?.focus({preventScroll:true}); }
-    }}>{path.length > 0 && <><button type="button" role="menuitem" className="action-menu-back" onClick={back}><Icon name="chevron"/><span>Back</span></button></>}{currentActions.map(action => <button type="button" key={action.label} data-menu-action={action.label} title={action.description} aria-description={action.description} role={action.checked===undefined?"menuitem":"menuitemcheckbox"} aria-checked={action.checked} aria-haspopup={action.children?.length?'menu':undefined} aria-expanded={action.children?.length?false:undefined} className={action.danger ? 'danger' : ''} disabled={action.disabled} onClick={() => select(action)}>{action.checked!==undefined ? <span aria-hidden="true">{action.checked?"✓":"○"}</span> : action.icon && <Icon name={action.icon}/>}<span className="action-menu-text">{action.label}</span>{action.children?.length&&<span className="action-menu-child-arrow"><Icon name="chevron"/></span>}</button>)}</div>
+    }}>{path.length > 0 && <><button type="button" role="menuitem" className="action-menu-back" onClick={back}><Icon name="chevron"/><span>{uiText("Back")}</span></button></>}{currentActions.map(action => <button type="button" key={action.label} data-menu-action={action.label} title={action.description} aria-description={action.description} role={action.checked===undefined?"menuitem":"menuitemcheckbox"} aria-checked={action.checked} aria-haspopup={action.children?.length?'menu':undefined} aria-expanded={action.children?.length?false:undefined} className={action.danger ? 'danger' : ''} disabled={action.disabled} onClick={() => select(action)}>{action.checked!==undefined ? <span aria-hidden="true">{action.checked?"✓":"○"}</span> : action.icon && <Icon name={action.icon}/>}<span className="action-menu-text">{action.label}</span>{action.children?.length&&<span className="action-menu-child-arrow"><Icon name="chevron"/></span>}</button>)}</div>
   </>;
 }

@@ -2204,9 +2204,9 @@ main {position:relative;}
   .view-mode-switch[data-indicator-ready] > .view-mode-indicator { transition:none; }
 }
 
-.sidebar .nav[aria-label="Search vault"] { background:color-mix(in srgb,var(--surface-hover) 65%,var(--sidebar)); }
-.sidebar .nav[aria-label="Search vault"]:is(:hover,:focus-visible) { background:var(--surface-hover); }
-.sidebar .nav[aria-label="Search vault"].active { background:var(--accent-soft); color:var(--accent); }
+.sidebar .nav[data-navigation-search] { background:color-mix(in srgb,var(--surface-hover) 65%,var(--sidebar)); }
+.sidebar .nav[data-navigation-search]:is(:hover,:focus-visible) { background:var(--surface-hover); }
+.sidebar .nav[data-navigation-search].active { background:var(--accent-soft); color:var(--accent); }
 
 /* Source deletion follows the quiet typography and passage treatment used by Noema explanations. */
 .linked-explanation-dialog > header { display:flex; align-items:center; justify-content:space-between; gap:12px; }

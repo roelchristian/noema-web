@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import { Fragment, type ReactNode, useMemo } from 'react';
 import {limitSummaryWords} from '../../shared/summary-text';
 import {blockListNumber, safeHref, type Segment} from '../../shared/domain';
@@ -54,7 +55,7 @@ export function SummaryText({text}: {text:string}) {
       const items = [];
       for (let i=index;i<blocks.length && blocks[i]!.type===block.type;i++) {
         const item=blocks[i]!;
-        items.push(<li key={item.id}>{item.type==='todo' && <input type="checkbox" checked={item.checked} disabled aria-label="Completed task"/>}<Inline content={item.content}/></li>);
+        items.push(<li key={item.id}>{item.type==='todo' && <input type="checkbox" checked={item.checked} disabled aria-label={uiText("Completed task")}/>}<Inline content={item.content}/></li>);
       }
       return block.type==='numbered' ? <ol key={block.id} start={blockListNumber(blocks,block.id)}>{items}</ol> : <ul key={block.id}>{items}</ul>;
     }

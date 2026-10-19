@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import { useId, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { blockSegments, entityLabels, entityTypes, type Entity, type EntityType, type Page } from '../../shared/domain';
 import { Icon } from '../components/Icon';
@@ -46,26 +47,26 @@ export function ConnectedEntities({page, entities, onOpenEntity, children}: {pag
     event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
   }
   return <section className="knowledge-connected" aria-labelledby={id + '-heading'}>
-    <div className="knowledge-section-heading"><h2 id={id + '-heading'}><Icon name="knowledge"/>Entities<span className="knowledge-count">{connected.length}</span></h2></div>
+    <div className="knowledge-section-heading"><h2 id={id + '-heading'}><Icon name="knowledge"/>{uiText("Entities")}<span className="knowledge-count">{connected.length}</span></h2></div>
     {children}
     {!!connected.length&&<div className="knowledge-entity-controls">
-      <div className="knowledge-entity-tabs" role="tablist" aria-label="Connected entity types">
+      <div className="knowledge-entity-tabs" role="tablist" aria-label={uiText("Connected entity types")}>
         {tabs.map(tab => {
-          const label = tab === 'all' ? 'All' : entityLabels[tab];
+          const label = tab === 'all' ? uiText('All') : uiText(entityLabels[tab]);
           const count = tab === 'all' ? connected.length : connected.filter(entity => entity.type === tab).length;
           return <button key={tab} id={id + '-' + tab} type="button" role="tab" aria-label={`${label} (${count})`} title={`${label} (${count})`} aria-selected={type === tab} aria-controls={id + '-list'} tabIndex={type === tab ? 0 : -1} onKeyDown={navigate} onClick={() => setType(tab)}><Icon name={tab === 'all' ? 'knowledge' : tab}/></button>;
         })}
       </div>
-      <button type="button" className="knowledge-entity-sort" aria-label="Sort connected entities in reverse alphabetical order" aria-pressed={sort === 'name-desc'} title={sort === 'name-asc' ? 'Sorted A–Z · Switch to Z–A' : 'Sorted Z–A · Switch to A–Z'} onClick={() => setSort(current => current === 'name-asc' ? 'name-desc' : 'name-asc')}>
+      <button type="button" className="knowledge-entity-sort" aria-label={uiText("Sort connected entities in reverse alphabetical order")} aria-pressed={sort === 'name-desc'} title={sort === 'name-asc' ? uiText("Sorted A–Z · Switch to Z–A") : uiText("Sorted Z–A · Switch to A–Z")} onClick={() => setSort(current => current === 'name-asc' ? 'name-desc' : 'name-asc')}>
         <span aria-hidden="true">{sort === 'name-asc' ? 'A' : 'Z'}<span>→</span>{sort === 'name-asc' ? 'Z' : 'A'}</span>
       </button>
     </div>}
     <div id={id + '-list'} role="tabpanel" aria-labelledby={id + '-' + type}>
-      {visible.length ? <ul className="knowledge-connected-list">{paginated.map(entity => <li key={entity.id}><button type="button" onClick={() => onOpenEntity(entity.id)}><Icon name={entity.type}/><span>{entity.name}</span></button></li>)}</ul> : !!connected.length&&<p className="section-hint">No entities of this type</p>}
-      {pageCount > 1 && <nav className="knowledge-entity-pagination" aria-label="Connected entities pagination">
-        <span role="status" aria-live="polite" aria-atomic="true">{pageStart + 1}–{Math.min(pageStart + pageSize, visible.length)} of {visible.length}</span>
-        <button type="button" className="pagination-previous" aria-label="Previous connected entities" title="Previous page" aria-controls={id + '-list'} disabled={pageIndex === 0} onClick={() => setPagination({key: paginationKey, index: pageIndex - 1})}><Icon name="chevron"/></button>
-        <button type="button" aria-label="Next connected entities" title="Next page" aria-controls={id + '-list'} disabled={pageIndex === pageCount - 1} onClick={() => setPagination({key: paginationKey, index: pageIndex + 1})}><Icon name="chevron"/></button>
+      {visible.length ? <ul className="knowledge-connected-list">{paginated.map(entity => <li key={entity.id}><button type="button" onClick={() => onOpenEntity(entity.id)}><Icon name={entity.type}/><span>{entity.name}</span></button></li>)}</ul> : !!connected.length&&<p className="section-hint">{uiText("No entities of this type")}</p>}
+      {pageCount > 1 && <nav className="knowledge-entity-pagination" aria-label={uiText("Connected entities pagination")}>
+        <span role="status" aria-live="polite" aria-atomic="true">{pageStart + 1}–{Math.min(pageStart + pageSize, visible.length)}{" " + uiText("of") + " "}{visible.length}</span>
+        <button type="button" className="pagination-previous" aria-label={uiText("Previous connected entities")} title={uiText("Previous page")} aria-controls={id + '-list'} disabled={pageIndex === 0} onClick={() => setPagination({key: paginationKey, index: pageIndex - 1})}><Icon name="chevron"/></button>
+        <button type="button" aria-label={uiText("Next connected entities")} title={uiText("Next page")} aria-controls={id + '-list'} disabled={pageIndex === pageCount - 1} onClick={() => setPagination({key: paginationKey, index: pageIndex + 1})}><Icon name="chevron"/></button>
       </nav>}
     </div>
   </section>;

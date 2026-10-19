@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import {DisclosureSummary} from '../components/DisclosureSummary';
 import { useEffect, useState } from 'react';
 import type { AIActivityDebug as DebugPayload } from '../../shared/intelligence';
@@ -39,20 +40,20 @@ export function AIActivityDebug({id,onClose}:{id:string;onClose:()=>void}) {
     const link=document.createElement('a');link.href=url;link.download=`noema-ai-debug-${id}.json`;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
   return <Modal className="ai-debug-modal" titleId="ai-debug-title" onClose={onClose}>
-    <ModalHeader titleId="ai-debug-title">AI debug payload</ModalHeader>
+    <ModalHeader titleId="ai-debug-title">{uiText("AI debug payload")}</ModalHeader>
     {error&&<p role="alert">{error}</p>}
-    {!data&&!error&&<p role="status">Loading payload…</p>}
+    {!data&&!error&&<p role="status">{uiText("Loading payload…")}</p>}
     {data&&<>
-      <p className="ai-debug-status" role="status">{data.status} · {data.events.length} stream events · updates every second</p>
-      <p className="ai-debug-endpoint">{data.endpoint??'Request not sent yet.'}{data.responseStatus!==null&&` · HTTP ${data.responseStatus}`}</p>
+      <p className="ai-debug-status" role="status">{data.status} · {data.events.length}{" " + uiText("stream events · updates every second")}</p>
+      <p className="ai-debug-endpoint">{data.endpoint??uiText("Request not sent yet.")}{data.responseStatus!==null&&` · HTTP ${data.responseStatus}`}</p>
       {data.error&&<p role="alert">{data.error}</p>}
-      {data.endpoint?.endsWith('/responses')&&<details open><DisclosureSummary>Live output</DisclosureSummary><pre>{outputText(data)||'Waiting for output…'}</pre></details>}
-      <details open><DisclosureSummary>Request body</DisclosureSummary><pre>{pretty(data.request)}</pre></details>
-      <details open><DisclosureSummary>Provider response {data.status==='running'?'so far':''}</DisclosureSummary><pre>{data.response?pretty(data.response):data.responseBody||'Waiting for response…'}</pre></details>
-      <details><DisclosureSummary>Raw response body</DisclosureSummary><pre>{data.responseBody||'Waiting for response…'}</pre></details>
-      <details><DisclosureSummary>Response metadata</DisclosureSummary><pre>{pretty(data.responseHeaders)}</pre></details>
-      <details><DisclosureSummary>Stream events ({data.events.length})</DisclosureSummary><ol className="ai-debug-events">{data.events.map(event=><li key={event.sequence}><details><DisclosureSummary><time dateTime={event.receivedAt}>{new Date(event.receivedAt).toLocaleTimeString()}</time> · {event.type}</DisclosureSummary><pre>{pretty(event.data)}</pre></details></li>)}</ol></details>
+      {data.endpoint?.endsWith('/responses')&&<details open><DisclosureSummary>{uiText("Live output")}</DisclosureSummary><pre>{outputText(data)||uiText("Waiting for output…")}</pre></details>}
+      <details open><DisclosureSummary>{uiText("Request body")}</DisclosureSummary><pre>{pretty(data.request)}</pre></details>
+      <details open><DisclosureSummary>{uiText("Provider response") + " "}{data.status==='running'?uiText("so far"):''}</DisclosureSummary><pre>{data.response?pretty(data.response):data.responseBody||uiText("Waiting for response…")}</pre></details>
+      <details><DisclosureSummary>{uiText("Raw response body")}</DisclosureSummary><pre>{data.responseBody||uiText("Waiting for response…")}</pre></details>
+      <details><DisclosureSummary>{uiText("Response metadata")}</DisclosureSummary><pre>{pretty(data.responseHeaders)}</pre></details>
+      <details><DisclosureSummary>{uiText("Stream events (")}{data.events.length})</DisclosureSummary><ol className="ai-debug-events">{data.events.map(event=><li key={event.sequence}><details><DisclosureSummary><time dateTime={event.receivedAt}>{new Date(event.receivedAt).toLocaleTimeString()}</time> · {event.type}</DisclosureSummary><pre>{pretty(event.data)}</pre></details></li>)}</ol></details>
     </>}
-    <div className="dialog-actions"><button className="button" disabled={!data} onClick={download}>Download JSON</button><button className="button primary" onClick={onClose}>Back to activity</button></div>
+    <div className="dialog-actions"><button className="button" disabled={!data} onClick={download}>{uiText("Download JSON")}</button><button className="button primary" onClick={onClose}>{uiText("Back to activity")}</button></div>
   </Modal>;
 }

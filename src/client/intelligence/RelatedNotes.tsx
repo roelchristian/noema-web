@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import {useEffect,useId,useState} from 'react';
 import type {Page} from '../../shared/domain';
 import type {RelatedNote} from '../../shared/embeddings';
@@ -26,12 +27,12 @@ export function RelatedNotes({page,onOpenPage,inactive=false}:{page:Page;onOpenP
     return()=>{controller.abort();stop();};
   },[page.vault_id,page.id,page.revision,inactive,retry]);
   return <section className="knowledge-note-links knowledge-related-notes" aria-labelledby={id+'-heading'}>
-    <div className="knowledge-section-heading"><h2 id={id+'-heading'}><Icon name="lightbulb"/>Related notes<span className="knowledge-count">{notes.length}</span></h2></div>
-    {notes.length>0&&<ul className="page-sources-list" aria-label="Related notes">{notes.map(note=><li className="page-sources-row" key={note.pageId}>
+    <div className="knowledge-section-heading"><h2 id={id+'-heading'}><Icon name="lightbulb"/>{uiText("Related notes")}<span className="knowledge-count">{notes.length}</span></h2></div>
+    {notes.length>0&&<ul className="page-sources-list" aria-label={uiText("Related notes")}>{notes.map(note=><li className="page-sources-row" key={note.pageId}>
       <button type="button" className="page-sources-open" disabled={inactive} onClick={()=>onOpenPage(note.pageId)} title={note.excerpt}>
         <span className="page-sources-copy"><span className="page-sources-name"><TitleText text={note.title||'Untitled'}/></span><span className="related-note-excerpt">{note.excerpt}</span></span><Icon name="chevron"/>
       </button>
     </li>)}</ul>}
-    {error?<p className="section-hint" role="alert">{error} <button type="button" className="summary-toggle" disabled={inactive} onClick={()=>setRetry(value=>value+1)}>Retry</button></p>:!notes.length&&<p className="section-hint" role="status">{loading?'Finding related notes…':'No related notes yet. Connections will appear here as your library grows.'}</p>}
+    {error?<p className="section-hint" role="alert">{error} <button type="button" className="summary-toggle" disabled={inactive} onClick={()=>setRetry(value=>value+1)}>{uiText("Retry")}</button></p>:!notes.length&&<p className="section-hint" role="status">{loading?uiText("Finding related notes…"):uiText("No related notes yet. Connections will appear here as your library grows.")}</p>}
   </section>;
 }

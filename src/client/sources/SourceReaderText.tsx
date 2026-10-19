@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import {Fragment,type ReactNode} from 'react';
 import {safeHref} from '../../shared/domain';
 import type {SourceHighlight} from '../../shared/source-reading';
@@ -14,12 +15,12 @@ function TextLeaf({text,start,highlights}:{text:string;start:number;highlights:S
   const boundaries=[...new Set([start,start+text.length,...highlights.flatMap(item=>[item.startOffset,item.endOffset]).filter(point=>point>start&&point<start+text.length)])].sort((a,b)=>a-b);
   return <>{boundaries.slice(0,-1).map((from,index)=>{
     const to=boundaries[index+1]!,highlight=activeHighlight(highlights,from,to),value=text.slice(from-start,to-start);
-    return highlight?<mark key={from} role="button" tabIndex={0} aria-label="Edit highlight" title="Change highlight color or add a reading note" className="source-highlight" data-color={highlight.color} data-highlight-id={highlight.id} data-source-start={from} data-source-end={to}>{value}</mark>:<span key={from} data-source-start={from} data-source-end={to}>{value}</span>;
+    return highlight?<mark key={from} role="button" tabIndex={0} aria-label={uiText("Edit highlight")} title={uiText("Change highlight color or add a reading note")} className="source-highlight" data-color={highlight.color} data-highlight-id={highlight.id} data-source-start={from} data-source-end={to}>{value}</mark>:<span key={from} data-source-start={from} data-source-end={to}>{value}</span>;
   })}</>;
 }
 function MathLeaf({source,display,start,end,highlights}:{source:string;display:boolean;start:number;end:number;highlights:SourceHighlight[]}) {
   const highlight=activeHighlight(highlights,start,end);
-  return <span role={highlight?'button':undefined} tabIndex={highlight?0:undefined} aria-label={highlight?'Edit highlight':undefined} title={highlight?'Change highlight color or add a reading note':undefined} className={`${display?'summary-math-display':'summary-math-inline'}${highlight?' source-highlight':''}`} data-color={highlight?.color} data-highlight-id={highlight?.id} data-source-start={start} data-source-end={end} data-source-atomic="true" dangerouslySetInnerHTML={{__html:renderMath(source,display)}}/>;
+  return <span role={highlight?'button':undefined} tabIndex={highlight?0:undefined} aria-label={highlight?uiText("Edit highlight"):undefined} title={highlight?uiText("Change highlight color or add a reading note"):undefined} className={`${display?'summary-math-display':'summary-math-inline'}${highlight?' source-highlight':''}`} data-color={highlight?.color} data-highlight-id={highlight?.id} data-source-start={start} data-source-end={end} data-source-atomic="true" dangerouslySetInnerHTML={{__html:renderMath(source,display)}}/>;
 }
 /** Raw offsets belong to the immutable imported text, including Markdown delimiters. */
 export function SourceReaderInline({text,startOffset=0,highlights=[],footnotePrefix='source-footnote'}:ReaderProps) {
@@ -49,7 +50,7 @@ export function SourceReaderInline({text,startOffset=0,highlights=[],footnotePre
       node=bold?<strong>{child}</strong>:strike?<s>{child}</s>:<em>{child}</em>;
     } else if(match[14]!==undefined) {
       const label=match[14],target=`${footnotePrefix}-note-${encodeURIComponent(label)}`;
-      node=<sup className="source-reader-footnote-reference"><a href={`#${target}`} data-footnote-reference={target} data-source-start={offset} data-source-end={offset+match[0].length} data-source-atomic="true" aria-label={`Footnote ${label}`} onClick={event=>{event.preventDefault();const note=document.getElementById(target);if(note){note.scrollIntoView({block:'center'});note.focus({preventScroll:true});}}}>{label.replace(/^p\d+-/, '')}</a></sup>;
+      node=<sup className="source-reader-footnote-reference"><a href={`#${target}`} data-footnote-reference={target} data-source-start={offset} data-source-end={offset+match[0].length} data-source-atomic="true" aria-label={uiText("Footnote {value0}",{value0: label})} onClick={event=>{event.preventDefault();const note=document.getElementById(target);if(note){note.scrollIntoView({block:'center'});note.focus({preventScroll:true});}}}>{label.replace(/^p\d+-/, '')}</a></sup>;
     } else {
       const source=(match[10]??match[11]??match[12]??match[13]??'').trim();
       node=<MathLeaf source={source} display={match[10]!==undefined||match[11]!==undefined} start={offset} end={offset+match[0].length} highlights={highlights}/>;
@@ -107,7 +108,7 @@ export function SourceReaderText({text,kind,startOffset=0,highlights=[],footnote
       let end=i;
       while(end+1<lines.length&&(/^(?: {4}|\t)/.test(lines[end+1]!.text)||!lines[end+1]!.text.trim()&&/^(?: {4}|\t)/.test(lines[end+2]?.text??'')))end++;
       const from=line.start+footnote[0].length,to=lines[end]!.end;
-      blocks.push(<aside key={key} id={target} tabIndex={-1} className="source-reader-footnote" aria-label={`Footnote ${label}`}><span className="source-reader-footnote-label">{label.replace(/^p\d+-/, '')}</span><SourceReaderText text={text.slice(from-startOffset,to-startOffset)} startOffset={from} highlights={highlights} footnotePrefix={footnotePrefix}/><button type="button" className="source-reader-footnote-back" aria-label={`Back to footnote ${label} reference`} onClick={()=>{const reference=Array.from(document.querySelectorAll<HTMLAnchorElement>('a[data-footnote-reference]')).find(element=>element.dataset.footnoteReference===target);reference?.scrollIntoView({block:'center'});reference?.focus({preventScroll:true});}}>↩</button></aside>);
+      blocks.push(<aside key={key} id={target} tabIndex={-1} className="source-reader-footnote" aria-label={uiText("Footnote {value0}",{value0: label})}><span className="source-reader-footnote-label">{label.replace(/^p\d+-/, '')}</span><SourceReaderText text={text.slice(from-startOffset,to-startOffset)} startOffset={from} highlights={highlights} footnotePrefix={footnotePrefix}/><button type="button" className="source-reader-footnote-back" aria-label={uiText("Back to footnote {value0} reference",{value0: label})} onClick={()=>{const reference=Array.from(document.querySelectorAll<HTMLAnchorElement>('a[data-footnote-reference]')).find(element=>element.dataset.footnoteReference===target);reference?.scrollIntoView({block:'center'});reference?.focus({preventScroll:true});}}>↩</button></aside>);
       i=end;continue;
     }
     if(trimmed.startsWith('$$')||trimmed.startsWith('\\[')) {
@@ -146,7 +147,7 @@ export function SourceReaderText({text,kind,startOffset=0,highlights=[],footnote
       const ordered=!!item[2],items:ReactNode[]=[];let current=item;
       while(true) {
         const currentLine=lines[i]!,value=current[4]??'';
-        items.push(<li key={currentLine.start}>{current[3]!==undefined&&<input type="checkbox" checked={current[3].toLowerCase()==='x'} disabled aria-label="Completed task"/>}{inline(value,currentLine.end-value.length)}</li>);
+        items.push(<li key={currentLine.start}>{current[3]!==undefined&&<input type="checkbox" checked={current[3].toLowerCase()==='x'} disabled aria-label={uiText("Completed task")}/>}{inline(value,currentLine.end-value.length)}</li>);
         const next=lines[i+1]?.text.match(/^\s*(?:([-*+])|(\d+)[.)])\s+(?:\[([ xX])\]\s*)?(.*)$/);
         if(!next||!!next[2]!==ordered)break;
         current=next;i++;

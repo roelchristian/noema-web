@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import { useEffect, useRef, useSyncExternalStore, type ReactNode } from 'react';
 
 const mobileQuery = '(max-width: 750px)';
@@ -33,7 +34,7 @@ export function WorkspaceNavigation({mobile, open, onClose, children}: {
     return event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom;
   }
   if (!mobile) return <div className="workspace-navigation-desktop">{children}</div>;
-  return <dialog ref={ref} id="workspace-navigation" className="workspace-navigation" aria-label="Workspace navigation"
+  return <dialog ref={ref} id="workspace-navigation" className="workspace-navigation" aria-label={uiText("Workspace navigation")}
     onCancel={event => { event.preventDefault(); onClose(); }}
     onKeyDown={event => { if (event.key === 'Escape') event.stopPropagation(); }}
     onPointerDown={event => { backdropDown.current = isBackdrop(event); }}

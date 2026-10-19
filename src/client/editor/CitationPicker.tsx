@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {citationKey,citationLocation,noteCitations} from '../../shared/citations';
 import type {Block,Entity,EntityDetail,SourceFile,SourceReference} from '../../shared/domain';
@@ -108,46 +109,46 @@ export function CitationPicker({vaultId,entities,blocks,getAnchor,editor,onInser
   },[onClose]);
   const choose=(entity:Entity)=>{setSource(entity);setQuery('');setIndex(0);};
   const insert=()=>{if(file)onInsert(locations.map(location=>location.reference?{...location.reference,id:randomUUID()}:referenceFor(file,location)));};
-  return <div ref={popup} className="citation-picker selection-popover" role="dialog" aria-modal="false" aria-label="Add citation" onMouseDown={event=>{if((event.target as Element).closest('button'))event.preventDefault();}} onKeyDown={event=>{
+  return <div ref={popup} className="citation-picker selection-popover" role="dialog" aria-modal="false" aria-label={uiText("Add citation")} onMouseDown={event=>{if((event.target as Element).closest('button'))event.preventDefault();}} onKeyDown={event=>{
     if(event.key==='Escape'){event.preventDefault();event.stopPropagation();onClose(true);}
   }}>
-    <div className="citation-picker-heading"><Icon name="source"/><strong>Add citation</strong><button type="button" aria-label="Close citation picker" onClick={()=>onClose(true)}><Icon name="close"/></button></div>
+    <div className="citation-picker-heading"><Icon name="source"/><strong>{uiText("Add citation")}</strong><button type="button" aria-label={uiText("Close citation picker")} onClick={()=>onClose(true)}><Icon name="close"/></button></div>
     {!source?<>
-      <input ref={search} aria-label="Search citation sources" placeholder="Search sources…" value={query} role="combobox" aria-autocomplete="list" aria-expanded={choiceCount>0} aria-controls="citation-source-options" aria-activedescendant={index<choiceCount?optionId(index):undefined} onChange={event=>{setQuery(event.target.value);setIndex(0);}} onKeyDown={event=>{
+      <input ref={search} aria-label={uiText("Search citation sources")} placeholder={uiText("Search sources…")} value={query} role="combobox" aria-autocomplete="list" aria-expanded={choiceCount>0} aria-controls="citation-source-options" aria-activedescendant={index<choiceCount?optionId(index):undefined} onChange={event=>{setQuery(event.target.value);setIndex(0);}} onKeyDown={event=>{
         if((event.key==='ArrowDown'||event.key==='ArrowUp')&&choiceCount){event.preventDefault();const next=(index+(event.key==='ArrowDown'?1:-1)+choiceCount)%choiceCount;setIndex(next);popup.current?.querySelector(`#${optionId(next)}`)?.scrollIntoView({block:'nearest'});}
         if(event.key==='Enter'&&index<choiceCount){event.preventDefault();choose(sources[index]!);}
       }}/>
-      <div id="citation-source-options" className="citation-picker-options" role="listbox" aria-label="Sources">
-        {[{label:'Already in this page',items:pageSources,offset:0},{label:'Other sources',items:otherSources,offset:pageSources.length}].map(group=>group.items.length>0&&<div key={group.label} role="group" aria-label={group.label}>
+      <div id="citation-source-options" className="citation-picker-options" role="listbox" aria-label={uiText("Sources")}>
+        {[{label:uiText("Already in this page"),items:pageSources,offset:0},{label:uiText("Other sources"),items:otherSources,offset:pageSources.length}].map(group=>group.items.length>0&&<div key={group.label} role="group" aria-label={group.label}>
           {pageSources.length>0&&<div className="citation-picker-group-label" aria-hidden="true">{group.label}</div>}
           {group.items.map((entity,i)=>{const position=i+group.offset;return <button type="button" id={optionId(position)} key={entity.id} role="option" aria-selected={index===position} className={index===position?'highlight':''} onClick={()=>choose(entity)}><Icon name="source"/><span title={entity.name}>{entity.name}</span><Icon name="chevron"/></button>;})}
         </div>)}
       </div>
-      {!choiceCount&&<p className="citation-picker-help">{query?'No matching sources. Try another name.':'Add a source to your library to cite it here.'}</p>}
+      {!choiceCount&&<p className="citation-picker-help">{query?uiText("No matching sources. Try another name."):uiText("Add a source to your library to cite it here.")}</p>}
     </>:<>
-      <button type="button" className="citation-picker-source" onClick={()=>{setSource(null);setFileId('');setFile(null);setError('');requestAnimationFrame(()=>search.current?.focus());}}><span>‹ Change</span><strong title={source.name}>{source.name}</strong></button>
-      {files&&files.length>1&&<label className="citation-picker-label">File<select aria-label="Source file" value={fileId} onChange={event=>setFileId(event.target.value)}>{files.map(file=><option key={file.id} value={file.id}>{file.name}</option>)}</select></label>}
-      {!error&&(!files||fileId&&!file)&&<p className="citation-picker-help" role="status">Loading source…</p>}
-      {files?.length===0&&<p className="citation-picker-help">This source has no processed files yet. Add a file in source details, then cite it here.</p>}
+      <button type="button" className="citation-picker-source" onClick={()=>{setSource(null);setFileId('');setFile(null);setError('');requestAnimationFrame(()=>search.current?.focus());}}><span>{uiText("‹ Change")}</span><strong title={source.name}>{source.name}</strong></button>
+      {files&&files.length>1&&<label className="citation-picker-label">{uiText("File")}<select aria-label={uiText("Source file")} value={fileId} onChange={event=>setFileId(event.target.value)}>{files.map(file=><option key={file.id} value={file.id}>{file.name}</option>)}</select></label>}
+      {!error&&(!files||fileId&&!file)&&<p className="citation-picker-help" role="status">{uiText("Loading source…")}</p>}
+      {files?.length===0&&<p className="citation-picker-help">{uiText("This source has no processed files yet. Add a file in source details, then cite it here.")}</p>}
       {file&&<form className="citation-range-form" onSubmit={event=>{event.preventDefault();insert();}}>
-        <label className="citation-picker-label citation-range-label" htmlFor="citation-location">Location <span title="Leave blank to cite the whole source">optional</span></label>
-        <p id="citation-location-help" className="block-drag-sr">Any location, or leave blank for the whole source.</p>
-        {locations.map((location,i)=><div className="citation-picker-range" key={i}><input id={i===active?'citation-location':undefined} ref={i===active?locationInput:undefined} aria-label={`Citation location ${i+1}`} aria-describedby="citation-location-help" placeholder="pp. 12–18, L20–65, Appendix B…" maxLength={1000} value={location.label} onFocus={()=>setActive(i)} onChange={event=>{setActive(i);setLocations(values=>values.map((value,index)=>index===i?{label:event.target.value}:value));}}/>{locations.length>1&&<button type="button" aria-label={`Remove location ${i+1}`} onClick={()=>{setLocations(values=>values.filter((_,index)=>index!==i));setActive(0);}}><Icon name="close"/></button>}</div>)}
+        <label className="citation-picker-label citation-range-label" htmlFor="citation-location">{uiText("Location") + " "}<span title={uiText("Leave blank to cite the whole source")}>{uiText("optional")}</span></label>
+        <p id="citation-location-help" className="block-drag-sr">{uiText("Any location, or leave blank for the whole source.")}</p>
+        {locations.map((location,i)=><div className="citation-picker-range" key={i}><input id={i===active?'citation-location':undefined} ref={i===active?locationInput:undefined} aria-label={uiText("Citation location {value0}",{value0: i+1})} aria-describedby="citation-location-help" placeholder={uiText("pp. 12–18, L20–65, Appendix B…")} maxLength={1000} value={location.label} onFocus={()=>setActive(i)} onChange={event=>{setActive(i);setLocations(values=>values.map((value,index)=>index===i?{label:event.target.value}:value));}}/>{locations.length>1&&<button type="button" aria-label={uiText("Remove location {value0}",{value0: i+1})} onClick={()=>{setLocations(values=>values.filter((_,index)=>index!==i));setActive(0);}}><Icon name="close"/></button>}</div>)}
         {(matchingRanges.length>0||suggestions.length>0)&&<div className="citation-picker-options citation-section-options">
-          {matchingRanges.length>0&&<div role="group" aria-label="Already cited ranges">
-            <div className="citation-picker-group-label" aria-hidden="true">Already cited</div>
+          {matchingRanges.length>0&&<div role="group" aria-label={uiText("Already cited ranges")}>
+            <div className="citation-picker-group-label" aria-hidden="true">{uiText("Already cited")}</div>
             {matchingRanges.map(({reference,number})=><button type="button" key={citationKey(reference)} className={current.reference&&citationKey(current.reference)===citationKey(reference)?'highlight':''} onClick={()=>{updateLocation({label:citationLocation(reference),reference});locationInput.current?.focus();}}>
               <span title={reference.contextLabel??citationLocation(reference)}>{citationLocation(reference)}</span><small>[{number}]</small>
             </button>)}
           </div>}
-          {suggestions.length>0&&<div role="group" aria-label="Suggested sections">
-            {matchingRanges.length>0&&<div className="citation-picker-group-label" aria-hidden="true">Sections</div>}
+          {suggestions.length>0&&<div role="group" aria-label={uiText("Suggested sections")}>
+            {matchingRanges.length>0&&<div className="citation-picker-group-label" aria-hidden="true">{uiText("Sections")}</div>}
             {suggestions.map(({node,path})=><button type="button" key={node.id} className={current.nodeId===node.id?'highlight':''} onClick={()=>{updateLocation({label:sourceNodeLabel(path),nodeId:node.id});locationInput.current?.focus();}}><span title={sourceNodeLabel(path)}>{node.title}</span><small title={sourceNodeLocator(path)}>{sourceNodeLocator(path)}</small></button>)}
           </div>}
         </div>}
-        <div className="citation-picker-actions"><button type="button" onClick={()=>{setLocations(values=>[...values,{label:''}]);setActive(locations.length);requestAnimationFrame(()=>locationInput.current?.focus());}}>+ Add range</button><button type="submit" className="button citation-picker-insert">Insert {locations.length>1?`${locations.length} citations`:'citation'}</button></div>
+        <div className="citation-picker-actions"><button type="button" onClick={()=>{setLocations(values=>[...values,{label:''}]);setActive(locations.length);requestAnimationFrame(()=>locationInput.current?.focus());}}>{uiText("+ Add range")}</button><button type="submit" className="button citation-picker-insert">{uiText("Insert") + " "}{locations.length>1?uiText("{value0} citations",{value0: locations.length}):uiText("citation")}</button></div>
       </form>}
     </>}
-    {error&&<p className="citation-picker-error" role="alert">{error} <button type="button" onClick={()=>setRetry(value=>value+1)}>Retry</button></p>}
+    {error&&<p className="citation-picker-error" role="alert">{error} <button type="button" onClick={()=>setRetry(value=>value+1)}>{uiText("Retry")}</button></p>}
   </div>;
 }

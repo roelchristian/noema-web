@@ -1,3 +1,5 @@
+import {getLocale} from '../i18n';
+import {t as uiText} from '../i18n';
 import {readingNoteMaxWords,readingNoteWordCount} from '../../shared/source-reading';
 import {projectPageText} from '../../shared/page-text';
 import {PageTableOfContents} from './PageTableOfContents';
@@ -24,10 +26,10 @@ const wordSegmenter = new Intl.Segmenter(undefined, {granularity:'word'});
 function editedLabel(updatedAt: string, now: number): string {
   const timestamp = Date.parse(updatedAt);
   const seconds = Number.isFinite(timestamp) ? Math.max(0, (now - timestamp) / 1000) : 0;
-  if (seconds < 60) return 'Edited just now';
+  if (seconds < 60) return uiText("Edited just now");
   const units = [[31536000, 'year'], [2592000, 'month'], [604800, 'week'], [86400, 'day'], [3600, 'hour'], [60, 'minute']] as const;
   const [size, unit] = units.find(([size]) => seconds >= size)!;
-  return 'Edited ' + new Intl.RelativeTimeFormat('en', {numeric: 'always'}).format(-Math.floor(seconds / size), unit);
+  return uiText('Edited {time}',{time:new Intl.RelativeTimeFormat(getLocale(), {numeric:'always'}).format(-Math.floor(seconds/size),unit)});
 }
 export function PageEditor({tocVisible=true,headings=[],subjectsSaving=false,citationStyle='references',pages,onOpenPage,page, entities, onChange, onOpenEntity, onCreateEntity, onSave, onIdentify, onAddAlias, saveStatus}: Props) {
   const provenance=pageAIProvenance(page);
@@ -82,12 +84,12 @@ export function PageEditor({tocVisible=true,headings=[],subjectsSaving=false,cit
     return () => { clearTimeout(timer); document.removeEventListener('selectionchange', schedule); document.removeEventListener('compositionend', schedule); };
   }, [page.id, page.blocks, page.pageDomains, page.conceptContentHash, page.editLocked, entities, onIdentify]);
   const hasTitleMath=useMemo(()=>titleHasMath(page.title),[page.title]);
-  const status = {saved: editedLabel(page.updated_at, now), pending: 'Waiting to save…', identifying: 'Identifying entities…', saving: 'Saving…', error: 'Could not save changes'}[saveStatus];
-  return <CitationPresentationContext.Provider value={citationPresentation}><article ref={article} className="page" inert={subjectsSaving} aria-busy={subjectsSaving} onCompositionStart={event => { event.currentTarget.dataset.entityComposing = 'true'; }} onCompositionEnd={event => { delete event.currentTarget.dataset.entityComposing; }}>
-    <h1 className={"page-title-heading page-heading"+(hasTitleMath?" has-title-math":"")+(page.editLocked?" is-title-locked":"")} aria-label={page.title || 'Untitled'}><input ref={title} id="page-title" aria-label="Page title" title="Use $…$ or \(…\) for math" placeholder="Untitled" maxLength={500} readOnly={!!page.editLocked} onKeyDown={event=>{if(event.key==='Enter'&&!event.nativeEvent.isComposing){event.preventDefault();event.currentTarget.blur();}}} value={page.title} onChange={e => onChange({title: smartQuoteTitle(e.currentTarget, e.nativeEvent as InputEvent)})}/>{hasTitleMath&&<span className="page-title-preview" aria-hidden="true"><TitleText text={page.title}/></span>}</h1>
-    {page.readingNote&&<aside className="source-reading-note-context" aria-label="Reading note context"><strong>Reading note · {readingNoteWordCount(projectPageText(page.blocks,id=>entityMentionName(entities.find(entity=>entity.id===id))).text)} / {readingNoteMaxWords} words</strong><p>{page.readingNote.sourceId?<button type="button" onClick={()=>onOpenEntity(page.readingNote!.sourceId!)}>Open source</button>:'Original source unavailable'}</p><blockquote>{page.readingNote.excerpt}</blockquote></aside>}
+  const status = {saved: editedLabel(page.updated_at, now), pending: uiText("Waiting to save…"), identifying: uiText("Identifying entities…"), saving: uiText("Saving…"), error: uiText("Could not save changes")}[saveStatus];
+  return <CitationPresentationContext.Provider value={citationPresentation}><article ref={article} className="page" lang={page.language??undefined} inert={subjectsSaving} aria-busy={subjectsSaving} onCompositionStart={event => { event.currentTarget.dataset.entityComposing = 'true'; }} onCompositionEnd={event => { delete event.currentTarget.dataset.entityComposing; }}>
+    <h1 className={"page-title-heading page-heading"+(hasTitleMath?" has-title-math":"")+(page.editLocked?" is-title-locked":"")} aria-label={page.title || uiText("Untitled")}><input ref={title} id="page-title" aria-label={uiText("Page title")} title={uiText("Use $…$ or \\(…\\) for math")} placeholder={uiText("Untitled")} maxLength={500} readOnly={!!page.editLocked} onKeyDown={event=>{if(event.key==='Enter'&&!event.nativeEvent.isComposing){event.preventDefault();event.currentTarget.blur();}}} value={page.title} onChange={e => onChange({title: smartQuoteTitle(e.currentTarget, e.nativeEvent as InputEvent)})}/>{hasTitleMath&&<span className="page-title-preview" aria-hidden="true"><TitleText text={page.title}/></span>}</h1>
+    {page.readingNote&&<aside className="source-reading-note-context" aria-label={uiText("Reading note context")}><strong>{uiText("Reading note ·") + " "}{readingNoteWordCount(projectPageText(page.blocks,id=>entityMentionName(entities.find(entity=>entity.id===id))).text)} / {readingNoteMaxWords}{" " + uiText("words")}</strong><p>{page.readingNote.sourceId?<button type="button" onClick={()=>onOpenEntity(page.readingNote!.sourceId!)}>{uiText("Open source")}</button>:uiText("Original source unavailable")}</p><blockquote>{page.readingNote.excerpt}</blockquote></aside>}
     {headings.length>0&&<PageTableOfContents key={page.vault_id+'/'+page.id} headings={headings} showDocument={tocVisible} articleRef={article}/>}
-    {page.editLocked && <div className="page-edit-lock-status" role="status"><Icon name="lock"/><span>Locked for editing{page.editProtected ? ' · Password protected' : ''}</span></div>}
+    {page.editLocked && <div className="page-edit-lock-status" role="status"><Icon name="lock"/><span>{uiText("Locked for editing")}{page.editProtected ? uiText(" · Password protected") : ''}</span></div>}
     {reviewError && <p className="entity-review-error" role="alert">{reviewError}</p>}
     {!page.editLocked && <EntityMatchReview matches={reviewMatches} entities={entities} disabled={resolving} onResolve={async resolution => {
       if (!cache || resolving) return;
@@ -104,12 +106,12 @@ export function PageEditor({tocVisible=true,headings=[],subjectsSaving=false,cit
     {citationStyle==='references'&&<NoteReferences blocks={page.blocks} entities={entities}/>}
     <footer className={'editor-save-status' + (saveStatus === 'error' ? ' is-error' : '')}>
       {saveStatus === 'saving' || saveStatus === 'identifying' ? <span className="scan-spinner" aria-hidden="true"/> : <Icon name={saveStatus === 'saved' ? 'recent' : saveStatus === 'error' ? 'alert' : 'recent'}/>}
-      <span role="status" aria-live="polite" aria-atomic="true">{saveStatus === 'saved' ? <time dateTime={page.updated_at} title={new Date(page.updated_at).toLocaleString()}>{status}</time> : status}</span>
-      {saveStatus === 'error' && <button type="button" onClick={onSave}>Retry</button>}
-      <span className="editor-entity-counts" role="group" aria-label="Page statistics">
-        <span className="editor-entity-count" title="Distinct entities on this page"><Icon name="knowledge"/><span>{entityCounts} {entityCounts === 1 ? 'entity' : 'entities'}</span></span>
-        <span className="editor-word-count" title="Words in note text">{wordCount.toLocaleString()} {wordCount === 1 ? 'word' : 'words'}</span>
-        <span className="page-ai-provenance" aria-label={'AI provenance: ' + provenance.label} title={provenance.description}><Icon name={provenance.assisted ? 'sparkles' : 'page'}/><span>{provenance.label}</span></span>
+      <span role="status" aria-live="polite" aria-atomic="true">{saveStatus === 'saved' ? <time dateTime={page.updated_at} title={new Date(page.updated_at).toLocaleString(getLocale())}>{status}</time> : status}</span>
+      {saveStatus === 'error' && <button type="button" onClick={onSave}>{uiText("Retry")}</button>}
+      <span className="editor-entity-counts" role="group" aria-label={uiText("Page statistics")}>
+        <span className="editor-entity-count" title={uiText("Distinct entities on this page")}><Icon name="knowledge"/><span>{entityCounts} {entityCounts === 1 ? uiText("entity") : uiText("entities")}</span></span>
+        <span className="editor-word-count" title={uiText("Words in note text")}>{wordCount.toLocaleString(getLocale())} {wordCount === 1 ? uiText("word") : uiText("words")}</span>
+        <span className="page-ai-provenance" aria-label={uiText("AI provenance: ") + uiText(provenance.label)} title={uiText(provenance.description)}><Icon name={provenance.assisted ? 'sparkles' : 'page'}/><span>{uiText(provenance.label)}</span></span>
       </span>
     </footer>
   </article></CitationPresentationContext.Provider>;

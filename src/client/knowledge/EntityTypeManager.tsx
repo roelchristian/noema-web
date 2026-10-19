@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import { useState, type FormEvent } from 'react';
 import { entityLabels, entityTypes, type EntityType } from '../../shared/domain';
 import type { EntitySchema } from '../../shared/entity-schema';
@@ -29,29 +30,29 @@ export function EntityTypeManager({vaultId, schema, onChange, entityColors, onCo
     finally { setBusy(false); }
   }
   return <div className="entity-type-manager"><div className="type-manager-body">
-    <div className="entity-type-options" role="group" aria-label="Main entity type">{entityTypes.map(t => <button key={t} type="button" aria-pressed={type === t} disabled={busy} onClick={() => { setType(t); setSelectedSubtype(''); setProperty(''); setError(''); }}><span className={'entity-icon ' + t}><Icon name={t}/></span>{entityLabels[t]}</button>)}</div>
+    <div className="entity-type-options" role="group" aria-label={uiText("Main entity type")}>{entityTypes.map(t => <button key={t} type="button" aria-pressed={type === t} disabled={busy} onClick={() => { setType(t); setSelectedSubtype(''); setProperty(''); setError(''); }}><span className={'entity-icon ' + t}><Icon name={t}/></span>{uiText(entityLabels[t])}</button>)}</div>
     <div>
-      <h3>{entityLabels[type]} color</h3>
-      <p className="section-hint">Applies to icons and mentions, including subtypes.</p>
+      <h3>{uiText(entityLabels[type])}{" " + uiText("color")}</h3>
+      <p className="section-hint">{uiText("Applies to icons and mentions, including subtypes.")}</p>
       <div className="entity-color-row">
-        <label htmlFor={'color-' + type}>{entityLabels[type]}</label>
-        <span className={'mention ' + type} aria-hidden="true"><Icon name={type}/>{entityLabels[type]}</span>
+        <label htmlFor={'color-' + type}>{uiText(entityLabels[type])}</label>
+        <span className={'mention ' + type} aria-hidden="true"><Icon name={type}/>{uiText(entityLabels[type])}</span>
         <ColorPicker key={type} id={'color-' + type} label={entityLabels[type] + ' color'} value={entityColors[type]} onChange={color => onColorChange(type, color)}/>
       </div>
     </div>
-    <div><h3>Subtypes of {entityLabels[type]}</h3><p className="section-hint">Group entities with shared fields.</p><div className="type-field-list">{schema.subtypes.filter(s => s.type === type).map(s => <span key={s.id}><Icon name={type}/>{s.name}</span>)}</div>
-      <form className="type-add-form" onSubmit={e => { void save(e,'subtype'); }}><input required maxLength={200} aria-label="New subtype name" placeholder="e.g. Researcher" value={subtype} disabled={busy} onChange={e => setSubtype(e.target.value)}/><button className="button small" disabled={busy}>Add subtype</button></form>
+    <div><h3>{uiText("Subtypes of") + " "}{uiText(entityLabels[type])}</h3><p className="section-hint">{uiText("Group entities with shared fields.")}</p><div className="type-field-list">{schema.subtypes.filter(s => s.type === type).map(s => <span key={s.id}><Icon name={type}/>{s.name}</span>)}</div>
+      <form className="type-add-form" onSubmit={e => { void save(e,'subtype'); }}><input required maxLength={200} aria-label={uiText("New subtype name")} placeholder={uiText("e.g. Researcher")} value={subtype} disabled={busy} onChange={e => setSubtype(e.target.value)}/><button className="button small" disabled={busy}>{uiText("Add subtype")}</button></form>
     </div>
-    <div><h3>Shared category properties</h3><p className="section-hint">Fields shared by all entities in this category.</p><div className="type-field-list">{schema.properties[type].map(name => <span key={name}>{name}</span>)}</div></div>
-    <div><h3>Subtype properties</h3>
+    <div><h3>{uiText("Shared category properties")}</h3><p className="section-hint">{uiText("Fields shared by all entities in this category.")}</p><div className="type-field-list">{schema.properties[type].map(name => <span key={name}>{name}</span>)}</div></div>
+    <div><h3>{uiText("Subtype properties")}</h3>
       {propertySubtype ? <>
-        <Select aria-label="Subtype for property definitions" value={propertySubtype.id} disabled={busy} onChange={event => { setSelectedSubtype(event.target.value); setProperty(''); }}>
+        <Select aria-label={uiText("Subtype for property definitions")} value={propertySubtype.id} disabled={busy} onChange={event => { setSelectedSubtype(event.target.value); setProperty(''); }}>
           {subtypes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
         </Select>
-        <p className="section-hint">Fields shared by all {propertySubtype.name} entities.</p>
+        <p className="section-hint">{uiText("Fields shared by all") + " "}{propertySubtype.name}{" " + uiText("entities.")}</p>
         <div className="type-field-list">{(schema.subtypeProperties[propertySubtype.id] ?? []).map(name => <span key={name}>{name}</span>)}</div>
-        <form className="type-add-form" onSubmit={event => { void save(event,'property'); }}><input required maxLength={200} aria-label="New subtype property" placeholder="e.g. occupation" value={property} disabled={busy} onChange={event => setProperty(event.target.value)}/><button className="button small" disabled={busy}>Add property to {propertySubtype.name}</button></form>
-      </> : <p className="section-hint">Create a subtype to define its properties.</p>}
+        <form className="type-add-form" onSubmit={event => { void save(event,'property'); }}><input required maxLength={200} aria-label={uiText("New subtype property")} placeholder={uiText("e.g. occupation")} value={property} disabled={busy} onChange={event => setProperty(event.target.value)}/><button className="button small" disabled={busy}>{uiText("Add property to") + " "}{propertySubtype.name}</button></form>
+      </> : <p className="section-hint">{uiText("Create a subtype to define its properties.")}</p>}
     </div>{error && <p role="alert" className="dialog-error">{error}</p>}
   </div></div>;
 }

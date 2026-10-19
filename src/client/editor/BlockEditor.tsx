@@ -1,3 +1,5 @@
+import {getLocale} from '../i18n';
+import {t as uiText} from '../i18n';
 import type {EditorReviewText,EditorReviewSuggestion} from '../../shared/editor-review';
 import {WritingReview} from './WritingReview';
 import {captureWritingReview,writingReviewChanges,applyWritingReviewEdits,type WritingReviewChange} from './writing-review';
@@ -60,18 +62,18 @@ function passagePreview(text: string) {
   return (boundary>120?start.slice(0,boundary):start).trimEnd()+'…';
 }
 const options: {type: BlockType; title: string; detail: string; icon: string}[] = [
-  {type: 'paragraph', title: 'Text', detail: 'Plain text for your thoughts', icon: 'T'},
-  {type: 'heading1', title: 'Heading 1', detail: 'A large section heading', icon: 'H₁'},
-  {type: 'heading2', title: 'Heading 2', detail: 'A smaller section heading', icon: 'H₂'},
-  {type: 'bullet', title: 'Bullet list', detail: 'A simple list of ideas', icon: '•'},
-  {type: 'numbered', title: 'Numbered list', detail: 'An ordered list of ideas', icon: '1.'},
-  {type: 'divider', title: 'Divider', detail: 'Separate sections with a horizontal line', icon: '―'},
-  {type: 'code', title: 'Code block', detail: 'Write code with preserved whitespace', icon: '</>'},
-  {type: 'todo', title: 'To-do', detail: 'Keep track of a task', icon: '☑'},
-  {type: 'columns', title: 'Two columns', detail: 'Side by side text that stacks on mobile', icon: '▥'},
-  {type: 'table', title: 'Table', detail: 'A simple table with rows and columns', icon: '▦'},
-  {type: 'math', title: 'Equation', detail: 'A LaTeX math equation', icon: 'equation'},
-  {type: 'quote', title: 'Quote', detail: 'Make a thought stand out', icon: '❝'},
+  {type: 'paragraph', get title(){return uiText("Text")}, get detail(){return uiText("Plain text for your thoughts")}, icon: 'T'},
+  {type: 'heading1', get title(){return uiText("Heading 1")}, get detail(){return uiText("A large section heading")}, icon: 'H₁'},
+  {type: 'heading2', get title(){return uiText("Heading 2")}, get detail(){return uiText("A smaller section heading")}, icon: 'H₂'},
+  {type: 'bullet', get title(){return uiText("Bullet list")}, get detail(){return uiText("A simple list of ideas")}, icon: '•'},
+  {type: 'numbered', get title(){return uiText("Numbered list")}, get detail(){return uiText("An ordered list of ideas")}, icon: '1.'},
+  {type: 'divider', get title(){return uiText("Divider")}, get detail(){return uiText("Separate sections with a horizontal line")}, icon: '―'},
+  {type: 'code', get title(){return uiText("Code block")}, get detail(){return uiText("Write code with preserved whitespace")}, icon: '</>'},
+  {type: 'todo', get title(){return uiText("To-do")}, get detail(){return uiText("Keep track of a task")}, icon: '☑'},
+  {type: 'columns', get title(){return uiText("Two columns")}, get detail(){return uiText("Side by side text that stacks on mobile")}, icon: '▥'},
+  {type: 'table', get title(){return uiText("Table")}, get detail(){return uiText("A simple table with rows and columns")}, icon: '▦'},
+  {type: 'math', get title(){return uiText("Equation")}, get detail(){return uiText("A LaTeX math equation")}, icon: 'equation'},
+  {type: 'quote', get title(){return uiText("Quote")}, get detail(){return uiText("Make a thought stand out")}, icon: '❝'},
 ];
 interface ImageUpload {id:string; after?:string; name:string; message:string; current:number; total:number}
 interface Choice {back?: boolean; danger?: boolean; disabled?: boolean; submenu?: boolean; color?:string; title: string; detail?: string; icon: string; entity?: boolean; pick: () => void}
@@ -90,7 +92,7 @@ function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOp
       node.className = fresh.className;
     });
   });
-  return <Content ref={el => { ref.current = el; register(el); }} className="block-content" contentEditable suppressContentEditableWarning spellCheck data-placeholder="Type / for blocks, @ for entities" onInput={e => { applySmartQuotes(e.currentTarget, e.nativeEvent as InputEvent); onInput(e.currentTarget,e.nativeEvent as InputEvent); }} onKeyDown={onKeyDown}
+  return <Content ref={el => { ref.current = el; register(el); }} className="block-content" contentEditable suppressContentEditableWarning spellCheck data-placeholder={uiText("Type / for blocks, @ for entities")} onInput={e => { applySmartQuotes(e.currentTarget, e.nativeEvent as InputEvent); onInput(e.currentTarget,e.nativeEvent as InputEvent); }} onKeyDown={onKeyDown}
     onClick={e => { const mention = (e.target as Element).closest<HTMLElement>('[data-entity]'); if (mention) onOpen(mention.dataset.entity!); }}
     onPaste={onPaste}/>;
 }
@@ -382,11 +384,11 @@ export function BlockEditor(props: Props) {
   }
   function explainLabel(ids: string[]) {
     const sources=aiExplanationSources(latest.current.blocks,ids);
-    return aiExplanationsForSources(latest.current.blocks,sources.map(block=>block.id)).length ? 'Regenerate AI explanation' : 'Explain with AI';
+    return aiExplanationsForSources(latest.current.blocks,sources.map(block=>block.id)).length ? uiText('Regenerate AI explanation') : uiText('Explain with AI');
   }
   function explainChoice(ids: string[]): Choice {
-    const regenerate=explainLabel(ids)==='Regenerate AI explanation';
-    return {title:explaining?'Explaining…':explainLabel(ids),detail:regenerate?'Replace the existing explanation for the full linked passage':'Add an explanation below these blocks',icon:'sparkles',entity:true,pick:()=>{setMenu(null);void explain(ids);}};
+    const regenerate=explainLabel(ids)===uiText('Regenerate AI explanation');
+    return {title:explaining?uiText("Explaining…"):explainLabel(ids),detail:regenerate?uiText("Replace the existing explanation for the full linked passage"):uiText("Add an explanation below these blocks"),icon:'sparkles',entity:true,pick:()=>{setMenu(null);void explain(ids);}};
   }
   function editInlineMath(node: HTMLElement) {
     const range = document.createRange(); range.selectNode(node);
@@ -478,12 +480,12 @@ export function BlockEditor(props: Props) {
     return uploads.filter(item => after ? item.after === after : !item.after || !blocks.some(block => block.id === item.after)).map(item =>
       <div key={item.id} className="image-upload-card" role="status" aria-live="polite" aria-busy="true">
         <span className="image-upload-spinner" aria-hidden="true"/>
-        <div><strong>{item.message}</strong><span>{item.name || 'Pasted image'}{item.total > 1 ? ` · ${item.current} of ${item.total}` : ''}</span></div>
+        <div><strong>{item.message}</strong><span>{item.name || uiText("Pasted image")}{item.total > 1 ? uiText(" · {value0} of {value1}",{value0: item.current,value1: item.total}) : ''}</span></div>
         <div className="image-upload-track" aria-hidden="true"><span/></div>
       </div>);
   }
   function imageChoice(after?: string, replace?: Block): Choice {
-    return {title:'Image', detail:'Upload an image from your device', icon:'▧', pick:() => chooseImages(after,replace)};
+    return {title:uiText("Image"), detail:uiText("Upload an image from your device"), icon:'▧', pick:() => chooseImages(after,replace)};
   }
   function semanticStyle(kind?: SemanticKind): CSSProperties | undefined {return kind ? {'--semantic-color':semanticFunctions[kind].color} as CSSProperties : undefined;}
   function semanticGlyph(kind?: SemanticKind) {return <>{kind && <span className="semantic-function-icon"><Icon name={semanticFunctions[kind].icon}/></span>}<span className="semantic-grip-icon"><Icon name="grip"/></span></>;}
@@ -493,13 +495,13 @@ export function BlockEditor(props: Props) {
     const ids=selected.elements.map(el=>el.dataset.blockId!);
     focusTarget.current={id:ids[0]!,start:true};onChange(applySemantic(latest.current.blocks,ids,kind));
   }
-  function semanticChoices(pick: (kind: SemanticKind) => void): Choice[] {return editableSemanticKinds.map(kind=>({title:semanticFunctions[kind].label,detail:semanticFunctions[kind].description,icon:semanticFunctions[kind].icon,color:semanticFunctions[kind].color,entity:true,pick:()=>{setMenu(null);pick(kind);}}));}
+  function semanticChoices(pick: (kind: SemanticKind) => void): Choice[] {return editableSemanticKinds.map(kind=>({title:uiText(semanticFunctions[kind].label),detail:uiText(semanticFunctions[kind].description),icon:semanticFunctions[kind].icon,color:semanticFunctions[kind].color,entity:true,pick:()=>{setMenu(null);pick(kind);}}));}
   function movementChoices(id: string): Choice[] {
     const list = latest.current.blocks, block = list.find(item => item.id === id);
     const items = block?.semanticGroup ? semanticDragItems(list, id) : semanticRuns(list).map(run => ({id: run.id}));
     const index = items.findIndex(item => item.id === id);
     return ([-1, 1] as const).map(direction => ({
-      title: direction === -1 ? 'Move up' : 'Move down', icon: direction === -1 ? 'arrow-up' : 'arrow-down', entity: true,
+      title: direction === -1 ? uiText("Move up") : uiText("Move down"), icon: direction === -1 ? 'arrow-up' : 'arrow-down', entity: true,
       disabled: index < 0 || index + direction < 0 || index + direction >= items.length,
       pick: () => {
         if (index < 0 || index + direction < 0 || index + direction >= items.length) return;
@@ -513,22 +515,22 @@ export function BlockEditor(props: Props) {
   function blockOptions(anchor: HTMLElement, block: Block) {
     const selection=root.current ? selectedEditorBlocks(root.current)?.elements.map(el=>el.dataset.blockId!) : undefined;
     const ids=selection?.includes(block.id)?selection:[block.id];
-    const back: Choice = {title:'Back to block actions',icon:'←',submenu:true,back:true,pick:()=>blockOptions(anchor,block)};
+    const back: Choice = {title:uiText("Back to block actions"),icon:'←',submenu:true,back:true,pick:()=>blockOptions(anchor,block)};
     show(anchor, [
-      {title:'Format',detail:'Text, headings, lists, and other block formats',icon:'page',entity:true,submenu:true,pick:()=>show(anchor,[back,...blockOptionsFor(block).map(option=>({...option,pick:()=>convert(block,option.type)})),imageChoice(block.id,block),...(mobile?movementChoices(block.id):[])],'FORMAT',true)},
-      ...(!isAIExplanation(block) ? [{title:'Turn into',detail:block.semantic?semanticFunctions[block.semantic].label:'Choose a semantic block',icon:'semantic',entity:true,submenu:true,
-        pick:()=>show(anchor,[back,...semanticChoices(kind=>onChange(applySemantic(latest.current.blocks,ids,kind))),...(block.semantic?[{title:'Remove semantic function',icon:'close',entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:undefined});}}]:[]),...(mobile&&block.semanticGroup?[{title:'Group actions',icon:'semantic',entity:true,submenu:true,pick:()=>{setActiveBlock({id:block.semanticGroup!.id,group:true});groupOptions(anchor,block.semanticGroup!.id);}}]:[])],'TURN INTO SEMANTIC BLOCK', true)}] : []),
+      {get title(){return uiText("Format")},detail:uiText("Text, headings, lists, and other block formats"),icon:'page',entity:true,submenu:true,pick:()=>show(anchor,[back,...blockOptionsFor(block).map(option=>({...option,pick:()=>convert(block,option.type)})),imageChoice(block.id,block),...(mobile?movementChoices(block.id):[])],'FORMAT',true)},
+      ...(!isAIExplanation(block) ? [{get title(){return uiText("Turn into")},detail:block.semantic?semanticFunctions[block.semantic].label:uiText("Choose a semantic block"),icon:'semantic',entity:true,submenu:true,
+        pick:()=>show(anchor,[back,...semanticChoices(kind=>onChange(applySemantic(latest.current.blocks,ids,kind))),...(block.semantic?[{title:uiText("Remove semantic function"),icon:'close',entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:undefined});}}]:[]),...(mobile&&block.semanticGroup?[{get title(){return uiText("Group actions")},icon:'semantic',entity:true,submenu:true,pick:()=>{setActiveBlock({id:block.semanticGroup!.id,group:true});groupOptions(anchor,block.semanticGroup!.id);}}]:[])],'TURN INTO SEMANTIC BLOCK', true)}] : []),
       ...(props.onExplain&&aiExplanationSources(latest.current.blocks,ids).length?[aiActionChoice(anchor,ids,back)]:[]),
-      {title:'Delete block',icon:'trash',entity:true,danger:true,pick:()=>removeBlock(block.id)},
+      {title:uiText("Delete block"),icon:'trash',entity:true,danger:true,pick:()=>removeBlock(block.id)},
     ], 'BLOCK OPTIONS', true);
   }
   function aiActionChoice(anchor: HTMLElement, ids: string[], back: Choice): Choice {
-    return {title:'AI actions',icon:'sparkles',entity:true,submenu:true,pick:()=>show(anchor,[back,...(props.onReview?[{title:reviewPending.current?'Reviewing…':'Review with AI',detail:'Suggest spelling, punctuation, grammar, and phrasing corrections',icon:'sparkles',entity:true,disabled:reviewPending.current,pick:()=>void reviewWriting(ids)}]:[]),explainChoice(ids)],'AI ACTIONS',true)};
+    return {get title(){return uiText("AI actions")},icon:'sparkles',entity:true,submenu:true,pick:()=>show(anchor,[back,...(props.onReview?[{title:reviewPending.current?uiText("Reviewing…"):uiText("Review with AI"),detail:uiText("Suggest spelling, punctuation, grammar, and phrasing corrections"),icon:'sparkles',entity:true,disabled:reviewPending.current,pick:()=>void reviewWriting(ids)}]:[]),explainChoice(ids)],'AI ACTIONS',true)};
   }
   function groupOptions(anchor: HTMLElement, id: string) {
     const children=latest.current.blocks.filter(block=>block.semanticGroup?.id===id || block.id===id && isAIExplanation(block)),locked=children.some(isAIExplanation);
-    const back: Choice = {title:'Back to group actions',icon:'←',submenu:true,back:true,pick:()=>groupOptions(anchor,id)};
-    show(anchor,[...(props.onExplain&&aiExplanationSources(latest.current.blocks,children.map(block=>block.id)).length?[aiActionChoice(anchor,children.map(block=>block.id),back)]:[]),...(mobile?movementChoices(id):[]),...(!locked?[...semanticChoices(kind=>onChange(retagSemanticGroup(latest.current.blocks,id,kind))),{title:'Ungroup blocks',detail:'Keep all child blocks',icon:'close',entity:true,pick:()=>{setMenu(null);onChange(removeSemanticGroup(latest.current.blocks,id));}}]:[{title:'Delete explanation',danger:true,detail:'Remove this explanation and its subblocks',icon:'close',entity:true,pick:()=>{setMenu(null);const rest=latest.current.blocks.filter(block=>block.semanticGroup?.id!==id && block.id!==id);onChange(rest.length?rest:[makeBlock()]);}}])],'SEMANTIC GROUP', true);
+    const back: Choice = {title:uiText("Back to group actions"),icon:'←',submenu:true,back:true,pick:()=>groupOptions(anchor,id)};
+    show(anchor,[...(props.onExplain&&aiExplanationSources(latest.current.blocks,children.map(block=>block.id)).length?[aiActionChoice(anchor,children.map(block=>block.id),back)]:[]),...(mobile?movementChoices(id):[]),...(!locked?[...semanticChoices(kind=>onChange(retagSemanticGroup(latest.current.blocks,id,kind))),{title:uiText("Ungroup blocks"),detail:uiText("Keep all child blocks"),icon:'close',entity:true,pick:()=>{setMenu(null);onChange(removeSemanticGroup(latest.current.blocks,id));}}]:[{get title(){return uiText("Delete explanation")},danger:true,detail:uiText("Remove this explanation and its subblocks"),icon:'close',entity:true,pick:()=>{setMenu(null);const rest=latest.current.blocks.filter(block=>block.semanticGroup?.id!==id && block.id!==id);onChange(rest.length?rest:[makeBlock()]);}}])],'SEMANTIC GROUP', true);
   }
   function update(id: string, patch: Partial<Block>) { onChange(latest.current.blocks.map(b => b.id === id ? {...b, ...patch} : b)); }
   function convertMathToInline(id:string,placement:MathInlinePlacement) {
@@ -613,7 +615,7 @@ export function BlockEditor(props: Props) {
     const title=anchor.dataset.pageTitle!;
     const matches=(latest.current.pages??[]).filter(page=>pageTitleKey(page.title)===pageTitleKey(title));
     if(matches.length===1 && latest.current.onOpenPage) {setPageLinkStatus('');latest.current.onOpenPage(matches[0]!.id);}
-    else if(matches.length>1)show(anchor,matches.map(page=>({title:page.title,detail:'Updated '+new Date(page.updated_at).toLocaleString(),icon:'page',entity:true,pick:()=>{setMenu(null);latest.current.onOpenPage?.(page.id);}})),'CHOOSE NOTE');
+    else if(matches.length>1)show(anchor,matches.map(page=>({title:page.title,detail:'Updated '+new Date(page.updated_at).toLocaleString(getLocale()),icon:'page',entity:true,pick:()=>{setMenu(null);latest.current.onOpenPage?.(page.id);}})),'CHOOSE NOTE');
     else setPageLinkStatus('Note “'+title+'” was not found in this vault.');
   }
   function insertPageLink(range:Range,title:string,alias:string|undefined,blockId:string) {
@@ -660,11 +662,11 @@ export function BlockEditor(props: Props) {
       if(start>=0){
         const saved=range.cloneRange();saved.setStart(range.startContainer,start);
         const bookmark=bookmarkCitationRange(el,saved);
-        citeChoice=[{title:'Cite',detail:'Add a source, section, or citation range',icon:'source',entity:true,pick:()=>{setMenu(null);setCitationTarget({bookmark,editor:el,blockId:block.id});}}];
+        citeChoice=[{title:uiText("Cite"),detail:uiText("Add a source, section, or citation range"),icon:'source',entity:true,pick:()=>{setMenu(null);setCitationTarget({bookmark,editor:el,blockId:block.id});}}];
       }
     }
     if (/^\/[^\n]*$/.test(el.textContent || '')) {
-      const query = el.textContent!.slice(1).toLowerCase(); show(el, [...blockOptionsFor(block).filter(o => o.title.toLowerCase().includes(query)).map(o => ({...o, pick: () => convert(block, o.type, true)})), ...citeChoice,...editableSemanticKinds.filter(kind=>kind.includes(query)).map(kind=>({title:semanticFunctions[kind].label,detail:'Semantic function',icon:semanticFunctions[kind].icon,color:semanticFunctions[kind].color,entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:kind,content:[]});}})), ...('image'.includes(query) ? [imageChoice(block.id, block)] : [])], 'TURN INTO',false,range.cloneRange()); return;
+      const query = el.textContent!.slice(1).toLowerCase(); show(el, [...blockOptionsFor(block).filter(o => o.title.toLowerCase().includes(query)).map(o => ({...o, pick: () => convert(block, o.type, true)})), ...citeChoice,...editableSemanticKinds.filter(kind=>kind.includes(query)).map(kind=>({title:semanticFunctions[kind].label,get detail(){return uiText("Semantic function")},icon:semanticFunctions[kind].icon,color:semanticFunctions[kind].color,entity:true,pick:()=>{setMenu(null);update(block.id,{semantic:kind,content:[]});}})), ...('image'.includes(query) ? [imageChoice(block.id, block)] : [])], 'TURN INTO',false,range.cloneRange()); return;
     }
     if(citeChoice.length){show(el,citeChoice,'CITATION',false,range.cloneRange());return;}
     const wiki=before.toString().match(/\[\[([^\[\]\n]*)$/);
@@ -673,7 +675,7 @@ export function BlockEditor(props: Props) {
       if(start>=0) {
         const [query,...alias]=wiki[1]!.split('|'),saved=range.cloneRange();saved.setStart(range.startContainer,start);
         const pages=(latest.current.pages??[]).filter(page=>!/[\[\]\n|]/.test(page.title)&&page.title.toLocaleLowerCase().includes(query!.trim().toLocaleLowerCase())).slice(0,8);
-        show(el,pages.map(page=>({title:page.title,detail:alias.length?'Display as '+alias.join('|'):'Link to note',icon:'page',entity:true,pick:()=>insertPageLink(saved,page.title,alias.length?alias.join('|'):undefined,block.id)})),'LINK A NOTE');return;
+        show(el,pages.map(page=>({title:page.title,detail:alias.length?'Display as '+alias.join('|'):uiText("Link to note"),icon:'page',entity:true,pick:()=>insertPageLink(saved,page.title,alias.length?alias.join('|'):undefined,block.id)})),'LINK A NOTE');return;
       }
     }
     const match = before.toString().match(/(?:^|\s)@([^@\n]*)$/);
@@ -687,7 +689,7 @@ export function BlockEditor(props: Props) {
           return {title:entity.name,detail:subtype?`${entityLabels[entity.type]} · ${subtype}`:entityLabels[entity.type],icon:entity.type,entity:true,pick:()=>insertMention(saved,entity.id,block.id)};
         });
         if(matches.length>limit)items.push({title:`Show more (${matches.length-limit})`,icon:'chevron',entity:true,pick:()=>showMatches(limit+10)});
-        items.push({title:query?`Create and insert “${query}”`:'Create and insert an entity',icon:'+',pick:()=>{setMenu(null);onCreateEntity(query,id=>insertMention(saved,id,block.id));}});
+        items.push({title:query?`Create and insert “${query}”`:uiText("Create and insert an entity"),icon:'+',pick:()=>{setMenu(null);onCreateEntity(query,id=>insertMention(saved,id,block.id));}});
         show(el,items,'LINK AN ENTITY',false,range.cloneRange());
         if(limit>3)setMenu(current=>current?{...current,index:limit-10}:current);
       };
@@ -749,8 +751,8 @@ export function BlockEditor(props: Props) {
   const explanationAnchorIndex=liveExplanationIndex>=0?liveExplanationIndex:Math.min(explanationAnchor?.index??-1,blocks.length-1);
   const explanationAnchorId=blocks[explanationAnchorIndex]?.id;
   const explanationStatus=(explaining||explanationError)?<div className="ai-explanation-placeholder" style={semanticStyle('ai-explanation')}>
-    <div className="ai-explanation-label">AI Explanation</div>
-    {explaining?<div className="ai-explanation-status" role="status"><span className="scan-spinner" aria-hidden="true"/>Explaining selected blocks…</div>:<div className="ai-explanation-status is-error" role="alert"><span>{explanationError}</span><button type="button" onClick={()=>void explain(retryExplanation.current)}>Retry</button><button type="button" onClick={()=>{setExplanationError('');setExplanationAnchor(null);}}>Dismiss</button></div>}
+    <div className="ai-explanation-label">{uiText("AI Explanation")}</div>
+    {explaining?<div className="ai-explanation-status" role="status"><span className="scan-spinner" aria-hidden="true"/>{uiText("Explaining selected blocks…")}</div>:<div className="ai-explanation-status is-error" role="alert"><span>{explanationError}</span><button type="button" onClick={()=>void explain(retryExplanation.current)}>{uiText("Retry")}</button><button type="button" onClick={()=>{setExplanationError('');setExplanationAnchor(null);}}>{uiText("Dismiss")}</button></div>}
   </div>:null;
   function renderWritingReview(blockId:string){
     if(!writingReview)return null;
@@ -763,23 +765,23 @@ export function BlockEditor(props: Props) {
   }
   const renderBlock = (block: Block) => isAIExplanation(block) ? <ReadOnlyExplanationBlock key={block.id} block={block} blocks={blocks} entities={entities} onOpen={onOpenEntity} vaultId={props.vaultId}/> : <Fragment key={block.id}><div data-block-id={block.id} data-semantic-kind={block.semantic} style={semanticStyle(block.semantic)} className={'block ' + block.type + (block.semantic ? ' semantic-block' : '')}>
     {block.semantic && <span className="semantic-callout-icon" aria-hidden="true"><Icon name={semanticFunctions[block.semantic].icon}/></span>}
-    <div className="block-controls" role="group" aria-label="Block controls">
-      <button className="block-add" title="Add block below" aria-label="Add block below" onClick={e => addBelow(e.currentTarget, block.id)}><Icon name="plus"/></button>
-      <button className={'block-handle' + (block.semantic ? ' semantic-handle' : '')} draggable={false} title={(block.semantic ? semanticFunctions[block.semantic].label+' · ' : '')+'Drag to move · Click for block options'} aria-label={block.semantic ? semanticFunctions[block.semantic].label+' block options' : 'Block options'} aria-describedby="block-drag-help" onClick={e => blockOptions(e.currentTarget,block)}>{semanticGlyph(block.semantic)}</button>
+    <div className="block-controls" role="group" aria-label={uiText("Block controls")}>
+      <button className="block-add" title={uiText("Add block below")} aria-label={uiText("Add block below")} onClick={e => addBelow(e.currentTarget, block.id)}><Icon name="plus"/></button>
+      <button className={'block-handle' + (block.semantic ? ' semantic-handle' : '')} draggable={false} title={(block.semantic ? uiText(semanticFunctions[block.semantic].label)+' · ' : '')+uiText("Drag to move · Click for block options")} aria-label={block.semantic ? uiText(semanticFunctions[block.semantic].label)+uiText(" block options") : uiText("Block options")} aria-describedby="block-drag-help" onClick={e => blockOptions(e.currentTarget,block)}>{semanticGlyph(block.semantic)}</button>
     </div>
-    {block.type === 'todo' ? <input type="checkbox" aria-label="Complete task" checked={block.checked} onChange={e => update(block.id, {checked: e.target.checked})}/> : block.type === 'bullet' ? <span className="bullet-marker">•</span> : block.type === 'numbered' ? <span className="bullet-marker numbered-marker">{blockListNumber(blocks, block.id)}.</span> : null}
-    {block.type === 'divider' ? <div className="divider-block" ref={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}} tabIndex={0} role="separator" aria-label="Divider" onKeyDown={event => {
+    {block.type === 'todo' ? <input type="checkbox" aria-label={uiText("Complete task")} checked={block.checked} onChange={e => update(block.id, {checked: e.target.checked})}/> : block.type === 'bullet' ? <span className="bullet-marker">•</span> : block.type === 'numbered' ? <span className="bullet-marker numbered-marker">{blockListNumber(blocks, block.id)}.</span> : null}
+    {block.type === 'divider' ? <div className="divider-block" ref={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}} tabIndex={0} role="separator" aria-label={uiText("Divider")} onKeyDown={event => {
       if(event.key === 'Enter') {event.preventDefault(); insert(block.id);}
       if(event.key === 'Backspace' || event.key === 'Delete') {event.preventDefault(); removeBlock(block.id);}
       if((event.metaKey || event.ctrlKey) && event.key === 's') {event.preventDefault(); onSave();}
     }}><hr/></div> : block.type === 'code' ? <div className="code-block" ref={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}} tabIndex={-1}>
-      <textarea aria-label="Code block" placeholder="Write code…" spellCheck={false} autoCapitalize="off" autoCorrect="off" maxLength={10000} rows={Math.max(3, block.content.map(segment => segment.text ?? '').join('').split('\n').length)} value={block.content.map(segment => segment.text ?? '').join('')} onChange={event => update(block.id, {content: [{text: event.target.value}]})} onKeyDown={event => {
+      <textarea aria-label={uiText("Code block")} placeholder={uiText("Write code…")} spellCheck={false} autoCapitalize="off" autoCorrect="off" maxLength={10000} rows={Math.max(3, block.content.map(segment => segment.text ?? '').join('').split('\n').length)} value={block.content.map(segment => segment.text ?? '').join('')} onChange={event => update(block.id, {content: [{text: event.target.value}]})} onKeyDown={event => {
         if(event.nativeEvent.isComposing) return;
         if((event.metaKey || event.ctrlKey) && event.key === 's') {event.preventDefault(); onSave();}
         if((event.metaKey || event.ctrlKey) && event.key === 'Enter') {event.preventDefault(); insert(block.id);}
         if(event.key === 'Tab') {event.preventDefault(); const el=event.currentTarget, start=el.selectionStart; el.setRangeText('  ', start, el.selectionEnd, 'end'); update(block.id, {content: [{text: el.value}]});}
       }}/>
-      <small>Code · Tab to indent · ⌘/Ctrl+Enter to continue below</small>
+      <small>{uiText("Code · Tab to indent · ⌘/Ctrl+Enter to continue below")}</small>
     </div> : block.type === 'math' ? <MathBlock block={block} inlineOptions={mathInlineOptions(blocks,block.id)} recommendedInline={recommendedMathInlinePlacement(blocks,block.id)} onInline={placement=>convertMathToInline(block.id,placement)} onDelete={() => removeBlock(block.id)} onChange={source => update(block.id, {content: [{text: source}]})} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'image' ? <ImageBlock block={block} featured={props.featuredImageId===block.imageId} onSetFeatured={() => onChange(latest.current.blocks,props.featuredImageId===block.imageId?null:block.imageId)} vaultId={props.vaultId} onChange={alt => update(block.id,{alt})} onDelete={() => removeBlock(block.id)} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'table' ? <TableBlock reviewMatches={reviewMatches} block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock reviewMatches={reviewMatches} block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={(el,event) => {
       const markdownInput=markdownTyping&&!event.isComposing&&event.inputType==='insertText';
       const shortcut=markdownInput?typedMarkdownBlock(block,el):undefined;
@@ -792,11 +794,11 @@ export function BlockEditor(props: Props) {
     }} onKeyDown={e => keyDown(e, block)} onPaste={e => paste(e, block)}/>}
   </div>{renderWritingReview(block.id)}{uploadCards(block.id)}</Fragment>;
   function renderRuns(list: Block[]) {
-    return semanticRuns(list).map(run => run.type==='block' && isAIExplanation(run.block) ? {type:'group' as const,id:run.id,kind:'ai-explanation' as const,blocks:[run.block]} : run).map(run => <Fragment key={run.id}>{run.type === 'block' ? renderBlock(run.block) : <section key={run.id} data-block-group-id={run.id} className="semantic-group" data-semantic-kind={run.kind} style={semanticStyle(run.kind)} aria-label={semanticFunctions[run.kind].label+' semantic group'}>
-      <span className="semantic-callout-icon" aria-hidden="true"><Icon name={semanticFunctions[run.kind].icon}/></span><div className="semantic-parent-controls"><button type="button" className="block-handle semantic-handle" data-semantic-parent-handle draggable={false} aria-describedby="block-drag-help" aria-label={semanticFunctions[run.kind].label+' group options'} title={semanticFunctions[run.kind].label+' · Drag group or click for options'} onClick={event=>groupOptions(event.currentTarget,run.id)}>{semanticGlyph(run.kind)}</button></div>
+    return semanticRuns(list).map(run => run.type==='block' && isAIExplanation(run.block) ? {type:'group' as const,id:run.id,kind:'ai-explanation' as const,blocks:[run.block]} : run).map(run => <Fragment key={run.id}>{run.type === 'block' ? renderBlock(run.block) : <section key={run.id} data-block-group-id={run.id} className="semantic-group" data-semantic-kind={run.kind} style={semanticStyle(run.kind)} aria-label={uiText(semanticFunctions[run.kind].label)+uiText(" semantic group")}>
+      <span className="semantic-callout-icon" aria-hidden="true"><Icon name={semanticFunctions[run.kind].icon}/></span><div className="semantic-parent-controls"><button type="button" className="block-handle semantic-handle" data-semantic-parent-handle draggable={false} aria-describedby="block-drag-help" aria-label={uiText(semanticFunctions[run.kind].label)+uiText(" group options")} title={uiText(semanticFunctions[run.kind].label)+uiText(" · Drag group or click for options")} onClick={event=>groupOptions(event.currentTarget,run.id)}>{semanticGlyph(run.kind)}</button></div>
       {run.kind==='ai-explanation' ? <details className="ai-explanation" open>
-        <summary className="ai-explanation-label"><span>AI explanation</span><Icon name="chevron"/></summary>
-        {run.blocks[0]?.semanticGroup?.source && <div className="ai-explanation-source"><span>Passage explained</span><blockquote>{passagePreview(run.blocks[0].semanticGroup.source.excerpt)}</blockquote></div>}
+        <summary className="ai-explanation-label"><span>{uiText("AI explanation")}</span><Icon name="chevron"/></summary>
+        {run.blocks[0]?.semanticGroup?.source && <div className="ai-explanation-source"><span>{uiText("Passage explained")}</span><blockquote>{passagePreview(run.blocks[0].semanticGroup.source.excerpt)}</blockquote></div>}
         <div className="semantic-children">{run.blocks.map(renderBlock)}</div>
       </details> : <div className="semantic-children">{run.blocks.map(renderBlock)}</div>}
     </section>}{(run.type==='block'?run.block.id===explanationAnchorId:run.blocks.some(block=>block.id===explanationAnchorId))&&explanationStatus}</Fragment>);
@@ -809,20 +811,20 @@ export function BlockEditor(props: Props) {
       else runs.push({id: id ?? block.id, column: !!id, blocks: [block]});
     }
     return runs.map((run, index) => run.column
-      ? <div className="columns-block" role="group" aria-label="Two columns" data-active={active && run.blocks.some(block => active.group ? block.semanticGroup?.id === active.id || block.id === active.id : block.id === active.id) || undefined} key={run.id + ':' + index}>
-          {([0, 1] as const).map(column => <div className="column-pane" data-column-id={run.id} data-column-index={column} key={column} role="group" aria-label={column === 0 ? 'Left column' : 'Right column'}>
+      ? <div className="columns-block" role="group" aria-label={uiText("Two columns")} data-active={active && run.blocks.some(block => active.group ? block.semanticGroup?.id === active.id || block.id === active.id : block.id === active.id) || undefined} key={run.id + ':' + index}>
+          {([0, 1] as const).map(column => <div className="column-pane" data-column-id={run.id} data-column-index={column} key={column} role="group" aria-label={column === 0 ? uiText("Left column") : uiText("Right column")}>
             {renderRuns(run.blocks.filter(block => block.column?.index === column))}
             {!run.blocks.some(block => block.column?.index === column) && <button type="button" className="column-add" onClick={() => {
               const next = {...makeBlock(),column:{id:run.id,index:column}};
               const list = [...latest.current.blocks], last = run.blocks.at(-1)!;
               list.splice(list.findIndex(block => block.id === last.id) + 1, 0, next);
               focusTarget.current = {id:next.id,start:true}; onChange(list);
-            }}><Icon name="plus"/>Add block</button>}
+            }}><Icon name="plus"/>{uiText("Add block")}</button>}
           </div>)}
         </div>
       : <Fragment key={run.id}>{renderRuns(run.blocks)}</Fragment>);
   }
-  return <><input ref={fileInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden aria-label="Choose images" onChange={e => {const files=Array.from(e.currentTarget.files ?? []); e.currentTarget.value=''; void addImages(files,imageTarget.current);}}/>
+  return <><input ref={fileInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden aria-label={uiText("Choose images")} onChange={e => {const files=Array.from(e.currentTarget.files ?? []); e.currentTarget.value=''; void addImages(files,imageTarget.current);}}/>
     <div id="blocks" ref={root} onFocusCapture={event => activateBlock(event.target)} onPointerDownCapture={event => activateBlock(event.target)} onInputCapture={event=>{
       if(root.current?.dataset.formattingTransaction) {event.stopPropagation(); return;}
       if((event.nativeEvent as InputEvent).isComposing)return;
@@ -863,52 +865,52 @@ export function BlockEditor(props: Props) {
       const blockElement=(e.target as Element).closest<HTMLElement>('[data-block-id]');
       void addImages(files,{after:blockElement?.dataset.blockId,featured:true});
     }}>{!explanationAnchorId&&explanationStatus}{renderColumnLayout(blocks)}{uploadCards()}</div>
-    <span id="block-drag-help" className="block-drag-sr">Drag to reorder. Click for options. With the handle focused, press Space to pick up, Up or Down to move, Space or Enter to drop, Escape to cancel.</span>
+    <span id="block-drag-help" className="block-drag-sr">{uiText("Drag to reorder. Click for options. With the handle focused, press Space to pick up, Up or Down to move, Space or Enter to drop, Escape to cancel.")}</span>
     <div ref={dragStatus} className="block-drag-sr" role="status" aria-live="polite" aria-atomic="true"/>
     <SelectionToolbar onReview={props.onReview?()=>void reviewWriting():undefined} reviewing={writingReview?.loading} explainLabel={explainLabel} mobile={mobile} keyboardInset={keyboardInset} viewportHeight={viewportHeight} onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
     {linkedExplanations.length > 0 && <Modal className="confirmation-dialog linked-explanation-dialog" titleId="linked-explanation-delete-title" onClose={() => setLinkedDeletion([])}>
-      <ModalHeader titleId="linked-explanation-delete-title" leading={<Icon name="sparkles"/>} closeLabel="Close and keep explanations">{linkedExplanations.length === 1 ? 'Keep the explanation?' : 'Keep the explanations?'}</ModalHeader>
+      <ModalHeader titleId="linked-explanation-delete-title" leading={<Icon name="sparkles"/>} closeLabel={uiText("Close and keep explanations")}>{linkedExplanations.length === 1 ? uiText("Keep the explanation?") : uiText("Keep the explanations?")}</ModalHeader>
       <p>{linkedExplanations.length === 1
-        ? 'The source block has been deleted. Its AI explanation can stay in your note, or you can remove it too.'
-        : `The source content has been deleted. You can keep the ${linkedExplanations.length} linked AI explanations in your note, or remove them too.`}</p>
+        ? uiText("The source block has been deleted. Its AI explanation can stay in your note, or you can remove it too.")
+        : uiText("The source content has been deleted. You can keep the {value0} linked AI explanations in your note, or remove them too.",{value0: linkedExplanations.length})}</p>
       <div className="linked-explanation-passages" style={semanticStyle('ai-explanation')}>
-        <span className="linked-explanation-passage-label">{linkedExplanations.length === 1 ? 'Original passage' : 'Original passages'}</span>
+        <span className="linked-explanation-passage-label">{linkedExplanations.length === 1 ? uiText("Original passage") : uiText("Original passages")}</span>
         {linkedExplanations.map(id => {
           const source = blocks.find(block => block.semanticGroup?.id === id)?.semanticGroup?.source;
           return source?.excerpt ? <blockquote key={id}>{passagePreview(source.excerpt)}</blockquote> : null;
         })}
       </div>
       <div className="dialog-actions">
-        <button type="button" className="button confirmation-action is-danger linked-explanation-delete" onClick={deleteLinkedExplanations}><Icon name="trash"/>{linkedExplanations.length === 1 ? 'Delete explanation' : 'Delete explanations'}</button>
-        <button type="button" className="button primary" autoFocus onClick={() => setLinkedDeletion([])}>{linkedExplanations.length === 1 ? 'Keep explanation' : 'Keep explanations'}</button>
+        <button type="button" className="button confirmation-action is-danger linked-explanation-delete" onClick={deleteLinkedExplanations}><Icon name="trash"/>{linkedExplanations.length === 1 ? uiText("Delete explanation") : uiText("Delete explanations")}</button>
+        <button type="button" className="button primary" autoFocus onClick={() => setLinkedDeletion([])}>{linkedExplanations.length === 1 ? uiText("Keep explanation") : uiText("Keep explanations")}</button>
       </div>
     </Modal>}
     {citationTarget && <CitationPicker vaultId={props.vaultId} entities={entities} blocks={blocks} getAnchor={()=>resolveCitationRange(citationTarget.editor,citationTarget.bookmark)} editor={citationTarget.editor} onInsert={insertCitations} onClose={closeCitation}/>}
     {mathTarget && <InlineMathEditor onMakeDisplay={inlineMathHost()?makeInlineMathDisplay:undefined} range={mathTarget.range} node={mathTarget.node} initial={mathTarget.initial} onSave={saveInlineMath} onClose={() => setMathTarget(null)}/>}
     {pageLinkStatus && <div className="note-link-status" role="status">{pageLinkStatus}</div>}
     {imageError && <div className="image-upload-error" role="alert">{imageError}</div>}
-    {mobile && active && <div ref={mobileToolbar} className="mobile-block-toolbar" role="toolbar" aria-label={`${activeLabel} actions`} style={{bottom: keyboardInset}} onPointerDown={event => { if ((event.target as Element).closest('button')) event.preventDefault(); }}>
+    {mobile && active && <div ref={mobileToolbar} className="mobile-block-toolbar" role="toolbar" aria-label={uiText("{value0} actions",{value0: activeLabel})} style={{bottom: keyboardInset}} onPointerDown={event => { if ((event.target as Element).closest('button')) event.preventDefault(); }}>
       <div className="mobile-block-toolbar-actions">
-        <button type="button" aria-label="Add block below" title="Add block below" onClick={event => {
+        <button type="button" aria-label={uiText("Add block below")} title={uiText("Add block below")} onClick={event => {
           const after = active.group ? blocks.filter(block => block.semanticGroup?.id === active.id || block.id === active.id).at(-1)?.id : active.id;
           if (after) {
             if (active.group) insert(after, 'paragraph', [], true);
             else addBelow(event.currentTarget, after);
           }
         }}><Icon name="plus"/></button>
-        <button type="button" className="mobile-block-type" aria-label={currentBlock ? `Change block type: ${activeLabel}` : 'Group options'} onClick={event => currentBlock
+        <button type="button" className="mobile-block-type" aria-label={currentBlock ? uiText("Change block type: {value0}",{value0: activeLabel}) : uiText("Group options")} onClick={event => currentBlock
           ? show(event.currentTarget, [...blockOptionsFor(currentBlock).map(option => ({...option, pick: () => convert(currentBlock, option.type)})),imageChoice(currentBlock.id,currentBlock)], 'TURN INTO', true)
           : groupOptions(event.currentTarget, active.id)}>{activeLabel}<Icon name="chevron"/></button>
-        <button type="button" aria-label="More block actions" title="More block actions" onClick={event => currentBlock ? blockOptions(event.currentTarget, currentBlock) : groupOptions(event.currentTarget, active.id)}><Icon name="more"/></button>
+        <button type="button" aria-label={uiText("More block actions")} title={uiText("More block actions")} onClick={event => currentBlock ? blockOptions(event.currentTarget, currentBlock) : groupOptions(event.currentTarget, active.id)}><Icon name="more"/></button>
       </div>
-      <button type="button" className="mobile-block-done" aria-label="Finish editing" title="Finish editing" onClick={() => {
+      <button type="button" className="mobile-block-done" aria-label={uiText("Finish editing")} title={uiText("Finish editing")} onClick={() => {
         if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
         setMenu(null); setActiveBlock(null);
       }}><Icon name="check"/></button>
     </div>}
     {menu && (mobile && menu.sheet ? <Modal className="mobile-block-sheet" titleId="mobile-block-sheet-title" onClose={() => setMenu(null)} dismissOnBackdrop>
       <div ref={menuRef}>
-        <ModalHeader titleId="mobile-block-sheet-title">{menu.label === 'ADD BLOCK BELOW' ? 'Add a block' : menu.label === 'FORMAT' || menu.label === 'TURN INTO' ? 'Format block' : menu.label === 'TURN INTO SEMANTIC BLOCK' ? 'Turn into' : menu.label === 'AI ACTIONS' ? 'AI actions' : menu.label === 'SEMANTIC GROUP' ? 'Group actions' : menu.label === 'SEMANTIC FUNCTION' ? 'Semantic function' : 'Block actions'}</ModalHeader>
+        <ModalHeader titleId="mobile-block-sheet-title">{menu.label === 'ADD BLOCK BELOW' ? uiText("Add a block") : menu.label === 'FORMAT' || menu.label === 'TURN INTO' ? uiText("Format block") : menu.label === 'TURN INTO SEMANTIC BLOCK' ? uiText("Turn into") : menu.label === 'AI ACTIONS' ? uiText("AI actions") : menu.label === 'SEMANTIC GROUP' ? uiText("Group actions") : menu.label === 'SEMANTIC FUNCTION' ? uiText("Semantic function") : uiText("Block actions")}</ModalHeader>
         <div key={menu.label} className="mobile-block-sheet-options">{menuChoices(true)}</div>
       </div>
     </Modal> : <div key={menu.label} ref={menuRef} className="command-menu block-action-menu" style={{left: menu.left, top: menu.top}} onMouseDown={e => e.preventDefault()} role="menu" aria-label={menu.label}>{menuChoices()}</div>)}

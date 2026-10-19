@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import {PageSources} from './PageSources';
 import {PageMetadata} from './PageMetadata';
 import {PageConceptCategory} from './PageConceptCategory';
@@ -62,22 +63,22 @@ function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnap
     finally{if(active.current)setDeleting(false);}
   }
   const summaryChanged = !!result && (!result.contentHash || result.contentHash !== page.summaryContentHash);
-  return <aside inert={inactive} aria-busy={inactive} className="entity-panel intelligence-panel" id="intelligence-panel" aria-label="Knowledge" onKeyDown={event=>{if(event.key==='Escape')onClose();}}>
-    <div className="panel-top knowledge-panel-top"><span><Icon name="knowledge"/>Knowledge</span><div className="knowledge-panel-actions"><button className="page-tool" aria-label="Knowledge settings" title="Knowledge settings" onClick={onSettings}><Icon name="settings"/></button><button className="page-tool" aria-label="Close Knowledge panel" title="Close Knowledge panel" onClick={onClose}><Icon name="close"/></button></div></div>
+  return <aside inert={inactive} aria-busy={inactive} className="entity-panel intelligence-panel" id="intelligence-panel" aria-label={uiText("Knowledge")} onKeyDown={event=>{if(event.key==='Escape')onClose();}}>
+    <div className="panel-top knowledge-panel-top"><span><Icon name="knowledge"/>{uiText("Knowledge")}</span><div className="knowledge-panel-actions"><button className="page-tool" aria-label={uiText("Knowledge settings")} title={uiText("Knowledge settings")} onClick={onSettings}><Icon name="settings"/></button><button className="page-tool" data-close-knowledge aria-label={uiText("Close Knowledge panel")} title={uiText("Close Knowledge panel")} onClick={onClose}><Icon name="close"/></button></div></div>
     <div className="panel-body">
       <PageConceptCategory page={page} onDomainsChange={onDomainsChange} onRefresh={refreshDomains}/>
       <section className="knowledge-summary" aria-labelledby="knowledge-summary-heading">
         <div className="knowledge-section-heading">
-          <h2 id="knowledge-summary-heading"><Icon name="sparkles"/>Summary{summaryChanged&&<span className="knowledge-status-dot" role="status" aria-label="Summary needs refresh" title="Summary needs refresh"/>}</h2>
+          <h2 id="knowledge-summary-heading"><Icon name="sparkles"/>{uiText("Summary")}{summaryChanged&&<span className="knowledge-status-dot" role="status" aria-label={uiText("Summary needs refresh")} title={uiText("Summary needs refresh")}/>}</h2>
           <div className="knowledge-section-actions">
-            {result&&summaryOverflow&&<button type="button" className="knowledge-icon-action" aria-label={summaryExpanded?'Collapse summary':'Expand summary'} title={summaryExpanded?'Collapse summary':'Expand summary'} aria-expanded={summaryExpanded} aria-controls="knowledge-summary-text" onClick={()=>setSummaryExpanded(value=>!value)}><Icon name={summaryExpanded?'collapse':'expand'}/></button>}
-            <button type="button" className={'knowledge-icon-action'+(busy?' is-working':'')} disabled={busy||deleting||loading} aria-busy={busy} aria-label={result?'Refresh summary':'Summarize this page'} title={result?'Refresh summary':'Generate summary'} onClick={()=>void summarize()}><Icon name={busy||result?'refresh':'plus'}/></button>
-            {result&&<button type="button" className="knowledge-icon-action is-destructive" disabled={busy||deleting||loading} aria-label="Delete summary" title="Delete summary" onClick={()=>void deleteSummary()}><Icon name="trash"/></button>}
+            {result&&summaryOverflow&&<button type="button" className="knowledge-icon-action" aria-label={summaryExpanded?uiText("Collapse summary"):uiText("Expand summary")} title={summaryExpanded?uiText("Collapse summary"):uiText("Expand summary")} aria-expanded={summaryExpanded} aria-controls="knowledge-summary-text" onClick={()=>setSummaryExpanded(value=>!value)}><Icon name={summaryExpanded?'collapse':'expand'}/></button>}
+            <button type="button" className={'knowledge-icon-action'+(busy?' is-working':'')} disabled={busy||deleting||loading} aria-busy={busy} aria-label={result?uiText("Refresh summary"):uiText("Summarize this page")} title={result?uiText("Refresh summary"):uiText("Generate summary")} onClick={()=>void summarize()}><Icon name={busy||result?'refresh':'plus'}/></button>
+            {result&&<button type="button" className="knowledge-icon-action is-destructive" disabled={busy||deleting||loading} aria-label={uiText("Delete summary")} title={uiText("Delete summary")} onClick={()=>void deleteSummary()}><Icon name="trash"/></button>}
           </div>
         </div>
-        {busy&&<span className="sr-only" role="status">Creating your summary…</span>}
+        {busy&&<span className="sr-only" role="status">{uiText("Creating your summary…")}</span>}
         {error&&<p role="alert" className="inline-error">{error}</p>}
-        {result&&<section className="ai-result" aria-label="Page summary"><div id="knowledge-summary-text" ref={summaryText} className={'ai-summary' + (summaryExpanded ? '' : ' is-collapsed')}><SummaryText text={result.summary}/></div></section>}
+        {result&&<section className="ai-result" aria-label={uiText("Page summary")}><div id="knowledge-summary-text" ref={summaryText} className={'ai-summary' + (summaryExpanded ? '' : ' is-collapsed')}><SummaryText text={result.summary}/></div></section>}
 
       </section>
       <ConnectedEntities page={page} entities={entities} onOpenEntity={onOpenEntity}>
@@ -111,9 +112,9 @@ export function IntelligencePanel(props: Omit<ComponentProps<typeof KnowledgePag
     return()=>{cancelled=true;};
   },[props.page.vault_id,props.page.id]);
   useEffect(()=>{
-    if(ready&&!focused.current){focused.current=true;document.querySelector<HTMLButtonElement>('#intelligence-panel [aria-label="Close Knowledge panel"]')?.focus({preventScroll:true});}
+    if(ready&&!focused.current){focused.current=true;document.querySelector<HTMLButtonElement>('#intelligence-panel [data-close-knowledge]')?.focus({preventScroll:true});}
   },[ready]);
-  if(!displayed)return <aside className="entity-panel intelligence-panel" id="intelligence-panel" aria-label="Knowledge" aria-busy="true"><div className="panel-top knowledge-panel-top"><span><Icon name="knowledge"/>Knowledge</span><div className="knowledge-panel-actions"><button className="page-tool" aria-label="Close Knowledge panel" onClick={props.onClose}><Icon name="close"/></button></div></div><div className="panel-body"><span className="sr-only" role="status">Loading knowledge…</span></div></aside>;
+  if(!displayed)return <aside className="entity-panel intelligence-panel" id="intelligence-panel" aria-label={uiText("Knowledge")} aria-busy="true"><div className="panel-top knowledge-panel-top"><span><Icon name="knowledge"/>{uiText("Knowledge")}</span><div className="knowledge-panel-actions"><button className="page-tool" data-close-knowledge aria-label={uiText("Close Knowledge panel")} onClick={props.onClose}><Icon name="close"/></button></div></div><div className="panel-body"><span className="sr-only" role="status">{uiText("Loading knowledge…")}</span></div></aside>;
   const current=displayed.page.id===props.page.id&&displayed.page.vault_id===props.page.vault_id;
   return <KnowledgePage {...props} key={displayed.page.vault_id+'/'+displayed.page.id} page={current?props.page:displayed.page} initialItems={displayed.items} initialError={displayed.error} snapshot={displayed.snapshot} onSnapshot={snapshot=>{displayed.snapshot=snapshot;}} inactive={props.inactive||!current}/>;
 }

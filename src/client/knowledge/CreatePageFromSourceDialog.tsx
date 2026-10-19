@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import {TitleText} from '../components/TitleText';
 import {sourceDuration,type SourceProcessingProgress} from '../../shared/source-progress';
 import {memo,useEffect,useRef,useState,type FormEvent} from 'react';
@@ -34,7 +35,7 @@ type LiveBlock={blockType:Block['type'];text:string};
 const LiveDraftBlock=memo(function LiveDraftBlock({block,vaultId}:{block:LiveBlock;vaultId:string}) {
   const text=block.blockType==='code'||block.blockType==='math'?block.text:previewText(block.text,true);
   const blocks:Block[]=[{id:'source-page-live-preview',type:block.blockType,checked:false,content:[{text}]}];
-  return <div className="source-page-live-block" aria-label="Text still being generated"><DraftBlocks blocks={blocks} vaultId={vaultId}/></div>;
+  return <div className="source-page-live-block" aria-label={uiText("Text still being generated")}><DraftBlocks blocks={blocks} vaultId={vaultId}/></div>;
 });
 
 type Phase='loading'|'idle'|'generating'|'review'|'accepting'|'rejecting'|'completed'|'failed'|'stopped';
@@ -132,66 +133,66 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
   const hasPreview=!!submitted||running||!!title||!!blocks.length||!!draft||!!page;
   const controlsDisabled=busy||!!draft||!!page;
   return <Modal className={'source-page-dialog'+(hasPreview?' has-preview':'')} titleId="source-page-title" onClose={close}><form onSubmit={start}>
-    <ModalHeader titleId="source-page-title" leading={<Icon name="sparkles"/>} closeDisabled={mutating||opening} closeLabel={running?'Stop generation and close':'Close dialog'}><span>Create page from source</span><span className="source-page-header-source" title={source.name}>{source.name}</span></ModalHeader>
+    <ModalHeader titleId="source-page-title" leading={<Icon name="sparkles"/>} closeDisabled={mutating||opening} closeLabel={running?uiText("Stop generation and close"):uiText("Close dialog")}><span>{uiText("Create page from source")}</span><span className="source-page-header-source" title={source.name}>{source.name}</span></ModalHeader>
     <div className="source-page-body">
       <div className="source-page-controls">
       {submitted?<section className="source-page-request">
-      <p className="source-page-eyebrow">Your request</p>
-      <dl className="source-page-selection" aria-label="Submitted request">
-        <div className="source-page-request-format"><dt>Format</dt><dd><span className="source-page-format-mark" aria-hidden="true"><Icon name={submitted.options.format==='study'?'source':submitted.options.format==='explainer'?'lightbulb':submitted.options.format==='critique'?'annotation':submitted.options.format==='custom'?'compose':'page'}/></span><span className="source-page-format-name">{sourcePageFormats[submitted.options.format].label}</span><small>{sourcePageFormats[submitted.options.format].description}</small></dd></div>
-        <div><dt>Length</dt><dd>{sourcePageChoices.detail.options[submitted.options.detail]}</dd></div>
-        <div><dt>Output language</dt><dd>{submitted.options.language||'Match the source'}</dd></div>
-        <div><dt>Reader familiarity</dt><dd>{sourcePageChoices.familiarity.options[submitted.options.familiarity]}</dd></div>
-        <div><dt>Source scope</dt><dd>{submitted.options.beyondSources?'Include AI background knowledge':'Supplied source only'}</dd></div>
-        {submitted.focus&&<div><dt>{submitted.options.format==='custom'?'Your instructions':'Focus'}</dt><dd>{submitted.focus}</dd></div>}
+      <p className="source-page-eyebrow">{uiText("Your request")}</p>
+      <dl className="source-page-selection" aria-label={uiText("Submitted request")}>
+        <div className="source-page-request-format"><dt>{uiText("Format")}</dt><dd><span className="source-page-format-mark" aria-hidden="true"><Icon name={submitted.options.format==='study'?'source':submitted.options.format==='explainer'?'lightbulb':submitted.options.format==='critique'?'annotation':submitted.options.format==='custom'?'compose':'page'}/></span><span className="source-page-format-name">{uiText(sourcePageFormats[submitted.options.format].label)}</span><small>{uiText(sourcePageFormats[submitted.options.format].description)}</small></dd></div>
+        <div><dt>{uiText("Length")}</dt><dd>{uiText(sourcePageChoices.detail.options[submitted.options.detail])}</dd></div>
+        <div><dt>{uiText("Output language")}</dt><dd>{submitted.options.language||uiText("Match the source")}</dd></div>
+        <div><dt>{uiText("Reader familiarity")}</dt><dd>{uiText(sourcePageChoices.familiarity.options[submitted.options.familiarity])}</dd></div>
+        <div><dt>{uiText("Source scope")}</dt><dd>{submitted.options.beyondSources?uiText("Include AI background knowledge"):uiText("Supplied source only")}</dd></div>
+        {submitted.focus&&<div><dt>{submitted.options.format==='custom'?uiText("Your instructions"):uiText("Focus")}</dt><dd>{submitted.focus}</dd></div>}
       </dl>
       </section>:<>
-      <fieldset className="source-page-formats"><legend>Choose a format</legend><div role="group" aria-label="Page format">
-        {sourcePageFormatPresets.map(key=>{const format=sourcePageFormats[key];return <button type="button" key={key} className="source-page-format" aria-pressed={options.format===key} disabled={controlsDisabled} onClick={()=>setOptions(current=>selectSourcePageFormat(current,key))}><strong>{format.label}</strong><small>{format.description}</small></button>;})}
+      <fieldset className="source-page-formats"><legend>{uiText("Choose a format")}</legend><div role="group" aria-label={uiText("Page format")}>
+        {sourcePageFormatPresets.map(key=>{const format=sourcePageFormats[key];return <button type="button" key={key} className="source-page-format" aria-pressed={options.format===key} disabled={controlsDisabled} onClick={()=>setOptions(current=>selectSourcePageFormat(current,key))}><strong>{uiText(format.label)}</strong><small>{uiText(format.description)}</small></button>;})}
       </div></fieldset>
       <div className="source-page-options source-page-essentials">
-        <label className="source-page-option">Length<Select aria-label="Length" value={options.detail} disabled={controlsDisabled} onChange={event=>setOptions(current=>({...current,detail:event.target.value as SourcePageOptions['detail']}))}>{Object.entries(sourcePageChoices.detail.options).map(([value,label])=><option key={value} value={value}>{label}</option>)}</Select></label>
-        <label className="source-page-option">Output language<Select aria-label="Output language" value={options.language} disabled={controlsDisabled} onChange={event=>setOptions(current=>({...current,language:event.target.value}))}>
-          <option value="">Match the source</option>
+        <label className="source-page-option">{uiText("Length")}<Select aria-label={uiText("Length")} value={options.detail} disabled={controlsDisabled} onChange={event=>setOptions(current=>({...current,detail:event.target.value as SourcePageOptions['detail']}))}>{Object.entries(sourcePageChoices.detail.options).map(([value,label])=><option key={value} value={value}>{uiText(label)}</option>)}</Select></label>
+        <label className="source-page-option">{uiText("Output language")}<Select aria-label={uiText("Output language")} value={options.language} disabled={controlsDisabled} onChange={event=>setOptions(current=>({...current,language:event.target.value}))}>
+          <option value="">{uiText("Match the source")}</option>
           {options.language&&!sourcePageLanguages.some(language=>language===options.language)&&<option value={options.language}>{options.language}</option>}
-          {sourcePageLanguages.map(language=><option key={language} value={language}>{language}</option>)}
+          {sourcePageLanguages.map(language=><option key={language} value={language}>{uiText(language)}</option>)}
         </Select></label>
-        <label className="source-page-option">Reader familiarity<Select aria-label="Reader familiarity" value={options.familiarity} disabled={controlsDisabled} onChange={event=>setOptions(current=>({...current,familiarity:event.target.value as SourcePageOptions['familiarity']}))}>{Object.entries(sourcePageChoices.familiarity.options).map(([value,label])=><option key={value} value={value}>{label}</option>)}</Select></label>
+        <label className="source-page-option">{uiText("Reader familiarity")}<Select aria-label={uiText("Reader familiarity")} value={options.familiarity} disabled={controlsDisabled} onChange={event=>setOptions(current=>({...current,familiarity:event.target.value as SourcePageOptions['familiarity']}))}>{Object.entries(sourcePageChoices.familiarity.options).map(([value,label])=><option key={value} value={value}>{uiText(label)}</option>)}</Select></label>
       </div>
-      <div className="source-page-scope"><div><span id="source-page-scope-label">Go beyond sources</span><p id="source-page-scope-hint">{options.beyondSources?'Allow clearly labeled AI background knowledge and illustrative examples.':'Use only the supplied source. Any analysis stays grounded in its text.'}</p></div><button type="button" className="source-page-switch" role="switch" aria-checked={options.beyondSources} aria-labelledby="source-page-scope-label" aria-describedby="source-page-scope-hint" disabled={controlsDisabled} onClick={()=>setOptions(current=>sourcePageScope(current,!current.beyondSources))}><span/></button></div>
-      <label className="source-page-focus">{options.format==='custom'?'Describe your page':'Anything to focus on?'} <span>Optional</span><textarea autoFocus value={focus} onChange={event=>setFocus(event.target.value)} maxLength={2000} rows={2} disabled={controlsDisabled} placeholder={options.format==='custom'?'Describe the note you want to create…':'Add a topic, question, or emphasis…'} aria-describedby="source-page-focus-hint"/></label>
-      <p className="section-hint source-page-note" id="source-page-focus-hint">Your settings are remembered. Review the AI draft before saving.</p>
+      <div className="source-page-scope"><div><span id="source-page-scope-label">{uiText("Go beyond sources")}</span><p id="source-page-scope-hint">{options.beyondSources?uiText("Allow clearly labeled AI background knowledge and illustrative examples."):uiText("Use only the supplied source. Any analysis stays grounded in its text.")}</p></div><button type="button" className="source-page-switch" role="switch" aria-checked={options.beyondSources} aria-labelledby="source-page-scope-label" aria-describedby="source-page-scope-hint" disabled={controlsDisabled} onClick={()=>setOptions(current=>sourcePageScope(current,!current.beyondSources))}><span/></button></div>
+      <label className="source-page-focus">{options.format==='custom'?uiText("Describe your page"):uiText("Anything to focus on?")} <span>{uiText("Optional")}</span><textarea autoFocus value={focus} onChange={event=>setFocus(event.target.value)} maxLength={2000} rows={2} disabled={controlsDisabled} placeholder={options.format==='custom'?uiText("Describe the note you want to create…"):uiText("Add a topic, question, or emphasis…")} aria-describedby="source-page-focus-hint"/></label>
+      <p className="section-hint source-page-note" id="source-page-focus-hint">{uiText("Your settings are remembered. Review the AI draft before saving.")}</p>
       </>}
       {draft&&retryOpen&&<div className="source-page-retry">
-        <label className="source-page-focus">What would you like to change? <span>Optional</span><textarea ref={feedbackField} value={feedback} onChange={event=>setFeedback(event.target.value)} maxLength={2000} rows={3} disabled={busy} placeholder="For example: make it shorter, explain the key ideas more clearly, or use a different structure." aria-describedby="source-page-retry-hint"/></label>
-        <p className="section-hint" id="source-page-retry-hint">Your current draft is kept until the revision is ready.</p>
-        <div className="source-page-retry-actions"><button type="button" className="button" disabled={busy} onClick={()=>setRetryOpen(false)}>Cancel</button><button type="submit" className="button primary" disabled={busy}>Generate revision</button></div>
+        <label className="source-page-focus">{uiText("What would you like to change?") + " "}<span>{uiText("Optional")}</span><textarea ref={feedbackField} value={feedback} onChange={event=>setFeedback(event.target.value)} maxLength={2000} rows={3} disabled={busy} placeholder={uiText("For example: make it shorter, explain the key ideas more clearly, or use a different structure.")} aria-describedby="source-page-retry-hint"/></label>
+        <p className="section-hint" id="source-page-retry-hint">{uiText("Your current draft is kept until the revision is ready.")}</p>
+        <div className="source-page-retry-actions"><button type="button" className="button" disabled={busy} onClick={()=>setRetryOpen(false)}>{uiText("Cancel")}</button><button type="submit" className="button primary" disabled={busy}>{uiText("Generate revision")}</button></div>
       </div>}
       </div>
       {phase!=='idle'&&<div className="source-page-result">
         <div className="source-page-progress">
-        <span className="source-page-eyebrow">{running?'Live draft':'Draft preview'}</span>
+        <span className="source-page-eyebrow">{running?uiText("Live draft"):uiText("Draft preview")}</span>
         <div className={'source-page-status '+phase} role="status" aria-live="polite">{busy&&<span className="scan-spinner" aria-hidden="true"/>}{(phase==='review'||phase==='completed')&&<Icon name="check"/>}<span>{status}</span></div>
         {running&&<p className="source-page-timing">{timing}</p>}
-        {running&&generationStage==='math'&&mathProgress&&<progress value={mathProgress.completed} max={mathProgress.total} aria-label="Math preparation batches completed"/>}
+        {running&&generationStage==='math'&&mathProgress&&<progress value={mathProgress.completed} max={mathProgress.total} aria-label={uiText("Math preparation batches completed")}/>}
         </div>
-        {phase!=='loading'&&<div className="source-page-preview" ref={preview} aria-label="Generated page preview" aria-busy={running} onScroll={event=>{const node=event.currentTarget;follow.current=node.scrollHeight-node.scrollTop-node.clientHeight<64;}}>
+        {phase!=='loading'&&<div className="source-page-preview" ref={preview} aria-label={uiText("Generated page preview")} aria-busy={running} onScroll={event=>{const node=event.currentTarget;follow.current=node.scrollHeight-node.scrollTop-node.clientHeight<64;}}>
           {title&&<h3 className="source-page-preview-title"><TitleText text={title}/></h3>}
           <DraftBlocks blocks={blocks} vaultId={vaultId}/>
           {running&&liveBlock&&<LiveDraftBlock block={liveBlock} vaultId={vaultId}/>}
           {running&&<div className="source-page-skeleton" aria-hidden="true"><span/><span/><span/></div>}
-          {!running&&!blocks.length&&<p className="section-hint">No page blocks were generated.</p>}
+          {!running&&!blocks.length&&<p className="section-hint">{uiText("No page blocks were generated.")}</p>}
         </div>}
-        {running&&<p className="section-hint">Keep this dialog open while generating. Citations are hidden in preview.</p>}
-        {(phase==='failed'||phase==='stopped')&&!!blocks.length&&<p className="section-hint">Incomplete preview. Retry to generate a complete draft.</p>}
-        {draft&&!running&&<p className="section-hint">Accept saves a page linked to this source. Closing keeps the draft for later.</p>}
+        {running&&<p className="section-hint">{uiText("Keep this dialog open while generating. Citations are hidden in preview.")}</p>}
+        {(phase==='failed'||phase==='stopped')&&!!blocks.length&&<p className="section-hint">{uiText("Incomplete preview. Retry to generate a complete draft.")}</p>}
+        {draft&&!running&&<p className="section-hint">{uiText("Accept saves a page linked to this source. Closing keeps the draft for later.")}</p>}
       </div>}
       {error&&<p className="dialog-error" role="alert">{error}</p>}
     </div>
-    <footer className="dialog-actions source-page-actions"><button type="button" className="button" disabled={busy||!!draft} onClick={onSettings}>AI settings</button><div>
-      {running?<button type="button" className="button" onClick={stop}>Stop generation</button>:draft?<button type="button" className="button" disabled={busy} onClick={()=>void reject()}>{phase==='rejecting'?'Rejecting…':'Reject'}</button>:<button type="button" className="button" onClick={close} disabled={mutating||opening}>{page?'Close':'Cancel'}</button>}
-      {draft&&!running&&<><button type="button" className="button" disabled={busy} onClick={event=>void start(event,true)}>Try again</button><button type="button" className="button" disabled={busy||retryOpen} onClick={()=>setRetryOpen(true)}>Request changes</button></>}
-      {page?<button type="button" className="button primary" disabled={opening} onClick={()=>void openPage()}>{opening?'Opening…':'Open page'}</button>:draft?<button type="button" className="button primary" disabled={busy} onClick={()=>void accept()}>{phase==='accepting'?'Accepting…':'Accept page'}</button>:<button className="button primary" disabled={busy}>{running?'Generating draft…':phase==='loading'?'Loading…':phase==='failed'||phase==='stopped'?'Retry':'Generate draft'}</button>}
+    <footer className="dialog-actions source-page-actions"><button type="button" className="button" disabled={busy||!!draft} onClick={onSettings}>{uiText("AI settings")}</button><div>
+      {running?<button type="button" className="button" onClick={stop}>{uiText("Stop generation")}</button>:draft?<button type="button" className="button" disabled={busy} onClick={()=>void reject()}>{phase==='rejecting'?uiText("Rejecting…"):uiText("Reject")}</button>:<button type="button" className="button" onClick={close} disabled={mutating||opening}>{page?uiText("Close"):uiText("Cancel")}</button>}
+      {draft&&!running&&<><button type="button" className="button" disabled={busy} onClick={event=>void start(event,true)}>{uiText("Try again")}</button><button type="button" className="button" disabled={busy||retryOpen} onClick={()=>setRetryOpen(true)}>{uiText("Request changes")}</button></>}
+      {page?<button type="button" className="button primary" disabled={opening} onClick={()=>void openPage()}>{opening?uiText("Opening…"):uiText("Open page")}</button>:draft?<button type="button" className="button primary" disabled={busy} onClick={()=>void accept()}>{phase==='accepting'?uiText("Accepting…"):uiText("Accept page")}</button>:<button className="button primary" disabled={busy}>{running?uiText("Generating draft…"):phase==='loading'?uiText("Loading…"):phase==='failed'||phase==='stopped'?uiText("Retry"):uiText("Generate draft")}</button>}
     </div></footer>
   </form></Modal>;
 }

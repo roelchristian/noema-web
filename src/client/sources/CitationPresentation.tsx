@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import {revealCitationTarget} from './citation-navigation';
 import {createContext} from 'react';
 import {citationKey, citationLocation, noteCitations, type CitationStyle} from '../../shared/citations';
@@ -10,18 +11,18 @@ export function NoteReferences({blocks,entities}: {blocks:Block[];entities:Entit
   const names=new Map(entities.map(entity=>[entity.id,entity.name]));
   if(!entries.length)return null;
   return <section className="note-references" aria-labelledby="note-references-title">
-    <header className="note-references-heading"><h2 id="note-references-title">References</h2></header>
+    <header className="note-references-heading"><h2 id="note-references-title">{uiText("References")}</h2></header>
     <ol role="list">{entries.map(({number,reference,occurrences})=>{
       const name=names.get(reference.sourceId)??'Source';
       const location=citationLocation(reference);
       return <li key={citationKey(reference)} id={`note-reference-${number}`} tabIndex={-1}>
         <div className="note-reference-entry">
-          <button type="button" className="note-reference-source" data-citation-number={number} data-source-reference={JSON.stringify(reference)} title={`${name} · ${reference.contextLabel??location}`} aria-label={`Open reference ${number}: ${name}, ${location}`}>
+          <button type="button" className="note-reference-source" data-citation-number={number} data-source-reference={JSON.stringify(reference)} title={`${name} · ${reference.contextLabel??location}`} aria-label={uiText("Open reference {value0}: {value1}, {value2}",{value0: number,value1: name,value2: location})}>
             <span className="note-reference-number" aria-hidden="true">[{number}]</span>
             <span className="note-reference-name">{name}</span>
             <span className="note-reference-location">{location}</span>
           </button>
-          <span className="note-reference-backlinks" role="group" aria-label={`Backlinks for reference ${number}`}>{occurrences.length>1&&<Icon name="arrow-up"/>}{occurrences.map((id,index)=>{
+          <span className="note-reference-backlinks" role="group" aria-label={uiText("Backlinks for reference {value0}",{value0: number})}>{occurrences.length>1&&<Icon name="arrow-up"/>}{occurrences.map((id,index)=>{
             const label=`Return to citation ${number}${occurrences.length>1?`, occurrence ${index+1}`:''}`;
             return <button key={id} type="button" title={label} aria-label={label} onClick={()=>{
               revealCitationTarget(document.getElementById(`note-citation-${id}`));

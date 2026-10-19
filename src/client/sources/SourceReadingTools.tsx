@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import {useEffect,useLayoutEffect,useRef,useState,type FormEvent,type RefObject} from 'react';
 import type {Page} from '../../shared/domain';
 import {highlightColors,readingNoteMaxWords,readingNoteWordCount,readingExplanationFamiliarities,type ReadingExplanationOptions,type HighlightColor,type SourceHighlight,type SourceSelection} from '../../shared/source-reading';
@@ -134,7 +135,7 @@ export function SourceReadingTools({file,article,highlights,onHighlight,onHighli
   }
   return <>
     <SourceSelectionPaint article={article}/>
-    {selected&&<div ref={menu} className={"source-reading-menu"+(note?" is-composing":"")} role={note?"dialog":"toolbar"} aria-label={note?(explain?"Explain with AI":"Add reading note"):"Source selection actions"} aria-modal={note?false:undefined} style={position} onPointerDown={event=>{if(!note)event.preventDefault();}} onKeyDown={event=>{
+    {selected&&<div ref={menu} className={"source-reading-menu"+(note?" is-composing":"")} role={note?"dialog":"toolbar"} aria-label={note?(explain?uiText("Explain with AI"):uiText("Add reading note")):uiText("Source selection actions")} aria-modal={note?false:undefined} style={position} onPointerDown={event=>{if(!note)event.preventDefault();}} onKeyDown={event=>{
       if(note){if(event.key==='Escape'){event.preventDefault();event.stopPropagation();}return;}
       if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key))return;
       const buttons=Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));const index=buttons.indexOf(document.activeElement as HTMLButtonElement);if(!buttons.length)return;
@@ -142,11 +143,11 @@ export function SourceReadingTools({file,article,highlights,onHighlight,onHighli
     }}>
       {note?<ReadingNotePopover key={explain?'explain':'note'} explain={explain} selection={note} vaultId={file.vault_id} onClose={()=>{setNote(null);requestAnimationFrame(()=>menu.current?.querySelector<HTMLButtonElement>(explain?'.source-reading-explain-action':'.source-reading-note-action')?.focus());}} onCreated={page=>{dismissSelection();setNotice(explain?'AI explanation saved to Reading Notes.':'Reading note saved.');onNoteCreated(page);}}/>:<>
       <div className="source-reading-toolbar">
-      <div className="source-highlight-colors" role="group" aria-label="Highlight color" aria-busy={busy}>{highlightColors.map(color=><button type="button" key={color} className="source-highlight-color" data-color={color} title={`Highlight ${color}`} aria-label={`${selected.highlightId?'Change highlight to':'Highlight passage'} ${color}`} aria-pressed={(pendingColor??selected.color)===color} disabled={busy} onClick={()=>void highlight(color)}>{(pendingColor??selected.color)===color&&<Icon name="check"/>}</button>)}</div>
+      <div className="source-highlight-colors" role="group" aria-label={uiText("Highlight color")} aria-busy={busy}>{highlightColors.map(color=><button type="button" key={color} className="source-highlight-color" data-color={color} title={uiText("Highlight {value0}",{value0: color})} aria-label={`${selected.highlightId?'Change highlight to':'Highlight passage'} ${color}`} aria-pressed={(pendingColor??selected.color)===color} disabled={busy} onClick={()=>void highlight(color)}>{(pendingColor??selected.color)===color&&<Icon name="check"/>}</button>)}</div>
       <div className="source-reading-menu-actions">
-      <button type="button" className="source-reading-note-action" title="Add reading note" aria-label="Add reading note" disabled={busy} onClick={()=>{setExplain(false);setNote(selected.selection);setError('');}}><Icon name="compose"/></button>
-      <button type="button" className="source-reading-note-action source-reading-explain-action" title="Explain with AI" aria-label="Explain with AI" disabled={busy} onClick={()=>{setExplain(true);setNote(selected.selection);setError('');}}><Icon name="sparkles"/></button>
-      {selected.highlightId&&<button type="button" className="source-reading-note-action source-reading-remove-action" title="Remove highlight" aria-label="Remove highlight" disabled={busy} onClick={()=>void removeHighlight()}><Icon name="trash"/></button>}
+      <button type="button" className="source-reading-note-action" title={uiText("Add reading note")} aria-label={uiText("Add reading note")} disabled={busy} onClick={()=>{setExplain(false);setNote(selected.selection);setError('');}}><Icon name="compose"/></button>
+      <button type="button" className="source-reading-note-action source-reading-explain-action" title={uiText("Explain with AI")} aria-label={uiText("Explain with AI")} disabled={busy} onClick={()=>{setExplain(true);setNote(selected.selection);setError('');}}><Icon name="sparkles"/></button>
+      {selected.highlightId&&<button type="button" className="source-reading-note-action source-reading-remove-action" title={uiText("Remove highlight")} aria-label={uiText("Remove highlight")} disabled={busy} onClick={()=>void removeHighlight()}><Icon name="trash"/></button>}
       </div>
       </div>
       {error&&<p role="alert">{error}</p>}
@@ -179,18 +180,18 @@ function ReadingNotePopover({selection,vaultId,onCreated,onClose,explain=false}:
     if(event.key==='Escape'){event.preventDefault();event.stopPropagation();if(!busy||explain)onClose();}
     if(event.key==='Enter'&&(event.metaKey||event.ctrlKey)&&!event.nativeEvent.isComposing){event.preventDefault();if(valid&&!busy)event.currentTarget.requestSubmit();}
   }}>
-    <header><span className="reading-note-form-title"><Icon name={explain?'sparkles':'annotation'}/><strong>{explain?'Explain with AI':'Reading note'}</strong></span><button type="button" title={busy&&explain?'Cancel explanation':'Close reading note'} aria-label={busy&&explain?'Cancel explanation':'Close reading note'} disabled={busy&&!explain} onClick={onClose}><Icon name="close"/></button></header>
-    <div className="reading-note-excerpt"><span>Selected passage</span><blockquote>{selection.excerpt}</blockquote></div>
+    <header><span className="reading-note-form-title"><Icon name={explain?'sparkles':'annotation'}/><strong>{explain?uiText("Explain with AI"):uiText("Reading note")}</strong></span><button type="button" title={busy&&explain?uiText("Cancel explanation"):uiText("Close reading note")} aria-label={busy&&explain?uiText("Cancel explanation"):uiText("Close reading note")} disabled={busy&&!explain} onClick={onClose}><Icon name="close"/></button></header>
+    <div className="reading-note-excerpt"><span>{uiText("Selected passage")}</span><blockquote>{selection.excerpt}</blockquote></div>
     {explain?<div className="reading-explanation-options">
-      <label>Language<Select autoFocus value={language} disabled={busy} onChange={event=>{setLanguage(event.target.value);setRequestId(randomUUID());}}><option value="">Same as passage</option>{sourcePageLanguages.map(language=><option key={language} value={language}>{language}</option>)}</Select></label>
-      <label>Reader familiarity<Select value={familiarity} disabled={busy} onChange={event=>{setFamiliarity(event.target.value as ReadingExplanationOptions['familiarity']);setRequestId(randomUUID());}}>{Object.entries(readingExplanationFamiliarities).map(([value,label])=><option key={value} value={value}>{label}</option>)}</Select></label>
-      <p className="reading-explanation-help">Creates an AI-generated reading note explaining only this passage. Up to {readingNoteMaxWords} words.</p>
-      {busy&&<span className="reading-explanation-status" role="status">Explaining the passage… You can cancel with ×.</span>}
+      <label>{uiText("Language")}<Select autoFocus value={language} disabled={busy} onChange={event=>{setLanguage(event.target.value);setRequestId(randomUUID());}}><option value="">{uiText("Same as passage")}</option>{sourcePageLanguages.map(language=><option key={language} value={language}>{language}</option>)}</Select></label>
+      <label>{uiText("Reader familiarity")}<Select value={familiarity} disabled={busy} onChange={event=>{setFamiliarity(event.target.value as ReadingExplanationOptions['familiarity']);setRequestId(randomUUID());}}>{Object.entries(readingExplanationFamiliarities).map(([value,label])=><option key={value} value={value}>{label}</option>)}</Select></label>
+      <p className="reading-explanation-help">{uiText("Creates an AI-generated reading note explaining only this passage. Up to") + " "}{readingNoteMaxWords}{" " + uiText("words.")}</p>
+      {busy&&<span className="reading-explanation-status" role="status">{uiText("Explaining the passage… You can cancel with ×.")}</span>}
     </div>:<div className="reading-note-writing-area">
-    <label htmlFor="source-reading-note-text">Your note</label>
-    <textarea id="source-reading-note-text" autoFocus rows={5} maxLength={10000} value={text} readOnly={busy} onChange={event=>setText(event.target.value)} aria-invalid={words>readingNoteMaxWords||undefined} aria-describedby="reading-note-words" placeholder="What stands out to you?" required/>
+    <label htmlFor="source-reading-note-text">{uiText("Your note")}</label>
+    <textarea id="source-reading-note-text" autoFocus rows={5} maxLength={10000} value={text} readOnly={busy} onChange={event=>setText(event.target.value)} aria-invalid={words>readingNoteMaxWords||undefined} aria-describedby="reading-note-words" placeholder={uiText("What stands out to you?")} required/>
     </div>}
     {error&&<p className="dialog-error" role="alert">{error}</p>}
-    <footer><span id="reading-note-words" className={!explain&&words>readingNoteMaxWords?'dialog-error':''}>{explain?`Up to ${readingNoteMaxWords} words`:<>{words}<span> / {readingNoteMaxWords} words</span></>}</span><button className="button primary small" title={explain?'Explain and save as a reading note':'Save note (⌘ / Ctrl + Enter)'} disabled={busy||!valid}>{busy?(explain?'Explaining…':'Saving…'):explain?'Explain & save':'Save note'}</button></footer>
+    <footer><span id="reading-note-words" className={!explain&&words>readingNoteMaxWords?'dialog-error':''}>{explain?uiText("Up to {value0} words",{value0: readingNoteMaxWords}):<>{words}<span> / {readingNoteMaxWords}{" " + uiText("words")}</span></>}</span><button className="button primary small" title={explain?uiText("Explain and save as a reading note"):uiText("Save note (⌘ / Ctrl + Enter)")} disabled={busy||!valid}>{busy?(explain?uiText("Explaining…"):uiText("Saving…")):explain?uiText("Explain & save"):uiText("Save note")}</button></footer>
   </form>;
 }

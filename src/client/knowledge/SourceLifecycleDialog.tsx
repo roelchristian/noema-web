@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import {useEffect,useState} from 'react';
 import type {Entity} from '../../shared/domain';
 import type {SourceLifecycle} from '../../shared/source-lifecycle';
@@ -23,26 +24,26 @@ export function SourceLifecycleDialog({vaultId,source,onUpdated,onClose}:{vaultI
     finally{setBusy(false);}
   }
   return <Modal className="confirmation-dialog source-lifecycle-dialog" titleId="source-lifecycle-title" onClose={()=>{if(!busy)onClose();}}>
-    <ModalHeader titleId="source-lifecycle-title" closeDisabled={busy}>Manage source</ModalHeader>
+    <ModalHeader titleId="source-lifecycle-title" closeDisabled={busy}>{uiText("Manage source")}</ModalHeader>
     <p><strong>{state?.name??source.name}</strong></p>
-    {!state&&<p role="status">Checking linked pages…</p>}
+    {!state&&<p role="status">{uiText("Checking linked pages…")}</p>}
     {error&&<p className="dialog-error" role="alert">{error}</p>}
     {state&&<>
-      <p>{state.archivedAt?'This source is archived. Restore it to return it to the active library.':'Archive this source to hide it from the active library. Its original file, highlights, and metadata are kept, and you can restore it later.'}</p>
-      <p role="status">{state.linkedPageCount} linked {state.linkedPageCount===1?'page':'pages'} (including Trash).</p>
+      <p>{state.archivedAt?uiText("This source is archived. Restore it to return it to the active library."):uiText("Archive this source to hide it from the active library. Its original file, highlights, and metadata are kept, and you can restore it later.")}</p>
+      <p role="status">{state.linkedPageCount}{" " + uiText("linked") + " "}{state.linkedPageCount===1?uiText("page"):uiText("pages")}{" " + uiText("(including Trash).")}</p>
       {state.blockedReason&&<p role="status">{state.blockedReason}</p>}
       {state.archivedAt&&!state.blockedReason&&<>
-        <p>Permanent deletion cannot be undone. It removes the source, highlights, metadata, and entity connections. Original files are scheduled for cleanup after 24 hours. Export a vault backup first if you need a copy.</p>
-        <label>Type the exact source name to permanently delete it<input autoComplete="off" value={confirmation} disabled={busy} onChange={event=>setConfirmation(event.target.value)}/></label>
+        <p>{uiText("Permanent deletion cannot be undone. It removes the source, highlights, metadata, and entity connections. Original files are scheduled for cleanup after 24 hours. Export a vault backup first if you need a copy.")}</p>
+        <label>{uiText("Type the exact source name to permanently delete it")}<input autoComplete="off" value={confirmation} disabled={busy} onChange={event=>setConfirmation(event.target.value)}/></label>
       </>}
     </>}
     <div className="dialog-actions">
-      <button type="button" autoFocus className="button" disabled={busy} onClick={onClose}>Cancel</button>
-      {!state&&error&&<button type="button" className="button" onClick={()=>{setError('');setAttempt(value=>value+1);}}>Retry</button>}
+      <button type="button" autoFocus className="button" disabled={busy} onClick={onClose}>{uiText("Cancel")}</button>
+      {!state&&error&&<button type="button" className="button" onClick={()=>{setError('');setAttempt(value=>value+1);}}>{uiText("Retry")}</button>}
       {state&&(state.archivedAt?<>
-        <button type="button" className="button" disabled={busy} onClick={()=>void change('restore')}>Restore source</button>
-        <button type="button" className="button is-danger" disabled={busy||!!state.blockedReason||confirmation!==state.name} onClick={()=>void change('delete')}>Delete permanently</button>
-      </>:<button type="button" className="button" disabled={busy||!!state.blockedReason} onClick={()=>void change('archive')}>Archive source</button>)}
+        <button type="button" className="button" disabled={busy} onClick={()=>void change('restore')}>{uiText("Restore source")}</button>
+        <button type="button" className="button is-danger" disabled={busy||!!state.blockedReason||confirmation!==state.name} onClick={()=>void change('delete')}>{uiText("Delete permanently")}</button>
+      </>:<button type="button" className="button" disabled={busy||!!state.blockedReason} onClick={()=>void change('archive')}>{uiText("Archive source")}</button>)}
     </div>
   </Modal>;
 }

@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react';
 import { Icon } from './Icon';
 
@@ -10,7 +11,7 @@ export function ModalHeader({titleId, children, actions, leading, closeDisabled=
   return <header className="modal-header">
     {leading&&<span className="modal-header-leading" aria-hidden="true">{leading}</span>}
     <h2 id={titleId} className="modal-title">{children}</h2>
-    <div className="modal-header-actions">{actions}<button type="button" className="modal-close" disabled={closeDisabled} aria-label={closeLabel} title={closeLabel} onClick={onClose}><Icon name="close"/></button></div>
+    <div className="modal-header-actions">{actions}<button type="button" className="modal-close" disabled={closeDisabled} aria-label={uiText(closeLabel)} title={uiText(closeLabel)} onClick={onClose}><Icon name="close"/></button></div>
   </header>;
 }
 export function Modal({children, onClose, titleId, className, dismissOnBackdrop = false}: {children: ReactNode; onClose: () => void; titleId: string; className?: string; dismissOnBackdrop?: boolean}) {

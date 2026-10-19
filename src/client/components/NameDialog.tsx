@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import { useState, type FormEvent } from 'react';
 import { Modal, ModalHeader } from './Modal';
 
@@ -9,8 +10,8 @@ export function NameDialog({title, value = '', maxLength = 200, onSave, onClose}
     try { await onSave(name.trim()); onClose(); } catch (error) { setError(error instanceof Error ? error.message : String(error)); } finally { setBusy(false); }
   }
   return <Modal titleId="name-dialog-title" onClose={() => { if (!busy) onClose(); }}><form onSubmit={submit}>
-    <ModalHeader titleId="name-dialog-title" closeDisabled={busy}>{title}</ModalHeader><label>Name<input autoFocus required maxLength={maxLength} value={name} disabled={busy} onFocus={event => event.currentTarget.select()} onChange={event => setName(event.target.value)}/></label>
+    <ModalHeader titleId="name-dialog-title" closeDisabled={busy}>{title}</ModalHeader><label>{uiText("Name")}<input autoFocus required maxLength={maxLength} value={name} disabled={busy} onFocus={event => event.currentTarget.select()} onChange={event => setName(event.target.value)}/></label>
     {error && <p className="dialog-error" role="alert">{error}</p>}
-    <div className="dialog-actions"><button className="button" type="button" disabled={busy} onClick={onClose}>Cancel</button><button className="button primary" disabled={busy || !name.trim()}>{busy ? 'Saving…' : 'Save'}</button></div>
+    <div className="dialog-actions"><button className="button" type="button" disabled={busy} onClick={onClose}>{uiText("Cancel")}</button><button className="button primary" disabled={busy || !name.trim()}>{busy ? uiText("Saving…") : uiText("Save")}</button></div>
   </form></Modal>;
 }

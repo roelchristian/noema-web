@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import { SourcePolicy } from './SourcePolicy';
 import { request, uploadSourceFile } from '../api';
 import type { SourceFile } from '../../shared/domain';
@@ -61,26 +62,26 @@ export function CreateEntityDialog({vaultId, initial, onSubmit, onClose}: {vault
   }
   const namePlaceholder: Partial<Record<EntityType,string>> = {person:'e.g. Ursula K. Le Guin',place:'e.g. Kyoto',organization:'e.g. The Royal Society',event:'e.g. World Expo 2025',creativework:'e.g. The Left Hand of Darkness',organism:'e.g. Ginkgo biloba',culture:'e.g. Japanese',concept:'e.g. Systems thinking',source:'e.g. Interview with Ursula K. Le Guin'};
   return <Modal className="create-entity-dialog" onClose={() => { if (!busy) onClose(); }} titleId="create-dialog-title"><form onSubmit={submit}>
-    <ModalHeader titleId="create-dialog-title" leading={<Icon name={type}/>} closeDisabled={busy}>{initial.intent==='insert'?'Create and insert':initial.source ? 'New source' : 'New entity'}</ModalHeader><p className="modal-description">{initial.intent==='insert'?'Add an entity and keep writing.':initial.source?'Add a document to your Sources library.':'Add to your knowledge library.'}</p>
+    <ModalHeader titleId="create-dialog-title" leading={<Icon name={type}/>} closeDisabled={busy}>{initial.intent==='insert'?uiText("Create and insert"):initial.source ? uiText("New source") : uiText("New entity")}</ModalHeader><p className="modal-description">{initial.intent==='insert'?uiText("Add an entity and keep writing."):initial.source?uiText("Add a document to your Sources library."):uiText("Add to your knowledge library.")}</p>
     <div className="create-entity-fields">
-      {!initial.source&&<label>Entity type<Select aria-label="Entity type" value={type} onChange={e => { setType(e.target.value as EntityType); setSubtypes([]); setDomainIds([]); setSourceFile(null); setSourceUrl(''); setStagedSource(null); setSourceMethod(''); setContainsMath(false); setError(''); }} disabled={busy}>{allowedTypes.map(t => <option key={t} value={t}>{entityLabels[t]}</option>)}</Select></label>}
-      {type==='source'&&<label>Add source from (required)<Select aria-label="Add source from" required value={sourceMethod} onChange={event=>{setSourceMethod(event.target.value as 'file'|'url');setSourceFile(null);setSourceUrl('');setStagedSource(null);setError('');}} disabled={busy}><option value="" disabled>Choose file or URL</option><option value="file">File</option><option value="url">URL</option></Select></label>}
+      {!initial.source&&<label>{uiText("Entity type")}<Select aria-label={uiText("Entity type")} value={type} onChange={e => { setType(e.target.value as EntityType); setSubtypes([]); setDomainIds([]); setSourceFile(null); setSourceUrl(''); setStagedSource(null); setSourceMethod(''); setContainsMath(false); setError(''); }} disabled={busy}>{allowedTypes.map(t => <option key={t} value={t}>{uiText(entityLabels[t])}</option>)}</Select></label>}
+      {type==='source'&&<label>{uiText("Add source from (required)")}<Select aria-label={uiText("Add source from")} required value={sourceMethod} onChange={event=>{setSourceMethod(event.target.value as 'file'|'url');setSourceFile(null);setSourceUrl('');setStagedSource(null);setError('');}} disabled={busy}><option value="" disabled>{uiText("Choose file or URL")}</option><option value="file">{uiText("File")}</option><option value="url">{uiText("URL")}</option></Select></label>}
       {type==='source'&&sourceMethod&&<section className="source-attachments">
         {sourceMethod==='file'
-          ? <label className="source-upload">Choose source file<input type="file" required accept=".txt,.md,.pdf" aria-label="Choose source file" disabled={busy} onChange={event=>selectFile(event.target.files?.[0]??null)}/></label>
-          : <label>Source URL<input type="url" inputMode="url" required value={sourceUrl} onChange={event=>{setSourceUrl(event.target.value);setStagedSource(null);setError('');}} disabled={busy} placeholder="https://example.com/article"/></label>}
-        <label className="source-math-option"><input type="checkbox" checked={containsMath} disabled={busy} onChange={event=>{setContainsMath(event.target.checked);setStagedSource(null);}} aria-describedby="source-math-help"/><span>This document contains substantial mathematical notation</span></label>
-        <p id="source-math-help" className="source-math-help">Prepare mathematical notation for rendering during source processing. Leave unchecked for ordinary prose.</p>
+          ? <label className="source-upload">{uiText("Choose source file")}<input type="file" required accept=".txt,.md,.pdf" aria-label={uiText("Choose source file")} disabled={busy} onChange={event=>selectFile(event.target.files?.[0]??null)}/></label>
+          : <label>{uiText("Source URL")}<input type="url" inputMode="url" required value={sourceUrl} onChange={event=>{setSourceUrl(event.target.value);setStagedSource(null);setError('');}} disabled={busy} placeholder={uiText("https://example.com/article")}/></label>}
+        <label className="source-math-option"><input type="checkbox" checked={containsMath} disabled={busy} onChange={event=>{setContainsMath(event.target.checked);setStagedSource(null);}} aria-describedby="source-math-help"/><span>{uiText("This document contains substantial mathematical notation")}</span></label>
+        <p id="source-math-help" className="source-math-help">{uiText("Prepare mathematical notation for rendering during source processing. Leave unchecked for ordinary prose.")}</p>
         <SourcePolicy method={sourceMethod}/>
       </section>}
 
-      <label>Name<input autoFocus={type!=='source'} required={type!=='source'} maxLength={200} value={resolvedName} onChange={e => {setName(e.target.value);setNameEdited(true);}} disabled={busy} placeholder={type==='source'?'Uses the source filename':namePlaceholder[type] ?? 'Entity name'} autoComplete="off"/></label>
+      <label>{uiText("Name")}<input autoFocus={type!=='source'} required={type!=='source'} maxLength={200} value={resolvedName} onChange={e => {setName(e.target.value);setNameEdited(true);}} disabled={busy} placeholder={type==='source'?uiText("Uses the source filename"):namePlaceholder[type] ?? uiText("Entity name")} autoComplete="off"/></label>
       <SubtypePicker type={type} value={subtypes} subtypes={schema.subtypes} onChange={setSubtypes} disabled={busy}/>
       {type==='concept'&&<DomainPicker value={domainIds} onChange={setDomainIds} disabled={busy}/>}
       {type!=='source'&&<AliasInput value={aliases} onChange={setAliases} disabled={busy}/>}
       {schemaError && <p className="dialog-error" role="alert">{schemaError}</p>}
       {error && <p className="dialog-error" role="alert">{error}</p>}
     </div>
-    <footer className="dialog-actions create-entity-actions"><button type="button" className="button" onClick={onClose} disabled={busy}>Cancel</button><button className="button primary" disabled={busy||(type==='source'?!sourceReady:!resolvedName.trim())}>{busy?'Creating…':initial.intent==='insert'?'Create and insert':initial.source?'Create source':'Create entity'}</button></footer>
+    <footer className="dialog-actions create-entity-actions"><button type="button" className="button" onClick={onClose} disabled={busy}>{uiText("Cancel")}</button><button className="button primary" disabled={busy||(type==='source'?!sourceReady:!resolvedName.trim())}>{busy?uiText("Creating…"):initial.intent==='insert'?uiText("Create and insert"):initial.source?uiText("Create source"):uiText("Create entity")}</button></footer>
   </form></Modal>;
 }

@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import {TitleText} from '../components/TitleText';
 import {renderToStaticMarkup} from 'react-dom/server';
 import type {ReactNode} from 'react';
@@ -5,7 +6,7 @@ import type {ReactNode} from 'react';
 import {pageLinks, type PageLinkMatch} from '../../shared/page-links';
 
 function PageLink({link}:{link:PageLinkMatch}) {
-  return <a className="note-link" href={'#page='+encodeURIComponent(link.title)} data-page-title={link.title} data-wikilink={link.source} contentEditable={false} draggable={false} title={'Open note: '+link.title}><TitleText text={link.label}/></a>;
+  return <a className="note-link" href={'#page='+encodeURIComponent(link.title)} data-page-title={link.title} data-wikilink={link.source} contentEditable={false} draggable={false} title={uiText("Open note: ")+link.title}><TitleText text={link.label}/></a>;
 }
 export function pageLinkNodes(text:string):ReactNode[] {
   const nodes:ReactNode[]=[];let offset=0;

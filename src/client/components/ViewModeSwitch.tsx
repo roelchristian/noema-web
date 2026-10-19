@@ -1,8 +1,9 @@
+import {t as uiText} from '../i18n';
 import {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {Icon} from './Icon';
 
 export type ViewMode = 'list' | 'compact' | 'grid';
-const modes = [{id: 'list', label: 'List'}, {id: 'compact', label: 'Compact'}, {id: 'grid', label: 'Grid'}] as const;
+const modes = [{id: 'list', label: uiText("List")}, {id: 'compact', label: uiText("Compact")}, {id: 'grid', label: uiText("Grid")}] as const;
 function readMode(scope: string, fallbackScope: string | undefined, defaultMode: ViewMode): ViewMode {
   try {
     const stored = localStorage.getItem('noema-view-mode/' + scope) ?? (fallbackScope ? localStorage.getItem('noema-view-mode/' + fallbackScope) : null);
@@ -81,5 +82,5 @@ export function ViewModeSwitch({value, onChange}: {value: ViewMode; onChange: (m
     control.querySelectorAll('button').forEach(button=>observer.observe(button));
     return()=>{cancelAnimationFrame(frame);observer.disconnect();};
   },[value]);
-  return <div ref={root} className="view-mode-switch" role="group" aria-label="View layout"><span ref={indicator} className="view-mode-indicator" aria-hidden="true"/>{modes.map(mode => <button key={mode.id} type="button" title={mode.label + ' view'} aria-label={mode.label + ' view'} aria-pressed={value === mode.id} onClick={() => onChange(mode.id)}><Icon name={'view-' + mode.id}/><span>{mode.label}</span></button>)}</div>;
+  return <div ref={root} className="view-mode-switch" role="group" aria-label={uiText("View layout")}><span ref={indicator} className="view-mode-indicator" aria-hidden="true"/>{modes.map(mode => <button key={mode.id} type="button" title={mode.label + uiText(" view")} aria-label={mode.label + uiText(" view")} aria-pressed={value === mode.id} onClick={() => onChange(mode.id)}><Icon name={'view-' + mode.id}/><span>{mode.label}</span></button>)}</div>;
 }

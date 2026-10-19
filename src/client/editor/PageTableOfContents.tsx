@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import {useEffect,useId,useRef,useState,type RefObject} from 'react';
 import {createPortal} from 'react-dom';
 import {TitleText} from '../components/TitleText';
@@ -81,7 +82,7 @@ export function PageTableOfContents({headings,showDocument,articleRef}:{headings
   }
   const list=()=> <ol>{headings.map(heading=><li className={heading.level===2?'is-subheading':undefined} key={heading.id}><button type="button" aria-current={active===heading.id?'location':undefined} onClick={()=>jump(heading.id)} title={heading.title}><TitleText text={heading.title}/></button></li>)}</ol>;
   return <>
-    {showDocument&&<nav className="page-toc page-toc-document" aria-labelledby={labelId}><h2 id={labelId}>Table of contents</h2>{list()}</nav>}
-    {guidePresent&&guideHost&&createPortal(<div className="page-toc-guide-presence" data-visible={showGuide}><div className="page-toc-guide-clip"><nav ref={guide} className="page-toc page-toc-guide" data-visible={showGuide} inert={!showGuide} aria-hidden={!showGuide} aria-label="Reading position" onMouseEnter={()=>setHovered(true)} onMouseLeave={()=>setHovered(false)} onFocusCapture={()=>setFocused(true)} onBlurCapture={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null))setFocused(false);}}><div className="page-toc-guide-heading"><h2>On this page</h2></div>{list()}</nav></div></div>,guideHost)}
+    {showDocument&&<nav className="page-toc page-toc-document" aria-labelledby={labelId}><h2 id={labelId}>{uiText("Table of contents")}</h2>{list()}</nav>}
+    {guidePresent&&guideHost&&createPortal(<div className="page-toc-guide-presence" data-visible={showGuide}><div className="page-toc-guide-clip"><nav ref={guide} className="page-toc page-toc-guide" data-visible={showGuide} inert={!showGuide} aria-hidden={!showGuide} aria-label={uiText("Reading position")} onMouseEnter={()=>setHovered(true)} onMouseLeave={()=>setHovered(false)} onFocusCapture={()=>setFocused(true)} onBlurCapture={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null))setFocused(false);}}><div className="page-toc-guide-heading"><h2>{uiText("On this page")}</h2></div>{list()}</nav></div></div>,guideHost)}
   </>;
 }

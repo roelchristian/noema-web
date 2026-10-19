@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import { useState } from 'react';
 import { pageIcons, type PageIconId } from '../../shared/page-icons';
 import { Modal, ModalHeader } from './Modal';
@@ -11,18 +12,18 @@ export function PageIconPicker({value, onChange}: {value?: PageIconId | null; on
   const filtered = pageIcons.filter(icon => `${icon.label} ${icon.group}`.toLowerCase().includes(search.trim().toLowerCase()));
   function choose(icon: PageIconId | null) { onChange(icon); setOpen(false); }
   return <>
-    <button className={'page-icon-trigger' + (selected ? ' has-icon' : '')} aria-label={selected ? `Change page icon: ${selected.label}` : 'Choose page icon'} title={selected ? `Change icon · ${selected.label}` : 'Choose page icon'} aria-haspopup="dialog" aria-expanded={open} onClick={() => { setSearch(''); setOpen(true); }}><PageIcon icon={value}/><span>{selected ? 'Change icon' : 'Add icon'}</span></button>
+    <button className={'page-icon-trigger' + (selected ? ' has-icon' : '')} aria-label={selected ? uiText("Change page icon: {value0}",{value0: selected.label}) : uiText("Choose page icon")} title={selected ? uiText("Change icon · {value0}",{value0: selected.label}) : uiText("Choose page icon")} aria-haspopup="dialog" aria-expanded={open} onClick={() => { setSearch(''); setOpen(true); }}><PageIcon icon={value}/><span>{selected ? uiText("Change icon") : uiText("Add icon")}</span></button>
     {open && <Modal titleId="page-icon-title" className="page-icon-dialog" onClose={() => setOpen(false)}>
-      <ModalHeader titleId="page-icon-title">Page icon</ModalHeader>
-      <input autoFocus type="search" aria-label="Search page icons" placeholder="Search symbols…" value={search} onChange={e => setSearch(e.target.value)}/>
+      <ModalHeader titleId="page-icon-title">{uiText("Page icon")}</ModalHeader>
+      <input autoFocus type="search" aria-label={uiText("Search page icons")} placeholder={uiText("Search symbols…")} value={search} onChange={e => setSearch(e.target.value)}/>
       <div className="page-icon-catalog">
         {groups.map(group => {
           const icons = filtered.filter(icon => icon.group === group);
           return icons.length > 0 && <section key={group} aria-label={group}><h3>{group}</h3><div className="page-icon-grid">{icons.map(icon => <button key={icon.id} className="page-icon-option" title={icon.label} aria-label={icon.label} aria-pressed={value === icon.id} onClick={() => choose(icon.id)}><PageIcon icon={icon.id}/><span>{icon.label}</span></button>)}</div></section>;
         })}
-        {!filtered.length && <p className="page-icon-empty" role="status">No symbols found. Try “book”, “work”, or “star”.</p>}
+        {!filtered.length && <p className="page-icon-empty" role="status">{uiText("No symbols found. Try “book”, “work”, or “star”.")}</p>}
       </div>
-      <div className="page-icon-footer"><span>{selected ? selected.label : 'Default page icon'}</span><button className="button small" onClick={() => choose(null)}>Reset to default</button></div>
+      <div className="page-icon-footer"><span>{selected ? selected.label : uiText("Default page icon")}</span><button className="button small" onClick={() => choose(null)}>{uiText("Reset to default")}</button></div>
     </Modal>}
   </>;
 }

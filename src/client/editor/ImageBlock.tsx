@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { Block } from '../../shared/domain';
 import { imageURL } from '../api';
@@ -24,13 +25,13 @@ export function ImageBlock({block, featured, onSetFeatured, vaultId, onChange, o
     if(event.key === 'Backspace' || event.key === 'Delete') {event.preventDefault(); onDelete();}
     if(event.key === 'Enter') {event.preventDefault(); onExit();}
   }
-  return <div className="image-block" ref={el => {root.current=el; register(el);}} tabIndex={0} role="group" aria-label="Image block" aria-description="Press Backspace or Delete to remove this image. Press Enter to add text below." onKeyDown={keyDown}>
+  return <div className="image-block" ref={el => {root.current=el; register(el);}} tabIndex={0} role="group" aria-label={uiText("Image block")} aria-description={uiText("Press Backspace or Delete to remove this image. Press Enter to add text below.")} onKeyDown={keyDown}>
     <img src={imageURL(vaultId,block.imageId!)} alt={block.alt || ''} onClick={() => root.current?.focus()}/>
     <div className="image-block-actions">
-      <button type="button" className="image-caption-toggle" title={featured?'Remove featured image':'Use as featured image'} aria-label={featured?'Remove featured image':'Use as featured image'} aria-pressed={featured} onClick={onSetFeatured}><Icon name="star"/></button>
-      <button ref={toggle} className="image-caption-toggle" title={captionOpen ? 'Hide image caption' : 'Show image caption'} aria-label={captionOpen ? 'Hide image caption' : 'Show image caption'} aria-expanded={captionOpen} aria-controls={captionId} onClick={() => setCaptionOpen(open => !open)}><Icon name="image"/></button>
+      <button type="button" className="image-caption-toggle" title={featured?uiText("Remove featured image"):uiText("Use as featured image")} aria-label={featured?uiText("Remove featured image"):uiText("Use as featured image")} aria-pressed={featured} onClick={onSetFeatured}><Icon name="star"/></button>
+      <button ref={toggle} className="image-caption-toggle" title={captionOpen ? uiText("Hide image caption") : uiText("Show image caption")} aria-label={captionOpen ? uiText("Hide image caption") : uiText("Show image caption")} aria-expanded={captionOpen} aria-controls={captionId} onClick={() => setCaptionOpen(open => !open)}><Icon name="image"/></button>
     </div>
-    {captionOpen && <input ref={caption} id={captionId} aria-label="Image caption" placeholder="Add an image caption…" maxLength={1000} value={block.alt || ''} onChange={event => onChange(event.target.value)} onKeyDown={event => {
+    {captionOpen && <input ref={caption} id={captionId} aria-label={uiText("Image caption")} placeholder={uiText("Add an image caption…")} maxLength={1000} value={block.alt || ''} onChange={event => onChange(event.target.value)} onKeyDown={event => {
       if(event.key === 'Escape') {event.preventDefault(); setCaptionOpen(false); toggle.current?.focus();}
     }}/>}
   </div>;

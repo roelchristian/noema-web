@@ -1,3 +1,5 @@
+import {getLocale} from '../i18n';
+import {t as uiText} from '../i18n';
 import {TitleText} from '../components/TitleText';
 import {PageCover} from '../components/PageCover';
 import {PageIcon} from '../components/PageIcon';
@@ -17,12 +19,12 @@ export function RecentLibrary({vaultId, recent, pages, entities, onOpenPage, onO
   });
   const previews = useSearchSnippets(vaultId, '', viewMode === 'grid' ? items.filter(item => item.kind === 'page').map(item => item.item_id) : [], viewMode === 'grid', items.map(item => item.item_id + ':' + item.updatedAt).sort().join(','));
   return <section ref={libraryRef} className="organization-library recent-library" data-layout={viewMode} data-library-vault={vaultId} data-library-destination="recent">
-    <div className="organization-heading"><div className="library-heading-row"><h1 className="page-heading">Recent items</h1></div><div className="library-heading-actions"><ViewModeSwitch value={viewMode} onChange={setViewMode}/></div></div>
+    <div className="organization-heading"><div className="library-heading-row"><h1 className="page-heading">{uiText("Recent items")}</h1></div><div className="library-heading-actions"><ViewModeSwitch value={viewMode} onChange={setViewMode}/></div></div>
     <div className="organization-items">{items.map(item => <article key={item.kind + item.item_id} className="organization-item" data-library-row={item.kind+':'+item.item_id}><div className="organization-item-row">
       {viewMode==='grid' && <PageCover vaultId={vaultId} imageId={item.featuredImageId} icon={item.type ?? 'page'}/>}
       <span className="organization-item-icon">{item.kind === 'page' ? <PageIcon icon={item.icon}/> : <Icon name={item.type ?? 'knowledge'}/>}</span>
-      <button data-library-focus className="organization-item-name" title={item.name} onClick={() => item.kind === 'page' ? onOpenPage(item.item_id) : onOpenEntity(item.item_id)}><span className="organization-page-title">{item.kind==='page'?<TitleText text={item.name}/>:item.name}</span><small>{item.type ? entityLabels[item.type] : 'Page'}</small>{viewMode === 'grid' && (item.description || previews.snippets[item.item_id]) && <span className="search-result-snippet item-preview">{item.description || previews.snippets[item.item_id]}</span>}</button>
-      <time className="recent-time" dateTime={item.opened_at}>{new Date(item.opened_at).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</time>
-    </div></article>)}{!items.length && <div className="organization-empty"><Icon name="recent"/><h2>Your next starting point</h2><p>Pages and entities you open will appear here.</p></div>}</div>
+      <button data-library-focus className="organization-item-name" title={item.name} onClick={() => item.kind === 'page' ? onOpenPage(item.item_id) : onOpenEntity(item.item_id)}><span className="organization-page-title">{item.kind==='page'?<TitleText text={item.name}/>:item.name}</span><small>{item.type ? uiText(entityLabels[item.type]) : uiText("Page")}</small>{viewMode === 'grid' && (item.description || previews.snippets[item.item_id]) && <span className="search-result-snippet item-preview">{item.description || previews.snippets[item.item_id]}</span>}</button>
+      <time className="recent-time" dateTime={item.opened_at}>{new Date(item.opened_at).toLocaleDateString(getLocale(), {month: 'short', day: 'numeric'})}</time>
+    </div></article>)}{!items.length && <div className="organization-empty"><Icon name="recent"/><h2>{uiText("Your next starting point")}</h2><p>{uiText("Pages and entities you open will appear here.")}</p></div>}</div>
   </section>;
 }

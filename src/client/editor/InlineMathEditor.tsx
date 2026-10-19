@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {menuPlacement} from '../components/menu-placement';
@@ -55,15 +56,15 @@ export function InlineMathEditor({initial,range,node,onSave,onClose,onMakeDispla
       const selection=getSelection();selection?.removeAllRanges();selection?.addRange(range);
     }
   }
-  return createPortal(<div ref={popup} className="inline-math-editor equation-editor-shell" role="dialog" aria-modal="false" aria-label="Edit inline equation" onKeyDown={event=>{
+  return createPortal(<div ref={popup} className="inline-math-editor equation-editor-shell" role="dialog" aria-modal="false" aria-label={uiText("Edit inline equation")} onKeyDown={event=>{
     event.stopPropagation();
     if(event.nativeEvent.isComposing)return;
     if(event.key==='Escape'){event.preventDefault();cancel();}
     else if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();done();}
     else if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='s'){event.preventDefault();done();}
   }}>
-    <EquationEditor value={source} onChange={setSource} label="Equation LaTeX" description="Click away or press Enter to apply. Escape cancels. Shift+Enter adds a line." onDone={done} doneDisabled={!source.trim()} conversion={onMakeDisplay?{
-      label:'Make Display',disabled:!source.trim(),onClick:()=>{if(!finishing.current&&source.trim()){finishing.current=true;onMakeDisplay(source.trim());}},
+    <EquationEditor value={source} onChange={setSource} label={uiText("Equation LaTeX")} description={uiText("Click away or press Enter to apply. Escape cancels. Shift+Enter adds a line.")} onDone={done} doneDisabled={!source.trim()} conversion={onMakeDisplay?{
+      label:uiText("Make Display"),disabled:!source.trim(),onClick:()=>{if(!finishing.current&&source.trim()){finishing.current=true;onMakeDisplay(source.trim());}},
     }:undefined}/>
 
   </div>,document.body);

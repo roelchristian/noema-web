@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import {citationKey,citationLocation,sortCitationRuns} from '../../shared/citations';
 import type {CitationPresentation} from '../sources/CitationPresentation';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -61,13 +62,13 @@ export function segmentHTML(content: Segment[], entities: Entity[], review?: Rev
       return <span key={index} id={`note-citation-${ref.id}`} className={'source-reference-tag'+(footnote?' is-footnote':'')} data-citation-number={footnote?entry.number:undefined} data-reference-target={footnote?`note-reference-${entry.number}`:undefined} contentEditable={false} role={footnote?'link':'button'} tabIndex={0} data-entity={ref.sourceId} data-source-reference={JSON.stringify(ref)} data-source-text={s.text ?? ''} data-source-segment={JSON.stringify(s)} aria-controls={footnote?`note-reference-${entry.number}`:"source-viewer"} aria-label={`${footnote?`Go to reference ${entry.number}`:`Open reference ${ref.sourceNumber??1}`}: ${source?.name??'Source'}, ${citationLocation(ref)}`}>{label}</span>;
     }
     if (s.entityId) return <Mention key={index} id={s.entityId} label={s.mentionText} entities={entities} onOpen={() => {}}/>;
-    if (s.math) return <span key={index} className="inline-math" data-math={s.text} contentEditable={false} role={readOnly ? undefined : "button"} tabIndex={readOnly ? undefined : 0} title={readOnly ? undefined : "Edit equation"} aria-label={`${readOnly ? "Equation" : "Edit equation"}: ${s.text}`} dangerouslySetInnerHTML={{__html: renderMath(s.text ?? '')}}/>;
+    if (s.math) return <span key={index} className="inline-math" data-math={s.text} contentEditable={false} role={readOnly ? undefined : "button"} tabIndex={readOnly ? undefined : 0} title={readOnly ? undefined : uiText("Edit equation")} aria-label={`${readOnly ? "Equation" : "Edit equation"}: ${s.text}`} dangerouslySetInnerHTML={{__html: renderMath(s.text ?? '')}}/>;
     const parts: React.ReactNode[] = [];
     let cursor = 0;
     for (const range of ranges.filter(range => range.start < offset && range.end > start)) {
       const from = Math.max(0, range.start - start), to = Math.min(s.text?.length ?? 0, range.end - start);
       if (from > cursor) parts.push(...(s.code || s.href ? [s.text?.slice(cursor, from)] : pageLinkNodes(s.text?.slice(cursor, from) ?? '')));
-      parts.push(<span key={range.id} className={'entity-review-highlight' + (range.start === start + from ? ' is-start' : '')} data-entity-review={range.id} title="Ambiguous entity · click to review">{s.text?.slice(from, to)}</span>);
+      parts.push(<span key={range.id} className={'entity-review-highlight' + (range.start === start + from ? ' is-start' : '')} data-entity-review={range.id} title={uiText("Ambiguous entity · click to review")}>{s.text?.slice(from, to)}</span>);
       cursor = to;
     }
     parts.push(...(s.code || s.href ? [s.text?.slice(cursor)] : pageLinkNodes(s.text?.slice(cursor) ?? '')));

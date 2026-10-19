@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Entity } from '../../shared/domain';
 import type { AmbiguousEntityMatch, EntityMatchResolution } from '../../shared/auto-entities';
@@ -42,9 +43,9 @@ export function EntityMatchReview({matches, entities, onResolve, disabled = fals
     <div className="entity-match-review"><button type="button" className="entity-review-notice" onClick={() => {
       const element = Array.from(document.querySelectorAll<HTMLElement>('[data-entity-review]')).find(element => element.dataset.entityReview === matches[0]!.id);
       if (element) { element.scrollIntoView({block: 'nearest'}); setTarget({id: matches[0]!.id, element}); }
-    }}><Icon name="question-circle"/><span>{matches.length} entity {matches.length === 1 ? 'match needs' : 'matches need'} review</span><span className="entity-review-label">Review</span></button></div>
-    {active && target?.element.isConnected && <div ref={popover} className="entity-match-popover" style={position} role="dialog" aria-label={`Review entity match ${active.text}`}>
-      <div className="entity-review-popover-heading"><span><Icon name="question-circle"/>Which entity is this?</span><button type="button" aria-label="Close entity review" onClick={() => setTarget(null)}><Icon name="close"/></button></div>
+    }}><Icon name="question-circle"/><span>{matches.length}{" " + uiText("entity") + " "}{matches.length === 1 ? uiText("match needs") : uiText("matches need")}{" " + uiText("review")}</span><span className="entity-review-label">{uiText("Review")}</span></button></div>
+    {active && target?.element.isConnected && <div ref={popover} className="entity-match-popover" style={position} role="dialog" aria-label={uiText("Review entity match {value0}",{value0: active.text})}>
+      <div className="entity-review-popover-heading"><span><Icon name="question-circle"/>{uiText("Which entity is this?")}</span><button type="button" aria-label={uiText("Close entity review")} onClick={() => setTarget(null)}><Icon name="close"/></button></div>
       <MatchRow disabled={disabled} key={active.id + active.text} match={active} entities={entities} onResolve={resolution => {onResolve(resolution); setTarget(null);}}/>
     </div>}
   </>;
@@ -55,13 +56,13 @@ function MatchRow({match, entities, onResolve, disabled}: {disabled?: boolean; m
   const valid = candidates.some(entity => entity.id === selected);
   return <div className="entity-match-row" data-match-id={match.id}>
     <strong>“{match.text}”</strong><p>{match.context}</p>
-    <Select aria-label={`Entity for ${match.text}`} disabled={disabled} value={valid ? selected : ''} onChange={event => setSelected(event.target.value)}>
-      <option value="">Choose an entity…</option>
+    <Select aria-label={uiText("Entity for {value0}",{value0: match.text})} disabled={disabled} value={valid ? selected : ''} onChange={event => setSelected(event.target.value)}>
+      <option value="">{uiText("Choose an entity…")}</option>
       {candidates.map(entity => <option key={entity.id} value={entity.id}>{entity.name}</option>)}
     </Select>
     <div className="entity-match-actions">
-      <button type="button" className="button small" disabled={disabled || !valid} onClick={() => onResolve({match, entityId: selected})}>Link this instance</button>
-      <button type="button" className="button small" disabled={disabled || !valid} onClick={() => onResolve({match, entityId: selected, all: true})}>Link all “{match.text}” instances</button>
+      <button type="button" className="button small" disabled={disabled || !valid} onClick={() => onResolve({match, entityId: selected})}>{uiText("Link this instance")}</button>
+      <button type="button" className="button small" disabled={disabled || !valid} onClick={() => onResolve({match, entityId: selected, all: true})}>{uiText("Link all “")}{match.text}{uiText("” instances")}</button>
     </div>
   </div>;
 }

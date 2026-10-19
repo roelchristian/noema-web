@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import { entityMentionName } from '../../shared/domain';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { entityLabels, type Entity } from '../../shared/domain';
@@ -77,11 +78,11 @@ export function EntityPreview({entities, onOpen}: {entities: Entity[]; onOpen: (
   }, [target, entity]);
   if (!entity || !target?.isConnected) return null;
   return <div ref={card} id="entity-preview" className="entity-preview" style={position} role="dialog" aria-labelledby="entity-preview-title" aria-describedby="entity-preview-description">
-    <div className="entity-preview-type"><Icon name={entity.type}/><span>{entityLabels[entity.type]}</span></div>
+    <div className="entity-preview-type"><Icon name={entity.type}/><span>{uiText(entityLabels[entity.type])}</span></div>
     <h3 id="entity-preview-title">{entity.name}</h3>
-    <p id="entity-preview-description" className={!entity.description.trim() ? 'is-empty' : ''}>{entity.description.trim() || 'No description yet.'}</p>
-    <button type="button" onClick={() => { const id = entity.id; dismiss(); onOpen(id); }}>Open full entity<Icon name="chevron"/></button>
-    {target.closest('.page #blocks .block-content[contenteditable="true"]') && <button type="button" className="remove-entity-tag" title="Keep this text and skip automatic tagging for it" onClick={() => {
+    <p id="entity-preview-description" className={!entity.description.trim() ? 'is-empty' : ''}>{entity.description.trim() || uiText("No description yet.")}</p>
+    <button type="button" onClick={() => { const id = entity.id; dismiss(); onOpen(id); }}>{uiText("Open full entity")}<Icon name="chevron"/></button>
+    {target.closest('.page #blocks .block-content[contenteditable="true"]') && <button type="button" className="remove-entity-tag" title={uiText("Keep this text and skip automatic tagging for it")} onClick={() => {
       const editor = target.closest<HTMLElement>('.block-content[contenteditable="true"]');
       if (!editor || !target.isConnected) return;
       const text = document.createElement('span');
@@ -90,6 +91,6 @@ export function EntityPreview({entities, onOpen}: {entities: Entity[]; onOpen: (
       target.replaceWith(text);
       dismiss();
       editor.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'deleteContentBackward'}));
-    }}>Remove entity tag<Icon name="close"/></button>}
+    }}>{uiText("Remove entity tag")}<Icon name="close"/></button>}
   </div>;
 }

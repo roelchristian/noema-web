@@ -1,3 +1,5 @@
+import {getLocale} from '../i18n';
+import {t as uiText} from '../i18n';
 import {TitleText} from '../components/TitleText';
 import {useEffect,useId,useMemo,useState} from 'react';
 import {blockPageLinks,pageTitleKey} from '../../shared/page-links';
@@ -32,11 +34,11 @@ export function NoteConnections({page,pages,onOpenPage,inactive=false}:{page:Pag
   const incomingIds=new Set(!loading&&!error?backlinks.map(source=>source.id):[]);
   const incomingOnly=backlinks.filter(source=>!outgoingIds.has(source.id));
   const links=outgoing.flatMap(link=>{
-    const aliases=!!link.aliases.size&&<small className="knowledge-link-alias">Shown as: {[...link.aliases].join(', ')}</small>;
+    const aliases=!!link.aliases.size&&<small className="knowledge-link-alias">{uiText("Shown as:") + " "}{[...link.aliases].join(', ')}</small>;
     return link.targets.length?link.targets.map(target=><li key={'page-'+target.id}>
-      <button type="button" disabled={inactive} onClick={()=>onOpenPage(target.id)}><LinkDirectionIcon direction={incomingIds.has(target.id)?'bidirectional':'outgoing'}/><span><TitleText text={target.title}/>{link.targets.length>1&&<small>Updated {new Date(target.updated_at).toLocaleString()}</small>}</span></button>
+      <button type="button" disabled={inactive} onClick={()=>onOpenPage(target.id)}><LinkDirectionIcon direction={incomingIds.has(target.id)?'bidirectional':'outgoing'}/><span><TitleText text={target.title}/>{link.targets.length>1&&<small>{uiText("Updated") + " "}{new Date(target.updated_at).toLocaleString(getLocale())}</small>}</span></button>
       {aliases}
-    </li>):[<li key={'missing-'+pageTitleKey(link.title)}><div className="knowledge-missing-link"><LinkDirectionIcon direction="outgoing"/><span><TitleText text={link.title}/><small>Note not found in this vault</small></span></div>{aliases}</li>];
+    </li>):[<li key={'missing-'+pageTitleKey(link.title)}><div className="knowledge-missing-link"><LinkDirectionIcon direction="outgoing"/><span><TitleText text={link.title}/><small>{uiText("Note not found in this vault")}</small></span></div>{aliases}</li>];
   });
   if(!loading&&!error)links.push(...incomingOnly.map(source=><li key={'page-'+source.id}><button type="button" disabled={inactive} onClick={()=>onOpenPage(source.id)}><LinkDirectionIcon direction="incoming"/><span><TitleText text={source.title||'Untitled'}/></span></button></li>));
   const paginationKey=JSON.stringify([page.vault_id,page.id]);
@@ -48,14 +50,14 @@ export function NoteConnections({page,pages,onOpenPage,inactive=false}:{page:Pag
   const pageStart=pageIndex*pageSize;
   if(!loading&&!error&&!links.length)return null;
   return <section className="knowledge-note-links" aria-labelledby={id+'-links'}>
-      <div className="knowledge-section-heading"><h2 id={id+'-links'}><Icon name="page-bidirectional"/>Links{!loading&&!error&&<span className="knowledge-count">{links.length}</span>}</h2></div>
+      <div className="knowledge-section-heading"><h2 id={id+'-links'}><Icon name="page-bidirectional"/>{uiText("Links")}{!loading&&!error&&<span className="knowledge-count">{links.length}</span>}</h2></div>
       <ul id={id+'-list'} className="knowledge-note-link-list">{links.slice(pageStart,pageStart+pageSize)}</ul>
-      {pageCount>1&&<nav className="knowledge-entity-pagination" aria-label="Links pagination">
-        <span role="status" aria-live="polite" aria-atomic="true">{pageStart+1}–{Math.min(pageStart+pageSize,links.length)} of {links.length}</span>
-        <button type="button" className="pagination-previous" aria-label="Previous links" title="Previous page" aria-controls={id+'-list'} disabled={inactive||pageIndex===0} onClick={()=>setPagination({key:paginationKey,index:pageIndex-1})}><Icon name="chevron"/></button>
-        <button type="button" aria-label="Next links" title="Next page" aria-controls={id+'-list'} disabled={inactive||pageIndex===pageCount-1} onClick={()=>setPagination({key:paginationKey,index:pageIndex+1})}><Icon name="chevron"/></button>
+      {pageCount>1&&<nav className="knowledge-entity-pagination" aria-label={uiText("Links pagination")}>
+        <span role="status" aria-live="polite" aria-atomic="true">{pageStart+1}–{Math.min(pageStart+pageSize,links.length)}{" " + uiText("of") + " "}{links.length}</span>
+        <button type="button" className="pagination-previous" aria-label={uiText("Previous links")} title={uiText("Previous page")} aria-controls={id+'-list'} disabled={inactive||pageIndex===0} onClick={()=>setPagination({key:paginationKey,index:pageIndex-1})}><Icon name="chevron"/></button>
+        <button type="button" aria-label={uiText("Next links")} title={uiText("Next page")} aria-controls={id+'-list'} disabled={inactive||pageIndex===pageCount-1} onClick={()=>setPagination({key:paginationKey,index:pageIndex+1})}><Icon name="chevron"/></button>
       </nav>}
-      {loading?<p className="section-hint" role="status">Loading links…</p>:error?<p className="section-hint" role="alert">{error} <button type="button" className="summary-toggle" onClick={()=>setRetry(value=>value+1)}>Retry</button></p>:null}
+      {loading?<p className="section-hint" role="status">{uiText("Loading links…")}</p>:error?<p className="section-hint" role="alert">{error} <button type="button" className="summary-toggle" onClick={()=>setRetry(value=>value+1)}>{uiText("Retry")}</button></p>:null}
     </section>;
 }
 

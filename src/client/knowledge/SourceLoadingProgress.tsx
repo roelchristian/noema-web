@@ -1,3 +1,4 @@
+import {t as uiText} from '../i18n';
 import {useEffect,useRef,useState} from 'react';
 import type {SourceFile} from '../../shared/domain';
 import {sourceDuration} from '../../shared/source-progress';
@@ -23,11 +24,10 @@ export function SourceLoadingProgress({file}:{file:SourceFile}) {
   :'Identifying sections, authors, and source details';
  return <div className="section-hint">
   <p role="status">{label}</p>
-  {detail&&<progress value={detail.completed} max={detail.total} aria-label="Math preparation batches completed"/>}
-  <p>{elapsed<60?`${elapsed}s`:`${Math.floor(elapsed/60)}m ${elapsed%60}s`} elapsed in this stage
-   {estimate!==undefined?(estimate>0?` · Estimated ${sourceDuration(estimate)} remaining in this stage`:detail&&detail.completed===detail.total?' · Notation preparation complete':' · Still working; this stage is taking longer than estimated')
-    :phase==='math'?' · Estimating after the first batch…':phase==='processing'?' · Estimating once extraction advances…':phase==='queued'?' · Timing depends on other source jobs.':' · Timing depends on source length and model speed.'}
+  {detail&&<progress value={detail.completed} max={detail.total} aria-label={uiText("Math preparation batches completed")}/>}
+  <p>{elapsed<60?`${elapsed}s`:`${Math.floor(elapsed/60)}m ${elapsed%60}s`}{" " + uiText("elapsed in this stage")}{estimate!==undefined?(estimate>0?uiText(" · Estimated {value0} remaining in this stage",{value0: sourceDuration(estimate)}):detail&&detail.completed===detail.total?uiText(" · Notation preparation complete"):uiText(" · Still working; this stage is taking longer than estimated"))
+    :phase==='math'?uiText(" · Estimating after the first batch…"):phase==='processing'?uiText(" · Estimating once extraction advances…"):phase==='queued'?uiText(" · Timing depends on other source jobs."):uiText(" · Timing depends on source length and model speed.")}
   </p>
-  {phase!=='queued'&&<p>You can leave this panel; source processing continues in the background.</p>}
+  {phase!=='queued'&&<p>{uiText("You can leave this panel; source processing continues in the background.")}</p>}
  </div>;
 }

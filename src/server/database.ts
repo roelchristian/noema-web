@@ -307,6 +307,10 @@ if (!db.prepare('PRAGMA table_info(pages)').all().some(column=>column.name==='cr
 // Older pages and pending drafts have no recorded language.
 if (!db.prepare('PRAGMA table_info(pages)').all().some(column=>column.name==='language')) db.exec('ALTER TABLE pages ADD COLUMN language TEXT');
 if (!db.prepare('PRAGMA table_info(source_page_drafts)').all().some(column=>column.name==='language')) db.exec('ALTER TABLE source_page_drafts ADD COLUMN language TEXT');
+// Acceptance is a durable authorship fact, separate from generated-page origin.
+if (!db.prepare('PRAGMA table_info(pages)').all().some(column=>column.name==='ai_review_accepted')) {
+ db.exec("ALTER TABLE pages ADD COLUMN ai_review_accepted INTEGER NOT NULL DEFAULT 0 CHECK(ai_review_accepted IN (0,1))");
+}
 // Backfill provenance once; future saves preserve generated origin even after edits.
 if (!db.prepare('PRAGMA table_info(pages)').all().some(column=>column.name==='ai_status')) {
  db.exec('BEGIN IMMEDIATE');

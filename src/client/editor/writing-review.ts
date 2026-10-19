@@ -1,3 +1,4 @@
+import {reviewTextEdits,type ReviewTextEdit} from '../../shared/review-diff';
 import type {Block,Segment} from '../../shared/domain';
 import type {EditorReviewText,EditorReviewSuggestion} from '../../shared/editor-review';
 import {isAIExplanation} from '../../shared/semantic-blocks';
@@ -9,7 +10,8 @@ export interface WritingReviewTarget {
   before:Segment[]; selected:Segment[]; after:Segment[];
   texts:EditorReviewText[];
 }
-export interface WritingReviewChange extends WritingReviewTarget {replacement:Segment[]; reasons:string[]}
+export interface WritingReviewEdit extends ReviewTextEdit {id:string;segmentIndex:number;reason:string}
+export interface WritingReviewChange extends WritingReviewTarget {replacement:Segment[]; reasons:string[];edits:WritingReviewEdit[]}
 // cloneContents omits the common ancestor's formatting (for example a selection
 // entirely inside <strong>). Recreate that ancestry before reading its segments.
 function rangeSegments(range:Range,editor:HTMLElement):Segment[]{
@@ -50,15 +52,37 @@ export function captureWritingReview(root:HTMLElement,blocks:Block[],ids?:string
   });
 }
 function hasContent(segment:Segment){return !!(segment.text||segment.entityId);}
+export function reviewEditedSegments(selected:Segment[],edits:WritingReviewEdit[]):Segment[]{
+  return selected.map((segment,index)=>{
+    const patches=edits.filter(edit=>edit.segmentIndex===index);
+    if(!patches.length||segment.text===undefined)return segment;
+    let text=segment.text;
+    for(const patch of [...patches].sort((a,b)=>b.start-a.start))text=text.slice(0,patch.start)+patch.replacement+text.slice(patch.end);
+    return {...segment,text};
+  });
+}
 export function writingReviewChanges(targets:WritingReviewTarget[],suggestions:EditorReviewSuggestion[]):WritingReviewChange[]{
   const replacements=new Map(suggestions.map(item=>[item.id,item]));
   return targets.flatMap(target=>{
-    const reasons:string[]=[];
-    const replacement=target.selected.map((segment,index)=>{
-      const suggestion=replacements.get(`${target.blockId}:${index}`);
-      if(!suggestion)return segment;
-      reasons.push(suggestion.reason);return {...segment,text:suggestion.replacement} as Segment;
+    const edits=target.selected.flatMap((segment,segmentIndex)=>{
+      const suggestion=replacements.get(`${target.blockId}:${segmentIndex}`);
+      if(!suggestion||segment.text===undefined)return [];
+      return reviewTextEdits(segment.text,suggestion.replacement).map((edit,index)=>({...edit,id:`${target.blockId}:${segmentIndex}:${index}`,segmentIndex,reason:suggestion.reason}));
     });
-    return reasons.length?[{...target,replacement,reasons:[...new Set(reasons)]}]:[];
+    return edits.length?[{...target,edits,replacement:reviewEditedSegments(target.selected,edits),reasons:[...new Set(edits.map(edit=>edit.reason))]}]:[];
   });
+}
+/** Rebase unaccepted edits locally so cherry-picking never needs another AI call. */
+export function applyWritingReviewEdits(change:WritingReviewChange,ids?:string[]){
+  const chosen=new Set(ids??change.edits.map(edit=>edit.id));
+  const accepted=change.edits.filter(edit=>chosen.has(edit.id));
+  if(!accepted.length)return null;
+  const selected=reviewEditedSegments(change.selected,accepted);
+  const content=[...change.before,...selected,...change.after];
+  const edits=change.edits.filter(edit=>!chosen.has(edit.id)).map(edit=>{
+    const delta=accepted.filter(previous=>previous.segmentIndex===edit.segmentIndex&&previous.end<=edit.start).reduce((sum,previous)=>sum+previous.replacement.length-(previous.end-previous.start),0);
+    return {...edit,start:edit.start+delta,end:edit.end+delta};
+  });
+  const remaining:WritingReviewChange|undefined=edits.length?{...change,selected,snapshot:JSON.stringify(content),edits,replacement:reviewEditedSegments(selected,edits),reasons:[...new Set(edits.map(edit=>edit.reason))]}:undefined;
+  return {content,remaining};
 }

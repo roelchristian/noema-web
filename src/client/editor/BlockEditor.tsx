@@ -1,6 +1,6 @@
 import type {EditorReviewText,EditorReviewSuggestion} from '../../shared/editor-review';
 import {WritingReview} from './WritingReview';
-import {captureWritingReview,writingReviewChanges,type WritingReviewChange} from './writing-review';
+import {captureWritingReview,writingReviewChanges,applyWritingReviewEdits,type WritingReviewChange} from './writing-review';
 import {inlineMathBlock,mathInlineOptions,recommendedMathInlinePlacement,type MathInlinePlacement} from '../../shared/math-blocks';
 import {TitleText} from '../components/TitleText';
 import {CitationPicker} from './CitationPicker';
@@ -18,7 +18,7 @@ import { aiExplanationSources, aiExplanationsForSources, explanationsLinkedToDel
 import {pageTitleKey} from '../../shared/page-links';
 import { completePageLink } from './page-links';
 import { ReadOnlyExplanationBlock } from './ReadOnlyExplanationBlock';
-import { editorSelectionRange,selectedEditorBlocks } from './block-selection';
+import { clearEditorSelection,editorSelectionRange,selectedEditorBlocks } from './block-selection';
 import { installBlockDrag, reorderBlock } from './block-drag';
 import { installBlockSelection, setEditorCaret } from './block-selection';
 import { displayMathSource } from './math-delimiters';
@@ -44,7 +44,7 @@ import { completeInlineMath, mathElement } from './math';
 import { completeTypedMarkdown,typedMarkdownBlock } from './markdown-typing';
 import { useMarkdownTyping } from '../state/markdown-preferences';
 import {applyEditorTextFormat,shortcutTextFormat} from './text-formatting';
-interface Props {onReview?:(texts:EditorReviewText[])=>Promise<EditorReviewSuggestion[]>;featuredImageId?: string | null; pages?:PageSummary[];onOpenPage?:(id:string)=>void;onExplain?: (blocks: Block[]) => Promise<string>; reviewMatches?: EntityReviewItem[]; onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[], featuredImageId?: string | null) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
+interface Props {onReview?:(texts:EditorReviewText[])=>Promise<EditorReviewSuggestion[]>;featuredImageId?: string | null; pages?:PageSummary[];onOpenPage?:(id:string)=>void;onExplain?: (blocks: Block[]) => Promise<string>; reviewMatches?: EntityReviewItem[]; onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[], featuredImageId?: string | null, aiReviewAccepted?:true) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
 function explanationInsertionIndex(blocks: Block[], ids: string[]) {
   const last=blocks.filter(block=>ids.includes(block.id)).at(-1);
   if(!last)return -1;
@@ -114,40 +114,69 @@ export function BlockEditor(props: Props) {
     return hasTrailingText || normalized.length >= 2000 ? normalized : [...normalized,makeBlock()];
   }, [props.blocks]);
   const [linkedDeletion, setLinkedDeletion] = useState<string[]>([]);
-  const onChange = (next: Block[], featuredImageId?: string | null) => {
+  const onChange = (next: Block[], featuredImageId?: string | null, aiReviewAccepted?:true) => {
     const normalized = normalizeSemanticGroups(normalizeColumnBlocks(preserveAIExplanationTags(blocks,next)));
     const linked = explanationsLinkedToDeletedBlocks(blocks, normalized);
     if (linked.length) {
       setMenu(null);
       setLinkedDeletion(current => [...new Set([...current,...linked])]);
     }
-    props.onChange(normalized, featuredImageId);
+    props.onChange(normalized, featuredImageId, aiReviewAccepted);
   };
-  const [writingReview,setWritingReview]=useState<{loading:boolean;error:string;changes:WritingReviewChange[]}|null>(null);
+  const [writingReview,setWritingReview]=useState<{anchorId:string;loading:boolean;error:string;changes:WritingReviewChange[]}|null>(null);
   const reviewRequest=useRef(0),reviewPending=useRef(false),reviewBlocks=useRef<Block[]|null>(null);
-  useLayoutEffect(()=>{reviewBlocks.current=null;},[blocks]);
+  useLayoutEffect(()=>{
+    reviewBlocks.current=null;
+    setWritingReview(current=>{
+      if(!current)return current;
+      const ids=new Set(blocks.filter(block=>!isAIExplanation(block)).map(block=>block.id));
+      const changes=current.changes.filter(change=>ids.has(change.blockId));
+      if(!ids.has(current.anchorId)&&!changes.length)return null;
+      if(changes.length===current.changes.length&&ids.has(current.anchorId))return current;
+      return {...current,anchorId:changes[0]?.blockId??current.anchorId,changes};
+    });
+  },[blocks]);
+  function closeWritingReview(){++reviewRequest.current;reviewBlocks.current=null;setWritingReview(null);}
+  function dismissWritingSuggestion(id:string){
+    setWritingReview(current=>{
+      if(!current)return null;
+      const changes=current.changes.filter(change=>change.blockId!==id);
+      return changes.length?{...current,anchorId:changes[0]!.blockId,changes}:null;
+    });
+  }
   async function reviewWriting(ids?:string[]) {
     if(reviewPending.current||!latest.current.onReview||!root.current)return;
     const targets=captureWritingReview(root.current,latest.current.blocks,ids);
     const draft=commitSelection();
     targets.forEach(target=>{const block=draft.find(block=>block.id===target.blockId);if(block)target.snapshot=JSON.stringify(block.content);});
     setMenu(null);reviewBlocks.current=null;
-    if(!targets.length){setWritingReview({loading:false,error:'Select prose to review. Code, equations, references, and entity mentions are preserved.',changes:[]});return;}
+    if(!targets.length){setWritingReview({anchorId:ids?.[0]??draft[0]?.id??'',loading:false,error:'Select prose to review. Code, equations, references, and entity mentions are preserved.',changes:[]});return;}
     const request=++reviewRequest.current;reviewPending.current=true;
-    setWritingReview({loading:true,error:'',changes:[]});
+    setWritingReview({anchorId:targets[0]!.blockId,loading:true,error:'',changes:[]});
     try {
       const suggestions=await latest.current.onReview(targets.flatMap(target=>target.texts));
-      if(mounted.current&&request===reviewRequest.current)setWritingReview({loading:false,error:'',changes:writingReviewChanges(targets,suggestions)});
-    }catch(error){if(mounted.current&&request===reviewRequest.current)setWritingReview({loading:false,error:error instanceof Error?error.message:'Could not review this text.',changes:[]});}
+      if(mounted.current&&request===reviewRequest.current)setWritingReview({anchorId:targets[0]!.blockId,loading:false,error:'',changes:writingReviewChanges(targets,suggestions)});
+    }catch(error){if(mounted.current&&request===reviewRequest.current)setWritingReview({anchorId:targets[0]!.blockId,loading:false,error:error instanceof Error?error.message:'Could not review this text.',changes:[]});}
     finally{reviewPending.current=false;}
   }
-  function acceptWritingReview(change:WritingReviewChange) {
+  function acceptWritingReview(change:WritingReviewChange,ids?:string[]) {
     // Accept-all may apply several corrections before React renders the updated props.
     const current=reviewBlocks.current??latest.current.blocks;
     const block=current.find(block=>block.id===change.blockId);
     if(!block||isAIExplanation(block)||JSON.stringify(block.content)!==change.snapshot)return 'This text changed after the review. Select it again for a fresh review.';
-    const next=current.map(block=>block.id===change.blockId?{...block,content:[...change.before,...change.replacement,...change.after]}:block);
-    reviewBlocks.current=next;latest.current.onChange(next);return null;
+    const applied=applyWritingReviewEdits(change,ids);
+    if(!applied)return 'Choose at least one edit to accept.';
+    const next=current.map(block=>block.id===change.blockId?{...block,content:applied.content}:block);
+    if(root.current)clearEditorSelection(root.current);
+    const active=document.activeElement;
+    if(active instanceof Element&&active.closest('.writing-review-inline'))focusTarget.current={id:change.blockId,start:false};
+    reviewBlocks.current=next;latest.current.onChange(next,undefined,true);
+    setWritingReview(current=>{
+      if(!current)return null;
+      const changes=current.changes.flatMap(item=>item.blockId!==change.blockId?[item]:applied.remaining?[applied.remaining]:[]);
+      return changes.length?{...current,anchorId:changes[0]!.blockId,changes}:null;
+    });
+    return null;
   }
   const [pageLinkStatus,setPageLinkStatus]=useState('');
   const [explaining,setExplaining]=useState(false), [explanationError,setExplanationError]=useState('');
@@ -266,6 +295,7 @@ export function BlockEditor(props: Props) {
   }, [blocks]);
   useEffect(() => {
     const restore = () => {
+      closeWritingReview();
       setMenu(null); setMathTarget(null); setCitationTarget(null); setLinkedDeletion([]); focusTarget.current = null;
     };
     document.addEventListener('noema:history-restore', restore);
@@ -722,6 +752,15 @@ export function BlockEditor(props: Props) {
     <div className="ai-explanation-label">AI Explanation</div>
     {explaining?<div className="ai-explanation-status" role="status"><span className="scan-spinner" aria-hidden="true"/>Explaining selected blocks…</div>:<div className="ai-explanation-status is-error" role="alert"><span>{explanationError}</span><button type="button" onClick={()=>void explain(retryExplanation.current)}>Retry</button><button type="button" onClick={()=>{setExplanationError('');setExplanationAnchor(null);}}>Dismiss</button></div>}
   </div>:null;
+  function renderWritingReview(blockId:string){
+    if(!writingReview)return null;
+    const change=writingReview.changes.find(change=>change.blockId===blockId);
+    if(!change&&writingReview.anchorId!==blockId)return null;
+    // Once suggestions exist, each is rendered only alongside its source block.
+    if(!change&&writingReview.changes.length)return null;
+    const first=change===writingReview.changes[0];
+    return <WritingReview key={`${reviewRequest.current}:${blockId}`} loading={writingReview.loading} error={writingReview.error} change={change} stale={!!change&&JSON.stringify(blocks.find(block=>block.id===blockId)?.content)!==change.snapshot} entities={entities} remaining={first?writingReview.changes.length:0} onAccept={acceptWritingReview} onDismiss={()=>dismissWritingSuggestion(blockId)} onAcceptAll={()=>writingReview.changes.forEach(change=>acceptWritingReview(change))} onClose={closeWritingReview}/>;
+  }
   const renderBlock = (block: Block) => isAIExplanation(block) ? <ReadOnlyExplanationBlock key={block.id} block={block} blocks={blocks} entities={entities} onOpen={onOpenEntity} vaultId={props.vaultId}/> : <Fragment key={block.id}><div data-block-id={block.id} data-semantic-kind={block.semantic} style={semanticStyle(block.semantic)} className={'block ' + block.type + (block.semantic ? ' semantic-block' : '')}>
     {block.semantic && <span className="semantic-callout-icon" aria-hidden="true"><Icon name={semanticFunctions[block.semantic].icon}/></span>}
     <div className="block-controls" role="group" aria-label="Block controls">
@@ -751,7 +790,7 @@ export function BlockEditor(props: Props) {
       if (source) { setMenu(null); focusTarget.current = {id: block.id, start: false}; update(block.id, {type: 'math', content: [{text: source}]}); return; }
       if(markdownInput)completeInlineMath(el); update(block.id, {content: readSegments(el)}); detect(el, block);
     }} onKeyDown={e => keyDown(e, block)} onPaste={e => paste(e, block)}/>}
-  </div>{uploadCards(block.id)}</Fragment>;
+  </div>{renderWritingReview(block.id)}{uploadCards(block.id)}</Fragment>;
   function renderRuns(list: Block[]) {
     return semanticRuns(list).map(run => run.type==='block' && isAIExplanation(run.block) ? {type:'group' as const,id:run.id,kind:'ai-explanation' as const,blocks:[run.block]} : run).map(run => <Fragment key={run.id}>{run.type === 'block' ? renderBlock(run.block) : <section key={run.id} data-block-group-id={run.id} className="semantic-group" data-semantic-kind={run.kind} style={semanticStyle(run.kind)} aria-label={semanticFunctions[run.kind].label+' semantic group'}>
       <span className="semantic-callout-icon" aria-hidden="true"><Icon name={semanticFunctions[run.kind].icon}/></span><div className="semantic-parent-controls"><button type="button" className="block-handle semantic-handle" data-semantic-parent-handle draggable={false} aria-describedby="block-drag-help" aria-label={semanticFunctions[run.kind].label+' group options'} title={semanticFunctions[run.kind].label+' · Drag group or click for options'} onClick={event=>groupOptions(event.currentTarget,run.id)}>{semanticGlyph(run.kind)}</button></div>
@@ -826,7 +865,6 @@ export function BlockEditor(props: Props) {
     }}>{!explanationAnchorId&&explanationStatus}{renderColumnLayout(blocks)}{uploadCards()}</div>
     <span id="block-drag-help" className="block-drag-sr">Drag to reorder. Click for options. With the handle focused, press Space to pick up, Up or Down to move, Space or Enter to drop, Escape to cancel.</span>
     <div ref={dragStatus} className="block-drag-sr" role="status" aria-live="polite" aria-atomic="true"/>
-    {writingReview&&<WritingReview loading={writingReview.loading} error={writingReview.error} changes={writingReview.changes} entities={entities} onAccept={acceptWritingReview} onClose={()=>{++reviewRequest.current;reviewBlocks.current=null;setWritingReview(null);}}/>}
     <SelectionToolbar onReview={props.onReview?()=>void reviewWriting():undefined} reviewing={writingReview?.loading} explainLabel={explainLabel} mobile={mobile} keyboardInset={keyboardInset} viewportHeight={viewportHeight} onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
     {linkedExplanations.length > 0 && <Modal className="confirmation-dialog linked-explanation-dialog" titleId="linked-explanation-delete-title" onClose={() => setLinkedDeletion([])}>
       <ModalHeader titleId="linked-explanation-delete-title" leading={<Icon name="sparkles"/>} closeLabel="Close and keep explanations">{linkedExplanations.length === 1 ? 'Keep the explanation?' : 'Keep the explanations?'}</ModalHeader>

@@ -3402,17 +3402,36 @@ summary.disclosure-summary:focus-visible { outline: 2px solid var(--accent); out
 .source-lifecycle-dialog label { display: grid; gap: 8px; margin-top: 16px; font-size: 12px; }
 .source-lifecycle-dialog input { width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--control-border); border-radius: 5px; background: var(--surface-raised); }
 
-.writing-review-modal{width:min(760px,calc(100vw - 32px));max-height:85dvh;padding:0}
-.writing-review-body{padding:20px;overflow:auto;max-height:calc(85dvh - 80px)}
-.writing-review-body>p{margin:0 0 16px;color:var(--text-muted)}
-.writing-review-list{display:grid;gap:16px;margin-top:16px}
-.writing-review-card{border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
-.writing-review-card header,.writing-review-card footer{display:flex;gap:12px;align-items:center;justify-content:space-between}
-.writing-review-card footer{justify-content:flex-start;margin-top:16px;flex-wrap:wrap}
-.writing-review-card summary{cursor:pointer;padding:8px 0}
-.writing-review-text{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65}
-.writing-review-comparison{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.writing-review-comparison>div{min-width:0}
-.writing-review-comparison h3{font-size:13px;color:var(--text-muted)}
-.writing-review-card [role=alert]{color:#b44242}
-@media(max-width:600px){.writing-review-comparison{grid-template-columns:1fr}.writing-review-body{padding:16px}}
+.writing-review-inline{margin:2px 0 12px;padding:6px 0 6px 12px;border-left:2px solid var(--line);font:12px/1.6 var(--font-ui);color:var(--text-muted);min-width:0}
+.writing-review-diff{color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto;font-size:13px}
+.writing-review-diff del{color:var(--text-muted);text-decoration-color:color-mix(in srgb,var(--text-muted) 60%,transparent);background:color-mix(in srgb,#b44242 7%,transparent)}
+.writing-review-diff ins{text-decoration:none;background:color-mix(in srgb,#4f9669 13%,transparent);border-bottom:1px solid color-mix(in srgb,#4f9669 50%,transparent)}
+.writing-review-actions,.writing-review-status{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.writing-review-actions{margin-top:5px}
+.writing-review-inline button{padding:3px 5px;border-radius:4px;font-size:11px;display:inline-flex;align-items:center;gap:4px;color:var(--text-muted)}
+.writing-review-inline button:hover{background:var(--surface-hover);color:var(--text)}
+.writing-review-inline button:focus-visible,.writing-review-inline summary:focus-visible{outline:2px solid var(--text-muted);outline-offset:2px}
+.writing-review-inline .icon{width:13px;height:13px}
+.writing-review-inline .writing-review-accept{color:var(--text);font-weight:550}
+.writing-review-actions details{position:relative}
+.writing-review-actions summary{cursor:pointer;font-size:11px;list-style:none;padding:3px 5px}
+.writing-review-actions summary::-webkit-details-marker{display:none}
+.writing-review-actions details>div{position:absolute;z-index:5;top:100%;left:0;width:min(280px,60vw);padding:10px 12px;background:var(--surface-raised);border:1px solid var(--line);border-radius:6px;box-shadow:0 4px 16px #0000000c}
+.writing-review-actions details p{margin:0 0 6px}.writing-review-actions details p:last-child{margin:0}
+.writing-review-count{font-size:11px}
+.writing-review-dismiss{margin-left:auto}
+.writing-review-status{font-size:12px;justify-content:space-between}
+.writing-review-status>span{display:inline-flex;align-items:center;gap:6px}
+.writing-review-error{font-size:12px;color:#b44242;margin:6px 0 0}
+@media(max-width:600px){.writing-review-inline{padding-left:8px}.writing-review-count{display:none}.writing-review-inline button,.writing-review-actions summary{min-height:32px}}
+.writing-review-actions .writing-review-pick>div{width:min(420px,75vw);max-height:260px;overflow:auto}
+.writing-review-pick label{display:flex;align-items:flex-start;gap:8px;padding:6px 0;cursor:pointer;font-size:12px;color:var(--text)}
+.writing-review-pick input{margin:4px 0 0;flex-shrink:0;accent-color:var(--text)}
+.writing-review-pick label span{white-space:pre-wrap;overflow-wrap:anywhere;min-width:0}
+.writing-review-pick del{color:var(--text-muted)}
+.writing-review-pick ins{text-decoration:none;background:color-mix(in srgb,#4f9669 13%,transparent)}
+.writing-review-pick-actions{display:flex;gap:8px;padding-bottom:4px;border-bottom:1px solid var(--line)}
+.writing-review-edit-context{color:var(--text-muted)}
+.writing-review-inline.is-complete{animation:writing-review-fade .4s ease 2.6s forwards}
+@keyframes writing-review-fade{to{opacity:0}}
+@media(prefers-reduced-motion:reduce){.writing-review-inline.is-complete{animation:none}}

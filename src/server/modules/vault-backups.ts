@@ -37,7 +37,7 @@ const entityScope='entity_id IN (SELECT id FROM entities WHERE vault_id=?)';
 // Explicit, versioned allowlist: credentials, global settings and activity are never archived.
 // Editorial evidence is retained, but restored revisions never resume paid background jobs.
 const tables={
-  pages:{columns:'id,title,icon,featured_image_id,blocks,ai_status,generation_metadata,language,created_at,updated_at,revision,deleted_at',scope:'vault_id=?'},
+  pages:{columns:'id,title,icon,featured_image_id,blocks,ai_status,ai_review_accepted,generation_metadata,language,created_at,updated_at,revision,deleted_at',scope:'vault_id=?'},
   source_reprocessing:{columns:'id,file_id,status,created_at,updated_at,payload',scope:'vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL)'},
   source_math_documents:{columns:'file_id,raw_hash,algorithm_version,cleaned_text,uncertainty_json,updated_at',scope:'file_id IN (SELECT id FROM source_files WHERE vault_id=? AND entity_id IS NOT NULL)'},
   source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at,import_method,source_url,pdf_flattened,admitted,format,page_start_lines,structural_nodes,original_filename,language,summary,generated_name,enrichment_status,contains_math',scope:'vault_id=? AND entity_id IS NOT NULL'},
@@ -307,8 +307,9 @@ export class VaultBackups {
           });
           const validated=pages.validateBlocks(vault,blocks);
           if(row.ai_status!==undefined&&!isPageAIStatus(row.ai_status))throw invalid();
+          if(row.ai_review_accepted!==undefined&&row.ai_review_accepted!==0&&row.ai_review_accepted!==1)throw invalid();
           const aiStatus=row.ai_status==='ai_generated'||row.ai_status==='ai_generated_edited'?row.ai_status:validated.some(isAIExplanation)?'regular_with_ai_explanations':'regular';
-          insert('pages',{id:ref(pageIds,row.id),vault_id:vault,title:string(row,'title',500),icon:row.icon as string|null,featured_image_id:row.featured_image_id==null?null:ref(imageIds,row.featured_image_id),blocks:JSON.stringify(validated),ai_status:aiStatus,generation_metadata:row.generation_metadata==null?null:JSON.stringify(parsePageGenerationMetadata(row.generation_metadata)),language:pageLanguage(row.language),created_at:row.created_at==null?null:timestamp(row,'created_at'),updated_at:timestamp(row,'updated_at'),revision:integer(row,'revision',1),deleted_at:row.deleted_at===null?null:timestamp(row,'deleted_at')});
+          insert('pages',{id:ref(pageIds,row.id),vault_id:vault,title:string(row,'title',500),icon:row.icon as string|null,featured_image_id:row.featured_image_id==null?null:ref(imageIds,row.featured_image_id),blocks:JSON.stringify(validated),ai_status:aiStatus,ai_review_accepted:row.ai_review_accepted===1||row.ai_status==='ai_assisted'?1:0,generation_metadata:row.generation_metadata==null?null:JSON.stringify(parsePageGenerationMetadata(row.generation_metadata)),language:pageLanguage(row.language),created_at:row.created_at==null?null:timestamp(row,'created_at'),updated_at:timestamp(row,'updated_at'),revision:integer(row,'revision',1),deleted_at:row.deleted_at===null?null:timestamp(row,'deleted_at')});
         }
         for(const row of rows.pages) {
           const pageId=ref(pageIds,row.id);

@@ -19,7 +19,7 @@ function canonical(value: unknown): unknown {
   if (value && typeof value==='object') return Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,item])=>[key,canonical(item)]));
   return value;
 }
-const pageContent = (page: Page) => JSON.stringify(canonical({title:page.title,icon:page.icon??null,featuredImageId:page.featuredImageId??null,blocks:page.blocks,sourceIds:page.sourceIds}));
+const pageContent = (page: Page) => JSON.stringify(canonical({title:page.title,icon:page.icon??null,featuredImageId:page.featuredImageId??null,blocks:page.blocks,sourceIds:page.sourceIds,aiReviewAccepted:!!page.aiReviewAccepted}));
 const applyDraft = (server: Page, draft: Page): Page => ({...server,title:draft.title,icon:draft.icon,featuredImageId:draft.featuredImageId,blocks:structuredClone(draft.blocks),sourceIds:[...draft.sourceIds],entityMatchCache:undefined,conceptContentHash:undefined});
 export interface WorkspaceState {
   saveFailures: PageSaveIssue[]; draftStorageFailures: PageSaveIssue[]; draftRecoveries: PageDraftRecovery[];
@@ -75,7 +75,7 @@ export class Workspace {
       const cached = this.pageCache.get(saved.id);
       if (cached) {
         const unchanged = JSON.stringify(cached.blocks) === JSON.stringify(original.blocks);
-        const page = {...cached, aiStatus:nextPageAIStatus(saved,cached,id=>entityMentionName(this.state.entities.find(entity=>entity.id===id))), ...(unchanged && !this.state.reviewing && canIdentifyEntities() ? {blocks: saved.blocks} : {}), pageDomains:saved.pageDomains,conceptClassification:saved.conceptClassification,conceptContentHash:unchanged?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at};
+        const page = {...cached, aiReviewAccepted:!!(cached.aiReviewAccepted||saved.aiReviewAccepted), aiStatus:nextPageAIStatus(saved,cached,id=>entityMentionName(this.state.entities.find(entity=>entity.id===id))), ...(unchanged && !this.state.reviewing && canIdentifyEntities() ? {blocks: saved.blocks} : {}), pageDomains:saved.pageDomains,conceptClassification:saved.conceptClassification,conceptContentHash:unchanged?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at};
         this.pageCache.set(saved.id, page);
         if(!this.pageLockPending)this.titler.observe(page, unchanged && cached.title === saved.title);
       }
@@ -557,15 +557,15 @@ export class Workspace {
     try { localStorage.setItem('noema-recent/' + vault.id, JSON.stringify(recent)); } catch { /* Keep session history when storage is unavailable. */ }
   }
   showEntities() { if (!this.state.busy && this.state.loadingPageId === null) this.patch({view: 'entities'}); }
-  updatePage(patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon' | 'featuredImageId'>>) {
+  updatePage(patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon' | 'featuredImageId' | 'aiReviewAccepted'>>) {
     const current = this.state.page;
     if (this.state.view !== 'pages' || !current || current.editLocked || this.pageLockPending || this.state.busy || this.state.loadingPageId !== null || this.state.reviewing || this.state.vault?.locked) return;
-    const page = {...current, ...patch,...(patch.blocks&&patch.blocks!==current.blocks?{conceptContentHash:undefined}:{})};
+    const page = {...current, ...patch,aiReviewAccepted:!!(current.aiReviewAccepted||patch.aiReviewAccepted),...(patch.blocks&&patch.blocks!==current.blocks?{conceptContentHash:undefined}:{})};
     page.sourceIds=[...new Set([...page.sourceIds,...citationSourceIds(page.blocks)])];
     page.aiStatus=nextPageAIStatus(current,page,id=>entityMentionName(this.state.entities.find(entity=>entity.id===id)));
     if(page.featuredImageId && !page.blocks.some(block=>block.type==='image' && block.imageId===page.featuredImageId))page.featuredImageId=null;
     this.pageCache.set(page.id, page);
-    this.patch({page, pages: this.state.pages.map(p => p.id === page.id ? {...p, title: page.title, icon: page.icon, featuredImageId: page.featuredImageId, aiStatus:page.aiStatus} : p)});
+    this.patch({page, pages: this.state.pages.map(p => p.id === page.id ? {...p, title: page.title, icon: page.icon, featuredImageId: page.featuredImageId, aiStatus:page.aiStatus,aiReviewAccepted:page.aiReviewAccepted} : p)});
     this.titler.observe(page);
     this.saver.enqueue(page);
   }

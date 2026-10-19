@@ -38,10 +38,11 @@ function validPage(value: unknown): value is Page {
   if (!record(value) || !identifier(value.id) || !identifier(value.vault_id) || !natural(value.revision) || typeof value.title !== 'string' || typeof value.updated_at !== 'string' || !Array.isArray(value.blocks) || value.blocks.length > 2000 || !value.blocks.every(validBlock) || !Array.isArray(value.sourceIds) || value.sourceIds.length > 1000 || !value.sourceIds.every(identifier)) return false;
   if (new Set(value.blocks.map(block => block.id)).size !== value.blocks.length) return false;
   if (value.icon !== undefined && value.icon !== null && !pageIcons.some(icon => icon.id === value.icon)) return false;
+  if(value.aiReviewAccepted!==undefined&&typeof value.aiReviewAccepted!=='boolean')return false;
   return value.featuredImageId === undefined || value.featuredImageId === null || identifier(value.featuredImageId);
 }
 function minimalPage(page: Page): Page {
-  return clone({id: page.id, vault_id: page.vault_id, title: page.title, blocks: page.blocks, sourceIds: page.sourceIds, revision: page.revision, created_at: page.created_at ?? null, updated_at: page.updated_at, icon: page.icon ?? null, featuredImageId: page.featuredImageId ?? null});
+  return clone({id: page.id, vault_id: page.vault_id, title: page.title, blocks: page.blocks, sourceIds: page.sourceIds, revision: page.revision, created_at: page.created_at ?? null, updated_at: page.updated_at, icon: page.icon ?? null, featuredImageId: page.featuredImageId ?? null, aiReviewAccepted:!!page.aiReviewAccepted});
 }
 function parse(value: string | null): PageDraftEntry | null {
   if (!value) return null;

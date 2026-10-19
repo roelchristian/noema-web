@@ -7,7 +7,7 @@ import {PageEnrichmentState} from './page-enrichment-state.js';
 import {Domains} from './domains.js';
 import {enrichCitationPages,syncSourceReferences} from './source-references.js';
 import {pageLanguage} from './page-language.js';
-import {nextPageAIStatus, type PageAIStatus} from '../../shared/page-ai-status.js';
+import {nextPageAIStatus, reviewedPageAIStatus, type PageAIStatus} from '../../shared/page-ai-status.js';
 import {allowedInColumn} from '../../shared/column-blocks.js';
 import { entityMentionName } from '../../shared/domain.js';
 import {blockPageLinks,pageTitleKey} from '../../shared/page-links.js';
@@ -21,7 +21,7 @@ import { blockTypes, safeHref, type Segment, type Block, type Page, type PageSum
 import { Store } from '../store.js';
 import { HttpError, now, object, required, text } from '../validation.js';
 import { Knowledge } from './knowledge.js';
-type PageRow = Omit<Page, 'blocks' | 'sourceIds' | 'featuredImageId'> & {blocks: string; summary_content_hash: string | null; summary_hash_version:number; featured_image_id:string|null; ai_status:PageAIStatus;generation_metadata:string|null};
+type PageRow = Omit<Page, 'blocks' | 'sourceIds' | 'featuredImageId'> & {blocks: string; summary_content_hash: string | null; summary_hash_version:number; featured_image_id:string|null; ai_status:PageAIStatus;ai_review_accepted:number;generation_metadata:string|null};
 export const trashRetentionMs = 30 * 24 * 60 * 60 * 1000;
 export class Pages {
   constructor(private store: Store, private knowledge: Knowledge, private clock: () => Date = () => new Date()) {}
@@ -29,16 +29,16 @@ export class Pages {
     try { new Images(this.store).cleanup(vault,candidates); } catch { console.error('Image cleanup deferred'); }
   }
   private imageIds(blocks: Block[]) { return blocks.flatMap(block => block.type === 'image' && block.imageId ? [block.imageId] : []); }
-  list(vault: string) { return this.store.all<PageSummary>('SELECT id,title,icon,featured_image_id AS featuredImageId,ai_status AS aiStatus,language,updated_at FROM pages WHERE vault_id=? AND deleted_at IS NULL ORDER BY updated_at DESC',vault); }
+  list(vault: string) { return this.store.all<PageSummary>('SELECT id,title,icon,featured_image_id AS featuredImageId,ai_status AS aiStatus,ai_review_accepted AS aiReviewAccepted,language,updated_at FROM pages WHERE vault_id=? AND deleted_at IS NULL ORDER BY updated_at DESC',vault).map(page=>({...page,aiReviewAccepted:!!page.aiReviewAccepted,aiStatus:reviewedPageAIStatus(page.aiStatus??'regular',!!page.aiReviewAccepted)})); }
   backlinks(vault:string,id:string):PageSummary[] {
     const target=pageTitleKey(this.get(vault,id).title);
-    const candidates=this.store.all<PageSummary & {blocks:string}>("SELECT id,title,icon,ai_status AS aiStatus,language,updated_at,blocks FROM pages WHERE vault_id=? AND deleted_at IS NULL AND id<>? AND instr(blocks,'[[')>0 ORDER BY title COLLATE NOCASE,id",vault,id);
-    return candidates.flatMap(({blocks,...page})=>blockPageLinks(JSON.parse(blocks) as Block[]).some(link=>pageTitleKey(link.title)===target)?[page]:[]);
+    const candidates=this.store.all<PageSummary & {blocks:string}>("SELECT id,title,icon,ai_status AS aiStatus,ai_review_accepted AS aiReviewAccepted,language,updated_at,blocks FROM pages WHERE vault_id=? AND deleted_at IS NULL AND id<>? AND instr(blocks,'[[')>0 ORDER BY title COLLATE NOCASE,id",vault,id);
+    return candidates.flatMap(({blocks,...page})=>blockPageLinks(JSON.parse(blocks) as Block[]).some(link=>pageTitleKey(link.title)===target)?[{...page,aiReviewAccepted:!!page.aiReviewAccepted,aiStatus:reviewedPageAIStatus(page.aiStatus??'regular',!!page.aiReviewAccepted)}]:[]);
   }
   get(vault: string, id: string): Page {
     const row=this.store.get<PageRow>('SELECT * FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',id,vault);
     if (!row) throw new HttpError(404,'Page not found');
-    const {summary_content_hash: cachedHash, summary_hash_version: hashVersion, featured_image_id: featuredImageId, ai_status: aiStatus, generation_metadata: generationMetadata, ...stored} = row;
+    const {summary_content_hash: cachedHash, summary_hash_version: hashVersion, featured_image_id: featuredImageId, ai_status: aiStatus, ai_review_accepted: aiReviewAccepted, generation_metadata: generationMetadata, ...stored} = row;
     // Generated titles remain derived metadata until an authored save accepts them.
     if(!stored.title.trim()||stored.title.trim()==='Untitled') {
       const generated=this.store.get<{data:string;revision:number}>("SELECT data,revision FROM page_ai_enrichments WHERE page_id=? AND kind='title'",id);
@@ -65,7 +65,7 @@ export class Pages {
     domainService.assess({...stored,blocks,conceptContentHash:conceptContentHash({...stored,blocks},resolveName)} as Page,resolveName);
     const readingRow=this.store.get<{source_id:string|null;file_id:string|null;source_hash:string;start_offset:number;end_offset:number;excerpt:string;reference_json:string;created_at:string}>('SELECT * FROM page_reading_notes WHERE page_id=? AND vault_id=?',id,vault);
     const readingNote:ReadingNoteMetadata|undefined=readingRow?{...JSON.parse(readingRow.reference_json),sourceId:readingRow.source_id,fileId:readingRow.file_id,sourceHash:readingRow.source_hash,startOffset:readingRow.start_offset,endOffset:readingRow.end_offset,excerpt:readingRow.excerpt,createdAt:readingRow.created_at,maxWords:200}:undefined;
-    return {...stored,generationMetadata:parsePageGenerationMetadata(generationMetadata),...(readingNote?{readingNote}:{}),enrichmentFields:new PageEnrichmentState(this.store).get(id).fields,enrichmentPending:!!this.store.get('SELECT 1 FROM page_enrichment_jobs WHERE page_id=?',id),pageDomains:domainService.get(id,conceptContentHash({...stored,blocks},resolveName)),aiStatus,editLocked:!!editLock,editProtected:!!editLock?.password_hash,featuredImageId,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:[...new Set([...this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id),...citationSourceIds(blocks).filter(sourceId=>this.knowledge.find(vault,sourceId)?.type==='source')])]};
+    return {...stored,aiReviewAccepted:!!aiReviewAccepted,generationMetadata:parsePageGenerationMetadata(generationMetadata),...(readingNote?{readingNote}:{}),enrichmentFields:new PageEnrichmentState(this.store).get(id).fields,enrichmentPending:!!this.store.get('SELECT 1 FROM page_enrichment_jobs WHERE page_id=?',id),pageDomains:domainService.get(id,conceptContentHash({...stored,blocks},resolveName)),aiStatus:reviewedPageAIStatus(aiStatus,!!aiReviewAccepted),editLocked:!!editLock,editProtected:!!editLock?.password_hash,featuredImageId,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:[...new Set([...this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id),...citationSourceIds(blocks).filter(sourceId=>this.knowledge.find(vault,sourceId)?.type==='source')])]};
   }
   requireEditable(vault: string, id: string) {
     const page=this.get(vault,id);
@@ -218,10 +218,13 @@ export class Pages {
     if(!Array.isArray(sourceIds)||sourceIds.length>1000||sourceIds.some(s=>typeof s!=='string'||this.knowledge.find(vault,s)?.type!=='source'))throw new HttpError(400,'Page sources must be Source entities in this vault');
     if(body.revision!==undefined && (!Number.isInteger(body.revision)||body.revision!==page.revision))throw new HttpError(409,'This page changed in another window. Reload the latest page before saving.');
     const names=new Map<string,string|undefined>();
-    const aiStatus=nextPageAIStatus(page,{title,blocks},id=>{
+    const aiStatus=nextPageAIStatus(page,{title,blocks,aiReviewAccepted:body.aiReviewAccepted===true},id=>{
       if(!names.has(id))names.set(id,entityMentionName(this.knowledge.find(vault,id)));
       return names.get(id);
     });
+    // ai_status retains the original schema's origin values; accepted reviews
+    // are persisted independently and projected as ai_assisted when reading.
+    const storedAIStatus=aiStatus==='ai_assisted'?(blocks.some(isAIExplanation)?'regular_with_ai_explanations':'regular'):aiStatus;
     this.store.transaction(()=>{
       const state=new PageEnrichmentState(this.store);
       if(title!==page.title)state.markManual(id,'title');
@@ -230,7 +233,7 @@ export class Pages {
         this.store.run("INSERT INTO page_ai_enrichments (page_id,kind,data,revision,model,reasoning_effort,updated_at) VALUES (?,'language',?,?,'manual','none',?) ON CONFLICT(page_id,kind) DO UPDATE SET data=excluded.data,revision=excluded.revision,updated_at=excluded.updated_at",id,JSON.stringify({language,origin:'manual'}),page.revision+1,now());
       }
       syncSourceReferences(this.store,id,blocks);
-      this.store.run('UPDATE pages SET title=?,language=?,icon=?,featured_image_id=?,blocks=?,ai_status=?,updated_at=?,revision=revision+1 WHERE id=? AND vault_id=?',title,language,icon,featuredImageId,JSON.stringify(blocks),aiStatus,now(),id,vault);
+      this.store.run('UPDATE pages SET title=?,language=?,icon=?,featured_image_id=?,blocks=?,ai_status=?,ai_review_accepted=MAX(ai_review_accepted,?),updated_at=?,revision=revision+1 WHERE id=? AND vault_id=?',title,language,icon,featuredImageId,JSON.stringify(blocks),storedAIStatus,body.aiReviewAccepted===true?1:0,now(),id,vault);
       this.store.run('DELETE FROM page_sources WHERE page_id=?',id);
       for(const source of new Set(sourceIds as string[]))this.store.run('INSERT INTO page_sources VALUES (?,?)',id,source);
       if(title!==page.title && (!page.title.trim()||page.title.trim()==='Untitled')) {
@@ -258,7 +261,7 @@ export class Pages {
   }
   trash(vault: string): TrashedPage[] {
     this.purgeExpired(vault);
-    return this.store.all<PageSummary & {deleted_at: string}>('SELECT id,title,icon,featured_image_id AS featuredImageId,ai_status AS aiStatus,language,updated_at,deleted_at FROM pages WHERE vault_id=? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC,id',vault).map(page => ({...page,expires_at:new Date(Date.parse(page.deleted_at) + trashRetentionMs).toISOString()}));
+    return this.store.all<PageSummary & {deleted_at: string}>('SELECT id,title,icon,featured_image_id AS featuredImageId,ai_status AS aiStatus,ai_review_accepted AS aiReviewAccepted,language,updated_at,deleted_at FROM pages WHERE vault_id=? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC,id',vault).map(page => ({...page,aiReviewAccepted:!!page.aiReviewAccepted,aiStatus:reviewedPageAIStatus(page.aiStatus??'regular',!!page.aiReviewAccepted),expires_at:new Date(Date.parse(page.deleted_at) + trashRetentionMs).toISOString()}));
   }
   private trashed(vault: string, id: string) {
     this.purgeExpired(vault);

@@ -5,7 +5,7 @@ import type {PageHeading} from './page-headings';
 import {TitleText,titleHasMath} from '../components/TitleText';
 import {CitationPresentationContext,NoteReferences} from '../sources/CitationPresentation';
 import {noteCitations,type CitationStyle} from '../../shared/citations';
-import {pageAIStatusLabels, pageAIStatusDescriptions} from '../../shared/page-ai-status';
+import {pageAIProvenance} from '../../shared/page-ai-status';
 import {ReadOnlyPageBlocks} from './ReadOnlyPageBlocks';
 import { smartQuoteTitle } from './smart-quotes';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -19,7 +19,7 @@ import { api } from '../api';
 import type { EntityMatchCache } from '../../shared/entity-match-cache';
 import { EntityMatchReview } from './EntityMatchReview';
 import { ambiguityReviewDelay } from './auto-entity-matching';
-interface Props {tocVisible?:boolean;headings?:PageHeading[];subjectsSaving?:boolean;citationStyle?:CitationStyle;pages:PageSummary[];onOpenPage:(id:string)=>void;onAddAlias: (id: string, alias: string) => Promise<void>; page: Page; entities: Entity[]; onChange: (patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon' | 'featuredImageId'>>) => void; onOpenEntity: (id: string) => void; onCreateEntity: (request: CreateEntityRequest) => void; onSave: () => void; onIdentify: () => Promise<void>; saveStatus: SaveStatus}
+interface Props {tocVisible?:boolean;headings?:PageHeading[];subjectsSaving?:boolean;citationStyle?:CitationStyle;pages:PageSummary[];onOpenPage:(id:string)=>void;onAddAlias: (id: string, alias: string) => Promise<void>; page: Page; entities: Entity[]; onChange: (patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon' | 'featuredImageId' | 'aiReviewAccepted'>>) => void; onOpenEntity: (id: string) => void; onCreateEntity: (request: CreateEntityRequest) => void; onSave: () => void; onIdentify: () => Promise<void>; saveStatus: SaveStatus}
 const wordSegmenter = new Intl.Segmenter(undefined, {granularity:'word'});
 function editedLabel(updatedAt: string, now: number): string {
   const timestamp = Date.parse(updatedAt);
@@ -30,6 +30,7 @@ function editedLabel(updatedAt: string, now: number): string {
   return 'Edited ' + new Intl.RelativeTimeFormat('en', {numeric: 'always'}).format(-Math.floor(seconds / size), unit);
 }
 export function PageEditor({tocVisible=true,headings=[],subjectsSaving=false,citationStyle='references',pages,onOpenPage,page, entities, onChange, onOpenEntity, onCreateEntity, onSave, onIdentify, onAddAlias, saveStatus}: Props) {
+  const provenance=pageAIProvenance(page);
   const citationPresentation=useMemo(()=>({style:citationStyle,entries:noteCitations(page.blocks)}),[citationStyle,page.blocks]);
   const title = useRef<HTMLInputElement>(null);
   const article = useRef<HTMLElement>(null);
@@ -99,7 +100,7 @@ export function PageEditor({tocVisible=true,headings=[],subjectsSaving=false,cit
       } catch (error) { setReviewError(error instanceof Error ? error.message : String(error)); }
       finally { setResolving(false); }
     }}/>}
-    {page.editLocked ? <ReadOnlyPageBlocks blocks={normalizeColumnBlocks(page.blocks)} entities={entities} pages={pages} vaultId={page.vault_id} onOpenEntity={onOpenEntity} onOpenPage={onOpenPage}/> : <BlockEditor onReview={async texts=>(await api.reviewText(page.vault_id,page.id,texts)).suggestions} featuredImageId={page.featuredImageId} pages={pages} onOpenPage={onOpenPage} onExplain={async blocks=>(await api.explainBlocks(page.vault_id,page.id,blocks)).markdown} reviewMatches={reviewMatches} onAddAlias={onAddAlias} key={page.vault_id + page.id} vaultId={page.vault_id} blocks={page.blocks} entities={entities} onChange={(blocks, featuredImageId) => onChange({blocks,...(featuredImageId===undefined?{}:{featuredImageId})})} onOpenEntity={onOpenEntity} onCreateEntity={(name, onCreated) => onCreateEntity({name, onCreated, intent:'insert'})} onSave={onSave}/>}
+    {page.editLocked ? <ReadOnlyPageBlocks blocks={normalizeColumnBlocks(page.blocks)} entities={entities} pages={pages} vaultId={page.vault_id} onOpenEntity={onOpenEntity} onOpenPage={onOpenPage}/> : <BlockEditor onReview={async texts=>(await api.reviewText(page.vault_id,page.id,texts)).suggestions} featuredImageId={page.featuredImageId} pages={pages} onOpenPage={onOpenPage} onExplain={async blocks=>(await api.explainBlocks(page.vault_id,page.id,blocks)).markdown} reviewMatches={reviewMatches} onAddAlias={onAddAlias} key={page.vault_id + page.id} vaultId={page.vault_id} blocks={page.blocks} entities={entities} onChange={(blocks, featuredImageId, aiReviewAccepted) => onChange({blocks,...(aiReviewAccepted?{aiReviewAccepted:true}:{}),...(featuredImageId===undefined?{}:{featuredImageId})})} onOpenEntity={onOpenEntity} onCreateEntity={(name, onCreated) => onCreateEntity({name, onCreated, intent:'insert'})} onSave={onSave}/>}
     {citationStyle==='references'&&<NoteReferences blocks={page.blocks} entities={entities}/>}
     <footer className={'editor-save-status' + (saveStatus === 'error' ? ' is-error' : '')}>
       {saveStatus === 'saving' || saveStatus === 'identifying' ? <span className="scan-spinner" aria-hidden="true"/> : <Icon name={saveStatus === 'saved' ? 'recent' : saveStatus === 'error' ? 'alert' : 'recent'}/>}
@@ -108,7 +109,7 @@ export function PageEditor({tocVisible=true,headings=[],subjectsSaving=false,cit
       <span className="editor-entity-counts" role="group" aria-label="Page statistics">
         <span className="editor-entity-count" title="Distinct entities on this page"><Icon name="knowledge"/><span>{entityCounts} {entityCounts === 1 ? 'entity' : 'entities'}</span></span>
         <span className="editor-word-count" title="Words in note text">{wordCount.toLocaleString()} {wordCount === 1 ? 'word' : 'words'}</span>
-        <span className="page-ai-provenance" aria-label={'AI provenance: ' + pageAIStatusLabels[page.aiStatus ?? 'regular']} title={pageAIStatusDescriptions[page.aiStatus ?? 'regular']}><Icon name={page.aiStatus && page.aiStatus !== 'regular' ? 'sparkles' : 'page'}/><span>{pageAIStatusLabels[page.aiStatus ?? 'regular']}</span></span>
+        <span className="page-ai-provenance" aria-label={'AI provenance: ' + provenance.label} title={provenance.description}><Icon name={provenance.assisted ? 'sparkles' : 'page'}/><span>{provenance.label}</span></span>
       </span>
     </footer>
   </article></CitationPresentationContext.Provider>;

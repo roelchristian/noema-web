@@ -1,38 +1,45 @@
-import {useState} from 'react';
+import {reviewTextEdits} from '../../shared/review-diff';
+import {useEffect,useRef,useState} from 'react';
 import type {Entity,Segment} from '../../shared/domain';
 import {entityMentionName} from '../../shared/domain';
-import {Modal,ModalHeader} from '../components/Modal';
-import type {WritingReviewChange} from './writing-review';
+import {Icon} from '../components/Icon';
+import {reviewEditedSegments,type WritingReviewChange} from './writing-review';
 
-export function WritingReview({loading,error,changes,entities,onAccept,onClose}:{loading:boolean;error:string;changes:WritingReviewChange[];entities:Entity[];onAccept:(change:WritingReviewChange)=>string|null;onClose:()=>void}){
-  const [resolved,setResolved]=useState<Record<string,string>>({});
-  const [errors,setErrors]=useState<Record<string,string>>({});
+function correctionDiff(original:string,replacement:string){
+  let offset=0;
+  const chunks=reviewTextEdits(original,replacement).map((edit,index)=>{
+    const prefix=original.slice(offset,edit.start);offset=edit.end;
+    return <span key={index}>{prefix}<del>{original.slice(edit.start,edit.end)}</del><ins>{edit.replacement}</ins></span>;
+  });
+  return <>{chunks}{original.slice(offset)}</>;
+}
+
+/** A suggestion lives beside its source block, outside the editable document. */
+export function WritingReview({loading,error,change,entities,remaining=0,stale=false,onAccept,onDismiss,onAcceptAll,onClose}:{loading?:boolean;error?:string;change?:WritingReviewChange;entities:Entity[];remaining?:number;stale?:boolean;onAccept:(change:WritingReviewChange,ids?:string[])=>string|null;onDismiss:()=>void;onAcceptAll?:()=>void;onClose:()=>void}){
+  const close=useRef(onClose);close.current=onClose;
+  useEffect(()=>{
+    if(loading||error||change)return;
+    const timer=setTimeout(()=>close.current(),3000);
+    return ()=>clearTimeout(timer);
+  },[loading,error,change]);
+  const [acceptError,setAcceptError]=useState('');
+  const [excluded,setExcluded]=useState<Set<string>>(()=>new Set());
+  const selectedIds=change?.edits.filter(edit=>!excluded.has(edit.id)).map(edit=>edit.id)??[];
   const text=(segments:Segment[])=>segments.map(segment=>segment.entityId?segment.mentionText??entityMentionName(entities.find(entity=>entity.id===segment.entityId))??'':segment.text??'').join('');
-  function accept(change:WritingReviewChange){
-    const error=onAccept(change);
-    if(error)setErrors(current=>({...current,[change.blockId]:error}));
-    else {setResolved(current=>({...current,[change.blockId]:'Accepted'}));setErrors(current=>({...current,[change.blockId]:''}));}
-  }
-  const pending=changes.filter(change=>!resolved[change.blockId]);
-  return <Modal titleId="writing-review-title" className="writing-review-modal" onClose={onClose}>
-    <ModalHeader titleId="writing-review-title">Review with AI</ModalHeader>
-    <div className="writing-review-body" aria-busy={loading}>
-      <p>Spelling, punctuation, grammar, and clearer phrasing. Review each correction or accept it directly.</p>
-      {loading&&<p role="status"><span className="scan-spinner" aria-hidden="true"/> Reviewing selected text…</p>}
-      {error&&<p role="alert">{error}</p>}
-      {!loading&&!error&&!changes.length&&<p role="status">No corrections suggested.</p>}
-      {!!pending.length&&<button type="button" className="primary" onClick={()=>pending.forEach(accept)}>Accept all corrections</button>}
-      <div className="writing-review-list">{changes.map((change,index)=><article key={change.blockId} className="writing-review-card">
-        <header><strong>{change.scope==='span'?'Highlighted span':'Block'} {index+1}</strong>{resolved[change.blockId]&&<span role="status">{resolved[change.blockId]}</span>}</header>
-        <p className="writing-review-text">{text(change.replacement)}</p>
-        <details><summary>Review correction</summary>
-          <div className="writing-review-comparison"><div><h3>Original</h3><p className="writing-review-text">{text(change.selected)}</p></div><div><h3>Suggested</h3><p className="writing-review-text">{text(change.replacement)}</p></div></div>
-          {change.reasons.map((reason,i)=><p key={i}>{reason}</p>)}
-        </details>
-        {errors[change.blockId]&&<p role="alert">{errors[change.blockId]}</p>}
-        {!resolved[change.blockId]&&<footer><button type="button" className="primary" onClick={()=>accept(change)}>Accept correction</button><button type="button" onClick={()=>setResolved(current=>({...current,[change.blockId]:'Dismissed'}))}>Dismiss</button></footer>}
-      </article>)}</div>
-      {!loading&&!!changes.length&&!pending.length&&<p role="status">All suggestions reviewed.</p>}
-    </div>
-  </Modal>;
+  return <aside className={'writing-review-inline'+(change?' has-suggestion':!loading&&!error?' is-complete':'')} contentEditable={false} aria-label="AI writing review" aria-busy={loading||undefined} onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();onClose();}}}>
+    {change?<>
+      <div className="writing-review-diff" aria-label={`Suggested correction for ${change.scope==='span'?'highlighted text':'this block'}`}>{correctionDiff(text(change.selected),text(reviewEditedSegments(change.selected,change.edits.filter(edit=>!excluded.has(edit.id)))))}</div>
+      <div className="writing-review-actions">
+        <button type="button" className="writing-review-accept" disabled={stale||!selectedIds.length} onClick={()=>setAcceptError(onAccept(change,selectedIds)??'')}><Icon name="check"/>{selectedIds.length===change.edits.length?'Accept':`Accept selected (${selectedIds.length})`}</button>
+        {(change.edits.length>1||excluded.size>0)&&<details className="writing-review-pick"><summary>Choose edits ({change.edits.length})</summary><div>
+          <div className="writing-review-pick-actions"><button type="button" disabled={stale} onClick={()=>setExcluded(new Set())}>Select all</button><button type="button" disabled={stale} onClick={()=>setExcluded(new Set(change.edits.map(edit=>edit.id)))}>Clear selection</button></div>
+          {change.edits.map(edit=><label key={edit.id}><input type="checkbox" checked={!excluded.has(edit.id)} disabled={stale} onChange={event=>{const checked=event.target.checked;setExcluded(current=>{const next=new Set(current);if(checked)next.delete(edit.id);else next.add(edit.id);return next;});}}/><span><span className="writing-review-edit-context">{change.selected[edit.segmentIndex]?.text?.slice(Math.max(0,edit.start-24),edit.start)}</span><del>{change.selected[edit.segmentIndex]?.text?.slice(edit.start,edit.end)}</del><ins>{edit.replacement}</ins><span className="writing-review-edit-context">{change.selected[edit.segmentIndex]?.text?.slice(edit.end,edit.end+24)}</span></span></label>)}
+        </div></details>}
+        <details><summary>Why</summary><div>{change.reasons.map((reason,index)=><p key={index}>{reason}</p>)}</div></details>
+        {remaining>1&&<><span className="writing-review-count">{remaining} suggestions</span><button type="button" onClick={onAcceptAll}>Accept all</button><button type="button" onClick={onClose}>Dismiss all</button></>}
+        <button type="button" className="writing-review-dismiss" aria-label="Dismiss suggestion" title="Dismiss suggestion" onClick={onDismiss}><Icon name="close"/></button>
+      </div>
+      {(stale||acceptError)&&<p className="writing-review-error" role="status">{stale?'Text changed. Select it again to review.':acceptError}</p>}
+    </>:<div className="writing-review-status"><span role={error?'alert':'status'}>{loading?<><span className="scan-spinner" aria-hidden="true"/> Reviewing…</>:error||'No changes suggested.'}</span><button type="button" aria-label="Dismiss review" title="Dismiss review" onClick={onClose}><Icon name="close"/></button></div>}
+  </aside>;
 }

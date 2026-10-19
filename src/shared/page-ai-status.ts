@@ -1,16 +1,18 @@
 import type {Page, Segment} from './domain.js';
 import {isAIExplanation} from './semantic-blocks.js';
 
-export const pageAIStatuses = ['regular', 'regular_with_ai_explanations', 'ai_generated', 'ai_generated_edited'] as const;
+export const pageAIStatuses = ['regular', 'regular_with_ai_explanations', 'ai_assisted', 'ai_generated', 'ai_generated_edited'] as const;
 export type PageAIStatus = typeof pageAIStatuses[number];
 export const pageAIStatusLabels: Record<PageAIStatus, string> = {
   regular: 'Regular',
+  ai_assisted: 'AI-assisted',
   regular_with_ai_explanations: 'Regular with AI explanations',
   ai_generated: 'AI-generated',
   ai_generated_edited: 'AI-generated, edited',
 };
 export const pageAIStatusDescriptions: Record<PageAIStatus, string> = {
-  regular: 'A regular page without AI explanation blocks.',
+  regular: 'A regular page without AI explanation blocks or accepted AI writing edits.',
+  ai_assisted: 'Includes accepted AI writing edits.',
   regular_with_ai_explanations: 'A regular page containing AI explanation blocks.',
   ai_generated: 'Created from an AI-generated draft.',
   ai_generated_edited: 'Created from an AI-generated draft, then edited by a user.',
@@ -39,10 +41,26 @@ function authoredContent(page: Pick<Page, 'title' | 'blocks'>, name: (id: string
     block.imageId ?? null, block.alt ?? null,
   ])]);
 }
-export function nextPageAIStatus(previous: Pick<Page, 'title' | 'blocks' | 'aiStatus'>, next: Pick<Page, 'title' | 'blocks'>, name: (id: string) => string | undefined): PageAIStatus {
+export function nextPageAIStatus(previous: Pick<Page, 'title' | 'blocks' | 'aiStatus' | 'aiReviewAccepted'>, next: Pick<Page, 'title' | 'blocks' | 'aiReviewAccepted'>, name: (id: string) => string | undefined): PageAIStatus {
   if (previous.aiStatus === 'ai_generated_edited') return 'ai_generated_edited';
   if (previous.aiStatus === 'ai_generated') {
     return authoredContent(previous, name) === authoredContent(next, name) ? 'ai_generated' : 'ai_generated_edited';
   }
+  if(previous.aiReviewAccepted||next.aiReviewAccepted||previous.aiStatus==='ai_assisted')return 'ai_assisted';
   return next.blocks.some(isAIExplanation) ? 'regular_with_ai_explanations' : 'regular';
+}
+
+/** Read legacy origin together with the durable record of accepted writing edits. */
+export function reviewedPageAIStatus(status:PageAIStatus,accepted:boolean):PageAIStatus {
+  return accepted&&(status==='regular'||status==='regular_with_ai_explanations')?'ai_assisted':status;
+}
+
+/** Accepted reviews assist authorship without changing a page's generated origin. */
+export function pageAIProvenance(page:Pick<Page,'aiStatus'|'aiReviewAccepted'>){
+  const status=reviewedPageAIStatus(page.aiStatus??'regular',!!page.aiReviewAccepted);
+  if(page.aiReviewAccepted){
+    const generated=status==='ai_generated'||status==='ai_generated_edited';
+    return {label:generated?pageAIStatusLabels[status]:'AI-assisted',description:(generated?pageAIStatusDescriptions[status]+' ':'')+'Includes accepted AI writing edits.',assisted:true};
+  }
+  return {label:pageAIStatusLabels[status],description:pageAIStatusDescriptions[status],assisted:status!=='regular'};
 }

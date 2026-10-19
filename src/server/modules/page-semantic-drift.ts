@@ -2,7 +2,7 @@ import {createHash} from 'node:crypto';
 import type {Page,Segment} from '../../shared/domain.js';
 import {isAIExplanation} from '../../shared/semantic-blocks.js';
 import {conceptContentHash} from './summary-content.js';
-import {tokenHistogram,compareTokenHistograms,validTokenHistogram} from './token-histogram.js';
+import {tokenHistogram,compareTokenHistograms,validTokenHistogram,upgradeTokenHistogram} from './token-histogram.js';
 
 export const CLASSIFICATION_VERSION='semantic-drift-v2';
 type DriftPage=Pick<Page,'title'|'blocks'>;
@@ -25,9 +25,6 @@ const disciplineTerms:Record<string,readonly string[]>={
 };
 const normalize=(text:string)=>text.normalize('NFKC').toLowerCase().replace(/\s+/gu,' ').trim();
 const tokens=(text:string)=>normalize(text).match(/[\p{L}\p{N}]+|[^\s\p{L}\p{N}\p{P}]/gu)??[];
-const baselineTokens=new WeakMap<ClassificationBaseline,readonly string[]>();
-/** Full current-body tokens are transient; persisted snapshots remain bounded. */
-export function classificationBaselineTokens(baseline:ClassificationBaseline):readonly string[]|undefined {return baselineTokens.get(baseline);}
 function subjects(text:string):string[] {
   const words=new Set(tokens(text));
   return Object.entries(disciplineTerms).filter(([,terms])=>terms.filter(term=>words.has(term)).length>=2).map(([subject])=>subject);
@@ -55,7 +52,6 @@ export function createClassificationBaseline(page:DriftPage,resolveName:ResolveN
     headings:blocks.filter(block=>block.type==='heading1'||block.type==='heading2').map(block=>normalize(plain(block.content)).slice(0,300)).slice(0,128),
     tokenCounts:tokenHistogram(allTokens),tokenCount:allTokens.length,sampled,
     ...(validEmbedding(embedding,contentHash)?{embedding:{...embedding,vector:[...embedding.vector]}}:{})};
-  baselineTokens.set(baseline,allTokens);
   return baseline;
 }
 export function assessSemanticDrift(input:{page:DriftPage;baseline?:ClassificationBaseline;currentDomainIds?:readonly string[];origin?:'manual'|'inferred';explicit?:boolean;embedding?:CachedPageEmbedding;resolveName?:ResolveName}):DriftDecision {
@@ -66,7 +62,10 @@ export function assessSemanticDrift(input:{page:DriftPage;baseline?:Classificati
   if(!baseline)return decision(true,'initial_enrichment',1);
   if(!validTokenHistogram(baseline))return decision(true,'significant_drift',1);
   if(baseline.contentHash===current.contentHash&&baseline.title===current.title&&JSON.stringify(baseline.headings)===JSON.stringify(current.headings))return decision(false,'unchanged');
-  const {score,retainedFraction}=compareTokenHistograms(current,baseline,classificationBaselineTokens(current));
+  // A changed truncated legacy source has no complete evidence of its prior vocabulary.
+  // Neither semantic samples nor embeddings can reconstruct that missing evidence.
+  if(!upgradeTokenHistogram(baseline))return decision(true,'significant_drift',1);
+  const {score,retainedFraction}=compareTokenHistograms(current,baseline);
   const before=subjects(baseline.body),after=subjects(current.body);
   const represented=(subject:string)=>(input.currentDomainIds??[]).some(id=>id.startsWith(subject)||subject==='computing'&&/computer|computing/.test(id)||subject==='language'&&/lingu|language/.test(id)||subject==='theology'&&/religion|theolog/.test(id));
   const newSubjects=after.filter(subject=>!before.includes(subject)&&!represented(subject));

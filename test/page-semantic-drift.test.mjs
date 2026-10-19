@@ -100,3 +100,56 @@ test('a provider-backed refresh on the same body replaces inferred choices and r
     assert.ok(new PageEnrichmentState(store).get(saved.id).classification.baseline);
   }finally{db.close();rmSync(directory,{recursive:true,force:true});}
 });
+
+const roundtrip=value=>JSON.parse(JSON.stringify(value));
+const distinctWords=Array.from({length:5000},(_,index)=>`word${index}`);
+const legacyClassification=(original,version=1)=>{
+ const baseline=createClassificationBaseline(original);
+ const tokens=original.blocks.flatMap(block=>block.content.map(segment=>segment.text??'')).join(' ').toLowerCase().match(/[\p{L}\p{N}]+/gu)??[];
+ const tokenCounts=Object.create(null);let retainedWords=0;
+ for(const token of tokens){
+  if(Object.hasOwn(tokenCounts,token))tokenCounts[token]++;
+  else if(retainedWords<4096){tokenCounts[token]=1;retainedWords++;}
+ }
+ return {...baseline,version,tokenCounts,tokenCount:tokens.length};
+};
+
+test('long varied note punctuation has zero drift after baseline serialization',()=>{
+ const text=distinctWords.join(' ');
+ const baseline=roundtrip(createClassificationBaseline(page(text)));
+ const decision=assessSemanticDrift({page:page(text+'!'),baseline});
+ assert.equal(decision.score,0);
+ assert.equal(decision.needsClassification,false);
+});
+
+for(const version of [undefined,1])test(`complete legacy classification ${version??'unmarked'} matches version 2 evidence`,()=>{
+ const original=page('apple '.repeat(60)+'pear '.repeat(40));
+ const baseline=legacyClassification(original);if(version===undefined)delete baseline.version;
+ const punctuation=assessSemanticDrift({page:page(original.blocks[0].content[0].text+'!'),baseline:roundtrip(baseline)});
+ assert.equal(punctuation.score,0);assert.equal(punctuation.needsClassification,false);
+ const updated=page('apple '.repeat(60)+'volcano '.repeat(40));
+ const oldDecision=assessSemanticDrift({page:updated,baseline:roundtrip(baseline)});
+ const newDecision=assessSemanticDrift({page:updated,baseline:roundtrip(createClassificationBaseline(original))});
+ assert.equal(oldDecision.score,newDecision.score);assert.equal(oldDecision.needsClassification,true);
+});
+
+test('truncated legacy classification preserves exact content but refreshes changed omitted tokens',()=>{
+ const retained=distinctWords.slice(0,4096).join(' ');
+ const original=page(retained+' '+'oldtail '.repeat(6000));
+ const baseline=roundtrip(legacyClassification(original));
+ assert.equal(assessSemanticDrift({page:original,baseline}).reason,'unchanged');
+ const decision=assessSemanticDrift({page:page(retained+' '+'newtail '.repeat(6000)),baseline});
+ assert.equal(decision.needsClassification,true);assert.equal(decision.score,1);
+});
+
+test('uncertain legacy evidence cannot be suppressed by same-discipline or cached embedding safeguards',()=>{
+ const retained='algebra theorem '+distinctWords.slice(0,4094).join(' ');
+ const original=page(retained+' '+'oldtail '.repeat(6000));
+ const baseline=roundtrip(legacyClassification(original));
+ baseline.embedding={contentHash:baseline.contentHash,vector:[1,0],model:'cached'};
+ const updated=page(retained+' '+'newtail '.repeat(6000));
+ const current=createClassificationBaseline(updated);
+ const decision=assessSemanticDrift({page:updated,baseline,currentDomainIds:['mathematics'],embedding:{contentHash:current.contentHash,vector:[1,0],model:'cached'}});
+ assert.equal(decision.needsClassification,true);assert.equal(decision.score,1);
+ assert.equal(assessSemanticDrift({page:updated,baseline,origin:'manual'}).reason,'manual_override');
+});

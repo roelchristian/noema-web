@@ -10,7 +10,8 @@ import {AIEnrichments} from './ai-enrichments.js';
 import {Intelligence} from './intelligence.js';
 import {Domains} from './domains.js';
 import {AINotifications} from './ai-notifications.js';
-import {summaryBaseline,materiallyStaleSummary} from './page-summary-freshness.js';
+import {summaryBaseline,materiallyStaleSummary,validSummaryBaseline} from './page-summary-freshness.js';
+import {upgradeTokenHistogram} from './token-histogram.js';
 import {representativeEnrichmentText} from './page-enrichment-prompt.js';
 import {languageComposition,languageCompositionChanged} from './page-language-composition.js';
 import {PageEnrichmentState} from './page-enrichment-state.js';
@@ -59,13 +60,36 @@ export class PageEnrichment {
     const compositionChanged=languageCompositionChanged(language.composition,languageComposition(text));
     const languageNeeded=!page.language&&(language.origin!=='inferred'||compositionChanged)||language.origin==='inferred'&&compositionChanged;
     if(eligible('language')&&languageNeeded&&language.origin!=='manual'&&state.eligible(page.id,'language'))fields.push('language');
-    const summary=this.store.get<{content_hash:string|null;data:string}>("SELECT content_hash,data FROM page_ai_enrichments WHERE page_id=? AND kind='summary'",page.id);
+    const summary=this.store.get<{content_hash:string|null;data:string;revision:number}>("SELECT content_hash,data,revision FROM page_ai_enrichments WHERE page_id=? AND kind='summary'",page.id);
     const suppressed=this.data(page.id,'summary_preferences').suppressed===true;
     let summaryStale=summary?.content_hash!==page.summaryContentHash;
-    if(summary&&summaryStale) {
-      let baseline:unknown;try{baseline=JSON.parse(summary.data).baseline;}catch {/* Legacy provenance remains stale. */}
-      summaryStale=materiallyStaleSummary(baseline,summaryBaseline(page,resolve));
-      if(!summaryStale)this.store.run("UPDATE page_ai_enrichments SET content_hash=? WHERE page_id=? AND kind='summary'",page.summaryContentHash!,page.id);
+    if(summary) {
+      let saved:Record<string,unknown>|undefined;
+      try {const value:unknown=JSON.parse(summary.data);if(value&&typeof value==='object'&&!Array.isArray(value))saved=value as Record<string,unknown>;}catch {/* Legacy provenance remains stale. */}
+      let baseline=saved?.baseline;
+      if(baseline!==undefined&&!validSummaryBaseline(baseline))summaryStale=true;
+      let current:ReturnType<typeof summaryBaseline>|undefined;
+      const currentBaseline=()=>current??=summaryBaseline(page,resolve);
+      if(validSummaryBaseline(baseline)&&baseline.version!==2) {
+        let upgraded=upgradeTokenHistogram(baseline);
+        // content_hash may have advanced after a previously accepted edit. Only
+        // generating provenance (or the exact generating revision) proves source identity.
+        const verifiedSource=typeof saved?.generatedContentHash==='string'
+          ?saved.generatedContentHash===page.summaryContentHash
+          :summary.content_hash===page.summaryContentHash&&summary.revision===page.revision;
+        if(!upgraded&&verifiedSource) {
+          const source=currentBaseline();
+          if(baseline.title===source.title&&JSON.stringify(baseline.headings)===JSON.stringify(source.headings))upgraded=source;
+        }
+        if(upgraded) {
+          baseline={...baseline,version:upgraded.version,tokenCounts:upgraded.tokenCounts,tokenCount:upgraded.tokenCount};
+          this.store.run("UPDATE page_ai_enrichments SET data=? WHERE page_id=? AND kind='summary'",JSON.stringify({...saved,baseline}),page.id);
+        }else summaryStale=true;
+      }
+      if(summaryStale) {
+        summaryStale=materiallyStaleSummary(baseline,currentBaseline());
+        if(!summaryStale)this.store.run("UPDATE page_ai_enrichments SET content_hash=? WHERE page_id=? AND kind='summary'",page.summaryContentHash!,page.id);
+      }
     }
     if(eligible('summary')&&state.eligible(page.id,'summary',options.explicit)&&(!suppressed||options.explicit)&&(options.explicit&&(options.refreshFields??options.fields)?.includes('summary')||this.settings(vault).automaticSummaries&&!suppressed&&summaryStale))fields.push('summary');
     this.recordDecision(vault,page.id,fields.length?(options.explicit?'explicit_refresh':decision.reason):decision.needsClassification&&last&&Date.now()-last<cooldown?'cooldown':decision.reason,fields);

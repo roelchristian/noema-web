@@ -19,38 +19,41 @@ export function validTokenHistogram(value:unknown):value is TokenHistogram {
  if(histogram.tokenCount! > 0&&mass===0)return false;
  return histogram.version!==2||mass===histogram.tokenCount;
 }
+function tokenBucket(token:string):string {
+ let hash=2166136261;
+ for(let i=0;i<token.length;i++)hash=Math.imul(hash^token.charCodeAt(i),16777619);
+ // Mix high bits before selecting a bucket, so shared suffixes remain well distributed.
+ hash^=hash>>>16;hash=Math.imul(hash,0x85ebca6b);hash^=hash>>>13;
+ return `b${hash&4095}`;
+}
 export function tokenHistogram(tokens:Iterable<string>):Record<string,number> {
  const counts:Record<string,number>={};
  for(const token of tokens) {
-  let hash=2166136261;
-  for(let i=0;i<token.length;i++)hash=Math.imul(hash^token.charCodeAt(i),16777619);
-  // Mix high bits before selecting a bucket, so shared suffixes remain well distributed.
-  hash^=hash>>>16;hash=Math.imul(hash,0x85ebca6b);hash^=hash>>>13;
-  const key=`b${hash&4095}`;
+  const key=tokenBucket(token);
   counts[key]=(counts[key]??0)+1;
  }
  return counts;
 }
-export function compareTokenHistograms(current:TokenHistogram,baseline:TokenHistogram,currentRawTokens?:Iterable<string>):TokenHistogramComparison {
- if(!validTokenHistogram(current)||!validTokenHistogram(baseline))return {score:1,overlap:0,retainedFraction:0};
- let overlap=0;
- const lengthChange=Math.abs(current.tokenCount-baseline.tokenCount)/Math.max(1,current.tokenCount,baseline.tokenCount);
- if(baseline.version===2&&current.version===2) {
-  for(const [key,count] of Object.entries(current.tokenCounts))overlap+=Math.min(count,Object.hasOwn(baseline.tokenCounts,key)?baseline.tokenCounts[key]!:0);
-  const mass=Math.max(baseline.tokenCount,current.tokenCount);
-  return {score:mass?1-overlap/mass:0,overlap,retainedFraction:baseline.tokenCount?overlap/baseline.tokenCount:current.tokenCount?0:1};
+/** Upgrade only when every token is represented; omitted legacy vocabulary cannot be recovered. */
+export function upgradeTokenHistogram(value:unknown):TokenHistogram|undefined {
+ if(!validTokenHistogram(value))return undefined;
+ if(value.version===2)return value;
+ const entries=Object.entries(value.tokenCounts);
+ if(entries.reduce((mass,[,count])=>mass+count,0)!==value.tokenCount)return undefined;
+ const tokenCounts:Record<string,number>={};
+ for(const [token,count] of entries) {
+  const key=tokenBucket(token);
+  tokenCounts[key]=(tokenCounts[key]??0)+count;
  }
- if(baseline.version===2)return {score:lengthChange,overlap:0,retainedFraction:1};
- // Never compare raw vocabulary keys with hash buckets. Recount the full current
- // body within the retained legacy vocabulary; its missing tail is unknowable.
- const retainedCurrent:Record<string,number>=Object.create(null);
- if(current.version!==2) {
-  for(const [key,count] of Object.entries(current.tokenCounts))if(Object.hasOwn(baseline.tokenCounts,key))retainedCurrent[key]=count;
- }else if(currentRawTokens) {
-  for(const token of currentRawTokens)if(Object.hasOwn(baseline.tokenCounts,token))retainedCurrent[token]=(Object.hasOwn(retainedCurrent,token)?retainedCurrent[token]!:0)+1;
- }else return {score:lengthChange,overlap:0,retainedFraction:1};
- let baselineMass=0,currentMass=0;
- for(const [token,count] of Object.entries(baseline.tokenCounts)){baselineMass+=count;const currentCount=Object.hasOwn(retainedCurrent,token)?retainedCurrent[token]!:0;currentMass+=currentCount;overlap+=Math.min(count,currentCount);}
- const vocabularyChange=baselineMass||currentMass?1-overlap/Math.max(1,baselineMass,currentMass):0;
- return {score:Math.max(lengthChange,vocabularyChange),overlap,retainedFraction:baselineMass?overlap/baselineMass:current.tokenCount?0:1};
+ return {version:2,tokenCounts,tokenCount:value.tokenCount};
+}
+export function compareTokenHistograms(current:TokenHistogram,baseline:TokenHistogram):TokenHistogramComparison {
+ const currentComplete=upgradeTokenHistogram(current),baselineComplete=upgradeTokenHistogram(baseline);
+ // Missing vocabulary makes both overlap and stability unknowable. Callers may
+ // separately accept an exact source fingerprint, but cannot infer zero drift.
+ if(!currentComplete||!baselineComplete)return {score:1,overlap:0,retainedFraction:0};
+ let overlap=0;
+ for(const [key,count] of Object.entries(currentComplete.tokenCounts))overlap+=Math.min(count,Object.hasOwn(baselineComplete.tokenCounts,key)?baselineComplete.tokenCounts[key]!:0);
+ const mass=Math.max(baselineComplete.tokenCount,currentComplete.tokenCount);
+ return {score:mass?1-overlap/mass:0,overlap,retainedFraction:baselineComplete.tokenCount?overlap/baselineComplete.tokenCount:currentComplete.tokenCount?0:1};
 }

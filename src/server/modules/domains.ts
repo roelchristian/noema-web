@@ -3,6 +3,7 @@ import {PageEnrichmentState} from './page-enrichment-state.js';
 import {CLASSIFICATION_VERSION,assessSemanticDrift,createClassificationBaseline,type CachedPageEmbedding,type DriftDecision} from './page-semantic-drift.js';
 import {embeddingModel,embeddingDimensions} from '../../shared/embeddings.js';
 import {conceptContentHash} from './summary-content.js';
+import {upgradeTokenHistogram,validTokenHistogram} from './token-histogram.js';
 import {domainById,TAXONOMY_VERSION} from '../../shared/domains.js';
 import {Store} from '../store.js';
 import {HttpError,now} from '../validation.js';
@@ -27,9 +28,19 @@ export class Domains {
     const stale=classification?.needsRefresh===true||state?.taxonomy_version!==TAXONOMY_VERSION||contentHash!==undefined&&state?.content_hash!==contentHash&&!assessed;
     return {primaryDomainId:rows.find(row=>row.role==='primary')?.domain_id??null,secondaryDomainIds:rows.filter(row=>row.role==='secondary').map(row=>row.domain_id),origin:state?.origin??'inferred',status:state?.origin==='manual'?'manual':!assigned?'unclassified':stale?'needs_refresh':'inferred',...(state?.content_hash?{contentHash:state.content_hash,classifiedContentHash:state.content_hash}:{}),...(classification?{lastAssessedContentHash:classification.lastAssessedContentHash,classificationVersion:classification.classificationVersion,lastClassifiedAt:classification.lastClassifiedAt,classificationOrigin:classification.classificationOrigin,freshnessReason:classification.reason}:{}),taxonomyVersion:state?.taxonomy_version??TAXONOMY_VERSION,revision:state?.revision??0};
   }
-  /** Assess on meaningful saves; only successful provider classifications replace the baseline. */
+  /** Assess on meaningful saves; migrations preserve the original classification provenance. */
   assess(page:Pick<Page,'id'|'title'|'blocks'>,resolveName?:(id:string)=>string|undefined,options:{explicit?:boolean;embedding?:CachedPageEmbedding}={}):DriftDecision {
     const state=new PageEnrichmentState(this.store),record=state.get(page.id),current=this.get(page.id);
+    const baseline=record.classification?.baseline;
+    if(baseline&&baseline.version!==2) {
+      let histogram=upgradeTokenHistogram(baseline);
+      if(!histogram&&validTokenHistogram(baseline)) {
+        const source=createClassificationBaseline(page,resolveName);
+        // Rebuild missing token mass only from the verified generating content.
+        if(baseline.contentHash===source.contentHash&&baseline.title===source.title&&JSON.stringify(baseline.headings)===JSON.stringify(source.headings))histogram=source;
+      }
+      if(histogram&&record.classification)record.classification.baseline={...baseline,version:2,tokenCounts:histogram.tokenCounts,tokenCount:histogram.tokenCount};
+    }
     const decision=assessSemanticDrift({page,resolveName,baseline:record.classification?.baseline,currentDomainIds:[...(current.primaryDomainId?[current.primaryDomainId]:[]),...current.secondaryDomainIds],origin:current.origin,...options,embedding:options.embedding??this.cachedEmbedding(page,resolveName)});
     // A registry version change can be accepted locally when all selected canonical IDs still exist.
     const valid=[...(current.primaryDomainId?[current.primaryDomainId]:[]),...current.secondaryDomainIds].every(id=>!!domainById(id));

@@ -1,4 +1,4 @@
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useId,useRef,useState} from 'react';
 import {sourceDocumentEntries,sourceNodeLocator} from '../../shared/source-document';
 import type {SourceEditorialPatch,SourceReprocessingRevision,SourceReprocessingSummary} from '../../shared/source-reprocessing';
 import {request} from '../api';
@@ -26,13 +26,27 @@ function originalNode(revision:SourceReprocessingRevision,offset:number,nodeId:s
   const original=offset-shift,entries=sourceDocumentEntries(revision.original.document);
   return entries.find(({node})=>node.range.startOffset<=original&&node.range.endOffset>original&&node.text!==undefined)?.node.id??entries.find(({node})=>node.range.startOffset<=original&&node.range.endOffset>original)?.node.id;
 }
-function RevisionDocument({revision,onOriginal}:{revision:SourceReprocessingRevision;onOriginal:(id?:string)=>void}){
+function RevisionPassage({revision,entry}:{revision:SourceReprocessingRevision;entry:ReturnType<typeof sourceDocumentEntries>[number]}){
+  const [expanded,setExpanded]=useState(false),panelId=useId(),trigger=useRef<HTMLButtonElement>(null);
+  const {node,path}=entry,locator=sourceNodeLocator(path)??'Passage';
+  const originalId=expanded?originalNode(revision,node.range.startOffset,node.id):undefined;
+  const original=originalId?sourceDocumentEntries(revision.original.document).find(({node})=>node.id===originalId)?.node:undefined;
+  function dismiss(){setExpanded(false);trigger.current?.focus({preventScroll:true});}
+  return <section className="reprocessing-passage">
+    <button ref={trigger} type="button" className="reprocessing-origin" aria-expanded={expanded} aria-controls={panelId} onClick={()=>setExpanded(value=>!value)} title="Compare the original passage below">{locator} · {expanded?'Hide original':'Show original'}</button>
+    {node.text===undefined?<h3><SourceReaderInline text={node.title??''} footnotePrefix={revision.id}/></h3>:<SourceReaderText text={node.text} kind={node.kind} footnotePrefix={revision.id}/>}
+    <aside id={panelId} className="reprocessing-original-preview" aria-label={`Original passage ${locator}`} hidden={!expanded} onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();dismiss();}}}>
+      {expanded&&<>
+        <div className="reprocessing-original-heading"><span>Original</span><button type="button" aria-label={`Dismiss original passage ${locator}`} onClick={dismiss}>Dismiss</button></div>
+        {original?(original.text===undefined?<SourceReaderInline text={original.title??''} footnotePrefix={`${revision.id}-original`}/>:<SourceReaderText text={original.text} kind={original.kind} footnotePrefix={`${revision.id}-original`}/>):<p>The original passage could not be matched.</p>}
+      </>}
+    </aside>
+  </section>;
+}
+function RevisionDocument({revision}:{revision:SourceReprocessingRevision}){
   const entries=sourceDocumentEntries(revision.reprocessed.document).filter(({node})=>node.text!==undefined||node.title);
   return <article className="source-reader-document reprocessing-document" aria-label="Reprocessed source">
-    {entries.map(({node,path})=><section key={node.id} className="reprocessing-passage">
-      <button type="button" className="reprocessing-origin" onClick={()=>onOriginal(revision.stale?undefined:originalNode(revision,node.range.startOffset,node.id))} title="Open this passage in the canonical source">{sourceNodeLocator(path)??'Passage'} · Show original</button>
-      {node.text===undefined?<h3><SourceReaderInline text={node.title??''} footnotePrefix={revision.id}/></h3>:<SourceReaderText text={node.text} kind={node.kind} footnotePrefix={revision.id}/>}
-    </section>)}
+    {entries.map(entry=><RevisionPassage key={`${revision.id}:${entry.node.id}`} revision={revision} entry={entry}/>)}
     {!entries.length&&<SourceReaderText text={revision.reprocessed.text} footnotePrefix={revision.id}/>}
   </article>;
 }
@@ -149,7 +163,7 @@ export function SourceReprocessing({vaultId,fileId,visible,onShow,onOriginal,onC
         {['failed','interrupted'].includes(revision.status)&&!stale&&<button type="button" className="button small" disabled={busy||running} onClick={()=>void control('resume')}>Resume remaining excerpts</button>}
         <Report revision={revision}/>
         <div className="reprocessing-tabs"><button aria-pressed={tab==='read'} onClick={()=>setTab('read')}>Read revision</button><button aria-pressed={tab==='review'} onClick={()=>setTab('review')}>Review changes ({revision.patches.length})</button></div>
-        {tab==='read'?<RevisionDocument revision={revision} onOriginal={onOriginal}/>:<div className="reprocessing-reviews">
+        {tab==='read'?<RevisionDocument revision={revision}/>:<div className="reprocessing-reviews">
           <div className="reprocessing-tabs reprocessing-review-filters" role="group" aria-label="Review status">
             {reviewFilters.map(value=><button key={value} type="button" aria-pressed={filter===value} onClick={()=>{setFilter(value);setSelected([]);}}>{reviewLabels[value]} <span className="reprocessing-filter-count">{value==='all'?revision.patches.length:revision.patches.filter(patch=>patch.decision===value).length}</span></button>)}
           </div>

@@ -1,7 +1,7 @@
 import {SourceMath} from './source-math.js';
 import {SourceAuthorBackfill,recordSourceAuthorsProcessed} from './source-author-backfill.js';
 import {sourceEnrichmentLines} from './source-enrichment-prompt.js';
-import {mergeSourceStructure} from './source-structure.js';
+import {mergeEnrichedSourceStructure} from './source-structure.js';
 import {AINotifications} from './ai-notifications.js';
 import {saveSourceAuthors} from './source-authors.js';
 import type {SourceFile} from '../../shared/domain.js';
@@ -62,8 +62,7 @@ export class SourceEnrichments {
      try{const parsed:unknown=JSON.parse(current.structural_nodes??'[]');if(Array.isArray(parsed))explicit=parsed;}catch{/* Recover legacy metadata from the text. */}
      // Preserve known heading locations, while allowing semantic block extents
      // to refine locally detected labels at the same line.
-     const refined=result.structure.map(node=>({...explicit.find(existing=>existing.startLine===node.startLine),...node}));
-     const structure=mergeSourceStructure(file.text,[...explicit,...refined]);
+     const structure=mergeEnrichedSourceStructure(file.text,explicit,result.structure);
      this.store.run('UPDATE source_files SET structural_nodes=? WHERE id=?',JSON.stringify(structure),file.id);
      this.store.run("UPDATE source_files SET generated_name=?,language=?,summary=?,enrichment_status='completed',enrichment_error=NULL WHERE id=?",result.name,result.language,result.summary,file.id);
      // A user edit made during the request takes precedence over generated naming.

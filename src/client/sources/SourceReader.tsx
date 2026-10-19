@@ -1,3 +1,4 @@
+import {SourceEvidence} from './SourceEvidence';
 import {SourceReprocessing} from './SourceReprocessing';
 import {SourceReadingNoteMarkers} from './SourceReadingNoteMarkers';
 import {SourceReadingNavigation} from './SourceReadingNavigation';
@@ -36,7 +37,8 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,refres
   const [loaded,setLoaded]=useState<LoadedFile|null>(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
   const [selected,setSelected]=useState<string|null>(null),[copied,setCopied]=useState(false);
   const article=useRef<HTMLElement>(null);
-  const [reprocessed,setReprocessed]=useState(false);
+  const [reprocessed,setReprocessed]=useState(false),[comparisonPage,setComparisonPage]=useState<number|null>(null);
+  useEffect(()=>setComparisonPage(null),[vaultId,fileId]);
   useEffect(()=>setReprocessed(false),[fileId,vaultId,source.id]);
   function showOriginal(nodeId?:string){setReprocessed(false);if(nodeId){setSelected(nodeId);requestAnimationFrame(()=>{const element=document.getElementById(passageAnchor(fileId,nodeId));element?.scrollIntoView({block:'center'});element?.querySelector<HTMLButtonElement>('button')?.focus({preventScroll:true});});}}
   const [highlights,setHighlights]=useState<SourceHighlight[]>([]);
@@ -54,7 +56,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,refres
         const attachments=detail.attachments??[];
         setFiles(attachments);
         setFileId(current=>attachments.some(file=>file.id===current)?current:(attachments.find(file=>file.status==='ready'&&file.admitted===1)??attachments[0])?.id??'');
-        if(attachments.some(file=>file.status==='queued'||file.status==='processing'))timer=setTimeout(()=>void refresh(),2000);
+        if(attachments.some(file=>file.status==='queued'||file.status==='processing'||file.status==='ready'&&['pending','running'].includes(file.enrichment_status)))timer=setTimeout(()=>void refresh(),2000);
       }catch(cause){if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:String(cause));}
     }
     void refresh();
@@ -62,15 +64,17 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,refres
   },[vaultId,source.id,source.updated_at,source.sourceStatus,refreshKey,retry]);
   const attachment=files?.find(file=>file.id===fileId);
   useEffect(()=>{
-    const controller=new AbortController();setLoaded(null);setSelected(null);setCopied(false);
-    if(!attachment||attachment.status!=='ready'||attachment.admitted!==1)return()=>controller.abort();
+    const controller=new AbortController();
+    if(!attachment||attachment.status!=='ready'||attachment.admitted!==1){setLoaded(null);setSelected(null);setCopied(false);return()=>controller.abort();}
     setError('');
     void request<LoadedFile>('source-files/'+encodeURIComponent(attachment.id)+'?fingerprint=1&context=1','GET',undefined,vaultId,controller.signal).then(file=>{
       if(file.entity_id!==source.id)throw new Error('This attachment no longer belongs to the source.');
       if(!controller.signal.aborted)setLoaded(file);
     }).catch(cause=>{if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:String(cause));});
     return()=>controller.abort();
-  },[vaultId,source.id,attachment?.id,attachment?.status,attachment?.admitted,retry]);
+  },[vaultId,source.id,attachment?.id,attachment?.status,attachment?.admitted,attachment?.enrichment_status,attachment?.structural_nodes,attachment?.page_start_lines,attachment?.generated_name,attachment?.language,attachment?.text,retry]);
+  // A metadata refresh preserves the selection; a text revision invalidates it.
+  useEffect(()=>{setSelected(null);setCopied(false);},[loaded?.id,loaded?.textHash]);
   useEffect(()=>{
     setHighlights([]);if(!loaded)return;
     const controller=new AbortController();
@@ -132,7 +136,8 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,refres
     {attachment&&attachment.status!=='ready'&&<p className="source-reader-status" role="status">{attachment.status==='failed'?attachment.error||'Source processing failed. Use the inspector to retry.':`Preparing this source for reading… ${attachment.progress}%`}</p>}
     {attachment?.status==='ready'&&attachment.admitted!==1&&<p className="source-reader-status">This attachment is unavailable for reading.</p>}
     {attachment?.status==='ready'&&attachment.admitted===1&&!loaded&&!error&&<p className="source-reader-status" role="status">Loading document text…</p>}
-    {loaded&&<SourceReprocessing key={`${vaultId}:${loaded.id}`} vaultId={vaultId} fileId={loaded.id} visible={reprocessed} onShow={()=>setReprocessed(true)} onOriginal={showOriginal}/>}
+    {loaded?.format==='pdf'&&<SourceEvidence vaultId={vaultId} fileId={loaded.id} pageCount={loaded.pages??0} page={comparisonPage} onPage={setComparisonPage}/>}
+    {loaded&&<SourceReprocessing key={`${vaultId}:${loaded.id}`} vaultId={vaultId} fileId={loaded.id} onCompare={loaded.format==='pdf'?setComparisonPage:undefined} visible={reprocessed} onShow={()=>setReprocessed(true)} onOriginal={showOriginal}/>}
     {loaded&&!reprocessed&&<div className="source-reader-layout">
       <div className="source-reader-content">
         {reference&&<aside className="source-reader-selection" aria-label="Selected passage"><div className="source-reader-selection-heading"><strong>Selected passage</strong><button type="button" aria-label="Clear selected passage" onClick={()=>setSelected(null)}><Icon name="close"/></button></div><small>{citationLocation(reference)}</small><blockquote>{reference.excerpt}</blockquote><div className="source-reader-selection-actions"><button className="button small" type="button" onClick={()=>void copyCitation()}>{copied?'Copied':'Copy citation'}</button><button className="button small" type="button" onClick={()=>onAddPassage(reference)}>Add to page</button><button className="button small" type="button" onClick={()=>onAnnotate(reference)}>Annotate</button></div><span role="status" className="sr-only">{copied?'Citation copied':''}</span></aside>}

@@ -1,3 +1,4 @@
+import {SourcePageImages} from './modules/source-page-images.js';
 import {SourceLifecycleService} from './modules/source-lifecycle.js';
 import {SourceReprocessing} from './modules/source-reprocessing.js';
 import {SourceReading} from './modules/source-reading.js';
@@ -60,6 +61,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
   const sockets = new Set<Socket>();
   const vaultDeletion=new VaultDeletion(store);
   const sourceFiles=new SourceFiles(store);
+  const sourcePageImages=new SourcePageImages(sourceFiles);
   const sourceReading=new SourceReading(store);
   sourceFiles.recover();
   const backups=new VaultBackups(store);
@@ -126,7 +128,10 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             if(method==='POST'&&!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))throw new HttpError(415,'Editorial requests require JSON.');
             if(parts.length===4&&method==='GET')return send(200,sourceReprocessing.list(vault,id));
             if(parts.length===4&&method==='POST'){const body=await readBody(req);vaults.requireOpen(vault);return send(202,sourceReprocessing.start(vault,id,body));}
+            if(parts.length===6&&parts[5]==='status'&&method==='GET')return send(200,sourceReprocessing.status(vault,id,parts[4]!));
             if(parts.length===5&&method==='GET')return send(200,sourceReprocessing.detail(vault,id,parts[4]!));
+            if(parts.length===6&&parts[5]==='cancel'&&method==='POST')return send(200,sourceReprocessing.cancel(vault,id,parts[4]!));
+            if(parts.length===6&&parts[5]==='resume'&&method==='POST')return send(202,sourceReprocessing.resume(vault,id,parts[4]!));
             if(parts.length===6&&parts[5]==='review'&&method==='POST'){const body=await readBody(req);vaults.requireOpen(vault);return send(200,sourceReprocessing.review(vault,id,parts[4]!,body));}
             throw new HttpError(404,'Editorial endpoint not found.');
           }
@@ -144,6 +149,13 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             for await(const chunk of req){const bytes=Buffer.from(chunk);size+=bytes.length;if(size>maxSourceBytes)throw new HttpError(413,'Source files must be 50 MB or smaller');chunks.push(bytes);}
             vaults.requireOpen(vault);
             return send(201,await sourceFiles.admit(vault,url.searchParams.get('name')||'',Buffer.concat(chunks),url.searchParams.get('entity')||undefined,()=>{vaults.requireOpen(vault);},undefined,containsMath==='true'));
+          }
+          if(id && parts.length===4 && parts[3]==='evidence' && method==='GET')return send(200,sourceFiles.evidence(vault,id));
+          if(id && parts.length===5 && parts[3]==='page-image' && method==='GET') {
+            const bytes=await sourcePageImages.get(vault,id,Number(parts[4]));
+            vaults.requireOpen(vault);sourceFiles.require(vault,id);
+            res.writeHead(200,{'Content-Type':'image/png','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"});
+            return res.end(bytes);
           }
           if(id && parts.length===3 && method==='GET') {
             const raw=sourceFiles.require(vault,id);
@@ -567,6 +579,6 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
     keyCleanup=setInterval(()=>{try{intelligence.purgeExpired();}catch{/* Keychain may be locked; all AI access still fails closed. */}},60000);keyCleanup.unref();
     embeddingWorker=setInterval(()=>{void embeddings.tick().catch(()=>{/* Durable job history records failures; never log note content. */});},1000);embeddingWorker.unref();
   });
-  server.on('close', () => {clearInterval(sourceReprocessingWorker);sourceReprocessing.close();enrichmentScheduler.dispose();clearInterval(sourceWorker);sourceFiles.close();clearInterval(sourcePassageWorker);clearInterval(sourceEnrichmentWorker);sourceEnrichments.close();clearInterval(cleanup);clearInterval(keyCleanup);clearInterval(embeddingWorker);embeddings.close();});
+  server.on('close', () => {clearInterval(sourceReprocessingWorker);sourceReprocessing.close();enrichmentScheduler.dispose();clearInterval(sourceWorker);sourceFiles.close();sourcePageImages.close();clearInterval(sourcePassageWorker);clearInterval(sourceEnrichmentWorker);sourceEnrichments.close();clearInterval(cleanup);clearInterval(keyCleanup);clearInterval(embeddingWorker);embeddings.close();});
   return server;
 }

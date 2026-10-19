@@ -11,6 +11,7 @@ guard CommandLine.arguments.count == 2,
 guard !document.isLocked else { fail("Unlock this password-protected PDF before attaching it.") }
 guard document.pageCount > 0, document.pageCount <= 1000 else { fail("PDFs must contain between 1 and 1,000 pages.") }
 var pages: [String] = []
+var pageEvidence: [[String: Any]] = []
 var ocrPages = 0
 var extractedBytes = 0
 for index in 0..<document.pageCount {
@@ -19,7 +20,14 @@ for index in 0..<document.pageCount {
             guard let page = document.page(at: index) else { fail("A PDF page could not be read.") }
             let embedded = (page.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             // OCR every page without meaningful embedded text, including mixed PDFs.
-            if embedded.filter({ $0.isLetter || $0.isNumber }).count >= 20 { return embedded }
+            if embedded.filter({ $0.isLetter || $0.isNumber }).count >= 20 {
+                let blocks = (page.selection(for: page.bounds(for: .mediaBox))?.selectionsByLine() ?? []).map { selection -> [String: Any] in
+                    let box = selection.bounds(for: page)
+                    return ["text": selection.string ?? "", "bounds": [box.origin.x, box.origin.y, box.width, box.height]]
+                }
+                pageEvidence.append(["page": index + 1, "method": "native", "text": embedded, "blocks": blocks, "coordinateSystem": "pdf-points-bottom-left", "findings": []])
+                return embedded
+            }
             let bounds = page.bounds(for: .mediaBox)
             guard bounds.width > 0, bounds.height > 0 else { fail("A PDF page has invalid dimensions.") }
             let scale = min(3, 3000 / max(bounds.width, bounds.height))
@@ -34,7 +42,13 @@ for index in 0..<document.pageCount {
             request.usesCPUOnly = true
             try VNImageRequestHandler(cgImage: cgImage).perform([request])
             ocrPages += 1
-            let recognized = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
+            let observations = request.results ?? []
+            let recognized = observations.compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
+            let blocks: [[String: Any]] = observations.map { observation in
+                let box = observation.boundingBox
+                return ["text": observation.topCandidates(1).first?.string ?? "", "confidence": observation.topCandidates(1).first?.confidence ?? 0, "bounds": [box.origin.x, box.origin.y, box.width, box.height], "alternatives": observation.topCandidates(3).map { ["text": $0.string, "confidence": $0.confidence] as [String: Any] }]
+            }
+            pageEvidence.append(["page": index + 1, "method": "ocr", "text": recognized.isEmpty ? embedded : recognized, "blocks": blocks, "coordinateSystem": "normalized-bottom-left", "findings": ["OCR has not been verified against the page image; omissions remain possible."]])
             return recognized.isEmpty ? embedded : recognized
         }
         extractedBytes += text.utf8.count + 2
@@ -56,20 +70,24 @@ for page in pages {
 // heading when its label can be anchored to an actual extracted line on that page.
 var structuralNodes: [[String: Any]] = []
 func normalizedHeading(_ value: String) -> String {
-    return value.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ").folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+    return value.replacingOccurrences(of: "^\\s*\\d+(?:\\.\\d+)*[.)]?\\s+", with: "", options: .regularExpression).split(whereSeparator: { $0.isWhitespace }).joined(separator: " ").folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
 }
+var unresolvedOutlines: [String] = []
 func collectOutline(_ outline: PDFOutline, level: Int) {
     guard level <= 256 else { return }
-    if let label = outline.label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty,
-       let page = outline.destination?.page {
-        let pageIndex = document.index(for: page)
-        if pageIndex >= 0 && pageIndex < pages.count {
-            let target = normalizedHeading(label)
-            let lines = pages[pageIndex].components(separatedBy: "\n")
-            if let lineIndex = lines.firstIndex(where: { normalizedHeading($0) == target }) {
-                structuralNodes.append(["text": label, "startLine": pageStartLines[pageIndex] + lineIndex, "level": min(6, max(1, level))])
+    if let label = outline.label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty {
+        let target = normalizedHeading(label)
+        var matches: [(Int, Int, String)] = []
+        for (pageIndex, content) in pages.enumerated() {
+            for (lineIndex, line) in content.components(separatedBy: "\n").enumerated() where normalizedHeading(line) == target {
+                matches.append((pageIndex, lineIndex, line))
             }
         }
+        let destination = outline.destination?.page.map { document.index(for: $0) }
+        let local = matches.filter { $0.0 == destination }
+        if let match = local.count == 1 ? local.first : (matches.count == 1 ? matches.first : nil) {
+            structuralNodes.append(["text": match.2, "startLine": pageStartLines[match.0] + match.1, "level": min(6, max(1, level))])
+        } else { unresolvedOutlines.append(label) }
     }
     for index in 0..<outline.numberOfChildren {
         if let child = outline.child(at: index) { collectOutline(child, level: level + 1) }
@@ -80,5 +98,9 @@ if let root = document.outlineRoot {
         if let child = root.child(at: index) { collectOutline(child, level: 1) }
     }
 }
-let output = try JSONSerialization.data(withJSONObject: ["text": text, "pages": document.pageCount, "ocrPages": ocrPages, "pageStartLines": pageStartLines, "structuralNodes": structuralNodes])
+let attributes: [AnyHashable: Any] = document.documentAttributes ?? [:]
+var metadata: [String: String] = [:]
+for (key, value) in attributes { metadata[String(describing: key)] = String(describing: value).prefix(2000).description }
+let annotationCounts = (0..<document.pageCount).map { document.page(at: $0)?.annotations.count ?? 0 }
+let output = try JSONSerialization.data(withJSONObject: ["text": text, "pages": document.pageCount, "ocrPages": ocrPages, "pageStartLines": pageStartLines, "structuralNodes": structuralNodes, "metadata": metadata, "annotationCounts": annotationCounts, "pageEvidence": pageEvidence, "unresolvedOutlines": unresolvedOutlines])
 FileHandle.standardOutput.write(output)

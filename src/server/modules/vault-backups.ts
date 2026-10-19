@@ -69,7 +69,7 @@ const tables={
 } as const;
 type Table=keyof typeof tables;
 type Row=Record<string,unknown>;
-type Backup={format:'noema-vault-backup';version:1;createdAt:string;vault:{name:string};tables:Record<Table,Row[]>;images:{id:string;data:string}[];sourceFiles?:{id:string;data:string}[]};
+type Backup={format:'noema-vault-backup';version:1;createdAt:string;vault:{name:string};tables:Record<Table,Row[]>;images:{id:string;data:string}[];sourceFiles?:{id:string;data:string;evidence?:Record<string,unknown>}[]};
 const invalid=()=>new HttpError(400,'This backup contains invalid data or missing references.');
 function string(row:Row,key:string,max=10000) {return text(row[key],max);}
 function name(row:Row,key:string) {return required(row[key]);}
@@ -113,7 +113,10 @@ export class VaultBackups {
         const bytes=readFileSync(new SourceFiles(this.store).assetFilename(vault,file.id as string));
         estimated+=Math.ceil(bytes.length/3)*4;
         if(estimated>maxExpandedBytes)throw new HttpError(413,'This vault exceeds the 256 MB expanded backup limit.');
-        return {id:file.id as string,data:bytes.toString('base64')};
+        const evidence=new SourceFiles(this.store).exportEvidence(vault,file.id as string);
+        estimated+=Buffer.byteLength(JSON.stringify(evidence));
+        if(estimated>maxExpandedBytes)throw new HttpError(413,'This vault exceeds the 256 MB expanded backup limit.');
+        return {id:file.id as string,data:bytes.toString('base64'),evidence};
       })} satisfies Backup;
     });
     const payload=Buffer.from(JSON.stringify(backup));
@@ -235,6 +238,7 @@ export class VaultBackups {
           if(!['txt','md','pdf','html','url'].includes(String(format))||format==='url'&&(!sourceUrl||admitted!==0))throw invalid();
           const added=sourceFiles.add(vault,name(row,'name'),bytes,undefined,sourceUrl,pdfFlattened===1,admitted===0,format as import('../../shared/domain.js').SourceFile['format'],containsMath===1);writtenSources.push(added.id);restoredSourceFiles.set(name(row,'id'),added.id);
           this.store.run('UPDATE source_files SET entity_id=? WHERE id=?',sourceEntity,added.id);
+          if(asset.evidence!==undefined)sourceFiles.restoreEvidence(vault,added.id,asset.evidence);
           if(row.page_start_lines!==undefined) {
             const starts=list(json(row,'page_start_lines'));
             if(starts.length>1000||starts.some((value,index)=>!Number.isSafeInteger(value)||(value as number)<1||index===0&&value!==1||index>0&&(value as number)<=(starts[index-1] as number)))throw invalid();

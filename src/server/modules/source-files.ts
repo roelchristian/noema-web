@@ -1,10 +1,11 @@
+import {preparePDFWorker} from './pdf-worker.js';
 import { AINotifications } from './ai-notifications.js';
 import { scanSourcePDF, fetchSource, sourceURL } from './source-import.js';
 import { syncSourceProvenance } from './source-provenance.js';
 import { mergeSourceStructure } from './source-structure.js';
 import { normalizeSourceText } from './source-text-normalization.js';
-import { randomUUID } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, unlinkSync, existsSync, statSync, rmSync, renameSync } from 'node:fs';
+import { randomUUID, createHash } from 'node:crypto';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, unlinkSync, existsSync, statSync, rmSync, renameSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -42,7 +43,42 @@ export class SourceFiles {
     const inbox=this.inboxFilename(vault,id),admitted=this.filename(vault,id);
     return file.admitted===1||!existsSync(inbox)?admitted:inbox;
   }
+  private evidenceDirectory(vault:string,id:string) {
+    this.filename(vault,id);
+    return path.join(this.root,vault,'source-evidence',id);
+  }
+  evidence(vault:string,id:string):Record<string,unknown> {
+    this.require(vault,id);
+    const filename=path.join(this.evidenceDirectory(vault,id),'manifest.json');
+    return existsSync(filename)?JSON.parse(readFileSync(filename,'utf8')):{version:1,originalAvailable:false,findings:['Original bytes and extraction evidence are unavailable for this legacy import. Re-upload to recover them.']};
+  }
+  exportEvidence(vault:string,id:string) {
+    const evidence=this.evidence(vault,id),original=path.join(this.evidenceDirectory(vault,id),'original');
+    return {...evidence,...(existsSync(original)?{originalData:readFileSync(original).toString('base64')}:{})};
+  }
+  restoreEvidence(vault:string,id:string,value:unknown) {
+    if(!value||typeof value!=='object'||Array.isArray(value))throw new HttpError(400,'Invalid source evidence');
+    const {originalData,...manifest}=value as Record<string,unknown>;
+    // Restored extraction remains evidence, but must never become a trusted executable-version cache.
+    delete manifest.extractorHash;
+    if(Buffer.byteLength(JSON.stringify(manifest))>maxText*4)throw new HttpError(413,'Source evidence exceeds the size limit');
+    if(originalData!==undefined) {
+      if(typeof originalData!=='string'||originalData.length>70*1024*1024)throw new HttpError(400,'Invalid original source bytes');
+      const bytes=Buffer.from(originalData,'base64');
+      if(!bytes.length||bytes.length>maxSourceBytes||bytes.toString('base64')!==originalData||manifest.originalHash!==this.hash(bytes))throw new HttpError(400,'Original source checksum does not match');
+      this.preserveOriginal(vault,id,bytes);
+    }
+    this.replaceFile(path.join(this.evidenceDirectory(vault,id),'manifest.json'),Buffer.from(JSON.stringify(manifest)));
+  }
+  private hash(bytes:Buffer|string) {return createHash('sha256').update(bytes).digest('hex');}
+  private preserveOriginal(vault:string,id:string,bytes:Buffer) {
+    const directory=this.evidenceDirectory(vault,id),filename=path.join(directory,'original');
+    mkdirSync(directory,{recursive:true,mode:0o700});
+    if(!existsSync(filename))writeFileSync(filename,bytes,{flag:'wx',mode:0o600});
+    else if(this.hash(readFileSync(filename))!==this.hash(bytes))throw new Error('The preserved original checksum changed.');
+  }
   removeAssets(vault:string,id:string) {
+    rmSync(this.evidenceDirectory(vault,id),{recursive:true,force:true});
     for(const filename of [this.filename(vault,id),this.inboxFilename(vault,id)])try{unlinkSync(filename);}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
   }
   private requireSingle(vault:string,entityId:string|undefined) {
@@ -92,7 +128,8 @@ export class SourceFiles {
       writeFileSync(input,bytes,{mode:0o600,flag:'wx'});
       if(!this.flattenCompiler)this.flattenCompiler=this.compileFlattener().catch(error=>{this.flattenCompiler=undefined;throw error;});
       const executable=await this.flattenCompiler;
-      await this.command(executable,[input,output],10*60*1000);
+      const profile='(version 1)(allow default)(deny network*)(deny file-write*)(allow file-write* (literal '+JSON.stringify(path.join(realpathSync(directory),'flattened.pdf'))+'))(deny process-fork)(deny process-exec)(allow process-exec (literal '+JSON.stringify(realpathSync(executable))+'))(deny file-read* (subpath "/Users"))(allow file-read* (literal '+JSON.stringify(realpathSync(executable))+') (literal '+JSON.stringify(realpathSync(input))+'))';
+      await this.command('/usr/bin/sandbox-exec',['-p',profile,executable,input,output],10*60*1000);
       const size=statSync(output).size;
       if(!size||size>maxSourceBytes)throw new HttpError(413,'The flattened PDF exceeds the 50 MB limit or is empty. Split it into smaller files and try again.');
       return readFileSync(output);
@@ -107,7 +144,7 @@ export class SourceFiles {
     const script=fileURLToPath(new URL('../../../scripts/flatten-source.swift',import.meta.url));
     if(!existsSync(executable)||statSync(script).mtimeMs>statSync(executable).mtimeMs) {
       const temporary=executable+'-'+randomUUID();
-      try {await this.command('/usr/bin/swiftc',[script,'-o',temporary],120000);renameSync(temporary,executable);}
+      try {await this.command('/usr/bin/swiftc',[script,'-module-cache-path',path.join(tmpdir(),'noema-swift-module-cache'),'-o',temporary],120000);renameSync(temporary,executable);}
       finally{rmSync(temporary,{force:true});}
     }
     return executable;
@@ -171,10 +208,31 @@ export class SourceFiles {
         });
         file=this.require(file.vault_id,file.id);
       }else bytes=readFileSync(this.assetFilename(file.vault_id,file.id));
+      let rawPDF:Awaited<ReturnType<SourceFiles['pdf']>>|undefined;
+      let evidence=this.evidence(file.vault_id,file.id);
+      const originalFilename=path.join(this.evidenceDirectory(file.vault_id,file.id),'original');
+      if(!existsSync(originalFilename)&&file.pdf_flattened!==1) {
+        this.preserveOriginal(file.vault_id,file.id,bytes);
+        evidence={version:1,originalAvailable:true,originalHash:this.hash(bytes),originalBytes:bytes.length,createdAt:now()};
+        this.replaceFile(path.join(this.evidenceDirectory(file.vault_id,file.id),'manifest.json'),Buffer.from(JSON.stringify(evidence)));
+      }
+      if(file.format==='pdf'&&existsSync(originalFilename)) {
+        const originalBytes=readFileSync(originalFilename);
+        if(evidence.originalHash!==this.hash(originalBytes))throw new Error('The preserved original checksum does not match its provenance.');
+        const extractorHash=this.hash(readFileSync(fileURLToPath(new URL('../../../scripts/extract-source.swift',import.meta.url))));
+        // Local evidence is a cache only when both input and extractor versions agree.
+        if(evidence.extractorHash===extractorHash&&evidence.rawExtraction)rawPDF=evidence.rawExtraction as typeof rawPDF;
+        else {
+          rawPDF=await this.pdf(originalFilename,file.id);
+          evidence={...evidence,extractorHash,rawExtraction:rawPDF,extractedAt:now()};
+          this.replaceFile(path.join(this.evidenceDirectory(file.vault_id,file.id),'manifest.json'),Buffer.from(JSON.stringify(evidence)));
+        }
+      }
       if(file.format==='pdf') {
         try{scanSourcePDF(bytes);}catch(error){
           if(!(error instanceof HttpError))throw error;
           if(process.platform!=='darwin')throw new Error('This PDF needs local flattening, which currently requires macOS.');
+          evidence={...evidence,flattening:{reason:error.message,method:'raster',dpi:200,maxDimension:3000,discardedFeatures:['embedded text','PDF outline','annotations','document metadata'],startedAt:now()}};
           bytes=await this.flattenPDF(bytes);
           scanSourcePDF(bytes);
           if(this.closed)return;
@@ -195,7 +253,7 @@ export class SourceFiles {
         this.store.run('UPDATE source_files SET admitted=1,size=? WHERE id=?',bytes.length,file.id);
         rmSync(this.inboxFilename(file.vault_id,file.id),{force:true});
       }
-      const result=file.format==='pdf'?await this.pdf(this.filename(file.vault_id,file.id),file.id):{text:bytes.toString('utf8'),pages:0,ocrPages:0,pageStartLines:[]};
+      const result=file.format==='pdf'?rawPDF??await this.pdf(this.filename(file.vault_id,file.id),file.id):{text:bytes.toString('utf8'),pages:0,ocrPages:0,pageStartLines:[]};
       if(this.closed)return;
       if(!open()){this.store.run("UPDATE source_files SET status='queued',progress=0 WHERE id=?",file.id);return;}
       if(Buffer.byteLength(result.text)>maxText)throw new Error('Extracted text exceeds the 16 MB limit.');
@@ -211,6 +269,10 @@ export class SourceFiles {
       if(cited)try{const nodes:unknown=JSON.parse(file.structural_nodes??'[]');if(Array.isArray(nodes))savedStructure=nodes;}catch{/* Infer headings without changing citation lines. */}
       const processed=cited?{text:file.text,pageStartLines:JSON.parse(file.page_start_lines??'[]') as number[],structuralNodes:mergeSourceStructure(file.text,savedStructure)}:normalizeSourceText(result.text,explicit,result.pageStartLines??[]);
       const structure=processed.structuralNodes;
+      const previousNormalization=evidence.normalization as {text?:string}|undefined;
+      const normalization=cited?(previousNormalization?.text===processed.text?previousNormalization:{...processed,provenanceAvailable:false,findings:['Existing citation offsets were preserved; raw normalization mapping is unavailable for this stored version.']}):processed;
+      evidence={...evidence,admittedHash:this.hash(bytes),admittedBytes:bytes.length,rawExtraction:result,normalization,canonicalHash:this.hash(processed.text),completedAt:now()};
+      this.replaceFile(path.join(this.evidenceDirectory(file.vault_id,file.id),'manifest.json'),Buffer.from(JSON.stringify(evidence)));
       this.store.transaction(()=>{
         this.store.run("UPDATE source_files SET enrichment_status='pending',enrichment_attempts=0,enrichment_error=NULL,enrichment_next_attempt_at='',status='ready',text=?,pages=?,ocr_pages=?,page_start_lines=?,structural_nodes=?,progress=100,error=NULL WHERE id=?",processed.text,result.pages,result.ocrPages,JSON.stringify(processed.pageStartLines),JSON.stringify(structure),file!.id);
         this.store.run('UPDATE entities SET inactive=0,updated_at=? WHERE id=? AND vault_id=?',now(),file!.entity_id,file!.vault_id);
@@ -246,28 +308,31 @@ export class SourceFiles {
     try{writeFileSync(temporary,bytes,{flag:'wx',mode:0o600});renameSync(temporary,filename);}
     finally{rmSync(temporary,{force:true});}
   }
-  private async pdf(filename:string,id:string,trackProgress=true):Promise<{text:string;pages:number;ocrPages:number;pageStartLines:number[];structuralNodes?:SourceStructureNode[]}> {
+  private async pdf(filename:string,id:string,trackProgress=true):Promise<{text:string;pages:number;ocrPages:number;pageStartLines:number[];structuralNodes?:SourceStructureNode[];pageEvidence?:unknown[];unresolvedOutlines?:string[]}> {
     if(process.platform!=='darwin')throw new Error('PDF extraction requires macOS with Apple PDFKit and Vision. TXT and MD sources work on this device.');
     // Compile once into the local vault data area; no cloud model or remote OCR.
     const executable=path.join(this.root,'source-extractor');
     const script=fileURLToPath(new URL('../../../scripts/extract-source.swift',import.meta.url));
-    if(!existsSync(executable)||statSync(script).mtimeMs>statSync(executable).mtimeMs)await this.command('/usr/bin/swiftc',[script,'-o',executable],120000);
-    const output=await this.command(executable,[filename],10*60*1000,line=>{
+    if(!existsSync(executable)||statSync(script).mtimeMs>statSync(executable).mtimeMs)await this.command('/usr/bin/swiftc',[script,'-module-cache-path',path.join(tmpdir(),'noema-swift-module-cache'),'-o',executable],120000);
+    // No networking, child executables, or filesystem writes while parsing untrusted PDF bytes.
+    const profile='(version 1)(allow default)(deny network*)(deny file-write*)(deny process-fork)(deny process-exec)(allow process-exec (literal '+JSON.stringify(realpathSync(executable))+'))(deny file-read* (subpath "/Users"))(allow file-read* (literal '+JSON.stringify(realpathSync(filename))+') (literal '+JSON.stringify(realpathSync(executable))+'))';
+    const output=await this.command('/usr/bin/sandbox-exec',['-p',profile,executable,filename],10*60*1000,line=>{
       try {const p=JSON.parse(line);if(trackProgress&&Number.isInteger(p.page)&&p.pages>0&&!this.closed)this.store.run('UPDATE source_files SET pages=?,progress=? WHERE id=?',p.pages,Math.floor(p.page/p.pages*100),id);}catch{/* Native diagnostics are never stored as source text. */}
     });
     try {return JSON.parse(output);}catch{throw new Error('The local PDF extractor returned an invalid result. Retry extraction.');}
   }
   private command(program:string,args:string[],timeout:number,onProgress?:(line:string)=>void):Promise<string> {
-    return new Promise((resolve,reject)=>{
+    const prepared=preparePDFWorker(program,args);
+    return new Promise<string>((resolve,reject)=>{
       if(this.closed){reject(new Error('Local PDF processing stopped. Try importing again.'));return;}
-      const child=spawn(program,args,{stdio:['ignore','pipe','pipe']});this.children.add(child);
+      const child=spawn(program,prepared.args,{stdio:['ignore','pipe','pipe']});this.children.add(child);
       let output='',errors='',pending='',overflow=false;
       const timer=setTimeout(()=>child.kill('SIGKILL'),timeout);
       child.stdout!.on('data',chunk=>{output+=chunk.toString();if(Buffer.byteLength(output)>maxText*2){overflow=true;child.kill('SIGKILL');}});
       child.stderr!.on('data',chunk=>{const value=chunk.toString();errors=(errors+value).slice(-2000);pending=(pending+value).slice(-4000);let newline;while((newline=pending.indexOf('\n'))>=0){onProgress?.(pending.slice(0,newline));pending=pending.slice(newline+1);}});
       child.on('error',()=>{clearTimeout(timer);this.children.delete(child);reject(new Error('Local PDF processing could not start. Install the macOS Command Line Tools, then retry.'));});
       child.on('close',code=>{clearTimeout(timer);this.children.delete(child);if(code===0)resolve(output);else reject(new Error(overflow?'Extracted text exceeds the size limit.':errors && !errors.includes('error:')?errors.slice(-500):'Local PDF processing failed or timed out. Check macOS Command Line Tools, then retry.'));});
-    });
+    }).finally(()=>prepared.dispose());
   }
   close(){this.closed=true;for(const child of this.children)child.kill('SIGKILL');}
 }

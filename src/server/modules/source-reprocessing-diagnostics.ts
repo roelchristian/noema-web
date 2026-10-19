@@ -1,5 +1,18 @@
 import katex from 'katex';
 
+/** Markers must remain standalone so Markdown never exposes them as prose. */
+export function pageBoundaryDiagnostics(original:string,edited:string):string[] {
+ const markers=(value:string)=>value.match(/<!--\s*Page\s+\d+\s*-->/gi)??[];
+ const messages:string[]=[];
+ if(JSON.stringify(markers(original))!==JSON.stringify(markers(edited)))messages.push('Physical page markers differ from the canonical snapshot.');
+ for(const match of edited.matchAll(/<!--\s*Page\s+\d+\s*-->/gi)) {
+  const before=edited.slice(0,match.index).split(/\r\n?|\n/).at(-1)??'';
+  const after=edited.slice(match.index!+match[0].length).split(/\r\n?|\n/)[0]??'';
+  if(before.trim()||after.trim())messages.push(`Physical page marker ${match[0]} must remain on its own line.`);
+ }
+ return messages;
+}
+
 /** Local editorial checks are diagnostics, not proof of textual or mathematical fidelity. */
 export function editorialDiagnostics(originalText:string,editedText:string):string[] {
   const messages:string[]=[];
@@ -29,8 +42,7 @@ export function editorialDiagnostics(originalText:string,editedText:string):stri
   if(invalid>20)messages.push(`${invalid-20} additional formulas have rendering errors.`);
   if((text.match(/(?<!\\)\$\$/g)?.length??0)%2)messages.push('A display-math delimiter is unpaired. Review $$ blocks.');
   if((text.match(/(?<!\\)\\\[/g)?.length??0)!==(text.match(/(?<!\\)\\\]/g)?.length??0))messages.push('Display-math brackets are unbalanced. Review \\[ and \\] pairs.');
-  const markers=(value:string)=>(value.match(/<!--\s*Page\s+\d+\s*-->/gi)??[]).join('\n');
-  if(markers(original)!==markers(text))messages.push('Physical page markers differ from the canonical snapshot. Review page provenance before using this revision.');
+  messages.push(...pageBoundaryDiagnostics(originalText,editedText));
   if(/\uFFFD/.test(text))messages.push('Unicode replacement characters remain in the revision; the source may contain unresolved OCR or decoding damage.');
   if(!messages.length)messages.push('Local checks found no unresolved footnote links, checked math syntax errors, or changed page markers. Meaning and transcription accuracy still require editorial review.');
   return messages.length>60?[...messages.slice(0,60),`${messages.length-60} additional local diagnostics omitted.`]:messages;

@@ -293,6 +293,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS source_page_drafts (
  CREATE INDEX IF NOT EXISTS source_page_drafts_source ON source_page_drafts(vault_id,source_id,status,created_at);`);
 if (!db.prepare('PRAGMA table_info(source_page_drafts)').all().some(column=>column.name==='notification_id')) db.exec('ALTER TABLE source_page_drafts ADD COLUMN notification_id TEXT REFERENCES ai_notifications(id) ON DELETE SET NULL');
 if (!db.prepare('PRAGMA table_info(source_page_drafts)').all().some(column=>column.name==='options')) db.exec("ALTER TABLE source_page_drafts ADD COLUMN options TEXT NOT NULL DEFAULT '{}'");
+// Record future generations only; historical pages and drafts remain unknown.
+for(const table of ['pages','source_page_drafts'])if(!db.prepare(`PRAGMA table_info(${table})`).all().some(column=>column.name==='generation_metadata'))db.exec(`ALTER TABLE ${table} ADD COLUMN generation_metadata TEXT`);
 // Older pages have no recorded creation time; leave it unknown.
 if (!db.prepare('PRAGMA table_info(pages)').all().some(column=>column.name==='created_at')) db.exec('ALTER TABLE pages ADD COLUMN created_at TEXT');
 // Older pages and pending drafts have no recorded language.

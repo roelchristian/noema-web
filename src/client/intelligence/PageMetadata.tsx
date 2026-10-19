@@ -1,3 +1,4 @@
+import {sourcePageChoices,sourcePageFormats} from '../../shared/source-page';
 import type {Page} from '../../shared/domain';
 import {pageAIStatusLabels} from '../../shared/page-ai-status';
 import {Icon} from '../components/Icon';
@@ -14,6 +15,9 @@ export function PageMetadata({page}:{page:Page}) {
     return Number.isFinite(parsed.getTime())?<time dateTime={value} title={parsed.toLocaleString()}>{parsed.toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})}</time>:null;
   };
   const created=date(page.created_at),updated=date(page.updated_at);
+  const generated=page.aiStatus==='ai_generated'||page.aiStatus==='ai_generated_edited';
+  const generation=page.generationMetadata;
+  const sourceGeneration=generation?.type==='source_page'?generation:null;
   return <details className="knowledge-page-metadata" aria-labelledby="knowledge-page-metadata-heading">
     <summary className="knowledge-section-heading"><h2 id="knowledge-page-metadata-heading"><span>Properties</span><Icon name="chevron"/></h2></summary>
     <dl className="page-metadata-fields">
@@ -23,5 +27,20 @@ export function PageMetadata({page}:{page:Page}) {
       {updated&&<div><dt>Updated</dt><dd>{updated}</dd></div>}
       {page.editLocked&&<div><dt>Editing</dt><dd><Icon name="lock"/>Locked</dd></div>}
     </dl>
+    {generated&&<section className="page-generation-metadata" aria-labelledby="page-generation-heading">
+      <h3 id="page-generation-heading">AI generation</h3>
+      {generation?<dl className="page-metadata-fields">
+        <div><dt>Type</dt><dd>{sourceGeneration?sourcePageFormats[sourceGeneration.options.format].label:'Passage explanation'}</dd></div>
+        {sourceGeneration&&<div><dt>Length</dt><dd>{sourcePageChoices.detail.options[sourceGeneration.options.detail]}</dd></div>}
+        <div><dt>Output language</dt><dd>{generation.options.language||'Match the source'}</dd></div>
+        <div><dt>Reader familiarity</dt><dd>{sourcePageChoices.familiarity.options[generation.options.familiarity]}</dd></div>
+        {sourceGeneration&&<>
+          <div><dt>Source scope</dt><dd>{sourceGeneration.options.beyondSources?'Include AI background knowledge':'Supplied source only'}</dd></div>
+          <div><dt>Custom prompt</dt><dd className="page-generation-text">{sourceGeneration.userPrompt||'None'}</dd></div>
+          {!!sourceGeneration.revisionFeedback.length&&<div><dt>Revisions</dt><dd><ol>{sourceGeneration.revisionFeedback.map((feedback,index)=><li key={index} className="page-generation-text">{feedback||'Fresh revision'}</li>)}</ol></dd></div>}
+        </>}
+        {sourceGeneration&&<div><dt>Prompt</dt><dd><details className="page-generation-prompt"><summary>View prompt</summary><p>{sourceGeneration.formatPrompt}</p></details></dd></div>}
+      </dl>:<p className="page-generation-unavailable">Not available</p>}
+    </section>}
   </details>;
 }

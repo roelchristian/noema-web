@@ -1,3 +1,5 @@
+import {parsePageGenerationMetadata,type PageGenerationMetadata} from '../../shared/page-generation.js';
+import {sourcePagePrompt} from './source-page-prompt.js';
 import {sourceDocumentEntries,sourceNodeLabel,sourceNodeLocator} from '../../shared/source-document.js';
 import {mathSource} from './source-math-text.js';
 import {processedSourceDocument,sourceGenerationDocument} from './source-document.js';
@@ -231,10 +233,12 @@ export class SourcePages {
       if(!language)throw new HttpError(502,'AI did not identify the generated page language. Please retry.');
       const blocks=this.pages.validateBlocks(vault,linkSourceReferences(draft.blocks,mathSource(this.store,prepared.file)));
       const recordedActivity=this.store.get('SELECT 1 FROM ai_activity WHERE id=?',activityId)?activityId:null;
-      this.store.run(`INSERT INTO source_page_drafts (request_id,vault_id,source_id,fingerprint,source_hash,focus,options,title,language,blocks,status,activity_id,created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,'pending',?,?)`,prepared.requestId,vault,prepared.sourceId,prepared.fingerprint,createHash('sha256').update(prepared.file.text).digest('hex'),prepared.focus,JSON.stringify(prepared.options),draft.title,language,JSON.stringify(blocks),recordedActivity,now());
+      const input=JSON.parse(prepared.input),previousMetadata=parsePageGenerationMetadata(prior?.generation_metadata);
+      const metadata:PageGenerationMetadata={version:1,type:'source_page',options:{...prepared.options},formatPrompt:input.format_instructions,userPrompt:prepared.focus,instructions:sourcePagePrompt(prepared.input).instructions,revisionFeedback:input.revision_feedback!==undefined?[...(previousMetadata?.type==='source_page'?previousMetadata.revisionFeedback:[]),input.revision_feedback].slice(-100):[]};
+      this.store.run(`INSERT INTO source_page_drafts (request_id,vault_id,source_id,fingerprint,source_hash,focus,options,title,language,blocks,status,activity_id,created_at,generation_metadata)
+        VALUES (?,?,?,?,?,?,?,?,?,?,'pending',?,?,?)`,prepared.requestId,vault,prepared.sourceId,prepared.fingerprint,createHash('sha256').update(prepared.file.text).digest('hex'),prepared.focus,JSON.stringify(prepared.options),draft.title,language,JSON.stringify(blocks),recordedActivity,now(),JSON.stringify(metadata));
       if(prior) {
-        this.store.run("UPDATE source_page_drafts SET status='rejected',blocks='[]',focus='',options='{}' WHERE request_id=? AND vault_id=?",prior.request_id,vault);
+        this.store.run("UPDATE source_page_drafts SET status='rejected',blocks='[]',focus='',options='{}',generation_metadata=NULL WHERE request_id=? AND vault_id=?",prior.request_id,vault);
         if(prior.notification_id)this.store.run('DELETE FROM ai_notifications WHERE id=?',prior.notification_id);
       }
       return {id:prepared.requestId,title:draft.title,language,blocks,focus:prepared.focus,options:prepared.options};
@@ -253,10 +257,10 @@ export class SourcePages {
       const blocks=this.pages.validateBlocks(vault,linkSourceReferences(JSON.parse(row.blocks),file));
       const page=this.pages.create(vault,{title:row.title,language:row.language??null});
       syncSourceReferences(this.store,page.id,blocks);
-      this.store.run("UPDATE pages SET blocks=?,ai_status='ai_generated',summary_content_hash=NULL,revision=revision+1 WHERE id=? AND vault_id=?",JSON.stringify(blocks),page.id,vault);
+      this.store.run("UPDATE pages SET blocks=?,generation_metadata=?,ai_status='ai_generated',summary_content_hash=NULL,revision=revision+1 WHERE id=? AND vault_id=?",JSON.stringify(blocks),row.generation_metadata??null,page.id,vault);
       this.store.run('INSERT INTO page_sources (page_id,source_id) VALUES (?,?)',page.id,sourceId);
       this.store.run('INSERT INTO source_page_creations (request_id,vault_id,source_id,fingerprint,page_id,created_at) VALUES (?,?,?,?,?,?)',requestId,vault,sourceId,row.fingerprint,page.id,now());
-      this.store.run("UPDATE source_page_drafts SET status='accepted',blocks='[]',focus='',options='{}' WHERE request_id=?",requestId);
+      this.store.run("UPDATE source_page_drafts SET status='accepted',blocks='[]',focus='',options='{}',generation_metadata=NULL WHERE request_id=?",requestId);
       if(row.notification_id)this.store.run('DELETE FROM ai_notifications WHERE id=?',row.notification_id);
       if(row.activity_id)this.store.run("UPDATE ai_activity SET object_kind='page',object_id=? WHERE id=?",page.id,row.activity_id);
       return {page:this.pages.get(vault,page.id),created:true,activityId:row.activity_id};
@@ -267,10 +271,10 @@ export class SourcePages {
     return this.store.transaction(()=>{
       if(this.store.get('SELECT 1 FROM source_page_creations WHERE request_id=? AND vault_id=? AND source_id=?',requestId,vault,sourceId))throw new HttpError(409,'This draft was already accepted. Accept again to recover and open the saved page.');
       const row=this.store.get<{notification_id:string|null}>('SELECT notification_id FROM source_page_drafts WHERE request_id=? AND vault_id=? AND source_id=?',requestId,vault,sourceId);
-      this.store.run("UPDATE source_page_drafts SET status='rejected',blocks='[]',focus='',options='{}' WHERE request_id=? AND vault_id=? AND source_id=? AND status='pending'",requestId,vault,sourceId);
+      this.store.run("UPDATE source_page_drafts SET status='rejected',blocks='[]',focus='',options='{}',generation_metadata=NULL WHERE request_id=? AND vault_id=? AND source_id=? AND status='pending'",requestId,vault,sourceId);
       if(row?.notification_id)this.store.run('DELETE FROM ai_notifications WHERE id=?',row.notification_id);
       return {ok:true};
     });
   }
 }
-interface DraftRow {language?:string|null;notification_id:string|null;request_id:string;vault_id:string;source_id:string;fingerprint:string;source_hash:string;focus:string;options?:string;title:string;blocks:string;status:'pending'|'accepted'|'rejected';activity_id:string|null;created_at:string}
+interface DraftRow {generation_metadata?:string|null;language?:string|null;notification_id:string|null;request_id:string;vault_id:string;source_id:string;fingerprint:string;source_hash:string;focus:string;options?:string;title:string;blocks:string;status:'pending'|'accepted'|'rejected';activity_id:string|null;created_at:string}

@@ -1,3 +1,4 @@
+import {parsePageGenerationMetadata} from '../../shared/page-generation.js';
 import {readingNoteMaxWords,readingNoteWordCount,type ReadingNoteMetadata} from '../../shared/source-reading.js';
 import {syncReadingNotesCollection} from './reading-notes-collection.js';
 import {projectPageText} from '../../shared/page-text.js';
@@ -20,7 +21,7 @@ import { blockTypes, safeHref, type Segment, type Block, type Page, type PageSum
 import { Store } from '../store.js';
 import { HttpError, now, object, required, text } from '../validation.js';
 import { Knowledge } from './knowledge.js';
-type PageRow = Omit<Page, 'blocks' | 'sourceIds' | 'featuredImageId'> & {blocks: string; summary_content_hash: string | null; summary_hash_version:number; featured_image_id:string|null; ai_status:PageAIStatus};
+type PageRow = Omit<Page, 'blocks' | 'sourceIds' | 'featuredImageId'> & {blocks: string; summary_content_hash: string | null; summary_hash_version:number; featured_image_id:string|null; ai_status:PageAIStatus;generation_metadata:string|null};
 export const trashRetentionMs = 30 * 24 * 60 * 60 * 1000;
 export class Pages {
   constructor(private store: Store, private knowledge: Knowledge, private clock: () => Date = () => new Date()) {}
@@ -37,7 +38,7 @@ export class Pages {
   get(vault: string, id: string): Page {
     const row=this.store.get<PageRow>('SELECT * FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',id,vault);
     if (!row) throw new HttpError(404,'Page not found');
-    const {summary_content_hash: cachedHash, summary_hash_version: hashVersion, featured_image_id: featuredImageId, ai_status: aiStatus, ...stored} = row;
+    const {summary_content_hash: cachedHash, summary_hash_version: hashVersion, featured_image_id: featuredImageId, ai_status: aiStatus, generation_metadata: generationMetadata, ...stored} = row;
     // Generated titles remain derived metadata until an authored save accepts them.
     if(!stored.title.trim()||stored.title.trim()==='Untitled') {
       const generated=this.store.get<{data:string;revision:number}>("SELECT data,revision FROM page_ai_enrichments WHERE page_id=? AND kind='title'",id);
@@ -64,7 +65,7 @@ export class Pages {
     domainService.assess({...stored,blocks,conceptContentHash:conceptContentHash({...stored,blocks},resolveName)} as Page,resolveName);
     const readingRow=this.store.get<{source_id:string|null;file_id:string|null;source_hash:string;start_offset:number;end_offset:number;excerpt:string;reference_json:string;created_at:string}>('SELECT * FROM page_reading_notes WHERE page_id=? AND vault_id=?',id,vault);
     const readingNote:ReadingNoteMetadata|undefined=readingRow?{...JSON.parse(readingRow.reference_json),sourceId:readingRow.source_id,fileId:readingRow.file_id,sourceHash:readingRow.source_hash,startOffset:readingRow.start_offset,endOffset:readingRow.end_offset,excerpt:readingRow.excerpt,createdAt:readingRow.created_at,maxWords:200}:undefined;
-    return {...stored,...(readingNote?{readingNote}:{}),enrichmentFields:new PageEnrichmentState(this.store).get(id).fields,enrichmentPending:!!this.store.get('SELECT 1 FROM page_enrichment_jobs WHERE page_id=?',id),pageDomains:domainService.get(id,conceptContentHash({...stored,blocks},resolveName)),aiStatus,editLocked:!!editLock,editProtected:!!editLock?.password_hash,featuredImageId,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:[...new Set([...this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id),...citationSourceIds(blocks).filter(sourceId=>this.knowledge.find(vault,sourceId)?.type==='source')])]};
+    return {...stored,generationMetadata:parsePageGenerationMetadata(generationMetadata),...(readingNote?{readingNote}:{}),enrichmentFields:new PageEnrichmentState(this.store).get(id).fields,enrichmentPending:!!this.store.get('SELECT 1 FROM page_enrichment_jobs WHERE page_id=?',id),pageDomains:domainService.get(id,conceptContentHash({...stored,blocks},resolveName)),aiStatus,editLocked:!!editLock,editProtected:!!editLock?.password_hash,featuredImageId,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:[...new Set([...this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id),...citationSourceIds(blocks).filter(sourceId=>this.knowledge.find(vault,sourceId)?.type==='source')])]};
   }
   requireEditable(vault: string, id: string) {
     const page=this.get(vault,id);

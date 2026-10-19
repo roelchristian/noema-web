@@ -1,3 +1,5 @@
+import {explanationPrompt} from './explanation-prompt.js';
+import type {PageGenerationMetadata} from '../../shared/page-generation.js';
 import {projectPageText} from '../../shared/page-text.js';
 import {randomUUID} from 'node:crypto';
 import {entityMentionName,type Block,type Page,type SourceFile,type SourceReference} from '../../shared/domain.js';
@@ -122,6 +124,10 @@ export class SourceReading {
   const language=explanation?pageLanguage(explanation.language||this.file(vault,fileId).language):null;
   this.store.transaction(()=>{
    this.store.run('INSERT INTO pages (id,title,blocks,updated_at,created_at,vault_id,ai_status,language) VALUES (?,?,?,?,?,?,?,?)',pageId,`${explanation?'AI explanation':'Reading note'} · ${name}`.slice(0,500),JSON.stringify(blocks),createdAt,createdAt,vault,explanation?'ai_generated':'regular',language);
+   if(explanation){
+    const metadata:PageGenerationMetadata={version:1,type:'reading_explanation',options:{...explanation},instructions:explanationPrompt(ref.excerpt,explanation).instructions};
+    this.store.run('UPDATE pages SET generation_metadata=? WHERE id=? AND vault_id=?',JSON.stringify(metadata),pageId,vault);
+   }
    this.store.run('INSERT INTO page_sources (page_id,source_id) VALUES (?,?)',pageId,ref.sourceId);
    new PageEnrichmentState(this.store).markManual(pageId,'title');
    this.store.run('INSERT INTO page_reading_notes (page_id,vault_id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,reference_json,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',pageId,vault,ref.sourceId,fileId,ref.sourceHash,ref.startOffset!,ref.endOffset!,ref.excerpt,JSON.stringify(reference),createdAt);

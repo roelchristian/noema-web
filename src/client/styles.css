@@ -3323,3 +3323,14 @@ dialog.source-page-dialog.has-preview { height: min(780px, calc(100dvh - 32px));
   .source-page-dialog.has-preview .source-page-preview-title { font-size: 21px; }
   .source-page-selection { gap: 10px 16px; }
 }
+
+
+.page-generation-metadata { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.page-generation-metadata h3 { margin: 0 0 12px; color: var(--text); font: 500 11px/1.5 var(--font-ui); }
+.page-generation-metadata .page-metadata-fields > div { grid-template-columns: 100px minmax(0, 1fr); }
+.page-generation-text { white-space: pre-wrap; }
+.page-generation-metadata ol { margin: 0; padding-left: 16px; }
+.page-generation-metadata li + li { margin-top: 8px; }
+.page-generation-prompt summary { cursor: pointer; color: var(--text-muted); }
+.page-generation-prompt p { max-height: 240px; margin: 8px 0 0; padding: 10px; overflow-y: auto; white-space: pre-wrap; border: 1px solid var(--line); border-radius: 5px; background: var(--sidebar); font: 11px/1.7 var(--font-ui); }
+.page-generation-unavailable { margin: 0; color: var(--text-muted); font-size: 11px; }

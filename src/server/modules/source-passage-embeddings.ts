@@ -4,7 +4,7 @@ import {makeSearchSnippet} from '../../shared/search-snippets.js';
 import {CachedVectorSearch} from '../vector-search.js';
 import {Store} from '../store.js';
 import {HttpError,now} from '../validation.js';
-import {Intelligence} from './intelligence.js';
+import {Intelligence,EmbeddingAdmissionError,embeddingBatchMaxInputs,embeddingBatchMaxBytes} from './intelligence.js';
 import {Vaults} from './vaults.js';
 import {AIActivityLog} from './ai-activity.js';
 import {passageReference,type SourcePassage} from './source-passages.js';
@@ -18,6 +18,7 @@ export class SourcePassageEmbeddings {
  private closed=false;
  private vectors=new CachedVectorSearch();
  private activityIds=new Set<string>();
+ private lastSource:{vault:string;source:string}|undefined;
  constructor(private store:Store,private vaults:Vaults,private intelligence:Intelligence,private settings:(vault:string)=>EmbeddingSettings,private activity?:AIActivityLog,private synchronize?:(vault:string)=>void) {
   store.run("UPDATE source_passage_embedding_jobs SET status=CASE WHEN attempts<3 THEN 'queued' ELSE 'interrupted' END,finished_at=?,error='Server stopped during this attempt.' WHERE status='running'",now());
  }
@@ -54,7 +55,7 @@ export class SourcePassageEmbeddings {
    SELECT p.id,c.model,c.dimensions,p.content_hash,c.vector,c.tokens,c.updated_at ${joins}
    JOIN source_passage_embedding_cache c ON c.vault_id=p.vault_id AND c.source_id=p.source_id AND c.content_hash=p.content_hash
    WHERE p.vault_id=? AND c.model=? AND c.dimensions=? AND ${eligible}`,vault,embeddingModel,embeddingDimensions);
-  // Queue only metadata here: a book's text is loaded one passage at a time by the worker.
+  // Queue only metadata here; the worker loads one bounded batch at a time.
   const rows=this.store.all<{id:string;file_id:string;generation_id:string;source_id:string;content_hash:string}>(`SELECT p.id,p.file_id,p.generation_id,p.source_id,p.content_hash ${joins} LEFT JOIN source_passage_embeddings b ON b.passage_id=p.id AND b.model=? AND b.dimensions=? WHERE p.vault_id=? AND ${eligible} AND NOT (${fresh.replace('b.content_hash=p.content_hash','coalesce(b.content_hash,\'\')=p.content_hash')}) ${source?'AND p.source_id=?':''} ${onlyMissing?'AND b.passage_id IS NULL':''} AND NOT EXISTS (SELECT 1 FROM source_passage_embedding_jobs j WHERE j.passage_id=p.id AND (j.status IN ('queued','running') ${force?'':"OR (j.generation_id=p.generation_id AND j.content_hash=p.content_hash AND j.model=? AND j.dimensions=? AND j.status IN ('failed','interrupted') AND (coalesce(j.error,'')<>'Embedding service unavailable. Automatic discovery will retry.' OR j.next_attempt_at>?) AND j.rowid=(SELECT latest.rowid FROM source_passage_embedding_jobs latest WHERE latest.passage_id=p.id AND latest.generation_id=p.generation_id AND latest.content_hash=p.content_hash AND latest.model=j.model AND latest.dimensions=j.dimensions ORDER BY latest.created_at DESC,latest.rowid DESC LIMIT 1))"}))`,embeddingModel,embeddingDimensions,vault,embeddingModel,embeddingDimensions,...(source?[source]:[]),...(force?[]:[embeddingModel,embeddingDimensions,now()]));
   for(const row of rows)this.store.run('INSERT INTO source_passage_embedding_jobs (id,vault_id,passage_id,file_id,generation_id,source_id,content_hash,model,dimensions,status,reason,created_at,next_attempt_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',randomUUID(),vault,row.id,row.file_id,row.generation_id,row.source_id,row.content_hash,embeddingModel,embeddingDimensions,'queued',reason,now(),now());
   return rows.length;
@@ -72,35 +73,72 @@ export class SourcePassageEmbeddings {
  private finish(id:string,status:string,error:string|null=null){this.store.run("UPDATE source_passage_embedding_jobs SET status=?,finished_at=?,error=? WHERE id=? AND status='running'",status,now(),error,id);}
  private passage(job:Job){return this.store.get<SourcePassage>(`SELECT p.* ${joins} WHERE p.id=? AND p.vault_id=? AND p.generation_id=? AND ${eligible}`,job.passage_id,job.vault_id,job.generation_id);}
  async tick():Promise<boolean> {
-  const job=this.store.get<Job>(`SELECT j.* FROM source_passage_embedding_jobs j JOIN vaults v ON v.id=j.vault_id WHERE j.status='queued' AND j.next_attempt_at<=? AND v.locked=0 ORDER BY j.next_attempt_at,j.created_at LIMIT 1`,now());
-  if(!job)return false;
-  this.store.run("UPDATE source_passage_embedding_jobs SET status='running',attempts=attempts+1,started_at=?,finished_at=NULL,error=NULL WHERE id=? AND status='queued'",now(),job.id);
-  let activityId:string|undefined;
-  try {
+  if(this.closed)return false;
+  // Rotate whole bounded batches between sources, including sources in different vaults.
+  const selected=this.store.get<{vault_id:string;source_id:string}>(`SELECT j.vault_id,j.source_id FROM source_passage_embedding_jobs j JOIN vaults v ON v.id=j.vault_id WHERE j.status='queued' AND j.next_attempt_at<=? AND v.locked=0 GROUP BY j.vault_id,j.source_id ORDER BY CASE WHEN j.vault_id>? OR (j.vault_id=? AND j.source_id>?) THEN 0 ELSE 1 END,j.vault_id,j.source_id LIMIT 1`,now(),this.lastSource?.vault??'',this.lastSource?.vault??'',this.lastSource?.source??'');
+  if(!selected)return false;
+  this.lastSource={vault:selected.vault_id,source:selected.source_id};
+  const candidates=this.store.all<Job>(`SELECT * FROM source_passage_embedding_jobs WHERE vault_id=? AND source_id=? AND status='queued' AND next_attempt_at<=? ORDER BY next_attempt_at,created_at,rowid LIMIT ?`,selected.vault_id,selected.source_id,now(),embeddingBatchMaxInputs);
+  const batch:{job:Job;input:string;bytes:number}[]=[];
+  let batchBytes=0,activityId:string|undefined;
+  for(const job of candidates){
    const passage=this.passage(job);
-   if(!passage||passage.content_hash!==job.content_hash||job.model!==embeddingModel||job.dimensions!==embeddingDimensions){this.finish(job.id,'skipped','Passage changed or is unavailable.');return true;}
-   if(this.store.get(`SELECT 1 FROM source_passage_embeddings WHERE passage_id=? AND content_hash=? AND model=? AND dimensions=?`,passage.id,passage.content_hash,embeddingModel,embeddingDimensions)){this.finish(job.id,'skipped','Passage is already indexed.');return true;}
+   let skipped:string|undefined;
+   if(!passage||passage.content_hash!==job.content_hash||job.model!==embeddingModel||job.dimensions!==embeddingDimensions)skipped='Passage changed or is unavailable.';
+   else if(job.reason==='save'&&!this.settings(job.vault_id).automatic)skipped='Automatic indexing disabled.';
+   else if(this.store.get(`SELECT 1 FROM source_passage_embeddings WHERE passage_id=? AND content_hash=? AND model=? AND dimensions=?`,passage.id,passage.content_hash,embeddingModel,embeddingDimensions))skipped='Passage is already indexed.';
+   if(skipped){this.store.run("UPDATE source_passage_embedding_jobs SET status='skipped',finished_at=?,error=? WHERE id=? AND status='queued'",now(),skipped,job.id);continue;}
    let heading='',headingBytes=0;
-   for(const point of passage.heading??''){const bytes=Buffer.byteLength(point,'utf8');if(headingBytes+bytes>Math.min(1000,embeddingMaxBytes-Buffer.byteLength(passage.text,'utf8')-2))break;heading+=point;headingBytes+=bytes;}
-   const input=heading?`${heading}\n\n${passage.text}`:passage.text;
-   if(Buffer.byteLength(input,'utf8')>embeddingMaxBytes)throw new HttpError(400,'Passage exceeds embedding input limit.');
-   activityId=this.activity?.start('note_embedding',{model:embeddingModel,reasoningEffort:'none'},job.vault_id,job.source_id,'entity');if(activityId)this.activityIds.add(activityId);
-   const result=await this.intelligence.embed(input,bytes=>activityId?this.activity?.request(activityId,bytes,null):undefined,true);
+   for(const point of passage!.heading??''){const bytes=Buffer.byteLength(point,'utf8');if(headingBytes+bytes>Math.min(1000,embeddingMaxBytes-Buffer.byteLength(passage!.text,'utf8')-2))break;heading+=point;headingBytes+=bytes;}
+   const input=heading?`${heading}\n\n${passage!.text}`:passage!.text,bytes=Buffer.byteLength(input,'utf8');
+   if(bytes>embeddingMaxBytes||bytes>embeddingBatchMaxBytes){this.store.run("UPDATE source_passage_embedding_jobs SET status='failed',finished_at=?,error='Passage exceeds embedding input limit.' WHERE id=? AND status='queued'",now(),job.id);continue;}
+   if(batchBytes+bytes>embeddingBatchMaxBytes)break;
+   this.store.run("UPDATE source_passage_embedding_jobs SET status='running',started_at=?,finished_at=NULL,error=NULL WHERE id=? AND status='queued'",now(),job.id);
+   batch.push({job,input,bytes});batchBytes+=bytes;
+  }
+  if(!batch.length)return true;
+  try {
+   const result=await this.intelligence.embedBatch(batch.map(item=>item.input),bytes=>{
+    // Admission happens before this observer. Local contention never spends attempts.
+    this.store.transaction(()=>{for(const {job} of batch){this.store.run("UPDATE source_passage_embedding_jobs SET attempts=attempts+1 WHERE id=? AND status='running'",job.id);job.attempts++;}});
+    activityId=this.activity?.start('note_embedding',{model:embeddingModel,reasoningEffort:'none'},selected.vault_id,selected.source_id,'entity');if(activityId)this.activityIds.add(activityId);
+    return activityId?this.activity?.request(activityId,bytes,null):undefined;
+   },true);
    if(this.closed)return true;
-   this.vaults.requireOpen(job.vault_id);
-   this.synchronize?.(job.vault_id);
-   const current=this.passage(job);
-   if(!current||current.content_hash!==job.content_hash||this.store.get<Job>('SELECT status FROM source_passage_embedding_jobs WHERE id=?',job.id)?.status!=='running'){this.finish(job.id,'skipped','Passage changed or indexing was cancelled.');this.endActivity(activityId,'skipped',409);return true;}
-   if(result.embedding.length!==embeddingDimensions||result.embedding.some(n=>!Number.isFinite(n))||!result.embedding.some(n=>n!==0))throw new HttpError(502,'Invalid embedding response.');
-   this.store.transaction(()=>{this.store.run(`INSERT INTO source_passage_embedding_cache (vault_id,source_id,content_hash,model,dimensions,vector,tokens,updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(vault_id,source_id,content_hash,model,dimensions) DO UPDATE SET vector=excluded.vector,tokens=excluded.tokens,updated_at=excluded.updated_at`,job.vault_id,job.source_id,passage.content_hash,embeddingModel,embeddingDimensions,JSON.stringify(result.embedding),result.tokens,now());this.store.run(`INSERT INTO source_passage_embeddings (passage_id,model,dimensions,content_hash,vector,tokens,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(passage_id,model,dimensions) DO UPDATE SET content_hash=excluded.content_hash,vector=excluded.vector,tokens=excluded.tokens,updated_at=excluded.updated_at`,passage.id,embeddingModel,embeddingDimensions,passage.content_hash,JSON.stringify(result.embedding),result.tokens,now());this.store.run("UPDATE source_passage_embedding_jobs SET status='completed',finished_at=?,tokens=? WHERE id=?",now(),result.tokens,job.id);});
-   this.endActivity(activityId,'completed',200);
+   if(result.embeddings.length!==batch.length||result.embeddings.some(vector=>vector.length!==embeddingDimensions||vector.some(n=>!Number.isFinite(n))||!vector.some(n=>n!==0)))throw new HttpError(502,'Invalid embedding response.');
+   this.vaults.requireOpen(selected.vault_id);
+   this.synchronize?.(selected.vault_id);
+   // Preserve valid immutable results before checking the job or active generation.
+   // A deleted source cannot retain a cache, and a locked vault cannot be mutated.
+   const sourceExists=this.store.get("SELECT 1 FROM entities WHERE id=? AND vault_id=? AND type='source'",selected.source_id,selected.vault_id);
+   let assignedTokens=0;
+   const tokens=batch.map(({bytes},index)=>{const count=index===batch.length-1?result.tokens-assignedTokens:Math.floor(result.tokens*bytes/batchBytes);assignedTokens+=count;return count;});
+   if(sourceExists)this.store.transaction(()=>{for(const [index,{job}] of batch.entries())this.store.run(`INSERT INTO source_passage_embedding_cache (vault_id,source_id,content_hash,model,dimensions,vector,tokens,updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(vault_id,source_id,content_hash,model,dimensions) DO UPDATE SET vector=excluded.vector,tokens=excluded.tokens,updated_at=excluded.updated_at`,job.vault_id,job.source_id,job.content_hash,embeddingModel,embeddingDimensions,JSON.stringify(result.embeddings[index]),tokens[index]!,now());});
+   let attached=false;
+   this.store.transaction(()=>{for(const [index,{job}] of batch.entries()){
+    const state=this.store.get<{status:string;error:string|null}>('SELECT status,error FROM source_passage_embedding_jobs WHERE id=?',job.id);
+    const superseded=state?.status==='skipped'&&(state.error==='Passage generation superseded.'||state.error==='Passage generation was replaced.');
+    const allowed=(state?.status==='running'||superseded)&&(job.reason!=='save'||this.settings(job.vault_id).automatic);
+    const current=allowed?this.store.all<SourcePassage>(`SELECT p.* ${joins} WHERE p.vault_id=? AND p.source_id=? AND p.content_hash=? AND ${eligible}`,job.vault_id,job.source_id,job.content_hash):[];
+    if(!current.length){this.finish(job.id,'skipped','Passage changed or indexing was cancelled.');continue;}
+    for(const passage of current){
+     this.store.run(`INSERT INTO source_passage_embeddings (passage_id,model,dimensions,content_hash,vector,tokens,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(passage_id,model,dimensions) DO UPDATE SET content_hash=excluded.content_hash,vector=excluded.vector,tokens=excluded.tokens,updated_at=excluded.updated_at`,passage.id,embeddingModel,embeddingDimensions,job.content_hash,JSON.stringify(result.embeddings[index]),tokens[index]!,now());
+     // Replacement discovery may already have queued the matching new passage.
+     this.store.run("UPDATE source_passage_embedding_jobs SET status='skipped',finished_at=?,error='Passage is already indexed.' WHERE passage_id=? AND id<>? AND content_hash=? AND model=? AND dimensions=? AND status='queued'",now(),passage.id,job.id,job.content_hash,embeddingModel,embeddingDimensions);
+    }
+    this.store.run("UPDATE source_passage_embedding_jobs SET status='completed',finished_at=?,error=NULL,tokens=? WHERE id=?",now(),tokens[index]!,job.id);attached=true;
+   }});
+   this.endActivity(activityId,attached?'completed':'skipped',attached?200:409);
   }catch(error){
    if(this.closed)return true;
    const code=error instanceof HttpError?error.status:502;this.endActivity(activityId,code===404||code===423?'skipped':'failed',code);
-   if(code===423){this.store.run("UPDATE source_passage_embedding_jobs SET status='queued',next_attempt_at=?,error='Waiting for vault to unlock.' WHERE id=? AND status='running'",now(),job.id);}
-   else if((code===429||code>=500)&&job.attempts+1<3)this.store.run("UPDATE source_passage_embedding_jobs SET status='queued',next_attempt_at=?,error='Embedding service unavailable. Automatic retry scheduled.' WHERE id=? AND status='running'",new Date(Date.now()+30000*2**job.attempts).toISOString(),job.id);
-   else if(code===429||code>=500)this.store.run("UPDATE source_passage_embedding_jobs SET status='failed',finished_at=?,next_attempt_at=?,error='Embedding service unavailable. Automatic discovery will retry.' WHERE id=? AND status='running'",now(),new Date(Date.now()+15*60*1000).toISOString(),job.id);
-   else this.finish(job.id,code===404?'skipped':'failed','Passage embedding request failed. Check Intelligence settings and retry.');
+   for(const {job} of batch){
+    if(error instanceof EmbeddingAdmissionError)this.store.run("UPDATE source_passage_embedding_jobs SET status='queued',started_at=NULL,next_attempt_at=?,error='Waiting for embedding capacity.' WHERE id=? AND status='running'",new Date(Date.now()+Math.max(1,error.retryAfterMs)).toISOString(),job.id);
+    else if(code===423)this.store.run("UPDATE source_passage_embedding_jobs SET status='queued',next_attempt_at=?,error='Waiting for vault to unlock.' WHERE id=? AND status='running'",now(),job.id);
+    else if((code===429||code>=500)&&job.attempts<3)this.store.run("UPDATE source_passage_embedding_jobs SET status='queued',next_attempt_at=?,error='Embedding service unavailable. Automatic retry scheduled.' WHERE id=? AND status='running'",new Date(Date.now()+30000*2**Math.max(0,job.attempts-1)).toISOString(),job.id);
+    else if(code===429||code>=500)this.store.run("UPDATE source_passage_embedding_jobs SET status='failed',finished_at=?,next_attempt_at=?,error='Embedding service unavailable. Automatic discovery will retry.' WHERE id=? AND status='running'",now(),new Date(Date.now()+15*60*1000).toISOString(),job.id);
+    else this.finish(job.id,code===404?'skipped':'failed','Passage embedding request failed. Check Intelligence settings and retry.');
+   }
   }
   return true;
  }

@@ -14,7 +14,8 @@ import {HttpError, now} from '../validation.js';
 import {Pages} from './pages.js';
 import {Knowledge} from './knowledge.js';
 import {Vaults} from './vaults.js';
-import {Intelligence} from './intelligence.js';
+import {Intelligence,EmbeddingAdmissionError,embeddingBatchMaxInputs,embeddingBatchMaxBytes} from './intelligence.js';
+import type {PageSegment} from './page-segments.js';
 interface JobRow {id: string; vault_id: string; page_id: string | null; source_id: string | null; content_hash: string; status: string; attempts: number; segment_id:string|null;model:string|null;dimensions:number|null}
 export class Embeddings {
  private queryVectors=new Map<string,{vault:string;expiresAt:number;work:Promise<{embedding:number[];tokens:number}>}>();
@@ -23,6 +24,7 @@ export class Embeddings {
  private busy=false;
  private closed=false;
  private sourceTurn=false;
+ private lastPageKey='';
  private nextSourceDiscovery=0;
  private sourcePassages:SourcePassages;
  private sourceEmbeddings:SourcePassageEmbeddings;
@@ -179,42 +181,67 @@ export class Embeddings {
    this.discoverSources();
    if(!this.intelligence.status().configured)return;
    if(this.sourceTurn){this.sourceTurn=false;if(await this.sourceEmbeddings.tick())return;}
-   const job=this.store.get<JobRow>(`SELECT j.* FROM embedding_jobs j JOIN vaults v ON v.id=j.vault_id WHERE j.status='queued' AND j.next_attempt_at<=? AND v.locked=0 ORDER BY j.next_attempt_at,j.created_at LIMIT 1`,now());
-   if(!job){await this.sourceEmbeddings.tick();return;}
+   const groups=this.store.all<{vault_id:string;page_id:string|null}>(`SELECT DISTINCT j.vault_id,j.page_id FROM embedding_jobs j JOIN vaults v ON v.id=j.vault_id WHERE j.status='queued' AND j.next_attempt_at<=? AND v.locked=0 ORDER BY j.vault_id,j.page_id`,now());
+   const key=(group:{vault_id:string;page_id:string|null})=>JSON.stringify([group.vault_id,group.page_id]);
+   const group=groups.find(row=>key(row)>this.lastPageKey)??groups[0];
+   if(!group){await this.sourceEmbeddings.tick();return;}
+   this.lastPageKey=key(group);
    this.sourceTurn=true;
-   this.store.run("UPDATE embedding_jobs SET status='running',attempts=attempts+1,started_at=?,finished_at=NULL,error=NULL WHERE id=? AND status='queued'",now(),job.id);
-   let activityId: string | undefined;
-   try {
-    this.vaults.requireOpen(job.vault_id);
-    if(!job.page_id&&!job.source_id){this.finish(job.id,'skipped','Content is unavailable.');return;}
-    if(!job.segment_id){this.finish(job.id,'skipped','Replaced by adaptive Page segments.');this.pageSegments.synchronize(job.vault_id);this.pageIndex.enqueue(job.vault_id,job.page_id??undefined,'retry');return;}
-    const segment=this.pageIndex.get(job.vault_id,job.segment_id);
-    if(!segment||segment.content_hash!==job.content_hash||job.model!==embeddingModel||job.dimensions!==embeddingDimensions||this.pageIndex.fresh(segment)){this.finish(job.id,'skipped','Page segment changed, is ineligible, or already indexed.');return;}
-    activityId=this.startActivity('note_embedding',job.vault_id,{id:segment.page_id,kind:'page'});
-    const result=await this.intelligence.embed(segment.input,bytes=>activityId?this.activity?.request(activityId,bytes,segment.revision):undefined,true);
-    if(this.closed)return;
-    this.vaults.requireOpen(job.vault_id);
-    this.pageSegments.synchronize(job.vault_id);
-    const persisted=this.store.transaction(()=>{
-     const current=this.pageIndex.get(job.vault_id,segment.id);
-     if(!current||current.content_hash!==segment.content_hash||this.store.get<JobRow>('SELECT status FROM embedding_jobs WHERE id=?',job.id)?.status!=='running'){this.finish(job.id,'skipped','Page changed or indexing was cancelled.');return false;}
-     if(result.embedding.length!==embeddingDimensions||result.embedding.some(n=>!Number.isFinite(n))||!result.embedding.some(n=>n!==0))throw new HttpError(502,'Invalid embedding response.');
-     this.pageIndex.save(current,result.embedding,result.tokens);
-     this.store.run("UPDATE embedding_jobs SET status='completed',finished_at=?,tokens=? WHERE id=?",now(),result.tokens,job.id);
-     return true;
+   await this.embedPageBatch(this.store.all<JobRow>(`SELECT * FROM embedding_jobs WHERE vault_id=? AND page_id IS ? AND status='queued' AND next_attempt_at<=? ORDER BY next_attempt_at,created_at,rowid LIMIT ?`,group.vault_id,group.page_id,now(),embeddingBatchMaxInputs));
+  }finally{this.busy=false;}
+ }
+ private async embedPageBatch(jobs:JobRow[]) {
+  const batch:{job:JobRow;segment:PageSegment}[]=[];
+  let bytes=0,activityId:string|undefined,admitted=false;
+  for(const job of jobs) {
+   const segment=job.segment_id?this.pageIndex.get(job.vault_id,job.segment_id):undefined;
+   if(segment&&bytes+Buffer.byteLength(segment.input,'utf8')>embeddingBatchMaxBytes)break;
+   this.store.run("UPDATE embedding_jobs SET status='running',started_at=?,finished_at=NULL,error=NULL WHERE id=? AND status='queued'",now(),job.id);
+   if(!job.segment_id){this.finish(job.id,'skipped','Replaced by adaptive Page segments.');this.pageSegments.synchronize(job.vault_id);this.pageIndex.enqueue(job.vault_id,job.page_id??undefined,'retry');continue;}
+   if(!segment||segment.content_hash!==job.content_hash||job.model!==embeddingModel||job.dimensions!==embeddingDimensions||this.pageIndex.fresh(segment)){this.finish(job.id,'skipped','Page segment changed, is ineligible, or already indexed.');continue;}
+   batch.push({job,segment});bytes+=Buffer.byteLength(segment.input,'utf8');
+  }
+  if(!batch.length)return;
+  const vault=batch[0]!.job.vault_id;
+  try {
+   this.vaults.requireOpen(vault);
+   const result=await this.intelligence.embedBatch(batch.map(({segment})=>segment.input),requestBytes=>{
+    admitted=true;
+    this.store.transaction(()=>{for(const {job} of batch)this.store.run("UPDATE embedding_jobs SET attempts=attempts+1 WHERE id=? AND status='running'",job.id);});
+    activityId=this.startActivity('note_embedding',vault,{id:batch[0]!.segment.page_id,kind:'page'});
+    return activityId?this.activity?.request(activityId,requestBytes,null):undefined;
+   },true);
+   if(this.closed)return;
+   this.vaults.requireOpen(vault);
+   this.pageSegments.synchronize(vault);
+   if(result.embeddings.length!==batch.length||result.embeddings.some(vector=>vector.length!==embeddingDimensions||vector.some(n=>!Number.isFinite(n))||!vector.some(n=>n!==0)))throw new HttpError(502,'Invalid embedding response.');
+   let persisted=0;
+   this.store.transaction(()=>{
+    batch.forEach(({job,segment},index)=>{
+     const current=this.pageIndex.get(vault,segment.id);
+     if(!current||current.content_hash!==segment.content_hash||this.store.get<JobRow>('SELECT status FROM embedding_jobs WHERE id=?',job.id)?.status!=='running'){this.finish(job.id,'skipped','Page changed or indexing was cancelled.');return;}
+     // Provider usage is request-wide; distribute it once across the batch.
+     const tokens=Math.floor(result.tokens/batch.length)+(index<result.tokens%batch.length?1:0);
+     this.pageIndex.save(current,result.embeddings[index]!,tokens);
+     this.store.run("UPDATE embedding_jobs SET status='completed',finished_at=?,tokens=? WHERE id=?",now(),tokens,job.id);persisted++;
     });
-    this.finishActivity(activityId,persisted?'completed':'skipped',persisted?200:409);
-   }catch(error) {
-    if(this.closed)return;
-    const code=error instanceof HttpError?error.status:502;
-    this.finishActivity(activityId,code===404||code===423?'skipped':'failed',code);
-    if(code===423){this.store.run("UPDATE embedding_jobs SET status='queued',next_attempt_at=?,error='Waiting for vault to unlock.' WHERE id=? AND status='running'",now(),job.id);return;}
-    if(code===404){this.finish(job.id,'skipped','Page is unavailable.');return;}
-    const retryable=code===429||code>=500,attempts=job.attempts+1;
-    if(retryable&&attempts<3)this.store.run("UPDATE embedding_jobs SET status='queued',next_attempt_at=?,error='Embedding service unavailable. Automatic retry scheduled.' WHERE id=? AND status='running'",new Date(Date.now()+30000*2**(attempts-1)).toISOString(),job.id);
+   });
+   this.finishActivity(activityId,persisted?'completed':'skipped',persisted?200:409);
+  }catch(error) {
+   if(this.closed)return;
+   const code=error instanceof HttpError?error.status:502;
+   this.finishActivity(activityId,code===404||code===423?'skipped':'failed',code);
+   for(const {job} of batch) {
+    if(error instanceof EmbeddingAdmissionError) {
+     this.store.run("UPDATE embedding_jobs SET status='queued',started_at=NULL,next_attempt_at=?,error='Waiting for embedding capacity.' WHERE id=? AND status='running'",new Date(Date.now()+error.retryAfterMs).toISOString(),job.id);continue;
+    }
+    if(code===423){this.store.run("UPDATE embedding_jobs SET status='queued',next_attempt_at=?,error='Waiting for vault to unlock.' WHERE id=? AND status='running'",now(),job.id);continue;}
+    if(code===404){this.finish(job.id,'skipped','Page is unavailable.');continue;}
+    const attempts=job.attempts+(admitted?1:0);
+    if((code===429||code>=500)&&attempts<3)this.store.run("UPDATE embedding_jobs SET status='queued',next_attempt_at=?,error='Embedding service unavailable. Automatic retry scheduled.' WHERE id=? AND status='running'",new Date(Date.now()+30000*2**Math.max(0,attempts-1)).toISOString(),job.id);
     else this.finish(job.id,'failed',code===409?'Configure an OpenAI key in Intelligence settings.':'Embedding request failed. Check Intelligence settings and retry.');
    }
-  }finally{this.busy=false;}
+  }
  }
  /** Internal hybrid evidence API. Unlike navigation search this preserves
   * multiple passages from one source, using equal-weight RRF (k=60). */

@@ -19,6 +19,13 @@ import {isSectionKind,semanticBlockLabel} from './source-structure.js';
 import { Store } from '../store.js';
 import { HttpError } from '../validation.js';
 
+export const embeddingBatchMaxInputs=16;
+export const embeddingBatchMaxBytes=64000;
+/** Local scheduling contention: no provider request was sent. */
+export class EmbeddingAdmissionError extends HttpError {
+  constructor(message:string,public retryAfterMs:number) {super(429,message);this.name='EmbeddingAdmissionError';}
+}
+
 interface Credential { key: string; expiresAt: string; generation: string }
 function parseSourceAuthors(value:unknown):SourceAuthor[] {
  if(!Array.isArray(value)||value.length>100||value.some((author:unknown)=>!author||typeof author!=='object'||!('name' in author)||typeof author.name!=='string'||!author.name.trim()||author.name.length>200||/[\x00-\x1f\x7f]/.test(author.name)||!('type' in author)||!['person','organization'].includes(String(author.type))))throw new HttpError(502,'AI returned invalid source authors. Retry enrichment.');
@@ -75,6 +82,8 @@ export class Intelligence {
   private generationRequests=new Set<AbortController>();
   private embeddingRequests=new Set<AbortController>();
   private embeddingAttempts: number[]=[];
+  private backgroundEmbeddingAttempts: number[]=[];
+  private backgroundEmbeddingRequests=new Set<AbortController>();
   private attempts: number[]=[];
   private manualRequestsPerMinute=defaultManualRequestsPerMinute;
   private preferences: IntelligencePreferences={...defaultIntelligencePreferences};
@@ -124,30 +133,49 @@ export class Intelligence {
   }
   remove() {for(const request of this.generationRequests)request.abort();for(const request of this.embeddingRequests)request.abort();this.secrets.remove();return {configured:false,expiresAt:null,manualRequestsPerMinute:this.manualRequestsPerMinute,...this.selection(),pageEnrichment:this.enrichmentSelection()};}
   purgeExpired() {this.credential();}
-  private reserveManualRequest() {
+  private reserveManualRequest(embedding=false) {
     const now=this.clock();
     this.attempts=this.attempts.filter(time=>time>now-60000);
     if (this.attempts.length>=this.manualRequestsPerMinute) {
       const seconds=Math.max(1,Math.ceil((this.attempts[this.attempts.length-this.manualRequestsPerMinute]!+60000-now)/1000));
-      throw new HttpError(429,`Manual AI requests are limited to ${this.manualRequestsPerMinute} per minute. Try again in ${seconds} seconds.`);
+      const message=`Manual AI requests are limited to ${this.manualRequestsPerMinute} per minute. Try again in ${seconds} seconds.`;
+      if(embedding)throw new EmbeddingAdmissionError(message,seconds*1000);
+      throw new HttpError(429,message);
     }
     this.attempts.push(now);
   }
   async embed(input: string, onRequest?: AIRequestObserver, background=false): Promise<{embedding:number[];tokens:number}> {
-    if(!input.trim()||Buffer.byteLength(input,'utf8')>8000)throw new HttpError(400,'Embedding input must contain text and be at most 8,000 UTF-8 bytes.');
+    const result=await this.embedBatch([input],onRequest,background);
+    return {embedding:result.embeddings[0]!,tokens:result.tokens};
+  }
+  async embedBatch(inputs:string[],onRequest?:AIRequestObserver,background=false):Promise<{embeddings:number[][];tokens:number}> {
+    if(!Array.isArray(inputs)||inputs.length===0||inputs.length>embeddingBatchMaxInputs)throw new HttpError(400,`Embedding batches must contain between 1 and ${embeddingBatchMaxInputs} inputs.`);
+    if(inputs.some(input=>typeof input!=='string'||!input.trim()||Buffer.byteLength(input,'utf8')>8000))throw new HttpError(400,'Embedding input must contain text and be at most 8,000 UTF-8 bytes.');
+    const bytes=inputs.reduce((total,input)=>total+Buffer.byteLength(input,'utf8'),0);
+    // UTF-8 bytes conservatively bound tokens for both each input and the batch.
+    if(bytes>embeddingBatchMaxBytes)throw new HttpError(400,`Embedding batches must be at most ${embeddingBatchMaxBytes.toLocaleString('en-US')} UTF-8 bytes.`);
     const credential=this.credential();
     if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
-    this.embeddingAttempts=this.embeddingAttempts.filter(time=>time>this.clock()-60000);
-    if(this.embeddingAttempts.length>=30||this.embeddingRequests.size>=2)throw new HttpError(429,'Embedding request limit reached. Try again shortly.');
-    if (!background) this.reserveManualRequest();
-    this.embeddingAttempts.push(this.clock());
+    const now=this.clock();
+    this.embeddingAttempts=this.embeddingAttempts.filter(time=>time>now-60000);
+    this.backgroundEmbeddingAttempts=this.backgroundEmbeddingAttempts.filter(time=>time>now-60000);
+    const rateWait=Math.max(
+      this.embeddingAttempts.length>=30?this.embeddingAttempts[0]!+60000-now:0,
+      background&&this.backgroundEmbeddingAttempts.length>=25?this.backgroundEmbeddingAttempts[0]!+60000-now:0,
+    );
+    // Keep five requests per minute and one active slot available to foreground work.
+    if(rateWait>0||this.embeddingRequests.size>=2||background&&this.backgroundEmbeddingRequests.size>=1)throw new EmbeddingAdmissionError('Embedding request limit reached. Try again shortly.',Math.max(1000,rateWait));
+    if(!background)this.reserveManualRequest(true);
+    this.embeddingAttempts.push(now);
+    if(background)this.backgroundEmbeddingAttempts.push(now);
     const controller=new AbortController();this.embeddingRequests.add(controller);
+    if(background)this.backgroundEmbeddingRequests.add(controller);
     const timer=setTimeout(()=>controller.abort(),Math.min(45000,Date.parse(credential.expiresAt)-this.clock()));
     let trace: AIDebugTrace | undefined;
     try {
-      const observer=onRequest?.(Buffer.byteLength(input,'utf8'));
+      const observer=onRequest?.(bytes);
       trace=redactedTrace(observer,credential.key);
-      const payload={model:'text-embedding-3-small',input,encoding_format:'float',dimensions:1536};
+      const payload={model:'text-embedding-3-small',input:inputs,encoding_format:'float',dimensions:1536};
       trace?.request('https://api.openai.com/v1/embeddings',payload);
       const response=await this.transport('https://api.openai.com/v1/embeddings',{
         method:'POST',redirect:'error',signal:controller.signal,
@@ -155,12 +183,18 @@ export class Intelligence {
         body:JSON.stringify(payload),
       });
       if(!response.ok){if(trace)await readOpenAIResponse(response,trace).catch(()=>{});else await response.body?.cancel();throw new HttpError(response.status===429?429:502,response.status===401?'OpenAI rejected the API key. Replace it in Settings.':response.status===429?'OpenAI quota or rate limit reached. Check your OpenAI account.':'OpenAI could not create the embedding. Check API permissions and billing.');}
-      const result=await readOpenAIResponse(response,trace,undefined,undefined,observer?.usage),vector=result.data?.[0]?.embedding;
-      if(result.model!=='text-embedding-3-small'||!Array.isArray(vector)||vector.length!==1536||vector.some((value:unknown)=>typeof value!=='number'||!Number.isFinite(value))||!vector.some((value:number)=>value!==0))throw new HttpError(502,'OpenAI returned an invalid embedding.');
+      const result=await readOpenAIResponse(response,trace,undefined,undefined,observer?.usage);
+      if(result.model!=='text-embedding-3-small'||!Array.isArray(result.data)||result.data.length!==inputs.length)throw new HttpError(502,'OpenAI returned invalid embeddings.');
+      const embeddings:number[][]=new Array(inputs.length),seen=new Set<number>();
+      for(const item of result.data) {
+        const index=item?.index,vector=item?.embedding;
+        if(!Number.isSafeInteger(index)||index<0||index>=inputs.length||seen.has(index)||!Array.isArray(vector)||vector.length!==1536||vector.some((value:unknown)=>typeof value!=='number'||!Number.isFinite(value))||!vector.some((value:number)=>value!==0))throw new HttpError(502,'OpenAI returned invalid embeddings.');
+        seen.add(index);embeddings[index]=vector;
+      }
       if(controller.signal.aborted||this.credential()?.generation!==credential.generation)throw new HttpError(409,'The credential changed or expired. Please try again.');
-      return {embedding:vector,tokens:Number.isSafeInteger(result.usage?.total_tokens)&&result.usage.total_tokens>=0?result.usage.total_tokens:0};
+      return {embeddings,tokens:Number.isSafeInteger(result.usage?.total_tokens)&&result.usage.total_tokens>=0?result.usage.total_tokens:0};
     }catch(error){trace?.error(error instanceof Error?error.message:'Embedding request failed.');if(error instanceof HttpError)throw error;throw new HttpError(502,'The embedding request failed or timed out. Please try again.');}
-    finally{clearTimeout(timer);this.embeddingRequests.delete(controller);}
+    finally{clearTimeout(timer);this.embeddingRequests.delete(controller);this.backgroundEmbeddingRequests.delete(controller);}
   }
   enrichmentSelection(): IntelligencePreferences {return {...this.enrichmentPreferences};}
   async generatePageEnrichment(input:string,options:PageEnrichmentOptions,onRequest?:AIRequestObserver,background=false) {

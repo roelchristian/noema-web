@@ -140,7 +140,7 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
     if (mobile || !anchor || !surface.current) return;
     const box = surface.current.getBoundingClientRect();
     setPosition(selectionPopoverPlacement(anchor, {width: box.width, height: surface.current.scrollHeight + 2}, {width: innerWidth, height: innerHeight}));
-  }, [mobile, anchor, annotating, semantic, linking, query, entities]);
+  }, [mobile, anchor, annotating, semantic, query, entities]);
   function restore(range: Range) {
     if (!range.startContainer.isConnected || !range.endContainer.isConnected) return false;
     editable(range.startContainer)?.focus({preventScroll: mobile});
@@ -231,7 +231,7 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
         <span className="selection-divider"/>
         {onReview&&<button type="button" aria-label={uiText("Review with AI")} title={uiText("Review with AI")} disabled={reviewing} onClick={()=>{const current=saved.current;if(current&&restore(current))onReview();dismiss();}}><Icon name="sparkles"/><span className="selection-action-label">{uiText("Review")}</span></button>}
         <button type="button" aria-label={explanationAction} title={explanationAction} disabled={explaining || !onExplain} onClick={()=>{const range=saved.current;if(range&&restore(range))onExplain?.();dismiss();}}><Icon name="sparkles"/><span className="selection-action-label">{explanationAction}</span></button>
-        <button type="button" className="selection-semantic" title={uiText("Apply a semantic function")} aria-expanded={semantic} aria-haspopup={mobile ? 'dialog' : undefined} aria-label={uiText("Semantic block function")} onClick={()=>{picking.current=!semantic;setSemantic(!semantic);setAnnotating(false);setLinking(false);}}><Icon name="semantic"/><span className="selection-action-label">{uiText("Semantic")}</span></button>
+        <button type="button" className="selection-semantic" title={uiText("Apply a semantic function")} aria-expanded={semantic} aria-haspopup={mobile ? 'dialog' : undefined} aria-label={uiText("Semantic block function")} onClick={()=>{picking.current=!semantic;setSemantic(!semantic);setAnnotating(false);}}><Icon name="semantic"/><span className="selection-action-label">{uiText("Semantic")}</span></button>
         <button type="button" className="selection-annotate" disabled={!single} aria-label={uiText("Annotate selection")} title={single ? uiText("Connect selection to a knowledge entity") : uiText("Select text within one block or table cell to annotate")} aria-haspopup={mobile ? 'dialog' : undefined} aria-expanded={annotating} onClick={() => { picking.current = !annotating; setSemantic(false); setAnnotating(!annotating); setQuery(''); setAliasError(''); }}><Icon name="knowledge"/><span className="selection-action-label">{uiText("Annotate")}</span></button>
         </>}
         {mobile && <button type="button" aria-label={uiText("More text actions")} title={uiText("More text actions")} aria-haspopup="dialog" aria-expanded={more || semantic || annotating} onClick={() => { picking.current = true; setMore(true); setSemantic(false); setAnnotating(false); }}><Icon name="more"/></button>}

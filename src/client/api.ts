@@ -95,7 +95,7 @@ export const api={
   pages:(vault:string)=>request<PageSummary[]>('pages','GET',undefined,vault),
   page:(vault:string,id:string,signal?:AbortSignal)=>request<Page>(`pages/${id}/editor`,'GET',undefined,vault,signal),
   pageMetadata:(vault:string,id:string,signal?:AbortSignal)=>request<import('../shared/domain').PageEnrichmentMetadata>(`pages/${id}/metadata`,'GET',undefined,vault,signal),
-  createPage:(vault:string)=>request<Page>('pages','POST',{title:'Untitled'},vault),
+  createPage:(vault:string,destination:{collection:string;folder:string}={collection:'',folder:''})=>request<Page>('pages','POST',{title:'Untitled',destination},vault),
   savePage:(vault:string,id:string,page:PageInput)=>{
     const {entityMatchCache: _reviewCache, ...input} = page as Page;
     return request<Page>(`pages/${id}`,'PUT',input,vault);

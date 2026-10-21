@@ -47,6 +47,7 @@ export class SourceLifecycleService {
       this.store.run("UPDATE embedding_jobs SET status='skipped',finished_at=?,error='Source was permanently deleted.' WHERE vault_id=? AND source_id=? AND status IN ('queued','running')",now(),vault,id);
       // Preserve file records for the existing retryable orphan-upload cleanup. Never unlink
       // originals before committing deletion: a failed transaction must leave them intact.
+      this.store.run('DELETE FROM source_reading_locations WHERE vault_id=? AND file_id IN (SELECT id FROM source_files WHERE vault_id=? AND entity_id=?)',vault,vault,id);
       this.store.run('UPDATE source_files SET entity_id=NULL,created_at=? WHERE vault_id=? AND entity_id=?',now(),vault,id);
       this.store.run('DELETE FROM entities WHERE id=? AND vault_id=?',id,vault);
       return {ok:true};

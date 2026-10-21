@@ -32,6 +32,7 @@ test('delayed enrichment refreshes headings and navigation without reloading or 
  globalThis.fetch=async url=>{
   if(url==='/api/entities/source'){detailReads++;return Response.json({attachments:[attachment()]});}
   if(url==='/api/source-files/file?fingerprint=1&context=1'){documentReads++;const current=attachment();return Response.json({...current,document:processedSourceDocument(current)});}
+  if(url==='/api/source-files/file/reading-locations')return Response.json({resume:null,bookmarks:[]});
   if(['/api/source-files/file/highlights','/api/source-files/file/reading-notes','/api/source-files/file/reprocessing'].includes(url))return Response.json([]);
   throw new Error(`Unexpected request: ${url}`);
  };

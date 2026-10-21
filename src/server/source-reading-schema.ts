@@ -1,6 +1,12 @@
 import type {DatabaseSync} from 'node:sqlite';
 export function setupSourceReadingSchema(db:DatabaseSync) {
- db.exec(`CREATE TABLE IF NOT EXISTS highlights (
+ db.exec(`CREATE TABLE IF NOT EXISTS source_reading_locations (
+  vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
+  file_id TEXT NOT NULL REFERENCES source_files(id) ON DELETE CASCADE,
+  id TEXT NOT NULL, label TEXT NOT NULL, anchor_json TEXT NOT NULL,
+  PRIMARY KEY(vault_id,file_id,id)
+ );
+ CREATE TABLE IF NOT EXISTS highlights (
   id TEXT PRIMARY KEY, vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
   source_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
   file_id TEXT NOT NULL REFERENCES source_files(id) ON DELETE CASCADE,

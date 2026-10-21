@@ -72,6 +72,7 @@ export function PageTableOfContents({headings,showDocument,articleRef}:{headings
     for(let ancestor=target.parentElement;ancestor&&ancestor!==article;ancestor=ancestor.parentElement)if(ancestor instanceof HTMLDetailsElement)ancestor.open=true;
     const toolbar=article?.closest('main')?.querySelector('.topbar');
     const top=window.scrollY+target.getBoundingClientRect().top-(toolbar?.getBoundingClientRect().height??56)-24;
+    window.dispatchEvent(new Event('noema:before-reading-jump'));
     window.scrollTo({top,behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
     const heading=target.querySelector<HTMLElement>('.block-content');
     if(heading){

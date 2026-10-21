@@ -13,7 +13,7 @@ interface Transaction {
   run: InputRun | null;
 }
 interface History {
-  key: string; current: DocumentState | null; observed: string;
+  key: string; current: DocumentState | null; currentSignature: string; observed: string;
   past: Transaction[]; future: Transaction[];
   selection: Selection; input: {run: InputRun | null; selection: Selection} | null;
   composing: boolean; compositionEnding: boolean; composition: number; batch: Transaction | null;
@@ -22,12 +22,18 @@ interface History {
 }
 const clone = <T,>(value: T): T => structuredClone(value);
 const signature = (value: unknown) => JSON.stringify(value);
+function documentState(page: Page): DocumentState {
+  return {title: page.title, blocks: page.blocks, featuredImageId: page.featuredImageId ?? null};
+}
+// Snapshots are private: never mutate them or pass them to an external caller.
+// Transactions may share these references; ingress and egress stay detached.
 function snapshot(page: Page): DocumentState {
-  return clone({title: page.title, blocks: page.blocks, featuredImageId: page.featuredImageId ?? null});
+  return clone(documentState(page));
 }
 function emptyHistory(page: Page | null): History {
   const current = page ? snapshot(page) : null;
-  return {key: page ? `${page.vault_id}:${page.id}` : '', current, observed: signature(current), past: [], future: [], selection: null, input: null, composing: false, compositionEnding: false, composition: 0, batch: null, captureAfter: null, restore: null};
+  const currentSignature = signature(current);
+  return {key: page ? `${page.vault_id}:${page.id}` : '', current, currentSignature, observed: currentSignature, past: [], future: [], selection: null, input: null, composing: false, compositionEnding: false, composition: 0, batch: null, captureAfter: null, restore: null};
 }
 const rootElement = () => document.querySelector<HTMLElement>('article.page');
 const capture = (): Selection => {const root = rootElement(); return root ? captureEditorSelection(root) : null;};
@@ -60,16 +66,17 @@ export function useDocumentHistory(page: Page | null, onChange: (patch: Document
 
   useLayoutEffect(() => {
     const state = history.current;
-    const incoming = page ? snapshot(page) : null;
+    const incoming = page ? documentState(page) : null;
     const serialized = signature(incoming);
     if (serialized !== state.observed) {
       state.observed = serialized;
-      if (signature(state.current) !== serialized) {
+      if (state.currentSignature !== serialized) {
         // Recognition and server metadata reconciliation are part of the latest
         // state, not a new user action. They also end an active typing run.
-        state.current = incoming;
+        state.current = clone(incoming);
+        state.currentSignature = serialized;
         const last = state.past.at(-1);
-        if (last && incoming) {last.after = clone(incoming); last.run = null;}
+        if (last && state.current) {last.after = state.current; last.run = null;}
         state.batch = null; state.input = null;
       }
     }
@@ -82,7 +89,7 @@ export function useDocumentHistory(page: Page | null, onChange: (patch: Document
       const selection = capture();
       if (selection) {
         state.selection = selection;
-        if (state.captureAfter && signature(state.captureAfter.after) === signature(state.current)) state.captureAfter.afterSelection = clone(selection);
+        if (state.captureAfter && state.captureAfter.after === state.current) state.captureAfter.afterSelection = clone(selection);
       }
     }
     state.captureAfter = null;
@@ -91,11 +98,15 @@ export function useDocumentHistory(page: Page | null, onChange: (patch: Document
   const change = useCallback((patch: DocumentPatch) => {
     const state = history.current;
     if (!state.current || latest.current.page?.editLocked || latest.current.disabled) return;
-    const after = snapshot({...latest.current.page!, ...state.current, ...patch});
-    if (signature(after) === signature(state.current)) {latest.current.onChange(patch); return;}
+    const candidate = documentState({...latest.current.page!, ...state.current, ...patch});
+    // Compare every tracked field, including nested metadata. External block
+    // references are mutable and cannot safely serve as an equality shortcut.
+    const serialized = signature(candidate);
+    if (serialized === state.currentSignature) {latest.current.onChange(patch); return;}
+    const after = clone(candidate);
     resumeEntityRecognition();
     const beforeSelection = state.input?.selection ?? state.selection ?? capture();
-    const before = withSelectionBlock(clone(state.current), beforeSelection);
+    const before = withSelectionBlock(state.current, beforeSelection);
     const input = state.input?.run ?? null;
     const run = input && typingType(input.type) && shape(before) === shape(after) && before.featuredImageId === after.featuredImageId ? {...input, time: Date.now()} : null;
     const last = state.past.at(-1);
@@ -110,7 +121,7 @@ export function useDocumentHistory(page: Page | null, onChange: (patch: Document
       state.past.push({before, after, beforeSelection: clone(beforeSelection), afterSelection: capture() ?? clone(beforeSelection), run});
       if (state.past.length > 100) state.past.shift();
     }
-    state.current = after; state.future = [];
+    state.current = after; state.currentSignature = serialized; state.future = [];
     const transaction = state.past.at(-1)!;
     state.batch = transaction;
     state.captureAfter = transaction;
@@ -129,7 +140,8 @@ export function useDocumentHistory(page: Page | null, onChange: (patch: Document
     pauseEntityRecognition();
     document.dispatchEvent(new Event('noema:history-restore'));
     destination.push(transaction);
-    state.current = clone(direction === 'undo' ? transaction.before : transaction.after);
+    state.current = direction === 'undo' ? transaction.before : transaction.after;
+    state.currentSignature = signature(state.current);
     state.restore = {selection: clone(direction === 'undo' ? transaction.beforeSelection : transaction.afterSelection)};
     state.input = null; state.batch = null; state.captureAfter = null;
     const last = state.past.at(-1); if (last) last.run = null;
@@ -203,7 +215,9 @@ export function useDocumentHistory(page: Page | null, onChange: (patch: Document
         return;
       }
       const state = history.current, pending = state.input;
-      queueMicrotask(() => {if (state.input === pending) state.input = null;});
+      // Native listeners can have a microtask checkpoint before React receives
+      // the same input event. Keep its run until all listeners have committed.
+      setTimeout(() => {if (state.input === pending) state.input = null;}, 0);
     }
     function replaced(event: Event) {
       const page = (event as CustomEvent<Page>).detail;

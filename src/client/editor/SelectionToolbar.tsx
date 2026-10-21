@@ -42,7 +42,6 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
   const [annotating, setAnnotating] = useState(false), [query, setQuery] = useState('');
   const [semantic, setSemantic] = useState(false);
   const [more, setMore] = useState(false);
-  const [linking, setLinking] = useState(false);
   const [savingAlias, setSavingAlias] = useState(false), [aliasError, setAliasError] = useState('');
   const [active, setActive] = useState<string[]>([]);
   const [selectedCount, setSelectedCount] = useState(0);
@@ -53,9 +52,9 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
   const picking = useRef(false);
   const latest = useRef({entities, onCommit}); latest.current = {entities, onCommit};
   function releaseSheet() { surface.current?.querySelector<HTMLDialogElement>('.mobile-selection-sheet')?.close(); }
-  function dismiss() { releaseSheet(); saved.current = null; picking.current = false; setMore(false); setSemantic(false); setAnnotating(false); setLinking(false); setAnchor(null); }
+  function dismiss() { releaseSheet(); saved.current = null; picking.current = false; setMore(false); setSemantic(false); setAnnotating(false); setAnchor(null); }
   function closePicker() {
-    releaseSheet(); picking.current = false; setMore(false); setSemantic(false); setAnnotating(false); setLinking(false);
+    releaseSheet(); picking.current = false; setMore(false); setSemantic(false); setAnnotating(false);
     if (saved.current && !restore(saved.current)) dismiss();
   }
   useEffect(() => {
@@ -201,7 +200,7 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
       {onReview&&<button type="button" disabled={reviewing} onClick={()=>{const current=saved.current;releaseSheet();if(current&&restore(current))onReview();dismiss();}}><Icon name="sparkles"/><span>{uiText("Review with AI")}</span></button>}
       <button type="button" disabled={explaining || !onExplain} onClick={() => { const current = saved.current; releaseSheet(); if (current && restore(current)) onExplain?.(); dismiss(); }}><Icon name="sparkles"/><span>{explanationAction}</span></button>
       <button type="button" onClick={() => { setMore(false); setSemantic(true); }}><Icon name="semantic"/><span>{uiText("Semantic function")}</span><Icon name="chevron"/></button>
-      <button type="button" disabled={!single} onClick={() => { setMore(false); setAnnotating(true); setLinking(false); setQuery(''); setAliasError(''); }}><Icon name="knowledge"/><span>{uiText("Annotate selection")}</span><Icon name="chevron"/></button>
+      <button type="button" disabled={!single} onClick={() => { setMore(false); setAnnotating(true); setQuery(''); setAliasError(''); }}><Icon name="knowledge"/><span>{uiText("Annotate selection")}</span><Icon name="chevron"/></button>
     </div>}
     {semantic && <div className="semantic-picker" role="region" aria-label={uiText("Semantic functions")}><p>{selectedCount===1 ? uiText("Apply a function to this block") : uiText("Group selected blocks under one function")}</p>{editableSemanticKinds.map(kind=><button type="button" key={kind} onClick={()=>{const range=saved.current;releaseSheet();if(range&&restore(range))onSemantic(kind);dismiss();}}><span style={{color:semanticFunctions[kind].color}}><Icon name={semanticFunctions[kind].icon}/></span><span>{uiText(semanticFunctions[kind].label)}<small>{uiText(semanticFunctions[kind].description)}</small></span></button>)}</div>}
     {annotating && <div className="selection-entities" role="region" aria-label={uiText("Annotate selection")} aria-busy={savingAlias}>
@@ -233,9 +232,9 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
         {onReview&&<button type="button" aria-label={uiText("Review with AI")} title={uiText("Review with AI")} disabled={reviewing} onClick={()=>{const current=saved.current;if(current&&restore(current))onReview();dismiss();}}><Icon name="sparkles"/><span className="selection-action-label">{uiText("Review")}</span></button>}
         <button type="button" aria-label={explanationAction} title={explanationAction} disabled={explaining || !onExplain} onClick={()=>{const range=saved.current;if(range&&restore(range))onExplain?.();dismiss();}}><Icon name="sparkles"/><span className="selection-action-label">{explanationAction}</span></button>
         <button type="button" className="selection-semantic" title={uiText("Apply a semantic function")} aria-expanded={semantic} aria-haspopup={mobile ? 'dialog' : undefined} aria-label={uiText("Semantic block function")} onClick={()=>{picking.current=!semantic;setSemantic(!semantic);setAnnotating(false);setLinking(false);}}><Icon name="semantic"/><span className="selection-action-label">{uiText("Semantic")}</span></button>
-        <button type="button" className="selection-annotate" disabled={!single} aria-label={uiText("Annotate selection")} title={single ? uiText("Connect selection to a knowledge entity") : uiText("Select text within one block or table cell to annotate")} aria-haspopup={mobile ? 'dialog' : undefined} aria-expanded={annotating} onClick={() => { picking.current = !annotating; setSemantic(false); setAnnotating(!annotating); setLinking(false); setQuery(''); setAliasError(''); }}><Icon name="knowledge"/><span className="selection-action-label">{uiText("Annotate")}</span></button>
+        <button type="button" className="selection-annotate" disabled={!single} aria-label={uiText("Annotate selection")} title={single ? uiText("Connect selection to a knowledge entity") : uiText("Select text within one block or table cell to annotate")} aria-haspopup={mobile ? 'dialog' : undefined} aria-expanded={annotating} onClick={() => { picking.current = !annotating; setSemantic(false); setAnnotating(!annotating); setQuery(''); setAliasError(''); }}><Icon name="knowledge"/><span className="selection-action-label">{uiText("Annotate")}</span></button>
         </>}
-        {mobile && <button type="button" aria-label={uiText("More text actions")} title={uiText("More text actions")} aria-haspopup="dialog" aria-expanded={more || semantic || annotating} onClick={() => { picking.current = true; setMore(true); setSemantic(false); setAnnotating(false); setLinking(false); }}><Icon name="more"/></button>}
+        {mobile && <button type="button" aria-label={uiText("More text actions")} title={uiText("More text actions")} aria-haspopup="dialog" aria-expanded={more || semantic || annotating} onClick={() => { picking.current = true; setMore(true); setSemantic(false); setAnnotating(false); }}><Icon name="more"/></button>}
       </div>
       {mobile && <button type="button" className="selection-done" aria-label={uiText("Finish text selection")} title={uiText("Finish text selection")} onClick={() => {
         const current = saved.current?.cloneRange();
@@ -247,7 +246,7 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
       }}><Icon name="check"/></button>}
     </div>
     {mobile && (more || semantic || annotating) ? <Modal className="mobile-selection-sheet" titleId="mobile-selection-sheet-title" onClose={closePicker} dismissOnBackdrop>
-      <ModalHeader titleId="mobile-selection-sheet-title" actions={!more&&<button type="button" className="selection-picker-back" aria-label="Back to text actions" onClick={() => { setMore(true); setSemantic(false); setAnnotating(false); setLinking(false); }}><Icon name="chevron"/></button>} closeLabel={uiText("Back to selection")}>{more ? uiText("Text actions") : semantic ? uiText("Semantic function") : uiText("Annotate selection")}</ModalHeader>
+      <ModalHeader titleId="mobile-selection-sheet-title" actions={!more&&<button type="button" className="selection-picker-back" aria-label="Back to text actions" onClick={() => { setMore(true); setSemantic(false); setAnnotating(false); }}><Icon name="chevron"/></button>} closeLabel={uiText("Back to selection")}>{more ? uiText("Text actions") : semantic ? uiText("Semantic function") : uiText("Annotate selection")}</ModalHeader>
       <p className="mobile-selection-preview">{selectedText.length > 120 ? selectedText.slice(0, 120) + '…' : selectedText}</p>
       {picker}
     </Modal> : picker}

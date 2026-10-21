@@ -9,7 +9,7 @@ test('annotation prioritizes matching highlighted names before other entities an
   const {exact, results} = annotationSuggestions(entities, '  URSULA   K. LE GUIN  ');
   assert.deepEqual(exact.map(item => item.id), ['exact', 'same-name']);
   assert.deepEqual(results.slice(0, 2).map(item => item.id), ['exact', 'same-name']);
-  assert.equal(results.length, 20);
+  assert.deepEqual(results.map(item => item.id), ['exact', 'same-name']);
   assert.equal(entities[0].id, '0');
 });
 
@@ -57,4 +57,20 @@ test('a tall selection places the annotation panel beside the text when space pe
   assert.equal(left.left, 92);
   const right = checkPlacement({left: 100, right: 500, top: 150, bottom: 500}, menu, viewport);
   assert.equal(right.left, 508);
+});
+
+test('highlighted surname suggests an existing full-name entity before creating a duplicate', () => {
+  const entities = [entity('unrelated', 'Michelle Obama'), entity('barack', 'Barack Obama'), entity('other', 'Abraham Lincoln')];
+  assert.deepEqual(annotationSuggestions(entities, 'Obama').results.map(item => item.id), ['barack', 'unrelated']);
+  assert.deepEqual(annotationSuggestions(entities, 'Barak').results.map(item => item.id), ['barack']);
+});
+
+test('existing aliases, recent page citations, and archived entities affect ranking', () => {
+  const entities = [
+    {...entity('older', 'Barack Obama'), aliases:['President Obama']},
+    {...entity('recent', 'Barack Obama')},
+    {...entity('archived', 'Barack Obama'), archived_at:'2026-01-01'},
+  ];
+  assert.deepEqual(annotationSuggestions(entities, 'Obama', '', {priorityIds:['recent']}).results.map(item=>item.id), ['recent', 'older']);
+  assert.equal(annotationSuggestions(entities, 'President Obama').results[0]?.id, 'older');
 });

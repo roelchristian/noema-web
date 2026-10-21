@@ -1,14 +1,13 @@
 import type { Entity } from '../../shared/domain';
+import {mentionMatches, type MentionMatchOptions} from './mention-picker';
 
 const normalize = (text: string) => text.normalize('NFKC').trim().replace(/\s+/g, ' ').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').toLocaleLowerCase();
-export function annotationSuggestions(entities: Entity[], selection: string, query = '') {
+/** Suggest both exact identity matches and plausible existing entities for highlighted text. */
+export function annotationSuggestions(entities: Entity[], selection: string, query = '', options: MentionMatchOptions = {}) {
   const selected = normalize(selection), term = normalize(query);
   const names = (entity: Entity) => [entity.name, ...(entity.aliases ?? [])].map(normalize);
-  const exact = entities.filter(entity => selected && names(entity).includes(selected));
-  const results = entities.filter(entity => !term || names(entity).some(name => name.includes(term))).sort((a, b) => {
-    const score = (entity: Entity) => Number(names(entity).includes(term || selected));
-    return score(b) - score(a) || a.name.localeCompare(b.name);
-  }).slice(0, 20);
+  const exact = mentionMatches(entities, selection, options).filter(entity => selected && names(entity).includes(selected));
+  const results = mentionMatches(entities, term || selection, {...options, limit:20});
   return {exact, results};
 }
 

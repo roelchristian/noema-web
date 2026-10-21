@@ -6,6 +6,7 @@ import { entityLabels, type Entity } from '../../shared/domain';
 import { Icon } from '../components/Icon';
 import { Modal, ModalHeader } from '../components/Modal';
 import { annotationSuggestions, selectionPopoverPlacement } from './selection-annotation';
+import type { MentionMatchOptions } from './mention-picker';
 import { segmentHTML } from './segments';
 import {applyEditorTextFormat,textFormatShortcuts,type TextFormat} from './text-formatting';
 
@@ -20,6 +21,7 @@ interface Props {
   explainLabel?: (ids: string[]) => string;
   editor: RefObject<HTMLDivElement | null>;
   entities: Entity[];
+  suggestionContext?: MentionMatchOptions;
   onCommit: () => void;
   onSemantic: (kind: SemanticKind) => void;
   onAddAlias: (id: string, alias: string) => Promise<void>;
@@ -35,7 +37,7 @@ const formats = [
 function editable(node: Node) {
   return (node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>('.block-content[contenteditable="true"]');
 }
-export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHeight, editor, entities, onCommit, onAddAlias, onCreateEntity, onMath, onSemantic, onExplain, explaining, explainLabel, onReview, reviewing}: Props) {
+export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHeight, editor, entities, suggestionContext, onCommit, onAddAlias, onCreateEntity, onMath, onSemantic, onExplain, explaining, explainLabel, onReview, reviewing}: Props) {
   const [anchor, setAnchor] = useState<{left: number; right: number; top: number; bottom: number} | null>(null);
   const [annotating, setAnnotating] = useState(false), [query, setQuery] = useState('');
   const [semantic, setSemantic] = useState(false);
@@ -171,7 +173,7 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
   const range = saved.current;
   const single = range && editor.current && editorSelectionRanges(editor.current, range).length === 1;
   const selectedText = range?.toString().trim() || '';
-  const {exact, results} = annotationSuggestions(entities, selectedText, query);
+  const {exact, results} = annotationSuggestions(entities, selectedText, query, suggestionContext);
   const linkEntity = async (id: string) => {
     const current = saved.current;
     if (!current || savingAlias) return;
@@ -180,7 +182,7 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
     setSavingAlias(true); setAliasError('');
     try {
       await onAddAlias(id,text.trim());
-      if (saved.current === current && !connect(range,text,id)) throw new Error('The selected text changed while saving the alias. Select it again to link it.');
+      if (!connect(range,text,id)) throw new Error('The selected text changed while saving the alias. Select it again to link it.');
     } catch (error) { setAliasError(error instanceof Error ? error.message : String(error)); }
     finally { setSavingAlias(false); }
   };
@@ -205,19 +207,13 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
     {annotating && <div className="selection-entities" role="region" aria-label={uiText("Annotate selection")} aria-busy={savingAlias}>
       {savingAlias && <p role="status">{uiText("Saving alias…")}</p>}
       {aliasError && <p role="alert">{aliasError}</p>}
-      {linking ? <>
-        <button type="button" className="selection-back" onClick={() => { setLinking(false); setQuery(''); }}>{uiText("Back to annotation options")}</button>
-        <input autoFocus aria-label={uiText("Search knowledge entities")} placeholder={uiText("Find an existing entity…")} value={query} onChange={event => setQuery(event.target.value)}/>
-        <p>{uiText("Link the highlighted text and save it as an alias for future tagging.")}</p>
-        <div className="selection-entity-results">
-          {results.map(entity => <button type="button" key={entity.id} disabled={savingAlias} onClick={() => void linkEntity(entity.id)}><Icon name={entity.type}/><span>{entity.name}<small>{uiText(entityLabels[entity.type])}</small></span></button>)}
-          {!results.length && <div className="selection-empty">{uiText("No matching entities")}</div>}
-        </div>
-      </> : <>
-        {!!exact.length && <><p>{uiText("Matching") + " "}{exact.length === 1 ? uiText("entity") : uiText("entities")}</p><div className="selection-entity-results">{exact.map(entity => <button type="button" key={entity.id} disabled={savingAlias} onClick={() => void linkEntity(entity.id)}><Icon name={entity.type}/><span>{entity.name}<small>{uiText(entityLabels[entity.type])}</small></span></button>)}</div></>}
-        {!exact.length && <button type="button" className="selection-create" onClick={createFromSelection}><Icon name="plus"/><span>{uiText("Add “")}{selectedText.length > 60 ? selectedText.slice(0, 60) + '…' : selectedText}{uiText("” as new entity")}</span></button>}
-        <button type="button" onClick={() => setLinking(true)}><Icon name="knowledge"/><span>{uiText("Link to") + " "}{exact.length ? uiText("another") : uiText("existing")}{" " + uiText("entity")}</span></button>
-      </>}
+      <input autoFocus aria-label={uiText("Search knowledge entities")} placeholder={uiText("Find an existing entity…")} value={query} onChange={event => setQuery(event.target.value)}/>
+      <div className="selection-entity-results">
+        {results.map(entity => <button type="button" key={entity.id} disabled={savingAlias} onClick={() => void linkEntity(entity.id)}><Icon name={entity.type}/><span>{entity.name}<small>{uiText(entityLabels[entity.type])}{exact.some(item=>item.id===entity.id)?' · Exact match':''}</small></span></button>)}
+        {!results.length && <div className="selection-empty">{uiText("No matching entities")}</div>}
+      </div>
+      {!query&&<p>{uiText("Linking preserves the highlighted text and saves it as an alias for future tagging.")}</p>}
+      <button type="button" className="selection-create" onClick={createFromSelection}><Icon name="plus"/><span>{uiText("Add “")}{selectedText.length > 60 ? selectedText.slice(0, 60) + '…' : selectedText}{uiText("” as new entity")}</span></button>
     </div>}
   </>;
   return <div ref={surface} className={'selection-popover' + (mobile ? ' mobile-selection-popover' : '')}

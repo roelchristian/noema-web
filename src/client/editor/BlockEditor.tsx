@@ -107,6 +107,15 @@ export function BlockEditor(props: Props) {
   const mobileToolbar = useRef<HTMLDivElement>(null);
   const {entities, onOpenEntity, onCreateEntity, onSave} = props;
   const {schema}=useEntitySchema(props.vaultId);
+  const suggestionPriorityIds = useMemo(() => {
+    const used: string[] = [];
+    for (const block of props.blocks) {
+      for (const segment of block.type==='table'||block.type==='columns'?(block.rows??[]).flat(2):block.content)
+        if (segment.entityId) used.push(segment.entityId);
+      for (const citation of noteCitations([block]).values()) used.push(citation.reference.sourceId);
+    }
+    return [...new Set(used.reverse())];
+  }, [props.blocks]);
   const blocks = useMemo(() => {
     const normalized = normalizeSemanticGroups(normalizeColumnBlocks(props.blocks));
     const last = normalized.at(-1);
@@ -702,7 +711,7 @@ export function BlockEditor(props: Props) {
     if (match && range.startContainer.nodeType === Node.TEXT_NODE) {
       const query = match[1]!, start = range.startOffset - query.length - 1; if (start < 0) { setMenu(null); return; }
       const saved = range.cloneRange(); saved.setStart(range.startContainer, start);
-      const matches=mentionMatches(latest.current.entities,query);
+      const matches=mentionMatches(latest.current.entities.filter(entity=>entity.vault_id===props.vaultId),query,{priorityIds:suggestionPriorityIds});
       const showMatches=(limit=3)=>{
         const items:Choice[]=matches.slice(0,limit).map(entity=>{
           const subtype=entity.subtypes.map(id=>schema.subtypes.find(subtype=>subtype.id===id&&subtype.type===entity.type)?.name).find(Boolean);
@@ -892,7 +901,7 @@ export function BlockEditor(props: Props) {
     }}>{!explanationAnchorId&&explanationStatus}{renderColumnLayout(blocks)}{uploadCards()}</div>
     <span id="block-drag-help" className="block-drag-sr">{uiText("Drag to reorder. Click for options. With the handle focused, press Space to pick up, Up or Down to move, Space or Enter to drop, Escape to cancel.")}</span>
     <div ref={dragStatus} className="block-drag-sr" role="status" aria-live="polite" aria-atomic="true"/>
-    <SelectionToolbar onReview={props.onReview?()=>void reviewWriting():undefined} reviewing={writingReview?.loading} explainLabel={explainLabel} mobile={mobile} keyboardInset={keyboardInset} viewportHeight={viewportHeight} onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
+    <SelectionToolbar onReview={props.onReview?()=>void reviewWriting():undefined} reviewing={writingReview?.loading} explainLabel={explainLabel} mobile={mobile} keyboardInset={keyboardInset} viewportHeight={viewportHeight} onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} suggestionContext={{priorityIds:suggestionPriorityIds}} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
     {linkedExplanations.length > 0 && <Modal className="confirmation-dialog linked-explanation-dialog" titleId="linked-explanation-delete-title" onClose={() => setLinkedDeletion([])}>
       <ModalHeader titleId="linked-explanation-delete-title" leading={<Icon name="sparkles"/>} closeLabel={uiText("Close and keep explanations")}>{linkedExplanations.length === 1 ? uiText("Keep the explanation?") : uiText("Keep the explanations?")}</ModalHeader>
       <p>{linkedExplanations.length === 1

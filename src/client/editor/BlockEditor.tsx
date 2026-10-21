@@ -702,7 +702,8 @@ export function BlockEditor(props: Props) {
     if (match && range.startContainer.nodeType === Node.TEXT_NODE) {
       const query = match[1]!, start = range.startOffset - query.length - 1; if (start < 0) { setMenu(null); return; }
       const saved = range.cloneRange(); saved.setStart(range.startContainer, start);
-      const matches=mentionMatches(latest.current.entities,query);
+      const used = latest.current.blocks.flatMap(block => [...(block.type==='table'||block.type==='columns'?(block.rows??[]).flat(2):block.content).flatMap(segment=>segment.entityId?[segment.entityId]:[]),...noteCitations([block]).values()].map(item=>typeof item==='string'?item:item.reference.sourceId));
+       const matches=mentionMatches(latest.current.entities.filter(entity=>entity.vault_id===props.vaultId),query,{priorityIds:[...new Set(used.reverse())]});
       const showMatches=(limit=3)=>{
         const items:Choice[]=matches.slice(0,limit).map(entity=>{
           const subtype=entity.subtypes.map(id=>schema.subtypes.find(subtype=>subtype.id===id&&subtype.type===entity.type)?.name).find(Boolean);

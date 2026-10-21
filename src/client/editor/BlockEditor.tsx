@@ -25,13 +25,14 @@ import { installBlockDrag, reorderBlock } from './block-drag';
 import { installBlockSelection, setEditorCaret } from './block-selection';
 import { displayMathSource } from './math-delimiters';
 import { applySmartQuotes } from './smart-quotes';
-import { Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, useMemo, type ReactNode, type ClipboardEvent, type KeyboardEvent, type CSSProperties } from 'react';
+import { Fragment, memo, use, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, useMemo, type ReactNode, type ClipboardEvent, type KeyboardEvent, type CSSProperties } from 'react';
 import type { EntityReviewItem } from '../../shared/entity-match-cache';
 import { entityLabels, type Block, type BlockType, type Entity, type PageSummary, type SourceReference, type Segment } from '../../shared/domain';
 import { uploadImage } from '../api';
 import { Icon } from '../components/Icon';
 import { Modal, ModalHeader } from '../components/Modal';
 import { useMobileViewport } from '../components/WorkspaceNavigation';
+import {segmentsEqual} from '../../shared/segments-equal';
 import { readSegments, segmentHTML, syncEditableSegments } from './segments';
 import { clipboardBlocks, markdownBlocks, makeBlock } from './paste';
 import { compressImage } from './compress-image';
@@ -79,7 +80,10 @@ interface ImageUpload {id:string; after?:string; name:string; message:string; cu
 interface Choice {back?: boolean; danger?: boolean; disabled?: boolean; submenu?: boolean; color?:string; title: string; detail?: string; icon: string; pick: () => void}
 interface Menu {items: Choice[]; index: number; left: number; top: number; label: string; sheet?: boolean; anchor?:Range; anchorElement?:HTMLElement}
 function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOpen, register, onPaste}: {block: Block; entities: Entity[]; reviewMatches: EntityReviewItem[]; onInput: (el: HTMLElement, event:InputEvent) => void; onKeyDown: (e: KeyboardEvent<HTMLElement>) => void; onOpen: (id: string) => void; register: (el: HTMLElement | null) => void; onPaste: (e: ClipboardEvent<HTMLElement>) => void}) {
-  const citations=useContext(CitationPresentationContext);
+  // React's use(Context) supports conditional subscriptions. Plain text must not
+  // subscribe to the citation map that PageEditor rebuilds on every edit.
+  const citations=block.content.some(segment=>segment.sourceReference)?use(CitationPresentationContext):undefined;
+  const locale=getLocale();
   const ref = useRef<HTMLElement>(null);
   const Content = block.type === 'heading1' ? 'h2' : block.type === 'heading2' ? 'h3' : 'div';
   useLayoutEffect(() => {
@@ -89,13 +93,43 @@ function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOp
       const wrapper = document.createElement('span'); wrapper.innerHTML = segmentHTML([{entityId: node.dataset.entity!, ...(node.dataset.mentionText ? {mentionText: node.dataset.mentionText} : {})}], entities);
       const fresh = wrapper.firstElementChild!;
       if (node.innerHTML !== fresh.innerHTML) node.innerHTML = fresh.innerHTML;
-      node.className = fresh.className;
+      if (node.className !== fresh.className) node.className = fresh.className;
+      if (node.getAttribute('title') !== fresh.getAttribute('title')) {
+        if(fresh.hasAttribute('title'))node.setAttribute('title',fresh.getAttribute('title')!);else node.removeAttribute('title');
+      }
     });
-  });
-  return <Content ref={el => { ref.current = el; register(el); }} className="block-content" contentEditable suppressContentEditableWarning spellCheck data-placeholder={uiText("Type / for blocks, @ for entities")} onInput={e => { applySmartQuotes(e.currentTarget, e.nativeEvent as InputEvent); onInput(e.currentTarget,e.nativeEvent as InputEvent); }} onKeyDown={onKeyDown}
+  }, [block.id, block.type, block.content, entities, reviewMatches, citations, locale]);
+  const registerElement=useCallback((el:HTMLElement|null)=>{ref.current=el;register(el);},[register]);
+  return <Content ref={registerElement} className="block-content" contentEditable suppressContentEditableWarning spellCheck data-placeholder={uiText("Type / for blocks, @ for entities")} onInput={e => { applySmartQuotes(e.currentTarget, e.nativeEvent as InputEvent); onInput(e.currentTarget,e.nativeEvent as InputEvent); }} onKeyDown={onKeyDown}
     onClick={e => { const mention = (e.target as Element).closest<HTMLElement>('[data-entity]'); if (mention) onOpen(mention.dataset.entity!); }}
     onPaste={onPaste}/>;
 }
+function semanticStyle(kind?: SemanticKind): CSSProperties | undefined {return kind ? {'--semantic-color':semanticFunctions[kind].color} as CSSProperties : undefined;}
+function semanticGlyph(kind?: SemanticKind) {return <>{kind && <span className="semantic-function-icon"><Icon name={semanticFunctions[kind].icon}/></span>}<span className="semantic-grip-icon"><Icon name="grip"/></span></>;}
+const emptyReviewMatches: EntityReviewItem[] = [];
+interface TextRowActions {
+  addBelow:(element:HTMLElement,id:string)=>void;
+  options:(element:HTMLElement,block:Block)=>void;
+  update:(id:string,patch:Partial<Block>)=>void;
+  register:(id:string,element:HTMLElement|null)=>void;
+  input:(block:Block,element:HTMLElement,event:InputEvent)=>void;
+  keyDown:(event:KeyboardEvent<HTMLElement>,block:Block)=>void;
+  paste:(event:ClipboardEvent<HTMLElement>,block:Block)=>void;
+  open:(id:string)=>void;
+}
+// Default shallow comparison keeps every visible dependency explicit, including list order.
+const TextBlockRow=memo(function TextBlockRow({block,entities,reviewMatches,number,actions}: {block:Block;entities:Entity[];reviewMatches:EntityReviewItem[];number?:number;actions:TextRowActions;locale:ReturnType<typeof getLocale>}) {
+  const register=useCallback((element:HTMLElement|null)=>actions.register(block.id,element),[actions,block.id]);
+  return <div data-block-id={block.id} data-semantic-kind={block.semantic} style={semanticStyle(block.semantic)} className={'block '+block.type+(block.semantic?' semantic-block':'')}>
+    {block.semantic&&<span className="semantic-callout-icon" aria-hidden="true"><Icon name={semanticFunctions[block.semantic].icon}/></span>}
+    <div className="block-controls" role="group" aria-label={uiText("Block controls")}>
+      <button className="block-add" title={uiText("Add block below")} aria-label={uiText("Add block below")} onClick={event=>actions.addBelow(event.currentTarget,block.id)}><Icon name="plus"/></button>
+      <button className={'block-handle'+(block.semantic?' semantic-handle':'')} draggable={false} title={(block.semantic?uiText(semanticFunctions[block.semantic].label)+' · ':'')+uiText("Drag to move · Click for block options")} aria-label={block.semantic?uiText(semanticFunctions[block.semantic].label)+uiText(" block options"):uiText("Block options")} aria-describedby="block-drag-help" onClick={event=>actions.options(event.currentTarget,block)}>{semanticGlyph(block.semantic)}</button>
+    </div>
+    {block.type==='todo'?<input type="checkbox" aria-label={uiText("Complete task")} checked={block.checked} onChange={event=>actions.update(block.id,{checked:event.target.checked})}/>:block.type==='bullet'?<span className="bullet-marker">•</span>:block.type==='numbered'?<span className="bullet-marker numbered-marker">{number}.</span>:null}
+    <EditableBlock block={block} entities={entities} reviewMatches={reviewMatches} register={register} onOpen={actions.open} onInput={(element,event)=>actions.input(block,element,event)} onKeyDown={event=>actions.keyDown(event,block)} onPaste={event=>actions.paste(event,block)}/>
+  </div>;
+});
 export function BlockEditor(props: Props) {
   const presentation=useContext(CitationPresentationContext);
   const presentationRef=useRef(presentation);presentationRef.current=presentation;
@@ -107,6 +141,7 @@ export function BlockEditor(props: Props) {
   const mobileToolbar = useRef<HTMLDivElement>(null);
   const {entities, onOpenEntity, onCreateEntity, onSave} = props;
   const {schema}=useEntitySchema(props.vaultId);
+  const previousBlocks=useRef<Block[]>([]);
   const suggestionPriorityIds = useMemo(() => {
     const used: string[] = [];
     for (const block of props.blocks) {
@@ -122,8 +157,16 @@ export function BlockEditor(props: Props) {
     const hasTrailingText = last?.type === 'paragraph' && !last.column && !last.semantic && !last.semanticGroup && last.content.every(segment => !segment.entityId && segment.text === '');
     // A regular editable paragraph provides the slash helper after every layout.
     // It is saved with the next edit, rather than creating a change just by opening a note.
-    return hasTrailingText || normalized.length >= 2000 ? normalized : [...normalized,makeBlock()];
+    const next=hasTrailingText || normalized.length >= 2000 ? normalized : [...normalized,makeBlock()];
+    // History and server reconciliation can clone otherwise unchanged blocks.
+    // Compare the full value, not just content: formatting and all row metadata count.
+    const previous=new Map(previousBlocks.current.map(block=>[block.id,block]));
+    return next.map(block=>{
+      const old=previous.get(block.id);
+      return old && (old===block || JSON.stringify(old)===JSON.stringify(block)) ? old : block;
+    });
   }, [props.blocks]);
+  useLayoutEffect(()=>{previousBlocks.current=blocks;},[blocks]);
   const [linkedDeletion, setLinkedDeletion] = useState<string[]>([]);
   const onChange = (next: Block[], featuredImageId?: string | null, aiReviewAccepted?:true) => {
     const normalized = normalizeSemanticGroups(normalizeColumnBlocks(preserveAIExplanationTags(blocks,next)));
@@ -193,7 +236,12 @@ export function BlockEditor(props: Props) {
   const [explaining,setExplaining]=useState(false), [explanationError,setExplanationError]=useState('');
   const [explanationAnchor,setExplanationAnchor]=useState<{ids:string[];index:number}|null>(null);
   const explanationPending=useRef(false), retryExplanation=useRef<string[]>([]);
-  const reviewMatches = props.reviewMatches ?? [];
+  const reviewMatches = props.reviewMatches ?? emptyReviewMatches;
+  const reviewsByBlock=useMemo(()=>{
+    const grouped=new Map<string,EntityReviewItem[]>();
+    for(const match of reviewMatches){const matches=grouped.get(match.blockId)??[];matches.push(match);grouped.set(match.blockId,matches);}
+    return grouped;
+  },[reviewMatches]);
   const dragStatus = useRef<HTMLDivElement>(null);
   function announceDrag(message: string) {if (dragStatus.current) dragStatus.current.textContent = message;}
   const [citationTarget,setCitationTarget]=useState<{bookmark:CitationBookmark;editor:HTMLElement;blockId:string}|null>(null);
@@ -377,7 +425,9 @@ export function BlockEditor(props: Props) {
           const el = editors[index++]; return el ? readSegments(el) : content;
         }))};
       }
-      return editors[0] ? {...block, content: readSegments(editors[0])} : block;
+      if(!editors[0])return block;
+      const content=readSegments(editors[0]);
+      return segmentsEqual(content,block.content)?block:{...block,content};
     });
     setMenu(null); latest.current.onChange(list);
     return list;
@@ -516,8 +566,7 @@ export function BlockEditor(props: Props) {
   function imageChoice(after?: string, replace?: Block): Choice {
     return {title:uiText("Image"), detail:uiText("Upload an image from your device"), icon:'image', pick:() => chooseImages(after,replace)};
   }
-  function semanticStyle(kind?: SemanticKind): CSSProperties | undefined {return kind ? {'--semantic-color':semanticFunctions[kind].color} as CSSProperties : undefined;}
-  function semanticGlyph(kind?: SemanticKind) {return <>{kind && <span className="semantic-function-icon"><Icon name={semanticFunctions[kind].icon}/></span>}<span className="semantic-grip-icon"><Icon name="grip"/></span></>;}
+
   function tagSelection(kind: SemanticKind) {
     if (!root.current) return;
     const selected=selectedEditorBlocks(root.current);if (!selected) return;
@@ -797,7 +846,27 @@ export function BlockEditor(props: Props) {
     const first=change===writingReview.changes[0];
     return <WritingReview key={`${reviewRequest.current}:${blockId}`} loading={writingReview.loading} error={writingReview.error} change={change} stale={!!change&&JSON.stringify(blocks.find(block=>block.id===blockId)?.content)!==change.snapshot} entities={entities} remaining={first?writingReview.changes.length:0} onAccept={acceptWritingReview} onDismiss={()=>dismissWritingSuggestion(blockId)} onAcceptAll={()=>writingReview.changes.forEach(change=>acceptWritingReview(change))} onClose={closeWritingReview}/>;
   }
-  const renderBlock = (block: Block) => isAIExplanation(block) ? <ReadOnlyExplanationBlock key={block.id} block={block} blocks={blocks} entities={entities} onOpen={onOpenEntity} vaultId={props.vaultId}/> : <Fragment key={block.id}><div data-block-id={block.id} data-semantic-kind={block.semantic} style={semanticStyle(block.semantic)} className={'block ' + block.type + (block.semantic ? ' semantic-block' : '')}>
+  function textInput(block:Block,el:HTMLElement,event:InputEvent) {
+      const markdownInput=markdownTyping&&!event.isComposing&&event.inputType==='insertText';
+      const shortcut=markdownInput?typedMarkdownBlock(block,el):undefined;
+      if(shortcut) {setMenu(null);focusTarget.current={id:block.id,start:false};update(block.id,shortcut);return;}
+      const content = readSegments(el);
+      const source = markdownInput && block.type === 'paragraph' && content.every(segment => !segment.entityId && !segment.math && !segment.code)
+        ? displayMathSource(content.map(segment => segment.text ?? '').join('')) : undefined;
+      if (source) { setMenu(null); focusTarget.current = {id: block.id, start: false}; update(block.id, {type: 'math', content: [{text: source}]}); return; }
+      if(markdownInput)completeInlineMath(el); update(block.id, {content: readSegments(el)}); detect(el, block);
+  }
+  // Stable dispatchers read the current render's closures, so memoized rows never retain
+  // stale menus, preferences, entity callbacks or document order.
+  const rowHandlers=useRef<TextRowActions>(null!);
+  rowHandlers.current={addBelow,options:blockOptions,update,register:(id,el)=>{if(el)elements.current.set(id,el);else elements.current.delete(id);},input:textInput,keyDown,paste,open:onOpenEntity};
+  const rowActions=useMemo<TextRowActions>(()=>({
+    addBelow:(...args)=>rowHandlers.current.addBelow(...args),options:(...args)=>rowHandlers.current.options(...args),
+    update:(...args)=>rowHandlers.current.update(...args),register:(...args)=>rowHandlers.current.register(...args),
+    input:(...args)=>rowHandlers.current.input(...args),keyDown:(...args)=>rowHandlers.current.keyDown(...args),
+    paste:(...args)=>rowHandlers.current.paste(...args),open:(...args)=>rowHandlers.current.open(...args),
+  }),[]);
+  const renderBlock = (block: Block) => isAIExplanation(block) ? <ReadOnlyExplanationBlock key={block.id} block={block} blocks={blocks} entities={entities} onOpen={onOpenEntity} vaultId={props.vaultId}/> : ['paragraph','heading1','heading2','quote','bullet','numbered','todo'].includes(block.type) ? <Fragment key={block.id}><TextBlockRow locale={getLocale()} block={block} entities={entities} reviewMatches={reviewsByBlock.get(block.id)??emptyReviewMatches} number={block.type==='numbered'?blockListNumber(blocks,block.id):undefined} actions={rowActions}/>{renderWritingReview(block.id)}{uploadCards(block.id)}</Fragment> : <Fragment key={block.id}><div data-block-id={block.id} data-semantic-kind={block.semantic} style={semanticStyle(block.semantic)} className={'block ' + block.type + (block.semantic ? ' semantic-block' : '')}>
     {block.semantic && <span className="semantic-callout-icon" aria-hidden="true"><Icon name={semanticFunctions[block.semantic].icon}/></span>}
     <div className="block-controls" role="group" aria-label={uiText("Block controls")}>
       <button className="block-add" title={uiText("Add block below")} aria-label={uiText("Add block below")} onClick={e => addBelow(e.currentTarget, block.id)}><Icon name="plus"/></button>
@@ -817,14 +886,7 @@ export function BlockEditor(props: Props) {
       }}/>
       <small>{uiText("Code · Tab to indent · ⌘/Ctrl+Enter to continue below")}</small>
     </div> : block.type === 'math' ? <MathBlock block={block} inlineOptions={mathInlineOptions(blocks,block.id)} recommendedInline={recommendedMathInlinePlacement(blocks,block.id)} onInline={placement=>convertMathToInline(block.id,placement)} onDelete={() => removeBlock(block.id)} onChange={source => update(block.id, {content: [{text: source}]})} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'image' ? <ImageBlock block={block} featured={props.featuredImageId===block.imageId} onSetFeatured={() => onChange(latest.current.blocks,props.featuredImageId===block.imageId?null:block.imageId)} vaultId={props.vaultId} onChange={alt => update(block.id,{alt})} onDelete={() => removeBlock(block.id)} onExit={() => insert(block.id)} onSave={onSave} register={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}}/> : block.type === 'table' ? <TableBlock reviewMatches={reviewMatches} block={block} entities={entities} onChange={rows => update(block.id, {rows})} onOpen={onOpenEntity} onSave={onSave} onExit={() => insert(block.id)} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }}/> : <EditableBlock reviewMatches={reviewMatches} block={block} entities={entities} register={el => { if (el) elements.current.set(block.id, el); else elements.current.delete(block.id); }} onOpen={onOpenEntity} onInput={(el,event) => {
-      const markdownInput=markdownTyping&&!event.isComposing&&event.inputType==='insertText';
-      const shortcut=markdownInput?typedMarkdownBlock(block,el):undefined;
-      if(shortcut) {setMenu(null);focusTarget.current={id:block.id,start:false};update(block.id,shortcut);return;}
-      const content = readSegments(el);
-      const source = markdownInput && block.type === 'paragraph' && content.every(segment => !segment.entityId && !segment.math && !segment.code)
-        ? displayMathSource(content.map(segment => segment.text ?? '').join('')) : undefined;
-      if (source) { setMenu(null); focusTarget.current = {id: block.id, start: false}; update(block.id, {type: 'math', content: [{text: source}]}); return; }
-      if(markdownInput)completeInlineMath(el); update(block.id, {content: readSegments(el)}); detect(el, block);
+      textInput(block,el,event);
     }} onKeyDown={e => keyDown(e, block)} onPaste={e => paste(e, block)}/>}
   </div>{renderWritingReview(block.id)}{uploadCards(block.id)}</Fragment>;
   function renderRuns(list: Block[]) {

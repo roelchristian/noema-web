@@ -14,6 +14,7 @@ try {
   await writeFile(join(directory,'fixture.tsx'),`
 import React,{useState} from 'react';
 import {createRoot} from 'react-dom/client';
+import {immutableBlocks} from '/@fs/${repo}/src/shared/immutable-blocks.ts';
 import {BlockEditor} from '/@fs/${repo}/src/client/editor/BlockEditor.tsx';
 import {useDocumentHistory} from '/@fs/${repo}/src/client/editor/use-document-history.ts';
 import {CitationPresentationContext} from '/@fs/${repo}/src/client/sources/CitationPresentation.tsx';
@@ -21,7 +22,7 @@ import {noteCitations} from '/@fs/${repo}/src/shared/citations.ts';
 import {api} from '/@fs/${repo}/src/client/api.ts';
 api.entitySchema=async()=>({properties:[],subtypes:[],subtypeProperties:{}});
 function App(){
- const [page,setPage]=useState({id:'fictitious',vault_id:'fixture',title:'Fictitious note',sourceIds:[],revision:1,blocks:Array.from({length:200},(_,i)=>({id:'b'+(i+1),type:'paragraph',checked:false,content:[{text:i===199?'':'Fictitious paragraph '+(i+1)}]}))});
+ const [page,setPage]=useState({id:'fictitious',vault_id:'fixture',title:'Fictitious note',sourceIds:[],revision:1,blocks:immutableBlocks(Array.from({length:200},(_,i)=>({id:'b'+(i+1),type:'paragraph',checked:false,content:[{text:i===199?'':'Fictitious paragraph '+(i+1)}]})))});
  const [entities,setEntities]=useState([]);
  const history=useDocumentHistory(page,patch=>setPage(current=>({...current,...patch})));
  window.fixture={page,setPage,setEntities,history};

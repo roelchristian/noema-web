@@ -94,17 +94,17 @@ test('snapshots detach initial page, caller patches, outgoing patches, and repla
     const blocks=structuredClone(initial.blocks);blocks[0].content[0].text='Committed';
     await h.change({blocks});
     initial.blocks[0].content[0].text='Mutated initial';blocks[0].content[0].text='Mutated patch';
-    h.outgoing().blocks[0].content[0].text='Mutated outgoing';
+    assert.throws(()=>{h.outgoing().blocks[0].content[0].text='Mutated outgoing';},TypeError);
     await h.step(history=>history.undo());assert.deepEqual(h.page().blocks,original);
-    h.outgoing().blocks[0].content[0].text='Mutated replay';
+    assert.throws(()=>{h.outgoing().blocks[0].content[0].text='Mutated replay';},TypeError);
     await h.step(history=>history.redo());assert.equal(h.page().blocks[0].content[0].text,'Committed');
     await h.step(history=>history.undo());assert.deepEqual(h.page().blocks,original);
   });
 });
-test('reconciliation detects in-place caller mutations, updates latest transaction, and ends typing',async()=>{
+test('reconciliation accepts mutable external replacements, updates latest transaction, and ends typing',async()=>{
   await historyHarness(fixture(),async h=>{
     await h.type('a');
-    const external=h.page();external.blocks[1].checked=true;
+    const external=structuredClone(h.page());external.blocks[1].checked=true;
     await h.replace(external);
     await h.type('b');await h.step(history=>history.undo());
     assert.equal(h.page().blocks[1].checked,true);assert.equal(h.history().canUndo,true);
@@ -152,11 +152,11 @@ test('virtual trailing paragraphs survive the first edit and coalesce with subse
   });
 });
 test('whole-document operation counts remain bounded while typing coalesces',async()=>{
-  for(const count of [200,1000])await historyHarness(historyFixture(count),async h=>{
+  for(const count of [200,1000,2000])await historyHarness(historyFixture(count),async h=>{
     const meter=instrumentHistory(count);
     try {await h.type('a');await h.type('b');}finally {meter.stop();}
-    assert.equal(meter.totals.clone.count,4);assert.equal(meter.totals.stringify.count,4);
-    assert.equal(meter.totals.shape.count,4);
+    assert.equal(meter.totals.clone.count,0);assert.equal(meter.totals.stringify.count,0);
+    assert.equal(meter.totals.shape.count,0);
     await h.step(history=>history.undo());assert.equal(h.history().canUndo,false);
   });
 });
@@ -181,4 +181,14 @@ test('native input survives a microtask checkpoint before React commits the edit
     await h.step(history=>history.redo());
     assert.equal(h.page().blocks[0].content[0].text,original+'xyz');
   });
+});
+
+test('typing within a column/semantic group coalesces after changed-block detachment',async()=>{
+ const initial=fixture();initial.blocks[0].column={id:'columns',index:0};initial.blocks[0].semanticGroup={id:'group',kind:'evidence'};
+ await historyHarness(initial,async h=>{
+  const original=h.page().blocks[0].content[0].text;h.caret(original.length);
+  await h.type('a');await h.type('b');
+  await h.step(history=>history.undo());
+  assert.equal(h.history().canUndo,false);assert.equal(h.page().blocks[0].content[0].text,original);
+ });
 });

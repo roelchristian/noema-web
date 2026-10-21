@@ -1,3 +1,4 @@
+import {immutableBlocks,immutablePage} from '../../shared/immutable-blocks';
 import {citationSourceIds} from '../../shared/citations';
 import { readWorkspaceURL, workspaceURL, type NavigationAddress, type WorkspaceAddress } from './navigation-address';
 import {clearLibraryViewStates} from './library-view-state';
@@ -78,12 +79,12 @@ export class Workspace {
       this.patch({saveFailures:this.state.saveFailures.filter(issue=>issue.vaultId!==saved.vault_id||issue.pageId!==saved.id)});
       const cached = this.pageCache.get(saved.id);
       if (cached) {
-        const unchanged = JSON.stringify(cached.blocks) === JSON.stringify(original.blocks);
+        const unchanged = cached.blocks === original.blocks;
         const page = {...cached, title:cached.title===original.title?saved.title:cached.title,enrichmentPending:saved.enrichmentPending,enrichmentPendingFields:saved.enrichmentPendingFields,enrichmentFields:saved.enrichmentFields,language:saved.language,aiReviewAccepted:!!(cached.aiReviewAccepted||saved.aiReviewAccepted), aiStatus:nextPageAIStatus(saved,cached,id=>entityMentionName(this.state.entities.find(entity=>entity.id===id))), ...(unchanged && !this.state.reviewing && canIdentifyEntities() ? {blocks: saved.blocks} : {}), pageDomains:saved.pageDomains,conceptClassification:saved.conceptClassification,conceptContentHash:unchanged?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at};
         this.pageCache.set(saved.id, page);
         if(!this.pageLockPending)this.titler.observe(page, unchanged);
       }
-      if (this.state.vault?.id === saved.vault_id) this.patch({pages: this.state.pages.map(page => page.id === saved.id ? {...page, title:this.pageCache.get(saved.id)?.title??page.title, aiStatus:this.pageCache.get(saved.id)?.aiStatus ?? saved.aiStatus, updated_at: saved.updated_at} : page), ...(this.state.page?.id === saved.id ? {page: this.pageCache.get(saved.id) || {...this.state.page, aiStatus:saved.aiStatus, pageDomains:saved.pageDomains,conceptClassification:saved.conceptClassification,conceptContentHash:JSON.stringify(this.state.page.blocks)===JSON.stringify(original.blocks)?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at}} : {})});
+      if (this.state.vault?.id === saved.vault_id) this.patch({pages: this.state.pages.map(page => page.id === saved.id ? {...page, title:this.pageCache.get(saved.id)?.title??page.title, aiStatus:this.pageCache.get(saved.id)?.aiStatus ?? saved.aiStatus, updated_at: saved.updated_at} : page), ...(this.state.page?.id === saved.id ? {page: this.pageCache.get(saved.id) || {...this.state.page, aiStatus:saved.aiStatus, pageDomains:saved.pageDomains,conceptClassification:saved.conceptClassification,conceptContentHash:this.state.page.blocks===original.blocks?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at}} : {})});
     },
     (saveStatus, error, failed) => this.patch({saveStatus, ...(error ? {error: error.message} : {}), ...(error && failed ? {saveFailures:[...this.state.saveFailures.filter(issue=>issue.vaultId!==failed.vault_id||issue.pageId!==failed.id),{vaultId:failed.vault_id,pageId:failed.id,title:failed.title,message:error.message}]} : {})}),
     async page => {
@@ -110,6 +111,11 @@ export class Workspace {
   snapshot = () => this.state;
   private patch(patch: Partial<WorkspaceState>) {
     const previous = this.state;
+    if(patch.page) {
+      patch.page=immutablePage(patch.page,patch.page.id===previous.page?.id?previous.page.blocks:undefined);
+      this.pageCache.set(patch.page.id,patch.page);
+      if(patch.page.id!==previous.page?.id || patch.page.vault_id!==previous.page?.vault_id || patch.page.revision!==previous.page?.revision)this.saver.prime(patch.page);
+    }
     this.state = {...this.state, ...patch};
     // Only leaving this note ends its initial writing session; saves and metadata
     // updates replace page objects without reopening the editor.
@@ -377,7 +383,7 @@ export class Workspace {
     const entries = pageDraftJournal.entries(server.vault_id,server.id);
     const candidates: PageDraftEntry[] = [], unresolved: PageDraftEntry[] = [];
     for (const entry of entries) {
-      if (server.revision > entry.baseRevision && pageContent(server) === pageContent(entry.snapshot)) {
+      if (server.revision >= entry.baseRevision && pageContent(server) === pageContent(entry.snapshot)) {
         try {pageDraftJournal.acknowledge(entry,server);} catch (error) {this.report(error);} continue;
       }
       const sent = entry.lastSent;
@@ -572,6 +578,7 @@ export class Workspace {
     const current = this.state.page;
     if (this.state.view !== 'pages' || !current || current.editLocked || this.pageLockPending || this.state.busy || this.state.loadingPageId !== null || this.state.reviewing || this.state.vault?.locked) return;
     const page = {...current, ...patch,aiReviewAccepted:!!(current.aiReviewAccepted||patch.aiReviewAccepted),...(patch.blocks&&patch.blocks!==current.blocks?{conceptContentHash:undefined}:{})};
+    page.blocks=immutableBlocks(page.blocks,current.blocks);
     page.sourceIds=[...new Set([...page.sourceIds,...citationSourceIds(page.blocks)])];
     page.aiStatus=nextPageAIStatus(current,page,id=>entityMentionName(this.state.entities.find(entity=>entity.id===id)));
     if(page.featuredImageId && !page.blocks.some(block=>block.type==='image' && block.imageId===page.featuredImageId))page.featuredImageId=null;

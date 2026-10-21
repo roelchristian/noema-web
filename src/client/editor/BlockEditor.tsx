@@ -1,3 +1,4 @@
+import {memoizeBlock} from '../../shared/immutable-blocks';
 import {getLocale} from '../i18n';
 import {t as uiText} from '../i18n';
 import type {EditorReviewText,EditorReviewSuggestion} from '../../shared/editor-review';
@@ -130,6 +131,11 @@ const TextBlockRow=memo(function TextBlockRow({block,entities,reviewMatches,numb
     <EditableBlock block={block} entities={entities} reviewMatches={reviewMatches} register={register} onOpen={actions.open} onInput={(element,event)=>actions.input(block,element,event)} onKeyDown={event=>actions.keyDown(event,block)} onPaste={event=>actions.paste(event,block)}/>
   </div>;
 });
+const blockSuggestionIds=memoizeBlock(block=>{
+  const ids=(block.type==='table'||block.type==='columns'?(block.rows??[]).flat(2):block.content).flatMap(segment=>segment.entityId?[segment.entityId]:[]);
+  for(const citation of noteCitations([block]).values())ids.push(citation.reference.sourceId);
+  return ids;
+});
 export function BlockEditor(props: Props) {
   const presentation=useContext(CitationPresentationContext);
   const presentationRef=useRef(presentation);presentationRef.current=presentation;
@@ -141,16 +147,8 @@ export function BlockEditor(props: Props) {
   const mobileToolbar = useRef<HTMLDivElement>(null);
   const {entities, onOpenEntity, onCreateEntity, onSave} = props;
   const {schema}=useEntitySchema(props.vaultId);
-  const previousBlocks=useRef<Block[]>([]);
-  const suggestionPriorityIds = useMemo(() => {
-    const used: string[] = [];
-    for (const block of props.blocks) {
-      for (const segment of block.type==='table'||block.type==='columns'?(block.rows??[]).flat(2):block.content)
-        if (segment.entityId) used.push(segment.entityId);
-      for (const citation of noteCitations([block]).values()) used.push(citation.reference.sourceId);
-    }
-    return [...new Set(used.reverse())];
-  }, [props.blocks]);
+
+  const suggestionPriorityIds = useMemo(() => [...new Set(props.blocks.flatMap(blockSuggestionIds).reverse())], [props.blocks]);
   const blocks = useMemo(() => {
     const normalized = normalizeSemanticGroups(normalizeColumnBlocks(props.blocks));
     const last = normalized.at(-1);
@@ -158,15 +156,9 @@ export function BlockEditor(props: Props) {
     // A regular editable paragraph provides the slash helper after every layout.
     // It is saved with the next edit, rather than creating a change just by opening a note.
     const next=hasTrailingText || normalized.length >= 2000 ? normalized : [...normalized,makeBlock()];
-    // History and server reconciliation can clone otherwise unchanged blocks.
-    // Compare the full value, not just content: formatting and all row metadata count.
-    const previous=new Map(previousBlocks.current.map(block=>[block.id,block]));
-    return next.map(block=>{
-      const old=previous.get(block.id);
-      return old && (old===block || JSON.stringify(old)===JSON.stringify(block)) ? old : block;
-    });
+    return next;
   }, [props.blocks]);
-  useLayoutEffect(()=>{previousBlocks.current=blocks;},[blocks]);
+
   const [linkedDeletion, setLinkedDeletion] = useState<string[]>([]);
   const onChange = (next: Block[], featuredImageId?: string | null, aiReviewAccepted?:true) => {
     const normalized = normalizeSemanticGroups(normalizeColumnBlocks(preserveAIExplanationTags(blocks,next)));

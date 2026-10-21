@@ -215,7 +215,9 @@ export function useDocumentHistory(page: Page | null, onChange: (patch: Document
         return;
       }
       const state = history.current, pending = state.input;
-      queueMicrotask(() => {if (state.input === pending) state.input = null;});
+      // Native listeners can have a microtask checkpoint before React receives
+      // the same input event. Keep its run until all listeners have committed.
+      setTimeout(() => {if (state.input === pending) state.input = null;}, 0);
     }
     function replaced(event: Event) {
       const page = (event as CustomEvent<Page>).detail;

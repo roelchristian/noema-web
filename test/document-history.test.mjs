@@ -160,3 +160,25 @@ test('whole-document operation counts remain bounded while typing coalesces',asy
     await h.step(history=>history.undo());assert.equal(h.history().canUndo,false);
   });
 });
+
+test('native input survives a microtask checkpoint before React commits the edit',async()=>{
+  await historyHarness(fixture(),async h=>{
+    const original=h.page().blocks[0].content[0].text;
+    for(const letter of ['x','y','z'])await h.step(async history=>{
+      const host=h.host();h.caret(host.textContent.length);
+      host.dispatchEvent(new h.dom.window.InputEvent('beforeinput',{inputType:'insertText',bubbles:true}));
+      const content=[{...h.page().blocks[0].content[0],text:host.textContent+letter}];
+      host.textContent=content[0].text;h.caret(content[0].text.length);
+      host.dispatchEvent(new h.dom.window.InputEvent('input',{inputType:'insertText',bubbles:true}));
+      // Chromium can run this checkpoint between the document's capture
+      // listener and React's delegated input listener.
+      await Promise.resolve();
+      history.change({blocks:h.page().blocks.map((block,i)=>i?block:{...block,content})});
+    });
+    await h.step(history=>history.undo());
+    assert.equal(h.page().blocks[0].content[0].text,original);
+    assert.equal(h.history().canUndo,false);
+    await h.step(history=>history.redo());
+    assert.equal(h.page().blocks[0].content[0].text,original+'xyz');
+  });
+});

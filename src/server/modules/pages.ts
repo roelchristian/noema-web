@@ -99,10 +99,25 @@ export class Pages {
   }
   create(vault: string, body: Record<string, unknown>) {
     const id=randomUUID(),createdAt=now();
-    this.store.run('INSERT INTO pages (id,title,language,blocks,updated_at,created_at,vault_id) VALUES (?,?,?,?,?,?,?)',id,required(body.title || 'Untitled'),pageLanguage(body.language),JSON.stringify([{id:randomUUID(),type:'paragraph',checked:false,content:[]}]),createdAt,createdAt,vault);
-    const provenance=new PageEnrichmentState(this.store);
-    if(typeof body.title==='string'&&body.title.trim()&&body.title.trim()!=='Untitled')provenance.markManual(id,'title');
-    if(pageLanguage(body.language))provenance.markManual(id,'language');
+    const destination=body.destination===undefined?{}:object(body.destination);
+    const collection=destination.collection == null || destination.collection === '' ? null : required(destination.collection);
+    const folder=destination.folder == null || destination.folder === '' ? null : required(destination.folder);
+    // A savepoint also works when source-page acceptance owns the outer transaction.
+    this.store.db.exec('SAVEPOINT create_page');
+    try {
+      if(collection&&!this.store.get('SELECT id FROM collections WHERE id=? AND vault_id=?',collection,vault))throw new HttpError(404,'Collection not found');
+      if(folder&&!this.store.get('SELECT id FROM folders WHERE id=? AND vault_id=?',folder,vault))throw new HttpError(404,'Folder not found');
+      this.store.run('INSERT INTO pages (id,title,language,blocks,updated_at,created_at,vault_id) VALUES (?,?,?,?,?,?,?)',id,required(body.title || 'Untitled'),pageLanguage(body.language),JSON.stringify([{id:randomUUID(),type:'paragraph',checked:false,content:[]}]),createdAt,createdAt,vault);
+      if(collection)this.store.run('INSERT INTO collection_memberships VALUES (?,?,?,?)',vault,'page',id,collection);
+      if(folder)this.store.run('INSERT INTO item_locations VALUES (?,?,?,?)',vault,'page',id,folder);
+      const provenance=new PageEnrichmentState(this.store);
+      if(typeof body.title==='string'&&body.title.trim()&&body.title.trim()!=='Untitled')provenance.markManual(id,'title');
+      if(pageLanguage(body.language))provenance.markManual(id,'language');
+      this.store.db.exec('RELEASE create_page');
+    } catch(error) {
+      this.store.db.exec('ROLLBACK TO create_page; RELEASE create_page');
+      throw error;
+    }
     return this.get(vault,id);
   }
   validateBlocks(vault: string, input: unknown): Block[] {

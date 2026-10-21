@@ -46,7 +46,7 @@ import { completeInlineMath, mathElement } from './math';
 import { completeTypedMarkdown,typedMarkdownBlock } from './markdown-typing';
 import { useMarkdownTyping } from '../state/markdown-preferences';
 import {applyEditorTextFormat,shortcutTextFormat} from './text-formatting';
-interface Props {onReview?:(texts:EditorReviewText[])=>Promise<EditorReviewSuggestion[]>;featuredImageId?: string | null; pages?:PageSummary[];onOpenPage?:(id:string)=>void;onExplain?: (blocks: Block[]) => Promise<string>; reviewMatches?: EntityReviewItem[]; onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[], featuredImageId?: string | null, aiReviewAccepted?:true) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
+interface Props {focusNewBody?:boolean;onCreationFocusConsumed?:()=>void;onReview?:(texts:EditorReviewText[])=>Promise<EditorReviewSuggestion[]>;featuredImageId?: string | null; pages?:PageSummary[];onOpenPage?:(id:string)=>void;onExplain?: (blocks: Block[]) => Promise<string>; reviewMatches?: EntityReviewItem[]; onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[], featuredImageId?: string | null, aiReviewAccepted?:true) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
 function explanationInsertionIndex(blocks: Block[], ids: string[]) {
   const last=blocks.filter(block=>ids.includes(block.id)).at(-1);
   if(!last)return -1;
@@ -289,6 +289,19 @@ export function BlockEditor(props: Props) {
       if (group) setActiveBlock({id: group.dataset.blockGroupId!, group: true});
     } else setActiveBlock({id: row.dataset.blockId!, group: false});
   }
+  const creationFocusConsumed=useRef(false);
+  useLayoutEffect(()=>{
+    if(!props.focusNewBody||creationFocusConsumed.current)return;
+    const first=blocks[0];
+    const el=first?.type==='paragraph'?elements.current.get(first.id):null;
+    if(!el)return;
+    creationFocusConsumed.current=true;
+    el.focus({preventScroll:true});
+    const range=document.createRange();
+    range.selectNodeContents(el);range.collapse(true);
+    const selection=getSelection();selection?.removeAllRanges();selection?.addRange(range);
+    props.onCreationFocusConsumed?.();
+  },[props.focusNewBody,props.onCreationFocusConsumed,blocks]);
   const focusTarget = useRef<{id: string; start: boolean; offset?: number} | null>(null);
   useLayoutEffect(() => {
     const target = focusTarget.current; if (!target) return;

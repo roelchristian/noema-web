@@ -27,11 +27,13 @@ export interface WorkspaceState {
   canGoBack: boolean; canGoForward: boolean;
   entityPanelId: string | null;
   vaults: Vault[]; vault: Vault | null; trash: TrashedPage[]; pages: PageSummary[]; entities: Entity[];
+  creationFocusPageId: string | null;
+  initialEditingPageId: string | null;
   organization: Organization; organizationContext: OrganizationContext; recent: RecentItem[];
   sourceId: string | null; page: Page | null; view: 'source' | 'pages' | 'entities' | 'organization' | 'favourites' | 'recent' | 'trash' | 'inbox'; busy: boolean; loadingPageId: string | null; reviewing: boolean; error: string | null; saveStatus: SaveStatus;
 }
 export class Workspace {
-  private state: WorkspaceState = {sourceId:null,domainSavingPageId:null,saveFailures: [], draftStorageFailures: [], draftRecoveries: [], entityPanelId: null, canGoBack: false, canGoForward: false, vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
+  private state: WorkspaceState = {initialEditingPageId:null,creationFocusPageId:null,sourceId:null,domainSavingPageId:null,saveFailures: [], draftStorageFailures: [], draftRecoveries: [], entityPanelId: null, canGoBack: false, canGoForward: false, vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
   private browserAttached = false;
   private browserInitialized = false;
   private browserSession = '';
@@ -109,6 +111,13 @@ export class Workspace {
   private patch(patch: Partial<WorkspaceState>) {
     const previous = this.state;
     this.state = {...this.state, ...patch};
+    // Only leaving this note ends its initial writing session; saves and metadata
+    // updates replace page objects without reopening the editor.
+    if(this.state.initialEditingPageId && (this.state.view!=='pages' ||
+      this.state.page?.id!==this.state.initialEditingPageId || !this.state.vault ||
+      this.state.vault.locked || this.state.vault.id!==previous.vault?.id)) {
+      this.state={...this.state,initialEditingPageId:null};
+    }
     if (this.state.view !== 'source' || !this.state.vault || this.state.vault.locked) this.state = {...this.state, sourceId:null};
     else if (!this.state.entities.some(entity => entity.id === this.state.sourceId && entity.type === 'source')) {
       this.state = {...this.state, view:'entities', sourceId:null};
@@ -338,7 +347,7 @@ export class Workspace {
     // Vault changes and destructive operations invalidate any pending note response.
     this.cancelPageLoad();
     if (this.navigation) return;
-    this.navigation = true; this.patch({busy: true});
+    this.navigation = true; this.patch({busy: true, creationFocusPageId:null});
     try { await this.saver.flush(); await work(); }
     finally { this.navigation = false; this.patch({busy: false}); }
   }
@@ -617,11 +626,19 @@ export class Workspace {
       }).catch(error=>{if(sequence===this.loadSequence)this.report(error);});
     }
   }
+  consumeCreationFocus = (id:string) => {
+    if(this.state.creationFocusPageId===id)this.patch({creationFocusPageId:null});
+  };
   async newPage() {
+    // Capture before navigation flushes pending edits or changes the visible view.
+    const destination=this.state.view==='organization'?{...this.state.organizationContext}:{collection:'',folder:''};
     await this.navigate(async () => {
-      const vault = this.state.vault!; const page = await api.createPage(vault.id);
+      const vault = this.state.vault!; const page = await api.createPage(vault.id,destination);
       this.titler.register(page);
-      this.pageCache.set(page.id, page); this.patch({page, pages: [page, ...this.state.pages], view: 'pages'}); this.recordRecent('page', page.id);
+      this.pageCache.set(page.id, page); this.patch({page, initialEditingPageId:page.id, creationFocusPageId:page.id, pages: [page, ...this.state.pages], view: 'pages',
+        organization:{...this.state.organization,
+          locations:destination.folder?[...this.state.organization.locations,{kind:'page',item_id:page.id,folder_id:destination.folder}]:this.state.organization.locations,
+          memberships:destination.collection?[...this.state.organization.memberships,{kind:'page',item_id:page.id,collection_id:destination.collection}]:this.state.organization.memberships}}); this.recordRecent('page', page.id);
     });
   }
   refreshTrash = async () => {

@@ -177,6 +177,15 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               ...(url.searchParams.get('context')==='1'&&file.status==='ready'&&file.admitted?{document:processedSourceDocument(file)}:{}),
             });
           }
+          if(id && parts[3]==='reading-locations') {
+            if(parts.length===4&&method==='GET')return send(200,sourceReading.continuity(vault,id));
+            if(parts.length===5&&method==='DELETE')return send(200,sourceReading.removeLocation(vault,id,parts[4]!));
+            if(parts.length===5&&['PUT','PATCH'].includes(method)) {
+              if(!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))throw new HttpError(415,'Reading actions require JSON.');
+              const body=await readBody(req);vaults.requireOpen(vault);
+              return send(200,method==='PATCH'?sourceReading.renameLocation(vault,id,parts[4]!,body):sourceReading.saveLocation(vault,id,parts[4]!,body));
+            }
+          }
           if(id && parts.length===4 && parts[3]==='highlights' && method==='GET')return send(200,sourceReading.list(vault,id));
           if(id && parts.length===4 && parts[3]==='reading-notes' && method==='GET')return send(200,sourceReading.listReadingNotes(vault,id));
           if(id && parts.length===5 && parts[3]==='reading-notes' && parts[4]==='explain' && method==='POST') {

@@ -50,7 +50,7 @@ export function SourceReaderInline({text,startOffset=0,highlights=[],footnotePre
       node=bold?<strong>{child}</strong>:strike?<s>{child}</s>:<em>{child}</em>;
     } else if(match[14]!==undefined) {
       const label=match[14],target=`${footnotePrefix}-note-${encodeURIComponent(label)}`;
-      node=<sup className="source-reader-footnote-reference"><a href={`#${target}`} data-footnote-reference={target} data-source-start={offset} data-source-end={offset+match[0].length} data-source-atomic="true" aria-label={uiText("Footnote {value0}",{value0: label})} onClick={event=>{event.preventDefault();const note=document.getElementById(target);if(note){note.scrollIntoView({block:'center'});note.focus({preventScroll:true});}}}>{label.replace(/^p\d+-/, '')}</a></sup>;
+      node=<sup className="source-reader-footnote-reference"><a href={`#${target}`} data-footnote-reference={target} data-source-start={offset} data-source-end={offset+match[0].length} data-source-atomic="true" aria-label={uiText("Footnote {value0}",{value0: label})} onClick={event=>{event.preventDefault();const note=document.getElementById(target);if(note){window.dispatchEvent(new Event('noema:before-reading-jump'));note.scrollIntoView({block:'center'});note.focus({preventScroll:true});}}}>{label.replace(/^p\d+-/, '')}</a></sup>;
     } else {
       const source=(match[10]??match[11]??match[12]??match[13]??'').trim();
       node=<MathLeaf source={source} display={match[10]!==undefined||match[11]!==undefined} start={offset} end={offset+match[0].length} highlights={highlights}/>;

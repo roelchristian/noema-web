@@ -1,3 +1,4 @@
+import {SourceReadingContinuity} from './SourceReadingContinuity';
 import {t as uiText} from '../i18n';
 import {SourceEvidence} from './SourceEvidence';
 import {SourceReprocessing} from './SourceReprocessing';
@@ -41,7 +42,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,refres
   const [reprocessed,setReprocessed]=useState(false),[comparisonPage,setComparisonPage]=useState<number|null>(null);
   useEffect(()=>setComparisonPage(null),[vaultId,fileId]);
   useEffect(()=>setReprocessed(false),[fileId,vaultId,source.id]);
-  function showOriginal(nodeId?:string){setReprocessed(false);if(nodeId){setSelected(nodeId);requestAnimationFrame(()=>{const element=document.getElementById(passageAnchor(fileId,nodeId));element?.scrollIntoView({block:'center'});element?.querySelector<HTMLButtonElement>('button')?.focus({preventScroll:true});});}}
+  function showOriginal(nodeId?:string){setReprocessed(false);if(nodeId){setSelected(nodeId);requestAnimationFrame(()=>{const element=document.getElementById(passageAnchor(fileId,nodeId));window.dispatchEvent(new Event('noema:before-reading-jump'));element?.scrollIntoView({block:'center'});element?.querySelector<HTMLButtonElement>('button')?.focus({preventScroll:true});});}}
   const [highlights,setHighlights]=useState<SourceHighlight[]>([]);
   const [readingNotes,setReadingNotes]=useState<ReadingNoteAnchor[]>([]);
   const copyTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
@@ -142,6 +143,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,refres
     {loaded&&!reprocessed&&<div className="source-reader-layout">
       <div className="source-reader-content">
         {reference&&<aside className="source-reader-selection" aria-label={uiText("Selected passage")}><div className="source-reader-selection-heading"><strong>{uiText("Selected passage")}</strong><button type="button" aria-label={uiText("Clear selected passage")} onClick={()=>setSelected(null)}><Icon name="close"/></button></div><small>{citationLocation(reference)}</small><blockquote>{reference.excerpt}</blockquote><div className="source-reader-selection-actions"><button className="button small" type="button" onClick={()=>void copyCitation()}>{copied?uiText("Copied"):uiText("Copy citation")}</button><button className="button small" type="button" onClick={()=>onAddPassage(reference)}>{uiText("Add to page")}</button><button className="button small" type="button" onClick={()=>onAnnotate(reference)}>{uiText("Annotate")}</button></div><span role="status" className="sr-only">{copied?uiText("Citation copied"):''}</span></aside>}
+        <SourceReadingContinuity key={`continuity:${loaded.id}:${loaded.textHash}`} file={loaded} article={article} selectedOffset={selectedEntry?.node.range.startOffset}/>
         <SourceReadingTools key={`tools:${loaded.id}:${loaded.textHash}`} file={loaded} article={article} highlights={highlights} onHighlight={highlight=>setHighlights(items=>[...items.filter(item=>item.id!==highlight.id),highlight])} onHighlightRemoved={id=>setHighlights(items=>items.filter(item=>item.id!==id))} onNoteCreated={readingNoteCreated}/>
         <article ref={article} className="source-reader-document" aria-label={source.name}>
           {entries.length?entries.map(({node,path})=>{

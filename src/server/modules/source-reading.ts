@@ -1,3 +1,4 @@
+import {createReadingAnchor,resolveReadingAnchor,type ReadingAnchor,type ReadingLocation,type ReadingContinuity} from '../../shared/reading-continuity.js';
 import {explanationPrompt} from './explanation-prompt.js';
 import type {PageGenerationMetadata} from '../../shared/page-generation.js';
 import {projectPageText} from '../../shared/page-text.js';
@@ -29,6 +30,37 @@ export class SourceReading {
   const file=this.store.get<SourceFile>(`SELECT f.* FROM source_files f JOIN entities e ON e.id=f.entity_id AND e.vault_id=f.vault_id WHERE f.id=? AND f.vault_id=? AND e.type='source'`,fileId,vault);
   if(!file)throw new HttpError(404,'Source file not found in this vault');
   return file;
+ }
+ continuity(vault:string,fileId:string):ReadingContinuity {
+  const file=mathSource(this.store,this.file(vault,fileId)),revision=sourceTextHash(file.text);
+  const locations=this.store.all<{id:string;label:string;anchor_json:string}>('SELECT id,label,anchor_json FROM source_reading_locations WHERE vault_id=? AND file_id=? ORDER BY rowid',vault,fileId).map(row=>{
+   const anchor=JSON.parse(row.anchor_json) as ReadingAnchor;
+   return {id:row.id,label:row.label,anchor,resolution:resolveReadingAnchor(anchor,file.text,revision)} satisfies ReadingLocation;
+  });
+  return {resume:locations.find(item=>item.id==='resume')??null,bookmarks:locations.filter(item=>item.id!=='resume')};
+ }
+ saveLocation(vault:string,fileId:string,id:string,body:Record<string,unknown>) {
+  const raw=this.file(vault,fileId),file=mathSource(this.store,raw),revision=sourceTextHash(file.text);
+  if(file.status!=='ready'||file.admitted!==1||body.revision!==revision)throw new HttpError(409,'This source changed. Reopen it before saving a reading location.');
+  if(!Number.isSafeInteger(body.offset)||(body.offset as number)<0||(body.offset as number)>file.text.length)throw new HttpError(400,'Invalid reading offset.');
+  if(id!=='resume'&&!/^[a-f0-9-]{36}$/i.test(id))throw new HttpError(400,'Invalid bookmark ID.');
+  const label=body.label===undefined?'':text(body.label,80).trim();
+  const anchor=createReadingAnchor(fileId,revision,file.text,body.offset as number,processedSourceDocument(file),body.atEnd===true);
+  if(!anchor.quote.trim())throw new HttpError(400,'This source has no readable passage.');
+  this.store.run('INSERT INTO source_reading_locations (vault_id,file_id,id,label,anchor_json) VALUES (?,?,?,?,?) ON CONFLICT(vault_id,file_id,id) DO UPDATE SET label=excluded.label,anchor_json=excluded.anchor_json',vault,fileId,id,label,JSON.stringify(anchor));
+  return {id,label,anchor,resolution:{status:'resolved',offset:anchor.offset}} satisfies ReadingLocation;
+ }
+ renameLocation(vault:string,fileId:string,id:string,body:Record<string,unknown>) {
+  this.file(vault,fileId);
+  if(id==='resume')throw new HttpError(400,'Choose a bookmark.');
+  const result=this.store.run('UPDATE source_reading_locations SET label=? WHERE vault_id=? AND file_id=? AND id=?',text(body.label,80).trim(),vault,fileId,id);
+  if(!result.changes)throw new HttpError(404,'Bookmark not found.');
+  return {ok:true};
+ }
+ removeLocation(vault:string,fileId:string,id:string) {
+  this.file(vault,fileId);
+  this.store.run('DELETE FROM source_reading_locations WHERE vault_id=? AND file_id=? AND id=?',vault,fileId,id);
+  return {ok:true};
  }
  private selection(vault:string,fileId:string,body:Record<string,unknown>):SourceReference {
   const raw=this.file(vault,fileId);

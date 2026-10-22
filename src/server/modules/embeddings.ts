@@ -313,7 +313,20 @@ export class Embeddings {
  relatedNotes(vault:string,pageId:string):SuggestionResults['notes'] {
   this.vaults.requireOpen(vault);
   this.pageSegments.synchronize(vault,pageId);
+  return this.rankedRelatedNotes(vault,pageId);
+ }
+ private rankedRelatedNotes(vault:string,pageId:string) {
   return this.cachedSuggestions(vault,pageId,'notes',()=>this.pageIndex.related(vault,this.pageIndex.savedVectors(vault,pageId),pageId));
+ }
+ relatedNotesState(vault:string,pageId:string,previous:unknown):import('../../shared/embeddings.js').RelatedNotesState {
+  if(!Array.isArray(previous)||previous.length>5||previous.some(id=>typeof id!=='string'||id.length>128))throw new HttpError(400,'Choose up to five previous related notes.');
+  this.vaults.requireOpen(vault);
+  this.pageSegments.synchronize(vault,pageId);
+  const pending=this.pageIndex.pending(vault,pageId);
+  // The client retains its list during a gap; do not score partial rankings it
+  // cannot display. Initial readers can still receive available partial matches.
+  const notes=pending&&previous.length?[]:this.rankedRelatedNotes(vault,pageId);
+  return {notes,pending,retainedPageIds:this.pageIndex.retainable(vault,pageId,previous)};
  }
  dismissSource(vault:string,pageId:string,sourceId:unknown) {
   this.pages.requireEditable(vault,pageId);

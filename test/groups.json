@@ -46,6 +46,7 @@
     "test/page-scroll.test.mjs",
     "test/reference-deletion.test.mjs",
     "test/search-snippets.test.mjs",
+    "test/related-notes-ui.test.mjs",
     "test/semantic-ui.test.mjs",
     "test/source-evidence-ui.test.mjs",
     "test/source-reprocessing-ui.test.mjs",

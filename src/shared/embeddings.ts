@@ -29,4 +29,5 @@ export interface SemanticSearchResult {pageReference?:PageReference;reference?: 
 export interface SemanticSearchResults { results: SemanticSearchResult[]; model: string }
 
 export interface SuggestedSource { sourceId:string; score:number; excerpt:string }
+export interface RelatedNotesState { notes:RelatedNote[]; pending:boolean; retainedPageIds:string[] }
 export interface RelatedNote { pageId:string; title:string; score:number; excerpt:string }

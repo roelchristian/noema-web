@@ -397,7 +397,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
               return send(200,result);
             }
             if(id && child==='suggestion-version' && parts.length===4 && method==='GET')return send(200,embeddings.suggestionVersion(vault,id));
-            if(id && child==='related-notes' && parts.length===4 && method==='GET')return send(200,embeddings.relatedNotes(vault,id));
+            if(id && child==='related-notes' && parts.length===4 && method==='GET')return send(200,url.searchParams.has('state')?embeddings.relatedNotesState(vault,id,url.searchParams.getAll('previous')):embeddings.relatedNotes(vault,id));
             if(id && child==='source-suggestions' && parts.length===4) {
               if(method==='GET')return send(200,embeddings.suggestedSources(vault,id));
               if(method==='POST')return send(200,embeddings.dismissSource(vault,id,body.sourceId));

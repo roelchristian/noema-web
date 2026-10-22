@@ -43,6 +43,7 @@ export async function importVaultBackup(file:File,name?:string):Promise<Vault> {
 }
 export const api={
   suggestionVersion:(vault:string,id:string,signal?:AbortSignal)=>request<{version:string}>(`pages/${id}/suggestion-version`,'GET',undefined,vault,signal),
+  relatedNotesState:(vault:string,id:string,previous:string[],signal?:AbortSignal)=>request<import('../shared/embeddings').RelatedNotesState>(`pages/${id}/related-notes?state=1&${new URLSearchParams(previous.map(id=>['previous',id]))}`,'GET',undefined,vault,signal),
   relatedNotes:(vault:string,id:string,signal?:AbortSignal)=>request<import('../shared/embeddings').RelatedNote[]>(`pages/${id}/related-notes`,'GET',undefined,vault,signal),
   suggestedSources:(vault:string,id:string,signal?:AbortSignal)=>request<import('../shared/embeddings').SuggestedSource[]>(`pages/${id}/source-suggestions`,'GET',undefined,vault,signal),
   dismissSource:(vault:string,id:string,sourceId:string)=>request<{dismissed:boolean}>(`pages/${id}/source-suggestions`,'POST',{sourceId},vault),

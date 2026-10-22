@@ -101,3 +101,33 @@ test('database restart upgrades the old blanket cancellation trigger without los
   assert.equal(store.get('SELECT status FROM embedding_jobs WHERE id=?',job.id).status,'queued');
  }finally{db.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+test('suggestion version polls avoid projection and ranking; cached snapshots reuse immutable ranked references',t=>{
+ const f=fixture(t);ready(f);
+ let other=f.pages.create(f.vault,{title:'Synthetic connection'});other=f.pages.update(f.vault,other.id,{...other,blocks:[paragraph('Related fields have multiplicative inverses and algebraic structures.')]});f.segments.synchronize(f.vault,other.id);
+ for(const segment of f.store.all('SELECT * FROM page_segments WHERE page_id=?',other.id))f.index.save(segment,vector().embedding,12);
+ const related=PageSegmentIndex.prototype.related,process=PageSegments.prototype.process;let rankings=0,projections=0;
+ t.mock.method(PageSegmentIndex.prototype,'related',function(...args){rankings++;return related.apply(this,args);});
+ t.mock.method(PageSegments.prototype,'process',function(...args){projections++;return process.apply(this,args);});
+ for(let i=0;i<20;i++)f.worker.suggestionVersion(f.vault,f.page.id);
+ assert.equal(rankings,0);assert.equal(projections,0);
+ const first=f.worker.relatedNotesState(f.vault,f.page.id,[]);
+ for(let i=0;i<20;i++){const next=f.worker.relatedNotesState(f.vault,f.page.id,[other.id]);assert.equal(next.notes,first.notes);assert.equal(next.pending,false);}
+ assert.equal(rankings,1);assert.equal(projections,0);assert.equal(f.calls(),0);
+ f.pages.update(f.vault,f.page.id,{...f.page,blocks:[paragraph('Changed synthetic body awaiting new saved embeddings and a fresh ranking.')]});
+ const pending=f.worker.relatedNotesState(f.vault,f.page.id,[other.id]);assert.equal(pending.pending,true);assert.deepEqual(pending.retainedPageIds,[other.id]);assert.equal(rankings,1,'No unused partial ranking while previous results are retained');
+ ready(f);
+ f.pages.delete(f.vault,other.id);assert.deepEqual(f.worker.relatedNotesState(f.vault,f.page.id,[other.id]).notes,[]);assert.equal(rankings,2);
+});
+
+test('a partial query with retained results skips the corpus ranking until its remaining vectors arrive',t=>{
+ const heading=(text,id)=>({...paragraph(text,id),type:'heading1'});
+ const f=fixture(t,async()=>vector(),[heading('First','h1'),paragraph('unchanged algebra '.repeat(250),'first'),heading('Second','h2'),paragraph('editable structure '.repeat(250),'second')]);
+ const query=f.store.all('SELECT * FROM page_segments WHERE page_id=? ORDER BY ordinal',f.page.id);assert.ok(query.length>1);f.index.save(query[0],vector().embedding,12);
+ let candidate=f.pages.create(f.vault,{title:'Synthetic retained connection'});candidate=f.pages.update(f.vault,candidate.id,{...candidate,blocks:[paragraph('Algebraic structures support the synthetic connection.')]});f.segments.synchronize(f.vault,candidate.id);for(const s of f.store.all('SELECT * FROM page_segments WHERE page_id=?',candidate.id))f.index.save(s,vector().embedding,12);
+ const original=PageSegmentIndex.prototype.related;let rankings=0;t.mock.method(PageSegmentIndex.prototype,'related',function(...args){rankings++;return original.apply(this,args);});
+ for(let i=0;i<10;i++){const state=f.worker.relatedNotesState(f.vault,f.page.id,[candidate.id]);assert.equal(state.pending,true);assert.deepEqual(state.retainedPageIds,[candidate.id]);}
+ assert.equal(rankings,0);
+ for(const s of query.slice(1))f.index.save(s,vector().embedding,12);
+ const complete=f.worker.relatedNotesState(f.vault,f.page.id,[candidate.id]);assert.equal(complete.pending,false);assert.equal(complete.notes[0].pageId,candidate.id);assert.equal(rankings,1);assert.equal(f.calls(),0);
+});

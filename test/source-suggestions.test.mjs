@@ -111,3 +111,15 @@ test('source archive invalidates cached suggestion eligibility and restore retur
  lifecycle.change(f.vault,source.id,true,archived.version);
  assert.ok(f.worker.suggestedSources(f.vault,f.page.id).some(item=>item.sourceId===source.id));assert.equal(f.calls(),0);
 });
+
+test('related snapshot distinguishes indexing gaps from empty results and validates retained eligibility across saves and vaults',t=>{
+ const f=fixture(t),related=savedNote(f,'Retained'),other=savedNote(f,'Foreign',vector(),f.vaults.create({name:'Foreign'}).id);
+ let state=f.worker.relatedNotesState(f.vault,f.page.id,[related.id,other.id]);assert.equal(state.pending,false);assert.equal(state.notes.length,1);assert.deepEqual(state.retainedPageIds,[related.id]);
+ f.page=f.pages.update(f.vault,f.page.id,{...f.page,blocks:[paragraph('An edited synthetic note with no current saved embedding.')]});
+ state=f.worker.relatedNotesState(f.vault,f.page.id,[related.id]);assert.equal(state.pending,true);assert.deepEqual(state.notes,[]);assert.deepEqual(state.retainedPageIds,[related.id]);
+ f.pages.delete(f.vault,related.id);state=f.worker.relatedNotesState(f.vault,f.page.id,[related.id]);assert.deepEqual(state.retainedPageIds,[]);assert.equal(state.pending,true);
+ for(const segment of f.store.all('SELECT * FROM page_segments WHERE page_id=?',f.page.id))f.index.save(segment,vector(),10);
+ state=f.worker.relatedNotesState(f.vault,f.page.id,[]);assert.equal(state.pending,false);assert.deepEqual(state.notes,[]);
+ f.page=f.pages.update(f.vault,f.page.id,{...f.page,blocks:[paragraph('Short')]});assert.equal(f.worker.relatedNotesState(f.vault,f.page.id,[]).pending,false);
+ assert.throws(()=>f.worker.relatedNotesState(f.vault,f.page.id,Array(6).fill('x')),/five/);assert.equal(f.calls(),0);
+});

@@ -15,6 +15,8 @@ All routes are under `/api` and accept/return JSON. Send `X-Vault-Id` to select 
 | GET / PUT | `/security/network` | Read network access or save `{lan: boolean}`; changes persist and apply immediately |
 | GET / POST | `/pages` | List / create pages |
 | GET / PUT / DELETE | `/pages/:id` | Read / replace / delete a page |
+| GET | `/pages/:id/suggestion-version` | Cheap saved-input version for related notes and source suggestions |
+| GET | `/pages/:id/related-notes` | Saved-vector ranking; optional `state=1` and up to five `previous` IDs return pending/retained eligibility ([contract](related-notes-refresh.md#behavior-and-api)) |
 | GET | `/organization` | Read collections, folders, placements, memberships, and favourites |
 | POST | `/organization/collections` | Create with `{name}` |
 | PUT / DELETE | `/organization/collections/:id` | Rename / remove a collection, preserving content |

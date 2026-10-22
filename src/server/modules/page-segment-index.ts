@@ -54,6 +54,21 @@ export class PageSegmentIndex {
   });
  }
  hasSearchable(vault:string){return !!this.store.get(`SELECT 1 FROM page_segments s JOIN pages p ON p.id=s.page_id JOIN page_segment_embeddings b ON b.segment_id=s.id AND b.content_hash=s.content_hash WHERE s.vault_id=? AND ${current} AND b.model=? AND b.dimensions=? LIMIT 1`,vault,embeddingModel,embeddingDimensions);}
+ /** Distinguish unavailable query vectors from a completed empty ranking. */
+ pending(vault:string,pageId:string) {
+  return !!this.store.get(`SELECT 1 FROM pages p WHERE p.id=? AND p.vault_id=? AND p.deleted_at IS NULL AND (
+   EXISTS(SELECT 1 FROM page_index_dirty WHERE page_id=p.id) OR (
+    (SELECT body_characters FROM page_index_state WHERE page_id=p.id)>=coalesce((SELECT min_characters FROM embedding_settings WHERE vault_id=p.vault_id),20)
+    AND EXISTS(SELECT 1 FROM page_segments s WHERE s.page_id=p.id AND NOT EXISTS(
+     SELECT 1 FROM page_segment_embeddings b WHERE b.segment_id=s.id AND b.content_hash=s.content_hash AND b.model=? AND b.dimensions=?))))`,pageId,vault,embeddingModel,embeddingDimensions);
+ }
+ /** Revalidate at most five retained IDs, even when the query is still indexing. */
+ retainable(vault:string,pageId:string,ids:string[]):string[] {
+  if(!ids.length)return [];
+  return this.store.all<{page_id:string}>(`SELECT DISTINCT s.page_id FROM page_segments s JOIN pages p ON p.id=s.page_id
+   JOIN page_segment_embeddings b ON b.segment_id=s.id AND b.content_hash=s.content_hash
+   WHERE s.vault_id=? AND s.page_id<>? AND s.page_id IN (${ids.map(()=>'?').join(',')}) AND ${current} AND b.model=? AND b.dimensions=?`,vault,pageId,...ids,embeddingModel,embeddingDimensions).map(row=>row.page_id);
+ }
  /** Load each candidate once, then compare all saved query segments while its vector is prepared. */
  related(vault:string,queryVectors:number[][],excludedPageId:string,limit=5):RelatedNote[] {
   if(!queryVectors.length||limit<=0)return [];

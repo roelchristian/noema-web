@@ -2,7 +2,8 @@ import {t as uiText} from '../i18n';
 import {citationKey,citationLocation,sortCitationRuns} from '../../shared/citations';
 import type {CitationPresentation} from '../sources/CitationPresentation';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { safeHref, type Entity, type Segment, type TextStyle } from '../../shared/domain';
+import { isExternalWebHref, safeHref, type Entity, type Segment, type TextStyle } from '../../shared/domain';
+import { Icon } from '../components/Icon';
 import { Mention } from '../components/Mention';
 import { pageLinkNodes } from './page-links';
 import { renderMath } from './math';
@@ -44,7 +45,7 @@ export function syncEditableSegments(element: HTMLElement, content: Segment[], e
   pending.timer = setTimeout(decorate, 0);
 }
 /** Only escaped text and explicitly supported formatting reach the editable surface. */
-export function segmentHTML(content: Segment[], entities: Entity[], review?: ReviewLocation, readOnly = false, citations?:CitationPresentation) {
+export function segmentHTML(content: Segment[], entities: Entity[], review?: ReviewLocation, readOnly = false, citations?:CitationPresentation, decorateLinks = true) {
   const ranges = review ? entityReviewRanges(content, entities, review) : [];
   let offset = 0;
   const numberOf=(ref:NonNullable<Segment['sourceReference']>)=>citations?.style==='references'?citations.entries.get(citationKey(ref))?.number??ref.sourceNumber??1:ref.sourceNumber??1;
@@ -78,7 +79,12 @@ export function segmentHTML(content: Segment[], entities: Entity[], review?: Rev
     if (s.italic) node = <em>{node}</em>;
     if (s.underline) node = <u>{node}</u>;
     if (s.strike) node = <s>{node}</s>;
-    if (s.href && safeHref(s.href)) node = <a href={safeHref(s.href)}>{node}</a>;
+    if (s.href && safeHref(s.href)) {
+      const external=isExternalWebHref(s.href,typeof window==='undefined'?undefined:window.location.origin);
+      const next=ordered[index+1];
+      const endOfLink=!next || next.href!==s.href || next.entityId || next.math || next.sourceReference;
+      node = <a href={safeHref(s.href)} tabIndex={!readOnly && decorateLinks ? (ordered[index-1]?.href===s.href ? -1 : 0) : undefined} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined} title={decorateLinks && external ? uiText(readOnly ? "Open external link in a new tab" : "Ctrl/⌘-click to open link in a new tab") : undefined}>{node}{decorateLinks && external && endOfLink ? <span className="external-link-indicator" aria-hidden="true"><Icon name="external-link"/></span> : null}</a>;
+    }
     return <span key={index} data-skip-auto-tag={s.skipAutoTag ? 'true' : undefined}>{node}</span>;
   })}{trailingCaret ? '\u200b' : null}</>);
 }

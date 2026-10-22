@@ -17,7 +17,7 @@ import {CitationPresentationContext} from '../sources/CitationPresentation';
 import {mentionMatches,mentionCaretRect} from './mention-picker';
 import {menuPlacement,revealMenuItem} from '../components/menu-placement';
 import {useEntitySchema} from '../knowledge/useEntitySchema';
-import { blockListNumber, entityMentionName } from '../../shared/domain';
+import { blockListNumber, entityMentionName, safeHref } from '../../shared/domain';
 import {randomUUID} from '../../shared/uuid';
 import { aiExplanationSources, aiExplanationsForSources, explanationsLinkedToDeletedBlocks, applySemantic, isAIExplanation, preserveAIExplanationTags, normalizeSemanticGroups, removeSemanticGroup, retagSemanticGroup, semanticDragItems, semanticFunctions, editableSemanticKinds, semanticRuns, type SemanticKind } from '../../shared/semantic-blocks';
 import {pageTitleKey} from '../../shared/page-links';
@@ -983,6 +983,15 @@ export function BlockEditor(props: Props) {
     }} onClickCapture={e => {
       // A tap ending a native selection gesture must not open an inline item.
       const selection = getSelection();
+      const anchor=(e.target as Element).closest<HTMLAnchorElement>('a[href]');
+      if(anchor?.closest('.block-content[contenteditable="true"]')) {
+        // Browsers suppress native link activation inside contenteditable.
+        // Keep ordinary clicks for the caret and explicitly support modified clicks.
+        e.preventDefault();
+        const href=safeHref(anchor.getAttribute('href')??'');
+        if(selection?.isCollapsed && (e.metaKey || e.ctrlKey) && href) window.open(href,anchor.target || '_self','noopener,noreferrer');
+        return;
+      }
       if (mobile && selection && !selection.isCollapsed && root.current?.contains(selection.anchorNode) && (e.target as Element).closest('[data-page-title], [data-entity], [data-entity-review], [data-math]')) { e.stopPropagation(); return; }
       const mention=(e.target as Element).closest<HTMLElement>('.mention[data-entity]');
       if(mention?.closest('.block-content[contenteditable="true"]')){e.preventDefault();e.stopPropagation();document.dispatchEvent(new CustomEvent('noema:entity-link',{detail:mention}));return;}
@@ -997,6 +1006,13 @@ export function BlockEditor(props: Props) {
       const math = (e.target as Element).closest<HTMLElement>('[data-math]');
       if (math && !(e.target as Element).closest('[data-semantic-kind="ai-explanation"]')) {e.preventDefault(); e.stopPropagation(); editInlineMath(math);}
     }} onKeyDownCapture={e => {
+      const anchor=(e.target as Element).closest<HTMLAnchorElement>('a[href]');
+      if(!e.nativeEvent.isComposing && e.key==='Enter' && anchor && document.activeElement===anchor && anchor.closest('.block-content[contenteditable="true"]')) {
+        const href=safeHref(anchor.getAttribute('href')??'');
+        e.preventDefault();e.stopPropagation();
+        if(href)window.open(href,anchor.target || '_self','noopener,noreferrer');
+        return;
+      }
       const mention=(e.target as Element).closest<HTMLElement>('.mention[data-entity]');
       if(!e.nativeEvent.isComposing&&mention?.closest('.block-content[contenteditable="true"]')&&(e.key==='Enter'||e.key===' ')){e.preventDefault();e.stopPropagation();document.dispatchEvent(new CustomEvent('noema:entity-link',{detail:mention}));return;}
       if(!e.nativeEvent.isComposing&&!e.metaKey&&!e.ctrlKey&&!e.altKey&&(e.key==='Backspace'||e.key==='Delete')&&root.current&&deleteEditorReference(root.current,e.target,e.key==='Backspace'?'backward':'forward')){

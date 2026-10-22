@@ -1,7 +1,7 @@
 import {t as uiText} from '../i18n';
 import { entityMentionName } from '../../shared/domain';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { entityLabels, type Entity } from '../../shared/domain';
+import type { Entity } from '../../shared/domain';
 import { Icon } from './Icon';
 
 /** One shared card for editor mentions and explicitly marked entity list items. */
@@ -79,7 +79,7 @@ export function EntityPreview({entities, onOpen}: {entities: Entity[]; onOpen: (
   if (!entity || !target?.isConnected) return null;
   const description=entity.description.trim();
   return <div ref={card} id="entity-preview" className="entity-preview" style={position} role="dialog" aria-labelledby="entity-preview-title" aria-describedby={description?'entity-preview-description':undefined}>
-    <div className="entity-preview-heading"><Icon name={entity.type}/><h3 id="entity-preview-title">{entity.name}</h3><span className="entity-preview-type">{uiText(entityLabels[entity.type])}</span></div>
+    <div className="entity-preview-heading"><Icon name={entity.type}/><h3 id="entity-preview-title">{entity.name}</h3></div>
     {description&&<p id="entity-preview-description">{description}</p>}
     <div className="entity-preview-actions">
     <button type="button" className="entity-preview-open" onClick={() => { const id = entity.id; dismiss(); onOpen(id); }}><Icon name="external-link"/>{uiText("Open entity")}</button>

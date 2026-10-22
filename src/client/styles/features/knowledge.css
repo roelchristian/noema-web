@@ -2083,12 +2083,6 @@
   flex: none;
   color: var(--text-muted);
 }
-.entity-preview-type {
-  flex: none;
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--text-muted);
-}
 .entity-preview h3 {
   flex: 1;
   min-width: 0;

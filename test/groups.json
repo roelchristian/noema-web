@@ -61,7 +61,8 @@
     "test/entity-mention-navigation.test.mjs",
     "test/entity-home-phase3.test.mjs",
     "test/entity-neighborhood-ui.test.mjs",
-    "test/entity-discovery-ui.test.mjs"
+    "test/entity-discovery-ui.test.mjs",
+    "test/document-find-shortcuts.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",

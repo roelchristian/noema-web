@@ -16,7 +16,7 @@ export class EntityMatches {
     const page = this.pages.get(vault,pageId);
     if (revision !== undefined && revision !== page.revision) throw new HttpError(409,'The page changed. Wait for saving to finish before reviewing.');
     const entities = entitiesForPage(page,this.knowledge.list(vault));
-    const key = createHash('sha256').update(JSON.stringify(['entity-match-cache-v3', TAXONOMY_VERSION, ALIAS_POLICY_VERSION, page.pageDomains, page.revision, page.blocks, entities.map(({id,name,aliases,type,subtypes,domainIds,inactive}) => [id,name,aliases,type,subtypes,domainIds,inactive])])).digest('hex');
+    const key = createHash('sha256').update(JSON.stringify(['entity-match-cache-v3', TAXONOMY_VERSION, ALIAS_POLICY_VERSION, page.pageDomains, page.revision, page.blocks, entities.map(({id,name,aliases,type,subtypes,domainIds,inactive,archived_at}) => [id,name,aliases,type,subtypes,domainIds,inactive,archived_at])])).digest('hex');
     const cached = this.store.get<{cache_key: string; matches: string}>('SELECT cache_key,matches FROM page_entity_match_cache WHERE page_id=? AND vault_id=?',pageId,vault);
     if (cached?.cache_key === key) return {revision:page.revision,key,matches:JSON.parse(cached.matches) as EntityReviewItem[]};
     const {ambiguous} = identifyEntityMentions(page.blocks,entities,vault);

@@ -156,7 +156,7 @@ export class SourcePassageEmbeddings {
  suggested(vault:string,queryVectors:number[][],excludedSourceIds:Set<string>,limit=5):SuggestedSource[] {
   if(!queryVectors.length||limit<=0)return [];
   type Candidate={id:string;source_id:string;content_hash:string;text:string;vector:string};
-  const rows=this.store.all<Candidate>(`SELECT p.id,p.source_id,p.content_hash,p.text,b.vector ${joins} JOIN source_passage_embeddings b ON b.passage_id=p.id WHERE p.vault_id=? AND e.type='source' AND ${eligible} AND ${fresh}`,vault,embeddingModel,embeddingDimensions);
+  const rows=this.store.all<Candidate>(`SELECT p.id,p.source_id,p.content_hash,p.text,b.vector ${joins} JOIN source_passage_embeddings b ON b.passage_id=p.id WHERE p.vault_id=? AND e.type='source' AND e.archived_at IS NULL AND ${eligible} AND ${fresh}`,vault,embeddingModel,embeddingDimensions);
   const matches=new Map<string,{row:Candidate;score:number}>();
   for(const row of rows) {
    if(excludedSourceIds.has(row.source_id))continue;

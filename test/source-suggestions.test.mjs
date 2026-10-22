@@ -99,3 +99,15 @@ test('related notes require current valid embeddings and respect vault access',t
  f.vaults.lock(f.vault,{passphrase:'test-lock'});
  assert.throws(()=>f.worker.relatedNotes(f.vault,f.page.id),/locked/);
 });
+
+test('source archive invalidates cached suggestion eligibility and restore returns the saved evidence without provider calls',async t=>{
+ const {EntityLifecycle}=await import('../src/server/modules/entity-lifecycle.ts');
+ const f=fixture(t),source=f.source('Synthetic archived suggestion'),lifecycle=new EntityLifecycle(f.store);
+ assert.ok(f.worker.suggestedSources(f.vault,f.page.id).some(item=>item.sourceId===source.id));
+ const oldVersion=f.worker.suggestionVersion(f.vault,f.page.id).version,state=lifecycle.preview(f.vault,source.id);
+ const archived=lifecycle.change(f.vault,source.id,false,state.version);
+ assert.notEqual(f.worker.suggestionVersion(f.vault,f.page.id).version,oldVersion);
+ assert.deepEqual(f.worker.suggestedSources(f.vault,f.page.id),[]);
+ lifecycle.change(f.vault,source.id,true,archived.version);
+ assert.ok(f.worker.suggestedSources(f.vault,f.page.id).some(item=>item.sourceId===source.id));assert.equal(f.calls(),0);
+});

@@ -1,0 +1,30 @@
+import {mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {randomUUID} from 'node:crypto';
+import {openDatabase} from '../../src/server/database.ts';
+import {Store} from '../../src/server/store.ts';
+import {Knowledge} from '../../src/server/modules/knowledge.ts';
+import {Pages} from '../../src/server/modules/pages.ts';
+import {SourceFiles} from '../../src/server/modules/source-files.ts';
+import {SourceReading} from '../../src/server/modules/source-reading.ts';
+import {EntityLifecycle} from '../../src/server/modules/entity-lifecycle.ts';
+import {Vaults} from '../../src/server/modules/vaults.ts';
+import {sourceTextHash} from '../../src/server/modules/source-math-text.ts';
+export async function lifecycleFixture(){
+ const directory=mkdtempSync(path.join(tmpdir(),'noema-lifecycle-')),db=openDatabase(path.join(directory,'db.sqlite')),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),files=new SourceFiles(store),reading=new SourceReading(store),vaults=new Vaults(store),lifecycle=new EntityLifecycle(store);
+ const person=knowledge.create('default',{type:'person',name:'Synthetic Archivist'}),peer=knowledge.create('default',{type:'person',name:'Synthetic Colleague'});
+ const file=files.add('default','synthetic-evidence.md',Buffer.from('# Synthetic evidence\n\nA fictional triangle has three invented sides.\n\nThis passage is local synthetic evidence for archive validation.'));
+ const source=knowledge.create('default',{type:'source',name:'Synthetic evidence',attachmentIds:[file.id]});await files.tick();
+ const original=files.require('default',file.id),excerpt='A fictional triangle has three invented sides.',startOffset=original.text.indexOf(excerpt),sourceHash=sourceTextHash(original.text);
+ const selection={sourceId:source.id,fileId:file.id,sourceHash,excerpt,startOffset,endOffset:startOffset+excerpt.length};
+ const highlight=reading.createHighlight('default',file.id,{...selection,color:'yellow'});
+ const bookmark=reading.saveLocation('default',file.id,randomUUID(),{revision:sourceHash,offset:startOffset,label:'Synthetic bookmark'});
+ const note=reading.createReadingNote('default',file.id,{...selection,text:'Synthetic reading observation.'});
+ const ref={id:randomUUID(),...selection,startLine:3,endLine:3};
+ let active=pages.create('default',{title:'Synthetic active references'});
+ active=pages.update('default',active.id,{...active,sourceIds:[source.id],blocks:[{id:'paragraph',type:'paragraph',content:[{entityId:person.id,mentionText:'Synthetic Archivist'},{text:' [1]',sourceReference:ref}]},{id:'table',type:'table',content:[],rows:[[[{entityId:person.id}],[{text:'Table evidence'}]]]},{id:'columns',type:'columns',content:[],rows:[[[{entityId:person.id}],[{text:'Column evidence'}]]]}]});
+ let trashed=pages.create('default',{title:'Synthetic trashed references'});trashed=pages.update('default',trashed.id,{...trashed,sourceIds:[source.id],blocks:[{id:'trash-body',type:'paragraph',content:[{entityId:person.id},{text:' [1]',sourceReference:{...ref,id:randomUUID()}}]}]});pages.delete('default',trashed.id);
+ knowledge.property('default',person.id,{name:'birthplace',target_id:peer.id});knowledge.property('default',peer.id,{name:'birthplace',target_id:person.id});knowledge.relationship('default',peer.id,{label:'knows',target_id:person.id});
+ return {directory,db,store,knowledge,pages,files,reading,vaults,lifecycle,person,peer,source,file,active,trashed,note,ref,highlight,bookmark,original,close(){files.close();db.close();rmSync(directory,{recursive:true,force:true});}};
+}

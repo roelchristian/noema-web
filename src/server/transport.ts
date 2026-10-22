@@ -1,6 +1,7 @@
 import type {NetworkAccess} from './network-settings.js';
 import {sourcePageRoutes} from './routes/source-pages.js';
 import {reviewTexts,parseEditorReview} from './modules/editor-review.js';
+import {EntityLifecycle} from './modules/entity-lifecycle.js';
 import {SourceLifecycleService} from './modules/source-lifecycle.js';
 import {readingNoteMaxWords,readingNoteWordCount} from '../shared/source-reading.js';
 import {sourceProgress} from './modules/source-progress.js';
@@ -413,9 +414,9 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           if(collection==='entities') {
             if(id && child==='lifecycle' && parts.length===4) {
               const lifecycle=new SourceLifecycleService(store);
-              if(method==='GET')return send(200,lifecycle.preview(vault,id));
+              if(method==='GET')return send(200,new EntityLifecycle(store).preview(vault,id));
               if(method==='POST') {
-                if(body.action==='archive'||body.action==='restore')return send(200,lifecycle.archive(vault,id,body.action==='restore'));
+                if(body.action==='archive'||body.action==='restore')return send(200,new EntityLifecycle(store).change(vault,id,body.action==='restore',body.version));
                 if(body.action==='delete')return send(200,lifecycle.delete(vault,id,body.confirmation));
                 throw new HttpError(400,'Choose archive, restore, or delete.');
               }

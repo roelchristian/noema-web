@@ -1066,8 +1066,8 @@ export function BlockEditor(props: Props) {
     {menu && (mobile && menu.sheet ? <Modal className="mobile-block-sheet" titleId="mobile-block-sheet-title" onClose={() => setMenu(null)} dismissOnBackdrop>
       <div ref={menuRef}>
         <ModalHeader titleId="mobile-block-sheet-title">{menu.label === 'ADD BLOCK BELOW' ? uiText("Add a block") : menu.label === 'FORMAT' || menu.label === 'TURN INTO' ? uiText("Format block") : menu.label === 'TURN INTO SEMANTIC BLOCK' ? uiText("Turn into") : menu.label === 'AI ACTIONS' ? uiText("AI actions") : menu.label === 'SEMANTIC GROUP' ? uiText("Group actions") : menu.label === 'SEMANTIC FUNCTION' ? uiText("Semantic function") : uiText("Block actions")}</ModalHeader>
-        <div key={menu.label} className="mobile-block-sheet-options">{menuChoices(true)}</div>
+        <div key={menu.label} className="mobile-block-sheet-options menu-primitive" data-menu-size="touch" data-menu-presentation="sheet">{menuChoices(true)}</div>
       </div>
-    </Modal> : <div key={menu.label} ref={menuRef} className="command-menu block-action-menu" style={{left: menu.left, top: menu.top}} onMouseDown={e => e.preventDefault()} role="menu" aria-label={menu.label}>{menuChoices()}</div>)}
+    </Modal> : <div key={menu.label} ref={menuRef} className="command-menu block-action-menu menu-primitive" data-menu-size="regular" data-menu-presentation="popup" style={{left: menu.left, top: menu.top}} onMouseDown={e => e.preventDefault()} role="menu" aria-label={menu.label}>{menuChoices()}</div>)}
   </>;
 }

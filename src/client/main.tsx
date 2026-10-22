@@ -9,5 +9,4 @@ import './knowledge/entity-neighborhood.css';
 import './knowledge/entity-discovery.css';
 import './editor/page-entity-associations.css';
 import './editor/page-toolbar.css';
-import './editor/block-command-icons.css';
 createRoot(document.getElementById('root')!).render(<App/>);

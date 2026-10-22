@@ -321,7 +321,7 @@ html {
 :root[data-focused-reading=true] .page .block-content .mention[data-entity] .icon {
   display: none;
 }
-.select-menu, .sidebar-action-menu {
+.select-menu {
   overscroll-behavior: contain;
   scroll-padding: 5px;
 }
@@ -335,7 +335,7 @@ html {
   body:has(.workspace-navigation:modal) {
     overflow: hidden;
   }
-  .button, .button.small, .select-trigger, .select-option, .sidebar-action-menu > button {
+  .button, .button.small, .select-trigger, .select-option {
     min-height: var(--touch-target-size);
   }
   #root input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=range]),

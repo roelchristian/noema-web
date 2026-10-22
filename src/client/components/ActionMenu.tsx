@@ -49,7 +49,7 @@ export function ActionMenu({label, actions, disabled = false, icon = 'more'}: {l
     <button ref={trigger} className="sidebar-menu-trigger" type="button" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open} aria-controls={id} disabled={disabled} onClick={() => { if (open) close(); else { focusLast.current = false; setOpen(true); } }} onKeyDown={event => {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); focusLast.current = event.key === 'ArrowUp'; setOpen(true); }
     }}><Icon name={icon}/></button>
-    <div ref={menu} id={id} popover="auto" role="menu" aria-label={currentLabel} className="sidebar-action-menu" onToggle={event => { if (!event.currentTarget.matches(':popover-open')) {setOpen(false);setPath([]);} }} onKeyDown={event => {
+    <div ref={menu} id={id} popover="auto" role="menu" aria-label={currentLabel} className="sidebar-action-menu menu-primitive" data-menu-size="regular" data-menu-presentation="popup" onToggle={event => { if (!event.currentTarget.matches(':popover-open')) {setOpen(false);setPath([]);} }} onKeyDown={event => {
       const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role^=menuitem]:not(:disabled)')];
       const index = items.indexOf(document.activeElement as HTMLButtonElement);
       const focus = (item:HTMLButtonElement|undefined) => {if(item){item.focus({preventScroll:true});revealMenuItem(event.currentTarget,item);}};

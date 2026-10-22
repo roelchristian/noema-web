@@ -10,8 +10,17 @@
     "start": "npm run build && node server.mjs",
     "dev": "node scripts/dev.mjs",
     "build": "npm run typecheck && tsc -p tsconfig.server.json && vite build",
-    "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --import tsx --test test/*.test.mjs"
+    "typecheck": "tsc --noEmit && npm run typecheck:tests",
+    "test": "npm run build && npm run test:all",
+    "test:all": "node scripts/test.mjs",
+    "test:unit": "node scripts/test.mjs --group=unit",
+    "test:dom": "node scripts/test.mjs --group=dom",
+    "test:server": "node scripts/test.mjs --group=server",
+    "test:list": "node scripts/test.mjs --list",
+    "test:browser": "node scripts/check-editor-browser.mjs && node --import tsx scripts/check-reading-continuity-browser.mjs",
+    "test:performance": "EXPECT_ISOLATION=1 node scripts/measure-editor-renders.mjs && node --import tsx scripts/benchmark-document-history.mjs && node --import tsx scripts/benchmark-page-drift.mjs",
+    "typecheck:tests": "tsc --noEmit -p tsconfig.test.json",
+    "test:native": "node scripts/test-native.mjs"
   },
   "dependencies": {
     "js-tiktoken": "^1.0.21",

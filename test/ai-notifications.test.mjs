@@ -14,18 +14,25 @@ import {Knowledge} from '../src/server/modules/knowledge.ts';
 import {Vaults} from '../src/server/modules/vaults.ts';
 import {createApp} from '../src/server/http.ts';
 import {notificationMessage,runningMessage} from '../src/shared/ai-notifications.ts';
+import {PageEnrichment} from '../src/server/modules/page-enrichment.ts';
+import {enrichmentProvider} from './helpers/providers.ts';
 const selection={model:'test',reasoningEffort:'low'};
 function setup(filename=':memory:') {
   const db=openDatabase(filename),store=new Store(db),pages=new Pages(store,new Knowledge(store));
   return {db,store,pages,notifications:new AINotifications(store),enrichments:new AIEnrichments(store,pages),vaults:new Vaults(store)};
 }
-test('saved enrichments notify regardless of producer; titles notify only when actually applied',()=>{
-  const {db,pages,enrichments,notifications}=setup();
+test('saved enrichments notify regardless of producer; titles notify only when actually applied',async()=>{
+  const {db,store,pages,enrichments,notifications}=setup();
   try {
-    let page=pages.create('default',{title:'Untitled'});
-    enrichments.save('default',page.id,'title',{title:'A generated title'},page.revision,selection);
+    const unused=pages.create('default',{title:'Untitled'});
+    enrichments.save('default',unused.id,'title',{title:'Unapplied legacy result'},unused.revision,selection);
     assert.equal(notifications.list().unreadCount,0);
-    page=pages.update('default',page.id,{...page,title:'A generated title'});
+    let page=pages.create('default',{title:'Untitled'});
+    page=pages.update('default',page.id,{...page,blocks:[{id:'body',type:'paragraph',content:[{text:'A useful note with enough content for title generation.'}]}]});
+    const coordinator=new PageEnrichment(store,pages,new Knowledge(store),enrichments,enrichmentProvider(async()=>({title:'A generated title'})));
+    await coordinator.run('default',page,undefined,{explicit:true,fields:['title']});
+    page=pages.get('default',page.id);
+    assert.equal(page.title,'A generated title');
     let queue=notifications.list(); assert.equal(queue.unreadCount,1);
     assert.equal(notificationMessage(queue.items[0]),'Added title to A generated title');
     pages.update('default',page.id,{...page}); assert.equal(notifications.list().unreadCount,1);

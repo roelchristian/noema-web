@@ -1,27 +1,22 @@
 import assert from 'node:assert/strict';
-import {JSDOM} from 'jsdom';
+import {setupDOM} from '../helpers/dom.mjs';
 import React,{act} from 'react';
 import {createRoot} from 'react-dom/client';
 import {BlockEditor} from '../../src/client/editor/BlockEditor.tsx';
 import {CitationPresentationContext} from '../../src/client/sources/CitationPresentation.tsx';
 import {noteCitations} from '../../src/shared/citations.ts';
 import {useDocumentHistory} from '../../src/client/editor/use-document-history.ts';
+import {immutableBlocks} from '../../src/shared/immutable-blocks.ts';
 import {api} from '../../src/client/api.ts';
 
 export async function fixture(work) {
-  const dom=new JSDOM('<div class="page"><div id="mount"></div></div>',{url:'http://localhost',pretendToBeVisual:true});
-  const keys=['window','document','Node','Element','HTMLElement','HTMLInputElement','HTMLTextAreaElement','Range','DOMParser','InputEvent','Event','CustomEvent','MutationObserver','getSelection','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT'];
-  const previous=keys.map(key=>Object.getOwnPropertyDescriptor(globalThis,key));
-  for(const key of keys)Object.defineProperty(globalThis,key,{configurable:true,writable:true,value:key==='IS_REACT_ACT_ENVIRONMENT'?true:['getSelection','requestAnimationFrame','cancelAnimationFrame'].includes(key)?dom.window[key].bind(dom.window):dom.window[key]});
-  dom.window.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
-  dom.window.HTMLElement.prototype.attachEvent=()=>{};dom.window.HTMLElement.prototype.detachEvent=()=>{};
-  dom.window.Range.prototype.getBoundingClientRect=()=>({left:0,right:100,top:0,bottom:20,width:100,height:20});
-  Object.defineProperty(dom.window.HTMLElement.prototype,'isContentEditable',{get(){return this.getAttribute('contenteditable')==='true';}});
-  document.queryCommandState=()=>false;
+  const env=setupDOM(undefined,{html:'<div class="page"><div id="mount"></div></div>'}),{dom}=env;
   const originalSchema=api.entitySchema;api.entitySchema=async()=>({properties:[],subtypes:[],subtypeProperties:{}});
-  let blocks=Array.from({length:200},(_,index)=>({id:`b${index+1}`,type:'paragraph',checked:false,content:[{text:index===199?'':`Fictitious paragraph ${index+1}`}]}));
+  let blocks=immutableBlocks(Array.from({length:200},(_,index)=>({id:`b${index+1}`,type:'paragraph',checked:false,content:[{text:index===199?'':`Fictitious paragraph ${index+1}`}]})));
   let entities=[],reviewMatches=[],open=()=>{};
+  env.defer(()=>{api.entitySchema=originalSchema;});
   const root=createRoot(document.querySelector('#mount'));
+  env.defer(()=>act(async()=>root.unmount()));
   // Fresh callbacks and citation value match PageEditor; block objects remain shared.
   function App() {
     const history=useDocumentHistory({id:'fixture',vault_id:'fixture',title:'Fictitious fixture',blocks,sourceIds:[],revision:1},patch=>{blocks=patch.blocks??blocks;render();});
@@ -34,8 +29,7 @@ export async function fixture(work) {
     await act(async()=>render());
     await work({dom,host,caret,blocks:()=>blocks,async set(next){blocks=next;await act(async()=>render());},async entities(next){entities=next;await act(async()=>render());},async reviews(next){reviewMatches=next;await act(async()=>render());},async onOpen(callback){open=callback;await act(async()=>render());},async rerender(){await act(async()=>render());}});
   } finally {
-    await act(async()=>root.unmount());api.entitySchema=originalSchema;dom.window.close();
-    keys.forEach((key,index)=>{if(previous[index])Object.defineProperty(globalThis,key,previous[index]);else delete globalThis[key];});
+    await env.close();
   }
 }
 

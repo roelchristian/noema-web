@@ -11,7 +11,7 @@ import {Knowledge} from '../src/server/modules/knowledge.ts';
 import {scanSourcePDF} from '../src/server/modules/source-import.ts';
 const sha=b=>createHash('sha256').update(b).digest('hex');
 function setup(){const dir=mkdtempSync(path.join(tmpdir(),'noema-sanitizer-')),db=openDatabase(path.join(dir,'db.sqlite')),store=new Store(db);return {dir,db,store,files:new SourceFiles(store),knowledge:new Knowledge(store)};}
-test('sanitized asset reuse is content/version scoped and scanner-gated; interrupted provenance rebuilds',{skip:process.platform!=='darwin'},async()=>{
+test('sanitized asset reuse is content/version scoped and scanner-gated; interrupted provenance rebuilds',{skip:process.platform!=='darwin'?'Requires macOS PDFKit, Vision, Swift and sandbox-exec':false},async()=>{
  const e=setup();try{
   const original=Buffer.from('%PDF-1.4\n/ObjStm\n%%EOF'),safe=Buffer.from('%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n%%EOF');let sanitizations=0;
   e.files.pdf=async()=>({text:'1. Introduction\nOriginal text.',pages:1,ocrPages:0,pageStartLines:[1]});
@@ -32,7 +32,7 @@ test('sanitized asset reuse is content/version scoped and scanner-gated; interru
   e.files.retry('default',third.id);await e.files.tick();assert.equal(sanitizations,3);assert.equal(e.files.evidence('default',third.id).admittedHash,sha(safe));
  }finally{e.files.close();e.db.close();rmSync(e.dir,{recursive:true,force:true});}
 });
-test('native sanitizer removes active objects and rasterizes visible annotation appearances',{skip:process.platform!=='darwin'||process.env.NOEMA_NATIVE_TESTS!=='1'},async()=>{
+test('native sanitizer removes active objects and rasterizes visible annotation appearances',{skip:process.platform!=='darwin'?'Requires macOS PDFKit, Vision, Swift and sandbox-exec':process.env.NOEMA_NATIVE_TESTS!=='1'?'Set NOEMA_NATIVE_TESTS=1 for native sanitizer integration':false},async()=>{
  const e=setup();try{
   const bytes=readFileSync(new URL('./fixtures/source-sanitizer/active-with-visible-annotation.pdf',import.meta.url));
   assert.throws(()=>scanSourcePDF(bytes));

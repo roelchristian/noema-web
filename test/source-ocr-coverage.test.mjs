@@ -8,7 +8,7 @@ import {fileURLToPath} from 'node:url';
 
 // Vision integration is opt-in because it requires Apple's system OCR services
 // outside restrictive CI sandboxes. Geometry guards always run on macOS.
-test('OCR coverage preserves native evidence on recognition failure and rejects unsafe recovery matches',{skip:process.platform!=='darwin',timeout:180000},()=>{
+test('OCR coverage preserves native evidence on recognition failure and rejects unsafe recovery matches',{skip:process.platform!=='darwin'?'Requires macOS PDFKit, Vision, Swift and sandbox-exec':false,timeout:180000},()=>{
  const directory=mkdtempSync(path.join(tmpdir(),'noema-ocr-test-'));
  try{
   const executable=path.join(directory,'extract');

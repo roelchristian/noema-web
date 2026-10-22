@@ -18,13 +18,13 @@ test('page drag carries vault scope and rejects foreign, malformed, or external 
 });
 
 
-test('folder drag is scoped to its vault and uses a move-only payload', async () => {
+test('folder drag is scoped to its vault and permits folder moves or collection links', async () => {
   const {startFolderDrag, isFolderDrag, readFolderDrop} = await import('../src/client/organization/folder-drag.ts');
   const values = new Map();
   const event = {dataTransfer: {types: [], setData(type, value) { values.set(type, value); this.types.push(type); }, getData(type) { return values.get(type) || ''; }}};
   assert.equal(isFolderDrag(event), false);
   startFolderDrag(event, 'vault-a', 'folder-1');
-  assert.equal(event.dataTransfer.effectAllowed, 'move');
+  assert.equal(event.dataTransfer.effectAllowed, 'copyMove');
   assert.equal(isFolderDrag(event), true);
   assert.equal(isPageDrag(event), false);
   assert.equal(readFolderDrop(event, 'vault-a'), 'folder-1');

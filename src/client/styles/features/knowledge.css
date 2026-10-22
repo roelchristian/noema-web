@@ -4439,3 +4439,47 @@
   .entity-review-row-actions { justify-content: flex-start; }
   .entity-review-editor-fields { grid-template-columns: 1fr; }
 }
+
+.entity-review-workspace { min-height: 0; overflow: auto; flex: 1; }
+.entity-review-workspace.mode-context { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
+.entity-review-workspace .entity-review-table-wrap { min-width: 0; }
+.entity-scan-snapshot { min-width: 0; overflow: auto; padding: var(--space-4); border-right: 1px solid var(--control-border); }
+.entity-scan-snapshot p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.entity-scan-snapshot article { padding: var(--space-3); border: 1px solid transparent; }
+.entity-scan-snapshot article.is-active { border-color: var(--action-border); background: var(--surface-hover); }
+.entity-scan-snapshot mark, .scan-occurrence mark { color: var(--text); background: var(--accent-soft); }
+.entity-scan-snapshot table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.entity-scan-snapshot td { border: 1px solid var(--control-border); padding: var(--space-2); overflow-wrap: anywhere; white-space: pre-wrap; }
+.entity-scan-queue { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-3); max-height: 180px; overflow: auto; }
+.entity-scan-queue [aria-current=true] { border-color: var(--accent); background: var(--accent-soft); }
+.mode-context .entity-review-table, .mode-context .entity-review-table tbody, .mode-context .entity-review-table tr, .mode-context .entity-review-table td { display: block; width: auto; }
+.mode-context .entity-review-table thead { display: none; }
+.mode-context .entity-review-table td { border: 0; }
+.mode-context .entity-review-table .entity-review-check { width: auto; }
+.mode-context .entity-review-editor-fields { grid-template-columns: 1fr; }
+.scan-occurrence { display: flex; gap: var(--space-2); align-items: flex-start; padding-block: var(--space-2); min-height: var(--touch-target-size); }
+.entity-review-toolbar .button, .entity-review-row-actions button, .entity-scan-queue button, .entity-scan-snapshot button { min-height: var(--touch-target-size); }
+@media (max-width: 750px) {
+  .entity-review-workspace.mode-context { display: block; }
+  .entity-scan-snapshot { max-height: 35vh; border-right: 0; border-bottom: 1px solid var(--control-border); }
+  .entity-review-toolbar { padding-inline: var(--space-3); }
+  .entity-review-footer { flex-wrap: wrap; }
+  .entity-review-bulk-actions { flex-wrap: wrap; }
+}
+.entity-review-controls { flex: none; }
+.entity-scan-filter-options > div { display: flex; flex-wrap: wrap; gap: var(--space-3); padding-block: var(--space-2); }
+.entity-scan-filter-options summary { cursor: pointer; display: flex; align-items: center; }
+.entity-review-toolbar > span[role=status] { color: var(--text-muted); font-size: 12px; }
+.mode-context .entity-review-table-wrap { overflow: auto; }
+.entity-scan-queue { position: sticky; top: 0; z-index: 2; background: var(--surface-raised); border-bottom: 1px solid var(--control-border); }
+@media (max-width: 750px) {
+  .entity-review-controls { max-height: 40dvh; overflow: auto; }
+  .entity-review-controls .entity-review-toolbar { gap: var(--space-2); padding-bottom: var(--space-2); }
+  .entity-review-controls .modal-description { margin-block: var(--space-2); }
+  .entity-review-progress { padding-bottom: var(--space-2); }
+  .entity-review-workspace { min-height: 180px; }
+  .entity-review-footer { gap: var(--space-2); padding: var(--space-3); }
+  .entity-review-bulk-actions { gap: var(--space-2); }
+  .entity-review-bulk-actions .button { padding-inline: var(--space-2); }
+  .entity-scan-queue { position: static; max-height: 120px; }
+}

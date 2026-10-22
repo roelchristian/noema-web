@@ -14,7 +14,7 @@ export interface EntityScanContinuation {
   cursor:EvidenceAnchor;
   excluded:Pick<EntitySuggestion,'name'|'type'|'aliases'|'existingId'>[];
 }
-export interface EntityScan { contextKey?:string; continuation?:EntityScanContinuation; batchCount?:number; subtypeSuggestions?: SubtypeSuggestion[]; id: string; revision: number; suggestions: EntitySuggestion[] }
+export interface EntityScan { reviewExclusions?:EvidenceAnchor[]; contextKey?:string; continuation?:EntityScanContinuation; batchCount?:number; subtypeSuggestions?: SubtypeSuggestion[]; id: string; revision: number; suggestions: EntitySuggestion[] }
 export interface EntityReview { schema?: import('./entity-schema.js').EntitySchema; page: Page; scan: EntityScan; entities: Entity[] }
 
 /** Eligible text runs with occurrence coordinates, preserving protected boundaries. */
@@ -104,19 +104,20 @@ export const anchorKey=(anchor:EvidenceAnchor)=>JSON.stringify([anchor.blockId,a
 /** Exact phrase occurrences only, within eligible runs and word boundaries. */
 export function evidenceOccurrences(page:Pick<Page,'blocks'>,evidence:string):EvidenceAnchor[] {
   if(!evidence.trim())return [];
-  return entityTextRuns(page).flatMap(run=>[...run.text.matchAll(evidencePattern(evidence))].flatMap(match=>{
+  return entityTextRuns(page).flatMap(run=>[...run.text.matchAll(new RegExp(evidencePattern(evidence).source.replace(/'/g,"['‘’]").replace(/"/g,'["“”]'),'giu'))].flatMap(match=>{
     const start=match.index!,end=start+match[0].length;
     if(/[\p{L}\p{N}_]/u.test(run.text[start-1]??'')||/[\p{L}\p{N}_]/u.test(run.text[end]??''))return [];
     return [{blockId:run.blockId,...(run.row===undefined?{}:{row:run.row,col:run.col}),start:run.start+start,end:run.start+end}];
   }));
 }
 /** Exclusions persist through the editor's existing skipAutoTag contract. */
-export function excludeEvidence(page:Page,anchor:EvidenceAnchor):Page {
-  const split=(segments:Segment[])=>{let offset=0;return segments.flatMap(segment=>{
+export function excludeEvidence(page:Page,anchor:EvidenceAnchor,excluded=true):Page {
+  const split=(segments:Segment[])=>{let offset=0;return segments.flatMap<Segment>(segment=>{
     const text=segment.text??segment.mentionText??'',start=offset;offset+=text.length;
-    if(!isEntityTaggingText(segment)||offset<=anchor.start||start>=anchor.end)return [segment];
+    if(segment.entityId!==undefined)return [segment];
+    if(!isEntityTaggingText(excluded?segment:{...segment,skipAutoTag:false})||offset<=anchor.start||start>=anchor.end)return [segment];
     const from=Math.max(0,anchor.start-start),to=Math.min(text.length,anchor.end-start);
-    return [...(from?[{...segment,text:text.slice(0,from)}]:[]),{...segment,text:text.slice(from,to),skipAutoTag:true},...(to<text.length?[{...segment,text:text.slice(to)}]:[])];
+    return [...(from?[{...segment,text:text.slice(0,from)}]:[]),{...segment,text:text.slice(from,to),skipAutoTag:excluded},...(to<text.length?[{...segment,text:text.slice(to)}]:[])];
   });};
   return {...page,blocks:page.blocks.map(block=>block.id!==anchor.blockId?block:anchor.row===undefined?{...block,content:split(block.content)}:{...block,rows:block.rows?.map((row,r)=>r!==anchor.row?row:row.map((cell,c)=>c!==anchor.col?cell:split(cell)))})};
 }

@@ -29,7 +29,7 @@ try{
  async function saved(p,predicate){for(let i=0;i<60;i++){if(predicate(pages.get('default',p.id)))return;await page.waitForTimeout(100);}assert.fail('Expected saved state for '+p.title);}
  await open(ambiguity);await page.locator('[data-entity-review]').first().click();
  const review=page.getByRole('dialog',{name:/Review entity match/});assert.match(await review.innerText(),/glass garden/);assert.match(await review.innerText(),/paper sea/);
- await review.locator('select').selectOption(a.id);await review.getByRole('button',{name:'Link this instance',exact:true}).click();
+ await review.getByRole('option').filter({hasText:'glass garden'}).click();await review.getByRole('button',{name:'Link this instance',exact:true}).click();
  await saved(ambiguity,p=>p.blocks[0].content.filter(s=>s.entityId).length===1);
  await page.waitForTimeout(2600);assert.equal(await page.locator('#blocks .mention').count(),1);await page.reload();await page.locator('#blocks .mention').waitFor();await page.waitForTimeout(2200);assert.equal(await page.locator('#blocks .mention').count(),1);
  await page.screenshot({path:join(artifacts,'01-occurrence-after-reload.png')});
@@ -43,7 +43,7 @@ try{
  await lifecycle.getByRole('button',{name:'Archive entity',exact:true}).click();await lifecycle.waitFor({state:'hidden'});
  await page.reload();await page.locator('#blocks .mention').waitFor();await page.waitForTimeout(2200);
  assert.equal(await page.locator('#blocks .mention').count(),1);assert.equal(await page.locator('#blocks .mention').getAttribute('data-skip-auto-tag'),'true');
- await page.locator('[data-entity-review]').first().click();assert.equal(await review.locator('select option[value="'+a.id+'"]').count(),0);assert.match(await review.innerText(),/paper sea/);await page.screenshot({path:join(artifacts,'05-archived-ordinary-choices.png')});await review.getByRole('button',{name:'Close entity review',exact:true}).click();
+ await page.locator('[data-entity-review]').first().click();assert.equal(await review.locator('[role=option][id$="'+a.id+'"]').count(),0);assert.match(await review.innerText(),/paper sea/);await page.screenshot({path:join(artifacts,'05-archived-ordinary-choices.png')});await review.getByRole('button',{name:'Close entity review',exact:true}).click();
  // Trigger the real editor DOM serialization and autosave while the target is archived.
  await page.locator('#blocks .block-content').first().evaluate(el=>{el.focus();const r=document.createRange();r.selectNodeContents(el);r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);});await page.keyboard.type('!');
  await saved(ambiguity,p=>p.blocks[0].content.some(s=>s.text?.includes('!')));
@@ -51,7 +51,7 @@ try{
  await page.reload();await page.locator('#blocks .mention').waitFor();assert.equal(await page.locator('#blocks .mention').getAttribute('data-skip-auto-tag'),'true');
  await page.locator('#blocks .mention').click();await page.getByRole('button',{name:'Open entity details',exact:true}).click();await page.getByRole('button',{name:'Restore…',exact:true}).click();await lifecycle.getByRole('button',{name:'Restore entity',exact:true}).click();await lifecycle.waitFor({state:'hidden'});
  await page.reload();await page.locator('#blocks .mention').waitFor();await page.waitForTimeout(2200);assert.equal(await page.locator('#blocks .mention').count(),1);
- await page.locator('[data-entity-review]').first().click();assert.equal(await review.locator('select option[value="'+a.id+'"]').count(),1);await page.screenshot({path:join(artifacts,'06-restored-occurrence-choices.png')});await review.getByRole('button',{name:'Close entity review',exact:true}).click();
+ await page.locator('[data-entity-review]').first().click();assert.equal(await review.locator('[role=option][id$="'+a.id+'"]').count(),1);await page.screenshot({path:join(artifacts,'06-restored-occurrence-choices.png')});await review.getByRole('button',{name:'Close entity review',exact:true}).click();
  marked=pages.get('default',ambiguity.id).blocks[0].content;assert.equal(marked.find(s=>s.entityId===a.id).skipAutoTag,true);assert.ok(marked.some(s=>s.skipAutoTag&&s.text?.includes('excluded.')));
 
  // Selection link: no alias and wording survives undo/reload.

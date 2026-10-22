@@ -6,7 +6,7 @@ import {DOMAINS,TAXONOMY_VERSION,domainPath} from '../../shared/domains.js';
 import {normalizeEntityName} from '../../shared/auto-entities.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { blockSegments, entityLabels, entityTypes, type Page, type Segment } from '../../shared/domain.js';
-import { anchorKey,evidenceOccurrences,excludeEvidence, ENTITY_SCAN_BATCH_SIZE, entityTextRuns, locateEvidence, locateRunEvidence, mentionEvidence, type EntityScan, type EntitySuggestion, type EntityReview, type SubtypeSuggestion } from '../../shared/entity-scan.js';
+import { anchorKey,evidenceContext,evidenceOccurrences,excludeEvidence, ENTITY_SCAN_BATCH_SIZE, entityTextRuns, locateEvidence, locateRunEvidence, mentionEvidence, type EvidenceAnchor, type EntityScan, type EntitySuggestion, type EntityReview, type SubtypeSuggestion } from '../../shared/entity-scan.js';
 import { Store } from '../store.js';
 import { HttpError, now, object, required } from '../validation.js';
 import { Knowledge } from './knowledge.js';
@@ -168,7 +168,7 @@ export class EntityScans {
     }
     const combined=[...(previous?.suggestions??[]),...batch];
     const proposedIds=new Set(combined.flatMap(suggestion=>suggestion.proposedSubtypeIds??[]));
-    const scan:EntityScan = {contextKey:this.contextKey(vault,page),id:previous?.id??randomUUID(),revision:page.revision,suggestions:combined,batchCount:batch.length,
+    const scan:EntityScan = {...(previous?.reviewExclusions?{reviewExclusions:previous.reviewExclusions}:{}),contextKey:this.contextKey(vault,page),id:previous?.id??randomUUID(),revision:page.revision,suggestions:combined,batchCount:batch.length,
       ...(lookaheadAnchor?{continuation:{token:randomUUID(),cursor:lookaheadAnchor,excluded:[...new Map([...excluded,...batch].map(({name,type,aliases,existingId})=>[`${type}:${normalizeEntityName(name)}`,{name,type,aliases,existingId}])).values()]}}:{}),
       subtypeSuggestions:proposals.filter(proposal=>proposedIds.has(proposal.id))};
     if(persist)this.enrichments.save(vault,page.id,'entity_scan',{scan},page.revision,preferences);
@@ -252,11 +252,13 @@ export class EntityScans {
           // Normalize at acceptance too, so those reviews can be retried without rescanning.
           if(suggestion.type!=='concept')suggestion.domainIds=[];
           if (!suggestion.existingId && suggestion.proposedSubtypeIds?.some(id => scan.subtypeSuggestions?.some(item => item.id === id && item.status === 'pending'))) throw new HttpError(400,'Review the proposed subtypes for this entity first.');
+          // Only exclusions recorded by this exact scan may be reopened for its pending evidence.
+          if(suggestion.evidenceAnchor&&scan.reviewExclusions?.some(anchor=>anchorKey(anchor)===anchorKey(suggestion.evidenceAnchor!))){page=excludeEvidence(page,suggestion.evidenceAnchor,false);scan.reviewExclusions=scan.reviewExclusions.filter(anchor=>anchorKey(anchor)!==anchorKey(suggestion.evidenceAnchor!));}
           const edit=reviewEdits.find(item=>item.id===suggestion.id);
           const extra=edit?.additionalOccurrences??[];
           const choices=evidenceOccurrences(page,suggestion.evidence);
-          if(!Array.isArray(extra)||extra.length>1000||extra.some(value=>!value||typeof value!=='object'||!choices.some(anchor=>anchorKey(anchor)===anchorKey(value as import('../../shared/entity-scan.js').EvidenceAnchor)))||new Set(extra.map(value=>anchorKey(value as import('../../shared/entity-scan.js').EvidenceAnchor))).size!==extra.length)throw new HttpError(400,'Choose valid additional occurrences from this revision.');
-          const anchors=[suggestion.evidenceAnchor??locateEvidence(page,suggestion.evidence)!,...extra as import('../../shared/entity-scan.js').EvidenceAnchor[]];
+          if(!Array.isArray(extra)||extra.length>1000||extra.some(value=>!value||typeof value!=='object'||!choices.some(anchor=>anchorKey(anchor)===anchorKey(value as EvidenceAnchor)))||new Set(extra.map(value=>anchorKey(value as EvidenceAnchor))).size!==extra.length)throw new HttpError(400,'Choose valid additional occurrences from this revision.');
+          const anchors=[suggestion.evidenceAnchor??locateEvidence(page,suggestion.evidence)!,...extra as EvidenceAnchor[]];
           if(new Set(anchors.filter(Boolean).map(anchorKey)).size!==anchors.length)throw new HttpError(400,'Choose distinct occurrences.');
           if (!mentionEvidence(page,suggestion.evidence,'validation',suggestion.evidenceAnchor)) throw new HttpError(409,'Some matching phrases changed or overlap. Review these suggestions individually or scan again.');
           const identityMatches=this.knowledge.list(vault).filter(entity=>!entity.inactive&&!entity.archived_at&&[entity.name,...(entity.aliases??[])].some(name=>[suggestion.name,suggestion.evidence].some(value=>normalizeEntityName(value)===normalizeEntityName(name))));
@@ -271,7 +273,7 @@ export class EntityScans {
             if(normalizeEntityName(alias)!==normalizeEntityName(entity.name)&&!entity.aliases?.some(name=>normalizeEntityName(name)===normalizeEntityName(alias)))entity=this.knowledge.addAlias(vault,entity.id,{alias});
           }
           if(!existing)this.store.run("UPDATE entity_domains SET origin='scan' WHERE entity_id=?",entity.id);
-          for(const anchor of anchors){const linked=mentionEvidence(page,suggestion.evidence,entity.id,anchor,true);if(!linked)throw new HttpError(409,'Some selected occurrences changed or overlap. Scan again.');page=linked;}
+          for(const anchor of anchors){const linked=mentionEvidence(page,evidenceContext(page,anchor)?.match??suggestion.evidence,entity.id,anchor,true);if(!linked)throw new HttpError(409,'Some selected occurrences changed or overlap. Scan again.');page=linked;}
           suggestion.linkedOccurrences=anchors;
           exclusions.push({names:[entity.name,...(entity.aliases??[]),suggestion.evidence],id:suggestion.id});
           Object.assign(suggestion,{name:entity.name,type:entity.type,subtypes:entity.subtypes,description:entity.description,existingId:entity.id});
@@ -280,9 +282,10 @@ export class EntityScans {
       }
       if (body.decision === 'accepted') {
         for(const {names} of exclusions)for(const name of names)for(const anchor of evidenceOccurrences(page,name)){
-          // Leave other queued evidence available for its own explicit decision.
-          if(!scan.suggestions.some(item=>item.status==='pending'&&item.evidenceAnchor&&anchor.blockId===item.evidenceAnchor.blockId&&anchor.row===item.evidenceAnchor.row&&anchor.col===item.evidenceAnchor.col&&anchor.start<item.evidenceAnchor.end&&anchor.end>item.evidenceAnchor.start))page=excludeEvidence(page,anchor);
+          page=excludeEvidence(page,anchor);
+          scan.reviewExclusions=[...new Map([...(scan.reviewExclusions??[]),anchor].map(item=>[anchorKey(item),item])).values()];
         }
+        if(page.blocks.some(block=>block.content.length>1000||block.rows?.some(row=>row.some(cell=>cell.length>1000))))throw new HttpError(400,'Too many segments in a block. Select fewer occurrences.');
         syncSourceReferences(this.store,pageId,page.blocks);
         this.store.run('UPDATE pages SET blocks=?,revision=revision+1,updated_at=? WHERE id=? AND vault_id=?',JSON.stringify(page.blocks),now(),pageId,vault);
         page = this.pages.get(vault,pageId);

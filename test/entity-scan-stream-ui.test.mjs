@@ -88,3 +88,30 @@ test('review renders incoming rows during scanning and enables review only after
     assert.ok(document.querySelector('.entity-review-confirmation'));
   }finally{await env.close();}
 });
+
+test('context mode keeps occurrence and subtype drafts across views and navigates exact table evidence',async t=>{
+ const env=setupDOM(t),{dom}=env;
+ dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
+ const root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ t.mock.method(api,'entitySchema',async()=>({properties:{},subtypes:[],subtypeProperties:{}}));
+ const page={id:'page',vault_id:'default',revision:2,title:'Context test',sourceIds:[],blocks:[{id:'p',type:'paragraph',content:[{text:'Mira met Mira.'}]},{id:'t',type:'table',content:[],rows:[[[{text:'Sora met Sora.'}]]]}]};
+ const scan={id:'saved',revision:2,subtypeSuggestions:[{id:'subtype',name:'Researcher',type:'person',status:'pending'}],suggestions:[{id:'first',name:'Mira',type:'person',subtypes:[],existingId:null,evidence:'Mira',evidenceAnchor:{blockId:'p',start:0,end:4},reason:'Named',status:'pending',proposedSubtypeIds:['subtype']},{id:'second',name:'Sora',type:'person',subtypes:[],existingId:null,evidence:'Sora',evidenceAnchor:{blockId:'t',row:0,col:0,start:9,end:13},reason:'Named',status:'pending'}]};
+ const click=async element=>act(async()=>element.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})));
+ const button=text=>[...document.querySelectorAll('button')].find(element=>element.textContent===text);
+ try {
+  await act(async()=>root.render(React.createElement(EntityScanReview,{page,scan,entities:[],disabled:false,onScan(){},onFlush:async()=>page,onReview:async()=>scan})));
+  await click(document.querySelector('.entity-detect-action'));await click(button('Contextual review'));
+  await click(document.querySelector('.entity-review-editor fieldset input'));
+  await click(document.querySelectorAll('.scan-occurrence input')[1]);
+  await click(button('Compact batch'));await click(button('Contextual review'));
+  assert.equal(document.querySelector('.entity-review-editor fieldset input').checked,true);
+  assert.equal(document.querySelectorAll('.scan-occurrence input')[1].checked,true);
+  await click(button('Next'));
+  assert.equal(document.querySelector('.entity-scan-snapshot mark').textContent,'Sora');
+  assert.match(document.querySelector('.scan-evidence small').textContent,/Row 1, column 1 · offsets 9–13/);
+  const queue=document.querySelector('.entity-scan-queue');
+  await act(async()=>queue.querySelector('[aria-current=true]').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'ArrowUp',bubbles:true})));
+  assert.equal(document.querySelector('.entity-scan-snapshot mark').textContent,'Mira');
+  assert.equal(document.querySelectorAll('.scan-occurrence input')[1].checked,true);
+ }finally{await env.close();}
+});

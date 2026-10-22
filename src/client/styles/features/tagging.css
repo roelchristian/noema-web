@@ -9,3 +9,11 @@
 .entity-link-dialog small { display:block; color:var(--text-muted); }
 .entity-alias-recovery { display:flex; flex-wrap:wrap; gap:8px; padding:10px; border:1px solid var(--line); font-size:13px; }
 .entity-alias-recovery button { text-decoration:underline; }
+
+/* Identity choice is shared; callers retain their transaction controls. */
+.entity-resolution-picker { min-width: 0; }
+.entity-resolution-picker input { width: 100%; }
+.entity-resolution-picker .selection-entity-results { max-height: 240px; overflow: auto; }
+.entity-resolution-picker .selection-entity-results button { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-2); width: 100%; text-align: left; min-height: var(--touch-target-size); border-radius: var(--radius-sm); }
+.entity-resolution-picker small { display: block; color: var(--text-muted); margin-top: var(--space-1); }
+.entity-resolution-picker .icon { flex: none; }

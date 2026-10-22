@@ -73,12 +73,12 @@ try{
  await page.screenshot({path:resolve(artifacts,'07-archived-source-citation.png'),fullPage:true});
  await page.getByRole('button',{name:'Close source viewer',exact:true}).click();
  // Archive the person through the existing mention details entry point.
- await page.locator('.page [data-entity="'+f.person.id+'"]').first().click();await page.getByRole('button',{name:'Archive / manage',exact:true}).click();
+ await page.locator('.page [data-entity="'+f.person.id+'"]').first().click();await page.getByRole('button',{name:'Open entity details',exact:true}).click();await page.getByRole('button',{name:'Archive / manage',exact:true}).click();
  await dialog.getByRole('button',{name:'Archive entity',exact:true}).click();await dialog.waitFor({state:'hidden'});
  await page.getByRole('button',{name:'Vault options',exact:true}).click();await page.getByRole('menuitem',{name:'Trash',exact:true}).click();
  await page.getByRole('button',{name:'Restore Synthetic trashed references',exact:true}).click();
  await page.locator('.page [data-entity="'+f.person.id+'"]').first().waitFor();
- await page.locator('.page [data-entity="'+f.person.id+'"]').first().click();await page.getByRole('button',{name:'Restore / manage',exact:true}).waitFor();
+ await page.locator('.page [data-entity="'+f.person.id+'"]').first().click();await page.getByRole('button',{name:'Open entity details',exact:true}).click();await page.getByRole('button',{name:'Restore / manage',exact:true}).waitFor();
  await page.screenshot({path:resolve(artifacts,'08-restored-trash-archived-link.png'),fullPage:true});
  // Browser-originated requests exercise ownership, locking and repeated action semantics.
  const access=await page.evaluate(async({id,version,other})=>{

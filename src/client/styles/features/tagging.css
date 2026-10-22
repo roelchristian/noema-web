@@ -9,4 +9,3 @@
 .entity-link-dialog small { display:block; color:var(--text-muted); }
 .entity-alias-recovery { display:flex; flex-wrap:wrap; gap:8px; padding:10px; border:1px solid var(--line); font-size:13px; }
 .entity-alias-recovery button { text-decoration:underline; }
-

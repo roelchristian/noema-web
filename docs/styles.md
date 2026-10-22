@@ -13,7 +13,7 @@ Imports use the existing unlayered cascade. This preserves specificity against b
 editor markup and existing component styles; introducing cascade layers would change those
 relationships. Import order breaks equal-specificity ties. A feature owns its base, theme,
 responsive, focus, disabled and active rules together. Shell selectors that span several
-features stay in layout. Shared status paint belongs to semantics, rather than an extra
+features stay in layout. The upstream `search/archive-search.css` remains owned and imported by SearchPanel; its unique archival selectors are also covered by the guard. Shared status paint belongs to semantics, rather than an extra
 feature-specific colour override. Document typography remains in its existing rules and tokens.
 
 For a new feature, add one module before semantics and controls, then update the entrypoint
@@ -58,7 +58,7 @@ The guard is deliberately small and is not a substitute for browser validation.
 `npm run test:design` uses the optional Chromium harness, with `PLAYWRIGHT_MODULE` and
 `CHROMIUM_PATH` configured as for `test:browser`. It starts an isolated SQLite database,
 checks the real shell at desktop/mobile widths across all accents and light/dark themes,
-measures hit rectangles and overlap, checks keyboard focus, destructive hover and disabled
+measures hit rectangles and overlap (including dense grouped annotation targets), checks keyboard focus, destructive hover and disabled
 appearance, verifies status-text contrast, and exercises desktop coarse-pointer and 200%
 CSS zoom layouts. `NOEMA_SCREENSHOTS` selects an evidence directory. Run `npm run test:browser`
 for editor, source-reading and entity-linking regressions. Native browser UI zoom, native

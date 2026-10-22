@@ -74,4 +74,3 @@
 .knowledge-icon-action.is-destructive:focus-visible { color: var(--status-danger-text); }
 /* Confirmation text names the destructive operation; cancel stays neutral. */
 .confirmation-dialog .confirmation-action:not(.is-danger):hover:not(:disabled) { color: var(--text); }
-

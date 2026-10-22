@@ -1,7 +1,10 @@
 # A–C design consistency review
 
-The branch is based on verified `main` **58ace01f15fe3fc3fe3ea43f2219f5987ba460c5**,
-including entity tagging and lifecycle archival. It is local only. D typography/hierarchy,
+The initial review used verified `main` **58ace01f15fe3fc3fe3ea43f2219f5987ba460c5**,
+including entity tagging and lifecycle archival. Publication preparation subsequently merged
+main **be43bffc1c8ef980111fa4e6a85a77e7bed21514**, preserving its AI-debug and archive-control changes.
+The metrics and 604-pass results below record the initial review; updated publication validation
+is recorded in the PR description. D typography/hierarchy,
 product-flow redesign, live AI and user data were excluded.
 
 ## Changes
@@ -101,5 +104,5 @@ Library delivery is blocked: prepare returned three signed reservations, but the
 screenshot PUT could not establish its proxy tunnel (**403 Forbidden**). No transfer was
 established, no alternative route/retry was attempted, and no finalize call was made.
 The other two reservations were not transferred. **There are no verified Library screenshot IDs.**
-Local screenshots, the report and the patch remain available for review. No push, PR, merge,
-deployment or branch deletion was performed.
+Local screenshots, the report and the patch remain available. The user subsequently authorized
+push, PR creation and normal merge after validation; deployment and branch deletion remain excluded.

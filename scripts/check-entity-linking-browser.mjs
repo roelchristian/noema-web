@@ -39,7 +39,7 @@ try{
  const historical=pages.get('default',ambiguity.id);
  pages.update('default',historical.id,{...historical,blocks:historical.blocks.map(block=>({...block,content:[...block.content,{text:' Mira Vale excluded.',skipAutoTag:true}]}))});
  await open(ambiguity);await page.locator('#blocks .mention').click();await page.getByRole('button',{name:'Open entity details',exact:true}).click();
- await page.getByRole('button',{name:'Archive / manage',exact:true}).click();const lifecycle=page.getByRole('dialog',{name:'Manage entity',exact:true});
+ await page.getByRole('button',{name:'Archive…',exact:true}).click();const lifecycle=page.getByRole('dialog',{name:'Manage entity',exact:true});
  await lifecycle.getByRole('button',{name:'Archive entity',exact:true}).click();await lifecycle.waitFor({state:'hidden'});
  await page.reload();await page.locator('#blocks .mention').waitFor();await page.waitForTimeout(2200);
  assert.equal(await page.locator('#blocks .mention').count(),1);assert.equal(await page.locator('#blocks .mention').getAttribute('data-skip-auto-tag'),'true');
@@ -49,7 +49,7 @@ try{
  await saved(ambiguity,p=>p.blocks[0].content.some(s=>s.text?.includes('!')));
  let marked=pages.get('default',ambiguity.id).blocks[0].content;assert.equal(marked.find(s=>s.entityId===a.id).skipAutoTag,true);assert.ok(marked.some(s=>s.skipAutoTag&&s.text?.includes('excluded.')));
  await page.reload();await page.locator('#blocks .mention').waitFor();assert.equal(await page.locator('#blocks .mention').getAttribute('data-skip-auto-tag'),'true');
- await page.locator('#blocks .mention').click();await page.getByRole('button',{name:'Open entity details',exact:true}).click();await page.getByRole('button',{name:'Restore / manage',exact:true}).click();await lifecycle.getByRole('button',{name:'Restore entity',exact:true}).click();await lifecycle.waitFor({state:'hidden'});
+ await page.locator('#blocks .mention').click();await page.getByRole('button',{name:'Open entity details',exact:true}).click();await page.getByRole('button',{name:'Restore…',exact:true}).click();await lifecycle.getByRole('button',{name:'Restore entity',exact:true}).click();await lifecycle.waitFor({state:'hidden'});
  await page.reload();await page.locator('#blocks .mention').waitFor();await page.waitForTimeout(2200);assert.equal(await page.locator('#blocks .mention').count(),1);
  await page.locator('[data-entity-review]').first().click();assert.equal(await review.locator('select option[value="'+a.id+'"]').count(),1);await page.screenshot({path:join(artifacts,'06-restored-occurrence-choices.png')});await review.getByRole('button',{name:'Close entity review',exact:true}).click();
  marked=pages.get('default',ambiguity.id).blocks[0].content;assert.equal(marked.find(s=>s.entityId===a.id).skipAutoTag,true);assert.ok(marked.some(s=>s.skipAutoTag&&s.text?.includes('excluded.')));

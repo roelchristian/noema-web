@@ -712,13 +712,37 @@ export class Workspace {
     });
   }
   async permanentlyDeletePage(id: string) {
+    await this.changeTrashedPages([id], 'delete');
+  }
+  async restorePages(ids: string[]) {
+    await this.changeTrashedPages(ids, 'restore');
+  }
+  async permanentlyDeletePages(ids: string[]) {
+    await this.changeTrashedPages(ids, 'delete');
+  }
+  private async changeTrashedPages(ids: string[], action: 'restore' | 'delete') {
     await this.navigate(async () => {
       const vault = this.state.vault; if (!vault || vault.locked) return;
-      await api.permanentlyDeletePage(vault.id, id);
-      try {this.saver.discard(vault.id,id);} catch (error) {this.report(error);}
-      this.patch({saveFailures:this.state.saveFailures.filter(issue=>issue.vaultId!==vault.id||issue.pageId!==id),draftStorageFailures:this.state.draftStorageFailures.filter(issue=>issue.vaultId!==vault.id||issue.pageId!==id),draftRecoveries:this.state.draftRecoveries.filter(item=>item.vaultId!==vault.id||item.pageId!==id)});
-      this.patch({trash: this.state.trash.filter(note => note.id !== id)});
-      this.pageCache.delete(id);
+      const errors: unknown[] = [];
+      for (const id of new Set(ids)) {
+        try {
+          if (action === 'restore') {
+            const restored = await api.restorePage(vault.id, id);
+            this.pageCache.set(id, restored);
+            this.patch({pages: [restored, ...this.state.pages.filter(note => note.id !== id)]});
+          } else {
+            await api.permanentlyDeletePage(vault.id, id);
+            try {this.saver.discard(vault.id,id);} catch (error) {this.report(error);}
+            this.patch({saveFailures:this.state.saveFailures.filter(issue=>issue.vaultId!==vault.id||issue.pageId!==id),draftStorageFailures:this.state.draftStorageFailures.filter(issue=>issue.vaultId!==vault.id||issue.pageId!==id),draftRecoveries:this.state.draftRecoveries.filter(item=>item.vaultId!==vault.id||item.pageId!==id)});
+            this.pageCache.delete(id);
+          }
+          this.patch({trash: this.state.trash.filter(note => note.id !== id)});
+        } catch (error) { errors.push(error); }
+      }
+      if (action === 'restore') {
+        try { this.setOrganization(await api.organization(vault.id)); } catch (error) { this.report(error); }
+      }
+      if (errors.length) throw new Error(`${errors.length} ${errors.length === 1 ? 'note' : 'notes'} could not be ${action === 'restore' ? 'restored' : 'deleted'}. ${errors[0] instanceof Error ? errors[0].message : String(errors[0])}`);
     });
   }
   async createEntity(input: EntityInput) {

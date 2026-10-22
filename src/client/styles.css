@@ -317,6 +317,16 @@ main { margin-left: 224px; }
 .trash-note h2 { font-size: 15px; font-weight: 550; margin: 0 0 6px; overflow-wrap: anywhere; color: var(--text); }
 .trash-note small { color: var(--text-muted); font-size: 12px; line-height: 1.7; }
 .trash-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.trash-actions > .button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.trash-actions > .button > .icon { width: 13px; height: 13px; flex-shrink: 0; }
+.trash-selection-bar { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; font-size: 12px; color: var(--text-muted); }
+.trash-select-all { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; cursor: pointer; }
+.trash-select-all input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.trash-library .organization-item:has(input:checked) { background: var(--surface-hover); }
+.trash-library button.is-danger { color: #b23b3b; }
+.trash-library button.is-danger:hover:not(:disabled) { color: #a52e2e; background: #b23b3b12; }
+:root[data-mode=dark] .trash-library button.is-danger { color: #f08a8a; }
+:root[data-mode=dark] .trash-library button.is-danger:hover:not(:disabled) { color: #ffa0a0; background: #f08a8a18; }
 .trash-library .organization-heading p { line-height: 1.8; max-width: 540px; }
 @media (max-width: 800px) { .trash-row { flex-wrap: wrap; } .trash-actions { width: 100%; margin-left: 33px; flex-wrap: wrap; } }
 

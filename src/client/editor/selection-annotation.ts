@@ -26,3 +26,17 @@ export function selectionPopoverPlacement(selection: {left: number; right: numbe
     ? {left, top: inset, maxHeight: above}
     : {left, top: selection.bottom + gap, maxHeight: below};
 }
+
+/** Keep a compact toolbar anchored while its disclosure avoids the selected words. */
+export function selectionActionPlacement(selection: {left:number;right:number;top:number;bottom:number}, trigger: {left:number;right:number;top:number;bottom:number}, menu: {width:number;height:number}, viewport: {width:number;height:number}) {
+  const inset=8, gap=8;
+  const left=Math.max(inset,Math.min(trigger.left,viewport.width-menu.width-inset));
+  const top=trigger.bottom+gap;
+  const below=Math.max(0,viewport.height-top-inset);
+  if(menu.height<=below) {
+    if(top>=selection.bottom || left>=selection.right || left+menu.width<=selection.left) return {left,top,maxHeight:below};
+    if(selection.right+gap+menu.width<=viewport.width-inset) return {left:selection.right+gap,top,maxHeight:below};
+    if(selection.left-gap-menu.width>=inset) return {left:selection.left-gap-menu.width,top,maxHeight:below};
+  }
+  return selectionPopoverPlacement(selection,menu,viewport);
+}

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { annotationSuggestions, selectionPopoverPlacement } from '../src/client/editor/selection-annotation.ts';
+import { annotationSuggestions, selectionPopoverPlacement, selectionActionPlacement } from '../src/client/editor/selection-annotation.ts';
 
 const entity = (id, name, type = 'person') => ({id, name, type});
 
@@ -73,4 +73,18 @@ test('existing aliases, recent page citations, and archived entities affect rank
   ];
   assert.deepEqual(annotationSuggestions(entities, 'Obama', '', {priorityIds:['recent']}).results.map(item=>item.id), ['recent', 'older']);
   assert.equal(annotationSuggestions(entities, 'President Obama').results[0]?.id, 'older');
+});
+
+
+test('compact disclosures avoid their selection and remain inside resized viewport edges', () => {
+  for (const viewport of [{width:1120,height:760},{width:780,height:400}]) {
+    for (const selection of [{left:497,right:624,top:219,bottom:245},{left:20,right:750,top:190,bottom:230},{left:410,right:600,top:330,bottom:360}]) {
+      const trigger={left:620,right:734,top:174,bottom:210}, menu={width:280,height:320};
+      const placement=selectionActionPlacement(selection,trigger,menu,viewport);
+      const height=Math.min(menu.height,placement.maxHeight);
+      assert.ok(placement.left>=8 && placement.left+menu.width<=viewport.width-8);
+      assert.ok(placement.top>=8 && placement.top+height<=viewport.height-8);
+      assert.ok(placement.left>=selection.right || placement.left+menu.width<=selection.left || placement.top>=selection.bottom || placement.top+height<=selection.top);
+    }
+  }
 });

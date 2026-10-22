@@ -176,7 +176,7 @@ select.select-native {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  min-height: var(--control-height);
+  min-height: var(--control-target-regular);
   padding: 7px 9px;
   border-radius: var(--radius-xs);
   cursor: pointer;

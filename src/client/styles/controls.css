@@ -46,3 +46,27 @@
     min-width: var(--touch-target-size);
   }
 }
+
+/* Popover header buttons and reader actions retain their own visual styling. */
+@media (max-width: 750px), (pointer: coarse) {
+  .source-reading-note-popover header button,
+  .source-reading-note-row .source-reading-remove-action {
+    min-width: var(--touch-target-size);
+    min-height: var(--touch-target-size);
+  }
+}
+
+.source-reader-node-address { min-height: var(--control-target-compact); }
+.source-reading-note-marker > button {
+  width: var(--control-target-compact);
+  height: var(--control-target-compact);
+  min-height: var(--control-target-compact);
+}
+@media (max-width: 750px), (pointer: coarse) {
+  /* Short headings still reserve the full address target without overlapping
+   * the following paragraph. Prose type and line-height remain unchanged. */
+  .source-reader-passage { min-height: var(--touch-target-size); }
+  .source-reader-node-address { min-height: var(--touch-target-size); }
+  .source-reading-note-marker-list header button,
+  .source-reading-note-row button { min-width: var(--touch-target-size); min-height: var(--touch-target-size); }
+}

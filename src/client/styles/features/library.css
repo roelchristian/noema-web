@@ -2293,3 +2293,6 @@
 .trash-library .trash-empty > .icon { display: block; width: 28px; height: 28px; margin: 0 auto 16px; }
 .trash-library .trash-empty h2 { margin: 0 0 8px; color: var(--text); font-size: 17px; font-weight: 500; letter-spacing: -.01em; }
 .trash-library .trash-empty p { margin: 0; font-size: var(--ui-text-md); line-height: 1.7; }
+/* Preserved latest-main AI debug and archive controls; target sizes use shared contracts. */
+.organization-library[data-layout=grid] .knowledge-row-actions { grid-column: 2 / -1; grid-row: 1; justify-self: end; align-self: center; }
+.organization-library[data-layout=grid] .knowledge-row-actions .knowledge-open-entity { display: none; }

@@ -44,6 +44,7 @@ const paths: Record<string, ReactNode> = {
   more: <g fill="currentColor" stroke="none"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></g>,
   edit: <><path d="m16 3 5 5-12 12-6 1 1-6Z M14 5l5 5"/></>,
   compose: <><path d="M12 5H6a2.5 2.5 0 0 0-2.5 2.5v10A2.5 2.5 0 0 0 6 20h10a2.5 2.5 0 0 0 2.5-2.5v-6"/><path d="m17.2 3.8 1-1a1.4 1.4 0 0 1 2 0l1 1a1.4 1.4 0 0 1 0 2l-1 1L12 15l-3.5.8.8-3.5ZM17.2 3.8l3 3"/></>,
+  archive: <><rect x="3" y="3" width="18" height="5" rx="1"/><path d="M5 8v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8M10 12h4"/></>,
   trash: <><path d="M3 6h18M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M5 6v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6M10 10v7m4-7v7"/></>,
   plus: <path d="M12 5v14M5 12h14"/>,
   grip: <g fill="currentColor" stroke="none"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></g>,

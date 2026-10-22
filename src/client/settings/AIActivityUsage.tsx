@@ -6,7 +6,7 @@ import { aiActivityLabels, type AIActivity } from '../../shared/intelligence';
 import { api } from '../api';
 import { Select } from '../components/Select';
 
-type Period = '7' | '30' | '60' | '90' | 'all' | 'custom';
+type Period = '7' | '30' | '60' | '90' | 'year' | 'all' | 'custom';
 const dateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 const number = (value: number) => value.toLocaleString(getLocale());
 const compact = (value: number) => new Intl.NumberFormat(getLocale(),{notation:'compact',maximumFractionDigits:1}).format(value);
@@ -47,7 +47,8 @@ export function AIActivityUsage() {
   const summary=useMemo(()=>{
     const today=new Date();today.setHours(0,0,0,0);
     const from=period==='custom'?new Date(start+'T00:00:00'):new Date(today);
-    if(period!=='all'&&period!=='custom')from.setDate(from.getDate()-Number(period)+1);
+    if(period==='year')from.setFullYear(from.getFullYear()-1);
+    else if(period!=='all'&&period!=='custom')from.setDate(from.getDate()-Number(period)+1);
     const until=period==='custom'?new Date(end+'T00:00:00'):new Date(today);until.setDate(until.getDate()+1);
     const filtered=invalid?[]:items.filter(item=>{
       const time=new Date(item.startedAt).getTime();
@@ -76,7 +77,7 @@ export function AIActivityUsage() {
   return <section className="ai-usage" aria-label={uiText("AI token consumption")} aria-busy={busy}>
     <div className="ai-usage-heading"><div><h3>{uiText("Token consumption")}</h3></div><button className="button small" disabled={busy} onClick={()=>{setBusy(true);setRevision(value=>value+1);}}>{uiText("Refresh usage")}</button></div>
     <div className="ai-usage-filters">
-      <div className="ai-usage-period"><span>{uiText("Period")}</span><div className="display-options" role="group" aria-label={uiText("Usage period")}>{([{id:'7',label:uiText("7 days")},{id:'30',label:uiText("30 days")},{id:'60',label:uiText("60 days")},{id:'90',label:uiText("90 days")},{id:'all',get label(){return uiText("All")}},{id:'custom',label:uiText("Custom")}] as const).map(option=><button type="button" key={option.id} aria-pressed={period===option.id} onClick={()=>setPeriod(option.id)}>{option.label}</button>)}</div></div>
+      <div className="ai-usage-period"><span>{uiText("Period")}</span><div className="display-options" role="group" aria-label={uiText("Usage period")}>{([{id:'7',label:uiText("7 days")},{id:'30',label:uiText("30 days")},{id:'60',label:uiText("60 days")},{id:'90',label:uiText("90 days")},{id:'year',label:uiText("1 year")},{id:'all',get label(){return uiText("All")}},{id:'custom',label:uiText("Custom")}] as const).map(option=><button type="button" key={option.id} aria-pressed={period===option.id} onClick={()=>setPeriod(option.id)}>{option.label}</button>)}</div></div>
       <label>{uiText("Action type")}<Select aria-label={uiText("Action type")} value={action} onChange={event=>setAction(event.target.value)}><option value="all">{uiText("All actions")}</option>{Object.entries(aiActivityLabels).map(([value,label])=><option value={value} key={value}>{uiText(label)}</option>)}</Select></label>
       <label>{uiText("Status")}<Select aria-label={uiText("Status")} value={status} onChange={event=>setStatus(event.target.value)}><option value="all">{uiText("All statuses")}</option>{['running','completed','failed','interrupted','skipped'].map(value=><option value={value} key={value}>{value[0].toUpperCase()+value.slice(1)}</option>)}</Select></label>
     </div>
@@ -95,6 +96,6 @@ export function AIActivityUsage() {
     <section className="ai-usage-actions"><h4>{uiText("Usage by action")}</h4>{summary.actions.length?summary.actions.map(([key,value])=><div className="ai-usage-action" key={key}><div><span>{uiText(aiActivityLabels[key as AIActivity['action']])}</span><strong>{number(value)} <small>{uiText("tokens")}</small></strong></div><div className="ai-usage-track"><span style={{width:`${total?value/total*100:0}%`}}/></div></div>):<p className="ai-usage-note">{uiText("No matching actions.")}</p>}</section>
     </div>
     <section className="ai-usage-token-details" aria-label={uiText("Token details")}><dl><div><dt>{uiText("Cache writes")}</dt><dd>{number(summary.writes)}</dd></div><div><dt>{uiText("Reasoning tokens")}</dt><dd>{number(summary.reasoning)}</dd></div><div><dt>{uiText("Usage not reported")}</dt><dd>{number(summary.filtered.length-summary.reported)}{" " + uiText("actions")}</dd></div></dl></section>
-    <details className="ai-usage-note ai-usage-about"><DisclosureSummary>{uiText("About these totals · Up to 1,000 retained actions")}</DisclosureSummary><p>{uiText("Across unlocked vaults, using local dates. Older activity may no longer be available. Refreshes every 15 seconds. Cached input and reasoning are included in input and output totals when reported by the provider; they are not added again. Missing counts are excluded.")}</p></details>
+    <details className="ai-usage-note ai-usage-about"><DisclosureSummary>{uiText("About these totals · One year of retained activity")}</DisclosureSummary><p>{uiText("Across unlocked vaults, using local dates. Activity and token usage are retained for one year without a record-count limit. Debug traces expire separately after 30 days; removing traces preserves these totals. Refreshes every 15 seconds. Cached input and reasoning are included in input and output totals when reported by the provider; they are not added again. Missing counts are excluded.")}</p></details>
   </section>;
 }

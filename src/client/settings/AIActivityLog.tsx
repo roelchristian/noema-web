@@ -80,7 +80,7 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
     </div>
     <div id="ai-activity-panel" role="tabpanel" aria-labelledby={'ai-activity-tab-'+view} tabIndex={0}>
     {view==='usage'?<AIActivityUsage/>:<>
-    <p className="ai-activity-description">{uiText("Up to 1,000 recent actions stored locally. Locked vault activity is hidden and excluded from export and clear. Cache reads and writes appear when reported by the provider.")}</p>
+    <p className="ai-activity-description">{uiText("Activity and token usage are stored locally for one year. Debug traces expire separately after 30 days. Locked vault activity is hidden and excluded from export and clear. Cache reads and writes appear when reported by the provider.")}</p>
     {data.enrichmentMetrics&&<section aria-label={uiText("Page enrichment efficiency")} className="ai-activity-description">
       <p><strong>{uiText("Page enrichment:")}</strong> {data.enrichmentMetrics.requestsAvoided.toLocaleString(getLocale())}{" " + uiText("local decisions avoided a request ·") + " "}{data.enrichmentMetrics.providerRequests.toLocaleString(getLocale())}{" " + uiText("provider requests ·") + " "}{data.enrichmentMetrics.completedPages.toLocaleString(getLocale())}{" " + uiText("successfully enriched pages.")}</p>
       {data.enrichmentMetrics.estimatedCost!==null&&<p>{uiText("Estimated cost: $")}{data.enrichmentMetrics.estimatedCost.toFixed(6)}{" " + uiText("USD")}{data.enrichmentMetrics.costPerCompletedPage!==null?uiText(" · ${value0} per successfully enriched page",{value0: data.enrichmentMetrics.costPerCompletedPage.toFixed(6)}):''}.</p>}

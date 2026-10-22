@@ -132,6 +132,11 @@ db.exec(`CREATE TABLE IF NOT EXISTS ai_activity_debug (
 );
  CREATE INDEX IF NOT EXISTS ai_activity_debug_event_lookup ON ai_activity_debug_events(activity_id,sequence);`);
 
+// New traces carry independent retention and accounting; historical payloads stay readable.
+for (const [name,definition] of Object.entries({mode:"TEXT NOT NULL DEFAULT 'legacy'",revision:'INTEGER NOT NULL DEFAULT 0',retained_bytes:'INTEGER NOT NULL DEFAULT 0',truncated:'INTEGER NOT NULL DEFAULT 0'})) {
+ if(!db.prepare('PRAGMA table_info(ai_activity_debug)').all().some(field=>field.name===name))db.exec(`ALTER TABLE ai_activity_debug ADD COLUMN ${name} ${definition}`);
+}
+
 // Notifications store references and read state, never generated content or title snapshots.
 db.exec(`CREATE TABLE IF NOT EXISTS ai_notifications (
  seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE,

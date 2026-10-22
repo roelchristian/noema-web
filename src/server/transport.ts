@@ -234,7 +234,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           if(parts.length===3 && id==='notifications' && method==='PUT')return send(200,notifications.read(body));
           if(parts.length===3 && id==='debug' && method==='GET')return send(200,activity.debugSettings());
           if(parts.length===3 && id==='debug' && method==='PUT')return send(200,activity.saveDebugSettings(body));
-          if(parts.length===4 && id==='activity' && child && method==='GET')return send(200,activity.debug(child));
+          if(parts.length===4 && id==='activity' && child && method==='GET')return send(200,activity.debug(child,{after:url.searchParams.has('after')?Number(url.searchParams.get('after')):undefined,eventCursor:url.searchParams.has('eventCursor')?Number(url.searchParams.get('eventCursor')):undefined,limit:url.searchParams.has('limit')?Number(url.searchParams.get('limit')):undefined,includeEvents:url.searchParams.has('events')?url.searchParams.get('events')==='1':undefined}));
           if(parts.length===3 && id==='activity' && method==='DELETE')return send(200,activity.clear());
           if(parts.length===3 && id==='activity' && method==='GET')return send(200,activity.list(url.searchParams.get('before')));
           if(parts.length===2 && method==='GET')return send(200,intelligence.status());

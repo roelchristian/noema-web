@@ -4395,3 +4395,29 @@
 .entity-toolbar-identity {
   min-width: 0;
 }
+/* Preserved latest-main AI debug and archive controls; target sizes use shared contracts. */
+.ai-debug-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 12px; margin: 18px 0; }
+.ai-debug-overview > div { padding: 14px; border: 1px solid var(--line); border-radius: 6px; }
+.ai-debug-overview dt { color: var(--text-muted); font-size: 12px; }
+.ai-debug-overview dd { margin: 6px 0 0; font-size: 20px; font-weight: 600; }
+.ai-debug-facts { display: grid; grid-template-columns: auto 1fr; gap: 8px 18px; font-size: 13px; }
+.ai-debug-facts dt { color: var(--text-muted); }
+.ai-debug-facts dd { margin: 0; overflow-wrap: anywhere; }
+.ai-debug-timeline { padding-left: 22px; font-size: 13px; line-height: 1.9; }
+.ai-debug-timeline span { margin-left: 12px; color: var(--text-muted); }
+.knowledge-row-actions { display: flex; flex: none; align-items: center; gap: 2px; }
+.knowledge-manage { display: inline-flex; align-items: center; justify-content: center; width: var(--control-target-compact); height: var(--control-target-compact); padding: 6px; border-radius: var(--radius-sm); color: var(--text-muted); }
+.knowledge-manage:hover { background: var(--surface-hover); color: var(--text); }
+.knowledge-manage:focus-visible, .entity-lifecycle-action:focus-visible, .lifecycle-details > summary:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: var(--focus-offset-control); }
+.entity-lifecycle-controls { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.entity-lifecycle-action, .entity-archived-status { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: var(--ui-text-sm); }
+.entity-lifecycle-action { min-height: var(--control-target-compact); padding: 5px 8px; border-radius: var(--radius-sm); }
+.entity-lifecycle-action:hover { color: var(--text); background: var(--surface-hover); }
+.entity-lifecycle-action .icon, .entity-archived-status .icon { width: 14px; height: 14px; }
+.entity-archived-status { margin-right: auto; }
+@media (max-width: 750px) {
+  .knowledge-manage, .knowledge-row-actions .knowledge-open-entity { width: var(--control-target-compact); min-height: var(--control-target-compact); }
+}
+@media (max-width: 750px) {
+  .entity-lifecycle-action { min-height: var(--control-target-compact); }
+}

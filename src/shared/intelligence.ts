@@ -51,8 +51,10 @@ export interface AIModelPricing {
   models: Record<string,{inputPerMillion:number;outputPerMillion:number;cachedInputPerMillion?:number}>;
 }
 export interface AIActivityPage { items: AIActivity[]; nextCursor: number | null; enrichmentMetrics?: PageEnrichmentMetrics }
-export interface AIDebugSettings {enabled: boolean}
+export interface AIDebugSettings {enabled: boolean; mode?: 'off'|'compact'|'full'; fullUntil?: string|null}
 export interface AIActivityDebug {
+  durationMs?: number|null; eventCount?: number;
+  mode?: 'legacy'|'compact'|'full'; revision?: number; retainedBytes?: number; truncated?: boolean; unchanged?: boolean; nextEventCursor?: number|null; hasMoreEvents?: boolean;
   activityId: string; status: AIActivity['status']; endpoint: string | null; request: string | null;
   responseBody: string; response: string | null; responseStatus: number | null;
   responseHeaders: string | null; error: string | null; updatedAt: string;

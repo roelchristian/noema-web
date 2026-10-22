@@ -393,3 +393,27 @@ test('generation streams keep preview/final channels, usage, debug streaming and
     assert.deepEqual(previews,label==='source page'?['Preview [redacted]','reset']:[],label+' preview channel');
   }
 });
+
+test('structured generation diagnostics distinguish malformed JSON and schema failures',async()=>{
+  for(const [output,category] of [['{broken','malformed_json'],['{"title":12}','schema']]) {
+    const events=[],errors=[],secrets=new Secrets();
+    const ai=new Intelligence(secrets,async()=>completed(output));
+    ai.save({apiKey:key});
+    const trace={mode:'compact',request(){},headers(){},body(){},response(){},event(type,data){events.push({type,data});},error(message){errors.push(message);}};
+    await assert.rejects(ai.generatePageUtility('input',[],'Untitled',()=>trace),error=>error.status===502);
+    assert.ok(events.some(event=>event.type==='prompt'&&event.data.template==='utility'));
+    assert.ok(events.some(event=>event.type==='validation'&&event.data.stage==='utility'&&event.data.valid===false&&event.data.category===category));
+    assert.match(errors.at(-1),/invalid title and subject/);
+    assert.ok(!JSON.stringify(events).includes(key));
+  }
+});
+
+test('embedding diagnostics record invalid dimensions without copying vector elements',async()=>{
+  const events=[],secrets=new Secrets();
+  const ai=new Intelligence(secrets,async()=>Response.json({model:'text-embedding-3-small',data:[{index:0,embedding:[0.123456789]}]}));
+  ai.save({apiKey:key});
+  const trace={mode:'compact',request(){},headers(){},body(){},response(){},event(type,data){events.push({type,data});},error(){}};
+  await assert.rejects(ai.embed('input',()=>trace),error=>error.status===502);
+  assert.ok(events.some(event=>event.type==='validation'&&event.data.valid===false&&event.data.actualDimensions===1&&event.data.index===0));
+  assert.ok(!JSON.stringify(events).includes('0.123456789'));
+});

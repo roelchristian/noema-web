@@ -182,14 +182,15 @@ export class Intelligence {
       // Allow 32 bytes per number plus envelope overhead, bounded by the batch cap.
       const maxJsonBytes=Math.max(128000,16000+inputs.length*1536*32);
       const result=await readOpenAIResponse(response,trace,undefined,undefined,observer?.usage,{maxJsonBytes});
-      if(result.model!=='text-embedding-3-small'||!Array.isArray(result.data)||result.data.length!==inputs.length)throw new HttpError(502,'OpenAI returned invalid embeddings.');
+      if(result.model!=='text-embedding-3-small'||!Array.isArray(result.data)||result.data.length!==inputs.length){trace?.event('validation',{stage:'embedding',valid:false,category:'shape',expectedCount:inputs.length,actualCount:Array.isArray(result.data)?result.data.length:null});throw new HttpError(502,'OpenAI returned invalid embeddings.');}
       const embeddings:number[][]=new Array(inputs.length),seen=new Set<number>();
       for(const item of result.data) {
         const index=item?.index,vector=item?.embedding;
-        if(!Number.isSafeInteger(index)||index<0||index>=inputs.length||seen.has(index)||!Array.isArray(vector)||vector.length!==1536||vector.some((value:unknown)=>typeof value!=='number'||!Number.isFinite(value))||!vector.some((value:number)=>value!==0))throw new HttpError(502,'OpenAI returned invalid embeddings.');
+        if(!Number.isSafeInteger(index)||index<0||index>=inputs.length||seen.has(index)||!Array.isArray(vector)||vector.length!==1536||vector.some((value:unknown)=>typeof value!=='number'||!Number.isFinite(value))||!vector.some((value:number)=>value!==0)){trace?.event('validation',{stage:'embedding',valid:false,category:'vector',index:Number.isSafeInteger(index)?index:null,actualDimensions:Array.isArray(vector)?vector.length:null,expectedDimensions:1536});throw new HttpError(502,'OpenAI returned invalid embeddings.');}
         seen.add(index);embeddings[index]=vector;
       }
       if(controller.signal.aborted||this.credential()?.generation!==credential.generation)throw new HttpError(409,'The credential changed or expired. Please try again.');
+      trace?.event('validation',{stage:'embedding',valid:true,vectorCount:embeddings.length,dimensions:1536});
       return {embeddings,tokens:Number.isSafeInteger(result.usage?.total_tokens)&&result.usage.total_tokens>=0?result.usage.total_tokens:0};
     }catch(error){trace?.error(error instanceof Error?error.message:'Embedding request failed.');if(error instanceof HttpError)throw error;throw new HttpError(502,'The embedding request failed or timed out. Please try again.');}
     finally{clearTimeout(timer);this.embeddingRequests.delete(controller);this.backgroundEmbeddingRequests.delete(controller);}
@@ -199,26 +200,27 @@ export class Intelligence {
     // Build/validate field selection before reserving a request or reading credentials.
     pageEnrichmentPrompt(input,options);
     const {signal,...fields}=options;
-    const output=await this.generate({kind:'pageEnrichment',input,options:fields,onRequest,background,signal});
-    return parsePageEnrichment(output,options);
+    return this.validatedGeneration({kind:'pageEnrichment',input,options:fields,onRequest,background,signal},output=>parsePageEnrichment(output,options));
   }
   titleSelection(): IntelligencePreferences {
     const model=intelligenceModels.find(option=>option.id===this.preferences.model)?.efforts.includes('none') ? this.preferences.model : 'gpt-6-luna';
     return {model,reasoningEffort:'none'};
   }
   async generateTitle(input: string, onRequest?: AIRequestObserver) {
-    const title=await this.generate({kind:'title',input,onRequest});
+    return this.validatedGeneration({kind:'title',input,onRequest},title=>{
     if(title.length>120 || /[\r\n]/.test(title) || title==='Untitled')throw new HttpError(502,'OpenAI returned an invalid page title.');
     return title;
+    });
   }
   async generatePageUtility(input:string,domains:{id:string;name:string}[],currentTitle:string,onRequest?:AIRequestObserver,background=false) {
-    const output=await this.generate({kind:'utility',input,domains,currentTitle,onRequest,background});
+    return this.validatedGeneration({kind:'utility',input,domains,currentTitle,onRequest,background},output=>{
     let value:unknown;try{value=JSON.parse(output);}catch{throw new HttpError(502,'AI returned invalid title and subject data.');}
     if(!value||typeof value!=='object'||!('title' in value)||typeof value.title!=='string'||!value.title.trim()||value.title.length>(currentTitle.trim()&&currentTitle.trim()!=='Untitled'?500:120)||/[\r\n]/.test(value.title)||value.title==='Untitled'||!('primaryDomainId' in value)||!(value.primaryDomainId===null||typeof value.primaryDomainId==='string'&&domains.some(domain=>domain.id===value.primaryDomainId))||!('secondaryDomainIds' in value)||!Array.isArray(value.secondaryDomainIds)||value.secondaryDomainIds.length>2||value.secondaryDomainIds.some(id=>typeof id!=='string'||!domains.some(domain=>domain.id===id)))throw new HttpError(502,'AI returned invalid title and subject data.');
     return {title:currentTitle.trim()&&currentTitle.trim()!=='Untitled'?currentTitle:value.title.trim(),primaryDomainId:value.primaryDomainId as string|null,secondaryDomainIds:[...new Set(value.secondaryDomainIds as string[])].filter(id=>id!==value.primaryDomainId)};
+    });
   }
   async enrichSource(input:string,onRequest?:AIRequestObserver) {
-    const output=await this.generate({kind:'sourceEnrichment',input,onRequest,background:true});
+    return this.validatedGeneration({kind:'sourceEnrichment',input,onRequest,background:true},output=>{
     try {
       const value=JSON.parse(output);
       if(!value||typeof value.name!=='string'||!value.name.trim()||value.name.length>200||/[\r\n\x00-\x1f]/.test(value.name)||typeof value.summary!=='string'||!value.summary.trim()||!('language' in value))throw new Error();
@@ -244,14 +246,36 @@ export class Intelligence {
       }
       return {name:value.name.trim(),language:pageLanguage(value.language),summary:limitSummaryWords(value.summary),authors,structure};
     }catch {throw new HttpError(502,'AI returned invalid source metadata. Retry enrichment.');}
+    });
   }
   async extractSourceAuthors(input:string,onRequest?:AIRequestObserver) {
-    const output=await this.generate({kind:'sourceAuthors',input,onRequest,background:true});
+    return this.validatedGeneration({kind:'sourceAuthors',input,onRequest,background:true},output=>{
     try{return parseSourceAuthors(JSON.parse(output)?.authors);}
     catch{throw new HttpError(502,'AI returned invalid source authors. Retry enrichment.');}
+    });
   }
   async reeditSource(input:string,instructions:string,signal:AbortSignal,onRequest?:AIRequestObserver) {
     return this.generate({kind:'editorial',input,instructions,signal,onRequest,background:true});
+  }
+  private async validatedGeneration<T>(request:GenerationRequest,parse:(output:string)=>T):Promise<T> {
+    let trace:AIDebugTrace|undefined;
+    const key=this.credential()?.key;
+    const output=await this.generate({...request,onRequest:bytes=>{
+      const observer=request.onRequest?.(bytes);
+      if(key)trace=redactedTrace(observer,key);
+      return observer;
+    }});
+    try {
+      const value=parse(output);
+      trace?.event('validation',{stage:request.kind,valid:true});
+      return value;
+    } catch(error) {
+      let category='schema';
+      if(request.kind!=='title')try{JSON.parse(output);}catch{category='malformed_json';}
+      trace?.event('validation',{stage:request.kind,valid:false,category});
+      trace?.error(error instanceof Error?error.message:'AI output validation failed.');
+      throw error;
+    }
   }
   async generate(request:GenerationRequest) {
     const credential=this.credential(),preferenceRevision=this.preferenceRevision;
@@ -273,6 +297,7 @@ export class Intelligence {
       trace=redactedTrace(observer,credential.key);
       const payload={model:selection.model,store:false,max_output_tokens:policy.maxOutputTokens,reasoning:{effort:selection.reasoningEffort},tools:[],tool_choice:'none',...prompt,...(trace||policy.stream?{stream:true}:{})};
       trace?.request('https://api.openai.com/v1/responses',payload);
+      trace?.event('prompt',{template:request.kind,version:1});
       const response=await this.transport('https://api.openai.com/v1/responses',{
         method:'POST',redirect:'error',signal:controller.signal,
         headers:{'Content-Type':'application/json',Authorization:`Bearer ${credential.key}`},

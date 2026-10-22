@@ -19,7 +19,7 @@ try{
  await page.getByRole('button',{name:/Open Person:/}).click();
  await page.getByRole('button',{name:'Manage entity: Synthetic Archivist',exact:true}).click();
  const dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:'Archive entity',exact:true}).waitFor();
- assert.match(await dialog.innerText(),/1 active pages · 1 pages in Trash · 4 block references/);
+ assert.deepEqual(await dialog.locator('.lifecycle-counts dd').allTextContents(),['1','1','4']);
  await page.screenshot({path:resolve(artifacts,'01-entity-impact.png'),fullPage:true});
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:resolve(artifacts,'09-mobile-impact.png'),fullPage:true});await page.setViewportSize({width:1440,height:1100});
  await dialog.getByRole('button',{name:'Archive entity',exact:true}).click();await dialog.waitFor({state:'hidden'}).catch(async error=>{console.log(await dialog.innerText());await page.screenshot({path:resolve(artifacts,'failure.png'),fullPage:true});throw error;});
@@ -52,7 +52,7 @@ try{
  assert.equal(f.knowledge.require('default',f.person.id).archived_at,null);await page.unroute('**/api/entities/*/lifecycle');
  await dialog.getByRole('button',{name:'Cancel',exact:true}).click();
  await page.getByText('Sources',{exact:true}).first().click();await page.getByRole('button',{name:'Manage source: Synthetic evidence',exact:true}).click();
- await dialog.getByRole('button',{name:'Archive source',exact:true}).waitFor();assert.match(await dialog.innerText(),/2 active pages · 1 pages in Trash/);
+ await dialog.getByRole('button',{name:'Archive source',exact:true}).waitFor();assert.deepEqual((await dialog.locator('.lifecycle-counts dd').allTextContents()).slice(0,2),['2','1']);
  await page.screenshot({path:resolve(artifacts,'05-source-impact.png'),fullPage:true});
  await dialog.getByRole('button',{name:'Archive source',exact:true}).click();await dialog.waitFor({state:'hidden'});
  assert.equal(await page.getByRole('button',{name:'Manage source: Synthetic evidence',exact:true}).count(),0);
@@ -62,9 +62,9 @@ try{
  await page.screenshot({path:resolve(artifacts,'06-archived-source-bookmark.png'),fullPage:true});
  assert.equal(f.reading.list('default',f.file.id)[0].excerpt,f.highlight.excerpt);
  // Restore directly from source details, then archive it again for historical-link checks.
- await page.getByRole('button',{name:'Restore / manage',exact:true}).click();await dialog.getByRole('button',{name:'Restore source',exact:true}).click();await dialog.waitFor({state:'hidden'});
+ await page.getByRole('button',{name:'Restore…',exact:true}).click();await dialog.getByRole('button',{name:'Restore source',exact:true}).click();await dialog.waitFor({state:'hidden'});
  assert.equal(f.knowledge.require('default',f.source.id).archived_at,null);
- await page.getByRole('button',{name:'Archive / manage',exact:true}).click();await dialog.getByRole('button',{name:'Archive source',exact:true}).click();await dialog.waitFor({state:'hidden'});
+ await page.getByRole('button',{name:'Archive…',exact:true}).click();await dialog.getByRole('button',{name:'Archive source',exact:true}).click();await dialog.waitFor({state:'hidden'});
  await page.getByText('Pages',{exact:true}).first().click();await page.locator('[data-library-row="page:'+f.active.id+'"] .organization-item-name').click();
  await page.locator('#note-citation-'+f.ref.id).click();
  // Default reference style opens the source viewer directly. Footnote style first reveals the reference list.
@@ -73,12 +73,12 @@ try{
  await page.screenshot({path:resolve(artifacts,'07-archived-source-citation.png'),fullPage:true});
  await page.getByRole('button',{name:'Close source viewer',exact:true}).click();
  // Archive the person through the existing mention details entry point.
- await page.locator('.page [data-entity="'+f.person.id+'"]').first().click();await page.getByRole('button',{name:'Open entity details',exact:true}).click();await page.getByRole('button',{name:'Archive / manage',exact:true}).click();
+ await page.locator('.page [data-entity="'+f.person.id+'"]').first().click();await page.getByRole('button',{name:'Open entity details',exact:true}).click();await page.getByRole('button',{name:'Archive…',exact:true}).click();
  await dialog.getByRole('button',{name:'Archive entity',exact:true}).click();await dialog.waitFor({state:'hidden'});
  await page.getByRole('button',{name:'Vault options',exact:true}).click();await page.getByRole('menuitem',{name:'Trash',exact:true}).click();
  await page.getByRole('button',{name:'Restore Synthetic trashed references',exact:true}).click();
  await page.locator('.page [data-entity="'+f.person.id+'"]').first().waitFor();
- await page.locator('.page [data-entity="'+f.person.id+'"]').first().click();await page.getByRole('button',{name:'Open entity details',exact:true}).click();await page.getByRole('button',{name:'Restore / manage',exact:true}).waitFor();
+ await page.locator('.page [data-entity="'+f.person.id+'"]').first().click();await page.getByRole('button',{name:'Open entity details',exact:true}).click();await page.getByRole('button',{name:'Restore…',exact:true}).waitFor();
  await page.screenshot({path:resolve(artifacts,'08-restored-trash-archived-link.png'),fullPage:true});
  // Browser-originated requests exercise ownership, locking and repeated action semantics.
  const access=await page.evaluate(async({id,version,other})=>{

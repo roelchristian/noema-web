@@ -2951,3 +2951,104 @@
   color: var(--text-muted);
   font-size: 12px;
 }
+
+/* Compact selection-only Option A surface; page tools and document typography
+ * stay separate. Shared semantics and controls follow this feature module. */
+.selection-popover.selection-context {
+  overflow: visible;
+  max-height: none;
+}
+.selection-context .selection-toolbar {
+  flex-wrap: nowrap;
+  border-radius: 8px;
+  user-select: none;
+}
+.selection-context .selection-toolbar button {
+  min-width: var(--control-target-regular);
+  height: var(--control-target-regular);
+  padding-inline: 10px;
+  flex: none;
+}
+.selection-context .selection-toolbar button:nth-child(-n+3) { padding: 0; }
+.selection-context .selection-more-trigger { font-size: 13px; }
+.selection-context .selection-more-trigger > .icon { width: 12px; height: 12px; transform: rotate(90deg); }
+.selection-context .selection-actions-panel {
+  position: fixed;
+  z-index: 1;
+  width: 280px;
+  max-width: calc(100vw - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: var(--shadow-menu);
+  scroll-padding: 6px;
+}
+.selection-context .selection-more-actions { padding: 6px; }
+.selection-context .selection-more-actions > [role=group] + [role=group] {
+  border-top: 1px solid var(--line);
+  margin-top: 5px;
+  padding-top: 3px;
+}
+.selection-context .selection-action-group {
+  margin: 0;
+  padding: 8px 10px 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  color: var(--text-muted);
+}
+.selection-context .selection-more-actions button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: var(--control-target-regular);
+  padding: 7px 10px;
+  border-radius: 5px;
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.selection-context .selection-more-actions button > :first-child {
+  width: 16px;
+  flex: none;
+  text-align: center;
+}
+.selection-context .selection-more-actions button > span { min-width: 0; overflow-wrap: anywhere; }
+.selection-context .selection-more-actions button > .icon:last-child:not(:first-child) { margin-left: auto; width: 12px; }
+.selection-context .selection-more-actions kbd { margin-left: auto; font: 11px var(--font-ui); color: var(--text-muted); white-space: nowrap; }
+.selection-context .selection-more-actions button:hover:not(:disabled),
+.selection-context .selection-more-actions button[aria-checked=true] { background: var(--surface-hover); }
+.selection-context button:focus-visible { outline: 2px solid var(--text-muted); outline-offset: -2px; }
+.selection-context .selection-more-actions button:disabled { cursor: default; }
+.selection-context .selection-actions-panel :is(.selection-entities,.semantic-picker) { width: 100%; max-width: none; border: 0; }
+.selection-context :is(.semantic-picker > button, .selection-entities button) {
+  min-width: var(--control-target-regular);
+  min-height: var(--control-target-regular);
+}
+.selection-context .selection-picker-back { display: flex; align-items: center; gap: 8px; }
+.selection-context .selection-picker-back > .icon { transform: rotate(180deg); }
+@media (max-width: 750px) {
+  .selection-context.mobile-selection-popover .selection-toolbar button,
+  .selection-context.mobile-selection-popover .selection-done {
+    min-width: var(--touch-target-size);
+    min-height: var(--touch-target-size);
+    height: var(--touch-target-size);
+    padding-inline: 10px;
+  }
+  .selection-context.mobile-selection-popover .selection-more-trigger > .icon { width: 18px; height: 18px; transform: none; }
+  .selection-context.mobile-selection-popover .selection-toolbar { gap: 0; }
+  .selection-context .selection-more-actions { padding: 6px 12px; }
+  .selection-context .selection-more-actions button { min-height: var(--touch-target-size); font-size: 15px; padding: 10px; }
+  .selection-context .selection-more-actions kbd { display: none; }
+  .selection-context .selection-more-actions .selection-action-group { padding-top: 10px; }
+  .selection-context .mobile-selection-sheet .selection-picker-back { min-width: var(--touch-target-size); min-height: var(--touch-target-size); }
+}
+@media (max-width: 360px) {
+  /* Keep all six direct targets visible on narrow phones. The entity icon
+   * retains its accessible name and tooltip when the label cannot fit. */
+  .selection-context .selection-annotate .selection-action-label { display: none; }
+}

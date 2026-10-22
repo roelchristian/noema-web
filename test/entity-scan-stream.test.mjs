@@ -191,3 +191,28 @@ test('client rejects interrupted and error streams after showing provisional row
     }
   }finally{globalThis.fetch=originalFetch;}
 });
+
+test('explicit occurrences and subtype approvals are atomic, preserve wording and exclusions after save/reload',()=>{
+ const db=openDatabase(':memory:'),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),enrichments=new AIEnrichments(store,pages),scans=new EntityScans(store,pages,knowledge,enrichments);
+ try {
+  let page=pages.create('default',{title:'Deliberate review'});
+  page=pages.update('default',page.id,{...page,blocks:[{id:'p',type:'paragraph',content:[{text:'Mira met Mira. Mira waited.'}]},{id:'table',type:'table',content:[],rows:[[[{text:'Mira in a cell'}]]]}]});
+  const output=JSON.stringify({suggestions:[candidate('Mira','person',{subtypes:['Imaginary researcher'],aliases:['Mira'],evidenceStart:0,runId:JSON.stringify(['p',null,null,0])})]});
+  const scan=scans.save('default',page,output,{model:'gpt-5-mini',reasoningEffort:'low'}),suggestion=scan.suggestions[0],proposal=scan.subtypeSuggestions[0];
+  const edit={...suggestion,approveSubtypeIds:[proposal.id],additionalOccurrences:[{blockId:'table',row:0,col:0,start:0,end:4}]};
+  const request={scanId:scan.id,revision:page.revision,suggestionId:suggestion.id,decision:'accepted',edits:[edit]};
+  assert.throws(()=>scans.review('default',page.id,{...request,edits:[{...edit,additionalOccurrences:[{blockId:'table',row:0,col:1,start:0,end:4}]}]}),/valid additional/);
+  assert.ok(!knowledge.schema('default').subtypes.some(item=>item.name===proposal.name),'Dependency creation rolls back with invalid occurrence');
+  const result=scans.review('default',page.id,request);
+  assert.equal(result.scan.subtypeSuggestions[0].status,'accepted');
+  assert.equal(result.scan.suggestions[0].linkedOccurrences.length,2);
+  assert.deepEqual(result.entities.find(item=>item.name==='Mira').aliases,[],'Aliases are never saved by default');
+  const reloaded=pages.get('default',page.id);
+  assert.equal(reloaded.blocks[0].content.filter(item=>item.entityId).length,1);
+  assert.equal(reloaded.blocks[1].rows[0][0][0].mentionText,'Mira');
+  assert.equal(reloaded.blocks[0].content.filter(item=>item.skipAutoTag&&item.text==='Mira').length,2);
+  assert.throws(()=>scans.review('default',page.id,request),/changed/,'Replay cannot duplicate entity or subtype');
+  const persisted=enrichments.list('default',page.id).find(item=>item.kind==='entity_scan').data.scan;
+  assert.deepEqual(persisted.suggestions[0].linkedOccurrences,result.scan.suggestions[0].linkedOccurrences);
+ }finally{db.close();}
+});

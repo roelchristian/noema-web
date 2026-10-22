@@ -1,10 +1,10 @@
 import { isEntityTaggingText, type EntityInput, type EntityType, type Page, type Segment, type Entity } from './domain.js';
 export interface EntitySuggestion extends EntityInput {
   proposedSubtypeIds?: string[];
-  id: string; evidenceAnchor?: EvidenceAnchor; evidence: string; reason: string; existingId: string | null;
+  linkedOccurrences?:EvidenceAnchor[]; id: string; evidenceAnchor?: EvidenceAnchor; evidence: string; reason: string; existingId: string | null;
   status: 'pending' | 'accepted' | 'rejected';
 }
-export interface EntitySuggestionEdit { saveAliases?:boolean; domainIds?:string[]; id: string; name: string; aliases?:string[]; type: EntityType; subtypes: string[]; existingId: string | null }
+export interface EntitySuggestionEdit { saveAliases?:boolean; additionalOccurrences?:EvidenceAnchor[]; approveSubtypeIds?:string[]; domainIds?:string[]; id: string; name: string; aliases?:string[]; type: EntityType; subtypes: string[]; existingId: string | null }
 export interface SubtypeSuggestion { id: string; name: string; type: EntityType; status: 'pending' | 'accepted' | 'rejected'; resolvedId?: string }
 export interface EvidenceAnchor {blockId:string; row?:number; col?:number; start:number; end:number}
 export interface EntityTextRun extends EvidenceAnchor {runId:string; text:string}
@@ -60,7 +60,7 @@ export function locateEvidence(page:Pick<Page,'blocks'>,evidence:string,anchor?:
   return found.length===1?found[0]!:null;
 }
 /** Insert only into the validated occurrence; formulas, exclusions and mentions survive. */
-export function mentionEvidence(page:Page,evidence:string,entityId:string,anchor?:EvidenceAnchor):Page|null {
+export function mentionEvidence(page:Page,evidence:string,entityId:string,anchor?:EvidenceAnchor,occurrenceOnly=false):Page|null {
   const target=locateEvidence(page,evidence,anchor);
   if(!target)return null;
   function replace(segments:Segment[]):Segment[] {
@@ -72,7 +72,7 @@ export function mentionEvidence(page:Page,evidence:string,entityId:string,anchor
         if(!isEntityTaggingText(segment))return segments;
         if(offset<target!.start)output.push({...segment,text:text.slice(0,target!.start-offset)});
         mention+=text.slice(Math.max(0,target!.start-offset),Math.min(text.length,target!.end-offset));
-        if(!inserted){output.push({entityId,mentionText:''});inserted=true;}
+        if(!inserted){output.push({entityId,mentionText:'',...(occurrenceOnly?{skipAutoTag:true}:{})});inserted=true;}
         if(end>target!.end)output.push({...segment,text:text.slice(target!.end-offset)});
       }
       offset=end;
@@ -98,4 +98,25 @@ export function evidenceContext(page:Pick<Page,'blocks'>,anchor:EvidenceAnchor|u
   if(anchor.start<0||anchor.end>text.length||anchor.start>=anchor.end)return null;
   const start=Math.max(0,anchor.start-radius),end=Math.min(text.length,anchor.end+radius);
   return {before:(start?'…':'')+text.slice(start,anchor.start),match:text.slice(anchor.start,anchor.end),after:text.slice(anchor.end,end)+(end<text.length?'…':''),text,label:`Block ${index+1} · ${block.type}${anchor.row===undefined?'':` · Row ${anchor.row+1}, column ${anchor.col!+1}`} · offsets ${anchor.start}–${anchor.end}`};
+}
+
+export const anchorKey=(anchor:EvidenceAnchor)=>JSON.stringify([anchor.blockId,anchor.row??null,anchor.col??null,anchor.start,anchor.end]);
+/** Exact phrase occurrences only, within eligible runs and word boundaries. */
+export function evidenceOccurrences(page:Pick<Page,'blocks'>,evidence:string):EvidenceAnchor[] {
+  if(!evidence.trim())return [];
+  return entityTextRuns(page).flatMap(run=>[...run.text.matchAll(evidencePattern(evidence))].flatMap(match=>{
+    const start=match.index!,end=start+match[0].length;
+    if(/[\p{L}\p{N}_]/u.test(run.text[start-1]??'')||/[\p{L}\p{N}_]/u.test(run.text[end]??''))return [];
+    return [{blockId:run.blockId,...(run.row===undefined?{}:{row:run.row,col:run.col}),start:run.start+start,end:run.start+end}];
+  }));
+}
+/** Exclusions persist through the editor's existing skipAutoTag contract. */
+export function excludeEvidence(page:Page,anchor:EvidenceAnchor):Page {
+  const split=(segments:Segment[])=>{let offset=0;return segments.flatMap(segment=>{
+    const text=segment.text??segment.mentionText??'',start=offset;offset+=text.length;
+    if(!isEntityTaggingText(segment)||offset<=anchor.start||start>=anchor.end)return [segment];
+    const from=Math.max(0,anchor.start-start),to=Math.min(text.length,anchor.end-start);
+    return [...(from?[{...segment,text:text.slice(0,from)}]:[]),{...segment,text:text.slice(from,to),skipAutoTag:true},...(to<text.length?[{...segment,text:text.slice(to)}]:[])];
+  });};
+  return {...page,blocks:page.blocks.map(block=>block.id!==anchor.blockId?block:anchor.row===undefined?{...block,content:split(block.content)}:{...block,rows:block.rows?.map((row,r)=>r!==anchor.row?row:row.map((cell,c)=>c!==anchor.col?cell:split(cell)))})};
 }

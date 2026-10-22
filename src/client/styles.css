@@ -3553,3 +3553,42 @@ dialog.settings-modal .modal-header { position: static; margin: 0; flex-shrink: 
 .sidebar-inline-name input:focus { outline: 2px solid var(--control-border); outline-offset: 1px; }
 .sidebar-inline-name small { display: block; margin-top: 3px; color: var(--danger, #a12424); font-size: 11px; }
 .sidebar-rename-page-icon { display: flex; align-items: center; color: var(--text-muted); }
+
+/* Vault storage */
+.storage-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.storage-heading p { margin: 0; color: var(--text-muted); font-size: 13px; overflow-wrap: anywhere; }
+.storage-total { display: flex; flex-direction: column; gap: 6px; margin: 28px 0 18px; }
+.storage-total strong { font-size: 36px; font-weight: 600; letter-spacing: -1.2px; font-variant-numeric: tabular-nums; }
+.storage-total > span { color: var(--text-muted); font-size: 13px; }
+.storage-bar { display: flex; height: 22px; border-radius: 7px; overflow: hidden; background: var(--line); gap: 2px; }
+.storage-bar > span { min-width: 2px; flex-shrink: 1; }
+.storage-color-attachments { background: #5488d7; }
+.storage-color-sources { background: #a384ca; }
+.storage-color-notes { background: #e2b454; }
+.storage-color-entities { background: #69a88d; }
+.storage-color-indexes { background: #d48577; }
+.storage-color-other { background: #989ba5; }
+.storage-categories { list-style: none; padding: 0; margin: 22px 0; }
+.storage-categories li { display: flex; align-items: center; gap: 12px; padding: 15px 0; border-bottom: 1px solid var(--line); }
+.storage-dot { width: 10px; height: 10px; flex-shrink: 0; border-radius: 3px; }
+.storage-categories li > div { flex: 1; min-width: 0; }
+.storage-categories strong { font-size: 13px; font-weight: 600; }
+.storage-categories p { margin: 4px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+.storage-category-size { text-align: right; white-space: nowrap; font-size: 13px; font-variant-numeric: tabular-nums; }
+.storage-category-size small { display: block; color: var(--text-muted); font-size: 11px; margin-top: 4px; }
+.vault-storage > .storage-footnote { color: var(--text-muted); font-size: 12px; line-height: 1.6; }
+.storage-categories li { display: block; padding: 0; }
+.storage-category-button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 15px 8px; text-align: left; border-radius: 6px; }
+.storage-category-button:hover { background: var(--line); }
+.storage-category-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.storage-category-button > div { flex: 1; min-width: 0; }
+.storage-category-button > span:last-child { color: var(--text-muted); font-size: 20px; }
+.storage-detail-heading { margin: 24px 0 12px; }
+.storage-detail-heading h4 { margin: 20px 0 6px; font-size: 18px; }
+.storage-detail-heading p, .storage-detail-total { color: var(--text-muted); font-size: 12px; margin: 0; }
+.storage-items { list-style: none; padding: 0; margin: 16px 0; }
+.storage-items li { display: flex; gap: 20px; align-items: center; border-bottom: 1px solid var(--line); padding: 14px 0; }
+.storage-items li > div { flex: 1; min-width: 0; }
+.storage-items strong { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.storage-items p { color: var(--text-muted); font-size: 12px; margin: 4px 0 0; overflow-wrap: anywhere; line-height: 1.5; }
+.storage-items li > span { white-space: nowrap; font-variant-numeric: tabular-nums; font-size: 13px; }

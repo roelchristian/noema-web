@@ -20,6 +20,18 @@ async function hitRects(page,selector,minimum){
  for(let i=0;i<rects.length;i++)for(let j=i+1;j<rects.length;j++){const a=rects[i],b=rects[j];assert.ok(Math.min(a.right,b.right)-Math.max(a.left,b.left)<.5||Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)<.5,`Overlapping hit areas ${a.label} / ${b.label}`);}
  return rects;
 }
+// One shared computed contract across actual action, block and selection menus.
+async function menuContract(page,selector,minimum){
+ const menu=page.locator(selector),rows=menu.locator('button');await rows.first().waitFor();
+ const styles=await rows.evaluateAll(items=>items.map(e=>{const s=getComputedStyle(e),r=e.getBoundingClientRect();return {height:r.height,minHeight:s.minHeight,padding:s.padding,gap:s.gap,radius:s.borderRadius,font:s.fontSize,color:s.color};}));
+ for(const row of styles)assert.ok(row.height>=minimum,JSON.stringify(row));
+ for(const row of await rows.all()){await row.scrollIntoViewIfNeeded();assert.ok(await row.evaluate(e=>{const r=e.getBoundingClientRect();return e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),'Menu row must remain reachable when scrolled into view');}
+ const slot=await rows.first().evaluate(e=>{const glyph=e.firstElementChild,s=getComputedStyle(glyph);return glyph.getBoundingClientRect().width+parseFloat(s.marginLeft)+parseFloat(s.marginRight);});assert.equal(slot,20,'Shared leading icon slot');
+ const focus=menu.locator('button:not(:disabled)').first();await page.keyboard.press('ArrowDown');await focus.focus();
+ const ring=await focus.evaluate(e=>{const s=getComputedStyle(e);return {style:s.outlineStyle,width:s.outlineWidth,offset:s.outlineOffset,color:s.outlineColor,accent:getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()};});
+ assert.equal(ring.style,'solid');assert.equal(ring.width,'2px');assert.equal(ring.offset,'-2px');
+ return {minHeight:styles[0].minHeight,padding:styles[0].padding,gap:styles[0].gap,radius:styles[0].radius,font:styles[0].font,slot,focusColor:ring.color};
+}
 function contrast(a,b){const luminance=hex=>{const raw=hex.trim().replace('#','');const v=(raw.length===3?raw.split('').map(c=>c+c).join(''):raw).match(/../g).map(x=>parseInt(x,16)/255).map(x=>x<=.04045?x/12.92:((x+.055)/1.055)**2.4);return .2126*v[0]+.7152*v[1]+.0722*v[2];};const x=luminance(a),y=luminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);}
 try{
  await symlink(join(repo,'node_modules'),join(directory,'node_modules'),'dir');
@@ -41,15 +53,31 @@ try{
   await page.screenshot({path:join(artifacts,key+'-knowledge.png')});
   await page.getByRole('button',{name:'Close Knowledge panel',exact:true}).click();
   await page.getByRole('button',{name:'More page actions',exact:true}).click();const danger=page.getByRole('menuitem',{name:'Move to Trash',exact:true});await danger.hover();
-  const menu=await hitRects(page,'.sidebar-action-menu:popover-open > button',width===390?44:30);await page.screenshot({path:join(artifacts,key+'-menu.png')});
-  const dangerColor=await danger.evaluate(e=>getComputedStyle(e).color);await page.keyboard.press('Escape');
+  const menu=await page.locator('.sidebar-action-menu:popover-open').evaluate(e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};});assert.ok(menu.left>=0&&menu.right<=width&&menu.top>=0&&menu.bottom<=960);await page.screenshot({path:join(artifacts,key+'-menu.png')});
+  const actionContract=await menuContract(page,'.sidebar-action-menu:popover-open',width===390?44:36);
+  await danger.focus();const dangerFocus=await danger.evaluate(e=>({color:getComputedStyle(e).color,background:getComputedStyle(e).backgroundColor}));await danger.hover();assert.deepEqual(await danger.evaluate(e=>({color:getComputedStyle(e).color,background:getComputedStyle(e).backgroundColor})),dangerFocus,'Destructive focus and hover must agree');
+  const dangerColor=dangerFocus.color;await page.keyboard.press('Escape');
+  const content=page.locator('.block-content[contenteditable=true]').first();await content.click();
+  if(width===390)await page.getByRole('button',{name:'More block actions',exact:true}).click();
+  else {await content.hover();await page.getByRole('button',{name:'Block options',exact:true}).first().click();}
+  const blockSelector=width===390?'.mobile-block-sheet-options':'.block-action-menu';
+  const blockContract=await menuContract(page,blockSelector,width===390?44:36);assert.deepEqual(blockContract,actionContract);
+  await page.screenshot({path:join(artifacts,key+'-block-menu.png')});await page.keyboard.press('Escape');
+  await content.evaluate(e=>{e.focus();const walker=document.createTreeWalker(e,NodeFilter.SHOW_TEXT);let n;while(n=walker.nextNode()){if(n.textContent.trim().length<8)continue;const r=document.createRange();r.setStart(n,0);r.setEnd(n,8);getSelection().removeAllRanges();getSelection().addRange(r);document.dispatchEvent(new Event('selectionchange'));return;}throw new Error('Expected sample text');});
+  await page.getByRole('button',{name:'Text actions',exact:true}).click();
+  const selectionContract=await menuContract(page,'.selection-more-actions',width===390?44:36);assert.deepEqual(selectionContract,actionContract);
+  await page.screenshot({path:join(artifacts,key+'-selection-menu.png')});
+  await page.getByRole('menuitem',{name:'Semantic function',exact:true}).click();
+  const semanticContract=await menuContract(page,'.semantic-picker',width===390?44:36);assert.deepEqual(semanticContract,actionContract);
+  await page.screenshot({path:join(artifacts,key+'-semantic-menu.png')});
+  await page.keyboard.press('Escape');await page.keyboard.press('Escape');await page.keyboard.press('Escape');
   await page.getByRole('button',{name:'More page actions',exact:true}).click();await page.getByRole('menuitem',{name:'Rename',exact:true}).click();await page.locator('dialog[open]').waitFor();await page.screenshot({path:join(artifacts,key+'-dialog.png')});await hitRects(page,'dialog[open] .button',width===390?44:30);await page.keyboard.press('Escape');
   const tokens=await page.evaluate(()=>{const s=getComputedStyle(document.documentElement);return Object.fromEntries(['surface','surface-raised',...['danger','warning','success','info'].flatMap(x=>['text','bg','border'].map(y=>`status-${x}-${y}`))].map(k=>[k,s.getPropertyValue('--'+k).trim()]));});
   const ratios={};for(const state of ['danger','warning','success','info'])for(const bg of [`status-${state}-bg`,'surface','surface-raised']){const ratio=contrast(tokens[`status-${state}-text`],tokens[bg]);assert.ok(ratio>=4.5,`${key} ${state} on ${bg}: ${ratio}`);ratios[state+' / '+bg]=Math.round(ratio*100)/100;}
   // Existing error copy and destructive labels provide non-colour state cues.
   await page.evaluate(()=>{const e=document.createElement('aside');e.id='design-state-fixture';e.style.cssText='position:fixed;inset:auto 8px 8px;z-index:200;padding:20px;background:var(--surface-raised);border:1px solid var(--line)';e.innerHTML='<p class="dialog-error" role="alert">Could not save. Retry.</p><p class="source-inspector-status-failure"><span>Source failed.</span><button class="button">Retry</button></p><p><span class="ai-activity-status interrupted">Interrupted</span> <span class="ai-activity-status completed">Completed</span> <span class="ai-activity-status running">Running</span></p><button class="button" disabled>Unavailable</button>';document.body.append(e);});
   const stateStyle=await page.locator('#design-state-fixture').evaluate(e=>({disabledOpacity:getComputedStyle(e.querySelector('button:disabled')).opacity,alert:getComputedStyle(e.querySelector('[role=alert]')).color,failureBorder:getComputedStyle(e.querySelector('.source-inspector-status-failure')).borderInlineStartWidth}));assert.ok(Number(stateStyle.disabledOpacity)<1);assert.equal(stateStyle.failureBorder,'3px');await page.screenshot({path:join(artifacts,key+'-states.png')});await page.locator('#design-state-fixture').evaluate(e=>e.remove());
-  results.push({key,editor,panel,menu,dangerColor,ratios,stateStyle});await context.close();
+  results.push({key,editor,panel,menu,actionContract,blockContract,selectionContract,semanticContract,dangerColor,ratios,stateStyle});await context.close();
  }
  // Coarse pointer at desktop width must get the same touch contract.
  const coarse=await browser.newContext({viewport:{width:1440,height:960},hasTouch:true});const page=await coarse.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}`);await page.getByRole('button',{name:'A place for connected ideas',exact:false}).first().click();await hitRects(page,iconTargets,44);await page.getByRole('button',{name:'Knowledge',exact:true}).click();await hitRects(page,'.intelligence-panel .knowledge-icon-action',44);await page.getByRole('button',{name:'Close Knowledge panel',exact:true}).click();await page.evaluate(()=>{const mount=document.createElement('div');mount.id='marker-fixture';document.body.append(mount);});await page.addScriptTag({type:'module',url:'/@fs/'+directory+'/markers.tsx'});await page.locator('#marker-fixture .source-reading-note-marker > button').first().waitFor();const markers=await hitRects(page,'#marker-fixture .source-reading-note-marker > button',44);assert.ok(markers.length<6,'Adjacent targets should use the existing grouped-note menu');assert.equal(markers.reduce((sum,r)=>sum+Number(r.label.match(/Show (\d+) reading notes/)?.[1]??1),0),6,'Grouping must retain every reading note');await page.screenshot({path:join(artifacts,'dense-reading-note-targets.png')});await coarse.close();

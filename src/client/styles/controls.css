@@ -1,7 +1,6 @@
 /* Interaction contracts. Glyph dimensions remain owned by their features.
  * Minima grow real layout boxes; no invisible overlapping pseudo targets. */
 .button, .button.small, .select-trigger, .select-option,
-:is(.block-action-menu, .sidebar-action-menu) > button,
 .source-reader-toolbar .button, .source-reader-selection .button {
   min-height: var(--control-target-regular);
 }
@@ -25,7 +24,6 @@
     min-width: var(--touch-target-size);
     min-height: var(--touch-target-size);
   }
-  .command-menu button, .mobile-block-sheet-options > button,
   .knowledge-connected-list button, .knowledge-entity-sort,
   .entity-detail-tabs > button, .source-inspector-links > button,
   .source-reading-actions button, .source-reading-navigation button,
@@ -37,7 +35,6 @@
   .sidebar-item-row { min-height: var(--touch-target-size); }
   .sidebar-item-row > .branch-toggle { width: var(--touch-target-size); min-height: var(--touch-target-size); flex: none; }
   .sidebar-section-heading { min-height: var(--touch-target-size); }
-  .sidebar-action-menu > button { white-space: normal; }
 }
 
 @media (max-width: 750px), (pointer: coarse) {

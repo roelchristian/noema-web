@@ -14,7 +14,7 @@ import { Icon } from '../components/Icon';
 import type { CreateEntityRequest } from '../knowledge/CreateEntityDialog';
 import type { AIEnrichment, AISummary, Entity, Page, PageSummary } from '../../shared/domain';
 interface KnowledgeSnapshot { summary:AISummary|null; scan:EntityScan|null }
-function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnapshot,page,pages,onOpenPage,entities,onOpenEntity,onSourcesChange,onCreateEntity,onClose,onSettings,onFlush,onReview,onDomainsChange}:{onDomainsChange?:(primary:string|null,secondary:string[])=>Promise<void>;inactive?:boolean;initialItems:AIEnrichment[];initialError:string;snapshot?:KnowledgeSnapshot;onSnapshot:(snapshot:KnowledgeSnapshot)=>void;page:Page;pages:PageSummary[];onOpenPage:(id:string)=>void;entities:Entity[];onOpenEntity:(id:string)=>void;onSourcesChange:(sourceIds:string[])=>void;onCreateEntity:(request:CreateEntityRequest)=>void;onClose:()=>void;onSettings:()=>void;onFlush:()=>Promise<Page|null>;onReview:(scanId:string,id:string|string[],decision:'accepted'|'rejected',edits?:EntitySuggestionEdit[])=>Promise<EntityScan>}) {
+function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnapshot,page,pages,onOpenPage,entities,onOpenEntity,onSourcesChange,onCreateEntity,onClose,onSettings,onFlush,onReview,onReviewOpenChange,onDomainsChange}:{onReviewOpenChange?:(open:boolean)=>void;onDomainsChange?:(primary:string|null,secondary:string[])=>Promise<void>;inactive?:boolean;initialItems:AIEnrichment[];initialError:string;snapshot?:KnowledgeSnapshot;onSnapshot:(snapshot:KnowledgeSnapshot)=>void;page:Page;pages:PageSummary[];onOpenPage:(id:string)=>void;entities:Entity[];onOpenEntity:(id:string)=>void;onSourcesChange:(sourceIds:string[])=>void;onCreateEntity:(request:CreateEntityRequest)=>void;onClose:()=>void;onSettings:()=>void;onFlush:()=>Promise<Page|null>;onReview:(scanId:string,id:string|string[],decision:'accepted'|'rejected',edits?:EntitySuggestionEdit[])=>Promise<EntityScan>}) {
   const [busy,setBusy]=useState(false),[error,setError]=useState(initialError),[result,setResult]=useState<AISummary|null>(()=>{
     if(snapshot)return snapshot.summary;
     const saved=initialItems.find(item=>item.kind==='summary');
@@ -104,7 +104,7 @@ function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnap
 
       </section>
       <ConnectedEntities page={page} entities={entities} onOpenEntity={onOpenEntity}>
-        <EntityScanReview entities={entities} page={page} scan={scan} onScan={setScan} onFlush={onFlush} onReview={onReview} disabled={!!page.editLocked||busy||deleting||loading}/>
+        <EntityScanReview onOpenChange={onReviewOpenChange} entities={entities} page={page} scan={scan} onScan={setScan} onFlush={onFlush} onReview={onReview} disabled={!!page.editLocked||busy||deleting||loading}/>
       </ConnectedEntities>
     <NoteConnections key={page.vault_id+'/'+page.id} page={page} pages={pages} onOpenPage={onOpenPage} inactive={inactive}/>
     <RelatedNotes key={page.vault_id+'/'+page.id} page={page} pages={pages} onOpenPage={onOpenPage} inactive={inactive}/>

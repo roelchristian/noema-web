@@ -31,10 +31,10 @@ test('batch prompt lets users review first, then continue using the persisted ch
     assert.equal(scan.suggestions[0].status,'rejected');
     await click(button('Continue scanning'));
     assert.deepEqual(received[5],{scanId:'saved',token:'checkpoint'});
-    assert.equal(document.querySelectorAll('.entity-review-table tbody tr').length,25,'Existing results remain visible during continuation');
+    assert.equal(document.querySelectorAll('.entity-review-table tbody tr').length,24,'Existing pending results remain visible during continuation');
     await act(async()=>finish({...scan,continuation:undefined,batchCount:1,suggestions:[...scan.suggestions,{...scan.suggestions[1],id:'new',name:'New Person'}]}));
     assert.equal(document.querySelector('.entity-scan-batch-prompt'),null);
-    assert.equal(document.querySelectorAll('.entity-review-table tbody tr').length,26);
+    assert.equal(document.querySelectorAll('.entity-review-table tbody tr').length,25);
     assert.equal(scan.suggestions[0].status,'rejected');
   }finally{await env.close();}
 });
@@ -142,6 +142,9 @@ test('compact batch selection follows visible pending rows and submits edited li
  try {
   await act(async()=>render());await click(document.querySelector('.entity-detect-action'));
   await click(button('Contextual review'));await click(button('Batch review'));
+  assert.equal(document.querySelector('[data-filter=pending]').getAttribute('aria-pressed'),'true');
+  assert.equal(checkbox('Select Reviewed'),null);
+  await click(document.querySelector('[data-filter=all]'));
   await click(checkbox('Select Mira'));
   assert.equal(checkbox('Select all visible pending suggestions').indeterminate,true);
   await click(checkbox('Select all visible pending suggestions'));
@@ -190,6 +193,8 @@ test('context decisions advance only after persistence and leave failed suggesti
   assert.equal(document.querySelector('[aria-current=true]').textContent.includes('Sora'),true);
   assert.equal(scrolled.at(-1),'Sora');
   assert.equal(queueScrolled.at(-1).name,'Sora · pending');
+  assert.equal(document.querySelectorAll('.entity-scan-candidate').length,1,'Pending hides saved decisions');
+  await click('[data-filter=all]');
   await click('[aria-label="Previous entity"]');
   assert.equal(queueScrolled.at(-1).name,'Mira · accepted');
   await click('[aria-label="Next entity"]');
@@ -389,4 +394,127 @@ test('search and filter empty states replace the panes and clearing restores rev
   assert.equal(dialog.querySelector('.entity-review-footer'),null);
   assert.equal(document.querySelector('dialog'),dialog,'The modal is preserved through all result states');
  }finally{await env.close();}
+});
+
+test('accept keeps the dialog, action controls and last confirmation mounted while saving, and recovers on failure',async t=>{
+  const env=setupDOM(t),{dom}=env;
+  dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
+  dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
+  const animated=[];
+  dom.window.HTMLElement.prototype.animate=function(){animated.push(this);return {cancel(){}};};
+  const root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+  t.mock.method(api,'entitySchema',async()=>({properties:{},subtypes:[],subtypeProperties:{}}));
+  const page={id:'page',vault_id:'default',revision:1,title:'Steady review',blocks:[],sourceIds:[]};
+  let scan={id:'saved',revision:1,suggestions:['Mira','Sora'].map(name=>({id:name,name,type:'person',subtypes:[],evidence:name,reason:'Named',status:'pending',existingId:null}))};
+  let finish,fail;
+  const render=()=>root.render(React.createElement(EntityScanReview,{page,scan,entities:[],disabled:false,onFlush:async()=>page,onReview:(_scanId,ids,decision)=>new Promise((resolve,reject)=>{
+    finish=()=>resolve({...scan,suggestions:scan.suggestions.map(item=>ids.includes(item.id)?{...item,status:decision}:item)});fail=reject;
+  }),onScan:result=>{scan=result;render();}}));
+  const click=async element=>act(async()=>element.click());
+  try {
+    await act(async()=>render());await click(document.querySelector('.entity-detect-action'));
+    await click([...document.querySelectorAll('button')].find(button=>button.textContent==='Contextual review'));
+    assert.equal(document.querySelector('[data-filter=pending]').getAttribute('aria-pressed'),'true');
+    const preview=document.querySelector('.entity-scan-snapshot');
+    const dialog=document.querySelector('dialog'),accept=document.querySelector('.scan-row-accept'),edit=document.querySelector('.scan-row-edit');
+    await click(accept);
+    assert.equal(document.querySelector('dialog'),dialog);
+    assert.equal(document.querySelector('.scan-row-accept'),accept);
+    assert.equal(document.querySelector('.scan-row-edit'),edit);
+    assert.equal(accept.disabled,true);
+    assert.match(accept.textContent,/Connecting/);
+    await act(async()=>finish());
+    assert.equal(document.querySelector('.scan-row-accept').disabled,false);
+    assert.match(document.querySelector('.scan-row-accept').getAttribute('aria-label'),/Sora$/);
+    assert.equal(document.querySelector('.entity-scan-snapshot'),preview);
+    assert.ok(animated.length>=2);
+    assert.ok(animated.every(element=>element.classList.contains('entity-review-table')),'Only the active inspector animates');
+    const confirmation=document.querySelector('.entity-review-confirmation');
+    assert.match(confirmation.textContent,/Mira connected/);
+    const nextAccept=document.querySelector('.scan-row-accept');
+    await click(nextAccept);
+    assert.equal(document.querySelector('.entity-review-confirmation'),confirmation);
+    assert.equal(document.querySelector('dialog'),dialog);
+    await act(async()=>fail(new Error('Connection lost')));
+    assert.equal(document.querySelector('.scan-row-accept'),nextAccept);
+    assert.equal(nextAccept.disabled,false);
+    assert.match(document.querySelector('[role=alert]').textContent,/Connection lost/);
+    assert.equal(scan.suggestions[1].status,'pending');
+    await click(nextAccept);await act(async()=>finish());
+    assert.match(document.querySelector('.entity-review-confirmation').textContent,/Review complete/);
+    assert.equal(document.querySelector('dialog'),dialog);
+    assert.match(document.querySelector('.entity-review-empty-state').textContent,/All suggestions reviewed/);
+    await click(document.querySelector('.entity-review-empty-state button'));
+    assert.equal(document.querySelector('[data-filter=reviewed]').getAttribute('aria-pressed'),'true');
+    assert.equal(document.querySelectorAll('.entity-scan-candidate.is-accepted').length,2);
+    await click(document.querySelector('.modal-close'));
+    await click(document.querySelector('.entity-detect-action'));
+    assert.equal(document.querySelector('[data-filter=pending]').getAttribute('aria-pressed'),'true','Each opening starts with Pending');
+  }finally{await env.close();}
+});
+
+test('review keeps the background live while its modal interaction state stays stable',async t=>{
+  const env=setupDOM(t),{dom}=env;
+  dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
+  dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
+  t.mock.method(api,'entitySchema',async()=>({properties:{},subtypes:[],subtypeProperties:{}}));
+  const root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+  let replacePage,backgroundRenders=0;
+  function Background({page}){backgroundRenders++;return React.createElement('article',{id:'covered-page'},page.title);}
+  function Harness(){
+    const [open,setOpen]=React.useState(false);
+    const [page,setPage]=React.useState({id:'p',vault_id:'default',revision:1,title:'Before review',sourceIds:[],blocks:[]});
+    replacePage=setPage;
+    const [scan,setScan]=React.useState({id:'scan',revision:1,suggestions:[{id:'m',name:'Mira',type:'person',subtypes:[],evidence:'Mira',existingId:null,status:'pending',reason:'Named'}]});
+    return React.createElement(React.Fragment,null,
+      React.createElement('main',{'data-review-open':open},React.createElement(Background,{page})),
+      React.createElement(EntityScanReview,{page,scan,entities:[],disabled:false,onOpenChange:setOpen,onScan:setScan,onFlush:async()=>page,onReview:async()=>{
+        setPage({...page,revision:2,title:'After review'});
+        return {...scan,revision:2,suggestions:scan.suggestions.map(s=>({...s,status:'accepted'}))};
+      }}));
+  }
+  const click=async selector=>act(async()=>document.querySelector(selector).click());
+  try{
+    await act(async()=>root.render(React.createElement(Harness)));
+    await click('.entity-detect-action');
+    const baseline=backgroundRenders,covered=document.querySelector('#covered-page');
+    await click('.scan-row-accept');
+    assert.ok(backgroundRenders>baseline,'Each decision updates the background immediately');
+    assert.equal(covered.textContent,'After review');
+    assert.equal(document.querySelector('main').dataset.reviewOpen,'true','Saving does not toggle the open modal state');
+    assert.match(document.querySelector('.entity-review-confirmation').textContent,/Review complete/);
+    await click('.modal-close');
+    assert.equal(document.querySelector('#covered-page'),covered,'The workspace stays mounted');
+    assert.equal(covered.textContent,'After review','Closing requires no deferred document update');
+    await click('.entity-detect-action');
+    await act(async()=>replacePage(page=>({...page,id:'other',title:'Another page'})));
+    assert.equal(covered.textContent,'Another page','Navigation remains live');
+  }finally{await env.close();}
+});
+
+test('live entity updates do not restore the covered editor caret or take modal focus',async t=>{
+  const env=setupDOM(t,{html:'<main><div id="editor" contenteditable="true">Mira visited.</div></main><dialog open><button>Accept next</button></dialog>'}),{dom}=env;
+  const {replaceEditableHTML}=await import('../src/client/editor/preserve-caret.ts');
+  const editor=document.querySelector('#editor'),button=document.querySelector('dialog button');
+  const selection=document.getSelection();
+  function selectEditor(){const range=document.createRange();range.setStart(editor.firstChild,2);range.collapse(true);selection.removeAllRanges();selection.addRange(range);}
+  try{
+    selectEditor();button.focus();
+    const addRange=t.mock.method(selection,'addRange');
+    replaceEditableHTML(editor,'<span data-entity="mira" contenteditable="false">Mira</span> visited.');
+    assert.ok(editor.querySelector('[data-entity=mira]'),'Background links update immediately');
+    assert.equal(addRange.mock.callCount(),0,'The modal prevents background caret restoration');
+    assert.equal(document.activeElement,button);
+    document.querySelector('dialog').remove();
+    editor.textContent='Sora visited.';selectEditor();
+    document.querySelector('main').setAttribute('inert','');
+    const before=addRange.mock.callCount();
+    replaceEditableHTML(editor,'<span data-entity="sora">Sora</span> visited.');
+    assert.equal(addRange.mock.callCount(),before,'Explicitly inert editors cannot restore selection either');
+    document.querySelector('main').removeAttribute('inert');
+    editor.textContent='Mira visited.';editor.focus();selectEditor();
+    const activeBefore=addRange.mock.callCount();
+    replaceEditableHTML(editor,'<span data-entity="mira">Mira</span> visited.');
+    assert.equal(addRange.mock.callCount(),activeBefore+1,'Normal editing still preserves the caret');
+  }finally{await env.close();}
 });

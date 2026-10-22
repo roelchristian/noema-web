@@ -29,7 +29,7 @@ export class VaultDeletion {
     if(count('source_files',"AND status='processing'")||count('embedding_jobs',"AND status='running'")||count('source_passage_embedding_jobs',"AND status='running'"))blockers.push('A file extraction or embedding job is running. Wait for it to finish, then refresh this summary.');
     const revisions=this.store.all('SELECT id,title,revision FROM pages WHERE vault_id=? ORDER BY id',id);
     const entities=this.store.all('SELECT id,updated_at FROM entities WHERE vault_id=? ORDER BY id',id);
-    const sources=this.store.all('SELECT id,size,status,entity_id FROM source_files WHERE vault_id=? ORDER BY id',id);
+    const sources=this.store.all('SELECT id,size,status,entity_id,text,admitted,structural_nodes,page_start_lines FROM source_files WHERE vault_id=? ORDER BY id',id);
     const organization={
       folders:this.store.all('SELECT id,name,parent_id FROM folders WHERE vault_id=? ORDER BY id',id),
       collections:this.store.all('SELECT id,name FROM collections WHERE vault_id=? ORDER BY id',id),

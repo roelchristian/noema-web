@@ -1,3 +1,4 @@
+import {setupTemporalEvidenceSchema} from './temporal-evidence-schema.js';
 import {setupTemporalSchema} from './temporal-schema.js';
 import {DOMAINS,TAXONOMY_VERSION,validateDomainRegistry} from '../shared/domains.js';
 import {linkSourceReferences,syncSourceReferences} from './modules/source-references.js';
@@ -474,6 +475,7 @@ if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
  setupPageEnrichmentSchedulerSchema(db);
  setupSuggestionVersionSchema(db);
  setupTemporalSchema(db);
+ setupTemporalEvidenceSchema(db);
  if (db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Database contains invalid references');
  return db;
  } catch(error) { db.close(); throw error; }

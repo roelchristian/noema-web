@@ -1,8 +1,8 @@
 # Calendar: temporal foundation and workspace
 
-Phases 1 and 2 implement the saved-page temporal index, query/navigation contracts,
-and Calendar month/agenda workspace. Source extraction, typed entity properties,
-and the liturgical overlay are subsequent phases. Recurrence, reminders,
+Phases 1–3 implement page/source temporal indexing, compatible typed entity date
+adapters, explicit relationship review, and the Calendar month/agenda workspace.
+The liturgical overlay is the next phase. Recurrence, reminders,
 historical/entity timelines, and external calendar integrations remain deferred.
 
 ## Review of the proposal against the repository
@@ -197,26 +197,108 @@ timeout. The Calendar harness reported zero browser errors and no AI activity.
 It captured and visually inspected real desktop month/agenda/inspector and mobile
 month/full-height sheet screens using synthetic data only.
 
-## Remaining phases and acceptance gates
+## Phase 3 source and entity evidence
 
-Phase 2 is implemented as described above. A separate curated Date entity
-homepage is not part of this checkpoint; dates are curated in the inspector.
+Source extraction operates over the existing canonical source passages, stable IDs,
+source hashes, and generation IDs. Source import/reprocessing enqueues local work;
+each temporal batch processes at most 25 passages. The existing passage worker
+runs bounded temporal evidence work after source segmentation. Page keystrokes do
+not invoke source parsing, semantic interpretation, or any paid service.
 
-1. **Phase 3 — Sources and entities.** Add source-passage evidence using existing
-   passage IDs, content hashes, generation IDs, and offsets. Deduplicate overlapping
-   spans by source offset and fingerprint; refresh affected passages only. Mark
-   manual evidence stale across reprocessing, preserve curation, and extend backup,
-   source deletion/merge previews, and access checks. Add a compatible typed adapter
-   for the date property names above and explicit reviewed relation decisions.
-   Validate reprocessing, deleted sources, original precision/calendar, and stale
-   passage navigation before extending query layers.
-2. **Phase 4 — General Roman Calendar.** First verify current generator APIs,
-   licensing, maintenance, and universal-calendar coverage from primary sources.
-   No dependency has been selected or added at this checkpoint. Calculate observed
-   years locally, test precedence and transfers, cache by year/provider version,
-   and keep this optional overlay independent of temporal entities and appointments.
-   Include rank/season/colour and optional memorials. Universal calendar only;
-   Philippine propers, readings, and illustrative hardcoded feast lists are excluded.
+`temporal_source_mentions` retains the original source/file/passage/generation,
+source and passage hashes, exact UTF-16 span, line range, spelling, precision and
+calendar. Repeated occurrences have distinct source offsets; overlapping chunks
+share a single occurrence. A full expression takes precedence over a partial
+expression recognized at a chunk boundary. A file's references become queryable
+only when its active temporal generation is complete, with partial progress
+reported separately. `temporal_source_cache` reuses extraction for unchanged
+passage content; `temporal_source_state` protects batch cursor/version progress.
+Commit rechecks source eligibility, active generation/hash/context, cursor, and
+bounded passage snapshots. Old async work cannot overwrite a new revision or
+newer batch progress.
 
-Phase 5 remains deferred: historical/entity timelines, recurrence/reminders, and
-external calendar integrations.
+Reprocessing creates new occurrence identities. It never mutates a manually linked
+old generation into a relocated occurrence, even when identical date text exists
+elsewhere. Old relationships retain their pointer and expose stale evidence.
+Source opening validates that pointer again, including in the source viewer; exact
+marking uses canonical offsets rather than searching for the first matching date.
+If context cannot be verified, the viewer identifies the saved excerpt as such.
+The Calendar inspector yields its desktop column/mobile modal while source context
+is open and restores it on close.
+
+`temporal_property_values` is a read adapter alongside authored text properties.
+It recognizes the existing Person birth date, Event start/end dates, Creative Work
+release date, and Source publication/accessed dates. ISO year/month/day values are
+unambiguous in these typed fields; supported English values retain their precision
+and explicit calendar. Numeric locale ambiguity, ranges and unsupported expressions
+remain unresolved. Entity property panels show the original value and its precision
+or unresolved reason. No property is rewritten or migrated to a fabricated date.
+
+Adapted dates create field-derived **pending** relationship proposals. They appear
+under All references, not as accepted commitments. Accept/reject uses a token covering
+the relationship and current evidence, and accepting stale/unresolved evidence is
+rejected. Decisions survive re-indexing. Changing/deleting a field leaves a previously
+accepted relationship with stale/unavailable support instead of reinterpreting it.
+End/accessed date fields use the conservative `discusses` proposal kind rather than
+inventing a new event or appointment. Calendar also provides explicit entity/role/
+support selection for manual relationships, and removal records a rejection. Manual
+creation is idempotent for the same accepted assertion and evidence.
+
+Additional inspector lists (sources, original properties, review proposals) are
+independently bounded and paginated. `GET /api/temporal/dates/:dateId` accepts
+`sourceOffset`, `propertyOffset`, and `proposalOffset`, returning corresponding
+`nextSourceOffset`, `nextPropertyOffset`, and `nextProposalOffset` values.
+`GET /api/temporal/source-mentions/:id` resolves original source evidence.
+`PUT /api/temporal/relations/:id` accepts `{status: 'accepted'|'rejected', version}`.
+`POST /api/temporal/relations` also accepts one optional `sourceMentionId` anchor.
+
+Archive, failed/unadmitted files, deletion, foreign vaults and vault locking exclude
+source/property evidence. Source deletion removes its mention rows and clears
+surviving relationship support pointers; independent date curation remains. Entity
+lifecycle previews include temporal counts and their fingerprints include temporal
+relationships. Vault deletion fingerprints include source content and structural
+metadata. Backup version 1 adds optional source mentions and relationship support
+fields. Restore remaps source/file/property/mention identities and preserves review
+status and curation. Retired source generations are retained as explicitly stale
+historical evidence; they are not silently redirected to freshly generated passages.
+Derived source caches, cursors, and property values rebuild locally. Prior backups
+without these fields remain importable.
+
+### Phase 3 validation
+
+`npm test` passed build/styles/typechecks and 793 tests (787 passed, six explicit
+macOS-only skips, zero failures). A final build and all seven browser harnesses
+passed after the source-viewer layout/highlight adjustment. The real Calendar
+harness verified a repeated source occurrence, source relationship creation,
+reprocessing without redirect, typed property acceptance, mobile source-viewer
+focus/modal handoff, and existing interrupted/repeated page navigation. All data
+was synthetic; no provider calls were made. Six new temporal evidence tests cover
+batching/cache reuse/overlap, obsolete commits, source lifecycle, typed review,
+backup remapping and strict occurrence rendering.
+
+### Reading continuity diagnosis
+
+The original timeout was observed once at the existing end-of-source reopen
+assertion during a concurrent full-suite/browser run. The fixture mounts SourceReader
+directly, without the Calendar workspace or its editor selection hook. Optional
+`NOEMA_READING_REPEAT=10` and `NOEMA_READING_TRACE=1` now repeat end-of-source
+close/reopens and retain a synthetic request trace. Ten standalone cycles and ten
+cycles during the complete suite passed. The loaded trace recorded 37 reading
+requests, including ten end-anchor writes after the first end marker and zero
+subsequent non-end overwrites. No source-reading product change or timeout increase
+was made. The original root cause remains unconfirmed; these results do not prove
+that timing/resource contention was the only cause, and do not claim that a product
+race has been fixed. Keep the trace-enabled stress case for recurrence.
+
+## Remaining phase and acceptance gate
+
+Phase 4 is next: verify generator APIs, licensing, maintenance and universal calendar
+coverage from primary sources before selecting a provider. Calculate observed years
+locally, test precedence and transfers, cache by year/provider version, and keep the
+optional General Roman Calendar overlay independent of temporal entities and
+appointments. Include rank, season/colour and optional memorials. Universal calendar
+only; Philippine propers, readings and illustrative hardcoded feast lists are excluded.
+
+A separate curated Date entity homepage is not part of these checkpoints; dates are
+curated in the inspector. Advanced Phase 5 remains deferred: historical/entity
+timelines, recurrence/reminders, and external calendar integrations.

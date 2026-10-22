@@ -224,9 +224,11 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           if(calendar!=='gregorian'&&calendar!=='julian')throw new HttpError(400,'Unsupported temporal calendar');
           const offset=Number(url.searchParams.get('offset')??0),limit=Number(url.searchParams.get('limit')??100);
           if(id==='dates'&&parts.length===3&&method==='GET')return send(200,temporal.query(vault,url.searchParams.get('from')??'',url.searchParams.get('to')??'',url.searchParams.get('references')==='all',calendar,{offset,limit,layers:url.searchParams.has('layers')?(url.searchParams.get('layers')?.split(',').filter(Boolean)??[]) as import('../shared/temporal.js').TemporalLayer[]:undefined}));
-          if(id==='dates'&&child&&parts.length===4&&method==='GET')return send(200,temporal.detail(vault,decodeURIComponent(child),offset,Number(url.searchParams.get('relationOffset')??0),Number(url.searchParams.get('limit')??20)));
+          if(id==='dates'&&child&&parts.length===4&&method==='GET')return send(200,temporal.detail(vault,decodeURIComponent(child),offset,Number(url.searchParams.get('relationOffset')??0),Number(url.searchParams.get('limit')??20),Number(url.searchParams.get('sourceOffset')??0),Number(url.searchParams.get('propertyOffset')??0),Number(url.searchParams.get('proposalOffset')??0)));
           if(id==='curation'&&parts.length===3&&method==='PUT')return send(200,temporal.curate(vault,typeof body.value==='string'?body.value:'',body,calendar));
           if(id==='curation'&&child&&parts.length===4&&method==='DELETE')return send(200,temporal.uncurate(vault,decodeURIComponent(child)));
+          if(id==='source-mentions'&&child&&parts.length===4&&method==='GET')return send(200,temporal.sources.resolve(vault,child));
+          if(id==='relations'&&child&&parts.length===4&&method==='PUT')return send(200,temporal.reviewRelation(vault,child,body));
           if(id==='relations'&&parts.length===3&&method==='POST')return send(201,temporal.relate(vault,typeof body.dateId==='string'?body.dateId:'',body));
           if(id==='pages'&&child&&parts.length===4&&method==='GET')return send(200,temporal.pageEvidence(vault,child));
           if(id==='mentions'&&child&&parts.length===4&&method==='GET')return send(200,temporal.resolve(vault,child));

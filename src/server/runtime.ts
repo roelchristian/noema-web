@@ -88,7 +88,7 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
       enrichmentScheduler.start();
       sourceReprocessingWorker=setInterval(()=>{void sourceReprocessing.tick().catch(()=>{});},1000);sourceReprocessingWorker.unref();
       vaultDeletion.cleanup();
-      sourcePassageWorker=setInterval(()=>{try{sourcePassages.tick();}catch{/* Durable passage state records failures for retry. */}},500);sourcePassageWorker.unref();
+      sourcePassageWorker=setInterval(()=>{try{sourcePassages.tick();temporal.tickEvidence();}catch{/* Durable passage state records failures for retry. */}},500);sourcePassageWorker.unref();
       sourceWorker=setInterval(()=>{void sourceFiles.tick().catch(()=>{});},500);sourceWorker.unref();
       sourceEnrichmentWorker=setInterval(()=>{void sourceEnrichments.tick().catch(()=>{});},1000);sourceEnrichmentWorker.unref();
       cleanup = setInterval(() => { try { pages.purgeExpired(); images.cleanup(); sourceFiles.cleanup(); vaultDeletion.cleanup(); } catch (error) { console.error('Trash cleanup failed',error); } },60 * 60 * 1000);

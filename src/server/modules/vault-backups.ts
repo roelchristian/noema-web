@@ -42,7 +42,8 @@ const tables={
   temporal_dates:{columns:'id,value,precision,calendar',scope:'vault_id=?'},
   temporal_curation:{columns:'id,label,annotation,pinned,importance,personal_priority,layer',scope:'vault_id=?'},
   temporal_mentions:{columns:'id,page_id,block_id,block_hash,start_offset,end_offset,original_text,date_id,reason,revision,stale',scope:'vault_id=?'},
-  temporal_relations:{columns:'id,date_id,entity_id,mention_id,kind,origin,status,confidence',scope:'vault_id=?'},
+  temporal_source_mentions:{columns:'id,file_id,source_id,passage_id,generation_id,source_hash,passage_hash,start_offset,end_offset,start_line,end_line,original_text,date_id,reason,stale',scope:'vault_id=?'},
+  temporal_relations:{columns:'id,date_id,entity_id,mention_id,kind,origin,status,confidence,source_mention_id,property_id,property_hash',scope:'vault_id=?'},
   pages:{columns:'id,title,icon,featured_image_id,blocks,ai_status,ai_review_accepted,generation_metadata,language,created_at,updated_at,revision,deleted_at',scope:'vault_id=?'},
   source_reprocessing:{columns:'id,file_id,status,created_at,updated_at,payload',scope:'vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL)'},
   source_math_documents:{columns:'file_id,raw_hash,algorithm_version,cleaned_text,uncertainty_json,updated_at',scope:'file_id IN (SELECT id FROM source_files WHERE vault_id=? AND entity_id IS NOT NULL)'},
@@ -175,7 +176,7 @@ export class VaultBackups {
       const map=new Map<string,string>();
       for(const row of records){const id=name(row,'id');if(map.has(id))throw invalid();map.set(id,randomUUID());}return map;
     };
-    const pageIds=ids(rows.pages),entityIds=ids(rows.entities),folderIds=ids(rows.folders),collectionIds=ids(rows.collections),subtypeIds=ids(rows.entity_subtypes),imageIds=new Map<string,string>();
+    const propertyIds=ids(rows.properties),pageIds=ids(rows.pages),entityIds=ids(rows.entities),folderIds=ids(rows.folders),collectionIds=ids(rows.collections),subtypeIds=ids(rows.entity_subtypes),imageIds=new Map<string,string>();
     const subtypeTypes=new Map(rows.entity_subtypes.map(row=>[row.id,row.type]));
     const ref=(map:Map<string,string>,value:unknown)=>{if(typeof value!=='string'||!map.has(value))throw invalid();return map.get(value)!;};
     const subtype=(value:unknown,type:EntityType)=>{
@@ -290,7 +291,7 @@ export class VaultBackups {
           insert('source_reprocessing',{id:revision.id,file_id:fileId,vault_id:vault,status:revision.status,created_at:revision.createdAt,updated_at:revision.updatedAt,payload:JSON.stringify(revision)});
         }
         this.store.run("UPDATE entities SET inactive=CASE WHEN EXISTS (SELECT 1 FROM source_files WHERE entity_id=entities.id AND status='failed') THEN 1 ELSE 0 END WHERE vault_id=? AND type='source'",vault);
-        for(const row of rows.properties)insert('properties',{id:randomUUID(),entity_id:ref(entityIds,row.entity_id),name:name(row,'name'),value:nullable(row,'value'),target_id:row.target_id===null?null:ref(entityIds,row.target_id)});
+        for(const row of rows.properties)insert('properties',{id:ref(propertyIds,row.id),entity_id:ref(entityIds,row.entity_id),name:name(row,'name'),value:nullable(row,'value'),target_id:row.target_id===null?null:ref(entityIds,row.target_id)});
         for(const entityId of entityIds.values())if(this.store.get<{type:string}>('SELECT type FROM entities WHERE id=?',entityId)?.type==='source')syncSourceProvenance(this.store,vault,entityId);
         for(const row of rows.relationships)insert('relationships',{id:randomUUID(),source_id:ref(entityIds,row.source_id),label:name(row,'label'),target_id:ref(entityIds,row.target_id)});
         const pages=new Pages(this.store,new Knowledge(this.store));
@@ -342,10 +343,20 @@ export class VaultBackups {
           temporalMentions.set(name(row,'id'),id);mentionDates.set(id,dateId);
           insert('temporal_mentions',{id,vault_id:vault,page_id:pageId,block_id:blockId,block_hash:blockHash,start_offset:start,end_offset:end,original_text:original,date_id:dateId,reason:nullable(row,'reason',200),revision:integer(row,'revision',1),stale:1});
         }
+        const sourceMentionIds=new Map<string,string>(),sourceMentionDates=new Map<string,string|null>();
+        for(const row of rows.temporal_source_mentions) {
+          const oldId=name(row,'id'),id=randomUUID(),fileId=ref(restoredSourceFiles,row.file_id),sourceId=ref(entityIds,row.source_id),dateId=row.date_id===null?null:dateRef(row.date_id);
+          if(sourceMentionIds.has(oldId)||!this.store.get('SELECT 1 FROM source_files WHERE id=? AND entity_id=? AND vault_id=?',fileId,sourceId,vault))throw invalid();
+          const sourceHash=string(row,'source_hash',64),passageHash=string(row,'passage_hash',64),start=integer(row,'start_offset'),end=integer(row,'end_offset',start+1),original=string(row,'original_text');
+          if(!/^[a-f0-9]{64}$/.test(sourceHash)||!/^[a-f0-9]{64}$/.test(passageHash)||original.length!==end-start)throw invalid();
+          sourceMentionIds.set(oldId,id);sourceMentionDates.set(id,dateId);
+          insert('temporal_source_mentions',{id,vault_id:vault,file_id:fileId,source_id:sourceId,passage_id:name(row,'passage_id'),generation_id:name(row,'generation_id'),source_hash:sourceHash,passage_hash:passageHash,start_offset:start,end_offset:end,start_line:integer(row,'start_line',1),end_line:integer(row,'end_line',integer(row,'start_line',1)),original_text:original,date_id:dateId,reason:nullable(row,'reason',200),stale:1});
+        }
         for(const row of rows.temporal_relations) {
-          const dateId=dateRef(row.date_id),mentionId=row.mention_id===null?null:ref(temporalMentions,row.mention_id);
+          const dateId=dateRef(row.date_id),mentionId=row.mention_id===null?null:ref(temporalMentions,row.mention_id),sourceMentionId=row.source_mention_id==null?null:ref(sourceMentionIds,row.source_mention_id),propertyId=row.property_id==null?null:ref(propertyIds,row.property_id),propertyHash=row.property_hash==null?null:string(row,'property_hash',64);
+          if([mentionId,sourceMentionId,propertyId].filter(Boolean).length>1||sourceMentionId&&sourceMentionDates.get(sourceMentionId)!==dateId||propertyHash&&!/^[a-f0-9]{64}$/.test(propertyHash))throw invalid();
           if(mentionId&&mentionDates.get(mentionId)!==dateId||!['occurs_on','born_on','published_on','deadline','discusses'].includes(String(row.kind))||!['manual','inferred'].includes(String(row.origin))||!['accepted','pending','rejected'].includes(String(row.status))||row.confidence!==null&&(typeof row.confidence!=='number'||!Number.isFinite(row.confidence)||row.confidence<0||row.confidence>1))throw invalid();
-          insert('temporal_relations',{id:randomUUID(),vault_id:vault,date_id:dateId,entity_id:ref(entityIds,row.entity_id),mention_id:mentionId,kind:String(row.kind),origin:String(row.origin),status:String(row.status),confidence:row.confidence as number|null});
+          insert('temporal_relations',{id:randomUUID(),vault_id:vault,date_id:dateId,entity_id:ref(entityIds,row.entity_id),mention_id:mentionId,kind:String(row.kind),origin:String(row.origin),status:String(row.status),confidence:row.confidence as number|null,source_mention_id:sourceMentionId,property_id:propertyId,property_hash:propertyHash});
         }
         for(const row of rows.entity_overviews) {
           const entityId=ref(entityIds,row.entity_id);

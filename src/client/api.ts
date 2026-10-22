@@ -43,7 +43,10 @@ export async function importVaultBackup(file:File,name?:string):Promise<Vault> {
 }
 export const api={
   temporalDates:(vault:string,from:string,to:string,options:{allReferences:boolean;layers:import('../shared/temporal').TemporalLayer[];offset?:number},signal?:AbortSignal)=>request<import('../shared/temporal').TemporalResults>('temporal/dates?'+new URLSearchParams({from,to,references:options.allReferences?'all':'curated',layers:options.layers.join(','),offset:String(options.offset??0),limit:'100'}),'GET',undefined,vault,signal),
-  temporalDetail:(vault:string,id:string,offset=0,relationOffset=0,signal?:AbortSignal)=>request<import('../shared/temporal').TemporalDetail>(`temporal/dates/${encodeURIComponent(id)}?offset=${offset}&relationOffset=${relationOffset}&limit=20`,'GET',undefined,vault,signal),
+  temporalDetail:(vault:string,id:string,offset=0,relationOffset=0,signal?:AbortSignal,extra:{sourceOffset?:number;propertyOffset?:number;proposalOffset?:number}={})=>request<import('../shared/temporal').TemporalDetail>(`temporal/dates/${encodeURIComponent(id)}?offset=${offset}&relationOffset=${relationOffset}&limit=20&sourceOffset=${extra.sourceOffset??0}&propertyOffset=${extra.propertyOffset??0}&proposalOffset=${extra.proposalOffset??0}`,'GET',undefined,vault,signal),
+  temporalSourceMention:(vault:string,id:string,signal?:AbortSignal)=>request<import('../shared/temporal').TemporalSourceEvidence>(`temporal/source-mentions/${encodeURIComponent(id)}`,'GET',undefined,vault,signal),
+  reviewTemporalRelation:(vault:string,id:string,status:'accepted'|'rejected',version:string)=>request(`temporal/relations/${encodeURIComponent(id)}`,'PUT',{status,version},vault),
+  linkTemporalEntity:(vault:string,body:{dateId:string;entityId:string;kind:string;mentionId?:string;sourceMentionId?:string})=>request('temporal/relations','POST',body,vault),
   temporalMention:(vault:string,id:string,signal?:AbortSignal)=>request<import('../shared/temporal').TemporalEvidence>(`temporal/mentions/${encodeURIComponent(id)}`,'GET',undefined,vault,signal),
   curateDate:(vault:string,value:string,curation:import('../shared/temporal').TemporalCuration)=>request('temporal/curation','PUT',{value,...curation},vault),
   uncurateDate:(vault:string,id:string)=>request(`temporal/curation/${encodeURIComponent(id)}`,'DELETE',{},vault),

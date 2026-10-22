@@ -2115,3 +2115,6 @@ main.source-workspace > #content > .source-reader {
   border: 1px solid var(--line);
   box-shadow: 0 3px 16px #00000012
 }
+
+/* Temporal links mark a validated character range within the source passage. */
+.source-viewer[data-temporal-source=true] mark {background:var(--status-info-bg);color:var(--text);text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px;}

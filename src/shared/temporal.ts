@@ -1,3 +1,4 @@
+import type {SourceReference} from './domain.js';
 import type {PageReference} from './embeddings.js';
 
 export const temporalExtractorVersion='english-civil-v1';
@@ -9,11 +10,15 @@ export type TemporalLayer='personal'|'knowledge'|'historical';
 export interface TemporalCuration {label:string;annotation:string;pinned:boolean;importance:'ordinary'|'notable'|'important';personalPriority:'ordinary'|'important';layer:TemporalLayer}
 export interface TemporalPageReference extends PageReference {blockId:string;blockStart:number;blockEnd:number;blockHash:string}
 export type TemporalEvidence={status:'current'|'unresolved';reference:TemporalPageReference;reason:string|null}|{status:'stale'|'unavailable';reason:string};
+export type TemporalSourceEvidence={status:'current'|'unresolved';sourceReference:SourceReference;reason:string|null}|{status:'stale'|'unavailable';reason:string};
+export type TemporalPropertyEvidence={status:'current';propertyId:string;raw:string;name:string;reason:null}|{status:'stale'|'unavailable';reason:string};
+export interface TemporalSourceSummary {startLine?:number;context?:string;id:string;sourceId:string;fileId:string;text:string;title:string}
+export interface TemporalPropertySummary {id:string;entityId:string;name:string;raw:string;title:string}
 export interface TemporalMentionSummary {id:string;pageId:string;blockId:string;text:string;title:string}
-export interface TemporalRelationSummary {id:string;entityId:string;mentionId:string|null;kind:string;origin:string;status:string;confidence:number|null;name:string;evidence:TemporalEvidence|{status:'unresolved';reason:string}}
-export interface TemporalItem {date:TemporalDate;curation:TemporalCuration|null;mentions:TemporalMentionSummary[];mentionCount:number;relations:TemporalRelationSummary[];relationCount:number;layer:TemporalLayer}
+export interface TemporalRelationSummary {id:string;entityId:string;mentionId:string|null;kind:string;origin:string;status:string;confidence:number|null;name:string;sourceMentionId?:string|null;propertyId?:string|null;version?:string;evidence:TemporalEvidence|TemporalSourceEvidence|TemporalPropertyEvidence|{status:'unresolved';reason:string}}
+export interface TemporalItem {date:TemporalDate;curation:TemporalCuration|null;mentions:TemporalMentionSummary[];mentionCount:number;relations:TemporalRelationSummary[];relationCount:number;layer:TemporalLayer;sources?:TemporalSourceSummary[];sourceCount?:number;properties?:TemporalPropertySummary[];propertyCount?:number;proposals?:TemporalRelationSummary[];proposalCount?:number}
 export interface TemporalResults {items:TemporalItem[];indexing:{refreshed:number;pending:number};nextOffset:number|null}
-export interface TemporalDetail extends TemporalItem {nextMentionOffset:number|null;nextRelationOffset:number|null}
+export interface TemporalDetail extends TemporalItem {nextMentionOffset:number|null;nextRelationOffset:number|null;nextSourceOffset?:number|null;nextPropertyOffset?:number|null;nextProposalOffset?:number|null}
 
 const months='January February March April May June July August September October November December'.split(' ');
 const monthPattern=months.join('|');

@@ -45,7 +45,8 @@ export class VaultDeletion {
       highlights:this.store.all('SELECT id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,color,reference_json,created_at FROM highlights WHERE vault_id=? ORDER BY id',id),
       readingNotes:this.store.all('SELECT page_id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,reference_json,created_at FROM page_reading_notes WHERE vault_id=? ORDER BY page_id',id),
     };
-    const fingerprint=createHash('sha256').update(JSON.stringify({vault,counts,revisions,entities,sources,images,organization})).digest('hex');
+    const temporal=['temporal_dates','temporal_curation','temporal_relations'].map(table=>this.store.all(`SELECT * FROM ${table} WHERE vault_id=? ORDER BY id`,id));
+    const fingerprint=createHash('sha256').update(JSON.stringify({vault,counts,revisions,entities,sources,images,organization,temporal})).digest('hex');
     return {vault,counts,fingerprint,canDelete:!blockers.length,blockers};
   }
   remove(id:string,body:Record<string,unknown>):VaultDeletionResult {

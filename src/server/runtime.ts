@@ -1,3 +1,4 @@
+import {TemporalIndex} from './modules/temporal.js';
 import {EntityDiscoveryService} from './modules/entity-discovery.js';
 import {createSourcePageGeneration} from './modules/source-page-generation.js';
 import {SourcePageImages} from './modules/source-page-images.js';
@@ -71,6 +72,7 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
   const sourcePageGeneration=createSourcePageGeneration({store,sourcePages,intelligence,vaults,activity,notifications});
   const searchSnippets=new SearchSnippets(pages,knowledge,vaults);
   const textSearch=new TextSearch(store,vaults);
+  const temporal=new TemporalIndex(store);
   // Enforce retention on startup, periodically while running, and before scoped API access.
   pages.purgeExpired();
   images.cleanup();
@@ -81,7 +83,7 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
   let embeddingWorker: ReturnType<typeof setInterval> | undefined;
   let sourcePassageWorker: ReturnType<typeof setInterval> | undefined;
   let sourceEnrichmentWorker: ReturnType<typeof setInterval> | undefined;
-  return { store, entityDiscovery, intelligence, networkAccess, vaultDeletion, sourceFiles, sourcePageImages, sourceReading, backups, images, notifications, vaults, knowledge, pages, organizer, activity, enrichments, sourceReprocessing, scans, pageEnrichment, enrichmentScheduler, scheduleEnrichment, entityMatches, embeddings, sourcePassages, sourceEnrichments, sourcePages, sourcePageGeneration, searchSnippets, textSearch,
+  return { store, temporal, entityDiscovery, intelligence, networkAccess, vaultDeletion, sourceFiles, sourcePageImages, sourceReading, backups, images, notifications, vaults, knowledge, pages, organizer, activity, enrichments, sourceReprocessing, scans, pageEnrichment, enrichmentScheduler, scheduleEnrichment, entityMatches, embeddings, sourcePassages, sourceEnrichments, sourcePages, sourcePageGeneration, searchSnippets, textSearch,
     start() {
       enrichmentScheduler.start();
       sourceReprocessingWorker=setInterval(()=>{void sourceReprocessing.tick().catch(()=>{});},1000);sourceReprocessingWorker.unref();

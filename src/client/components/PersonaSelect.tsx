@@ -9,5 +9,5 @@ export function useDefaultPersona() {
 }
 export function PersonaSelect({value,onChange,disabled=false,original}:{original?:PersonaIdentity;value:string;onChange:(id:string)=>void;disabled?:boolean}) {
   const inherited=useDefaultPersona();
-  return <label className="persona-select">AI Persona<Select value={value} disabled={disabled} onChange={event=>onChange(event.target.value)}><option value="">{original?`Original · ${personaIdentityName(original)} · v${original.version}`:`Default · ${personaMetadata(inherited).name}`}</option>{aiPersonas.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</Select></label>;
+  return <label className="persona-select" title={value?"Applies to this request only; your default is unchanged.":original?"Uses the original draft’s persona and version.":"Inherits your global default persona."}>Persona:<Select aria-label="Persona" value={value} disabled={disabled} onChange={event=>onChange(event.target.value)}><option value="">{original?`Original · ${personaIdentityName(original)} · v${original.version}`:`${personaMetadata(inherited).name} (default)`}</option>{aiPersonas.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</Select></label>;
 }

@@ -184,9 +184,10 @@ function ReadingNotePopover({selection,vaultId,onCreated,onClose,explain=false}:
   }}>
     <header><span className="reading-note-form-title"><Icon name={explain?'sparkles':'annotation'}/><strong>{explain?uiText("Explain with AI"):uiText("Reading note")}</strong></span><button type="button" title={busy&&explain?uiText("Cancel explanation"):uiText("Close reading note")} aria-label={busy&&explain?uiText("Cancel explanation"):uiText("Close reading note")} disabled={busy&&!explain} onClick={onClose}><Icon name="close"/></button></header>
     <div className="reading-note-excerpt"><span>{uiText("Selected passage")}</span><blockquote>{selection.excerpt}</blockquote></div>
-    {explain?<div className="reading-explanation-options"><PersonaSelect value={personaId} disabled={busy} onChange={id=>{setPersonaId(id);setRequestId(randomUUID());}}/>
+    {explain?<div className="reading-explanation-options">
       <label>{uiText("Language")}<Select autoFocus value={language} disabled={busy} onChange={event=>{setLanguage(event.target.value);setRequestId(randomUUID());}}><option value="">{uiText("Same as passage")}</option>{sourcePageLanguages.map(language=><option key={language} value={language}>{language}</option>)}</Select></label>
       <label>{uiText("Reader familiarity")}<Select value={familiarity} disabled={busy} onChange={event=>{setFamiliarity(event.target.value as ReadingExplanationOptions['familiarity']);setRequestId(randomUUID());}}>{Object.entries(readingExplanationFamiliarities).map(([value,label])=><option key={value} value={value}>{label}</option>)}</Select></label>
+      <PersonaSelect value={personaId} disabled={busy} onChange={id=>{setPersonaId(id);setRequestId(randomUUID());}}/>
       <p className="reading-explanation-help">{uiText("Creates an AI-generated reading note explaining only this passage. Up to") + " "}{readingNoteMaxWords}{" " + uiText("words.")}</p>
       {busy&&<span className="reading-explanation-status" role="status">{uiText("Explaining the passage… You can cancel with ×.")}</span>}
     </div>:<div className="reading-note-writing-area">

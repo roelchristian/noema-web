@@ -77,6 +77,7 @@
     "test/entity-subtypes.test.mjs",
     "test/entity-suggestion-identities.test.mjs",
     "test/folder-drop.test.mjs",
+    "test/http-runtime.test.mjs",
     "test/image-cleanup.test.mjs",
     "test/images.test.mjs",
     "test/intelligence.test.mjs",

@@ -126,6 +126,11 @@ export class AIActivityLog {
     if (!row) throw new HttpError(404,'Debug payload is unavailable or its vault is locked.');
     return {...row,events:this.store.all<AIActivityDebug['events'][number]>('SELECT sequence,received_at AS receivedAt,type,data FROM ai_activity_debug_events WHERE activity_id=? ORDER BY sequence',id)};
   }
+  // Response accounting belongs to activity persistence, not JSON serialization.
+  finishResponse(id: string, status: number) {
+    const row=this.store.get<{prompt_bytes:number|null;action:string}>('SELECT prompt_bytes,action FROM ai_activity WHERE id=?',id);
+    this.finish(id,status>=400?'failed':row?.action==='page_enrichment'&&row.prompt_bytes===null?'skipped':'completed',status);
+  }
   finish(id: string, status: Exclude<AIActivity['status'], 'running'>, httpStatus: number | null) {
     const previous=this.store.get<{action:string;vault_id:string|null;object_id:string|null;status:string;prompt_bytes:number|null}>('SELECT action,vault_id,object_id,status,prompt_bytes FROM ai_activity WHERE id=?',id);
     this.store.run(`UPDATE ai_activity SET status=?,finished_at=?,duration_ms=MAX(0,CAST((julianday(?)-julianday(started_at))*86400000 AS INTEGER)),http_status=? WHERE id=?`,status,new Date().toISOString(),new Date().toISOString(),httpStatus,id);

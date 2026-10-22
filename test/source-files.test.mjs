@@ -28,10 +28,13 @@ test('sources require original files; local extraction, last-file invariant, vau
   fail(()=>knowledge.create(other.id,{name:'Cross-vault',type:'source',attachmentIds:[a.id]}),400);
   const source=knowledge.create('default',{name:'Reference',type:'source',attachmentIds:[a.id]});
   assert.equal(source.attachments[0].entity_id,source.id);
+  assert.equal(knowledge.list('default').find(entity=>entity.id===source.id).sourceSize,a.size);
+  assert.equal(knowledge.find('default',source.id).sourceSize,a.size);
   fail(()=>knowledge.create('default',{name:'Reused',type:'source',attachmentIds:[a.id]}),400);
   fail(()=>files.remove('default',a.id),400);
   fail(()=>knowledge.update('default',source.id,{name:'Reference',type:'person'}),400);
   const person=knowledge.create('default',{name:'Person',type:'person'});
+  assert.equal(knowledge.find('default',person.id).sourceSize,null);
   fail(()=>knowledge.update('default',person.id,{name:'Person',type:'source'}),400);
   fail(()=>files.add('default','file.txt',Buffer.from('value'),person.id),400);
   await files.tick();assert.equal(files.require('default',a.id).status,'ready');

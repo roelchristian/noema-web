@@ -1777,3 +1777,98 @@ summary.disclosure-summary:focus-visible {
 main[data-entity-review-open=true] *,
 main[data-entity-review-open=true] *::before,
 main[data-entity-review-open=true] *::after { animation: none !important; transition: none !important; }
+
+/* Presentation changes visibility only; mounted workspace state remains intact. */
+.topbar:has(.page-toolbar) { height: auto; flex-shrink: 0; }
+.topbar .top-actions { min-width: 0; max-width: 100%; }
+.topbar .page-toolbar { min-width: 0; max-width: 100%; flex-wrap: wrap; }
+.presentation-selector {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.presentation-selector button {
+  min-height: var(--control-height);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-toolbar);
+  font-size: var(--ui-text-xs);
+  color: var(--text-muted);
+}
+.presentation-selector button[aria-checked=true] {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.presentation-selector button:focus-visible, .focus-exit:focus-visible {
+  outline: var(--focus-width) solid var(--accent);
+  outline-offset: var(--focus-offset-control);
+}
+.focus-controls {
+  position: fixed;
+  top: max(var(--space-2), env(safe-area-inset-top));
+  right: max(var(--space-3), env(safe-area-inset-right));
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: calc(100vw - var(--space-6));
+}
+.focus-controls-reveal {
+  opacity: 0;
+  transition: opacity var(--duration-control) ease;
+}
+.focus-controls:hover .focus-controls-reveal, .focus-controls:focus-within .focus-controls-reveal {
+  opacity: 1;
+}
+.focus-exit {
+  flex: none;
+  min-height: var(--touch-target-size);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: var(--ui-text-xs);
+}
+.focus-exit kbd { margin-inline-start: var(--space-1); }
+:root[data-focus-workspace=true] :is(.workspace-navigation-desktop, .workspace-navigation, #intelligence-panel, #entity-panel) {
+  display: none;
+}
+:root[data-focus-workspace=true] main {
+  margin: 0;
+  width: 100%;
+}
+:root[data-focus-workspace=true] .topbar {
+  display: none;
+}
+/* Save failures and recoverable drafts must stay actionable in Focus. */
+:root[data-focus-workspace=true] .topbar:has(.page-persistence-notices) {
+  display: flex;
+  padding-top: 56px;
+}
+:root[data-focus-workspace=true] .topbar > :not(.page-persistence-notices) { display: none; }
+:root[data-focus-workspace=true] #content > .page {
+  max-width: calc(var(--document-line-width) + 2 * var(--editor-page-padding-inline));
+  min-width: 0;
+  padding-top: 76px;
+}
+:root[data-focus-workspace=true] :is(.page-toc-document, .editor-entity-counts) { display: none; }
+@media (max-width: 750px) {
+  .presentation-selector button { min-height: var(--touch-target-size); min-width: var(--touch-target-size); }
+  .topbar:has(.page-toolbar) { flex-wrap: wrap; height: auto; flex-shrink: 0; }
+  .topbar .top-actions { flex: 1 1 100%; min-width: 0; }
+  .topbar .page-toolbar { flex: 1; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+  .topbar .page-toolbar .presentation-selector { margin-inline-end: auto; }
+  .focus-controls { gap: var(--space-1); right: var(--space-2); max-width: calc(100vw - var(--space-4)); }
+  .focus-exit kbd { display: none; }
+  :root[data-focus-workspace=true] #content > .page { padding-inline: max(24px, env(safe-area-inset-left)) max(24px, env(safe-area-inset-right)); }
+}
+@media (hover: none) {
+  .focus-controls-reveal { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .focus-controls-reveal { transition: none; }
+}

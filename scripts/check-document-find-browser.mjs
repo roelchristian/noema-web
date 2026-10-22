@@ -94,8 +94,9 @@ const {createApp}=await import('../dist/server/http.js');
 const {once}=await import('node:events');
 const appDirectory=await mkdtemp(join(tmpdir(),'noema-find-app-'));
 const db=openDatabase(join(appDirectory,'fixture.sqlite')),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge);
+const presentationEntity=knowledge.create('default',{name:'Synthetic Rowan',type:'person',description:'Fictional presentation fixture'});
 let note=pages.create('default',{title:'Synthetic target title'});
-note=pages.update('default',note.id,{...note,blocks:[{id:'body',type:'paragraph',checked:false,content:[{text:'target ',bold:true},{text:'target',italic:true}]},{id:'table',type:'table',checked:false,content:[],rows:[[[{text:'target',href:'https://example.com'}],[{text:'untouched'}]]]}]});
+note=pages.update('default',note.id,{...note,blocks:[{id:'body',type:'paragraph',checked:false,content:[{text:'target ',bold:true},{text:'target',italic:true}]},{id:'table',type:'table',checked:false,content:[],rows:[[[{text:'target',href:'https://example.com'}],[{text:'untouched'}]]]},{id:'references',type:'paragraph',checked:false,content:[{text:'Notes about '},{entityId:presentationEntity.id,mentionText:'Synthetic Rowan'},{text:' and an unchanged association.'}]},{id:'sample-code',type:'code',checked:false,content:[{text:'const example = "'+ 'x'.repeat(180) +'";'}]}]});
 const other=pages.create('default',{title:'Other target page'});
 const otherBefore=JSON.stringify(pages.get('default',other.id));
 const app=createApp(store,join(repo,'dist/client'));app.listen(0,'127.0.0.1');await once(app,'listening');
@@ -117,5 +118,68 @@ try{
  assert.ok(await page.locator('.document-find').evaluate(el=>el.getBoundingClientRect().height<=60));assert.ok(await page.evaluate(()=>{const widget=document.querySelector('.document-find').getBoundingClientRect(),body=document.querySelector('[data-block-id=body]').getBoundingClientRect();return widget.bottom<body.top;}));await page.screenshot({path:join(shots,'app-desktop.png'),fullPage:false});await page.getByRole('button',{name:'Replace…',exact:true}).click();await page.screenshot({path:join(shots,'app-desktop-replace.png'),fullPage:false});await page.getByRole('button',{name:'Replace…',exact:true}).click();await page.setViewportSize({width:390,height:844});await page.screenshot({path:join(shots,'app-mobile.png'),fullPage:false});
  await page.setViewportSize({width:320,height:700});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.setViewportSize({width:390,height:844});
  await page.getByRole('button',{name:'Close find',exact:true}).click();await page.locator('#page-title').focus();await page.locator('#page-title').evaluate(el=>el.setSelectionRange(2,6));await page.getByRole('button',{name:'More page actions',exact:true}).click();await page.getByRole('menuitem',{name:'Find in page',exact:true}).click();await page.keyboard.press('Escape');assert.deepEqual(await page.locator('#page-title').evaluate(el=>[document.activeElement===el,el.selectionStart,el.selectionEnd]),[true,2,6]);
+ // Presentation modes exercise the production shell, real persistence and editor.
+ await page.setViewportSize({width:1440,height:1000});
+ const choose=async mode=>{await page.getByRole('radio',{name:mode,exact:true}).click();await page.waitForTimeout(80);};
+ const inFocus=()=>page.evaluate(()=>document.documentElement.dataset.focusWorkspace==='true');
+ const dataBeforeModes=JSON.stringify(pages.get('default',note.id));
+ await page.getByRole('button',{name:'Knowledge',exact:true}).click();
+ await page.locator('#intelligence-panel').waitFor();
+ await page.locator('.sidebar-scroll-region').evaluate(el=>el.scrollTop=40);
+ const arrangement=await page.evaluate(()=>({knowledge:localStorage.getItem('noema-knowledge-panel-open'),toc:localStorage.getItem('noema-table-of-contents-visible'),scroll:document.querySelector('.sidebar-scroll-region').scrollTop}));
+ const mention=page.locator('#blocks .mention').first();await mention.waitFor();
+ await choose('Standard');const normalStyle=await mention.evaluate(el=>({bg:getComputedStyle(el).backgroundColor,border:getComputedStyle(el).borderBottomStyle}));
+ await page.screenshot({path:join(shots,'presentation-desktop-standard.png')});
+ await choose('Subtle');const subtleStyle=await mention.evaluate(el=>({bg:getComputedStyle(el).backgroundColor,border:getComputedStyle(el).borderBottomStyle}));assert.notDeepEqual(normalStyle,subtleStyle);
+ await page.screenshot({path:join(shots,'presentation-desktop-subtle.png')});
+ await page.getByRole('radio',{name:'Subtle',exact:true}).focus();await page.keyboard.press('ArrowLeft');assert.equal(await page.getByRole('radio',{name:'Standard',exact:true}).getAttribute('aria-checked'),'true');await page.keyboard.press('ArrowRight');assert.equal(await page.getByRole('radio',{name:'Subtle',exact:true}).getAttribute('aria-checked'),'true');
+ for(let i=0;i<2;i++) {
+  await choose('Focus');assert.ok(await inFocus());assert.ok(!await page.locator('.sidebar').isVisible());assert.ok(!await page.locator('#intelligence-panel').isVisible());
+  assert.deepEqual(await mention.evaluate(el=>({bg:getComputedStyle(el).backgroundColor,border:getComputedStyle(el).borderBottomStyle})),subtleStyle);
+  const layout=await page.locator('article.page').boundingBox();assert.ok(Math.abs(layout.x+layout.width/2-720)<2);
+  await page.locator('[data-block-id=body] .block-handle').click({force:true});await page.locator('.block-action-menu').waitFor();await page.keyboard.press('Escape');assert.ok(await inFocus());
+  await body.focus();await page.keyboard.press('Control+f');await page.getByLabel('Find text',{exact:true}).fill('revised');await page.keyboard.press('Escape');assert.ok(await inFocus());
+  await body.evaluate(el=>el.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',isComposing:true,bubbles:true})));assert.ok(await inFocus());
+  await page.keyboard.press('Escape');assert.ok(!await inFocus());assert.ok(await page.locator('#intelligence-panel').isVisible());
+  assert.deepEqual(await page.evaluate(()=>({knowledge:localStorage.getItem('noema-knowledge-panel-open'),toc:localStorage.getItem('noema-table-of-contents-visible'),scroll:document.querySelector('.sidebar-scroll-region').scrollTop})),arrangement);
+  assert.equal(await page.getByRole('radio',{name:'Subtle',exact:true}).getAttribute('aria-checked'),'true');
+ }
+ await choose('Focus');await body.focus();await page.mouse.move(700,600);await page.waitForFunction(()=>getComputedStyle(document.querySelector('.focus-controls-reveal')).opacity==='0');await page.screenshot({path:join(shots,'presentation-desktop-focus.png')});
+ await page.locator('.focus-exit').focus();await page.waitForFunction(()=>getComputedStyle(document.querySelector('.focus-controls-reveal')).opacity==='1');
+ // Same-tab reload retains Focus and its previous Subtle mode.
+ await page.reload();await body.waitFor();assert.ok(await inFocus());
+ await page.goto(`http://127.0.0.1:${app.address().port}/?vault=default&page=${other.id}`);await page.locator('#blocks').waitFor();assert.ok(await inFocus());await page.goBack();await body.waitFor();assert.ok(await inFocus());await page.keyboard.press('Escape');assert.equal(await page.getByRole('radio',{name:'Subtle',exact:true}).getAttribute('aria-checked'),'true');
+ assert.equal(JSON.stringify(pages.get('default',note.id)),dataBeforeModes);
+ // Full editing, selection and history remain available in Focus.
+ await choose('Focus');await body.click();await page.keyboard.press('End');await page.keyboard.type(' focus edit');await page.keyboard.press('Control+z');assert.equal(await body.innerText(),'revised revised');await page.keyboard.press('Control+Shift+z');assert.match(await body.innerText(),/focus edit/);await page.keyboard.press('Control+z');await page.keyboard.press('Control+s');
+ await page.getByRole('button',{name:'Exit Focus',exact:false}).click();
+ // Mobile uses real touch emulation, all modes, and a narrow phone width.
+ const mobileContext=await appBrowser.newContext({viewport:{width:390,height:844},hasTouch:true,isMobile:true});
+ const mobilePage=await mobileContext.newPage();mobilePage.on('pageerror',e=>errors.push(e.message));
+ await mobilePage.goto(`http://127.0.0.1:${app.address().port}/?vault=default&page=${note.id}`);await mobilePage.locator('#blocks').waitFor();
+ for(const mode of ['Standard','Subtle','Focus']) {
+  await mobilePage.getByRole('radio',{name:mode,exact:true}).tap();await mobilePage.waitForTimeout(150);
+  await mobilePage.screenshot({path:join(shots,'presentation-mobile-'+mode.toLowerCase()+'.png')});
+  assert.ok(await mobilePage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  if(mode!=='Focus')assert.ok(await mobilePage.evaluate(()=>document.querySelector('.topbar').getBoundingClientRect().bottom<=document.querySelector('.page-title-heading').getBoundingClientRect().top));
+  assert.ok(await mobilePage.getByRole('radio',{name:mode,exact:true}).evaluate(el=>el.getBoundingClientRect().height>=44));
+ }
+ await mobilePage.setViewportSize({width:320,height:700});assert.ok(await mobilePage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ await mobilePage.getByRole('button',{name:'Exit Focus',exact:false}).tap();assert.equal(await mobilePage.getByRole('radio',{name:'Subtle',exact:true}).getAttribute('aria-checked'),'true');
+ await mobilePage.setViewportSize({width:390,height:844});
+ await mobilePage.getByRole('button',{name:'Open navigation',exact:true}).tap();
+ await mobilePage.getByRole('button',{name:'Vault options',exact:true}).tap();await mobilePage.getByRole('menuitem',{name:'Settings',exact:true}).tap();
+ const settings=mobilePage.getByRole('dialog',{name:'Settings',exact:true});await settings.getByRole('radio',{name:'Focus',exact:true}).tap();
+ await mobilePage.keyboard.press('Escape');assert.equal(await mobilePage.evaluate(()=>document.documentElement.dataset.focusWorkspace),'true');
+ assert.equal(await mobilePage.locator('#workspace-navigation').getAttribute('open'),null);
+ await mobilePage.getByRole('button',{name:'Exit Focus',exact:false}).tap();
+ assert.ok(await mobilePage.getByRole('dialog',{name:'Workspace navigation',exact:true}).isVisible());await mobilePage.getByRole('button',{name:'Close navigation',exact:true}).tap();
+ await mobileContext.close();
+ await page.setViewportSize({width:1440,height:1000});await choose('Focus');
+ await mention.click();await page.getByRole('button',{name:'Open entity details',exact:true}).click();assert.ok(!await inFocus());await page.locator('#entity-panel').waitFor();
+ const inspectorNode=await page.locator('#entity-panel').evaluateHandle(el=>el);await choose('Focus');assert.ok(!await page.locator('#entity-panel').isVisible());await page.keyboard.press('Escape');assert.ok(await page.locator('#entity-panel').isVisible());assert.ok(await page.locator('#entity-panel').evaluate((el,original)=>el===original,inspectorNode));
+ const finalBlocks=pages.get('default',note.id).blocks;assert.deepEqual(saved.blocks.map(block=>finalBlocks.find(item=>item.id===block.id)),saved.blocks);assert.ok(finalBlocks.filter(block=>!saved.blocks.some(item=>item.id===block.id)).every(block=>block.type==='paragraph'&&block.content.length===0));
+ assert.equal(JSON.stringify(pages.get('default',other.id)),otherBefore);
+ console.log(JSON.stringify({presentationModes:true,checks:'desktop/mobile screenshots, exact subtle styling, repeated restoration, IME, find Escape priority, reload, data fidelity, editing undo/redo, entity interactions, narrow screens',screenshots:['desktop','mobile'].flatMap(device=>['standard','subtle','focus'].map(mode=>join(shots,'presentation-'+device+'-'+mode+'.png')))}));
  assert.deepEqual(errors,[]);console.log(JSON.stringify({productionApp:true,passed:['replace all single undo/redo','SQLite autosave and reload','styles and URL','unchanged title and other page','query reset on reload'],screenshots:[join(shots,'app-desktop.png'),join(shots,'app-mobile.png')]}));
 }finally{await appBrowser?.close();await new Promise(resolve=>app.close(resolve));db.close();await rm(appDirectory,{recursive:true,force:true});}

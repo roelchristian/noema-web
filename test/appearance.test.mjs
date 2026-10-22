@@ -17,7 +17,7 @@ test('appearance survives serialization, including individual entity overrides',
   appearance.theme = 'juniper';
   appearance.mode = 'dark';
   appearance.citationStyleExplicit = true;
-  appearance.focusedReading = true;
+  appearance.presentationMode = 'subtle';
   appearance.entityColors.person = 'ocean';
   appearance.entityOverrides['entity-a'] = 'rose';
   assert.deepEqual(parseAppearance(JSON.stringify(appearance)), appearance);
@@ -49,8 +49,22 @@ test('system appearance follows the computer while explicit choices take priorit
   assert.equal(resolveDisplayMode('dark', false), 'dark');
   const legacy = parseAppearance(JSON.stringify({theme: 'juniper', entityColors: {person: 'sage'}}));
   assert.equal(legacy.mode, 'system');
-  assert.equal(legacy.focusedReading, false);
-  assert.equal(parseAppearance('{"focusedReading":"true"}').focusedReading, false);
+  assert.equal(legacy.presentationMode, 'standard');
+  assert.equal(parseAppearance('{"focusedReading":"true"}').presentationMode, 'standard');
   assert.equal(legacy.entityColors.person, 'sage');
   assert.equal(parseAppearance('{"mode":"invalid"}').mode, 'system');
+});
+
+test('presentation migrates legacy values, validates modes and separates emphasis from layout', async () => {
+  const {presentationTraits} = await import('../src/client/settings/appearance.ts');
+  assert.equal(parseAppearance('{"focusedReading":true,"theme":"juniper"}').presentationMode, 'subtle');
+  assert.equal(parseAppearance('{"focusedReading":false}').presentationMode, 'standard');
+  assert.equal(parseAppearance('{"focusedReading":true,"presentationMode":"standard"}').presentationMode, 'standard');
+  assert.equal(parseAppearance('{"presentationMode":"invalid"}').presentationMode, 'standard');
+  for (const mode of ['standard', 'subtle', 'focus']) {
+    const parsed = parseAppearance(JSON.stringify({...defaultAppearance(), presentationMode: mode}));
+    assert.equal(parsed.presentationMode, mode);
+    assert.equal(Object.hasOwn(parsed, 'focusedReading'), false);
+    assert.deepEqual(presentationTraits(mode), {entityEmphasis: mode === 'standard' ? 'normal' : 'subtle', workspaceVisibility: mode === 'focus' ? 'minimal' : 'full'});
+  }
 });

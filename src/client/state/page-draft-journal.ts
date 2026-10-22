@@ -1,3 +1,4 @@
+import {immutableBlocks} from '../../shared/immutable-blocks';
 import {blockTypes, type Page} from '../../shared/domain';
 import {isSemanticKind} from '../../shared/semantic-blocks';
 import {pageIcons} from '../../shared/page-icons';
@@ -41,9 +42,10 @@ function validPage(value: unknown): value is Page {
   if(value.aiReviewAccepted!==undefined&&typeof value.aiReviewAccepted!=='boolean')return false;
   return value.featuredImageId === undefined || value.featuredImageId === null || identifier(value.featuredImageId);
 }
-function minimalPage(page: Page): Page {
-  return clone({id: page.id, vault_id: page.vault_id, title: page.title, blocks: page.blocks, sourceIds: page.sourceIds, revision: page.revision, created_at: page.created_at ?? null, updated_at: page.updated_at, icon: page.icon ?? null, featuredImageId: page.featuredImageId ?? null, aiReviewAccepted:!!page.aiReviewAccepted});
+function minimalFields(page:Page):Page {
+  return {id: page.id, vault_id: page.vault_id, title: page.title, blocks: page.blocks, sourceIds: page.sourceIds, revision: page.revision, created_at: page.created_at ?? null, updated_at: page.updated_at, icon: page.icon ?? null, featuredImageId: page.featuredImageId ?? null, aiReviewAccepted:!!page.aiReviewAccepted};
 }
+function minimalPage(page:Page):Page {return clone(minimalFields(page));}
 function parse(value: string | null): PageDraftEntry | null {
   if (!value) return null;
   try {
@@ -60,6 +62,7 @@ export class PageDraftJournal {
   readonly writerId = uniqueId();
   private memory = new Map<string, PageDraftEntry>();
   private lastTimestamp = 0;
+  private incremental = new Map<string,{base:PageDraftEntry;latest:PageDraftEntry}>();
   constructor(private readonly providedStorage?: Storage | null) {}
   private storage(): Storage | null {
     if (this.providedStorage !== undefined) return this.providedStorage;
@@ -76,24 +79,91 @@ export class PageDraftJournal {
         if (entry && storageKey(entry) === key) found.set(key, entry);
       }
     } catch { /* In-memory drafts remain usable when storage access is denied. */ }
+    // Each operation is one atomic write. Single-block slots coalesce repeated
+    // typing without rewriting earlier dirty blocks. Structural transactions
+    // carry their complete changed blocks/order and replay only at recovery.
+    try {
+      const storage=this.storage();
+      const keys=storage?Array.from({length:storage.length},(_,i)=>storage.key(i)??''):[];
+      for(const [key,base] of found) {
+        const operations: {entry:{id:string;updatedAt:number;snapshot:Partial<Page>};changed:Page['blocks'];order?:string[]}[]=[];
+        for(const candidate of keys) {
+          if(!candidate.startsWith(key+':delta:'))continue;
+          try {
+            const delta=JSON.parse(storage!.getItem(candidate)??'null');
+            if(delta?.version!==2 || delta.baseId!==base.id || !record(delta.entry) || !identifier(delta.entry.id) || !natural(delta.entry.updatedAt) || !record(delta.entry.snapshot) || !Array.isArray(delta.changed) || !delta.changed.every(validBlock) || delta.order!==undefined && (!Array.isArray(delta.order)||!delta.order.every(identifier)))continue;
+            operations.push(delta);
+          } catch { /* An invalid operation cannot hide the complete checkpoint. */ }
+        }
+        if(!operations.length)continue;
+        operations.sort((a,b)=>a.entry.updatedAt-b.entry.updatedAt);
+        const blocks=new Map(base.snapshot.blocks.map(block=>[block.id,block]));
+        let ids=base.snapshot.blocks.map(block=>block.id),metadata=base.snapshot;
+        for(const operation of operations) {
+          for(const block of operation.changed)blocks.set(block.id,block);
+          if(operation.order)ids=operation.order;
+          metadata={...metadata,...operation.entry.snapshot};
+        }
+        const latest=operations.at(-1)!;
+        const entry=parse(JSON.stringify({...base,id:latest.entry.id,updatedAt:latest.entry.updatedAt,snapshot:{...metadata,blocks:ids.map(id=>blocks.get(id))}}));
+        if(entry && storageKey(entry)===key)found.set(key,entry);
+      }
+    } catch { /* Storage denied: use memory. */ }
     for (const [key, entry] of this.memory) found.set(key, entry);
     return found;
   }
   entries(vaultId: string, pageId: string): PageDraftEntry[] {
     return [...this.all().values()].filter(entry => entry.vaultId === vaultId && entry.pageId === pageId).sort((a,b) => b.updatedAt - a.updatedAt || b.id.localeCompare(a.id)).map(clone);
   }
+  /** Synchronously journal only changed blocks between save boundaries. The
+   * first draft, explicit writes, and sent/rebased checkpoints remain complete. */
+  prime(page:Page) {
+    const storage=this.storage();
+    if(!storage || typeof storage.removeItem!=='function' || typeof storage.key!=='function')return;
+    this.writeIncremental(page);
+  }
+  writeIncremental(page:Page):PageDraftEntry {
+    const scope=`${page.vault_id}/${page.id}`;
+    const current=this.incremental.get(scope);
+    page={...minimalFields(page),blocks:immutableBlocks(page.blocks,current?.latest.snapshot.blocks),sourceIds:[...page.sourceIds]};
+    if(!current || current.base.baseRevision!==page.revision) {
+      const entry=this.write(page);
+      this.incremental.set(scope,{base:entry,latest:{...entry,snapshot:page}});
+      return entry;
+    }
+    const {base}=current;
+    const checkpoint=current.latest.snapshot;
+    const byId=new Map(checkpoint.blocks.map(block=>[block.id,block]));
+    const changed=page.blocks.filter(block=>byId.get(block.id)!==block);
+    const order=page.blocks.length!==checkpoint.blocks.length || page.blocks.some((block,i)=>block.id!==checkpoint.blocks[i]?.id) ? page.blocks.map(block=>block.id) : undefined;
+    this.lastTimestamp=Math.max(Date.now(),this.lastTimestamp+1);
+    const snapshot={...minimalFields(page),blocks:immutableBlocks(page.blocks),sourceIds:[...page.sourceIds]};
+    const entry:PageDraftEntry={...base,id:uniqueId(),updatedAt:this.lastTimestamp,snapshot};
+    const {blocks:_,...metadata}=snapshot;
+    const delta={version:2,baseId:base.id,entry:{id:entry.id,updatedAt:entry.updatedAt,snapshot:metadata},changed,order};
+    const key=storageKey(base);
+    this.memory.set(key,entry);
+    const storage=this.storage();
+    if(!storage)throw new Error('Local draft storage is unavailable. Keep this tab open until your changes save.');
+    const slot=order || changed.length>1 ? `transaction:${entry.updatedAt}` : changed.length ? `block:${encodeURIComponent(changed[0]!.id)}` : 'metadata';
+    storage.setItem(key+':delta:'+slot,JSON.stringify(delta));
+    current.latest=entry;
+    return entry;
+  }
   write(page: Page): PageDraftEntry {
+    this.incremental.delete(`${page.vault_id}/${page.id}`);
     const previous = this.entries(page.vault_id, page.id).find(entry => entry.writerId === this.writerId);
     this.lastTimestamp = Math.max(Date.now(), this.lastTimestamp + 1);
-    const entry: PageDraftEntry = {version: 1, id: uniqueId(), writerId: this.writerId, vaultId: page.vault_id, pageId: page.id, baseRevision: page.revision, updatedAt: this.lastTimestamp, snapshot: minimalPage(page), ...(previous?.lastSent ? {lastSent: minimalPage(previous.lastSent)} : {})};
+    const entry: PageDraftEntry = {version: 1, id: uniqueId(), writerId: this.writerId, vaultId: page.vault_id, pageId: page.id, baseRevision: page.revision, updatedAt: this.lastTimestamp, snapshot: {...minimalFields(page),blocks:immutableBlocks(page.blocks),sourceIds:[...page.sourceIds]}, ...(previous?.lastSent ? {lastSent: minimalPage(previous.lastSent)} : {})};
     const key = storageKey(entry);
     this.memory.set(key, entry);
     const storage = this.storage();
     if (!storage) throw new Error('Local draft storage is unavailable. Keep this tab open until your changes save.');
     storage.setItem(key, JSON.stringify(entry));
+    this.removeOperations(key);
     // Persist the replacement before removing an older revision.
     for (const [oldKey, old] of this.all()) if (oldKey !== key && old.writerId === this.writerId && old.vaultId === page.vault_id && old.pageId === page.id) {
-      storage.removeItem(oldKey); this.memory.delete(oldKey);
+      storage.removeItem(oldKey); this.removeOperations(oldKey); this.memory.delete(oldKey);
     }
     return clone(entry);
   }
@@ -113,8 +183,10 @@ export class PageDraftJournal {
     const storage = this.storage();
     if (!storage) throw new Error('Local draft storage is unavailable. Keep this tab open until your changes save.');
     storage.setItem(key, JSON.stringify(next));
+    this.incremental.set(`${entry.vaultId}/${entry.pageId}`,{base:next,latest:next});
+    this.removeOperations(key);
     for (const [oldKey, old] of this.all()) if (oldKey !== key && old.writerId === entry.writerId && old.vaultId === entry.vaultId && old.pageId === entry.pageId && old.updatedAt <= entry.updatedAt) {
-      storage.removeItem(oldKey); this.memory.delete(oldKey);
+      storage.removeItem(oldKey); this.removeOperations(oldKey); this.memory.delete(oldKey);
     }
     return clone(next);
   }
@@ -126,9 +198,18 @@ export class PageDraftJournal {
   discard(entry: PageDraftEntry): void {
     const key = storageKey(entry), storage = this.storage();
     if (this.memory.get(key)?.id === entry.id) this.memory.delete(key);
-    if (storage && parse(storage.getItem(key))?.id === entry.id) storage.removeItem(key);
+    if (storage && this.all().get(key)?.id === entry.id) {storage.removeItem(key);this.removeOperations(key);}
+    const scope=`${entry.vaultId}/${entry.pageId}`;
+    if(this.incremental.get(scope)?.latest.id===entry.id)this.incremental.delete(scope);
+  }
+  private removeOperations(baseKey:string) {
+    const storage=this.storage();
+    if(!storage)return;
+    const keys=Array.from({length:storage.length},(_,i)=>storage.key(i));
+    for(const key of keys)if(key?.startsWith(baseKey+':delta:'))storage.removeItem(key);
   }
   private discardScope(predicate: (vaultId: string, pageId: string) => boolean): void {
+    for(const [scope,value] of this.incremental)if(predicate(value.base.vaultId,value.base.pageId))this.incremental.delete(scope);
     // Explicit vault/page cleanup also removes damaged records whose payload
     // cannot be parsed. Scope comes from the journal's own encoded key.
     for (const [key, entry] of this.memory) if (predicate(entry.vaultId, entry.pageId)) this.memory.delete(key);

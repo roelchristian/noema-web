@@ -71,8 +71,12 @@ export const api={
   clearAIActivity:()=>request<{ok:true}>('intelligence/activity','DELETE'),
   aiActivity:(cursor?:number)=>request<import('../shared/intelligence').AIActivityPage>('intelligence/activity'+(cursor?'?before='+cursor:'')),
   aiDebugSettings:()=>request<import('../shared/intelligence').AIDebugSettings>('intelligence/debug'),
-  saveAIDebugSettings:(enabled:boolean)=>request<import('../shared/intelligence').AIDebugSettings>('intelligence/debug','PUT',{enabled}),
-  aiActivityDebug:(id:string,signal?:AbortSignal)=>request<import('../shared/intelligence').AIActivityDebug>('intelligence/activity/'+encodeURIComponent(id),'GET',undefined,undefined,signal),
+  saveAIDebugSettings:(enabled:boolean,fullTraceMinutes?:number)=>request<import('../shared/intelligence').AIDebugSettings>('intelligence/debug','PUT',{enabled,...(fullTraceMinutes===undefined?{}:{fullTraceMinutes})}),
+  aiActivityDebug:(id:string,signal?:AbortSignal,options?:{after?:number;eventCursor?:number;limit?:number;events?:boolean})=>{
+    const query=new URLSearchParams();
+    if(options)for(const [key,value] of Object.entries(options))if(value!==undefined)query.set(key,typeof value==='boolean'?(value?'1':'0'):String(value));
+    return request<import('../shared/intelligence').AIActivityDebug>('intelligence/activity/'+encodeURIComponent(id)+(query.size?'?'+query:''),'GET',undefined,undefined,signal);
+  },
   intelligence:()=>request<import('../shared/domain').IntelligenceStatus>('intelligence'),
   saveIntelligence:(apiKey:string,days:number)=>request<import('../shared/domain').IntelligenceStatus>('intelligence','PUT',{apiKey,days}),
   saveIntelligencePreferences:(preferences:import('../shared/intelligence').IntelligenceConfiguration)=>request<import('../shared/intelligence').IntelligenceConfiguration>('intelligence/preferences','PUT',preferences),

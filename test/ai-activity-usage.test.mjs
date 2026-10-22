@@ -12,8 +12,10 @@ test('token usage loads all pages, filters dates/actions/status, and counts toke
  dom.window.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};dom.window.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};
  const now=new Date();now.setHours(12,0,0,0);
  const old=new Date(now);old.setDate(old.getDate()-60);
+ const annual=new Date(now);annual.setFullYear(annual.getFullYear()-1);annual.setDate(annual.getDate()+1);
+ const expired=new Date(now);expired.setFullYear(expired.getFullYear()-1);expired.setDate(expired.getDate()-1);
  const row=(id,fields={})=>({id,action:'page_summary',status:'completed',startedAt:now.toISOString(),model:'test',reasoningEffort:'low',promptBytes:100,durationMs:null,inputTokens:100,outputTokens:20,cachedInputTokens:40,cacheWriteTokens:10,reasoningTokens:5,...fields});
- const rows=[row('recent'),row('failed',{status:'failed',action:'entity_scan',inputTokens:50,outputTokens:10}),row('missing',{inputTokens:null,outputTokens:null,cachedInputTokens:null,cacheWriteTokens:null,reasoningTokens:null}),row('older',{startedAt:old.toISOString(),inputTokens:1000})];
+ const rows=[row('recent'),row('failed',{status:'failed',action:'entity_scan',inputTokens:50,outputTokens:10}),row('missing',{inputTokens:null,outputTokens:null,cachedInputTokens:null,cacheWriteTokens:null,reasoningTokens:null}),row('older',{startedAt:old.toISOString(),inputTokens:1000}),row('annual',{startedAt:annual.toISOString(),inputTokens:2000}),row('expired',{startedAt:expired.toISOString(),inputTokens:4000})];
  let unavailable=false;
  const request=t.mock.method(api,'aiActivity',async cursor=>{if(unavailable)throw new Error('Usage unavailable');return cursor?{items:rows.slice(2),nextCursor:null}:{items:rows.slice(0,2),nextCursor:10};});
  const {createRoot}=await import('react-dom/client');
@@ -38,6 +40,9 @@ test('token usage loads all pages, filters dates/actions/status, and counts toke
   await change(status,'completed');assert.equal(stats()[0],0);assert.match(document.querySelector('.ai-activity-empty').textContent,/No AI activity/);
   await change(action,'all');await change(status,'all');await choosePeriod('90 days');assert.equal(stats()[0],1200);
   await choosePeriod('60 days');assert.equal(stats()[0],180);
+  await choosePeriod('1 year');assert.equal(stats()[0],3220);assert.equal(document.querySelector('.ai-usage-chart-heading small').textContent,'Monthly totals');
+  await choosePeriod('All');assert.equal(stats()[0],7240);
+  assert.match(document.querySelector('.ai-usage-about').textContent,/one year without a record-count limit/);
   await choosePeriod('Custom');
   const inputs=document.querySelectorAll('.ai-usage input');
   const key=date=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;

@@ -423,6 +423,15 @@ main { margin-left: 224px; }
 .ai-debug-modal details { margin-top: 14px; }
 .ai-debug-modal summary { padding: 8px 0; cursor: pointer; font-size: 13px; color: var(--text); }
 .ai-debug-modal pre { max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 0; padding: 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-hover); color: var(--text); font: 12px/1.6 var(--font-mono); tab-size: 2; }
+.ai-debug-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 12px; margin: 18px 0; }
+.ai-debug-overview > div { padding: 14px; border: 1px solid var(--line); border-radius: 6px; }
+.ai-debug-overview dt { color: var(--text-muted); font-size: 12px; }
+.ai-debug-overview dd { margin: 6px 0 0; font-size: 20px; font-weight: 600; }
+.ai-debug-facts { display: grid; grid-template-columns: auto 1fr; gap: 8px 18px; font-size: 13px; }
+.ai-debug-facts dt { color: var(--text-muted); }
+.ai-debug-facts dd { margin: 0; overflow-wrap: anywhere; }
+.ai-debug-timeline { padding-left: 22px; font-size: 13px; line-height: 1.9; }
+.ai-debug-timeline span { margin-left: 12px; color: var(--text-muted); }
 .ai-debug-events { max-height: 400px; overflow-y: auto; margin: 0; padding-left: 22px; }
 .ai-debug-events details { margin-top: 0; }
 .ai-debug-events time { color: var(--text-muted); }

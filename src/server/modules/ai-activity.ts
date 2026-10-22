@@ -4,57 +4,93 @@ import { randomUUID } from 'node:crypto';
 import type { AIActivity, AIActivityDebug, IntelligencePreferences, AIModelPricing, PageEnrichmentMetrics } from '../../shared/intelligence.js';
 import type { AIDebugTrace } from './ai-debug.js';
 import { Store } from '../store.js';
+import { compactRequest, compactResponse, withoutVectors } from './ai-debug-summary.js';
 import { HttpError } from '../validation.js';
 
 // Summary rows stay lightweight; opt-in payload traces live in cascading child tables.
 export class AIActivityLog {
-  constructor(private store: Store) {
+  constructor(private store: Store, options:{recoverRunning?:boolean}={}) {
+    this.recoverDebugUsage();
+    if(options.recoverRunning!==false) {
+    for(const row of store.all<{action:string;vault_id:string|null;object_id:string|null}>("SELECT action,vault_id,object_id FROM ai_activity WHERE status='running' AND prompt_bytes IS NOT NULL")) new AINotifications(store).outcome(row.action,row.vault_id,row.object_id,'interrupted');
+    store.run("UPDATE ai_activity SET status='interrupted',finished_at=? WHERE status='running'",new Date().toISOString());
+    }
+    this.prune();
+  }
+  private recoverDebugUsage() {
     // Recover provider-reported counts from older debug snapshots without retaining payloads.
-    for(const row of store.all<{id:string;usage:string|null}>(`SELECT a.id,json_extract(CASE WHEN json_valid(d.response) THEN d.response ELSE '{}' END,'$.usage') AS usage
+    for(const row of this.store.all<{id:string;usage:string|null}>(`SELECT a.id,json_extract(CASE WHEN json_valid(d.response) THEN d.response ELSE '{}' END,'$.usage') AS usage
       FROM ai_activity a JOIN ai_activity_debug d ON d.activity_id=a.id WHERE a.input_tokens IS NULL OR a.output_tokens IS NULL OR a.cached_input_tokens IS NULL OR a.cache_write_tokens IS NULL OR a.reasoning_tokens IS NULL`)) {
       if(!row.usage)continue;
       let usage:unknown;try{usage=JSON.parse(row.usage);}catch{continue;}
       this.usage(row.id,usage);
     }
-    for(const row of store.all<{action:string;vault_id:string|null;object_id:string|null}>("SELECT action,vault_id,object_id FROM ai_activity WHERE status='running' AND prompt_bytes IS NOT NULL")) new AINotifications(store).outcome(row.action,row.vault_id,row.object_id,'interrupted');
-    store.run("UPDATE ai_activity SET status='interrupted',finished_at=? WHERE status='running'",new Date().toISOString());
-    this.prune();
+  }
+  private pruneDebug(reserveBytes=0) {
+    // Every capture expires by request completion time, independent of mode and viewer reads.
+    this.store.run(`DELETE FROM ai_activity_debug WHERE activity_id IN
+      (SELECT d.activity_id FROM ai_activity_debug d JOIN ai_activity a ON a.id=d.activity_id
+       WHERE a.status!='running' AND julianday(COALESCE(a.finished_at,a.started_at))<julianday('now','-30 days'))`);
+    this.store.run(`UPDATE ai_activity_debug SET retained_bytes=
+      LENGTH(CAST(COALESCE(endpoint,'')||COALESCE(request,'')||COALESCE(response_body,'')||COALESCE(response,'')||COALESCE(response_headers,'')||COALESCE(error,'') AS BLOB))+
+      COALESCE((SELECT SUM(LENGTH(CAST(e.data AS BLOB))+LENGTH(CAST(e.type AS BLOB))+24) FROM ai_activity_debug_events e WHERE e.activity_id=ai_activity_debug.activity_id),0)
+      WHERE mode='legacy' AND retained_bytes=0`);
+    let total=this.store.get<{bytes:number}>("SELECT COALESCE(SUM(retained_bytes),0) AS bytes FROM ai_activity_debug")!.bytes;
+    for(const row of this.store.all<{activity_id:string;retained_bytes:number}>(`SELECT d.activity_id,d.retained_bytes FROM ai_activity_debug d JOIN ai_activity a ON a.id=d.activity_id WHERE a.status!='running' ORDER BY COALESCE(a.finished_at,a.started_at)`)) {
+      if(total<=50*1024*1024-reserveBytes)break;
+      this.store.run('DELETE FROM ai_activity_debug WHERE activity_id=?',row.activity_id);total-=row.retained_bytes;
+    }
   }
   private prune() {
-    this.store.run("DELETE FROM ai_activity WHERE rowid NOT IN (SELECT rowid FROM ai_activity ORDER BY rowid DESC LIMIT 1000) AND status!='running'");
+    this.pruneDebug();
+    this.store.run("DELETE FROM ai_activity WHERE status!='running' AND julianday(COALESCE(finished_at,started_at))<julianday('now','-1 year')");
   }
   start(action: AIActivity['action'], selection: IntelligencePreferences, vaultId: string | null=null, objectId: string | null=null, objectKind:'page'|'entity'='page') {
     const id=randomUUID();
     this.store.run(`INSERT INTO ai_activity (id,action,status,started_at,vault_id,object_kind,object_id,model,reasoning_effort)
       VALUES (?,?,'running',?,?,?,?,?,?)`,id,action,new Date().toISOString(),vaultId,objectId?objectKind:null,objectId,selection.model,selection.reasoningEffort);
     this.prune();
-    if (this.debugSettings().enabled) this.store.run('INSERT INTO ai_activity_debug (activity_id,updated_at) VALUES (?,?)',id,new Date().toISOString());
+    const settings=this.debugSettings();
+    if (settings.enabled) {try {this.store.run('INSERT INTO ai_activity_debug (activity_id,updated_at,mode) VALUES (?,?,?)',id,new Date().toISOString(),settings.mode);}catch{/* Optional capture cannot prevent generation. */}}
     return id;
   }
   request(id: string, promptBytes: number, revision: number | null) {
     this.store.run('UPDATE ai_activity SET prompt_bytes=?,revision=? WHERE id=?',promptBytes,revision,id);
     const usage=(value:unknown)=>this.usage(id,value);
-    if (!this.store.get('SELECT 1 FROM ai_activity_debug WHERE activity_id=?',id)) return {usage};
-    const update = (columns: string, ...values: (string | number)[]) => this.store.run(`UPDATE ai_activity_debug SET ${columns},updated_at=? WHERE activity_id=?`,...values,new Date().toISOString(),id);
-    let events:{receivedAt:string;type:string;data:string}[]=[],lastFlush=Date.now();
-    const flushEvents=()=>{
-      if(!events.length)return;
-      this.store.transaction(()=>{
-        for(const event of events)this.store.run('INSERT INTO ai_activity_debug_events (activity_id,received_at,type,data) SELECT ?,?,?,? WHERE EXISTS (SELECT 1 FROM ai_activity_debug WHERE activity_id=?)',id,event.receivedAt,event.type,event.data,id);
-      });
-      events=[];lastFlush=Date.now();
-    };
+    const row=this.store.get<{mode:'compact'|'full'}>('SELECT mode FROM ai_activity_debug WHERE activity_id=?',id);
+    if (!row) return {usage};
+    const mode=row.mode,started=Date.now();let stream:unknown,finalResponse:Record<string,unknown>|undefined;
+    const safe=(work:()=>void)=>{try{work();}catch{/* Diagnostics must never interrupt a provider request. */}};
+    const limit=mode==='full'?2*1024*1024:64*1024;
+    const update=(column:string,value:unknown)=>safe(()=>{
+      const serialized=typeof value==='string'?value:JSON.stringify(value);
+      this.pruneDebug(Buffer.byteLength(serialized??''));
+      const previous=this.store.get<Record<string,unknown>>('SELECT * FROM ai_activity_debug WHERE activity_id=?',id);if(!previous)return;
+      const size=Buffer.byteLength(serialized??'');const old=Buffer.byteLength(String(previous[column]??''));
+      const retained=Number(previous.retained_bytes)-old+size;
+      if(retained>limit||retained>50*1024*1024-(this.store.get<{bytes:number}>("SELECT COALESCE(SUM(retained_bytes),0) AS bytes FROM ai_activity_debug WHERE activity_id!=?",id)?.bytes??0)){this.store.run('UPDATE ai_activity_debug SET truncated=1,revision=revision+1 WHERE activity_id=?',id);return;}
+      this.store.run(`UPDATE ai_activity_debug SET ${column}=?,retained_bytes=?,revision=revision+1,updated_at=? WHERE activity_id=?`,serialized??null,retained,new Date().toISOString(),id);
+    });
     const trace: AIDebugTrace = {
-      usage,
-      request: (endpoint,payload) => { update('endpoint=?,request=?',endpoint,JSON.stringify(payload)); },
-      headers: (status,headers) => { update('response_status=?,response_headers=?',status,JSON.stringify(headers)); },
-      body: text => { flushEvents();update('response_body=?',text); },
-      event: (type,data) => { events.push({receivedAt:new Date().toISOString(),type,data:JSON.stringify(data)});if(events.length>=100||Date.now()-lastFlush>=100)flushEvents(); },
-      response: payload => { flushEvents();update('response=?',JSON.stringify(payload)); },
-      error: message => { flushEvents();update('error=?',message); },
+      mode,usage,
+      request:(endpoint,payload)=>safe(()=>{update('endpoint',endpoint);update('request',mode==='compact'?compactRequest(payload):withoutVectors(payload));}),
+      headers:(status,headers)=>{safe(()=>this.store.run('UPDATE ai_activity_debug SET response_status=?,revision=revision+1,updated_at=? WHERE activity_id=?',status,new Date().toISOString(),id));update('response_headers',headers);},
+      // Full streaming payloads are represented by bounded events plus the canonical final response.
+      body:text=>{if(mode==='full'&&!stream&&!finalResponse)update('response_body',text);},
+      stream:summary=>{stream=summary;update('response',{...finalResponse,stream,elapsedMs:Date.now()-started});},
+      event:(type,data)=>{if(mode!=='full'&&!['validation','prompt','error','response.failed','response.incomplete'].includes(type))return;safe(()=>{
+        const serialized=JSON.stringify(withoutVectors(data));const size=Buffer.byteLength(serialized)+Buffer.byteLength(type)+24;
+        this.pruneDebug(size);
+        const current=this.store.get<{retained_bytes:number}>('SELECT retained_bytes FROM ai_activity_debug WHERE activity_id=?',id);if(!current)return;
+        if(current.retained_bytes+size>limit-8192||size+(this.store.get<{bytes:number}>("SELECT COALESCE(SUM(retained_bytes),0) AS bytes FROM ai_activity_debug")?.bytes??0)>50*1024*1024){this.store.run('UPDATE ai_activity_debug SET truncated=1 WHERE activity_id=?',id);return;}
+        this.store.transaction(()=>{this.store.run('INSERT INTO ai_activity_debug_events (activity_id,received_at,type,data) VALUES (?,?,?,?)',id,new Date().toISOString(),type,serialized);this.store.run('UPDATE ai_activity_debug SET retained_bytes=retained_bytes+?,revision=revision+1,updated_at=? WHERE activity_id=?',size,new Date().toISOString(),id);});
+      });},
+      response:payload=>safe(()=>{finalResponse=(mode==='compact'?compactResponse(payload):withoutVectors(payload)) as Record<string,unknown>;update('response_body','');update('response',mode==='compact'?{...finalResponse,stream,elapsedMs:Date.now()-started}:finalResponse);}),
+      error:message=>update('error',message.slice(0,8192)),
     };
     return trace;
   }
+
   private usage(id:string,value:unknown) {
     if(!value||typeof value!=='object'||Array.isArray(value))return;
     const usage=value as Record<string,unknown>;
@@ -112,19 +148,40 @@ export class AIActivityLog {
     const estimatedCost=activity.providerRequests>0&&activity.unpriced===0?activity.estimatedCost:null;
     return {decisions:reasons.reduce((sum,row)=>sum+row.count,0),requestsAvoided:reasons.filter(row=>avoided.has(row.reason)).reduce((sum,row)=>sum+row.avoided,0),providerRequests:activity.providerRequests,completedPages:activity.completedPages,estimatedCost,costPerCompletedPage:estimatedCost!==null&&activity.completedPages>0?estimatedCost/activity.completedPages:null,reasons:reasons.map(({reason,count})=>({reason,count}))};
   }
-  debugSettings() { return {enabled: this.store.get<{value:string}>("SELECT value FROM metadata WHERE key='ai_debug'")?.value === 'true'}; }
+  debugSettings() {
+    const enabled=this.store.get<{value:string}>("SELECT value FROM metadata WHERE key='ai_debug'")?.value==='true';
+    const until=this.store.get<{value:string}>("SELECT value FROM metadata WHERE key='ai_debug_full_until'")?.value;
+    const fullUntil=enabled&&until&&Date.parse(until)>Date.now()?until:null;
+    return {enabled,mode:!enabled?'off' as const:fullUntil?'full' as const:'compact' as const,fullUntil};
+  }
   saveDebugSettings(body: Record<string,unknown>) {
     if (typeof body.enabled !== 'boolean') throw new HttpError(400,'Choose whether AI debug mode is enabled.');
+    const minutes=body.fullTraceMinutes;
+    if(minutes!==undefined&&(typeof minutes!=='number'||!Number.isInteger(minutes)||minutes<0||minutes>60))throw new HttpError(400,'Full trace session must be between 0 and 60 minutes.');
     this.store.run("INSERT INTO metadata (key,value) VALUES ('ai_debug',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",String(body.enabled));
+    if(!body.enabled||minutes!==undefined)this.store.run("INSERT INTO metadata(key,value) VALUES ('ai_debug_full_until',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",body.enabled&&typeof minutes==='number'&&minutes>0?new Date(Date.now()+minutes*60000).toISOString():'');
     return this.debugSettings();
   }
-  debug(id: string): AIActivityDebug {
-    const row=this.store.get<Omit<AIActivityDebug,'events'>>(`SELECT d.activity_id AS activityId,a.status,d.endpoint,d.request,d.response_body AS responseBody,d.response,
-      d.response_status AS responseStatus,d.response_headers AS responseHeaders,d.error,d.updated_at AS updatedAt
+  debug(id: string, options:{after?:number;eventCursor?:number;limit?:number;includeEvents?:boolean}={}): AIActivityDebug {
+    for(const value of [options.after,options.eventCursor,options.limit])if(value!==undefined&&(!Number.isSafeInteger(value)||value<0))throw new HttpError(400,'Invalid debug cursor.');
+    this.pruneDebug();
+    if(options.after!==undefined&&options.includeEvents!==true) {
+      const current=this.store.get<{revision:number;status:AIActivity['status'];updatedAt:string;mode:AIActivityDebug['mode']}> (`SELECT d.revision,a.status,d.updated_at AS updatedAt,d.mode FROM ai_activity_debug d JOIN ai_activity a ON a.id=d.activity_id LEFT JOIN vaults v ON v.id=a.vault_id WHERE d.activity_id=? AND (a.vault_id IS NULL OR v.locked=0)`,id);
+      if(!current)throw new HttpError(404,'Debug payload is unavailable or its vault is locked.');
+      if(current.revision===options.after)return {activityId:id,...current,endpoint:null,request:null,response:null,responseBody:'',responseStatus:null,responseHeaders:null,error:null,events:[],unchanged:true};
+    }
+    const row=this.store.get<Omit<AIActivityDebug,'events'>>(`SELECT d.activity_id AS activityId,a.status,a.duration_ms AS durationMs,d.mode,d.revision,d.retained_bytes AS retainedBytes,d.truncated,d.endpoint,d.request,d.response_body AS responseBody,d.response,
+      d.response_status AS responseStatus,d.response_headers AS responseHeaders,d.error,d.updated_at AS updatedAt,
+      (SELECT COUNT(*) FROM ai_activity_debug_events e WHERE e.activity_id=d.activity_id) AS eventCount
       FROM ai_activity_debug d JOIN ai_activity a ON a.id=d.activity_id LEFT JOIN vaults v ON v.id=a.vault_id
       WHERE d.activity_id=? AND (a.vault_id IS NULL OR v.locked=0)`,id);
     if (!row) throw new HttpError(404,'Debug payload is unavailable or its vault is locked.');
-    return {...row,events:this.store.all<AIActivityDebug['events'][number]>('SELECT sequence,received_at AS receivedAt,type,data FROM ai_activity_debug_events WHERE activity_id=? ORDER BY sequence',id)};
+    const limit=Math.min(100,Math.max(1,options.limit??100));
+    const events=options.includeEvents===false?[]:this.store.all<AIActivityDebug['events'][number]>(`SELECT sequence,received_at AS receivedAt,type,CASE WHEN LENGTH(CAST(data AS BLOB))>32768 THEN json_object('excerpt',SUBSTR(data,1,8192),'truncated',json('true')) ELSE data END AS data FROM ai_activity_debug_events WHERE activity_id=? AND sequence>? ORDER BY sequence LIMIT ?`,id,options.eventCursor??0,limit+1);
+    let hasMoreEvents=events.length>limit;events.splice(limit);
+    let pageBytes=0;
+    for(let i=0;i<events.length;i++){pageBytes+=Buffer.byteLength(events[i]!.data);if(pageBytes>256*1024){events.splice(i);hasMoreEvents=true;break;}}
+    return {...row,truncated:!!row.truncated,events,hasMoreEvents,nextEventCursor:events.at(-1)?.sequence??null};
   }
   // Response accounting belongs to activity persistence, not JSON serialization.
   finishResponse(id: string, status: number) {
@@ -134,6 +191,16 @@ export class AIActivityLog {
   finish(id: string, status: Exclude<AIActivity['status'], 'running'>, httpStatus: number | null) {
     const previous=this.store.get<{action:string;vault_id:string|null;object_id:string|null;status:string;prompt_bytes:number|null}>('SELECT action,vault_id,object_id,status,prompt_bytes FROM ai_activity WHERE id=?',id);
     this.store.run(`UPDATE ai_activity SET status=?,finished_at=?,duration_ms=MAX(0,CAST((julianday(?)-julianday(started_at))*86400000 AS INTEGER)),http_status=? WHERE id=?`,status,new Date().toISOString(),new Date().toISOString(),httpStatus,id);
+    this.store.run('UPDATE ai_activity_debug SET revision=revision+1,updated_at=? WHERE activity_id=?',new Date().toISOString(),id);
+    if(status==='completed') {
+      const debug=this.store.get<{retained_bytes:number;mode:string}>('SELECT retained_bytes,mode FROM ai_activity_debug WHERE activity_id=?',id);
+      if(debug?.mode==='compact'&&debug.retained_bytes>16*1024) {
+        this.store.run('DELETE FROM ai_activity_debug_events WHERE activity_id=?',id);
+        this.store.run("UPDATE ai_activity_debug SET truncated=1,retained_bytes=LENGTH(CAST(COALESCE(endpoint,'')||COALESCE(request,'')||COALESCE(response,'')||COALESCE(response_headers,'')||COALESCE(error,'') AS BLOB)) WHERE activity_id=?",id);
+        const size=this.store.get<{retained_bytes:number}>('SELECT retained_bytes FROM ai_activity_debug WHERE activity_id=?',id)!.retained_bytes;
+        if(size>16*1024)this.store.run("UPDATE ai_activity_debug SET response=NULL,request=NULL,retained_bytes=LENGTH(CAST(COALESCE(endpoint,'')||COALESCE(response_headers,'')||COALESCE(error,'') AS BLOB)) WHERE activity_id=?",id);
+      }
+    }
     if(previous?.status==='running'&&previous.prompt_bytes!==null) new AINotifications(this.store).outcome(previous.action,previous.vault_id,previous.object_id,status);
     this.prune();
   }
@@ -142,7 +209,17 @@ export class AIActivityLog {
     if(this.store.get("SELECT 1 FROM sqlite_master WHERE type='table' AND name='page_enrichment_decisions'"))this.store.run('DELETE FROM page_enrichment_decisions WHERE vault_id IN (SELECT id FROM vaults WHERE locked=0)');
     return {ok:true};
   }
+  /** Explicit maintenance removes payloads only; accounting and active requests remain intact. */
+  cleanupDebug() {
+    this.recoverDebugUsage();
+    return this.store.transaction(()=>{
+      const events=this.store.get<{count:number}>(`SELECT COUNT(*) AS count FROM ai_activity_debug_events e JOIN ai_activity a ON a.id=e.activity_id WHERE a.status!='running'`)!.count;
+      const result=this.store.run("DELETE FROM ai_activity_debug WHERE activity_id IN (SELECT id FROM ai_activity WHERE status!='running')");
+      return {ok:true,deletedTraces:Number(result.changes),deletedEvents:events};
+    });
+  }
   list(cursor: string | null) {
+    this.prune();
     if(cursor!==null && (!/^\d+$/.test(cursor)||!Number.isSafeInteger(Number(cursor))||Number(cursor)<1))throw new HttpError(400,'Invalid activity cursor');
     const rows=this.store.all<AIActivity & {cursor:number}>(`SELECT a.id,a.action,a.status,a.started_at AS startedAt,a.finished_at AS finishedAt,
       a.duration_ms AS durationMs,a.http_status AS httpStatus,a.vault_id AS vaultId,v.name AS vaultName,

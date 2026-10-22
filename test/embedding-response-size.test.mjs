@@ -26,8 +26,10 @@ test('nine-input and maximum embedding batches accept float JSON above the old 1
   assert.deepEqual(result.embeddings[0],vector);
   assert.equal(result.tokens,123);
   assert.equal(usage.prompt_tokens,123);
-  assert.equal(parsed.data.length,count);
-  assert.equal(debugBody,body);
+  assert.equal(parsed.vectorCount,count);
+  assert.ok(parsed.vectors.every(item=>item.dimensions===1536&&item.valid));
+  assert.equal(debugBody,undefined);
+  assert.ok(!JSON.stringify(parsed).includes(String(vector[0])));
  }
 });
 

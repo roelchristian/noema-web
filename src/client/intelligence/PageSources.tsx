@@ -3,7 +3,7 @@ import {noteCitations} from '../../shared/citations';
 import type {Entity,Page} from '../../shared/domain';
 import {Icon} from '../components/Icon';
 import {ActionMenu} from '../components/ActionMenu';
-import {useEffect,useState} from 'react';
+import {useEffect,useMemo,useState} from 'react';
 import {api} from '../api';
 import {watchSuggestions} from './suggestion-refresh';
 import type {SuggestedSource} from '../../shared/embeddings';
@@ -40,11 +40,14 @@ export function PageSources({page,entities,onOpenEntity,onSourcesChange,onCreate
     catch(reason){setError(reason instanceof Error?reason.message:'Could not dismiss source.');}
     finally {setDismissing(null);}
   }
-  const citations=new Map<string,{count:number;numbers:number[]}>();
-  for(const entry of noteCitations(page.blocks).values()){
-    const id=entry.reference.sourceId,current=citations.get(id)??{count:0,numbers:[]};
-    current.count+=entry.occurrences.length;current.numbers.push(entry.number);citations.set(id,current);
-  }
+  const citations=useMemo(()=>{
+    const citations=new Map<string,{count:number;numbers:number[]}>();
+    for(const entry of noteCitations(page.blocks).values()){
+      const id=entry.reference.sourceId,current=citations.get(id)??{count:0,numbers:[]};
+      current.count+=entry.occurrences.length;current.numbers.push(entry.number);citations.set(id,current);
+    }
+    return citations;
+  },[page.blocks]);
   const byId=new Map(entities.map(entity=>[entity.id,entity]));
   const sourceIds=[...new Set(page.sourceIds)];
   const available=entities.filter(entity=>entity.vault_id===page.vault_id&&entity.type==='source'&&!entity.archived_at&&!entity.inactive&&!sourceIds.includes(entity.id)).sort((left,right)=>left.name.localeCompare(right.name));

@@ -8363,5 +8363,10 @@
     "Les {count} notes sélectionnées seront définitivement supprimées. Cette action est irréversible.",
     "Die {count} ausgewählten Notizen werden endgültig gelöscht. Dies kann nicht rückgängig gemacht werden.",
     "Se eliminarán permanentemente las {count} notas seleccionadas. Esta acción no se puede deshacer."
+  ],
+  "Updating related notes…": [
+    "Mise à jour des notes associées…",
+    "Verwandte Notizen werden aktualisiert…",
+    "Actualizando notas relacionadas…"
   ]
 }

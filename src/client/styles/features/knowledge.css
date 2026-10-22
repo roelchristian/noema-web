@@ -4483,3 +4483,6 @@
   .entity-review-bulk-actions .button { padding-inline: var(--space-2); }
   .entity-scan-queue { position: static; max-height: 120px; }
 }
+
+.related-notes-updating { display: inline-flex; color: var(--text-muted); }
+.related-notes-updating .icon { width: 12px; height: 12px; }

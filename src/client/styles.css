@@ -956,6 +956,12 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-title); }
 #content > .organization-library .organization-heading h1 { margin-bottom: 0; }
 .organization-library .organization-empty { text-align: left; }
 .organization-library .organization-empty p { margin-left: 0; margin-right: 0; }
+#content > .trash-library.is-empty { display: flex; flex-direction: column; max-width: none; min-height: calc(100dvh - var(--workspace-toolbar-height)); }
+.trash-library.is-empty[data-layout] .organization-items { display: grid; grid-template-columns: minmax(0, 1fr); flex: 1; }
+.trash-library .trash-empty { align-self: center; justify-self: center; width: 100%; max-width: 380px; padding: 32px 16px; text-align: center; color: var(--text-muted); }
+.trash-library .trash-empty > .icon { display: block; width: 28px; height: 28px; margin: 0 auto 16px; }
+.trash-library .trash-empty h2 { margin: 0 0 8px; color: var(--text); font-size: 17px; font-weight: 500; letter-spacing: -.01em; }
+.trash-library .trash-empty p { margin: 0; font-size: var(--ui-text-md); line-height: 1.7; }
 @media (max-width: 900px) {
   #content > :is(.library, .organization-library) { padding: 28px 24px 48px; }
   #content > :is(.library, .organization-library) h1 { font-size: 31px; }

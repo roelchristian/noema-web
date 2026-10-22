@@ -154,7 +154,14 @@ export class EntityScans {
       }))];
       suggestions.push({aliases:supportedAliases,domainIds:type==='concept'?(existing?.domainIds??domainIds):[],evidenceAnchor,proposedSubtypeIds,id:randomUUID(),name:existing?.name || name.trim(),type:existing?.type || type,subtypes:existing?.subtypes || knownIds,description:existing?.description || description,evidence,reason,existingId:existing?.id || null,status:'pending'});
     }
-    const merged=mergeSuggestionIdentities(suggestions);
+    // A contextual phrase must not consume another identity's actual name.
+    // Keep legitimate nested names (New York / York) for explicit review.
+    const merged=mergeSuggestionIdentities(suggestions).filter(item=>{
+      const anchor=item.evidenceAnchor!;
+      const wording=normalizeEntityName(item.evidence);
+      if([item.name,...(item.aliases??[])].some(name=>normalizeEntityName(name).includes(wording)))return true;
+      return !suggestions.some(other=>other.id!==item.id&&other.evidenceAnchor?.blockId===anchor.blockId&&other.evidenceAnchor.row===anchor.row&&other.evidenceAnchor.col===anchor.col&&other.evidenceAnchor.start>=anchor.start&&other.evidenceAnchor.end<=anchor.end&&other.evidenceAnchor.end-other.evidenceAnchor.start<anchor.end-anchor.start);
+    });
     // The lookahead is not offered for review until the next batch.
     const batch=merged.filter(item=>!lookaheadAnchor||position(item.evidenceAnchor!)<position(lookaheadAnchor)).slice(0,ENTITY_SCAN_BATCH_SIZE);
     const proposals=[...(previous?.subtypeSuggestions??[])];
@@ -254,13 +261,28 @@ export class EntityScans {
           if (!suggestion.existingId && suggestion.proposedSubtypeIds?.some(id => scan.subtypeSuggestions?.some(item => item.id === id && item.status === 'pending'))) throw new HttpError(400,'Review the proposed subtypes for this entity first.');
           // Only exclusions recorded by this exact scan may be reopened for its pending evidence.
           if(suggestion.evidenceAnchor&&scan.reviewExclusions?.some(anchor=>anchorKey(anchor)===anchorKey(suggestion.evidenceAnchor!))){page=excludeEvidence(page,suggestion.evidenceAnchor,false);scan.reviewExclusions=scan.reviewExclusions.filter(anchor=>anchorKey(anchor)!==anchorKey(suggestion.evidenceAnchor!));}
+          if (!mentionEvidence(page,suggestion.evidence,'validation',suggestion.evidenceAnchor)) {
+            const anchor=suggestion.evidenceAnchor;
+            // Recover old saved reviews only when an accepted suggestion consumed
+            // this occurrence. Never relocate evidence after arbitrary note edits.
+            const consumed=anchor&&scan.suggestions.some(other=>{
+              const accepted=other.evidenceAnchor;
+              return other.status==='accepted'&&accepted&&accepted.blockId===anchor.blockId&&accepted.row===anchor.row&&accepted.col===anchor.col&&accepted.start<=anchor.start&&accepted.end>=anchor.end;
+            });
+            const alternatives=consumed?[...new Set([suggestion.name,...(suggestion.aliases??[])])].flatMap(evidence=>{
+              const evidenceAnchor=locateEvidence(page,evidence);
+              return evidenceAnchor?[{evidence,evidenceAnchor}]:[];
+            }):[];
+            const unique=new Map(alternatives.map(item=>[JSON.stringify(item.evidenceAnchor),item]));
+            if(unique.size!==1)throw new HttpError(409,'Some matching phrases changed or overlap. Review these suggestions individually or scan again.');
+            Object.assign(suggestion,[...unique.values()][0]);
+          }
           const edit=reviewEdits.find(item=>item.id===suggestion.id);
           const extra=edit?.additionalOccurrences??[];
           const choices=evidenceOccurrences(page,suggestion.evidence);
           if(!Array.isArray(extra)||extra.length>1000||extra.some(value=>!value||typeof value!=='object'||!choices.some(anchor=>anchorKey(anchor)===anchorKey(value as EvidenceAnchor)))||new Set(extra.map(value=>anchorKey(value as EvidenceAnchor))).size!==extra.length)throw new HttpError(400,'Choose valid additional occurrences from this revision.');
           const anchors=[suggestion.evidenceAnchor??locateEvidence(page,suggestion.evidence)!,...extra as EvidenceAnchor[]];
           if(new Set(anchors.filter(Boolean).map(anchorKey)).size!==anchors.length)throw new HttpError(400,'Choose distinct occurrences.');
-          if (!mentionEvidence(page,suggestion.evidence,'validation',suggestion.evidenceAnchor)) throw new HttpError(409,'Some matching phrases changed or overlap. Review these suggestions individually or scan again.');
           const identityMatches=this.knowledge.list(vault).filter(entity=>!entity.inactive&&!entity.archived_at&&[entity.name,...(entity.aliases??[])].some(name=>[suggestion.name,suggestion.evidence].some(value=>normalizeEntityName(value)===normalizeEntityName(name))));
           if(identityMatches.length>1&&!edit?.existingId)throw new HttpError(400,'Ambiguous identity. Choose an explicit saved identity.');
           const existing = suggestion.existingId ? this.knowledge.require(vault,suggestion.existingId) : undefined;

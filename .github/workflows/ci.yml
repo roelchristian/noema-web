@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: noema/core
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        id: install
+        run: npm ci --ignore-scripts
+      - name: Build (styles and typecheck included)
+        id: build
+        run: npm run build
+      - name: Full test suite
+        id: tests
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: |
+          set -o pipefail
+          npm run test:all 2>&1 | tee "$RUNNER_TEMP/noema-tests.tap"
+      - name: Job summary
+        if: ${{ always() }}
+        env:
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          TEST_OUTCOME: ${{ steps.tests.outcome }}
+        run: |
+          {
+            echo '## noema/core'
+            echo
+            echo '| Phase | Outcome |'
+            echo '| --- | --- |'
+            echo "| Install | $INSTALL_OUTCOME |"
+            echo "| Build (styles/typecheck) | $BUILD_OUTCOME |"
+            echo "| Full test suite | $TEST_OUTCOME |"
+            echo
+            echo 'Full build and TAP diagnostics are in the step logs. Platform skips are not passes.'
+            if [[ -f "$RUNNER_TEMP/noema-tests.tap" ]]; then
+              echo
+              echo '### TAP totals and explicit skips'
+              echo '```text'
+              awk '/^# (tests|suites|pass|fail|cancelled|skipped|todo|duration_ms) / || /# SKIP/' "$RUNNER_TEMP/noema-tests.tap"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

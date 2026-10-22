@@ -306,3 +306,41 @@ test('bulk acceptance strips disciplines from named entities in both new and pre
     assert.equal(result.page.revision,page.revision+1);
   }finally{db.close();}
 });
+
+test('contextual evidence cannot swallow a named entity and legacy overlaps recover through a unique alias',async()=>{
+  const {EntityScans}=await import('../src/server/modules/entity-scan.ts');
+  const {Knowledge}=await import('../src/server/modules/knowledge.ts');
+  const {Pages}=await import('../src/server/modules/pages.ts');
+  const {AIEnrichments}=await import('../src/server/modules/ai-enrichments.ts');
+  const db=openDatabase(':memory:'),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge);
+  const scans=new EntityScans(store,pages,knowledge,new AIEnrichments(store,pages));
+  const preferences={model:'gpt-5-mini',reasoningEffort:'low'};
+  try {
+    let page=pages.create('default',{title:'Tennis'});
+    const phrase='is going wild for its home-grown star, Alex Eala';
+    page=pages.update('default',page.id,{...page,blocks:[
+      {id:'heading',type:'heading1',content:[{text:phrase}]},
+      {id:'body',type:'paragraph',content:[{text:'Alexandra Eala is a tennis player.'}]},
+    ]});
+    const broad=candidate('The Philippines','place',{evidence:phrase});
+    const alex=candidate('Alex Eala','person',{aliases:['Alexandra Eala']});
+    let scan=scans.save('default',page,JSON.stringify({suggestions:[broad,alex]}),preferences);
+    assert.deepEqual(scan.suggestions.map(s=>s.name),['Alex Eala'],'Reject broad contextual evidence overlapping a named identity');
+    // Reproduce an older persisted scan which allowed both overlapping suggestions.
+    const oldBroad=scans.save('default',page,JSON.stringify({suggestions:[broad]}),preferences,false).suggestions[0];
+    scan.suggestions.unshift(oldBroad);
+    store.run("UPDATE page_ai_enrichments SET data=? WHERE page_id=? AND kind='entity_scan'",JSON.stringify({scan}),page.id);
+    let result=scans.review('default',page.id,{scanId:scan.id,suggestionId:oldBroad.id,revision:page.revision,decision:'accepted'});
+    page=result.page;scan=result.scan;
+    const heading=page.blocks[0];
+    result=scans.review('default',page.id,{scanId:scan.id,suggestionId:scan.suggestions[1].id,revision:page.revision,decision:'accepted',edits:[{id:scan.suggestions[1].id,name:'Alex Eala',type:'person',subtypes:[],aliases:['Alexandra Eala'],existingId:null,saveAliases:true}]});
+    const entity=result.entities.find(e=>e.name==='Alex Eala');
+    assert.ok(entity);
+    assert.deepEqual(entity.aliases,['Alexandra Eala']);
+    assert.deepEqual(result.page.blocks[0],heading,'Existing protected mentions are preserved');
+    assert.equal(result.page.blocks[1].content[0].entityId,entity.id);
+    assert.equal(result.page.blocks[1].content[0].mentionText,'Alexandra Eala');
+    assert.equal(result.scan.suggestions[1].status,'accepted');
+    assert.equal(result.scan.suggestions[1].evidence,'Alexandra Eala');
+  }finally{db.close();}
+});

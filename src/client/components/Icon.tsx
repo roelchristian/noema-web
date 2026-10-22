@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 const paths: Record<string, ReactNode> = {
+  'document-full': <path d="M5 6h14M5 12h14M5 18h14"/>,
+  'document-excerpt': <path d="M5 10h14M5 14h10"/>,
   'external-link': <path d="M14 3h7v7M21 3 10 14M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/>,
   text: <path d="M4 5h16M4 10h16M4 15h16M4 20h10"/>,
   'heading-1': <><path d="M3 5v14M11 5v14M3 12h8M16 13l3-2v8M16 19h6"/></>,
@@ -27,6 +29,7 @@ const paths: Record<string, ReactNode> = {
   equation: <path d="m4 10 8 10m0-10L4 20M15 5a2.5 2.5 0 0 1 5 0c0 1.5-2 2.5-5 5h5"/>,
   bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></>,
   image: <><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 5-5 4 4 4-6 5 7"/></>,
+  sliders: <><path d="M3 6h6m6 0h6M3 18h10m6 0h2"/><circle cx="12" cy="6" r="3"/><circle cx="16" cy="18" r="3"/></>,
   search: <><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></>,
   'scan-eye': <><path d="M7 3H5a2 2 0 0 0-2 2v2m14-4h2a2 2 0 0 1 2 2v2M3 17v2a2 2 0 0 0 2 2h2m10 0h2a2 2 0 0 0 2-2v-2"/><path d="M6 12s2-4 6-4 6 4 6 4-2 4-6 4-6-4-6-4Z"/><circle cx="12" cy="12" r="1.5"/></>,
   chevron: <path d="m9 5 7 7-7 7"/>,
@@ -70,6 +73,7 @@ const paths: Record<string, ReactNode> = {
   'page-outgoing': <><path d="M19 9V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2M8 7h6M8 11h3"/><path d="M12 14h10m-3-3 3 3-3 3"/></>,
   'page-incoming': <><path d="M19 9V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2M8 7h6M8 11h3"/><path d="M22 14H12m3-3-3 3 3 3"/></>,
   'page-bidirectional': <g strokeWidth="1.5"><path d="M18 6V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2"/><path d="M10 10h11m-2-2 2 2-2 2M21 16H10m2-2-2 2 2 2"/></g>,
+  'review-text': <><path d="M4 5h16M4 10h10M4 15h5M4 20h5"/><rect x="13" y="14" width="7" height="7" rx="2"/></>,
   knowledge: <><circle cx="12" cy="5" r="3"/><circle cx="5" cy="18" r="3"/><circle cx="19" cy="18" r="3"/><path d="m10 8-4 7m8-7 4 7M8 18h8"/></>,
   lock: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></>,
   unlock: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 7.5-2M12 14v3"/></>,

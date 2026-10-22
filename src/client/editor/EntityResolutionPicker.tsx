@@ -5,7 +5,7 @@ import type {MentionMatchOptions} from './mention-picker';
 import {Icon} from '../components/Icon';
 
 /** Shared identity choice only. Callers own linking, alias writes and transactions. */
-export function EntityResolutionPicker({entities,selection,options,disabled=false,onChoose,query:controlledQuery,onQuery,idPrefix,autoFocus=false}:{entities:Entity[];selection:string;options?:MentionMatchOptions;disabled?:boolean;onChoose:(entity:Entity)=>void;query?:string;onQuery?:(query:string)=>void;idPrefix?:string;autoFocus?:boolean}) {
+export function EntityResolutionPicker({entities,selection,options,disabled=false,onChoose,query:controlledQuery,onQuery,idPrefix,autoFocus=false,compact=false}:{entities:Entity[];selection:string;options?:MentionMatchOptions;disabled?:boolean;onChoose:(entity:Entity)=>void;query?:string;onQuery?:(query:string)=>void;idPrefix?:string;autoFocus?:boolean;compact?:boolean}) {
   const unique=useId(),prefix=idPrefix??`resolution-${unique}`;
   const [localQuery,setLocalQuery]=useState(''),[index,setIndex]=useState(0);
   const query=controlledQuery??localQuery;
@@ -20,7 +20,7 @@ export function EntityResolutionPicker({entities,selection,options,disabled=fals
       if(event.key==='Enter'&&current){event.preventDefault();event.stopPropagation();onChoose(current);}
     }} role="combobox" aria-expanded="true" aria-controls={`${prefix}-results`} aria-activedescendant={current?`${prefix}-${current.id}`:undefined}/>
     <div className="selection-entity-results" id={`${prefix}-results`} role="listbox" aria-label="Matching identities">
-      {results.map(entity=><button id={`${prefix}-${entity.id}`} role="option" aria-selected={entity.id===current?.id} className={entity.id===current?.id?'highlight':''} type="button" key={entity.id} disabled={disabled} onClick={()=>onChoose(entity)}><Icon name={entity.type}/><span>{entity.name}<small>{entityLabels[entity.type]}{exact.some(item=>item.id===entity.id)?' · Exact match':''}{entity.description?' · '+entity.description:''}</small>{!!entity.aliases?.length&&<small>Aliases: {entity.aliases.join('; ')}</small>}</span></button>)}
+      {results.map(entity=><button id={`${prefix}-${entity.id}`} role="option" aria-selected={entity.id===current?.id} className={entity.id===current?.id?'highlight':''} type="button" key={entity.id} disabled={disabled} onClick={()=>onChoose(entity)}><Icon name={entity.type}/><span>{entity.name}<small>{entityLabels[entity.type]}{exact.some(item=>item.id===entity.id)?' · Exact match':''}{!compact&&entity.description?' · '+entity.description:''}</small>{!compact&&!!entity.aliases?.length&&<small>Aliases: {entity.aliases.join('; ')}</small>}</span></button>)}
       {!results.length&&<p>No matching entities. Search another name or alias.</p>}
     </div>
     {exact.length>1&&<p role="status">Ambiguous identity: choose deliberately from {exact.length} exact matches.</p>}

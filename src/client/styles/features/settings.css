@@ -1031,3 +1031,14 @@
 .storage-items strong { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
 .storage-items p { color: var(--text-muted); font-size: 12px; margin: 4px 0 0; overflow-wrap: anywhere; line-height: 1.5; }
 .storage-items li > span { white-space: nowrap; font-variant-numeric: tabular-nums; font-size: 13px; }
+
+.ai-personas {margin: 16px 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; min-width: 0;}
+.ai-personas > p {color: var(--text-muted); font-size: 13px; line-height: 1.5;}
+.settings-dialog .ai-persona-card {margin: 0; display: flex; align-items: flex-start; gap: 10px; padding: 10px; border-radius: 6px; cursor: pointer;}
+.ai-persona-card:has(input:checked) {background: var(--surface-raised); outline: 1px solid var(--accent);}
+.ai-persona-card input {flex: none; margin-top: 4px;}
+.ai-persona-card > span {display: grid; gap: 4px; min-width: 0; font-size: 13px; line-height: 1.4;}
+.ai-persona-card small {color: var(--text-muted);}
+.persona-select {display: grid; gap: 6px; margin: 12px 0; font-size: 13px; min-width: 0;}
+.persona-select .select-control {min-width: 0; max-width: 100%;}
+.settings-dialog .ai-persona-card input[type=radio] {width: 16px; height: 16px; padding: 0; flex: 0 0 16px;}

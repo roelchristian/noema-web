@@ -1,3 +1,4 @@
+import {resolvePersona,personaInstructions} from './ai-personas.js';
 import type {AIRequestObserver} from './ai-debug.js';
 import type {ReadingExplanationOptions} from '../../shared/source-reading.js';
 import type {IntelligencePreferences} from '../../shared/intelligence.js';
@@ -21,9 +22,9 @@ export type GenerationRequest = CommonRequest & (
   | {kind:'utility';input:string;domains:{id:string;name:string}[];currentTitle:string}
   | {kind:'entityDiscovery';input:string}
   | {kind:'entityScan';input:string;onDelta?:(delta:string)=>void}
-  | {kind:'explanation';input:string;options?:ReadingExplanationOptions}
-  | {kind:'review';input:string}
-  | {kind:'sourcePage';input:string;signal:AbortSignal;onDelta:(delta:string)=>void;onPreviewDelta?:(delta:string)=>void;onPreviewReset?:()=>void}
+  | {kind:'explanation';personaId?:string;personaVersion?:number;input:string;options?:ReadingExplanationOptions}
+  | {kind:'review';personaId?:string;personaVersion?:number;input:string}
+  | {kind:'sourcePage';personaId?:string;personaVersion?:number;input:string;signal:AbortSignal;onDelta:(delta:string)=>void;onPreviewDelta?:(delta:string)=>void;onPreviewReset?:()=>void}
   | {kind:'sourceMath';input:string;signal:AbortSignal;onDelta?:(delta:string)=>void}
   | {kind:'sourceEnrichment';input:string}
   | {kind:'sourceAuthors';input:string}
@@ -33,6 +34,7 @@ export type GenerationRequest = CommonRequest & (
 
 type Prompt = ReturnType<typeof summaryPrompt> | ReturnType<typeof pageEnrichmentPrompt> | {instructions:string;input:string};
 interface GenerationPolicy {
+  persona?:ReturnType<typeof resolvePersona>;
   prompt:()=>Prompt;
   selection:IntelligencePreferences;
   admission:{activeSlot:'exclusive'|'independent';manual:boolean};
@@ -43,15 +45,18 @@ interface GenerationPolicy {
   onDelta?: (delta:string)=>void;
   preview?:{onDelta:(delta:string)=>void;onReset:()=>void};
 }
-interface Selections {standard:IntelligencePreferences;title:IntelligencePreferences;enrichment:IntelligencePreferences}
+interface Selections {personaId?:string;standard:IntelligencePreferences;title:IntelligencePreferences;enrichment:IntelligencePreferences}
 const ignoreDelta=(_delta:string)=>{};
 
 /** Pure policy dispatch; credentials, admission state and transport belong to Intelligence.
  * Prompts run after admission, inside the provider error boundary, as before. */
 export function generationPolicy(request:GenerationRequest,selections:Selections):GenerationPolicy {
+  // Explicit allowlist: editorial is source preprocessing, not generative writing.
+  const persona=request.kind==='explanation'||request.kind==='review'||request.kind==='sourcePage'
+    ?resolvePersona(request.personaId??selections.personaId,request.personaVersion):undefined;
   // Background only bypasses manual accounting, never the exclusive active slot.
   const policy=(prompt:()=>Prompt,{activeSlot,...overrides}:Partial<Omit<GenerationPolicy,'prompt'|'admission'>>&{activeSlot:'exclusive'|'independent'}):GenerationPolicy=>({
-    prompt,selection:selections.standard,maxOutputTokens:8192,maxOutputLength:12000,timeoutMs:45000,stream:false,
+    persona,prompt:()=>{const value=prompt();return persona?{...value,instructions:personaInstructions(value.instructions,persona,request.kind==='review')}:value;},selection:selections.standard,maxOutputTokens:8192,maxOutputLength:12000,timeoutMs:45000,stream:false,
     admission:{activeSlot,manual:!request.background},...overrides,
   });
   switch(request.kind) {

@@ -1,3 +1,4 @@
+import {aiPersonas,defaultPersonaId,type BuiltinPersonaId} from '../../shared/ai-personas';
 import {getLocale} from '../i18n';
 import {t as uiText} from '../i18n';
 import { Select } from '../components/Select';
@@ -12,8 +13,8 @@ export function IntelligenceSettings() {
   const enrichment=preferences.pageEnrichment??defaultPageEnrichmentPreferences;
   const savedEnrichment=status?.pageEnrichment??defaultPageEnrichmentPreferences;
   const enrichmentModelOption=intelligenceModels.find(option=>option.id===enrichment.model)!;
-  const changed=!!status&&(preferences.model!==status.model||preferences.reasoningEffort!==status.reasoningEffort||preferences.manualRequestsPerMinute!==status.manualRequestsPerMinute||enrichment.model!==savedEnrichment.model||enrichment.reasoningEffort!==savedEnrichment.reasoningEffort);
-  useEffect(()=>{let active=true;void api.intelligence().then(value=>{if(active){setStatus(value);setPreferences({model:value.model,reasoningEffort:value.reasoningEffort,manualRequestsPerMinute:value.manualRequestsPerMinute,pageEnrichment:value.pageEnrichment??{...defaultPageEnrichmentPreferences}});}}).catch(()=>{if(active)setMessage('Secure storage is unavailable. Unlock your macOS login keychain and reopen Settings.');});return()=>{active=false;};},[]);
+  const changed=!!status&&((preferences.personaId??defaultPersonaId)!==(status.personaId??defaultPersonaId)||preferences.model!==status.model||preferences.reasoningEffort!==status.reasoningEffort||preferences.manualRequestsPerMinute!==status.manualRequestsPerMinute||enrichment.model!==savedEnrichment.model||enrichment.reasoningEffort!==savedEnrichment.reasoningEffort);
+  useEffect(()=>{let active=true;void api.intelligence().then(value=>{if(active){setStatus(value);setPreferences({personaId:(value.personaId??defaultPersonaId) as BuiltinPersonaId,model:value.model,reasoningEffort:value.reasoningEffort,manualRequestsPerMinute:value.manualRequestsPerMinute,pageEnrichment:value.pageEnrichment??{...defaultPageEnrichmentPreferences}});}}).catch(()=>{if(active)setMessage('Secure storage is unavailable. Unlock your macOS login keychain and reopen Settings.');});return()=>{active=false;};},[]);
   async function perform(work:()=>Promise<unknown>,success:string) {
     setBusy(true);setMessage('');
     try {await work();setMessage(success);}catch(error){setMessage(error instanceof Error?error.message:'Request failed.');}finally{setBusy(false);}
@@ -23,7 +24,10 @@ export function IntelligenceSettings() {
     <h3 id="intelligence-heading">{uiText("OpenAI")}</h3>
     <p>{uiText("Connect OpenAI for writing and search. Your API key is stored in macOS Keychain and shared across vaults.")}</p>
     <div className="intelligence-status">{status?.configured ? <>{uiText("API key saved · expires") + " "}{new Date(status.expiresAt!).toLocaleString(getLocale())}</> : uiText("No active API key")}{status && <small>{uiText("Model:") + " "}{status.model}{" " + uiText("· Reasoning:") + " "}{status.reasoningEffort}</small>}</div>
-    <form className="ai-preferences-form" onInvalidCapture={event=>{const details=(event.target as HTMLElement).closest('details');if(details)details.open=true;}} onSubmit={event=>{event.preventDefault();void perform(async()=>{const saved=await api.saveIntelligencePreferences(preferences);setStatus(current=>current?{...current,...saved}:current);setPreferences(saved);},'AI preferences saved.');}}>
+    <form className="ai-preferences-form" onInvalidCapture={event=>{const details=(event.target as HTMLElement).closest('details');if(details)details.open=true;}} onSubmit={event=>{event.preventDefault();void perform(async()=>{const saved=await api.saveIntelligencePreferences(preferences);setStatus(current=>current?{...current,...saved}:current);setPreferences(saved);window.dispatchEvent(new Event('noema:persona-preferences'));},'AI preferences saved.');}}>
+      <fieldset className="ai-personas"><legend>AI Persona</legend><p>Choose the default voice for generated prose. Shared across vaults. Models and factual standards stay independent.</p>
+      {aiPersonas.map(persona=><label className="ai-persona-card" key={persona.id}><input type="radio" name="ai-persona" value={persona.id} checked={(preferences.personaId??defaultPersonaId)===persona.id} disabled={busy||!status} onChange={()=>setPreferences(current=>({...current,personaId:persona.id as BuiltinPersonaId}))}/><span><strong>{persona.name}</strong><span>{persona.description}</span><small>“{persona.sample}”</small></span></label>)}
+      </fieldset>
       <div className="ai-setting-row"><label htmlFor="ai-model">{uiText("Model")}</label>
       <Select id="ai-model" value={preferences.model} disabled={busy||!status} onChange={event=>{
         const model=intelligenceModels.find(option=>option.id===event.target.value)!;

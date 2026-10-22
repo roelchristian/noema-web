@@ -95,8 +95,8 @@
       "tools": [],
       "tool_choice": "none"
     },
-    "promptDigest": "8cebda4b0e9ab7daad8f49c397e4b0dbd1e4eaac07d65a2fc01786ab73c0636f",
-    "bytes": 1123
+    "promptDigest": "e27e5b0b514cf5043896c55c15d61c46caf081bb6b60e5edca5e286af0dba3bf",
+    "bytes": 2132
   },
   "reading explanation": {
     "policy": {
@@ -109,8 +109,8 @@
       "tools": [],
       "tool_choice": "none"
     },
-    "promptDigest": "600434e4fd2e55466fa7e15ccfb99090319572bcbf27a727ed9d85ff66446a56",
-    "bytes": 1040
+    "promptDigest": "235424c8e7169ef3f57021655b200cb1df0569821de06c628e852c46f0a7968c",
+    "bytes": 2049
   },
   "review": {
     "policy": {
@@ -123,8 +123,8 @@
       "tools": [],
       "tool_choice": "none"
     },
-    "promptDigest": "93616839ecfa7567e81d0502968c3b0051134cba86a77d60ebd9b2fa77d95a9a",
-    "bytes": 824
+    "promptDigest": "620fec0ff1b718303bd99f6632b6ed1a8ee2886c256be3aa02ab45594d4c585a",
+    "bytes": 2024
   },
   "source page": {
     "policy": {
@@ -138,8 +138,8 @@
       "tool_choice": "none",
       "stream": true
     },
-    "promptDigest": "7b31d1fda072108805d855a181b11f8eb0028bf48e3ca30abddfc210b010953f",
-    "bytes": 12849
+    "promptDigest": "d8aee4be5b8a5436850a9142d47a19d18598ede70dc08235df5ba3a2d0b53b16",
+    "bytes": 13858
   },
   "source math": {
     "policy": {

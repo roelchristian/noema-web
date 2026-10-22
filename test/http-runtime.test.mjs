@@ -18,7 +18,7 @@ async function fixture(t,generate) {
  const dir=mkdtempSync(path.join(tmpdir(),'noema-runtime-')),db=openDatabase(path.join(dir,'db.sqlite')),store=new Store(db),files=new SourceFiles(store);
  const file=files.add('default','synthetic.md',Buffer.from('A group has an identity.\nEvery element has an inverse.'));
  const source=new Knowledge(store).create('default',{name:'Synthetic groups',type:'source',attachmentIds:[file.id]});await files.tick();files.close();
- const selection=()=>({model:'test-model',reasoningEffort:'none'}),ai={selection,enrichmentSelection:selection,generate,purgeExpired(){}};
+ const selection=()=>({model:'test-model',reasoningEffort:'none'}),ai={selection,enrichmentSelection:selection,personaSelection:()=>({id:"oxford_don",version:1,origin:"builtin"}),generate,purgeExpired(){}};
  let server;
  t.after(async()=>{if(server?.listening)await new Promise(resolve=>server.close(resolve));db.close();rmSync(dir,{recursive:true,force:true});});
  return {store,ai,source,file,start:async()=>{server=createApp(store,path.resolve('dist/client'),ai);server.listen(0,'127.0.0.1');await once(server,'listening');return 'http://127.0.0.1:'+server.address().port;}};

@@ -51,7 +51,7 @@ test('dialog submits familiarity and source scope, remembers them, and shows six
     assert.equal(submitted.options.format,'critique');assert.equal(submitted.options.familiarity,'expert');assert.equal(submitted.options.beyondSources,true);assert.deepEqual(Object.keys(submitted.options).sort(),['beyondSources','detail','familiarity','format','language']);
     const summary=document.querySelector('[aria-label="Submitted request"]');
     assert.ok(summary,'Submitted selections appear while generation is running');
-    assert.deepEqual([...summary.querySelectorAll('dd')].map(node=>node.querySelector('.source-page-format-name')?.textContent??node.textContent),['Critique','Standard','English','Expert','Include AI background knowledge']);
+    assert.deepEqual([...summary.querySelectorAll('dd')].map(node=>node.querySelector('.source-page-format-name')?.textContent??node.textContent),['Critique','Oxford Don','Standard','English','Expert','Include AI background knowledge']);
     assert.equal(document.querySelectorAll('.source-page-controls select, .source-page-format, .source-page-controls [role="switch"], .source-page-controls textarea').length,0,'The original form is removed during generation');
     assert.ok(document.querySelector('.source-page-dialog.has-preview'));
     await act(async()=>{

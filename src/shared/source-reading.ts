@@ -4,7 +4,7 @@ export type HighlightColor = typeof highlightColors[number];
 export const readingNoteMaxWords = 200;
 export function readingNoteWordCount(text:string) {return text.trim().split(/\s+/u).filter(Boolean).length;}
 export const readingExplanationFamiliarities={beginner:'Beginner',familiar:'Familiar',expert:'Expert'} as const;
-export interface ReadingExplanationOptions {language:string;familiarity:keyof typeof readingExplanationFamiliarities}
+export interface ReadingExplanationOptions {persona?:import('./ai-personas.js').PersonaIdentity;language:string;familiarity:keyof typeof readingExplanationFamiliarities}
 export interface SourceSelection {
  sourceId:string;fileId:string;sourceHash:string;startOffset:number;endOffset:number;excerpt:string;
  startLine?:number;endLine?:number;nodeId?:string;contextLabel?:string;appLocator?:string;

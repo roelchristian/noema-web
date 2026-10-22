@@ -92,7 +92,7 @@ test('entity scan reviews are explicit, persistent, scoped and revision safe', a
 test('evidence replacement handles tables, formatting boundaries and existing mentions',()=>{
   const page={blocks:[{type:'paragraph',content:[{entityId:'already'},{text:'unrelated'}]},{type:'table',rows:[[[{text:'New ',bold:true},{text:'York',italic:true},{text:' City'}]]],content:[]}]};
   const result=mentionEvidence(page,'New York','ny');
-  assert.deepEqual(result.blocks[1].rows[0][0],[{entityId:'ny'},{text:' City'}]);
+  assert.deepEqual(result.blocks[1].rows[0][0],[{entityId:'ny', mentionText: 'New York'},{text:' City'}]);
   assert.deepEqual(result.blocks[0],page.blocks[0]);
   assert.equal(mentionEvidence(page,'unrelatedNew','none'),null);
   assert.equal(mentionEvidence(page,'','none'),null);

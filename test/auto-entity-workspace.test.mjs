@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import {setupDOM} from './helpers/dom.mjs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Workspace } from '../src/client/state/workspace.ts';
@@ -33,7 +34,7 @@ test('removed tags remain excluded through idle matching, explicit saves, and re
   const blocks = [{id: 'paragraph', type: 'paragraph', checked: false, content: [{text: 'Ada Lovelace', skipAutoTag: true}, {text: ' and Ada Lovelace'}]}];
   workspace.updatePage({blocks});
   await workspace.saver.flush();
-  assert.deepEqual(writes[0].blocks[0].content, [{text: 'Ada Lovelace', skipAutoTag: true}, {text: ' and '}, {entityId: 'ada'}]);
+  assert.deepEqual(writes[0].blocks[0].content, [{text: 'Ada Lovelace', skipAutoTag: true}, {text: ' and '}, {entityId: 'ada', mentionText: 'Ada Lovelace'}]);
   await workspace.openPage('note');
   await workspace.identifyEntities();
   assert.deepEqual(workspace.snapshot().page.blocks, writes[0].blocks);
@@ -82,7 +83,7 @@ test('idle identification links existing entities, autosaves them, and remains i
   const {workspace,writes} = await setup(t);
   const statuses=[];workspace.subscribe(()=>statuses.push(workspace.snapshot().saveStatus));
   await workspace.identifyEntities();
-  assert.deepEqual(workspace.snapshot().page.blocks[0].content,[{text:'Read '},{entityId:'ada'},{text:' today.'}]);
+  assert.deepEqual(workspace.snapshot().page.blocks[0].content,[{text:'Read '},{entityId:'ada', mentionText: 'Ada Lovelace'},{text:' today.'}]);
   assert.equal(workspace.snapshot().saveStatus,'pending');
   await workspace.saver.flush();
   assert.equal(writes.length,1);
@@ -111,7 +112,7 @@ test('explicit saves prepare automatic links and newer edits survive in-flight w
   finish();await saving;
   assert.equal(writes.length,2);
   assert.equal(writes[1].revision,2);
-  assert.deepEqual(workspace.snapshot().page.blocks[0].content,[{entityId:'ada'},{text:' wrote newer notes.'}]);
+  assert.deepEqual(workspace.snapshot().page.blocks[0].content,[{entityId:'ada', mentionText: 'Ada Lovelace'},{text:' wrote newer notes.'}]);
   assert.equal(workspace.snapshot().page.revision,3);
 });
 
@@ -132,9 +133,10 @@ test('identification defers while selecting text or using an editor menu, IME, o
   assert.equal(workspace.snapshot().page.blocks[0].content[1].entityId,'ada');
 });
 
-test('editor footer announces identification, saving, saved and retry states', () => {
+test('editor footer announces identification, saving, saved and retry states', t => {
+  setupDOM(t);
   const page={id:'note',vault_id:'vault',title:'Notes',blocks:[],sourceIds:[],revision:1,updated_at:''};
-  for(const [saveStatus,label] of [['identifying','Identifying entities…'],['pending','Waiting to save…'],['saving','Saving…'],['saved','Automatically saved'],['error','Could not save changes']]) {
+  for(const [saveStatus,label] of [['identifying','Identifying entities…'],['pending','Waiting to save…'],['saving','Saving…'],['saved','Edited just now'],['error','Could not save changes']]) {
     const html=renderToStaticMarkup(createElement(PageEditor,{page,entities:[],saveStatus,onChange:()=>{},onOpenEntity:()=>{},onCreateEntity:()=>{},onSave:()=>{},onIdentify:async()=>{}}));
     const footer=html.slice(html.indexOf('<footer'),html.indexOf('</footer>'));
     assert.ok(footer.includes(label));

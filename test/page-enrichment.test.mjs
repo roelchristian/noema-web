@@ -13,6 +13,7 @@ import {PageEnrichmentScheduler} from '../src/server/modules/page-enrichment-sch
 import {PageEnrichmentState} from '../src/server/modules/page-enrichment-state.ts';
 import {Domains} from '../src/server/modules/domains.ts';
 import {summaryContentHash} from '../src/server/modules/summary-content.ts';
+import {enrichmentProvider} from './helpers/providers.ts';
 const selection={model:'test-metadata',reasoningEffort:'none'};
 const output={title:'Polynomial proofs',primaryDomainId:'mathematics',secondaryDomainIds:[],language:'en',summary:'A note about algebra, polynomial equations and proofs.'};
 const deferred=()=>{let resolve;const promise=new Promise(done=>resolve=done);return {promise,resolve};};
@@ -20,7 +21,7 @@ function fixture(provider=async()=>output) {
   const directory=mkdtempSync(path.join(tmpdir(),'noema-enrichment-')),filename=path.join(directory,'db.sqlite');
   const db=openDatabase(filename),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),enrichments=new AIEnrichments(store,pages);
   let calls=0;const requests=[];
-  const intelligence={enrichmentSelection:()=>selection,generatePageEnrichment:async(input,options)=>{calls++;requests.push({input,options});return provider(input,options);}};
+  const intelligence=enrichmentProvider(async(input,options)=>{calls++;requests.push({input,options});return provider(input,options);},selection);
   const coordinator=new PageEnrichment(store,pages,knowledge,enrichments,intelligence);
   const initial=pages.create('default',{title:'Untitled'});
   const blocks=[{id:'algebra',type:'paragraph',checked:false,content:[{text:'Algebra studies polynomial equations. Every theorem requires a mathematical proof.'}]}];

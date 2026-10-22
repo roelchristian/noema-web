@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import {setupDOM} from './helpers/dom.mjs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -62,7 +63,7 @@ test('unique aliases auto-link with original wording; duplicate aliases on one e
   const result = identifyEntityMentions([block('p', [{text: 'Trump met Donald Trump. Trumpeter.'}])], [{...donald, aliases: ['Trump', 'trump', 'Donald Trump']}], 'default');
   assert.equal(result.count, 2);
   assert.deepEqual(result.ambiguous, []);
-  assert.deepEqual(result.blocks[0].content, [{entityId: 'donald', mentionText: 'Trump'}, {text: ' met '}, {entityId: 'donald'}, {text: '. Trumpeter.'}]);
+  assert.deepEqual(result.blocks[0].content, [{entityId: 'donald', mentionText: 'Trump'}, {text: ' met '}, {entityId: 'donald', mentionText: 'Donald Trump'}, {text: '. Trumpeter.'}]);
   assert.equal(identifyEntityMentions(result.blocks, [donald], 'default').count, 0);
   assert.equal(identifyEntityMentions([block('p', [{text: 'Trump'}])], [{...donald, vault_id: 'other'}], 'default').count, 0);
 });
@@ -104,7 +105,8 @@ test('aliases work across styled segments and alias collisions with canonical na
   assert.equal(annotationSuggestions([donald], 'arbitrary highlighted text', 'donald').results[0].id, 'donald');
 });
 
-test('alias labels survive saving and render as their original text with the canonical entity in the hover title', () => {
+test('alias labels survive saving and render as their original text with the canonical entity in the hover title', t => {
+  setupDOM(t);
   const db = openDatabase(':memory:');
   try {
     const store = new Store(db), knowledge = new Knowledge(store), pages = new Pages(store, knowledge);

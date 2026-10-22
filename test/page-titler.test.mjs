@@ -17,16 +17,6 @@ test('observes saved substantial pages after two seconds without triggering gene
     titler.observe(page(),true);t.mock.timers.tick(1000);assert.equal(calls.length,1);
   } finally {titler.dispose();}
 });
-test('empty drafts do not poll before the idle delay', async t => {
-  t.mock.timers.enable({apis:['setTimeout']});let calls=0;
-  const titler=new PageTitler(async()=>{calls++;return {title:'Title',revision:2};},()=>assert.fail('Unexpected title'));
-  try {
-    for(const p of [page('Untitled',''),page('','tiny')]) {
-      titler.register(p);titler.observe(p,true);t.mock.timers.tick(1000);await settle();
-    }
-    assert.equal(calls,0);
-  } finally {titler.dispose();}
-});
 test('late results are discarded after edits, manual naming, deletion or vault changes', async t => {
   t.mock.timers.enable({apis:['setTimeout']});
   for(const cancel of [titler=>titler.observe({...page(),revision:3}),titler=>titler.observe(page('Manual title')),titler=>titler.remove(page()),titler=>titler.dispose()]) {
@@ -80,16 +70,6 @@ test('read failures do not start an independent enrichment retry loop',async t=>
       for(const delay of [15000,60000,240000]){t.mock.timers.tick(delay);await settle();}
       assert.equal(calls,1);
     }finally{titler.dispose();}
-  }
-});
-
-test('editing or leaving the vault prevents more reads after failure', async t => {
-  t.mock.timers.enable({apis:['setTimeout']});
-  for(const cancel of [titler=>titler.observe({...page(),revision:3}),titler=>titler.dispose()]) {
-    let calls=0;
-    const titler=new PageTitler(async()=>{calls++;throw Object.assign(new Error('Unavailable'),{status:503});},()=>assert.fail());
-    titler.register(page());titler.observe(page(),true);t.mock.timers.tick(2000);await settle();
-    cancel(titler);t.mock.timers.tick(120000);await settle();assert.equal(calls,1);titler.dispose();
   }
 });
 

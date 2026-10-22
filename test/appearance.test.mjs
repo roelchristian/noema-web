@@ -16,6 +16,7 @@ test('appearance survives serialization, including individual entity overrides',
   const appearance = defaultAppearance();
   appearance.theme = 'juniper';
   appearance.mode = 'dark';
+  appearance.citationStyleExplicit = true;
   appearance.focusedReading = true;
   appearance.entityColors.person = 'ocean';
   appearance.entityOverrides['entity-a'] = 'rose';

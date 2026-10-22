@@ -1,24 +1,24 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {JSDOM} from 'jsdom';
+import {setupDOM} from './helpers/dom.mjs';
 import React,{act} from 'react';
 import {createRoot} from 'react-dom/client';
-import {App} from '../src/client/App.tsx';
+import './helpers/register.mjs';
+const {App}=await import('../src/client/App.tsx');
 import {api} from '../src/client/api.ts';
 const page=id=>({id,vault_id:'a',title:id,blocks:[{id:id+'-body',type:'paragraph',checked:false,content:[{text:'Body '+id}]}],sourceIds:[],revision:1,updated_at:''});
 test('sidebar note switching preserves mounted shell and outgoing editor until asynchronous content is ready',async t=>{
- const dom=new JSDOM('<div id="mount"></div>',{url:'http://localhost',pretendToBeVisual:true});
- const keys=['window','document','Node','Element','HTMLElement','HTMLInputElement','HTMLTextAreaElement','Range','DOMParser','InputEvent','MouseEvent','Event','PointerEvent','MutationObserver','getSelection','getComputedStyle','innerWidth','innerHeight','localStorage','CSS','ResizeObserver','IS_REACT_ACT_ENVIRONMENT'],previous=keys.map(k=>Object.getOwnPropertyDescriptor(globalThis,k));
- dom.window.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
- for(const key of keys){const value=key==='IS_REACT_ACT_ENVIRONMENT'?true:key==='getSelection'?()=>dom.window.getSelection():key==='ResizeObserver'?class{observe(){}disconnect(){}}:key==='PointerEvent'?dom.window.MouseEvent:key==='CSS'?{escape:value=>value}:dom.window[key];Object.defineProperty(globalThis,key,{configurable:true,writable:true,value});}
+ const env=setupDOM(t),{dom}=env;
+ const keys=['localStorage','CSS','ResizeObserver','PointerEvent'],previous=keys.map(k=>Object.getOwnPropertyDescriptor(globalThis,k));
+ for(const key of keys)Object.defineProperty(globalThis,key,{configurable:true,writable:true,value:key==='ResizeObserver'?class{observe(){}disconnect(){}}:key==='PointerEvent'?dom.window.MouseEvent:key==='CSS'?{escape:value=>value}:dom.window[key]});
+ env.defer(()=>keys.forEach((key,i)=>{if(previous[i])Object.defineProperty(globalThis,key,previous[i]);else delete globalThis[key];}));
+ t.mock.method(api,'entitySchema',async()=>({properties:[],subtypes:[],subtypeProperties:{}}));
  dom.window.scrollTo=()=>{};
- document.queryCommandState=()=>false;
- Object.defineProperty(dom.window.HTMLElement.prototype,'isContentEditable',{get(){return this.getAttribute('contenteditable')==='true';}});
  localStorage.setItem('noema-knowledge-panel-open','true');localStorage.setItem('noema-address/a',JSON.stringify({view:'pages',pageId:'one'}));
  t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false}]);t.mock.method(api,'pages',async()=>[page('one'),page('two')]);t.mock.method(api,'entities',async()=>[]);t.mock.method(api,'organization',async()=>({collections:[{id:'collection',name:'Research'}],folders:[{id:'folder',name:'Projects',parent_id:null}],locations:[{kind:'page',item_id:'one',folder_id:'folder'}],memberships:[],favourites:[]}));
  t.mock.method(api,'aiNotifications',async()=>({items:[],running:[],unreadCount:0,through:0}));let finishKnowledge;const knowledgeRequests=t.mock.method(api,'enrichments',async(_vault,id)=>id==='one'?[{kind:'summary',data:{summary:'Saved summary for one'},revision:1}]:new Promise(resolve=>finishKnowledge=resolve));
  let finish;t.mock.method(api,'page',async(_vault,id)=>id==='one'?page('one'):new Promise(resolve=>finish=resolve));
- const root=createRoot(document.querySelector('#mount'));
+ const root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
  try {
   await act(async()=>root.render(React.createElement(App)));
   const sidebar=document.querySelector('.sidebar'),header=document.querySelector('.topbar'),editor=document.querySelector('.page'),content=document.querySelector('#content'),knowledge=document.querySelector('#intelligence-panel'),tools=document.querySelector('.page-toolbar');assert.ok(editor);assert.ok(knowledge);
@@ -26,8 +26,9 @@ test('sidebar note switching preserves mounted shell and outgoing editor until a
   const organization=document.querySelector('.organization-sidebar');
   const expand=organization.querySelector('[aria-label="Expand Projects"]');
   await act(async()=>expand.dispatchEvent(new MouseEvent('click',{bubbles:true})));
+  await act(async()=>organization.querySelector('.sidebar-unfiled-toggle').dispatchEvent(new MouseEvent('click',{bubbles:true})));
   const folder=organization.querySelector('[aria-label="Open folder: Projects"]'),collection=organization.querySelector('[aria-label="Open collection: Research"]'),nestedPage=organization.querySelector('.organization-page-link');
-  const sidebarNodes=[...scrollRegion.querySelectorAll('*')].filter(node=>!node.closest('#page-list'));
+  const sidebarNodes=[...scrollRegion.querySelectorAll('*')].filter(node=>!node.closest('.organization-page-link'));
   const assertOrganizationStable=()=>{
    assert.equal(document.querySelector('.organization-sidebar'),organization);
    assert.equal(organization.querySelector('[aria-label="Open folder: Projects"]'),folder);
@@ -36,14 +37,14 @@ test('sidebar note switching preserves mounted shell and outgoing editor until a
    assert.equal(expand.getAttribute('aria-expanded'),'true');
    assert.ok(sidebarNodes.every(node=>node.isConnected));assert.equal(scrollRegion.scrollTop,75);
   };
-  const select=id=>document.querySelector('#page-list .page-link[title="'+id+'"]');
+  const select=id=>document.querySelector('.organization-page-link[title="'+id+'"]');
   const targetIcon=select('two').querySelector('svg');
   const navigationStatus=document.querySelector('main > [role="status"]');
   select('two').focus();
   await act(async()=>select('two').dispatchEvent(new MouseEvent('click',{bubbles:true})));
   assert.equal(document.querySelector('.sidebar'),sidebar);assert.equal(document.querySelector('.topbar'),header);assert.equal(document.querySelector('.page'),editor);assert.equal(document.querySelector('#intelligence-panel'),knowledge);assert.equal(document.querySelector('.page-toolbar'),tools);assertOrganizationStable();
   assert.equal(folder.disabled,true);assert.equal(collection.disabled,true);assert.equal(organization.querySelector('[aria-label="Folder actions"]').disabled,true);
-  assert.equal(content.getAttribute('aria-busy'),'true');assert.ok(content.hasAttribute('inert'));assert.equal(select('two').querySelector('svg'),targetIcon);assert.equal(select('two').querySelector('.scan-spinner'),null);assert.equal(document.querySelector('main > [role="status"]'),navigationStatus);assert.ok(navigationStatus.classList.contains('sr-only'));assert.match(navigationStatus.textContent,/Opening two/);assert.equal(document.querySelector('.page-navigation-status'),null);assert.ok(!document.body.textContent.includes('Loading workspace'));assert.equal(select('one').disabled,false);
+  assert.equal(content.getAttribute('aria-busy'),'true');assert.ok(content.hasAttribute('inert'));assert.equal(select('two').querySelector('svg'),targetIcon);assert.equal(select('two').querySelector('.scan-spinner'),null);assert.equal(document.querySelector('main > [role="status"]'),navigationStatus);assert.ok(navigationStatus.classList.contains('sr-only'));assert.match(navigationStatus.textContent,/Opening two/);assert.equal(document.querySelector('.page-navigation-status'),null);assert.ok(!document.body.textContent.includes('Loading workspace'));assert.equal(select('one').getAttribute('aria-disabled'),'true');
   await act(async()=>finish(page('two')));
   assert.equal(document.querySelector('.sidebar'),sidebar);assert.equal(document.querySelector('.topbar'),header);assert.notEqual(document.querySelector('.page'),editor);assert.equal(document.querySelector('#page-title').value,'two');assert.equal(folder.disabled,false);assert.equal(collection.disabled,false);assert.equal(content.getAttribute('aria-busy'),'false');assert.ok(!content.hasAttribute('inert'));assert.equal(document.querySelector('.page-navigation-status'),null);assert.equal(select('two').querySelector('svg'),targetIcon);assert.equal(navigationStatus.textContent,'');assertOrganizationStable();
   assert.equal(document.querySelector('#intelligence-panel'),knowledge);
@@ -66,5 +67,5 @@ test('sidebar note switching preserves mounted shell and outgoing editor until a
   assert.match(document.querySelector('#intelligence-panel').textContent,/Saved summary for two/);
   assert.equal(knowledgeRequests.mock.callCount(),calls);
 
- }finally{await act(async()=>root.unmount());dom.window.close();keys.forEach((key,index)=>{if(previous[index])Object.defineProperty(globalThis,key,previous[index]);else delete globalThis[key];});}
+ }finally{await env.close();}
 });

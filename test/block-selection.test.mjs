@@ -1,19 +1,21 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {JSDOM} from 'jsdom';
+import {setupDOM} from './helpers/dom.mjs';
 import {installBlockSelection,selectedEditorBlocks,editorSelectionClipboard,replaceEditorSelection,editorSelectionRanges,setEditorCaret} from '../src/client/editor/block-selection.ts';
 import {segmentHTML} from '../src/client/editor/segments.tsx';
 const paragraph=(id,text,type='paragraph')=>({id,type,checked:false,content:[{text}]});
 function fixture(blocks){
- const dom=new JSDOM('<div id="blocks"></div>'),keys=['window','document','Node','Element','HTMLElement','Range'],prior=keys.map(k=>Object.getOwnPropertyDescriptor(globalThis,k));
- keys.forEach(k=>Object.defineProperty(globalThis,k,{configurable:true,writable:true,value:dom.window[k]}));
+ const env=setupDOM(undefined,{html:'<div id="blocks"></div>'}),{dom}=env;
+ const frames=new Map();let frame=0;globalThis.requestAnimationFrame=callback=>{frames.set(++frame,callback);return frame;};globalThis.cancelAnimationFrame=id=>frames.delete(id);
+ // JSDOM has no hit testing; map the test's explicit caret geometry to its target element.
+ document.elementFromPoint=(x,y)=>{const range=document.caretRangeFromPoint?.(x,y);const node=range?.startContainer;return node?.nodeType===1?node:node?.parentElement??null;};
  const root=document.querySelector('#blocks'),state={blocks,focus:null};
  root.innerHTML=blocks.map(b=>`<div data-block-id="${b.id}"><div class="block-controls"><button>Block options</button></div>${b.type==='table'?'<table>'+b.rows.map(row=>'<tr>'+row.map(c=>'<td><div class="block-content table-cell" contenteditable="true">'+segmentHTML(c,[])+'</div></td>').join('')+'</tr>').join('')+'</table>':'<div class="block-content" contenteditable="true">'+segmentHTML(b.content,[])+'</div>'}</div>`).join('');
  const options={blocks:()=>state.blocks,entities:()=>[],commit:(blocks,focus)=>{state.blocks=blocks;state.focus=focus;}};
  const cleanup=installBlockSelection(root,options);
  function select(start,from,end,to){const range=document.createRange();range.setStart(document.createTreeWalker(root.querySelector(`[data-block-id="${start}"] .block-content`),4).nextNode(),from);range.setEnd(document.createTreeWalker(root.querySelector(`[data-block-id="${end}"] .block-content`),4).nextNode(),to);document.getSelection().removeAllRanges();document.getSelection().addRange(range);return range;}
  const fire=(id,key,extra={})=>{const event=new dom.window.KeyboardEvent('keydown',{key,bubbles:true,cancelable:true,...extra});root.querySelector(`[data-block-id="${id}"] .block-content`).dispatchEvent(event);return event;};
- return {dom,root,state,options,select,fire,close(){cleanup();dom.window.close();keys.forEach((k,i)=>{if(prior[i])Object.defineProperty(globalThis,k,prior[i]);else delete globalThis[k];});}};
+ return {dom,root,state,options,select,fire,flush(){for(const [id,callback] of [...frames]){frames.delete(id);callback(16);}},close(){cleanup();void env.close();}};
 }
 test('Command-A selects the current block, then document, and stays within the editor',()=>{
  const f=fixture([paragraph('a','Alpha'),paragraph('b','Bravo'),paragraph('c','Charlie')]);
@@ -75,7 +77,7 @@ test('pointer drags cross independent editing hosts in both directions',()=>{
    document.caretRangeFromPoint=(x)=>{const range=document.createRange(),text=f.root.querySelector(`[data-block-id="${x<100?'a':'b'}"] .block-content`).firstChild.firstChild;range.setStart(text,2);range.collapse(true);return range;};
    const start=reverse?'b':'a',end=reverse?'a':'b';
    f.root.querySelector(`[data-block-id="${start}"] .block-content`).dispatchEvent(new f.dom.window.MouseEvent('pointerdown',{button:0,buttons:1,clientX:reverse?150:50,bubbles:true}));
-   const move=new f.dom.window.MouseEvent('pointermove',{buttons:1,clientX:reverse?50:150,bubbles:true,cancelable:true});document.dispatchEvent(move);
+   const move=new f.dom.window.MouseEvent('pointermove',{buttons:1,clientX:reverse?50:150,bubbles:true,cancelable:true});document.dispatchEvent(move);f.flush();
    assert.ok(move.defaultPrevented);assert.equal(selectedEditorBlocks(f.root).elements.length,2);assert.equal(document.getSelection().anchorNode.parentElement.closest('[data-block-id]').dataset.blockId,start);assert.equal(document.getSelection().focusNode.parentElement.closest('[data-block-id]').dataset.blockId,end);
   }finally{f.close();}
  }
@@ -120,7 +122,7 @@ test('dragging through inline equations keeps the equation atomic',()=>{
   const atom=f.root.querySelector('[data-math]');
   document.caretRangeFromPoint=x=>{const range=document.createRange();const node=x<100?f.root.querySelector('[data-block-id="a"] .block-content').firstChild.firstChild:document.createTreeWalker(atom,4).nextNode();range.setStart(node,1);range.collapse(true);return range;};
   f.root.querySelector('.block-content').dispatchEvent(new f.dom.window.MouseEvent('pointerdown',{button:0,buttons:1,clientX:50,bubbles:true}));
-  document.dispatchEvent(new f.dom.window.MouseEvent('pointermove',{buttons:1,clientX:150,bubbles:true,cancelable:true}));
+  document.dispatchEvent(new f.dom.window.MouseEvent('pointermove',{buttons:1,clientX:150,bubbles:true,cancelable:true}));f.flush();
   assert.equal(document.getSelection().focusNode,atom.parentNode);assert.equal(document.getSelection().focusOffset,1);
   assert.equal(editorSelectionClipboard(f.root,f.state.blocks,[]).text,'lpha\n\nx_1');
  }finally{f.close();}

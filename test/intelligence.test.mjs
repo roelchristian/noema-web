@@ -22,7 +22,7 @@ const rejected=(work,status)=>assert.rejects(work,error=>error.status===status);
 test('credentials: write-only status, expiry, replacement, removal, persistence and bounds',async()=>{
   const secrets=new Secrets();let time=Date.now(),calls=0;
   let ai=new Intelligence(secrets,async()=>{calls++;return completed('OK');},()=>time);
-  assert.deepEqual(ai.status(),{configured:false,expiresAt:null,model:'gpt-5-mini',reasoningEffort:'low'});
+  assert.deepEqual(ai.status(),{configured:false,expiresAt:null,model:'gpt-5-mini',reasoningEffort:'low',manualRequestsPerMinute:5,pageEnrichment:{model:'gpt-6-luna',reasoningEffort:'none'}});
   for(const days of [0,366,1.5,'30',null])assert.throws(()=>ai.save({apiKey:key,days}),e=>e.status===400);
   assert.throws(()=>ai.save({apiKey:'bad'}),e=>e.status===400);
   const status=ai.save({apiKey:key});assert.equal(status.expiresAt,new Date(time+30*86400000).toISOString());
@@ -75,7 +75,7 @@ test('AI HTTP routes enforce CSRF, vault scope, revisions, lock state and privat
     await call('intelligence/preferences','PUT',{model:'gpt-6-astra',reasoningEffort:'none'},400);
     await call('intelligence/preferences','PUT',{model:'gpt-6-luna',reasoningEffort:'low'},403,{Origin:'https://evil.example'});
     const selection=await call('intelligence/preferences','PUT',{model:'gpt-6-luna',reasoningEffort:'low'});
-    assert.deepEqual(selection,{model:'gpt-6-luna',reasoningEffort:'low'});
+    assert.deepEqual(selection,{model:'gpt-6-luna',reasoningEffort:'low',manualRequestsPerMinute:5,pageEnrichment:{model:'gpt-6-luna',reasoningEffort:'none'}});
     await call('intelligence','PUT',{apiKey:key});const validated=await call('intelligence/validate','POST',{});
     assert.equal(validated.model,'gpt-6-luna');assert.equal(validated.reasoningEffort,'low');
     assert.equal(lastInput,'Connection test.');
@@ -145,7 +145,7 @@ test('model and effort preferences persist without changing or retrieving the AP
     let ai=new Intelligence(secrets,fetch,Date.now,intelligencePreferencesFor(new Store(db)));
     assert.deepEqual(ai.selection(),{model:'gpt-5-mini',reasoningEffort:'low'});
     ai.save({apiKey:key});const credential=structuredClone(secrets.value);
-    assert.deepEqual(ai.savePreferences({model:'gpt-6.1-sol',reasoningEffort:'high',apiKey:key}),{model:'gpt-6.1-sol',reasoningEffort:'high'});
+    assert.deepEqual(ai.savePreferences({model:'gpt-6.1-sol',reasoningEffort:'high',apiKey:key}),{model:'gpt-6.1-sol',reasoningEffort:'high',manualRequestsPerMinute:5,pageEnrichment:{model:'gpt-6-luna',reasoningEffort:'none'}});
     assert.deepEqual(secrets.value,credential);
     assert.ok(!JSON.stringify(db.prepare('SELECT * FROM metadata').all()).includes(key));
     db.close();db=openDatabase(filename);
@@ -221,7 +221,7 @@ test('title utility fixes reasoning to none independently of summary preferences
   ai.savePreferences({model:'gpt-6-sol',reasoningEffort:'high'});
   assert.equal(await ai.generateTitle('Plan a community garden with raised beds.'),output);
   assert.equal(requests[0].model,'gpt-6-sol');assert.deepEqual(requests[0].reasoning,{effort:'none'});
-  assert.equal(requests[0].max_output_tokens,256);assert.equal(requests[0].store,false);
+  assert.equal(requests[0].max_output_tokens,512);assert.equal(requests[0].store,false);
   assert.deepEqual(requests[0].tools,[]);assert.equal(requests[0].tool_choice,'none');
   assert.equal(JSON.parse(requests[0].input[0].content[0].text).untrusted_note,'Plan a community garden with raised beds.');
   assert.deepEqual(ai.selection(),{model:'gpt-6-sol',reasoningEffort:'high'});

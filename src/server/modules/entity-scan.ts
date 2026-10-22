@@ -6,7 +6,7 @@ import {DOMAINS,TAXONOMY_VERSION,domainPath} from '../../shared/domains.js';
 import {normalizeEntityName} from '../../shared/auto-entities.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { blockSegments, entityLabels, entityTypes, type Page, type Segment } from '../../shared/domain.js';
-import { ENTITY_SCAN_BATCH_SIZE, entityTextRuns, locateEvidence, locateRunEvidence, mentionEvidence, type EntityScan, type EntitySuggestion, type EntityReview, type SubtypeSuggestion } from '../../shared/entity-scan.js';
+import { anchorKey,evidenceContext,evidenceOccurrences,excludeEvidence, ENTITY_SCAN_BATCH_SIZE, entityTextRuns, locateEvidence, locateRunEvidence, mentionEvidence, type EvidenceAnchor, type EntityScan, type EntitySuggestion, type EntityReview, type SubtypeSuggestion } from '../../shared/entity-scan.js';
 import { Store } from '../store.js';
 import { HttpError, now, object, required } from '../validation.js';
 import { Knowledge } from './knowledge.js';
@@ -124,7 +124,7 @@ export class EntityScans {
       if (existingId && (!existing||existing.type!==type||![existing.name,...(existing.aliases??[])].some(value=>normalizeEntityName(value)===normalizeEntityName(name)))) throw invalid();
       // Already connected names are context only; ignore them before validating tagging coordinates.
       if(existing&&connected.has(existing.id))continue;
-      if(!existing&&allEntities.some(e=>e.type===type&&[e.name,...(e.aliases??[])].some(value=>normalizeEntityName(value)===normalizeEntityName(name))))continue;
+      if(!existing&&!entities.some(e=>e.type===type&&[e.name,...(e.aliases??[])].some(value=>normalizeEntityName(value)===normalizeEntityName(name)))&&allEntities.some(e=>e.type===type&&[e.name,...(e.aliases??[])].some(value=>normalizeEntityName(value)===normalizeEntityName(name))))continue;
       if(type==='source'&&!existing)continue;
       const subtypeName = (value: string) => value.trim().replace(/^[a-z]+:/i, '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
       const resolved = (subtypes as string[]).map(value => ({value, known: schema.subtypes.find(subtype => subtype.type === type && (subtype.id === value || subtype.name.toLowerCase() === subtypeName(value).toLowerCase()))}));
@@ -168,7 +168,7 @@ export class EntityScans {
     }
     const combined=[...(previous?.suggestions??[]),...batch];
     const proposedIds=new Set(combined.flatMap(suggestion=>suggestion.proposedSubtypeIds??[]));
-    const scan:EntityScan = {contextKey:this.contextKey(vault,page),id:previous?.id??randomUUID(),revision:page.revision,suggestions:combined,batchCount:batch.length,
+    const scan:EntityScan = {...(previous?.reviewExclusions?{reviewExclusions:previous.reviewExclusions}:{}),contextKey:this.contextKey(vault,page),id:previous?.id??randomUUID(),revision:page.revision,suggestions:combined,batchCount:batch.length,
       ...(lookaheadAnchor?{continuation:{token:randomUUID(),cursor:lookaheadAnchor,excluded:[...new Map([...excluded,...batch].map(({name,type,aliases,existingId})=>[`${type}:${normalizeEntityName(name)}`,{name,type,aliases,existingId}])).values()]}}:{}),
       subtypeSuggestions:proposals.filter(proposal=>proposedIds.has(proposal.id))};
     if(persist)this.enrichments.save(vault,page.id,'entity_scan',{scan},page.revision,preferences);
@@ -215,6 +215,7 @@ export class EntityScans {
           seen.add(id);
           const type = entityTypes.find(t => t === edit.type), name = required(edit.name);
           if (!type || !Array.isArray(edit.subtypes) || edit.subtypes.length > 1000 || edit.subtypes.some(id => typeof id !== 'string' || !schema.subtypes.some(s => s.id === id && s.type === type))) throw new HttpError(400,'Choose valid categories and subtypes.');
+          if(edit.saveAliases!==undefined&&typeof edit.saveAliases!=='boolean')throw new HttpError(400,'Choose whether to save reusable aliases.');
           const aliases=edit.aliases??suggestion.aliases??[];
           if(!Array.isArray(aliases)||aliases.length>20||aliases.some(alias=>typeof alias!=='string'||!alias.trim()||alias.length>200))throw new HttpError(400,'Choose valid aliases.');
           const domainIds=edit.domainIds??suggestion.domainIds??[];
@@ -226,28 +227,65 @@ export class EntityScans {
           } else Object.assign(suggestion,{name,type,aliases,domainIds:type==='concept'?[...new Set(domainIds)]:[],subtypes:[...new Set(edit.subtypes)],existingId:null,...(type !== suggestion.type ? {proposedSubtypeIds: []} : {})});
         }
       }
+      const reviewEdits=Array.isArray(body.edits)?body.edits.map(object):[];
+      // Dependency creation shares the existing review transaction; any later failure rolls it back.
+      const approvedInReview=new Set<string>();
+      for(const edit of reviewEdits) {
+        if(edit.approveSubtypeIds===undefined)continue;
+        const suggestion=suggestions.find(item=>item?.id===edit.id)!;
+        const approved=edit.approveSubtypeIds;
+        if(!Array.isArray(approved)||new Set(approved).size!==approved.length||approved.some(id=>typeof id!=='string'||!suggestion.proposedSubtypeIds?.includes(id)))throw new HttpError(400,'Choose dependent subtype proposals only.');
+        for(const id of approved) {
+          const proposal=scan.subtypeSuggestions?.find(item=>item.id===id);
+          if(!proposal||(proposal.status!=='pending'&&!approvedInReview.has(proposal.id))||proposal.type!==suggestion.type||suggestion.existingId)throw new HttpError(400,'Choose pending dependent subtypes.');
+          let schema=this.knowledge.schema(vault);
+          let subtype=schema.subtypes.find(item=>item.type===proposal.type&&item.name.toLowerCase()===proposal.name.toLowerCase());
+          if(!subtype){schema=this.knowledge.addSubtype(vault,{name:proposal.name,type:proposal.type});subtype=schema.subtypes.find(item=>item.type===proposal.type&&item.name.toLowerCase()===proposal.name.toLowerCase())!;}
+          proposal.status='accepted';proposal.resolvedId=subtype.id;approvedInReview.add(proposal.id);
+          for(const item of scan.suggestions)if(item.status==='pending'&&!item.existingId&&item.type===proposal.type&&item.proposedSubtypeIds?.includes(proposal.id))item.subtypes=[...new Set([...(item.subtypes??[]),subtype.id])];
+        }
+      }
+      const exclusions:{names:string[];id:string}[]=[];
       for (const suggestion of suggestions as EntitySuggestion[]) {
         if (body.decision === 'accepted') {
           // Older saved scans may contain model-assigned subjects on named entities.
           // Normalize at acceptance too, so those reviews can be retried without rescanning.
           if(suggestion.type!=='concept')suggestion.domainIds=[];
           if (!suggestion.existingId && suggestion.proposedSubtypeIds?.some(id => scan.subtypeSuggestions?.some(item => item.id === id && item.status === 'pending'))) throw new HttpError(400,'Review the proposed subtypes for this entity first.');
+          // Only exclusions recorded by this exact scan may be reopened for its pending evidence.
+          if(suggestion.evidenceAnchor&&scan.reviewExclusions?.some(anchor=>anchorKey(anchor)===anchorKey(suggestion.evidenceAnchor!))){page=excludeEvidence(page,suggestion.evidenceAnchor,false);scan.reviewExclusions=scan.reviewExclusions.filter(anchor=>anchorKey(anchor)!==anchorKey(suggestion.evidenceAnchor!));}
+          const edit=reviewEdits.find(item=>item.id===suggestion.id);
+          const extra=edit?.additionalOccurrences??[];
+          const choices=evidenceOccurrences(page,suggestion.evidence);
+          if(!Array.isArray(extra)||extra.length>1000||extra.some(value=>!value||typeof value!=='object'||!choices.some(anchor=>anchorKey(anchor)===anchorKey(value as EvidenceAnchor)))||new Set(extra.map(value=>anchorKey(value as EvidenceAnchor))).size!==extra.length)throw new HttpError(400,'Choose valid additional occurrences from this revision.');
+          const anchors=[suggestion.evidenceAnchor??locateEvidence(page,suggestion.evidence)!,...extra as EvidenceAnchor[]];
+          if(new Set(anchors.filter(Boolean).map(anchorKey)).size!==anchors.length)throw new HttpError(400,'Choose distinct occurrences.');
           if (!mentionEvidence(page,suggestion.evidence,'validation',suggestion.evidenceAnchor)) throw new HttpError(409,'Some matching phrases changed or overlap. Review these suggestions individually or scan again.');
+          const identityMatches=this.knowledge.list(vault).filter(entity=>!entity.inactive&&!entity.archived_at&&[entity.name,...(entity.aliases??[])].some(name=>[suggestion.name,suggestion.evidence].some(value=>normalizeEntityName(value)===normalizeEntityName(name))));
+          if(identityMatches.length>1&&!edit?.existingId)throw new HttpError(400,'Ambiguous identity. Choose an explicit saved identity.');
           const existing = suggestion.existingId ? this.knowledge.require(vault,suggestion.existingId) : undefined;
           if(existing?.archived_at||existing?.inactive)throw new HttpError(409,'This identity is no longer eligible for suggestions. Restore it and scan again.');
           if(!existing && suggestion.type==='source')throw new HttpError(400,'Create this source with an attached original file before linking it from a scan.');
           if(!existing&&this.knowledge.list(vault).some(entity=>entity.type===suggestion.type&&normalizeEntityName(entity.name)===normalizeEntityName(suggestion.name)))throw new HttpError(409,'An entity with this name now exists. Choose its explicit identity before accepting.');
-          let entity = existing || this.knowledge.create(vault,{...suggestion});
-          if(existing&&entity.type!=='source')for(const alias of suggestion.aliases??[]) {
+          const saveAliases=Array.isArray(body.edits)&&body.edits.some(value=>{const edit=object(value);return edit.id===suggestion.id&&edit.saveAliases===true;});
+          let entity = existing || this.knowledge.create(vault,{...suggestion,aliases:saveAliases?suggestion.aliases:[]});
+          if(saveAliases&&existing&&entity.type!=='source')for(const alias of suggestion.aliases??[]) {
             if(normalizeEntityName(alias)!==normalizeEntityName(entity.name)&&!entity.aliases?.some(name=>normalizeEntityName(name)===normalizeEntityName(alias)))entity=this.knowledge.addAlias(vault,entity.id,{alias});
           }
           if(!existing)this.store.run("UPDATE entity_domains SET origin='scan' WHERE entity_id=?",entity.id);
-          page = mentionEvidence(page,suggestion.evidence,entity.id,suggestion.evidenceAnchor)!;
+          for(const anchor of anchors){const linked=mentionEvidence(page,evidenceContext(page,anchor)?.match??suggestion.evidence,entity.id,anchor,true);if(!linked)throw new HttpError(409,'Some selected occurrences changed or overlap. Scan again.');page=linked;}
+          suggestion.linkedOccurrences=anchors;
+          exclusions.push({names:[entity.name,...(entity.aliases??[]),suggestion.evidence],id:suggestion.id});
           Object.assign(suggestion,{name:entity.name,type:entity.type,subtypes:entity.subtypes,description:entity.description,existingId:entity.id});
         }
         suggestion.status = body.decision;
       }
       if (body.decision === 'accepted') {
+        for(const {names} of exclusions)for(const name of names)for(const anchor of evidenceOccurrences(page,name)){
+          page=excludeEvidence(page,anchor);
+          scan.reviewExclusions=[...new Map([...(scan.reviewExclusions??[]),anchor].map(item=>[anchorKey(item),item])).values()];
+        }
+        if(page.blocks.some(block=>block.content.length>1000||block.rows?.some(row=>row.some(cell=>cell.length>1000))))throw new HttpError(400,'Too many segments in a block. Select fewer occurrences.');
         syncSourceReferences(this.store,pageId,page.blocks);
         this.store.run('UPDATE pages SET blocks=?,revision=revision+1,updated_at=? WHERE id=? AND vault_id=?',JSON.stringify(page.blocks),now(),pageId,vault);
         page = this.pages.get(vault,pageId);
@@ -255,7 +293,7 @@ export class EntityScans {
       scan.revision = page.revision;
       scan.contextKey=this.contextKey(vault,page);
       this.store.run("UPDATE page_ai_enrichments SET data=?,revision=?,updated_at=? WHERE page_id=? AND kind='entity_scan'",JSON.stringify({scan}),page.revision,now(),pageId);
-      return {page,scan,entities:this.knowledge.list(vault)};
+      return {page,scan,entities:this.knowledge.list(vault),schema:this.knowledge.schema(vault)};
     });
   }
 }

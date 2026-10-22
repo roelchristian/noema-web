@@ -270,8 +270,8 @@ test('qualified city names and region tags use independent evidence and can be a
     const city=review.entities.find(e=>e.name==='Charlemagne, Quebec'),region=review.entities.find(e=>e.name==='Quebec');
     assert.ok(city);assert.ok(region);assert.notEqual(city.id,region.id);
     assert.deepEqual(review.page.blocks[0].content,[
-      {text:'Born in '},{entityId:city.id,mentionText:'Charlemagne'},
-      {text:', ',href:'https://example.com/city'},{entityId:region.id,mentionText:'Quebec'},{text:'.'},
+      {text:'Born in '},{entityId:city.id,mentionText:'Charlemagne',skipAutoTag:true},
+      {text:', ',href:'https://example.com/city'},{entityId:region.id,mentionText:'Quebec',skipAutoTag:true},{text:'.'},
     ]);
     assert.ok(review.scan.suggestions.every(s=>s.status==='accepted'));
   }finally{db.close();}

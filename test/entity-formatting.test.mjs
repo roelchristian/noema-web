@@ -68,7 +68,7 @@ test('AI scans use formatting-free runs and acceptance links styled evidence wit
     const scan = scans.save('default', page, JSON.stringify({suggestions: [candidate('Donald Trump', existing.id), candidate('Ivanka Trump')]}), {model: 'gpt-5-mini', reasoningEffort: 'low'});
     assert.equal(scan.suggestions.length, 1);
     const review = scans.review('default', page.id, {revision: page.revision, scanId: scan.id, suggestionId: scan.suggestions[0].id, decision: 'accepted'});
-    assert.deepEqual(review.page.blocks[0].content, [{text: 'Before ', italic: true}, {entityId: existing.id, mentionText: 'Donald Trump'}, {text: ' after', strike: true}]);
+    assert.deepEqual(review.page.blocks[0].content, [{text: 'Before ', italic: true}, {entityId: existing.id, mentionText: 'Donald Trump',skipAutoTag:true}, {text: ' after', strike: true}]);
     assert.deepEqual(review.page.blocks[1], excluded);
   } finally { db.close(); }
 });

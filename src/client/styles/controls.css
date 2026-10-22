@@ -76,3 +76,9 @@
 @media (max-width: 750px), (pointer: coarse) {
   .knowledge-row-actions .knowledge-open-entity { min-width: var(--touch-target-size); min-height: var(--touch-target-size); }
 }
+
+.entity-review-modal button, .entity-review-modal summary,
+.entity-review-modal .scan-occurrence, .entity-review-modal fieldset > label {
+  min-height: var(--touch-target-size);
+}
+.entity-review-modal .entity-review-row-actions button { min-width: var(--touch-target-size); }

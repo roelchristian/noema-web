@@ -87,8 +87,8 @@ test('scanner validates domains, selects explicit identities, anchors repeats an
   const scan=save(candidate);assert.equal(scan.suggestions.length,1);
   assert.equal(scan.suggestions[0].evidenceAnchor.start,25);
   const accepted=scans.review('default',page.id,{revision:page.revision,scanId:scan.id,suggestionId:scan.suggestions[0].id,decision:'accepted'});
-  assert.equal(accepted.page.blocks[0].content[0].text,'The field of research; a ');
-  assert.equal(accepted.page.blocks[0].content[1].entityId,savedField.id);
+  assert.equal(accepted.page.blocks[0].content.filter(s=>!s.entityId).map(s=>s.text).join(''),'The field of research; a  has multiplicative inverses.');
+  assert.equal(accepted.page.blocks[0].content.find(s=>s.entityId).entityId,savedField.id);
   page=pages.update('default',page.id,{...accepted.page,blocks:[block('A fresh concept here.')]});
   const fresh=save({name:'Fresh concept',type:'concept',subtypes:[],domainIds:['philosophy'],description:'',existingId:null,evidence:'fresh concept',reason:'Explicit'});
   const first=scans.review('default',page.id,{revision:page.revision,scanId:fresh.id,suggestionId:fresh.suggestions[0].id,decision:'accepted'});

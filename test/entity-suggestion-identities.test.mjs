@@ -55,7 +55,7 @@ test('scan workflow merges reciprocal spellings before preview, persistence and 
     assert.equal(scan.suggestions.length,1);assert.deepEqual(scan.suggestions[0].aliases,['Team Socceroo F.C.']);
     const result=scans.review('default',page.id,{scanId:scan.id,suggestionIds:scan.suggestions.map(s=>s.id),revision:page.revision,decision:'accepted'});
     const club=result.entities.find(e=>e.name==='Team Socceroo FC');assert.ok(club);
-    assert.deepEqual(club.aliases,['Team Socceroo F.C.']);
+    assert.deepEqual(club.aliases,[],'Suggested spellings stay local unless alias reuse is explicitly selected');
     assert.equal(result.entities.some(e=>e.name==='Team Socceroo F.C.'),false);
     assert.equal(result.page.blocks[0].content.find(s=>s.entityId)?.entityId,club.id);
   }finally{db.close();}

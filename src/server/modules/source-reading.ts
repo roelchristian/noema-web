@@ -4,6 +4,8 @@ import type {PageGenerationMetadata} from '../../shared/page-generation.js';
 import {projectPageText} from '../../shared/page-text.js';
 import {randomUUID} from 'node:crypto';
 import {entityMentionName,type Block,type Page,type SourceFile,type SourceReference} from '../../shared/domain.js';
+import {resolvePersona} from './ai-personas.js';
+import {defaultPersonaId} from '../../shared/ai-personas.js';
 import {highlightColors,readingNoteMaxWords,readingNoteWordCount,readingExplanationFamiliarities,type ReadingExplanationOptions,type SourceHighlight,type ReadingNoteAnchor} from '../../shared/source-reading.js';
 import {sourcePageLanguages} from '../../shared/source-page.js';
 import {pageLanguage} from './page-language.js';
@@ -118,7 +120,7 @@ export class SourceReading {
   this.store.run('UPDATE highlights SET color=? WHERE id=? AND vault_id=? AND file_id=?',body.color as string,id,vault,fileId);
   return this.highlight({...row,color:body.color as SourceHighlight['color']});
  }
- prepareExplanation(vault:string,fileId:string,body:Record<string,unknown>) {
+ prepareExplanation(vault:string,fileId:string,body:Record<string,unknown>,defaultId=defaultPersonaId) {
   const ref=this.selection(vault,fileId,body),requestId=readingNoteRequestId(body.requestId);
   const language=body.language??'',familiarity=body.familiarity??'familiar';
   if(typeof language!=='string'||language!==''&&!sourcePageLanguages.some(value=>value===language))throw new HttpError(400,'Choose a supported explanation language.');
@@ -133,6 +135,9 @@ export class SourceReading {
    const note=saved.readingNote;
    if(!note?.explanation||note.fileId!==fileId||note.sourceHash!==ref.sourceHash||note.startOffset!==ref.startOffset||note.endOffset!==ref.endOffset||note.explanation.language!==language||note.explanation.familiarity!==familiarity)throw new HttpError(409,'This reading note request is already in use.');
   }
+  const resolved=resolvePersona(body.personaId??saved?.generationMetadata?.persona?.id??defaultId);
+  options.persona={id:resolved.id,version:resolved.version,origin:resolved.origin};
+  if(saved&&body.personaId!==undefined&&saved.generationMetadata?.persona?.id!==options.persona.id)throw new HttpError(409,'This reading note request has different persona settings.');
   return {ref,options,requestId,saved};
  }
  createReadingNote(vault:string,fileId:string,body:Record<string,unknown>,explanation?:ReadingExplanationOptions):Page {
@@ -157,7 +162,7 @@ export class SourceReading {
   this.store.transaction(()=>{
    this.store.run('INSERT INTO pages (id,title,blocks,updated_at,created_at,vault_id,ai_status,language) VALUES (?,?,?,?,?,?,?,?)',pageId,`${explanation?'AI explanation':'Reading note'} · ${name}`.slice(0,500),JSON.stringify(blocks),createdAt,createdAt,vault,explanation?'ai_generated':'regular',language);
    if(explanation){
-    const metadata:PageGenerationMetadata={version:1,type:'reading_explanation',options:{...explanation},instructions:explanationPrompt(ref.excerpt,explanation).instructions};
+    const metadata:PageGenerationMetadata={version:1,...(explanation.persona?{persona:explanation.persona}:{}),type:'reading_explanation',options:{...explanation},instructions:explanationPrompt(ref.excerpt,explanation).instructions};
     this.store.run('UPDATE pages SET generation_metadata=? WHERE id=? AND vault_id=?',JSON.stringify(metadata),pageId,vault);
    }
    this.store.run('INSERT INTO page_sources (page_id,source_id) VALUES (?,?)',pageId,ref.sourceId);

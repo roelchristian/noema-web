@@ -24,7 +24,7 @@ export type SourcePageChoice = keyof typeof sourcePageChoices;
 export type SourcePageOptions = {[K in SourcePageChoice]: keyof typeof sourcePageChoices[K]['options']} & {language:string;beyondSources:boolean};
 export const defaultSourcePageOptions:SourcePageOptions = {format:'briefing',detail:'standard',familiarity:'familiar',language:'',beyondSources:false};
 export interface SourcePageRevision {draftId:string;feedback:string;mode:'retry'|'changes'}
-export interface SourcePageReview {language?:string|null;id:string;title:string;blocks:Block[];focus:string;options?:SourcePageOptions}
+export interface SourcePageReview {persona?:import('./ai-personas.js').PersonaIdentity;language?:string|null;id:string;title:string;blocks:Block[];focus:string;options?:SourcePageOptions}
 export type SourcePageEvent =
   | {type:'preview_reset'}
   | {type:'status';phase:'thinking'|'reviewing'|'preparing_math';progress?:import('./source-progress.js').SourceProcessingProgress}

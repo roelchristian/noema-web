@@ -1031,3 +1031,22 @@
 .storage-items strong { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
 .storage-items p { color: var(--text-muted); font-size: 12px; margin: 4px 0 0; overflow-wrap: anywhere; line-height: 1.5; }
 .storage-items li > span { white-space: nowrap; font-variant-numeric: tabular-nums; font-size: 13px; }
+
+.ai-personas {margin: 16px 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; min-width: 0;}
+.ai-personas > p {color: var(--text-muted); font-size: 13px; line-height: 1.5;}
+.settings-dialog .ai-persona-card {margin: 0; display: flex; align-items: flex-start; gap: 10px; padding: 10px; border-radius: 6px; cursor: pointer;}
+.ai-persona-card:has(input:checked) {background: var(--surface-raised); outline: 1px solid var(--accent);}
+.ai-persona-card input {flex: none; margin-top: 4px;}
+.ai-persona-card > span {display: grid; gap: 4px; min-width: 0; font-size: 13px; line-height: 1.4;}
+.ai-persona-card small {color: var(--text-muted);}
+/* Contextual selection is a quiet inline action; the gallery above is the selection destination. */
+.persona-select {display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; color: var(--text-muted); min-width: 0; max-width: 100%;}
+.source-page-essentials > .persona-select {grid-column: 1 / -1; justify-self: start;}
+.source-page-dialog .persona-select, .reading-explanation-options > .persona-select {display: inline-flex; align-items: center; gap: 6px; width: fit-content; margin: 0;}
+.source-page-dialog .persona-select :is(.select-host, .select-control), .reading-explanation-options .persona-select :is(.select-host, .select-control) {width: auto; min-width: 0; max-width: 100%; margin: 0;}
+.source-page-dialog .persona-select .select-trigger, .reading-explanation-options .persona-select .select-trigger {width: auto; gap: 6px; padding: 4px 6px; border-color: transparent; background: transparent; color: var(--text-muted); font: inherit; box-shadow: none;}
+.source-page-dialog .persona-select .select-trigger:hover:not(:disabled), .source-page-dialog .persona-select .select-trigger[aria-expanded=true], .reading-explanation-options .persona-select .select-trigger:hover:not(:disabled), .reading-explanation-options .persona-select .select-trigger[aria-expanded=true] {background: var(--surface-hover);}
+@media (max-width: 750px), (pointer: coarse) {
+  .source-page-dialog .persona-select .select-trigger, .reading-explanation-options .persona-select .select-trigger {min-height: var(--touch-target-size);}
+}
+.settings-dialog .ai-persona-card input[type=radio] {width: 16px; height: 16px; padding: 0; flex: 0 0 16px;}

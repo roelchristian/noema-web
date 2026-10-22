@@ -3,7 +3,7 @@ import type { Block } from './domain.js';
 export const semanticKinds = ['question','definition','example','claim','evidence','insight','summary','warning','ai-explanation'] as const;
 export type SemanticKind = typeof semanticKinds[number];
 /** Source block IDs and the original excerpt are optional and persist with the explanation. */
-export interface SemanticGroup {id: string; kind: SemanticKind; source?: {blockIds: string[]; excerpt: string}}
+export interface SemanticGroup {persona?:import('./ai-personas.js').PersonaIdentity;id: string; kind: SemanticKind; source?: {blockIds: string[]; excerpt: string}}
 export const semanticFunctions: Record<SemanticKind, {label: string; icon: string; color: string; description: string}> = {
   'ai-explanation': {label:'AI Explanation',icon:'sparkles',color:'#8b79cf',description:'AI-generated explanation · permanent tag'},
   question: {label:'Question',icon:'question-circle',color:'#8b6bd1',description:'Something to investigate or answer'},

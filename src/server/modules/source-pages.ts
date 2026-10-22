@@ -1,3 +1,5 @@
+import {resolvePersona} from './ai-personas.js';
+import {defaultPersonaId} from '../../shared/ai-personas.js';
 import {parsePageGenerationMetadata,type PageGenerationMetadata} from '../../shared/page-generation.js';
 import {sourcePagePrompt} from './source-page-prompt.js';
 import {sourceDocumentEntries,sourceNodeLabel,sourceNodeLocator} from '../../shared/source-document.js';
@@ -169,7 +171,7 @@ export class SourcePageDraft {
 }
 export class SourcePages {
   constructor(private store:Store,private knowledge:Knowledge,private pages:Pages) {}
-  prepare(vault:string,sourceId:string,body:Record<string,unknown>) {
+  prepare(vault:string,sourceId:string,body:Record<string,unknown>,defaultId=defaultPersonaId) {
     const source=this.knowledge.require(vault,sourceId);
     if(source.archived_at)throw new HttpError(409,'Restore this archived source before creating a page.');
     if(source.type!=='source')throw new HttpError(400,'Choose a Source entity.');
@@ -201,21 +203,25 @@ export class SourcePages {
     }
     const requestId=text(body.requestId,100);
     if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId))throw new HttpError(400,'Invalid generation request.');
-    const fingerprint=createHash('sha256').update(JSON.stringify(revisionId?[sourceId,focus,options,revisionId,feedback,revisionMode]:body.options===undefined?[sourceId,focus]:[sourceId,focus,options])).digest('hex');
+    const storedPersona=this.store.get<DraftRow>('SELECT * FROM source_page_drafts WHERE request_id=? AND vault_id=?',revisionId??requestId,vault);
+    const historical=parsePageGenerationMetadata(storedPersona?.generation_metadata)?.persona;
+    const resolved=resolvePersona(body.personaId??historical?.id??defaultId,body.personaId===undefined?historical?.version:undefined);
+    const persona={id:resolved.id,version:resolved.version,origin:resolved.origin};
+    const fingerprint=createHash('sha256').update(JSON.stringify(body.personaId!==undefined?[sourceId,body.personaId,revisionId,focus,options,feedback,revisionMode]:revisionId?[sourceId,focus,options,revisionId,feedback,revisionMode]:body.options===undefined?[sourceId,focus]:[sourceId,focus,options])).digest('hex');
     const previous=this.store.get<{page_id:string;fingerprint:string}>('SELECT page_id,fingerprint FROM source_page_creations WHERE request_id=? AND vault_id=?',requestId,vault);
     if(previous&&previous.fingerprint!==fingerprint)throw new HttpError(409,'This generation request has different generation settings. Start a new request.');
-    if(previous)return {requestId,fingerprint,file,sourceId,revisionId,input:'',existing:this.pages.get(vault,previous.page_id),focus,options,review:undefined};
+    if(previous)return {persona,requestId,fingerprint,file,sourceId,revisionId,input:'',existing:this.pages.get(vault,previous.page_id),focus,options,review:undefined};
     const pending=this.store.get<DraftRow>('SELECT * FROM source_page_drafts WHERE request_id=? AND vault_id=?',requestId,vault);
     if(pending&&pending.fingerprint!==fingerprint)throw new HttpError(409,'This request has different generation settings. Start a new generation.');
     if(pending?.status==='rejected')throw new HttpError(409,'This draft was rejected. Start a new generation.');
-    if(pending?.status==='pending')return {requestId,fingerprint,file,sourceId,revisionId,input:'',existing:undefined,focus,options,review:this.review(pending)};
+    if(pending?.status==='pending')return {persona,requestId,fingerprint,file,sourceId,revisionId,input:'',existing:undefined,focus,options,review:this.review(pending)};
     const prior=revisionId?this.store.get<DraftRow>('SELECT * FROM source_page_drafts WHERE request_id=? AND vault_id=? AND source_id=?',revisionId,vault,sourceId):undefined;
     if(revisionId&&(!prior||prior.status!=='pending'))throw new HttpError(409,'This draft is no longer available to revise. Reopen the latest draft.');
     if(prior&&prior.source_hash!==createHash('sha256').update(file.text).digest('hex'))throw new HttpError(409,'The source changed. Generate a new draft from the updated source.');
     if(Buffer.byteLength(file.text)>160000)throw new HttpError(413,'This source is too long for page generation. Use a shorter source or split it into sections.');
-    return {requestId,fingerprint,file,sourceId,revisionId,input:JSON.stringify({user_focus:focus,generation_options:options,format_instructions:sourcePageFormats[options.format].prompt,...(prior&&revisionMode==='changes'?{revision_feedback:feedback,untrusted_previous_draft:{title:prior.title,blocks:JSON.parse(prior.blocks)}}:{}),untrusted_source:{name:source.name,url:file.source_url,filename:file.name,document:sourceGenerationDocument(new SourceDocuments(this.store).get(file),mathSource(this.store,file).text)}}),existing:undefined,focus,options,review:undefined};
+    return {persona,requestId,fingerprint,file,sourceId,revisionId,input:JSON.stringify({user_focus:focus,generation_options:options,format_instructions:sourcePageFormats[options.format].prompt,...(prior&&revisionMode==='changes'?{revision_feedback:feedback,untrusted_previous_draft:{title:prior.title,blocks:JSON.parse(prior.blocks)}}:{}),untrusted_source:{name:source.name,url:file.source_url,filename:file.name,document:sourceGenerationDocument(new SourceDocuments(this.store).get(file),mathSource(this.store,file).text)}}),existing:undefined,focus,options,review:undefined};
   }
-  private review(row:DraftRow):SourcePageReview {return {id:row.request_id,title:row.title,blocks:JSON.parse(row.blocks) as Block[],focus:row.focus,language:row.language??null,options:normalizeSourcePageOptions(row.options?JSON.parse(row.options):undefined)};}
+  private review(row:DraftRow):SourcePageReview {return {...(parsePageGenerationMetadata(row.generation_metadata)?.persona?{persona:parsePageGenerationMetadata(row.generation_metadata)!.persona}:{}),id:row.request_id,title:row.title,blocks:JSON.parse(row.blocks) as Block[],focus:row.focus,language:row.language??null,options:normalizeSourcePageOptions(row.options?JSON.parse(row.options):undefined)};}
   latest(vault:string,sourceId:string):SourcePageReview|null {
     this.knowledge.require(vault,sourceId);
     const row=this.store.get<DraftRow>("SELECT * FROM source_page_drafts WHERE vault_id=? AND source_id=? AND status='pending' ORDER BY created_at DESC LIMIT 1",vault,sourceId);
@@ -235,14 +241,14 @@ export class SourcePages {
       const blocks=this.pages.validateBlocks(vault,linkSourceReferences(draft.blocks,mathSource(this.store,prepared.file)));
       const recordedActivity=this.store.get('SELECT 1 FROM ai_activity WHERE id=?',activityId)?activityId:null;
       const input=JSON.parse(prepared.input),previousMetadata=parsePageGenerationMetadata(prior?.generation_metadata);
-      const metadata:PageGenerationMetadata={version:1,type:'source_page',options:{...prepared.options},formatPrompt:input.format_instructions,userPrompt:prepared.focus,instructions:sourcePagePrompt(prepared.input).instructions,revisionFeedback:input.revision_feedback!==undefined?[...(previousMetadata?.type==='source_page'?previousMetadata.revisionFeedback:[]),input.revision_feedback].slice(-100):[]};
+      const metadata:PageGenerationMetadata={version:1,persona:prepared.persona,type:'source_page',options:{...prepared.options},formatPrompt:input.format_instructions,userPrompt:prepared.focus,instructions:sourcePagePrompt(prepared.input).instructions,revisionFeedback:input.revision_feedback!==undefined?[...(previousMetadata?.type==='source_page'?previousMetadata.revisionFeedback:[]),input.revision_feedback].slice(-100):[]};
       this.store.run(`INSERT INTO source_page_drafts (request_id,vault_id,source_id,fingerprint,source_hash,focus,options,title,language,blocks,status,activity_id,created_at,generation_metadata)
         VALUES (?,?,?,?,?,?,?,?,?,?,'pending',?,?,?)`,prepared.requestId,vault,prepared.sourceId,prepared.fingerprint,createHash('sha256').update(prepared.file.text).digest('hex'),prepared.focus,JSON.stringify(prepared.options),draft.title,language,JSON.stringify(blocks),recordedActivity,now(),JSON.stringify(metadata));
       if(prior) {
         this.store.run("UPDATE source_page_drafts SET status='rejected',blocks='[]',focus='',options='{}',generation_metadata=NULL WHERE request_id=? AND vault_id=?",prior.request_id,vault);
         if(prior.notification_id)this.store.run('DELETE FROM ai_notifications WHERE id=?',prior.notification_id);
       }
-      return {id:prepared.requestId,title:draft.title,language,blocks,focus:prepared.focus,options:prepared.options};
+      return {persona:prepared.persona,id:prepared.requestId,title:draft.title,language,blocks,focus:prepared.focus,options:prepared.options};
     });
   }
 

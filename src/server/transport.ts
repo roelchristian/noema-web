@@ -127,13 +127,13 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           if(id && parts.length===5 && parts[3]==='reading-notes' && parts[4]==='explain' && method==='POST') {
             if(!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))throw new HttpError(415,'AI requests require JSON.');
             const body=await readBody(req);vaults.requireOpen(vault);
-            const prepared=sourceReading.prepareExplanation(vault,id,body);
+            const prepared=sourceReading.prepareExplanation(vault,id,body,intelligence.personaSelection().id);
             if(prepared.saved)return send(200,prepared.saved);
             activityId=activity.start('block_explanation',intelligence.selection(),vault,prepared.ref.sourceId,'entity');
             const controller=new AbortController(),abort=()=>controller.abort();
             res.once('close',abort);
             try {
-              const explanation=await intelligence.generate({kind:'explanation',input:prepared.ref.excerpt,options:prepared.options,signal:controller.signal,onRequest:bytes=>activity.request(activityId!,bytes,null)});
+              const explanation=await intelligence.generate({kind:'explanation',personaId:prepared.options.persona?.id,personaVersion:prepared.options.persona?.version,input:prepared.ref.excerpt,options:prepared.options,signal:controller.signal,onRequest:bytes=>activity.request(activityId!,bytes,null)});
               vaults.requireOpen(vault);
               if(controller.signal.aborted)throw new HttpError(409,'Explanation cancelled.');
               if(!explanation.trim()||readingNoteWordCount(explanation)>readingNoteMaxWords)throw new HttpError(502,'The explanation exceeded the 200-word reading note limit. Please try again.');
@@ -306,7 +306,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             if(id && parts.length===4 && child==='backlinks' && method==='GET')return send(200,pages.backlinks(vault,id));
             if(id && parts.length===4 && child==='review' && method==='POST') {
               const page=pages.requireEditable(vault,id),texts=reviewTexts(body.texts);
-              const output=await intelligence.generate({kind:'review',input:JSON.stringify({untrusted_texts:texts}),onRequest:bytes=>activity.request(activityId!,bytes,page.revision)});
+              const output=await intelligence.generate({kind:'review',personaId:typeof body.personaId==='string'?body.personaId:undefined,input:JSON.stringify({untrusted_texts:texts}),onRequest:bytes=>activity.request(activityId!,bytes,page.revision)});
               vaults.requireOpen(vault);pages.requireEditable(vault,id);
               return send(200,{suggestions:parseEditorReview(output,texts)});
             }
@@ -317,10 +317,11 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
               const input=summaryInput({title:'',blocks},entityId=>entityMentionName(knowledge.find(vault,entityId)),false,true).trim();
               if(!input)throw new HttpError(400,'Select blocks containing text or equations to explain.');
               if(Buffer.byteLength(input,'utf8')>24000)throw new HttpError(400,'Select fewer blocks (at most 24,000 bytes of text).');
-              const markdown=await intelligence.generate({kind:'explanation',input,onRequest:bytes=>activity.request(activityId!,bytes,page.revision)});
+              const persona=intelligence.personaSelection(body.personaId,typeof body.personaVersion==='number'?body.personaVersion:undefined);
+              const markdown=await intelligence.generate({kind:'explanation',personaId:persona.id,personaVersion:persona.version,input,onRequest:bytes=>activity.request(activityId!,bytes,page.revision)});
               vaults.requireOpen(vault);pages.get(vault,id);
               notifications.record(vault,id,'block_explanation');
-              return send(200,{markdown});
+              return send(200,{markdown,persona:{id:persona.id,version:persona.version,origin:persona.origin}});
             }
             if(id && parts.length===4 && child==='entity-review' && method==='POST') {
               const result=scans.review(vault,id,body);

@@ -1,4 +1,5 @@
 import {parsePageGenerationMetadata} from '../../shared/page-generation.js';
+import {parsePersonaIdentity} from '../../shared/ai-personas.js';
 import {readingNoteMaxWords,readingNoteWordCount,type ReadingNoteMetadata} from '../../shared/source-reading.js';
 import {syncReadingNotesCollection} from './reading-notes-collection.js';
 import {projectPageText} from '../../shared/page-text.js';
@@ -172,6 +173,7 @@ export class Pages {
         const group=object(b.semanticGroup);
         if (!isSemanticKind(group.kind)) throw new HttpError(400,'Invalid semantic group function');
         block.semanticGroup={id:required(group.id),kind:group.kind};
+        if(group.kind==='ai-explanation'&&group.persona!==undefined){try{block.semanticGroup.persona=parsePersonaIdentity(group.persona);}catch{throw new HttpError(400,'Invalid explanation persona.');}}
         if (group.kind === 'ai-explanation' && group.source !== undefined) {
           const source=object(group.source);
           if (!Array.isArray(source.blockIds) || source.blockIds.length > 2000) throw new HttpError(400,'Invalid explanation source');

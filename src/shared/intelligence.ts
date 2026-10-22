@@ -1,8 +1,9 @@
+import type {BuiltinPersonaId} from './ai-personas.js';
 // Curated Responses API text models, checked against official OpenAI docs on 2026-10-16.
 // /v1/models does not describe reasoning compatibility; keep the allowlist explicit.
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export interface IntelligencePreferences { model: string; reasoningEffort: ReasoningEffort }
-export interface IntelligenceConfiguration extends IntelligencePreferences {manualRequestsPerMinute: number; pageEnrichment?: IntelligencePreferences}
+export interface IntelligenceConfiguration extends IntelligencePreferences {personaId?:BuiltinPersonaId;manualRequestsPerMinute: number; pageEnrichment?: IntelligencePreferences}
 export const defaultPageEnrichmentPreferences: IntelligencePreferences = {model:'gpt-6-luna',reasoningEffort:'none'};
 export const defaultManualRequestsPerMinute = 5;
 export const maxManualRequestsPerMinute = 120;

@@ -56,7 +56,7 @@ export const api={
   deleteVault:(id:string,confirmation:import('../shared/domain').VaultDeletionConfirmation)=>request<import('../shared/domain').VaultDeletionResult>(`vaults/${encodeURIComponent(id)}/delete`,'POST',confirmation),
   pageBacklinks:(vault:string,id:string,signal?:AbortSignal)=>request<PageSummary[]>(`pages/${id}/backlinks`,'GET',undefined,vault,signal),
   reviewText:(vault:string,id:string,texts:EditorReviewText[])=>request<{suggestions:EditorReviewSuggestion[]}>(`pages/${id}/review`,'POST',{texts},vault),
-  explainBlocks:(vault:string,id:string,blocks:Page['blocks'])=>request<{markdown:string}>(`pages/${id}/explain`,'POST',{blocks},vault),
+  explainBlocks:(vault:string,id:string,blocks:Page['blocks'],persona?:{id:string;version?:number})=>request<{markdown:string;persona:import('../shared/ai-personas').PersonaIdentity}>(`pages/${id}/explain`,'POST',{blocks,personaId:persona?.id,personaVersion:persona?.version},vault),
   exportVault:exportVaultBackup,
   importVault:importVaultBackup,
   entityMatches:(vault:string,id:string,revision:number,signal?:AbortSignal)=>request<import('../shared/entity-match-cache').EntityMatchCache>(`pages/${id}/entity-matches?revision=${revision}`,'GET',undefined,vault,signal),
@@ -138,8 +138,8 @@ export const api={
 };
 
 /** Consume provisional text deltas and verified blocks, retaining the saved draft for recovery. */
-export async function createPageFromSource(vault:string,sourceId:string,focus:string,options:import('../shared/source-page').SourcePageOptions,requestId:string,onEvent:(event:import('../shared/source-page').SourcePageEvent)=>void,signal:AbortSignal,revision?:import('../shared/source-page').SourcePageRevision):Promise<void> {
-  const response=await fetch(`/api/entities/${encodeURIComponent(sourceId)}/create-page`,{method:'POST',signal,headers:{'X-Noema-Request':'1','X-Vault-Id':vault,'Content-Type':'application/json'},body:JSON.stringify({focus,options,requestId,...(revision?{revision}:{})})});
+export async function createPageFromSource(vault:string,sourceId:string,focus:string,options:import('../shared/source-page').SourcePageOptions,requestId:string,onEvent:(event:import('../shared/source-page').SourcePageEvent)=>void,signal:AbortSignal,revision?:import('../shared/source-page').SourcePageRevision,personaId?:string):Promise<void> {
+  const response=await fetch(`/api/entities/${encodeURIComponent(sourceId)}/create-page`,{method:'POST',signal,headers:{'X-Noema-Request':'1','X-Vault-Id':vault,'Content-Type':'application/json'},body:JSON.stringify({focus,options,requestId,...(personaId?{personaId}:{}),...(revision?{revision}:{})})});
   if(!response.ok){const result=await response.json();throw new ApiError(response.status,result.error||'Could not create a page from this source.');}
   const reader=response.body?.getReader();
   if(!reader)throw new Error('The page stream is unavailable. Please retry.');

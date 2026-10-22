@@ -26,6 +26,12 @@ export const generationContracts = [
 // Compile-only regressions: flags cannot create mixed intents or leak feature options.
 function checkedRequest(_request:GenerationRequest) {}
 function invalidRequests() {
+  // @ts-expect-error Summaries cannot opt into personas.
+  checkedRequest({kind:'summary',input,personaId:'conyo'});
+  // @ts-expect-error Source preprocessing cannot opt into personas.
+  checkedRequest({kind:'editorial',input,instructions:'Normalize',signal,personaId:'conyo'});
+  // @ts-expect-error Math preprocessing cannot opt into personas.
+  checkedRequest({kind:'sourceMath',input,signal,personaId:'conyo'});
   // @ts-expect-error Positional API has no request representation.
   checkedRequest('page');
   // @ts-expect-error Validation never carries user content.

@@ -33,10 +33,7 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Build (styles and typecheck included)
         id: build
-        run: |
-          npm run build
-          echo 'Synthetic CI failure probe: intentional exit 1; remove before merge.'
-          exit 1
+        run: npm run build
       - name: Full test suite
         id: tests
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}

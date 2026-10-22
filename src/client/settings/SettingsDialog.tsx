@@ -25,7 +25,8 @@ const settingsTabs = [
   {id: 'security', get label(){return uiText("Security")}},
 ] as const;
 
-export function SettingsDialog({appearance, onChange, storageError, onClose, onOpenPage, onOpenEntity, onOpenPassage, vault, onChangePassphrase, onBeforeNetworkChange}: {
+export function SettingsDialog({appearance, onChange, onExitFocus, storageError, onClose, onOpenPage, onOpenEntity, onOpenPassage, vault, onChangePassphrase, onBeforeNetworkChange}: {
+  onExitFocus: () => void;
   onChangePassphrase: (current: string, next: string | null) => Promise<void>;
   onBeforeNetworkChange: () => Promise<void>;
   vault: Vault | null;
@@ -85,7 +86,7 @@ export function SettingsDialog({appearance, onChange, storageError, onClose, onO
       </section>
       <section className="settings-section appearance-setting" aria-labelledby="reading-heading">
         <h3 id="reading-heading">Presentation</h3>
-        <PresentationSelector value={appearance.presentationMode} onChange={presentationMode => onChange({...appearance, presentationMode})}/>
+        <PresentationSelector onExitFocus={onExitFocus} value={appearance.presentationMode} onChange={presentationMode => onChange({...appearance, presentationMode})}/>
       </section>
       <section className="settings-section appearance-setting" aria-labelledby="citations-heading">
         <h3 id="citations-heading">{uiText("Citations")}</h3>

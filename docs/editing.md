@@ -72,14 +72,17 @@ Developer validation: `node --import tsx --test test/document-find.test.mjs` and
 
 ### Presentation modes
 
-The page toolbar offers **Standard**, **Subtle**, and **Focus**. Standard keeps
-normal entity highlights and the full workspace. Subtle uses the existing
-focused-reading underlines with the full workspace. Focus uses those same
+The page toolbar groups two icon buttons: **Subtle references** toggles between
+Standard (a letter over a filled highlight) and Subtle (the same letter over a
+dotted underline). The adjacent **Focus mode** button enters or exits Focus;
+exiting restores the previous Standard/Subtle choice. Reference emphasis is fixed
+to Subtle while Focus is active. Tooltips explain the current state and action;
+both controls support Tab and Space/Enter. Focus uses those same
 underlines and centres the editable document while hiding navigation, inspectors,
 the table of contents and secondary chrome. Editing, selection formatting,
 keyboard shortcuts, find, save failures and draft recovery remain available.
-Hover over the top-right controls, tab to them, or use the visible touch controls.
-**Exit Focus** is always visible; **Escape** restores the previous Standard/Subtle
+The top-right icon controls remain visible in Focus; the collapse icon exits.
+There is no separate Exit Focus button; **Escape** restores the previous Standard/Subtle
 mode. Menus, dialogs, find and IME composition take priority over exiting Focus.
 Opening an entity restores the full workspace before opening its destination.
 
@@ -89,8 +92,14 @@ legacy `true` migrates to Subtle, and false/missing values to Standard. The old
 boolean is no longer written. Entity emphasis and workspace visibility are
 independent derived traits, leaving room for future combinations.
 
-Focus persists across reloads and page navigation, but its minimal layout only
-applies to an unlocked page editor. Other destinations retain the full interface.
+The source reader and cited-passage viewer share these controls. Subtle replaces
+saved source highlight fills with coloured underlines and softens cited-passage
+emphasis. Focus centres the source, hides navigation and inspectors, and keeps
+reading, passage selection, highlights, bookmarks and reading notes available.
+Exiting restores the existing reader and inspector state without reloading text.
+
+Focus persists across reloads and navigation, but its minimal layout only
+applies to an unlocked page editor, source reader or cited-passage viewer. Other destinations retain the full interface.
 The previous non-Focus mode is retained in session storage for same-tab reloads;
 a fresh tab without that history exits to Standard. If storage is unavailable,
 choices and restoration work in memory until reload. Hiding chrome never changes

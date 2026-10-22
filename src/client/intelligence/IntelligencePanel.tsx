@@ -30,7 +30,7 @@ function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnap
   useLayoutEffect(() => {
     const element = summaryText.current;
     if (!element) return;
-    const measure = () => setSummaryOverflow(element.scrollHeight > parseFloat(getComputedStyle(element).lineHeight) * 5 + 1);
+    const measure = () => setSummaryOverflow(element.scrollHeight > parseFloat(getComputedStyle(element).lineHeight) * 3 + 1);
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
@@ -89,18 +89,21 @@ function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnap
     <div className="panel-body">
       <PageConceptCategory page={page} onDomainsChange={onDomainsChange} onRefresh={refreshDomains}/>
       <section className="knowledge-summary" aria-labelledby="knowledge-summary-heading">
-        <div className="knowledge-section-heading">
+        <div className={'knowledge-section-heading'+(!result?' sr-only':'')}>
           <h2 id="knowledge-summary-heading"><Icon name="sparkles"/>{uiText("Summary")}{summaryChanged&&<span className="knowledge-status-dot" role="status" aria-label={uiText("Summary needs refresh")} title={uiText("Summary needs refresh")}/>}</h2>
-          <div className="knowledge-section-actions">
-            {result&&summaryOverflow&&<button type="button" className="knowledge-icon-action" aria-label={summaryExpanded?uiText("Collapse summary"):uiText("Expand summary")} title={summaryExpanded?uiText("Collapse summary"):uiText("Expand summary")} aria-expanded={summaryExpanded} aria-controls="knowledge-summary-text" onClick={()=>setSummaryExpanded(value=>!value)}><Icon name={summaryExpanded?'collapse':'expand'}/></button>}
-            <button type="button" className={'knowledge-icon-action'+(busy?' is-working':'')} disabled={busy||deleting||loading} aria-busy={busy} aria-label={result?uiText("Refresh summary"):uiText("Summarize this page")} title={result?uiText("Refresh summary"):uiText("Generate summary")} onClick={()=>void summarize()}><Icon name={busy||result?'refresh':'plus'}/></button>
-            {result&&<button type="button" className="knowledge-icon-action is-destructive" disabled={busy||deleting||loading} aria-label={uiText("Delete summary")} title={uiText("Delete summary")} onClick={()=>void deleteSummary()}><Icon name="trash"/></button>}
-          </div>
+          {result&&<details className="knowledge-summary-menu" onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();event.currentTarget.open=false;event.currentTarget.querySelector('summary')?.focus();}}}>
+            <summary className="knowledge-icon-action" aria-label={uiText("Summary actions")} title={uiText("Summary actions")}><Icon name="more"/></summary>
+            <div className="knowledge-summary-menu-items">
+              <button type="button" aria-label={uiText("Refresh summary")} disabled={busy||deleting||loading} onClick={event=>{event.currentTarget.closest('details')!.open=false;void summarize();}}><Icon name="refresh"/>{uiText("Refresh summary")}</button>
+              <button type="button" aria-label={uiText("Delete summary")} className="is-destructive" disabled={busy||deleting||loading} onClick={event=>{event.currentTarget.closest('details')!.open=false;void deleteSummary();}}><Icon name="trash"/>{uiText("Delete summary")}</button>
+            </div>
+          </details>}
         </div>
         {busy&&result&&<span className="sr-only" role="status">{uiText("Creating your summary…")}</span>}
-        {!result&&<p className="knowledge-empty" role={generatingSummary?'status':undefined}>{uiText(generatingSummary?"Generating summary...":"No AI summary available yet.")}</p>}
+        {!result&&(generatingSummary?<p className="knowledge-empty" role="status">{uiText("Generating summary...")}</p>:<button type="button" className="knowledge-empty-action" disabled={deleting||loading} aria-label={uiText("Summarize this page")} onClick={()=>void summarize()}><Icon name="plus"/>{uiText("Generate summary")}</button>)}
         {error&&<p role="alert" className="inline-error">{error}</p>}
         {result&&<section className="ai-result" aria-label={uiText("Page summary")}><div id="knowledge-summary-text" ref={summaryText} className={'ai-summary' + (summaryExpanded ? '' : ' is-collapsed')}><SummaryText text={result.summary}/></div></section>}
+        {result&&summaryOverflow&&<button type="button" className="knowledge-summary-toggle" aria-expanded={summaryExpanded} aria-controls="knowledge-summary-text" onClick={()=>setSummaryExpanded(value=>!value)}>{uiText(summaryExpanded?"Show less":"Read more")}</button>}
 
       </section>
       <ConnectedEntities page={page} entities={entities} onOpenEntity={onOpenEntity}>

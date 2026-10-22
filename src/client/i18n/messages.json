@@ -8368,5 +8368,20 @@
     "Mise à jour des notes associées…",
     "Verwandte Notizen werden aktualisiert…",
     "Actualizando notas relacionadas…"
+  ],
+  "Add subjects": [
+    "Ajouter des sujets",
+    "Themen hinzufügen",
+    "Añadir temas"
+  ],
+  "Summary actions": [
+    "Actions du résumé",
+    "Zusammenfassungsaktionen",
+    "Acciones del resumen"
+  ],
+  "Read more": [
+    "Lire la suite",
+    "Mehr lesen",
+    "Leer más"
   ]
 }

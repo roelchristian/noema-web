@@ -42,19 +42,27 @@ test('domain picker progressively browses canonical hierarchy and keeps subtype-
 
 test('page subjects save through workspace callback and follow new page assignments',async()=>{
   await ui(async(root,click)=>{
-    const page={id:'p',vault_id:'default',conceptContentHash:'body-v1',pageDomains:{primaryDomainId:'mathematics',secondaryDomainIds:[],origin:'inferred',status:'inferred',contentHash:'body-v1',taxonomyVersion:TAXONOMY_VERSION}};
+    const page={id:'p',vault_id:'default',conceptContentHash:'body-v1',pageDomains:{primaryDomainId:'mathematics',secondaryDomainIds:['psychology'],origin:'inferred',status:'inferred',contentHash:'body-v1',taxonomyVersion:TAXONOMY_VERSION}};
     let saved;
     const props={page,onDomainsChange:async(primary,secondary)=>{saved={primary,secondary};}};
     await act(async()=>root.render(React.createElement(PageConceptCategory,props)));
     assert.match(document.querySelector('.page-domain-summary').textContent,/Mathematics/);
+    assert.equal(document.querySelector('.knowledge-subject-toggle').getAttribute('aria-expanded'),'false');
+    assert.equal(document.querySelector('#knowledge-subject-details').hidden,true);
+    assert.match(document.querySelector('.knowledge-subject-count').textContent,/\+1/);
+    assert.doesNotMatch(document.querySelector('.page-domain-summary').textContent,/Psychology/);
+    await click('.knowledge-subject-toggle');
+    assert.equal(document.querySelector('#knowledge-subject-details').hidden,false);
+    assert.match(document.querySelector('.knowledge-subject-list').textContent,/Psychology/);
     assert.equal(document.querySelector('[aria-label="Edit subjects"]').title,'Edit subjects');
     assert.equal(document.querySelector('.knowledge-status-dot'),null);
     await act(async()=>root.render(React.createElement(PageConceptCategory,{...props,page:{...page,conceptContentHash:undefined,pageDomains:{...page.pageDomains,status:'needs_refresh'}}})));
     assert.ok(document.querySelector('[aria-label="Subjects need refresh"]'));
     await click('[aria-label="Edit subjects"]');
     await click('.page-domain-actions .primary');
-    assert.deepEqual(saved,{primary:'mathematics',secondary:[]});
-    await act(async()=>root.render(React.createElement(PageConceptCategory,{...props,page:{...page,conceptContentHash:undefined,pageDomains:{...page.pageDomains,primaryDomainId:'psychology',status:'manual',origin:'manual'}}})));
+    assert.deepEqual(saved,{primary:'mathematics',secondary:['psychology']});
+    assert.equal(document.querySelector('#knowledge-subject-details').hidden,true);
+    await act(async()=>root.render(React.createElement(PageConceptCategory,{...props,page:{...page,conceptContentHash:undefined,pageDomains:{...page.pageDomains,primaryDomainId:'psychology',secondaryDomainIds:[],status:'manual',origin:'manual'}}})));
     assert.ok(document.querySelector('[aria-label="Manually selected subjects"]'));
     assert.match(document.querySelector('.page-domain-summary').textContent,/Psychology/);
   });

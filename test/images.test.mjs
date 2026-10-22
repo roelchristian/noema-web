@@ -44,6 +44,8 @@ test('images persist in vault folders, survive restart, and respect scope and va
     await upload(Buffer.alloc(20*1024*1024+1),'default',413);
     response=await fetch(base+'/api/images',{method:'POST',body:png}); assert.equal(response.status,403);
     response=await fetch(base+'/api/images',{method:'POST',headers:{'X-Noema-Request':'1',Origin:'https://evil.example'},body:png}); assert.equal(response.status,403);
+    response=await fetch(base+'/api/images/fetch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:'http://127.0.0.1/image.png'})}); assert.equal(response.status,403);
+    response=await fetch(base+'/api/images/fetch',{method:'POST',headers:{'X-Noema-Request':'1','Content-Type':'application/json'},body:JSON.stringify({url:'http://127.0.0.1/image.png'})}); assert.equal(response.status,400);
     const vault=await json('vaults','POST',{name:'Other'},'default',201);
     response=await fetch(base+'/api/images/'+id+'?vault='+vault.id); assert.equal(response.status,404);
     const page=await json('pages','POST',{title:'Image note'},'default',201);
@@ -68,4 +70,23 @@ test('images persist in vault folders, survive restart, and respect scope and va
     await json('trash/'+page.id+'/restore','POST',{});
     assert.deepEqual((await json('pages/'+page.id)).blocks,blocks);
   } finally {if(server) await stop(); rmSync(dir,{recursive:true,force:true});}
+});
+
+test('clipboard image downloads pin public DNS and enforce redirects, types and size limits',async t=>{
+ const https=(await import('node:https')).default;
+ const {Readable}=await import('node:stream');
+ const {EventEmitter}=await import('node:events');
+ const {fetchRemoteImage}=await import('../src/server/modules/remote-image.ts');
+ let headers={'content-type':'image/png'},status=200;
+ t.mock.method(https,'get',(url,options,callback)=>{
+  options.lookup(url.hostname,{},(error,address,family)=>{assert.equal(error,null);assert.equal(address,'8.8.8.8');assert.equal(family,4);});
+  const response=Readable.from([png]);response.statusCode=status;response.headers=headers;
+  queueMicrotask(()=>callback(response));return new EventEmitter();
+ });
+ const result=await fetchRemoteImage('https://8.8.8.8/image.png');assert.deepEqual(result.bytes,png);assert.equal(result.mime,'image/png');
+ headers={'content-type':'text/html'};await assert.rejects(fetchRemoteImage('https://8.8.8.8/image.png'),/PNG, JPEG/);
+ headers={'content-type':'image/png','content-length':String(21*1024*1024)};await assert.rejects(fetchRemoteImage('https://8.8.8.8/image.png'),/20 MB/);
+ status=302;headers={location:'http://127.0.0.1/private.png'};await assert.rejects(fetchRemoteImage('https://8.8.8.8/image.png'),/public internet/);
+ await assert.rejects(fetchRemoteImage('file:///private.png'),/public HTTP/);
+ await assert.rejects(fetchRemoteImage('https://user:password@example.com/image.png'),/without credentials/);
 });

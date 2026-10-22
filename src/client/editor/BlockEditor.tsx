@@ -1,3 +1,4 @@
+import { fetchClipboardImage } from '../api';
 import {EntityLinkActions} from './EntityLinkActions';
 import {memoizeBlock} from '../../shared/immutable-blocks';
 import {getLocale} from '../i18n';
@@ -36,7 +37,7 @@ import { Modal, ModalHeader } from '../components/Modal';
 import { useMobileViewport } from '../components/WorkspaceNavigation';
 import {segmentsEqual} from '../../shared/segments-equal';
 import { readSegments, segmentHTML, syncEditableSegments } from './segments';
-import { clipboardBlocks, markdownBlocks, makeBlock } from './paste';
+import { clipboardContent, type ClipboardImage, markdownBlocks, makeBlock } from './paste';
 import { compressImage } from './compress-image';
 import { readImageCompression } from '../settings/image-settings';
 import { ImageBlock } from './ImageBlock';
@@ -243,6 +244,7 @@ export function BlockEditor(props: Props) {
   const uploadQueue = useRef(Promise.resolve());
   const mounted = useRef(true);
   useEffect(() => {mounted.current=true; return () => {mounted.current=false;};}, []);
+  const pendingClipboardImages = useRef(new Set<string>());
   const fileInput = useRef<HTMLInputElement>(null), imageTarget = useRef<{after?: string; replace?: Block}>({});
   const [menu, setMenu] = useState<Menu | null>(null), elements = useRef(new Map<string, HTMLElement>());
   const root = useRef<HTMLDivElement>(null), menuRef = useRef<HTMLDivElement>(null), latest = useRef(props); latest.current = {...props,blocks,onChange};
@@ -371,7 +373,8 @@ export function BlockEditor(props: Props) {
     if (!root.current) return;
     return installBlockSelection(root.current, {
       blocks: () => latest.current.blocks, entities: () => latest.current.entities,
-      commit: (blocks, focus) => { setMenu(null); focusTarget.current = {...focus, start: false}; latest.current.onChange(blocks); },
+      commit: (blocks, focus) => { setMenu(null); focusTarget.current = {...focus, start: false}; latest.current.onChange(blocks); latest.current = {...latest.current, blocks}; },
+      clipboard: data => {const {blocks, images} = clipboardContent(data); importClipboardImages(images); return blocks.map(block => block.type === 'image' ? {...block, type:'divider'} : block);},
     });
   }, []);
   useEffect(() => {
@@ -546,6 +549,60 @@ export function BlockEditor(props: Props) {
         }
       } catch(error) { if(mounted.current) setImageError(error instanceof Error ? error.message : 'Image upload failed'); }
       finally { if(mounted.current) setUploads(items => items.filter(item => item.id !== id)); }
+    });
+  }
+  function importClipboardImages(images: ClipboardImage[]) {
+    if (!images.length) return;
+    for (const image of images) pendingClipboardImages.current.add(image.block.id);
+    const id = randomUUID(), autoCompress = readImageCompression();
+    setImageError('');
+    setUploads(items => [...items, {id, name:'Pasted image', message:'Saving to your vault…', current:1, total:images.length}]);
+    uploadQueue.current = uploadQueue.current.then(async () => {
+      try {
+        for (const [index, item] of images.entries()) {
+          if (!mounted.current) return;
+          setUploads(items => items.map(upload => upload.id === id ? {...upload, current:index+1} : upload));
+          try {
+            let file = item.file;
+            if (!file) {
+              const url = new URL(item.source, window.location.href);
+              if (!['http:', 'https:', 'data:', 'blob:'].includes(url.protocol)) throw new Error('This clipboard image is not accessible. Copy the image itself and paste it again.');
+              if (['http:', 'https:'].includes(url.protocol) && url.origin !== window.location.origin) {
+                file = await fetchClipboardImage(props.vaultId, url.href);
+              } else {
+                const response = await fetch(url.href, {credentials:'same-origin'});
+                if (!response.ok) throw new Error('Could not read a clipboard image. Copy the image itself and paste it again.');
+                const blob = await response.blob();
+                if (!blob.type.startsWith('image/')) throw new Error('The clipboard image could not be read as an image.');
+                file = new File([blob], 'pasted-image', {type:blob.type});
+              }
+            }
+            if (file.size > 20 * 1024 * 1024) throw new Error('Images must be 20 MB or smaller');
+            const prepared = autoCompress ? await compressImage(file) : file;
+            if (!mounted.current) return;
+            const image = await uploadImage(props.vaultId, prepared);
+            if (!mounted.current) return;
+            const patch = {type:'image' as const, imageId:image.id, alt:item.block.alt};
+            root.current?.dispatchEvent(new CustomEvent('noema:clipboard-image-resolved', {bubbles:true, detail:{id:item.block.id, patch}}));
+            if (!latest.current.blocks.some(block => block.id === item.block.id && block.type === 'divider')) continue;
+            const list = latest.current.blocks.map(block => block.id === item.block.id && block.type === 'divider' ? {...block, ...patch} : block);
+            latest.current.onChange(list);
+            latest.current = {...latest.current, blocks:list};
+          } catch (error) {
+            if (!mounted.current) return;
+            setImageError(error instanceof Error ? error.message : 'Image upload failed');
+            root.current?.dispatchEvent(new CustomEvent('noema:clipboard-image-resolved', {bubbles:true, detail:{id:item.block.id, patch:null}}));
+            if (!latest.current.blocks.some(block => block.id === item.block.id && block.type === 'divider')) continue;
+            const list = latest.current.blocks.filter(block => block.id !== item.block.id || block.type !== 'divider');
+            if (!list.length) list.push(makeBlock());
+            latest.current.onChange(list);
+            latest.current = {...latest.current, blocks:list};
+          }
+        }
+      } finally {
+        for (const image of images) pendingClipboardImages.current.delete(image.block.id);
+        if (mounted.current) setUploads(items => items.filter(item => item.id !== id));
+      }
     });
   }
   function uploadCards(after?: string) {
@@ -774,7 +831,10 @@ export function BlockEditor(props: Props) {
     if (!selection?.rangeCount) return;
     const range = selection.getRangeAt(0);
     if (!el.contains(range.startContainer) || !el.contains(range.endContainer)) return;
-    const incoming = clipboardBlocks(e.clipboardData.getData('text/plain'), e.clipboardData.getData('text/html')).map(incoming=>({...incoming,column:block.column,...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{}),...(isAIExplanation(block)?{semantic:'ai-explanation' as const}:{})}));
+    const {blocks: pasted, images} = clipboardContent(e.clipboardData);
+    // A temporary divider can autosave while the image is being imported.
+    const incoming = pasted.map(incoming=>({...incoming, ...(incoming.type === 'image' ? {type:'divider' as const} : {}), column:block.column,...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{}),...(isAIExplanation(block)?{semantic:'ai-explanation' as const}:{})}));
+    if (pasted.at(-1)?.type === 'image') incoming.push({...makeBlock(), column:block.column, ...(block.semanticGroup ? {semanticGroup:block.semanticGroup} : {})});
     const wasEmpty=!el.textContent?.trim();
     range.deleteContents();
     if (incoming.length === 1 && incoming[0]!.type === 'paragraph') {
@@ -794,6 +854,8 @@ export function BlockEditor(props: Props) {
     if (suffix.length) replacement.push({...makeBlock(block.type, suffix),column:block.column,...(isAIExplanation(block)?{semantic:'ai-explanation' as const}:{}),...(block.semanticGroup?{semanticGroup:block.semanticGroup}:{})});
     const list = [...latest.current.blocks], index = list.findIndex(b => b.id === block.id);
     list.splice(index, 1, ...replacement); focusTarget.current = {id: replacement.at(-1)!.id, start: !suffix.length ? false : true}; onChange(list);
+    latest.current = {...latest.current, blocks:list};
+    importClipboardImages(images);
   }
   function keyDown(e: KeyboardEvent<HTMLElement>, block: Block) {
     const el = e.currentTarget;
@@ -865,7 +927,7 @@ export function BlockEditor(props: Props) {
       <button className={'block-handle' + (block.semantic ? ' semantic-handle' : '')} draggable={false} title={(block.semantic ? uiText(semanticFunctions[block.semantic].label)+' · ' : '')+uiText("Drag to move · Click for block options")} aria-label={block.semantic ? uiText(semanticFunctions[block.semantic].label)+uiText(" block options") : uiText("Block options")} aria-describedby="block-drag-help" onClick={e => blockOptions(e.currentTarget,block)}>{semanticGlyph(block.semantic)}</button>
     </div>
     {block.type === 'todo' ? <input type="checkbox" aria-label={uiText("Complete task")} checked={block.checked} onChange={e => update(block.id, {checked: e.target.checked})}/> : block.type === 'bullet' ? <span className="bullet-marker">•</span> : block.type === 'numbered' ? <span className="bullet-marker numbered-marker">{blockListNumber(blocks, block.id)}.</span> : null}
-    {block.type === 'divider' ? <div className="divider-block" ref={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}} tabIndex={0} role="separator" aria-label={uiText("Divider")} onKeyDown={event => {
+    {pendingClipboardImages.current.has(block.id) && !block.imageId ? <div className="image-block" role="status" aria-label={uiText("Saving image…")}/> : block.type === 'divider' ? <div className="divider-block" ref={el => {if(el) elements.current.set(block.id,el); else elements.current.delete(block.id);}} tabIndex={0} role="separator" aria-label={uiText("Divider")} onKeyDown={event => {
       if(event.key === 'Enter') {event.preventDefault(); insert(block.id);}
       if(event.key === 'Backspace' || event.key === 'Delete') {event.preventDefault(); removeBlock(block.id);}
       if((event.metaKey || event.ctrlKey) && event.key === 's') {event.preventDefault(); onSave();}
@@ -952,7 +1014,7 @@ export function BlockEditor(props: Props) {
     }} onPasteCapture={e => {
       if ((e.target as Element).closest('[data-semantic-kind="ai-explanation"]')) return;
       const files=Array.from(e.clipboardData.files).filter(file => file.type.startsWith('image/'));
-      if(!files.length) return;
+      if(!files.length || e.clipboardData.getData('text/html') || e.clipboardData.getData('text/plain')) return;
       e.preventDefault(); e.stopPropagation(); setMenu(null);
       const blockElement=(e.target as Element).closest<HTMLElement>('[data-block-id]');
       void addImages(files,{after:blockElement?.dataset.blockId,featured:true});

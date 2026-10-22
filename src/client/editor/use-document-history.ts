@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {immutableBlocks, sameDocument} from '../../shared/immutable-blocks';
-import type {Page} from '../../shared/domain';
+import type {Block, Page} from '../../shared/domain';
 import {captureEditorSelection, restoreEditorSelection, type EditorHistorySelection} from './history-selection';
 import {pauseEntityRecognition, resumeEntityRecognition} from './auto-entity-matching';
 
@@ -221,6 +221,26 @@ export function useDocumentHistory(page: Page | null, onChange: (patch: Document
       history.current = emptyHistory(page); resumeEntityRecognition();
       refresh(value=>value+1);
     }
+    // Resolving an asynchronous clipboard image completes the paste transaction.
+    // Patch every snapshot so undo/redo never restores a temporary upload divider.
+    function clipboardImageResolved(event: Event) {
+      if (!(event.target instanceof Element) || !event.target.closest('article.page')) return;
+      const {id, patch} = (event as CustomEvent<{id:string; patch:Partial<Block> | null}>).detail;
+      const state = history.current, resolved = new Map<DocumentState, DocumentState>();
+      const resolve = (snapshot: DocumentState | null): DocumentState | null => {
+        if (!snapshot) return null;
+        if (!snapshot.blocks.some(block => block.id === id && block.type === 'divider')) return snapshot;
+        const cached = resolved.get(snapshot); if (cached) return cached;
+        const blocks = snapshot.blocks.flatMap(block => block.id !== id || block.type !== 'divider' ? [block] : patch ? [{...block, ...patch}] : []);
+        const result = {...snapshot, blocks:immutableBlocks(blocks, snapshot.blocks)};
+        resolved.set(snapshot, result); return result;
+      };
+      state.current = resolve(state.current); state.observed = resolve(state.observed);
+      for (const transaction of new Set([...state.past, ...state.future, ...(state.batch ? [state.batch] : []), ...(state.captureAfter ? [state.captureAfter] : [])])) {
+        transaction.before = resolve(transaction.before)!; transaction.after = resolve(transaction.after)!;
+      }
+    }
+    document.addEventListener('noema:clipboard-image-resolved', clipboardImageResolved);
     document.addEventListener('noema:document-replaced', replaced);
     document.addEventListener('keydown', keydown, true);
     document.addEventListener('beforeinput', beforeinput, true);
@@ -230,6 +250,7 @@ export function useDocumentHistory(page: Page | null, onChange: (patch: Document
     document.addEventListener('compositionstart', compositionstart, true);
     document.addEventListener('compositionend', compositionend, true);
     return () => {
+      document.removeEventListener('noema:clipboard-image-resolved', clipboardImageResolved);
       document.removeEventListener('noema:document-replaced', replaced);
       document.removeEventListener('keydown', keydown, true);
       document.removeEventListener('beforeinput', beforeinput, true);

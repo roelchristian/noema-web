@@ -7,7 +7,7 @@ import { readSegments, segmentHTML } from './segments';
 
 type Point = {node: Node; offset: number};
 type Focus = {id: string; offset: number};
-interface Options {blocks: () => Block[]; entities: () => Entity[]; commit: (blocks: Block[], focus: Focus) => void}
+interface Options {blocks: () => Block[]; entities: () => Entity[]; commit: (blocks: Block[], focus: Focus) => void; clipboard?: (data: DataTransfer) => Block[]}
 const element = (node: Node | null) => node instanceof Element ? node : node?.parentElement;
 const surface = (node: Node | null) => element(node)?.closest<HTMLElement>('.block-content[contenteditable="true"]');
 function paragraphJoinSpace(left: string, right: string): Segment[] {
@@ -109,13 +109,17 @@ export function editorSelectionClipboard(root: HTMLElement, blocks: Block[], ent
   const escapeAttribute=(value:string)=>value.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
   const html = slices.map(block => {
     const attributes=(block.type === 'heading1' || block.type === 'heading2' ? ` data-noema-block-type="${block.type}"` : '')+(block.semantic?` data-noema-semantic="${block.semantic}"`:'')+(block.semanticGroup?` data-noema-group="${escapeAttribute(block.semanticGroup.id)}" data-noema-group-kind="${block.semanticGroup.kind}"`:'');
+    if (block.type === 'image') {
+      const image = selected.elements.find(el => el.dataset.blockId === block.id)?.querySelector('img');
+      return image ? `<img${attributes} src="${escapeAttribute(image.src)}" alt="${escapeAttribute(block.alt ?? '')}">` : '';
+    }
     if (block.type === 'divider') return '<hr'+attributes+'>';
     if (block.type === 'code') return '<pre'+attributes+'><code>'+escapeAttribute(textOf(block.content, entities)).replace(/>/g,'&gt;')+'</code></pre>';
     if (block.type === 'numbered' || block.type === 'bullet') {const tag=block.type === 'numbered' ? 'ol' : 'ul'; return `<${tag}><li${attributes}>${segmentHTML(block.content, entities)}</li></${tag}>`;}
     if (block.type === 'columns') return '<section data-noema-block-type="columns"'+attributes+'>'+(block.rows?.[0] ?? [[],[]]).map(cell => '<div>'+segmentHTML(cell, entities)+'</div>').join('')+'</section>';
     if (block.type === 'table') return '<table'+attributes+'>'+block.rows?.map(row => '<tr>'+row.map(cell => '<td>'+segmentHTML(cell, entities)+'</td>').join('')+'</tr>').join('')+'</table>';
     const tag = block.type === 'heading1' ? 'h2' : block.type === 'heading2' ? 'h3' : block.type === 'quote' ? 'blockquote' : 'p';
-    const content = block.type === 'math' ? [{text: `\\[${textOf(block.content, entities)}\\]`}] : block.type === 'image' ? [{text: block.alt ?? ''}] : block.content;
+    const content = block.type === 'math' ? [{text: `\\[${textOf(block.content, entities)}\\]`}] : block.content;
     return `<${tag}${attributes}>${segmentHTML(content, entities)}</${tag}>`;
   }).join('');
   return {text, html};
@@ -130,7 +134,7 @@ export function replaceEditorSelection(root: HTMLElement, options: Options, inco
   const parent=list[start]!.semanticGroup, sameParent=parent && parent.id===list[end]!.semanticGroup?.id;
   const column = list[start]!.column;
   const sameColumn = column && column.id === list[end]!.column?.id && column.index === list[end]!.column?.index;
-  const replacement: Block[] = incoming.map(block => ({...block,...(sameColumn?{column}:{}), ...(sameParent?{semanticGroup:parent}:{}), id: randomUUID()}));
+  const replacement: Block[] = incoming.map(block => ({...block,...(sameColumn?{column}:{}), ...(sameParent?{semanticGroup:parent}:{}), id: block.id}));
   if (prefix) {
     if (replacement[0]?.type === 'paragraph' && prefix.type !== 'table' && prefix.type !== 'columns') replacement[0] = {...prefix, content: [...prefix.content, ...replacement[0].content]};
     else replacement.unshift(prefix);
@@ -385,8 +389,8 @@ export function installBlockSelection(root: HTMLElement, options: Options) {
     event.preventDefault(); event.stopPropagation(); if (event.type === 'cut') replaceEditorSelection(root, options);
   }
   function paste(event: ClipboardEvent) {
-    const selected = selectedEditorBlocks(root); if (!selected || !crossesHosts(selected) || !event.clipboardData || event.clipboardData.files.length) return;
-    const blocks = clipboardBlocks(event.clipboardData.getData('text/plain'), event.clipboardData.getData('text/html'));
+    const selected = selectedEditorBlocks(root); if (!selected || !crossesHosts(selected) || !event.clipboardData) return;
+    const blocks = options.clipboard ? options.clipboard(event.clipboardData) : clipboardBlocks(event.clipboardData.getData('text/plain'), event.clipboardData.getData('text/html'));
     if (replaceEditorSelection(root, options, blocks)) {event.preventDefault(); event.stopPropagation();}
   }
   document.addEventListener('pointerdown', down, true); document.addEventListener('pointermove', move, {capture:true,passive:false}); window.addEventListener('blur',blur); root.addEventListener('dragstart',nativeDrag); document.addEventListener('selectionchange',refreshSelection); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', cancelPointer);

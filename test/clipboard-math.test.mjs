@@ -60,3 +60,19 @@ test('rich code, escaped and unmatched delimiters, and existing math remain inta
  const [literal]=clipboard('', '<span>`'+String.raw`\(code\)`+'` then '+String.raw`\(math\)`+'</span>');
  assert.deepEqual(literal.content.filter(s=>s.math).map(s=>s.text),['math']);
 });
+
+test('rich clipboard images split marked text in order, including image-only and table selections', async t=>{
+ const {setupDOM}=await import('./helpers/dom.mjs');setupDOM(t);
+ const {clipboardContent}=await import('../src/client/editor/paste.ts');
+ for(const html of ['<p><strong>Before<img src="https://example.test/a.png" alt="Diagram">After</strong></p>','<table><tr><td><strong>Before<img src="https://example.test/a.png" alt="Diagram">After</strong></td></tr></table>']){
+  const {blocks,images}=clipboardContent({getData:type=>type==='text/html'?html:'BeforeAfter',files:[]});
+  assert.deepEqual(blocks.map(b=>b.type),['paragraph','image','paragraph']);
+  assert.deepEqual(blocks.filter(b=>b.type==='paragraph').map(b=>b.content),[[{text:'Before',bold:true}],[{text:'After',bold:true}]]);
+  assert.equal(images[0].source,'https://example.test/a.png');assert.equal(blocks[1].alt,'Diagram');assert.equal(images[0].block.id,blocks[1].id);
+ }
+ const file=new File(['image'],'clipboard.png',{type:'image/png'});
+ const data={getData:type=>type==='text/html'?'<img src="file:///clipboard.png">':'',files:[file]};
+ const result=clipboardContent(data);assert.equal(result.blocks.length,1);assert.equal(result.images[0].file,file);
+ const plain=clipboardContent({getData:type=>type==='text/plain'?'Caption':'',files:[file]});
+ assert.deepEqual(plain.blocks.map(b=>b.type),['paragraph','image']);assert.equal(plain.images[0].file,file);
+});

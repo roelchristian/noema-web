@@ -9,6 +9,12 @@ export async function request<T>(route: string, method='GET', body?: unknown, va
   return result as T;
 }
 export function imageURL(vault: string, id: string) { return `/api/images/${encodeURIComponent(id)}?vault=${encodeURIComponent(vault)}`; }
+export async function fetchClipboardImage(vault: string, url: string): Promise<File> {
+  const response = await fetch('/api/images/fetch', {method:'POST', headers:{'X-Noema-Request':'1','X-Vault-Id':vault,'Content-Type':'application/json'}, body:JSON.stringify({url})});
+  if (!response.ok) {const result = await response.json(); throw new ApiError(response.status, result.error || 'Could not download clipboard image');}
+  const blob = await response.blob();
+  return new File([blob], 'pasted-image', {type:blob.type});
+}
 export async function uploadImage(vault: string, file: File): Promise<{id: string}> {
   if(file.size > 20 * 1024 * 1024) throw new Error('Images must be 20 MB or smaller');
   const response = await fetch('/api/images', {method:'POST', headers:{'X-Noema-Request':'1','X-Vault-Id':vault,'Content-Type':'application/octet-stream'}, body:file});

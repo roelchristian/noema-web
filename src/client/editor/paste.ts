@@ -143,7 +143,7 @@ export function clipboardMathBlocks(blocks: Block[]): Block[] {
   }
   return output;
 }
-export function clipboardBlocks(text: string, html: string, markdown=readMarkdownTyping()): Block[] {
+export function clipboardBlocks(text: string, html: string, markdown=readMarkdownTyping(), onImage?: (node: Element) => Block | undefined): Block[] {
   const plainBlocks=()=>[makeBlock('paragraph',text?[{text:text.replace(/\r\n?/g,'\n')}]:[])];
   if (!html) return markdown?markdownBlocks(text):plainBlocks();
   const doc = new DOMParser().parseFromString(html, 'text/html'), blocks: Block[] = [];
@@ -158,18 +158,45 @@ export function clipboardBlocks(text: string, html: string, markdown=readMarkdow
     return block;
   }
 
+  // Split rich text at images without losing marks inherited from inline wrappers.
+  function appendContent(node: Element, type: BlockType) {
+    const images = Array.from(node.querySelectorAll('img'));
+    if (!images.length || !onImage) { blocks.push(richBlock(type, readSegments(node, false), node)); return; }
+    const range = doc.createRange(); range.selectNodeContents(node);
+    const appendText = () => {
+      const wrapper = document.createElement('div'); wrapper.append(range.cloneContents());
+      const content = readSegments(wrapper, false);
+      if (content.some(segment => segment.text || segment.entityId || segment.math || segment.sourceReference)) blocks.push(richBlock(type, content, node));
+    };
+    for (const image of images) {
+      range.setEndBefore(image); appendText();
+      const block = onImage(image); if (block) blocks.push(block);
+      range.setStartAfter(image);
+    }
+    range.setEnd(node, node.childNodes.length); appendText();
+  }
+
   function visit(parent: Element) {
     let inline = document.createElement('div');
-    const flush = () => { if (inline.textContent?.trim() || inline.querySelector('br')) blocks.push(makeBlock('paragraph', readSegments(inline, false))); inline = document.createElement('div'); };
+    const flush = () => { if (inline.textContent?.trim() || inline.querySelector('br,img')) appendContent(inline, 'paragraph'); inline = document.createElement('div'); };
     for (const node of Array.from(parent.childNodes)) {
       if (!(node instanceof HTMLElement)) { inline.append(node.cloneNode(true)); continue; }
       const tag = node.tagName;
-      if (node.getAttribute('data-noema-block-type') === 'columns') {
+      if (node.getAttribute('data-noema-block-type') === 'columns' && !(onImage && node.querySelector('img'))) {
         flush();
         const cells = Array.from(node.children).slice(0,2).map(cell => readSegments(cell, false));
         blocks.push({...richBlock('columns', [], node), rows: [[cells[0] ?? [], cells[1] ?? []]]});
+      } else if (tag === 'IMG' && onImage) {
+        flush(); const block = onImage(node); if (block) blocks.push(block);
       } else if (tag === 'TABLE') {
-        flush(); const rows = Array.from(node.querySelectorAll('tr')).filter(row => row.closest('table') === node).slice(0,100).map(row => Array.from(row.cells).slice(0,20).map(cell => readSegments(cell, false)));
+        flush();
+        if (onImage && node.querySelector('img')) {
+          for (const row of Array.from(node.querySelectorAll('tr')).filter(row => row.closest('table') === node).slice(0,100)) {
+            for (const cell of Array.from(row.cells).slice(0,20)) appendContent(cell, 'paragraph');
+          }
+          continue;
+        }
+        const rows = Array.from(node.querySelectorAll('tr')).filter(row => row.closest('table') === node).slice(0,100).map(row => Array.from(row.cells).slice(0,20).map(cell => readSegments(cell, false)));
         const width = Math.max(0,...rows.map(row => row.length));
         if (width) blocks.push({...richBlock('table',[],node), rows: rows.map(row => Array.from({length: width}, (_, i) => row[i] ?? []))});
       } else if (tag === 'HR') { flush(); blocks.push(richBlock('divider', [], node));
@@ -182,7 +209,8 @@ export function clipboardBlocks(text: string, html: string, markdown=readMarkdow
           const copy = node.cloneNode(true) as HTMLElement; copy.querySelectorAll('ul,ol').forEach(list => list.remove());
           const checkbox = copy.querySelector<HTMLInputElement>('input[type=checkbox]');
           const type: BlockType = tag === 'H1' ? 'heading1' : /^H[2-6]$/.test(tag) ? 'heading2' : tag === 'LI' ? checkbox ? 'todo' : node.parentElement?.tagName === 'OL' ? 'numbered' : 'bullet' : tag === 'BLOCKQUOTE' ? 'quote' : 'paragraph';
-          blocks.push({...richBlock(type, tag === 'PRE' ? [{text: node.textContent || '', code: true}] : readSegments(copy, false), node), checked: checkbox?.checked ?? false});
+          const start = blocks.length; appendContent(copy, type);
+          for (const block of blocks.slice(start)) if (block.type === 'todo') block.checked = checkbox?.checked ?? false;
           if (tag === 'LI') node.querySelectorAll(':scope > ul,:scope > ol').forEach(visit);
         }
       } else inline.append(node.cloneNode(true));
@@ -192,4 +220,24 @@ export function clipboardBlocks(text: string, html: string, markdown=readMarkdow
   visit(doc.body);
   // Some applications wrap plain Markdown in one styled span.
   return blocks.length ? normalizeSemanticGroups(markdown?clipboardMathBlocks(blocks):blocks) : markdown?markdownBlocks(text):plainBlocks();
+}
+
+export interface ClipboardImage {block: Block; source: string; file?: File}
+/** Keep binary clipboard images paired with their HTML position when available. */
+export function clipboardContent(data: Pick<DataTransfer, 'files' | 'getData'>): {blocks: Block[]; images: ClipboardImage[]} {
+  const images: ClipboardImage[] = [];
+  const files = Array.from(data.files).filter(file => file.type.startsWith('image/'));
+  const html = data.getData('text/html');
+  const imageCount = html ? new DOMParser().parseFromString(html, 'text/html').querySelectorAll('img').length : 0;
+  const blocks = clipboardBlocks(data.getData('text/plain'), html, undefined, node => {
+    const source = node.getAttribute('src') || node.getAttribute('data-src') || '';
+    const block = {...makeBlock('image'), alt:(node.getAttribute('alt') || '').slice(0,1000)};
+    const index = images.length;
+    images.push({block, source, ...((files.length === imageCount || !source || /^(?:file:|blob:|cid:)/i.test(source)) && files[index] ? {file:files[index]} : {})});
+    return block;
+  });
+  if (!images.length) for (const file of files) {
+    const block = makeBlock('image'); blocks.push(block); images.push({block, source:'', file});
+  }
+  return {blocks, images};
 }

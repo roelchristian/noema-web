@@ -85,3 +85,110 @@ test('keyboard correction in a table preserves lowercase wording and excludes re
     assert.deepEqual(blocks()[86].rows[0][0],[{text:'fictional idea',skipAutoTag:true}]);
   });
 });
+
+test('pasting mixed HTML and files saves images in order without losing surrounding text',async()=>{
+ await fixture(async({dom,host,caret,blocks})=>{
+  const previousFetch=globalThis.fetch,previousFile=globalThis.File;
+  const uploads=[];
+  globalThis.fetch=async(url,options)=>{
+   if(url==='/api/images'){uploads.push(options.body);return {ok:true,json:async()=>({id:'pasted-'+uploads.length})};}
+   throw new Error('Unexpected image fetch '+url);
+  };
+  globalThis.File=dom.window.File;
+  try{
+   const el=host('b87');caret(el,10);
+   const file=new dom.window.File(['fake gif'],'clipboard.gif',{type:'image/gif'});
+   const paste=new dom.window.Event('paste',{bubbles:true,cancelable:true});
+   Object.defineProperty(paste,'clipboardData',{value:{getData:type=>type==='text/html'?'<p>Before<img src="file:///clipboard.gif" alt="Diagram">After</p>':type==='text/plain'?'BeforeAfter':'',files:[file]}});
+   await act(async()=>{el.dispatchEvent(paste);await new Promise(resolve=>setTimeout(resolve,20));});
+   assert.ok(paste.defaultPrevented);assert.equal(uploads.length,1);
+   const inserted=blocks().slice(86,90);
+   assert.deepEqual(inserted.map(b=>b.type),['paragraph','image','paragraph','paragraph']);
+   assert.equal(inserted[0].content.map(s=>s.text).join(''),'FictitiousBefore');
+   assert.equal(inserted[1].imageId,'pasted-1');assert.equal(inserted[1].alt,'Diagram');
+   assert.equal(inserted[2].content.map(s=>s.text).join(''),'After');
+   assert.equal(inserted[3].content.map(s=>s.text).join(''),' paragraph 87');
+  }finally{globalThis.fetch=previousFetch;globalThis.File=previousFile;}
+ });
+});
+
+test('an inaccessible clipboard image reports an error and preserves the pasted text',async()=>{
+ await fixture(async({dom,host,caret,blocks})=>{
+  const el=host('b87');caret(el,0);
+  const paste=new dom.window.Event('paste',{bubbles:true,cancelable:true});
+  Object.defineProperty(paste,'clipboardData',{value:{getData:type=>type==='text/html'?'<p>Before<img src="file:///unavailable.png">After</p>':'',files:[]}});
+  await act(async()=>{el.dispatchEvent(paste);await new Promise(resolve=>setTimeout(resolve,20));});
+  assert.match(document.querySelector('[role="alert"]').textContent,/not accessible/);
+  assert.equal(blocks().some(b=>b.type==='image'),false);
+  assert.ok(blocks().some(b=>b.content.some(s=>s.text==='Before')));
+  assert.ok(blocks().some(b=>b.content.some(s=>s.text==='After')));
+ });
+});
+
+test('mixed image paste replaces a cross-block selection and survives subsequent editing',async()=>{
+ await fixture(async({dom,host,blocks})=>{
+  const previousFetch=globalThis.fetch;
+  let release;const upload=new Promise(resolve=>{release=resolve;});
+  globalThis.fetch=async()=>{await upload;return {ok:true,json:async()=>({id:'cross-block-image'})};};
+  try{
+   const {setEditorSelectionRange}=await import('../src/client/editor/block-selection.ts');
+   const range=document.createRange();range.setStart(host('b87').firstChild.firstChild,10);range.setEnd(host('b88').firstChild.firstChild,10);
+   setEditorSelectionRange(document.querySelector('#blocks'),range);
+   const paste=new dom.window.Event('paste',{bubbles:true,cancelable:true});
+   const file=new File(['gif'],'clipboard.gif',{type:'image/gif'});
+   Object.defineProperty(paste,'clipboardData',{value:{getData:type=>type==='text/html'?'<p>Before<img src="file:///clipboard.gif">After</p>':'BeforeAfter',files:[file]}});
+   await act(async()=>host('b87').dispatchEvent(paste));
+   assert.ok(paste.defaultPrevented);assert.equal(blocks().filter(b=>b.type==='divider').length,1,'upload placeholders remain valid for autosave');
+   const trailing=blocks().find(b=>b.content.some(s=>s.text==='After'));
+   assert.ok(trailing);
+   await act(async()=>{release();await new Promise(resolve=>setTimeout(resolve,20));});
+   assert.equal(blocks().find(b=>b.type==='image').imageId,'cross-block-image');
+   assert.ok(blocks().some(b=>b.id===trailing.id));
+  }finally{globalThis.fetch=previousFetch;}
+ });
+});
+
+test('copying a note selection exports its image and remote images use the download endpoint',async()=>{
+ await fixture(async({dom,host,caret,blocks,set})=>{
+  await set([{id:'before',type:'paragraph',checked:false,content:[{text:'Before'}]},{id:'image',type:'image',checked:false,content:[],imageId:'original.png',alt:'Diagram'},{id:'after',type:'paragraph',checked:false,content:[{text:'After'}]}]);
+  const {setEditorSelectionRange,editorSelectionClipboard}=await import('../src/client/editor/block-selection.ts');
+  const editor=document.querySelector('#blocks'),range=document.createRange();range.selectNodeContents(editor);setEditorSelectionRange(editor,range);
+  const copied=editorSelectionClipboard(editor,blocks(),[]);
+  assert.match(copied.html,/<img[^>]+src="http:\/\/localhost\/api\/images\/original.png\?vault=fixture"[^>]+alt="Diagram"/);
+  const previousFetch=globalThis.fetch,previousFile=globalThis.File,calls=[];
+  globalThis.File=dom.window.File;
+  globalThis.fetch=async(url,options)=>{
+   calls.push(url);
+   if(url==='/api/images/fetch'){assert.deepEqual(JSON.parse(options.body),{url:'https://example.test/image.gif'});return {ok:true,blob:async()=>new Blob(['gif'],{type:'image/gif'})};}
+   assert.equal(url,'/api/images');return {ok:true,json:async()=>({id:'remote.gif'})};
+  };
+  try{
+   caret(host('after'),5);
+   const paste=new dom.window.Event('paste',{bubbles:true,cancelable:true});Object.defineProperty(paste,'clipboardData',{value:{getData:type=>type==='text/html'?'<img src="https://example.test/image.gif">':'',files:[]}});
+   await act(async()=>{host('after').dispatchEvent(paste);await new Promise(resolve=>setTimeout(resolve,20));});
+   assert.deepEqual(calls,['/api/images/fetch','/api/images']);assert.ok(blocks().some(b=>b.imageId==='remote.gif'));
+  }finally{globalThis.fetch=previousFetch;globalThis.File=previousFile;}
+ });
+});
+
+test('undo and redo treat an uploaded clipboard image as part of its paste',async()=>{
+ const previousHistory=process.env.MEASURE_HISTORY;process.env.MEASURE_HISTORY='1';
+ try{await fixture(async({dom,host,caret,blocks})=>{
+  const page=document.querySelector('.page'),article=document.createElement('article');article.className='page';
+  page.replaceWith(article);while(page.firstChild)article.append(page.firstChild);
+  const previousFetch=globalThis.fetch;
+  globalThis.fetch=async()=>({ok:true,json:async()=>({id:'history.gif'})});
+  try{
+   const original=blocks(),el=host('b87');caret(el,10);
+   const file=new File(['gif'],'clipboard.gif',{type:'image/gif'}),paste=new dom.window.Event('paste',{bubbles:true,cancelable:true});
+   Object.defineProperty(paste,'clipboardData',{value:{getData:type=>type==='text/html'?'<p>Before<img src="file:///clipboard.gif">After</p>':'BeforeAfter',files:[file]}});
+   await act(async()=>{el.dispatchEvent(paste);await new Promise(resolve=>setTimeout(resolve,20));});
+   assert.ok(blocks().some(b=>b.imageId==='history.gif'));
+   const target=document.querySelector('.block-content');
+   await act(async()=>target.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true})));
+   assert.deepEqual(blocks(),original,'one undo removes the whole paste');
+   await act(async()=>host('b87').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'z',ctrlKey:true,shiftKey:true,bubbles:true,cancelable:true})));
+   assert.ok(blocks().some(b=>b.imageId==='history.gif'),'redo restores the saved image');assert.equal(blocks().some(b=>b.type==='divider'),false);
+  }finally{globalThis.fetch=previousFetch;}
+ });}finally{if(previousHistory===undefined)delete process.env.MEASURE_HISTORY;else process.env.MEASURE_HISTORY=previousHistory;}
+});

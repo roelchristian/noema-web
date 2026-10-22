@@ -1,3 +1,4 @@
+import { fetchRemoteImage } from './modules/remote-image.js';
 import {vaultStorage} from './modules/vault-storage.js';
 import type {NetworkAccess} from './network-settings.js';
 import {sourcePageRoutes} from './routes/source-pages.js';
@@ -174,12 +175,19 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           }
           throw new HttpError(404,'Not found');
         }
-        if(url.pathname === '/api/images' && method === 'POST' || url.pathname.startsWith('/api/images/') && method === 'GET') {
+        if((url.pathname === '/api/images' || url.pathname === '/api/images/fetch') && method === 'POST' || url.pathname.startsWith('/api/images/') && method === 'GET') {
           const header=req.headers['x-vault-id'];
           if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
           const vault=vaults.requireOpen(header || (method === 'GET' ? url.searchParams.get('vault') : null) || 'default');
           if(method === 'POST') {
             if(req.headers['x-noema-request'] !== '1')throw new HttpError(403,'Image uploads require the Noema client');
+            if (url.pathname === '/api/images/fetch') {
+              if (!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || '')) throw new HttpError(415,'Image downloads require JSON.');
+              const {bytes, mime} = await fetchRemoteImage((await readBody(req)).url);
+              vaults.requireOpen(vault);
+              res.writeHead(200,{'Content-Type':mime,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"});
+              return res.end(bytes);
+            }
             const chunks: Buffer[]=[]; let size=0;
             for await(const chunk of req) {const bytes=Buffer.from(chunk); size+=bytes.length; if(size>maxImageBytes)throw new HttpError(413,'Images must be 20 MB or smaller'); chunks.push(bytes);}
             vaults.requireOpen(vault);

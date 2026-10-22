@@ -1,3 +1,4 @@
+import {immutableBlocks,immutablePage} from '../../shared/immutable-blocks';
 import type { Page } from '../../shared/domain';
 import {pageDraftJournal, type PageDraftEntry, type PageDraftJournal} from './page-draft-journal';
 export type SaveStatus = 'saved' | 'pending' | 'identifying' | 'saving' | 'error';
@@ -5,6 +6,7 @@ const key = (page: Pick<Page, 'vault_id' | 'id'>) => `${page.vault_id}/${page.id
 const asError = (value: unknown) => value instanceof Error ? value : new Error(String(value));
 /** Each snapshot keeps its vault and revision, even while navigation or edits continue. */
 export class PageSaver {
+  private primed = new Map<string,number>();
   private pending = new Map<string, Page>();
   private journalEntries = new Map<string, PageDraftEntry>();
   private failed = new Set<string>();
@@ -34,7 +36,7 @@ export class PageSaver {
   }
   private persist(page: Page) {
     try {
-      const entry = this.journal.write(page);
+      const entry = this.journal.writeIncremental(page);
       this.journalEntries.set(key(page), entry); this.onJournalError?.(null, page);
     } catch (value) {
       const entry = this.persistedEntry(page);
@@ -42,8 +44,16 @@ export class PageSaver {
       this.onJournalError?.(asError(value), page);
     }
   }
+  // Establish a recovery checkpoint at load/save boundaries, outside typing.
+  prime(page:Page) {
+    const id=key(page);
+    if(this.pending.has(id)||this.primed.get(id)===page.revision)return;
+    try {this.journal.prime(page);this.primed.set(id,page.revision);}
+    catch { /* The first edit retries and surfaces a durable-storage failure. */ }
+  }
   enqueue(page: Page) {
-    const snapshot = structuredClone(page), id = key(snapshot);
+    const id = key(page);
+    const snapshot = {...immutablePage(page,this.pending.get(id)?.blocks)};
     this.pending.set(id, snapshot); this.failed.delete(id);
     this.persist(snapshot);
     this.status('pending', snapshot); clearTimeout(this.timer);
@@ -57,6 +67,7 @@ export class PageSaver {
   discard(vaultId: string, pageId: string, discardJournal = true): void {
     const id = key({vault_id: vaultId, id: pageId});
     this.generations.set(id, (this.generations.get(id) ?? 0) + 1);
+    this.primed.delete(id);
     this.pending.delete(id); this.failed.delete(id); this.statuses.delete(id); this.journalEntries.delete(id);
     if (discardJournal) this.journal.discardPage(vaultId, pageId);
   }
@@ -116,7 +127,9 @@ export class PageSaver {
           this.onJournalError?.(null, newer ?? saved);
         } catch (value) {this.onJournalError?.(asError(value), newer ?? saved);}
         this.failed.delete(id);
+        this.primed.delete(id);
         this.onSaved(saved, snapshot);
+        if(!this.pending.has(id))this.prime({...saved,blocks:immutableBlocks(saved.blocks)});
         this.status(newer && newer !== snapshot ? 'pending' : 'saved', newer && newer !== snapshot ? newer : saved);
       } catch (value) {
         if ((this.generations.get(id) ?? 0) !== generation) continue;

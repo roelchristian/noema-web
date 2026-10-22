@@ -1,3 +1,4 @@
+import {memoizeBlock} from './immutable-blocks.js';
 import {blockSegments, type Block, type SourceReference} from './domain.js';
 export type CitationStyle='inline'|'references';
 /** A passage is distinct from another page or section in the same source. */
@@ -24,10 +25,11 @@ export function citationLocation(ref:SourceReference){
   if(ref.startPage)return ref.startPage===ref.endPage?`p. ${ref.startPage}`:`pp. ${ref.startPage}–${ref.endPage}`;
   return ref.startLine===ref.endLine?`L${ref.startLine}`:`L${ref.startLine}–${ref.endLine}`;
 }
+const blockCitations=memoizeBlock(block=>blockSegments(block).flatMap(segment=>segment.sourceReference?[segment.sourceReference]:[]));
 export function noteCitations(blocks:Block[]){
   const entries=new Map<string,{number:number;reference:SourceReference;occurrences:string[]}>();
-  for(const block of blocks)for(const segment of blockSegments(block))if(segment.sourceReference){
-    const ref=segment.sourceReference,key=citationKey(ref),existing=entries.get(key);
+  for(const block of blocks)for(const ref of blockCitations(block)){
+    const key=citationKey(ref),existing=entries.get(key);
     if(existing)existing.occurrences.push(ref.id);
     else entries.set(key,{number:entries.size+1,reference:ref,occurrences:[ref.id]});
   }
@@ -86,5 +88,5 @@ export function cleanCitationGroups(content:import('./domain.js').Segment[],comp
 
 /** Source attachments implied by citations, including citations in table cells. */
 export function citationSourceIds(blocks:Block[]):string[] {
-  return [...new Set(blocks.flatMap(block=>blockSegments(block).flatMap(segment=>segment.sourceReference?[segment.sourceReference.sourceId]:[])))];
+  return [...new Set(blocks.flatMap(block=>blockCitations(block).map(ref=>ref.sourceId)))];
 }

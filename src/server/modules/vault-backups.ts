@@ -41,6 +41,7 @@ const tables={
   source_reprocessing:{columns:'id,file_id,status,created_at,updated_at,payload',scope:'vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL)'},
   source_math_documents:{columns:'file_id,raw_hash,algorithm_version,cleaned_text,uncertainty_json,updated_at',scope:'file_id IN (SELECT id FROM source_files WHERE vault_id=? AND entity_id IS NOT NULL)'},
   source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at,import_method,source_url,pdf_flattened,admitted,format,page_start_lines,structural_nodes,original_filename,language,summary,generated_name,enrichment_status,contains_math',scope:'vault_id=? AND entity_id IS NOT NULL'},
+  source_reading_locations:{columns:'file_id,id,label,anchor_json',scope:'vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL)'},
   highlights:{columns:'id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,color,reference_json,created_at',scope:'vault_id=?'},
   page_reading_notes:{columns:'page_id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,reference_json,created_at',scope:'vault_id=?'},
   entities:{columns:'id,name,aliases,mention_case,type,subtypes,description,updated_at,inactive,archived_at',scope:'vault_id=?'},
@@ -135,7 +136,7 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='source_reading_locations'||table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     const sourceOwners=new Set<unknown>(),legacyEntities=new Map(rows.entities.map(row=>[row.id,row]));
     const legacyProperties=[...rows.properties],legacyLinks=[...rows.page_sources];
     for(const file of rows.source_files) {
@@ -341,6 +342,15 @@ export class VaultBackups {
           const restoredReference={...reference,id:randomUUID(),sourceId:source??detached(detachedSources,reference.sourceId),fileId:file??detached(detachedFiles,reference.fileId),startLine,endLine,...(source===null||file===null?{stale:true}:{})};
           return {vault_id:vault,source_id:source,file_id:file,source_hash:hash,start_offset:start,end_offset:end,excerpt,reference_json:JSON.stringify(restoredReference),created_at:timestamp(row,'created_at')};
         };
+        for(const row of rows.source_reading_locations) {
+          const fileId=ref(restoredSourceFiles,row.file_id),anchor=object(json(row,'anchor_json'));
+          if(anchor.fileId!==row.file_id||typeof anchor.revision!=='string'||!/^[a-f0-9]{64}$/.test(anchor.revision)||typeof anchor.atEnd!=='boolean')throw invalid();
+          integer(anchor,'offset');string(anchor,'quote',160);string(anchor,'prefix',64);string(anchor,'suffix',64);
+          if(anchor.nodeId!==undefined&&typeof anchor.nodeId!=='string')throw invalid();
+          if(anchor.physicalPage!==undefined)integer(anchor,'physicalPage',1);
+          const id=string(row,'id',36);if(id!=='resume'&&!/^[a-f0-9-]{36}$/i.test(id))throw invalid();
+          insert('source_reading_locations',{vault_id:vault,file_id:fileId,id:id==='resume'?id:randomUUID(),label:text(row.label,80),anchor_json:JSON.stringify({...anchor,fileId})});
+        }
         const highlightIds=ids(rows.highlights);
         for(const row of rows.highlights) {
           if(!highlightColors.includes(row.color as HighlightColor))throw invalid();

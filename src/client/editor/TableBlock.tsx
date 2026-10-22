@@ -1,4 +1,4 @@
-import {t as uiText} from '../i18n';
+import {t as uiText,getLocale} from '../i18n';
 import {CitationPresentationContext} from '../sources/CitationPresentation';
 import { applySmartQuotes } from './smart-quotes';
 import { useContext, useLayoutEffect, useRef, type ClipboardEvent, type KeyboardEvent } from 'react';
@@ -11,7 +11,8 @@ import { readMarkdownTyping } from '../state/markdown-preferences';
 export function Cell({label = 'Table cell', content, entities, location, register, onChange, onKeyDown, onPaste, onOpen}: {label?: string; content: Segment[]; entities: Entity[]; location: ReviewLocation; register?: (el: HTMLDivElement | null) => void; onChange: (content: Segment[]) => void; onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => void; onPaste: (e: ClipboardEvent<HTMLDivElement>) => void; onOpen: (id: string) => void}) {
   const citations=useContext(CitationPresentationContext);
   const ref = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => { syncEditableSegments(ref.current!, content, entities, location,citations); });
+  const locale=getLocale();
+  useLayoutEffect(() => { syncEditableSegments(ref.current!, content, entities, location,citations); },[content,entities,location.blockId,location.row,location.col,location.matches,citations,locale]);
   return <div className="block-content table-cell" ref={el => {ref.current = el; register?.(el);}} contentEditable suppressContentEditableWarning aria-label={label} onInput={e => {applySmartQuotes(e.currentTarget, e.nativeEvent as InputEvent); if(readMarkdownTyping()&&!(e.nativeEvent as InputEvent).isComposing&&(e.nativeEvent as InputEvent).inputType==='insertText')completeInlineMath(e.currentTarget); onChange(readSegments(e.currentTarget));}} onKeyDown={onKeyDown} onPaste={onPaste} onClick={e => {const mention = (e.target as Element).closest<HTMLElement>('[data-entity]'); if(mention) onOpen(mention.dataset.entity!);}}/>;
 }
 export function TableBlock({block, entities, reviewMatches, onChange, onOpen, onSave, onExit, register}: {block: Block; entities: Entity[]; reviewMatches: EntityReviewItem[]; onChange: (rows: Segment[][][]) => void; onOpen: (id: string) => void; onSave: () => void; onExit: () => void; register: (el: HTMLDivElement | null) => void}) {

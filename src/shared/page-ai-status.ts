@@ -44,7 +44,10 @@ function authoredContent(page: Pick<Page, 'title' | 'blocks'>, name: (id: string
 export function nextPageAIStatus(previous: Pick<Page, 'title' | 'blocks' | 'aiStatus' | 'aiReviewAccepted'>, next: Pick<Page, 'title' | 'blocks' | 'aiReviewAccepted'>, name: (id: string) => string | undefined): PageAIStatus {
   if (previous.aiStatus === 'ai_generated_edited') return 'ai_generated_edited';
   if (previous.aiStatus === 'ai_generated') {
-    return authoredContent(previous, name) === authoredContent(next, name) ? 'ai_generated' : 'ai_generated_edited';
+    if(previous.title!==next.title)return 'ai_generated_edited';
+    const before=previous.blocks.filter(block=>!isAIExplanation(block)),after=next.blocks.filter(block=>!isAIExplanation(block));
+    const same=before.length===after.length && before.every((block,i)=>block===after[i] || authoredContent({title:'',blocks:[block]},name)===authoredContent({title:'',blocks:[after[i]!]},name));
+    return same ? 'ai_generated' : 'ai_generated_edited';
   }
   if(previous.aiReviewAccepted||next.aiReviewAccepted||previous.aiStatus==='ai_assisted')return 'ai_assisted';
   return next.blocks.some(isAIExplanation) ? 'regular_with_ai_explanations' : 'regular';

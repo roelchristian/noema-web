@@ -10,7 +10,8 @@ import { CleanupDialog } from './CleanupDialog';
 import {rememberMarkdownTyping,useMarkdownTyping} from '../state/markdown-preferences';
 import {formatMarkdownBlocks} from './markdown-typing';
 
-export function PageToolbar({ tocAvailable=false, tocVisible=true, onToggleToc, onRevealInSidebar, inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, focusedReading, onToggleFocusedReading, onForward, forwardDisabled, onChangeBlocks, onFeaturedImageChange,onEditLockChange, onUndo, onRedo, canUndo, canRedo}: {
+export function PageToolbar({ onRename, tocAvailable=false, tocVisible=true, onToggleToc, onRevealInSidebar, inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, focusedReading, onToggleFocusedReading, onForward, forwardDisabled, onChangeBlocks, onFeaturedImageChange,onEditLockChange, onUndo, onRedo, canUndo, canRedo}: {
+  onRename?:()=>void;
   tocAvailable?:boolean;tocVisible?:boolean;onToggleToc?:()=>void;
   onRevealInSidebar: () => void;
   onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean;
@@ -74,6 +75,7 @@ export function PageToolbar({ tocAvailable=false, tocVisible=true, onToggleToc, 
     {page.editLocked && <div className="page-toolbar-lock"><ActionMenu label={uiText("Page locked: unlock editing")} icon="lock" disabled={changingLock} actions={lockAction.children ?? []}/><span aria-hidden="true">{uiText("Locked")}</span></div>}
     <ActionMenu label={uiText("More page actions")} disabled={changingLock} actions={[
       ...(onForward ? [{get label(){return uiText("Go forward")}, icon: 'chevron', disabled: forwardDisabled, onSelect: onForward}] : []),
+      ...(onRename?[{label:uiText("Rename"),icon:'edit' as const,disabled:editingDisabled,onSelect:onRename}]:[]),
       {label: uiText("Reveal in sidebar"), icon: 'folder', onSelect: onRevealInSidebar},
       {label:uiText("Focused reading"),icon:'scan-eye',checked:focusedReading,onSelect:onToggleFocusedReading},
       ...(tocAvailable&&onToggleToc?[{label:uiText("Table of contents"),icon:'view-list',checked:tocVisible,onSelect:onToggleToc}]:[]),

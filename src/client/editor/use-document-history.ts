@@ -1,4 +1,5 @@
 import {useCallback, useEffect, useLayoutEffect, useRef, useState} from 'react';
+import {immutableBlocks, sameDocument} from '../../shared/immutable-blocks';
 import type {Page} from '../../shared/domain';
 import {captureEditorSelection, restoreEditorSelection, type EditorHistorySelection} from './history-selection';
 import {pauseEntityRecognition, resumeEntityRecognition} from './auto-entity-matching';
@@ -13,7 +14,7 @@ interface Transaction {
   run: InputRun | null;
 }
 interface History {
-  key: string; current: DocumentState | null; observed: string;
+  key: string; current: DocumentState | null; observed: DocumentState | null;
   past: Transaction[]; future: Transaction[];
   selection: Selection; input: {run: InputRun | null; selection: Selection} | null;
   composing: boolean; compositionEnding: boolean; composition: number; batch: Transaction | null;
@@ -22,20 +23,28 @@ interface History {
 }
 const clone = <T,>(value: T): T => structuredClone(value);
 const signature = (value: unknown) => JSON.stringify(value);
+function documentState(page: Page): DocumentState {
+  return {title: page.title, blocks: page.blocks, featuredImageId: page.featuredImageId ?? null};
+}
+// Immutable blocks are shared by history and the editor. Mutable ingress is
+// detached; frozen egress rejects mutation instead of corrupting a transaction.
 function snapshot(page: Page): DocumentState {
-  return clone({title: page.title, blocks: page.blocks, featuredImageId: page.featuredImageId ?? null});
+  return {...documentState(page),blocks:immutableBlocks(page.blocks)};
 }
 function emptyHistory(page: Page | null): History {
   const current = page ? snapshot(page) : null;
-  return {key: page ? `${page.vault_id}:${page.id}` : '', current, observed: signature(current), past: [], future: [], selection: null, input: null, composing: false, compositionEnding: false, composition: 0, batch: null, captureAfter: null, restore: null};
+  return {key: page ? `${page.vault_id}:${page.id}` : '', current, observed: current, past: [], future: [], selection: null, input: null, composing: false, compositionEnding: false, composition: 0, batch: null, captureAfter: null, restore: null};
 }
 const rootElement = () => document.querySelector<HTMLElement>('article.page');
 const capture = (): Selection => {const root = rootElement(); return root ? captureEditorSelection(root) : null;};
 function documentTarget(target: EventTarget | null): target is Element {
   return target instanceof Element && !target.closest('[role="dialog"],dialog') && !!target.closest('article.page') && !!target.closest('#blocks,#page-title');
 }
-function shape(state: DocumentState) {
-  return signature(state.blocks.map(block => [block.id, block.type, block.column, block.semantic, block.semanticGroup, block.rows?.map(row => row.length)]));
+function sameShape(a:DocumentState,b:DocumentState) {
+  return a.blocks.length===b.blocks.length && a.blocks.every((block,i)=>{
+    const other=b.blocks[i]!;
+    return block===other || block.id===other.id && block.type===other.type && (block.column===other.column || signature(block.column)===signature(other.column)) && block.semantic===other.semantic && (block.semanticGroup===other.semanticGroup || signature(block.semanticGroup)===signature(other.semanticGroup)) && (block.rows===other.rows || signature(block.rows?.map(row=>row.length))===signature(other.rows?.map(row=>row.length)));
+  });
 }
 function typingType(type: string) {
   return type === 'insertText' || type === 'deleteContentBackward' || type === 'deleteContentForward' || type === 'insertCompositionText' || type === 'deleteCompositionText' || type === 'insertFromComposition';
@@ -46,8 +55,9 @@ function withSelectionBlock(state: DocumentState, selection: Selection): Documen
   const rows = rootElement()?.querySelectorAll<HTMLElement>('[data-block-id].paragraph');
   // Include the next virtual tail as well as the selected row: persisting it
   // during the next keystroke must not split an otherwise continuous run.
-  const extras = Array.from(rows ?? []).filter(row => !state.blocks.some(block => block.id === row.dataset.blockId)).map(row => ({id: row.dataset.blockId!, type: 'paragraph' as const, checked: false, content: []}));
-  return extras.length ? {...state, blocks: [...state.blocks, ...extras]} : state;
+  const ids = new Set(state.blocks.map(block=>block.id));
+  const extras = Array.from(rows ?? []).filter(row => !ids.has(row.dataset.blockId!)).map(row => ({id: row.dataset.blockId!, type: 'paragraph' as const, checked: false, content: []}));
+  return extras.length ? {...state, blocks: immutableBlocks([...state.blocks, ...extras])} : state;
 }
 
 /** User edits, including native contenteditable input, share one document timeline. */
@@ -60,16 +70,13 @@ export function useDocumentHistory(page: Page | null, onChange: (patch: Document
 
   useLayoutEffect(() => {
     const state = history.current;
-    const incoming = page ? snapshot(page) : null;
-    const serialized = signature(incoming);
-    if (serialized !== state.observed) {
-      state.observed = serialized;
-      if (signature(state.current) !== serialized) {
-        // Recognition and server metadata reconciliation are part of the latest
-        // state, not a new user action. They also end an active typing run.
+    const incoming = page ? {...documentState(page),blocks:immutableBlocks(page.blocks,state.current?.blocks)} : null;
+    if (!sameDocument(incoming,state.observed)) {
+      state.observed = incoming;
+      if (!sameDocument(state.current,incoming)) {
         state.current = incoming;
         const last = state.past.at(-1);
-        if (last && incoming) {last.after = clone(incoming); last.run = null;}
+        if (last && state.current) {last.after = state.current; last.run = null;}
         state.batch = null; state.input = null;
       }
     }
@@ -82,7 +89,7 @@ export function useDocumentHistory(page: Page | null, onChange: (patch: Document
       const selection = capture();
       if (selection) {
         state.selection = selection;
-        if (state.captureAfter && signature(state.captureAfter.after) === signature(state.current)) state.captureAfter.afterSelection = clone(selection);
+        if (state.captureAfter && state.captureAfter.after === state.current) state.captureAfter.afterSelection = clone(selection);
       }
     }
     state.captureAfter = null;
@@ -91,13 +98,14 @@ export function useDocumentHistory(page: Page | null, onChange: (patch: Document
   const change = useCallback((patch: DocumentPatch) => {
     const state = history.current;
     if (!state.current || latest.current.page?.editLocked || latest.current.disabled) return;
-    const after = snapshot({...latest.current.page!, ...state.current, ...patch});
-    if (signature(after) === signature(state.current)) {latest.current.onChange(patch); return;}
+    const candidate = documentState({...latest.current.page!, ...state.current, ...patch});
+    const after = {...candidate,blocks:immutableBlocks(candidate.blocks,state.current.blocks)};
+    if (sameDocument(after,state.current)) {latest.current.onChange({...patch,...(patch.blocks?{blocks:after.blocks}:{})}); return;}
     resumeEntityRecognition();
     const beforeSelection = state.input?.selection ?? state.selection ?? capture();
-    const before = withSelectionBlock(clone(state.current), beforeSelection);
+    const before = withSelectionBlock(state.current, beforeSelection);
     const input = state.input?.run ?? null;
-    const run = input && typingType(input.type) && shape(before) === shape(after) && before.featuredImageId === after.featuredImageId ? {...input, time: Date.now()} : null;
+    const run = input && typingType(input.type) && sameShape(before, after) && before.featuredImageId === after.featuredImageId ? {...input, time: Date.now()} : null;
     const last = state.past.at(-1);
     const contiguous = !!last?.run && !!run && last.run.host === run.host && (
       run.composition ? last.run.composition === run.composition : !last.run.composition && last.run.type === run.type && run.time - last.run.time <= 1000 && signature(last.afterSelection) === signature(beforeSelection)
@@ -115,7 +123,7 @@ export function useDocumentHistory(page: Page | null, onChange: (patch: Document
     state.batch = transaction;
     state.captureAfter = transaction;
     queueMicrotask(() => {if (history.current === state && state.batch === transaction) state.batch = null;});
-    latest.current.onChange(clone(patch));
+    latest.current.onChange({...patch,...(patch.blocks?{blocks:after.blocks}:{})});
     refresh(value => value + 1);
   }, []);
 
@@ -129,11 +137,11 @@ export function useDocumentHistory(page: Page | null, onChange: (patch: Document
     pauseEntityRecognition();
     document.dispatchEvent(new Event('noema:history-restore'));
     destination.push(transaction);
-    state.current = clone(direction === 'undo' ? transaction.before : transaction.after);
+    state.current = direction === 'undo' ? transaction.before : transaction.after;
     state.restore = {selection: clone(direction === 'undo' ? transaction.beforeSelection : transaction.afterSelection)};
     state.input = null; state.batch = null; state.captureAfter = null;
     const last = state.past.at(-1); if (last) last.run = null;
-    latest.current.onChange(clone(state.current));
+    latest.current.onChange({...state.current});
     refresh(value => value + 1);
   }, []);
   const undo = useCallback(() => travel('undo'), [travel]);
@@ -203,7 +211,9 @@ export function useDocumentHistory(page: Page | null, onChange: (patch: Document
         return;
       }
       const state = history.current, pending = state.input;
-      queueMicrotask(() => {if (state.input === pending) state.input = null;});
+      // Native listeners can have a microtask checkpoint before React receives
+      // the same input event. Keep its run until all listeners have committed.
+      setTimeout(() => {if (state.input === pending) state.input = null;}, 0);
     }
     function replaced(event: Event) {
       const page = (event as CustomEvent<Page>).detail;

@@ -3,6 +3,7 @@ const highlights=new WeakMap<HTMLElement,Animation>();
 /** A brief destination cue shared by citations and their bibliography backlinks. */
 export function revealCitationTarget(target:HTMLElement|null) {
   if(!target)return;
+  window.dispatchEvent(new Event('noema:before-reading-jump'));
   target.scrollIntoView({block:'center'});
   target.focus({preventScroll:true});
   highlights.get(target)?.cancel();

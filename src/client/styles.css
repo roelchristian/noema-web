@@ -3520,3 +3520,18 @@ dialog.settings-modal .modal-header { position: static; margin: 0; flex-shrink: 
 @media (max-width: 500px) {
   .settings-dialog .ai-setting-row { grid-template-columns: 1fr; gap: 6px; }
 }
+
+.source-reading-continuity{margin:12px 0 24px;color:var(--text-muted);font-size:13px}
+.source-continuity-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.source-bookmarks{margin-top:12px;padding:16px;border:1px solid var(--line);border-radius:8px;background:var(--surface-raised)}
+.source-bookmarks form{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.source-bookmarks input{border:1px solid var(--line);border-radius:4px;padding:6px 8px;background:var(--surface);color:var(--text);max-width:100%;width:220px}
+.source-bookmarks small{display:block;color:var(--text-muted);font-size:12px}
+.source-bookmark{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
+.source-bookmark-destination{text-align:left;color:var(--text);line-height:1.5}
+.source-bookmark-destination:disabled{cursor:default;color:var(--text-muted)}
+.source-bookmark blockquote{margin:6px 0 10px;font-size:12px;max-width:65ch;white-space:pre-wrap}
+.source-reading-return{position:fixed;bottom:64px;left:50%;transform:translateX(-50%);z-index:26;background:var(--surface-raised);border:1px solid var(--line);box-shadow:0 3px 16px #00000012}
+
+.source-bookmarks{position:fixed;bottom:108px;left:50%;transform:translateX(-50%);z-index:27;width:min(600px,calc(100vw - 32px));max-height:60vh;overflow:auto;box-shadow:0 3px 16px #00000012}
+.source-bookmarks>header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}

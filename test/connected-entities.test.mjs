@@ -28,14 +28,26 @@ test('connected entity sorting supports name, first mention, mention frequency a
   assert.deepEqual(ids('all','updated'),['ada','paris','zoe']);
   assert.deepEqual(entities.map(entity=>entity.id),['zoe','ada','paris','missing','foreign']);
 });
-test('sidebar exposes labeled entity icons and an alphabetical sort toggle', () => {
+test('sidebar defaults to page frequency and exposes a compact page-relevant sort menu', () => {
   const html = renderToStaticMarkup(createElement(ConnectedEntities,{page,entities,onOpenEntity(){}}));
   assert.equal((html.match(/role="tab"/g) ?? []).length,3);
   assert.match(html,/role="tablist" aria-label="Connected entity types"/);
   assert.match(html,/aria-selected="true"/);
   assert.match(html,/Sort connected entities/);
   for(const label of ['All','Person','Place']) assert.ok(html.includes(`aria-label="${label} (`));
-  assert.match(html,/aria-pressed="false"/);
+  assert.match(html,/Sort connected entities · Most mentions/);
+  assert.match(html,/aria-haspopup="menu"/);
+  assert.match(html,/aria-checked="true"[^>]*>.*?Most mentions/);
+  assert.match(html,/First appearance/);
+  assert.doesNotMatch(html,/Switch to Z–A/);
+  const list=html.slice(html.indexOf('knowledge-connected-list'));
+  assert.ok(list.indexOf('Paris')<list.indexOf('Ada'));
+  assert.ok(list.indexOf('Ada')<list.indexOf('Zoe'));
   assert.doesNotMatch(html,/<select/);
   assert.match(renderToStaticMarkup(createElement(ConnectedEntities,{page:{...page,blocks:[]},entities,onOpenEntity(){}})),/Entities/);
+});
+
+test('equally frequent entities follow the page rather than the alphabet',()=>{
+  const tiedPage={...page,blocks:[{type:'paragraph',content:[{entityId:'zoe'},{entityId:'ada'}]}]};
+  assert.deepEqual(connectedEntityItems(tiedPage,entities,'all','mentions').map(entity=>entity.id),['zoe','ada']);
 });

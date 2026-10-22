@@ -2,6 +2,7 @@ import {t as uiText} from '../i18n';
 import { useId, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { blockSegments, entityLabels, entityTypes, type Entity, type EntityType, type Page } from '../../shared/domain';
 import { Icon } from '../components/Icon';
+import { ActionMenu } from '../components/ActionMenu';
 
 export type ConnectedSort = 'name-asc' | 'name-desc' | 'page-order' | 'mentions' | 'updated';
 export function connectedEntityItems(page: Page, entities: Entity[], type: EntityType | 'all', sort: ConnectedSort) {
@@ -17,7 +18,7 @@ export function connectedEntityItems(page: Page, entities: Entity[], type: Entit
   return items.sort((a, b) => {
     if (sort === 'name-desc') return -byName(a, b);
     if (sort === 'page-order') return mentions.get(a.id)!.position - mentions.get(b.id)!.position;
-    if (sort === 'mentions') return mentions.get(b.id)!.count - mentions.get(a.id)!.count || byName(a, b);
+    if (sort === 'mentions') return mentions.get(b.id)!.count - mentions.get(a.id)!.count || mentions.get(a.id)!.position - mentions.get(b.id)!.position;
     if (sort === 'updated') return b.updated_at.localeCompare(a.updated_at) || byName(a, b);
     return byName(a, b);
   });
@@ -25,7 +26,7 @@ export function connectedEntityItems(page: Page, entities: Entity[], type: Entit
 
 export function ConnectedEntities({page, entities, onOpenEntity, children}: {page: Page; entities: Entity[]; onOpenEntity: (id: string) => void; children?: ReactNode}) {
   const [type, setType] = useState<EntityType | 'all'>('all');
-  const [sort, setSort] = useState<'name-asc' | 'name-desc'>('name-asc');
+  const [sort, setSort] = useState<ConnectedSort>('mentions');
   const id = useId();
   const connected = useMemo(() => connectedEntityItems(page, entities, 'all', sort), [page.blocks, page.vault_id, entities, sort]);
   const visible = connected.filter(entity => type === 'all' || entity.type === type);
@@ -57,9 +58,11 @@ export function ConnectedEntities({page, entities, onOpenEntity, children}: {pag
           return <button key={tab} id={id + '-' + tab} type="button" role="tab" aria-label={`${label} (${count})`} title={`${label} (${count})`} aria-selected={type === tab} aria-controls={id + '-list'} tabIndex={type === tab ? 0 : -1} onKeyDown={navigate} onClick={() => setType(tab)}><Icon name={tab === 'all' ? 'knowledge' : tab}/></button>;
         })}
       </div>
-      <button type="button" className="knowledge-entity-sort" aria-label={uiText("Sort connected entities in reverse alphabetical order")} aria-pressed={sort === 'name-desc'} title={sort === 'name-asc' ? uiText("Sorted A–Z · Switch to Z–A") : uiText("Sorted Z–A · Switch to A–Z")} onClick={() => setSort(current => current === 'name-asc' ? 'name-desc' : 'name-asc')}>
-        <span aria-hidden="true">{sort === 'name-asc' ? 'A' : 'Z'}<span>→</span>{sort === 'name-asc' ? 'Z' : 'A'}</span>
-      </button>
+      <div className="knowledge-entity-sort"><ActionMenu icon="sort" label={uiText("Sort connected entities")+" · "+uiText(sort==='mentions'?'Most mentions':sort==='page-order'?'First appearance':'Name')} actions={[
+        {label:uiText("Most mentions"),description:uiText("Most frequent in this page, then first appearance"),checked:sort==='mentions',onSelect:()=>setSort('mentions')},
+        {label:uiText("First appearance"),description:uiText("Follow the order entities appear in this page"),checked:sort==='page-order',onSelect:()=>setSort('page-order')},
+        {label:uiText("Name"),description:uiText("Sort by entity name"),checked:sort==='name-asc',onSelect:()=>setSort('name-asc')},
+      ]}/></div>
     </div>}
     <div id={id + '-list'} role="tabpanel" aria-labelledby={id + '-' + type}>
       {visible.length ? <ul className="knowledge-connected-list">{paginated.map(entity => <li key={entity.id}><button type="button" onClick={() => onOpenEntity(entity.id)}><Icon name={entity.type}/><span>{entity.name}</span></button></li>)}</ul> : !!connected.length&&<p className="section-hint">{uiText("No entities of this type")}</p>}

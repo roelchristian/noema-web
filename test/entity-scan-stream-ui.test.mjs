@@ -63,7 +63,7 @@ test('review renders incoming rows during scanning and enables review only after
     assert.equal(document.querySelectorAll('.entity-review-table tbody tr').length,1);
     assert.match(document.querySelector('.entity-scan-live-status').textContent,/1 entities found/);
     assert.match(document.querySelector('.entity-review-table').textContent,/Aliases: Charlemagne/);
-    assert.equal(document.querySelector('[aria-label="Accept Charlemagne, Quebec"]').disabled,true);
+    assert.equal(document.querySelector('[aria-label="Create and link: Charlemagne, Quebec"]').disabled,true);
     assert.equal(confirmed,undefined);
     const final={id:'saved',revision:1,suggestions:[suggestion,{...suggestion,id:'region',name:'Quebec',aliases:[],evidence:'Quebec'}]};
     await act(async()=>progress({...final,id:'preview2'}));
@@ -71,23 +71,47 @@ test('review renders incoming rows during scanning and enables review only after
     await act(async()=>finish(final));
     assert.equal(confirmed.id,'saved');
     assert.equal(document.querySelector('.entity-scan-live-status'),null);
-    assert.equal(document.querySelector('[aria-label="Accept Charlemagne, Quebec"]').disabled,false);
+    assert.equal(document.querySelector('[aria-label="Create and link: Charlemagne, Quebec"]').disabled,false);
     await click('[aria-label="Edit Charlemagne, Quebec"]');
     assert.equal(document.querySelector('.entity-review-editor [aria-label="Current aliases"] li span').textContent,'Charlemagne');
     assert.ok(document.querySelector('.entity-review-editor [aria-label="Remove alias Charlemagne"]'));
     assert.equal(document.querySelector('.entity-review-editor input[placeholder="Add an alias…"]').value,'');
     t.mock.timers.enable({apis:['setTimeout']});
-    await click('[aria-label="Accept Charlemagne, Quebec"]');
+    await click('[aria-label="Create and link: Charlemagne, Quebec"]');
     assert.match(document.querySelector('.entity-review-confirmation').textContent,/Charlemagne, Quebec connected/);
     await click('[aria-label="Reject Quebec"]');
     assert.match(document.querySelector('.entity-review-confirmation').textContent,/Review complete/);
     await act(async()=>t.mock.timers.tick(1100));
-    const confirmation=document.querySelector('.entity-review-confirmation-inline');
-    assert.ok(confirmation);
-    assert.equal(confirmation.closest('.knowledge-section-heading'),null);
-    assert.equal(confirmation.getAttribute('role'),'status');
-    assert.equal(confirmation.querySelector('strong'),null);
+    assert.ok(document.querySelector('dialog.entity-review-modal'));
+    assert.match(document.querySelector('.entity-review-confirmation').textContent,/Review complete/);
     await act(async()=>t.mock.timers.tick(5000));
-    assert.equal(document.querySelector('.entity-review-confirmation-inline'),null);
+    assert.ok(document.querySelector('.entity-review-confirmation'));
   }finally{await env.close();}
+});
+
+test('context mode keeps occurrence and subtype drafts across views and navigates exact table evidence',async t=>{
+ const env=setupDOM(t),{dom}=env;
+ dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
+ const root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ t.mock.method(api,'entitySchema',async()=>({properties:{},subtypes:[],subtypeProperties:{}}));
+ const page={id:'page',vault_id:'default',revision:2,title:'Context test',sourceIds:[],blocks:[{id:'p',type:'paragraph',content:[{text:'Mira met Mira.'}]},{id:'t',type:'table',content:[],rows:[[[{text:'Sora met Sora.'}]]]}]};
+ const scan={id:'saved',revision:2,subtypeSuggestions:[{id:'subtype',name:'Researcher',type:'person',status:'pending'}],suggestions:[{id:'first',name:'Mira',type:'person',subtypes:[],existingId:null,evidence:'Mira',evidenceAnchor:{blockId:'p',start:0,end:4},reason:'Named',status:'pending',proposedSubtypeIds:['subtype']},{id:'second',name:'Sora',type:'person',subtypes:[],existingId:null,evidence:'Sora',evidenceAnchor:{blockId:'t',row:0,col:0,start:9,end:13},reason:'Named',status:'pending'}]};
+ const click=async element=>act(async()=>element.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})));
+ const button=text=>[...document.querySelectorAll('button')].find(element=>element.textContent===text);
+ try {
+  await act(async()=>root.render(React.createElement(EntityScanReview,{page,scan,entities:[],disabled:false,onScan(){},onFlush:async()=>page,onReview:async()=>scan})));
+  await click(document.querySelector('.entity-detect-action'));await click(button('Contextual review'));
+  await click(document.querySelector('.entity-review-editor fieldset input'));
+  await click(document.querySelectorAll('.scan-occurrence input')[1]);
+  await click(button('Compact batch'));await click(button('Contextual review'));
+  assert.equal(document.querySelector('.entity-review-editor fieldset input').checked,true);
+  assert.equal(document.querySelectorAll('.scan-occurrence input')[1].checked,true);
+  await click(button('Next'));
+  assert.equal(document.querySelector('.entity-scan-snapshot mark').textContent,'Sora');
+  assert.match(document.querySelector('.scan-evidence small').textContent,/Row 1, column 1 · offsets 9–13/);
+  const queue=document.querySelector('.entity-scan-queue');
+  await act(async()=>queue.querySelector('[aria-current=true]').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'ArrowUp',bubbles:true})));
+  assert.equal(document.querySelector('.entity-scan-snapshot mark').textContent,'Mira');
+  assert.equal(document.querySelectorAll('.scan-occurrence input')[1].checked,true);
+ }finally{await env.close();}
 });

@@ -1,4 +1,6 @@
 import {test} from 'node:test';
+import {identifyEntityMentions} from '../src/shared/auto-entities.ts';
+import {evidenceContext} from '../src/shared/entity-scan.ts';
 import assert from 'node:assert/strict';
 import {once} from 'node:events';
 import path from 'node:path';
@@ -112,7 +114,7 @@ test('HTTP continuation resumes a saved batch, rejects stale tokens before calli
   }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();}
 });
 
-test('aliases apply to any entity type only on acceptance, including existing entities',()=>{
+test('aliases apply to any entity type only with explicit acceptance opt-in',()=>{
   const db=openDatabase(':memory:'),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),enrichments=new AIEnrichments(store,pages),scans=new EntityScans(store,pages,knowledge,enrichments);
   try {
     const organization=knowledge.create('default',{name:'World Health Organization',type:'organization'});
@@ -126,7 +128,7 @@ test('aliases apply to any entity type only on acceptance, including existing en
     assert.deepEqual(knowledge.require('default',organization.id).aliases,[]);
     let scan=scans.save('default',page,output,preferences);
     assert.equal(knowledge.list('default').some(e=>e.name==='Charlemagne, Quebec'),false);
-    const result=scans.review('default',page.id,{revision:page.revision,scanId:scan.id,suggestionIds:scan.suggestions.map(s=>s.id),decision:'accepted'});
+    const result=scans.review('default',page.id,{revision:page.revision,scanId:scan.id,suggestionIds:scan.suggestions.map(s=>s.id),decision:'accepted',edits:scan.suggestions.map(s=>({...s,saveAliases:true}))});
     assert.deepEqual(result.entities.find(e=>e.name==='Charlemagne, Quebec').aliases,['Charlemagne']);
     assert.deepEqual(knowledge.require('default',organization.id).aliases,['WHO']);
     assert.equal(result.page.blocks[0].content.find(s=>s.entityId===organization.id).mentionText,'WHO');
@@ -190,4 +192,61 @@ test('client rejects interrupted and error streams after showing provisional row
       assert.equal(progress,1);
     }
   }finally{globalThis.fetch=originalFetch;}
+});
+
+test('explicit occurrences and subtype approvals are atomic, preserve wording and exclusions after save/reload',()=>{
+ const db=openDatabase(':memory:'),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),enrichments=new AIEnrichments(store,pages),scans=new EntityScans(store,pages,knowledge,enrichments);
+ try {
+  let page=pages.create('default',{title:'Deliberate review'});
+  page=pages.update('default',page.id,{...page,blocks:[{id:'p',type:'paragraph',content:[{text:'Mira met Mira. mira waited.'}]},{id:'table',type:'table',content:[],rows:[[[{text:'MIRA in a cell'}]]]}]});
+  const output=JSON.stringify({suggestions:[candidate('Mira','person',{subtypes:['Imaginary researcher'],aliases:['Mira'],evidenceStart:0,runId:JSON.stringify(['p',null,null,0])})]});
+  const scan=scans.save('default',page,output,{model:'gpt-5-mini',reasoningEffort:'low'}),suggestion=scan.suggestions[0],proposal=scan.subtypeSuggestions[0];
+  const edit={...suggestion,approveSubtypeIds:[proposal.id],additionalOccurrences:[{blockId:'table',row:0,col:0,start:0,end:4}]};
+  const request={scanId:scan.id,revision:page.revision,suggestionId:suggestion.id,decision:'accepted',edits:[edit]};
+  assert.throws(()=>scans.review('default',page.id,{...request,edits:[{...edit,additionalOccurrences:[{blockId:'table',row:0,col:1,start:0,end:4}]}]}),/valid additional/);
+  assert.ok(!knowledge.schema('default').subtypes.some(item=>item.name===proposal.name),'Dependency creation rolls back with invalid occurrence');
+  const result=scans.review('default',page.id,request);
+  assert.equal(result.scan.subtypeSuggestions[0].status,'accepted');
+  assert.equal(result.scan.suggestions[0].linkedOccurrences.length,2);
+  assert.deepEqual(result.entities.find(item=>item.name==='Mira').aliases,[],'Aliases are never saved by default');
+  const reloaded=pages.get('default',page.id);
+  assert.equal(reloaded.blocks[0].content.filter(item=>item.entityId).length,1);
+  assert.equal(reloaded.blocks[1].rows[0][0][0].mentionText,'MIRA');
+  assert.equal(reloaded.blocks[0].content.filter(item=>item.skipAutoTag&&item.text?.toLowerCase()==='mira').length,2);
+  assert.equal(identifyEntityMentions(reloaded.blocks,result.entities,'default').count,0,'Reload cannot silently link excluded occurrences');
+  assert.match(evidenceContext(reloaded,result.scan.suggestions[0].linkedOccurrences[1]).label,/Row 1, column 1 · offsets 0–4/);
+  assert.throws(()=>scans.review('default',page.id,request),/changed/,'Replay cannot duplicate entity or subtype');
+  const persisted=enrichments.list('default',page.id).find(item=>item.kind==='entity_scan').data.scan;
+  assert.deepEqual(persisted.suggestions[0].linkedOccurrences,result.scan.suggestions[0].linkedOccurrences);
+ }finally{db.close();}
+});
+
+test('duplicate identities require explicit resolution and existing identity aliases remain opt-in',()=>{
+ const db=openDatabase(':memory:'),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),scans=new EntityScans(store,pages,knowledge,new AIEnrichments(store,pages));
+ try {
+  const first=knowledge.create('default',{name:'Mira Vale',type:'person',description:'Botanist'}),second=knowledge.create('default',{name:'Mira Vale',type:'person',description:'Navigator'});
+  let page=pages.create('default',{title:'Ambiguity'});page=pages.update('default',page.id,{...page,blocks:[{id:'p',type:'paragraph',content:[{text:'Mira Vale met Mira.'}]}]});
+  const scan=scans.save('default',page,JSON.stringify({suggestions:[candidate('Mira Vale','person',{existingId:first.id,aliases:['Mira']})]}),{model:'gpt-5-mini',reasoningEffort:'low'}),suggestion=scan.suggestions[0];
+  const request={scanId:scan.id,revision:page.revision,suggestionId:suggestion.id,decision:'accepted'};
+  assert.throws(()=>scans.review('default',page.id,request),/Ambiguous identity/);
+  const resolved=scans.review('default',page.id,{...request,edits:[{...suggestion,existingId:second.id}]});
+  assert.equal(resolved.page.blocks[0].content.find(item=>item.entityId).entityId,second.id);
+  assert.deepEqual(knowledge.require('default',second.id).aliases,[]);
+  assert.deepEqual(knowledge.require('default',first.id).aliases,[]);
+ }finally{db.close();}
+});
+
+test('partially reviewed duplicate wording stays excluded yet its queued anchored decision remains reviewable',()=>{
+ const db=openDatabase(':memory:'),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),scans=new EntityScans(store,pages,knowledge,new AIEnrichments(store,pages));
+ try {
+  let page=pages.create('default',{title:'Two senses'});page=pages.update('default',page.id,{...page,blocks:[{id:'p',type:'paragraph',content:[{text:'Mira met Mira.'}]}]});
+  const runId=JSON.stringify(['p',null,null,0]);
+  const scan=scans.save('default',page,JSON.stringify({suggestions:[candidate('Mira','person',{runId,evidenceStart:0}),candidate('Mira','place',{runId,evidenceStart:9})]}),{model:'gpt-5-mini',reasoningEffort:'low'});
+  const first=scans.review('default',page.id,{scanId:scan.id,revision:page.revision,suggestionId:scan.suggestions[0].id,decision:'accepted'});
+  assert.equal(identifyEntityMentions(first.page.blocks,first.entities,'default').count,0);
+  assert.equal(first.scan.suggestions[1].status,'pending');
+  const second=scans.review('default',page.id,{scanId:scan.id,revision:first.page.revision,suggestionId:scan.suggestions[1].id,decision:'accepted'});
+  assert.equal(second.page.blocks[0].content.filter(item=>item.entityId).length,2);
+  assert.notEqual(second.page.blocks[0].content[0].entityId,second.page.blocks[0].content[2].entityId);
+ }finally{db.close();}
 });

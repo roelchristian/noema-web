@@ -270,8 +270,8 @@ test('qualified city names and region tags use independent evidence and can be a
     const city=review.entities.find(e=>e.name==='Charlemagne, Quebec'),region=review.entities.find(e=>e.name==='Quebec');
     assert.ok(city);assert.ok(region);assert.notEqual(city.id,region.id);
     assert.deepEqual(review.page.blocks[0].content,[
-      {text:'Born in '},{entityId:city.id,mentionText:'Charlemagne'},
-      {text:', ',href:'https://example.com/city'},{entityId:region.id,mentionText:'Quebec'},{text:'.'},
+      {text:'Born in '},{entityId:city.id,mentionText:'Charlemagne',skipAutoTag:true},
+      {text:', ',href:'https://example.com/city'},{entityId:region.id,mentionText:'Quebec',skipAutoTag:true},{text:'.'},
     ]);
     assert.ok(review.scan.suggestions.every(s=>s.status==='accepted'));
   }finally{db.close();}
@@ -333,7 +333,7 @@ test('contextual evidence cannot swallow a named entity and legacy overlaps reco
     let result=scans.review('default',page.id,{scanId:scan.id,suggestionId:oldBroad.id,revision:page.revision,decision:'accepted'});
     page=result.page;scan=result.scan;
     const heading=page.blocks[0];
-    result=scans.review('default',page.id,{scanId:scan.id,suggestionId:scan.suggestions[1].id,revision:page.revision,decision:'accepted'});
+    result=scans.review('default',page.id,{scanId:scan.id,suggestionId:scan.suggestions[1].id,revision:page.revision,decision:'accepted',edits:[{id:scan.suggestions[1].id,name:'Alex Eala',type:'person',subtypes:[],aliases:['Alexandra Eala'],existingId:null,saveAliases:true}]});
     const entity=result.entities.find(e=>e.name==='Alex Eala');
     assert.ok(entity);
     assert.deepEqual(entity.aliases,['Alexandra Eala']);

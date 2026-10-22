@@ -5,7 +5,8 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties
 import { entityLabels, type Entity } from '../../shared/domain';
 import { Icon } from '../components/Icon';
 import { Modal, ModalHeader } from '../components/Modal';
-import { annotationSuggestions, selectionPopoverPlacement, selectionActionPlacement } from './selection-annotation';
+import { EntityResolutionPicker } from './EntityResolutionPicker';
+import { selectionPopoverPlacement, selectionActionPlacement } from './selection-annotation';
 import type { MentionMatchOptions } from './mention-picker';
 import { segmentHTML } from './segments';
 import {applyEditorTextFormat,textFormatShortcuts,type TextFormat} from './text-formatting';
@@ -43,7 +44,7 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
   const [annotating, setAnnotating] = useState(false), [query, setQuery] = useState('');
   const [semantic, setSemantic] = useState(false);
   const [more, setMore] = useState(false);
-  const [reuseAlias, setReuseAlias] = useState(false), [pickIndex, setPickIndex] = useState(0);
+  const [reuseAlias, setReuseAlias] = useState(false);
   const [savingAlias, setSavingAlias] = useState(false), [aliasError, setAliasError] = useState('');
   const [active, setActive] = useState<string[]>([]);
   const [selectedCount, setSelectedCount] = useState(0);
@@ -69,7 +70,7 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
     picking.current = true;
     setMore(kind === 'more'); setSemantic(kind === 'semantic'); setAnnotating(kind === 'link');
     focusAction.current = kind === 'link' ? null : 'first';
-    if (kind === 'link') { setQuery(''); setAliasError(''); setReuseAlias(false); setPickIndex(0); }
+    if (kind === 'link') { setQuery(''); setAliasError(''); setReuseAlias(false);  }
   }
   function backToActions() {
     showPicker('more'); focusAction.current = 'semantic';
@@ -208,7 +209,6 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
     const item = target === 'semantic' ? panel.current.querySelector<HTMLButtonElement>('[data-selection-action="semantic"]') : items[0];
     item?.focus({preventScroll:true});
   }, [more, semantic, annotating, mobile]);
-  useEffect(()=>{surface.current?.querySelector<HTMLElement>('#selection-entity-results [aria-selected=true]')?.scrollIntoView?.({block:'nearest'});},[pickIndex,query,annotating]);
   function restore(range: Range) {
     if (!range.startContainer.isConnected || !range.endContainer.isConnected) return false;
     editable(range.startContainer)?.focus({preventScroll: mobile});
@@ -241,7 +241,6 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
   const range = saved.current;
   const single = range && editor.current && editorSelectionRanges(editor.current, range).length === 1;
   const selectedText = range?.toString().trim() || '';
-  const {exact, results} = annotationSuggestions(entities, selectedText, query, suggestionContext);
   const linkEntity = async (id: string) => {
     const current = saved.current;
     if (!current || savingAlias) return;
@@ -286,15 +285,7 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
     {annotating && <div className="selection-entities" role="region" aria-label={uiText("Link entity")} aria-busy={savingAlias}>
       {savingAlias && <p role="status">{uiText("Saving alias…")}</p>}
       {aliasError && <p role="alert">{aliasError}</p>}
-      <input autoFocus aria-label={uiText("Search knowledge entities")} placeholder={uiText("Find an existing entity…")} value={query} onChange={event => {setQuery(event.target.value);setPickIndex(0);}} onKeyDown={event=>{
-        if(event.nativeEvent.isComposing)return;
-        if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();setPickIndex(index=>(index+(event.key==='ArrowDown'?1:-1)+results.length)%Math.max(1,results.length));}
-        if(event.key==='Enter'&&results[pickIndex]){event.preventDefault();void linkEntity(results[pickIndex]!.id);}
-      }} aria-activedescendant={results[pickIndex]?'selection-entity-'+results[pickIndex]!.id:undefined} role="combobox" aria-expanded="true" aria-controls="selection-entity-results"/>
-      <div className="selection-entity-results" id="selection-entity-results" role="listbox">
-        {results.map((entity,index) => <button id={"selection-entity-"+entity.id} role="option" aria-selected={index===pickIndex} className={index===pickIndex?"highlight":""} type="button" key={entity.id} disabled={savingAlias} onClick={() => void linkEntity(entity.id)}><Icon name={entity.type}/><span>{entity.name}<small>{uiText(entityLabels[entity.type])}{exact.some(item=>item.id===entity.id)?' · Exact match':''}{entity.description ? ' · '+entity.description : ''}</small></span></button>)}
-        {!results.length && <div className="selection-empty">{uiText("No matching entities")}</div>}
-      </div>
+      <EntityResolutionPicker entities={entities} selection={selectedText} options={suggestionContext} disabled={savingAlias} onChoose={entity=>void linkEntity(entity.id)} query={query} onQuery={setQuery} idPrefix="selection-entity" autoFocus/>
       <label className="selection-alias-option"><input type="checkbox" checked={reuseAlias} disabled={savingAlias} onChange={event=>setReuseAlias(event.target.checked)}/>{uiText("Save highlighted wording as a reusable vault alias")}</label>
       <p>{reuseAlias ? uiText("Aliases affect future matching across this vault. Manage them in entity details; document undo only changes this note.") : uiText("Link only this occurrence and preserve your wording.")}</p>
       <button type="button" className="selection-create" disabled={savingAlias} onClick={createFromSelection}><Icon name="plus"/><span>{uiText("Add “")}{selectedText.length > 60 ? selectedText.slice(0, 60) + '…' : selectedText}{uiText("” as new entity")}</span></button>

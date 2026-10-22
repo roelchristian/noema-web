@@ -2,7 +2,7 @@ import {t as uiText} from '../i18n';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { entityLabels, type Entity } from '../../shared/domain';
 import type { AmbiguousEntityMatch, EntityMatchResolution } from '../../shared/auto-entities';
-import { Select } from '../components/Select';
+import {EntityResolutionPicker} from './EntityResolutionPicker';
 import { Icon } from '../components/Icon';
 
 export function EntityMatchReview({matches, entities, onResolve, disabled = false}: {disabled?: boolean; matches: AmbiguousEntityMatch[]; entities: Entity[]; onResolve: (resolution: EntityMatchResolution) => void}) {
@@ -56,10 +56,8 @@ function MatchRow({match, entities, onResolve, disabled}: {disabled?: boolean; m
   const valid = candidates.some(entity => entity.id === selected);
   return <div className="entity-match-row" data-match-id={match.id}>
     <strong>“{match.text}”</strong><p>{match.context}</p>
-    <Select aria-label={uiText("Entity for {value0}",{value0: match.text})} disabled={disabled} value={valid ? selected : ''} onChange={event => setSelected(event.target.value)}>
-      <option value="">{uiText("Choose an entity…")}</option>
-      {candidates.map(entity => <option key={entity.id} value={entity.id}>{entity.name} · {uiText(entityLabels[entity.type])}{entity.description ? ' · '+entity.description : ''}</option>)}
-    </Select>
+    <EntityResolutionPicker entities={candidates} selection={match.text} disabled={disabled} onChoose={entity=>setSelected(entity.id)}/>
+    {valid&&<p>Selected: {candidates.find(entity=>entity.id===selected)?.name}</p>}
     <div className="entity-match-actions">
       <button type="button" className="button small" disabled={disabled || !valid} onClick={() => onResolve({match, entityId: selected})}>{uiText("Link this instance")}</button>
       <button type="button" className="button small" disabled={disabled || !valid} onClick={() => onResolve({match, entityId: selected, all: true})}>{uiText("Link all “")}{match.text}{uiText("” instances")}</button>

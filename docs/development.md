@@ -44,6 +44,10 @@ Page responses include a `revision`. Clients send that revision on updates to de
 
 Block contents are structured text and entity-ID segments, not arbitrary HTML. SQLite foreign keys validate property and relationship targets. Page mention IDs are validated when saved. Data lives in **`data/noema.sqlite`**, with SQLite WAL companion files while running. To back up by copying, stop the server first and copy the `data/` folder.
 
+## Styles
+
+See [stylesheet ownership and interaction contracts](styles.md) before adding UI styles. New features should reuse semantic tokens and shared control targets.
+
 ## Validation
 
 ```sh

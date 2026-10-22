@@ -9,7 +9,7 @@
   "scripts": {
     "start": "npm run build && node server.mjs",
     "dev": "node scripts/dev.mjs",
-    "build": "npm run typecheck && tsc -p tsconfig.server.json && vite build",
+    "build": "npm run check:styles && npm run typecheck && tsc -p tsconfig.server.json && vite build",
     "typecheck": "tsc --noEmit && npm run typecheck:tests",
     "test": "npm run build && npm run test:all",
     "test:all": "node scripts/test.mjs",
@@ -20,7 +20,9 @@
     "test:browser": "node scripts/check-editor-browser.mjs && node --import tsx scripts/check-reading-continuity-browser.mjs && node --import tsx scripts/check-entity-linking-browser.mjs",
     "test:performance": "EXPECT_ISOLATION=1 node scripts/measure-editor-renders.mjs && node --import tsx scripts/benchmark-document-history.mjs && node --import tsx scripts/benchmark-page-drift.mjs",
     "typecheck:tests": "tsc --noEmit -p tsconfig.test.json",
-    "test:native": "node scripts/test-native.mjs"
+    "test:native": "node scripts/test-native.mjs",
+    "check:styles": "node scripts/check-styles.mjs",
+    "test:design": "node --import tsx scripts/check-design-browser.mjs"
   },
   "dependencies": {
     "js-tiktoken": "^1.0.21",

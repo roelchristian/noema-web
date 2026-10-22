@@ -25,6 +25,7 @@ export function SourceReadingNoteMarkers({article,notes,onOpen,onRemove}:{articl
     function measure(){
       if(!active||!root)return;
       const bounds=root.getBoundingClientRect(),leaves=Array.from(root.querySelectorAll<HTMLElement>('[data-source-start][data-source-end]'));
+      const targetSize=parseFloat(root.ownerDocument.defaultView!.getComputedStyle(root).getPropertyValue('--control-target-compact'))||30;
       const next:Marker[]=[];
       for(const note of notes){
         let low=0,high=leaves.length;
@@ -35,8 +36,9 @@ export function SourceReadingNoteMarkers({article,notes,onOpen,onRemove}:{articl
           const length=leaf.firstChild.textContent?.length??0;
           if(length){const range=document.createRange(),offset=Math.max(0,Math.min(length-1,note.startOffset-Number(leaf.dataset.sourceStart)));range.setStart(leaf.firstChild,offset);range.setEnd(leaf.firstChild,offset+1);const character=range.getBoundingClientRect();if(character.height)rect=character;}
         }
-        const top=Math.round(rect.top-bounds.top+(rect.height-28)/2),left=Math.round(bounds.width-28);
-        const sameLine=next.find(marker=>Math.abs(marker.top-top)<4&&Math.abs(marker.left-left)<4);
+        const top=Math.round(rect.top-bounds.top+(rect.height-targetSize)/2),left=Math.round(bounds.width-targetSize);
+        // Reuse the existing grouped-note action when real hit rectangles would overlap.
+        const sameLine=next.find(marker=>Math.abs(marker.top-top)<targetSize&&Math.abs(marker.left-left)<4);
         if(sameLine)sameLine.notes.push(note);else next.push({top,left,notes:[note]});
       }
       next.sort((a,b)=>a.top-b.top);
@@ -68,8 +70,9 @@ export function SourceReadingNoteMarkers({article,notes,onOpen,onRemove}:{articl
     const mutation=new MutationObserver(schedule);mutation.observe(root,{childList:true,subtree:true});
     void document.fonts.ready.then(()=>{if(active)schedule();});
     window.addEventListener('resize',schedule);
+    const pointer=window.matchMedia?.('(pointer: coarse)');pointer?.addEventListener('change',schedule);
     root.addEventListener('scroll',schedule,true);
-    return()=>{active=false;cancelAnimationFrame(frame);resize.disconnect();mutation.disconnect();window.removeEventListener('resize',schedule);root.removeEventListener('scroll',schedule,true);};
+    return()=>{active=false;cancelAnimationFrame(frame);resize.disconnect();mutation.disconnect();window.removeEventListener('resize',schedule);pointer?.removeEventListener('change',schedule);root.removeEventListener('scroll',schedule,true);};
   },[article,notes,previewIds]);
   return <div ref={container} className="source-reading-note-markers">
     {!!previewBoxes.length&&<svg className="source-reading-note-preview" aria-hidden="true" focusable="false">{previewBoxes.map((box,index)=><rect key={index} x={box.left} y={box.top} width={box.width} height={box.height} rx="2"/>)}</svg>}

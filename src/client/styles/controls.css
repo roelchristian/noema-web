@@ -28,7 +28,9 @@
   .entity-detail-tabs > button, .source-inspector-links > button,
   .source-reading-actions button, .source-reading-navigation button,
   .source-reading-menu button, .source-reading-bookmarks button,
-  .source-reading-remove-action, .entity-detail-more {
+  .source-reading-remove-action, .entity-detail-more,
+  .knowledge-subject-toggle, .knowledge-empty-action, .knowledge-summary-toggle,
+  .knowledge-summary-menu-items > button {
     min-height: var(--touch-target-size);
     min-width: var(--touch-target-size);
   }

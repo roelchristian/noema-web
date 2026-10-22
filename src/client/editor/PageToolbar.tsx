@@ -81,6 +81,7 @@ export function PageToolbar({ onRename, entities, onEntityAssociationsChanged, o
       ...(onForward ? [{get label(){return uiText("Go forward")}, icon: 'chevron', disabled: forwardDisabled, onSelect: onForward}] : []),
       ...(onRename?[{label:uiText("Rename"),icon:'edit' as const,disabled:editingDisabled,onSelect:onRename}]:[]),
       ...(entities?[{label:uiText("Organize with entities…"),icon:"knowledge" as const,onSelect:()=>setEntityAssociationsOpen(true)}]:[]),
+      {label:uiText("Find in page"),icon:"search",description:"⌘F / Ctrl+F",onSelect:()=>document.dispatchEvent(new Event("noema:document-find"))},
       {label: uiText("Reveal in sidebar"), icon: 'folder', onSelect: onRevealInSidebar},
       ...(tocAvailable&&onToggleToc?[{label:uiText("Table of contents"),icon:'view-list',checked:tocVisible,onSelect:onToggleToc}]:[]),
       {label: uiText("Featured image…"), icon: 'image', disabled:editingDisabled, onSelect: () => setFeaturedImageOpen(true)},

@@ -17,6 +17,12 @@ import { useEntitySchema } from './useEntitySchema';
 import { useLibraryViewState } from '../state/library-view-state';
 import { captureLibraryView } from '../state/use-library-scroll';
 
+function sourceFileSize(bytes: number) {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const index = bytes > 0 ? Math.min(Math.floor(Math.log10(bytes) / 3), units.length - 1) : 0;
+  return new Intl.NumberFormat(getLocale(), {maximumFractionDigits: index ? 1 : 0}).format(bytes / 1000 ** index) + ' ' + units[index];
+}
+
 export function KnowledgeLibrary({vaultId, entities, onOpen, onOpenPassage, onCreate, onCreatePageFromSource, onUpdated}: {onUpdated:()=>Promise<void>; vaultId: string; entities: Entity[]; onOpen: (id: string) => void; onOpenPassage:(reference:SourceReference,trigger?:HTMLElement)=>void; onCreate: () => void; onCreatePageFromSource:(source:Entity)=>void}) {
   const [browser, setBrowser] = useLibraryViewState(vaultId, 'knowledge');
   const view = browser.grouping === 'all' ? 'all' : 'folders';
@@ -85,7 +91,7 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onOpenPassage, onCr
           {viewMode==='grid' && <PageCover vaultId={vaultId} icon={entity.type}/>}
           <span className="organization-item-icon"><Icon name={entity.type}/></span>
           <button className="organization-item-name" data-library-focus title={entity.name} onClick={event => openMatch(entity.id,event.currentTarget)}>
-            <span className="organization-page-title"><HighlightedText text={entity.name} query={search}/><span className="knowledge-row-detail">{[entityLabels[entity.type], ...(entity.type==='source'?(entity.archived_at?['Archived']:entity.sourceStatus==='queued'||entity.sourceStatus==='processing'?['Processing']:entity.inactive?['Inactive']:entity.sourceEnrichmentStatus==='pending'||entity.sourceEnrichmentStatus==='running'?['Processed · Enriching with AI']:entity.sourceEnrichmentStatus==='failed'?['Processed · AI enrichment failed']:['Processed']):[]), ...entity.subtypes.map(id => schema.subtypes.find(item => item.id === id)?.name).filter(Boolean)].join(' / ')}</span></span>
+            <span className="organization-page-title"><HighlightedText text={entity.name} query={search}/><span className="knowledge-row-detail">{[entityLabels[entity.type], ...(entity.type==='source'?(entity.archived_at?['Archived']:entity.sourceStatus==='queued'||entity.sourceStatus==='processing'?['Processing']:entity.inactive?['Inactive']:entity.sourceEnrichmentStatus==='pending'||entity.sourceEnrichmentStatus==='running'?['Processed · Enriching with AI']:entity.sourceEnrichmentStatus==='failed'?['Processed · AI enrichment failed']:['Processed']):[]), ...entity.subtypes.map(id => schema.subtypes.find(item => item.id === id)?.name).filter(Boolean)].join(' / ')}{viewMode!=='grid'&&entity.type==='source'&&typeof entity.sourceSize==='number'&&Number.isFinite(entity.sourceSize)&&entity.sourceSize>=0&&<> · {sourceFileSize(entity.sourceSize)}</>}</span></span>
             <small>{Number.isFinite(Date.parse(entity.updated_at)) ? <time dateTime={entity.updated_at} title={new Date(entity.updated_at).toLocaleString(getLocale())}>{new Date(entity.updated_at).toLocaleDateString(getLocale(), {month: 'short', day: 'numeric', year: 'numeric'})}</time> : uiText("Date unavailable")}{!!query && <span className="search-match-badge">{entity.name.toLowerCase().includes(query) ? uiText("Name") : passageFor(entity.id)?uiText("Source passage"):(entity.aliases??[]).some(alias=>alias.toLowerCase().includes(query))?uiText("Alias"):uiText("Related by meaning")}</span>}</small>
             {!!query&&passageFor(entity.id)&&<span className="search-result-snippet">{citationLocation(passageFor(entity.id)!)} · <HighlightedText text={textHits.get(entity.id)?.snippet??semanticHits.get(entity.id)?.snippet??''} query={search}/></span>}
             {!!query && !passageFor(entity.id)&&!entity.name.toLowerCase().includes(query)&&(entity.aliases??[]).some(alias=>alias.toLowerCase().includes(query)) && <span className="search-result-snippet knowledge-alias-match">{uiText("Alias:") + " "}<HighlightedText text={(entity.aliases ?? []).find(alias => alias.toLowerCase().includes(query)) ?? ''} query={search}/></span>}

@@ -115,12 +115,12 @@ export function editorSelectionClipboard(root: HTMLElement, blocks: Block[], ent
     }
     if (block.type === 'divider') return '<hr'+attributes+'>';
     if (block.type === 'code') return '<pre'+attributes+'><code>'+escapeAttribute(textOf(block.content, entities)).replace(/>/g,'&gt;')+'</code></pre>';
-    if (block.type === 'numbered' || block.type === 'bullet') {const tag=block.type === 'numbered' ? 'ol' : 'ul'; return `<${tag}><li${attributes}>${segmentHTML(block.content, entities)}</li></${tag}>`;}
-    if (block.type === 'columns') return '<section data-noema-block-type="columns"'+attributes+'>'+(block.rows?.[0] ?? [[],[]]).map(cell => '<div>'+segmentHTML(cell, entities)+'</div>').join('')+'</section>';
-    if (block.type === 'table') return '<table'+attributes+'>'+block.rows?.map(row => '<tr>'+row.map(cell => '<td>'+segmentHTML(cell, entities)+'</td>').join('')+'</tr>').join('')+'</table>';
+    if (block.type === 'numbered' || block.type === 'bullet') {const tag=block.type === 'numbered' ? 'ol' : 'ul'; return `<${tag}><li${attributes}>${segmentHTML(block.content, entities, undefined, false, undefined, false)}</li></${tag}>`;}
+    if (block.type === 'columns') return '<section data-noema-block-type="columns"'+attributes+'>'+(block.rows?.[0] ?? [[],[]]).map(cell => '<div>'+segmentHTML(cell, entities, undefined, false, undefined, false)+'</div>').join('')+'</section>';
+    if (block.type === 'table') return '<table'+attributes+'>'+block.rows?.map(row => '<tr>'+row.map(cell => '<td>'+segmentHTML(cell, entities, undefined, false, undefined, false)+'</td>').join('')+'</tr>').join('')+'</table>';
     const tag = block.type === 'heading1' ? 'h2' : block.type === 'heading2' ? 'h3' : block.type === 'quote' ? 'blockquote' : 'p';
     const content = block.type === 'math' ? [{text: `\\[${textOf(block.content, entities)}\\]`}] : block.content;
-    return `<${tag}${attributes}>${segmentHTML(content, entities)}</${tag}>`;
+    return `<${tag}${attributes}>${segmentHTML(content, entities, undefined, false, undefined, false)}</${tag}>`;
   }).join('');
   return {text, html};
 }
@@ -383,7 +383,22 @@ export function installBlockSelection(root: HTMLElement, options: Options) {
     if (replaceEditorSelection(root, options, [makeBlock('paragraph', [{text: event.data}])])) {event.preventDefault(); event.stopPropagation();}
   }
   function copy(event: ClipboardEvent) {
-    const selected = selectedEditorBlocks(root); if (!selected || !crossesHosts(selected) || !event.clipboardData) return;
+    const selected = selectedEditorBlocks(root); if (!selected || !event.clipboardData) return;
+    if (!crossesHosts(selected)) {
+      const fragment=selected.range.cloneContents();
+      if (!fragment.querySelector('.external-link-indicator')) return;
+      fragment.querySelectorAll('.external-link-indicator').forEach(node=>node.remove());
+      const wrapper=document.createElement('div');wrapper.append(fragment);
+      event.clipboardData.setData('text/plain',selected.range.toString());
+      event.clipboardData.setData('text/html',wrapper.innerHTML);
+      event.preventDefault();event.stopPropagation();
+      if(event.type==='cut') {
+        const host=(selected.range.startContainer instanceof Element?selected.range.startContainer:selected.range.startContainer.parentElement)?.closest('.block-content');
+        selected.range.deleteContents();
+        host?.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'deleteByCut'}));
+      }
+      return;
+    }
     const content = editorSelectionClipboard(root, options.blocks(), options.entities()); if (!content) return;
     event.clipboardData.setData('text/plain', content.text); event.clipboardData.setData('text/html', content.html);
     event.preventDefault(); event.stopPropagation(); if (event.type === 'cut') replaceEditorSelection(root, options);

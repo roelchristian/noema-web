@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 const paths: Record<string, ReactNode> = {
+  'external-link': <path d="M14 3h7v7M21 3 10 14M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/>,
   text: <path d="M4 5h16M4 10h16M4 15h16M4 20h10"/>,
   'heading-1': <><path d="M3 5v14M11 5v14M3 12h8M16 13l3-2v8M16 19h6"/></>,
   'heading-2': <><path d="M3 5v14M11 5v14M3 12h8M16 13a2.5 2.5 0 0 1 5 0c0 2-5 3-5 6h5"/></>,

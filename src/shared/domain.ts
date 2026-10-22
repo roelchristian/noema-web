@@ -76,7 +76,19 @@ export interface AIEnrichment extends IntelligencePreferences {
 export interface AISummary extends IntelligencePreferences { summary: string; revision: number; contentHash?: string | null }
 
 export function blockSegments(block: Block): Segment[] { return (block.type === 'table' || block.type === 'columns') ? (block.rows ?? []).flat(2) : block.content; }
-export function safeHref(value: string): string | undefined { return /^(https?:|mailto:)/i.test(value.trim()) ? value.trim() : undefined; }
+/** Keep the supplied destination, never resolve clipboard URLs against this app. */
+export function safeHref(value: string): string | undefined {
+  const href=value.trim();
+  if (/[\u0000-\u001f\u007f]/.test(href)) return;
+  if (/^mailto:/i.test(href)) return href;
+  if (!/^https?:\/\//i.test(href)) return;
+  try { const url=new URL(href); return url.hostname ? href : undefined; } catch { return; }
+}
+export function isExternalWebHref(value: string, origin?: string): boolean {
+  const href=safeHref(value);
+  if (!href || !/^https?:/i.test(href)) return false;
+  return !origin || new URL(href).origin !== origin;
+}
 
 /** Number adjacent list items, restarting across block and semantic group boundaries. */
 export function blockListNumber(blocks: Block[], id: string): number {

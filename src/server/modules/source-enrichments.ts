@@ -44,7 +44,7 @@ export class SourceEnrichments {
     const cleaned=await new SourceMath(this.store).prepare(file,async input=>{
      const activityId=this.activity.start('source_math_preprocessing',this.intelligence.selection(),file.vault_id,file.entity_id,'entity');
      try {
-      const output=await this.intelligence.generate(input,false,bytes=>this.activity.request(activityId,bytes,null),false,false,false,undefined,true,{signal:this.mathController.signal,onDelta:()=>{},mathPreparation:true});
+      const output=await this.intelligence.generate({kind:'sourceMath',input,background:true,signal:this.mathController.signal,onRequest:bytes=>this.activity.request(activityId,bytes,null)});
       this.activity.finish(activityId,'completed',200);return output;
      }catch(error){this.activity.finish(activityId,this.closed?'interrupted':'failed',error instanceof HttpError?error.status:500);throw error;}
     },this.mathController.signal);

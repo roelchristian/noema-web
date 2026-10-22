@@ -1,16 +1,9 @@
-import {editorReviewInstructions} from './editor-review.js';
-import {sourceMathInstructions} from './source-math.js';
-import { sourcePagePrompt } from './source-page-prompt.js';
+import {generationPolicy,type GenerationRequest} from './generation-request.js';
+export type {GenerationRequest} from './generation-request.js';
 import type { AIDebugTrace, AIRequestObserver } from './ai-debug.js';
 import { readOpenAIResponse, redactedTrace, responseOutputText } from './openai-response.js';
-import { explanationPrompt } from './explanation-prompt.js';
-import type {ReadingExplanationOptions} from '../../shared/source-reading.js';
-import { entityScanPrompt } from './entity-scan.js';
-import { titlePrompt } from './title-prompt.js';
-import { summaryPrompt } from './summary-prompt.js';
 import { pageEnrichmentPrompt, parsePageEnrichment, type PageEnrichmentOptions } from './page-enrichment-prompt.js';
 import type {SourceAuthor} from './source-authors.js';
-import { sourceEnrichmentPrompt, sourceAuthorsPrompt } from './source-enrichment-prompt.js';
 import { limitSummaryWords } from '../../shared/summary-text.js';
 import { pageLanguage } from './page-language.js';
 import { defaultIntelligencePreferences, defaultPageEnrichmentPreferences, defaultManualRequestsPerMinute, maxManualRequestsPerMinute, validManualRequestLimit, intelligenceModels, type IntelligenceConfiguration, supportedIntelligencePreferences, type IntelligencePreferences } from '../../shared/intelligence.js';
@@ -205,7 +198,8 @@ export class Intelligence {
   async generatePageEnrichment(input:string,options:PageEnrichmentOptions,onRequest?:AIRequestObserver,background=false) {
     // Build/validate field selection before reserving a request or reading credentials.
     pageEnrichmentPrompt(input,options);
-    const output=await this.generate(input,false,onRequest,false,false,false,undefined,background,undefined,false,options);
+    const {signal,...fields}=options;
+    const output=await this.generate({kind:'pageEnrichment',input,options:fields,onRequest,background,signal});
     return parsePageEnrichment(output,options);
   }
   titleSelection(): IntelligencePreferences {
@@ -213,18 +207,18 @@ export class Intelligence {
     return {model,reasoningEffort:'none'};
   }
   async generateTitle(input: string, onRequest?: AIRequestObserver) {
-    const title=await this.generate(input,false,onRequest,true);
+    const title=await this.generate({kind:'title',input,onRequest});
     if(title.length>120 || /[\r\n]/.test(title) || title==='Untitled')throw new HttpError(502,'OpenAI returned an invalid page title.');
     return title;
   }
   async generatePageUtility(input:string,domains:{id:string;name:string}[],currentTitle:string,onRequest?:AIRequestObserver,background=false) {
-    const output=await this.generate(input,false,onRequest,true,false,false,{domains,currentTitle},background);
+    const output=await this.generate({kind:'utility',input,domains,currentTitle,onRequest,background});
     let value:unknown;try{value=JSON.parse(output);}catch{throw new HttpError(502,'AI returned invalid title and subject data.');}
     if(!value||typeof value!=='object'||!('title' in value)||typeof value.title!=='string'||!value.title.trim()||value.title.length>(currentTitle.trim()&&currentTitle.trim()!=='Untitled'?500:120)||/[\r\n]/.test(value.title)||value.title==='Untitled'||!('primaryDomainId' in value)||!(value.primaryDomainId===null||typeof value.primaryDomainId==='string'&&domains.some(domain=>domain.id===value.primaryDomainId))||!('secondaryDomainIds' in value)||!Array.isArray(value.secondaryDomainIds)||value.secondaryDomainIds.length>2||value.secondaryDomainIds.some(id=>typeof id!=='string'||!domains.some(domain=>domain.id===id)))throw new HttpError(502,'AI returned invalid title and subject data.');
     return {title:currentTitle.trim()&&currentTitle.trim()!=='Untitled'?currentTitle:value.title.trim(),primaryDomainId:value.primaryDomainId as string|null,secondaryDomainIds:[...new Set(value.secondaryDomainIds as string[])].filter(id=>id!==value.primaryDomainId)};
   }
   async enrichSource(input:string,onRequest?:AIRequestObserver) {
-    const output=await this.generate(input,false,onRequest,false,false,false,undefined,true,undefined,true);
+    const output=await this.generate({kind:'sourceEnrichment',input,onRequest,background:true});
     try {
       const value=JSON.parse(output);
       if(!value||typeof value.name!=='string'||!value.name.trim()||value.name.length>200||/[\r\n\x00-\x1f]/.test(value.name)||typeof value.summary!=='string'||!value.summary.trim()||!('language' in value))throw new Error();
@@ -252,31 +246,32 @@ export class Intelligence {
     }catch {throw new HttpError(502,'AI returned invalid source metadata. Retry enrichment.');}
   }
   async extractSourceAuthors(input:string,onRequest?:AIRequestObserver) {
-    const output=await this.generate(input,false,onRequest,false,false,false,undefined,true,undefined,'authors');
+    const output=await this.generate({kind:'sourceAuthors',input,onRequest,background:true});
     try{return parseSourceAuthors(JSON.parse(output)?.authors);}
     catch{throw new HttpError(502,'AI returned invalid source authors. Retry enrichment.');}
   }
   async reeditSource(input:string,instructions:string,signal:AbortSignal,onRequest?:AIRequestObserver) {
-    return this.generate(input,false,onRequest,false,false,false,undefined,true,undefined,false,undefined,undefined,{instructions,signal});
+    return this.generate({kind:'editorial',input,instructions,signal,onRequest,background:true});
   }
-  async generate(input: string, validate=false, onRequest?: AIRequestObserver, title=false, entityScan=false, explain:boolean|(ReadingExplanationOptions&{signal?:AbortSignal})=false, utility?:{domains:{id:string;name:string}[];currentTitle:string}, background=false,sourcePage?:{onDelta:(delta:string)=>void;signal:AbortSignal;onPreviewDelta?:(delta:string)=>void;onPreviewReset?:()=>void;mathPreparation?:boolean},sourceEnrichment:boolean|'authors'=false,enrichment?:PageEnrichmentOptions,entityStream?:{onDelta:(delta:string)=>void;signal:AbortSignal},editorial?:{instructions:string;signal:AbortSignal},review=false) {
-    const credential=this.credential(),selection=editorial?{...this.selection(),reasoningEffort:'none' as const}:enrichment?this.enrichmentSelection():title?this.titleSelection():this.selection(),preferenceRevision=this.preferenceRevision;
+  async generate(request:GenerationRequest) {
+    const credential=this.credential(),preferenceRevision=this.preferenceRevision;
     if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
-    if(!title&&!entityScan&&!enrichment&&this.active)throw new HttpError(429,'Another AI request is running. Please wait.');
-    if (!background) this.reserveManualRequest();
-    const controller=new AbortController();this.generationRequests.add(controller);if(!title&&!entityScan&&!enrichment)this.active=controller;
+    const policy=generationPolicy(request,{standard:this.selection(),title:this.titleSelection(),enrichment:this.enrichmentSelection()});
+    if(policy.admission.activeSlot==='exclusive'&&this.active)throw new HttpError(429,'Another AI request is running. Please wait.');
+    if (policy.admission.manual) this.reserveManualRequest();
+    const controller=new AbortController();this.generationRequests.add(controller);if(policy.admission.activeSlot==='exclusive')this.active=controller;
     const abort=()=>controller.abort();
-    const requestSignal=editorial?.signal??entityStream?.signal??sourcePage?.signal??enrichment?.signal??(typeof explain==='object'?explain.signal:undefined);
+    const requestSignal=request.signal;
     requestSignal?.addEventListener('abort',abort,{once:true});
     if(requestSignal?.aborted)controller.abort();
-    const timer=setTimeout(()=>controller.abort(),Math.min(sourcePage||editorial?180000:45000,Date.parse(credential.expiresAt)-this.clock()));
+    const timer=setTimeout(()=>controller.abort(),Math.min(policy.timeoutMs,Date.parse(credential.expiresAt)-this.clock()));
     let trace: AIDebugTrace | undefined;
     try {
-      const prompt=review?{instructions:editorReviewInstructions,input}:editorial?{instructions:editorial.instructions,input}:sourcePage?.mathPreparation?{instructions:sourceMathInstructions,input:[{role:'user' as const,content:[{type:'input_text' as const,text:input}]}]}:enrichment?pageEnrichmentPrompt(input,enrichment):sourceEnrichment==='authors'?sourceAuthorsPrompt(input):sourceEnrichment?sourceEnrichmentPrompt(input):sourcePage?sourcePagePrompt(input):validate?{instructions:'Reply with OK.',input:'Connection test.'}:title?titlePrompt(input,utility?.domains,utility?.currentTitle):entityScan?entityScanPrompt(input):explain?explanationPrompt(input,typeof explain==='object'?explain:undefined):summaryPrompt(input);
+      const prompt=policy.prompt(),selection=policy.selection;
       const inputText=typeof prompt.input==='string'?prompt.input:prompt.input.flatMap(item=>item.content.map(part=>part.text)).join('');
-      const observer=onRequest?.(Buffer.byteLength(prompt.instructions+inputText,'utf8'));
+      const observer=request.onRequest?.(Buffer.byteLength(prompt.instructions+inputText,'utf8'));
       trace=redactedTrace(observer,credential.key);
-      const payload={model:selection.model,store:false,max_output_tokens:editorial?16000:enrichment?(selection.reasoningEffort!=='none'?4096:enrichment.requestedFields.includes('summary')?768:384):title?512:validate?2048:8192,reasoning:{effort:selection.reasoningEffort},tools:[],tool_choice:'none',...prompt,...(trace||sourcePage||entityStream?{stream:true}:{})};
+      const payload={model:selection.model,store:false,max_output_tokens:policy.maxOutputTokens,reasoning:{effort:selection.reasoningEffort},tools:[],tool_choice:'none',...prompt,...(trace||policy.stream?{stream:true}:{})};
       trace?.request('https://api.openai.com/v1/responses',payload);
       const response=await this.transport('https://api.openai.com/v1/responses',{
         method:'POST',redirect:'error',signal:controller.signal,
@@ -291,10 +286,10 @@ export class Intelligence {
         if(controller.signal.aborted||this.clock()>=Date.parse(credential.expiresAt)||this.preferenceRevision!==preferenceRevision)throw new HttpError(409,'AI generation was stopped or its settings changed.');
         receive(delta.split(credential.key).join('[redacted]').replace(/sk-[A-Za-z0-9_-]{16,}/g,'[redacted]'));
       };
-      const result=await readOpenAIResponse(response,trace,entityStream?delta=>safeDelta(delta,entityStream.onDelta):sourcePage?delta=>safeDelta(delta,sourcePage.onDelta):undefined,
-        sourcePage?.onPreviewDelta?{onDelta:delta=>safeDelta(delta,sourcePage.onPreviewDelta!),onReset:()=>sourcePage.onPreviewReset?.()}:undefined,observer?.usage);
+      const result=await readOpenAIResponse(response,trace,policy.onDelta?delta=>safeDelta(delta,policy.onDelta!):undefined,
+        policy.preview?{onDelta:delta=>safeDelta(delta,policy.preview!.onDelta),onReset:policy.preview.onReset}:undefined,observer?.usage);
       const summary=responseOutputText(result).trim();
-      if(result.status!=='completed'||!summary||summary.length>(sourcePage||editorial?60000:sourceEnrichment===true?20000:12000))throw new HttpError(502,'OpenAI returned an incomplete response. Try a lower reasoning effort or a shorter page.');
+      if(result.status!=='completed'||!summary||summary.length>policy.maxOutputLength)throw new HttpError(502,'OpenAI returned an incomplete response. Try a lower reasoning effort or a shorter page.');
       if(controller.signal.aborted||this.credential()?.generation!==credential.generation||this.preferenceRevision!==preferenceRevision)throw new HttpError(409,'The credential or AI settings changed, or the key expired. Please try again.');
       // Defense in depth against accidental credential echo by an upstream service.
       return summary.split(credential.key).join('[redacted]').replace(/sk-[A-Za-z0-9_-]{16,}/g,'[redacted]');

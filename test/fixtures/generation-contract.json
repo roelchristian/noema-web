@@ -1,0 +1,229 @@
+{
+  "summary": {
+    "policy": {
+      "model": "gpt-5-mini",
+      "store": false,
+      "max_output_tokens": 8192,
+      "reasoning": {
+        "effort": "low"
+      },
+      "tools": [],
+      "tool_choice": "none"
+    },
+    "promptDigest": "0046570a8db6cd6e93350ad80aa9cd2ba5e6ed009e1ec31fc93f1395a64d7071",
+    "bytes": 2081
+  },
+  "validation": {
+    "policy": {
+      "model": "gpt-5-mini",
+      "store": false,
+      "max_output_tokens": 2048,
+      "reasoning": {
+        "effort": "low"
+      },
+      "tools": [],
+      "tool_choice": "none"
+    },
+    "promptDigest": "9691f6c0b4c81a673ab6220acba954d387a2bf7d015df238be28dc1ef2c2503d",
+    "bytes": 30
+  },
+  "title fallback": {
+    "policy": {
+      "model": "gpt-6-luna",
+      "store": false,
+      "max_output_tokens": 512,
+      "reasoning": {
+        "effort": "none"
+      },
+      "tools": [],
+      "tool_choice": "none"
+    },
+    "promptDigest": "7e1b32d898fd2365d0216c424b01b8ec3ab0d991756b87dc3169c51e0acb9e51",
+    "bytes": 1320
+  },
+  "utility": {
+    "policy": {
+      "model": "gpt-6-luna",
+      "store": false,
+      "max_output_tokens": 512,
+      "reasoning": {
+        "effort": "none"
+      },
+      "tools": [],
+      "tool_choice": "none"
+    },
+    "promptDigest": "73815d8cfe167aff4ab1f9ee8d36fe2bec0359d558d9ff285c05b8aac761cc86",
+    "bytes": 1827
+  },
+  "entity scan": {
+    "policy": {
+      "model": "gpt-5-mini",
+      "store": false,
+      "max_output_tokens": 8192,
+      "reasoning": {
+        "effort": "low"
+      },
+      "tools": [],
+      "tool_choice": "none"
+    },
+    "promptDigest": "a42b899c0b953c0726327d03b4cf0a3ce32c4f8da6530ab84cb9f2b3d80dd5a9",
+    "bytes": 5800
+  },
+  "entity stream": {
+    "policy": {
+      "model": "gpt-5-mini",
+      "store": false,
+      "max_output_tokens": 8192,
+      "reasoning": {
+        "effort": "low"
+      },
+      "tools": [],
+      "tool_choice": "none",
+      "stream": true
+    },
+    "promptDigest": "a42b899c0b953c0726327d03b4cf0a3ce32c4f8da6530ab84cb9f2b3d80dd5a9",
+    "bytes": 5800
+  },
+  "explanation": {
+    "policy": {
+      "model": "gpt-5-mini",
+      "store": false,
+      "max_output_tokens": 8192,
+      "reasoning": {
+        "effort": "low"
+      },
+      "tools": [],
+      "tool_choice": "none"
+    },
+    "promptDigest": "8cebda4b0e9ab7daad8f49c397e4b0dbd1e4eaac07d65a2fc01786ab73c0636f",
+    "bytes": 1123
+  },
+  "reading explanation": {
+    "policy": {
+      "model": "gpt-5-mini",
+      "store": false,
+      "max_output_tokens": 8192,
+      "reasoning": {
+        "effort": "low"
+      },
+      "tools": [],
+      "tool_choice": "none"
+    },
+    "promptDigest": "600434e4fd2e55466fa7e15ccfb99090319572bcbf27a727ed9d85ff66446a56",
+    "bytes": 1040
+  },
+  "review": {
+    "policy": {
+      "model": "gpt-5-mini",
+      "store": false,
+      "max_output_tokens": 8192,
+      "reasoning": {
+        "effort": "low"
+      },
+      "tools": [],
+      "tool_choice": "none"
+    },
+    "promptDigest": "93616839ecfa7567e81d0502968c3b0051134cba86a77d60ebd9b2fa77d95a9a",
+    "bytes": 824
+  },
+  "source page": {
+    "policy": {
+      "model": "gpt-5-mini",
+      "store": false,
+      "max_output_tokens": 8192,
+      "reasoning": {
+        "effort": "low"
+      },
+      "tools": [],
+      "tool_choice": "none",
+      "stream": true
+    },
+    "promptDigest": "7b31d1fda072108805d855a181b11f8eb0028bf48e3ca30abddfc210b010953f",
+    "bytes": 12849
+  },
+  "source math": {
+    "policy": {
+      "model": "gpt-5-mini",
+      "store": false,
+      "max_output_tokens": 8192,
+      "reasoning": {
+        "effort": "low"
+      },
+      "tools": [],
+      "tool_choice": "none",
+      "stream": true
+    },
+    "promptDigest": "10104d91342b28c6ff3350ab79fedbe61033edcf7daa854d50d88abc0e8fedee",
+    "bytes": 1762
+  },
+  "source enrichment": {
+    "policy": {
+      "model": "gpt-5-mini",
+      "store": false,
+      "max_output_tokens": 8192,
+      "reasoning": {
+        "effort": "low"
+      },
+      "tools": [],
+      "tool_choice": "none"
+    },
+    "promptDigest": "799becdef43d25ff27586b8703e18bf372d4bdabd6eb50d3ac739ef171344566",
+    "bytes": 3146
+  },
+  "source authors": {
+    "policy": {
+      "model": "gpt-5-mini",
+      "store": false,
+      "max_output_tokens": 8192,
+      "reasoning": {
+        "effort": "low"
+      },
+      "tools": [],
+      "tool_choice": "none"
+    },
+    "promptDigest": "1ea09f2fc1ce902bdea93c30fc52a6b0db0471012e6c87c61fcd248852da27ea",
+    "bytes": 799
+  },
+  "enrichment summary": {
+    "policy": {
+      "model": "gpt-6-luna",
+      "store": false,
+      "max_output_tokens": 768,
+      "reasoning": {
+        "effort": "none"
+      },
+      "tools": [],
+      "tool_choice": "none"
+    },
+    "promptDigest": "29327c0b18deb9a16a01e4b2fcb1b5671bd6cbb8a6ece7accf2b7f21945ba2df",
+    "bytes": 955
+  },
+  "enrichment metadata": {
+    "policy": {
+      "model": "gpt-6-luna",
+      "store": false,
+      "max_output_tokens": 384,
+      "reasoning": {
+        "effort": "none"
+      },
+      "tools": [],
+      "tool_choice": "none"
+    },
+    "promptDigest": "af575bade53feefa1e488132d5cfd2458ce33889e55302f9715db35af93ab756",
+    "bytes": 1559
+  },
+  "editorial": {
+    "policy": {
+      "model": "gpt-5-mini",
+      "store": false,
+      "max_output_tokens": 16000,
+      "reasoning": {
+        "effort": "none"
+      },
+      "tools": [],
+      "tool_choice": "none"
+    },
+    "promptDigest": "864608b12236e026d236bde856769cd23323cbfefcdc0ab6e7f05637ee51d1fc",
+    "bytes": 73
+  }
+}

@@ -23,7 +23,8 @@
     "test/semantic-search.test.mjs",
     "test/smart-quotes.test.mjs",
     "test/vault-backup-workspace.test.mjs",
-    "test/workspace.test.mjs"
+    "test/workspace.test.mjs",
+    "test/document-find.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",

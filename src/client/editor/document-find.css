@@ -1,0 +1,20 @@
+.document-find-shell { margin-block: 12px; position: sticky; top: 12px; z-index: 5; }
+.document-find { border: 1px solid var(--control-border); border-radius: 8px; padding: 12px; background: var(--surface); max-height: calc(100dvh - 24px); overflow: auto; }
+.document-find-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-block: 8px; }
+.document-find label { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 44px; }
+.document-find-shell button, .document-find input:not([type="checkbox"]), .document-find select { min-height: 44px; max-width: 100%; }
+.document-find input:not([type="checkbox"]) { width: 200px; }
+.document-find select { min-width: 0; }
+.document-find-suggestions { max-height: 132px; overflow: auto; padding-inline-start: 24px; }
+.document-find-suggestions button { text-align: start; overflow-wrap: anywhere; width: 100%; }
+.document-find-suggestions [aria-current="true"] { outline: 2px solid var(--accent); }
+::highlight(document-find) { background: var(--status-warning-bg); color: var(--text); }
+::highlight(document-find-active) { background: var(--status-warning-border); color: var(--text); }
+
+.document-find button { border: 1px solid var(--control-border); border-radius: 6px; background: var(--surface); color: var(--text); padding: 6px 10px; }
+.document-find button:hover { background: var(--surface-hover); }
+.document-find summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: var(--text-muted); }
+.document-find p:empty { display: none; }
+
+[data-document-find="match"] { box-shadow: inset 3px 0 var(--status-warning-bg); }
+[data-document-find="active"] { box-shadow: inset 3px 0 var(--status-warning-border); }

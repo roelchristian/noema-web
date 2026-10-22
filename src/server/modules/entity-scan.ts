@@ -6,7 +6,7 @@ import {DOMAINS,TAXONOMY_VERSION,domainPath} from '../../shared/domains.js';
 import {normalizeEntityName} from '../../shared/auto-entities.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { blockSegments, entityLabels, entityTypes, type Page, type Segment } from '../../shared/domain.js';
-import { entityTextRuns, locateEvidence, locateRunEvidence, mentionEvidence, type EntityScan, type EntitySuggestion, type EntityReview, type SubtypeSuggestion } from '../../shared/entity-scan.js';
+import { ENTITY_SCAN_BATCH_SIZE, entityTextRuns, locateEvidence, locateRunEvidence, mentionEvidence, type EntityScan, type EntitySuggestion, type EntityReview, type SubtypeSuggestion } from '../../shared/entity-scan.js';
 import { Store } from '../store.js';
 import { HttpError, now, object, required } from '../validation.js';
 import { Knowledge } from './knowledge.js';
@@ -22,16 +22,36 @@ Page domains are a prior, never a hard eligibility filter. Use immediate phrase,
 This is an explicit discovery scan: resolve lexically matched existingEntities and propose useful new entities from eligible body text, keeping all suggestions subject to review. Use Place → Region / province / state for regions, provinces, states, and other subnational administrative entities. When the note explicitly qualifies a city or locality with a region or country, use that qualified form as the new locality entity’s canonical name, while using only the locality portion as its evidence. Suggest the explicitly named region or country as a separate Place with its own non-overlapping evidence. For example, in “Charlemagne, Quebec”, suggest a City named “Charlemagne, Quebec” with evidence “Charlemagne”, and a Region / province / state named “Quebec” with evidence “Quebec”. Keep the comma and space outside both tags. Do not invent geographical qualifiers absent from the note or rename existing vault entities; use their saved names and IDs. Use Organism for biological taxa and individual living things, including plants, animals, fungi, and microorganisms. Combine a biological subtype (such as Animal) with Taxon for a named species or other taxonomic group, or Individual for a particular living thing, when the note supports that distinction. Use Culture with Language or Nationality for explicitly mentioned languages and national identities. A nationality is distinct from a country (Place), and religious or belief concepts belong under Concept → Religion / belief. Do not infer someone’s nationality or beliefs from their name.
 The note includes bodyContext with the original block order, surrounding text, inline LaTeX formulas delimited by \\( and \\), and display LaTeX formulas delimited by \\[ and \\]. Use this context to understand mathematical terminology and relationships. Formulas, existing mentions, and text excluded from tagging are context only: never rewrite them or use them as evidence. Only bodyTextRuns contains eligible text for tagging.
 Return only JSON: {"suggestions":[{"name":"...","type":"...","subtypes":["subtype ID"],"aliases":[],"description":"short description supported by the note","domainIds":[],"existingId":null,"runId":"exact bodyTextRuns runId","evidenceStart":0,"evidence":"phrase quoted from one bodyTextRuns entry","reason":"why this is an entity"}]}.
-Use only the supplied main types and prefer supplied subtype IDs. If a useful subtype is missing, suggest its short descriptive name in subtypes; it will require separate user approval before it can be used. Return at most 20 distinct, useful entities. For an existing match, use its exact ID, name, type and subtypes; otherwise set existingId to null. Avoid duplicates and already connected entities. Emit an entity only once when its spellings or alternate names refer to the same identity; retain the first proposed canonical name and include the other explicitly supported names as aliases. Do not emit separate entities that list each other as aliases. Preserve existing vault identities. Canonical names and tagged wording may differ for any entity type. Put explicitly supported alternate names, abbreviations, and short forms in aliases; never invent aliases from outside knowledge. For example, a locality named “Charlemagne, Quebec” may have alias “Charlemagne”, and an organization may have an explicitly defined acronym as an alias. Use the actual short form as evidence when that is the occurrence being tagged. Aliases are saved only when the suggestion is accepted; do not propose aliases identical to the canonical name. Each bodyTextRuns entry has runId and text. Return its exact runId and zero-based evidenceStart within its text to identify the intended occurrence. Evidence must quote a nonempty contiguous phrase from that bodyTextRuns entry, not the title or bodyContext. Preserve the original wording, case, punctuation, and whitespace where possible; ordinary spaces, nonbreaking spaces, tabs, and line breaks are equivalent for matching. Evidence must not cross formulas, existing mentions, or excluded text. Sources require original file attachments: only suggest existing Source entities, never new sources. Suggest named people, places, events, creative works, organizations, organisms, languages, nationalities, sources, and well-defined concepts where supported; skip vague words. Return an empty suggestions array if none qualify.`,
+Use only the supplied main types and prefer supplied subtype IDs. If a useful subtype is missing, suggest its short descriptive name in subtypes; it will require separate user approval before it can be used. Scan bodyTextRuns in their supplied order, and entities within each run in ascending evidenceStart order. Return at most 26 distinct, useful entities: the first 25 form the review batch, and the 26th is lookahead to resume the next batch at that exact occurrence. If more than 25 eligible identities remain, always include the 26th; return fewer only when the remaining text is exhausted. Never skip an earlier eligible entity to prioritize a later one. The continuation.excluded identities have already been scanned (including rejected suggestions); do not suggest them again under any name or alias. Only scan the supplied bodyTextRuns; earlier bodyContext is context only. For an existing match, use its exact ID, name, type and subtypes; otherwise set existingId to null. Avoid duplicates and already connected entities. Emit an entity only once when its spellings or alternate names refer to the same identity; retain the first proposed canonical name and include the other explicitly supported names as aliases. Do not emit separate entities that list each other as aliases. Preserve existing vault identities. Canonical names and tagged wording may differ for any entity type. Put explicitly supported alternate names, abbreviations, and short forms in aliases; never invent aliases from outside knowledge. For example, a locality named “Charlemagne, Quebec” may have alias “Charlemagne”, and an organization may have an explicitly defined acronym as an alias. Use the actual short form as evidence when that is the occurrence being tagged. Aliases are saved only when the suggestion is accepted; do not propose aliases identical to the canonical name. Each bodyTextRuns entry has runId and text. Return its exact runId and zero-based evidenceStart within its text to identify the intended occurrence. Evidence must quote a nonempty contiguous phrase from that bodyTextRuns entry, not the title or bodyContext. Preserve the original wording, case, punctuation, and whitespace where possible; ordinary spaces, nonbreaking spaces, tabs, and line breaks are equivalent for matching. Evidence must not cross formulas, existing mentions, or excluded text. Sources require original file attachments: only suggest existing Source entities, never new sources. Suggest named people, places, events, creative works, organizations, organisms, languages, nationalities, sources, and well-defined concepts where supported; skip vague words. Return an empty suggestions array if none qualify.`,
     input: [{role:'user' as const, content:[{type:'input_text' as const, text:input}]}],
   };
 }
 export class EntityScans {
   constructor(private store: Store, private pages: Pages, private knowledge: Knowledge, private enrichments: AIEnrichments) {}
-  input(vault: string, page: Page) {
+  continuation(vault:string,page:Page,scanId:unknown,token:unknown):EntityScan|undefined {
+    if(scanId===undefined&&token===undefined)return undefined;
+    const row=this.store.get<{data:string}>("SELECT data FROM page_ai_enrichments WHERE page_id=? AND kind='entity_scan'",page.id);
+    const scan=row?(JSON.parse(row.data) as {scan:EntityScan}).scan:undefined;
+    if(!scan||scan.id!==scanId||!scan.continuation||scan.continuation.token!==token||scan.revision!==page.revision||scan.contextKey!==this.contextKey(vault,page))throw new HttpError(409,'The note or scan changed. Start a fresh scan.');
+    return scan;
+  }
+  input(vault: string, page: Page, previous?:EntityScan) {
     const entities = this.knowledge.list(vault);
     const connected = new Set(page.blocks.flatMap(block => blockSegments(block).flatMap(s => s.entityId ? [s.entityId] : [])));
-    const runs = entityTextRuns(page);
+    let runs = entityTextRuns(page);
+    if(previous?.continuation) {
+      const cursor=previous.continuation.cursor;
+      const blockIndex=page.blocks.findIndex(block=>block.id===cursor.blockId);
+      // Absolute block coordinates survive accepting earlier mentions, which only splits runs.
+      runs=runs.flatMap(run=>{
+        const index=page.blocks.findIndex(block=>block.id===run.blockId);
+        const order=index-blockIndex||(run.row??-1)-(cursor.row??-1)||(run.col??-1)-(cursor.col??-1);
+        if(order<0||order===0&&run.end<=cursor.start)return [];
+        if(order>0||run.start>=cursor.start)return [run];
+        const skipped=cursor.start-run.start;
+        return [{...run,text:' '.repeat(skipped)+run.text.slice(skipped)}];
+      });
+    }
     const names = new Map(entities.map(entity => [entity.id,entityMentionName(entity)]));
     const contextText = (segments: Segment[]) => segments.map(segment => segment.entityId
       ? segment.mentionText ?? names.get(segment.entityId) ?? ''
@@ -53,23 +73,42 @@ export class EntityScans {
     }));
     const domainIds=new Set([page.pageDomains?.primaryDomainId,...(page.pageDomains?.secondaryDomainIds??[]),...candidates.flatMap(entity=>entity.domainIds??[])]);
     const eligibleDomains=DOMAINS.filter(domain=>!domain.parent_id||domainIds.has(domain.id)||domain.label.toLowerCase().split(/[^\p{L}\p{N}]+/u).some(word=>word.length>4&&bodyText.includes(word))).map(({id})=>({id,path:domainPath(id).map(domain=>domain.label).join(' > ')}));
-    const input = JSON.stringify({untrusted_note:{title:page.title,bodyTextRuns:runs,bodyContext},pageDomains:page.pageDomains??null,taxonomyVersion:TAXONOMY_VERSION,eligibleDomains,schema:this.knowledge.schema(vault),existingEntities:candidates.map(({id,name,aliases,type,subtypes,domainIds,description}) => ({id,name,aliases,type,subtypes,domainIds:domainIds??[],description:description.slice(0,600),alreadyConnected:connected.has(id)}))});
+    const input = JSON.stringify({...(previous?.continuation?{continuation:{excluded:[...previous.continuation.excluded,...previous.suggestions.map(({name,type,aliases,existingId})=>({name,type,aliases,existingId}))]}}:{}),untrusted_note:{title:page.title,bodyTextRuns:runs,bodyContext},pageDomains:page.pageDomains??null,taxonomyVersion:TAXONOMY_VERSION,eligibleDomains,schema:this.knowledge.schema(vault),existingEntities:candidates.map(({id,name,aliases,type,subtypes,domainIds,description}) => ({id,name,aliases,type,subtypes,domainIds:domainIds??[],description:description.slice(0,600),alreadyConnected:connected.has(id)}))});
     if (input.length > 80000 || bodyText.length > 40000) throw new HttpError(413, 'This note exceeds the discovery scan limit. Scan a shorter note.');
     return input;
   }
   contextKey(vault:string,page:Page):string {
-    return createHash('sha256').update(JSON.stringify(['run-evidence-v2','qualified-places-aliases-stream-v1','reciprocal-identities-v1',TAXONOMY_VERSION,ALIAS_POLICY_VERSION,page.pageDomains,page.blocks,this.knowledge.list(vault).map(({id,name,aliases,domainIds,type,subtypes,description,inactive,archived_at})=>[id,name,aliases,domainIds,type,subtypes,description,inactive,archived_at])])).digest('hex');
+    return createHash('sha256').update(JSON.stringify(['run-evidence-v2','batched-entities-25-v1','reciprocal-identities-v1',TAXONOMY_VERSION,ALIAS_POLICY_VERSION,page.pageDomains,page.blocks,this.knowledge.list(vault).map(({id,name,aliases,domainIds,type,subtypes,description,inactive,archived_at})=>[id,name,aliases,domainIds,type,subtypes,description,inactive,archived_at])])).digest('hex');
   }
-  save(vault: string, page: Page, output: string, preferences: ReturnType<Intelligence['selection']>, persist=true): EntityScan {
+  save(vault: string, page: Page, output: string, preferences: ReturnType<Intelligence['selection']>, persist=true,previous?:EntityScan): EntityScan {
     const current=this.pages.get(vault,page.id);
+    if(previous?.continuation)this.continuation(vault,current,previous.id,previous.continuation.token);
     if(current.revision!==page.revision||this.contextKey(vault,current)!==this.contextKey(vault,page))throw new HttpError(409,'The note or domains changed. Scan again.');
     const invalid = () => new HttpError(502, 'AI returned invalid entity suggestions. Please scan again.');
     let raw: unknown;
     try { raw = JSON.parse(output); } catch { throw invalid(); }
-    if (!raw || typeof raw !== 'object' || !('suggestions' in raw) || !Array.isArray(raw.suggestions) || raw.suggestions.length > 20) throw invalid();
+    if (!raw || typeof raw !== 'object' || !('suggestions' in raw) || !Array.isArray(raw.suggestions) || raw.suggestions.length > ENTITY_SCAN_BATCH_SIZE+1) throw invalid();
     const schema = this.knowledge.schema(vault), allEntities = this.knowledge.list(vault), entities = allEntities.filter(entity=>!entity.archived_at&&!entity.inactive), seen = new Set<string>();
     const connected = new Set(page.blocks.flatMap(b => blockSegments(b).flatMap(s => s.entityId ? [s.entityId] : [])));
     const suggestions: EntitySuggestion[] = [], subtypeSuggestions: SubtypeSuggestion[] = [];
+    const excluded=[...(previous?.continuation?.excluded??[]),...(previous?.suggestions??[])];
+    const sameIdentity=(a:Pick<EntitySuggestion,'name'|'type'|'aliases'|'existingId'>,b:Pick<EntitySuggestion,'name'|'type'|'aliases'|'existingId'>)=>a.type===b.type&&!(a.existingId&&b.existingId&&a.existingId!==b.existingId)&&(
+      !!a.existingId&&a.existingId===b.existingId||normalizeEntityName(a.name)===normalizeEntityName(b.name)||
+      a.aliases?.some(alias=>normalizeEntityName(alias)===normalizeEntityName(b.name))||b.aliases?.some(alias=>normalizeEntityName(alias)===normalizeEntityName(a.name)));
+    let lastPosition=-1;
+    const orderedRuns=entityTextRuns(page);
+    const position=(anchor:NonNullable<EntitySuggestion['evidenceAnchor']>)=>{
+      const index=orderedRuns.findIndex(run=>run.blockId===anchor.blockId&&run.row===anchor.row&&run.col===anchor.col&&run.start<=anchor.start&&run.end>=anchor.end);
+      return index*100000+anchor.start;
+    };
+    let lookaheadAnchor:EntitySuggestion['evidenceAnchor'];
+    if(raw.suggestions.length===ENTITY_SCAN_BATCH_SIZE+1) {
+      const last=raw.suggestions[ENTITY_SCAN_BATCH_SIZE];
+      if(!last||typeof last.evidence!=='string')throw invalid();
+      const run=orderedRuns.find(run=>run.runId===last.runId);
+      lookaheadAnchor=run?locateRunEvidence(run,last.evidence,last.evidenceStart)??undefined:locateEvidence(page,last.evidence)??undefined;
+      if(!lookaheadAnchor||previous?.continuation&&position(lookaheadAnchor)<=position(previous.continuation.cursor))throw invalid();
+    }
     for (const value of raw.suggestions) {
       if (!value || typeof value !== 'object') throw invalid();
       const {name,type,subtypes,description,evidence,reason,existingId,runId,evidenceStart} = value;
@@ -97,6 +136,12 @@ export class EntityScans {
       if (!evidenceAnchor || (existing && connected.has(existing.id))) continue;
       const evidenceRun=entityTextRuns(page).find(run=>run.blockId===evidenceAnchor.blockId&&run.row===evidenceAnchor.row&&run.col===evidenceAnchor.col&&run.start<=evidenceAnchor.start&&run.end>=evidenceAnchor.end)!;
       if(type==='concept'&&ordinaryConceptUse(evidenceRun.text,evidenceAnchor.start-evidenceRun.start,evidence.length,normalizeEntityName(evidence)))continue;
+      // A checkpoint is safe only when the provider traverses the note in order.
+      const nextPosition=position(evidenceAnchor);
+      if(raw.suggestions.length===ENTITY_SCAN_BATCH_SIZE+1&&nextPosition<lastPosition)throw new HttpError(502,'AI returned suggestions out of note order. Retry this batch.');
+      lastPosition=nextPosition;
+      if(excluded.some(item=>sameIdentity(item,{name,type,aliases,existingId:existing?.id??null})))continue;
+      if(previous?.continuation&&position(evidenceAnchor)<position(previous.continuation.cursor))continue;
       const key = existing?.id || `${type}:${name.trim().toLowerCase()}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -110,8 +155,22 @@ export class EntityScans {
       suggestions.push({aliases:supportedAliases,domainIds:type==='concept'?(existing?.domainIds??domainIds):[],evidenceAnchor,proposedSubtypeIds,id:randomUUID(),name:existing?.name || name.trim(),type:existing?.type || type,subtypes:existing?.subtypes || knownIds,description:existing?.description || description,evidence,reason,existingId:existing?.id || null,status:'pending'});
     }
     const merged=mergeSuggestionIdentities(suggestions);
-    const proposedIds=new Set(merged.flatMap(suggestion=>suggestion.proposedSubtypeIds??[]));
-    const scan = {contextKey:this.contextKey(vault,page),id:randomUUID(),revision:page.revision,suggestions:merged,subtypeSuggestions:subtypeSuggestions.filter(proposal=>proposedIds.has(proposal.id))};
+    // The lookahead is not offered for review until the next batch.
+    const batch=merged.filter(item=>!lookaheadAnchor||position(item.evidenceAnchor!)<position(lookaheadAnchor)).slice(0,ENTITY_SCAN_BATCH_SIZE);
+    const proposals=[...(previous?.subtypeSuggestions??[])];
+    for(const proposal of subtypeSuggestions) {
+      const saved=proposals.find(item=>item.type===proposal.type&&item.name.toLowerCase()===proposal.name.toLowerCase());
+      if(saved)for(const item of batch) {
+        item.proposedSubtypeIds=item.proposedSubtypeIds?.map(id=>id===proposal.id?saved.id:id);
+        if(saved.resolvedId&&item.proposedSubtypeIds?.includes(saved.id))item.subtypes=[...new Set([...(item.subtypes??[]),saved.resolvedId])];
+      }
+      else proposals.push(proposal);
+    }
+    const combined=[...(previous?.suggestions??[]),...batch];
+    const proposedIds=new Set(combined.flatMap(suggestion=>suggestion.proposedSubtypeIds??[]));
+    const scan:EntityScan = {contextKey:this.contextKey(vault,page),id:previous?.id??randomUUID(),revision:page.revision,suggestions:combined,batchCount:batch.length,
+      ...(lookaheadAnchor?{continuation:{token:randomUUID(),cursor:lookaheadAnchor,excluded:[...new Map([...excluded,...batch].map(({name,type,aliases,existingId})=>[`${type}:${normalizeEntityName(name)}`,{name,type,aliases,existingId}])).values()]}}:{}),
+      subtypeSuggestions:proposals.filter(proposal=>proposedIds.has(proposal.id))};
     if(persist)this.enrichments.save(vault,page.id,'entity_scan',{scan},page.revision,preferences);
     return scan;
   }
@@ -123,7 +182,8 @@ export class EntityScans {
       const scan = row ? (JSON.parse(row.data) as {scan:EntityScan}).scan : null;
       if (!scan || (scan.contextKey!==undefined&&scan.contextKey!==this.contextKey(vault,page)) || scan.id !== body.scanId || row!.revision !== page.revision || body.revision !== page.revision) throw new HttpError(409,'The note or scan changed. Scan again before reviewing.');
       const ids = body.suggestionIds ?? [body.suggestionId];
-      if (!Array.isArray(ids) || !ids.length || ids.length > 20 || ids.some(id => typeof id !== 'string') || new Set(ids).size !== ids.length || (body.decision !== 'accepted' && body.decision !== 'rejected')) throw new HttpError(400,'Choose pending suggestions to accept or reject.');
+      if (!Array.isArray(ids) || !ids.length || ids.length > scan.suggestions.length+(scan.subtypeSuggestions?.length??0) || ids.some(id => typeof id !== 'string') || new Set(ids).size !== ids.length || (body.decision !== 'accepted' && body.decision !== 'rejected')) throw new HttpError(400,'Choose pending suggestions to accept or reject.');
+      if(scan.continuation)scan.continuation.token=randomUUID();
       const subtypeSuggestions = ids.map(id => scan.subtypeSuggestions?.find(item => item.id === id));
       if (subtypeSuggestions.every(Boolean)) {
         if (body.edits !== undefined || subtypeSuggestions.some(item => item!.status !== 'pending')) throw new HttpError(400,'Choose pending subtypes to accept or reject.');
@@ -139,6 +199,7 @@ export class EntityScans {
           }
           proposal.status = body.decision;
         }
+        scan.contextKey=this.contextKey(vault,page);
         this.store.run("UPDATE page_ai_enrichments SET data=?,updated_at=? WHERE page_id=? AND kind='entity_scan'",JSON.stringify({scan}),now(),pageId);
         return {page, scan, entities: this.knowledge.list(vault), schema: this.knowledge.schema(vault)};
       }

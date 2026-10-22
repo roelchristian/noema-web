@@ -59,21 +59,21 @@
     "policy": {
       "model": "gpt-5-mini",
       "store": false,
-      "max_output_tokens": 8192,
+      "max_output_tokens": 16384,
       "reasoning": {
         "effort": "low"
       },
       "tools": [],
       "tool_choice": "none"
     },
-    "promptDigest": "a42b899c0b953c0726327d03b4cf0a3ce32c4f8da6530ab84cb9f2b3d80dd5a9",
-    "bytes": 5800
+    "promptDigest": "1a6f196204aefa372cd83c6c1f88613c0afb4719b3bcf472375f6e51d7a6deee",
+    "bytes": 6431
   },
   "entity stream": {
     "policy": {
       "model": "gpt-5-mini",
       "store": false,
-      "max_output_tokens": 8192,
+      "max_output_tokens": 16384,
       "reasoning": {
         "effort": "low"
       },
@@ -81,8 +81,8 @@
       "tool_choice": "none",
       "stream": true
     },
-    "promptDigest": "a42b899c0b953c0726327d03b4cf0a3ce32c4f8da6530ab84cb9f2b3d80dd5a9",
-    "bytes": 5800
+    "promptDigest": "1a6f196204aefa372cd83c6c1f88613c0afb4719b3bcf472375f6e51d7a6deee",
+    "bytes": 6431
   },
   "explanation": {
     "policy": {

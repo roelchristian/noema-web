@@ -7,6 +7,38 @@ import {ConnectedEntities} from '../src/client/intelligence/ConnectedEntities.ts
 import {EntityScanReview} from '../src/client/intelligence/EntityScanReview.tsx';
 import {api} from '../src/client/api.ts';
 
+test('batch prompt lets users review first, then continue using the persisted checkpoint and existing rows',async t=>{
+  const env=setupDOM(t),{dom}=env;
+  dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
+  dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
+  const root=createRoot(document.querySelector('#mount'));
+  env.defer(()=>act(async()=>root.unmount()));
+  t.mock.method(api,'entitySchema',async()=>({properties:{},subtypes:[],subtypeProperties:{}}));
+  const page={id:'page',vault_id:'default',revision:1,title:'Batch test',blocks:[],sourceIds:[]};
+  let scan={id:'saved',revision:1,batchCount:25,continuation:{token:'checkpoint',cursor:{blockId:'b',start:100,end:105},excluded:[]},suggestions:Array.from({length:25},(_,i)=>({id:`s${i}`,name:`Person ${i}`,type:'person',subtypes:[],evidence:`Person ${i}`,reason:'Named',status:'pending',existingId:null}))};
+  let finish,received;
+  t.mock.method(api,'scanEntities',async(...args)=>{received=args;return new Promise(resolve=>finish=resolve);});
+  const render=()=>root.render(React.createElement(EntityScanReview,{page,scan,entities:[],disabled:false,onFlush:async()=>page,onReview:async(_scanId,ids,decision)=>({...scan,suggestions:scan.suggestions.map(item=>(Array.isArray(ids)?ids:[ids]).includes(item.id)?{...item,status:decision}:item)}),onScan:result=>{scan=result;render();}}));
+  const button=text=>[...document.querySelectorAll('button')].find(item=>item.textContent===text);
+  const click=async element=>act(async()=>element.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})));
+  try {
+    await act(async()=>render());await click(document.querySelector('.entity-detect-action'));
+    assert.match(document.querySelector('.entity-scan-batch-prompt').textContent,/25 suggestions saved/);
+    await click(button('Review these suggestions first'));
+    assert.equal(received,undefined,'Review first makes no AI request');
+    assert.equal(document.querySelectorAll('.entity-review-table tbody tr').length,25);
+    await click(document.querySelector('[aria-label="Reject Person 0"]'));
+    assert.equal(scan.suggestions[0].status,'rejected');
+    await click(button('Continue scanning'));
+    assert.deepEqual(received[5],{scanId:'saved',token:'checkpoint'});
+    assert.equal(document.querySelectorAll('.entity-review-table tbody tr').length,25,'Existing results remain visible during continuation');
+    await act(async()=>finish({...scan,continuation:undefined,batchCount:1,suggestions:[...scan.suggestions,{...scan.suggestions[1],id:'new',name:'New Person'}]}));
+    assert.equal(document.querySelector('.entity-scan-batch-prompt'),null);
+    assert.equal(document.querySelectorAll('.entity-review-table tbody tr').length,26);
+    assert.equal(scan.suggestions[0].status,'rejected');
+  }finally{await env.close();}
+});
+
 test('review renders incoming rows during scanning and enables review only after final persistence, then confirms completion outside the heading',async t=>{
   const env=setupDOM(t),{dom}=env;
   dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};

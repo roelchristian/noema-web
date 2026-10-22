@@ -8,7 +8,13 @@ export interface EntitySuggestionEdit { domainIds?:string[]; id: string; name: s
 export interface SubtypeSuggestion { id: string; name: string; type: EntityType; status: 'pending' | 'accepted' | 'rejected'; resolvedId?: string }
 export interface EvidenceAnchor {blockId:string; row?:number; col?:number; start:number; end:number}
 export interface EntityTextRun extends EvidenceAnchor {runId:string; text:string}
-export interface EntityScan { contextKey?:string; subtypeSuggestions?: SubtypeSuggestion[]; id: string; revision: number; suggestions: EntitySuggestion[] }
+export const ENTITY_SCAN_BATCH_SIZE=25;
+export interface EntityScanContinuation {
+  token:string;
+  cursor:EvidenceAnchor;
+  excluded:Pick<EntitySuggestion,'name'|'type'|'aliases'|'existingId'>[];
+}
+export interface EntityScan { contextKey?:string; continuation?:EntityScanContinuation; batchCount?:number; subtypeSuggestions?: SubtypeSuggestion[]; id: string; revision: number; suggestions: EntitySuggestion[] }
 export interface EntityReview { schema?: import('./entity-schema.js').EntitySchema; page: Page; scan: EntityScan; entities: Entity[] }
 
 /** Eligible text runs with occurrence coordinates, preserving protected boundaries. */

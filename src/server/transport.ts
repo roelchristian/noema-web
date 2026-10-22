@@ -322,11 +322,12 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             if(id && parts.length===4 && child==='entity-scan' && method==='POST') {
               const page=pages.get(vault,id);
               if(body.revision!==page.revision)throw new HttpError(409,'Save the latest note before scanning.');
+              const previous=scans.continuation(vault,page,body.continueScanId,body.continuationToken);
               const cached=enrichments.list(vault,id).find(row=>row.kind==='entity_scan'&&row.revision===page.revision)?.data.scan as import('../shared/entity-scan.js').EntityScan|undefined;
               const contextKey=scans.contextKey(vault,page);
               const streaming=req.headers.accept?.includes('application/x-ndjson');
-              if(!streaming&&cached?.contextKey===contextKey)return send(200,cached);
-              const input=scans.input(vault,page);
+              if(!previous&&!streaming&&cached?.contextKey===contextKey)return send(200,cached);
+              const input=scans.input(vault,page,previous);
               if(streaming) {
                 const controller=new AbortController(),parser=new EntityScanStream();
                 const disconnected=()=>{if(!res.writableEnded)controller.abort();};
@@ -338,18 +339,18 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
                 res.writeHead(200,{'Content-Type':'application/x-ndjson; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Accel-Buffering':'no'});res.flushHeaders();
                 const heartbeat=setInterval(()=>{if(!res.destroyed&&!controller.signal.aborted)res.write('\n');},10000);
                 try {
-                  if(cached?.contextKey===contextKey)emit({type:'completed',scan:cached});
+                  if(!previous&&cached?.contextKey===contextKey)emit({type:'completed',scan:cached});
                   else {
                     const output=await intelligence.generate({kind:'entityScan',input,onRequest:bytes=>activity.request(activityId!,bytes,page.revision),
                       signal:controller.signal,onDelta:delta=>{
                         const suggestions=parser.feed(delta);
-                        if(suggestions)emit({type:'progress',scan:scans.save(vault,page,JSON.stringify({suggestions}),intelligence.selection(),false)});
+                        if(suggestions&&(suggestions.length===1||suggestions.length%5===0))emit({type:'progress',scan:scans.save(vault,page,JSON.stringify({suggestions}),intelligence.selection(),false,previous)});
                       },
                     });
                     if(controller.signal.aborted)throw new HttpError(499,'Entity scanning stopped.');
                     vaults.requireOpen(vault);
                     if(scans.contextKey(vault,pages.get(vault,id))!==contextKey)throw new HttpError(409,'The note, domains or entity catalog changed. Scan again.');
-                    emit({type:'completed',scan:scans.save(vault,page,output,intelligence.selection())});
+                    emit({type:'completed',scan:scans.save(vault,page,output,intelligence.selection(),true,previous)});
                   }
                   activity.finish(activityId!,'completed',200);activityId=undefined;res.end();
                 }catch(error){
@@ -358,10 +359,11 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
                 }finally{clearInterval(heartbeat);res.removeListener('close',disconnected);}
                 return;
               }
-              const output=await intelligence.generate({kind:'entityScan',input,onRequest:bytes=>activity.request(activityId!,bytes,page.revision)});
+              const parser=new EntityScanStream();
+              const output=await intelligence.generate({kind:'entityScan',input,onRequest:bytes=>activity.request(activityId!,bytes,page.revision),onDelta:delta=>{parser.feed(delta);}});
               vaults.requireOpen(vault);
               if(scans.contextKey(vault,pages.get(vault,id))!==contextKey)throw new HttpError(409,'The note, domains or entity catalog changed. Scan again.');
-              return send(200,scans.save(vault,page,output,intelligence.selection()));
+              return send(200,scans.save(vault,page,output,intelligence.selection(),true,previous));
             }
             if(id && parts.length===4 && child==='summary' && method==='DELETE')return send(200,enrichments.removeSummary(vault,id));
             if(id && parts.length===4 && child==='enrichments' && method==='GET')return send(200,enrichments.list(vault,id));

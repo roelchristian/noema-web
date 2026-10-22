@@ -160,8 +160,8 @@ export async function createPageFromSource(vault:string,sourceId:string,focus:st
 }
 
 /** Provisional scan rows are display-only until the completed event confirms persistence. */
-export async function scanEntities(vault:string,id:string,revision:number,onProgress?:(scan:import('../shared/entity-scan').EntityScan)=>void,signal?:AbortSignal):Promise<import('../shared/entity-scan').EntityScan> {
-  const response=await fetch(`/api/pages/${id}/entity-scan`,{method:'POST',signal,headers:{'X-Noema-Request':'1','X-Vault-Id':vault,'Content-Type':'application/json','Accept':'application/x-ndjson'},body:JSON.stringify({revision})});
+export async function scanEntities(vault:string,id:string,revision:number,onProgress?:(scan:import('../shared/entity-scan').EntityScan)=>void,signal?:AbortSignal,continuation?:{scanId:string;token:string}):Promise<import('../shared/entity-scan').EntityScan> {
+  const response=await fetch(`/api/pages/${id}/entity-scan`,{method:'POST',signal,headers:{'X-Noema-Request':'1','X-Vault-Id':vault,'Content-Type':'application/json','Accept':'application/x-ndjson'},body:JSON.stringify({revision,...(continuation?{continueScanId:continuation.scanId,continuationToken:continuation.token}:{})})});
   if(!response.ok){const result=await response.json();throw new ApiError(response.status,result.error||'Entity scan failed.');}
   const reader=response.body?.getReader();if(!reader)throw new Error('The entity scan stream is unavailable.');
   const decoder=new TextDecoder();let pending='',size=0,completed:import('../shared/entity-scan').EntityScan|undefined;
@@ -175,7 +175,7 @@ export async function scanEntities(vault:string,id:string,revision:number,onProg
   try {
     while(!completed) {
       const {done,value}=await reader.read();if(done)break;
-      size+=value.byteLength;if(size>1024*1024)throw new Error('The entity scan exceeded its size limit.');
+      size+=value.byteLength;if(size>16*1024*1024)throw new Error('The entity scan exceeded its size limit.');
       pending+=decoder.decode(value,{stream:true});
       let newline:number;while(!completed&&(newline=pending.indexOf('\n'))>=0){consume(pending.slice(0,newline));pending=pending.slice(newline+1);}
     }

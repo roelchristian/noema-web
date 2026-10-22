@@ -1,4 +1,5 @@
 import {generationPolicy,type GenerationRequest} from './generation-request.js';
+import {EntityScanBatchReady} from './entity-scan-stream.js';
 export type {GenerationRequest} from './generation-request.js';
 import type { AIDebugTrace, AIRequestObserver } from './ai-debug.js';
 import { readOpenAIResponse, redactedTrace, responseOutputText } from './openai-response.js';
@@ -319,6 +320,12 @@ export class Intelligence {
       // Defense in depth against accidental credential echo by an upstream service.
       return summary.split(credential.key).join('[redacted]').replace(/sk-[A-Za-z0-9_-]{16,}/g,'[redacted]');
     }catch(error) {
+      if(request.kind==='entityScan'&&error instanceof EntityScanBatchReady) {
+        if(controller.signal.aborted||this.credential()?.generation!==credential.generation||this.preferenceRevision!==preferenceRevision)throw new HttpError(409,'AI generation was stopped or its settings changed.');
+        controller.abort();
+        trace?.event('validation',{stage:'entityScan',valid:true,category:'batch_checkpoint'});
+        return error.output;
+      }
       trace?.error(error instanceof Error?error.message:'AI request failed.');
       if(error instanceof HttpError)throw error;
       throw new HttpError(502,'The AI request failed or timed out. Please try again.');

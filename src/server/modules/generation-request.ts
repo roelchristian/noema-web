@@ -66,7 +66,7 @@ export function generationPolicy(request:GenerationRequest,selections:Selections
     case 'entityDiscovery':
       return policy(()=>entityDiscoveryPrompt(request.input),{activeSlot:'exclusive',maxOutputTokens:4096,maxOutputLength:20000});
     case 'entityScan':
-      return {...policy(()=>entityScanPrompt(request.input),{activeSlot:'independent'}),stream:!!request.onDelta,onDelta:request.onDelta};
+      return {...policy(()=>entityScanPrompt(request.input),{activeSlot:'independent',maxOutputTokens:16384,maxOutputLength:100000}),stream:!!request.onDelta,onDelta:request.onDelta};
     case 'explanation':
       return policy(()=>explanationPrompt(request.input,request.options),{activeSlot:'exclusive'});
     case 'review':

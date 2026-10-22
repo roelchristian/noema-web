@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {once} from 'node:events';
 import path from 'node:path';
-import {EntityScanStream} from '../src/server/modules/entity-scan-stream.ts';
+import {EntityScanStream,EntityScanBatchReady} from '../src/server/modules/entity-scan-stream.ts';
 import {Intelligence} from '../src/server/modules/intelligence.ts';
 import {openDatabase} from '../src/server/database.ts';
 import {Store} from '../src/server/store.ts';
@@ -19,6 +19,97 @@ test('partial JSON parser emits complete objects across arbitrary chunks and esc
   const json=JSON.stringify({suggestions});let latest,counts=[];
   for(const char of json){const result=parser.feed(char);if(result){latest=result;counts.push(result.length);}}
   assert.deepEqual(counts,[1,2]);assert.deepEqual(latest,suggestions);
+});
+
+test('25 suggestions remain valid and the 26th stops generation successfully without waiting for provider completion',async()=>{
+  const values=Array.from({length:26},(_,i)=>candidate(`Person ${i}`));
+  assert.equal(new EntityScanStream().feed(JSON.stringify({suggestions:values.slice(0,25)})).length,25);
+  assert.throws(()=>new EntityScanStream().feed(JSON.stringify({suggestions:values})),error=>error instanceof EntityScanBatchReady&&JSON.parse(error.output).suggestions.length===26);
+  let secret=null,cancelled=false,requestSignal;
+  const errors=[],events=[];
+  const ai=new Intelligence({read:()=>secret,write:value=>{secret=value;},remove(){}},async(_url,options)=>{
+    requestSignal=options.signal;
+    return new Response(new ReadableStream({start(controller){
+      controller.enqueue(new TextEncoder().encode('data: '+JSON.stringify({type:'response.output_text.delta',delta:JSON.stringify({suggestions:values})})+'\n\n'));
+      // Intentionally never close or send response.completed.
+    },cancel(){cancelled=true;}}),{headers:{'Content-Type':'text/event-stream'}});
+  });ai.save({apiKey:'sk-test-batched-entity-secret'});
+  const parser=new EntityScanStream();
+  const output=await ai.generate({kind:'entityScan',input:'{}',onDelta:delta=>{parser.feed(delta);},onRequest:()=>({request(){},headers(){},body(){},response(){},error:message=>errors.push(message),event:(type,data)=>events.push({type,data})})});
+  assert.equal(JSON.parse(output).suggestions.length,26);
+  assert.equal(cancelled,true);assert.equal(requestSignal.aborted,true);
+  assert.deepEqual(errors,[]);assert.ok(events.some(event=>event.data.category==='batch_checkpoint'));
+});
+
+test('saved checkpoints resume remaining text across three batches and preserve bulk review decisions',()=>{
+  const db=openDatabase(':memory:'),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),enrichments=new AIEnrichments(store,pages),scans=new EntityScans(store,pages,knowledge,enrichments);
+  const preferences={model:'gpt-6-luna',reasoningEffort:'none'};
+  try {
+    const names=Array.from({length:60},(_,i)=>`Person${String(i).padStart(2,'0')}`);
+    let page=pages.create('default',{title:'Many names'});
+    page=pages.update('default',page.id,{...page,blocks:[{id:'body',type:'paragraph',content:[{text:names.join(' met ')}]}]});
+    let scan=scans.save('default',page,JSON.stringify({suggestions:names.slice(0,26).map(name=>candidate(name))}),preferences);
+    assert.equal(scan.suggestions.length,25);assert.equal(scan.batchCount,25);assert.ok(scan.continuation);
+    const firstIds=scan.suggestions.map(item=>item.id),firstToken=scan.continuation.token;
+    let result=scans.review('default',page.id,{revision:page.revision,scanId:scan.id,suggestionIds:firstIds,decision:'accepted'});
+    page=result.page;scan=result.scan;
+    assert.equal(page.blocks[0].content.filter(item=>item.entityId).length,25,'Bulk acceptance supports all 25');
+    assert.throws(()=>scans.continuation('default',page,scan.id,firstToken),/changed/);
+    // A new service instance demonstrates persistence across reloads/restarts.
+    const resumed=new EntityScans(store,pages,knowledge,enrichments);
+    const previous=resumed.continuation('default',page,scan.id,scan.continuation.token);
+    const input=JSON.parse(resumed.input('default',page,previous));
+    assert.ok(input.untrusted_note.bodyTextRuns.some(run=>run.text.includes(names[25])));
+    assert.ok(input.untrusted_note.bodyTextRuns.every(run=>!run.text.includes(names[0])),'Completed text is not scanned again');
+    assert.ok(input.continuation.excluded.some(item=>item.name===names[0]));
+    scan=resumed.save('default',page,JSON.stringify({suggestions:names.slice(25,51).map(name=>candidate(name))}),preferences,true,previous);
+    assert.equal(scan.suggestions.length,50);assert.deepEqual(scan.suggestions.slice(0,25).map(item=>item.id),firstIds);
+    assert.ok(scan.suggestions.slice(0,25).every(item=>item.status==='accepted'));
+    assert.throws(()=>resumed.save('default',page,JSON.stringify({suggestions:[]}),preferences,true,previous),/changed/,'An old continuation cannot overwrite a newer batch');
+    const rejectedIds=scan.suggestions.slice(25).map(item=>item.id);
+    result=resumed.review('default',page.id,{revision:page.revision,scanId:scan.id,suggestionIds:rejectedIds,decision:'rejected'});scan=result.scan;
+    const finalPrevious=resumed.continuation('default',page,scan.id,scan.continuation.token);
+    const finalInput=JSON.parse(resumed.input('default',page,finalPrevious));
+    assert.ok(finalInput.untrusted_note.bodyTextRuns.every(run=>!run.text.includes(names[49])));
+    assert.ok(finalInput.continuation.excluded.some(item=>item.name===names[49]),'Rejected identities stay excluded');
+    // A provider repeats an earlier identity at a later occurrence: server-side dedup still wins.
+    scan=resumed.save('default',page,JSON.stringify({suggestions:[...names.slice(50).map(name=>candidate(name)),candidate(names[49])]}),preferences,true,finalPrevious);
+    assert.equal(scan.suggestions.length,60);assert.equal(scan.batchCount,10);assert.equal(scan.continuation,undefined);
+    assert.equal(new Set(scan.suggestions.map(item=>item.name)).size,60);
+    assert.ok(scan.suggestions.slice(25,50).every(item=>item.status==='rejected'));
+    const changed=pages.update('default',page.id,{...page,title:'Edited'});
+    assert.throws(()=>resumed.continuation('default',changed,finalPrevious.id,finalPrevious.continuation.token),/changed/);
+  }finally{db.close();}
+});
+
+test('HTTP continuation resumes a saved batch, rejects stale tokens before calling the provider, and caches the combined result',async()=>{
+  const db=openDatabase(':memory:'),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge);
+  let secret=null,calls=0,inputs=[];
+  const names=Array.from({length:30},(_,i)=>`Name${String(i).padStart(2,'0')}`);
+  const ai=new Intelligence({read:()=>secret,write:value=>{secret=value;},remove(){}},async(_url,options)=>{
+    calls++;
+    const input=JSON.parse(JSON.parse(options.body).input[0].content[0].text);inputs.push(input);
+    const runs=input.untrusted_note.bodyTextRuns;
+    const suggestions=names.filter(name=>runs.some(run=>run.text.includes(name))).slice(0,26).map(name=>{
+      const run=runs.find(run=>run.text.includes(name));return candidate(name,'person',{runId:run.runId,evidenceStart:run.text.indexOf(name)});
+    });
+    return Response.json({status:'completed',output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({suggestions})}]}]});
+  });ai.save({apiKey:'sk-test-http-batch-secret'});
+  let page=pages.create('default',{title:'Batches'});
+  page=pages.update('default',page.id,{...page,blocks:[{id:'body',type:'paragraph',content:[{text:names.join(' met ')}]}]});
+  const server=createApp(store,path.resolve('dist/client'),ai);server.listen(0,'127.0.0.1');await once(server,'listening');
+  const url=`http://127.0.0.1:${server.address().port}/api/pages/${page.id}/entity-scan`;
+  const request=body=>fetch(url,{method:'POST',headers:{'X-Noema-Request':'1','Content-Type':'application/json','X-Vault-Id':'default'},body:JSON.stringify({revision:page.revision,...body})});
+  try {
+    let response=await request({});assert.equal(response.status,200);
+    const first=await response.json();assert.equal(first.suggestions.length,25);assert.ok(first.continuation);
+    const continuation={continueScanId:first.id,continuationToken:first.continuation.token};
+    response=await request(continuation);assert.equal(response.status,200);
+    const second=await response.json();assert.equal(second.suggestions.length,30);assert.equal(second.continuation,undefined);
+    assert.equal(calls,2);assert.ok(inputs[1].untrusted_note.bodyTextRuns.every(run=>!run.text.includes(names[24])));
+    assert.equal((await request(continuation)).status,409);assert.equal(calls,2);
+    response=await request({});assert.equal((await response.json()).suggestions.length,30);assert.equal(calls,2);
+  }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();}
 });
 
 test('aliases apply to any entity type only on acceptance, including existing entities',()=>{

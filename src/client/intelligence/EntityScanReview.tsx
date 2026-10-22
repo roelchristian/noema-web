@@ -22,6 +22,7 @@ type Decision = 'accepted' | 'rejected';
 export function EntityScanReview({page,scan:savedScan,onScan,onFlush,onReview,disabled,entities}:{entities:Entity[];page:Page;scan:EntityScan|null;onScan:(scan:EntityScan)=>void;onFlush:()=>Promise<Page|null>;onReview:(scanId:string,id:string|string[],decision:Decision,edits?:EntitySuggestionEdit[])=>Promise<EntityScan>;disabled:boolean}) {
   const {schema}=useEntitySchema(page.vault_id);
   const [preview,setPreview]=useState<EntityScan|null>(null);
+  const [reviewingBatch,setReviewingBatch]=useState(false);
   const scan=preview??savedScan;
   const scanController=useRef<AbortController|null>(null);
   useEffect(()=>()=>scanController.current?.abort(),[]);
@@ -33,10 +34,10 @@ export function EntityScanReview({page,scan:savedScan,onScan,onFlush,onReview,di
   const [feedback,setFeedback]=useState<ReviewFeedback|null>(null);
   useEffect(()=>{
     if(!feedback) return;
-    const closeTimer=feedback.complete&&open?setTimeout(()=>setOpen(false),1100):undefined;
+    const closeTimer=feedback.complete&&open&&!scan?.continuation?setTimeout(()=>setOpen(false),1100):undefined;
     const clearTimer=setTimeout(()=>setFeedback(null),5000);
     return()=>{clearTimeout(closeTimer);clearTimeout(clearTimer);};
-  },[feedback,open]);
+  },[feedback,open,scan?.continuation]);
   const [error,setError]=useState(''),[announcement,setAnnouncement]=useState('');
   const running=useRef(false),active=useRef(true),selectAll=useRef<HTMLInputElement>(null);
   useEffect(()=>{active.current=true;return()=>{active.current=false;};},[]);
@@ -67,13 +68,13 @@ export function EntityScanReview({page,scan:savedScan,onScan,onFlush,onReview,di
     }catch(error){if(active.current)setError(error instanceof Error?error.message:'Entity scan failed.');}
     finally{running.current=false;if(active.current){setOperation(null);setPreview(null);}}
   }
-  function scanNote() {
+  function scanNote(continuePrevious=false) {
     void run([],async()=>{
       const saved=await onFlush();
       if(!saved||saved.id!==page.id||saved.vault_id!==page.vault_id)throw new Error('The selected note changed. Try again.');
       const controller=new AbortController();scanController.current=controller;
-      if(active.current){setPreview({id:'scanning',revision:saved.revision,suggestions:[]});setFilter('all');setQuery('');}
-      const result=await api.scanEntities(saved.vault_id,saved.id,saved.revision,partial=>{if(active.current)setPreview(partial);},controller.signal);
+      if(active.current){setReviewingBatch(false);setPreview(continuePrevious&&savedScan?savedScan:{id:'scanning',revision:saved.revision,suggestions:[]});setFilter('all');setQuery('');}
+      const result=await api.scanEntities(saved.vault_id,saved.id,saved.revision,partial=>{if(active.current)setPreview(partial);},controller.signal,continuePrevious&&savedScan?.continuation?{scanId:savedScan.id,token:savedScan.continuation.token}:undefined);
       if(active.current){setFilter('all');setQuery('');}
       return result;
     });
@@ -95,8 +96,12 @@ export function EntityScanReview({page,scan:savedScan,onScan,onFlush,onReview,di
     {open&&<Modal className="entity-review-modal" titleId="entity-review-title" onClose={()=>setOpen(false)}>
       <ModalHeader titleId="entity-review-title">{uiText("Entity review")}</ModalHeader><p className="modal-description">{page.title||uiText("Untitled")}</p>
       {total>0&&!scanning&&<div className="entity-review-progress"><span>{reviewed}{" " + uiText("of") + " "}{total}{" " + uiText("reviewed")}</span><div role="progressbar" aria-label={uiText("Entity review progress")} aria-valuemin={0} aria-valuemax={total} aria-valuenow={reviewed}><span style={{width:`${reviewed/total*100}%`}}/></div></div>}
-      <div className="entity-review-toolbar"><div className="entity-review-filters" role="group" aria-label={uiText("Filter suggestions")}>{(['all','pending','reviewed'] as const).map(value=><button key={value} aria-pressed={filter===value} onClick={()=>setFilter(value)}>{value==='all'?uiText("All"):value==='pending'?uiText("Pending"):uiText("Reviewed")}<span>{value==='all'?total:value==='pending'?pending.length+subtypePending.length:reviewed}</span></button>)}</div><label className="entity-review-search"><Icon name="search"/><input aria-label={uiText("Search suggestions")} placeholder={uiText("Search entities…")} value={query} onChange={e=>setQuery(e.target.value)}/></label><button className="knowledge-icon-action" disabled={locked} aria-label={scanning?uiText("Scanning entities"):scan?uiText("Scan again"):uiText("Scan note")} title={scan?uiText("Scan again"):uiText("Scan note")} onClick={scanNote}>{scanning?<span className="scan-spinner"/>:<Icon name={scan?'refresh':'sparkles'}/>}</button></div>
+      <div className="entity-review-toolbar"><div className="entity-review-filters" role="group" aria-label={uiText("Filter suggestions")}>{(['all','pending','reviewed'] as const).map(value=><button key={value} aria-pressed={filter===value} onClick={()=>setFilter(value)}>{value==='all'?uiText("All"):value==='pending'?uiText("Pending"):uiText("Reviewed")}<span>{value==='all'?total:value==='pending'?pending.length+subtypePending.length:reviewed}</span></button>)}</div><label className="entity-review-search"><Icon name="search"/><input aria-label={uiText("Search suggestions")} placeholder={uiText("Search entities…")} value={query} onChange={e=>setQuery(e.target.value)}/></label><button className="knowledge-icon-action" disabled={locked} aria-label={scanning?uiText("Scanning entities"):scan?uiText("Scan again"):uiText("Scan note")} title={scan?uiText("Scan again"):uiText("Scan note")} onClick={()=>scanNote()}>{scanning?<span className="scan-spinner"/>:<Icon name={scan?'refresh':'sparkles'}/>}</button></div>
       <div className="entity-review-messages" aria-live="polite">{announcement&&!feedback&&<span className="sr-only" role="status">{announcement}</span>}{feedback&&<ReviewConfirmation feedback={feedback}/>}{error&&<p className="inline-error" role="alert">{error}</p>}{stale&&<p role="status">{uiText("Note changed. Scan again to review fresh suggestions.")}</p>}</div>
+      {!!scan?.continuation&&!scanning&&!stale&&<div className="entity-scan-batch-prompt" role="status">
+        <p>{uiText("{value0} suggestions saved in this batch. More entities remain in the note.",{value0:scan.batchCount??25})}</p>
+        <div><button className="button primary" disabled={locked} onClick={()=>scanNote(true)}>{uiText("Continue scanning")}</button>{!reviewingBatch&&<button className="button" disabled={locked} onClick={()=>{setReviewingBatch(true);setFilter('pending');setQuery('');}}>{uiText("Review these suggestions first")}</button>}</div>
+      </div>}
       {scanning&&visible.length>0&&<p className="entity-scan-live-status" role="status"><span className="scan-spinner"/>{scan?.suggestions.length}{" " + uiText("entities found · Still scanning…")}</p>}
       <div className="entity-review-table-wrap" aria-busy={scanning}>
         {!scanning && !!scan?.subtypeSuggestions?.length && <section className="entity-review-subtype-proposals" aria-labelledby="subtype-proposals-title">

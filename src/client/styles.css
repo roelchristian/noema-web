@@ -3672,3 +3672,7 @@ dialog.source-lifecycle-dialog { width: min(480px, calc(100vw - 32px)); }
 }
 
 #content .mention.page-search-mention { background: var(--citation-jump-highlight); outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.entity-scan-batch-prompt { flex-shrink: 0; padding: 12px 28px; border-top: 1px solid var(--line); }
+.entity-scan-batch-prompt p { margin: 0 0 10px; font-size: 13px; }
+.entity-scan-batch-prompt > div { display: flex; flex-wrap: wrap; gap: 8px; }

@@ -1,3 +1,4 @@
+import './archive-search.css';
 import {t as uiText} from '../i18n';
 import {TitleText} from '../components/TitleText';
 import type {PageReference} from '../../shared/embeddings';
@@ -15,6 +16,7 @@ import {HighlightedText} from './HighlightedText';
 import {useSearchSnippets} from './useSearchSnippets';
 import {makeSearchSnippet} from '../../shared/search-snippets';
 export function SearchPanel({vaultId,pages,entities,onOpenPage,onOpenEntity,onOpenPassage,onClose}:{vaultId:string;pages:PageSummary[];entities:Entity[];onOpenPage:(id:string,reference?:PageReference)=>void;onOpenEntity:(id:string)=>void;onOpenPassage:(reference:SourceReference,trigger?:HTMLElement)=>void;onClose:()=>void}) {
+  const [includeArchived,setIncludeArchived]=useState(false);
   const [query,setQuery]=useState(''), [selected,setSelected]=useState<string | null>(null);
   const input=useRef<HTMLInputElement>(null), buttons=useRef(new Map<string,HTMLButtonElement>());
   const [semanticSuppressed,setSemanticSuppressed]=useState(false);
@@ -27,7 +29,8 @@ export function SearchPanel({vaultId,pages,entities,onOpenPage,onOpenEntity,onOp
   const knownItems=[...pages.map(page=>({id:page.id,name:page.title||'Untitled',kind:'page' as const,icon:page.icon,aliases:[] as string[]})),...entities.map(entity=>({id:entity.id,name:entity.name,aliases:entity.aliases,kind:'entity' as const,icon:null}))];
   const knownKeys=new Set(knownItems.map(item=>item.kind+':'+item.id));
   const items=[...knownItems,...textSearch.results.filter(result=>!knownKeys.has(result.kind+':'+result.id)).map(result=>({id:result.id,name:result.name,kind:result.kind,icon:null,aliases:[] as string[]}))];
-  const matches=combinedMatches(items,query,semantic.results,textSearch.results);
+  const archivedIds=new Set(entities.filter(entity=>entity.archived_at).map(entity=>entity.id));
+  const matches=combinedMatches(items,query,semantic.results,textSearch.results).filter(item=>includeArchived||item.kind!=='entity'||!archivedIds.has(item.id));
   const visible=term ? matches : matches.filter(item=>item.kind==='page').slice(0,6);
   const keyFor=(item:typeof matches[number])=>item.kind+'-'+item.id;
   const selectedIndex=Math.max(0,visible.findIndex(item=>keyFor(item)===selected)),active=visible[selectedIndex],activeId=active ? keyFor(active) : undefined;
@@ -54,6 +57,7 @@ export function SearchPanel({vaultId,pages,entities,onOpenPage,onOpenEntity,onOp
     <div className="spotlight-search" onKeyDown={keyDown}>
       <ModalHeader titleId="vault-search-title">{uiText("Search vault")}</ModalHeader>
       <div className="spotlight-search-input"><Icon name="search"/><input ref={input} autoFocus type="search" role="combobox" aria-label={uiText("Search notes and knowledge")} aria-autocomplete="list" aria-expanded="true" aria-controls="vault-search-results" aria-activedescendant={activeId ? 'search-result-'+activeId : undefined} autoComplete="off" maxLength={2000} placeholder={uiText("Search names, page and source text, or ideas…")} value={query} onChange={event=>{semantic.cancel();setQuery(event.target.value);setSelected(null);setSemanticSuppressed(false);}}/>{(textSearch.loading||semantic.loading)&&<span className="scan-spinner" aria-label={textSearch.loading?uiText("Searching local text"):uiText("Finding related pages")}/>}</div>
+      <label className="cleanup-option archive-search-filter"><input type="checkbox" checked={includeArchived} onChange={event=>setIncludeArchived(event.target.checked)}/><span>Include archived entities and sources</span></label>
       <div className="spotlight-search-body">
         <p className="spotlight-results-label" role="status">{!term?uiText("Recently updated pages"):`${matches.length} ${matches.length===1?'result':'results'}${textSearch.loading?' · Searching local text…':''}${semantic.loading?' · Finding related pages…':''}${textSearch.hasMore?' · More text matches available; narrow your search.':''}`}</p>
         {textSearch.error&&<p className="search-error" role="status">{uiText("Local text search is unavailable. Name matches and any related pages remain available.")}</p>}{semantic.error&&<p className="search-error" role="status">{uiText("Related results are unavailable. Local text matches remain available.")}</p>}{previews.error&&<p className="search-error" role="status">{uiText("Some note previews are unavailable. You can still open the results.")}</p>}
@@ -62,7 +66,7 @@ export function SearchPanel({vaultId,pages,entities,onOpenPage,onOpenEntity,onOp
           const direct=item.name.toLowerCase().includes(term),alias=item.kind==='entity'&&item.aliases?.some(value=>value.toLowerCase().includes(term));
           const matchLabel=direct?(item.kind==='page'?'Matched in title':'Matched in name'):alias?'Matched in alias':retrieved?`Matched in ${retrieved.matchedIn}`:'Related by meaning';
           const snippet=term ? retrieved?.snippet || semanticNotes.get(item.id)?.snippet || (item.kind==='page'?previews.snippets[item.id]??semanticNotes.get(item.id)?.snippet??'':alias?item.aliases?.find(value=>value.toLowerCase().includes(term))??'':makeSearchSnippet(entityDescriptions.get(item.id)??'',query)) : '';
-          return <li key={key} role="presentation"><button ref={el=>{if(el) buttons.current.set(key,el);else buttons.current.delete(key);}} id={'search-result-'+key} role="option" aria-selected={key===activeId} tabIndex={-1} onPointerMove={()=>select(key)} onMouseDown={event=>event.preventDefault()} onClick={()=>open(item)}>{item.kind==='page'?<PageIcon icon={item.icon}/>:<Icon name="knowledge"/>}<span><strong>{item.kind==='page'?<TitleText text={item.name} query={query}/>:<HighlightedText text={item.name} query={query}/>}</strong><small>{item.kind==='page'?uiText("Page"):uiText("Knowledge entity")}{term&&` · ${matchLabel}`}{reference&&` · ${citationLocation(reference)} · Open passage`}</small>{snippet&&<span className="search-result-snippet"><HighlightedText text={snippet} query={query}/></span>}</span>{key===activeId&&<span className="spotlight-open-hint" aria-hidden="true">↵</span>}</button></li>;
+          return <li key={key} role="presentation"><button ref={el=>{if(el) buttons.current.set(key,el);else buttons.current.delete(key);}} id={'search-result-'+key} role="option" aria-selected={key===activeId} tabIndex={-1} onPointerMove={()=>select(key)} onMouseDown={event=>event.preventDefault()} onClick={()=>open(item)}>{item.kind==='page'?<PageIcon icon={item.icon}/>:<Icon name="knowledge"/>}<span><strong>{item.kind==='page'?<TitleText text={item.name} query={query}/>:<HighlightedText text={item.name} query={query}/>}</strong><small>{item.kind==='page'?uiText("Page"):uiText("Knowledge entity")}{archivedIds.has(item.id)&&' · Archived'}{term&&` · ${matchLabel}`}{reference&&` · ${citationLocation(reference)} · Open passage`}</small>{snippet&&<span className="search-result-snippet"><HighlightedText text={snippet} query={query}/></span>}</span>{key===activeId&&<span className="spotlight-open-hint" aria-hidden="true">↵</span>}</button></li>;
         })}</ul>
         {!visible.length&&!textSearch.loading&&!semantic.loading&&<p className="spotlight-empty">{term?uiText("No matches. Try another name or idea."):uiText("Search your pages and knowledge by name or idea.")}</p>}
       </div>

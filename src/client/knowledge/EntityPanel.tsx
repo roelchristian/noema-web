@@ -1,3 +1,4 @@
+import {SourceLifecycleDialog} from './SourceLifecycleDialog';
 import {t as uiText} from '../i18n';
 import {DisclosureSummary} from '../components/DisclosureSummary';
 import {TitleText} from '../components/TitleText';
@@ -24,6 +25,7 @@ type EntityTab = typeof entityTabs[number]['id'];
 interface EntityConnection {key: string; target: string; label: string}
 export function EntityPanel(props: Props) {
   const {vaultId, id, entities, onOpen, onClose, onUpdated, onError, onOpenPage, refreshKey, inspector = false} = props;
+  const [manage,setManage]=useState(false);
   const [entity, setEntity] = useState<EntityDetail | null>(null), [loadingError, setLoadingError] = useState('');
   const [localTab, setTab] = useState<EntityTab>(() => hasEntityDraft(vaultId, id) ? 'edit' : 'overview');
   const tab = inspector ? props.inspectorTab ?? localTab : localTab;
@@ -86,6 +88,8 @@ export function EntityPanel(props: Props) {
       {loadingError && <p role="alert">{loadingError}</p>}
       {!inspector&&tab!=='edit'&&entity.attachments?.map(file=><SourceLoadingProgress key={file.id} file={file}/>)}
       {!inspector&&<div className="entity-detail-classification"><span className="entity-detail-type">{uiText(entityLabels[entity.type])}</span>{entity.type==='source'&&<span>{entity.attachments?.some(file=>file.status==='queued'||file.status==='processing')?uiText("Processing"):entity.inactive?uiText("Inactive"):entity.sourceEnrichmentStatus==='pending'||entity.sourceEnrichmentStatus==='running'?uiText("Processed · Enriching with AI"):entity.sourceEnrichmentStatus==='failed'?uiText("Processed · AI enrichment failed"):uiText("Processed")}</span>}{!!subtypeNames.length && <span>{subtypeNames.join(' · ')}</span>}</div>}
+      <div className="entity-lifecycle-controls">{entity.archived_at&&<span role="status">Archived</span>}<button type="button" className="button" onClick={()=>setManage(true)}>{entity.archived_at?'Restore / manage':'Archive / manage'}</button></div>
+      {manage&&<SourceLifecycleDialog vaultId={vaultId} source={entity} onClose={()=>setManage(false)} onUpdated={async()=>{await onUpdated();setEntity(await api.entity(vaultId,id));}}/>}
       {!inspector && tabNavigation}
       <div id="entity-tabpanel-overview" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-overview" hidden={tab !== 'overview'} tabIndex={0}>
       {inspector&&<>
@@ -231,7 +235,7 @@ function PropertyEditor({entity, entities, mention, onSave, onRemove}: {entity: 
   const [focusRequest, setFocusRequest] = useState(0);
   const unset = entity.propertyNames.filter(name => !entity.properties.some(property => property.name.toLowerCase() === name.toLowerCase()));
   const names = name && !entity.propertyNames.includes(name) ? [name, ...entity.propertyNames] : entity.propertyNames;
-  const matches = entities.filter(item => item.id === target || `${item.name} ${(item.aliases ?? []).join(' ')} ${entityLabels[item.type]}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+  const matches = entities.filter(item => item.id === target || !item.archived_at && `${item.name} ${(item.aliases ?? []).join(' ')} ${entityLabels[item.type]}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   function reset() {setEdit(undefined); setName(''); setKind('text'); setValue(''); setTarget(''); setQuery(''); setError('');}
   function focusValue() {form.current?.scrollIntoView({behavior: 'smooth', block: 'nearest'}); form.current?.querySelector<HTMLElement>('textarea, input')?.focus({preventScroll: true});}
   function editing(property: Property) {setEdit(property.id); setName(entity.propertyNames.find(name => name.toLowerCase() === property.name.toLowerCase()) || property.name); setKind(property.target_id ? 'entity' : 'text'); setValue(property.value || ''); setTarget(property.target_id || ''); setQuery(''); setError(''); setStatus(''); setFocusRequest(current => current + 1);}
@@ -304,7 +308,7 @@ function RelationshipEditor({entity, entities, mention, onSave, onRemove}: {enti
     {open&&<form className="entity-property-form entity-relationship-form" aria-label={edit?uiText("Edit relationship"):uiText("Add relationship")} onSubmit={submit}>
       <div className="entity-property-form-heading"><h4>{edit?uiText("Edit relationship"):uiText("New relationship")}</h4><button type="button" className="knowledge-icon-action" aria-label={uiText("Close relationship editor")} title={uiText("Close relationship editor")} disabled={busy} onClick={reset}><Icon name="close"/></button></div>
       <label>{uiText("Relationship")}<input ref={input} required placeholder={uiText("e.g. member of")} aria-label={uiText("Relationship name")} disabled={busy} value={label} onChange={event=>setLabel(event.target.value)}/></label>
-      <label>{uiText("Related entity")}<Select required aria-label={uiText("Related entity")} disabled={busy} value={target} onChange={event=>setTarget(event.target.value)}><option value="">{uiText("Choose an entity…")}</option>{entities.filter(item=>item.id!==entity.id).map(item=><option key={item.id} value={item.id}>{item.name} · {uiText(entityLabels[item.type])}</option>)}</Select></label>
+      <label>{uiText("Related entity")}<Select required aria-label={uiText("Related entity")} disabled={busy} value={target} onChange={event=>setTarget(event.target.value)}><option value="">{uiText("Choose an entity…")}</option>{entities.filter(item=>item.id!==entity.id&&(!item.archived_at||item.id===target)).map(item=><option key={item.id} value={item.id}>{item.name} · {uiText(entityLabels[item.type])}</option>)}</Select></label>
       <div className="entity-property-form-actions"><button type="button" className="button small" disabled={busy} onClick={reset}>{uiText("Cancel")}</button><button type="submit" className="button small primary" disabled={busy||!label.trim()||!target}>{busy?uiText("Saving…"):edit?uiText("Save changes"):uiText("Add relationship")}</button></div>
     </form>}
     {error&&<p className="entity-property-error" role="alert">{error}</p>}{status&&<p className="entity-property-status" role="status">{status}</p>}

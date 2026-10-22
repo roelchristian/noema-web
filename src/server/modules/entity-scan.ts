@@ -45,7 +45,7 @@ export class EntityScans {
     if (!runs.some(run => run.text.trim())) throw new HttpError(400, 'Add some note text to scan first.');
     const bodyText = runs.map(run=>run.text).join('\n').toLowerCase();
     const normalizedBody=normalizeEntityName(bodyText);
-    const candidates=entities.filter(entity=>!entity.inactive&&[entity.name,...(entity.aliases??[])].some(name=>{
+    const candidates=entities.filter(entity=>!entity.inactive&&!entity.archived_at&&[entity.name,...(entity.aliases??[])].some(name=>{
       const normalized=normalizeEntityName(name);
       if(!normalized)return false;
       const escaped=normalized.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
@@ -58,7 +58,7 @@ export class EntityScans {
     return input;
   }
   contextKey(vault:string,page:Page):string {
-    return createHash('sha256').update(JSON.stringify(['run-evidence-v2','qualified-places-aliases-stream-v1','reciprocal-identities-v1',TAXONOMY_VERSION,ALIAS_POLICY_VERSION,page.pageDomains,page.blocks,this.knowledge.list(vault).map(({id,name,aliases,domainIds,type,subtypes,description,inactive})=>[id,name,aliases,domainIds,type,subtypes,description,inactive])])).digest('hex');
+    return createHash('sha256').update(JSON.stringify(['run-evidence-v2','qualified-places-aliases-stream-v1','reciprocal-identities-v1',TAXONOMY_VERSION,ALIAS_POLICY_VERSION,page.pageDomains,page.blocks,this.knowledge.list(vault).map(({id,name,aliases,domainIds,type,subtypes,description,inactive,archived_at})=>[id,name,aliases,domainIds,type,subtypes,description,inactive,archived_at])])).digest('hex');
   }
   save(vault: string, page: Page, output: string, preferences: ReturnType<Intelligence['selection']>, persist=true): EntityScan {
     const current=this.pages.get(vault,page.id);
@@ -67,7 +67,7 @@ export class EntityScans {
     let raw: unknown;
     try { raw = JSON.parse(output); } catch { throw invalid(); }
     if (!raw || typeof raw !== 'object' || !('suggestions' in raw) || !Array.isArray(raw.suggestions) || raw.suggestions.length > 20) throw invalid();
-    const schema = this.knowledge.schema(vault), entities = this.knowledge.list(vault), seen = new Set<string>();
+    const schema = this.knowledge.schema(vault), allEntities = this.knowledge.list(vault), entities = allEntities.filter(entity=>!entity.archived_at&&!entity.inactive), seen = new Set<string>();
     const connected = new Set(page.blocks.flatMap(b => blockSegments(b).flatMap(s => s.entityId ? [s.entityId] : [])));
     const suggestions: EntitySuggestion[] = [], subtypeSuggestions: SubtypeSuggestion[] = [];
     for (const value of raw.suggestions) {
@@ -85,7 +85,7 @@ export class EntityScans {
       if (existingId && (!existing||existing.type!==type||![existing.name,...(existing.aliases??[])].some(value=>normalizeEntityName(value)===normalizeEntityName(name)))) throw invalid();
       // Already connected names are context only; ignore them before validating tagging coordinates.
       if(existing&&connected.has(existing.id))continue;
-      if(!existing&&entities.some(e=>e.type===type&&[e.name,...(e.aliases??[])].some(value=>normalizeEntityName(value)===normalizeEntityName(name))))continue;
+      if(!existing&&allEntities.some(e=>e.type===type&&[e.name,...(e.aliases??[])].some(value=>normalizeEntityName(value)===normalizeEntityName(name))))continue;
       if(type==='source'&&!existing)continue;
       const subtypeName = (value: string) => value.trim().replace(/^[a-z]+:/i, '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
       const resolved = (subtypes as string[]).map(value => ({value, known: schema.subtypes.find(subtype => subtype.type === type && (subtype.id === value || subtype.name.toLowerCase() === subtypeName(value).toLowerCase()))}));
@@ -173,6 +173,7 @@ export class EntityScans {
           if (!suggestion.existingId && suggestion.proposedSubtypeIds?.some(id => scan.subtypeSuggestions?.some(item => item.id === id && item.status === 'pending'))) throw new HttpError(400,'Review the proposed subtypes for this entity first.');
           if (!mentionEvidence(page,suggestion.evidence,'validation',suggestion.evidenceAnchor)) throw new HttpError(409,'Some matching phrases changed or overlap. Review these suggestions individually or scan again.');
           const existing = suggestion.existingId ? this.knowledge.require(vault,suggestion.existingId) : undefined;
+          if(existing?.archived_at||existing?.inactive)throw new HttpError(409,'This identity is no longer eligible for suggestions. Restore it and scan again.');
           if(!existing && suggestion.type==='source')throw new HttpError(400,'Create this source with an attached original file before linking it from a scan.');
           if(!existing&&this.knowledge.list(vault).some(entity=>entity.type===suggestion.type&&normalizeEntityName(entity.name)===normalizeEntityName(suggestion.name)))throw new HttpError(409,'An entity with this name now exists. Choose its explicit identity before accepting.');
           let entity = existing || this.knowledge.create(vault,{...suggestion});

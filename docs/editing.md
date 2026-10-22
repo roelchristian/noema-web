@@ -69,3 +69,32 @@ Ordinary text replacements inherit the first matched run's formatting. Unaffecte
 Regular expressions run in a disposable local worker with a 300 ms deadline; changing the query, editing or closing the panel cancels obsolete work. No AI or network search is involved. Capture replacements support `$1`–`$99`, `$<name>`, `$&` and `$$`. Nonexistent captures remain literal; unmatched existing captures become empty. Other JavaScript replacement tokens remain literal. Zero-width matches are skipped. Patterns are limited to 1,000 characters, page search to 2 million body characters, and results to 2,000 matches. Replace all is disabled when the match limit is reached, so it never quietly operates on a truncated result set. Snippets show a window of at most 30 results around the active match. Highlight-capable browsers show every returned text match; block accents and snippets also indicate matches, including code and equation blocks.
 
 Developer validation: `node --import tsx --test test/document-find.test.mjs` and `PLAYWRIGHT_MODULE=/path/to/playwright-core/index.mjs node scripts/check-document-find-browser.mjs`. The latter uses a synthetic local fixture, captures desktop/mobile screenshots under `/tmp/noema-find-screenshots`, tests real worker timeout recovery, IME, replacement history, synthetic fixture reload and production-bundle SQLite autosave/reload, and checks that query changes cause zero editable syncs. Build first for the production-bundle check. Playwright is optional tooling installed outside the repository.
+
+### Presentation modes
+
+The page toolbar offers **Standard**, **Subtle**, and **Focus**. Standard keeps
+normal entity highlights and the full workspace. Subtle uses the existing
+focused-reading underlines with the full workspace. Focus uses those same
+underlines and centres the editable document while hiding navigation, inspectors,
+the table of contents and secondary chrome. Editing, selection formatting,
+keyboard shortcuts, find, save failures and draft recovery remain available.
+Hover over the top-right controls, tab to them, or use the visible touch controls.
+**Exit Focus** is always visible; **Escape** restores the previous Standard/Subtle
+mode. Menus, dialogs, find and IME composition take priority over exiting Focus.
+Opening an entity restores the full workspace before opening its destination.
+
+`noema.appearance.v1.presentationMode` is the single persisted presentation
+preference. A valid mode takes precedence over legacy `focusedReading`; otherwise
+legacy `true` migrates to Subtle, and false/missing values to Standard. The old
+boolean is no longer written. Entity emphasis and workspace visibility are
+independent derived traits, leaving room for future combinations.
+
+Focus persists across reloads and page navigation, but its minimal layout only
+applies to an unlocked page editor. Other destinations retain the full interface.
+The previous non-Focus mode is retained in session storage for same-tab reloads;
+a fresh tab without that history exits to Standard. If storage is unavailable,
+choices and restoration work in memory until reload. Hiding chrome never changes
+page content, entity associations, saved panel preferences or sidebar expansion.
+Panels and navigation stay mounted; their arrangement returns on exit. Reloads
+restore the arrangement normally supported by the workspace, rather than adding
+a separate persistent layout snapshot.

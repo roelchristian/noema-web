@@ -1,11 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type SetStateAction } from 'react';
 import { entityTypes } from '../../shared/domain';
-import { appearanceStorageKey, defaultAppearance, fontFamily, parseAppearance, pillColors, themes, resolveDisplayMode, type Appearance } from './appearance';
+import { appearanceStorageKey, defaultAppearance, fontFamily, parseAppearance, pillColors, themes, resolveDisplayMode, presentationTraits, type Appearance } from './appearance';
 
 export function useAppearance() {
-  const [appearance, setAppearance] = useState<Appearance>(() => {
+  const [appearance, updateAppearance] = useState<Appearance>(() => {
     try { return parseAppearance(localStorage.getItem(appearanceStorageKey)); } catch { return defaultAppearance(); }
   });
+  const previousMode = useRef<'standard' | 'subtle'>(loadPreviousMode());
+  const setAppearance = useCallback((action: SetStateAction<Appearance>) => {
+    updateAppearance(current => {
+      const next = typeof action === 'function' ? action(current) : action;
+      if (next.presentationMode === 'focus' && current.presentationMode !== 'focus') {
+        previousMode.current = current.presentationMode;
+        try { sessionStorage.setItem('noema.presentation.previous', current.presentationMode); } catch { /* In-memory restoration remains available. */ }
+      }
+      return next;
+    });
+  }, []);
+  const exitFocus = useCallback(() => setAppearance(current => current.presentationMode === 'focus' ? {...current, presentationMode: previousMode.current} : current), [setAppearance]);
   const [systemDark, setSystemDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
   useEffect(() => {
     const query = window.matchMedia('(prefers-color-scheme: dark)');
@@ -20,7 +32,7 @@ export function useAppearance() {
     const theme = themes.find(theme => theme.id === appearance.theme)!;
     const mode = resolveDisplayMode(appearance.mode, systemDark);
     root.dataset.mode = mode;
-    root.dataset.focusedReading = String(appearance.focusedReading);
+    root.dataset.focusedReading = String(presentationTraits(appearance.presentationMode).entityEmphasis === 'subtle');
     root.style.setProperty('--font-ui', fontFamily(appearance.bodyFont));
     root.style.setProperty('--font-title', fontFamily(appearance.headingFont));
     root.style.setProperty('--accent', mode === 'dark' ? theme.darkColor : theme.color);
@@ -47,5 +59,9 @@ export function useAppearance() {
     catch { setStorageError(true); }
     return () => overrides.remove();
   }, [appearance, systemDark]);
-  return {appearance, setAppearance, storageError};
+  return {appearance, setAppearance, exitFocus, storageError};
+}
+
+function loadPreviousMode(): 'standard' | 'subtle' {
+  try { return sessionStorage.getItem('noema.presentation.previous') === 'subtle' ? 'subtle' : 'standard'; } catch { return 'standard'; }
 }

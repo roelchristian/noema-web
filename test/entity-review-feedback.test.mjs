@@ -10,18 +10,17 @@ test('an accepted suggestion confirms its saved connection while remaining work 
   assert.equal(feedback.detail,'1 suggestion left to review.');
   assert.deepEqual(feedback.ids,['0']);
 });
-test('the final acceptance completes a review that includes earlier rejections',()=>{
-  const feedback=entityReviewFeedback(scan('rejected','accepted'),['1'],'accepted');
-  assert.equal(feedback.complete,true);
-  assert.equal(feedback.message,'Review complete');
-  assert.match(feedback.detail,/Earthsea connected\. All decisions saved\./);
-});
-test('the final rejection completes a review including mixed or entirely rejected decisions',()=>{
-  for(const statuses of [['accepted','rejected'],['rejected','rejected']]) {
-    const feedback=entityReviewFeedback(scan(...statuses),['1'],'rejected');
-    assert.equal(feedback.complete,true);
-    assert.match(feedback.detail,/Earthsea rejected\. All decisions saved\./);
-  }
+test('the final saved decision completes accepted, mixed and entirely rejected reviews',()=>{
+ const cases=[
+  {label:'acceptance after rejection',statuses:['rejected','accepted'],decision:'accepted',verb:'connected'},
+  {label:'rejection after acceptance',statuses:['accepted','rejected'],decision:'rejected',verb:'rejected'},
+  {label:'all rejected',statuses:['rejected','rejected'],decision:'rejected',verb:'rejected'},
+ ];
+ for(const {label,statuses,decision,verb} of cases){
+  const feedback=entityReviewFeedback(scan(...statuses),['1'],decision);
+  assert.equal(feedback.complete,true,label);assert.equal(feedback.message,'Review complete',label);
+  assert.equal(feedback.detail,`Earthsea ${verb}. All decisions saved.`,label);
+ }
 });
 test('bulk decisions confirm the saved count and require every suggestion to be reviewed',()=>{
   const partial=entityReviewFeedback(scan('accepted','accepted','pending'),['0','1'],'accepted');

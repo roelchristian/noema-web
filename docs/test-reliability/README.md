@@ -3,7 +3,7 @@
 Base: `5822ecc59f7c931b2a873bfe282cf1455ece2466` (verified main, merged PR15).
 Local branch: `test-reliability-reduction`. No production source changes, dependency changes, pushes, PRs, merges or deployments.
 
-This is a focused reliability tranche, not a green-suite certification. The final full run still has **23 failures**, all retained and visible. The failure ledger records all 71 baseline failure identities, their first-error evidence, classification, disposition and next investigation. No failure is assumed to be a product defect solely because a test failed.
+The supported default suite now passes, with six explicit platform skips on Linux. All 71 baseline failure identities were investigated and repaired or mapped to equivalent passing consolidated coverage. The failure ledger records their evidence, classification and disposition. No production defect or product decision was needed to obtain the passing result.
 
 ## Measurement
 
@@ -12,14 +12,14 @@ Linux, Node 24.19.0, locked dependencies installed with `npm ci --ignore-scripts
 | Measurement | Before | After |
 | --- | ---: | ---: |
 | Runnable `.test.mjs` files | 113 | 113 |
-| Reported cases | 592 | 587 |
-| Passed | 515 | 558 |
-| Failed | 71 | 23 |
+| Reported cases | 592 | 584 |
+| Passed | 515 | 578 |
+| Failed | 71 | 0 |
 | Skipped | 6 | 6 |
 | Cancelled | 0 | 0 |
-| Test-phase wall time | 30.20 s | 30.84–31.62 s (three final runs) |
+| Test-phase wall time | 30.20 s | 30.56 / 30.98 s (two final runs) |
 
-Seven redundant case registrations were eliminated through removal/consolidation, and two infrastructure regression cases added: net **five fewer cases**. The math suite was absorbed into editor tests; the new small infrastructure suite keeps runnable file count flat. This is a modest reduction, not a claim that the suite has been radically shrunk. Most critical scenarios are distinct and were retained.
+Ten redundant case registrations were eliminated through removal/consolidation, and two infrastructure regression cases added: net **eight fewer cases**. The math suite was absorbed into editor tests; the new small infrastructure suite keeps runnable file count flat. This is a modest reduction, not a claim that the suite has been radically shrunk. Most critical scenarios are distinct and were retained.
 
 `inventory.json` enumerates every before/after runnable file, declaration counts and matched TAP case-duration sums. The full case-name/result inventory and complete diagnostics are in the delivered evidence bundle; compact repository ledgers retain identities, reasons and error excerpts. Static declarations differ from runtime case totals because of nested/dynamic tests and the original whole-file CSS import failure. Per-case durations overlap under concurrency; their sum is not wall time. There is no coverage-percentage claim: no code-coverage instrumentation was run.
 
@@ -35,7 +35,18 @@ Seven redundant case registrations were eliminated through removal/consolidation
 - Status/preferences assertions include the full current rate-limit/enrichment-profile shape. Compatibility title output budget is asserted at its current 512-token bound.
 - Added infrastructure regression coverage: recursive nested discovery; rejection of omitted, duplicate, absent or unknown group entries; teardown registered before a throwing React mount; cleanup continuation after a cleanup failure; restoration of prior globals; idempotent close.
 
-These changes resolve 48 baseline failing identities (27 stale assertions/contracts and 21 environment/fixture gaps). One formerly failing display case is replaced by the passing two-delimiter matrix; meaningful scenarios were not deleted to make a failure disappear. The 23 remaining identities are classified unresolved, with exact diagnostics and concrete next investigations. No genuine production defect was established and changed in this tranche.
+These changes resolve all 71 baseline failing identities: 39 stale assertions/contracts and 32 fixture/environment gaps. One formerly failing display case is replaced by the passing two-delimiter matrix; meaningful scenarios were not deleted to make a failure disappear. There are no remaining failing or unclassified identities. No production code was changed.
+
+The follow-up investigation repaired the remaining contracts as follows:
+
+- Vector fixtures now call public `PageSegments.synchronize(vault, pageId)` instead of a private method whose signature changed. Ranking, exclusions, corrupted/stale vectors, restart and no-provider-call assertions all pass unchanged.
+- Workspace fixtures model the current metadata endpoint and server-filtered Trash organization. Save-before-delete, restoration and no-extra-autosave assertions remain intact.
+- HTTP provider fixtures return only fields requested by the selective response schema, using one checked transport envelope. Enrichment storage tests distinguish generated summary/topics from ownership metadata, assert inferred summary provenance, and prove summary deletion preserves unrelated records and suppression state.
+- Notification tests exercise the real title-enrichment commit instead of pretending a manual title save is an automatic commit. Bare saved legacy results still produce no title notification; manual changes remain silent.
+- Schema tests assert current subtype-owned definitions, category inheritance, sibling/value isolation, missing-field rejection and inability to remove a subtype/category until dependent values are cleared. The custom fixture name no longer collides with the built-in Researcher. The legacy migration test actually restores its unapplied migration marker before reopening.
+- Entity scan tests preserve exact mention text and dynamically computed page mentions, assert durable indexing dirty work instead of obsolete synchronous jobs, verify saved-context cache reuse without a provider call, and change evidence before forcing fresh inference. Alias controls are asserted through their current visible chips and labeled controls.
+- Source quotation and summary rendering tests distinguish stored textual provenance from obsolete presentation flags and consumed Markdown syntax. Unsafe-link/HTML, literal code, currency and incomplete-math cases remain distinct.
+- The lock regression now asserts cancellation of an in-flight request with 409, fresh locked requests with 423, the exact cancelled activity record, and retention of the last saved summary. The legacy title endpoint is tested as a selective-enrichment facade: stale results are rejected and manually named titles survive later classification.
 
 ## Reduction and coverage map
 
@@ -48,6 +59,10 @@ These changes resolve 48 baseline failing identities (27 stale assertions/contra
 | `page-titler`: empty drafts do not poll before idle delay | Existing observer timing case checks before-delay and exact idle boundary. The removed case only advanced half the delay and did not establish a separate empty-content policy. |
 | `page-titler`: editing/leaving after read failure | Existing read-failures case asserts no independent retries across 429/502/503 and long delays. Cancelling after an already terminal failure could not distinguish cancellation behavior; separate pending-result cancellation cases remain. |
 | Three `page-language-composition` cases | One four-row named decision matrix preserves small same-language edits, major script changes, substantial Latin-language replacement and missing baseline. Three registrations become one; every row has a diagnostic label. |
+
+| `page-titler`: pending title reads and completed named-page classifications | One two-scenario observer lifecycle matrix retains exact 1999/2000 ms boundaries, applied title/domain transitions and stopping after completion. It additionally rejects unsolicited background renaming of an authored title. Error and cancellation cases stay separate. |
+| `entity-review-feedback`: final acceptance and final rejection cases | One three-row named completion matrix retains acceptance after rejection, rejection after acceptance and all-rejected reviews, with exact message/detail assertions. Partial, bulk and invalid/no-change decisions remain distinct. |
+| `summary-math`: multiline display beside prose | Folded into the existing inline/display delimiter rendering case, which now contains multiline bracket math, exact annotations and before/after prose. Security and invalid-LaTeX fallbacks remain distinct. |
 
 No other whole suite was judged obsolete. No suite was skipped or excluded to lower counts. No large opaque mega-test was introduced. Provider/mount failures were repaired before interpreting their semantic assertions.
 
@@ -73,28 +88,18 @@ On Linux the six skips are the Keychain adapter plus five macOS PDFKit/Vision/Sw
 
 ## Verification and limits
 
-Three final runs of the scoped-loader configuration returned identical counts and failure identities: 558 pass, 23 fail, 6 skip; 587 cases. Test-phase times were 31.58 s, 30.84 s and 31.62 s. Earlier intermediate full runs are retained in the evidence bundle; they are not substituted for final results.
+Two final runs after the additional consolidation returned identical counts: 578 pass, 0 fail, 6 platform skips; 584 reported cases. Test-phase times were 30.56 s and 30.98 s. The preceding full run before the three additional consolidations also passed (581 pass, 0 fail, 6 skips). Earlier intermediate logs remain as historical evidence, not outstanding failures.
 
 - Build/typecheck passed, including the checked provider factory. Vite retains its existing large-chunk warning.
 - Browser checks passed on Chromium 154.0.8037.57: native typing/caret, undo/redo, split/merge, clipboard paste, format shortcut, cross-block selection, CDP IME, entity rename/type; reading anchor/bookmark CRUD, ambiguity refusal, API/database/browser-context restart, final flush, error/retry, end-of-source reopen and mobile viewport. Synthetic injected API 500/503 logs are expected retry probes; browser harness error arrays were empty.
 - Performance command passed after matching PR15's immutable ingress in its history fixture and supplying tsx to TypeScript benchmark imports. Both direct and history edits assert one rendered/synced row, zero editable replacements and zero observed DOM mutations. Deterministic history and semantic-drift measurements are included as evidence, not production latency/billing estimates. The render script's `before` output counts calls to its legacy renderer anchor; this task did not change production rendering, and that label is not a production before/after improvement claim.
 - Test runtimes are not a speedup claim. Default now executes App navigation assertions that previously failed during CSS module bootstrap. Repeated tests detect obvious instability only; they do not prove absence of races or all-platform correctness.
 
-## Remaining failure ownership and next steps
+## Remaining limits
 
-See `failure-ledger.json` for exact case names, baseline locations/diagnostics and current failure diagnostics. All remain visible in default runs. Owning boundaries and required investigations:
+There are **zero remaining supported-default failures** and no unresolved product decisions. The six platform skips are not treated as passes. Native macOS PDFKit/Vision/Swift/sandbox and Keychain behavior could not be executed on Linux; the native command explicitly reports its platform requirements. Browser and benchmark evidence is synthetic, not a production performance certification.
 
-| Boundary / suites | Failures | Next investigation |
-| --- | ---: | --- |
-| Enrichment storage/notifications/API (`ai-enrichments`, `ai-notifications`, `api`) | 3 | Replace legacy plain-string route doubles, exercise actual automatic title commits and reconcile subtype schema support while retaining isolation and persistence assertions. |
-| Entity review/schema (`entity-scan-stream-ui`, `entity-scan`, `entity-subtypes`) | 7 | Current alias editor, occurrence anchors, dynamic pageMentions, explicit schema inheritance and migration/value rules. Do not remove evidence or ambiguity edges. |
-| Intelligence HTTP | 2 | Structured selective output fixtures and activity/title semantics; keep CSRF, vault, lock and revision checks. |
-| Library/folder transport | 2 | Pages heading/table contract and copyMove collection-link consumers. |
-| Generated source math / summary markup | 2 | Exact quotation/provenance segments and Markdown code/escape rendering. |
-| Local vector suggestions | 4 | Projection/current-index/dirty/cache requirements before changing any ranking/exclusion assertions. |
-| Workspace | 3 | Trash reconciliation and asynchronous title-observation metadata/timing; preserve ordering and newer-edit protection. |
-
-No larger product semantics were invented to close these gaps. The suite is still red and should not be used as a blanket release gate until these cases are resolved.
+The first local pass (`a8dd114`) repaired 48 baseline identities but retained 23 failures. The follow-up continued all 23 investigations to completion; those intermediate failures are no longer outstanding. Earlier logs remain in the evidence bundle and the Library's prior report version.
 
 ## Maintenance rules
 

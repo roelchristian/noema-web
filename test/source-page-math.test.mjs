@@ -37,7 +37,7 @@ test('literal code, quotations, currency and incomplete formulas are preserved',
  const quoted=generate('$x^3$','quote');assert.ok(quoted[0].content.every(segment=>!segment.math));
  const sourceQuote='Z/(3) is cyclic.';
  const blocks=generate('Use $C_3$.','paragraph',[{startLine:1,endLine:1,quote:sourceQuote}]);
- assert.ok(blocks[0].content.some(segment=>segment.italic&&segment.text===` “${sourceQuote}”`));
+ assert.deepEqual(blocks[0].content.slice(-2),[{text:` “${sourceQuote}”`},{text:' [L: 1]'}]);
 });
 test('the prompt requires LaTeX exposition even for plain-text sources and keeps quotations exact',()=>{
  const prompt=sourcePagePrompt('untrusted source');

@@ -10,6 +10,7 @@ import { Intelligence, intelligencePreferencesFor } from '../src/server/modules/
 import { openDatabase } from '../src/server/database.ts';
 import { Store } from '../src/server/store.ts';
 import { createApp } from '../src/server/http.ts';
+import {enrichmentResponse} from './helpers/providers.ts';
 const key='sk-test-secret-never-return-this-value';
 class Secrets {
   value=null;
@@ -17,7 +18,7 @@ class Secrets {
   write(value){this.value=structuredClone(value);}
   remove(){this.value=null;}
 }
-const completed=text=>Response.json({status:'completed',output:[{type:'message',content:[{type:'output_text',text}]}]});
+import {completedResponse as completed} from './helpers/providers.ts';
 const rejected=(work,status)=>assert.rejects(work,error=>error.status===status);
 test('credentials: write-only status, expiry, replacement, removal, persistence and bounds',async()=>{
   const secrets=new Secrets();let time=Date.now(),calls=0;
@@ -58,8 +59,9 @@ test('in-flight requests reject concurrent use and discard results after key rem
 });
 test('AI HTTP routes enforce CSRF, vault scope, revisions, lock state and private responses',async()=>{
   const dir=mkdtempSync(path.join(tmpdir(),'noema-ai-')),db=openDatabase(path.join(dir,'test.sqlite'));
-  const secrets=new Secrets();let providerCalls=0,lastInput='',finish;
-  const ai=new Intelligence(secrets,async(url,options)=>{providerCalls++;lastInput=JSON.parse(options.body).input;if(finish===true)return new Promise(resolve=>{finish=resolve;});return completed('A safe summary');});
+  const secrets=new Secrets();let providerCalls=0,lastInput='',finish,requestBody;
+  const response=summary=>enrichmentResponse(requestBody,{summary,title:'Generated note',primaryDomainId:null,secondaryDomainIds:[],language:'en'});
+  const ai=new Intelligence(secrets,async(url,options)=>{providerCalls++;requestBody=options.body;lastInput=JSON.parse(options.body).input;if(finish===true)return new Promise(resolve=>{finish=resolve;});return lastInput==='Connection test.'?completed('A safe summary'):response('A safe summary');});
   const server=createApp(new Store(db),path.resolve('dist/client'),ai);server.listen(0,'127.0.0.1');await once(server,'listening');
   const base='http://127.0.0.1:'+server.address().port;
   async function call(route,method='GET',body,expected=200,headers={}) {
@@ -85,10 +87,11 @@ test('AI HTTP routes enforce CSRF, vault scope, revisions, lock state and privat
     await call('pages/'+page.id+'/summary','POST',{revision:saved.revision},403,{'X-Noema-Request':''});
     const vault=await call('vaults','POST',{name:'Other'},201);
     await call('pages/'+page.id+'/summary','POST',{revision:saved.revision},404,{'X-Vault-Id':vault.id});
-    const result=await call('pages/'+page.id+'/summary','POST',{revision:saved.revision});assert.equal(result.summary,'A safe summary');assert.equal(result.model,'gpt-6-luna');assert.equal(result.reasoningEffort,'low');assert.equal(lastInput.length,1);assert.equal(lastInput[0].role,'user');assert.equal(JSON.parse(lastInput[0].content[0].text).untrusted_note,'My page\nMy private page text\n');
+    const result=await call('pages/'+page.id+'/summary','POST',{revision:saved.revision});assert.equal(result.summary,'A safe summary');assert.equal(result.model,'gpt-6-luna');assert.equal(result.reasoningEffort,'none');assert.equal(lastInput.length,1);assert.equal(lastInput[0].role,'user');assert.equal(JSON.parse(lastInput[0].content[0].text).untrusted_note,'My private page text\n');
+    assert.equal(JSON.parse(lastInput[0].content[0].text).currentTitle,'My page');
     assert.equal(providerCalls,2);
     const activity=await call('intelligence/activity');
-    const summaryActivity=activity.items.find(item=>item.action==='page_summary'&&item.status==='completed');
+    const summaryActivity=activity.items.find(item=>item.action==='page_enrichment'&&item.status==='completed');
     assert.equal(summaryActivity.objectId,page.id);assert.equal(summaryActivity.vaultId,'default');
     assert.equal(summaryActivity.objectTitle,'My page');assert.equal(summaryActivity.available,true);
     assert.equal(summaryActivity.revision,saved.revision);assert.equal(summaryActivity.model,'gpt-6-luna');
@@ -102,16 +105,19 @@ test('AI HTTP routes enforce CSRF, vault scope, revisions, lock state and privat
     await call('intelligence/activity?before=bad','GET',undefined,400);
 
     finish=true;
-    const pending=call('pages/'+page.id+'/summary','POST',{revision:saved.revision},423);
+    const pending=call('pages/'+page.id+'/summary','POST',{revision:saved.revision},409);
     while(typeof finish!=='function')await new Promise(resolve=>setTimeout(resolve,5));
     const running=(await call('intelligence/activity')).items.find(item=>item.status==='running');
     assert.equal(running.objectId,page.id);assert.ok(running.promptBytes>0);
-    await call('vaults/default/lock','POST',{passphrase:'test-lock'});finish(completed('do not disclose'));await pending;
+    await call('vaults/default/lock','POST',{passphrase:'test-lock'});finish(response('do not disclose'));await pending;
     await call('pages/'+page.id+'/summary','POST',{revision:saved.revision},423);
     const lockedActivity=await call('intelligence/activity');
     assert.ok(lockedActivity.items.every(item=>item.vaultId!=='default'));
     await call('vaults/default/unlock','POST',{passphrase:'test-lock'});
     assert.ok((await call('intelligence/activity')).items.some(item=>item.httpStatus===423&&item.status==='failed'));
+    const cancelled=(await call('intelligence/activity')).items.find(item=>item.id===running.id);
+    assert.equal(cancelled.status,'failed');assert.equal(cancelled.httpStatus,409);
+    assert.equal((await call('pages/'+page.id+'/enrichments')).find(item=>item.kind==='summary').data.summary,'A safe summary','Lock cancellation cannot replace saved output');
     await call('intelligence','DELETE');assert.equal(secrets.value,null);
     assert.ok(!JSON.stringify(db.prepare('SELECT * FROM metadata').all()).includes(key));
   }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();rmSync(dir,{recursive:true,force:true});}
@@ -230,10 +236,11 @@ test('title utility fixes reasoning to none independently of summary preferences
   }
 });
 
-test('title endpoint enforces untitled content, revisions, CSRF, and logs fixed reasoning',async()=>{
+test('legacy title endpoint uses selective enrichment with revision, CSRF and stale-result guards',async()=>{
   const dir=mkdtempSync(path.join(tmpdir(),'noema-title-')),db=openDatabase(path.join(dir,'test.sqlite'));
-  const secrets=new Secrets();let calls=0,finish;
-  const ai=new Intelligence(secrets,async()=>{calls++;if(finish===true)return new Promise(resolve=>{finish=resolve;});return completed('Garden plan');});ai.save({apiKey:key});
+  const secrets=new Secrets();let calls=0,finish,titleRequest;
+  const titleResponse=title=>enrichmentResponse(titleRequest,{title,summary:'A garden plan.',primaryDomainId:null,secondaryDomainIds:[],language:'en'});
+  const ai=new Intelligence(secrets,async(_url,request)=>{calls++;titleRequest=request.body;if(finish===true)return new Promise(resolve=>{finish=resolve;});return titleResponse('Garden plan');});ai.save({apiKey:key});
   const server=createApp(new Store(db),path.resolve('dist/client'),ai);server.listen(0,'127.0.0.1');await once(server,'listening');
   const base='http://127.0.0.1:'+server.address().port+'/api/';
   const call=async(route,method='GET',body,expected=200,headers={})=>{
@@ -246,13 +253,13 @@ test('title endpoint enforces untitled content, revisions, CSRF, and logs fixed 
     page=await call(route,'PUT',{...page,blocks:[{id:'text',type:'paragraph',content:[{text:'Plans for a community garden with raised beds.'}]}]});
     await call(route+'/title','POST',{revision:page.revision},403,{'X-Noema-Request':''});
     await call(route+'/title','POST',{revision:page.revision-1},409);
-    const title=await call(route+'/title','POST',{revision:page.revision});assert.equal(title.title,'Garden plan');assert.equal(title.reasoningEffort,'none');assert.equal(calls,1);
-    assert.equal((await call(route)).title,'Untitled');
-    const activity=(await call('intelligence/activity')).items.find(item=>item.action==='page_title'&&item.status==='completed');
+    const title=await call(route+'/title','POST',{revision:page.revision});assert.equal(title.title,'Garden plan');assert.equal(calls,1);
+    assert.equal((await call(route)).title,'Garden plan');
+    const activity=(await call('intelligence/activity')).items.find(item=>item.action==='page_enrichment'&&item.status==='completed');
     assert.equal(activity.reasoningEffort,'none');assert.equal(activity.objectId,page.id);assert.equal(activity.revision,page.revision);
     finish=true;const pending=call(route+'/title','POST',{revision:page.revision},409);
     while(typeof finish!=='function')await new Promise(resolve=>setTimeout(resolve,5));
-    page=await call(route,'PUT',{...page,title:'My chosen title'});finish(completed('Stale title'));await pending;
-    await call(route+'/title','POST',{revision:page.revision},409);assert.equal(calls,2);
+    page=await call(route,'PUT',{...page,title:'My chosen title'});finish(titleResponse('Stale title'));await pending;
+    const named=await call(route+'/title','POST',{revision:page.revision});assert.equal(named.title,'My chosen title');assert.equal((await call(route)).title,'My chosen title');assert.equal(calls,3);
   }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();rmSync(dir,{recursive:true,force:true});}
 });

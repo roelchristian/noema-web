@@ -1,6 +1,6 @@
 import {JSDOM} from 'jsdom';
 
-const globals=['window','document','Node','NodeFilter','Element','HTMLElement','HTMLInputElement','HTMLTextAreaElement','Range','DOMParser','InputEvent','MouseEvent','Event','CustomEvent','MutationObserver','getComputedStyle','getSelection','requestAnimationFrame','cancelAnimationFrame','innerWidth','innerHeight','IS_REACT_ACT_ENVIRONMENT'];
+const globals=['window','document','Node','NodeFilter','Element','HTMLElement','HTMLInputElement','HTMLSelectElement','HTMLTextAreaElement','Range','DOMParser','InputEvent','MouseEvent','Event','CustomEvent','MutationObserver','getComputedStyle','getSelection','requestAnimationFrame','cancelAnimationFrame','innerWidth','innerHeight','IS_REACT_ACT_ENVIRONMENT'];
 /** Small browser capability fixture. Register ownership before mounting React. */
 export function setupDOM(t,{html='<div id="mount"></div>',rect={left:0,right:100,top:0,bottom:20,width:100,height:20}}={}) {
   const dom=new JSDOM(html,{url:'http://localhost',pretendToBeVisual:true});

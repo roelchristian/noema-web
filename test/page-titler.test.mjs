@@ -47,19 +47,6 @@ test('registering an opened page again preserves its in-flight title', async t =
   } finally {titler.dispose();}
 });
 
-test('reads persisted results while the server job is pending', async t => {
-  t.mock.timers.enable({apis:['setTimeout']});
-  let calls=0;const applied=[];
-  const titler=new PageTitler(async p=>({title:++calls===1?'Untitled':'Garden plan',revision:p.revision,enrichmentPending:calls===1}),(_page,title)=>applied.push(title));
-  try {
-    titler.observe(page(),true);t.mock.timers.tick(2000);await settle();
-    assert.equal(calls,1);assert.deepEqual(applied,['Untitled']);
-    t.mock.timers.tick(2000);await settle();
-    assert.equal(calls,2);assert.deepEqual(applied,['Untitled','Garden plan']);
-    t.mock.timers.tick(120000);await settle();assert.equal(calls,2);
-  }finally{titler.dispose();}
-});
-
 test('read failures do not start an independent enrichment retry loop',async t=>{
   t.mock.timers.enable({apis:['setTimeout']});
   for(const status of [429,502,503]) {
@@ -95,15 +82,21 @@ test('stable subjects still check queued summary work once without starting gene
     titler.observe(stable,true);t.mock.timers.tick(2000);await settle();assert.equal(calls,1);t.mock.timers.tick(60000);await settle();assert.equal(calls,1);
   }finally{titler.dispose();}
 });
-test('completed classifications are displayed on the next two-second read for named pages',async t=>{
-  t.mock.timers.enable({apis:['setTimeout']});
-  const applied=[];let ready=false,reads=0;
-  const current={...page('Algebra'),pageDomains:{origin:'inferred',status:'needs_refresh',revision:1}};
-  const titler=new PageTitler(async p=>{reads++;return {...p,pageDomains:{...p.pageDomains,status:ready?'inferred':'needs_refresh'},enrichmentPending:!ready};},(_page,_title,domains)=>applied.push(domains.status));
-  try {
-    titler.observe(current,true);t.mock.timers.tick(2000);await settle();assert.deepEqual(applied,['needs_refresh']);
-    ready=true;t.mock.timers.tick(1999);await settle();assert.equal(reads,1);
-    t.mock.timers.tick(1);await settle();assert.deepEqual(applied,['needs_refresh','inferred']);
-    t.mock.timers.tick(60000);await settle();assert.equal(reads,2);
+test('pending title and domain metadata are observed at two-second boundaries and stop after completion',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ const cases=[
+  {label:'untitled page',page:page(),pending:{title:'Untitled'},complete:{title:'Garden plan'},expected:['Untitled','Garden plan']},
+  {label:'named page domains',page:{...page('Algebra'),pageDomains:{origin:'inferred',status:'needs_refresh',revision:1}},pending:{pageDomains:{origin:'inferred',status:'needs_refresh',revision:1}},complete:{title:'Unsolicited rename',pageDomains:{origin:'inferred',status:'inferred',revision:1}},expected:['needs_refresh','inferred']},
+ ];
+ for(const scenario of cases){
+  const applied=[];let reads=0;
+  const titler=new PageTitler(async p=>({...p,...(++reads===1?scenario.pending:scenario.complete),enrichmentPending:reads===1}),(_page,title,domains)=>{applied.push(domains?.status??title);if(scenario.page.title==='Algebra')assert.equal(title,'Algebra','Background metadata cannot rename an authored title');});
+  try{
+   titler.observe(scenario.page,true);t.mock.timers.tick(1999);await settle();assert.equal(reads,0,scenario.label);
+   t.mock.timers.tick(1);await settle();assert.deepEqual(applied,[scenario.expected[0]],scenario.label);
+   t.mock.timers.tick(1999);await settle();assert.equal(reads,1,scenario.label);
+   t.mock.timers.tick(1);await settle();assert.deepEqual(applied,scenario.expected,scenario.label);
+   t.mock.timers.tick(120000);await settle();assert.equal(reads,2,scenario.label+' completes without an independent polling loop');
   }finally{titler.dispose();}
+ }
 });

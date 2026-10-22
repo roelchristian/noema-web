@@ -63,9 +63,12 @@ await test('SQLite API: pages, references, relationships, validation, and restar
  assert.deepEqual((await request('entities')).find(e => e.id === director.id).subtypes,director.subtypes);
  await request('entities/'+director.id,'PUT',{name:director.name,type:'person',subtypes:['person:actor','place:city']},400);
  await request('entities/'+director.id+'/properties','POST',{name:'filmography',value:'A film'},400);
- await request('entity-schema/properties','POST',{type:'person',name:'filmography'},201);
+ await request('entity-schema/properties','POST',{type:'person',name:'filmography'},400);
+ await request('entity-schema/properties','POST',{type:'person',subtype:directorType.id,name:'filmography'},201);
  await request('entities/'+director.id+'/properties','POST',{name:'filmography',value:'A film'},201);
- await request('entity-schema/properties','POST',{type:'person',subtype:directorType.id,name:'subtype field'},400);
+ const scopedSchema=await request('entity-schema/properties','POST',{type:'person',subtype:directorType.id,name:'subtype field'},201);
+ assert.ok(scopedSchema.subtypeProperties[directorType.id].includes('subtype field'));
+ assert.ok(!scopedSchema.properties.person.includes('subtype field'));
  const person=await request('entities','POST',{name:'Test Person',type:'person'},201);
  const sibling=await request('entities','POST',{name:'Sibling Person',type:'person'},201);
  const cacheDonald=await request('entities','POST',{name:'Donald Cache',type:'person',aliases:['Shared surname']},201);
@@ -87,7 +90,7 @@ await test('SQLite API: pages, references, relationships, validation, and restar
  reviewPage=await request('pages/'+reviewPage.id,'PUT',{...reviewPage,...patch});
  assert.deepEqual((await request(cacheRoute)).matches,[]);
  await request(cacheRoute,'POST',{revision:reviewPage.revision-1,key:reviewCache.key,matchId:reviewCache.matches[0].id,entityId:cacheDonald.id,all:false},409);
- const work=await request('entities','POST',{name:'Test Book',type:'creativework'},201);
+ const work=await request('entities','POST',{name:'Test Book',type:'creativework',subtypes:['creativework:book']},201);
  let book=await request('entities/'+work.id+'/properties','POST',{name:'type',value:'Book'},201);
  book=await request('entities/'+work.id+'/properties','POST',{name:'author',target_id:person.id},201);
  assert.equal(book.properties.find(p=>p.name==='author').target_id,person.id);
@@ -96,11 +99,12 @@ await test('SQLite API: pages, references, relationships, validation, and restar
  const incoming=await request('entities/'+sibling.id);assert.equal(incoming.relationships[0].source_id,person.id);
  const author=await request('entities/'+person.id);assert.equal(author.incomingProperties[0].entity_id,work.id);
  const textProperty=book.properties.find(p=>p.name==='type');
+ await request('entity-schema/properties','POST',{type:'creativework',subtype:'creativework:book',name:'format'},201);
  const edited=await request('entities/'+work.id+'/properties/'+textProperty.id,'PUT',{name:'format',value:'Novel'});
  assert.equal(edited.properties.find(p=>p.id===textProperty.id).value,'Novel');
  const editedRelation=await request('entities/'+person.id+'/relationships/'+relation.id,'PUT',{label:'sibling of',target_id:sibling.id});
  assert.equal(editedRelation.relationships[0].label,'sibling of');
- await request('entities/'+sibling.id+'/properties/'+textProperty.id,'PUT',{name:'format',value:'Wrong owner'},404);
+ await request('entities/'+sibling.id+'/properties/'+textProperty.id,'PUT',{name:'nationality',value:'Wrong owner'},404);
  const blocks=[{id:'test',type:'paragraph',checked:false,content:[{text:'Reading '},{entityId:work.id}]}];
  await request('pages/'+page.id,'PUT',{title:'Saved note',blocks});
  await request('entities/'+person.id,'PUT',{name:'Renamed Person',type:'person',description:'Edited'});
@@ -112,7 +116,7 @@ await test('SQLite API: pages, references, relationships, validation, and restar
  const vault=await request('vaults','POST',{name:'Research'},201);
  assert.equal(vault.locked,false);assert.equal(vault.password_hash,undefined);
  const scoped=(route,method='GET',body,status=200)=>request(route,method,body,status,{'X-Vault-Id':vault.id});
- assert.deepEqual(await scoped('organization'),{collections:[],folders:[],locations:[],memberships:[],favourites:[]});
+ assert.deepEqual(await scoped('organization'),{collections:[],folders:[],folderLinks:[],locations:[],memberships:[],favourites:[]});
  await scoped('organization/favourites','PUT',{kind:'folder',item_id:folderId,favourite:true},404);
  await scoped('organization/memberships','PUT',{kind:'page',item_id:page.id,collection_id:collectionId},404);
  assert.deepEqual(await scoped('pages'),[]);assert.deepEqual(await scoped('entities'),[]);

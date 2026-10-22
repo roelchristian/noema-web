@@ -1,5 +1,5 @@
 {
-  "notes": "Source named declarations are not runtime counts: nested/dynamic tests and file bootstrap failures differ. Summed case times overlap under file concurrency and are not wall time. Authoritative total counts are TAP summaries in report.",
+  "notes": "Static named declarations differ from runtime counts due to generated/nested tests and the baseline file bootstrap failure. Per-case sums overlap under file concurrency and are not wall time. All runtime case names/results and nested TAP lines are retained in the evidence bundle.",
   "before": [
     {
       "file": "test/activity-page-titles.test.mjs",
@@ -799,637 +799,637 @@
       "group": "server",
       "staticNamedDeclarations": 3,
       "matchedTopLevelResults": 3,
-      "summedCaseDuration_ms": 169.089
+      "summedCaseDuration_ms": 209.939
     },
     {
       "file": "test/ai-activity-ui.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 1,
       "matchedTopLevelResults": 1,
-      "summedCaseDuration_ms": 213.968
+      "summedCaseDuration_ms": 174.463
     },
     {
       "file": "test/ai-activity-usage.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 1,
       "matchedTopLevelResults": 1,
-      "summedCaseDuration_ms": 433.297
+      "summedCaseDuration_ms": 440.586
     },
     {
       "file": "test/ai-activity.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 3,
       "matchedTopLevelResults": 3,
-      "summedCaseDuration_ms": 701.025
+      "summedCaseDuration_ms": 577.449
     },
     {
       "file": "test/ai-cache-accounting-ui.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 1,
       "matchedTopLevelResults": 1,
-      "summedCaseDuration_ms": 230.769
+      "summedCaseDuration_ms": 163.107
     },
     {
       "file": "test/ai-enrichments.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 1,
       "matchedTopLevelResults": 1,
-      "summedCaseDuration_ms": 91.379
+      "summedCaseDuration_ms": 479.856
     },
     {
       "file": "test/ai-notifications.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 10,
       "matchedTopLevelResults": 10,
-      "summedCaseDuration_ms": 647.412
+      "summedCaseDuration_ms": 545.201
     },
     {
       "file": "test/ai-token-accounting.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 3,
       "matchedTopLevelResults": 3,
-      "summedCaseDuration_ms": 172.447
+      "summedCaseDuration_ms": 168.898
     },
     {
       "file": "test/api.test.mjs",
       "group": "unit",
       "staticNamedDeclarations": 1,
       "matchedTopLevelResults": 1,
-      "summedCaseDuration_ms": 417.875
+      "summedCaseDuration_ms": 1491.388
     },
     {
       "file": "test/appearance.test.mjs",
       "group": "unit",
       "staticNamedDeclarations": 4,
       "matchedTopLevelResults": 4,
-      "summedCaseDuration_ms": 4.711
+      "summedCaseDuration_ms": 2.559
     },
     {
       "file": "test/auto-entities.test.mjs",
       "group": "unit",
       "staticNamedDeclarations": 6,
       "matchedTopLevelResults": 6,
-      "summedCaseDuration_ms": 10.673
+      "summedCaseDuration_ms": 10.76
     },
     {
       "file": "test/auto-entity-workspace.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 8,
       "matchedTopLevelResults": 8,
-      "summedCaseDuration_ms": 170.883
+      "summedCaseDuration_ms": 137.666
     },
     {
       "file": "test/block-boundary-deletion.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 6,
       "matchedTopLevelResults": 6,
-      "summedCaseDuration_ms": 749.649
+      "summedCaseDuration_ms": 727.144
     },
     {
       "file": "test/block-drag.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 11,
       "matchedTopLevelResults": 11,
-      "summedCaseDuration_ms": 413.16
+      "summedCaseDuration_ms": 372.509
     },
     {
       "file": "test/block-explanation.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 1,
       "matchedTopLevelResults": 1,
-      "summedCaseDuration_ms": 184.505
+      "summedCaseDuration_ms": 250.339
     },
     {
       "file": "test/block-selection.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 13,
       "matchedTopLevelResults": 13,
-      "summedCaseDuration_ms": 494.231
+      "summedCaseDuration_ms": 433.053
     },
     {
       "file": "test/breadcrumbs.test.mjs",
       "group": "unit",
       "staticNamedDeclarations": 3,
       "matchedTopLevelResults": 3,
-      "summedCaseDuration_ms": 2.402
+      "summedCaseDuration_ms": 1.864
     },
     {
       "file": "test/clipboard-math.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 5,
       "matchedTopLevelResults": 5,
-      "summedCaseDuration_ms": 256.853
+      "summedCaseDuration_ms": 209.4
     },
     {
       "file": "test/connected-entities.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 3,
       "matchedTopLevelResults": 3,
-      "summedCaseDuration_ms": 23.358
+      "summedCaseDuration_ms": 23.687
     },
     {
       "file": "test/document-history.test.mjs",
       "group": "unit",
       "staticNamedDeclarations": 14,
       "matchedTopLevelResults": 14,
-      "summedCaseDuration_ms": 680.057
+      "summedCaseDuration_ms": 702.265
     },
     {
       "file": "test/domain-classification.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 4,
       "matchedTopLevelResults": 4,
-      "summedCaseDuration_ms": 179.48
+      "summedCaseDuration_ms": 147.134
     },
     {
       "file": "test/domain-matching.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 9,
       "matchedTopLevelResults": 9,
-      "summedCaseDuration_ms": 192.781
+      "summedCaseDuration_ms": 171.224
     },
     {
       "file": "test/domain-ui.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 3,
       "matchedTopLevelResults": 3,
-      "summedCaseDuration_ms": 267.104
+      "summedCaseDuration_ms": 200.708
     },
     {
       "file": "test/domain-workspace.test.mjs",
       "group": "unit",
       "staticNamedDeclarations": 1,
       "matchedTopLevelResults": 1,
-      "summedCaseDuration_ms": 15.318
+      "summedCaseDuration_ms": 9.416
     },
     {
       "file": "test/domains.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 5,
       "matchedTopLevelResults": 5,
-      "summedCaseDuration_ms": 441.543
+      "summedCaseDuration_ms": 363.028
     },
     {
       "file": "test/editor-line-breaks.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 3,
       "matchedTopLevelResults": 3,
-      "summedCaseDuration_ms": 365.073
+      "summedCaseDuration_ms": 320.341
     },
     {
       "file": "test/editor-rendering.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 3,
       "matchedTopLevelResults": 3,
-      "summedCaseDuration_ms": 2297.778
+      "summedCaseDuration_ms": 2078.541
     },
     {
       "file": "test/editor.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 14,
       "matchedTopLevelResults": 14,
-      "summedCaseDuration_ms": 151.126
+      "summedCaseDuration_ms": 156.577
     },
     {
       "file": "test/embedding-activity.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 3,
       "matchedTopLevelResults": 3,
-      "summedCaseDuration_ms": 635.364
+      "summedCaseDuration_ms": 522.54
     },
     {
       "file": "test/embedding-api.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 3,
       "matchedTopLevelResults": 3,
-      "summedCaseDuration_ms": 15667.985
+      "summedCaseDuration_ms": 15589.969
     },
     {
       "file": "test/embedding-efficiency.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 7,
       "matchedTopLevelResults": 7,
-      "summedCaseDuration_ms": 1081.669
+      "summedCaseDuration_ms": 1043.61
     },
     {
       "file": "test/embedding-provider.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 3,
       "matchedTopLevelResults": 3,
-      "summedCaseDuration_ms": 41.035
+      "summedCaseDuration_ms": 29.924
     },
     {
       "file": "test/embedding-response-size.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 3,
       "matchedTopLevelResults": 3,
-      "summedCaseDuration_ms": 56.325
+      "summedCaseDuration_ms": 40.068
     },
     {
       "file": "test/embedding-worker-batches.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 5,
       "matchedTopLevelResults": 5,
-      "summedCaseDuration_ms": 590.365
+      "summedCaseDuration_ms": 581.615
     },
     {
       "file": "test/embeddings.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 4,
       "matchedTopLevelResults": 4,
-      "summedCaseDuration_ms": 586.217
+      "summedCaseDuration_ms": 584.22
     },
     {
       "file": "test/entity-aliases.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 12,
       "matchedTopLevelResults": 12,
-      "summedCaseDuration_ms": 288.929
+      "summedCaseDuration_ms": 273.866
     },
     {
       "file": "test/entity-formatting.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 4,
       "matchedTopLevelResults": 4,
-      "summedCaseDuration_ms": 93.554
+      "summedCaseDuration_ms": 68.926
     },
     {
       "file": "test/entity-match-cache.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 4,
       "matchedTopLevelResults": 4,
-      "summedCaseDuration_ms": 200.517
+      "summedCaseDuration_ms": 206.304
     },
     {
       "file": "test/entity-panel-editor.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 2,
       "matchedTopLevelResults": 2,
-      "summedCaseDuration_ms": 229.166
+      "summedCaseDuration_ms": 256.642
     },
     {
       "file": "test/entity-review-feedback.test.mjs",
       "group": "unit",
-      "staticNamedDeclarations": 5,
-      "matchedTopLevelResults": 5,
-      "summedCaseDuration_ms": 2.602
+      "staticNamedDeclarations": 4,
+      "matchedTopLevelResults": 4,
+      "summedCaseDuration_ms": 1.946
     },
     {
       "file": "test/entity-scan-stream-ui.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 1,
       "matchedTopLevelResults": 1,
-      "summedCaseDuration_ms": 228.136
+      "summedCaseDuration_ms": 286.355
     },
     {
       "file": "test/entity-scan-stream.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 4,
       "matchedTopLevelResults": 4,
-      "summedCaseDuration_ms": 200.506
+      "summedCaseDuration_ms": 190.14
     },
     {
       "file": "test/entity-scan.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 8,
       "matchedTopLevelResults": 8,
-      "summedCaseDuration_ms": 472.649
+      "summedCaseDuration_ms": 602.78
     },
     {
       "file": "test/entity-subtypes.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 4,
       "matchedTopLevelResults": 4,
-      "summedCaseDuration_ms": 283.447
+      "summedCaseDuration_ms": 295.835
     },
     {
       "file": "test/entity-suggestion-identities.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 4,
       "matchedTopLevelResults": 4,
-      "summedCaseDuration_ms": 58.705
+      "summedCaseDuration_ms": 57.101
     },
     {
       "file": "test/folder-drop.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 7,
       "matchedTopLevelResults": 7,
-      "summedCaseDuration_ms": 91.854
+      "summedCaseDuration_ms": 91.251
     },
     {
       "file": "test/image-cleanup.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 8,
       "matchedTopLevelResults": 8,
-      "summedCaseDuration_ms": 219.002
+      "summedCaseDuration_ms": 219.881
     },
     {
       "file": "test/images.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 1,
       "matchedTopLevelResults": 1,
-      "summedCaseDuration_ms": 369.844
+      "summedCaseDuration_ms": 313.902
     },
     {
       "file": "test/inbox.test.mjs",
       "group": "unit",
       "staticNamedDeclarations": 2,
       "matchedTopLevelResults": 2,
-      "summedCaseDuration_ms": 9.183
+      "summedCaseDuration_ms": 4.526
     },
     {
       "file": "test/incremental-drafts.test.mjs",
       "group": "unit",
       "staticNamedDeclarations": 8,
       "matchedTopLevelResults": 8,
-      "summedCaseDuration_ms": 830.151
+      "summedCaseDuration_ms": 766.088
     },
     {
       "file": "test/intelligence.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 12,
       "matchedTopLevelResults": 11,
-      "summedCaseDuration_ms": 330.98
+      "summedCaseDuration_ms": 482.049
     },
     {
       "file": "test/legacy-baseline-migration.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 11,
       "matchedTopLevelResults": 11,
-      "summedCaseDuration_ms": 1323.525
+      "summedCaseDuration_ms": 1245.034
     },
     {
       "file": "test/library.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 3,
       "matchedTopLevelResults": 3,
-      "summedCaseDuration_ms": 50.599
+      "summedCaseDuration_ms": 49.086
     },
     {
       "file": "test/menu-placement.test.mjs",
       "group": "unit",
       "staticNamedDeclarations": 5,
       "matchedTopLevelResults": 5,
-      "summedCaseDuration_ms": 1.663
+      "summedCaseDuration_ms": 1.351
     },
     {
       "file": "test/navigation.test.mjs",
       "group": "unit",
       "staticNamedDeclarations": 5,
       "matchedTopLevelResults": 5,
-      "summedCaseDuration_ms": 12.039
+      "summedCaseDuration_ms": 14.231
     },
     {
       "file": "test/new-note-focus.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 1,
       "matchedTopLevelResults": 1,
-      "summedCaseDuration_ms": 229.474
+      "summedCaseDuration_ms": 215.203
     },
     {
       "file": "test/new-note.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 3,
       "matchedTopLevelResults": 3,
-      "summedCaseDuration_ms": 100.981
+      "summedCaseDuration_ms": 68.364
     },
     {
       "file": "test/notification-read-delay.test.mjs",
       "group": "unit",
       "staticNamedDeclarations": 3,
       "matchedTopLevelResults": 3,
-      "summedCaseDuration_ms": 2.351
+      "summedCaseDuration_ms": 1.831
     },
     {
       "file": "test/openai-response.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 4,
       "matchedTopLevelResults": 4,
-      "summedCaseDuration_ms": 30.53
+      "summedCaseDuration_ms": 26.505
     },
     {
       "file": "test/organization.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 4,
       "matchedTopLevelResults": 4,
-      "summedCaseDuration_ms": 297.584
+      "summedCaseDuration_ms": 349.325
     },
     {
       "file": "test/page-drag.test.mjs",
       "group": "unit",
       "staticNamedDeclarations": 2,
       "matchedTopLevelResults": 2,
-      "summedCaseDuration_ms": 3.585
+      "summedCaseDuration_ms": 2.466
     },
     {
       "file": "test/page-enrichment-activity.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 3,
       "matchedTopLevelResults": 3,
-      "summedCaseDuration_ms": 85.993
+      "summedCaseDuration_ms": 82.249
     },
     {
       "file": "test/page-enrichment-background.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 1,
       "matchedTopLevelResults": 1,
-      "summedCaseDuration_ms": 142.91
+      "summedCaseDuration_ms": 170.284
     },
     {
       "file": "test/page-enrichment-generation.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 4,
       "matchedTopLevelResults": 4,
-      "summedCaseDuration_ms": 28.224
+      "summedCaseDuration_ms": 27.843
     },
     {
       "file": "test/page-enrichment-pending.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 1,
       "matchedTopLevelResults": 1,
-      "summedCaseDuration_ms": 49.925
+      "summedCaseDuration_ms": 56.422
     },
     {
       "file": "test/page-enrichment-refresh.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 9,
       "matchedTopLevelResults": 9,
-      "summedCaseDuration_ms": 463.644
+      "summedCaseDuration_ms": 427.097
     },
     {
       "file": "test/page-enrichment-scheduler.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 11,
       "matchedTopLevelResults": 11,
-      "summedCaseDuration_ms": 16.285
+      "summedCaseDuration_ms": 17.873
     },
     {
       "file": "test/page-enrichment.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 12,
       "matchedTopLevelResults": 12,
-      "summedCaseDuration_ms": 717.976
+      "summedCaseDuration_ms": 561.792
     },
     {
       "file": "test/page-generation-metadata.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 5,
       "matchedTopLevelResults": 5,
-      "summedCaseDuration_ms": 273.457
+      "summedCaseDuration_ms": 224.69
     },
     {
       "file": "test/page-icons.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 3,
       "matchedTopLevelResults": 3,
-      "summedCaseDuration_ms": 98.347
+      "summedCaseDuration_ms": 104.474
     },
     {
       "file": "test/page-language-composition.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 1,
       "matchedTopLevelResults": 1,
-      "summedCaseDuration_ms": 2.812
+      "summedCaseDuration_ms": 2.936
     },
     {
       "file": "test/page-navigation-ui.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 1,
       "matchedTopLevelResults": 1,
-      "summedCaseDuration_ms": 771.296
+      "summedCaseDuration_ms": 673.025
     },
     {
       "file": "test/page-navigation.test.mjs",
       "group": "unit",
       "staticNamedDeclarations": 10,
       "matchedTopLevelResults": 10,
-      "summedCaseDuration_ms": 38.446
+      "summedCaseDuration_ms": 31.758
     },
     {
       "file": "test/page-saver.test.mjs",
       "group": "unit",
       "staticNamedDeclarations": 6,
       "matchedTopLevelResults": 6,
-      "summedCaseDuration_ms": 9.283
+      "summedCaseDuration_ms": 7.051
     },
     {
       "file": "test/page-scroll.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 3,
       "matchedTopLevelResults": 3,
-      "summedCaseDuration_ms": 177.251
+      "summedCaseDuration_ms": 161.412
     },
     {
       "file": "test/page-semantic-drift.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 13,
       "matchedTopLevelResults": 12,
-      "summedCaseDuration_ms": 185.066
+      "summedCaseDuration_ms": 172.31
     },
     {
       "file": "test/page-summary-freshness.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 6,
       "matchedTopLevelResults": 6,
-      "summedCaseDuration_ms": 42.248
+      "summedCaseDuration_ms": 48.421
     },
     {
       "file": "test/page-titler.test.mjs",
       "group": "unit",
-      "staticNamedDeclarations": 9,
-      "matchedTopLevelResults": 9,
-      "summedCaseDuration_ms": 8.177
+      "staticNamedDeclarations": 8,
+      "matchedTopLevelResults": 8,
+      "summedCaseDuration_ms": 9.347
     },
     {
       "file": "test/pdf-worker.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 1,
       "matchedTopLevelResults": 1,
-      "summedCaseDuration_ms": 206.127
+      "summedCaseDuration_ms": 145.609
     },
     {
       "file": "test/reading-continuity.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 3,
       "matchedTopLevelResults": 3,
-      "summedCaseDuration_ms": 312.229
+      "summedCaseDuration_ms": 240.295
     },
     {
       "file": "test/reference-deletion.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 5,
       "matchedTopLevelResults": 5,
-      "summedCaseDuration_ms": 273.699
+      "summedCaseDuration_ms": 221.428
     },
     {
       "file": "test/search-snippets.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 4,
       "matchedTopLevelResults": 4,
-      "summedCaseDuration_ms": 21.493
+      "summedCaseDuration_ms": 12.626
     },
     {
       "file": "test/segments-equal.test.mjs",
       "group": "unit",
       "staticNamedDeclarations": 3,
       "matchedTopLevelResults": 3,
-      "summedCaseDuration_ms": 1.531
+      "summedCaseDuration_ms": 1.34
     },
     {
       "file": "test/selection-annotation.test.mjs",
       "group": "unit",
       "staticNamedDeclarations": 7,
       "matchedTopLevelResults": 7,
-      "summedCaseDuration_ms": 11.75
+      "summedCaseDuration_ms": 10.832
     },
     {
       "file": "test/semantic-blocks.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 10,
       "matchedTopLevelResults": 10,
-      "summedCaseDuration_ms": 243.846
+      "summedCaseDuration_ms": 190.226
     },
     {
       "file": "test/semantic-citations.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 6,
       "matchedTopLevelResults": 6,
-      "summedCaseDuration_ms": 141.983
+      "summedCaseDuration_ms": 149.19
     },
     {
       "file": "test/semantic-search.test.mjs",
       "group": "unit",
       "staticNamedDeclarations": 4,
       "matchedTopLevelResults": 4,
-      "summedCaseDuration_ms": 4.907
+      "summedCaseDuration_ms": 4.122
     },
     {
       "file": "test/semantic-ui.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 9,
       "matchedTopLevelResults": 9,
-      "summedCaseDuration_ms": 747.473
+      "summedCaseDuration_ms": 754.517
     },
     {
       "file": "test/smart-quotes.test.mjs",
       "group": "unit",
       "staticNamedDeclarations": 4,
       "matchedTopLevelResults": 4,
-      "summedCaseDuration_ms": 2.248
+      "summedCaseDuration_ms": 2.353
     },
     {
       "file": "test/source-app-numbering.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 4,
       "matchedTopLevelResults": 4,
-      "summedCaseDuration_ms": 192.208
+      "summedCaseDuration_ms": 209.817
     },
     {
       "file": "test/source-documents-cache.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 1,
       "matchedTopLevelResults": 1,
-      "summedCaseDuration_ms": 4.943
+      "summedCaseDuration_ms": 3.754
     },
     {
       "file": "test/source-evidence-http.test.mjs",
@@ -1443,21 +1443,21 @@
       "group": "dom",
       "staticNamedDeclarations": 1,
       "matchedTopLevelResults": 1,
-      "summedCaseDuration_ms": 181.52
+      "summedCaseDuration_ms": 181.442
     },
     {
       "file": "test/source-files.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 2,
       "matchedTopLevelResults": 2,
-      "summedCaseDuration_ms": 280.156
+      "summedCaseDuration_ms": 290.741
     },
     {
       "file": "test/source-ingestion-evidence.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 3,
       "matchedTopLevelResults": 2,
-      "summedCaseDuration_ms": 132.593
+      "summedCaseDuration_ms": 162.937
     },
     {
       "file": "test/source-ocr-coverage.test.mjs",
@@ -1471,42 +1471,42 @@
       "group": "server",
       "staticNamedDeclarations": 5,
       "matchedTopLevelResults": 5,
-      "summedCaseDuration_ms": 19.371
+      "summedCaseDuration_ms": 32.473
     },
     {
       "file": "test/source-page-options-ui.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 5,
       "matchedTopLevelResults": 5,
-      "summedCaseDuration_ms": 333.578
+      "summedCaseDuration_ms": 287.087
     },
     {
       "file": "test/source-pages.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 15,
       "matchedTopLevelResults": 15,
-      "summedCaseDuration_ms": 12.548
+      "summedCaseDuration_ms": 9.844
     },
     {
       "file": "test/source-reader-refresh.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 1,
       "matchedTopLevelResults": 1,
-      "summedCaseDuration_ms": 223.578
+      "summedCaseDuration_ms": 224.165
     },
     {
       "file": "test/source-reprocessing-ui.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 6,
       "matchedTopLevelResults": 6,
-      "summedCaseDuration_ms": 505.782
+      "summedCaseDuration_ms": 510.547
     },
     {
       "file": "test/source-reprocessing.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 16,
       "matchedTopLevelResults": 16,
-      "summedCaseDuration_ms": 152.409
+      "summedCaseDuration_ms": 151.064
     },
     {
       "file": "test/source-sanitizer.test.mjs",
@@ -1520,71 +1520,70 @@
       "group": "server",
       "staticNamedDeclarations": 5,
       "matchedTopLevelResults": 5,
-      "summedCaseDuration_ms": 518.699
+      "summedCaseDuration_ms": 776.472
     },
     {
       "file": "test/source-text-normalization.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 2,
       "matchedTopLevelResults": 2,
-      "summedCaseDuration_ms": 1.195
+      "summedCaseDuration_ms": 1.177
     },
     {
       "file": "test/summary-freshness.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 7,
       "matchedTopLevelResults": 7,
-      "summedCaseDuration_ms": 234.715
+      "summedCaseDuration_ms": 235.322
     },
     {
       "file": "test/summary-math.test.mjs",
       "group": "dom",
-      "staticNamedDeclarations": 6,
-      "matchedTopLevelResults": 6,
-      "summedCaseDuration_ms": 389.546
+      "staticNamedDeclarations": 5,
+      "matchedTopLevelResults": 5,
+      "summedCaseDuration_ms": 374.151
     },
     {
       "file": "test/test-harness.test.mjs",
       "group": "dom",
       "staticNamedDeclarations": 2,
       "matchedTopLevelResults": 2,
-      "summedCaseDuration_ms": 174.973
+      "summedCaseDuration_ms": 162.468
     },
     {
       "file": "test/token-histogram.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 5,
       "matchedTopLevelResults": 5,
-      "summedCaseDuration_ms": 40.773
+      "summedCaseDuration_ms": 53.652
     },
     {
       "file": "test/trash.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 3,
       "matchedTopLevelResults": 3,
-      "summedCaseDuration_ms": 195.317
+      "summedCaseDuration_ms": 170.566
     },
     {
       "file": "test/vault-backup-workspace.test.mjs",
       "group": "unit",
       "staticNamedDeclarations": 2,
       "matchedTopLevelResults": 2,
-      "summedCaseDuration_ms": 4.184
+      "summedCaseDuration_ms": 4.483
     },
     {
       "file": "test/vault-backups.test.mjs",
       "group": "server",
       "staticNamedDeclarations": 5,
       "matchedTopLevelResults": 5,
-      "summedCaseDuration_ms": 567.511
+      "summedCaseDuration_ms": 502.034
     },
     {
       "file": "test/workspace.test.mjs",
       "group": "unit",
       "staticNamedDeclarations": 9,
       "matchedTopLevelResults": 9,
-      "summedCaseDuration_ms": 47.086
+      "summedCaseDuration_ms": 19.813
     }
-  ],
-  "fullCaseInventory": "Full source declaration names, all runtime top-level results and nested TAP result lines are in inventory.json in the delivered evidence bundle."
+  ]
 }

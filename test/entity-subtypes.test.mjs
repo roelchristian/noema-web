@@ -10,7 +10,7 @@ import { Vaults } from '../src/server/modules/vaults.ts';
 
 const rejects = (work, status = 400) => assert.throws(work, error => error.status === status);
 
-test('subtypes inherit live main-type fields, never define their own, and retain entity-specific values', () => {
+test('subtypes inherit category fields and own scoped definitions while values remain entity-specific', () => {
   const db = openDatabase(':memory:');
   try {
     const knowledge = new Knowledge(new Store(db));
@@ -23,16 +23,18 @@ test('subtypes inherit live main-type fields, never define their own, and retain
     rejects(() => knowledge.property('default', actor.id, {name: 'awards', value: 'Award'}));
     rejects(() => knowledge.property('default', actor.id, {name: 'awards', value: 'Award'}, withBirthplace.properties[0].id));
     rejects(() => knowledge.addSubtype('default', {type: 'person', name: 'Director', properties: ['awards']}));
-    rejects(() => knowledge.addTypeProperty('default', {type: 'person', subtype: 'person:actor', name: 'awards'}));
-    knowledge.addTypeProperty('default', {type: 'person', name: 'awards'});
+    knowledge.addTypeProperty('default', {type: 'person', subtype:'person:actor',name: 'awards'});
     knowledge.property('default', actor.id, {name: 'awards', value: 'Award'});
-    assert.ok(knowledge.detail('default', writer.id).propertyNames.includes('awards'));
+    assert.ok(!knowledge.detail('default', writer.id).propertyNames.includes('awards'));
+    const otherActor=knowledge.create('default',{name:'Another actor',type:'person',subtypes:['person:actor']});
+    assert.ok(otherActor.propertyNames.includes('awards'));assert.deepEqual(otherActor.properties,[]);
     assert.equal(knowledge.detail('default', writer.id).properties.length, 0);
-    // Freeform fields on a main-type entity become inherited fields too.
-    knowledge.property('default', 'ursula', {name: 'occupation', value: 'Writer'});
-    knowledge.property('default', actor.id, {name: 'occupation', value: 'Actor'});
+    rejects(()=>knowledge.property('default','ursula',{name:'occupation',value:'Writer'}));
+    rejects(()=>knowledge.addTypeProperty('default',{type:'person',name:'occupation'}));
     assert.deepEqual(knowledge.update('default',actor.id,{name: 'Renamed',type: 'person'}).subtypes, ['person:actor']);
-    assert.deepEqual(knowledge.update('default',actor.id,{name: 'Renamed',type: 'person',subtypes: []}).subtypes, []);
+    rejects(()=>knowledge.update('default',actor.id,{name:'Renamed',type:'person',subtypes:[]}));
+    const award=knowledge.detail('default',actor.id).properties.find(p=>p.name==='awards');knowledge.remove('default',actor.id,'properties',award.id);
+    assert.deepEqual(knowledge.update('default',actor.id,{name:'Renamed',type:'person',subtypes:[]}).subtypes,[]);
     rejects(() => knowledge.create('default', {name: 'Wrong parent', type: 'place', subtype: 'person:actor'}));
     rejects(() => knowledge.create('default', {name: 'Unknown', type: 'person', subtype: 'missing'}));
     rejects(() => knowledge.update('default',writer.id,{name: 'Wrong parent',type: 'place',subtype: 'person:writer'}));
@@ -51,19 +53,20 @@ test('custom subtypes and properties are scoped to their vault and persist acros
   try {
     let store = new Store(db), knowledge = new Knowledge(store);
     const vault = new Vaults(store).create({name: 'Other vault'});
-    const schema = knowledge.addSubtype('default',{type: 'person',name: 'Researcher'});
-    const subtype = schema.subtypes.find(s => s.name === 'Researcher');
+    const schema = knowledge.addSubtype('default',{type: 'person',name: 'Field researcher'});
+    const subtype = schema.subtypes.find(s => s.name === 'Field researcher');
     assert.ok(subtype);
-    rejects(() => knowledge.addSubtype('default',{type: 'person',name: ' researcher '}),409);
+    rejects(() => knowledge.addSubtype('default',{type: 'person',name: ' field researcher '}),409);
     rejects(() => knowledge.addSubtype('default',{type: 'person',name: 'ACTOR'}),409);
     rejects(() => knowledge.addSubtype('default',{type: 'person:actor',name: 'Nested'}));
     rejects(() => knowledge.create(vault.id,{name: 'Wrong vault',type: 'person',subtype: subtype.id}));
-    knowledge.addTypeProperty('default',{type: 'person',name: 'research area'});
-    assert.ok(!knowledge.schema(vault.id).properties.person.includes('research area'));
-    const researcher = knowledge.create('default',{name: 'Researcher',type: 'person',subtype: subtype.id});
+    knowledge.addTypeProperty('default',{type: 'person',subtype:subtype.id,name: 'research area'});
+    assert.equal(knowledge.schema(vault.id).subtypeProperties[subtype.id],undefined);
+    const researcher = knowledge.create('default',{name: 'Field researcher',type: 'person',subtype: subtype.id});
     knowledge.property('default',researcher.id,{name: 'research area',value: 'Ecology'});
     // Existing fields are imported on migration without losing values.
     db.prepare('INSERT INTO properties VALUES (?,?,?,?,?)').run('legacy-property','ursula','legacy field','preserved',null);
+    db.prepare('DELETE FROM schema_migrations WHERE version=2').run();
     db.close(); db = openDatabase(filename);
     store = new Store(db); knowledge = new Knowledge(store);
     assert.deepEqual(knowledge.detail('default',researcher.id).subtypes,[subtype.id]);
@@ -94,8 +97,10 @@ test('multiple subtypes can be added, removed, validated and saved without creat
     assert.deepEqual(knowledge.detail('default',entity.id).subtypes,selection);
     assert.deepEqual(knowledge.update('default',entity.id,{name: entity.name,type: 'person',subtypes: ['person:writer']}).subtypes,['person:writer']);
     assert.deepEqual(knowledge.update('default',entity.id,{name: entity.name,type: 'person',subtypes: []}).subtypes,[]);
-    knowledge.property('default',entity.id,{name: 'shared field',value: 'Now a main-type entity'});
-    assert.ok(knowledge.schema('default').properties.person.includes('shared field'));
+    rejects(()=>knowledge.property('default',entity.id,{name:'shared field',value:'No implicit schema creation'}));
+    const nationality=knowledge.detail('default',entity.id).properties.find(p=>p.name==='nationality');
+    rejects(()=>knowledge.update('default',entity.id,{name:entity.name,type:'place'}));
+    knowledge.remove('default',entity.id,'properties',nationality.id);
     assert.deepEqual(knowledge.update('default',entity.id,{name: entity.name,type: 'place'}).subtypes,[]);
   } finally { db.close(); }
 });

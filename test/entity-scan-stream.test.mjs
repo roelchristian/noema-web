@@ -112,7 +112,7 @@ test('HTTP continuation resumes a saved batch, rejects stale tokens before calli
   }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();}
 });
 
-test('aliases apply to any entity type only on acceptance, including existing entities',()=>{
+test('aliases apply to any entity type only with explicit acceptance opt-in',()=>{
   const db=openDatabase(':memory:'),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),enrichments=new AIEnrichments(store,pages),scans=new EntityScans(store,pages,knowledge,enrichments);
   try {
     const organization=knowledge.create('default',{name:'World Health Organization',type:'organization'});
@@ -126,7 +126,7 @@ test('aliases apply to any entity type only on acceptance, including existing en
     assert.deepEqual(knowledge.require('default',organization.id).aliases,[]);
     let scan=scans.save('default',page,output,preferences);
     assert.equal(knowledge.list('default').some(e=>e.name==='Charlemagne, Quebec'),false);
-    const result=scans.review('default',page.id,{revision:page.revision,scanId:scan.id,suggestionIds:scan.suggestions.map(s=>s.id),decision:'accepted'});
+    const result=scans.review('default',page.id,{revision:page.revision,scanId:scan.id,suggestionIds:scan.suggestions.map(s=>s.id),decision:'accepted',edits:scan.suggestions.map(s=>({...s,saveAliases:true}))});
     assert.deepEqual(result.entities.find(e=>e.name==='Charlemagne, Quebec').aliases,['Charlemagne']);
     assert.deepEqual(knowledge.require('default',organization.id).aliases,['WHO']);
     assert.equal(result.page.blocks[0].content.find(s=>s.entityId===organization.id).mentionText,'WHO');

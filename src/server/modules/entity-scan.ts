@@ -215,6 +215,7 @@ export class EntityScans {
           seen.add(id);
           const type = entityTypes.find(t => t === edit.type), name = required(edit.name);
           if (!type || !Array.isArray(edit.subtypes) || edit.subtypes.length > 1000 || edit.subtypes.some(id => typeof id !== 'string' || !schema.subtypes.some(s => s.id === id && s.type === type))) throw new HttpError(400,'Choose valid categories and subtypes.');
+          if(edit.saveAliases!==undefined&&typeof edit.saveAliases!=='boolean')throw new HttpError(400,'Choose whether to save reusable aliases.');
           const aliases=edit.aliases??suggestion.aliases??[];
           if(!Array.isArray(aliases)||aliases.length>20||aliases.some(alias=>typeof alias!=='string'||!alias.trim()||alias.length>200))throw new HttpError(400,'Choose valid aliases.');
           const domainIds=edit.domainIds??suggestion.domainIds??[];
@@ -237,8 +238,9 @@ export class EntityScans {
           if(existing?.archived_at||existing?.inactive)throw new HttpError(409,'This identity is no longer eligible for suggestions. Restore it and scan again.');
           if(!existing && suggestion.type==='source')throw new HttpError(400,'Create this source with an attached original file before linking it from a scan.');
           if(!existing&&this.knowledge.list(vault).some(entity=>entity.type===suggestion.type&&normalizeEntityName(entity.name)===normalizeEntityName(suggestion.name)))throw new HttpError(409,'An entity with this name now exists. Choose its explicit identity before accepting.');
-          let entity = existing || this.knowledge.create(vault,{...suggestion});
-          if(existing&&entity.type!=='source')for(const alias of suggestion.aliases??[]) {
+          const saveAliases=Array.isArray(body.edits)&&body.edits.some(value=>{const edit=object(value);return edit.id===suggestion.id&&edit.saveAliases===true;});
+          let entity = existing || this.knowledge.create(vault,{...suggestion,aliases:saveAliases?suggestion.aliases:[]});
+          if(saveAliases&&existing&&entity.type!=='source')for(const alias of suggestion.aliases??[]) {
             if(normalizeEntityName(alias)!==normalizeEntityName(entity.name)&&!entity.aliases?.some(name=>normalizeEntityName(name)===normalizeEntityName(alias)))entity=this.knowledge.addAlias(vault,entity.id,{alias});
           }
           if(!existing)this.store.run("UPDATE entity_domains SET origin='scan' WHERE entity_id=?",entity.id);

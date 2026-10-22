@@ -1439,7 +1439,7 @@
     margin-left: auto;
   }
   .entity-review-table {
-    min-width: 820px;
+    min-width: 0;
   }
   .entity-review-footer {
     flex-wrap: wrap;
@@ -4425,3 +4425,17 @@
 .entity-scan-batch-prompt { flex-shrink: 0; padding: 12px 28px; border-top: 1px solid var(--line); }
 .entity-scan-batch-prompt p { margin: 0 0 10px; font-size: 13px; }
 .entity-scan-batch-prompt > div { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.scan-evidence mark { background: var(--surface-hover); color: var(--text); font-weight: 700; }
+.entity-review-row-actions { flex-wrap: wrap; }
+.entity-review-row-actions .scan-row-accept { width: auto; padding-inline: var(--space-2); }
+.scan-evidence summary { cursor: pointer; min-height: var(--touch-target-size); }
+@media (max-width: 750px) {
+  .entity-review-table, .entity-review-table tbody, .entity-review-table tr, .entity-review-table td { display: block; width: auto; }
+  .entity-review-table thead { display: none; }
+  .entity-review-table tr { border-bottom: 1px solid var(--control-border); padding: var(--space-3); }
+  .entity-review-table td { border: 0; padding: var(--space-2); }
+  .entity-review-table .entity-review-check { width: auto; }
+  .entity-review-row-actions { justify-content: flex-start; }
+  .entity-review-editor-fields { grid-template-columns: 1fr; }
+}

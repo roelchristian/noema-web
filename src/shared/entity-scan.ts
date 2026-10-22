@@ -4,7 +4,7 @@ export interface EntitySuggestion extends EntityInput {
   id: string; evidenceAnchor?: EvidenceAnchor; evidence: string; reason: string; existingId: string | null;
   status: 'pending' | 'accepted' | 'rejected';
 }
-export interface EntitySuggestionEdit { domainIds?:string[]; id: string; name: string; aliases?:string[]; type: EntityType; subtypes: string[]; existingId: string | null }
+export interface EntitySuggestionEdit { saveAliases?:boolean; domainIds?:string[]; id: string; name: string; aliases?:string[]; type: EntityType; subtypes: string[]; existingId: string | null }
 export interface SubtypeSuggestion { id: string; name: string; type: EntityType; status: 'pending' | 'accepted' | 'rejected'; resolvedId?: string }
 export interface EvidenceAnchor {blockId:string; row?:number; col?:number; start:number; end:number}
 export interface EntityTextRun extends EvidenceAnchor {runId:string; text:string}
@@ -86,3 +86,16 @@ export function mentionEvidence(page:Page,evidence:string,entityId:string,anchor
 }
 
 export type EntityScanEvent={type:'progress';scan:EntityScan}|{type:'completed';scan:EntityScan}|{type:'error';message:string};
+
+/** Local context uses absolute cell/block offsets, including protected segments. */
+export function evidenceContext(page:Pick<Page,'blocks'>,anchor:EvidenceAnchor|undefined,radius=100) {
+  if(!anchor)return null;
+  const index=page.blocks.findIndex(block=>block.id===anchor.blockId),block=page.blocks[index];
+  if(!block)return null;
+  const segments=anchor.row===undefined?block.content:block.rows?.[anchor.row]?.[anchor.col!];
+  if(!segments)return null;
+  const text=segments.map(segment=>segment.text??segment.mentionText??'').join('');
+  if(anchor.start<0||anchor.end>text.length||anchor.start>=anchor.end)return null;
+  const start=Math.max(0,anchor.start-radius),end=Math.min(text.length,anchor.end+radius);
+  return {before:(start?'…':'')+text.slice(start,anchor.start),match:text.slice(anchor.start,anchor.end),after:text.slice(anchor.end,end)+(end<text.length?'…':''),text,label:`Block ${index+1} · ${block.type}${anchor.row===undefined?'':` · Row ${anchor.row+1}, column ${anchor.col!+1}`} · offsets ${anchor.start}–${anchor.end}`};
+}

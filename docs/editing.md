@@ -60,7 +60,7 @@ Notes expire 30 days after being moved to Trash. The local server removes expire
 
 ## Find and replace in the current page
 
-Choose **Find in page**, or press **Ctrl+F / ⌘F** while the page editor has focus. **Replace…**, **Ctrl+H**, or **⌘Option+F** reveals replacement controls. Enter / Shift+Enter and the Previous / Next buttons navigate results. Escape closes the panel and restores the editing selection. Shortcuts outside this editor keep their ordinary behavior. Switching page or vault resets the query.
+Choose **Find in page**, or press **Ctrl+F / ⌘F** while the page editor has focus. **The replace chevron**, **Ctrl+H**, or **⌘Option+F** reveals replacement controls. The compact widget sits at the editor’s top-right with inline counts and match arrows. Case (`Aa`), whole-word (`ab`) and regex (`.*`) toggles have labels and tooltips; the options button reveals entity mode, optional snippets and replacement rules. Snippets stay hidden by default. Enter / Shift+Enter and the Previous / Next buttons navigate results. Escape closes the panel and restores the editing selection. Shortcuts outside this editor keep their ordinary behavior. Switching page or vault resets the query.
 
 Search uses the current unsaved body, including styled text runs, code and table cells. The title, metadata, other pages and source-reader PDFs are outside the scope. Literal matching is the default; case matching, Unicode whole-word boundaries and regular expressions are optional. Linked-entity mode filters only identities annotated in this page by name, alias, type or description, then navigates those annotations even when the displayed wording differs. It cannot rename, merge, retag or replace entities.
 

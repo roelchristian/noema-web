@@ -10,7 +10,7 @@ const shots=process.env.SCREENSHOT_DIR??'/tmp/noema-find-screenshots';await mkdi
 let server,browser;
 try{
  await symlink(join(repo,'node_modules'),join(directory,'node_modules'),'dir');
- await writeFile(join(directory,'index.html'),'<!doctype html><div id="mount"></div><script type="module" src="/fixture.tsx"></script>');
+ await writeFile(join(directory,'index.html'),'<!doctype html><div id="mount" style="width:100%;min-width:0"></div><script type="module" src="/fixture.tsx"></script>');
  await writeFile(join(directory,'fixture.tsx'),`
 import React,{useState} from 'react';import {createRoot} from 'react-dom/client';
 import {BlockEditor} from '/@fs/${repo}/src/client/editor/BlockEditor.tsx';
@@ -36,6 +36,10 @@ function App(){const [page,setPage]=useState(()=>JSON.parse(localStorage.getItem
  await host.click();await page.keyboard.press('Control+End');await page.keyboard.type(' unsaved');
  await page.keyboard.press('Control+f');await page.getByLabel('Find text',{exact:true}).fill('target');
  await page.waitForFunction(()=>document.querySelector('output')?.textContent.includes('of 5'));
+ assert.equal(await page.getByLabel('Replace with',{exact:true}).count(),0);assert.equal(await page.getByLabel('Matching snippets',{exact:true}).count(),0);assert.equal(await page.getByLabel('Search mode',{exact:true}).count(),0);assert.ok(await page.locator('.document-find').evaluate(el=>el.getBoundingClientRect().height<=60));
+ await page.getByRole('button',{name:'Search options',exact:true}).click();await page.getByRole('button',{name:'Show matches',exact:true}).click();assert.equal(await page.getByLabel('Matching snippets',{exact:true}).count(),1);await page.getByRole('button',{name:'Hide matches',exact:true}).click();await page.getByRole('button',{name:'Search options',exact:true}).click();
+ await page.getByLabel('Find text',{exact:true}).fill('Synthetic paragraph 197');await page.waitForFunction(()=>document.querySelector('output')?.textContent.includes('of 1'));assert.ok(await page.evaluate(()=>{const widget=document.querySelector('.document-find').getBoundingClientRect(),match=document.querySelector('[data-document-find=active]').getBoundingClientRect();return match.top>=widget.bottom&&document.activeElement===document.querySelector('.document-find-query');}));await page.getByLabel('Find text',{exact:true}).fill('target');await page.waitForFunction(()=>document.querySelector('output')?.textContent.includes('of 5'));
+ await page.getByRole('button',{name:'Match case',exact:true}).focus();await page.keyboard.press('Space');assert.equal(await page.getByRole('button',{name:'Match case',exact:true}).getAttribute('aria-pressed'),'true');await page.getByRole('button',{name:'Match case',exact:true}).click();await page.getByRole('button',{name:'Whole word',exact:true}).click();assert.equal(await page.getByRole('button',{name:'Whole word',exact:true}).getAttribute('aria-pressed'),'true');await page.getByRole('button',{name:'Whole word',exact:true}).click();
  await page.evaluate(()=>window.__syncs=[]);
  await page.getByLabel('Find text',{exact:true}).fill('target ');await page.waitForTimeout(400);
  assert.deepEqual(await page.evaluate(()=>window.__syncs),[],'query updates do not resync editables');
@@ -51,16 +55,19 @@ function App(){const [page,setPage]=useState(()=>JSON.parse(localStorage.getItem
  await page.evaluate(()=>window.fixture.history.redo());await page.waitForFunction(()=>window.fixture.page.blocks[0].content[0].text==='changed');
  // Save and reload a synthetic local fixture; production save/history paths are covered by the full suite.
  await page.evaluate(()=>localStorage.setItem('synthetic-page',JSON.stringify(window.fixture.page)));await page.reload();await host.waitFor();assert.ok(await page.evaluate(()=>window.fixture.page.blocks[0].content[0].text==='changed'));await page.getByRole('button',{name:'Find in page',exact:true}).click();
- await page.getByLabel('Search mode').selectOption('entity');await page.getByLabel('Filter entities',{exact:true}).fill('Ada');await page.getByLabel('Linked identity').selectOption('ada');
+ await page.getByRole('button',{name:'Search options',exact:true}).click();await page.getByLabel('Search mode').selectOption('entity');await page.getByLabel('Filter entities',{exact:true}).fill('Ada');await page.getByLabel('Linked identity').selectOption('ada');
  await page.waitForFunction(()=>document.querySelector('output')?.textContent.includes('of 1'));
  assert.ok(await page.evaluate(()=>CSS.highlights.get('document-find')?.size===1));
  await page.getByLabel('Filter entities',{exact:true}).fill('Countess');assert.equal(await page.getByLabel('Linked identity').locator('option').count(),2);
- await page.getByLabel('Search mode').selectOption('text');await page.getByLabel('Regular expression',{exact:true}).check();await page.getByLabel('Find text',{exact:true}).fill('[');await page.waitForFunction(()=>document.querySelector('output')?.textContent.includes('Invalid'));
+ await page.getByRole('button',{name:'Search options',exact:true}).click();await page.getByLabel('Search mode').selectOption('text');await page.getByRole('button',{name:'Regular expression',exact:true}).click();await page.getByLabel('Find text',{exact:true}).fill('[');await page.waitForFunction(()=>document.querySelector('.document-find-feedback')?.textContent.includes('Invalid'));
  await page.getByLabel('Find text',{exact:true}).fill('(?:)');await page.waitForFunction(()=>document.body.textContent.includes('Zero-width matches skipped.'));
  await page.evaluate(()=>window.fixture.setPage(p=>({...p,blocks:[{id:'pathological',type:'paragraph',checked:false,content:[{text:'a'.repeat(60000)+'!'}]}]})));
  await page.getByLabel('Find text',{exact:true}).fill('(a+)+$');
- await page.waitForFunction(()=>document.querySelector('output')?.textContent.includes('timed out'));
+ await page.waitForFunction(()=>document.querySelector('.document-find-feedback')?.textContent.includes('timed out'));
  await page.getByLabel('Find text',{exact:true}).fill('!');await page.waitForFunction(()=>document.querySelector('output')?.textContent.includes('of 1'));
+ await page.getByRole('button',{name:'Replace…',exact:true}).click();
+ await page.evaluate(()=>window.fixture.setPage(p=>({...p,blocks:[{id:'capped',type:'paragraph',checked:false,content:[{text:'a '.repeat(3000)}]}]})));await page.getByLabel('Find text',{exact:true}).fill('a');await page.waitForFunction(()=>document.querySelector('.document-find-feedback')?.textContent.includes('limit reached'));assert.ok(await page.getByRole('button',{name:'Replace all',exact:true}).isDisabled());
+ await page.evaluate(()=>window.fixture.setPage(p=>({...p,blocks:[{id:'oversized',type:'paragraph',checked:false,content:[{text:'x'.repeat(2_000_001)}]}]})));await page.waitForFunction(()=>document.querySelector('.document-find-feedback')?.textContent.includes('2 million'));assert.ok(await page.getByRole('button',{name:'Replace all',exact:true}).isDisabled());
  await page.evaluate(()=>window.fixture.setPage(p=>({...p,blocks:[]})));await page.waitForFunction(()=>document.querySelector('output')?.textContent.includes('of 0'));
  await page.getByRole('button',{name:'Switch page',exact:true}).click();assert.equal(await page.getByRole('button',{name:'Find in page',exact:true}).count(),1);
  await host.click();await page.keyboard.press('Control+f');assert.equal(await page.getByLabel('Find text',{exact:true}).inputValue(),'');
@@ -69,8 +76,10 @@ function App(){const [page,setPage]=useState(()=>JSON.parse(localStorage.getItem
  await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Find in page',exact:true}).click();await page.getByLabel('Find text',{exact:true}).fill('target');await page.waitForTimeout(450);
  await page.screenshot({path:join(shots,'mobile.png'),fullPage:false});
  assert.ok(await page.evaluate(()=>Array.from(document.querySelectorAll('.document-find button')).every(b=>b.getBoundingClientRect().height>=44)));
- assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
- await page.getByRole('button',{name:'Replace…',exact:true}).click();await page.evaluate(()=>window.fixture.setPage(p=>({...p,editLocked:true})));await page.waitForFunction(()=>Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='Replace all')?.disabled);
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));assert.ok(await page.locator('.document-find').evaluate(el=>el.getBoundingClientRect().height<=110));
+ const next=page.getByRole('button',{name:'Next',exact:true});await next.click();await page.getByRole('button',{name:'Previous',exact:true}).click();
+ await page.setViewportSize({width:320,height:700});const narrow=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,overflow:Array.from(document.querySelectorAll('body *')).map(el=>({tag:el.tagName,cls:el.className,right:el.getBoundingClientRect().right,width:el.getBoundingClientRect().width})).filter(el=>el.right>innerWidth+1).slice(0,15)}));assert.ok(narrow.scroll<=narrow.width,JSON.stringify(narrow));await page.setViewportSize({width:390,height:844});
+ await page.getByRole('button',{name:'Replace…',exact:true}).click();await page.evaluate(()=>window.fixture.setPage(p=>({...p,editLocked:true})));await page.waitForFunction(()=>Array.from(document.querySelectorAll('button')).find(b=>b.getAttribute('aria-label')==='Replace all')?.disabled);
  assert.deepEqual(errors,[]);console.log(JSON.stringify({browser:'Chromium',checks:'replacement history, unsaved draft, entities/aliases, invalid/zero-width/pathological regex, focus, shortcuts, page switch, mobile, editable isolation',screenshots:[join(shots,'desktop.png'),join(shots,'mobile.png')]}));
 }finally{await browser?.close();await server?.close();await rm(directory,{recursive:true,force:true});}
 
@@ -103,7 +112,8 @@ try{
  const saved=pages.get('default',note.id);assert.equal(saved.blocks[0].content[0].text,'revised');assert.equal(saved.blocks[0].content[0].bold,true);assert.equal(saved.blocks[1].rows[0][0][0].href,'https://example.com');assert.equal(saved.title,note.title);assert.equal(JSON.stringify(pages.get('default',other.id)),otherBefore);
  await page.reload();await body.waitFor();assert.equal(await body.innerText(),'revised revised');
  await page.getByRole('button',{name:'Find in page',exact:true}).click();assert.equal(await page.getByLabel('Find text',{exact:true}).inputValue(),'');await page.getByLabel('Find text',{exact:true}).fill('revised');await page.waitForFunction(()=>document.querySelector('.document-find output')?.textContent.includes('of 3'));
- await page.getByRole('button',{name:'Replace…',exact:true}).click();await page.screenshot({path:join(shots,'app-desktop.png'),fullPage:false});await page.getByRole('button',{name:'Replace…',exact:true}).click();await page.setViewportSize({width:390,height:844});await page.screenshot({path:join(shots,'app-mobile.png'),fullPage:false});
+ assert.ok(await page.locator('.document-find').evaluate(el=>el.getBoundingClientRect().height<=60));assert.ok(await page.evaluate(()=>{const widget=document.querySelector('.document-find').getBoundingClientRect(),body=document.querySelector('[data-block-id=body]').getBoundingClientRect();return widget.bottom<body.top;}));await page.screenshot({path:join(shots,'app-desktop.png'),fullPage:false});await page.getByRole('button',{name:'Replace…',exact:true}).click();await page.screenshot({path:join(shots,'app-desktop-replace.png'),fullPage:false});await page.getByRole('button',{name:'Replace…',exact:true}).click();await page.setViewportSize({width:390,height:844});await page.screenshot({path:join(shots,'app-mobile.png'),fullPage:false});
+ await page.setViewportSize({width:320,height:700});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.setViewportSize({width:390,height:844});
  await page.getByRole('button',{name:'Close find',exact:true}).click();await page.locator('#page-title').focus();await page.locator('#page-title').evaluate(el=>el.setSelectionRange(2,6));await page.getByRole('button',{name:'Find in page',exact:true}).click();await page.keyboard.press('Escape');assert.deepEqual(await page.locator('#page-title').evaluate(el=>[document.activeElement===el,el.selectionStart,el.selectionEnd]),[true,2,6]);
  assert.deepEqual(errors,[]);console.log(JSON.stringify({productionApp:true,passed:['replace all single undo/redo','SQLite autosave and reload','styles and URL','unchanged title and other page','query reset on reload'],screenshots:[join(shots,'app-desktop.png'),join(shots,'app-mobile.png')]}));
 }finally{await appBrowser?.close();await new Promise(resolve=>app.close(resolve));db.close();await rm(appDirectory,{recursive:true,force:true});}

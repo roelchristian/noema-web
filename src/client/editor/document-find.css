@@ -1,20 +1,52 @@
-.document-find-shell { margin-block: 12px; position: sticky; top: 12px; z-index: 5; }
-.document-find { border: 1px solid var(--control-border); border-radius: 8px; padding: 12px; background: var(--surface); max-height: calc(100dvh - 24px); overflow: auto; }
-.document-find-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-block: 8px; }
-.document-find label { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 44px; }
-.document-find-shell button, .document-find input:not([type="checkbox"]), .document-find select { min-height: 44px; max-width: 100%; }
-.document-find input:not([type="checkbox"]) { width: 200px; }
-.document-find select { min-width: 0; }
-.document-find-suggestions { max-height: 132px; overflow: auto; padding-inline-start: 24px; }
-.document-find-suggestions button { text-align: start; overflow-wrap: anywhere; width: 100%; }
-.document-find-suggestions [aria-current="true"] { outline: 2px solid var(--accent); }
+/* The widget reserves its own row so opening it never covers the first paragraph. */
+.document-find-shell { position: sticky; top: 8px; z-index: 5; width: min(580px,100%); align-self: flex-end; margin: 0 0 12px auto; font: 13px/1.4 var(--font-ui); }
+.document-find { border: 1px solid var(--control-border); border-radius: 6px; padding: 4px; background: var(--surface-raised); box-shadow: 0 3px 12px color-mix(in srgb,var(--text) 10%,transparent); max-height: calc(100dvh - 80px); overflow: auto; }
+.document-find-top { display: flex; align-items: center; gap: 2px; }
+.document-find button, .document-find-trigger { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; min-height: var(--control-target-compact); min-width: var(--control-target-compact); padding: 4px; border: 0; border-radius: 4px; background: transparent; color: var(--text-muted); font: inherit; cursor: pointer; }
+.document-find button:hover, .document-find-trigger:hover { background: var(--surface-hover); color: var(--text); }
+.document-find button:disabled { opacity: .4; cursor: default; }
+.document-find button[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--control-border); }
+.document-find :focus-visible, .document-find-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.document-find .icon, .document-find-trigger .icon { width: 16px; height: 16px; }
+.document-find-trigger { margin-left: auto; gap: 6px; }
+.document-find input, .document-find select { min-width: 0; min-height: var(--control-target-compact); border: 1px solid var(--control-border); border-radius: 3px; padding: 5px 8px; background: var(--surface); color: var(--text); font: inherit; }
+.document-find-query { flex: 1 1 100px; width: 0; }
+.document-find-toggles { display: flex; flex: 0 0 auto; }
+.document-find-word { text-decoration: underline; text-underline-offset: 3px; }
+.document-find-count { flex: 0 0 54px; text-align: center; white-space: nowrap; color: var(--text-muted); font-size: 12px; }
+.document-find-expand > span { display: flex; }
+.document-find-expand .is-expanded { transform: rotate(90deg); }
+.document-find-replace { display: flex; align-items: center; gap: 4px; padding: 4px 0 0 calc(var(--control-target-compact) + 2px); }
+.document-find-replace input { flex: 1; width: 0; }
+.document-find-replace button { padding-inline: 8px; }
+.document-find-feedback { margin: 4px 8px; color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }
+.document-find-options { border-top: 1px solid var(--line); margin-top: 4px; padding: 4px 8px; }
+.document-find-options label { display: flex; align-items: center; gap: 8px; }
+.document-find-options select { flex: 1; max-width: 100%; }
+.document-find-options summary { display: flex; align-items: center; min-height: var(--control-target-compact); cursor: pointer; color: var(--text-muted); }
+.document-find-entities { display: grid; gap: 4px; padding: 4px 8px; }
+.document-find-entities select { width: 100%; }
+.document-find-entities small, .document-find-options small { color: var(--text-muted); }
+.document-find-suggestions { max-height: 160px; overflow: auto; margin: 4px 0; padding-inline-start: 24px; }
+.document-find-suggestions button { text-align: start; justify-content: start; overflow-wrap: anywhere; width: 100%; }
+.document-find-suggestions [aria-current="true"] { background: var(--accent-soft); }
+.document-find mark { background: var(--status-warning-bg); color: var(--text); }
 ::highlight(document-find) { background: var(--status-warning-bg); color: var(--text); }
 ::highlight(document-find-active) { background: var(--status-warning-border); color: var(--text); }
-
-.document-find button { border: 1px solid var(--control-border); border-radius: 6px; background: var(--surface); color: var(--text); padding: 6px 10px; }
-.document-find button:hover { background: var(--surface-hover); }
-.document-find summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: var(--text-muted); }
-.document-find p:empty { display: none; }
-
+[data-document-find] { scroll-margin-top: calc(var(--document-find-height,0px) + 20px); }
 [data-document-find="match"] { box-shadow: inset 3px 0 var(--status-warning-bg); }
 [data-document-find="active"] { box-shadow: inset 3px 0 var(--status-warning-border); }
+@media (max-width: 750px), (pointer: coarse) {
+  .document-find-shell { font-size: 14px; }
+  .document-find-top { flex-wrap: wrap; gap: 0; }
+  .document-find button, .document-find-trigger, .document-find input, .document-find select, .document-find-options summary { min-height: var(--touch-target-size); }
+  .document-find-top > button, .document-find-toggles button { min-width: var(--touch-target-size); }
+  .document-find-query { order: 1; flex: 1 1 calc(100% - 88px); }
+  .document-find-expand { order: 0; }
+  .document-find-close { order: 2; }
+  .document-find-toggles { order: 3; }
+  .document-find-count { order: 4; flex: 1 0 54px; }
+  .document-find-nav { order: 5; }
+  .document-find-options-toggle { order: 6; }
+  .document-find-replace { padding-left: 0; }
+}

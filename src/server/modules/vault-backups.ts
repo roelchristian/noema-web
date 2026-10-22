@@ -40,7 +40,7 @@ const entityScope='entity_id IN (SELECT id FROM entities WHERE vault_id=?)';
 // Editorial evidence is retained, but restored revisions never resume paid background jobs.
 const tables={
   temporal_dates:{columns:'id,value,precision,calendar',scope:'vault_id=?'},
-  temporal_curation:{columns:'id,label,annotation,pinned,importance,personal_priority',scope:'vault_id=?'},
+  temporal_curation:{columns:'id,label,annotation,pinned,importance,personal_priority,layer',scope:'vault_id=?'},
   temporal_mentions:{columns:'id,page_id,block_id,block_hash,start_offset,end_offset,original_text,date_id,reason,revision,stale',scope:'vault_id=?'},
   temporal_relations:{columns:'id,date_id,entity_id,mention_id,kind,origin,status,confidence',scope:'vault_id=?'},
   pages:{columns:'id,title,icon,featured_image_id,blocks,ai_status,ai_review_accepted,generation_metadata,language,created_at,updated_at,revision,deleted_at',scope:'vault_id=?'},
@@ -330,8 +330,8 @@ export class VaultBackups {
         }
         const dateRef=(value:unknown)=>{if(typeof value!=='string'||!temporalDates.has(value))throw invalid();return value;};
         for(const row of rows.temporal_curation) {
-          if(!['ordinary','notable','important'].includes(String(row.importance))||!['ordinary','important'].includes(String(row.personal_priority)))throw invalid();
-          insert('temporal_curation',{vault_id:vault,id:dateRef(row.id),label:string(row,'label',200),annotation:string(row,'annotation',2000),pinned:integer(row,'pinned',0,1),importance:String(row.importance),personal_priority:String(row.personal_priority)});
+          if(!['personal','knowledge','historical'].includes(String(row.layer??'knowledge'))||!['ordinary','notable','important'].includes(String(row.importance))||!['ordinary','important'].includes(String(row.personal_priority)))throw invalid();
+          insert('temporal_curation',{vault_id:vault,id:dateRef(row.id),label:string(row,'label',200),annotation:string(row,'annotation',2000),pinned:integer(row,'pinned',0,1),importance:String(row.importance),personal_priority:String(row.personal_priority),layer:String(row.layer??'knowledge')});
         }
         const temporalMentions=new Map<string,string>(),mentionDates=new Map<string,string|null>();
         for(const row of rows.temporal_mentions) {

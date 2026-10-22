@@ -5,9 +5,15 @@ export type TemporalPrecision='day'|'month'|'year';
 export type TemporalCalendar='gregorian'|'julian';
 export interface TemporalDate {id:string;value:string;precision:TemporalPrecision;calendar:TemporalCalendar}
 export interface TemporalExpression {start:number;end:number;text:string;date:TemporalDate|null;reason:string|null}
-export interface TemporalCuration {label:string;annotation:string;pinned:boolean;importance:'ordinary'|'notable'|'important';personalPriority:'ordinary'|'important'}
+export type TemporalLayer='personal'|'knowledge'|'historical';
+export interface TemporalCuration {label:string;annotation:string;pinned:boolean;importance:'ordinary'|'notable'|'important';personalPriority:'ordinary'|'important';layer:TemporalLayer}
 export interface TemporalPageReference extends PageReference {blockId:string;blockStart:number;blockEnd:number;blockHash:string}
 export type TemporalEvidence={status:'current'|'unresolved';reference:TemporalPageReference;reason:string|null}|{status:'stale'|'unavailable';reason:string};
+export interface TemporalMentionSummary {id:string;pageId:string;blockId:string;text:string;title:string}
+export interface TemporalRelationSummary {id:string;entityId:string;mentionId:string|null;kind:string;origin:string;status:string;confidence:number|null;name:string;evidence:TemporalEvidence|{status:'unresolved';reason:string}}
+export interface TemporalItem {date:TemporalDate;curation:TemporalCuration|null;mentions:TemporalMentionSummary[];mentionCount:number;relations:TemporalRelationSummary[];relationCount:number;layer:TemporalLayer}
+export interface TemporalResults {items:TemporalItem[];indexing:{refreshed:number;pending:number};nextOffset:number|null}
+export interface TemporalDetail extends TemporalItem {nextMentionOffset:number|null;nextRelationOffset:number|null}
 
 const months='January February March April May June July August September October November December'.split(' ');
 const monthPattern=months.join('|');

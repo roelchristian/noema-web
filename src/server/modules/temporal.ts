@@ -1,7 +1,7 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {entityMentionName,type Block} from '../../shared/domain.js';
 import {projectPageText,type PageProjection} from '../../shared/page-text.js';
-import {extractTemporal,temporalDate,temporalExtractorVersion,temporalOverlaps,type TemporalCalendar,type TemporalCuration,type TemporalDate,type TemporalEvidence,type TemporalExpression} from '../../shared/temporal.js';
+import {extractTemporal,temporalDate,temporalExtractorVersion,type TemporalCalendar,type TemporalCuration,type TemporalDate,type TemporalEvidence,type TemporalExpression,type TemporalLayer,type TemporalItem,type TemporalResults,type TemporalDetail,type TemporalMentionSummary,type TemporalRelationSummary} from '../../shared/temporal.js';
 import {Store} from '../store.js';
 import {HttpError,text} from '../validation.js';
 import {Vaults} from './vaults.js';
@@ -85,16 +85,19 @@ export class TemporalIndex {
  }
  curate(vault:string,value:string,body:Record<string,unknown>,calendar:TemporalCalendar='gregorian') {
   this.open(vault);const date=temporalDate(value,calendar);if(!date)throw new HttpError(400,'Invalid temporal date');
-  const curation:TemporalCuration={label:text(body.label??'',200),annotation:text(body.annotation??'',2000),pinned:body.pinned===true,importance:body.importance===undefined?'ordinary':body.importance as TemporalCuration['importance'],personalPriority:body.personalPriority===undefined?'ordinary':body.personalPriority as TemporalCuration['personalPriority']};
-  if(body.pinned!==undefined&&typeof body.pinned!=='boolean'||!['ordinary','notable','important'].includes(curation.importance)||!['ordinary','important'].includes(curation.personalPriority))throw new HttpError(400,'Invalid temporal curation');
+  const curation:TemporalCuration={label:text(body.label??'',200),annotation:text(body.annotation??'',2000),pinned:body.pinned===true,importance:body.importance===undefined?'ordinary':body.importance as TemporalCuration['importance'],personalPriority:body.personalPriority===undefined?'ordinary':body.personalPriority as TemporalCuration['personalPriority'],layer:(body.layer??'knowledge') as TemporalLayer};
+  if(!['personal','knowledge','historical'].includes(curation.layer)||body.pinned!==undefined&&typeof body.pinned!=='boolean'||!['ordinary','notable','important'].includes(curation.importance)||!['ordinary','important'].includes(curation.personalPriority))throw new HttpError(400,'Invalid temporal curation');
   this.store.db.exec('SAVEPOINT temporal_curate');
   try {
    this.ensureDate(vault,date);
-   this.store.run(`INSERT INTO temporal_curation VALUES (?,?,?,?,?,?,?) ON CONFLICT(vault_id,id) DO UPDATE SET label=excluded.label,annotation=excluded.annotation,pinned=excluded.pinned,importance=excluded.importance,personal_priority=excluded.personal_priority`,vault,date.id,curation.label,curation.annotation,curation.pinned?1:0,curation.importance,curation.personalPriority);
+   this.store.run(`INSERT INTO temporal_curation (vault_id,id,label,annotation,pinned,importance,personal_priority,layer) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(vault_id,id) DO UPDATE SET label=excluded.label,annotation=excluded.annotation,pinned=excluded.pinned,importance=excluded.importance,personal_priority=excluded.personal_priority,layer=excluded.layer`,vault,date.id,curation.label,curation.annotation,curation.pinned?1:0,curation.importance,curation.personalPriority,curation.layer);
    this.store.db.exec('RELEASE temporal_curate');return {date,curation};
   }catch(error){this.store.db.exec('ROLLBACK TO temporal_curate; RELEASE temporal_curate');throw error;}
  }
  /** Semantic assertions are explicit user decisions, never a consequence of recognition. */
+ uncurate(vault:string,dateId:string) {
+  this.open(vault);this.store.run('DELETE FROM temporal_curation WHERE vault_id=? AND id=?',vault,dateId);return {removed:true};
+ }
  relate(vault:string,dateId:string,body:Record<string,unknown>) {
   this.open(vault);
   if(!this.store.get('SELECT 1 FROM temporal_dates WHERE vault_id=? AND id=?',vault,dateId))throw new HttpError(404,'Temporal date not found');
@@ -106,23 +109,47 @@ export class TemporalIndex {
   this.store.run("INSERT INTO temporal_relations VALUES (?,?,?,?,?,?, 'manual','accepted',NULL)",id,vault,dateId,entityId,mentionId,kind);
   return {id};
  }
- query(vault:string,from:string,to:string,allReferences=false,calendar:TemporalCalendar='gregorian') {
+ private currentMentions=`FROM temporal_mentions m JOIN pages p ON p.id=m.page_id AND p.vault_id=m.vault_id JOIN temporal_index_state s ON s.page_id=p.id
+  WHERE m.vault_id=? AND m.date_id=? AND m.stale=0 AND p.deleted_at IS NULL AND m.revision=p.revision AND s.revision=p.revision
+  AND NOT EXISTS(SELECT 1 FROM temporal_dirty d WHERE d.page_id=p.id)`;
+ private acceptedRelations=`FROM temporal_relations r JOIN entities e ON e.id=r.entity_id AND e.vault_id=r.vault_id WHERE r.vault_id=? AND r.date_id=? AND e.archived_at IS NULL AND r.status='accepted'`;
+ private pagination(offset:number,limit:number) {
+  if(!Number.isSafeInteger(offset)||offset<0||offset>100000||!Number.isInteger(limit)||limit<1||limit>100)throw new HttpError(400,'Invalid temporal pagination');
+ }
+ private item(vault:string,date:TemporalDate,offset=0,relationOffset=0,limit=3):TemporalItem {
+  const stored=this.store.get<{label:string;annotation:string;pinned:number;importance:TemporalCuration['importance'];personal_priority:TemporalCuration['personalPriority'];layer:TemporalLayer}>('SELECT * FROM temporal_curation WHERE vault_id=? AND id=?',vault,date.id);
+  const curation=stored?{label:stored.label,annotation:stored.annotation,pinned:!!stored.pinned,importance:stored.importance,personalPriority:stored.personal_priority,layer:stored.layer}:null;
+  const mentionCount=this.store.get<{n:number}>(`SELECT count(*) n ${this.currentMentions}`,vault,date.id)!.n;
+  const relationCount=this.store.get<{n:number}>(`SELECT count(*) n ${this.acceptedRelations}`,vault,date.id)!.n;
+  const mentions=this.store.all<TemporalMentionSummary>(`SELECT m.id,m.page_id AS pageId,m.block_id AS blockId,m.original_text AS text,p.title ${this.currentMentions} ORDER BY m.page_id,m.block_id,m.start_offset LIMIT ? OFFSET ?`,vault,date.id,limit,offset);
+  const relations=this.store.all<Omit<TemporalRelationSummary,'evidence'>>(`SELECT r.id,r.entity_id AS entityId,r.mention_id AS mentionId,r.kind,r.origin,r.status,r.confidence,e.name ${this.acceptedRelations} ORDER BY r.id LIMIT ? OFFSET ?`,vault,date.id,limit,relationOffset).map(relation=>({...relation,evidence:relation.mentionId?this.relationEvidence(vault,relation.mentionId,date.id):{status:'unresolved' as const,reason:'No supporting mention'}}));
+  return {date,curation,mentions,mentionCount,relations,relationCount,layer:curation?.layer??'knowledge'};
+ }
+ query(vault:string,from:string,to:string,allReferences=false,calendar:TemporalCalendar='gregorian',options:{offset?:number;limit?:number;layers?:TemporalLayer[]}={}):TemporalResults {
   this.open(vault);
+  const offset=options.offset??0,limit=options.limit??100,layers=options.layers??['personal','knowledge','historical'];
+  this.pagination(offset,limit);
+  if(!Array.isArray(layers)||layers.length>3||layers.some(layer=>!['personal','knowledge','historical'].includes(layer)))throw new HttpError(400,'Invalid temporal layers');
   if(temporalDate(from,calendar)?.precision!=='day'||temporalDate(to,calendar)?.precision!=='day'||from>to)throw new HttpError(400,'Choose valid temporal range boundaries');
   const indexing=this.refresh(vault);
-  const dates=this.store.all<TemporalDate>(`SELECT id,value,precision,calendar FROM temporal_dates WHERE vault_id=? AND calendar=? ORDER BY value,precision`,vault,calendar).filter(date=>temporalOverlaps(date,from,to));
-  const items=dates.flatMap(date=>{
-   const stored=this.store.get<{label:string;annotation:string;pinned:number;importance:TemporalCuration['importance'];personal_priority:TemporalCuration['personalPriority']}>('SELECT * FROM temporal_curation WHERE vault_id=? AND id=?',vault,date.id);
-   const curation=stored?{label:stored.label,annotation:stored.annotation,pinned:!!stored.pinned,importance:stored.importance,personalPriority:stored.personal_priority}:null;
-   const mentions=this.store.all<{id:string;pageId:string;blockId:string;text:string}>(`SELECT m.id,m.page_id AS pageId,m.block_id AS blockId,m.original_text AS text FROM temporal_mentions m
-    JOIN pages p ON p.id=m.page_id AND p.vault_id=m.vault_id JOIN temporal_index_state s ON s.page_id=p.id
-    WHERE m.vault_id=? AND m.date_id=? AND m.stale=0 AND p.deleted_at IS NULL AND m.revision=p.revision AND s.revision=p.revision
-    AND NOT EXISTS(SELECT 1 FROM temporal_dirty d WHERE d.page_id=p.id) ORDER BY m.page_id,m.block_id,m.start_offset`,vault,date.id);
-   const relations=this.store.all<{id:string;entityId:string;mentionId:string|null;kind:string;origin:string;status:string;confidence:number|null}>(`SELECT r.id,r.entity_id AS entityId,r.mention_id AS mentionId,r.kind,r.origin,r.status,r.confidence FROM temporal_relations r JOIN entities e ON e.id=r.entity_id AND e.vault_id=r.vault_id WHERE r.vault_id=? AND r.date_id=? AND e.archived_at IS NULL AND r.status='accepted'`,vault,date.id).map(relation=>({...relation,evidence:relation.mentionId?this.relationEvidence(vault,relation.mentionId,date.id):{status:'unresolved',reason:'No supporting mention'}}));
-   if(!curation&&!relations.length&&(!allReferences||!mentions.length))return [];
-   return [{date,curation,mentions,relations}];
-  });
-  return {items,indexing};
+  if(!layers.length)return {items:[],indexing,nextOffset:null};
+  // Both date rows and nested evidence are bounded before materialization.
+  const dates=this.store.all<TemporalDate>(`SELECT d.id,d.value,d.precision,d.calendar FROM temporal_dates d LEFT JOIN temporal_curation c ON c.vault_id=d.vault_id AND c.id=d.id
+   WHERE d.vault_id=? AND d.calendar=? AND COALESCE(c.layer,'knowledge') IN (${layers.map(()=>'?').join(',')})
+   AND (CASE d.precision WHEN 'year' THEN d.value||'-01-01' WHEN 'month' THEN d.value||'-01' ELSE d.value END)<=?
+   AND (CASE d.precision WHEN 'year' THEN d.value||'-12-31' WHEN 'month' THEN d.value||'-31' ELSE d.value END)>=?
+   AND (c.id IS NOT NULL OR EXISTS(SELECT 1 FROM temporal_relations r JOIN entities e ON e.id=r.entity_id AND e.vault_id=r.vault_id WHERE r.vault_id=d.vault_id AND r.date_id=d.id AND r.status='accepted' AND e.archived_at IS NULL)
+    OR (?=1 AND EXISTS(SELECT 1 FROM temporal_mentions m JOIN pages p ON p.id=m.page_id AND p.vault_id=m.vault_id JOIN temporal_index_state s ON s.page_id=p.id WHERE m.vault_id=d.vault_id AND m.date_id=d.id AND m.stale=0 AND p.deleted_at IS NULL AND m.revision=p.revision AND s.revision=p.revision AND NOT EXISTS(SELECT 1 FROM temporal_dirty dirty WHERE dirty.page_id=p.id))))
+   ORDER BY d.value,d.precision,d.id LIMIT ? OFFSET ?`,vault,calendar,...layers,to,from,allReferences?1:0,limit+1,offset);
+  return {items:dates.slice(0,limit).map(date=>this.item(vault,date)),indexing,nextOffset:dates.length>limit?offset+limit:null};
+ }
+ detail(vault:string,dateId:string,offset=0,relationOffset=0,limit=20):TemporalDetail {
+  this.open(vault);this.pagination(offset,limit);this.pagination(relationOffset,limit);
+  this.refresh(vault);
+  const date=this.store.get<TemporalDate>('SELECT id,value,precision,calendar FROM temporal_dates WHERE vault_id=? AND id=?',vault,dateId);
+  if(!date)throw new HttpError(404,'Temporal date not found');
+  const item=this.item(vault,date,offset,relationOffset,limit);
+  return {...item,nextMentionOffset:offset+item.mentions.length<item.mentionCount?offset+limit:null,nextRelationOffset:relationOffset+item.relations.length<item.relationCount?relationOffset+limit:null};
  }
  pageEvidence(vault:string,pageId:string) {
   this.open(vault);const page=this.page(vault,pageId);if(!page||page.deleted_at)throw new HttpError(404,'Page not found');

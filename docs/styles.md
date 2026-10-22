@@ -5,7 +5,7 @@
 
 1. `styles/primitives.css`: reset, shared buttons, selects, focus and basic surfaces.
 2. `styles/layout.css`: workspace shell, navigation, toolbar frame and shared theme bridges.
-3. `styles/features/`: editor, library, Knowledge, sources, settings, dialogs, menus and tagging.
+3. `styles/features/`: editor, library, Knowledge, sources, settings, dialogs, menus, tagging and Calendar.
 4. `styles/semantics.css`: shared meaning for errors, destructive actions and job status.
 5. `styles/controls.css`: shared interaction minima and responsive control layout.
 

@@ -42,6 +42,12 @@ export async function importVaultBackup(file:File,name?:string):Promise<Vault> {
   const result=await response.json();if(!response.ok)throw new ApiError(response.status,result.error||'Vault import failed');return result;
 }
 export const api={
+  temporalDates:(vault:string,from:string,to:string,options:{allReferences:boolean;layers:import('../shared/temporal').TemporalLayer[];offset?:number},signal?:AbortSignal)=>request<import('../shared/temporal').TemporalResults>('temporal/dates?'+new URLSearchParams({from,to,references:options.allReferences?'all':'curated',layers:options.layers.join(','),offset:String(options.offset??0),limit:'100'}),'GET',undefined,vault,signal),
+  temporalDetail:(vault:string,id:string,offset=0,relationOffset=0,signal?:AbortSignal)=>request<import('../shared/temporal').TemporalDetail>(`temporal/dates/${encodeURIComponent(id)}?offset=${offset}&relationOffset=${relationOffset}&limit=20`,'GET',undefined,vault,signal),
+  temporalMention:(vault:string,id:string,signal?:AbortSignal)=>request<import('../shared/temporal').TemporalEvidence>(`temporal/mentions/${encodeURIComponent(id)}`,'GET',undefined,vault,signal),
+  curateDate:(vault:string,value:string,curation:import('../shared/temporal').TemporalCuration)=>request('temporal/curation','PUT',{value,...curation},vault),
+  uncurateDate:(vault:string,id:string)=>request(`temporal/curation/${encodeURIComponent(id)}`,'DELETE',{},vault),
+  refreshTemporal:(vault:string)=>request<{refreshed:number;pending:number}>('temporal/refresh','POST',{},vault),
   suggestionVersion:(vault:string,id:string,signal?:AbortSignal)=>request<{version:string}>(`pages/${id}/suggestion-version`,'GET',undefined,vault,signal),
   relatedNotesState:(vault:string,id:string,previous:string[],signal?:AbortSignal)=>request<import('../shared/embeddings').RelatedNotesState>(`pages/${id}/related-notes?state=1&${new URLSearchParams(previous.map(id=>['previous',id]))}`,'GET',undefined,vault,signal),
   relatedNotes:(vault:string,id:string,signal?:AbortSignal)=>request<import('../shared/embeddings').RelatedNote[]>(`pages/${id}/related-notes`,'GET',undefined,vault,signal),

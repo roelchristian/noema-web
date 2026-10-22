@@ -6,6 +6,7 @@ export function setupTemporalSchema(db:DatabaseSync) {
   vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,id TEXT NOT NULL,value TEXT NOT NULL,
   precision TEXT NOT NULL CHECK(precision IN ('day','month','year')),calendar TEXT NOT NULL CHECK(calendar IN ('gregorian','julian')),
   PRIMARY KEY(vault_id,id));
+ CREATE INDEX IF NOT EXISTS temporal_dates_range ON temporal_dates(vault_id,calendar,value);
  CREATE TABLE IF NOT EXISTS temporal_curation (
   vault_id TEXT NOT NULL,id TEXT NOT NULL,label TEXT NOT NULL,annotation TEXT NOT NULL,
   pinned INTEGER NOT NULL CHECK(pinned IN (0,1)),importance TEXT NOT NULL CHECK(importance IN ('ordinary','notable','important')),
@@ -46,6 +47,7 @@ export function setupTemporalSchema(db:DatabaseSync) {
   db.exec(`CREATE TRIGGER IF NOT EXISTS temporal_entity_${suffix} AFTER ${event} ON entities BEGIN
    INSERT OR REPLACE INTO temporal_dirty SELECT p.id,p.vault_id FROM pages p JOIN page_mentioned_entities m ON m.page_id=p.id WHERE m.entity_id=OLD.id; END;`);
  }
+ if(!db.prepare('PRAGMA table_info(temporal_curation)').all().some(column=>column.name==='layer'))db.exec("ALTER TABLE temporal_curation ADD COLUMN layer TEXT NOT NULL DEFAULT 'knowledge' CHECK(layer IN ('personal','knowledge','historical'))");
  const version=db.prepare("SELECT value FROM metadata WHERE key='temporal-extractor'").get()?.value;
  if(version!==temporalExtractorVersion) {
   db.exec('INSERT OR REPLACE INTO temporal_dirty SELECT id,vault_id FROM pages');

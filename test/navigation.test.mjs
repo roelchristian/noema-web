@@ -229,3 +229,15 @@ test('direct entity links survive browser history traversal and canonicalize del
   assert.equal(entries.length, 2);
   assert.match(workspace.snapshot().error, /entity is unavailable/);
 });
+
+test('Calendar participates in history, waits for saves, and leaves the page available on a failed transition',async t=>{
+ const {create,page}=setup(t),workspace=create();await workspace.init();await workspace.openPage(page.id);
+ const original=workspace.snapshot().page;
+ const flush=t.mock.method(workspace.saver,'flush',async()=>{throw new Error('Synthetic interrupted save');});
+ await assert.rejects(workspace.showCalendar(),/interrupted save/);
+ assert.equal(workspace.snapshot().view,'pages');assert.equal(workspace.snapshot().page,original);assert.equal(workspace.snapshot().busy,false);
+ flush.mock.restore();await workspace.showCalendar();assert.equal(workspace.snapshot().view,'calendar');assert.equal(workspace.snapshot().page,original);
+ await workspace.goHistory(-1);assert.equal(workspace.snapshot().view,'pages');
+ await workspace.goHistory(1);assert.equal(workspace.snapshot().view,'calendar');const refreshed=create();await refreshed.init();assert.equal(refreshed.snapshot().view,'calendar');
+ const url=workspaceURL({vaultId:'a',view:'calendar',pageId:null,entityId:null,collection:'',folder:''});assert.equal(url,'/?vault=a&view=calendar');
+});

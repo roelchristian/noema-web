@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { entityLabels, type Entity } from '../../shared/domain';
 import { Icon } from './Icon';
 
-/** Delegated events also cover entity mentions rendered as editor-owned HTML. */
+/** One shared card for editor mentions and explicitly marked entity list items. */
 export function EntityPreview({entities, onOpen}: {entities: Entity[]; onOpen: (id: string) => void}) {
   const [target, setTarget] = useState<HTMLElement | null>(null);
   const [position, setPosition] = useState({left: 0, top: 0});
@@ -16,7 +16,7 @@ export function EntityPreview({entities, onOpen}: {entities: Entity[]; onOpen: (
   function cancelTimers() { clearTimeout(opening.current); clearTimeout(closing.current); }
   function dismiss() { cancelTimers(); trigger.current = null; setTarget(null); }
   useEffect(() => {
-    function mention(node: EventTarget | null) { return node instanceof Element ? node.closest<HTMLElement>('.mention[data-entity]') : null; }
+    function mention(node: EventTarget | null) { return node instanceof Element ? node.closest<HTMLElement>('.mention[data-entity], [data-entity-preview][data-entity]') : null; }
     function enter(event: PointerEvent | FocusEvent) {
       if (event instanceof PointerEvent && event.pointerType === 'touch') return;
       if (card.current?.contains(event.target as Node)) { clearTimeout(closing.current); return; }
@@ -77,12 +77,13 @@ export function EntityPreview({entities, onOpen}: {entities: Entity[]; onOpen: (
     return () => { target.removeAttribute('aria-controls'); };
   }, [target, entity]);
   if (!entity || !target?.isConnected) return null;
-  return <div ref={card} id="entity-preview" className="entity-preview" style={position} role="dialog" aria-labelledby="entity-preview-title" aria-describedby="entity-preview-description">
-    <div className="entity-preview-type"><Icon name={entity.type}/><span>{uiText(entityLabels[entity.type])}</span></div>
-    <h3 id="entity-preview-title">{entity.name}</h3>
-    <p id="entity-preview-description" className={!entity.description.trim() ? 'is-empty' : ''}>{entity.description.trim() || uiText("No description yet.")}</p>
-    <button type="button" onClick={() => { const id = entity.id; dismiss(); onOpen(id); }}>{uiText("Open full entity")}<Icon name="chevron"/></button>
-    {target.closest('.page #blocks .block-content[contenteditable="true"]') && <button type="button" className="remove-entity-tag" title={uiText("Keep this text and skip automatic tagging for it")} onClick={() => {
+  const description=entity.description.trim();
+  return <div ref={card} id="entity-preview" className="entity-preview" style={position} role="dialog" aria-labelledby="entity-preview-title" aria-describedby={description?'entity-preview-description':undefined}>
+    <div className="entity-preview-heading"><Icon name={entity.type}/><h3 id="entity-preview-title">{entity.name}</h3><span className="entity-preview-type">{uiText(entityLabels[entity.type])}</span></div>
+    {description&&<p id="entity-preview-description">{description}</p>}
+    <div className="entity-preview-actions">
+    <button type="button" className="entity-preview-open" onClick={() => { const id = entity.id; dismiss(); onOpen(id); }}><Icon name="external-link"/>{uiText("Open entity")}</button>
+    {target.closest('.page #blocks .block-content[contenteditable="true"]') && <button type="button" className="remove-entity-tag" aria-label={uiText("Remove entity tag")} title={uiText("Remove entity tag")+' · '+uiText("Keep this text and skip automatic tagging for it")} onClick={() => {
       const editor = target.closest<HTMLElement>('.block-content[contenteditable="true"]');
       if (!editor || !target.isConnected) return;
       const text = document.createElement('span');
@@ -91,6 +92,7 @@ export function EntityPreview({entities, onOpen}: {entities: Entity[]; onOpen: (
       target.replaceWith(text);
       dismiss();
       editor.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'deleteContentBackward'}));
-    }}>{uiText("Remove entity tag")}<Icon name="close"/></button>}
+    }}><Icon name="unlink"/></button>}
+    </div>
   </div>;
 }

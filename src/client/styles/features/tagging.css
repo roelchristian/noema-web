@@ -1,0 +1,12 @@
+/* Entity tagging and correction. Preserved from main e08082a. */
+.selection-entity-results button.highlight { background: var(--surface-hover); }
+.selection-alias-option { display:flex; align-items:center; gap:8px; padding:8px; font-size:13px; }
+.selection-entities .selection-alias-option input { width:auto; flex:none; }
+.entity-link-dialog { width:min(440px,calc(100vw - 32px)); padding:20px; }
+.entity-link-dialog > input { width:100%; padding:10px; }
+.entity-link-dialog .selection-entity-results { max-height:40vh; overflow:auto; }
+.entity-link-dialog .selection-entity-results button { width:100%; min-height:44px; text-align:left; padding:10px; }
+.entity-link-dialog small { display:block; color:var(--text-muted); }
+.entity-alias-recovery { display:flex; flex-wrap:wrap; gap:8px; padding:10px; border:1px solid var(--line); font-size:13px; }
+.entity-alias-recovery button { text-decoration:underline; }
+

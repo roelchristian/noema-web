@@ -1,0 +1,48 @@
+/* Interaction contracts. Glyph dimensions remain owned by their features.
+ * Minima grow real layout boxes; no invisible overlapping pseudo targets. */
+.button, .button.small, .select-trigger, .select-option,
+:is(.block-action-menu, .sidebar-action-menu) > button,
+.source-reader-toolbar .button, .source-reader-selection .button {
+  min-height: var(--control-target-regular);
+}
+:is(.page-tool, .sidebar-menu-trigger, .knowledge-icon-action,
+    .knowledge-entity-sort, .knowledge-entity-tabs > button,
+    .knowledge-entity-pagination button, .entity-alias-list button,
+    .entity-property-card-header button, .workspace-history button) {
+  min-width: var(--control-target-compact);
+  min-height: var(--control-target-compact);
+}
+.knowledge-section-actions { flex-wrap: wrap; }
+.intelligence-panel .knowledge-section-heading { flex-wrap: wrap; }
+
+@media (max-width: 750px), (pointer: coarse) {
+  .page-toolbar, .page-toolbar-history, .page-toolbar-reading { flex-wrap: wrap; }
+  .workspace-history button, .workspace-navigation .sidebar-menu-trigger,
+  .page-row-actions > .sidebar-menu-trigger, .panel-top button,
+  .settings-close, .toast-close, .ai-notifications-close,
+  .ai-notification-read, .mobile-navigation-close,
+  .knowledge-source-page, .entity-editor-panel .source-actions a {
+    min-width: var(--touch-target-size);
+    min-height: var(--touch-target-size);
+  }
+  .command-menu button, .mobile-block-sheet-options > button,
+  .knowledge-connected-list button, .knowledge-entity-sort,
+  .entity-detail-tabs > button, .source-inspector-links > button,
+  .source-reading-actions button, .source-reading-navigation button,
+  .source-reading-menu button, .source-reading-bookmarks button,
+  .source-reading-remove-action, .entity-detail-more {
+    min-height: var(--touch-target-size);
+    min-width: var(--touch-target-size);
+  }
+  .sidebar-item-row { min-height: var(--touch-target-size); }
+  .sidebar-item-row > .branch-toggle { width: var(--touch-target-size); min-height: var(--touch-target-size); flex: none; }
+  .sidebar-section-heading { min-height: var(--touch-target-size); }
+  .sidebar-action-menu > button { white-space: normal; }
+}
+
+@media (max-width: 750px), (pointer: coarse) {
+  .selection-alias-option, .entity-alias-recovery button {
+    min-height: var(--touch-target-size);
+    min-width: var(--touch-target-size);
+  }
+}

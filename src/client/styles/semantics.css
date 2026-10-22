@@ -1,0 +1,77 @@
+.ai-notification-icon:is(.failed,.interrupted) { background: var(--status-warning-bg); }
+.ai-notification-icon:is(.failed,.interrupted) { color: var(--status-warning-text); }
+.page-persistence-notice.is-error { border-color: var(--status-danger-text); }
+:root[data-mode=dark] .delete-vault-dialog .button.danger:hover:not(:disabled) { background: color-mix(in srgb,var(--status-danger-bg) 75%,var(--status-danger-border)); }
+:root[data-mode=dark] .delete-vault-dialog .button.danger,
+.confirmation-dialog .confirmation-action.is-danger,
+.confirmation-dialog .confirmation-action.is-danger:hover:not(:disabled),
+:root[data-mode=dark] .confirmation-dialog .confirmation-action.is-danger,
+:root[data-mode=dark] .confirmation-dialog .confirmation-action.is-danger:hover:not(:disabled) { border-color: var(--status-danger-border); }
+:root[data-mode=dark] .delete-vault-dialog .button.danger,
+.confirmation-dialog .confirmation-action.is-danger:hover:not(:disabled),
+:root[data-mode=dark] .confirmation-dialog .confirmation-action.is-danger:hover:not(:disabled),
+.trash-library button.is-danger:hover:not(:disabled),
+:root[data-mode=dark] .trash-library button.is-danger:hover:not(:disabled),
+:is(.command-menu, .mobile-block-sheet-options) > button.is-danger:is(:hover, .highlight),
+:root[data-mode=dark] :is(.command-menu, .mobile-block-sheet-options) > button.is-danger:is(:hover, .highlight),
+.sidebar-action-menu > button.danger:is(:hover, :focus-visible),
+:root[data-mode=dark] .sidebar-action-menu > button.danger:is(:hover, :focus-visible) { background: var(--status-danger-bg); }
+#vault-form-error,
+.save-state-indicator.is-error,
+.source-status.failed,
+.writing-review-error,
+.sidebar-inline-name small,
+.dialog-error,
+:root[data-mode=dark] .dialog-error,
+.security-passphrase-form > .dialog-error,
+:root[data-mode=dark] .delete-vault-dialog .button.danger,
+.confirmation-dialog .confirmation-action:hover:not(:disabled),
+.confirmation-dialog .dialog-error,
+.confirmation-dialog .confirmation-action.is-danger,
+.confirmation-dialog .confirmation-action.is-danger:hover:not(:disabled),
+:root[data-mode=dark] .confirmation-dialog .confirmation-action.is-danger,
+:root[data-mode=dark] .confirmation-dialog .confirmation-action.is-danger:hover:not(:disabled),
+.image-upload-error,
+.editor-save-status.is-error,
+.ai-activity-status.failed, .ai-activity-status.interrupted,
+.ai-explanation-status.is-error,
+.entity-property-error,
+.knowledge-icon-action.is-destructive:hover:not(:disabled),
+.trash-library button.is-danger,
+.trash-library button.is-danger:hover:not(:disabled),
+:root[data-mode=dark] .trash-library button.is-danger,
+:root[data-mode=dark] .trash-library button.is-danger:hover:not(:disabled),
+:is(.command-menu, .mobile-block-sheet-options) > button.is-danger,
+:is(.command-menu, .mobile-block-sheet-options) > button.is-danger:is(:hover, .highlight),
+:root[data-mode=dark] :is(.command-menu, .mobile-block-sheet-options) > button.is-danger,
+:root[data-mode=dark] :is(.command-menu, .mobile-block-sheet-options) > button.is-danger:is(:hover, .highlight),
+.sidebar-action-menu > button.danger,
+.sidebar-action-menu > button.danger:is(:hover, :focus-visible),
+:root[data-mode=dark] .sidebar-action-menu > button.danger,
+:root[data-mode=dark] .sidebar-action-menu > button.danger:is(:hover, :focus-visible),
+.citation-picker-error,
+.source-reader-status[role=alert],
+.source-reading-menu p,
+.source-reading-remove-action { color: var(--status-danger-text); }
+/* Shared status primitives. Pair with visible state labels and/or named icons;
+ * colour must never be the only explanation of a state or destructive action. */
+[data-status=danger] { --status-text: var(--status-danger-text); --status-bg: var(--status-danger-bg); --status-border: var(--status-danger-border); }
+[data-status=warning] { --status-text: var(--status-warning-text); --status-bg: var(--status-warning-bg); --status-border: var(--status-warning-border); }
+[data-status=success] { --status-text: var(--status-success-text); --status-bg: var(--status-success-bg); --status-border: var(--status-success-border); }
+[data-status=info] { --status-text: var(--status-info-text); --status-bg: var(--status-info-bg); --status-border: var(--status-info-border); }
+[data-status] { color: var(--status-text); background: var(--status-bg); border-color: var(--status-border); }
+
+/* Failures already include explanatory text and retry/dismiss affordances. */
+.source-inspector-status-failure { color: var(--status-danger-text); border-inline-start: 3px solid var(--status-danger-border); padding-inline-start: var(--space-2); }
+:is(.dialog-error, .inline-error, .search-error, .embedding-job-error, .ai-notifications-error) { color: var(--status-danger-text); }
+.spotlight-search-body .search-error { color: var(--status-danger-text); }
+.ai-activity-status.interrupted { color: var(--status-warning-text); background: var(--status-warning-bg); border-color: var(--status-warning-border); }
+.ai-activity-status.completed { color: var(--status-success-text); background: var(--status-success-bg); border-color: var(--status-success-border); }
+.ai-activity-status:is(.queued,.running) { color: var(--status-info-text); background: var(--status-info-bg); border-color: var(--status-info-border); }
+.ai-activity-status.failed { background: var(--status-danger-bg); border-color: var(--status-danger-border); }
+.ai-notification-icon.failed { color: var(--status-danger-text); background: var(--status-danger-bg); }
+.ai-notification-icon.completed { color: var(--status-success-text); background: var(--status-success-bg); }
+.knowledge-icon-action.is-destructive:focus-visible { color: var(--status-danger-text); }
+/* Confirmation text names the destructive operation; cancel stays neutral. */
+.confirmation-dialog .confirmation-action:not(.is-danger):hover:not(:disabled) { color: var(--text); }
+

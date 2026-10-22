@@ -2,6 +2,7 @@ import {vaultStorage} from './modules/vault-storage.js';
 import type {NetworkAccess} from './network-settings.js';
 import {sourcePageRoutes} from './routes/source-pages.js';
 import {reviewTexts,parseEditorReview} from './modules/editor-review.js';
+import {entityNeighborhood} from './modules/entity-neighborhood.js';
 import {entitySourceEvidence} from './modules/entity-source-evidence.js';
 import {EntityLifecycle} from './modules/entity-lifecycle.js';
 import {SourceLifecycleService} from './modules/source-lifecycle.js';
@@ -51,7 +52,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
         if((req.headers.origin && req.headers.origin!==`http://${req.headers.host}`)||req.headers['sec-fetch-site']==='cross-site')throw new HttpError(403,'Cross-origin requests are not allowed');
         const securityRoute = url.pathname === '/api/security/network' || /^\/api\/pages\/[^/]+\/edit-lock$/.test(url.pathname) || /^\/api\/vaults\/[^/]+\/passphrase$/.test(url.pathname);
         if (securityRoute && (req.headers['x-noema-request'] !== '1' || method === 'PUT' && !/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))) throw new HttpError(403, 'Security settings require the Noema client and JSON.');
-        const aiRoute=/^\/api\/entities\/[^/]+\/create-page(?:\/(?:accept|reject))?$/.test(url.pathname)||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|enrich|enrichment-settings|entity-scan|entity-review|explain|review)$/.test(url.pathname);
+        const aiRoute=/^\/api\/entities\/[^/]+\/discovery(?:\/[^/]+\/review)?$/.test(url.pathname)||/^\/api\/entities\/[^/]+\/create-page(?:\/(?:accept|reject))?$/.test(url.pathname)||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|enrich|enrichment-settings|entity-scan|entity-review|explain|review)$/.test(url.pathname);
         const searchRoute=url.pathname.startsWith('/api/search/');
         if((aiRoute||searchRoute) && (req.headers['x-noema-request']!=='1'||(['POST','PUT'].includes(method)&&!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))))throw new HttpError(403,searchRoute?'Search requests require the Noema client and JSON':'AI requests require the Noema client and JSON');
         if(url.pathname==='/api/source-files' || url.pathname.startsWith('/api/source-files/')) {
@@ -416,6 +417,23 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             }
           }
           if(collection==='entities') {
+            if(id && child==='neighborhood' && parts.length===4 && method==='GET') {
+              const depth=Number(url.searchParams.get('depth')??1);
+              if(depth!==1&&depth!==2)throw new HttpError(400,'Choose one or two hops.');
+              return send(200,entityNeighborhood(store,vault,id,{depth,relationType:url.searchParams.get('relationType')??undefined}));
+            }
+            if(id && child==='discovery') {
+              if(parts.length===4 && method==='GET')return send(200,runtime.entityDiscovery.latest(vault,id));
+              if(parts.length===4 && method==='POST') {
+                const controller=new AbortController();
+                const abort=()=>{if(!res.writableEnded)controller.abort();};
+                res.once('close',abort);
+                try{return send(200,await runtime.entityDiscovery.generate(vault,id,controller.signal));}
+                catch(error){if(controller.signal.aborted)return;throw error;}
+                finally{res.removeListener('close',abort);}
+              }
+              if(parts.length===6 && childId && parts[5]==='review' && method==='POST')return send(200,runtime.entityDiscovery.review(vault,id,childId,body));
+            }
             if(id && child==='evidence' && parts.length===4 && method==='GET') {
               const offset=Number(url.searchParams.get('offset')??0);
               if(!Number.isSafeInteger(offset)||offset<0)throw new HttpError(400,'Invalid evidence offset.');

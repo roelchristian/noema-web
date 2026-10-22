@@ -54,7 +54,9 @@
     "test/page-entity-associations-ui.test.mjs",
     "test/entity-home-phase2.test.mjs",
     "test/entity-mention-navigation.test.mjs",
-    "test/entity-home-phase3.test.mjs"
+    "test/entity-home-phase3.test.mjs",
+    "test/entity-neighborhood-ui.test.mjs",
+    "test/entity-discovery-ui.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",
@@ -76,11 +78,16 @@
     "test/embedding-worker-batches.test.mjs",
     "test/embeddings.test.mjs",
     "test/entity-aliases.test.mjs",
+    "test/entity-content.test.mjs",
+    "test/entity-discovery.test.mjs",
+    "test/entity-evidence-http.test.mjs",
     "test/entity-formatting.test.mjs",
     "test/entity-lifecycle.test.mjs",
     "test/entity-match-cache.test.mjs",
+    "test/entity-neighborhood.test.mjs",
     "test/entity-scan-stream.test.mjs",
     "test/entity-scan.test.mjs",
+    "test/entity-source-evidence.test.mjs",
     "test/entity-subtypes.test.mjs",
     "test/entity-suggestion-identities.test.mjs",
     "test/folder-drop.test.mjs",
@@ -125,9 +132,6 @@
     "test/token-histogram.test.mjs",
     "test/trash.test.mjs",
     "test/vault-backups.test.mjs",
-    "test/vault-storage.test.mjs",
-    "test/entity-content.test.mjs",
-    "test/entity-source-evidence.test.mjs",
-    "test/entity-evidence-http.test.mjs"
+    "test/vault-storage.test.mjs"
   ]
 }

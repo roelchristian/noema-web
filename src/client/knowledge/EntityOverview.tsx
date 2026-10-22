@@ -4,7 +4,7 @@ import {t as uiText} from '../i18n';
 import {MarkdownText} from '../intelligence/SummaryText';
 import {clearEntityOverviewDraft, getEntityOverviewDraft, setEntityOverviewDraft} from './entity-drafts';
 
-export function EntityOverview({vaultId, entity, onSave, onRefresh}: {vaultId: string; entity: EntityDetail; onSave: (input: {content: string; revision: number}) => Promise<EntityDetail>; onRefresh: () => Promise<EntityDetail>}) {
+export function EntityOverview({vaultId, entity, onSave, onRefresh, guidance}: {guidance?: string; vaultId: string; entity: EntityDetail; onSave: (input: {content: string; revision: number}) => Promise<EntityDetail>; onRefresh: () => Promise<EntityDetail>}) {
   const server = entity.overview ?? {content: '', revision: 0};
   const savedDraft = getEntityOverviewDraft(vaultId, entity.id);
   const [draft, setDraft] = useState(() => savedDraft ?? {content: server.content, baseline: server.content, revision: server.revision});
@@ -44,7 +44,7 @@ export function EntityOverview({vaultId, entity, onSave, onRefresh}: {vaultId: s
   return <section className="eh-section eh-overview">
     <h2>{uiText('Overview')} <button type="button" className="eh-text-action" onClick={() => setEditing(true)} hidden={editing}>{uiText(server.content ? 'Edit overview' : 'Write overview')}</button></h2>
     {editing ? <div className="eh-overview-editor">
-      <p className="eh-writing-hint">{uiText('Write a synthesis in your own words. Markdown and math are supported.')}</p>
+      <p className="eh-writing-hint">{uiText(guidance ?? 'Write a synthesis in your own words. Markdown and math are supported.')}</p>
       <div className="eh-writing-tools"><button type="button" aria-pressed={!preview} onClick={() => setPreview(false)}>{uiText('Write')}</button><button type="button" aria-pressed={preview} onClick={() => setPreview(true)}>{uiText('Preview')}</button></div>
       {preview ? <div className="eh-markdown eh-overview-preview"><MarkdownText text={draft.content}/>{!draft.content && <p className="entity-detail-empty">{uiText('Your overview preview will appear here.')}</p>}</div> : <textarea aria-label={uiText('Entity overview Markdown')} value={draft.content} maxLength={100000} disabled={saving} onChange={event => change(event.target.value)} rows={12}/>}
       {conflict && <div className="eh-overview-conflict" role="alert"><p>{uiText('The saved overview changed while you were writing. Your draft is preserved. Compare the saved version before saving again.')}</p><details><summary>{uiText('Current saved overview')}</summary><div className="eh-markdown"><MarkdownText text={server.content}/></div></details><button type="button" onClick={() => {const next = {...draft, baseline: server.content, revision: server.revision}; setDraft(next); setEntityOverviewDraft(vaultId, entity.id, next); setError('');}}>{uiText('Keep my draft against this version')}</button></div>}

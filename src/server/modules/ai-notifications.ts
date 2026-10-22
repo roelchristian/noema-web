@@ -13,6 +13,10 @@ export class AINotifications {
       SELECT ?,vault_id,id,?,?,? FROM pages WHERE id=? AND vault_id=?`,randomUUID(),action,status,now(),pageId,vault);
     this.prune();
   }
+  recordEntity(vault:string,entityId:string,status:'completed'|'failed'|'interrupted') {
+    this.store.run(`INSERT INTO ai_notifications (id,vault_id,entity_id,action,status,created_at) SELECT ?,vault_id,id,'entity_discovery',?,? FROM entities WHERE id=? AND vault_id=?`,randomUUID(),status,now(),entityId,vault);
+    this.prune();
+  }
   recordSource(vault:string,entityId:string,status:'completed'|'failed'|'interrupted',action:NotificationAction='source_import') {
     const id=randomUUID();
     this.store.run(`INSERT INTO ai_notifications (id,vault_id,entity_id,action,status,created_at)
@@ -21,6 +25,7 @@ export class AINotifications {
     return id;
   }
   outcome(action: string, vault: string | null, pageId: string | null, status: string) {
+    if(action==='entity_discovery'&&vault&&pageId&&(status==='failed'||status==='interrupted')){this.recordEntity(vault,pageId,status);return;}
     if((action==='create_page_from_source'||action==='source_enrichment')&&vault&&pageId&&(status==='failed'||status==='interrupted')){this.recordSource(vault,pageId,status,action);return;}
     if(vault && pageId && actions.includes(action) && (status==='failed'||status==='interrupted')) this.record(vault,pageId,action as NotificationAction,status);
   }
@@ -43,7 +48,7 @@ export class AINotifications {
       CASE WHEN a.object_kind='entity' THEN e.id IS NOT NULL ELSE p.id IS NOT NULL AND p.deleted_at IS NULL END AS available,a.started_at AS startedAt
       FROM ai_activity a JOIN vaults v ON v.id=a.vault_id AND v.locked=0 LEFT JOIN pages p ON a.object_kind='page' AND p.id=a.object_id AND p.vault_id=a.vault_id
       LEFT JOIN entities e ON a.object_kind='entity' AND e.id=a.object_id AND e.vault_id=a.vault_id
-      WHERE a.status='running' AND a.object_kind IN ('page','entity') AND a.action IN ('page_enrichment','block_explanation','page_title','page_summary','entity_scan','note_embedding','create_page_from_source','source_enrichment')
+      WHERE a.status='running' AND a.object_kind IN ('page','entity') AND a.action IN ('entity_discovery','page_enrichment','block_explanation','page_title','page_summary','entity_scan','note_embedding','create_page_from_source','source_enrichment')
       ORDER BY a.rowid DESC LIMIT 100`).map(item=>({...item,pageTitle:item.entityId?item.pageTitle:titleFor(item.vaultId,item.pageId,item.pageTitle),available:!!item.available}));
     const sources=this.store.all<AIRunningActivity>(`SELECT f.id,'source_import' AS action,f.vault_id AS vaultId,'' AS pageId,f.entity_id AS entityId,e.name AS pageTitle,
       1 AS available,f.created_at AS startedAt FROM source_files f JOIN entities e ON e.id=f.entity_id JOIN vaults v ON v.id=f.vault_id AND v.locked=0

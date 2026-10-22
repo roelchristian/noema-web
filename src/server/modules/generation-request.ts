@@ -5,6 +5,7 @@ import {editorReviewInstructions} from './editor-review.js';
 import {sourceMathInstructions} from './source-math.js';
 import {sourcePagePrompt} from './source-page-prompt.js';
 import {explanationPrompt} from './explanation-prompt.js';
+import {entityDiscoveryPrompt} from './entity-discovery-prompt.js';
 import {entityScanPrompt} from './entity-scan.js';
 import {titlePrompt} from './title-prompt.js';
 import {summaryPrompt} from './summary-prompt.js';
@@ -18,6 +19,7 @@ export type GenerationRequest = CommonRequest & (
   | {kind:'summary';input:string}
   | {kind:'title';input:string}
   | {kind:'utility';input:string;domains:{id:string;name:string}[];currentTitle:string}
+  | {kind:'entityDiscovery';input:string}
   | {kind:'entityScan';input:string;onDelta?:(delta:string)=>void}
   | {kind:'explanation';input:string;options?:ReadingExplanationOptions}
   | {kind:'review';input:string}
@@ -61,6 +63,8 @@ export function generationPolicy(request:GenerationRequest,selections:Selections
       return policy(()=>titlePrompt(request.input),{activeSlot:'independent',selection:selections.title,maxOutputTokens:512});
     case 'utility':
       return policy(()=>titlePrompt(request.input,request.domains,request.currentTitle),{activeSlot:'independent',selection:selections.title,maxOutputTokens:512});
+    case 'entityDiscovery':
+      return policy(()=>entityDiscoveryPrompt(request.input),{activeSlot:'exclusive',maxOutputTokens:4096,maxOutputLength:20000});
     case 'entityScan':
       return {...policy(()=>entityScanPrompt(request.input),{activeSlot:'independent'}),stream:!!request.onDelta,onDelta:request.onDelta};
     case 'explanation':

@@ -260,3 +260,6 @@ button.eh-breadcrumb:hover { color: var(--text); text-decoration: underline; tex
 }
 .eh-evidence-pages { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin-top: 12px; color: var(--text-muted); font-size: var(--ui-text-sm); }
 .eh-evidence-pages button { padding: 4px 0; text-decoration: underline; text-underline-offset: 3px; }
+
+/* The optional Discovery section remains reachable on narrow workspaces. */
+.eh-tabs { overflow-x: auto; scrollbar-width: thin; }

@@ -1,3 +1,4 @@
+import {EntityDiscoveryService} from './modules/entity-discovery.js';
 import {createSourcePageGeneration} from './modules/source-page-generation.js';
 import {SourcePageImages} from './modules/source-page-images.js';
 import {SourceReprocessing} from './modules/source-reprocessing.js';
@@ -42,6 +43,7 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
   const images=new Images(store),notifications=new AINotifications(store);
   const vaults=new Vaults(store),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),organizer=new Organizer(store);
   const activity=new AIActivityLog(store),enrichments=new AIEnrichments(store,pages);
+  const entityDiscovery=new EntityDiscoveryService(store,knowledge,intelligence,activity);
   const sourceReprocessing=new SourceReprocessing(store,sourceFiles,intelligence,vault=>vaults.requireOpen(vault),activity);
   const scans=new EntityScans(store,pages,knowledge,enrichments);
   const pageEnrichment=new PageEnrichment(store,pages,knowledge,enrichments,intelligence);
@@ -79,7 +81,7 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
   let embeddingWorker: ReturnType<typeof setInterval> | undefined;
   let sourcePassageWorker: ReturnType<typeof setInterval> | undefined;
   let sourceEnrichmentWorker: ReturnType<typeof setInterval> | undefined;
-  return { store, intelligence, networkAccess, vaultDeletion, sourceFiles, sourcePageImages, sourceReading, backups, images, notifications, vaults, knowledge, pages, organizer, activity, enrichments, sourceReprocessing, scans, pageEnrichment, enrichmentScheduler, scheduleEnrichment, entityMatches, embeddings, sourcePassages, sourceEnrichments, sourcePages, sourcePageGeneration, searchSnippets, textSearch,
+  return { store, entityDiscovery, intelligence, networkAccess, vaultDeletion, sourceFiles, sourcePageImages, sourceReading, backups, images, notifications, vaults, knowledge, pages, organizer, activity, enrichments, sourceReprocessing, scans, pageEnrichment, enrichmentScheduler, scheduleEnrichment, entityMatches, embeddings, sourcePassages, sourceEnrichments, sourcePages, sourcePageGeneration, searchSnippets, textSearch,
     start() {
       enrichmentScheduler.start();
       sourceReprocessingWorker=setInterval(()=>{void sourceReprocessing.tick().catch(()=>{});},1000);sourceReprocessingWorker.unref();

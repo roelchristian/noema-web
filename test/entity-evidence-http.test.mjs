@@ -30,6 +30,12 @@ test('entity evidence HTTP returns precise saved occurrences and source passages
   assert.equal(detail.pageMentions[0].mentionCount,2);
   assert.equal(contexts[0].occurrences.length,2);
   assert.notEqual(contexts[0].occurrences[0].reference.startOffset,contexts[0].occurrences[1].reference.startOffset);
+  const neighbor=knowledge.create('default',{name:'Research group',type:'organization'}),second=knowledge.create('default',{name:'Research city',type:'place'});
+  knowledge.relationship('default',entity.id,{label:'studied by',target_id:neighbor.id});knowledge.relationship('default',neighbor.id,{label:'based in',target_id:second.id});
+  const oneHop=await (await get('/neighborhood?depth=1')).json();assert.ok(oneHop.nodes.some(node=>node.id===neighbor.id));assert.ok(!oneHop.nodes.some(node=>node.id===second.id));
+  const twoHop=await (await get('/neighborhood?depth=2')).json();assert.ok(twoHop.nodes.some(node=>node.id===second.id));
+  assert.equal(oneHop.edges[0].sourceId,entity.id);assert.equal(oneHop.edges[0].targetId,neighbor.id);
+  assert.equal((await get('/neighborhood?depth=3')).status,400);
   const response=await get('/evidence');assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');
   const evidence=await response.json();assert.equal(evidence.groups[0].sourceId,source.id);assert.match(evidence.groups[0].passages[0].reference.excerpt,/Lumen theory/);
   assert.equal(evidence.groups[0].passages[0].reason,'source-mention');

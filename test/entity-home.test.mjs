@@ -80,3 +80,42 @@ test('contextual panel promotes the current entity without changing its record',
   assert.equal(opened,'e');
  });
 });
+
+test('type-aware homepages emphasize recorded event and publication details without empty schema fields',async t=>{
+ await fixture(t,async({entity,props,root})=>{
+  entity.type='event';entity.properties=[{id:'place',entity_id:'e',name:'location',value:'London',target_id:null},{id:'date',entity_id:'e',name:'start date',value:'1843-01-01',target_id:null}];
+  await act(async()=>root.render(React.createElement(EntityHome,{...props,key:'event'})));
+  const overview=document.querySelector('#entity-home-panel-overview');
+  assert.equal(overview.querySelector('h2').textContent,'Event details');
+  assert.equal(overview.querySelector('dt').textContent,'start date');
+  assert.ok(!overview.textContent.includes('Not set'));
+  assert.ok(overview.textContent.indexOf('Event details')<overview.textContent.indexOf('Overview'));
+  entity.type='creativework';entity.properties=[{id:'date',entity_id:'e',name:'release date',value:'1843',target_id:null},{id:'author',entity_id:'e',name:'author',value:'Ada',target_id:null}];
+  await act(async()=>root.render(React.createElement(EntityHome,{...props,key:'work'})));
+  assert.equal(document.querySelector('#entity-home-panel-overview h2').textContent,'Publication and authorship');
+  assert.equal(document.querySelector('#entity-home-panel-overview dt').textContent,'author');
+  assert.equal(document.querySelectorAll('.eh-overview').length,1,'one shared authored overview');
+ });
+});
+
+test('homepage keeps grouped lists default and exposes optional neighborhood and discovery without generation',async t=>{
+ await fixture(t,async({props,root,click})=>{
+  let opened,inspected;
+  const graph=t.mock.method(api,'entityNeighborhood',async()=>({rootId:'e',nodes:props.entities,edges:[{id:'r',sourceId:'e',targetId:'other',kind:'relationship',label:'visited'}],relationTypes:['visited'],truncated:false}));
+  const generate=t.mock.method(api,'generateEntityDiscovery',async()=>assert.fail('Opening Discovery must not generate'));
+  t.mock.method(api,'entityDiscovery',async()=>null);
+  await act(async()=>root.render(React.createElement(EntityHome,{...props,onOpen:id=>opened=id,onInspect:id=>inspected=id})));
+  await click('#entity-home-tab-connections');
+  assert.equal(graph.mock.callCount(),0);
+  const toggle=Array.from(document.querySelectorAll('button')).find(button=>button.textContent==='Explore neighborhood');
+  await act(async()=>toggle.click());
+  assert.equal(graph.mock.callCount(),1);
+  const nodes=document.querySelectorAll('.entity-neighborhood svg [role="button"]');
+  await act(async()=>nodes[1].dispatchEvent(new document.defaultView.MouseEvent('click',{bubbles:true})));
+  assert.equal(opened,'other');
+  await click('.en-inspect button');assert.equal(inspected,'other');
+  await click('#entity-home-tab-discovery');
+  assert.match(document.querySelector('.eh-discovery').textContent,/Explore with AI/);
+  assert.equal(generate.mock.callCount(),0);
+ });
+});

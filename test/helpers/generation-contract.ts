@@ -8,6 +8,7 @@ export const generationContracts = [
   {label:'validation',request:{kind:'validation'}},
   {label:'title fallback',request:{kind:'title',input}},
   {label:'utility',request:{kind:'utility',input,domains:[],currentTitle:'Garden'}},
+  {label:'entity discovery',request:{kind:'entityDiscovery',input}},
   {label:'entity scan',request:{kind:'entityScan',input}},
   {label:'entity stream',request:{kind:'entityScan',input,...stream}},
   {label:'explanation',request:{kind:'explanation',input}},

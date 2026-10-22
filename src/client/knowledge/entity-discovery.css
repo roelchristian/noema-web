@@ -1,0 +1,13 @@
+.eh-discovery-tools,.eh-discovery-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:16px 0}
+.eh-discovery-group{margin-top:32px}
+.eh-discovery-group>h3{font-size:15px;font-weight:600;margin:0 0 14px}
+.eh-discovery-card{border:1px solid var(--line);border-radius:10px;padding:18px;margin:14px 0;background:var(--surface-hover)}
+.eh-discovery-card p{line-height:1.65}
+.eh-discovery-rationale,.eh-discovery-provenance,.eh-discovery-decision{font-size:12px;color:var(--text-muted)}
+.eh-discovery-warning{padding:12px 14px;border-left:3px solid var(--accent);background:var(--surface-hover);font-size:13px;line-height:1.6}
+.eh-discovery-evidence{margin-top:18px;border-top:1px solid var(--line);padding-top:12px}
+.eh-discovery-evidence h4{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin:0 0 10px}
+.eh-discovery-evidence button,.eh-discovery-relationship button,.eh-discovery-page{color:var(--accent);text-align:left;white-space:normal}
+.eh-discovery-evidence blockquote{border-left:2px solid var(--line);padding-left:12px;margin:8px 0 16px;color:var(--text-muted);font-size:13px;line-height:1.7}
+.eh-discovery-card .eh-markdown{overflow-wrap:anywhere}
+@media(max-width:600px){.eh-discovery-card{padding:14px}.eh-discovery-actions{align-items:stretch}.eh-discovery-actions .button{white-space:normal}}

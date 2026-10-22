@@ -76,3 +76,43 @@ test('rich clipboard images split marked text in order, including image-only and
  const plain=clipboardContent({getData:type=>type==='text/plain'?'Caption':'',files:[file]});
  assert.deepEqual(plain.blocks.map(b=>b.type),['paragraph','image']);assert.equal(plain.images[0].file,file);
 });
+
+test('website anchors preserve literal labels, marks, destinations and table cells', async t=>{
+ const {setupDOM}=await import('./helpers/dom.mjs');setupDOM(t);
+ const {readSegments,syncEditableSegments}=await import('../src/client/editor/segments.tsx');
+ const {safeHref,isExternalWebHref}=await import('../src/shared/domain.ts');
+ const href='https://example.test/a%20b?q=%26&amp;other=1#part%202';
+ const blocks=clipboardBlocks('',`<p>Read <a href="${href}" onclick="evil()"><b>linked</b> <i>phrase $price$</i></a><a href="https://other.test/">next</a></p><p><a href="mailto:writer@example.test?subject=Hello%20there">Email</a></p><table><tr><td><a href="https://example.test/cell">Cell</a></td></tr></table>`);
+ const content=blocks[0].content;
+ assert.deepEqual(content.filter(s=>s.href===href.replace('&amp;','&')).map(s=>s.text),['linked',' ','phrase $price$']);
+ assert.ok(content.some(s=>s.bold&&s.href));assert.ok(content.some(s=>s.italic&&s.href&&!s.math));
+ assert.equal(blocks[2].rows[0][0][0].href,'https://example.test/cell');
+ const el=document.createElement('div');document.body.append(el);el.innerHTML=segmentHTML(content,[]);
+ assert.equal(el.querySelectorAll('.external-link-indicator').length,2);
+ assert.equal(el.textContent,'Read linked phrase $price$next');
+ assert.deepEqual(readSegments(el),content);
+ assert.ok([...el.querySelectorAll('a')].every(a=>a.rel==='noopener noreferrer'&&a.target==='_blank'&&!a.hasAttribute('onclick')));
+ const html=el.innerHTML;syncEditableSegments(el,content,[],{blockId:'test'});assert.equal(el.innerHTML,html);
+ assert.equal(segmentHTML(blocks[1].content,[]).includes('external-link-indicator'),false);
+ assert.equal(safeHref('mailto:writer@example.test?subject=Hello%20there'),blocks[1].content[0].href);
+ assert.equal(isExternalWebHref('mailto:writer@example.test'),false);
+ assert.equal(safeHref('mailto:writer@example.test?subject=Hello there'),'mailto:writer@example.test?subject=Hello there');
+ assert.equal(isExternalWebHref('http://localhost/internal','http://localhost'),false);
+ assert.equal(isExternalWebHref('https://example.test/','http://localhost'),true);
+ assert.deepEqual(clipboardBlocks('Plain text','',false)[0].content,[{text:'Plain text'}]);
+ const exportHTML=segmentHTML(content,[],undefined,false,undefined,false);
+ assert.ok(!exportHTML.includes('external-link-indicator'));assert.deepEqual(clipboardBlocks('',exportHTML)[0].content,content);
+ // Persistence contains segments only, and rendering a reloaded value adds no text.
+ assert.equal(readSegments(el).map(s=>s.text).join(''),content.map(s=>s.text).join(''));
+ assert.equal(segmentHTML(JSON.parse(JSON.stringify(content)),[]),segmentHTML(content,[]));
+});
+
+test('clipboard rejects unsafe, unresolved and malformed links and ignores active HTML',async t=>{
+ const {setupDOM}=await import('./helpers/dom.mjs');setupDOM(t);
+ const {safeHref}=await import('../src/shared/domain.ts');
+ for(const href of ['javascript:alert(1)','data:text/html,evil','vbscript:evil','/relative','#fragment','https:missing-host','https://','java\nscript:evil']) assert.equal(safeHref(href),undefined,href);
+ const [block]=clipboardBlocks('', '<p><a href="javascript:evil()" onclick="evil()">Bad</a><a href="data:text/html,evil">Data</a><script>evil()</script><a href="https://example.test/?x=&quot;quoted&quot;&amp;y=%23#frag" onmouseover="evil()">Safe</a></p>');
+ assert.equal(block.content[0].text,'BadData');assert.equal(block.content[0].href,undefined);
+ assert.equal(block.content[1].href,'https://example.test/?x="quoted"&y=%23#frag');
+ const html=segmentHTML(block.content,[]);assert.ok(!/onclick|onmouseover|javascript:|data:text|<script/.test(html));
+});

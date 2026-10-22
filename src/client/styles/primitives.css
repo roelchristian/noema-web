@@ -491,3 +491,20 @@ html {
     opacity: 0
   }
 }
+
+/* Empty, unfocusable decoration: no text or editable atom enters selection offsets. */
+.external-link-indicator {
+  display: inline-block;
+  width: .7em;
+  height: .7em;
+  margin-inline-start: .16em;
+  color: var(--text-muted);
+  vertical-align: .06em;
+  pointer-events: none;
+  user-select: none;
+}
+.external-link-indicator .icon {
+  display: inline;
+  width: 100%;
+  height: 100%;
+}

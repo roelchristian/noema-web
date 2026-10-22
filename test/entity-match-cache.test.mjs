@@ -88,6 +88,7 @@ test('cached reviews validate candidates, resolve individual or all instances, a
     assert.equal(all.blocks[0].content.filter(segment=>segment.entityId===ivanka.id).length,2);
     assert.equal(all.blocks[1].rows[0][0][0].entityId,ivanka.id);
     env.pages.update('default',page.id,{...page,blocks:one.blocks});
-    assert.deepEqual(env.matches.get('default',page.id).matches,[],'The sole linked candidate resolves remaining aliases without review');
+    assert.equal(env.matches.get('default',page.id).matches.length,2,'An occurrence link must not become page context after save/reload');
+    assert.equal(env.pages.get('default',page.id).blocks[0].content.find(segment=>segment.entityId).skipAutoTag,true);
   } finally { env.db.close(); }
 });

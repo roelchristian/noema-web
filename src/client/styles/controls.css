@@ -76,6 +76,11 @@
 
 .entity-review-modal button, .entity-review-modal summary,
 .entity-review-modal .scan-occurrence, .entity-review-modal fieldset > label {
-  min-height: var(--touch-target-size);
+  min-height: var(--control-target-compact);
 }
-.entity-review-modal .entity-review-row-actions button { min-width: var(--touch-target-size); }
+.entity-review-modal .entity-review-row-actions button { min-width: var(--control-target-compact); }
+@media (max-width: 750px), (pointer: coarse) {
+  .entity-review-modal button, .entity-review-modal summary,
+  .entity-review-modal .scan-occurrence, .entity-review-modal fieldset > label { min-height: var(--touch-target-size); }
+  .entity-review-modal .entity-review-row-actions button { min-width: var(--touch-target-size); }
+}

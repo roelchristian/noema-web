@@ -26,7 +26,9 @@ test('sidebar note switching preserves mounted shell and outgoing editor until a
   const organization=document.querySelector('.organization-sidebar');
   const expand=organization.querySelector('[aria-label="Expand Projects"]');
   await act(async()=>expand.dispatchEvent(new MouseEvent('click',{bubbles:true})));
-  await act(async()=>organization.querySelector('.sidebar-unfiled-toggle').dispatchEvent(new MouseEvent('click',{bubbles:true})));
+  const expandUnfiled=organization.querySelector('[aria-label="Expand Unfiled pages"]');assert.ok(expandUnfiled);
+  await act(async()=>expandUnfiled.dispatchEvent(new MouseEvent('click',{bubbles:true})));
+  assert.equal(expandUnfiled.getAttribute('aria-expanded'),'true');
   const folder=organization.querySelector('[aria-label="Open folder: Projects"]'),collection=organization.querySelector('[aria-label="Open collection: Research"]'),nestedPage=organization.querySelector('.organization-page-link');
   const sidebarNodes=[...scrollRegion.querySelectorAll('*')].filter(node=>!node.closest('.organization-page-link'));
   const assertOrganizationStable=()=>{

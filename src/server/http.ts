@@ -197,7 +197,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             const controller=new AbortController(),abort=()=>controller.abort();
             res.once('close',abort);
             try {
-              const explanation=await intelligence.generate(prepared.ref.excerpt,false,bytes=>activity.request(activityId!,bytes,null),false,false,{...prepared.options,signal:controller.signal});
+              const explanation=await intelligence.generate({kind:'explanation',input:prepared.ref.excerpt,options:prepared.options,signal:controller.signal,onRequest:bytes=>activity.request(activityId!,bytes,null)});
               vaults.requireOpen(vault);
               if(controller.signal.aborted)throw new HttpError(409,'Explanation cancelled.');
               if(!explanation.trim()||readingNoteWordCount(explanation)>readingNoteMaxWords)throw new HttpError(502,'The explanation exceeded the 200-word reading note limit. Please try again.');
@@ -308,7 +308,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
           if(parts.length===3 && id==='preferences' && method==='PUT')return send(200,intelligence.savePreferences(body));
           if(parts.length===2 && method==='PUT'){const result=intelligence.save(body);embeddings.clearQueryCache();return send(200,result);}
           if(parts.length===2 && method==='DELETE'){const result=intelligence.remove();embeddings.clearQueryCache();return send(200,result);}
-          if(parts.length===3 && id==='validate' && method==='POST') {await intelligence.generate('',true,bytes=>activity.request(activityId!,bytes,null));return send(200,{ok:true,...intelligence.selection()});}
+          if(parts.length===3 && id==='validate' && method==='POST') {await intelligence.generate({kind:'validation',onRequest:bytes=>activity.request(activityId!,bytes,null)});return send(200,{ok:true,...intelligence.selection()});}
           throw new HttpError(404,'Not found');
         } else if(collection==='vaults') {
           if(id && parts.length===4 && method==='PUT' && child==='passphrase')return send(200,vaults.setPassphrase(id,body));
@@ -361,7 +361,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
             if(id && parts.length===4 && child==='backlinks' && method==='GET')return send(200,pages.backlinks(vault,id));
             if(id && parts.length===4 && child==='review' && method==='POST') {
               const page=pages.requireEditable(vault,id),texts=reviewTexts(body.texts);
-              const output=await intelligence.generate(JSON.stringify({untrusted_texts:texts}),false,bytes=>activity.request(activityId!,bytes,page.revision),false,false,false,undefined,false,undefined,false,undefined,undefined,undefined,true);
+              const output=await intelligence.generate({kind:'review',input:JSON.stringify({untrusted_texts:texts}),onRequest:bytes=>activity.request(activityId!,bytes,page.revision)});
               vaults.requireOpen(vault);pages.requireEditable(vault,id);
               return send(200,{suggestions:parseEditorReview(output,texts)});
             }
@@ -372,7 +372,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
               const input=summaryInput({title:'',blocks},entityId=>entityMentionName(knowledge.find(vault,entityId)),false,true).trim();
               if(!input)throw new HttpError(400,'Select blocks containing text or equations to explain.');
               if(Buffer.byteLength(input,'utf8')>24000)throw new HttpError(400,'Select fewer blocks (at most 24,000 bytes of text).');
-              const markdown=await intelligence.generate(input,false,bytes=>activity.request(activityId!,bytes,page.revision),false,false,true);
+              const markdown=await intelligence.generate({kind:'explanation',input,onRequest:bytes=>activity.request(activityId!,bytes,page.revision)});
               vaults.requireOpen(vault);pages.get(vault,id);
               notifications.record(vault,id,'block_explanation');
               return send(200,{markdown});
@@ -403,7 +403,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
                 try {
                   if(cached?.contextKey===contextKey)emit({type:'completed',scan:cached});
                   else {
-                    const output=await intelligence.generate(input,false,bytes=>activity.request(activityId!,bytes,page.revision),false,true,false,undefined,false,undefined,false,undefined,{
+                    const output=await intelligence.generate({kind:'entityScan',input,onRequest:bytes=>activity.request(activityId!,bytes,page.revision),
                       signal:controller.signal,onDelta:delta=>{
                         const suggestions=parser.feed(delta);
                         if(suggestions)emit({type:'progress',scan:scans.save(vault,page,JSON.stringify({suggestions}),intelligence.selection(),false)});
@@ -421,7 +421,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
                 }finally{clearInterval(heartbeat);res.removeListener('close',disconnected);}
                 return;
               }
-              const output=await intelligence.generate(input,false,bytes=>activity.request(activityId!,bytes,page.revision),false,true);
+              const output=await intelligence.generate({kind:'entityScan',input,onRequest:bytes=>activity.request(activityId!,bytes,page.revision)});
               vaults.requireOpen(vault);
               if(scans.contextKey(vault,pages.get(vault,id))!==contextKey)throw new HttpError(409,'The note, domains or entity catalog changed. Scan again.');
               return send(200,scans.save(vault,page,output,intelligence.selection()));
@@ -522,8 +522,8 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
                   async text=>{
                     const mathActivity=activity.start('source_math_preprocessing',intelligence.selection(),vault,id,'entity');
                     try {
-                      const result=await intelligence.generate(text,false,bytes=>activity.request(mathActivity,bytes,null),false,false,false,undefined,true,{
-                        signal:controller.signal,onDelta:()=>{},mathPreparation:true,
+                      const result=await intelligence.generate({kind:'sourceMath',input:text,background:true,onRequest:bytes=>activity.request(mathActivity,bytes,null),
+                        signal:controller.signal,
                       });
                       activity.finish(mathActivity,'completed',200);return result;
                     }catch(error){activity.finish(mathActivity,controller.signal.aborted?'interrupted':'failed',error instanceof HttpError?error.status:500);throw error;}
@@ -538,7 +538,7 @@ export function createApp(store: Store, clientRoot: string, intelligence=new Int
                 // A preliminary JSON draft can be previewed, but only final-answer records are saved.
                 let preview=new SourcePageDraft(emit,cleanedFile.text,cleanedFile,prepared.options.language),previewFailed=false;
                 const resetPreview=()=>{emit({type:'preview_reset'});preview=new SourcePageDraft(emit,cleanedFile.text,cleanedFile,prepared.options.language);previewFailed=false;};
-                await intelligence.generate(prepared.input,false,bytes=>activity.request(activityId!,bytes,null),false,false,false,undefined,false,{
+                await intelligence.generate({kind:'sourcePage',input:prepared.input,onRequest:bytes=>activity.request(activityId!,bytes,null),
                   signal:controller.signal,onDelta:delta=>draft.feed(delta),onPreviewReset:resetPreview,
                   onPreviewDelta:delta=>{
                     if(previewFailed)return;

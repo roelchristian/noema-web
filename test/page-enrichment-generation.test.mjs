@@ -70,4 +70,9 @@ test('enrichment has a dedicated persisted profile and selective output budget',
   assert.deepEqual(restored.enrichmentSelection(),{model:'gpt-5.6-luna',reasoningEffort:'none'});
   await assert.rejects(()=>ai.generatePageEnrichment('note',{requestedFields:[]}),error=>error.status===400);
   assert.equal(requests.length,1);
+  ai.savePreferences({...ai.selection(),pageEnrichment:{model:'gpt-6-luna',reasoningEffort:'high'}});
+  await ai.generatePageEnrichment('Note body',{requestedFields:['summary']});
+  assert.equal(requests[1].max_output_tokens,4096);
+  assert.deepEqual(requests[1].reasoning,{effort:'high'});
+  assert.equal(requests[1].model,'gpt-6-luna');
 });

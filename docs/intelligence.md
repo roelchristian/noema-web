@@ -74,3 +74,19 @@ AI discovery retains the existing limit of 40,000 text characters and 80,000 ser
 AI activity records and CSV exports include provider-reported cached-input and cache-write tokens independently of optional debug traces. Missing values stay unknown; reported zeros remain zero. Existing debug responses backfill available counts on startup. Local query-cache hits do not create provider-request records.
 
 See [page classification drift policy](page-classification-drift-policy.md) for enrichment scheduling, field ownership, and classification freshness.
+
+## Server generation request contract
+
+`Intelligence.generate` accepts one `GenerationRequest` from `server/modules/generation-request.ts`. The discriminated `kind` names the intent; `onRequest`, `background`, and `signal` are common named fields. Validation carries no note input. Streaming callbacks belong only to entity scans, source math, and source pages; preliminary preview callbacks belong only to source pages.
+
+```ts
+await intelligence.generate({kind:'review',input:JSON.stringify({untrusted_texts:texts}),onRequest:observe});
+await intelligence.generate({kind:'sourceMath',input,background:true,signal,onRequest:observe});
+await intelligence.generate({kind:'entityScan',input,signal,onDelta,onRequest:observe});
+```
+
+The exhaustive `generationPolicy` switch selects the existing prompt, model/effort, token and output limits, timeout, stream channels, and admission policy. Prompt construction remains lazy so it runs after admission inside the existing provider error boundary. Titles/utility, entity scans, and page enrichment are independent of the exclusive active-generation slot. All other kinds claim that slot, including background source math, metadata/authors, and editorial work. `background` bypasses only the manual per-minute budget; it does not bypass the active slot. Source math/page and editorial keep the 180-second limit; other kinds keep 45 seconds, all capped by credential expiry.
+
+Credential access, replacement/expiry checks, redaction, request tracking, transport, and response reading remain in `Intelligence`. Feature parsing and revision/ownership checks remain in their existing modules. The narrow `generateTitle`, `generatePageUtility`, `generatePageEnrichment`, `enrichSource`, `extractSourceAuthors`, and `reeditSource` facades retain their feature contracts and parsers; they delegate to the named request API. In particular, page enrichment still validates requested fields before credential access/admission. These are feature seams, not a retained positional `generate` overload. The legacy HTTP title/PageUtility compatibility behavior is unchanged.
+
+The synthetic checked matrix in `test/helpers/generation-contract.ts` covers every request kind. `test/fixtures/generation-contract.json` freezes complete prompt/input/schema digests, observer byte counts, and readable provider policy fields captured from main `2bc0b3a6cf8e6e4c94a6f8980fbcc19579cd75d0` before the migration. Four compact cases in `intelligence.test.mjs` cover payload parity; admission in both directions and manual/background accounting; timeout/output boundaries, abort, expiry, replacement and errors; and final/preview streaming, usage and redaction. Existing feature/integration cases retain parser, stale-revision, lock and ownership coverage. No live provider calls or user data are required.

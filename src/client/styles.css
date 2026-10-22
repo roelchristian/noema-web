@@ -325,13 +325,15 @@ main { margin-left: 224px; }
 @media (min-width: 501px) and (max-width: 750px) { .sidebar { width: 224px; } main { margin-left: 224px; } }
 .sidebar-item-row { display: flex; align-items: center; min-width: 0; border-radius: 5px; }
 .sidebar-item-row > .nav, .sidebar-item-row > .page-link { flex: 1; min-width: 0; width: auto; margin-bottom: 0; }
-.sidebar-item-row:hover { background: var(--surface-hover); }
+.sidebar-item-row:hover, .sidebar-item-row:focus-within { background: var(--surface-hover); }
 .sidebar-item-row.is-selected { color: var(--accent); background: var(--accent-soft); }
 .sidebar .sidebar-item-row > .nav.active, .sidebar .sidebar-item-row > .page-link.selected { background: transparent; }
 .sidebar-menu-trigger { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 5px; margin-right: 3px; border-radius: 4px; color: var(--text-muted); opacity: 0; }
 .sidebar-menu-trigger .icon { width: 16px; height: 16px; }
 .sidebar-item-row:hover > .sidebar-menu-trigger, .sidebar-item-row:focus-within > .sidebar-menu-trigger, .sidebar-menu-trigger[aria-expanded=true] { opacity: 1; }
 .sidebar-menu-trigger:hover, .sidebar-menu-trigger[aria-expanded=true] { color: var(--text); background: var(--surface-hover); }
+/* Sidebar rows own their highlight; nested controls should not paint a second tile. */
+.sidebar .sidebar-item-row > :is(.nav,.page-link,.branch-toggle,.branch-leaf-icon,.sidebar-menu-trigger):is(:hover,[aria-expanded=true]) { background: transparent; }
 .sidebar-section-heading { display: flex; align-items: center; justify-content: space-between; min-height: 26px; margin-bottom: 2px; }
 .sidebar-section-heading .workspace-label { margin-bottom: 0; }
 .sidebar-section-heading > .sidebar-menu-trigger, .vault-picker > .sidebar-menu-trigger { opacity: 1; }
@@ -665,8 +667,8 @@ html { scroll-padding-top: 72px; }
 .organization-branch.is-drop-target { background: var(--accent-soft); outline: 2px solid var(--accent); outline-offset: -2px; }
 .organization-branch.is-drop-target .container-link { color: var(--accent); }
 .organization-page-link { align-items: center; gap: 8px; font-size: 12px; min-width: 0; }
-.sidebar-unfiled-toggle > .icon:last-child { margin-left: auto; width: 11px; height: 11px; }
-.sidebar-unfiled-toggle[aria-expanded="true"] > .icon:last-child { transform: rotate(90deg); }
+.sidebar-page-row.is-current-page { background: var(--surface-hover); }
+.sidebar-page-row > .organization-page-link { margin: 0; }
 .sidebar .organization-page-link[aria-current="page"] { background: var(--surface-hover); color: var(--text); font-weight: 500; }
 .organization-page-link[aria-disabled="true"] { opacity: .5; }
 .organization-page-link .page-link-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; }
@@ -3535,3 +3537,9 @@ dialog.settings-modal .modal-header { position: static; margin: 0; flex-shrink: 
 
 .source-bookmarks{position:fixed;bottom:108px;left:50%;transform:translateX(-50%);z-index:27;width:min(600px,calc(100vw - 32px));max-height:60vh;overflow:auto;box-shadow:0 3px 16px #00000012}
 .source-bookmarks>header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+
+.sidebar-inline-name { flex: 1; min-width: 0; padding: 3px 5px 3px 4px; }
+.sidebar-inline-name input { width: 100%; min-width: 0; padding: 5px 6px; border: 1px solid var(--control-border); border-radius: 4px; background: var(--surface); color: var(--text); font: inherit; font-size: 12px; }
+.sidebar-inline-name input:focus { outline: 2px solid var(--control-border); outline-offset: 1px; }
+.sidebar-inline-name small { display: block; margin-top: 3px; color: var(--danger, #a12424); font-size: 11px; }
+.sidebar-rename-page-icon { display: flex; align-items: center; color: var(--text-muted); }

@@ -336,3 +336,33 @@ test('folder moves and collection membership changes use independent API operati
     assert.deepEqual(workspace.snapshot().organizationContext, {collection: 'reading', folder: ''});
   } finally { workspace.titler.dispose(); workspace.saver.dispose(); }
 });
+
+test('bulk Trash actions stay in Trash and retain failed notes for retry', async t => {
+  const org = {collections: [], folders: [], locations: [], memberships: [], favourites: []};
+  const page = id => ({id, vault_id: 'a', title: id, blocks: [], sourceIds: [], revision: 1, updated_at: ''});
+  const notes = ['one','two','three'].map(id => ({...page(id), deleted_at: new Date().toISOString(), expires_at: new Date(Date.now()+86400000).toISOString()}));
+  t.mock.method(api, 'vaults', async () => [{id:'a',name:'A',locked:false}]);
+  t.mock.method(api, 'pages', async () => []);
+  t.mock.method(api, 'entities', async () => []);
+  t.mock.method(api, 'organization', async () => org);
+  t.mock.method(api, 'trash', async () => notes);
+  const restored=[], deleted=[];
+  t.mock.method(api, 'restorePage', async (_vault,id) => {if(id==='two')throw new Error('Unavailable');restored.push(id);return page(id);});
+  t.mock.method(api, 'permanentlyDeletePage', async (_vault,id) => {deleted.push(id);if(id==='two')throw new Error('Unavailable');return {ok:true};});
+  const workspace = new Workspace();
+  try {
+    await workspace.selectVault('a');
+    await workspace.showTrash();
+    await assert.rejects(workspace.restorePages(['one','two','three','one']), /1 note.*Unavailable/);
+    assert.deepEqual(restored,['one','three']);
+    assert.equal(workspace.snapshot().view,'trash');
+    assert.equal(workspace.snapshot().page,null);
+    assert.deepEqual(workspace.snapshot().trash.map(note=>note.id),['two']);
+    assert.deepEqual(workspace.snapshot().pages.map(note=>note.id).sort(),['one','three']);
+    await workspace.refreshTrash();
+    await assert.rejects(workspace.permanentlyDeletePages(['one','two','three','one']), /1 note.*Unavailable/);
+    assert.deepEqual(deleted,['one','two','three']);
+    assert.deepEqual(workspace.snapshot().trash.map(note=>note.id),['two']);
+    assert.equal(workspace.snapshot().view,'trash');
+  } finally {workspace.saver.dispose();}
+});

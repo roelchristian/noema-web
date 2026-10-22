@@ -1,0 +1,52 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import React,{act} from 'react';
+import {createRoot} from 'react-dom/client';
+import {setupDOM} from './helpers/dom.mjs';
+import {TrashLibrary} from '../src/client/trash/TrashLibrary.tsx';
+
+test('Trash selects across layouts, confirms bulk deletion, and keeps failed selections for retry', async t => {
+  const env=setupDOM(t), {dom}=env;
+  const previous=Object.getOwnPropertyDescriptor(globalThis,'ResizeObserver');
+  Object.defineProperty(globalThis,'ResizeObserver',{configurable:true,value:class {observe(){}disconnect(){}}});
+  env.defer(()=>{if(previous)Object.defineProperty(globalThis,'ResizeObserver',previous);else delete globalThis.ResizeObserver;});
+  dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
+  dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
+  const root=createRoot(document.querySelector('#mount'));
+  env.defer(()=>act(async()=>root.unmount()));
+  const note=id=>({id,title:id,deleted_at:new Date().toISOString(),expires_at:new Date(Date.now()+86400000).toISOString()});
+  let notes=['one','two','three'].map(note), restored=[], deleted=[], release;
+  const props={vaultId:'test',onRestore:async()=>{},onDelete:async()=>{},onRefresh:async()=>{},onError:error=>{throw error;},
+    onRestoreSelected:async ids=>{restored=ids;await new Promise(resolve=>release=resolve);notes=notes.filter(note=>!ids.includes(note.id));render();},
+    onDeleteSelected:async ids=>{deleted.push(ids);notes=notes.filter(note=>note.id!=='one');render();if(ids.includes('one'))throw new Error('two unavailable');notes=[];render();}};
+  const render=()=>root.render(React.createElement(TrashLibrary,{...props,notes}));
+  const click=async selector=>{const target=document.querySelector(selector);assert.ok(target,selector);await act(async()=>target.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})));};
+  await act(async()=>render());
+  await click('[aria-label="Select one"]');
+  assert.equal(document.querySelector('.trash-select-all input').indeterminate,true);
+  await click('[aria-label="Grid view"]');
+  assert.equal(document.querySelector('[aria-label="Select one"]').checked,true);
+  await click('[aria-label="Select two"]');
+  await click('.organization-bulk-actions button:nth-child(2)');
+  assert.match(document.querySelector('dialog').textContent,/2 selected notes/);
+  assert.deepEqual(deleted,[]);
+  await click('.confirmation-cancel');
+  assert.equal(document.querySelector('dialog'),null);
+  await click('.organization-bulk-actions button:nth-child(2)');
+  await click('.confirmation-action');
+  assert.deepEqual(deleted,[['one','two']]);
+  assert.match(document.querySelector('[role="alert"]').textContent,/two unavailable/);
+  assert.equal(document.querySelector('[aria-label="Select two"]').checked,true);
+  await click('.confirmation-action');
+  assert.deepEqual(deleted,[['one','two'],['two']]);
+  assert.equal(document.querySelector('dialog'),null);
+  notes=['one','two','three'].map(note);await act(async()=>render());
+  assert.equal(document.querySelector('[aria-label="Select two"]').checked,false);
+  await click('.trash-select-all input');
+  await click('.organization-bulk-actions button:first-child');
+  assert.deepEqual(restored,['one','two','three']);
+  assert.ok([...document.querySelectorAll('.trash-library input')].every(input=>input.disabled));
+  await act(async()=>release());
+  assert.match(document.querySelector('.organization-empty').textContent,/Trash is empty/);
+  await env.close();
+});

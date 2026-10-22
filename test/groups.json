@@ -24,6 +24,7 @@
     "test/workspace.test.mjs"
   ],
   "dom": [
+    "test/trash-ui.test.mjs",
     "test/ai-activity-ui.test.mjs",
     "test/ai-activity-usage.test.mjs",
     "test/ai-cache-accounting-ui.test.mjs",
@@ -117,6 +118,7 @@
     "test/summary-freshness.test.mjs",
     "test/token-histogram.test.mjs",
     "test/trash.test.mjs",
-    "test/vault-backups.test.mjs"
+    "test/vault-backups.test.mjs",
+    "test/vault-storage.test.mjs"
   ]
 }

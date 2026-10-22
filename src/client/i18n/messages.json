@@ -8333,5 +8333,30 @@
     "Clé API et connexion",
     "API-Schlüssel und Verbindung",
     "Clave API y conexión"
+  ],
+  "Select all notes in Trash": [
+    "Sélectionner toutes les notes dans la corbeille",
+    "Alle Notizen im Papierkorb auswählen",
+    "Seleccionar todas las notas de la papelera"
+  ],
+  "Selected Trash actions": [
+    "Actions sur la sélection dans la corbeille",
+    "Aktionen für ausgewählte Notizen im Papierkorb",
+    "Acciones para la selección de la papelera"
+  ],
+  "Restore selected": [
+    "Restaurer la sélection",
+    "Auswahl wiederherstellen",
+    "Restaurar selección"
+  ],
+  "Delete selected permanently": [
+    "Supprimer définitivement la sélection",
+    "Auswahl endgültig löschen",
+    "Eliminar selección permanentemente"
+  ],
+  "{count} selected notes will be permanently deleted. This cannot be undone.": [
+    "Les {count} notes sélectionnées seront définitivement supprimées. Cette action est irréversible.",
+    "Die {count} ausgewählten Notizen werden endgültig gelöscht. Dies kann nicht rückgängig gemacht werden.",
+    "Se eliminarán permanentemente las {count} notas seleccionadas. Esta acción no se puede deshacer."
   ]
 }

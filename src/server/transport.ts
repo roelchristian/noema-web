@@ -1,3 +1,4 @@
+import {vaultStorage} from './modules/vault-storage.js';
 import type {NetworkAccess} from './network-settings.js';
 import {sourcePageRoutes} from './routes/source-pages.js';
 import {reviewTexts,parseEditorReview} from './modules/editor-review.js';
@@ -243,6 +244,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           if(parts.length===3 && id==='validate' && method==='POST') {await intelligence.generate({kind:'validation',onRequest:bytes=>activity.request(activityId!,bytes,null)});return send(200,{ok:true,...intelligence.selection()});}
           throw new HttpError(404,'Not found');
         } else if(collection==='vaults') {
+          if(id && parts.length===4 && method==='GET' && child==='storage')return send(200,await vaultStorage(store,id,url.searchParams.get('category') ?? undefined));
           if(id && parts.length===4 && method==='PUT' && child==='passphrase')return send(200,vaults.setPassphrase(id,body));
           if(parts.length===2 && method==='GET')return send(200,vaults.list());
           if(parts.length===2 && method==='POST')return send(201,vaults.create(body));

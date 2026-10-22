@@ -75,9 +75,9 @@ test('shared aliases are flagged and can resolve one instance or all matching in
   assert.deepEqual(first.ambiguous[0].entityIds, ['donald', 'ivanka']);
   const one = identifyEntityMentions(blocks, [donald, ivanka], 'default', {match: first.ambiguous[1], entityId: 'ivanka'});
   assert.equal(one.count, 1);
-  assert.deepEqual(one.blocks[0].content, [{text: 'Trump spoke. '}, {entityId: 'ivanka', mentionText: 'Trump'}, {text: ' listened.'}]);
-  assert.equal(identifyEntityMentions(one.blocks, [donald, ivanka], 'default').ambiguous.length, 0);
-  assert.equal(identifyEntityMentions(one.blocks, [donald, ivanka], 'default').count, 2);
+  assert.deepEqual(one.blocks[0].content, [{text: 'Trump spoke. '}, {entityId: 'ivanka', mentionText: 'Trump', skipAutoTag:true}, {text: ' listened.'}]);
+  assert.equal(identifyEntityMentions(one.blocks, [donald, ivanka], 'default').ambiguous.length, 2);
+  assert.equal(identifyEntityMentions(one.blocks, [donald, ivanka], 'default').count, 0);
   const all = identifyEntityMentions(one.blocks, [donald, ivanka], 'default', {match: first.ambiguous[0], entityId: 'donald', all: true});
   assert.equal(all.count, 2); assert.equal(all.ambiguous.length, 0);
   assert.equal(all.blocks[0].content[2].entityId, 'ivanka');
@@ -99,7 +99,7 @@ test('aliases work across styled segments and alias collisions with canonical na
   const first = identifyEntityMentions(input, entities, 'default');
   assert.equal(first.ambiguous.length, 1);
   const result = identifyEntityMentions(input, entities, 'default', {match: first.ambiguous[0], entityId: 'a'});
-  assert.deepEqual(result.blocks[0].content, [{entityId: 'a', mentionText: 'The Donald'}, {text: ' today.', italic: true}]);
+  assert.deepEqual(result.blocks[0].content, [{entityId: 'a', mentionText: 'The Donald', skipAutoTag:true}, {text: ' today.', italic: true}]);
   const {exact, results} = annotationSuggestions([donald, ivanka], 'Trump', 'trump');
   assert.deepEqual(exact.map(item => item.id), ['donald', 'ivanka']); assert.equal(results.length, 2);
   assert.equal(annotationSuggestions([donald], 'arbitrary highlighted text', 'donald').results[0].id, 'donald');

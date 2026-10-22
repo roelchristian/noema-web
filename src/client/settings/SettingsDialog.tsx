@@ -1,3 +1,4 @@
+import {StorageSettings} from './StorageSettings';
 import {t as uiText} from '../i18n';
 import {interfaceLanguages,useInterfaceLanguage} from '../i18n';
 import type {PageReference} from '../../shared/embeddings';
@@ -19,6 +20,7 @@ const settingsTabs = [
   {id: 'images', get label(){return uiText("Images")}},
   {id: 'knowledge', get label(){return uiText("Entities")}},
   {id: 'intelligence', get label(){return uiText("AI")}},
+  {id: 'storage', get label(){return uiText("Storage")}},
   {id: 'security', get label(){return uiText("Security")}},
 ] as const;
 
@@ -116,6 +118,9 @@ export function SettingsDialog({appearance, onChange, storageError, onClose, onO
         {tab === 'intelligence' && <details className="settings-advanced"><summary>{uiText("AI diagnostics")}</summary><AIDebugSettings/></details>}
         {tab === 'intelligence' && <details className="settings-advanced"><summary>{uiText("Search indexing")}</summary><EmbeddingSettings onOpenPassage={onOpenPassage} key={vault?.id} vault={vault} onOpenPage={onOpenPage} onOpenEntity={onOpenEntity}/></details>}
         <section className="settings-section settings-activity-entry"><div><h3>{uiText("AI activity log")}</h3></div><button className="button" aria-haspopup="dialog" onClick={() => setActivityOpen(true)}>{uiText("Open activity log")}</button></section>
+      </div>
+      <div id="settings-panel-storage" role="tabpanel" aria-labelledby="settings-tab-storage" hidden={tab !== 'storage'}>
+        {tab === 'storage' && <StorageSettings key={vault?.id} vault={vault}/>}
       </div>
       <div id="settings-panel-security" role="tabpanel" aria-labelledby="settings-tab-security" hidden={tab !== 'security'}>
         {tab === 'security' && <SecuritySettings key={vault?.id} vault={vault} onChangePassphrase={onChangePassphrase} onBeforeNetworkChange={onBeforeNetworkChange}/>}

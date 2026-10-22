@@ -14,7 +14,7 @@ export function ModalHeader({titleId, children, actions, leading, closeDisabled=
     <div className="modal-header-actions">{actions}<button type="button" className="modal-close" disabled={closeDisabled} aria-label={uiText(closeLabel)} title={uiText(closeLabel)} onClick={onClose}><Icon name="close"/></button></div>
   </header>;
 }
-export function Modal({children, onClose, titleId, className, dismissOnBackdrop = false}: {children: ReactNode; onClose: () => void; titleId: string; className?: string; dismissOnBackdrop?: boolean}) {
+export function Modal({children, onClose, titleId, className, dismissOnBackdrop = false, initialFocus}: {children: ReactNode; onClose: () => void; titleId: string; className?: string; dismissOnBackdrop?: boolean; initialFocus?: string}) {
   const ref = useRef<HTMLDialogElement>(null);
   const backdropPointerDown = useRef(false);
   function isBackdrop(event: {target: EventTarget; currentTarget: HTMLDialogElement; clientX: number; clientY: number}) {
@@ -22,7 +22,7 @@ export function Modal({children, onClose, titleId, className, dismissOnBackdrop 
     const bounds = event.currentTarget.getBoundingClientRect();
     return event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom;
   }
-  useEffect(() => { const dialog = ref.current!; dialog.showModal(); return () => dialog.close(); }, []);
+  useEffect(() => { const dialog = ref.current!; dialog.showModal(); if(initialFocus)dialog.querySelector<HTMLElement>(initialFocus)?.focus(); return () => dialog.close(); }, []);
   return <dialog ref={ref} className={['noema-modal',className].filter(Boolean).join(' ')} aria-labelledby={titleId}
     onPointerDown={event => { backdropPointerDown.current = isBackdrop(event); }}
     onPointerCancel={() => { backdropPointerDown.current = false; }}

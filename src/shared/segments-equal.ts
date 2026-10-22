@@ -8,7 +8,7 @@ export function segmentsEqual(left: Segment[], right: Segment[]) {
     // Adjacent citation order is presentation; preserve the editor's content equality.
     for (const segment of sortCitationRuns(content,(left,right)=>left.id.localeCompare(right.id))) {
       if (segment.entityId) {
-        result.push({entity: segment.entityId, value: segment.mentionText ?? '', marks: ''});
+        result.push({entity: segment.entityId, value: segment.mentionText ?? '', marks: segment.skipAutoTag ? 'occurrence' : ''});
         continue;
       }
       const value = segment.text ?? '';

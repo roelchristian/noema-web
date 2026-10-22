@@ -7,7 +7,7 @@ const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 export interface AmbiguousEntityMatch { id: string; text: string; context: string; entityIds: string[] }
 export interface EntityMatchResolution { match: AmbiguousEntityMatch; entityId: string; all?: boolean }
 export function linkedEntityIds(blocks: Block[]) {
-  return new Set(blocks.filter(block => block.type !== 'math' && block.type !== 'image').flatMap(block => blockSegments(block).flatMap(segment => segment.entityId ? [segment.entityId] : [])));
+  return new Set(blocks.filter(block => block.type !== 'math' && block.type !== 'image').flatMap(block => blockSegments(block).flatMap(segment => segment.entityId && !segment.skipAutoTag ? [segment.entityId] : [])));
 }
 
 /** Deterministic links for unique names and aliases; collisions are returned for review. */
@@ -54,6 +54,7 @@ export function identifyEntityMentions(blocks: Block[], entities: Entity[], vaul
       let start = 0;
       for (const match of text.matchAll(pattern)) {
         const matches = names.get(normalizeEntityName(match[0])) ?? [];
+        let occurrenceOnly = false;
         let entity = matches.length === 1 ? matches[0] : undefined;
         if (matches.some(item=>item.type==='concept') && ordinaryConceptUse(text,match.index!,match[0].length,normalizeEntityName(match[0]))) continue;
         const needsReview=matches.some(item=>item.type==='concept' && conceptAliasNeedsReview(match[0]));
@@ -62,14 +63,14 @@ export function identifyEntityMentions(blocks: Block[], entities: Entity[], vaul
           const candidate: AmbiguousEntityMatch = {id: `${location}:${runStart}:${match.index}`, text: match[0], context: text.slice(Math.max(0, match.index! - 45), match.index! + match[0].length + 45), entityIds: matches.map(item => item.id)};
           const explicit = resolution && (resolution.all ? normalizeEntityName(candidate.text) === normalizeEntityName(resolution.match.text) : candidate.id === resolution.match.id && candidate.text === resolution.match.text);
           const onPage = matches.filter(item => pageContext.has(item.id));
-          if (explicit) entity = matches.find(item => item.id === resolution.entityId);
+          if (explicit) {entity = matches.find(item => item.id === resolution.entityId); occurrenceOnly = !resolution.all;}
           else if (!needsReview && !matches.some(item=>item.type==='concept') && onPage.length === 1) entity = onPage[0];
           if (!entity) ambiguous.push(candidate);
           else resolved.push(candidate);
         }
         if (!entity) continue;
         appendText(start, match.index!);
-        output.push({entityId: entity.id, mentionText: match[0]}); added++;
+        output.push({entityId: entity.id, mentionText: match[0], ...(occurrenceOnly ? {skipAutoTag: true} : {})}); added++;
         start = match.index! + match[0].length;
       }
       appendText(start, text.length);

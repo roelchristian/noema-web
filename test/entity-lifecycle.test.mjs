@@ -112,3 +112,24 @@ test('archived identities cannot be accepted from legacy scans or silently recre
  const count=f.knowledge.list('default').length;saveSourceAuthors(f.store,'default',f.source.id,[{name:f.person.name,type:'person'}]);
  assert.equal(f.knowledge.list('default').length,count);assert.ok(f.knowledge.detail('default',f.source.id).properties.some(property=>property.name==='author'&&property.value===f.person.name&&!property.target_id));
 });
+
+test('archive integration preserves occurrence-only links and excluded text through saves, restoration and vault import',async t=>{
+ const {linkedEntityIds}=await import('../src/shared/auto-entities.ts'),{VaultBackups}=await import('../src/server/modules/vault-backups.ts');
+ const f=await lifecycleFixture();t.after(()=>f.close());
+ f.knowledge.addAlias('default',f.peer.id,{alias:f.person.name});
+ let page=f.pages.create('default',{title:'Synthetic historical occurrence'});
+ page=f.pages.update('default',page.id,{...page,blocks:[{id:'occurrence-body',type:'paragraph',content:[{entityId:f.person.id,mentionText:'Archivist',skipAutoTag:true},{text:' Synthetic Archivist listened. '},{text:'Synthetic Archivist',skipAutoTag:true}]}]});
+ const original=page.blocks,match=new EntityMatches(f.store,f.pages,f.knowledge),before=match.get('default',page.id);
+ assert.equal(linkedEntityIds(page.blocks).has(f.person.id),false);assert.equal(before.matches.length,1);
+ const state=f.lifecycle.preview('default',f.person.id),archived=f.lifecycle.change('default',f.person.id,false,state.version);
+ const during=match.get('default',page.id);assert.notEqual(during.key,before.key);assert.ok(during.matches.every(item=>!item.entityIds.includes(f.person.id)));
+ const tagged=identifyEntityMentions(page.blocks,f.knowledge.list('default'),'default');assert.deepEqual(tagged.blocks[0].content[0],original[0].content[0]);assert.deepEqual(tagged.blocks[0].content.at(-1),original[0].content.at(-1));
+ assert.equal(mentionMatches(f.knowledge.list('default'),f.person.name).some(entity=>entity.id===f.person.id),false);
+ page=f.pages.update('default',page.id,{...page,title:page.title+' saved while archived'});assert.deepEqual(page.blocks,original);
+ const fresh=f.lifecycle.preview('default',f.person.id);f.lifecycle.change('default',f.person.id,true,fresh.version);
+ assert.deepEqual(f.pages.get('default',page.id).blocks,original);assert.equal(match.get('default',page.id).matches.length,1);assert.equal(linkedEntityIds(page.blocks).has(f.person.id),false);
+ const backups=new VaultBackups(f.store),backup=await backups.export('default'),restored=await backups.import(backup.bytes,'Synthetic occurrence import');
+ const imported=f.pages.list(restored.id).find(item=>item.title===page.title),blocks=f.pages.get(restored.id,imported.id).blocks;
+ assert.equal(blocks[0].content[0].skipAutoTag,true);assert.equal(blocks[0].content[2].skipAutoTag,true);assert.equal(blocks[0].content[0].mentionText,'Archivist');assert.equal(linkedEntityIds(blocks).size,0);
+ assert.equal(identifyEntityMentions(blocks,f.knowledge.list(restored.id),restored.id).ambiguous.length,1);
+});

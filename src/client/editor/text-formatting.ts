@@ -34,13 +34,35 @@ export function applyEditorTextFormat(root:HTMLElement,range:Range,command:TextF
   }
   const ranges=editorSelectionRanges(root,range);
   if(!ranges.length)return false;
-  const original=range.cloneRange();
+  // execCommand can split/reparent the boundary text nodes and collapse cloned
+  // DOM ranges. Keep logical text offsets inside each editable instead.
+  const bookmarks=ranges.map(part=>{
+    const element=part.startContainer instanceof Element?part.startContainer:part.startContainer.parentElement;
+    const host=element!.closest<HTMLElement>('.block-content[contenteditable="true"]')!;
+    const offset=(node:Node,index:number)=>{const prefix=document.createRange();prefix.selectNodeContents(host);prefix.setEnd(node,index);return prefix.toString().length;};
+    return {host,start:offset(part.startContainer,part.startOffset),end:offset(part.endContainer,part.endOffset)};
+  });
+  function point(host:HTMLElement,offset:number,end=false):[Node,number] {
+    const walker=document.createTreeWalker(host,NodeFilter.SHOW_TEXT);
+    let node:Node|null,last:Node=host;
+    while((node=walker.nextNode())) {
+      const size=node.textContent?.length??0;
+      if(offset<size || end&&offset===size)return [node,offset];
+      offset-=size;last=node;
+    }
+    return [last,last===host?host.childNodes.length:last.textContent?.length??0];
+  }
   const enable=!ranges.every(part=>restore(part)&&document.queryCommandState(command));
   root.dataset.formattingTransaction='true';
   try {
     for(const part of ranges)if(restore(part)&&document.queryCommandState(command)!==enable)document.execCommand(command);
   } finally {delete root.dataset.formattingTransaction;}
-  restore(original);
-  if(ranges.length>1)setEditorSelectionRange(root,original);
+  const first=bookmarks[0],last=bookmarks.at(-1)!;
+  if(first.host.isConnected&&last.host.isConnected) {
+    const restored=document.createRange();
+    restored.setStart(...point(first.host,first.start));restored.setEnd(...point(last.host,last.end,true));
+    restore(restored);
+    if(ranges.length>1)setEditorSelectionRange(root,restored);
+  }
   onCommit();return true;
 }

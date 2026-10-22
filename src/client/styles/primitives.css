@@ -1,0 +1,493 @@
+/* primitives: owned rules; conditional/state variants stay with their owner. */
+code, pre, kbd, samp {
+  font-family: var(--font-mono);
+}
+:root {
+  font-size: 17px;
+  font-family: var(--font-ui);
+  background: #fff
+}
+* {
+  box-sizing: border-box
+}
+body {
+  margin: 0;
+  display: flex;
+  min-height: 100vh;
+  font-size: var(--ui-text-body)
+}
+button,input,select,textarea {
+  font: inherit;
+  color: inherit
+}
+button {
+  cursor: pointer
+}
+button:disabled {
+  opacity: .5;
+  cursor: wait
+}
+button,a,input,textarea,select {
+  outline-color: #7d7d7d
+}
+button {
+  border: 0;
+  background: none
+}
+a {
+  color: inherit;
+  text-decoration: none
+}
+[hidden] {
+  display: none!important
+}
+.button {
+  border: 1px solid var(--button-border);
+  background: var(--button-surface);
+  padding: var(--button-padding);
+  border-radius: var(--radius-sm);
+  font-size: var(--ui-text-md)
+}
+.button:hover {
+  background: var(--button-surface-hover)
+}
+.button.small {
+  padding: var(--button-padding-small);
+  font-size: var(--ui-text-sm)
+}
+select,input:not([type=checkbox]),textarea {
+  max-width: 100%
+}
+#toast {
+  position: fixed;
+  bottom: 25px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 13px 22px;
+  border-radius: 7px;
+  background: #343434;
+  color: white;
+  z-index: 100;
+  font-size: 13px;
+  box-shadow: 0 5px 30px #0002
+}
+:root {
+  color: #202020;
+  font-synthesis: none
+}
+.button:focus-visible,select:focus-visible,input:focus-visible {
+  outline: var(--focus-width) solid #888;
+  outline-offset: var(--focus-offset-control)
+}
+.icon {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  vertical-align: -3px;
+  pointer-events: none
+}
+#root {
+  display: flex;
+  min-height: 100vh;
+  width: 100%
+}
+.select-control {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: middle
+}
+select.select-native {
+  position: absolute!important;
+  width: 1px!important;
+  height: 1px!important;
+  padding: 0!important;
+  margin: 0!important;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden
+}
+.select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-2) var(--space-2-5);
+  border: 1px solid var(--select-border);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--select-text);
+  font-size: var(--ui-text-md);
+  line-height: 21px;
+  text-align: left;
+  box-shadow: var(--shadow-control);
+  transition: background .12s,border-color .12s,box-shadow .12s
+}
+.select-trigger:hover {
+  background: var(--select-surface-hover);
+  border-color: var(--select-border-hover)
+}
+.select-trigger[aria-expanded=true] {
+  background: var(--select-surface-expanded);
+  border-color: var(--select-border-expanded)
+}
+.select-trigger:focus-visible {
+  outline: var(--focus-width) solid var(--select-focus);
+  outline-offset: var(--focus-offset-control)
+}
+.select-trigger:disabled {
+  cursor: default;
+  background: var(--select-surface-disabled);
+  box-shadow: none
+}
+.select-value {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis
+}
+.select-chevron {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  margin: 0 3px 3px 0;
+  border-right: 1.5px solid #989892;
+  border-bottom: 1.5px solid #989892;
+  transform: rotate(45deg)
+}
+.select-menu {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 5px;
+  border: 1px solid var(--select-menu-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  color: var(--select-text);
+  box-shadow: var(--shadow-menu);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font: var(--ui-text-lg)/1.4 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif
+}
+.select-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: var(--control-target-regular);
+  padding: 7px 9px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  overflow-wrap: anywhere
+}
+.select-option.is-active {
+  background: #f1f1ef
+}
+.select-option[aria-selected=true] {
+  font-weight: 550
+}
+.select-option[aria-disabled=true] {
+  opacity: .4;
+  cursor: default
+}
+.select-check {
+  flex: none;
+  width: 14px;
+  font-size: var(--ui-text-lg);
+  color: #787871
+}
+@media(max-width:500px) {
+  .select-chevron {
+    width: 5px;
+    height: 5px;
+    margin-right: 1px
+  }
+}
+.toast-close {
+  margin-left: 14px;
+  color: inherit;
+  font-size: 18px
+}
+.loading-state {
+  padding: 60px;
+  color: #888
+}
+.select-host {
+  display: contents
+}
+.button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.button.primary:hover {
+  background: var(--accent);
+  filter: brightness(1.15);
+}
+button:focus-visible, .button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, .mention:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+:root {
+  color-scheme: light;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+body, main {
+  background: var(--surface);
+}
+.button.primary {
+  color: var(--accent-foreground);
+}
+html {
+  scroll-padding-top: 72px;
+}
+@keyframes scan-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes image-upload-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes image-upload-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(390%);
+  }
+}
+#root .spotlight-search-input input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 21px;
+  line-height: 1.5;
+  outline: none;
+}
+@media (max-width: 500px) {
+  #root .spotlight-search-input input {
+    font-size: 18px;
+  }
+}
+@keyframes review-confirmation-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes review-row-confirm {
+  from {
+    background: var(--accent-soft);
+  }
+  to {
+    background: transparent;
+  }
+}
+:root[data-focused-reading=true] .page .block-content .mention[data-entity] {
+  display: inline;
+  background: transparent;
+  color: inherit;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  font-size: inherit;
+  line-height: inherit;
+  font-style: inherit;
+  filter: none;
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--text-muted) 50%, transparent);
+  text-underline-offset: 3px;
+  text-decoration-skip-ink: auto;
+}
+:root[data-focused-reading=true] .page .block-content .mention[data-entity]:hover {
+  text-decoration-color: var(--text-muted);
+}
+:root[data-focused-reading=true] .page .block-content .mention[data-entity] .icon {
+  display: none;
+}
+.select-menu, .sidebar-action-menu {
+  overscroll-behavior: contain;
+  scroll-padding: 5px;
+}
+@media (max-width: 750px) {
+  body, #root {
+    min-height: 100dvh;
+  }
+  #root {
+    min-width: 0;
+  }
+  body:has(.workspace-navigation:modal) {
+    overflow: hidden;
+  }
+  .button, .button.small, .select-trigger, .select-option, .sidebar-action-menu > button {
+    min-height: var(--touch-target-size);
+  }
+  #root input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=range]),
+  #root textarea, dialog input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=range]),
+  dialog textarea, #entity-form textarea {
+    font-size: 17px;
+  }
+  body:has(.mobile-selection-sheet[open]) {
+    overflow: hidden;
+  }
+}
+@keyframes block-drop-line-in {
+  from {
+    opacity: 0;
+    scale: .96 1;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+@keyframes block-preview-in {
+  from {
+    opacity: 0;
+    scale: .97;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+@keyframes sidebar-children-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+:root[data-mode=dark] .button.primary {
+  background: var(--action-surface);
+  border-color: var(--action-border);
+  color: var(--text);
+}
+:root[data-mode=dark] .button.primary:hover:not(:disabled) {
+  background: var(--action-surface-hover);
+  border-color: var(--action-border);
+  color: var(--text);
+  filter: none;
+}
+:root[data-mode=dark] .select-menu {
+  box-shadow: var(--shadow-menu-dark);
+}
+:root[data-mode=dark] .select-trigger:disabled {
+  background: var(--surface);
+  color: var(--text-muted);
+}
+:root[data-mode=dark] .select-trigger:focus-visible {
+  outline-color: var(--accent);
+}
+:root[data-mode=dark] .select-check {
+  color: var(--text-muted);
+}
+:root[data-mode=dark] .select-chevron {
+  border-color: var(--text-muted);
+}
+:root[data-mode=dark] input:is([type=checkbox],[type=radio]) {
+  accent-color: color-mix(in srgb,var(--accent) 45%,var(--surface-hover));
+}
+@keyframes view-mode-icon-in {
+  from {
+    opacity: .6;
+    scale: .9;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+@keyframes block-action-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes block-action-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes block-action-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes block-action-page-in {
+  from {
+    opacity: 0;
+    transform: translateX(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes source-page-pulse {
+  from {
+    opacity: .45;
+  }
+  to {
+    opacity: 1;
+  }
+}
+:root {
+  --citation-jump-highlight: rgba(242, 210, 96, .24);
+}
+@keyframes knowledge-working {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@property --sidebar-reading-fade {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+@keyframes page-toc-guide-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes writing-review-fade {
+  to {
+    opacity: 0
+  }
+}

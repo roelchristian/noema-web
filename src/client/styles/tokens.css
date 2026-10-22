@@ -135,3 +135,45 @@
     --workspace-toolbar-height: 48px;
   }
 }
+
+/* Status meanings are independent of accent selection and entity palettes.
+ * Text pairs exceed 4.5:1 on their subdued surface and the workspace surface. */
+:root {
+  --status-danger-text: #a52e2e;
+  --status-danger-bg: #fbecec;
+  --status-danger-border: #c66c6c;
+  --status-warning-text: #77551e;
+  --status-warning-bg: #faf2df;
+  --status-warning-border: #a48745;
+  --status-success-text: #35563c;
+  --status-success-bg: #eaf2e9;
+  --status-success-border: #719779;
+  --status-info-text: #305580;
+  --status-info-bg: #eaf1fa;
+  --status-info-border: #7397bf;
+  --danger: var(--status-danger-text);
+
+  /* Hit rectangles, separate from glyph sizes and form-field heights. */
+  --control-target-compact: var(--control-height-sm);
+  --control-target-regular: var(--control-height-lg);
+}
+:root[data-mode=dark] {
+  --status-danger-text: #f08a8a;
+  --status-danger-bg: #40282b;
+  --status-danger-border: #bd696e;
+  --status-warning-text: #ead39d;
+  --status-warning-bg: #423722;
+  --status-warning-border: #a38b50;
+  --status-success-text: #b9dbbe;
+  --status-success-bg: #263a2c;
+  --status-success-border: #739b7b;
+  --status-info-text: #bed6f5;
+  --status-info-bg: #27374c;
+  --status-info-border: #7498c2;
+}
+@media (max-width: 750px), (pointer: coarse) {
+  :root {
+    --control-target-compact: var(--touch-target-size);
+    --control-target-regular: var(--touch-target-size);
+  }
+}

@@ -1,0 +1,324 @@
+/* menus: owned rules; conditional/state variants stay with their owner. */
+.command-menu {
+  position: fixed;
+  z-index: 40;
+  width: 310px;
+  max-height: 350px;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #e4e4e4
+}
+.menu-label {
+  font-size: 10px;
+  letter-spacing: 1.3px;
+  color: #7e7e7e;
+  padding: 9px
+}
+.command-menu button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 9px;
+  font-size: 13px
+}
+.menu-icon {
+  font-size: 19px;
+  color: #6c6c6c;
+  width: 28px;
+  text-align: center
+}
+.command-menu small {
+  display: block;
+  font-size: 11px;
+  color: #808080;
+  margin-top: 4px
+}
+.command-menu button.highlight {
+  background: #f1f1f1
+}
+.command-menu {
+  border-color: #e7e7e4;
+  border-radius: 8px;
+  box-shadow: 0 4px 18px #00000014,0 12px 32px #0000000a;
+  padding: 5px
+}
+.command-menu button {
+  border-radius: 4px
+}
+.command-menu button.highlight,.command-menu button:hover {
+  background: #f1f1ef
+}
+:root[data-mode=dark] :is(dialog, .entity-panel, .command-menu, .page-tools-popover, .entity-card, .theme-option, .item-organization) {
+  background: var(--surface-raised);
+  border-color: var(--control-border);
+  color: var(--text);
+}
+:root[data-mode=dark] :is(.nav:hover, .page-link:hover, .entity-card:hover, .button:not(.primary):hover, .page-tool:hover, .page-tool[aria-expanded=true], .settings-close:hover, .command-menu button.highlight, .command-menu button:hover) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.sidebar-action-menu {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  min-width: 210px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+  border: 1px solid var(--control-border);
+  background: var(--surface-raised);
+  color: var(--text);
+}
+.sidebar-action-menu::backdrop {
+  background: transparent;
+}
+.sidebar-action-menu > button {
+  display: flex;
+  align-items: center;
+  text-align: left;
+  width: 100%;
+  font-size: 13px;
+  color: inherit;
+}
+.sidebar-action-menu > button:hover, .sidebar-action-menu > button:focus-visible {
+  background: var(--surface-hover);
+  outline: none;
+}
+.sidebar-action-menu > button .icon {
+  width: 15px;
+  height: 15px;
+}
+.sidebar-action-menu {
+  border-color: var(--line);
+  border-radius: 11px;
+  padding: 6px;
+  box-shadow: 0 8px 30px #00000016, 0 2px 6px #0000000a;
+}
+.sidebar-action-menu > button {
+  min-height: 36px;
+  padding: 9px 10px;
+  border-radius: 6px;
+  gap: 10px;
+}
+@media (max-width: 750px) {
+  .command-menu, .block-menu {
+    max-width: calc(100vw - 16px);
+    max-height: min(350px, 60dvh);
+    overflow-y: auto;
+  }
+  .mobile-block-sheet header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 4px 12px 0;
+    background: var(--surface-raised);
+  }
+  .mobile-block-sheet header h2 {
+    margin: 0;
+    font: 600 17px/1.4 var(--font-ui);
+    color: inherit;
+  }
+  .mobile-block-sheet header button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    color: var(--text-muted);
+  }
+  .mobile-block-sheet-options {
+    padding: 8px 12px max(16px, env(safe-area-inset-bottom));
+  }
+  .mobile-block-sheet-options > button {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 44px;
+    padding: 8px 12px;
+    text-align: left;
+    border-radius: 8px;
+    font-size: 16px;
+  }
+  .mobile-block-sheet-options > button:hover, .mobile-block-sheet header button:hover {
+    background: var(--surface-hover);
+  }
+  .mobile-block-sheet-options > button:disabled {
+    cursor: default;
+  }
+  .mobile-block-sheet-options .menu-icon {
+    display: flex;
+    justify-content: center;
+    flex: none;
+    width: 26px;
+    margin: 0;
+  }
+  .mobile-block-sheet-options > button > span:last-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .mobile-block-sheet-options small {
+    display: block;
+    margin-top: 3px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-muted);
+  }
+}
+.sidebar-action-menu > button.action-menu-back {
+  color: var(--text-muted);
+}
+.action-menu-back > .icon {
+  transform: rotate(180deg);
+}
+.action-menu-heading {
+  padding: 8px 10px 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.action-menu-description {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.sidebar-action-menu .action-menu-child-arrow {
+  display: inline-flex;
+  margin-left: auto;
+  flex: none;
+}
+.sidebar-action-menu {
+  white-space: normal;
+}
+.action-menu-text {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.sidebar-action-menu > button[data-has-description] {
+  align-items: flex-start;
+}
+.sidebar-action-menu > button[data-has-description] > .icon {
+  margin-top: 2px;
+}
+.action-menu-description {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+:is(.command-menu, .mobile-block-sheet-options) > button > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+:is(.command-menu, .mobile-block-sheet-options) .menu-submenu-arrow {
+  display: inline-flex;
+  flex: none;
+  margin-left: auto;
+  color: var(--text-muted);
+}
+:is(.command-menu, .mobile-block-sheet-options) > button.is-danger .menu-icon {
+  color: inherit;
+}
+:is(.command-menu.block-action-menu, .sidebar-action-menu) {
+  width: 240px;
+  min-width: 0;
+  max-width: calc(100vw - 16px);
+  max-height: min(350px, calc(100dvh - 16px));
+  padding: 4px;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: 0 4px 18px #00000014, 0 12px 32px #0000000a;
+  transform-origin: top left;
+}
+.command-menu.block-action-menu, .sidebar-action-menu:popover-open {
+  animation: block-action-menu-in 140ms cubic-bezier(.2,.8,.2,1) both;
+}
+.block-action-menu > button, .mobile-block-sheet-options > button {
+  transition: background-color 100ms ease, color 100ms ease;
+}
+.mobile-block-sheet-options {
+  animation: block-action-page-in 120ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .block-action-menu, dialog.mobile-block-sheet[open], dialog.mobile-block-sheet[open]::backdrop, .mobile-block-sheet-options {
+    animation: none;
+  }
+  .block-action-menu > button, .mobile-block-sheet-options > button {
+    transition: none;
+  }
+}
+.block-action-menu > button {
+  gap: 8px;
+  padding: 7px 8px;
+}
+.block-action-menu .menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+}
+.block-action-menu .menu-icon > .icon {
+  width: 16px;
+  height: 16px;
+}
+:is(.block-action-menu, .sidebar-action-menu) > button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 7px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  transition: background-color 100ms ease, color 100ms ease;
+}
+.sidebar-action-menu > button > .icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-inline: 2px;
+}
+.sidebar-action-menu .action-menu-child-arrow .icon {
+  width: 14px;
+  height: 14px;
+}
+:is(.block-action-menu, .sidebar-action-menu) > button:is(:hover, :focus-visible, .highlight) {
+  background: var(--surface-hover);
+}
+.sidebar-action-menu > button.danger {
+  margin-top: 0;
+  border-top: 0;
+  border-radius: 4px;
+  padding: 7px 8px;
+}
+@media (max-width: 750px) {
+  .sidebar-action-menu > button {
+    min-height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .command-menu.block-action-menu, .sidebar-action-menu:popover-open {
+    animation: none;
+  }
+  :is(.block-action-menu, .sidebar-action-menu) > button {
+    transition: none;
+  }
+}
+:is(.command-menu, .mobile-block-sheet-options) > button > span > small {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font: 11px/1.4 var(--font-ui);
+}

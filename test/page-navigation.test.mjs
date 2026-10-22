@@ -103,3 +103,27 @@ test('offline cached navigation stays usable and vault switches clear cached bod
  const navigation=workspace.openPage('one');assert.equal(workspace.snapshot().page,null);assert.equal(workspace.snapshot().loadingPageId,'one');
  pending.resolve(page('one','b'));await navigation;assert.equal(workspace.snapshot().page.vault_id,'b');
 });
+
+test('precise navigation awaits fresh bodies for cached and currently displayed pages',async t=>{
+ const {workspace}=await fixture(t);await workspace.openPage('two');
+ const pending=deferred();const request=t.mock.method(api,'page',()=>pending.promise);
+ let completed=false;const navigation=workspace.openPage('one',{fresh:true}).then(()=>{completed=true;});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(request.mock.callCount(),1);assert.equal(completed,false);assert.equal(workspace.snapshot().page.id,'two');assert.equal(workspace.snapshot().loadingPageId,'one');
+ pending.resolve({...page('one'),revision:7,title:'Current saved body'});await navigation;
+ assert.equal(workspace.snapshot().page.revision,7);assert.equal(workspace.snapshot().page.title,'Current saved body');
+ const same=deferred();request.mock.mockImplementation(()=>same.promise);
+ completed=false;const reselect=workspace.openPage('one',{fresh:true}).then(()=>{completed=true;});await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(request.mock.callCount(),2);assert.equal(completed,false);assert.equal(workspace.snapshot().page.revision,7);
+ same.resolve({...page('one'),revision:8});await reselect;assert.equal(workspace.snapshot().page.revision,8);
+});
+
+test('fresh mention navigation protects drafts when writes fail even for cached targets and the current page',async t=>{
+ const {workspace}=await fixture(t);await workspace.openPage('two');workspace.updatePage({title:'Unsaved precise navigation draft'});
+ const request=t.mock.method(api,'page',async()=>{throw new Error('Fetch must wait for saved drafts');});
+ t.mock.method(api,'savePage',async()=>{throw new Error('Save unavailable');});
+ for(const id of ['one','two']){
+  await assert.rejects(workspace.openPage(id,{fresh:true}),/Save unavailable/);
+  assert.equal(request.mock.callCount(),0);assert.equal(workspace.snapshot().page.id,'two');assert.equal(workspace.snapshot().page.title,'Unsaved precise navigation draft');assert.equal(workspace.snapshot().loadingPageId,null);assert.equal(workspace.saver.hasPending,true);
+ }
+});

@@ -1,0 +1,25 @@
+.page-entity-dialog{width:min(620px,calc(100vw - 32px));max-height:calc(100dvh - 48px);overflow:auto}
+.page-entity-dialog>p{color:var(--text-muted);line-height:1.5}
+.page-entity-dialog form>label,.page-entity-add-details>label:not(.page-entity-pin){display:block;margin:12px 0 6px;font-weight:600}
+.page-entity-dialog input[type=search],.page-entity-dialog textarea{width:100%;box-sizing:border-box}
+.page-entity-existing{display:grid;gap:12px;margin:16px 0}
+.page-entity-association{padding:14px;border:1px solid var(--line);border-radius:10px;display:grid;gap:10px}
+.page-entity-association-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.page-entity-association-heading>span,.page-entity-candidates small{font-size:12px;color:var(--text-muted)}
+.page-entity-name{display:flex;align-items:center;gap:6px;font-weight:600;text-align:left;min-width:0}
+.page-entity-name .icon{width:14px;flex-shrink:0}
+.page-entity-association label{display:grid;gap:6px;font-size:13px}
+.page-entity-row-actions{display:flex;gap:6px;flex-wrap:wrap}
+.page-entity-candidates{display:grid;gap:4px;max-height:210px;overflow:auto;margin-top:8px}
+.page-entity-candidates>button{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 12px;border-radius:6px;text-align:left}
+.page-entity-candidates>button.is-selected{background:var(--surface-hover);outline:1px solid var(--accent)}
+.page-entity-pin{display:flex;align-items:center;gap:8px;margin:12px 0}
+.page-entity-add-details{padding-bottom:12px}
+
+.page-entity-dialog input[type=search],.page-entity-dialog textarea{min-width:0;padding:10px 12px;border:1px solid var(--control-border);border-radius:var(--radius-sm);background:var(--surface-raised);color:var(--text);font-size:var(--ui-text-md);line-height:1.5}
+.page-entity-dialog textarea{display:block;resize:vertical;min-height:72px;margin:0}
+.page-entity-association label{margin-top:0}
+.page-entity-dialog .page-entity-pin input{display:inline-block;flex:0 0 auto;width:auto;margin:0;padding:0}
+.page-entity-candidates>button span,.page-entity-name{overflow-wrap:anywhere}
+.page-entity-candidates>button:hover:not(:disabled){background:var(--surface-hover)}
+@media(max-width:480px){.page-entity-dialog{padding:20px}.page-entity-association{padding:10px}.page-entity-dialog .dialog-actions{align-items:center;flex-wrap:wrap}.page-entity-association-heading{align-items:flex-start}}

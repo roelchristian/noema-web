@@ -1,17 +1,19 @@
 import {t as uiText} from '../i18n';
 import {PageEditLockDialog} from './PageEditLockDialog';
 import { useState } from 'react';
-import type { Block, Page, Organization } from '../../shared/domain';
+import type { Block, Page, Organization, Entity } from '../../shared/domain';
 import { api } from '../api';
 import { Icon } from '../components/Icon';
 import { ActionMenu, type MenuAction } from '../components/ActionMenu';
 import { FeaturedImageDialog } from './FeaturedImageDialog';
 import { CleanupDialog } from './CleanupDialog';
+import {PageEntityAssociationsDialog} from './PageEntityAssociationsDialog';
 import {rememberMarkdownTyping,useMarkdownTyping} from '../state/markdown-preferences';
 import {formatMarkdownBlocks} from './markdown-typing';
 
-export function PageToolbar({ onRename, tocAvailable=false, tocVisible=true, onToggleToc, onRevealInSidebar, inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, focusedReading, onToggleFocusedReading, onForward, forwardDisabled, onChangeBlocks, onFeaturedImageChange,onEditLockChange, onUndo, onRedo, canUndo, canRedo}: {
+export function PageToolbar({ onRename, entities, onEntityAssociationsChanged, onOpenEntity, tocAvailable=false, tocVisible=true, onToggleToc, onRevealInSidebar, inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, focusedReading, onToggleFocusedReading, onForward, forwardDisabled, onChangeBlocks, onFeaturedImageChange,onEditLockChange, onUndo, onRedo, canUndo, canRedo}: {
   onRename?:()=>void;
+  entities?:Entity[]; onEntityAssociationsChanged?:()=>Promise<void>; onOpenEntity?:(id:string)=>void;
   tocAvailable?:boolean;tocVisible?:boolean;onToggleToc?:()=>void;
   onRevealInSidebar: () => void;
   onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean;
@@ -24,6 +26,7 @@ export function PageToolbar({ onRename, tocAvailable=false, tocVisible=true, onT
   onFeaturedImageChange: (imageId: string | null) => void;
   onChangeBlocks: (blocks: Block[]) => void;
 }) {
+  const [entityAssociationsOpen,setEntityAssociationsOpen]=useState(false);
   const [lockOpen,setLockOpen]=useState(false);
   const [changingLock,setChangingLock]=useState(false);
   const [saving, setSaving] = useState(false);
@@ -76,6 +79,7 @@ export function PageToolbar({ onRename, tocAvailable=false, tocVisible=true, onT
     <ActionMenu label={uiText("More page actions")} disabled={changingLock} actions={[
       ...(onForward ? [{get label(){return uiText("Go forward")}, icon: 'chevron', disabled: forwardDisabled, onSelect: onForward}] : []),
       ...(onRename?[{label:uiText("Rename"),icon:'edit' as const,disabled:editingDisabled,onSelect:onRename}]:[]),
+      ...(entities?[{label:uiText("Organize with entities…"),icon:"knowledge" as const,onSelect:()=>setEntityAssociationsOpen(true)}]:[]),
       {label: uiText("Reveal in sidebar"), icon: 'folder', onSelect: onRevealInSidebar},
       {label:uiText("Focused reading"),icon:'scan-eye',checked:focusedReading,onSelect:onToggleFocusedReading},
       ...(tocAvailable&&onToggleToc?[{label:uiText("Table of contents"),icon:'view-list',checked:tocVisible,onSelect:onToggleToc}]:[]),
@@ -93,6 +97,7 @@ export function PageToolbar({ onRename, tocAvailable=false, tocVisible=true, onT
       ]},
     ]}/>
   </div>
+    {entityAssociationsOpen && <PageEntityAssociationsDialog key={page.vault_id+":"+page.id} page={page} entities={entities??[]} onClose={()=>setEntityAssociationsOpen(false)} onChanged={onEntityAssociationsChanged} onOpenEntity={onOpenEntity}/>}
     {lockOpen && <PageEditLockDialog page={page} onChange={onEditLockChange} onClose={()=>setLockOpen(false)}/>}
     {featuredImageOpen && <FeaturedImageDialog page={page} onChange={onFeaturedImageChange} onClose={() => setFeaturedImageOpen(false)}/>}
     {cleanupOpen && <CleanupDialog blocks={page.blocks} onClose={() => setCleanupOpen(false)} onApply={blocks => { onChangeBlocks(blocks); }}/>}

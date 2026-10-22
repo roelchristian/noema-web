@@ -54,11 +54,11 @@ export function SourceViewer({vaultId,reference,entities,onClose,onOpenEntity}: 
     const controller=new AbortController();setLoaded(null);setError('');
     void request<SourceFile & {textHash:string;document?:SourceDocument}>(`source-files/${encodeURIComponent(reference.fileId)}?fingerprint=1&context=1&sourceHash=${encodeURIComponent(reference.sourceHash)}`,'GET',undefined,vaultId,controller.signal).then(file=>{
       if(file.entity_id!==reference.sourceId)throw new Error('This file no longer belongs to the cited source.');
-      const matches=file.status==='ready'&&file.admitted===1&&file.textHash===reference.sourceHash;
+      const matches=!reference.stale&&file.status==='ready'&&file.admitted===1&&file.textHash===reference.sourceHash;
       if(!controller.signal.aborted)setLoaded({file,document:file.document,matches});
     }).catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error?error.message:String(error));});
     return()=>controller.abort();
-  },[vaultId,reference.fileId,reference.sourceId,reference.sourceHash,retry]);
+  },[vaultId,reference.fileId,reference.sourceId,reference.sourceHash,reference.stale,retry]);
   useEffect(()=>{close.current?.focus({preventScroll:true});},[]);
   const passages=useMemo(()=>loaded?.matches&&loaded.document&&!(reference.userLocator&&reference.startOffset===undefined)?semanticPassageRows(semanticPassages(loaded.document,reference)):[],[loaded,reference]);
   const firstCited=passages.findIndex(isCitedPassage),hasContext=firstCited>=0;
@@ -83,7 +83,7 @@ export function SourceViewer({vaultId,reference,entities,onClose,onOpenEntity}: 
       </div>
       {!loaded&&!error&&<p className="source-viewer-status" role="status">{uiText("Loading surrounding context…")}</p>}
       {error&&<p className="source-viewer-status" role="alert">{error}{" " + uiText("Showing the saved passage.") + " "}<button type="button" onClick={()=>setRetry(value=>value+1)}>{uiText("Retry")}</button></p>}
-      {loaded&&!loaded.matches&&<p className="source-viewer-status">{uiText("The source text has changed. Showing the saved passage excerpt.")}</p>}
+      {loaded&&!loaded.matches&&<p className="source-viewer-status">{uiText("This source location could not be verified. Showing the saved passage excerpt.")}</p>}
       {loaded?.matches&&!hasContext&&<p className="source-viewer-status">{reference.userLocator&&reference.startOffset===undefined?uiText("This location was added manually. Showing the saved location label."):uiText("This passage’s semantic context is unavailable. Showing the saved excerpt.")}</p>}
       {hasContext&&first>0&&<button type="button" className="source-viewer-more" onClick={()=>setBefore(value=>value+5)}><Icon name="chevron"/>{uiText("Earlier context")}</button>}
       <div className="source-viewer-passages">{hasContext?passages.slice(first,last).map(({node,path,cited,inlineHeading})=><section key={node.id} className={'source-viewer-passage'+(node.text===undefined?' is-heading':'')+(cited||inlineHeading?.cited?' is-cited':'')} data-source-locator={sourceNodeLocator(path)} title={sourceNodeLocator(path)} data-cited-node={cited?node.id:inlineHeading?.cited?inlineHeading.node.id:undefined}>

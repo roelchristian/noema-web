@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Workspace } from '../src/client/state/workspace.ts';
+import {entityURL, readWorkspaceURL, workspaceURL} from '../src/client/state/navigation-address.ts';
 import { api } from '../src/client/api.ts';
 
 function setup(t) {
@@ -16,7 +17,8 @@ function setup(t) {
   ], locations: [{kind: 'page', item_id: page.id, folder_id: 'nested'}], memberships: [], favourites: []};
   const loadPages = t.mock.method(api, 'pages', async id => id === 'a' ? [page] : []);
   t.mock.method(api, 'vaults', async () => vaults);
-  t.mock.method(api, 'entities', async () => []);
+  const entities = [{id:'person',name:'Ada',type:'person'},{id:'concept',name:'Computation',type:'concept'},{id:'source',name:'Book',type:'source'}];
+  t.mock.method(api, 'entities', async () => entities);
   t.mock.method(api, 'organization', async id => id === 'a' ? organization : {...organization, collections: [], folders: [], locations: []});
   const loadPage = t.mock.method(api, 'page', async () => ({...page, title: 'Fresh title'}));
   const loadTrash = t.mock.method(api, 'trash', async () => []);
@@ -26,7 +28,7 @@ function setup(t) {
     for (const workspace of workspaces) { workspace.saver.dispose(); workspace.titler.dispose(); }
     if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor); else delete globalThis.localStorage;
   });
-  return {storage, vaults, page, organization, create, loadPage, loadPages, loadTrash};
+  return {storage, vaults, page, organization, entities, create, loadPage, loadPages, loadTrash};
 }
 
 test('refresh restores nested folder and collection navigation without overwriting the saved address while loading', async t => {
@@ -115,4 +117,115 @@ test('refresh retains other library views, and navigation works without browser 
   const workspace = create(); await workspace.init(); workspace.openOrganization('', 'nested');
   assert.deepEqual(workspace.snapshot().organizationContext, {collection: '', folder: 'nested'});
   assert.equal(workspace.snapshot().error, null);
+});
+
+
+test('entity homes have independent history, persist across reload, and keep source navigation specialized', async t => {
+  const {create, storage} = setup(t);
+  const workspace = create(); await workspace.init(); await workspace.openPage('note');
+  workspace.openEntity('person');
+  assert.equal(workspace.snapshot().view, 'pages');
+  assert.equal(workspace.snapshot().entityPanelId, 'person');
+  assert.equal(workspace.snapshot().entityId, null);
+  await workspace.openEntityHome('person');
+  assert.equal(workspace.snapshot().view, 'entity');
+  assert.equal(workspace.snapshot().entityId, 'person');
+  assert.equal(workspace.snapshot().entityPanelId, null);
+  assert.equal(workspace.snapshot().page.id, 'note');
+  assert.equal(JSON.parse(storage.get('noema-address/a')).subjectId, 'person');
+  const refreshed = create(); await refreshed.init();
+  assert.equal(refreshed.snapshot().view, 'entity');
+  assert.equal(refreshed.snapshot().entityId, 'person');
+  await workspace.openEntityHome('concept');
+  await workspace.goHistory(-1);
+  assert.equal(workspace.snapshot().entityId, 'person');
+  await workspace.goHistory(-1);
+  assert.equal(workspace.snapshot().view, 'pages');
+  assert.equal(workspace.snapshot().entityId, null);
+  assert.equal(workspace.snapshot().entityPanelId, 'person');
+  await workspace.goHistory(1);
+  assert.equal(workspace.snapshot().entityId, 'person');
+  await workspace.openEntityHome('source');
+  assert.equal(workspace.snapshot().view, 'source');
+  assert.equal(workspace.snapshot().sourceId, 'source');
+  assert.equal(workspace.snapshot().entityId, null);
+});
+
+test('leaving a note for an entity flushes its draft and a failed save retains the editor', async t => {
+  const {create} = setup(t);
+  const workspace = create(); await workspace.init(); await workspace.openPage('note');
+  workspace.updatePage({title:'Unsaved research'});
+  t.mock.method(api, 'savePage', async () => {throw new Error('Save failed');});
+  await assert.rejects(workspace.openEntityHome('person'), /Save failed/);
+  assert.equal(workspace.snapshot().view, 'pages');
+  assert.equal(workspace.snapshot().entityId, null);
+  assert.equal(workspace.snapshot().page.title, 'Unsaved research');
+  t.mock.method(api, 'savePage', async (_vault, _id, page) => ({...page,revision:2}));
+  await workspace.openEntityHome('person');
+  assert.equal(workspace.snapshot().view, 'entity');
+  assert.equal(workspace.saver.hasPending, false);
+});
+
+test('deleted entity homes fall back to entities and cannot be restored by history or reload', async t => {
+  const {create, entities} = setup(t);
+  const workspace = create(); await workspace.init(); await workspace.openEntityHome('person');
+  entities.splice(entities.findIndex(entity => entity.id === 'person'), 1);
+  await workspace.refreshEntities();
+  assert.equal(workspace.snapshot().view, 'entities');
+  assert.equal(workspace.snapshot().entityId, null);
+  await workspace.goHistory(-1);
+  assert.equal(workspace.snapshot().view, 'organization');
+  const refreshed = create(); await refreshed.selectVault('a', {vaultId:'a',view:'entity',subjectId:'person',pageId:null,entityId:null,collection:'',folder:''});
+  assert.equal(refreshed.snapshot().view, 'entities');
+  assert.match(refreshed.snapshot().error, /entity is unavailable/);
+});
+
+test('entity URLs distinguish the full workspace from an optional contextual panel', t => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  Object.defineProperty(globalThis, 'window', {configurable:true,value:{location:{search:'?vault=a&view=entity&subject=person&entity=concept'}}});
+  t.after(() => {if (descriptor) Object.defineProperty(globalThis,'window',descriptor); else delete globalThis.window;});
+  const address = readWorkspaceURL();
+  assert.equal(address.view, 'entity');
+  assert.equal(address.subjectId, 'person');
+  assert.equal(address.entityId, 'concept');
+  assert.equal(workspaceURL(address), '/?vault=a&view=entity&subject=person&entity=concept');
+  assert.equal(entityURL('vault with spaces', 'person/1'), '/?vault=vault+with+spaces&view=entity&subject=person%2F1');
+});
+
+test('direct entity links survive browser history traversal and canonicalize deleted targets', async t => {
+  const {create, entities} = setup(t);
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const target = new EventTarget(), entries = [{url:'/?vault=a&view=entity&subject=person',state:null}];
+  let index = 0;
+  const location = {pathname:'/',search:'?vault=a&view=entity&subject=person',href:'https://noema.test/?vault=a&view=entity&subject=person'};
+  const setLocation = url => {const next = new URL(url, 'https://noema.test');Object.assign(location,{pathname:next.pathname,search:next.search,href:next.href});};
+  const history = {
+    get state() {return entries[index].state;},
+    replaceState(state, _title, url) {entries[index]={state,url};setLocation(url);},
+    pushState(state, _title, url) {entries.splice(++index);entries.push({state,url});setLocation(url);},
+    go(direction) {index+=direction;setLocation(entries[index].url);target.dispatchEvent(new Event('popstate'));},
+  };
+  Object.defineProperty(globalThis, 'window', {configurable:true,value:{location,history,addEventListener:target.addEventListener.bind(target),removeEventListener:target.removeEventListener.bind(target)}});
+  const workspace = create(), detach = workspace.attachBrowserNavigation();
+  t.after(() => {detach();if (descriptor) Object.defineProperty(globalThis,'window',descriptor);else delete globalThis.window;});
+  await workspace.init();
+  assert.equal(workspace.snapshot().entityId, 'person');
+  assert.equal(entries.length, 1);
+  await workspace.openEntityHome('concept');
+  assert.equal(location.search, '?vault=a&view=entity&subject=concept');
+  await workspace.goHistory(-1);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(workspace.snapshot().entityId, 'person');
+  await workspace.goHistory(1);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(workspace.snapshot().entityId, 'concept');
+  entities.splice(entities.findIndex(entity => entity.id === 'person'), 1);
+  await workspace.refreshEntities();
+  await workspace.goHistory(-1);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(workspace.snapshot().view, 'entities');
+  assert.equal(workspace.snapshot().entityId, null);
+  assert.equal(location.search, '?vault=a&view=entities');
+  assert.equal(entries.length, 2);
+  assert.match(workspace.snapshot().error, /entity is unavailable/);
 });

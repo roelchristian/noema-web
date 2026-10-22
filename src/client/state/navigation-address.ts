@@ -1,10 +1,10 @@
 import type { WorkspaceState } from './workspace';
 
 export interface NavigationAddress {
-  view: WorkspaceState['view']; pageId: string | null; sourceId?: string | null; entityId: string | null; collection: string; folder: string;
+  view: WorkspaceState['view']; pageId: string | null; sourceId?: string | null; entityId: string | null; subjectId?: string | null; collection: string; folder: string;
 }
 export interface WorkspaceAddress extends NavigationAddress { vaultId: string }
-const views = ['pages', 'source', 'entities', 'organization', 'favourites', 'recent', 'trash', 'inbox'] as const;
+const views = ['pages', 'source', 'entity', 'entities', 'organization', 'favourites', 'recent', 'trash', 'inbox'] as const;
 
 export function readWorkspaceURL(): WorkspaceAddress | null {
   const params = new URLSearchParams(window.location.search);
@@ -14,7 +14,7 @@ export function readWorkspaceURL(): WorkspaceAddress | null {
   const sourceId = params.get('source');
   const view = pageId ? 'pages' : sourceId ? 'source' : params.get('view') ?? 'organization';
   if (!views.some(item => item === view)) return null;
-  return {vaultId, view: view as WorkspaceState['view'], pageId, sourceId, entityId: params.get('entity'), collection: params.get('collection') ?? '', folder: params.get('folder') ?? ''};
+  return {vaultId, view: view as WorkspaceState['view'], pageId, sourceId, entityId: params.get('entity'), subjectId: params.get('subject'), collection: params.get('collection') ?? '', folder: params.get('folder') ?? ''};
 }
 
 export function workspaceURL(address: WorkspaceAddress): string {
@@ -22,6 +22,7 @@ export function workspaceURL(address: WorkspaceAddress): string {
   if (address.view === 'pages' && address.pageId) params.set('page', address.pageId);
   else if (address.view === 'source' && address.sourceId) params.set('source', address.sourceId);
   else params.set('view', address.view);
+  if (address.view === 'entity' && address.subjectId) params.set('subject', address.subjectId);
   if (address.view === 'organization') {
     if (address.collection) params.set('collection', address.collection);
     if (address.folder) params.set('folder', address.folder);
@@ -31,4 +32,9 @@ export function workspaceURL(address: WorkspaceAddress): string {
 }
 export function pageURL(vaultId: string, pageId: string): string {
   return workspaceURL({vaultId, pageId, view:'pages', entityId:null, collection:'', folder:''});
+}
+
+/** A full entity workspace; the `entity` parameter remains the contextual panel. */
+export function entityURL(vaultId: string, entityId: string): string {
+  return workspaceURL({vaultId, view:'entity', subjectId:entityId, pageId:null, entityId:null, collection:'', folder:''});
 }

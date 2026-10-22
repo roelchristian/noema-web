@@ -45,8 +45,11 @@ export interface SourceStructureNode { text: string; startLine: number; endLine?
 export interface SourceFile {
   contains_math:0|1;
   processing_detail?:import('./source-progress.js').SourceProcessingProgress; structural_nodes?: string; original_filename: string; generated_name: string | null; language: string | null; summary: string | null; enrichment_status: 'pending' | 'running' | 'completed' | 'failed'; enrichment_error: string | null; enrichment_attempts: number; enrichment_next_attempt_at: string; page_start_lines?: string; admitted: 0 | 1; format: 'txt' | 'md' | 'pdf' | 'html' | 'url'; pdf_flattened: 0 | 1; import_method: 'upload' | 'url'; source_url: string | null; id: string; vault_id: string; entity_id: string | null; name: string; size: number; status: 'queued' | 'processing' | 'ready' | 'failed'; text: string; error: string | null; progress: number; pages: number; ocr_pages: number; created_at: string }
-export interface EntityPageMention extends PageSummary { mentionCount: number; excerpt: string }
-export interface EntityDetail extends Entity { pageMentions?: EntityPageMention[]; attachments?: SourceFile[]; propertyNames: string[]; properties: Property[]; relationships: Relationship[]; incomingProperties: Property[] }
+export interface EntityPageMention extends PageSummary { mentionCount: number; excerpt: string; contexts?: import('./entity-mentions.js').EntityMentionContext[] }
+export interface EntityOverview { content: string; revision: number }
+export interface EntityPageAssociation extends PageSummary { pinned: boolean; annotation: string; created_at: string }
+export interface PageEntityAssociation { entityId: string; pinned: boolean; annotation: string }
+export interface EntityDetail extends Entity { overview?: EntityOverview; linkedPages?: EntityPageAssociation[]; pageMentions?: EntityPageMention[]; attachments?: SourceFile[]; propertyNames: string[]; properties: Property[]; relationships: Relationship[]; incomingProperties: Property[] }
 
 export type PropertyInput = {name: string} & ({value: string; target_id?: never} | {target_id: string; value?: never});
 export interface RelationshipInput {label: string; target_id: string}

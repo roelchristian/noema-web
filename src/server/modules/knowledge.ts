@@ -1,9 +1,10 @@
+import {Vaults} from './vaults.js';
 import {sourceProgress} from './source-progress.js';
 import {validatedDomainIds} from './domains.js';
 import { syncSourceProvenance } from './source-provenance.js';
 import { randomUUID } from 'node:crypto';
-import { makeSearchSnippet } from '../../shared/search-snippets.js';
-import { blockSegments, entityMentionName, entityTypes, type EntityType, type Entity, type EntityDetail, type EntityPageMention, type Block, type Property, type Relationship } from '../../shared/domain.js';
+import { entityPageMentions } from './entity-page-mentions.js';
+import { entityMentionName, entityTypes, type EntityType, type Entity, type EntityDetail, type Property, type Relationship } from '../../shared/domain.js';
 import { builtinProperties, builtinSubtypes, inheritedPropertyNames, type EntitySchema, type EntitySubtype } from '../../shared/entity-schema.js';
 import { Store } from '../store.js';
 import { HttpError, now, required, text } from '../validation.js';
@@ -65,31 +66,78 @@ export class Knowledge {
     if (!entity) throw new HttpError(404,'Entity not found');
     return entity;
   }
-  private pageMentions(vault: string, id: string): EntityPageMention[] {
-    const pages = this.store.all<Omit<EntityPageMention, 'excerpt' | 'mentionCount'> & {blocks: string}>(`
-      SELECT p.id,p.title,p.icon,p.updated_at,p.blocks FROM pages p
-      WHERE p.vault_id=? AND p.deleted_at IS NULL
-        AND EXISTS (SELECT 1 FROM json_tree(p.blocks) mention WHERE mention.key='entityId' AND mention.value=?)
-      ORDER BY p.updated_at DESC,p.id`, vault, id);
-    if (!pages.length) return [];
-    const names = new Map(this.list(vault).map(entity => [entity.id, entityMentionName(entity) ?? entity.name]));
-    return pages.map(({blocks, ...page}) => {
-      const parsed = JSON.parse(blocks) as Block[];
-      const mentionCount = parsed.flatMap(blockSegments).filter(segment => segment.entityId === id).length;
-      const match = parsed.find(block => blockSegments(block).some(segment => segment.entityId === id));
-      const segments = match ? blockSegments(match) : [];
-      const mention = segments.find(segment => segment.entityId === id);
-      const label = mention?.mentionText ?? names.get(id) ?? '';
-      const passage = segments.map(segment => segment.entityId ? segment.mentionText ?? names.get(segment.entityId) ?? '' : segment.text ?? '').join('');
-      return {...page, mentionCount, excerpt: makeSearchSnippet(passage, label, 200)};
-    }).filter(page => page.mentionCount > 0);
-  }
   detail(vault: string, id: string): EntityDetail {
     const entity = this.require(vault,id);
-    return {...entity, pageMentions: this.pageMentions(vault, id), ...(entity.type==='source'?{attachments:this.store.all<import('../../shared/domain.js').SourceFile>('SELECT * FROM source_files WHERE vault_id=? AND entity_id=? ORDER BY created_at,id',vault,id).map(file=>({...file,processing_detail:sourceProgress.get(file.id)}))}:{}), propertyNames: inheritedPropertyNames(this.schema(vault),entity.type,entity.subtypes),
+    const overview=this.store.get<{content:string;revision:number}>('SELECT content,revision FROM entity_overviews WHERE entity_id=?',id)??{content:'',revision:0};
+    const linkedPages=this.store.all<Omit<import('../../shared/domain.js').EntityPageAssociation,'pinned'> & {pinned:number}>(`SELECT p.id,p.title,p.icon,p.updated_at,a.pinned,a.annotation,a.created_at FROM entity_page_associations a JOIN pages p ON p.id=a.page_id WHERE a.entity_id=? AND p.vault_id=? AND p.deleted_at IS NULL ORDER BY a.pinned DESC,a.created_at,p.id`,id,vault).map(row=>({...row,pinned:!!row.pinned}));
+    return {...entity, overview, linkedPages, pageMentions: entityPageMentions(this.store, vault, id), ...(entity.type==='source'?{attachments:this.store.all<import('../../shared/domain.js').SourceFile>('SELECT * FROM source_files WHERE vault_id=? AND entity_id=? ORDER BY created_at,id',vault,id).map(file=>({...file,processing_detail:sourceProgress.get(file.id)}))}:{}), propertyNames: inheritedPropertyNames(this.schema(vault),entity.type,entity.subtypes),
       properties:this.store.all<Property>('SELECT * FROM properties WHERE entity_id=?',id),
       relationships:this.store.all<Relationship>('SELECT * FROM relationships WHERE source_id=? OR target_id=?',id,id),
       incomingProperties:this.store.all<Property>('SELECT * FROM properties WHERE target_id=?',id)};
+  }
+  private requireCuratable(vault:string,id:string) {
+    new Vaults(this.store).requireOpen(vault);
+    const entity=this.require(vault,id);
+    if(entity.type==='source')throw new HttpError(400,'Source homepages use their source reader.');
+    return entity;
+  }
+  private requireLivePage(vault:string,pageId:string) {
+    new Vaults(this.store).requireOpen(vault);
+    if(!this.store.get('SELECT 1 FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',pageId,vault))throw new HttpError(404,'Page not found');
+  }
+  private touch(vault:string,id:string) {
+    const previous=this.require(vault,id).updated_at;
+    this.store.run('UPDATE entities SET updated_at=? WHERE id=? AND vault_id=?',new Date(Math.max(Date.now(),Date.parse(previous)+1)).toISOString(),id,vault);
+  }
+  saveOverview(vault:string,id:string,body:Record<string,unknown>) {
+    this.requireCuratable(vault,id);
+    const content=text(body.content,100000),revision=body.revision;
+    if(typeof revision!=='number'||!Number.isSafeInteger(revision)||revision<0)throw new HttpError(400,'Supply the overview revision.');
+    return this.store.transaction(()=>{
+      const current=this.store.get<{revision:number;content:string}>('SELECT revision,content FROM entity_overviews WHERE entity_id=?',id)??{revision:0,content:''};
+      if(current.revision!==revision)throw new HttpError(409,'This overview changed. Reload it before saving.');
+      if(current.content!==content){
+        this.store.run('INSERT INTO entity_overviews (entity_id,content,revision) VALUES (?,?,?) ON CONFLICT(entity_id) DO UPDATE SET content=excluded.content,revision=excluded.revision',id,content,revision+1);
+        this.touch(vault,id);
+      }
+      return this.detail(vault,id);
+    });
+  }
+  createPage(vault:string,id:string,body:Record<string,unknown>,pages:import('./pages.js').Pages) {
+    this.requireCuratable(vault,id);
+    const title=body.title===undefined?'Untitled':text(body.title,500);
+    return this.store.transaction(()=>{
+      const page=pages.create(vault,{title});
+      this.store.run("INSERT INTO entity_page_associations (entity_id,page_id,pinned,annotation,created_at) VALUES (?,?,0,'',?)",id,page.id,now());
+      this.touch(vault,id);
+      return page;
+    });
+  }
+  associatePage(vault:string,id:string,pageId:string,body:Record<string,unknown>) {
+    this.requireCuratable(vault,id);this.requireLivePage(vault,pageId);
+    if(body.pinned!==undefined&&typeof body.pinned!=='boolean')throw new HttpError(400,'Pinned must be a boolean.');
+    const annotation=body.annotation===undefined?undefined:text(body.annotation,2000);
+    return this.store.transaction(()=>{
+      const existing=this.store.get<{pinned:number;annotation:string}>('SELECT pinned,annotation FROM entity_page_associations WHERE entity_id=? AND page_id=?',id,pageId);
+      const pinned=body.pinned===undefined?existing?.pinned??0:body.pinned?1:0;
+      const nextAnnotation=annotation??existing?.annotation??'';
+      if(!existing||existing.pinned!==pinned||existing.annotation!==nextAnnotation){
+        this.store.run('INSERT INTO entity_page_associations (entity_id,page_id,pinned,annotation,created_at) VALUES (?,?,?,?,?) ON CONFLICT(entity_id,page_id) DO UPDATE SET pinned=excluded.pinned,annotation=excluded.annotation',id,pageId,pinned,nextAnnotation,now());
+        this.touch(vault,id);
+      }
+      return this.detail(vault,id);
+    });
+  }
+  removePage(vault:string,id:string,pageId:string) {
+    this.requireCuratable(vault,id);this.requireLivePage(vault,pageId);
+    return this.store.transaction(()=>{
+      if(this.store.run('DELETE FROM entity_page_associations WHERE entity_id=? AND page_id=?',id,pageId).changes)this.touch(vault,id);
+      return this.detail(vault,id);
+    });
+  }
+  pageAssociations(vault:string,pageId:string):import('../../shared/domain.js').PageEntityAssociation[] {
+    this.requireLivePage(vault,pageId);
+    return this.store.all<{entityId:string;pinned:number;annotation:string}>(`SELECT a.entity_id AS entityId,a.pinned,a.annotation FROM entity_page_associations a JOIN entities e ON e.id=a.entity_id WHERE a.page_id=? AND e.vault_id=? ORDER BY e.name COLLATE NOCASE,e.id`,pageId,vault).map(row=>({...row,pinned:!!row.pinned}));
   }
   private input(vault: string, body: Record<string, unknown>, current?: Entity) {
     const type=this.mainType(body.type);

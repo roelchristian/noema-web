@@ -4,6 +4,8 @@ import 'katex/dist/katex.min.css';
 import './styles/fonts.css';
 import './styles/tokens.css';
 import './styles.css';
+import './knowledge/entity-home.css';
+import './editor/page-entity-associations.css';
 import './editor/page-toolbar.css';
 import './editor/block-command-icons.css';
 createRoot(document.getElementById('root')!).render(<App/>);

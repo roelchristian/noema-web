@@ -6,10 +6,11 @@ import {createRoot} from 'react-dom/client';
 import './helpers/register.mjs';
 const {App}=await import('../src/client/App.tsx');
 import {api} from '../src/client/api.ts';
+import {projectEntityMentions} from '../src/shared/entity-mentions.ts';
 const page=id=>({id,vault_id:'a',title:id,blocks:[{id:id+'-body',type:'paragraph',checked:false,content:[{text:'Body '+id}]}],sourceIds:[],revision:1,updated_at:''});
 test('sidebar note switching preserves mounted shell and outgoing editor until asynchronous content is ready',async t=>{
  const env=setupDOM(t),{dom}=env;
- const keys=['localStorage','CSS','ResizeObserver','PointerEvent'],previous=keys.map(k=>Object.getOwnPropertyDescriptor(globalThis,k));
+ const keys=['localStorage','CSS','ResizeObserver','PointerEvent','matchMedia'],previous=keys.map(k=>Object.getOwnPropertyDescriptor(globalThis,k));
  for(const key of keys)Object.defineProperty(globalThis,key,{configurable:true,writable:true,value:key==='ResizeObserver'?class{observe(){}disconnect(){}}:key==='PointerEvent'?dom.window.MouseEvent:key==='CSS'?{escape:value=>value}:dom.window[key]});
  env.defer(()=>keys.forEach((key,i)=>{if(previous[i])Object.defineProperty(globalThis,key,previous[i]);else delete globalThis[key];}));
  t.mock.method(api,'entitySchema',async()=>({properties:[],subtypes:[],subtypeProperties:{}}));
@@ -70,4 +71,94 @@ test('sidebar note switching preserves mounted shell and outgoing editor until a
   assert.equal(knowledgeRequests.mock.callCount(),calls);
 
  }finally{await env.close();}
+});
+
+test('entity routes open full homes while desktop page mentions retain contextual previews', async t => {
+ const env=setupDOM(t),{dom}=env;
+ const keys=['localStorage','CSS','ResizeObserver','PointerEvent','matchMedia'],previous=keys.map(key=>Object.getOwnPropertyDescriptor(globalThis,key));
+ for(const key of keys)Object.defineProperty(globalThis,key,{configurable:true,writable:true,value:key==='ResizeObserver'?class{observe(){}disconnect(){}}:key==='PointerEvent'?dom.window.MouseEvent:key==='CSS'?{escape:value=>value}:dom.window[key]});
+ env.defer(()=>keys.forEach((key,index)=>{if(previous[index])Object.defineProperty(globalThis,key,previous[index]);else delete globalThis[key];}));
+ dom.window.scrollTo=()=>{};
+ dom.window.HTMLElement.prototype.scrollTo=function(){};
+ dom.window.HTMLElement.prototype.scrollIntoView=function(){};
+ dom.window.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};
+ dom.window.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};
+ const entity={id:'ada',vault_id:'a',name:'Ada Lovelace',type:'person',description:'A mathematician.',subtypes:[],domainIds:[],aliases:[],mentionCase:'canonical',properties:[],propertyNames:[],relationships:[{id:'relation',source_id:'ada',target_id:'london',label:'lived in'}],incomingProperties:[],pageMentions:[{id:'entity-note',title:'entity-note',mentionCount:1,excerpt:'Ada lived in London.'}],attachments:[],updated_at:'2026-10-20'};
+ const london={...entity,id:'london',name:'London',type:'place',description:'A city.',relationships:[]};
+ const note={...page('entity-note'),blocks:[{id:'body',type:'paragraph',content:[{entityId:'ada'},{text:' lived in London.'}]}]};
+ entity.pageMentions[0].contexts=projectEntityMentions(note,'ada',id=>id==='ada'?'Ada Lovelace':'London');
+ dom.window.scrollBy=()=>{};
+ localStorage.setItem('noema-address/a',JSON.stringify({view:'pages',pageId:'entity-note'}));
+ t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false}]);
+ t.mock.method(api,'pages',async()=>[note]);
+ t.mock.method(api,'page',async()=>note);
+ t.mock.method(api,'entities',async()=>[entity,london]);
+ t.mock.method(api,'entity',async(_vault,id)=>id==='ada'?entity:london);
+ t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],memberships:[],favourites:[]}));
+ t.mock.method(api,'entitySchema',async()=>({properties:{person:[],place:[]},subtypes:[],subtypeProperties:{}}));
+ t.mock.method(api,'entityMatches',async()=>({revision:1,matches:[],key:'none'}));
+ t.mock.method(api,'aiNotifications',async()=>({items:[],running:[],unreadCount:0,through:0}));
+ t.mock.method(api,'textSearch',async()=>({results:[],hasMore:false}));
+ t.mock.method(api,'semanticSearch',async()=>({results:[]}));
+ t.mock.method(api,'searchSnippets',async()=>({snippets:{}}));
+ const root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ const click=async target=>{assert.ok(target,'Expected navigation control');await act(async()=>target.dispatchEvent(new MouseEvent('click',{bubbles:true})));};
+ const button=(scope,text)=>Array.from(scope.querySelectorAll('button')).find(item=>item.textContent.trim()===text);
+ const assertHome=name=>{assert.equal(document.querySelector('.entity-home h1')?.textContent,name);assert.equal(document.querySelector('#entity-panel'),null);assert.equal(document.querySelector('.page'),null);};
+ try {
+  await act(async()=>root.render(React.createElement(App)));
+  const editor=document.querySelector('.page');assert.ok(editor);
+  assert.ok(editor.querySelector('[data-entity="ada"]'),editor.outerHTML);
+  await click(editor.querySelector('[data-entity="ada"]'));
+  await click(button(document.querySelector('.entity-link-dialog'),'Open entity details'));
+  assert.equal(document.querySelector('.page'),editor,'contextual preview retains the note editor');
+  assert.ok(document.querySelector('#entity-panel'));
+  assert.equal(document.querySelector('.entity-home'),null);
+  assert.equal(new URLSearchParams(window.location.search).get('page'),'entity-note');
+  await click(button(document.querySelector('#entity-panel'),'Open entity homepage'));
+  assertHome('Ada Lovelace');
+  assert.equal(new URLSearchParams(window.location.search).get('subject'),'ada');
+  await click(document.querySelector('#entity-home-panel-overview .entity-connection-list button'));
+  assertHome('London');
+  assert.equal(new URLSearchParams(window.location.search).get('subject'),'london');
+  await click(document.querySelector('#entity-home-tab-mentions'));
+  await click(document.querySelector('.entity-home .entity-page-mentions button'));
+  assert.ok(document.querySelector('.page'));
+  assert.equal(document.querySelector('.entity-home'),null);
+  await click(document.querySelector('.sidebar [aria-label="Knowledge entities"]'));
+  await click(Array.from(document.querySelectorAll('.knowledge-library .organization-item-name')).find(item=>item.textContent.includes('Person')));
+  await click(document.querySelector('.knowledge-library [title="Ada Lovelace"]'));
+  assertHome('Ada Lovelace');
+  await click(document.querySelector('[data-navigation-search]'));
+  const input=document.querySelector('[aria-label="Search notes and knowledge"]');assert.ok(input);
+  await act(async()=>{Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value').set.call(input,'London');input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.dispatchEvent(new dom.window.KeyboardEvent('keyup',{key:'n',bubbles:true}));});
+  await click(document.querySelector('#search-result-entity-london'));
+  assertHome('London');
+  assert.equal(document.querySelector('.vault-search-dialog'),null);
+  let creation;
+  t.mock.method(api,'createEntityPage',async(vault,id,input)=>{creation={vault,id,input};return {...page('associated-note'),blocks:[]};});
+  await click(button(document.querySelector('.entity-home'),'Create associated page'));
+  assert.deepEqual(creation,{vault:'a',id:'london',input:{}});
+  assert.equal(document.querySelector('.entity-home'),null);
+  assert.equal(document.querySelector('#page-title').value,'associated-note');
+  assert.equal(new URLSearchParams(window.location.search).get('page'),'associated-note');
+  await click(document.querySelector('.sidebar [aria-label="Knowledge entities"]'));
+  await click(document.querySelector('.knowledge-library [title="Ada Lovelace"]'));
+  await click(document.querySelector('#entity-home-tab-mentions'));
+  await click(document.querySelector('.eh-occurrences button'));
+  await act(async()=>new Promise(resolve=>requestAnimationFrame(resolve)));
+  assert.equal(document.querySelector('.page-search-mention')?.dataset.entity,'ada');
+  assert.equal(document.querySelector('.page-search-mention').textContent,'Ada Lovelace');
+  // A changed saved page opens safely without selecting a different occurrence.
+  await click(document.querySelector('.page [data-entity="ada"]'));
+  await click(button(document.querySelector('.entity-link-dialog'),'Open entity details'));
+  await click(button(document.querySelector('#entity-panel'),'Open entity homepage'));
+  await click(document.querySelector('#entity-home-tab-mentions'));
+  t.mock.method(api,'page',async()=>({...note,revision:2}));
+  await click(document.querySelector('.eh-occurrences button'));
+  await act(async()=>new Promise(resolve=>requestAnimationFrame(resolve)));
+  assert.equal(document.querySelector('.page-search-mention'),null);
+  assert.match(document.querySelector('#toast[role="alert"]').textContent,/changed since the mention/);
+
+ } finally {await env.close();}
 });

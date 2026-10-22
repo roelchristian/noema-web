@@ -27,14 +27,15 @@ export interface WorkspaceState {
   domainSavingPageId: string | null;
   canGoBack: boolean; canGoForward: boolean;
   entityPanelId: string | null;
+  entityId: string | null;
   vaults: Vault[]; vault: Vault | null; trash: TrashedPage[]; pages: PageSummary[]; entities: Entity[];
   creationFocusPageId: string | null;
   initialEditingPageId: string | null;
   organization: Organization; organizationContext: OrganizationContext; recent: RecentItem[];
-  sourceId: string | null; page: Page | null; view: 'source' | 'pages' | 'entities' | 'organization' | 'favourites' | 'recent' | 'trash' | 'inbox'; busy: boolean; loadingPageId: string | null; reviewing: boolean; error: string | null; saveStatus: SaveStatus;
+  sourceId: string | null; page: Page | null; view: 'entity' | 'source' | 'pages' | 'entities' | 'organization' | 'favourites' | 'recent' | 'trash' | 'inbox'; busy: boolean; loadingPageId: string | null; reviewing: boolean; error: string | null; saveStatus: SaveStatus;
 }
 export class Workspace {
-  private state: WorkspaceState = {initialEditingPageId:null,creationFocusPageId:null,sourceId:null,domainSavingPageId:null,saveFailures: [], draftStorageFailures: [], draftRecoveries: [], entityPanelId: null, canGoBack: false, canGoForward: false, vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
+  private state: WorkspaceState = {initialEditingPageId:null,creationFocusPageId:null,entityId:null,sourceId:null,domainSavingPageId:null,saveFailures: [], draftStorageFailures: [], draftRecoveries: [], entityPanelId: null, canGoBack: false, canGoForward: false, vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
   private browserAttached = false;
   private browserInitialized = false;
   private browserSession = '';
@@ -124,12 +125,18 @@ export class Workspace {
       this.state.vault.locked || this.state.vault.id!==previous.vault?.id)) {
       this.state={...this.state,initialEditingPageId:null};
     }
+    if (this.state.view !== 'entity' || !this.state.vault || this.state.vault.locked) this.state = {...this.state, entityId:null};
+    else {
+      const entity = this.state.entities.find(entity => entity.id === this.state.entityId);
+      if (!entity) this.state = {...this.state, view:'entities', entityId:null};
+      else if (entity.type === 'source') this.state = {...this.state, view:'source', sourceId:entity.id, entityId:null};
+    }
     if (this.state.view !== 'source' || !this.state.vault || this.state.vault.locked) this.state = {...this.state, sourceId:null};
     else if (!this.state.entities.some(entity => entity.id === this.state.sourceId && entity.type === 'source')) {
       this.state = {...this.state, view:'entities', sourceId:null};
     }
     if (!this.state.vault || this.state.vault.locked || this.state.vault.id !== previous.vault?.id ||
-      this.state.view !== previous.view || this.state.view === 'source' && this.state.sourceId !== previous.sourceId || this.state.view === 'pages' && this.state.page?.id !== previous.page?.id ||
+      this.state.view !== previous.view || this.state.view === 'entity' && this.state.entityId !== previous.entityId || this.state.view === 'source' && this.state.sourceId !== previous.sourceId || this.state.view === 'pages' && this.state.page?.id !== previous.page?.id ||
       this.state.view === 'organization' && (this.state.organizationContext.collection !== previous.organizationContext.collection || this.state.organizationContext.folder !== previous.organizationContext.folder) ||
       this.state.entityPanelId && !this.state.entities.some(entity => entity.id === this.state.entityPanelId)) {
       this.state = {...this.state, entityPanelId: null};
@@ -143,6 +150,7 @@ export class Workspace {
           view: this.state.view, ...this.state.organizationContext,
           pageId: this.state.view === 'pages' ? this.state.page?.id ?? null : null,
           sourceId: this.state.view === 'source' ? this.state.sourceId : null,
+          subjectId: this.state.view === 'entity' ? this.state.entityId : null,
         }));
       } catch { /* Navigation still works when browser storage is unavailable. */ }
     }
@@ -216,6 +224,7 @@ export class Workspace {
   }
   private validAddress(address: NavigationAddress) {
     if (address.entityId && !this.state.entities.some(entity => entity.id === address.entityId)) return false;
+    if (address.view === 'entity') return this.state.entities.some(entity => entity.id === address.subjectId && entity.type !== 'source');
     if (address.view === 'source') return this.state.entities.some(entity => entity.id === address.sourceId && entity.type === 'source');
     if (address.view === 'pages') return this.state.pages.some(page => page.id === address.pageId);
     if (address.view !== 'organization') return true;
@@ -232,7 +241,7 @@ export class Workspace {
       this.historyIndex = this.history.filter((address, index) => index <= currentIndex && this.validAddress(address)).length - 1;
       this.history = this.history.filter(address => this.validAddress(address));
       const address: NavigationAddress = {view: this.state.view, pageId: this.state.view === 'pages' ? this.state.page?.id ?? null : null,
-          sourceId: this.state.view === 'source' ? this.state.sourceId : null, entityId: this.state.entityPanelId,
+          sourceId: this.state.view === 'source' ? this.state.sourceId : null, entityId: this.state.entityPanelId, subjectId: this.state.view === 'entity' ? this.state.entityId : null,
         collection: this.state.view === 'organization' ? this.state.organizationContext.collection : '',
         folder: this.state.view === 'organization' ? this.state.organizationContext.folder : ''};
       if (this.validAddress(address) && JSON.stringify(address) !== JSON.stringify(this.history[this.historyIndex])) {
@@ -241,7 +250,7 @@ export class Workspace {
       }
     }
     if (vaultId && !this.state.busy && this.state.loadingPageId === null) this.syncBrowserNavigation({
-      view:this.state.view, pageId:this.state.view === 'pages' ? this.state.page?.id ?? null : null, sourceId:this.state.view === 'source' ? this.state.sourceId : null, entityId:this.state.entityPanelId,
+      view:this.state.view, pageId:this.state.view === 'pages' ? this.state.page?.id ?? null : null, sourceId:this.state.view === 'source' ? this.state.sourceId : null, entityId:this.state.entityPanelId, subjectId:this.state.view === 'entity' ? this.state.entityId : null,
       collection:this.state.view === 'organization' ? this.state.organizationContext.collection : '',
       folder:this.state.view === 'organization' ? this.state.organizationContext.folder : '',
     });
@@ -259,9 +268,10 @@ export class Workspace {
     this.traversingHistory = true;
     this.patch({});
     try {
-      const sameView = this.state.view === address.view && (address.view === 'pages' ? this.state.page?.id === address.pageId : address.view === 'source' ? this.state.sourceId === address.sourceId :
+      const sameView = this.state.view === address.view && (address.view === 'pages' ? this.state.page?.id === address.pageId : address.view === 'source' ? this.state.sourceId === address.sourceId : address.view === 'entity' ? this.state.entityId === address.subjectId :
         address.view !== 'organization' || this.state.organizationContext.collection === address.collection && this.state.organizationContext.folder === address.folder);
       if (!sameView && address.view === 'pages') await this.openPage(address.pageId!);
+      else if (!sameView && address.view === 'entity') await this.openEntityHome(address.subjectId!);
       else if (!sameView && address.view === 'source') await this.openSource(address.sourceId!);
       else if (!sameView) await this.navigate(async () => {
         if (address.view === 'trash') this.patch({trash: await api.trash(this.state.vault!.id)});
@@ -294,10 +304,20 @@ export class Workspace {
       if (!value || typeof value !== 'object' || Array.isArray(value)) return;
       stored = value as Record<string, unknown>;
     } catch { return; }
-    if (typeof stored.view !== 'string' || !['pages', 'source', 'organization', 'entities', 'favourites', 'recent', 'trash', 'inbox'].includes(stored.view)) return;
+    if (typeof stored.view !== 'string' || !['pages', 'source', 'entity', 'organization', 'entities', 'favourites', 'recent', 'trash', 'inbox'].includes(stored.view)) return;
     const collection = organization.collections.some(item => item.id === stored.collection) ? String(stored.collection) : '';
     const folder = !collection && organization.folders.some(item => item.id === stored.folder) ? String(stored.folder) : '';
     this.patch({organizationContext: {collection, folder}, entityPanelId:null});
+    if (stored.view === 'entity') {
+      const entity = this.state.entities.find(entity => entity.id === stored.subjectId);
+      if (entity) this.patch(entity.type === 'source' ? {view:'source',sourceId:entity.id} : {view:'entity',entityId:entity.id});
+      else {
+        this.patch({view:'entities'});
+        if (explicit) this.report(new Error('This entity is unavailable. It may have been deleted.'));
+      }
+      if (typeof stored.entityId === 'string' && this.state.entities.some(entity => entity.id === stored.entityId)) this.patch({entityPanelId:stored.entityId});
+      return;
+    }
     if (stored.view === 'source') {
       if (typeof stored.sourceId === 'string' && this.state.entities.some(entity => entity.id === stored.sourceId && entity.type === 'source')) {
         this.patch({view:'source',sourceId:stored.sourceId});
@@ -483,17 +503,17 @@ export class Workspace {
     if (recordRecent) this.recordRecent('page', id);
     this.titler.register(page); this.titler.observe(page, true);
   }
-  async openPage(id: string) {
+  async openPage(id: string, options: {fresh?:boolean} = {}) {
     const vault = this.state.vault;
     if (!vault || vault.locked || this.state.busy || this.state.reviewing || this.navigation && this.state.loadingPageId === null) return;
     // Re-selecting the displayed page should preserve its editor and selection.
-    if (this.state.view === 'pages' && this.state.page?.id === id) {this.cancelPageLoad(); return;}
+    if (!options.fresh && this.state.view === 'pages' && this.state.page?.id === id) {this.cancelPageLoad(); return;}
     this.pageRequest?.abort();
     const sequence = ++this.pageLoadSequence, controller = new AbortController();
     this.pageRequest = controller; this.navigation = true;
     const current = () => sequence === this.pageLoadSequence && this.state.vault?.id === vault.id && !this.state.vault.locked;
     const cached = this.pageCache.get(id);
-    if (cached?.vault_id === vault.id && this.state.pages.some(page => page.id === id)) {
+    if (!options.fresh && cached?.vault_id === vault.id && this.state.pages.some(page => page.id === id)) {
       // The saver owns vault-scoped snapshots, so cached navigation need not wait
       // for outgoing writes. Keep drafts in memory even if a background save fails.
       this.navigation = false; this.pageRequest = null;
@@ -536,6 +556,18 @@ export class Workspace {
         this.patch({loadingPageId:null});
       }
     }
+  }
+  async openEntityHome(id: string) {
+    const vault = this.state.vault;
+    const entity = this.state.entities.find(entity => entity.id === id);
+    if (!vault || vault.locked || !entity || this.state.busy || this.state.reviewing || this.pageLockPending) return;
+    if (entity.type === 'source') return this.openSource(id);
+    if (this.state.view === 'entity' && this.state.entityId === id) { this.closeEntity(); return; }
+    await this.navigate(async () => {
+      if (this.state.vault?.id !== vault.id || this.state.vault.locked || !this.state.entities.some(entity => entity.id === id)) return;
+      this.patch({view:'entity',entityId:id,entityPanelId:null,error:null});
+      this.recordRecent('entity',id);
+    });
   }
   async openSource(id: string) {
     const vault = this.state.vault;

@@ -52,3 +52,15 @@ test('restoration retries delayed image layout but stops once the user starts sc
  await open('two');setMax(100);await open('one');assert.equal(window.scrollY,100);
  window.dispatchEvent(new window.WheelEvent('wheel'));window.scrollY=60;setMax(2500);await resize();assert.equal(window.scrollY,60);
 });
+
+test('entity home scroll is independent of editor and other entity destinations',async t=>{
+ const {open,update}=await setup(t);
+ window.scrollY=850;
+ await update({view:'entity',entityId:'subject-one'});assert.equal(window.scrollY,0);
+ window.scrollY=420;
+ await update({entityId:'subject-two'});assert.equal(window.scrollY,0);
+ window.scrollY=160;
+ await update({entityId:'subject-one'});assert.equal(window.scrollY,420);
+ await open('one');assert.equal(window.scrollY,850);
+ await update({view:'entity',entityId:'subject-two'});assert.equal(window.scrollY,160);
+});

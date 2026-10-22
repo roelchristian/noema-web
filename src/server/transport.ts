@@ -2,6 +2,7 @@ import {vaultStorage} from './modules/vault-storage.js';
 import type {NetworkAccess} from './network-settings.js';
 import {sourcePageRoutes} from './routes/source-pages.js';
 import {reviewTexts,parseEditorReview} from './modules/editor-review.js';
+import {entitySourceEvidence} from './modules/entity-source-evidence.js';
 import {EntityLifecycle} from './modules/entity-lifecycle.js';
 import {SourceLifecycleService} from './modules/source-lifecycle.js';
 import {readingNoteMaxWords,readingNoteWordCount} from '../shared/source-reading.js';
@@ -290,6 +291,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             if(parts.length===3 && method==='PUT' && id==='favourites')return send(200,organizer.favourite(vault,body));
           }
           if(collection==='pages') {
+            if(id && parts.length===4 && child==='entities' && method==='GET')return send(200,knowledge.pageAssociations(vault,id));
             if(id && parts.length===4 && child==='domains' && method==='PUT'){new Domains(store).setManual(vault,id,body,body.revision);return send(200,pages.get(vault,id));}
             if(id && parts.length===4 && child==='edit-lock' && method==='PUT')return send(200,pages.setEditLock(vault,id,body));
             if(id && parts.length===4 && child==='backlinks' && method==='GET')return send(200,pages.backlinks(vault,id));
@@ -414,6 +416,17 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             }
           }
           if(collection==='entities') {
+            if(id && child==='evidence' && parts.length===4 && method==='GET') {
+              const offset=Number(url.searchParams.get('offset')??0);
+              if(!Number.isSafeInteger(offset)||offset<0)throw new HttpError(400,'Invalid evidence offset.');
+              return send(200,entitySourceEvidence(store,vault,id,{offset}));
+            }
+            if(id && child==='pages' && parts.length===4 && method==='POST')return send(201,knowledge.createPage(vault,id,body,pages));
+            if(id && child==='overview' && parts.length===4 && method==='PUT')return send(200,knowledge.saveOverview(vault,id,body));
+            if(id && child==='pages' && childId && parts.length===5) {
+              if(method==='PUT')return send(200,knowledge.associatePage(vault,id,childId,body));
+              if(method==='DELETE')return send(200,knowledge.removePage(vault,id,childId));
+            }
             if(id && child==='lifecycle' && parts.length===4) {
               const lifecycle=new SourceLifecycleService(store);
               if(method==='GET')return send(200,new EntityLifecycle(store).preview(vault,id));

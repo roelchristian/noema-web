@@ -17,6 +17,9 @@ export class EntityLifecycle {
     const fileIds=new Set(files.map(file=>file.id));
     const rows=this.store.all<{id:string;title:string;blocks:string;deleted_at:string|null;revision:number}>(`SELECT p.id,p.title,p.blocks,p.deleted_at,p.revision FROM pages p WHERE p.vault_id=? ORDER BY p.id`,vault);
     const linked=new Set(this.store.all<{page_id:string}>(`SELECT page_id FROM page_sources WHERE source_id=? UNION SELECT page_id FROM note_source_references WHERE source_id=? UNION SELECT n.page_id FROM note_source_files n JOIN source_files f ON f.id=n.file_id WHERE f.entity_id=? UNION SELECT page_id FROM page_reading_notes WHERE source_id=? UNION SELECT page_id FROM source_page_creations WHERE source_id=?`,id,id,id,id,id).map(row=>row.page_id));
+    const curated=this.store.all('SELECT * FROM entity_page_associations WHERE entity_id=? ORDER BY page_id',id);
+    for(const row of curated as {page_id:string}[])linked.add(row.page_id);
+    const overview=this.store.get('SELECT * FROM entity_overviews WHERE entity_id=?',id);
     const pages:EntityImpact['pages']=[];
     for(const row of rows) {
       let references=0;
@@ -45,9 +48,9 @@ export class EntityLifecycle {
       this.store.all('SELECT * FROM source_reading_locations WHERE file_id IN (SELECT id FROM source_files WHERE entity_id=?) ORDER BY file_id,id',id),
       this.store.all('SELECT * FROM source_page_drafts WHERE source_id=? ORDER BY request_id',id),
     ];
-    const version=createHash('sha256').update(JSON.stringify([entity,rows,files,properties,relationships,sourceRecords,counts,deleteBlockedReason])).digest('hex');
+    const version=createHash('sha256').update(JSON.stringify([entity,rows,files,properties,relationships,sourceRecords,curated,overview,counts,deleteBlockedReason])).digest('hex');
     return {id,name:entity.name,archivedAt:entity.archived_at??null,version,pages,counts,deleteBlockedReason,
-      remainsAccessible:['Existing mentions, properties and relationships','Active pages and pages in Trash (normal Trash retention still applies)','Citations, original source attachments and coordinates, highlights, reading notes and bookmarks'],
+      remainsAccessible:['Existing mentions, properties, relationships, pinned pages, page associations and authored overview','Active pages and pages in Trash (normal Trash retention still applies)','Citations, original source attachments and coordinates, highlights, reading notes and bookmarks'],
       hiddenByDefault:['Active knowledge and source library views; global search unless Include archived is selected','New-link pickers, automatic tagging and entity discovery suggestions'],
       draftPolicy:'Unsaved browser drafts are not inventoried. Saving explicit references to an archived identity remains allowed after vault and reference validation; this preserves drafts opened before archival. Other open tabs may retain older client-side suggestions until their entity list refreshes. Saves cannot distinguish a pre-archive draft link from a deliberate explicit link. Automatic tagging and fresh suggestions exclude archived identities. Restore does not rewrite pages.'};
   }

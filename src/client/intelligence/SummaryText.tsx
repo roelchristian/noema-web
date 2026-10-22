@@ -40,7 +40,12 @@ function Inline({content}: {content: Segment[]}) {
 
 /** Render supported Markdown as React elements; raw HTML remains escaped text. */
 export function SummaryText({text}: {text:string}) {
-  const blocks = useMemo(() => markdownBlocks(limitSummaryWords(text)), [text]);
+  return <MarkdownText text={limitSummaryWords(text)}/>;
+}
+
+/** Full user-authored Markdown, using the same escaped rendering as summaries. */
+export function MarkdownText({text}: {text:string}) {
+  const blocks = useMemo(() => markdownBlocks(text), [text]);
   return <>{blocks.map((block,index) => {
     const content = <Inline content={block.content}/>;
     if (block.type === 'heading1') return <h3 key={block.id}>{content}</h3>;

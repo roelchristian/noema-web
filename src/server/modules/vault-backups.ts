@@ -45,6 +45,8 @@ const tables={
   highlights:{columns:'id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,color,reference_json,created_at',scope:'vault_id=?'},
   page_reading_notes:{columns:'page_id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,reference_json,created_at',scope:'vault_id=?'},
   entities:{columns:'id,name,aliases,mention_case,type,subtypes,description,updated_at,inactive,archived_at',scope:'vault_id=?'},
+  entity_overviews:{columns:'entity_id,content,revision',scope:entityScope},
+  entity_page_associations:{columns:'entity_id,page_id,pinned,annotation,created_at',scope:entityScope},
   properties:{columns:'id,entity_id,name,value,target_id',scope:entityScope},
   relationships:{columns:'id,source_id,label,target_id',scope:'source_id IN (SELECT id FROM entities WHERE vault_id=?)'},
   page_edit_locks:{columns:'page_id,password_hash,salt',scope:'vault_id=?'},
@@ -136,7 +138,7 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='source_reading_locations'||table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='entity_overviews'||table==='entity_page_associations'||table==='source_reading_locations'||table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     const sourceOwners=new Set<unknown>(),legacyEntities=new Map(rows.entities.map(row=>[row.id,row]));
     const legacyProperties=[...rows.properties],legacyLinks=[...rows.page_sources];
     for(const file of rows.source_files) {
@@ -311,6 +313,16 @@ export class VaultBackups {
           if(row.ai_review_accepted!==undefined&&row.ai_review_accepted!==0&&row.ai_review_accepted!==1)throw invalid();
           const aiStatus=row.ai_status==='ai_generated'||row.ai_status==='ai_generated_edited'?row.ai_status:validated.some(isAIExplanation)?'regular_with_ai_explanations':'regular';
           insert('pages',{id:ref(pageIds,row.id),vault_id:vault,title:string(row,'title',500),icon:row.icon as string|null,featured_image_id:row.featured_image_id==null?null:ref(imageIds,row.featured_image_id),blocks:JSON.stringify(validated),ai_status:aiStatus,ai_review_accepted:row.ai_review_accepted===1||row.ai_status==='ai_assisted'?1:0,generation_metadata:row.generation_metadata==null?null:JSON.stringify(parsePageGenerationMetadata(row.generation_metadata)),language:pageLanguage(row.language),created_at:row.created_at==null?null:timestamp(row,'created_at'),updated_at:timestamp(row,'updated_at'),revision:integer(row,'revision',1),deleted_at:row.deleted_at===null?null:timestamp(row,'deleted_at')});
+        }
+        for(const row of rows.entity_overviews) {
+          const entityId=ref(entityIds,row.entity_id);
+          if(this.store.get<{type:string}>('SELECT type FROM entities WHERE id=?',entityId)?.type==='source')throw invalid();
+          insert('entity_overviews',{entity_id:entityId,content:string(row,'content',100000),revision:integer(row,'revision',1)});
+        }
+        for(const row of rows.entity_page_associations) {
+          const entityId=ref(entityIds,row.entity_id);
+          if(this.store.get<{type:string}>('SELECT type FROM entities WHERE id=?',entityId)?.type==='source')throw invalid();
+          insert('entity_page_associations',{entity_id:entityId,page_id:ref(pageIds,row.page_id),pinned:integer(row,'pinned',0,1),annotation:string(row,'annotation',2000),created_at:timestamp(row,'created_at')});
         }
         for(const row of rows.pages) {
           const pageId=ref(pageIds,row.id);

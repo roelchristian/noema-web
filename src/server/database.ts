@@ -48,6 +48,15 @@ for (const table of ['pages','entities']) {
 db.exec('COMMIT');
 } catch(e) { db.exec('ROLLBACK'); throw e; } finally { db.exec('PRAGMA foreign_keys=ON'); }
 if (!db.prepare('PRAGMA table_info(entities)').all().some(column=>column.name==='inactive')) db.exec('ALTER TABLE entities ADD COLUMN inactive INTEGER NOT NULL DEFAULT 0');
+db.exec(`CREATE TABLE IF NOT EXISTS entity_overviews (
+ entity_id TEXT PRIMARY KEY REFERENCES entities(id) ON DELETE CASCADE,
+ content TEXT NOT NULL DEFAULT '' CHECK(length(content)<=100000),revision INTEGER NOT NULL CHECK(revision>=1));
+ CREATE TABLE IF NOT EXISTS entity_page_associations (
+ entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+ page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+ pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1)),annotation TEXT NOT NULL DEFAULT '' CHECK(length(annotation)<=2000),created_at TEXT NOT NULL,
+ PRIMARY KEY(entity_id,page_id));
+ CREATE INDEX IF NOT EXISTS entity_page_associations_page ON entity_page_associations(page_id);`);
 db.exec(`CREATE TABLE IF NOT EXISTS page_sources (page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE, source_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE, PRIMARY KEY(page_id,source_id));`);
 db.exec(`CREATE TABLE IF NOT EXISTS page_source_dismissals (page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE, source_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE, PRIMARY KEY(page_id,source_id));`);
 

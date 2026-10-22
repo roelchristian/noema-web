@@ -3,7 +3,9 @@ import type { Workspace, WorkspaceState } from './workspace';
 
 type Position = {left:number;top:number};
 const pageKey = (state:WorkspaceState) => state.view==='pages' && state.page && !state.busy && !state.vault?.locked
-  ? JSON.stringify([state.page.vault_id,state.page.id]) : null;
+  ? JSON.stringify([state.page.vault_id,state.page.id])
+  : state.view==='entity' && state.entityId && state.vault && !state.busy && !state.vault.locked
+    ? JSON.stringify([state.vault.id,'entity',state.entityId]) : null;
 const position = ():Position => ({left:window.scrollX,top:window.scrollY});
 
 /** Subscribe before the React store subscription so outgoing offsets are captured

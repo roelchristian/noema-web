@@ -6,6 +6,19 @@ export interface EntityDraftValues {
 }
 export interface EntityDraft {baseline: EntityDraftValues; values: EntityDraftValues}
 const drafts = new Map<string, Map<string, EntityDraft>>();
+export interface EntityOverviewDraft {content: string; baseline: string; revision: number}
+const overviewDrafts = new Map<string, Map<string, EntityOverviewDraft>>();
+export function getEntityOverviewDraft(vaultId: string, entityId: string) {return overviewDrafts.get(vaultId)?.get(entityId);}
+export function setEntityOverviewDraft(vaultId: string, entityId: string, draft: EntityOverviewDraft) {
+  if (draft.content === draft.baseline) {clearEntityOverviewDraft(vaultId, entityId); return;}
+  const vault = overviewDrafts.get(vaultId) ?? new Map<string, EntityOverviewDraft>();
+  vault.set(entityId, draft); overviewDrafts.set(vaultId, vault); notify();
+}
+export function clearEntityOverviewDraft(vaultId: string, entityId: string, expected?: EntityOverviewDraft) {
+  const vault = overviewDrafts.get(vaultId);
+  if (!vault || expected && vault.get(entityId) !== expected) return false;
+  const removed = vault.delete(entityId); if (!vault.size) overviewDrafts.delete(vaultId); if (removed) notify(); return removed;
+}
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach(listener => listener());
 export function subscribeEntityDrafts(listener: () => void) {listeners.add(listener); return () => {listeners.delete(listener);};}
@@ -41,15 +54,18 @@ export function clearEntityDraft(vaultId: string, entityId: string, expected?: E
   if (removed) notify();
   return removed;
 }
-export function clearEntityDrafts(vaultId: string) {if (drafts.delete(vaultId)) notify();}
+export function clearEntityDrafts(vaultId: string) {const removed = drafts.delete(vaultId); const overviewRemoved = overviewDrafts.delete(vaultId); if (removed || overviewRemoved) notify();}
 export function pruneEntityDrafts(vaultId: string, validEntityIds: Iterable<string>) {
+  const valid = new Set(validEntityIds);
+  const overviews = overviewDrafts.get(vaultId);
+  if (overviews) for (const id of overviews.keys()) if (!valid.has(id)) clearEntityOverviewDraft(vaultId, id);
   const vault = drafts.get(vaultId); if (!vault) return;
-  const valid = new Set(validEntityIds); let changed = false;
+  let changed = false;
   for (const id of vault.keys()) if (!valid.has(id)) {vault.delete(id); changed = true;}
   if (!vault.size) drafts.delete(vaultId);
   if (changed) notify();
 }
 
 export function hasUnsavedEntityDrafts() {
-  return [...drafts.values()].some(vault=>[...vault.values()].some(draft=>entityDraftDirty(draft.values,draft.baseline)));
+  return overviewDrafts.size > 0 || [...drafts.values()].some(vault=>[...vault.values()].some(draft=>entityDraftDirty(draft.values,draft.baseline)));
 }

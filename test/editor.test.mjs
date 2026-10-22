@@ -1,3 +1,4 @@
+import {inlineMathAtCaret,displayMathSource} from '../src/client/editor/math-delimiters.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { markdownBlocks, markdownInline } from '../src/client/editor/paste.ts';
@@ -54,7 +55,8 @@ test('inline markup is escaped and unsafe link protocols are excluded', () => {
 });
 test('fenced code keeps line breaks and does not interpret formatting', () => {
   const blocks = markdownBlocks('```js\n**literal**\nnext\n```\n\nAfter');
-  assert.deepEqual(blocks[0].content, [{code: true, text: '**literal**\nnext'}]);
+  assert.equal(blocks[0].type,'code');
+  assert.deepEqual(blocks[0].content, [{text: '**literal**\nnext'}]);
   assert.equal(blocks[1].content[0].text, 'After');
 });
 test('tables and formatting survive persistence; malformed tables and cell references are rejected', () => {
@@ -90,24 +92,6 @@ test('inline math preserves LaTeX commands and code and currency stay literal', 
   assert.ok(markdownInline('$unfinished').every(segment => !segment.math));
 });
 
-test('display equations paste as independent blocks, with multiline LaTeX intact', () => {
-  const blocks = markdownBlocks(String.raw`Before
-$$\frac{a_1}{b_2}$$
-After
-$$
-\begin{aligned}
-x &= 1 \\
-y &= 2
-\end{aligned}
-$$
-End`);
-  assert.deepEqual(blocks.map(block => block.type), ['paragraph', 'math', 'paragraph', 'math', 'paragraph']);
-  assert.equal(blocks[1].content[0].text, String.raw`\frac{a_1}{b_2}`);
-  assert.match(blocks[3].content[0].text, /\\begin\{aligned\}/);
-  assert.ok(markdownBlocks('```tex\n$$x$$\n```')[0].content[0].code);
-  assert.equal(markdownBlocks('$$unfinished')[0].type, 'paragraph');
-});
-
 test('math rendering is accessible, editable, and does not activate unsafe LaTeX commands', () => {
   const html = segmentHTML([{text: String.raw`\frac{x}{2}`, math: true}], []);
   assert.match(html, /class="inline-math"/);
@@ -126,12 +110,67 @@ test('inline and display equations survive page persistence and entity scans ski
   try {
     const store = new Store(db), knowledge = new Knowledge(store), pages = new Pages(store, knowledge);
     const page = pages.create('default', {title: 'Math'});
-    const blocks = markdownBlocks('Inline $x_1^2$.\n\n$$x_1^2$$');
-    const saved = pages.update('default', page.id, {...page, blocks});
+    for(const input of ['Inline $x_1^2$.\n\n$$x_1^2$$',String.raw`Inline \(x_1^2\).
+\[x_1^2\]`]){
+    const blocks = markdownBlocks(input);
+    const saved = pages.update('default', page.id, {...pages.get('default',page.id), blocks});
     assert.deepEqual(saved.blocks, blocks);
     assert.equal(mentionEvidence(saved, 'x_1', 'ursula'), null);
     assert.ok(mentionEvidence(saved, 'Inline', 'ursula'));
     const invalid = [{...blocks[1], content: [{entityId: 'ursula'}]}];
     assert.throws(() => pages.update('default', page.id, {title: 'Math', blocks: invalid}), error => error.status === 400);
+    }
   } finally { db.close(); }
+});
+
+test('parenthesis math works beside dollar math, inside formatting and table cells',()=>{
+ const input=String.raw`Area \(\pi r^2\), \(x_1 + x_2\), and $y_1$.`;
+ assert.deepEqual(markdownInline(input).filter(s=>s.math).map(s=>s.text),[String.raw`\pi r^2`,'x_1 + x_2','y_1']);
+ assert.deepEqual(markdownInline(String.raw`**\(x_1\)**`),[{bold:true,math:true,text:'x_1'}]);
+ const [table]=markdownBlocks(String.raw`| Formula | Value |
+| --- | --- |
+| \(x_1\) | $y_1$ |`);
+ assert.deepEqual(table.rows[1][0],[{math:true,text:'x_1'}]);
+ assert.deepEqual(table.rows[1][1],[{math:true,text:'y_1'}]);
+});
+test('display equation blocks preserve multiline commands for both delimiter styles',()=>{
+ for(const [open,close] of [['\\[','\\]'],['$$','$$']]){
+ const blocks=markdownBlocks(String.raw`Before
+\[\frac{a_1}{b_2}\]
+After
+\[
+\begin{aligned}
+x &= 1 \\
+y &= 2
+\end{aligned}
+\]
+End`.replaceAll('\\[',()=>open).replaceAll('\\]',()=>close));
+ assert.deepEqual(blocks.map(b=>b.type),['paragraph','math','paragraph','math','paragraph']);
+ assert.equal(blocks[1].content[0].text,String.raw`\frac{a_1}{b_2}`);
+ assert.equal(blocks[3].content[0].text,String.raw`\begin{aligned}
+x &= 1 \\
+y &= 2
+\end{aligned}`);
+ assert.equal(markdownBlocks('```tex\n'+open+'literal'+close+'\n```')[0].type,'code');
+ assert.equal(markdownBlocks(open+'unfinished')[0].type,'paragraph');
+ assert.deepEqual(markdownBlocks(String.raw`\[x\]
+\[y\]`).map(b=>b.content[0].text),['x','y']);
+ }
+});
+test('incomplete and escaped delimiters, empty expressions and code stay literal',()=>{
+ for(const text of [String.raw`\(unfinished`,String.raw`\\(literal\)`,String.raw`\( \)`,String.raw`\[unfinished`,String.raw`\\[literal\]`]){
+  assert.ok(markdownInline(text).every(s=>!s.math));assert.ok(markdownBlocks(text).every(b=>b.type!=='math'));
+ }
+ assert.deepEqual(markdownInline('`'+String.raw`\(literal\)`+'`'),[{code:true,text:String.raw`\(literal\)`}]);
+ assert.equal(markdownBlocks('```tex\n'+String.raw`\[literal\]`+'\n```')[0].type,'code');
+});
+test('typing completion recognizes delimiters only at the caret and whole display blocks',()=>{
+ assert.deepEqual(inlineMathAtCaret(String.raw`Area \( \pi r^2 \)`),{index:5,source:String.raw`\pi r^2`});
+ assert.deepEqual(inlineMathAtCaret('Area $x_1$'),{index:5,source:'x_1'});
+ for(const text of [String.raw`\(unfinished`,String.raw`\\(literal\)`,String.raw`\( \)`,String.raw`\(x\) after`])assert.equal(inlineMathAtCaret(text),undefined);
+ assert.equal(displayMathSource(String.raw`\[ x_1 \]`),'x_1');
+ assert.equal(displayMathSource('$$x_1$$'),'x_1');
+ assert.equal(displayMathSource(String.raw`Before \[x\]`),undefined);
+ assert.equal(displayMathSource(String.raw`\[x\] after`),undefined);
+ assert.equal(displayMathSource(String.raw`\[ \]`),undefined);
 });

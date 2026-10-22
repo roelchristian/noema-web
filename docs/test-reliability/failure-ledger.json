@@ -1,0 +1,651 @@
+{
+  "baseline": "5822ecc59f7c931b2a873bfe282cf1455ece2466",
+  "remainingCount": 0,
+  "classificationCounts": {
+    "fixture/environment gap": 32,
+    "stale contract/assertion": 39
+  },
+  "failures": [
+    {
+      "id": "test/ai-enrichments.test.mjs :: saved enrichments survive restart, refresh safely, and follow page access and lifecycle",
+      "baselineLocation": "test/ai-enrichments.test.mjs:17:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "Structured selective output with actual note content; summary/topics selected by kind, inferred provenance asserted; deletion preserves ownership/suppression and unrelated records. Restart, lock, cross-vault, failed/stale generation and purge assertions pass.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    \n    + [\n    +   {\n    +     contentHash: null,\n    +     data: {\n    +       classification: {\n    +         classificationOrigin: 'inferred',\n    +         lastAssessedContentHash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',\n    +         needsRefresh: true,"
+    },
+    {
+      "id": "test/ai-notifications.test.mjs :: saved enrichments notify regardless of producer; titles notify only when actually applied",
+      "baselineLocation": "test/ai-notifications.test.mjs:22:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Actual PageEnrichment title commit replaces manual-update simulation. Unapplied legacy results/manual edits remain silent; summary/scan notifications and secret-free records retained.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly equal:\n    \n    0 !== 1\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: 1\n  actual: 0\n  operator: 'strictEqual'\n  stack: |-\n    TestContext.<anonymous> (file:///workspace/noema-web/test/ai-notifications.test.mjs:29:44)"
+    },
+    {
+      "id": "test/api.test.mjs :: SQLite API: pages, references, relationships, validation, and restart persistence",
+      "baselineLocation": "test/api.test.mjs:30:7",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Subtype field definitions are explicit/current. Ownership checks use valid inherited fields to reach the 404 branch. Exact empty organization includes folderLinks. Full persistence/isolation API sequence passes.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    {\"error\":\"Invalid text value\"}\n    \n    400 !== 201\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: 201\n  actual: 400\n  operator: 'strictEqual'\n  stack: |-\n    request (file:///workspace/noema-web/test/api.test.mjs:35:40)"
+    },
+    {
+      "id": "test/appearance.test.mjs :: appearance survives serialization, including individual entity overrides",
+      "baselineLocation": "test/appearance.test.mjs:15:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Serialized references mark citationStyleExplicit=true; explicit choices now modeled.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    \n      {\n        bodyFont: 'system',\n        citationStyle: 'references',\n    +   citationStyleExplicit: true,\n    -   citationStyleExplicit: false,\n        entityColors: {\n          concept: 'graphite',\n          creativework: 'graphite',"
+    },
+    {
+      "id": "test/auto-entities.test.mjs :: removed tags stay excluded in paragraphs and tables without suppressing other occurrences",
+      "baselineLocation": "test/auto-entities.test.mjs:7:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Automatic links preserve exact mentionText, including canonical names and curly quotes.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    ... Skipped lines\n    \n      [\n        {\n          bold: true,\n          skipAutoTag: true,\n          text: 'Ada'\n    ...\n          entityId: 'ada',"
+    },
+    {
+      "id": "test/auto-entities.test.mjs :: automatic matching prefers longest whole names, including Unicode and punctuation",
+      "baselineLocation": "test/auto-entities.test.mjs:18:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Automatic links preserve exact mentionText, including canonical names and curly quotes.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    \n      [\n        {\n          entityId: 'city',\n    +     mentionText: 'New York'\n        },\n        {\n          text: ' and '\n        },"
+    },
+    {
+      "id": "test/auto-entities.test.mjs :: matching spans styled text and preserves surrounding formatting",
+      "baselineLocation": "test/auto-entities.test.mjs:25:1",
+      "classification": "stale contract/assertion",
+      "status": "consolidated into passing formatting matrix",
+      "reason": "Automatic links preserve exact mentionText, including canonical names and curly quotes.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    \n      [\n        {\n          bold: true,\n          text: 'Read '\n        },\n        {\n          entityId: 'ursula',\n    +     mentionText: 'Ursula Le Guin'"
+    },
+    {
+      "id": "test/auto-entities.test.mjs :: existing mentions, equations, and image blocks are preserved; code, links and table cells are scanned",
+      "baselineLocation": "test/auto-entities.test.mjs:40:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Automatic links preserve exact mentionText, including canonical names and curly quotes.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    \n      [\n        {\n          entityId: 'ada'\n        },\n        {\n          entityId: 'ada',\n    +     mentionText: 'Ada'\n        },"
+    },
+    {
+      "id": "test/auto-entities.test.mjs :: curly quotes still match canonical entity names containing straight quotes",
+      "baselineLocation": "test/auto-entities.test.mjs:65:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Automatic links preserve exact mentionText, including canonical names and curly quotes.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    \n      [\n        {\n          entityId: 'oconnor',\n    +     mentionText: 'Flannery O\u2019Connor'\n        },\n        {\n          text: ' wrote '\n        },"
+    },
+    {
+      "id": "test/auto-entity-workspace.test.mjs :: removed tags remain excluded through idle matching, explicit saves, and reopening",
+      "baselineLocation": "test/auto-entity-workspace.test.mjs:31:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Wire output preserves mentionText; SSR needs DOM; saved footer now Edited just now.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    ... Skipped lines\n    \n      [\n        {\n          skipAutoTag: true,\n          text: 'Ada Lovelace'\n        },\n    ...\n          entityId: 'ada',"
+    },
+    {
+      "id": "test/auto-entity-workspace.test.mjs :: idle identification links existing entities, autosaves them, and remains idempotent",
+      "baselineLocation": "test/auto-entity-workspace.test.mjs:81:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Wire output preserves mentionText; SSR needs DOM; saved footer now Edited just now.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    \n      [\n        {\n          text: 'Read '\n        },\n        {\n          entityId: 'ada',\n    +     mentionText: 'Ada Lovelace'\n        },"
+    },
+    {
+      "id": "test/auto-entity-workspace.test.mjs :: explicit saves prepare automatic links and newer edits survive in-flight writes",
+      "baselineLocation": "test/auto-entity-workspace.test.mjs:98:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Wire output preserves mentionText; SSR needs DOM; saved footer now Edited just now.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    \n      [\n        {\n          entityId: 'ada',\n    +     mentionText: 'Ada Lovelace'\n        },\n        {\n          text: ' wrote newer notes.'\n        }"
+    },
+    {
+      "id": "test/auto-entity-workspace.test.mjs :: editor footer announces identification, saving, saved and retry states",
+      "baselineLocation": "test/auto-entity-workspace.test.mjs:135:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "Wire output preserves mentionText; SSR needs DOM; saved footer now Edited just now.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: 'window is not defined'\n  code: 'ERR_TEST_FAILURE'\n  name: 'ReferenceError'\n  stack: |-\n    <anonymous> (/workspace/noema-web/src/client/editor/BlockEditor.tsx:146:95)\n    useReducer (/workspace/noema-web/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:4086:15)\n    Object.useState (/workspace/noema-web/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:10277:18)\n    process.env.NODE_ENV.exports.useState (/workspace/noema-web/node_modules/react/cjs/react.development.js:1309:34)\n    BlockEditor "
+    },
+    {
+      "id": "test/block-drag.test.mjs :: dragging the handle previews and commits a move, then suppresses its click menu",
+      "baselineLocation": "test/block-drag.test.mjs:38:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "Column metadata, object-form scrolling, valid document bounds and landing frames; concurrent edits cancel snapshot-based drags.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    \n      {\n        beforeId: null,\n    +   column: null,\n        id: 'a',\n        keyboard: false,\n        valid: true\n      }\n    "
+    },
+    {
+      "id": "test/block-drag.test.mjs :: Escape, pointer cancellation and out-of-document drops do not change order",
+      "baselineLocation": "test/block-drag.test.mjs:46:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "Column metadata, object-form scrolling, valid document bounds and landing frames; concurrent edits cancel snapshot-based drags.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly equal:\n    \n    1 !== 0\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: 0\n  actual: 1\n  operator: 'strictEqual'\n  stack: |-\n    TestContext.<anonymous> (/workspace/noema-web/test/block-drag.test.mjs:50:138)"
+    },
+    {
+      "id": "test/block-drag.test.mjs :: edge dragging scrolls and cancellation cleans up animation work",
+      "baselineLocation": "test/block-drag.test.mjs:66:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "Column metadata, object-form scrolling, valid document bounds and landing frames; concurrent edits cancel snapshot-based drags.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    The expression evaluated to a falsy value:\n    \n      assert.ok(f.state.scrolls[0]>0)\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: true\n  actual: false\n  operator: '=='\n  stack: |-\n    TestContext.<anonymous> (/workspace/noema-web/test/block-drag.test.mjs:67:210)"
+    },
+    {
+      "id": "test/block-drag.test.mjs :: drop uses the latest block state and does not overwrite an edit made during dragging",
+      "baselineLocation": "test/block-drag.test.mjs:69:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "Column metadata, object-form scrolling, valid document bounds and landing frames; concurrent edits cancel snapshot-based drags.",
+      "replacementName": "a concurrent edit cancels the drag and preserves the latest block state",
+      "baselineErrorExcerpt": "  error: |-\n    Expected \"actual\" to be reference-equal to \"expected\":\n    + actual - expected\n    \n      {\n        checked: false,\n        content: [\n          {\n    +       text: 'c'\n    -       text: 'New edit'\n          }\n        ],"
+    },
+    {
+      "id": "test/block-selection.test.mjs :: pointer drags cross independent editing hosts in both directions",
+      "baselineLocation": "test/block-selection.test.mjs:71:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "Explicit JSDOM hit testing and deterministic frame flushing, using shared DOM globals.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: 'false == true'\n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: true\n  actual: false\n  operator: '=='\n  stack: |-\n    TestContext.<anonymous> (file:///workspace/noema-web/test/block-selection.test.mjs:79:11)\n    Test.runInAsyncScope (node:async_hooks:227:14)\n    Test.run (node:internal/test_runner/test:1382:25)\n    Test.processPendingSubtests (node:internal/test_runner/test:960:18)\n    Test.postRun (node:internal/test_runner/test:1522:19)"
+    },
+    {
+      "id": "test/block-selection.test.mjs :: Shift-click and Shift-arrow extend across block boundaries",
+      "baselineLocation": "test/block-selection.test.mjs:96:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "Explicit JSDOM hit testing and deterministic frame flushing, using shared DOM globals.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: 'false == true'\n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: true\n  actual: false\n  operator: '=='\n  stack: |-\n    TestContext.<anonymous> (file:///workspace/noema-web/test/block-selection.test.mjs:103:10)\n    Test.runInAsyncScope (node:async_hooks:227:14)\n    Test.run (node:internal/test_runner/test:1382:25)\n    Test.processPendingSubtests (node:internal/test_runner/test:960:18)\n    Test.postRun (node:internal/test_runner/test:1522:19)"
+    },
+    {
+      "id": "test/block-selection.test.mjs :: dragging through inline equations keeps the equation atomic",
+      "baselineLocation": "test/block-selection.test.mjs:116:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "Explicit JSDOM hit testing and deterministic frame flushing, using shared DOM globals.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly equal:\n    + actual - expected\n    \n    + null\n    - HTMLDivElement {}\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected:\n  actual: ~\n  operator: 'strictEqual'"
+    },
+    {
+      "id": "test/clipboard-math.test.mjs :: rich code, escaped and unmatched delimiters, and existing math remain intact",
+      "baselineLocation": "test/clipboard-math.test.mjs:53:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "pre produces a code block with plain content, unlike inline code.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    \n      [\n        'paragraph',\n    +   'code',\n        'paragraph',\n    -   'paragraph'\n      ]\n    \n  code: 'ERR_ASSERTION'"
+    },
+    {
+      "id": "test/domain-classification.test.mjs :: classification is versioned, cached independently and preserves legacy data",
+      "baselineLocation": "test/domain-classification.test.mjs:27:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "PageUtility delegates to selective enrichment; checked current provider factory replaces obsolete interface. Manual domain edits invalidate pending input.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: 'this.intelligence.enrichmentSelection is not a function'\n  code: 'ERR_TEST_FAILURE'\n  name: 'TypeError'\n  stack: |-\n    PageUtility.prepare (/workspace/noema-web/src/server/modules/page-enrichment.ts:120:159)\n    PageUtility.run (/workspace/noema-web/src/server/modules/page-enrichment.ts:128:25)\n    PageUtility.run (/workspace/noema-web/src/server/modules/page-utility.ts:8:18)\n    TestContext.<anonymous> (file:///workspace/noema-web/test/domain-classification.test.mjs:33:32)\n    Test.runInAsyncScope (node:async_hooks:227:14)\n    Test."
+    },
+    {
+      "id": "test/domain-classification.test.mjs :: a manual assignment made during inference wins and title generation still works",
+      "baselineLocation": "test/domain-classification.test.mjs:42:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "PageUtility delegates to selective enrichment; checked current provider factory replaces obsolete interface. Manual domain edits invalidate pending input.",
+      "replacementName": "a manual domain assignment invalidates the pending compatibility request",
+      "baselineErrorExcerpt": "  error: 'finish is not a function'\n  code: 'ERR_TEST_FAILURE'\n  name: 'TypeError'\n  stack: |-\n    TestContext.<anonymous> (file:///workspace/noema-web/test/domain-classification.test.mjs:49:5)\n    Test.runInAsyncScope (node:async_hooks:227:14)\n    Test.run (node:internal/test_runner/test:1382:25)\n    Test.processPendingSubtests (node:internal/test_runner/test:960:18)\n    Test.postRun (node:internal/test_runner/test:1522:19)\n    Test.run (node:internal/test_runner/test:1447:12)\n    async Test.processPendingSubtests (node:internal/test_runner/te"
+    },
+    {
+      "id": "test/editor.test.mjs :: fenced code keeps line breaks and does not interpret formatting",
+      "baselineLocation": "test/editor.test.mjs:55:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Code blocks use plain content. Replaced duplicated dollar display assertions with a labeled two-delimiter matrix.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    \n      [\n        {\n    -     code: true,\n          text: '**literal**\\nnext'\n        }\n      ]\n    \n  code: 'ERR_ASSERTION'"
+    },
+    {
+      "id": "test/editor.test.mjs :: display equations paste as independent blocks, with multiline LaTeX intact",
+      "baselineLocation": "test/editor.test.mjs:93:1",
+      "classification": "stale contract/assertion",
+      "status": "replaced by passing delimiter matrix",
+      "reason": "Code blocks use plain content. Replaced duplicated dollar display assertions with a labeled two-delimiter matrix.",
+      "replacementName": "display equation blocks preserve multiline commands for both delimiter styles",
+      "baselineErrorExcerpt": "  error: |-\n    The expression evaluated to a falsy value:\n    \n      assert.ok(markdownBlocks('```tex\\n$$x$$\\n```')[0].content[0].code)\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: true\n  operator: '=='\n  stack: |-\n    TestContext.<anonymous> (/workspace/noema-web/test/editor.test.mjs:107:10)\n    Test.runInAsyncScope (node:async_hooks:227:14)"
+    },
+    {
+      "id": "test/entity-aliases.test.mjs :: unique aliases auto-link with original wording; duplicate aliases on one entity are not ambiguous",
+      "baselineLocation": "test/entity-aliases.test.mjs:61:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Canonical mentionText preserved; PageEditor SSR supplied browser globals.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    ... Skipped lines\n    \n      [\n        {\n          entityId: 'donald',\n          mentionText: 'Trump'\n        },\n    ...\n          entityId: 'donald',"
+    },
+    {
+      "id": "test/entity-aliases.test.mjs :: alias labels survive saving and render as their original text with the canonical entity in the hover title",
+      "baselineLocation": "test/entity-aliases.test.mjs:107:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "Canonical mentionText preserved; PageEditor SSR supplied browser globals.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: 'window is not defined'\n  code: 'ERR_TEST_FAILURE'\n  name: 'ReferenceError'\n  stack: |-\n    <anonymous> (/workspace/noema-web/src/client/editor/BlockEditor.tsx:146:95)\n    useReducer (/workspace/noema-web/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:4086:15)\n    Object.useState (/workspace/noema-web/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:10277:18)\n    process.env.NODE_ENV.exports.useState (/workspace/noema-web/node_modules/react/cjs/react.development.js:1309:34)\n    BlockEditor "
+    },
+    {
+      "id": "test/entity-formatting.test.mjs :: utility and AI evidence matching ignore all formatting and match across code and link boundaries",
+      "baselineLocation": "test/entity-formatting.test.mjs:14:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Both taggers retain original wording across styles and tables.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    \n      [\n        {\n          bold: true,\n          text: 'Before '\n        },\n        {\n          entityId: 'donald',\n    +     mentionText: 'Donald Trump'"
+    },
+    {
+      "id": "test/entity-formatting.test.mjs :: AI scans use formatting-free runs and acceptance links styled evidence without touching excluded text",
+      "baselineLocation": "test/entity-formatting.test.mjs:54:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Both taggers retain original wording across styles and tables.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    \n      [\n        {\n          italic: true,\n          text: 'Before '\n        },\n        {\n          entityId: '48fc6516-da23-4638-9899-5f1efe8eb169',\n    +     mentionText: 'Donald Trump'"
+    },
+    {
+      "id": "test/entity-scan-stream-ui.test.mjs :: review renders incoming rows during scanning and enables review only after final persistence, then confirms completion outside the heading",
+      "baselineLocation": "test/entity-scan-stream-ui.test.mjs:10:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Aliases are chips and an add input, not a textarea. Assert exact current chip/removal label and blank draft. Shared DOM ownership/cleanup removes duplicate harness.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: \"Cannot read properties of null (reading 'value')\"\n  code: 'ERR_TEST_FAILURE'\n  name: 'TypeError'\n  stack: |-\n    TestContext.<anonymous> (file:///workspace/noema-web/test/entity-scan-stream-ui.test.mjs:45:90)\n    async Test.run (node:internal/test_runner/test:1389:7)\n    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)"
+    },
+    {
+      "id": "test/entity-scan.test.mjs :: entity scan reviews are explicit, persistent, scoped and revision safe",
+      "baselineLocation": "test/entity-scan.test.mjs:13:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "Index work is durably marked dirty, not synchronously queued. Unchanged evidence reuses a cached scan; change note evidence before new provider validation. Revision, locking, invalid-output retention and stale scans remain tested.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    The expression evaluated to a falsy value:\n    \n      assert.ok(beforeAcceptJob)\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: true\n  operator: '=='\n  stack: |-\n    TestContext.<anonymous> (/workspace/noema-web/test/entity-scan.test.mjs:52:46)\n    process.processTicksAndRejections (node:internal/process/task_queues:104:5)"
+    },
+    {
+      "id": "test/entity-scan.test.mjs :: evidence replacement handles tables, formatting boundaries and existing mentions",
+      "baselineLocation": "test/entity-scan.test.mjs:92:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Exact mentionText and optional rows normalization retained; pageMentions is derived and must change on connection, while all saved entity fields/values remain unchanged.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    \n      [\n        {\n          entityId: 'ny',\n    +     mentionText: 'New York'\n        },\n        {\n          text: ' City'\n        }"
+    },
+    {
+      "id": "test/entity-scan.test.mjs :: review edits support renamed entities, category/subtype changes and matching existing entities",
+      "baselineLocation": "test/entity-scan.test.mjs:138:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Exact mentionText and optional rows normalization retained; pageMentions is derived and must change on connection, while all saved entity fields/values remain unchanged.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Review matching never edits the saved entity\n    + actual - expected\n    ... Skipped lines\n    \n      {\n        aliases: [],\n        archived_at: null,\n        description: 'Saved description',\n        domainIds: [],\n    ...\n        name: 'Robert Smith',"
+    },
+    {
+      "id": "test/entity-subtypes.test.mjs :: subtypes inherit live main-type fields, never define their own, and retain entity-specific values",
+      "baselineLocation": "test/entity-subtypes.test.mjs:13:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Subtype-owned field definitions, inherited category fields and value-removal guards are current policy. Custom name avoids built-in Researcher; legacy fixture resets migration 2 marker before testing its one-time backfill.",
+      "replacementName": "subtypes inherit category fields and own scoped definitions while values remain entity-specific",
+      "baselineErrorExcerpt": "  error: 'Missing expected exception.'\n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  stack: |-\n    rejects (file:///workspace/noema-web/test/entity-subtypes.test.mjs:11:48)\n    TestContext.<anonymous> (file:///workspace/noema-web/test/entity-subtypes.test.mjs:26:5)\n    Test.runInAsyncScope (node:async_hooks:227:14)\n    Test.run (node:internal/test_runner/test:1382:25)\n    Test.start (node:internal/test_runner/test:1242:17)\n    startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)"
+    },
+    {
+      "id": "test/entity-subtypes.test.mjs :: custom subtypes and properties are scoped to their vault and persist across restarts",
+      "baselineLocation": "test/entity-subtypes.test.mjs:47:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Subtype-owned field definitions, inherited category fields and value-removal guards are current policy. Custom name avoids built-in Researcher; legacy fixture resets migration 2 marker before testing its one-time backfill.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: 'This subtype already exists'\n  code: 'ERR_TEST_FAILURE'\n  stack: |-\n    Knowledge.addSubtype (/workspace/noema-web/src/server/modules/knowledge.ts:29:118)\n    TestContext.<anonymous> (file:///workspace/noema-web/test/entity-subtypes.test.mjs:54:30)\n    Test.runInAsyncScope (node:async_hooks:227:14)\n    Test.run (node:internal/test_runner/test:1382:25)\n    Test.processPendingSubtests (node:internal/test_runner/test:960:18)\n    Test.postRun (node:internal/test_runner/test:1522:19)\n    Test.run (node:internal/test_runner/test:1447:12)\n  "
+    },
+    {
+      "id": "test/entity-subtypes.test.mjs :: multiple subtypes can be added, removed, validated and saved without creating subtype fields",
+      "baselineLocation": "test/entity-subtypes.test.mjs:78:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Subtype-owned field definitions, inherited category fields and value-removal guards are current policy. Custom name avoids built-in Researcher; legacy fixture resets migration 2 marker before testing its one-time backfill.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: 'Choose an inherited property. Define new fields on the subtype in Settings \u2192 Knowledge Entities.'\n  code: 'ERR_TEST_FAILURE'\n  stack: |-\n    Knowledge.property (/workspace/noema-web/src/server/modules/knowledge.ts:168:22)\n    TestContext.<anonymous> (file:///workspace/noema-web/test/entity-subtypes.test.mjs:97:15)\n    Test.runInAsyncScope (node:async_hooks:227:14)\n    Test.run (node:internal/test_runner/test:1382:25)\n    Test.processPendingSubtests (node:internal/test_runner/test:960:18)\n    Test.postRun (node:internal/test_runner/tes"
+    },
+    {
+      "id": "test/intelligence.test.mjs :: credentials: write-only status, expiry, replacement, removal, persistence and bounds",
+      "baselineLocation": "test/intelligence.test.mjs:22:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Full status/preferences include rate limit and enrichment profile; current title budget is 512 tokens.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    \n      {\n        configured: false,\n        expiresAt: null,\n    +   manualRequestsPerMinute: 5,\n        model: 'gpt-5-mini',\n    +   pageEnrichment: {\n    +     model: 'gpt-6-luna',\n    +     reasoningEffort: 'none'"
+    },
+    {
+      "id": "test/intelligence.test.mjs :: AI HTTP routes enforce CSRF, vault scope, revisions, lock state and private responses",
+      "baselineLocation": "test/intelligence.test.mjs:59:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "Selective structured output and page_enrichment activity/profile; title is currentTitle metadata, not duplicated body text. Pending lock cancellation is 409, new locked request 423; exact activity and previous saved summary are asserted.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    \n      {\n    +   manualRequestsPerMinute: 5,\n        model: 'gpt-6-luna',\n    +   pageEnrichment: {\n    +     model: 'gpt-6-luna',\n    +     reasoningEffort: 'none'\n    +   },\n        reasoningEffort: 'low'"
+    },
+    {
+      "id": "test/intelligence.test.mjs :: model and effort preferences persist without changing or retrieving the API key",
+      "baselineLocation": "test/intelligence.test.mjs:140:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Full status/preferences include rate limit and enrichment profile; current title budget is 512 tokens.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    \n      {\n    +   manualRequestsPerMinute: 5,\n        model: 'gpt-6.1-sol',\n    +   pageEnrichment: {\n    +     model: 'gpt-6-luna',\n    +     reasoningEffort: 'none'\n    +   },\n        reasoningEffort: 'high'"
+    },
+    {
+      "id": "test/intelligence.test.mjs :: title utility fixes reasoning to none independently of summary preferences and bounds output",
+      "baselineLocation": "test/intelligence.test.mjs:215:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Full status/preferences include rate limit and enrichment profile; current title budget is 512 tokens.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly equal:\n    \n    512 !== 256\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: 256\n  actual: 512\n  operator: 'strictEqual'\n  stack: |-\n    TestContext.<anonymous> (/workspace/noema-web/test/intelligence.test.mjs:224:10)"
+    },
+    {
+      "id": "test/intelligence.test.mjs :: title endpoint enforces untitled content, revisions, CSRF, and logs fixed reasoning",
+      "baselineLocation": "test/intelligence.test.mjs:233:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "Selective structured output and page_enrichment activity/profile; title is currentTitle metadata, not duplicated body text. Pending lock cancellation is 409, new locked request 423; exact activity and previous saved summary are asserted.",
+      "replacementName": "legacy title endpoint uses selective enrichment with revision, CSRF and stale-result guards",
+      "baselineErrorExcerpt": "  error: |-\n    {\"error\":\"AI returned invalid page enrichment data.\"}\n    \n    502 !== 200\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: 200\n  actual: 502\n  operator: 'strictEqual'\n  stack: |-\n    call (/workspace/noema-web/test/intelligence.test.mjs:241:41)"
+    },
+    {
+      "id": "test/library.test.mjs :: Library places folders and notes in the same table and keeps page selection scoped to notes",
+      "baselineLocation": "test/library.test.mjs:22:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Current accessible heading is Pages with page-heading class; all table, folder ordering and note-only selection assertions pass.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    The input did not match the regular expression /<h1>Library<\\/h1>/. Input:\n    \n    '<section data-library-vault=\"default\" data-library-destination=\"[&quot;organization&quot;,&quot;&quot;,&quot;&quot;]\" class=\"organization-library organization-browser\" data-layout=\"list\"><span class=\"sr-only\" role=\"status\"></span><div class=\"organization-heading pages-home-heading\"><div class=\"library-heading-row\"><h1 class=\"page-heading\">Pages</h1></div><div class=\"pages-home-actions library-heading-actions\"><div class=\"library-view-filter\"><di"
+    },
+    {
+      "id": "test/math-delimiters.test.mjs :: incomplete and escaped delimiters, empty expressions and code stay literal",
+      "baselineLocation": "test/math-delimiters.test.mjs:40:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Updated exact mentionText wire expectations.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    \n      [\n        {\n    -     code: true,\n          text: '\\\\[literal\\\\]'\n        }\n      ]\n    \n  code: 'ERR_ASSERTION'"
+    },
+    {
+      "id": "test/organization.test.mjs :: one folder location, independent memberships, nested folders, isolation and restart",
+      "baselineLocation": "test/organization.test.mjs:11:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Full organization shape includes folderLinks.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    \n      {\n        collections: [],\n        favourites: [],\n    +   folderLinks: [],\n        folders: [],\n        locations: [],\n        memberships: []\n      }"
+    },
+    {
+      "id": "test/page-drag.test.mjs :: folder drag is scoped to its vault and uses a move-only payload",
+      "baselineLocation": "test/page-drag.test.mjs:21:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Folder transport supports copyMove for folder moves and collection links; vault/malformed/type rejection assertions remain intact.",
+      "replacementName": "folder drag is scoped to its vault and permits folder moves or collection links",
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly equal:\n    \n    'copyMove' !== 'move'\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: 'move'\n  actual: 'copyMove'\n  operator: 'strictEqual'\n  stack: |-\n    TestContext.<anonymous> (/workspace/noema-web/test/page-drag.test.mjs:27:10)"
+    },
+    {
+      "id": "test/page-navigation-ui.test.mjs :: test/page-navigation-ui.test.mjs",
+      "baselineLocation": "test/page-navigation-ui.test.mjs:1:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "CSS-only test loader, shared DOM frames, current sidebar links and explicit Unfiled expansion.",
+      "replacementName": "sidebar note switching preserves mounted shell and outgoing editor until asynchronous content is ready",
+      "baselineErrorExcerpt": "  error: 'test failed'\n  code: 'ERR_TEST_FAILURE'"
+    },
+    {
+      "id": "test/semantic-ui.test.mjs :: block options apply a colored semantic function without changing editable text",
+      "baselineLocation": "test/semantic-ui.test.mjs:22:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "matchMedia and DOM cleanup; current menus/labels, explicit trailing typing surface and collapsed excerpt rendering.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: 'window.matchMedia is not a function'\n  code: 'ERR_TEST_FAILURE'\n  name: 'TypeError'\n  stack: |-\n    <anonymous> (/workspace/noema-web/src/client/components/WorkspaceNavigation.tsx:11:55)\n    mountSyncExternalStore (/workspace/noema-web/node_modules/react-dom/cjs/react-dom-client.development.js:8507:24)\n    Object.useSyncExternalStore (/workspace/noema-web/node_modules/react-dom/cjs/react-dom-client.development.js:28939:16)\n    process.env.NODE_ENV.exports.useSyncExternalStore (/workspace/noema-web/node_modules/react/cjs/react.developm"
+    },
+    {
+      "id": "test/semantic-ui.test.mjs :: selecting multiple blocks creates a semantic parent, which can be retagged and ungrouped",
+      "baselineLocation": "test/semantic-ui.test.mjs:31:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "matchMedia and DOM cleanup; current menus/labels, explicit trailing typing surface and collapsed excerpt rendering.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: 'window.matchMedia is not a function'\n  code: 'ERR_TEST_FAILURE'\n  name: 'TypeError'\n  stack: |-\n    <anonymous> (/workspace/noema-web/src/client/components/WorkspaceNavigation.tsx:11:55)\n    mountSyncExternalStore (/workspace/noema-web/node_modules/react-dom/cjs/react-dom-client.development.js:8507:24)\n    Object.useSyncExternalStore (/workspace/noema-web/node_modules/react-dom/cjs/react-dom-client.development.js:28939:16)\n    process.env.NODE_ENV.exports.useSyncExternalStore (/workspace/noema-web/node_modules/react/cjs/react.developm"
+    },
+    {
+      "id": "test/semantic-ui.test.mjs :: copy and paste preserve semantic parents, child tags and unique group ownership",
+      "baselineLocation": "test/semantic-ui.test.mjs:43:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "matchMedia and DOM cleanup; current menus/labels, explicit trailing typing surface and collapsed excerpt rendering.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: 'window.matchMedia is not a function'\n  code: 'ERR_TEST_FAILURE'\n  name: 'TypeError'\n  stack: |-\n    <anonymous> (/workspace/noema-web/src/client/components/WorkspaceNavigation.tsx:11:55)\n    mountSyncExternalStore (/workspace/noema-web/node_modules/react-dom/cjs/react-dom-client.development.js:8507:24)\n    Object.useSyncExternalStore (/workspace/noema-web/node_modules/react-dom/cjs/react-dom-client.development.js:28939:16)\n    process.env.NODE_ENV.exports.useSyncExternalStore (/workspace/noema-web/node_modules/react/cjs/react.developm"
+    },
+    {
+      "id": "test/semantic-ui.test.mjs :: a semantic parent handle reorders all child blocks as one unit",
+      "baselineLocation": "test/semantic-ui.test.mjs:51:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "matchMedia and DOM cleanup; current menus/labels, explicit trailing typing surface and collapsed excerpt rendering.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: 'window.matchMedia is not a function'\n  code: 'ERR_TEST_FAILURE'\n  name: 'TypeError'\n  stack: |-\n    <anonymous> (/workspace/noema-web/src/client/components/WorkspaceNavigation.tsx:11:55)\n    mountSyncExternalStore (/workspace/noema-web/node_modules/react-dom/cjs/react-dom-client.development.js:8507:24)\n    Object.useSyncExternalStore (/workspace/noema-web/node_modules/react-dom/cjs/react-dom-client.development.js:28939:16)\n    process.env.NODE_ENV.exports.useSyncExternalStore (/workspace/noema-web/node_modules/react/cjs/react.developm"
+    },
+    {
+      "id": "test/semantic-ui.test.mjs :: document selection can group equation and image blocks without text editing hosts",
+      "baselineLocation": "test/semantic-ui.test.mjs:62:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "matchMedia and DOM cleanup; current menus/labels, explicit trailing typing surface and collapsed excerpt rendering.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: 'window.matchMedia is not a function'\n  code: 'ERR_TEST_FAILURE'\n  name: 'TypeError'\n  stack: |-\n    <anonymous> (/workspace/noema-web/src/client/components/WorkspaceNavigation.tsx:11:55)\n    mountSyncExternalStore (/workspace/noema-web/node_modules/react-dom/cjs/react-dom-client.development.js:8507:24)\n    Object.useSyncExternalStore (/workspace/noema-web/node_modules/react-dom/cjs/react-dom-client.development.js:28939:16)\n    process.env.NODE_ENV.exports.useSyncExternalStore (/workspace/noema-web/node_modules/react/cjs/react.developm"
+    },
+    {
+      "id": "test/semantic-ui.test.mjs :: Explain with AI on selected blocks inserts one locked semantic parent with formatted subblocks",
+      "baselineLocation": "test/semantic-ui.test.mjs:72:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "matchMedia and DOM cleanup; current menus/labels, explicit trailing typing surface and collapsed excerpt rendering.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: 'window.matchMedia is not a function'\n  code: 'ERR_TEST_FAILURE'\n  name: 'TypeError'\n  stack: |-\n    <anonymous> (/workspace/noema-web/src/client/components/WorkspaceNavigation.tsx:11:55)\n    mountSyncExternalStore (/workspace/noema-web/node_modules/react-dom/cjs/react-dom-client.development.js:8507:24)\n    Object.useSyncExternalStore (/workspace/noema-web/node_modules/react-dom/cjs/react-dom-client.development.js:28939:16)\n    process.env.NODE_ENV.exports.useSyncExternalStore (/workspace/noema-web/node_modules/react/cjs/react.developm"
+    },
+    {
+      "id": "test/semantic-ui.test.mjs :: block handle explains its own block and failed generation can retry without inserting a placeholder",
+      "baselineLocation": "test/semantic-ui.test.mjs:95:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "matchMedia and DOM cleanup; current menus/labels, explicit trailing typing surface and collapsed excerpt rendering.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: 'window.matchMedia is not a function'\n  code: 'ERR_TEST_FAILURE'\n  name: 'TypeError'\n  stack: |-\n    <anonymous> (/workspace/noema-web/src/client/components/WorkspaceNavigation.tsx:11:55)\n    mountSyncExternalStore (/workspace/noema-web/node_modules/react-dom/cjs/react-dom-client.development.js:8507:24)\n    Object.useSyncExternalStore (/workspace/noema-web/node_modules/react-dom/cjs/react-dom-client.development.js:28939:16)\n    process.env.NODE_ENV.exports.useSyncExternalStore (/workspace/noema-web/node_modules/react/cjs/react.developm"
+    },
+    {
+      "id": "test/semantic-ui.test.mjs :: generation discards changed source blocks and never inserts after unmount",
+      "baselineLocation": "test/semantic-ui.test.mjs:105:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "matchMedia and DOM cleanup; current menus/labels, explicit trailing typing surface and collapsed excerpt rendering.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: 'window.matchMedia is not a function'\n  code: 'ERR_TEST_FAILURE'\n  name: 'TypeError'\n  stack: |-\n    <anonymous> (/workspace/noema-web/src/client/components/WorkspaceNavigation.tsx:11:55)\n    mountSyncExternalStore (/workspace/noema-web/node_modules/react-dom/cjs/react-dom-client.development.js:8507:24)\n    Object.useSyncExternalStore (/workspace/noema-web/node_modules/react-dom/cjs/react-dom-client.development.js:28939:16)\n    process.env.NODE_ENV.exports.useSyncExternalStore (/workspace/noema-web/node_modules/react/cjs/react.developm"
+    },
+    {
+      "id": "test/semantic-ui.test.mjs :: explanations preserve unrelated edits and remain outside the selected semantic parent",
+      "baselineLocation": "test/semantic-ui.test.mjs:118:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "matchMedia and DOM cleanup; current menus/labels, explicit trailing typing surface and collapsed excerpt rendering.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: 'window.matchMedia is not a function'\n  code: 'ERR_TEST_FAILURE'\n  name: 'TypeError'\n  stack: |-\n    <anonymous> (/workspace/noema-web/src/client/components/WorkspaceNavigation.tsx:11:55)\n    mountSyncExternalStore (/workspace/noema-web/node_modules/react-dom/cjs/react-dom-client.development.js:8507:24)\n    Object.useSyncExternalStore (/workspace/noema-web/node_modules/react-dom/cjs/react-dom-client.development.js:28939:16)\n    process.env.NODE_ENV.exports.useSyncExternalStore (/workspace/noema-web/node_modules/react/cjs/react.developm"
+    },
+    {
+      "id": "test/source-files.test.mjs :: sources require original files; local extraction, last-file invariant, vault isolation and backups",
+      "baselineLocation": "test/source-files.test.mjs:20:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "One original per source; extraction requires attachment; downloads require admission; backup original/remapping assertions retained.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: 'A source has exactly one file or URL. Create another source instead.'\n  code: 'ERR_TEST_FAILURE'\n  stack: |-\n    SourceFiles.requireSingle (/workspace/noema-web/src/server/modules/source-files.ts:89:86)\n    SourceFiles.add (/workspace/noema-web/src/server/modules/source-files.ts:110:10)\n    TestContext.<anonymous> (file:///workspace/noema-web/test/source-files.test.mjs:41:17)\n    async Test.run (node:internal/test_runner/test:1389:7)\n    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)"
+    },
+    {
+      "id": "test/source-files.test.mjs :: source HTTP actions enforce client headers, safe downloads, locks and restart recovery",
+      "baselineLocation": "test/source-files.test.mjs:63:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "One original per source; extraction requires attachment; downloads require admission; backup original/remapping assertions retained.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly equal:\n    + actual - expected\n    \n    + 'application/json'\n    - 'application/octet-stream'\n                   ^\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: 'application/octet-stream'\n  actual: 'application/json'"
+    },
+    {
+      "id": "test/source-page-math.test.mjs :: literal code, quotations, currency and incomplete formulas are preserved",
+      "baselineLocation": "test/source-page-math.test.mjs:33:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Quotation provenance is exact plain text followed by its citation, not an italic styling requirement. Exact quote/citation segments now asserted.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: 'false == true'\n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: true\n  actual: false\n  operator: '=='\n  stack: |-\n    TestContext.<anonymous> (file:///workspace/noema-web/test/source-page-math.test.mjs:40:9)\n    Test.runInAsyncScope (node:async_hooks:227:14)\n    Test.run (node:internal/test_runner/test:1382:25)\n    Test.processPendingSubtests (node:internal/test_runner/test:960:18)\n    Test.postRun (node:internal/test_runner/test:1522:19)"
+    },
+    {
+      "id": "test/source-suggestions.test.mjs :: saved vectors rank unique sources, exclude weak/attached/cross-vault matches, with no provider calls",
+      "baselineLocation": "test/source-suggestions.test.mjs:38:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "Use public synchronize(vault,pageId), not private process requiring a names cache. All ranking, validity, no-provider, restart and isolation assertions retained.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    \n    + []\n    - [\n    -   '8374d356-a1dd-47ef-8a20-b4408adb169f',\n    -   '88719050-0a7a-40ea-8124-4741cd59044a'\n    - ]\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'"
+    },
+    {
+      "id": "test/source-suggestions.test.mjs :: dismissals survive worker recreation and page edits, are page-specific, and reject foreign sources",
+      "baselineLocation": "test/source-suggestions.test.mjs:46:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "Use public synchronize(vault,pageId), not private process requiring a names cache. All ranking, validity, no-provider, restart and isolation assertions retained.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly equal:\n    \n    0 !== 1\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: 1\n  actual: 0\n  operator: 'strictEqual'\n  stack: |-\n    TestContext.<anonymous> (file:///workspace/noema-web/test/source-suggestions.test.mjs:48:9)"
+    },
+    {
+      "id": "test/source-suggestions.test.mjs :: related notes rank saved vectors locally, limit to five, and exclude self, weak, deleted and foreign notes",
+      "baselineLocation": "test/source-suggestions.test.mjs:74:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "Use public synchronize(vault,pageId), not private process requiring a names cache. All ranking, validity, no-provider, restart and isolation assertions retained.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly equal:\n    \n    0 !== 5\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: 5\n  actual: 0\n  operator: 'strictEqual'\n  stack: |-\n    TestContext.<anonymous> (file:///workspace/noema-web/test/source-suggestions.test.mjs:81:9)"
+    },
+    {
+      "id": "test/source-suggestions.test.mjs :: related notes require current valid embeddings and respect vault access",
+      "baselineLocation": "test/source-suggestions.test.mjs:88:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "Use public synchronize(vault,pageId), not private process requiring a names cache. All ranking, validity, no-provider, restart and isolation assertions retained.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly equal:\n    \n    0 !== 1\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: 1\n  actual: 0\n  operator: 'strictEqual'\n  stack: |-\n    TestContext.<anonymous> (file:///workspace/noema-web/test/source-suggestions.test.mjs:90:9)"
+    },
+    {
+      "id": "test/summary-freshness.test.mjs :: backend persists current and summary hashes; formatting stays fresh and reverting content restores freshness",
+      "baselineLocation": "test/summary-freshness.test.mjs:31:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Select summary by kind; restrict legacy mutations to summary records; retain semantic fingerprint/provenance assertions instead of counting all name lookups.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly equal:\n    + actual - expected\n    \n    + null\n    - 'd1215aca9d54229d56497048cee5ca0a950b4bbafb8dee8ca53ebf6a12bb81e2'\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: 'd1215aca9d54229d56497048cee5ca0a950b4bbafb8dee8ca53ebf6a12bb81e2'\n  actual: ~\n  operator: 'strictEqual'"
+    },
+    {
+      "id": "test/summary-freshness.test.mjs :: freshness survives restart, and legacy summaries are backfilled only at their generating revision",
+      "baselineLocation": "test/summary-freshness.test.mjs:53:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Select summary by kind; restrict legacy mutations to summary records; retain semantic fingerprint/provenance assertions instead of counting all name lookups.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly equal:\n    + actual - expected\n    \n    + null\n    - 'c6a2956973e68a673b1d8202a8b206e076ef41b0ccb95ee4cfcea50a3cd5e89b'\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: 'c6a2956973e68a673b1d8202a8b206e076ef41b0ccb95ee4cfcea50a3cd5e89b'\n  actual: ~\n  operator: 'strictEqual'"
+    },
+    {
+      "id": "test/summary-freshness.test.mjs :: mentioned entity names invalidate cached fingerprints, while repeat reads reuse the cache",
+      "baselineLocation": "test/summary-freshness.test.mjs:70:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Select summary by kind; restrict legacy mutations to summary records; retain semantic fingerprint/provenance assertions instead of counting all name lookups.",
+      "replacementName": "entity renames invalidate fingerprints without rewriting saved summary provenance",
+      "baselineErrorExcerpt": "  error: |-\n    Cached page reads do not rehash or resolve mention names\n    \n    2 !== 0\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: 0\n  actual: 2\n  operator: 'strictEqual'\n  stack: |-\n    TestContext.<anonymous> (file:///workspace/noema-web/test/summary-freshness.test.mjs:81:12)"
+    },
+    {
+      "id": "test/summary-freshness.test.mjs :: adding, editing, moving and deleting generated explanation blocks keep a saved summary fresh",
+      "baselineLocation": "test/summary-freshness.test.mjs:101:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Select summary by kind; restrict legacy mutations to summary records; retain semantic fingerprint/provenance assertions instead of counting all name lookups.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly equal:\n    + actual - expected\n    \n    + null\n    - '50a298284494252d84a34e4e7342a453f117909e419bac71f2a3616ac514f06e'\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: '50a298284494252d84a34e4e7342a453f117909e419bac71f2a3616ac514f06e'\n  actual: ~\n  operator: 'strictEqual'"
+    },
+    {
+      "id": "test/summary-freshness.test.mjs :: legacy cached hashes migrate once, preserve current summaries, and keep truly stale summaries stale",
+      "baselineLocation": "test/summary-freshness.test.mjs:114:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Select summary by kind; restrict legacy mutations to summary records; retain semantic fingerprint/provenance assertions instead of counting all name lookups.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly equal:\n    + actual - expected\n    \n    + 'ef79c9935a1d95824adb078d794ff49cecab6fe8a800c42c051c500ef8e71266'\n    - '99d7ce4ee3616a7c93e7bd5f6b84a45c93a1a329f88155f9d930e72da980ed14'\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: '99d7ce4ee3616a7c93e7bd5f6b84a45c93a1a329f88155f9d930e72da980ed14'\n  actual: 'ef79c9935a1d95824adb078d794ff49cecab6fe8a800c42c051c500ef8e71266'\n  operator: 'strictEqual'"
+    },
+    {
+      "id": "test/summary-math.test.mjs :: literal code, escaped and incomplete delimiters, currency and plain text remain unchanged",
+      "baselineLocation": "test/summary-math.test.mjs:25:1",
+      "classification": "stale contract/assertion",
+      "status": "passing after repair",
+      "reason": "Code delimiters are consumed by Markdown while escaped dollar syntax stays literal. Assert exact rendered prose, code nodes and absent math; independent security/invalid-LaTeX checks retained.",
+      "replacementName": "code and escape syntax render literally while incomplete math and currency stay prose",
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly equal:\n    + actual - expected\n    \n    + 'Code \\\\$x$\\\\ and \\\\\\\\(y\\\\)\\\\.'\n    - 'Code \\\\`$x$\\\\` and \\\\`\\\\(y\\\\)\\\\`.'\n              ^\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: 'Code \\\\`$x$\\\\` and \\\\`\\\\(y\\\\)\\\\`.'\n  actual: 'Code \\\\$x$\\\\ and \\\\\\\\(y\\\\)\\\\.'"
+    },
+    {
+      "id": "test/workspace.test.mjs :: moving to Trash flushes pending edits and restoring opens a fresh page",
+      "baselineLocation": "test/workspace.test.mjs:58:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "Mock pageMetadata for read-only observation; model server-filtered organization during Trash and restoration. Save order, current revisions and no-extra-autosave assertions pass.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly deep-equal:\n    + actual - expected\n    \n    + [\n    +   {\n    +     item_id: 'note',\n    +     kind: 'page'\n    +   }\n    + ]\n    - []\n    "
+    },
+    {
+      "id": "test/workspace.test.mjs :: new untitled pages observe server titles without another autosave",
+      "baselineLocation": "test/workspace.test.mjs:147:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "Mock pageMetadata for read-only observation; model server-filtered organization during Trash and restoration. Save order, current revisions and no-extra-autosave assertions pass.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly equal:\n    \n    0 !== 1\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: 1\n  actual: 0\n  operator: 'strictEqual'\n  stack: |-\n    TestContext.<anonymous> (file:///workspace/noema-web/test/workspace.test.mjs:174:54)"
+    },
+    {
+      "id": "test/workspace.test.mjs :: opening an existing untitled page observes server enrichment after reload",
+      "baselineLocation": "test/workspace.test.mjs:210:1",
+      "classification": "fixture/environment gap",
+      "status": "passing after repair",
+      "reason": "Mock pageMetadata for read-only observation; model server-filtered organization during Trash and restoration. Save order, current revisions and no-extra-autosave assertions pass.",
+      "replacementName": null,
+      "baselineErrorExcerpt": "  error: |-\n    Expected values to be strictly equal:\n    + actual - expected\n    \n    + 'Untitled'\n    - 'Community garden plan'\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: 'Community garden plan'\n  actual: 'Untitled'\n  operator: 'strictEqual'"
+    }
+  ],
+  "remaining": [],
+  "fullDiagnostics": "Complete baseline diagnostics are in the delivered evidence bundle."
+}

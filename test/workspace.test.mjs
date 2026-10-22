@@ -59,18 +59,19 @@ test('moving to Trash flushes pending edits and restoring opens a fresh page', a
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
   Object.defineProperty(globalThis, 'localStorage', {configurable: true, value: {getItem: () => null, setItem: () => {}}});
   const original = {id: 'note', vault_id: 'a', title: 'Original', blocks: [], sourceIds: [], revision: 1, updated_at: ''};
+  let trashed=false;
   const org = {collections: [], folders: [], locations: [{kind: 'page', item_id: 'note', folder_id: 'desk'}], memberships: [], favourites: [{kind: 'page', item_id: 'note'}]};
   const calls = [];
   let stored = {...original};
   t.mock.method(api, 'vaults', async () => [{id: 'a', name: 'A', locked: false}]);
   t.mock.method(api, 'pages', async () => [original]);
   t.mock.method(api, 'entities', async () => []);
-  t.mock.method(api, 'organization', async () => org);
+  t.mock.method(api, 'organization', async () => trashed?{...org,locations:[],favourites:[]}:org);
   t.mock.method(api, 'page', async () => stored);
   t.mock.method(api, 'savePage', async (_vault, _id, page) => { calls.push('save'); stored = {...page, revision: 2}; return stored; });
-  t.mock.method(api, 'deletePage', async () => { calls.push('trash'); return {ok: true}; });
+  t.mock.method(api, 'deletePage', async () => { calls.push('trash'); trashed=true; return {ok: true}; });
   t.mock.method(api, 'trash', async () => [{...stored, deleted_at: '2026-01-01', expires_at: '2026-01-31'}]);
-  t.mock.method(api, 'restorePage', async () => { stored = {...stored, revision: 4}; return stored; });
+  t.mock.method(api, 'restorePage', async () => { trashed=false; stored = {...stored, revision: 4}; return stored; });
   t.mock.method(api, 'permanentlyDeletePage', async () => ({ok: true}));
   const workspace = new Workspace();
   try {
@@ -159,7 +160,7 @@ test('new untitled pages observe server titles without another autosave', async 
     stored={...structuredClone(input),revision:input.revision+1};writes.push(stored);return structuredClone(stored);
   });
   const generate=t.mock.method(api,'generateTitle',async()=>assert.fail('Browser dispatched enrichment'));
-  const read=t.mock.method(api,'page',async(vault,id)=>{
+  const read=t.mock.method(api,'pageMetadata',async(vault,id)=>{
     assert.equal(vault,'a');assert.equal(id,'new');
     stored={...stored,title:'Community garden plan'};
     return structuredClone(stored);
@@ -215,6 +216,7 @@ test('opening an existing untitled page observes server enrichment after reload'
   t.mock.method(api,'entities',async()=>[]);
   t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],memberships:[],favourites:[]}));
   t.mock.method(api,'page',async()=>structuredClone(stored));
+  t.mock.method(api,'pageMetadata',async()=>structuredClone(stored));
   t.mock.method(api,'savePage',async(_vault,_id,input)=>{
     assert.equal(input.revision,stored.revision);
     stored={...structuredClone(input),revision:input.revision+1};return structuredClone(stored);

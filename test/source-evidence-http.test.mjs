@@ -10,7 +10,7 @@ import {SourceFiles} from '../src/server/modules/source-files.ts';
 import {SourcePageImages} from '../src/server/modules/source-page-images.ts';
 import {Vaults} from '../src/server/modules/vaults.ts';
 import {createApp} from '../src/server/http.ts';
-test('evidence and page images enforce vault access and admitted PDF boundaries',{skip:process.platform!=='darwin'},async()=>{
+test('evidence and page images enforce vault access and admitted PDF boundaries',{skip:process.platform!=='darwin'?'Requires macOS PDFKit, Vision, Swift and sandbox-exec':false},async()=>{
  const dir=mkdtempSync(path.join(tmpdir(),'noema-evidence-http-')),db=openDatabase(path.join(dir,'db.sqlite')),store=new Store(db),files=new SourceFiles(store),vaults=new Vaults(store);
  const server=createApp(store,path.resolve('dist/client'));
  server.listen(0,'127.0.0.1');await once(server,'listening');const base='http://127.0.0.1:'+server.address().port;

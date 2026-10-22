@@ -8,7 +8,7 @@ import { createApp } from '../src/server/http.ts';
 import { Intelligence } from '../src/server/modules/intelligence.ts';
 import { mentionEvidence } from '../src/shared/entity-scan.ts';
 
-const completed = text => Response.json({status:'completed',output:[{type:'message',content:[{type:'output_text',text}]}]});
+import {completedResponse as completed} from './helpers/providers.ts';
 const candidate = (name,type='person',extra={}) => ({name,type,subtypes:[],description:'Mentioned in this note',evidence:name,reason:'Named in the note',existingId:null,...extra});
 test('entity scan reviews are explicit, persistent, scoped and revision safe', async()=>{
   const db=openDatabase(':memory:');
@@ -48,20 +48,19 @@ test('entity scan reviews are explicit, persistent, scoped and revision safe', a
     async function review(index,decision,status=200,extra={}){
       return call(route+'/entity-review','POST',{scanId:scan.id,suggestionId:scan.suggestions[index].id,revision:page.revision,decision,...extra},status);
     }
-    const queuedJob=()=>db.prepare("SELECT id FROM embedding_jobs WHERE page_id=? AND status='queued'").get(page.id)?.id;
-    const beforeAcceptJob=queuedJob();assert.ok(beforeAcceptJob);
+    const dirtyRevision=()=>db.prepare('SELECT p.revision FROM page_index_dirty d JOIN pages p ON p.id=d.page_id WHERE d.page_id=?').get(page.id)?.revision;
+    assert.equal(dirtyRevision(),page.revision);
     let result=await review(0,'accepted');page=result.page;scan=result.scan;
-    assert.notEqual(queuedJob(),beforeAcceptJob,'Accepted entity mentions refresh the embedding queue');
-    assert.equal(db.prepare('SELECT status FROM embedding_jobs WHERE id=?').get(beforeAcceptJob).status,'skipped');
+    assert.equal(dirtyRevision(),page.revision,'Acceptance retains durable indexing work for the new revision');
     assert.equal(result.entities.length,baseline+1);assert.equal(page.blocks[0].content[0].entityId,alice.id);
     await review(0,'accepted',400);
     result=await review(1,'accepted');page=result.page;scan=result.scan;
     const bob=result.entities.find(e=>e.name==='Bob');assert.ok(bob);
     assert.ok(page.blocks[0].content.some(s=>s.entityId===bob.id));
     assert.ok(page.blocks[0].content.some(s=>s.text===' in Paris.'&&s.italic),'Surrounding formatting is retained');
-    const beforeReject=page, beforeRejectJob=queuedJob();
+    const beforeReject=page, beforeRejectRevision=dirtyRevision();
     result=await review(2,'rejected');scan=result.scan;
-    assert.equal(queuedJob(),beforeRejectJob,'Rejecting a suggestion leaves indexing unchanged');
+    assert.equal(dirtyRevision(),beforeRejectRevision,'Rejecting a suggestion leaves indexing unchanged');
     assert.deepEqual(result.page,beforeReject);assert.equal(result.entities.length,baseline+2);
     const persisted=(await call(route+'/enrichments')).find(e=>e.kind==='entity_scan').data.scan;
     assert.deepEqual(persisted,scan);assert.equal(calls,1,'Reviews never call AI');
@@ -72,6 +71,9 @@ test('entity scan reviews are explicit, persistent, scoped and revision safe', a
     await call(route+'/entity-scan','POST',{revision:page.revision},423);
     await call('vaults/default/unlock','POST',{passphrase:'test-lock'});
     await call(route+'/entity-scan','POST',{revision:page.revision},403,'default',{'X-Noema-Request':''});
+    assert.deepEqual(await call(route+'/entity-scan','POST',{revision:page.revision}),scan,'An unchanged scan reuses saved evidence without a provider call');
+    assert.equal(calls,1);
+    page=await call(route,'PUT',{...page,blocks:[...page.blocks,{id:'extra',type:'paragraph',content:[{text:'New evidence expands this meeting account.'}]}]});
     output=JSON.stringify({suggestions:[candidate('Paris','invalid')]});
     await call(route+'/entity-scan','POST',{revision:page.revision},502);
     assert.deepEqual((await call(route+'/enrichments')).find(e=>e.kind==='entity_scan').data.scan,scan,'Invalid output retains prior scan');
@@ -92,8 +94,8 @@ test('entity scan reviews are explicit, persistent, scoped and revision safe', a
 test('evidence replacement handles tables, formatting boundaries and existing mentions',()=>{
   const page={blocks:[{type:'paragraph',content:[{entityId:'already'},{text:'unrelated'}]},{type:'table',rows:[[[{text:'New ',bold:true},{text:'York',italic:true},{text:' City'}]]],content:[]}]};
   const result=mentionEvidence(page,'New York','ny');
-  assert.deepEqual(result.blocks[1].rows[0][0],[{entityId:'ny'},{text:' City'}]);
-  assert.deepEqual(result.blocks[0],page.blocks[0]);
+  assert.deepEqual(result.blocks[1].rows[0][0],[{entityId:'ny', mentionText: 'New York'},{text:' City'}]);
+  assert.deepEqual(result.blocks[0],{...page.blocks[0],rows:undefined});
   assert.equal(mentionEvidence(page,'unrelatedNew','none'),null);
   assert.equal(mentionEvidence(page,'','none'),null);
 });
@@ -173,7 +175,10 @@ test('review edits support renamed entities, category/subtype changes and matchi
     assert.equal(created.type,'organization');assert.deepEqual(created.subtypes,[custom]);
     assert.equal(result.page.blocks[0].content[0].entityId,created.id,'Renaming retains the original evidence match');
     assert.ok(result.page.blocks[0].content.some(s=>s.entityId===existing.id));
-    assert.deepEqual(knowledge.detail('default',existing.id),existing,'Review matching never edits the saved entity');
+    const {pageMentions,...afterEntity}=knowledge.detail('default',existing.id);
+    const {pageMentions:beforeMentions,...beforeEntity}=existing;
+    assert.deepEqual(afterEntity,beforeEntity,'Review matching never edits saved entity fields');
+    assert.equal(beforeMentions.length,0);assert.equal(pageMentions.length,1);assert.equal(pageMentions[0].id,page.id);assert.equal(pageMentions[0].mentionCount,1);
     assert.equal(result.scan.suggestions[0].name,'Atlas Research');assert.equal(result.scan.suggestions[0].evidence,'Atlas');
     assert.equal(result.scan.suggestions[1].name,'Robert Smith');assert.deepEqual(result.scan.suggestions[1].subtypes,['person:scientist']);
     page=result.page;scan=result.scan;

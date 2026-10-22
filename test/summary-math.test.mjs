@@ -9,24 +9,30 @@ import {IntelligencePanel} from '../src/client/intelligence/IntelligencePanel.ts
 import {api} from '../src/client/api.ts';
 const render=text=>new JSDOM(renderToStaticMarkup(React.createElement(SummaryText,{text})));
 test('summaries render both inline and display math delimiter styles with accessible MathML',()=>{
- const text=String.raw`Inline $x^2$ and \(a+b\). Display $$\frac{1}{2}$$ and \[\sum_{i=1}^n i\].`;
+ const text=String.raw`Inline $x^2$ and \(a+b\). Display $$\frac{1}{2}$$ and Before
+\[
+\sum_{i=1}^n i
+\]
+After.`;
  const dom=render(text);try{
   const body=dom.window.document.body;
   assert.equal(body.querySelectorAll('.summary-math-inline').length,2);assert.equal(body.querySelectorAll('.summary-math-display').length,2);assert.equal(body.querySelectorAll('math').length,4);assert.equal(body.querySelectorAll('.katex-display').length,2);
   assert.deepEqual(Array.from(body.querySelectorAll('annotation')).map(node=>node.textContent),['x^2','a+b',String.raw`\frac{1}{2}`,String.raw`\sum_{i=1}^n i`]);
-  assert.match(body.textContent,/Inline/);assert.match(body.textContent,/and/);
+  assert.match(body.textContent,/Inline/);assert.match(body.textContent,/Before[\s\S]*After/);
  }finally{dom.window.close();}
 });
-test('multiline display equations render beside surrounding prose',()=>{
- const dom=render('Before\n\\[\na^2+b^2=c^2\n\\]\nAfter');try{
-  assert.equal(dom.window.document.querySelectorAll('.summary-math-display').length,1);assert.equal(dom.window.document.querySelector('annotation').textContent,'a^2+b^2=c^2');assert.match(dom.window.document.body.textContent,/Before[\s\S]*After/);
- }finally{dom.window.close();}
-});
-test('literal code, escaped and incomplete delimiters, currency and plain text remain unchanged',()=>{
- for(const text of [String.raw`Code \`$x$\` and \`\(y\)\`.`,String.raw`\$x\$ and \\(y\\)`,String.raw`$unfinished and \[unfinished`, '$5 and $10', 'No math <b>here</b>.']){
-  const dom=render(text);try{assert.equal(dom.window.document.querySelector('.katex'),null,text);assert.equal(dom.window.document.body.textContent,text);}finally{dom.window.close();}
+test('code and escape syntax render literally while incomplete math and currency stay prose',()=>{
+ const cases=[
+  ['inline code','Code `$x$` and `\\(y\\)`.','Code $x$ and \\(y\\).',2],
+  ['escaped dollar',String.raw`\$x\$`,String.raw`\$x\$`,0],
+  ['incomplete',String.raw`$unfinished and \[unfinished`,String.raw`$unfinished and \[unfinished`,0],
+  ['currency','$5 and $10','$5 and $10',0],
+  ['escaped HTML','No math <b>here</b>.','No math <b>here</b>.',0],
+ ];
+ for(const [label,input,expected,codes] of cases){
+  const dom=render(input);try{const body=dom.window.document.body;assert.equal(body.querySelector('.katex'),null,label);assert.equal(body.textContent,expected,label);assert.equal(body.querySelectorAll('code').length,codes,label);}finally{dom.window.close();}
  }
- const dom=render('`$code$` then $x$');try{assert.equal(dom.window.document.querySelectorAll('.katex').length,1);assert.match(dom.window.document.body.textContent,/`\$code\$` then/);}finally{dom.window.close();}
+ const dom=render('`$code$` then $x$');try{assert.equal(dom.window.document.querySelectorAll('.katex').length,1);assert.equal(dom.window.document.querySelector('code').textContent,'$code$');}finally{dom.window.close();}
 });
 test('summary HTML stays escaped and untrusted LaTeX cannot create executable links',()=>{
  const dom=render(String.raw`<img src=x onerror=alert(1)> $\href{javascript:alert(1)}{click}$`);try{

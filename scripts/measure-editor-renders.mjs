@@ -10,6 +10,7 @@ for(const version of ['before','after']) {
   try {
     await cp(join(repo,'src'),join(directory,'src'),{recursive:true});
     await mkdir(join(directory,'test/fixtures'),{recursive:true});
+    await cp(join(repo,'test/helpers'),join(directory,'test/helpers'),{recursive:true});
     await cp(join(repo,'test/fixtures/editor-rendering.mjs'),join(directory,'test/fixtures/editor-rendering.mjs'));
     await cp(join(repo,'package.json'),join(directory,'package.json'));await cp(join(repo,'tsconfig.json'),join(directory,'tsconfig.json'));
     await symlink(join(repo,'node_modules'),join(directory,'node_modules'),'dir');

@@ -21,7 +21,7 @@ function fixture(t){
  let calls=0;
  const worker=new Embeddings(store,pages,knowledge,vaults,{status:()=>({configured:false}),embed:()=>{calls++;throw Error('No provider calls allowed');}});
  const segments=new PageSegments(store),index=new PageSegmentIndex(store);
- let page=pages.create(vault,{title:'Algebra'});page=pages.update(vault,page.id,{...page,blocks:[paragraph('A field is an algebraic structure with multiplicative inverses.')]});segments.process(page.id);
+ let page=pages.create(vault,{title:'Algebra'});page=pages.update(vault,page.id,{...page,blocks:[paragraph('A field is an algebraic structure with multiplicative inverses.')]});segments.synchronize(vault,page.id);
  for(const segment of store.all('SELECT * FROM page_segments WHERE page_id=?',page.id))index.save(segment,vector(),10);
  function source(name,v=vector(),owner=vault){
   const file=new SourceFiles(store).add(owner,name+'.txt',Buffer.from('A source discussing algebraic structures and fields.'));
@@ -49,7 +49,7 @@ test('dismissals survive worker recreation and page edits, are page-specific, an
  f.worker.dismissSource(f.vault,f.page.id,source.id);f.worker.dismissSource(f.vault,f.page.id,source.id);
  f.worker.close();const restarted=new Embeddings(f.store,f.pages,f.knowledge,f.vaults,{status:()=>({configured:false}),embed:()=>{throw Error('Unexpected API call');}});t.after(()=>restarted.close());
  assert.deepEqual(restarted.suggestedSources(f.vault,f.page.id),[]);
- const page=f.pages.create(f.vault,{title:'Another'});f.pages.update(f.vault,page.id,{...page,blocks:[paragraph('Another field note about algebraic structures and inverses.')]});f.segments.process(page.id);
+ const page=f.pages.create(f.vault,{title:'Another'});f.pages.update(f.vault,page.id,{...page,blocks:[paragraph('Another field note about algebraic structures and inverses.')]});f.segments.synchronize(f.vault,page.id);
  for(const segment of f.store.all('SELECT * FROM page_segments WHERE page_id=?',page.id))f.index.save(segment,vector(),10);
  assert.equal(restarted.suggestedSources(f.vault,page.id)[0].sourceId,source.id);
  const other=f.vaults.create({name:'Foreign'}).id,foreign=f.source('Foreign',vector(),other);
@@ -67,7 +67,7 @@ test('missing, malformed and outdated embeddings do not become suggestions',t=>{
 function savedNote(f,title,v=vector(),owner=f.vault){
  let note=f.pages.create(owner,{title});
  note=f.pages.update(owner,note.id,{...note,blocks:[paragraph('A related note about algebraic structures, fields and inverses.')]});
- f.segments.process(note.id);
+ f.segments.synchronize(owner,note.id);
  for(const segment of f.store.all('SELECT * FROM page_segments WHERE page_id=?',note.id))f.index.save(segment,v,10);
  return note;
 }

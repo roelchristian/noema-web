@@ -21,7 +21,7 @@ const render = (props = {}) => renderToStaticMarkup(createElement(OrganizationLi
 
 test('Library places folders and notes in the same table and keeps page selection scoped to notes', () => {
   const html = render();
-  assert.match(html, /<h1>Library<\/h1>/);
+  assert.match(html, /<h1 class="page-heading">Pages<\/h1>/);
   const table = html.slice(html.indexOf('class="organization-items'));
   assert.match(table, /Desk/);
   assert.match(table, /Draft/);

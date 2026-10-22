@@ -15,9 +15,11 @@ test('utility and AI evidence matching ignore all formatting and match across co
   for (const style of [{bold: true}, {italic: true}, {underline: true}, {strike: true}, {code: true}, {href: 'https://example.com'}]) {
     const content = [{text: 'Before ', bold: true}, {text: 'Donald', ...style}, {text: ' '}, {text: 'Trump', href: 'https://example.com'}, {text: ' after', italic: true}];
     for (const input of [[block(content)], [{...block([]), type: 'table', rows: [[content]]}]]) {
+      const before=structuredClone(input);
       const local = identifyEntityMentions(input, [entity], 'default');
       const ai = mentionEvidence({blocks: input}, 'Donald Trump', entity.id);
-      const expected = [{text: 'Before ', bold: true}, {entityId: 'donald'}, {text: ' after', italic: true}];
+      const expected = [{text: 'Before ', bold: true}, {entityId: 'donald', mentionText: 'Donald Trump'}, {text: ' after', italic: true}];
+      assert.deepEqual(input,before,JSON.stringify(style)+' must not mutate input');
       assert.equal(local.count, 1);
       assert.deepEqual(input[0].type === 'table' ? local.blocks[0].rows[0][0] : local.blocks[0].content, expected);
       assert.deepEqual(ai.blocks, local.blocks);
@@ -66,7 +68,7 @@ test('AI scans use formatting-free runs and acceptance links styled evidence wit
     const scan = scans.save('default', page, JSON.stringify({suggestions: [candidate('Donald Trump', existing.id), candidate('Ivanka Trump')]}), {model: 'gpt-5-mini', reasoningEffort: 'low'});
     assert.equal(scan.suggestions.length, 1);
     const review = scans.review('default', page.id, {revision: page.revision, scanId: scan.id, suggestionId: scan.suggestions[0].id, decision: 'accepted'});
-    assert.deepEqual(review.page.blocks[0].content, [{text: 'Before ', italic: true}, {entityId: existing.id}, {text: ' after', strike: true}]);
+    assert.deepEqual(review.page.blocks[0].content, [{text: 'Before ', italic: true}, {entityId: existing.id, mentionText: 'Donald Trump'}, {text: ' after', strike: true}]);
     assert.deepEqual(review.page.blocks[1], excluded);
   } finally { db.close(); }
 });

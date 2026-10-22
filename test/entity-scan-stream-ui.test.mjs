@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {JSDOM} from 'jsdom';
+import {setupDOM} from './helpers/dom.mjs';
 import React,{act} from 'react';
 import {createRoot} from 'react-dom/client';
 import {ConnectedEntities} from '../src/client/intelligence/ConnectedEntities.tsx';
@@ -8,17 +8,16 @@ import {EntityScanReview} from '../src/client/intelligence/EntityScanReview.tsx'
 import {api} from '../src/client/api.ts';
 
 test('review renders incoming rows during scanning and enables review only after final persistence, then confirms completion outside the heading',async t=>{
-  const dom=new JSDOM('<div id="mount"></div>',{pretendToBeVisual:true});
-  const keys=['window','document','Node','Element','HTMLElement','MutationObserver','HTMLSelectElement','HTMLInputElement','CustomEvent','Event','IS_REACT_ACT_ENVIRONMENT'];
-  const previous=keys.map(key=>Object.getOwnPropertyDescriptor(globalThis,key));
-  for(const key of keys)Object.defineProperty(globalThis,key,{configurable:true,writable:true,value:key==='IS_REACT_ACT_ENVIRONMENT'?true:dom.window[key]});
+  const env=setupDOM(t),{dom}=env;
   dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
   dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
   dom.window.HTMLElement.prototype.attachEvent=function(){};
   dom.window.HTMLElement.prototype.detachEvent=function(){};
-  const root=createRoot(document.querySelector('#mount')),originalScan=api.scanEntities,originalSchema=api.entitySchema;
+  const root=createRoot(document.querySelector('#mount'));
+  env.defer(()=>act(async()=>root.unmount()));
   let progress,finish,confirmed;
-  api.entitySchema=async()=>({properties:{},subtypes:[],subtypeProperties:{}});
+  t.mock.method(api,'entitySchema',async()=>({properties:{},subtypes:[],subtypeProperties:{}}));
+  const originalScan=api.scanEntities;env.defer(()=>{api.scanEntities=originalScan;});
   api.scanEntities=async(_vault,_id,_revision,onProgress)=>{progress=onProgress;return new Promise(resolve=>finish=resolve);};
   const page={id:'page',vault_id:'default',revision:1,title:'Test',blocks:[],sourceIds:[]};
   const suggestion={id:'city',name:'Charlemagne, Quebec',aliases:['Charlemagne'],type:'place',subtypes:[],evidence:'Charlemagne',reason:'City',status:'pending',existingId:null};
@@ -42,7 +41,9 @@ test('review renders incoming rows during scanning and enables review only after
     assert.equal(document.querySelector('.entity-scan-live-status'),null);
     assert.equal(document.querySelector('[aria-label="Accept Charlemagne, Quebec"]').disabled,false);
     await click('[aria-label="Edit Charlemagne, Quebec"]');
-    assert.equal(document.querySelector('[aria-label="Aliases for Charlemagne, Quebec"]').value,'Charlemagne');
+    assert.equal(document.querySelector('.entity-review-editor [aria-label="Current aliases"] li span').textContent,'Charlemagne');
+    assert.ok(document.querySelector('.entity-review-editor [aria-label="Remove alias Charlemagne"]'));
+    assert.equal(document.querySelector('.entity-review-editor input[placeholder="Add an alias…"]').value,'');
     t.mock.timers.enable({apis:['setTimeout']});
     await click('[aria-label="Accept Charlemagne, Quebec"]');
     assert.match(document.querySelector('.entity-review-confirmation').textContent,/Charlemagne, Quebec connected/);
@@ -56,8 +57,5 @@ test('review renders incoming rows during scanning and enables review only after
     assert.equal(confirmation.querySelector('strong'),null);
     await act(async()=>t.mock.timers.tick(5000));
     assert.equal(document.querySelector('.entity-review-confirmation-inline'),null);
-  }finally{
-    await act(async()=>root.unmount());api.scanEntities=originalScan;api.entitySchema=originalSchema;dom.window.close();
-    keys.forEach((key,i)=>{if(previous[i])Object.defineProperty(globalThis,key,previous[i]);else delete globalThis[key];});
-  }
+  }finally{await env.close();}
 });

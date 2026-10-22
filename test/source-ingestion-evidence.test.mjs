@@ -31,7 +31,7 @@ test('immutable source evidence survives normalization, retry and backup; hash t
   files.removeAssets(restored.id,restoredFile.id);assert.equal(existsSync(evidencePath),false);
  }finally{files.close();env.db.close();rmSync(env.dir,{recursive:true,force:true});}
 });
-test('native extraction precedes flattening and cached retries retain original evidence', {skip:process.platform!=='darwin'},async()=>{
+test('native extraction precedes flattening and cached retries retain original evidence', {skip:process.platform!=='darwin'?'Requires macOS PDFKit, Vision, Swift and sandbox-exec':false},async()=>{
  const env=setup();const {files,knowledge}=env;
  try {
   const original=Buffer.from('%PDF-1.4\n/ObjStm\n%%EOF'),safe=Buffer.from('%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n%%EOF');

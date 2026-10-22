@@ -14,7 +14,7 @@ test('one folder location, independent memberships, nested folders, isolation an
   let db = openDatabase(filename);
   try {
     let store = new Store(db), org = new Organizer(store);
-    assert.deepEqual(org.list('default'), {collections: [], folders: [], locations: [], memberships: [], favourites: []});
+    assert.deepEqual(org.list('default'), {collections: [], folders: [], folderLinks: [], locations: [], memberships: [], favourites: []});
     const a = org.saveCollection('default', {name: 'Reading'}).collections[0].id;
     const b = org.saveCollection('default', {name: 'Writing'}).collections.find(c => c.id !== a).id;
     fails(() => org.saveCollection('default', {name: 'Nested', parent_id: a}), 400);

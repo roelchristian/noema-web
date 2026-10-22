@@ -52,10 +52,10 @@ test('rich tables, headings, and lists render inline equations without losing st
 });
 test('rich code, escaped and unmatched delimiters, and existing math remain intact',()=>{
  const blocks=clipboard('',String.raw`<p><code>\(code\) \[literal\]</code> and \\(escaped\), \(unfinished, \] unmatched.</p><pre>\[fenced\]</pre><p><span data-math="x_1">Rendered formula</span></p>`);
- assert.deepEqual(blocks.map(b=>b.type),['paragraph','paragraph','paragraph']);
+ assert.deepEqual(blocks.map(b=>b.type),['paragraph','code','paragraph']);
  assert.ok(blocks[0].content[0].code);
  assert.ok(blocks[0].content.every(s=>!s.math));
- assert.ok(blocks[1].content[0].code);
+ assert.deepEqual(blocks[1].content,[{text:String.raw`\[fenced\]`}]);
  assert.deepEqual(blocks[2].content,[{text:'x_1',math:true}]);
  const [literal]=clipboard('', '<span>`'+String.raw`\(code\)`+'` then '+String.raw`\(math\)`+'</span>');
  assert.deepEqual(literal.content.filter(s=>s.math).map(s=>s.text),['math']);

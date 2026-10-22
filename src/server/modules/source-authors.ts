@@ -10,7 +10,8 @@ const normalized=(name:string)=>normalizeEntityName(name.normalize('NFC'));
 /** Called in the enrichment transaction, so new authors and their links save together. */
 export function saveSourceAuthors(store:Store,vault:string,sourceId:string,authors:SourceAuthor[]):boolean {
  const knowledge=new Knowledge(store);
- const entities=knowledge.list(vault).filter(entity=>!entity.inactive&&(entity.type==='person'||entity.type==='organization'));
+ const allEntities=knowledge.list(vault);
+ const entities=allEntities.filter(entity=>!entity.inactive&&!entity.archived_at&&(entity.type==='person'||entity.type==='organization'));
  const unique=[...new Map(authors.map(author=>[`${author.type}:${normalized(author.name)}`,author])).values()];
  const properties=store.all<{id:string;value:string|null;target_id:string|null}>("SELECT id,value,target_id FROM properties WHERE entity_id=? AND name COLLATE NOCASE='author'",sourceId);
  const linked=new Set(properties.flatMap(property=>property.target_id?[property.target_id]:[]));
@@ -23,6 +24,8 @@ export function saveSourceAuthors(store:Store,vault:string,sourceId:string,autho
   if(matches.length===1)return matches[0];
   // An ambiguous name stays as text instead of choosing a person arbitrarily.
   if(matches.length>1)return;
+  // Retired credits stay readable as text; never recreate the retired identity.
+  if(allEntities.some(entity=>entity.archived_at&&entity.type===author.type&&[entity.name,...(entity.aliases??[])].some(name=>normalized(name)===key)))return;
   const created=knowledge.create(vault,{type:author.type,name:author.name,subtypes:[]});
   entities.push(created);return created;
  };

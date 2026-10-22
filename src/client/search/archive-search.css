@@ -1,0 +1,5 @@
+/* Lifecycle search opt-in; uses the existing checkbox layout and control tokens. */
+.spotlight-search > .archive-search-filter {
+  padding: var(--space-3);
+  color: var(--text-muted);
+}

@@ -788,7 +788,7 @@ export class Workspace {
     const vault = this.state.vault, sequence = this.loadSequence;
     if(!vault||vault.locked||signal?.aborted)return;
     const entities = await api.entities(vault.id,signal);
-    if (!signal?.aborted&&sequence===this.loadSequence&&this.state.vault?.id===vault.id&&!this.state.vault.locked) {pruneEntityDrafts(vault.id,entities.map(entity=>entity.id));this.patch({entities});}
+    if (!signal?.aborted&&sequence===this.loadSequence&&this.state.vault?.id===vault.id&&!this.state.vault.locked) {this.pageCache.clear();pruneEntityDrafts(vault.id,entities.map(entity=>entity.id));this.patch({entities});}
   }
   async previewVaultDeletion(id:string) {
     if(this.state.vault?.id!==id)throw new Error('The selected vault changed.');

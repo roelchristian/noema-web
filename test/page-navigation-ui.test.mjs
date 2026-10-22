@@ -40,6 +40,22 @@ test('sidebar note switching preserves mounted shell and outgoing editor until a
    assert.equal(expand.getAttribute('aria-expanded'),'true');
    assert.ok(sidebarNodes.every(node=>node.isConnected));assert.equal(scrollRegion.scrollTop,75);
   };
+  const chooseMode=async name=>act(async()=>document.querySelector('.topbar [role=radio][aria-label="'+name+'"]').click());
+  const escape=async options=>act(async()=>document.querySelector('#page-title').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true,...options})));
+  await chooseMode('Subtle');assert.equal(document.documentElement.dataset.focusedReading,'true');
+  for(let i=0;i<2;i++) {
+   await chooseMode('Focus');assert.equal(document.documentElement.dataset.focusWorkspace,'true');
+   assert.equal(document.querySelector('.page'),editor);assert.equal(document.querySelector('#intelligence-panel'),knowledge);assertOrganizationStable();
+   const nested=document.createElement('div');nested.setAttribute('role','menu');nested.getClientRects=()=>[{}];document.body.append(nested);
+   document.querySelector('#page-title').addEventListener('keydown',()=>nested.remove(),{once:true});
+   await escape();assert.equal(document.documentElement.dataset.focusWorkspace,'true');
+   await escape({isComposing:true});assert.equal(document.documentElement.dataset.focusWorkspace,'true');
+   await escape();assert.equal(document.documentElement.dataset.focusWorkspace,'false');
+   assert.equal(JSON.parse(localStorage.getItem('noema.appearance.v1')).presentationMode,'subtle');
+   assert.equal(localStorage.getItem('noema-knowledge-panel-open'),'true');assertOrganizationStable();
+  }
+  await chooseMode('Standard');assert.equal(document.documentElement.dataset.focusedReading,'false');
+  await chooseMode('Focus');await escape();assert.equal(document.documentElement.dataset.focusedReading,'false');
   const select=id=>document.querySelector('.organization-page-link[title="'+id+'"]');
   const targetIcon=select('two').querySelector('svg');
   const navigationStatus=document.querySelector('main > [role="status"]');

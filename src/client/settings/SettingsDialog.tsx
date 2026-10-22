@@ -1,3 +1,4 @@
+import {PresentationSelector} from './PresentationSelector';
 import {StorageSettings} from './StorageSettings';
 import {t as uiText} from '../i18n';
 import {interfaceLanguages,useInterfaceLanguage} from '../i18n';
@@ -83,11 +84,8 @@ export function SettingsDialog({appearance, onChange, storageError, onClose, onO
         </div>
       </section>
       <section className="settings-section appearance-setting" aria-labelledby="reading-heading">
-        <h3 id="reading-heading">{uiText("Entity display")}</h3>
-        <div className="display-options" role="group" aria-label={uiText("Entity display in notes")}>
-          <button type="button" aria-pressed={!appearance.focusedReading} onClick={() => onChange({...appearance, focusedReading: false})}>{uiText("Highlights")}</button>
-          <button type="button" aria-pressed={appearance.focusedReading} onClick={() => onChange({...appearance, focusedReading: true})}>{uiText("Underlines")}</button>
-        </div>
+        <h3 id="reading-heading">Presentation</h3>
+        <PresentationSelector value={appearance.presentationMode} onChange={presentationMode => onChange({...appearance, presentationMode})}/>
       </section>
       <section className="settings-section appearance-setting" aria-labelledby="citations-heading">
         <h3 id="citations-heading">{uiText("Citations")}</h3>

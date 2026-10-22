@@ -25,7 +25,7 @@ function ReviewConfirmation({feedback,inline=false}:{feedback:ReviewFeedback;inl
 }
 
 type Decision = 'accepted' | 'rejected';
-export function EntityScanReview({page,scan:savedScan,onScan,onFlush,onReview,disabled,entities}:{entities:Entity[];page:Page;scan:EntityScan|null;onScan:(scan:EntityScan)=>void;onFlush:()=>Promise<Page|null>;onReview:(scanId:string,id:string|string[],decision:Decision,edits?:EntitySuggestionEdit[])=>Promise<EntityScan>;disabled:boolean}) {
+export function EntityScanReview({page,scan:savedScan,onScan,onFlush,onReview,onOpenChange,disabled,entities}:{onOpenChange?:(open:boolean)=>void;entities:Entity[];page:Page;scan:EntityScan|null;onScan:(scan:EntityScan)=>void;onFlush:()=>Promise<Page|null>;onReview:(scanId:string,id:string|string[],decision:Decision,edits?:EntitySuggestionEdit[])=>Promise<EntityScan>;disabled:boolean}) {
   const {schema}=useEntitySchema(page.vault_id);
   const [preview,setPreview]=useState<EntityScan|null>(null);
   const [reviewingBatch,setReviewingBatch]=useState(false);
@@ -33,7 +33,8 @@ export function EntityScanReview({page,scan:savedScan,onScan,onFlush,onReview,di
   const scanController=useRef<AbortController|null>(null);
   useEffect(()=>()=>scanController.current?.abort(),[]);
   const [open,setOpen]=useState(false),[operation,setOperation]=useState<{ids:string[];decision?:Decision}|null>(null);
-  const [selected,setSelected]=useState<string[]>([]),[filter,setFilter]=useState<'all'|'pending'|'reviewed'>('all'),[query,setQuery]=useState('');
+  const [selected,setSelected]=useState<string[]>([]),[filter,setFilter]=useState<'all'|'pending'|'reviewed'>('pending'),[query,setQuery]=useState('');
+  useLayoutEffect(()=>{onOpenChange?.(open);return()=>onOpenChange?.(false);},[open,onOpenChange]);
   const [editingId,setEditingId]=useState<string|null>(null);
   const [mode,setMode]=useState<'batch'|'context'>(()=>typeof window!=='undefined'&&window.matchMedia?.('(min-width: 751px)').matches?'context':'batch'),[activeId,setActiveId]=useState<string|null>(null);
   const [typeFilter,setTypeFilter]=useState('all'),[identityFilter,setIdentityFilter]=useState('all'),[grouped,setGrouped]=useState(false);
@@ -52,7 +53,7 @@ export function EntityScanReview({page,scan:savedScan,onScan,onFlush,onReview,di
     try{const stored=window.localStorage.getItem(documentPreferenceKey);if(stored)saved=JSON.parse(stored);}catch{/* Fall back to the current session. */}
     const now=Date.now();
     saveDocumentView(restoreReviewDocumentView(saved,savedScan?.id??null,now),now);
-    setFeedback(null);setAnnouncement('');setOpen(true);
+    setFeedback(null);setAnnouncement('');setFilter('pending');setOpen(true);
     if(!scan&&!running.current)scanNote();
   }
   useEffect(()=>{documentPreference.current=null;setDocumentView('excerpts');},[documentPreferenceKey,savedScan?.id]);
@@ -87,21 +88,31 @@ export function EntityScanReview({page,scan:savedScan,onScan,onFlush,onReview,di
     const inspector=snapshot.current?.parentElement?.querySelector('.entity-review-table-wrap');
     if(inspector)inspector.scrollTop=0;
   },[mode,focused?.id,open,documentView]);
+  useLayoutEffect(()=>{
+    if(mode!=='context'||!open||window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)return;
+    const panes=snapshot.current?.parentElement?.querySelectorAll<HTMLElement>('.entity-review-table');
+    const animations=Array.from(panes??[]).map(pane=>pane.animate?.(
+      [{opacity:.72,transform:'translateY(4px)'},{opacity:1,transform:'translateY(0)'}],
+      {duration:180,easing:'ease-out'},
+    ));
+    return()=>animations.forEach(animation=>animation?.cancel());
+  },[mode,focused?.id,open]);
   const visiblePending=visible.filter(s=>s.status==='pending').map(s=>s.id);
   const allSelected=visiblePending.length>0&&visiblePending.every(id=>selectedIds.includes(id));
   useEffect(()=>{if(selectAll.current)selectAll.current.indeterminate=!allSelected&&visiblePending.some(id=>selectedIds.includes(id));},[allSelected,visiblePending,selectedIds]);
-  const stale=!!scan&&scan.revision!==page.revision;
+  const stale=!!scan&&scan.revision!==page.revision&&!operation?.decision;
   const scanning=!!operation&&!operation.decision;
   const locked=!!operation||disabled;
   const visibleSubtypes=(scan?.subtypeSuggestions??[]).filter(item=>(filter==='all'||(filter==='pending'?item.status==='pending':item.status!=='pending'))&&`${item.name} ${entityLabels[item.type]}`.toLowerCase().includes(query.toLowerCase()));
   const hasReviewItems=visible.length>0||(mode==='batch'&&!scanning&&visibleSubtypes.length>0);
-  const narrowed=!!query||filter!=='all'||typeFilter!=='all'||identityFilter!=='all';
-  function clearReviewFilters(){setQuery('');setFilter('all');setTypeFilter('all');setIdentityFilter('all');}
   const total=(scan?.suggestions.length ?? 0)+(scan?.subtypeSuggestions?.length ?? 0);
+  const narrowed=!!query||(filter!=='all'&&total>0)||typeFilter!=='all'||identityFilter!=='all';
+  function clearReviewFilters(){setQuery('');setFilter('all');setTypeFilter('all');setIdentityFilter('all');}
   const reviewed=total-pending.length-subtypePending.length;
+  const pendingComplete=filter==='pending'&&total>0&&reviewed===total&&!query&&typeFilter==='all'&&identityFilter==='all';
   async function run(ids:string[],work:()=>Promise<EntityScan>,decision?:Decision) {
     if(running.current)return;
-    running.current=true;setOperation({ids,decision});setError('');setFeedback(null);setAnnouncement('');
+    running.current=true;setOperation({ids,decision});setError('');if(!decision)setFeedback(null);setAnnouncement('');
     try {
       const result=await work();
       if (active.current && decision === 'accepted') setDrafts(current => Object.fromEntries(Object.entries(current).map(([id, draft]) => {
@@ -127,9 +138,9 @@ export function EntityScanReview({page,scan:savedScan,onScan,onFlush,onReview,di
       const saved=await onFlush();
       if(!saved||saved.id!==page.id||saved.vault_id!==page.vault_id)throw new Error('The selected note changed. Try again.');
       const controller=new AbortController();scanController.current=controller;
-      if(active.current){setReviewingBatch(false);setPreview(continuePrevious&&savedScan?savedScan:{id:'scanning',revision:saved.revision,suggestions:[]});setFilter('all');setQuery('');}
+      if(active.current){setReviewingBatch(false);setPreview(continuePrevious&&savedScan?savedScan:{id:'scanning',revision:saved.revision,suggestions:[]});setFilter('pending');setQuery('');}
       const result=await api.scanEntities(saved.vault_id,saved.id,saved.revision,partial=>{if(active.current)setPreview(partial);},controller.signal,continuePrevious&&savedScan?.continuation?{scanId:savedScan.id,token:savedScan.continuation.token}:undefined);
-      if(active.current){setFilter('all');setQuery('');}
+      if(active.current){setFilter('pending');setQuery('');}
       return result;
     });
   }
@@ -155,7 +166,7 @@ export function EntityScanReview({page,scan:savedScan,onScan,onFlush,onReview,di
       <div className="entity-review-controls"><ModalHeader titleId="entity-review-title" leading={<Icon name="review-text"/>} actions={total>0&&!scanning&&<div className="entity-review-progress"><span>{reviewed} / {total}{" " + uiText("reviewed")}</span><div role="progressbar" aria-label="Saved review decisions" aria-valuemin={0} aria-valuemax={total} aria-valuenow={reviewed}><span style={{width:`${reviewed/total*100}%`}}/></div></div>}><span className="entity-review-header-label">{uiText("Entity review")}</span><span className="entity-review-header-page" title={page.title||uiText("Untitled")}>{page.title||uiText("Untitled")}</span></ModalHeader>
       <div className="entity-review-toolbar entity-review-unified-toolbar">
         <div className="entity-review-modes" role="group" aria-label="Review mode"><button className="button" aria-pressed={mode==='context'} onClick={()=>{setMode('context');}}><Icon name="columns"/>Contextual review</button><button className="button" aria-pressed={mode==='batch'} onClick={()=>setMode('batch')}><Icon name="table"/>Batch review</button></div>
-        <div className="entity-review-filters" role="group" aria-label={uiText("Filter suggestions")}>{(['all','pending','reviewed'] as const).map(value=><button key={value} aria-pressed={filter===value} onClick={()=>setFilter(value)}><Icon name={value==='all'?'view-list':value==='pending'?'recent':'check'}/>{value==='all'?uiText("All"):value==='pending'?uiText("Pending"):uiText("Reviewed")}<span>{value==='all'?total:value==='pending'?pending.length+subtypePending.length:reviewed}</span></button>)}</div>
+        <div className="entity-review-filters" role="group" aria-label={uiText("Filter suggestions")}>{(['all','pending','reviewed'] as const).map(value=><button key={value} data-filter={value} aria-pressed={filter===value} onClick={()=>setFilter(value)}><Icon name={value==='all'?'view-list':value==='pending'?'recent':'check'}/>{value==='all'?uiText("All"):value==='pending'?uiText("Pending"):uiText("Reviewed")}<span>{value==='all'?total:value==='pending'?pending.length+subtypePending.length:reviewed}</span></button>)}</div>
         <label className="entity-review-search"><Icon name="search"/><input aria-label={uiText("Search suggestions")} placeholder={uiText("Search entities…")} value={query} onChange={e=>{setQuery(e.target.value);saveDocumentView('excerpts');}}/></label>
         <details className="entity-scan-filter-options" data-filtered={typeFilter!=='all'||identityFilter!=='all'||grouped}><summary aria-label="Filter and sort" title="Filter and sort"><Icon name="sliders"/><span className="sr-only">Filter and sort</span></summary><div><label>Type<Select aria-label="Filter by entity type" value={typeFilter} onChange={e=>setTypeFilter(e.target.value)}><option value="all">All types</option>{entityTypes.map(type=><option key={type} value={type}>{entityLabels[type]}</option>)}</Select></label>
         <label>Identity<Select aria-label="Filter by identity status" value={identityFilter} onChange={e=>setIdentityFilter(e.target.value)}><option value="all">All identities</option><option value="existing">Existing entity</option><option value="new">New entity</option><option value="ambiguous">Ambiguous identity</option><option value="subtype-required">Requires subtype decision</option></Select></label>
@@ -174,8 +185,8 @@ export function EntityScanReview({page,scan:savedScan,onScan,onFlush,onReview,di
         if(event.altKey&&(event.key==='ArrowLeft'||event.key==='ArrowRight')){event.preventDefault();moveSuggestion(event.key==='ArrowRight'?1:-1);}
         if(event.key==='/'&&!(event.target as HTMLElement).closest('input,textarea,select,[contenteditable=true]')&&focused){event.preventDefault();requestAnimationFrame(()=>{const search=document.querySelector<HTMLDetailsElement>('.mode-context .entity-decision-search');if(search)search.open=true;document.querySelector<HTMLInputElement>('.mode-context [role=combobox]')?.focus();});}
       }}>
-      {!hasReviewItems?<div className="scan-empty entity-review-empty-state" role="status" aria-live="polite">
-        {scanning?<><span className="scan-spinner"/><strong>Finding entities in your document</strong><span>Suggestions will appear here as the scan progresses.</span></>:<><Icon name="search"/><strong>{narrowed?'No matching suggestions':scan?'No entities found':'Ready to find entities'}</strong><span>{narrowed?'Try another search or clear the filters.':scan?'Try scanning again after adding more context to your document.':'Scan this document to find entities to review.'}</span>{narrowed?<button className="button small" onClick={clearReviewFilters}>Clear search and filters</button>:<button className="button small" disabled={locked} onClick={()=>scanNote()}>{scan?'Scan again':'Scan document'}</button>}</>}
+      {!hasReviewItems?<div className={"scan-empty entity-review-empty-state"+(pendingComplete?" is-complete":"")} role="status" aria-live="polite">
+        {scanning?<><span className="scan-spinner"/><strong>Finding entities in your document</strong><span>Suggestions will appear here as the scan progresses.</span></>:<><Icon name={pendingComplete?'check-circle':'search'}/><strong>{pendingComplete?'All suggestions reviewed':narrowed?'No matching suggestions':scan?'No entities found':'Ready to find entities'}</strong><span>{pendingComplete?'Your decisions are saved. Open Reviewed to see them.':narrowed?'Try another search or clear the filters.':scan?'Try scanning again after adding more context to your document.':'Scan this document to find entities to review.'}</span>{pendingComplete?<button className="button small" onClick={()=>setFilter('reviewed')}>View reviewed entities</button>:narrowed?<button className="button small" onClick={clearReviewFilters}>Clear search and filters</button>:<button className="button small" disabled={locked} onClick={()=>scanNote()}>{scan?'Scan again':'Scan document'}</button>}</>}
       </div>:<>
       {mode==='context'&&<aside className="entity-scan-candidates"><div className="entity-scan-candidates-heading entity-scan-pane-header">Suggestions <span>{visible.filter(s=>s.status==='pending').length} pending</span></div><nav ref={queue} className="entity-scan-queue" aria-label="Candidate queue" onKeyDown={event=>{if((event.target as HTMLElement).closest('button')&&(event.key==='ArrowDown'||event.key==='ArrowUp')){event.preventDefault();moveSuggestion(event.key==='ArrowDown'?1:-1);requestAnimationFrame(()=>document.querySelector<HTMLButtonElement>('.entity-scan-queue [aria-current=true]')?.focus());}}}>{visible.map(s=><button className={"entity-scan-candidate is-"+s.status} key={s.id} title={`${drafts[s.id]?.name??s.name} · ${s.status} · ${identityStatus(s)}`} aria-label={`${drafts[s.id]?.name??s.name} · ${s.status}`} aria-current={focused?.id===s.id?'true':undefined} onClick={()=>focusSuggestion(s.id)}><span className="entity-scan-candidate-status" aria-label={s.status} title={s.status}>{s.status==='accepted'?'✓':s.status==='rejected'?'−':'·'}</span><span className="entity-scan-candidate-name">{drafts[s.id]?.name??s.name}<small>{entityLabels[drafts[s.id]?.type??s.type]}<span className="entity-scan-mention-count" title="Mentions in this document, including aliases"> · {mentionCounts[s.id]??0} {(mentionCounts[s.id]??0)===1?'mention':'mentions'}</span></small></span></button>)}</nav></aside>}
       {mode==='context'&&<section className="entity-scan-snapshot" ref={snapshot} aria-label="Read-only page snapshot"><div className="entity-scan-document-heading entity-scan-pane-header"><h3>Document Preview</h3><div className="entity-scan-document-views" role="group" aria-label="Document view"><button type="button" aria-label="Full document" title="Full document" aria-pressed={documentView==='full'} onClick={()=>saveDocumentView('full')}><Icon name="document-full"/></button><button type="button" aria-label="Matching excerpts" title="Matching excerpts · all mentions with surrounding context" aria-pressed={documentView==='excerpts'} onClick={()=>saveDocumentView('excerpts')}><Icon name="document-excerpt"/></button></div></div><ScanSnapshot page={page} entities={entities} names={focusedNames} view={documentView} onShowFull={()=>saveDocumentView('full')} suggestion={focused}/></section>}
@@ -209,7 +220,7 @@ export function EntityScanReview({page,scan:savedScan,onScan,onFlush,onReview,di
               {awaitingIdentity(s)&&<p className="entity-decision-required">Choose an existing identity before accepting.</p>}
               {awaitingSubtype(s)&&<p className="entity-decision-required">Open Edit suggestion to review the proposed subtype before accepting.</p>}
             </td>}
-            <td><div className="entity-review-row-actions">{saving?<span className="scan-decision"><span className="scan-spinner"/>{operation.decision==='accepted'?uiText("Connecting…"):uiText("Rejecting…")}</span>:s.status==='pending'?<><button className="scan-row-edit" disabled={locked||stale} aria-label={uiText("Edit ")+s.name} title={uiText("Edit ")+s.name} aria-expanded={editingId===s.id} aria-controls={'suggestion-edit-'+s.id} onClick={()=>setEditingId(current=>current===s.id?null:s.id)}><Icon name="edit"/>{mode==='context'&&'Edit suggestion'}</button><button className="scan-row-accept" disabled={locked||stale||(!!awaitingSubtype(s)||awaitingIdentity(s))} aria-label={(mode==='context'?"Accept & next: ":draft.existingId?"Link existing entity: ":"Create and link: ")+s.name} title={draft.existingId?"Link existing entity":"Create and link"} onClick={()=>decide([s.id],'accepted')}><Icon name="check"/>{mode==='context'?"Accept & next →":draft.existingId?"Link":"Create & link"}</button><button className="scan-row-reject" disabled={locked||stale} aria-label={(mode==='context'?"Ignore ":uiText("Reject "))+s.name} title={(mode==='context'?"Ignore ":uiText("Reject "))+s.name} onClick={()=>decide([s.id],'rejected')}><Icon name="close"/>{mode==='context'&&'Ignore'}</button></>:<span className={'scan-decision is-'+s.status}><Icon name={s.status==='accepted'?'check':'close'}/>{s.status==='accepted'?uiText("Connected"):uiText("Rejected")}</span>}</div></td>
+            <td><div className="entity-review-row-actions" aria-busy={saving}>{s.status==='pending'?<><button className="scan-row-edit" disabled={locked||stale} aria-label={uiText("Edit ")+s.name} title={uiText("Edit ")+s.name} aria-expanded={editingId===s.id} aria-controls={'suggestion-edit-'+s.id} onClick={()=>setEditingId(current=>current===s.id?null:s.id)}><Icon name="edit"/>{mode==='context'&&'Edit suggestion'}</button><button className="scan-row-accept" disabled={locked||stale||(!!awaitingSubtype(s)||awaitingIdentity(s))} aria-label={(mode==='context'?"Accept & next: ":draft.existingId?"Link existing entity: ":"Create and link: ")+s.name} title={draft.existingId?"Link existing entity":"Create and link"} onClick={()=>decide([s.id],'accepted')}><span className="entity-review-action-icon">{saving&&operation?.decision==='accepted'?<span className="scan-spinner"/>:<Icon name="check"/>}</span><span>{saving&&operation?.decision==='accepted'?uiText("Connecting…"):mode==='context'?"Accept & next →":draft.existingId?"Link":"Create & link"}</span></button><button className="scan-row-reject" disabled={locked||stale} aria-label={(mode==='context'?"Ignore ":uiText("Reject "))+s.name} title={(mode==='context'?"Ignore ":uiText("Reject "))+s.name} onClick={()=>decide([s.id],'rejected')}><span className="entity-review-action-icon">{saving&&operation?.decision==='rejected'?<span className="scan-spinner"/>:<Icon name="close"/>}</span>{mode==='context'&&(saving&&operation?.decision==='rejected'?uiText("Ignoring…"):'Ignore')}</button></>:<span className={'scan-decision is-'+s.status}><Icon name={s.status==='accepted'?'check':'close'}/>{s.status==='accepted'?uiText("Connected"):uiText("Rejected")}</span>}</div></td>
           </tr>{editingId===s.id&&s.status==='pending'&&<tr className="entity-review-editor-row"><td colSpan={5}><div className="entity-review-editor" id={'suggestion-edit-'+s.id}>
             <div className="entity-review-editor-heading"><strong>{uiText("Edit suggestion")}</strong><button className="button small" disabled={locked} onClick={()=>setEditingId(null)}>{uiText("Done editing")}</button></div>
             <div className="entity-review-editor-fields">

@@ -390,7 +390,7 @@ main {
     height: 34px
   }
 }
-#content[aria-busy=true] {
+#content[data-loading=true] {
   min-height: 60vh
 }
 .favourite-button {
@@ -1772,3 +1772,8 @@ summary.disclosure-summary:focus-visible {
   align-items: center;
   color: var(--text-muted);
 }
+
+/* Covered documents still update live, without background motion during review. */
+main[data-entity-review-open=true] *,
+main[data-entity-review-open=true] *::before,
+main[data-entity-review-open=true] *::after { animation: none !important; transition: none !important; }

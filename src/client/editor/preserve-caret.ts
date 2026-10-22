@@ -8,7 +8,11 @@ function length(node: Node): number {
 /** Keep an idle writer's caret when plain text becomes atomic entity mentions. */
 export function replaceEditableHTML(element: HTMLElement, html: string) {
   const selection = document.getSelection();
-  const current = selection?.isCollapsed && selection.rangeCount ? selection.getRangeAt(0) : null;
+  const modal=document.querySelector('dialog[open]');
+  // WebKit can move focus back into a covered editor when addRange restores
+  // its old caret. Keep applying content updates without restoring that caret.
+  const canRestore=!element.closest('[inert]')&&(!modal||modal.contains(element));
+  const current = canRestore && selection?.isCollapsed && selection.rangeCount ? selection.getRangeAt(0) : null;
   let offset: number | null = null;
   if (current && element.contains(current.startContainer)) {
     const prefix = current.cloneRange();

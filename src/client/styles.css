@@ -3560,6 +3560,17 @@ dialog.settings-modal .modal-header { position: static; margin: 0; flex-shrink: 
 .sidebar-inline-name small { display: block; margin-top: 3px; color: var(--danger, #a12424); font-size: 11px; }
 .sidebar-rename-page-icon { display: flex; align-items: center; color: var(--text-muted); }
 
+.selection-entity-results button.highlight { background: var(--surface-hover); }
+.selection-alias-option { display:flex; align-items:center; gap:8px; padding:8px; font-size:13px; }
+.selection-entities .selection-alias-option input { width:auto; flex:none; }
+.entity-link-dialog { width:min(440px,calc(100vw - 32px)); padding:20px; }
+.entity-link-dialog > input { width:100%; padding:10px; }
+.entity-link-dialog .selection-entity-results { max-height:40vh; overflow:auto; }
+.entity-link-dialog .selection-entity-results button { width:100%; min-height:44px; text-align:left; padding:10px; }
+.entity-link-dialog small { display:block; color:var(--text-muted); }
+.entity-alias-recovery { display:flex; flex-wrap:wrap; gap:8px; padding:10px; border:1px solid var(--line); font-size:13px; }
+.entity-alias-recovery button { text-decoration:underline; }
+
 /* Vault storage */
 .storage-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .storage-heading p { margin: 0; color: var(--text-muted); font-size: 13px; overflow-wrap: anywhere; }

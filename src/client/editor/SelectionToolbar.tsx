@@ -24,9 +24,10 @@ interface Props {
   suggestionContext?: MentionMatchOptions;
   onCommit: () => void;
   onSemantic: (kind: SemanticKind) => void;
+  onOpenEntity: (id:string) => void;
   onAddAlias: (id: string, alias: string) => Promise<void>;
   onMath: (range: Range) => void;
-  onCreateEntity: (name: string, onCreated: (id: string) => void) => void;
+  onCreateEntity: (name: string, onCreated: (id: string) => void, onCancel?: () => void) => void;
 }
 const formats = [
   {command: 'bold', get label(){return uiText("Bold")}, glyph: <b>B</b>},
@@ -37,11 +38,12 @@ const formats = [
 function editable(node: Node) {
   return (node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>('.block-content[contenteditable="true"]');
 }
-export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHeight, editor, entities, suggestionContext, onCommit, onAddAlias, onCreateEntity, onMath, onSemantic, onExplain, explaining, explainLabel, onReview, reviewing}: Props) {
+export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHeight, editor, entities, suggestionContext, onCommit, onAddAlias, onOpenEntity, onCreateEntity, onMath, onSemantic, onExplain, explaining, explainLabel, onReview, reviewing}: Props) {
   const [anchor, setAnchor] = useState<{left: number; right: number; top: number; bottom: number} | null>(null);
   const [annotating, setAnnotating] = useState(false), [query, setQuery] = useState('');
   const [semantic, setSemantic] = useState(false);
   const [more, setMore] = useState(false);
+  const [reuseAlias, setReuseAlias] = useState(false), [pickIndex, setPickIndex] = useState(0);
   const [savingAlias, setSavingAlias] = useState(false), [aliasError, setAliasError] = useState('');
   const [active, setActive] = useState<string[]>([]);
   const [selectedCount, setSelectedCount] = useState(0);
@@ -49,12 +51,13 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
   const explanationAction = explainLabel?.(selectedIds) ?? 'Explain with AI';
   const [position, setPosition] = useState<{left: number; top: number; maxHeight?: number}>({left: 0, top: 0});
   const saved = useRef<Range | null>(null), surface = useRef<HTMLDivElement>(null);
-  const picking = useRef(false);
+  const picking = useRef(false), operation = useRef(0);
+  const [aliasRecovery,setAliasRecovery]=useState<{id:string;message:string}|null>(null);
   const latest = useRef({entities, onCommit}); latest.current = {entities, onCommit};
   function releaseSheet() { surface.current?.querySelector<HTMLDialogElement>('.mobile-selection-sheet')?.close(); }
-  function dismiss() { releaseSheet(); saved.current = null; picking.current = false; setMore(false); setSemantic(false); setAnnotating(false); setAnchor(null); }
+  function dismiss() { operation.current++; releaseSheet(); saved.current = null; picking.current = false; setMore(false); setSemantic(false); setAnnotating(false); setAnchor(null); }
   function closePicker() {
-    releaseSheet(); picking.current = false; setMore(false); setSemantic(false); setAnnotating(false);
+    operation.current++; releaseSheet(); picking.current = false; setMore(false); setSemantic(false); setAnnotating(false);
     if (saved.current && !restore(saved.current)) dismiss();
   }
   useEffect(() => {
@@ -141,6 +144,7 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
     const box = surface.current.getBoundingClientRect();
     setPosition(selectionPopoverPlacement(anchor, {width: box.width, height: surface.current.scrollHeight + 2}, {width: innerWidth, height: innerHeight}));
   }, [mobile, anchor, annotating, semantic, query, entities]);
+  useEffect(()=>{surface.current?.querySelector<HTMLElement>('#selection-entity-results [aria-selected=true]')?.scrollIntoView?.({block:'nearest'});},[pickIndex,query,annotating]);
   function restore(range: Range) {
     if (!range.startContainer.isConnected || !range.endContainer.isConnected) return false;
     editable(range.startContainer)?.focus({preventScroll: mobile});
@@ -162,13 +166,14 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
     releaseSheet();
     range.deleteContents();
     const wrapper = document.createElement('span');
-    wrapper.innerHTML = segmentHTML([{entityId: id, mentionText: text}], latest.current.entities);
+    wrapper.innerHTML = segmentHTML([{entityId: id, mentionText: text, skipAutoTag:true}], latest.current.entities);
     const mention = wrapper.firstChild!; range.insertNode(mention);
     range.setStartAfter(mention); range.collapse(true); restore(range);
     latest.current.onCommit(); dismiss();
     return true;
   }
-  if (!anchor) return null;
+  const recovery=aliasRecovery&&<div className="entity-alias-recovery" role="status"><span>{aliasRecovery.message}</span><button type="button" onClick={()=>onOpenEntity(aliasRecovery.id)}>Manage entity aliases</button><button type="button" onClick={()=>setAliasRecovery(null)}>Dismiss</button></div>;
+  if (!anchor) return recovery;
   const range = saved.current;
   const single = range && editor.current && editorSelectionRanges(editor.current, range).length === 1;
   const selectedText = range?.toString().trim() || '';
@@ -177,19 +182,22 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
     const current = saved.current;
     if (!current || savingAlias) return;
     const range = current.cloneRange(), text = current.toString();
-    if (!range.startContainer.isConnected || !range.endContainer.isConnected) return;
+    if (!range.startContainer.isConnected || !range.endContainer.isConnected || range.toString() !== text || !editor.current?.contains(range.commonAncestorContainer)) {setAliasError('The selected text changed. Select it again.'); return;}
+    if (!reuseAlias) {if(!connect(range,text,id))setAliasError('The selected text changed. Select it again.'); return;}
+    const token=++operation.current;
     setSavingAlias(true); setAliasError('');
     try {
       await onAddAlias(id,text.trim());
-      if (!connect(range,text,id)) throw new Error('The selected text changed while saving the alias. Select it again to link it.');
-    } catch (error) { setAliasError(error instanceof Error ? error.message : String(error)); }
+      if (operation.current!==token || !connect(range,text,id)) setAliasRecovery({id,message:'Alias saved in this vault; the selection was cancelled or changed, so no link was added. Manage aliases separately from document undo.'});
+      else setAliasRecovery({id,message:'Reusable vault alias saved. Document undo changes this note only; manage aliases separately.'});
+    } catch (error) { setAliasError(error instanceof Error ? error.message : String(error)); setAliasRecovery({id,message:'Alias saving failed or could not be confirmed. Check entity aliases before retrying. Document undo does not change aliases.'}); }
     finally { setSavingAlias(false); }
   };
   const createFromSelection = () => {
     const current = saved.current?.cloneRange(); if (!current) return;
     const text = current.toString();
     dismiss();
-    onCreateEntity(text.trim().slice(0, 200), id => connect(current, text, id));
+    onCreateEntity(text.trim().slice(0, 200), id => {if(!connect(current,text,id))throw new Error('Entity created, but the selection changed. Select text again to link it.');}, () => {if(current.toString()===text&&editor.current?.contains(current.commonAncestorContainer))restore(current);});
   };
   const picker = <>
     {more && <div className="selection-more-actions">
@@ -200,22 +208,27 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
       {onReview&&<button type="button" disabled={reviewing} onClick={()=>{const current=saved.current;releaseSheet();if(current&&restore(current))onReview();dismiss();}}><Icon name="sparkles"/><span>{uiText("Review with AI")}</span></button>}
       <button type="button" disabled={explaining || !onExplain} onClick={() => { const current = saved.current; releaseSheet(); if (current && restore(current)) onExplain?.(); dismiss(); }}><Icon name="sparkles"/><span>{explanationAction}</span></button>
       <button type="button" onClick={() => { setMore(false); setSemantic(true); }}><Icon name="semantic"/><span>{uiText("Semantic function")}</span><Icon name="chevron"/></button>
-      <button type="button" disabled={!single} onClick={() => { setMore(false); setAnnotating(true); setQuery(''); setAliasError(''); }}><Icon name="knowledge"/><span>{uiText("Annotate selection")}</span><Icon name="chevron"/></button>
+      <button type="button" disabled={!single} onClick={() => { setMore(false); setAnnotating(true); setQuery(''); setAliasError(''); setReuseAlias(false); setPickIndex(0); }}><Icon name="knowledge"/><span>{uiText("Link entity")}</span><Icon name="chevron"/></button>
     </div>}
     {semantic && <div className="semantic-picker" role="region" aria-label={uiText("Semantic functions")}><p>{selectedCount===1 ? uiText("Apply a function to this block") : uiText("Group selected blocks under one function")}</p>{editableSemanticKinds.map(kind=><button type="button" key={kind} onClick={()=>{const range=saved.current;releaseSheet();if(range&&restore(range))onSemantic(kind);dismiss();}}><span style={{color:semanticFunctions[kind].color}}><Icon name={semanticFunctions[kind].icon}/></span><span>{uiText(semanticFunctions[kind].label)}<small>{uiText(semanticFunctions[kind].description)}</small></span></button>)}</div>}
-    {annotating && <div className="selection-entities" role="region" aria-label={uiText("Annotate selection")} aria-busy={savingAlias}>
+    {annotating && <div className="selection-entities" role="region" aria-label={uiText("Link entity")} aria-busy={savingAlias}>
       {savingAlias && <p role="status">{uiText("Saving alias…")}</p>}
       {aliasError && <p role="alert">{aliasError}</p>}
-      <input autoFocus aria-label={uiText("Search knowledge entities")} placeholder={uiText("Find an existing entity…")} value={query} onChange={event => setQuery(event.target.value)}/>
-      <div className="selection-entity-results">
-        {results.map(entity => <button type="button" key={entity.id} disabled={savingAlias} onClick={() => void linkEntity(entity.id)}><Icon name={entity.type}/><span>{entity.name}<small>{uiText(entityLabels[entity.type])}{exact.some(item=>item.id===entity.id)?' · Exact match':''}</small></span></button>)}
+      <input autoFocus aria-label={uiText("Search knowledge entities")} placeholder={uiText("Find an existing entity…")} value={query} onChange={event => {setQuery(event.target.value);setPickIndex(0);}} onKeyDown={event=>{
+        if(event.nativeEvent.isComposing)return;
+        if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();setPickIndex(index=>(index+(event.key==='ArrowDown'?1:-1)+results.length)%Math.max(1,results.length));}
+        if(event.key==='Enter'&&results[pickIndex]){event.preventDefault();void linkEntity(results[pickIndex]!.id);}
+      }} aria-activedescendant={results[pickIndex]?'selection-entity-'+results[pickIndex]!.id:undefined} role="combobox" aria-expanded="true" aria-controls="selection-entity-results"/>
+      <div className="selection-entity-results" id="selection-entity-results" role="listbox">
+        {results.map((entity,index) => <button id={"selection-entity-"+entity.id} role="option" aria-selected={index===pickIndex} className={index===pickIndex?"highlight":""} type="button" key={entity.id} disabled={savingAlias} onClick={() => void linkEntity(entity.id)}><Icon name={entity.type}/><span>{entity.name}<small>{uiText(entityLabels[entity.type])}{exact.some(item=>item.id===entity.id)?' · Exact match':''}{entity.description ? ' · '+entity.description : ''}</small></span></button>)}
         {!results.length && <div className="selection-empty">{uiText("No matching entities")}</div>}
       </div>
-      {!query&&<p>{uiText("Linking preserves the highlighted text and saves it as an alias for future tagging.")}</p>}
-      <button type="button" className="selection-create" onClick={createFromSelection}><Icon name="plus"/><span>{uiText("Add “")}{selectedText.length > 60 ? selectedText.slice(0, 60) + '…' : selectedText}{uiText("” as new entity")}</span></button>
+      <label className="selection-alias-option"><input type="checkbox" checked={reuseAlias} disabled={savingAlias} onChange={event=>setReuseAlias(event.target.checked)}/>{uiText("Save highlighted wording as a reusable vault alias")}</label>
+      <p>{reuseAlias ? uiText("Aliases affect future matching across this vault. Manage them in entity details; document undo only changes this note.") : uiText("Link only this occurrence and preserve your wording.")}</p>
+      <button type="button" className="selection-create" disabled={savingAlias} onClick={createFromSelection}><Icon name="plus"/><span>{uiText("Add “")}{selectedText.length > 60 ? selectedText.slice(0, 60) + '…' : selectedText}{uiText("” as new entity")}</span></button>
     </div>}
   </>;
-  return <div ref={surface} className={'selection-popover' + (mobile ? ' mobile-selection-popover' : '')}
+  return <>{recovery}<div ref={surface} className={'selection-popover' + (mobile ? ' mobile-selection-popover' : '')}
     data-keyboard-open={keyboardInset > 0 ? true : undefined}
     style={mobile ? {bottom: keyboardInset, '--selection-keyboard-inset': `${keyboardInset}px`, '--selection-viewport-height': `${viewportHeight ?? window.innerHeight}px`} as CSSProperties : position}
     onPointerDown={event => {
@@ -232,8 +245,9 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
         {onReview&&<button type="button" aria-label={uiText("Review with AI")} title={uiText("Review with AI")} disabled={reviewing} onClick={()=>{const current=saved.current;if(current&&restore(current))onReview();dismiss();}}><Icon name="sparkles"/><span className="selection-action-label">{uiText("Review")}</span></button>}
         <button type="button" aria-label={explanationAction} title={explanationAction} disabled={explaining || !onExplain} onClick={()=>{const range=saved.current;if(range&&restore(range))onExplain?.();dismiss();}}><Icon name="sparkles"/><span className="selection-action-label">{explanationAction}</span></button>
         <button type="button" className="selection-semantic" title={uiText("Apply a semantic function")} aria-expanded={semantic} aria-haspopup={mobile ? 'dialog' : undefined} aria-label={uiText("Semantic block function")} onClick={()=>{picking.current=!semantic;setSemantic(!semantic);setAnnotating(false);}}><Icon name="semantic"/><span className="selection-action-label">{uiText("Semantic")}</span></button>
-        <button type="button" className="selection-annotate" disabled={!single} aria-label={uiText("Annotate selection")} title={single ? uiText("Connect selection to a knowledge entity") : uiText("Select text within one block or table cell to annotate")} aria-haspopup={mobile ? 'dialog' : undefined} aria-expanded={annotating} onClick={() => { picking.current = !annotating; setSemantic(false); setAnnotating(!annotating); setQuery(''); setAliasError(''); }}><Icon name="knowledge"/><span className="selection-action-label">{uiText("Annotate")}</span></button>
+
         </>}
+        <button type="button" className="selection-annotate" disabled={!single || savingAlias} aria-label={uiText("Link entity")} title={single ? uiText("Connect selection to a knowledge entity") : uiText("Select text within one block or table cell to annotate")} aria-haspopup={mobile ? 'dialog' : undefined} aria-expanded={annotating} onClick={() => { picking.current = !annotating; setSemantic(false); setAnnotating(!annotating); setQuery(''); setAliasError(''); setReuseAlias(false); setPickIndex(0); }}><Icon name="knowledge"/><span className="selection-action-label">{uiText("Link entity")}</span></button>
         {mobile && <button type="button" aria-label={uiText("More text actions")} title={uiText("More text actions")} aria-haspopup="dialog" aria-expanded={more || semantic || annotating} onClick={() => { picking.current = true; setMore(true); setSemantic(false); setAnnotating(false); }}><Icon name="more"/></button>}
       </div>
       {mobile && <button type="button" className="selection-done" aria-label={uiText("Finish text selection")} title={uiText("Finish text selection")} onClick={() => {
@@ -246,9 +260,9 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
       }}><Icon name="check"/></button>}
     </div>
     {mobile && (more || semantic || annotating) ? <Modal className="mobile-selection-sheet" titleId="mobile-selection-sheet-title" onClose={closePicker} dismissOnBackdrop>
-      <ModalHeader titleId="mobile-selection-sheet-title" actions={!more&&<button type="button" className="selection-picker-back" aria-label="Back to text actions" onClick={() => { setMore(true); setSemantic(false); setAnnotating(false); }}><Icon name="chevron"/></button>} closeLabel={uiText("Back to selection")}>{more ? uiText("Text actions") : semantic ? uiText("Semantic function") : uiText("Annotate selection")}</ModalHeader>
+      <ModalHeader titleId="mobile-selection-sheet-title" actions={!more&&<button type="button" className="selection-picker-back" aria-label="Back to text actions" onClick={() => { setMore(true); setSemantic(false); setAnnotating(false); }}><Icon name="chevron"/></button>} closeLabel={uiText("Back to selection")}>{more ? uiText("Text actions") : semantic ? uiText("Semantic function") : uiText("Link entity")}</ModalHeader>
       <p className="mobile-selection-preview">{selectedText.length > 120 ? selectedText.slice(0, 120) + '…' : selectedText}</p>
       {picker}
     </Modal> : picker}
-  </div>;
+  </div></>;
 }

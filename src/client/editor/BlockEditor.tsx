@@ -1,3 +1,4 @@
+import {EntityLinkActions} from './EntityLinkActions';
 import {memoizeBlock} from '../../shared/immutable-blocks';
 import {getLocale} from '../i18n';
 import {t as uiText} from '../i18n';
@@ -48,7 +49,7 @@ import { completeInlineMath, mathElement } from './math';
 import { completeTypedMarkdown,typedMarkdownBlock } from './markdown-typing';
 import { useMarkdownTyping } from '../state/markdown-preferences';
 import {applyEditorTextFormat,shortcutTextFormat} from './text-formatting';
-interface Props {focusNewBody?:boolean;onCreationFocusConsumed?:()=>void;onReview?:(texts:EditorReviewText[])=>Promise<EditorReviewSuggestion[]>;featuredImageId?: string | null; pages?:PageSummary[];onOpenPage?:(id:string)=>void;onExplain?: (blocks: Block[]) => Promise<string>; reviewMatches?: EntityReviewItem[]; onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[], featuredImageId?: string | null, aiReviewAccepted?:true) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void) => void; onSave: () => void}
+interface Props {focusNewBody?:boolean;onCreationFocusConsumed?:()=>void;onReview?:(texts:EditorReviewText[])=>Promise<EditorReviewSuggestion[]>;featuredImageId?: string | null; pages?:PageSummary[];onOpenPage?:(id:string)=>void;onExplain?: (blocks: Block[]) => Promise<string>; reviewMatches?: EntityReviewItem[]; onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[], featuredImageId?: string | null, aiReviewAccepted?:true) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void, onCancel?: () => void) => void; onSave: () => void}
 function explanationInsertionIndex(blocks: Block[], ids: string[]) {
   const last=blocks.filter(block=>ids.includes(block.id)).at(-1);
   if(!last)return -1;
@@ -91,7 +92,7 @@ function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOp
     const el = ref.current!;
     syncEditableSegments(el, block.content, entities, {blockId: block.id, matches: reviewMatches},citations);
     el.querySelectorAll<HTMLElement>('[data-entity]:not([data-source-reference])').forEach(node => {
-      const wrapper = document.createElement('span'); wrapper.innerHTML = segmentHTML([{entityId: node.dataset.entity!, ...(node.dataset.mentionText ? {mentionText: node.dataset.mentionText} : {})}], entities);
+      const wrapper = document.createElement('span'); wrapper.innerHTML = segmentHTML([{entityId: node.dataset.entity!, ...(node.dataset.skipAutoTag === 'true' ? {skipAutoTag:true} : {}), ...(node.dataset.mentionText ? {mentionText: node.dataset.mentionText} : {})}], entities);
       const fresh = wrapper.firstElementChild!;
       if (node.innerHTML !== fresh.innerHTML) node.innerHTML = fresh.innerHTML;
       if (node.className !== fresh.className) node.className = fresh.className;
@@ -675,7 +676,7 @@ export function BlockEditor(props: Props) {
     }}><span className="menu-icon" aria-hidden="true" style={item.color?{color:item.color}:undefined}><Icon name={item.icon}/></span><span>{item.icon==='page'?<TitleText text={item.title}/>:item.title}{item.detail&&<small>{item.detail}</small>}</span>{item.submenu&&!item.back&&<span className="menu-submenu-arrow" aria-hidden="true"><Icon name="chevron"/></span>}</button>);
   }
   function insertMention(range: Range, id: string, blockId: string) {
-    if (!range.startContainer.isConnected) return;
+    if (!range.startContainer.isConnected || !range.endContainer.isConnected || !root.current?.contains(range.commonAncestorContainer)) throw new Error('The insertion point changed. Select text again to link the created entity.');
     range.deleteContents(); const wrapper = document.createElement('span'); wrapper.innerHTML = segmentHTML([{entityId: id}], latest.current.entities); const mention = wrapper.firstChild!;
     range.insertNode(mention); const space = document.createTextNode(' '); mention.after(space); range.setStartAfter(space); range.collapse(true);
     const el = elements.current.get(blockId); el?.focus(); getSelection()?.removeAllRanges(); getSelection()?.addRange(range);
@@ -756,10 +757,10 @@ export function BlockEditor(props: Props) {
       const showMatches=(limit=3)=>{
         const items:Choice[]=matches.slice(0,limit).map(entity=>{
           const subtype=entity.subtypes.map(id=>schema.subtypes.find(subtype=>subtype.id===id&&subtype.type===entity.type)?.name).find(Boolean);
-          return {title:entity.name,detail:subtype?`${entityLabels[entity.type]} · ${subtype}`:entityLabels[entity.type],icon:entity.type,pick:()=>insertMention(saved,entity.id,block.id)};
+          return {title:entity.name,detail:[entityLabels[entity.type],subtype,entity.description].filter(Boolean).join(' · '),icon:entity.type,pick:()=>insertMention(saved,entity.id,block.id)};
         });
         if(matches.length>limit)items.push({title:`Show more (${matches.length-limit})`,icon:'chevron',pick:()=>showMatches(limit+10)});
-        items.push({title:query?`Create and insert “${query}”`:uiText("Create and insert an entity"),icon:'plus',pick:()=>{setMenu(null);onCreateEntity(query,id=>insertMention(saved,id,block.id));}});
+        items.push({title:query?`Create and insert “${query}”`:uiText("Create and insert an entity"),icon:'plus',pick:()=>{const text=saved.toString(),caret=range.cloneRange();setMenu(null);onCreateEntity(query,id=>{if(saved.toString()!==text)throw new Error('Entity created, but the insertion text changed. Select text again to link it.');insertMention(saved,id,block.id);},()=>{if(caret.startContainer.isConnected&&root.current?.contains(caret.commonAncestorContainer)){el.focus();getSelection()?.removeAllRanges();getSelection()?.addRange(caret);}});}});
         show(el,items,'LINK AN ENTITY',false,range.cloneRange());
         if(limit>3)setMenu(current=>current?{...current,index:limit-10}:current);
       };
@@ -795,8 +796,7 @@ export function BlockEditor(props: Props) {
     list.splice(index, 1, ...replacement); focusTarget.current = {id: replacement.at(-1)!.id, start: !suffix.length ? false : true}; onChange(list);
   }
   function keyDown(e: KeyboardEvent<HTMLElement>, block: Block) {
-    const el = e.currentTarget, mention = (e.target as Element).closest<HTMLElement>('[data-entity]');
-    if (mention && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onOpenEntity(mention.dataset.entity!); return; }
+    const el = e.currentTarget;
     if (e.nativeEvent.isComposing) return;
     if (menu) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); setMenu({...menu, index: (menu.index + (e.key === 'ArrowDown' ? 1 : -1) + menu.items.length) % menu.items.length}); return; }
@@ -922,6 +922,8 @@ export function BlockEditor(props: Props) {
       // A tap ending a native selection gesture must not open an inline item.
       const selection = getSelection();
       if (mobile && selection && !selection.isCollapsed && root.current?.contains(selection.anchorNode) && (e.target as Element).closest('[data-page-title], [data-entity], [data-entity-review], [data-math]')) { e.stopPropagation(); return; }
+      const mention=(e.target as Element).closest<HTMLElement>('.mention[data-entity]');
+      if(mention?.closest('.block-content[contenteditable="true"]')){e.preventDefault();e.stopPropagation();document.dispatchEvent(new CustomEvent('noema:entity-link',{detail:mention}));return;}
       const pageLink=(e.target as Element).closest<HTMLElement>('[data-page-title]');
       if(pageLink){e.preventDefault();e.stopPropagation();openPageLink(pageLink);return;}
       const review = (e.target as Element).closest<HTMLElement>('[data-entity-review]');
@@ -933,6 +935,8 @@ export function BlockEditor(props: Props) {
       const math = (e.target as Element).closest<HTMLElement>('[data-math]');
       if (math && !(e.target as Element).closest('[data-semantic-kind="ai-explanation"]')) {e.preventDefault(); e.stopPropagation(); editInlineMath(math);}
     }} onKeyDownCapture={e => {
+      const mention=(e.target as Element).closest<HTMLElement>('.mention[data-entity]');
+      if(!e.nativeEvent.isComposing&&mention?.closest('.block-content[contenteditable="true"]')&&(e.key==='Enter'||e.key===' ')){e.preventDefault();e.stopPropagation();document.dispatchEvent(new CustomEvent('noema:entity-link',{detail:mention}));return;}
       if(!e.nativeEvent.isComposing&&!e.metaKey&&!e.ctrlKey&&!e.altKey&&(e.key==='Backspace'||e.key==='Delete')&&root.current&&deleteEditorReference(root.current,e.target,e.key==='Backspace'?'backward':'forward')){
         e.preventDefault();e.stopPropagation();commitSelection();return;
       }
@@ -955,7 +959,8 @@ export function BlockEditor(props: Props) {
     }}>{!explanationAnchorId&&explanationStatus}{renderColumnLayout(blocks)}{uploadCards()}</div>
     <span id="block-drag-help" className="block-drag-sr">{uiText("Drag to reorder. Click for options. With the handle focused, press Space to pick up, Up or Down to move, Space or Enter to drop, Escape to cancel.")}</span>
     <div ref={dragStatus} className="block-drag-sr" role="status" aria-live="polite" aria-atomic="true"/>
-    <SelectionToolbar onReview={props.onReview?()=>void reviewWriting():undefined} reviewing={writingReview?.loading} explainLabel={explainLabel} mobile={mobile} keyboardInset={keyboardInset} viewportHeight={viewportHeight} onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} suggestionContext={{priorityIds:suggestionPriorityIds}} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
+    <EntityLinkActions editor={root} entities={entities} onCommit={commitSelection} onOpen={onOpenEntity}/>
+    <SelectionToolbar onOpenEntity={onOpenEntity} onReview={props.onReview?()=>void reviewWriting():undefined} reviewing={writingReview?.loading} explainLabel={explainLabel} mobile={mobile} keyboardInset={keyboardInset} viewportHeight={viewportHeight} onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} suggestionContext={{priorityIds:suggestionPriorityIds}} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
     {linkedExplanations.length > 0 && <Modal className="confirmation-dialog linked-explanation-dialog" titleId="linked-explanation-delete-title" onClose={() => setLinkedDeletion([])}>
       <ModalHeader titleId="linked-explanation-delete-title" leading={<Icon name="sparkles"/>} closeLabel={uiText("Close and keep explanations")}>{linkedExplanations.length === 1 ? uiText("Keep the explanation?") : uiText("Keep the explanations?")}</ModalHeader>
       <p>{linkedExplanations.length === 1

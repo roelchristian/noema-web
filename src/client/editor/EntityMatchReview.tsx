@@ -1,6 +1,6 @@
 import {t as uiText} from '../i18n';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { Entity } from '../../shared/domain';
+import { entityLabels, type Entity } from '../../shared/domain';
 import type { AmbiguousEntityMatch, EntityMatchResolution } from '../../shared/auto-entities';
 import { Select } from '../components/Select';
 import { Icon } from '../components/Icon';
@@ -58,7 +58,7 @@ function MatchRow({match, entities, onResolve, disabled}: {disabled?: boolean; m
     <strong>“{match.text}”</strong><p>{match.context}</p>
     <Select aria-label={uiText("Entity for {value0}",{value0: match.text})} disabled={disabled} value={valid ? selected : ''} onChange={event => setSelected(event.target.value)}>
       <option value="">{uiText("Choose an entity…")}</option>
-      {candidates.map(entity => <option key={entity.id} value={entity.id}>{entity.name}</option>)}
+      {candidates.map(entity => <option key={entity.id} value={entity.id}>{entity.name} · {uiText(entityLabels[entity.type])}{entity.description ? ' · '+entity.description : ''}</option>)}
     </Select>
     <div className="entity-match-actions">
       <button type="button" className="button small" disabled={disabled || !valid} onClick={() => onResolve({match, entityId: selected})}>{uiText("Link this instance")}</button>

@@ -199,12 +199,15 @@ test('page icon changes update navigation immediately and autosave alongside con
     await workspace.saver.flush();
     assert.equal(writes.at(-1).icon, 'compass');
     assert.equal(writes.at(-1).title, 'Directions');
+    assert.equal(writes.at(-1).titleEdited,true);
+    assert.equal(workspace.snapshot().page.titleEdited,undefined);
     assert.equal(workspace.snapshot().pages[0].updated_at, '2026-10-17T09:30:00.000Z');
     assert.equal(workspace.snapshot().page.updated_at, '2026-10-17T09:30:00.000Z');
     workspace.updatePage({icon: null});
     await workspace.saver.flush();
     assert.equal(workspace.snapshot().pages[0].icon, null);
     assert.equal(writes.at(-1).icon, null);
+    assert.equal(writes.at(-1).titleEdited,undefined);
   } finally { workspace.saver.dispose(); workspace.titler.dispose(); }
 });
 

@@ -80,7 +80,7 @@ export class Workspace {
       const cached = this.pageCache.get(saved.id);
       if (cached) {
         const unchanged = cached.blocks === original.blocks;
-        const page = {...cached, title:cached.title===original.title?saved.title:cached.title,enrichmentPending:saved.enrichmentPending,enrichmentPendingFields:saved.enrichmentPendingFields,enrichmentFields:saved.enrichmentFields,language:saved.language,aiReviewAccepted:!!(cached.aiReviewAccepted||saved.aiReviewAccepted), aiStatus:nextPageAIStatus(saved,cached,id=>entityMentionName(this.state.entities.find(entity=>entity.id===id))), ...(unchanged && !this.state.reviewing && canIdentifyEntities() ? {blocks: saved.blocks} : {}), pageDomains:saved.pageDomains,conceptClassification:saved.conceptClassification,conceptContentHash:unchanged?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at};
+        const page = {...cached, title:cached.title===original.title?saved.title:cached.title,titleEdited:cached.title===original.title?undefined:cached.titleEdited,enrichmentPending:saved.enrichmentPending,enrichmentPendingFields:saved.enrichmentPendingFields,enrichmentFields:saved.enrichmentFields,language:saved.language,aiReviewAccepted:!!(cached.aiReviewAccepted||saved.aiReviewAccepted), aiStatus:nextPageAIStatus(saved,cached,id=>entityMentionName(this.state.entities.find(entity=>entity.id===id))), ...(unchanged && !this.state.reviewing && canIdentifyEntities() ? {blocks: saved.blocks} : {}), pageDomains:saved.pageDomains,conceptClassification:saved.conceptClassification,conceptContentHash:unchanged?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at};
         this.pageCache.set(saved.id, page);
         if(!this.pageLockPending)this.titler.observe(page, unchanged);
       }
@@ -577,7 +577,7 @@ export class Workspace {
   updatePage(patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon' | 'featuredImageId' | 'aiReviewAccepted'>>) {
     const current = this.state.page;
     if (this.state.view !== 'pages' || !current || current.editLocked || this.pageLockPending || this.state.busy || this.state.loadingPageId !== null || this.state.reviewing || this.state.vault?.locked) return;
-    const page = {...current, ...patch,aiReviewAccepted:!!(current.aiReviewAccepted||patch.aiReviewAccepted),...(patch.blocks&&patch.blocks!==current.blocks?{conceptContentHash:undefined}:{})};
+    const page = {...current, ...patch,...(patch.title!==undefined&&patch.title!==current.title?{titleEdited:true}:{}),aiReviewAccepted:!!(current.aiReviewAccepted||patch.aiReviewAccepted),...(patch.blocks&&patch.blocks!==current.blocks?{conceptContentHash:undefined}:{})};
     page.blocks=immutableBlocks(page.blocks,current.blocks);
     page.sourceIds=[...new Set([...page.sourceIds,...citationSourceIds(page.blocks)])];
     page.aiStatus=nextPageAIStatus(current,page,id=>entityMentionName(this.state.entities.find(entity=>entity.id===id)));
@@ -665,7 +665,7 @@ export class Workspace {
       const vault = this.state.vault; if (!vault || vault.locked) return;
       const original = this.pageCache.get(id) || await api.page(vault.id,id);
       this.titler.observe({...original,title});
-      const saved = await api.savePage(vault.id,id,{...original,title});
+      const saved = await api.savePage(vault.id,id,{...original,title,titleEdited:true});
       this.titler.observe(saved);
       this.pageCache.set(id,saved);
       this.patch({pages: this.state.pages.map(page => page.id === id ? saved : page), ...(this.state.page?.id === id ? {page: saved} : {})});

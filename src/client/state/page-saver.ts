@@ -115,7 +115,7 @@ export class PageSaver {
         else if (newer) {
           newer.revision = saved.revision;
           // A queued body edit must not send the old title back over a completed title.
-          if(newer.title===snapshot.title)newer.title=saved.title;
+          if(newer.title===snapshot.title){newer.title=saved.title;delete newer.titleEdited;}
         }
         try {
           if (entry) this.journal.acknowledge(entry, saved, newer && newer !== snapshot ? newer : undefined);

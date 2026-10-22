@@ -168,3 +168,34 @@ test('scheduler uses real field dependencies to reuse presentation saves and dis
    assert.equal(s.enrichments.list('default',page.id).find(item=>item.kind==='summary').data.summary,output.summary);
  }finally{scheduler.dispose();s.close();}
 });
+
+test('a stale placeholder autosave preserves the generated title and edited body',async()=>{
+ const s=fixture();try {
+   const stale=structuredClone(s.page);
+   await s.coordinator.run('default',s.page);
+   const blocks=[...stale.blocks,{id:'later',type:'paragraph',checked:false,content:[{text:'A later body edit saved before the client received enrichment.'}]}];
+   let saved=s.pages.update('default',stale.id,{...stale,blocks});
+   assert.equal(saved.title,output.title);
+   assert.deepEqual(saved.blocks,blocks);
+   assert.equal(saved.revision,stale.revision+1);
+   assert.equal(saved.enrichmentFields.title.origin,'inferred');
+   assert.equal(s.pages.list('default').find(page=>page.id===saved.id).title,output.title);
+   saved=s.pages.update('default',saved.id,{...saved,blocks:[...blocks,{id:'next',type:'paragraph',checked:false,content:[{text:'Another edit.'}]}]});
+   assert.equal(saved.title,output.title);
+   assert.equal(saved.enrichmentFields.title.origin,'inferred');
+ }finally{s.close();}
+});
+
+test('explicit renames including Untitled survive enrichment and later autosaves',async()=>{
+ for(const title of ['My authored title','Untitled','']) {
+   const s=fixture();try {
+     await s.coordinator.run('default',s.page);
+     const saved=s.pages.update('default',s.page.id,{...s.page,title,titleEdited:true});
+     assert.equal(saved.title,title);
+     assert.equal(saved.enrichmentFields.title.origin,'manual');
+     const next=s.pages.update('default',saved.id,{...saved});
+     assert.equal(next.title,title);
+     assert.equal(s.coordinator.prepare('default',saved.id,{fields:['title']}),null);
+   }finally{s.close();}
+ }
+});

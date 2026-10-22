@@ -88,3 +88,23 @@ test('failed preparation retains edits for retry', async () => {
     assert.equal(statuses.at(-1), 'saved');
   } finally { saver.dispose(); }
 });
+
+test('queued body saves adopt the returned title and clear acknowledged rename intent',async()=>{
+  const sent=[];let complete;
+  const saver=new PageSaver(async snapshot=>{
+    sent.push(structuredClone(snapshot));
+    if(sent.length===1)return new Promise(resolve=>{complete=resolve;});
+    return {...snapshot,revision:snapshot.revision+1};
+  },()=>{},()=>{});
+  try {
+    const original={...page('vault-a','Untitled'),titleEdited:true};
+    saver.enqueue(original);const writing=saver.flush();
+    saver.enqueue({...original,blocks:[{id:'later',type:'paragraph',content:[{text:'A queued body edit.'}]}]});
+    complete({...original,title:'Generated title',titleEdited:undefined,revision:2});
+    await writing;
+    assert.equal(sent.length,2);
+    assert.equal(sent[1].title,'Generated title');
+    assert.equal(sent[1].titleEdited,undefined);
+    assert.equal(sent[1].blocks[0].content[0].text,'A queued body edit.');
+  }finally{saver.dispose();}
+});

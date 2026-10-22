@@ -222,7 +222,15 @@ export class Pages {
     return validated;
   }
   update(vault: string, id: string, body: Record<string, unknown>) {
-    const page=this.requireEditable(vault,id),blocks=this.validateBlocks(vault,body.blocks),title=text(body.title,500);
+    const page=this.requireEditable(vault,id),blocks=this.validateBlocks(vault,body.blocks);
+    const incomingTitle=text(body.title,500);
+    const authored=this.store.get<{title:string}>('SELECT title FROM pages WHERE id=?',id)!;
+    // Background enrichment does not advance the authored revision. A body-only
+    // autosave may therefore still carry the placeholder from before generation.
+    const stalePlaceholder=body.titleEdited!==true&&(!incomingTitle.trim()||incomingTitle.trim()==='Untitled')
+      &&incomingTitle===authored.title&&page.title!==authored.title
+      &&new PageEnrichmentState(this.store).get(id).fields.title?.origin==='inferred';
+    const title=stalePlaceholder?page.title:incomingTitle;
     if(page.readingNote&&readingNoteWordCount(projectPageText(blocks,id=>entityMentionName(this.knowledge.find(vault,id))).text)>readingNoteMaxWords)throw new HttpError(400,'Reading notes can contain at most 200 words.');
     const language=body.language===undefined?page.language??null:pageLanguage(body.language);
     const protectedIds=new Set(page.blocks.filter(isAIExplanation).map(block=>block.id));

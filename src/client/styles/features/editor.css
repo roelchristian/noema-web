@@ -1880,7 +1880,7 @@
 }
 .block.image {
   align-items: flex-start;
-  margin: 24px 0;
+  margin: 32px 0;
 }
 .image-upload-error {
   margin-top: 12px;

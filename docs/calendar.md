@@ -316,9 +316,22 @@ race has been fixed. Keep the trace-enabled stress case for recurrence.
 
 ## Liturgical calendar settings, sources and background downloads
 
-Settings → Calendar owns the liturgical overlay toggle, active calendar and optional
-memorial detail. Preferences persist in browser storage. The calendar workspace
-retains date navigation, view filters and a shortcut to these settings.
+Settings → Calendar owns the liturgical overlay and optional memorial detail toggles.
+A collapsed Advanced calendar settings section contains calendar variants, provider
+attribution, source/reference links and download diagnostics. The General Roman
+Calendar in English remains the default; sources are managed automatically. Preferences
+persist in browser storage. The calendar workspace retains date navigation, view filters
+and a shortcut to these settings, with no provider links in its overlay or date inspector.
+When enabled, the month overlay includes a small color marker beside each day number,
+using the principal observance’s vestment colors. Multiple colors appear together;
+optional memorials do not replace the principal color. Colors are also included in each
+day’s accessible label, with English and Latin provider color names supported.
+The month overlay displays regular liturgical weekdays as well as observances, including
+“Friday of the 29th Week of Ordinary Time” on 23 October 2026. The inspector and agenda
+show the full label; feast and memorial precedence remains unchanged. Latin temporal
+labels use Roman week ordinals and `hebd.`, for example `Feria IV hebd. II Paschae`.
+Ordinary Time is rendered as `per annum`. Display formatting also applies to cached
+calendars without changing provider data.
 
 Supported calendars are:
 
@@ -331,7 +344,7 @@ Supported calendars are:
 GRC uses explicit `CIVIL` years and fixed-date Epiphany/Thursday Ascension/Thursday
 Corpus Christi. National calendars retain their provider's propers and transfers.
 Ordo1962 data stays separate from the reformed calendar. Source and reference links
-are displayed beside the active calendar; GCatholic also serves as an additional
+are available in Advanced calendar settings; GCatholic also serves as an additional
 reference for GRC. Missing ICS season metadata stays absent. LitCal's coinciding
 optional memorials are presented as a choice when its response omits a ferial row.
 No optional memorial is selected automatically in place of the principal day.

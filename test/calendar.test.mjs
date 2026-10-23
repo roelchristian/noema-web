@@ -47,7 +47,7 @@ test('Personal and Historical are explicit curation choices; incidental dates re
 
 test('civil grid handles leap years and year boundaries without assigning coarse dates to day cells',()=>{
  assert.deepEqual(monthBounds('2024-02'),{from:'2024-02-01',to:'2024-02-29'});assert.equal(monthBounds('1900-02').to,'1900-02-28');assert.equal(shiftMonth('2026-01',-1),'2025-12');assert.equal(shiftDay('2026-01-01',-1),'2025-12-31');
- assert.equal(monthBounds('0001-02').to,'0001-02-28');const cells=monthCells('2026-10').flat();assert.equal(cells.filter(Boolean).length,31);assert.deepEqual(cells.slice(0,4),[null,null,null,'2026-10-01']);
+ assert.equal(monthBounds('0001-02').to,'0001-02-28');const cells=monthCells('2026-10').flat();assert.equal(cells.filter(Boolean).length,31);assert.equal(monthCells('2026-11')[0][0],'2026-11-01');assert.deepEqual(cells.slice(0,5),[null,null,null,null,'2026-10-01']);
  assert.equal(dateLabel('2026'),'2026');assert.equal(dateLabel('2026-10'),'October 2026');assert.equal(dateLabel('2026-10-23'),'October 23, 2026');assert.equal(emptyCuration().layer,'knowledge');
 });
 

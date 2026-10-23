@@ -24,6 +24,12 @@ test('calendar preferences validate persisted calendar IDs and survive reopening
  assert.deepEqual(parseCalendarSettings('bad json'),defaultCalendarSettings());
  function Harness(){const {settings,setSettings,storageError}=useCalendarSettings();return createElement(CalendarSettings,{value:settings,onChange:setSettings,storageError,vault:null});}
  await act(async()=>env.root.render(createElement(Harness)));
+ const advanced=document.querySelector('.calendar-advanced-settings');
+ assert.equal(advanced.open,false);
+ assert.equal(document.querySelector('#settings-liturgical-calendar').closest('details'),advanced);
+ assert.equal(document.querySelector('input[type=checkbox]').closest('details'),null);
+ await act(async()=>advanced.querySelector('summary').click());
+ assert.equal(advanced.open,true);
  assert.equal(document.querySelectorAll('#settings-liturgical-calendar option').length,8);
  await act(async()=>document.querySelector('input[type=checkbox]').click());
  await act(async()=>{const select=document.querySelector('#settings-liturgical-calendar');select.value='vetus-ordo';select.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
@@ -33,12 +39,18 @@ test('calendar preferences validate persisted calendar IDs and survive reopening
  assert.equal(document.querySelector('#settings-liturgical-calendar').value,'vetus-ordo');assert.equal(document.querySelector('input[type=checkbox]').checked,true);
 });
 
-test('Settings exposes queued download progress, provider attribution and a retry action',async t=>{
+test('advanced calendar settings keep provider sources and download actions behind a disclosure',async t=>{
  const env=domFixture(t),calls=[];
  t.mock.method(api,'liturgicalStatus',async()=>({ready:8,queued:15,failed:1,total:24,years:[2025,2026,2027],calendars:[]}));
  t.mock.method(api,'prepareLiturgical',async(...args)=>{calls.push(args);return {};});
  await act(async()=>env.root.render(createElement(CalendarSettings,{value:defaultCalendarSettings(),onChange(){},storageError:false,vault:{id:'vault',locked:false}})));
- assert.match(document.body.textContent,/8 \/ 24 calendar years ready · 15 queued · 1 failed/);
+ const advanced=document.querySelector('.calendar-advanced-settings');
+ assert.equal(advanced.open,false);
+ assert.equal(document.querySelector('.calendar-provider-list').closest('details'),advanced);
+ assert.equal(document.querySelector('.calendar-provider-list a').target,'_blank');
+ assert.equal(document.querySelectorAll('.calendar-provider-list a').length,16);
+ await act(async()=>advanced.querySelector('summary').click());
+ assert.match(advanced.textContent,/8 \/ 24 calendar years ready · 15 queued · 1 failed/);
  for(const provider of ['LitCal v5','Ordo1962','GCatholic'])assert.ok(document.body.textContent.includes(provider));
  await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent.includes('Retry calendar downloads')).click());assert.equal(calls[0][0],'vault');assert.equal(calls[0][2],true);
 });
@@ -63,7 +75,7 @@ test('changing the selected liturgical calendar rejects late data and isolates o
  assert.ok(localStorage.getItem('noema.liturgical.v2:grc-la:2028'));assert.equal(localStorage.getItem('noema.liturgical.v2:grc-en:2028'),null);
 });
 
-test('date entity view shows the selected liturgy, metadata, optional detail and provider links',async t=>{
+test('date entity view shows the selected liturgy, metadata and optional detail with provider links confined to Settings',async t=>{
  const env=domFixture(t),{NoteDatePanel}=await import('../src/client/knowledge/NoteDatePanel.tsx'),{temporalDate}=await import('../src/shared/temporal.ts');
  const calls=[],opened=[],date=temporalDate('2029-10-22'),item={id:date.id,date,name:'October 22, 2029',count:1,position:0};
  const page={id:'note',vault_id:'vault',title:'A note',revision:1,blocks:[],sourceIds:[]};
@@ -75,11 +87,11 @@ test('date entity view shows the selected liturgy, metadata, optional detail and
  const render=settings=>createElement(NoteDatePanel,{item,page,calendarSettings:settings,onClose(){},onOpenPage(){},onOpenCalendarSettings:()=>opened.push(true)});
  await act(async()=>env.root.render(render({enabled:true,calendarId:'grc-en',optional:false})));
  const panel=document.querySelector('#note-date-panel');assert.match(panel.textContent,/Monday of Ordinary Time/);assert.match(panel.textContent,/Weekday · Ordinary Time · Green/);assert.doesNotMatch(panel.textContent,/Saint John Paul II/);
- assert.ok(panel.querySelector('a[href*="litcal.johnromanodorazio.com"]'));assert.ok(panel.querySelector('a[href*="gcatholic.org"]'));
+ assert.equal(panel.querySelectorAll('a[target="_blank"]').length,0);
  await act(async()=>env.root.render(render({enabled:true,calendarId:'grc-en',optional:true})));
  assert.match(panel.textContent,/Saint John Paul II/);assert.equal(calls.length,1,'changing optional detail reuses the selected calendar');
  await act(async()=>env.root.render(render({enabled:true,calendarId:'vetus-ordo',optional:true})));
- assert.match(panel.textContent,/Feria Secunda/);assert.doesNotMatch(panel.textContent,/Monday of Ordinary Time/);assert.ok(panel.querySelector('a[href*="ordo.fsspx.org"]'));
+ assert.match(panel.textContent,/Feria II/);assert.doesNotMatch(panel.textContent,/Monday of Ordinary Time/);assert.equal(panel.querySelectorAll('a[target="_blank"]').length,0);
  await act(async()=>panel.querySelector('[aria-label="Calendar settings"]').click());assert.deepEqual(opened,[true]);
 });
 

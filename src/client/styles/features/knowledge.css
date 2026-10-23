@@ -158,20 +158,6 @@
   background: var(--culture-bg);
   color: var(--culture-text);
 }
-.scan-row-accept {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-.scan-row-accept:hover:not(:disabled) {
-  box-shadow: inset 0 0 0 1px var(--accent);
-}
-.scan-row-reject {
-  color: var(--text-muted);
-  border: 1px solid var(--line);
-}
-.scan-row-reject:hover:not(:disabled) {
-  background: var(--surface-hover);
-}
 .scan-row-edit {
   color: var(--text-muted);
 }
@@ -1509,9 +1495,9 @@
   gap: 5px;
 }
 .entity-review-row-actions button {
-  width: 27px;
-  height: 27px;
-  padding: 6px;
+  width: auto;
+  height: auto;
+  padding: var(--space-2);
 }
 .entity-review-table .entity-review-editor-row > td {
   padding: 0 22px 18px;
@@ -1541,8 +1527,8 @@
 .entity-review-editor-fields > label {
   display: grid;
   align-content: start;
-  gap: 7px;
-  font-size: 11px;
+  gap: var(--space-2);
+  font-size: var(--ui-text-sm);
   margin: 0;
   color: var(--text-muted);
   min-width: 0;
@@ -1559,8 +1545,13 @@
   font-size: var(--ui-text-sm);
 }
 .entity-review-editor-fields .select-control, .entity-review-editor-fields .select-host {
+  margin: 0;
   width: 100%;
   min-width: 0;
+}
+.entity-review-modal .entity-review-editor-fields :is(input:not([type=checkbox]), .select-trigger) {
+  box-sizing: border-box;
+  height: max(var(--field-height), var(--control-target-regular));
 }
 .entity-review-modal .entity-review-editor-fields .select-trigger {
   width: 100%;
@@ -4599,7 +4590,7 @@
 
 .scan-evidence mark { background: var(--surface-hover); color: var(--text); font-weight: 700; }
 .entity-review-row-actions { flex-wrap: wrap; }
-.entity-review-row-actions .scan-row-accept { width: auto; padding-inline: var(--space-2); }
+.entity-review-row-actions :is(.scan-row-accept, .scan-row-reject) { width: auto; flex-shrink: 0; white-space: nowrap; padding-inline: var(--space-2); }
 .scan-evidence summary { cursor: pointer; min-height: var(--touch-target-size); }
 @media (max-width: 750px) {
   .entity-review-table, .entity-review-table tbody, .entity-review-table tr, .entity-review-table td { display: block; width: auto; }
@@ -4612,7 +4603,7 @@
 }
 
 .entity-review-workspace { min-height: 0; overflow: auto; flex: 1; }
-.entity-review-workspace.mode-context { display: grid; grid-template-columns: 150px minmax(0, 1.15fr) minmax(0, 1fr); }
+.entity-review-workspace.mode-context { display: grid; }
 .entity-review-workspace .entity-review-table-wrap { min-width: 0; }
 .entity-scan-snapshot { min-width: 0; overflow: auto; scrollbar-gutter: stable; padding: var(--space-4); border-right: 1px solid var(--control-border); }
 .entity-scan-snapshot p { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -4641,10 +4632,9 @@
 .entity-scan-filter-options > div { display: flex; flex-wrap: wrap; gap: var(--space-3); padding-block: var(--space-2); }
 .entity-scan-filter-options summary { cursor: pointer; display: flex; align-items: center; }
 .entity-review-toolbar > span[role=status] { color: var(--text-muted); font-size: 12px; }
-.mode-context .entity-review-table-wrap { overflow: auto; }
 
 @media (max-width: 750px) {
-  .entity-review-controls { max-height: 40dvh; overflow: auto; }
+  .entity-review-controls { max-height: none; overflow: visible; }
   .entity-review-controls .entity-review-toolbar { gap: var(--space-2); padding-bottom: var(--space-2); }
   .entity-review-controls .modal-description { margin-block: var(--space-2); }
   .entity-review-progress { padding-bottom: var(--space-2); }
@@ -4658,7 +4648,7 @@
 /* Entity review keeps the note and identity controls in a compact workspace. */
 .entity-review-modal .modal-description { margin: var(--space-2) var(--space-5); font-size: 12px; }
 .entity-review-controls .entity-review-progress { padding: var(--space-2) var(--space-5); }
-.entity-review-controls .entity-review-toolbar { gap: var(--space-2); padding: var(--space-2) var(--space-5); }
+.entity-review-controls .entity-review-toolbar { gap: var(--space-3); padding: var(--space-3) var(--space-5); }
 .entity-review-modes { display: flex; gap: var(--space-1); padding: var(--space-1); border-radius: var(--radius-md); background: var(--surface-hover); }
 .entity-review-modes .button { border: 0; background: transparent; font-size: 12px; padding-inline: var(--space-3); }
 .entity-review-modes .button[aria-pressed=true] { background: var(--surface-raised); box-shadow: var(--shadow-control); }
@@ -4709,9 +4699,6 @@
 }
 
 .entity-review-modal .entity-review-modes .button { min-height: var(--control-target-compact); }
-.mode-context .entity-review-table > tbody > tr:not(.entity-review-editor-row) { display: grid; grid-template-columns: 1fr auto; padding: var(--space-2); }
-.mode-context .entity-review-table > tbody > tr > td:nth-child(4) { grid-column: 1 / -1; }
-.mode-context .entity-review-table > tbody > tr > td:last-child { grid-column: 1 / -1; }
 @media (max-width: 750px) {
   .entity-review-modal .entity-review-modes .button { min-height: var(--touch-target-size); }
 }
@@ -4749,10 +4736,6 @@
   .entity-scan-candidates-heading { padding-block: var(--space-2); }
 }
 
-/* Contextual review gives the document room and keeps one decision in the inspector. */
-@media (min-width: 751px) {
-  .entity-review-workspace.mode-context { grid-template-columns: clamp(220px, 18vw, 250px) minmax(0, 1fr) clamp(360px, 29vw, 400px); }
-}
 .entity-scan-candidate { align-items: flex-start; padding: var(--space-3) var(--space-2); font-size: 13px; }
 .entity-scan-candidate-name { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; line-height: 1.45; }
 .entity-scan-candidate-name small { display: block; margin-top: var(--space-1); color: var(--text-muted); font-size: 11px; font-weight: 400; }
@@ -4763,13 +4746,8 @@
 .snapshot-linked { color: var(--accent); text-decoration: underline; text-underline-offset: 4px; }
 .mode-context .entity-review-table > tbody > tr:not(.entity-review-editor-row) { display: flex; flex-direction: column; padding: var(--space-3); }
 .mode-context .entity-review-table > tbody > tr > td { padding: var(--space-2); }
-.mode-context .entity-review-name strong { font-size: 17px; line-height: 1.4; overflow-wrap: anywhere; }
 .mode-context .entity-review-category { font-size: 12px; }
 .mode-context .entity-review-evidence-details { display: none; }
-.mode-context .entity-review-row-actions { display: grid; grid-template-columns: 1fr auto; gap: var(--space-2); }
-.mode-context .scan-row-edit { grid-column: 1 / -1; justify-self: start; width: auto; gap: var(--space-2); }
-.mode-context .scan-row-accept { grid-column: 2; grid-row: 2; }
-.mode-context .scan-row-reject { grid-column: 1; grid-row: 2; justify-self: start; width: auto; gap: var(--space-1); }
 .entity-context-resolution { border-top: 1px solid var(--line); }
 .entity-context-resolution h3 { margin: var(--space-3) 0; font-size: 14px; }
 .entity-context-resolution p { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
@@ -4783,7 +4761,6 @@
   .entity-scan-snapshot { font-size: 13px; }
 }
 .entity-scan-candidate { flex: none; height: auto; }
-.mode-context .entity-review-table > tbody > tr > td:last-child { position: sticky; bottom: 0; z-index: 1; background: var(--surface-raised); border-top: 1px solid var(--line); }
 .mode-context .scan-evidence q { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; font-size: 12px; line-height: 1.5; }
 
 .entity-review-modal .modal-header-leading > .icon { width: 20px; height: 20px; color: var(--accent); }
@@ -4799,33 +4776,34 @@
 }
 
 /* A light inset keeps content away from the modal edge without adding another frame. */
-dialog.noema-modal.entity-review-modal { padding: var(--space-2); }
+dialog.noema-modal.entity-review-modal { padding: 0; }
 dialog.noema-modal.entity-review-modal .modal-header { margin: 0; top: 0; }
 .entity-scan-candidate { padding: 6px var(--space-2); font-size: 12px; }
 .entity-scan-candidate-name { line-height: 1.35; }
-.entity-scan-candidate-name small { margin-top: 1px; font-size: 10px; }
-.entity-scan-mention-count { color: var(--text-muted); font-weight: 400; white-space: nowrap; }
+.entity-scan-candidate-name small { margin-top: var(--space-1); font-size: var(--ui-text-xs); }
+.entity-scan-mention-count { color: var(--text-muted); font-weight: 400; white-space: normal; overflow-wrap: anywhere; }
 
 .entity-review-unified-toolbar .entity-review-modes, .entity-review-unified-toolbar .entity-review-filters { flex: none; }
 .entity-review-unified-toolbar .entity-review-filters { margin-left: var(--space-1); }
 .entity-review-unified-toolbar .entity-review-search { width: 160px; min-width: 100px; flex: 1; max-width: 220px; }
 .entity-review-unified-toolbar .entity-scan-filter-options { position: relative; flex: none; font-size: 11px; }
-.entity-review-unified-toolbar .entity-scan-filter-options > div { position: absolute; top: calc(100% + 8px); right: 0; z-index: 5; width: 260px; padding: var(--space-2); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-raised); box-shadow: var(--shadow-control); }
+.entity-review-unified-toolbar .entity-scan-filter-options > div { position: absolute; top: calc(100% + 8px); right: 0; z-index: 5; display: grid; box-sizing: border-box; width: min(280px, calc(100vw - 64px)); max-height: min(420px, calc(100dvh - 160px)); overflow: auto; padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-raised); box-shadow: var(--shadow-control); }
 .entity-review-unified-toolbar .entity-scan-filter-options > summary { display: flex; align-items: center; justify-content: center; width: var(--control-target-compact); min-height: var(--control-target-compact); border-radius: var(--radius-md); color: var(--text-muted); list-style: none; }
 .entity-review-unified-toolbar .entity-scan-filter-options > summary::-webkit-details-marker { display: none; }
 .entity-review-unified-toolbar .entity-scan-filter-options > summary .icon { width: 18px; height: 18px; }
 .entity-review-unified-toolbar .entity-scan-filter-options > summary:hover, .entity-review-unified-toolbar .entity-scan-filter-options[open] > summary { background: var(--surface-hover); color: var(--text); }
 .entity-review-unified-toolbar .entity-scan-filter-options[data-filtered=true] > summary { color: var(--accent); background: var(--accent-soft); }
 .entity-review-unified-toolbar .entity-scan-filter-options > div { gap: var(--space-2); }
-.entity-review-unified-toolbar .entity-scan-filter-options label { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; gap: var(--space-2); flex: 1 1 100%; margin: 0; color: var(--text-muted); font-size: 11px; }
+.entity-review-unified-toolbar .entity-scan-filter-options label { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: var(--space-2); margin: 0; color: var(--text-muted); font-size: var(--ui-text-sm); }
 .entity-review-unified-toolbar .entity-scan-filter-options .select-host { min-width: 0; }
-.entity-review-unified-toolbar .entity-scan-filter-options .select-trigger { min-height: var(--control-target-compact); padding: var(--space-1) var(--space-2); font-size: 11px; }
+.entity-review-unified-toolbar .entity-scan-filter-options .select-control { margin: 0; }
+.entity-review-unified-toolbar .entity-scan-filter-options .select-trigger { min-height: var(--control-target-compact); padding: var(--space-1) var(--space-2); font-size: var(--ui-text-sm); }
 @media (max-width: 750px) {
   .entity-review-unified-toolbar .entity-review-modes .button { padding-inline: var(--space-2); font-size: 11px; }
   .entity-review-unified-toolbar .entity-review-filters { margin-left: 0; }
   .entity-review-unified-toolbar .entity-review-filters button { padding-inline: var(--space-2); font-size: 11px; }
   .entity-review-unified-toolbar .entity-review-search { max-width: none; }
-  .entity-review-unified-toolbar .entity-scan-filter-options > div { width: min(260px, 70vw); }
+  .entity-review-unified-toolbar .entity-scan-filter-options > div { left: 0; right: auto; width: min(280px, calc(100vw - 64px)); }
 }
 
 .entity-review-modes .button { display: inline-flex; align-items: center; gap: var(--space-2); }
@@ -4835,7 +4813,6 @@ dialog.noema-modal.entity-review-modal .modal-header { margin: 0; top: 0; }
 @media (min-width: 751px) {
   .entity-review-workspace.mode-context { grid-template-columns: clamp(220px, 18vw, 250px) minmax(0, 1fr) clamp(320px, 27vw, 360px); }
 }
-.mode-context .entity-review-name strong { font-size: 15px; }
 .mode-context .entity-context-resolution { margin-top: var(--space-2); }
 .entity-context-resolution h3 { margin: var(--space-2) 0; font-size: 12px; }
 .entity-context-resolution .entity-context-no-match { margin: var(--space-2) 0; font-size: 11px; }
@@ -4864,7 +4841,6 @@ dialog.noema-modal.entity-review-modal .modal-header { margin: 0; top: 0; }
 .entity-review-modal .entity-review-unified-toolbar :is(.entity-review-modes, .entity-review-filters) { display: flex; align-items: stretch; gap: 2px; padding: 3px; border: 0; border-radius: var(--radius-md); box-sizing: border-box; }
 .entity-review-modal .entity-review-unified-toolbar :is(.entity-review-modes, .entity-review-filters) > button { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; height: var(--entity-review-tab-height); min-height: var(--entity-review-tab-height); margin: 0; padding: 0 var(--space-3); border: 0; border-radius: var(--radius-sm); font-size: 12px; line-height: 1; }
 .entity-review-modes .button > .icon, .entity-scan-document-views button .icon { color: var(--text-muted); }
-.entity-scan-document-views button[aria-pressed=true] { color: var(--text-muted); }
 @media (max-width: 750px) {
   .entity-review-unified-toolbar { --entity-review-tab-height: var(--touch-target-size); }
   .entity-review-modal .entity-review-unified-toolbar :is(.entity-review-modes, .entity-review-filters) > button { padding-inline: var(--space-2); font-size: 11px; }
@@ -4911,8 +4887,7 @@ dialog.noema-modal.entity-review-modal { height: min(780px, calc(100dvh - 64px))
 .related-notes-updating { display: inline-flex; color: var(--text-muted); }
 .related-notes-updating .icon { width: 12px; height: 12px; }
 
-/* Review saves keep their controls and confirmation space in place. */
-.entity-review-modal .entity-review-messages { min-height: 30px; }
+/* Review saves keep their controls stable while feedback appears briefly. */
 .entity-review-modal .entity-review-messages > .entity-review-confirmation,
 .entity-review-modal .entity-scan-live-status {
   box-sizing: border-box;
@@ -4932,8 +4907,6 @@ dialog.noema-modal.entity-review-modal { height: min(780px, calc(100dvh - 64px))
 }
 .entity-review-action-icon { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; flex: none; }
 .entity-review-action-icon .scan-spinner { width: 12px; height: 12px; }
-.entity-review-row-actions .scan-row-accept { min-width: 100px; }
-.mode-context .entity-review-row-actions .scan-row-accept { min-width: 152px; }
 .entity-review-row-actions button { transition: background-color 140ms ease, color 140ms ease; }
 .entity-review-row-actions[aria-busy=true] button:disabled { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
@@ -4946,3 +4919,210 @@ dialog.noema-modal.entity-review-modal { height: min(780px, calc(100dvh - 64px))
 
 .entity-scan-candidate.is-accepted .entity-scan-candidate-name,
 .entity-review-table .is-accepted .entity-review-name strong { color: var(--status-success-text); }
+
+.entity-review-subtype-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-muted);
+  font-size: 12px;
+  border-top: 1px solid var(--line);
+}
+.entity-decision-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.entity-decision-choices .entity-decision-create { margin-top: 0; }
+.entity-decision-choices [aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--surface-hover);
+}
+.entity-decision-outcome small { display: block; margin-top: var(--space-1); }
+.entity-decision-required > .button { margin-top: var(--space-2); }
+.entity-review-workspace.is-empty { min-height: 240px; }
+
+
+/* Entity review uses one control rhythm; preview prose retains its reading size. */
+.entity-review-modal .modal-header {
+  padding-inline: var(--space-5);
+}
+.entity-review-modal .entity-review-toolbar { padding-inline: var(--space-5); }
+.entity-review-controls {
+  position: relative;
+  z-index: 4;
+  overflow: visible;
+}
+.entity-review-toolbar,
+.entity-review-unified-toolbar {
+  overflow: visible;
+}
+.entity-review-modal .entity-review-messages:empty { display: none; }
+.entity-review-modal .entity-review-messages > :not(:empty),
+.entity-review-controls > .entity-review-confirmation,
+.entity-review-subtype-notice {
+  padding: var(--space-2) var(--space-5);
+}
+.entity-review-modal .entity-review-messages > .entity-scan-batch-prompt {
+  padding-block: var(--space-3);
+}
+.entity-review-table-wrap {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: visible;
+}
+.entity-review-table-scroll {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.entity-review-inspector-actions {
+  flex: none;
+  padding: var(--space-3);
+  border-top: 1px solid var(--line);
+  background: var(--surface-raised);
+}
+.entity-review-inspector-actions .entity-review-row-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+}
+.entity-review-inspector-actions .scan-row-edit {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+.entity-review-inspector-actions .scan-row-accept { grid-column: 2; grid-row: 2; }
+.entity-review-inspector-actions .scan-row-reject { grid-column: 1; grid-row: 2; justify-self: start; }
+.entity-review-row-actions {
+  gap: var(--space-2);
+}
+.entity-review-row-actions button {
+  box-sizing: border-box;
+  min-height: var(--control-target-regular);
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--ui-text-sm);
+}
+.entity-review-row-actions .scan-row-edit {
+  min-width: var(--control-target-compact);
+}
+.entity-review-table th:last-child { width: 210px; }
+.entity-review-modal .entity-review-table :is(th, td) { padding: var(--space-3); }
+.mode-context .entity-review-table > tbody > tr:not(.entity-review-editor-row) {
+  padding: var(--space-3);
+  gap: var(--space-3);
+}
+.mode-context .entity-review-table > tbody > tr > td {
+  padding: 0;
+}
+.mode-context .entity-context-resolution {
+  margin-top: 0;
+  padding-top: var(--space-3);
+}
+.entity-review-name strong,
+.mode-context .entity-review-name strong {
+  font-size: var(--ui-text-lg);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.entity-scan-candidate {
+  padding: var(--space-2);
+  font-size: var(--ui-text-lg);
+}
+.entity-scan-candidate-name {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.entity-scan-queue { padding: var(--space-3); gap: var(--space-2); }
+.entity-review-modal :is(.entity-review-match-label, .entity-review-category,
+.entity-review-row-actions .scan-decision, .entity-review-editor-fields > label,
+.entity-review-editor-heading strong, .entity-scan-pane-header h3) {
+  font-size: var(--ui-text-sm);
+}
+.entity-review-table small,
+.entity-scan-candidate-name small,
+.entity-scan-candidates-heading > span,
+.entity-scan-navigator span {
+  font-size: var(--ui-text-xs);
+}
+.entity-review-modal .scan-evidence q {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.entity-review-modal .scan-occurrence { min-height: var(--control-target-compact); }
+.entity-review-modal :is(.scan-evidence summary,
+.entity-review-evidence-details > summary,
+.entity-review-occurrence-options > summary,
+.entity-review-alias-options > summary) {
+  display: list-item;
+  list-style-position: inside;
+  box-sizing: border-box;
+  min-height: var(--control-target-compact);
+}
+.entity-review-modal .entity-review-unified-toolbar :is(.entity-review-modes, .entity-review-filters) {
+  background: var(--surface-hover);
+  gap: 2px;
+}
+.entity-review-modal .entity-review-unified-toolbar :is(.entity-review-modes, .entity-review-filters) > button {
+  color: var(--text-muted);
+  background: transparent;
+  box-shadow: none;
+  gap: var(--space-2);
+}
+.entity-review-modal .entity-review-unified-toolbar :is(.entity-review-modes, .entity-review-filters) > button[aria-pressed=true] {
+  color: var(--text);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-control);
+}
+.entity-review-modal .entity-review-unified-toolbar :is(.entity-review-modes, .entity-review-filters) > button > .icon {
+  color: inherit;
+}
+.entity-review-toolbar > .knowledge-icon-action,
+.entity-review-unified-toolbar .entity-scan-filter-options > summary,
+.entity-scan-document-views button,
+.entity-scan-navigator > .button {
+  box-sizing: border-box;
+  width: var(--control-target-compact);
+  min-height: var(--control-target-compact);
+}
+.entity-review-footer { gap: var(--space-3); }
+.entity-review-selection, .entity-review-bulk-actions { gap: var(--space-2); }
+@media (min-width: 751px) {
+  .entity-review-workspace { overflow: hidden; }
+  .entity-review-workspace.mode-batch { display: flex; flex-direction: column; }
+  .mode-context .entity-scan-navigator { position: static; }
+}
+@media (max-width: 750px) {
+  .entity-review-workspace { overflow: auto; }
+  .entity-review-table-wrap, .entity-review-table-scroll {
+    overflow: visible;
+    flex: none;
+  }
+  .entity-review-inspector-actions { position: static; }
+  .entity-review-modal .entity-review-table tr { padding: var(--space-3); }
+  .entity-review-modal .entity-review-table td { padding: var(--space-2) 0; }
+}
+@media (max-width: 750px), (pointer: coarse) {
+  .entity-review-unified-toolbar { --entity-review-tab-height: var(--touch-target-size); }
+  .entity-review-modal :is(.button, .knowledge-icon-action,
+  .entity-review-filters button, .entity-scan-document-views button,
+  .entity-scan-filter-options > summary, .scan-evidence summary,
+  .entity-review-evidence-details > summary,
+  .entity-review-occurrence-options > summary,
+  .entity-review-alias-options > summary, .scan-occurrence) {
+    min-height: var(--touch-target-size);
+  }
+  .entity-review-toolbar > .knowledge-icon-action,
+  .entity-review-unified-toolbar .entity-scan-filter-options > summary,
+  .entity-scan-document-views button,
+  .entity-scan-navigator > .button {
+    width: var(--touch-target-size);
+  }
+}

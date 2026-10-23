@@ -43,6 +43,7 @@
     "test/entity-panel-editor.test.mjs",
     "test/entity-review-lines.test.mjs",
     "test/entity-scan-stream-ui.test.mjs",
+    "test/entity-review-ux.test.mjs",
     "test/library.test.mjs",
     "test/new-note-focus.test.mjs",
     "test/page-enrichment-refresh.test.mjs",

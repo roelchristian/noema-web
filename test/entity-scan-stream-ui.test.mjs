@@ -27,7 +27,7 @@ test('batch prompt lets users review first, then continue using the persisted ch
     await click(button('Review these suggestions first'));
     assert.equal(received,undefined,'Review first makes no AI request');
     assert.equal(document.querySelectorAll('.entity-review-table tbody tr').length,25);
-    await click(document.querySelector('[aria-label="Reject Person 0"]'));
+    await click(document.querySelector('[aria-label="Dismiss Person 0"]'));
     assert.equal(scan.suggestions[0].status,'rejected');
     await click(button('Continue scanning'));
     assert.deepEqual(received[5],{scanId:'saved',token:'checkpoint'});
@@ -59,35 +59,36 @@ test('review renders incoming rows during scanning and enables review only after
   try {
     await act(async()=>render());await click('.entity-detect-action');
     assert.ok(progress);
-    assert.match(document.querySelector('.entity-review-empty-state').textContent,/Finding entities in your document/);
+    assert.match(document.querySelector('.entity-review-empty-state').textContent,/Finding entities in your note/);
     assert.equal(document.querySelector('.entity-scan-candidates,.entity-scan-snapshot,.entity-scan-navigator'),null);
     await act(async()=>progress({id:'preview1',revision:1,suggestions:[suggestion]}));
     assert.equal(document.querySelectorAll('.entity-review-table tbody tr').length,1);
-    assert.match(document.querySelector('.entity-scan-live-status').textContent,/1 entities found/);
+    assert.match(document.querySelector('.entity-review-scan-message').textContent,/1 entit/);
     assert.match(document.querySelector('.entity-review-table').textContent,/Aliases: Charlemagne/);
-    assert.equal(document.querySelector('[aria-label="Create and link: Charlemagne, Quebec"]').disabled,true);
+    assert.equal(document.querySelector('[aria-label="Accept: Charlemagne, Quebec"]').disabled,true);
     assert.equal(confirmed,undefined);
     const final={id:'saved',revision:1,suggestions:[suggestion,{...suggestion,id:'region',name:'Quebec',aliases:[],evidence:'Quebec'}]};
     await act(async()=>progress({...final,id:'preview2'}));
     assert.equal(document.querySelectorAll('.entity-review-table tbody tr').length,2);
     await act(async()=>finish(final));
     assert.equal(confirmed.id,'saved');
-    assert.equal(document.querySelector('.entity-scan-live-status'),null);
-    assert.equal(document.querySelector('[aria-label="Create and link: Charlemagne, Quebec"]').disabled,false);
+    assert.equal(document.querySelector('.scan-spinner'),null);
+    assert.equal(document.querySelector('[aria-label="Accept: Charlemagne, Quebec"]').disabled,false);
     await click('[aria-label="Edit Charlemagne, Quebec"]');
     assert.equal(document.querySelector('.entity-review-editor [aria-label="Current aliases"] li span').textContent,'Charlemagne');
     assert.ok(document.querySelector('.entity-review-editor [aria-label="Remove alias Charlemagne"]'));
     assert.equal(document.querySelector('.entity-review-editor input[placeholder="Add an alias…"]').value,'');
     t.mock.timers.enable({apis:['setTimeout']});
-    await click('[aria-label="Create and link: Charlemagne, Quebec"]');
-    assert.match(document.querySelector('.entity-review-confirmation').textContent,/Charlemagne, Quebec connected/);
-    await click('[aria-label="Reject Quebec"]');
-    assert.match(document.querySelector('.entity-review-confirmation').textContent,/Review complete/);
+    await click('[aria-label="Accept: Charlemagne, Quebec"]');
+    assert.match(document.querySelector('.entity-review-confirmation').textContent,/Charlemagne, Quebec accepted/);
+    await click('[aria-label="Dismiss Quebec"]');
+    assert.match(document.querySelector('.entity-review-confirmation').textContent,/All suggestions reviewed/);
     await act(async()=>t.mock.timers.tick(1100));
     assert.ok(document.querySelector('dialog.entity-review-modal'));
-    assert.match(document.querySelector('.entity-review-confirmation').textContent,/Review complete/);
+    assert.match(document.querySelector('.entity-review-confirmation').textContent,/All suggestions reviewed/);
     await act(async()=>t.mock.timers.tick(5000));
-    assert.ok(document.querySelector('.entity-review-confirmation'));
+    assert.equal(document.querySelector('.entity-review-confirmation'),null);
+    assert.match(document.querySelector('.entity-review-empty-state').textContent,/All suggestions reviewed/);
   }finally{await env.close();}
 });
 
@@ -102,7 +103,7 @@ test('context mode keeps occurrence and subtype drafts across views and navigate
  const button=text=>[...document.querySelectorAll('button')].find(element=>element.textContent===text);
  try {
   await act(async()=>root.render(React.createElement(EntityScanReview,{page,scan,entities:[],disabled:false,onScan(){},onFlush:async()=>page,onReview:async()=>scan})));
-  await click(document.querySelector('.entity-detect-action'));await click(button('Contextual review'));
+  await click(document.querySelector('.entity-detect-action'));await click(button('Review one by one'));
   assert.equal(document.querySelector('.entity-review-editor'),null,'Suggestion editing starts collapsed');
   assert.equal(document.querySelector('.entity-review-footer'),null,'Context review needs no separate close footer');
   assert.equal(document.querySelector('input[aria-label="Select Mira"]'),null);
@@ -111,7 +112,7 @@ test('context mode keeps occurrence and subtype drafts across views and navigate
   assert.equal(document.querySelector('.entity-review-occurrence-options').open,false);
   await click(document.querySelector('.entity-review-occurrence-options > summary'));
   await click(document.querySelectorAll('.scan-occurrence input')[1]);
-  await click(button('Batch review'));await click(button('Contextual review'));
+  await click(button('Review as a list'));await click(button('Review one by one'));
   assert.equal(document.querySelector('.entity-review-editor fieldset input').checked,true);
   assert.equal(document.querySelectorAll('.scan-occurrence input')[1].checked,true);
   await click(document.querySelector('[aria-label="Next entity"]'));
@@ -141,7 +142,7 @@ test('compact batch selection follows visible pending rows and submits edited li
  const checkbox=name=>document.querySelector(`input[aria-label="${name}"]`);
  try {
   await act(async()=>render());await click(document.querySelector('.entity-detect-action'));
-  await click(button('Contextual review'));await click(button('Batch review'));
+  await click(button('Review one by one'));await click(button('Review as a list'));
   assert.equal(document.querySelector('[data-filter=pending]').getAttribute('aria-pressed'),'true');
   assert.equal(checkbox('Select Reviewed'),null);
   await click(document.querySelector('[data-filter=all]'));
@@ -152,17 +153,17 @@ test('compact batch selection follows visible pending rows and submits edited li
   assert.equal(checkbox('Select Reviewed').checked,false);
   await click(checkbox('Select Sora'));
   if (!document.querySelector('.entity-review-editor')) await click(document.querySelector('[aria-label="Edit Mira"]'));
-  // Choosing a new identity stores an explicit draft even when names match a saved entity.
-  await click(button('Create a new identity'));
-  await click(button('Contextual review'));await click(button('Batch review'));
+  // Choosing an existing match stores an explicit draft across views.
+  await click(document.querySelector('.entity-review-editor [role=option]'));
+  await click(button('Review one by one'));await click(button('Review as a list'));
   assert.equal(checkbox('Select Mira').checked,true);
   await click([...document.querySelectorAll('button')].find(element=>element.textContent==='Accept selected (1)'));
   assert.deepEqual(received.ids,['Mira']);
   assert.equal(received.decision,'accepted');
-  assert.equal(received.edits[0].existingId,null);
+  assert.equal(received.edits[0].existingId,'mira-existing');
   assert.equal(checkbox('Select Mira').disabled,true);
   assert.equal(checkbox('Select all visible pending suggestions').checked,false);
-  assert.match(document.querySelector('.entity-review-confirmation').textContent,/Mira connected/);
+  assert.match(document.querySelector('.entity-review-confirmation').textContent,/Mira accepted/);
  } finally {await env.close();}
 });
 
@@ -184,21 +185,21 @@ test('context decisions advance only after persistence and leave failed suggesti
  const click=async selector=>act(async()=>document.querySelector(selector).click());
  try{
   await act(async()=>render());await click('.entity-detect-action');
-  await act(async()=>[...document.querySelectorAll('button')].find(b=>b.textContent==='Contextual review').click());
+  await act(async()=>[...document.querySelectorAll('button')].find(b=>b.textContent==='Review one by one').click());
   assert.equal(scrolled.at(-1),'Mira');
-  assert.deepEqual(queueScrolled.at(-1),{name:'Mira · pending',options:{block:'nearest',inline:'nearest'}});
+  assert.deepEqual(queueScrolled.at(-1),{name:'Mira · Pending',options:{block:'nearest',inline:'nearest'}});
   await click('.scan-row-accept');
   assert.equal(document.querySelector('[aria-current=true]').textContent.includes('Mira'),true);
   await act(async()=>finish());
   assert.equal(document.querySelector('[aria-current=true]').textContent.includes('Sora'),true);
   assert.equal(scrolled.at(-1),'Sora');
-  assert.equal(queueScrolled.at(-1).name,'Sora · pending');
+  assert.equal(queueScrolled.at(-1).name,'Sora · Pending');
   assert.equal(document.querySelectorAll('.entity-scan-candidate').length,1,'Pending hides saved decisions');
   await click('[data-filter=all]');
   await click('[aria-label="Previous entity"]');
-  assert.equal(queueScrolled.at(-1).name,'Mira · accepted');
+  assert.equal(queueScrolled.at(-1).name,'Mira · Accepted');
   await click('[aria-label="Next entity"]');
-  assert.equal(queueScrolled.at(-1).name,'Sora · pending');
+  assert.equal(queueScrolled.at(-1).name,'Sora · Pending');
   fail=true;await click('.scan-row-reject');
   assert.match(document.querySelector('[role=alert]').textContent,/Save failed/);
   assert.equal(document.querySelector('[aria-current=true]').textContent.includes('Sora'),true);
@@ -219,17 +220,17 @@ test('decision pane shows matching identities and acceptance outcome without rep
  try{
   await act(async()=>root.render(React.createElement(EntityScanReview,{page,scan,entities:[entity],disabled:false,onFlush:async()=>page,onScan(){},onReview:async()=>scan})));
   await click(document.querySelector('.entity-detect-action'));
-  await click([...document.querySelectorAll('button')].find(b=>b.textContent==='Contextual review'));
+  await click([...document.querySelectorAll('button')].find(b=>b.textContent==='Review one by one'));
   const pane=document.querySelector('.entity-review-table-wrap');
   assert.equal(pane.querySelector('.scan-evidence'),null);
   assert.equal(pane.querySelector('.entity-review-editor'),null);
-  assert.match(pane.querySelector('.entity-decision-outcome').textContent,/Accepting creates death penalty/);
+  assert.match(pane.querySelector('.entity-decision-outcome').textContent,/Creates “death penalty”/);
   assert.ok(pane.querySelector('[role=option]').textContent.includes('Capital punishment'));
   assert.equal(pane.textContent.includes('Aliases:'),false);
   await click(pane.querySelector('[role=option]'));
-  assert.match(pane.querySelector('.entity-decision-outcome').textContent,/Accepting links to Capital punishment/);
+  assert.match(pane.querySelector('.entity-decision-outcome').textContent,/Links to “Capital punishment”/);
   await click(pane.querySelector('.entity-decision-create'));
-  assert.match(pane.querySelector('.entity-decision-outcome').textContent,/Accepting creates death penalty/);
+  assert.match(pane.querySelector('.entity-decision-outcome').textContent,/Creates “death penalty”/);
   await click(pane.querySelector('.scan-row-edit'));
   assert.equal(pane.querySelector('.entity-review-alias-options').open,false);
   assert.equal(pane.querySelector('.entity-review-occurrence-options').open,false);
@@ -249,7 +250,7 @@ test('document excerpts retain every current mention and alias and expand skippe
  try{
   await act(async()=>root.render(React.createElement(EntityScanReview,{page,scan,entities:[],disabled:false,onFlush:async()=>page,onScan(){},onReview:async()=>scan})));
   await click('.entity-detect-action');
-  await act(async()=>[...document.querySelectorAll('button')].find(b=>b.textContent==='Contextual review').click());
+  await act(async()=>[...document.querySelectorAll('button')].find(b=>b.textContent==='Review one by one').click());
   const snapshot=document.querySelector('.entity-scan-snapshot');
   assert.deepEqual([...snapshot.querySelectorAll('mark')].map(m=>m.textContent),['Mira','Mira','Dr. Mira']);
   await click('[aria-label="Matching excerpts"]');
@@ -263,8 +264,8 @@ test('document excerpts retain every current mention and alias and expand skippe
   await click('.entity-scan-skipped');
   assert.equal(snapshot.querySelector('[aria-label="Matching excerpts"]').getAttribute('aria-pressed'),'true');
   assert.ok(snapshot.querySelector('.entity-scan-document-content').textContent.includes('Surrounding passage 4.'));
-  await click('[aria-label="Full document"]');
-  assert.equal(snapshot.querySelector('[aria-label="Full document"]').getAttribute('aria-pressed'),'true');
+  await click('[aria-label="Full note"]');
+  assert.equal(snapshot.querySelector('[aria-label="Full note"]').getAttribute('aria-pressed'),'true');
  }finally{await env.close();}
 });
 
@@ -283,7 +284,7 @@ test('excerpt context uses rendered lines within one long block and recomputes o
  try{
   await act(async()=>root.render(React.createElement(EntityScanReview,{page,scan,entities:[],disabled:false,onFlush:async()=>page,onScan(){},onReview:async()=>scan})));
   await click('.entity-detect-action');
-  await act(async()=>[...document.querySelectorAll('button')].find(b=>b.textContent==='Contextual review').click());
+  await act(async()=>[...document.querySelectorAll('button')].find(b=>b.textContent==='Review one by one').click());
   await click('[aria-label="Matching excerpts"]');
   const content=document.querySelector('.entity-scan-document-content');
   const wide=[...content.querySelectorAll('article > p')].map(p=>p.textContent).join('');
@@ -336,19 +337,19 @@ test('review defaults to excerpts, retains recent choices and resets after a day
  const excerpts=()=>document.querySelector('[aria-label="Matching excerpts"]').getAttribute('aria-pressed');
  try{
   await act(async()=>render());await click('.entity-detect-action');
-  await act(async()=>[...document.querySelectorAll('button')].find(b=>b.textContent==='Contextual review').click());
+  await act(async()=>[...document.querySelectorAll('button')].find(b=>b.textContent==='Review one by one').click());
   assert.equal(excerpts(),'true');
   const content=document.querySelector('.entity-scan-document-content');
   assert.equal(content.querySelector('a,.snapshot-linked,.snapshot-pending,.entity-scan-block-number'),null,'Preview leaves other text and entities unannotated');
   assert.deepEqual([...content.querySelectorAll('mark')].map(m=>m.textContent),['Mira']);
   assert.ok(content.textContent.includes('Sora'),'Other entity wording is retained as plain text');
-  assert.equal(document.querySelector('.entity-scan-document-heading h3').textContent,'Document Preview');
-  await click('[aria-label="Full document"]');await click('[aria-label="Close dialog"]');
+  assert.equal(document.querySelector('.entity-scan-document-heading h3').textContent,'Note preview');
+  await click('[aria-label="Full note"]');await click('[aria-label="Close dialog"]');
   now+=60*60*1000;await click('.entity-detect-action');
   assert.equal(excerpts(),'false','Recent review restores full view');
   await click('[aria-label="Close dialog"]');now+=25*60*60*1000;await click('.entity-detect-action');
   assert.equal(excerpts(),'true','A day without opening review resets the view');
-  await click('[aria-label="Full document"]');
+  await click('[aria-label="Full note"]');
   scan={...scan,id:'new-scan'};await act(async()=>render());
   assert.equal(excerpts(),'true','A new scan resets the view');
  }finally{await env.close();}
@@ -366,7 +367,7 @@ test('search and filter empty states replace the panes and clearing restores rev
  const click=async element=>act(async()=>element.click());
  const button=text=>[...document.querySelectorAll('button')].find(b=>b.textContent===text);
  try{
-  await act(async()=>render());await click(document.querySelector('.entity-detect-action'));await click(button('Contextual review'));
+  await act(async()=>render());await click(document.querySelector('.entity-detect-action'));await click(button('Review one by one'));
   const dialog=document.querySelector('dialog');
   assert.ok(dialog.querySelector('.entity-scan-snapshot'));
   const input=dialog.querySelector('[aria-label="Search suggestions"]');
@@ -385,18 +386,18 @@ test('search and filter empty states replace the panes and clearing restores rev
   await click([...dialog.querySelectorAll('.entity-review-filters button')].find(b=>b.textContent.startsWith('Reviewed')));
   assert.ok(dialog.querySelector('.entity-review-empty-state'));
   await click(button('Clear search and filters'));
-  await click(button('Batch review'));
+  await click(button('Review as a list'));
   scan={...scan,suggestions:[],subtypeSuggestions:[{id:'sub',name:'Researcher',type:'person',status:'pending'}]};await act(async()=>render());
   assert.ok(dialog.querySelector('.entity-review-subtype-proposals'));
   assert.equal(dialog.querySelector('.entity-review-empty-state'),null,'Subtype-only batches remain reviewable');
   scan={...scan,subtypeSuggestions:[]};await act(async()=>render());
-  assert.match(dialog.querySelector('.entity-review-empty-state').textContent,/No entities found/);
+  assert.match(dialog.querySelector('.entity-review-empty-state').textContent,/No new entity suggestions/);
   assert.equal(dialog.querySelector('.entity-review-footer'),null);
   assert.equal(document.querySelector('dialog'),dialog,'The modal is preserved through all result states');
  }finally{await env.close();}
 });
 
-test('accept keeps the dialog, action controls and last confirmation mounted while saving, and recovers on failure',async t=>{
+test('accept keeps the dialog and action controls stable, clears previous confirmation and recovers on failure',async t=>{
   const env=setupDOM(t),{dom}=env;
   dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
   dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
@@ -413,7 +414,7 @@ test('accept keeps the dialog, action controls and last confirmation mounted whi
   const click=async element=>act(async()=>element.click());
   try {
     await act(async()=>render());await click(document.querySelector('.entity-detect-action'));
-    await click([...document.querySelectorAll('button')].find(button=>button.textContent==='Contextual review'));
+    await click([...document.querySelectorAll('button')].find(button=>button.textContent==='Review one by one'));
     assert.equal(document.querySelector('[data-filter=pending]').getAttribute('aria-pressed'),'true');
     const preview=document.querySelector('.entity-scan-snapshot');
     const dialog=document.querySelector('dialog'),accept=document.querySelector('.scan-row-accept'),edit=document.querySelector('.scan-row-edit');
@@ -422,7 +423,7 @@ test('accept keeps the dialog, action controls and last confirmation mounted whi
     assert.equal(document.querySelector('.scan-row-accept'),accept);
     assert.equal(document.querySelector('.scan-row-edit'),edit);
     assert.equal(accept.disabled,true);
-    assert.match(accept.textContent,/Connecting/);
+    assert.match(accept.textContent,/Accepting/);
     await act(async()=>finish());
     assert.equal(document.querySelector('.scan-row-accept').disabled,false);
     assert.match(document.querySelector('.scan-row-accept').getAttribute('aria-label'),/Sora$/);
@@ -430,10 +431,10 @@ test('accept keeps the dialog, action controls and last confirmation mounted whi
     assert.ok(animated.length>=2);
     assert.ok(animated.every(element=>element.classList.contains('entity-review-table')),'Only the active inspector animates');
     const confirmation=document.querySelector('.entity-review-confirmation');
-    assert.match(confirmation.textContent,/Mira connected/);
+    assert.match(confirmation.textContent,/Mira accepted/);
     const nextAccept=document.querySelector('.scan-row-accept');
     await click(nextAccept);
-    assert.equal(document.querySelector('.entity-review-confirmation'),confirmation);
+    assert.equal(document.querySelector('.entity-review-confirmation'),null,'Previous confirmation clears when another decision starts');
     assert.equal(document.querySelector('dialog'),dialog);
     await act(async()=>fail(new Error('Connection lost')));
     assert.equal(document.querySelector('.scan-row-accept'),nextAccept);
@@ -441,7 +442,7 @@ test('accept keeps the dialog, action controls and last confirmation mounted whi
     assert.match(document.querySelector('[role=alert]').textContent,/Connection lost/);
     assert.equal(scan.suggestions[1].status,'pending');
     await click(nextAccept);await act(async()=>finish());
-    assert.match(document.querySelector('.entity-review-confirmation').textContent,/Review complete/);
+    assert.match(document.querySelector('.entity-review-confirmation').textContent,/All suggestions reviewed/);
     assert.equal(document.querySelector('dialog'),dialog);
     assert.match(document.querySelector('.entity-review-empty-state').textContent,/All suggestions reviewed/);
     await click(document.querySelector('.entity-review-empty-state button'));
@@ -482,7 +483,7 @@ test('review keeps the background live while its modal interaction state stays s
     assert.ok(backgroundRenders>baseline,'Each decision updates the background immediately');
     assert.equal(covered.textContent,'After review');
     assert.equal(document.querySelector('main').dataset.reviewOpen,'true','Saving does not toggle the open modal state');
-    assert.match(document.querySelector('.entity-review-confirmation').textContent,/Review complete/);
+    assert.match(document.querySelector('.entity-review-confirmation').textContent,/All suggestions reviewed/);
     await click('.modal-close');
     assert.equal(document.querySelector('#covered-page'),covered,'The workspace stays mounted');
     assert.equal(covered.textContent,'After review','Closing requires no deferred document update');

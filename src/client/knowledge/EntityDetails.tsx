@@ -17,12 +17,12 @@ import {clearEntityDraft, entityDraftDirty, entityDraftValues, getEntityDraft, m
 export interface EntityConnection {key: string; target: string; label: string}
 export function EntityReference({id, entities, onOpen}: {id: string; entities: Entity[]; onOpen: (id: string) => void}) {
   const entity = entities.find(item => item.id === id);
-  return <button type="button" className="entity-overview-reference" onClick={() => onOpen(id)}><Icon name={entity?.type ?? 'knowledge'}/><span>{entity?.name ?? uiText("Unknown entity")}</span></button>;
+  return <button type="button" className="entity-overview-reference" onClick={() => onOpen(id)}><Icon name={entity?.type ?? 'knowledge'} entity={entity}/><span>{entity?.name ?? uiText("Unknown entity")}</span></button>;
 }
 export function EntityConnections({items, entities, onOpen, empty}: {items: EntityConnection[]; entities: Entity[]; onOpen: (id: string) => void; empty: string}) {
   return items.length ? <ul className="entity-connection-list">{items.map(item => {
     const entity = entities.find(entity => entity.id === item.target);
-    return <li key={item.key}><button type="button" onClick={() => onOpen(item.target)}><Icon name={entity?.type ?? 'knowledge'}/><span><strong>{entity?.name ?? uiText("Unknown entity")}</strong><small>{item.label}</small></span><Icon name="chevron"/></button></li>;
+    return <li key={item.key}><button type="button" onClick={() => onOpen(item.target)}><Icon name={entity?.type ?? 'knowledge'} entity={entity}/><span><strong>{entity?.name ?? uiText("Unknown entity")}</strong><small>{item.label}</small></span><Icon name="chevron"/></button></li>;
   })}</ul> : <p className="entity-detail-empty">{empty}</p>;
 }
 export function EntityDetails({vaultId, entity, schema, onSave, idPrefix = "entity"}: {idPrefix?: string; vaultId: string; schema: EntitySchema; entity: EntityDetail; onSave: (input: Parameters<typeof api.updateEntity>[2]) => Promise<EntityDetail>}) {

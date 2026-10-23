@@ -1012,6 +1012,7 @@
   overscroll-behavior: contain;
   padding: 4px 0;
 }
+.subtype-option > .icon { width: 16px; height: 16px; flex: none; }
 .subtype-options .subtype-option {
   display: flex;
   align-items: center;

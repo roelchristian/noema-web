@@ -25,6 +25,14 @@ export function syncEditableSegments(element: HTMLElement, content: Segment[], e
   const last=content.at(-1);
   const missingTrailingCaret=!!(last&&(last.entityId||last.math||last.sourceReference)&&element.lastChild instanceof HTMLElement&&element.lastChild.contentEditable==='false');
   if (!changed && !missingTrailingCaret && previous?.source === source && previous.key === key) return;
+  if(!changed&&previous?.source!==source){
+    const byId=new Map(entities.map(entity=>[entity.id,entity]));
+    for(const mention of element.querySelectorAll<HTMLElement>('.mention[data-entity]')){
+      const icon=mention.querySelector<SVGElement>(':scope > .icon'),entity=byId.get(mention.dataset.entity!);
+      const markup=renderToStaticMarkup(<Icon name={entity?.type??'knowledge'} entity={entity}/>);
+      if(icon&&icon.outerHTML!==markup)icon.outerHTML=markup;
+    }
+  }
   clearTimeout(previous?.timer);
   const selection = document.getSelection();
   const selecting = element.closest('[data-text-selected]') || selection && !selection.isCollapsed && selection.rangeCount && selection.getRangeAt(0).intersectsNode(element);

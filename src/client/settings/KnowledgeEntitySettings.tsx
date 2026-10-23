@@ -11,7 +11,7 @@ export function KnowledgeEntitySettings({vault, appearance, onChange, storageErr
     <section className="settings-section" aria-labelledby="entity-types-heading">
       <h3 id="entity-types-heading">{uiText("Types & subtypes")}</h3>
       {vault ? <><p>{uiText("Manage subtypes, shared properties, and type colors in") + " "}{vault.name}.</p><VaultEntityTypes vaultId={vault.id} appearance={appearance} onAppearanceChange={onChange}/></> : <p>{uiText("Open a vault to manage its types, subtypes, and colors.")}</p>}
-    <p className="section-hint" role="status">{storageError ? uiText("Browser storage unavailable. Colors won’t persist after reload.") : uiText("Colors saved in this browser.")}</p>
+    <p className="section-hint" role="status">{storageError ? uiText("Browser storage unavailable. Colors and icons won’t persist after reload.") : uiText("Colors and icons saved in this browser.")}</p>
     <button className="button" onClick={() => onChange({...appearance, entityColors: defaultAppearance().entityColors})}>{uiText("Restore entity colors")}</button>
     </section>
   </>;
@@ -19,5 +19,5 @@ export function KnowledgeEntitySettings({vault, appearance, onChange, storageErr
 
 function VaultEntityTypes({vaultId, appearance, onAppearanceChange}: {vaultId: string; appearance: Appearance; onAppearanceChange: (appearance: Appearance) => void}) {
   const {schema, setSchema, error} = useEntitySchema(vaultId);
-  return <>{error ? <p role="alert" className="dialog-error">{error}</p> : <EntityTypeManager vaultId={vaultId} schema={schema} onChange={setSchema} entityColors={appearance.entityColors} onColorChange={(type, color) => onAppearanceChange({...appearance, entityColors: {...appearance.entityColors, [type]: color}})}/>}</>;
+  return <>{error ? <p role="alert" className="dialog-error">{error}</p> : <EntityTypeManager vaultId={vaultId} schema={schema} onChange={setSchema} entityColors={appearance.entityColors} onColorChange={(type, color) => onAppearanceChange({...appearance, entityColors: {...appearance.entityColors, [type]: color}})} subtypeIcons={appearance.subtypeIcons} onSubtypeIconChange={(id,icon)=>{const subtypeIcons={...appearance.subtypeIcons};if(icon===undefined)delete subtypeIcons[id];else Object.defineProperty(subtypeIcons,id,{value:icon,enumerable:true,configurable:true,writable:true});onAppearanceChange({...appearance,subtypeIcons});}}/>}</>;
 }

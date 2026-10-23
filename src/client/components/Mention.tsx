@@ -5,5 +5,5 @@ export function Mention({id, label, occurrenceOnly, entities, onOpen}: {id: stri
   const entity = entities.find(e => e.id === id);
   return <span className={'mention ' + (entity?.type || '')} contentEditable={false} data-entity={id} data-mention-text={label} data-skip-auto-tag={occurrenceOnly ? "true" : undefined} title={label ? entity?.name : undefined} role="button" tabIndex={0} onClick={() => onOpen(id)} onKeyDown={e => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpen(id); }
-  }}><Icon name={entity?.type || 'knowledge'}/>{label ?? entityMentionName(entity) ?? uiText("Unknown entity")}</span>;
+  }}><Icon name={entity?.type || 'knowledge'} entity={entity}/>{label ?? entityMentionName(entity) ?? uiText("Unknown entity")}</span>;
 }

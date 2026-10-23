@@ -1,3 +1,4 @@
+import {entityIconName} from '../../shared/entity-icons';
 import {getLocale} from '../i18n';
 import {t as uiText} from '../i18n';
 import {useState} from 'react';
@@ -88,8 +89,8 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onOpenPassage, onCr
           <Icon name="chevron"/>
         </div></article>)}
         {filtered.map(entity => <article className="organization-item" key={entity.id} data-library-row={'entity:' + entity.id}><div className="organization-item-row organization-page-row knowledge-entity-row">
-          {viewMode==='grid' && <PageCover vaultId={vaultId} icon={entity.type}/>}
-          <span className="organization-item-icon"><Icon name={entity.type}/></span>
+          {viewMode==='grid' && <PageCover vaultId={vaultId} icon={entityIconName(entity)}/>}
+          <span className="organization-item-icon"><Icon name={entity.type} entity={entity}/></span>
           <button className="organization-item-name" data-library-focus title={entity.name} onClick={event => openMatch(entity.id,event.currentTarget)}>
             <span className="organization-page-title"><HighlightedText text={entity.name} query={search}/><span className="knowledge-row-detail">{[entityLabels[entity.type], ...(entity.type==='source'?(entity.archived_at?['Archived']:entity.sourceStatus==='queued'||entity.sourceStatus==='processing'?['Processing']:entity.inactive?['Inactive']:entity.sourceEnrichmentStatus==='pending'||entity.sourceEnrichmentStatus==='running'?['Processed · Enriching with AI']:entity.sourceEnrichmentStatus==='failed'?['Processed · AI enrichment failed']:['Processed']):[]), ...entity.subtypes.map(id => schema.subtypes.find(item => item.id === id)?.name).filter(Boolean)].join(' / ')}{viewMode!=='grid'&&entity.type==='source'&&typeof entity.sourceSize==='number'&&Number.isFinite(entity.sourceSize)&&entity.sourceSize>=0&&<> · {sourceFileSize(entity.sourceSize)}</>}</span></span>
             <small>{Number.isFinite(Date.parse(entity.updated_at)) ? <time dateTime={entity.updated_at} title={new Date(entity.updated_at).toLocaleString(getLocale())}>{new Date(entity.updated_at).toLocaleDateString(getLocale(), {month: 'short', day: 'numeric', year: 'numeric'})}</time> : uiText("Date unavailable")}{!!query && <span className="search-match-badge">{entity.name.toLowerCase().includes(query) ? uiText("Name") : passageFor(entity.id)?uiText("Source passage"):(entity.aliases??[]).some(alias=>alias.toLowerCase().includes(query))?uiText("Alias"):uiText("Related by meaning")}</span>}</small>

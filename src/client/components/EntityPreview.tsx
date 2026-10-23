@@ -81,7 +81,7 @@ export function EntityPreview({entities, onOpen, dates=[], onOpenDate}: {entitie
   if (!entity || !target?.isConnected) return null;
   const description=entity.description.trim();
   return <div ref={card} id="entity-preview" className="entity-preview" style={position} role="dialog" aria-labelledby="entity-preview-title" aria-describedby={description?'entity-preview-description':undefined}>
-    <div className="entity-preview-heading"><Icon name={entity.type==='date'?'event':entity.type}/><h3 id="entity-preview-title">{entity.name}</h3></div>
+    <div className="entity-preview-heading"><Icon name={entity.type==='date'?'event':entity.type} entity={entity.type==='date'?undefined:entity}/><h3 id="entity-preview-title">{entity.name}</h3></div>
     {description&&<p id="entity-preview-description">{description}</p>}
     <div className="entity-preview-actions">
     <button type="button" className="entity-preview-open" onClick={() => { const id = entity.id; dismiss(); if(entity.type==='date')onOpenDate?.(id);else onOpen(id); }}><Icon name="external-link"/>{uiText(entity.type==='date'?'Open date':'Open entity')}</button>

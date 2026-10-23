@@ -2,6 +2,7 @@ import {t as uiText} from '../i18n';
 import { useEffect, useLayoutEffect, useId, useRef, useState } from 'react';
 import { Icon } from '../components/Icon';
 import { pillColors, type PillColor } from './appearance';
+import {revealMenuItem} from '../components/menu-placement';
 
 const previewStyle = (color: PillColor) => ({background: `var(--palette-${color}-bg)`, color: `var(--palette-${color}-text)`, borderColor: `var(--palette-${color}-border)`});
 const colors = Object.keys(pillColors) as PillColor[];
@@ -20,6 +21,10 @@ export function ColorPicker({id, label, value, onChange}: {id: string; label: st
     setPosition({left: Math.max(12, Math.min(box.right - 220, window.innerWidth - 232)), top: box.bottom + height + 6 <= window.innerHeight ? box.bottom + 6 : Math.max(12, box.top - height - 6)});
     list.current?.focus({preventScroll: true});
   }, [open]);
+  useLayoutEffect(() => {
+    const menu=list.current,item=menu?.querySelector<HTMLElement>('[role="option"].active');
+    if(open&&menu&&item)revealMenuItem(menu,item);
+  }, [open,active]);
   useEffect(() => {
     if (!open) return;
     const outside = (event: Event) => { if (!root.current?.contains(event.target as Node)) setOpen(false); };

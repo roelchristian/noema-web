@@ -2,6 +2,12 @@
 .color-picker {
   min-width: 0;
 }
+.subtype-icon-list { display: grid; gap: 4px; }
+.subtype-icon-row { display: grid; grid-template-columns: 24px minmax(90px, 1fr) minmax(120px, 1fr); align-items: center; gap: 8px; padding-block: 6px; }
+.subtype-icon-row + .subtype-icon-row { border-top: 1px solid var(--line); }
+.subtype-icon-row > .entity-icon { display: inline-flex; }
+.subtype-icon-row .icon { width: 16px; height: 16px; }
+.subtype-icon-row .select-host { min-width: 0; }
 .color-picker-trigger {
   width: 100%;
   display: flex;

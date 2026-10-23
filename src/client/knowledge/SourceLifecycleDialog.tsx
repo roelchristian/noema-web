@@ -45,7 +45,7 @@ export function SourceLifecycleDialog({vaultId,source,onUpdated,onClose}:{vaultI
   ] as const : [];
   return <Modal className="confirmation-dialog source-lifecycle-dialog" titleId="source-lifecycle-title" onClose={()=>{if(!busy)onClose();}}>
     <ModalHeader titleId="source-lifecycle-title" leading={<Icon name={archived?'undo':'archive'}/>} closeDisabled={busy}>{source.type==='source'?uiText("Manage source"):uiText("Manage entity")}</ModalHeader>
-    <div className="lifecycle-identity"><span className="lifecycle-identity-icon"><Icon name={source.type}/></span><div><h3>{state?.name??source.name}</h3><span>{archived?uiText("Archived"):uiText("Active")}</span></div></div>
+    <div className="lifecycle-identity"><span className="lifecycle-identity-icon"><Icon name={source.type} entity={source}/></span><div><h3>{state?.name??source.name}</h3><span>{archived?uiText("Archived"):uiText("Active")}</span></div></div>
     {!state&&<p className="lifecycle-loading" role="status">{uiText("Checking linked pages…")}</p>}
     {error&&<p className="dialog-error" role="alert">{error}</p>}
     {state&&<>

@@ -49,21 +49,18 @@ export function SpeechPlayer({state,voice,onClose,onError}:{state:SpeechState;vo
     if(media.ended)media.currentTime=0;
     try{await media.play();setNotice('');}catch{setPlaying(false);setWaiting(false);setNotice('Playback could not start. Press play to try again, or download the audio.');}
   }
-  const completed=state.assembling?state.total:Math.max(0,state.part-1);
   const title=state.error?'Speech unavailable':state.loading?(state.assembling?'Preparing audio…':'Generating speech…'):waiting?'Loading audio…':playing?'Playing':ended?'Finished reading':started?'Paused':'Ready to listen';
   const placement=workspace?{'--speech-workspace-center':`${workspace.left+workspace.width/2}px`,'--speech-workspace-width':`${workspace.width}px`} as CSSProperties:undefined;
   return <><span ref={anchor} hidden/>{createPortal(<aside className="editor-speech" aria-label="Speak selected blocks" data-loading={state.loading} data-error={!!state.error} data-ready={!!state.url} data-compact={workspace?workspace.width<=600:undefined} style={placement}>
     <div className="speech-heading">
       <div className={'speech-status'+(state.url?' sr-only':'')} role="status" aria-atomic="true">
+        {state.loading&&<span className="scan-spinner" aria-hidden="true"/>}
         <strong>{title}</strong>
         {(state.error||state.loading&&state.total>1)&&<span>{state.error||`${state.part} / ${state.total}`}</span>}
       </div>
       <button type="button" className="speech-dismiss" onClick={onClose} aria-label={state.loading?'Cancel speech generation':state.error?'Dismiss':'Close speech player'} title={state.loading?'Cancel generation':'Close'}>{state.loading?'Cancel':state.error?'Dismiss':<Icon name="close"/>}</button>
     </div>
-    {state.loading&&<div className="speech-generation">
-      <progress aria-label="Speech generation progress" max={state.total} value={state.total>1||state.assembling?completed:undefined}/>
-      <div className="speech-generation-detail"><span>{state.assembling?'Finishing your audio':elapsed>=20?'Still working. Longer selections can take a little while.':state.total>1?`${completed} of ${state.total} sections complete`:'Preparing your selected text for listening'}</span><span aria-label={`${elapsed} seconds elapsed`}>{time(elapsed)}</span></div>
-    </div>}
+    {state.loading&&<span className="speech-generation-time" aria-label={`${elapsed} seconds elapsed`}>{time(elapsed)}</span>}
     {state.url&&<>
       <audio ref={audio} key={state.url} autoPlay src={state.url} aria-label="AI-generated speech" onError={onError}
         onLoadedMetadata={event=>{const value=event.currentTarget.duration;setDuration(Number.isFinite(value)?value:0);}}

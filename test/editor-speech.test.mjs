@@ -122,18 +122,20 @@ test('stopping later selection chunks aborts requests and prevents partial playb
   await f.resolve(1);assert.equal(f.created.length,0);assert.equal(document.querySelector('.editor-speech'),null);
 });
 
-test('speech progress reports completed sections and keeps single-section work indeterminate',async t=>{
+test('speech generation shows a compact spinner, elapsed time and section status until ready',async t=>{
   const f=await speechFixture(t);await f.speak('Short selection');
-  assert.equal(document.querySelector('progress').hasAttribute('value'),false);
+  assert.equal(document.querySelector('progress'),null);
+  assert.ok(document.querySelector('.speech-status .scan-spinner[aria-hidden=true]'));
+  assert.equal(document.querySelector('.speech-generation-time').textContent,'0:00');
   assert.equal(document.querySelector('button').getAttribute('aria-label'),'Cancel speech generation');
   await f.speak('A'.repeat(5000));
-  assert.equal(document.querySelector('progress').value,0);
-  assert.equal(document.querySelector('progress').max,2);
+  assert.match(document.querySelector('[role=status]').textContent,/1 \/ 2/);
   await f.resolve(1);
-  assert.equal(document.querySelector('progress').value,1);
-  assert.match(document.querySelector('.speech-generation-detail').textContent,/1 of 2 sections complete/);
+  assert.match(document.querySelector('[role=status]').textContent,/2 \/ 2/);
+  assert.ok(document.querySelector('.scan-spinner'));
   await f.resolve(2);
-  assert.equal(document.querySelector('progress'),null);
+  assert.equal(document.querySelector('.scan-spinner'),null);
+  assert.equal(document.querySelector('.speech-generation-time'),null);
   assert.match(document.querySelector('[role=status]').textContent,/Ready to listen/);
 });
 

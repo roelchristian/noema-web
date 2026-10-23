@@ -31,7 +31,14 @@ export class Pages {
     try { new Images(this.store).cleanup(vault,candidates); } catch { console.error('Image cleanup deferred'); }
   }
   private imageIds(blocks: Block[]) { return blocks.flatMap(block => block.type === 'image' && block.imageId ? [block.imageId] : []); }
-  list(vault: string) { return this.store.all<PageSummary>('SELECT id,title,icon,featured_image_id AS featuredImageId,ai_status AS aiStatus,ai_review_accepted AS aiReviewAccepted,language,updated_at FROM pages WHERE vault_id=? AND deleted_at IS NULL ORDER BY updated_at DESC',vault).map(page=>({...page,aiReviewAccepted:!!page.aiReviewAccepted,aiStatus:reviewedPageAIStatus(page.aiStatus??'regular',!!page.aiReviewAccepted)})); }
+  list(vault: string) { return this.store.all<PageSummary>('SELECT id,title,icon,featured_image_id AS featuredImageId,ai_status AS aiStatus,ai_review_accepted AS aiReviewAccepted,language,updated_at,EXISTS(SELECT 1 FROM page_reading_notes r WHERE r.page_id=pages.id AND r.vault_id=pages.vault_id) AS isReadingNote,EXISTS(SELECT 1 FROM entity_page_associations a JOIN entities e ON e.id=a.entity_id WHERE a.page_id=pages.id AND e.vault_id=pages.vault_id) AS hasEntityAssociations FROM pages WHERE vault_id=? AND deleted_at IS NULL ORDER BY updated_at DESC',vault).map(page=>({...page,isReadingNote:!!page.isReadingNote,hasEntityAssociations:!!page.hasEntityAssociations,aiReviewAccepted:!!page.aiReviewAccepted,aiStatus:reviewedPageAIStatus(page.aiStatus??'regular',!!page.aiReviewAccepted)})); }
+  // Triage is a read of stored content, with no domain assessment, match cache or enrichment.
+  preview(vault:string,id:string):import('../../shared/domain.js').PagePreview {
+    const row=this.store.get<{id:string;title:string;blocks:string;revision:number;updated_at:string}>('SELECT id,title,blocks,revision,updated_at FROM pages WHERE vault_id=? AND id=? AND deleted_at IS NULL',vault,id);
+    if(!row)throw new HttpError(404,'Page not found');
+    const blocks=JSON.parse(row.blocks) as Block[];
+    return {...row,blocks:blocks.slice(0,80),truncated:blocks.length>80};
+  }
   backlinks(vault:string,id:string):PageSummary[] {
     const target=pageTitleKey(this.get(vault,id).title);
     const candidates=this.store.all<PageSummary & {blocks:string}>("SELECT id,title,icon,ai_status AS aiStatus,ai_review_accepted AS aiReviewAccepted,language,updated_at,blocks FROM pages WHERE vault_id=? AND deleted_at IS NULL AND id<>? AND instr(blocks,'[[')>0 ORDER BY title COLLATE NOCASE,id",vault,id);

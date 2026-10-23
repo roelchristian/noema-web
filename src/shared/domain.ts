@@ -22,7 +22,8 @@ export interface VaultDeletionPreview {
 }
 export interface VaultDeletionConfirmation {name:string;fingerprint:string;acknowledged:boolean;passphrase?:string}
 export interface VaultDeletionResult {vaults:Vault[];cleanupPending:boolean}
-export interface PageSummary { aiReviewAccepted?:boolean; language?: string | null; aiStatus?: import('./page-ai-status.js').PageAIStatus; featuredImageId?: string | null; id: string; title: string; icon?: PageIconId | null; updated_at: string }
+export type PagePreview = Pick<Page, 'id' | 'title' | 'blocks' | 'revision' | 'updated_at'> & {truncated?:boolean};
+export interface PageSummary { isReadingNote?: boolean; hasEntityAssociations?: boolean; aiReviewAccepted?:boolean; language?: string | null; aiStatus?: import('./page-ai-status.js').PageAIStatus; featuredImageId?: string | null; id: string; title: string; icon?: PageIconId | null; updated_at: string }
 export interface TrashedPage extends PageSummary { deleted_at: string; expires_at: string }
 export interface Domain {id:string;parent_id:string|null;label:string;lcc_refs?:string[];scope_note?:string;sort_order:number}
 export interface PageDomains {classifiedContentHash?:string;lastAssessedContentHash?:string;classificationVersion?:string;classificationOrigin?:'manual'|'inferred';lastClassifiedAt?:string;freshnessReason?:string;primaryDomainId:string|null;secondaryDomainIds:string[];origin:'manual'|'inferred';status:'manual'|'inferred'|'unclassified'|'needs_refresh';contentHash?:string;taxonomyVersion:string;revision:number}

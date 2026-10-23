@@ -289,6 +289,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           const header=req.headers['x-vault-id'];
           if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
           const vault=vaults.requireOpen(header || 'default');
+          if(collection==='pages' && id && child==='preview' && parts.length===4 && method==='GET')return send(200,pages.preview(vault,id));
           pages.purgeExpired(vault);
           if(collection==='search' && parts.length===3 && id==='text' && method==='POST')return send(200,textSearch.search(vault,body.query,body.limit,body.scope));
           if(collection==='search' && parts.length===3 && id==='snippets' && method==='POST')return send(200,searchSnippets.get(vault,body));

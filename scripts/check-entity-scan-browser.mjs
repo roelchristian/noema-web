@@ -46,7 +46,7 @@ try {
  await page.screenshot({path:join(artifacts,'01-desktop-context.png')});
  await dialog.getByRole('option').filter({hasText:'Field (algebra)'}).click();
  await dialog.getByRole('button',{name:'Accept: Field (algebra)',exact:true}).click();
- await dialog.getByText('Field (algebra) accepted',{exact:false}).waitFor();
+ await dialog.getByText('Field (algebra) accepted',{exact:true}).waitFor();
  await dialog.getByRole('button',{name:'Luma · Pending',exact:true}).click();
  await dialog.getByRole('button',{name:'Edit Luma',exact:true}).click();
  await dialog.getByRole('checkbox',{name:'Accept “Observatory researcher” with this entity'}).check();
@@ -63,7 +63,7 @@ try {
  }),'Expanded editing must retain a separate, reachable action area');
  await page.screenshot({path:join(artifacts,'02-desktop-dependent-occurrences.png')});
  await dialog.getByRole('button',{name:'Accept: Luma',exact:true}).click();
- await dialog.getByText('Luma accepted',{exact:false}).waitFor();
+ await dialog.getByText('Luma accepted',{exact:true}).waitFor();
  const saved=pages.get('default',note.id);assert.equal(saved.blocks[1].content.filter(item=>item.entityId).length,2);assert.ok(saved.blocks[1].content.some(item=>item.skipAutoTag&&item.text==='Luma'));
  await dialog.getByRole('button',{name:'Sora · Pending',exact:true}).click();assert.match(await dialog.locator('.entity-scan-snapshot [data-active-match]').first().innerText(),/Sora/);assert.match(await dialog.locator('.entity-scan-snapshot table mark').first().innerText(),/Sora/);
  await page.screenshot({path:join(artifacts,'03-desktop-table-evidence.png')});

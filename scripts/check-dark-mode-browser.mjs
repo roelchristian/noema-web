@@ -118,7 +118,7 @@ try{
   await page.getByRole('button',{name:'Close Knowledge panel',exact:true}).click();
   if(width===390){
     await page.getByRole('button',{name:'Open navigation',exact:true}).click();
-    assert.equal(await page.locator('#workspace-navigation[open]').evaluate(e=>getComputedStyle(e,'::backdrop').backgroundColor),'rgba(0, 0, 0, 0.4)','Navigation backdrop must dim rather than hide the workspace');
+    assert.equal(await page.locator('#workspace-navigation[open]').evaluate(e=>getComputedStyle(e,'::backdrop').backgroundColor),mode==='dark'?'rgba(0, 0, 0, 0.6)':'rgba(0, 0, 0, 0.4)','Navigation backdrop must dim rather than hide the workspace');
   }
   await page.getByRole('button',{name:'Calendar',exact:true}).click();
   await page.locator('.calendar-grid').waitFor();

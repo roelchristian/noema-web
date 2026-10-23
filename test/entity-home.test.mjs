@@ -22,6 +22,7 @@ async function fixture(t,work){
  const other={...entity,id:'other',name:'London',type:'place'};
  t.mock.method(api,'entity',async()=>entity);
  t.mock.method(api,'entityEvidence',async()=>({groups:[],hasMore:false,truncated:false}));
+ t.mock.method(api,'entityOverviewEvidence',async()=>({groups:[],hasMore:false,truncated:false}));
  t.mock.method(api,'entitySchema',async()=>({properties:Object.fromEntries(entityTypes.map(type=>[type,[]])),subtypes:[],subtypeProperties:{}}));
  const props={vaultId:'v',id:'e',entities:[entity,other],refreshKey:'',onOpen(){},onClose(){},onUpdated:async()=>{},onError(error){throw error;},onOpenPage(){},onCreatePageFromSource(){}};
  const root=createRoot(document.querySelector('#mount'));

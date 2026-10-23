@@ -66,14 +66,16 @@ export class Knowledge {
     if (!entity) throw new HttpError(404,'Entity not found');
     return entity;
   }
-  detail(vault: string, id: string): EntityDetail {
+  detail(vault: string, id: string, preview = false): EntityDetail {
+    const limit = preview ? 12 : -1;
     const entity = this.require(vault,id);
     const overview=this.store.get<{content:string;revision:number}>('SELECT content,revision FROM entity_overviews WHERE entity_id=?',id)??{content:'',revision:0};
-    const linkedPages=this.store.all<Omit<import('../../shared/domain.js').EntityPageAssociation,'pinned'> & {pinned:number}>(`SELECT p.id,p.title,p.icon,p.updated_at,a.pinned,a.annotation,a.created_at FROM entity_page_associations a JOIN pages p ON p.id=a.page_id WHERE a.entity_id=? AND p.vault_id=? AND p.deleted_at IS NULL ORDER BY a.pinned DESC,a.created_at,p.id`,id,vault).map(row=>({...row,pinned:!!row.pinned}));
-    return {...entity, overview, linkedPages, pageMentions: entityPageMentions(this.store, vault, id), ...(entity.type==='source'?{attachments:this.store.all<import('../../shared/domain.js').SourceFile>('SELECT * FROM source_files WHERE vault_id=? AND entity_id=? ORDER BY created_at,id',vault,id).map(file=>({...file,processing_detail:sourceProgress.get(file.id)}))}:{}), propertyNames: inheritedPropertyNames(this.schema(vault),entity.type,entity.subtypes),
-      properties:this.store.all<Property>('SELECT * FROM properties WHERE entity_id=?',id),
-      relationships:this.store.all<Relationship>('SELECT * FROM relationships WHERE source_id=? OR target_id=?',id,id),
-      incomingProperties:this.store.all<Property>('SELECT * FROM properties WHERE target_id=?',id)};
+    const propertyOrder = builtinProperties[entity.type].map(name=>name.toLowerCase());
+    const linkedPages=this.store.all<Omit<import('../../shared/domain.js').EntityPageAssociation,'pinned'> & {pinned:number}>(`SELECT p.id,p.title,p.icon,p.updated_at,a.pinned,a.annotation,a.created_at FROM entity_page_associations a JOIN pages p ON p.id=a.page_id WHERE a.entity_id=? AND p.vault_id=? AND p.deleted_at IS NULL ORDER BY a.pinned DESC,a.created_at DESC,p.id LIMIT ?`,id,vault,limit).map(row=>({...row,pinned:!!row.pinned}));
+    return {...entity, ...(preview ? {previewLimited:true} : {}), overview, linkedPages, pageMentions: entityPageMentions(this.store, vault, id, preview ? 6 : undefined), ...(entity.type==='source'?{attachments:this.store.all<import('../../shared/domain.js').SourceFile>('SELECT * FROM source_files WHERE vault_id=? AND entity_id=? ORDER BY created_at,id',vault,id).map(file=>({...file,processing_detail:sourceProgress.get(file.id)}))}:{}), propertyNames: inheritedPropertyNames(this.schema(vault),entity.type,entity.subtypes),
+      properties:this.store.all<Property>(`SELECT * FROM properties WHERE entity_id=? ORDER BY COALESCE((SELECT CAST(key AS INTEGER) FROM json_each(?) WHERE value=lower(name)),999),name COLLATE NOCASE,id LIMIT ?`,id,JSON.stringify(propertyOrder),limit),
+      relationships:this.store.all<Relationship>('SELECT * FROM relationships WHERE source_id=? OR target_id=? ORDER BY label COLLATE NOCASE,id LIMIT ?',id,id,limit),
+      incomingProperties:this.store.all<Property>('SELECT * FROM properties WHERE target_id=? ORDER BY name COLLATE NOCASE,id LIMIT ?',id,limit)};
   }
   private requireCuratable(vault:string,id:string) {
     new Vaults(this.store).requireOpen(vault);

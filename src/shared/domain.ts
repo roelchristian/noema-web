@@ -49,7 +49,7 @@ export interface EntityPageMention extends PageSummary { mentionCount: number; e
 export interface EntityOverview { content: string; revision: number }
 export interface EntityPageAssociation extends PageSummary { pinned: boolean; annotation: string; created_at: string }
 export interface PageEntityAssociation { entityId: string; pinned: boolean; annotation: string }
-export interface EntityDetail extends Entity { overview?: EntityOverview; linkedPages?: EntityPageAssociation[]; pageMentions?: EntityPageMention[]; attachments?: SourceFile[]; propertyNames: string[]; properties: Property[]; relationships: Relationship[]; incomingProperties: Property[] }
+export interface EntityDetail extends Entity { previewLimited?: boolean; overview?: EntityOverview; linkedPages?: EntityPageAssociation[]; pageMentions?: EntityPageMention[]; attachments?: SourceFile[]; propertyNames: string[]; properties: Property[]; relationships: Relationship[]; incomingProperties: Property[] }
 
 export type PropertyInput = {name: string} & ({value: string; target_id?: never} | {target_id: string; value?: never});
 export interface RelationshipInput {label: string; target_id: string}

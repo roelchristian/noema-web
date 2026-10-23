@@ -113,3 +113,20 @@ test('HTTP entity curation routes persist content, create pages atomically and r
  await request(route+'/pages/'+page.id,'DELETE');assert.deepEqual(await request('pages/'+page.id+'/entities'),[]);
  vaults.lock(vault.id,{passphrase:'synthetic'});await request(route+'/overview','PUT',{content:'Blocked',revision:1},423);
 });
+
+test('homepage detail preview bounds server projections and gives builtin properties priority',t=>{
+ const {knowledge,pages,store,vault,entity}=fixture(t);
+ for(let i=0;i<20;i++) {
+  const page=pages.create(vault.id,{title:'Synthetic '+i});pages.update(vault.id,page.id,{...page,blocks:[{id:'b',type:'paragraph',checked:false,content:[{entityId:entity.id},{text:' and '},{entityId:entity.id}]}]});
+  knowledge.associatePage(vault.id,entity.id,page.id,{});
+  store.run('INSERT INTO entity_type_properties (vault_id,type,name) VALUES (?,?,?)',vault.id,'person','AAA custom '+i);
+  knowledge.property(vault.id,entity.id,{name:'AAA custom '+i,value:'Synthetic value'});
+  const peer=knowledge.create(vault.id,{type:'concept',name:'Synthetic peer '+i});knowledge.relationship(vault.id,entity.id,{target_id:peer.id,label:'knows'});
+ }
+ knowledge.property(vault.id,entity.id,{name:'birth date',value:'1843-01-01'});
+ const before=store.get('SELECT total_changes() AS n').n;
+ const preview=knowledge.detail(vault.id,entity.id,true),full=knowledge.detail(vault.id,entity.id);
+ assert.equal(preview.previewLimited,true);assert.equal(preview.properties[0].name,'birth date');assert.equal(preview.properties.length,12);assert.equal(preview.relationships.length,12);assert.equal(preview.linkedPages.length,12);assert.equal(preview.pageMentions.length,6);
+ assert.equal(preview.pageMentions[0].contexts[0].occurrences.length,1);assert.equal(full.pageMentions.length,20);assert.equal(full.pageMentions[0].contexts[0].occurrences.length,2);assert.equal(full.properties.length,21);
+ assert.equal(store.get('SELECT total_changes() AS n').n,before);
+});

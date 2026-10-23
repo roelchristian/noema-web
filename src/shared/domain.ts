@@ -34,7 +34,7 @@ export interface PageInput { titleEdited?:boolean; aiReviewAccepted?:boolean; la
 export type PageEnrichmentMetadata = Pick<Page,'id'|'vault_id'|'title'|'revision'|'pageDomains'|'summaryContentHash'|'enrichmentPending'|'enrichmentPendingFields'|'enrichmentFields'|'language'>;
 export type EntityMentionCase = 'canonical' | 'lowercase';
 export interface Entity { archived_at?: string | null; domainIds?: string[]; sourceSize?: number | null; sourceEnrichmentStatus?: SourceFile['enrichment_status'] | null; sourceStatus?: SourceFile['status'] | null; inactive?: boolean; id: string; vault_id: string; name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes: string[]; description: string; updated_at: string }
-export interface EntityInput { domainIds?: string[]; name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes?: string[]; subtype?: string | null; description?: string; attachmentIds?: string[] }
+export interface EntityInput { classification_mode?:'retain_legacy'; impact_fingerprint?:string; domainIds?: string[]; name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes?: string[]; subtype?: string | null; description?: string; attachmentIds?: string[] }
 export function entityMentionName(entity: Pick<Entity,'name'|'mentionCase'> | undefined): string | undefined {
   return entity?.mentionCase === 'lowercase' ? entity.name.toLowerCase() : entity?.name;
 }

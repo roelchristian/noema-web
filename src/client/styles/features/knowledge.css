@@ -5155,3 +5155,13 @@ dialog.noema-modal.entity-review-modal { height: min(780px, calc(100dvh - 64px))
 .entity-inline-edit input[type="checkbox"] {width:auto;}
 .entity-property-compatibility small {flex-basis:100%;}
 @media(max-width:600px) {.entity-property-coordinates {grid-template-columns:1fr;}}
+
+.property-definition-manager {display:flex;flex-direction:column;gap:10px;}
+.property-definition-form,.property-definition-form>fieldset {display:flex;flex-direction:column;gap:10px;}
+.property-definition-form label {display:flex;flex-direction:column;gap:4px;}
+.property-definition-form fieldset label:has(input[type="checkbox"]) {flex-direction:row;align-items:center;gap:8px;}
+.property-definition-form input,.property-definition-form select,.property-definition-form textarea {max-width:100%;}
+.property-definition-range {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+.property-definition-impact {padding:10px;border:1px solid var(--status-warning-border);border-radius:6px;}
+.property-definition-impact>label {display:flex;flex-direction:row;align-items:start;gap:8px;}
+.property-definition-conflicts {padding:8px;border:1px solid var(--border);border-radius:6px;}

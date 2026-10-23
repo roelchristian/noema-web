@@ -171,3 +171,12 @@ test('new approximate dates submit the exact authored expression with typed defi
   assert.deepEqual(saves,[{input:{name:'birth date',value:'circa 1815',definition_id:'builtin:person:birth_date'},id:undefined}]);
  });
 });
+
+test('persisted display labels change presentation while keeping immutable stored names',async()=>{
+ await fixture(async({props,render,click,saves})=>{
+  const definition={id:'custom:birth',key:'birth_date',legacyName:'birth date',label:'Recorded Date',description:'',scope:{kind:'main_type',type:'person'},valueKind:'short_text',cardinality:'many',allowedTargetTypes:[],allowedTargetSubtypes:[],validation:{},origin:'user_defined',visibility:'additional',sortOrder:1,editable:true,compatibility:'legacy'};
+  await render({...props,definitions:[definition]});
+  assert.equal(document.querySelector('dt').textContent,'Recorded Date');await click('[aria-label="Edit Recorded Date"]');
+  assert.equal(document.querySelector('textarea[aria-label="Recorded Date"]').value,'circa 1815');assert.equal(saves.length,0);
+ });
+});

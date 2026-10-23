@@ -4,7 +4,7 @@ import type {Entity, EntityDetail, Property, PropertyInput} from '../../shared/d
 import type {PropertyDefinition} from '../../shared/property-definitions';
 import {EntityReferencePicker} from './EntityReferencePicker';
 import {PropertyScalarInput} from './PropertyScalarInput';
-import {propertyDefinitionFor, propertyLabel} from '../../shared/property-definitions';
+import {propertyDefinitionFor, propertyLabel, resolvePropertyDefinition, propertyDefinitionConflicts} from '../../shared/property-definitions';
 import {TemporalPropertyValue} from './TemporalPropertyValue';
 import {t as uiText} from '../i18n';
 import {beginPropertySave, endPropertySave, propertySavePending, runPropertyMutation, clearPropertyDraft, getPropertyDraft, propertyDraftSignature, setPropertyDraft, subscribePropertyDrafts, type EntityPropertyDraft} from './entity-property-drafts';
@@ -18,15 +18,18 @@ interface Props {
 export function EntityPropertyList(props: Props) {
   const {entity, priority = []} = props;
   const [expanded, setExpanded] = useState(false), [query, setQuery] = useState(''), [showAll,setShowAll] = useState(false);
-  const populated = new Set(entity.properties.map(property => property.name.toLocaleLowerCase()));
-  const unset = entity.propertyNames.filter((name,index,all) => !populated.has(name.toLocaleLowerCase()) && all.findIndex(other=>other.toLocaleLowerCase()===name.toLocaleLowerCase())===index);
+  const definitionFor=(name:string,bound?:string)=>resolvePropertyDefinition(props.definitions,entity.type,entity.subtypes,name,bound);
+  const labelFor=(name:string,bound?:string)=>definitionFor(name,bound)?.label??propertyLabel(name);
+  const populated = new Set(entity.properties.map(property=>definitionFor(property.name,property.metadata?.definition_id)?.key??property.name.toLowerCase()));
+  const seen=new Set<string>();
+  const unset=entity.propertyNames.filter(name=>{const key=definitionFor(name)?.key??name.toLowerCase();if(populated.has(key)||seen.has(key))return false;seen.add(key);return true;}).sort((a,b)=>(definitionFor(a)?.sortOrder??999)-(definitionFor(b)?.sortOrder??999)||labelFor(a).localeCompare(labelFor(b)));
   const rank = (name: string) => {const index=priority.indexOf(name.toLowerCase());return index < 0 ? 999 : index;};
-  const properties = [...entity.properties].sort((a,b)=>rank(a.name)-rank(b.name)||propertyLabel(a.name).localeCompare(propertyLabel(b.name))||(a.metadata?.position??0)-(b.metadata?.position??0)||a.id.localeCompare(b.id));
+  const properties = [...entity.properties].sort((a,b)=>rank(a.name)-rank(b.name)||(definitionFor(a.name,a.metadata?.definition_id)?.sortOrder??999)-(definitionFor(b.name,b.metadata?.definition_id)?.sortOrder??999)||labelFor(a.name,a.metadata?.definition_id).localeCompare(labelFor(b.name,b.metadata?.definition_id))||(a.metadata?.position??0)-(b.metadata?.position??0)||a.id.localeCompare(b.id));
   return <div className={'entity-inline-properties density-' + (props.density ?? 'home')}>
     <dl className="entity-overview-properties">{(showAll||!props.limit?properties:properties.slice(0,props.limit)).map(property=><PropertyRow key={property.id} {...props} name={property.name} property={property}/>)}</dl>
     {!!props.limit&&properties.length>props.limit&&<button type="button" className="entity-detail-more" aria-expanded={showAll} onClick={()=>setShowAll(value=>!value)}>{uiText(showAll?'Show fewer properties':'Show all properties')} ({properties.length})</button>}
     {!!unset.length && <div className="entity-inline-suggestions"><dl className="entity-overview-properties">{unset.slice(0,3).map(name=><PropertyRow key={name} {...props} name={name}/>)}</dl>
-      {unset.length > 3 && <><button type="button" className="entity-detail-more" aria-expanded={expanded} onClick={()=>setExpanded(value=>!value)}>{uiText('Add Property')} ({unset.length-3})</button>{expanded&&<><label>{uiText('Find a property')}<input type="search" value={query} onChange={event=>setQuery(event.target.value)}/></label><dl className="entity-overview-properties">{unset.slice(3).filter(name=>propertyLabel(name).toLocaleLowerCase().includes(query.toLocaleLowerCase())).map(name=><PropertyRow key={name} {...props} name={name}/>)}</dl></>}</>}
+      {unset.length > 3 && <><button type="button" className="entity-detail-more" aria-expanded={expanded} onClick={()=>setExpanded(value=>!value)}>{uiText('Add Property')} ({unset.length-3})</button>{expanded&&<><label>{uiText('Find a property')}<input type="search" value={query} onChange={event=>setQuery(event.target.value)}/></label><dl className="entity-overview-properties">{unset.slice(3).filter(name=>labelFor(name).toLocaleLowerCase().includes(query.toLocaleLowerCase())).map(name=><PropertyRow key={name} {...props} name={name}/>)}</dl></>}</>}
     </div>}
     {!properties.length&&!unset.length&&<p className="entity-detail-empty">{uiText('No fields for this classification.')}</p>}
   </div>;
@@ -38,7 +41,8 @@ function PropertyRow({name, property, ...props}: Props & {name: string; property
   const busy = useSyncExternalStore(subscribePropertyDrafts, ()=>propertySavePending(vaultId,entity.id,id));
   const [status,setStatus] = useState(''), [confirm,setConfirm] = useState(false);
   const lock = useRef(false), suppressBlur = useRef(false);
-  const persistedDefinition=props.definitions?.find(item=>item.id===property?.metadata?.definition_id)??props.definitions?.find(item=>item.legacyName.toLowerCase()===name.toLowerCase()&&item.scope.type===entity.type&&(item.scope.kind==='main_type'||entity.subtypes.includes(item.scope.subtypeId)));
+  const persistedDefinition=props.definitions?resolvePropertyDefinition(props.definitions,entity.type,entity.subtypes,name,property?.metadata?.definition_id):undefined;
+  const conflicts=propertyDefinitionConflicts(props.definitions?.filter(item=>item.scope.type===entity.type&&(item.scope.kind==='main_type'||entity.subtypes.includes(item.scope.subtypeId)))??[]).find(item=>item.key===persistedDefinition?.key);
   const definition = persistedDefinition??propertyDefinitionFor(entity.type,name), label = definition?.label??propertyLabel(name);
   const managed = entity.type === 'source' && ['Import method','Source URL'].includes(name);
   function begin() {
@@ -78,7 +82,7 @@ function PropertyRow({name, property, ...props}: Props & {name: string; property
     finally {lock.current=false;endPropertySave(vaultId,entity.id,id);}
   }
   return <div className="entity-inline-row"><dt>{label}{property?.metadata?.compatibility==='unresolved'&&<small className="section-hint">{uiText('Unresolved')} · {property.metadata.reason}</small>}{managed&&<small className="section-hint">{uiText('Source metadata · managed automatically')}</small>}</dt><dd>
-    {!draft||props.active===false ? <><div className="entity-inline-value">{property?.target_id&&<span>{mention(property.target_id)}</span>}{managed?<TemporalPropertyValue type={entity.type} name={name} value={property?.value??null}/>:<button type="button" className="entity-inline-activate" aria-label={uiText('Edit ') + label} onClick={begin}>{property?.target_id?uiText('Edit reference'):property?<TemporalPropertyValue type={entity.type} name={name} value={property.value===null?null:property.value.length>220?property.value.slice(0,220)+'…':property.value}/>:uiText('Not set')}</button>}</div></> : <div className="entity-inline-edit" onKeyDown={event=>{
+    {!draft||props.active===false ? <><div className="entity-inline-value">{property?.target_id&&<span>{mention(property.target_id)}</span>}{managed?<TemporalPropertyValue type={entity.type} name={name} value={property?.value??null}/>:<button type="button" className="entity-inline-activate" aria-label={uiText('Edit ') + label} disabled={!!conflicts&&!property} onClick={begin}>{property?.target_id?uiText('Edit reference'):property?<TemporalPropertyValue type={entity.type} name={name} value={property.value===null?null:property.value.length>220?property.value.slice(0,220)+'…':property.value}/>:uiText('Not set')}</button>}</div></> : <div className="entity-inline-edit" onKeyDown={event=>{
       if(event.nativeEvent.isComposing||event.defaultPrevented)return;
       if(event.key==='Escape'){event.preventDefault();suppressBlur.current=true;cancel();}
       if(event.key==='Enter'&&!event.shiftKey&&(event.target instanceof HTMLInputElement||event.target instanceof HTMLTextAreaElement)&&(draft.kind==='text'&&!draft.value.includes('\n')||event.ctrlKey||event.metaKey)){event.preventDefault();void save();}
@@ -94,6 +98,8 @@ function PropertyRow({name, property, ...props}: Props & {name: string; property
     </div>}
     {property&&!managed&&!draft&&<button type="button" className="entity-inline-remove" disabled={busy} aria-label={uiText('Remove ') + label} onClick={()=>setConfirm(true)}>{uiText('Remove value')}</button>}
     {confirm&&<div role="alertdialog" aria-label={uiText('Remove ') + label}><p>{uiText('Remove this value? This cannot be undone.')}</p><button type="button" disabled={busy} onClick={()=>void remove()}>{uiText('Confirm removal')}</button><button type="button" disabled={busy} onClick={()=>setConfirm(false)}>{uiText('Cancel')}</button></div>}
+    {!draft&&property?.metadata?.compatibility==='legacy_incompatible'&&<p role="status" className="section-hint">{uiText('Needs review')}: {property.metadata.reason}</p>}
+    {conflicts&&<p role="alert">{uiText('Conflicting inherited definitions require review in Manage Types before adding a value.')} {conflicts.definitions.map(item=>item.label+' ('+item.valueKind+')').join(', ')}</p>}
     <small className="entity-inline-status" role="status">{busy?uiText('Saving…'):status}</small>
   </dd></div>;
 }

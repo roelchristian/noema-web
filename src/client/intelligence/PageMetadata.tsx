@@ -4,7 +4,8 @@ import {t as uiText} from '../i18n';
 import {DisclosureSummary} from '../components/DisclosureSummary';
 import {sourcePageChoices,sourcePageFormats} from '../../shared/source-page';
 import type {Page} from '../../shared/domain';
-import {pageAIStatusLabels} from '../../shared/page-ai-status';
+import {pageAIProvenance} from '../../shared/page-ai-status';
+import {PageProvenanceFields} from '../components/PageProvenance';
 import {Icon} from '../components/Icon';
 
 function languageLabel(language:string):string {
@@ -19,20 +20,24 @@ export function PageMetadata({page}:{page:Page}) {
     return Number.isFinite(parsed.getTime())?<time dateTime={value} title={parsed.toLocaleString(getLocale())}>{parsed.toLocaleDateString(getLocale(),{year:'numeric',month:'short',day:'numeric'})}</time>:null;
   };
   const created=date(page.created_at),updated=date(page.updated_at);
-  const generated=page.aiStatus==='ai_generated'||page.aiStatus==='ai_generated_edited';
+  const provenance=pageAIProvenance(page);
+  const generated=provenance.origin==='ai_generated';
   const generation=page.generationMetadata;
   const sourceGeneration=generation?.type==='source_page'?generation:null;
   return <details className="knowledge-page-metadata" aria-labelledby="knowledge-page-metadata-heading">
     <summary className="knowledge-section-heading"><h2 id="knowledge-page-metadata-heading"><span>{uiText("Properties")}</span><Icon name="chevron"/></h2></summary>
     <dl className="page-metadata-fields">
       {page.language&&<div><dt>{uiText("Language")}</dt><dd title={page.language}>{languageLabel(page.language)}</dd></div>}
-      {page.aiStatus&&page.aiStatus!=='regular'&&<div><dt>{uiText("Origin")}</dt><dd>{uiText(pageAIStatusLabels[page.aiStatus])}</dd></div>}
       {created&&<div><dt>{uiText("Created")}</dt><dd>{created}</dd></div>}
       {updated&&<div><dt>{uiText("Updated")}</dt><dd>{updated}</dd></div>}
       {page.editLocked&&<div><dt>{uiText("Editing")}</dt><dd><Icon name="lock"/>{uiText("Locked")}</dd></div>}
     </dl>
+    <section className="page-generation-metadata" aria-label={uiText("Creation & AI history")}>
+      <h3>{uiText("Creation & AI history")}</h3>
+      <PageProvenanceFields provenance={provenance}/>
+    </section>
     {generated&&<section className="page-generation-metadata" aria-labelledby="page-generation-heading">
-      <h3 id="page-generation-heading">{uiText("AI generation")}</h3>
+      <h3 id="page-generation-heading">{uiText("Generation details")}</h3>
       {generation?<dl className="page-metadata-fields">
         <div><dt>{uiText("Type")}</dt><dd>{sourceGeneration?uiText(sourcePageFormats[sourceGeneration.options.format].label):uiText("Passage explanation")}</dd></div>
         {generation.persona&&<div><dt>AI Persona</dt><dd>{personaIdentityName(generation.persona)} · v{generation.persona.version}</dd></div>}

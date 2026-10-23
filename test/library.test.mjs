@@ -63,3 +63,14 @@ test('Library and sidebar folder rows are draggable while collections remain cur
   assert.match(sidebar, /draggable="true"[^>]*>[\s\S]*?Open folder: Desk/);
   assert.match(sidebar, /draggable="false"[^>]*>[\s\S]*?Open collection: Theme/);
 });
+
+test('Library omits routine status and combines factual AI history in its one label',()=>{
+  assert.doesNotMatch(render(),/page-ai-library-status|>Regular</);
+  const html=render({pages:[{id:'draft',title:'Combined',updated_at:'2026-10-17',creationMethod:'manual_creation',aiStatus:'ai_assisted',aiReviewAccepted:true,containsAIExplanations:true}]});
+  assert.match(html,/title="Created in Noema · AI writing edits accepted · Contains AI explanations"/);
+  assert.match(html,/>AI writing edits accepted<\/span>/);
+  const generated=render({pages:[{id:'draft',title:'Generated',updated_at:'2026-10-17',aiStatus:'ai_generated_edited',aiReviewAccepted:true,containsAIExplanations:true}]});
+  assert.match(generated,/AI-generated content · AI writing edits accepted · Contains AI explanations · Edited after generation/);
+  assert.match(generated,/>AI-generated<\/span>/);
+  assert.doesNotMatch(generated,/AI-generated, edited/);
+});

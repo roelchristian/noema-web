@@ -366,3 +366,34 @@ test('bulk Trash actions stay in Trash and retain failed notes for retry', async
     assert.equal(workspace.snapshot().view,'trash');
   } finally {workspace.saver.dispose();}
 });
+
+test('generated edit then undo before autosave keeps historical event and accepted edits through recovery',async t=>{
+  const initial={id:'synthetic-provenance',vault_id:'a',title:'Generated original',blocks:[{id:'body',type:'paragraph',checked:false,content:[{text:'Original draft'}]}],sourceIds:[],revision:1,updated_at:'2026-10-23',aiStatus:'ai_generated'};
+  const sent=[];
+  t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false}]);
+  t.mock.method(api,'pages',async()=>[initial]);t.mock.method(api,'entities',async()=>[]);
+  t.mock.method(api,'page',async()=>structuredClone(initial));
+  t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],memberships:[],favourites:[]}));
+  t.mock.method(api,'savePage',async(_vault,_id,page)=>{sent.push(structuredClone(page));return {...page,revision:page.revision+1};});
+  const workspace=new Workspace();
+  try{
+    await workspace.selectVault('a');await workspace.openPage(initial.id);
+    workspace.updatePage({title:'Temporary title',aiReviewAccepted:true});
+    workspace.updatePage({title:initial.title,aiReviewAccepted:false});
+    assert.equal(workspace.snapshot().page.aiStatus,'ai_generated_edited');
+    assert.equal(workspace.snapshot().page.aiReviewAccepted,true);
+    assert.equal(workspace.snapshot().page.editedAfterGeneration,true);
+    await workspace.saver.flush();
+    assert.equal(sent.at(-1).editedAfterGeneration,true);
+    assert.equal(sent.at(-1).aiReviewAccepted,true);
+    // Recover an original-text snapshot from before any save reached the server.
+    const recovered={...initial,editedAfterGeneration:true,aiReviewAccepted:true};
+    const entry={id:'recovery',version:1,writerId:'old-writer',vaultId:'a',pageId:initial.id,baseRevision:1,updatedAt:Date.now(),snapshot:recovered};
+    workspace.patch({draftRecoveries:[{vaultId:'a',pageId:initial.id,drafts:[entry]}]});
+    await workspace.restorePageDraft(entry);
+    assert.equal(workspace.snapshot().page.aiStatus,'ai_generated_edited');
+    assert.equal(workspace.snapshot().page.aiReviewAccepted,true);
+    await workspace.saver.flush();
+    assert.equal(sent.at(-1).editedAfterGeneration,true);
+  }finally{workspace.saver.dispose();}
+});

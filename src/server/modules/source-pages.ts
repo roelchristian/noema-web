@@ -264,7 +264,7 @@ export class SourcePages {
       const blocks=this.pages.validateBlocks(vault,linkSourceReferences(JSON.parse(row.blocks),file));
       const page=this.pages.create(vault,{title:row.title,language:row.language??null});
       syncSourceReferences(this.store,page.id,blocks);
-      this.store.run("UPDATE pages SET blocks=?,generation_metadata=?,ai_status='ai_generated',summary_content_hash=NULL,revision=revision+1 WHERE id=? AND vault_id=?",JSON.stringify(blocks),row.generation_metadata??null,page.id,vault);
+      this.store.run("UPDATE pages SET blocks=?,generation_metadata=?,creation_method='ai_generated',ai_status='ai_generated',summary_content_hash=NULL,revision=revision+1 WHERE id=? AND vault_id=?",JSON.stringify(blocks),row.generation_metadata??null,page.id,vault);
       this.store.run('INSERT INTO page_sources (page_id,source_id) VALUES (?,?)',page.id,sourceId);
       this.store.run('INSERT INTO source_page_creations (request_id,vault_id,source_id,fingerprint,page_id,created_at) VALUES (?,?,?,?,?,?)',requestId,vault,sourceId,row.fingerprint,page.id,now());
       this.store.run("UPDATE source_page_drafts SET status='accepted',blocks='[]',focus='',options='{}',generation_metadata=NULL WHERE request_id=?",requestId);

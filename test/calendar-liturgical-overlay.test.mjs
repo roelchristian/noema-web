@@ -55,7 +55,7 @@ test('GRC overlay shows regular weekdays in the month grid and inspector alongsi
  assert.equal(document.querySelector('.calendar-inspector .calendar-observance-title').textContent,'Saturday of the 29th Week of Ordinary Time','weekday labels follow the selected date');
  await act(async()=>document.querySelector('[data-date="2026-10-25"]').click());
  assert.equal(document.querySelector('.calendar-inspector .calendar-observance-title').textContent,'30th Sunday of Ordinary Time','Sunday precedence remains intact');
- assert.equal(document.querySelector('[data-date="2026-10-01"] .calendar-liturgical-cell').textContent,'Saint Thérèse of the Child Jesus, Virgin and Doctor of the Church','obligatory memorials remain principal');
+ assert.equal(document.querySelector('[data-date="2026-10-01"] .calendar-liturgical-cell').textContent,'St Thérèse of the Child Jesus, Virgin and Doctor of the Church','obligatory memorials remain principal');
  await act(async()=>root.render(createElement(Harness,{indicators:false})));
  assert.equal(document.querySelectorAll('.calendar-optional-marker').length,0);
  assert.equal(downloads,1,'indicator preference never changes provider data or refetches it');
@@ -107,6 +107,7 @@ test('Latin temporal labels use Roman week ordinals in the grid, inspector and a
  assert.equal(document.querySelector('[data-date="2026-10-28"] .calendar-liturgical-cell').textContent,'SS. Simonis et Iudae');
  assert.match(document.querySelector('[data-date="2026-10-01"]').getAttribute('aria-label'),/Sanctæ Teresiæ/);
  assert.equal(cell.querySelector('.calendar-liturgical-color').dataset.color,'green','Latin provider color names use the same palette');
+ assert.equal(cell.querySelector('.calendar-liturgical-cell').dataset.color,'green');
  assert.ok(cell.getAttribute('aria-label').includes(cases[1][1]));
  assert.equal(document.querySelector('.calendar-inspector .calendar-observance-title').textContent,cases[1][1]);
  await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Agenda').click());
@@ -141,8 +142,11 @@ test('rank labels use consistent sentence case without losing proper names or Ro
 });
 
 
-test('month labels abbreviate Latin saint titles without shortening full date labels',async()=>{
+test('month labels abbreviate saint titles without shortening full date labels',async()=>{
  const {liturgicalLabel,monthLiturgicalLabel}=await import('../src/client/calendar/liturgical-label.ts');
+ assert.equal(monthLiturgicalLabel('Saint John Paul II','grc-en'),'St John Paul II');
+ assert.equal(monthLiturgicalLabel('Saints Simon and Jude','ph'),'Sts Simon and Jude');
+ assert.equal(liturgicalLabel('Saint John Paul II','grc-en'),'Saint John Paul II');
  for(const [name,expected] of [
   ['Sancti Ioannis','S. Ioannis'],['Sanctae Teresiae','S. Teresiae'],
   ['Sanctæ Teresiæ','S. Teresiæ'],['Sanctorum Simonis et Iudae','SS. Simonis et Iudae'],
@@ -152,4 +156,30 @@ test('month labels abbreviate Latin saint titles without shortening full date la
   assert.equal(monthLiturgicalLabel(name,'grc-en'),name);
   assert.equal(liturgicalLabel(name,'grc-la'),name);
  }
+});
+
+test('civil gutter and opt-in liturgical captions remain independent of daily observances',async t=>{
+ const {CalendarMonthGrid}=await import('../src/client/calendar/CalendarMonthGrid.tsx');
+ const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ const data=normalizeLitcal(JSON.parse(readFileSync(new URL('./fixtures/liturgical/litcal-2026.json',import.meta.url),'utf8')),2026,'grc-en');
+ const props={month:'2026-10',selected:null,focusDay:'2026-10-23',weekStart:0,weekNumbers:true,optionalIndicators:true,items:[],weekLiturgy:[data],calendarId:'grc-en',onFocus(){},onKey(){},onChoose(){},busy:false};
+ await act(async()=>root.render(createElement(CalendarMonthGrid,{...props,liturgicalLabels:'week'})));
+ assert.equal(document.querySelector('[role=columnheader]').textContent,'Wk');
+ assert.ok(document.querySelector('[data-date="2026-09-27"]').closest('.is-outside-month'));
+ assert.equal(document.querySelector('[data-date="2026-10-01"]').closest('.is-outside-month'),null);
+ assert.ok([...document.querySelectorAll('.calendar-week-number')].some(node=>node.textContent==='43'));
+ assert.ok([...document.querySelectorAll('.calendar-week-label')].some(node=>node.textContent.includes('Week 43 · 29th Week in Ordinary Time')));
+ assert.equal(document.querySelector('.calendar-week-label .calendar-liturgical-color').dataset.color,'green');
+ assert.equal(document.querySelector('.calendar-liturgical-cell'),null,'daily overlay remains off');
+ await act(async()=>root.render(createElement(CalendarMonthGrid,{...props,liturgicalLabels:'season'})));
+ assert.match(document.querySelector('.calendar-week-label').textContent,/Ordinary Time/);
+ assert.doesNotMatch(document.querySelector('.calendar-week-label').textContent,/Week in Ordinary Time/);
+ await act(async()=>root.render(createElement(CalendarMonthGrid,{...props,weekStart:1,liturgicalLabels:'week',liturgy:data})));
+ assert.ok(document.querySelector('[data-date="2026-11-01"]').closest('.is-outside-month'));
+ const row=document.querySelector('[data-date="2026-10-19"]').closest('[role=rowgroup]');
+ assert.match(row.querySelector('.calendar-week-label').textContent,/29th Week in Ordinary Time/);
+ assert.match(document.querySelector('[data-date="2026-10-25"]').getAttribute('aria-label'),/30th Sunday of Ordinary Time/);
+ await act(async()=>root.render(createElement(CalendarMonthGrid,{...props,liturgicalLabels:'off'})));
+ assert.equal(document.querySelectorAll('.calendar-week-label').length,0);
+ assert.ok(document.querySelectorAll('.calendar-week-number').length>0);
 });

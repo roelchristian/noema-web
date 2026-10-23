@@ -459,10 +459,20 @@ Phone/narrow-workspace cells show knowledge counts (P means pinned), principal c
 an optional-choice + marker; full accessible names, date details and agenda retain text.
 
 Settings → Calendar saves Sunday/Monday week start in this browser; Sunday remains the
-default. Home/End follow that choice. ISO week numbers default off. Each row label gives
-its Monday's ISO week AND ISO week-year, for example 2020-W53. On a Sunday-start row,
-Sunday belongs to the preceding ISO week: the label is explicitly Monday's week, not an
-assertion that ISO weeks begin Sunday. Leading/trailing blank cells retain civil bounds.
+default. Civil week numbers default on in a narrow gutter (an explicit saved off preference
+is retained). Sunday weeks use week 1 containing January 1; Monday weeks use ISO 8601,
+with week 1 containing January 4. Each civil record retains its week-year and full range,
+including muted dates from adjacent months. Home/End follow the selected first day.
+
+Liturgical calendar labels are independently opt-in: Off (civil only), Season only, or
+Season and liturgical week. Captions such as “Week 43 · 29th Week in Ordinary Time” are
+derived from downloaded temporal observances, with a date range and modest season color.
+Daily observance visibility remains a separate setting. Established provider designations
+preserve Ordinary Time numbering across Lent/Easter, the Easter Octave, and Christmas's
+proper structure; unavailable designations fall back to the known season. Season changes
+within a row use transition labels. Monday rows take their designation from Monday,
+while the following Sunday retains its own proper title on the date. Missing calendar
+data never changes civil numbering or produces a fabricated liturgical counter.
 
 Optional memorial indicators can be disabled independently of optional detail. They use
 only actual provider alternatives flagged optional, never synthetic inferred feasts.

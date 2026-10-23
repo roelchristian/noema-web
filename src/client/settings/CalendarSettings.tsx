@@ -4,7 +4,7 @@ import {liturgicalCalendars,liturgicalSourceUrl,liturgicalReferenceUrl,type Litu
 import {api} from '../api';
 import {Select} from '../components/Select';
 import {t as uiText} from '../i18n';
-import type {CalendarSettings as Preferences} from './calendar-settings';
+import type {CalendarSettings as Preferences,LiturgicalLabelDisplay} from './calendar-settings';
 
 export function CalendarSettings({value,onChange,vault,storageError}:{value:Preferences;onChange:(value:Preferences)=>void;vault:Vault|null;storageError:boolean}) {
  const [status,setStatus]=useState<LiturgicalDownloadStatus|null>(null),[error,setError]=useState(''),[version,setVersion]=useState(0),[busy,setBusy]=useState(false);
@@ -24,8 +24,11 @@ export function CalendarSettings({value,onChange,vault,storageError}:{value:Pref
   </section>
   <section className="settings-section" aria-labelledby="calendar-layout-heading"><h3 id="calendar-layout-heading">Month view</h3>
    <div className="calendar-field"><label htmlFor="settings-week-start">Start week on</label><Select id="settings-week-start" value={value.weekStart??0} onChange={event=>onChange({...value,weekStart:Number(event.target.value) as 0|1})}><option value={0}>Sunday</option><option value={1}>Monday</option></Select></div>
-   <label className="calendar-check"><input type="checkbox" checked={value.weekNumbers===true} onChange={event=>onChange({...value,weekNumbers:event.target.checked})}/>Show ISO week numbers</label>
-   <p className="section-hint">ISO weeks start Monday. Each row is labelled with its Monday’s ISO week and week-year; in Sunday-first rows, Sunday belongs to the preceding ISO week.</p>
+   <label className="calendar-check"><input type="checkbox" checked={value.weekNumbers!==false} onChange={event=>onChange({...value,weekNumbers:event.target.checked})}/>Show civil week numbers</label>
+   <p className="section-hint">Sunday-start weeks begin on Sunday, and Week 1 contains 1 January. Monday-start weeks follow ISO 8601: Week 1 contains 4 January. Civil week numbering is independent of liturgical designations.</p>
+   <div className="calendar-field"><label htmlFor="settings-liturgical-labels">Liturgical calendar labels</label><Select id="settings-liturgical-labels" value={value.liturgicalLabels??'off'} onChange={event=>onChange({...value,liturgicalLabels:event.target.value as LiturgicalLabelDisplay})}><option value="off">Off — Civil weeks only</option><option value="season">Season only</option><option value="week">Season and liturgical week</option></Select></div>
+   <p className="section-hint">Optional liturgical captions supplement civil week numbers independently of daily observances.</p>
+   <div className="calendar-week-label-preview" aria-label="Week label preview"><strong>Week 43{value.liturgicalLabels==='week'?' · 29th Week in Ordinary Time':value.liturgicalLabels==='season'?' · Ordinary Time':''}</strong><p>18–24 October 2026</p></div>
    <label className="calendar-check"><input type="checkbox" checked={value.optionalIndicators!==false} onChange={event=>onChange({...value,optionalIndicators:event.target.checked})}/>Indicate available optional memorials</label>
    <p className="section-hint">Only choices supplied by the selected calendar are indicated. They do not replace the principal observance.</p>
   </section>

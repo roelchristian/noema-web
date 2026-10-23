@@ -115,7 +115,7 @@ test('glance previews bound pages, properties and unique connections and preserv
   const reference={pageId:'m',entityId:'ada',blockId:'b',blockIds:['b'],segmentIndex:1,startOffset:0,endOffset:3,revision:2,projectionHash:'hash'};
   await refresh({properties:Array.from({length:9},(_,i)=>({id:'p'+i,entity_id:'ada',name:i===8?'birth date':'detail '+i,value:'<script>unsafe</script>'.repeat(20),target_id:null})),linkedPages:Array.from({length:8},(_,i)=>({id:'l'+i,title:'Attached '+i,updated_at:'2099',created_at:'2026-01-0'+i,pinned:i===0,annotation:''})),pageMentions:[{id:'m',title:'Mention origin',updated_at:'2026',mentionCount:1,excerpt:'Ada in actual saved text.',contexts:[{blockId:'b',heading:['Origin'],excerpt:'Ada in actual saved text.',occurrences:[{id:'o',label:'Ada',reference}]}]}],relationships:[{id:'r',source_id:'ada',target_id:'peer',label:'knows'},{id:'r2',source_id:'peer',target_id:'ada',label:'influences'},{id:'r3',source_id:'ada',target_id:'missing',label:'unavailable'}]});
   await render({entities:[entity(),{...entity(),id:'peer',name:'Synthetic peer'}],onOpenMention:value=>opened=value});
-  assert.equal(document.querySelectorAll('.eh-glance-properties dt').length,4);assert.equal(document.querySelector('.eh-glance-properties dt').textContent,'birth date');
+  assert.equal(document.querySelectorAll('.eh-glance-properties dt').length,4);assert.equal(document.querySelector('.eh-glance-properties dt').textContent,'Birth Date');
   assert.equal(document.querySelectorAll('.eh-glance-connections li').length,1);
   assert.equal(document.querySelectorAll('.eh-glance-pages > .eh-glance-list:first-of-type li').length,3);
   const titles=[...document.querySelectorAll('.eh-glance-pages > .eh-glance-list:first-of-type strong')].map(node=>node.textContent);assert.deepEqual(titles,['Attached 0','Attached 7','Attached 6']);
@@ -161,5 +161,19 @@ test('refreshing an open editor retains mounted forms instead of applying a tran
   await render({refreshKey:'external-refresh'});
   assert.equal(request.mock.calls[0].arguments[2],false);
   assert.equal(document.querySelector('[aria-label="Entity name"]'),name);
+ });
+});
+
+test('homepage completes preview properties before offering editable unset suggestions',async t=>{
+ await fixture(t,async({render,entity})=>{
+  let finish;
+  const complete={...entity(),propertyNames:['birth date','birthplace'],properties:[{id:'born',entity_id:'ada',name:'birth date',value:'1815',target_id:null}]};
+  t.mock.method(api,'entity',async(_vault,_id,preview)=>preview?{...complete,properties:[],previewLimited:true}:new Promise(resolve=>finish=resolve));
+  await render({refreshKey:'incomplete-properties'});
+  assert.match(document.querySelector('.eh-glance-properties').textContent,/Loading complete properties/);
+  assert.equal(document.querySelector('.eh-glance-properties .entity-inline-suggestions'),null);
+  await act(async()=>finish(complete));
+  assert.equal(document.querySelectorAll('.eh-glance-properties [aria-label="Edit Birth Date"]').length,1);
+  assert.equal(document.querySelector('.entity-inline-suggestions [aria-label="Edit Birth Date"]'),null);
  });
 });

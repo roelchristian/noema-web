@@ -1,3 +1,5 @@
+import {EntityPropertyList} from './EntityPropertyList';
+import {propertyLabel} from '../../shared/property-definitions';
 import {EntityGlance, EntityGlanceSources, previewText} from './EntityGlance';
 import {TemporalPropertyValue} from './TemporalPropertyValue';
 import {useContext, useEffect, useLayoutEffect, useRef, useState} from 'react';
@@ -92,7 +94,7 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
     return () => {active = false;};
   }, [vaultId, id, refreshKey, entityAttempt]);
   useEffect(() => {
-    if (!entity?.previewLimited || !['connections','mentions','edit'].includes(tab)) return;
+    if (!entity?.previewLimited || !['overview','connections','mentions','edit'].includes(tab)) return;
     let active = true;
     void api.entity(vaultId,id).then(value=>{if(active)setEntity(value);}).catch(value=>{if(active)setError(String(value));});
     return ()=>{active=false;};
@@ -112,8 +114,8 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
     revealTab(value);
   }
   const relationships: EntityConnection[] = entity?.relationships.map(relation => ({key:relation.id, target:relation.source_id === id ? relation.target_id : relation.source_id, label:(relation.source_id === id ? 'Outgoing · ' : 'Incoming · ') + relation.label})) ?? [];
-  const references: EntityConnection[] = entity?.properties.filter(property => property.target_id).map(property => ({key:property.id, target:property.target_id!, label:'Property · ' + property.name})) ?? [];
-  const incoming: EntityConnection[] = entity?.incomingProperties.map(property => ({key:property.id, target:property.entity_id, label:'Referenced via ' + property.name})) ?? [];
+  const references: EntityConnection[] = entity?.properties.filter(property => property.target_id).map(property => ({key:property.id, target:property.target_id!, label:'Property · ' + propertyLabel(property.name)})) ?? [];
+  const incoming: EntityConnection[] = entity?.incomingProperties.map(property => ({key:property.id, target:property.entity_id, label:'Referenced via ' + propertyLabel(property.name)})) ?? [];
   const connectionCount = relationships.length + references.length + incoming.length;
   const propertyNames = entity ? [...new Map([...entity.propertyNames, ...inheritedPropertyNames(schema, entity.type, entity.subtypes)].map(name => [name.toLowerCase(), name])).values()] : [];
   const template = entityHomeTemplate(entity?.type ?? 'concept');
@@ -149,7 +151,7 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
       }}>{uiText(tabLabels[value])}</button>)}</div>
       <div className="eh-tabpanel" id="entity-home-panel-overview" role="tabpanel" aria-labelledby="entity-home-tab-overview" hidden={tab !== 'overview'} tabIndex={0}>
         {entity.description ? <p className="eh-description eh-short-description">{previewText(entity.description,360)}</p> : <p className="entity-detail-empty">{uiText('No description recorded yet.')} <button type="button" className="eh-text-action" onClick={()=>switchTab('edit')}>{uiText('Add a description')}</button></p>}
-        <section className="eh-section eh-glance-properties"><h2>{uiText(template.detailsTitle)}</h2>{entity.properties.length ? <dl className="entity-overview-properties">{[...entity.properties].sort((a,b)=>{const rank=(name:string)=>{const index=template.prominentProperties.indexOf(name.toLowerCase());return index<0?999:index;};return rank(a.name)-rank(b.name)||a.name.localeCompare(b.name)||a.id.localeCompare(b.id);}).slice(0,4).map(property=><div key={property.id}><dt>{previewText(property.name,100)}</dt><dd>{property.target_id ? <EntityReference id={property.target_id} entities={entities} onOpen={onOpen}/> : <TemporalPropertyValue type={entity.type} name={property.name} value={property.value === null ? null : previewText(property.value,220)}/>}</dd></div>)}</dl> : <p className="entity-detail-empty">{uiText('No details recorded yet.')}</p>}<button type="button" className="eh-text-action" onClick={()=>switchTab('edit')}>{uiText('Edit details')}</button></section>
+        <section className="eh-section eh-glance-properties"><h2>{uiText(template.detailsTitle)}</h2>{entity.previewLimited?<p role="status">{uiText('Loading complete properties…')}</p>:<EntityPropertyList limit={4} key={vaultId + ':' + id} vaultId={vaultId} entity={{...entity,propertyNames}} entities={entities} mention={mention} priority={template.prominentProperties} onSave={(input,propertyId)=>mutate(()=>api.saveProperty(vaultId,id,input,propertyId))} onRemove={propertyId=>mutate(()=>api.removeConnection(vaultId,id,'properties',propertyId))} onRefresh={()=>mutate(()=>api.entity(vaultId,id))}/>}</section>
         <EntityGlance entity={entity} entities={entities} connections={[...relationships,...references,...incoming]} onOpen={onOpen} onOpenPage={onOpenPage} onOpenMention={onOpenMention} onTab={switchTab}/>
         <EntityGlanceSources vaultId={vaultId} entityId={id} refreshKey={refreshKey} active={tab==='overview'} onReady={restoreScroll} onTab={()=>switchTab('sources')} onOpenSourcePassage={onOpenSourcePassage}/>
         <EntityOverview guidance={template.overviewGuidance} key={vaultId + ':' + id} vaultId={vaultId} entity={entity} onSave={input => mutate(() => api.saveEntityOverview(vaultId, id, input))} onRefresh={() => mutate(() => api.entity(vaultId, id))}/>

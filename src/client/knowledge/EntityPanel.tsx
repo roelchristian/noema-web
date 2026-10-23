@@ -1,3 +1,5 @@
+import {EntityPropertyList} from './EntityPropertyList';
+import {propertyLabel} from '../../shared/property-definitions';
 import {TemporalPropertyValue} from './TemporalPropertyValue';
 import {EntityReference, EntityConnections, EntityDetails, PropertyEditor, RelationshipEditor, type EntityConnection} from './EntityDetails';
 import {SourceLifecycleDialog} from './SourceLifecycleDialog';
@@ -45,16 +47,13 @@ export function EntityPanel(props: EntityPanelProps) {
   const {schema, error: schemaError} = useEntitySchema(vaultId);
   const mention = (entityId: string) => <Mention id={entityId} entities={entities} onOpen={onOpen}/>;
   async function mutate(work: () => Promise<EntityDetail>) {
-    try { const result = await work(); setEntity(result); await onUpdated(); } catch (error) { onError(error); throw error; }
+    try { const result = await work(); if(currentEntityKey.current.vaultId===vaultId&&currentEntityKey.current.id===id)setEntity(result); void onUpdated().catch(onError); return result; } catch (error) { onError(error); throw error; }
   }
   const relationships: EntityConnection[] = entity?.relationships.map(relation => ({key: relation.id, target: relation.source_id === id ? relation.target_id : relation.source_id, label: relation.source_id === id ? relation.label : 'Incoming · ' + relation.label})) ?? [];
-  const references: EntityConnection[] = entity?.properties.filter(property => property.target_id).map(property => ({key: property.id, target: property.target_id!, label: property.name})) ?? [];
-  const incoming: EntityConnection[] = entity?.incomingProperties.map(property => ({key: property.id, target: property.entity_id, label: 'Referenced via ' + property.name})) ?? [];
+  const references: EntityConnection[] = entity?.properties.filter(property => property.target_id).map(property => ({key: property.id, target: property.target_id!, label: propertyLabel(property.name)})) ?? [];
+  const incoming: EntityConnection[] = entity?.incomingProperties.map(property => ({key: property.id, target: property.entity_id, label: 'Referenced via ' + propertyLabel(property.name)})) ?? [];
   const subtypeNames = schema.subtypes.filter(subtype => entity?.subtypes.includes(subtype.id)).map(subtype => subtype.name);
   const propertyNames = entity ? [...new Map([...entity.propertyNames, ...inheritedPropertyNames(schema,entity.type,entity.subtypes)].map(name => [name.toLowerCase(),name])).values()] : [];
-  const unsetProperties = propertyNames.filter(name => !entity?.properties.some(property => property.name.toLowerCase() === name.toLowerCase()));
-  const previewProperties = props.onOpenHome ? entity?.properties.slice(0, 5) ?? [] : entity?.properties ?? [];
-  const previewUnsetProperties = props.onOpenHome ? [] : unsetProperties;
   function switchTab(next: EntityTab) {
     setTab(next);
     if(inspector)props.onInspectorTabChange?.(next);
@@ -104,10 +103,8 @@ export function EntityPanel(props: EntityPanelProps) {
           <dl className="entity-overview-properties">
             {!!subtypeNames.length&&<div><dt>{uiText("Type")}</dt><dd>{subtypeNames.join(' · ')}</dd></div>}
             {attachment&&<><div><dt>{uiText("Format")}</dt><dd>{attachment.format.toUpperCase()}{attachment.pages?uiText(" · {value0} pages",{value0: attachment.pages}):''}</dd></div>{attachment.language&&<div><dt>{uiText("Language")}</dt><dd>{attachment.language}</dd></div>}</>}
-            {entity.properties.filter(property=>!property.target_id).slice(0,5).map(property=><div key={property.id}><dt>{property.name}</dt><dd><TemporalPropertyValue type={entity.type} name={property.name} value={property.value}/></dd></div>)}
           </dl>
-          {!attachment&&!entity.properties.length&&!subtypeNames.length&&<p className="entity-detail-empty">{uiText("Add source details to make this reference easier to find.")}</p>}
-          {entity.properties.filter(property=>!property.target_id).length>5&&<details className="source-inspector-disclosure"><DisclosureSummary>{uiText("More metadata")}</DisclosureSummary><dl className="entity-overview-properties">{entity.properties.filter(property=>!property.target_id).slice(5).map(property=><div key={property.id}><dt>{property.name}</dt><dd><TemporalPropertyValue type={entity.type} name={property.name} value={property.value}/></dd></div>)}</dl></details>}
+          <EntityPropertyList key={vaultId + ':' + id + ':source'} density="source" vaultId={vaultId} entity={{...entity,propertyNames}} entities={entities} mention={mention} onSave={(input,propertyId)=>mutate(()=>api.saveProperty(vaultId,id,input,propertyId))} onRemove={propertyId=>mutate(()=>api.removeConnection(vaultId,id,'properties',propertyId))} onRefresh={()=>mutate(()=>api.entity(vaultId,id))}/>
         </section>
         <nav className="source-inspector-links" aria-label={uiText("Source connections")}>
           <button type="button" onClick={()=>switchTab('connections')}><Icon name="page"/><span>{uiText("Mentioned in") + " "}{pageMentions.length} {pageMentions.length===1?uiText("page"):uiText("pages")}</span><Icon name="chevron"/></button>
@@ -119,8 +116,8 @@ export function EntityPanel(props: EntityPanelProps) {
       {entity.type==='source'&&entity.attachments?.map(file=><div key={file.id}>{file.language&&<p className="section-hint">{uiText("Language:") + " "}{file.language}</p>}{file.summary&&<div className="ai-summary-text"><SummaryText text={file.summary}/></div>}</div>)}
       {entity.description && <p className="entity-detail-description">{entity.description}</p>}
         {entity.type==='concept' && <section className="entity-detail-section"><h3>{uiText("Disciplines")}</h3><p className="section-hint">{entity.domainIds?.length ? entity.domainIds.map(domainBreadcrumb).join(' · ') : uiText("No disciplines selected.")}</p></section>}
-        <section className="entity-detail-section"><h3>{uiText("Properties")}<span>{entity.properties.length + unsetProperties.length}</span></h3>
-          {entity.properties.length || previewUnsetProperties.length ? <dl className="entity-overview-properties">{previewProperties.map(property => <div key={property.id}><dt>{property.name}</dt><dd>{property.target_id ? <EntityReference id={property.target_id} entities={entities} onOpen={onOpen}/> : <TemporalPropertyValue type={entity.type} name={property.name} value={property.value}/>}</dd></div>)}{previewUnsetProperties.map(name => <div key={'unset-' + name}><dt>{name}</dt><dd><button type="button" onClick={() => switchTab('edit')}>{uiText("Not set")}</button></dd></div>)}</dl> : <p className="entity-detail-empty">{uiText("No inherited fields yet. Define properties on a subtype in Settings → Knowledge Entities.")}</p>}
+        <section className="entity-detail-section"><h3>{uiText("Properties")}<span>{entity.properties.length}</span></h3>
+          <EntityPropertyList key={vaultId + ':' + id} density="compact" vaultId={vaultId} entity={{...entity,propertyNames}} entities={entities} mention={mention} onSave={(input,propertyId)=>mutate(()=>api.saveProperty(vaultId,id,input,propertyId))} onRemove={propertyId=>mutate(()=>api.removeConnection(vaultId,id,'properties',propertyId))} onRefresh={()=>mutate(()=>api.entity(vaultId,id))}/>
         </section>
         <section className="entity-detail-section"><h3>{uiText("Related knowledge")}<span>{relationships.length} {relationships.length === 1 ? uiText("connection") : uiText("connections")}</span></h3>
           <EntityConnections items={relationships.slice(0, 4)} entities={entities} onOpen={onOpen} empty="No related knowledge yet."/>

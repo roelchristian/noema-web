@@ -25,7 +25,8 @@
     "test/smart-quotes.test.mjs",
     "test/vault-backup-workspace.test.mjs",
     "test/workspace.test.mjs",
-    "test/document-find.test.mjs"
+    "test/document-find.test.mjs",
+    "test/property-definitions.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",
@@ -68,7 +69,8 @@
     "test/note-dates.test.mjs",
     "test/calendar-settings.test.mjs",
     "test/calendar-liturgical-overlay.test.mjs",
-    "test/review-centre-ui.test.mjs"
+    "test/review-centre-ui.test.mjs",
+    "test/entity-property-list.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",
@@ -150,6 +152,7 @@
     "test/calendar.test.mjs",
     "test/temporal-evidence.test.mjs",
     "test/liturgical-calendar.test.mjs",
-    "test/review-centre.test.mjs"
+    "test/review-centre.test.mjs",
+    "test/property-inventory.test.mjs"
   ]
 }

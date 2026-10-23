@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { entityPageMentions } from './entity-page-mentions.js';
 import { entityMentionName, entityTypes, type EntityType, type Entity, type EntityDetail, type Property, type Relationship } from '../../shared/domain.js';
 import { builtinProperties, builtinSubtypes, inheritedPropertyNames, type EntitySchema, type EntitySubtype } from '../../shared/entity-schema.js';
+import { propertyDefinitionsForSchema } from '../../shared/property-definitions.js';
 import { Store } from '../store.js';
 import { HttpError, now, required, text } from '../validation.js';
 import { normalizeEntityName } from '../../shared/auto-entities.js';
@@ -22,7 +23,8 @@ export class Knowledge {
     for (const row of this.store.all<{subtype_id: string; name: string}>('SELECT subtype_id,name FROM entity_subtype_properties WHERE vault_id=? ORDER BY name',vault)) {
       (subtypeProperties[row.subtype_id] ??= []).push(row.name);
     }
-    return {properties, subtypeProperties, subtypes: [...builtinSubtypes, ...this.store.all<EntitySubtype>('SELECT id,name,type FROM entity_subtypes WHERE vault_id=? ORDER BY name',vault)]};
+    const schema: EntitySchema = {properties, subtypeProperties, subtypes: [...builtinSubtypes, ...this.store.all<EntitySubtype>('SELECT id,name,type FROM entity_subtypes WHERE vault_id=? ORDER BY name',vault)]};
+    return {...schema, propertyDefinitions: propertyDefinitionsForSchema(schema,vault)};
   }
   addSubtype(vault: string, body: Record<string, unknown>) {
     const type = this.mainType(body.type), name = required(body.name);

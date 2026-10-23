@@ -1,5 +1,7 @@
 # Knowledge entity properties: phased implementation
 
+The explicitly authorized [additional-subtype follow-up](entity-properties-additional-subtypes.md) adds the 19 candidates deferred by the original brief after Phases 1–4. Phase 5 remains deferred.
+
 This is the original checkpoint record. See [checkpoint 2](entity-properties-phase2.md) for persisted typed definitions, completed reference/draft refinements, current verification and remaining scope.
 
 ## Baseline and code inventory (before persistence changes)

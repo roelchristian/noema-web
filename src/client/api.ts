@@ -43,6 +43,11 @@ export async function importVaultBackup(file:File,name?:string):Promise<Vault> {
   const result=await response.json();if(!response.ok)throw new ApiError(response.status,result.error||'Vault import failed');return result;
 }
 export const api={
+  pageHistory:(vault:string,id:string,signal?:AbortSignal)=>request<import('../shared/page-history').PageVersion[]>(`pages/${id}/history`,'GET',undefined,vault,signal),
+  pageVersion:(vault:string,id:string,version:string,signal?:AbortSignal)=>request<import('../shared/page-history').PageVersionDetail>(`pages/${id}/history/${encodeURIComponent(version)}`,'GET',undefined,vault,signal),
+  checkpointPage:(vault:string,id:string,name:string,revision:number)=>request<import('../shared/page-history').PageVersionDetail>(`pages/${id}/history`,'POST',{name,revision},vault),
+  restorePageVersion:(vault:string,id:string,version:string,revision:number)=>request<Page>(`pages/${id}/history/${encodeURIComponent(version)}/restore`,'POST',{revision},vault),
+  copyPageVersion:(vault:string,id:string,version:string,revision:number)=>request<Page>(`pages/${id}/history/${encodeURIComponent(version)}/copy`,'POST',{revision},vault),
   liturgicalYear:(vault:string,year:number,signal?:AbortSignal,calendarId:import('../shared/liturgical').LiturgicalCalendarId='grc-en')=>request<import('../shared/liturgical').LiturgicalYear>(`temporal/liturgical/${year}?rite=${calendarId}`,'GET',undefined,vault,signal),
   prepareLiturgical:(vault:string,year:number,retry=false,signal?:AbortSignal)=>request<import('../shared/liturgical').LiturgicalDownloadStatus>('temporal/liturgical/preload','POST',{year,retry},vault,signal),
   liturgicalStatus:(vault:string,signal?:AbortSignal)=>request<import('../shared/liturgical').LiturgicalDownloadStatus>('temporal/liturgical/status','GET',undefined,vault,signal),

@@ -28,7 +28,8 @@
     "test/workspace.test.mjs",
     "test/document-find.test.mjs",
     "test/property-definitions.test.mjs",
-    "test/property-catalogue.test.mjs"
+    "test/property-catalogue.test.mjs",
+    "test/page-history-ui.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",

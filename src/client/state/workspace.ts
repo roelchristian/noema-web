@@ -626,6 +626,41 @@ export class Workspace {
     this.titler.observe(page);
     this.saver.enqueue(page);
   }
+  /** Durable history mutations run only after this page's committed save is confirmed. */
+  async changePageHistory(action:'restore'|'copy'|'checkpoint', value:string) {
+    const original=this.state.page, sequence=this.loadSequence;
+    if(!original || this.state.view!=='pages' || original.editLocked || this.pageLockPending || this.state.busy || this.state.loadingPageId!==null || this.state.vault?.locked) throw new Error('Open an unlocked page before changing its history.');
+    if(this.state.draftRecoveries.some(item=>item.vaultId===original.vault_id&&item.pageId===original.id)) throw new Error('Resolve recovered drafts before changing page history.');
+    const current=()=>sequence===this.loadSequence && this.state.vault?.id===original.vault_id && !this.state.vault.locked && this.state.view==='pages' && this.state.page?.id===original.id && this.state.loadingPageId===null;
+    this.pageLockPending=true;
+    this.titler.remove(original);
+    try {
+      await this.saver.flush();
+      if(!current()) throw new Error('The page changed. Open its history again.');
+      if(this.saver.pendingPage(original.vault_id,original.id)||this.saver.statusFor(original.vault_id,original.id)!=='saved') throw new Error('Save this page successfully before changing history.');
+      const cached=this.pageCache.get(original.id)??this.state.page!;
+      const latest=await api.page(original.vault_id,original.id);
+      if(!current()) throw new Error('The page changed. Open its history again.');
+      if(latest.editLocked || latest.revision!==cached.revision) throw new Error('The saved page changed elsewhere. Reopen the page before changing its history.');
+      if(pageDraftJournal.entries(original.vault_id,original.id).some(entry=>entry.writerId!==pageDraftJournal.writerId&&pageContent(entry.snapshot)!==pageContent(latest))) throw new Error('Another unfinished draft exists for this page. Review it before changing history.');
+      if(action==='checkpoint') return await api.checkpointPage(original.vault_id,original.id,value,latest.revision);
+      const page=await (action==='restore'?api.restorePageVersion:api.copyPageVersion)(original.vault_id,original.id,value,latest.revision);
+      if(sequence!==this.loadSequence||this.state.vault?.id!==original.vault_id||this.state.vault.locked) return page;
+      if(action==='copy') {this.registerGeneratedPage(page); return page;}
+      // A response may arrive after navigation. Update its cache without replacing another editor.
+      this.saver.discard(original.vault_id,original.id,false);
+      this.pageCache.set(page.id,page);
+      this.patch({...(current()?{page}:{}),pages:this.state.pages.map(item=>item.id===page.id?page:item),draftRecoveries:this.state.draftRecoveries.filter(item=>item.vaultId!==page.vault_id||item.pageId!==page.id)});
+      if(current()&&typeof document!=='undefined') document.dispatchEvent(new CustomEvent('noema:document-replaced',{detail:page}));
+      try {
+        // Another tab can create a new draft while the restore request is in flight.
+        // Its revision check will reject stale saves; retain its recovery evidence.
+        for(const entry of pageDraftJournal.entries(original.vault_id,original.id)) if(entry.writerId===pageDraftJournal.writerId) pageDraftJournal.discard(entry);
+        this.saver.prime(page);
+      } catch(error) {this.report(error);}
+      return page;
+    } finally {this.pageLockPending=false;}
+  }
   async setPageDomains(primaryDomainId:string|null,secondaryDomainIds:string[]) {
     const original=this.state.page,sequence=this.loadSequence;
     if(!original||original.editLocked||this.pageLockPending||this.state.vault?.locked)return;

@@ -8573,5 +8573,190 @@
     "Le style livre supprime l’espace supplémentaire entre les paragraphes consécutifs lorsque le retrait est activé.",
     "Der Buchstil entfernt den zusätzlichen Abstand zwischen aufeinanderfolgenden Absätzen, wenn der Einzug aktiviert ist.",
     "El estilo libro elimina el espacio adicional entre párrafos consecutivos cuando la sangría está activada."
+  ],
+  "Version history": [
+    "Historique des versions",
+    "Versionsverlauf",
+    "Historial de versiones"
+  ],
+  "Saved versions": [
+    "Versions enregistrées",
+    "Gespeicherte Versionen",
+    "Versiones guardadas"
+  ],
+  "Current page": [
+    "Page actuelle",
+    "Aktuelle Seite",
+    "Página actual"
+  ],
+  "Unfinished changes will be saved before restoring": [
+    "Les modifications en attente seront enregistrées avant la restauration",
+    "Ausstehende Änderungen werden vor dem Wiederherstellen gespeichert",
+    "Los cambios pendientes se guardarán antes de restaurar"
+  ],
+  "Name a checkpoint": [
+    "Nommer un jalon",
+    "Sicherungspunkt benennen",
+    "Nombrar un punto de control"
+  ],
+  "Preserve checkpoint": [
+    "Conserver ce jalon",
+    "Sicherungspunkt behalten",
+    "Conservar punto de control"
+  ],
+  "Page created": [
+    "Page créée",
+    "Seite erstellt",
+    "Página creada"
+  ],
+  "History started": [
+    "Début de l’historique",
+    "Beginn des Verlaufs",
+    "Inicio del historial"
+  ],
+  "AI content accepted": [
+    "Contenu IA accepté",
+    "KI-Inhalt übernommen",
+    "Contenido de IA aceptado"
+  ],
+  "Imported document": [
+    "Document importé",
+    "Importiertes Dokument",
+    "Documento importado"
+  ],
+  "Named checkpoint": [
+    "Jalon nommé",
+    "Benannter Sicherungspunkt",
+    "Punto de control con nombre"
+  ],
+  "Restored version": [
+    "Version restaurée",
+    "Wiederhergestellte Version",
+    "Versión restaurada"
+  ],
+  "History starts with the next saved change. Earlier versions have not been invented.": [
+    "L’historique commence à la prochaine modification enregistrée. Aucune version antérieure n’a été inventée.",
+    "Der Verlauf beginnt mit der nächsten gespeicherten Änderung. Frühere Versionen wurden nicht erfunden.",
+    "El historial comienza con el próximo cambio guardado. No se han inventado versiones anteriores."
+  ],
+  "Editing session": [
+    "Session de modification",
+    "Bearbeitungssitzung",
+    "Sesión de edición"
+  ],
+  "revisions": [
+    "révisions",
+    "Revisionen",
+    "revisiones"
+  ],
+  "Preserved permanently": [
+    "Conservé indéfiniment",
+    "Dauerhaft aufbewahrt",
+    "Conservado permanentemente"
+  ],
+  "History is retained. Automatic retention pruning is disabled.": [
+    "L’historique est conservé. La suppression automatique des anciennes versions est désactivée.",
+    "Der Verlauf bleibt erhalten. Automatisches Ausdünnen ist deaktiviert.",
+    "El historial se conserva. La eliminación automática de versiones está desactivada."
+  ],
+  "Read-only version preview": [
+    "Aperçu de version en lecture seule",
+    "Schreibgeschützte Versionsvorschau",
+    "Vista previa de versión de solo lectura"
+  ],
+  "Loading history…": [
+    "Chargement de l’historique…",
+    "Verlauf wird geladen…",
+    "Cargando historial…"
+  ],
+  "Read-only preview. Your current page remains unchanged.": [
+    "Aperçu en lecture seule. La page actuelle reste inchangée.",
+    "Schreibgeschützte Vorschau. Die aktuelle Seite bleibt unverändert.",
+    "Vista previa de solo lectura. La página actual permanece intacta."
+  ],
+  "Compare blocks with current page": [
+    "Comparer les blocs avec la page actuelle",
+    "Blöcke mit aktueller Seite vergleichen",
+    "Comparar bloques con la página actual"
+  ],
+  "Restore this version": [
+    "Restaurer cette version",
+    "Diese Version wiederherstellen",
+    "Restaurar esta versión"
+  ],
+  "Create page from this version": [
+    "Créer une page à partir de cette version",
+    "Seite aus dieser Version erstellen",
+    "Crear página desde esta versión"
+  ],
+  "Confirm restoration": [
+    "Confirmer la restauration",
+    "Wiederherstellung bestätigen",
+    "Confirmar restauración"
+  ],
+  "Save pending changes and restore this version as a new current revision? All later versions and the pre-restore state remain in history. Authored classifications and original provenance are restored; unavailable references prevent restoration.": [
+    "Enregistrer les modifications en attente et restaurer cette version comme nouvelle révision actuelle ? Toutes les versions ultérieures et l’état avant restauration restent dans l’historique. Les classifications manuelles et la provenance originale sont restaurées ; les références indisponibles empêchent la restauration.",
+    "Ausstehende Änderungen speichern und diese Version als neue aktuelle Revision wiederherstellen? Alle späteren Versionen und der Zustand vor der Wiederherstellung bleiben im Verlauf. Manuelle Klassifizierungen und ursprüngliche Herkunft werden wiederhergestellt; fehlende Verweise verhindern die Wiederherstellung.",
+    "¿Guardar los cambios pendientes y restaurar esta versión como nueva revisión actual? Todas las versiones posteriores y el estado previo permanecen en el historial. Se restauran las clasificaciones manuales y la procedencia original; las referencias no disponibles impiden la restauración."
+  ],
+  "Confirm restore": [
+    "Confirmer",
+    "Wiederherstellen bestätigen",
+    "Confirmar restauración"
+  ],
+  "changed blocks": [
+    "blocs modifiés",
+    "geänderte Blöcke",
+    "bloques cambiados"
+  ],
+  "Title changed": [
+    "Titre modifié",
+    "Titel geändert",
+    "Título cambiado"
+  ],
+  "No added, removed, or modified blocks. Metadata and block order may differ.": [
+    "Aucun bloc ajouté, supprimé ou modifié. Les métadonnées et l’ordre des blocs peuvent différer.",
+    "Keine hinzugefügten, entfernten oder geänderten Blöcke. Metadaten und Blockreihenfolge können abweichen.",
+    "No hay bloques añadidos, eliminados o modificados. Los metadatos y el orden pueden diferir."
+  ],
+  "Added block": [
+    "Bloc ajouté",
+    "Hinzugefügter Block",
+    "Bloque añadido"
+  ],
+  "Removed block": [
+    "Bloc supprimé",
+    "Entfernter Block",
+    "Bloque eliminado"
+  ],
+  "Modified block": [
+    "Bloc modifié",
+    "Geänderter Block",
+    "Bloque modificado"
+  ],
+  "Historical version": [
+    "Version historique",
+    "Frühere Version",
+    "Versión histórica"
+  ],
+  "Select a saved version to preview or compare it. Saving, editor undo, and durable history are separate.": [
+    "Sélectionnez une version enregistrée pour l’afficher ou la comparer. L’enregistrement, l’annulation dans l’éditeur et l’historique durable sont distincts.",
+    "Wählen Sie eine gespeicherte Version zur Vorschau oder zum Vergleich. Speichern, Rückgängig im Editor und dauerhafter Verlauf sind getrennt.",
+    "Seleccione una versión guardada para verla o compararla. Guardar, deshacer en el editor y el historial permanente son funciones distintas."
+  ],
+  "Created a separate page from this version.": [
+    "Une page distincte a été créée à partir de cette version.",
+    "Eine separate Seite wurde aus dieser Version erstellt.",
+    "Se ha creado una página independiente desde esta versión."
+  ],
+  "sources": [
+    "sources",
+    "Quellen",
+    "fuentes"
+  ],
+  "Unknown provenance": [
+    "Provenance inconnue",
+    "Unbekannte Herkunft",
+    "Procedencia desconocida"
   ]
 }

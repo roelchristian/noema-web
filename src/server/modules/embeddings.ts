@@ -69,7 +69,7 @@ export class Embeddings {
   for(const [key,entry] of this.queryVectors)if(vault===undefined||entry.vault===vault)this.queryVectors.delete(key);
  }
  /** Cache vectors, never result lists: current indexes are searched on every call. */
- private async queryEmbedding(vault:string,query:string) {
+ async queryEmbedding(vault:string,query:string) {
   this.vaults.requireOpen(vault);
   if(this.closed)throw new HttpError(503,'Search stopped.');
   if(!this.intelligence.status().configured)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');

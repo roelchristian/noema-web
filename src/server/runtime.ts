@@ -67,6 +67,7 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
   };
   const entityMatches=new EntityMatches(store,pages,knowledge);
   const embeddings=new Embeddings(store,pages,knowledge,vaults,intelligence,activity);
+  organizer.smart.setQueryEmbeddingProvider((vault,description)=>embeddings.queryEmbedding(vault,description));
   const sourcePassages=new SourcePassages(store);
   const sourceEnrichments=new SourceEnrichments(store,intelligence,activity);
   const sourcePages=new SourcePages(store,knowledge,pages);

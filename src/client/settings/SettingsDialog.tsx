@@ -1,3 +1,4 @@
+import {Icon} from '../components/Icon';
 import {CalendarSettings} from './CalendarSettings';
 import type {CalendarSettings as CalendarPreferences} from './calendar-settings';
 import {PresentationSelector} from './PresentationSelector';
@@ -19,13 +20,14 @@ import { Select } from '../components/Select';
 import { defaultAppearance, paragraphIndentWidths, fontOptions, themes, type Appearance, type DisplayMode, type FontId, type ParagraphIndentMode, type ParagraphIndentWidth, type ParagraphSpacing } from './appearance';
 
 const settingsTabs = [
-  {id: 'appearance', get label(){return uiText("Appearance")}},
-  {id: 'images', get label(){return uiText("Images")}},
-  {id: 'calendar', get label(){return uiText('Calendar')}},
-  {id: 'knowledge', get label(){return uiText("Entities")}},
-  {id: 'intelligence', get label(){return uiText("AI")}},
-  {id: 'storage', get label(){return uiText("Storage")}},
-  {id: 'security', get label(){return uiText("Security")}},
+  {id: 'appearance', icon:'sliders', get label(){return uiText("Appearance")}},
+  {id: 'images', icon:'image', get label(){return uiText("Images")}},
+  {id: 'calendar', icon:'page:calendar', get label(){return uiText('Calendar')}},
+  {id: 'knowledge', icon:'knowledge', get label(){return uiText("Entities")}},
+  {id: 'intelligence', icon:'sparkles', get label(){return uiText("AI")}},
+  {id: 'voice', icon:'speaker', get label(){return uiText("Voice")}},
+  {id: 'storage', icon:'archive', get label(){return uiText("Storage")}},
+  {id: 'security', icon:'lock', get label(){return uiText("Security")}},
 ] as const;
 
 export function SettingsDialog({initialTab='appearance',calendarSettings,onCalendarSettingsChange,calendarStorageError=false,appearance, onChange, onExitFocus, storageError, onClose, onOpenPage, onOpenEntity, onOpenPassage, vault, onChangePassphrase, onBeforeNetworkChange}: {
@@ -42,21 +44,22 @@ export function SettingsDialog({initialTab='appearance',calendarSettings,onCalen
 }) {
   const {language,setLanguage,storageError:languageStorageError}=useInterfaceLanguage();
   const [tab, setTab] = useState<typeof settingsTabs[number]['id']>(initialTab);
+  const [visited,setVisited]=useState<Set<string>>(()=>new Set([initialTab]));
+  function selectTab(next:typeof settingsTabs[number]['id']){setTab(next);setVisited(current=>new Set([...current,next]));}
   const [activityOpen, setActivityOpen] = useState(false);
-  if (activityOpen) return <AIActivityLog onOpenPage={onOpenPage} onClose={() => setActivityOpen(false)}/>;
-  return <Modal className="settings-modal" titleId="settings-title" onClose={onClose} dismissOnBackdrop>
+  return <><Modal className="settings-modal" titleId="settings-title" onClose={onClose} dismissOnBackdrop>
     <div className="settings-dialog">
       <ModalHeader titleId="settings-title">{uiText("Settings")}</ModalHeader>
-      <div className="settings-tabs" role="tablist" aria-label={uiText("Settings categories")}>
-        {settingsTabs.map(({id: category, label}) => <button key={category} id={'settings-tab-' + category} role="tab" aria-selected={tab === category} aria-controls={'settings-panel-' + category} tabIndex={tab === category ? 0 : -1} onClick={() => setTab(category)} onKeyDown={event => {
-          if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+      <div className="settings-tabs" role="tablist" aria-orientation="vertical" aria-label={uiText("Settings categories")}>
+        {settingsTabs.map(({id: category, label,icon}) => <button key={category} id={'settings-tab-' + category} role="tab" aria-selected={tab === category} aria-controls={category==='intelligence'||category==='voice'?'settings-panel-ai-voice':'settings-panel-'+category} tabIndex={tab === category ? 0 : -1} onClick={() => selectTab(category)} onKeyDown={event => {
+          if (['ArrowUp','ArrowDown','ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
             event.preventDefault();
             const index = settingsTabs.findIndex(item => item.id === category);
-            const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? settingsTabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + settingsTabs.length) % settingsTabs.length;
+            const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? settingsTabs.length - 1 : (index + (['ArrowRight','ArrowDown'].includes(event.key) ? 1 : -1) + settingsTabs.length) % settingsTabs.length;
             const next = settingsTabs[nextIndex]!.id;
-            setTab(next); document.getElementById('settings-tab-' + next)?.focus();
+            selectTab(next); document.getElementById('settings-tab-' + next)?.focus();
           }
-        }}>{label}</button>)}
+        }}><Icon name={icon}/><span>{label}</span></button>)}
       </div>
       <div className="settings-panels">
       <div id="settings-panel-appearance" role="tabpanel" aria-labelledby="settings-tab-appearance" hidden={tab !== 'appearance'}>
@@ -147,28 +150,30 @@ export function SettingsDialog({initialTab='appearance',calendarSettings,onCalen
       </section>
       </div>
       <div id="settings-panel-calendar" role="tabpanel" aria-labelledby="settings-tab-calendar" hidden={tab !== 'calendar'}>
-        {tab === 'calendar' && <CalendarSettings value={calendarSettings} onChange={onCalendarSettingsChange} vault={vault} storageError={calendarStorageError}/>}
+        {visited.has('calendar') && <CalendarSettings value={calendarSettings} onChange={onCalendarSettingsChange} vault={vault} storageError={calendarStorageError}/>}
       </div>
       <div id="settings-panel-images" role="tabpanel" aria-labelledby="settings-tab-images" hidden={tab !== 'images'}>
-        {tab === 'images' && <ImageSettings/>}
+        {visited.has('images') && <ImageSettings/>}
       </div>
       <div id="settings-panel-knowledge" role="tabpanel" aria-labelledby="settings-tab-knowledge" hidden={tab !== 'knowledge'}>
-        {tab === 'knowledge' && <KnowledgeEntitySettings key={vault?.id} vault={vault} appearance={appearance} onChange={onChange} storageError={storageError}/>}
+        {visited.has('knowledge') && <KnowledgeEntitySettings key={vault?.id} vault={vault} appearance={appearance} onChange={onChange} storageError={storageError}/>}
       </div>
-      <div id="settings-panel-intelligence" role="tabpanel" aria-labelledby="settings-tab-intelligence" hidden={tab !== 'intelligence'}>
-        <IntelligenceSettings vaultId={vault&&!vault.locked?vault.id:undefined}/>
-        {tab === 'intelligence' && <details className="settings-advanced"><summary>{uiText("AI diagnostics")}</summary><AIDebugSettings/></details>}
-        {tab === 'intelligence' && <details className="settings-advanced"><summary>{uiText("Search indexing")}</summary><EmbeddingSettings onOpenPassage={onOpenPassage} key={vault?.id} vault={vault} onOpenPage={onOpenPage} onOpenEntity={onOpenEntity}/></details>}
+      <div id="settings-panel-ai-voice" role="tabpanel" aria-labelledby={tab==='voice'?'settings-tab-voice':'settings-tab-intelligence'} hidden={tab !== 'intelligence'&&tab !== 'voice'}>
+        <IntelligenceSettings vaultId={vault&&!vault.locked?vault.id:undefined} visibleSection={tab==='voice'?'voice':'ai'} onShowSection={section=>selectTab(section==='voice'?'voice':'intelligence')}/>
+        <div hidden={tab!=='intelligence'}>
+        {visited.has('intelligence') && <details className="settings-advanced"><summary>{uiText("AI diagnostics")}</summary><AIDebugSettings/></details>}
+        {visited.has('intelligence') && <details className="settings-advanced"><summary>{uiText("Search indexing")}</summary><EmbeddingSettings onOpenPassage={onOpenPassage} key={vault?.id} vault={vault} onOpenPage={onOpenPage} onOpenEntity={onOpenEntity}/></details>}
         <section className="settings-section settings-activity-entry"><div><h3>{uiText("AI activity log")}</h3></div><button className="button" aria-haspopup="dialog" onClick={() => setActivityOpen(true)}>{uiText("Open activity log")}</button></section>
       </div>
+      </div>
       <div id="settings-panel-storage" role="tabpanel" aria-labelledby="settings-tab-storage" hidden={tab !== 'storage'}>
-        {tab === 'storage' && <StorageSettings key={vault?.id} vault={vault}/>}
+        {visited.has('storage') && <StorageSettings key={vault?.id} vault={vault}/>}
       </div>
       <div id="settings-panel-security" role="tabpanel" aria-labelledby="settings-tab-security" hidden={tab !== 'security'}>
-        {tab === 'security' && <SecuritySettings key={vault?.id} vault={vault} onChangePassphrase={onChangePassphrase} onBeforeNetworkChange={onBeforeNetworkChange}/>}
+        {visited.has('security') && <SecuritySettings key={vault?.id} vault={vault} onChangePassphrase={onChangePassphrase} onBeforeNetworkChange={onBeforeNetworkChange}/>}
       </div>
       </div>
       <footer className="settings-footer"><p role="status" hidden={tab !== 'appearance'}>{storageError ? uiText("Browser storage unavailable. Changes won’t persist after reload.") : uiText("Changes saved in this browser.")}</p><div><button className="button" hidden={tab !== 'appearance'} onClick={() => onChange({...defaultAppearance(), entityColors: appearance.entityColors, entityOverrides: appearance.entityOverrides,subtypeIcons:appearance.subtypeIcons})}>{uiText("Restore defaults")}</button><button className="button primary" onClick={onClose}>{uiText("Done")}</button></div></footer>
     </div>
-  </Modal>;
+  </Modal>{activityOpen&&<AIActivityLog onOpenPage={onOpenPage} onClose={() => setActivityOpen(false)}/>}</>;
 }

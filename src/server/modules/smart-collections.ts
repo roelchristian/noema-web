@@ -54,11 +54,11 @@ export class SmartCollections {
    try {
     this.open(vault);const current=this.definition(vault,id);if(!current){finish();return;}
     if(current.revision!==ruleRevision){this.store.run("UPDATE smart_collection_definitions SET status='stale' WHERE vault_id=? AND collection_id=?",vault,id);finish();return;}
-    const semantic=current.matching==='semantic';
-    const ids=dirtyIds?.slice(dirtyOffset,dirtyOffset+100);
+    const semantic=current.matching==='semantic',batchSize=semantic?8:100;
+    const ids=dirtyIds?.slice(dirtyOffset,dirtyOffset+batchSize);
     if(semantic&&(current.query_model!==embeddingModel||current.query_dimensions!==embeddingDimensions))throw new HttpError(409,'Evaluate the semantic description again for the current embedding model');
-    const result=semantic?evaluateSemanticBatch(this.store,vault,this.semantic.parse(JSON.parse(current.semantic_json!)),semanticVector(JSON.parse(current.query_vector!)),after,100,ids,id):evaluateSmartRule(this.store,vault,this.parse(vault,JSON.parse(current.rule_json)),after,100,ids);
-    if(dirtyIds){dirtyOffset+=100;result.hasMore=dirtyOffset<dirtyIds.length;}
+    const result=semantic?evaluateSemanticBatch(this.store,vault,this.semantic.parse(JSON.parse(current.semantic_json!)),semanticVector(JSON.parse(current.query_vector!)),after,batchSize,ids,id):evaluateSmartRule(this.store,vault,this.parse(vault,JSON.parse(current.rule_json)),after,100,ids);
+    if(dirtyIds){dirtyOffset+=batchSize;result.hasMore=dirtyOffset<dirtyIds.length;}
     this.store.transaction(()=>{
      type Cache={item_id:string;matched:number;evidence_json:string;state:string;score:number|null;fingerprint:string};
      const itemIds=ids??result.items.map(item=>item.item_id),placeholders=itemIds.map(()=>'?').join(',');

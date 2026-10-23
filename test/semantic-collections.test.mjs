@@ -124,3 +124,27 @@ test('semantic refresh preserves stale matched evidence through an indexing gap,
  f.store.run('DELETE FROM page_segment_embeddings WHERE segment_id=?',page+'-segment-0');await f.settle(id);const membership=f.org.list(f.vault).memberships.find(item=>item.item_id===page);assert.equal(membership.stale,true);assert.equal(membership.evaluationState,'missing');assert.ok(membership.evidence.some(item=>item.includes('indexing completes')));
  f.store.run('INSERT INTO page_segment_embeddings VALUES(?,?,?,?,?,100,?)',page+'-segment-0',embeddingModel,embeddingDimensions,'hash-'+page+'-segment-0',JSON.stringify(vector(.1)),'2026-10-23');await f.settle(id);assert.equal(f.org.list(f.vault).memberships.some(item=>item.item_id===page&&item.collection_id===id),false);assert.equal(calls,1);
 });
+
+test('unchanged semantic previews reuse revision-keyed results without candidate or vector reads',async t=>{
+ const f=fixture(t);f.page('preview-cache',[.9]);f.semantic.setProvider(async()=>({embedding:vector(),tokens:1}));
+ const response=await f.semantic.evaluateDescription(f.vault,{semantic:config()}),queries=[],all=f.store.all.bind(f.store);
+ t.mock.method(f.store,'all',(sql,...values)=>{if(sql.includes('FROM pages p LEFT JOIN page_index_state')||sql.includes('FROM page_segments s LEFT JOIN page_segment_embeddings'))queries.push(sql);return all(sql,...values);});
+ const body={semantic:config(),evaluationToken:response.evaluationToken};
+ for(let index=0;index<10;index++)assert.equal(f.semantic.preview(f.vault,body).matched,1);
+ assert.equal(queries.length,0);
+ f.semantic.preview(f.vault,{...body,semantic:config({threshold:.6})});assert.ok(queries.length>0);queries.length=0;
+ f.semantic.preview(f.vault,{...body,semantic:config({threshold:.6})});assert.equal(queries.length,0);
+ f.store.run('UPDATE page_segment_embeddings SET updated_at=? WHERE segment_id=?','2026-10-24','preview-cache-segment-0');
+ f.semantic.preview(f.vault,body);assert.ok(queries.length>0);
+ f.vaults.lock(f.vault,{passphrase:'synthetic'});f.vaults.unlock(f.vault,{passphrase:'synthetic'});fails(()=>f.semantic.preview(f.vault,body),409);
+});
+
+test('semantic background work yields after eight pages and preview reports its small sample boundary',async t=>{
+ const f=fixture(t);for(let index=0;index<25;index++)f.page(`bounded-semantic-${String(index).padStart(2,'0')}`,[.9]);
+ f.org.smart.setQueryEmbeddingProvider(async()=>({embedding:vector(),tokens:1}));
+ const response=await f.org.smart.evaluateDescription(f.vault,{semantic:config()});assert.equal(response.preview.evaluated,8);assert.equal(response.preview.hasMore,true);
+ f.org.saveCollection(f.vault,{name:'Small semantic batches',kind:'smart',matching:'semantic',semantic:config(),evaluationToken:response.evaluationToken});
+ const id=f.org.list(f.vault).collections.find(item=>item.name==='Small semantic batches').id;
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(f.store.get('SELECT count(*) n FROM smart_collection_cache WHERE collection_id=?',id).n,8);
+ const collection=await f.settle(id);assert.equal(collection.smart.evaluated,25);assert.equal(collection.smart.matched,25);
+});

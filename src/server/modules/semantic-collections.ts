@@ -4,7 +4,7 @@ import {parseSemanticCollection,type SemanticCollectionDefinition} from '../../s
 import {Store} from '../store.js';
 import {HttpError} from '../validation.js';
 import {Vaults} from './vaults.js';
-import {evaluateSemanticBatch} from './smart-semantic-scoring.js';
+import {evaluateSemanticBatch,type SemanticResult} from './smart-semantic-scoring.js';
 export type QueryEmbeddingProvider=(vault:string,description:string)=>Promise<{embedding:number[];tokens:number}>;
 export const descriptionHash=(description:string)=>createHash('sha256').update(description.trim()).digest('hex');
 export function semanticVector(input:unknown):number[] {
@@ -12,13 +12,20 @@ export function semanticVector(input:unknown):number[] {
  const magnitude=Math.sqrt(input.reduce((sum,value)=>sum+value*value,0));if(!magnitude||!Number.isFinite(magnitude))throw new HttpError(400,'Invalid semantic description vector');
  return input;
 }
+type SemanticPreview={items:SemanticResult[];evaluated:number;matched:number;hasMore:boolean;unevaluated:number;errors:number};
 export class SemanticCollections {
+ private previewCache=new Map<string,{vault:string;epoch:number;result:SemanticPreview}>();
+ clearVaultCache(vault:string){for(const [key,entry] of this.previewCache)if(entry.vault===vault)this.previewCache.delete(key);}
  private provider?:QueryEmbeddingProvider;
  private pending=new Map<string,Promise<{embedding:number[];tokens:number}>>();
  constructor(private store:Store) {}
  setProvider(provider:QueryEmbeddingProvider){this.provider=provider;}
  parse(input:unknown):SemanticCollectionDefinition {try{return parseSemanticCollection(input);}catch(error){throw new HttpError(400,error instanceof Error?error.message:'Invalid semantic description');}}
- private open(vault:string){new Vaults(this.store).requireOpen(vault);}
+ private open(vault:string){
+  const epoch=this.store.get<{epoch:number}>('SELECT epoch FROM smart_collection_vault_epochs WHERE vault_id=?',vault)?.epoch??0;
+  for(const [key,entry] of this.previewCache)if(entry.vault===vault&&entry.epoch!==epoch)this.previewCache.delete(key);
+  new Vaults(this.store).requireOpen(vault);
+ }
  vector(vault:string,config:SemanticCollectionDefinition,body:Record<string,unknown>,existingId?:string):number[] {
   this.open(vault);
   if(body.evaluationToken!==undefined) {
@@ -61,8 +68,21 @@ export class SemanticCollections {
  }
  preview(vault:string,body:Record<string,unknown>) {
   this.open(vault);const config=this.parse(body.semantic),vector=this.vector(vault,config,body,typeof body.collection_id==='string'?body.collection_id:undefined);
-  const result=evaluateSemanticBatch(this.store,vault,config,vector,'',100,undefined,typeof body.collection_id==='string'?body.collection_id:undefined);
-  return {items:result.items.filter(item=>item.matched&&item.state==='evaluated').slice(0,20),evaluated:result.items.filter(item=>item.state==='evaluated'||item.state==='ineligible').length,matched:result.items.filter(item=>item.matched&&item.state==='evaluated').length,hasMore:result.hasMore,unevaluated:result.items.filter(item=>!['evaluated','ineligible'].includes(item.state)).length,errors:result.items.filter(item=>item.state==='error').length};
+  const epoch=this.store.get<{epoch:number}>('SELECT epoch FROM smart_collection_vault_epochs WHERE vault_id=?',vault)?.epoch??0;
+  const revision=this.store.get<{revision:number}>('SELECT revision FROM smart_collection_revisions WHERE vault_id=?',vault)?.revision??0;
+  const collection=typeof body.collection_id==='string'?body.collection_id:undefined;
+  const definition=collection?this.store.get('SELECT revision,evaluated_revision,status,evaluated,matched FROM smart_collection_definitions WHERE vault_id=? AND collection_id=?',vault,collection):undefined;
+  const key=JSON.stringify([vault,epoch,revision,config,descriptionHash(JSON.stringify(vector)),collection,definition]);
+  const cached=this.previewCache.get(key);if(cached)return structuredClone(cached.result);
+  // Even a cold preview is a small sample; the persisted collection refresh yields
+  // after eight pages so long documents cannot monopolise the editor's server.
+  const result=evaluateSemanticBatch(this.store,vault,config,vector,'',8,undefined,collection);
+  const preview:SemanticPreview={items:result.items.filter(item=>item.matched&&item.state==='evaluated').slice(0,20),evaluated:result.items.filter(item=>item.state==='evaluated'||item.state==='ineligible').length,matched:result.items.filter(item=>item.matched&&item.state==='evaluated').length,hasMore:result.hasMore,unevaluated:result.items.filter(item=>!['evaluated','ineligible'].includes(item.state)).length,errors:result.items.filter(item=>item.state==='error').length};
+  this.previewCache.set(key,{vault,epoch,result:preview});
+  const vaultKeys=[...this.previewCache].filter(([,entry])=>entry.vault===vault).map(([key])=>key);
+  for(const oldKey of vaultKeys.slice(0,Math.max(0,vaultKeys.length-32)))this.previewCache.delete(oldKey);
+  while(this.previewCache.size>128)this.previewCache.delete(this.previewCache.keys().next().value!);
+  return structuredClone(preview);
  }
  save(vault:string,id:string,config:SemanticCollectionDefinition,vector:number[]) {
   this.open(vault);config=this.parse(config);

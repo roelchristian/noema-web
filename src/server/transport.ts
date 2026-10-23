@@ -300,7 +300,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           if(parts.length===2 && method==='POST')return send(201,vaults.create(body));
           if(id && parts.length===4 && method==='GET' && child==='deletion-preview')return send(200,vaultDeletion.preview(id));
           if(id && parts.length===4 && method==='POST' && child==='delete')return send(200,vaultDeletion.remove(id,body));
-          if(id && parts.length===4 && method==='POST' && child==='lock'){const result=vaults.lock(id,body);enrichmentScheduler.pauseVault(id);pageEnrichment.pauseVault(id);embeddings.clearQueryCache(id);return send(200,result);}
+          if(id && parts.length===4 && method==='POST' && child==='lock'){const result=vaults.lock(id,body);organizer.smart.semantic.clearVaultCache(id);enrichmentScheduler.pauseVault(id);pageEnrichment.pauseVault(id);embeddings.clearQueryCache(id);return send(200,result);}
           if(id && parts.length===4 && method==='POST' && child==='unlock')return send(200,vaults.unlock(id,body));
         } else {
           const header=req.headers['x-vault-id'];

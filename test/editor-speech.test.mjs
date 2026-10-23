@@ -113,6 +113,60 @@ test('stopping later selection chunks aborts requests and prevents partial playb
   await f.resolve(1);assert.equal(f.created.length,0);assert.equal(document.querySelector('.editor-speech'),null);
 });
 
+test('speech progress reports completed sections and keeps single-section work indeterminate',async t=>{
+  const f=await speechFixture(t);await f.speak('Short selection');
+  assert.equal(document.querySelector('progress').hasAttribute('value'),false);
+  assert.equal(document.querySelector('button').getAttribute('aria-label'),'Cancel speech generation');
+  await f.speak('A'.repeat(5000));
+  assert.equal(document.querySelector('progress').value,0);
+  assert.equal(document.querySelector('progress').max,2);
+  await f.resolve(1);
+  assert.equal(document.querySelector('progress').value,1);
+  assert.match(document.querySelector('.speech-generation-detail').textContent,/1 of 2 sections complete/);
+  await f.resolve(2);
+  assert.equal(document.querySelector('progress'),null);
+  assert.match(document.querySelector('[role=status]').textContent,/Ready to listen/);
+});
+
+test('speech controls follow media playback, seek, speed, buffering and completion',async t=>{
+  const f=await speechFixture(t);await f.speak('Audio');await f.resolve(0);
+  const audio=document.querySelector('audio');
+  let paused=true,ended=false;
+  Object.defineProperties(audio,{duration:{value:90},paused:{get:()=>paused},ended:{get:()=>ended}});
+  t.mock.method(audio,'play',async()=>{paused=false;audio.dispatchEvent(new Event('play'));audio.dispatchEvent(new Event('playing'));});
+  t.mock.method(audio,'pause',()=>{paused=true;audio.dispatchEvent(new Event('pause'));});
+  await act(async()=>audio.dispatchEvent(new Event('loadedmetadata')));
+  const seek=document.querySelector('[aria-label="Seek speech"]');
+  assert.equal(seek.disabled,false);assert.equal(seek.max,'90');
+  await act(async()=>document.querySelector('[aria-label="Play speech"]').click());
+  assert.match(document.querySelector('[role=status]').textContent,/Reading aloud/);
+  await act(async()=>document.querySelector('[aria-label="Pause speech"]').click());
+  assert.equal(paused,true);assert.match(document.querySelector('[role=status]').textContent,/Paused/);
+  const speed=document.querySelector('select');
+  await act(async()=>{speed.value='1.5';speed.dispatchEvent(new Event('change',{bubbles:true}));});
+  assert.equal(audio.playbackRate,1.5);
+  await act(async()=>{
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set.call(seek,'30');
+    seek.dispatchEvent(new Event('input',{bubbles:true}));seek.dispatchEvent(new Event('change',{bubbles:true}));
+  });
+  assert.equal(audio.currentTime,30);assert.equal(seek.getAttribute('aria-valuetext'),'0:30 of 1:30');
+  await act(async()=>audio.dispatchEvent(new Event('waiting')));
+  assert.match(document.querySelector('[role=status]').textContent,/Loading audio/);
+  await act(async()=>{ended=true;audio.dispatchEvent(new Event('ended'));});
+  assert.match(document.querySelector('[role=status]').textContent,/Finished reading/);
+  await act(async()=>document.querySelector('[aria-label="Replay speech"]').click());
+  assert.equal(audio.currentTime,0);assert.match(document.querySelector('[role=status]').textContent,/Reading aloud/);
+});
+
+test('a blocked play attempt leaves audio downloadable with a useful message',async t=>{
+  const f=await speechFixture(t);await f.speak('Audio');await f.resolve(0);
+  t.mock.method(document.querySelector('audio'),'play',async()=>{throw new Error('Not allowed');});
+  await act(async()=>document.querySelector('[aria-label="Play speech"]').click());
+  assert.match(document.querySelector('.speech-notice').textContent,/Press play to try again/);
+  assert.ok(document.querySelector('[aria-label="Play speech"]'));
+  assert.ok(document.querySelector('a[download]'));
+});
+
 test('a later failed chunk never exposes a partial selection download',async t=>{
   const f=await speechFixture(t);await f.speak('A'.repeat(5000));await f.resolve(0);
   await f.resolve(1,Response.json({error:'Speech unavailable.'},{status:503}));

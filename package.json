@@ -22,7 +22,9 @@
     "typecheck:tests": "tsc --noEmit -p tsconfig.test.json",
     "test:native": "node scripts/test-native.mjs",
     "check:styles": "node scripts/check-styles.mjs",
-    "test:design": "node --import tsx scripts/check-design-browser.mjs"
+    "test:design": "node --import tsx scripts/check-design-browser.mjs",
+    "test:dark-mode": "node --import tsx scripts/check-dark-mode-browser.mjs",
+    "test:appearance-bootstrap": "node scripts/check-appearance-bootstrap-browser.mjs"
   },
   "dependencies": {
     "js-tiktoken": "^1.0.21",

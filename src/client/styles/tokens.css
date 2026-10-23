@@ -126,6 +126,19 @@
 :root[data-mode=dark] {
   color-scheme: dark;
   --surface-popover: #292929;
+  --button-border: var(--control-border);
+  --button-surface: var(--surface-raised);
+  --button-surface-hover: var(--surface-hover);
+  --select-border: var(--control-border);
+  --select-border-hover: var(--text-muted);
+  --select-border-expanded: var(--text-muted);
+  --select-text: var(--text);
+  --select-surface-hover: var(--surface-hover);
+  --select-surface-expanded: var(--selection-neutral);
+  --select-surface-disabled: var(--surface-inset);
+  --select-focus: var(--focus-ring);
+  --select-menu-border: var(--line);
+  --shadow-menu: var(--shadow-menu-dark);
   --surface-inset: #202020;
   --selection-neutral: #303030;
   --selection-text: var(--text);
@@ -138,7 +151,8 @@
   --surface-hover: #303030;
   --text: #f0efed;
   --text-muted: #ada9a3;
-  --control-border: #595959;
+  --control-border: #737373;
+  --muted: var(--text-muted);
   --line: #343434;
   --sidebar: #202020;
   --accent-foreground: #191919;

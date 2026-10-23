@@ -204,6 +204,20 @@
   background: var(--math-editor-bg);
   color: var(--text);
 }
+:root[data-mode=dark] .equation-editor-shell {
+  --math-editor-bg: var(--surface-inset);
+  --math-editor-border: var(--line);
+  --latex-command: #b2c9e2;
+  --latex-bracket: #d4bc99;
+  --latex-number: #afcdb4;
+  --latex-operator: #ceb5c8;
+  --latex-comment: #a1a1ab;
+}
+:root[data-mode=dark] .latex-editor>textarea.latex-input {
+  background: transparent;
+  color: transparent;
+  border-color: transparent;
+}
 .equation-editor-shell:focus-within {
   border-color: color-mix(in srgb,var(--math-editor-border) 65%,var(--text-muted));
 }
@@ -1148,7 +1162,7 @@
 .block input[type=checkbox] {
   appearance: none;
   flex-shrink: 0;
-  border: 1px solid light-dark(#c6c6c6, var(--line));
+  border: 1px solid light-dark(#c6c6c6, var(--control-border));
   width: 14px;
   height: 14px;
   border-radius: 3px;
@@ -1375,7 +1389,7 @@
   padding: 20px;
   border: 1px solid light-dark(#e4e4e4, var(--line));
   border-radius: 9px;
-  background: light-dark(white, var(--surface-popover));
+  background: var(--surface-popover);
   box-shadow: 0 12px 40px #0002;
   white-space: normal;
 }
@@ -1445,8 +1459,8 @@
 }
 .mention.culture, .entity-icon.culture {
   background: var(--culture-bg, #f0f0f0);
-  color: light-dark(var(--culture-text, #333), var(--text));
-  border-color: light-dark(var(--culture-border, #d9d9d9), var(--text-muted));
+  color: var(--culture-text, #333);
+  border-color: var(--culture-border, #d9d9d9);
 }
 .mention:hover {
   filter: brightness(.97);

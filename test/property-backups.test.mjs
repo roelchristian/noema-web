@@ -5,7 +5,7 @@ import {SourceFiles} from '../src/server/modules/source-files.ts';
 import {syncSourceProvenance} from '../src/server/modules/source-provenance.ts';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {gzipSync,gunzipSync} from 'node:zlib';
+import {readBackupArchive as unpack,rewriteBackupArchive as alter} from './helpers/backup-archive.mjs';
 import {openDatabase} from '../src/server/database.ts';
 import {Store} from '../src/server/store.ts';
 import {Knowledge} from '../src/server/modules/knowledge.ts';
@@ -14,8 +14,6 @@ import {VaultBackups} from '../src/server/modules/vault-backups.ts';
 import {TemporalIndex} from '../src/server/modules/temporal.ts';
 import {syncPropertyMetadata,persistedPropertyDefinitions,bindPropertyDefinition} from '../src/server/modules/property-storage.ts';
 
-const unpack=bytes=>JSON.parse(gunzipSync(bytes).toString('utf8'));
-const alter=(bytes,work)=>{const archive=unpack(bytes);work(archive);return gzipSync(JSON.stringify(archive));};
 function fixture(t) {
  const directory=mkdtempSync(path.join(tmpdir(),'noema-property-backups-')),db=openDatabase(path.join(directory,'fixture.sqlite')),store=new Store(db),knowledge=new Knowledge(store),vaults=new Vaults(store),vault=vaults.create({name:'Typed backup fixture'}).id,backups=new VaultBackups(store);
  t.after(()=>{db.close();rmSync(directory,{recursive:true,force:true});});

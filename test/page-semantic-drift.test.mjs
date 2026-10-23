@@ -1,3 +1,4 @@
+import {numberedWords,omittedVocabularyTail,legacyTokenEvidence} from './helpers/legacy-content.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
@@ -102,16 +103,11 @@ test('a provider-backed refresh on the same body replaces inferred choices and r
 });
 
 const roundtrip=value=>JSON.parse(JSON.stringify(value));
-const distinctWords=Array.from({length:5000},(_,index)=>`word${index}`);
+const distinctWords=numberedWords(5000);
 const legacyClassification=(original,version=1)=>{
  const baseline=createClassificationBaseline(original);
  const tokens=original.blocks.flatMap(block=>block.content.map(segment=>segment.text??'')).join(' ').toLowerCase().match(/[\p{L}\p{N}]+/gu)??[];
- const tokenCounts=Object.create(null);let retainedWords=0;
- for(const token of tokens){
-  if(Object.hasOwn(tokenCounts,token))tokenCounts[token]++;
-  else if(retainedWords<4096){tokenCounts[token]=1;retainedWords++;}
- }
- return {...baseline,version,tokenCounts,tokenCount:tokens.length};
+ return {...baseline,version,...legacyTokenEvidence(tokens)};
 };
 
 test('long varied note punctuation has zero drift after baseline serialization',()=>{
@@ -135,19 +131,19 @@ for(const version of [undefined,1])test(`complete legacy classification ${versio
 
 test('truncated legacy classification preserves exact content but refreshes changed omitted tokens',()=>{
  const retained=distinctWords.slice(0,4096).join(' ');
- const original=page(retained+' '+'oldtail '.repeat(6000));
+ const original=page(omittedVocabularyTail(retained,'oldtail'));
  const baseline=roundtrip(legacyClassification(original));
  assert.equal(assessSemanticDrift({page:original,baseline}).reason,'unchanged');
- const decision=assessSemanticDrift({page:page(retained+' '+'newtail '.repeat(6000)),baseline});
+ const decision=assessSemanticDrift({page:page(omittedVocabularyTail(retained,'newtail')),baseline});
  assert.equal(decision.needsClassification,true);assert.equal(decision.score,1);
 });
 
 test('uncertain legacy evidence cannot be suppressed by same-discipline or cached embedding safeguards',()=>{
  const retained='algebra theorem '+distinctWords.slice(0,4094).join(' ');
- const original=page(retained+' '+'oldtail '.repeat(6000));
+ const original=page(omittedVocabularyTail(retained,'oldtail'));
  const baseline=roundtrip(legacyClassification(original));
  baseline.embedding={contentHash:baseline.contentHash,vector:[1,0],model:'cached'};
- const updated=page(retained+' '+'newtail '.repeat(6000));
+ const updated=page(omittedVocabularyTail(retained,'newtail'));
  const current=createClassificationBaseline(updated);
  const decision=assessSemanticDrift({page:updated,baseline,currentDomainIds:['mathematics'],embedding:{contentHash:current.contentHash,vector:[1,0],model:'cached'}});
  assert.equal(decision.needsClassification,true);assert.equal(decision.score,1);

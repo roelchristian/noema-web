@@ -1,3 +1,4 @@
+import {numberedWords,omittedVocabularyTail,legacyTokenEvidence} from './helpers/legacy-content.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {summaryBaseline,materiallyStaleSummary} from '../src/server/modules/page-summary-freshness.ts';
@@ -22,16 +23,11 @@ test('new headings and manual title changes stale the summary independently',()=
 });
 
 const roundtrip=value=>JSON.parse(JSON.stringify(value));
-const distinctWords=Array.from({length:5000},(_,index)=>`word${index}`);
+const distinctWords=numberedWords(5000);
 const legacySummary=(text,version)=>{
  const baseline=summaryBaseline(page(text),()=>undefined);
  const tokens=text.toLowerCase().match(/[\p{L}\p{N}]+/gu)??[];
- const tokenCounts=Object.create(null);let retainedWords=0;
- for(const token of tokens){
-  if(Object.hasOwn(tokenCounts,token))tokenCounts[token]++;
-  else if(retainedWords<4096){tokenCounts[token]=1;retainedWords++;}
- }
- return {...baseline,version,tokenCounts,tokenCount:tokens.length};
+ return {...baseline,version,...legacyTokenEvidence(tokens)};
 };
 
 test('5000 distinct words remain fresh after punctuation and serialization',()=>{
@@ -50,13 +46,13 @@ for(const version of [undefined,1])test(`complete legacy summary ${version??'unm
 
 test('truncated legacy summaries cannot silently accept equal-length omitted-tail replacements',()=>{
  const retained=distinctWords.slice(0,4096).join(' ');
- const baseline=roundtrip(legacySummary(retained+' '+'oldtail '.repeat(6000),1));
- const changed=roundtrip(summaryBaseline(page(retained+' '+'newtail '.repeat(6000)),()=>undefined));
+ const baseline=roundtrip(legacySummary(omittedVocabularyTail(retained,'oldtail'),1));
+ const changed=roundtrip(summaryBaseline(page(omittedVocabularyTail(retained,'newtail')),()=>undefined));
  assert.equal(baseline.tokenCount,10096);
  assert.equal(Object.keys(baseline.tokenCounts).length,4096);
  assert.equal(materiallyStaleSummary(baseline,changed),true);
  // A histogram alone cannot prove even unchanged omitted words are the original.
- assert.equal(materiallyStaleSummary(baseline,roundtrip(summaryBaseline(page(retained+' '+'oldtail '.repeat(6000)),()=>undefined))),true);
+ assert.equal(materiallyStaleSummary(baseline,roundtrip(summaryBaseline(page(omittedVocabularyTail(retained,'oldtail')),()=>undefined))),true);
 });
 
 test('serialized generating summary baseline continues to accumulate small edits',()=>{

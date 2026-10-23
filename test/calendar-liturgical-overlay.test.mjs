@@ -1,11 +1,10 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
 import {act,createElement,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {CalendarWorkspace} from '../src/client/calendar/CalendarWorkspace.tsx';
 import {initialCalendarView} from '../src/client/calendar/calendar-model.ts';
-import {normalizeLitcal} from '../src/server/modules/liturgical-providers.ts';
+import {liturgicalUIYear} from './helpers/liturgical-ui.mjs';
 import {temporalDate} from '../src/shared/temporal.ts';
 import {api} from '../src/client/api.ts';
 import {setupDOM} from './helpers/dom.mjs';
@@ -15,7 +14,7 @@ test('GRC overlay shows regular weekdays in the month grid and inspector alongsi
  Object.defineProperty(globalThis,'localStorage',{configurable:true,value:env.dom.window.localStorage});
  env.defer(()=>{if(previous)Object.defineProperty(globalThis,'localStorage',previous);else delete globalThis.localStorage;});
  const root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
- const data=normalizeLitcal(JSON.parse(readFileSync(new URL('./fixtures/liturgical/litcal-2026.json',import.meta.url),'utf8')),2026,'grc-en');
+ const data=liturgicalUIYear();
  let downloads=0;
  t.mock.method(api,'temporalDates',async()=>({items:[],nextOffset:null,indexing:{pending:0,refreshed:0}}));
  t.mock.method(api,'temporalDetail',async(_vault,id)=>({date:temporalDate(id.split(':').at(-1)),curation:null,layer:'knowledge',mentions:[],mentionCount:0,relations:[],relationCount:0,nextMentionOffset:null,nextRelationOffset:null}));
@@ -86,9 +85,7 @@ test('Latin temporal labels use Roman week ordinals in the grid, inspector and a
  Object.defineProperty(globalThis,'localStorage',{configurable:true,value:env.dom.window.localStorage});
  env.defer(()=>{if(previous)Object.defineProperty(globalThis,'localStorage',previous);else delete globalThis.localStorage;});
  const root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
- const fixture=JSON.parse(readFileSync(new URL('./fixtures/liturgical/litcal-2026.json',import.meta.url),'utf8'));
- fixture.settings.locale='la';
- const data=normalizeLitcal(fixture,2026,'grc-la');
+ const data=liturgicalUIYear('grc-la');
  data.days['2026-10-23'].principal.name=cases[1][0];
  data.days['2026-10-23'].principal.colors=['Viridis'];
  data.days['2026-10-01'].principal.name='Sanctæ Teresiæ a Iesu Infante';
@@ -161,7 +158,7 @@ test('month labels abbreviate saint titles without shortening full date labels',
 test('civil gutter and opt-in liturgical captions remain independent of daily observances',async t=>{
  const {CalendarMonthGrid}=await import('../src/client/calendar/CalendarMonthGrid.tsx');
  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
- const data=normalizeLitcal(JSON.parse(readFileSync(new URL('./fixtures/liturgical/litcal-2026.json',import.meta.url),'utf8')),2026,'grc-en');
+ const data=liturgicalUIYear();
  const props={month:'2026-10',selected:null,focusDay:'2026-10-23',weekStart:0,weekNumbers:true,optionalIndicators:true,items:[],weekLiturgy:[data],calendarId:'grc-en',onFocus(){},onKey(){},onChoose(){},busy:false};
  await act(async()=>root.render(createElement(CalendarMonthGrid,{...props,liturgicalLabels:'week'})));
  assert.equal(document.querySelector('[role=columnheader]').textContent,'Wk');

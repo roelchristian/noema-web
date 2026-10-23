@@ -6,6 +6,7 @@ import {readSegments} from '../src/client/editor/segments.tsx';
 
 test('native typing, selection, composition, paste and history input retain browser-owned nodes',async()=>{
   await fixture(async({dom,host,caret,blocks,rerender})=>{
+    assert.equal(document.querySelectorAll('[data-block-id]').length,200,'retain native-node behavior in a large editor');
     const el=host('b87'),text=el.firstChild.firstChild,other=host('b86').firstChild;
     caret(el,5);
     const range=getSelection().getRangeAt(0);range.setEnd(text,10);
@@ -24,18 +25,18 @@ test('native typing, selection, composition, paste and history input retain brow
     Object.defineProperty(paste,'clipboardData',{value:{getData:type=>type==='text/plain'?' fictitious paste':'',files:[]}});
     await act(async()=>el.dispatchEvent(paste));assert.ok(paste.defaultPrevented);
     assert.match(el.textContent,/ fictitious paste$/);assert.deepEqual(blocks()[86].content,readSegments(el));
-  });
+  },{blockCount:200});
 });
 
 test('formatting, external content, entity labels/types/title, removal and numbered order remain live',async()=>{
   await fixture(async({dom,host,blocks,set,entities,onOpen})=>{
-    await set(blocks().map(block=>block.id==='b87'?{...block,content:[{text:'Formatted',bold:true}]}:block));
-    assert.ok(host('b87').querySelector('strong'));
-    await set(blocks().map(block=>block.id==='b87'?{...block,content:[{entityId:'fiction'},{text:' '},{entityId:'fiction',mentionText:'Alias'}]}:block));
+    await set(blocks().map(block=>block.id==='b3'?{...block,content:[{text:'Formatted',bold:true}]}:block));
+    assert.ok(host('b3').querySelector('strong'));
+    await set(blocks().map(block=>block.id==='b3'?{...block,content:[{entityId:'fiction'},{text:' '},{entityId:'fiction',mentionText:'Alias'}]}:block));
     const entity={id:'fiction',name:'Fictional One',type:'person',aliases:[],subtypes:[],properties:{}};
-    await entities([entity]);assert.match(host('b87').textContent,/Fictional One/);
+    await entities([entity]);assert.match(host('b3').textContent,/Fictional One/);
     await entities([{...entity,name:'Fictional Two',type:'organization'}]);
-    const mentions=host('b87').querySelectorAll('[data-entity]');
+    const mentions=host('b3').querySelectorAll('[data-entity]');
     assert.match(mentions[0].textContent,/Fictional Two/);assert.ok(mentions[0].classList.contains('organization'));
     assert.match(mentions[1].textContent,/Alias/);assert.equal(mentions[1].title,'Fictional Two');
     dom.window.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};
@@ -45,30 +46,30 @@ test('formatting, external content, entity labels/types/title, removal and numbe
     assert.deepEqual(opened,[],'click opens occurrence correction');
     await act(async()=>Array.from(document.querySelectorAll('.entity-link-dialog button')).find(button=>button.textContent==='Open entity details').click());
     assert.deepEqual(opened,['fiction'],'correction can open details using the latest callback');
-    await entities([]);assert.match(host('b87').textContent,/Unknown entity/);
-    await set(blocks().map(block=>['b86','b87'].includes(block.id)?{...block,type:'numbered'}:block));
-    assert.equal(host('b86').parentElement.querySelector('.numbered-marker').textContent,'1.');
-    assert.equal(host('b87').parentElement.querySelector('.numbered-marker').textContent,'2.');
-    const next=[...blocks()];[next[85],next[86]]=[next[86],next[85]];await set(next);
-    assert.equal(host('b87').parentElement.querySelector('.numbered-marker').textContent,'1.');
-    assert.equal(host('b86').parentElement.querySelector('.numbered-marker').textContent,'2.');
-    await set(structuredClone(blocks()).map(block=>block.id==='b87'?{...block,type:'todo',checked:true,semantic:'definition'}:block));
-    assert.equal(host('b87').parentElement.querySelector('input').checked,true);
-    assert.equal(host('b87').parentElement.dataset.semanticKind,'definition');
+    await entities([]);assert.match(host('b3').textContent,/Unknown entity/);
+    await set(blocks().map(block=>['b2','b3'].includes(block.id)?{...block,type:'numbered'}:block));
+    assert.equal(host('b2').parentElement.querySelector('.numbered-marker').textContent,'1.');
+    assert.equal(host('b3').parentElement.querySelector('.numbered-marker').textContent,'2.');
+    const next=[...blocks()];[next[1],next[2]]=[next[2],next[1]];await set(next);
+    assert.equal(host('b3').parentElement.querySelector('.numbered-marker').textContent,'1.');
+    assert.equal(host('b2').parentElement.querySelector('.numbered-marker').textContent,'2.');
+    await set(structuredClone(blocks()).map(block=>block.id==='b3'?{...block,type:'todo',checked:true,semantic:'definition'}:block));
+    assert.equal(host('b3').parentElement.querySelector('input').checked,true);
+    assert.equal(host('b3').parentElement.dataset.semanticKind,'definition');
   });
 });
 
 test('citation numbering and review decorations update through the memo boundary',async()=>{
   await fixture(async({host,blocks,set,reviews})=>{
     const ref=(id,sourceId)=>({id,sourceId,fileId:sourceId,sourceHash:'fictional',startLine:1,endLine:2,sourceNumber:1});
-    await set(blocks().map(block=>block.id==='b87'?{...block,content:[{text:'Cited',sourceReference:ref('c87','source87')}]}:block));
-    assert.equal(host('b87').querySelector('[data-citation-number]').dataset.citationNumber,'1');
-    await set(blocks().map(block=>block.id==='b86'?{...block,content:[{text:'Prior',sourceReference:ref('c86','source86')}]}:block));
-    assert.equal(host('b87').querySelector('[data-citation-number]').dataset.citationNumber,'2');
-    await reviews([{id:'review',blockId:'b85',start:0,end:10}]);
+    await set(blocks().map(block=>block.id==='b3'?{...block,content:[{text:'Cited',sourceReference:ref('c87','source87')}]}:block));
+    assert.equal(host('b3').querySelector('[data-citation-number]').dataset.citationNumber,'1');
+    await set(blocks().map(block=>block.id==='b2'?{...block,content:[{text:'Prior',sourceReference:ref('c86','source86')}]}:block));
+    assert.equal(host('b3').querySelector('[data-citation-number]').dataset.citationNumber,'2');
+    await reviews([{id:'review',blockId:'b1',start:0,end:10}]);
     await new Promise(resolve=>setTimeout(resolve,30));
-    assert.equal(host('b85').querySelector('[data-entity-review]').dataset.entityReview,'review');
-    await reviews([]);assert.equal(host('b85').querySelector('[data-entity-review]'),null);
+    assert.equal(host('b1').querySelector('[data-entity-review]').dataset.entityReview,'review');
+    await reviews([]);assert.equal(host('b1').querySelector('[data-entity-review]'),null);
   });
 });
 
@@ -77,12 +78,12 @@ test('keyboard correction in a table preserves lowercase wording and excludes re
     dom.window.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};
     dom.window.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};
     await entities([{id:'fiction',name:'Fictional Idea',mentionCase:'lowercase',type:'concept',subtypes:[],description:''}]);
-    await set(blocks().map(block=>block.id==='b87'?{...block,type:'table',content:[],rows:[[[{entityId:'fiction',skipAutoTag:true}]]]}:block));
-    const mention=host('b87').querySelector('.mention');
+    await set(blocks().map(block=>block.id==='b3'?{...block,type:'table',content:[],rows:[[[{entityId:'fiction',skipAutoTag:true}]]]}:block));
+    const mention=host('b3').querySelector('.mention');
     await act(async()=>mention.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true})));
     assert.ok(document.querySelector('.entity-link-dialog'));
     await act(async()=>Array.from(document.querySelectorAll('.entity-link-dialog button')).find(button=>button.textContent==='Remove link').click());
-    assert.deepEqual(blocks()[86].rows[0][0],[{text:'fictional idea',skipAutoTag:true}]);
+    assert.deepEqual(blocks()[2].rows[0][0],[{text:'fictional idea',skipAutoTag:true}]);
   });
 });
 
@@ -96,25 +97,25 @@ test('pasting mixed HTML and files saves images in order without losing surround
   };
   globalThis.File=dom.window.File;
   try{
-   const el=host('b87');caret(el,10);
+   const el=host('b3');caret(el,10);
    const file=new dom.window.File(['fake gif'],'clipboard.gif',{type:'image/gif'});
    const paste=new dom.window.Event('paste',{bubbles:true,cancelable:true});
    Object.defineProperty(paste,'clipboardData',{value:{getData:type=>type==='text/html'?'<p>Before<img src="file:///clipboard.gif" alt="Diagram">After</p>':type==='text/plain'?'BeforeAfter':'',files:[file]}});
    await act(async()=>{el.dispatchEvent(paste);await new Promise(resolve=>setTimeout(resolve,20));});
    assert.ok(paste.defaultPrevented);assert.equal(uploads.length,1);
-   const inserted=blocks().slice(86,90);
+   const inserted=blocks().slice(2,6);
    assert.deepEqual(inserted.map(b=>b.type),['paragraph','image','paragraph','paragraph']);
    assert.equal(inserted[0].content.map(s=>s.text).join(''),'FictitiousBefore');
    assert.equal(inserted[1].imageId,'pasted-1');assert.equal(inserted[1].alt,'Diagram');
    assert.equal(inserted[2].content.map(s=>s.text).join(''),'After');
-   assert.equal(inserted[3].content.map(s=>s.text).join(''),' paragraph 87');
+   assert.equal(inserted[3].content.map(s=>s.text).join(''),' paragraph 3');
   }finally{globalThis.fetch=previousFetch;globalThis.File=previousFile;}
  });
 });
 
 test('an inaccessible clipboard image reports an error and preserves the pasted text',async()=>{
  await fixture(async({dom,host,caret,blocks})=>{
-  const el=host('b87');caret(el,0);
+  const el=host('b3');caret(el,0);
   const paste=new dom.window.Event('paste',{bubbles:true,cancelable:true});
   Object.defineProperty(paste,'clipboardData',{value:{getData:type=>type==='text/html'?'<p>Before<img src="file:///unavailable.png">After</p>':'',files:[]}});
   await act(async()=>{el.dispatchEvent(paste);await new Promise(resolve=>setTimeout(resolve,20));});
@@ -132,12 +133,12 @@ test('mixed image paste replaces a cross-block selection and survives subsequent
   globalThis.fetch=async()=>{await upload;return {ok:true,json:async()=>({id:'cross-block-image'})};};
   try{
    const {setEditorSelectionRange}=await import('../src/client/editor/block-selection.ts');
-   const range=document.createRange();range.setStart(host('b87').firstChild.firstChild,10);range.setEnd(host('b88').firstChild.firstChild,10);
+   const range=document.createRange();range.setStart(host('b3').firstChild.firstChild,10);range.setEnd(host('b4').firstChild.firstChild,10);
    setEditorSelectionRange(document.querySelector('#blocks'),range);
    const paste=new dom.window.Event('paste',{bubbles:true,cancelable:true});
    const file=new File(['gif'],'clipboard.gif',{type:'image/gif'});
    Object.defineProperty(paste,'clipboardData',{value:{getData:type=>type==='text/html'?'<p>Before<img src="file:///clipboard.gif">After</p>':'BeforeAfter',files:[file]}});
-   await act(async()=>host('b87').dispatchEvent(paste));
+   await act(async()=>host('b3').dispatchEvent(paste));
    assert.ok(paste.defaultPrevented);assert.equal(blocks().filter(b=>b.type==='divider').length,1,'upload placeholders remain valid for autosave');
    const trailing=blocks().find(b=>b.content.some(s=>s.text==='After'));
    assert.ok(trailing);
@@ -179,7 +180,7 @@ test('undo and redo treat an uploaded clipboard image as part of its paste',asyn
   const previousFetch=globalThis.fetch;
   globalThis.fetch=async()=>({ok:true,json:async()=>({id:'history.gif'})});
   try{
-   const original=blocks(),el=host('b87');caret(el,10);
+   const original=blocks(),el=host('b3');caret(el,10);
    const file=new File(['gif'],'clipboard.gif',{type:'image/gif'}),paste=new dom.window.Event('paste',{bubbles:true,cancelable:true});
    Object.defineProperty(paste,'clipboardData',{value:{getData:type=>type==='text/html'?'<p>Before<img src="file:///clipboard.gif">After</p>':'BeforeAfter',files:[file]}});
    await act(async()=>{el.dispatchEvent(paste);await new Promise(resolve=>setTimeout(resolve,20));});
@@ -187,7 +188,7 @@ test('undo and redo treat an uploaded clipboard image as part of its paste',asyn
    const target=document.querySelector('.block-content');
    await act(async()=>target.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true})));
    assert.deepEqual(blocks(),original,'one undo removes the whole paste');
-   await act(async()=>host('b87').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'z',ctrlKey:true,shiftKey:true,bubbles:true,cancelable:true})));
+   await act(async()=>host('b3').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'z',ctrlKey:true,shiftKey:true,bubbles:true,cancelable:true})));
    assert.ok(blocks().some(b=>b.imageId==='history.gif'),'redo restores the saved image');assert.equal(blocks().some(b=>b.type==='divider'),false);
   }finally{globalThis.fetch=previousFetch;}
  });}finally{if(previousHistory===undefined)delete process.env.MEASURE_HISTORY;else process.env.MEASURE_HISTORY=previousHistory;}
@@ -203,7 +204,7 @@ test('paragraph openings follow headings and dividers as blocks change', async (
     assert.deepEqual(positions(), ['first','continuation','continuation','continuation','continuation','continuation']);
     await set(original.slice(1, 6));
     assert.equal(host('b2').closest('[data-block-id]').dataset.paragraphFlow, 'first');
-  });
+  }, {blockCount:7});
 });
 
 test('empty paragraphs and callouts do not consume section openings, with independent column flow', async () => {
@@ -235,7 +236,7 @@ test('locked page paragraphs retain the same section openings as editable paragr
       assert.equal(readonly.dataset.paragraphFlow, host(block.id).closest('[data-block-id]').dataset.paragraphFlow);
       assert.equal(readonly.querySelector('.block-content').textContent, host(block.id).textContent);
     }
-  });
+  }, {blockCount:7});
 });
 
 

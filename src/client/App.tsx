@@ -247,7 +247,7 @@ export function App() {
       if (!focusWorkspace || e.key !== 'Escape') return;
       // Snapshot ownership before a nested handler synchronously removes its UI.
       const menuOpen = [...document.querySelectorAll<HTMLElement>('[role=menu], [role=listbox]')].some(menu => menu.getClientRects().length > 0 || menu.contains(e.target as Node));
-      if (menuOpen || document.querySelector('dialog[open], .document-find, .search-panel')) nestedEscapes.add(e);
+      if (menuOpen || document.querySelector('dialog[open], .document-find-shell[data-state="open"] .document-find, .search-panel')) nestedEscapes.add(e);
     };
     const keyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' && !document.querySelector('dialog[open]') && workspace.snapshot().vault && !workspace.snapshot().vault?.locked) { e.preventDefault(); workspace.closeEntity(); setSearchOpen(value=>!value); }

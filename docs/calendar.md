@@ -358,3 +358,39 @@ curation and evidence live in the Calendar inspector. No multilingual extraction
 beyond English is claimed. Advanced Phase 5 remains deferred: historical/entity
 timelines, recurrence/reminders, and external calendar integrations. Philippine
 propers, lectionary/propers/readings and regional transfer settings are excluded.
+
+## Final integration verification
+
+Phase 4 before main integration passed the build (styles and application/test
+helper/server typechecks), 798 tests (792 pass, six explicit macOS-only skips),
+and all seven browser harnesses sequentially. Current main `cc8c399` was merged
+with both Calendar and presentation imports preserved. The integrated full suite
+passed 803 tests: 797 pass, six explicit macOS-only skips, zero failures.
+All seven browser harnesses passed sequentially on the integrated tree after
+the Escape guard fix; screenshots and
+machine-readable Calendar checks are retained outside the repository with
+synthetic fixtures only. No screenshot delivery success is claimed: Library's
+connection-check failed before upload, and no file IDs were returned.
+
+During integrated browser validation, document-find's old selector counted four
+closed-menu buttons at 0×0 along with eight visible 44×44 controls. Its assertion
+now checks visible controls in both dimensions, retains minimum control count,
+and reports measured diagnostics. No product style change was needed. Two cold
+fixture starts also exceeded the previous shared seven-second deadline while Vite
+logged dependency scanning/bundling. Only the initial fixture navigation now has a
+30-second setup budget; all interaction deadlines and other assertions remain.
+These findings are separate from the unconfirmed earlier source-reading timeout.
+The production find flow also used a removed toolbar button after main moved
+Find into More page actions; its harness now follows that actual menu route.
+Main integration also exposed a real rapid-Escape boundary: Focus's nested-panel
+guard consumed Escape while Find was already closing/inert for its 200ms animation.
+It now recognizes only an open Find panel, preserving first-Escape dismissal while
+allowing a second Escape to leave Focus. The production browser flow exercises
+this immediate sequence; this is independent of Calendar evidence state.
+
+The final post-fix build/styles/typechecks and 803-test suite passed again
+(797 pass, six macOS-only skips), followed by a green complete `test:browser`
+command. The production presentation checks passed rapid Find/Escape priority,
+repeated mode restoration, reload, mobile interactions and data fidelity; Calendar
+checks passed exact/stale evidence, interrupted navigation, editor draft/caret,
+source/property review, overlay independence/cache/error states and 44px targets.

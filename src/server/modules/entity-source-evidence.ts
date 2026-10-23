@@ -1,4 +1,5 @@
 import type {Block,Segment,SourceFile,SourceReference} from '../../shared/domain.js';
+import {sourcePreviewRank} from '../../shared/entity-evidence.js';
 import type {EntityEvidence,EntitySourceEvidenceReason,EntitySourceEvidenceGroup,EntitySourcePassage} from '../../shared/entity-evidence.js';
 import {sourcePageRange,sourceTextLines} from '../../shared/source-text.js';
 import {Store} from '../store.js';
@@ -17,10 +18,11 @@ function nameMatcher(names:string[]) {
 }
 /** Evidence is deterministic and paid-model free. Citations require a mention in the same
  * content run (table cells are independent); page associations only admit reading anchors. */
-export function entitySourceEvidence(store:Store,vault:string,entityId:string,options:{offset?:number;limit?:number}={}):EntityEvidence {
+export function entitySourceEvidence(store:Store,vault:string,entityId:string,options:{offset?:number;limit?:number;preview?:boolean}={}):EntityEvidence {
  new Vaults(store).requireOpen(vault);
  const entity=store.get<{name:string;aliases:string}>('SELECT name,aliases FROM entities WHERE id=? AND vault_id=?',entityId,vault);
  if(!entity)throw new HttpError(404,'Entity not found');
+ const pageCap=options.preview?12:PAGE_CAP,candidateCap=options.preview?24:CANDIDATE_CAP;
  const allNames=[...new Set([entity.name,...JSON.parse(entity.aliases) as string[]].map(name=>name.trim().normalize('NFC')).filter(Boolean))];
  const names=allNames.slice(0,NAME_CAP),matches=nameMatcher(names);
  let truncated=allNames.length>NAME_CAP;
@@ -68,9 +70,9 @@ export function entitySourceEvidence(store:Store,vault:string,entityId:string,op
  };
  const pages=store.all<{id:string;blocks:string;associated:number}>(`SELECT p.id,p.blocks,EXISTS(SELECT 1 FROM entity_page_associations a WHERE a.page_id=p.id AND a.entity_id=?) AS associated
   FROM pages p WHERE p.vault_id=? AND p.deleted_at IS NULL AND (EXISTS(SELECT 1 FROM entity_page_associations a WHERE a.page_id=p.id AND a.entity_id=?)
-   OR EXISTS(SELECT 1 FROM json_tree(p.blocks) j WHERE j.key='entityId' AND j.value=?)) ORDER BY p.id LIMIT ?`,entityId,vault,entityId,entityId,PAGE_CAP+1);
- if(pages.length>PAGE_CAP)truncated=true;
- for(const page of pages.slice(0,PAGE_CAP)) {
+   OR EXISTS(SELECT 1 FROM json_tree(p.blocks) j WHERE j.key='entityId' AND j.value=?)) ORDER BY p.id LIMIT ?`,entityId,vault,entityId,entityId,pageCap+1);
+ if(pages.length>pageCap)truncated=true;
+ for(const page of pages.slice(0,pageCap)) {
   const blocks=JSON.parse(page.blocks) as Block[];let mentioned=false;
   const scan=(segments:Segment[])=>{
    if(!segments.some(segment=>segment.entityId===entityId))return;
@@ -83,23 +85,25 @@ export function entitySourceEvidence(store:Store,vault:string,entityId:string,op
   }
  }
  const highlights=store.all<{reference_json:string;excerpt:string}>(`SELECT h.reference_json,h.excerpt FROM highlights h JOIN source_files f ON f.id=h.file_id AND f.entity_id=h.source_id
-  JOIN entities e ON e.id=h.source_id AND e.vault_id=h.vault_id WHERE h.vault_id=? AND f.vault_id=? AND f.admitted=1 AND e.inactive=0 ORDER BY h.id LIMIT ?`,vault,vault,CANDIDATE_CAP+1);
- if(highlights.length>CANDIDATE_CAP)truncated=true;
- for(const highlight of highlights.slice(0,CANDIDATE_CAP))if(matches(highlight.excerpt))add(JSON.parse(highlight.reference_json) as SourceReference,'highlight');
- new SourcePassages(store).synchronize(vault);
+  JOIN entities e ON e.id=h.source_id AND e.vault_id=h.vault_id WHERE h.vault_id=? AND f.vault_id=? AND f.admitted=1 AND e.inactive=0 ORDER BY h.id LIMIT ?`,vault,vault,candidateCap+1);
+ if(highlights.length>candidateCap)truncated=true;
+ for(const highlight of highlights.slice(0,candidateCap))if(matches(highlight.excerpt))add(JSON.parse(highlight.reference_json) as SourceReference,'highlight');
+ if(!options.preview)new SourcePassages(store).synchronize(vault);
  // Quotes are doubled inside FTS phrase literals. No raw alias can introduce an operator.
  const phrases=names.filter(name=>/[\p{L}\p{N}]/u.test(name)).map(name=>'"'+name.replaceAll('"','""')+'"');
  if(phrases.length) {
   const passages=store.all<SourcePassage>(`SELECT p.* FROM source_passages_fts JOIN source_passages p ON p.rowid=source_passages_fts.rowid
    JOIN source_files f ON f.id=p.file_id AND f.entity_id=p.source_id AND f.vault_id=p.vault_id JOIN entities e ON e.id=p.source_id AND e.vault_id=p.vault_id
-   WHERE source_passages_fts MATCH ? AND p.vault_id=? AND f.admitted=1 AND f.status='ready' AND e.type='source' AND e.inactive=0 ORDER BY p.source_id,p.file_id,p.ordinal LIMIT ?`,phrases.join(' OR '),vault,CANDIDATE_CAP+1);
-  if(passages.length>CANDIDATE_CAP)truncated=true;
-  for(const passage of passages.slice(0,CANDIDATE_CAP))if(matches(passage.text))add(passageReference(passage),'source-mention',undefined,passage.heading??undefined);
+   WHERE source_passages_fts MATCH ? AND p.vault_id=? AND f.admitted=1 AND f.status='ready' AND e.type='source' AND e.inactive=0 ORDER BY p.source_id,p.file_id,p.ordinal LIMIT ?`,phrases.join(' OR '),vault,candidateCap+1);
+  if(passages.length>candidateCap)truncated=true;
+  for(const passage of passages.slice(0,candidateCap))if(matches(passage.text))add(passageReference(passage),'source-mention',undefined,passage.heading??undefined);
  }
  const offset=Number.isSafeInteger(options.offset)?Math.max(0,options.offset!):0,limit=Number.isSafeInteger(options.limit)?Math.min(40,Math.max(1,options.limit!)):20;
  const ordered=[...evidence.values()].sort((a,b)=>a.passage.reference.sourceId.localeCompare(b.passage.reference.sourceId)||a.passage.reference.fileId.localeCompare(b.passage.reference.fileId)||a.passage.reference.startLine-b.passage.reference.startLine||a.passage.id.localeCompare(b.passage.id));
- const selected=ordered.slice(offset,offset+limit),groups:EntitySourceEvidenceGroup[]=[];
+ const sourceIds=new Set<string>();
+ const preview=options.preview ? [...ordered].sort((a,b)=>sourcePreviewRank(a.passage)-sourcePreviewRank(b.passage)||a.passage.reference.sourceId.localeCompare(b.passage.reference.sourceId)||a.passage.id.localeCompare(b.passage.id)).filter(item=>{const id=item.passage.reference.sourceId;if(sourceIds.has(id))return false;sourceIds.add(id);return true;}) : ordered;
+ const selected=preview.slice(offset,offset+(options.preview?6:limit)),groups:EntitySourceEvidenceGroup[]=[];
  for(const {sourceName,passage} of selected){let group=groups.find(group=>group.sourceId===passage.reference.sourceId);if(!group){group={sourceId:passage.reference.sourceId,sourceName,passages:[]};groups.push(group);}group.passages.push(passage);}
- const hasMore=offset+selected.length<ordered.length;
+ const hasMore=offset+selected.length<preview.length;
  return {groups,hasMore,...(hasMore?{nextOffset:offset+selected.length}:{}),truncated};
 }

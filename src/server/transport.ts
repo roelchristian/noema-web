@@ -486,7 +486,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             if(id && child==='evidence' && parts.length===4 && method==='GET') {
               const offset=Number(url.searchParams.get('offset')??0);
               if(!Number.isSafeInteger(offset)||offset<0)throw new HttpError(400,'Invalid evidence offset.');
-              return send(200,entitySourceEvidence(store,vault,id,{offset}));
+              return send(200,entitySourceEvidence(store,vault,id,{offset,preview:url.searchParams.get('preview')==='1'}));
             }
             if(id && child==='pages' && parts.length===4 && method==='POST')return send(201,knowledge.createPage(vault,id,body,pages));
             if(id && child==='overview' && parts.length===4 && method==='PUT')return send(200,knowledge.saveOverview(vault,id,body));
@@ -508,7 +508,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             if(parts.length===2 && method==='GET')return send(200,knowledge.list(vault));
             if(parts.length===2 && method==='POST')return send(201,knowledge.create(vault,body));
             if(id && parts.length===3) {
-              if(method==='GET')return send(200,knowledge.detail(vault,id));
+              if(method==='GET')return send(200,knowledge.detail(vault,id,url.searchParams.get('preview')==='1'));
               if(method==='PUT')return send(200,knowledge.update(vault,id,body));
             }
             if(id && (child==='properties'||child==='relationships')) {

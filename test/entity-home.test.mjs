@@ -5,6 +5,7 @@ import {createRoot} from 'react-dom/client';
 import {JSDOM} from 'jsdom';
 import {EntityPanel} from '../src/client/knowledge/EntityPanel.tsx';
 import {EntityHome} from '../src/client/knowledge/EntityHome.tsx';
+import {ReviewDestination} from '../src/client/review/review-destination.ts';
 import {entityTypes} from '../src/shared/domain.ts';
 import {api} from '../src/client/api.ts';
 import {entityDraftValues,setEntityDraft,hasEntityDraft,clearEntityDrafts} from '../src/client/knowledge/entity-drafts.ts';
@@ -22,6 +23,7 @@ async function fixture(t,work){
  const other={...entity,id:'other',name:'London',type:'place'};
  t.mock.method(api,'entity',async()=>entity);
  t.mock.method(api,'entityEvidence',async()=>({groups:[],hasMore:false,truncated:false}));
+ t.mock.method(api,'entityOverviewEvidence',async()=>({groups:[],hasMore:false,truncated:false}));
  t.mock.method(api,'entitySchema',async()=>({properties:Object.fromEntries(entityTypes.map(type=>[type,[]])),subtypes:[],subtypeProperties:{}}));
  const props={vaultId:'v',id:'e',entities:[entity,other],refreshKey:'',onOpen(){},onClose(){},onUpdated:async()=>{},onError(error){throw error;},onOpenPage(){},onCreatePageFromSource(){}};
  const root=createRoot(document.querySelector('#mount'));
@@ -117,5 +119,24 @@ test('homepage keeps grouped lists default and exposes optional neighborhood and
   await click('#entity-home-tab-discovery');
   assert.match(document.querySelector('.eh-discovery').textContent,/Explore with AI/);
   assert.equal(generate.mock.callCount(),0);
+ });
+});
+
+
+test('Review Centre Discovery intent overrides saved tabs and retains an already loaded entity',async t=>{
+ await fixture(t,async({props,root,click})=>{
+  t.mock.method(api,'entityDiscovery',async()=>null);
+  const generate=t.mock.method(api,'generateEntityDiscovery',async()=>assert.fail('Navigation must not generate discovery'));
+  const render=async value=>act(async()=>root.render(React.createElement(ReviewDestination.Provider,{value},React.createElement(EntityHome,props))));
+  await render(null);await click('#entity-home-tab-connections');
+  const heading=document.querySelector('.entity-home h1');
+  const destination={id:'discovery:e:run',category:'discovery',originId:'e',title:'Ada',runId:'run',group:'decisions',state:'pending',decision:'Review saved discovery',count:1,updatedAt:''};
+  await render(destination);
+  assert.equal(document.querySelector('.entity-home h1'),heading,'same entity stays loaded on context change');
+  assert.equal(document.querySelector('#entity-home-tab-discovery').getAttribute('aria-selected'),'true');
+  assert.equal(generate.mock.callCount(),0);
+  await click('#entity-home-tab-overview');assert.equal(document.querySelector('#entity-home-tab-overview').getAttribute('aria-selected'),'true');
+  await act(async()=>root.render(null));await render(destination);
+  assert.equal(document.querySelector('#entity-home-tab-discovery').getAttribute('aria-selected'),'true','review intent takes priority over saved Overview');
  });
 });

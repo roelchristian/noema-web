@@ -97,3 +97,13 @@ test('both raw and cleaned math source revisions remain valid evidence',t=>{
  f.store.run('INSERT INTO source_math_documents (file_id,raw_hash,cleaned_text,uncertainty_json,updated_at,algorithm_version) VALUES (?,?,?,?,?,2)',source.file.id,source.ref.sourceHash,cleaned,'[]','2026-10-22');f.store.run('INSERT OR IGNORE INTO source_passage_dirty(file_id,vault_id) VALUES(?,?)',source.file.id,f.vault);
  const results=f.passages();assert.equal(results.length,2);assert.ok(results.every(p=>!p.stale));assert.ok(results.some(p=>p.reference.sourceHash===sourceTextHash(cleaned)));
 });
+
+test('Overview evidence is a bounded read-only window and does not synchronize the source index',t=>{
+ const f=fixture(t);const source=f.source('Ada is a synthetic name.');
+ f.page([block([{entityId:f.entity.id},{text:'[1]',sourceReference:source.ref}])]);
+ const before=f.store.get('SELECT total_changes() AS n').n;
+ const result=f.evidence({preview:true});assert.equal(result.groups.length,1);assert.deepEqual(result.groups[0].passages[0].reasons,['citation','source-mention']);
+ assert.equal(f.store.get('SELECT total_changes() AS n').n,before);
+ for(let i=0;i<8;i++)f.source('Ada in another synthetic source '+i);
+ assert.ok(f.evidence({preview:true}).groups.flatMap(group=>group.passages).length<=6);
+});

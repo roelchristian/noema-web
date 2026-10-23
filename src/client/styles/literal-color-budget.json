@@ -1,9 +1,9 @@
 {
-  "styles/tokens.css": 69,
+  "styles/tokens.css": 79,
   "styles/fonts.css": 0,
   "styles/primitives.css": 12,
-  "styles/layout.css": 51,
-  "styles/features/editor.css": 116,
+  "styles/layout.css": 46,
+  "styles/features/editor.css": 121,
   "styles/features/library.css": 33,
   "styles/features/knowledge.css": 82,
   "styles/features/sources.css": 37,

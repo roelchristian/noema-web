@@ -32,6 +32,7 @@ export function useAppearance() {
     const theme = themes.find(theme => theme.id === appearance.theme)!;
     const mode = resolveDisplayMode(appearance.mode, systemDark);
     root.dataset.mode = mode;
+    root.style.colorScheme = mode;
     root.dataset.focusedReading = String(presentationTraits(appearance.presentationMode).entityEmphasis === 'subtle');
     root.style.setProperty('--font-ui', fontFamily(appearance.bodyFont));
     root.style.setProperty('--font-title', fontFamily(appearance.headingFont));

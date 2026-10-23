@@ -179,6 +179,9 @@
     "test/source-provenance-governance.test.mjs",
     "test/property-provenance-http.test.mjs",
     "test/semantic-collections.test.mjs",
-    "test/intelligent-collections.test.mjs"
+    "test/intelligent-collections.test.mjs",
+    "test/page-history.test.mjs",
+    "test/page-history-backups.test.mjs",
+    "test/page-history-paths.test.mjs"
   ]
 }

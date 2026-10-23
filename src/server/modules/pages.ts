@@ -1,3 +1,4 @@
+import {PageHistory} from './page-history.js';
 import {parsePageGenerationMetadata} from '../../shared/page-generation.js';
 import {parsePersonaIdentity} from '../../shared/ai-personas.js';
 import {readingNoteMaxWords,readingNoteWordCount,type ReadingNoteMetadata} from '../../shared/source-reading.js';
@@ -116,7 +117,7 @@ export class Pages {
     });
     return this.get(vault,id);
   }
-  create(vault: string, body: Record<string, unknown>) {
+  create(vault: string, body: Record<string, unknown>, captureHistory=true) {
     const id=randomUUID(),createdAt=now();
     const destination=body.destination===undefined?{}:object(body.destination);
     const collection=destination.collection == null || destination.collection === '' ? null : required(destination.collection);
@@ -132,6 +133,7 @@ export class Pages {
       const provenance=new PageEnrichmentState(this.store);
       if(typeof body.title==='string'&&body.title.trim()&&body.title.trim()!=='Untitled')provenance.markManual(id,'title');
       if(pageLanguage(body.language))provenance.markManual(id,'language');
+      if(captureHistory)new PageHistory(this.store).capture(vault,id,'created');
       this.store.db.exec('RELEASE create_page');
     } catch(error) {
       this.store.db.exec('ROLLBACK TO create_page; RELEASE create_page');
@@ -139,7 +141,7 @@ export class Pages {
     }
     return this.get(vault,id);
   }
-  validateBlocks(vault: string, input: unknown): Block[] {
+  validateBlocks(vault: string, input: unknown, historical=false): Block[] {
     if (!Array.isArray(input) || input.length>2000) throw new HttpError(400,'Invalid blocks');
     const ids=new Set<string>();
     const validated = input.map(value=>{
@@ -152,14 +154,14 @@ export class Pages {
           const segment=object(value);
           if(segment.entityId) {
             const entityId=required(segment.entityId);
-            if(!this.knowledge.find(vault,entityId))throw new HttpError(400,'Referenced entity does not exist');
+            if(!historical&&!this.knowledge.find(vault,entityId))throw new HttpError(400,'Referenced entity does not exist');
             return {entityId, ...(segment.skipAutoTag === true ? {skipAutoTag:true} : {}), ...(segment.mentionText !== undefined ? {mentionText: text(segment.mentionText,10000)} : {})};
           }
           const result: Segment = {text:text(segment.text)};
           for (const mark of ['bold','italic','underline','strike','code','math','skipAutoTag'] as const) if(segment[mark] === true) result[mark]=true;
           if(segment.sourceReference!==undefined) {
             const ref=object(segment.sourceReference),sourceId=required(ref.sourceId),fileId=required(ref.fileId);
-            if(this.knowledge.find(vault,sourceId)?.type!=='source'||!this.store.get('SELECT 1 FROM source_files WHERE id=? AND entity_id=? AND vault_id=?',fileId,sourceId,vault))throw new HttpError(400,'Invalid citation source');
+            if(!historical&&(this.knowledge.find(vault,sourceId)?.type!=='source'||!this.store.get('SELECT 1 FROM source_files WHERE id=? AND entity_id=? AND vault_id=?',fileId,sourceId,vault)))throw new HttpError(400,'Invalid citation source');
             if(!Number.isSafeInteger(ref.startLine)||!Number.isSafeInteger(ref.endLine)||(ref.startLine as number)<1||(ref.endLine as number)<(ref.startLine as number)||(ref.nodeId===undefined&&ref.userLocator===undefined&&(ref.endLine as number)-(ref.startLine as number)>=30)||typeof ref.sourceHash!=='string'||!/^[a-f0-9]{64}$/.test(ref.sourceHash)||segment.math||segment.code)throw new HttpError(400,'Invalid source reference');
             if(ref.sourceNumber!==undefined&&(!Number.isSafeInteger(ref.sourceNumber)||(ref.sourceNumber as number)<1||(ref.sourceNumber as number)>1_000_000_000))throw new HttpError(400,'Invalid source number');
             if(ref.startPage!==undefined&&(!Number.isInteger(ref.startPage)||!Number.isInteger(ref.endPage)||(ref.startPage as number)<1||(ref.endPage as number)<(ref.startPage as number)||(ref.endPage as number)>1000))throw new HttpError(400,'Invalid citation page');
@@ -274,8 +276,11 @@ export class Pages {
     // are persisted independently and projected as ai_assisted when reading.
     const storedAIStatus=aiStatus==='ai_assisted'?(blocks.some(isAIExplanation)?'regular_with_ai_explanations':'regular'):aiStatus;
     this.store.transaction(()=>{
+      const current=this.store.get<{revision:number}>('SELECT revision FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',id,vault);
+      if(!current||current.revision!==page.revision)throw new HttpError(409,'This page changed in another window. Reload the latest page before saving.');
+      const history=new PageHistory(this.store);history.baseline(vault,id);
       const state=new PageEnrichmentState(this.store);
-      if(title!==page.title)state.markManual(id,'title');
+      if(title!==page.title||body.titleEdited===true)state.markManual(id,'title');
       if(language!==page.language) {
         state.markManual(id,'language');
         this.store.run("INSERT INTO page_ai_enrichments (page_id,kind,data,revision,model,reasoning_effort,updated_at) VALUES (?,'language',?,?,'manual','none',?) ON CONFLICT(page_id,kind) DO UPDATE SET data=excluded.data,revision=excluded.revision,updated_at=excluded.updated_at",id,JSON.stringify({language,origin:'manual'}),page.revision+1,now());
@@ -284,6 +289,7 @@ export class Pages {
       this.store.run('UPDATE pages SET title=?,language=?,icon=?,featured_image_id=?,blocks=?,ai_status=?,ai_review_accepted=MAX(ai_review_accepted,?),updated_at=?,revision=revision+1 WHERE id=? AND vault_id=?',title,language,icon,featuredImageId,JSON.stringify(blocks),storedAIStatus,body.aiReviewAccepted===true?1:0,now(),id,vault);
       this.store.run('DELETE FROM page_sources WHERE page_id=?',id);
       for(const source of new Set(sourceIds as string[]))this.store.run('INSERT INTO page_sources VALUES (?,?)',id,source);
+      history.capture(vault,id,'edit');
       if(title!==page.title && (!page.title.trim()||page.title.trim()==='Untitled')) {
         const generated=this.store.get<{data:string;revision:number}>("SELECT data,revision FROM page_ai_enrichments WHERE page_id=? AND kind='title'",id);
         if(generated?.revision===page.revision && JSON.parse(generated.data).title===title) new AINotifications(this.store).record(vault,id,'page_title');

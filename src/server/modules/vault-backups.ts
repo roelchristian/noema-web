@@ -36,6 +36,7 @@ import {isPageIconId} from '../../shared/page-icons.js';
 import {Store} from '../store.js';
 import {HttpError,now,object,required,text} from '../validation.js';
 import {Images} from './images.js';
+import {restorePageVersions} from './page-history-backup.js';
 import {Knowledge} from './knowledge.js';
 import {Pages} from './pages.js';
 import {Vaults} from './vaults.js';
@@ -61,6 +62,7 @@ const tables={
   property_definitions:{columns:'id,definition_json',scope:'vault_id=?'},
   property_value_metadata:{columns:'property_id,definition_id,compatibility,reason,integer_value,decimal_value,boolean_value,text_value,latitude,longitude,unit,position,target_id,temporal_date_id',scope:'vault_id=?'},
   temporal_relations:{columns:'id,date_id,entity_id,mention_id,kind,origin,status,confidence,source_mention_id,property_id,property_hash',scope:'vault_id=?'},
+  page_versions:{columns:'id,page_id,page_revision,created_at,kind,name,pinned,content_hash,snapshot_json,restored_from_version_id',scope:'vault_id=?'},
   pages:{columns:'id,title,icon,featured_image_id,blocks,ai_status,ai_review_accepted,generation_metadata,creation_method,language,created_at,updated_at,revision,deleted_at',scope:'vault_id=?'},
   source_reprocessing:{columns:'id,file_id,status,created_at,updated_at,payload',scope:'vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL)'},
   source_math_documents:{columns:'file_id,raw_hash,algorithm_version,cleaned_text,uncertainty_json,updated_at',scope:'file_id IN (SELECT id FROM source_files WHERE vault_id=? AND entity_id IS NOT NULL)'},
@@ -134,6 +136,7 @@ export class VaultBackups {
         if(typeof page.featured_image_id==='string')imageIds.add(page.featured_image_id);
         for(const block of JSON.parse(page.blocks as string))if(block.type==='image'&&block.imageId)imageIds.add(block.imageId);
       }
+      for(const row of this.store.all<{image_id:string}>('SELECT DISTINCT i.image_id FROM page_version_images i JOIN page_versions v ON v.id=i.version_id WHERE v.vault_id=?',vault))imageIds.add(row.image_id);
       const images=[...imageIds].map(id=>{
         const bytes=this.images.get(vault,id).bytes;
         estimated+=Math.ceil(bytes.length/3)*4+id.length+32;
@@ -166,7 +169,7 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table.startsWith('smart_collection_')||table.startsWith('temporal_')||table==='property_provenance'||table==='entity_name_provenance'||table==='property_proposals'||table==='source_author_jobs'||table==='property_definitions'||table==='property_value_metadata'||table==='entity_overviews'||table==='entity_page_associations'||table==='source_reading_locations'||table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='page_versions'||table.startsWith('smart_collection_')||table.startsWith('temporal_')||table==='property_provenance'||table==='entity_name_provenance'||table==='property_proposals'||table==='source_author_jobs'||table==='property_definitions'||table==='property_value_metadata'||table==='entity_overviews'||table==='entity_page_associations'||table==='source_reading_locations'||table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     const splitSourceOwners=new Set<unknown>(),sourceOwners=new Set<unknown>(),legacyEntities=new Map(rows.entities.map(row=>[row.id,row]));
     const legacyProperties=[...rows.properties],legacyLinks=[...rows.page_sources];
     for(const file of rows.source_files) {
@@ -207,6 +210,7 @@ export class VaultBackups {
       const map=new Map<string,string>();
       for(const row of records){const id=name(row,'id');if(map.has(id))throw invalid();map.set(id,randomUUID());}return map;
     };
+    const citationIds=new Map<string,string>();
     const propertyIds=ids(rows.properties),pageIds=ids(rows.pages),entityIds=ids(rows.entities),folderIds=ids(rows.folders),collectionIds=ids(rows.collections),subtypeIds=ids(rows.entity_subtypes),imageIds=new Map<string,string>();
     const subtypeTypes=new Map(rows.entity_subtypes.map(row=>[row.id,row.type]));
     const ref=(map:Map<string,string>,value:unknown)=>{if(typeof value!=='string'||!map.has(value))throw invalid();return map.get(value)!;};
@@ -398,7 +402,8 @@ export class VaultBackups {
               if(segment.sourceReference) {
                 const citation=object(segment.sourceReference),fileId=restoredSourceFiles.get(name(citation,'fileId'));
                 if(!fileId)throw invalid();
-                segment.sourceReference={...citation,id:randomUUID(),sourceId:ref(entityIds,citation.sourceId),fileId};
+                const citationId=name(citation,'id');if(!citationIds.has(citationId))citationIds.set(citationId,randomUUID());
+                segment.sourceReference={...citation,id:citationIds.get(citationId),sourceId:ref(entityIds,citation.sourceId),fileId};
               }
               return segment;
             });
@@ -695,6 +700,7 @@ export class VaultBackups {
           // The archived decision is authoritative over that fresh pending record.
           this.store.run(`INSERT INTO property_proposals (${columns.join(',')}) VALUES (${columns.map(()=>'?').join(',')}) ON CONFLICT(id) DO UPDATE SET ${columns.filter(column=>column!=='id').map(column=>`${column}=excluded.${column}`).join(',')}`,...Object.values(fields));
         }
+        restorePageVersions(this.store,vault,rows.page_versions,{pages:pageIds,entities:entityIds,files:restoredSourceFiles,images:imageIds,citations:citationIds});
         // Recompute after validation/remapping instead of trusting a supplied page fingerprint.
         syncReadingNotesCollection(this.store,vault);
         for(const id of pageIds.values())if(!this.store.get<{deleted_at:string|null}>('SELECT deleted_at FROM pages WHERE id=?',id)!.deleted_at)pages.get(vault,id);

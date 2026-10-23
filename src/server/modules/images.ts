@@ -51,6 +51,8 @@ export class Images {
         const blocks=JSON.parse(page.blocks) as {type:string; imageId?:string}[];
         for(const block of blocks) if(block.type === 'image' && block.imageId) referenced.add(block.imageId);
       }
+      // Indexed references avoid reparsing every immutable snapshot on each autosave.
+      for(const row of this.store.all<{image_id:string}>('SELECT DISTINCT i.image_id FROM page_version_images i JOIN page_versions v ON v.id=i.version_id WHERE v.vault_id=?',scope))referenced.add(row.image_id);
       const directory=path.dirname(this.filename(scope,'00000000-0000-4000-8000-000000000000.png'));
       if(!existsSync(directory)) continue;
       for(const id of candidates ? new Set(candidates) : readdirSync(directory)) {

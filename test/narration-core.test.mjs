@@ -1,6 +1,12 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {EventEmitter} from 'node:events';
+import {EventEmitter,once} from 'node:events';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {createApp} from '../src/server/http.ts';
+import {openDatabase} from '../src/server/database.ts';
+import {Store} from '../src/server/store.ts';
 import {defaultNarrationPreferences,parseNarrationPreferences,narrationCapabilities} from '../src/shared/narration.ts';
 import {defaultIntelligencePreferences} from '../src/shared/intelligence.ts';
 import {Intelligence} from '../src/server/modules/intelligence.ts';
@@ -47,4 +53,22 @@ test('cloud delivery stays outside transcript and OpenAI pace uses the documente
  class Socket extends EventEmitter {send(value){const message=JSON.parse(value);messages.push(message);if(message.type==='session.update')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.updated'}))));else queueMicrotask(()=>{this.emit('message',Buffer.from(JSON.stringify({type:'response.output_audio.delta',delta:wav.subarray(44).toString('base64')})));this.emit('message',Buffer.from(JSON.stringify({type:'response.done',response:{status:'completed'}})));});}terminate(){}}
  await realtimeSpeech('Authored text','synthetic-key',new AbortController().signal,()=>{const socket=new Socket();queueMicrotask(()=>socket.emit('open'));return socket;},undefined,'marin',draft);
  assert.equal(messages[0].session.audio.output.speed,0.8);assert.equal(messages[1].response.input[0].content[0].text,'Authored text');assert.match(messages[1].response.instructions,/untrusted/);assert.match(messages[1].response.instructions,/british/);
+});
+
+
+test('speech route validates draft controls, scopes cache to narration and protected text, and downloads the requested silence',async()=>{
+ const directory=mkdtempSync(path.join(tmpdir(),'noema-narration-route-')),db=openDatabase(path.join(directory,'test.sqlite'));const received=[];
+ const ai=new Intelligence(secrets,undefined,undefined,undefined,async text=>{received.push(text);return wav;});ai.savePreferences({...defaultIntelligencePreferences,ttsEnabled:true});
+ const server=createApp(new Store(db),path.resolve('dist/client'),ai);server.listen(0,'127.0.0.1');await once(server,'listening');
+ const speak=body=>fetch(`http://127.0.0.1:${server.address().port}/api/intelligence/speech`,{method:'POST',headers:{'X-Noema-Request':'1','Content-Type':'application/json'},body:JSON.stringify({text:'Noema',...body})});
+ try {
+  const narration=prefs({pronunciations:[{word:'Noema',spoken:'noh eh mah',caseSensitive:false,language:''}]});
+  let response=await speak({narration,pauseAfterMs:250});assert.equal(response.status,200);assert.equal(response.headers.get('x-noema-speech-cache'),'miss');assert.equal((await response.arrayBuffer()).byteLength,wav.length+12000);assert.deepEqual(received,['noh eh mah']);
+  response=await speak({narration,pauseAfterMs:250});assert.equal(response.status,200);assert.equal(response.headers.get('x-noema-speech-cache'),'hit');assert.equal(received.length,1);
+  response=await speak({narration,pauseAfterMs:0});assert.equal(response.status,200);assert.equal((await response.arrayBuffer()).byteLength,wav.length);assert.equal(received.length,2);
+  response=await speak({narration,protectedText:true});assert.equal(response.status,200);assert.equal(received.at(-1),'Noema');assert.equal(received.length,3);
+  response=await speak({});assert.equal(response.status,200);assert.equal(received.length,4);assert.deepEqual(ai.narrationSelection(),defaultNarrationPreferences);
+  for(const controls of [{pauseAfterMs:3001},{pauseAfterMs:'100'},{protectedText:'yes'},{narration:{...narration,pace:2}}])assert.equal((await speak(controls)).status,400);
+  assert.equal(received.length,4);
+ }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();rmSync(directory,{recursive:true,force:true});}
 });

@@ -6,11 +6,11 @@ export function SmartCollectionStatus({vaultId,collection,data,itemNames,onChang
   const active=useRef(true);
   const [busy,setBusy]=useState(false);
   useEffect(()=>{active.current=true;return()=>{active.current=false;};},[]);
+  useEffect(()=>{let stopped=false;void api.organization(vaultId).then(result=>{if(!stopped&&active.current)onChanged(result);}).catch(error=>{if(!stopped&&active.current)onError(error);});return()=>{stopped=true;};},[vaultId,collection.id]);
   const status=collection.smart?.status??'unevaluated';
   useEffect(()=>{
-    if(!['refreshing','stale','unevaluated'].includes(status))return;
     let stopped=false;
-    const timer=setTimeout(()=>{void api.organization(vaultId).then(result=>{if(!stopped&&active.current)onChanged(result);}).catch(error=>{if(!stopped&&active.current)onError(error);});},1000);
+    const timer=setTimeout(()=>{void api.organization(vaultId).then(result=>{if(!stopped&&active.current)onChanged(result);}).catch(error=>{if(!stopped&&active.current)onError(error);});},['refreshing','stale','unevaluated'].includes(status)?1000:5000);
     return()=>{stopped=true;clearTimeout(timer);};
   },[vaultId,collection,status,data,onChanged,onError]);
   async function update(route:string,body:unknown={},method='PUT') {

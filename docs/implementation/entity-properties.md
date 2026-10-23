@@ -31,6 +31,36 @@ Work starts from main `27bd9b49d045063dccdbff2e5bc2f313bece9fdf` (23 October 202
 
 No persistence migration is authorized by completion of this document alone. The implementation must first have reusable read-only inventory tooling and synthetic/legacy-fixture validation covering names/counts, case/synonyms, text/reference proportions, prospective incompatibilities and cardinality, dangling/cross-vault/archived references, temporal evidence, system-managed source metadata, custom fields and subtype conflicts. Never coerce ambiguous dates, nationality, identifiers or unresolved references. A future migration must preserve backup/restore and stable property IDs and supply explicit review states for incompatible legacy values.
 
+## Checkpoint implementation and remaining work
+
+The shared `EntityPropertyList` now serves homepage, compact inspector and source inspector, with curated labels, inline scalar/reference editing, keyboard save/discard, failure recovery, navigation-retained drafts, explicit removal confirmation and inferred target filtering. The homepage keeps four populated properties initially with an expand action; it waits for complete property data before offering unset suggestions. Identity fields retain their existing Save/Discard contract. Property writes are serialized per entity. Source Import Method/Source URL metadata is distinguished as managed.
+
+The schema API includes additive `propertyDefinitions` while retaining every legacy name array. Builtin IDs/keys are deterministic; custom IDs are explicitly derived legacy adapter identities, not persisted bindings. Incompatible inherited metadata is retained and available through conflict reporting. All definition constraints remain advisory in this checkpoint.
+
+Run the inventory only against an explicitly selected synthetic/exported fixture:
+
+```sh
+node --import tsx scripts/property-inventory.mjs /path/to/fixture.sqlite vault-id
+```
+
+This command opens SQLite read-only and does not run migrations. Its report declares the limitations of advisory native checks, unavailable typed custom constraints and temporal mappings. The tests exercise synthetic current and legacy databases; no private vault inventory was run.
+
+Remaining Phase 1 refinement: create-an-entity-and-return flow, server-paginated reference search (current picker searches the supplied entity list and renders at most 50 matches), and drafts for the retained advanced bulk editor. Ordinary inline drafts survive in-app navigation, not full process restart. Homepage property editing currently fetches full detail after the initial bounded preview; a dedicated paginated property endpoint is future scale work. General overview excerpts and connection previews remain bounded.
+
+Phase 2 is **foundation only**, not complete: there are no database columns/bindings/backfills, typed write enforcement, scalar-specific controls or backup-format changes. Existing authored text remains editable including dates and unresolved literals. Date evidence remains authoritative. Strict constraints, cardinality enforcement, reclassification impact paths, custom definition editing and cycle/deletion policy require Phases 2–3 compatibility work. Source synchronizer metadata identity churn and the existing target deletion cascade require later Phase 3–4 work; archiving itself preserves references. Phase 5 remains deferred.
+
+Four subagents contributed registry implementation, inventory implementation, inline UI implementation, and an independent compatibility review; coordinator integrated schema API, type-manager labels, docs, group registration and validation. Review findings corrected source cardinality, legacy subtype inventory, keyboard behavior, preview completeness and mutation ordering.
+
 ## Validation record
 
-Pending integration checks. UI/browser validation and screenshots are **unrun by user instruction**, never reported as passed.
+Final frozen-code verification:
+
+- `npm run build`: passed (includes styles, application/server TypeScript, test-helper typecheck and production bundle). Existing large-bundle advisory remains.
+- `npm run test:all`: 871 tests, 865 passed, 0 failed, 6 platform skips (macOS Keychain/PDFKit/Vision/sandbox native coverage unavailable on Linux).
+- Focused definition/inventory coverage: 6 passed. Focused UI/home/panel coverage: 27 passed; final uncertainty safeguard property-list suite: 6 passed. The complete final suite includes all of these tests.
+- `git diff --check`: passed. Latest main fetched again before final integration: still `27bd9b49d045063dccdbff2e5bc2f313bece9fdf`.
+- No private vault access, provider calls/spend, push, PR, merge, deployment or repository-setting changes.
+
+Commits: inventory/phase plan `81edb28`; additive definitions/read-only tooling `5c8b254`; inline UI `386b418`. Branch: `feat/entity-properties-foundation`.
+
+No execution blocker remains for this checkpoint. The remaining programme and deliberate checkpoint limitations are listed above. UI/browser validation and screenshots are **unrun by user instruction**, never reported as passed.

@@ -24,7 +24,7 @@
 .workspace-label,.section-label {
   font-size: 11px;
   letter-spacing: 1.4px;
-  color: #7f7f7f;
+  color: light-dark(#7f7f7f, var(--text-muted));
   font-weight: 600;
   padding: 0 12px
 }
@@ -38,7 +38,7 @@
   width: 100%;
   padding: 11px 12px;
   border-radius: 6px;
-  color: #606060;
+  color: light-dark(#606060, var(--text-muted));
   text-align: left;
   font-size: 15px;
   margin-bottom: 4px
@@ -51,11 +51,11 @@
 }
 .nav kbd {
   font-size: 11px;
-  border: 1px solid #cecece;
+  border: 1px solid light-dark(#cecece, var(--line));
   border-radius: 3px;
   padding: 1px 4px;
   font-weight: 400;
-  color: #616161
+  color: light-dark(#616161, var(--text-muted))
 }
 .count {
   font-size: 12px
@@ -68,11 +68,11 @@
 }
 .section-label button {
   font-size: 21px;
-  color: #727272
+  color: light-dark(#727272, var(--text-muted))
 }
 .sidebar-footer {
   margin-top: auto;
-  border-top: 1px solid #e5e5e5;
+  border-top: 1px solid light-dark(#e5e5e5, var(--line));
   padding: 18px 5px 0;
   font-size: 12px;
   line-height: 1.8
@@ -100,11 +100,11 @@ main {
   justify-content: space-between;
   gap: var(--space-5);
   font-size: var(--ui-text-sm);
-  color: #606060
+  color: light-dark(#606060, var(--text-muted))
 }
 .topbar b {
   font-weight: 400;
-  color: #bebebe;
+  color: light-dark(#bebebe, var(--text-muted));
   margin: 0 12px
 }
 .topbar #breadcrumb {
@@ -118,12 +118,12 @@ main {
 }
 #save-status {
   font-size: 11px;
-  color: #808080;
+  color: light-dark(#808080, var(--text-muted));
   cursor: pointer
 }
 .section-hint {
   font-size: 11px;
-  color: #878787;
+  color: light-dark(#878787, var(--text-muted));
   line-height: 1.7;
   margin: 0 0 18px
 }
@@ -203,26 +203,26 @@ main {
 }
 .edit-item {
   font-size: 10px;
-  color: #707070;
+  color: light-dark(#707070, var(--text-muted));
   padding: 0
 }
 .edit-item:hover {
-  color: #232323;
+  color: light-dark(#232323, var(--text));
   text-decoration: underline
 }
 .brand {
-  color: #111;
+  color: light-dark(#111, var(--text));
   font-weight: 700;
   margin-bottom: 30px
 }
 .brand>span {
-  color: #171717;
+  color: light-dark(#171717, var(--text));
   font-weight: 650;
   letter-spacing: -1px
 }
 .nav.active {
-  background: #eaeaea;
-  color: #171717
+  background: light-dark(#eaeaea, var(--surface-inset));
+  color: light-dark(#171717, var(--text))
 }
 .nav>span[data-icon] {
   flex: 0 0 auto;
@@ -240,14 +240,14 @@ main {
 .vault-controls label {
   font-size: 11px;
   letter-spacing: 1.2px;
-  color: #888;
+  color: light-dark(#888, var(--text-muted));
   font-weight: 600
 }
 .vault-controls select {
   display: block;
   width: 100%;
-  border: 1px solid #ddd;
-  background: #fff;
+  border: 1px solid light-dark(#ddd, var(--line));
+  background: light-dark(#fff, var(--surface-inset));
   border-radius: var(--radius-control);
   padding: 9px var(--space-2);
   margin-top: 8px;
@@ -262,11 +262,11 @@ main {
 }
 .vault-actions button {
   font-size: 12px;
-  color: #666;
+  color: light-dark(#666, var(--text-muted));
   padding: 3px
 }
 .vault-actions button:hover {
-  color: #111
+  color: light-dark(#111, var(--text))
 }
 .vault-actions button:disabled {
   cursor: default
@@ -280,22 +280,22 @@ main {
 .locked-state h1 {
   font-size: 32px;
   letter-spacing: -1px;
-  color: #202020
+  color: light-dark(#202020, var(--text))
 }
 .locked-state p {
-  color: #888;
+  color: light-dark(#888, var(--text-muted));
   line-height: 1.8;
   margin-bottom: 25px
 }
 .locked-state small {
   display: block;
-  color: #999;
+  color: light-dark(#999, var(--text-muted));
   margin-top: 25px
 }
 .vault-symbol {
   display: inline-flex;
   padding: 15px;
-  background: #f4f4f4;
+  background: light-dark(#f4f4f4, var(--surface-inset));
   border-radius: 12px
 }
 .vault-symbol .icon {
@@ -306,13 +306,13 @@ main {
   font-size: 13px
 }
 .status-dot {
-  background: #222
+  background: light-dark(#222, var(--text-muted))
 }
 .sidebar-footer {
-  color: #777
+  color: light-dark(#777, var(--text-muted))
 }
 .sidebar-footer small {
-  color: #999
+  color: light-dark(#999, var(--text-muted))
 }
 @media(max-width:500px) {
   .vault-controls {
@@ -360,7 +360,7 @@ main {
   width: calc(100% + 8px)
 }
 .vault-controls .select-trigger:hover,.vault-controls .select-trigger[aria-expanded=true] {
-  background: #eaeae7
+  background: light-dark(#eaeae7, var(--surface-inset))
 }
 @media(max-width:500px) {
   .vault-controls .select-trigger {
@@ -394,7 +394,7 @@ main {
   min-height: 60vh
 }
 .favourite-button {
-  color: #aaa;
+  color: light-dark(#aaa, var(--text-muted));
   padding: 6px;
 }
 .page-toolbar > .favourite-button {
@@ -499,7 +499,7 @@ main {
 }
 .sidebar-empty {
   margin: 8px 12px;
-  color: #999;
+  color: light-dark(#999, var(--text-muted));
   font-size: 12px;
   line-height: 1.7;
 }
@@ -516,11 +516,11 @@ main {
   color: var(--accent);
 }
 .nav.active, .page-link.selected, .organization-tree .selected {
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--selection-text);
+  background: var(--selection-neutral);
 }
 .nav.active [data-icon], .page-link.selected > span {
-  color: var(--accent);
+  color: var(--selection-text);
 }
 .sidebar-settings {
   margin-top: auto;
@@ -542,9 +542,8 @@ main {
   }
 }
 :root[data-mode=dark] {
-  color-scheme: dark;
-  background: #19191b;
-  color: #e6e6e9;
+  background: var(--surface);
+  color: var(--text);
 }
 @supports not (scrollbar-width: thin) {
   ::-webkit-scrollbar {
@@ -567,13 +566,13 @@ main {
     display: none;
   }
 }
-:root[data-mode=dark] :is(.topbar, .panel-top, .page-meta, .panel-section, .sidebar-group, .entity-color-list, .entity-color-row, .settings-footer, .organization-item, .toolbar-source-actions) {
+:root[data-mode=dark] :is(.panel-top, .panel-section, .entity-color-list, .entity-color-row, .settings-footer, .organization-item) {
   border-color: var(--line);
 }
-:root[data-mode=dark] :is(#page-title, .block, .block.heading1, .block.heading2, .block.quote, .entity-name, .entity-card h3, .library h1, .locked-state h1, dialog h2, .panel-section h3, .page-tools-popover h2, .organization-empty h2, .entity-color-row label) {
+:root[data-mode=dark] :is(.entity-name, .entity-card h3, .library h1, dialog h2, .panel-section h3, .organization-empty h2, .entity-color-row label) {
   color: var(--text);
 }
-:root[data-mode=dark] :is(.nav, .page-link, .page-link > span, .topbar, .topbar #breadcrumb > span, #save-status, .workspace-label, .section-label, .sidebar-empty, .vault-controls label, .vault-actions button, .page-meta, .page-meta button, .panel-top, .panel-top button, .section-hint, .property-row > span, .property-row > div, .relation-label, .backlink small, .panel-footnote, .edit-item, .remove, .library > p, .entity-card p, .entity-card small, .card-arrow, .empty, .empty-small, .locked-state p, .locked-state small, .settings-section > p, .settings-footer p, .theme-option small, .theme-default, .settings-close, .organization-heading p, .organization-hint, .organization-library .eyebrow, .organization-item-name small, .recent-time, .page-tools-popover p, .page-tool, .page-tool-count, .editor-footer, .dialog-eyebrow, dialog p, dialog label, #entity-saved) {
+:root[data-mode=dark] :is(.panel-top, .panel-top button, .property-row > span, .property-row > div, .relation-label, .backlink small, .panel-footnote, .remove, .library > p, .entity-card p, .entity-card small, .card-arrow, .empty, .empty-small, .settings-section > p, .settings-footer p, .theme-option small, .theme-default, .settings-close, .organization-heading p, .organization-hint, .organization-library .eyebrow, .organization-item-name small, .recent-time, .dialog-eyebrow, dialog p, dialog label, #entity-saved) {
   color: var(--text-muted);
 }
 :root[data-mode=dark] :is(.button:not(.primary), input:not(#page-title):not(.entity-name):not([type=checkbox]), select, textarea, #entity-form select, #entity-form textarea, .add-form input, .add-form select, .organization-search, .library-tools input, .library-tools select, .source-actions select, .toolbar-source-actions select):not(.latex-input, :where(.library-view-filter-input > input)) {
@@ -581,14 +580,10 @@ main {
   color: var(--text);
   border-color: var(--control-border);
 }
-:root[data-mode=dark] :is(.brand small, .nav kbd, .editor-footer kbd, .panel-section h3 span, .vault-symbol) {
+:root[data-mode=dark] :is(.brand small, .panel-section h3 span) {
   background: var(--surface-hover);
   color: var(--text-muted);
   border-color: var(--control-border);
-}
-:root[data-mode=dark] :is(.nav.active, .page-link.selected, .organization-tree .selected) {
-  color: var(--accent);
-  background: var(--accent-soft);
 }
 .sidebar {
   width: 224px;
@@ -793,8 +788,8 @@ main {
   background: var(--surface-hover);
 }
 .sidebar-item-row.is-selected {
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--selection-text);
+  background: var(--selection-neutral);
 }
 .sidebar .sidebar-item-row > .nav.active, .sidebar .sidebar-item-row > .page-link.selected {
   background: transparent;
@@ -1121,8 +1116,8 @@ h1, h2, h3, h4, h5, h6 {
   background: color-mix(in srgb, var(--semantic-color) 9%, var(--surface-hover));
 }
 :root[data-mode=dark] .equation-editor-shell {
-  --math-editor-bg: #212124;
-  --math-editor-border: #36363b;
+  --math-editor-bg: var(--surface-inset);
+  --math-editor-border: var(--line);
   --latex-command: #b2c9e2;
   --latex-bracket: #d4bc99;
   --latex-number: #afcdb4;
@@ -1231,7 +1226,7 @@ main {
     margin-left: 0;
   }
   .workspace-navigation::backdrop {
-    background: #0006;
+    background: light-dark(#0006, var(--surface-inset));
     backdrop-filter: blur(3px);
   }
   .workspace-navigation .sidebar {
@@ -1581,8 +1576,8 @@ main {
   background: var(--surface-hover);
 }
 .sidebar .nav[data-navigation-search].active {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--selection-neutral);
+  color: var(--selection-text);
 }
 .linked-folder-label {
   margin-left: 6px;

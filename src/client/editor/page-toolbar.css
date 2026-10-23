@@ -30,7 +30,7 @@
   color: var(--text);
 }
 .topbar .page-toolbar :is(.page-tool, .sidebar-menu-trigger):focus-visible {
-  outline: var(--focus-width) solid var(--accent, currentColor);
+  outline: var(--focus-width) solid var(--focus-ring);
   outline-offset: var(--focus-offset-control);
 }
 .topbar .page-toolbar :is(.page-tool, .sidebar-menu-trigger):disabled {

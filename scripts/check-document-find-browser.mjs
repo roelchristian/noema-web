@@ -131,8 +131,10 @@ try{
    const references=target.getByRole('button',{name:'Subtle references',exact:true});
    if((await references.getAttribute('aria-pressed')==='true')!==(mode==='Subtle'))await activate(references);
   }
+  // Reference emphasis, Focus layout and touch feedback animate. Assert settled styles and boxes.
+  await target.waitForFunction(()=>[...document.querySelectorAll('#content > .page, #blocks .mention, .presentation-selector button, .presentation-icon-pair > .icon')].every(el=>el.getAnimations().every(animation=>!animation.pending&&animation.playState!=='running')));
  };
- const choose=async mode=>{await chooseFor(page,mode);await page.waitForTimeout(80);};
+ const choose=mode=>chooseFor(page,mode);
  const inFocus=()=>page.evaluate(()=>document.documentElement.dataset.focusWorkspace==='true');
  const dataBeforeModes=JSON.stringify(pages.get('default',note.id));
  await page.getByRole('button',{name:'Knowledge',exact:true}).click();
@@ -174,7 +176,7 @@ try{
   await mobilePage.screenshot({path:join(shots,'presentation-mobile-'+mode.toLowerCase()+'.png')});
   assert.ok(await mobilePage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   if(mode!=='Focus')assert.ok(await mobilePage.evaluate(()=>document.querySelector('.topbar').getBoundingClientRect().bottom<=document.querySelector('.page-title-heading').getBoundingClientRect().top));
-  assert.ok(await mobilePage.getByRole('button',{name:mode==='Focus'?'Focus mode':'Subtle references',exact:true}).evaluate(el=>el.getBoundingClientRect().height>=44));
+  const target=await mobilePage.getByRole('button',{name:mode==='Focus'?'Focus mode':'Subtle references',exact:true}).evaluate(el=>({height:el.getBoundingClientRect().height,width:el.getBoundingClientRect().width,transform:getComputedStyle(el).transform}));assert.ok(target.height>=44&&target.width>=44,JSON.stringify({mode,...target}));
  }
  await mobilePage.setViewportSize({width:320,height:700});assert.ok(await mobilePage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  await mobilePage.getByRole('button',{name:'Focus mode',exact:true}).tap();assert.equal(await mobilePage.getByRole('button',{name:'Subtle references',exact:true}).getAttribute('aria-pressed'),'true');

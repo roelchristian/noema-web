@@ -156,7 +156,7 @@ export function SettingsDialog({initialTab='appearance',calendarSettings,onCalen
         {tab === 'knowledge' && <KnowledgeEntitySettings key={vault?.id} vault={vault} appearance={appearance} onChange={onChange} storageError={storageError}/>}
       </div>
       <div id="settings-panel-intelligence" role="tabpanel" aria-labelledby="settings-tab-intelligence" hidden={tab !== 'intelligence'}>
-        <IntelligenceSettings/>
+        <IntelligenceSettings vaultId={vault&&!vault.locked?vault.id:undefined}/>
         {tab === 'intelligence' && <details className="settings-advanced"><summary>{uiText("AI diagnostics")}</summary><AIDebugSettings/></details>}
         {tab === 'intelligence' && <details className="settings-advanced"><summary>{uiText("Search indexing")}</summary><EmbeddingSettings onOpenPassage={onOpenPassage} key={vault?.id} vault={vault} onOpenPage={onOpenPage} onOpenEntity={onOpenEntity}/></details>}
         <section className="settings-section settings-activity-entry"><div><h3>{uiText("AI activity log")}</h3></div><button className="button" aria-haspopup="dialog" onClick={() => setActivityOpen(true)}>{uiText("Open activity log")}</button></section>

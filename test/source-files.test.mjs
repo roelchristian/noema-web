@@ -68,8 +68,13 @@ test('sources require original files; local extraction, last-file invariant, vau
   fail(()=>files.add('default','../path.txt',Buffer.from('unsafe')),400);
  }finally{env.close();}
 });
-test('source HTTP actions enforce client headers, safe downloads, locks and restart recovery',async()=>{
- const env=fixture();let server=createApp(env.store,path.resolve('dist/client'));
+test('source HTTP actions enforce client headers, safe downloads, locks and restart recovery',async t=>{
+ const env=fixture();
+ // Only the fixture's explicit tick advances extraction. The server's own
+ // 500 ms worker must not admit a file while this test checks queued access.
+ const tick=SourceFiles.prototype.tick;
+ t.mock.method(SourceFiles.prototype,'tick',async function(...args){if(this===env.files)return tick.apply(this,args);});
+ let server=createApp(env.store,path.resolve('dist/client'));
  server.listen(0,'127.0.0.1');await once(server,'listening');const base='http://127.0.0.1:'+server.address().port;
  const headers={'X-Noema-Request':'1','X-Vault-Id':'default'};
  try {
@@ -77,8 +82,9 @@ test('source HTTP actions enforce client headers, safe downloads, locks and rest
   response=await fetch(base+'/api/source-files?name=page.html',{method:'POST',headers,body:'<p>Disabled</p>'});assert.equal(response.status,415);
   response=await fetch(base+'/api/source-files?name=reference.txt',{method:'POST',headers,body:'Original'});assert.equal(response.status,201);const file=await response.json();
   const source=env.knowledge.create('default',{name:'Text original',type:'source',attachmentIds:[file.id]});
+  assert.equal(env.files.require('default',file.id).status,'queued');assert.equal(env.files.require('default',file.id).admitted,0);
   response=await fetch(base+'/api/source-files/'+file.id+'/download',{headers});assert.equal(response.status,409,'unadmitted originals cannot be downloaded');
-  await env.files.tick();
+  await env.files.tick();assert.equal(env.files.require('default',file.id).admitted,1);
   response=await fetch(base+'/api/source-files/'+file.id+'/download',{headers});assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'application/octet-stream');assert.match(response.headers.get('content-disposition'),/^attachment/);assert.equal(await response.text(),'Original');
   const other=env.vaults.create({name:'Other'});
   response=await fetch(base+'/api/source-files/'+file.id+'?vault='+other.id);assert.equal(response.status,404);

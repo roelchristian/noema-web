@@ -102,3 +102,13 @@ test('large unchanged metadata is adopted once and shared with pending edit snap
   assert.throws(()=>{next.entityMatchCache.matches[0].context='Mutated snapshot';},TypeError);
  }finally{globalThis.structuredClone=original;}
 });
+
+test('journal reload retains accepted writing edits and historical generation edits after text is undone',()=>{
+ const store=storage(),journal=new PageDraftJournal(store),base=fixture(1);
+ journal.prime(base);
+ const page={...base,aiReviewAccepted:true,editedAfterGeneration:true};
+ journal.writeIncremental(page);
+ const restored=recovered(store,page);
+ assert.equal(restored.aiReviewAccepted,true);assert.equal(restored.editedAfterGeneration,true);
+ assert.deepEqual(restored.blocks,base.blocks);
+});

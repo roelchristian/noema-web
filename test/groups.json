@@ -126,6 +126,7 @@
     "test/page-enrichment-scheduler.test.mjs",
     "test/page-enrichment.test.mjs",
     "test/page-generation-metadata.test.mjs",
+    "test/page-provenance.test.mjs",
     "test/page-icons.test.mjs",
     "test/page-language-composition.test.mjs",
     "test/page-semantic-drift.test.mjs",

@@ -160,7 +160,7 @@ export class SourceReading {
   const reference=explanation?{...ref,explanation}:ref;
   const language=explanation?pageLanguage(explanation.language||this.file(vault,fileId).language):null;
   this.store.transaction(()=>{
-   this.store.run('INSERT INTO pages (id,title,blocks,updated_at,created_at,vault_id,ai_status,language) VALUES (?,?,?,?,?,?,?,?)',pageId,`${explanation?'AI explanation':'Reading note'} · ${name}`.slice(0,500),JSON.stringify(blocks),createdAt,createdAt,vault,explanation?'ai_generated':'regular',language);
+   this.store.run('INSERT INTO pages (id,title,blocks,updated_at,created_at,vault_id,ai_status,language,creation_method) VALUES (?,?,?,?,?,?,?,?,?)',pageId,`${explanation?'AI explanation':'Reading note'} · ${name}`.slice(0,500),JSON.stringify(blocks),createdAt,createdAt,vault,explanation?'ai_generated':'regular',language,explanation?'ai_generated':'manual_creation');
    if(explanation){
     const metadata:PageGenerationMetadata={version:1,...(explanation.persona?{persona:explanation.persona}:{}),type:'reading_explanation',options:{...explanation},instructions:explanationPrompt(ref.excerpt,explanation).instructions};
     this.store.run('UPDATE pages SET generation_metadata=? WHERE id=? AND vault_id=?',JSON.stringify(metadata),pageId,vault);

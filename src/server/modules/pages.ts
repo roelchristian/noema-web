@@ -23,7 +23,7 @@ import { blockTypes, safeHref, type Segment, type Block, type Page, type PageSum
 import { Store } from '../store.js';
 import { HttpError, now, object, required, text } from '../validation.js';
 import { Knowledge } from './knowledge.js';
-type PageRow = Omit<Page, 'blocks' | 'sourceIds' | 'featuredImageId'> & {blocks: string; summary_content_hash: string | null; summary_hash_version:number; featured_image_id:string|null; ai_status:PageAIStatus;ai_review_accepted:number;generation_metadata:string|null};
+type PageRow = Omit<Page, 'blocks' | 'sourceIds' | 'featuredImageId'> & {blocks: string; summary_content_hash: string | null; summary_hash_version:number; featured_image_id:string|null; ai_status:PageAIStatus;ai_review_accepted:number;generation_metadata:string|null;creation_method:Page['creationMethod']};
 export const trashRetentionMs = 30 * 24 * 60 * 60 * 1000;
 export class Pages {
   constructor(private store: Store, private knowledge: Knowledge, private clock: () => Date = () => new Date()) {}
@@ -31,7 +31,18 @@ export class Pages {
     try { new Images(this.store).cleanup(vault,candidates); } catch { console.error('Image cleanup deferred'); }
   }
   private imageIds(blocks: Block[]) { return blocks.flatMap(block => block.type === 'image' && block.imageId ? [block.imageId] : []); }
-  list(vault: string) { return this.store.all<PageSummary>('SELECT id,title,icon,featured_image_id AS featuredImageId,ai_status AS aiStatus,ai_review_accepted AS aiReviewAccepted,language,updated_at,EXISTS(SELECT 1 FROM page_reading_notes r WHERE r.page_id=pages.id AND r.vault_id=pages.vault_id) AS isReadingNote,EXISTS(SELECT 1 FROM entity_page_associations a JOIN entities e ON e.id=a.entity_id WHERE a.page_id=pages.id AND e.vault_id=pages.vault_id) AS hasEntityAssociations FROM pages WHERE vault_id=? AND deleted_at IS NULL ORDER BY updated_at DESC',vault).map(page=>({...page,isReadingNote:!!page.isReadingNote,hasEntityAssociations:!!page.hasEntityAssociations,aiReviewAccepted:!!page.aiReviewAccepted,aiStatus:reviewedPageAIStatus(page.aiStatus??'regular',!!page.aiReviewAccepted)})); }
+  list(vault: string) {
+    return this.store.all<PageSummary>(`SELECT id,title,icon,creation_method AS creationMethod,featured_image_id AS featuredImageId,
+      ai_status AS aiStatus,ai_review_accepted AS aiReviewAccepted,language,updated_at,
+      EXISTS(SELECT 1 FROM json_each(pages.blocks) block WHERE json_extract(block.value,'$.semantic')='ai-explanation'
+        OR json_extract(block.value,'$.semanticGroup.kind')='ai-explanation') AS containsAIExplanations,
+      EXISTS(SELECT 1 FROM page_reading_notes r WHERE r.page_id=pages.id AND r.vault_id=pages.vault_id) AS isReadingNote,
+      EXISTS(SELECT 1 FROM entity_page_associations a JOIN entities e ON e.id=a.entity_id WHERE a.page_id=pages.id AND e.vault_id=pages.vault_id) AS hasEntityAssociations
+      FROM pages WHERE vault_id=? AND deleted_at IS NULL ORDER BY updated_at DESC`,vault).map(page=>({...page,
+        containsAIExplanations:!!page.containsAIExplanations,isReadingNote:!!page.isReadingNote,
+        hasEntityAssociations:!!page.hasEntityAssociations,aiReviewAccepted:!!page.aiReviewAccepted,
+        aiStatus:reviewedPageAIStatus(page.aiStatus??'regular',!!page.aiReviewAccepted)}));
+  }
   // Triage is a read of stored content, with no domain assessment, match cache or enrichment.
   preview(vault:string,id:string):import('../../shared/domain.js').PagePreview {
     const row=this.store.get<{id:string;title:string;blocks:string;revision:number;updated_at:string}>('SELECT id,title,blocks,revision,updated_at FROM pages WHERE vault_id=? AND id=? AND deleted_at IS NULL',vault,id);
@@ -47,7 +58,7 @@ export class Pages {
   get(vault: string, id: string): Page {
     const row=this.store.get<PageRow>('SELECT * FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',id,vault);
     if (!row) throw new HttpError(404,'Page not found');
-    const {summary_content_hash: cachedHash, summary_hash_version: hashVersion, featured_image_id: featuredImageId, ai_status: aiStatus, ai_review_accepted: aiReviewAccepted, generation_metadata: generationMetadata, ...stored} = row;
+    const {summary_content_hash: cachedHash, summary_hash_version: hashVersion, featured_image_id: featuredImageId, ai_status: aiStatus, ai_review_accepted: aiReviewAccepted, generation_metadata: generationMetadata, creation_method: creationMethod, ...stored} = row;
     stored.title=resolvePageTitle(this.store,stored);
     const blocks = enrichCitationPages(this.store,JSON.parse(row.blocks) as Block[]);
     const names=new Map<string,string|undefined>();
@@ -78,7 +89,7 @@ export class Pages {
       if(Array.isArray(fields))enrichmentPendingFields=(['title','domains','language','summary'] as const).filter(field=>fields.includes(field)&&enrichmentState.fields[field]?.origin!=='manual'&&!enrichmentState.fields[field]?.suppressed);
     }catch{/* Invalid queue data cannot claim a particular field is being generated. */}
     if(this.store.get<{automatic_summaries:number}>('SELECT automatic_summaries FROM page_enrichment_settings WHERE vault_id=?',vault)?.automatic_summaries===0)enrichmentPendingFields=enrichmentPendingFields.filter(field=>field!=='summary');
-    return {...stored,aiReviewAccepted:!!aiReviewAccepted,generationMetadata:parsePageGenerationMetadata(generationMetadata),...(readingNote?{readingNote}:{}),enrichmentFields:enrichmentState.fields,enrichmentPending:!!queued,enrichmentPendingFields,pageDomains:domainService.get(id,conceptContentHash({...stored,blocks},resolveName)),aiStatus:reviewedPageAIStatus(aiStatus,!!aiReviewAccepted),editLocked:!!editLock,editProtected:!!editLock?.password_hash,featuredImageId,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:[...new Set([...this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id),...citationSourceIds(blocks).filter(sourceId=>this.knowledge.find(vault,sourceId)?.type==='source')])]};
+    return {...stored,creationMethod,editedAfterGeneration:aiStatus==='ai_generated_edited',containsAIExplanations:blocks.some(isAIExplanation),aiReviewAccepted:!!aiReviewAccepted,generationMetadata:parsePageGenerationMetadata(generationMetadata),...(readingNote?{readingNote}:{}),enrichmentFields:enrichmentState.fields,enrichmentPending:!!queued,enrichmentPendingFields,pageDomains:domainService.get(id,conceptContentHash({...stored,blocks},resolveName)),aiStatus:reviewedPageAIStatus(aiStatus,!!aiReviewAccepted),editLocked:!!editLock,editProtected:!!editLock?.password_hash,featuredImageId,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:[...new Set([...this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id),...citationSourceIds(blocks).filter(sourceId=>this.knowledge.find(vault,sourceId)?.type==='source')])]};
   }
   requireEditable(vault: string, id: string) {
     const page=this.get(vault,id);
@@ -115,7 +126,7 @@ export class Pages {
     try {
       if(collection&&!this.store.get('SELECT id FROM collections WHERE id=? AND vault_id=?',collection,vault))throw new HttpError(404,'Collection not found');
       if(folder&&!this.store.get('SELECT id FROM folders WHERE id=? AND vault_id=?',folder,vault))throw new HttpError(404,'Folder not found');
-      this.store.run('INSERT INTO pages (id,title,language,blocks,updated_at,created_at,vault_id) VALUES (?,?,?,?,?,?,?)',id,required(body.title || 'Untitled'),pageLanguage(body.language),JSON.stringify([{id:randomUUID(),type:'paragraph',checked:false,content:[]}]),createdAt,createdAt,vault);
+      this.store.run("INSERT INTO pages (id,title,language,blocks,updated_at,created_at,vault_id,creation_method) VALUES (?,?,?,?,?,?,?,'manual_creation')",id,required(body.title || 'Untitled'),pageLanguage(body.language),JSON.stringify([{id:randomUUID(),type:'paragraph',checked:false,content:[]}]),createdAt,createdAt,vault);
       if(collection)this.store.run('INSERT INTO collection_memberships VALUES (?,?,?,?)',vault,'page',id,collection);
       if(folder)this.store.run('INSERT INTO item_locations VALUES (?,?,?,?)',vault,'page',id,folder);
       const provenance=new PageEnrichmentState(this.store);
@@ -255,7 +266,7 @@ export class Pages {
     if(!Array.isArray(sourceIds)||sourceIds.length>1000||sourceIds.some(s=>typeof s!=='string'||this.knowledge.find(vault,s)?.type!=='source'))throw new HttpError(400,'Page sources must be Source entities in this vault');
     if(body.revision!==undefined && (!Number.isInteger(body.revision)||body.revision!==page.revision))throw new HttpError(409,'This page changed in another window. Reload the latest page before saving.');
     const names=new Map<string,string|undefined>();
-    const aiStatus=nextPageAIStatus(page,{title,blocks,aiReviewAccepted:body.aiReviewAccepted===true},id=>{
+    const aiStatus=nextPageAIStatus(page,{title,blocks,editedAfterGeneration:body.editedAfterGeneration===true,aiReviewAccepted:body.aiReviewAccepted===true},id=>{
       if(!names.has(id))names.set(id,entityMentionName(this.knowledge.find(vault,id)));
       return names.get(id);
     });

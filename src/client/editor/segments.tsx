@@ -34,6 +34,7 @@ export function syncEditableSegments(element: HTMLElement, content: Segment[], e
   if (changed || missingTrailingCaret || citationDisplayChanged || dateDisplayChanged || (!selecting && !composing && element.querySelector('[data-entity-review]'))) {
     // Strip inherited highlight wrappers immediately when typing resumes.
     replaceEditableHTML(element, source);
+    element.querySelectorAll<HTMLElement>('[data-entity-space="true"]').forEach(authoredBoundarySpace);
   }
   const pending = {source, key, timer: undefined as ReturnType<typeof setTimeout> | undefined};
   reviewTimers.set(element, pending);
@@ -43,6 +44,7 @@ export function syncEditableSegments(element: HTMLElement, content: Segment[], e
     if (!canIdentifyEntities()) { pending.timer = setTimeout(decorate, 300); return; }
     if (!segmentsEqual(readSegments(element), content)) return;
     replaceEditableHTML(element, segmentHTML(content, entities, location,false,citations));
+    element.querySelectorAll<HTMLElement>('[data-entity-space="true"]').forEach(authoredBoundarySpace);
   };
   pending.timer = setTimeout(decorate, key === '[]' ? 1200 : 0);
 }
@@ -130,11 +132,36 @@ export function segmentHTML(content: Segment[], entities: Entity[], review?: Rev
     return <span key={index} data-skip-auto-tag={s.skipAutoTag ? 'true' : undefined}>{node}</span>;
   })}{trailingCaret ? '\u200b' : null}</>);
 }
+// Remember which rendered spaces came from authored NBSPs without replacing live
+// text nodes. Native composition can extend or split the marker's text node.
+// The inert snapshots also preserve that mapping when selection/copy clones DOM.
+const boundarySpaces = new WeakMap<HTMLElement, {anchor: Node | null; rendered: string; authored: string}>();
+function authoredBoundarySpace(element: HTMLElement) {
+  const rendered = element.textContent ?? '';
+  let previous = boundarySpaces.get(element);
+  if (!previous) {
+    const baseline = element.dataset.entitySpaceRendered ?? ' ';
+    const authored = element.dataset.entitySpaceAuthored ?? '\u00a0';
+    const valid = baseline.length === authored.length && baseline.split('').every((character,index) => character === authored[index] || character === ' ' && authored[index] === '\u00a0');
+    previous = {anchor: element.firstChild, rendered: valid ? baseline : rendered, authored: valid ? authored : rendered};
+  }
+  let authored = rendered;
+  if (!previous.anchor || element.contains(previous.anchor)) {
+    let prefix = 0, suffix = 0;
+    while (prefix < previous.rendered.length && prefix < rendered.length && previous.rendered[prefix] === rendered[prefix]) prefix++;
+    while (suffix < previous.rendered.length - prefix && suffix < rendered.length - prefix && previous.rendered.at(-1-suffix) === rendered.at(-1-suffix)) suffix++;
+    authored = previous.authored.slice(0,prefix) + rendered.slice(prefix,rendered.length-suffix) + previous.authored.slice(previous.authored.length-suffix);
+  }
+  boundarySpaces.set(element,{anchor: element.firstChild, rendered, authored});
+  element.dataset.entitySpaceRendered = rendered;
+  element.dataset.entitySpaceAuthored = authored;
+  return authored;
+}
 export function readSegments(el: Node, allowMentions = true): Segment[] {
   const output: Segment[] = [];
-  function walk(node: Node, style: TextStyle = {}) {
+  function walk(node: Node, style: TextStyle = {}, replacements?: Map<Node,string>) {
     if (node.nodeType === Node.TEXT_NODE) {
-      const text = node.textContent?.replace(/\u200b/g, '');
+      const text = (replacements?.get(node) ?? node.textContent)?.replace(/\u200b/g, '');
       if (text) {
         const last = output.at(-1);
         if (last && !last.entityId && JSON.stringify({...last, text: ''}) === JSON.stringify({...style, text: ''})) last.text += text;
@@ -142,7 +169,17 @@ export function readSegments(el: Node, allowMentions = true): Segment[] {
       }
     } else if (node instanceof HTMLElement) {
       if (['SCRIPT','STYLE','META','LINK','IFRAME','OBJECT'].includes(node.tagName)) return;
-      if (node.dataset.entitySpace === 'true' && node.textContent === ' ') { walk(document.createTextNode('\u00a0'), style); return; }
+      if (node.dataset.entitySpace === 'true') {
+        const authored = authoredBoundarySpace(node), mapped = new Map<Node,string>();
+        let offset = 0;
+        const collect = (child:Node) => {
+          if (child.nodeType === Node.TEXT_NODE) {const length = child.textContent?.length ?? 0; mapped.set(child,authored.slice(offset,offset+length)); offset += length;}
+          else child.childNodes.forEach(collect);
+        };
+        node.childNodes.forEach(collect);
+        node.childNodes.forEach(child => walk(child,style,mapped));
+        return;
+      }
       if (node.dataset.wikilink !== undefined) { walk(document.createTextNode(node.dataset.wikilink), {...style,skipAutoTag:true}); return; }
       if (node.dataset.sourceReference !== undefined) {
         try {output.push(node.dataset.sourceSegment ? JSON.parse(node.dataset.sourceSegment) : {text:node.dataset.sourceText??'',sourceReference:JSON.parse(node.dataset.sourceReference)});} catch {if(node.textContent)output.push({text:node.textContent});}
@@ -160,7 +197,7 @@ export function readSegments(el: Node, allowMentions = true): Segment[] {
       if (tag === 'CODE') next.code = true;
       if (tag === 'A') { const href = safeHref(node.getAttribute('href') || ''); if (href) next.href = href; }
       if (['P','DIV'].includes(tag) && output.length && output.at(-1)?.text?.endsWith('\n') !== true) output.push({text: '\n'});
-      node.childNodes.forEach(child => walk(child, next));
+      node.childNodes.forEach(child => walk(child, next, replacements));
     }
   }
   el.childNodes.forEach(node => walk(node)); return output;

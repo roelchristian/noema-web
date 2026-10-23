@@ -88,3 +88,24 @@ test('paragraph indent preferences default safely and persist all supported mode
     assert.equal(parsed.paragraphSpacing, 'standard');
   }
 });
+
+test('saved indentation modes apply to the document and persist through appearance updates',async()=>{
+ const {setupDOM}=await import('./helpers/dom.mjs'),{act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
+ const {useAppearance}=await import('../src/client/settings/useAppearance.ts');
+ const env=setupDOM(),previous=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
+ env.defer(()=>{if(previous)Object.defineProperty(globalThis,'localStorage',previous);else delete globalThis.localStorage;});
+ Object.defineProperty(globalThis,'localStorage',{configurable:true,value:env.dom.window.localStorage});
+ localStorage.setItem('noema.appearance.v1',JSON.stringify({...defaultAppearance(),paragraphIndent:'except-first',paragraphIndentWidth:'large',paragraphSpacing:'book',mode:'dark'}));
+ let controls;const root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ function App(){controls=useAppearance();return null;}
+ try{
+  await act(async()=>root.render(createElement(App)));
+  const html=document.documentElement;
+  assert.equal(html.dataset.mode,'dark');assert.equal(html.dataset.paragraphIndent,'except-first');assert.equal(html.dataset.paragraphSpacing,'book');assert.equal(html.style.getPropertyValue('--paragraph-indent-width'),'2em');
+  for(const mode of ['none','all','except-first'])await act(async()=>{
+   controls.setAppearance(current=>({...current,paragraphIndent:mode,paragraphIndentWidth:'small',mode:'light'}));
+  });
+  assert.equal(html.dataset.mode,'light');assert.equal(html.dataset.paragraphIndent,'except-first');assert.equal(html.style.getPropertyValue('--paragraph-indent-width'),'1em');
+  const saved=parseAppearance(localStorage.getItem('noema.appearance.v1'));assert.equal(saved.paragraphIndent,'except-first');assert.equal(saved.paragraphSpacing,'book');assert.equal(saved.paragraphIndentWidth,'small');
+ }finally{await env.close();}
+});

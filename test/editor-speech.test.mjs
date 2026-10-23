@@ -17,6 +17,14 @@ function wav(samples=[1,0,2,0]){
 }
 const wavResponse=(samples)=>({ok:true,blob:async()=>wav(samples)});
 
+// A DOM click does not return useSpeech's asynchronous resume-identity promise.
+// Wait for the observable request/play event, then keep the original assertions.
+async function waitForSpeech(predicate,label) {
+  const deadline=Date.now()+5000;
+  while(!predicate()&&Date.now()<deadline)await act(async()=>new Promise(resolve=>setTimeout(resolve,0)));
+  assert.ok(predicate(),label);
+}
+
 test('block sections retain order, stable boundaries, protected content and all Unicode text',()=>{
   const source=[paragraph('heading','Title','heading1'),paragraph('body','🙂'.repeat(20)),paragraph('list','Last item','bullet'),paragraph('code','API 2026-10-23','code')];
   const original=structuredClone(source),sections=speechSections(source,['code','list','body','heading'],[],9);
@@ -377,6 +385,7 @@ test('editor block options expose Speak only when globally enabled and speak the
     await open();
     const speak=[...document.querySelectorAll('button')].find(button=>button.textContent.startsWith('Speak'));
     assert.ok(speak);await act(async()=>speak.click());
+    await waitForSpeech(()=>requests.length>0,'Speak must start a synthesis request');
     assert.equal(requests.length,1);assert.equal(JSON.parse(requests[0].options.body).text,'Fictitious paragraph 2');
     enabled=false;await act(async()=>window.dispatchEvent(new dom.window.Event('noema:tts-preferences')));
     assert.equal(requests[0].options.signal.aborted,true);
@@ -392,8 +401,11 @@ test('editor speech cancels on a different block selection and on a current enti
   await editorFixture(async({dom,host,caret,blocks,set,entities})=>{
     t.mock.method(dom.window.HTMLMediaElement.prototype,'play',async()=>{});
     const speak=async()=>{
+      const previous=requests.length;
       await act(async()=>host('b2').closest('[data-block-id]').querySelector('[aria-label="Block options"]').click());
       await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent.startsWith('Speak')).click());
+      await waitForSpeech(()=>requests.length>previous,'Speak must start its next synthesis request');
+      assert.equal(requests.length,previous+1);
     };
     caret(host('b2'),0);await speak();
     const outside=document.createElement('span');outside.textContent='Player controls';document.body.append(outside);
@@ -425,10 +437,12 @@ test('editor validates paused and future block sources before resuming or advanc
   await editorFixture(async({dom,host,blocks,set})=>{
     t.mock.method(dom.window.HTMLMediaElement.prototype,'play',async function(){plays.push(this);});
     const speak=async()=>{
+      const previous=plays.length;
       const range=document.createRange();range.selectNodeContents(host('b2'));range.setEndAfter(host('b3').lastChild);
       getSelection().removeAllRanges();getSelection().addRange(range);
       await act(async()=>host('b2').closest('[data-block-id]').querySelector('[aria-label="Block options"]').click());
       await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent.startsWith('Speak')).click());
+      await waitForSpeech(()=>plays.length>previous,'Speak must activate validated section playback');
     };
     const edit=async id=>set(blocks().map(block=>block.id===id?{...block,content:[{text:'Edited source '+id}]}:block));
     await speak();assert.equal(plays.length,1);

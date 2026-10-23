@@ -18,8 +18,12 @@ export function PageProvenanceDisclosure({page}: {page: Page}) {
   return <details className="page-ai-provenance">
     <summary aria-label={uiText('Creation & AI history') + ': ' + uiText(provenance.label)}><Icon name="sparkles"/><span>{uiText(provenance.label)}</span></summary>
     <div className="page-provenance-details">
-      <strong>{uiText('Creation & AI history')}</strong>
-      <PageProvenanceFields provenance={provenance}/>
+      <strong>{uiText(pageCreationLabels[provenance.origin])}</strong>
+      {provenance.origin === 'ai_generated' && <p>{uiText(provenance.editedAfterGeneration ? 'Edited after generation' : 'Unedited since generation')}</p>}
+      {(provenance.acceptedAIWritingEdits || provenance.containsAIExplanations) && <ul>
+        {provenance.acceptedAIWritingEdits && <li>{uiText('AI writing edits accepted')}</li>}
+        {provenance.containsAIExplanations && <li>{uiText('Contains AI explanations')}</li>}
+      </ul>}
     </div>
   </details>;
 }

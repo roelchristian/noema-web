@@ -319,16 +319,17 @@ html {
   text-underline-offset: 3px;
   text-decoration-skip-ink: auto;
 }
-/* Use the existing muted text tone so subtle entities remain visibly distinct. */
+/* Retain the chosen entity hue without a pill background in subtle mode. */
 :root[data-focused-reading=true] .page .block-content .mention[data-entity] {
-  color: var(--text-muted);
+  color: color-mix(in srgb, var(--mention-ink, var(--text)) 70%, var(--text-muted));
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
 }
 :root[data-focused-reading=true] .page .block-content .mention[data-entity]:is(:hover, :focus-visible) {
-  color: var(--text);
+  color: var(--mention-ink, var(--text));
   text-decoration-color: currentColor;
 }
-:root[data-focused-reading=true] .page .block-content .mention:is([data-entity], [data-note-date]):hover {
-  text-decoration-color: var(--text-muted);
+:root[data-focused-reading=true] .page .block-content .mention[data-note-date]:is(:hover, :focus-visible) {
+  text-decoration-color: currentColor;
 }
 :root[data-focused-reading=true] .page .block-content .mention:is([data-entity], [data-note-date]) .icon {
   display: none;

@@ -1097,6 +1097,26 @@
   font-size: 11px;
   color: var(--text-muted);
 }
+.collection-create-popover.is-form {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  max-width: calc(100vw - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-popover);
+  color: var(--text);
+  box-shadow: var(--shadow-menu);
+  font: 13px/1.5 var(--font-ui);
+}
+.collection-create-heading { display: flex; align-items: center; gap: 8px; }
+.collection-create-heading h2 { flex: 1; margin: 0; font: 500 15px/1.4 var(--font-ui); }
+.collection-create-heading .icon { transform: rotate(180deg); }
+.collection-create-popover .smart-collection-fields > p { color: var(--text-muted); }
+.collection-create-popover .dialog-actions { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
 @media (max-width: 1050px) {
   .organization-browser .organization-heading {
     flex-wrap: wrap;

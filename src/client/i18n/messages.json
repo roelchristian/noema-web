@@ -8754,6 +8754,31 @@
     "Quellen",
     "fuentes"
   ],
+  "Add collection": [
+    "Ajouter une collection",
+    "Sammlung hinzufügen",
+    "Añadir colección"
+  ],
+  "Create Smart Collection": [
+    "Créer une collection intelligente",
+    "Intelligente Sammlung erstellen",
+    "Crear colección inteligente"
+  ],
+  "Create collection": [
+    "Créer la collection",
+    "Sammlung erstellen",
+    "Crear colección"
+  ],
+  "Gather pages and folders by hand": [
+    "Rassembler des pages et des dossiers manuellement",
+    "Seiten und Ordner von Hand zusammenstellen",
+    "Reunir páginas y carpetas manualmente"
+  ],
+  "Bring matching pages together automatically": [
+    "Rassembler automatiquement les pages correspondantes",
+    "Passende Seiten automatisch zusammenführen",
+    "Reunir automáticamente las páginas coincidentes"
+  ],
   "Unknown provenance": [
     "Provenance inconnue",
     "Unbekannte Herkunft",

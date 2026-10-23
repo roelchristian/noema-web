@@ -35,12 +35,13 @@ export class EntityLifecycle {
     const properties=this.store.all('SELECT * FROM properties WHERE entity_id=? OR target_id=? ORDER BY id',id,id);
     const relationships=this.store.all('SELECT * FROM relationships WHERE source_id=? OR target_id=? ORDER BY id',id,id);
     const count=(sql:string)=>this.store.get<{n:number}>(sql,id)!.n;
-    const counts={activePages:pages.filter(page=>!page.trashed).length,trashedPages:pages.filter(page=>page.trashed).length,blockReferences:pages.reduce((sum,page)=>sum+page.references,0),
+    const counts={temporalRelationships:this.store.get<{n:number}>('SELECT count(*) n FROM temporal_relations WHERE vault_id=? AND entity_id=?',vault,id)!.n,temporalEvidence:this.store.get<{n:number}>('SELECT count(*) n FROM temporal_source_mentions WHERE vault_id=? AND source_id=?',vault,id)!.n,activePages:pages.filter(page=>!page.trashed).length,trashedPages:pages.filter(page=>page.trashed).length,blockReferences:pages.reduce((sum,page)=>sum+page.references,0),
       properties:count('SELECT count(*) n FROM properties WHERE entity_id=?'),incomingProperties:count('SELECT count(*) n FROM properties WHERE target_id=?'),relationships:relationships.length,attachments:files.length,
       citations:count('SELECT count(*) n FROM note_source_references WHERE source_id=?'),highlights:count('SELECT count(*) n FROM highlights WHERE source_id=?'),readingNotes:count('SELECT count(*) n FROM page_reading_notes WHERE source_id=?'),bookmarks:count("SELECT count(*) n FROM source_reading_locations WHERE id<>'resume' AND file_id IN (SELECT id FROM source_files WHERE entity_id=?)"),pendingSourceDrafts:count("SELECT count(*) n FROM source_page_drafts WHERE source_id=? AND status='pending'")};
     const deleteBlockedReason=entity.type==='source'?sourceDeletionImpact(this.store,vault,id).blockedReason:'Permanent entity deletion is unavailable.';
     // Include page revisions even when an edit keeps the same reference count. This
     // conservative token also catches intervening archive/restore and metadata edits.
+    const temporalRecords=this.store.all('SELECT r.* FROM temporal_relations r LEFT JOIN temporal_source_mentions m ON m.id=r.source_mention_id WHERE r.entity_id=? OR m.source_id=? ORDER BY r.id',id,id);
     const sourceRecords=[
       this.store.all('SELECT * FROM note_source_references WHERE source_id=? ORDER BY id',id),
       this.store.all('SELECT * FROM highlights WHERE source_id=? ORDER BY id',id),
@@ -48,7 +49,7 @@ export class EntityLifecycle {
       this.store.all('SELECT * FROM source_reading_locations WHERE file_id IN (SELECT id FROM source_files WHERE entity_id=?) ORDER BY file_id,id',id),
       this.store.all('SELECT * FROM source_page_drafts WHERE source_id=? ORDER BY request_id',id),
     ];
-    const version=createHash('sha256').update(JSON.stringify([entity,rows,files,properties,relationships,sourceRecords,curated,overview,counts,deleteBlockedReason])).digest('hex');
+    const version=createHash('sha256').update(JSON.stringify([entity,rows,files,properties,relationships,sourceRecords,temporalRecords,curated,overview,counts,deleteBlockedReason])).digest('hex');
     return {id,name:entity.name,archivedAt:entity.archived_at??null,version,pages,counts,deleteBlockedReason,
       remainsAccessible:['Existing mentions, properties, relationships, pinned pages, page associations and authored overview','Active pages and pages in Trash (normal Trash retention still applies)','Citations, original source attachments and coordinates, highlights, reading notes and bookmarks'],
       hiddenByDefault:['Active knowledge and source library views; global search unless Include archived is selected','New-link pickers, automatic tagging and entity discovery suggestions'],

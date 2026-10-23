@@ -34,6 +34,8 @@ export function SourceLifecycleDialog({vaultId,source,onUpdated,onClose}:{vaultI
     [uiText("Properties"), state.counts.properties],
     [uiText("Incoming properties"), state.counts.incomingProperties],
     [uiText("Relationships"), state.counts.relationships],
+    ["Temporal relationships",state.counts.temporalRelationships??0],
+    ["Temporal source evidence",state.counts.temporalEvidence??0],
     [uiText("Attachments"), state.counts.attachments],
     [uiText("Citations"), state.counts.citations],
     [uiText("Highlights"), state.counts.highlights],
@@ -63,6 +65,7 @@ export function SourceLifecycleDialog({vaultId,source,onUpdated,onClose}:{vaultI
       {source.type==='source'&&archived&&<details className="lifecycle-details lifecycle-delete"><summary>{uiText("Permanent deletion")}</summary>
         {state.deleteBlockedReason?<p role="status">{uiText("Permanent deletion remains blocked:")} {state.deleteBlockedReason}</p>:<>
           <p>{uiText("Permanent deletion cannot be undone. It removes the source, highlights, metadata, and entity connections. Original files are scheduled for cleanup after 24 hours. Export a vault backup first if you need a copy.")}</p>
+          {!!state.counts.temporalEvidence&&<p>Temporal passage evidence will be removed. Independent date curation is retained; surviving relationships will show unavailable support.</p>}
           <label>{uiText("Type the exact source name to permanently delete it")}<input autoComplete="off" value={confirmation} disabled={busy} onChange={event=>setConfirmation(event.target.value)}/></label>
           <button type="button" className="button confirmation-action is-danger" disabled={busy||confirmation!==state.name} onClick={()=>void change('delete')}><Icon name="trash"/>{uiText("Delete permanently")}</button>
         </>}

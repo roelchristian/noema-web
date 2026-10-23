@@ -12,6 +12,7 @@ import {Knowledge} from '../src/server/modules/knowledge.ts';
 import {SourceFiles} from '../src/server/modules/source-files.ts';
 import {SourceReading} from '../src/server/modules/source-reading.ts';
 import {createApp} from '../src/server/http.ts';
+const readingTrace=[];
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE??'playwright-core');
 const repo=resolve(import.meta.dirname,'..'),directory=await mkdtemp(join(tmpdir(),'noema-reading-browser-'));
 const artifacts=resolve(process.env.NOEMA_SCREENSHOTS??'/workspace/noema-reading-evidence');await mkdir(artifacts,{recursive:true});
@@ -39,7 +40,7 @@ function App(){const [open,setOpen]=useState(true);return <><header className="t
  vite=await createServer({configFile:false,root:directory,publicDir:join(repo,'public'),server:{host:'127.0.0.1',port:0,fs:{allow:[repo,directory]},proxy:{'/api':{target:`http://127.0.0.1:${backendPort}`,changeOrigin:false}}}});await vite.listen();
  const url=`http://127.0.0.1:${vite.httpServer.address().port}`;
  browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH??'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
- let context=await browser.newContext({viewport:{width:1280,height:900}}),page=await context.newPage();const errors=[];const observe=p=>{p.on('pageerror',e=>errors.push(e.message));p.on('response',async r=>{if(r.url().includes('reading-locations')&&!r.ok())console.log('API ERROR',r.status(),await r.text());});};observe(page);page.setDefaultTimeout(7000);
+ let context=await browser.newContext({viewport:{width:1280,height:900}}),page=await context.newPage();const errors=[];const observe=p=>{p.on('request',r=>{if(r.url().includes('reading-locations'))readingTrace.push({at:Date.now(),method:r.method(),body:r.postData(),url:r.url().split('/api/')[1]});});p.on('pageerror',e=>errors.push(e.message));p.on('response',async r=>{if(r.url().includes('reading-locations')&&!r.ok())console.log('API ERROR',r.status(),await r.text());});};observe(page);page.setDefaultTimeout(7000);
  await page.goto(url);await page.locator('.source-reader-passage').first().waitFor();
  await page.waitForFunction(()=>document.querySelector('[aria-label="Reading continuity"]'));
  assert.match(await page.locator('.source-reading-navigation').innerText(),/Section 1/);assert.doesNotMatch(await page.locator('.source-reading-navigation').innerText(),/%|Page/);
@@ -82,7 +83,15 @@ function App(){const [open,setOpen]=useState(true);return <><header className="t
  // Save and reopen the end-of-source state, then inspect a narrow viewport.
  await page.evaluate(()=>{window.dispatchEvent(new WheelEvent('wheel'));window.scrollTo(0,document.body.scrollHeight);});await page.waitForTimeout(500);assert.equal(new SourceReading(store).continuity('default',file.id).resume.anchor.atEnd,true);
  await page.getByRole('button',{name:'Close source',exact:true}).click();await page.getByRole('button',{name:'Reopen source',exact:true}).click();await page.getByRole('button',{name:'Continue reading · End of source',exact:true}).waitFor();
+ for(let iteration=1;iteration<Number(process.env.NOEMA_READING_REPEAT??1);iteration++) {
+  await page.getByRole('button',{name:'Continue reading · End of source',exact:true}).click();
+  await page.evaluate(()=>{window.dispatchEvent(new WheelEvent('wheel'));window.scrollTo(0,document.body.scrollHeight);});
+  await page.waitForTimeout(500);
+  assert.equal(new SourceReading(store).continuity('default',file.id).resume.anchor.atEnd,true,`End anchor before repeat ${iteration}`);
+  await page.getByRole('button',{name:'Close source',exact:true}).click();await page.getByRole('button',{name:'Reopen source',exact:true}).click();
+  await page.getByRole('button',{name:'Continue reading · End of source',exact:true}).waitFor();
+ }
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:join(artifacts,'05-mobile-end-of-source.png')});
- assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.deepEqual(errors,[]);
- console.log(JSON.stringify({browser:await browser.version(),passed:['actual API/database/browser-context restart persistence','initial reopening preserves anchor','bookmark create/rename/delete','revision ambiguity and disabled destination','structural section progress (no invented pages or percent)','citation jump and one-action return','ordinary selection preserved without location write','nonblocking resume/bookmark persistence errors and retry','reload flush before debounce completes','end-of-source reopen','mobile viewport'],screenshots:artifacts,errors},null,2));
-}catch(error){if(browser){const pages=browser.contexts().flatMap(c=>c.pages());if(pages[0]){await pages[0].screenshot({path:join(artifacts,'failure.png')});console.error((await pages[0].locator('body').innerText()).slice(0,1700));}}throw error;}finally{if(browser)await browser.close();if(vite)await vite.close();if(api?.listening)await stopBackend();await rm(directory,{recursive:true,force:true});}
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.deepEqual(errors,[]);if(process.env.NOEMA_READING_TRACE)await writeFile(join(artifacts,'reading-trace.json'),JSON.stringify(readingTrace,null,2));
+ console.log(JSON.stringify({browser:await browser.version(),closeReopenCycles:Number(process.env.NOEMA_READING_REPEAT??1),passed:['actual API/database/browser-context restart persistence','initial reopening preserves anchor','bookmark create/rename/delete','revision ambiguity and disabled destination','structural section progress (no invented pages or percent)','citation jump and one-action return','ordinary selection preserved without location write','nonblocking resume/bookmark persistence errors and retry','reload flush before debounce completes','end-of-source reopen','mobile viewport'],screenshots:artifacts,errors},null,2));
+}catch(error){if(process.env.NOEMA_READING_TRACE)console.error('READING TRACE',JSON.stringify(readingTrace));if(browser){const pages=browser.contexts().flatMap(c=>c.pages());if(pages[0]){await pages[0].screenshot({path:join(artifacts,'failure.png')});console.error((await pages[0].locator('body').innerText()).slice(0,1700));}}throw error;}finally{if(browser)await browser.close();if(vite)await vite.close();if(api?.listening)await stopBackend();await rm(directory,{recursive:true,force:true});}

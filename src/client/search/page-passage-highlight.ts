@@ -4,10 +4,13 @@ import type {PageReference} from '../../shared/embeddings';
 import type {EntityMentionReference} from '../../shared/entity-mentions';
 import {entityMentionSegments} from '../../shared/entity-mentions';
 import {validateEntityMention} from './entity-mention-navigation';
+import {validateTemporalReference} from './temporal-navigation';
+import type {TemporalPageReference} from '../../shared/temporal';
 
 /** Highlight DOM ranges only when rendered text agrees with the canonical block.
  * Math/table widgets fall back to block anchors instead of guessing offsets. */
 export function highlightPagePassage(reference:PageReference,page:Page,entities:Entity[]) {
+ if('blockHash' in reference&&!validateTemporalReference(reference as TemporalPageReference,page,entities))return ()=>{};
  const mention='entityId' in reference?reference as EntityMentionReference:undefined;
  if(mention&&!validateEntityMention(mention,page,entities))return ()=>{};
  const names=new Map(entities.map(entity=>[entity.id,entityMentionName(entity)]));

@@ -17,7 +17,7 @@
     "test:dom": "node scripts/test.mjs --group=dom",
     "test:server": "node scripts/test.mjs --group=server",
     "test:list": "node scripts/test.mjs --list",
-    "test:browser": "node scripts/check-editor-browser.mjs && node --import tsx scripts/check-reading-continuity-browser.mjs && node --import tsx scripts/check-entity-linking-browser.mjs && node --import tsx scripts/check-selection-toolbar-browser.mjs && node --import tsx scripts/check-entity-scan-browser.mjs && node scripts/check-document-find-browser.mjs",
+    "test:browser": "node scripts/check-editor-browser.mjs && node --import tsx scripts/check-reading-continuity-browser.mjs && node --import tsx scripts/check-entity-linking-browser.mjs && node --import tsx scripts/check-selection-toolbar-browser.mjs && node --import tsx scripts/check-entity-scan-browser.mjs && node scripts/check-document-find-browser.mjs && node --import tsx scripts/check-calendar-browser.mjs",
     "test:performance": "EXPECT_ISOLATION=1 node scripts/measure-editor-renders.mjs && node --import tsx scripts/benchmark-document-history.mjs && node --import tsx scripts/benchmark-page-drift.mjs",
     "typecheck:tests": "tsc --noEmit -p tsconfig.test.json",
     "test:native": "node scripts/test-native.mjs",
@@ -25,11 +25,13 @@
     "test:design": "node --import tsx scripts/check-design-browser.mjs"
   },
   "dependencies": {
+    "@romcal/calendar.general-roman": "3.0.0-dev.140",
     "js-tiktoken": "^1.0.21",
     "katex": "^0.19.0",
     "parse5": "^8.0.1",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "romcal": "3.0.0-dev.140"
   },
   "devDependencies": {
     "@types/katex": "^0.16.8",

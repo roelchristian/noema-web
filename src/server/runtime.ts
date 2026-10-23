@@ -1,3 +1,5 @@
+import {LiturgicalCalendar} from './modules/liturgical-calendar.js';
+import {TemporalIndex} from './modules/temporal.js';
 import {EntityDiscoveryService} from './modules/entity-discovery.js';
 import {createSourcePageGeneration} from './modules/source-page-generation.js';
 import {SourcePageImages} from './modules/source-page-images.js';
@@ -71,6 +73,8 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
   const sourcePageGeneration=createSourcePageGeneration({store,sourcePages,intelligence,vaults,activity,notifications});
   const searchSnippets=new SearchSnippets(pages,knowledge,vaults);
   const textSearch=new TextSearch(store,vaults);
+  const temporal=new TemporalIndex(store);
+  const liturgical=new LiturgicalCalendar(store);
   // Enforce retention on startup, periodically while running, and before scoped API access.
   pages.purgeExpired();
   images.cleanup();
@@ -81,12 +85,12 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
   let embeddingWorker: ReturnType<typeof setInterval> | undefined;
   let sourcePassageWorker: ReturnType<typeof setInterval> | undefined;
   let sourceEnrichmentWorker: ReturnType<typeof setInterval> | undefined;
-  return { store, entityDiscovery, intelligence, networkAccess, vaultDeletion, sourceFiles, sourcePageImages, sourceReading, backups, images, notifications, vaults, knowledge, pages, organizer, activity, enrichments, sourceReprocessing, scans, pageEnrichment, enrichmentScheduler, scheduleEnrichment, entityMatches, embeddings, sourcePassages, sourceEnrichments, sourcePages, sourcePageGeneration, searchSnippets, textSearch,
+  return { store, temporal, liturgical, entityDiscovery, intelligence, networkAccess, vaultDeletion, sourceFiles, sourcePageImages, sourceReading, backups, images, notifications, vaults, knowledge, pages, organizer, activity, enrichments, sourceReprocessing, scans, pageEnrichment, enrichmentScheduler, scheduleEnrichment, entityMatches, embeddings, sourcePassages, sourceEnrichments, sourcePages, sourcePageGeneration, searchSnippets, textSearch,
     start() {
       enrichmentScheduler.start();
       sourceReprocessingWorker=setInterval(()=>{void sourceReprocessing.tick().catch(()=>{});},1000);sourceReprocessingWorker.unref();
       vaultDeletion.cleanup();
-      sourcePassageWorker=setInterval(()=>{try{sourcePassages.tick();}catch{/* Durable passage state records failures for retry. */}},500);sourcePassageWorker.unref();
+      sourcePassageWorker=setInterval(()=>{try{sourcePassages.tick();temporal.tickEvidence();}catch{/* Durable passage state records failures for retry. */}},500);sourcePassageWorker.unref();
       sourceWorker=setInterval(()=>{void sourceFiles.tick().catch(()=>{});},500);sourceWorker.unref();
       sourceEnrichmentWorker=setInterval(()=>{void sourceEnrichments.tick().catch(()=>{});},1000);sourceEnrichmentWorker.unref();
       cleanup = setInterval(() => { try { pages.purgeExpired(); images.cleanup(); sourceFiles.cleanup(); vaultDeletion.cleanup(); } catch (error) { console.error('Trash cleanup failed',error); } },60 * 60 * 1000);
@@ -95,6 +99,7 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
       embeddingWorker=setInterval(()=>{void embeddings.tick().catch(()=>{/* Durable job history records failures; never log note content. */});},1000);embeddingWorker.unref();
     },
     close() {
+      liturgical.close();
       clearInterval(sourceReprocessingWorker);sourceReprocessing.close();enrichmentScheduler.dispose();clearInterval(sourceWorker);sourceFiles.close();sourcePageImages.close();clearInterval(sourcePassageWorker);clearInterval(sourceEnrichmentWorker);sourceEnrichments.close();clearInterval(cleanup);clearInterval(keyCleanup);clearInterval(embeddingWorker);embeddings.close();
     },
   };

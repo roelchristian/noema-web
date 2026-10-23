@@ -1,3 +1,5 @@
+import {setupTemporalEvidenceSchema} from './temporal-evidence-schema.js';
+import {setupTemporalSchema} from './temporal-schema.js';
 import {DOMAINS,TAXONOMY_VERSION,validateDomainRegistry} from '../shared/domains.js';
 import {linkSourceReferences,syncSourceReferences} from './modules/source-references.js';
 import {Store} from './store.js';
@@ -472,6 +474,9 @@ if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
  setupTextSearchSchema(db);
  setupPageEnrichmentSchedulerSchema(db);
  setupSuggestionVersionSchema(db);
+ setupTemporalSchema(db);
+ setupTemporalEvidenceSchema(db);
+ db.exec('CREATE TABLE IF NOT EXISTS liturgical_year_cache (year INTEGER PRIMARY KEY,provider_key TEXT NOT NULL,data TEXT NOT NULL,generated_at TEXT NOT NULL,last_access TEXT NOT NULL)');
  if (db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Database contains invalid references');
  return db;
  } catch(error) { db.close(); throw error; }

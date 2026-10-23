@@ -129,6 +129,7 @@ export const api={
   restorePage:(vault:string,id:string)=>request<Page>(`trash/${id}/restore`,'POST',{},vault),
   permanentlyDeletePage:(vault:string,id:string)=>request<{ok:true}>(`trash/${id}`,'DELETE',undefined,vault),
   entities:(vault:string,signal?:AbortSignal)=>request<Entity[]>('entities','GET',undefined,vault,signal),
+  entityReferenceOptions:(vault:string,options:{query?:string;types?:import('../shared/domain').EntityType[];subtypes?:string[];offset?:number;limit?:number;selected?:string}={},signal?:AbortSignal)=>request<{items:Entity[];nextOffset:number|null;total:number}>(`entities/reference-options?${new URLSearchParams({q:options.query??'',types:(options.types??[]).join(','),subtypes:(options.subtypes??[]).join(','),offset:String(options.offset??0),limit:String(options.limit??30),selected:options.selected??''})}`,'GET',undefined,vault,signal),
   entity:(vault:string,id:string,preview=false)=>request<EntityDetail>(`entities/${id}${preview ? '?preview=1' : ''}`,'GET',undefined,vault),
   entityNeighborhood:(vault:string,id:string,depth:1|2,relationType?:string,signal?:AbortSignal)=>request<import('../shared/entity-neighborhood').EntityNeighborhood>(`entities/${encodeURIComponent(id)}/neighborhood?${new URLSearchParams({depth:String(depth),...(relationType?{relationType}:{})})}`,'GET',undefined,vault,signal),
   entityDiscovery:(vault:string,id:string,signal?:AbortSignal)=>request<import('../shared/entity-discovery').EntityDiscovery|null>(`entities/${encodeURIComponent(id)}/discovery`,'GET',undefined,vault,signal),

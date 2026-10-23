@@ -5147,3 +5147,11 @@ dialog.noema-modal.entity-review-modal { height: min(780px, calc(100dvh - 64px))
 .entity-inline-properties [role="alertdialog"] {padding:8px;border:1px solid var(--status-warning-border);border-radius:6px;}
 .entity-inline-properties.density-compact .entity-overview-properties>div,.entity-inline-properties.density-source .entity-overview-properties>div {grid-template-columns:minmax(90px,.8fr) minmax(0,1.2fr);}
 @media(max-width:600px) {.entity-inline-properties .entity-overview-properties>div {grid-template-columns:1fr;gap:4px;}}
+.entity-reference-picker,.entity-reference-create {display:flex;flex-direction:column;gap:8px;min-width:0;}
+.entity-reference-create,.entity-property-coordinates {padding:10px;border:1px solid var(--border);border-radius:6px;}
+.entity-property-coordinates {display:grid;grid-template-columns:1fr 1fr;gap:8px;min-width:0;}
+.entity-property-coordinates small {grid-column:1/-1;}
+.entity-inline-edit .entity-property-compatibility {display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:12px;}
+.entity-inline-edit input[type="checkbox"] {width:auto;}
+.entity-property-compatibility small {flex-basis:100%;}
+@media(max-width:600px) {.entity-property-coordinates {grid-template-columns:1fr;}}

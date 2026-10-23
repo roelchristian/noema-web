@@ -75,7 +75,8 @@
     "test/entity-property-list.test.mjs",
     "test/smart-collection-preview.test.mjs",
     "test/property-definition-manager.test.mjs",
-    "test/property-proposal-review.test.mjs"
+    "test/property-proposal-review.test.mjs",
+    "test/semantic-collection-preview.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",
@@ -174,6 +175,7 @@
     "test/property-review.test.mjs",
     "test/property-provenance-backups.test.mjs",
     "test/source-provenance-governance.test.mjs",
-    "test/property-provenance-http.test.mjs"
+    "test/property-provenance-http.test.mjs",
+    "test/semantic-collections.test.mjs"
   ]
 }

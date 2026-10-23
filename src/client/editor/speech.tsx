@@ -77,7 +77,8 @@ export function useSpeech(vaultId:string,pageId?:string) {
         const index=run.next,section=run.sections[index]!;
         if(!run.valid(section.blockId)){stop();return;}
         const lastOfBlock=run.sections[index+1]?.blockId!==section.blockId;
-        const pause=lastOfBlock?(section.kind==='heading'?narration.pauses.heading:section.kind==='list'?narration.pauses.listItem:section.kind==='protected'?0:narration.pauses.paragraph):0;
+        const pauseKind=section.pauseKind??section.kind;
+        const pause=lastOfBlock?(pauseKind==='heading'?narration.pauses.heading:pauseKind==='list'?narration.pauses.listItem:pauseKind==='protected'?0:narration.pauses.paragraph):0;
         const part=await createSpeech(vaultId,section.text,controller.current!.signal,pageId,voice,provider,{expectedNarration:narration,pauseAfterMs:pause,protectedText:section.kind==='protected'});
         if(!current(run))return;
         // Validate each complete file before exposing playback, including partial runs.

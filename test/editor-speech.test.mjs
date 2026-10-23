@@ -5,6 +5,7 @@ import {createRoot} from 'react-dom/client';
 import {speechText,speechChunks,combineSpeechAudio,useSpeech} from '../src/client/editor/speech.tsx';
 import {SpeechPlayer} from '../src/client/editor/SpeechPlayer.tsx';
 import {api} from '../src/client/api.ts';
+import {defaultNarrationPreferences} from '../src/shared/narration.ts';
 import {cleanSpeechText} from '../src/shared/speech-text.ts';
 import {speechSections,resumeRevision,readSpeechResume,writeSpeechResume,clearSpeechResume} from '../src/client/editor/speech-sections.ts';
 import {setupDOM} from './helpers/dom.mjs';
@@ -29,6 +30,16 @@ test('block sections retain order, stable boundaries, protected content and all 
     assert.deepEqual(chunks.map(section=>section.sectionIndex),chunks.map((_,index)=>index));
     assert.ok(chunks.every(section=>section.text.length<=9&&!/[\uD800-\uDBFF]$/.test(section.text)));
   }
+});
+
+test('protected inline and table-cell content retains structural pause metadata without changing authored blocks',async()=>{
+  const source=[paragraph('heading',[{text:'API',code:true}],'heading1'),paragraph('body',[{text:'123',math:true}]),paragraph('list',[{text:'API',code:true}],'bullet'),{...paragraph('table',[],'table'),rows:[[[{text:'API',code:true}]]]}, {...paragraph('columns',[],'columns'),rows:[[[{text:'123',math:true}]]]},paragraph('code','API','code'),paragraph('math','123','math')];
+  const original=structuredClone(source),sections=speechSections(source,source.map(block=>block.id),[]);
+  assert.deepEqual(source,original);assert.ok(sections.every(section=>section.kind==='protected'));
+  assert.deepEqual(sections.map(section=>section.pauseKind),['heading','paragraph','list','paragraph','paragraph',undefined,undefined]);
+  assert.deepEqual(sections.map(section=>section.text),['API','123','API','API','123','API','123']);
+  const changed=sections.map(section=>({...section,pauseKind:'paragraph'}));
+  assert.notEqual(await resumeRevision(sections),await resumeRevision(changed),'Structural pause changes invalidate a previous resume revision');
 });
 
 test('resume stores only revision and a stable section boundary, isolated by vault/page and invalidated on edits or deletion',async()=>{
@@ -104,7 +115,7 @@ test('speech chunks preserve all trimmed text, readable boundaries and Unicode p
   }
 });
 
-async function speechFixture(t){
+async function speechFixture(t,narration){
   const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));
   const openMenus=new WeakSet(),originalMatches=env.dom.window.HTMLElement.prototype.matches;
   t.mock.method(env.dom.window.HTMLElement.prototype,'matches',function(selector){return selector===':popover-open'?openMenus.has(this):originalMatches.call(this,selector);});
@@ -116,7 +127,7 @@ async function speechFixture(t){
   let hook,enabled=true,voice='puck',provider='kokoro',sequence=0;
   const requests=[],created=[],revoked=[],autoplayed=[];
   t.mock.method(env.dom.window.HTMLMediaElement.prototype,'play',async function(){autoplayed.push(this);});
-  t.mock.method(api,'intelligence',async()=>({ttsEnabled:enabled,ttsVoice:voice,ttsProvider:provider}));
+  t.mock.method(api,'intelligence',async()=>({ttsEnabled:enabled,ttsVoice:voice,ttsProvider:provider,...(narration?{narration}:{})}));
   t.mock.method(globalThis,'fetch',async(route,options)=>{assert.equal(route,'/api/intelligence/speech');let resolve;const promise=new Promise(done=>{resolve=done;});requests.push({options,resolve});return promise;});
   t.mock.method(URL,'createObjectURL',blob=>{created.push(blob);return 'blob:speech-'+(++sequence);});
   t.mock.method(URL,'revokeObjectURL',url=>revoked.push(url));
@@ -504,4 +515,14 @@ test('explicit full-download preparation drains bounded generation without playb
   await f.resolve(5);
   await act(async()=>document.querySelector('audio').dispatchEvent(new Event('playing')));
   assert.equal(f.hook().currentBlockId,'part1');
+});
+
+
+test('protected heading, paragraph and list sections send their configured pauses independently of reading-rule protection',async t=>{
+  const narration={...structuredClone(defaultNarrationPreferences),pauses:{heading:800,paragraph:400,listItem:200}},f=await speechFixture(t,narration);
+  const source=[paragraph('heading',[{text:'API',code:true}],'heading1'),paragraph('body',[{text:'123',math:true}]),paragraph('list',[{text:'API',code:true}],'bullet')];
+  const original=structuredClone(source),sections=speechSections(source,source.map(block=>block.id),[]);
+  await act(async()=>f.hook().speak('ignored',sections));await f.resolve(0);await f.resolve(1);await f.resolve(2);
+  assert.deepEqual(f.requests.map(request=>{const body=JSON.parse(request.options.body);return {text:body.text,pauseAfterMs:body.pauseAfterMs,protectedText:body.protectedText};}),[{text:'API',pauseAfterMs:800,protectedText:true},{text:'123',pauseAfterMs:400,protectedText:true},{text:'API',pauseAfterMs:200,protectedText:true}]);
+  assert.deepEqual(source,original);
 });

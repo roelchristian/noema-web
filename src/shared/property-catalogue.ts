@@ -24,8 +24,27 @@ const main:Record<EntityType,Field[]>={
  source:[language(),ref('publisher','Publisher',organization),ref('associated work','Associated Work',work,true),identifier('doi','DOI'),identifier('isbn','ISBN')],
  concept:[ref('related concepts','Related Concepts',concept,true),text('notation','Notation'),ref('introduced by','Introduced By',person,true),ref('originating work','Originating Work',work)],
 };
-/** Catalogue uses only the existing subtype IDs. Disciplinary fields continue to use Domain IDs. */
+/** Built-in subtype recommendations. Disciplinary fields continue to use Domain IDs. */
 const subtype:Record<string,Field[]>={
+ 'place:building':[ref('architect designer','Architect / Designer',person,true),date('established','Established'),ref('architectural style','Architectural Style',concept,true)],
+ 'place:natural-feature':[ref('feature kind','Feature Kind',concept),{...number('elevation','Elevation','quantity'),description:'Elevation with an explicit unit and reference datum where known, for example 1200 m above sea level.'},{...number('length','Length','quantity'),description:'Measured length with an explicit unit, for example 42 km.'}],
+ 'place:historical-place':[ref('associated events','Associated Events',['event'],true),date('established','Established'),date('abandoned','Abandoned')],
+ 'creativework:album':[ref('performer','Performer',people,true),ref('composer','Composer',person,true),{...number('duration','Duration','quantity'),description:'Playing time with an explicit unit, for example 42 min.'}],
+ 'creativework:journal':[identifier('issn','ISSN'),date('first published','First Published'),ref('publisher','Publisher',organization)],
+ 'creativework:painting':[text('medium','Medium'),{...number('height','Height','quantity'),description:'Artwork height with an explicit unit, for example 60 cm.'},{...number('width','Width','quantity'),description:'Artwork width with an explicit unit, for example 40 cm.'}],
+ 'creativework:poem':[ref('poetic form','Poetic Form',concept),text('meter','Meter'),date('composed','Composed')],
+ 'creativework:software':[identifier('version','Version'),{name:'repository',label:'Repository',kind:'url'},text('license','License')],
+ 'creativework:academic-paper':[ref('journal','Journal',work,false,['creativework:journal']),identifier('arxiv id','arXiv ID'),identifier('doi','DOI')],
+ 'organization:government-body':[ref('jurisdiction','Jurisdiction',place,true),ref('responsibilities','Responsibilities',concept,true),date('established','Established')],
+ 'organization:religious-institution':[ref('religious tradition','Religious Tradition',['culture','concept']),ref('affiliation','Affiliation',organization,true),date('established','Established')],
+ 'organization:research-institute':[ref('research areas','Research Areas',concept,true),ref('affiliation','Affiliation',organization,true),date('established','Established')],
+ 'organization:association':[ref('focus areas','Focus Areas',concept,true),ref('affiliation','Affiliation',organization,true),date('established','Established')],
+ 'culture:cultural-tradition':[ref('associated communities','Associated Communities',culture,true),ref('origin place','Origin Place',place,true),ref('associated events','Associated Events',['event'],true)],
+ 'concept:theory':[ref('proponents','Proponents',person,true),ref('related theories','Related Theories',concept,true,['concept:theory']),date('proposed','Proposed')],
+ 'concept:theorem':[ref('assumptions','Assumptions',concept,true),ref('depends on theorems','Depends On Theorems',concept,true,['concept:theorem']),date('proven','Proven')],
+ 'concept:method':[ref('applications','Applications',concept,true),ref('related methods','Related Methods',concept,true,['concept:method']),date('introduced','Introduced')],
+ 'concept:principle':[ref('applications','Applications',concept,true),ref('related principles','Related Principles',concept,true,['concept:principle']),date('introduced','Introduced')],
+ 'concept:framework':[ref('components','Components',concept,true),ref('based on theories','Based On Theories',concept,true,['concept:theory']),date('introduced','Introduced')],
  'person:actor':[ref('filmography','Filmography',work,true),ref('awards','Awards',['creativework','event'],true)],
  'person:writer':[ref('published works','Published Works',work,true),ref('literary movement','Literary Movement',['concept','culture'])],
  'person:artist':[ref('works','Works',work,true),text('medium','Medium'),ref('artistic movement','Artistic Movement',concept)],
@@ -77,9 +96,19 @@ const subtype:Record<string,Field[]>={
  'concept:philosophy':[ref('philosophical tradition','Philosophical Tradition',concept),ref('proponents','Proponents',person,true)],
  'concept:religion-belief':[ref('associated tradition','Associated Tradition',['culture','concept']),ref('historical origin','Historical Origin',['place','event'])],
 };
+const additionalSubtypeIds=new Set(['place:building', 'place:natural-feature', 'place:historical-place', 'creativework:album', 'creativework:journal', 'creativework:painting', 'creativework:poem', 'creativework:software', 'creativework:academic-paper', 'organization:government-body', 'organization:religious-institution', 'organization:research-institute', 'organization:association', 'culture:cultural-tradition', 'concept:theory', 'concept:theorem', 'concept:method', 'concept:principle', 'concept:framework']);
+function fieldGuidance(field:Field):string {
+ switch(field.kind) {
+  case 'date': return 'Use the known date precision and preserve approximate or uncertain expressions.';
+  case 'entity_reference': return 'Link an existing entity or deliberately create one; unresolved names may remain literals for review.';
+  case 'identifier': return 'Preserve the exact identifier as text, including leading zeros and punctuation.';
+  case 'url': return 'An HTTP or HTTPS address for this work.';
+  default: return 'Brief identifying metadata; detailed content belongs in the overview or linked pages.';
+ }
+}
 function definition(type:EntityType,field:Field,index:number,subtypeId?:string):PropertyDefinition {
  const key=field.name.replace(/ /g,'_');
- return {id:subtypeId?`builtin:${subtypeId}:${key}`:`builtin:${type}:${key}`,key,legacyName:field.name,label:field.label,description:field.description??'',valueKind:field.kind??'short_text',cardinality:field.many?'many':'one',allowedTargetTypes:field.targets??[],allowedTargetSubtypes:field.subtypes??[],scope:subtypeId?{kind:'subtype',type,subtypeId}:{kind:'main_type',type},origin:'builtin',visibility:subtypeId?'suggested':'core',sortOrder:(subtypeId?500:100)+index,editable:true,validation:{...(field.values?{values:field.values}:{}),...(field.hierarchical?{hierarchical:true}:{})},compatibility:'legacy'};
+ return {id:subtypeId?`builtin:${subtypeId}:${key}`:`builtin:${type}:${key}`,key,legacyName:field.name,label:field.label,description:field.description??(subtypeId&&additionalSubtypeIds.has(subtypeId)?fieldGuidance(field):''),valueKind:field.kind??'short_text',cardinality:field.many?'many':'one',allowedTargetTypes:field.targets??[],allowedTargetSubtypes:field.subtypes??[],scope:subtypeId?{kind:'subtype',type,subtypeId}:{kind:'main_type',type},origin:'builtin',visibility:subtypeId?'suggested':'core',sortOrder:(subtypeId?500:100)+index,editable:true,validation:{...(field.values?{values:field.values}:{}),...(field.hierarchical?{hierarchical:true}:{})},compatibility:'legacy'};
 }
 /** Additive recommendations, not mandatory fields or replacement legacy names. */
 export const recommendedPropertyDefinitions:PropertyDefinition[]=[
@@ -87,11 +116,16 @@ export const recommendedPropertyDefinitions:PropertyDefinition[]=[
  ...Object.entries(subtype).flatMap(([id,fields])=>fields.map((field,index)=>definition(id.split(':')[0] as EntityType,field,index,id))),
 ];
 export const catalogueDisciplinePolicy='Concept Disciplines and disciplinary recommendations use the existing Domain IDs, not duplicate text properties.';
+/** A custom identity occupying a native ID must not acquire native fields or target meaning. */
+export function propertyCatalogueForSchema(schema:EntitySchema):PropertyDefinition[] {
+ const customIds=new Set(schema.subtypes.filter(item=>item.origin==='user_defined').map(item=>item.id));
+ return recommendedPropertyDefinitions.filter(item=>(item.scope.kind==='main_type'||!customIds.has(item.scope.subtypeId))&&!item.allowedTargetSubtypes.some(id=>customIds.has(id)));
+}
 /** Populate additive discovery arrays without changing the legacy builtinProperties registry. */
 export function withPropertyCatalogue(schema:EntitySchema):EntitySchema {
  const properties=Object.fromEntries(Object.entries(schema.properties).map(([type,names])=>[type,[...names]])) as Record<EntityType,string[]>;
  const subtypeProperties=Object.fromEntries(Object.entries(schema.subtypeProperties).map(([id,names])=>[id,[...names]]));
- for(const item of recommendedPropertyDefinitions) {
+ for(const item of propertyCatalogueForSchema(schema)) {
   if(item.scope.kind==='main_type'){const names=properties[item.scope.type];if(!names.some(name=>name.toLowerCase()===item.legacyName.toLowerCase()))names.push(item.legacyName);}
   else {const scope=item.scope;if(schema.subtypes.some(subtype=>subtype.id===scope.subtypeId&&subtype.type===scope.type)){
    const fields=subtypeProperties[scope.subtypeId]??=[];if(!fields.some(name=>name.toLowerCase()===item.legacyName.toLowerCase()))fields.push(item.legacyName);

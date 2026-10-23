@@ -1,4 +1,4 @@
-import {builtinProperties,builtinSubtypes,type EntitySchema} from '../../shared/entity-schema.js';
+import {builtinProperties,vaultSubtypes,type EntitySchema} from '../../shared/entity-schema.js';
 import {propertyDefinitionsForSchema,type PropertyDefinition} from '../../shared/property-definitions.js';
 import type {EntityType,Property} from '../../shared/domain.js';
 import {Store} from '../store.js';
@@ -13,7 +13,7 @@ export function readPropertySchema(store:Store,vault:string):EntitySchema {
  for(const row of store.all<{type:EntityType;name:string}>('SELECT type,name FROM entity_type_properties WHERE vault_id=? ORDER BY type,name',vault))if(!properties[row.type].some(name=>name.toLowerCase()===row.name.toLowerCase()))properties[row.type].push(row.name);
  const subtypeProperties:Record<string,string[]>={};
  for(const row of store.all<{subtype_id:string;name:string}>('SELECT subtype_id,name FROM entity_subtype_properties WHERE vault_id=? ORDER BY subtype_id,name',vault))(subtypeProperties[row.subtype_id]??=[]).push(row.name);
- const subtypes=[...builtinSubtypes,...store.all<{id:string;name:string;type:EntityType}>('SELECT id,name,type FROM entity_subtypes WHERE vault_id=? ORDER BY id',vault)];
+ const subtypes=vaultSubtypes(store.all<{id:string;name:string;type:EntityType}>('SELECT id,name,type FROM entity_subtypes WHERE vault_id=? ORDER BY id',vault));
  const schema:EntitySchema={properties,subtypeProperties,subtypes};
  const stored=store.all<{definition_json:string}>('SELECT definition_json FROM property_definitions WHERE vault_id=? ORDER BY id',vault).map(row=>JSON.parse(row.definition_json) as PropertyDefinition);
  schema.propertyDefinitions=[...stored,...propertyDefinitionsForSchema(schema,vault).filter(item=>!stored.some(existing=>existing.id===item.id))];

@@ -344,3 +344,45 @@ test('contextual evidence cannot swallow a named entity and legacy overlaps reco
     assert.equal(result.scan.suggestions[1].evidence,'Alexandra Eala');
   }finally{db.close();}
 });
+
+test('scan registry resolves added native IDs without changing custom selections or creating Sources',async()=>{
+  const {randomUUID}=await import('node:crypto');
+  const {EntityScans}=await import('../src/server/modules/entity-scan.ts');
+  const {Knowledge}=await import('../src/server/modules/knowledge.ts');
+  const {Pages}=await import('../src/server/modules/pages.ts');
+  const {AIEnrichments}=await import('../src/server/modules/ai-enrichments.ts');
+  const {SourceFiles}=await import('../src/server/modules/source-files.ts');
+  const db=openDatabase(':memory:'),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge);
+  try {
+    const ids=['place:building','place:natural-feature','place:historical-place','creativework:album','creativework:journal','creativework:painting','creativework:poem','creativework:software','creativework:academic-paper','organization:government-body','organization:religious-institution','organization:research-institute','organization:association','culture:cultural-tradition','concept:theory','concept:theorem','concept:method','concept:principle','concept:framework'];
+    const custom=randomUUID();store.run('INSERT INTO entity_subtypes VALUES (?,?,?,?)',custom,'default','place','Building');
+    const existing=knowledge.create('default',{name:'Existing custom hall',type:'place',subtypes:[custom]});
+    const file=new SourceFiles(store).add('default','synthetic-journal.txt',Buffer.from('Synthetic consulted article.'));
+    const source=knowledge.create('default',{name:'Consulted journal article',type:'source',subtypes:['source:journal-article'],attachmentIds:[file.id]});
+    const names=ids.map((_id,index)=>'Synthetic identity '+String(index).padStart(2,'0')+' example');
+    let page=pages.create('default',{title:'Subtype registry fixture'});
+    page=pages.update('default',page.id,{...page,blocks:[{id:'registry-body',type:'paragraph',checked:false,content:[{text:[...names,existing.name,source.name,'Unattached source proposal'].join('; ')}]}]});
+    const scans=new EntityScans(store,pages,knowledge,new AIEnrichments(store,pages));
+    const prompt=JSON.parse(scans.input('default',page));
+    for(const id of ids)assert.ok(prompt.schema.subtypes.some(item=>item.id===id),id+' supplied to discovery');
+    assert.deepEqual(prompt.existingEntities.find(item=>item.id===existing.id).subtypes,[custom]);
+    const baseline=knowledge.list('default').length,sourceCount=knowledge.list('default').filter(item=>item.type==='source').length;
+    const suggestions=ids.map((id,index)=>candidate(names[index],id.split(':')[0],{subtypes:id==='concept:theorem'?[id,'concept:mathematics']:[id],...(id==='concept:theorem'?{domainIds:['medicine']}:{})}));
+    suggestions.push(candidate(existing.name,'place',{subtypes:['place:building'],existingId:existing.id}),candidate(source.name,'source',{subtypes:['source:journal-article'],existingId:source.id}),candidate('Unattached source proposal','source',{subtypes:['source:journal-article']}));
+    const scan=scans.save('default',page,JSON.stringify({suggestions}),{model:'test',reasoningEffort:'low'});
+    assert.equal(knowledge.list('default').length,baseline,'Mocked scan only proposes identities');
+    assert.equal(scan.suggestions.length,ids.length+2);assert.deepEqual(scan.subtypeSuggestions,[]);
+    ids.forEach((id,index)=>assert.ok(scan.suggestions[index].subtypes.includes(id)));
+    assert.deepEqual(scan.suggestions.find(item=>item.existingId===existing.id).subtypes,[custom]);
+    assert.deepEqual(scan.suggestions.find(item=>item.existingId===source.id).subtypes,['source:journal-article']);
+    const accepted=scans.review('default',page.id,{scanId:scan.id,suggestionIds:scan.suggestions.map(item=>item.id),revision:page.revision,decision:'accepted'});
+    assert.equal(accepted.entities.length,baseline+ids.length);
+    const paper=accepted.entities.find(item=>item.name===names[ids.indexOf('creativework:academic-paper')]);
+    assert.equal(paper.type,'creativework');assert.deepEqual(paper.subtypes,['creativework:academic-paper']);
+    const theorem=accepted.entities.find(item=>item.name===names[ids.indexOf('concept:theorem')]);
+    assert.deepEqual(theorem.subtypes,['concept:theorem','concept:mathematics']);assert.deepEqual(theorem.domainIds,['medicine']);
+    assert.deepEqual(knowledge.detail('default',existing.id).subtypes,[custom]);
+    assert.equal(accepted.entities.filter(item=>item.type==='source').length,sourceCount);
+    assert.ok(!accepted.entities.some(item=>item.name==='Unattached source proposal'));
+  }finally{db.close();}
+});

@@ -1,9 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-import {normalizeLitcal,normalizeGCatholic} from '../src/server/modules/liturgical-providers.ts';
+import {liturgicalUIYear} from './helpers/liturgical-ui.mjs';
 import {liturgicalWeekLabel,liturgicalWeekSeasonColor} from '../src/client/calendar/liturgical-week.ts';
-const data=normalizeLitcal(JSON.parse(readFileSync(new URL('./fixtures/liturgical/litcal-2026.json',import.meta.url),'utf8')),2026,'grc-en');
+const data=liturgicalUIYear();
 const label=(start,end,mode='week',years=[data])=>liturgicalWeekLabel(start,end,years,mode);
 
 test('Roman week captions retain Ordinary Time numbering and established seasonal designations',()=>{
@@ -52,7 +51,7 @@ test('stable temporal IDs support Latin provider labels without translating feas
  assert.equal(label('2026-10-18','2026-10-24','week',[latin]),'29th Week in Ordinary Time');
 });
 test('regional provider metadata gaps suppress uncertain captions',()=>{
- const regional=normalizeGCatholic(readFileSync(new URL('./fixtures/liturgical/gcatholic-ph-2026.ics',import.meta.url),'utf8'),2026,'ph');
+ const regional=liturgicalUIYear('ph');
  // These feeds have no season metadata on saints' feasts. A full row cannot
  // reliably be labelled until the provider supplies that missing context.
  assert.equal(label('2026-10-18','2026-10-24','week',[regional]),null);

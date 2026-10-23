@@ -1,3 +1,4 @@
+import {organizationDescription} from './organization-descriptions.js';
 import {parseExampleCollection} from '../../shared/example-collections.js';
 import {parseSmartRule,parseSemanticCollection,type SmartRuleNode} from '../../shared/smart-collections.js';
 import {propertyOrigins,type PropertyOrigin} from '../../shared/property-provenance.js';
@@ -86,6 +87,8 @@ const tables={
   entity_subtype_properties:{columns:'subtype_id,name',scope:'vault_id=?'},
   smart_collection_definitions:{columns:'collection_id,rule_json,matching,semantic_json,examples_json,query_vector,query_model,query_dimensions',scope:'vault_id=?'},
   smart_collection_overrides:{columns:'collection_id,kind,item_id,decision',scope:'vault_id=?'},
+  collection_descriptions:{columns:'collection_id,description',scope:'vault_id=?'},
+  folder_descriptions:{columns:'folder_id,description',scope:'vault_id=?'},
   collections:{columns:'id,name',scope:'vault_id=?'},
   folders:{columns:'id,name,parent_id',scope:'vault_id=?'},
   item_locations:{columns:'kind,item_id,folder_id',scope:'vault_id=?'},
@@ -169,7 +172,7 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='page_versions'||table.startsWith('smart_collection_')||table.startsWith('temporal_')||table==='property_provenance'||table==='entity_name_provenance'||table==='property_proposals'||table==='source_author_jobs'||table==='property_definitions'||table==='property_value_metadata'||table==='entity_overviews'||table==='entity_page_associations'||table==='source_reading_locations'||table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='page_versions'||table==='collection_descriptions'||table==='folder_descriptions'||table.startsWith('smart_collection_')||table.startsWith('temporal_')||table==='property_provenance'||table==='entity_name_provenance'||table==='property_proposals'||table==='source_author_jobs'||table==='property_definitions'||table==='property_value_metadata'||table==='entity_overviews'||table==='entity_page_associations'||table==='source_reading_locations'||table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     const splitSourceOwners=new Set<unknown>(),sourceOwners=new Set<unknown>(),legacyEntities=new Map(rows.entities.map(row=>[row.id,row]));
     const legacyProperties=[...rows.properties],legacyLinks=[...rows.page_sources];
     for(const file of rows.source_files) {
@@ -578,6 +581,14 @@ export class VaultBackups {
         for(const row of rows.collections)insert('collections',{id:ref(collectionIds,row.id),vault_id:vault,name:name(row,'name')});
         for(const row of rows.folders)insert('folders',{id:ref(folderIds,row.id),vault_id:vault,name:name(row,'name'),parent_id:null});
         for(const row of rows.folders)if(row.parent_id!==null)this.store.run('UPDATE folders SET parent_id=? WHERE id=?',ref(folderIds,row.parent_id),ref(folderIds,row.id));
+        for(const row of rows.collection_descriptions) {
+          let description;try{description=organizationDescription(row.description);}catch{throw invalid();}if(description===null)throw invalid();
+          insert('collection_descriptions',{vault_id:vault,collection_id:ref(collectionIds,row.collection_id),description});
+        }
+        for(const row of rows.folder_descriptions) {
+          let description;try{description=organizationDescription(row.description);}catch{throw invalid();}if(description===null)throw invalid();
+          insert('folder_descriptions',{vault_id:vault,folder_id:ref(folderIds,row.folder_id),description});
+        }
         for(const row of rows.item_locations)insert('item_locations',{vault_id:vault,...item(row),folder_id:row.folder_id===null?null:ref(folderIds,row.folder_id)});
         for(const row of rows.collection_folders)insert('collection_folders',{vault_id:vault,folder_id:ref(folderIds,row.folder_id),collection_id:ref(collectionIds,row.collection_id)});
         for(const row of rows.collection_memberships)insert('collection_memberships',{vault_id:vault,...item(row),collection_id:ref(collectionIds,row.collection_id)});

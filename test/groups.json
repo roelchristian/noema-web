@@ -78,7 +78,8 @@
     "test/property-definition-manager.test.mjs",
     "test/property-proposal-review.test.mjs",
     "test/semantic-collection-preview.test.mjs",
-    "test/collection-rule-generation.test.mjs"
+    "test/collection-rule-generation.test.mjs",
+    "test/organization-descriptions-ui.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",
@@ -183,6 +184,7 @@
     "test/intelligent-collections.test.mjs",
     "test/page-history.test.mjs",
     "test/page-history-backups.test.mjs",
-    "test/page-history-paths.test.mjs"
+    "test/page-history-paths.test.mjs",
+    "test/organization-descriptions.test.mjs"
   ]
 }

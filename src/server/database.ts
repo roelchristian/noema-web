@@ -1,4 +1,5 @@
 import {setupPageHistorySchema} from './page-history-schema.js';
+import {setupOrganizationDescriptionSchema} from './organization-description-schema.js';
 import {setupSmartCollectionSchema} from './smart-collection-schema.js';
 import {setupPropertyProvenanceSchema} from './modules/property-provenance.js';
 import {setupPropertyStorage} from './modules/property-storage.js';
@@ -87,7 +88,9 @@ db.exec(`
 if (db.prepare('PRAGMA table_info(folders)').all().some(c => c.name === 'collection_id')) {
  db.exec('PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE');
  try {
-  db.exec(`DROP TRIGGER IF EXISTS folder_requires_collection_insert;
+  db.exec(`DROP TRIGGER IF EXISTS folder_descriptions_scope_insert;
+   DROP TRIGGER IF EXISTS folder_descriptions_scope_update;
+   DROP TRIGGER IF EXISTS folder_requires_collection_insert;
    DROP TRIGGER IF EXISTS folder_requires_collection_update;
    DROP TRIGGER IF EXISTS collection_cleanup;
    DROP TRIGGER IF EXISTS page_organization_cleanup;
@@ -492,6 +495,7 @@ if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
  CREATE TABLE IF NOT EXISTS liturgical_calendar_downloads (calendar_id TEXT NOT NULL,year INTEGER NOT NULL,status TEXT NOT NULL CHECK(status IN ('queued','failed')),attempts INTEGER NOT NULL,next_attempt INTEGER NOT NULL,PRIMARY KEY(calendar_id,year));`);
  setupSmartCollectionSchema(db);
  setupPageHistorySchema(db);
+ setupOrganizationDescriptionSchema(db);
  if (db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Database contains invalid references');
  return db;
  } catch(error) { db.close(); throw error; }

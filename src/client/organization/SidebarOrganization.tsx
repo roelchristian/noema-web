@@ -1,3 +1,4 @@
+import {FolderDialog} from './FolderDialog';
 import {CollectionDialog} from './CollectionDialog';
 import {t as uiText} from '../i18n';
 import {TitleText} from '../components/TitleText';
@@ -9,7 +10,6 @@ import { api } from '../api';
 import { Icon } from '../components/Icon';
 import { PageIcon } from '../components/PageIcon';
 import { ActionMenu } from '../components/ActionMenu';
-import { NameDialog } from '../components/NameDialog';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { folderBreadcrumbs } from './breadcrumbs';
 import { folderDropHandlers } from './folder-drop';
@@ -127,7 +127,7 @@ export function SidebarOrganization({vaultId, data, pages, activePageId, activeF
         {get label(){return uiText("Open")}, icon, onSelect: open},
         {label: container.type === 'folders' ? uiText("Add to collection…") : uiText("Add folder…"), icon:'collection', onSelect:()=>setAddFolder(container.type==='folders'?{folderId:container.id}:{collectionId:container.id})},
         {get label(){return uiText("Rename")}, icon: 'edit', onSelect: () => setRenameKey(branch)},
-        ...(container.type==='collections'?[{label:'Edit collection',icon:'edit',onSelect:()=>setEdit(container)}]:[]),
+        {label:container.type==='collections'?'Edit collection':'Edit folder',icon:'edit',onSelect:()=>setEdit(container)},
         ...(container.type === 'folders' ? [{label: data.favourites.some(item => item.kind === 'folder' && item.item_id === container.id) ? uiText("Remove from favourites") : uiText("Add to favourites"), icon: 'star', onSelect: () => { void api.organize(vaultId!, 'favourites', {kind: 'folder', item_id: container.id, favourite: !data.favourites.some(item => item.kind === 'folder' && item.item_id === container.id)}).then(onChanged).catch(onError); }}] : []),
         ...(container.type === 'folders' ? [{label: uiText("New subfolder"), icon: 'plus', onSelect: () => newFolder('', container.id)}] : []),
         ...(container.linkedCollection ? [{label:uiText("Unlink from collection"),icon:'close',onSelect:()=>{void api.organize(vaultId!,'folder-memberships',{folder_id:container.id,collection_id:container.linkedCollection,remove:true}).then(onChanged).catch(onError);}}] : [{label: 'Remove ' + (container.type === 'folders' ? 'folder' : 'collection'), icon: 'trash', danger: true, onSelect: () => setRemove(container)}]),
@@ -177,10 +177,7 @@ export function SidebarOrganization({vaultId, data, pages, activePageId, activeF
     {organizePage && <PageOrganizationDialog page={organizePage} data={data} onMove={(collection,folder,remove)=>onMovePage(organizePage.id,collection,folder,remove)} onClose={()=>setOrganizePage(null)}/>}
     {addFolder && vaultId && <FolderCollectionDialog vaultId={vaultId} data={data} {...addFolder} onChanged={onChanged} onClose={()=>setAddFolder(null)}/>}
     {edit?.type==='collections'&&vaultId&&<CollectionDialog key={vaultId+':'+(edit.id??'new')} vaultId={vaultId} data={data} pages={pages} collection={data.collections.find(c=>c.id===edit.id)} onChanged={onChanged} onClose={()=>setEdit(null)}/>}
-    {edit?.type==='folders' && <NameDialog title={(edit.id ? uiText("Rename ") : uiText("New ")) + uiText("folder")} value={edit.name} onClose={() => setEdit(null)} onSave={async name => {
-      const updated = await api.organize(vaultId!, edit.type + (edit.id ? '/' + edit.id : ''), {name, ...(edit.type === 'folders' ? {parent_id: edit.parent || null} : {})}, edit.id ? 'PUT' : 'POST');
-      onChanged(updated);
-    }}/>}
+    {edit?.type==='folders'&&vaultId&&<FolderDialog key={vaultId+':'+(edit.id??'new')} vaultId={vaultId} data={data} folder={data.folders.find(f=>f.id===edit.id)} parentId={edit.parent} onChanged={onChanged} onClose={()=>setEdit(null)}/>}
     {remove && <ConfirmDialog danger title={uiText("Remove ") + (remove.type === 'folders' ? uiText("folder?") : uiText("collection?"))} description={remove.type === 'folders' ? `Remove “${remove.name}” and its subfolders? Their contents return to Inbox. Collection memberships and note favourites are kept.` : `Remove “${remove.name}”? Only its memberships are removed. Notes keep their folder locations.`} action={uiText("Remove")} onClose={() => setRemove(null)} onConfirm={async () => {
       onChanged(await api.organize(vaultId!, remove.type + '/' + remove.id, undefined, 'DELETE'));
     }}/>}

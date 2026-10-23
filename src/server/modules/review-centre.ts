@@ -1,8 +1,9 @@
+import {createHash} from 'node:crypto';
 import type {Store} from '../store.js';
 import {Vaults} from './vaults.js';
 import type {ReviewCategory,ReviewItem,ReviewQueue} from '../../shared/review-centre.js';
 
-const categories:ReviewCategory[]=['scan','discovery','editorial','source'];
+const categories:ReviewCategory[]=['scan','discovery','editorial','source','property','temporal'];
 const pageAccess=`p.vault_id=? AND p.deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM page_edit_locks l WHERE l.page_id=p.id)`;
 const entityAccess=`e.vault_id=? AND e.archived_at IS NULL AND e.inactive=0`;
 /** Metadata projections only: never transfers page blocks, discovery evidence or source documents to the client.
@@ -10,6 +11,7 @@ const entityAccess=`e.vault_id=? AND e.archived_at IS NULL AND e.inactive=0`;
 export class ReviewCentre {
  constructor(private store:Store){}
  private rows(vault:string,category:ReviewCategory,offset:number,origin?:string):ReviewItem[]{
+  if(category==='property'||category==='temporal')return this.proposals(vault,category,offset,origin);
   const pending=(array:string,column:string)=>`(SELECT count(*) FROM json_each(${column},'$.${array}') j WHERE json_extract(j.value,'$.status')='pending')`;
   let sql:string;
   if(category==='scan')sql=`SELECT 'scan:'||p.id AS id,'scan' AS category,p.id AS originId,p.title,
@@ -47,6 +49,33 @@ export class ReviewCentre {
   if(category==='editorial')projected=projected.replaceAll('f.id','fid').replaceAll('e.id','eid').replaceAll('e.name','name').replaceAll('f.name','filename').replaceAll('r.','');
   return this.store.all<ReviewItem>(`WITH candidates AS MATERIALIZED (SELECT ${columns} ${source} AND (? IS NULL OR ${identity}=?) ORDER BY ${ordering} DESC,${identity} LIMIT 51 OFFSET ?) ${projected} FROM candidates`,vault,origin??null,origin??null,offset);
 
+ }
+ /** Saved identities only. Expensive source fingerprints remain in the authoritative reviewer. */
+ private proposals(vault:string,category:'property'|'temporal',offset:number,origin?:string):ReviewItem[] {
+  if(category==='property') {
+   const rows=this.store.all<{id:string;entity_id:string;kind:string;property_name:string|null;updated_at:string;title:string;identity:string}>(`SELECT q.id,q.entity_id,q.kind,q.property_name,q.updated_at,e.name AS title,
+    json_array(q.id,q.kind,q.property_id,q.property_name,q.value,q.target_id,q.origin,q.source_file_id,q.source_hash,q.details,q.status,q.created_at,q.updated_at,e.updated_at) AS identity
+    FROM property_proposals q JOIN entities e ON e.id=q.entity_id AND e.vault_id=q.vault_id
+    WHERE q.vault_id=? AND e.archived_at IS NULL AND e.inactive=0 AND q.status='pending' AND (? IS NULL OR 'property:'||q.id=?)
+    ORDER BY q.updated_at DESC,q.id LIMIT 51 OFFSET ?`,vault,origin??null,origin??null,offset);
+   return rows.map(row=>({id:'property:'+row.id,category,originId:row.entity_id,proposalId:row.id,title:row.title,
+    runId:createHash('sha256').update(row.identity).digest('hex'),group:'decisions',state:'saved · freshness checked on open',
+    decision:row.kind==='entity_name'?'Review proposed name':'Review proposed '+row.property_name,count:1,updatedAt:row.updated_at}));
+  }
+  // Only field-derived relationships have a supported pending evidence destination today.
+  // Dirty, superseded and removed properties cannot masquerade as current date proposals.
+  const rows=this.store.all<{id:string;entity_id:string;date_id:string;kind:string;title:string;updated_at:string;identity:string}>(`SELECT r.id,r.entity_id,r.date_id,r.kind,e.name AS title,e.updated_at,
+   json_array(r.id,r.entity_id,r.date_id,r.kind,r.status,r.origin,r.property_id,r.property_hash,p.name,p.value,e.updated_at) AS identity
+   FROM temporal_relations r JOIN entities e ON e.id=r.entity_id AND e.vault_id=r.vault_id
+   JOIN properties p ON p.id=r.property_id AND p.entity_id=r.entity_id
+   JOIN temporal_property_values v ON v.property_id=p.id AND v.vault_id=r.vault_id AND v.entity_id=r.entity_id AND v.date_id=r.date_id AND v.raw_hash=r.property_hash
+   JOIN temporal_dates d ON d.vault_id=r.vault_id AND d.id=r.date_id
+   WHERE r.vault_id=? AND e.archived_at IS NULL AND e.inactive=0 AND r.status='pending'
+   AND NOT EXISTS(SELECT 1 FROM temporal_property_dirty dirty WHERE dirty.property_id=p.id)
+   AND (? IS NULL OR 'temporal:'||r.id=?) ORDER BY e.updated_at DESC,r.id LIMIT 51 OFFSET ?`,vault,origin??null,origin??null,offset);
+  return rows.map(row=>({id:'temporal:'+row.id,category,originId:row.entity_id,proposalId:row.id,dateId:row.date_id,title:row.title,
+   runId:createHash('sha256').update(row.identity).digest('hex'),group:'decisions',state:'saved · freshness checked on open',
+   decision:'Review proposed date relationship',count:1,updatedAt:row.updated_at}));
  }
  list(vault:string,offset=0):ReviewQueue {
   new Vaults(this.store).requireOpen(vault);

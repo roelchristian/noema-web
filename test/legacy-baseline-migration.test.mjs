@@ -1,3 +1,4 @@
+import {numberedWords,omittedVocabularyTail,legacyTokenEvidence} from './helpers/legacy-content.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
@@ -15,7 +16,7 @@ import {createClassificationBaseline} from '../src/server/modules/page-semantic-
 import {summaryBaseline} from '../src/server/modules/page-summary-freshness.ts';
 
 const selection={model:'legacy-provider',reasoningEffort:'none'};
-const longBody=[...Array.from({length:4096},(_,i)=>`word${i}`),...Array(6000).fill('oldtail')].join(' ');
+const longBody=omittedVocabularyTail(numberedWords(4096).join(' '),'oldtail',{trailingSpace:false});
 const blocks=text=>[{id:'source',type:'paragraph',checked:false,content:[{text}]}];
 function services(db,provider) {
   const store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),enrichments=new AIEnrichments(store,pages);
@@ -29,14 +30,9 @@ function fixture(text=longBody,provider=async()=>{throw new Error('Unexpected pr
   return {...s,page:s.pages.get('default',page.id),db,filename,close(){db.close();rmSync(directory,{recursive:true,force:true});}};
 }
 function legacyBaseline(page) {
-  const baseline=createClassificationBaseline(page),counts=Object.create(null);
+  const baseline=createClassificationBaseline(page);
   const words=page.blocks.flatMap(block=>block.content.map(part=>part.text??'')).join(' ').normalize('NFKC').toLowerCase().match(/[\p{L}\p{N}]+|[^\s\p{L}\p{N}\p{P}]/gu)??[];
-  let distinct=0;
-  for(const token of words) {
-    if(Object.hasOwn(counts,token))counts[token]++;
-    else if(distinct<4096){counts[token]=1;distinct++;}
-  }
-  return {...baseline,version:1,tokenCounts:counts,tokenCount:words.length};
+  return {...baseline,version:1,...legacyTokenEvidence(words)};
 }
 function installClassification(s) {
   new Domains(s.store).setInferred('default',s.page.id,{primaryDomainId:'mathematics',secondaryDomainIds:[]},s.page.conceptContentHash,s.page);
@@ -195,7 +191,7 @@ test('complete legacy summary migration retains generating evidence across accep
 });
 
 test('version 2 long-note punctuation edits advance freshness without a provider request',()=>{
-  const text=Array.from({length:5000},(_,i)=>`word${i}`).join(' '),s=fixture(text);try {
+  const text=numberedWords(5000).join(' '),s=fixture(text);try {
     const baseline=summaryBaseline(s.page,()=>undefined);
     s.enrichments.save('default',s.page.id,'summary',{summary:'A long note summary',origin:'inferred',baseline,generatedContentHash:s.page.summaryContentHash},s.page.revision,selection);
     const original=summaryRow(s),current=edit(s,text+'!');

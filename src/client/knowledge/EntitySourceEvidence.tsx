@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {api} from '../api';
 import {t as uiText} from '../i18n';
 import type {SourceReference, PageSummary} from '../../shared/domain';
@@ -13,8 +13,8 @@ const reasonLabels = {
 };
 
 /** Bounded source discovery is loaded only when the Sources section is opened. */
-export function EntitySourceEvidence({vaultId, entityId, refreshKey, onOpenSourcePassage, onOpenPage, pages = []}: {
-  vaultId: string; entityId: string; refreshKey: string;
+export function EntitySourceEvidence({vaultId, entityId, refreshKey, onReady, onOpenSourcePassage, onOpenPage, pages = []}: {
+  vaultId: string; entityId: string; refreshKey: string; onReady?:()=>void;
   pages?: PageSummary[]; onOpenPage?: (id: string) => void;
   onOpenSourcePassage?: (reference: SourceReference, trigger?: HTMLElement) => void;
 }) {
@@ -50,6 +50,7 @@ export function EntitySourceEvidence({vaultId, entityId, refreshKey, onOpenSourc
     } catch (value) {if (!controller.signal.aborted) setError(String(value));}
     finally {if (!controller.signal.aborted) setLoadingMore(false);}
   }
+  useLayoutEffect(()=>{if(evidence||error)onReady?.();},[evidence,error,onReady]);
   const count = evidence?.groups.reduce((total, group) => total + group.passages.length, 0);
   return <section className="eh-section eh-source-evidence"><h2>{uiText('Relevant source passages')}{evidence && <span>{count} {uiText(count === 1 ? 'passage' : 'passages')}{evidence.hasMore ? '+' : ''}</span>}</h2>
     <p className="eh-writing-hint">{uiText('Passages connected through page citations, reading notes, or names in source text. Review the original for context.')}</p>

@@ -263,3 +263,34 @@ button.eh-breadcrumb:hover { color: var(--text); text-decoration: underline; tex
 
 /* The optional Discovery section remains reachable on narrow workspaces. */
 .eh-tabs { overflow-x: auto; scrollbar-width: thin; }
+
+/* Composed reading order: identity, compact details, context, then source passages. */
+.entity-home button { min-height: 44px; }
+.eh-short-description { padding: 24px 0 8px; }
+.eh-glance-context { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 32px; border-bottom: 1px solid var(--line); }
+.eh-glance-context > .eh-section { border-bottom: 0; }
+.eh-glance-properties .entity-overview-properties { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 28px; }
+.eh-glance-properties .entity-overview-properties > div { display: block; min-width: 0; padding: 0; }
+.eh-glance-properties dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.eh-glance-list { list-style: none; padding: 0; margin: 0; }
+.eh-glance-list > li { padding: 12px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.eh-glance-list > li:last-child { border-bottom: 0; }
+.eh-glance-list button { width: 100%; text-align: left; padding: 8px 0; overflow-wrap: anywhere; }
+.eh-glance-list button:hover strong { text-decoration: underline; text-underline-offset: 3px; }
+.eh-glance-list strong { display: block; font-weight: 550; font-size: var(--ui-text-md); line-height: 1.6; }
+.eh-glance-list small { display: block; color: var(--text-muted); font-size: var(--ui-text-sm); line-height: 1.7; margin: 4px 0; }
+.eh-glance-list button > span { display: block; font-size: var(--ui-text-md); line-height: 1.8; white-space: pre-wrap; }
+.eh-glance-list h3, .eh-glance-pages h3 { margin: 16px 0 6px; color: var(--text); font-size: var(--ui-text-md); font-weight: 550; line-height: 1.6; overflow-wrap: anywhere; }
+.eh-glance-sources blockquote { margin: 8px 0; padding-left: 16px; border-left: 2px solid var(--line); font-size: var(--ui-text-md); line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.eh-glance-sources .eh-glance-list > li > button { color: var(--accent); }
+.entity-home button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 720px) {
+  .eh-glance-context { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .eh-glance-context > .eh-section:first-child { border-bottom: 1px solid var(--line); }
+}
+@media (max-width: 400px) {
+  .eh-glance-properties .entity-overview-properties { grid-template-columns: minmax(0, 1fr); }
+}
+.entity-home button { min-width: 44px; }
+.eh-header .eh-counts { margin: 12px 0; }
+.eh-header .eh-lifecycle { margin: 8px 0; }

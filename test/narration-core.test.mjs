@@ -70,5 +70,14 @@ test('speech route validates draft controls, scopes cache to narration and prote
   response=await speak({});assert.equal(response.status,200);assert.equal(received.length,4);assert.deepEqual(ai.narrationSelection(),defaultNarrationPreferences);
   for(const controls of [{pauseAfterMs:3001},{pauseAfterMs:'100'},{protectedText:'yes'},{narration:{...narration,pace:2}}])assert.equal((await speak(controls)).status,400);
   assert.equal(received.length,4);
+  // A subsequent section must not replay cached audio or bill for stale saved narration.
+  response=await speak({expectedNarration:prefs({})});assert.equal(response.status,200);assert.equal(response.headers.get('x-noema-speech-cache'),'hit');assert.equal(received.length,4);
+  ai.savePreferences({...defaultIntelligencePreferences,narration});
+  response=await speak({expectedNarration:prefs({})});assert.equal(response.status,409);assert.equal(received.length,4);
+  response=await speak({text:'Uncached stale section',expectedNarration:prefs({})});assert.equal(response.status,409);assert.equal(received.length,4);
+  response=await speak({expectedNarration:{...narration,pace:2}});assert.equal(response.status,400);assert.equal(received.length,4);
+  // Parsing canonicalizes object order and strips unrelated fields before comparison.
+  response=await speak({expectedNarration:{rules:narration.rules,...narration,unused:true}});assert.equal(response.status,200);assert.equal(response.headers.get('x-noema-speech-cache'),'hit');assert.equal(received.length,4);
+  response=await speak({narration:prefs({})});assert.equal(response.status,200);assert.equal(response.headers.get('x-noema-speech-cache'),'hit');assert.deepEqual(ai.narrationSelection(),narration);
  }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();rmSync(directory,{recursive:true,force:true});}
 });

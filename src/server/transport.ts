@@ -300,6 +300,8 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             if(body.pageId!==undefined&&(typeof body.pageId!=='string'||!body.pageId))throw new HttpError(400,'Invalid speech source page.');
             const speechPageId=typeof body.pageId==='string'?body.pageId:null;
             const provider=intelligence.speechProviderSelection(),voice=intelligence.speechVoiceSelection(),model=speechModelFor(provider),speechRevision=intelligence.speechRevision();
+            // Ordinary runs pin the saved narration independently from explicit draft previews.
+            const expectedNarration=body.expectedNarration===undefined?undefined:JSON.stringify(intelligence.parseNarration(body.expectedNarration));
             const narration=body.narration===undefined?intelligence.narrationSelection():intelligence.parseNarration(body.narration);
             const pauseAfterMs=body.pauseAfterMs??0;
             if(typeof pauseAfterMs!=='number'||!Number.isInteger(pauseAfterMs)||pauseAfterMs<0||pauseAfterMs>3000)throw new HttpError(400,'Pause must be between 0 and 3,000 milliseconds.');
@@ -310,7 +312,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             if(body.voice!==undefined&&!isSpeechVoice(body.voice,provider))throw new HttpError(400,'Choose a supported voice for the speech provider.');
             if(body.voice!==undefined&&body.voice!==voice)throw new HttpError(409,'The speech voice changed. Start Speak again.');
             const vault=vaults.requireOpen(header||'default');
-            const validateAccess=()=>{vaults.requireOpen(vault);if(speechPageId)pages.get(vault,speechPageId);if(intelligence.speechRevision()!==speechRevision||intelligence.speechProviderSelection()!==provider||intelligence.speechVoiceSelection()!==voice)throw new HttpError(409,'The speech settings changed. Start Speak again.');};
+            const validateAccess=()=>{vaults.requireOpen(vault);if(speechPageId)pages.get(vault,speechPageId);if(expectedNarration!==undefined&&JSON.stringify(intelligence.narrationSelection())!==expectedNarration)throw new HttpError(409,'The narration settings changed. Start Speak again.');if(intelligence.speechRevision()!==speechRevision||intelligence.speechProviderSelection()!==provider||intelligence.speechVoiceSelection()!==voice)throw new HttpError(409,'The speech settings changed. Start Speak again.');};
             validateAccess();
             if(!intelligence.speechEnabled())throw new HttpError(409,'Enable text to speech in Settings → Intelligence.');
             if(typeof body.text!=='string')throw new HttpError(400,'Speech requires text of at most 4,096 characters.');

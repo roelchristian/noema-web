@@ -9,10 +9,11 @@ import {useDocumentHistory} from '../../src/client/editor/use-document-history.t
 import {immutableBlocks} from '../../src/shared/immutable-blocks.ts';
 import {api} from '../../src/client/api.ts';
 
-export async function fixture(work) {
+// Counts include the final empty typing row.
+export async function fixture(work,{blockCount=6}={}) {
   const env=setupDOM(undefined,{html:'<div class="page"><div id="mount"></div></div>'}),{dom}=env;
   const originalSchema=api.entitySchema;api.entitySchema=async()=>({properties:[],subtypes:[],subtypeProperties:{}});
-  let blocks=immutableBlocks(Array.from({length:200},(_,index)=>({id:`b${index+1}`,type:'paragraph',checked:false,content:[{text:index===199?'':`Fictitious paragraph ${index+1}`}]})));
+  let blocks=immutableBlocks(Array.from({length:blockCount},(_,index)=>({id:`b${index+1}`,type:'paragraph',checked:false,content:[{text:index===blockCount-1?'':`Fictitious paragraph ${index+1}`}]})));
   let entities=[],reviewMatches=[],open=()=>{};
   env.defer(()=>{api.entitySchema=originalSchema;});
   const root=createRoot(document.querySelector('#mount'));
@@ -52,6 +53,6 @@ export async function measure() {
     if(process.env.EXPECT_ISOLATION==='1') {assert.deepEqual(metrics.rows,['b87']);assert.deepEqual(metrics.syncs,['b87']);assert.equal(result.editableReplacements,0);assert.equal(result.observedDOMMutations,0);}
     console.log(JSON.stringify(result));
     delete globalThis.__editorMetrics;
-  });
+  },{blockCount:200});
 }
 if(process.env.MEASURE_EDITOR==='1')await measure();

@@ -5,7 +5,7 @@ import {mkdtempSync,rmSync,readdirSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {gzipSync,gunzipSync} from 'node:zlib';
+import {readBackupArchive as archive,rewriteBackupArchive as rewrite} from './helpers/backup-archive.mjs';
 import {once} from 'node:events';
 import {openDatabase} from '../src/server/database.ts';
 import {Store} from '../src/server/store.ts';
@@ -58,8 +58,6 @@ function fixture() {
   return {directory,filename,db,store,vaults,knowledge,pages,images,backups,vault,page,author,work,source,custom,image,trashed,
     close(){db.close();rmSync(directory,{recursive:true,force:true});}};
 }
-function archive(bytes) {return JSON.parse(gunzipSync(bytes).toString('utf8'));}
-function rewrite(bytes,change) {const value=archive(bytes);change(value);return gzipSync(JSON.stringify(value));}
 function imageFiles(directory) {const root=path.join(directory,'assets');return existsSync(root)?readdirSync(root,{recursive:true}).filter(value=>/\.(png|jpg|gif|webp)$/.test(value)).sort():[];}
 
 test('compressed backup round trips the vault, remaps all references, and supports repeated imports',async()=>{

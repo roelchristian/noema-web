@@ -12,6 +12,7 @@ import {LiturgicalCalendar} from '../src/server/modules/liturgical-calendar.ts';
 import {createLiturgicalProvider,normalizeLitcal,normalizeOrdo,normalizeGCatholic} from '../src/server/modules/liturgical-providers.ts';
 import {liturgicalCalendars,liturgicalCalendar,liturgicalKey,liturgicalSourceUrl,validLiturgicalYear} from '../src/shared/liturgical.ts';
 import {createApp} from '../src/server/http.ts';
+import {liturgicalUIYear,normalizedUIDays} from './helpers/liturgical-ui.mjs';
 const raw=name=>readFileSync(new URL('./fixtures/liturgical/'+name,import.meta.url),'utf8');
 const litcal=()=>JSON.parse(raw('litcal-2026.json'));
 const ordo=()=>JSON.parse(raw('ordo1962-2026.json'));
@@ -29,6 +30,8 @@ const provider=(calls=[])=>id=>({key:liturgicalKey(id),async generate(year){call
 
 test('LitCal normalizes movable feasts, precedence, optional choices and UTC dates from a public response fixture',()=>{
  const data=normalizeLitcal(litcal(),2026,'grc-en');assert.equal(validLiturgicalYear(data,2026),true);
+ assert.equal(validLiturgicalYear(liturgicalUIYear(),2026),true,'compact UI input retains the complete-year API contract');
+ for(const [date,day] of Object.entries(normalizedUIDays()))assert.deepEqual(day,data.days[date],date+' UI input matches provider normalization');
  assert.equal(data.days['2026-04-05'].principal.id,'Easter');assert.equal(data.days['2026-05-24'].principal.id,'Pentecost');
  assert.equal(data.days['2026-01-06'].principal.id,'Epiphany');assert.equal(data.days['2026-05-14'].principal.id,'Ascension');
  assert.equal(data.days['2026-10-04'].principal.id,'OrdSunday27');assert.equal(data.days['2026-10-04'].alternatives.length,0);
@@ -51,6 +54,8 @@ test('Vetus Ordo keeps the 1962 calendar distinct and strips provider HTML from 
 test('GCatholic iCalendar preserves Philippine propers, all-day dates, escaped text and optional memorials',()=>{
  const source=raw('gcatholic-ph-2026.ics'),data=normalizeGCatholic(source,2026,'ph');
  assert.equal(validLiturgicalYear(data,2026,liturgicalKey('ph')),true);
+ assert.equal(validLiturgicalYear(liturgicalUIYear('ph'),2026,liturgicalKey('ph')),true);
+ for(const [date,day] of Object.entries(normalizedUIDays('ph')))assert.deepEqual(day,data.days[date],date+' regional UI input preserves provider metadata gaps');
  assert.match(data.days['2026-01-09'].principal.name,/Nazareno/);assert.equal(data.days['2026-01-18'].principal.name,'Santo Niño');
  assert.equal(data.days['2026-10-22'].principal.rank,'WEEKDAY');assert.equal(data.days['2026-10-22'].alternatives[0].optional,true);
  assert.equal(data.days['2026-10-22'].principal.seasons.length,0,'missing ICS seasons are not invented');

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {gzipSync,gunzipSync} from 'node:zlib';
+import {readBackupArchive as unpack,rewriteBackupArchive as alter} from './helpers/backup-archive.mjs';
 import {openDatabase} from '../src/server/database.ts';
 import {Store} from '../src/server/store.ts';
 import {Knowledge} from '../src/server/modules/knowledge.ts';
@@ -15,8 +15,6 @@ import {SourceAuthorBackfill} from '../src/server/modules/source-author-backfill
 import {AIActivityLog} from '../src/server/modules/ai-activity.ts';
 import {recordPropertyProvenance,recordEntityNameProvenance,proposeValue,proposalIdentity,rawSourceHash} from '../src/server/modules/property-provenance.ts';
 
-const unpack=bytes=>JSON.parse(gunzipSync(bytes).toString('utf8'));
-const alter=(bytes,work)=>{const archive=unpack(bytes);work(archive);return gzipSync(JSON.stringify(archive));};
 const stamp='2026-10-23T01:02:03.000Z';
 function fixture(t) {
  const directory=mkdtempSync(path.join(tmpdir(),'noema-provenance-backups-')),db=openDatabase(path.join(directory,'fixture.sqlite')),store=new Store(db),knowledge=new Knowledge(store),vaults=new Vaults(store),vault=vaults.create({name:'Synthetic provenance'}).id,backups=new VaultBackups(store),files=new SourceFiles(store);

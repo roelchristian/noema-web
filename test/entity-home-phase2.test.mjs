@@ -1,14 +1,13 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import React,{act} from 'react';
-import {setupDOM} from './helpers/dom.mjs';
+import {setupEntityDOM} from './helpers/entity-dom.mjs';
 import {api} from '../src/client/api.ts';
 import {entityTypes} from '../src/shared/domain.ts';
 import {clearEntityDrafts,getEntityOverviewDraft,setEntityOverviewDraft,hasUnsavedEntityDrafts,pruneEntityDrafts} from '../src/client/knowledge/entity-drafts.ts';
 
 async function fixture(t,work) {
- const env=setupDOM(t),{dom}=env;
- const {createRoot}=await import('react-dom/client');
+ const env=await setupEntityDOM(t),{dom,root,click}=env;
  const {EntityHome}=await import('../src/client/knowledge/EntityHome.tsx');
  let entity={id:'ada',vault_id:'v',name:'Ada',type:'person',description:'Short description',subtypes:[],aliases:[],domainIds:[],updated_at:'',properties:[],propertyNames:[],relationships:[],incomingProperties:[],pageMentions:[],linkedPages:[],overview:{content:'Original overview',revision:1}};
  const page={id:'page',title:'History',updated_at:'',icon:''};
@@ -19,13 +18,11 @@ async function fixture(t,work) {
  const associate=t.mock.method(api,'associateEntityPage',async(_vault,_id,pageId,input)=>{const prior=entity.linkedPages.find(page=>page.id===pageId);entity={...entity,linkedPages:[...entity.linkedPages.filter(page=>page.id!==pageId),{...page,id:pageId,created_at:'',pinned:false,annotation:'',...prior,...input}]};return entity;});
  const remove=t.mock.method(api,'removeEntityPage',async(_vault,_id,pageId)=>{entity={...entity,linkedPages:entity.linkedPages.filter(page=>page.id!==pageId)};return entity;});
  let props={vaultId:'v',id:'ada',entities:[entity],pages:[page,{...page,id:'other',title:'Other page'}],refreshKey:'',onOpen(){},onOpenPage(){},onUpdated:async()=>{},onError(){}};
- const root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
  const render=async(extra={})=>{props={...props,...extra};await act(async()=>root.render(React.createElement(EntityHome,props)));};
  const refresh=async(update)=>{entity={...entity,...update};await render({refreshKey:props.refreshKey+'1'});};
- const click=async(selector)=>{const node=document.querySelector(selector);assert.ok(node,selector);await act(async()=>node.dispatchEvent(new MouseEvent('click',{bubbles:true})));};
  const clickText=async(text)=>{const node=[...document.querySelectorAll('button')].find(button=>button.textContent===text && !button.hidden);assert.ok(node,text);await act(async()=>node.dispatchEvent(new MouseEvent('click',{bubbles:true})));};
  const input=async(selector,value)=>{const node=document.querySelector(selector);assert.ok(node,selector);Object.getOwnPropertyDescriptor(node.tagName==='TEXTAREA'?dom.window.HTMLTextAreaElement.prototype:dom.window.HTMLInputElement.prototype,'value').set.call(node,value);await act(async()=>node.dispatchEvent(new Event('input',{bubbles:true})));};
- try {await render();await work({root,render,refresh,click,clickText,input,save,associate,remove,page,entity:()=>entity});} finally {clearEntityDrafts('v');await env.close();}
+ try {await render();await work({root,render,refresh,click,clickText,input,save,associate,remove,page,entity:()=>entity});} finally {await env.close();}
 }
 
 test('overview renders complete user-authored Markdown with safe HTML, links and math, separate from description',async t=>{

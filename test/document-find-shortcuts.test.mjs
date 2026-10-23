@@ -23,12 +23,15 @@ test('document shortcuts toggle Find/Replace from page controls while respecting
  const previousCSS=Object.getOwnPropertyDescriptor(globalThis,'CSS');
  Object.defineProperty(globalThis,'CSS',{configurable:true,value:{}});
  env.defer(()=>{if(previousCSS)Object.defineProperty(globalThis,'CSS',previousCSS);else delete globalThis.CSS;});
+ // Own the component's debounce/dismissal clock without real animation waits.
+ env.defer(()=>t.mock.timers.reset());
  const root=createRoot(document.querySelector('#mount'));
  env.defer(()=>act(async()=>root.unmount()));
  const blocks=[];
  await act(async()=>root.render(React.createElement(DocumentFind,{blocks,entities:[],disabled:false,onChange(){}})));
  assert.equal(document.querySelector('.document-find-shell').hidden,true);
  assert.equal(document.querySelector('.document-find-trigger'),null);
+ t.mock.timers.enable({apis:['setTimeout']});
  const find=()=>document.querySelector('.document-find-shell[aria-hidden="false"] .document-find-query');
  const replacement=()=>document.querySelector('[aria-label="Replace with"]');
  async function press(target,options){target.focus();const event=new env.dom.window.KeyboardEvent('keydown',{bubbles:true,cancelable:true,...options});await act(async()=>target.dispatchEvent(event));return event.defaultPrevented;}
@@ -56,7 +59,12 @@ test('document shortcuts toggle Find/Replace from page controls while respecting
  assert.equal(await press(toolbar,{key:'f',metaKey:true}),false);assert.equal(find(),null);document.querySelector('article').removeAttribute('inert');
  assert.equal(await press(toolbar,{key:'f',metaKey:true,isComposing:true}),false);assert.equal(find(),null);
  assert.equal(await press(toolbar,{key:'f',ctrlKey:true,altKey:true}),false);assert.equal(find(),null);
- await act(async()=>document.dispatchEvent(new Event('noema:document-find')));assert.ok(find());assert.equal(document.querySelector('.document-find-shell').hidden,false);await press(find(),{key:'Escape'});assert.equal(document.querySelector('.document-find-shell').dataset.state,'closing');assert.equal(document.querySelector('.document-find-shell').hasAttribute('inert'),true);assert.ok(document.querySelector('.document-find-query'));await act(async()=>{await new Promise(resolve=>setTimeout(resolve,220));});assert.equal(document.querySelector('.document-find-shell').hidden,true);
+ await act(async()=>document.dispatchEvent(new Event('noema:document-find')));assert.ok(find());
+ const fallbackShell=document.querySelector('.document-find-shell');assert.equal(fallbackShell.hidden,false);
+ await press(find(),{key:'Escape'});assert.equal(fallbackShell.dataset.state,'closing');
+ assert.equal(fallbackShell.hasAttribute('inert'),true);assert.ok(document.querySelector('.document-find-query'));
+ await act(async()=>t.mock.timers.tick(199));assert.equal(fallbackShell.hidden,false);assert.equal(fallbackShell.dataset.state,'closing');
+ await act(async()=>t.mock.timers.tick(1));assert.equal(fallbackShell.hidden,true);
  // The close button shares the exit animation; animation completion removes the bar.
  await act(async()=>document.dispatchEvent(new Event('noema:document-find')));
  await act(async()=>document.querySelector('.document-find-close').click());
@@ -66,14 +74,17 @@ test('document shortcuts toggle Find/Replace from page controls while respecting
  // Reopening during exit cancels the pending dismissal.
  await act(async()=>document.dispatchEvent(new Event('noema:document-find')));await press(find(),{key:'Escape'});
  await press(toolbar,{key:'f',metaKey:true});assert.equal(shell.dataset.state,'open');assert.equal(shell.hasAttribute('inert'),false);
+ await act(async()=>t.mock.timers.tick(200));assert.equal(shell.hidden,false);assert.equal(shell.dataset.state,'open','cancelled fallback cannot dismiss a reopened panel');
  // Reduced motion closes immediately, including through the button.
  env.dom.window.matchMedia=query=>({matches:query==='(prefers-reduced-motion: reduce)'});
  await act(async()=>document.querySelector('.document-find-close').click());assert.equal(shell.hidden,true);
  // Exercise the debounced worker path deliberately, rather than relying on
  // every shortcut operation to finish before its timer fires.
  await act(async()=>document.dispatchEvent(new Event('noema:document-find')));
- await act(async()=>{await new Promise(resolve=>setTimeout(resolve,180));});
- assert.ok(workers.length>0);assert.ok(workers.every(worker=>worker.stopped));
+ const priorWorkers=workers.length;
+ await act(async()=>t.mock.timers.tick(149));assert.equal(workers.length,priorWorkers);
+ await act(async()=>t.mock.timers.tick(1));assert.equal(workers.length,priorWorkers+1);
+ assert.ok(workers.every(worker=>worker.stopped));
  // Cleanup removes the document-level listener.
  await act(async()=>root.render(null));assert.equal(await press(toolbar,{key:'f',metaKey:true}),false);
 });

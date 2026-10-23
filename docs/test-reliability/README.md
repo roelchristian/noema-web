@@ -1,5 +1,7 @@
 # Focused test reliability and reduction pass
 
+This is the historical PR16 reliability report. See the [current fixture streamlining implementation](streamlining.md) and [read-only higher-risk follow-up review](higher-risk-follow-up.md) for the 2026-10-23 work. Counts below describe the original pinned baseline, not current main.
+
 Base: `5822ecc59f7c931b2a873bfe282cf1455ece2466` (verified main, merged PR15).
 Local branch: `test-reliability-reduction`. No production source changes, dependency changes, pushes, PRs, merges or deployments.
 

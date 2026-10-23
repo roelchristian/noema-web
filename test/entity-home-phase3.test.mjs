@@ -1,24 +1,14 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import React,{act} from 'react';
-import {createRoot} from 'react-dom/client';
-import {JSDOM} from 'jsdom';
-import {EntityPanel} from '../src/client/knowledge/EntityPanel.tsx';
+import {setupEntityDOM} from './helpers/entity-dom.mjs';
 import {EntityHome} from '../src/client/knowledge/EntityHome.tsx';
 import {SourceViewer} from '../src/client/sources/SourceViewer.tsx';
 import {entityTypes} from '../src/shared/domain.ts';
 import {api} from '../src/client/api.ts';
-import {entityDraftValues,setEntityDraft,hasEntityDraft,clearEntityDrafts} from '../src/client/knowledge/entity-drafts.ts';
 
 async function fixture(t,work){
- const dom=new JSDOM('<div id="mount"></div>',{pretendToBeVisual:true,url:'http://localhost:5173'});
- const keys=['window','document','Node','Element','HTMLElement','HTMLSelectElement','HTMLInputElement','Event','CustomEvent','MutationObserver','getComputedStyle','IS_REACT_ACT_ENVIRONMENT'];
- const previous=keys.map(key=>Object.getOwnPropertyDescriptor(globalThis,key));
- for(const key of keys)Object.defineProperty(globalThis,key,{configurable:true,writable:true,value:key==='IS_REACT_ACT_ENVIRONMENT'?true:dom.window[key]});
- dom.window.HTMLElement.prototype.scrollTo=function(){};
- dom.window.HTMLElement.prototype.scrollIntoView=function(){};
- dom.window.HTMLElement.prototype.attachEvent=function(){};
- dom.window.HTMLElement.prototype.detachEvent=function(){};
+ const env=await setupEntityDOM(t),{dom,root,click}=env;
  const entity={id:'e',vault_id:'v',name:'Ada',type:'person',description:'A mathematician.',subtypes:[],domainIds:[],aliases:['A.'],mentionCase:'canonical',properties:[{id:'prop',entity_id:'e',name:'Place',target_id:'other',value:''}],propertyNames:['Born'],relationships:[{id:'out',source_id:'e',target_id:'other',label:'visited'},{id:'in',source_id:'other',target_id:'e',label:'commemorates'}],incomingProperties:[{id:'incoming',entity_id:'other',name:'Honours',target_id:'e'}],pageMentions:[{id:'page',title:'History',icon:'',mentionCount:2,excerpt:'Ada studied mathematics.'}],attachments:[],updated_at:'2026-10-19'};
  const other={...entity,id:'other',name:'London',type:'place'};
  t.mock.method(api,'entity',async()=>entity);
@@ -26,10 +16,8 @@ async function fixture(t,work){
  t.mock.method(api,'entityOverviewEvidence',async()=>({groups:[],hasMore:false,truncated:false}));
  t.mock.method(api,'entitySchema',async()=>({properties:Object.fromEntries(entityTypes.map(type=>[type,[]])),subtypes:[],subtypeProperties:{}}));
  const props={vaultId:'v',id:'e',entities:[entity,other],refreshKey:'',onOpen(){},onClose(){},onUpdated:async()=>{},onError(error){throw error;},onOpenPage(){},onCreatePageFromSource(){}};
- const root=createRoot(document.querySelector('#mount'));
- const click=async selector=>{const target=document.querySelector(selector);assert.ok(target,selector);await act(async()=>target.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})));};
  try{await act(async()=>root.render(React.createElement(EntityHome,props)));await work({entity,click,dom,props,root});}
- finally{await act(async()=>root.unmount());clearEntityDrafts('v');dom.window.close();keys.forEach((key,index)=>{if(previous[index])Object.defineProperty(globalThis,key,previous[index]);else delete globalThis[key];});}
+ finally{await env.close();}
 }
 
 test('entity mentions group context once and preserve distinct exact occurrence targets', async t => {

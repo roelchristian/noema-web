@@ -11,6 +11,7 @@ import {VaultBackups} from '../src/server/modules/vault-backups.ts';
 import {monthBounds,monthCells,shiftMonth,shiftDay,dateLabel,calendarGroups,emptyCuration} from '../src/client/calendar/calendar-model.ts';
 import {capturePageSelection,restorePageSelection} from '../src/client/state/use-page-selection.ts';
 import {setupDOM} from './helpers/dom.mjs';
+import {selectionOffsets} from '../scripts/browser-selection.mjs';
 
 function fixture(t) {const db=openDatabase(':memory:');t.after(()=>db.close());const store=new Store(db),vault=new Vaults(store).create({name:'Calendar fixture'}),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),index=new TemporalIndex(store);return {store,vault,pages,index};}
 
@@ -56,4 +57,21 @@ test('editor selection bookmarks retain UTF-16 ranges and refuse changed or deta
  getSelection().setBaseAndExtent(a.firstChild,3,cell.firstChild,4);const saved=capturePageSelection();assert.equal(saved.anchor.offset,3);assert.equal(saved.focus.surface,1);
  getSelection().removeAllRanges();assert.equal(restorePageSelection(saved),true);assert.equal(getSelection().anchorNode,a.firstChild);assert.equal(getSelection().focusOffset,4);assert.equal(getSelection().focusNode,cell.firstChild);
  cell.textContent='changed cell';assert.equal(restorePageSelection(saved),false);cell.remove();assert.equal(restorePageSelection(saved),false);
+});
+
+test('browser selection assertions measure both endpoints across nested date spans in UTF-16',t=>{
+ setupDOM(t,{html:'<div id="editor" contenteditable="true">😀<strong>é</strong><span data-note-date="fixture">23 October <i>2026</i></span><span> tail</span></div><p id="outside">Other</p>'});
+ const editor=document.querySelector('#editor'),selection=getSelection(),tail=editor.lastChild.firstChild,accent=editor.querySelector('strong').firstChild,year=editor.querySelector('i').firstChild;
+ selection.setBaseAndExtent(tail,5,tail,5);
+ assert.equal(selection.anchorOffset,5);
+ assert.deepEqual(selectionOffsets(editor),{anchor:editor.textContent.length,focus:editor.textContent.length});
+ selection.setBaseAndExtent(year,2,accent,2);
+ const anchor=editor.textContent.indexOf('2026')+2,focus=4;
+ assert.deepEqual(selectionOffsets(editor),{anchor,focus});
+ assert.equal(selection.toString(),editor.textContent.slice(focus,anchor));
+ selection.setBaseAndExtent(editor,1,editor,3);
+ assert.deepEqual(selectionOffsets(editor),{anchor:2,focus:editor.textContent.indexOf(' tail')});
+ selection.setBaseAndExtent(editor.firstChild,0,document.querySelector('#outside').firstChild,1);
+ assert.equal(selectionOffsets(editor),null,'a selection leaving the editor is not a valid local bookmark');
+ selection.removeAllRanges();assert.equal(selectionOffsets(editor),null);
 });

@@ -53,16 +53,43 @@ export function segmentHTML(content: Segment[], entities: Entity[], review?: Rev
   const numberOf=(ref:NonNullable<Segment['sourceReference']>)=>citations?.style==='references'?citations.entries.get(citationKey(ref))?.number??ref.sourceNumber??1:ref.sourceNumber??1;
   const ordered=readOnly?sortCitationRuns(content,(left,right)=>numberOf(left)-numberOf(right)):content;
   const dates=decorateLinks?noteDateRanges(ordered):[];
+  // Imported nonbreaking spaces beside noneditable entities can lead a wrapped
+  // line in WebKit. Render a breakable space and retain its original value for edits.
+  const entitySpaces=new Set<number>();
+  let textOffset=0;
+  ordered.forEach((segment,index)=>{
+    const text=segment.text??'';
+    if (!segment.code && !segment.math && !segment.sourceReference && !segment.entityId) {
+      if (ordered[index-1]?.entityId && text.startsWith('\u00a0')) entitySpaces.add(textOffset);
+      if (ordered[index+1]?.entityId && text.endsWith('\u00a0')) entitySpaces.add(textOffset+text.length-1);
+    }
+    textOffset+=text.length;
+  });
+  const proseNodes=(value:string,start:number,skipLinks:boolean):React.ReactNode[]=>{
+    if(!entitySpaces.size || !value.includes('\u00a0')) return skipLinks?[value]:pageLinkNodes(value);
+    const nodes:React.ReactNode[]=[];
+    let cursor=0;
+    for(let index=0;index<value.length;index++) {
+      if(!entitySpaces.has(start+index))continue;
+      const before=value.slice(cursor,index);
+      nodes.push(...(skipLinks?[before]:pageLinkNodes(before)));
+      nodes.push(<span key={'entity-space-'+(start+index)} data-entity-space="true" className="entity-boundary-space"> </span>);
+      cursor=index+1;
+    }
+    const rest=value.slice(cursor);
+    nodes.push(...(skipLinks?[rest]:pageLinkNodes(rest)));
+    return nodes;
+  };
   const textNodes=(value:string,start:number,skipLinks=false)=>{
     const nodes:React.ReactNode[]=[];
     let cursor=0;
     for(const range of dates.filter(range=>range.start<start+value.length&&range.end>start)) {
       const from=Math.max(0,range.start-start),to=Math.min(value.length,range.end-start);
-      if(from>cursor)nodes.push(...(skipLinks?[value.slice(cursor,from)]:pageLinkNodes(value.slice(cursor,from))));
+      if(from>cursor)nodes.push(...proseNodes(value.slice(cursor,from),start+cursor,skipLinks));
       nodes.push(<span key={start+from} className={'mention date'+(range.start===start+from?' is-start':'')+(range.end===start+to?' is-end':'')} data-note-date={range.date.id} data-note-date-start={range.start} role="button" tabIndex={0} title={noteDateLabel(range.date)} aria-label={`${uiText('Date')}: ${noteDateLabel(range.date)}`}>{range.start===start+from&&<Icon name="event"/>}{value.slice(from,to)}</span>);
       cursor=to;
     }
-    nodes.push(...(skipLinks?[value.slice(cursor)]:pageLinkNodes(value.slice(cursor))));
+    nodes.push(...proseNodes(value.slice(cursor),start+cursor,skipLinks));
     return nodes;
   };
   const last=ordered.at(-1);
@@ -115,6 +142,7 @@ export function readSegments(el: Node, allowMentions = true): Segment[] {
       }
     } else if (node instanceof HTMLElement) {
       if (['SCRIPT','STYLE','META','LINK','IFRAME','OBJECT'].includes(node.tagName)) return;
+      if (node.dataset.entitySpace === 'true' && node.textContent === ' ') { walk(document.createTextNode('\u00a0'), style); return; }
       if (node.dataset.wikilink !== undefined) { walk(document.createTextNode(node.dataset.wikilink), {...style,skipAutoTag:true}); return; }
       if (node.dataset.sourceReference !== undefined) {
         try {output.push(node.dataset.sourceSegment ? JSON.parse(node.dataset.sourceSegment) : {text:node.dataset.sourceText??'',sourceReference:JSON.parse(node.dataset.sourceReference)});} catch {if(node.textContent)output.push({text:node.textContent});}

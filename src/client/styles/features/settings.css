@@ -1057,3 +1057,15 @@
 .calendar-provider-list { list-style: none; padding: 0; display: grid; gap: var(--space-3); }
 .calendar-provider-list li { display: grid; gap: var(--space-1); }
 .calendar-provider-list li > span { color: var(--text-muted); font-size: 12px; }
+
+.paragraph-indent-preview[data-indent="all"] p,
+.paragraph-indent-preview[data-indent="except-first"] p + p {
+  text-indent: var(--paragraph-indent-width, 1.5em);
+}
+.settings-dialog .paragraph-indent-preview p + p {
+  margin-top: 9px;
+}
+
+.settings-dialog .paragraph-indent-preview:is([data-indent="all"], [data-indent="except-first"])[data-spacing="book"] p + p {
+  margin-top: 0;
+}

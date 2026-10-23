@@ -1,5 +1,6 @@
+import {paragraphFlow} from './paragraph-indent';
 import {t as uiText} from '../i18n';
-import {Fragment,type CSSProperties} from 'react';
+import {Fragment,useMemo,type CSSProperties} from 'react';
 import type {Block,Entity,PageSummary} from '../../shared/domain';
 import {isAIExplanation,semanticFunctions,semanticRuns,type SemanticKind} from '../../shared/semantic-blocks';
 import {pageTitleKey} from '../../shared/page-links';
@@ -7,8 +8,9 @@ import {ReadOnlyExplanationBlock} from './ReadOnlyExplanationBlock';
 import {Icon} from '../components/Icon';
 
 export function ReadOnlyPageBlocks({blocks,entities,pages,vaultId,onOpenEntity,onOpenPage}: {blocks:Block[];entities:Entity[];pages:PageSummary[];vaultId:string;onOpenEntity:(id:string)=>void;onOpenPage:(id:string)=>void}) {
+  const paragraphPositions=useMemo(()=>paragraphFlow(blocks),[blocks]);
   const style=(kind:SemanticKind)=>({'--semantic-color':semanticFunctions[kind].color} as CSSProperties);
-  const renderBlock=(block:Block)=><ReadOnlyExplanationBlock key={block.id} block={block} blocks={blocks} entities={entities} vaultId={vaultId} onOpen={onOpenEntity} explanation={isAIExplanation(block)}/>;
+  const renderBlock=(block:Block)=><ReadOnlyExplanationBlock paragraphPosition={paragraphPositions.get(block.id)} key={block.id} block={block} blocks={blocks} entities={entities} vaultId={vaultId} onOpen={onOpenEntity} explanation={isAIExplanation(block)}/>;
   function renderRuns(list:Block[]) {
     return semanticRuns(list).map(run=>run.type==='block'?renderBlock(run.block):<section className="semantic-group" data-semantic-kind={run.kind} style={style(run.kind)} key={run.id} aria-label={uiText(semanticFunctions[run.kind].label)}>
       <span className="semantic-callout-icon" aria-hidden="true"><Icon name={semanticFunctions[run.kind].icon}/></span>

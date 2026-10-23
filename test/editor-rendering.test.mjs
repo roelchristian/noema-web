@@ -192,3 +192,73 @@ test('undo and redo treat an uploaded clipboard image as part of its paste',asyn
   }finally{globalThis.fetch=previousFetch;}
  });}finally{if(previousHistory===undefined)delete process.env.MEASURE_HISTORY;else process.env.MEASURE_HISTORY=previousHistory;}
 });
+
+test('paragraph openings follow headings and dividers as blocks change', async () => {
+  await fixture(async ({blocks, set, host}) => {
+    const original = blocks();
+    const positions = () => ['b1','b2','b3','b4','b5','b6'].map(id => host(id)?.closest('[data-block-id]').dataset.paragraphFlow);
+    await set(original.slice(0, 6).map((block, index) => index === 1 ? {...block, type:'heading1'} : index === 4 ? {...block, type:'divider'} : block));
+    assert.deepEqual(positions(), ['first',undefined,'first','continuation',undefined,'first']);
+    await set(original.slice(0, 6));
+    assert.deepEqual(positions(), ['first','continuation','continuation','continuation','continuation','continuation']);
+    await set(original.slice(1, 6));
+    assert.equal(host('b2').closest('[data-block-id]').dataset.paragraphFlow, 'first');
+  });
+});
+
+test('empty paragraphs and callouts do not consume section openings, with independent column flow', async () => {
+  const {paragraphFlow} = await import('../src/client/editor/paragraph-indent.ts');
+  const block = (id, type='paragraph', extra={}) => ({id, type, content:[{text:id}], ...extra});
+  const flow = paragraphFlow([
+    block('empty','paragraph',{content:[]}),
+    block('callout','paragraph',{semantic:'definition'}),
+    block('list','bullet'),block('first'),block('next'),
+    block('h','heading2'),block('quote','quote'),block('after-heading'),
+    block('left','paragraph',{column:{id:'columns',index:0}}),
+    block('right','paragraph',{column:{id:'columns',index:1}}),
+    block('left-next','paragraph',{column:{id:'columns',index:0}}),
+  ]);
+  assert.deepEqual([...flow], [['empty','first'],['first','first'],['next','continuation'],['after-heading','first'],['left','first'],['right','first'],['left-next','continuation']]);
+});
+
+test('locked page paragraphs retain the same section openings as editable paragraphs', async () => {
+  const {createElement} = await import('react');
+  const {renderToStaticMarkup} = await import('react-dom/server');
+  const {ReadOnlyPageBlocks} = await import('../src/client/editor/ReadOnlyPageBlocks.tsx');
+  await fixture(async ({blocks, set, host}) => {
+    const content = blocks().slice(0, 6).map((block,index) => index===2 ? {...block,type:'heading2'} : block);
+    await set(content);
+    const preview = document.createElement('div');
+    preview.innerHTML = renderToStaticMarkup(createElement(ReadOnlyPageBlocks,{blocks:content,entities:[],pages:[],vaultId:'fixture',onOpenEntity(){},onOpenPage(){}}));
+    for (const block of content) {
+      const readonly = preview.querySelector(`[data-block-id="${block.id}"]`);
+      assert.equal(readonly.dataset.paragraphFlow, host(block.id).closest('[data-block-id]').dataset.paragraphFlow);
+      assert.equal(readonly.querySelector('.block-content').textContent, host(block.id).textContent);
+    }
+  });
+});
+
+
+test('imported spaces beside entities wrap as normal spaces without changing saved text', async () => {
+  const {segmentHTML} = await import('../src/client/editor/segments.tsx');
+  await fixture(async () => {
+    const content=[{text:'Before\u00a0',bold:true},{entityId:'entity'},{text:'\u00a0after and nonbreaking\u00a0phrase'}];
+    const entities=[{id:'entity',name:'Marian hymn',type:'concept'}];
+    for (const readOnly of [false,true]) {
+      const host=document.createElement('div');
+      host.innerHTML=segmentHTML(content,entities,undefined,readOnly);
+      const spaces=host.querySelectorAll('[data-entity-space]');
+      assert.equal(spaces.length,2);
+      assert.ok([...spaces].every(space=>space.textContent===' '));
+      assert.deepEqual(readSegments(host),content);
+      assert.ok(host.textContent.includes('nonbreaking\u00a0phrase'),'spaces within prose keep their nonbreaking behavior');
+      spaces[0].remove();
+      assert.deepEqual(readSegments(host),[{text:'Before',bold:true},content[1],content[2]],'deleting a boundary space stays deleted');
+      spaces[1].textContent=' changed ';
+      assert.equal(readSegments(host).at(-1).text,' changed after and nonbreaking\u00a0phrase','editing the space reads the new text');
+    }
+    const code=document.createElement('div');
+    code.innerHTML=segmentHTML([{text:'code\u00a0',code:true},{entityId:'entity'}],entities);
+    assert.equal(code.querySelector('[data-entity-space]'),null,'code whitespace remains literal');
+  });
+});

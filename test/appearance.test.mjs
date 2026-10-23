@@ -68,3 +68,23 @@ test('presentation migrates legacy values, validates modes and separates emphasi
     assert.deepEqual(presentationTraits(mode), {entityEmphasis: mode === 'standard' ? 'normal' : 'subtle', workspaceVisibility: mode === 'focus' ? 'minimal' : 'full'});
   }
 });
+
+test('paragraph indent preferences default safely and persist all supported modes and widths', () => {
+  assert.equal(defaultAppearance().paragraphIndent, 'none');
+  assert.equal(defaultAppearance().paragraphIndentWidth, 'medium');
+  assert.equal(defaultAppearance().paragraphSpacing, 'standard');
+  for (const paragraphIndent of ['none', 'all', 'except-first']) {
+    for (const paragraphIndentWidth of ['small', 'medium', 'large']) {
+      for (const paragraphSpacing of ['standard', 'book']) {
+        const appearance = {...defaultAppearance(), citationStyleExplicit:true, paragraphIndent, paragraphIndentWidth, paragraphSpacing};
+        assert.deepEqual(parseAppearance(JSON.stringify(appearance)), appearance);
+      }
+    }
+  }
+  for (const invalid of ['retired', 'constructor', null, 2, {}]) {
+    const parsed = parseAppearance(JSON.stringify({paragraphIndent:invalid, paragraphIndentWidth:invalid, paragraphSpacing:invalid}));
+    assert.equal(parsed.paragraphIndent, 'none');
+    assert.equal(parsed.paragraphIndentWidth, 'medium');
+    assert.equal(parsed.paragraphSpacing, 'standard');
+  }
+});

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type SetStateAction } from 'react';
 import { entityTypes } from '../../shared/domain';
-import { appearanceStorageKey, defaultAppearance, fontFamily, parseAppearance, pillColors, themes, resolveDisplayMode, presentationTraits, type Appearance } from './appearance';
+import { appearanceStorageKey, paragraphIndentWidths, defaultAppearance, fontFamily, parseAppearance, pillColors, themes, resolveDisplayMode, presentationTraits, type Appearance } from './appearance';
 
 export function useAppearance() {
   const [appearance, updateAppearance] = useState<Appearance>(() => {
@@ -32,6 +32,9 @@ export function useAppearance() {
     const theme = themes.find(theme => theme.id === appearance.theme)!;
     const mode = resolveDisplayMode(appearance.mode, systemDark);
     root.dataset.mode = mode;
+    root.dataset.paragraphIndent = appearance.paragraphIndent;
+    root.dataset.paragraphSpacing = appearance.paragraphSpacing;
+    root.style.setProperty('--paragraph-indent-width', paragraphIndentWidths[appearance.paragraphIndentWidth]);
     root.dataset.focusedReading = String(presentationTraits(appearance.presentationMode).entityEmphasis === 'subtle');
     root.style.setProperty('--font-ui', fontFamily(appearance.bodyFont));
     root.style.setProperty('--font-title', fontFamily(appearance.headingFont));

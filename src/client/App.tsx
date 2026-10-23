@@ -1,5 +1,5 @@
 import {ReviewCentre} from './review/ReviewCentre';
-import {ReviewDestination} from './review/review-destination';
+import {ReviewDestination,reviewDestinationAt} from './review/review-destination';
 import type {ReviewItem} from '../shared/review-centre';
 import {useCalendarSettings} from './settings/calendar-settings';
 import {noteDateItems} from '../shared/note-dates';
@@ -104,6 +104,10 @@ export function App() {
   usePageSelection(workspace);
   const state = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
   const {vaults, vault, pages, entities, page, view, busy, loadingPageId, reviewing, error, saveStatus, organization, organizationContext, recent, trash, saveFailures, draftStorageFailures, draftRecoveries} = state;
+  const activeReviewDestination=reviewDestinationAt(reviewDestination,reviewVault.current,state);
+  useEffect(()=>{
+    reviewVault.current=null;setReviewDestination(null);
+  },[vault?.id,vault?.locked]);
   useEffect(()=>{
     if(!vault||vault.locked)return;
     const controller=new AbortController();
@@ -340,7 +344,7 @@ export function App() {
       }
     } else {
       const label = view==='review'?'Review Centre':view==='calendar'?'Calendar':view==='entities'&&knowledgeType==='source'?'Sources':view === 'inbox' ? 'Inbox' : view === 'trash' ? 'Trash' : view === 'entities' ? 'Knowledge entities' : view === 'organization' ? 'Pages' : view === 'favourites' ? 'Favourites' : 'Recent items';
-      const icon = view==='review'?'sparkles':view==='calendar'?'event':view==='entities'&&knowledgeType==='source'?'source':view === 'inbox' ? 'inbox' : view === 'trash' ? 'trash' : view === 'entities' ? 'knowledge' : view === 'organization' ? 'pages' : view === 'favourites' ? 'star' : 'recent';
+      const icon = view==='review'?'checklist':view==='calendar'?'event':view==='entities'&&knowledgeType==='source'?'source':view === 'inbox' ? 'inbox' : view === 'trash' ? 'trash' : view === 'entities' ? 'knowledge' : view === 'organization' ? 'pages' : view === 'favourites' ? 'star' : 'recent';
       breadcrumbs.push({key: 'view', label, icon, onClick: view === 'organization' ? () => workspace.openOrganization() : view === 'entities' && knowledgeType && knowledgeType!=='source' ? () => {captureLibraryView(); setKnowledgeBrowser({entityType: ''});} : undefined});
       if (view === 'entities' && knowledgeType && knowledgeType!=='source') {
         breadcrumbs.push({key: 'entity-type:' + knowledgeType, label: uiText(entityLabels[knowledgeType]), icon: knowledgeType});
@@ -354,7 +358,7 @@ export function App() {
       }
     }
   }
-  return <ReviewDestination.Provider value={reviewVault.current===vault?.id&&view!=='review'?reviewDestination:null}>
+  return <ReviewDestination.Provider value={activeReviewDestination}>
     {focusWorkspace && <div className="focus-controls" role="toolbar" aria-label="Focus controls">
       <PresentationSelector onExitFocus={exitFocus} value={appearance.presentationMode} onChange={presentationMode => setAppearance(current => ({...current, presentationMode}))}/>
     </div>}
@@ -371,7 +375,7 @@ export function App() {
       <nav className="sidebar-group" aria-label={uiText("Vault library")}>
         <div className="workspace-label">{uiText("Workspace")}</div>
         <button className={'nav ' + (view === 'pages' || view === 'organization' && !organizationContext.collection && !organizationContext.folder ? 'active' : '')} disabled={disabled} aria-label={uiText("Pages")} title={uiText("Pages")} onClick={() => run(() => workspace.showPages())}><span data-icon="pages"><Icon name="pages"/></span><span>{uiText("Pages")}</span><kbd>P</kbd></button>
-        <button className={'nav '+(view==='review'?'active':'')} disabled={disabled} onClick={()=>{setSearchOpen(false);setSourceReference(null);run(()=>workspace.showReview());}}><span><Icon name="sparkles"/></span><span>Review Centre</span></button>
+        <button className={'nav '+(view==='review'?'active':'')} disabled={disabled} onClick={()=>{setSearchOpen(false);setSourceReference(null);run(()=>workspace.showReview());}}><span><Icon name="checklist"/></span><span>Review Centre</span></button>
         <button className={'nav ' + (view === 'calendar' ? 'active' : '')} disabled={disabled} aria-label="Calendar" title="Calendar" onClick={() => run(()=>workspace.showCalendar())}><span data-icon="event"><Icon name="event"/></span><span>Calendar</span></button>
         <button className={'nav ' + (view === 'inbox' ? 'active' : '')} disabled={disabled} aria-label={uiText("Inbox")} title={uiText("Inbox")} onClick={() => workspace.showInbox()}><span data-icon="inbox"><Icon name="inbox"/></span><span>{uiText("Inbox")}</span><span className="count">{inboxPages(pages, organization).length}</span></button>
         <button className={'nav ' + (view === 'source' || view === 'entities' && knowledgeType === 'source' ? 'active' : '')} disabled={disabled} aria-label={uiText("Sources")} title={uiText("Sources")} onClick={() => {captureLibraryView();setKnowledgeBrowser({entityType:'source'});workspace.showEntities();}}><span data-icon="source"><Icon name="source"/></span><span>{uiText("Sources")}</span><span className="count">{entities.filter(entity=>entity.type==='source').length}</span></button>
@@ -400,11 +404,11 @@ export function App() {
       {activeRecovery&&page&&<PageDraftRecoveryNotice key={activeRecovery.vaultId+'/'+activeRecovery.pageId} recovery={activeRecovery} page={page} entities={entities} pages={pages} onRestore={entry=>workspace.restorePageDraft(entry)} onDiscard={()=>workspace.discardPageDrafts(activeRecovery.vaultId,activeRecovery.pageId)}/>}
     </div>}</header>
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{loadingPageId !== null ? uiText("Opening {value0}…",{value0: pages.find(item=>item.id===loadingPageId)?.title || 'note'}) : ''}</div>
-      {reviewDestination&&reviewVault.current===vault?.id&&view!=='review'&&<div className="review-return"><span>Opened from Review Centre · {reviewDestination.state}</span><button type="button" className="button" disabled={disabled} onClick={()=>run(()=>workspace.showReview())}>Return to Review Centre</button></div>}
+      {activeReviewDestination&&!busy&&<div className="review-return"><span className="review-return-context"><Icon name="checklist"/><span>Reviewing <strong>{activeReviewDestination.title||uiText("Untitled")}</strong></span></span><button type="button" className="button review-return-action" disabled={disabled} onClick={()=>run(()=>workspace.showReview())}><Icon name="arrow-left"/>Return to Review Centre</button></div>}
       {calendarReturn&&vault?.id===calendarReturn.vaultId&&view==='pages'&&page?.id===calendarReturn.pageId&&<div className="calendar-return"><span role={calendarReturn.notice?'alert':'status'}>{calendarReturn.notice??'Original calendar evidence · edit this page as usual.'}</span><button type="button" className="button" disabled={disabled} onClick={()=>run(()=>workspace.showCalendar())}>Return to Calendar</button></div>}
       <div id="content" data-loading={busy||loadingPageId !== null} inert={busy||entityReviewOpen||reviewing||loadingPageId !== null} aria-busy={busy||loadingPageId !== null}>
         {busy && view !== 'trash' && view !== 'inbox' ? <p className="loading-state" role="status">{uiText("Loading workspace…")}</p> : !vault ? <section className="locked-state"><div className="vault-symbol"><Icon name="vault"/></div><h1 className="page-heading">{vaults.length?uiText("Choose a vault"):uiText("No vaults yet")}</h1><p>{vaults.length?uiText("Choose a vault from the sidebar, or create or import one."):uiText("Create a vault or import a backup whenever you’re ready.")}</p><div className="empty-vault-actions"><button type="button" className="button primary" onClick={()=>setVaultAction('create')}>{uiText("Create a vault")}</button><button type="button" className="button" onClick={()=>setBackupAction('import')}>{uiText("Import backup")}</button></div></section> : vault?.locked ? <section className="locked-state"><div className="vault-symbol"><Icon name="vault"/></div><h1 className="page-heading">{vault.name}</h1><button className="button primary" onClick={() => setVaultAction('unlock')}>{uiText("Unlock vault")}</button></section> : vault && view === 'review' ? <ReviewCentre key={vault.id} vaultId={vault.id} onOpen={async(item,signal)=>{
-          await workspace.saver.flush();if(signal.aborted||workspace.snapshot().vault?.id!==vault.id||workspace.snapshot().view!=='review')return;
+          await workspace.saver.flush();if(signal.aborted||workspace.snapshot().vault?.id!==vault.id||workspace.snapshot().vault?.locked||workspace.snapshot().view!=='review')return;
           reviewVault.current=vault.id;setReviewDestination(item);setSearchOpen(false);setSourceReference(null);setNoteDateSelection(null);
           if(item.category==='scan'){setAiOpen(true);await workspace.openPage(item.originId);}
           else if(item.category==='discovery')await workspace.openEntityHome(item.originId);

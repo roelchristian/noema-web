@@ -1,6 +1,14 @@
-# AI Review Centre: first read-only queue
+# AI Review Centre
 
 The Review Centre answers which saved generated work needs attention in the current open vault. It introduces no review-state table, provider calls, mutation controls or background generation. Settings retains logs and usage. Feature code lives in `src/client/review`, `src/shared/review-centre.ts` and `src/server/modules/review-centre.ts`; shell integration adds one view, navigation entry and scoped destination context.
+
+## Review experience
+
+The Review Centre follows the flat list, shared typography, semantic colours and compact toolbar used by Noema's libraries. To review, Needs attention and In progress separate saved suggestions from operational issues and running source work. Contextual actions open the existing evidence and decision interface: Review entities, Review discoveries, Review corrections, Revisit page, Inspect source or View progress. Opening an item still revalidates its saved identity and run before navigation.
+
+Search filters the selected group by title, type of work, task or status. Both search and group selection survive a round trip within the vault session. Counts describe loaded items; continuation is explicit. Failed refreshes retain loaded work, partial coverage provides a retry, and empty states distinguish a clear queue from unavailable or not-yet-loaded work. Dates for source processing explicitly mean imported dates.
+
+The return strip identifies the item being reviewed and appears only in its original page, entity or source workspace. Review intent is cleared when switching or locking vaults. The sidebar uses the same checklist icon as the return strip.
 
 ## Authoritative-state audit
 
@@ -16,7 +24,7 @@ The Review Centre answers which saved generated work needs attention in the curr
 
 ## Freshness and coverage limits
 
-Discovery freshness uses an existing vault-wide content fingerprint; editorial freshness uses the canonical source snapshot hash. Running those for every queue item would read evidence/source documents. The queue therefore explicitly labels their saved pending state as freshness checked on open. Only revision-stale entity scans are preclassified under Failures and stale results. Context-only scan staleness, discovery staleness and editorial staleness are validated on open and shown by their specialised interfaces; there is no invented persisted stale flag or parallel fingerprint model.
+Discovery freshness uses an existing vault-wide content fingerprint; editorial freshness uses the canonical source snapshot hash. Running those for every queue item would read evidence/source documents. The queue therefore explicitly labels their saved pending state as freshness checked on open. Only revision-stale entity scans are preclassified under Needs attention. Context-only scan staleness, discovery staleness and editorial staleness are validated on open and shown by their specialised interfaces; there is no invented persisted stale flag or parallel fingerprint model.
 
 Only the current/latest discovery and editorial run is actionable here. Older runs remain available through their original interfaces. Counts represent loaded records, not an unbounded vault total. When earlier loaded records have no pending work but older status remains, the empty message says so and offers Load more.
 
@@ -44,3 +52,5 @@ Manual refresh, foreground focus/online events and a 30-second visible refresh r
 Desktop/mobile screenshots were captured and inspected at `/workspace/review-centre-evidence/review-desktop-decisions.png` and `/workspace/review-centre-evidence/review-mobile-decisions.png`. The supported Library prepared-upload helper failed during hosted-app tool discovery with `hosted apps tools/list request failed: network`, before preparation or any file-create/finalization request. No Library IDs were returned; both files and local verification evidence remain preserved. This is a failed upload setup, not a denied action or an uncertain remote write.
 
 Final verification on 2026-10-23: build/styles/typechecks passed; full suite 848 tests, 842 passed, 6 skipped, 0 failed. Review Centre browser flow passed ten groups (including draft preservation), provider calls 0 and no AI generation/decision mutations. Existing entity-scan and entity-linking browser scripts passed. Two ambiguous entity-scan confirmation locators were narrowed with `.first()` because visible and live-region confirmations share text. The Review Centre resolved-item assertion waits for its asynchronous refresh before checking removal.
+
+UX update on 2026-10-23: production build, styles and typechecks passed, along with 14 focused review/navigation and document-search tests. The full suite recorded 870 passed, one skipped and one document-search shortcut failure (`Worker is not defined`); the document-search file passed on the focused rerun. Browser validation was intentionally skipped at the user’s request. The browser evidence above records the earlier queue implementation, not visual verification of this update.

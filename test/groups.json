@@ -18,6 +18,7 @@
     "test/page-navigation.test.mjs",
     "test/page-saver.test.mjs",
     "test/page-titler.test.mjs",
+    "test/review-destination.test.mjs",
     "test/segments-equal.test.mjs",
     "test/selection-annotation.test.mjs",
     "test/semantic-search.test.mjs",
@@ -66,7 +67,8 @@
     "test/document-find-shortcuts.test.mjs",
     "test/note-dates.test.mjs",
     "test/calendar-settings.test.mjs",
-    "test/calendar-liturgical-overlay.test.mjs"
+    "test/calendar-liturgical-overlay.test.mjs",
+    "test/review-centre-ui.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",

@@ -60,6 +60,11 @@
   --page-heading-line-height: 1.75rem;
   --page-heading-letter-spacing: normal;
 
+  /* Shared library frame for Pages, Sources, Knowledge, Calendar and Inbox. */
+  --library-padding: 40px 36px 64px;
+  --library-heading-gap: 30px;
+  --library-heading-height: 38px;
+
   /* Interface sizing */
   --workspace-toolbar-height: 44px;
   --ui-text-xs: 11px;
@@ -216,5 +221,15 @@
   :root {
     --control-target-compact: var(--touch-target-size);
     --control-target-regular: var(--touch-target-size);
+  }
+}
+
+@media (max-width: 900px) {
+  :root { --library-padding: 28px 24px 48px; }
+}
+@media (max-width: 750px) {
+  :root {
+    --library-padding: 24px 16px max(40px, env(safe-area-inset-bottom));
+    --library-heading-height: var(--touch-target-size);
   }
 }

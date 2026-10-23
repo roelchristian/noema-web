@@ -1017,12 +1017,12 @@ h1, h2, h3, h4, h5, h6 {
   width: 100%;
   max-width: 1200px;
   margin: 0;
-  padding: 40px 36px 64px;
+  padding: var(--library-padding);
   text-align: left;
 }
 #content > :is(.library, .organization-library) :is(.organization-heading, .library-heading) {
   align-items: flex-start;
-  margin-bottom: 30px;
+  margin-bottom: var(--library-heading-gap);
 }
 #content > :is(.library, .organization-library) h1 {
   margin: 0 0 24px;
@@ -1032,12 +1032,20 @@ h1, h2, h3, h4, h5, h6 {
   letter-spacing: -1px;
   text-align: left;
 }
+/* Keep each workspace title on the same row, independent of its controls. */
+#content > .organization-library > .pages-home-heading > .library-heading-row,
+.review-header > .review-heading,
+.calendar-heading > .calendar-month-title {
+  display: flex;
+  align-items: center;
+  min-height: var(--library-heading-height);
+}
 #content > .organization-library .organization-heading h1 {
   margin-bottom: 0;
 }
 @media (max-width: 900px) {
   #content > :is(.library, .organization-library) {
-    padding: 28px 24px 48px;
+    padding: var(--library-padding);
   }
   #content > :is(.library, .organization-library) h1 {
     font-size: 31px;
@@ -1045,7 +1053,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 @media (max-width: 650px) {
   #content > :is(.library, .organization-library) {
-    padding: 26px 22px 40px;
+    padding: var(--library-padding);
   }
   #content > :is(.library, .organization-library) h1 {
     font-size: 28px;
@@ -1336,7 +1344,7 @@ main {
   }
   #content > :is(.library, .organization-library) {
     width: 100%;
-    padding: 24px 16px max(40px, env(safe-area-inset-bottom));
+    padding: var(--library-padding);
   }
   #content > .organization-library .pages-home-heading {
     align-items: stretch;

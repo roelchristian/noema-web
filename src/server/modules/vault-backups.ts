@@ -37,6 +37,7 @@ import {isPageIconId} from '../../shared/page-icons.js';
 import {Store} from '../store.js';
 import {HttpError,now,object,required,text} from '../validation.js';
 import {Images} from './images.js';
+import {restorePageVersions,remapDetachedSourceEvidence} from './page-history-backup.js';
 import {Knowledge} from './knowledge.js';
 import {Pages} from './pages.js';
 import {Vaults} from './vaults.js';
@@ -62,6 +63,7 @@ const tables={
   property_definitions:{columns:'id,definition_json',scope:'vault_id=?'},
   property_value_metadata:{columns:'property_id,definition_id,compatibility,reason,integer_value,decimal_value,boolean_value,text_value,latitude,longitude,unit,position,target_id,temporal_date_id',scope:'vault_id=?'},
   temporal_relations:{columns:'id,date_id,entity_id,mention_id,kind,origin,status,confidence,source_mention_id,property_id,property_hash',scope:'vault_id=?'},
+  page_versions:{columns:'id,page_id,page_revision,created_at,kind,name,pinned,content_hash,snapshot_json,restored_from_version_id',scope:'vault_id=?'},
   pages:{columns:'id,title,icon,featured_image_id,blocks,ai_status,ai_review_accepted,generation_metadata,creation_method,language,created_at,updated_at,revision,deleted_at',scope:'vault_id=?'},
   source_reprocessing:{columns:'id,file_id,status,created_at,updated_at,payload',scope:'vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL)'},
   source_math_documents:{columns:'file_id,raw_hash,algorithm_version,cleaned_text,uncertainty_json,updated_at',scope:'file_id IN (SELECT id FROM source_files WHERE vault_id=? AND entity_id IS NOT NULL)'},
@@ -137,6 +139,7 @@ export class VaultBackups {
         if(typeof page.featured_image_id==='string')imageIds.add(page.featured_image_id);
         for(const block of JSON.parse(page.blocks as string))if(block.type==='image'&&block.imageId)imageIds.add(block.imageId);
       }
+      for(const row of this.store.all<{image_id:string}>('SELECT DISTINCT i.image_id FROM page_version_images i JOIN page_versions v ON v.id=i.version_id WHERE v.vault_id=?',vault))imageIds.add(row.image_id);
       const images=[...imageIds].map(id=>{
         const bytes=this.images.get(vault,id).bytes;
         estimated+=Math.ceil(bytes.length/3)*4+id.length+32;
@@ -169,7 +172,7 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table.startsWith('smart_collection_')||table.startsWith('temporal_')||table==='collection_descriptions'||table==='folder_descriptions'||table==='property_provenance'||table==='entity_name_provenance'||table==='property_proposals'||table==='source_author_jobs'||table==='property_definitions'||table==='property_value_metadata'||table==='entity_overviews'||table==='entity_page_associations'||table==='source_reading_locations'||table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='page_versions'||table==='collection_descriptions'||table==='folder_descriptions'||table.startsWith('smart_collection_')||table.startsWith('temporal_')||table==='property_provenance'||table==='entity_name_provenance'||table==='property_proposals'||table==='source_author_jobs'||table==='property_definitions'||table==='property_value_metadata'||table==='entity_overviews'||table==='entity_page_associations'||table==='source_reading_locations'||table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     const splitSourceOwners=new Set<unknown>(),sourceOwners=new Set<unknown>(),legacyEntities=new Map(rows.entities.map(row=>[row.id,row]));
     const legacyProperties=[...rows.properties],legacyLinks=[...rows.page_sources];
     for(const file of rows.source_files) {
@@ -210,6 +213,7 @@ export class VaultBackups {
       const map=new Map<string,string>();
       for(const row of records){const id=name(row,'id');if(map.has(id))throw invalid();map.set(id,randomUUID());}return map;
     };
+    const citationIds=new Map<string,string>(),sourceEvidenceIds={generations:new Map<string,string>(),passages:new Map<string,string>()};
     const propertyIds=ids(rows.properties),pageIds=ids(rows.pages),entityIds=ids(rows.entities),folderIds=ids(rows.folders),collectionIds=ids(rows.collections),subtypeIds=ids(rows.entity_subtypes),imageIds=new Map<string,string>();
     const subtypeTypes=new Map(rows.entity_subtypes.map(row=>[row.id,row.type]));
     const ref=(map:Map<string,string>,value:unknown)=>{if(typeof value!=='string'||!map.has(value))throw invalid();return map.get(value)!;};
@@ -401,7 +405,8 @@ export class VaultBackups {
               if(segment.sourceReference) {
                 const citation=object(segment.sourceReference),fileId=restoredSourceFiles.get(name(citation,'fileId'));
                 if(!fileId)throw invalid();
-                segment.sourceReference={...citation,id:randomUUID(),sourceId:ref(entityIds,citation.sourceId),fileId};
+                const citationId=name(citation,'id');if(!citationIds.has(citationId))citationIds.set(citationId,randomUUID());
+                segment.sourceReference={...citation,...remapDetachedSourceEvidence(citation,sourceEvidenceIds),id:citationIds.get(citationId),sourceId:ref(entityIds,citation.sourceId),fileId};
               }
               return segment;
             });
@@ -469,7 +474,8 @@ export class VaultBackups {
           const sourceHash=string(row,'source_hash',64),passageHash=string(row,'passage_hash',64),start=integer(row,'start_offset'),end=integer(row,'end_offset',start+1),original=string(row,'original_text');
           if(!/^[a-f0-9]{64}$/.test(sourceHash)||!/^[a-f0-9]{64}$/.test(passageHash)||original.length!==end-start)throw invalid();
           sourceMentionIds.set(oldId,id);sourceMentionDates.set(id,dateId);
-          insert('temporal_source_mentions',{id,vault_id:vault,file_id:fileId,source_id:sourceId,passage_id:name(row,'passage_id'),generation_id:name(row,'generation_id'),source_hash:sourceHash,passage_hash:passageHash,start_offset:start,end_offset:end,start_line:integer(row,'start_line',1),end_line:integer(row,'end_line',integer(row,'start_line',1)),original_text:original,date_id:dateId,reason:nullable(row,'reason',200),stale:1});
+          const evidence=remapDetachedSourceEvidence({generationId:name(row,'generation_id'),passageId:name(row,'passage_id')},sourceEvidenceIds);
+          insert('temporal_source_mentions',{id,vault_id:vault,file_id:fileId,source_id:sourceId,passage_id:evidence.passageId!,generation_id:evidence.generationId!,source_hash:sourceHash,passage_hash:passageHash,start_offset:start,end_offset:end,start_line:integer(row,'start_line',1),end_line:integer(row,'end_line',integer(row,'start_line',1)),original_text:original,date_id:dateId,reason:nullable(row,'reason',200),stale:1});
         }
         for(const row of rows.temporal_relations) {
           const dateId=dateRef(row.date_id),mentionId=row.mention_id===null?null:ref(temporalMentions,row.mention_id),sourceMentionId=row.source_mention_id==null?null:ref(sourceMentionIds,row.source_mention_id),propertyId=row.property_id==null?null:ref(propertyIds,row.property_id),propertyHash=row.property_hash==null?null:string(row,'property_hash',64);
@@ -514,7 +520,8 @@ export class VaultBackups {
           const startLine=integer(reference,'startLine',1),endLine=integer(reference,'endLine',startLine);
           if(reference.sourceHash!==hash||reference.startOffset!==start||reference.endOffset!==end||reference.excerpt!==excerpt)throw invalid();
           if((source!==null&&reference.sourceId!==row.source_id)||(file!==null&&reference.fileId!==row.file_id))throw invalid();
-          const restoredReference={...reference,id:randomUUID(),sourceId:source??detached(detachedSources,reference.sourceId),fileId:file??detached(detachedFiles,reference.fileId),startLine,endLine,...(source===null||file===null?{stale:true}:{})};
+          const citationId=name(reference,'id');if(!citationIds.has(citationId))citationIds.set(citationId,randomUUID());
+          const restoredReference={...reference,...remapDetachedSourceEvidence(reference,sourceEvidenceIds),id:citationIds.get(citationId),sourceId:source??detached(detachedSources,reference.sourceId),fileId:file??detached(detachedFiles,reference.fileId),startLine,endLine,...(source===null||file===null?{stale:true}:{})};
           return {vault_id:vault,source_id:source,file_id:file,source_hash:hash,start_offset:start,end_offset:end,excerpt,reference_json:JSON.stringify(restoredReference),created_at:timestamp(row,'created_at')};
         };
         for(const row of rows.source_reading_locations) {
@@ -706,6 +713,7 @@ export class VaultBackups {
           // The archived decision is authoritative over that fresh pending record.
           this.store.run(`INSERT INTO property_proposals (${columns.join(',')}) VALUES (${columns.map(()=>'?').join(',')}) ON CONFLICT(id) DO UPDATE SET ${columns.filter(column=>column!=='id').map(column=>`${column}=excluded.${column}`).join(',')}`,...Object.values(fields));
         }
+        restorePageVersions(this.store,vault,rows.page_versions,{evidence:sourceEvidenceIds,pages:pageIds,entities:entityIds,files:restoredSourceFiles,images:imageIds,citations:citationIds,detachedEntities:detachedSources,detachedFiles});
         // Recompute after validation/remapping instead of trusting a supplied page fingerprint.
         syncReadingNotesCollection(this.store,vault);
         for(const id of pageIds.values())if(!this.store.get<{deleted_at:string|null}>('SELECT deleted_at FROM pages WHERE id=?',id)!.deleted_at)pages.get(vault,id);

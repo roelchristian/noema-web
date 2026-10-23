@@ -13,7 +13,8 @@ import {PageEntityAssociationsDialog} from './PageEntityAssociationsDialog';
 import {rememberMarkdownTyping,useMarkdownTyping} from '../state/markdown-preferences';
 import {formatMarkdownBlocks} from './markdown-typing';
 
-export function PageToolbar({ onRename, entities, onEntityAssociationsChanged, onOpenEntity, tocAvailable=false, tocVisible=true, onToggleToc, onRevealInSidebar, inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, presentationMode, onPresentationModeChange, onExitFocus, onForward, forwardDisabled, onChangeBlocks, onFeaturedImageChange,onEditLockChange, onUndo, onRedo, canUndo, canRedo}: {
+export function PageToolbar({ onHistory, onRename, entities, onEntityAssociationsChanged, onOpenEntity, tocAvailable=false, tocVisible=true, onToggleToc, onRevealInSidebar, inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, presentationMode, onPresentationModeChange, onExitFocus, onForward, forwardDisabled, onChangeBlocks, onFeaturedImageChange,onEditLockChange, onUndo, onRedo, canUndo, canRedo}: {
+  onHistory?:()=>void;
   onRename?:()=>void;
   entities?:Entity[]; onEntityAssociationsChanged?:()=>Promise<void>; onOpenEntity?:(id:string)=>void;
   tocAvailable?:boolean;tocVisible?:boolean;onToggleToc?:()=>void;
@@ -79,6 +80,7 @@ export function PageToolbar({ onRename, entities, onEntityAssociationsChanged, o
     {page.editLocked && <div className="page-toolbar-lock"><ActionMenu label={uiText("Page locked: unlock editing")} icon="lock" disabled={changingLock} actions={lockAction.children ?? []}/><span aria-hidden="true">{uiText("Locked")}</span></div>}
     <ActionMenu label={uiText("More page actions")} disabled={changingLock} actions={[
       ...(onForward ? [{get label(){return uiText("Go forward")}, icon: 'chevron', disabled: forwardDisabled, onSelect: onForward}] : []),
+      ...(onHistory?[{label:uiText("Version history"),icon:"undo" as const,onSelect:onHistory}]:[]),
       ...(onRename?[{label:uiText("Rename"),icon:'edit' as const,disabled:editingDisabled,onSelect:onRename}]:[]),
       ...(entities?[{label:uiText("Organize with entities…"),icon:"knowledge" as const,onSelect:()=>setEntityAssociationsOpen(true)}]:[]),
       {label:uiText("Find in page"),icon:"search",description:"⌘F / Ctrl+F",onSelect:()=>document.dispatchEvent(new Event("noema:document-find"))},

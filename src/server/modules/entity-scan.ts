@@ -1,3 +1,4 @@
+import {PageHistory} from './page-history.js';
 import {mergeSuggestionIdentities} from '../../shared/entity-suggestion-identities.js';
 import {syncSourceReferences} from './source-references.js';
 import { entityMentionName } from '../../shared/domain.js';
@@ -311,8 +312,10 @@ export class EntityScans {
           scan.reviewExclusions=[...new Map([...(scan.reviewExclusions??[]),anchor].map(item=>[anchorKey(item),item])).values()];
         }
         if(page.blocks.some(block=>block.content.length>1000||block.rows?.some(row=>row.some(cell=>cell.length>1000))))throw new HttpError(400,'Too many segments in a block. Select fewer occurrences.');
+        new PageHistory(this.store).baseline(vault,pageId);
         syncSourceReferences(this.store,pageId,page.blocks);
         this.store.run('UPDATE pages SET blocks=?,revision=revision+1,updated_at=? WHERE id=? AND vault_id=?',JSON.stringify(page.blocks),now(),pageId,vault);
+        new PageHistory(this.store).capture(vault,pageId,'edit');
         page = this.pages.get(vault,pageId);
       }
       scan.revision = page.revision;

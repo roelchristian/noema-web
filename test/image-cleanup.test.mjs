@@ -30,12 +30,19 @@ test('cleanup protects shared images in active notes and Trash until their final
   pages.delete('default',second.id); pages.permanentlyDelete('default',second.id);
   assert.ok(!existsSync(filename(id)));
 }));
-test('saved block removal deletes only unreferenced images; stale saves do not remove files',()=>fixture(({images,pages,filename,attach})=>{
+test('saved block removal preserves historical images; rejected saves add no history and final synthetic page deletion releases assets',()=>fixture(({store,images,pages,filename,attach})=>{
   const {id}=images.add('default',png), first=attach(id), second=attach(id);
   pages.update('default',first.id,{...first,blocks:[]}); assert.ok(existsSync(filename(id)));
+  const before=store.get('SELECT count(*) AS count FROM page_versions WHERE page_id=?',second.id).count;
   assert.throws(()=>pages.update('default',second.id,{...second,revision:0,blocks:[]}),error=>error.status===409);
+  assert.equal(store.get('SELECT count(*) AS count FROM page_versions WHERE page_id=?',second.id).count,before);
   assert.ok(existsSync(filename(id)));
-  pages.update('default',second.id,{...second,blocks:[]}); assert.ok(!existsSync(filename(id)));
+  pages.update('default',second.id,{...second,blocks:[]}); assert.ok(existsSync(filename(id)));
+  assert.equal(images.cleanup('default',[id]),0);
+  pages.delete('default',first.id);pages.permanentlyDelete('default',first.id);assert.ok(existsSync(filename(id)));
+  pages.delete('default',second.id);pages.permanentlyDelete('default',second.id);
+  assert.equal(images.cleanup('default',[id]),1);assert.ok(!existsSync(filename(id)));
+  assert.equal(store.get('SELECT count(*) AS count FROM page_version_images WHERE image_id=?',id).count,0);
 }));
 test('expired Trash releases images, including scoped purges without touching another vault',()=>fixture(({store,images,pages,filename,attach,advance})=>{
   const vault=new Vaults(store).create({name:'Other'});

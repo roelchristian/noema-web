@@ -28,7 +28,8 @@
     "test/workspace.test.mjs",
     "test/document-find.test.mjs",
     "test/property-definitions.test.mjs",
-    "test/property-catalogue.test.mjs"
+    "test/property-catalogue.test.mjs",
+    "test/page-history-ui.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",
@@ -181,6 +182,9 @@
     "test/property-provenance-http.test.mjs",
     "test/semantic-collections.test.mjs",
     "test/intelligent-collections.test.mjs",
+    "test/page-history.test.mjs",
+    "test/page-history-backups.test.mjs",
+    "test/page-history-paths.test.mjs",
     "test/organization-descriptions.test.mjs"
   ]
 }

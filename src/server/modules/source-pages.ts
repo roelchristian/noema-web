@@ -1,3 +1,5 @@
+import {PageEnrichmentState} from './page-enrichment-state.js';
+import {PageHistory} from './page-history.js';
 import {resolvePersona} from './ai-personas.js';
 import {defaultPersonaId} from '../../shared/ai-personas.js';
 import {parsePageGenerationMetadata,type PageGenerationMetadata} from '../../shared/page-generation.js';
@@ -262,7 +264,7 @@ export class SourcePages {
       const file=this.store.get<SourceFile>('SELECT * FROM source_files WHERE vault_id=? AND entity_id=?',vault,sourceId);
       if(!file||file.status!=='ready'||file.admitted!==1||this.knowledge.require(vault,sourceId).inactive||createHash('sha256').update(file.text).digest('hex')!==row.source_hash)throw new HttpError(409,'The source changed. Reject this draft and generate a new one from the ready source.');
       const blocks=this.pages.validateBlocks(vault,linkSourceReferences(JSON.parse(row.blocks),file));
-      const page=this.pages.create(vault,{title:row.title,language:row.language??null});
+      const page=this.pages.create(vault,{title:row.title,language:row.language??null},false);
       syncSourceReferences(this.store,page.id,blocks);
       this.store.run("UPDATE pages SET blocks=?,generation_metadata=?,creation_method='ai_generated',ai_status='ai_generated',summary_content_hash=NULL,revision=revision+1 WHERE id=? AND vault_id=?",JSON.stringify(blocks),row.generation_metadata??null,page.id,vault);
       this.store.run('INSERT INTO page_sources (page_id,source_id) VALUES (?,?)',page.id,sourceId);
@@ -270,6 +272,10 @@ export class SourcePages {
       this.store.run("UPDATE source_page_drafts SET status='accepted',blocks='[]',focus='',options='{}',generation_metadata=NULL WHERE request_id=?",requestId);
       if(row.notification_id)this.store.run('DELETE FROM ai_notifications WHERE id=?',row.notification_id);
       if(row.activity_id)this.store.run("UPDATE ai_activity SET object_kind='page',object_id=? WHERE id=?",page.id,row.activity_id);
+      const origins=new PageEnrichmentState(this.store);
+      origins.setField(page.id,'title',{origin:'inferred',updatedAt:now()});
+      if(row.language)origins.setField(page.id,'language',{origin:'inferred',updatedAt:now()});
+      new PageHistory(this.store).capture(vault,page.id,'ai_acceptance');
       return {page:this.pages.get(vault,page.id),created:true,activityId:row.activity_id};
     });
   }

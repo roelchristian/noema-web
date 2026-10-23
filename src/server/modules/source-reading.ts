@@ -1,3 +1,4 @@
+import {PageHistory} from './page-history.js';
 import {createReadingAnchor,resolveReadingAnchor,type ReadingAnchor,type ReadingLocation,type ReadingContinuity} from '../../shared/reading-continuity.js';
 import {explanationPrompt} from './explanation-prompt.js';
 import type {PageGenerationMetadata} from '../../shared/page-generation.js';
@@ -166,9 +167,11 @@ export class SourceReading {
     this.store.run('UPDATE pages SET generation_metadata=? WHERE id=? AND vault_id=?',JSON.stringify(metadata),pageId,vault);
    }
    this.store.run('INSERT INTO page_sources (page_id,source_id) VALUES (?,?)',pageId,ref.sourceId);
-   new PageEnrichmentState(this.store).markManual(pageId,'title');
+   if(explanation){const state=new PageEnrichmentState(this.store);state.setField(pageId,'title',{origin:'inferred',updatedAt:now()});if(language)state.setField(pageId,'language',{origin:'inferred',updatedAt:now()});}
+   else new PageEnrichmentState(this.store).markManual(pageId,'title');
    this.store.run('INSERT INTO page_reading_notes (page_id,vault_id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,reference_json,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',pageId,vault,ref.sourceId,fileId,ref.sourceHash,ref.startOffset!,ref.endOffset!,ref.excerpt,JSON.stringify(reference),createdAt);
    syncReadingNotesCollection(this.store,vault);
+   new PageHistory(this.store).capture(vault,pageId,explanation?'ai_acceptance':'created');
   });
   return pages.get(vault,pageId);
  }

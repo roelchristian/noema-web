@@ -1,3 +1,4 @@
+import {PageHistory} from './page-history.js';
 import type {PageDomains,Page} from '../../shared/domain.js';
 import {PageEnrichmentState} from './page-enrichment-state.js';
 import {CLASSIFICATION_VERSION,assessSemanticDrift,createClassificationBaseline,type CachedPageEmbedding,type DriftDecision} from './page-semantic-drift.js';
@@ -84,6 +85,7 @@ export class Domains {
       const page=this.requirePage(vault,pageId);
       if(page.revision!==revision)throw new HttpError(409,'This page changed. Save the latest note before editing subjects.');
       if(this.store.get('SELECT 1 FROM page_edit_locks WHERE page_id=?',pageId))throw new HttpError(423,'Unlock this page before editing subjects.');
+      new PageHistory(this.store).baseline(vault,pageId);
       this.write(pageId,selection,'manual');
       const enrichment=new PageEnrichmentState(this.store),record=enrichment.get(pageId);
       record.fields.domains={origin:'manual',updatedAt:now(),stale:false};
@@ -91,6 +93,7 @@ export class Domains {
       enrichment.save(pageId,record);
       this.store.run('UPDATE pages SET revision=revision+1,updated_at=? WHERE id=? AND vault_id=?',now(),pageId,vault);
       this.store.run("DELETE FROM page_ai_enrichments WHERE page_id=? AND kind='entity_scan'",pageId);
+      new PageHistory(this.store).capture(vault,pageId,'edit');
     });
     return this.get(pageId);
   }

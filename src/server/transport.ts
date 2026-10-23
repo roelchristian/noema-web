@@ -1,3 +1,4 @@
+import {PageHistory} from './modules/page-history.js';
 import {PropertyReview} from './modules/property-review.js';
 import {PropertyDefinitionGovernance} from './modules/property-definition-governance.js';
 import {EntityClassificationImpact} from './modules/entity-classification-impact.js';
@@ -452,6 +453,16 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             if(id && child==='source-suggestions' && parts.length===4) {
               if(method==='GET')return send(200,embeddings.suggestedSources(vault,id));
               if(method==='POST')return send(200,embeddings.dismissSource(vault,id,body.sourceId));
+            }
+            if(id && child==='history') {
+              const history=new PageHistory(store);
+              if(parts.length===4&&method==='GET')return send(200,history.list(vault,id));
+              if(parts.length===4&&method==='POST')return send(201,history.checkpoint(vault,id,body));
+              if(childId&&parts.length===5&&method==='GET')return send(200,history.get(vault,id,childId));
+              if(childId&&parts.length===6&&method==='POST'&&(parts[5]==='restore'||parts[5]==='copy')) {
+                const page=parts[5]==='restore'?history.restore(vault,id,childId,body,pages):history.copy(vault,id,childId,body,pages);
+                embeddings.onSave(vault,page.id);scheduleEnrichment(vault,page);return send(200,page);
+              }
             }
             if(id && child==='editor' && parts.length===4 && method==='GET') {
               const page=pages.get(vault,id);

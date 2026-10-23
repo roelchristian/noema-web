@@ -22,7 +22,7 @@ Reviewed all 11 changed files for bounded opaque key handling, complete WAV/C2PA
 
 ## Validation
 
-Final combined tree:
+Original combined implementation checkpoint (before publication review added two regression tests):
 
 - `npm run build`: passed, including style checks, application/test type checks and production bundle.
 - `npm run test:all`: **1,179 total; 1,172 passed; zero failed; seven explicitly skipped**.
@@ -33,6 +33,10 @@ Final combined tree:
 The seven suite skips are the macOS Keychain adapter, local Kokoro model integration (model absent), and five macOS PDFKit/Vision/Swift/sandbox native tests. All new synthesis validation uses synthetic content and injected/mocked providers.
 
 Official API references checked: [Google speech generation and metadata](https://ai.google.dev/gemini-api/docs/speech-generation), [OpenAI Realtime session speed and instructions](https://developers.openai.com/api/reference/resources/realtime/subresources/sessions/methods/create).
+
+## Publication review
+
+Review identified two related P2 gaps: code/math segments in table/column cells were not protected, and inline protected content lost its structural pause category. Commit `159bbcb` fixes both, keeps protection separate from pause metadata, updates resume revision identity and adds regression coverage. Focused editor speech tests pass 34/34. The complete TTS phase is PR #71; the dependent Settings phase is PR #72. The earlier controls-only boundary remains local because it lacked the editor safety plumbing. Exact published-head and final main CI evidence is recorded in those PRs.
 
 ## Remaining validation and deliberate limits
 

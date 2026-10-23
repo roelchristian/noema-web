@@ -25,7 +25,8 @@
     "test/smart-quotes.test.mjs",
     "test/vault-backup-workspace.test.mjs",
     "test/workspace.test.mjs",
-    "test/document-find.test.mjs"
+    "test/document-find.test.mjs",
+    "test/property-definitions.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",
@@ -150,6 +151,7 @@
     "test/calendar.test.mjs",
     "test/temporal-evidence.test.mjs",
     "test/liturgical-calendar.test.mjs",
-    "test/review-centre.test.mjs"
+    "test/review-centre.test.mjs",
+    "test/property-inventory.test.mjs"
   ]
 }

@@ -1,3 +1,5 @@
+import type {SpeechVoice} from '../shared/intelligence';
+import {cleanSpeechText} from '../shared/speech-text';
 import type {EditorReviewText,EditorReviewSuggestion} from '../shared/editor-review';
 import type { Organization, Entity, EntityDetail, EntityInput, PropertyInput, RelationshipInput, Page, PageInput, PageSummary, Vault, TrashedPage } from '../shared/domain';
 export type PropertyProposalPreview=import('../shared/property-provenance').PropertyProposal & {stale:boolean;staleReason:string|null;fingerprint:string;conflicts:import('../shared/domain').Property[];currentName:string;definition?:import('../shared/property-definitions').PropertyDefinition;sourceName?:string};
@@ -15,6 +17,13 @@ export async function fetchClipboardImage(vault: string, url: string): Promise<F
   if (!response.ok) {const result = await response.json(); throw new ApiError(response.status, result.error || 'Could not download clipboard image');}
   const blob = await response.blob();
   return new File([blob], 'pasted-image', {type:blob.type});
+}
+export async function createSpeech(vaultId:string,text:string,signal?:AbortSignal,pageId?:string,voice?:SpeechVoice):Promise<Blob> {
+  try {
+    const response=await fetch('/api/intelligence/speech',{method:'POST',signal,headers:{'X-Noema-Request':'1','X-Vault-Id':vaultId,'Content-Type':'application/json'},body:JSON.stringify({text:cleanSpeechText(text),...(pageId?{pageId}:{}),...(voice?{voice}:{})})});
+    if(!response.ok){const result=await response.json();throw new ApiError(response.status,result.error||'Could not generate speech.');}
+    return await response.blob();
+  } finally {if(typeof window!=='undefined')window.dispatchEvent(new Event('noema:ai-activity'));}
 }
 export async function uploadImage(vault: string, file: File): Promise<{id: string}> {
   if(file.size > 20 * 1024 * 1024) throw new Error('Images must be 20 MB or smaller');

@@ -5,6 +5,7 @@ import {pageIcons} from '../../shared/page-icons';
 
 export const SubtypeIconContext=createContext<SubtypeIcons|undefined>(undefined);
 const paths: Record<string, ReactNode> = {
+  speaker: <><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M15 8a6 6 0 0 1 0 8M18 5a10 10 0 0 1 0 14"/></>,
   unlink: <path d="m18.84 12.25 1.41-1.41a6 6 0 0 0-8.49-8.49l-1.41 1.41M5.16 11.75l-1.41 1.41a6 6 0 0 0 8.49 8.49l1.41-1.41M8 2v3M2 8h3M16 19v3M19 16h3"/>,
   'reference-highlight': <><path d="m7 15 5-11 5 11M9 11h6"/><rect x="3" y="17" width="18" height="5" rx="1" fill="currentColor" stroke="none" opacity=".35"/></>,
   'reference-subtle': <><path d="m7 15 5-11 5 11M9 11h6"/><path d="M4 20h16" strokeDasharray="2 3"/></>,

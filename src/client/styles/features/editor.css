@@ -3131,3 +3131,17 @@
   .page-history-timeline { order: 0; max-height: 35dvh; flex-shrink: 0; border-right: 0; border-bottom: 1px solid var(--line); }
   .page-history-preview { overflow: visible; }
 }
+
+.editor-speech {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  margin-block: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.editor-speech audio { max-width: 100%; }
+.editor-speech [role="status"] { flex: 1 1 160px; }

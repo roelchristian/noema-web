@@ -1,3 +1,6 @@
+import {defaultSpeechVoice,isSpeechVoice,type SpeechVoice} from '../../shared/intelligence.js';
+import {cleanSpeechText} from '../../shared/speech-text.js';
+import {realtimeSpeech,speechModel,speechEndpoint,createSpeechSocket,type SpeechSocketFactory} from './realtime-speech.js';
 import {defaultPersonaId,isPersonaId,type BuiltinPersonaId} from '../../shared/ai-personas.js';
 import {resolvePersona} from './ai-personas.js';
 import {generationPolicy,type GenerationRequest} from './generation-request.js';
@@ -77,6 +80,9 @@ export function intelligencePreferencesFor(store: Store): PreferencesStore {
 }
 export class Intelligence {
   private active: AbortController | null=null;
+  private speechRequests=new Set<AbortController>();
+  private ttsEnabled=false;
+  private ttsVoice:SpeechVoice=defaultSpeechVoice;
   private generationRequests=new Set<AbortController>();
   private embeddingRequests=new Set<AbortController>();
   private embeddingAttempts: number[]=[];
@@ -89,9 +95,11 @@ export class Intelligence {
   private personaId:BuiltinPersonaId=defaultPersonaId;
   personaSelection(id:unknown=this.personaId,version?:number) {return resolvePersona(id,version);}
   private enrichmentPreferences: IntelligencePreferences={...defaultPageEnrichmentPreferences};
-  constructor(private secrets: SecretStore, private transport: typeof fetch=fetch, private clock=()=>Date.now(), private preferenceStore?: PreferencesStore) {
+  constructor(private secrets: SecretStore, private transport: typeof fetch=fetch, private clock=()=>Date.now(), private preferenceStore?: PreferencesStore,private speechSocketFactory:SpeechSocketFactory=createSpeechSocket) {
     const saved=preferenceStore?.read();
     if(supportedIntelligencePreferences(saved)) {
+      if('ttsVoice' in saved&&isSpeechVoice(saved.ttsVoice))this.ttsVoice=saved.ttsVoice;
+      if('ttsEnabled' in saved && typeof saved.ttsEnabled==='boolean')this.ttsEnabled=saved.ttsEnabled;
       if('personaId' in saved&&isPersonaId(saved.personaId))this.personaId=saved.personaId;
       this.preferences={model:saved.model,reasoningEffort:saved.reasoningEffort};
       if ('pageEnrichment' in saved && supportedIntelligencePreferences(saved.pageEnrichment)) this.enrichmentPreferences={model:saved.pageEnrichment.model,reasoningEffort:saved.pageEnrichment.reasoningEffort};
@@ -107,15 +115,23 @@ export class Intelligence {
     const pageEnrichment=body.pageEnrichment===undefined?this.enrichmentSelection():body.pageEnrichment as IntelligencePreferences;
     if(body.personaId!==undefined&&!isPersonaId(body.personaId))throw new HttpError(400,'Choose a supported AI persona.');
     const personaId=body.personaId===undefined?this.personaId:body.personaId as BuiltinPersonaId;
-    const value={personaId,model:body.model,reasoningEffort:body.reasoningEffort,manualRequestsPerMinute,pageEnrichment};
+    if(body.ttsEnabled!==undefined&&typeof body.ttsEnabled!=='boolean')throw new HttpError(400,'Choose whether OpenAI text to speech is enabled.');
+    const ttsEnabled=body.ttsEnabled===undefined?this.ttsEnabled:body.ttsEnabled as boolean;
+    if(body.ttsVoice!==undefined&&!isSpeechVoice(body.ttsVoice))throw new HttpError(400,'Choose a supported OpenAI speech voice.');
+    const ttsVoice=body.ttsVoice===undefined?this.ttsVoice:body.ttsVoice as SpeechVoice;
+    const voiceChanged=ttsVoice!==this.ttsVoice;
+    const value={personaId,ttsEnabled,ttsVoice,model:body.model,reasoningEffort:body.reasoningEffort,manualRequestsPerMinute,pageEnrichment};
     this.preferenceStore?.write(value);
     const modelChanged=value.model!==this.preferences.model || value.reasoningEffort!==this.preferences.reasoningEffort||pageEnrichment.model!==this.enrichmentPreferences.model||pageEnrichment.reasoningEffort!==this.enrichmentPreferences.reasoningEffort;
     this.preferences={model:value.model,reasoningEffort:value.reasoningEffort};
     this.enrichmentPreferences={model:pageEnrichment.model,reasoningEffort:pageEnrichment.reasoningEffort};
     this.personaId=personaId;
+    this.ttsEnabled=ttsEnabled;
+    this.ttsVoice=ttsVoice;
+    if(!ttsEnabled||voiceChanged)for(const request of this.speechRequests)request.abort();
     this.manualRequestsPerMinute=manualRequestsPerMinute;
     if (modelChanged) {this.preferenceRevision++;for(const request of this.generationRequests)request.abort();}
-    return {...this.selection(),personaId:this.personaId,manualRequestsPerMinute:this.manualRequestsPerMinute,pageEnrichment:this.enrichmentSelection()};
+    return {...this.selection(),personaId:this.personaId,ttsEnabled:this.ttsEnabled,ttsVoice:this.ttsVoice,manualRequestsPerMinute:this.manualRequestsPerMinute,pageEnrichment:this.enrichmentSelection()};
   }
   private credential() {
     const value=this.secrets.read();
@@ -124,7 +140,7 @@ export class Intelligence {
   }
   status(): IntelligenceStatus {
     const value=this.credential();
-    return {configured:!!value,expiresAt:value?.expiresAt ?? null,manualRequestsPerMinute:this.manualRequestsPerMinute,personaId:this.personaId,...this.selection(),pageEnrichment:this.enrichmentSelection()};
+    return {configured:!!value,expiresAt:value?.expiresAt ?? null,manualRequestsPerMinute:this.manualRequestsPerMinute,personaId:this.personaId,ttsEnabled:this.ttsEnabled,ttsVoice:this.ttsVoice,...this.selection(),pageEnrichment:this.enrichmentSelection()};
   }
   save(body: Record<string,unknown>) {
     if(typeof body.apiKey!=='string'||!/^sk-[A-Za-z0-9_-]{16,500}$/.test(body.apiKey))throw new HttpError(400,'Enter a valid OpenAI API key.');
@@ -132,10 +148,11 @@ export class Intelligence {
     if(typeof days!=='number'||!Number.isInteger(days)||days<1||days>365)throw new HttpError(400,'Choose a lifetime between 1 and 365 days.');
     for(const request of this.generationRequests)request.abort();
     for(const request of this.embeddingRequests)request.abort();
+    for(const request of this.speechRequests)request.abort();
     this.secrets.write({key:body.apiKey,expiresAt:new Date(this.clock()+days*86400000).toISOString(),generation:randomUUID()});
     return this.status();
   }
-  remove() {for(const request of this.generationRequests)request.abort();for(const request of this.embeddingRequests)request.abort();this.secrets.remove();return {configured:false,expiresAt:null,manualRequestsPerMinute:this.manualRequestsPerMinute,personaId:this.personaId,...this.selection(),pageEnrichment:this.enrichmentSelection()};}
+  remove() {for(const request of this.speechRequests)request.abort();for(const request of this.generationRequests)request.abort();for(const request of this.embeddingRequests)request.abort();this.secrets.remove();return {configured:false,expiresAt:null,manualRequestsPerMinute:this.manualRequestsPerMinute,personaId:this.personaId,ttsEnabled:this.ttsEnabled,ttsVoice:this.ttsVoice,...this.selection(),pageEnrichment:this.enrichmentSelection()};}
   purgeExpired() {this.credential();}
   private reserveManualRequest(embedding=false) {
     const now=this.clock();
@@ -147,6 +164,37 @@ export class Intelligence {
       throw new HttpError(429,message);
     }
     this.attempts.push(now);
+  }
+  speechEnabled(){return this.ttsEnabled;}
+  speechVoiceSelection():SpeechVoice{return this.ttsVoice;}
+  async speech(text:unknown,signal?:AbortSignal,onRequest?:AIRequestObserver):Promise<Buffer> {
+    if(!this.ttsEnabled)throw new HttpError(409,'Enable OpenAI text to speech in Settings → Intelligence.');
+    if(typeof text!=='string')throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
+    const cleanText=cleanSpeechText(text),voice=this.ttsVoice;
+    if(!cleanText||cleanText.length>4096)throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
+    const credential=this.credential();
+    if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
+    if(this.speechRequests.size)throw new HttpError(429,'Another speech request is running. Please wait.');
+    if(signal?.aborted)throw new HttpError(409,'Speech request cancelled.');
+    this.reserveManualRequest();
+    const controller=new AbortController();this.speechRequests.add(controller);
+    const abort=()=>controller.abort();signal?.addEventListener('abort',abort,{once:true});
+    const timer=setTimeout(abort,Math.min(60000,Date.parse(credential.expiresAt)-this.clock()));
+    let trace:AIDebugTrace|undefined;
+    try {
+      const observer=onRequest?.(Buffer.byteLength(cleanText,'utf8'));
+      trace=redactedTrace(observer,credential.key);
+      // Audio payloads and selected text never enter debug storage, including full mode.
+      trace?.request(speechEndpoint,{model:speechModel,voice,response_format:'wav',inputCharacters:cleanText.length});
+      const audio=await realtimeSpeech(cleanText,credential.key,controller.signal,this.speechSocketFactory,observer??undefined,voice);
+      if(controller.signal.aborted||!this.ttsEnabled||this.ttsVoice!==voice||this.credential()?.generation!==credential.generation)throw new HttpError(409,'Speech was stopped, its settings changed, or the API key expired.');
+      trace?.response({model:speechModel,format:'wav',audioBytes:audio.length});
+      return audio;
+    } catch(error) {
+      trace?.error(error instanceof HttpError?error.message:'Speech request failed or timed out.');
+      if(error instanceof HttpError)throw error;
+      throw new HttpError(controller.signal.aborted?409:502,controller.signal.aborted?'Speech request stopped or timed out.':'The speech request failed. Please try again.');
+    } finally {clearTimeout(timer);signal?.removeEventListener('abort',abort);this.speechRequests.delete(controller);}
   }
   async embed(input: string, onRequest?: AIRequestObserver, background=false): Promise<{embedding:number[];tokens:number}> {
     const result=await this.embedBatch([input],onRequest,background);

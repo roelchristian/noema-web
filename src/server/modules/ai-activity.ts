@@ -106,9 +106,10 @@ export class AIActivityLog {
       output_tokens=COALESCE(?,CASE WHEN action IN ('note_embedding','search_embedding') AND ? IS NOT NULL THEN 0 ELSE output_tokens END),
       cached_input_tokens=COALESCE(?,cached_input_tokens),cache_write_tokens=COALESCE(?,cache_write_tokens),reasoning_tokens=COALESCE(?,reasoning_tokens) WHERE id=?`,input,output,input,cached,writes,reasoning,id);
     const pricing=this.pricing();
-    const row=this.store.get<{model:string;input_tokens:number|null;output_tokens:number|null;cached_input_tokens:number|null}>('SELECT model,input_tokens,output_tokens,cached_input_tokens FROM ai_activity WHERE id=?',id);
+    const row=this.store.get<{action:string;model:string;input_tokens:number|null;output_tokens:number|null;cached_input_tokens:number|null}>('SELECT action,model,input_tokens,output_tokens,cached_input_tokens FROM ai_activity WHERE id=?',id);
     const rates=row&&pricing?.models[row.model];
-    if(row&&pricing&&rates&&row.input_tokens!==null&&row.output_tokens!==null){
+    // Realtime speech mixes text/audio tokens with different rates; the generic text price cannot estimate it.
+    if(row&&row.action!=='text_to_speech'&&pricing&&rates&&row.input_tokens!==null&&row.output_tokens!==null){
       const cachedTokens=Math.min(row.input_tokens,row.cached_input_tokens??0);
       // Reasoning tokens are included in provider output tokens and must not be counted twice.
       const cost=((row.input_tokens-cachedTokens)*rates.inputPerMillion+cachedTokens*(rates.cachedInputPerMillion??rates.inputPerMillion)+row.output_tokens*rates.outputPerMillion)/1000000;

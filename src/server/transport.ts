@@ -1,3 +1,6 @@
+import {cleanSpeechText} from '../shared/speech-text.js';
+import {speechCacheKey} from './modules/speech-cache.js';
+import {speechModel,isSpeechVoice} from '../shared/intelligence.js';
 import {PageHistory} from './modules/page-history.js';
 import {PropertyReview} from './modules/property-review.js';
 import {PropertyDefinitionGovernance} from './modules/property-definition-governance.js';
@@ -45,7 +48,7 @@ async function readBody(req: IncomingMessage) {
 }
 
 export function createTransportHandler(runtime: Runtime, clientRoot: string, sockets: Set<Socket>) {
-  const { store, temporal, liturgical, intelligence, networkAccess, vaultDeletion, sourceFiles, sourcePageImages, sourceReading, backups, images, notifications, vaults, knowledge, pages, organizer, activity, enrichments, sourceReprocessing, scans, pageEnrichment, enrichmentScheduler, scheduleEnrichment, entityMatches, embeddings, sourceEnrichments, searchSnippets, textSearch } = runtime;
+  const { store, speechCache, temporal, liturgical, intelligence, networkAccess, vaultDeletion, sourceFiles, sourcePageImages, sourceReading, backups, images, notifications, vaults, knowledge, pages, organizer, activity, enrichments, sourceReprocessing, scans, pageEnrichment, enrichmentScheduler, scheduleEnrichment, entityMatches, embeddings, sourceEnrichments, searchSnippets, textSearch } = runtime;
   return async(req: IncomingMessage,res: http.ServerResponse)=>{
     let activityId: string | undefined;
     const send=(status:number,data:unknown)=>{if(activityId){activity.finishResponse(activityId,status);activityId=undefined;}res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));};
@@ -288,6 +291,39 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           if(parts.length===4 && id==='activity' && child && method==='GET')return send(200,activity.debug(child,{after:url.searchParams.has('after')?Number(url.searchParams.get('after')):undefined,eventCursor:url.searchParams.has('eventCursor')?Number(url.searchParams.get('eventCursor')):undefined,limit:url.searchParams.has('limit')?Number(url.searchParams.get('limit')):undefined,includeEvents:url.searchParams.has('events')?url.searchParams.get('events')==='1':undefined}));
           if(parts.length===3 && id==='activity' && method==='DELETE')return send(200,activity.clear());
           if(parts.length===3 && id==='activity' && method==='GET')return send(200,activity.list(url.searchParams.get('before')));
+          if(parts.length===3 && id==='speech' && method==='POST') {
+            const header=req.headers['x-vault-id'];if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
+            if(body.pageId!==undefined&&(typeof body.pageId!=='string'||!body.pageId))throw new HttpError(400,'Invalid speech source page.');
+            const speechPageId=typeof body.pageId==='string'?body.pageId:null;
+            const voice=intelligence.speechVoiceSelection();
+            if(body.voice!==undefined&&!isSpeechVoice(body.voice))throw new HttpError(400,'Choose a supported OpenAI speech voice.');
+            if(body.voice!==undefined&&body.voice!==voice)throw new HttpError(409,'The speech voice changed. Start Speak again.');
+            const vault=vaults.requireOpen(header||'default');
+            const validateAccess=()=>{vaults.requireOpen(vault);if(speechPageId)pages.get(vault,speechPageId);if(intelligence.speechVoiceSelection()!==voice)throw new HttpError(409,'The speech voice changed. Start Speak again.');};
+            validateAccess();
+            if(!intelligence.speechEnabled())throw new HttpError(409,'Enable OpenAI text to speech in Settings → Intelligence.');
+            if(typeof body.text!=='string')throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
+            const text=cleanSpeechText(body.text);
+            if(!text||text.length>4096)throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
+            const key=speechCacheKey(text,{voice}),cached=speechCache.read(vault,key);
+            const controller=new AbortController(),abort=()=>controller.abort();res.once('close',abort);
+            try {
+              let audio=cached;
+              if(!audio) {
+                activityId=activity.start('text_to_speech',{model:speechModel,reasoningEffort:'none'},vault,speechPageId);
+                audio=await intelligence.speech(text,controller.signal,bytes=>activity.request(activityId!,bytes,null));
+                validateAccess();
+                if(controller.signal.aborted)throw new HttpError(409,'Speech request cancelled.');
+                speechCache.write(vault,key,audio,()=>{validateAccess();if(controller.signal.aborted)throw new HttpError(409,'Speech request cancelled.');});
+                activity.finish(activityId!,'completed',200);activityId=undefined;
+              }
+              validateAccess();
+              if(controller.signal.aborted)throw new HttpError(409,'Speech request cancelled.');
+              res.writeHead(200,{'Content-Type':'audio/wav','Content-Length':audio.length,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Noema-Speech-Cache':cached?'hit':'miss','Content-Disposition':`inline; filename="noema-speech-${key.slice(0,12)}.wav"`});
+              return res.end(audio);
+            } finally {res.off('close',abort);}
+
+          }
           if(parts.length===2 && method==='GET')return send(200,intelligence.status());
           if(parts.length===3 && id==='preferences' && method==='PUT')return send(200,intelligence.savePreferences(body));
           if(parts.length===2 && method==='PUT'){const result=intelligence.save(body);embeddings.clearQueryCache();return send(200,result);}

@@ -31,6 +31,8 @@ export class VaultDeletion {
     const entities=this.store.all('SELECT id,updated_at FROM entities WHERE vault_id=? ORDER BY id',id);
     const sources=this.store.all('SELECT id,size,status,entity_id,text,admitted,structural_nodes,page_start_lines FROM source_files WHERE vault_id=? ORDER BY id',id);
     const organization={
+      folderDescriptions:this.store.all('SELECT folder_id,description FROM folder_descriptions WHERE vault_id=? ORDER BY folder_id',id),
+      collectionDescriptions:this.store.all('SELECT collection_id,description FROM collection_descriptions WHERE vault_id=? ORDER BY collection_id',id),
       folders:this.store.all('SELECT id,name,parent_id FROM folders WHERE vault_id=? ORDER BY id',id),
       collections:this.store.all('SELECT id,name FROM collections WHERE vault_id=? ORDER BY id',id),
       locations:this.store.all('SELECT kind,item_id,folder_id FROM item_locations WHERE vault_id=? ORDER BY kind,item_id',id),

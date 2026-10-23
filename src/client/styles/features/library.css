@@ -2419,3 +2419,5 @@
 .smart-collection-status li button { margin-inline-start: 8px; }
 .smart-membership-evidence { padding: 4px 16px 12px 52px; font-size: 13px; }
 .smart-membership-evidence summary { cursor: pointer; }
+
+.organization-context-title .organization-description { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 70ch; margin-top: 8px; color: var(--text-muted); }

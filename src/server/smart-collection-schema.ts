@@ -10,10 +10,13 @@ export function setupSmartCollectionSchema(db:DatabaseSync) {
  CREATE INDEX IF NOT EXISTS smart_collection_cache_matches ON smart_collection_cache(vault_id,collection_id,matched);
  CREATE TRIGGER IF NOT EXISTS smart_override_page_cleanup AFTER DELETE ON pages BEGIN DELETE FROM smart_collection_overrides WHERE kind='page' AND item_id=OLD.id AND vault_id=OLD.vault_id; END;
  CREATE TRIGGER IF NOT EXISTS smart_override_entity_cleanup AFTER DELETE ON entities BEGIN DELETE FROM smart_collection_overrides WHERE kind='entity' AND item_id=OLD.id AND vault_id=OLD.vault_id; END;`);
+ // Permanent deletion cascades cached rows before a dirty-item refresh can read
+ // their former counts. Recount through the bounded full-refresh path instead.
+ db.exec('DROP TRIGGER IF EXISTS smart_dirty_pages_delete');
  const scopes:Record<string,(prefix:string)=>string>={pages:p=>`${p}.vault_id`,entities:p=>`${p}.vault_id`,folders:p=>`${p}.vault_id`,item_locations:p=>`${p}.vault_id`,favourites:p=>`${p}.vault_id`,page_reading_notes:p=>`${p}.vault_id`,page_domains:p=>`(SELECT vault_id FROM pages WHERE id=${p}.page_id)`,entity_page_associations:p=>`(SELECT vault_id FROM pages WHERE id=${p}.page_id)`};
  for(const [table,scope] of Object.entries(scopes))for(const event of ['INSERT','UPDATE','DELETE']) {
   const prefix=event==='DELETE'?'OLD':'NEW';
-  const item=table==='pages'?`${prefix}.id`:['entities','folders'].includes(table)?'NULL':table==='favourites'||table==='item_locations'?`CASE WHEN ${prefix}.kind='page' THEN ${prefix}.item_id ELSE NULL END`:`${prefix}.page_id`;
+  const item=table==='pages'?(event==='DELETE'?'NULL':`${prefix}.id`):['entities','folders'].includes(table)?'NULL':table==='favourites'||table==='item_locations'?`CASE WHEN ${prefix}.kind='page' THEN ${prefix}.item_id ELSE NULL END`:`${prefix}.page_id`;
   db.exec(`CREATE TRIGGER IF NOT EXISTS smart_dirty_${table}_${event.toLowerCase()} AFTER ${event} ON ${table} BEGIN INSERT INTO smart_collection_revisions(vault_id,revision) SELECT ${scope(prefix)},1 WHERE ${scope(prefix)} IS NOT NULL ON CONFLICT(vault_id) DO UPDATE SET revision=revision+1; INSERT INTO smart_collection_changes SELECT ${scope(prefix)},revision,${item} FROM smart_collection_revisions WHERE vault_id=${scope(prefix)}; DELETE FROM smart_collection_changes WHERE vault_id=${scope(prefix)} AND revision<(SELECT revision-10000 FROM smart_collection_revisions WHERE vault_id=${scope(prefix)}); END;`);
  }
 }

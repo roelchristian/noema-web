@@ -155,3 +155,12 @@ test('trash hides cached and included items immediately, restoring retains overr
  f.store.run('UPDATE pages SET deleted_at=NULL WHERE id=?',page);assert.equal(f.org.list(f.vault).memberships.find(item=>item.item_id===page).provenance,'include');
  f.store.run('DELETE FROM pages WHERE id=?',page);assert.equal(f.store.get('SELECT count(*) n FROM smart_collection_overrides WHERE item_id=?',page).n,0);assert.equal(f.store.get('SELECT count(*) n FROM smart_collection_cache WHERE item_id=?',page).n,0);
 });
+
+
+test('permanent deletion rebuilds evaluated and match counts after cache cascades',async t=>{
+ const f=fixture(t),first=f.page('delete-count-a','Match'),second=f.page('delete-count-b','Other'),id=f.create('Deletion counts',rule(title('Match')));
+ await f.settle(id);let state=f.org.list(f.vault).collections.find(item=>item.id===id);assert.equal(state.smart.evaluated,2);assert.equal(state.smart.matched,1);
+ f.store.run('DELETE FROM pages WHERE id=?',first);assert.equal(f.store.get('SELECT item_id FROM smart_collection_changes WHERE vault_id=? ORDER BY revision DESC LIMIT 1',f.vault).item_id,null);
+ state=await f.settle(id);assert.equal(state.smart.evaluated,1);assert.equal(state.smart.matched,0);
+ f.store.run('DELETE FROM pages WHERE id=?',second);state=await f.settle(id);assert.equal(state.smart.evaluated,0);assert.equal(state.smart.matched,0);
+});

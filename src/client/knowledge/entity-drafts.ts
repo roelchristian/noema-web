@@ -1,3 +1,4 @@
+import {clearPropertyDrafts, hasUnsavedPropertyDrafts} from './entity-property-drafts';
 import type {EntityDetail, EntityMentionCase, EntityType} from '../../shared/domain';
 import {parseAliases} from './AliasInput';
 
@@ -54,9 +55,10 @@ export function clearEntityDraft(vaultId: string, entityId: string, expected?: E
   if (removed) notify();
   return removed;
 }
-export function clearEntityDrafts(vaultId: string) {const removed = drafts.delete(vaultId); const overviewRemoved = overviewDrafts.delete(vaultId); if (removed || overviewRemoved) notify();}
+export function clearEntityDrafts(vaultId: string) {clearPropertyDrafts(vaultId); const removed = drafts.delete(vaultId); const overviewRemoved = overviewDrafts.delete(vaultId); if (removed || overviewRemoved) notify();}
 export function pruneEntityDrafts(vaultId: string, validEntityIds: Iterable<string>) {
   const valid = new Set(validEntityIds);
+  clearPropertyDrafts(vaultId, valid);
   const overviews = overviewDrafts.get(vaultId);
   if (overviews) for (const id of overviews.keys()) if (!valid.has(id)) clearEntityOverviewDraft(vaultId, id);
   const vault = drafts.get(vaultId); if (!vault) return;
@@ -67,5 +69,5 @@ export function pruneEntityDrafts(vaultId: string, validEntityIds: Iterable<stri
 }
 
 export function hasUnsavedEntityDrafts() {
-  return overviewDrafts.size > 0 || [...drafts.values()].some(vault=>[...vault.values()].some(draft=>entityDraftDirty(draft.values,draft.baseline)));
+  return hasUnsavedPropertyDrafts() || overviewDrafts.size > 0 || [...drafts.values()].some(vault=>[...vault.values()].some(draft=>entityDraftDirty(draft.values,draft.baseline)));
 }

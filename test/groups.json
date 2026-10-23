@@ -26,7 +26,9 @@
     "test/smart-quotes.test.mjs",
     "test/vault-backup-workspace.test.mjs",
     "test/workspace.test.mjs",
-    "test/document-find.test.mjs"
+    "test/document-find.test.mjs",
+    "test/property-definitions.test.mjs",
+    "test/property-catalogue.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",
@@ -69,7 +71,10 @@
     "test/note-dates.test.mjs",
     "test/calendar-settings.test.mjs",
     "test/calendar-liturgical-overlay.test.mjs",
-    "test/review-centre-ui.test.mjs"
+    "test/review-centre-ui.test.mjs",
+    "test/entity-property-list.test.mjs",
+    "test/property-definition-manager.test.mjs",
+    "test/property-proposal-review.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",
@@ -151,6 +156,22 @@
     "test/calendar.test.mjs",
     "test/temporal-evidence.test.mjs",
     "test/liturgical-calendar.test.mjs",
-    "test/review-centre.test.mjs"
+    "test/review-centre.test.mjs",
+    "test/property-inventory.test.mjs",
+    "test/property-storage.test.mjs",
+    "test/property-typed-api.test.mjs",
+    "test/property-reference-options.test.mjs",
+    "test/source-provenance-stability.test.mjs",
+    "test/property-backups.test.mjs",
+    "test/entity-classification-impact.test.mjs",
+    "test/property-definition-governance.test.mjs",
+    "test/property-governance-compat.test.mjs",
+    "test/property-custom-temporal.test.mjs",
+    "test/property-governance-http.test.mjs",
+    "test/property-provenance.test.mjs",
+    "test/property-review.test.mjs",
+    "test/property-provenance-backups.test.mjs",
+    "test/source-provenance-governance.test.mjs",
+    "test/property-provenance-http.test.mjs"
   ]
 }

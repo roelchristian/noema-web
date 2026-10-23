@@ -61,3 +61,36 @@ test('property and relationship forms open deliberately and cancel without savin
   assert.equal(save.mock.calls.length,0);assert.equal(relationship.mock.calls.length,0);
  });
 });
+
+test('advanced and inline property forms share drafts without changing identity Save/Discard',async t=>{
+ const {setPropertyDraft,getPropertyDraft,propertyDraftSignature}=await import('../src/client/knowledge/entity-property-drafts.ts');
+ await fixture(t,async({click,dom,entity})=>{
+  let saved;
+  t.mock.method(api,'saveProperty',async(_vault,_id,input)=>{saved=input;return {...entity,properties:[{id:'new-born',entity_id:'e',name:'Born',value:input.value,target_id:null}]};});
+  await click('.entity-property-unset button');
+  await act(async()=>setPropertyDraft('v','e','new:Born',{kind:'text',value:'  ',target:'',baseline:propertyDraftSignature({kind:'text',value:'',target:''})}));
+  assert.equal(document.querySelector('[aria-label="Property value"]').value,'  ');
+  assert.equal(document.querySelector('[aria-label="Save entity details"]').disabled,true);
+  await click('#entity-tab-overview');assert.equal(document.querySelector('.entity-inline-edit textarea').value,'  ');
+  await click('#entity-tab-edit');assert.equal(document.querySelector('[aria-label="Property value"]').value,'  ');
+  await act(async()=>setPropertyDraft('v','e','new:Born',{...getPropertyDraft('v','e','new:Born'),value:'1815'}));
+  await act(async()=>document.querySelector('form[aria-label="Add property"]').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));
+  assert.deepEqual(saved,{name:'Born',value:'1815'});assert.equal(getPropertyDraft('v','e','new:Born'),undefined);
+ });
+});
+
+test('classification edits preview before explicit legacy retention and keep drafts on preview failure',async t=>{
+ await fixture(t,async({entity,click,dom})=>{
+  let saved,previews=0;
+  t.mock.method(api,'updateEntity',async(_vault,_id,input)=>{saved=input;return {...entity,...input};});
+  const preview=t.mock.method(api,'entityClassificationImpact',async()=>{previews++;throw new Error('Impact preview unavailable');});
+  const baseline=entityDraftValues(entity);
+  await act(async()=>setEntityDraft('v','e',baseline,{...baseline,type:'place'}));
+  await act(async()=>document.querySelector('#entity-form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));
+  assert.equal(saved,undefined);assert.equal(hasEntityDraft('v','e'),true);assert.match(document.querySelector('#entity-saved').textContent,/Impact preview unavailable/);
+  preview.mock.mockImplementation(async()=>({fingerprint:'fresh-impact',requiresConfirmation:true,outgoing:[{propertyId:'old',reason:'Existing value will retain its original definition.'}],incoming:[],structuralBlockers:[]}));
+  await act(async()=>document.querySelector('#entity-form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));
+  assert.equal(saved,undefined);assert.match(document.querySelector('[aria-label="Classification impact"]').textContent,/original definition/);
+  await click('.entity-classification-impact button');assert.equal(saved.classification_mode,'retain_legacy');assert.equal(saved.impact_fingerprint,'fresh-impact');assert.equal(saved.type,'place');assert.equal(hasEntityDraft('v','e'),false);
+ });
+});

@@ -20,20 +20,20 @@ test('subtypes inherit category fields and own scoped definitions while values r
     const withBirthplace = knowledge.property('default', actor.id, {name: 'birthplace', target_id: 'berkeley'});
     assert.equal(withBirthplace.properties[0].target_id, 'berkeley');
     assert.equal(knowledge.detail('default', writer.id).properties.length, 0);
-    rejects(() => knowledge.property('default', actor.id, {name: 'awards', value: 'Award'}));
-    rejects(() => knowledge.property('default', actor.id, {name: 'awards', value: 'Award'}, withBirthplace.properties[0].id));
-    rejects(() => knowledge.addSubtype('default', {type: 'person', name: 'Director', properties: ['awards']}));
-    knowledge.addTypeProperty('default', {type: 'person', subtype:'person:actor',name: 'awards'});
-    knowledge.property('default', actor.id, {name: 'awards', value: 'Award'});
-    assert.ok(!knowledge.detail('default', writer.id).propertyNames.includes('awards'));
+    rejects(() => knowledge.property('default', actor.id, {name: 'synthetic actor credit', value: 'Award'}));
+    rejects(() => knowledge.property('default', actor.id, {name: 'synthetic actor credit', value: 'Award'}, withBirthplace.properties[0].id));
+    rejects(() => knowledge.addSubtype('default', {type: 'person', name: 'Director', properties: ['synthetic actor credit']}));
+    knowledge.addTypeProperty('default', {type: 'person', subtype:'person:actor',name: 'synthetic actor credit'});
+    knowledge.property('default', actor.id, {name: 'synthetic actor credit', value: 'Award'});
+    assert.ok(!knowledge.detail('default', writer.id).propertyNames.includes('synthetic actor credit'));
     const otherActor=knowledge.create('default',{name:'Another actor',type:'person',subtypes:['person:actor']});
-    assert.ok(otherActor.propertyNames.includes('awards'));assert.deepEqual(otherActor.properties,[]);
+    assert.ok(otherActor.propertyNames.includes('synthetic actor credit'));assert.deepEqual(otherActor.properties,[]);
     assert.equal(knowledge.detail('default', writer.id).properties.length, 0);
-    rejects(()=>knowledge.property('default','ursula',{name:'occupation',value:'Writer'}));
+    rejects(()=>knowledge.property('default','ursula',{name:'unknown synthetic field',value:'Writer'}));
     rejects(()=>knowledge.addTypeProperty('default',{type:'person',name:'occupation'}));
     assert.deepEqual(knowledge.update('default',actor.id,{name: 'Renamed',type: 'person'}).subtypes, ['person:actor']);
     rejects(()=>knowledge.update('default',actor.id,{name:'Renamed',type:'person',subtypes:[]}));
-    const award=knowledge.detail('default',actor.id).properties.find(p=>p.name==='awards');knowledge.remove('default',actor.id,'properties',award.id);
+    const award=knowledge.detail('default',actor.id).properties.find(p=>p.name==='synthetic actor credit');knowledge.remove('default',actor.id,'properties',award.id);
     assert.deepEqual(knowledge.update('default',actor.id,{name:'Renamed',type:'person',subtypes:[]}).subtypes,[]);
     rejects(() => knowledge.create('default', {name: 'Wrong parent', type: 'place', subtype: 'person:actor'}));
     rejects(() => knowledge.create('default', {name: 'Unknown', type: 'person', subtype: 'missing'}));
@@ -123,4 +123,23 @@ test('single-subtype database migration preserves selections and multiple select
     assert.deepEqual(knowledge.detail('default','ursula').subtypes,[]);
     assert.deepEqual(knowledge.detail('default','berkeley').subtypes,[]);
   } finally { db.close(); rmSync(dir,{recursive: true,force: true}); }
+});
+
+
+test('schema definition metadata is additive and custom identities stay vault scoped', () => {
+  const db=openDatabase(':memory:');
+  try {
+    const knowledge=new Knowledge(new Store(db));
+    const before=knowledge.schema('default');
+    assert.ok(before.properties.person.includes('birth date'));
+    const definition=before.propertyDefinitions.find(item=>item.id==='builtin:person:birth_date');
+    assert.equal(definition.label,'Birth Date');
+    assert.equal(definition.compatibility,'legacy');
+    knowledge.addTypeProperty('default',{type:'person',subtype:'person:writer',name:'Custom Field'});
+    const custom=knowledge.schema('default').propertyDefinitions.find(item=>item.legacyName==='Custom Field');
+    assert.equal(custom.scope.subtypeId,'person:writer');
+    assert.equal(custom.origin,'user_defined');
+    assert.ok(!knowledge.schema('elsewhere').propertyDefinitions.some(item=>item.id===custom.id));
+    assert.equal(knowledge.schema('default').propertyDefinitions.find(item=>item.legacyName==='Custom Field').id,custom.id);
+  } finally {db.close();}
 });

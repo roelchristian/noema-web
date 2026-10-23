@@ -1,5 +1,6 @@
 import type {EditorReviewText,EditorReviewSuggestion} from '../shared/editor-review';
 import type { Organization, Entity, EntityDetail, EntityInput, PropertyInput, RelationshipInput, Page, PageInput, PageSummary, Vault, TrashedPage } from '../shared/domain';
+export type PropertyProposalPreview=import('../shared/property-provenance').PropertyProposal & {stale:boolean;staleReason:string|null;fingerprint:string;conflicts:import('../shared/domain').Property[];currentName:string;definition?:import('../shared/property-definitions').PropertyDefinition;sourceName?:string};
 export class ApiError extends Error { constructor(public status: number,message: string){super(message);} }
 export async function request<T>(route: string, method='GET', body?: unknown, vaultId?: string, signal?: AbortSignal): Promise<T> {
   const response=await fetch('/api/'+route,{method,signal,headers:{'X-Noema-Request':'1',...(body!==undefined?{'Content-Type':'application/json'}:{}),...(vaultId?{'X-Vault-Id':vaultId}:{})},body:body!==undefined?JSON.stringify(body):undefined});
@@ -84,7 +85,13 @@ export const api={
   enqueueEmbeddings:(vault:string,mode:'missing'|'eligible')=>request<{queued:number;skipped:number}>('embeddings/enqueue','POST',{mode},vault),
   retryEmbedding:(vault:string,id:string)=>request<{queued:number}>(`embeddings/jobs/${id}/retry`,'POST',{},vault),
   semanticSearch:(vault:string,query:string,signal?:AbortSignal,limit=20)=>request<import('../shared/embeddings').SemanticSearchResults>('embeddings/search','POST',{query,limit},vault,signal),
+  propertyProposals:(vault:string,id:string,status='pending',signal?:AbortSignal)=>request<PropertyProposalPreview[]>(`entities/${encodeURIComponent(id)}/property-proposals?status=${encodeURIComponent(status)}`,'GET',undefined,vault,signal),
+  reviewPropertyProposal:(vault:string,id:string,proposalId:string,body:{action:'accept'|'reject'|'retain_both';fingerprint:string;target_id?:string})=>request<PropertyProposalPreview>(`entities/${encodeURIComponent(id)}/property-proposals/${encodeURIComponent(proposalId)}/review`,'POST',body,vault),
   entitySchema:(vault:string)=>request<import('../shared/entity-schema').EntitySchema>('entity-schema','GET',undefined,vault),
+  createPropertyDefinition:(vault:string,body:Record<string,unknown>)=>request<import('../shared/property-definitions').PropertyDefinition>('entity-schema/definitions','POST',body,vault),
+  propertyDefinitionImpact:(vault:string,id:string,body:Record<string,unknown>)=>request<{fingerprint:string;definition:import('../shared/property-definitions').PropertyDefinition;affectedValues:number;compatibleValues:number;incompatible:{propertyId:string;entityId:string;reason:string}[]}>('entity-schema/definitions/'+encodeURIComponent(id)+'/impact','POST',body,vault),
+  updatePropertyDefinition:(vault:string,id:string,body:Record<string,unknown>)=>request<import('../shared/property-definitions').PropertyDefinition>('entity-schema/definitions/'+encodeURIComponent(id),'PUT',body,vault),
+  entityClassificationImpact:(vault:string,id:string,body:{type:EntityInput['type'];subtypes:string[]},signal?:AbortSignal)=>request<{fingerprint:string;requiresConfirmation:boolean;outgoing:{propertyId:string;reason:string}[];incoming:{propertyId:string;reason:string}[];structuralBlockers:string[]}>('entities/'+id+'/classification-impact','POST',body,vault,signal),
   addSubtype:(vault:string,type:EntityInput['type'],name:string)=>request<import('../shared/entity-schema').EntitySchema>('entity-schema/subtypes','POST',{type,name},vault),
   addSubtypeProperty:(vault:string,type:EntityInput['type'],subtype:string,name:string)=>request<import('../shared/entity-schema').EntitySchema>('entity-schema/properties','POST',{type,subtype,name},vault),
   clearAIActivity:()=>request<{ok:true}>('intelligence/activity','DELETE'),
@@ -129,6 +136,7 @@ export const api={
   restorePage:(vault:string,id:string)=>request<Page>(`trash/${id}/restore`,'POST',{},vault),
   permanentlyDeletePage:(vault:string,id:string)=>request<{ok:true}>(`trash/${id}`,'DELETE',undefined,vault),
   entities:(vault:string,signal?:AbortSignal)=>request<Entity[]>('entities','GET',undefined,vault,signal),
+  entityReferenceOptions:(vault:string,options:{query?:string;types?:import('../shared/domain').EntityType[];subtypes?:string[];offset?:number;limit?:number;selected?:string}={},signal?:AbortSignal)=>request<{items:Entity[];nextOffset:number|null;total:number}>(`entities/reference-options?${new URLSearchParams({q:options.query??'',types:(options.types??[]).join(','),subtypes:(options.subtypes??[]).join(','),offset:String(options.offset??0),limit:String(options.limit??30),selected:options.selected??''})}`,'GET',undefined,vault,signal),
   entity:(vault:string,id:string,preview=false)=>request<EntityDetail>(`entities/${id}${preview ? '?preview=1' : ''}`,'GET',undefined,vault),
   entityNeighborhood:(vault:string,id:string,depth:1|2,relationType?:string,signal?:AbortSignal)=>request<import('../shared/entity-neighborhood').EntityNeighborhood>(`entities/${encodeURIComponent(id)}/neighborhood?${new URLSearchParams({depth:String(depth),...(relationType?{relationType}:{})})}`,'GET',undefined,vault,signal),
   entityDiscovery:(vault:string,id:string,signal?:AbortSignal)=>request<import('../shared/entity-discovery').EntityDiscovery|null>(`entities/${encodeURIComponent(id)}/discovery`,'GET',undefined,vault,signal),

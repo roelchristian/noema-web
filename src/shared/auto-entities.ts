@@ -1,4 +1,5 @@
 import {conceptAliasNeedsReview,ordinaryConceptUse} from './concept-classification.js';
+import {noteDateRanges} from './note-dates.js';
 import { blockSegments, isEntityTaggingText, type Block, type Entity, type Segment } from './domain.js';
 
 export const normalizeEntityName = (name: string) => name.trim().replace(/\s+/g, ' ').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').toLowerCase();
@@ -51,8 +52,11 @@ export function identifyEntityMentions(blocks: Block[], entities: Entity[], vaul
         }
       };
       pattern.lastIndex = 0;
+      const dates=noteDateRanges(run.map(item=>item.segment));
       let start = 0;
       for (const match of text.matchAll(pattern)) {
+        // Keep a month/person alias from consuming part of a recognized date.
+        if(dates.some(date=>match.index!>=date.start&&match.index!+match[0].length<=date.end))continue;
         const matches = names.get(normalizeEntityName(match[0])) ?? [];
         let occurrenceOnly = false;
         let entity = matches.length === 1 ? matches[0] : undefined;

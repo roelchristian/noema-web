@@ -25,13 +25,11 @@
     "test:design": "node --import tsx scripts/check-design-browser.mjs"
   },
   "dependencies": {
-    "@romcal/calendar.general-roman": "3.0.0-dev.140",
     "js-tiktoken": "^1.0.21",
     "katex": "^0.19.0",
     "parse5": "^8.0.1",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1",
-    "romcal": "3.0.0-dev.140"
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@types/katex": "^0.16.8",

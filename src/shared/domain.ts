@@ -57,14 +57,14 @@ export type PropertyInput = {name: string; definition_id?: string; compatibility
 export interface RelationshipInput {label: string; target_id: string}
 
 export type ItemKind = 'page' | 'entity';
-export interface Collection { id: string; name: string }
+export interface Collection { id: string; name: string; kind?: 'manual'|'smart'; rule?: import('./smart-collections.js').SmartRuleDefinition; smart?: {status:'unevaluated'|'refreshing'|'ready'|'stale'|'error';evaluated:number;matched:number;error?:string} }
 export interface Folder { id: string; name: string; parent_id: string | null }
 export interface ItemLocation { kind: ItemKind; item_id: string; folder_id: string | null }
-export interface CollectionMembership { kind: ItemKind; item_id: string; collection_id: string; automatic?: boolean }
+export interface CollectionMembership { kind: ItemKind; item_id: string; collection_id: string; automatic?: boolean; provenance?: 'manual'|'include'|'rule'; evidence?: string[]; stale?:boolean }
 export type FavouriteKind = ItemKind | 'folder';
 export interface Favourite { kind: FavouriteKind; item_id: string }
 export interface CollectionFolderLink {folder_id: string; collection_id: string}
-export interface Organization { folderLinks?: CollectionFolderLink[]; collections: Collection[]; folders: Folder[]; locations: ItemLocation[]; memberships: CollectionMembership[]; favourites: Favourite[] }
+export interface Organization { smartOverrides?: {kind:ItemKind;item_id:string;collection_id:string;decision:'include'|'exclude'}[]; folderLinks?: CollectionFolderLink[]; collections: Collection[]; folders: Folder[]; locations: ItemLocation[]; memberships: CollectionMembership[]; favourites: Favourite[] }
 
 export interface RecentItem { kind: ItemKind; item_id: string; opened_at: string }
 export interface OrganizationContext { collection: string; folder: string }

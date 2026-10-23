@@ -1,3 +1,4 @@
+import {cleanSpeechText} from '../shared/speech-text.js';
 import {speechCacheKey} from './modules/speech-cache.js';
 import {speechModel} from '../shared/intelligence.js';
 import {PageHistory} from './modules/page-history.js';
@@ -298,14 +299,16 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             const validateAccess=()=>{vaults.requireOpen(vault);if(speechPageId)pages.get(vault,speechPageId);};
             validateAccess();
             if(!intelligence.speechEnabled())throw new HttpError(409,'Enable OpenAI text to speech in Settings → Intelligence.');
-            if(typeof body.text!=='string'||!body.text.trim()||body.text.length>4096)throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
-            const key=speechCacheKey(body.text),cached=speechCache.read(vault,key);
+            if(typeof body.text!=='string')throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
+            const text=cleanSpeechText(body.text);
+            if(!text||text.length>4096)throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
+            const key=speechCacheKey(text),cached=speechCache.read(vault,key);
             const controller=new AbortController(),abort=()=>controller.abort();res.once('close',abort);
             try {
               let audio=cached;
               if(!audio) {
                 activityId=activity.start('text_to_speech',{model:speechModel,reasoningEffort:'none'},vault,speechPageId);
-                audio=await intelligence.speech(body.text,controller.signal,bytes=>activity.request(activityId!,bytes,null));
+                audio=await intelligence.speech(text,controller.signal,bytes=>activity.request(activityId!,bytes,null));
                 validateAccess();
                 if(controller.signal.aborted)throw new HttpError(409,'Speech request cancelled.');
                 speechCache.write(vault,key,audio,()=>{validateAccess();if(controller.signal.aborted)throw new HttpError(409,'Speech request cancelled.');});

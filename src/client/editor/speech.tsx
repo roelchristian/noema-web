@@ -1,15 +1,8 @@
 import {useEffect,useRef,useState} from 'react';
 import {api,createSpeech} from '../api';
-import {entityMentionName,type Block,type Entity,type Segment} from '../../shared/domain';
+import {cleanSpeechText} from '../../shared/speech-text';
+export {speechText} from '../../shared/speech-text';
 
-/** Preserve document order and readable entity labels, without reading editor controls. */
-export function speechText(blocks:Block[],ids:string[],entities:Entity[]):string {
-  const selected=new Set(ids);
-  const text=(segments:Segment[])=>segments.map(segment=>segment.entityId?segment.mentionText??entityMentionName(entities.find(entity=>entity.id===segment.entityId))??'':segment.text??'').join('');
-  return blocks.filter(block=>selected.has(block.id)&&!['image','divider'].includes(block.type)).map(block=>
-    block.type==='table'||block.type==='columns'?(block.rows??[]).map(row=>row.map(text).join('. ')).join('\n'):text(block.content)
-  ).filter(value=>value.trim()).join('\n\n').trim();
-}
 /** Split at sentence/word boundaries, retaining every character and Unicode pair. */
 export function speechChunks(text:string):string[] {
   const chunks:string[]=[];let rest=text.trim();
@@ -72,7 +65,7 @@ export function useSpeech(vaultId:string,pageId?:string) {
     }catch(error){if(token===generation.current&&!request.signal.aborted)setState({loading:false,url:'',error:error instanceof Error?error.message:'Could not generate speech.',part:Math.min(part,chunks.length),total:chunks.length});}
   }
   function speak(text:string){
-    if(!enabled)return;stop();const chunks=speechChunks(text);
+    if(!enabled)return;stop();const chunks=speechChunks(cleanSpeechText(text));
     if(!chunks.length){setState({loading:false,url:'',error:'This block has no text to speak.',part:0,total:0});return;}
     void load(chunks,generation.current);
   }

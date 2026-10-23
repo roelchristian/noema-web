@@ -1,6 +1,7 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {existsSync,lstatSync,mkdirSync,readFileSync,readdirSync,renameSync,rmSync,writeFileSync} from 'node:fs';
 import path from 'node:path';
+import {cleanSpeechText} from '../../shared/speech-text.js';
 import {speechModel} from '../../shared/intelligence.js';
 import {speechVoice,speechNarrationInstructions,speechMaxAudioBytes} from './realtime-speech.js';
 import {Store} from '../store.js';
@@ -8,7 +9,7 @@ import {HttpError} from '../validation.js';
 
 export const speechCacheVersion='wav-pcm24k-mono16-v1';
 export function speechCacheKey(text:string,options:{model?:string;voice?:string;version?:string}={}) {
-  return createHash('sha256').update(JSON.stringify([text.trim(),options.model??speechModel,options.voice??speechVoice,options.version??speechCacheVersion,speechNarrationInstructions])).digest('hex');
+  return createHash('sha256').update(JSON.stringify([cleanSpeechText(text),options.model??speechModel,options.voice??speechVoice,options.version??speechCacheVersion,speechNarrationInstructions])).digest('hex');
 }
 function digest(audio:Buffer){return createHash('sha256').update(audio).digest('hex');}
 export function validSpeechWav(audio:Buffer) {

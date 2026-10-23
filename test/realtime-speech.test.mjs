@@ -22,10 +22,11 @@ test('Realtime speech exchanges authenticated WebSocket events and produces play
  });
  let usage;
  const factory=(url,options)=>{assert.equal(url,speechEndpoint);return new WebSocket('ws://127.0.0.1:'+server.address().port,options);};
- const wav=await realtimeSpeech('Read this exactly.','test-key',AbortSignal.timeout(5000),factory,{usage:value=>{usage=value;}});
+ const wav=await realtimeSpeech('Read this exactly.[ref][??][L: 1–2]','test-key',AbortSignal.timeout(5000),factory,{usage:value=>{usage=value;}});
  assert.equal(authorization,'Bearer test-key');
  assert.deepEqual(received.map(event=>event.type),['session.update','response.create']);
- assert.equal(received[1].response.input[0].content[0].text,'Read this exactly.');
+ assert.deepEqual(received[1].response.input,[{type:'message',role:'user',content:[{type:'input_text',text:'Read this exactly.'}]}]);
+ assert.ok(!JSON.stringify(received).includes('[ref]'));assert.ok(!JSON.stringify(received).includes('[L:'));
  assert.equal(wav.toString('ascii',0,4),'RIFF');assert.equal(wav.readUInt32LE(4),wav.length-8);
  assert.equal(wav.toString('ascii',8,12),'WAVE');assert.equal(wav.readUInt32LE(40),pcm.length);
  assert.deepEqual(wav.subarray(44),pcm);assert.equal(usage.input_tokens,12);assert.equal(usage.output_tokens,5);

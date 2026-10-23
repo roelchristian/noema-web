@@ -1,3 +1,4 @@
+import {cleanSpeechText} from '../../shared/speech-text.js';
 import WebSocket from 'ws';
 import type {AIUsageObserver} from './ai-debug.js';
 import {HttpError} from '../validation.js';
@@ -14,6 +15,8 @@ export const createSpeechSocket:SpeechSocketFactory=(url,options)=>new WebSocket
 
 /** One isolated response per connection; no microphone input or conversation history. */
 export function realtimeSpeech(text:string,key:string,signal:AbortSignal,factory:SpeechSocketFactory=createSpeechSocket,observer?:AIUsageObserver):Promise<Buffer> {
+  text=cleanSpeechText(text);
+  if(!text||text.length>4096)return Promise.reject(new HttpError(400,'Speech requires text of at most 4,096 characters.'));
   return new Promise((resolve,reject)=>{
     if(signal.aborted){reject(new HttpError(409,'Speech request stopped or timed out.'));return;}
     const socket=factory(speechEndpoint,{headers:{Authorization:`Bearer ${key}`},followRedirects:false,maxPayload:2*1024*1024,handshakeTimeout:15000});

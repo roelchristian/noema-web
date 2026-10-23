@@ -4,6 +4,7 @@ import {act,createElement} from 'react';
 import {createRoot} from 'react-dom/client';
 import {speechText,speechChunks,combineSpeechAudio,useSpeech} from '../src/client/editor/speech.tsx';
 import {api} from '../src/client/api.ts';
+import {cleanSpeechText} from '../src/shared/speech-text.ts';
 import {setupDOM} from './helpers/dom.mjs';
 import {fixture as editorFixture} from './fixtures/editor-rendering.mjs';
 
@@ -38,6 +39,24 @@ test('speech text follows document order and includes table cells, columns and r
   blocks[5].rows=[[[{text:'Left'}],[{text:'Right'}]]];
   assert.equal(speechText(blocks,['last','table','first','image','divider','empty','columns'],[{id:'ada',name:'Ada Lovelace'},{id:'idea',name:'Group Theory',mentionCase:'lowercase'}]),'Meet Ada Lovelace and group theory (Countess)\n\nA. Ada Lovelace\nB. C\n\nLeft. Right\n\nFinish');
   assert.equal(speechText(blocks,['absent'],[]),'');
+});
+
+test('speech excludes citation segments and Noema metadata while preserving readable body text',()=>{
+  const reference={id:'private-citation-id',sourceId:'private-source-id',fileId:'private-file-id',startLine:8,endLine:12,sourceHash:'private-source-hash',excerpt:'PRIVATE CITED EXCERPT',contextLabel:'PRIVATE CITATION CONTEXT'};
+  const content=[{text:'Read ',bold:true},{entityId:'person',mentionText:'Ada',href:'https://private-target.invalid'},{text:' explains this',skipAutoTag:true},{text:' [ref] Bibliographic details must not be spoken',sourceReference:reference},{text:'.'}];
+  const blocks=[{...paragraph('private-block-id',content),semantic:'definition',semanticGroup:{id:'private-group-id',kind:'definition',persona:{id:'private-persona-id',version:7},source:{blockIds:['private-origin-id'],excerpt:'PRIVATE SEMANTIC EXCERPT'}},column:{id:'private-column-id',index:0}},{...paragraph('private-table-id',[],'table'),rows:[[[{text:'A'},{text:' [1]',sourceReference:reference}],[{entityId:'person',sourceReference:reference}]],[[{text:'B'}],[{text:'C'}]]]},{...paragraph('private-columns-id',[],'columns'),rows:[[[{text:'Left'},{text:'Citation words',sourceReference:reference}],[{text:'Right'}]]]}];
+  const entities=[{id:'person',name:'Ada Lovelace',description:'PRIVATE ENTITY DESCRIPTION',aliases:['PRIVATE ALIAS']}];
+  assert.equal(speechText(blocks,blocks.map(block=>block.id),entities),'Read Ada explains this.\n\nA\nB. C\n\nLeft. Right');
+  assert.equal(speechText([paragraph('citation-only',[{text:'Citation only',sourceReference:reference}])],['citation-only'],entities),'');
+});
+
+test('reference markers and footnotes are excluded without stripping ordinary brackets or numbers',()=>{
+  const prose='First [ref] claim [L: 2–4]. Second[^note] claim [??]. Values [1, 2] and [1] stay.\n\n[^note]: Private footnote text\n    Private continuation\n\nFinal paragraph.';
+  const cleaned=cleanSpeechText(prose);
+  assert.equal(cleaned,'First claim. Second claim. Values [1, 2] and [1] stay.\n\nFinal paragraph.');
+  assert.equal(cleanSpeechText(cleaned),cleaned);
+  assert.equal(cleanSpeechText('Read [[Private target|visible words]] and [[Title]].'),'Read visible words and Title.');
+  assert.equal(cleanSpeechText('[ref] [??] [L: 3] [^note]'),'');
 });
 
 test('speech chunks preserve all trimmed text, readable boundaries and Unicode pairs within provider limits',()=>{
@@ -98,6 +117,15 @@ test('a later failed chunk never exposes a partial selection download',async t=>
   const f=await speechFixture(t);await f.speak('A'.repeat(5000));await f.resolve(0);
   await f.resolve(1,Response.json({error:'Speech unavailable.'},{status:503}));
   assert.match(document.querySelector('[role=status]').textContent,/Speech unavailable/);assert.equal(f.created.length,0);assert.equal(document.querySelector('audio'),null);assert.equal(document.querySelector('a[download]'),null);
+});
+
+test('speech payloads exclude reference markers before leaving the client',async t=>{
+  const f=await speechFixture(t);await f.speak('Read [ref] this[^note].\n\n[^note]: Private footnote');
+  assert.equal(JSON.parse(f.requests[0].options.body).text,'Read this.');
+  assert.equal(f.requests.length,1);
+  await f.resolve(0);
+  await f.speak('[ref] [L: 2–4] [??]');
+  assert.equal(f.requests.length,1,'Reference-only selections never request speech');
 });
 
 test('unmount aborts requests and releases generated speech URLs',async t=>{

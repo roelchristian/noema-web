@@ -1,3 +1,4 @@
+import {cleanSpeechText} from '../../shared/speech-text.js';
 import {realtimeSpeech,speechModel,speechVoice,speechEndpoint,createSpeechSocket,type SpeechSocketFactory} from './realtime-speech.js';
 import {defaultPersonaId,isPersonaId,type BuiltinPersonaId} from '../../shared/ai-personas.js';
 import {resolvePersona} from './ai-personas.js';
@@ -160,7 +161,9 @@ export class Intelligence {
   speechEnabled(){return this.ttsEnabled;}
   async speech(text:unknown,signal?:AbortSignal,onRequest?:AIRequestObserver):Promise<Buffer> {
     if(!this.ttsEnabled)throw new HttpError(409,'Enable OpenAI text to speech in Settings → Intelligence.');
-    if(typeof text!=='string'||!text.trim()||text.length>4096)throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
+    if(typeof text!=='string')throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
+    const cleanText=cleanSpeechText(text);
+    if(!cleanText||cleanText.length>4096)throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
     const credential=this.credential();
     if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
     if(this.speechRequests.size)throw new HttpError(429,'Another speech request is running. Please wait.');
@@ -171,11 +174,11 @@ export class Intelligence {
     const timer=setTimeout(abort,Math.min(60000,Date.parse(credential.expiresAt)-this.clock()));
     let trace:AIDebugTrace|undefined;
     try {
-      const observer=onRequest?.(Buffer.byteLength(text.trim(),'utf8'));
+      const observer=onRequest?.(Buffer.byteLength(cleanText,'utf8'));
       trace=redactedTrace(observer,credential.key);
       // Audio payloads and selected text never enter debug storage, including full mode.
-      trace?.request(speechEndpoint,{model:speechModel,voice:speechVoice,response_format:'wav',inputCharacters:text.trim().length});
-      const audio=await realtimeSpeech(text.trim(),credential.key,controller.signal,this.speechSocketFactory,observer??undefined);
+      trace?.request(speechEndpoint,{model:speechModel,voice:speechVoice,response_format:'wav',inputCharacters:cleanText.length});
+      const audio=await realtimeSpeech(cleanText,credential.key,controller.signal,this.speechSocketFactory,observer??undefined);
       if(controller.signal.aborted||!this.ttsEnabled||this.credential()?.generation!==credential.generation)throw new HttpError(409,'Speech was stopped, its settings changed, or the API key expired.');
       trace?.response({model:speechModel,format:'wav',audioBytes:audio.length});
       return audio;

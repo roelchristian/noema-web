@@ -111,3 +111,20 @@ test('cached speech bypasses provider credentials and manual quota but respects 
   await call('vaults/default/lock',{passphrase:'test-lock'});assert.equal((await call('intelligence/speech',{text:'Reusable'})).status,423);assert.equal(calls,1);
  }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+test('speech sends only clean selected prose and reuses audio when citation metadata changes',async()=>{
+ const dir=mkdtempSync(path.join(tmpdir(),'noema-speech-prose-')),db=openDatabase(path.join(dir,'test.sqlite'));let calls=0,sent=[];
+ const ai=enabled(socket=>{calls++;sent.push(...socket.sent);complete(socket);},intelligencePreferencesFor(new Store(db)));
+ const server=createApp(new Store(db),path.resolve('dist/client'),ai);server.listen(0,'127.0.0.1');await once(server,'listening');const base='http://127.0.0.1:'+server.address().port;
+ const call=(route,body)=>fetch(base+'/api/'+route,{method:'POST',headers:{'X-Noema-Request':'1','Content-Type':'application/json'},body:JSON.stringify(body)});
+ try {
+  const page=await (await call('pages',{title:'Private page metadata'})).json();
+  const metadata={pageId:page.id,blockId:'private-block',vaultId:'private-vault',semanticMetadata:{type:'lemma'},group:{id:'private-group'},sourceReference:{entityId:'private-source'},citations:[{id:'private-citation',sourceId:'private-source'}]};
+  let response=await call('intelligence/speech',{text:'Selected prose.[ref][??][L: 1–2]',...metadata});assert.equal(response.status,200);assert.equal(response.headers.get('x-noema-speech-cache'),'miss');
+  const create=sent.find(event=>event.type==='response.create');assert.deepEqual(create.response.input,[{type:'message',role:'user',content:[{type:'input_text',text:'Selected prose.'}]}]);
+  const serialized=JSON.stringify(sent);for(const forbidden of [page.id,'private-block','private-vault','private-group','private-source','private-citation','sourceReference','semanticMetadata','citations','[ref]','[??]','[L:'])assert.ok(!serialized.includes(forbidden),forbidden);
+  response=await call('intelligence/speech',{text:'Selected prose.[L: 99–100][ref]',...metadata,blockId:'changed-block',citations:[{id:'changed-citation'}]});assert.equal(response.status,200);assert.equal(response.headers.get('x-noema-speech-cache'),'hit');assert.equal(calls,1);
+  response=await call('intelligence/speech',{text:'[ref][??][L: 1–2]',...metadata});assert.equal(response.status,400);assert.equal(calls,1);
+  const direct=enabled(socket=>{sent=socket.sent;complete(socket);});await direct.speech('Direct prose.[ref][??][L: 1–2]');assert.equal(sent[1].response.input[0].content[0].text,'Direct prose.');
+ }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();rmSync(dir,{recursive:true,force:true});}
+});

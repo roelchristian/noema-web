@@ -8,7 +8,7 @@ import {Store} from '../src/server/store.ts';
 import {SpeechCache,speechCacheKey,validSpeechWav} from '../src/server/modules/speech-cache.ts';
 function audio(){const bytes=Buffer.alloc(48);bytes.write('RIFF');bytes.writeUInt32LE(40,4);bytes.write('WAVEfmt ',8);bytes.writeUInt32LE(16,16);bytes.writeUInt16LE(1,20);bytes.writeUInt16LE(1,22);bytes.writeUInt32LE(24000,24);bytes.writeUInt32LE(48000,28);bytes.writeUInt16LE(2,32);bytes.writeUInt16LE(16,34);bytes.write('data',36);bytes.writeUInt32LE(4,40);return bytes;}
 test('speech cache keys scope text, model, voice, and cache version',()=>{
- const base=speechCacheKey('Private text');assert.match(base,/^[a-f0-9]{64}$/);assert.equal(base,speechCacheKey(' Private text '));
+ const base=speechCacheKey('Private text');assert.match(base,/^[a-f0-9]{64}$/);assert.equal(base,speechCacheKey(' Private text '));assert.equal(base,speechCacheKey('Private [ref] text [L: 1–2]'));assert.equal(base,speechCacheKey('Private text[^note]\n\n[^note]: Private citation'));
  for(const key of [speechCacheKey('Changed text'),speechCacheKey('Private text',{model:'other'}),speechCacheKey('Private text',{voice:'coral'}),speechCacheKey('Private text',{version:'next'})])assert.notEqual(key,base);
 });
 test('speech cache persists restrictive WAV assets across restarts and rejects corruption',()=>{

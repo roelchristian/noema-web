@@ -69,14 +69,17 @@ try {
  assert.equal(organizer.list('default').locations[0].folder_id,folder);assert.equal(organizer.list('default').memberships.filter(item=>item.collection_id===collection).length,1);
  // Batch toolbar remains available in triage.
  await page.locator('.inbox-queue input').first().check();await page.getByRole('toolbar',{name:'Selected page actions'}).waitFor();await page.getByRole('button',{name:'Clear',exact:true}).click();
- // Keep visits each page once and terminates without any persistent status write.
- await page.getByRole('button',{name:'Keep in Inbox',exact:true}).click();await page.getByRole('button',{name:'Keep in Inbox',exact:true}).click();
- await page.getByText('Session complete. Kept pages remain in Inbox.',{exact:true}).waitFor();assert.equal(pages.list('default').length,3);
- await page.getByRole('button',{name:'Review kept pages',exact:true}).click();await page.locator('.inbox-preview').waitFor();
- await page.getByRole('button',{name:'Keep in Inbox',exact:true}).click();
- await page.getByRole('button',{name:'Trash…',exact:true}).click();await page.getByRole('button',{name:'Move to Trash',exact:true}).click();await page.locator('dialog').waitFor({state:'detached'}).catch(async error=>{console.error('DIALOG',await page.locator('dialog').innerText());throw error;});assert.equal(pages.trash('default').length,1);await page.getByText('Session complete. Kept pages remain in Inbox.',{exact:true}).waitFor();
+ // Session skip visits each page once and terminates without any persistent status write.
+ await page.getByRole('button',{name:'Skip for now',exact:true}).click();await page.getByRole('button',{name:'Skip for now',exact:true}).click();
+ await page.getByText('Session complete. Skipped pages remain unfiled.',{exact:true}).waitFor();assert.equal(pages.list('default').length,3);
+ await page.getByRole('button',{name:'Review skipped pages',exact:true}).click();await page.locator('.inbox-preview').waitFor();
+ await page.getByRole('button',{name:'Skip for now',exact:true}).click();
+ await page.getByRole('button',{name:'Trash…',exact:true}).click();await page.getByRole('button',{name:'Move to Trash',exact:true}).click();await page.locator('dialog').waitFor({state:'detached'}).catch(async error=>{console.error('DIALOG',await page.locator('dialog').innerText());throw error;});assert.equal(pages.trash('default').length,1);await page.getByText('Session complete. Skipped pages remain unfiled.',{exact:true}).waitFor();
  // All existing layouts remain reachable.
- for(const name of ['List view','Compact view','Grid view','Triage view']){await page.getByRole('button',{name,exact:true}).click();}
+ await page.getByRole('button',{name:'Browse pages',exact:true}).click();
+ for(const name of ['List view','Compact view','Grid view']){await page.getByRole('button',{name,exact:true}).click();}
+ assert.equal(await page.getByRole('button',{name:'Triage view',exact:true}).count(),0);
+ await page.getByRole('button',{name:'Start triage',exact:true}).click();
  await page.locator('.inbox-preview').waitFor();
  // Mobile queue then detail, with actual target bounds and no horizontal overflow.
  await page.setViewportSize({width:390,height:844});

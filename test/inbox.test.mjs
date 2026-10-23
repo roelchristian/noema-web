@@ -36,7 +36,7 @@ test('New Note opens the editor from a collection and leaves the note in Inbox',
     assert.equal(workspace.snapshot().view, 'pages');
     assert.equal(workspace.snapshot().page.id, page.id);
     assert.deepEqual(inboxPages(workspace.snapshot().pages, workspace.snapshot().organization), [page]);
-    workspace.showInbox();
+    await workspace.showInbox();
     assert.equal(workspace.snapshot().view, 'inbox');
   } finally { workspace.titler.dispose(); workspace.saver.dispose(); }
 });
@@ -73,7 +73,7 @@ test('Triage metadata and preview use existing records without content or enrich
   } finally {db.close();}
 });
 
-test('Triage keeps only for the session, stops at the end, and ignores stale previews', async t => {
+test('Triage skips only for the session, stops at the end, and ignores stale previews', async t => {
   const {setupDOM}=await import('./helpers/dom.mjs');const fixture=setupDOM(t);
   const {createRoot}=await import('react-dom/client');const {act,createElement}=await import('react');
   const {InboxTriage}=await import('../src/client/organization/InboxTriage.tsx');
@@ -88,9 +88,9 @@ test('Triage keeps only for the session, stops at the end, and ignores stale pre
   await click('Next');assert.equal(requests[0].signal.aborted,true);assert.equal(requests[1].id,'b');
   await act(()=>requests[0].resolve({id:'a',title:'a',blocks:[{id:'late',type:'paragraph',checked:false,content:[{text:'STALE CONTENT'}]}],revision:1,updated_at:''}));
   assert.doesNotMatch(document.body.textContent,/STALE CONTENT/);
-  await click('Keep in Inbox');assert.equal(document.querySelector('.inbox-detail h2').textContent,'c');
+  await click('Skip for now');assert.equal(document.querySelector('.inbox-detail h2').textContent,'c');
   await click('Previous');assert.equal(document.querySelector('.inbox-detail h2').textContent,'a');
   currentPages=pages.filter(page=>page.id!=='a');await render();assert.equal(document.querySelector('.inbox-detail h2').textContent,'c');
-  await click('Keep in Inbox');assert.match(document.body.textContent,/Session complete/);assert.equal(document.querySelector('.inbox-detail h2'),null);
-  await click('Review kept pages');assert.equal(document.querySelector('.inbox-detail h2').textContent,'b');
+  await click('Skip for now');assert.match(document.body.textContent,/Session complete/);assert.equal(document.querySelector('.inbox-detail h2'),null);
+  await click('Review skipped pages');assert.equal(document.querySelector('.inbox-detail h2').textContent,'b');
 });

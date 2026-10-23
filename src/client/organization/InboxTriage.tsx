@@ -60,7 +60,7 @@ export function InboxTriage({vaultId, pages, allPages, entities, data, checked, 
   function keep() {
     if(!active||busy||picker)return;
     position.current=index;setKept(previous=>new Set([...previous,active.id]));setSelected(null);
-    setNotice('Kept in Inbox for this session.');
+    setNotice('Skipped for this session. This page remains unfiled.');
   }
   async function save() {
     if(!active||!picker||!target||lock.current)return;
@@ -86,13 +86,13 @@ export function InboxTriage({vaultId, pages, allPages, entities, data, checked, 
   const currentPreview=preview?.key===previewKey?preview:undefined;
   return <div className={'inbox-triage'+(mobileDetail?' is-detail':'')} aria-busy={pending}>
     <div className="inbox-queue" role="group" aria-label="Inbox queue">
-      <div className="inbox-navigation"><button className="button" disabled={busy||!!picker||!queue.length} onClick={()=>onSelectAll(queue.map(page=>page.id))}>Select all visible pages</button>{onRefresh&&<button className="button" disabled={busy||!!picker} onClick={()=>void refresh()}>Refresh</button>}</div><p className="inbox-session" role="status">{queue.length} to review · {pages.length-queue.length} kept this session</p>
+      <div className="inbox-navigation"><button className="button" disabled={busy||!!picker||!queue.length} onClick={()=>onSelectAll(queue.map(page=>page.id))}>Select all visible pages</button>{onRefresh&&<button className="button" disabled={busy||!!picker} onClick={()=>void refresh()}>Refresh</button>}</div><p className="inbox-session" role="status">{queue.length} to organise · {pages.length-queue.length} skipped this session</p>
       {queue.map(page=><div key={page.id} className={'inbox-queue-row'+(active?.id===page.id?' is-selected':'')}>
         <label><input type="checkbox" aria-label={'Select '+(page.title||'Untitled')} checked={checked.has(page.id)} disabled={busy} onChange={()=>onToggle(page.id)}/></label>
         <button type="button" disabled={busy||!!picker} aria-current={active?.id===page.id?'true':undefined} onClick={()=>choose(page.id)}><strong><TitleText text={page.title||'Untitled'}/></strong><InboxIndicators page={page}/></button>
       </div>)}
-      {!queue.length&&<p role="status">{pages.length?'Session complete. Kept pages remain in Inbox.':'No pages in this view.'}</p>}
-      {kept.size>0&&<button type="button" className="button" disabled={busy||!!picker} onClick={()=>{position.current=0;setSelected(null);setKept(new Set());setMobileDetail(false);}}>Review kept pages</button>}
+      {!queue.length&&<p role="status">{pages.length?'Session complete. Skipped pages remain unfiled.':'No pages in this view.'}</p>}
+      {kept.size>0&&<button type="button" className="button" disabled={busy||!!picker} onClick={()=>{position.current=0;setSelected(null);setKept(new Set());setMobileDetail(false);}}>Review skipped pages</button>}
     </div>
     <section className="inbox-detail" ref={detail} tabIndex={-1} aria-label="Selected Inbox page">
       <button type="button" className="button inbox-back" disabled={busy||!!picker} onClick={()=>{setMobileDetail(false);requestAnimationFrame(()=>document.querySelector<HTMLButtonElement>('.inbox-queue button[aria-current]')?.focus());}}>Back to queue</button>
@@ -101,7 +101,7 @@ export function InboxTriage({vaultId, pages, allPages, entities, data, checked, 
         <div className="inbox-decisions" role="group" aria-label="Page decisions">
           <button className="button primary" disabled={busy||!!picker||!currentPreview?.page} onClick={()=>{setTarget('');setPicker('folder');}}>File…</button>
           <button className="button" disabled={busy||!!picker||!currentPreview?.page} onClick={()=>{setTarget('');setPicker('collection');}}>Add to collection…</button>
-          <button className="button" disabled={busy||!!picker} onClick={keep}>Keep in Inbox</button>
+          <button className="button" disabled={busy||!!picker} onClick={keep}>Skip for now</button>
           <button className="button is-danger" disabled={busy||!!picker||!currentPreview?.page} onClick={()=>onTrash(active)}>Trash…</button>
         </div>
         <p className="organization-hint">File moves to a folder. Collections keep this page in Inbox.</p>

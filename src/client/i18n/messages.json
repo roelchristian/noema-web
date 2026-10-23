@@ -8383,5 +8383,50 @@
     "Lire la suite",
     "Mehr lesen",
     "Leer más"
+  ],
+  "Presentation mode": [
+    "Mode de présentation",
+    "Darstellungsmodus",
+    "Modo de presentación"
+  ],
+  "Subtle references": [
+    "Références discrètes",
+    "Dezente Verweise",
+    "Referencias sutiles"
+  ],
+  "Focus mode": [
+    "Mode Concentration",
+    "Fokusmodus",
+    "Modo de concentración"
+  ],
+  "Exit Focus to change reference emphasis": [
+    "Quittez le mode Concentration pour modifier les références",
+    "Fokus verlassen, um die Hervorhebung von Verweisen zu ändern",
+    "Sal de Concentración para cambiar el énfasis de las referencias"
+  ],
+  "Subtle references · Switch to Standard": [
+    "Références discrètes · Passer au mode Standard",
+    "Dezente Verweise · Zu Standard wechseln",
+    "Referencias sutiles · Cambiar a Estándar"
+  ],
+  "Standard references · Switch to Subtle": [
+    "Références standard · Passer au mode Discret",
+    "Normale Verweise · Zu Dezent wechseln",
+    "Referencias estándar · Cambiar a Sutil"
+  ],
+  "Exit Focus (Escape)": [
+    "Quitter Concentration (Échap)",
+    "Fokus verlassen (Escape)",
+    "Salir de Concentración (Escape)"
+  ],
+  "Enter Focus": [
+    "Activer Concentration",
+    "Fokus aktivieren",
+    "Entrar en Concentración"
+  ],
+  "Open entity": [
+    "Ouvrir l’entité",
+    "Entität öffnen",
+    "Abrir entidad"
   ]
 }

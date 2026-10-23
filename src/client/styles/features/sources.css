@@ -2116,5 +2116,55 @@ main.source-workspace > #content > .source-reader {
   box-shadow: 0 3px 16px #00000012
 }
 
+/* Presentation emphasis changes appearance without modifying saved source marks. */
+.source-highlight, .source-viewer-passage {
+  transition: background-color 200ms ease, box-shadow 200ms ease, text-decoration-color 200ms ease;
+}
+:root[data-focused-reading=true] .source-highlight {
+  background: transparent;
+  text-decoration: underline;
+  text-decoration-color: var(--highlight-color);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+:root[data-focused-reading=true] .source-viewer-passage.is-cited {
+  background: transparent;
+}
+:root[data-focus-workspace=true] .source-reader-toolbar {
+  display: none;
+}
+:root[data-focus-workspace=true] main.source-workspace > #content > .source-reader {
+  max-width: calc(var(--document-line-width) + var(--source-reader-address-gutter) + var(--source-reader-note-gutter) + 96px);
+  padding-top: 76px;
+}
+:root[data-focus-workspace=true][data-focus-target=source-viewer] #source-viewer {
+  position: fixed;
+  z-index: 28;
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  border: 0;
+}
+:root[data-focus-workspace=true][data-focus-target=source-viewer] #source-viewer > .panel-top {
+  display: none;
+}
+:root[data-focus-workspace=true][data-focus-target=source-viewer] #source-viewer > .panel-body {
+  width: 100%;
+  max-width: calc(var(--document-line-width) + 96px);
+  margin-inline: auto;
+  padding: 76px 48px 64px;
+}
+@media (max-width: 750px) {
+  :root[data-focus-workspace=true] main.source-workspace > #content > .source-reader,
+  :root[data-focus-workspace=true][data-focus-target=source-viewer] #source-viewer > .panel-body {
+    padding-inline: max(24px, env(safe-area-inset-left)) max(24px, env(safe-area-inset-right));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .source-highlight, .source-viewer-passage {
+    transition: none;
+  }
+}
 /* Temporal links mark a validated character range within the source passage. */
 .source-viewer[data-temporal-source=true] mark {background:var(--status-info-bg);color:var(--text);text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px;}

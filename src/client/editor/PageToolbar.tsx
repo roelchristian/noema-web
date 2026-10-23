@@ -13,7 +13,7 @@ import {PageEntityAssociationsDialog} from './PageEntityAssociationsDialog';
 import {rememberMarkdownTyping,useMarkdownTyping} from '../state/markdown-preferences';
 import {formatMarkdownBlocks} from './markdown-typing';
 
-export function PageToolbar({ onRename, entities, onEntityAssociationsChanged, onOpenEntity, tocAvailable=false, tocVisible=true, onToggleToc, onRevealInSidebar, inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, presentationMode, onPresentationModeChange, onForward, forwardDisabled, onChangeBlocks, onFeaturedImageChange,onEditLockChange, onUndo, onRedo, canUndo, canRedo}: {
+export function PageToolbar({ onRename, entities, onEntityAssociationsChanged, onOpenEntity, tocAvailable=false, tocVisible=true, onToggleToc, onRevealInSidebar, inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, presentationMode, onPresentationModeChange, onExitFocus, onForward, forwardDisabled, onChangeBlocks, onFeaturedImageChange,onEditLockChange, onUndo, onRedo, canUndo, canRedo}: {
   onRename?:()=>void;
   entities?:Entity[]; onEntityAssociationsChanged?:()=>Promise<void>; onOpenEntity?:(id:string)=>void;
   tocAvailable?:boolean;tocVisible?:boolean;onToggleToc?:()=>void;
@@ -22,7 +22,7 @@ export function PageToolbar({ onRename, entities, onEntityAssociationsChanged, o
   onEditLockChange:(locked:boolean,password?:string)=>Promise<void>;
   onForward?: () => void; forwardDisabled?: boolean;
   inactive?: boolean;
-  onAI: () => void; aiOpen: boolean; presentationMode: PresentationMode; onPresentationModeChange: (mode: PresentationMode) => void;
+  onAI: () => void; aiOpen: boolean; presentationMode: PresentationMode; onPresentationModeChange: (mode: PresentationMode) => void; onExitFocus: () => void;
   favourite: boolean; onOrganizationChange: (data: Organization) => void; page: Page; onDelete: () => Promise<void>;
   onError: (error: unknown) => void;
   onFeaturedImageChange: (imageId: string | null) => void;
@@ -66,11 +66,11 @@ export function PageToolbar({ onRename, entities, onEntityAssociationsChanged, o
         {label:uiText("With a password…"),icon:'lock',description:uiText("Require a password to unlock editing."),onSelect:()=>setLockOpen(true)},
       ]};
   return <><div inert={inactive} className="page-toolbar" role="group" aria-label={uiText("Page tools")}>
-    <PresentationSelector value={presentationMode} onChange={onPresentationModeChange}/>
     <div className="page-toolbar-history page-toolbar-secondary" role="group" aria-label={uiText("Editing")}>
       <button type="button" className="page-tool" aria-label={uiText("Undo")} title={uiText("Undo")+' · ⌘/Ctrl+Z'} disabled={editingDisabled||!canUndo} onMouseDown={event=>{if(event.button===0)event.preventDefault();}} onClick={onUndo}><Icon name="undo"/></button>
       <button type="button" className="page-tool" aria-label={uiText("Redo")} title={uiText("Redo")+' · ⌘/Ctrl+Shift+Z'} disabled={editingDisabled||!canRedo} onMouseDown={event=>{if(event.button===0)event.preventDefault();}} onClick={onRedo}><Icon name="redo"/></button>
     </div>
+    <PresentationSelector value={presentationMode} onChange={onPresentationModeChange} onExitFocus={onExitFocus}/>
     <div className="page-toolbar-reading page-toolbar-secondary" role="group" aria-label={uiText("View")}>
       {tocAvailable&&onToggleToc&&<button type="button" className="page-tool" aria-label={contentsLabel} title={contentsLabel} aria-pressed={tocVisible} onClick={onToggleToc}><Icon name="view-list"/></button>}
     </div>

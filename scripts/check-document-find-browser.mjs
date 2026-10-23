@@ -121,7 +121,20 @@ try{
  await page.getByRole('button',{name:'Close find',exact:true}).click();await page.locator('#page-title').focus();await page.locator('#page-title').evaluate(el=>el.setSelectionRange(2,6));await page.getByRole('button',{name:'More page actions',exact:true}).click();await page.getByRole('menuitem',{name:'Find in page',exact:true}).click();await page.keyboard.press('Escape');assert.deepEqual(await page.locator('#page-title').evaluate(el=>[document.activeElement===el,el.selectionStart,el.selectionEnd]),[true,2,6]);
  // Presentation modes exercise the production shell, real persistence and editor.
  await page.setViewportSize({width:1440,height:1000});
- const choose=async mode=>{await page.getByRole('radio',{name:mode,exact:true}).click();await page.waitForTimeout(80);};
+ const chooseFor=async(target,mode,touch=false)=>{
+  const activate=button=>touch?button.tap():button.click();
+  const focus=target.getByRole('button',{name:'Focus mode',exact:true});
+  const focused=await focus.getAttribute('aria-pressed')==='true';
+  if(mode==='Focus'){if(!focused)await activate(focus);}
+  else {
+   if(focused)await activate(focus);
+   const references=target.getByRole('button',{name:'Subtle references',exact:true});
+   if((await references.getAttribute('aria-pressed')==='true')!==(mode==='Subtle'))await activate(references);
+  }
+  // Reference emphasis, Focus layout and touch feedback animate. Assert settled styles and boxes.
+  await target.waitForFunction(()=>[...document.querySelectorAll('#content > .page, #blocks .mention, .presentation-selector button, .presentation-icon-pair > .icon')].every(el=>el.getAnimations().every(animation=>!animation.pending&&animation.playState!=='running')));
+ };
+ const choose=mode=>chooseFor(page,mode);
  const inFocus=()=>page.evaluate(()=>document.documentElement.dataset.focusWorkspace==='true');
  const dataBeforeModes=JSON.stringify(pages.get('default',note.id));
  await page.getByRole('button',{name:'Knowledge',exact:true}).click();
@@ -133,7 +146,7 @@ try{
  await page.screenshot({path:join(shots,'presentation-desktop-standard.png')});
  await choose('Subtle');const subtleStyle=await mention.evaluate(el=>({bg:getComputedStyle(el).backgroundColor,border:getComputedStyle(el).borderBottomStyle}));assert.notDeepEqual(normalStyle,subtleStyle);
  await page.screenshot({path:join(shots,'presentation-desktop-subtle.png')});
- await page.getByRole('radio',{name:'Subtle',exact:true}).focus();await page.keyboard.press('ArrowLeft');assert.equal(await page.getByRole('radio',{name:'Standard',exact:true}).getAttribute('aria-checked'),'true');await page.keyboard.press('ArrowRight');assert.equal(await page.getByRole('radio',{name:'Subtle',exact:true}).getAttribute('aria-checked'),'true');
+ await page.getByRole('button',{name:'Subtle references',exact:true}).focus();await page.keyboard.press('Space');assert.equal(await page.getByRole('button',{name:'Subtle references',exact:true}).getAttribute('aria-pressed'),'false');await page.keyboard.press('Enter');assert.equal(await page.getByRole('button',{name:'Subtle references',exact:true}).getAttribute('aria-pressed'),'true');
  for(let i=0;i<2;i++) {
   await choose('Focus');assert.ok(await inFocus());assert.ok(!await page.locator('.sidebar').isVisible());assert.ok(!await page.locator('#intelligence-panel').isVisible());
   assert.deepEqual(await mention.evaluate(el=>({bg:getComputedStyle(el).backgroundColor,border:getComputedStyle(el).borderBottomStyle})),subtleStyle);
@@ -143,37 +156,37 @@ try{
   await body.evaluate(el=>el.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',isComposing:true,bubbles:true})));assert.ok(await inFocus());
   await page.keyboard.press('Escape');assert.ok(!await inFocus());assert.ok(await page.locator('#intelligence-panel').isVisible());
   assert.deepEqual(await page.evaluate(()=>({knowledge:localStorage.getItem('noema-knowledge-panel-open'),toc:localStorage.getItem('noema-table-of-contents-visible'),scroll:document.querySelector('.sidebar-scroll-region').scrollTop})),arrangement);
-  assert.equal(await page.getByRole('radio',{name:'Subtle',exact:true}).getAttribute('aria-checked'),'true');
+  assert.equal(await page.getByRole('button',{name:'Subtle references',exact:true}).getAttribute('aria-pressed'),'true');
  }
- await choose('Focus');await body.focus();await page.mouse.move(700,600);await page.waitForFunction(()=>getComputedStyle(document.querySelector('.focus-controls-reveal')).opacity==='0');await page.screenshot({path:join(shots,'presentation-desktop-focus.png')});
- await page.locator('.focus-exit').focus();await page.waitForFunction(()=>getComputedStyle(document.querySelector('.focus-controls-reveal')).opacity==='1');
+ await choose('Focus');await body.focus();await page.mouse.move(700,600);assert.ok(await page.locator('.focus-controls .presentation-focus').isVisible());await page.screenshot({path:join(shots,'presentation-desktop-focus.png')});
+ await page.locator('.focus-controls .presentation-focus').focus();assert.equal(await page.locator('.focus-exit').count(),0);
  // Same-tab reload retains Focus and its previous Subtle mode.
  await page.reload();await body.waitFor();assert.ok(await inFocus());
- await page.goto(`http://127.0.0.1:${app.address().port}/?vault=default&page=${other.id}`);await page.locator('#blocks').waitFor();assert.ok(await inFocus());await page.goBack();await body.waitFor();assert.ok(await inFocus());await page.keyboard.press('Escape');assert.equal(await page.getByRole('radio',{name:'Subtle',exact:true}).getAttribute('aria-checked'),'true');
+ await page.goto(`http://127.0.0.1:${app.address().port}/?vault=default&page=${other.id}`);await page.locator('#blocks').waitFor();assert.ok(await inFocus());await page.goBack();await body.waitFor();assert.ok(await inFocus());await page.keyboard.press('Escape');assert.equal(await page.getByRole('button',{name:'Subtle references',exact:true}).getAttribute('aria-pressed'),'true');
  assert.equal(JSON.stringify(pages.get('default',note.id)),dataBeforeModes);
  // Full editing, selection and history remain available in Focus.
  await choose('Focus');await body.click();await page.keyboard.press('End');await page.keyboard.type(' focus edit');await page.keyboard.press('Control+z');assert.equal(await body.innerText(),'revised revised');await page.keyboard.press('Control+Shift+z');assert.match(await body.innerText(),/focus edit/);await page.keyboard.press('Control+z');await page.keyboard.press('Control+s');
- await page.getByRole('button',{name:'Exit Focus',exact:false}).click();
+ await page.getByRole('button',{name:'Focus mode',exact:true}).click();
  // Mobile uses real touch emulation, all modes, and a narrow phone width.
  const mobileContext=await appBrowser.newContext({viewport:{width:390,height:844},hasTouch:true,isMobile:true});
  const mobilePage=await mobileContext.newPage();mobilePage.on('pageerror',e=>errors.push(e.message));
  await mobilePage.goto(`http://127.0.0.1:${app.address().port}/?vault=default&page=${note.id}`);await mobilePage.locator('#blocks').waitFor();
  for(const mode of ['Standard','Subtle','Focus']) {
-  await mobilePage.getByRole('radio',{name:mode,exact:true}).tap();await mobilePage.waitForTimeout(150);
+  await chooseFor(mobilePage,mode,true);await mobilePage.waitForTimeout(150);
   await mobilePage.screenshot({path:join(shots,'presentation-mobile-'+mode.toLowerCase()+'.png')});
   assert.ok(await mobilePage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   if(mode!=='Focus')assert.ok(await mobilePage.evaluate(()=>document.querySelector('.topbar').getBoundingClientRect().bottom<=document.querySelector('.page-title-heading').getBoundingClientRect().top));
-  assert.ok(await mobilePage.getByRole('radio',{name:mode,exact:true}).evaluate(el=>el.getBoundingClientRect().height>=44));
+  const target=await mobilePage.getByRole('button',{name:mode==='Focus'?'Focus mode':'Subtle references',exact:true}).evaluate(el=>({height:el.getBoundingClientRect().height,width:el.getBoundingClientRect().width,transform:getComputedStyle(el).transform}));assert.ok(target.height>=44&&target.width>=44,JSON.stringify({mode,...target}));
  }
  await mobilePage.setViewportSize({width:320,height:700});assert.ok(await mobilePage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
- await mobilePage.getByRole('button',{name:'Exit Focus',exact:false}).tap();assert.equal(await mobilePage.getByRole('radio',{name:'Subtle',exact:true}).getAttribute('aria-checked'),'true');
+ await mobilePage.getByRole('button',{name:'Focus mode',exact:true}).tap();assert.equal(await mobilePage.getByRole('button',{name:'Subtle references',exact:true}).getAttribute('aria-pressed'),'true');
  await mobilePage.setViewportSize({width:390,height:844});
  await mobilePage.getByRole('button',{name:'Open navigation',exact:true}).tap();
  await mobilePage.getByRole('button',{name:'Vault options',exact:true}).tap();await mobilePage.getByRole('menuitem',{name:'Settings',exact:true}).tap();
- const settings=mobilePage.getByRole('dialog',{name:'Settings',exact:true});await settings.getByRole('radio',{name:'Focus',exact:true}).tap();
+ const settings=mobilePage.getByRole('dialog',{name:'Settings',exact:true});await settings.getByRole('button',{name:'Focus mode',exact:true}).tap();
  await mobilePage.keyboard.press('Escape');assert.equal(await mobilePage.evaluate(()=>document.documentElement.dataset.focusWorkspace),'true');
  assert.equal(await mobilePage.locator('#workspace-navigation').getAttribute('open'),null);
- await mobilePage.getByRole('button',{name:'Exit Focus',exact:false}).tap();
+ await mobilePage.getByRole('button',{name:'Focus mode',exact:true}).tap();
  assert.ok(await mobilePage.getByRole('dialog',{name:'Workspace navigation',exact:true}).isVisible());await mobilePage.getByRole('button',{name:'Close navigation',exact:true}).tap();
  await mobileContext.close();
  await page.setViewportSize({width:1440,height:1000});await choose('Focus');

@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react';
 const paths: Record<string, ReactNode> = {
+  unlink: <path d="m18.84 12.25 1.41-1.41a6 6 0 0 0-8.49-8.49l-1.41 1.41M5.16 11.75l-1.41 1.41a6 6 0 0 0 8.49 8.49l1.41-1.41M8 2v3M2 8h3M16 19v3M19 16h3"/>,
+  'reference-highlight': <><path d="m7 15 5-11 5 11M9 11h6"/><rect x="3" y="17" width="18" height="5" rx="1" fill="currentColor" stroke="none" opacity=".35"/></>,
+  'reference-subtle': <><path d="m7 15 5-11 5 11M9 11h6"/><path d="M4 20h16" strokeDasharray="2 3"/></>,
   'document-full': <path d="M5 6h14M5 12h14M5 18h14"/>,
   'document-excerpt': <path d="M5 10h14M5 14h10"/>,
   'external-link': <path d="M14 3h7v7M21 3 10 14M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/>,

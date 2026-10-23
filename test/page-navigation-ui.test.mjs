@@ -40,9 +40,20 @@ test('sidebar note switching preserves mounted shell and outgoing editor until a
    assert.equal(expand.getAttribute('aria-expanded'),'true');
    assert.ok(sidebarNodes.every(node=>node.isConnected));assert.equal(scrollRegion.scrollTop,75);
   };
-  const chooseMode=async name=>act(async()=>document.querySelector('.topbar [role=radio][aria-label="'+name+'"]').click());
+  const presentationMotion=[];let reducedMotion=false;
+  editor.animate=(frames,options)=>{const animation={cancelled:false,cancel(){this.cancelled=true;}};presentationMotion.push({frames,options,animation});return animation;};
+  const originalMatchMedia=dom.window.matchMedia;
+  t.mock.method(dom.window,'matchMedia',query=>query==='(prefers-reduced-motion: reduce)'?{...originalMatchMedia(query),matches:reducedMotion}:originalMatchMedia(query));
+  const chooseMode=async name=>act(async()=>{
+   const selector=document.querySelector('.topbar .presentation-selector');
+   if(name==='Focus')selector.querySelector('[aria-label="Focus mode"]').click();
+   else {
+    const toggle=selector.querySelector('[aria-label="Subtle references"]');
+    if((toggle.getAttribute('aria-pressed')==='true')!==(name==='Subtle'))toggle.click();
+   }
+  });
   const escape=async options=>act(async()=>document.querySelector('#page-title').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true,...options})));
-  await chooseMode('Subtle');assert.equal(document.documentElement.dataset.focusedReading,'true');
+  await chooseMode('Subtle');assert.equal(document.documentElement.dataset.focusedReading,'true');assert.equal(presentationMotion.length,0);
   for(let i=0;i<2;i++) {
    await chooseMode('Focus');assert.equal(document.documentElement.dataset.focusWorkspace,'true');
    assert.equal(document.querySelector('.page'),editor);assert.equal(document.querySelector('#intelligence-panel'),knowledge);assertOrganizationStable();
@@ -54,8 +65,18 @@ test('sidebar note switching preserves mounted shell and outgoing editor until a
    assert.equal(JSON.parse(localStorage.getItem('noema.appearance.v1')).presentationMode,'subtle');
    assert.equal(localStorage.getItem('noema-knowledge-panel-open'),'true');assertOrganizationStable();
   }
+  await chooseMode('Focus');
+  assert.equal(document.querySelector('.focus-controls [aria-label="Subtle references"]').disabled,true);
+  assert.equal(document.querySelector('.focus-exit'),null);
+  await act(async()=>document.querySelector('.focus-controls [aria-label="Focus mode"]').click());
+  assert.equal(document.documentElement.dataset.focusWorkspace,'false');
+  assert.equal(JSON.parse(localStorage.getItem('noema.appearance.v1')).presentationMode,'subtle');
+  assert.ok(presentationMotion.length>0);assert.equal(presentationMotion[0].options.duration,280);
+  assert.ok(presentationMotion.some(item=>item.animation.cancelled));
   await chooseMode('Standard');assert.equal(document.documentElement.dataset.focusedReading,'false');
+  reducedMotion=true;const animationsBefore=presentationMotion.length;
   await chooseMode('Focus');await escape();assert.equal(document.documentElement.dataset.focusedReading,'false');
+  assert.equal(presentationMotion.length,animationsBefore);reducedMotion=false;
   const select=id=>document.querySelector('.organization-page-link[title="'+id+'"]');
   const targetIcon=select('two').querySelector('svg');
   const navigationStatus=document.querySelector('main > [role="status"]');
@@ -177,4 +198,45 @@ test('entity routes open full homes while desktop page mentions retain contextua
   assert.match(document.querySelector('#toast[role="alert"]').textContent,/changed since the mention/);
 
  } finally {await env.close();}
+});
+
+test('source presentation controls retain the reader, highlights and inspector across Focus',async t=>{
+ const env=setupDOM(t),{dom}=env;
+ const keys=['localStorage','CSS','ResizeObserver','PointerEvent','matchMedia'],previous=keys.map(key=>Object.getOwnPropertyDescriptor(globalThis,key));
+ for(const key of keys)Object.defineProperty(globalThis,key,{configurable:true,writable:true,value:key==='ResizeObserver'?class{observe(){}disconnect(){}}:key==='PointerEvent'?dom.window.MouseEvent:key==='CSS'?{escape:value=>value}:dom.window[key]});
+ env.defer(()=>keys.forEach((key,i)=>{if(previous[i])Object.defineProperty(globalThis,key,previous[i]);else delete globalThis[key];}));
+ dom.window.scrollTo=()=>{};dom.window.scrollBy=()=>{};
+ dom.window.HTMLElement.prototype.scrollIntoView=function(){};
+ dom.window.Range.prototype.getClientRects=()=>[];
+ Object.defineProperty(document,'fonts',{value:{ready:Promise.resolve()}});
+ const file={id:'file',vault_id:'a',entity_id:'source',name:'source.txt',format:'txt',status:'ready',admitted:1,text:'An unchanged source passage.',textHash:'hash',pages:0,enrichment_status:'completed',size:28};
+ const source={id:'source',vault_id:'a',name:'Source',type:'source',description:'',subtypes:[],domainIds:[],updated_at:'fixed',sourceStatus:'ready',attachments:[file],propertyNames:[],properties:[],relationships:[],incomingProperties:[]};
+ const highlight={id:'mark',fileId:'file',sourceHash:'hash',startOffset:0,endOffset:12,color:'yellow',createdAt:'2026-10-23'};
+ localStorage.setItem('noema-address/a',JSON.stringify({view:'source',sourceId:'source'}));
+ t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false}]);t.mock.method(api,'pages',async()=>[]);t.mock.method(api,'entities',async()=>[source]);t.mock.method(api,'entity',async()=>source);
+ t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],memberships:[],favourites:[]}));
+ t.mock.method(api,'entitySchema',async()=>({properties:{source:[]},subtypes:[],subtypeProperties:{}}));
+ t.mock.method(api,'aiNotifications',async()=>({items:[],running:[],unreadCount:0,through:0}));
+ let documentReads=0;
+ t.mock.method(globalThis,'fetch',async url=>{
+  if(url==='/api/entities/source')return Response.json(source);
+  if(String(url).startsWith('/api/source-files/file?')){documentReads++;return Response.json(file);}
+  if(url==='/api/source-files/file/reading-locations')return Response.json({resume:null,bookmarks:[]});
+  if(url==='/api/source-files/file/highlights')return Response.json([highlight]);
+  return Response.json([]);
+ });
+ const root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ await act(async()=>root.render(React.createElement(App)));
+ const reader=document.querySelector('.source-reader'),article=document.querySelector('.source-reader-document'),inspector=document.querySelector('#entity-panel'),mark=document.querySelector('.source-highlight');
+ assert.ok(reader);assert.ok(article);assert.ok(inspector);assert.ok(mark);
+ const reads=documentReads;
+ const click=async selector=>act(async()=>document.querySelector(selector).click());
+ await click('.topbar [aria-label="Subtle references"]');assert.equal(document.documentElement.dataset.focusedReading,'true');
+ await click('.topbar [aria-label="Focus mode"]');
+ assert.equal(document.documentElement.dataset.focusWorkspace,'true');assert.equal(document.documentElement.dataset.focusTarget,'source-reader');
+ assert.equal(document.querySelector('.source-reader'),reader);assert.equal(document.querySelector('.source-reader-document'),article);assert.equal(document.querySelector('.source-highlight'),mark);
+ assert.equal(reader.classList.contains('has-inspector'),false);
+ await click('.focus-controls [aria-label="Focus mode"]');
+ assert.equal(document.documentElement.dataset.focusWorkspace,'false');assert.equal(reader.classList.contains('has-inspector'),true);assert.equal(document.querySelector('#entity-panel'),inspector);
+ assert.equal(document.querySelector('.source-highlight'),mark);assert.equal(documentReads,reads);
 });

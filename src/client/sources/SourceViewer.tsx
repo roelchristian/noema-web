@@ -1,3 +1,5 @@
+import {PresentationSelector} from '../settings/PresentationSelector';
+import type {ComponentProps} from 'react';
 import {t as uiText} from '../i18n';
 import {citationLocation} from '../../shared/citations';
 import {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
@@ -52,7 +54,7 @@ export function SemanticPassageText({text,reference,cited,startOffset}:{text:str
   return <>{from>0?'…':''}{text.slice(from,start)}<mark>{text.slice(start,end)}</mark>{text.slice(end,to)}{to<text.length?'…':''}</>;
 }
 
-export function SourceViewer({vaultId,reference,entities,onClose,onOpenEntity}: {vaultId:string;reference:SourceReference;entities:Entity[];onClose:()=>void;onOpenEntity:(id:string)=>void}) {
+export function SourceViewer({vaultId,reference,entities,onClose,onOpenEntity,presentation}: {presentation?:ComponentProps<typeof PresentationSelector>;vaultId:string;reference:SourceReference;entities:Entity[];onClose:()=>void;onOpenEntity:(id:string)=>void}) {
   const [loaded,setLoaded]=useState<{file:SourceFile;document?:SourceDocument;matches:boolean}|null>(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
   const [before,setBefore]=useState(3),[after,setAfter]=useState(3);
   const panel=useRef<HTMLElement>(null),body=useRef<HTMLDivElement>(null),close=useRef<HTMLButtonElement>(null);
@@ -88,7 +90,7 @@ export function SourceViewer({vaultId,reference,entities,onClose,onOpenEntity}: 
     }
   },[reference.id,loaded]);
   return <aside ref={panel} id="source-viewer" data-temporal-source={reference.strictTemporal||undefined} className="entity-panel entity-detail-panel source-viewer" aria-labelledby="source-viewer-title" tabIndex={-1}>
-    <div className="panel-top entity-detail-toolbar"><div className="entity-toolbar-heading"><span className="entity-detail-icon"><Icon name="source"/></span><h2 id="source-viewer-title" className="entity-toolbar-title">{reference.sourceNumber?`[${reference.sourceNumber}] `:''}{source?.name??uiText("Source")}</h2></div><button ref={close} type="button" aria-label={uiText("Close source viewer")} title={uiText("Close source viewer")} onClick={onClose}><Icon name="close"/></button></div>
+    <div className="panel-top entity-detail-toolbar"><div className="entity-toolbar-heading"><span className="entity-detail-icon"><Icon name="source"/></span><h2 id="source-viewer-title" className="entity-toolbar-title">{reference.sourceNumber?`[${reference.sourceNumber}] `:''}{source?.name??uiText("Source")}</h2></div>{presentation&&<PresentationSelector {...presentation}/>}<button ref={close} type="button" aria-label={uiText("Close source viewer")} title={uiText("Close source viewer")} onClick={onClose}><Icon name="close"/></button></div>
     <div ref={body} className="panel-body entity-detail-body">
       <div className="source-viewer-heading">
         <span className="source-viewer-location" title={contextLabel}>{citationLabel({...reference,contextLabel,appLocator})}</span>

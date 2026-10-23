@@ -397,6 +397,19 @@ main {
   color: #aaa;
   padding: 6px;
 }
+.page-toolbar > .favourite-button {
+  position: relative;
+  margin-inline-start: 6px;
+}
+.page-toolbar > .favourite-button::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: -5px;
+  top: 50%;
+  height: 16px;
+  transform: translateY(-50%);
+  border-inline-start: 1px solid var(--line);
+}
 .favourite-button.is-favourite {
   color: #9b7018;
 }
@@ -1792,17 +1805,81 @@ main[data-entity-review-open=true] *::after { animation: none !important; transi
   background: var(--surface);
 }
 .presentation-selector button {
-  min-height: var(--control-height);
-  padding: 0 var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-target-compact);
+  min-height: var(--control-target-compact);
+  padding: 6px;
   border-radius: var(--radius-toolbar);
   font-size: var(--ui-text-xs);
   color: var(--text-muted);
 }
-.presentation-selector button[aria-checked=true] {
+.presentation-selector button {
+  transition: background-color 180ms ease, color 180ms ease, opacity 180ms ease, transform 180ms ease;
+}
+.presentation-selector button:active:not(:disabled) {
+  transform: scale(.94);
+}
+.presentation-selector button[aria-pressed=true] {
   background: var(--surface-hover);
   color: var(--text);
 }
-.presentation-selector button:focus-visible, .focus-exit:focus-visible {
+.presentation-icon-pair {
+  display: grid;
+  width: 16px;
+  height: 16px;
+}
+.presentation-icon-pair > .icon {
+  grid-area: 1 / 1;
+  width: 16px;
+  height: 16px;
+  transition: opacity 200ms ease, transform 240ms cubic-bezier(.22, 1, .36, 1);
+}
+.presentation-icon-pair > .icon:first-child {
+  opacity: 1;
+  transform: scale(1) rotate(0);
+}
+.presentation-icon-pair > .icon:last-child {
+  opacity: 0;
+  transform: scale(.8) rotate(-8deg);
+}
+.presentation-icon-pair.is-active > .icon:first-child {
+  opacity: 0;
+  transform: scale(.8) rotate(8deg);
+}
+.presentation-icon-pair.is-active > .icon:last-child {
+  opacity: 1;
+  transform: scale(1) rotate(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .presentation-selector button, .presentation-icon-pair > .icon {
+    transition: none;
+  }
+  .presentation-selector button:active:not(:disabled) {
+    transform: none;
+  }
+}
+.presentation-selector .presentation-focus {
+  margin-inline-start: 3px;
+  position: relative;
+}
+.presentation-focus::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: -3px;
+  height: 16px;
+  border-inline-start: 1px solid var(--line);
+}
+.presentation-selector button:disabled {
+  opacity: .5;
+  cursor: default;
+}
+.presentation-selector button:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.presentation-selector button:focus-visible {
   outline: var(--focus-width) solid var(--accent);
   outline-offset: var(--focus-offset-control);
 }
@@ -1816,24 +1893,6 @@ main[data-entity-review-open=true] *::after { animation: none !important; transi
   gap: var(--space-2);
   max-width: calc(100vw - var(--space-6));
 }
-.focus-controls-reveal {
-  opacity: 0;
-  transition: opacity var(--duration-control) ease;
-}
-.focus-controls:hover .focus-controls-reveal, .focus-controls:focus-within .focus-controls-reveal {
-  opacity: 1;
-}
-.focus-exit {
-  flex: none;
-  min-height: var(--touch-target-size);
-  padding: 0 var(--space-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  color: var(--text-muted);
-  font-size: var(--ui-text-xs);
-}
-.focus-exit kbd { margin-inline-start: var(--space-1); }
 :root[data-focus-workspace=true] :is(.workspace-navigation-desktop, .workspace-navigation, #intelligence-panel, #entity-panel) {
   display: none;
 }
@@ -1863,12 +1922,5 @@ main[data-entity-review-open=true] *::after { animation: none !important; transi
   .topbar .page-toolbar { flex: 1; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
   .topbar .page-toolbar .presentation-selector { margin-inline-end: auto; }
   .focus-controls { gap: var(--space-1); right: var(--space-2); max-width: calc(100vw - var(--space-4)); }
-  .focus-exit kbd { display: none; }
   :root[data-focus-workspace=true] #content > .page { padding-inline: max(24px, env(safe-area-inset-left)) max(24px, env(safe-area-inset-right)); }
-}
-@media (hover: none) {
-  .focus-controls-reveal { opacity: 1; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .focus-controls-reveal { transition: none; }
 }

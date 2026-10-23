@@ -101,9 +101,16 @@ test('source viewer preserves stale evidence without trusting a matching file ha
  await fixture(t,async({props,root})=>{
   const reference={id:'historical',sourceId:'source',fileId:'file',startLine:1,endLine:1,sourceHash:'hash',excerpt:'Saved historical passage.',stale:true,startOffset:0,endOffset:25};
   t.mock.method(globalThis,'fetch',async()=>({ok:true,json:async()=>({id:'file',entity_id:'source',name:'Research',status:'ready',admitted:1,textHash:'hash'})}));
-  await act(async()=>root.render(React.createElement(SourceViewer,{vaultId:'v',reference,entities:props.entities,onClose(){},onOpenEntity(){}})));
+  let mode='standard',exits=0;
+  const renderViewer=()=>root.render(React.createElement(SourceViewer,{vaultId:'v',reference,entities:props.entities,onClose(){},onOpenEntity(){},presentation:{value:mode,onChange(next){mode=next;renderViewer();},onExitFocus(){exits++;mode='subtle';renderViewer();}}}));
+  await act(async()=>renderViewer());
   assert.match(document.querySelector('.source-viewer-status').textContent,/could not be verified/);
   assert.equal(document.querySelector('.source-viewer-passage mark').textContent,'Saved historical passage.');
   assert.equal(document.querySelector('[data-cited-node]'),null);
+  const savedPassage=document.querySelector('.source-viewer-passage');
+  await act(async()=>document.querySelector('#source-viewer [aria-label="Subtle references"]').click());assert.equal(mode,'subtle');
+  await act(async()=>document.querySelector('#source-viewer [aria-label="Focus mode"]').click());assert.equal(mode,'focus');
+  await act(async()=>document.querySelector('#source-viewer [aria-label="Focus mode"]').click());assert.equal(mode,'subtle');assert.equal(exits,1);
+  assert.equal(document.querySelector('.source-viewer-passage'),savedPassage);
  });
 });

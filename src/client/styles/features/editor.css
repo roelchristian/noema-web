@@ -1180,6 +1180,14 @@
   font-style: normal;
   font-family: inherit
 }
+.page .block-content .mention[data-entity] {
+  transition: background-color 200ms ease, color 200ms ease, text-decoration-color 200ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .page .block-content .mention[data-entity] {
+    transition: none;
+  }
+}
 .mention.person {
   background: #ededed;
   color: #494949

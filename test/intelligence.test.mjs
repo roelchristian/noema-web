@@ -23,7 +23,7 @@ const rejected=(work,status)=>assert.rejects(work,error=>error.status===status);
 test('credentials: write-only status, expiry, replacement, removal, persistence and bounds',async()=>{
   const secrets=new Secrets();let time=Date.now(),calls=0;
   let ai=new Intelligence(secrets,async()=>{calls++;return completed('OK');},()=>time);
-  assert.deepEqual(ai.status(),{configured:false,expiresAt:null,personaId:'oxford_don',ttsEnabled:false,model:'gpt-5-mini',reasoningEffort:'low',manualRequestsPerMinute:5,pageEnrichment:{model:'gpt-6-luna',reasoningEffort:'none'}});
+  assert.deepEqual(ai.status(),{configured:false,expiresAt:null,personaId:'oxford_don',ttsEnabled:false,ttsVoice:'marin',model:'gpt-5-mini',reasoningEffort:'low',manualRequestsPerMinute:5,pageEnrichment:{model:'gpt-6-luna',reasoningEffort:'none'}});
   for(const days of [0,366,1.5,'30',null])assert.throws(()=>ai.save({apiKey:key,days}),e=>e.status===400);
   assert.throws(()=>ai.save({apiKey:'bad'}),e=>e.status===400);
   const status=ai.save({apiKey:key});assert.equal(status.expiresAt,new Date(time+30*86400000).toISOString());
@@ -77,7 +77,7 @@ test('AI HTTP routes enforce CSRF, vault scope, revisions, lock state and privat
     await call('intelligence/preferences','PUT',{model:'gpt-6-astra',reasoningEffort:'none'},400);
     await call('intelligence/preferences','PUT',{model:'gpt-6-luna',reasoningEffort:'low'},403,{Origin:'https://evil.example'});
     const selection=await call('intelligence/preferences','PUT',{model:'gpt-6-luna',reasoningEffort:'low'});
-    assert.deepEqual(selection,{personaId:'oxford_don',ttsEnabled:false,model:'gpt-6-luna',reasoningEffort:'low',manualRequestsPerMinute:5,pageEnrichment:{model:'gpt-6-luna',reasoningEffort:'none'}});
+    assert.deepEqual(selection,{personaId:'oxford_don',ttsEnabled:false,ttsVoice:'marin',model:'gpt-6-luna',reasoningEffort:'low',manualRequestsPerMinute:5,pageEnrichment:{model:'gpt-6-luna',reasoningEffort:'none'}});
     await call('intelligence','PUT',{apiKey:key});const validated=await call('intelligence/validate','POST',{});
     assert.equal(validated.model,'gpt-6-luna');assert.equal(validated.reasoningEffort,'low');
     assert.equal(lastInput,'Connection test.');
@@ -151,18 +151,18 @@ test('model and effort preferences persist without changing or retrieving the AP
     let ai=new Intelligence(secrets,fetch,Date.now,intelligencePreferencesFor(new Store(db)));
     assert.deepEqual(ai.selection(),{model:'gpt-5-mini',reasoningEffort:'low'});
     ai.save({apiKey:key});const credential=structuredClone(secrets.value);
-    assert.deepEqual(ai.savePreferences({model:'gpt-6.1-sol',reasoningEffort:'high',apiKey:key}),{personaId:'oxford_don',ttsEnabled:false,model:'gpt-6.1-sol',reasoningEffort:'high',manualRequestsPerMinute:5,pageEnrichment:{model:'gpt-6-luna',reasoningEffort:'none'}});
+    assert.deepEqual(ai.savePreferences({model:'gpt-6.1-sol',reasoningEffort:'high',apiKey:key,ttsVoice:'cedar'}),{personaId:'oxford_don',ttsEnabled:false,ttsVoice:'cedar',model:'gpt-6.1-sol',reasoningEffort:'high',manualRequestsPerMinute:5,pageEnrichment:{model:'gpt-6-luna',reasoningEffort:'none'}});
     assert.deepEqual(secrets.value,credential);
     assert.ok(!JSON.stringify(db.prepare('SELECT * FROM metadata').all()).includes(key));
     db.close();db=openDatabase(filename);
     ai=new Intelligence(secrets,fetch,Date.now,intelligencePreferencesFor(new Store(db)));
-    assert.deepEqual(ai.selection(),{model:'gpt-6.1-sol',reasoningEffort:'high'});
+    assert.deepEqual(ai.selection(),{model:'gpt-6.1-sol',reasoningEffort:'high'});assert.equal(ai.speechVoiceSelection(),'cedar');
     for(const value of [{model:'unknown',reasoningEffort:'low'},{model:'gpt-6-astra',reasoningEffort:'none'},{model:'gpt-6.1-sol',reasoningEffort:'minimal'},{model:'gpt-5-mini',reasoningEffort:'max'},{model:'gpt-6-luna',reasoningEffort:'ultra'},{model:'gpt-6-luna'}]) {
       assert.throws(()=>ai.savePreferences(value),error=>error.status===400);
       assert.equal(ai.selection().reasoningEffort,'high');
     }
     ai.remove();assert.equal(ai.selection().model,'gpt-6.1-sol');
-    ai.savePreferences({model:'gpt-6-luna',reasoningEffort:'low'});assert.equal(secrets.value,null);
+    ai.savePreferences({model:'gpt-6-luna',reasoningEffort:'low'});assert.equal(secrets.value,null);assert.equal(ai.speechVoiceSelection(),'cedar');
   }finally{db.close();rmSync(dir,{recursive:true,force:true});}
 });
 test('all offered model/effort combinations reach the Responses API for summaries and validation',async()=>{

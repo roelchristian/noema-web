@@ -30,7 +30,7 @@ test('speech is opt-in, validates input before spending requests, and keeps sett
   let saved,calls=0;
   const preferenceStore={read:()=>saved,write:value=>{saved=structuredClone(value);}};
   const ai=new Intelligence(new Secrets(),fetch,Date.now,preferenceStore,()=>{calls++;return new Socket(complete);});
-  assert.equal(ai.status().ttsEnabled,false);
+  assert.equal(ai.status().ttsEnabled,false);assert.equal(ai.status().ttsVoice,'marin');
   await fails(()=>ai.speech('Hello'),409);
   ai.savePreferences({...ai.selection(),ttsEnabled:true});
   await fails(()=>ai.speech('Hello'),409);
@@ -38,7 +38,12 @@ test('speech is opt-in, validates input before spending requests, and keeps sett
   for(const input of ['', '  ',null,{},'a'.repeat(4097)])await fails(()=>ai.speech(input),400);
   assert.equal(calls,0);
   for(const value of [null,'true',1])assert.throws(()=>ai.savePreferences({...ai.selection(),ttsEnabled:value}),error=>error.status===400);
-  ai.savePreferences({...ai.selection(),manualRequestsPerMinute:1});
+  const beforeInvalid=structuredClone(saved);
+  for(const ttsVoice of ['nova','onyx','fable','unknown','Marin','',null,1,{}])assert.throws(()=>ai.savePreferences({...ai.selection(),ttsVoice}),error=>error.status===400);
+  assert.deepEqual(saved,beforeInvalid);
+  ai.savePreferences({...ai.selection(),ttsVoice:'cedar'});assert.equal(ai.status().ttsVoice,'cedar');assert.equal(ai.speechVoiceSelection(),'cedar');
+  assert.equal(new Intelligence(new Secrets(),fetch,Date.now,preferenceStore).status().ttsVoice,'cedar');
+  ai.savePreferences({...ai.selection(),manualRequestsPerMinute:1});assert.equal(ai.status().ttsVoice,'cedar');
   assert.equal(ai.status().ttsEnabled,true);
   assert.equal(new Intelligence(new Secrets(),fetch,Date.now,preferenceStore).status().ttsEnabled,true);
   await ai.speech('Hello');await fails(()=>ai.speech('Quota'),429);assert.equal(calls,1);
@@ -58,7 +63,7 @@ test('speech uses the requested Realtime model and returns valid bounded PCM WAV
 });
 
 test('speech discards in-flight audio on disable, removal, replacement and disconnect',async()=>{
-  for(const action of ['disable','remove','replace','disconnect']) {
+  for(const action of ['disable','remove','replace','disconnect','voice']) {
     let socket;const ai=enabled(()=>{},undefined,()=>socket=new Socket(()=>{}));
     const controller=new AbortController(),pending=ai.speech('Hello',controller.signal);
     await fails(()=>ai.speech('Concurrent'),429);
@@ -66,6 +71,7 @@ test('speech discards in-flight audio on disable, removal, replacement and disco
     if(action==='remove')ai.remove();
     if(action==='replace')ai.save({apiKey:key+'-replacement'});
     if(action==='disconnect')controller.abort();
+    if(action==='voice')ai.savePreferences({...ai.selection(),ttsVoice:'cedar'});
     assert.equal(socket.terminated,true);await fails(()=>pending,409);
   }
 });
@@ -126,5 +132,28 @@ test('speech sends only clean selected prose and reuses audio when citation meta
   response=await call('intelligence/speech',{text:'Selected prose.[L: 99–100][ref]',...metadata,blockId:'changed-block',citations:[{id:'changed-citation'}]});assert.equal(response.status,200);assert.equal(response.headers.get('x-noema-speech-cache'),'hit');assert.equal(calls,1);
   response=await call('intelligence/speech',{text:'[ref][??][L: 1–2]',...metadata});assert.equal(response.status,400);assert.equal(calls,1);
   const direct=enabled(socket=>{sent=socket.sent;complete(socket);});await direct.speech('Direct prose.[ref][??][L: 1–2]');assert.equal(sent[1].response.input[0].content[0].text,'Direct prose.');
+ }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+
+test('saved speech voice controls Realtime output and isolates cached audio per voice',async()=>{
+ const dir=mkdtempSync(path.join(tmpdir(),'noema-speech-voice-')),db=openDatabase(path.join(dir,'test.sqlite'));const voices=[];
+ const ai=enabled(socket=>{voices.push(socket.sent[0].session.audio.output.voice);complete(socket);},intelligencePreferencesFor(new Store(db)));
+ const activity=new AIActivityLog(new Store(db));activity.saveDebugSettings({enabled:true});
+ const server=createApp(new Store(db),path.resolve('dist/client'),ai);server.listen(0,'127.0.0.1');await once(server,'listening');const base='http://127.0.0.1:'+server.address().port;
+ const call=(route,body,method='POST')=>fetch(base+'/api/'+route,{method,headers:{'X-Noema-Request':'1','Content-Type':'application/json'},body:JSON.stringify(body)});
+ const speak=voice=>call('intelligence/speech',{text:'Same selection.',voice});
+ try {
+  let response=await speak('marin');assert.equal(response.status,200);assert.equal(response.headers.get('x-noema-speech-cache'),'miss');const marinFilename=response.headers.get('content-disposition');
+  response=await speak('marin');assert.equal(response.status,200);assert.equal(response.headers.get('x-noema-speech-cache'),'hit');assert.deepEqual(voices,['marin']);
+  response=await call('intelligence/preferences',{...ai.selection(),ttsVoice:'cedar'},'PUT');assert.equal(response.status,200);assert.equal((await response.json()).ttsVoice,'cedar');
+  response=await speak('marin');assert.equal(response.status,409);assert.deepEqual(voices,['marin']);
+  response=await speak('nova');assert.equal(response.status,400);assert.deepEqual(voices,['marin']);
+  response=await speak('cedar');assert.equal(response.status,200);assert.equal(response.headers.get('x-noema-speech-cache'),'miss');assert.notEqual(response.headers.get('content-disposition'),marinFilename);assert.deepEqual(voices,['marin','cedar']);
+  const latest=activity.list(null).items.find(item=>item.action==='text_to_speech');assert.equal(JSON.parse(activity.debug(latest.id).request).voice,'cedar');
+  response=await speak('cedar');assert.equal(response.status,200);assert.equal(response.headers.get('x-noema-speech-cache'),'hit');assert.deepEqual(voices,['marin','cedar']);
+  response=await call('intelligence/preferences',{...ai.selection(),ttsVoice:'marin'},'PUT');assert.equal(response.status,200);
+  response=await speak('marin');assert.equal(response.status,200);assert.equal(response.headers.get('x-noema-speech-cache'),'hit');assert.equal(response.headers.get('content-disposition'),marinFilename);assert.deepEqual(voices,['marin','cedar']);
+  response=await call('intelligence/preferences',{...ai.selection(),ttsVoice:'invalid'},'PUT');assert.equal(response.status,400);assert.equal(ai.speechVoiceSelection(),'marin');
  }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();rmSync(dir,{recursive:true,force:true});}
 });

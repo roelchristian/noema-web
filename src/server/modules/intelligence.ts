@@ -1,5 +1,6 @@
+import {defaultSpeechVoice,isSpeechVoice,type SpeechVoice} from '../../shared/intelligence.js';
 import {cleanSpeechText} from '../../shared/speech-text.js';
-import {realtimeSpeech,speechModel,speechVoice,speechEndpoint,createSpeechSocket,type SpeechSocketFactory} from './realtime-speech.js';
+import {realtimeSpeech,speechModel,speechEndpoint,createSpeechSocket,type SpeechSocketFactory} from './realtime-speech.js';
 import {defaultPersonaId,isPersonaId,type BuiltinPersonaId} from '../../shared/ai-personas.js';
 import {resolvePersona} from './ai-personas.js';
 import {generationPolicy,type GenerationRequest} from './generation-request.js';
@@ -81,6 +82,7 @@ export class Intelligence {
   private active: AbortController | null=null;
   private speechRequests=new Set<AbortController>();
   private ttsEnabled=false;
+  private ttsVoice:SpeechVoice=defaultSpeechVoice;
   private generationRequests=new Set<AbortController>();
   private embeddingRequests=new Set<AbortController>();
   private embeddingAttempts: number[]=[];
@@ -96,6 +98,7 @@ export class Intelligence {
   constructor(private secrets: SecretStore, private transport: typeof fetch=fetch, private clock=()=>Date.now(), private preferenceStore?: PreferencesStore,private speechSocketFactory:SpeechSocketFactory=createSpeechSocket) {
     const saved=preferenceStore?.read();
     if(supportedIntelligencePreferences(saved)) {
+      if('ttsVoice' in saved&&isSpeechVoice(saved.ttsVoice))this.ttsVoice=saved.ttsVoice;
       if('ttsEnabled' in saved && typeof saved.ttsEnabled==='boolean')this.ttsEnabled=saved.ttsEnabled;
       if('personaId' in saved&&isPersonaId(saved.personaId))this.personaId=saved.personaId;
       this.preferences={model:saved.model,reasoningEffort:saved.reasoningEffort};
@@ -114,17 +117,21 @@ export class Intelligence {
     const personaId=body.personaId===undefined?this.personaId:body.personaId as BuiltinPersonaId;
     if(body.ttsEnabled!==undefined&&typeof body.ttsEnabled!=='boolean')throw new HttpError(400,'Choose whether OpenAI text to speech is enabled.');
     const ttsEnabled=body.ttsEnabled===undefined?this.ttsEnabled:body.ttsEnabled as boolean;
-    const value={personaId,ttsEnabled,model:body.model,reasoningEffort:body.reasoningEffort,manualRequestsPerMinute,pageEnrichment};
+    if(body.ttsVoice!==undefined&&!isSpeechVoice(body.ttsVoice))throw new HttpError(400,'Choose a supported OpenAI speech voice.');
+    const ttsVoice=body.ttsVoice===undefined?this.ttsVoice:body.ttsVoice as SpeechVoice;
+    const voiceChanged=ttsVoice!==this.ttsVoice;
+    const value={personaId,ttsEnabled,ttsVoice,model:body.model,reasoningEffort:body.reasoningEffort,manualRequestsPerMinute,pageEnrichment};
     this.preferenceStore?.write(value);
     const modelChanged=value.model!==this.preferences.model || value.reasoningEffort!==this.preferences.reasoningEffort||pageEnrichment.model!==this.enrichmentPreferences.model||pageEnrichment.reasoningEffort!==this.enrichmentPreferences.reasoningEffort;
     this.preferences={model:value.model,reasoningEffort:value.reasoningEffort};
     this.enrichmentPreferences={model:pageEnrichment.model,reasoningEffort:pageEnrichment.reasoningEffort};
     this.personaId=personaId;
     this.ttsEnabled=ttsEnabled;
-    if(!ttsEnabled)for(const request of this.speechRequests)request.abort();
+    this.ttsVoice=ttsVoice;
+    if(!ttsEnabled||voiceChanged)for(const request of this.speechRequests)request.abort();
     this.manualRequestsPerMinute=manualRequestsPerMinute;
     if (modelChanged) {this.preferenceRevision++;for(const request of this.generationRequests)request.abort();}
-    return {...this.selection(),personaId:this.personaId,ttsEnabled:this.ttsEnabled,manualRequestsPerMinute:this.manualRequestsPerMinute,pageEnrichment:this.enrichmentSelection()};
+    return {...this.selection(),personaId:this.personaId,ttsEnabled:this.ttsEnabled,ttsVoice:this.ttsVoice,manualRequestsPerMinute:this.manualRequestsPerMinute,pageEnrichment:this.enrichmentSelection()};
   }
   private credential() {
     const value=this.secrets.read();
@@ -133,7 +140,7 @@ export class Intelligence {
   }
   status(): IntelligenceStatus {
     const value=this.credential();
-    return {configured:!!value,expiresAt:value?.expiresAt ?? null,manualRequestsPerMinute:this.manualRequestsPerMinute,personaId:this.personaId,ttsEnabled:this.ttsEnabled,...this.selection(),pageEnrichment:this.enrichmentSelection()};
+    return {configured:!!value,expiresAt:value?.expiresAt ?? null,manualRequestsPerMinute:this.manualRequestsPerMinute,personaId:this.personaId,ttsEnabled:this.ttsEnabled,ttsVoice:this.ttsVoice,...this.selection(),pageEnrichment:this.enrichmentSelection()};
   }
   save(body: Record<string,unknown>) {
     if(typeof body.apiKey!=='string'||!/^sk-[A-Za-z0-9_-]{16,500}$/.test(body.apiKey))throw new HttpError(400,'Enter a valid OpenAI API key.');
@@ -145,7 +152,7 @@ export class Intelligence {
     this.secrets.write({key:body.apiKey,expiresAt:new Date(this.clock()+days*86400000).toISOString(),generation:randomUUID()});
     return this.status();
   }
-  remove() {for(const request of this.speechRequests)request.abort();for(const request of this.generationRequests)request.abort();for(const request of this.embeddingRequests)request.abort();this.secrets.remove();return {configured:false,expiresAt:null,manualRequestsPerMinute:this.manualRequestsPerMinute,personaId:this.personaId,ttsEnabled:this.ttsEnabled,...this.selection(),pageEnrichment:this.enrichmentSelection()};}
+  remove() {for(const request of this.speechRequests)request.abort();for(const request of this.generationRequests)request.abort();for(const request of this.embeddingRequests)request.abort();this.secrets.remove();return {configured:false,expiresAt:null,manualRequestsPerMinute:this.manualRequestsPerMinute,personaId:this.personaId,ttsEnabled:this.ttsEnabled,ttsVoice:this.ttsVoice,...this.selection(),pageEnrichment:this.enrichmentSelection()};}
   purgeExpired() {this.credential();}
   private reserveManualRequest(embedding=false) {
     const now=this.clock();
@@ -159,10 +166,11 @@ export class Intelligence {
     this.attempts.push(now);
   }
   speechEnabled(){return this.ttsEnabled;}
+  speechVoiceSelection():SpeechVoice{return this.ttsVoice;}
   async speech(text:unknown,signal?:AbortSignal,onRequest?:AIRequestObserver):Promise<Buffer> {
     if(!this.ttsEnabled)throw new HttpError(409,'Enable OpenAI text to speech in Settings → Intelligence.');
     if(typeof text!=='string')throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
-    const cleanText=cleanSpeechText(text);
+    const cleanText=cleanSpeechText(text),voice=this.ttsVoice;
     if(!cleanText||cleanText.length>4096)throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
     const credential=this.credential();
     if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
@@ -177,9 +185,9 @@ export class Intelligence {
       const observer=onRequest?.(Buffer.byteLength(cleanText,'utf8'));
       trace=redactedTrace(observer,credential.key);
       // Audio payloads and selected text never enter debug storage, including full mode.
-      trace?.request(speechEndpoint,{model:speechModel,voice:speechVoice,response_format:'wav',inputCharacters:cleanText.length});
-      const audio=await realtimeSpeech(cleanText,credential.key,controller.signal,this.speechSocketFactory,observer??undefined);
-      if(controller.signal.aborted||!this.ttsEnabled||this.credential()?.generation!==credential.generation)throw new HttpError(409,'Speech was stopped, its settings changed, or the API key expired.');
+      trace?.request(speechEndpoint,{model:speechModel,voice,response_format:'wav',inputCharacters:cleanText.length});
+      const audio=await realtimeSpeech(cleanText,credential.key,controller.signal,this.speechSocketFactory,observer??undefined,voice);
+      if(controller.signal.aborted||!this.ttsEnabled||this.ttsVoice!==voice||this.credential()?.generation!==credential.generation)throw new HttpError(409,'Speech was stopped, its settings changed, or the API key expired.');
       trace?.response({model:speechModel,format:'wav',audioBytes:audio.length});
       return audio;
     } catch(error) {

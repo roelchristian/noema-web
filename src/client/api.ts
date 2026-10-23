@@ -1,3 +1,4 @@
+import type {SpeechVoice} from '../shared/intelligence';
 import {cleanSpeechText} from '../shared/speech-text';
 import type {EditorReviewText,EditorReviewSuggestion} from '../shared/editor-review';
 import type { Organization, Entity, EntityDetail, EntityInput, PropertyInput, RelationshipInput, Page, PageInput, PageSummary, Vault, TrashedPage } from '../shared/domain';
@@ -17,9 +18,9 @@ export async function fetchClipboardImage(vault: string, url: string): Promise<F
   const blob = await response.blob();
   return new File([blob], 'pasted-image', {type:blob.type});
 }
-export async function createSpeech(vaultId:string,text:string,signal?:AbortSignal,pageId?:string):Promise<Blob> {
+export async function createSpeech(vaultId:string,text:string,signal?:AbortSignal,pageId?:string,voice?:SpeechVoice):Promise<Blob> {
   try {
-    const response=await fetch('/api/intelligence/speech',{method:'POST',signal,headers:{'X-Noema-Request':'1','X-Vault-Id':vaultId,'Content-Type':'application/json'},body:JSON.stringify({text:cleanSpeechText(text),...(pageId?{pageId}:{})})});
+    const response=await fetch('/api/intelligence/speech',{method:'POST',signal,headers:{'X-Noema-Request':'1','X-Vault-Id':vaultId,'Content-Type':'application/json'},body:JSON.stringify({text:cleanSpeechText(text),...(pageId?{pageId}:{}),...(voice?{voice}:{})})});
     if(!response.ok){const result=await response.json();throw new ApiError(response.status,result.error||'Could not generate speech.');}
     return await response.blob();
   } finally {if(typeof window!=='undefined')window.dispatchEvent(new Event('noema:ai-activity'));}

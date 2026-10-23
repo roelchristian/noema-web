@@ -37,7 +37,7 @@ export function compactRequest(value:unknown) {
   if(Number.isSafeInteger(p.inputBytes)&&typeof p.fingerprint==='string')return p;
   const hash=createHmac('sha256',fingerprintKey);
   fingerprintInput(value,hash);
-  return {model:shortString(p.model),reasoning:{effort:shortString(record(p.reasoning).effort)},max_output_tokens:finiteNumber(p.max_output_tokens),stream:p.stream===true,
+  return {model:shortString(p.model),...(typeof p.voice==='string'?{voice:shortString(p.voice)}:{}),reasoning:{effort:shortString(record(p.reasoning).effort)},max_output_tokens:finiteNumber(p.max_output_tokens),stream:p.stream===true,
     fingerprint:hash.digest('hex'),inputCount:Array.isArray(input)?input.length:input===undefined?0:1,inputBytes:inputSize(input),instructionBytes:inputSize(p.instructions),dimensions:finiteNumber(p.dimensions)};
 }
 export function compactResponse(value:unknown) {

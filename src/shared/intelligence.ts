@@ -3,8 +3,12 @@ import type {BuiltinPersonaId} from './ai-personas.js';
 // /v1/models does not describe reasoning compatibility; keep the allowlist explicit.
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export const speechModel = 'gpt-realtime-2.1-mini';
+export const speechVoices = ['marin','cedar','alloy','ash','ballad','coral','echo','sage','shimmer','verse'] as const;
+export type SpeechVoice = typeof speechVoices[number];
+export const defaultSpeechVoice:SpeechVoice = 'marin';
+export function isSpeechVoice(value:unknown):value is SpeechVoice {return typeof value==='string'&&speechVoices.some(voice=>voice===value);}
 export interface IntelligencePreferences { model: string; reasoningEffort: ReasoningEffort }
-export interface IntelligenceConfiguration extends IntelligencePreferences {personaId?:BuiltinPersonaId;ttsEnabled:boolean;manualRequestsPerMinute: number; pageEnrichment?: IntelligencePreferences}
+export interface IntelligenceConfiguration extends IntelligencePreferences {personaId?:BuiltinPersonaId;ttsEnabled:boolean;ttsVoice:SpeechVoice;manualRequestsPerMinute: number; pageEnrichment?: IntelligencePreferences}
 export const defaultPageEnrichmentPreferences: IntelligencePreferences = {model:'gpt-6-luna',reasoningEffort:'none'};
 export const defaultManualRequestsPerMinute = 5;
 export const maxManualRequestsPerMinute = 120;

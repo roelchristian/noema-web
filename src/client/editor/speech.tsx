@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
-import {api,createSpeech} from '../api';
+import {api,createSpeech,ApiError} from '../api';
 import {cleanSpeechText} from '../../shared/speech-text';
+import {defaultSpeechVoice,isSpeechVoice,type SpeechVoice} from '../../shared/intelligence';
 export {speechText} from '../../shared/speech-text';
 
 /** Split at sentence/word boundaries, retaining every character and Unicode pair. */
@@ -35,6 +36,7 @@ export async function combineSpeechAudio(parts:Blob[]):Promise<Blob> {
 
 export function useSpeech(vaultId:string,pageId?:string) {
   const [enabled,setEnabled]=useState(false);
+  const [voice,setVoice]=useState<SpeechVoice>(defaultSpeechVoice);
   const [state,setState]=useState<{loading:boolean;url:string;error:string;part:number;total:number}|null>(null);
   const controller=useRef<AbortController|null>(null),url=useRef(''),generation=useRef(0);
   function release(){if(url.current){URL.revokeObjectURL(url.current);url.current='';}}
@@ -42,7 +44,7 @@ export function useSpeech(vaultId:string,pageId?:string) {
   useEffect(()=>{
     stop();setEnabled(false);
     let active=true,revision=0;
-    const refresh=()=>{const current=++revision;void api.intelligence().then(value=>{if(active&&current===revision){setEnabled(value.ttsEnabled);if(!value.ttsEnabled)stop();}}).catch(()=>{if(active&&current===revision){setEnabled(false);stop();}});};
+    const refresh=()=>{const current=++revision;void api.intelligence().then(value=>{if(active&&current===revision){setEnabled(value.ttsEnabled);setVoice(isSpeechVoice(value.ttsVoice)?value.ttsVoice:defaultSpeechVoice);if(!value.ttsEnabled)stop();}}).catch(()=>{if(active&&current===revision){setEnabled(false);stop();}});};
     const changed=()=>{stop();refresh();};
     refresh();window.addEventListener('noema:tts-preferences',changed);
     return()=>{active=false;generation.current++;controller.current?.abort();release();window.removeEventListener('noema:tts-preferences',changed);};
@@ -55,14 +57,22 @@ export function useSpeech(vaultId:string,pageId?:string) {
       for(const text of chunks){
         if(token!==generation.current||request.signal.aborted)return;
         setState({loading:true,url:'',error:'',part,total:chunks.length});
-        parts.push(await createSpeech(vaultId,text,request.signal,pageId));
+        parts.push(await createSpeech(vaultId,text,request.signal,pageId,voice));
         if(token!==generation.current||request.signal.aborted)return;
         part++;
       }
       const audio=await combineSpeechAudio(parts);
       if(token!==generation.current)return;
       url.current=URL.createObjectURL(audio);setState({loading:false,url:url.current,error:'',part:chunks.length,total:chunks.length});
-    }catch(error){if(token===generation.current&&!request.signal.aborted)setState({loading:false,url:'',error:error instanceof Error?error.message:'Could not generate speech.',part:Math.min(part,chunks.length),total:chunks.length});}
+    }catch(error){
+      if(token!==generation.current||request.signal.aborted)return;
+      setState({loading:false,url:'',error:error instanceof Error?error.message:'Could not generate speech.',part:Math.min(part,chunks.length),total:chunks.length});
+      // Settings may have changed in another tab. Refresh for the next explicit Speak without retrying a paid request.
+      if(error instanceof ApiError&&error.status===409){
+        const current=await api.intelligence().catch(()=>null);
+        if(current&&token===generation.current){setVoice(isSpeechVoice(current.ttsVoice)?current.ttsVoice:defaultSpeechVoice);setEnabled(current.ttsEnabled);}
+      }
+    }
   }
   function speak(text:string){
     if(!enabled)return;stop();const chunks=speechChunks(cleanSpeechText(text));

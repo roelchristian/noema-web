@@ -2,19 +2,19 @@ import {aiPersonas,defaultPersonaId,type BuiltinPersonaId} from '../../shared/ai
 import {getLocale} from '../i18n';
 import {t as uiText} from '../i18n';
 import { Select } from '../components/Select';
-import { speechModel, defaultIntelligencePreferences, defaultPageEnrichmentPreferences, defaultManualRequestsPerMinute, maxManualRequestsPerMinute, intelligenceModels, type IntelligenceConfiguration, type ReasoningEffort } from '../../shared/intelligence';
+import { speechModel, speechVoices, defaultSpeechVoice, isSpeechVoice, defaultIntelligencePreferences, defaultPageEnrichmentPreferences, defaultManualRequestsPerMinute, maxManualRequestsPerMinute, intelligenceModels, type IntelligenceConfiguration, type ReasoningEffort } from '../../shared/intelligence';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api';
 import type { IntelligenceStatus } from '../../shared/domain';
 export function IntelligenceSettings() {
   const [status,setStatus]=useState<IntelligenceStatus|null>(null),[key,setKey]=useState(''),[days,setDays]=useState(30),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
-  const [preferences,setPreferences]=useState<IntelligenceConfiguration>({...defaultIntelligencePreferences,ttsEnabled:false,manualRequestsPerMinute:defaultManualRequestsPerMinute,pageEnrichment:{...defaultPageEnrichmentPreferences}});
+  const [preferences,setPreferences]=useState<IntelligenceConfiguration>({...defaultIntelligencePreferences,ttsEnabled:false,ttsVoice:defaultSpeechVoice,manualRequestsPerMinute:defaultManualRequestsPerMinute,pageEnrichment:{...defaultPageEnrichmentPreferences}});
   const modelOption=intelligenceModels.find(option=>option.id===preferences.model)!;
   const enrichment=preferences.pageEnrichment??defaultPageEnrichmentPreferences;
   const savedEnrichment=status?.pageEnrichment??defaultPageEnrichmentPreferences;
   const enrichmentModelOption=intelligenceModels.find(option=>option.id===enrichment.model)!;
-  const changed=!!status&&((preferences.personaId??defaultPersonaId)!==(status.personaId??defaultPersonaId)||Boolean(preferences.ttsEnabled)!==Boolean(status.ttsEnabled)||preferences.model!==status.model||preferences.reasoningEffort!==status.reasoningEffort||preferences.manualRequestsPerMinute!==status.manualRequestsPerMinute||enrichment.model!==savedEnrichment.model||enrichment.reasoningEffort!==savedEnrichment.reasoningEffort);
-  useEffect(()=>{let active=true;void api.intelligence().then(value=>{if(active){setStatus(value);setPreferences({personaId:(value.personaId??defaultPersonaId) as BuiltinPersonaId,ttsEnabled:value.ttsEnabled??false,model:value.model,reasoningEffort:value.reasoningEffort,manualRequestsPerMinute:value.manualRequestsPerMinute,pageEnrichment:value.pageEnrichment??{...defaultPageEnrichmentPreferences}});}}).catch(()=>{if(active)setMessage('Secure storage is unavailable. Unlock your macOS login keychain and reopen Settings.');});return()=>{active=false;};},[]);
+  const changed=!!status&&((preferences.personaId??defaultPersonaId)!==(status.personaId??defaultPersonaId)||Boolean(preferences.ttsEnabled)!==Boolean(status.ttsEnabled)||preferences.ttsVoice!==(isSpeechVoice(status.ttsVoice)?status.ttsVoice:defaultSpeechVoice)||preferences.model!==status.model||preferences.reasoningEffort!==status.reasoningEffort||preferences.manualRequestsPerMinute!==status.manualRequestsPerMinute||enrichment.model!==savedEnrichment.model||enrichment.reasoningEffort!==savedEnrichment.reasoningEffort);
+  useEffect(()=>{let active=true;void api.intelligence().then(value=>{if(active){setStatus(value);setPreferences({personaId:(value.personaId??defaultPersonaId) as BuiltinPersonaId,ttsEnabled:value.ttsEnabled??false,ttsVoice:isSpeechVoice(value.ttsVoice)?value.ttsVoice:defaultSpeechVoice,model:value.model,reasoningEffort:value.reasoningEffort,manualRequestsPerMinute:value.manualRequestsPerMinute,pageEnrichment:value.pageEnrichment??{...defaultPageEnrichmentPreferences}});}}).catch(()=>{if(active)setMessage('Secure storage is unavailable. Unlock your macOS login keychain and reopen Settings.');});return()=>{active=false;};},[]);
   async function perform(work:()=>Promise<unknown>,success:string) {
     setBusy(true);setMessage('');
     try {await work();setMessage(success);}catch(error){setMessage(error instanceof Error?error.message:'Request failed.');}finally{setBusy(false);}
@@ -29,6 +29,12 @@ export function IntelligenceSettings() {
         <button id="ai-tts-enabled" type="button" className="security-switch" role="switch" aria-checked={Boolean(preferences.ttsEnabled)} aria-labelledby="ai-tts-label" aria-describedby="ai-tts-description" disabled={busy||!status} onClick={()=>setPreferences(current=>({...current,ttsEnabled:!current.ttsEnabled}))}><span/></button>
       </div></div>
       <p id="ai-tts-description">{uiText("Enable Speak for selected editor blocks across all vaults. Selected text is sent to OpenAI and read by an AI-generated voice. API charges apply.")}</p>
+      <div className="ai-setting-row"><label htmlFor="ai-tts-voice">{uiText("TTS voice")}</label>
+        <Select id="ai-tts-voice" value={preferences.ttsVoice} aria-describedby="ai-tts-voice-description" disabled={busy||!status} onChange={event=>{const voice=event.target.value;if(isSpeechVoice(voice))setPreferences(current=>({...current,ttsVoice:voice}));}}>
+          {speechVoices.map(voice=><option key={voice} value={voice}>{voice[0]!.toUpperCase()+voice.slice(1)}{voice===defaultSpeechVoice?' (default)':''}</option>)}
+        </Select>
+      </div>
+      <p id="ai-tts-voice-description">{uiText("Each voice uses separate saved audio. The first generation with a voice incurs API charges; switching back can reuse its saved audio.")}</p>
       <p>{uiText("Speech model:")} <code>{speechModel}</code></p>
       <fieldset className="ai-personas"><legend>AI Persona</legend><p>Choose the default voice for generated prose. Shared across vaults. Models and factual standards stay independent.</p>
       {aiPersonas.map(persona=><label className="ai-persona-card" key={persona.id}><input type="radio" name="ai-persona" value={persona.id} checked={(preferences.personaId??defaultPersonaId)===persona.id} disabled={busy||!status} onChange={()=>setPreferences(current=>({...current,personaId:persona.id as BuiltinPersonaId}))}/><span><strong>{persona.name}</strong><span>{persona.description}</span><small>“{persona.sample}”</small></span></label>)}

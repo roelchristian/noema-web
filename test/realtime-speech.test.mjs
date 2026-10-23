@@ -22,8 +22,9 @@ test('Realtime speech exchanges authenticated WebSocket events and produces play
  });
  let usage;
  const factory=(url,options)=>{assert.equal(url,speechEndpoint);return new WebSocket('ws://127.0.0.1:'+server.address().port,options);};
- const wav=await realtimeSpeech('Read this exactly.[ref][??][L: 1–2]','test-key',AbortSignal.timeout(5000),factory,{usage:value=>{usage=value;}});
+ const wav=await realtimeSpeech('Read this exactly.[ref][??][L: 1–2]','test-key',AbortSignal.timeout(5000),factory,{usage:value=>{usage=value;}},'cedar');
  assert.equal(authorization,'Bearer test-key');
+ assert.equal(received[0].session.audio.output.voice,'cedar');
  assert.deepEqual(received.map(event=>event.type),['session.update','response.create']);
  assert.deepEqual(received[1].response.input,[{type:'message',role:'user',content:[{type:'input_text',text:'Read this exactly.'}]}]);
  assert.ok(!JSON.stringify(received).includes('[ref]'));assert.ok(!JSON.stringify(received).includes('[L:'));

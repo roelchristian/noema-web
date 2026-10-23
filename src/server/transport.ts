@@ -1,6 +1,6 @@
 import {cleanSpeechText} from '../shared/speech-text.js';
 import {speechCacheKey} from './modules/speech-cache.js';
-import {speechModel} from '../shared/intelligence.js';
+import {speechModel,isSpeechVoice} from '../shared/intelligence.js';
 import {PageHistory} from './modules/page-history.js';
 import {PropertyReview} from './modules/property-review.js';
 import {PropertyDefinitionGovernance} from './modules/property-definition-governance.js';
@@ -295,14 +295,17 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             const header=req.headers['x-vault-id'];if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
             if(body.pageId!==undefined&&(typeof body.pageId!=='string'||!body.pageId))throw new HttpError(400,'Invalid speech source page.');
             const speechPageId=typeof body.pageId==='string'?body.pageId:null;
+            const voice=intelligence.speechVoiceSelection();
+            if(body.voice!==undefined&&!isSpeechVoice(body.voice))throw new HttpError(400,'Choose a supported OpenAI speech voice.');
+            if(body.voice!==undefined&&body.voice!==voice)throw new HttpError(409,'The speech voice changed. Start Speak again.');
             const vault=vaults.requireOpen(header||'default');
-            const validateAccess=()=>{vaults.requireOpen(vault);if(speechPageId)pages.get(vault,speechPageId);};
+            const validateAccess=()=>{vaults.requireOpen(vault);if(speechPageId)pages.get(vault,speechPageId);if(intelligence.speechVoiceSelection()!==voice)throw new HttpError(409,'The speech voice changed. Start Speak again.');};
             validateAccess();
             if(!intelligence.speechEnabled())throw new HttpError(409,'Enable OpenAI text to speech in Settings → Intelligence.');
             if(typeof body.text!=='string')throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
             const text=cleanSpeechText(body.text);
             if(!text||text.length>4096)throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
-            const key=speechCacheKey(text),cached=speechCache.read(vault,key);
+            const key=speechCacheKey(text,{voice}),cached=speechCache.read(vault,key);
             const controller=new AbortController(),abort=()=>controller.abort();res.once('close',abort);
             try {
               let audio=cached;

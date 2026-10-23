@@ -1,3 +1,4 @@
+import {setupSmartCollectionSchema} from './smart-collection-schema.js';
 import {setupPropertyProvenanceSchema} from './modules/property-provenance.js';
 import {setupPropertyStorage} from './modules/property-storage.js';
 import {setupTemporalEvidenceSchema} from './temporal-evidence-schema.js';
@@ -484,6 +485,7 @@ if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
  db.exec(`CREATE TABLE IF NOT EXISTS liturgical_calendar_cache (calendar_id TEXT NOT NULL,year INTEGER NOT NULL,provider_key TEXT NOT NULL,data TEXT NOT NULL,generated_at TEXT NOT NULL,last_access TEXT NOT NULL,PRIMARY KEY(calendar_id,year));
  CREATE TABLE IF NOT EXISTS liturgical_seed_years (year INTEGER PRIMARY KEY);
  CREATE TABLE IF NOT EXISTS liturgical_calendar_downloads (calendar_id TEXT NOT NULL,year INTEGER NOT NULL,status TEXT NOT NULL CHECK(status IN ('queued','failed')),attempts INTEGER NOT NULL,next_attempt INTEGER NOT NULL,PRIMARY KEY(calendar_id,year));`);
+ setupSmartCollectionSchema(db);
  if (db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Database contains invalid references');
  return db;
  } catch(error) { db.close(); throw error; }

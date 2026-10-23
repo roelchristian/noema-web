@@ -1,3 +1,4 @@
+import {parseSmartRule,type SmartRuleNode} from '../../shared/smart-collections.js';
 import {propertyOrigins,type PropertyOrigin} from '../../shared/property-provenance.js';
 import {proposalIdentity,rawSourceHash} from './property-provenance.js';
 import {adaptTemporalProperty} from '../../shared/temporal-properties.js';
@@ -80,6 +81,8 @@ const tables={
   entity_subtypes:{columns:'id,type,name',scope:'vault_id=?'},
   entity_type_properties:{columns:'type,name',scope:'vault_id=?'},
   entity_subtype_properties:{columns:'subtype_id,name',scope:'vault_id=?'},
+  smart_collection_definitions:{columns:'collection_id,rule_json',scope:'vault_id=?'},
+  smart_collection_overrides:{columns:'collection_id,kind,item_id,decision',scope:'vault_id=?'},
   collections:{columns:'id,name',scope:'vault_id=?'},
   folders:{columns:'id,name,parent_id',scope:'vault_id=?'},
   item_locations:{columns:'kind,item_id,folder_id',scope:'vault_id=?'},
@@ -162,7 +165,7 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table.startsWith('temporal_')||table==='property_provenance'||table==='entity_name_provenance'||table==='property_proposals'||table==='source_author_jobs'||table==='property_definitions'||table==='property_value_metadata'||table==='entity_overviews'||table==='entity_page_associations'||table==='source_reading_locations'||table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table.startsWith('smart_collection_')||table.startsWith('temporal_')||table==='property_provenance'||table==='entity_name_provenance'||table==='property_proposals'||table==='source_author_jobs'||table==='property_definitions'||table==='property_value_metadata'||table==='entity_overviews'||table==='entity_page_associations'||table==='source_reading_locations'||table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     const splitSourceOwners=new Set<unknown>(),sourceOwners=new Set<unknown>(),legacyEntities=new Map(rows.entities.map(row=>[row.id,row]));
     const legacyProperties=[...rows.properties],legacyLinks=[...rows.page_sources];
     for(const file of rows.source_files) {
@@ -567,6 +570,19 @@ export class VaultBackups {
         for(const row of rows.item_locations)insert('item_locations',{vault_id:vault,...item(row),folder_id:row.folder_id===null?null:ref(folderIds,row.folder_id)});
         for(const row of rows.collection_folders)insert('collection_folders',{vault_id:vault,folder_id:ref(folderIds,row.folder_id),collection_id:ref(collectionIds,row.collection_id)});
         for(const row of rows.collection_memberships)insert('collection_memberships',{vault_id:vault,...item(row),collection_id:ref(collectionIds,row.collection_id)});
+        // Derived caches rebuild locally; authoritative definitions and explicit decisions survive.
+        const orphanReferences=new Map<string,string>();
+        const stableRef=(map:Map<string,string>,id:string)=>{const existing=map.get(id);if(existing)return existing;let orphan=orphanReferences.get(id);if(!orphan){orphan=randomUUID();orphanReferences.set(id,orphan);}return orphan;};
+        for(const row of rows.smart_collection_definitions) {
+          let definition;try{definition=parseSmartRule(json(row,'rule_json'));}catch{throw invalid();}
+          const remap=(node:SmartRuleNode):SmartRuleNode=> 'op' in node?{...node,children:node.children.map(remap)}:node.field==='folder'?{...node,value:stableRef(folderIds,node.value)}:node.field==='entity'?{...node,value:stableRef(entityIds,node.value)}:node;
+          insert('smart_collection_definitions',{vault_id:vault,collection_id:ref(collectionIds,row.collection_id),rule_json:JSON.stringify({...definition,root:remap(definition.root)})});
+        }
+        for(const row of rows.smart_collection_overrides) {
+          const collection=ref(collectionIds,row.collection_id);
+          if(!this.store.get('SELECT 1 FROM smart_collection_definitions WHERE vault_id=? AND collection_id=?',vault,collection)||!['include','exclude'].includes(String(row.decision)))throw invalid();
+          insert('smart_collection_overrides',{vault_id:vault,collection_id:collection,...item(row),decision:row.decision as string});
+        }
         for(const row of rows.favourites)insert('favourites',{vault_id:vault,...item(row,true)});
         for(const row of rows.page_ai_enrichments) {
           const kind=name(row,'kind'),data=object(json(row,'data'));

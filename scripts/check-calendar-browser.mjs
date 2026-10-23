@@ -1,3 +1,4 @@
+import {selectionOffsets} from './browser-selection.mjs';
 import {readFileSync} from 'node:fs';
 import {liturgicalCalendars,liturgicalKey} from '../src/shared/liturgical.ts';
 import {normalizeLitcal} from '../src/server/modules/liturgical-providers.ts';
@@ -26,7 +27,7 @@ const block=(id,text)=>({id,type:'paragraph',checked:false,content:[{text}]});
 try {
  db=openDatabase(join(directory,'fixture.sqlite'));const store=new Store(db),vault=new Vaults(store).create({name:'Calendar studio'}),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),index=new TemporalIndex(store);
  function note(title,blocks){let page=pages.create(vault.id,{title});return pages.update(vault.id,page.id,{...page,blocks});}
- const working=note('Project notebook',[block('work','Our project milestone is 23 October 2026. Keep the original context close.'),block('next','Reading notes from October 2026, collected in 2026.')]);
+ const working=note('Project notebook',[{...block('work',''),content:[{text:'Our 😀 é project milestone is '},{text:'23 October ',bold:true},{text:'2026',italic:true},{text:'. Keep the original context close.'}]},block('next','Reading notes from October 2026, collected in 2026.')]);
  note('Reading journal',[block('reading','On 12 October 2026, I returned to these research notes.'),block('incidental','A bibliographical reference to 13 October 2026. A numeric expression 03/04/2026 remains unresolved.')]);
  note('Collected evidence',Array.from({length:24},(_,i)=>block('evidence'+i,`Reference ${i+1}: 12 October 2026. A synthetic passage for navigation testing.`)));
  let historical=note('Historical context',[block('historical','The notes discuss 27 October 2026 in a historical comparison.')]);
@@ -85,7 +86,7 @@ try {
  await page.getByRole('button',{name:'Close date inspector',exact:true}).click();await page.getByLabel('Detected references',{exact:true}).check();await ready(page);await page.waitForFunction(()=>document.querySelector('[data-date="2026-10-13"]')?.textContent.includes('reference'));
  await page.getByLabel('Detected references',{exact:true}).uncheck();await ready(page);
  await page.getByLabel('Personal',{exact:true}).uncheck();await page.waitForFunction(()=>!document.querySelector('[data-date="2026-10-23"]')?.textContent.includes('Project milestone'));await page.getByLabel('Personal',{exact:true}).check();await ready(page);
- await page.getByRole('button',{name:'Agenda',exact:true}).click();await page.locator('.calendar-agenda').waitFor();await screenshot(page,'calendar-desktop-agenda');await page.getByRole('button',{name:'Month',exact:true}).click();await page.locator('.calendar-periods .calendar-entry').filter({hasText:'October research'}).click();await page.getByText('Month precision · no day assigned',{exact:true}).waitFor();await page.getByRole('button',{name:'Close date inspector',exact:true}).click();
+ await page.getByRole('button',{name:'Agenda',exact:true}).click();await page.locator('.calendar-agenda').waitFor();await screenshot(page,'calendar-desktop-agenda');await page.getByRole('button',{name:'Month',exact:true}).click();await page.locator('.calendar-periods .calendar-entry').filter({hasText:'October research'}).click();await page.getByText('Month only · no day assigned',{exact:true}).waitFor();await page.getByRole('button',{name:'Close date inspector',exact:true}).click();
  await page.locator('[data-date="2026-10-12"]').click();await page.getByRole('button',{name:'Load more references',exact:true}).waitFor();assert.equal(await page.locator('.calendar-evidence-link').count(),20);await page.getByRole('button',{name:'Load more references',exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('.calendar-evidence-link').length===25);checks.push('Inspector evidence pagination and curation draft retained across repeated evidence navigation');
  await page.getByRole('button',{name:'Close date inspector',exact:true}).click();await page.locator('[data-date="2026-10-27"]').click();await page.getByText('Stale evidence',{exact:false}).waitFor();assert.equal(await page.getByRole('button',{name:'Open supporting passage',exact:true}).count(),0);await page.getByRole('button',{name:'Close date inspector',exact:true}).click();
  // Error/retry, then an interrupted evidence request must never navigate late.
@@ -95,9 +96,27 @@ try {
  await page.route('**/api/temporal/mentions/*',async route=>{seen();await held;try{await route.continue();}catch{/* Aborted on workspace navigation. */}});
  await page.locator('.calendar-evidence-link').first().click();await requested;await page.getByRole('button',{name:'Pages',exact:true}).first().click();release();await page.locator('.calendar-workspace').waitFor({state:'detached'});await page.waitForTimeout(150);assert.equal(await page.locator('#page-title').count(),0);await page.unroute('**/api/temporal/mentions/*');checks.push('Stale evidence, interrupted request, error/retry and no late evidence navigation');
  // A draft and its exact caret survive save-flushing Calendar transitions and history.
- await page.goto(`${base}/?vault=${vault.id}&page=${working.id}`);const content=page.locator('[data-block-id="work"] .block-content');await content.waitFor();await content.evaluate(e=>{e.focus();const r=document.createRange();r.selectNodeContents(e);r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);document.dispatchEvent(new Event('selectionchange'));});await page.keyboard.type(' Draft retained.');
+ await page.goto(`${base}/?vault=${vault.id}&page=${working.id}`);const content=page.locator('[data-block-id="work"] .block-content');await content.waitFor();await content.locator('[data-note-date]').first().waitFor();await content.evaluate(e=>{e.focus();const r=document.createRange();r.selectNodeContents(e);r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);document.dispatchEvent(new Event('selectionchange'));});await page.keyboard.type(' Draft retained.');
  const expected=await content.textContent();await page.getByRole('button',{name:'Calendar',exact:true}).click();await ready(page);await page.getByRole('button',{name:'Go back',exact:true}).click();await content.waitFor();assert.equal(await content.textContent(),expected);
- await page.waitForFunction(()=>getSelection()?.anchorNode?.parentElement?.closest('[data-block-id]')?.dataset.blockId==='work');assert.equal(await page.evaluate(()=>getSelection().anchorOffset),expected.length);checks.push('Page draft and exact editor caret survive Calendar/history navigation');
+ await page.waitForFunction(()=>getSelection()?.anchorNode?.parentElement?.closest('[data-block-id]')?.dataset.blockId==='work');assert.deepEqual(await content.evaluate(selectionOffsets),{anchor:expected.length,focus:expected.length});
+ // Repeat with a backward selection across formatting/date nodes, then an interior
+ // caret after a surrogate pair. Both endpoints use the editor's UTF-16 coordinate system.
+ for(const bookmark of [{anchor:expected.length-1,focus:6},{anchor:6,focus:6}]) {
+  await content.evaluate((element,bookmark)=>{
+   const point=offset=>{const walker=document.createTreeWalker(element,NodeFilter.SHOW_TEXT);let node;while((node=walker.nextNode())){if(offset<=node.textContent.length)return [node,offset];offset-=node.textContent.length;}throw new Error('Fixture selection exceeds editor text');};
+   element.focus();const [anchor,anchorOffset]=point(bookmark.anchor),[focus,focusOffset]=point(bookmark.focus);
+   getSelection().setBaseAndExtent(anchor,anchorOffset,focus,focusOffset);document.dispatchEvent(new Event('selectionchange'));
+  },bookmark);
+  assert.deepEqual(await content.evaluate(selectionOffsets),bookmark);
+  await page.getByRole('button',{name:'Calendar',exact:true}).click();await ready(page);
+  await page.getByRole('button',{name:'Go back',exact:true}).click();await content.waitFor();
+  await page.waitForFunction(()=>getSelection()?.anchorNode?.parentElement?.closest('[data-block-id]')?.dataset.blockId==='work');
+  assert.equal(await content.textContent(),expected);
+  assert.deepEqual(await content.evaluate(selectionOffsets),bookmark);
+  // Range text uses the same DOM/UTF-16 coordinates; Selection.toString() can omit rendered boundary whitespace.
+  assert.equal(await page.evaluate(()=>getSelection().getRangeAt(0).toString()),expected.slice(Math.min(bookmark.anchor,bookmark.focus),Math.max(bookmark.anchor,bookmark.focus)));
+ }
+ checks.push('Page draft, exact UTF-16 caret and backward multi-node selection survive repeated Calendar/history navigation');
  await page.getByRole('button',{name:'Calendar',exact:true}).click();await ready(page);const first=page.locator('[data-date="2026-10-01"]');await first.focus();await page.keyboard.press('ArrowRight');await page.waitForFunction(()=>document.activeElement.dataset.date==='2026-10-02');await page.keyboard.press('PageDown');await page.getByRole('heading',{name:'November 2026',exact:true}).waitFor();await page.waitForFunction(()=>document.activeElement.dataset.date==='2026-11-02');await page.keyboard.press('PageUp');await page.keyboard.press('Enter');await page.getByRole('heading',{name:'October 2, 2026',exact:true}).waitFor();checks.push('Roving calendar keyboard, month boundaries and exact empty-day inspector');
  // Source evidence uses the exact repeated occurrence, then keeps the original
  // manual relationship stale when reprocessing leaves another identical date.

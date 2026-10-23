@@ -56,7 +56,7 @@ export function useAppearance() {
     overrides.dataset.appearance = 'entity-overrides';
     overrides.textContent = Object.entries(appearance.entityOverrides).map(([id, colorId]) => {
       const color = pillColors[colorId];
-      return `.mention[data-entity="${CSS.escape(id)}"] { background: ${mode === 'dark' ? color.darkBackground : color.background}; color: ${mode === 'dark' ? color.darkText : color.text}; border-color: ${mode === 'dark' ? color.darkBorder : color.border}; }`;
+      return `.mention[data-entity="${CSS.escape(id)}"] { --mention-ink: ${mode === 'dark' ? color.darkText : color.text}; background: ${mode === 'dark' ? color.darkBackground : color.background}; color: ${mode === 'dark' ? color.darkText : color.text}; border-color: ${mode === 'dark' ? color.darkBorder : color.border}; }`;
     }).join('\n');
     document.head.append(overrides);
     try { localStorage.setItem(appearanceStorageKey, JSON.stringify(appearance)); setStorageError(false); }

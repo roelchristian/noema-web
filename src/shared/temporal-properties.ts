@@ -1,5 +1,5 @@
 import {extractTemporal,temporalDate,type TemporalDate} from './temporal.js';
-const fields:Record<string,Record<string,string>>={person:{'birth date':'born_on'},event:{'start date':'occurs_on','end date':'discusses'},creativework:{'release date':'published_on'},source:{'publication date':'published_on','accessed date':'discusses'}};
+const fields:Record<string,Record<string,string>>={person:{'birth date':'born_on'},event:{'start date':'occurs_on','end date':'discusses'},creativework:{'release date':'published_on'},organization:{founded:'occurs_on'},source:{'publication date':'published_on','accessed date':'discusses'}};
 export function temporalPropertyKind(type:string,name:string):string|undefined {return fields[type]?.[name.toLowerCase()];}
 /** Compatible read adapter. The authored property is never rewritten. ISO is explicit
  * in a typed date field; numeric locale dates still require the user's interpretation. */

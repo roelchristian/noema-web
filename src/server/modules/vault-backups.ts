@@ -1,3 +1,8 @@
+import {adaptTemporalProperty} from '../../shared/temporal-properties.js';
+import {propertyFingerprint} from './temporal-properties.js';
+import {syncPropertyMetadata,isStoredPropertyDefinition,bindPropertyDefinition} from './property-storage.js';
+import type {PropertyDefinition} from '../../shared/property-definitions.js';
+import {builtinPropertyDefinitions} from '../../shared/property-definitions.js';
 import {temporalDate} from '../../shared/temporal.js';
 import {temporalMentionId} from './temporal.js';
 import {restoreSourceRevision} from './source-reprocessing-backup.js';
@@ -43,6 +48,10 @@ const tables={
   temporal_curation:{columns:'id,label,annotation,pinned,importance,personal_priority,layer',scope:'vault_id=?'},
   temporal_mentions:{columns:'id,page_id,block_id,block_hash,start_offset,end_offset,original_text,date_id,reason,revision,stale',scope:'vault_id=?'},
   temporal_source_mentions:{columns:'id,file_id,source_id,passage_id,generation_id,source_hash,passage_hash,start_offset,end_offset,start_line,end_line,original_text,date_id,reason,stale',scope:'vault_id=?'},
+  temporal_property_dirty:{columns:'property_id',scope:'vault_id=?'},
+  temporal_property_values:{columns:'property_id,entity_id,date_id,raw_hash,reason',scope:'vault_id=?'},
+  property_definitions:{columns:'id,definition_json',scope:'vault_id=?'},
+  property_value_metadata:{columns:'property_id,definition_id,compatibility,reason,integer_value,decimal_value,boolean_value,text_value,latitude,longitude,unit,position,target_id,temporal_date_id',scope:'vault_id=?'},
   temporal_relations:{columns:'id,date_id,entity_id,mention_id,kind,origin,status,confidence,source_mention_id,property_id,property_hash',scope:'vault_id=?'},
   pages:{columns:'id,title,icon,featured_image_id,blocks,ai_status,ai_review_accepted,generation_metadata,language,created_at,updated_at,revision,deleted_at',scope:'vault_id=?'},
   source_reprocessing:{columns:'id,file_id,status,created_at,updated_at,payload',scope:'vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL)'},
@@ -83,6 +92,7 @@ type Backup={format:'noema-vault-backup';version:1;createdAt:string;vault:{name:
 const invalid=()=>new HttpError(400,'This backup contains invalid data or missing references.');
 function string(row:Row,key:string,max=10000) {return text(row[key],max);}
 function name(row:Row,key:string) {return required(row[key]);}
+function propertyName(row:Row) {const value=string(row,'name',200);if(!value.trim())throw invalid();return value;}
 function nullable(row:Row,key:string,max=10000) {return row[key]===null?null:string(row,key,max);}
 function integer(row:Row,key:string,min=0,max=Number.MAX_SAFE_INTEGER) {
   const value=row[key];if(typeof value!=='number'||!Number.isSafeInteger(value)||value<min||value>max)throw invalid();return value;
@@ -100,6 +110,7 @@ export class VaultBackups {
     this.vaults.requireOpen(vault);
     const backup=this.store.transaction(()=>{
       const name=this.store.get<{name:string}>('SELECT name FROM vaults WHERE id=?',vault)!.name;
+      syncPropertyMetadata(this.store,vault);
       const data={} as Record<Table,Row[]>;
       for(const table of Object.keys(tables) as Table[]) {
         const spec=tables[table];data[table]=this.store.all<Row>(`SELECT ${spec.columns} FROM ${table} WHERE ${spec.scope}`,vault);
@@ -145,7 +156,7 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table.startsWith('temporal_')||table==='entity_overviews'||table==='entity_page_associations'||table==='source_reading_locations'||table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table.startsWith('temporal_')||table==='property_definitions'||table==='property_value_metadata'||table==='entity_overviews'||table==='entity_page_associations'||table==='source_reading_locations'||table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     const sourceOwners=new Set<unknown>(),legacyEntities=new Map(rows.entities.map(row=>[row.id,row]));
     const legacyProperties=[...rows.properties],legacyLinks=[...rows.page_sources];
     for(const file of rows.source_files) {
@@ -157,7 +168,14 @@ export class VaultBackups {
       total+=1+properties.length+links.length;
       if(total>200000)throw new HttpError(413,'This backup contains too many records.');
       rows.entities.push({...owner,id,name:name(file,'name').slice(0,200),aliases:'[]'});
-      rows.properties.push(...properties.map(row=>({...row,id:randomUUID(),entity_id:id})));
+      for(const row of properties) {
+        const propertyId=randomUUID();rows.properties.push({...row,id:propertyId,entity_id:id});
+        const metadata=rows.property_value_metadata.find(item=>item.property_id===row.id);
+        if(metadata){rows.property_value_metadata.push({...metadata,property_id:propertyId});total++;}
+        const temporal=rows.temporal_property_values.find(item=>item.property_id===row.id);
+        if(temporal){rows.temporal_property_values.push({...temporal,property_id:propertyId,entity_id:id});total++;}
+        if(rows.temporal_property_dirty.some(item=>item.property_id===row.id)){rows.temporal_property_dirty.push({property_id:propertyId});total++;}
+      }
       rows.page_sources.push(...links.map(row=>({...row,source_id:id})));
       file.entity_id=id;
       // Legacy archives may attach several files to one source entity.
@@ -197,6 +215,10 @@ export class VaultBackups {
       while(ancestor!==null){if(typeof ancestor!=='string'||seen.has(ancestor)||!parents.has(ancestor))throw invalid();if(verified.has(ancestor))break;seen.add(ancestor);ancestor=parents.get(ancestor);}
       for(const ancestor of seen)verified.add(ancestor);
     }
+    const removedManagedProperty=(oldId:unknown,propertyId:string)=>{
+      const authored=rows.properties.find(item=>item.id===oldId),owner=authored&&rows.entities.find(item=>item.id===authored.entity_id);
+      return !!authored&&owner?.type==='source'&&authored.target_id===null&&['Import method','Source URL'].includes(String(authored.name))&&!this.store.get('SELECT 1 FROM properties WHERE id=?',propertyId);
+    };
     const vault=randomUUID(),writtenImages:string[]=[],writtenSources:string[]=[];
     const sourceFiles=new SourceFiles(this.store);
     const insert=(table:Table,values:Record<string,SQLInputValue>)=>{
@@ -291,8 +313,22 @@ export class VaultBackups {
           insert('source_reprocessing',{id:revision.id,file_id:fileId,vault_id:vault,status:revision.status,created_at:revision.createdAt,updated_at:revision.updatedAt,payload:JSON.stringify(revision)});
         }
         this.store.run("UPDATE entities SET inactive=CASE WHEN EXISTS (SELECT 1 FROM source_files WHERE entity_id=entities.id AND status='failed') THEN 1 ELSE 0 END WHERE vault_id=? AND type='source'",vault);
-        for(const row of rows.properties)insert('properties',{id:ref(propertyIds,row.id),entity_id:ref(entityIds,row.entity_id),name:name(row,'name'),value:nullable(row,'value'),target_id:row.target_id===null?null:ref(entityIds,row.target_id)});
+        for(const row of rows.properties)insert('properties',{id:ref(propertyIds,row.id),entity_id:ref(entityIds,row.entity_id),name:propertyName(row),value:nullable(row,'value'),target_id:row.target_id===null?null:ref(entityIds,row.target_id)});
         for(const entityId of entityIds.values())if(this.store.get<{type:string}>('SELECT type FROM entities WHERE id=?',entityId)?.type==='source')syncSourceProvenance(this.store,vault,entityId);
+        const importedDefinitions=new Map<string,PropertyDefinition>();
+        for(const row of rows.property_definitions) {
+          const oldId=string(row,'id',2000),parsed=json(row,'definition_json');
+          if(!isStoredPropertyDefinition(parsed))throw invalid();
+          const definition=parsed;
+          if(definition.id!==oldId||importedDefinitions.has(oldId))throw invalid();
+          const scope=definition.scope;
+          const remapped:PropertyDefinition={...definition,scope:scope.kind==='subtype'?{...scope,subtypeId:subtype(scope.subtypeId,scope.type)}:scope,allowedTargetSubtypes:definition.allowedTargetSubtypes.map(id=>{const targetType=builtinSubtypes.find(item=>item.id===id)?.type??subtypeTypes.get(id);if(!entityTypes.includes(targetType as EntityType))throw invalid();return subtype(id,targetType as EntityType);})};
+          const builtin=builtinPropertyDefinitions.find(item=>item.id===oldId);
+          if(definition.origin==='builtin'&&!builtin||oldId.startsWith('builtin:')&&!builtin)throw invalid();
+          if(builtin&&(definition.origin!==builtin.origin||definition.editable!==builtin.editable||JSON.stringify(definition.validation)!==JSON.stringify(builtin.validation)||definition.key!==builtin.key||definition.legacyName!==builtin.legacyName||definition.scope.kind!=='main_type'||definition.scope.type!==builtin.scope.type||definition.valueKind!==builtin.valueKind||definition.cardinality!==builtin.cardinality||JSON.stringify(definition.allowedTargetTypes)!==JSON.stringify(builtin.allowedTargetTypes)||JSON.stringify(definition.allowedTargetSubtypes)!==JSON.stringify(builtin.allowedTargetSubtypes)))throw invalid();
+          importedDefinitions.set(oldId,remapped);
+          insert('property_definitions',{vault_id:vault,id:oldId,definition_json:JSON.stringify(remapped)});
+        }
         for(const row of rows.relationships)insert('relationships',{id:randomUUID(),source_id:ref(entityIds,row.source_id),label:name(row,'label'),target_id:ref(entityIds,row.target_id)});
         const pages=new Pages(this.store,new Knowledge(this.store));
         for(const row of rows.pages) {
@@ -330,6 +366,29 @@ export class VaultBackups {
           insert('temporal_dates',{vault_id:vault,...date});
         }
         const dateRef=(value:unknown)=>{if(typeof value!=='string'||!temporalDates.has(value))throw invalid();return value;};
+        const importedTemporalProperties=new Set<string>();
+        for(const row of rows.temporal_property_values) {
+          const propertyId=ref(propertyIds,row.property_id),entityId=ref(entityIds,row.entity_id),dateId=row.date_id===null?null:dateRef(row.date_id),hash=string(row,'raw_hash',64);
+          if(importedTemporalProperties.has(propertyId)||!/^[a-f0-9]{64}$/.test(hash)||!this.store.get('SELECT 1 FROM properties WHERE id=? AND entity_id=?',propertyId,entityId))throw invalid();
+          importedTemporalProperties.add(propertyId);
+          insert('temporal_property_values',{property_id:propertyId,vault_id:vault,entity_id:entityId,date_id:dateId,raw_hash:hash,reason:nullable(row,'reason',200)});
+        }
+        const importedDirtyProperties=new Set<string>();
+        for(const row of rows.temporal_property_dirty) {
+          const propertyId=ref(propertyIds,row.property_id);
+          if(importedDirtyProperties.has(propertyId))throw invalid();
+          if(removedManagedProperty(row.property_id,propertyId))continue;
+          importedDirtyProperties.add(propertyId);
+          this.store.run('INSERT OR REPLACE INTO temporal_property_dirty (property_id,vault_id) VALUES (?,?)',propertyId,vault);
+        }
+        if(data.temporal_property_dirty!==undefined)for(const propertyId of importedTemporalProperties)if(!importedDirtyProperties.has(propertyId)) {
+          const evidence=this.store.get<{date_id:string|null;raw_hash:string;reason:string|null}>('SELECT date_id,raw_hash,reason FROM temporal_property_values WHERE property_id=?',propertyId)!;
+          const authored=this.store.get<{name:string;value:string|null;target_id:string|null;type:string}>('SELECT p.name,p.value,p.target_id,e.type FROM properties p JOIN entities e ON e.id=p.entity_id WHERE p.id=?',propertyId)!;
+          const adapted=authored.target_id===null&&authored.value!==null?adaptTemporalProperty(authored.type,authored.name,authored.value):null;
+          // Only verified current caches may be marked clean; stale snapshots remain evidence with dirty state.
+          if(!adapted||authored.value===null||evidence.raw_hash!==propertyFingerprint(authored.type,authored.name,authored.value)||evidence.date_id!==(adapted.date?.id??null)||evidence.reason!==adapted.reason)throw invalid();
+          this.store.run('DELETE FROM temporal_property_dirty WHERE property_id=?',propertyId);
+        }
         for(const row of rows.temporal_curation) {
           if(!['personal','knowledge','historical'].includes(String(row.layer??'knowledge'))||!['ordinary','notable','important'].includes(String(row.importance))||!['ordinary','important'].includes(String(row.personal_priority)))throw invalid();
           insert('temporal_curation',{vault_id:vault,id:dateRef(row.id),label:string(row,'label',200),annotation:string(row,'annotation',2000),pinned:integer(row,'pinned',0,1),importance:String(row.importance),personal_priority:String(row.personal_priority),layer:String(row.layer??'knowledge')});
@@ -508,6 +567,27 @@ export class VaultBackups {
           const dimensions=integer(row,'dimensions',1,4096),vector=list(json(row,'vector'));
           if(vector.length!==dimensions||vector.some(value=>typeof value!=='number'||!Number.isFinite(value)))throw invalid();
           insert('note_embeddings',{page_id:ref(pageIds,row.page_id),model:name(row,'model'),dimensions,content_hash:string(row,'content_hash',100),revision:integer(row,'revision',1),vector:JSON.stringify(vector),tokens:integer(row,'tokens'),updated_at:timestamp(row,'updated_at')});
+        }
+        // Scalar mirrors are derived from exact restored strings and definitions, never trusted as alternate authored values.
+        syncPropertyMetadata(this.store,vault);
+        const metadataIds=new Set<string>();
+        const scalarColumns=['compatibility','integer_value','decimal_value','boolean_value','text_value','latitude','longitude','unit'] as const;
+        for(const row of rows.property_value_metadata) {
+          const propertyId=ref(propertyIds,row.property_id),definitionId=string(row,'definition_id',2000);
+          if(metadataIds.has(propertyId)||!importedDefinitions.has(definitionId))throw invalid();
+          metadataIds.add(propertyId);
+          if(this.store.get('SELECT 1 FROM properties WHERE id=?',propertyId))bindPropertyDefinition(this.store,vault,propertyId,definitionId);
+          const current=this.store.get<Row>('SELECT * FROM property_value_metadata WHERE property_id=? AND vault_id=?',propertyId,vault);
+          if(!current) {
+            // Splitting a legacy multi-file Source intentionally drops other-file derived metadata.
+            if(removedManagedProperty(row.property_id,propertyId))continue;
+            throw invalid();
+          }
+          if(current.definition_id!==definitionId)throw invalid();
+          for(const column of scalarColumns)if(row[column]!==current[column])throw invalid();
+          const target=row.target_id===null?null:ref(entityIds,row.target_id),date=row.temporal_date_id===null?null:dateRef(row.temporal_date_id);
+          if(target!==current.target_id||date!==current.temporal_date_id)throw invalid();
+          this.store.run('UPDATE property_value_metadata SET position=? WHERE property_id=?',integer(row,'position'),propertyId);
         }
         // Recompute after validation/remapping instead of trusting a supplied page fingerprint.
         syncReadingNotesCollection(this.store,vault);

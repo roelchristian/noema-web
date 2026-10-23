@@ -466,6 +466,10 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             }
           }
           if(collection==='entities') {
+            if(id==='reference-options' && parts.length===3 && method==='GET')return send(200,knowledge.referenceOptions(vault,{
+              query:url.searchParams.get('q')??'', types:(url.searchParams.get('types')??'').split(',').filter(Boolean), subtypes:(url.searchParams.get('subtypes')??'').split(',').filter(Boolean),
+              offset:Number(url.searchParams.get('offset')??0),limit:Number(url.searchParams.get('limit')??30),selected:url.searchParams.get('selected')??'',
+            }));
             if(id && child==='neighborhood' && parts.length===4 && method==='GET') {
               const depth=Number(url.searchParams.get('depth')??1);
               if(depth!==1&&depth!==2)throw new HttpError(400,'Choose one or two hops.');

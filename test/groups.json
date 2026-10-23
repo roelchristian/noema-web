@@ -151,6 +151,11 @@
     "test/temporal-evidence.test.mjs",
     "test/liturgical-calendar.test.mjs",
     "test/review-centre.test.mjs",
-    "test/property-inventory.test.mjs"
+    "test/property-inventory.test.mjs",
+    "test/property-storage.test.mjs",
+    "test/property-typed-api.test.mjs",
+    "test/property-reference-options.test.mjs",
+    "test/source-provenance-stability.test.mjs",
+    "test/property-backups.test.mjs"
   ]
 }

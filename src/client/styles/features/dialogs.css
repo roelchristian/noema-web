@@ -1710,7 +1710,7 @@ dialog.source-lifecycle-dialog { width: min(480px, calc(100vw - 32px)); }
 .smart-collection-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
 .smart-rule-group { border: 1px solid var(--line); border-radius: 8px; margin: 12px 0; padding: 12px; min-width: 0; }
 .smart-rule-group legend { padding: 0 6px; font-size: 13px; }
-.smart-rule-group legend .select-control { display: inline-flex; width: auto; }
+.smart-rule-group legend .select-host { display: inline-flex; width: auto; }
 .smart-rule-child { display: flex; align-items: center; gap: 8px; margin-block: 8px; }
 .smart-rule-child > .smart-rule-group { flex: 1; }
 .smart-rule-predicate { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; flex: 1; min-width: 0; }
@@ -1719,3 +1719,7 @@ dialog.source-lifecycle-dialog { width: min(480px, calc(100vw - 32px)); }
 .smart-collection-preview { border-top: 1px solid var(--line); padding-top: 12px; }
 .smart-collection-preview small { display: block; }
 @media (max-width: 600px) { .smart-rule-child { align-items: flex-start; } .smart-rule-group { padding: 8px; } }
+
+.smart-collection-fields > label { display: block; margin-block: 12px; }
+.smart-collection-fields > label > input { display: block; width: 100%; min-height: var(--field-height); margin-top: 8px; padding: var(--space-2) var(--space-2-5); border: 1px solid var(--control-border); border-radius: var(--radius-control); background: var(--surface); color: var(--text); }
+.smart-rule-predicate > input { min-height: var(--field-height); padding: var(--space-2); border: 1px solid var(--control-border); border-radius: var(--radius-control); background: var(--surface); color: var(--text); }

@@ -6,12 +6,12 @@ import {defaultSpeechVoiceFor,defaultSpeechProvider,isSpeechProvider,isSpeechVoi
 export {speechText} from '../../shared/speech-text';
 
 /** Split at sentence/word boundaries, retaining every character and Unicode pair. */
-export function speechChunks(text:string):string[] {
+export function speechChunks(text:string,limit=4096):string[] {
   const chunks:string[]=[];let rest=text.trim();
-  while(rest.length>4096){
-    let end=4096;
-    const boundary=Math.max(rest.lastIndexOf('\n',4095),rest.lastIndexOf('. ',4095),rest.lastIndexOf(' ',4095));
-    if(boundary>2048)end=boundary+1;
+  while(rest.length>limit){
+    let end=limit;
+    const boundary=Math.max(rest.lastIndexOf('\n',limit-1),rest.lastIndexOf('. ',limit-1),rest.lastIndexOf(' ',limit-1));
+    if(boundary>limit/2)end=boundary+1;
     if(/[\uD800-\uDBFF]/.test(rest[end-1]!))end--;
     chunks.push(rest.slice(0,end));rest=rest.slice(end);
   }
@@ -78,7 +78,7 @@ export function useSpeech(vaultId:string,pageId?:string) {
     }
   }
   function speak(text:string){
-    if(!enabled)return;stop();const chunks=speechChunks(cleanSpeechText(text));
+    if(!enabled)return;stop();const chunks=speechChunks(cleanSpeechText(text),provider==='gemini'?1800:4096);
     if(!chunks.length){setState({loading:false,url:'',error:'This block has no text to speak.',part:0,total:0});return;}
     void load(chunks,generation.current);
   }

@@ -1,6 +1,7 @@
 import {defaultSpeechVoice,defaultSpeechProvider,defaultSpeechVoiceFor,isSpeechProvider,isSpeechVoice,speechModelFor,type SpeechProvider,type SpeechVoice} from '../../shared/intelligence.js';
 import {cleanSpeechText} from '../../shared/speech-text.js';
 import {realtimeSpeech,createSpeechSocket,speechEndpoint as openAISpeechEndpoint,type SpeechSocketFactory} from './realtime-speech.js';
+import {geminiSpeech,geminiSpeechEndpoint} from './gemini-speech.js';
 import {kokoroSpeech} from './kokoro-speech.js';
 export const speechEndpoint='local://kokoro-82m';
 export type SpeechSynthesizer=(text:string,signal:AbortSignal,voice:SpeechVoice)=>Promise<Buffer>;
@@ -38,7 +39,7 @@ function parseSourceAuthors(value:unknown):SourceAuthor[] {
 export interface SecretStore { read(): Credential | null; write(value: Credential): void; remove(): void }
 // The credential never enters SQLite, browser storage, command arguments, or logs.
 export class MacKeychain implements SecretStore {
-  constructor(private account: string, private execute: typeof spawnSync=spawnSync) {
+  constructor(private account: string, private execute: typeof spawnSync=spawnSync,private provider:'openai'|'gemini'='openai') {
     if(!/^[a-f0-9-]{36}$/.test(account))throw new Error('Invalid intelligence account');
   }
   private run(args: string[], input?: string) {
@@ -48,7 +49,7 @@ export class MacKeychain implements SecretStore {
     return result;
   }
   read(): Credential | null {
-    const result=this.run(['find-generic-password','-a',this.account,'-s','app.noema.openai','-w']);
+    const result=this.run(['find-generic-password','-a',this.account,'-s',`app.noema.${this.provider}`,'-w']);
     if(result.status===44)return null;
     try {
       const value=JSON.parse(Buffer.from(result.stdout.trim(),'base64').toString('utf8')) as Credential;
@@ -60,16 +61,16 @@ export class MacKeychain implements SecretStore {
     // security's interactive mode keeps the secret off the process command line.
     // Only generated UUIDs and base64 enter its command parser; no shell is used.
     const encoded=Buffer.from(JSON.stringify(value)).toString('base64');
-    const result=this.run(['-i'],`add-generic-password -U -a ${this.account} -s app.noema.openai -w ${encoded}\n`);
+    const result=this.run(['-i'],`add-generic-password -U -a ${this.account} -s app.noema.${this.provider} -w ${encoded}\n`);
     if(/error|failed|SecKeychain/i.test(result.stderr)||this.read()?.generation!==value.generation)throw new HttpError(503,'Could not save the credential in Keychain.');
   }
-  remove() { this.run(['delete-generic-password','-a',this.account,'-s','app.noema.openai']); }
+  remove() { this.run(['delete-generic-password','-a',this.account,'-s',`app.noema.${this.provider}`]); }
 }
-export function keychainFor(store: Store) {
+export function keychainFor(store: Store,provider:'openai'|'gemini'='openai') {
   let account=store.get<{value:string}>("SELECT value FROM metadata WHERE key='intelligence_account'")?.value;
   if(!account) {account=randomUUID();store.run("INSERT INTO metadata(key,value) VALUES ('intelligence_account',?)",account);}
   if(!/^[a-f0-9-]{36}$/.test(account))throw new Error('Invalid intelligence account');
-  return new MacKeychain(account);
+  return new MacKeychain(account,spawnSync,provider);
 }
 export interface PreferencesStore { read(): unknown; write(value: IntelligenceConfiguration): void }
 export function intelligencePreferencesFor(store: Store): PreferencesStore {
@@ -99,7 +100,7 @@ export class Intelligence {
   private personaId:BuiltinPersonaId=defaultPersonaId;
   personaSelection(id:unknown=this.personaId,version?:number) {return resolvePersona(id,version);}
   private enrichmentPreferences: IntelligencePreferences={...defaultPageEnrichmentPreferences};
-  constructor(private secrets: SecretStore, private transport: typeof fetch=fetch, private clock=()=>Date.now(), private preferenceStore?: PreferencesStore,private speechSynthesizer:SpeechSynthesizer=kokoroSpeech,private speechSocketFactory:SpeechSocketFactory=createSpeechSocket) {
+  constructor(private secrets: SecretStore, private transport: typeof fetch=fetch, private clock=()=>Date.now(), private preferenceStore?: PreferencesStore,private speechSynthesizer:SpeechSynthesizer=kokoroSpeech,private speechSocketFactory:SpeechSocketFactory=createSpeechSocket,private geminiSecrets?:SecretStore) {
     const saved=preferenceStore?.read();
     if(supportedIntelligencePreferences(saved)) {
       if('ttsProvider' in saved&&isSpeechProvider(saved.ttsProvider))this.ttsProvider=saved.ttsProvider;
@@ -163,7 +164,27 @@ export class Intelligence {
     return this.status();
   }
   remove() {if(this.ttsProvider==='openai')for(const request of this.speechRequests)request.abort();for(const request of this.generationRequests)request.abort();for(const request of this.embeddingRequests)request.abort();this.secrets.remove();return {configured:false,expiresAt:null,manualRequestsPerMinute:this.manualRequestsPerMinute,personaId:this.personaId,ttsEnabled:this.ttsEnabled,ttsProvider:this.ttsProvider,ttsVoice:this.ttsVoice,...this.selection(),pageEnrichment:this.enrichmentSelection()};}
-  purgeExpired() {this.credential();}
+  private geminiCredential() {
+    const value=this.geminiSecrets?.read();
+    if(value&&Date.parse(value.expiresAt)<=this.clock()){this.geminiSecrets!.remove();if(this.ttsProvider==='gemini')for(const request of this.speechRequests)request.abort();return null;}
+    return value??null;
+  }
+  geminiStatus() {const value=this.geminiCredential();return {configured:!!value,expiresAt:value?.expiresAt??null};}
+  saveGemini(body:Record<string,unknown>) {
+    if(typeof body.apiKey!=='string'||!/^AIza[A-Za-z0-9_-]{35}$/.test(body.apiKey))throw new HttpError(400,'Enter a valid Gemini API key.');
+    const days=body.days===undefined?30:body.days;
+    if(typeof days!=='number'||!Number.isInteger(days)||days<1||days>365)throw new HttpError(400,'Choose a lifetime between 1 and 365 days.');
+    if(!this.geminiSecrets)throw new HttpError(503,'Secure Gemini key storage is unavailable.');
+    if(this.ttsProvider==='gemini')for(const request of this.speechRequests)request.abort();
+    this.geminiSecrets.write({key:body.apiKey,expiresAt:new Date(this.clock()+days*86400000).toISOString(),generation:randomUUID()});
+    return this.geminiStatus();
+  }
+  removeGemini() {
+    if(!this.geminiSecrets)throw new HttpError(503,'Secure Gemini key storage is unavailable.');
+    if(this.ttsProvider==='gemini')for(const request of this.speechRequests)request.abort();
+    this.geminiSecrets.remove();return {configured:false,expiresAt:null};
+  }
+  purgeExpired() {try{this.credential();}finally{this.geminiCredential();}}
   private reserveManualRequest(embedding=false) {
     const now=this.clock();
     this.attempts=this.attempts.filter(time=>time>now-60000);
@@ -185,9 +206,10 @@ export class Intelligence {
     if(!cleanText||cleanText.length>4096)throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
     if(this.speechRequests.size)throw new HttpError(429,'Another speech request is running. Please wait.');
     if(signal?.aborted)throw new HttpError(409,'Speech request cancelled.');
-    const credential=provider==='openai'?this.credential():null;
+    const credential=provider==='gemini'?this.geminiCredential():provider==='openai'?this.credential():null;
     if(provider==='openai'&&!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence to use OpenAI speech. It may have expired.');
-    if(provider==='openai')this.reserveManualRequest();
+    if(provider==='gemini'&&!credential)throw new HttpError(409,'Add a Gemini API key in Settings → Intelligence to use Gemini speech. It may have expired.');
+    if(provider!=='kokoro')this.reserveManualRequest();
     const controller=new AbortController();this.speechRequests.add(controller);
     const abort=()=>controller.abort();signal?.addEventListener('abort',abort,{once:true});
     const timer=setTimeout(abort,credential?Math.min(60000,Date.parse(credential.expiresAt)-this.clock()):180000);
@@ -196,11 +218,13 @@ export class Intelligence {
       const observer=onRequest?.(Buffer.byteLength(cleanText,'utf8'));
       trace=redactedTrace(observer,credential?.key??'');
       // Audio payloads and selected text never enter debug storage, including full mode.
-      trace?.request(provider==='openai'?openAISpeechEndpoint:speechEndpoint,{model,provider,voice,response_format:'wav',inputCharacters:cleanText.length});
-      const audio=provider==='openai'
+      trace?.request(provider==='gemini'?geminiSpeechEndpoint:provider==='openai'?openAISpeechEndpoint:speechEndpoint,{model,provider,voice,response_format:'wav',inputCharacters:cleanText.length});
+      const audio=provider==='gemini'
+        ?await geminiSpeech(cleanText,credential!.key,controller.signal,this.transport,voice,observer||undefined)
+        :provider==='openai'
         ?await realtimeSpeech(cleanText,credential!.key,controller.signal,this.speechSocketFactory,observer||undefined,voice)
         :await this.speechSynthesizer(cleanText,controller.signal,voice);
-      if(controller.signal.aborted||!this.ttsEnabled||this.ttsVoice!==voice||this.ttsProvider!==provider||(credential&&this.credential()?.generation!==credential.generation))throw new HttpError(409,'Speech was stopped or its settings changed.');
+      if(controller.signal.aborted||!this.ttsEnabled||this.ttsVoice!==voice||this.ttsProvider!==provider||(credential&&(provider==='gemini'?this.geminiCredential():this.credential())?.generation!==credential.generation))throw new HttpError(409,'Speech was stopped or its settings changed.');
       trace?.response({model,provider,format:'wav',audioBytes:audio.length});
       return audio;
     } catch(error) {

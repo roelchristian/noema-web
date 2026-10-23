@@ -2,7 +2,7 @@
 
 A local knowledge workspace for writing, reading, and connecting ideas. Keep notes, original sources, and reusable knowledge entities together in self-contained vaults backed by SQLite.
 
-No accounts or API keys are required for local editing. Optional AI features use your own OpenAI API key.
+No accounts or API keys are required for local editing. Optional writing/search features use your own OpenAI API key; remote Gemini speech uses a separate Gemini API key.
 
 ## Make room for connected thinking
 

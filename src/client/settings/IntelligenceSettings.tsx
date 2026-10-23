@@ -1,3 +1,4 @@
+import {GeminiSpeechKey} from './GeminiSpeechKey';
 import {aiPersonas,defaultPersonaId,type BuiltinPersonaId} from '../../shared/ai-personas';
 import {getLocale} from '../i18n';
 import {t as uiText} from '../i18n';
@@ -40,10 +41,10 @@ export function IntelligenceSettings() {
       <div className="ai-setting-row"><label id="ai-tts-label" htmlFor="ai-tts-enabled">{uiText("Text to speech")}</label><div>
         <button id="ai-tts-enabled" type="button" className="security-switch" role="switch" aria-checked={Boolean(preferences.ttsEnabled)} aria-labelledby="ai-tts-label" aria-describedby="ai-tts-description" disabled={busy||!status} onClick={()=>setPreferences(current=>({...current,ttsEnabled:!current.ttsEnabled}))}><span/></button>
       </div></div>
-      <p id="ai-tts-description">{provider==='kokoro'?uiText("Enable Speak for selected editor blocks across all vaults. Kokoro runs locally on your CPU with an AI-generated voice. No API key or API charges."):uiText("Enable Speak with an AI-generated voice across all vaults. Selected text is sent to OpenAI. An OpenAI API key is required and API charges apply.")}</p>
+      <p id="ai-tts-description">{provider==='kokoro'?uiText("Enable Speak for selected editor blocks across all vaults. Kokoro runs locally on your CPU with an AI-generated voice. No API key or API charges."):provider==='gemini'?uiText("Enable Speak with an AI-generated voice across all vaults. Selected text is sent to Google. A separate Gemini API key is required and API charges apply."):uiText("Enable Speak with an AI-generated voice across all vaults. Selected text is sent to OpenAI. An OpenAI API key is required and API charges apply.")}</p>
       <div className="ai-setting-row"><label htmlFor="ai-tts-provider">{uiText("TTS provider")}</label>
         <Select id="ai-tts-provider" value={provider} disabled={busy||!status} onChange={event=>{const selected=event.target.value;if(isSpeechProvider(selected))setPreferences(current=>({...current,ttsProvider:selected,ttsVoice:defaultSpeechVoiceFor(selected)}));}}>
-          <option value="kokoro">Kokoro 82M (default, local)</option><option value="openai">OpenAI (opt in)</option>
+          <option value="kokoro">Kokoro 82M (default, local)</option><option value="openai">OpenAI (opt in)</option><option value="gemini">Gemini Flash-Lite TTS (opt in)</option>
         </Select>
       </div>
       {provider==='openai'&&!status?.configured&&<p role="note">{uiText("Save an OpenAI API key below to use OpenAI speech.")}</p>}
@@ -52,7 +53,7 @@ export function IntelligenceSettings() {
           {speechVoicesFor(provider).map(voice=><option key={voice} value={voice}>{voice[0]!.toUpperCase()+voice.slice(1)}{voice===defaultSpeechVoiceFor(provider)?' (default)':''}</option>)}
         </Select>
       </div>
-      <p id="ai-tts-voice-description">{provider==='kokoro'?uiText("Each voice uses separate saved audio generated locally. Switching back can reuse its saved audio."):uiText("Each OpenAI voice uses separate saved audio. Switching back can reuse its saved audio.")}</p>
+      <p id="ai-tts-voice-description">{provider==='kokoro'?uiText("Each voice uses separate saved audio generated locally. Switching back can reuse its saved audio."):provider==='gemini'?uiText("Each Gemini voice uses separate saved audio. Switching back can reuse its saved audio."):uiText("Each OpenAI voice uses separate saved audio. Switching back can reuse its saved audio.")}</p>
       <p>{uiText("Speech model:")} <code>{speechModelFor(provider)}</code></p>
       {provider==='kokoro'&&<div className="local-speech-model" aria-busy={speechBusy}>
         <p id="ai-tts-model-status" role="status" aria-live="polite">{speechBusy?uiText("Preparing local speech model…"):localSpeech?.ready?uiText("Kokoro model ready for local speech."):localSpeech?uiText("Download the Kokoro model to use Speak. Model files are stored locally and excluded from Git."):speechError?uiText("Local speech model availability could not be checked."):uiText("Checking local speech model…")}</p>
@@ -111,6 +112,7 @@ export function IntelligenceSettings() {
         <button className="button danger" type="button" disabled={busy||!status?.configured} onClick={()=>void perform(async()=>setStatus(await api.removeIntelligence()),'Saved key removed from Noema.')}>{uiText("Remove key")}</button></div>
     </form>
     </details>
+    <GeminiSpeechKey/>
     {changed&&<p>{uiText("Save AI preferences before validating the new selection.")}</p>}
     <p className="intelligence-note">{uiText("Writing and search features send relevant note text, source text, and search queries to OpenAI. Source enrichment runs automatically; automatic indexing is configured below. API charges apply to OpenAI features. Kokoro speech stays local.")}</p>
     <p role="status" aria-live="polite">{uiText(message)}</p>

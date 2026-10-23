@@ -429,38 +429,6 @@ main {
   min-width: 0;
   flex: 1 1 140px;
 }
-.workspace-history {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
-  margin-right: -10px;
-}
-.workspace-history button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--control-target-compact);
-  height: var(--control-target-compact);
-  padding: 6px;
-  border-radius: 5px;
-  color: var(--text-muted);
-}
-.workspace-history button:hover:not(:disabled) {
-  background: var(--surface-hover);
-  color: var(--text);
-}
-.workspace-history button:disabled {
-  opacity: .25;
-  cursor: default;
-}
-.workspace-history .icon {
-  width: 14px;
-  height: 14px;
-}
-.workspace-history .history-back .icon {
-  transform: rotate(180deg);
-}
 .top-actions {
   gap: 12px;
   flex-wrap: wrap;
@@ -571,7 +539,7 @@ main {
 :root[data-mode=dark] :is(.library > p, .card-arrow, .empty, .organization-heading p, .organization-hint, .organization-library .eyebrow, .organization-item-name small, .recent-time) {
   color: var(--text-muted);
 }
-:root[data-mode=dark] :is(input:not(#page-title):not(.entity-name):not([type=checkbox]), select, textarea, .organization-search, .library-tools input, .library-tools select, .toolbar-source-actions select):not(.latex-input, :where(.library-view-filter-input > input)) {
+:root[data-mode=dark] :is(input:not(#page-title):not(.entity-name):not([type=checkbox]), select, textarea:not(#page-title), .organization-search, .library-tools input, .library-tools select, .toolbar-source-actions select):not(.latex-input, :where(.library-view-filter-input > input)) {
   background: var(--surface-raised);
   color: var(--text);
   border-color: var(--control-border);
@@ -959,6 +927,12 @@ main {
 .breadcrumbs > span > .icon {
   width: 12px;
   height: 12px;
+  opacity: .5;
+}
+.breadcrumb-separator {
+  flex: none;
+  color: var(--text-muted);
+  font-weight: 400;
   opacity: .5;
 }
 .branch-toggle {
@@ -1351,18 +1325,6 @@ main {
     white-space: nowrap;
     text-overflow: ellipsis;
   }
-  .topbar:has(.page-toolbar) .workspace-history > button:not(.history-back) {
-    display: none;
-  }
-  .workspace-history {
-    margin-right: 0;
-    gap: 0;
-  }
-  .workspace-history button {
-    width: var(--control-target-compact);
-    height: var(--control-target-compact);
-    padding: 9px;
-  }
   .topbar .top-actions {
     flex: 0 0 auto;
     justify-content: flex-end;
@@ -1383,9 +1345,6 @@ main {
   }
 }
 @media (max-width: 380px) {
-  .workspace-history button {
-    width: var(--control-target-compact);
-  }
   .topbar #breadcrumb {
     flex-basis: 0;
   }

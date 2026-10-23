@@ -7,7 +7,7 @@
 :is(.page-tool, .sidebar-menu-trigger, .knowledge-icon-action,
     .knowledge-entity-sort, .knowledge-entity-tabs > button,
     .knowledge-entity-pagination button, .entity-alias-list button,
-    .entity-property-card-header button, .workspace-history button) {
+    .entity-property-card-header button) {
   min-width: var(--control-target-compact);
   min-height: var(--control-target-compact);
 }
@@ -16,7 +16,7 @@
 
 @media (max-width: 750px), (pointer: coarse) {
   .page-toolbar, .page-toolbar-history, .page-toolbar-reading { flex-wrap: wrap; }
-  .workspace-history button, .workspace-navigation .sidebar-menu-trigger,
+  .workspace-navigation .sidebar-menu-trigger,
   .page-row-actions > .sidebar-menu-trigger, .panel-top button,
   .settings-close, .toast-close, .ai-notifications-close,
   .ai-notification-read, .mobile-navigation-close,

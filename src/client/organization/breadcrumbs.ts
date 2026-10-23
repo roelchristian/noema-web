@@ -21,7 +21,7 @@ export function folderBreadcrumbs(folders: Folder[], folderId: string | null | u
 }
 
 export function pageBreadcrumbs(organization: Organization, page: PageSummary | null): LocationBreadcrumb[] {
-  const path: LocationBreadcrumb[] = [{key: 'view', label: 'Pages', icon: 'pages', target: {collection: '', folder: ''}}];
+  const path: LocationBreadcrumb[] = [];
   if (!page) return path;
   const location = organization.locations.find(item => item.kind === 'page' && item.item_id === page.id);
   path.push(...folderBreadcrumbs(organization.folders, location?.folder_id));

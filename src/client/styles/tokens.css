@@ -45,8 +45,8 @@
 
   /* Shared editor and source-reader prose; width excludes layout gutters. */
   --document-line-width: 630px;
-  --document-font-size: 15px;
-  --document-line-height: 1.75;
+  --document-font-size: 16px;
+  --document-line-height: 1.5;
   --document-letter-spacing: -0.01em;
 
   /* Each view adds its own gutters around the shared prose width. */
@@ -55,10 +55,10 @@
   --source-reader-note-gutter: 40px;
 
   /* Document headings stay separate from UI text */
-  --page-heading-size: 1.25rem;
-  --page-heading-weight: 500;
+  --page-heading-size: 1.5rem;
+  --page-heading-weight: 650;
   --page-heading-line-height: 1.75rem;
-  --page-heading-letter-spacing: -.01em;
+  --page-heading-letter-spacing: normal;
 
   /* Interface sizing */
   --workspace-toolbar-height: 44px;
@@ -169,7 +169,6 @@
 
 @media (max-width: 750px) {
   :root {
-    --document-font-size: 17px;
     --editor-page-padding-inline: 24px;
     --source-reader-address-gutter: 64px;
     --page-heading-size: 26px;

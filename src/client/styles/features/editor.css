@@ -1037,6 +1037,7 @@
   color: light-dark(#242424, var(--text))
 }
 .page {
+  --document-line-width: 680px;
   max-width: calc(var(--document-line-width) + 2 * var(--editor-page-padding-inline));
   margin: 0 auto;
   padding: 58px var(--editor-page-padding-inline) 50px
@@ -1056,6 +1057,14 @@
 }
 #page-title {
   display: block;
+  grid-area: 1 / 1;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   border: 0;
   background: none;
   font-family: var(--font-title);
@@ -1092,7 +1101,10 @@
   margin: 9px 0;
   line-height: var(--document-line-height);
   font-size: var(--document-font-size);
-  letter-spacing: var(--document-letter-spacing)
+  letter-spacing: normal
+}
+.block.paragraph {
+  margin: 13px 0;
 }
 .block-content {
   flex: 1;
@@ -1530,7 +1542,18 @@
   }
 }
 .page > .page-title-heading {
-  margin: 0 0 24px;
+  display: grid;
+  min-width: 0;
+  margin: 0 0 16px;
+}
+.page-title-sizer {
+  grid-area: 1 / 1;
+  min-width: 0;
+  padding-bottom: 4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  visibility: hidden;
+  pointer-events: none;
 }
 .page-title-heading.has-title-math {
   position: relative;
@@ -1876,6 +1899,7 @@
 }
 .block.image {
   align-items: flex-start;
+  margin: 32px 0;
 }
 .image-upload-error {
   margin-top: 12px;
@@ -2364,6 +2388,10 @@
   letter-spacing: var(--page-heading-letter-spacing);
   color: var(--text);
   overflow-wrap: anywhere;
+}
+.page > .page-title-heading,
+#content .page #page-title {
+  line-height: 1.4;
 }
 .block.numbered {
   display: flex;

@@ -1,3 +1,4 @@
+import {isAIExplanation} from '../../shared/semantic-blocks';
 import {immutableBlocks,immutablePage} from '../../shared/immutable-blocks';
 import {citationSourceIds} from '../../shared/citations';
 import { readWorkspaceURL, workspaceURL, type NavigationAddress, type WorkspaceAddress } from './navigation-address';
@@ -20,8 +21,13 @@ function canonical(value: unknown): unknown {
   if (value && typeof value==='object') return Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,item])=>[key,canonical(item)]));
   return value;
 }
-const pageContent = (page: Page) => JSON.stringify(canonical({title:page.title,icon:page.icon??null,featuredImageId:page.featuredImageId??null,blocks:page.blocks,sourceIds:page.sourceIds,aiReviewAccepted:!!page.aiReviewAccepted}));
-const applyDraft = (server: Page, draft: Page): Page => ({...server,title:draft.title,icon:draft.icon,featuredImageId:draft.featuredImageId,blocks:structuredClone(draft.blocks),sourceIds:[...draft.sourceIds],entityMatchCache:undefined,conceptContentHash:undefined});
+const pageContent = (page: Page) => JSON.stringify(canonical({title:page.title,icon:page.icon??null,featuredImageId:page.featuredImageId??null,blocks:page.blocks,sourceIds:page.sourceIds,aiReviewAccepted:!!page.aiReviewAccepted,editedAfterGeneration:!!page.editedAfterGeneration}));
+const applyDraft = (server: Page, draft: Page): Page => {
+  const page = {...server,aiReviewAccepted:!!(server.aiReviewAccepted||draft.aiReviewAccepted),editedAfterGeneration:!!(server.editedAfterGeneration||draft.editedAfterGeneration),title:draft.title,icon:draft.icon,featuredImageId:draft.featuredImageId,blocks:structuredClone(draft.blocks),sourceIds:[...draft.sourceIds],entityMatchCache:undefined,conceptContentHash:undefined};
+  page.aiStatus=nextPageAIStatus(server,page,()=>undefined);
+  page.editedAfterGeneration=page.aiStatus==='ai_generated_edited';
+  return page;
+};
 export interface WorkspaceState {
   saveFailures: PageSaveIssue[]; draftStorageFailures: PageSaveIssue[]; draftRecoveries: PageDraftRecovery[];
   domainSavingPageId: string | null;
@@ -81,7 +87,7 @@ export class Workspace {
       const cached = this.pageCache.get(saved.id);
       if (cached) {
         const unchanged = cached.blocks === original.blocks;
-        const page = {...cached, title:cached.title===original.title?saved.title:cached.title,titleEdited:cached.title===original.title?undefined:cached.titleEdited,enrichmentPending:saved.enrichmentPending,enrichmentPendingFields:saved.enrichmentPendingFields,enrichmentFields:saved.enrichmentFields,language:saved.language,aiReviewAccepted:!!(cached.aiReviewAccepted||saved.aiReviewAccepted), aiStatus:nextPageAIStatus(saved,cached,id=>entityMentionName(this.state.entities.find(entity=>entity.id===id))), ...(unchanged && !this.state.reviewing && canIdentifyEntities() ? {blocks: saved.blocks} : {}), pageDomains:saved.pageDomains,conceptClassification:saved.conceptClassification,conceptContentHash:unchanged?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at};
+        const page = {...cached, title:cached.title===original.title?saved.title:cached.title,titleEdited:cached.title===original.title?undefined:cached.titleEdited,enrichmentPending:saved.enrichmentPending,enrichmentPendingFields:saved.enrichmentPendingFields,enrichmentFields:saved.enrichmentFields,language:saved.language,editedAfterGeneration:!!(cached.editedAfterGeneration||saved.editedAfterGeneration),aiReviewAccepted:!!(cached.aiReviewAccepted||saved.aiReviewAccepted), aiStatus:nextPageAIStatus(saved,cached,id=>entityMentionName(this.state.entities.find(entity=>entity.id===id))), ...(unchanged && !this.state.reviewing && canIdentifyEntities() ? {blocks: saved.blocks} : {}), pageDomains:saved.pageDomains,conceptClassification:saved.conceptClassification,conceptContentHash:unchanged?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at};
         this.pageCache.set(saved.id, page);
         if(!this.pageLockPending)this.titler.observe(page, unchanged);
       }
@@ -613,9 +619,10 @@ export class Workspace {
     page.blocks=immutableBlocks(page.blocks,current.blocks);
     page.sourceIds=[...new Set([...page.sourceIds,...citationSourceIds(page.blocks)])];
     page.aiStatus=nextPageAIStatus(current,page,id=>entityMentionName(this.state.entities.find(entity=>entity.id===id)));
+    page.editedAfterGeneration=page.aiStatus==='ai_generated_edited';
     if(page.featuredImageId && !page.blocks.some(block=>block.type==='image' && block.imageId===page.featuredImageId))page.featuredImageId=null;
     this.pageCache.set(page.id, page);
-    this.patch({page, pages: this.state.pages.map(p => p.id === page.id ? {...p, title: page.title, icon: page.icon, featuredImageId: page.featuredImageId, aiStatus:page.aiStatus,aiReviewAccepted:page.aiReviewAccepted} : p)});
+    this.patch({page, pages: this.state.pages.map(p => p.id === page.id ? {...p, title: page.title, icon: page.icon, featuredImageId: page.featuredImageId, aiStatus:page.aiStatus,aiReviewAccepted:page.aiReviewAccepted,containsAIExplanations:page.blocks.some(isAIExplanation)} : p)});
     this.titler.observe(page);
     this.saver.enqueue(page);
   }

@@ -73,7 +73,10 @@ export class EntityScans {
     }));
     const domainIds=new Set([page.pageDomains?.primaryDomainId,...(page.pageDomains?.secondaryDomainIds??[]),...candidates.flatMap(entity=>entity.domainIds??[])]);
     const eligibleDomains=DOMAINS.filter(domain=>!domain.parent_id||domainIds.has(domain.id)||domain.label.toLowerCase().split(/[^\p{L}\p{N}]+/u).some(word=>word.length>4&&bodyText.includes(word))).map(({id})=>({id,path:domainPath(id).map(domain=>domain.label).join(' > ')}));
-    const input = JSON.stringify({...(previous?.continuation?{continuation:{excluded:[...previous.continuation.excluded,...previous.suggestions.map(({name,type,aliases,existingId})=>({name,type,aliases,existingId}))]}}:{}),untrusted_note:{title:page.title,bodyTextRuns:runs,bodyContext},pageDomains:page.pageDomains??null,taxonomyVersion:TAXONOMY_VERSION,eligibleDomains,schema:this.knowledge.schema(vault),existingEntities:candidates.map(({id,name,aliases,type,subtypes,domainIds,description}) => ({id,name,aliases,type,subtypes,domainIds:domainIds??[],description:description.slice(0,600),alreadyConnected:connected.has(id)}))});
+    const fullSchema=this.knowledge.schema(vault);
+    // Discovery chooses identities and classifications; typed validation metadata is not model input.
+    const scanSchema={subtypes:fullSchema.subtypes,properties:fullSchema.properties,subtypeProperties:fullSchema.subtypeProperties};
+    const input = JSON.stringify({...(previous?.continuation?{continuation:{excluded:[...previous.continuation.excluded,...previous.suggestions.map(({name,type,aliases,existingId})=>({name,type,aliases,existingId}))]}}:{}),untrusted_note:{title:page.title,bodyTextRuns:runs,bodyContext},pageDomains:page.pageDomains??null,taxonomyVersion:TAXONOMY_VERSION,eligibleDomains,schema:scanSchema,existingEntities:candidates.map(({id,name,aliases,type,subtypes,domainIds,description}) => ({id,name,aliases,type,subtypes,domainIds:domainIds??[],description:description.slice(0,600),alreadyConnected:connected.has(id)}))});
     if (input.length > 80000 || bodyText.length > 40000) throw new HttpError(413, 'This note exceeds the discovery scan limit. Scan a shorter note.');
     return input;
   }

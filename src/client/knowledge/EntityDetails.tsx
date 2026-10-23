@@ -1,6 +1,6 @@
 import {EntityReferencePicker} from './EntityReferencePicker';
 import {clearPropertyDraft,getPropertyDraft,setPropertyDraft,subscribePropertyDrafts,propertyDraftSignature,runPropertyMutation,beginPropertySave,endPropertySave,getAdvancedPropertySelection,setAdvancedPropertySelection,type EntityPropertyDraft} from './entity-property-drafts';
-import {propertyLabel} from '../../shared/property-definitions';
+import {resolvePropertyDefinition,propertyLabel} from '../../shared/property-definitions';
 import {useEffect, useRef, useState, useSyncExternalStore, type FormEvent} from 'react';
 import {t as uiText} from '../i18n';
 import {Icon} from '../components/Icon';
@@ -30,27 +30,38 @@ export function EntityDetails({vaultId, entity, schema, onSave, idPrefix = "enti
   const server = entityDraftValues(entity), values = mergeEntityDraft(draft, server);
   const {name, type, description, subtypes, domainIds, aliases, mentionCase} = values;
   const [status, setStatus] = useState(''), [busy, setBusy] = useState(false);
+  const [classificationImpact,setClassificationImpact]=useState<Awaited<ReturnType<typeof api.entityClassificationImpact>>>();
+  const classificationChanged=type!==entity.type||JSON.stringify([...subtypes].sort())!==JSON.stringify([...entity.subtypes].sort());
   const mounted = useRef(true);
   useEffect(() => {mounted.current = true; return () => {mounted.current = false;};}, []);
   const dirty = entityDraftDirty(values, server);
   function change(patch: Partial<EntityDraftValues>) {
-    setEntityDraft(vaultId, entity.id, server, {...values, ...patch}); setStatus('');
+    setEntityDraft(vaultId, entity.id, server, {...values, ...patch}); setStatus('');setClassificationImpact(undefined);
   }
-  function reset() {if (draft) clearEntityDraft(vaultId, entity.id, draft); setStatus('');}
-  async function submit(event: FormEvent) {
+  function reset() {if (draft) clearEntityDraft(vaultId, entity.id, draft); setStatus('');setClassificationImpact(undefined);}
+  async function submit(event: FormEvent,retainLegacy=false) {
     event.preventDefault();
     if (busy || !dirty || !name.trim()) return;
     const submitted = draft;
     setBusy(true); setStatus('');
     try {
-      await onSave({name: name.trim(), aliases: type === 'source' ? [] : parseAliases(aliases), mentionCase, type, subtypes, domainIds: type === 'concept' ? domainIds : [], description});
+      let impact=classificationImpact;
+      if(classificationChanged&&!retainLegacy){impact=await api.entityClassificationImpact(vaultId,entity.id,{type,subtypes});if(mounted.current)setClassificationImpact(impact);if(impact.requiresConfirmation||impact.structuralBlockers.length){setStatus(uiText('Review classification impact before saving.'));return;}}
+      if(retainLegacy&&(!impact||impact.structuralBlockers.length))return;
+      await onSave({...(retainLegacy?{classification_mode:'retain_legacy' as const,impact_fingerprint:impact!.fingerprint}:{}),name: name.trim(), aliases: type === 'source' ? [] : parseAliases(aliases), mentionCase, type, subtypes, domainIds: type === 'concept' ? domainIds : [], description});
       const cleared = submitted && clearEntityDraft(vaultId, entity.id, submitted);
       if (mounted.current && cleared) setStatus('Saved');
-    } catch { /* Parent reports the error; the draft remains available. */ }
+    } catch(error) {if(mounted.current){setStatus(error instanceof Error?error.message:uiText('Could not save. Draft retained.'));setClassificationImpact(undefined);}}
     finally {if (mounted.current) setBusy(false);}
   }
   return <form id={idPrefix + "-form"} className="entity-detail-form" onSubmit={submit} onKeyDown={event=>{if(event.key==='Enter'&&(event.metaKey||event.ctrlKey)&&!event.nativeEvent.isComposing){event.preventDefault();event.currentTarget.requestSubmit();}}}>
-    <div className="entity-detail-save"><span id={idPrefix + "-saved"} role="status">{busy?uiText("Saving…"):dirty?uiText("Unsaved changes"):status||uiText("Details")}</span><div><button type="button" className="knowledge-icon-action" aria-label={uiText("Discard changes")} title={uiText("Discard changes")} disabled={busy||!dirty} onClick={reset}><Icon name="refresh"/></button><button type="submit" className="button small primary" aria-label={uiText("Save entity details")} aria-keyshortcuts="Meta+Enter Control+Enter" disabled={busy||!dirty||!name.trim()}><Icon name="check"/>{busy?uiText("Saving…"):uiText("Save")}</button></div></div>
+    <div className="entity-detail-save"><span id={idPrefix + "-saved"} role="status">{busy?uiText("Saving…"):status|| (dirty?uiText("Unsaved changes"):uiText("Details"))}</span><div><button type="button" className="knowledge-icon-action" aria-label={uiText("Discard changes")} title={uiText("Discard changes")} disabled={busy||!dirty} onClick={reset}><Icon name="refresh"/></button><button type="submit" className="button small primary" aria-label={uiText("Save entity details")} aria-keyshortcuts="Meta+Enter Control+Enter" disabled={busy||!dirty||!name.trim()}><Icon name="check"/>{busy?uiText("Saving…"):uiText("Save")}</button></div></div>
+    {classificationImpact&&classificationChanged&&<section className="entity-classification-impact" aria-label={uiText('Classification impact')}>
+      <p role="status">{uiText('Changing classification preserves all authored values and reference IDs.')} {classificationImpact.outgoing.length} {uiText('outgoing values and')} {classificationImpact.incoming.length} {uiText('incoming references need review.')}</p>
+      {!!classificationImpact.structuralBlockers.length&&<p role="alert">{classificationImpact.structuralBlockers.join(' ')}</p>}
+      <ul>{[...classificationImpact.outgoing,...classificationImpact.incoming].map(item=><li key={item.propertyId}>{item.reason}</li>)}</ul>
+      {classificationImpact.requiresConfirmation&&!classificationImpact.structuralBlockers.length&&<button type="button" className="button small" disabled={busy} onClick={event=>void submit(event,true)}>{uiText('Keep legacy values and save classification')}</button>}
+    </section>}
     <div className="entity-form-group">
       <label>{uiText("Name")}<input className="entity-name" aria-label={uiText("Entity name")} autoComplete="off" required maxLength={200} disabled={busy} value={name} onChange={e=>change({name:e.target.value})}/></label>
       <label>{uiText("Description")}<textarea aria-label={uiText("Entity description")} placeholder={uiText("A short description…")} rows={3} disabled={busy} value={description} onChange={e=>change({description:e.target.value})}/></label>
@@ -75,7 +86,8 @@ export function PropertyEditor({entity, entities, mention, onSave, onRemove,defi
   const [selection,setSelection]=useState(()=>getAdvancedPropertySelection(vault,entity.id)??{edit:undefined as string|undefined,name:''});
   const {edit,name}=selection;
   const draftId=edit??'new:'+name;
-  const definition=definitions?.find(item=>item.legacyName.toLowerCase()===name.toLowerCase()&&item.scope.type===entity.type&&(item.scope.kind==='main_type'||entity.subtypes.includes(item.scope.subtypeId)));
+  const definition=definitions?resolvePropertyDefinition(definitions,entity.type,entity.subtypes,name,entity.properties.find(item=>item.id===edit)?.metadata?.definition_id):undefined;
+  const label=(name:string,bound?:string)=>resolvePropertyDefinition(definitions,entity.type,entity.subtypes,name,bound)?.label??propertyLabel(name);
   useEffect(()=>setSelection(getAdvancedPropertySelection(vault,entity.id)??{name:''}),[vault,entity.id]);
   const draft=useSyncExternalStore(subscribePropertyDrafts,()=>getPropertyDraft(vault,entity.id,draftId));
   const kind=draft?.kind??'text',value=draft?.value??'',target=draft?.target??'';
@@ -89,11 +101,11 @@ export function PropertyEditor({entity, entities, mention, onSave, onRemove,defi
   const form = useRef<HTMLFormElement>(null);
   const [focusRequest, setFocusRequest] = useState(0);
   const unset = entity.propertyNames.filter(name => !entity.properties.some(property => property.name.toLowerCase() === name.toLowerCase()));
-  const managed=(property:Property)=>definitions?.some(item=>item.legacyName.toLowerCase()===property.name.toLowerCase()&&!item.editable)??false;
+  const managed=(property:Property)=>(definitions?.some(item=>item.legacyName.toLowerCase()===property.name.toLowerCase()&&!item.editable)??false)&&property.provenance?.origin!=='manual'&&property.provenance?.origin!=='legacy_unknown';
   const names = name && !entity.propertyNames.includes(name) ? [name, ...entity.propertyNames] : entity.propertyNames;
   function reset() {clearPropertyDraft(vault,entity.id,draftId);select({name:''});setError('');}
   function focusValue() {form.current?.scrollIntoView({behavior: 'smooth', block: 'nearest'}); form.current?.querySelector<HTMLElement>('textarea, input')?.focus({preventScroll: true});}
-  function editing(property: Property) {const storedName=entity.propertyNames.find(name=>name.toLowerCase()===property.name.toLowerCase())??property.name;const initial={kind:property.target_id?'entity' as const:'text' as const,value:property.value??'',target:property.target_id??'',legacy:property.metadata?.compatibility==='legacy_incompatible'};if(!getPropertyDraft(vault,entity.id,property.id))setPropertyDraft(vault,entity.id,property.id,{...initial,baseline:propertyDraftSignature(initial)});select({edit:property.id,name:storedName});setError('');setStatus('');setFocusRequest(current=>current+1);}
+  function editing(property: Property) {const storedName=entity.propertyNames.find(name=>name.toLowerCase()===property.name.toLowerCase())??property.name;const initial={kind:property.target_id?'entity' as const:'text' as const,value:property.value??'',target:property.target_id??'',legacy:property.metadata?.compatibility==='legacy_incompatible'||!!definitions?.some(item=>item.legacyName.toLowerCase()===property.name.toLowerCase()&&!item.editable)&&!managed(property)};if(!getPropertyDraft(vault,entity.id,property.id))setPropertyDraft(vault,entity.id,property.id,{...initial,baseline:propertyDraftSignature(initial)});select({edit:property.id,name:storedName});setError('');setStatus('');setFocusRequest(current=>current+1);}
   useEffect(() => {if (focusRequest) focusValue();}, [focusRequest]);
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -117,16 +129,16 @@ export function PropertyEditor({entity, entities, mention, onSave, onRemove,defi
   }
   return <div className="entity-property-editor">
     <div className="entity-property-list">{entity.properties.map(property => <div key={property.id} className={'entity-property-card'+(edit === property.id ? ' is-editing' : '')}>
-      <div className="entity-property-card-header"><strong>{propertyLabel(property.name)}</strong><span>{managed(property)?uiText("Managed source metadata"):property.target_id ? uiText("Entity reference") : uiText("Text")}</span><div>
-        <button type="button" disabled={busy||managed(property)} aria-label={uiText("Edit ")+propertyLabel(property.name)} title={uiText("Edit value")} onClick={() => editing(property)}><Icon name="edit"/></button>
-        <button type="button" disabled={busy||managed(property)} aria-label={uiText("Remove ")+propertyLabel(property.name)} title={uiText("Remove value")} onClick={() => void remove(property)}><Icon name="close"/></button>
+      <div className="entity-property-card-header"><strong>{label(property.name,property.metadata?.definition_id)}</strong><span>{managed(property)?uiText("Managed source metadata"):property.target_id ? uiText("Entity reference") : uiText("Text")}</span><div>
+        <button type="button" disabled={busy||managed(property)} aria-label={uiText("Edit ")+label(property.name,property.metadata?.definition_id)} title={uiText("Edit value")} onClick={() => editing(property)}><Icon name="edit"/></button>
+        <button type="button" disabled={busy||managed(property)} aria-label={uiText("Remove ")+label(property.name,property.metadata?.definition_id)} title={uiText("Remove value")} onClick={() => void remove(property)}><Icon name="close"/></button>
       </div></div><div className="entity-property-value">{property.target_id ? mention(property.target_id) : property.value}</div>
     </div>)}</div>
-    {!!unset.length && <div className="entity-property-unset"><div>{unset.map(field => <button type="button" key={field} disabled={busy} onClick={() => {select({name:field}); setStatus(''); setFocusRequest(current => current + 1);}}><Icon name="plus"/>{propertyLabel(field)}</button>)}</div></div>}
+    {!!unset.length && <div className="entity-property-unset"><div>{unset.map(field => <button type="button" key={field} disabled={busy} onClick={() => {select({name:field}); setStatus(''); setFocusRequest(current => current + 1);}}><Icon name="plus"/>{label(field)}</button>)}</div></div>}
     {!entity.propertyNames.length && !entity.properties.length && <p className="entity-detail-empty">{uiText("No fields for this classification.")}</p>}
     {(!!name || !!edit) && <form ref={form} className="entity-property-form" aria-label={edit ? uiText("Edit property") : uiText("Add property")} onSubmit={submit}>
       <div className="entity-property-form-heading"><h4>{edit ? uiText("Edit property") : name}</h4><button type="button" className="knowledge-icon-action" aria-label={uiText("Close property editor")} title={uiText("Close property editor")} disabled={busy} onClick={reset}><Icon name="close"/></button></div>
-      <label>{uiText("Property")}<Select required aria-label={uiText("Property name")} disabled={busy||!!draft?.uncertainCreate} value={name} onChange={event => {setName(event.target.value);setStatus('');}}><option value="">{uiText("Choose a property…")}</option>{names.map(field => <option key={field} value={field}>{propertyLabel(field)}</option>)}</Select></label>
+      <label>{uiText("Property")}<Select required aria-label={uiText("Property name")} disabled={busy||!!draft?.uncertainCreate} value={name} onChange={event => {setName(event.target.value);setStatus('');}}><option value="">{uiText("Choose a property…")}</option>{names.map(field => <option key={field} value={field}>{label(field)}</option>)}</Select></label>
       <fieldset className="property-value-kind" disabled={busy||!!draft?.uncertainCreate}><legend>{uiText("Value type")}</legend><div>{(['text', 'entity'] as const).map(option => <button type="button" key={option} aria-pressed={kind === option} onClick={() => {setKind(option);setStatus('');}}><Icon name={option === 'text' ? 'page' : 'knowledge'}/>{option === 'text' ? uiText("Text") : uiText("Entity reference")}</button>)}</div></fieldset>
       {definition&&edit&&<label><input type="checkbox" checked={!!draft?.legacy} onChange={event=>patch({legacy:event.target.checked})}/>{uiText('Preserve as legacy value')}</label>}
       {kind === 'text' ? <label>{uiText("Value")}<PropertyScalarInput label={uiText('Property value')} definition={draft?.legacy?undefined:definition} disabled={busy||!!draft?.uncertainCreate} value={value} onChange={setValue}/></label> : <EntityReferencePicker vaultId={vault} entities={entities} value={target} onChange={setTarget} disabled={busy||!!draft?.uncertainCreate} types={definition?.allowedTargetTypes} subtypes={definition?.allowedTargetSubtypes} label={uiText('Referenced entity')} creation={draft?.referenceCreation} onCreationChange={referenceCreation=>patch({referenceCreation})}/>}

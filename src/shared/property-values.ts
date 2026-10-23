@@ -53,7 +53,7 @@ function classifyBasePropertyValue(definition:PropertyDefinition, property:Pick<
   result.latitude=Number(match[1]);result.longitude=Number(match[2]);return result;
  }
  if(definition.valueKind==='date') {
-  const adapted=adaptTemporalProperty(definition.scope.type,property.name,raw);
+  const adapted=adaptTemporalProperty(definition.scope.type,property.name,raw,true);
   const date=adapted?.date??(adapted===null?temporalDate(raw.trim()):null);
   if(!date) {
    const expressions=adapted===null?extractTemporal(raw.trim()):[],expression=expressions.length===1?expressions[0]:undefined;

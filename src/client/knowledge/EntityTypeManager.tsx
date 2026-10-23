@@ -1,3 +1,4 @@
+import {PropertyDefinitionManager} from './PropertyDefinitionManager';
 import {propertyLabel} from '../../shared/property-definitions';
 import {t as uiText} from '../i18n';
 import { useState, type FormEvent } from 'react';
@@ -54,6 +55,6 @@ export function EntityTypeManager({vaultId, schema, onChange, entityColors, onCo
         <div className="type-field-list">{(schema.subtypeProperties[propertySubtype.id] ?? []).map(name => <span key={name}>{propertyLabel(name)}</span>)}</div>
         <form className="type-add-form" onSubmit={event => { void save(event,'property'); }}><input required maxLength={200} aria-label={uiText("New subtype property")} placeholder={uiText("e.g. occupation")} value={property} disabled={busy} onChange={event => setProperty(event.target.value)}/><button className="button small" disabled={busy}>{uiText("Add property to") + " "}{propertySubtype.name}</button></form>
       </> : <p className="section-hint">{uiText("Create a subtype to define its properties.")}</p>}
-    </div>{error && <p role="alert" className="dialog-error">{error}</p>}
+    </div><PropertyDefinitionManager key={type} vaultId={vaultId} type={type} schema={schema} onChange={onChange}/>{error && <p role="alert" className="dialog-error">{error}</p>}
   </div></div>;
 }

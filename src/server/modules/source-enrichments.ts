@@ -1,3 +1,4 @@
+import {getNameProvenance,proposeValue,rawSourceHash,recordEntityNameProvenance} from './property-provenance.js';
 import {SourceMath} from './source-math.js';
 import {SourceAuthorBackfill,recordSourceAuthorsProcessed} from './source-author-backfill.js';
 import {sourceEnrichmentLines} from './source-enrichment-prompt.js';
@@ -24,7 +25,9 @@ export class SourceEnrichments {
  retry(vault:string,id:string) {
   const file=this.store.get<SourceFile>('SELECT * FROM source_files WHERE vault_id=? AND id=?',vault,id);
   if(!file)throw new HttpError(404,'Source file not found');
-  if(file.status!=='ready'||file.enrichment_status!=='failed')throw new HttpError(409,'Only failed enrichment of processed sources can be retried.');
+  const paused=this.store.get('SELECT 1 FROM source_automation_pauses WHERE file_id=? AND vault_id=?',id,vault);
+  if(file.status!=='ready'||(file.enrichment_status!=='failed'&&!paused))throw new HttpError(409,'Only failed enrichment of processed sources can be retried.');
+  this.store.run('DELETE FROM source_automation_pauses WHERE file_id=? AND vault_id=?',id,vault);
   this.store.run("UPDATE source_files SET enrichment_status='pending',enrichment_error=NULL,enrichment_attempts=0,enrichment_next_attempt_at='' WHERE id=?",id);
   return this.store.get<SourceFile>('SELECT * FROM source_files WHERE id=?',id)!;
  }
@@ -34,7 +37,7 @@ export class SourceEnrichments {
   try {
    if(!this.intelligence.status().configured)return;
    const file=this.store.get<SourceFile>(`SELECT f.* FROM source_files f JOIN vaults v ON v.id=f.vault_id JOIN entities e ON e.id=f.entity_id
-    WHERE f.status='ready' AND f.enrichment_status='pending' AND f.enrichment_next_attempt_at<=? AND v.locked=0 AND e.type='source' ORDER BY f.created_at LIMIT 1`,now());
+    WHERE f.status='ready' AND NOT EXISTS(SELECT 1 FROM source_automation_pauses pause WHERE pause.file_id=f.id) AND f.enrichment_status='pending' AND f.enrichment_next_attempt_at<=? AND v.locked=0 AND e.type='source' AND e.archived_at IS NULL ORDER BY f.created_at LIMIT 1`,now());
    if(!file){await this.authorBackfill.tick();return;}
    const entity=this.store.get<{name:string;updated_at:string}>('SELECT name,updated_at FROM entities WHERE id=?',file.entity_id!);
    this.store.run("UPDATE source_files SET enrichment_status='running',enrichment_attempts=enrichment_attempts+1,enrichment_error=NULL WHERE id=?",file.id);
@@ -57,7 +60,12 @@ export class SourceEnrichments {
      if(current?.enrichment_status==='running')this.store.run("UPDATE source_files SET enrichment_status='pending' WHERE id=?",file.id);
      this.activity.finish(this.activityId!,'skipped',409);return;
     }
-    this.store.transaction(()=>{
+    const saved=this.store.transaction(()=>{
+     const active=this.store.get(`SELECT 1 FROM entities e JOIN source_files f ON f.entity_id=e.id AND f.vault_id=e.vault_id
+      JOIN vaults v ON v.id=f.vault_id WHERE f.id=? AND e.type='source' AND e.archived_at IS NULL AND v.locked=0
+      AND f.entity_id=? AND f.vault_id=? AND f.status='ready' AND f.enrichment_status='running' AND f.text=?
+      AND NOT EXISTS(SELECT 1 FROM source_automation_pauses pause WHERE pause.file_id=f.id)`,file.id,file.entity_id!,file.vault_id,file.text);
+     if(!active){this.store.run("UPDATE source_files SET enrichment_status='pending' WHERE id=? AND enrichment_status='running'",file.id);return false;}
      let explicit:import('../../shared/domain.js').SourceStructureNode[]=[];
      try{const parsed:unknown=JSON.parse(current.structural_nodes??'[]');if(Array.isArray(parsed))explicit=parsed;}catch{/* Recover legacy metadata from the text. */}
      // Preserve known heading locations, while allowing semantic block extents
@@ -65,11 +73,20 @@ export class SourceEnrichments {
      const structure=mergeEnrichedSourceStructure(file.text,explicit,result.structure);
      this.store.run('UPDATE source_files SET structural_nodes=? WHERE id=?',JSON.stringify(structure),file.id);
      this.store.run("UPDATE source_files SET generated_name=?,language=?,summary=?,enrichment_status='completed',enrichment_error=NULL WHERE id=?",result.name,result.language,result.summary,file.id);
-     // A user edit made during the request takes precedence over generated naming.
-     this.store.run('UPDATE entities SET name=?,updated_at=? WHERE id=? AND vault_id=? AND name=? AND updated_at=?',result.name,now(),file.entity_id!,file.vault_id,entity!.name,entity!.updated_at);
-     if(saveSourceAuthors(this.store,file.vault_id,file.entity_id!,result.authors))this.store.run('UPDATE entities SET updated_at=? WHERE id=? AND vault_id=?',now(),file.entity_id!,file.vault_id);
-     recordSourceAuthorsProcessed(this.store,file);
+     // Manual and unknown historical names are authoritative before and during a request.
+     const nameOrigin=getNameProvenance(this.store,file.vault_id,file.entity_id!);
+     const currentEntity=this.store.get<{name:string;updated_at:string}>('SELECT name,updated_at FROM entities WHERE id=? AND vault_id=?',file.entity_id!,file.vault_id);
+     const unchanged=currentEntity?.name===entity?.name&&currentEntity?.updated_at===entity?.updated_at;
+     if(result.name!==currentEntity?.name) {
+      if(unchanged&&nameOrigin&&!nameOrigin.stale&&['derived','ai'].includes(nameOrigin.origin)) {
+       const changed=this.store.run('UPDATE entities SET name=?,updated_at=? WHERE id=? AND vault_id=? AND name=? AND updated_at=?',result.name,now(),file.entity_id!,file.vault_id,entity!.name,entity!.updated_at).changes;
+       if(changed)recordEntityNameProvenance(this.store,file.vault_id,file.entity_id!,{origin:'ai',source_file_id:file.id,source_hash:rawSourceHash(file.text),details:'source_enrichment: generated title; default/derived naming policy.'});
+      } else proposeValue(this.store,file.vault_id,{entity_id:file.entity_id!,kind:'entity_name',value:result.name,origin:'ai',source_file_id:file.id,source_hash:rawSourceHash(file.text),details:'source_enrichment: extracted title offered for review; manual or unknown current name retained.'});
+     }
+     if(saveSourceAuthors(this.store,file.vault_id,file.entity_id!,result.authors,{file,workflow:'source_enrichment'}))this.store.run('UPDATE entities SET updated_at=? WHERE id=? AND vault_id=?',now(),file.entity_id!,file.vault_id);
+     recordSourceAuthorsProcessed(this.store,file);return true;
     });
+    if(!saved){this.activity.finish(this.activityId!,'skipped',409);return;}
     new AINotifications(this.store).recordSource(file.vault_id,file.entity_id!,'completed','source_enrichment');
     this.activity.finish(this.activityId!,'completed',200);
    }catch(error) {

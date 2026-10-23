@@ -1,3 +1,4 @@
+import type {PropertyProvenance} from './property-provenance.js';
 import type {PropertyValueMetadata} from './property-values.js';
 import type { PageIconId } from './page-icons.js';
 import type { IntelligencePreferences } from './intelligence.js';
@@ -34,11 +35,11 @@ export interface PageInput { titleEdited?:boolean; aiReviewAccepted?:boolean; la
 export type PageEnrichmentMetadata = Pick<Page,'id'|'vault_id'|'title'|'revision'|'pageDomains'|'summaryContentHash'|'enrichmentPending'|'enrichmentPendingFields'|'enrichmentFields'|'language'>;
 export type EntityMentionCase = 'canonical' | 'lowercase';
 export interface Entity { archived_at?: string | null; domainIds?: string[]; sourceSize?: number | null; sourceEnrichmentStatus?: SourceFile['enrichment_status'] | null; sourceStatus?: SourceFile['status'] | null; inactive?: boolean; id: string; vault_id: string; name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes: string[]; description: string; updated_at: string }
-export interface EntityInput { domainIds?: string[]; name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes?: string[]; subtype?: string | null; description?: string; attachmentIds?: string[] }
+export interface EntityInput { classification_mode?:'retain_legacy'; impact_fingerprint?:string; domainIds?: string[]; name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes?: string[]; subtype?: string | null; description?: string; attachmentIds?: string[] }
 export function entityMentionName(entity: Pick<Entity,'name'|'mentionCase'> | undefined): string | undefined {
   return entity?.mentionCase === 'lowercase' ? entity.name.toLowerCase() : entity?.name;
 }
-export interface Property { id: string; entity_id: string; name: string; value: string | null; target_id: string | null; metadata?: PropertyValueMetadata }
+export interface Property { id: string; entity_id: string; name: string; value: string | null; target_id: string | null; metadata?: PropertyValueMetadata; provenance?:PropertyProvenance }
 export interface Relationship { id: string; source_id: string; label: string; target_id: string }
 export const sourceStructureKinds=['heading','chapter','section','subsection','theorem','lemma','proposition','corollary','definition','proof','example','remark'] as const;
 export type SourceStructureKind=typeof sourceStructureKinds[number];
@@ -51,7 +52,7 @@ export interface EntityPageMention extends PageSummary { mentionCount: number; e
 export interface EntityOverview { content: string; revision: number }
 export interface EntityPageAssociation extends PageSummary { pinned: boolean; annotation: string; created_at: string }
 export interface PageEntityAssociation { entityId: string; pinned: boolean; annotation: string }
-export interface EntityDetail extends Entity { previewLimited?: boolean; overview?: EntityOverview; linkedPages?: EntityPageAssociation[]; pageMentions?: EntityPageMention[]; attachments?: SourceFile[]; propertyNames: string[]; properties: Property[]; relationships: Relationship[]; incomingProperties: Property[] }
+export interface EntityDetail extends Entity { propertyProposalCount?:number; previewLimited?: boolean; overview?: EntityOverview; linkedPages?: EntityPageAssociation[]; pageMentions?: EntityPageMention[]; attachments?: SourceFile[]; propertyNames: string[]; properties: Property[]; relationships: Relationship[]; incomingProperties: Property[] }
 
 export type PropertyInput = {name: string; definition_id?: string; compatibility_mode?: 'legacy'} & ({value: string; target_id?: never} | {target_id: string; value?: never});
 export interface RelationshipInput {label: string; target_id: string}

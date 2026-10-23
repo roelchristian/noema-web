@@ -24,12 +24,12 @@ export class SourceAuthorBackfill {
   if(this.closed)return;
   this.store.run(`INSERT OR IGNORE INTO source_author_jobs (file_id,vault_id,status,updated_at)
    SELECT f.id,f.vault_id,'pending',? FROM source_files f JOIN entities e ON e.id=f.entity_id AND e.vault_id=f.vault_id
-   WHERE f.status='ready' AND f.admitted=1 AND f.enrichment_status NOT IN ('pending','running') AND e.type='source'`,now());
+   WHERE f.status='ready' AND NOT EXISTS(SELECT 1 FROM source_automation_pauses pause WHERE pause.file_id=f.id) AND f.admitted=1 AND f.enrichment_status NOT IN ('pending','running') AND e.type='source' AND e.archived_at IS NULL`,now());
   if(!this.intelligence.status().configured)return;
   const file=this.store.get<SourceFile & {attempts:number}>(`SELECT f.*,j.attempts FROM source_author_jobs j
    JOIN source_files f ON f.id=j.file_id JOIN vaults v ON v.id=f.vault_id JOIN entities e ON e.id=f.entity_id AND e.vault_id=f.vault_id
-   WHERE j.status='pending' AND j.next_attempt_at<=? AND f.status='ready' AND f.admitted=1
-    AND f.enrichment_status NOT IN ('pending','running') AND v.locked=0 AND e.type='source' ORDER BY j.updated_at,f.id LIMIT 1`,now());
+   WHERE j.status='pending' AND NOT EXISTS(SELECT 1 FROM source_automation_pauses pause WHERE pause.file_id=f.id) AND j.next_attempt_at<=? AND f.status='ready' AND f.admitted=1
+    AND f.enrichment_status NOT IN ('pending','running') AND v.locked=0 AND e.type='source' AND e.archived_at IS NULL ORDER BY j.updated_at,f.id LIMIT 1`,now());
   if(!file)return;
   const hash=createHash('sha256').update(file.text).digest('hex');
   this.store.run("UPDATE source_author_jobs SET status='running',attempts=attempts+1,content_hash=?,error=NULL,updated_at=? WHERE file_id=?",hash,now(),file.id);
@@ -38,13 +38,13 @@ export class SourceAuthorBackfill {
    const authors=await this.intelligence.extractSourceAuthors(sourceEnrichmentText(file.text),bytes=>this.activity.request(this.activityId!,bytes,null));
    if(this.closed)return;
    const saved=this.store.transaction(()=>{
-    const current=this.store.get<SourceFile>(`SELECT f.* FROM source_files f JOIN vaults v ON v.id=f.vault_id WHERE f.id=? AND v.locked=0`,file.id);
+    const current=this.store.get<SourceFile>(`SELECT f.* FROM source_files f JOIN vaults v ON v.id=f.vault_id JOIN entities e ON e.id=f.entity_id AND e.vault_id=f.vault_id WHERE f.id=? AND v.locked=0 AND e.type='source' AND e.archived_at IS NULL AND NOT EXISTS(SELECT 1 FROM source_automation_pauses pause WHERE pause.file_id=f.id)`,file.id);
     const active=this.store.get("SELECT 1 FROM source_author_jobs WHERE file_id=? AND status='running' AND content_hash=?",file.id,hash);
     if(!active)return false;
     if(!current||current.status!=='ready'||current.admitted!==1||current.entity_id!==file.entity_id||current.text!==file.text) {
      this.store.run("UPDATE source_author_jobs SET status='pending',updated_at=? WHERE file_id=?",now(),file.id);return false;
     }
-    if(saveSourceAuthors(this.store,file.vault_id,file.entity_id!,authors))this.store.run('UPDATE entities SET updated_at=? WHERE id=? AND vault_id=?',now(),file.entity_id!,file.vault_id);
+    if(saveSourceAuthors(this.store,file.vault_id,file.entity_id!,authors,{file,workflow:'source_author_backfill'}))this.store.run('UPDATE entities SET updated_at=? WHERE id=? AND vault_id=?',now(),file.entity_id!,file.vault_id);
     recordSourceAuthorsProcessed(this.store,current);return true;
    });
    if(saved)new AINotifications(this.store).recordSource(file.vault_id,file.entity_id!,'completed','source_enrichment');

@@ -1,3 +1,4 @@
+import {propertyDeclaresDate} from './property-temporal-definition.js';
 import {createHash} from 'node:crypto';
 import {adaptTemporalProperty} from '../../shared/temporal-properties.js';
 import type {TemporalPropertyEvidence} from '../../shared/temporal.js';
@@ -11,7 +12,7 @@ export class TemporalProperties {
   new Vaults(this.store).requireOpen(vault);
   const rows=this.store.all<{id:string;entity_id:string;type:string;name:string;value:string|null;target_id:string|null}>(`SELECT p.*,e.type FROM temporal_property_dirty d JOIN properties p ON p.id=d.property_id JOIN entities e ON e.id=p.entity_id WHERE d.vault_id=? AND e.vault_id=? ${propertyId?'AND p.id=?':''} ORDER BY p.id LIMIT ?`,...propertyId?[vault,vault,propertyId,limit]:[vault,vault,limit]);
   for(const row of rows) {
-   const adapted=row.value!==null&&row.target_id===null?adaptTemporalProperty(row.type,row.name,row.value):null;
+   const adapted=row.value!==null&&row.target_id===null?adaptTemporalProperty(row.type,row.name,row.value,propertyDeclaresDate(this.store,vault,row.id)):null;
    if(!adapted){this.store.run('DELETE FROM temporal_property_values WHERE property_id=?',row.id);this.store.run('DELETE FROM temporal_property_dirty WHERE property_id=?',row.id);continue;}
    const fingerprint=propertyFingerprint(row.type,row.name,row.value!);
    this.store.db.exec('SAVEPOINT temporal_property_refresh');

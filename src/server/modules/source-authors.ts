@@ -1,70 +1,39 @@
-import {randomUUID} from 'node:crypto';
 import {normalizeEntityName} from '../../shared/auto-entities.js';
-import type {Entity} from '../../shared/domain.js';
+import type {SourceFile} from '../../shared/domain.js';
 import {Store} from '../store.js';
-import {Knowledge} from './knowledge.js';
+import {proposeValue,rawSourceHash} from './property-provenance.js';
 
 export interface SourceAuthor {name:string;type:'person'|'organization'}
+export interface SourceAuthorContext {file?:Pick<SourceFile,'id'|'text'>;workflow?:string}
 const normalized=(name:string)=>normalizeEntityName(name.normalize('NFC'));
+type Candidate={id:string;name:string;type:SourceAuthor['type'];aliases:string;inactive:number;archived_at:string|null};
 
-/** Called in the enrichment transaction, so new authors and their links save together. */
-export function saveSourceAuthors(store:Store,vault:string,sourceId:string,authors:SourceAuthor[]):boolean {
- const knowledge=new Knowledge(store);
- const allEntities=knowledge.list(vault);
- const entities=allEntities.filter(entity=>!entity.inactive&&!entity.archived_at&&(entity.type==='person'||entity.type==='organization'));
- const unique=[...new Map(authors.map(author=>[`${author.type}:${normalized(author.name)}`,author])).values()];
+/** Extraction is evidence, not permission to rewrite authored credits or create identities.
+ * Callers may resolve these proposals deliberately through property review. */
+export function saveSourceAuthors(store:Store,vault:string,sourceId:string,authors:SourceAuthor[],context:SourceAuthorContext={}):boolean {
+ const source=store.get('SELECT 1 FROM entities WHERE id=? AND vault_id=? AND type=? AND archived_at IS NULL',sourceId,vault,'source');
+ if(!source)return false;
+ const candidates=store.all<Candidate>("SELECT id,name,type,aliases,inactive,archived_at FROM entities WHERE vault_id=? AND type IN ('person','organization')",vault);
  const properties=store.all<{id:string;value:string|null;target_id:string|null}>("SELECT id,value,target_id FROM properties WHERE entity_id=? AND name COLLATE NOCASE='author'",sourceId);
- const linked=new Set(properties.flatMap(property=>property.target_id?[property.target_id]:[]));
- const textCredits=new Set(properties.flatMap(property=>property.value?.split(';').map(normalized).filter(Boolean)??[]));
+ const unique=[...new Map(authors.filter(author=>author.name.trim()).map(author=>[`${author.type}:${normalized(author.name)}`,author])).values()];
+ const attached=context.file?store.get<{id:string;text:string}>('SELECT id,text FROM source_files WHERE id=? AND vault_id=? AND entity_id=?',context.file.id,vault,sourceId):undefined;
+ if(context.file&&!attached)return false;
+ const files=attached?[attached]:store.all<{id:string;text:string}>('SELECT id,text FROM source_files WHERE vault_id=? AND entity_id=? ORDER BY created_at,id LIMIT 2',vault,sourceId);
+ // Legacy multi-file callers cannot attribute an extraction to one attachment safely.
+ const file=attached??(files.length===1?files[0]:undefined);
+ const sourceHash=file?rawSourceHash(context.file?.text??file.text):null;
+ const prior=new Set(store.all<{id:string}>('SELECT id FROM property_proposals WHERE entity_id=? AND vault_id=?',sourceId,vault).map(row=>row.id));
  let changed=false;
- const resolve=(author:SourceAuthor):Entity|undefined=>{
-  const key=normalized(author.name),candidates=entities.filter(entity=>entity.type===author.type);
-  const canonical=candidates.filter(entity=>normalized(entity.name)===key);
-  const matches=canonical.length?canonical:candidates.filter(entity=>entity.aliases?.some(alias=>normalized(alias)===key));
-  if(matches.length===1)return matches[0];
-  // An ambiguous name stays as text instead of choosing a person arbitrarily.
-  if(matches.length>1)return;
-  // Retired credits stay readable as text; never recreate the retired identity.
-  if(allEntities.some(entity=>entity.archived_at&&entity.type===author.type&&[entity.name,...(entity.aliases??[])].some(name=>normalized(name)===key)))return;
-  const created=knowledge.create(vault,{type:author.type,name:author.name,subtypes:[]});
-  entities.push(created);return created;
- };
- const put=(author:SourceAuthor,propertyId?:string,convertingText=false)=>{
-  if(!propertyId&&!convertingText&&textCredits.has(normalized(author.name)))return;
-  const target=resolve(author);
-  if(target&&linked.has(target.id)) {
-   if(propertyId){store.run('DELETE FROM properties WHERE id=? AND entity_id=?',propertyId,sourceId);changed=true;}
-   return;
-  }
-  const value=target?null:author.name,targetId=target?.id??null;
-  if(propertyId)store.run('UPDATE properties SET value=?,target_id=? WHERE id=? AND entity_id=?',value,targetId,propertyId,sourceId);
-  else store.run('INSERT INTO properties (id,entity_id,name,value,target_id) VALUES (?,?,?,?,?)',randomUUID(),sourceId,'author',value,targetId);
-  if(target)linked.add(target.id);changed=true;
- };
- const populated=properties.filter(property=>property.target_id||property.value?.trim());
- if(populated.length) {
-  // Match existing text credits against explicit authors or known names/aliases.
-  // Semicolons separate coauthors; commas can be part of names.
-  for(const property of populated) {
-   if(property.target_id||!property.value)continue;
-   const names=property.value.split(';').map(name=>normalized(name)).filter(Boolean);
-   const matches=names.map(name=>{
-    const explicit=unique.filter(author=>normalized(author.name)===name);
-    if(explicit.length)return explicit;
-    const canonical=entities.filter(entity=>normalized(entity.name)===name);
-    const known=canonical.length?canonical:entities.filter(entity=>entity.aliases?.some(alias=>normalized(alias)===name));
-    return known.length===1?[{name:known[0]!.name,type:known[0]!.type as SourceAuthor['type']}]:[];
-   });
-   if(!names.length||matches.some(match=>match.length!==1))continue;
-   matches.forEach((match,index)=>put(match[0]!,index===0?property.id:undefined,true));
-  }
-  // Retain existing links while adding explicitly credited coauthors that are
-  // not yet represented. Unmatched user-entered text is never discarded.
-  for(const author of unique)put(author);
-  return changed;
+ for(const author of unique) {
+  const key=normalized(author.name),eligible=candidates.filter(entity=>entity.type===author.type);
+  const canonical=eligible.filter(entity=>normalized(entity.name)===key);
+  const matches=canonical.length?canonical:eligible.filter(entity=>{try{return (JSON.parse(entity.aliases) as string[]).some(alias=>normalized(alias)===key);}catch{return false;}});
+  const target=matches.length===1&&!matches[0]!.inactive&&!matches[0]!.archived_at?matches[0]:undefined;
+  if(target&&properties.some(property=>property.target_id===target.id))continue;
+  if(!target&&properties.some(property=>property.target_id===null&&property.value===author.name))continue;
+  const related=properties.find(property=>property.value===author.name)??properties.find(property=>property.value?.trim()||property.target_id);
+  const proposal=proposeValue(store,vault,{entity_id:sourceId,kind:'property',property_name:'author',property_id:related?.id??null,value:target?null:author.name,target_id:target?.id??null,origin:'ai',source_file_id:file?.id??null,source_hash:sourceHash,details:`${context.workflow??'source_author_reconciliation'}: extracted ${author.type} credit ${author.name}. ${target?'Unique existing identity offered for review.':'Unresolved credit; identity is missing, ambiguous or archived.'} Existing authored credits are retained.`});
+  if(!prior.has(proposal.id)){changed=true;prior.add(proposal.id);}
  }
- if(!unique.length)return false;
- for(const property of properties)store.run('DELETE FROM properties WHERE id=? AND entity_id=?',property.id,sourceId);
- for(const author of unique)put(author);
  return changed;
 }

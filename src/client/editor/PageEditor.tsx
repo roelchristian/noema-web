@@ -1,7 +1,7 @@
 import {noteDateItems} from '../../shared/note-dates';
 import {DocumentFind} from './DocumentFind';
 import {memoizeBlock} from '../../shared/immutable-blocks';
-import {getLocale} from '../i18n';
+import {getLocale,languageLabel} from '../i18n';
 import {t as uiText} from '../i18n';
 import {readingNoteMaxWords,readingNoteWordCount} from '../../shared/source-reading';
 import {projectPageText} from '../../shared/page-text';
@@ -124,6 +124,7 @@ export function PageEditor({hideTitle=false,focusNewBody=false,onCreationFocusCo
       <div className="editor-entity-counts" role="group" aria-label={uiText("Page statistics")}>
         <span className="editor-entity-count" title={uiText("Distinct entities on this page")}><Icon name="knowledge"/><span>{entityCounts} {entityCounts === 1 ? uiText("entity") : uiText("entities")}</span></span>
         <span className="editor-word-count" title={uiText("Words in note text")}>{wordCount.toLocaleString(getLocale())} {wordCount === 1 ? uiText("word") : uiText("words")}</span>
+        {page.language?.trim()&&<span className="editor-language" title={uiText("Language")+': '+page.language}>{languageLabel(page.language)}</span>}
         <PageProvenanceDisclosure page={page}/>
       </div>
     </footer>

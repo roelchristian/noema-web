@@ -1,5 +1,5 @@
 import {personaIdentityName} from '../../shared/ai-personas';
-import {getLocale} from '../i18n';
+import {getLocale,languageLabel} from '../i18n';
 import {t as uiText} from '../i18n';
 import {DisclosureSummary} from '../components/DisclosureSummary';
 import {sourcePageChoices,sourcePageFormats} from '../../shared/source-page';
@@ -7,11 +7,6 @@ import type {Page} from '../../shared/domain';
 import {pageAIProvenance} from '../../shared/page-ai-status';
 import {PageProvenanceFields} from '../components/PageProvenance';
 import {Icon} from '../components/Icon';
-
-function languageLabel(language:string):string {
-  try{return new Intl.DisplayNames(['en'],{type:'language'}).of(language)??language;}
-  catch{return language;}
-}
 
 export function PageMetadata({page}:{page:Page}) {
   const date=(value:string|null|undefined)=>{

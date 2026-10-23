@@ -961,6 +961,12 @@ main {
   height: 12px;
   opacity: .5;
 }
+.breadcrumb-separator {
+  flex: none;
+  color: var(--text-muted);
+  font-weight: 400;
+  opacity: .5;
+}
 .branch-toggle {
   display: inline-flex;
   align-items: center;

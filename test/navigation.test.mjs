@@ -66,7 +66,7 @@ test('vaults retain independent addresses and locked vaults defer restoration un
   const {create, storage, vaults, loadPage, loadPages} = setup(t);
   const first = create(); await first.selectVault('a'); await first.openPage('note');
   const saved = storage.get('noema-address/a');
-  await first.selectVault('b'); first.showInbox();
+  await first.selectVault('b'); await first.showInbox();
   await first.selectVault('a');
   assert.equal(first.snapshot().page.id, 'note');
   vaults[0].locked = true;
@@ -104,7 +104,7 @@ test('refresh retains other library views, and navigation works without browser 
     const workspace = create(); await workspace.init();
     if (view === 'favourites') workspace.showOrganization(true);
     else if (view === 'recent') workspace.showRecent();
-    else if (view === 'inbox') workspace.showInbox();
+    else if (view === 'inbox') await workspace.showInbox();
     else if (view === 'entities') workspace.showEntities();
     else await workspace.showTrash();
     const refreshed = create(); await refreshed.init();
@@ -240,4 +240,26 @@ test('Calendar participates in history, waits for saves, and leaves the page ava
  await workspace.goHistory(-1);assert.equal(workspace.snapshot().view,'pages');
  await workspace.goHistory(1);assert.equal(workspace.snapshot().view,'calendar');const refreshed=create();await refreshed.init();assert.equal(refreshed.snapshot().view,'calendar');
  const url=workspaceURL({vaultId:'a',view:'calendar',pageId:null,entityId:null,collection:'',folder:''});assert.equal(url,'/?vault=a&view=calendar');
+});
+
+test('Inbox facets flush pending saves and retain independent browser and session addresses',async t=>{
+ const {create,storage}=setup(t),workspace=create();await workspace.init();await workspace.openPage('note');
+ const order=[];let finish;
+ t.mock.method(workspace.saver,'flush',()=>order.length?Promise.resolve():new Promise(resolve=>{order.push('flush');finish=resolve;}));
+ const pending=workspace.showInbox('organise');assert.equal(workspace.snapshot().view,'pages');
+ finish();await pending;assert.equal(workspace.snapshot().view,'inbox');assert.equal(workspace.snapshot().inboxFacet,'organise');
+ await workspace.showInbox('issues');assert.deepEqual(order,['flush']);
+ await workspace.goHistory(-1); // restore the previous facet without leaving the shell
+ assert.equal(workspace.snapshot().inboxFacet,'organise');
+ assert.equal(JSON.parse(storage.get('noema-address/a')).inboxFacet,'organise');
+ const refreshed=create();await refreshed.init();assert.equal(refreshed.snapshot().inboxFacet,'organise');
+});
+
+test('legacy Review Centre addresses canonicalize to the Inbox review facet',async t=>{
+ const {create,storage}=setup(t);storage.set('noema-vault','a');storage.set('noema-address/a',JSON.stringify({view:'review'}));
+ const workspace=create();await workspace.init();assert.equal(workspace.snapshot().view,'inbox');assert.equal(workspace.snapshot().inboxFacet,'review');
+ const old=Object.getOwnPropertyDescriptor(globalThis,'window');
+ Object.defineProperty(globalThis,'window',{configurable:true,value:{location:{search:'?vault=a&view=review'}}});
+ try{const address=readWorkspaceURL();assert.equal(address.view,'inbox');assert.equal(address.inboxFacet,'review');assert.match(workspaceURL(address),/view=inbox&facet=review/);}
+ finally{if(old)Object.defineProperty(globalThis,'window',old);else delete globalThis.window;}
 });

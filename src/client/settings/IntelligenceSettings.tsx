@@ -2,19 +2,31 @@ import {aiPersonas,defaultPersonaId,type BuiltinPersonaId} from '../../shared/ai
 import {getLocale} from '../i18n';
 import {t as uiText} from '../i18n';
 import { Select } from '../components/Select';
-import { speechModel, speechVoices, defaultSpeechVoice, isSpeechVoice, defaultIntelligencePreferences, defaultPageEnrichmentPreferences, defaultManualRequestsPerMinute, maxManualRequestsPerMinute, intelligenceModels, type IntelligenceConfiguration, type ReasoningEffort } from '../../shared/intelligence';
+import { speechModelFor, speechVoicesFor, defaultSpeechProvider, defaultSpeechVoiceFor, isSpeechProvider, isSpeechVoice, defaultIntelligencePreferences, defaultPageEnrichmentPreferences, defaultManualRequestsPerMinute, maxManualRequestsPerMinute, intelligenceModels, type IntelligenceConfiguration, type ReasoningEffort } from '../../shared/intelligence';
 import { useEffect, useState, type FormEvent } from 'react';
-import { api } from '../api';
+import { api, type SpeechModelStatus } from '../api';
 import type { IntelligenceStatus } from '../../shared/domain';
 export function IntelligenceSettings() {
   const [status,setStatus]=useState<IntelligenceStatus|null>(null),[key,setKey]=useState(''),[days,setDays]=useState(30),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
-  const [preferences,setPreferences]=useState<IntelligenceConfiguration>({...defaultIntelligencePreferences,ttsEnabled:false,ttsVoice:defaultSpeechVoice,manualRequestsPerMinute:defaultManualRequestsPerMinute,pageEnrichment:{...defaultPageEnrichmentPreferences}});
+  const [preferences,setPreferences]=useState<IntelligenceConfiguration>({...defaultIntelligencePreferences,ttsEnabled:false,ttsProvider:defaultSpeechProvider,ttsVoice:defaultSpeechVoiceFor(defaultSpeechProvider),manualRequestsPerMinute:defaultManualRequestsPerMinute,pageEnrichment:{...defaultPageEnrichmentPreferences}});
+  const [localSpeech,setLocalSpeech]=useState<SpeechModelStatus|null>(null),[speechBusy,setSpeechBusy]=useState(false),[speechError,setSpeechError]=useState('');
+  useEffect(()=>{let active=true;void api.speechModel().then(value=>{if(active)setLocalSpeech(value);}).catch(error=>{if(active)setSpeechError(error instanceof Error?error.message:'Could not check the local speech model.');});return()=>{active=false;};},[]);
+  async function prepareSpeech(download=false) {
+    setSpeechBusy(true);setSpeechError('');
+    try {
+      if(download)await api.downloadSpeechModel();
+      const value=await api.speechModel();setLocalSpeech(value);
+      if(download&&!value.ready)setSpeechError('The local speech model is still unavailable. Retry the download or use the setup command below.');
+    }catch(error){setSpeechError(error instanceof Error?error.message:'Could not prepare the local speech model.');}finally{setSpeechBusy(false);}
+  }
   const modelOption=intelligenceModels.find(option=>option.id===preferences.model)!;
   const enrichment=preferences.pageEnrichment??defaultPageEnrichmentPreferences;
   const savedEnrichment=status?.pageEnrichment??defaultPageEnrichmentPreferences;
   const enrichmentModelOption=intelligenceModels.find(option=>option.id===enrichment.model)!;
-  const changed=!!status&&((preferences.personaId??defaultPersonaId)!==(status.personaId??defaultPersonaId)||Boolean(preferences.ttsEnabled)!==Boolean(status.ttsEnabled)||preferences.ttsVoice!==(isSpeechVoice(status.ttsVoice)?status.ttsVoice:defaultSpeechVoice)||preferences.model!==status.model||preferences.reasoningEffort!==status.reasoningEffort||preferences.manualRequestsPerMinute!==status.manualRequestsPerMinute||enrichment.model!==savedEnrichment.model||enrichment.reasoningEffort!==savedEnrichment.reasoningEffort);
-  useEffect(()=>{let active=true;void api.intelligence().then(value=>{if(active){setStatus(value);setPreferences({personaId:(value.personaId??defaultPersonaId) as BuiltinPersonaId,ttsEnabled:value.ttsEnabled??false,ttsVoice:isSpeechVoice(value.ttsVoice)?value.ttsVoice:defaultSpeechVoice,model:value.model,reasoningEffort:value.reasoningEffort,manualRequestsPerMinute:value.manualRequestsPerMinute,pageEnrichment:value.pageEnrichment??{...defaultPageEnrichmentPreferences}});}}).catch(()=>{if(active)setMessage('Secure storage is unavailable. Unlock your macOS login keychain and reopen Settings.');});return()=>{active=false;};},[]);
+  const provider=preferences.ttsProvider??defaultSpeechProvider;
+  const savedProvider=isSpeechProvider(status?.ttsProvider)?status.ttsProvider:defaultSpeechProvider;
+  const changed=!!status&&((preferences.personaId??defaultPersonaId)!==(status.personaId??defaultPersonaId)||Boolean(preferences.ttsEnabled)!==Boolean(status.ttsEnabled)||provider!==savedProvider||preferences.ttsVoice!==(isSpeechVoice(status.ttsVoice,savedProvider)?status.ttsVoice:defaultSpeechVoiceFor(savedProvider))||preferences.model!==status.model||preferences.reasoningEffort!==status.reasoningEffort||preferences.manualRequestsPerMinute!==status.manualRequestsPerMinute||enrichment.model!==savedEnrichment.model||enrichment.reasoningEffort!==savedEnrichment.reasoningEffort);
+  useEffect(()=>{let active=true;void api.intelligence().then(value=>{if(active){setStatus(value);setPreferences({personaId:(value.personaId??defaultPersonaId) as BuiltinPersonaId,ttsEnabled:value.ttsEnabled??false,ttsProvider:isSpeechProvider(value.ttsProvider)?value.ttsProvider:defaultSpeechProvider,ttsVoice:isSpeechVoice(value.ttsVoice,isSpeechProvider(value.ttsProvider)?value.ttsProvider:defaultSpeechProvider)?value.ttsVoice:defaultSpeechVoiceFor(isSpeechProvider(value.ttsProvider)?value.ttsProvider:defaultSpeechProvider),model:value.model,reasoningEffort:value.reasoningEffort,manualRequestsPerMinute:value.manualRequestsPerMinute,pageEnrichment:value.pageEnrichment??{...defaultPageEnrichmentPreferences}});}}).catch(()=>{if(active)setMessage('Secure storage is unavailable. Unlock your macOS login keychain and reopen Settings.');});return()=>{active=false;};},[]);
   async function perform(work:()=>Promise<unknown>,success:string) {
     setBusy(true);setMessage('');
     try {await work();setMessage(success);}catch(error){setMessage(error instanceof Error?error.message:'Request failed.');}finally{setBusy(false);}
@@ -25,17 +37,28 @@ export function IntelligenceSettings() {
     <p>{uiText("Connect OpenAI for writing and search. Your API key is stored in macOS Keychain and shared across vaults.")}</p>
     <div className="intelligence-status">{status?.configured ? <>{uiText("API key saved · expires") + " "}{new Date(status.expiresAt!).toLocaleString(getLocale())}</> : uiText("No active API key")}{status && <small>{uiText("Model:") + " "}{status.model}{" " + uiText("· Reasoning:") + " "}{status.reasoningEffort}</small>}</div>
     <form className="ai-preferences-form" onInvalidCapture={event=>{const details=(event.target as HTMLElement).closest('details');if(details)details.open=true;}} onSubmit={event=>{event.preventDefault();void perform(async()=>{const saved=await api.saveIntelligencePreferences(preferences);setStatus(current=>current?{...current,...saved}:current);setPreferences(saved);window.dispatchEvent(new Event('noema:persona-preferences'));window.dispatchEvent(new Event('noema:tts-preferences'));},'AI preferences saved.');}}>
-      <div className="ai-setting-row"><label id="ai-tts-label" htmlFor="ai-tts-enabled">{uiText("OpenAI text to speech")}</label><div>
+      <div className="ai-setting-row"><label id="ai-tts-label" htmlFor="ai-tts-enabled">{uiText("Text to speech")}</label><div>
         <button id="ai-tts-enabled" type="button" className="security-switch" role="switch" aria-checked={Boolean(preferences.ttsEnabled)} aria-labelledby="ai-tts-label" aria-describedby="ai-tts-description" disabled={busy||!status} onClick={()=>setPreferences(current=>({...current,ttsEnabled:!current.ttsEnabled}))}><span/></button>
       </div></div>
-      <p id="ai-tts-description">{uiText("Enable Speak for selected editor blocks across all vaults. Selected text is sent to OpenAI and read by an AI-generated voice. API charges apply.")}</p>
-      <div className="ai-setting-row"><label htmlFor="ai-tts-voice">{uiText("TTS voice")}</label>
-        <Select id="ai-tts-voice" value={preferences.ttsVoice} aria-describedby="ai-tts-voice-description" disabled={busy||!status} onChange={event=>{const voice=event.target.value;if(isSpeechVoice(voice))setPreferences(current=>({...current,ttsVoice:voice}));}}>
-          {speechVoices.map(voice=><option key={voice} value={voice}>{voice[0]!.toUpperCase()+voice.slice(1)}{voice===defaultSpeechVoice?' (default)':''}</option>)}
+      <p id="ai-tts-description">{provider==='kokoro'?uiText("Enable Speak for selected editor blocks across all vaults. Kokoro runs locally on your CPU with an AI-generated voice. No API key or API charges."):uiText("Enable Speak with an AI-generated voice across all vaults. Selected text is sent to OpenAI. An OpenAI API key is required and API charges apply.")}</p>
+      <div className="ai-setting-row"><label htmlFor="ai-tts-provider">{uiText("TTS provider")}</label>
+        <Select id="ai-tts-provider" value={provider} disabled={busy||!status} onChange={event=>{const selected=event.target.value;if(isSpeechProvider(selected))setPreferences(current=>({...current,ttsProvider:selected,ttsVoice:defaultSpeechVoiceFor(selected)}));}}>
+          <option value="kokoro">Kokoro 82M (default, local)</option><option value="openai">OpenAI (opt in)</option>
         </Select>
       </div>
-      <p id="ai-tts-voice-description">{uiText("Each voice uses separate saved audio. The first generation with a voice incurs API charges; switching back can reuse its saved audio.")}</p>
-      <p>{uiText("Speech model:")} <code>{speechModel}</code></p>
+      {provider==='openai'&&!status?.configured&&<p role="note">{uiText("Save an OpenAI API key below to use OpenAI speech.")}</p>}
+      <div className="ai-setting-row"><label htmlFor="ai-tts-voice">{uiText("TTS voice")}</label>
+        <Select id="ai-tts-voice" value={preferences.ttsVoice} aria-describedby="ai-tts-voice-description" disabled={busy||!status} onChange={event=>{const voice=event.target.value;if(isSpeechVoice(voice,provider))setPreferences(current=>({...current,ttsVoice:voice}));}}>
+          {speechVoicesFor(provider).map(voice=><option key={voice} value={voice}>{voice[0]!.toUpperCase()+voice.slice(1)}{voice===defaultSpeechVoiceFor(provider)?' (default)':''}</option>)}
+        </Select>
+      </div>
+      <p id="ai-tts-voice-description">{provider==='kokoro'?uiText("Each voice uses separate saved audio generated locally. Switching back can reuse its saved audio."):uiText("Each OpenAI voice uses separate saved audio. Switching back can reuse its saved audio.")}</p>
+      <p>{uiText("Speech model:")} <code>{speechModelFor(provider)}</code></p>
+      {provider==='kokoro'&&<div className="local-speech-model" aria-busy={speechBusy}>
+        <p id="ai-tts-model-status" role="status" aria-live="polite">{speechBusy?uiText("Preparing local speech model…"):localSpeech?.ready?uiText("Kokoro model ready for local speech."):localSpeech?uiText("Download the Kokoro model to use Speak. Model files are stored locally and excluded from Git."):speechError?uiText("Local speech model availability could not be checked."):uiText("Checking local speech model…")}</p>
+        {localSpeech&&!localSpeech.ready&&<><p>{uiText("Missing model files:")} {localSpeech.missingFiles.join(', ')}</p><button type="button" className="button" disabled={speechBusy} onClick={()=>void prepareSpeech(true)}>{speechBusy?uiText("Downloading Kokoro model…"):uiText("Download Kokoro model")}</button>{localSpeech.downloadCommand&&<details><summary>{uiText("Manual model setup")}</summary><code>{localSpeech.downloadCommand}</code></details>}</>}
+        {speechError&&<><p role="alert">{speechError}</p><button type="button" className="button" disabled={speechBusy} onClick={()=>void prepareSpeech()}>{uiText("Retry model check")}</button></>}
+      </div>}
       <fieldset className="ai-personas"><legend>AI Persona</legend><p>Choose the default voice for generated prose. Shared across vaults. Models and factual standards stay independent.</p>
       {aiPersonas.map(persona=><label className="ai-persona-card" key={persona.id}><input type="radio" name="ai-persona" value={persona.id} checked={(preferences.personaId??defaultPersonaId)===persona.id} disabled={busy||!status} onChange={()=>setPreferences(current=>({...current,personaId:persona.id as BuiltinPersonaId}))}/><span><strong>{persona.name}</strong><span>{persona.description}</span><small>“{persona.sample}”</small></span></label>)}
       </fieldset>
@@ -89,7 +112,7 @@ export function IntelligenceSettings() {
     </form>
     </details>
     {changed&&<p>{uiText("Save AI preferences before validating the new selection.")}</p>}
-    <p className="intelligence-note">{uiText("AI features send relevant note text, source text, and search queries to OpenAI. Source enrichment runs automatically; automatic indexing is configured below. API charges apply.")}</p>
+    <p className="intelligence-note">{uiText("Writing and search features send relevant note text, source text, and search queries to OpenAI. Source enrichment runs automatically; automatic indexing is configured below. API charges apply to OpenAI features. Kokoro speech stays local.")}</p>
     <p role="status" aria-live="polite">{uiText(message)}</p>
   </section>;
 }

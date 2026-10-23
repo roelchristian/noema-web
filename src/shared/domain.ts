@@ -73,6 +73,7 @@ export interface OrganizationContext { collection: string; folder: string }
 export interface IntelligenceStatus extends IntelligencePreferences {
   personaId?:string;
   ttsEnabled: boolean;
+  ttsProvider?: import('./intelligence.js').SpeechProvider;
   ttsVoice: import('./intelligence.js').SpeechVoice;
   pageEnrichment?: IntelligencePreferences; manualRequestsPerMinute: number; configured: boolean; expiresAt: string | null }
 

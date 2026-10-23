@@ -24,11 +24,13 @@
     "check:styles": "node scripts/check-styles.mjs",
     "test:design": "node --import tsx scripts/check-design-browser.mjs",
     "test:dark-mode": "node --import tsx scripts/check-dark-mode-browser.mjs",
-    "test:appearance-bootstrap": "node scripts/check-appearance-bootstrap-browser.mjs && node --import tsx scripts/check-appearance-runtime-browser.mjs"
+    "test:appearance-bootstrap": "node scripts/check-appearance-bootstrap-browser.mjs && node --import tsx scripts/check-appearance-runtime-browser.mjs",
+    "tts:download": "node scripts/download-kokoro.mjs"
   },
   "dependencies": {
     "js-tiktoken": "^1.0.21",
     "katex": "^0.19.0",
+    "kokoro-js": "^1.2.1",
     "parse5": "^8.0.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

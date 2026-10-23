@@ -27,6 +27,8 @@ LAN access is enabled by default. Use **Settings → Security** to limit access 
 
 For development, run `npm run dev`. See [Getting started](docs/getting-started.md) for ports, environment variables, and access from other devices.
 
+Read-aloud defaults to Kokoro 82M on the backend CPU with Puck, Echo, Lewis, and Daniel voices. Enable it in **Settings → Intelligence**, where the **TTS provider** setting also offers OpenAI as an explicit opt-in using your saved API key and OpenAI voices (API charges apply). If the model is missing, the UI offers **Download Kokoro model**, or run `npm run tts:download`. The verified model and voices (about 95 MB) are saved in ignored `data/models/kokoro/` and never committed. Only initial setup needs internet access; narration runs locally without an API key. Set `NOEMA_KOKORO_MODEL_DIR` to use another local model directory.
+
 PDF text extraction and OCR currently require macOS. AI credentials are stored in macOS Keychain; other platforms need a credential-store adapter. See the [Sources](docs/sources.md) and [Intelligence](docs/intelligence.md) guides for details.
 
 ## Documentation

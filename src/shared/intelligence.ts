@@ -2,13 +2,21 @@ import type {BuiltinPersonaId} from './ai-personas.js';
 // Curated Responses API text models, checked against official OpenAI docs on 2026-10-16.
 // /v1/models does not describe reasoning compatibility; keep the allowlist explicit.
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-export const speechModel = 'gpt-realtime-2.1-mini';
-export const speechVoices = ['marin','cedar','alloy','ash','ballad','coral','echo','sage','shimmer','verse'] as const;
-export type SpeechVoice = typeof speechVoices[number];
-export const defaultSpeechVoice:SpeechVoice = 'marin';
-export function isSpeechVoice(value:unknown):value is SpeechVoice {return typeof value==='string'&&speechVoices.some(voice=>voice===value);}
+export type SpeechProvider = 'kokoro' | 'openai';
+export const defaultSpeechProvider:SpeechProvider = 'kokoro';
+export const speechModel = 'kokoro-82m-v1.0';
+export const openAISpeechModel = 'gpt-realtime-2.1-mini';
+export const speechVoices = ['puck','echo','lewis','daniel'] as const;
+export const openAISpeechVoices = ['marin','cedar','alloy','ash','ballad','coral','echo','sage','shimmer','verse'] as const;
+export type SpeechVoice = typeof speechVoices[number] | typeof openAISpeechVoices[number];
+export const defaultSpeechVoice:SpeechVoice = 'puck';
+export function isSpeechProvider(value:unknown):value is SpeechProvider {return value==='kokoro'||value==='openai';}
+export function speechVoicesFor(provider:SpeechProvider):readonly SpeechVoice[] {return provider==='openai'?openAISpeechVoices:speechVoices;}
+export function defaultSpeechVoiceFor(provider:SpeechProvider):SpeechVoice {return provider==='openai'?'marin':defaultSpeechVoice;}
+export function isSpeechVoice(value:unknown,provider:SpeechProvider='kokoro'):value is SpeechVoice {return typeof value==='string'&&speechVoicesFor(provider).some(voice=>voice===value);}
+export function speechModelFor(provider:SpeechProvider):string {return provider==='openai'?openAISpeechModel:speechModel;}
 export interface IntelligencePreferences { model: string; reasoningEffort: ReasoningEffort }
-export interface IntelligenceConfiguration extends IntelligencePreferences {personaId?:BuiltinPersonaId;ttsEnabled:boolean;ttsVoice:SpeechVoice;manualRequestsPerMinute: number; pageEnrichment?: IntelligencePreferences}
+export interface IntelligenceConfiguration extends IntelligencePreferences {personaId?:BuiltinPersonaId;ttsEnabled:boolean;ttsProvider?:SpeechProvider;ttsVoice:SpeechVoice;manualRequestsPerMinute: number; pageEnrichment?: IntelligencePreferences}
 export const defaultPageEnrichmentPreferences: IntelligencePreferences = {model:'gpt-6-luna',reasoningEffort:'none'};
 export const defaultManualRequestsPerMinute = 5;
 export const maxManualRequestsPerMinute = 120;
@@ -68,7 +76,7 @@ export interface AIActivityDebug {
 }
 
 export const aiActivityLabels: Record<AIActivity['action'], string> = {
-  text_to_speech:'Speak (OpenAI TTS)',
+  text_to_speech:'Speak',
   collection_rules:'Generate collection rules',
   entity_discovery:'Entity discovery',
   page_enrichment:'Page enrichment',

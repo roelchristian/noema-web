@@ -1,6 +1,7 @@
+import {kokoroStatus,downloadKokoro} from './modules/kokoro-speech.js';
 import {cleanSpeechText} from '../shared/speech-text.js';
 import {speechCacheKey} from './modules/speech-cache.js';
-import {speechModel,isSpeechVoice} from '../shared/intelligence.js';
+import {speechModelFor,isSpeechVoice,isSpeechProvider} from '../shared/intelligence.js';
 import {PageHistory} from './modules/page-history.js';
 import {PropertyReview} from './modules/property-review.js';
 import {PropertyDefinitionGovernance} from './modules/property-definition-governance.js';
@@ -278,6 +279,8 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           activityId=activity.start(collection==='pages'?(child==='enrich'||child==='title'||child==='summary'?'page_enrichment':child==='entity-scan'?'entity_scan':child==='review'?'text_review':child==='explain'?'block_explanation':'page_summary'):'connection_test',child==='title'||child==='summary'||child==='enrich'?intelligence.enrichmentSelection():intelligence.selection(),collection==='pages'?(header||'default'):null,collection==='pages'?id!:null);
         }
         if(collection==='intelligence') {
+          if(parts.length===4&&id==='speech'&&child==='model'&&method==='GET')return send(200,kokoroStatus());
+          if(parts.length===4&&id==='speech'&&child==='model'&&method==='POST')return send(200,await downloadKokoro());
           if(parts.length===3&&id==='pricing'&&method==='GET')return send(200,activity.pricing());
           if(parts.length===3&&id==='pricing'&&method==='PUT')return send(200,activity.savePricing(body));
           if(parts.length===3&&id==='enrichment-metrics'&&method==='GET') {
@@ -295,22 +298,24 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             const header=req.headers['x-vault-id'];if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
             if(body.pageId!==undefined&&(typeof body.pageId!=='string'||!body.pageId))throw new HttpError(400,'Invalid speech source page.');
             const speechPageId=typeof body.pageId==='string'?body.pageId:null;
-            const voice=intelligence.speechVoiceSelection();
-            if(body.voice!==undefined&&!isSpeechVoice(body.voice))throw new HttpError(400,'Choose a supported OpenAI speech voice.');
+            const provider=intelligence.speechProviderSelection(),voice=intelligence.speechVoiceSelection(),model=speechModelFor(provider);
+            if(body.provider!==undefined&&!isSpeechProvider(body.provider))throw new HttpError(400,'Choose a supported speech provider.');
+            if(body.provider!==undefined&&body.provider!==provider)throw new HttpError(409,'The speech provider changed. Start Speak again.');
+            if(body.voice!==undefined&&!isSpeechVoice(body.voice,provider))throw new HttpError(400,'Choose a supported voice for the speech provider.');
             if(body.voice!==undefined&&body.voice!==voice)throw new HttpError(409,'The speech voice changed. Start Speak again.');
             const vault=vaults.requireOpen(header||'default');
-            const validateAccess=()=>{vaults.requireOpen(vault);if(speechPageId)pages.get(vault,speechPageId);if(intelligence.speechVoiceSelection()!==voice)throw new HttpError(409,'The speech voice changed. Start Speak again.');};
+            const validateAccess=()=>{vaults.requireOpen(vault);if(speechPageId)pages.get(vault,speechPageId);if(intelligence.speechProviderSelection()!==provider||intelligence.speechVoiceSelection()!==voice)throw new HttpError(409,'The speech settings changed. Start Speak again.');};
             validateAccess();
-            if(!intelligence.speechEnabled())throw new HttpError(409,'Enable OpenAI text to speech in Settings → Intelligence.');
+            if(!intelligence.speechEnabled())throw new HttpError(409,'Enable text to speech in Settings → Intelligence.');
             if(typeof body.text!=='string')throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
             const text=cleanSpeechText(body.text);
             if(!text||text.length>4096)throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
-            const key=speechCacheKey(text,{voice}),cached=speechCache.read(vault,key);
+            const key=speechCacheKey(text,{provider,model,voice}),cached=speechCache.read(vault,key);
             const controller=new AbortController(),abort=()=>controller.abort();res.once('close',abort);
             try {
               let audio=cached;
               if(!audio) {
-                activityId=activity.start('text_to_speech',{model:speechModel,reasoningEffort:'none'},vault,speechPageId);
+                activityId=activity.start('text_to_speech',{model,reasoningEffort:'none'},vault,speechPageId);
                 audio=await intelligence.speech(text,controller.signal,bytes=>activity.request(activityId!,bytes,null));
                 validateAccess();
                 if(controller.signal.aborted)throw new HttpError(409,'Speech request cancelled.');

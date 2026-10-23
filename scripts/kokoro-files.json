@@ -1,0 +1,50 @@
+[
+  {
+    "path": "config.json",
+    "size": 44,
+    "hash": "790faf216e7e3f490e71e8bc80df79ed8941101c",
+    "algorithm": "git-sha1"
+  },
+  {
+    "path": "onnx/model_quantized.onnx",
+    "size": 92361116,
+    "hash": "fbae9257e1e05ffc727e951ef9b9c98418e6d79f1c9b6b13bd59f5c9028a1478",
+    "algorithm": "sha256"
+  },
+  {
+    "path": "tokenizer.json",
+    "size": 3497,
+    "hash": "4280f55fc1c32211bc9bb4d55545759a00054ecd",
+    "algorithm": "git-sha1"
+  },
+  {
+    "path": "tokenizer_config.json",
+    "size": 113,
+    "hash": "5c81e9a3a06db9139900d6ee5b60e8bb701ccb0b",
+    "algorithm": "git-sha1"
+  },
+  {
+    "path": "voices/am_echo.bin",
+    "size": 522240,
+    "hash": "3968b92c3c4cd1c4416dbded36c13eaa388a90d5788d02a13e4d781f5f8cf3c3",
+    "algorithm": "sha256"
+  },
+  {
+    "path": "voices/am_puck.bin",
+    "size": 522240,
+    "hash": "fcf73c989033e9233e0b98713eca600c8c74dcc1614b37009d5450ff4a2274a0",
+    "algorithm": "sha256"
+  },
+  {
+    "path": "voices/bm_daniel.bin",
+    "size": 522240,
+    "hash": "6b3194bbceffb746733cbc22c8f593dd44e401a71d53895a2dca891bc595a1e8",
+    "algorithm": "sha256"
+  },
+  {
+    "path": "voices/bm_lewis.bin",
+    "size": 522240,
+    "hash": "b8f671cef828c30e66fdf0b0756a76bba58f6bb3398cbbf27058642acbcedb97",
+    "algorithm": "sha256"
+  }
+]

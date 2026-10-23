@@ -25,3 +25,12 @@ test('review navigation intent cannot expose a title or selection outside its un
  assert.equal(reviewDestinationAt(destination,'vault',{...location,vault:null}),null);
  assert.equal(reviewDestinationAt(null,'vault',location),null);
 });
+
+
+test('property and temporal review intent stays with the exact subject and date',()=>{
+ const property=item('property');assert.equal(reviewDestinationAt(property,'vault',{...location,view:'entity'}),property);assert.equal(reviewDestinationAt(property,'vault',{...location,view:'source'}),property);assert.equal(reviewDestinationAt(property,'vault',{...location,view:'entity',entityId:'other'}),null);
+ const temporal={...item('temporal'),dateId:'julian:month:1905-03',proposalId:'relation'};
+ assert.equal(reviewDestinationAt(temporal,'vault',{...location,view:'calendar',calendarDateId:temporal.dateId}),temporal);
+ assert.equal(reviewDestinationAt(temporal,'vault',{...location,view:'calendar',calendarDateId:'gregorian:month:1905-03'}),null);
+ assert.equal(reviewDestinationAt(temporal,'vault',{...location,view:'calendar',calendarDateId:null}),null);
+});

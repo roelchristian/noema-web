@@ -51,9 +51,10 @@ export class PropertyReview {
   const fingerprint=createHash('sha256').update(stable([proposal,entity,properties,definitions,source?{...source,text:rawSourceHash(source.text)}:null,target??null])).digest('hex');
   return {...proposal,stale:staleReason!==null,staleReason,fingerprint,conflicts,currentName:entity.name,definition,...source?{sourceName:source.name}:{}};
  }
- list(vault:string,entityId:string,status='pending'):ProposalReview[] {
+ list(vault:string,entityId:string,status='pending',proposalId?:string):ProposalReview[] {
   this.entity(vault,entityId);
   if(!['pending','accepted','rejected','all'].includes(status))throw new HttpError(400,'Unknown proposal status.');
+  if(proposalId){const proposal=this.store.get<PropertyProposal>('SELECT * FROM property_proposals WHERE id=? AND vault_id=? AND entity_id=?',proposalId,vault,entityId);return proposal&&(status==='all'||proposal.status===status)?[this.preview(vault,proposal)]:[];}
   return this.store.all<PropertyProposal>(`SELECT * FROM property_proposals WHERE vault_id=? AND entity_id=? ${status==='all'?'':'AND status=?'} ORDER BY created_at,id LIMIT 100`,...status==='all'?[vault,entityId]:[vault,entityId,status]).map(proposal=>this.preview(vault,proposal));
  }
  review(vault:string,entityId:string,proposalId:string,input:PropertyReviewInput):ProposalReview {

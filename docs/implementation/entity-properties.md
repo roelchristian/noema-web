@@ -1,5 +1,7 @@
 # Knowledge entity properties: phased implementation
 
+This is the original checkpoint record. See [checkpoint 2](entity-properties-phase2.md) for persisted typed definitions, completed reference/draft refinements, current verification and remaining scope.
+
 ## Baseline and code inventory (before persistence changes)
 
 Work starts from main `27bd9b49d045063dccdbff2e5bc2f313bece9fdf` (23 October 2026). This includes Overview #43, Inbox #42, and Review Centre #41. No other worker branch is modified. No private vault or provider is accessed. Repository AGENTS.md contains browser guidance; the explicit user instruction skips all browser validation and screenshots. There are no repository or workspace .agents skills installed.

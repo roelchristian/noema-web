@@ -1,6 +1,6 @@
 # Entity properties checkpoint 2: persisted definitions and compatible typed values
 
-This follows the inventory/Phase 1 checkpoint (`ee73347`). The read-only inventory tooling and synthetic/legacy validation were implemented before the persistence migration. No private vault is accessed. Main remains `27bd9b49d045063dccdbff2e5bc2f313bece9fdf`, including Overview #43, Inbox #42 and Review Centre #41.
+This follows the inventory/Phase 1 checkpoint (`ee73347`). The read-only inventory tooling and synthetic/legacy validation were implemented before the persistence migration. No private vault is accessed. The branch was rebased onto freshly fetched main `103771b6d7bed67ff0f0ddb9e91a77404766efc8`, including Calendar #40, Overview #43, Inbox #42 and Review Centre #41. The only replay conflict was test-group registration; both Calendar overlay and property tests were retained.
 
 ## Storage and compatibility contract
 
@@ -42,4 +42,15 @@ Phase 5 remains deferred: facets, canonical relationship definitions, field hist
 
 ## Verification
 
-Final verification pending. UI/browser validation, visual QA and screenshots are unrun by explicit user instruction. Automated DOM tests validate interaction logic; they do not claim visual/browser coverage.
+Implementation checkpoint: `eeba663`, rebased onto main `103771b`. Branch: `feat/entity-properties-foundation`.
+
+- `npm run build`: passed, including styles, application/server TypeScript, test-helper typecheck and production bundling. The existing large-bundle advisory remains.
+- `npm run test:all` on the rebased frozen code: **901 tests, 895 passed, 0 failed, 6 platform skips** (macOS Keychain/PDFKit/Vision/native sandbox facilities unavailable on Linux).
+- Focused storage/API/backup set: **13 passed**; UI/home/panel set: **33 passed**; reference search/source stability: **3 passed**.
+- `git diff --check`: passed.
+- Independent migration review found no remaining code blocker. Its findings corrected subtype scoping, owner-vault integrity, impossible timestamps, uncertain-create remount behavior, explicit backup binding restoration and forged clean temporal snapshots.
+- No private vault access, provider spend, push, PR, merge, deployment, force-push, branch deletion or repository-setting changes. Only this working branch was rebased; no worker branch was changed.
+
+Original checkpoint commit IDs were rewritten by the authorized latest-main rebase. Current history retains inventory/plan `701acac`, additive foundation `26691c0`, initial inline UI `49a4647`, first verification record `46e5bfb`, and persisted typed checkpoint `eeba663`.
+
+No execution blocker remains. Phase 3, Phase 4 and the documented date-control/custom-temporal limits remain; Phase 5 is deferred. UI/browser validation, visual QA and screenshots are unrun by explicit user instruction. Automated DOM tests validate interaction logic; they do not claim visual/browser coverage.

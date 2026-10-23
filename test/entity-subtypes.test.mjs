@@ -124,3 +124,22 @@ test('single-subtype database migration preserves selections and multiple select
     assert.deepEqual(knowledge.detail('default','berkeley').subtypes,[]);
   } finally { db.close(); rmSync(dir,{recursive: true,force: true}); }
 });
+
+
+test('schema definition metadata is additive and custom identities stay vault scoped', () => {
+  const db=openDatabase(':memory:');
+  try {
+    const knowledge=new Knowledge(new Store(db));
+    const before=knowledge.schema('default');
+    assert.ok(before.properties.person.includes('birth date'));
+    const definition=before.propertyDefinitions.find(item=>item.id==='builtin:person:birth_date');
+    assert.equal(definition.label,'Birth Date');
+    assert.equal(definition.compatibility,'legacy');
+    knowledge.addTypeProperty('default',{type:'person',subtype:'person:writer',name:'Custom Field'});
+    const custom=knowledge.schema('default').propertyDefinitions.find(item=>item.legacyName==='Custom Field');
+    assert.equal(custom.scope.subtypeId,'person:writer');
+    assert.equal(custom.origin,'user_defined');
+    assert.ok(!knowledge.schema('elsewhere').propertyDefinitions.some(item=>item.id===custom.id));
+    assert.equal(knowledge.schema('default').propertyDefinitions.find(item=>item.legacyName==='Custom Field').id,custom.id);
+  } finally {db.close();}
+});

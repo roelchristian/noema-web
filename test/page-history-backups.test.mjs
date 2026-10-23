@@ -87,6 +87,8 @@ test('reading-note anchors and stable inline citations survive historical backup
   s.store.run("UPDATE source_files SET text=?,status='ready',admitted=1 WHERE id=?",content,file.id);
   let page=new SourceReading(s.store).createReadingNote(s.vault.id,file.id,{sourceId:source.id,fileId:file.id,sourceHash:sourceTextHash(content),startOffset:0,endOffset:content.length,excerpt:content,text:'A short reading note'});
   const reference=JSON.parse(s.store.get('SELECT reference_json FROM page_reading_notes WHERE page_id=?',page.id).reference_json);
+  reference.generationId='synthetic-old-generation';reference.passageId='synthetic-old-passage';
+  s.store.run('UPDATE page_reading_notes SET reference_json=? WHERE page_id=?',JSON.stringify(reference),page.id);
   page=s.pages.update(s.vault.id,page.id,{...page,blocks:[{id:'citation',type:'paragraph',checked:false,content:[{text:'Evidence',sourceReference:reference}]}]});
   const checkpoint=s.history.checkpoint(s.vault.id,page.id,{revision:page.revision,name:'Reading evidence'});
   const exported=await s.backups.export(s.vault.id),restored=await s.backups.import(exported.bytes),newPage=s.pages.list(restored.id)[0];
@@ -97,6 +99,12 @@ test('reading-note anchors and stable inline citations survive historical backup
   assert.equal(current.blocks[0].content[0].sourceReference.id,snapshot.blocks[0].content[0].sourceReference.id);
   const currentAnchor=JSON.parse(s.store.get('SELECT reference_json FROM page_reading_notes WHERE page_id=?',newPage.id).reference_json);
   assert.equal(currentAnchor.id,snapshot.readingNote.reference.id);
+  for(const key of ['generationId','passageId']) {
+    const mapped=snapshot.blocks[0].content[0].sourceReference[key];
+    assert.notEqual(mapped,reference[key]);assert.match(mapped,/^[a-f0-9-]{36}$/);
+    assert.equal(current.blocks[0].content[0].sourceReference[key],mapped);
+    assert.equal(currentAnchor[key],mapped);assert.equal(snapshot.readingNote.reference[key],mapped);
+  }
   assert.equal(snapshot.blocks[0].content[0].sourceReference.fileId,snapshot.readingNote.fileId);
   assert.equal(snapshot.blocks[0].content[0].sourceReference.sourceId,snapshot.readingNote.sourceId);
   const copied=s.history.copy(restored.id,newPage.id,named.id,{revision:s.pages.get(restored.id,newPage.id).revision},s.pages);

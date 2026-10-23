@@ -11,7 +11,16 @@ import {Knowledge} from './knowledge.js';
 import {historyHash} from './page-history.js';
 
 type Row=Record<string,unknown>;
-type Maps={pages:Map<string,string>;entities:Map<string,string>;files:Map<string,string>;images:Map<string,string>;citations:Map<string,string>;detachedEntities?:Map<string,string>;detachedFiles?:Map<string,string>};
+export type DetachedSourceEvidenceMaps={generations:Map<string,string>;passages:Map<string,string>};
+/** These source-processing rows are not archived. Keep evidence detached and consistent. */
+export function remapDetachedSourceEvidence(value:Row,maps:DetachedSourceEvidenceMaps):Partial<Record<'generationId'|'passageId',string>> {
+  const result:Partial<Record<'generationId'|'passageId',string>>={};
+  for(const [key,map] of [['generationId',maps.generations],['passageId',maps.passages]] as const)if(value[key]!==undefined) {
+    const id=required(value[key]);if(!map.has(id))map.set(id,randomUUID());result[key]=map.get(id)!;
+  }
+  return result;
+}
+type Maps={evidence:DetachedSourceEvidenceMaps;pages:Map<string,string>;entities:Map<string,string>;files:Map<string,string>;images:Map<string,string>;citations:Map<string,string>;detachedEntities?:Map<string,string>;detachedFiles?:Map<string,string>};
 const invalid=()=>new HttpError(400,'This backup contains invalid page history or missing historical assets.');
 const kinds:PageVersionKind[]=['baseline','created','edit','ai_acceptance','import','checkpoint','restore'];
 function list(value:unknown):unknown[] {if(!Array.isArray(value)||value.length>2000)throw invalid();return value;}
@@ -56,7 +65,7 @@ export function restorePageVersions(store:Store,vault:string,rows:Row[],maps:Map
           citation.id=reference('citation',maps.citations,citation.id);
           citation.sourceId=reference('entity',maps.entities,citation.sourceId);
           citation.fileId=reference('file',maps.files,citation.fileId);
-          segment.sourceReference=citation;
+          segment.sourceReference={...citation,...remapDetachedSourceEvidence(citation,maps.evidence)};
         }
         return segment;
       });
@@ -86,7 +95,7 @@ export function restorePageVersions(store:Store,vault:string,rows:Row[],maps:Map
       const sourceId=note.sourceId===null?null:reference('entity',maps.entities,note.sourceId),fileId=note.fileId===null?null:reference('file',maps.files,note.fileId);
       if(sourceId){const target=store.get<{type:string}>('SELECT type FROM entities WHERE id=? AND vault_id=?',sourceId,vault);if(target&&target.type!=='source')throw invalid();}
       if(sourceId&&fileId){const file=store.get<{entity_id:string}>('SELECT entity_id FROM source_files WHERE id=? AND vault_id=?',fileId,vault);if(file&&file.entity_id!==sourceId)throw invalid();}
-      snapshot.readingNote={sourceId,fileId,sourceHash,startOffset,endOffset,excerpt,createdAt:date(note.createdAt),reference:{...anchor,id:reference('citation',maps.citations,anchor.id),sourceId:sourceId??reference('entity',maps.entities,anchor.sourceId),fileId:fileId??reference('file',maps.files,anchor.fileId),startLine:integer(anchor.startLine,1),endLine:integer(anchor.endLine,integer(anchor.startLine,1))}};
+      snapshot.readingNote={sourceId,fileId,sourceHash,startOffset,endOffset,excerpt,createdAt:date(note.createdAt),reference:{...anchor,...remapDetachedSourceEvidence(anchor,maps.evidence),id:reference('citation',maps.citations,anchor.id),sourceId:sourceId??reference('entity',maps.entities,anchor.sourceId),fileId:fileId??reference('file',maps.files,anchor.fileId),startLine:integer(anchor.startLine,1),endLine:integer(anchor.endLine,integer(anchor.startLine,1))}};
     }
     const id=strict(versionIds,row.id),restoredFrom=row.restored_from_version_id===null?null:reference('version',versionIds,row.restored_from_version_id);
     if(row.restored_from_version_id!==null) {

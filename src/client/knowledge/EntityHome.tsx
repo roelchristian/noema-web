@@ -1,6 +1,7 @@
 import {EntityGlance, EntityGlanceSources, previewText} from './EntityGlance';
 import {TemporalPropertyValue} from './TemporalPropertyValue';
-import {useEffect, useLayoutEffect, useRef, useState} from 'react';
+import {useContext, useEffect, useLayoutEffect, useRef, useState} from 'react';
+import {ReviewDestination} from '../review/review-destination';
 import {entityHomeTemplate} from './entity-home-template';
 import {EntityNeighborhood} from './EntityNeighborhood';
 import {EntityDiscovery} from './EntityDiscovery';
@@ -51,13 +52,15 @@ const tabLabels = {overview:'Overview', connections:'Connections', mentions:'Men
 
 /** A destination for a knowledge subject, backed by the same record and drafts as its inspector. */
 export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect, onOpenPage, onOpenMention, onOpenSourcePassage, onUpdated, onError, onClose, pages = [], onCreatePage}: EntityHomeProps) {
+  const reviewDestination=useContext(ReviewDestination);
+  const reviewTab=reviewDestination?.category==='discovery'&&reviewDestination.originId===id?'discovery':null;
   const [entity, setEntity] = useState<EntityDetail | null>(null);
   const [error, setError] = useState('');
   const [detailAttempt, setDetailAttempt] = useState(0);
   const [entityAttempt, setEntityAttempt] = useState(0);
   const navigationKey = vaultId + ':' + id;
   const savedNavigation = () => window.history.state?.entityHome?.key === navigationKey ? window.history.state.entityHome : null;
-  const initialTab = (): HomeTab => hasEntityDraft(vaultId,id) ? 'edit' : tabs.includes(savedNavigation()?.tab) ? savedNavigation().tab : 'overview';
+  const initialTab = (): HomeTab => reviewTab ?? (hasEntityDraft(vaultId,id) ? 'edit' : tabs.includes(savedNavigation()?.tab) ? savedNavigation().tab : 'overview');
   const [tab, setTab] = useState<HomeTab>(initialTab);
   const activeTab = useRef(tab); activeTab.current=tab;
   const article = useRef<HTMLElement>(null);
@@ -70,11 +73,13 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
     window.addEventListener('scroll',save);
     return ()=>{window.removeEventListener('scroll',save);};
   },[navigationKey,tab]);
-  useLayoutEffect(()=>{if(!entity || entity.id!==id)return;revealTab(tab);const host=document.scrollingElement;if(host)host.scrollTop=scrolls.current[tab] ?? 0;if(!['overview','sources'].includes(tab)&&!entity.previewLimited)restoring.current=false;},[tab,entity]);
+  useLayoutEffect(()=>{if(!entity || entity.id!==id)return;revealTab(tab);const host=document.scrollingElement;if(host)host.scrollTop=scrolls.current[tab] ?? 0;if(!['overview','sources'].includes(tab)&&(!entity.previewLimited || tab==='discovery'))restoring.current=false;},[tab,entity]);
   const [manage, setManage] = useState(false);
   const [exploring, setExploring] = useState(false);
   const current = useRef({vaultId, id}); current.current = {vaultId, id};
   const {schema, error: schemaError} = useEntitySchema(vaultId);
+  // A Review Centre destination selects Discovery without clearing this entity or its drafts.
+  useEffect(() => {if(reviewTab){restoring.current=true;setTab(reviewTab);}}, [reviewTab]);
   useEffect(() => {setEntity(null); setPageError(''); setManage(false); setExploring(false); setTab(initialTab());}, [vaultId, id]);
   useEffect(() => {
     let active = true; setError('');

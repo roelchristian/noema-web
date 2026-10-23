@@ -1,3 +1,6 @@
+import {editorialDraft,saveEditorialDraft,clearEditorialDraft} from '../review/editorial-drafts';
+import {useContext} from 'react';
+import {ReviewDestination} from '../review/review-destination';
 import {getLocale} from '../i18n';
 import {t as uiText} from '../i18n';
 import {useEffect,useId,useRef,useState} from 'react';
@@ -52,8 +55,11 @@ function RevisionDocument({revision}:{revision:SourceReprocessingRevision}){
     {!entries.length&&<SourceReaderText text={revision.reprocessed.text} footnotePrefix={revision.id}/>}
   </article>;
 }
-function PatchReview({patch,disabled,selected,layout,onSelect,onCompare,onDecision}:{patch:SourceEditorialPatch;layout:ComparisonLayout;disabled:boolean;selected:boolean;onCompare?:(page:number)=>void;onSelect:(selected:boolean)=>void;onDecision:(patch:SourceEditorialPatch,decision:'accepted'|'rejected'|'pending',replacement?:string)=>Promise<void>}){
-  const [editing,setEditing]=useState(false),[replacement,setReplacement]=useState(patch.userReplacement??patch.replacement);
+function PatchReview({draftKey,patch,disabled,selected,layout,onSelect,onCompare,onDecision}:{draftKey:string;patch:SourceEditorialPatch;layout:ComparisonLayout;disabled:boolean;selected:boolean;onCompare?:(page:number)=>void;onSelect:(selected:boolean)=>void;onDecision:(patch:SourceEditorialPatch,decision:'accepted'|'rejected'|'pending',replacement?:string)=>Promise<void>}){
+  const baseline=JSON.stringify([patch.original,patch.userReplacement??patch.replacement,patch.decision]);
+  const restored=editorialDraft(draftKey,baseline);
+  const [editing,setEditing]=useState(restored!==undefined),[replacement,setReplacement]=useState(restored??patch.userReplacement??patch.replacement);
+  useEffect(()=>{if(editing)saveEditorialDraft(draftKey,baseline,replacement);},[draftKey,baseline,editing,replacement]);
   const changeTypes={ocr:'OCR correction',line_breaks:'Line breaks',footnote:'Footnote',apparatus:'Page apparatus',metadata:'Metadata',citation:'Citation',math:'Math',formatting:'Formatting'};
   const hasRisks=!!patch.riskReasons?.length;
   useEffect(()=>{if(!editing)setReplacement(patch.userReplacement??patch.replacement);},[patch.userReplacement,patch.replacement,editing]);
@@ -70,7 +76,7 @@ function PatchReview({patch,disabled,selected,layout,onSelect,onCompare,onDecisi
       <small className="reprocessing-confidence">{uiText("AI confidence:") + " "}{Math.round(patch.confidence*100)}%</small>
     </div>
     <div className="reprocessing-patch-footer">
-      <div className="reprocessing-actions"><button type="button" className="button primary small" disabled={disabled} onClick={()=>void onDecision(patch,'accepted',editing?replacement:undefined)}>{editing?uiText("Accept edited change"):uiText("Accept change")}</button><button type="button" className="button small" disabled={disabled} onClick={()=>void onDecision(patch,'rejected')}>{uiText("Keep original")}</button><button type="button" className="reprocessing-quiet-action" disabled={disabled} onClick={()=>setEditing(value=>!value)}>{editing?uiText("Cancel edit"):uiText("Edit")}</button>{patch.decision!=='pending'&&<button type="button" className="reprocessing-quiet-action" disabled={disabled} onClick={()=>void onDecision(patch,'pending')}>{uiText("Return to review")}</button>}</div>
+      <div className="reprocessing-actions"><button type="button" className="button primary small" disabled={disabled} onClick={()=>void onDecision(patch,'accepted',editing?replacement:undefined)}>{editing?uiText("Accept edited change"):uiText("Accept change")}</button><button type="button" className="button small" disabled={disabled} onClick={()=>void onDecision(patch,'rejected')}>{uiText("Keep original")}</button><button type="button" className="reprocessing-quiet-action" disabled={disabled} onClick={()=>{if(editing)clearEditorialDraft(draftKey);setEditing(value=>!value);}}>{editing?uiText("Cancel edit"):uiText("Edit")}</button>{patch.decision!=='pending'&&<button type="button" className="reprocessing-quiet-action" disabled={disabled} onClick={()=>void onDecision(patch,'pending')}>{uiText("Return to review")}</button>}</div>
       <label className="reprocessing-select"><input type="checkbox" checked={selected} disabled={disabled} onChange={event=>onSelect(event.target.checked)}/>{" " + uiText("Select for bulk review")}</label>
     </div>
   </details>;
@@ -110,6 +116,9 @@ function Report({revision}:{revision:SourceReprocessingRevision}){
   </details>;
 }
 export function SourceReprocessing({vaultId,fileId,visible,onShow,onOriginal,onCompare}:Props){
+  const destination=useContext(ReviewDestination);
+  const reviewRun=destination?.category==='editorial'&&destination.fileId===fileId?destination.runId:undefined;
+  useEffect(()=>{if(reviewRun){setRevisionId(reviewRun);setTab('review');}},[reviewRun]);
   const [summaries,setSummaries]=useState<SourceReprocessingSummary[]>([]),[revisionId,setRevisionId]=useState(''),[revision,setRevision]=useState<SourceReprocessingRevision|null>(null),[prompt,setPrompt]=useState(false),[instructions,setInstructions]=useState(''),[acceptanceThreshold,setAcceptanceThreshold]=useState('90'),[acceptanceMode,setAcceptanceMode]=useState<'review_all'|'safe_formatting'>('review_all'),[filter,setFilter]=useState<'all'|'pending'|'accepted'|'rejected'>('pending'),[comparisonLayout,setComparisonLayout]=useState<ComparisonLayout>('auto'),[selected,setSelected]=useState<string[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState(''),[reload,setReload]=useState(0),[tab,setTab]=useState<'read'|'review'>('read');
   const actionRunning=useRef(false);
   function beginAction(){if(actionRunning.current)return false;actionRunning.current=true;setBusy(true);setError('');return true;}
@@ -175,7 +184,7 @@ export function SourceReprocessing({vaultId,fileId,visible,onShow,onOriginal,onC
           </div>
           {filter==='rejected'&&shownPatches.length>0&&<p className="reprocessing-hint">{uiText("These suggestions were rejected. The original text is kept in the reading version.")}</p>}
           {!shownPatches.length&&<p role="status">{emptyReviewMessages[filter]}</p>}
-          {shownPatches.map(patch=><PatchReview key={`${revision.id}:${patch.id}`} patch={patch} layout={comparisonLayout} onCompare={onCompare} selected={selected.includes(patch.id)} onSelect={checked=>setSelected(ids=>checked?[...ids,patch.id]:ids.filter(id=>id!==patch.id))} disabled={busy||!!stale||active(revision.status)} onDecision={decide}/>)}
+          {shownPatches.map(patch=><PatchReview draftKey={JSON.stringify([vaultId,fileId,revision.id,patch.id])} key={`${revision.id}:${patch.id}`} patch={patch} layout={comparisonLayout} onCompare={onCompare} selected={selected.includes(patch.id)} onSelect={checked=>setSelected(ids=>checked?[...ids,patch.id]:ids.filter(id=>id!==patch.id))} disabled={busy||!!stale||active(revision.status)} onDecision={decide}/>)}
         </div>}
       </>}
     </>}

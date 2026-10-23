@@ -83,7 +83,9 @@ history entry, namespaced by vault/entity ID, without evidence contents. Tab
 buttons use the existing ARIA tab pattern, arrow/Home/End keyboard navigation,
 and focus without scrolling. Deferred source loading restores the remembered
 position after content is ready; opening a passage retains its trigger for
-focus return. Native workspace URLs and back/forward navigation remain intact.
+focus return. Native workspace URLs and back/forward navigation remain intact. A Review Centre
+Discovery destination takes priority over saved tab selection without clearing
+the currently loaded entity or its drafts.
 Source requests abort when interrupted and ignore late results. Existing
 previews remain visible while refreshing the same identity to avoid collapse.
 

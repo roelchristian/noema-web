@@ -1,3 +1,5 @@
+import {useContext} from 'react';
+import {ReviewDestination} from '../review/review-destination';
 import {SourceReadingContinuity} from './SourceReadingContinuity';
 import {t as uiText} from '../i18n';
 import {SourceEvidence} from './SourceEvidence';
@@ -35,6 +37,8 @@ function passageAnchor(fileId:string,nodeId:string){return `source-passage-${enc
 
 /** Reading and citation state is deliberately separate from the editable page lifecycle. */
 export function SourceReader({vaultId,source,entities,inspectorOpen=false,refreshKey,onActiveAttachmentChange,onCreatePageFromSource,onError,onAddPassage,onAnnotate,onReadingNoteCreated,onOpenReadingNote,onRemoveReadingNote}:Props) {
+  const destination=useContext(ReviewDestination);
+  const reviewFile=destination?.originId===source.id?destination.fileId:undefined;
   const [files,setFiles]=useState<SourceFile[]|null>(null),[fileId,setFileId]=useState('');
   const [loaded,setLoaded]=useState<LoadedFile|null>(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
   const [selected,setSelected]=useState<string|null>(null),[copied,setCopied]=useState(false);
@@ -57,13 +61,13 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,refres
         if(controller.signal.aborted)return;
         const attachments=detail.attachments??[];
         setFiles(attachments);
-        setFileId(current=>attachments.some(file=>file.id===current)?current:(attachments.find(file=>file.status==='ready'&&file.admitted===1)??attachments[0])?.id??'');
+        setFileId(current=>attachments.some(file=>file.id===current)?current:reviewFile&&attachments.some(file=>file.id===reviewFile)?reviewFile:(attachments.find(file=>file.status==='ready'&&file.admitted===1)??attachments[0])?.id??'');
         if(attachments.some(file=>file.status==='queued'||file.status==='processing'||file.status==='ready'&&['pending','running'].includes(file.enrichment_status)))timer=setTimeout(()=>void refresh(),2000);
       }catch(cause){if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:String(cause));}
     }
     void refresh();
     return()=>{controller.abort();clearTimeout(timer);};
-  },[vaultId,source.id,source.updated_at,source.sourceStatus,refreshKey,retry]);
+  },[vaultId,source.id,source.updated_at,source.sourceStatus,refreshKey,retry,reviewFile]);
   const attachment=files?.find(file=>file.id===fileId);
   useEffect(()=>{
     const controller=new AbortController();
@@ -139,7 +143,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,refres
     {attachment?.status==='ready'&&attachment.admitted!==1&&<p className="source-reader-status">{uiText("This attachment is unavailable for reading.")}</p>}
     {attachment?.status==='ready'&&attachment.admitted===1&&!loaded&&!error&&<p className="source-reader-status" role="status">{uiText("Loading document text…")}</p>}
     {loaded?.format==='pdf'&&<SourceEvidence vaultId={vaultId} fileId={loaded.id} pageCount={loaded.pages??0} page={comparisonPage} onPage={setComparisonPage}/>}
-    {loaded&&<SourceReprocessing key={`${vaultId}:${loaded.id}`} vaultId={vaultId} fileId={loaded.id} onCompare={loaded.format==='pdf'?setComparisonPage:undefined} visible={reprocessed} onShow={()=>setReprocessed(true)} onOriginal={showOriginal}/>}
+    {loaded&&<SourceReprocessing key={`${vaultId}:${loaded.id}`} vaultId={vaultId} fileId={loaded.id} onCompare={loaded.format==='pdf'?setComparisonPage:undefined} visible={reprocessed||destination?.category==='editorial'&&reviewFile===loaded.id} onShow={()=>setReprocessed(true)} onOriginal={showOriginal}/>}
     {loaded&&!reprocessed&&<div className="source-reader-layout">
       <div className="source-reader-content">
         {reference&&<aside className="source-reader-selection" aria-label={uiText("Selected passage")}><div className="source-reader-selection-heading"><strong>{uiText("Selected passage")}</strong><button type="button" aria-label={uiText("Clear selected passage")} onClick={()=>setSelected(null)}><Icon name="close"/></button></div><small>{citationLocation(reference)}</small><blockquote>{reference.excerpt}</blockquote><div className="source-reader-selection-actions"><button className="button small" type="button" onClick={()=>void copyCitation()}>{copied?uiText("Copied"):uiText("Copy citation")}</button><button className="button small" type="button" onClick={()=>onAddPassage(reference)}>{uiText("Add to page")}</button><button className="button small" type="button" onClick={()=>onAnnotate(reference)}>{uiText("Annotate")}</button></div><span role="status" className="sr-only">{copied?uiText("Citation copied"):''}</span></aside>}

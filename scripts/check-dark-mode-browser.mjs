@@ -72,9 +72,9 @@ try{
   const minimum=width===390?44:30;const editor=await hitRects(page,iconTargets,minimum);
   const knowledge=page.getByRole('button',{name:'Knowledge',exact:true});await knowledge.focus();await page.keyboard.press('Tab');await page.keyboard.press('Shift+Tab');
   assert.equal(await knowledge.evaluate(e=>getComputedStyle(e).outlineStyle),'solid','Keyboard focus must be visible');await readable(page,'.knowledge-toggle',{minimum:3,property:'outlineColor'});
-  
+
   await knowledge.click();await page.locator('.intelligence-panel').waitFor();await page.waitForFunction(()=>{const e=document.querySelector('.intelligence-panel .page-tool');return e&&e.getBoundingClientRect().width&&!e.closest('[inert]');});const panel=await hitRects(page,'.intelligence-panel '+'.page-tool,.intelligence-panel .knowledge-icon-action,.intelligence-panel .knowledge-entity-tabs > button,.intelligence-panel .knowledge-entity-sort',minimum);
-  
+
   await page.getByRole('button',{name:'Close Knowledge panel',exact:true}).click();
   await page.getByRole('button',{name:'More page actions',exact:true}).click();const danger=page.getByRole('menuitem',{name:'Move to Trash',exact:true});await danger.hover();
   const menu=await page.locator('.sidebar-action-menu:popover-open').evaluate(e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};});assert.ok(menu.left>=0&&menu.right<=width&&menu.top>=0&&menu.bottom<=960);
@@ -91,10 +91,10 @@ try{
   await content.evaluate(e=>{e.focus();const walker=document.createTreeWalker(e,NodeFilter.SHOW_TEXT);let n;while(n=walker.nextNode()){if(n.textContent.trim().length<8)continue;const r=document.createRange();r.setStart(n,0);r.setEnd(n,8);getSelection().removeAllRanges();getSelection().addRange(r);document.dispatchEvent(new Event('selectionchange'));return;}throw new Error('Expected sample text');});
   await page.getByRole('button',{name:'Text actions',exact:true}).click();
   const selectionContract=await menuContract(page,'.selection-more-actions',width===390?44:36);assert.deepEqual(selectionContract,actionContract);
-  
+
   await page.getByRole('menuitem',{name:'Semantic function',exact:true}).click();
   const semanticContract=await menuContract(page,'.semantic-picker',width===390?44:36);assert.deepEqual(semanticContract,actionContract);
-  
+
   await page.keyboard.press('Escape');await page.keyboard.press('Escape');await page.keyboard.press('Escape');
   await page.getByRole('button',{name:'More page actions',exact:true}).click();await page.getByRole('menuitem',{name:'Rename',exact:true}).click();await page.locator('dialog[open]').waitFor();await hitRects(page,'dialog[open] .button',width===390?44:30);await readable(page,'dialog[open] h2,dialog[open] input,dialog[open] .button');await page.keyboard.press('Escape');
   const tokens=await page.evaluate(()=>{const s=getComputedStyle(document.documentElement);return Object.fromEntries(['surface','surface-raised','surface-popover','surface-inset','sidebar','line',...['graphite','sage','ocean','iris','rose','honey'].flatMap(x=>[`palette-${x}-text`,`palette-${x}-bg`]),...['danger','warning','success','info'].flatMap(x=>['text','bg','border'].map(y=>`status-${x}-${y}`))].map(k=>[k,s.getPropertyValue('--'+k).trim()]));});

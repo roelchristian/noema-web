@@ -1,3 +1,4 @@
+import {narrationDelivery,type NarrationPreferences} from '../../shared/narration.js';
 import {geminiSpeechModel,geminiSpeechStyle,isSpeechVoice} from '../../shared/intelligence.js';
 import {cleanSpeechText} from '../../shared/speech-text.js';
 import {validSpeechWav} from './speech-cache.js';
@@ -5,7 +6,9 @@ import {speechMaxAudioBytes} from './realtime-speech.js';
 import type {AIUsageObserver} from './ai-debug.js';
 import {HttpError} from '../validation.js';
 
-// Official Interactions REST schema, checked 2026-10-23. Never put the key in a URL.
+// Official Interactions REST schema, checked 2026-10-23.
+// https://ai.google.dev/gemini-api/docs/speech-generation
+// Structured speech_metadata carries delivery guidance separately from transcript. Never put the key in a URL.
 export const geminiSpeechEndpoint='https://generativelanguage.googleapis.com/v1beta/interactions';
 const maxResponseBytes=Math.ceil((speechMaxAudioBytes+44)/3)*4+64*1024;
 const invalid=()=>new HttpError(502,'Gemini returned incomplete or invalid WAV audio. Try a shorter selection.');
@@ -34,7 +37,7 @@ function normalizeWav(wav:Buffer):Buffer {
   return normalized;
 }
 
-export async function geminiSpeech(text:string,key:string,signal:AbortSignal,transport:typeof fetch,voice:string,observer?:AIUsageObserver):Promise<Buffer> {
+export async function geminiSpeech(text:string,key:string,signal:AbortSignal,transport:typeof fetch,voice:string,observer?:AIUsageObserver,narration?:NarrationPreferences):Promise<Buffer> {
   text=cleanSpeechText(text);
   // UTF-8 bytes conservatively bound input tokens, leaving room for style metadata.
   if(!text||text.length>4096||Buffer.byteLength(text,'utf8')>7000)throw new HttpError(400,'Gemini speech requires at most 4,096 characters and 7,000 UTF-8 bytes per section.');
@@ -45,7 +48,7 @@ export async function geminiSpeech(text:string,key:string,signal:AbortSignal,tra
       method:'POST',redirect:'error',signal,
       headers:{'Content-Type':'application/json','x-goog-api-key':key},
       body:JSON.stringify({model:geminiSpeechModel,store:false,stream:false,
-        input:[{type:'user_input',content:[{type:'text',text,annotations:[{type:'speech_metadata',style:geminiSpeechStyle}]}]}],
+        input:[{type:'user_input',content:[{type:'text',text,annotations:[{type:'speech_metadata',style:narration?narrationDelivery(narration):geminiSpeechStyle}]}]}],
         response_format:{type:'audio',mime_type:'audio/wav',sample_rate:24000},
         generation_config:{speech_config:[{voice}]},
       }),

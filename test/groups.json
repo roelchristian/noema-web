@@ -1,5 +1,6 @@
 {
   "unit": [
+    "test/narration-core.test.mjs",
     "test/narration-text.test.mjs",
     "test/api.test.mjs",
     "test/liturgical-week.test.mjs",

@@ -1,3 +1,4 @@
+import {defaultNarrationPreferences,narrationVersion,type NarrationPreferences} from '../../shared/narration.js';
 import {createHash,randomUUID} from 'node:crypto';
 import {existsSync,lstatSync,mkdirSync,readFileSync,readdirSync,renameSync,rmSync,writeFileSync} from 'node:fs';
 import path from 'node:path';
@@ -9,9 +10,9 @@ import {HttpError} from '../validation.js';
 
 export const speechCacheVersion='wav-pcm24k-mono16-v1';
 export const speechCacheRetentionMs=7*24*60*60*1000;
-export function speechCacheKey(text:string,options:{provider?:SpeechProvider;model?:string;voice?:string;version?:string}={}) {
+export function speechCacheKey(text:string,options:{provider?:SpeechProvider;model?:string;voice?:string;version?:string;narration?:NarrationPreferences;pauseAfterMs?:number;protectedText?:boolean}={}) {
   const provider=options.provider??'kokoro';
-  const identity=[cleanSpeechText(text),provider,options.model??speechModelFor(provider),options.voice??defaultSpeechVoiceFor(provider),options.version??speechCacheVersion,speechNarrationInstructions];
+  const identity=[cleanSpeechText(text),provider,options.model??speechModelFor(provider),options.voice??defaultSpeechVoiceFor(provider),options.version??speechCacheVersion,speechNarrationInstructions,options.narration??defaultNarrationPreferences,narrationVersion,options.pauseAfterMs??0,options.protectedText??false];
   if(provider==='gemini')identity.push(geminiSpeechStyle);
   return createHash('sha256').update(JSON.stringify(identity)).digest('hex');
 }

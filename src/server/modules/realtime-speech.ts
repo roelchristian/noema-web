@@ -1,3 +1,4 @@
+import {narrationDelivery,type NarrationPreferences} from '../../shared/narration.js';
 import {cleanSpeechText} from '../../shared/speech-text.js';
 import WebSocket from 'ws';
 import type {AIUsageObserver} from './ai-debug.js';
@@ -15,8 +16,10 @@ export type SpeechSocket=Pick<WebSocket,'on'|'off'|'send'|'terminate'>;
 export type SpeechSocketFactory=(url:string,options:WebSocket.ClientOptions)=>SpeechSocket;
 export const createSpeechSocket:SpeechSocketFactory=(url,options)=>new WebSocket(url,options);
 
+// Official GA audio.output.speed and instruction guidance checked 2026-10-23:
+// https://developers.openai.com/api/reference/resources/realtime/subresources/sessions/methods/create
 /** One isolated response per connection; no microphone input or conversation history. */
-export function realtimeSpeech(text:string,key:string,signal:AbortSignal,factory:SpeechSocketFactory=createSpeechSocket,observer?:AIUsageObserver,voice:SpeechVoice=defaultSpeechVoice):Promise<Buffer> {
+export function realtimeSpeech(text:string,key:string,signal:AbortSignal,factory:SpeechSocketFactory=createSpeechSocket,observer?:AIUsageObserver,voice:SpeechVoice=defaultSpeechVoice,narration?:NarrationPreferences):Promise<Buffer> {
   if(!isSpeechVoice(voice))return Promise.reject(new HttpError(400,'Choose a supported OpenAI speech voice.'));
   text=cleanSpeechText(text);
   if(!text||text.length>4096)return Promise.reject(new HttpError(400,'Speech requires text of at most 4,096 characters.'));
@@ -36,7 +39,7 @@ export function realtimeSpeech(text:string,key:string,signal:AbortSignal,factory
     };
     const abort=()=>finish(new HttpError(409,'Speech request stopped or timed out.'));
     const open=()=>{
-      try{socket.send(JSON.stringify({type:'session.update',session:{type:'realtime',output_modalities:['audio'],tools:[],tool_choice:'none',audio:{output:{format:{type:'audio/pcm',rate:24000},voice}}}}));}
+      try{socket.send(JSON.stringify({type:'session.update',session:{type:'realtime',output_modalities:['audio'],tools:[],tool_choice:'none',audio:{output:{format:{type:'audio/pcm',rate:24000},voice,...(narration?{speed:narration.pace}:{})}}}}));}
       catch{finish(new HttpError(502,'Could not initialize OpenAI speech.'));}
     };
     const message=(data:WebSocket.RawData)=>{
@@ -45,7 +48,7 @@ export function realtimeSpeech(text:string,key:string,signal:AbortSignal,factory
         const event=JSON.parse(data.toString());
         if(event.type==='session.updated'&&!requested) {
           requested=true;
-          socket.send(JSON.stringify({type:'response.create',response:{conversation:'none',output_modalities:['audio'],instructions:speechNarrationInstructions,input:[{type:'message',role:'user',content:[{type:'input_text',text}]}]}}));
+          socket.send(JSON.stringify({type:'response.create',response:{conversation:'none',output_modalities:['audio'],instructions:speechNarrationInstructions+(narration?' Delivery guidance: '+narrationDelivery(narration,false):''),input:[{type:'message',role:'user',content:[{type:'input_text',text}]}]}}));
         } else if(event.type==='response.output_audio.delta') {
           if(!requested||typeof event.delta!=='string'||!event.delta||event.delta.length>2*1024*1024||event.delta.length%4!==0||!/^[A-Za-z0-9+/]*={0,2}$/.test(event.delta))throw new Error('Invalid audio');
           const chunk=Buffer.from(event.delta,'base64');if(chunk.toString('base64')!==event.delta)throw new Error('Invalid audio');bytes+=chunk.length;

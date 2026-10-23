@@ -299,25 +299,30 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             const header=req.headers['x-vault-id'];if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
             if(body.pageId!==undefined&&(typeof body.pageId!=='string'||!body.pageId))throw new HttpError(400,'Invalid speech source page.');
             const speechPageId=typeof body.pageId==='string'?body.pageId:null;
-            const provider=intelligence.speechProviderSelection(),voice=intelligence.speechVoiceSelection(),model=speechModelFor(provider);
+            const provider=intelligence.speechProviderSelection(),voice=intelligence.speechVoiceSelection(),model=speechModelFor(provider),speechRevision=intelligence.speechRevision();
+            const narration=body.narration===undefined?intelligence.narrationSelection():intelligence.parseNarration(body.narration);
+            const pauseAfterMs=body.pauseAfterMs??0;
+            if(typeof pauseAfterMs!=='number'||!Number.isInteger(pauseAfterMs)||pauseAfterMs<0||pauseAfterMs>3000)throw new HttpError(400,'Pause must be between 0 and 3,000 milliseconds.');
+            if(body.protectedText!==undefined&&typeof body.protectedText!=='boolean')throw new HttpError(400,'Invalid protected speech section.');
+            const protectedText=body.protectedText===true;
             if(body.provider!==undefined&&!isSpeechProvider(body.provider))throw new HttpError(400,'Choose a supported speech provider.');
             if(body.provider!==undefined&&body.provider!==provider)throw new HttpError(409,'The speech provider changed. Start Speak again.');
             if(body.voice!==undefined&&!isSpeechVoice(body.voice,provider))throw new HttpError(400,'Choose a supported voice for the speech provider.');
             if(body.voice!==undefined&&body.voice!==voice)throw new HttpError(409,'The speech voice changed. Start Speak again.');
             const vault=vaults.requireOpen(header||'default');
-            const validateAccess=()=>{vaults.requireOpen(vault);if(speechPageId)pages.get(vault,speechPageId);if(intelligence.speechProviderSelection()!==provider||intelligence.speechVoiceSelection()!==voice)throw new HttpError(409,'The speech settings changed. Start Speak again.');};
+            const validateAccess=()=>{vaults.requireOpen(vault);if(speechPageId)pages.get(vault,speechPageId);if(intelligence.speechRevision()!==speechRevision||intelligence.speechProviderSelection()!==provider||intelligence.speechVoiceSelection()!==voice)throw new HttpError(409,'The speech settings changed. Start Speak again.');};
             validateAccess();
             if(!intelligence.speechEnabled())throw new HttpError(409,'Enable text to speech in Settings → Intelligence.');
             if(typeof body.text!=='string')throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
             const text=cleanSpeechText(body.text);
             if(!text||text.length>4096)throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
-            const key=speechCacheKey(text,{provider,model,voice}),cached=speechCache.read(vault,key);
+            const key=speechCacheKey(text,{provider,model,voice,narration,pauseAfterMs,protectedText}),cached=speechCache.read(vault,key);
             const controller=new AbortController(),abort=()=>controller.abort();res.once('close',abort);speechControllers.set(controller,vault);
             try {
               let audio=cached;
               if(!audio) {
                 activityId=activity.start('text_to_speech',{model,reasoningEffort:'none'},vault,speechPageId);
-                audio=await intelligence.speech(text,controller.signal,bytes=>activity.request(activityId!,bytes,null));
+                audio=await intelligence.speech(text,controller.signal,bytes=>activity.request(activityId!,bytes,null),{narration,pauseAfterMs,protectedText});
                 validateAccess();
                 if(controller.signal.aborted)throw new HttpError(409,'Speech request cancelled.');
                 speechCache.write(vault,key,audio,()=>{validateAccess();if(controller.signal.aborted)throw new HttpError(409,'Speech request cancelled.');});

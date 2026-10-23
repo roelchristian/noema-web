@@ -145,7 +145,7 @@ test('folder drops move a whole subtree without rewriting note locations or cura
     assert.deepEqual(updated.locations, before.locations);
     assert.deepEqual(updated.memberships, before.memberships);
     assert.deepEqual(updated.favourites, before.favourites);
-    assert.deepEqual(pageBreadcrumbs(updated, {id: 'welcome', title: 'Note'}).map(crumb => crumb.label), ['Pages', 'Destination', 'Source', 'Child', 'Note']);
+    assert.deepEqual(pageBreadcrumbs(updated, {id: 'welcome', title: 'Note'}).map(crumb => crumb.label), ['Destination', 'Source', 'Child', 'Note']);
     assert.equal(status.at(-1), 'Folder moved to Destination.');
     assert.throws(() => org.saveFolder('default', {name: 'Destination', parent_id: child.id}, target.id), error => error.status === 400);
     assert.deepEqual(org.list('default'), updated);

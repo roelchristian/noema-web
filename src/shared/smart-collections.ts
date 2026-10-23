@@ -60,3 +60,15 @@ export function parseSmartRule(input:unknown):SmartRuleDefinition {
   };
   return {version:1,root:visit(definition.root,1)};
 }
+
+/** Semantic descriptions are explicit query inputs; refresh never generates embeddings. */
+export interface SemanticCollectionDefinition {version:1;description:string;threshold:number;minCoverage:number}
+export function parseSemanticCollection(input:unknown):SemanticCollectionDefinition {
+ if(!input||typeof input!=='object'||Array.isArray(input))throw new Error('Invalid semantic collection');
+ const value=input as Record<string,unknown>;
+ if(Object.keys(value).some(key=>!['version','description','threshold','minCoverage'].includes(key))||value.version!==1)throw new Error('Unsupported semantic collection definition');
+ if(typeof value.description!=='string'||!value.description.trim()||value.description.length>2000||new TextEncoder().encode(value.description).length>8000||/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value.description))throw new Error('Enter a semantic description of 1–2,000 characters');
+ const threshold=value.threshold??.55,minCoverage=value.minCoverage??.5;
+ if(typeof threshold!=='number'||!Number.isFinite(threshold)||threshold<.2||threshold>.95||typeof minCoverage!=='number'||!Number.isFinite(minCoverage)||minCoverage<.1||minCoverage>1)throw new Error('Invalid semantic relevance or coverage threshold');
+ return {version:1,description:value.description.trim(),threshold,minCoverage};
+}

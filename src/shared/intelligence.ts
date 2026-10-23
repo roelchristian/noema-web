@@ -31,7 +31,7 @@ export function supportedIntelligencePreferences(value: unknown): value is Intel
 }
 
 export interface AIActivity extends IntelligencePreferences {
-  id: string; action: 'entity_discovery' | 'page_enrichment' | 'source_enrichment' | 'source_math_preprocessing' | 'source_reprocessing' | 'text_review' | 'block_explanation' | 'page_title' | 'page_summary' | 'entity_scan' | 'note_embedding' | 'search_embedding' | 'connection_test' | 'create_page_from_source';
+  id: string; action: 'collection_rules' | 'entity_discovery' | 'page_enrichment' | 'source_enrichment' | 'source_math_preprocessing' | 'source_reprocessing' | 'text_review' | 'block_explanation' | 'page_title' | 'page_summary' | 'entity_scan' | 'note_embedding' | 'search_embedding' | 'connection_test' | 'create_page_from_source';
   status: 'running' | 'completed' | 'failed' | 'interrupted' | 'skipped';
   startedAt: string; finishedAt: string | null; durationMs: number | null; httpStatus: number | null;
   vaultId: string | null; vaultName: string | null; objectKind: 'page' | 'entity' | null;
@@ -63,6 +63,7 @@ export interface AIActivityDebug {
 }
 
 export const aiActivityLabels: Record<AIActivity['action'], string> = {
+  collection_rules:'Generate collection rules',
   entity_discovery:'Entity discovery',
   page_enrichment:'Page enrichment',
   source_reprocessing:'Source editorial reprocessing', source_enrichment:'Source enrichment', source_math_preprocessing:'Math span preprocessing', text_review:'AI writing review', block_explanation:'AI Explanation', page_title:'Page title & category', page_summary:'Page summary', entity_scan:'Entity scan',

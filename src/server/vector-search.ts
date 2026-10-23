@@ -9,7 +9,7 @@ export class CachedVectorSearch implements VectorSearchAdapter {
  private queries=new WeakMap<number[],number[]|undefined>();
  constructor(private capacity=4096) {}
  private normalize(vector:unknown,dimensions:number):number[]|undefined {
-  if(!Array.isArray(vector)||vector.length!==dimensions||vector.some(n=>typeof n!=='number'||!Number.isFinite(n)))return;
+  if(!Array.isArray(vector)||vector.length!==dimensions||Array.from(vector).some(n=>typeof n!=='number'||!Number.isFinite(n)))return;
   const magnitude=Math.sqrt(vector.reduce((sum:number,n:number)=>sum+n*n,0));
   if(!magnitude||!Number.isFinite(magnitude))return;
   return vector.map(n=>n/magnitude);

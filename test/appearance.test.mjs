@@ -68,3 +68,39 @@ test('presentation migrates legacy values, validates modes and separates emphasi
     assert.deepEqual(presentationTraits(mode), {entityEmphasis: mode === 'standard' ? 'normal' : 'subtle', workspaceVisibility: mode === 'focus' ? 'minimal' : 'full'});
   }
 });
+
+test('parser-blocking bootstrap preserves saved/system mode and every accent without storage writes', async () => {
+  const {readFile} = await import('node:fs/promises');
+  const {runInNewContext} = await import('node:vm');
+  const source = await readFile(new URL('../public/appearance-bootstrap.js', import.meta.url), 'utf8');
+  const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+  const bootTag = '<script src="/appearance-bootstrap.js"></script>';
+  assert.ok(html.indexOf(bootTag) > 0 && html.indexOf(bootTag) < html.indexOf('<link'), 'Classic same-origin bootstrap precedes styles and module loading');
+  function boot(raw, systemDark, {storageThrows = false, mediaThrows = false} = {}) {
+    const properties = new Map();
+    const root = {dataset: {}, style: {setProperty: (key, value) => properties.set(key, value)}};
+    runInNewContext(source, {
+      document: {documentElement: root},
+      localStorage: {
+        getItem(key) { assert.equal(key, 'noema.appearance.v1'); if (storageThrows) throw new Error('Storage denied'); return raw; },
+        setItem() { assert.fail('Bootstrap must never write preferences'); },
+      },
+      matchMedia(query) { assert.equal(query, '(prefers-color-scheme: dark)'); if (mediaThrows) throw new Error('Media unavailable'); return {matches: systemDark}; },
+    });
+    return {mode: root.dataset.mode, scheme: root.style.colorScheme, accent: properties.get('--accent'), soft: properties.get('--accent-soft')};
+  }
+  for (const theme of themes) for (const mode of ['light', 'dark', 'system']) for (const systemDark of [false, true]) {
+    const resolved = resolveDisplayMode(mode, systemDark);
+    assert.deepEqual(boot(JSON.stringify({mode, theme: theme.id}), systemDark), {
+      mode: resolved, scheme: resolved,
+      accent: resolved === 'dark' ? theme.darkColor : theme.color,
+      soft: resolved === 'dark' ? theme.darkSoft : theme.soft,
+    });
+  }
+  for (const raw of [null, '{', 'null', '42', '"dark"', '{"mode":"retired","theme":"constructor"}', '{"theme":"__proto__"}']) {
+    for (const systemDark of [false, true]) assert.equal(boot(raw, systemDark).mode, systemDark ? 'dark' : 'light');
+  }
+  assert.equal(boot(null, true, {storageThrows: true}).mode, 'dark');
+  assert.equal(boot('{"mode":"dark"}', false, {mediaThrows: true}).mode, 'dark');
+  assert.equal(boot(null, true, {storageThrows: true, mediaThrows: true}).mode, 'light');
+});

@@ -1,3 +1,4 @@
+import {buildCollectionRulePrompt} from './modules/collection-rule-generation.js';
 import {LiturgicalCalendar} from './modules/liturgical-calendar.js';
 import {TemporalIndex} from './modules/temporal.js';
 import {EntityDiscoveryService} from './modules/entity-discovery.js';
@@ -67,6 +68,12 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
   };
   const entityMatches=new EntityMatches(store,pages,knowledge);
   const embeddings=new Embeddings(store,pages,knowledge,vaults,intelligence,activity);
+  organizer.smart.setQueryEmbeddingProvider((vault,description)=>embeddings.queryEmbedding(vault,description));
+  organizer.smart.setRuleGenerationProvider(async(vault,input)=>{
+    const selection={...intelligence.selection(),reasoningEffort:'none' as const},id=activity.start('collection_rules',selection,vault);
+    try {const output=await intelligence.generate({kind:'collectionRules',...buildCollectionRulePrompt(input),onRequest:bytes=>activity.request(id,bytes,null)});activity.finish(id,'completed',200);return output;}
+    catch(error){activity.finish(id,'failed',error instanceof HttpError?error.status:502);throw error;}
+  });
   const sourcePassages=new SourcePassages(store);
   const sourceEnrichments=new SourceEnrichments(store,intelligence,activity);
   const sourcePages=new SourcePages(store,knowledge,pages);

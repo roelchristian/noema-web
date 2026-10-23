@@ -38,7 +38,7 @@ try {
   const dialog=page.getByRole('dialog');
   await dialog.getByRole('textbox',{name:'Name',exact:true}).fill('Smart algebra');
   await dialog.getByRole('combobox',{name:'Collection type',exact:true}).click();
-  await page.getByRole('option',{name:'Smart collection · Rules',exact:true}).click();
+  await page.getByRole('option',{name:'Smart collection',exact:true}).click();
   await dialog.getByRole('textbox',{name:'Condition value',exact:true}).fill('algebra');
   await dialog.getByText(/1 matching pages among 2 evaluated/).waitFor();
   await dialog.getByRole('button',{name:'Save collection',exact:true}).click();

@@ -1,4 +1,5 @@
-import {parseSmartRule,type SmartRuleNode} from '../../shared/smart-collections.js';
+import {parseExampleCollection} from '../../shared/example-collections.js';
+import {parseSmartRule,parseSemanticCollection,type SmartRuleNode} from '../../shared/smart-collections.js';
 import {propertyOrigins,type PropertyOrigin} from '../../shared/property-provenance.js';
 import {proposalIdentity,rawSourceHash} from './property-provenance.js';
 import {adaptTemporalProperty} from '../../shared/temporal-properties.js';
@@ -81,7 +82,7 @@ const tables={
   entity_subtypes:{columns:'id,type,name',scope:'vault_id=?'},
   entity_type_properties:{columns:'type,name',scope:'vault_id=?'},
   entity_subtype_properties:{columns:'subtype_id,name',scope:'vault_id=?'},
-  smart_collection_definitions:{columns:'collection_id,rule_json',scope:'vault_id=?'},
+  smart_collection_definitions:{columns:'collection_id,rule_json,matching,semantic_json,examples_json,query_vector,query_model,query_dimensions',scope:'vault_id=?'},
   smart_collection_overrides:{columns:'collection_id,kind,item_id,decision',scope:'vault_id=?'},
   collections:{columns:'id,name',scope:'vault_id=?'},
   folders:{columns:'id,name,parent_id',scope:'vault_id=?'},
@@ -577,8 +578,22 @@ export class VaultBackups {
         const orphanReferences=new Map<string,string>();
         const stableRef=(map:Map<string,string>,id:string)=>{const existing=map.get(id);if(existing)return existing;let orphan=orphanReferences.get(id);if(!orphan){orphan=randomUUID();orphanReferences.set(id,orphan);}return orphan;};
         for(const row of rows.smart_collection_definitions) {
-          let definition;try{definition=parseSmartRule(json(row,'rule_json'));}catch{throw invalid();}
+          if(row.matching!==undefined&&!['rules','semantic','hybrid','examples'].includes(String(row.matching)))throw invalid();
           const remap=(node:SmartRuleNode):SmartRuleNode=> 'op' in node?{...node,children:node.children.map(remap)}:node.field==='folder'?{...node,value:stableRef(folderIds,node.value)}:node.field==='entity'?{...node,value:stableRef(entityIds,node.value)}:node;
+          if(row.matching==='examples') {
+            let examples;try{examples=parseExampleCollection(json(row,'examples_json'));}catch{throw invalid();}
+            examples={...examples,positivePageIds:examples.positivePageIds.map(id=>stableRef(pageIds,id)),negativePageIds:examples.negativePageIds.map(id=>stableRef(pageIds,id))};
+            insert('smart_collection_definitions',{vault_id:vault,collection_id:ref(collectionIds,row.collection_id),rule_json:'{}',matching:'examples',examples_json:JSON.stringify(examples)});continue;
+          }
+          if(row.matching==='semantic'||row.matching==='hybrid') {
+            let definition;try{definition=parseSemanticCollection(json(row,'semantic_json'));}catch{throw invalid();}
+            const model=string(row,'query_model',200),dimensions=integer(row,'query_dimensions',1,4096),vector=json(row,'query_vector');
+            if(!model||!Array.isArray(vector)||vector.length!==dimensions||vector.some(value=>typeof value!=='number'||!Number.isFinite(value))||!Number.isFinite(Math.sqrt(vector.reduce((sum,value)=>sum+value*value,0)))||!Math.sqrt(vector.reduce((sum,value)=>sum+value*value,0)))throw invalid();
+            let ruleJson='{}';if(row.matching==='hybrid'){try{ruleJson=JSON.stringify({...parseSmartRule(json(row,'rule_json')),root:remap(parseSmartRule(json(row,'rule_json')).root)});}catch{throw invalid();}}
+            insert('smart_collection_definitions',{vault_id:vault,collection_id:ref(collectionIds,row.collection_id),rule_json:ruleJson,matching:String(row.matching),semantic_json:JSON.stringify(definition),query_vector:JSON.stringify(vector),query_model:model,query_dimensions:dimensions});
+            continue;
+          }
+          let definition;try{definition=parseSmartRule(json(row,'rule_json'));}catch{throw invalid();}
           insert('smart_collection_definitions',{vault_id:vault,collection_id:ref(collectionIds,row.collection_id),rule_json:JSON.stringify({...definition,root:remap(definition.root)})});
         }
         for(const row of rows.smart_collection_overrides) {

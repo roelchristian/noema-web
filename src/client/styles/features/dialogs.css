@@ -1704,3 +1704,18 @@ dialog.source-lifecycle-dialog { width: min(480px, calc(100vw - 32px)); }
 @media (max-width: 400px) {
   .source-lifecycle-dialog .dialog-actions > .button { flex: 1; }
 }
+
+/* Collection definitions remain in the existing Collections flow. */
+.collection-definition-dialog { width: min(900px, calc(100vw - 32px)); }
+.smart-collection-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.smart-rule-group { border: 1px solid var(--line); border-radius: 8px; margin: 12px 0; padding: 12px; min-width: 0; }
+.smart-rule-group legend { padding: 0 6px; font-size: 13px; }
+.smart-rule-group legend .select-control { display: inline-flex; width: auto; }
+.smart-rule-child { display: flex; align-items: center; gap: 8px; margin-block: 8px; }
+.smart-rule-child > .smart-rule-group { flex: 1; }
+.smart-rule-predicate { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; flex: 1; min-width: 0; }
+.smart-rule-predicate > * { flex: 1 1 120px; min-width: 0; }
+.smart-rule-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.smart-collection-preview { border-top: 1px solid var(--line); padding-top: 12px; }
+.smart-collection-preview small { display: block; }
+@media (max-width: 600px) { .smart-rule-child { align-items: flex-start; } .smart-rule-group { padding: 8px; } }

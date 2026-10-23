@@ -2412,3 +2412,10 @@
 .inbox-navigation .button {
   color: var(--text);
 }
+
+.smart-collection-status { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.smart-collection-status p { margin: 6px 0; }
+.smart-collection-status li { overflow-wrap: anywhere; }
+.smart-collection-status li button { margin-inline-start: 8px; }
+.smart-membership-evidence { padding: 4px 16px 12px 52px; font-size: 13px; }
+.smart-membership-evidence summary { cursor: pointer; }

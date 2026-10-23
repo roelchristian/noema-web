@@ -1,3 +1,4 @@
+import {CollectionDialog} from './CollectionDialog';
 import {t as uiText} from '../i18n';
 import {TitleText} from '../components/TitleText';
 import { useEffect, useRef, useState, type DragEvent } from 'react';
@@ -75,6 +76,7 @@ export function SidebarOrganization({vaultId, data, pages, activePageId, activeF
     const path = folderBreadcrumbs(data.folders, context.folder);
     setExpanded(previous => new Set([...previous, ...path.map(crumb => 'folder:' + crumb.target!.folder)]));
   }, [active, context.folder, data.folders]);
+  useEffect(()=>{setEdit(null);setAddFolder(null);},[vaultId]);
   const toggle = (id: string) => setExpanded(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const expand = (id: string) => setExpanded(previous => new Set(previous).add(id));
   const newFolder = (collection: string, parent = '') => setEdit({type: 'folders', name: '', collection, parent});
@@ -120,11 +122,12 @@ export function SidebarOrganization({vaultId, data, pages, activePageId, activeF
       }) : {})}>
 
       {hasChildren ? <button className="branch-toggle" disabled={disabled} aria-label={(expanded.has(branch) ? uiText("Collapse ") : uiText("Expand ")) + container.name} aria-expanded={expanded.has(branch)} onClick={() => toggle(branch)}><span className="branch-container-icon"><Icon name={icon}/></span><span className="branch-chevron"><Icon name="chevron"/></span></button> : <button className="branch-leaf-icon" disabled={disabled} aria-label={uiText("Open ") + container.name} onClick={open}><Icon name={icon}/></button>}
-      {renameKey===branch ? <SidebarNameInput maxLength={200} name={container.name} onDone={()=>setRenameKey(current=>current===branch?null:current)} onSave={async name=>{onChanged(await api.organize(vaultId!,container.type+'/'+container.id,{name,...(container.type==='folders'?{parent_id:container.parent||null}:{})},'PUT'));}}/> : <button className={'nav container-link ' + (selected ? 'active' : '')} disabled={disabled} aria-label={uiText("Open ") + (container.type === 'folders' ? uiText("folder: ") : uiText("collection: ")) + container.name} title={container.name} onClick={open}><span>{container.name}{container.linkedCollection && <small className="linked-folder-label">{uiText("Linked")}</small>}</span></button>}
+      {renameKey===branch ? <SidebarNameInput maxLength={200} name={container.name} onDone={()=>setRenameKey(current=>current===branch?null:current)} onSave={async name=>{onChanged(await api.organize(vaultId!,container.type+'/'+container.id,{name,...(container.type==='folders'?{parent_id:container.parent||null}:{})},'PUT'));}}/> : <button className={'nav container-link ' + (selected ? 'active' : '')} disabled={disabled} aria-label={uiText("Open ") + (container.type === 'folders' ? uiText("folder: ") : uiText("collection: ")) + container.name} title={container.name} onClick={open}><span>{container.name}{container.type==='collections'&&data.collections.find(c=>c.id===container.id)?.kind==='smart'&&<small className="linked-folder-label">Smart</small>}{container.linkedCollection && <small className="linked-folder-label">{uiText("Linked")}</small>}</span></button>}
       {renameKey!==branch && <ActionMenu label={'Options for ' + container.name} disabled={disabled} actions={[
         {get label(){return uiText("Open")}, icon, onSelect: open},
         {label: container.type === 'folders' ? uiText("Add to collection…") : uiText("Add folder…"), icon:'collection', onSelect:()=>setAddFolder(container.type==='folders'?{folderId:container.id}:{collectionId:container.id})},
         {get label(){return uiText("Rename")}, icon: 'edit', onSelect: () => setRenameKey(branch)},
+        ...(container.type==='collections'?[{label:'Edit collection',icon:'edit',onSelect:()=>setEdit(container)}]:[]),
         ...(container.type === 'folders' ? [{label: data.favourites.some(item => item.kind === 'folder' && item.item_id === container.id) ? uiText("Remove from favourites") : uiText("Add to favourites"), icon: 'star', onSelect: () => { void api.organize(vaultId!, 'favourites', {kind: 'folder', item_id: container.id, favourite: !data.favourites.some(item => item.kind === 'folder' && item.item_id === container.id)}).then(onChanged).catch(onError); }}] : []),
         ...(container.type === 'folders' ? [{label: uiText("New subfolder"), icon: 'plus', onSelect: () => newFolder('', container.id)}] : []),
         ...(container.linkedCollection ? [{label:uiText("Unlink from collection"),icon:'close',onSelect:()=>{void api.organize(vaultId!,'folder-memberships',{folder_id:container.id,collection_id:container.linkedCollection,remove:true}).then(onChanged).catch(onError);}}] : [{label: 'Remove ' + (container.type === 'folders' ? 'folder' : 'collection'), icon: 'trash', danger: true, onSelect: () => setRemove(container)}]),
@@ -173,7 +176,8 @@ export function SidebarOrganization({vaultId, data, pages, activePageId, activeF
     <span className="sr-only" role="status">{dropStatus}</span>
     {organizePage && <PageOrganizationDialog page={organizePage} data={data} onMove={(collection,folder,remove)=>onMovePage(organizePage.id,collection,folder,remove)} onClose={()=>setOrganizePage(null)}/>}
     {addFolder && vaultId && <FolderCollectionDialog vaultId={vaultId} data={data} {...addFolder} onChanged={onChanged} onClose={()=>setAddFolder(null)}/>}
-    {edit && <NameDialog title={(edit.id ? uiText("Rename ") : uiText("New ")) + (edit.type === 'collections' ? uiText("collection") : uiText("folder"))} value={edit.name} onClose={() => setEdit(null)} onSave={async name => {
+    {edit?.type==='collections'&&vaultId&&<CollectionDialog key={vaultId+':'+(edit.id??'new')} vaultId={vaultId} data={data} collection={data.collections.find(c=>c.id===edit.id)} onChanged={onChanged} onClose={()=>setEdit(null)}/>}
+    {edit?.type==='folders' && <NameDialog title={(edit.id ? uiText("Rename ") : uiText("New ")) + uiText("folder")} value={edit.name} onClose={() => setEdit(null)} onSave={async name => {
       const updated = await api.organize(vaultId!, edit.type + (edit.id ? '/' + edit.id : ''), {name, ...(edit.type === 'folders' ? {parent_id: edit.parent || null} : {})}, edit.id ? 'PUT' : 'POST');
       onChanged(updated);
     }}/>}

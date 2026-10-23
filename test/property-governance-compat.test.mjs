@@ -65,13 +65,13 @@ test('separate stable definitions sharing a legacy name keep cardinality isolate
  assert.equal(restoredValues.find(p=>p.value==='authored text').metadata.definition_id,scoped.id);
 });
 
-test('new existing-subtype catalogue references and identifiers round trip without adding future classifications',async t=>{
+test('catalogue references and identifiers round trip with the explicitly requested classifications',async t=>{
  const {db,knowledge,backups}=fixture(t);
  const person=knowledge.create('default',{name:'Review catalogue writer',type:'person',subtypes:['person:writer']}),book=knowledge.create('default',{name:'Review catalogue book',type:'creativework',subtypes:['creativework:book']}),language=knowledge.create('default',{name:'Review catalogue language',type:'culture',subtypes:['culture:language']});
  knowledge.property('default',person.id,{name:'published works',target_id:book.id,definition_id:'builtin:person:writer:published_works'});
  knowledge.property('default',book.id,{name:'isbn',value:'0000123456789',definition_id:'builtin:creativework:isbn'});
  knowledge.property('default',language.id,{name:'iso 639 code',value:'eng',definition_id:'builtin:culture:language:iso_639_code'});
- const schema=knowledge.schema('default');assert.equal(schema.subtypes.length,50);assert.ok(!schema.subtypes.some(s=>s.name==='Software'));
+ const schema=knowledge.schema('default');assert.equal(schema.subtypes.length,69);assert.ok(schema.subtypes.some(s=>s.id==='creativework:software'));
  const archive=await backups.export('default'),restored=await backups.import(archive.bytes),entities=knowledge.list(restored.id),restoredBook=entities.find(e=>e.name===book.name),restoredWriter=knowledge.detail(restored.id,entities.find(e=>e.name===person.name).id);
  assert.equal(restoredWriter.properties.find(p=>p.name==='published works').target_id,restoredBook.id);
  assert.equal(knowledge.detail(restored.id,restoredBook.id).properties.find(p=>p.name==='isbn').value,'0000123456789');

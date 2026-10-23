@@ -2,7 +2,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {Store} from '../store.js';
 import {HttpError,required,text} from '../validation.js';
 import {entityTypes,type Entity,type EntityType,type Property} from '../../shared/domain.js';
-import {builtinSubtypes} from '../../shared/entity-schema.js';
+import {vaultSubtypes} from '../../shared/entity-schema.js';
 import type {PropertyDefinition,PropertyValueKind} from '../../shared/property-definitions.js';
 import {classifyPropertyValue} from '../../shared/property-values.js';
 import {ensurePropertyDefinitions,syncPropertyMetadata} from './property-storage.js';
@@ -19,7 +19,7 @@ const sameScope=(a:PropertyDefinition['scope'],b:PropertyDefinition['scope'])=>a
 export class PropertyDefinitionGovernance {
  constructor(private store:Store) {}
  private definitions(vault:string):PropertyDefinition[]{return this.store.all<{definition_json:string}>('SELECT definition_json FROM property_definitions WHERE vault_id=?',vault).map(row=>JSON.parse(row.definition_json) as PropertyDefinition);}
- private subtypes(vault:string){return [...builtinSubtypes,...this.store.all<{id:string;type:EntityType;name:string}>('SELECT id,type,name FROM entity_subtypes WHERE vault_id=?',vault)];}
+ private subtypes(vault:string){return vaultSubtypes(this.store.all<{id:string;type:EntityType;name:string}>('SELECT id,type,name FROM entity_subtypes WHERE vault_id=?',vault));}
  private require(vault:string,id:string){const definition=this.definitions(vault).find(item=>item.id===id);if(!definition)throw new HttpError(404,'Property definition not found');return definition;}
  private scope(vault:string,value:unknown):PropertyDefinition['scope'] {
   if(!value||typeof value!=='object'||Array.isArray(value))throw new HttpError(400,'Choose a definition scope.');

@@ -1,7 +1,7 @@
 import {assertNoHierarchyCycle} from './property-hierarchy.js';
 import {HttpError} from '../validation.js';
 import type {DatabaseSync} from 'node:sqlite';
-import {builtinProperties,builtinSubtypes,type EntitySchema} from '../../shared/entity-schema.js';
+import {builtinProperties,vaultSubtypes,type EntitySchema} from '../../shared/entity-schema.js';
 import {propertyDefinitionsForSchema,resolvePropertyDefinition,propertyDefinitionSignature,type PropertyDefinition} from '../../shared/property-definitions.js';
 import {classifyPropertyValue,type PropertyValueMetadata} from '../../shared/property-values.js';
 import type {Entity,EntityType,Property} from '../../shared/domain.js';
@@ -21,7 +21,7 @@ function legacySchema(store:Store,vault:string):EntitySchema {
   const known=properties[row.type].some(name=>name.toLowerCase()===row.name.toLowerCase())||assigned.some(id=>(subtypeProperties[id]??[]).some(name=>name.toLowerCase()===row.name.toLowerCase()))||persisted.some(item=>item.scope.type===row.type&&item.legacyName.toLowerCase()===row.name.toLowerCase()&&(item.scope.kind==='main_type'||assigned.includes(item.scope.subtypeId)))||!!store.get('SELECT 1 FROM property_value_metadata m JOIN properties p ON p.id=m.property_id JOIN entities e ON e.id=p.entity_id WHERE m.vault_id=? AND e.type=? AND lower(p.name)=lower(?)',vault,row.type,row.name);
   if(!known)properties[row.type].push(row.name);
  }
- return {properties,subtypeProperties,subtypes:[...builtinSubtypes,...store.all<{id:string;name:string;type:EntityType}>('SELECT id,name,type FROM entity_subtypes WHERE vault_id=?',vault)]};
+ return {properties,subtypeProperties,subtypes:vaultSubtypes(store.all<{id:string;name:string;type:EntityType}>('SELECT id,name,type FROM entity_subtypes WHERE vault_id=?',vault))};
 }
 export function isStoredPropertyDefinition(value:unknown):value is PropertyDefinition {
  if(!value||typeof value!=='object')return false;

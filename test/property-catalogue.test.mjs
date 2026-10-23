@@ -1,18 +1,18 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {builtinProperties,builtinSubtypes,inheritedPropertyNames} from '../src/shared/entity-schema.ts';
+import {builtinProperties,builtinSubtypes,inheritedPropertyNames,vaultSubtypes,subtypeDisplayName} from '../src/shared/entity-schema.ts';
 import {recommendedPropertyDefinitions,withPropertyCatalogue,propertyDefinitionsForSchema,inheritedPropertyDefinitions,propertyDefinitionConflicts,suggestedPropertyDefinitions,propertyLabel,catalogueDisciplinePolicy,resolvePropertyDefinition} from '../src/shared/property-definitions.ts';
 const legacy={properties:builtinProperties,subtypes:builtinSubtypes,subtypeProperties:{}};
 const schema=withPropertyCatalogue(legacy);
 const resolve=(type,ids=[])=>inheritedPropertyDefinitions({...schema,propertyDefinitions:propertyDefinitionsForSchema(schema,'fixture')},type,ids);
 
-test('catalogue covers exactly the existing types and 50 subtype IDs without replacing legacy arrays',()=>{
- assert.equal(builtinSubtypes.length,50);
+test('catalogue covers all nine types and 69 subtype IDs without replacing legacy arrays',()=>{
+ assert.equal(builtinSubtypes.length,69);
  assert.deepEqual(builtinProperties.person,['birth date','birthplace','nationality','website']);
  assert.deepEqual(builtinProperties.organism,[]);
  assert.equal(new Set(recommendedPropertyDefinitions.map(item=>item.id)).size,recommendedPropertyDefinitions.length);
  const ids=new Set(recommendedPropertyDefinitions.filter(item=>item.scope.kind==='subtype').map(item=>item.scope.subtypeId));
- assert.equal(ids.size,50);
+ assert.equal(ids.size,69);
  assert.deepEqual([...ids].sort(),builtinSubtypes.map(item=>item.id).sort());
  assert.equal(schema.subtypes,legacy.subtypes);
  assert.ok(schema.properties.organism.includes('scientific name'));
@@ -73,4 +73,39 @@ test('bound definitions remain resolvable after a classification change while fr
  assert.equal(resolvePropertyDefinition(definitions,'place',[],'institution',id).id,id);
  assert.equal(resolvePropertyDefinition(definitions,'person',[],'institution'),undefined);
  assert.equal(resolvePropertyDefinition(definitions,'creativework',['creativework:book'],'author').scope.kind,'main_type');
+});
+
+
+test('the 19 requested additions have curated schemas and compatible multi-subtype unions',()=>{
+ const additions={place:['building','natural-feature','historical-place'],creativework:['album','journal','painting','poem','software','academic-paper'],organization:['government-body','religious-institution','research-institute','association'],culture:['cultural-tradition'],concept:['theory','theorem','method','principle','framework']};
+ const expected=Object.entries(additions).flatMap(([type,names])=>names.map(name=>`${type}:${name}`));
+ assert.equal(expected.length,19);
+ const choices=vaultSubtypes([{id:'fixture:building',name:'Building',type:'place'}]);
+ assert.equal(subtypeDisplayName(choices.find(item=>item.id==='fixture:building'),choices),'Building (custom)');
+ assert.equal(subtypeDisplayName(choices.find(item=>item.id==='place:building'),choices),'Building');
+ assert.deepEqual(builtinSubtypes.filter(item=>item.description).map(item=>item.id).sort(),expected.sort());
+ for(const id of expected){
+  const subtype=builtinSubtypes.find(item=>item.id===id);
+  assert.equal(subtype.type,id.split(':')[0]);assert.ok(subtype.description.length>30);
+  const fields=recommendedPropertyDefinitions.filter(item=>item.scope.kind==='subtype'&&item.scope.subtypeId===id);
+  assert.equal(fields.length,3);assert.ok(fields.every(item=>item.origin==='builtin'&&item.visibility==='suggested'&&item.description));
+  assert.ok(fields.every(item=>item.valueKind!=='long_text'),'content belongs in overview/pages');
+ }
+ for(const type of Object.keys(additions)){
+  const all=resolve(type,builtinSubtypes.filter(item=>item.type===type).map(item=>item.id));
+  assert.deepEqual(propertyDefinitionConflicts(all),[],`no contradictory native fields for ${type}`);
+  assert.equal(new Set(all.map(item=>item.key)).size,all.length);
+ }
+ const find=id=>recommendedPropertyDefinitions.find(item=>item.id===id);
+ assert.deepEqual(find('builtin:creativework:academic-paper:journal').allowedTargetTypes,['creativework']);
+ assert.deepEqual(find('builtin:creativework:academic-paper:journal').allowedTargetSubtypes,['creativework:journal']);
+ assert.equal(find('builtin:creativework:journal:issn').valueKind,'identifier');
+ assert.equal(find('builtin:creativework:software:version').valueKind,'identifier');
+ for(const id of ['builtin:place:natural-feature:elevation','builtin:creativework:album:duration','builtin:creativework:painting:width']){
+  assert.equal(find(id).valueKind,'quantity');assert.match(find(id).description,/unit/);
+ }
+ assert.equal(find('builtin:concept:theorem:proven').valueKind,'date');
+ assert.deepEqual(find('builtin:concept:framework:based_on_theories').allowedTargetSubtypes,['concept:theory']);
+ assert.deepEqual(builtinSubtypes.filter(item=>item.type==='source').map(item=>item.id),['source:website','source:journal-article','source:interview']);
+ assert.ok(!recommendedPropertyDefinitions.some(item=>item.key==='discipline'||item.key==='proof'||item.key==='definition'));
 });

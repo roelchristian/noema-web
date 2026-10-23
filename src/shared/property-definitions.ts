@@ -1,6 +1,6 @@
 import type { EntityType } from './domain.js';
 import { builtinProperties, type EntitySchema } from './entity-schema.js';
-import {recommendedPropertyDefinitions} from './property-catalogue.js';
+import {recommendedPropertyDefinitions,propertyCatalogueForSchema} from './property-catalogue.js';
 export {recommendedPropertyDefinitions,withPropertyCatalogue,catalogueDisciplinePolicy} from './property-catalogue.js';
 
 export type PropertyValueKind = 'short_text' | 'long_text' | 'entity_reference' | 'date' | 'datetime' | 'integer' | 'quantity' | 'boolean' | 'enum' | 'url' | 'identifier' | 'coordinates';
@@ -75,6 +75,7 @@ export function propertyDefinitionFor(type: EntityType, name: string): PropertyD
  * not persisted bindings: definition rename/type governance belongs to Phase 2/3. */
 export function propertyDefinitionsForSchema(schema: EntitySchema, vaultId = ''): PropertyDefinition[] {
   const definitions: PropertyDefinition[] = [];
+  const recommendations = propertyCatalogueForSchema(schema);
   const custom = (type: EntityType, name: string, sortOrder: number, subtypeId?: string): PropertyDefinition => ({
     id: `legacy:${encodeURIComponent(vaultId)}:${type}:${encodeURIComponent(subtypeId ?? '')}:${encodeURIComponent(name.toLowerCase())}`,
     key: propertyKey(name), legacyName: name, label: propertyLabel(name), description: '', valueKind: 'short_text',
@@ -87,9 +88,9 @@ export function propertyDefinitionsForSchema(schema: EntitySchema, vaultId = '')
     names.forEach((name, index) => definitions.push(propertyDefinitionFor(type, name) ?? custom(type, name, index)));
   }
   for (const subtype of schema.subtypes) {
-    (schema.subtypeProperties[subtype.id] ?? []).forEach((name, index) => definitions.push(recommendedPropertyDefinitions.find(item=>item.scope.kind==='subtype'&&item.scope.subtypeId===subtype.id&&item.legacyName.toLowerCase()===name.toLowerCase()) ?? custom(subtype.type, name, index, subtype.id)));
+    (schema.subtypeProperties[subtype.id] ?? []).forEach((name, index) => definitions.push(recommendations.find(item=>item.scope.kind==='subtype'&&item.scope.subtypeId===subtype.id&&item.legacyName.toLowerCase()===name.toLowerCase()) ?? custom(subtype.type, name, index, subtype.id)));
   }
-  for(const recommendation of recommendedPropertyDefinitions)if((recommendation.scope.kind==='main_type'||schema.subtypes.some(subtype=>recommendation.scope.kind==='subtype'&&subtype.id===recommendation.scope.subtypeId))&&!definitions.some(item=>item.id===recommendation.id))definitions.push(recommendation);
+  for(const recommendation of recommendations)if((recommendation.scope.kind==='main_type'||schema.subtypes.some(subtype=>recommendation.scope.kind==='subtype'&&subtype.id===recommendation.scope.subtypeId))&&!definitions.some(item=>item.id===recommendation.id))definitions.push(recommendation);
   return definitions;
 }
 

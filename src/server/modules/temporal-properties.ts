@@ -7,9 +7,9 @@ export const propertyFingerprint=(type:string,name:string,value:string)=>createH
 export const currentTemporalProperties=`FROM temporal_property_values v JOIN properties p ON p.id=v.property_id AND p.entity_id=v.entity_id JOIN entities e ON e.id=p.entity_id AND e.vault_id=v.vault_id WHERE v.vault_id=? AND v.date_id=? AND e.archived_at IS NULL AND NOT EXISTS(SELECT 1 FROM temporal_property_dirty d WHERE d.property_id=p.id)`;
 export class TemporalProperties {
  constructor(private store:Store) {}
- refresh(vault:string,limit=25) {
+ refresh(vault:string,limit=25,propertyId?:string) {
   new Vaults(this.store).requireOpen(vault);
-  const rows=this.store.all<{id:string;entity_id:string;type:string;name:string;value:string|null;target_id:string|null}>('SELECT p.*,e.type FROM temporal_property_dirty d JOIN properties p ON p.id=d.property_id JOIN entities e ON e.id=p.entity_id WHERE d.vault_id=? AND e.vault_id=? ORDER BY p.id LIMIT ?',vault,vault,limit);
+  const rows=this.store.all<{id:string;entity_id:string;type:string;name:string;value:string|null;target_id:string|null}>(`SELECT p.*,e.type FROM temporal_property_dirty d JOIN properties p ON p.id=d.property_id JOIN entities e ON e.id=p.entity_id WHERE d.vault_id=? AND e.vault_id=? ${propertyId?'AND p.id=?':''} ORDER BY p.id LIMIT ?`,...propertyId?[vault,vault,propertyId,limit]:[vault,vault,limit]);
   for(const row of rows) {
    const adapted=row.value!==null&&row.target_id===null?adaptTemporalProperty(row.type,row.name,row.value):null;
    if(!adapted){this.store.run('DELETE FROM temporal_property_values WHERE property_id=?',row.id);this.store.run('DELETE FROM temporal_property_dirty WHERE property_id=?',row.id);continue;}

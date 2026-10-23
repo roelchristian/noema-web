@@ -101,3 +101,73 @@ test('retry reconciles a lost create response and refuses another create when re
   assert.equal(creates,1);assert.equal(getPropertyDraft('property-test','e','new:birthplace'),undefined);
  });
 });
+
+test('persisted definitions select typed controls while incompatible authored values remain editable explicitly',async()=>{
+ const {builtinPropertyDefinitions}=await import('../src/shared/property-definitions.ts');
+ await fixture(async({props,render,click})=>{
+  await render({...props,definitions:builtinPropertyDefinitions,entity:{...props.entity,properties:[{...props.entity.properties[0],metadata:{definition_id:'builtin:person:birth_date',compatibility:'legacy_incompatible',reason:'Preserve original precision'}}]}});
+  await click('[aria-label="Edit Birth Date"]');
+  assert.equal(document.querySelector('.entity-property-compatibility input').checked,true);
+  assert.equal(document.querySelector('textarea').value,'circa 1815');
+  assert.equal(hasUnsavedEntityDrafts(),false,'activation alone preserves baseline compatibility state');
+  await act(async()=>document.querySelector('.entity-property-compatibility input').click());
+  assert.ok(document.querySelector('input[aria-label="Birth Date"]'));
+  assert.match(document.querySelector('.entity-inline-edit').textContent,/calendar notation/);
+ });
+});
+test('typed URL save submits definition identity and validation errors leave new draft editable',async()=>{
+ const {builtinPropertyDefinitions}=await import('../src/shared/property-definitions.ts');
+ const {ApiError}=await import('../src/client/api.ts');
+ await fixture(async({props,render,click,dom})=>{
+  await render({...props,definitions:builtinPropertyDefinitions,entity:{...props.entity,propertyNames:['website']},onSave:async()=>{throw new ApiError(400,'Enter an HTTP or HTTPS URL');}});
+  await click('[aria-label="Edit Website"]');assert.ok(document.querySelector('input[type="url"]'));
+  const draft=getPropertyDraft('property-test','e','new:website');
+  await act(async()=>setPropertyDraft('property-test','e','new:website',{...draft,value:'invalid'}));
+  await act(async()=>document.querySelector('input[type="url"]').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true})));
+  assert.match(document.querySelector('[role="alert"]').textContent,/HTTP/);
+  assert.equal(document.querySelector('input[type="url"]').disabled,false);
+  assert.equal(getPropertyDraft('property-test','e','new:website').uncertainCreate,undefined);
+ });
+});
+test('reference picker requests bounded server pages and creates then returns to the unfinished property',async t=>{
+ const {api}=await import('../src/client/api.ts');let requested=[],created=[];
+ t.mock.method(api,'entityReferenceOptions',async(_vault,options)=>{requested.push(options);return {items:[{id:'page-'+options.offset,name:'Place '+options.offset,type:'place',subtypes:[],aliases:[]}],nextOffset:options.offset===0?30:null,total:31};});
+ t.mock.method(api,'createEntity',async(_vault,input)=>{created.push(input);return {id:'created-place',name:input.name,type:input.type,subtypes:[],aliases:[]};});
+ await fixture(async({click,dom,remount})=>{
+  await click('[aria-label="Edit Birthplace"]');assert.equal(requested.at(-1).limit,30);assert.deepEqual(requested.at(-1).types,['place']);
+  const more=[...document.querySelectorAll('.entity-reference-picker button')].find(button=>button.textContent==='More matches');await act(async()=>more.click());assert.equal(requested.at(-1).offset,30);
+  const create=[...document.querySelectorAll('.entity-reference-picker button')].find(button=>button.textContent==='Create a new entity');await act(async()=>create.click());
+  const draft=getPropertyDraft('property-test','e','new:birthplace');await act(async()=>setPropertyDraft('property-test','e','new:birthplace',{...draft,referenceCreation:{open:true,name:'New place',type:'place',uncertain:false}}));await remount();
+  const submit=[...document.querySelectorAll('.entity-reference-create button')].find(button=>button.textContent==='Create and select');await act(async()=>submit.click());
+  assert.deepEqual(created,[{name:'New place',type:'place',subtypes:[]}]);
+  assert.equal(getPropertyDraft('property-test','e','new:birthplace').target,'created-place');
+  assert.equal(document.querySelector('.entity-reference-create'),null);
+ });
+});
+test('uncertain reference creation survives remount and cannot repeat a create request',async t=>{
+ const {api}=await import('../src/client/api.ts');let creates=0;
+ t.mock.method(api,'entityReferenceOptions',async()=>({items:[],nextOffset:null,total:0}));
+ t.mock.method(api,'createEntity',async()=>{creates++;throw new Error('response lost');});
+ await fixture(async({click,dom,remount})=>{
+  await click('[aria-label="Edit Birthplace"]');
+  await act(async()=>[...document.querySelectorAll('.entity-reference-picker button')].find(button=>button.textContent==='Create a new entity').click());
+  const draft=getPropertyDraft('property-test','e','new:birthplace');await act(async()=>setPropertyDraft('property-test','e','new:birthplace',{...draft,referenceCreation:{open:true,name:'Uncertain place',type:'place',uncertain:false}}));await remount();
+  await act(async()=>[...document.querySelectorAll('.entity-reference-create button')].find(button=>button.textContent==='Create and select').click());
+  assert.equal(creates,1);assert.equal(hasUnsavedEntityDrafts(),true);
+  await remount();assert.equal(document.querySelector('.entity-reference-create input').value,'Uncertain place');
+  assert.equal(document.querySelector('.entity-reference-create input').disabled,true);
+  assert.equal([...document.querySelectorAll('.entity-reference-create button')].find(button=>button.textContent==='Create and select').disabled,true);
+  assert.equal(creates,1);
+ });
+});
+
+test('new approximate dates submit the exact authored expression with typed definition identity',async()=>{
+ const {builtinPropertyDefinitions}=await import('../src/shared/property-definitions.ts');
+ await fixture(async({props,render,click,dom,saves})=>{
+  await render({...props,definitions:builtinPropertyDefinitions,entity:{...props.entity,properties:[],propertyNames:['birth date']}});
+  await click('[aria-label="Edit Birth Date"]');
+  const draft=getPropertyDraft('property-test','e','new:birth date');await act(async()=>setPropertyDraft('property-test','e','new:birth date',{...draft,value:'circa 1815'}));
+  await act(async()=>document.querySelector('input[aria-label="Birth Date"]').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true})));
+  assert.deepEqual(saves,[{input:{name:'birth date',value:'circa 1815',definition_id:'builtin:person:birth_date'},id:undefined}]);
+ });
+});

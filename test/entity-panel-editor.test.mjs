@@ -61,3 +61,20 @@ test('property and relationship forms open deliberately and cancel without savin
   assert.equal(save.mock.calls.length,0);assert.equal(relationship.mock.calls.length,0);
  });
 });
+
+test('advanced and inline property forms share drafts without changing identity Save/Discard',async t=>{
+ const {setPropertyDraft,getPropertyDraft,propertyDraftSignature}=await import('../src/client/knowledge/entity-property-drafts.ts');
+ await fixture(t,async({click,dom,entity})=>{
+  let saved;
+  t.mock.method(api,'saveProperty',async(_vault,_id,input)=>{saved=input;return {...entity,properties:[{id:'new-born',entity_id:'e',name:'Born',value:input.value,target_id:null}]};});
+  await click('.entity-property-unset button');
+  await act(async()=>setPropertyDraft('v','e','new:Born',{kind:'text',value:'  ',target:'',baseline:propertyDraftSignature({kind:'text',value:'',target:''})}));
+  assert.equal(document.querySelector('[aria-label="Property value"]').value,'  ');
+  assert.equal(document.querySelector('[aria-label="Save entity details"]').disabled,true);
+  await click('#entity-tab-overview');assert.equal(document.querySelector('.entity-inline-edit textarea').value,'  ');
+  await click('#entity-tab-edit');assert.equal(document.querySelector('[aria-label="Property value"]').value,'  ');
+  await act(async()=>setPropertyDraft('v','e','new:Born',{...getPropertyDraft('v','e','new:Born'),value:'1815'}));
+  await act(async()=>document.querySelector('form[aria-label="Add property"]').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));
+  assert.deepEqual(saved,{name:'Born',value:'1815'});assert.equal(getPropertyDraft('v','e','new:Born'),undefined);
+ });
+});

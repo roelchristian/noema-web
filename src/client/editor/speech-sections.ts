@@ -9,6 +9,25 @@ export interface SpeechSection {
   sectionIndex:number;
 }
 
+/** Selection identity ignores caret offsets and focus outside the editor. */
+export function speechSelectionContext(root:HTMLElement,selection:Selection|null=document.getSelection()):string|null {
+  if(!selection?.rangeCount)return null;
+  const range=selection.getRangeAt(0);
+  if(!root.contains(range.startContainer)||!root.contains(range.endContainer))return null;
+  function blockAt(node:Node,offset:number,end=false):string|null {
+    const element=node instanceof Element?node:node.parentElement;
+    const direct=element?.closest<HTMLElement>('[data-block-id]');
+    if(direct&&root.contains(direct))return direct.dataset.blockId??null;
+    // Select-all and cross-host ranges can use the editor as their endpoint.
+    const child=node.childNodes[Math.max(0,end?offset-1:offset)];
+    const childElement=child instanceof Element?child:child?.parentElement;
+    const row=childElement?.matches('[data-block-id]')?childElement:childElement?.querySelector('[data-block-id]');
+    return row?.getAttribute('data-block-id')??null;
+  }
+  const first=blockAt(range.startContainer,range.startOffset),last=blockAt(range.endContainer,range.endOffset,!range.collapsed);
+  return first&&last?JSON.stringify([first,last]):null;
+}
+
 /** Run only on an explicit Speak action, never while the document is being edited. */
 export function speechSections(blocks:Block[],ids:string[],entities:Entity[],limit=1800):SpeechSection[] {
   if(!Number.isInteger(limit)||limit<2||limit>4096)throw new Error('Invalid speech section limit.');

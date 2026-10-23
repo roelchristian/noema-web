@@ -1,5 +1,5 @@
 import {speechText,useSpeech} from './speech';
-import {speechSections} from './speech-sections';
+import {speechSections,speechSelectionContext} from './speech-sections';
 import {entityIconName} from '../../shared/entity-icons';
 import {paragraphFlow} from './paragraph-indent';
 import {useDefaultPersona} from '../components/PersonaSelect';
@@ -234,15 +234,27 @@ export function BlockEditor(props: Props) {
   }
   const [pageLinkStatus,setPageLinkStatus]=useState('');
   const speech=useSpeech(props.vaultId,props.pageId);
-  const speechSources=useRef(new Map<string,string>());
+  const speechSources=useRef(new Map<string,{source:string;projection:string}>());
+  const speechSelection=useRef<string|null>(null);
   useEffect(()=>{
     const id=speech.currentBlockId;
     if(!id)return;
     const block=blocks.find(item=>item.id===id);
     // Check only the current source block. Advancing checks the next block before
     // highlighting it; typing never transforms or hashes the whole document.
-    if(!block||speechSources.current.get(id)!==JSON.stringify(block))speech.stop();
-  },[blocks,speech.currentBlockId]);
+    const previous=speechSources.current.get(id);
+    if(!block||previous?.source!==JSON.stringify(block)||previous.projection!==speechText([block],[id],entities))speech.stop();
+  },[blocks,entities,speech.currentBlockId]);
+  const speechActive=!!speech.player;
+  useEffect(()=>{
+    if(!speechActive)return;
+    const selectionChanged=()=>{
+      const context=root.current?speechSelectionContext(root.current):null;
+      if(context&&speechSelection.current&&context!==speechSelection.current)speech.stop();
+    };
+    document.addEventListener('selectionchange',selectionChanged);
+    return()=>document.removeEventListener('selectionchange',selectionChanged);
+  },[speechActive]);
   useEffect(()=>{
     const id=speech.currentBlockId;
     if(!id)return;
@@ -686,7 +698,9 @@ export function BlockEditor(props: Props) {
   function speakChoice(ids:string[]):Choice[] {
     return speech.enabled?[{title:uiText("Speak"),detail:uiText("Read aloud with an AI-generated voice"),icon:'speaker',pick:()=>{
       const draft=commitSelection(),selected=new Set(ids);
-      speechSources.current=new Map(draft.filter(block=>selected.has(block.id)).map(block=>[block.id,JSON.stringify(block)]));
+      const selectedBlocks=draft.filter(block=>selected.has(block.id));
+      speechSources.current=new Map(selectedBlocks.map(block=>[block.id,{source:JSON.stringify(block),projection:speechText([block],[block.id],entities)}]));
+      speechSelection.current=(root.current?speechSelectionContext(root.current):null)??(selectedBlocks.length?JSON.stringify([selectedBlocks[0]!.id,selectedBlocks.at(-1)!.id]):null);
       setMenu(null);speech.speak(speechText(draft,ids,entities),speechSections(draft,ids,entities));
     }}]:[];
   }

@@ -2395,7 +2395,7 @@
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-.editor-entity-count .icon {
+.editor-entity-count .icon, .editor-language .icon {
   width: 13px;
   height: 13px;
 }

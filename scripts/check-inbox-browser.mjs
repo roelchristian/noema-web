@@ -35,6 +35,7 @@ try {
  let previews=0;page.on('request',request=>{if(request.url().endsWith('/preview'))previews++;});
  await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}`);
  await page.getByRole('button',{name:'Inbox',exact:true}).first().click();
+ await page.getByRole('group',{name:'Inbox views',exact:true}).getByRole('button',{name:/^To organise/}).click();
  await page.getByRole('button',{name:'File…',exact:true}).waitFor();
  await page.getByRole('button',{name:'File…',exact:true}).isEnabled();
  await page.locator('.inbox-preview').waitFor();
@@ -70,7 +71,12 @@ try {
  // Batch toolbar remains available in triage.
  await page.locator('.inbox-queue input').first().check();await page.getByRole('toolbar',{name:'Selected page actions'}).waitFor();await page.getByRole('button',{name:'Clear',exact:true}).click();
  // Session skip visits each page once and terminates without any persistent status write.
- await page.getByRole('button',{name:'Skip for now',exact:true}).click();await page.getByRole('button',{name:'Skip for now',exact:true}).click();
+ await page.getByRole('button',{name:'Skip for now',exact:true}).click();
+ const afterSkip=await page.locator('.inbox-detail h2').innerText();
+ await page.getByRole('group',{name:'Inbox views',exact:true}).getByRole('button',{name:/^Issues/}).click();
+ await page.getByRole('group',{name:'Inbox views',exact:true}).getByRole('button',{name:/^To organise/}).click();
+ assert.equal(await page.locator('.inbox-detail h2').innerText(),afterSkip,'Facet switches preserve triage selection and session skips');
+ await page.getByRole('button',{name:'Skip for now',exact:true}).click();
  await page.getByText('Session complete. Skipped pages remain unfiled.',{exact:true}).waitFor();assert.equal(pages.list('default').length,3);
  await page.getByRole('button',{name:'Review skipped pages',exact:true}).click();await page.locator('.inbox-preview').waitFor();
  await page.getByRole('button',{name:'Skip for now',exact:true}).click();

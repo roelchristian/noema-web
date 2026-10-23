@@ -10,7 +10,7 @@ Supported predicates are title (contains/equal), created/modified date (before/a
 
 Missing dates and language do not satisfy their positive predicates. **NONE** means that none of its child conditions match, so a page with unknown language satisfies `NONE(Language equals en)`. This is boolean nonmatching, not proof of a different language. An unavailable folder/entity rule target instead fails validation even inside **NONE**; it never quietly broadens the collection.
 
-The server accepts at most 64 nodes, depth 8, 16 children per group, and 500 characters per value. Preview evaluates at most 250 active pages and returns at most 20 representative matches. The editor presents at most eight preview rows. Background evaluation yields between batches of 100 pages. A bounded change journal lets a page edit refresh only affected page IDs; folder/entity changes and an explicit re-evaluation can require a full batched pass. Refresh begins when organization state is read and the client polls while work remains pending.
+The server accepts at most 64 nodes, depth 8, 16 children per group, and 500 characters per value. Preview evaluates at most 250 active pages and returns at most 20 representative matches. The editor presents at most eight preview rows. Background evaluation yields between batches of 100 pages. A bounded change journal lets a page edit refresh only affected page IDs; folder/entity changes, permanent page deletion, and an explicit re-evaluation can require a full batched pass. Refresh begins when organization state is read. The collection view checks on entry, polls every second while work remains pending, and every five seconds otherwise to discover later changes.
 
 The collection dialog previews a bounded sample after the draft has settled. Changing the rule or vault invalidates the previous request, including responses from transports that ignore cancellation. An unsuccessful preview is an error, not an empty match set. A bounded preview is not an exact whole-vault count.
 
@@ -23,6 +23,12 @@ Definitions and overrides participate in vault backups. Restoring a backup remap
 The membership cache is derived and starts unevaluated after restore, then rebuilds locally. A rule whose referenced entity or folder was deleted remains a saved definition with a clear evaluation error; restoring its backup preserves an unavailable reference under a new tombstone identity, so it cannot accidentally point to an unrelated item in another vault. Edit the rule to choose an available target or remove the condition; the tombstone does not create a replacement entity or folder.
 
 Automatic matching initially covers pages. Entities can retain explicit collection membership; automatic mixed page/entity/Source research workspaces are deferred.
+
+## Automated validation
+
+`npm test` builds the client and server, checks styles and types, and runs the registered suites. The synthetic smart collection coverage is in `test/smart-collections.test.mjs` and `test/smart-collection-preview.test.mjs`.
+
+`node --import tsx scripts/check-smart-collections-browser.mjs` exercises creation, live preview, evidence, overrides, automatic invalidation, manual membership and physical folder preservation, and mobile overflow in Chromium. It requires the optional `playwright-core` harness (or its module path in `PLAYWRIGHT_MODULE`) and Chromium (`CHROMIUM_PATH` may override `/usr/bin/chromium`). This fixture blocks external browser traffic, rejects provider generation, uses a disposable database, and takes no screenshots.
 
 ## Deferred phases
 

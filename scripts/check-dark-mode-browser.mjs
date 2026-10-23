@@ -116,7 +116,10 @@ try{
   await readable(page,'.select-menu:popover-open [role=option]');
   await page.keyboard.press('Escape');await page.keyboard.press('Escape');
   await page.getByRole('button',{name:'Close Knowledge panel',exact:true}).click();
-  if(width===390)await page.getByRole('button',{name:'Open navigation',exact:true}).click();
+  if(width===390){
+    await page.getByRole('button',{name:'Open navigation',exact:true}).click();
+    assert.equal(await page.locator('#workspace-navigation[open]').evaluate(e=>getComputedStyle(e,'::backdrop').backgroundColor),'rgba(0, 0, 0, 0.4)','Navigation backdrop must dim rather than hide the workspace');
+  }
   await page.getByRole('button',{name:'Calendar',exact:true}).click();
   await page.locator('.calendar-grid').waitFor();
   await readable(page,mode==='dark'?'.calendar-month-title h1,.calendar-day-number':'.calendar-month-title h1,[data-date="2026-10-23"] .calendar-day-number');

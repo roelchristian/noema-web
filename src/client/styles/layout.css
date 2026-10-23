@@ -1208,7 +1208,7 @@ main {
     margin-left: 0;
   }
   .workspace-navigation::backdrop {
-    background: light-dark(#0006, var(--surface-inset));
+    background: #0006;
     backdrop-filter: blur(3px);
   }
   .workspace-navigation .sidebar {

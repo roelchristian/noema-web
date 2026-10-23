@@ -1,5 +1,4 @@
 import type {TemporalDate} from '../../shared/temporal';
-import {liturgicalCalendar,liturgicalSourceUrl,liturgicalReferenceUrl} from '../../shared/liturgical';
 import type {CalendarSettings} from '../settings/calendar-settings';
 import {useLiturgicalYear} from '../calendar/use-liturgical-year';
 import {LiturgicalDayPanel} from '../calendar/LiturgicalDayPanel';
@@ -10,7 +9,7 @@ import {t as uiText} from '../i18n';
  * A coarse or Julian date never acquires an invented Gregorian observance. */
 export function DateLiturgicalDetails({vaultId,date,settings,onOpenSettings}:{vaultId:string;date:TemporalDate;settings:CalendarSettings;onOpenSettings?:()=>void}) {
  const exact=date.precision==='day'&&date.calendar==='gregorian';
- const year=Number(date.value.slice(0,4)),calendar=liturgicalCalendar(settings.calendarId)!;
+ const year=Number(date.value.slice(0,4));
  const result=useLiturgicalYear(vaultId,year,settings.enabled&&exact,settings.calendarId);
  const day=result.data?.days[date.value];
  return <section className="eh-section note-date-liturgical" aria-label={uiText('Liturgical calendar details')}>
@@ -20,7 +19,6 @@ export function DateLiturgicalDetails({vaultId,date,settings,onOpenSettings}:{va
     {result.loading&&<p role="status">{uiText('Loading liturgical calendar…')}</p>}
     {result.error&&<div role="status"><p>{result.error}</p><button type="button" className="button" onClick={result.retry}>{uiText('Retry liturgical calendar')}</button></div>}
     {day&&<LiturgicalDayPanel day={day} calendarId={settings.calendarId} showOptional={settings.optional}/>}
-    {day&&<p className="section-hint"><a href={liturgicalSourceUrl(settings.calendarId,year)} target="_blank" rel="noopener noreferrer">{calendar.provider}</a>{' · '}<a href={liturgicalReferenceUrl(settings.calendarId,year)} target="_blank" rel="noopener noreferrer">{uiText(calendar.kind==='litcal'?'GCatholic reference':'View calendar source')}</a></p>}
    </>}
  </section>;
 }

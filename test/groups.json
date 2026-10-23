@@ -65,7 +65,8 @@
     "test/entity-discovery-ui.test.mjs",
     "test/document-find-shortcuts.test.mjs",
     "test/note-dates.test.mjs",
-    "test/calendar-settings.test.mjs"
+    "test/calendar-settings.test.mjs",
+    "test/calendar-liturgical-overlay.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",

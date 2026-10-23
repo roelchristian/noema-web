@@ -65,8 +65,8 @@ calendar, current-note count and saved note mentions. Detection remains derived
 presentation: original wording and formatting are preserved in saved text.
 
 The date entity inspector also shows the selected liturgical calendar's principal
-observance, rank, season and colour, optional detail, provider attribution and
-source/reference links. It shares Calendar settings, caches and download eligibility,
+observance, rank, season and colour, and optional detail. Provider attribution and
+source/reference links are confined to Advanced calendar settings. It shares Calendar settings, caches and download eligibility,
 with a direct settings shortcut. Coarse and unconverted Julian dates do not receive
 Gregorian observances; unavailable or unqualified years show their reason and retry.
 
@@ -316,9 +316,24 @@ race has been fixed. Keep the trace-enabled stress case for recurrence.
 
 ## Liturgical calendar settings, sources and background downloads
 
-Settings → Calendar owns the liturgical overlay toggle, active calendar and optional
-memorial detail. Preferences persist in browser storage. The calendar workspace
-retains date navigation, view filters and a shortcut to these settings.
+Settings → Calendar owns the liturgical overlay and optional memorial detail toggles.
+A collapsed Advanced calendar settings section contains calendar variants, provider
+attribution, source/reference links and download diagnostics. The General Roman
+Calendar in English remains the default; sources are managed automatically. Preferences
+persist in browser storage. The calendar workspace retains date navigation, view filters
+and a shortcut to these settings, with no provider links in its overlay or date inspector.
+When enabled, the month overlay includes a small color marker beside each day number,
+using the principal observance’s vestment colors. Multiple colors appear together;
+optional memorials do not replace the principal color. Colors are also included in each
+day’s accessible label, with English and Latin provider color names supported.
+The month overlay displays regular liturgical weekdays as well as observances, including
+“Friday of the 29th Week of Ordinary Time” on 23 October 2026. The inspector and agenda
+show the full label; feast and memorial precedence remains unchanged. Latin temporal
+labels use Roman week ordinals and `hebd.`, for example `Feria IV hebd. II Paschae`.
+Ordinary Time is rendered as `per annum`. Month cells abbreviate Latin saint titles as `S.` (Sancti/Sanctae) and `SS.`
+(Sanctorum), while the agenda, date details and accessible labels retain full titles.
+Display formatting also applies to cached
+calendars without changing provider data.
 
 Supported calendars are:
 
@@ -331,7 +346,7 @@ Supported calendars are:
 GRC uses explicit `CIVIL` years and fixed-date Epiphany/Thursday Ascension/Thursday
 Corpus Christi. National calendars retain their provider's propers and transfers.
 Ordo1962 data stays separate from the reformed calendar. Source and reference links
-are displayed beside the active calendar; GCatholic also serves as an additional
+are available in Advanced calendar settings; GCatholic also serves as an additional
 reference for GRC. Missing ICS season metadata stays absent. LitCal's coinciding
 optional memorials are presented as a choice when its response omits a ferial row.
 No optional memorial is selected automatically in place of the principal day.
@@ -431,3 +446,39 @@ command. The production presentation checks passed rapid Find/Escape priority,
 repeated mode restoration, reload, mobile interactions and data fidelity; Calendar
 checks passed exact/stale evidence, interrupted navigation, editor draft/caret,
 source/property review, overlay independence/cache/error states and 44px targets.
+
+
+## Month workspace preferences and hierarchy
+
+Calendar is a temporal knowledge index. Desktop day cells prioritize a curated title,
+accepted relationship or original evidence title, then show full occurrence and accepted
+relationship counts. These are not appointments or unique-document counts. Pending
+proposals are not counted as accepted relationships. Principal liturgy remains secondary,
+with weekday titles, ranks, vestment colors and the existing Latin display formatting.
+Phone/narrow-workspace cells show knowledge counts (P means pinned), principal color and
+an optional-choice + marker; full accessible names, date details and agenda retain text.
+
+Settings → Calendar saves Sunday/Monday week start in this browser; Sunday remains the
+default. Home/End follow that choice. ISO week numbers default off. Each row label gives
+its Monday's ISO week AND ISO week-year, for example 2020-W53. On a Sunday-start row,
+Sunday belongs to the preceding ISO week: the label is explicitly Monday's week, not an
+assertion that ISO weeks begin Sunday. Leading/trailing blank cells retain civil bounds.
+
+Optional memorial indicators can be disabled independently of optional detail. They use
+only actual provider alternatives flagged optional, never synthetic inferred feasts.
+Activating an indicated day opens its choices alongside the unchanged principal day;
+other selected days offer an optional-choice disclosure. Optional colors never replace
+principal vestment colors. Unavailable provider alternatives produce no marker.
+
+The date inspector uses a side column only at 1000px available Calendar workspace width;
+otherwise it uses a modal (full viewport on phones), retaining drafts while resizing.
+Month/year-only records sit in a collapsed period disclosure, never a fabricated day.
+Go to month accepts years 1–9999; Show selected date returns to an inspector's off-month
+date without discarding its draft. Same-query refresh retains prior knowledge previews
+while marked updating; changed queries clear prior results. Supplement failures remain
+independent of civil navigation, indexing and evidence retrieval.
+
+At extreme zoom the seven-column grid keeps a bounded horizontal scroll surface rather
+than overlapping day targets or widening the document. Set `NOEMA_SKIP_SCREENSHOTS=1`
+when running `scripts/check-calendar-browser.mjs` to disable every capture, including
+failure captures; functional validation and JSON results remain available.

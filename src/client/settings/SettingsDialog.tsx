@@ -8,7 +8,7 @@ import type {PageReference} from '../../shared/embeddings';
 import { AIDebugSettings } from './AIDebugSettings';
 import { ImageSettings } from './ImageSettings';
 import { SecuritySettings } from './SecuritySettings';
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { AIActivityLog } from './AIActivityLog';
 import { IntelligenceSettings } from './IntelligenceSettings';
 import { EmbeddingSettings } from './EmbeddingSettings';
@@ -16,7 +16,7 @@ import type { SourceReference, Vault } from '../../shared/domain';
 import { KnowledgeEntitySettings } from './KnowledgeEntitySettings';
 import { Modal, ModalHeader } from '../components/Modal';
 import { Select } from '../components/Select';
-import { defaultAppearance, fontOptions, themes, type Appearance, type DisplayMode, type FontId } from './appearance';
+import { defaultAppearance, paragraphIndentWidths, fontOptions, themes, type Appearance, type DisplayMode, type FontId, type ParagraphIndentMode, type ParagraphIndentWidth, type ParagraphSpacing } from './appearance';
 
 const settingsTabs = [
   {id: 'appearance', get label(){return uiText("Appearance")}},
@@ -87,6 +87,41 @@ export function SettingsDialog({initialTab='appearance',calendarSettings,onCalen
         <div className="font-preview" aria-label={uiText("Typography preview")}>
           <h4>{uiText("A space for clear thinking")}</h4>
           <p>{uiText("Capture a thought, connect an idea, and make room for what comes next.")}</p>
+        </div>
+      </section>
+      <section className="settings-section appearance-setting" aria-labelledby="paragraph-indent-heading">
+        <h3 id="paragraph-indent-heading">{uiText("Paragraph indentation")}</h3>
+        <div className="font-settings">
+          <div className="font-setting">
+            <label htmlFor="settings-paragraph-indent">{uiText("Indent paragraphs")}</label>
+            <Select id="settings-paragraph-indent" value={appearance.paragraphIndent} onChange={event => onChange({...appearance, paragraphIndent:event.target.value as ParagraphIndentMode})}>
+              <option value="none">{uiText("No indent (default)")}</option>
+              <option value="all">{uiText("Indent all paragraphs")}</option>
+              <option value="except-first">{uiText("Indent except first of section")}</option>
+            </Select>
+          </div>
+          <div className="font-setting">
+            <label htmlFor="settings-paragraph-indent-width">{uiText("Indent width")}</label>
+            <Select id="settings-paragraph-indent-width" value={appearance.paragraphIndentWidth} disabled={appearance.paragraphIndent==='none'} onChange={event => onChange({...appearance, paragraphIndentWidth:event.target.value as ParagraphIndentWidth})}>
+              <option value="small">{uiText("Small · 1 em")}</option>
+              <option value="medium">{uiText("Medium · 1.5 em")}</option>
+              <option value="large">{uiText("Large · 2 em")}</option>
+            </Select>
+          </div>
+        </div>
+        <div className="font-setting">
+          <label htmlFor="settings-paragraph-spacing">{uiText("Paragraph spacing")}</label>
+          <Select id="settings-paragraph-spacing" value={appearance.paragraphSpacing} disabled={appearance.paragraphIndent==='none'} onChange={event => onChange({...appearance, paragraphSpacing:event.target.value as ParagraphSpacing})}>
+            <option value="standard">{uiText("Standard spacing (default)")}</option>
+            <option value="book">{uiText("Book-style · no extra gap")}</option>
+          </Select>
+        </div>
+        <p>{uiText("Book-style spacing removes the extra gap between consecutive paragraphs when indentation is enabled.")}</p>
+        <p>{uiText("Indent only the first line. Sections begin at the start of a page and after a heading or divider.")}</p>
+        <div className="font-preview paragraph-indent-preview" data-indent={appearance.paragraphIndent} data-spacing={appearance.paragraphSpacing} style={{'--paragraph-indent-width':paragraphIndentWidths[appearance.paragraphIndentWidth]} as CSSProperties} aria-label={uiText("Paragraph indentation preview")}>
+          <h4>{uiText("A space for clear thinking")}</h4>
+          <p>{uiText("Capture a thought, connect an idea, and make room for what comes next.")}</p>
+          <p>{uiText("Each paragraph gives an idea room to grow. Follow the thread and see where it leads.")}</p>
         </div>
       </section>
       <section className="settings-section appearance-setting" aria-labelledby="reading-heading">

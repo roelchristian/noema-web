@@ -319,6 +319,14 @@ html {
   text-underline-offset: 3px;
   text-decoration-skip-ink: auto;
 }
+/* Use the existing muted text tone so subtle entities remain visibly distinct. */
+:root[data-focused-reading=true] .page .block-content .mention[data-entity] {
+  color: var(--text-muted);
+}
+:root[data-focused-reading=true] .page .block-content .mention[data-entity]:is(:hover, :focus-visible) {
+  color: var(--text);
+  text-decoration-color: currentColor;
+}
 :root[data-focused-reading=true] .page .block-content .mention:is([data-entity], [data-note-date]):hover {
   text-decoration-color: var(--text-muted);
 }

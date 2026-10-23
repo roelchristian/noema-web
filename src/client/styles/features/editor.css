@@ -1420,46 +1420,55 @@
   border-color: var(--accent);
 }
 .mention.person, .entity-icon.person {
+  --mention-ink: var(--person-text, var(--text));
   background: var(--person-bg, #f0f0f0);
   color: var(--person-text, #333);
   border-color: var(--person-border, #d9d9d9);
 }
 .mention.place, .entity-icon.place {
+  --mention-ink: var(--place-text, var(--text));
   background: var(--place-bg, #f0f0f0);
   color: var(--place-text, #333);
   border-color: var(--place-border, #d9d9d9);
 }
 .mention.event, .entity-icon.event {
+  --mention-ink: var(--event-text, var(--text));
   background: var(--event-bg, #f0f0f0);
   color: var(--event-text, #333);
   border-color: var(--event-border, #d9d9d9);
 }
 .mention.creativework, .entity-icon.creativework {
+  --mention-ink: var(--creativework-text, var(--text));
   background: var(--creativework-bg, #f0f0f0);
   color: var(--creativework-text, #333);
   border-color: var(--creativework-border, #d9d9d9);
 }
 .mention.organization, .entity-icon.organization {
+  --mention-ink: var(--organization-text, var(--text));
   background: var(--organization-bg, #f0f0f0);
   color: var(--organization-text, #333);
   border-color: var(--organization-border, #d9d9d9);
 }
 .mention.concept, .entity-icon.concept {
+  --mention-ink: var(--concept-text, var(--text));
   background: var(--concept-bg, #f0f0f0);
   color: var(--concept-text, #333);
   border-color: var(--concept-border, #d9d9d9);
 }
 .mention.source, .entity-icon.source {
+  --mention-ink: var(--source-text, var(--text));
   background: var(--source-bg, #f0f0f0);
   color: var(--source-text, #333);
   border-color: var(--source-border, #d9d9d9);
 }
 .mention.organism, .entity-icon.organism {
+  --mention-ink: var(--organism-text, var(--text));
   background: var(--organism-bg, #f0f0f0);
   color: var(--organism-text, #333);
   border-color: var(--organism-border, #d9d9d9);
 }
 .mention.culture, .entity-icon.culture {
+  --mention-ink: var(--culture-text, var(--text));
   background: var(--culture-bg, #f0f0f0);
   color: var(--culture-text, #333);
   border-color: var(--culture-border, #d9d9d9);
@@ -3067,15 +3076,15 @@
   margin-top: 0;
 }
 
-/* Standard references sit within the prose, with the same type size and a quiet
- * wash over their configured palette. An image layer preserves per-entity colors. */
+/* Slightly smaller text and icons keep standard references within the prose.
+ * An image layer softens the configured palette without replacing its colors. */
 :root[data-focused-reading="false"] .page .block-content .mention[data-entity] {
   --mention-wash: color-mix(in srgb, var(--surface) 50%, transparent);
   background-image: linear-gradient(var(--mention-wash), var(--mention-wash));
   border: 0;
   border-radius: 3px;
   padding: 0 .2em;
-  font-size: inherit;
+  font-size: .95em;
   line-height: 1.35;
   vertical-align: baseline;
   filter: none;

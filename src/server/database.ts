@@ -476,6 +476,7 @@ if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
  setupSuggestionVersionSchema(db);
  setupTemporalSchema(db);
  setupTemporalEvidenceSchema(db);
+ db.exec('CREATE TABLE IF NOT EXISTS liturgical_year_cache (year INTEGER PRIMARY KEY,provider_key TEXT NOT NULL,data TEXT NOT NULL,generated_at TEXT NOT NULL,last_access TEXT NOT NULL)');
  if (db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Database contains invalid references');
  return db;
  } catch(error) { db.close(); throw error; }

@@ -141,6 +141,7 @@
     "test/ai-personas.test.mjs",
     "test/temporal.test.mjs",
     "test/calendar.test.mjs",
-    "test/temporal-evidence.test.mjs"
+    "test/temporal-evidence.test.mjs",
+    "test/liturgical-calendar.test.mjs"
   ]
 }

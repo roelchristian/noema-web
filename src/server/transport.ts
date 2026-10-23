@@ -40,7 +40,7 @@ async function readBody(req: IncomingMessage) {
 }
 
 export function createTransportHandler(runtime: Runtime, clientRoot: string, sockets: Set<Socket>) {
-  const { store, temporal, intelligence, networkAccess, vaultDeletion, sourceFiles, sourcePageImages, sourceReading, backups, images, notifications, vaults, knowledge, pages, organizer, activity, enrichments, sourceReprocessing, scans, pageEnrichment, enrichmentScheduler, scheduleEnrichment, entityMatches, embeddings, sourceEnrichments, searchSnippets, textSearch } = runtime;
+  const { store, temporal, liturgical, intelligence, networkAccess, vaultDeletion, sourceFiles, sourcePageImages, sourceReading, backups, images, notifications, vaults, knowledge, pages, organizer, activity, enrichments, sourceReprocessing, scans, pageEnrichment, enrichmentScheduler, scheduleEnrichment, entityMatches, embeddings, sourceEnrichments, searchSnippets, textSearch } = runtime;
   return async(req: IncomingMessage,res: http.ServerResponse)=>{
     let activityId: string | undefined;
     const send=(status:number,data:unknown)=>{if(activityId){activity.finishResponse(activityId,status);activityId=undefined;}res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));};
@@ -223,6 +223,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           const calendar=method==='GET'?url.searchParams.get('calendar')??'gregorian':body.calendar??'gregorian';
           if(calendar!=='gregorian'&&calendar!=='julian')throw new HttpError(400,'Unsupported temporal calendar');
           const offset=Number(url.searchParams.get('offset')??0),limit=Number(url.searchParams.get('limit')??100);
+          if(id==='liturgical'&&child&&parts.length===4&&method==='GET')return send(200,await liturgical.year(vault,Number(child)));
           if(id==='dates'&&parts.length===3&&method==='GET')return send(200,temporal.query(vault,url.searchParams.get('from')??'',url.searchParams.get('to')??'',url.searchParams.get('references')==='all',calendar,{offset,limit,layers:url.searchParams.has('layers')?(url.searchParams.get('layers')?.split(',').filter(Boolean)??[]) as import('../shared/temporal.js').TemporalLayer[]:undefined}));
           if(id==='dates'&&child&&parts.length===4&&method==='GET')return send(200,temporal.detail(vault,decodeURIComponent(child),offset,Number(url.searchParams.get('relationOffset')??0),Number(url.searchParams.get('limit')??20),Number(url.searchParams.get('sourceOffset')??0),Number(url.searchParams.get('propertyOffset')??0),Number(url.searchParams.get('proposalOffset')??0)));
           if(id==='curation'&&parts.length===3&&method==='PUT')return send(200,temporal.curate(vault,typeof body.value==='string'?body.value:'',body,calendar));

@@ -1,8 +1,8 @@
 # Calendar: temporal foundation and workspace
 
-Phases 1–3 implement page/source temporal indexing, compatible typed entity date
+Phases 1–4 implement page/source temporal indexing, compatible typed entity date
 adapters, explicit relationship review, and the Calendar month/agenda workspace.
-The liturgical overlay is the next phase. Recurrence, reminders,
+An independent, opt-in General Roman Calendar supplements civil dates. Recurrence, reminders,
 historical/entity timelines, and external calendar integrations remain deferred.
 
 ## Review of the proposal against the repository
@@ -290,15 +290,71 @@ was made. The original root cause remains unconfirmed; these results do not prov
 that timing/resource contention was the only cause, and do not claim that a product
 race has been fixed. Keep the trace-enabled stress case for recurrence.
 
-## Remaining phase and acceptance gate
+## Phase 4: independent General Roman Calendar
 
-Phase 4 is next: verify generator APIs, licensing, maintenance and universal calendar
-coverage from primary sources before selecting a provider. Calculate observed years
-locally, test precedence and transfers, cache by year/provider version, and keep the
-optional General Roman Calendar overlay independent of temporal entities and
-appointments. Include rank, season/colour and optional memorials. Universal calendar
-only; Philippine propers, readings and illustrative hardcoded feast lists are excluded.
+The supplement is off by default. It never writes temporal dates, evidence,
+relationships or appointments. Exact civil days can show the observed principal
+celebration or weekday, rank, season and colour; optional memorials are revealed
+in the inspector. Provider-supplied additional non-optional liturgies remain visible.
+The month grid stays restrained and the agenda supplement is separate from knowledge.
+Coarse month/year records never acquire an invented liturgical day.
 
-A separate curated Date entity homepage is not part of these checkpoints; dates are
-curated in the inspector. Advanced Phase 5 remains deferred: historical/entity
-timelines, recurrence/reminders, and external calendar integrations.
+The server pins both `romcal` and `@romcal/calendar.general-roman` to
+`3.0.0-dev.140` (MIT; notice in `licenses/romcal-MIT.txt`). The maintained v3 line
+is explicitly prerelease, unlike the legacy stable v1 package. Registry metadata
+records publication on 30 August 2026, with matching source revision
+`6246bad8c548c1f2528916df40e433c1f7c97c6a`. This is a deliberate pinned dependency
+tradeoff: future updates require the rule fixtures and cache/provider key to change.
+The published package's actual types/output were checked because some upstream
+v2 output documentation is stale. The adapter uses named `Romcal`, localized
+`GeneralRoman_En`, `generateCalendar`, `id`, `colors`, and ordered observed days.
+It does not invent fixed feast labels or precedence.
+
+Primary references reviewed:
+- [Romcal source and maintenance](https://github.com/romcal/romcal)
+- [Current usage/API](https://github.com/romcal/romcal/blob/dev/docs/general-usage.md)
+- [Changelog](https://github.com/romcal/romcal/blob/dev/docs/CHANGELOG.md)
+- [Pinned MIT license](https://github.com/romcal/romcal/blob/6246bad8c548c1f2528916df40e433c1f7c97c6a/LICENSE)
+- [General Norms for the Liturgical Year and Calendar](https://www.liturgyoffice.org.uk/Calendar/Info/GNLY.pdf)
+
+Supported civil years are **1970–2099**, under the provider's current universal
+rules, not historical reconstructions. No national/diocesan proper is loaded.
+Universal fixed-date Epiphany, Ascension and Corpus Christi are explicit; no
+national Sunday-transfer convention is silently selected. Precedence and solemnity
+transfers are calculated by the provider. A missing colour (for example Holy
+Saturday before the Vigil) remains unspecified, rather than invented.
+
+Generation is server-only in an isolated 128 MiB worker with a 12 second limit,
+one active generation and at most two pending years. No vault content or network
+is supplied. Validated normalized results are under 1 MB. SQLite retains eight
+years, keyed by generator, data package, locale, universal options and adapter
+version; corrupt/obsolete rows regenerate. Browser memory/local storage retain
+four validated years with the same version key. Cached years work without a
+request. Missing data or generation failure leaves the civil calendar usable and
+provides retry. Vault access is checked before and after asynchronous generation.
+Derived public cache data is reconstructible and is not vault backup content.
+
+Focused tests exercise Easter/Pentecost, the 2024 Annunciation transfer, the 2023
+Saint Joseph transfer, Sunday precedence over Saint Francis, universal fixed-day
+settings, optional memorials, additional Triduum liturgies, empty colour metadata,
+cache reuse/version invalidation/corruption/bounds, serial concurrency, range and
+vault locking. Browser checks cover desktop/mobile, optional detail, separate
+agenda, cached reuse, error recovery and absence of temporal-entity writes.
+
+## Scope audit and deferrals
+
+The completed scope covers canonical page/source dates, evidence and navigation,
+revision-aware incremental indexing, lifecycle/backup boundaries, separate curation,
+month/agenda/inspectors, explicit filters, typed compatible property review, manual
+relationships and the independent universal supplement. Extraction deliberately
+supports exact English day/month/year expressions conservatively; numeric prose,
+relative/approximate expressions, ranges, BCE, centuries and conversions between
+historical calendars remain unresolved rather than guessed. Explicit original
+calendar qualifiers and precision are retained; typed date fields accept ISO dates.
+No incidental mention becomes a personal commitment or semantic event.
+
+A separate curated Date entity homepage remains future UI work; current date
+curation and evidence live in the Calendar inspector. No multilingual extraction
+beyond English is claimed. Advanced Phase 5 remains deferred: historical/entity
+timelines, recurrence/reminders, and external calendar integrations. Philippine
+propers, lectionary/propers/readings and regional transfer settings are excluded.

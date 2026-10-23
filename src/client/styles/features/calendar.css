@@ -94,3 +94,13 @@ dialog.calendar-sheet {position:fixed;inset:0;margin:0;width:100%;max-width:none
 .calendar-relationship-form select {width:100%;min-height:44px;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:6px;}
 .calendar-relation-actions {display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
 .calendar-link-disclosure>summary {display:flex;align-items:center;min-height:44px;cursor:pointer;font-size:12px;}
+
+.calendar-overlay-controls {display:flex;flex-wrap:wrap;gap:8px 18px;border-top:1px solid var(--line);margin-top:8px;padding-top:4px;}
+.calendar-liturgical-cell {font-size:10px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:100%;color:var(--text-muted);}
+.calendar-liturgical-panel {border:1px solid var(--line);border-radius:6px;padding:12px;margin-bottom:20px;}
+.calendar-liturgical-panel h3 {font-size:14px;line-height:1.5;margin:6px 0;}
+.calendar-liturgical-panel p,.calendar-liturgical-panel small {font-size:11px;line-height:1.6;color:var(--text-muted);}
+.calendar-liturgical-panel>div {font-size:12px;padding-top:10px;}
+.calendar-liturgical-panel small {display:block;}
+.calendar-liturgical-agenda>summary {min-height:44px;display:flex;align-items:center;font-size:13px;cursor:pointer;}
+@media(max-width:750px) {.calendar-liturgical-cell {font-size:9px;max-height:22px;}.calendar-grid:has(.calendar-liturgical-cell) .calendar-cell>button {min-height:82px;}}

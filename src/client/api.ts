@@ -42,6 +42,7 @@ export async function importVaultBackup(file:File,name?:string):Promise<Vault> {
   const result=await response.json();if(!response.ok)throw new ApiError(response.status,result.error||'Vault import failed');return result;
 }
 export const api={
+  liturgicalYear:(vault:string,year:number,signal?:AbortSignal)=>request<import('../shared/liturgical').LiturgicalYear>(`temporal/liturgical/${year}`,'GET',undefined,vault,signal),
   temporalDates:(vault:string,from:string,to:string,options:{allReferences:boolean;layers:import('../shared/temporal').TemporalLayer[];offset?:number},signal?:AbortSignal)=>request<import('../shared/temporal').TemporalResults>('temporal/dates?'+new URLSearchParams({from,to,references:options.allReferences?'all':'curated',layers:options.layers.join(','),offset:String(options.offset??0),limit:'100'}),'GET',undefined,vault,signal),
   temporalDetail:(vault:string,id:string,offset=0,relationOffset=0,signal?:AbortSignal,extra:{sourceOffset?:number;propertyOffset?:number;proposalOffset?:number}={})=>request<import('../shared/temporal').TemporalDetail>(`temporal/dates/${encodeURIComponent(id)}?offset=${offset}&relationOffset=${relationOffset}&limit=20&sourceOffset=${extra.sourceOffset??0}&propertyOffset=${extra.propertyOffset??0}&proposalOffset=${extra.proposalOffset??0}`,'GET',undefined,vault,signal),
   temporalSourceMention:(vault:string,id:string,signal?:AbortSignal)=>request<import('../shared/temporal').TemporalSourceEvidence>(`temporal/source-mentions/${encodeURIComponent(id)}`,'GET',undefined,vault,signal),

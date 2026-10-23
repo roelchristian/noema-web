@@ -13,14 +13,22 @@ test('AI explanation entries render in the log and update when generation finish
  let status='running',opened;
  const item=()=>({id:'explanation-attempt',action:'block_explanation',status,startedAt:'2026-10-17T00:00:00Z',finishedAt:null,durationMs:null,httpStatus:null,vaultId:'default',objectKind:'page',objectId:'note',objectTitle:'Source note',revision:1,available:true,promptBytes:123,model:'test',reasoningEffort:'low'});
  const request=t.mock.method(api,'aiActivity',async()=>({items:[item()],nextCursor:null}));
+ // Drive polling explicitly so slow full-suite runs cannot add a wall-clock refresh.
+ let poll,cleared=false;const timer={},setIntervalOriginal=globalThis.setInterval,clearIntervalOriginal=globalThis.clearInterval;
+ t.mock.method(globalThis,'setInterval',(callback,delay,...args)=>{if(delay!==1000)return setIntervalOriginal(callback,delay,...args);poll=callback;return timer;});
+ t.mock.method(globalThis,'clearInterval',value=>{if(value===timer)cleared=true;else clearIntervalOriginal(value);});
  const root=createRoot(document.querySelector('#mount'));
  try{
   await act(async()=>root.render(React.createElement(AIActivityLog,{onClose(){},onOpenPage:async(vault,id)=>{opened=[vault,id];}})));
   assert.match(document.querySelector('tbody').textContent,/AI Explanation/);assert.equal(document.querySelector('.ai-activity-status').textContent,'running');
+  assert.equal(request.mock.callCount(),1);assert.equal(typeof poll,'function');
+  await act(async()=>poll());assert.equal(request.mock.callCount(),2);
+  assert.equal(document.querySelector('.ai-activity-status').textContent,'running');
   status='completed';await act(async()=>window.dispatchEvent(new Event('noema:ai-activity')));
-  assert.equal(document.querySelector('.ai-activity-status').textContent,'completed');assert.equal(request.mock.callCount(),2);
+  assert.equal(document.querySelector('.ai-activity-status').textContent,'completed');assert.equal(request.mock.callCount(),3);
   await act(async()=>document.querySelector('.ai-activity-link').dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})));assert.deepEqual(opened,['default','note']);
  }finally{await act(async()=>root.unmount());dom.window.close();keys.forEach((key,index)=>{if(previous[index])Object.defineProperty(globalThis,key,previous[index]);else delete globalThis[key];});}
+ assert.equal(cleared,true,'Unmount must clear the activity poll');
 });
 
 import {AIActivityDebug} from '../src/client/settings/AIActivityDebug.tsx';

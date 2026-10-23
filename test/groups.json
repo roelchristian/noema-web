@@ -72,7 +72,8 @@
     "test/calendar-liturgical-overlay.test.mjs",
     "test/review-centre-ui.test.mjs",
     "test/entity-property-list.test.mjs",
-    "test/property-definition-manager.test.mjs"
+    "test/property-definition-manager.test.mjs",
+    "test/property-proposal-review.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",
@@ -165,6 +166,11 @@
     "test/property-definition-governance.test.mjs",
     "test/property-governance-compat.test.mjs",
     "test/property-custom-temporal.test.mjs",
-    "test/property-governance-http.test.mjs"
+    "test/property-governance-http.test.mjs",
+    "test/property-provenance.test.mjs",
+    "test/property-review.test.mjs",
+    "test/property-provenance-backups.test.mjs",
+    "test/source-provenance-governance.test.mjs",
+    "test/property-provenance-http.test.mjs"
   ]
 }

@@ -1,3 +1,4 @@
+import {getNameProvenance,recordEntityNameProvenance} from './property-provenance.js';
 import {preparePDFWorker} from './pdf-worker.js';
 import { AINotifications } from './ai-notifications.js';
 import { scanSourcePDF, fetchSource, sourceURL } from './source-import.js';
@@ -19,6 +20,18 @@ export const sourceExtensions = ['txt','md','pdf'];
 // Keep legacy HTML originals addressable for download/removal, but reject new uploads.
 const filePattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(txt|md|html|pdf)$/;
 const maxText = 16 * 1024 * 1024;
+/** Download filenames may replace only an unchanged, explicitly system-derived placeholder.
+ * The caller performs this check inside the attachment metadata transaction. */
+export function syncDownloadedSourceName(store:Store,file:SourceFile,downloadedName:string,expected:{name:string;updated_at:string}|undefined) {
+  if(!expected||expected.name!==file.name.slice(0,200)||!file.entity_id)return;
+  const entity=store.get<{name:string;updated_at:string}>(`SELECT e.name,e.updated_at FROM entities e JOIN source_files f ON f.entity_id=e.id AND f.vault_id=e.vault_id
+    JOIN vaults v ON v.id=e.vault_id WHERE e.id=? AND e.vault_id=? AND e.type='source' AND e.archived_at IS NULL
+    AND v.locked=0 AND f.id=?`,file.entity_id,file.vault_id,file.id);
+  const origin=getNameProvenance(store,file.vault_id,file.entity_id);
+  if(!entity||entity.name!==expected.name||entity.updated_at!==expected.updated_at||!origin||origin.stale||!['derived','ai'].includes(origin.origin))return;
+  const changed=store.run('UPDATE entities SET name=?,updated_at=? WHERE id=? AND vault_id=? AND name=? AND updated_at=?',downloadedName.slice(0,200),now(),file.entity_id,file.vault_id,expected.name,expected.updated_at).changes;
+  if(changed)recordEntityNameProvenance(store,file.vault_id,file.entity_id,{origin:'derived',source_file_id:file.id,source_hash:null,details:'source_download: downloaded filename replaced an unchanged system-derived placeholder.'});
+}
 export class SourceFiles {
   readonly root: string;
   private closed = false;
@@ -225,6 +238,7 @@ export class SourceFiles {
       let bytes:Buffer;
       let downloadedStructure:SourceStructureNode[]|undefined;
       if(file.format==='url') {
+        const expectedName=this.store.get<{name:string;updated_at:string}>('SELECT name,updated_at FROM entities WHERE id=? AND vault_id=?',file.entity_id!,file.vault_id);
         const downloaded=await fetchSource(file.source_url);
         if(this.closed)return;
         if(!open()){this.store.run("UPDATE source_files SET status='queued',progress=0 WHERE id=?",file.id);return;}
@@ -234,7 +248,7 @@ export class SourceFiles {
         this.replaceFile(this.inboxFilename(file.vault_id,file.id),bytes);
         this.store.transaction(()=>{
           this.store.run('UPDATE source_files SET name=?,size=?,format=? WHERE id=?',downloaded.name,bytes.length,format,file!.id);
-          this.store.run('UPDATE entities SET name=?,updated_at=? WHERE id=? AND name=?',downloaded.name.slice(0,200),now(),file!.entity_id,file!.name.slice(0,200));
+          syncDownloadedSourceName(this.store,file!,downloaded.name,expectedName);
         });
         file=this.require(file.vault_id,file.id);
       }else bytes=readFileSync(this.assetFilename(file.vault_id,file.id));

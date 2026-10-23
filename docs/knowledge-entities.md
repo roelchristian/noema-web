@@ -6,7 +6,7 @@
 
 - Type `@` to find an entity or create one inline. Entity mentions keep the entity's ID, so renaming an entity updates its displayed name across pages.
 - Click or tap an editor mention, or focus it and press Enter or Space, to change its linked identity or remove the link while keeping its wording. Choose **Open entity details** there, or open **Knowledge entities**, to edit its details, properties, and relationships.
-- A property can hold **text** (`type = Book`) or an **entity reference** (`author = @Person`). Click **Edit** to change it.
+- Edit property values directly on the entity homepage or inspector. Definitions select the appropriate control, reference target types and cardinality. Historical literals remain available through an explicit compatibility path; unresolved names do not create canonical entities automatically. The Edit tab retains identity and advanced administration.
 - A relationship holds a free-form label and a target (`@Person → sibling → @Person`). Incoming connections appear on the target entity too. The arrow shows the stored direction; reciprocal relationships are not automatically inferred.
 
 ## Automatic entity links
@@ -28,6 +28,12 @@ Identification defers while text is selected, a menu or dialog is open, or IME c
 Knowledge entities keep a main type (Person, Place, Event, Creative Work, Organization, Organism, Culture, Source, or Concept) and can have multiple subtypes under that main type, such as a Person who is both an Actor and a Writer. Person defaults include Actor, Writer, Artist, Scientist, Researcher, Philosopher, Historian, Educator, Engineer, Physician, Entrepreneur, Politician, Activist, Journalist, Musician, Composer, Filmmaker, Athlete, and Religious leader. Other built-in subtypes include City, Book, Film, Company, and Website. Concept starts with Mathematics, Science, Social Sciences, Technology, and Philosophy subtypes. AI entity scanning includes inline and display formulas as context while tagging only eligible text. Evidence matching treats spaces, nonbreaking spaces, tabs, and line breaks equivalently and preserves the original surrounding text and formulas. Create custom subtypes under **Knowledge entities → Manage types & subtypes**.
 
 Built-in and legacy main-type fields are available to every subtype; values remain specific to each entity. Subtypes can define additional fields in the type manager. Multiple assigned subtypes inherit the deduplicated union of their fields. Existing entity fields are preserved and imported into their main type’s shared fields. Existing single-subtype selections migrate automatically. Custom subtypes and fields stay within their vault.
+
+## Property evidence and source automation
+
+Property values show manual, imported, AI, derived or legacy-unknown origin where recorded. Existing values are conservatively marked unknown; the system does not invent authorship. Changed source evidence is marked stale and retained. Source author extraction proposes values for explicit review rather than creating entities or rewriting authored credits. Review offers accept, reject, and explicit retain-both for conflicting single-value evidence. Accepting a proposed canonical name establishes manual authority. The review list shows up to 100 proposals in each view.
+
+Imported Source URL and Import Method records retain stable IDs when unchanged. Conflicts preserve authored values and propose changes. Restored source files are paused for background author/enrichment processing until an explicit retry, including legacy backups; restore never starts provider work. Culture:Language entity identity remains separate from extracted/display language metadata.
 
 ## Subjects and disciplines
 

@@ -1,3 +1,4 @@
+import {PropertyProposalReview} from './PropertyProposalReview';
 import {EntityPropertyList} from './EntityPropertyList';
 import {propertyLabel,resolvePropertyDefinition} from '../../shared/property-definitions';
 import {TemporalPropertyValue} from './TemporalPropertyValue';
@@ -107,6 +108,7 @@ export function EntityPanel(props: EntityPanelProps) {
           </dl>
           <EntityPropertyList active={tab==='overview'} definitions={schema.propertyDefinitions} key={vaultId + ':' + id + ':source'} density="source" vaultId={vaultId} entity={{...entity,propertyNames}} entities={entities} mention={mention} onSave={(input,propertyId)=>mutate(()=>api.saveProperty(vaultId,id,input,propertyId))} onRemove={propertyId=>mutate(()=>api.removeConnection(vaultId,id,'properties',propertyId))} onRefresh={()=>mutate(()=>api.entity(vaultId,id))}/>
         </section>
+        {!!entity.propertyProposalCount&&<PropertyProposalReview key={vaultId+':'+id+':review'} vaultId={vaultId} entityId={id} entities={entities} onUpdated={async()=>{await mutate(()=>api.entity(vaultId,id));}}/>}
         <nav className="source-inspector-links" aria-label={uiText("Source connections")}>
           <button type="button" onClick={()=>switchTab('connections')}><Icon name="page"/><span>{uiText("Mentioned in") + " "}{pageMentions.length} {pageMentions.length===1?uiText("page"):uiText("pages")}</span><Icon name="chevron"/></button>
           <button type="button" onClick={()=>switchTab('connections')}><Icon name="knowledge"/><span>{connectionCount} {connectionCount===1?uiText("connection"):uiText("connections")}</span><Icon name="chevron"/></button>
@@ -120,6 +122,7 @@ export function EntityPanel(props: EntityPanelProps) {
         <section className="entity-detail-section"><h3>{uiText("Properties")}<span>{entity.properties.length}</span></h3>
           <EntityPropertyList active={tab==='overview'} definitions={schema.propertyDefinitions} key={vaultId + ':' + id} density="compact" vaultId={vaultId} entity={{...entity,propertyNames}} entities={entities} mention={mention} onSave={(input,propertyId)=>mutate(()=>api.saveProperty(vaultId,id,input,propertyId))} onRemove={propertyId=>mutate(()=>api.removeConnection(vaultId,id,'properties',propertyId))} onRefresh={()=>mutate(()=>api.entity(vaultId,id))}/>
         </section>
+        {!!entity.propertyProposalCount&&<PropertyProposalReview key={vaultId+':'+id+':review'} vaultId={vaultId} entityId={id} entities={entities} onUpdated={async()=>{await mutate(()=>api.entity(vaultId,id));}}/>}
         <section className="entity-detail-section"><h3>{uiText("Related knowledge")}<span>{relationships.length} {relationships.length === 1 ? uiText("connection") : uiText("connections")}</span></h3>
           <EntityConnections items={relationships.slice(0, 4)} entities={entities} onOpen={onOpen} empty="No related knowledge yet."/>
           {!!relationships.length && <button type="button" className="entity-detail-more" onClick={() => switchTab('connections')}>{relationships.length > 4 ? uiText("View all ") + relationships.length + uiText(" connections") : uiText("View connections")}<Icon name="chevron"/></button>}

@@ -5165,3 +5165,9 @@ dialog.noema-modal.entity-review-modal { height: min(780px, calc(100dvh - 64px))
 .property-definition-impact {padding:10px;border:1px solid var(--status-warning-border);border-radius:6px;}
 .property-definition-impact>label {display:flex;flex-direction:row;align-items:start;gap:8px;}
 .property-definition-conflicts {padding:8px;border:1px solid var(--border);border-radius:6px;}
+
+.property-proposal-review { margin-block: var(--space-4); }
+.property-proposal { padding-block: var(--space-3); border-bottom: 1px solid var(--border); }
+.property-proposal h4 { margin-block: var(--space-2); }
+.property-provenance { margin-block: var(--space-1); color: var(--text-muted); font-size: 12px; }
+.property-evidence-hash { overflow-wrap: anywhere; }

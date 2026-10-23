@@ -101,11 +101,11 @@ export function PropertyEditor({entity, entities, mention, onSave, onRemove,defi
   const form = useRef<HTMLFormElement>(null);
   const [focusRequest, setFocusRequest] = useState(0);
   const unset = entity.propertyNames.filter(name => !entity.properties.some(property => property.name.toLowerCase() === name.toLowerCase()));
-  const managed=(property:Property)=>definitions?.some(item=>item.legacyName.toLowerCase()===property.name.toLowerCase()&&!item.editable)??false;
+  const managed=(property:Property)=>(definitions?.some(item=>item.legacyName.toLowerCase()===property.name.toLowerCase()&&!item.editable)??false)&&property.provenance?.origin!=='manual'&&property.provenance?.origin!=='legacy_unknown';
   const names = name && !entity.propertyNames.includes(name) ? [name, ...entity.propertyNames] : entity.propertyNames;
   function reset() {clearPropertyDraft(vault,entity.id,draftId);select({name:''});setError('');}
   function focusValue() {form.current?.scrollIntoView({behavior: 'smooth', block: 'nearest'}); form.current?.querySelector<HTMLElement>('textarea, input')?.focus({preventScroll: true});}
-  function editing(property: Property) {const storedName=entity.propertyNames.find(name=>name.toLowerCase()===property.name.toLowerCase())??property.name;const initial={kind:property.target_id?'entity' as const:'text' as const,value:property.value??'',target:property.target_id??'',legacy:property.metadata?.compatibility==='legacy_incompatible'};if(!getPropertyDraft(vault,entity.id,property.id))setPropertyDraft(vault,entity.id,property.id,{...initial,baseline:propertyDraftSignature(initial)});select({edit:property.id,name:storedName});setError('');setStatus('');setFocusRequest(current=>current+1);}
+  function editing(property: Property) {const storedName=entity.propertyNames.find(name=>name.toLowerCase()===property.name.toLowerCase())??property.name;const initial={kind:property.target_id?'entity' as const:'text' as const,value:property.value??'',target:property.target_id??'',legacy:property.metadata?.compatibility==='legacy_incompatible'||!!definitions?.some(item=>item.legacyName.toLowerCase()===property.name.toLowerCase()&&!item.editable)&&!managed(property)};if(!getPropertyDraft(vault,entity.id,property.id))setPropertyDraft(vault,entity.id,property.id,{...initial,baseline:propertyDraftSignature(initial)});select({edit:property.id,name:storedName});setError('');setStatus('');setFocusRequest(current=>current+1);}
   useEffect(() => {if (focusRequest) focusValue();}, [focusRequest]);
   async function submit(event: FormEvent) {
     event.preventDefault();

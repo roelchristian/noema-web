@@ -1,3 +1,4 @@
+import {PropertyReview} from './modules/property-review.js';
 import {PropertyDefinitionGovernance} from './modules/property-definition-governance.js';
 import {EntityClassificationImpact} from './modules/entity-classification-impact.js';
 import {ReviewCentre} from './modules/review-centre.js';
@@ -471,6 +472,8 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             }
           }
           if(collection==='entities') {
+            if(id&&child==='property-proposals'&&parts.length===4&&method==='GET')return send(200,new PropertyReview(store).list(vault,id,url.searchParams.get('status')??'pending'));
+            if(id&&child==='property-proposals'&&childId&&parts.length===6&&parts[5]==='review'&&method==='POST')return send(200,new PropertyReview(store).review(vault,id,decodeURIComponent(childId),body as unknown as Parameters<PropertyReview['review']>[3]));
             if(id&&child==='classification-impact'&&parts.length===4&&method==='POST')return send(200,new EntityClassificationImpact(store).preview(vault,id,{type:body.type as import('../shared/domain.js').EntityType,subtypes:body.subtypes as string[]}));
             if(id==='reference-options' && parts.length===3 && method==='GET')return send(200,knowledge.referenceOptions(vault,{
               query:url.searchParams.get('q')??'', types:(url.searchParams.get('types')??'').split(',').filter(Boolean), subtypes:(url.searchParams.get('subtypes')??'').split(',').filter(Boolean),

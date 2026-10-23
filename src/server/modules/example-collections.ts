@@ -81,7 +81,10 @@ export function evaluateExampleBatch(store:Store,vault:string,input:ExampleColle
   if(item.state!=='evaluated')continue;
   const negative=negativeScores.get(item.item_id);
   if(item.matched&&negative!==undefined&&item.score!==undefined) {
-   const separated=item.score>=negative+config.negativeMargin;item.matched=separated;
+   const retained=!!collectionId&&!!store.get('SELECT 1 FROM smart_collection_cache WHERE vault_id=? AND collection_id=? AND item_id=? AND matched=1 AND score IS NOT NULL AND fingerprint<>\'\'',vault,collectionId,item.item_id);
+   const margin=Math.max(0,config.negativeMargin-(retained?.02:0));
+   const separated=item.score>=negative+margin;item.matched=separated;
+   if(retained)item.evidence.push('Previously matched pages use a small contrast margin to avoid membership flicker.');
    item.evidence.push(separated?'Closer to positive examples than negative examples by the required margin.':'Too similar to a negative example to satisfy the required contrast.');
   }
   item.evidence.unshift(...query.evidence);

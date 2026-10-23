@@ -1,3 +1,4 @@
+import {setupPropertyProvenanceSchema} from './modules/property-provenance.js';
 import {setupPropertyStorage} from './modules/property-storage.js';
 import {setupTemporalEvidenceSchema} from './temporal-evidence-schema.js';
 import {setupTemporalSchema} from './temporal-schema.js';
@@ -478,6 +479,7 @@ if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
  setupTemporalSchema(db);
  setupTemporalEvidenceSchema(db);
  setupPropertyStorage(db);
+ setupPropertyProvenanceSchema(db);
  db.exec('CREATE TABLE IF NOT EXISTS liturgical_year_cache (year INTEGER PRIMARY KEY,provider_key TEXT NOT NULL,data TEXT NOT NULL,generated_at TEXT NOT NULL,last_access TEXT NOT NULL)');
  db.exec(`CREATE TABLE IF NOT EXISTS liturgical_calendar_cache (calendar_id TEXT NOT NULL,year INTEGER NOT NULL,provider_key TEXT NOT NULL,data TEXT NOT NULL,generated_at TEXT NOT NULL,last_access TEXT NOT NULL,PRIMARY KEY(calendar_id,year));
  CREATE TABLE IF NOT EXISTS liturgical_seed_years (year INTEGER PRIMARY KEY);

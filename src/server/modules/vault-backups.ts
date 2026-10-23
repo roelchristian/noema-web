@@ -1,3 +1,5 @@
+import {propertyOrigins,type PropertyOrigin} from '../../shared/property-provenance.js';
+import {proposalIdentity,rawSourceHash} from './property-provenance.js';
 import {adaptTemporalProperty} from '../../shared/temporal-properties.js';
 import {propertyFingerprint} from './temporal-properties.js';
 import {syncPropertyMetadata,isStoredPropertyDefinition,bindPropertyDefinition} from './property-storage.js';
@@ -50,6 +52,10 @@ const tables={
   temporal_source_mentions:{columns:'id,file_id,source_id,passage_id,generation_id,source_hash,passage_hash,start_offset,end_offset,start_line,end_line,original_text,date_id,reason,stale',scope:'vault_id=?'},
   temporal_property_dirty:{columns:'property_id',scope:'vault_id=?'},
   temporal_property_values:{columns:'property_id,entity_id,date_id,raw_hash,reason',scope:'vault_id=?'},
+  property_provenance:{columns:'property_id,origin,source_file_id,source_hash,details,stale,created_at,updated_at',scope:'vault_id=?'},
+  entity_name_provenance:{columns:'entity_id,origin,source_file_id,source_hash,details,stale,created_at,updated_at',scope:'vault_id=?'},
+  property_proposals:{columns:'id,entity_id,kind,property_id,property_name,value,target_id,origin,source_file_id,source_hash,details,status,created_at,updated_at',scope:'vault_id=?'},
+  source_author_jobs:{columns:'file_id,status,content_hash,attempts,next_attempt_at,error,updated_at',scope:'vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL)'},
   property_definitions:{columns:'id,definition_json',scope:'vault_id=?'},
   property_value_metadata:{columns:'property_id,definition_id,compatibility,reason,integer_value,decimal_value,boolean_value,text_value,latitude,longitude,unit,position,target_id,temporal_date_id',scope:'vault_id=?'},
   temporal_relations:{columns:'id,date_id,entity_id,mention_id,kind,origin,status,confidence,source_mention_id,property_id,property_hash',scope:'vault_id=?'},
@@ -156,26 +162,29 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table.startsWith('temporal_')||table==='property_definitions'||table==='property_value_metadata'||table==='entity_overviews'||table==='entity_page_associations'||table==='source_reading_locations'||table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
-    const sourceOwners=new Set<unknown>(),legacyEntities=new Map(rows.entities.map(row=>[row.id,row]));
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table.startsWith('temporal_')||table==='property_provenance'||table==='entity_name_provenance'||table==='property_proposals'||table==='source_author_jobs'||table==='property_definitions'||table==='property_value_metadata'||table==='entity_overviews'||table==='entity_page_associations'||table==='source_reading_locations'||table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    const splitSourceOwners=new Set<unknown>(),sourceOwners=new Set<unknown>(),legacyEntities=new Map(rows.entities.map(row=>[row.id,row]));
     const legacyProperties=[...rows.properties],legacyLinks=[...rows.page_sources];
     for(const file of rows.source_files) {
       if(!sourceOwners.has(file.entity_id)){sourceOwners.add(file.entity_id);continue;}
       const owner=legacyEntities.get(file.entity_id);
       if(!owner||owner.type!=='source')throw invalid();
-      const id=randomUUID(),original=file.entity_id;
-      const properties=legacyProperties.filter(row=>row.entity_id===original),links=legacyLinks.filter(row=>row.source_id===original);
+      const id=randomUUID(),original=file.entity_id;splitSourceOwners.add(original);splitSourceOwners.add(id);
+      const properties=legacyProperties.filter(row=>row.entity_id===original),links=legacyLinks.filter(row=>row.source_id===original),clonedPropertyIds=new Map<unknown,string>();
       total+=1+properties.length+links.length;
       if(total>200000)throw new HttpError(413,'This backup contains too many records.');
       rows.entities.push({...owner,id,name:name(file,'name').slice(0,200),aliases:'[]'});
       for(const row of properties) {
-        const propertyId=randomUUID();rows.properties.push({...row,id:propertyId,entity_id:id});
+        const propertyId=randomUUID();clonedPropertyIds.set(row.id,propertyId);rows.properties.push({...row,id:propertyId,entity_id:id});
+        const provenance=rows.property_provenance.find(item=>item.property_id===row.id);
+        if(provenance){rows.property_provenance.push({...provenance,property_id:propertyId});total++;}
         const metadata=rows.property_value_metadata.find(item=>item.property_id===row.id);
         if(metadata){rows.property_value_metadata.push({...metadata,property_id:propertyId});total++;}
         const temporal=rows.temporal_property_values.find(item=>item.property_id===row.id);
         if(temporal){rows.temporal_property_values.push({...temporal,property_id:propertyId,entity_id:id});total++;}
         if(rows.temporal_property_dirty.some(item=>item.property_id===row.id)){rows.temporal_property_dirty.push({property_id:propertyId});total++;}
       }
+      for(const proposal of rows.property_proposals)if(proposal.entity_id===original&&proposal.source_file_id===file.id){proposal.entity_id=id;if(proposal.property_id!=null){const mapped=clonedPropertyIds.get(proposal.property_id);if(mapped)proposal.property_id=mapped;}}
       rows.page_sources.push(...links.map(row=>({...row,source_id:id})));
       file.entity_id=id;
       // Legacy archives may attach several files to one source entity.
@@ -270,6 +279,7 @@ export class VaultBackups {
           if(!['txt','md','pdf','html','url'].includes(String(format))||format==='url'&&(!sourceUrl||admitted!==0))throw invalid();
           const added=sourceFiles.add(vault,name(row,'name'),bytes,undefined,sourceUrl,pdfFlattened===1,admitted===0,format as import('../../shared/domain.js').SourceFile['format'],containsMath===1);writtenSources.push(added.id);restoredSourceFiles.set(name(row,'id'),added.id);
           this.store.run('UPDATE source_files SET entity_id=? WHERE id=?',sourceEntity,added.id);
+          this.store.run('INSERT INTO source_automation_pauses (file_id,vault_id,reason,created_at) VALUES (?,?,?,?)',added.id,vault,'Restored source: resume enrichment only after an explicit retry.',now());
           if(asset.evidence!==undefined)sourceFiles.restoreEvidence(vault,added.id,asset.evidence);
           if(row.page_start_lines!==undefined) {
             const starts=list(json(row,'page_start_lines'));
@@ -291,7 +301,8 @@ export class VaultBackups {
           const enrichmentStatus=row.enrichment_status??'pending';
           if(!['pending','running','completed','failed'].includes(String(enrichmentStatus)))throw invalid();
           this.store.run('UPDATE source_files SET original_filename=?,generated_name=?,language=?,summary=?,enrichment_status=? WHERE id=?',
-            row.original_filename===undefined?name(row,'name'):string(row,'original_filename',255),row.generated_name==null?null:string(row,'generated_name',200),pageLanguage(row.language),row.summary==null?null:limitSummaryWords(string(row,'summary',12000)),enrichmentStatus==='running'?'pending':String(enrichmentStatus),added.id);
+            row.original_filename===undefined?name(row,'name'):string(row,'original_filename',255),row.generated_name==null?null:string(row,'generated_name',200),pageLanguage(row.language),row.summary==null?null:limitSummaryWords(string(row,'summary',12000)),enrichmentStatus==='running'||enrichmentStatus==='pending'?'failed':String(enrichmentStatus),added.id);
+          if(enrichmentStatus==='running'||enrichmentStatus==='pending')this.store.run('UPDATE source_files SET enrichment_error=? WHERE id=?','Restored pending enrichment is paused; retry explicitly to resume.',added.id);
           const status=string(row,'status',20);if(!['queued','processing','ready','failed'].includes(status)||status==='ready'&&admitted!==1)throw invalid();
           this.store.run('UPDATE source_files SET status=?,text=?,error=?,progress=?,pages=?,ocr_pages=?,created_at=? WHERE id=?',status==='processing'?'queued':status,string(row,'text',16*1024*1024),nullable(row,'error',2000),integer(row,'progress',0,100),integer(row,'pages',0,1000),integer(row,'ocr_pages',0,1000),timestamp(row,'created_at'),added.id);
         }
@@ -314,7 +325,46 @@ export class VaultBackups {
         }
         this.store.run("UPDATE entities SET inactive=CASE WHEN EXISTS (SELECT 1 FROM source_files WHERE entity_id=entities.id AND status='failed') THEN 1 ELSE 0 END WHERE vault_id=? AND type='source'",vault);
         for(const row of rows.properties)insert('properties',{id:ref(propertyIds,row.id),entity_id:ref(entityIds,row.entity_id),name:propertyName(row),value:nullable(row,'value'),target_id:row.target_id===null?null:ref(entityIds,row.target_id)});
-        for(const entityId of entityIds.values())if(this.store.get<{type:string}>('SELECT type FROM entities WHERE id=?',entityId)?.type==='source')syncSourceProvenance(this.store,vault,entityId);
+        const sourceRef=(value:unknown)=>value===null?null:ref(restoredSourceFiles,value);
+        const nullableHash=(row:Row,key:string)=>{const hash=row[key]===null?null:string(row,key,64);if(hash!==null&&!/^[a-f0-9]{64}$/.test(hash))throw invalid();return hash;};
+        const evidence=(row:Row)=>{
+          if(!propertyOrigins.includes(row.origin as PropertyOrigin))throw invalid();
+          const source_file_id=sourceRef(row.source_file_id),source_hash=nullableHash(row,'source_hash'),stale=integer(row,'stale',0,1);
+          if(source_file_id&&source_hash&&!stale&&rawSourceHash(this.store.get<{text:string}>('SELECT text FROM source_files WHERE id=?',source_file_id)!.text)!==source_hash)throw invalid();
+          return {origin:String(row.origin),source_file_id,source_hash,details:string(row,'details'),stale,created_at:timestamp(row,'created_at'),updated_at:timestamp(row,'updated_at')};
+        };
+        const provenanceIds=new Set<string>(),nameProvenanceIds=new Set<string>();
+        for(const row of rows.property_provenance) {
+          const property_id=ref(propertyIds,row.property_id);if(provenanceIds.has(property_id))throw invalid();provenanceIds.add(property_id);
+          const value=evidence(row),fields={property_id,vault_id:vault,...value};
+          const columns=Object.keys(fields),values=Object.values(fields);
+          this.store.run(`INSERT INTO property_provenance (${columns.join(',')}) VALUES (${columns.map(()=>'?').join(',')}) ON CONFLICT(property_id) DO UPDATE SET ${columns.filter(column=>column!=='property_id').map(column=>`${column}=excluded.${column}`).join(',')}`,...values);
+        }
+        for(const row of rows.entity_name_provenance) {
+          const entity_id=ref(entityIds,row.entity_id);if(nameProvenanceIds.has(entity_id))throw invalid();nameProvenanceIds.add(entity_id);
+          const value=evidence(row),fields={entity_id,vault_id:vault,...value};
+          const columns=Object.keys(fields),values=Object.values(fields);
+          this.store.run(`INSERT INTO entity_name_provenance (${columns.join(',')}) VALUES (${columns.map(()=>'?').join(',')}) ON CONFLICT(entity_id) DO UPDATE SET ${columns.filter(column=>column!=='entity_id').map(column=>`${column}=excluded.${column}`).join(',')}`,...values);
+        }
+        const receiptIds=new Set<string>();
+        for(const row of rows.source_author_jobs) {
+          const file_id=ref(restoredSourceFiles,row.file_id);if(receiptIds.has(file_id))throw invalid();receiptIds.add(file_id);
+          const status=string(row,'status',20);if(!['pending','running','completed','failed'].includes(status))throw invalid();
+          const hash=nullableHash(row,'content_hash'),file=this.store.get<{text:string}>('SELECT text FROM source_files WHERE id=?',file_id)!;
+          if(hash!==null&&hash!==rawSourceHash(file.text))throw invalid();
+          const error=row.error===null?null:string(row,'error',2000),updated_at=timestamp(row,'updated_at'),nextAttempt=string(row,'next_attempt_at',100);
+          if(nextAttempt&&!Number.isFinite(Date.parse(nextAttempt)))throw invalid();
+          this.store.run('INSERT OR REPLACE INTO source_author_jobs (file_id,vault_id,status,content_hash,attempts,next_attempt_at,error,updated_at) VALUES (?,?,?,?,?,?,?,?)',file_id,vault,'completed',hash??rawSourceHash(file.text),integer(row,'attempts'),status==='completed'?nextAttempt:'',status==='completed'?error:`Restored ${status} author work is paused; retry explicitly to resume.`,updated_at);
+        }
+        // Old archives have no durable author receipt. Suppress an automatic paid
+        // backfill while preserving the ability to explicitly retry source enrichment.
+        for(const file_id of restoredSourceFiles.values())if(!receiptIds.has(file_id)) {
+          const file=this.store.get<{text:string}>('SELECT text FROM source_files WHERE id=?',file_id)!;
+          this.store.run('INSERT OR REPLACE INTO source_author_jobs (file_id,vault_id,status,content_hash,error,updated_at) VALUES (?,?,?,?,?,?)',file_id,vault,'completed',rawSourceHash(file.text),'Restored archive: automatic author extraction is paused.',now());
+        }
+        // Modern archives already contain authored metadata and its exact evidence.
+        // Reconcile older archives and legacy owners split into separate sources.
+        for(const [oldEntityId,entityId] of entityIds)if((data.property_provenance===undefined||splitSourceOwners.has(oldEntityId))&&this.store.get<{type:string}>('SELECT type FROM entities WHERE id=?',entityId)?.type==='source')syncSourceProvenance(this.store,vault,entityId);
         const importedDefinitions=new Map<string,PropertyDefinition>();
         for(const row of rows.property_definitions) {
           const oldId=string(row,'id',2000),parsed=json(row,'definition_json');
@@ -595,6 +645,21 @@ export class VaultBackups {
           const target=row.target_id===null?null:ref(entityIds,row.target_id),date=row.temporal_date_id===null?null:dateRef(row.temporal_date_id);
           if(target!==current.target_id||date!==current.temporal_date_id)throw invalid();
           this.store.run('UPDATE property_value_metadata SET position=? WHERE property_id=?',integer(row,'position'),propertyId);
+        }
+        const proposalIds=new Set<string>(),originalProposalIds=new Set<string>();
+        for(const row of rows.property_proposals) {
+          const oldId=string(row,'id',64);if(!/^[a-f0-9]{64}$/.test(oldId)||originalProposalIds.has(oldId))throw invalid();originalProposalIds.add(oldId);
+          const entity_id=ref(entityIds,row.entity_id),kind=string(row,'kind',20),property_id=row.property_id===null?null:ref(propertyIds,row.property_id),property_name=row.property_name===null?null:string(row,'property_name',200),value=row.value===null?null:string(row,'value'),target_id=row.target_id===null?null:ref(entityIds,row.target_id);
+          if(kind!=='property'&&kind!=='entity_name'||kind==='property'&&(!property_name||!property_name.trim())||kind==='entity_name'&&(property_name!==null||target_id!==null)||(value===null)===(target_id===null)||value!==null&&!value.trim()||!propertyOrigins.includes(row.origin as PropertyOrigin))throw invalid();
+          if(property_id&&!this.store.get('SELECT 1 FROM properties WHERE id=? AND entity_id=?',property_id,entity_id))throw invalid();
+          const source_file_id=sourceRef(row.source_file_id),source_hash=nullableHash(row,'source_hash'),origin=row.origin as PropertyOrigin,status=string(row,'status',20);
+          if(!['pending','accepted','rejected'].includes(status))throw invalid();
+          const input={entity_id,kind:kind as 'property'|'entity_name',property_id,property_name,value,target_id,source_file_id,source_hash,origin},id=proposalIdentity(vault,input);
+          if(proposalIds.has(id))throw invalid();proposalIds.add(id);
+          const fields={id,vault_id:vault,...input,details:string(row,'details'),status,created_at:timestamp(row,'created_at'),updated_at:timestamp(row,'updated_at')},columns=Object.keys(fields);
+          // A legacy split may have reconstructed the same metadata suggestion.
+          // The archived decision is authoritative over that fresh pending record.
+          this.store.run(`INSERT INTO property_proposals (${columns.join(',')}) VALUES (${columns.map(()=>'?').join(',')}) ON CONFLICT(id) DO UPDATE SET ${columns.filter(column=>column!=='id').map(column=>`${column}=excluded.${column}`).join(',')}`,...Object.values(fields));
         }
         // Recompute after validation/remapping instead of trusting a supplied page fingerprint.
         syncReadingNotesCollection(this.store,vault);

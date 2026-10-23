@@ -110,7 +110,7 @@ test('archived identities cannot be accepted from legacy scans or silently recre
  assert.deepEqual(scanner.save('default',page,JSON.stringify({suggestions:[{...candidate,existingId:null}]}),{},false).suggestions,[]);
  assert.equal(JSON.parse(scanner.input('default',page)).existingEntities.some(entity=>entity.id===f.person.id),false);
  const count=f.knowledge.list('default').length;saveSourceAuthors(f.store,'default',f.source.id,[{name:f.person.name,type:'person'}]);
- assert.equal(f.knowledge.list('default').length,count);assert.ok(f.knowledge.detail('default',f.source.id).properties.some(property=>property.name==='author'&&property.value===f.person.name&&!property.target_id));
+ assert.equal(f.knowledge.list('default').length,count);assert.ok(f.store.get("SELECT 1 FROM property_proposals WHERE entity_id=? AND property_name='author' AND value=? AND target_id IS NULL AND status='pending'",f.source.id,f.person.name));
 });
 
 test('archive integration preserves occurrence-only links and excluded text through saves, restoration and vault import',async t=>{

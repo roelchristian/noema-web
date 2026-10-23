@@ -117,8 +117,11 @@ test('legacy multi-file Source split remaps sidecars and reconciles only file-sp
  assert.equal(sources.length,2);
  for(const entity of sources) {
   const file=f.store.get('SELECT * FROM source_files WHERE entity_id=?',entity.id),properties=f.knowledge.detail(restored.id,entity.id).properties;
-  assert.deepEqual(properties.filter(row=>row.name==='Import method').map(row=>row.value),[file.import_method]);
-  assert.deepEqual(properties.filter(row=>row.name==='Source URL').map(row=>row.value),file.source_url?[file.source_url]:[]);
+  const currentMetadata=properties.filter(row=>f.store.get('SELECT origin,stale FROM property_provenance WHERE property_id=?',row.id)?.origin==='imported'&&!f.store.get('SELECT stale FROM property_provenance WHERE property_id=?',row.id)?.stale);
+  assert.deepEqual(currentMetadata.filter(row=>row.name==='Import method').map(row=>row.value),[file.import_method]);
+  assert.deepEqual(currentMetadata.filter(row=>row.name==='Source URL').map(row=>row.value),file.source_url?[file.source_url]:[]);
+  // Imported historical values survive splitting as explicitly stale evidence.
+  for(const row of properties.filter(row=>row.name==='Import method'&&row.value!==file.import_method||row.name==='Source URL'&&row.value!==file.source_url))assert.equal(f.store.get('SELECT stale FROM property_provenance WHERE property_id=?',row.id).stale,1);
   for(const property of properties)assert.ok(f.store.get('SELECT 1 FROM property_value_metadata WHERE property_id=?',property.id));
   const published=properties.find(item=>item.name==='publication date');assert.equal(published.value,'October 2026');assert.equal(f.store.get('SELECT temporal_date_id FROM property_value_metadata WHERE property_id=?',published.id).temporal_date_id,'gregorian:month:2026-10');
  }

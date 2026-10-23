@@ -1,5 +1,6 @@
 import type {EditorReviewText,EditorReviewSuggestion} from '../shared/editor-review';
 import type { Organization, Entity, EntityDetail, EntityInput, PropertyInput, RelationshipInput, Page, PageInput, PageSummary, Vault, TrashedPage } from '../shared/domain';
+export type PropertyProposalPreview=import('../shared/property-provenance').PropertyProposal & {stale:boolean;staleReason:string|null;fingerprint:string;conflicts:import('../shared/domain').Property[];currentName:string;definition?:import('../shared/property-definitions').PropertyDefinition;sourceName?:string};
 export class ApiError extends Error { constructor(public status: number,message: string){super(message);} }
 export async function request<T>(route: string, method='GET', body?: unknown, vaultId?: string, signal?: AbortSignal): Promise<T> {
   const response=await fetch('/api/'+route,{method,signal,headers:{'X-Noema-Request':'1',...(body!==undefined?{'Content-Type':'application/json'}:{}),...(vaultId?{'X-Vault-Id':vaultId}:{})},body:body!==undefined?JSON.stringify(body):undefined});
@@ -84,6 +85,8 @@ export const api={
   enqueueEmbeddings:(vault:string,mode:'missing'|'eligible')=>request<{queued:number;skipped:number}>('embeddings/enqueue','POST',{mode},vault),
   retryEmbedding:(vault:string,id:string)=>request<{queued:number}>(`embeddings/jobs/${id}/retry`,'POST',{},vault),
   semanticSearch:(vault:string,query:string,signal?:AbortSignal,limit=20)=>request<import('../shared/embeddings').SemanticSearchResults>('embeddings/search','POST',{query,limit},vault,signal),
+  propertyProposals:(vault:string,id:string,status='pending',signal?:AbortSignal)=>request<PropertyProposalPreview[]>(`entities/${encodeURIComponent(id)}/property-proposals?status=${encodeURIComponent(status)}`,'GET',undefined,vault,signal),
+  reviewPropertyProposal:(vault:string,id:string,proposalId:string,body:{action:'accept'|'reject'|'retain_both';fingerprint:string;target_id?:string})=>request<PropertyProposalPreview>(`entities/${encodeURIComponent(id)}/property-proposals/${encodeURIComponent(proposalId)}/review`,'POST',body,vault),
   entitySchema:(vault:string)=>request<import('../shared/entity-schema').EntitySchema>('entity-schema','GET',undefined,vault),
   createPropertyDefinition:(vault:string,body:Record<string,unknown>)=>request<import('../shared/property-definitions').PropertyDefinition>('entity-schema/definitions','POST',body,vault),
   propertyDefinitionImpact:(vault:string,id:string,body:Record<string,unknown>)=>request<{fingerprint:string;definition:import('../shared/property-definitions').PropertyDefinition;affectedValues:number;compatibleValues:number;incompatible:{propertyId:string;entityId:string;reason:string}[]}>('entity-schema/definitions/'+encodeURIComponent(id)+'/impact','POST',body,vault),

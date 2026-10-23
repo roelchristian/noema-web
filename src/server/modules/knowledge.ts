@@ -1,3 +1,4 @@
+import {recordPropertyProvenance,recordEntityNameProvenance,getPropertyProvenance} from './property-provenance.js';
 import {EntityClassificationImpact,assertNoHierarchyCycle} from './entity-classification-impact.js';
 import {withPropertyCatalogue,propertyDefinitionConflicts,propertyDefinitionSignature,resolvePropertyDefinition} from '../../shared/property-definitions.js';
 import {Vaults} from './vaults.js';
@@ -94,8 +95,9 @@ export class Knowledge {
     const overview=this.store.get<{content:string;revision:number}>('SELECT content,revision FROM entity_overviews WHERE entity_id=?',id)??{content:'',revision:0};
     const propertyOrder = builtinProperties[entity.type].map(name=>name.toLowerCase());
     const linkedPages=this.store.all<Omit<import('../../shared/domain.js').EntityPageAssociation,'pinned'> & {pinned:number}>(`SELECT p.id,p.title,p.icon,p.updated_at,a.pinned,a.annotation,a.created_at FROM entity_page_associations a JOIN pages p ON p.id=a.page_id WHERE a.entity_id=? AND p.vault_id=? AND p.deleted_at IS NULL ORDER BY a.pinned DESC,a.created_at DESC,p.id LIMIT ?`,id,vault,limit).map(row=>({...row,pinned:!!row.pinned}));
-    return {...entity, ...(preview ? {previewLimited:true} : {}), overview, linkedPages, pageMentions: entityPageMentions(this.store, vault, id, preview ? 6 : undefined), ...(entity.type==='source'?{attachments:this.store.all<import('../../shared/domain.js').SourceFile>('SELECT * FROM source_files WHERE vault_id=? AND entity_id=? ORDER BY created_at,id',vault,id).map(file=>({...file,processing_detail:sourceProgress.get(file.id)}))}:{}), propertyNames: inheritedPropertyNames(this.schema(vault),entity.type,entity.subtypes),
-      properties:this.store.all<Property>(`SELECT * FROM properties WHERE entity_id=? ORDER BY COALESCE((SELECT CAST(key AS INTEGER) FROM json_each(?) WHERE value=lower(name)),999),name COLLATE NOCASE,COALESCE((SELECT position FROM property_value_metadata WHERE property_id=properties.id),0),id LIMIT ?`,id,JSON.stringify(propertyOrder),limit).map(property=>({...property,metadata:metadata.get(property.id)})),
+    const propertyProposalCount=this.store.get<{count:number}>('SELECT count(*) AS count FROM property_proposals WHERE vault_id=? AND entity_id=?',vault,id)?.count??0;
+    return {...entity, propertyProposalCount, ...(preview ? {previewLimited:true} : {}), overview, linkedPages, pageMentions: entityPageMentions(this.store, vault, id, preview ? 6 : undefined), ...(entity.type==='source'?{attachments:this.store.all<import('../../shared/domain.js').SourceFile>('SELECT * FROM source_files WHERE vault_id=? AND entity_id=? ORDER BY created_at,id',vault,id).map(file=>({...file,processing_detail:sourceProgress.get(file.id)}))}:{}), propertyNames: inheritedPropertyNames(this.schema(vault),entity.type,entity.subtypes),
+      properties:this.store.all<Property>(`SELECT * FROM properties WHERE entity_id=? ORDER BY COALESCE((SELECT CAST(key AS INTEGER) FROM json_each(?) WHERE value=lower(name)),999),name COLLATE NOCASE,COALESCE((SELECT position FROM property_value_metadata WHERE property_id=properties.id),0),id LIMIT ?`,id,JSON.stringify(propertyOrder),limit).map(property=>({...property,metadata:metadata.get(property.id),provenance:getPropertyProvenance(this.store,vault,property.id)})),
       relationships:this.store.all<Relationship>('SELECT * FROM relationships WHERE source_id=? OR target_id=? ORDER BY label COLLATE NOCASE,id LIMIT ?',id,id,limit),
       incomingProperties:this.store.all<Property>('SELECT * FROM properties WHERE target_id=? ORDER BY name COLLATE NOCASE,id LIMIT ?',id,limit).map(property=>({...property,metadata:this.store.get<import('../../shared/property-values.js').PropertyValueMetadata>('SELECT definition_id,compatibility,reason,integer_value,decimal_value,boolean_value,text_value,latitude,longitude,unit,position,target_id,temporal_date_id FROM property_value_metadata WHERE property_id=? AND vault_id=?',property.id,vault)}))};
   }
@@ -188,6 +190,7 @@ export class Knowledge {
     const create=() => {
       const attachments=attachmentIds;
       this.store.run('INSERT INTO entities (id,name,aliases,mention_case,type,subtypes,description,updated_at,vault_id) VALUES (?,?,?,?,?,?,?,?,?)',id,e.name,JSON.stringify(e.aliases),e.mentionCase,e.type,JSON.stringify(e.subtypes),e.description,now(),vault);
+      recordEntityNameProvenance(this.store,vault,id,{origin:e.type==='source'&&!(typeof body.name==='string'&&body.name.trim())?'derived':'manual',details:'Entity creation name policy: explicit names are manual; attachment defaults are derived.'});
       for(const domainId of e.domainIds)this.store.run("INSERT INTO entity_domains (entity_id,domain_id,origin) VALUES (?,?,'manual')",id,domainId);
       for(const file of attachments)this.store.run('UPDATE source_files SET entity_id=? WHERE id=? AND vault_id=?',id,file,vault);
       if(e.type==='source'){
@@ -210,13 +213,15 @@ export class Knowledge {
     if (e.type!=='source' && this.store.get('SELECT 1 FROM source_files WHERE entity_id=?',id)) throw new HttpError(400,'A source with attached files must remain a Source entity');
     if (e.type==='source' && current.type!=='source') throw new HttpError(400,'Create a source with an attached file instead of changing this entity type');
     if (e.type!=='source' && this.store.get('SELECT 1 FROM page_sources WHERE source_id=? LIMIT 1',id)) throw new HttpError(400,'Remove page source references before changing this Source to another type');
-    this.store.transaction(() => {
+    const update=() => {
     const impact=governance.assertAllowed(vault,id,{type:e.type,subtypes:e.subtypes},{mode:body.classification_mode as 'retain_legacy'|undefined,fingerprint:body.impact_fingerprint as string|undefined});
       this.store.run('UPDATE entities SET name=?,aliases=?,mention_case=?,type=?,subtype=NULL,subtypes=?,description=?,updated_at=? WHERE id=? AND vault_id=?',e.name,JSON.stringify(e.aliases),e.mentionCase,e.type,JSON.stringify(e.subtypes),e.description,now(),id,vault);
       this.store.run('DELETE FROM entity_domains WHERE entity_id=?',id);
       for(const domainId of e.domainIds)this.store.run("INSERT INTO entity_domains (entity_id,domain_id,origin) VALUES (?,?,'manual')",id,domainId);
+      if(e.name!==current.name)recordEntityNameProvenance(this.store,vault,id,{origin:'manual',details:'Entity name explicitly edited.'});
       governance.afterChange(vault,id,impact);
-    });
+    };
+    if(this.store.db.isTransaction)update();else this.store.transaction(update);
     return this.detail(vault,id);
   }
   addAlias(vault: string, id: string, body: Record<string, unknown>) {
@@ -258,16 +263,18 @@ export class Knowledge {
       if(definition.cardinality==='one'&&others.length)throw new HttpError(409,'This single-value field already has authored values. Review them before replacing or use legacy compatibility to retain an existing value.');
       if(others.some(other=>other.value===value&&other.target_id===target))throw new HttpError(409,'This value already exists.');
     }
-    return this.store.transaction(()=>{
+    const save=()=>{
       if(target)assertNoHierarchyCycle(this.store,vault,id,target,definition??name,propertyId);
       const savedId=propertyId??randomUUID();
       if(propertyId)this.store.run('UPDATE properties SET name=?,value=?,target_id=? WHERE id=? AND entity_id=?',name,value,target,savedId,id);
       else this.store.run('INSERT INTO properties VALUES (?,?,?,?,?)',savedId,id,name,value,target);
+      recordPropertyProvenance(this.store,vault,savedId,{origin:'manual',details:'Property value explicitly saved.'});
       syncPropertyMetadata(this.store,vault,id);
       if(definition)this.store.run('UPDATE property_value_metadata SET definition_id=? WHERE property_id=? AND vault_id=?',definition.id,savedId,vault);
       if(definition?.valueKind==='date')new TemporalProperties(this.store).refresh(vault,1,savedId);
       return this.detail(vault,id);
-    });
+    };
+    return this.store.db.isTransaction?save():this.store.transaction(save);
   }
   relationship(vault: string, id: string, body: Record<string, unknown>, relationshipId?: string) {
     this.require(vault,id);const target=required(body.target_id),label=required(body.label);

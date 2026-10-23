@@ -48,6 +48,8 @@ Semantic definitions and their query embeddings are included in vault backups; d
 
 `node --import tsx scripts/check-smart-collections-browser.mjs` exercises creation, live preview, evidence, overrides, automatic invalidation, manual membership and physical folder preservation, and mobile overflow in Chromium. It requires the optional `playwright-core` harness (or its module path in `PLAYWRIGHT_MODULE`) and Chromium (`CHROMIUM_PATH` may override `/usr/bin/chromium`). This fixture blocks external browser traffic, rejects provider generation, uses a disposable database, and takes no screenshots.
 
+`node --import tsx scripts/check-semantic-collections-browser.mjs` uses the same optional browser harness with saved synthetic passage vectors and a fake description embedder. It checks the existing creation flow, explicit evaluation, indexing gaps, semantic evidence, exclusion/reset, local refresh, preserved physical location, and mobile overflow. It asserts one description embedding call across preview, save, overrides, and re-evaluation; document embedding and LLM generation calls are rejected. No screenshots or real providers are used.
+
 ## Deferred phases
 
 1. **Phase 3 — Hybrid and examples:** combine the existing rule AST as deterministic eligibility with semantic relevance, retaining independent rule and semantic evidence. Add representative example matching with coherent positive/negative examples, and translate natural language into editable rule definitions that the user confirms. Plan model/version fingerprinting, indexing gaps, threshold hysteresis, and override preservation for each mode. These methods are not offered as implemented options by Phase 2.

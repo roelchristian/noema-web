@@ -12,6 +12,28 @@ const invalid=()=>new HttpError(502,'Gemini returned incomplete or invalid WAV a
 type AudioBlock={type?:unknown;mime_type?:unknown;data?:unknown};
 type Interaction={status?:unknown;steps?:{type?:unknown;content?:AudioBlock[]}[];usage?:Record<string,unknown>};
 
+/** Convert a complete provider WAV with ancillary chunks to the app's PCM WAV layout. */
+function normalizeWav(wav:Buffer):Buffer {
+  if(validSpeechWav(wav))return wav;
+  if(wav.length<44||wav.toString('ascii',0,4)!=='RIFF'||wav.readUInt32LE(4)!==wav.length-8||wav.toString('ascii',8,12)!=='WAVE')throw invalid();
+  let format:Buffer|undefined,pcm:Buffer|undefined,offset=12;
+  while(offset<wav.length){
+    if(offset+8>wav.length)throw invalid();
+    const type=wav.toString('ascii',offset,offset+4),size=wav.readUInt32LE(offset+4),end=offset+8+size;
+    if(end+(size%2)>wav.length)throw invalid();
+    if(type==='fmt '){if(format||size!==16)throw invalid();format=wav.subarray(offset, end);}
+    if(type==='data'){if(pcm||!size||size%2||size>speechMaxAudioBytes)throw invalid();pcm=wav.subarray(offset+8,end);}
+    // Gemini may append C2PA provenance; ancillary chunks are not PCM samples.
+    offset=end+(size%2);
+  }
+  if(!format||!pcm)throw invalid();
+  const normalized=Buffer.alloc(44+pcm.length);
+  wav.copy(normalized,0,0,12);normalized.writeUInt32LE(normalized.length-8,4);
+  format.copy(normalized,12);normalized.write('data',36);normalized.writeUInt32LE(pcm.length,40);pcm.copy(normalized,44);
+  if(!validSpeechWav(normalized))throw invalid();
+  return normalized;
+}
+
 export async function geminiSpeech(text:string,key:string,signal:AbortSignal,transport:typeof fetch,voice:string,observer?:AIUsageObserver):Promise<Buffer> {
   text=cleanSpeechText(text);
   // UTF-8 bytes conservatively bound input tokens, leaving room for style metadata.
@@ -58,8 +80,9 @@ export async function geminiSpeech(text:string,key:string,signal:AbortSignal,tra
     if(audio.length!==1||audio[0]!.mime_type!=='audio/wav')throw invalid();
     const data=audio[0]!.data;
     if(typeof data!=='string'||data.length>maxResponseBytes||data.length%4!==0||!/^[A-Za-z0-9+/]+={0,2}$/.test(data))throw invalid();
-    const wav=Buffer.from(data,'base64');
-    if(wav.toString('base64')!==data||!validSpeechWav(wav))throw invalid();
+    const decoded=Buffer.from(data,'base64');
+    if(decoded.toString('base64')!==data)throw invalid();
+    const wav=normalizeWav(decoded);
     if(signal.aborted)throw new HttpError(409,'Speech request cancelled.');
     return wav;
   }catch(error){

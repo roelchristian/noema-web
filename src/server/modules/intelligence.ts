@@ -1,4 +1,4 @@
-import {defaultSpeechVoice,defaultSpeechProvider,defaultSpeechVoiceFor,isSpeechProvider,isSpeechVoice,speechModelFor,type SpeechProvider,type SpeechVoice} from '../../shared/intelligence.js';
+import {geminiApiKeyMaxLength,defaultSpeechVoice,defaultSpeechProvider,defaultSpeechVoiceFor,isSpeechProvider,isSpeechVoice,speechModelFor,type SpeechProvider,type SpeechVoice} from '../../shared/intelligence.js';
 import {cleanSpeechText} from '../../shared/speech-text.js';
 import {realtimeSpeech,createSpeechSocket,speechEndpoint as openAISpeechEndpoint,type SpeechSocketFactory} from './realtime-speech.js';
 import {geminiSpeech,geminiSpeechEndpoint} from './gemini-speech.js';
@@ -171,12 +171,15 @@ export class Intelligence {
   }
   geminiStatus() {const value=this.geminiCredential();return {configured:!!value,expiresAt:value?.expiresAt??null};}
   saveGemini(body:Record<string,unknown>) {
-    if(typeof body.apiKey!=='string'||!/^AIza[A-Za-z0-9_-]{35}$/.test(body.apiKey))throw new HttpError(400,'Enter a valid Gemini API key.');
+    const apiKey=typeof body.apiKey==='string'?body.apiKey.trim():'';
+    // Google issues both standard and authorization keys. Treat them as opaque
+    // header values rather than assuming the legacy AIza prefix and length.
+    if(apiKey.length<16||apiKey.length>geminiApiKeyMaxLength||!/^[\x21-\x7e]+$/.test(apiKey))throw new HttpError(400,'Enter a valid Gemini API key.');
     const days=body.days===undefined?30:body.days;
     if(typeof days!=='number'||!Number.isInteger(days)||days<1||days>365)throw new HttpError(400,'Choose a lifetime between 1 and 365 days.');
     if(!this.geminiSecrets)throw new HttpError(503,'Secure Gemini key storage is unavailable.');
     if(this.ttsProvider==='gemini')for(const request of this.speechRequests)request.abort();
-    this.geminiSecrets.write({key:body.apiKey,expiresAt:new Date(this.clock()+days*86400000).toISOString(),generation:randomUUID()});
+    this.geminiSecrets.write({key:apiKey,expiresAt:new Date(this.clock()+days*86400000).toISOString(),generation:randomUUID()});
     return this.geminiStatus();
   }
   removeGemini() {

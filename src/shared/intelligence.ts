@@ -7,6 +7,7 @@ export const defaultSpeechProvider:SpeechProvider = 'kokoro';
 export const speechModel = 'kokoro-82m-v1.0';
 export const geminiSpeechModel = 'gemini-3.8-flash-lite-tts';
 export const geminiSpeechStyle = 'Clear, natural narration at a steady pace.';
+export const geminiApiKeyMaxLength = 4096;
 export const geminiSpeechVoices = ['Zephyr','Puck','Charon','Kore','Fenrir','Leda','Orus','Aoede','Callirrhoe','Autonoe','Enceladus','Iapetus','Umbriel','Algieba','Despina','Erinome','Algenib','Rasalgethi','Laomedeia','Achernar','Alnilam','Schedar','Gacrux','Pulcherrima','Achird','Zubenelgenubi','Vindemiatrix','Sadachbia','Sadaltager','Sulafat'] as const;
 export interface SpeechCredentialStatus {configured:boolean;expiresAt:string|null}
 export const openAISpeechModel = 'gpt-realtime-2.1-mini';

@@ -1,4 +1,5 @@
 import {speechText,useSpeech} from './speech';
+import {speechSections} from './speech-sections';
 import {entityIconName} from '../../shared/entity-icons';
 import {paragraphFlow} from './paragraph-indent';
 import {useDefaultPersona} from '../components/PersonaSelect';
@@ -233,6 +234,22 @@ export function BlockEditor(props: Props) {
   }
   const [pageLinkStatus,setPageLinkStatus]=useState('');
   const speech=useSpeech(props.vaultId,props.pageId);
+  const speechSources=useRef(new Map<string,string>());
+  useEffect(()=>{
+    const id=speech.currentBlockId;
+    if(!id)return;
+    const block=blocks.find(item=>item.id===id);
+    // Check only the current source block. Advancing checks the next block before
+    // highlighting it; typing never transforms or hashes the whole document.
+    if(!block||speechSources.current.get(id)!==JSON.stringify(block))speech.stop();
+  },[blocks,speech.currentBlockId]);
+  useEffect(()=>{
+    const id=speech.currentBlockId;
+    if(!id)return;
+    const row=Array.from(root.current?.querySelectorAll<HTMLElement>('[data-block-id]')??[]).find(element=>element.dataset.blockId===id);
+    row?.setAttribute('data-speech-current','true');
+    return()=>{row?.removeAttribute('data-speech-current');};
+  },[speech.currentBlockId]);
   const defaultExplanationPersona=useDefaultPersona();
   const explanationPersona=useRef<string>('');
   const [explaining,setExplaining]=useState(false), [explanationError,setExplanationError]=useState('');
@@ -667,7 +684,11 @@ export function BlockEditor(props: Props) {
     ], 'BLOCK OPTIONS', true);
   }
   function speakChoice(ids:string[]):Choice[] {
-    return speech.enabled?[{title:uiText("Speak"),detail:uiText("Read aloud with an AI-generated voice"),icon:'speaker',pick:()=>{const draft=commitSelection();setMenu(null);speech.speak(speechText(draft,ids,entities));}}]:[];
+    return speech.enabled?[{title:uiText("Speak"),detail:uiText("Read aloud with an AI-generated voice"),icon:'speaker',pick:()=>{
+      const draft=commitSelection(),selected=new Set(ids);
+      speechSources.current=new Map(draft.filter(block=>selected.has(block.id)).map(block=>[block.id,JSON.stringify(block)]));
+      setMenu(null);speech.speak(speechText(draft,ids,entities),speechSections(draft,ids,entities));
+    }}]:[];
   }
   function aiActionChoice(anchor: HTMLElement, ids: string[], back: Choice): Choice {
     return {get title(){return uiText("AI actions")},icon:'sparkles',submenu:true,pick:()=>show(anchor,[back,...(props.onReview?[{title:reviewPending.current?uiText("Reviewing…"):uiText("Review with AI"),detail:uiText("Suggest spelling, punctuation, grammar, and phrasing corrections"),icon:'sparkles',disabled:reviewPending.current,pick:()=>void reviewWriting(ids)}]:[]),{title:'Explanation persona · '+personaMetadata(explanationPersona.current||aiExplanationsForSources(latest.current.blocks,ids)[0]?.semanticGroup?.persona?.id||defaultExplanationPersona).name,icon:'sparkles',submenu:true,pick:()=>show(anchor,[back,...[{id:'',name:'Default / original'},...aiPersonas].map(p=>({title:p.name,icon:'sparkles',submenu:true,pick:()=>{explanationPersona.current=p.id;aiActionChoice(anchor,ids,back).pick();}}))],'AI PERSONA',true)},explainChoice(ids)],'AI ACTIONS',true)};

@@ -6,6 +6,7 @@ import {speechText,speechChunks,combineSpeechAudio,useSpeech} from '../src/clien
 import {SpeechPlayer} from '../src/client/editor/SpeechPlayer.tsx';
 import {api} from '../src/client/api.ts';
 import {cleanSpeechText} from '../src/shared/speech-text.ts';
+import {speechSections,resumeRevision,readSpeechResume,writeSpeechResume,clearSpeechResume} from '../src/client/editor/speech-sections.ts';
 import {setupDOM} from './helpers/dom.mjs';
 import {fixture as editorFixture} from './fixtures/editor-rendering.mjs';
 
@@ -14,6 +15,40 @@ function wav(samples=[1,0,2,0]){
   const data=Buffer.from(samples),header=Buffer.alloc(44);header.write('RIFF',0);header.writeUInt32LE(36+data.length,4);header.write('WAVE',8);header.write('fmt ',12);header.writeUInt32LE(16,16);header.writeUInt16LE(1,20);header.writeUInt16LE(1,22);header.writeUInt32LE(24000,24);header.writeUInt32LE(48000,28);header.writeUInt16LE(2,32);header.writeUInt16LE(16,34);header.write('data',36);header.writeUInt32LE(data.length,40);return new Blob([header,data],{type:'audio/wav'});
 }
 const wavResponse=(samples)=>({ok:true,blob:async()=>wav(samples)});
+
+test('block sections retain order, stable boundaries, protected content and all Unicode text',()=>{
+  const source=[paragraph('heading','Title','heading1'),paragraph('body','🙂'.repeat(20)),paragraph('list','Last item','bullet'),paragraph('code','API 2026-10-23','code')];
+  const original=structuredClone(source),sections=speechSections(source,['code','list','body','heading'],[],9);
+  assert.deepEqual(source,original);
+  assert.deepEqual([...new Set(sections.map(section=>section.blockId))],source.map(block=>block.id));
+  assert.equal(sections[0].kind,'heading');assert.equal(sections.at(-1).kind,'protected');
+  assert.ok(sections.some(section=>section.kind==='list'));
+  for(const block of source){
+    const chunks=sections.filter(section=>section.blockId===block.id);
+    assert.equal(chunks.map(section=>section.text).join(''),speechText(source,[block.id],[]));
+    assert.deepEqual(chunks.map(section=>section.sectionIndex),chunks.map((_,index)=>index));
+    assert.ok(chunks.every(section=>section.text.length<=9&&!/[\uD800-\uDBFF]$/.test(section.text)));
+  }
+});
+
+test('resume stores only revision and a stable section boundary, isolated by vault/page and invalidated on edits or deletion',async()=>{
+  const records=new Map(),store={getItem:key=>records.get(key)??null,setItem:(key,value)=>records.set(key,value),removeItem:key=>records.delete(key)};
+  const sections=speechSections([paragraph('one','Private first'),paragraph('two','Private second')],['one','two'],[]),revision=await resumeRevision(sections);
+  writeSpeechResume('vault','page',revision,sections,1,store);
+  assert.equal(readSpeechResume('vault','page',revision,sections,store),1);
+  assert.equal(readSpeechResume('other-vault','page',revision,sections,store),null);
+  assert.equal(readSpeechResume('vault','other-page',revision,sections,store),null);
+  assert.ok(!JSON.stringify([...records]).includes('Private'));
+  const edited=sections.map(section=>({...section,text:section.text+' edit'}));
+  assert.equal(readSpeechResume('vault','page',await resumeRevision(edited),edited,store),null);
+  writeSpeechResume('vault','page',revision,sections,1,store);
+  assert.equal(readSpeechResume('vault','page',revision,sections.slice(0,1),store),null);
+  writeSpeechResume('vault','page',revision,sections,0,store);clearSpeechResume('vault','page',store);
+  assert.equal(records.size,0);
+  const unavailable={getItem(){throw new Error('Unavailable');},setItem(){throw new Error('Unavailable');},removeItem(){throw new Error('Unavailable');}};
+  assert.doesNotThrow(()=>writeSpeechResume('vault','page',revision,sections,0,unavailable));
+  assert.equal(readSpeechResume('vault','page',revision,sections,unavailable),null);
+});
 
 test('audio assembly joins all PCM samples into one WAV and preserves single-part files',async()=>{
   const first=wav([1,0,2,0]),second=wav([3,0,4,0]);

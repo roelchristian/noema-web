@@ -10,9 +10,13 @@ test('sandbox worker moves only executable into disposable private launch direct
  const executable=path.join(directory,'parser'),link=path.join(directory,'parser-link');
  // Copy/profile behavior does not require copying or executing the Node binary.
  const bytes=Buffer.from('#!/bin/sh\nexit 0\n');
- writeFileSync(executable,bytes,{mode:0o700});symlinkSync(executable,link);
+ writeFileSync(executable,bytes,{mode:0o700});
+ let linkedExecutable=link;
+ // Windows directory junctions exercise realpath without privileged file symlinks.
+ if(process.platform==='win32'){symlinkSync(directory,link,'junction');linkedExecutable=path.join(link,'parser');}
+ else symlinkSync(executable,link);
  const original=realpathSync(executable),input='/Users/example/private-source.pdf';
- for(const candidate of [executable,link]){
+ for(const candidate of [executable,linkedExecutable]){
   const profile='(version 1)(deny file-read* (subpath "/Users"))(allow process-exec (literal '+JSON.stringify(original)+'))(allow file-read* (literal '+JSON.stringify(original)+') (literal '+JSON.stringify(input)+'))';
   const prepared=preparePDFWorker('/usr/bin/sandbox-exec',['-p',profile,candidate,input]);
   try {

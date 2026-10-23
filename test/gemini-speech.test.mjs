@@ -8,7 +8,7 @@ import {act,createElement} from 'react';
 import {createRoot} from 'react-dom/client';
 import {geminiSpeech,geminiSpeechEndpoint} from '../src/server/modules/gemini-speech.ts';
 import {Intelligence,MacKeychain,intelligencePreferencesFor,keychainFor} from '../src/server/modules/intelligence.ts';
-import {geminiSpeechModel,geminiSpeechStyle,geminiSpeechVoices,defaultIntelligencePreferences,speechModelFor} from '../src/shared/intelligence.ts';
+import {geminiApiKeyMaxLength,geminiSpeechModel,geminiSpeechStyle,geminiSpeechVoices,defaultIntelligencePreferences,speechModelFor} from '../src/shared/intelligence.ts';
 import {speechCacheKey,validSpeechWav} from '../src/server/modules/speech-cache.ts';
 import {openDatabase} from '../src/server/database.ts';
 import {Store} from '../src/server/store.ts';
@@ -21,6 +21,7 @@ import {IntelligenceSettings} from '../src/client/settings/IntelligenceSettings.
 import {combineSpeechAudio,speechChunks,useSpeech} from '../src/client/editor/speech.tsx';
 import {setupDOM} from './helpers/dom.mjs';
 // Synthetic credentials only. All provider traffic is an injected function.
+const authKey='AQ.'+'synthetic_auth-key_'.repeat(20);
 const key='AIza'+'x'.repeat(35),openaiKey='sk-synthetic-openai-speech-key';
 class Secrets {value=null;reads=0;read(){this.reads++;return this.value;}write(value){this.value=structuredClone(value);}remove(){this.value=null;}}
 const wav=Buffer.alloc(50);wav.write('RIFF');wav.writeUInt32LE(42,4);wav.write('WAVEfmt ',8);wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);wav.writeUInt32LE(24000,24);wav.writeUInt32LE(48000,28);wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);wav.write('data',36);wav.writeUInt32LE(6,40);wav.writeInt16LE(1234,44);
@@ -32,7 +33,7 @@ function fixture(transport=success,preferences,clock=Date.now){
  const ai=new Intelligence(openai,transport,clock,preferences,async()=>{localCalls++;return wav;},undefined,gemini);
  return {ai,openai,gemini,localCalls:()=>localCalls};
 }
-function enable(ai,more={}){return ai.savePreferences({...ai.selection(),ttsEnabled:true,ttsProvider:'gemini',...more});}
+function enable(ai,more={}){return ai.savePreferences({...ai.selection(),ttsEnabled:true,ttsProvider:'gemini',ttsVoice:'Kore',...more});}
 
 test('Gemini unary REST sends only clean transcript, structured style and an isolated header; returns existing WAV intact',async()=>{
  let usage,calls=0;
@@ -56,6 +57,21 @@ test('Gemini rejects incomplete, missing, duplicate, malformed and noncanonical 
  await reject(()=>geminiSpeech('Hello',key,new AbortController().signal,async()=>{throw new Error(key);},'Kore'),502);
 });
 
+test('Gemini WAV provenance and padded metadata chunks preserve all PCM samples; malformed chunks fail closed',async()=>{
+ const chunk=(id,bytes)=>{const value=Buffer.alloc(8+bytes.length+(bytes.length%2));value.write(id);value.writeUInt32LE(bytes.length,4);bytes.copy(value,8);return value;};
+ const recording=(...chunks)=>{const value=Buffer.concat([wav.subarray(0,12),...chunks]);value.writeUInt32LE(value.length-8,4);return value;};
+ const format=wav.subarray(12,36),data=wav.subarray(36),provenance=chunk('C2PA',Buffer.from('synthetic provenance'));
+ const speak=value=>geminiSpeech('Hello',key,new AbortController().signal,async()=>Response.json(output({steps:[{type:'model_output',content:[{type:'audio',mime_type:'audio/wav',data:value.toString('base64')}]}]})),'Kore');
+ for(const value of [recording(format,data,provenance),recording(chunk('JUNK',Buffer.from('odd')),format,data,provenance)]){
+  const audio=await speak(value);assert.deepEqual(audio,wav);assert.equal(validSpeechWav(audio),true);
+  const combined=Buffer.from(await (await combineSpeechAudio([new Blob([audio],{type:'audio/wav'}),new Blob([audio],{type:'audio/wav'})])).arrayBuffer());
+  assert.deepEqual(combined.subarray(44),Buffer.concat([wav.subarray(44),wav.subarray(44)]));
+ }
+ const truncated=recording(format,data,provenance);truncated.writeUInt32LE(provenance.length, wav.length+4);
+ const wrongFormat=Buffer.from(format);wrongFormat.writeUInt32LE(16000,12);
+ for(const value of [truncated,recording(format,data,data),recording(format,format,data),recording(data,provenance),recording(format,provenance),recording(wrongFormat,data,provenance),recording(format,data,Buffer.from('tail'))])await reject(()=>speak(value),502);
+});
+
 test('Gemini input bounds and provider voices fail before transport; multilingual chunks and full WAV download preserve all audio',async()=>{
  let calls=0;const transport=async()=>{calls++;return success();};
  for(const [text,voice] of [['Hello','puck'],['a'.repeat(4097),'Kore'],['中'.repeat(2500),'Kore'],['','Kore']])await reject(()=>geminiSpeech(text,key,new AbortController().signal,transport,voice),400);
@@ -77,6 +93,22 @@ test('Gemini credentials are independent, write-only, persistent through the sto
  time+=86400001;assert.equal(ai.geminiStatus().configured,false);assert.equal(gemini.value,null);assert.deepEqual(openai.value,before);
  ai.saveGemini({apiKey:key});ai.removeGemini();assert.equal(gemini.value,null);assert.deepEqual(openai.value,before);
  assert.throws(()=>new Intelligence(new Secrets()).saveGemini({apiKey:key}),e=>e.status===503);
+});
+
+test('Gemini accepts opaque auth keys and pasted whitespace, rejects unsafe values, and sends the full saved key',async()=>{
+ let sent;
+ const {ai,gemini}=fixture(async(_url,options)=>{sent=options.headers['x-goog-api-key'];return success();});
+ enable(ai);
+ for(const value of [key,authKey,'future.'+'x'.repeat(geminiApiKeyMaxLength-7)]){
+  assert.equal(ai.saveGemini({apiKey:` \n${value}\t `}).configured,true);
+  assert.equal(gemini.value.key,value);
+  await ai.speech('Hello');assert.equal(sent,value);
+ }
+ const before=structuredClone(gemini.value);
+ for(const apiKey of [undefined,null,123,'','  ','bad','x'.repeat(geminiApiKeyMaxLength+1),authKey+' internal space',authKey+'\r\nheader',authKey+'\0',authKey+'\x7f',authKey+'中']){
+  assert.throws(()=>ai.saveGemini({apiKey}),e=>e.status===400);
+  assert.deepEqual(gemini.value,before);
+ }
 });
 
 test('Gemini Keychain uses a separate service with secrets on stdin only and fails closed',t=>{
@@ -174,13 +206,13 @@ test('Gemini settings require a saved explicit provider, expose only its voices,
  await act(async()=>root.render(createElement(IntelligenceSettings)));
  assert.equal(document.querySelector('#ai-tts-provider').value,'kokoro');assert.equal(document.querySelector('#ai-tts-enabled').getAttribute('aria-checked'),'false');
  await act(async()=>{const select=document.querySelector('#ai-tts-provider');select.value='gemini';select.dispatchEvent(new Event('change',{bubbles:true}));});
- assert.equal(saved.ttsProvider,'kokoro');assert.equal(document.querySelector('.local-speech-model'),null);assert.equal(document.querySelector('#ai-tts-voice').value,'Kore');
+ assert.equal(saved.ttsProvider,'kokoro');assert.equal(document.querySelector('.local-speech-model'),null);assert.equal(document.querySelector('#ai-tts-voice').value,'Puck');
  assert.deepEqual([...document.querySelector('#ai-tts-voice').options].map(x=>x.value),[...geminiSpeechVoices]);assert.ok(document.querySelector('#ai-tts-description').textContent.includes('Google'));assert.ok(document.body.textContent.includes(geminiSpeechModel));
- await act(async()=>document.querySelector('.ai-preferences-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));assert.equal(saved.ttsProvider,'gemini');assert.equal(saved.ttsVoice,'Kore');assert.equal(writes.length,0);
- const input=document.querySelector('#gemini-key');assert.equal(input.type,'password');assert.equal(input.autocomplete,'new-password');
+ await act(async()=>document.querySelector('.ai-preferences-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));assert.equal(saved.ttsProvider,'gemini');assert.equal(saved.ttsVoice,'Puck');assert.equal(writes.length,0);
+ const input=document.querySelector('#gemini-key');assert.equal(input.type,'password');assert.equal(input.autocomplete,'new-password');assert.equal(input.maxLength,geminiApiKeyMaxLength);assert.ok(input.maxLength>authKey.length);
  // React's input plugin initializes before JSDOM in this suite; invoke its registered change handler.
- await act(async()=>{input.value=key;input[Object.keys(input).find(name=>name.startsWith('__reactProps'))].onChange({target:input});});
- await act(async()=>input.closest('form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));assert.deepEqual(writes,[{value:key,days:30}]);assert.equal(input.value,'');assert.ok(document.body.textContent.includes('Gemini key saved'));assert.ok(!document.body.innerHTML.includes(key));assert.equal(localStorageSafe(env.dom.window),false);
+ await act(async()=>{input.value=`  ${authKey}  `;input[Object.keys(input).find(name=>name.startsWith('__reactProps'))].onChange({target:input});});
+ await act(async()=>input.closest('form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));assert.deepEqual(writes,[{value:authKey,days:30}]);assert.equal(input.value,'');assert.ok(document.body.textContent.includes('Gemini key saved'));assert.ok(!document.body.innerHTML.includes(authKey));assert.equal(localStorageSafe(env.dom.window),false);
  assert.equal(events,2);await act(async()=>[...document.querySelectorAll('button')].find(x=>x.textContent==='Remove Gemini key').click());assert.equal(events,3);assert.equal(credential.configured,false);
 });
 function localStorageSafe(window){try{return JSON.stringify(window.localStorage).includes(key);}catch{return false;}}

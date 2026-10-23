@@ -85,6 +85,7 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
   const temporal=new TemporalIndex(store);
   const liturgical=new LiturgicalCalendar(store);
   // Enforce retention on startup, periodically while running, and before scoped API access.
+  speechCache.cleanup();
   pages.purgeExpired();
   images.cleanup();
   let sourceReprocessingWorker: ReturnType<typeof setInterval> | undefined;
@@ -104,7 +105,7 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
       sourcePassageWorker=setInterval(()=>{try{sourcePassages.tick();temporal.tickEvidence();}catch{/* Durable passage state records failures for retry. */}},500);sourcePassageWorker.unref();
       sourceWorker=setInterval(()=>{void sourceFiles.tick().catch(()=>{});},500);sourceWorker.unref();
       sourceEnrichmentWorker=setInterval(()=>{void sourceEnrichments.tick().catch(()=>{});},1000);sourceEnrichmentWorker.unref();
-      cleanup = setInterval(() => { try { pages.purgeExpired(); images.cleanup(); sourceFiles.cleanup(); vaultDeletion.cleanup(); } catch (error) { console.error('Trash cleanup failed',error); } },60 * 60 * 1000);
+      cleanup = setInterval(() => { try { speechCache.cleanup(); pages.purgeExpired(); images.cleanup(); sourceFiles.cleanup(); vaultDeletion.cleanup(); } catch (error) { console.error('Cache and trash cleanup failed',error); } },60 * 60 * 1000);
       cleanup.unref();
       keyCleanup=setInterval(()=>{try{intelligence.purgeExpired();}catch{/* Keychain may be locked; all AI access still fails closed. */}},60000);keyCleanup.unref();
       embeddingWorker=setInterval(()=>{void embeddings.tick().catch(()=>{/* Durable job history records failures; never log note content. */});},1000);embeddingWorker.unref();

@@ -102,12 +102,12 @@ test('oversized legacy JSON downloads stop before accumulating events',async t=>
  assert.match(document.querySelector('[role="alert"]').textContent,/4 MiB download limit/);
 });
 
-test('speech activity shows the Realtime model and source page without a reasoning setting',async t=>{
+for(const model of ['gpt-realtime-2.1-mini','kokoro-82m-v1.0'])test(`speech activity shows a neutral Speak label, ${model}, and source page without reasoning`,async t=>{
  const {root,dom}=mountDebug(t);let opened;
- t.mock.method(api,'aiActivity',async()=>({items:[{id:'speech-attempt',action:'text_to_speech',status:'completed',startedAt:'2026-10-24T00:00:00Z',finishedAt:'2026-10-24T00:00:01Z',durationMs:1000,httpStatus:200,vaultId:'default',objectKind:'page',objectId:'note',objectTitle:'Read this page',revision:1,available:true,promptBytes:120,model:'gpt-realtime-2.1-mini',reasoningEffort:'none',inputTokens:50,outputTokens:100,debugRecorded:false}],nextCursor:null}));
+ t.mock.method(api,'aiActivity',async()=>({items:[{id:'speech-attempt',action:'text_to_speech',status:'completed',startedAt:'2026-10-24T00:00:00Z',finishedAt:'2026-10-24T00:00:01Z',durationMs:1000,httpStatus:200,vaultId:'default',objectKind:'page',objectId:'note',objectTitle:'Read this page',revision:1,available:true,promptBytes:120,model,reasoningEffort:'none',inputTokens:50,outputTokens:100,debugRecorded:false}],nextCursor:null}));
  await act(async()=>root.render(React.createElement(AIActivityLog,{onClose(){},onOpenPage:async(vault,id)=>{opened=[vault,id];}})));
- assert.match(document.querySelector('tbody').textContent,/Speak \(OpenAI TTS\)/);
- assert.match(document.querySelector('.ai-activity-model').textContent,/gpt-realtime-2.1-mini/);
+ assert.equal(document.querySelector('tbody tr').children[1].textContent,'Speak');
+ assert.equal(document.querySelector('.ai-activity-model').textContent,model);
  assert.equal(document.querySelector('.ai-activity-reasoning'),null);
  await act(async()=>document.querySelector('.ai-activity-title').dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})));
  assert.deepEqual(opened,['default','note']);

@@ -49,8 +49,8 @@ test('calendar workspace keeps date filters but moves configurable liturgical co
  t.mock.method(api,'liturgicalYear',async()=>{liturgicalRequests++;throw new Error('Should not run when disabled');});
  await act(async()=>env.root.render(createElement(CalendarWorkspace,{vaultId:'vault',view:{...initialCalendarView(),month:'2026-10'},settings:defaultCalendarSettings(),onChange(){},onOpenSettings:()=>opened.push(true),mobile:false,onOpenMention:async()=>{}})));
  assert.equal(document.querySelectorAll('.calendar-overlay-controls input').length,0);assert.equal(liturgicalRequests,0);
- assert.match(document.querySelector('.calendar-filters').textContent,/All references/);
- await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent.includes('Calendar settings')).click());assert.deepEqual(opened,[true]);
+ assert.match(document.querySelector('.calendar-filters').textContent,/Detected references/);
+ await act(async()=>document.querySelector('button[aria-label="Calendar settings"]').click());assert.deepEqual(opened,[true]);
 });
 
 test('changing the selected liturgical calendar rejects late data and isolates offline caches by identity',async t=>{

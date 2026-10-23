@@ -5,6 +5,10 @@ const colorNames:Record<string,string>={
  blue:'blue',caeruleus:'blue',gold:'gold',aureus:'gold',
 };
 
+export function principalLiturgicalColor(colors:string[]) {
+ return colors.map(color=>colorNames[color.toLowerCase()]).find(Boolean);
+}
+
 export function LiturgicalColorIndicator({colors}:{colors:string[]}) {
  const markers=[...new Set(colors.map(color=>colorNames[color.toLowerCase()]).filter(Boolean))];
  if(!markers.length)return null;

@@ -36,6 +36,6 @@ export function liturgicalRankLabel(rank:string):string {
 /** Abbreviate saint titles only where month cells have limited space. */
 export function monthLiturgicalLabel(name:string,id:LiturgicalCalendarId):string {
  const label=liturgicalLabel(name,id);
- if(liturgicalCalendar(id)!.locale!=='la')return label;
+ if(liturgicalCalendar(id)!.locale!=='la')return label.replace(/\bSaints(?=\s|$)/g,'Sts').replace(/\bSaint(?=\s|$)/g,'St');
  return label.replace(/\bSanctorum(?=\s|$)/gi,'SS.').replace(/\bSanct(?:i|ae|æ)(?=\s|$)/gi,'S.');
 }

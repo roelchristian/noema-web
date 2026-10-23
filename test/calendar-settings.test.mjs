@@ -32,7 +32,10 @@ test('calendar preferences validate persisted calendar IDs and survive reopening
  assert.equal(advanced.open,true);
  assert.equal(document.querySelectorAll('#settings-liturgical-calendar option').length,8);
  await act(async()=>{const input=document.querySelector('#settings-week-start');input.value='1';input.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
- const weeks=[...document.querySelectorAll('label')].find(label=>label.textContent.includes('Show ISO week numbers')).querySelector('input');
+ const weeks=[...document.querySelectorAll('label')].find(label=>label.textContent.includes('Show civil week numbers')).querySelector('input');
+ assert.equal(weeks.checked,true);
+ await act(async()=>weeks.click());
+ assert.equal(JSON.parse(localStorage.getItem(calendarSettingsStorageKey)).weekNumbers,false);
  await act(async()=>weeks.click());
  assert.equal(JSON.parse(localStorage.getItem(calendarSettingsStorageKey)).weekStart,1);
  assert.equal(JSON.parse(localStorage.getItem(calendarSettingsStorageKey)).weekNumbers,true);
@@ -42,6 +45,41 @@ test('calendar preferences validate persisted calendar IDs and survive reopening
  assert.deepEqual(JSON.parse(localStorage.getItem(calendarSettingsStorageKey)),{...defaultCalendarSettings(),enabled:true,calendarId:'vetus-ordo',optional:true,weekStart:1,weekNumbers:true});
  await act(async()=>env.root.render(createElement(Harness,{key:'reopened'})));
  assert.equal(document.querySelector('#settings-liturgical-calendar').value,'vetus-ordo');assert.equal(document.querySelector('input[type=checkbox]').checked,true);
+});
+
+test('civil week defaults and optional liturgical label preferences migrate independently',()=>{
+ assert.equal(defaultCalendarSettings().weekNumbers,true);
+ assert.equal(defaultCalendarSettings().liturgicalLabels,'off');
+ assert.equal(parseCalendarSettings('{"enabled":true}').weekNumbers,true);
+ assert.equal(parseCalendarSettings('{"weekNumbers":false}').weekNumbers,false);
+ for(const liturgicalLabels of ['off','season','week']){
+  const settings=parseCalendarSettings(JSON.stringify({enabled:false,liturgicalLabels}));
+  assert.equal(settings.liturgicalLabels,liturgicalLabels);
+  assert.equal(settings.enabled,false);
+ }
+ assert.equal(parseCalendarSettings('{"liturgicalLabels":"unknown"}').liturgicalLabels,'off');
+});
+
+test('liturgical week caption options persist independently of the daily overlay',async t=>{
+ const env=domFixture(t);
+ function Harness(){const {settings,setSettings,storageError}=useCalendarSettings();return createElement(CalendarSettings,{value:settings,onChange:setSettings,storageError,vault:null});}
+ await act(async()=>env.root.render(createElement(Harness)));
+ assert.match(document.body.textContent,/Week 1 contains 1 January/);
+ assert.match(document.body.textContent,/Week 1 contains 4 January/);
+ const preview=()=>document.querySelector('[aria-label="Week label preview"]').textContent;
+ assert.doesNotMatch(preview(),/Ordinary Time/);
+ for(const [mode,label] of [['season','Week 43 · Ordinary Time'],['week','Week 43 · 29th Week in Ordinary Time'],['off','Week 43']]){
+  await act(async()=>{const select=document.querySelector('#settings-liturgical-labels');select.value=mode;select.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
+  assert.ok(preview().startsWith(label));
+  const persisted=JSON.parse(localStorage.getItem(calendarSettingsStorageKey));
+  assert.equal(persisted.liturgicalLabels,mode);
+  assert.equal(persisted.enabled,false);
+  assert.equal(persisted.weekNumbers,true);
+ }
+ await act(async()=>{const select=document.querySelector('#settings-liturgical-labels');select.value='week';select.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
+ await act(async()=>env.root.render(createElement(Harness,{key:'reopened'})));
+ assert.equal(document.querySelector('#settings-liturgical-labels').value,'week');
+ assert.match(preview(),/18–24 October 2026/);
 });
 
 test('advanced calendar settings keep provider sources and download actions behind a disclosure',async t=>{

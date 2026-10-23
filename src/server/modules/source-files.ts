@@ -1,3 +1,5 @@
+import {maxSourceBytes,maxSourceTextBytes} from '../../shared/source-input.js';
+export {maxSourceBytes,maxSourceTextBytes} from '../../shared/source-input.js';
 import {getNameProvenance,recordEntityNameProvenance} from './property-provenance.js';
 import {preparePDFWorker} from './pdf-worker.js';
 import { AINotifications } from './ai-notifications.js';
@@ -15,11 +17,9 @@ import type { SourceFile, SourceStructureNode } from '../../shared/domain.js';
 import { Store } from '../store.js';
 import { HttpError, now } from '../validation.js';
 
-export const maxSourceBytes = 50 * 1024 * 1024;
 export const sourceExtensions = ['txt','md','pdf'];
 // Keep legacy HTML originals addressable for download/removal, but reject new uploads.
 const filePattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(txt|md|html|pdf)$/;
-const maxText = 16 * 1024 * 1024;
 /** Download filenames may replace only an unchanged, explicitly system-derived placeholder.
  * The caller performs this check inside the attachment metadata transaction. */
 export function syncDownloadedSourceName(store:Store,file:SourceFile,downloadedName:string,expected:{name:string;updated_at:string}|undefined) {
@@ -76,7 +76,7 @@ export class SourceFiles {
     // Restored extraction remains evidence, but must never become a trusted executable-version cache.
     delete manifest.extractorHash;
     delete manifest.sanitizerHash;
-    if(Buffer.byteLength(JSON.stringify(manifest))>maxText*4)throw new HttpError(413,'Source evidence exceeds the size limit');
+    if(Buffer.byteLength(JSON.stringify(manifest))>maxSourceTextBytes*4)throw new HttpError(413,'Source evidence exceeds the size limit');
     if(originalData!==undefined) {
       if(typeof originalData!=='string'||originalData.length>70*1024*1024)throw new HttpError(400,'Invalid original source bytes');
       const bytes=Buffer.from(originalData,'base64');
@@ -307,7 +307,7 @@ export class SourceFiles {
       const result=file.format==='pdf'?rawPDF??await this.pdf(this.filename(file.vault_id,file.id),file.id):{text:bytes.toString('utf8'),pages:0,ocrPages:0,pageStartLines:[]};
       if(this.closed)return;
       if(!open()){this.store.run("UPDATE source_files SET status='queued',progress=0 WHERE id=?",file.id);return;}
-      if(Buffer.byteLength(result.text)>maxText)throw new Error('Extracted text exceeds the 16 MB limit.');
+      if(Buffer.byteLength(result.text)>maxSourceTextBytes)throw new Error('Extracted text exceeds the 16 MB limit.');
       if(!result.text.trim())throw new Error('No readable text found. Try a clearer file.');
       let explicit:SourceStructureNode[]=[];
       if(downloadedStructure)explicit=downloadedStructure;
@@ -384,7 +384,7 @@ export class SourceFiles {
       const child=spawn(program,prepared.args,{stdio:['ignore','pipe','pipe']});this.children.add(child);
       let output='',errors='',pending='',overflow=false;
       const timer=setTimeout(()=>child.kill('SIGKILL'),timeout);
-      child.stdout!.on('data',chunk=>{output+=chunk.toString();if(Buffer.byteLength(output)>maxText*2){overflow=true;child.kill('SIGKILL');}});
+      child.stdout!.on('data',chunk=>{output+=chunk.toString();if(Buffer.byteLength(output)>maxSourceTextBytes*2){overflow=true;child.kill('SIGKILL');}});
       child.stderr!.on('data',chunk=>{const value=chunk.toString();errors=(errors+value).slice(-2000);pending=(pending+value).slice(-4000);let newline;while((newline=pending.indexOf('\n'))>=0){onProgress?.(pending.slice(0,newline));pending=pending.slice(newline+1);}});
       child.on('error',()=>{clearTimeout(timer);this.children.delete(child);reject(new Error('Local PDF processing could not start. Install the macOS Command Line Tools, then retry.'));});
       child.on('close',code=>{clearTimeout(timer);this.children.delete(child);if(code===0)resolve(output);else reject(new Error(overflow?'Extracted text exceeds the size limit.':errors && !errors.includes('error:')?errors.slice(-500):'Local PDF processing failed or timed out. Check macOS Command Line Tools, then retry.'));});

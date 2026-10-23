@@ -4,6 +4,9 @@ import {mkdtempSync,rmSync,readFileSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {once} from 'node:events';
+import {createHash} from 'node:crypto';
+import {maxSourceBytes,maxSourceTextBytes,pastedSourceFilename,validatePastedSourceText} from '../src/shared/source-input.ts';
+import {getPropertyProvenance} from '../src/server/modules/property-provenance.ts';
 import {openDatabase} from '../src/server/database.ts';
 import {Store} from '../src/server/store.ts';
 import {Knowledge} from '../src/server/modules/knowledge.ts';
@@ -96,4 +99,40 @@ test('source HTTP actions enforce client headers, safe downloads, locks and rest
   env.store.run("UPDATE source_files SET status='processing' WHERE id=?",file.id);env.files.recover();assert.equal(env.files.require('default',file.id).status,'queued');
   await env.files.tick();assert.equal(env.knowledge.detail('default',source.id).attachments[0].text,'Original');
  }finally{await new Promise(resolve=>server.close(resolve));env.close();}
+});
+
+
+test('pasted UTF-8 text follows the original-file lifecycle with exact evidence, paragraphs, provenance and vault-isolated backup',async t=>{
+ assert.equal(maxSourceBytes,50*1024*1024);assert.equal(maxSourceTextBytes,16*1024*1024);
+ assert.equal(pastedSourceFilename('   '),'Pasted text.txt');assert.equal(pastedSourceFilename('../A: title?.txt'),'A title.txt');
+ assert.ok(pastedSourceFilename('😀'.repeat(200)).length<=200);assert.match(pastedSourceFilename('CON'),/^_CON\.txt$/);
+ for(const invalid of ['', ' \n\t ', 'before\0after', '\ud800', '\udc00', 'a\ud800b', '😀\udc00'])assert.throws(()=>validatePastedSourceText(invalid));
+ assert.doesNotThrow(()=>validatePastedSourceText('😀'.repeat(maxSourceTextBytes/4)));
+ assert.throws(()=>validatePastedSourceText('😀'.repeat(maxSourceTextBytes/4+1)),RangeError);
+ const text='First café e\u0301 😀 中文 paragraph.\r\nA soft-wrapped continuation.\r\n\r\nSecond paragraph: Ελληνικά, العربية.\r\n\r\nThird paragraph.',bytes=Buffer.from(text,'utf8');
+ validatePastedSourceText(text);const name=pastedSourceFilename('Pasted multilingual source');
+ let networkCalls=0;t.mock.method(globalThis,'fetch',async()=>{networkCalls++;throw new Error('Pasted sources must not invoke AI or network requests.');});
+ const env=fixture(),{files,knowledge,vaults,store}=env;
+ try {
+  const staged=await files.admit('default',name,bytes,undefined,()=>vaults.requireOpen('default'));
+  assert.equal(staged.entity_id,null);assert.equal(staged.admitted,0);assert.equal(staged.format,'txt');assert.equal(staged.import_method,'upload');
+  assert.deepEqual(readFileSync(files.assetFilename('default',staged.id)),bytes);
+  const other=vaults.create({name:'Other pasted vault'});fail(()=>knowledge.create(other.id,{name:'Wrong vault',type:'source',attachmentIds:[staged.id]}),400);
+  const source=knowledge.create('default',{name:'Pasted multilingual source',type:'source',attachmentIds:[staged.id]});
+  fail(()=>knowledge.create('default',{name:'Reused paste',type:'source',attachmentIds:[staged.id]}),400);
+  fail(()=>files.add('default','extra.txt',Buffer.from('Another text'),source.id),400);
+  await files.tick();const extracted=files.require('default',staged.id),evidence=files.exportEvidence('default',staged.id);
+  assert.equal(extracted.status,'ready');assert.equal(extracted.admitted,1);assert.equal(extracted.original_filename,name);
+  assert.match(extracted.text,/café e\u0301 😀 中文/);assert.match(extracted.text,/continuation\.\n\nSecond paragraph/);assert.match(extracted.text,/العربية\.\n\nThird paragraph/);
+  assert.equal(evidence.rawExtraction.text,text);assert.equal(evidence.originalHash,createHash('sha256').update(bytes).digest('hex'));assert.equal(evidence.originalBytes,bytes.length);
+  assert.deepEqual(Buffer.from(evidence.originalData,'base64'),bytes);assert.deepEqual(readFileSync(files.filename('default',staged.id)),bytes);
+  const property=store.get("SELECT id,value FROM properties WHERE entity_id=? AND name='Import method'",source.id);
+  assert.equal(property.value,'upload');const provenance=getPropertyProvenance(store,'default',property.id);assert.equal(provenance.origin,'imported');assert.equal(provenance.source_file_id,staged.id);
+  assert.equal(knowledge.detail('default',source.id).attachments.length,1);fail(()=>files.require(other.id,staged.id),404);fail(()=>files.remove('default',staged.id),400);
+  const backups=new VaultBackups(store),archive=await backups.export('default'),restored=await backups.import(archive.bytes,'Restored paste');
+  const restoredSource=knowledge.list(restored.id).find(entity=>entity.name===source.name),attachments=knowledge.detail(restored.id,restoredSource.id).attachments;
+  assert.equal(attachments.length,1);assert.equal(attachments[0].text,extracted.text);assert.notEqual(attachments[0].id,staged.id);
+  assert.deepEqual(readFileSync(files.filename(restored.id,attachments[0].id)),bytes);assert.deepEqual(Buffer.from(files.exportEvidence(restored.id,attachments[0].id).originalData,'base64'),bytes);
+  assert.equal(networkCalls,0);
+ }finally{env.close();}
 });

@@ -83,7 +83,8 @@
     "test/collection-rule-generation.test.mjs",
     "test/organization-descriptions-ui.test.mjs",
     "test/intelligence-settings-ui.test.mjs",
-    "test/editor-speech.test.mjs"
+    "test/editor-speech.test.mjs",
+    "test/create-source-text-ui.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",

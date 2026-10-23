@@ -85,6 +85,8 @@ test('Latin temporal labels use Roman week ordinals in the grid, inspector and a
  const data=normalizeLitcal(fixture,2026,'grc-la');
  data.days['2026-10-23'].principal.name=cases[1][0];
  data.days['2026-10-23'].principal.colors=['Viridis'];
+ data.days['2026-10-01'].principal.name='Sanctæ Teresiæ a Iesu Infante';
+ data.days['2026-10-28'].principal.name='Sanctorum Simonis et Iudae';
  t.mock.method(api,'temporalDates',async()=>({items:[],nextOffset:null,indexing:{pending:0,refreshed:0}}));
  t.mock.method(api,'temporalDetail',async(_vault,id)=>({date:temporalDate(id.split(':').at(-1)),curation:null,layer:'knowledge',mentions:[],mentionCount:0,relations:[],relationCount:0,nextMentionOffset:null,nextRelationOffset:null}));
  t.mock.method(api,'liturgicalYear',async()=>data);
@@ -95,6 +97,9 @@ test('Latin temporal labels use Roman week ordinals in the grid, inspector and a
  await act(async()=>root.render(createElement(Harness)));
  const cell=document.querySelector('[data-date="2026-10-23"]');
  assert.equal(cell.querySelector('.calendar-liturgical-cell').textContent,cases[1][1]);
+ assert.equal(document.querySelector('[data-date="2026-10-01"] .calendar-liturgical-cell').textContent,'S. Teresiæ a Iesu Infante');
+ assert.equal(document.querySelector('[data-date="2026-10-28"] .calendar-liturgical-cell').textContent,'SS. Simonis et Iudae');
+ assert.match(document.querySelector('[data-date="2026-10-01"]').getAttribute('aria-label'),/Sanctæ Teresiæ/);
  assert.equal(cell.querySelector('.calendar-liturgical-color').dataset.color,'green','Latin provider color names use the same palette');
  assert.ok(cell.getAttribute('aria-label').includes(cases[1][1]));
  assert.equal(document.querySelector('.calendar-inspector .calendar-observance-title').textContent,cases[1][1]);
@@ -102,6 +107,9 @@ test('Latin temporal labels use Roman week ordinals in the grid, inspector and a
  assert.ok(document.querySelector('.calendar-liturgical-agenda').textContent.includes(cases[1][1]));
  assert.equal(document.querySelectorAll('.calendar-liturgical-agenda .calendar-liturgical-rank').length,31);
  assert.equal(data.days['2026-10-23'].principal.name,cases[1][0],'display formatting preserves cached provider data');
+ assert.match(document.querySelector('.calendar-liturgical-agenda').textContent,/Sanctæ Teresiæ/);
+ await act(async()=>[...document.querySelectorAll('.calendar-liturgical-agenda button')].find(button=>button.textContent.includes('Sanctæ Teresiæ')).click());
+ assert.equal(document.querySelector('.calendar-inspector .calendar-observance-title').textContent,'Sanctæ Teresiæ a Iesu Infante');
 });
 
 
@@ -124,4 +132,18 @@ test('rank labels use consistent sentence case without losing proper names or Ro
   ['FESTUM DOMINI','Festum Domini'],['memoria ad libitum','Memoria ad libitum'],
   ['  Memoria   obligatoria ','Memoria obligatoria'],['class iv','Class IV'],
  ])assert.equal(liturgicalRankLabel(input),expected);
+});
+
+
+test('month labels abbreviate Latin saint titles without shortening full date labels',async()=>{
+ const {liturgicalLabel,monthLiturgicalLabel}=await import('../src/client/calendar/liturgical-label.ts');
+ for(const [name,expected] of [
+  ['Sancti Ioannis','S. Ioannis'],['Sanctae Teresiae','S. Teresiae'],
+  ['Sanctæ Teresiæ','S. Teresiæ'],['Sanctorum Simonis et Iudae','SS. Simonis et Iudae'],
+  ['S. Ioannis','S. Ioannis'],['Sanctissimae Trinitatis','Sanctissimae Trinitatis'],
+ ]){
+  assert.equal(monthLiturgicalLabel(name,'grc-la'),expected);
+  assert.equal(monthLiturgicalLabel(name,'grc-en'),name);
+  assert.equal(liturgicalLabel(name,'grc-la'),name);
+ }
 });

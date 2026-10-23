@@ -330,7 +330,9 @@ The month overlay displays regular liturgical weekdays as well as observances, i
 “Friday of the 29th Week of Ordinary Time” on 23 October 2026. The inspector and agenda
 show the full label; feast and memorial precedence remains unchanged. Latin temporal
 labels use Roman week ordinals and `hebd.`, for example `Feria IV hebd. II Paschae`.
-Ordinary Time is rendered as `per annum`. Display formatting also applies to cached
+Ordinary Time is rendered as `per annum`. Month cells abbreviate Latin saint titles as `S.` (Sancti/Sanctae) and `SS.`
+(Sanctorum), while the agenda, date details and accessible labels retain full titles.
+Display formatting also applies to cached
 calendars without changing provider data.
 
 Supported calendars are:

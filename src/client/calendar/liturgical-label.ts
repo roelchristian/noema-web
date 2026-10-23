@@ -32,3 +32,10 @@ export function liturgicalRankLabel(rank:string):string {
   .replace(/\b(lord|domini)\b/g,word=>word.charAt(0).toUpperCase()+word.slice(1))
   .replace(/\b(class) ([ivx]+)\b/gi,(_match,word:string,number:string)=>`${word} ${number.toUpperCase()}`);
 }
+
+/** Abbreviate saint titles only where month cells have limited space. */
+export function monthLiturgicalLabel(name:string,id:LiturgicalCalendarId):string {
+ const label=liturgicalLabel(name,id);
+ if(liturgicalCalendar(id)!.locale!=='la')return label;
+ return label.replace(/\bSanctorum(?=\s|$)/gi,'SS.').replace(/\bSanct(?:i|ae|æ)(?=\s|$)/gi,'S.');
+}

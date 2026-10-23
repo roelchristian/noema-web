@@ -3,8 +3,8 @@ const fields:Record<string,Record<string,string>>={person:{'birth date':'born_on
 export function temporalPropertyKind(type:string,name:string):string|undefined {return fields[type]?.[name.toLowerCase()];}
 /** Compatible read adapter. The authored property is never rewritten. ISO is explicit
  * in a typed date field; numeric locale dates still require the user's interpretation. */
-export function adaptTemporalProperty(type:string,name:string,raw:string):{date:TemporalDate|null;kind:string;reason:string|null}|null {
- const kind=temporalPropertyKind(type,name);if(!kind)return null;
+export function adaptTemporalProperty(type:string,name:string,raw:string,declaredDate=false):{date:TemporalDate|null;kind:string;reason:string|null}|null {
+ const kind=temporalPropertyKind(type,name)??(declaredDate?'discusses':undefined);if(!kind)return null;
  const value=raw.trim(),iso=temporalDate(value);
  if(iso)return {date:iso,kind,reason:null};
  const expressions=extractTemporal(value),expression=expressions[0];

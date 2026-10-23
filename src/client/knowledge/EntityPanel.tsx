@@ -1,5 +1,5 @@
 import {EntityPropertyList} from './EntityPropertyList';
-import {propertyLabel} from '../../shared/property-definitions';
+import {propertyLabel,resolvePropertyDefinition} from '../../shared/property-definitions';
 import {TemporalPropertyValue} from './TemporalPropertyValue';
 import {EntityReference, EntityConnections, EntityDetails, PropertyEditor, RelationshipEditor, type EntityConnection} from './EntityDetails';
 import {SourceLifecycleDialog} from './SourceLifecycleDialog';
@@ -50,8 +50,9 @@ export function EntityPanel(props: EntityPanelProps) {
     try { const result = await work(); if(currentEntityKey.current.vaultId===vaultId&&currentEntityKey.current.id===id)setEntity(result); void onUpdated().catch(onError); return result; } catch (error) { onError(error); throw error; }
   }
   const relationships: EntityConnection[] = entity?.relationships.map(relation => ({key: relation.id, target: relation.source_id === id ? relation.target_id : relation.source_id, label: relation.source_id === id ? relation.label : 'Incoming · ' + relation.label})) ?? [];
-  const references: EntityConnection[] = entity?.properties.filter(property => property.target_id).map(property => ({key: property.id, target: property.target_id!, label: propertyLabel(property.name)})) ?? [];
-  const incoming: EntityConnection[] = entity?.incomingProperties.map(property => ({key: property.id, target: property.entity_id, label: 'Referenced via ' + propertyLabel(property.name)})) ?? [];
+  const propertyDisplayLabel=(property:import('../../shared/domain').Property)=>{const owner=property.entity_id===id?entity:entities.find(item=>item.id===property.entity_id);return owner?resolvePropertyDefinition(schema.propertyDefinitions,owner.type,owner.subtypes,property.name,property.metadata?.definition_id)?.label??propertyLabel(property.name):propertyLabel(property.name);};
+  const references: EntityConnection[] = entity?.properties.filter(property => property.target_id).map(property => ({key: property.id, target: property.target_id!, label: propertyDisplayLabel(property)})) ?? [];
+  const incoming: EntityConnection[] = entity?.incomingProperties.map(property => ({key: property.id, target: property.entity_id, label: 'Referenced via ' + propertyDisplayLabel(property)})) ?? [];
   const subtypeNames = schema.subtypes.filter(subtype => entity?.subtypes.includes(subtype.id)).map(subtype => subtype.name);
   const propertyNames = entity ? [...new Map([...entity.propertyNames, ...inheritedPropertyNames(schema,entity.type,entity.subtypes)].map(name => [name.toLowerCase(),name])).values()] : [];
   function switchTab(next: EntityTab) {

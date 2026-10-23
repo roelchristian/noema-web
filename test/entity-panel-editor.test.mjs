@@ -78,3 +78,19 @@ test('advanced and inline property forms share drafts without changing identity 
   assert.deepEqual(saved,{name:'Born',value:'1815'});assert.equal(getPropertyDraft('v','e','new:Born'),undefined);
  });
 });
+
+test('classification edits preview before explicit legacy retention and keep drafts on preview failure',async t=>{
+ await fixture(t,async({entity,click,dom})=>{
+  let saved,previews=0;
+  t.mock.method(api,'updateEntity',async(_vault,_id,input)=>{saved=input;return {...entity,...input};});
+  const preview=t.mock.method(api,'entityClassificationImpact',async()=>{previews++;throw new Error('Impact preview unavailable');});
+  const baseline=entityDraftValues(entity);
+  await act(async()=>setEntityDraft('v','e',baseline,{...baseline,type:'place'}));
+  await act(async()=>document.querySelector('#entity-form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));
+  assert.equal(saved,undefined);assert.equal(hasEntityDraft('v','e'),true);assert.match(document.querySelector('#entity-saved').textContent,/Impact preview unavailable/);
+  preview.mock.mockImplementation(async()=>({fingerprint:'fresh-impact',requiresConfirmation:true,outgoing:[{propertyId:'old',reason:'Existing value will retain its original definition.'}],incoming:[],structuralBlockers:[]}));
+  await act(async()=>document.querySelector('#entity-form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));
+  assert.equal(saved,undefined);assert.match(document.querySelector('[aria-label="Classification impact"]').textContent,/original definition/);
+  await click('.entity-classification-impact button');assert.equal(saved.classification_mode,'retain_legacy');assert.equal(saved.impact_fingerprint,'fresh-impact');assert.equal(saved.type,'place');assert.equal(hasEntityDraft('v','e'),false);
+ });
+});

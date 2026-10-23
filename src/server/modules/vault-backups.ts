@@ -2,7 +2,7 @@ import {adaptTemporalProperty} from '../../shared/temporal-properties.js';
 import {propertyFingerprint} from './temporal-properties.js';
 import {syncPropertyMetadata,isStoredPropertyDefinition,bindPropertyDefinition} from './property-storage.js';
 import type {PropertyDefinition} from '../../shared/property-definitions.js';
-import {builtinPropertyDefinitions} from '../../shared/property-definitions.js';
+import {recommendedPropertyDefinitions,builtinPropertyDefinitions} from '../../shared/property-definitions.js';
 import {temporalDate} from '../../shared/temporal.js';
 import {temporalMentionId} from './temporal.js';
 import {restoreSourceRevision} from './source-reprocessing-backup.js';
@@ -323,9 +323,9 @@ export class VaultBackups {
           if(definition.id!==oldId||importedDefinitions.has(oldId))throw invalid();
           const scope=definition.scope;
           const remapped:PropertyDefinition={...definition,scope:scope.kind==='subtype'?{...scope,subtypeId:subtype(scope.subtypeId,scope.type)}:scope,allowedTargetSubtypes:definition.allowedTargetSubtypes.map(id=>{const targetType=builtinSubtypes.find(item=>item.id===id)?.type??subtypeTypes.get(id);if(!entityTypes.includes(targetType as EntityType))throw invalid();return subtype(id,targetType as EntityType);})};
-          const builtin=builtinPropertyDefinitions.find(item=>item.id===oldId);
+          const builtin=[...builtinPropertyDefinitions,...recommendedPropertyDefinitions].find(item=>item.id===oldId);
           if(definition.origin==='builtin'&&!builtin||oldId.startsWith('builtin:')&&!builtin)throw invalid();
-          if(builtin&&(definition.origin!==builtin.origin||definition.editable!==builtin.editable||JSON.stringify(definition.validation)!==JSON.stringify(builtin.validation)||definition.key!==builtin.key||definition.legacyName!==builtin.legacyName||definition.scope.kind!=='main_type'||definition.scope.type!==builtin.scope.type||definition.valueKind!==builtin.valueKind||definition.cardinality!==builtin.cardinality||JSON.stringify(definition.allowedTargetTypes)!==JSON.stringify(builtin.allowedTargetTypes)||JSON.stringify(definition.allowedTargetSubtypes)!==JSON.stringify(builtin.allowedTargetSubtypes)))throw invalid();
+          if(builtin&&(definition.origin!==builtin.origin||definition.editable!==builtin.editable||JSON.stringify(definition.validation)!==JSON.stringify(builtin.validation)||definition.key!==builtin.key||definition.legacyName!==builtin.legacyName||JSON.stringify(definition.scope)!==JSON.stringify(builtin.scope)||definition.valueKind!==builtin.valueKind||definition.cardinality!==builtin.cardinality||JSON.stringify(definition.allowedTargetTypes)!==JSON.stringify(builtin.allowedTargetTypes)||JSON.stringify(definition.allowedTargetSubtypes)!==JSON.stringify(builtin.allowedTargetSubtypes)))throw invalid();
           importedDefinitions.set(oldId,remapped);
           insert('property_definitions',{vault_id:vault,id:oldId,definition_json:JSON.stringify(remapped)});
         }
@@ -384,7 +384,7 @@ export class VaultBackups {
         if(data.temporal_property_dirty!==undefined)for(const propertyId of importedTemporalProperties)if(!importedDirtyProperties.has(propertyId)) {
           const evidence=this.store.get<{date_id:string|null;raw_hash:string;reason:string|null}>('SELECT date_id,raw_hash,reason FROM temporal_property_values WHERE property_id=?',propertyId)!;
           const authored=this.store.get<{name:string;value:string|null;target_id:string|null;type:string}>('SELECT p.name,p.value,p.target_id,e.type FROM properties p JOIN entities e ON e.id=p.entity_id WHERE p.id=?',propertyId)!;
-          const adapted=authored.target_id===null&&authored.value!==null?adaptTemporalProperty(authored.type,authored.name,authored.value):null;
+          const adapted=authored.target_id===null&&authored.value!==null?adaptTemporalProperty(authored.type,authored.name,authored.value,rows.property_value_metadata.some(item=>ref(propertyIds,item.property_id)===propertyId&&importedDefinitions.get(String(item.definition_id))?.valueKind==='date')):null;
           // Only verified current caches may be marked clean; stale snapshots remain evidence with dirty state.
           if(!adapted||authored.value===null||evidence.raw_hash!==propertyFingerprint(authored.type,authored.name,authored.value)||evidence.date_id!==(adapted.date?.id??null)||evidence.reason!==adapted.reason)throw invalid();
           this.store.run('DELETE FROM temporal_property_dirty WHERE property_id=?',propertyId);
@@ -571,12 +571,19 @@ export class VaultBackups {
         // Scalar mirrors are derived from exact restored strings and definitions, never trusted as alternate authored values.
         syncPropertyMetadata(this.store,vault);
         const metadataIds=new Set<string>();
+        // Restore every explicit binding before validating any mirrors: compatible
+        // cardinality groups must not depend on the iteration order of restored rows.
+        for(const row of rows.property_value_metadata) {
+          const propertyId=ref(propertyIds,row.property_id),definitionId=string(row,'definition_id',2000);
+          if(!importedDefinitions.has(definitionId))throw invalid();
+          if(this.store.get('SELECT 1 FROM properties WHERE id=?',propertyId))bindPropertyDefinition(this.store,vault,propertyId,definitionId);
+        }
+        syncPropertyMetadata(this.store,vault);
         const scalarColumns=['compatibility','integer_value','decimal_value','boolean_value','text_value','latitude','longitude','unit'] as const;
         for(const row of rows.property_value_metadata) {
           const propertyId=ref(propertyIds,row.property_id),definitionId=string(row,'definition_id',2000);
           if(metadataIds.has(propertyId)||!importedDefinitions.has(definitionId))throw invalid();
           metadataIds.add(propertyId);
-          if(this.store.get('SELECT 1 FROM properties WHERE id=?',propertyId))bindPropertyDefinition(this.store,vault,propertyId,definitionId);
           const current=this.store.get<Row>('SELECT * FROM property_value_metadata WHERE property_id=? AND vault_id=?',propertyId,vault);
           if(!current) {
             // Splitting a legacy multi-file Source intentionally drops other-file derived metadata.

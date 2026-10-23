@@ -63,7 +63,10 @@ test('AI scans use formatting-free runs and acceptance links styled evidence wit
     const excluded = {id: 'excluded', type: 'paragraph', checked: false, content: [{text: 'Ivanka Trump', bold: true, skipAutoTag: true}]};
     const content = [{text: 'Before ', italic: true}, {text: 'Donald', code: true}, {text: ' ', underline: true}, {text: 'Trump', href: 'https://example.com'}, {text: ' after', strike: true}];
     page = pages.update('default', page.id, {...page, blocks: [block(content), excluded]});
-    assert.deepEqual(JSON.parse(scans.input('default', page)).untrusted_note.bodyTextRuns.map(run=>run.text), ['Before Donald Trump after']);
+    const modelInput=JSON.parse(scans.input('default',page));
+    assert.deepEqual(modelInput.untrusted_note.bodyTextRuns.map(run=>run.text), ['Before Donald Trump after']);
+    assert.equal(modelInput.schema.propertyDefinitions,undefined,'identity discovery excludes full typed metadata to preserve its existing input budget');
+    assert.equal(modelInput.schema.subtypes.length,50);
     const candidate = (name, existingId = null) => ({name, type: 'person', subtypes: [], description: 'Mentioned', evidence: name, reason: 'Named person', existingId});
     const scan = scans.save('default', page, JSON.stringify({suggestions: [candidate('Donald Trump', existing.id), candidate('Ivanka Trump')]}), {model: 'gpt-5-mini', reasoningEffort: 'low'});
     assert.equal(scan.suggestions.length, 1);

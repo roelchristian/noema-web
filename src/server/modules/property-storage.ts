@@ -1,6 +1,8 @@
+import {assertNoHierarchyCycle} from './property-hierarchy.js';
+import {HttpError} from '../validation.js';
 import type {DatabaseSync} from 'node:sqlite';
 import {builtinProperties,builtinSubtypes,type EntitySchema} from '../../shared/entity-schema.js';
-import {propertyDefinitionsForSchema,type PropertyDefinition} from '../../shared/property-definitions.js';
+import {propertyDefinitionsForSchema,resolvePropertyDefinition,propertyDefinitionSignature,type PropertyDefinition} from '../../shared/property-definitions.js';
 import {classifyPropertyValue,type PropertyValueMetadata} from '../../shared/property-values.js';
 import type {Entity,EntityType,Property} from '../../shared/domain.js';
 import {Store} from '../store.js';
@@ -16,7 +18,7 @@ function legacySchema(store:Store,vault:string):EntitySchema {
  // Only orphan fields become permissive main-type definitions. Known subtype fields stay scoped.
  for(const row of store.all<{type:EntityType;name:string;subtypes:string}>('SELECT DISTINCT e.type,p.name,e.subtypes FROM properties p JOIN entities e ON e.id=p.entity_id WHERE e.vault_id=?',vault)) {
   const assigned=parseSubtypes(row.subtypes);
-  const known=properties[row.type].some(name=>name.toLowerCase()===row.name.toLowerCase())||assigned.some(id=>(subtypeProperties[id]??[]).some(name=>name.toLowerCase()===row.name.toLowerCase()))||persisted.some(item=>item.scope.type===row.type&&item.legacyName.toLowerCase()===row.name.toLowerCase()&&(item.scope.kind==='main_type'||assigned.includes(item.scope.subtypeId)));
+  const known=properties[row.type].some(name=>name.toLowerCase()===row.name.toLowerCase())||assigned.some(id=>(subtypeProperties[id]??[]).some(name=>name.toLowerCase()===row.name.toLowerCase()))||persisted.some(item=>item.scope.type===row.type&&item.legacyName.toLowerCase()===row.name.toLowerCase()&&(item.scope.kind==='main_type'||assigned.includes(item.scope.subtypeId)))||!!store.get('SELECT 1 FROM property_value_metadata m JOIN properties p ON p.id=m.property_id JOIN entities e ON e.id=p.entity_id WHERE m.vault_id=? AND e.type=? AND lower(p.name)=lower(?)',vault,row.type,row.name);
   if(!known)properties[row.type].push(row.name);
  }
  return {properties,subtypeProperties,subtypes:[...builtinSubtypes,...store.all<{id:string;name:string;type:EntityType}>('SELECT id,name,type FROM entity_subtypes WHERE vault_id=?',vault)]};
@@ -31,7 +33,7 @@ export function ensurePropertyDefinitions(store:Store,vault:string,schema?:Entit
  if(!store.get('SELECT 1 FROM vaults WHERE id=?',vault))return;
  const existing=store.all<DefinitionRow>('SELECT id,definition_json FROM property_definitions WHERE vault_id=?',vault).map(row=>JSON.parse(row.definition_json) as PropertyDefinition);
  for(const definition of propertyDefinitionsForSchema(schema??legacySchema(store,vault),vault)) {
-  const same=existing.some(item=>item.id===definition.id||item.legacyName.toLowerCase()===definition.legacyName.toLowerCase()&&item.scope.type===definition.scope.type&&item.scope.kind===definition.scope.kind&&(item.scope.kind!=='subtype'||definition.scope.kind==='subtype'&&item.scope.subtypeId===definition.scope.subtypeId));
+  const same=existing.some(item=>item.id===definition.id||definition.origin!=='builtin'&&item.legacyName.toLowerCase()===definition.legacyName.toLowerCase()&&item.scope.type===definition.scope.type&&item.scope.kind===definition.scope.kind&&(item.scope.kind!=='subtype'||definition.scope.kind==='subtype'&&item.scope.subtypeId===definition.scope.subtypeId));
   if(!same){store.run('INSERT OR IGNORE INTO property_definitions (vault_id,id,definition_json) VALUES (?,?,?)',vault,definition.id,JSON.stringify(definition));existing.push(definition);}
  }
 }
@@ -46,20 +48,26 @@ export function syncPropertyMetadata(store:Store,vault:string,entityId?:string) 
  const definitions=persistedPropertyDefinitions(store,vault);
  const rows=store.all<PropertyRow>(`SELECT p.*,e.type,e.subtypes FROM properties p JOIN entities e ON e.id=p.entity_id WHERE e.vault_id=? ${entityId?'AND e.id=?':''} ORDER BY p.id`,...entityId?[vault,entityId]:[vault]);
  const positions=new Map<string,number>(),counts=new Map<string,number>();
+ const previousBindings=new Map(store.all<{property_id:string;definition_id:string;position:number}>('SELECT property_id,definition_id,position FROM property_value_metadata WHERE vault_id=?',vault).map(item=>[item.property_id,item]));
+ const resolved=new Map(rows.map(row=>[row.id,resolvePropertyDefinition(definitions,row.type,parseSubtypes(row.subtypes),row.name,previousBindings.get(row.id)?.definition_id)]));
+ const countKey=(entity:string,definition:PropertyDefinition)=>JSON.stringify([entity,definition.key,propertyDefinitionSignature(definition)]);
  for(const item of store.all<{entity_id:string;definition_id:string;position:number}>('SELECT p.entity_id,m.definition_id,m.position FROM property_value_metadata m JOIN properties p ON p.id=m.property_id WHERE m.vault_id=?',vault)){const key=JSON.stringify([item.entity_id,item.definition_id]);positions.set(key,Math.max(positions.get(key)??0,item.position+1));}
- for(const row of rows){const key=JSON.stringify([row.entity_id,row.name.toLowerCase()]);counts.set(key,(counts.get(key)??0)+1);}
+ for(const row of rows){const definition=resolved.get(row.id);if(definition){const key=countKey(row.entity_id,definition);counts.set(key,(counts.get(key)??0)+1);}}
  for(const row of rows) {
   const assigned=parseSubtypes(row.subtypes);
   const candidates=definitions.filter(item=>item.scope.type===row.type&&item.legacyName.toLowerCase()===row.name.toLowerCase()&&(item.scope.kind==='main_type'||assigned.includes(item.scope.subtypeId)));
-  const previous=store.get<{position:number;definition_id:string}>('SELECT position,definition_id FROM property_value_metadata WHERE property_id=?',row.id);
-  const definition=candidates.find(item=>item.id===previous?.definition_id)??candidates.find(item=>item.scope.kind==='main_type')??candidates[0];if(!definition)continue;
+  const previous=previousBindings.get(row.id);
+  const definition=resolved.get(row.id);if(!definition)continue;
+  const outOfScope=!candidates.some(item=>item.id===definition.id);
   const target=row.target_id?store.get<{type:EntityType;subtypes:string;vault_id:string}>('SELECT type,subtypes,vault_id FROM entities WHERE id=?',row.target_id):undefined;
   const metadata=classifyPropertyValue(definition,row,target?{...target,subtypes:parseSubtypes(target.subtypes)}:undefined);
+  if(outOfScope){metadata.compatibility='legacy_incompatible';metadata.reason='Definition is no longer inherited after reclassification; authored value and binding retained.';}
+  if(row.target_id){try{assertNoHierarchyCycle(store,vault,row.entity_id,row.target_id,definition);}catch(error){if(error instanceof HttpError&&error.status===409){metadata.compatibility='legacy_incompatible';metadata.reason='Existing references form a hierarchy cycle requiring review.';}else throw error;}}
   if(target&&target.vault_id!==vault){metadata.compatibility='legacy_incompatible';metadata.reason='Referenced entity belongs to another vault.';metadata.target_id=null;}
   const grouping=JSON.stringify([row.entity_id,definition.id]);
   metadata.position=previous?.definition_id===definition.id?previous.position:(positions.get(grouping)??0);
   positions.set(grouping,Math.max(positions.get(grouping)??0,metadata.position+1));
-  const duplicates=counts.get(JSON.stringify([row.entity_id,row.name.toLowerCase()]))??0;
+  const duplicates=counts.get(countKey(row.entity_id,definition))??0;
   if(definition.cardinality==='one'&&duplicates>1){metadata.compatibility='legacy_incompatible';metadata.reason='Multiple authored values require cardinality review.';}
   const evidence=store.get<{date_id:string}>('SELECT date_id FROM temporal_property_values WHERE vault_id=? AND property_id=? AND date_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM temporal_property_dirty WHERE property_id=?)',vault,row.id,row.id);
   metadata.temporal_date_id=definition.valueKind==='date'&&metadata.compatibility==='valid'?evidence?.date_id??null:null;

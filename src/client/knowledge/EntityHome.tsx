@@ -1,5 +1,5 @@
 import {EntityPropertyList} from './EntityPropertyList';
-import {propertyLabel} from '../../shared/property-definitions';
+import {propertyLabel,resolvePropertyDefinition} from '../../shared/property-definitions';
 import {EntityGlance, EntityGlanceSources, previewText} from './EntityGlance';
 import {TemporalPropertyValue} from './TemporalPropertyValue';
 import {useContext, useEffect, useLayoutEffect, useRef, useState} from 'react';
@@ -114,8 +114,9 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
     revealTab(value);
   }
   const relationships: EntityConnection[] = entity?.relationships.map(relation => ({key:relation.id, target:relation.source_id === id ? relation.target_id : relation.source_id, label:(relation.source_id === id ? 'Outgoing · ' : 'Incoming · ') + relation.label})) ?? [];
-  const references: EntityConnection[] = entity?.properties.filter(property => property.target_id).map(property => ({key:property.id, target:property.target_id!, label:'Property · ' + propertyLabel(property.name)})) ?? [];
-  const incoming: EntityConnection[] = entity?.incomingProperties.map(property => ({key:property.id, target:property.entity_id, label:'Referenced via ' + propertyLabel(property.name)})) ?? [];
+  const propertyDisplayLabel=(property:import('../../shared/domain').Property)=>{const owner=property.entity_id===id?entity:entities.find(item=>item.id===property.entity_id);return owner?resolvePropertyDefinition(schema.propertyDefinitions,owner.type,owner.subtypes,property.name,property.metadata?.definition_id)?.label??propertyLabel(property.name):propertyLabel(property.name);};
+  const references: EntityConnection[] = entity?.properties.filter(property => property.target_id).map(property => ({key:property.id, target:property.target_id!, label:'Property · ' + propertyDisplayLabel(property)})) ?? [];
+  const incoming: EntityConnection[] = entity?.incomingProperties.map(property => ({key:property.id, target:property.entity_id, label:'Referenced via ' + propertyDisplayLabel(property)})) ?? [];
   const connectionCount = relationships.length + references.length + incoming.length;
   const propertyNames = entity ? [...new Map([...entity.propertyNames, ...inheritedPropertyNames(schema, entity.type, entity.subtypes)].map(name => [name.toLowerCase(), name])).values()] : [];
   const template = entityHomeTemplate(entity?.type ?? 'concept');

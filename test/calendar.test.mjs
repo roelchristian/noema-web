@@ -8,7 +8,7 @@ import {Pages} from '../src/server/modules/pages.ts';
 import {Knowledge} from '../src/server/modules/knowledge.ts';
 import {TemporalIndex} from '../src/server/modules/temporal.ts';
 import {VaultBackups} from '../src/server/modules/vault-backups.ts';
-import {monthBounds,monthCells,shiftMonth,shiftDay,dateLabel,calendarGroups,emptyCuration} from '../src/client/calendar/calendar-model.ts';
+import {monthBounds,monthCells,isoRowWeek,dateSummary,shiftMonth,shiftDay,dateLabel,calendarGroups,emptyCuration} from '../src/client/calendar/calendar-model.ts';
 import {capturePageSelection,restorePageSelection} from '../src/client/state/use-page-selection.ts';
 import {setupDOM} from './helpers/dom.mjs';
 import {selectionOffsets} from '../scripts/browser-selection.mjs';
@@ -74,4 +74,23 @@ test('browser selection assertions measure both endpoints across nested date spa
  selection.setBaseAndExtent(editor.firstChild,0,document.querySelector('#outside').firstChild,1);
  assert.equal(selectionOffsets(editor),null,'a selection leaving the editor is not a valid local bookmark');
  selection.removeAllRanges();assert.equal(selectionOffsets(editor),null);
+});
+
+
+test('week-start layouts and ISO row labels retain ISO week-year across civil boundaries',()=>{
+ assert.deepEqual(monthCells('2026-11',1)[0],[null,null,null,null,null,null,'2026-11-01']);
+ assert.deepEqual(isoRowWeek('2021-01',0,1),{year:2020,week:53,label:'2020-W53'});
+ assert.deepEqual(isoRowWeek('2021-01',0,0),{year:2020,week:53,label:'2020-W53'});
+ assert.equal(isoRowWeek('2026-11',0,0).label,'2026-W45','Sunday Nov 1 is W44; row label explicitly describes Monday Nov 2');
+ assert.equal(isoRowWeek('2026-11',0,1).label,'2026-W44');
+ assert.equal(isoRowWeek('2018-12',5,1).label,'2019-W01');
+ assert.equal(isoRowWeek('0001-01',0,0).label,'0001-W01');
+ assert.equal(isoRowWeek('9999-12',4,0).label,'9999-W52');
+ for(const start of [0,1])for(const month of ['0001-01','1900-02','2000-02','2026-11','9999-12'])assert.equal(new Set(monthCells(month,start).flat().filter(Boolean)).size,Number(monthBounds(month).to.slice(-2)));
+});
+
+test('day summaries use full evidence totals and accepted relationship counts rather than payload length',()=>{
+ const summary=dateSummary({curation:{label:'My date'},mentions:[{title:'Notebook'}],mentionCount:25,sourceCount:7,propertyCount:2,relations:[{name:'Accepted entity'}],relationCount:4,proposals:[{name:'Pending'}],proposalCount:10});
+ assert.equal(summary.title,'My date');assert.equal(summary.total,38);assert.equal(summary.counts,'34 references · 4 relationships');
+ assert.equal(dateSummary({mentions:[{title:'Original notebook'}],mentionCount:1,relations:[],relationCount:0}).title,'Original notebook');
 });

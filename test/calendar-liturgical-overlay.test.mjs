@@ -20,9 +20,9 @@ test('GRC overlay shows regular weekdays in the month grid and inspector alongsi
  t.mock.method(api,'temporalDates',async()=>({items:[],nextOffset:null,indexing:{pending:0,refreshed:0}}));
  t.mock.method(api,'temporalDetail',async(_vault,id)=>({date:temporalDate(id.split(':').at(-1)),curation:null,layer:'knowledge',mentions:[],mentionCount:0,relations:[],relationCount:0,nextMentionOffset:null,nextRelationOffset:null}));
  t.mock.method(api,'liturgicalYear',async()=>{downloads++;return data;});
- function Harness({optional=false,enabled=true}) {
+ function Harness({optional=false,enabled=true,indicators=true}) {
   const [view,setView]=useState(()=>({...initialCalendarView(),month:'2026-10',selected:'2026-10-23'}));
-  return createElement(CalendarWorkspace,{vaultId:'vault',view,onChange:patch=>setView(value=>({...value,...patch})),settings:{enabled,calendarId:'grc-en',optional},onOpenSettings(){},mobile:false,onOpenMention:async()=>{}});
+  return createElement(CalendarWorkspace,{vaultId:'vault',view,onChange:patch=>setView(value=>({...value,...patch})),settings:{enabled,calendarId:'grc-en',optional,optionalIndicators:indicators},onOpenSettings(){},mobile:false,onOpenMention:async()=>{}});
  }
  await act(async()=>root.render(createElement(Harness)));
  assert.equal(document.querySelectorAll('.calendar-overlay-info a').length,0,'provider links are confined to advanced settings');
@@ -30,6 +30,9 @@ test('GRC overlay shows regular weekdays in the month grid and inspector alongsi
  const fridayCell=document.querySelector('[data-date="2026-10-23"]');
  assert.equal(fridayCell.querySelector('.calendar-liturgical-cell').textContent,friday);
  assert.equal(fridayCell.querySelector('.calendar-liturgical-rank').textContent,'Weekday');
+ assert.equal(fridayCell.querySelectorAll('.calendar-optional-marker').length,1);
+ assert.match(fridayCell.getAttribute('aria-label'),/1 optional memorial available/);
+ assert.equal(document.querySelector('[data-date="2026-10-04"] .calendar-optional-marker'),null,'provider supplies no optional alternative on this Sunday');
  assert.ok(fridayCell.getAttribute('aria-label').includes('Weekday'));
  assert.equal(fridayCell.querySelector('.calendar-liturgical-color').dataset.color,'green');
  assert.match(fridayCell.getAttribute('aria-label'),/Liturgical color: Green/);
@@ -53,6 +56,9 @@ test('GRC overlay shows regular weekdays in the month grid and inspector alongsi
  await act(async()=>document.querySelector('[data-date="2026-10-25"]').click());
  assert.equal(document.querySelector('.calendar-inspector .calendar-observance-title').textContent,'30th Sunday of Ordinary Time','Sunday precedence remains intact');
  assert.equal(document.querySelector('[data-date="2026-10-01"] .calendar-liturgical-cell').textContent,'Saint Thérèse of the Child Jesus, Virgin and Doctor of the Church','obligatory memorials remain principal');
+ await act(async()=>root.render(createElement(Harness,{indicators:false})));
+ assert.equal(document.querySelectorAll('.calendar-optional-marker').length,0);
+ assert.equal(downloads,1,'indicator preference never changes provider data or refetches it');
  await act(async()=>root.render(createElement(Harness,{enabled:false})));
  assert.equal(document.querySelectorAll('.calendar-liturgical-colors').length,0,'color markers disappear when the overlay is disabled');
 });

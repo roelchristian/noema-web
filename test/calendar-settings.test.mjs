@@ -5,7 +5,7 @@ import {createRoot} from 'react-dom/client';
 import {CalendarSettings} from '../src/client/settings/CalendarSettings.tsx';
 import {CalendarWorkspace} from '../src/client/calendar/CalendarWorkspace.tsx';
 import {useCalendarSettings,parseCalendarSettings,defaultCalendarSettings,calendarSettingsStorageKey} from '../src/client/settings/calendar-settings.ts';
-import {initialCalendarView} from '../src/client/calendar/calendar-model.ts';
+import {initialCalendarView,emptyCuration} from '../src/client/calendar/calendar-model.ts';
 import {useLiturgicalYear} from '../src/client/calendar/use-liturgical-year.ts';
 import {liturgicalKey} from '../src/shared/liturgical.ts';
 import {api} from '../src/client/api.ts';
@@ -31,10 +31,15 @@ test('calendar preferences validate persisted calendar IDs and survive reopening
  await act(async()=>advanced.querySelector('summary').click());
  assert.equal(advanced.open,true);
  assert.equal(document.querySelectorAll('#settings-liturgical-calendar option').length,8);
+ await act(async()=>{const input=document.querySelector('#settings-week-start');input.value='1';input.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
+ const weeks=[...document.querySelectorAll('label')].find(label=>label.textContent.includes('Show ISO week numbers')).querySelector('input');
+ await act(async()=>weeks.click());
+ assert.equal(JSON.parse(localStorage.getItem(calendarSettingsStorageKey)).weekStart,1);
+ assert.equal(JSON.parse(localStorage.getItem(calendarSettingsStorageKey)).weekNumbers,true);
  await act(async()=>document.querySelector('input[type=checkbox]').click());
  await act(async()=>{const select=document.querySelector('#settings-liturgical-calendar');select.value='vetus-ordo';select.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
  await act(async()=>document.querySelectorAll('input[type=checkbox]')[1].click());
- assert.deepEqual(JSON.parse(localStorage.getItem(calendarSettingsStorageKey)),{enabled:true,calendarId:'vetus-ordo',optional:true});
+ assert.deepEqual(JSON.parse(localStorage.getItem(calendarSettingsStorageKey)),{...defaultCalendarSettings(),enabled:true,calendarId:'vetus-ordo',optional:true,weekStart:1,weekNumbers:true});
  await act(async()=>env.root.render(createElement(Harness,{key:'reopened'})));
  assert.equal(document.querySelector('#settings-liturgical-calendar').value,'vetus-ordo');assert.equal(document.querySelector('input[type=checkbox]').checked,true);
 });
@@ -90,7 +95,7 @@ test('date entity view shows the selected liturgy, metadata and optional detail 
  assert.equal(panel.querySelectorAll('a[target="_blank"]').length,0);
  await act(async()=>env.root.render(render({enabled:true,calendarId:'grc-en',optional:true})));
  assert.match(panel.textContent,/Saint John Paul II/);assert.equal(calls.length,1,'changing optional detail reuses the selected calendar');
- await act(async()=>env.root.render(render({enabled:true,calendarId:'vetus-ordo',optional:true})));
+ await act(async()=>env.root.render(render({...defaultCalendarSettings(),enabled:true,calendarId:'vetus-ordo',optional:true,weekStart:1,weekNumbers:true})));
  assert.match(panel.textContent,/Feria II/);assert.doesNotMatch(panel.textContent,/Monday of Ordinary Time/);assert.equal(panel.querySelectorAll('a[target="_blank"]').length,0);
  await act(async()=>panel.querySelector('[aria-label="Calendar settings"]').click());assert.deepEqual(opened,[true]);
 });
@@ -113,4 +118,24 @@ test('an unqualified date year explains download eligibility in the entity view 
  t.mock.method(api,'liturgicalYear',async()=>{calls++;throw new ApiError(409,'This year has no curated dates or accepted date relationships.');});
  await act(async()=>env.root.render(createElement(NoteDatePanel,{item,page,calendarSettings:{enabled:true,calendarId:'ph',optional:false},onClose(){},onOpenPage(){}})));
  assert.match(document.body.textContent,/2033-10-22/);assert.match(document.body.textContent,/no curated dates or accepted date relationships/);assert.equal(calls,1);assert.equal(document.querySelector('.calendar-liturgical-panel'),null);
+});
+
+
+test('same-query refresh retains previews but changed months never reuse another month’s knowledge',async t=>{
+ const env=domFixture(t),{temporalDate}=await import('../src/shared/temporal.ts');
+ const item={date:temporalDate('2026-10-23'),curation:{...emptyCuration(),label:'October checkpoint'},layer:'knowledge',mentions:[],mentionCount:0,relations:[],relationCount:0};
+ const result={items:[item],nextOffset:null,indexing:{pending:0,refreshed:0}};let calls=0,release,change;
+ t.mock.method(api,'temporalDates',async()=>++calls===1?result:new Promise(resolve=>release=resolve));
+ function Harness(){const [view,setView]=useState(()=>({...initialCalendarView(),month:'2026-10'}));change=patch=>setView(old=>({...old,...patch}));return createElement(CalendarWorkspace,{vaultId:'vault',view,onChange:change,settings:defaultCalendarSettings(),onOpenSettings(){},mobile:false,onOpenMention:async()=>{}});}
+ await act(async()=>env.root.render(createElement(Harness)));
+ await act(async()=>document.querySelector('[aria-label="Refresh calendar"]').click());
+ assert.match(document.querySelector('[data-date="2026-10-23"]').textContent,/October checkpoint/);
+ assert.equal(document.querySelector('.calendar-grid').getAttribute('aria-busy'),'true');
+ assert.match(document.querySelector('.calendar-status').textContent,/Updating calendar/);
+ await act(async()=>release(result));
+ await act(async()=>change({month:'2026-11'}));
+ assert.doesNotMatch(document.querySelector('.calendar-grid').textContent,/October checkpoint/);
+ assert.match(document.querySelector('.calendar-status').textContent,/Loading calendar/);
+ await act(async()=>release({...result,items:[]}));
+ assert.match(document.querySelector('.calendar-empty').textContent,/No saved dates/);
 });

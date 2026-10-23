@@ -22,6 +22,13 @@ export function CalendarSettings({value,onChange,vault,storageError}:{value:Pref
    <p className="section-hint">{uiText('Liturgical dates and observances appear alongside your saved dates. Calendar sources and downloads are managed automatically.')}</p>
    <p role="status">{uiText(storageError?'Browser storage unavailable. Calendar preferences will not persist after reload.':'Changes saved in this browser.')}</p>
   </section>
+  <section className="settings-section" aria-labelledby="calendar-layout-heading"><h3 id="calendar-layout-heading">Month view</h3>
+   <div className="calendar-field"><label htmlFor="settings-week-start">Start week on</label><Select id="settings-week-start" value={value.weekStart??0} onChange={event=>onChange({...value,weekStart:Number(event.target.value) as 0|1})}><option value={0}>Sunday</option><option value={1}>Monday</option></Select></div>
+   <label className="calendar-check"><input type="checkbox" checked={value.weekNumbers===true} onChange={event=>onChange({...value,weekNumbers:event.target.checked})}/>Show ISO week numbers</label>
+   <p className="section-hint">ISO weeks start Monday. Each row is labelled with its Monday’s ISO week and week-year; in Sunday-first rows, Sunday belongs to the preceding ISO week.</p>
+   <label className="calendar-check"><input type="checkbox" checked={value.optionalIndicators!==false} onChange={event=>onChange({...value,optionalIndicators:event.target.checked})}/>Indicate available optional memorials</label>
+   <p className="section-hint">Only choices supplied by the selected calendar are indicated. They do not replace the principal observance.</p>
+  </section>
   <details className="settings-advanced calendar-advanced-settings"><summary>{uiText('Advanced calendar settings')}</summary>
   <section className="settings-section" aria-labelledby="calendar-variant-heading"><h3 id="calendar-variant-heading">{uiText('Calendar tradition and region')}</h3>
    <div className="calendar-field"><label htmlFor="settings-liturgical-calendar">{uiText('Calendar')}</label><Select id="settings-liturgical-calendar" value={value.calendarId} onChange={event=>onChange({...value,calendarId:event.target.value as LiturgicalCalendarId})}>{liturgicalCalendars.map(calendar=><option key={calendar.id} value={calendar.id}>{calendar.label}</option>)}</Select></div>

@@ -65,8 +65,8 @@ calendar, current-note count and saved note mentions. Detection remains derived
 presentation: original wording and formatting are preserved in saved text.
 
 The date entity inspector also shows the selected liturgical calendar's principal
-observance, rank, season and colour, optional detail, provider attribution and
-source/reference links. It shares Calendar settings, caches and download eligibility,
+observance, rank, season and colour, and optional detail. Provider attribution and
+source/reference links are confined to Advanced calendar settings. It shares Calendar settings, caches and download eligibility,
 with a direct settings shortcut. Coarse and unconverted Julian dates do not receive
 Gregorian observances; unavailable or unqualified years show their reason and retry.
 
@@ -446,3 +446,39 @@ command. The production presentation checks passed rapid Find/Escape priority,
 repeated mode restoration, reload, mobile interactions and data fidelity; Calendar
 checks passed exact/stale evidence, interrupted navigation, editor draft/caret,
 source/property review, overlay independence/cache/error states and 44px targets.
+
+
+## Month workspace preferences and hierarchy
+
+Calendar is a temporal knowledge index. Desktop day cells prioritize a curated title,
+accepted relationship or original evidence title, then show full occurrence and accepted
+relationship counts. These are not appointments or unique-document counts. Pending
+proposals are not counted as accepted relationships. Principal liturgy remains secondary,
+with weekday titles, ranks, vestment colors and the existing Latin display formatting.
+Phone/narrow-workspace cells show knowledge counts (P means pinned), principal color and
+an optional-choice + marker; full accessible names, date details and agenda retain text.
+
+Settings → Calendar saves Sunday/Monday week start in this browser; Sunday remains the
+default. Home/End follow that choice. ISO week numbers default off. Each row label gives
+its Monday's ISO week AND ISO week-year, for example 2020-W53. On a Sunday-start row,
+Sunday belongs to the preceding ISO week: the label is explicitly Monday's week, not an
+assertion that ISO weeks begin Sunday. Leading/trailing blank cells retain civil bounds.
+
+Optional memorial indicators can be disabled independently of optional detail. They use
+only actual provider alternatives flagged optional, never synthetic inferred feasts.
+Activating an indicated day opens its choices alongside the unchanged principal day;
+other selected days offer an optional-choice disclosure. Optional colors never replace
+principal vestment colors. Unavailable provider alternatives produce no marker.
+
+The date inspector uses a side column only at 1000px available Calendar workspace width;
+otherwise it uses a modal (full viewport on phones), retaining drafts while resizing.
+Month/year-only records sit in a collapsed period disclosure, never a fabricated day.
+Go to month accepts years 1–9999; Show selected date returns to an inspector's off-month
+date without discarding its draft. Same-query refresh retains prior knowledge previews
+while marked updating; changed queries clear prior results. Supplement failures remain
+independent of civil navigation, indexing and evidence retrieval.
+
+At extreme zoom the seven-column grid keeps a bounded horizontal scroll surface rather
+than overlapping day targets or widening the document. Set `NOEMA_SKIP_SCREENSHOTS=1`
+when running `scripts/check-calendar-browser.mjs` to disable every capture, including
+failure captures; functional validation and JSON results remain available.

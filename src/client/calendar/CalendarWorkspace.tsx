@@ -1,5 +1,6 @@
-import {LiturgicalColorIndicator} from './LiturgicalColorIndicator';
-import {liturgicalLabel,liturgicalRankLabel,monthLiturgicalLabel} from './liturgical-label';
+import {CalendarMonthGrid} from './CalendarMonthGrid';
+import {CalendarMonthJump} from './CalendarMonthJump';
+import {liturgicalLabel,liturgicalRankLabel} from './liturgical-label';
 import {useLiturgicalYear} from './use-liturgical-year';
 import {LiturgicalDayPanel} from './LiturgicalDayPanel';
 import {liturgicalCalendar} from '../../shared/liturgical';
@@ -9,12 +10,15 @@ import {useEffect,useLayoutEffect,useRef,useState,type KeyboardEvent} from 'reac
 import {api,ApiError} from '../api';
 import {Icon} from '../components/Icon';
 import {temporalDate,type TemporalCuration,type TemporalDetail,type TemporalItem,type TemporalLayer,type TemporalResults} from '../../shared/temporal';
-import {calendarGroups,civilDate,dateLabel,emptyCuration,layerLabels,monthBounds,monthCells,shiftDay,shiftMonth,todayValue,type CalendarView} from './calendar-model';
+import {calendarGroups,civilDate,dateLabel,dateSummary,emptyCuration,layerLabels,monthBounds,shiftDay,shiftMonth,todayValue,type CalendarView} from './calendar-model';
 
 export function CalendarWorkspace({settings,onOpenSettings,vaultId,view,onChange,mobile,onOpenMention,onOpenSource,onOpenEntity,entities=[],evidenceOpen=false}:{settings:CalendarSettings;onOpenSettings:()=>void;vaultId:string;view:CalendarView;onChange:(patch:Partial<CalendarView>)=>void;mobile:boolean;onOpenMention:(id:string)=>Promise<void>;onOpenSource?:(id:string,trigger:HTMLElement)=>Promise<void>;onOpenEntity?:(id:string)=>void;entities?:Entity[];evidenceOpen?:boolean}) {
  const {enabled:overlayEnabled,optional:overlayOptional,calendarId}=settings;
+ const weekStart=settings.weekStart??0;
+ const [availableWidth,setAvailableWidth]=useState<number|null>(null),[optionalDate,setOptionalDate]=useState<string|null>(null);
+ const modal=mobile||(availableWidth!==null&&availableWidth<1000);
  const supplement=liturgicalCalendar(calendarId)!;
- const [results,setResults]=useState<TemporalResults|null>(null),[loading,setLoading]=useState(false),[error,setError]=useState(''),[version,setVersion]=useState(0);
+ const [storedResults,setResults]=useState<TemporalResults|null>(null),[resultScope,setResultScope]=useState(''),[loading,setLoading]=useState(false),[error,setError]=useState(''),[version,setVersion]=useState(0);
  const [detail,setDetail]=useState<TemporalDetail|null>(null),[detailLoading,setDetailLoading]=useState(false),[detailError,setDetailError]=useState(''),[actionError,setActionError]=useState(''),[acting,setActing]=useState(false),[notice,setNotice]=useState('');
  const [focusDay,setFocusDay]=useState(view.selected?.startsWith(view.month)&&view.selected.length===10?view.selected:monthBounds(view.month).from);
  const root=useRef<HTMLElement>(null),sheet=useRef<HTMLDialogElement>(null),trigger=useRef<HTMLElement|null>(null),focusGrid=useRef(false),request=useRef<AbortController|null>(null),detailRequest=useRef<AbortController|null>(null);
@@ -23,11 +27,31 @@ export function CalendarWorkspace({settings,onOpenSettings,vaultId,view,onChange
  const visibleYear=Number(view.month.slice(0,4)),selectedYear=Number(view.selected?.slice(0,4)??visibleYear);
  const liturgical=useLiturgicalYear(vaultId,visibleYear,overlayEnabled,calendarId),otherLiturgical=useLiturgicalYear(vaultId,selectedYear,overlayEnabled&&!!view.selected&&selectedYear!==visibleYear,calendarId);
  const inspectorLiturgical=selectedYear===visibleYear?liturgical:otherLiturgical;
- const selected=view.selected,queryKey=JSON.stringify([vaultId,view.month,view.layers,view.allReferences,version]);
+ const selected=view.selected,scope=JSON.stringify([vaultId,view.month,view.layers,view.allReferences]),queryKey=JSON.stringify([scope,version]);
+ const results=resultScope===scope?storedResults:null;
+ const previousScope=useRef('');
+ const previousModal=useRef(modal);
+ const resizedFocus=useRef<{id:string;start:number|null;end:number|null}|null>(null);
+
+ function rememberField(target:EventTarget|null) {
+  if((target instanceof HTMLInputElement||target instanceof HTMLTextAreaElement||target instanceof HTMLSelectElement)&&target.id){
+   const text=target instanceof HTMLInputElement||target instanceof HTMLTextAreaElement;
+   resizedFocus.current={id:target.id,start:text?target.selectionStart:null,end:text?target.selectionEnd:null};
+  }else resizedFocus.current=null;
+ }
+ useLayoutEffect(()=>{
+  const node=root.current;if(!node||typeof ResizeObserver==='undefined')return;
+  const observer=new ResizeObserver(entries=>{
+   const focused=document.activeElement;
+   if(focused&&node.contains(focused)&&(focused instanceof HTMLInputElement||focused instanceof HTMLTextAreaElement||focused instanceof HTMLSelectElement))rememberField(focused);
+   setAvailableWidth(entries[0]!.contentRect.width);
+  });
+  observer.observe(node);return()=>observer.disconnect();
+ },[]);
  useEffect(()=>{
-  const controller=new AbortController();request.current?.abort();request.current=controller;setResults(null);setLoading(true);setError('');
+  const controller=new AbortController();request.current?.abort();request.current=controller;if(previousScope.current!==scope)setResults(null);previousScope.current=scope;setLoading(true);setError('');
   const {from,to}=monthBounds(view.month);
-  api.temporalDates(vaultId,from,to,{allReferences:view.allReferences,layers:view.layers},controller.signal).then(result=>{if(!controller.signal.aborted)setResults(result);}).catch(error=>{if(!controller.signal.aborted)setError(error.message||'Could not load calendar.');}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
+  api.temporalDates(vaultId,from,to,{allReferences:view.allReferences,layers:view.layers},controller.signal).then(result=>{if(!controller.signal.aborted){setResultScope(scope);setResults(result);}}).catch(error=>{if(!controller.signal.aborted)setError(error.message||'Could not load calendar.');}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
   return()=>controller.abort();
  },[queryKey]);
  useLayoutEffect(()=>{
@@ -47,10 +71,14 @@ export function CalendarWorkspace({settings,onOpenSettings,vaultId,view,onChange
   return()=>controller.abort();
  },[vaultId,selected,version]);
  useEffect(()=>{
-  const dialog=sheet.current;if(!dialog)return;
-  if(mobile&&selected&&!evidenceOpen&&!dialog.open)dialog.showModal();
-  if((!mobile||!selected||evidenceOpen)&&dialog.open)dialog.close();
- },[mobile,selected,evidenceOpen]);
+  const saved=previousModal.current!==modal?resizedFocus.current:null;previousModal.current=modal;resizedFocus.current=null;
+  const dialog=sheet.current;
+  if(dialog){
+   if(modal&&selected&&!evidenceOpen&&!dialog.open)dialog.showModal();
+   if((!modal||!selected||evidenceOpen)&&dialog.open)dialog.close();
+  }
+  if(saved)requestAnimationFrame(()=>{const field=document.getElementById(saved.id);if(field instanceof HTMLElement){field.focus();if((field instanceof HTMLInputElement||field instanceof HTMLTextAreaElement)&&saved.start!==null&&saved.end!==null)field.setSelectionRange(saved.start,saved.end);}});
+ },[modal,selected,evidenceOpen]);
  useEffect(()=>{actionSequence.current++;setActing(false);setNotice('');},[vaultId,selected]);
  useEffect(()=>()=>{request.current?.abort();detailRequest.current?.abort();},[]);
  function choose(value:string,element?:HTMLElement) {trigger.current=element??document.activeElement as HTMLElement;setActionError('');onChange({selected:value});}
@@ -58,7 +86,8 @@ export function CalendarWorkspace({settings,onOpenSettings,vaultId,view,onChange
  function gridKey(event:KeyboardEvent<HTMLButtonElement>,value:string) {
   let next:string|undefined;
   if(event.key==='ArrowLeft')next=shiftDay(value,-1);if(event.key==='ArrowRight')next=shiftDay(value,1);if(event.key==='ArrowUp')next=shiftDay(value,-7);if(event.key==='ArrowDown')next=shiftDay(value,7);
-  if(event.key==='Home')next=shiftDay(value,-civilDate(value).getUTCDay());if(event.key==='End')next=shiftDay(value,6-civilDate(value).getUTCDay());
+  const column=(civilDate(value).getUTCDay()-weekStart+7)%7;
+  if(event.key==='Home')next=shiftDay(value,-column);if(event.key==='End')next=shiftDay(value,6-column);
   if(event.key==='PageUp'||event.key==='PageDown'){const month=shiftMonth(value.slice(0,7),event.key==='PageUp'?-1:1);next=month+'-'+String(Math.min(Number(value.slice(-2)),Number(monthBounds(month).to.slice(-2)))).padStart(2,'0');}
   if(!next||next.length!==10||next<'0001-01-01'||next>'9999-12-31')return;event.preventDefault();focusGrid.current=true;setFocusDay(next);if(next.slice(0,7)!==view.month)onChange({month:next.slice(0,7)});
  }
@@ -92,12 +121,14 @@ export function CalendarWorkspace({settings,onOpenSettings,vaultId,view,onChange
  async function openEvidence(id:string) {const key=current.current,sequence=++actionSequence.current;setActing(true);setActionError('');try{await onOpenMention(id);}catch(error){if(current.current===key&&sequence===actionSequence.current)setActionError(error instanceof Error?error.message:'Could not open evidence.');}finally{if(current.current===key&&sequence===actionSequence.current)setActing(false);}}
  const {days,periods}=calendarGroups(results?.items??[]),draft=selected?(view.drafts[selected]??detail?.curation??emptyCuration()):emptyCuration();
  function edit(patch:Partial<TemporalCuration>) {if(selected)onChange({drafts:{...view.drafts,[selected]:{...draft,...patch}}});}
- const caption=(item:TemporalItem)=>{const count=item.mentionCount+(item.sourceCount??0)+(item.propertyCount??0);return item.curation?.label||item.relations[0]?.name||`${count} reference${count===1?'':'s'}`;};
+ const caption=(item:TemporalItem)=>dateSummary(item).title;
  const card=(item:TemporalItem)=><button type="button" className="calendar-entry" key={item.date.id} onClick={event=>choose(item.date.value,event.currentTarget)}><span><strong>{dateLabel(item.date.value)}</strong><small>{layerLabels[item.layer]} · {item.date.precision==='day'?'Exact day':item.date.precision==='month'?'Month precision':'Year precision'}{item.curation?.pinned?' · Pinned':''}</small></span><span>{caption(item)}</span><Icon name="chevron"/></button>;
  const inspector=<>
   <header className="calendar-inspector-heading"><div><h2 id="calendar-date-heading">{selected?dateLabel(selected):''}</h2>{selected?.length!==10&&<p>{selected?.length===7?'Month only · no day assigned':'Year only · no day assigned'}</p>}</div><button className="page-tool" type="button" aria-label="Close date inspector" title="Close date inspector" onClick={close}><Icon name="close"/></button></header>
   <div className="calendar-inspector-body">
-  {overlayEnabled&&selected&&<>{selected.length!==10?<p className="calendar-muted">Select a day to see its observances.</p>:inspectorLiturgical.data?.days[selected]?<LiturgicalDayPanel calendarId={calendarId} day={inspectorLiturgical.data.days[selected]!} showOptional={overlayOptional}/>:inspectorLiturgical.loading?<p role="status">Preparing liturgical year…</p>:inspectorLiturgical.error?<p className="calendar-muted" role="status">{inspectorLiturgical.error}</p>:null}</>}
+  {(draft.label||draft.annotation)&&<section className="calendar-date-summary" aria-label="Date summary">{draft.label&&<h3>{draft.label}</h3>}{draft.annotation&&<p>{draft.annotation}</p>}</section>}
+  {selected&&selected.slice(0,7)!==view.month&&<button className="button" type="button" onClick={()=>onChange({month:selected.length===4?selected+'-01':selected.slice(0,7)})}>Show selected date</button>}
+
   {detailLoading&&!detail&&<p role="status">Loading date evidence…</p>}
   {detailError&&<div role="alert" className="calendar-status" data-status="danger">{detailError}<button className="button" type="button" onClick={()=>setVersion(value=>value+1)}>Retry date</button></div>}
   {detail&&<>
@@ -113,6 +144,10 @@ export function CalendarWorkspace({settings,onOpenSettings,vaultId,view,onChange
     {detail.nextRelationOffset!==null&&<button className="button" type="button" disabled={detailLoading} onClick={()=>void moreEvidence('relations')}>Load more relationships</button>}
     <button className="button" type="button" disabled={acting||detailLoading} onClick={()=>setVersion(value=>value+1)}>Refresh evidence</button>
    </section>
+
+  </>}
+  {overlayEnabled&&selected&&<>{selected.length!==10?<p className="calendar-muted">Select a day to see its observances.</p>:inspectorLiturgical.data?.days[selected]?<LiturgicalDayPanel calendarId={calendarId} day={inspectorLiturgical.data.days[selected]!} key={calendarId+selected} showOptional={overlayOptional||optionalDate===selected}/>:inspectorLiturgical.loading?<p role="status">Preparing liturgical year…</p>:inspectorLiturgical.error?<p className="calendar-muted" role="status">{inspectorLiturgical.error}</p>:null}</>}
+  {detail&&<>
    <details className="calendar-link-disclosure"><summary>Link an entity to this date</summary><form className="calendar-relationship-form" onSubmit={event=>{event.preventDefault();const form=new FormData(event.currentTarget),support=String(form.get('support')??''),body={dateId:detail.date.id,entityId:String(form.get('entity')),kind:String(form.get('kind')),...(support.startsWith('page:')?{mentionId:support.slice(5)}:support.startsWith('source:')?{sourceMentionId:support.slice(7)}:{})};void relationAction(()=>api.linkTemporalEntity(vaultId,body));}}>
     <div className="calendar-field"><label htmlFor="calendar-link-entity">Entity</label><select id="calendar-link-entity" name="entity" required defaultValue="" disabled={acting}><option value="" disabled>Choose an entity</option>{entities.filter(entity=>entity.vault_id===vaultId&&!entity.archived_at).map(entity=><option key={entity.id} value={entity.id}>{entity.name}</option>)}</select></div>
     <div className="calendar-field"><label htmlFor="calendar-link-kind">Relationship</label><select id="calendar-link-kind" name="kind" defaultValue="discusses" disabled={acting}><option value="discusses">Discusses this date</option><option value="occurs_on">Occurs on this date</option><option value="born_on">Born on this date</option><option value="published_on">Published on this date</option><option value="deadline">Personal deadline</option></select></div>
@@ -136,25 +171,23 @@ export function CalendarWorkspace({settings,onOpenSettings,vaultId,view,onChange
   {actionError&&<p className="calendar-status" role="alert" data-status="danger">{actionError}</p>}{notice&&<p role="status">{notice}</p>}
   </div>
  </>;
- return <section className={'calendar-workspace'+(selected&&!evidenceOpen?' has-inspector':'')} ref={root} aria-label="Calendar workspace" onKeyDown={event=>{if(event.key==='Escape'&&selected&&!mobile){event.stopPropagation();close();}}}>
+ return <section className={'calendar-workspace'+(selected&&!evidenceOpen&&!modal?' has-inspector':'')} ref={root} onSelectCapture={event=>rememberField(event.target)} onFocusCapture={event=>rememberField(event.target)} aria-label="Calendar workspace" onKeyDown={event=>{if(event.key==='Escape'&&selected&&!modal){event.stopPropagation();close();}}}>
   <div className="calendar-main"><header className="calendar-heading">
-   <div className="calendar-month-title"><h1>{dateLabel(view.month)}</h1><div className="calendar-month-navigation" role="group" aria-label="Month navigation"><button type="button" className="button calendar-icon-button" aria-label="Previous month" disabled={view.month==='0001-01'} onClick={()=>onChange({month:shiftMonth(view.month,-1)})}><Icon name="arrow-left"/></button><button type="button" className="button calendar-icon-button" aria-label="Next month" disabled={view.month==='9999-12'} onClick={()=>onChange({month:shiftMonth(view.month,1)})}><Icon name="chevron"/></button><button type="button" className="button" onClick={event=>{trigger.current=event.currentTarget;const value=todayValue();setFocusDay(value);onChange({month:value.slice(0,7),selected:value});}}>Today</button></div></div>
+   <div className="calendar-month-title"><h1>{dateLabel(view.month)}</h1><span className="sr-only" role="status">{dateLabel(view.month)}</span><div className="calendar-month-navigation" role="group" aria-label="Month navigation"><button type="button" className="button calendar-icon-button" aria-label="Previous month" disabled={view.month==='0001-01'} onClick={()=>onChange({month:shiftMonth(view.month,-1)})}><Icon name="arrow-left"/></button><button type="button" className="button calendar-icon-button" aria-label="Next month" disabled={view.month==='9999-12'} onClick={()=>onChange({month:shiftMonth(view.month,1)})}><Icon name="chevron"/></button><button type="button" className="button" onClick={event=>{trigger.current=event.currentTarget;const value=todayValue();setFocusDay(value);onChange({month:value.slice(0,7),selected:value});}}>Today</button><CalendarMonthJump month={view.month} onChange={month=>onChange({month})}/></div></div>
    <div className="calendar-heading-actions"><div className="calendar-view-switch" role="group" aria-label="Calendar view">{(['month','agenda'] as const).map(mode=><button type="button" key={mode} aria-pressed={view.mode===mode} onClick={()=>onChange({mode})}>{mode==='month'?'Month':'Agenda'}</button>)}</div><button type="button" className="button calendar-icon-button" aria-label="Calendar settings" title="Calendar settings" onClick={onOpenSettings}><Icon name="settings"/></button><button type="button" className="button calendar-icon-button" aria-label="Refresh calendar" title="Refresh calendar" disabled={loading} onClick={()=>setVersion(value=>value+1)}><Icon name="refresh"/></button></div>
   </header>
-  <div className="calendar-filters"><fieldset><legend className="sr-only">Calendar layers</legend>{(['personal','knowledge','historical'] as const).map(layer=><label className="calendar-filter-toggle" key={layer}><input type="checkbox" checked={view.layers.includes(layer)} onChange={()=>onChange({layers:view.layers.includes(layer)?view.layers.filter(value=>value!==layer):[...view.layers,layer]})}/><span>{layerLabels[layer]}</span></label>)}</fieldset><label className="calendar-filter-toggle calendar-reference-toggle"><input type="checkbox" checked={view.allReferences} onChange={event=>onChange({allReferences:event.target.checked})}/><span>Detected references</span></label>{overlayEnabled&&<details className="calendar-overlay-info"><summary><Icon name="event"/><span>{supplement.label}</span><Icon name="chevron"/></summary><div className="calendar-overlay-info-panel"><h2>{supplement.label}</h2><p>Weekdays, seasons and observances appear alongside your saved dates. Calendar sources are managed automatically.</p><button type="button" className="button" onClick={onOpenSettings}>Calendar settings</button></div></details>}</div>
+  <div className="calendar-filters"><fieldset><legend className="sr-only">Calendar layers</legend>{(['personal','knowledge','historical'] as const).map(layer=><label className="calendar-filter-toggle" key={layer}><input type="checkbox" checked={view.layers.includes(layer)} onChange={()=>onChange({layers:view.layers.includes(layer)?view.layers.filter(value=>value!==layer):[...view.layers,layer]})}/><span>{layerLabels[layer]}</span></label>)}</fieldset><label className="calendar-filter-toggle calendar-reference-toggle"><input type="checkbox" checked={view.allReferences} title="Include incidental detected references as well as saved dates and accepted relationships" onChange={event=>onChange({allReferences:event.target.checked})}/><span>Detected references</span></label>{overlayEnabled&&<details className="calendar-overlay-info"><summary><Icon name="event"/><span>{supplement.label}</span><Icon name="chevron"/></summary><div className="calendar-overlay-info-panel"><h2>{supplement.label}</h2><p>Weekdays, seasons and observances appear alongside your saved dates. Calendar sources are managed automatically.</p><button type="button" className="button" onClick={onOpenSettings}>Calendar settings</button></div></details>}</div>
   {overlayEnabled&&liturgical.loading&&<p role="status" className="calendar-status">Downloading liturgical calendar…</p>}
   {overlayEnabled&&liturgical.error&&<div role="status" className="calendar-status" data-status="warning">{liturgical.error}<button type="button" className="button" onClick={liturgical.retry}>Retry supplement</button></div>}
-  {loading&&<p role="status" className="calendar-status">Loading calendar…</p>}{error&&<div role="alert" data-status="danger" className="calendar-status">{error}<button className="button" type="button" onClick={()=>setVersion(value=>value+1)}>Retry calendar</button></div>}
+  {loading&&<p role="status" className="calendar-status">{results?'Updating calendar…':'Loading calendar…'}</p>}{error&&<div role="alert" data-status="danger" className="calendar-status">{error}{results&&<span>Showing the last loaded results.</span>}<button className="button" type="button" onClick={()=>setVersion(value=>value+1)}>Retry calendar</button></div>}
   {!!results?.indexing.pending&&<div className="calendar-status" role="status" data-status="info">{results.indexing.pending} saved items still need indexing. Results are partial.<button className="button" type="button" disabled={loading} onClick={()=>setVersion(value=>value+1)}>Continue indexing</button></div>}
-  {periods.length>0&&<section className="calendar-periods" aria-label="Month and year periods"><h3>Across this period <span>Dates without an exact day</span></h3>{periods.map(card)}</section>}
-  {view.mode==='month'?<div role="grid" className="calendar-grid" aria-label={dateLabel(view.month)} aria-describedby="calendar-keyboard-help"><div role="row" className="calendar-weekdays">{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(day=><span role="columnheader" key={day}>{day}</span>)}</div>{monthCells(view.month).map((week,i)=><div role="row" className="calendar-week" key={i}>{week.map((value,j)=>{
-    const items=days.filter(item=>item.date.value===value),observance=value&&overlayEnabled?liturgical.data?.days[value]?.principal:undefined;return <div role="gridcell" aria-selected={!!value&&selected===value} className={value?'calendar-cell':'calendar-cell is-empty'} key={value??j}>{value&&<button type="button" data-date={value} tabIndex={focusDay===value?0:-1} aria-label={`${dateLabel(value)}${items.length?', '+items.map(caption).join('; '):''}${observance?', '+liturgicalLabel(observance.name,calendarId)+', '+liturgicalRankLabel(observance.rankName)+(observance.colors.length?', Liturgical color: '+observance.colors.join(' / '):''):''}`} aria-current={value===todayValue()?'date':undefined} onFocus={()=>setFocusDay(value)} onKeyDown={event=>gridKey(event,value)} onClick={event=>choose(value,event.currentTarget)}><span className="calendar-day-heading"><span className="calendar-day-number">{Number(value.slice(-2))}</span>{observance&&<LiturgicalColorIndicator colors={observance.colors}/>}</span>{items.slice(0,2).map(item=><span className="calendar-cell-entry" key={item.date.id}>{caption(item)}</span>)}{items.length>2&&<span className="calendar-more">+{items.length-2} more</span>}{observance&&<><span className="calendar-liturgical-cell" aria-hidden="true">{monthLiturgicalLabel(observance.name,calendarId)}</span><span className="calendar-liturgical-rank" aria-hidden="true">{liturgicalRankLabel(observance.rankName)}</span></>}{!!items.length&&<span className="calendar-mobile-dot" aria-hidden="true">•</span>}</button>}</div>;
-   })}</div>)}</div>:<section className="calendar-agenda" aria-label="Dated agenda">{days.map(card)}</section>}
+  {periods.length>0&&<details className="calendar-periods" key={view.month} aria-label="Month and year periods"><summary>Across this period · {periods.length}{results&&(results.nextOffset!==null||results.indexing.pending>0)?'+':''} dates <span>Month/year precision · no exact day</span></summary>{periods.map(card)}</details>}
+  {view.mode==='month'?<CalendarMonthGrid month={view.month} selected={selected} focusDay={focusDay} weekStart={weekStart} weekNumbers={settings.weekNumbers===true} optionalIndicators={settings.optionalIndicators!==false} items={days} liturgy={overlayEnabled?liturgical.data??undefined:undefined} calendarId={calendarId} onFocus={setFocusDay} onKey={gridKey} onChoose={(value,button,optional)=>{setOptionalDate(optional?value:null);choose(value,button);}} busy={loading}/>:<section className="calendar-agenda" aria-label="Dated agenda">{days.map(card)}</section>}
   {view.mode==='agenda'&&overlayEnabled&&liturgical.data&&<details className="calendar-liturgical-agenda"><summary><Icon name="chevron"/><span>{supplement.label} <small>{dateLabel(view.month)} · Observances</small></span></summary>{Object.entries(liturgical.data.days).filter(([date])=>date.startsWith(view.month)).map(([date,day])=><button type="button" className="calendar-entry" key={date} onClick={event=>choose(date,event.currentTarget)}><span><strong>{dateLabel(date)}</strong><small>Liturgical supplement</small></span><span>{liturgicalLabel(day.principal.name,calendarId)}<small className="calendar-liturgical-rank">{liturgicalRankLabel(day.principal.rankName)}</small></span></button>)}</details>}
-  {results&&!results.items.length&&!loading&&<div className="calendar-empty"><Icon name="event"/><h3>{view.layers.length?view.allReferences?'No saved dates or detected references this month':'No saved dates this month':'Choose a calendar layer'}</h3><p>{!view.layers.length?'Select Personal, Knowledge, or Historical to show saved dates.':view.allReferences?'No indexed references match these filters. Select a day to add a date.':'Select a day to add a date, or turn on Detected references to explore your pages.'}</p></div>}
+  {results&&!results.items.length&&!loading&&<div className="calendar-empty"><Icon name="event"/><h3>{!view.layers.length?'Choose a calendar layer':results.indexing.pending?'No dates loaded yet':view.allReferences?'No saved dates or detected references this month':'No saved dates match this month and filters'}</h3><p>{!view.layers.length?'Select Personal, Knowledge, or Historical to show saved dates.':results.indexing.pending?'Indexing is incomplete. Continue indexing to find more dates.':view.allReferences?'No indexed references match these filters. Select a day to add a date.':'Select a day to add a date, or turn on Detected references to explore your pages.'}</p></div>}
   {results?.nextOffset!==null&&results&&<div className="calendar-pagination"><p>More dates are available. This view shows a partial list.</p><button className="button" type="button" disabled={loading} onClick={()=>void more()}>Load more dates</button></div>}
-  <p className="calendar-footer" id="calendar-keyboard-help">Arrow keys move between days · Enter opens date details</p>
+  <p className="calendar-footer" id="calendar-keyboard-help">Arrow keys move · Home/End move to week edges · Page Up/Down change month · Enter/Space open details · Escape closes details</p>
   </div>
-  {selected&&(mobile?<dialog ref={sheet} className="calendar-sheet" aria-labelledby="calendar-date-heading" onCancel={event=>{event.preventDefault();close();}} onKeyDown={event=>{if(event.key==='Escape')event.stopPropagation();}}>{inspector}</dialog>:<aside hidden={evidenceOpen} className="calendar-inspector" aria-labelledby="calendar-date-heading">{inspector}</aside>)}
+  {selected&&(modal?<dialog ref={sheet} className={'calendar-sheet'+(!mobile?' calendar-sheet-bounded':'')} aria-labelledby="calendar-date-heading" onCancel={event=>{event.preventDefault();close();}} onKeyDown={event=>{if(event.key==='Escape')event.stopPropagation();}}>{inspector}</dialog>:<aside hidden={evidenceOpen} className="calendar-inspector" aria-labelledby="calendar-date-heading">{inspector}</aside>)}
  </section>;
 }

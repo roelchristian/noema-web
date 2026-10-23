@@ -2513,6 +2513,15 @@
 .page-ai-provenance > summary::-webkit-details-marker {
   display: none;
 }
+.page-ai-provenance > summary:hover,
+.page-ai-provenance[open] > summary {
+  color: var(--text);
+}
+.page-ai-provenance > summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+  border-radius: var(--radius-xs);
+}
 .page-ai-provenance .icon {
   width: 13px;
   height: 13px;
@@ -2524,16 +2533,33 @@
   right: 0;
   bottom: calc(100% + 8px);
   z-index: 10;
-  width: min(340px, 80vw);
-  padding: 12px;
+  box-sizing: border-box;
+  width: min(260px, 80vw);
+  padding: 10px 12px;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface);
+  border-radius: var(--radius-popover);
+  background: var(--surface-popover);
+  box-shadow: var(--shadow-menu);
   color: var(--text);
+  font: 12px/1.5 var(--font-ui);
   white-space: normal;
 }
+.page-provenance-details > strong {
+  display: block;
+  font-weight: 500;
+}
 .page-provenance-details p {
-  margin: 0;
+  margin: 2px 0 0;
+  color: var(--text-muted);
+}
+.page-provenance-details ul {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+  color: var(--text-muted);
 }
 .page-ai-library-status {
   display: inline;

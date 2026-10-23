@@ -4,9 +4,22 @@ import React,{act} from 'react';
 import {createRoot} from 'react-dom/client';
 import {setupDOM} from './helpers/dom.mjs';
 import {DocumentFind} from '../src/client/editor/DocumentFind.tsx';
+import {searchSurfaces} from '../src/client/editor/document-find.ts';
 
 test('document shortcuts toggle Find/Replace from page controls while respecting other surfaces',async t=>{
  const env=setupDOM(t,{html:'<button id="toolbar">Page tools</button><input id="outside"><article class="page"><input id="page-title"><div id="mount"></div></article>'});
+ // Model the browser capability even when the 150 ms debounce fires under load.
+ // Use the real search engine, while keeping worker delivery asynchronous.
+ const previousWorker=Object.getOwnPropertyDescriptor(globalThis,'Worker');
+ const workers=[];
+ class SearchWorker {
+  stopped=false;
+  constructor(){workers.push(this);}
+  postMessage({surfaces,options}){const data=searchSurfaces(surfaces,options);queueMicrotask(()=>{if(!this.stopped)this.onmessage?.({data});});}
+  terminate(){this.stopped=true;}
+ }
+ Object.defineProperty(globalThis,'Worker',{configurable:true,value:SearchWorker});
+ env.defer(()=>{if(previousWorker)Object.defineProperty(globalThis,'Worker',previousWorker);else delete globalThis.Worker;});
  const previousCSS=Object.getOwnPropertyDescriptor(globalThis,'CSS');
  Object.defineProperty(globalThis,'CSS',{configurable:true,value:{}});
  env.defer(()=>{if(previousCSS)Object.defineProperty(globalThis,'CSS',previousCSS);else delete globalThis.CSS;});
@@ -56,6 +69,11 @@ test('document shortcuts toggle Find/Replace from page controls while respecting
  // Reduced motion closes immediately, including through the button.
  env.dom.window.matchMedia=query=>({matches:query==='(prefers-reduced-motion: reduce)'});
  await act(async()=>document.querySelector('.document-find-close').click());assert.equal(shell.hidden,true);
+ // Exercise the debounced worker path deliberately, rather than relying on
+ // every shortcut operation to finish before its timer fires.
+ await act(async()=>document.dispatchEvent(new Event('noema:document-find')));
+ await act(async()=>{await new Promise(resolve=>setTimeout(resolve,180));});
+ assert.ok(workers.length>0);assert.ok(workers.every(worker=>worker.stopped));
  // Cleanup removes the document-level listener.
  await act(async()=>root.render(null));assert.equal(await press(toolbar,{key:'f',metaKey:true}),false);
 });

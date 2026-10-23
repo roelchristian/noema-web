@@ -2296,3 +2296,119 @@
 /* Preserved latest-main AI debug and archive controls; target sizes use shared contracts. */
 .organization-library[data-layout=grid] .knowledge-row-actions { grid-column: 2 / -1; grid-row: 1; justify-self: end; align-self: center; }
 .organization-library[data-layout=grid] .knowledge-row-actions .knowledge-open-entity { display: none; }
+
+.inbox-triage {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.inbox-queue {
+  min-width: 0;
+  border-right: 1px solid var(--line);
+  max-height: 72vh;
+  overflow: auto;
+  padding: 8px;
+}
+.inbox-session {
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 8px;
+}
+.inbox-queue-row {
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+}
+.inbox-queue-row.is-selected {
+  background: var(--accent-soft);
+}
+.inbox-queue-row label {
+  width: 44px;
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  margin: 0;
+}
+.inbox-queue-row input {
+  width: 18px;
+  height: 18px;
+}
+.inbox-queue-row > button {
+  min-width: 0;
+  min-height: 60px;
+  flex: 1;
+  text-align: left;
+  padding: 8px;
+  overflow-wrap: anywhere;
+}
+.inbox-queue-row strong {
+  display: block;
+}
+.inbox-indicators {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.inbox-detail {
+  padding: 16px;
+  min-width: 0;
+  max-height: 72vh;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+.inbox-detail h2 {
+  margin: 16px 0 8px;
+}
+.inbox-navigation, .inbox-decisions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.inbox-navigation {
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.inbox-decisions {
+  margin-top: 16px;
+}
+.inbox-triage .button {
+  min-height: 44px;
+  min-width: 44px;
+}
+.inbox-preview {
+  margin-top: 24px;
+}
+.inbox-triage .inbox-back {
+  display: none;
+}
+@media (max-width: 760px) {
+  .inbox-triage {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .inbox-detail, .inbox-triage.is-detail .inbox-queue {
+    display: none;
+  }
+  .inbox-triage.is-detail .inbox-detail {
+    display: block;
+  }
+  .inbox-queue {
+    border-right: 0;
+  }
+  .inbox-triage .inbox-back {
+    display: inline-flex;
+    margin-bottom: 12px;
+  }
+}
+.organization-library[data-layout="triage"] .organization-content-title > .select-host {
+  display: inline-block;
+}
+.inbox-navigation .button {
+  color: var(--text);
+}

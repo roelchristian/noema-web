@@ -826,6 +826,14 @@ export class Workspace {
       if (this.state.page) this.titler.observe(this.state.page,true);
     }
   }
+  refreshInbox = async () => {
+    const vault=this.state.vault, sequence=this.loadSequence;
+    if(!vault||vault.locked)return;
+    const [pages,organization]=await Promise.all([api.pages(vault.id),api.organization(vault.id)]);
+    if(sequence===this.loadSequence&&this.state.vault?.id===vault.id&&!this.state.vault.locked) {
+      this.patch({pages});this.setOrganization(organization);
+    }
+  };
   async refreshEntities(signal?:AbortSignal) {
     const vault = this.state.vault, sequence = this.loadSequence;
     if(!vault||vault.locked||signal?.aborted)return;

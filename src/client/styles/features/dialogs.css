@@ -619,7 +619,7 @@ dialog.create-entity-dialog {
   color: var(--text-muted);
   font-size: 12px;
 }
-.create-entity-fields > label > input, .create-entity-fields .source-attachments > label > input:not([type=file]) {
+.create-entity-fields > label > input, .create-entity-fields .source-attachments > label > input:not([type=file]), .create-entity-fields .source-attachments textarea {
   width: 100%;
   margin: 0;
   padding: 9px var(--space-2-5);
@@ -629,6 +629,7 @@ dialog.create-entity-dialog {
   color: var(--text);
   font: var(--ui-text-md)/1.6 var(--font-ui);
 }
+.create-entity-fields .source-attachments textarea { min-height: 160px; resize: vertical; }
 .create-entity-fields .entity-alias-input small {
   color: var(--text-muted);
   font-size: var(--ui-text-xs);
@@ -725,7 +726,7 @@ dialog.create-entity-dialog {
   .create-entity-header, .create-entity-fields {
     padding: 16px;
   }
-  .create-entity-fields > label > input, .create-entity-fields .source-attachments > label > input:not([type=file]) {
+  .create-entity-fields > label > input, .create-entity-fields .source-attachments > label > input:not([type=file]), .create-entity-fields .source-attachments textarea {
     font-size: 17px;
   }
   .create-entity-header > button {

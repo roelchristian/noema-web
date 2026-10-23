@@ -100,8 +100,8 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
           <td><span className={'ai-activity-status '+item.status}>{uiText(item.status)}</span></td>
           <td>{item.objectId?<>
             {item.available?<button className="ai-activity-link ai-activity-title" title={item.objectTitle||uiText("Untitled")} onClick={()=>void open(item)}>{item.objectTitle||uiText("Untitled")}</button>:<span className="ai-activity-title" title={item.objectTitle||uiText("Unavailable page")}>{item.objectTitle||uiText("Unavailable page")}</span>}
-          </>:item.action==='search_embedding'?<span>{uiText("Vault search")}</span>:<span>{uiText("Settings → Intelligence")}</span>}</td>
-          <td className="ai-activity-model">{item.model}{item.action!=='note_embedding'&&item.action!=='search_embedding'&&<small className="ai-activity-reasoning">{item.reasoningEffort==='none'?uiText("no reasoning"):uiText("{value0} reasoning",{value0: item.reasoningEffort})}</small>}</td>
+          </>:item.action==='text_to_speech'?<span>{uiText("Editor selection")}</span>:item.action==='search_embedding'?<span>{uiText("Vault search")}</span>:<span>{uiText("Settings → Intelligence")}</span>}</td>
+          <td className="ai-activity-model">{item.model}{item.action!=='note_embedding'&&item.action!=='search_embedding'&&item.action!=='text_to_speech'&&<small className="ai-activity-reasoning">{item.reasoningEffort==='none'?uiText("no reasoning"):uiText("{value0} reasoning",{value0: item.reasoningEffort})}</small>}</td>
           <td>{item.promptBytes===null?uiText("Not sent"):item.promptBytes.toLocaleString(getLocale())}</td>
           <td>{item.inputTokens==null?'—':item.inputTokens.toLocaleString(getLocale())}</td>
           <td>{item.cachedInputTokens==null?'—':item.cachedInputTokens.toLocaleString(getLocale())}</td>

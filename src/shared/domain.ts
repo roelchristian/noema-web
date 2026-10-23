@@ -72,6 +72,7 @@ export interface OrganizationContext { collection: string; folder: string }
 
 export interface IntelligenceStatus extends IntelligencePreferences {
   personaId?:string;
+  ttsEnabled: boolean;
   pageEnrichment?: IntelligencePreferences; manualRequestsPerMinute: number; configured: boolean; expiresAt: string | null }
 
 export interface AIEnrichment extends IntelligencePreferences {

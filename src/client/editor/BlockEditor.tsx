@@ -1,3 +1,4 @@
+import {speechText,useSpeech} from './speech';
 import {entityIconName} from '../../shared/entity-icons';
 import {paragraphFlow} from './paragraph-indent';
 import {useDefaultPersona} from '../components/PersonaSelect';
@@ -54,7 +55,7 @@ import { completeInlineMath, mathElement } from './math';
 import { completeTypedMarkdown,typedMarkdownBlock } from './markdown-typing';
 import { useMarkdownTyping } from '../state/markdown-preferences';
 import {applyEditorTextFormat,shortcutTextFormat} from './text-formatting';
-interface Props {focusNewBody?:boolean;onCreationFocusConsumed?:()=>void;onReview?:(texts:EditorReviewText[])=>Promise<EditorReviewSuggestion[]>;featuredImageId?: string | null; pages?:PageSummary[];onOpenPage?:(id:string)=>void;onExplain?: (blocks: Block[],persona?:{id:string;version?:number}) => Promise<string|{markdown:string;persona:PersonaIdentity}>; reviewMatches?: EntityReviewItem[]; onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[], featuredImageId?: string | null, aiReviewAccepted?:true) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void, onCancel?: () => void) => void; onSave: () => void}
+interface Props {pageId?:string;focusNewBody?:boolean;onCreationFocusConsumed?:()=>void;onReview?:(texts:EditorReviewText[])=>Promise<EditorReviewSuggestion[]>;featuredImageId?: string | null; pages?:PageSummary[];onOpenPage?:(id:string)=>void;onExplain?: (blocks: Block[],persona?:{id:string;version?:number}) => Promise<string|{markdown:string;persona:PersonaIdentity}>; reviewMatches?: EntityReviewItem[]; onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[], featuredImageId?: string | null, aiReviewAccepted?:true) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void, onCancel?: () => void) => void; onSave: () => void}
 function explanationInsertionIndex(blocks: Block[], ids: string[]) {
   const last=blocks.filter(block=>ids.includes(block.id)).at(-1);
   if(!last)return -1;
@@ -231,6 +232,7 @@ export function BlockEditor(props: Props) {
     return null;
   }
   const [pageLinkStatus,setPageLinkStatus]=useState('');
+  const speech=useSpeech(props.vaultId,props.pageId);
   const defaultExplanationPersona=useDefaultPersona();
   const explanationPersona=useRef<string>('');
   const [explaining,setExplaining]=useState(false), [explanationError,setExplanationError]=useState('');
@@ -660,8 +662,12 @@ export function BlockEditor(props: Props) {
       ...(!isAIExplanation(block) ? [{get title(){return uiText("Turn into")},detail:block.semantic?semanticFunctions[block.semantic].label:uiText("Choose a semantic block"),icon:'semantic',submenu:true,
         pick:()=>show(anchor,[back,...semanticChoices(kind=>onChange(applySemantic(latest.current.blocks,ids,kind))),...(block.semantic?[{title:uiText("Remove semantic function"),icon:'close',pick:()=>{setMenu(null);update(block.id,{semantic:undefined});}}]:[]),...(mobile&&block.semanticGroup?[{get title(){return uiText("Group actions")},icon:'semantic',submenu:true,pick:()=>{setActiveBlock({id:block.semanticGroup!.id,group:true});groupOptions(anchor,block.semanticGroup!.id);}}]:[])],'TURN INTO SEMANTIC BLOCK', true)}] : []),
       ...(props.onExplain&&aiExplanationSources(latest.current.blocks,ids).length?[aiActionChoice(anchor,ids,back)]:[]),
+      ...speakChoice(ids),
       {title:uiText("Delete block"),icon:'trash',danger:true,pick:()=>removeBlock(block.id)},
     ], 'BLOCK OPTIONS', true);
+  }
+  function speakChoice(ids:string[]):Choice[] {
+    return speech.enabled?[{title:uiText("Speak"),detail:uiText("Read aloud with an AI-generated voice"),icon:'speaker',pick:()=>{const draft=commitSelection();setMenu(null);speech.speak(speechText(draft,ids,entities));}}]:[];
   }
   function aiActionChoice(anchor: HTMLElement, ids: string[], back: Choice): Choice {
     return {get title(){return uiText("AI actions")},icon:'sparkles',submenu:true,pick:()=>show(anchor,[back,...(props.onReview?[{title:reviewPending.current?uiText("Reviewing…"):uiText("Review with AI"),detail:uiText("Suggest spelling, punctuation, grammar, and phrasing corrections"),icon:'sparkles',disabled:reviewPending.current,pick:()=>void reviewWriting(ids)}]:[]),{title:'Explanation persona · '+personaMetadata(explanationPersona.current||aiExplanationsForSources(latest.current.blocks,ids)[0]?.semanticGroup?.persona?.id||defaultExplanationPersona).name,icon:'sparkles',submenu:true,pick:()=>show(anchor,[back,...[{id:'',name:'Default / original'},...aiPersonas].map(p=>({title:p.name,icon:'sparkles',submenu:true,pick:()=>{explanationPersona.current=p.id;aiActionChoice(anchor,ids,back).pick();}}))],'AI PERSONA',true)},explainChoice(ids)],'AI ACTIONS',true)};
@@ -669,7 +675,7 @@ export function BlockEditor(props: Props) {
   function groupOptions(anchor: HTMLElement, id: string) {
     const children=latest.current.blocks.filter(block=>block.semanticGroup?.id===id || block.id===id && isAIExplanation(block)),locked=children.some(isAIExplanation);
     const back: Choice = {title:uiText("Back to group actions"),icon:'arrow-left',submenu:true,back:true,pick:()=>groupOptions(anchor,id)};
-    show(anchor,[...(props.onExplain&&aiExplanationSources(latest.current.blocks,children.map(block=>block.id)).length?[aiActionChoice(anchor,children.map(block=>block.id),back)]:[]),...(mobile?movementChoices(id):[]),...(!locked?[...semanticChoices(kind=>onChange(retagSemanticGroup(latest.current.blocks,id,kind))),{title:uiText("Ungroup blocks"),detail:uiText("Keep all child blocks"),icon:'close',pick:()=>{setMenu(null);onChange(removeSemanticGroup(latest.current.blocks,id));}}]:[{get title(){return uiText("Delete explanation")},danger:true,detail:uiText("Remove this explanation and its subblocks"),icon:'close',pick:()=>{setMenu(null);const rest=latest.current.blocks.filter(block=>block.semanticGroup?.id!==id && block.id!==id);onChange(rest.length?rest:[makeBlock()]);}}])],'SEMANTIC GROUP', true);
+    show(anchor,[...(props.onExplain&&aiExplanationSources(latest.current.blocks,children.map(block=>block.id)).length?[aiActionChoice(anchor,children.map(block=>block.id),back)]:[]),...speakChoice(children.map(block=>block.id)),...(mobile?movementChoices(id):[]),...(!locked?[...semanticChoices(kind=>onChange(retagSemanticGroup(latest.current.blocks,id,kind))),{title:uiText("Ungroup blocks"),detail:uiText("Keep all child blocks"),icon:'close',pick:()=>{setMenu(null);onChange(removeSemanticGroup(latest.current.blocks,id));}}]:[{get title(){return uiText("Delete explanation")},danger:true,detail:uiText("Remove this explanation and its subblocks"),icon:'close',pick:()=>{setMenu(null);const rest=latest.current.blocks.filter(block=>block.semanticGroup?.id!==id && block.id!==id);onChange(rest.length?rest:[makeBlock()]);}}])],'SEMANTIC GROUP', true);
   }
   function update(id: string, patch: Partial<Block>) { onChange(latest.current.blocks.map(b => b.id === id ? {...b, ...patch} : b)); }
   function convertMathToInline(id:string,placement:MathInlinePlacement) {
@@ -987,6 +993,7 @@ export function BlockEditor(props: Props) {
       : <Fragment key={run.id}>{renderRuns(run.blocks)}</Fragment>);
   }
   return <><input ref={fileInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden aria-label={uiText("Choose images")} onChange={e => {const files=Array.from(e.currentTarget.files ?? []); e.currentTarget.value=''; void addImages(files,imageTarget.current);}}/>
+    {speech.player}
     <div id="blocks" ref={root} onFocusCapture={event => activateBlock(event.target)} onPointerDownCapture={event => activateBlock(event.target)} onInputCapture={event=>{
       if(root.current?.dataset.formattingTransaction) {event.stopPropagation(); return;}
       if((event.nativeEvent as InputEvent).isComposing)return;

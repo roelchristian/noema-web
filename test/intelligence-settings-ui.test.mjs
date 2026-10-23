@@ -1,0 +1,53 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {act,createElement} from 'react';
+import {createRoot} from 'react-dom/client';
+import {IntelligenceSettings} from '../src/client/settings/IntelligenceSettings.tsx';
+import {api} from '../src/client/api.ts';
+import {defaultIntelligencePreferences,defaultPageEnrichmentPreferences} from '../src/shared/intelligence.ts';
+import {setupDOM} from './helpers/dom.mjs';
+
+test('global speech preference is saved explicitly, refreshes listeners, and survives reopening Settings',async t=>{
+  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));
+  env.defer(()=>act(async()=>root.unmount()));
+  const originalStatus=api.intelligence,originalSave=api.saveIntelligencePreferences;
+  env.defer(()=>{api.intelligence=originalStatus;api.saveIntelligencePreferences=originalSave;});
+  let saved={...defaultIntelligencePreferences,manualRequestsPerMinute:5,pageEnrichment:{...defaultPageEnrichmentPreferences}},requests=[],events=0;
+  api.intelligence=async()=>({...saved,configured:false,expiresAt:null});
+  api.saveIntelligencePreferences=async value=>{requests.push({...value});saved={...value};return saved;};
+  window.addEventListener('noema:tts-preferences',()=>events++);
+  await act(async()=>root.render(createElement(IntelligenceSettings)));
+  const toggle=()=>document.querySelector('#ai-tts-enabled');
+  const saveButton=()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Save AI preferences');
+  const save=()=>act(async()=>document.querySelector('.ai-preferences-form').dispatchEvent(new env.dom.window.Event('submit',{bubbles:true,cancelable:true})));
+  assert.equal(toggle().getAttribute('aria-checked'),'false','Older saved preferences default to off');
+  assert.equal(toggle().closest('details'),null,'Speech is a visible global preference');
+  assert.equal(saveButton().disabled,true);
+  assert.match(document.querySelector('#ai-tts-description').textContent,/AI-generated voice/);
+  assert.match(document.querySelector('.intelligence-settings').textContent,/Speech model:.*gpt-realtime-2.1-mini/);
+  await act(async()=>toggle().click());
+  assert.equal(toggle().getAttribute('aria-checked'),'true');assert.equal(saveButton().disabled,false);
+  assert.equal(events,0,'Editor preference refresh waits for a successful save');
+  await save();
+  assert.equal(requests[0].ttsEnabled,true);assert.equal(events,1);assert.equal(saveButton().disabled,true);
+  await act(async()=>root.render(createElement(IntelligenceSettings,{key:'reopened'})));
+  assert.equal(toggle().getAttribute('aria-checked'),'true');
+  await act(async()=>toggle().click());await save();
+  assert.equal(requests[1].ttsEnabled,false);assert.equal(events,2);
+});
+
+test('failed speech preference saves keep changes pending without refreshing editor listeners',async t=>{
+  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));
+  env.defer(()=>act(async()=>root.unmount()));
+  const originalStatus=api.intelligence,originalSave=api.saveIntelligencePreferences;
+  env.defer(()=>{api.intelligence=originalStatus;api.saveIntelligencePreferences=originalSave;});
+  api.intelligence=async()=>({...defaultIntelligencePreferences,manualRequestsPerMinute:5,ttsEnabled:false,configured:false,expiresAt:null});
+  api.saveIntelligencePreferences=async()=>{throw new Error('Could not save preferences.');};
+  let events=0;window.addEventListener('noema:tts-preferences',()=>events++);
+  await act(async()=>root.render(createElement(IntelligenceSettings)));
+  await act(async()=>document.querySelector('#ai-tts-enabled').click());
+  await act(async()=>document.querySelector('.ai-preferences-form').dispatchEvent(new env.dom.window.Event('submit',{bubbles:true,cancelable:true})));
+  assert.equal(events,0);assert.equal(document.querySelector('#ai-tts-enabled').getAttribute('aria-checked'),'true');
+  assert.match(document.querySelector('[role=status]').textContent,/Could not save preferences/);
+  assert.equal([...document.querySelectorAll('button')].find(button=>button.textContent==='Save AI preferences').disabled,false);
+});

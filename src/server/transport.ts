@@ -1,3 +1,4 @@
+import {speechModel} from '../shared/intelligence.js';
 import {PageHistory} from './modules/page-history.js';
 import {PropertyReview} from './modules/property-review.js';
 import {PropertyDefinitionGovernance} from './modules/property-definition-governance.js';
@@ -288,6 +289,23 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           if(parts.length===4 && id==='activity' && child && method==='GET')return send(200,activity.debug(child,{after:url.searchParams.has('after')?Number(url.searchParams.get('after')):undefined,eventCursor:url.searchParams.has('eventCursor')?Number(url.searchParams.get('eventCursor')):undefined,limit:url.searchParams.has('limit')?Number(url.searchParams.get('limit')):undefined,includeEvents:url.searchParams.has('events')?url.searchParams.get('events')==='1':undefined}));
           if(parts.length===3 && id==='activity' && method==='DELETE')return send(200,activity.clear());
           if(parts.length===3 && id==='activity' && method==='GET')return send(200,activity.list(url.searchParams.get('before')));
+          if(parts.length===3 && id==='speech' && method==='POST') {
+            const header=req.headers['x-vault-id'];if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
+            if(body.pageId!==undefined&&(typeof body.pageId!=='string'||!body.pageId))throw new HttpError(400,'Invalid speech source page.');
+            const speechPageId=typeof body.pageId==='string'?body.pageId:null;
+            activityId=activity.start('text_to_speech',{model:speechModel,reasoningEffort:'none'},header||'default',speechPageId);
+            const vault=vaults.requireOpen(header||'default');
+            if(speechPageId)pages.get(vault,speechPageId);
+            const controller=new AbortController(),abort=()=>controller.abort();res.once('close',abort);
+            try {
+              const audio=await intelligence.speech(body.text,controller.signal,bytes=>activity.request(activityId!,bytes,null));vaults.requireOpen(vault);
+              if(speechPageId)pages.get(vault,speechPageId);
+              if(controller.signal.aborted)throw new HttpError(409,'Speech request cancelled.');
+              activity.finish(activityId!,'completed',200);activityId=undefined;
+              res.writeHead(200,{'Content-Type':'audio/wav','Content-Length':audio.length,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
+              return res.end(audio);
+            } finally {res.off('close',abort);}
+          }
           if(parts.length===2 && method==='GET')return send(200,intelligence.status());
           if(parts.length===3 && id==='preferences' && method==='PUT')return send(200,intelligence.savePreferences(body));
           if(parts.length===2 && method==='PUT'){const result=intelligence.save(body);embeddings.clearQueryCache();return send(200,result);}

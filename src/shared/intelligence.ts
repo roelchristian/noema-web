@@ -2,8 +2,9 @@ import type {BuiltinPersonaId} from './ai-personas.js';
 // Curated Responses API text models, checked against official OpenAI docs on 2026-10-16.
 // /v1/models does not describe reasoning compatibility; keep the allowlist explicit.
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export const speechModel = 'gpt-realtime-2.1-mini';
 export interface IntelligencePreferences { model: string; reasoningEffort: ReasoningEffort }
-export interface IntelligenceConfiguration extends IntelligencePreferences {personaId?:BuiltinPersonaId;manualRequestsPerMinute: number; pageEnrichment?: IntelligencePreferences}
+export interface IntelligenceConfiguration extends IntelligencePreferences {personaId?:BuiltinPersonaId;ttsEnabled:boolean;manualRequestsPerMinute: number; pageEnrichment?: IntelligencePreferences}
 export const defaultPageEnrichmentPreferences: IntelligencePreferences = {model:'gpt-6-luna',reasoningEffort:'none'};
 export const defaultManualRequestsPerMinute = 5;
 export const maxManualRequestsPerMinute = 120;
@@ -31,7 +32,7 @@ export function supportedIntelligencePreferences(value: unknown): value is Intel
 }
 
 export interface AIActivity extends IntelligencePreferences {
-  id: string; action: 'collection_rules' | 'entity_discovery' | 'page_enrichment' | 'source_enrichment' | 'source_math_preprocessing' | 'source_reprocessing' | 'text_review' | 'block_explanation' | 'page_title' | 'page_summary' | 'entity_scan' | 'note_embedding' | 'search_embedding' | 'connection_test' | 'create_page_from_source';
+  id: string; action: 'text_to_speech' | 'collection_rules' | 'entity_discovery' | 'page_enrichment' | 'source_enrichment' | 'source_math_preprocessing' | 'source_reprocessing' | 'text_review' | 'block_explanation' | 'page_title' | 'page_summary' | 'entity_scan' | 'note_embedding' | 'search_embedding' | 'connection_test' | 'create_page_from_source';
   status: 'running' | 'completed' | 'failed' | 'interrupted' | 'skipped';
   startedAt: string; finishedAt: string | null; durationMs: number | null; httpStatus: number | null;
   vaultId: string | null; vaultName: string | null; objectKind: 'page' | 'entity' | null;
@@ -63,6 +64,7 @@ export interface AIActivityDebug {
 }
 
 export const aiActivityLabels: Record<AIActivity['action'], string> = {
+  text_to_speech:'Speak (OpenAI TTS)',
   collection_rules:'Generate collection rules',
   entity_discovery:'Entity discovery',
   page_enrichment:'Page enrichment',

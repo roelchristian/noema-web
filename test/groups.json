@@ -79,7 +79,9 @@
     "test/property-proposal-review.test.mjs",
     "test/semantic-collection-preview.test.mjs",
     "test/collection-rule-generation.test.mjs",
-    "test/organization-descriptions-ui.test.mjs"
+    "test/organization-descriptions-ui.test.mjs",
+    "test/intelligence-settings-ui.test.mjs",
+    "test/editor-speech.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",
@@ -118,6 +120,7 @@
     "test/image-cleanup.test.mjs",
     "test/images.test.mjs",
     "test/intelligence.test.mjs",
+    "test/intelligence-speech.test.mjs",
     "test/legacy-baseline-migration.test.mjs",
     "test/new-note.test.mjs",
     "test/openai-response.test.mjs",
@@ -185,6 +188,7 @@
     "test/page-history.test.mjs",
     "test/page-history-backups.test.mjs",
     "test/page-history-paths.test.mjs",
-    "test/organization-descriptions.test.mjs"
+    "test/organization-descriptions.test.mjs",
+    "test/realtime-speech.test.mjs"
   ]
 }

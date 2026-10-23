@@ -2,19 +2,19 @@ import {aiPersonas,defaultPersonaId,type BuiltinPersonaId} from '../../shared/ai
 import {getLocale} from '../i18n';
 import {t as uiText} from '../i18n';
 import { Select } from '../components/Select';
-import { defaultIntelligencePreferences, defaultPageEnrichmentPreferences, defaultManualRequestsPerMinute, maxManualRequestsPerMinute, intelligenceModels, type IntelligenceConfiguration, type ReasoningEffort } from '../../shared/intelligence';
+import { speechModel, defaultIntelligencePreferences, defaultPageEnrichmentPreferences, defaultManualRequestsPerMinute, maxManualRequestsPerMinute, intelligenceModels, type IntelligenceConfiguration, type ReasoningEffort } from '../../shared/intelligence';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api';
 import type { IntelligenceStatus } from '../../shared/domain';
 export function IntelligenceSettings() {
   const [status,setStatus]=useState<IntelligenceStatus|null>(null),[key,setKey]=useState(''),[days,setDays]=useState(30),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
-  const [preferences,setPreferences]=useState<IntelligenceConfiguration>({...defaultIntelligencePreferences,manualRequestsPerMinute:defaultManualRequestsPerMinute,pageEnrichment:{...defaultPageEnrichmentPreferences}});
+  const [preferences,setPreferences]=useState<IntelligenceConfiguration>({...defaultIntelligencePreferences,ttsEnabled:false,manualRequestsPerMinute:defaultManualRequestsPerMinute,pageEnrichment:{...defaultPageEnrichmentPreferences}});
   const modelOption=intelligenceModels.find(option=>option.id===preferences.model)!;
   const enrichment=preferences.pageEnrichment??defaultPageEnrichmentPreferences;
   const savedEnrichment=status?.pageEnrichment??defaultPageEnrichmentPreferences;
   const enrichmentModelOption=intelligenceModels.find(option=>option.id===enrichment.model)!;
-  const changed=!!status&&((preferences.personaId??defaultPersonaId)!==(status.personaId??defaultPersonaId)||preferences.model!==status.model||preferences.reasoningEffort!==status.reasoningEffort||preferences.manualRequestsPerMinute!==status.manualRequestsPerMinute||enrichment.model!==savedEnrichment.model||enrichment.reasoningEffort!==savedEnrichment.reasoningEffort);
-  useEffect(()=>{let active=true;void api.intelligence().then(value=>{if(active){setStatus(value);setPreferences({personaId:(value.personaId??defaultPersonaId) as BuiltinPersonaId,model:value.model,reasoningEffort:value.reasoningEffort,manualRequestsPerMinute:value.manualRequestsPerMinute,pageEnrichment:value.pageEnrichment??{...defaultPageEnrichmentPreferences}});}}).catch(()=>{if(active)setMessage('Secure storage is unavailable. Unlock your macOS login keychain and reopen Settings.');});return()=>{active=false;};},[]);
+  const changed=!!status&&((preferences.personaId??defaultPersonaId)!==(status.personaId??defaultPersonaId)||Boolean(preferences.ttsEnabled)!==Boolean(status.ttsEnabled)||preferences.model!==status.model||preferences.reasoningEffort!==status.reasoningEffort||preferences.manualRequestsPerMinute!==status.manualRequestsPerMinute||enrichment.model!==savedEnrichment.model||enrichment.reasoningEffort!==savedEnrichment.reasoningEffort);
+  useEffect(()=>{let active=true;void api.intelligence().then(value=>{if(active){setStatus(value);setPreferences({personaId:(value.personaId??defaultPersonaId) as BuiltinPersonaId,ttsEnabled:value.ttsEnabled??false,model:value.model,reasoningEffort:value.reasoningEffort,manualRequestsPerMinute:value.manualRequestsPerMinute,pageEnrichment:value.pageEnrichment??{...defaultPageEnrichmentPreferences}});}}).catch(()=>{if(active)setMessage('Secure storage is unavailable. Unlock your macOS login keychain and reopen Settings.');});return()=>{active=false;};},[]);
   async function perform(work:()=>Promise<unknown>,success:string) {
     setBusy(true);setMessage('');
     try {await work();setMessage(success);}catch(error){setMessage(error instanceof Error?error.message:'Request failed.');}finally{setBusy(false);}
@@ -24,7 +24,12 @@ export function IntelligenceSettings() {
     <h3 id="intelligence-heading">{uiText("OpenAI")}</h3>
     <p>{uiText("Connect OpenAI for writing and search. Your API key is stored in macOS Keychain and shared across vaults.")}</p>
     <div className="intelligence-status">{status?.configured ? <>{uiText("API key saved · expires") + " "}{new Date(status.expiresAt!).toLocaleString(getLocale())}</> : uiText("No active API key")}{status && <small>{uiText("Model:") + " "}{status.model}{" " + uiText("· Reasoning:") + " "}{status.reasoningEffort}</small>}</div>
-    <form className="ai-preferences-form" onInvalidCapture={event=>{const details=(event.target as HTMLElement).closest('details');if(details)details.open=true;}} onSubmit={event=>{event.preventDefault();void perform(async()=>{const saved=await api.saveIntelligencePreferences(preferences);setStatus(current=>current?{...current,...saved}:current);setPreferences(saved);window.dispatchEvent(new Event('noema:persona-preferences'));},'AI preferences saved.');}}>
+    <form className="ai-preferences-form" onInvalidCapture={event=>{const details=(event.target as HTMLElement).closest('details');if(details)details.open=true;}} onSubmit={event=>{event.preventDefault();void perform(async()=>{const saved=await api.saveIntelligencePreferences(preferences);setStatus(current=>current?{...current,...saved}:current);setPreferences(saved);window.dispatchEvent(new Event('noema:persona-preferences'));window.dispatchEvent(new Event('noema:tts-preferences'));},'AI preferences saved.');}}>
+      <div className="ai-setting-row"><label id="ai-tts-label" htmlFor="ai-tts-enabled">{uiText("OpenAI text to speech")}</label><div>
+        <button id="ai-tts-enabled" type="button" className="security-switch" role="switch" aria-checked={Boolean(preferences.ttsEnabled)} aria-labelledby="ai-tts-label" aria-describedby="ai-tts-description" disabled={busy||!status} onClick={()=>setPreferences(current=>({...current,ttsEnabled:!current.ttsEnabled}))}><span/></button>
+      </div></div>
+      <p id="ai-tts-description">{uiText("Enable Speak for selected editor blocks across all vaults. Selected text is sent to OpenAI and read by an AI-generated voice. API charges apply.")}</p>
+      <p>{uiText("Speech model:")} <code>{speechModel}</code></p>
       <fieldset className="ai-personas"><legend>AI Persona</legend><p>Choose the default voice for generated prose. Shared across vaults. Models and factual standards stay independent.</p>
       {aiPersonas.map(persona=><label className="ai-persona-card" key={persona.id}><input type="radio" name="ai-persona" value={persona.id} checked={(preferences.personaId??defaultPersonaId)===persona.id} disabled={busy||!status} onChange={()=>setPreferences(current=>({...current,personaId:persona.id as BuiltinPersonaId}))}/><span><strong>{persona.name}</strong><span>{persona.description}</span><small>“{persona.sample}”</small></span></label>)}
       </fieldset>

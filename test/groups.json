@@ -70,7 +70,8 @@
     "test/calendar-settings.test.mjs",
     "test/calendar-liturgical-overlay.test.mjs",
     "test/review-centre-ui.test.mjs",
-    "test/entity-property-list.test.mjs"
+    "test/entity-property-list.test.mjs",
+    "test/smart-collection-preview.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",
@@ -158,6 +159,7 @@
     "test/property-typed-api.test.mjs",
     "test/property-reference-options.test.mjs",
     "test/source-provenance-stability.test.mjs",
-    "test/property-backups.test.mjs"
+    "test/property-backups.test.mjs",
+    "test/smart-collections.test.mjs"
   ]
 }

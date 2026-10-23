@@ -81,7 +81,7 @@
   border: 1px solid var(--control-border, #ddd);
   border-radius: 10px;
   background: var(--surface-raised, #fff);
-  box-shadow: 0 8px 24px #0002;
+  box-shadow: var(--shadow-menu);
 }
 .summary-help-content p {
   font-size: 12px;
@@ -219,7 +219,7 @@
   border-color: transparent;
 }
 .equation-editor-shell:focus-within {
-  border-color: color-mix(in srgb,var(--math-editor-border) 65%,var(--text-muted));
+  border-color: var(--focus-ring);
 }
 .math-block-source {
   margin: 2px 0 6px;
@@ -1390,7 +1390,7 @@
   border: 1px solid light-dark(#e4e4e4, var(--line));
   border-radius: 9px;
   background: var(--surface-popover);
-  box-shadow: 0 12px 40px #0002;
+  box-shadow: var(--shadow-menu);
   white-space: normal;
 }
 .page-tools-popover h2 {

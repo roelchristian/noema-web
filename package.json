@@ -24,7 +24,7 @@
     "check:styles": "node scripts/check-styles.mjs",
     "test:design": "node --import tsx scripts/check-design-browser.mjs",
     "test:dark-mode": "node --import tsx scripts/check-dark-mode-browser.mjs",
-    "test:appearance-bootstrap": "node scripts/check-appearance-bootstrap-browser.mjs"
+    "test:appearance-bootstrap": "node scripts/check-appearance-bootstrap-browser.mjs && node --import tsx scripts/check-appearance-runtime-browser.mjs"
   },
   "dependencies": {
     "js-tiktoken": "^1.0.21",

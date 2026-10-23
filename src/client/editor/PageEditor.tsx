@@ -10,7 +10,7 @@ import type {PageHeading} from './page-headings';
 import {TitleText,titleHasMath} from '../components/TitleText';
 import {CitationPresentationContext,NoteReferences} from '../sources/CitationPresentation';
 import {noteCitations,type CitationStyle} from '../../shared/citations';
-import {pageAIProvenance} from '../../shared/page-ai-status';
+import {PageProvenanceDisclosure} from '../components/PageProvenance';
 import {ReadOnlyPageBlocks} from './ReadOnlyPageBlocks';
 import { smartQuoteTitle } from './smart-quotes';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -37,7 +37,6 @@ function editedLabel(updatedAt: string, now: number): string {
   return uiText('Edited {time}',{time:new Intl.RelativeTimeFormat(getLocale(), {numeric:'always'}).format(-Math.floor(seconds/size),unit)});
 }
 export function PageEditor({hideTitle=false,focusNewBody=false,onCreationFocusConsumed,tocVisible=true,headings=[],subjectsSaving=false,citationStyle='references',pages,onOpenPage,page, entities, onChange, onOpenEntity, onCreateEntity, onSave, onIdentify, onAddAlias, saveStatus}: Props) {
-  const provenance=pageAIProvenance(page);
   const priorCitations=useRef<ReturnType<typeof noteCitations>>(new Map());
   const citationEntries=useMemo(()=>{
     const entries=noteCitations(page.blocks),old=priorCitations.current;
@@ -122,11 +121,11 @@ export function PageEditor({hideTitle=false,focusNewBody=false,onCreationFocusCo
       {saveStatus === 'saving' || saveStatus === 'identifying' ? <span className="scan-spinner" aria-hidden="true"/> : <Icon name={saveStatus === 'saved' ? 'recent' : saveStatus === 'error' ? 'alert' : 'recent'}/>}
       <span role="status" aria-live="polite" aria-atomic="true">{saveStatus === 'saved' ? <time dateTime={page.updated_at} title={new Date(page.updated_at).toLocaleString(getLocale())}>{status}</time> : status}</span>
       {saveStatus === 'error' && <button type="button" onClick={onSave}>{uiText("Retry")}</button>}
-      <span className="editor-entity-counts" role="group" aria-label={uiText("Page statistics")}>
+      <div className="editor-entity-counts" role="group" aria-label={uiText("Page statistics")}>
         <span className="editor-entity-count" title={uiText("Distinct entities on this page")}><Icon name="knowledge"/><span>{entityCounts} {entityCounts === 1 ? uiText("entity") : uiText("entities")}</span></span>
         <span className="editor-word-count" title={uiText("Words in note text")}>{wordCount.toLocaleString(getLocale())} {wordCount === 1 ? uiText("word") : uiText("words")}</span>
-        <span className="page-ai-provenance" aria-label={uiText("AI provenance: ") + uiText(provenance.label)} title={uiText(provenance.description)}><Icon name={provenance.assisted ? 'sparkles' : 'page'}/><span>{uiText(provenance.label)}</span></span>
-      </span>
+        <PageProvenanceDisclosure page={page}/>
+      </div>
     </footer>
   </article></CitationPresentationContext.Provider>;
 }

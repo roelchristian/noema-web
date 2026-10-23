@@ -211,9 +211,11 @@ export class VaultBackups {
     const ref=(map:Map<string,string>,value:unknown)=>{if(typeof value!=='string'||!map.has(value))throw invalid();return map.get(value)!;};
     const subtype=(value:unknown,type:EntityType)=>{
       if(typeof value!=='string')throw invalid();
+      // A legacy custom identity may predate a newly introduced builtin ID.
+      // Its archived ownership takes precedence; never reinterpret it as native.
+      if(subtypeTypes.has(value)){if(subtypeTypes.get(value)!==type)throw invalid();return ref(subtypeIds,value);}
       const builtin=builtinSubtypes.find(item=>item.id===value&&item.type===type);if(builtin)return builtin.id;
-      if(subtypeTypes.get(value)!==type)throw invalid();
-      return ref(subtypeIds,value);
+      throw invalid();
     };
     const item=(row:Row,allowFolder=false)=>{
       const maps:{[key:string]:Map<string,string>}={page:pageIds,entity:entityIds,...(allowFolder?{folder:folderIds}:{})};
@@ -250,7 +252,7 @@ export class VaultBackups {
         for(const row of rows.entity_type_properties)insert('entity_type_properties',{vault_id:vault,type:entityType(row),name:name(row,'name')});
         for(const row of rows.entity_subtype_properties) {
           const id=name(row,'subtype_id');
-          const type=builtinSubtypes.find(item=>item.id===id)?.type ?? subtypeTypes.get(id);
+          const type=subtypeTypes.get(id) ?? builtinSubtypes.find(item=>item.id===id)?.type;
           if(!entityTypes.includes(type as EntityType))throw invalid();
           insert('entity_subtype_properties',{vault_id:vault,subtype_id:subtype(id,type as EntityType),name:name(row,'name')});
         }
@@ -375,7 +377,7 @@ export class VaultBackups {
           const definition=parsed;
           if(definition.id!==oldId||importedDefinitions.has(oldId))throw invalid();
           const scope=definition.scope;
-          const remapped:PropertyDefinition={...definition,scope:scope.kind==='subtype'?{...scope,subtypeId:subtype(scope.subtypeId,scope.type)}:scope,allowedTargetSubtypes:definition.allowedTargetSubtypes.map(id=>{const targetType=builtinSubtypes.find(item=>item.id===id)?.type??subtypeTypes.get(id);if(!entityTypes.includes(targetType as EntityType))throw invalid();return subtype(id,targetType as EntityType);})};
+          const remapped:PropertyDefinition={...definition,scope:scope.kind==='subtype'?{...scope,subtypeId:subtype(scope.subtypeId,scope.type)}:scope,allowedTargetSubtypes:definition.allowedTargetSubtypes.map(id=>{const targetType=subtypeTypes.get(id)??builtinSubtypes.find(item=>item.id===id)?.type;if(!entityTypes.includes(targetType as EntityType))throw invalid();return subtype(id,targetType as EntityType);})};
           const builtin=[...builtinPropertyDefinitions,...recommendedPropertyDefinitions].find(item=>item.id===oldId);
           if(definition.origin==='builtin'&&!builtin||oldId.startsWith('builtin:')&&!builtin)throw invalid();
           if(builtin&&(definition.origin!==builtin.origin||definition.editable!==builtin.editable||JSON.stringify(definition.validation)!==JSON.stringify(builtin.validation)||definition.key!==builtin.key||definition.legacyName!==builtin.legacyName||JSON.stringify(definition.scope)!==JSON.stringify(builtin.scope)||definition.valueKind!==builtin.valueKind||definition.cardinality!==builtin.cardinality||JSON.stringify(definition.allowedTargetTypes)!==JSON.stringify(builtin.allowedTargetTypes)||JSON.stringify(definition.allowedTargetSubtypes)!==JSON.stringify(builtin.allowedTargetSubtypes)))throw invalid();

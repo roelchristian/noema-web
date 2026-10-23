@@ -46,7 +46,10 @@ test('Knowledge reclassification retains exact outgoing and archived incoming re
 test('separate stable definitions sharing a legacy name keep cardinality isolated and bindings on restore',async t=>{
  const {store,knowledge,definitions,backups}=fixture(t);
  const main=definitions.create('default',{name:'Review Shared Fact',key:'review_shared_main',scope:{kind:'main_type',type:'concept'},valueKind:'integer',cardinality:'one'});
- const scoped=definitions.create('default',{name:'Review Shared Fact',key:'review_shared_scoped',scope:{kind:'subtype',type:'concept',subtypeId:'concept:mathematics'},valueKind:'short_text',cardinality:'many'});
+ // Historical overlapping stored names remain readable; new creation now rejects this ambiguous discovery shape.
+ const scoped={...main,id:'legacy-fixture:shared-scoped',key:'review_shared_scoped',scope:{kind:'subtype',type:'concept',subtypeId:'concept:mathematics'},valueKind:'short_text',cardinality:'many'};
+ store.run('INSERT INTO property_definitions (vault_id,id,definition_json) VALUES (?,?,?)','default',scoped.id,JSON.stringify(scoped));
+ store.run('INSERT INTO entity_subtype_properties (vault_id,subtype_id,name) VALUES (?,?,?)','default','concept:mathematics',scoped.legacyName);
  const entity=knowledge.create('default',{name:'Review distinct definitions',type:'concept',subtypes:['concept:mathematics']});
  const scalar=knowledge.property('default',entity.id,{name:main.legacyName,value:'0012',definition_id:main.id}).properties[0];
  knowledge.property('default',entity.id,{name:scoped.legacyName,value:'authored text',definition_id:scoped.id});

@@ -1,3 +1,5 @@
+import {useContext} from 'react';
+import {ReviewDestination} from '../review/review-destination';
 import {t as uiText} from '../i18n';
 import {domainPath} from '../../shared/domains';
 import {DomainPicker, domainBreadcrumb} from '../knowledge/DomainPicker';
@@ -26,6 +28,9 @@ function ReviewConfirmation({feedback,inline=false}:{feedback:ReviewFeedback;inl
 
 type Decision = 'accepted' | 'rejected';
 export function EntityScanReview({page,scan:savedScan,onScan,onFlush,onReview,onOpenChange,disabled,entities}:{onOpenChange?:(open:boolean)=>void;entities:Entity[];page:Page;scan:EntityScan|null;onScan:(scan:EntityScan)=>void;onFlush:()=>Promise<Page|null>;onReview:(scanId:string,id:string|string[],decision:Decision,edits?:EntitySuggestionEdit[])=>Promise<EntityScan>;disabled:boolean}) {
+  const destination=useContext(ReviewDestination);
+  const openedFromCentre=useRef<string|null>(null);
+  useEffect(()=>{if(savedScan&&destination?.category==='scan'&&destination.originId===page.id&&destination.runId===savedScan?.id&&openedFromCentre.current!==savedScan.id){openedFromCentre.current=savedScan.id;setFilter('pending');setOpen(true);}},[destination,savedScan?.id,page.id]);
   const {schema}=useEntitySchema(page.vault_id);
   const [preview,setPreview]=useState<EntityScan|null>(null);
   const [reviewingBatch,setReviewingBatch]=useState(false);

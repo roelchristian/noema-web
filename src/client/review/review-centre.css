@@ -1,0 +1,27 @@
+.review-centre { max-width: 1100px; margin: 0 auto; padding: 32px; color: var(--text); }
+.review-centre > header,.review-items article { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.review-centre h1:focus { outline: none; }
+.review-centre h1 { margin: 4px 0 12px; }
+.review-centre h2 { font-size: 1.1rem; margin: 8px 0; overflow-wrap: anywhere; }
+.review-centre p { line-height: 1.6; }
+.review-eyebrow,.review-meta { color: var(--text-muted); font-size: .85rem; }
+.review-eyebrow { margin: 0; }
+.review-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0; }
+.review-centre button,.review-coverage summary { min-height: 44px; padding: 10px 16px; }
+.review-filters button { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); }
+.review-filters button[aria-pressed="true"] { background: var(--surface-hover); font-weight: 600; }
+.review-filters span { margin-left: 8px; }
+.review-items { list-style: none; padding: 0; margin: 0; }
+.review-items li { border-top: 1px solid var(--line); padding: 20px 0; }
+.review-items article > div { min-width: 0; }
+.review-items button { flex-shrink: 0; }
+.review-empty { border: 1px solid var(--line); border-radius: 12px; padding: 24px; margin: 16px 0; }
+.review-coverage { margin-top: 32px; border-top: 1px solid var(--line); padding-top: 12px; color: var(--text-muted); }
+.review-return { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; border-bottom: 1px solid var(--line); }
+.review-return button { min-height: 44px; }
+@media (max-width: 750px) {
+ .review-centre { padding: 20px 16px; }
+ .review-centre > header,.review-items article { align-items: stretch; flex-direction: column; gap: 12px; }
+ .review-filters { flex-direction: column; }
+ .review-return { flex-wrap: wrap; padding: 8px 16px; }
+}

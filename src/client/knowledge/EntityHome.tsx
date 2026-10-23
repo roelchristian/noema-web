@@ -1,3 +1,5 @@
+import {useContext} from 'react';
+import {ReviewDestination} from '../review/review-destination';
 import {TemporalPropertyValue} from './TemporalPropertyValue';
 import {Fragment, useEffect, useRef, useState, type ReactNode} from 'react';
 import {entityHomeTemplate, type EntityHomeSection} from './entity-home-template';
@@ -43,14 +45,16 @@ const tabLabels = {overview:'Overview', connections:'Connections', mentions:'Men
 
 /** A destination for a knowledge subject, backed by the same record and drafts as its inspector. */
 export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect, onOpenPage, onOpenMention, onOpenSourcePassage, onUpdated, onError, onClose, pages = [], onCreatePage}: EntityHomeProps) {
+  const reviewDestination=useContext(ReviewDestination);
+  const reviewTab=reviewDestination?.category==='discovery'&&reviewDestination.originId===id?'discovery':null;
   const [entity, setEntity] = useState<EntityDetail | null>(null);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<HomeTab>(() => hasEntityDraft(vaultId, id) ? 'edit' : 'overview');
+  const [tab, setTab] = useState<HomeTab>(() => reviewTab??(hasEntityDraft(vaultId, id) ? 'edit' : 'overview'));
   const [manage, setManage] = useState(false);
   const [exploring, setExploring] = useState(false);
   const current = useRef({vaultId, id}); current.current = {vaultId, id};
   const {schema, error: schemaError} = useEntitySchema(vaultId);
-  useEffect(() => {setEntity(null); setPageError(''); setManage(false); setExploring(false); setTab(hasEntityDraft(vaultId, id) ? 'edit' : 'overview');}, [vaultId, id]);
+  useEffect(() => {setEntity(null); setPageError(''); setManage(false); setExploring(false); setTab(reviewTab??(hasEntityDraft(vaultId, id) ? 'edit' : 'overview'));}, [vaultId, id, reviewTab]);
   useEffect(() => {
     let active = true; setError('');
     void api.entity(vaultId, id).then(value => {if (active) setEntity(value);}).catch(value => {if (active) setError(String(value));});

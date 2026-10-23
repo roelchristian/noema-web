@@ -176,7 +176,7 @@ export function SidebarOrganization({vaultId, data, pages, activePageId, activeF
     <span className="sr-only" role="status">{dropStatus}</span>
     {organizePage && <PageOrganizationDialog page={organizePage} data={data} onMove={(collection,folder,remove)=>onMovePage(organizePage.id,collection,folder,remove)} onClose={()=>setOrganizePage(null)}/>}
     {addFolder && vaultId && <FolderCollectionDialog vaultId={vaultId} data={data} {...addFolder} onChanged={onChanged} onClose={()=>setAddFolder(null)}/>}
-    {edit?.type==='collections'&&vaultId&&<CollectionDialog key={vaultId+':'+(edit.id??'new')} vaultId={vaultId} data={data} collection={data.collections.find(c=>c.id===edit.id)} onChanged={onChanged} onClose={()=>setEdit(null)}/>}
+    {edit?.type==='collections'&&vaultId&&<CollectionDialog key={vaultId+':'+(edit.id??'new')} vaultId={vaultId} data={data} pages={pages} collection={data.collections.find(c=>c.id===edit.id)} onChanged={onChanged} onClose={()=>setEdit(null)}/>}
     {edit?.type==='folders' && <NameDialog title={(edit.id ? uiText("Rename ") : uiText("New ")) + uiText("folder")} value={edit.name} onClose={() => setEdit(null)} onSave={async name => {
       const updated = await api.organize(vaultId!, edit.type + (edit.id ? '/' + edit.id : ''), {name, ...(edit.type === 'folders' ? {parent_id: edit.parent || null} : {})}, edit.id ? 'PUT' : 'POST');
       onChanged(updated);

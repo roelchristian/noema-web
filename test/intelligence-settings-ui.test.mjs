@@ -4,11 +4,12 @@ import {act,createElement} from 'react';
 import {createRoot} from 'react-dom/client';
 import {IntelligenceSettings} from '../src/client/settings/IntelligenceSettings.tsx';
 import {api} from '../src/client/api.ts';
-import {defaultIntelligencePreferences,defaultPageEnrichmentPreferences} from '../src/shared/intelligence.ts';
+import {defaultIntelligencePreferences,defaultPageEnrichmentPreferences,openAISpeechVoices} from '../src/shared/intelligence.ts';
 import {setupDOM} from './helpers/dom.mjs';
 
 test('global speech preference is saved explicitly, refreshes listeners, and survives reopening Settings',async t=>{
   const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));
+  t.mock.method(api,'speechModel',async()=>({ready:true,model:'kokoro-82m-v1.0',missingFiles:[],downloadCommand:'npm run tts:download'}));
   env.defer(()=>act(async()=>root.unmount()));
   const originalStatus=api.intelligence,originalSave=api.saveIntelligencePreferences;
   env.defer(()=>{api.intelligence=originalStatus;api.saveIntelligencePreferences=originalSave;});
@@ -22,48 +23,50 @@ test('global speech preference is saved explicitly, refreshes listeners, and sur
   const saveButton=()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Save AI preferences');
   const save=()=>act(async()=>document.querySelector('.ai-preferences-form').dispatchEvent(new env.dom.window.Event('submit',{bubbles:true,cancelable:true})));
   assert.equal(toggle().getAttribute('aria-checked'),'false','Older saved preferences default to off');
-  assert.equal(voice().value,'marin','Older saved preferences use Marin');
+  assert.equal(voice().value,'puck','Older saved preferences use Puck');
   assert.equal(voice().disabled,false,'Voice can be configured while speech is off');
-  assert.deepEqual([...voice().options].map(option=>option.textContent),['Marin (default)','Cedar','Alloy','Ash','Ballad','Coral','Echo','Sage','Shimmer','Verse']);
+  assert.deepEqual([...voice().options].map(option=>option.textContent),['Puck (default)','Echo','Lewis','Daniel']);
   assert.equal(toggle().closest('details'),null,'Speech is a visible global preference');
   assert.equal(saveButton().disabled,true);
   assert.match(document.querySelector('#ai-tts-description').textContent,/AI-generated voice/);
-  assert.match(document.querySelector('.intelligence-settings').textContent,/Speech model:.*gpt-realtime-2.1-mini/);
-  assert.match(document.querySelector('#ai-tts-voice-description').textContent,/first generation.*API charges/);
-  await act(async()=>{voice().value='cedar';voice().dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
+  assert.match(document.querySelector('.intelligence-settings').textContent,/Speech model:.*kokoro-82m-v1.0/);
+  assert.match(document.querySelector('#ai-tts-voice-description').textContent,/generated locally/);
+  await act(async()=>{voice().value='echo';voice().dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
   assert.equal(saveButton().disabled,false,'A voice-only change enables saving');assert.equal(events,0);
   await act(async()=>toggle().click());
   assert.equal(toggle().getAttribute('aria-checked'),'true');assert.equal(saveButton().disabled,false);
   assert.equal(events,0,'Editor preference refresh waits for a successful save');
   await save();
-  assert.equal(requests[0].ttsEnabled,true);assert.equal(requests[0].ttsVoice,'cedar');assert.equal(events,1);assert.equal(saveButton().disabled,true);
+  assert.equal(requests[0].ttsEnabled,true);assert.equal(requests[0].ttsVoice,'echo');assert.equal(events,1);assert.equal(saveButton().disabled,true);
   await act(async()=>root.render(createElement(IntelligenceSettings,{key:'reopened'})));
   assert.equal(toggle().getAttribute('aria-checked'),'true');
-  assert.equal(voice().value,'cedar');
+  assert.equal(voice().value,'echo');
   await act(async()=>toggle().click());await save();
   assert.equal(requests[1].ttsEnabled,false);assert.equal(events,2);
 });
 
 test('speech voice changes are saved while speech is off and editor listeners refresh only after save succeeds',async t=>{
   const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));
+  t.mock.method(api,'speechModel',async()=>({ready:true,model:'kokoro-82m-v1.0',missingFiles:[],downloadCommand:'npm run tts:download'}));
   env.defer(()=>act(async()=>root.unmount()));
-  let saved={...defaultIntelligencePreferences,manualRequestsPerMinute:5,ttsEnabled:false,ttsVoice:'marin'},complete,events=0;
+  let saved={...defaultIntelligencePreferences,manualRequestsPerMinute:5,ttsEnabled:false,ttsVoice:'puck'},complete,events=0;
   t.mock.method(api,'intelligence',async()=>({...saved,configured:false,expiresAt:null}));
   t.mock.method(api,'saveIntelligencePreferences',value=>new Promise(resolve=>{complete=()=>{saved={...value};resolve(saved);};}));
   window.addEventListener('noema:tts-preferences',()=>events++);
   await act(async()=>root.render(createElement(IntelligenceSettings)));
   const voice=()=>document.querySelector('#ai-tts-voice');
-  await act(async()=>{voice().value='cedar';voice().dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
+  await act(async()=>{voice().value='echo';voice().dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
   await act(async()=>document.querySelector('.ai-preferences-form').dispatchEvent(new env.dom.window.Event('submit',{bubbles:true,cancelable:true})));
   assert.equal(voice().disabled,true,'Voice selection waits during a pending save');assert.equal(events,0);
   await act(async()=>complete());
-  assert.equal(saved.ttsVoice,'cedar');assert.equal(saved.ttsEnabled,false);assert.equal(events,1);assert.equal(voice().disabled,false);
+  assert.equal(saved.ttsVoice,'echo');assert.equal(saved.ttsEnabled,false);assert.equal(events,1);assert.equal(voice().disabled,false);
   await act(async()=>root.render(createElement(IntelligenceSettings,{key:'reopened'})));
-  assert.equal(voice().value,'cedar');assert.equal(document.querySelector('#ai-tts-enabled').getAttribute('aria-checked'),'false');
+  assert.equal(voice().value,'echo');assert.equal(document.querySelector('#ai-tts-enabled').getAttribute('aria-checked'),'false');
 });
 
 test('failed speech preference saves keep changes pending without refreshing editor listeners',async t=>{
   const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));
+  t.mock.method(api,'speechModel',async()=>({ready:true,model:'kokoro-82m-v1.0',missingFiles:[],downloadCommand:'npm run tts:download'}));
   env.defer(()=>act(async()=>root.unmount()));
   const originalStatus=api.intelligence,originalSave=api.saveIntelligencePreferences;
   env.defer(()=>{api.intelligence=originalStatus;api.saveIntelligencePreferences=originalSave;});
@@ -71,9 +74,93 @@ test('failed speech preference saves keep changes pending without refreshing edi
   api.saveIntelligencePreferences=async()=>{throw new Error('Could not save preferences.');};
   let events=0;window.addEventListener('noema:tts-preferences',()=>events++);
   await act(async()=>root.render(createElement(IntelligenceSettings)));
-  await act(async()=>{const voice=document.querySelector('#ai-tts-voice');voice.value='cedar';voice.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
+  await act(async()=>{const voice=document.querySelector('#ai-tts-voice');voice.value='echo';voice.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
   await act(async()=>document.querySelector('.ai-preferences-form').dispatchEvent(new env.dom.window.Event('submit',{bubbles:true,cancelable:true})));
-  assert.equal(events,0);assert.equal(document.querySelector('#ai-tts-enabled').getAttribute('aria-checked'),'false');assert.equal(document.querySelector('#ai-tts-voice').value,'cedar');
-  assert.match(document.querySelector('[role=status]').textContent,/Could not save preferences/);
+  assert.equal(events,0);assert.equal(document.querySelector('#ai-tts-enabled').getAttribute('aria-checked'),'false');assert.equal(document.querySelector('#ai-tts-voice').value,'echo');
+  assert.match([...document.querySelectorAll('[role=status]')].at(-1).textContent,/Could not save preferences/);
   assert.equal([...document.querySelectorAll('button')].find(button=>button.textContent==='Save AI preferences').disabled,false);
+});
+
+test('missing Kokoro model requires explicit download and refreshes availability after completion',async t=>{
+  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));
+  env.defer(()=>act(async()=>root.unmount()));
+  const missing={ready:false,model:'kokoro-82m-v1.0',missingFiles:['kokoro-v1.0.onnx','voices-v1.0.bin'],downloadCommand:'npm run tts:download'};
+  let installed=false,downloads=0,checks=0,finish;
+  t.mock.method(api,'intelligence',async()=>({...defaultIntelligencePreferences,configured:false,expiresAt:null}));
+  t.mock.method(api,'speechModel',async()=>{checks++;return installed?{...missing,ready:true,missingFiles:[]}:missing;});
+  t.mock.method(api,'downloadSpeechModel',()=>{downloads++;return new Promise(resolve=>{finish=()=>{installed=true;resolve({...missing,ready:true,missingFiles:[]});};});});
+  await act(async()=>root.render(createElement(IntelligenceSettings)));
+  assert.match(document.querySelector('#ai-tts-model-status').textContent,/Download the Kokoro model/);
+  assert.match(document.querySelector('.local-speech-model').textContent,/kokoro-v1.0.onnx/);
+  assert.match(document.querySelector('#ai-tts-description').textContent,/runs locally on your CPU.*No API key or API charges/);
+  await act(async()=>document.querySelector('#ai-tts-enabled').click());
+  assert.equal(downloads,0,'Turning on speech never downloads model files');
+  const downloadButton=[...document.querySelectorAll('button')].find(button=>button.textContent==='Download Kokoro model');
+  await act(async()=>downloadButton.click());
+  assert.equal(downloads,1);assert.equal(downloadButton.disabled,true);
+  assert.match(document.querySelector('#ai-tts-model-status').textContent,/Preparing/);
+  await act(async()=>finish());
+  assert.equal(checks,2,'The UI checks availability again after model setup');
+  assert.match(document.querySelector('#ai-tts-model-status').textContent,/ready for local speech/);
+  assert.equal([...document.querySelectorAll('button')].some(button=>button.textContent==='Download Kokoro model'),false);
+});
+
+test('Kokoro download failures remain actionable and can be retried',async t=>{
+  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));
+  env.defer(()=>act(async()=>root.unmount()));
+  const missing={ready:false,model:'kokoro-82m-v1.0',missingFiles:['voices-v1.0.bin'],downloadCommand:'npm run tts:download'};
+  let downloads=0;
+  t.mock.method(api,'intelligence',async()=>({...defaultIntelligencePreferences,configured:false,expiresAt:null}));
+  t.mock.method(api,'speechModel',async()=>missing);
+  t.mock.method(api,'downloadSpeechModel',async()=>{downloads++;throw new Error('Download interrupted. Check your connection.');});
+  await act(async()=>root.render(createElement(IntelligenceSettings)));
+  const download=()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Download Kokoro model');
+  await act(async()=>download().click());
+  assert.match(document.querySelector('[role=alert]').textContent,/Download interrupted/);
+  assert.equal(download().disabled,false);
+  assert.match(document.querySelector('.local-speech-model code').textContent,/tts:download/);
+  await act(async()=>download().click());assert.equal(downloads,2);
+  await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Retry model check').click());
+  assert.equal(document.querySelector('[role=alert]'),null);
+  assert.match(document.querySelector('#ai-tts-model-status').textContent,/Download the Kokoro model/);
+});
+
+test('a failed Kokoro availability check can be retried without downloading',async t=>{
+  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));
+  env.defer(()=>act(async()=>root.unmount()));
+  let checks=0,downloads=0;
+  t.mock.method(api,'intelligence',async()=>({...defaultIntelligencePreferences,configured:false,expiresAt:null}));
+  t.mock.method(api,'speechModel',async()=>{if(++checks===1)throw new Error('Model storage unavailable.');return {ready:true,model:'kokoro-82m-v1.0',missingFiles:[],downloadCommand:''};});
+  t.mock.method(api,'downloadSpeechModel',async()=>{downloads++;throw new Error('Unexpected download');});
+  await act(async()=>root.render(createElement(IntelligenceSettings)));
+  assert.match(document.querySelector('[role=alert]').textContent,/Model storage unavailable/);
+  await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Retry model check').click());
+  assert.equal(downloads,0);assert.equal(checks,2);assert.match(document.querySelector('#ai-tts-model-status').textContent,/ready for local speech/);
+});
+
+
+test('speech defaults to Kokoro and OpenAI requires an explicit saved provider choice',async t=>{
+  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));
+  env.defer(()=>act(async()=>root.unmount()));
+  let saved={...defaultIntelligencePreferences,ttsEnabled:true,ttsVoice:'echo'},requests=[],events=0;
+  t.mock.method(api,'intelligence',async()=>({...saved,configured:false,expiresAt:null}));
+  t.mock.method(api,'speechModel',async()=>({ready:false,model:'kokoro-82m-v1.0',missingFiles:['model'],downloadCommand:'npm run tts:download'}));
+  t.mock.method(api,'saveIntelligencePreferences',async value=>{requests.push({...value});saved={...value};return saved;});
+  window.addEventListener('noema:tts-preferences',()=>events++);
+  await act(async()=>root.render(createElement(IntelligenceSettings)));
+  const provider=()=>document.querySelector('#ai-tts-provider'),voice=()=>document.querySelector('#ai-tts-voice');
+  const choose=async value=>act(async()=>{provider().value=value;provider().dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
+  assert.equal(provider().value,'kokoro');assert.ok(document.querySelector('.local-speech-model'));
+  await choose('openai');
+  assert.equal(voice().value,'marin');assert.deepEqual([...voice().options].map(option=>option.value),[...openAISpeechVoices]);
+  assert.equal(document.querySelector('.local-speech-model'),null);
+  assert.match(document.querySelector('#ai-tts-description').textContent,/Selected text is sent to OpenAI.*API key.*API charges/);
+  assert.match(document.querySelector('[role=note]').textContent,/Save an OpenAI API key/);
+  assert.equal(events,0);assert.equal(requests.length,0,'Choosing OpenAI does not activate it before save');
+  await act(async()=>{voice().value='cedar';voice().dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
+  await act(async()=>document.querySelector('.ai-preferences-form').dispatchEvent(new env.dom.window.Event('submit',{bubbles:true,cancelable:true})));
+  assert.equal(requests[0].ttsProvider,'openai');assert.equal(requests[0].ttsVoice,'cedar');assert.equal(events,1);
+  await act(async()=>root.render(createElement(IntelligenceSettings,{key:'reopened'})));
+  assert.equal(provider().value,'openai');assert.equal(voice().value,'cedar');
+  await choose('kokoro');assert.equal(voice().value,'puck');assert.ok(document.querySelector('.local-speech-model'));
 });

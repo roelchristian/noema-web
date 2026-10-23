@@ -1,3 +1,4 @@
+# Local application data, including downloaded Kokoro model weights and voices.
 data/
 node_modules/
 .DS_Store

@@ -1,8 +1,9 @@
-import type {SpeechVoice} from '../shared/intelligence';
+import type {SpeechProvider,SpeechVoice} from '../shared/intelligence';
 import {cleanSpeechText} from '../shared/speech-text';
 import type {EditorReviewText,EditorReviewSuggestion} from '../shared/editor-review';
 import type { Organization, Entity, EntityDetail, EntityInput, PropertyInput, RelationshipInput, Page, PageInput, PageSummary, Vault, TrashedPage } from '../shared/domain';
 export type PropertyProposalPreview=import('../shared/property-provenance').PropertyProposal & {stale:boolean;staleReason:string|null;fingerprint:string;conflicts:import('../shared/domain').Property[];currentName:string;definition?:import('../shared/property-definitions').PropertyDefinition;sourceName?:string};
+export interface SpeechModelStatus {ready:boolean;model:string;missingFiles:string[];downloadCommand:string}
 export class ApiError extends Error { constructor(public status: number,message: string){super(message);} }
 export async function request<T>(route: string, method='GET', body?: unknown, vaultId?: string, signal?: AbortSignal): Promise<T> {
   const response=await fetch('/api/'+route,{method,signal,headers:{'X-Noema-Request':'1',...(body!==undefined?{'Content-Type':'application/json'}:{}),...(vaultId?{'X-Vault-Id':vaultId}:{})},body:body!==undefined?JSON.stringify(body):undefined});
@@ -18,9 +19,9 @@ export async function fetchClipboardImage(vault: string, url: string): Promise<F
   const blob = await response.blob();
   return new File([blob], 'pasted-image', {type:blob.type});
 }
-export async function createSpeech(vaultId:string,text:string,signal?:AbortSignal,pageId?:string,voice?:SpeechVoice):Promise<Blob> {
+export async function createSpeech(vaultId:string,text:string,signal?:AbortSignal,pageId?:string,voice?:SpeechVoice,provider?:SpeechProvider):Promise<Blob> {
   try {
-    const response=await fetch('/api/intelligence/speech',{method:'POST',signal,headers:{'X-Noema-Request':'1','X-Vault-Id':vaultId,'Content-Type':'application/json'},body:JSON.stringify({text:cleanSpeechText(text),...(pageId?{pageId}:{}),...(voice?{voice}:{})})});
+    const response=await fetch('/api/intelligence/speech',{method:'POST',signal,headers:{'X-Noema-Request':'1','X-Vault-Id':vaultId,'Content-Type':'application/json'},body:JSON.stringify({text:cleanSpeechText(text),...(pageId?{pageId}:{}),...(voice?{voice}:{}),...(provider?{provider}:{})})});
     if(!response.ok){const result=await response.json();throw new ApiError(response.status,result.error||'Could not generate speech.');}
     return await response.blob();
   } finally {if(typeof window!=='undefined')window.dispatchEvent(new Event('noema:ai-activity'));}
@@ -117,6 +118,8 @@ export const api={
     if(options)for(const [key,value] of Object.entries(options))if(value!==undefined)query.set(key,typeof value==='boolean'?(value?'1':'0'):String(value));
     return request<import('../shared/intelligence').AIActivityDebug>('intelligence/activity/'+encodeURIComponent(id)+(query.size?'?'+query:''),'GET',undefined,undefined,signal);
   },
+  speechModel:()=>request<SpeechModelStatus>('intelligence/speech/model'),
+  downloadSpeechModel:()=>request<SpeechModelStatus>('intelligence/speech/model','POST',{}),
   intelligence:()=>request<import('../shared/domain').IntelligenceStatus>('intelligence'),
   saveIntelligence:(apiKey:string,days:number)=>request<import('../shared/domain').IntelligenceStatus>('intelligence','PUT',{apiKey,days}),
   saveIntelligencePreferences:(preferences:import('../shared/intelligence').IntelligenceConfiguration)=>request<import('../shared/intelligence').IntelligenceConfiguration>('intelligence/preferences','PUT',preferences),

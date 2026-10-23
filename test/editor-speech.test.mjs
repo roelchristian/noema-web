@@ -70,9 +70,9 @@ test('speech chunks preserve all trimmed text, readable boundaries and Unicode p
 
 async function speechFixture(t){
   const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));
-  let hook,enabled=true,voice='marin',sequence=0;
+  let hook,enabled=true,voice='puck',provider='kokoro',sequence=0;
   const requests=[],created=[],revoked=[];
-  t.mock.method(api,'intelligence',async()=>({ttsEnabled:enabled,ttsVoice:voice}));
+  t.mock.method(api,'intelligence',async()=>({ttsEnabled:enabled,ttsVoice:voice,ttsProvider:provider}));
   t.mock.method(globalThis,'fetch',async(route,options)=>{assert.equal(route,'/api/intelligence/speech');let resolve;const promise=new Promise(done=>{resolve=done;});requests.push({options,resolve});return promise;});
   t.mock.method(URL,'createObjectURL',blob=>{created.push(blob);return 'blob:speech-'+(++sequence);});
   t.mock.method(URL,'revokeObjectURL',url=>revoked.push(url));
@@ -81,7 +81,7 @@ async function speechFixture(t){
   let mounted=true;
   const unmount=async()=>{if(mounted){mounted=false;await act(async()=>root.unmount());}};
   env.defer(unmount);
-  return {env,requests,created,revoked,hook:()=>hook,unmount,externalVoice(value){voice=value;},async setVoice(value){voice=value;await act(async()=>window.dispatchEvent(new Event('noema:tts-preferences')));},async navigate(vault,page){await act(async()=>root.render(createElement(Harness,{vault,page})));},async speak(text){await act(async()=>hook.speak(text));},async resolve(index,response=wavResponse()){await act(async()=>requests[index].resolve(response));},async toggle(value){enabled=value;await act(async()=>window.dispatchEvent(new Event('noema:tts-preferences')));}};
+  return {env,requests,created,revoked,hook:()=>hook,unmount,externalVoice(value){voice=value;},externalProvider(value,nextVoice){provider=value;voice=nextVoice;},async setProvider(value,nextVoice){provider=value;voice=nextVoice;await act(async()=>window.dispatchEvent(new Event('noema:tts-preferences')));},async setVoice(value){voice=value;await act(async()=>window.dispatchEvent(new Event('noema:tts-preferences')));},async navigate(vault,page){await act(async()=>root.render(createElement(Harness,{vault,page})));},async speak(text){await act(async()=>hook.speak(text));},async resolve(index,response=wavResponse()){await act(async()=>requests[index].resolve(response));},async toggle(value){enabled=value;await act(async()=>window.dispatchEvent(new Event('noema:tts-preferences')));}};
 }
 
 test('speech assembles every selection chunk before playback and exposes a complete download without another request',async t=>{
@@ -130,21 +130,21 @@ test('speech payloads exclude reference markers before leaving the client',async
 
 test('saved voice changes stop old playback and pin every chunk to the selected voice',async t=>{
   const f=await speechFixture(t);await f.speak('First');
-  assert.equal(JSON.parse(f.requests[0].options.body).voice,'marin');await f.resolve(0);
-  await f.setVoice('cedar');assert.equal(document.querySelector('audio'),null);assert.deepEqual(f.revoked,['blob:speech-1']);
-  await f.speak('a'.repeat(5000));assert.equal(JSON.parse(f.requests[1].options.body).voice,'cedar');
-  await f.resolve(1);assert.equal(JSON.parse(f.requests[2].options.body).voice,'cedar');await f.resolve(2);
+  assert.equal(JSON.parse(f.requests[0].options.body).voice,'puck');await f.resolve(0);
+  await f.setVoice('echo');assert.equal(document.querySelector('audio'),null);assert.deepEqual(f.revoked,['blob:speech-1']);
+  await f.speak('a'.repeat(5000));assert.equal(JSON.parse(f.requests[1].options.body).voice,'echo');
+  await f.resolve(1);assert.equal(JSON.parse(f.requests[2].options.body).voice,'echo');await f.resolve(2);
   assert.ok(document.querySelector('audio'));
-  await f.speak('Pending');await f.setVoice('marin');assert.equal(f.requests[3].options.signal.aborted,true);
+  await f.speak('Pending');await f.setVoice('puck');assert.equal(f.requests[3].options.signal.aborted,true);
   await f.resolve(3);assert.equal(document.querySelector('audio'),null);
-  await f.speak('Fresh Marin');assert.equal(JSON.parse(f.requests[4].options.body).voice,'marin');
+  await f.speak('Fresh Puck');assert.equal(JSON.parse(f.requests[4].options.body).voice,'puck');
 });
 
 test('a voice changed in another tab is refreshed for the next explicit Speak without retrying generation',async t=>{
-  const f=await speechFixture(t);await f.speak('Selection');f.externalVoice('cedar');
+  const f=await speechFixture(t);await f.speak('Selection');f.externalVoice('echo');
   await f.resolve(0,Response.json({error:'The speech voice changed. Start Speak again.'},{status:409}));
   assert.equal(f.requests.length,1);assert.match(document.querySelector('[role=status]').textContent,/voice changed/);
-  await f.speak('Selection');assert.equal(JSON.parse(f.requests[1].options.body).voice,'cedar');
+  await f.speak('Selection');assert.equal(JSON.parse(f.requests[1].options.body).voice,'echo');
 });
 
 test('unmount aborts requests and releases generated speech URLs',async t=>{
@@ -200,4 +200,25 @@ test('editor block options expose Speak only when globally enabled and speak the
     assert.equal(requests[0].options.signal.aborted,true);
     await open();assert.equal([...document.querySelectorAll('button')].some(button=>button.textContent.startsWith('Speak')),false);
   });
+});
+
+
+test('provider changes cancel pending speech and pin OpenAI voices and provider on every chunk',async t=>{
+  const f=await speechFixture(t);await f.speak('Pending local');
+  assert.equal(JSON.parse(f.requests[0].options.body).provider,'kokoro');
+  await f.setProvider('openai','marin');assert.equal(f.requests[0].options.signal.aborted,true);
+  await f.resolve(0);assert.equal(f.created.length,0);
+  await f.speak('a'.repeat(5000));
+  assert.equal(JSON.parse(f.requests[1].options.body).provider,'openai');assert.equal(JSON.parse(f.requests[1].options.body).voice,'marin');
+  await f.resolve(1);
+  assert.equal(JSON.parse(f.requests[2].options.body).provider,'openai');assert.equal(JSON.parse(f.requests[2].options.body).voice,'marin');
+  await f.resolve(2);assert.ok(document.querySelector('audio'));
+  await f.setProvider('kokoro','puck');assert.equal(document.querySelector('audio'),null);assert.deepEqual(f.revoked,['blob:speech-1']);
+});
+
+test('cross-tab provider changes refresh the next explicit request without retrying',async t=>{
+  const f=await speechFixture(t);await f.speak('Selection');f.externalProvider('openai','cedar');
+  await f.resolve(0,Response.json({error:'The speech provider changed. Start Speak again.'},{status:409}));
+  assert.equal(f.requests.length,1);assert.match(document.querySelector('[role=status]').textContent,/provider changed/);
+  await f.speak('Selection');const body=JSON.parse(f.requests[1].options.body);assert.equal(body.provider,'openai');assert.equal(body.voice,'cedar');
 });

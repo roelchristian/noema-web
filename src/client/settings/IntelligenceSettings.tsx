@@ -9,9 +9,11 @@ import { speechModelFor, speechVoicesFor, defaultSpeechProvider, defaultSpeechVo
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, type SpeechModelStatus } from '../api';
 import type { IntelligenceStatus } from '../../shared/domain';
-export function IntelligenceSettings({vaultId}:{vaultId?:string}={}) {
+export function IntelligenceSettings({vaultId,visibleSection='all',onShowSection}:{vaultId?:string;visibleSection?:'all'|'ai'|'voice';onShowSection?:(section:'ai'|'voice')=>void}={}) {
   const [status,setStatus]=useState<IntelligenceStatus|null>(null),[key,setKey]=useState(''),[days,setDays]=useState(30),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
   const [preferences,setPreferences]=useState<IntelligenceConfiguration>({...defaultIntelligencePreferences,ttsEnabled:false,ttsProvider:defaultSpeechProvider,ttsVoice:defaultSpeechVoiceFor(defaultSpeechProvider),manualRequestsPerMinute:defaultManualRequestsPerMinute,pageEnrichment:{...defaultPageEnrichmentPreferences}});
+  const [geminiConfigured,setGeminiConfigured]=useState<boolean|null>(null);
+  useEffect(()=>{let active=true,revision=0;const refresh=()=>{const current=++revision;void api.geminiCredential().then(value=>{if(active&&current===revision)setGeminiConfigured(value.configured);}).catch(()=>{if(active&&current===revision)setGeminiConfigured(null);});};refresh();window.addEventListener('noema:tts-preferences',refresh);return()=>{active=false;window.removeEventListener('noema:tts-preferences',refresh);};},[]);
   const [localSpeech,setLocalSpeech]=useState<SpeechModelStatus|null>(null),[speechBusy,setSpeechBusy]=useState(false),[speechError,setSpeechError]=useState('');
   useEffect(()=>{let active=true;void api.speechModel().then(value=>{if(active)setLocalSpeech(value);}).catch(error=>{if(active)setSpeechError(error instanceof Error?error.message:'Could not check the local speech model.');});return()=>{active=false;};},[]);
   async function prepareSpeech(download=false) {
@@ -36,10 +38,13 @@ export function IntelligenceSettings({vaultId}:{vaultId?:string}={}) {
   }
   function save(event:FormEvent) {event.preventDefault();const value=key;setKey('');void perform(async()=>setStatus(await api.saveIntelligence(value,days)),'API key saved.');}
   return <section className="settings-section intelligence-settings" aria-labelledby="intelligence-heading">
-    <h3 id="intelligence-heading">{uiText("OpenAI")}</h3>
+    <h3 id="intelligence-heading">{visibleSection==='voice'?uiText("Voice"):uiText("OpenAI")}</h3>
+    <div hidden={visibleSection==='voice'}>
     <p>{uiText("Connect OpenAI for writing and search. Your API key is stored in macOS Keychain and shared across vaults.")}</p>
     <div className="intelligence-status">{status?.configured ? <>{uiText("API key saved · expires") + " "}{new Date(status.expiresAt!).toLocaleString(getLocale())}</> : uiText("No active API key")}{status && <small>{uiText("Model:") + " "}{status.model}{" " + uiText("· Reasoning:") + " "}{status.reasoningEffort}</small>}</div>
-    <form className="ai-preferences-form" onInvalidCapture={event=>{const details=(event.target as HTMLElement).closest('details');if(details)details.open=true;}} onSubmit={event=>{event.preventDefault();void perform(async()=>{const saved=await api.saveIntelligencePreferences(preferences);setStatus(current=>current?{...current,...saved}:current);setPreferences(saved);window.dispatchEvent(new Event('noema:persona-preferences'));window.dispatchEvent(new Event('noema:tts-preferences'));},'AI preferences saved.');}}>
+    </div>
+    <form className="ai-preferences-form" onInvalidCapture={event=>{const target=event.target as HTMLElement,part=target.closest<HTMLElement>('[data-settings-part]')?.dataset.settingsPart;const details=target.closest('details');if(details)details.open=true;if(part&&visibleSection!=='all'&&part!==visibleSection){event.preventDefault();onShowSection?.(part as 'ai'|'voice');requestAnimationFrame(()=>target.focus());}}} onSubmit={event=>{event.preventDefault();void perform(async()=>{const saved=await api.saveIntelligencePreferences(preferences);setStatus(current=>current?{...current,...saved}:current);setPreferences(saved);window.dispatchEvent(new Event('noema:persona-preferences'));window.dispatchEvent(new Event('noema:tts-preferences'));},'AI preferences saved.');}}>
+      <div data-settings-part="voice" hidden={visibleSection==='ai'}>
       <div className="ai-setting-row"><label id="ai-tts-label" htmlFor="ai-tts-enabled">{uiText("Text to speech")}</label><div>
         <button id="ai-tts-enabled" type="button" className="security-switch" role="switch" aria-checked={Boolean(preferences.ttsEnabled)} aria-labelledby="ai-tts-label" aria-describedby="ai-tts-description" disabled={busy||!status} onClick={()=>setPreferences(current=>({...current,ttsEnabled:!current.ttsEnabled}))}><span/></button>
       </div></div>
@@ -49,7 +54,7 @@ export function IntelligenceSettings({vaultId}:{vaultId?:string}={}) {
           <option value="kokoro">Kokoro 82M (default, local)</option><option value="openai">OpenAI (opt in)</option><option value="gemini">Gemini Flash-Lite TTS (opt in)</option>
         </Select>
       </div>
-      {provider==='openai'&&!status?.configured&&<p role="note">{uiText("Save an OpenAI API key below to use OpenAI speech.")}</p>}
+      {provider==='openai'&&!status?.configured&&<p role="note">{uiText("Save an OpenAI API key in AI settings to use OpenAI speech.")}</p>}
       <div className="ai-setting-row"><label htmlFor="ai-tts-voice">{uiText("TTS voice")}</label>
         <Select id="ai-tts-voice" value={preferences.ttsVoice} aria-describedby="ai-tts-voice-description" disabled={busy||!status} onChange={event=>{const voice=event.target.value;if(isSpeechVoice(voice,provider))setPreferences(current=>({...current,ttsVoice:voice}));}}>
           {speechVoicesFor(provider).map(voice=><option key={voice} value={voice}>{voice[0]!.toUpperCase()+voice.slice(1)}{voice===defaultSpeechVoiceFor(provider)?' (default)':''}</option>)}
@@ -63,7 +68,10 @@ export function IntelligenceSettings({vaultId}:{vaultId?:string}={}) {
         {localSpeech&&!localSpeech.ready&&<><p>{uiText("Missing model files:")} {localSpeech.missingFiles.join(', ')}</p><button type="button" className="button" disabled={speechBusy} onClick={()=>void prepareSpeech(true)}>{speechBusy?uiText("Downloading Kokoro model…"):uiText("Download Kokoro model")}</button>{localSpeech.downloadCommand&&<details><summary>{uiText("Manual model setup")}</summary><code>{localSpeech.downloadCommand}</code></details>}</>}
         {speechError&&<><p role="alert">{speechError}</p><button type="button" className="button" disabled={speechBusy} onClick={()=>void prepareSpeech()}>{uiText("Retry model check")}</button></>}
       </div>}
-      <NarrationSettings value={preferences.narration??defaultNarrationPreferences} onChange={narration=>setPreferences(current=>({...current,narration}))} provider={provider} voice={preferences.ttsVoice} vaultId={vaultId} disabled={busy||!status} previewEnabled={!!status?.ttsEnabled&&provider===savedProvider&&preferences.ttsVoice===status.ttsVoice}/>
+      <NarrationSettings value={preferences.narration??defaultNarrationPreferences} onChange={narration=>setPreferences(current=>({...current,narration}))} provider={provider} voice={preferences.ttsVoice} vaultId={vaultId} disabled={busy||!status} previewEnabled={visibleSection!=='ai'&&!!status?.ttsEnabled&&provider===savedProvider&&preferences.ttsVoice===status.ttsVoice}/>
+      {visibleSection==='voice'&&<p className="voice-credential-status">{provider==='kokoro'?'No API key required.':provider==='openai'?(status?.configured?'OpenAI key configured.':'OpenAI key missing.'):(geminiConfigured===null?'Gemini key status unavailable.':geminiConfigured?'Gemini key configured.':'Gemini key missing.')} <button type="button" className="button" onClick={()=>onShowSection?.('ai')}>Manage API keys in AI</button></p>}
+      </div>
+      <div data-settings-part="ai" hidden={visibleSection==='voice'}>
       <fieldset className="ai-personas"><legend>AI Persona</legend><p>Choose the default voice for generated prose. Shared across vaults. Models and factual standards stay independent.</p>
       {aiPersonas.map(persona=><label className="ai-persona-card" key={persona.id}><input type="radio" name="ai-persona" value={persona.id} checked={(preferences.personaId??defaultPersonaId)===persona.id} disabled={busy||!status} onChange={()=>setPreferences(current=>({...current,personaId:persona.id as BuiltinPersonaId}))}/><span><strong>{persona.name}</strong><span>{persona.description}</span><small>“{persona.sample}”</small></span></label>)}
       </fieldset>
@@ -100,8 +108,12 @@ export function IntelligenceSettings({vaultId}:{vaultId?:string}={}) {
       </div>
       <p>{uiText("Shared across vaults. Counts each manual AI request; excludes background tasks.")}</p>
       </details>
-      <div className="intelligence-actions"><button className="button" disabled={busy||!changed}>{uiText("Save AI preferences")}</button></div>
+      </div>
+      {visibleSection!=='all'&&changed&&<p>Saving applies pending AI and Voice preferences together.</p>}
+      <div className="intelligence-actions"><button className="button" disabled={busy||!changed}>{uiText(visibleSection==='voice'?"Save voice preferences":"Save AI preferences")}</button></div>
     </form>
+    <div hidden={visibleSection==='voice'} data-settings-part="ai">
+    <h4>API keys</h4>
     <details className="settings-advanced ai-key-settings" key={String(status?.configured)} open={status ? !status.configured : undefined}><summary>{uiText("API key & connection")}</summary>
     <form onSubmit={save} autoComplete="off">
       <div className="ai-setting-row"><label htmlFor="openai-key">{status?.configured?uiText("Replacement OpenAI API key"):uiText("OpenAI API key")}</label>
@@ -119,6 +131,7 @@ export function IntelligenceSettings({vaultId}:{vaultId?:string}={}) {
     <GeminiSpeechKey/>
     {changed&&<p>{uiText("Save AI preferences before validating the new selection.")}</p>}
     <p className="intelligence-note">{uiText("Writing and search features send relevant note text, source text, and search queries to OpenAI. Source enrichment runs automatically; automatic indexing is configured below. API charges apply to OpenAI features. Kokoro speech stays local.")}</p>
+    </div>
     <p role="status" aria-live="polite">{uiText(message)}</p>
   </section>;
 }

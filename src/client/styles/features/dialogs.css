@@ -1654,16 +1654,18 @@ dialog.source-page-dialog.has-preview {
   }
 }
 dialog.noema-modal.settings-modal {
-  width: 660px;
+  width: 900px;
   padding: 0;
   overflow: hidden;
 }
 dialog.noema-modal > .settings-dialog {
-  display: flex;
-  flex-direction: column;
-  height: min(680px, calc(100dvh - 34px));
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: min(760px, calc(100dvh - 40px));
 }
 dialog.settings-modal .modal-header {
+  grid-column: 1 / -1;
   position: static;
   margin: 0;
   flex-shrink: 0;
@@ -1743,3 +1745,10 @@ dialog.source-lifecycle-dialog { width: min(480px, calc(100vw - 32px)); }
 .container-description-field small { color: var(--text-muted); font-weight: normal; }
 .smart-collection-fields .container-description-field textarea,
 .folder-definition-dialog .container-description-field textarea { min-height: 64px; }
+
+@media (max-width: 600px) {
+  dialog.noema-modal > .settings-dialog { grid-template-columns: 112px minmax(0, 1fr); }
+}
+@media (max-width: 420px) {
+  dialog.noema-modal > .settings-dialog { grid-template-columns: 92px minmax(0, 1fr); }
+}

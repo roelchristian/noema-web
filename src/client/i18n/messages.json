@@ -8493,5 +8493,85 @@
     "Détails de la génération",
     "Generierungsdetails",
     "Detalles de generación"
+  ],
+  "Paragraph indentation": [
+    "Retrait des paragraphes",
+    "Absatzeinzug",
+    "Sangría de párrafos"
+  ],
+  "Indent paragraphs": [
+    "Retrait des paragraphes",
+    "Absätze einrücken",
+    "Aplicar sangría a los párrafos"
+  ],
+  "No indent (default)": [
+    "Sans retrait (par défaut)",
+    "Kein Einzug (Standard)",
+    "Sin sangría (predeterminado)"
+  ],
+  "Indent all paragraphs": [
+    "Mettre tous les paragraphes en retrait",
+    "Alle Absätze einrücken",
+    "Aplicar sangría a todos los párrafos"
+  ],
+  "Indent except first of section": [
+    "Retrait sauf au premier paragraphe de section",
+    "Außer dem ersten Absatz eines Abschnitts einrücken",
+    "Aplicar sangría excepto al primero de cada sección"
+  ],
+  "Indent width": [
+    "Largeur du retrait",
+    "Einzugsbreite",
+    "Ancho de sangría"
+  ],
+  "Small · 1 em": [
+    "Petit · 1 em",
+    "Klein · 1 em",
+    "Pequeña · 1 em"
+  ],
+  "Medium · 1.5 em": [
+    "Moyen · 1,5 em",
+    "Mittel · 1,5 em",
+    "Mediana · 1,5 em"
+  ],
+  "Large · 2 em": [
+    "Grand · 2 em",
+    "Groß · 2 em",
+    "Grande · 2 em"
+  ],
+  "Indent only the first line. Sections begin at the start of a page and after a heading or divider.": [
+    "Seule la première ligne est en retrait. Les sections commencent en début de page et après un titre ou un séparateur.",
+    "Nur die erste Zeile wird eingerückt. Abschnitte beginnen am Seitenanfang und nach einer Überschrift oder Trennlinie.",
+    "Aplica sangría solo a la primera línea. Las secciones comienzan al inicio de una página y después de un encabezado o separador."
+  ],
+  "Paragraph indentation preview": [
+    "Aperçu du retrait des paragraphes",
+    "Vorschau des Absatzeinzugs",
+    "Vista previa de sangría de párrafos"
+  ],
+  "Each paragraph gives an idea room to grow. Follow the thread and see where it leads.": [
+    "Chaque paragraphe laisse une idée se développer. Suivez le fil et découvrez où il mène.",
+    "Jeder Absatz gibt einer Idee Raum zum Wachsen. Folgen Sie dem Gedanken und sehen Sie, wohin er führt.",
+    "Cada párrafo da espacio a una idea para crecer. Sigue el hilo y descubre adónde te lleva."
+  ],
+  "Paragraph spacing": [
+    "Espacement des paragraphes",
+    "Absatzabstand",
+    "Espaciado entre párrafos"
+  ],
+  "Standard spacing (default)": [
+    "Espacement standard (par défaut)",
+    "Standardabstand (Standard)",
+    "Espaciado estándar (predeterminado)"
+  ],
+  "Book-style · no extra gap": [
+    "Style livre · sans espace supplémentaire",
+    "Buchstil · ohne zusätzlichen Abstand",
+    "Estilo libro · sin espacio adicional"
+  ],
+  "Book-style spacing removes the extra gap between consecutive paragraphs when indentation is enabled.": [
+    "Le style livre supprime l’espace supplémentaire entre les paragraphes consécutifs lorsque le retrait est activé.",
+    "Der Buchstil entfernt den zusätzlichen Abstand zwischen aufeinanderfolgenden Absätzen, wenn der Einzug aktiviert ist.",
+    "El estilo libro elimina el espacio adicional entre párrafos consecutivos cuando la sangría está activada."
   ]
 }

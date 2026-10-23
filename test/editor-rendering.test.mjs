@@ -192,3 +192,116 @@ test('undo and redo treat an uploaded clipboard image as part of its paste',asyn
   }finally{globalThis.fetch=previousFetch;}
  });}finally{if(previousHistory===undefined)delete process.env.MEASURE_HISTORY;else process.env.MEASURE_HISTORY=previousHistory;}
 });
+
+test('paragraph openings follow headings and dividers as blocks change', async () => {
+  await fixture(async ({blocks, set, host}) => {
+    const original = blocks();
+    const positions = () => ['b1','b2','b3','b4','b5','b6'].map(id => host(id)?.closest('[data-block-id]').dataset.paragraphFlow);
+    await set(original.slice(0, 6).map((block, index) => index === 1 ? {...block, type:'heading1'} : index === 4 ? {...block, type:'divider'} : block));
+    assert.deepEqual(positions(), ['first',undefined,'first','continuation',undefined,'first']);
+    await set(original.slice(0, 6));
+    assert.deepEqual(positions(), ['first','continuation','continuation','continuation','continuation','continuation']);
+    await set(original.slice(1, 6));
+    assert.equal(host('b2').closest('[data-block-id]').dataset.paragraphFlow, 'first');
+  });
+});
+
+test('empty paragraphs and callouts do not consume section openings, with independent column flow', async () => {
+  const {paragraphFlow} = await import('../src/client/editor/paragraph-indent.ts');
+  const block = (id, type='paragraph', extra={}) => ({id, type, content:[{text:id}], ...extra});
+  const flow = paragraphFlow([
+    block('empty','paragraph',{content:[]}),
+    block('callout','paragraph',{semantic:'definition'}),
+    block('list','bullet'),block('first'),block('next'),
+    block('h','heading2'),block('quote','quote'),block('after-heading'),
+    block('left','paragraph',{column:{id:'columns',index:0}}),
+    block('right','paragraph',{column:{id:'columns',index:1}}),
+    block('left-next','paragraph',{column:{id:'columns',index:0}}),
+  ]);
+  assert.deepEqual([...flow], [['empty','first'],['first','first'],['next','continuation'],['after-heading','first'],['left','first'],['right','first'],['left-next','continuation']]);
+});
+
+test('locked page paragraphs retain the same section openings as editable paragraphs', async () => {
+  const {createElement} = await import('react');
+  const {renderToStaticMarkup} = await import('react-dom/server');
+  const {ReadOnlyPageBlocks} = await import('../src/client/editor/ReadOnlyPageBlocks.tsx');
+  await fixture(async ({blocks, set, host}) => {
+    const content = blocks().slice(0, 6).map((block,index) => index===2 ? {...block,type:'heading2'} : block);
+    await set(content);
+    const preview = document.createElement('div');
+    preview.innerHTML = renderToStaticMarkup(createElement(ReadOnlyPageBlocks,{blocks:content,entities:[],pages:[],vaultId:'fixture',onOpenEntity(){},onOpenPage(){}}));
+    for (const block of content) {
+      const readonly = preview.querySelector(`[data-block-id="${block.id}"]`);
+      assert.equal(readonly.dataset.paragraphFlow, host(block.id).closest('[data-block-id]').dataset.paragraphFlow);
+      assert.equal(readonly.querySelector('.block-content').textContent, host(block.id).textContent);
+    }
+  });
+});
+
+
+test('imported spaces beside entities wrap as normal spaces without changing saved text', async () => {
+  const {segmentHTML} = await import('../src/client/editor/segments.tsx');
+  await fixture(async () => {
+    const content=[{text:'Before\u00a0',bold:true},{entityId:'entity'},{text:'\u00a0after and nonbreaking\u00a0phrase'}];
+    const entities=[{id:'entity',name:'Marian hymn',type:'concept'}];
+    for (const readOnly of [false,true]) {
+      const host=document.createElement('div');
+      host.innerHTML=segmentHTML(content,entities,undefined,readOnly);
+      const spaces=host.querySelectorAll('[data-entity-space]');
+      assert.equal(spaces.length,2);
+      assert.ok([...spaces].every(space=>space.textContent===' '));
+      assert.deepEqual(readSegments(host),content);
+      assert.ok(host.textContent.includes('nonbreaking\u00a0phrase'),'spaces within prose keep their nonbreaking behavior');
+      spaces[0].remove();
+      assert.deepEqual(readSegments(host),[{text:'Before',bold:true},content[1],content[2]],'deleting a boundary space stays deleted');
+      spaces[1].textContent=' changed ';
+      assert.equal(readSegments(host).at(-1).text,' changed after and nonbreaking\u00a0phrase','editing the space reads the new text');
+    }
+    const code=document.createElement('div');
+    code.innerHTML=segmentHTML([{text:'code\u00a0',code:true},{entityId:'entity'}],entities);
+    assert.equal(code.querySelector('[data-entity-space]'),null,'code whitespace remains literal');
+  });
+});
+
+test('typing and composition beside entity boundary spaces preserve caret, authored spaces and history',async()=>{
+ const previousHistory=process.env.MEASURE_HISTORY;process.env.MEASURE_HISTORY='1';
+ try{await fixture(async({dom,host,blocks,set,entities})=>{
+  const page=document.querySelector('.page'),article=document.createElement('article');article.className='page';page.replaceWith(article);while(page.firstChild)article.append(page.firstChild);
+  await entities([{id:'fiction',name:'Synthetic entity',type:'concept',subtypes:[],description:''}]);
+  await set([{id:'b87',type:'paragraph',checked:false,content:[{text:'Before\u00a0'},{entityId:'fiction'},{text:'\u00a0after'}]},{id:'b88',type:'paragraph',checked:false,content:[]}]);
+  const original=structuredClone(blocks()),el=host('b87'),space=el.querySelectorAll('[data-entity-space]')[1],text=space.firstChild;
+  const place=()=>{const range=document.createRange();range.setStart(text,text.length);range.collapse(true);getSelection().removeAllRanges();getSelection().addRange(range);};place();
+  document.querySelector('.page').setAttribute('data-entity-composing','');
+  await act(async()=>el.dispatchEvent(new dom.window.CompositionEvent('compositionstart',{bubbles:true,data:''})));
+  for(const data of ['語','文']){
+   await act(async()=>el.dispatchEvent(new dom.window.InputEvent('beforeinput',{bubbles:true,cancelable:true,inputType:'insertCompositionText',data,isComposing:true})));
+   text.appendData(data);place();await act(async()=>el.dispatchEvent(new dom.window.InputEvent('input',{bubbles:true,inputType:'insertCompositionText',data,isComposing:true})));
+   assert.equal(getSelection().anchorNode,text);assert.equal(getSelection().anchorOffset,text.length);assert.equal(space.firstChild,text);
+  }
+  await act(async()=>el.dispatchEvent(new dom.window.CompositionEvent('compositionend',{bubbles:true,data:'語文'})));document.querySelector('.page').removeAttribute('data-entity-composing');
+  const edited=structuredClone(blocks());assert.equal(edited[0].content.at(-1).text,'\u00a0語文after','typing beside the rendered boundary must retain its authored nonbreaking space');
+  await act(async()=>host('b87').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true})));assert.deepEqual(blocks(),original,'one undo restores the complete composition');
+  await act(async()=>host('b87').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'z',ctrlKey:true,shiftKey:true,bubbles:true,cancelable:true})));assert.deepEqual(blocks(),edited,'redo preserves the composed text and entity reference');
+ });}finally{if(previousHistory===undefined)delete process.env.MEASURE_HISTORY;else process.env.MEASURE_HISTORY=previousHistory;}
+});
+
+test('boundary-space readback preserves ordinary edits and cloned formatted selections without resurrecting deleted spaces',async()=>{
+ const {segmentHTML}=await import('../src/client/editor/segments.tsx');
+ await fixture(async()=>{
+  const el=document.createElement('div'),content=[{entityId:'fiction'},{text:'\u00a0after'}];
+  el.innerHTML=segmentHTML(content,[{id:'fiction',type:'concept',name:'Synthetic entity'}]);
+  assert.deepEqual(readSegments(el),content);
+  const marker=el.querySelector('[data-entity-space]'),text=marker.firstChild;
+  text.appendData('語😀');
+  assert.equal(readSegments(el).at(-1).text,'\u00a0語😀after');
+  assert.equal(readSegments(el).at(-1).text,'\u00a0語😀after','repeated readback is stable');
+  assert.deepEqual(readSegments(el.cloneNode(true)),readSegments(el),'selection clones retain the authored-space mapping');
+  text.insertData(0,'X');assert.equal(readSegments(el).at(-1).text,'X\u00a0語😀after','typing before the boundary moves its mapping');
+  const strong=document.createElement('strong');text.replaceWith(strong);strong.append(text);
+  assert.equal(readSegments(el)[1].bold,true);assert.equal(readSegments(el)[1].text,'X\u00a0語😀');
+  assert.deepEqual(readSegments(el.cloneNode(true)),readSegments(el),'formatting and selection cloning preserve mapping and style');
+  text.deleteData(1,1);assert.equal(readSegments(el)[1].text,'X語😀','deleting the original space stays deleted');
+  text.insertData(1,' ');assert.equal(readSegments(el)[1].text,'X 語😀','a deliberate new ordinary space stays ordinary');
+  marker.textContent=' new ';assert.equal(readSegments(el).at(-1).text,' new after','whole-node replacement reads the new authored text');
+ });
+});

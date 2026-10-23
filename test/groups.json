@@ -192,6 +192,7 @@
     "test/realtime-speech.test.mjs",
     "test/kokoro-speech.test.mjs",
     "test/speech-cache.test.mjs",
-    "test/speech-backup.test.mjs"
+    "test/speech-backup.test.mjs",
+    "test/gemini-speech.test.mjs"
   ]
 }

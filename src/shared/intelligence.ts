@@ -2,19 +2,23 @@ import type {BuiltinPersonaId} from './ai-personas.js';
 // Curated Responses API text models, checked against official OpenAI docs on 2026-10-16.
 // /v1/models does not describe reasoning compatibility; keep the allowlist explicit.
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-export type SpeechProvider = 'kokoro' | 'openai';
+export type SpeechProvider = 'kokoro' | 'openai' | 'gemini';
 export const defaultSpeechProvider:SpeechProvider = 'kokoro';
 export const speechModel = 'kokoro-82m-v1.0';
+export const geminiSpeechModel = 'gemini-3.8-flash-lite-tts';
+export const geminiSpeechStyle = 'Clear, natural narration at a steady pace.';
+export const geminiSpeechVoices = ['Zephyr','Puck','Charon','Kore','Fenrir','Leda','Orus','Aoede','Callirrhoe','Autonoe','Enceladus','Iapetus','Umbriel','Algieba','Despina','Erinome','Algenib','Rasalgethi','Laomedeia','Achernar','Alnilam','Schedar','Gacrux','Pulcherrima','Achird','Zubenelgenubi','Vindemiatrix','Sadachbia','Sadaltager','Sulafat'] as const;
+export interface SpeechCredentialStatus {configured:boolean;expiresAt:string|null}
 export const openAISpeechModel = 'gpt-realtime-2.1-mini';
 export const speechVoices = ['puck','echo','lewis','daniel'] as const;
 export const openAISpeechVoices = ['marin','cedar','alloy','ash','ballad','coral','echo','sage','shimmer','verse'] as const;
-export type SpeechVoice = typeof speechVoices[number] | typeof openAISpeechVoices[number];
+export type SpeechVoice = typeof speechVoices[number] | typeof openAISpeechVoices[number] | typeof geminiSpeechVoices[number];
 export const defaultSpeechVoice:SpeechVoice = 'puck';
-export function isSpeechProvider(value:unknown):value is SpeechProvider {return value==='kokoro'||value==='openai';}
-export function speechVoicesFor(provider:SpeechProvider):readonly SpeechVoice[] {return provider==='openai'?openAISpeechVoices:speechVoices;}
-export function defaultSpeechVoiceFor(provider:SpeechProvider):SpeechVoice {return provider==='openai'?'marin':defaultSpeechVoice;}
+export function isSpeechProvider(value:unknown):value is SpeechProvider {return value==='kokoro'||value==='openai'||value==='gemini';}
+export function speechVoicesFor(provider:SpeechProvider):readonly SpeechVoice[] {return provider==='gemini'?geminiSpeechVoices:provider==='openai'?openAISpeechVoices:speechVoices;}
+export function defaultSpeechVoiceFor(provider:SpeechProvider):SpeechVoice {return provider==='gemini'?'Kore':provider==='openai'?'marin':defaultSpeechVoice;}
 export function isSpeechVoice(value:unknown,provider:SpeechProvider='kokoro'):value is SpeechVoice {return typeof value==='string'&&speechVoicesFor(provider).some(voice=>voice===value);}
-export function speechModelFor(provider:SpeechProvider):string {return provider==='openai'?openAISpeechModel:speechModel;}
+export function speechModelFor(provider:SpeechProvider):string {return provider==='gemini'?geminiSpeechModel:provider==='openai'?openAISpeechModel:speechModel;}
 export interface IntelligencePreferences { model: string; reasoningEffort: ReasoningEffort }
 export interface IntelligenceConfiguration extends IntelligencePreferences {personaId?:BuiltinPersonaId;ttsEnabled:boolean;ttsProvider?:SpeechProvider;ttsVoice:SpeechVoice;manualRequestsPerMinute: number; pageEnrichment?: IntelligencePreferences}
 export const defaultPageEnrichmentPreferences: IntelligencePreferences = {model:'gpt-6-luna',reasoningEffort:'none'};

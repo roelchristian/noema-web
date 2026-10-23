@@ -50,6 +50,7 @@ async function readBody(req: IncomingMessage) {
 
 export function createTransportHandler(runtime: Runtime, clientRoot: string, sockets: Set<Socket>) {
   const { store, speechCache, temporal, liturgical, intelligence, networkAccess, vaultDeletion, sourceFiles, sourcePageImages, sourceReading, backups, images, notifications, vaults, knowledge, pages, organizer, activity, enrichments, sourceReprocessing, scans, pageEnrichment, enrichmentScheduler, scheduleEnrichment, entityMatches, embeddings, sourceEnrichments, searchSnippets, textSearch } = runtime;
+  const speechControllers=new Map<AbortController,string>();
   return async(req: IncomingMessage,res: http.ServerResponse)=>{
     let activityId: string | undefined;
     const send=(status:number,data:unknown)=>{if(activityId){activity.finishResponse(activityId,status);activityId=undefined;}res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));};
@@ -311,7 +312,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             const text=cleanSpeechText(body.text);
             if(!text||text.length>4096)throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
             const key=speechCacheKey(text,{provider,model,voice}),cached=speechCache.read(vault,key);
-            const controller=new AbortController(),abort=()=>controller.abort();res.once('close',abort);
+            const controller=new AbortController(),abort=()=>controller.abort();res.once('close',abort);speechControllers.set(controller,vault);
             try {
               let audio=cached;
               if(!audio) {
@@ -326,8 +327,13 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
               if(controller.signal.aborted)throw new HttpError(409,'Speech request cancelled.');
               res.writeHead(200,{'Content-Type':'audio/wav','Content-Length':audio.length,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Noema-Speech-Cache':cached?'hit':'miss','Content-Disposition':`inline; filename="noema-speech-${key.slice(0,12)}.wav"`});
               return res.end(audio);
-            } finally {res.off('close',abort);}
+            } finally {res.off('close',abort);speechControllers.delete(controller);}
 
+          }
+          if(parts.length===3&&id==='gemini') {
+            if(method==='GET')return send(200,intelligence.geminiStatus());
+            if(method==='PUT')return send(200,intelligence.saveGemini(body));
+            if(method==='DELETE')return send(200,intelligence.removeGemini());
           }
           if(parts.length===2 && method==='GET')return send(200,intelligence.status());
           if(parts.length===3 && id==='preferences' && method==='PUT')return send(200,intelligence.savePreferences(body));
@@ -342,7 +348,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           if(parts.length===2 && method==='POST')return send(201,vaults.create(body));
           if(id && parts.length===4 && method==='GET' && child==='deletion-preview')return send(200,vaultDeletion.preview(id));
           if(id && parts.length===4 && method==='POST' && child==='delete')return send(200,vaultDeletion.remove(id,body));
-          if(id && parts.length===4 && method==='POST' && child==='lock'){const result=vaults.lock(id,body);organizer.smart.clearCaches(id);enrichmentScheduler.pauseVault(id);pageEnrichment.pauseVault(id);embeddings.clearQueryCache(id);return send(200,result);}
+          if(id && parts.length===4 && method==='POST' && child==='lock'){const result=vaults.lock(id,body);for(const [controller,vault] of speechControllers)if(vault===id)controller.abort();organizer.smart.clearCaches(id);enrichmentScheduler.pauseVault(id);pageEnrichment.pauseVault(id);embeddings.clearQueryCache(id);return send(200,result);}
           if(id && parts.length===4 && method==='POST' && child==='unlock')return send(200,vaults.unlock(id,body));
         } else {
           const header=req.headers['x-vault-id'];

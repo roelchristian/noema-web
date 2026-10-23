@@ -1057,6 +1057,14 @@
 }
 #page-title {
   display: block;
+  grid-area: 1 / 1;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   border: 0;
   background: none;
   font-family: var(--font-title);
@@ -1534,7 +1542,18 @@
   }
 }
 .page > .page-title-heading {
+  display: grid;
+  min-width: 0;
   margin: 0 0 16px;
+}
+.page-title-sizer {
+  grid-area: 1 / 1;
+  min-width: 0;
+  padding-bottom: 4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  visibility: hidden;
+  pointer-events: none;
 }
 .page-title-heading.has-title-math {
   position: relative;
@@ -2369,6 +2388,10 @@
   letter-spacing: var(--page-heading-letter-spacing);
   color: var(--text);
   overflow-wrap: anywhere;
+}
+.page > .page-title-heading,
+#content .page #page-title {
+  line-height: 1.4;
 }
 .block.numbered {
   display: flex;

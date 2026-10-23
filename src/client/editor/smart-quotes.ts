@@ -60,7 +60,7 @@ export function applySmartQuotes(element: HTMLElement, event: InputEvent) {
   selection.removeAllRanges(); selection.addRange(range);
 }
 
-export function smartQuoteTitle(input: HTMLInputElement, event: InputEvent) {
+export function smartQuoteTitle(input: HTMLInputElement | HTMLTextAreaElement, event: InputEvent) {
   const caret = input.selectionStart;
   if (caret === null) return input.value;
   const text = smartenTypedQuotes(input.value, caret, event.data, event.inputType, event.isComposing);

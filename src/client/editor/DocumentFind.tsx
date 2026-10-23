@@ -69,7 +69,7 @@ export function DocumentFind({blocks,entities,disabled,onChange}:{blocks:Block[]
    ||(event.metaKey||event.ctrlKey)&&!event.altKey&&event.shiftKey&&key==='h';
  if(find||replace){event.preventDefault();if(event.repeat)return;if(open&&mode==='text'&&replacing===replace)close();else show(replace);}
  if(open&&event.key==='Escape'){event.preventDefault();event.stopPropagation();close();}}
- function remember(event:FocusEvent){if(open)return;const target=event.target;if(target instanceof HTMLInputElement&&target.id==='page-title')bookmark.current={kind:'title',start:target.selectionStart??0,end:target.selectionEnd??0,direction:target.selectionDirection??'none'};else if(target instanceof Element&&target.closest('#blocks')){const captured=captureEditorSelection(el!);if(captured)bookmark.current=captured;}}
+ function remember(event:FocusEvent){if(open)return;const target=event.target;if((target instanceof HTMLInputElement||target instanceof HTMLTextAreaElement)&&target.id==='page-title')bookmark.current={kind:'title',start:target.selectionStart??0,end:target.selectionEnd??0,direction:target.selectionDirection??'none'};else if(target instanceof Element&&target.closest('#blocks')){const captured=captureEditorSelection(el!);if(captured)bookmark.current=captured;}}
  function invoke(){if(!el!.closest('[inert]'))show();}
  el.addEventListener('focusout',remember);document.addEventListener('keydown',key);document.addEventListener('noema:document-find',invoke);return()=>{el.removeEventListener('focusout',remember);document.removeEventListener('keydown',key);document.removeEventListener('noema:document-find',invoke);};},[open,mode,replacing]);
  useEffect(()=>{if(!open)return;snapshot.current=null;setReady(false);setActive(0);

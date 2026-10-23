@@ -539,7 +539,7 @@ main {
 :root[data-mode=dark] :is(.library > p, .card-arrow, .empty, .organization-heading p, .organization-hint, .organization-library .eyebrow, .organization-item-name small, .recent-time) {
   color: var(--text-muted);
 }
-:root[data-mode=dark] :is(input:not(#page-title):not(.entity-name):not([type=checkbox]), select, textarea, .organization-search, .library-tools input, .library-tools select, .toolbar-source-actions select):not(.latex-input, :where(.library-view-filter-input > input)) {
+:root[data-mode=dark] :is(input:not(#page-title):not(.entity-name):not([type=checkbox]), select, textarea:not(#page-title), .organization-search, .library-tools input, .library-tools select, .toolbar-source-actions select):not(.latex-input, :where(.library-view-filter-input > input)) {
   background: var(--surface-raised);
   color: var(--text);
   border-color: var(--control-border);

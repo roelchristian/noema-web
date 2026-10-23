@@ -3,10 +3,10 @@ import {createPortal} from 'react-dom';
 import {Icon} from '../components/Icon';
 import {Select} from '../components/Select';
 
-type SpeechState={loading:boolean;url:string;error:string;part:number;total:number;assembling?:boolean};
+export type SpeechState={loading:boolean;url:string;error:string;part:number;total:number;assembling?:boolean;downloadUrl?:string;section?:number;generated?:number;retryable?:boolean;canNext?:boolean};
 const time=(seconds:number)=>`${Math.floor(seconds/60)}:${String(Math.floor(seconds%60)).padStart(2,'0')}`;
 
-export function SpeechPlayer({state,voice,onClose,onError}:{state:SpeechState;voice:string;onClose:()=>void;onError:()=>void}) {
+export function SpeechPlayer({state,voice,onClose,onError,onNext,onPrevious,onSectionEnded,onSectionPlay,onSectionPause,onRetry,onCompleteRequest,beforePlay}:{state:SpeechState;voice:string;onClose:()=>void;onError:()=>void;onNext?:()=>void;onPrevious?:()=>void;onSectionEnded?:()=>void;onSectionPlay?:()=>void;onSectionPause?:()=>void;onRetry?:()=>void;onCompleteRequest?:()=>void;beforePlay?:()=>boolean}) {
   const audio=useRef<HTMLAudioElement>(null);
   const anchor=useRef<HTMLSpanElement>(null);
   const information=useRef<HTMLDetailsElement>(null);
@@ -25,10 +25,11 @@ export function SpeechPlayer({state,voice,onClose,onError}:{state:SpeechState;vo
   const [elapsed,setElapsed]=useState(0),[playing,setPlaying]=useState(false),[waiting,setWaiting]=useState(false);
   const [position,setPosition]=useState(0),[duration,setDuration]=useState(0),[rate,setRate]=useState(1),[ended,setEnded]=useState(false),[started,setStarted]=useState(false),[notice,setNotice]=useState('');
   useEffect(()=>{
-    if(!state.url||!audio.current)return;
+    if(!state.url||!audio.current||beforePlay&&!beforePlay())return;
     let active=true;
-    // Request playback explicitly once the complete selection has been assembled.
+    // Each URL represents one complete section, in source order.
     // Keep manual play available if the browser requires a fresh user gesture.
+    setPosition(0);setDuration(0);setEnded(false);audio.current.playbackRate=rate;
     void audio.current.play().catch(()=>{if(active)setNotice('Press play to listen. Your browser paused automatic playback.');});
     return()=>{active=false;};
   },[state.url]);
@@ -46,42 +47,47 @@ export function SpeechPlayer({state,voice,onClose,onError}:{state:SpeechState;vo
   async function toggle(){
     const media=audio.current;if(!media)return;
     if(!media.paused){media.pause();return;}
+    if(beforePlay&&!beforePlay())return;
     if(media.ended)media.currentTime=0;
     try{await media.play();setNotice('');}catch{setPlaying(false);setWaiting(false);setNotice('Playback could not start. Press play to try again, or download the audio.');}
   }
-  const title=state.error?'Speech unavailable':state.loading?(state.assembling?'Preparing audio…':'Generating speech…'):waiting?'Loading audio…':playing?'Playing':ended?'Finished reading':started?'Paused':'Ready to listen';
+  const title=state.error?'Speech unavailable':state.loading&&!state.url?(state.assembling?'Preparing audio…':'Generating speech…'):waiting?'Loading audio…':playing?'Playing':ended?'Finished reading':started?'Paused':'Ready to listen';
   const placement=workspace?{'--speech-workspace-center':`${workspace.left+workspace.width/2}px`,'--speech-workspace-width':`${workspace.width}px`} as CSSProperties:undefined;
   return <><span ref={anchor} hidden/>{createPortal(<aside className="editor-speech" aria-label="Speak selected blocks" data-loading={state.loading} data-error={!!state.error} data-ready={!!state.url} data-compact={workspace?workspace.width<=600:undefined} style={placement}>
     <div className="speech-heading">
-      <div className={'speech-status'+(state.url?' sr-only':'')} role="status" aria-atomic="true">
+      <div className={'speech-status'+(state.url&&!state.loading&&!state.error?' sr-only':'')} role="status" aria-atomic="true">
         {state.loading&&<span className="scan-spinner" aria-hidden="true"/>}
         <strong>{title}</strong>
         {(state.error||state.loading&&state.total>1)&&<span>{state.error||`${state.part} / ${state.total}`}</span>}
       </div>
       <button type="button" className="speech-dismiss" onClick={onClose} aria-label={state.loading?'Cancel speech generation':state.error?'Dismiss':'Close speech player'} title={state.loading?'Cancel generation':'Close'}>{state.loading?'Cancel':state.error?'Dismiss':<Icon name="close"/>}</button>
     </div>
-    {state.loading&&<span className="speech-generation-time" aria-label={`${elapsed} seconds elapsed`}>{time(elapsed)}</span>}
+    {state.loading&&!state.url&&<span className="speech-generation-time" aria-label={`${elapsed} seconds elapsed`}>{time(elapsed)}</span>}
+    {state.error&&onRetry&&<button type="button" className="button" onClick={onRetry}>Retry unfinished section</button>}
+    {state.error&&state.url&&<p className="speech-notice">Earlier sections remain playable. Download is available only when every section is complete. Retrying may incur provider usage.</p>}
     {state.url&&<>
-      <audio ref={audio} key={state.url} autoPlay src={state.url} aria-label="AI-generated speech" onError={onError}
+      <audio ref={audio} key={state.url} src={state.url} aria-label="AI-generated speech" onError={onError}
         onLoadedMetadata={event=>{const value=event.currentTarget.duration;setDuration(Number.isFinite(value)?value:0);}}
         onDurationChange={event=>{const value=event.currentTarget.duration;setDuration(Number.isFinite(value)?value:0);}}
         onTimeUpdate={event=>setPosition(event.currentTarget.currentTime)}
-        onPlay={()=>{setPlaying(true);setStarted(true);setEnded(false);setNotice('');}} onPlaying={()=>setWaiting(false)} onWaiting={()=>setWaiting(true)}
-        onPause={()=>{setPlaying(false);setWaiting(false);}} onEnded={()=>{setPlaying(false);setWaiting(false);setEnded(true);}}/>
+        onPlay={()=>{onSectionPlay?.();setPlaying(true);setStarted(true);setEnded(false);setNotice('');}} onPlaying={()=>{setWaiting(false);onSectionPlay?.();}} onWaiting={()=>{setWaiting(true);onSectionPause?.();}}
+        onPause={()=>{onSectionPause?.();setPlaying(false);setWaiting(false);}} onEnded={()=>{setPlaying(false);setWaiting(false);setEnded(true);onSectionEnded?.();}}/>
       <div className="speech-playback" role="group" aria-label="Speech playback">
-        <button type="button" className="speech-play" onClick={()=>void toggle()} aria-label={playing?'Pause speech':ended?'Replay speech':'Play speech'} title={playing?'Pause':ended?'Replay':'Play'}>
+        <button type="button" className="speech-play" onClick={()=>void toggle()} aria-label={playing?'Pause speech':ended?(state.total>1?'Replay section':'Replay speech'):'Play speech'} title={playing?'Pause':ended?(state.total>1?'Replay section':'Replay'):'Play'}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">{playing?<path d="M6 4h4v16H6zm8 0h4v16h-4z"/>:<path d="m7 4 14 8-14 8z"/>}</svg>
         </button>
+        <button type="button" className="speech-play" aria-label="Previous paragraph" onClick={onPrevious} disabled={!onPrevious||!state.section}>‹</button>
         <span className="speech-time">{time(position)}</span>
         <input className="speech-seek" type="range" min="0" max={duration||1} step="0.1" value={Math.min(position,duration||1)} style={{'--speech-progress':`${duration?Math.min(position/duration,1)*100:0}%`} as CSSProperties} disabled={!duration} aria-label="Seek speech" aria-valuetext={`${time(position)} of ${time(duration)}`} onInput={event=>{const value=Number(event.currentTarget.value);if(audio.current){audio.current.currentTime=value;setPosition(value);setEnded(false);}}}/>
         <span className="speech-time">{time(duration)}</span>
+        <button type="button" className="speech-play" aria-label="Next paragraph" onClick={onNext} disabled={!onNext||state.canNext===false||(state.section??0)>=state.total-1}>›</button>
         <span className="speech-speed"><Select aria-label="Playback speed" value={rate} onChange={event=>{const value=Number(event.currentTarget.value);setRate(value);if(audio.current)audio.current.playbackRate=value;}}>{[0.75,1,1.25,1.5,2].map(value=><option key={value} value={value}>{value}×</option>)}</Select></span>
       </div>
       <details ref={information} className="speech-info" onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();event.currentTarget.open=false;event.currentTarget.querySelector('summary')?.focus();}}}>
         <summary aria-label="Speech information" title="Speech information"><Icon name="info"/></summary>
-        <div className="speech-info-panel"><strong>{voice.charAt(0).toUpperCase()+voice.slice(1)}</strong><span>AI-generated voice</span><span>Selected text · WAV audio</span></div>
+        <div className="speech-info-panel"><strong>{voice.charAt(0).toUpperCase()+voice.slice(1)}</strong><span>AI-generated voice</span><span>Selected text · WAV audio</span><span>Section {(state.section??0)+1} of {state.total}</span>{state.loading&&<><span>{state.generated??0} sections ready. Later sections generate as you listen.</span>{onCompleteRequest&&<button type="button" className="button" onClick={onCompleteRequest}>Prepare complete download</button>}<span>Preparing a download generates all remaining sections and uses provider quota.</span></>}</div>
       </details>
-      <a className="speech-download" href={state.url} download="noema-speech.wav" aria-label="Download audio" title="Download audio"><Icon name="download"/><span>Download audio</span></a>
+      {(state.downloadUrl??(!state.loading?state.url:''))&&<a className="speech-download" href={state.downloadUrl??state.url} download="noema-speech.wav" aria-label="Download audio" title="Download audio"><Icon name="download"/><span>Download audio</span></a>}
       {notice&&<p className="speech-notice" role="status">{notice}</p>}
     </>}
   </aside>,document.body)}</>;

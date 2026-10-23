@@ -164,3 +164,31 @@ test('speech defaults to Kokoro and OpenAI requires an explicit saved provider c
   assert.equal(provider().value,'openai');assert.equal(voice().value,'cedar');
   await choose('kokoro');assert.equal(voice().value,'puck');assert.ok(document.querySelector('.local-speech-model'));
 });
+
+test('narration drafts keep previews explicit, bounded, cancellable and separate from saving',async t=>{
+  const {NarrationSettings}=await import('../src/client/settings/NarrationSettings.tsx');
+  const {defaultNarrationPreferences}=await import('../src/shared/narration.ts');
+  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));
+  env.defer(()=>act(async()=>root.unmount()));
+  let value=structuredClone(defaultNarrationPreferences),calls=[],pending,revoked=[];
+  t.mock.method(URL,'createObjectURL',()=> 'blob:preview');t.mock.method(URL,'revokeObjectURL',url=>revoked.push(url));
+  t.mock.method(globalThis,'fetch',async(_url,options)=>{calls.push(options);return new Promise(resolve=>{pending=()=>resolve({ok:true,blob:async()=>new Blob(['synthetic'],{type:'audio/wav'})});});});
+  const render=()=>root.render(createElement(NarrationSettings,{value,onChange:next=>{value=next;render();},provider:'gemini',voice:'Puck',vaultId:'default',disabled:false,previewEnabled:true}));
+  const click=label=>act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent===label).click());
+  const edit=async(id,text)=>act(async()=>{const input=document.getElementById(id);input[Object.keys(input).find(key=>key.startsWith('__reactProps'))].onChange({target:{value:text}});});
+  await act(async()=>render());
+  await click('Add pronunciation');await edit('pronunciation-word-0','Noema');await edit('pronunciation-spoken-0','noh ee mah');
+  assert.equal(calls.length,0,'Typing and adding a dictionary entry make no provider request');
+  assert.equal(value.pronunciations[0].language,'');assert.equal(value.pronunciations[0].caseSensitive,false);
+  await edit('pronunciation-language-0','de');
+  await act(async()=>{value={...value,rules:{...value.rules,numbers:'digits'}};render();});
+  await click('Listen to pronunciation 1');assert.equal(calls.length,1);
+  const body=JSON.parse(calls[0].body);assert.equal(body.text,'Noema');assert.equal(body.narration.pronunciations[0].spoken,'noh ee mah');
+  assert.equal(body.narration.locale,'de-DE');assert.equal(body.narration.pronunciations.length,1);assert.equal(body.narration.pronunciations[0].language,'');assert.equal(body.narration.rules.numbers,'preserve');
+  assert.equal(value.locale,'en-US');assert.equal(value.pronunciations[0].language,'de');assert.equal(value.rules.numbers,'digits','Entry preview does not change the draft');
+  await edit('pronunciation-spoken-0','no eh mah');assert.equal(calls[0].signal.aborted,true,'Editing cancels in-flight preview');
+  await act(async()=>pending());assert.equal(document.querySelector('audio'),null,'Cancelled result cannot replace the preview');
+  await click('Listen to narration preview');await act(async()=>pending());assert.equal(document.querySelector('audio').getAttribute('src'),'blob:preview');
+  await click('Remove pronunciation 1');assert.equal(value.pronunciations.length,0);assert.equal(document.querySelector('audio'),null);assert.deepEqual(revoked,['blob:preview']);
+  assert.equal(calls.length,2,'Removal does not generate another recording');
+});

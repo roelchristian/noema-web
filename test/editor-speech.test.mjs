@@ -5,7 +5,9 @@ import {createRoot} from 'react-dom/client';
 import {speechText,speechChunks,combineSpeechAudio,useSpeech} from '../src/client/editor/speech.tsx';
 import {SpeechPlayer} from '../src/client/editor/SpeechPlayer.tsx';
 import {api} from '../src/client/api.ts';
+import {defaultNarrationPreferences} from '../src/shared/narration.ts';
 import {cleanSpeechText} from '../src/shared/speech-text.ts';
+import {speechSections,resumeRevision,readSpeechResume,writeSpeechResume,clearSpeechResume} from '../src/client/editor/speech-sections.ts';
 import {setupDOM} from './helpers/dom.mjs';
 import {fixture as editorFixture} from './fixtures/editor-rendering.mjs';
 
@@ -14,6 +16,50 @@ function wav(samples=[1,0,2,0]){
   const data=Buffer.from(samples),header=Buffer.alloc(44);header.write('RIFF',0);header.writeUInt32LE(36+data.length,4);header.write('WAVE',8);header.write('fmt ',12);header.writeUInt32LE(16,16);header.writeUInt16LE(1,20);header.writeUInt16LE(1,22);header.writeUInt32LE(24000,24);header.writeUInt32LE(48000,28);header.writeUInt16LE(2,32);header.writeUInt16LE(16,34);header.write('data',36);header.writeUInt32LE(data.length,40);return new Blob([header,data],{type:'audio/wav'});
 }
 const wavResponse=(samples)=>({ok:true,blob:async()=>wav(samples)});
+
+test('block sections retain order, stable boundaries, protected content and all Unicode text',()=>{
+  const source=[paragraph('heading','Title','heading1'),paragraph('body','🙂'.repeat(20)),paragraph('list','Last item','bullet'),paragraph('code','API 2026-10-23','code')];
+  const original=structuredClone(source),sections=speechSections(source,['code','list','body','heading'],[],9);
+  assert.deepEqual(source,original);
+  assert.deepEqual([...new Set(sections.map(section=>section.blockId))],source.map(block=>block.id));
+  assert.equal(sections[0].kind,'heading');assert.equal(sections.at(-1).kind,'protected');
+  assert.ok(sections.some(section=>section.kind==='list'));
+  for(const block of source){
+    const chunks=sections.filter(section=>section.blockId===block.id);
+    assert.equal(chunks.map(section=>section.text).join(''),speechText(source,[block.id],[]));
+    assert.deepEqual(chunks.map(section=>section.sectionIndex),chunks.map((_,index)=>index));
+    assert.ok(chunks.every(section=>section.text.length<=9&&!/[\uD800-\uDBFF]$/.test(section.text)));
+  }
+});
+
+test('protected inline and table-cell content retains structural pause metadata without changing authored blocks',async()=>{
+  const source=[paragraph('heading',[{text:'API',code:true}],'heading1'),paragraph('body',[{text:'123',math:true}]),paragraph('list',[{text:'API',code:true}],'bullet'),{...paragraph('table',[],'table'),rows:[[[{text:'API',code:true}]]]}, {...paragraph('columns',[],'columns'),rows:[[[{text:'123',math:true}]]]},paragraph('code','API','code'),paragraph('math','123','math')];
+  const original=structuredClone(source),sections=speechSections(source,source.map(block=>block.id),[]);
+  assert.deepEqual(source,original);assert.ok(sections.every(section=>section.kind==='protected'));
+  assert.deepEqual(sections.map(section=>section.pauseKind),['heading','paragraph','list','paragraph','paragraph',undefined,undefined]);
+  assert.deepEqual(sections.map(section=>section.text),['API','123','API','API','123','API','123']);
+  const changed=sections.map(section=>({...section,pauseKind:'paragraph'}));
+  assert.notEqual(await resumeRevision(sections),await resumeRevision(changed),'Structural pause changes invalidate a previous resume revision');
+});
+
+test('resume stores only revision and a stable section boundary, isolated by vault/page and invalidated on edits or deletion',async()=>{
+  const records=new Map(),store={getItem:key=>records.get(key)??null,setItem:(key,value)=>records.set(key,value),removeItem:key=>records.delete(key)};
+  const sections=speechSections([paragraph('one','Private first'),paragraph('two','Private second')],['one','two'],[]),revision=await resumeRevision(sections);
+  writeSpeechResume('vault','page',revision,sections,1,store);
+  assert.equal(readSpeechResume('vault','page',revision,sections,store),1);
+  assert.equal(readSpeechResume('other-vault','page',revision,sections,store),null);
+  assert.equal(readSpeechResume('vault','other-page',revision,sections,store),null);
+  assert.ok(!JSON.stringify([...records]).includes('Private'));
+  const edited=sections.map(section=>({...section,text:section.text+' edit'}));
+  assert.equal(readSpeechResume('vault','page',await resumeRevision(edited),edited,store),null);
+  writeSpeechResume('vault','page',revision,sections,1,store);
+  assert.equal(readSpeechResume('vault','page',revision,sections.slice(0,1),store),null);
+  writeSpeechResume('vault','page',revision,sections,0,store);clearSpeechResume('vault','page',store);
+  assert.equal(records.size,0);
+  const unavailable={getItem(){throw new Error('Unavailable');},setItem(){throw new Error('Unavailable');},removeItem(){throw new Error('Unavailable');}};
+  assert.doesNotThrow(()=>writeSpeechResume('vault','page',revision,sections,0,unavailable));
+  assert.equal(readSpeechResume('vault','page',revision,sections,unavailable),null);
+});
 
 test('audio assembly joins all PCM samples into one WAV and preserves single-part files',async()=>{
   const first=wav([1,0,2,0]),second=wav([3,0,4,0]);
@@ -69,7 +115,7 @@ test('speech chunks preserve all trimmed text, readable boundaries and Unicode p
   }
 });
 
-async function speechFixture(t){
+async function speechFixture(t,narration){
   const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));
   const openMenus=new WeakSet(),originalMatches=env.dom.window.HTMLElement.prototype.matches;
   t.mock.method(env.dom.window.HTMLElement.prototype,'matches',function(selector){return selector===':popover-open'?openMenus.has(this):originalMatches.call(this,selector);});
@@ -81,7 +127,7 @@ async function speechFixture(t){
   let hook,enabled=true,voice='puck',provider='kokoro',sequence=0;
   const requests=[],created=[],revoked=[],autoplayed=[];
   t.mock.method(env.dom.window.HTMLMediaElement.prototype,'play',async function(){autoplayed.push(this);});
-  t.mock.method(api,'intelligence',async()=>({ttsEnabled:enabled,ttsVoice:voice,ttsProvider:provider}));
+  t.mock.method(api,'intelligence',async()=>({ttsEnabled:enabled,ttsVoice:voice,ttsProvider:provider,...(narration?{narration}:{})}));
   t.mock.method(globalThis,'fetch',async(route,options)=>{assert.equal(route,'/api/intelligence/speech');let resolve;const promise=new Promise(done=>{resolve=done;});requests.push({options,resolve});return promise;});
   t.mock.method(URL,'createObjectURL',blob=>{created.push(blob);return 'blob:speech-'+(++sequence);});
   t.mock.method(URL,'revokeObjectURL',url=>revoked.push(url));
@@ -93,7 +139,7 @@ async function speechFixture(t){
   return {env,requests,created,revoked,autoplayed,hook:()=>hook,unmount,externalVoice(value){voice=value;},externalProvider(value,nextVoice){provider=value;voice=nextVoice;},async setProvider(value,nextVoice){provider=value;voice=nextVoice;await act(async()=>window.dispatchEvent(new Event('noema:tts-preferences')));},async setVoice(value){voice=value;await act(async()=>window.dispatchEvent(new Event('noema:tts-preferences')));},async navigate(vault,page){await act(async()=>root.render(createElement(Harness,{vault,page})));},async speak(text){await act(async()=>hook.speak(text));},async resolve(index,response=wavResponse()){await act(async()=>requests[index].resolve(response));},async toggle(value){enabled=value;await act(async()=>window.dispatchEvent(new Event('noema:tts-preferences')));}};
 }
 
-test('speech assembles every selection chunk before playback and exposes a complete download without another request',async t=>{
+test('speech starts the first section immediately and exposes only a complete download',async t=>{
   const f=await speechFixture(t);
   await f.speak('A'.repeat(5000));
   assert.match(document.querySelector('[role=status]').textContent,/Generating speech.*1 \/ 2/);
@@ -101,25 +147,25 @@ test('speech assembles every selection chunk before playback and exposes a compl
   assert.equal(JSON.parse(f.requests[0].options.body).pageId,'page');
   assert.equal(JSON.parse(f.requests[0].options.body).text.length,4096);
   await f.resolve(0,wavResponse([1,0,2,0]));
-  assert.equal(document.querySelector('audio'),null);assert.equal(document.querySelector('a[download]'),null);
+  assert.ok(document.querySelector('audio'));assert.equal(document.querySelector('a[download]'),null);
   assert.match(document.querySelector('[role=status]').textContent,/2 \/ 2/);
   assert.equal(f.requests.length,2);assert.equal(JSON.parse(f.requests[1].options.body).text.length,904);
   await f.resolve(1,wavResponse([3,0,4,0]));
   assert.equal(document.querySelector('audio').getAttribute('src'),'blob:speech-1');
-  assert.ok(document.querySelector('audio').hasAttribute('autoplay'));
-  const download=document.querySelector('a[download]');assert.equal(download.getAttribute('download'),'noema-speech.wav');assert.equal(download.getAttribute('href'),'blob:speech-1');assert.equal(download.textContent,'Download audio');
-  const bytes=Buffer.from(await f.created[0].arrayBuffer());assert.deepEqual([...bytes.subarray(44)],[1,0,2,0,3,0,4,0]);assert.equal(bytes.readUInt32LE(40),8);
+  assert.equal(f.autoplayed.length,1,'Playback starts through the source-validated play action');
+  const download=document.querySelector('a[download]');assert.equal(download.getAttribute('download'),'noema-speech.wav');assert.equal(download.getAttribute('href'),'blob:speech-2');assert.equal(download.textContent,'Download audio');
+  const bytes=Buffer.from(await f.created[1].arrayBuffer());assert.deepEqual([...bytes.subarray(44)],[1,0,2,0,3,0,4,0]);assert.equal(bytes.readUInt32LE(40),8);
   download.addEventListener('click',event=>event.preventDefault());
   await act(async()=>download.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true})));assert.equal(f.requests.length,2);
   await act(async()=>document.querySelector('.editor-speech button').click());
-  assert.deepEqual(f.revoked,['blob:speech-1']);assert.equal(document.querySelector('.editor-speech'),null);
+  assert.deepEqual(f.revoked,['blob:speech-1','blob:speech-2']);assert.equal(document.querySelector('.editor-speech'),null);
 });
 
-test('stopping later selection chunks aborts requests and prevents partial playback or download',async t=>{
+test('stopping later selection chunks aborts requests and releases early playback',async t=>{
   const f=await speechFixture(t);await f.speak('A'.repeat(5000));await f.resolve(0);
   await act(async()=>document.querySelector('.editor-speech button').click());
   assert.equal(f.requests[1].options.signal.aborted,true);
-  await f.resolve(1);assert.equal(f.created.length,0);assert.equal(document.querySelector('.editor-speech'),null);
+  await f.resolve(1);assert.equal(f.created.length,1);assert.deepEqual(f.revoked,['blob:speech-1']);assert.equal(document.querySelector('.editor-speech'),null);
 });
 
 test('speech generation shows a compact spinner, elapsed time and section status until ready',async t=>{
@@ -197,9 +243,9 @@ test('speech controls follow media playback, seek, speed, buffering and completi
   assert.equal(audio.currentTime,0);assert.match(document.querySelector('[role=status]').textContent,/Playing/);
 });
 
-test('completed speech starts automatically once and keeps voice details in the info disclosure',async t=>{
+test('first section starts automatically once and keeps voice details in the info disclosure',async t=>{
   const f=await speechFixture(t);await f.speak('A'.repeat(5000));await f.resolve(0);
-  assert.equal(f.autoplayed.length,0,'Partial selections do not start playback');
+  assert.equal(f.autoplayed.length,1,'The first complete section starts playback');
   await f.resolve(1);assert.deepEqual(f.autoplayed,[document.querySelector('audio')]);
   const details=document.querySelector('.speech-info');
   assert.equal(details.open,false);assert.match(details.textContent,/Puck.*AI-generated voice/);
@@ -252,7 +298,7 @@ test('a blocked play attempt leaves audio downloadable with a useful message',as
 test('a later failed chunk never exposes a partial selection download',async t=>{
   const f=await speechFixture(t);await f.speak('A'.repeat(5000));await f.resolve(0);
   await f.resolve(1,Response.json({error:'Speech unavailable.'},{status:503}));
-  assert.match(document.querySelector('[role=status]').textContent,/Speech unavailable/);assert.equal(f.created.length,0);assert.equal(document.querySelector('audio'),null);assert.equal(document.querySelector('a[download]'),null);
+  assert.match(document.querySelector('[role=status]').textContent,/Speech unavailable/);assert.equal(f.created.length,1);assert.ok(document.querySelector('audio'));assert.equal(document.querySelector('a[download]'),null);
 });
 
 test('speech payloads exclude reference markers before leaving the client',async t=>{
@@ -338,6 +384,65 @@ test('editor block options expose Speak only when globally enabled and speak the
   });
 });
 
+test('editor speech cancels on a different block selection and on a current entity narration change without moving selection',async t=>{
+  const requests=[];
+  t.mock.method(api,'intelligence',async()=>({ttsEnabled:true}));
+  t.mock.method(globalThis,'fetch',async(route,options)=>new Promise(resolve=>requests.push({options,resolve})));
+  t.mock.method(URL,'createObjectURL',()=> 'blob:editor-speech');t.mock.method(URL,'revokeObjectURL',()=>{});
+  await editorFixture(async({dom,host,caret,blocks,set,entities})=>{
+    t.mock.method(dom.window.HTMLMediaElement.prototype,'play',async()=>{});
+    const speak=async()=>{
+      await act(async()=>host('b2').closest('[data-block-id]').querySelector('[aria-label="Block options"]').click());
+      await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent.startsWith('Speak')).click());
+    };
+    caret(host('b2'),0);await speak();
+    const outside=document.createElement('span');outside.textContent='Player controls';document.body.append(outside);
+    const range=document.createRange();range.selectNodeContents(outside);
+    getSelection().removeAllRanges();getSelection().addRange(range);
+    await act(async()=>document.dispatchEvent(new Event('selectionchange')));
+    assert.equal(requests[0].options.signal.aborted,false,'Focus outside the editor preserves narration');
+    caret(host('b2'),3);await act(async()=>document.dispatchEvent(new Event('selectionchange')));
+    assert.equal(requests[0].options.signal.aborted,false,'Caret movement inside the same block preserves narration');
+    caret(host('b3'),0);const selected=getSelection().anchorNode,offset=getSelection().anchorOffset;
+    await act(async()=>document.dispatchEvent(new Event('selectionchange')));
+    assert.equal(requests[0].options.signal.aborted,true);assert.equal(document.querySelector('.editor-speech'),null);
+    assert.equal(getSelection().anchorNode,selected);assert.equal(getSelection().anchorOffset,offset);
+    await entities([{id:'person',name:'Fictitious Ada',type:'person'}]);
+    await set(blocks().map(block=>block.id==='b2'?{...block,content:[{entityId:'person'}]}:block));
+    caret(host('b2'),0);await speak();await act(async()=>requests[1].resolve(wavResponse()));
+    await act(async()=>document.querySelector('audio').dispatchEvent(new Event('playing')));
+    assert.ok(host('b2').closest('[data-block-id]').hasAttribute('data-speech-current'));
+    await entities([{id:'person',name:'Fictitious Grace',type:'person'}]);
+    assert.equal(requests[1].options.signal.aborted,true);assert.equal(document.querySelector('.editor-speech'),null);
+  });
+});
+
+test('editor validates paused and future block sources before resuming or advancing narration',async t=>{
+  const plays=[];
+  t.mock.method(api,'intelligence',async()=>({ttsEnabled:true}));
+  t.mock.method(globalThis,'fetch',async()=>wavResponse());
+  t.mock.method(URL,'createObjectURL',()=> 'blob:guarded-speech');t.mock.method(URL,'revokeObjectURL',()=>{});
+  await editorFixture(async({dom,host,blocks,set})=>{
+    t.mock.method(dom.window.HTMLMediaElement.prototype,'play',async function(){plays.push(this);});
+    const speak=async()=>{
+      const range=document.createRange();range.selectNodeContents(host('b2'));range.setEndAfter(host('b3').lastChild);
+      getSelection().removeAllRanges();getSelection().addRange(range);
+      await act(async()=>host('b2').closest('[data-block-id]').querySelector('[aria-label="Block options"]').click());
+      await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent.startsWith('Speak')).click());
+    };
+    const edit=async id=>set(blocks().map(block=>block.id===id?{...block,content:[{text:'Edited source '+id}]}:block));
+    await speak();assert.equal(plays.length,1);
+    await act(async()=>document.querySelector('audio').dispatchEvent(new Event('pause')));
+    await edit('b2');assert.equal(document.querySelector('.editor-speech'),null,'A paused source edit invalidates its recording');
+    await speak();assert.equal(plays.length,2);
+    const first=document.querySelector('audio');
+    await edit('b3');assert.equal(document.querySelector('audio'),first,'Future edits do not interrupt the unchanged current block');
+    await act(async()=>first.dispatchEvent(new Event('ended')));
+    assert.equal(plays.length,2,'A stale future section never reaches automatic playback');
+    assert.equal(document.querySelector('audio'),null);
+  });
+});
+
 
 test('provider changes cancel pending speech and pin OpenAI voices and provider on every chunk',async t=>{
   const f=await speechFixture(t);await f.speak('Pending local');
@@ -349,12 +454,75 @@ test('provider changes cancel pending speech and pin OpenAI voices and provider 
   await f.resolve(1);
   assert.equal(JSON.parse(f.requests[2].options.body).provider,'openai');assert.equal(JSON.parse(f.requests[2].options.body).voice,'marin');
   await f.resolve(2);assert.ok(document.querySelector('audio'));
-  await f.setProvider('kokoro','puck');assert.equal(document.querySelector('audio'),null);assert.deepEqual(f.revoked,['blob:speech-1']);
+  await f.setProvider('kokoro','puck');assert.equal(document.querySelector('audio'),null);assert.deepEqual(f.revoked,['blob:speech-1','blob:speech-2']);
 });
 
 test('cross-tab provider changes refresh the next explicit request without retrying',async t=>{
   const f=await speechFixture(t);await f.speak('Selection');f.externalProvider('openai','cedar');
   await f.resolve(0,Response.json({error:'The speech provider changed. Start Speak again.'},{status:409}));
-  assert.equal(f.requests.length,1);assert.match(document.querySelector('[role=status]').textContent,/provider changed/);
+  assert.equal(f.requests.length,1);assert.match(document.querySelector('[role=status]').textContent,/provider changed/);assert.ok(!document.body.textContent.includes('Retry unfinished section'));
   await f.speak('Selection');const body=JSON.parse(f.requests[1].options.body);assert.equal(body.provider,'openai');assert.equal(body.voice,'cedar');
+});
+
+
+test('incremental speech applies backpressure, navigates ordered blocks and retries only unfinished audio',async t=>{
+  const f=await speechFixture(t);
+  const sections=Array.from({length:5},(_,index)=>({text:'Paragraph '+index,blockId:'b'+index,kind:'paragraph',sectionIndex:0}));
+  await act(async()=>f.hook().speak('ignored',sections));
+  await f.resolve(0);await f.resolve(1);await f.resolve(2);
+  assert.equal(f.requests.length,3,'At most the current section plus two ahead are generated');
+  assert.equal(document.querySelector('a[download]'),null);
+  const first=document.querySelector('audio');
+  await act(async()=>first.dispatchEvent(new Event('playing')));
+  assert.equal(f.hook().currentBlockId,'b0');
+  await act(async()=>first.dispatchEvent(new Event('ended')));
+  assert.equal(f.requests.length,4);
+  assert.equal(document.querySelector('audio').getAttribute('src'),'blob:speech-2');
+  await f.resolve(3,Response.json({error:'Temporary provider failure.'},{status:502}));
+  assert.ok(document.querySelector('audio'));assert.equal(document.querySelector('a[download]'),null);
+  await act(async()=>document.querySelector('[aria-label="Next paragraph"]').click());
+  assert.match(document.querySelector('[role=status]').textContent,/Temporary provider failure/,'Navigation retains partial failure and retry controls');
+  await act(async()=>document.querySelector('[aria-label="Previous paragraph"]').click());
+  await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Retry unfinished section').click());
+  assert.equal(f.requests.length,5);assert.equal(JSON.parse(f.requests[4].options.body).text,'Paragraph 3');
+  await f.resolve(4);
+  assert.equal(f.requests.length,5,'Backpressure still holds after retry');
+  await act(async()=>document.querySelector('[aria-label="Next paragraph"]').click());
+  assert.equal(f.requests.length,6);assert.equal(JSON.parse(f.requests[5].options.body).text,'Paragraph 4');
+  await f.resolve(5);
+  assert.ok(document.querySelector('a[download]'));
+  await act(async()=>document.querySelector('[aria-label="Previous paragraph"]').click());
+  assert.equal(document.querySelector('audio').getAttribute('src'),'blob:speech-2');
+  assert.equal(f.requests.length,6,'Navigation reuses generated sections without additional synthesis');
+});
+
+test('explicit full-download preparation drains bounded generation without playback and resume validates boundaries',async t=>{
+  const f=await speechFixture(t);
+  const sections=Array.from({length:4},(_,index)=>({text:'Part '+index,blockId:'part'+index,kind:'paragraph',sectionIndex:0}));
+  await act(async()=>f.hook().speak('ignored',sections));
+  await f.resolve(0);await f.resolve(1);await f.resolve(2);
+  assert.equal(f.requests.length,3);
+  await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Prepare complete download').click());
+  assert.equal(f.requests.length,4);await f.resolve(3);
+  assert.ok(document.querySelector('a[download]'));
+  await act(async()=>document.querySelector('[aria-label="Next paragraph"]').click());
+  await act(async()=>document.querySelector('audio').dispatchEvent(new Event('playing')));
+  assert.equal(f.hook().currentBlockId,'part1');
+  await act(async()=>document.querySelector('.speech-dismiss').click());
+  await act(async()=>f.hook().speak('ignored',sections));
+  await f.resolve(4);
+  assert.equal(document.querySelector('audio'),null,'Earlier sections are retained for the complete download without playing before the resume boundary');
+  await f.resolve(5);
+  await act(async()=>document.querySelector('audio').dispatchEvent(new Event('playing')));
+  assert.equal(f.hook().currentBlockId,'part1');
+});
+
+
+test('protected heading, paragraph and list sections send their configured pauses independently of reading-rule protection',async t=>{
+  const narration={...structuredClone(defaultNarrationPreferences),pauses:{heading:800,paragraph:400,listItem:200}},f=await speechFixture(t,narration);
+  const source=[paragraph('heading',[{text:'API',code:true}],'heading1'),paragraph('body',[{text:'123',math:true}]),paragraph('list',[{text:'API',code:true}],'bullet')];
+  const original=structuredClone(source),sections=speechSections(source,source.map(block=>block.id),[]);
+  await act(async()=>f.hook().speak('ignored',sections));await f.resolve(0);await f.resolve(1);await f.resolve(2);
+  assert.deepEqual(f.requests.map(request=>{const body=JSON.parse(request.options.body);return {text:body.text,pauseAfterMs:body.pauseAfterMs,protectedText:body.protectedText};}),[{text:'API',pauseAfterMs:800,protectedText:true},{text:'123',pauseAfterMs:400,protectedText:true},{text:'API',pauseAfterMs:200,protectedText:true}]);
+  assert.deepEqual(source,original);
 });

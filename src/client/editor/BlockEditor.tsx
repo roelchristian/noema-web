@@ -1,4 +1,5 @@
 import {speechText,useSpeech} from './speech';
+import {speechSections,speechSelectionContext} from './speech-sections';
 import {entityIconName} from '../../shared/entity-icons';
 import {paragraphFlow} from './paragraph-indent';
 import {useDefaultPersona} from '../components/PersonaSelect';
@@ -233,6 +234,36 @@ export function BlockEditor(props: Props) {
   }
   const [pageLinkStatus,setPageLinkStatus]=useState('');
   const speech=useSpeech(props.vaultId,props.pageId);
+  const speechSources=useRef(new Map<string,{source:string;projection:string}>());
+  const speechSelection=useRef<string|null>(null);
+  function validSpeechSource(id:string):boolean {
+    const block=latest.current.blocks.find(item=>item.id===id),previous=speechSources.current.get(id);
+    return !!block&&previous?.source===JSON.stringify(block)&&previous.projection===speechText([block],[id],latest.current.entities);
+  }
+  useEffect(()=>{
+    const id=speech.activeBlockId;
+    if(!id)return;
+    // The active source remains guarded while paused. Advancing validates the
+    // next block before playback; typing only projects this one source block.
+    if(!validSpeechSource(id))speech.stop();
+  },[blocks,entities,speech.activeBlockId]);
+  const speechActive=!!speech.player;
+  useEffect(()=>{
+    if(!speechActive)return;
+    const selectionChanged=()=>{
+      const context=root.current?speechSelectionContext(root.current):null;
+      if(context&&speechSelection.current&&context!==speechSelection.current)speech.stop();
+    };
+    document.addEventListener('selectionchange',selectionChanged);
+    return()=>document.removeEventListener('selectionchange',selectionChanged);
+  },[speechActive]);
+  useEffect(()=>{
+    const id=speech.currentBlockId;
+    if(!id)return;
+    const row=Array.from(root.current?.querySelectorAll<HTMLElement>('[data-block-id]')??[]).find(element=>element.dataset.blockId===id);
+    row?.setAttribute('data-speech-current','true');
+    return()=>{row?.removeAttribute('data-speech-current');};
+  },[speech.currentBlockId]);
   const defaultExplanationPersona=useDefaultPersona();
   const explanationPersona=useRef<string>('');
   const [explaining,setExplaining]=useState(false), [explanationError,setExplanationError]=useState('');
@@ -667,7 +698,15 @@ export function BlockEditor(props: Props) {
     ], 'BLOCK OPTIONS', true);
   }
   function speakChoice(ids:string[]):Choice[] {
-    return speech.enabled?[{title:uiText("Speak"),detail:uiText("Read aloud with an AI-generated voice"),icon:'speaker',pick:()=>{const draft=commitSelection();setMenu(null);speech.speak(speechText(draft,ids,entities));}}]:[];
+    return speech.enabled?[{title:uiText("Speak"),detail:uiText("Read aloud with an AI-generated voice"),icon:'speaker',pick:()=>{
+      const draft=commitSelection(),selected=new Set(ids);
+      // The pre-play validator can run before React echoes this explicit commit.
+      latest.current={...latest.current,blocks:draft};
+      const selectedBlocks=draft.filter(block=>selected.has(block.id));
+      speechSources.current=new Map(selectedBlocks.map(block=>[block.id,{source:JSON.stringify(block),projection:speechText([block],[block.id],entities)}]));
+      speechSelection.current=(root.current?speechSelectionContext(root.current):null)??(selectedBlocks.length?JSON.stringify([selectedBlocks[0]!.id,selectedBlocks.at(-1)!.id]):null);
+      setMenu(null);speech.speak(speechText(draft,ids,entities),speechSections(draft,ids,entities),validSpeechSource);
+    }}]:[];
   }
   function aiActionChoice(anchor: HTMLElement, ids: string[], back: Choice): Choice {
     return {get title(){return uiText("AI actions")},icon:'sparkles',submenu:true,pick:()=>show(anchor,[back,...(props.onReview?[{title:reviewPending.current?uiText("Reviewing…"):uiText("Review with AI"),detail:uiText("Suggest spelling, punctuation, grammar, and phrasing corrections"),icon:'sparkles',disabled:reviewPending.current,pick:()=>void reviewWriting(ids)}]:[]),{title:'Explanation persona · '+personaMetadata(explanationPersona.current||aiExplanationsForSources(latest.current.blocks,ids)[0]?.semanticGroup?.persona?.id||defaultExplanationPersona).name,icon:'sparkles',submenu:true,pick:()=>show(anchor,[back,...[{id:'',name:'Default / original'},...aiPersonas].map(p=>({title:p.name,icon:'sparkles',submenu:true,pick:()=>{explanationPersona.current=p.id;aiActionChoice(anchor,ids,back).pick();}}))],'AI PERSONA',true)},explainChoice(ids)],'AI ACTIONS',true)};

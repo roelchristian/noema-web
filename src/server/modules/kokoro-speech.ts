@@ -53,14 +53,14 @@ async function runtime(){
   })();
   return loading;
 }
-parentPort.on('message',async({text,voice})=>{
+parentPort.on('message',async({text,voice,speed})=>{
   try {
     const tts=await runtime(),chunks=[];let length=0;
     // Short word-preserving pieces keep the model below its 512-token context.
     const pieces=text.match(/.{1,180}(?:\s+|$)|\S+/gu)||[];
     for(const piece of pieces){
       if(piece.length>200)throw new Error('Speech contains a word longer than the local model supports.');
-      const audio=await tts.generate(piece.trim(),{voice});
+      const audio=await tts.generate(piece.trim(),{voice,speed});
       if(audio.sampling_rate!==24000)throw new Error('Unexpected audio sample rate.');
       const pcm=Buffer.alloc(audio.audio.length*2);
       for(let i=0;i<audio.audio.length;i++){const value=Math.max(-1,Math.min(1,audio.audio[i]));pcm.writeInt16LE(Math.round(value*(value<0?32768:32767)),i*2);}
@@ -75,7 +75,8 @@ parentPort.on('message',async({text,voice})=>{
 `;
 let worker:Worker|undefined,workerDirectory:string|undefined;
 let queue=Promise.resolve(),pending=0;
-export async function kokoroSpeech(text:string,signal:AbortSignal,voice:string):Promise<Buffer> {
+export async function kokoroSpeech(text:string,signal:AbortSignal,voice:string,speed=1):Promise<Buffer> {
+  if(!Number.isFinite(speed)||speed<0.75||speed>1.25)throw new HttpError(400,'Choose a supported narration pace.');
   if(!Object.hasOwn(voices,voice))throw new HttpError(400,'Choose a supported Kokoro speech voice.');
   text=cleanSpeechText(text);
   if(!text||text.length>4096)throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
@@ -104,7 +105,7 @@ export async function kokoroSpeech(text:string,signal:AbortSignal,voice:string):
       const message=(value:{audio?:Uint8Array;error?:string})=>value.error||!value.audio?failure():finish(undefined,value.audio);
       const timer=setTimeout(()=>finish(new HttpError(504,'Local speech generation timed out. Try a shorter passage.')),180000);
       current.on('message',message);current.on('error',failure);current.on('exit',exited);signal.addEventListener('abort',abort,{once:true});
-      if(signal.aborted)abort();else current.postMessage({text,voice:voices[voice as keyof typeof voices]});
+      if(signal.aborted)abort();else current.postMessage({text,voice:voices[voice as keyof typeof voices],speed});
     });
   }finally{pending--;release();}
 }

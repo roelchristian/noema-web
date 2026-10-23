@@ -14,10 +14,11 @@ export function subtypeIcon(type:EntityType,id:string,overrides:SubtypeIcons={})
 }
 
 /** The first explicitly assigned subtype wins, then the first subtype default. */
-export function resolveEntityIcon(entity:Pick<Entity,'type'|'subtypes'>,overrides:SubtypeIcons={}):PageIconId|null {
-  const explicit=entity.subtypes.find(id=>Object.hasOwn(overrides,id));
+export function resolveEntityIcon(entity:Pick<Entity,'type'>&Partial<Pick<Entity,'subtypes'>>,overrides:SubtypeIcons={}):PageIconId|null {
+  const subtypes=entity.subtypes??[];
+  const explicit=subtypes.find(id=>Object.hasOwn(overrides,id));
   if(explicit!==undefined)return subtypeIcon(entity.type,explicit,overrides);
-  for(const id of entity.subtypes){const icon=subtypeIcon(entity.type,id,overrides);if(icon)return icon;}
+  for(const id of subtypes){const icon=subtypeIcon(entity.type,id,overrides);if(icon)return icon;}
   return null;
 }
 

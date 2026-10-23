@@ -5,6 +5,15 @@ import {setupDOM} from './helpers/dom.mjs';
 import {api} from '../src/client/api.ts';
 import {collectionDefinitionUnchanged} from '../src/client/organization/collection-draft.ts';
 
+test('a disabled collection trigger leaves its closed popover untouched during workspace loading',async t=>{
+ const env=setupDOM(t),{createRoot}=await import('react-dom/client'),{CollectionCreatePopover}=await import('../src/client/organization/CollectionCreatePopover.tsx'),root=createRoot(document.querySelector('#mount'));
+ env.defer(()=>act(async()=>root.unmount()));
+ const data={collections:[],folders:[],memberships:[],locations:[],favourites:[]};
+ await act(async()=>root.render(React.createElement(CollectionCreatePopover,{vaultId:'fixture',data,pages:[],disabled:true,onChanged:()=>{}})));
+ assert.equal(document.querySelector('button').disabled,true);
+ assert.equal(document.querySelector('button').getAttribute('aria-expanded'),'false');
+});
+
 test('sidebar collection popover creates manual collections, retains failed drafts, and opens smart rules without a modal',async t=>{
  const env=setupDOM(t),{createRoot}=await import('react-dom/client'),{CollectionCreatePopover}=await import('../src/client/organization/CollectionCreatePopover.tsx'),root=createRoot(document.querySelector('#mount'));
  env.defer(()=>act(async()=>root.unmount()));

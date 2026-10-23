@@ -10,7 +10,7 @@ export function CollectionCreatePopover({vaultId,data,pages,disabled,onChanged,e
   const [open,setOpen]=useState(false),[kind,setKind]=useState<'manual'|'smart'|null>(null),[busy,setBusy]=useState(false);
   const label=uiText('Collection actions');
   function close(restoreFocus=false){
-    if(busy)return;
+    if(busy||!open)return;
     popup.current?.hidePopover();setOpen(false);setKind(null);
     if(restoreFocus)trigger.current?.focus({preventScroll:true});
   }

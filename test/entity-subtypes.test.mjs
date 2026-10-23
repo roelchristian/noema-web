@@ -18,6 +18,8 @@ test('subtype icon preferences persist, inherit defaults, and resolve multiple a
  const book={type:'creativework',subtypes:['creativework:book']},song={type:'creativework',subtypes:['creativework:song']};
  assert.equal(resolveEntityIcon(book),'book');assert.equal(resolveEntityIcon(song),'music');
  assert.equal(resolveEntityIcon({type:'person',subtypes:['person:writer']}),null);
+ assert.equal(resolveEntityIcon({type:'person'}),null);
+ assert.equal(entityIconName({type:'person'}),'person');
  const appearance=defaultAppearance();appearance.subtypeIcons={'creativework:song':'star','creativework:book':null,'custom-id':'feather'};
  const restored=parseAppearance(JSON.stringify(appearance));assert.deepEqual(restored.subtypeIcons,appearance.subtypeIcons);
  assert.equal(resolveEntityIcon(song,restored.subtypeIcons),'star');assert.equal(resolveEntityIcon(book,restored.subtypeIcons),null);

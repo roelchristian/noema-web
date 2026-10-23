@@ -3,10 +3,10 @@ import {createPortal} from 'react-dom';
 import {Icon} from '../components/Icon';
 import {Select} from '../components/Select';
 
-export type SpeechState={loading:boolean;url:string;error:string;part:number;total:number;assembling?:boolean;downloadUrl?:string;section?:number;generated?:number;retryable?:boolean};
+export type SpeechState={loading:boolean;url:string;error:string;part:number;total:number;assembling?:boolean;downloadUrl?:string;section?:number;generated?:number;retryable?:boolean;canNext?:boolean};
 const time=(seconds:number)=>`${Math.floor(seconds/60)}:${String(Math.floor(seconds%60)).padStart(2,'0')}`;
 
-export function SpeechPlayer({state,voice,onClose,onError,onNext,onPrevious,onSectionEnded,onSectionPlay,onSectionPause,onRetry,onCompleteRequest}:{state:SpeechState;voice:string;onClose:()=>void;onError:()=>void;onNext?:()=>void;onPrevious?:()=>void;onSectionEnded?:()=>void;onSectionPlay?:()=>void;onSectionPause?:()=>void;onRetry?:()=>void;onCompleteRequest?:()=>void}) {
+export function SpeechPlayer({state,voice,onClose,onError,onNext,onPrevious,onSectionEnded,onSectionPlay,onSectionPause,onRetry,onCompleteRequest,beforePlay}:{state:SpeechState;voice:string;onClose:()=>void;onError:()=>void;onNext?:()=>void;onPrevious?:()=>void;onSectionEnded?:()=>void;onSectionPlay?:()=>void;onSectionPause?:()=>void;onRetry?:()=>void;onCompleteRequest?:()=>void;beforePlay?:()=>boolean}) {
   const audio=useRef<HTMLAudioElement>(null);
   const anchor=useRef<HTMLSpanElement>(null);
   const information=useRef<HTMLDetailsElement>(null);
@@ -25,7 +25,7 @@ export function SpeechPlayer({state,voice,onClose,onError,onNext,onPrevious,onSe
   const [elapsed,setElapsed]=useState(0),[playing,setPlaying]=useState(false),[waiting,setWaiting]=useState(false);
   const [position,setPosition]=useState(0),[duration,setDuration]=useState(0),[rate,setRate]=useState(1),[ended,setEnded]=useState(false),[started,setStarted]=useState(false),[notice,setNotice]=useState('');
   useEffect(()=>{
-    if(!state.url||!audio.current)return;
+    if(!state.url||!audio.current||beforePlay&&!beforePlay())return;
     let active=true;
     // Each URL represents one complete section, in source order.
     // Keep manual play available if the browser requires a fresh user gesture.
@@ -47,6 +47,7 @@ export function SpeechPlayer({state,voice,onClose,onError,onNext,onPrevious,onSe
   async function toggle(){
     const media=audio.current;if(!media)return;
     if(!media.paused){media.pause();return;}
+    if(beforePlay&&!beforePlay())return;
     if(media.ended)media.currentTime=0;
     try{await media.play();setNotice('');}catch{setPlaying(false);setWaiting(false);setNotice('Playback could not start. Press play to try again, or download the audio.');}
   }
@@ -65,21 +66,21 @@ export function SpeechPlayer({state,voice,onClose,onError,onNext,onPrevious,onSe
     {state.error&&onRetry&&<button type="button" className="button" onClick={onRetry}>Retry unfinished section</button>}
     {state.error&&state.url&&<p className="speech-notice">Earlier sections remain playable. Download is available only when every section is complete. Retrying may incur provider usage.</p>}
     {state.url&&<>
-      <audio ref={audio} key={state.url} autoPlay src={state.url} aria-label="AI-generated speech" onError={onError}
+      <audio ref={audio} key={state.url} src={state.url} aria-label="AI-generated speech" onError={onError}
         onLoadedMetadata={event=>{const value=event.currentTarget.duration;setDuration(Number.isFinite(value)?value:0);}}
         onDurationChange={event=>{const value=event.currentTarget.duration;setDuration(Number.isFinite(value)?value:0);}}
         onTimeUpdate={event=>setPosition(event.currentTarget.currentTime)}
         onPlay={()=>{onSectionPlay?.();setPlaying(true);setStarted(true);setEnded(false);setNotice('');}} onPlaying={()=>{setWaiting(false);onSectionPlay?.();}} onWaiting={()=>{setWaiting(true);onSectionPause?.();}}
         onPause={()=>{onSectionPause?.();setPlaying(false);setWaiting(false);}} onEnded={()=>{setPlaying(false);setWaiting(false);setEnded(true);onSectionEnded?.();}}/>
       <div className="speech-playback" role="group" aria-label="Speech playback">
-        <button type="button" className="speech-play" onClick={()=>void toggle()} aria-label={playing?'Pause speech':ended?'Replay speech':'Play speech'} title={playing?'Pause':ended?'Replay':'Play'}>
+        <button type="button" className="speech-play" onClick={()=>void toggle()} aria-label={playing?'Pause speech':ended?(state.total>1?'Replay section':'Replay speech'):'Play speech'} title={playing?'Pause':ended?(state.total>1?'Replay section':'Replay'):'Play'}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">{playing?<path d="M6 4h4v16H6zm8 0h4v16h-4z"/>:<path d="m7 4 14 8-14 8z"/>}</svg>
         </button>
         <button type="button" className="speech-play" aria-label="Previous paragraph" onClick={onPrevious} disabled={!onPrevious||!state.section}>‹</button>
         <span className="speech-time">{time(position)}</span>
         <input className="speech-seek" type="range" min="0" max={duration||1} step="0.1" value={Math.min(position,duration||1)} style={{'--speech-progress':`${duration?Math.min(position/duration,1)*100:0}%`} as CSSProperties} disabled={!duration} aria-label="Seek speech" aria-valuetext={`${time(position)} of ${time(duration)}`} onInput={event=>{const value=Number(event.currentTarget.value);if(audio.current){audio.current.currentTime=value;setPosition(value);setEnded(false);}}}/>
         <span className="speech-time">{time(duration)}</span>
-        <button type="button" className="speech-play" aria-label="Next paragraph" onClick={onNext} disabled={!onNext||(state.section??0)>=state.total-1}>›</button>
+        <button type="button" className="speech-play" aria-label="Next paragraph" onClick={onNext} disabled={!onNext||state.canNext===false||(state.section??0)>=state.total-1}>›</button>
         <span className="speech-speed"><Select aria-label="Playback speed" value={rate} onChange={event=>{const value=Number(event.currentTarget.value);setRate(value);if(audio.current)audio.current.playbackRate=value;}}>{[0.75,1,1.25,1.5,2].map(value=><option key={value} value={value}>{value}×</option>)}</Select></span>
       </div>
       <details ref={information} className="speech-info" onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();event.currentTarget.open=false;event.currentTarget.querySelector('summary')?.focus();}}}>

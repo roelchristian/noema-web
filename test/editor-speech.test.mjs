@@ -141,7 +141,7 @@ test('speech starts the first section immediately and exposes only a complete do
   assert.equal(f.requests.length,2);assert.equal(JSON.parse(f.requests[1].options.body).text.length,904);
   await f.resolve(1,wavResponse([3,0,4,0]));
   assert.equal(document.querySelector('audio').getAttribute('src'),'blob:speech-1');
-  assert.ok(document.querySelector('audio').hasAttribute('autoplay'));
+  assert.equal(f.autoplayed.length,1,'Playback starts through the source-validated play action');
   const download=document.querySelector('a[download]');assert.equal(download.getAttribute('download'),'noema-speech.wav');assert.equal(download.getAttribute('href'),'blob:speech-2');assert.equal(download.textContent,'Download audio');
   const bytes=Buffer.from(await f.created[1].arrayBuffer());assert.deepEqual([...bytes.subarray(44)],[1,0,2,0,3,0,4,0]);assert.equal(bytes.readUInt32LE(40),8);
   download.addEventListener('click',event=>event.preventDefault());

@@ -1267,6 +1267,43 @@
 .entity-review-messages {
   flex-shrink: 0;
 }
+.entity-review-scan-message {
+  display: flex;
+  box-sizing: border-box;
+  align-items: center;
+  min-height: 24px;
+  gap: var(--space-2);
+  margin: 0;
+  padding-inline: var(--space-3);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 20px;
+}
+.entity-review-scan-message > .icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.entity-review-message-dismiss {
+  display: inline-flex;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.entity-review-message-dismiss:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.entity-review-message-dismiss .icon { width: 12px; height: 12px; }
 .entity-review-messages > p {
   margin: 0;
   padding: 10px 28px;
@@ -4783,7 +4820,6 @@ dialog.noema-modal.entity-review-modal .modal-header { margin: 0; top: 0; }
 .entity-review-unified-toolbar .entity-scan-filter-options label { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; gap: var(--space-2); flex: 1 1 100%; margin: 0; color: var(--text-muted); font-size: 11px; }
 .entity-review-unified-toolbar .entity-scan-filter-options .select-host { min-width: 0; }
 .entity-review-unified-toolbar .entity-scan-filter-options .select-trigger { min-height: var(--control-target-compact); padding: var(--space-1) var(--space-2); font-size: 11px; }
-.entity-review-scan-status { margin: 0; padding: var(--space-1) var(--space-5); color: var(--text-muted); font-size: 12px; }
 @media (max-width: 750px) {
   .entity-review-unified-toolbar .entity-review-modes .button { padding-inline: var(--space-2); font-size: 11px; }
   .entity-review-unified-toolbar .entity-review-filters { margin-left: 0; }
@@ -4877,7 +4913,23 @@ dialog.noema-modal.entity-review-modal { height: min(780px, calc(100dvh - 64px))
 
 /* Review saves keep their controls and confirmation space in place. */
 .entity-review-modal .entity-review-messages { min-height: 30px; }
-.entity-review-modal .entity-review-messages > .entity-review-confirmation { margin-bottom: 8px; }
+.entity-review-modal .entity-review-messages > .entity-review-confirmation,
+.entity-review-modal .entity-scan-live-status {
+  box-sizing: border-box;
+  align-items: center;
+  min-height: 24px;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0 var(--space-3);
+  font-size: 12px;
+  line-height: 20px;
+}
+.entity-review-modal .entity-review-messages > .entity-review-confirmation > .icon,
+.entity-review-modal .entity-scan-live-status > .scan-spinner {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
 .entity-review-action-icon { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; flex: none; }
 .entity-review-action-icon .scan-spinner { width: 12px; height: 12px; }
 .entity-review-row-actions .scan-row-accept { min-width: 100px; }

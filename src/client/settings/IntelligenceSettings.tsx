@@ -54,6 +54,7 @@ export function IntelligenceSettings() {
         </Select>
       </div>
       <p id="ai-tts-voice-description">{provider==='kokoro'?uiText("Each voice uses separate saved audio generated locally. Switching back can reuse its saved audio."):provider==='gemini'?uiText("Each Gemini voice uses separate saved audio. Switching back can reuse its saved audio."):uiText("Each OpenAI voice uses separate saved audio. Switching back can reuse its saved audio.")}</p>
+      <p>{uiText("Generated recordings are cached for 7 days, then automatically deleted to free disk space.")}</p>
       <p>{uiText("Speech model:")} <code>{speechModelFor(provider)}</code></p>
       {provider==='kokoro'&&<div className="local-speech-model" aria-busy={speechBusy}>
         <p id="ai-tts-model-status" role="status" aria-live="polite">{speechBusy?uiText("Preparing local speech model…"):localSpeech?.ready?uiText("Kokoro model ready for local speech."):localSpeech?uiText("Download the Kokoro model to use Speak. Model files are stored locally and excluded from Git."):speechError?uiText("Local speech model availability could not be checked."):uiText("Checking local speech model…")}</p>

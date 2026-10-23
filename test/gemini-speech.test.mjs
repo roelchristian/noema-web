@@ -33,7 +33,7 @@ function fixture(transport=success,preferences,clock=Date.now){
  const ai=new Intelligence(openai,transport,clock,preferences,async()=>{localCalls++;return wav;},undefined,gemini);
  return {ai,openai,gemini,localCalls:()=>localCalls};
 }
-function enable(ai,more={}){return ai.savePreferences({...ai.selection(),ttsEnabled:true,ttsProvider:'gemini',...more});}
+function enable(ai,more={}){return ai.savePreferences({...ai.selection(),ttsEnabled:true,ttsProvider:'gemini',ttsVoice:'Kore',...more});}
 
 test('Gemini unary REST sends only clean transcript, structured style and an isolated header; returns existing WAV intact',async()=>{
  let usage,calls=0;
@@ -206,9 +206,9 @@ test('Gemini settings require a saved explicit provider, expose only its voices,
  await act(async()=>root.render(createElement(IntelligenceSettings)));
  assert.equal(document.querySelector('#ai-tts-provider').value,'kokoro');assert.equal(document.querySelector('#ai-tts-enabled').getAttribute('aria-checked'),'false');
  await act(async()=>{const select=document.querySelector('#ai-tts-provider');select.value='gemini';select.dispatchEvent(new Event('change',{bubbles:true}));});
- assert.equal(saved.ttsProvider,'kokoro');assert.equal(document.querySelector('.local-speech-model'),null);assert.equal(document.querySelector('#ai-tts-voice').value,'Kore');
+ assert.equal(saved.ttsProvider,'kokoro');assert.equal(document.querySelector('.local-speech-model'),null);assert.equal(document.querySelector('#ai-tts-voice').value,'Puck');
  assert.deepEqual([...document.querySelector('#ai-tts-voice').options].map(x=>x.value),[...geminiSpeechVoices]);assert.ok(document.querySelector('#ai-tts-description').textContent.includes('Google'));assert.ok(document.body.textContent.includes(geminiSpeechModel));
- await act(async()=>document.querySelector('.ai-preferences-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));assert.equal(saved.ttsProvider,'gemini');assert.equal(saved.ttsVoice,'Kore');assert.equal(writes.length,0);
+ await act(async()=>document.querySelector('.ai-preferences-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));assert.equal(saved.ttsProvider,'gemini');assert.equal(saved.ttsVoice,'Puck');assert.equal(writes.length,0);
  const input=document.querySelector('#gemini-key');assert.equal(input.type,'password');assert.equal(input.autocomplete,'new-password');assert.equal(input.maxLength,geminiApiKeyMaxLength);assert.ok(input.maxLength>authKey.length);
  // React's input plugin initializes before JSDOM in this suite; invoke its registered change handler.
  await act(async()=>{input.value=`  ${authKey}  `;input[Object.keys(input).find(name=>name.startsWith('__reactProps'))].onChange({target:input});});

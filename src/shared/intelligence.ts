@@ -6,7 +6,7 @@ export type SpeechProvider = 'kokoro' | 'openai' | 'gemini';
 export const defaultSpeechProvider:SpeechProvider = 'kokoro';
 export const speechModel = 'kokoro-82m-v1.0';
 export const geminiSpeechModel = 'gemini-3.8-flash-lite-tts';
-export const geminiSpeechStyle = 'Clear, natural narration at a steady pace.';
+export const geminiSpeechStyle = 'Warm, relaxed, conversational narration with a lightly upbeat tone, smooth phrasing, clear diction, and a steady, unhurried pace.';
 export const geminiApiKeyMaxLength = 4096;
 export const geminiSpeechVoices = ['Zephyr','Puck','Charon','Kore','Fenrir','Leda','Orus','Aoede','Callirrhoe','Autonoe','Enceladus','Iapetus','Umbriel','Algieba','Despina','Erinome','Algenib','Rasalgethi','Laomedeia','Achernar','Alnilam','Schedar','Gacrux','Pulcherrima','Achird','Zubenelgenubi','Vindemiatrix','Sadachbia','Sadaltager','Sulafat'] as const;
 export interface SpeechCredentialStatus {configured:boolean;expiresAt:string|null}
@@ -17,7 +17,7 @@ export type SpeechVoice = typeof speechVoices[number] | typeof openAISpeechVoice
 export const defaultSpeechVoice:SpeechVoice = 'puck';
 export function isSpeechProvider(value:unknown):value is SpeechProvider {return value==='kokoro'||value==='openai'||value==='gemini';}
 export function speechVoicesFor(provider:SpeechProvider):readonly SpeechVoice[] {return provider==='gemini'?geminiSpeechVoices:provider==='openai'?openAISpeechVoices:speechVoices;}
-export function defaultSpeechVoiceFor(provider:SpeechProvider):SpeechVoice {return provider==='gemini'?'Kore':provider==='openai'?'marin':defaultSpeechVoice;}
+export function defaultSpeechVoiceFor(provider:SpeechProvider):SpeechVoice {return provider==='gemini'?'Puck':provider==='openai'?'marin':defaultSpeechVoice;}
 export function isSpeechVoice(value:unknown,provider:SpeechProvider='kokoro'):value is SpeechVoice {return typeof value==='string'&&speechVoicesFor(provider).some(voice=>voice===value);}
 export function speechModelFor(provider:SpeechProvider):string {return provider==='gemini'?geminiSpeechModel:provider==='openai'?openAISpeechModel:speechModel;}
 export interface IntelligencePreferences { model: string; reasoningEffort: ReasoningEffort }

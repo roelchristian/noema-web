@@ -73,7 +73,7 @@ export function SpeechPlayer({state,voice,onClose,onError}:{state:SpeechState;vo
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">{playing?<path d="M6 4h4v16H6zm8 0h4v16h-4z"/>:<path d="m7 4 14 8-14 8z"/>}</svg>
         </button>
         <span className="speech-time">{time(position)}</span>
-        <input className="speech-seek" type="range" min="0" max={duration||1} step="0.1" value={Math.min(position,duration||1)} disabled={!duration} aria-label="Seek speech" aria-valuetext={`${time(position)} of ${time(duration)}`} onInput={event=>{const value=Number(event.currentTarget.value);if(audio.current){audio.current.currentTime=value;setPosition(value);setEnded(false);}}}/>
+        <input className="speech-seek" type="range" min="0" max={duration||1} step="0.1" value={Math.min(position,duration||1)} style={{'--speech-progress':`${duration?Math.min(position/duration,1)*100:0}%`} as CSSProperties} disabled={!duration} aria-label="Seek speech" aria-valuetext={`${time(position)} of ${time(duration)}`} onInput={event=>{const value=Number(event.currentTarget.value);if(audio.current){audio.current.currentTime=value;setPosition(value);setEnded(false);}}}/>
         <span className="speech-time">{time(duration)}</span>
         <span className="speech-speed"><Select aria-label="Playback speed" value={rate} onChange={event=>{const value=Number(event.currentTarget.value);setRate(value);if(audio.current)audio.current.playbackRate=value;}}>{[0.75,1,1.25,1.5,2].map(value=><option key={value} value={value}>{value}×</option>)}</Select></span>
       </div>

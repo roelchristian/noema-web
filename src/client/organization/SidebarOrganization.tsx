@@ -1,5 +1,6 @@
 import {FolderDialog} from './FolderDialog';
 import {CollectionDialog} from './CollectionDialog';
+import {CollectionCreatePopover} from './CollectionCreatePopover';
 import {t as uiText} from '../i18n';
 import {TitleText} from '../components/TitleText';
 import { useEffect, useRef, useState, type DragEvent } from 'react';
@@ -164,15 +165,13 @@ export function SidebarOrganization({vaultId, data, pages, activePageId, activeF
         ]}/>
       </div>
       {expanded.has('unfiled') && <div className="sidebar-branch-children">{pageLinks('', null, 1)}</div>}
-    </div>}{!data.folders.length && <button className="sidebar-create" disabled={disabled} onClick={() => newFolder('')}><Icon name="plus"/>{uiText("Create a folder")}</button>}<div className="organization-sidebar-label">{uiText("Collections")}<ActionMenu icon="plus" label={uiText("Collection actions")} disabled={disabled} actions={[
-      {get label(){return uiText("New collection")}, icon: 'collection', onSelect: () => setEdit({type: 'collections', name: '', collection: '', parent: ''})},
-    ]}/></div>{data.collections.map(collection => <div key={collection.id}>
+    </div>}{!data.folders.length && <button className="sidebar-create" disabled={disabled} onClick={() => newFolder('')}><Icon name="plus"/>{uiText("Create a folder")}</button>}<div className="organization-sidebar-label">{uiText("Collections")}{vaultId&&<CollectionCreatePopover key={vaultId} vaultId={vaultId} data={data} pages={pages} disabled={disabled} onChanged={onChanged}/>}</div>{data.collections.map(collection => <div key={collection.id}>
       {item({type: 'collections', id: collection.id, name: collection.name, collection: collection.id, parent: ''})}
       {expanded.has('collection:' + collection.id) && <div className="sidebar-branch-children">{(data.folderLinks ?? []).filter(link=>link.collection_id===collection.id).map(link=>{
         const folder=data.folders.find(folder=>folder.id===link.folder_id);
         return folder ? <div key={folder.id}>{item({type:'folders',id:folder.id,name:folder.name,collection:'',parent:folder.parent_id||'',linkedCollection:collection.id,scope:'collection:' + collection.id + '/'},1)}{expanded.has('collection:' + collection.id + '/folder:' + folder.id)&&<div className="sidebar-branch-children">{folders('',folder.id,2,'collection:' + collection.id + '/')}{pageLinks('',folder.id,2,'collection:' + collection.id + '/')}</div>}</div> : null;
       })}{pageLinks(collection.id, null, 1)}</div>}
-    </div>)}{!data.collections.length && <button className="sidebar-create" disabled={disabled} onClick={() => setEdit({type: 'collections', name: '', collection: '', parent: ''})}><Icon name="plus"/>{uiText("Create a collection")}</button>}</>}
+    </div>)}{!data.collections.length&&vaultId&&<CollectionCreatePopover key={vaultId+':empty'} vaultId={vaultId} data={data} pages={pages} disabled={disabled} onChanged={onChanged} empty/>}</>}
     <span className="sr-only" role="status">{dropStatus}</span>
     {organizePage && <PageOrganizationDialog page={organizePage} data={data} onMove={(collection,folder,remove)=>onMovePage(organizePage.id,collection,folder,remove)} onClose={()=>setOrganizePage(null)}/>}
     {addFolder && vaultId && <FolderCollectionDialog vaultId={vaultId} data={data} {...addFolder} onChanged={onChanged} onClose={()=>setAddFolder(null)}/>}

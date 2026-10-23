@@ -7924,6 +7924,36 @@
     "Honig",
     "Miel"
   ],
+  "Coral": [
+    "Corail",
+    "Koralle",
+    "Coral"
+  ],
+  "Terracotta": [
+    "Terre cuite",
+    "Terrakotta",
+    "Terracota"
+  ],
+  "Moss": [
+    "Mousse",
+    "Moos",
+    "Musgo"
+  ],
+  "Teal": [
+    "Sarcelle",
+    "Petrol",
+    "Verde azulado"
+  ],
+  "Plum": [
+    "Prune",
+    "Pflaume",
+    "Ciruela"
+  ],
+  "Slate": [
+    "Ardoise",
+    "Schiefer",
+    "Pizarra"
+  ],
   "Czech": [
     "Tchèque",
     "Tschechisch",
@@ -8754,9 +8784,69 @@
     "Quellen",
     "fuentes"
   ],
+  "Add collection": [
+    "Ajouter une collection",
+    "Sammlung hinzufügen",
+    "Añadir colección"
+  ],
+  "Create Smart Collection": [
+    "Créer une collection intelligente",
+    "Intelligente Sammlung erstellen",
+    "Crear colección inteligente"
+  ],
+  "Create collection": [
+    "Créer la collection",
+    "Sammlung erstellen",
+    "Crear colección"
+  ],
+  "Gather pages and folders by hand": [
+    "Rassembler des pages et des dossiers manuellement",
+    "Seiten und Ordner von Hand zusammenstellen",
+    "Reunir páginas y carpetas manualmente"
+  ],
+  "Bring matching pages together automatically": [
+    "Rassembler automatiquement les pages correspondantes",
+    "Passende Seiten automatisch zusammenführen",
+    "Reunir automáticamente las páginas coincidentes"
+  ],
   "Unknown provenance": [
     "Provenance inconnue",
     "Unbekannte Herkunft",
     "Procedencia desconocida"
+  ],
+  "Choose an icon for each subtype. Colors come from the main category.": [
+    "Choisissez une icône pour chaque sous-type. Les couleurs proviennent de la catégorie principale.",
+    "Wählen Sie ein Symbol für jeden Untertyp. Die Farben stammen aus der Hauptkategorie.",
+    "Elige un icono para cada subtipo. Los colores provienen de la categoría principal."
+  ],
+  "For multiple subtypes, the first assigned icon is used.": [
+    "Pour plusieurs sous-types, la première icône attribuée est utilisée.",
+    "Bei mehreren Untertypen wird das erste zugewiesene Symbol verwendet.",
+    "Si hay varios subtipos, se usa el primer icono asignado."
+  ],
+  "Icon for {name}": [
+    "Icône pour {name}",
+    "Symbol für {name}",
+    "Icono para {name}"
+  ],
+  "Default icon": [
+    "Icône par défaut",
+    "Standardsymbol",
+    "Icono predeterminado"
+  ],
+  "Use category icon": [
+    "Utiliser l’icône de la catégorie",
+    "Kategoriesymbol verwenden",
+    "Usar icono de categoría"
+  ],
+  "Colors and icons saved in this browser.": [
+    "Couleurs et icônes enregistrées dans ce navigateur.",
+    "Farben und Symbole werden in diesem Browser gespeichert.",
+    "Colores e iconos guardados en este navegador."
+  ],
+  "Browser storage unavailable. Colors and icons won’t persist after reload.": [
+    "Stockage du navigateur indisponible. Les couleurs et les icônes ne seront pas conservées après le rechargement.",
+    "Browserspeicher nicht verfügbar. Farben und Symbole bleiben nach dem Neuladen nicht erhalten.",
+    "Almacenamiento del navegador no disponible. Los colores e iconos no se conservarán después de recargar."
   ]
 }

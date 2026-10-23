@@ -168,7 +168,7 @@ export function SettingsDialog({initialTab='appearance',calendarSettings,onCalen
         {tab === 'security' && <SecuritySettings key={vault?.id} vault={vault} onChangePassphrase={onChangePassphrase} onBeforeNetworkChange={onBeforeNetworkChange}/>}
       </div>
       </div>
-      <footer className="settings-footer"><p role="status" hidden={tab !== 'appearance'}>{storageError ? uiText("Browser storage unavailable. Changes won’t persist after reload.") : uiText("Changes saved in this browser.")}</p><div><button className="button" hidden={tab !== 'appearance'} onClick={() => onChange({...defaultAppearance(), entityColors: appearance.entityColors, entityOverrides: appearance.entityOverrides})}>{uiText("Restore defaults")}</button><button className="button primary" onClick={onClose}>{uiText("Done")}</button></div></footer>
+      <footer className="settings-footer"><p role="status" hidden={tab !== 'appearance'}>{storageError ? uiText("Browser storage unavailable. Changes won’t persist after reload.") : uiText("Changes saved in this browser.")}</p><div><button className="button" hidden={tab !== 'appearance'} onClick={() => onChange({...defaultAppearance(), entityColors: appearance.entityColors, entityOverrides: appearance.entityOverrides,subtypeIcons:appearance.subtypeIcons})}>{uiText("Restore defaults")}</button><button className="button primary" onClick={onClose}>{uiText("Done")}</button></div></footer>
     </div>
   </Modal>;
 }

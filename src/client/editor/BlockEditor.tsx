@@ -1,3 +1,4 @@
+import {entityIconName} from '../../shared/entity-icons';
 import {paragraphFlow} from './paragraph-indent';
 import {useDefaultPersona} from '../components/PersonaSelect';
 import {aiPersonas,personaMetadata,personaIdentityName,type PersonaIdentity} from '../../shared/ai-personas';
@@ -824,7 +825,7 @@ export function BlockEditor(props: Props) {
       const showMatches=(limit=3)=>{
         const items:Choice[]=matches.slice(0,limit).map(entity=>{
           const subtype=entity.subtypes.map(id=>schema.subtypes.find(subtype=>subtype.id===id&&subtype.type===entity.type)?.name).find(Boolean);
-          return {title:entity.name,detail:[entityLabels[entity.type],subtype,entity.description].filter(Boolean).join(' · '),icon:entity.type,pick:()=>insertMention(saved,entity.id,block.id)};
+          return {title:entity.name,detail:[entityLabels[entity.type],subtype,entity.description].filter(Boolean).join(' · '),icon:entityIconName(entity),pick:()=>insertMention(saved,entity.id,block.id)};
         });
         if(matches.length>limit)items.push({title:`Show more (${matches.length-limit})`,icon:'chevron',pick:()=>showMatches(limit+10)});
         items.push({title:query?`Create and insert “${query}”`:uiText("Create and insert an entity"),icon:'plus',pick:()=>{const text=saved.toString(),caret=range.cloneRange();setMenu(null);onCreateEntity(query,id=>{if(saved.toString()!==text)throw new Error('Entity created, but the insertion text changed. Select text again to link it.');insertMention(saved,id,block.id);},()=>{if(caret.startContainer.isConnected&&root.current?.contains(caret.commonAncestorContainer)){el.focus();getSelection()?.removeAllRanges();getSelection()?.addRange(caret);}});}});

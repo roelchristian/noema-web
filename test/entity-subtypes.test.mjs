@@ -12,6 +12,39 @@ import { Vaults } from '../src/server/modules/vaults.ts';
 
 const rejects = (work, status = 400) => assert.throws(work, error => error.status === status);
 
+test('subtype icon preferences persist, inherit defaults, and resolve multiple and custom subtypes',async()=>{
+ const {defaultAppearance,parseAppearance}=await import('../src/client/settings/appearance.ts');
+ const {resolveEntityIcon,entityIconName}=await import('../src/shared/entity-icons.ts');
+ const book={type:'creativework',subtypes:['creativework:book']},song={type:'creativework',subtypes:['creativework:song']};
+ assert.equal(resolveEntityIcon(book),'book');assert.equal(resolveEntityIcon(song),'music');
+ assert.equal(resolveEntityIcon({type:'person',subtypes:['person:writer']}),null);
+ assert.equal(resolveEntityIcon({type:'person'}),null);
+ assert.equal(entityIconName({type:'person'}),'person');
+ const appearance=defaultAppearance();appearance.subtypeIcons={'creativework:song':'star','creativework:book':null,'custom-id':'feather'};
+ const restored=parseAppearance(JSON.stringify(appearance));assert.deepEqual(restored.subtypeIcons,appearance.subtypeIcons);
+ assert.equal(resolveEntityIcon(song,restored.subtypeIcons),'star');assert.equal(resolveEntityIcon(book,restored.subtypeIcons),null);
+ assert.equal(resolveEntityIcon({type:'creativework',subtypes:['custom-id']},restored.subtypeIcons),'feather');
+ assert.equal(resolveEntityIcon({type:'creativework',subtypes:['creativework:book','creativework:song']},{'creativework:song':'star'}),'star');
+ assert.equal(entityIconName({...song,icon:'star'}),'page:star');assert.equal(entityIconName({...song,icon:null}),'creativework');
+ assert.equal(parseAppearance('{"subtypeIcons":{"creativework:song":"<svg>","custom-id":42}}').subtypeIcons['creativework:song'],undefined);
+ assert.deepEqual(parseAppearance('{"subtypeIcons":[]}').subtypeIcons,{});
+});
+
+test('subtype icons render in mentions and update existing editable mentions without changing their text',async t=>{
+ const {createElement}=await import('react'),{renderToStaticMarkup}=await import('react-dom/server');
+ const {Icon,SubtypeIconContext}=await import('../src/client/components/Icon.tsx');
+ const {pageIcons}=await import('../src/shared/page-icons.ts');
+ const {segmentHTML,syncEditableSegments,readSegments}=await import('../src/client/editor/segments.tsx');
+ const {setupDOM}=await import('./helpers/dom.mjs');setupDOM(t);
+ const song={id:'song',vault_id:'default',name:'A song',type:'creativework',subtypes:['creativework:song'],description:'',updated_at:''};
+ const path=id=>pageIcons.find(item=>item.id===id).path;
+ assert.ok(renderToStaticMarkup(createElement(SubtypeIconContext.Provider,{value:{'creativework:song':'star'}},createElement(Icon,{name:song.type,entity:song}))).includes(path('star')));
+ const content=[{text:'Listen to '},{entityId:song.id},{text:' today.'}],editor=document.createElement('div');document.body.append(editor);
+ editor.innerHTML=segmentHTML(content,[song]);assert.equal(editor.querySelector('.mention path').getAttribute('d'),path('music'));
+ syncEditableSegments(editor,content,[{...song,icon:'star'}],{blockId:'test'});
+ assert.equal(editor.querySelector('.mention path').getAttribute('d'),path('star'));assert.deepEqual(readSegments(editor),content);assert.equal(editor.textContent,'Listen to A song today.');
+});
+
 test('subtypes inherit category fields and own scoped definitions while values remain entity-specific', () => {
   const db = openDatabase(':memory:');
   try {

@@ -9,10 +9,13 @@ import { Icon } from '../components/Icon';
 import { Select } from '../components/Select';
 import { ColorPicker } from '../settings/ColorPicker';
 import type { Appearance, PillColor } from '../settings/appearance';
+import {pageIcons,type PageIconId} from '../../shared/page-icons';
+import {subtypeIcon,type SubtypeIcons} from '../../shared/entity-icons';
 
-export function EntityTypeManager({vaultId, schema, onChange, entityColors, onColorChange}: {
+export function EntityTypeManager({vaultId, schema, onChange, entityColors, onColorChange,subtypeIcons={},onSubtypeIconChange}: {
   vaultId: string; schema: EntitySchema; onChange: (schema: EntitySchema) => void;
   entityColors: Appearance['entityColors']; onColorChange: (type: EntityType, color: PillColor) => void;
+  subtypeIcons?:SubtypeIcons;onSubtypeIconChange?:(id:string,icon:PageIconId|null|undefined)=>void;
 }) {
   const [type, setType] = useState<EntityType>('person');
   const [subtype, setSubtype] = useState(''), [property, setProperty] = useState('');
@@ -42,7 +45,10 @@ export function EntityTypeManager({vaultId, schema, onChange, entityColors, onCo
         <ColorPicker key={type} id={'color-' + type} label={entityLabels[type] + ' color'} value={entityColors[type]} onChange={color => onColorChange(type, color)}/>
       </div>
     </div>
-    <div><h3>{uiText("Subtypes of") + " "}{uiText(entityLabels[type])}</h3><p className="section-hint">{uiText("Group entities with shared fields.")}</p><div className="type-field-list">{schema.subtypes.filter(s => s.type === type).map(s => <span key={s.id} title={s.description}><Icon name={type}/>{subtypeDisplayName(s,subtypes)}</span>)}</div>
+    <div><h3>{uiText("Subtypes of") + " "}{uiText(entityLabels[type])}</h3><p className="section-hint">{uiText("Choose an icon for each subtype. Colors come from the main category.")}</p><p className="section-hint">{uiText("For multiple subtypes, the first assigned icon is used.")}</p><div className="subtype-icon-list">{subtypes.map(s => {
+      const icon=subtypeIcon(type,s.id,subtypeIcons),name=subtypeDisplayName(s,subtypes);
+      return <div key={s.id} className="subtype-icon-row" title={s.description}><span className={'entity-icon '+type}><Icon name={icon?'page:'+icon:type}/></span><label htmlFor={'subtype-icon-'+s.id}>{name}</label><Select id={'subtype-icon-'+s.id} aria-label={uiText('Icon for {name}',{name})} value={Object.hasOwn(subtypeIcons,s.id)?subtypeIcons[s.id]??'category':'default'} disabled={busy||!onSubtypeIconChange} onChange={event=>onSubtypeIconChange?.(s.id,event.target.value==='default'?undefined:event.target.value==='category'?null:event.target.value as PageIconId)}><option value="default">{uiText('Default icon')}</option><option value="category">{uiText('Use category icon')}</option>{pageIcons.map(item=><option key={item.id} value={item.id}>{uiText(item.label)}</option>)}</Select></div>;
+    })}</div>
       <form className="type-add-form" onSubmit={e => { void save(e,'subtype'); }}><input required maxLength={200} aria-label={uiText("New subtype name")} placeholder={uiText("e.g. Researcher")} value={subtype} disabled={busy} onChange={e => setSubtype(e.target.value)}/><button className="button small" disabled={busy}>{uiText("Add subtype")}</button></form>
     </div>
     <div><h3>{uiText("Shared category properties")}</h3><p className="section-hint">{uiText("Fields shared by all entities in this category.")}</p><div className="type-field-list">{schema.properties[type].map(name => <span key={name}>{propertyLabel(name)}</span>)}</div></div>

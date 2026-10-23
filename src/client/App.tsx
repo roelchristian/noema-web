@@ -1,3 +1,5 @@
+import {resolveEntityIcon,entityIconName} from '../shared/entity-icons';
+import {SubtypeIconContext} from './components/Icon';
 import {ReviewCentre} from './review/ReviewCentre';
 import {ReviewDestination,reviewDestinationAt} from './review/review-destination';
 import type {ReviewItem} from '../shared/review-centre';
@@ -104,7 +106,8 @@ export function App() {
   usePageScroll(workspace);
   usePageSelection(workspace);
   const state = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
-  const {vaults, vault, pages, entities, page, view, busy, loadingPageId, reviewing, error, saveStatus, organization, organizationContext, recent, trash, saveFailures, draftStorageFailures, draftRecoveries} = state;
+  const {vaults, vault, pages, entities:storedEntities, page, view, busy, loadingPageId, reviewing, error, saveStatus, organization, organizationContext, recent, trash, saveFailures, draftStorageFailures, draftRecoveries} = state;
+  const entities=useMemo(()=>storedEntities.map(entity=>({...entity,icon:resolveEntityIcon(entity,appearance.subtypeIcons)})),[storedEntities,appearance.subtypeIcons]);
   useEffect(()=>{
     reviewVault.current=null;setReviewDestination(null);
   },[vault?.id,vault?.locked]);
@@ -336,7 +339,7 @@ export function App() {
     if (view === 'entity') {
       breadcrumbs.push({key:'entities',label:uiText("Knowledge entities"),icon:'knowledge',onClick:()=>{setKnowledgeBrowser({entityType:''});workspace.showEntities();}});
       if(activeEntity) breadcrumbs.push({key:'entity-type:'+activeEntity.type,label:uiText(entityLabels[activeEntity.type]),icon:activeEntity.type,onClick:()=>{setKnowledgeBrowser({entityType:activeEntity.type});workspace.showEntities();}});
-      breadcrumbs.push({key:'entity:'+state.entityId,label:activeEntity?.name??uiText("Knowledge entity"),icon:activeEntity?.type??'knowledge'});
+      breadcrumbs.push({key:'entity:'+state.entityId,label:activeEntity?.name??uiText("Knowledge entity"),icon:entityIconName(activeEntity)});
     } else if (view === 'source') {
       breadcrumbs.push({key:'sources',get label(){return uiText("Sources")},icon:'source',onClick:()=>{setKnowledgeBrowser({entityType:'source'});workspace.showEntities();}});
       breadcrumbs.push({key:'source:'+state.sourceId,label:activeSource?.name??uiText("Source"),icon:'source'});
@@ -361,7 +364,7 @@ export function App() {
       }
     }
   }
-  return <ReviewDestination.Provider value={activeReviewDestination}>
+  return <SubtypeIconContext.Provider value={appearance.subtypeIcons}><ReviewDestination.Provider value={activeReviewDestination}>
     {focusWorkspace && <div className="focus-controls" role="toolbar" aria-label="Focus controls">
       <PresentationSelector onExitFocus={exitFocus} value={appearance.presentationMode} onChange={presentationMode => setAppearance(current => ({...current, presentationMode}))}/>
     </div>}
@@ -473,5 +476,5 @@ export function App() {
     {vaultAction && <VaultDialog onImport={() => { setVaultAction(null); setBackupAction('import'); }} action={vaultAction} onClose={() => setVaultAction(null)} onSubmit={value => vaultAction === 'create' ? workspace.createVault(value) : vaultAction === 'lock' ? workspace.lock(value) : workspace.unlock(value)}/>}
     {!error&&!vaultNotice&&insertNotice&&vault&&!vault.locked&&<div id="toast" className="entity-insert-notice" role="status"><span>{uiText("Created “")}{insertNotice.name}”.</span><button type="button" className="toast-action" onClick={()=>{openEntity(insertNotice.entityId);setInsertNotice(null);}}>{uiText("View")}</button><button type="button" className="toast-close" aria-label={uiText("Dismiss notification")} onMouseDown={event=>event.preventDefault()} onClick={()=>setInsertNotice(null)}>×</button></div>}
     {error && <div id="toast" role="alert">{error}<button className="toast-close" aria-label={uiText("Dismiss error")} onClick={workspace.dismissError}>×</button></div>}
-  </ReviewDestination.Provider>;
+  </ReviewDestination.Provider></SubtypeIconContext.Provider>;
 }

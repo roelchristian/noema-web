@@ -1,4 +1,9 @@
-import type { ReactNode } from 'react';
+import {createContext,useContext,type ReactNode} from 'react';
+import type {Entity} from '../../shared/domain';
+import {entityIconName,type SubtypeIcons} from '../../shared/entity-icons';
+import {pageIcons} from '../../shared/page-icons';
+
+export const SubtypeIconContext=createContext<SubtypeIcons|undefined>(undefined);
 const paths: Record<string, ReactNode> = {
   unlink: <path d="m18.84 12.25 1.41-1.41a6 6 0 0 0-8.49-8.49l-1.41 1.41M5.16 11.75l-1.41 1.41a6 6 0 0 0 8.49 8.49l1.41-1.41M8 2v3M2 8h3M16 19v3M19 16h3"/>,
   'reference-highlight': <><path d="m7 15 5-11 5 11M9 11h6"/><rect x="3" y="17" width="18" height="5" rx="1" fill="currentColor" stroke="none" opacity=".35"/></>,
@@ -84,6 +89,9 @@ const paths: Record<string, ReactNode> = {
   unlock: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 7.5-2M12 14v3"/></>,
   vault: <><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="12" cy="12" r="4"/><path d="M12 8v2m0 4v2m-4-4h2m4 0h2"/></>,
 };
-export function Icon({name}: {name: string}) {
-  return <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name] || paths.knowledge}</svg>;
+export function Icon({name,entity}: {name: string;entity?:Pick<Entity,'type'|'subtypes'|'icon'>}) {
+  const overrides=useContext(SubtypeIconContext);
+  const resolved=entity?entityIconName(entity,overrides):name;
+  const symbol=resolved.startsWith('page:')?pageIcons.find(icon=>icon.id===resolved.slice(5)):undefined;
+  return <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{symbol?<path d={symbol.path}/>:paths[resolved] || paths.knowledge}</svg>;
 }

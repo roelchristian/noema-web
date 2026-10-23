@@ -10,6 +10,10 @@ function readLanguage():InterfaceLanguage{try{const saved=localStorage.getItem(l
 let language:InterfaceLanguage=typeof window==='undefined'?'en':readLanguage();
 let storageError=false;
 export function getLocale(){return language;}
+export function languageLabel(tag:string):string {
+  try{return new Intl.DisplayNames([getLocale()],{type:'language'}).of(tag)??tag;}
+  catch{return tag;}
+}
 function applyLanguage(){if(typeof document!=='undefined')document.documentElement.lang=language;}
 applyLanguage();
 export function setInterfaceLanguage(next:InterfaceLanguage){

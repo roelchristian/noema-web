@@ -1,3 +1,5 @@
+import {isPageIconId} from '../../shared/page-icons';
+import type {SubtypeIcons} from '../../shared/entity-icons';
 import type {CitationStyle} from '../../shared/citations';
 import { entityTypes, type EntityType } from '../../shared/domain';
 
@@ -38,6 +40,12 @@ export const pillColors = {
   iris: {name: 'Iris', background: '#f0ecf8', text: '#614580', border: '#ddd2ec', darkBackground: '#392e48', darkText: '#dac6ef', darkBorder: '#5f4b77'},
   rose: {name: 'Rose', background: '#faecef', text: '#884358', border: '#eed1da', darkBackground: '#482e38', darkText: '#efc1cf', darkBorder: '#784c5d'},
   honey: {name: 'Honey', background: '#faf2df', text: '#77551e', border: '#e9d9b4', darkBackground: '#423722', darkText: '#ead39d', darkBorder: '#6c5a37'},
+  coral: {name: 'Coral', background: '#fbece8', text: '#963f35', border: '#efcfc7', darkBackground: '#492d29', darkText: '#f1bfb5', darkBorder: '#7b4b42'},
+  terracotta: {name: 'Terracotta', background: '#f8eee3', text: '#87502d', border: '#e8d2bd', darkBackground: '#443225', darkText: '#eac8a6', darkBorder: '#72543d'},
+  moss: {name: 'Moss', background: '#f0f2e3', text: '#56612e', border: '#d8dfbc', darkBackground: '#333a25', darkText: '#ced9a5', darkBorder: '#57633e'},
+  teal: {name: 'Teal', background: '#e5f3f0', text: '#28665e', border: '#c1dfd8', darkBackground: '#233c37', darkText: '#addbd0', darkBorder: '#3e6b60'},
+  plum: {name: 'Plum', background: '#f6eaf3', text: '#7b416e', border: '#e5cce0', darkBackground: '#422d3d', darkText: '#e1bcda', darkBorder: '#704b67'},
+  slate: {name: 'Slate', background: '#edf0f3', text: '#485b6e', border: '#cfd8e1', darkBackground: '#2d353e', darkText: '#c5d1de', darkBorder: '#4d5c6d'},
 } as const;
 export type PillColor = keyof typeof pillColors;
 export const presentationModes = ['standard', 'subtle', 'focus'] as const;
@@ -51,10 +59,10 @@ export const paragraphIndentWidths = {small: '1em', medium: '1.5em', large: '2em
 export type ParagraphIndentWidth = keyof typeof paragraphIndentWidths;
 export const paragraphSpacingOptions = ['standard', 'book'] as const;
 export type ParagraphSpacing = typeof paragraphSpacingOptions[number];
-export interface Appearance { paragraphSpacing: ParagraphSpacing; paragraphIndent: ParagraphIndentMode; paragraphIndentWidth: ParagraphIndentWidth; citationStyleExplicit:boolean; citationStyle:CitationStyle; bodyFont: FontId; headingFont: FontId; presentationMode: PresentationMode; mode: DisplayMode; theme: ThemeId; entityColors: Record<EntityType, PillColor>; entityOverrides: Record<string, PillColor> }
+export interface Appearance { subtypeIcons:SubtypeIcons; paragraphSpacing: ParagraphSpacing; paragraphIndent: ParagraphIndentMode; paragraphIndentWidth: ParagraphIndentWidth; citationStyleExplicit:boolean; citationStyle:CitationStyle; bodyFont: FontId; headingFont: FontId; presentationMode: PresentationMode; mode: DisplayMode; theme: ThemeId; entityColors: Record<EntityType, PillColor>; entityOverrides: Record<string, PillColor> }
 export const appearanceStorageKey = 'noema.appearance.v1';
 export function defaultAppearance(): Appearance {
-  return {paragraphSpacing:'standard', paragraphIndent:'none', paragraphIndentWidth:'medium', citationStyleExplicit:false,citationStyle:'references',bodyFont: 'system', headingFont: 'geist', presentationMode: 'standard', mode: 'system', theme: 'ink', entityOverrides: {}, entityColors: Object.fromEntries(entityTypes.map(type => [type, 'graphite'])) as Appearance['entityColors']};
+  return {subtypeIcons:{},paragraphSpacing:'standard', paragraphIndent:'none', paragraphIndentWidth:'medium', citationStyleExplicit:false,citationStyle:'references',bodyFont: 'system', headingFont: 'geist', presentationMode: 'standard', mode: 'system', theme: 'ink', entityOverrides: {}, entityColors: Object.fromEntries(entityTypes.map(type => [type, 'graphite'])) as Appearance['entityColors']};
 }
 export function parseAppearance(raw: string | null): Appearance {
   const result = defaultAppearance();
@@ -77,6 +85,11 @@ export function parseAppearance(raw: string | null): Appearance {
     for (const type of entityTypes) {
       const color = value.entityColors?.[type];
       if (typeof color === 'string' && Object.hasOwn(pillColors, color)) result.entityColors[type] = color as PillColor;
+    }
+    if (value.subtypeIcons && typeof value.subtypeIcons === 'object' && !Array.isArray(value.subtypeIcons)) {
+      for (const [id, icon] of Object.entries(value.subtypeIcons)) {
+        if (icon === null || isPageIconId(icon)) Object.defineProperty(result.subtypeIcons,id,{value:icon,enumerable:true,configurable:true,writable:true});
+      }
     }
     if (value.entityOverrides && typeof value.entityOverrides === 'object') {
       for (const [id, color] of Object.entries(value.entityOverrides)) {

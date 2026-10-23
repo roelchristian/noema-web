@@ -1,12 +1,13 @@
 import {useEffect,useRef,useState} from 'react';
 import {request} from '../api';
+import type {SmartRuleDefinition} from '../../shared/smart-collections';
 
-type Options={threshold?:number;minCoverage?:number;collectionId?:string;savedDescription?:string};
+type Options={threshold?:number;minCoverage?:number;collectionId?:string;savedDescription?:string;rule?:SmartRuleDefinition};
 /** Only evaluate() can generate a description embedding. Background previews reuse it. */
 export function useSemanticCollectionPreview<T>(vaultId:string,description:string,enabled:boolean,options:Options={}) {
   const semantic={version:1,description,threshold:options.threshold??0.55,minCoverage:options.minCoverage??0.5};
   const serialized=JSON.stringify(semantic);
-  const key=JSON.stringify([vaultId,serialized,enabled]);
+  const key=JSON.stringify([vaultId,serialized,options.rule,enabled]);
   const descriptionKey=JSON.stringify([vaultId,description]);
   const current=useRef(key);current.current=key;
   const controller=useRef<AbortController|null>(null);
@@ -25,7 +26,7 @@ export function useSemanticCollectionPreview<T>(vaultId:string,description:strin
     const refresh=()=>{
       const ticket=sequence.current;
       pending=new AbortController();
-      void request<T>('organization/semantic-preview','POST',{semantic:JSON.parse(serialized),...(evaluationToken?{evaluationToken}:{collection_id:options.collectionId})},vaultId,pending.signal).then(result=>{
+      void request<T>('organization/semantic-preview','POST',{semantic:JSON.parse(serialized),...(options.rule?{rule:options.rule}:{}),...(evaluationToken?{evaluationToken}:{collection_id:options.collectionId})},vaultId,pending.signal).then(result=>{
         if(active&&mounted.current&&current.current===key&&ticket===sequence.current)setState({key,vaultId,loading:false,result});
       }).catch(error=>{if(active&&mounted.current&&current.current===key&&ticket===sequence.current&&!pending?.signal.aborted)setState({key,vaultId,loading:false,error:error instanceof Error?error.message:'Semantic preview unavailable.'});}).finally(()=>{if(active)timer=setTimeout(refresh,5000);});
     };
@@ -39,12 +40,12 @@ export function useSemanticCollectionPreview<T>(vaultId:string,description:strin
     const ticket=++sequence.current;
     setState({key,vaultId,loading:true});
     try {
-      const response=await request<{evaluationToken:string;preview:T}>('organization/semantic-evaluate','POST',{semantic},vaultId,pending.signal);
+      const response=await request<{evaluationToken:string;preview:T}>('organization/semantic-evaluate','POST',{semantic,...(options.rule?{rule:options.rule}:{})},vaultId,pending.signal);
       if(mounted.current&&current.current===key&&ticket===sequence.current){setToken({key:descriptionKey,value:response.evaluationToken});setState({key,vaultId,loading:false,result:response.preview});}
     } catch(error) {
       if(mounted.current&&current.current===key&&ticket===sequence.current&&!pending.signal.aborted)setState({key,vaultId,loading:false,error:error instanceof Error?error.message:'Semantic preview unavailable.'});
     }
   }
   const matching=enabled&&state.key===key&&state.vaultId===vaultId;
-  return {loading:matching&&state.loading,result:matching?state.result:undefined,error:matching?state.error:undefined,stale:enabled&&state.vaultId===vaultId&&!!state.result&&!matching,evaluationToken,canSave:!!evaluationToken||saved,evaluate};
+  return {loading:enabled&&(matching?state.loading:!!evaluationToken||saved),result:matching?state.result:undefined,error:matching?state.error:undefined,stale:enabled&&state.vaultId===vaultId&&!!state.result&&!matching,evaluationToken,canSave:!!evaluationToken||saved,evaluate};
 }

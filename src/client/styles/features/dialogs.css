@@ -1724,3 +1724,15 @@ dialog.source-lifecycle-dialog { width: min(480px, calc(100vw - 32px)); }
 .smart-collection-fields > label > input { display: block; width: 100%; min-height: var(--field-height); margin-top: 8px; padding: var(--space-2) var(--space-2-5); border: 1px solid var(--control-border); border-radius: var(--radius-control); background: var(--surface); color: var(--text); }
 .smart-rule-predicate > input { min-height: var(--field-height); padding: var(--space-2); border: 1px solid var(--control-border); border-radius: var(--radius-control); background: var(--surface); color: var(--text); }
 .smart-collection-fields textarea { display: block; width: 100%; min-height: 120px; margin-top: 8px; padding: var(--space-2) var(--space-2-5); border: 1px solid var(--control-border); border-radius: var(--radius-control); background: var(--surface); color: var(--text); font: inherit; resize: vertical; }
+.collection-rule-generation { margin-block: 16px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-control); }
+.collection-rule-generation > summary { cursor: pointer; }
+.collection-rule-generation > label { display: block; margin-top: 12px; }
+.generated-rule-draft { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+.example-selections { display: flex; flex-wrap: wrap; gap: 16px; }
+.example-selections > div { flex: 1 1 200px; }
+.example-selections li { overflow-wrap: anywhere; }
+.example-selections li button { margin-inline-start: 8px; }
+.example-page-options { max-height: 260px; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--radius-control); }
+.example-page-option { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 8px; border-bottom: 1px solid var(--line); }
+.example-page-option > span { flex: 1 1 150px; overflow-wrap: anywhere; }
+.example-page-option > label { display: inline-flex; align-items: center; gap: 4px; }

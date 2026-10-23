@@ -1,3 +1,9 @@
+import {embeddingModel,embeddingDimensions} from '../../shared/embeddings.js';
+import {isDeepStrictEqual} from 'node:util';
+import {parseSmartRule,parseSemanticCollection} from '../../shared/smart-collections.js';
+import {parseExampleCollection} from '../../shared/example-collections.js';
+import {organizationDescription,saveOrganizationDescription} from './organization-descriptions.js';
+import {Vaults} from './vaults.js';
 import {SmartCollections} from './smart-collections.js';
 import { randomUUID } from 'node:crypto';
 import type { Collection, CollectionMembership, Folder, ItemKind, Organization } from '../../shared/domain.js';
@@ -9,11 +15,12 @@ export class Organizer {
   readonly smart:SmartCollections;
   constructor(private store: Store) {this.smart=new SmartCollections(store);}
   list(vault: string): Organization {
+    new Vaults(this.store).requireOpen(vault);
     this.store.transaction(()=>syncReadingNotesCollection(this.store,vault));
     return this.smart.decorate(vault,{
       folderLinks: this.store.all('SELECT folder_id,collection_id FROM collection_folders WHERE vault_id=? ORDER BY collection_id,folder_id', vault),
-      collections: this.store.all('SELECT id,name FROM collections WHERE vault_id=? ORDER BY name,id', vault),
-      folders: this.store.all('SELECT id,name,parent_id FROM folders WHERE vault_id=? ORDER BY name,id', vault),
+      collections: this.store.all<Collection & {description:string|null}>('SELECT c.id,c.name,d.description FROM collections c LEFT JOIN collection_descriptions d ON d.collection_id=c.id AND d.vault_id=c.vault_id WHERE c.vault_id=? ORDER BY c.name,c.id', vault).map(({description,...row})=>description===null?row:{...row,description}),
+      folders: this.store.all<Folder & {description:string|null}>('SELECT f.id,f.name,f.parent_id,d.description FROM folders f LEFT JOIN folder_descriptions d ON d.folder_id=f.id AND d.vault_id=f.vault_id WHERE f.vault_id=? ORDER BY f.name,f.id', vault).map(({description,...row})=>description===null?row:{...row,description}),
       locations: this.store.all(`SELECT kind,item_id,folder_id FROM item_locations WHERE vault_id=? AND (kind='entity' OR EXISTS (SELECT 1 FROM pages WHERE pages.id=item_locations.item_id AND pages.vault_id=item_locations.vault_id AND pages.deleted_at IS NULL))`, vault),
       memberships: this.store.all<Omit<CollectionMembership,'automatic'> & {automatic:number}>(`SELECT kind,item_id,collection_id,
         EXISTS (SELECT 1 FROM collections c JOIN page_reading_notes n ON n.vault_id=c.vault_id
@@ -34,25 +41,50 @@ export class Organizer {
     return row;
   }
   private nullable(value: unknown): string | null { return value === null || value === undefined ? null : required(value); }
+  private matchingUnchanged(definition:NonNullable<ReturnType<SmartCollections['definition']>>,body:Record<string,unknown>):boolean {
+    if(body.matching!==undefined&&body.matching!==definition.matching)return false;
+    const compare=(key:'rule'|'semantic'|'examples',stored:string|null,parse:(value:unknown)=>unknown)=>{
+      if(body[key]===undefined)return true;
+      let saved:unknown;try{saved=stored===null?undefined:JSON.parse(stored);}catch{return false;}
+      if(isDeepStrictEqual(body[key],saved))return true;
+      try{return isDeepStrictEqual(parse(body[key]),parse(saved));}catch(error){throw new HttpError(400,error instanceof Error?error.message:'Invalid matching definition');}
+    };
+    if((definition.matching==='rules'||definition.matching==='hybrid')&&!compare('rule',definition.rule_json,parseSmartRule))return false;
+    if((definition.matching==='semantic'||definition.matching==='hybrid')&&!compare('semantic',definition.semantic_json,parseSemanticCollection))return false;
+    if(definition.matching==='examples'&&!compare('examples',definition.examples_json,parseExampleCollection))return false;
+    // Explicit description evaluation may repair an incompatible model or replace
+    // a query vector. Identical verified vectors leave matching state intact.
+    if(body.evaluationToken!==undefined&&(definition.matching==='semantic'||definition.matching==='hybrid')) {
+      const semantic=this.smart.semantic.parse(body.semantic??JSON.parse(definition.semantic_json!));
+      const vector=this.smart.semantic.vector(definition.vault_id,semantic,body,definition.collection_id);
+      if(definition.query_model!==embeddingModel||definition.query_dimensions!==embeddingDimensions)return false;
+      try{if(!isDeepStrictEqual(vector,JSON.parse(definition.query_vector!)))return false;}catch{return false;}
+    }
+    return true;
+  }
   saveCollection(vault: string, body: Record<string, unknown>, id?: string) {
+    new Vaults(this.store).requireOpen(vault);
     if (body.parent_id != null || body.collection_id != null) throw new HttpError(400, 'Collections cannot be nested');
-    const name = required(body.name);
-    if(body.kind!==undefined&&body.kind!=='manual'&&body.kind!=='smart')throw new HttpError(400,'Invalid collection type');
     const existing=id?this.collection(vault,id):null;
+    const name = required(body.name===undefined&&existing?existing.name:body.name);
+    const description=body.description===undefined?undefined:organizationDescription(body.description);
+    if(body.kind!==undefined&&body.kind!=='manual'&&body.kind!=='smart')throw new HttpError(400,'Invalid collection type');
     const wasSmart=id?!!this.smart.definition(vault,id):false;
     if(wasSmart&&body.kind==='manual')throw new HttpError(400,'Keep smart rules or create a new manual collection');
     const definition=id?this.smart.definition(vault,id):undefined;
+    const unchanged=!!definition&&this.matchingUnchanged(definition,body);
     const matching=body.matching??definition?.matching??'rules';
     if(!['rules','semantic','hybrid','examples'].includes(String(matching)))throw new HttpError(400,'Invalid matching method');
     const isSmart=body.kind==='smart'||wasSmart;
-    const semantic=isSmart&&(matching==='semantic'||matching==='hybrid')?this.smart.semantic.parse(body.semantic??(definition?.semantic_json?JSON.parse(definition.semantic_json):undefined)):undefined;
+    const semantic=isSmart&&!unchanged&&(matching==='semantic'||matching==='hybrid')?this.smart.semantic.parse(body.semantic??(definition?.semantic_json?JSON.parse(definition.semantic_json):undefined)):undefined;
     const vector=semantic?this.smart.semantic.vector(vault,semantic,body,id):undefined;
-    const rule=isSmart&&(matching==='rules'||matching==='hybrid')?this.smart.parse(vault,body.rule??((definition?.matching==='rules'||definition?.matching==='hybrid')?JSON.parse(definition.rule_json):undefined)):undefined;
-    const examples=isSmart&&matching==='examples'?this.smart.parseExamples(body.examples??(definition?.examples_json?JSON.parse(definition.examples_json):undefined)):undefined;
+    const rule=isSmart&&!unchanged&&(matching==='rules'||matching==='hybrid')?this.smart.parse(vault,body.rule??((definition?.matching==='rules'||definition?.matching==='hybrid')?JSON.parse(definition.rule_json):undefined)):undefined;
+    const examples=isSmart&&!unchanged&&matching==='examples'?this.smart.parseExamples(body.examples??(definition?.examples_json?JSON.parse(definition.examples_json):undefined)):undefined;
     const collectionId=id??randomUUID();
     this.store.transaction(()=>{
       if(existing)this.store.run('UPDATE collections SET name=? WHERE id=? AND vault_id=?',name,collectionId,vault);
       else this.store.run('INSERT INTO collections VALUES (?,?,?)',collectionId,vault,name);
+      if(description!==undefined)saveOrganizationDescription(this.store,vault,'collection',collectionId,description);
       if(examples)this.smart.saveExamples(vault,collectionId,examples);
       else if(semantic&&vector){this.smart.semantic.save(vault,collectionId,semantic,vector);if(matching==='hybrid'&&rule)this.store.run("UPDATE smart_collection_definitions SET matching='hybrid',rule_json=? WHERE vault_id=? AND collection_id=?",JSON.stringify(rule),vault,collectionId);}
       else if(rule)this.smart.save(vault,collectionId,rule);
@@ -60,8 +92,10 @@ export class Organizer {
     return this.list(vault);
   }
   saveFolder(vault: string, body: Record<string, unknown>, id?: string) {
+    new Vaults(this.store).requireOpen(vault);
     const existing = id ? this.folder(vault, id) : null;
-    const name = required(body.name);
+    const name = required(body.name===undefined&&existing?existing.name:body.name);
+    const description=body.description===undefined?undefined:organizationDescription(body.description);
     if (body.collection_id != null) throw new HttpError(400, 'Folders are independent of collections');
     const parent = body.parent_id === undefined ? existing?.parent_id ?? null : this.nullable(body.parent_id);
     if (parent) {
@@ -73,8 +107,12 @@ export class Organizer {
         ancestor = ancestor.parent_id ? this.folder(vault, ancestor.parent_id) : undefined;
       }
     }
-    if (id) this.store.run('UPDATE folders SET name=?,parent_id=? WHERE id=?', name, parent, id);
-    else this.store.run('INSERT INTO folders VALUES (?,?,?,?)', randomUUID(), vault, name, parent);
+    const folderId=id??randomUUID();
+    this.store.transaction(()=>{
+      if(existing){if(name!==existing.name||parent!==existing.parent_id)this.store.run('UPDATE folders SET name=?,parent_id=? WHERE id=? AND vault_id=?',name,parent,folderId,vault);}
+      else this.store.run('INSERT INTO folders VALUES (?,?,?,?)',folderId,vault,name,parent);
+      if(description!==undefined)saveOrganizationDescription(this.store,vault,'folder',folderId,description);
+    });
     return this.list(vault);
   }
   remove(vault: string, type: 'collections' | 'folders', id: string) {

@@ -53,7 +53,8 @@ try {
   await page.getByRole('option',{name:'Smart collection',exact:true}).click();
   await dialog.getByRole('combobox',{name:'Matching method',exact:true}).click();
   await page.getByRole('option',{name:'Semantic matching',exact:true}).click();
-  await dialog.getByRole('textbox',{name:'Description',exact:true}).fill('Synthetic algebra and mathematical structures');
+  await dialog.getByRole('textbox',{name:'Matching description',exact:true}).fill('Synthetic algebra and mathematical structures');
+  await dialog.getByRole('textbox',{name:'Description',exact:true}).fill('Human research context');
   assert.equal(descriptionCalls,0,'Typing cannot embed the description');
   await dialog.getByRole('button',{name:'Evaluate description',exact:true}).click();
   await dialog.getByRole('listitem').filter({hasText:'Substantial algebra'}).waitFor();
@@ -73,6 +74,30 @@ try {
   await page.getByRole('button',{name:'Re-evaluate',exact:true}).click();
   await page.getByText(/Indexing gaps · Some pages have not been evaluated/).waitFor();
   assert.equal(descriptionCalls,1,'Save, membership overrides and refresh reuse the prepared description vector');
+  // Human metadata edits preserve the saved matching definition and evidence.
+  const matchingState=()=>({definitions:store.all('SELECT * FROM smart_collection_definitions ORDER BY collection_id'),cache:store.all('SELECT * FROM smart_collection_cache ORDER BY collection_id,item_id'),overrides:store.all('SELECT * FROM smart_collection_overrides ORDER BY collection_id,item_id'),revision:store.all('SELECT * FROM smart_collection_revisions')});
+  const beforeDescription=matchingState();
+  await page.getByText('Human research context',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Folder and collection options',exact:true}).click();
+  await page.getByRole('menuitem',{name:'Edit collection',exact:true}).click();
+  const editCollection=page.getByRole('dialog');
+  assert.equal(await editCollection.getByRole('textbox',{name:'Matching description',exact:true}).inputValue(),'Synthetic algebra and mathematical structures');
+  await editCollection.getByRole('textbox',{name:'Description',exact:true}).fill('Updated human research context');
+  await editCollection.getByRole('button',{name:'Save collection',exact:true}).click();
+  await editCollection.waitFor({state:'detached'});
+  await page.getByText('Updated human research context',{exact:true}).waitFor();
+  assert.deepEqual(matchingState(),beforeDescription);
+  assert.equal(descriptionCalls,1,'Editing human metadata cannot embed or refresh membership');
+  await page.getByRole('button',{name:'Open folder: Physical folder',exact:true}).click();
+  await page.getByRole('button',{name:'Folder and collection options',exact:true}).click();
+  await page.getByRole('menuitem',{name:'Edit folder',exact:true}).click();
+  const editFolder=page.getByRole('dialog');
+  await editFolder.getByRole('textbox',{name:'Description',exact:true}).fill('Canonical physical location');
+  await editFolder.getByRole('button',{name:'Save',exact:true}).click();
+  await editFolder.waitFor({state:'detached'});
+  await page.getByText('Canonical physical location',{exact:true}).waitFor();
+  assert.deepEqual(matchingState(),beforeDescription);
+  assert.equal(organizer.list('default').folders.find(item=>item.id===folder).description,'Canonical physical location');
   const beginCollection=async(name,method)=>{
     await page.getByRole('button',{name:'Pages',exact:true}).first().click();
     await page.getByRole('button',{name:'New collection',exact:true}).first().click();
@@ -94,7 +119,7 @@ try {
   // Hybrid eligibility excludes the unrelated and unindexed pages before semantic scoring.
   const hybrid=await beginCollection('Hybrid algebra','Rules + semantic matching');
   await hybrid.getByRole('textbox',{name:'Condition value',exact:true}).fill('Substantial');
-  await hybrid.getByRole('textbox',{name:'Description',exact:true}).fill('Synthetic algebra and mathematical structures');
+  await hybrid.getByRole('textbox',{name:'Matching description',exact:true}).fill('Synthetic algebra and mathematical structures');
   await hybrid.getByRole('button',{name:'Evaluate description',exact:true}).click();
   await hybrid.getByRole('listitem').filter({hasText:'Substantial algebra'}).waitFor();
   await saveAndOpen(hybrid,'Hybrid algebra');
@@ -140,7 +165,7 @@ try {
   await page.setViewportSize({width:390,height:844});
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({passed:true,synthetic:true,screenshots:false,descriptionCalls,ruleGenerationCalls,checks:['existing collection flow','explicit description evaluation','saved vectors','indexing gaps','semantic membership','hybrid eligibility and evidence','coherent positive and negative examples','editable generated AST','explicit rule confirmation','overrides','refresh reuse','physical location preservation','mobile overflow'],errors}));
+  console.log(JSON.stringify({passed:true,synthetic:true,screenshots:false,descriptionCalls,ruleGenerationCalls,checks:['existing collection flow','explicit description evaluation','saved vectors','indexing gaps','semantic membership','hybrid eligibility and evidence','coherent positive and negative examples','editable generated AST','explicit rule confirmation','overrides','refresh reuse','physical location preservation','human collection and folder descriptions','metadata-only matching preservation','mobile overflow'],errors}));
   await context.close();
 } finally {
   if(browser)await browser.close();if(vite)await vite.close();if(server)await new Promise(resolve=>server.close(resolve));if(db)db.close();await rm(directory,{recursive:true,force:true});

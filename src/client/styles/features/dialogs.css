@@ -1739,3 +1739,7 @@ dialog.source-lifecycle-dialog { width: min(480px, calc(100vw - 32px)); }
 .example-page-option { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 8px; border-bottom: 1px solid var(--line); }
 .example-page-option > span { flex: 1 1 150px; overflow-wrap: anywhere; }
 .example-page-option > label { display: inline-flex; align-items: center; gap: 4px; }
+
+.container-description-field small { color: var(--text-muted); font-weight: normal; }
+.smart-collection-fields .container-description-field textarea,
+.folder-definition-dialog .container-description-field textarea { min-height: 64px; }

@@ -1,0 +1,39 @@
+import {useEffect,useState} from 'react';
+import type {Vault} from '../../shared/domain';
+import {liturgicalCalendars,type LiturgicalDownloadStatus,type LiturgicalCalendarId} from '../../shared/liturgical';
+import {api} from '../api';
+import {Select} from '../components/Select';
+import {t as uiText} from '../i18n';
+import type {CalendarSettings as Preferences} from './calendar-settings';
+
+export function CalendarSettings({value,onChange,vault,storageError}:{value:Preferences;onChange:(value:Preferences)=>void;vault:Vault|null;storageError:boolean}) {
+ const [status,setStatus]=useState<LiturgicalDownloadStatus|null>(null),[error,setError]=useState(''),[version,setVersion]=useState(0),[busy,setBusy]=useState(false);
+ useEffect(()=>{
+  setStatus(null);setError('');if(!vault||vault.locked)return;
+  const controller=new AbortController();let reading=false;
+  const read=async()=>{if(reading||document.hidden||controller.signal.aborted)return;reading=true;try{const result=await api.liturgicalStatus(vault.id,controller.signal);if(!controller.signal.aborted){setStatus(result);setError('');}}catch(error){if(!controller.signal.aborted)setError(error instanceof Error?error.message:String(error));}finally{reading=false;}};
+  void read();const timer=setInterval(()=>{void read();},5000);return()=>{controller.abort();clearInterval(timer);};
+ },[vault?.id,vault?.locked,version]);
+ const retry=async()=>{if(!vault)return;setBusy(true);setError('');try{await api.prepareLiturgical(vault.id,new Date().getFullYear(),true);setVersion(value=>value+1);}catch(error){setError(error instanceof Error?error.message:String(error));}finally{setBusy(false);}};
+ return <>
+  <section className="settings-section" aria-labelledby="calendar-settings-heading"><h3 id="calendar-settings-heading">{uiText('Liturgical calendars')}</h3>
+   <label className="calendar-check"><input type="checkbox" checked={value.enabled} onChange={event=>onChange({...value,enabled:event.target.checked})}/>{uiText('Show a liturgical calendar')}</label>
+   <div className="calendar-field"><label htmlFor="settings-liturgical-calendar">{uiText('Calendar')}</label><Select id="settings-liturgical-calendar" value={value.calendarId} onChange={event=>onChange({...value,calendarId:event.target.value as LiturgicalCalendarId})}>{liturgicalCalendars.map(calendar=><option key={calendar.id} value={calendar.id}>{calendar.label}</option>)}</Select></div>
+   <label className="calendar-check"><input type="checkbox" checked={value.optional} onChange={event=>onChange({...value,optional:event.target.checked})}/>{uiText('Optional memorial detail')}</label>
+   <p className="section-hint">{uiText('Vetus Ordo uses the Roman Missal of 1962. National calendars include their proper observances and transfers.')}</p>
+   <p role="status">{uiText(storageError?'Browser storage unavailable. Calendar preferences will not persist after reload.':'Changes saved in this browser.')}</p>
+  </section>
+  <section className="settings-section" aria-labelledby="calendar-downloads-heading"><h3 id="calendar-downloads-heading">{uiText('Downloaded calendars')}</h3>
+   <p>{uiText('At launch, all supported calendars are prepared for the current year, the year before and the year after. Additional years require a curated date or an accepted date relationship. Browsing and incidental date mentions do not trigger downloads.')}</p>
+   {!vault||vault.locked?<p>{uiText('Open a vault to prepare calendars.')}</p>:<>
+    {status&&<p role="status">{status.ready} / {status.total} {uiText('calendar years ready')} · {status.queued} {uiText('queued')} · {status.failed} {uiText('failed')}</p>}
+    {error&&<p role="alert">{error}</p>}
+    <ul className="calendar-provider-list">{liturgicalCalendars.map(calendar=>{
+     const counts=status?.calendars.find(item=>item.id===calendar.id);
+     return <li key={calendar.id}><strong>{calendar.label}</strong><span>{calendar.provider}{counts?` · ${counts.ready} ${uiText('ready')}${counts.failed?` · ${counts.failed} ${uiText('failed')}`:''}`:''}</span></li>;
+    })}</ul>
+    <button type="button" className="button" disabled={busy} onClick={()=>void retry()}>{uiText(busy?'Preparing calendars…':'Retry calendar downloads')}</button>
+   </>}
+  </section>
+ </>;
+}

@@ -84,10 +84,12 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
   let keyCleanup: ReturnType<typeof setInterval> | undefined;
   let embeddingWorker: ReturnType<typeof setInterval> | undefined;
   let sourcePassageWorker: ReturnType<typeof setInterval> | undefined;
+  let liturgicalWorker: ReturnType<typeof setInterval> | undefined;
   let sourceEnrichmentWorker: ReturnType<typeof setInterval> | undefined;
   return { store, temporal, liturgical, entityDiscovery, intelligence, networkAccess, vaultDeletion, sourceFiles, sourcePageImages, sourceReading, backups, images, notifications, vaults, knowledge, pages, organizer, activity, enrichments, sourceReprocessing, scans, pageEnrichment, enrichmentScheduler, scheduleEnrichment, entityMatches, embeddings, sourcePassages, sourceEnrichments, sourcePages, sourcePageGeneration, searchSnippets, textSearch,
     start() {
       enrichmentScheduler.start();
+      liturgicalWorker=setInterval(()=>{void liturgical.tick().catch(()=>{});},1000);liturgicalWorker.unref();
       sourceReprocessingWorker=setInterval(()=>{void sourceReprocessing.tick().catch(()=>{});},1000);sourceReprocessingWorker.unref();
       vaultDeletion.cleanup();
       sourcePassageWorker=setInterval(()=>{try{sourcePassages.tick();temporal.tickEvidence();}catch{/* Durable passage state records failures for retry. */}},500);sourcePassageWorker.unref();
@@ -99,7 +101,7 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
       embeddingWorker=setInterval(()=>{void embeddings.tick().catch(()=>{/* Durable job history records failures; never log note content. */});},1000);embeddingWorker.unref();
     },
     close() {
-      liturgical.close();
+      clearInterval(liturgicalWorker);liturgical.close();
       clearInterval(sourceReprocessingWorker);sourceReprocessing.close();enrichmentScheduler.dispose();clearInterval(sourceWorker);sourceFiles.close();sourcePageImages.close();clearInterval(sourcePassageWorker);clearInterval(sourceEnrichmentWorker);sourceEnrichments.close();clearInterval(cleanup);clearInterval(keyCleanup);clearInterval(embeddingWorker);embeddings.close();
     },
   };

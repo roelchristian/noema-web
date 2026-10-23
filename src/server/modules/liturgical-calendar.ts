@@ -1,71 +1,115 @@
-import {Worker} from 'node:worker_threads';
-import {createRequire} from 'node:module';
-import {pathToFileURL} from 'node:url';
-import {liturgicalProviderKey,liturgicalProviderVersion,liturgicalDataVersion,supportedLiturgicalYear,validLiturgicalYear,type LiturgicalYear} from '../../shared/liturgical.js';
+import {liturgicalCalendars,liturgicalCalendar,liturgicalKey,supportedLiturgicalYear,validLiturgicalYear,type LiturgicalCalendarId,type LiturgicalYear,type LiturgicalDownloadStatus} from '../../shared/liturgical.js';
+import {createLiturgicalProvider,type LiturgicalProvider} from './liturgical-providers.js';
 import {Store} from '../store.js';
 import {HttpError} from '../validation.js';
 import {Vaults} from './vaults.js';
+export type {LiturgicalProvider} from './liturgical-providers.js';
 
-/** Isolated generator: no vault content, network, regional calendar, readings or
- * temporal entities. Resolve installed packages beside this server, not via cwd. */
-const workerSource=`
- const {parentPort,workerData}=require('node:worker_threads');
- (async()=>{
-  const core=await import(workerData.core);const {Romcal}=core.default??core;
-  const bundle=await import(workerData.calendar);const {GeneralRoman_En}=bundle.default??bundle;
-  const calendar=await new Romcal({localizedCalendar:GeneralRoman_En,scope:'gregorian',epiphanyOnSunday:false,ascensionOnSunday:false,corpusChristiOnSunday:false,temporalOverrides:{anchorExceptions:{}},outputOptions:{calculateProperties:true}}).generateCalendar(workerData.year);
-  const label=value=>value.toLowerCase().split('_').map(word=>word[0].toUpperCase()+word.slice(1)).join(' ');
-  const normalize=row=>({id:row.id,name:row.name,rank:row.rank,rankName:row.rankName,seasons:row.seasons.map((season,i)=>row.seasonNames?.[i]||label(season)),colors:row.colors.map(label),optional:!!row.isOptional});
-  const days={};let count=0;
-  for(const [date,rows] of Object.entries(calendar)){
-   if(!date.startsWith(workerData.year+'-'))continue;
-   if(++count>366||!Array.isArray(rows)||!rows.length||rows.length>17)throw new Error('Unexpected provider output bounds');
-   days[date]={principal:normalize(rows[0]),alternatives:rows.slice(1).map(normalize)};
-  }
-  parentPort.postMessage({days});
- })().catch(()=>{parentPort.postMessage({error:'Liturgical calendar generation failed'});});
-`;
-export interface LiturgicalProvider {key:string;generate:(year:number)=>Promise<LiturgicalYear>}
+type CacheRow={provider_key:string;data:string};
+/** Public calendar downloads contain only calendar identity and year. Vault evidence
+ * controls eligibility, but note text, entity names and vault IDs stay local. */
 export class LiturgicalCalendar {
- private pending=new Map<number,Promise<LiturgicalYear>>();
+ private pending=new Map<string,Promise<LiturgicalYear>>();
  private serial:Promise<unknown>=Promise.resolve();
- private workers=new Set<Worker>();private closed=false;
- private provider:LiturgicalProvider;
- constructor(private store:Store,provider?:LiturgicalProvider) {this.provider=provider??{key:liturgicalProviderKey,generate:year=>this.generate(year)};}
- private generate(year:number):Promise<LiturgicalYear> {
-  const require=createRequire(import.meta.url);
-  return new Promise((resolve,reject)=>{
-   const worker=new Worker(workerSource,{eval:true,execArgv:[],workerData:{year,core:pathToFileURL(require.resolve('romcal')).href,calendar:pathToFileURL(require.resolve('@romcal/calendar.general-roman')).href},resourceLimits:{maxOldGenerationSizeMb:128,stackSizeMb:4}});
-   this.workers.add(worker);let settled=false;
-   const finish=(error?:Error,data?:LiturgicalYear)=>{if(settled)return;settled=true;clearTimeout(timeout);this.workers.delete(worker);void worker.terminate();if(error)reject(error);else resolve(data!);};
-   const timeout=setTimeout(()=>finish(new Error('Liturgical calendar generation timed out')),12000);
-   worker.once('message',(result:{days?:LiturgicalYear['days'];error?:string})=>{if(result.error||!result.days)finish(new Error('Liturgical calendar generation failed'));else finish(undefined,{year,providerKey:liturgicalProviderKey,providerVersion:liturgicalProviderVersion,dataVersion:liturgicalDataVersion,generatedAt:new Date().toISOString(),days:result.days});});
-   worker.once('error',()=>finish(new Error('Liturgical calendar worker failed')));
-   worker.once('exit',()=>finish(new Error('Liturgical calendar worker stopped')));
-  });
+ private controllers=new Set<AbortController>();private closed=false;private ticking=false;
+ constructor(private store:Store,private provider:(id:LiturgicalCalendarId)=>LiturgicalProvider=createLiturgicalProvider,private now:()=>Date=()=>new Date()) {}
+ private open(vault:string){new Vaults(this.store).requireOpen(vault);}
+ private id(value:string):LiturgicalCalendarId{const calendar=liturgicalCalendar(value);if(!calendar)throw new HttpError(400,'Unsupported liturgical calendar');return calendar.id;}
+ private years(vault:string):number[] {
+  const rows=this.store.all<{year:number}>(`SELECT year FROM liturgical_seed_years UNION
+   SELECT CAST(substr(d.value,1,4) AS INTEGER) AS year FROM temporal_dates d
+   WHERE d.vault_id=? AND (EXISTS(SELECT 1 FROM temporal_curation c WHERE c.vault_id=d.vault_id AND c.id=d.id)
+    OR EXISTS(SELECT 1 FROM temporal_relations r JOIN entities e ON e.id=r.entity_id AND e.vault_id=r.vault_id WHERE r.vault_id=d.vault_id AND r.date_id=d.id AND r.status='accepted' AND e.archived_at IS NULL)) ORDER BY year`,vault);
+  return rows.map(row=>row.year);
  }
- async year(vault:string,year:number):Promise<LiturgicalYear> {
-  new Vaults(this.store).requireOpen(vault);
-  if(!supportedLiturgicalYear(year))throw new HttpError(400,'General Roman Calendar supports civil years 1970–2099');
-  const cached=this.store.get<{provider_key:string;data:string}>('SELECT provider_key,data FROM liturgical_year_cache WHERE year=?',year);
-  if(cached?.provider_key===this.provider.key&&cached.data.length<=1_000_000)try {
-   const value:unknown=JSON.parse(cached.data);if(validLiturgicalYear(value,year,this.provider.key)){this.store.run('UPDATE liturgical_year_cache SET last_access=? WHERE year=?',new Date().toISOString(),year);return value;}
-  }catch{/* Corrupt/obsolete derived data is regenerated, never served as a feast list. */}
-  let work=this.pending.get(year);
+ private targets(vault:string){return this.years(vault).flatMap(year=>liturgicalCalendars.filter(calendar=>supportedLiturgicalYear(year,calendar.id)).map(calendar=>({id:calendar.id,year})));}
+ private cached(id:LiturgicalCalendarId,year:number,key:string):LiturgicalYear|null {
+  const cached=this.store.get<CacheRow>('SELECT provider_key,data FROM liturgical_calendar_cache WHERE calendar_id=? AND year=?',id,year);
+  if(cached?.provider_key===key&&cached.data.length<=1_000_000)try{const data:unknown=JSON.parse(cached.data);if(validLiturgicalYear(data,year,key))return data;}catch{/* Re-download invalid derived data. */}
+  return null;
+ }
+ /** Called at app launch. Seed a rolling three-year window; later expansion comes
+  * only from explicit curation or an accepted relationship, never browsing. */
+ prepare(vault:string,currentYear:number,retry=false):LiturgicalDownloadStatus {
+  this.open(vault);
+  if(!Number.isInteger(currentYear)||Math.abs(currentYear-this.now().getFullYear())>1)throw new HttpError(400,'Choose the current civil year');
+  for(const year of [currentYear,currentYear-1,currentYear+1])if(year>=1962&&year<=9999)this.store.run('INSERT OR IGNORE INTO liturgical_seed_years VALUES (?)',year);
+  this.store.run("INSERT OR REPLACE INTO metadata VALUES ('liturgical-current-year',?)",String(currentYear));
+  this.plan(vault);
+  if(retry)for(const {id,year} of this.targets(vault))this.store.run("UPDATE liturgical_calendar_downloads SET status='queued',attempts=0,next_attempt=0 WHERE calendar_id=? AND year=? AND status='failed'",id,year);
+  return this.status(vault);
+ }
+ private plan(vault:string) {
+  for(const {id,year} of this.targets(vault)) {
+   const key=this.provider(id).key;
+   const saved=this.store.get<{provider_key:string}>('SELECT provider_key FROM liturgical_calendar_cache WHERE calendar_id=? AND year=?',id,year);
+   if(saved?.provider_key!==key)this.store.run("INSERT OR IGNORE INTO liturgical_calendar_downloads VALUES (?,?,'queued',0,0)",id,year);
+  }
+ }
+ status(vault:string):LiturgicalDownloadStatus {
+  this.open(vault);
+  const calendars=liturgicalCalendars.map(calendar=>({id:calendar.id,ready:0,queued:0,failed:0}));
+  for(const {id,year} of this.targets(vault)) {
+   const summary=calendars.find(item=>item.id===id)!;
+   const cached=this.store.get<{provider_key:string}>('SELECT provider_key FROM liturgical_calendar_cache WHERE calendar_id=? AND year=?',id,year);
+   const job=this.store.get<{status:string}>('SELECT status FROM liturgical_calendar_downloads WHERE calendar_id=? AND year=?',id,year);
+   if(cached?.provider_key===this.provider(id).key)summary.ready++;else if(job?.status==='failed')summary.failed++;else summary.queued++;
+  }
+  const ready=calendars.reduce((n,item)=>n+item.ready,0),queued=calendars.reduce((n,item)=>n+item.queued,0),failed=calendars.reduce((n,item)=>n+item.failed,0);
+  return {ready,queued,failed,total:ready+queued+failed,years:this.years(vault),calendars};
+ }
+ async year(vault:string,year:number,calendarId:string='grc-en'):Promise<LiturgicalYear> {
+  this.open(vault);const id=this.id(calendarId),calendar=liturgicalCalendar(id)!;
+  if(!supportedLiturgicalYear(year,id))throw new HttpError(400,`${calendar.label} supports ${calendar.minYear}–${calendar.maxYear}`);
+  if(!this.store.get('SELECT 1 FROM liturgical_seed_years LIMIT 1'))this.prepare(vault,this.now().getFullYear());
+  const provider=this.provider(id),cached=this.cached(id,year,provider.key);
+  if(cached){this.store.run('UPDATE liturgical_calendar_cache SET last_access=? WHERE calendar_id=? AND year=?',this.now().toISOString(),id,year);return cached;}
+  if(!this.years(vault).includes(year))throw new HttpError(409,'This year has no curated dates or accepted date relationships. Browsing does not download additional calendars.');
+  return this.download(vault,id,year,provider);
+ }
+ private async download(vault:string,id:LiturgicalCalendarId,year:number,provider:LiturgicalProvider):Promise<LiturgicalYear> {
+  const key=`${id}:${year}`;let work=this.pending.get(key);
   if(!work) {
-   if(this.pending.size>=2)throw new HttpError(429,'Two calendar years are already being prepared. Try again shortly.');
+   if(this.pending.size>=2)throw new HttpError(429,'Two calendar years are already being downloaded. Try again shortly.');
    work=this.serial.catch(()=>{}).then(async()=>{
     if(this.closed)throw new HttpError(503,'Calendar provider is closed');
-    const result=await this.provider.generate(year);
-    if(!validLiturgicalYear(result,year,this.provider.key)||JSON.stringify(result).length>1_000_000)throw new HttpError(503,'Liturgical calendar returned invalid data');
-    const timestamp=new Date().toISOString();
-    this.store.run('INSERT OR REPLACE INTO liturgical_year_cache VALUES (?,?,?,?,?)',year,this.provider.key,JSON.stringify(result),result.generatedAt,timestamp);
-    this.store.run('DELETE FROM liturgical_year_cache WHERE year NOT IN (SELECT year FROM liturgical_year_cache ORDER BY last_access DESC,year DESC LIMIT 8)');
-    return result;
-   }).catch(error=>{throw error instanceof HttpError?error:new HttpError(503,'Liturgical calendar unavailable. The civil calendar is still usable.');}).finally(()=>this.pending.delete(year));
-   this.pending.set(year,work);this.serial=work.then(()=>{},()=>{});
+    this.open(vault);
+    // A queued request must still qualify when its network work begins.
+    if(!this.years(vault).includes(year))throw new HttpError(409,'Calendar year no longer qualifies for download');
+    const controller=new AbortController();this.controllers.add(controller);const timeout=setTimeout(()=>controller.abort(),25000);
+    try {
+     const result=await provider.generate(year,controller.signal);
+     if(this.closed||controller.signal.aborted)throw new Error('Calendar download cancelled');
+     this.open(vault);
+     if(!validLiturgicalYear(result,year,provider.key)||JSON.stringify(result).length>1_000_000)throw new Error('Invalid liturgical calendar data');
+     this.store.run('INSERT OR REPLACE INTO liturgical_calendar_cache VALUES (?,?,?,?,?,?)',id,year,provider.key,JSON.stringify(result),result.generatedAt,this.now().toISOString());
+     this.store.run('DELETE FROM liturgical_calendar_downloads WHERE calendar_id=? AND year=?',id,year);
+     return result;
+    }finally{clearTimeout(timeout);this.controllers.delete(controller);}
+   }).catch(error=>{throw error instanceof HttpError?error:new HttpError(503,'Liturgical calendar unavailable. Saved calendars and civil dates remain usable.');}).finally(()=>this.pending.delete(key));
+   this.pending.set(key,work);this.serial=work.then(()=>{},()=>{});
   }
-  const result=await work;new Vaults(this.store).requireOpen(vault);return result;
+  const result=await work;this.open(vault);return result;
  }
- close() {this.closed=true;for(const worker of this.workers)void worker.terminate();}
+ /** One bounded background download at a time; failures back off and survive restart. */
+ async tick() {
+  if(this.closed||this.ticking||!this.store.get('SELECT 1 FROM liturgical_seed_years LIMIT 1'))return;
+  this.ticking=true;
+  try {
+   const vaults=this.store.all<{id:string}>('SELECT id FROM vaults WHERE locked=0');
+   const eligible=new Map<string,string>();
+   for(const vault of vaults){this.plan(vault.id);for(const target of this.targets(vault.id))eligible.set(`${target.id}:${target.year}`,vault.id);}
+   const current=Number(this.store.get<{value:string}>("SELECT value FROM metadata WHERE key='liturgical-current-year'")?.value??this.now().getFullYear());
+   const jobs=this.store.all<{calendar_id:LiturgicalCalendarId;year:number;attempts:number}>("SELECT * FROM liturgical_calendar_downloads WHERE next_attempt<=? AND attempts<3 ORDER BY abs(year-?),year DESC,calendar_id LIMIT 100",this.now().getTime(),current);
+   for(const job of jobs) {
+    const vault=eligible.get(`${job.calendar_id}:${job.year}`);
+    if(!vault){this.store.run('DELETE FROM liturgical_calendar_downloads WHERE calendar_id=? AND year=?',job.calendar_id,job.year);continue;}
+    if(this.pending.size>=2)break;
+    try{await this.year(vault,job.year,job.calendar_id);}
+    catch{if(!this.closed)this.store.run("UPDATE liturgical_calendar_downloads SET status='failed',attempts=attempts+1,next_attempt=? WHERE calendar_id=? AND year=?",this.now().getTime()+60_000*5**job.attempts,job.calendar_id,job.year);}
+    break;
+   }
+  }finally{this.ticking=false;}
+ }
+ close(){this.closed=true;for(const controller of this.controllers)controller.abort();}
 }

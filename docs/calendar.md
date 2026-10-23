@@ -2,7 +2,7 @@
 
 Phases 1–4 implement page/source temporal indexing, compatible typed entity date
 adapters, explicit relationship review, and the Calendar month/agenda workspace.
-An independent, opt-in General Roman Calendar supplements civil dates. Recurrence, reminders,
+Independent, opt-in liturgical calendars supplement civil dates. Recurrence, reminders,
 historical/entity timelines, and external calendar integrations remain deferred.
 
 ## Review of the proposal against the repository
@@ -53,6 +53,30 @@ relationships.
 layer, label, annotation, pinning, semantic
 importance, and personal priority. A curated date survives loss of its evidence.
 No ordinary dates are inserted into the general entity directory.
+
+### Date references on note pages
+
+The note editor also runs the civil extractor locally, without waiting for a save
+or an AI scan. Recognized dates use the same reference styling and hover card as
+knowledge entities. They contribute to the note's entity count and appear in the
+Knowledge panel's Entities list with a Date filter, deduplicated by precision and
+calendar. Clicking a date opens an inspector with its canonical value, precision,
+calendar, current-note count and saved note mentions. Detection remains derived
+presentation: original wording and formatting are preserved in saved text.
+
+The date entity inspector also shows the selected liturgical calendar's principal
+observance, rank, season and colour, optional detail, provider attribution and
+source/reference links. It shares Calendar settings, caches and download eligibility,
+with a direct settings shortcut. Coarse and unconverted Julian dates do not receive
+Gregorian observances; unavailable or unqualified years show their reason and retry.
+
+Date references respect Subtle/Focus presentation and explicit tag removal.
+They can span formatting marks, but not entity references, equations, citations,
+code, hyperlinks, wiki links or separate table cells. Code, math, image and divider
+blocks are excluded. Existing name/alias matching leaves recognized dates intact,
+so a person named May cannot consume the month inside a date. Unsupported date
+expressions follow the extractor policy below. Source readers and typed entity
+properties are outside this note-page UI behavior.
 
 `temporal_index_state`, `temporal_block_state`, and `temporal_dirty` are derived
 index state. Blocks are fingerprinted independently; unchanged blocks skip the
@@ -290,63 +314,76 @@ was made. The original root cause remains unconfirmed; these results do not prov
 that timing/resource contention was the only cause, and do not claim that a product
 race has been fixed. Keep the trace-enabled stress case for recurrence.
 
-## Phase 4: independent General Roman Calendar
+## Liturgical calendar settings, sources and background downloads
 
-The supplement is off by default. It never writes temporal dates, evidence,
-relationships or appointments. Exact civil days can show the observed principal
-celebration or weekday, rank, season and colour; optional memorials are revealed
-in the inspector. Provider-supplied additional non-optional liturgies remain visible.
-The month grid stays restrained and the agenda supplement is separate from knowledge.
-Coarse month/year records never acquire an invented liturgical day.
+Settings → Calendar owns the liturgical overlay toggle, active calendar and optional
+memorial detail. Preferences persist in browser storage. The calendar workspace
+retains date navigation, view filters and a shortcut to these settings.
 
-The server pins both `romcal` and `@romcal/calendar.general-roman` to
-`3.0.0-dev.140` (MIT; notice in `licenses/romcal-MIT.txt`). The maintained v3 line
-is explicitly prerelease, unlike the legacy stable v1 package. Registry metadata
-records publication on 30 August 2026, with matching source revision
-`6246bad8c548c1f2528916df40e433c1f7c97c6a`. This is a deliberate pinned dependency
-tradeoff: future updates require the rule fixtures and cache/provider key to change.
-The published package's actual types/output were checked because some upstream
-v2 output documentation is stale. The adapter uses named `Romcal`, localized
-`GeneralRoman_En`, `generateCalendar`, `id`, `colors`, and ordered observed days.
-It does not invent fixed feast labels or precedence.
+Supported calendars are:
 
-Primary references reviewed:
-- [Romcal source and maintenance](https://github.com/romcal/romcal)
-- [Current usage/API](https://github.com/romcal/romcal/blob/dev/docs/general-usage.md)
-- [Changelog](https://github.com/romcal/romcal/blob/dev/docs/CHANGELOG.md)
-- [Pinned MIT license](https://github.com/romcal/romcal/blob/6246bad8c548c1f2528916df40e433c1f7c97c6a/LICENSE)
-- [General Norms for the Liturgical Year and Calendar](https://www.liturgyoffice.org.uk/Calendar/Info/GNLY.pdf)
+| Calendar | Source | Language |
+| --- | --- | --- |
+| General Roman Calendar | LitCal stable v5 `/calendar/{year}` | English or Latin |
+| Vetus Ordo (1962 Missal) | Ordo1962 public JSON API, universal source, no congregation | Latin |
+| US (national Sunday-transfer profile), Philippines, Mexico, France, Germany | GCatholic public yearly iCalendar feeds | English |
 
-Supported civil years are **1970–2099**, under the provider's current universal
-rules, not historical reconstructions. No national/diocesan proper is loaded.
-Universal fixed-date Epiphany, Ascension and Corpus Christi are explicit; no
-national Sunday-transfer convention is silently selected. Precedence and solemnity
-transfers are calculated by the provider. A missing colour (for example Holy
-Saturday before the Vigil) remains unspecified, rather than invented.
+GRC uses explicit `CIVIL` years and fixed-date Epiphany/Thursday Ascension/Thursday
+Corpus Christi. National calendars retain their provider's propers and transfers.
+Ordo1962 data stays separate from the reformed calendar. Source and reference links
+are displayed beside the active calendar; GCatholic also serves as an additional
+reference for GRC. Missing ICS season metadata stays absent. LitCal's coinciding
+optional memorials are presented as a choice when its response omits a ferial row.
+No optional memorial is selected automatically in place of the principal day.
 
-Generation is server-only in an isolated 128 MiB worker with a 12 second limit,
-one active generation and at most two pending years. No vault content or network
-is supplied. Validated normalized results are under 1 MB. SQLite retains eight
-years, keyed by generator, data package, locale, universal options and adapter
-version; corrupt/obsolete rows regenerate. Browser memory/local storage retain
-four validated years with the same version key. Cached years work without a
-request. Missing data or generation failure leaves the civil calendar usable and
-provides retry. Vault access is checked before and after asynchronous generation.
-Derived public cache data is reconstructible and is not vault backup content.
+At app launch with an open vault, a nonblocking request queues all eight variants
+for the current civil year and its adjacent years (24 calendar-years). Seed years
+persist across restarts, and the window rolls forward on later launches. Beyond
+those seeds, **only curated dates or accepted date relationships to active entities**
+qualify a year. Incidental mentions, pending/rejected proposals and merely browsing
+to another year do not download anything. Only the exact qualifying years are added;
+intervening years are not filled. Qualifications are checked again before queued
+network work begins. Already downloaded public data remains usable offline.
 
-Focused tests exercise Easter/Pentecost, the 2024 Annunciation transfer, the 2023
-Saint Joseph transfer, Sunday precedence over Saint Francis, universal fixed-day
-settings, optional memorials, additional Triduum liturgies, empty colour metadata,
-cache reuse/version invalidation/corruption/bounds, serial concurrency, range and
-vault locking. Browser checks cover desktop/mobile, optional detail, separate
-agenda, cached reuse, error recovery and absence of temporal-entity writes.
+A single background worker downloads one year at a time. Foreground requests share
+in-flight work and the same eligibility checks; at most two requests may be pending.
+The durable queue records failures and retries with backoff, up to three attempts.
+Settings shows readiness/failures and can reset failed downloads for retry. Locked
+vaults do not contribute new qualifications; access is checked before and after work.
+
+SQLite caches by calendar ID, year and provider/locale/adapter identity. Derived public
+calendars are not included in vault backups and are retained rather than evicted in a
+loop while their qualifying entries still exist. Browser memory/local storage holds
+up to 32 validated calendar-years. Old Romcal cache rows are never served by the new
+adapter. Romcal dependencies have been removed.
+
+Provider requests send only calendar identity, language and civil year—no vault IDs,
+note text or entity names. Requests have a 25-second timeout, reject redirects and
+cap response bodies at 8 MB. Normalized full-year data must be valid and under 1 MB.
+GRC supports 1970–9999; national feeds are offered for 1970–2099 and Vetus Ordo for
+1962–2099, with provider failures reported explicitly. No alternate calendar is
+silently substituted when a requested year is unavailable. Civil navigation remains
+usable while downloads fail or a year has no qualifying entry.
+
+Primary references:
+
+- [LitCal stable API documentation](https://litcal.johnromanodorazio.com/dist/)
+- [Ordo1962 public API](https://ordo.fsspx.org/api-docs?lang=en)
+- [GCatholic calendar directory and iCalendar exports](https://gcatholic.org/calendar/)
+
+The server endpoints are `POST /api/temporal/liturgical/preload` with
+`{year, retry?}`, `GET /api/temporal/liturgical/status`, and
+`GET /api/temporal/liturgical/{year}?rite={calendarId}`. They require an open vault.
+Fixture-backed tests cover all adapters, identity isolation, bootstrapping, eligibility,
+backoff, cache reuse/corruption, concurrency, locking and HTTP access. Automated tests
+use captured/reduced public fixtures and synthetic providers, without live downloads.
 
 ## Scope audit and deferrals
 
 The completed scope covers canonical page/source dates, evidence and navigation,
 revision-aware incremental indexing, lifecycle/backup boundaries, separate curation,
 month/agenda/inspectors, explicit filters, typed compatible property review, manual
-relationships and the independent universal supplement. Extraction deliberately
+relationships and the independent liturgical supplements. Extraction deliberately
 supports exact English day/month/year expressions conservatively; numeric prose,
 relative/approximate expressions, ranges, BCE, centuries and conversions between
 historical calendars remain unresolved rather than guessed. Explicit original

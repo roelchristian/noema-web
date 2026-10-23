@@ -11,6 +11,7 @@ import type { EntityReviewItem } from '../../shared/entity-match-cache';
 import { segmentsEqual } from '../../shared/segments-equal';
 import { replaceEditableHTML } from './preserve-caret';
 import { canIdentifyEntities } from './auto-entity-matching';
+import {noteDateRanges, noteDateLabel} from '../../shared/note-dates';
 export interface ReviewLocation {blockId: string; row?: number; col?: number; matches?: EntityReviewItem[]}
 export function entityReviewRanges(_content: Segment[], _entities: Entity[], location: ReviewLocation) {
   return (location.matches ?? []).filter(match => match.blockId === location.blockId && match.row === location.row && match.col === location.col).map(({start,end,id}) => ({start,end,id}));
@@ -29,20 +30,21 @@ export function syncEditableSegments(element: HTMLElement, content: Segment[], e
   const selecting = element.closest('[data-text-selected]') || selection && !selection.isCollapsed && selection.rangeCount && selection.getRangeAt(0).intersectsNode(element);
   const composing = element.closest('.page[data-entity-composing]');
   const citationDisplayChanged=previous?.source!==source&&content.some(segment=>segment.sourceReference)&&!composing;
-  if (changed || missingTrailingCaret || citationDisplayChanged || (!selecting && !composing && element.querySelector('[data-entity-review]'))) {
+  const dateDisplayChanged=previous?.source!==source&&element.querySelector('[data-note-date]')&&!selecting&&!composing;
+  if (changed || missingTrailingCaret || citationDisplayChanged || dateDisplayChanged || (!selecting && !composing && element.querySelector('[data-entity-review]'))) {
     // Strip inherited highlight wrappers immediately when typing resumes.
     replaceEditableHTML(element, source);
   }
   const pending = {source, key, timer: undefined as ReturnType<typeof setTimeout> | undefined};
   reviewTimers.set(element, pending);
-  if (key === '[]') return;
+  if (key === '[]' && !noteDateRanges(content).length && !element.querySelector('[data-note-date]')) return;
   const decorate = () => {
     if (!element.isConnected || reviewTimers.get(element) !== pending) return;
     if (!canIdentifyEntities()) { pending.timer = setTimeout(decorate, 300); return; }
     if (!segmentsEqual(readSegments(element), content)) return;
     replaceEditableHTML(element, segmentHTML(content, entities, location,false,citations));
   };
-  pending.timer = setTimeout(decorate, 0);
+  pending.timer = setTimeout(decorate, key === '[]' ? 1200 : 0);
 }
 /** Only escaped text and explicitly supported formatting reach the editable surface. */
 export function segmentHTML(content: Segment[], entities: Entity[], review?: ReviewLocation, readOnly = false, citations?:CitationPresentation, decorateLinks = true) {
@@ -50,6 +52,19 @@ export function segmentHTML(content: Segment[], entities: Entity[], review?: Rev
   let offset = 0;
   const numberOf=(ref:NonNullable<Segment['sourceReference']>)=>citations?.style==='references'?citations.entries.get(citationKey(ref))?.number??ref.sourceNumber??1:ref.sourceNumber??1;
   const ordered=readOnly?sortCitationRuns(content,(left,right)=>numberOf(left)-numberOf(right)):content;
+  const dates=decorateLinks?noteDateRanges(ordered):[];
+  const textNodes=(value:string,start:number,skipLinks=false)=>{
+    const nodes:React.ReactNode[]=[];
+    let cursor=0;
+    for(const range of dates.filter(range=>range.start<start+value.length&&range.end>start)) {
+      const from=Math.max(0,range.start-start),to=Math.min(value.length,range.end-start);
+      if(from>cursor)nodes.push(...(skipLinks?[value.slice(cursor,from)]:pageLinkNodes(value.slice(cursor,from))));
+      nodes.push(<span key={start+from} className={'mention date'+(range.start===start+from?' is-start':'')+(range.end===start+to?' is-end':'')} data-note-date={range.date.id} data-note-date-start={range.start} role="button" tabIndex={0} title={noteDateLabel(range.date)} aria-label={`${uiText('Date')}: ${noteDateLabel(range.date)}`}>{range.start===start+from&&<Icon name="event"/>}{value.slice(from,to)}</span>);
+      cursor=to;
+    }
+    nodes.push(...(skipLinks?[value.slice(cursor)]:pageLinkNodes(value.slice(cursor))));
+    return nodes;
+  };
   const last=ordered.at(-1);
   // WebKit needs an editable text position after a trailing noneditable atom.
   // Otherwise an entity-only line can paint its caret at the block's far edge.
@@ -68,11 +83,11 @@ export function segmentHTML(content: Segment[], entities: Entity[], review?: Rev
     let cursor = 0;
     for (const range of ranges.filter(range => range.start < offset && range.end > start)) {
       const from = Math.max(0, range.start - start), to = Math.min(s.text?.length ?? 0, range.end - start);
-      if (from > cursor) parts.push(...(s.code || s.href ? [s.text?.slice(cursor, from)] : pageLinkNodes(s.text?.slice(cursor, from) ?? '')));
+      if (from > cursor) parts.push(...textNodes(s.text?.slice(cursor,from)??'',start+cursor,!!(s.code||s.href)));
       parts.push(<span key={range.id} className={'entity-review-highlight' + (range.start === start + from ? ' is-start' : '')} data-entity-review={range.id} title={uiText("Ambiguous entity · click to review")}>{s.text?.slice(from, to)}</span>);
       cursor = to;
     }
-    parts.push(...(s.code || s.href ? [s.text?.slice(cursor)] : pageLinkNodes(s.text?.slice(cursor) ?? '')));
+    parts.push(...textNodes(s.text?.slice(cursor)??'',start+cursor,!!(s.code||s.href)));
     let node = <>{parts}</>;
     if (s.code) node = <code>{node}</code>;
     if (s.bold) node = <strong>{node}</strong>;

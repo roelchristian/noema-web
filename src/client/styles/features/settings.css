@@ -1050,3 +1050,10 @@
   .source-page-dialog .persona-select .select-trigger, .reading-explanation-options .persona-select .select-trigger {min-height: var(--touch-target-size);}
 }
 .settings-dialog .ai-persona-card input[type=radio] {width: 16px; height: 16px; padding: 0; flex: 0 0 16px;}
+
+/* Calendar preferences and public download status. */
+#settings-panel-calendar .calendar-check { margin-block: var(--space-3); }
+#settings-panel-calendar .calendar-field { margin-block: var(--space-3); }
+.calendar-provider-list { list-style: none; padding: 0; display: grid; gap: var(--space-3); }
+.calendar-provider-list li { display: grid; gap: var(--space-1); }
+.calendar-provider-list li > span { color: var(--text-muted); font-size: 12px; }

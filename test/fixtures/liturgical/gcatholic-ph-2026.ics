@@ -1,0 +1,2418 @@
+BEGIN:VCALENDAR
+PRODID:-//GCatholic.org//Liturgical Calendar//EN
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260101
+UID:2026-en-PH-0101-1@gcatholic.org
+SUMMARY:⚪ [S] The Blessed Virgin Mary\, the Mother of God
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260102
+UID:2026-en-PH-0102-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Basil the Great and Saint Gregory Nazianzen\, bishops and doctors of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260103
+UID:2026-en-PH-0103-1@gcatholic.org
+SUMMARY:⚪ Saturday of Christmas Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260103
+UID:2026-en-PH-0103-2@gcatholic.org
+SUMMARY:⚪ [m] The Most Holy Name of Jesus
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260104
+UID:2026-en-PH-0104-1@gcatholic.org
+SUMMARY:⚪ [S] The Epiphany of the Lord
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260105
+UID:2026-en-PH-0105-1@gcatholic.org
+SUMMARY:⚪ Monday after Epiphany
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260106
+UID:2026-en-PH-0106-1@gcatholic.org
+SUMMARY:⚪ Tuesday after Epiphany
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260107
+UID:2026-en-PH-0107-1@gcatholic.org
+SUMMARY:⚪ Wednesday after Epiphany
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260107
+UID:2026-en-PH-0107-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Raymond of Penyafort\, priest
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260108
+UID:2026-en-PH-0108-1@gcatholic.org
+SUMMARY:⚪ Thursday after Epiphany
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260109
+UID:2026-en-PH-0109-1@gcatholic.org
+SUMMARY:🔴 [F] Our Lord Jesus Christ\, Señor Jesus Nazareno
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260110
+UID:2026-en-PH-0110-1@gcatholic.org
+SUMMARY:⚪ Saturday after Epiphany
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260111
+UID:2026-en-PH-0111-1@gcatholic.org
+SUMMARY:⚪ [F] The Baptism of the Lord
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260112
+UID:2026-en-PH-0112-1@gcatholic.org
+SUMMARY:🟢 Monday in the 1ˢᵗ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260113
+UID:2026-en-PH-0113-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 1ˢᵗ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260113
+UID:2026-en-PH-0113-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Hilary\, bishop and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260114
+UID:2026-en-PH-0114-1@gcatholic.org
+SUMMARY:🟢 Wednesday in the 1ˢᵗ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260115
+UID:2026-en-PH-0115-1@gcatholic.org
+SUMMARY:🟢 Thursday in the 1ˢᵗ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260116
+UID:2026-en-PH-0116-1@gcatholic.org
+SUMMARY:🟢 Friday in the 1ˢᵗ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260117
+UID:2026-en-PH-0117-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Anthony\, abbot
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260118
+UID:2026-en-PH-0118-1@gcatholic.org
+SUMMARY:⚪ [F] Santo Niño
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260119
+UID:2026-en-PH-0119-1@gcatholic.org
+SUMMARY:🟢 Monday in the 2ⁿᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260120
+UID:2026-en-PH-0120-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 2ⁿᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260120
+UID:2026-en-PH-0120-2@gcatholic.org
+SUMMARY:🔴 [m] Saint Fabian\, pope and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260120
+UID:2026-en-PH-0120-3@gcatholic.org
+SUMMARY:🔴 [m] Saint Sebastian\, martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260121
+UID:2026-en-PH-0121-1@gcatholic.org
+SUMMARY:🔴 [M] Saint Agnes\, virgin and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260122
+UID:2026-en-PH-0122-1@gcatholic.org
+SUMMARY:🟢 Thursday in the 2ⁿᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260122
+UID:2026-en-PH-0122-2@gcatholic.org
+SUMMARY:🔴 [m] Saint Vincent\, deacon and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260123
+UID:2026-en-PH-0123-1@gcatholic.org
+SUMMARY:🟢 Friday in the 2ⁿᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260124
+UID:2026-en-PH-0124-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Francis de Sales\, bishop and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260125
+UID:2026-en-PH-0125-1@gcatholic.org
+SUMMARY:🟢 3ʳᵈ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260126
+UID:2026-en-PH-0126-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Timothy and Saint Titus\, bishops
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260127
+UID:2026-en-PH-0127-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 3ʳᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260127
+UID:2026-en-PH-0127-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Angela Merici\, virgin
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260128
+UID:2026-en-PH-0128-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Thomas Aquinas\, priest and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260129
+UID:2026-en-PH-0129-1@gcatholic.org
+SUMMARY:🟢 Thursday in the 3ʳᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260130
+UID:2026-en-PH-0130-1@gcatholic.org
+SUMMARY:🟢 Friday in the 3ʳᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260131
+UID:2026-en-PH-0131-1@gcatholic.org
+SUMMARY:⚪ [M] Saint John Bosco\, priest
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260201
+UID:2026-en-PH-0201-1@gcatholic.org
+SUMMARY:🟢 4ᵗʰ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260202
+UID:2026-en-PH-0202-1@gcatholic.org
+SUMMARY:⚪ [F] The Presentation of the Lord
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260203
+UID:2026-en-PH-0203-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 4ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260203
+UID:2026-en-PH-0203-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Ansgar\, bishop
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260203
+UID:2026-en-PH-0203-3@gcatholic.org
+SUMMARY:🔴 [m] Saint Blase\, bishop and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260204
+UID:2026-en-PH-0204-1@gcatholic.org
+SUMMARY:🟢 Wednesday in the 4ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260205
+UID:2026-en-PH-0205-1@gcatholic.org
+SUMMARY:🔴 [M] Saint Agatha\, virgin and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260206
+UID:2026-en-PH-0206-1@gcatholic.org
+SUMMARY:🔴 [M] Saints Pedro Baustista\, Paul Miki and companions\, martyrs
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260207
+UID:2026-en-PH-0207-1@gcatholic.org
+SUMMARY:🟢 Saturday in the 4ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260207
+UID:2026-en-PH-0207-2@gcatholic.org
+SUMMARY:⚪ [m] The Blessed Virgin Mary on Saturday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260208
+UID:2026-en-PH-0208-1@gcatholic.org
+SUMMARY:🟢 5ᵗʰ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260209
+UID:2026-en-PH-0209-1@gcatholic.org
+SUMMARY:🟢 Monday in the 5ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260210
+UID:2026-en-PH-0210-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Scholastica\, virgin
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260211
+UID:2026-en-PH-0211-1@gcatholic.org
+SUMMARY:🟢 Wednesday in the 5ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260211
+UID:2026-en-PH-0211-2@gcatholic.org
+SUMMARY:⚪ [m] Our Lady of Lourdes
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260212
+UID:2026-en-PH-0212-1@gcatholic.org
+SUMMARY:🟢 Thursday in the 5ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260213
+UID:2026-en-PH-0213-1@gcatholic.org
+SUMMARY:🟢 Friday in the 5ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260214
+UID:2026-en-PH-0214-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Cyril\, monk\, and Saint Methodius\, bishop
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260215
+UID:2026-en-PH-0215-1@gcatholic.org
+SUMMARY:🟢 6ᵗʰ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260216
+UID:2026-en-PH-0216-1@gcatholic.org
+SUMMARY:🟢 Monday in the 6ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260217
+UID:2026-en-PH-0217-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 6ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260217
+UID:2026-en-PH-0217-2@gcatholic.org
+SUMMARY:⚪ [m] The Seven Founders of the Order of Servites\, religious
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260218
+UID:2026-en-PH-0218-1@gcatholic.org
+SUMMARY:🟣 Ash Wednesday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260219
+UID:2026-en-PH-0219-1@gcatholic.org
+SUMMARY:🟣 Thursday after Ash Wednesday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260220
+UID:2026-en-PH-0220-1@gcatholic.org
+SUMMARY:🟣 Friday after Ash Wednesday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260221
+UID:2026-en-PH-0221-1@gcatholic.org
+SUMMARY:🟣 Saturday after Ash Wednesday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260221
+UID:2026-en-PH-0221-2@gcatholic.org
+SUMMARY:🟣 [m*] Saint Peter Damian\, bishop and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260222
+UID:2026-en-PH-0222-1@gcatholic.org
+SUMMARY:🟣 1ˢᵗ Sunday of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260223
+UID:2026-en-PH-0223-1@gcatholic.org
+SUMMARY:🟣 Monday in the 1ˢᵗ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260223
+UID:2026-en-PH-0223-2@gcatholic.org
+SUMMARY:🟣 [m*] Saint Polycarp\, bishop and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260224
+UID:2026-en-PH-0224-1@gcatholic.org
+SUMMARY:🟣 Tuesday in the 1ˢᵗ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260225
+UID:2026-en-PH-0225-1@gcatholic.org
+SUMMARY:🟣 Wednesday in the 1ˢᵗ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260226
+UID:2026-en-PH-0226-1@gcatholic.org
+SUMMARY:🟣 Thursday in the 1ˢᵗ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260227
+UID:2026-en-PH-0227-1@gcatholic.org
+SUMMARY:🟣 Friday in the 1ˢᵗ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260227
+UID:2026-en-PH-0227-2@gcatholic.org
+SUMMARY:🟣 [m*] Saint Gregory of Narek\, abbot and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260228
+UID:2026-en-PH-0228-1@gcatholic.org
+SUMMARY:🟣 Saturday in the 1ˢᵗ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260301
+UID:2026-en-PH-0301-1@gcatholic.org
+SUMMARY:🟣 2ⁿᵈ Sunday of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260302
+UID:2026-en-PH-0302-1@gcatholic.org
+SUMMARY:🟣 Monday in the 2ⁿᵈ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260303
+UID:2026-en-PH-0303-1@gcatholic.org
+SUMMARY:🟣 Tuesday in the 2ⁿᵈ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260304
+UID:2026-en-PH-0304-1@gcatholic.org
+SUMMARY:🟣 Wednesday in the 2ⁿᵈ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260304
+UID:2026-en-PH-0304-2@gcatholic.org
+SUMMARY:🟣 [m*] Saint Casimir
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260305
+UID:2026-en-PH-0305-1@gcatholic.org
+SUMMARY:🟣 Thursday in the 2ⁿᵈ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260306
+UID:2026-en-PH-0306-1@gcatholic.org
+SUMMARY:🟣 Friday in the 2ⁿᵈ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260307
+UID:2026-en-PH-0307-1@gcatholic.org
+SUMMARY:🟣 Saturday in the 2ⁿᵈ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260307
+UID:2026-en-PH-0307-2@gcatholic.org
+SUMMARY:🟣 [m*] Saint Perpetua and Saint Felicity\, martyrs
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260308
+UID:2026-en-PH-0308-1@gcatholic.org
+SUMMARY:🟣 3ʳᵈ Sunday of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260309
+UID:2026-en-PH-0309-1@gcatholic.org
+SUMMARY:🟣 Monday in the 3ʳᵈ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260309
+UID:2026-en-PH-0309-2@gcatholic.org
+SUMMARY:🟣 [m*] Saint Frances of Rome\, religious
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260310
+UID:2026-en-PH-0310-1@gcatholic.org
+SUMMARY:🟣 Tuesday in the 3ʳᵈ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260311
+UID:2026-en-PH-0311-1@gcatholic.org
+SUMMARY:🟣 Wednesday in the 3ʳᵈ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260312
+UID:2026-en-PH-0312-1@gcatholic.org
+SUMMARY:🟣 Thursday in the 3ʳᵈ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260313
+UID:2026-en-PH-0313-1@gcatholic.org
+SUMMARY:🟣 Friday in the 3ʳᵈ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260314
+UID:2026-en-PH-0314-1@gcatholic.org
+SUMMARY:🟣 Saturday in the 3ʳᵈ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260315
+UID:2026-en-PH-0315-1@gcatholic.org
+SUMMARY:🟣 4ᵗʰ Sunday of Lent (Laetare)
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260316
+UID:2026-en-PH-0316-1@gcatholic.org
+SUMMARY:🟣 Monday in the 4ᵗʰ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260317
+UID:2026-en-PH-0317-1@gcatholic.org
+SUMMARY:🟣 Tuesday in the 4ᵗʰ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260317
+UID:2026-en-PH-0317-2@gcatholic.org
+SUMMARY:🟣 [m*] Saint Patrick\, bishop
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260318
+UID:2026-en-PH-0318-1@gcatholic.org
+SUMMARY:🟣 Wednesday in the 4ᵗʰ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260318
+UID:2026-en-PH-0318-2@gcatholic.org
+SUMMARY:🟣 [m*] Saint Cyril of Jerusalem\, bishop and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260319
+UID:2026-en-PH-0319-1@gcatholic.org
+SUMMARY:⚪ [S] Saint Joseph\, husband of Mary
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260320
+UID:2026-en-PH-0320-1@gcatholic.org
+SUMMARY:🟣 Friday in the 4ᵗʰ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260321
+UID:2026-en-PH-0321-1@gcatholic.org
+SUMMARY:🟣 Saturday in the 4ᵗʰ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260322
+UID:2026-en-PH-0322-1@gcatholic.org
+SUMMARY:🟣 5ᵗʰ Sunday of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260323
+UID:2026-en-PH-0323-1@gcatholic.org
+SUMMARY:🟣 Monday in the 5ᵗʰ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260323
+UID:2026-en-PH-0323-2@gcatholic.org
+SUMMARY:🟣 [m*] Saint Turibius de Mongrovejo\, bishop
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260324
+UID:2026-en-PH-0324-1@gcatholic.org
+SUMMARY:🟣 Tuesday in the 5ᵗʰ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260325
+UID:2026-en-PH-0325-1@gcatholic.org
+SUMMARY:⚪ [S] The Annunciation of the Lord
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260326
+UID:2026-en-PH-0326-1@gcatholic.org
+SUMMARY:🟣 Thursday in the 5ᵗʰ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260327
+UID:2026-en-PH-0327-1@gcatholic.org
+SUMMARY:🟣 Friday in the 5ᵗʰ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260328
+UID:2026-en-PH-0328-1@gcatholic.org
+SUMMARY:🟣 Saturday in the 5ᵗʰ Week of Lent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260329
+UID:2026-en-PH-0329-1@gcatholic.org
+SUMMARY:🔴 Palm Sunday of the Lord’s Passion
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260330
+UID:2026-en-PH-0330-1@gcatholic.org
+SUMMARY:🟣 Monday of Holy Week
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260331
+UID:2026-en-PH-0331-1@gcatholic.org
+SUMMARY:🟣 Tuesday of Holy Week
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260401
+UID:2026-en-PH-0401-1@gcatholic.org
+SUMMARY:🟣 Wednesday of Holy Week
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260402
+UID:2026-en-PH-0402-1@gcatholic.org
+SUMMARY:⚪ Holy Thursday of the Lord’s Supper
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260403
+UID:2026-en-PH-0403-1@gcatholic.org
+SUMMARY:🔴 Good Friday of the Lord’s Passion
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260404
+UID:2026-en-PH-0404-1@gcatholic.org
+SUMMARY:⚪ Holy Saturday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260405
+UID:2026-en-PH-0405-1@gcatholic.org
+SUMMARY:⚪ Easter Sunday of the Lord’s Resurrection
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260406
+UID:2026-en-PH-0406-1@gcatholic.org
+SUMMARY:⚪ [S] Monday in the Octave of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260407
+UID:2026-en-PH-0407-1@gcatholic.org
+SUMMARY:⚪ [S] Tuesday in the Octave of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260408
+UID:2026-en-PH-0408-1@gcatholic.org
+SUMMARY:⚪ [S] Wednesday in the Octave of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260409
+UID:2026-en-PH-0409-1@gcatholic.org
+SUMMARY:⚪ [S] Thursday in the Octave of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260410
+UID:2026-en-PH-0410-1@gcatholic.org
+SUMMARY:⚪ [S] Friday in the Octave of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260411
+UID:2026-en-PH-0411-1@gcatholic.org
+SUMMARY:⚪ [S] Saturday in the Octave of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260412
+UID:2026-en-PH-0412-1@gcatholic.org
+SUMMARY:⚪ 2ⁿᵈ Sunday of Easter (Divine Mercy)
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260413
+UID:2026-en-PH-0413-1@gcatholic.org
+SUMMARY:⚪ Monday in the 2ⁿᵈ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260413
+UID:2026-en-PH-0413-2@gcatholic.org
+SUMMARY:🔴 [m] Saint Martin I\, pope and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260414
+UID:2026-en-PH-0414-1@gcatholic.org
+SUMMARY:⚪ Tuesday in the 2ⁿᵈ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260415
+UID:2026-en-PH-0415-1@gcatholic.org
+SUMMARY:⚪ Wednesday in the 2ⁿᵈ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260416
+UID:2026-en-PH-0416-1@gcatholic.org
+SUMMARY:⚪ Thursday in the 2ⁿᵈ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260417
+UID:2026-en-PH-0417-1@gcatholic.org
+SUMMARY:⚪ Friday in the 2ⁿᵈ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260418
+UID:2026-en-PH-0418-1@gcatholic.org
+SUMMARY:⚪ Saturday in the 2ⁿᵈ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260419
+UID:2026-en-PH-0419-1@gcatholic.org
+SUMMARY:⚪ 3ʳᵈ Sunday of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260420
+UID:2026-en-PH-0420-1@gcatholic.org
+SUMMARY:⚪ Monday in the 3ʳᵈ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260421
+UID:2026-en-PH-0421-1@gcatholic.org
+SUMMARY:⚪ Tuesday in the 3ʳᵈ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260421
+UID:2026-en-PH-0421-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Anselm\, bishop and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260422
+UID:2026-en-PH-0422-1@gcatholic.org
+SUMMARY:⚪ Wednesday in the 3ʳᵈ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260423
+UID:2026-en-PH-0423-1@gcatholic.org
+SUMMARY:⚪ Thursday in the 3ʳᵈ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260423
+UID:2026-en-PH-0423-2@gcatholic.org
+SUMMARY:🔴 [m] Saint Adalbert\, bishop and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260423
+UID:2026-en-PH-0423-3@gcatholic.org
+SUMMARY:🔴 [m] Saint George\, martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260424
+UID:2026-en-PH-0424-1@gcatholic.org
+SUMMARY:⚪ Friday in the 3ʳᵈ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260424
+UID:2026-en-PH-0424-2@gcatholic.org
+SUMMARY:🔴 [m] Saint Fidelis of Sigmaringen\, priest and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260425
+UID:2026-en-PH-0425-1@gcatholic.org
+SUMMARY:🔴 [F] Saint Mark\, evangelist
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260426
+UID:2026-en-PH-0426-1@gcatholic.org
+SUMMARY:⚪ 4ᵗʰ Sunday of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260427
+UID:2026-en-PH-0427-1@gcatholic.org
+SUMMARY:⚪ Monday in the 4ᵗʰ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260428
+UID:2026-en-PH-0428-1@gcatholic.org
+SUMMARY:⚪ Tuesday in the 4ᵗʰ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260428
+UID:2026-en-PH-0428-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Louis Grignion de Montfort\, priest
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260428
+UID:2026-en-PH-0428-3@gcatholic.org
+SUMMARY:🔴 [m] Saint Peter Chanel\, priest and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260429
+UID:2026-en-PH-0429-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Catherine of Siena\, virgin and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260430
+UID:2026-en-PH-0430-1@gcatholic.org
+SUMMARY:⚪ Thursday in the 4ᵗʰ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260430
+UID:2026-en-PH-0430-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Pius V\, pope
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260501
+UID:2026-en-PH-0501-1@gcatholic.org
+SUMMARY:⚪ Friday in the 4ᵗʰ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260501
+UID:2026-en-PH-0501-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Joseph the Worker
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260502
+UID:2026-en-PH-0502-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Athanasius\, bishop and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260503
+UID:2026-en-PH-0503-1@gcatholic.org
+SUMMARY:⚪ 5ᵗʰ Sunday of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260504
+UID:2026-en-PH-0504-1@gcatholic.org
+SUMMARY:⚪ Monday in the 5ᵗʰ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260505
+UID:2026-en-PH-0505-1@gcatholic.org
+SUMMARY:⚪ Tuesday in the 5ᵗʰ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260506
+UID:2026-en-PH-0506-1@gcatholic.org
+SUMMARY:⚪ Wednesday in the 5ᵗʰ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260507
+UID:2026-en-PH-0507-1@gcatholic.org
+SUMMARY:⚪ Thursday in the 5ᵗʰ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260508
+UID:2026-en-PH-0508-1@gcatholic.org
+SUMMARY:⚪ Friday in the 5ᵗʰ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260509
+UID:2026-en-PH-0509-1@gcatholic.org
+SUMMARY:⚪ Saturday in the 5ᵗʰ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260510
+UID:2026-en-PH-0510-1@gcatholic.org
+SUMMARY:⚪ 6ᵗʰ Sunday of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260511
+UID:2026-en-PH-0511-1@gcatholic.org
+SUMMARY:⚪ Monday in the 6ᵗʰ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260512
+UID:2026-en-PH-0512-1@gcatholic.org
+SUMMARY:⚪ Tuesday in the 6ᵗʰ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260512
+UID:2026-en-PH-0512-2@gcatholic.org
+SUMMARY:🔴 [m] Saint Nereus and Saint Achilleus\, martyrs
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260512
+UID:2026-en-PH-0512-3@gcatholic.org
+SUMMARY:🔴 [m] Saint Pancras\, martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260513
+UID:2026-en-PH-0513-1@gcatholic.org
+SUMMARY:⚪ Wednesday in the 6ᵗʰ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260513
+UID:2026-en-PH-0513-2@gcatholic.org
+SUMMARY:⚪ [m] Our Lady of Fatima
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260514
+UID:2026-en-PH-0514-1@gcatholic.org
+SUMMARY:🔴 [F] Saint Matthias\, apostle
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260515
+UID:2026-en-PH-0515-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Isidore the Farmer
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260516
+UID:2026-en-PH-0516-1@gcatholic.org
+SUMMARY:⚪ Saturday in the 6ᵗʰ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260517
+UID:2026-en-PH-0517-1@gcatholic.org
+SUMMARY:⚪ [S] Ascension of the Lord
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260518
+UID:2026-en-PH-0518-1@gcatholic.org
+SUMMARY:⚪ Monday in the 7ᵗʰ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260518
+UID:2026-en-PH-0518-2@gcatholic.org
+SUMMARY:🔴 [m] Saint John I\, pope and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260519
+UID:2026-en-PH-0519-1@gcatholic.org
+SUMMARY:⚪ Tuesday in the 7ᵗʰ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260520
+UID:2026-en-PH-0520-1@gcatholic.org
+SUMMARY:⚪ Wednesday in the 7ᵗʰ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260520
+UID:2026-en-PH-0520-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Bernardine of Siena\, priest
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260521
+UID:2026-en-PH-0521-1@gcatholic.org
+SUMMARY:⚪ Thursday in the 7ᵗʰ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260521
+UID:2026-en-PH-0521-2@gcatholic.org
+SUMMARY:🔴 [m] Saint Christopher Magallanes\, priest\, and companions\, martyrs
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260522
+UID:2026-en-PH-0522-1@gcatholic.org
+SUMMARY:⚪ Friday in the 7ᵗʰ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260522
+UID:2026-en-PH-0522-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Rita of Cassia\, religious
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260523
+UID:2026-en-PH-0523-1@gcatholic.org
+SUMMARY:⚪ Saturday in the 7ᵗʰ Week of Easter
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260524
+UID:2026-en-PH-0524-1@gcatholic.org
+SUMMARY:🔴 [S] Pentecost Sunday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260525
+UID:2026-en-PH-0525-1@gcatholic.org
+SUMMARY:⚪ [M] The Blessed Virgin Mary\, Mother of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260526
+UID:2026-en-PH-0526-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Philip Neri\, priest
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260527
+UID:2026-en-PH-0527-1@gcatholic.org
+SUMMARY:🟢 Wednesday in the 8ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260527
+UID:2026-en-PH-0527-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Augustine of Canterbury\, bishop
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260528
+UID:2026-en-PH-0528-1@gcatholic.org
+SUMMARY:⚪ [F] Our Lord Jesus Christ\, the Eternal High Priest
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260529
+UID:2026-en-PH-0529-1@gcatholic.org
+SUMMARY:🟢 Friday in the 8ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260529
+UID:2026-en-PH-0529-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Paul VI\, pope
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260530
+UID:2026-en-PH-0530-1@gcatholic.org
+SUMMARY:🟢 Saturday in the 8ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260530
+UID:2026-en-PH-0530-2@gcatholic.org
+SUMMARY:⚪ [m] The Blessed Virgin Mary on Saturday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260531
+UID:2026-en-PH-0531-1@gcatholic.org
+SUMMARY:⚪ [S] The Most Holy Trinity
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260601
+UID:2026-en-PH-0601-1@gcatholic.org
+SUMMARY:🔴 [M] Saint Justin\, martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260602
+UID:2026-en-PH-0602-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 9ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260602
+UID:2026-en-PH-0602-2@gcatholic.org
+SUMMARY:🔴 [m] Saint Marcellinus and Saint Peter\, martyrs
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260603
+UID:2026-en-PH-0603-1@gcatholic.org
+SUMMARY:🔴 [M] Saint Charles Lwanga and companions\, martyrs
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260604
+UID:2026-en-PH-0604-1@gcatholic.org
+SUMMARY:🟢 Thursday in the 9ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260605
+UID:2026-en-PH-0605-1@gcatholic.org
+SUMMARY:🔴 [M] Saint Boniface\, bishop and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260606
+UID:2026-en-PH-0606-1@gcatholic.org
+SUMMARY:🟢 Saturday in the 9ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260606
+UID:2026-en-PH-0606-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Norbert\, bishop
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260606
+UID:2026-en-PH-0606-3@gcatholic.org
+SUMMARY:⚪ [m] The Blessed Virgin Mary on Saturday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260607
+UID:2026-en-PH-0607-1@gcatholic.org
+SUMMARY:⚪ [S] The Most Holy Body and Blood of Christ
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260608
+UID:2026-en-PH-0608-1@gcatholic.org
+SUMMARY:🟢 Monday in the 10ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260609
+UID:2026-en-PH-0609-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 10ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260609
+UID:2026-en-PH-0609-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Ephrem\, deacon and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260610
+UID:2026-en-PH-0610-1@gcatholic.org
+SUMMARY:🟢 Wednesday in the 10ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260611
+UID:2026-en-PH-0611-1@gcatholic.org
+SUMMARY:🔴 [M] Saint Barnabas\, apostle
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260612
+UID:2026-en-PH-0612-1@gcatholic.org
+SUMMARY:⚪ [S] The Most Sacred Heart of Jesus
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260613
+UID:2026-en-PH-0613-1@gcatholic.org
+SUMMARY:⚪ [M] The Immaculate Heart of the Blessed Virgin Mary
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260614
+UID:2026-en-PH-0614-1@gcatholic.org
+SUMMARY:🟢 11ᵗʰ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260615
+UID:2026-en-PH-0615-1@gcatholic.org
+SUMMARY:🟢 Monday in the 11ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260616
+UID:2026-en-PH-0616-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 11ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260617
+UID:2026-en-PH-0617-1@gcatholic.org
+SUMMARY:🟢 Wednesday in the 11ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260618
+UID:2026-en-PH-0618-1@gcatholic.org
+SUMMARY:🟢 Thursday in the 11ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260619
+UID:2026-en-PH-0619-1@gcatholic.org
+SUMMARY:🟢 Friday in the 11ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260619
+UID:2026-en-PH-0619-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Romuald\, abbot
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260620
+UID:2026-en-PH-0620-1@gcatholic.org
+SUMMARY:🟢 Saturday in the 11ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260620
+UID:2026-en-PH-0620-2@gcatholic.org
+SUMMARY:⚪ [m] The Blessed Virgin Mary on Saturday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260621
+UID:2026-en-PH-0621-1@gcatholic.org
+SUMMARY:🟢 12ᵗʰ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260622
+UID:2026-en-PH-0622-1@gcatholic.org
+SUMMARY:🟢 Monday in the 12ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260622
+UID:2026-en-PH-0622-2@gcatholic.org
+SUMMARY:🔴 [m] Saint John Fisher\, bishop\, and Saint Thomas More\, martyrs
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260622
+UID:2026-en-PH-0622-3@gcatholic.org
+SUMMARY:⚪ [m] Saint Paulinus of Nola\, bishop
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260623
+UID:2026-en-PH-0623-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 12ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260624
+UID:2026-en-PH-0624-1@gcatholic.org
+SUMMARY:⚪ [S] The Nativity of Saint John the Baptist
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260625
+UID:2026-en-PH-0625-1@gcatholic.org
+SUMMARY:🟢 Thursday in the 12ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260626
+UID:2026-en-PH-0626-1@gcatholic.org
+SUMMARY:🟢 Friday in the 12ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260627
+UID:2026-en-PH-0627-1@gcatholic.org
+SUMMARY:🟢 Saturday in the 12ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260627
+UID:2026-en-PH-0627-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Cyril of Alexandria\, bishop and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260627
+UID:2026-en-PH-0627-3@gcatholic.org
+SUMMARY:⚪ [m] The Blessed Virgin Mary on Saturday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260628
+UID:2026-en-PH-0628-1@gcatholic.org
+SUMMARY:🟢 13ᵗʰ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260629
+UID:2026-en-PH-0629-1@gcatholic.org
+SUMMARY:🔴 [S] Saint Peter and Saint Paul\, apostles
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260630
+UID:2026-en-PH-0630-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 13ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260630
+UID:2026-en-PH-0630-2@gcatholic.org
+SUMMARY:🔴 [m] The First Martyrs of the Church of Rome
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260701
+UID:2026-en-PH-0701-1@gcatholic.org
+SUMMARY:🟢 Wednesday in the 13ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260702
+UID:2026-en-PH-0702-1@gcatholic.org
+SUMMARY:🟢 Thursday in the 13ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260703
+UID:2026-en-PH-0703-1@gcatholic.org
+SUMMARY:🔴 [F] Saint Thomas\, apostle
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260704
+UID:2026-en-PH-0704-1@gcatholic.org
+SUMMARY:🟢 Saturday in the 13ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260704
+UID:2026-en-PH-0704-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Elizabeth of Portugal
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260704
+UID:2026-en-PH-0704-3@gcatholic.org
+SUMMARY:⚪ [m] The Blessed Virgin Mary on Saturday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260705
+UID:2026-en-PH-0705-1@gcatholic.org
+SUMMARY:🟢 14ᵗʰ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260706
+UID:2026-en-PH-0706-1@gcatholic.org
+SUMMARY:🟢 Monday in the 14ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260706
+UID:2026-en-PH-0706-2@gcatholic.org
+SUMMARY:🔴 [m] Saint Maria Goretti\, virgin and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260707
+UID:2026-en-PH-0707-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 14ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260708
+UID:2026-en-PH-0708-1@gcatholic.org
+SUMMARY:🟢 Wednesday in the 14ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260709
+UID:2026-en-PH-0709-1@gcatholic.org
+SUMMARY:🟢 Thursday in the 14ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260709
+UID:2026-en-PH-0709-2@gcatholic.org
+SUMMARY:🔴 [m] Saint Augustine Zhao Rong\, priest\, and companions\, martyrs
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260710
+UID:2026-en-PH-0710-1@gcatholic.org
+SUMMARY:🟢 Friday in the 14ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260711
+UID:2026-en-PH-0711-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Benedict\, abbot
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260712
+UID:2026-en-PH-0712-1@gcatholic.org
+SUMMARY:🟢 15ᵗʰ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260713
+UID:2026-en-PH-0713-1@gcatholic.org
+SUMMARY:🟢 Monday in the 15ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260713
+UID:2026-en-PH-0713-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Henry
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260714
+UID:2026-en-PH-0714-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 15ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260714
+UID:2026-en-PH-0714-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Camillus de Lellis\, priest
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260715
+UID:2026-en-PH-0715-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Bonaventure\, bishop and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260716
+UID:2026-en-PH-0716-1@gcatholic.org
+SUMMARY:🟢 Thursday in the 15ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260716
+UID:2026-en-PH-0716-2@gcatholic.org
+SUMMARY:⚪ [m] Our Lady of Mount Carmel
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260717
+UID:2026-en-PH-0717-1@gcatholic.org
+SUMMARY:🟢 Friday in the 15ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260718
+UID:2026-en-PH-0718-1@gcatholic.org
+SUMMARY:🟢 Saturday in the 15ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260718
+UID:2026-en-PH-0718-2@gcatholic.org
+SUMMARY:⚪ [m] The Blessed Virgin Mary on Saturday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260719
+UID:2026-en-PH-0719-1@gcatholic.org
+SUMMARY:🟢 16ᵗʰ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260720
+UID:2026-en-PH-0720-1@gcatholic.org
+SUMMARY:🟢 Monday in the 16ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260720
+UID:2026-en-PH-0720-2@gcatholic.org
+SUMMARY:🔴 [m] Saint Apollinaris\, bishop and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260721
+UID:2026-en-PH-0721-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 16ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260721
+UID:2026-en-PH-0721-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Lawrence of Brindisi\, priest and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260722
+UID:2026-en-PH-0722-1@gcatholic.org
+SUMMARY:⚪ [F] Saint Mary Magdalene
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260723
+UID:2026-en-PH-0723-1@gcatholic.org
+SUMMARY:🟢 Thursday in the 16ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260723
+UID:2026-en-PH-0723-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Bridget\, religious
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260724
+UID:2026-en-PH-0724-1@gcatholic.org
+SUMMARY:🟢 Friday in the 16ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260724
+UID:2026-en-PH-0724-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Sharbel Makhluf\, priest
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260725
+UID:2026-en-PH-0725-1@gcatholic.org
+SUMMARY:🔴 [F] Saint James\, apostle
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260726
+UID:2026-en-PH-0726-1@gcatholic.org
+SUMMARY:🟢 17ᵗʰ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260727
+UID:2026-en-PH-0727-1@gcatholic.org
+SUMMARY:🟢 Monday in the 17ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260728
+UID:2026-en-PH-0728-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 17ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260729
+UID:2026-en-PH-0729-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Martha\, Saint Mary and Saint Lazarus
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260730
+UID:2026-en-PH-0730-1@gcatholic.org
+SUMMARY:🟢 Thursday in the 17ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260730
+UID:2026-en-PH-0730-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Peter Chrysologus\, bishop and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260731
+UID:2026-en-PH-0731-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Ignatius of Loyola\, priest
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260801
+UID:2026-en-PH-0801-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Alphonsus Liguori\, bishop and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260802
+UID:2026-en-PH-0802-1@gcatholic.org
+SUMMARY:🟢 18ᵗʰ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260803
+UID:2026-en-PH-0803-1@gcatholic.org
+SUMMARY:🟢 Monday in the 18ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260804
+UID:2026-en-PH-0804-1@gcatholic.org
+SUMMARY:⚪ [M] Saint John Vianney\, priest
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260805
+UID:2026-en-PH-0805-1@gcatholic.org
+SUMMARY:🟢 Wednesday in the 18ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260805
+UID:2026-en-PH-0805-2@gcatholic.org
+SUMMARY:⚪ [m] The Dedication of the Basilica of Saint Mary Major in Rome
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260806
+UID:2026-en-PH-0806-1@gcatholic.org
+SUMMARY:⚪ [F] The Transfiguration of the Lord
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260807
+UID:2026-en-PH-0807-1@gcatholic.org
+SUMMARY:🟢 Friday in the 18ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260807
+UID:2026-en-PH-0807-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Cajetan\, priest
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260807
+UID:2026-en-PH-0807-3@gcatholic.org
+SUMMARY:🔴 [m] Saint Sixtus II\, pope\, and companions\, martyrs
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260808
+UID:2026-en-PH-0808-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Dominic\, priest
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260809
+UID:2026-en-PH-0809-1@gcatholic.org
+SUMMARY:🟢 19ᵗʰ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260810
+UID:2026-en-PH-0810-1@gcatholic.org
+SUMMARY:🔴 [F] Saint Lawrence\, deacon and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260811
+UID:2026-en-PH-0811-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Clare\, virgin
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260812
+UID:2026-en-PH-0812-1@gcatholic.org
+SUMMARY:🟢 Wednesday in the 19ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260812
+UID:2026-en-PH-0812-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Jane Frances de Chantal\, religious
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260813
+UID:2026-en-PH-0813-1@gcatholic.org
+SUMMARY:🟢 Thursday in the 19ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260813
+UID:2026-en-PH-0813-2@gcatholic.org
+SUMMARY:🔴 [m] Saint Pontian\, pope\, and Saint Hippolytus\, priest\, martyrs
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260814
+UID:2026-en-PH-0814-1@gcatholic.org
+SUMMARY:🔴 [M] Saint Maximilian Kolbe\, priest and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260815
+UID:2026-en-PH-0815-1@gcatholic.org
+SUMMARY:⚪ [S] The Assumption of the Blessed Virgin Mary
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260816
+UID:2026-en-PH-0816-1@gcatholic.org
+SUMMARY:🟢 20ᵗʰ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260817
+UID:2026-en-PH-0817-1@gcatholic.org
+SUMMARY:🟢 Monday in the 20ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260818
+UID:2026-en-PH-0818-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 20ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260819
+UID:2026-en-PH-0819-1@gcatholic.org
+SUMMARY:🟢 Wednesday in the 20ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260819
+UID:2026-en-PH-0819-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Ezequiel Moreno Díaz\, bishop
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260819
+UID:2026-en-PH-0819-3@gcatholic.org
+SUMMARY:⚪ [m] Saint John Eudes\, priest
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260820
+UID:2026-en-PH-0820-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Bernard\, abbot and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260821
+UID:2026-en-PH-0821-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Pius X\, pope
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260822
+UID:2026-en-PH-0822-1@gcatholic.org
+SUMMARY:⚪ [M] The Queenship of the Blessed Virgin Mary
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260823
+UID:2026-en-PH-0823-1@gcatholic.org
+SUMMARY:🟢 21ˢᵗ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260824
+UID:2026-en-PH-0824-1@gcatholic.org
+SUMMARY:🔴 [F] Saint Bartholomew\, apostle
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260825
+UID:2026-en-PH-0825-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 21ˢᵗ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260825
+UID:2026-en-PH-0825-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Joseph Calasanz\, priest
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260825
+UID:2026-en-PH-0825-3@gcatholic.org
+SUMMARY:⚪ [m] Saint Louis
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260826
+UID:2026-en-PH-0826-1@gcatholic.org
+SUMMARY:🟢 Wednesday in the 21ˢᵗ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260827
+UID:2026-en-PH-0827-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Monica
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260828
+UID:2026-en-PH-0828-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Augustine\, bishop and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260829
+UID:2026-en-PH-0829-1@gcatholic.org
+SUMMARY:🔴 [M] The Passion of Saint John the Baptist\, martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260830
+UID:2026-en-PH-0830-1@gcatholic.org
+SUMMARY:🟢 22ⁿᵈ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260831
+UID:2026-en-PH-0831-1@gcatholic.org
+SUMMARY:🟢 Monday in the 22ⁿᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260901
+UID:2026-en-PH-0901-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 22ⁿᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260902
+UID:2026-en-PH-0902-1@gcatholic.org
+SUMMARY:🟢 Wednesday in the 22ⁿᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260903
+UID:2026-en-PH-0903-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Gregory the Great\, pope and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260904
+UID:2026-en-PH-0904-1@gcatholic.org
+SUMMARY:🟢 Friday in the 22ⁿᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260905
+UID:2026-en-PH-0905-1@gcatholic.org
+SUMMARY:🟢 Saturday in the 22ⁿᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260905
+UID:2026-en-PH-0905-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Teresa of Calcutta\, virgin
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260905
+UID:2026-en-PH-0905-3@gcatholic.org
+SUMMARY:⚪ [m] The Blessed Virgin Mary on Saturday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260906
+UID:2026-en-PH-0906-1@gcatholic.org
+SUMMARY:🟢 23ʳᵈ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260907
+UID:2026-en-PH-0907-1@gcatholic.org
+SUMMARY:🟢 Monday in the 23ʳᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260908
+UID:2026-en-PH-0908-1@gcatholic.org
+SUMMARY:⚪ [F] The Nativity of the Blessed Virgin Mary
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260909
+UID:2026-en-PH-0909-1@gcatholic.org
+SUMMARY:🟢 Wednesday in the 23ʳᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260909
+UID:2026-en-PH-0909-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Peter Claver\, priest
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260910
+UID:2026-en-PH-0910-1@gcatholic.org
+SUMMARY:🟢 Thursday in the 23ʳᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260911
+UID:2026-en-PH-0911-1@gcatholic.org
+SUMMARY:🟢 Friday in the 23ʳᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260912
+UID:2026-en-PH-0912-1@gcatholic.org
+SUMMARY:🟢 Saturday in the 23ʳᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260912
+UID:2026-en-PH-0912-2@gcatholic.org
+SUMMARY:⚪ [m] The Most Holy Name of Mary
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260913
+UID:2026-en-PH-0913-1@gcatholic.org
+SUMMARY:🟢 24ᵗʰ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260914
+UID:2026-en-PH-0914-1@gcatholic.org
+SUMMARY:🔴 [F] The Exaltation of the Holy Cross
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260915
+UID:2026-en-PH-0915-1@gcatholic.org
+SUMMARY:⚪ [M] Our Lady of Sorrows
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260916
+UID:2026-en-PH-0916-1@gcatholic.org
+SUMMARY:🔴 [M] Saint Cornelius\, pope\, and Saint Cyprian\, bishop\, martyrs
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260917
+UID:2026-en-PH-0917-1@gcatholic.org
+SUMMARY:🟢 Thursday in the 24ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260917
+UID:2026-en-PH-0917-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Hildegard of Bingen\, virgin and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260917
+UID:2026-en-PH-0917-3@gcatholic.org
+SUMMARY:⚪ [m] Saint Robert Bellarmine\, bishop and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260918
+UID:2026-en-PH-0918-1@gcatholic.org
+SUMMARY:🟢 Friday in the 24ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260919
+UID:2026-en-PH-0919-1@gcatholic.org
+SUMMARY:🟢 Saturday in the 24ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260919
+UID:2026-en-PH-0919-2@gcatholic.org
+SUMMARY:🔴 [m] Saint Januarius\, bishop and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260919
+UID:2026-en-PH-0919-3@gcatholic.org
+SUMMARY:⚪ [m] The Blessed Virgin Mary on Saturday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260920
+UID:2026-en-PH-0920-1@gcatholic.org
+SUMMARY:🟢 25ᵗʰ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260921
+UID:2026-en-PH-0921-1@gcatholic.org
+SUMMARY:🔴 [F] Saint Matthew\, apostle and evangelist
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260922
+UID:2026-en-PH-0922-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 25ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260923
+UID:2026-en-PH-0923-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Pius of Pietrelcina\, priest
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260924
+UID:2026-en-PH-0924-1@gcatholic.org
+SUMMARY:🟢 Thursday in the 25ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260925
+UID:2026-en-PH-0925-1@gcatholic.org
+SUMMARY:🟢 Friday in the 25ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260926
+UID:2026-en-PH-0926-1@gcatholic.org
+SUMMARY:🟢 Saturday in the 25ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260926
+UID:2026-en-PH-0926-2@gcatholic.org
+SUMMARY:🔴 [m] Saint Cosmas and Saint Damian\, martyrs
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260926
+UID:2026-en-PH-0926-3@gcatholic.org
+SUMMARY:⚪ [m] The Blessed Virgin Mary on Saturday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260927
+UID:2026-en-PH-0927-1@gcatholic.org
+SUMMARY:🟢 26ᵗʰ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260928
+UID:2026-en-PH-0928-1@gcatholic.org
+SUMMARY:🔴 [F] Saint Lawrence Ruiz and companions\, martyrs
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260929
+UID:2026-en-PH-0929-1@gcatholic.org
+SUMMARY:⚪ [F] Saint Michael\, Saint Gabriel\, and Saint Raphael\, archangels
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20260930
+UID:2026-en-PH-0930-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Jerome\, priest and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261001
+UID:2026-en-PH-1001-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Thérèse of the Child Jesus\, virgin and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261002
+UID:2026-en-PH-1002-1@gcatholic.org
+SUMMARY:⚪ [M] The Holy Guardian Angels
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261003
+UID:2026-en-PH-1003-1@gcatholic.org
+SUMMARY:🟢 Saturday in the 26ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261003
+UID:2026-en-PH-1003-2@gcatholic.org
+SUMMARY:⚪ [m] The Blessed Virgin Mary on Saturday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261004
+UID:2026-en-PH-1004-1@gcatholic.org
+SUMMARY:🟢 27ᵗʰ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261005
+UID:2026-en-PH-1005-1@gcatholic.org
+SUMMARY:🟢 Monday in the 27ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261005
+UID:2026-en-PH-1005-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Faustina Kowalska\, virgin
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261006
+UID:2026-en-PH-1006-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 27ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261006
+UID:2026-en-PH-1006-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Bruno\, priest
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261007
+UID:2026-en-PH-1007-1@gcatholic.org
+SUMMARY:⚪ [M] Our Lady of the Rosary
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261008
+UID:2026-en-PH-1008-1@gcatholic.org
+SUMMARY:🟢 Thursday in the 27ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261009
+UID:2026-en-PH-1009-1@gcatholic.org
+SUMMARY:🟢 Friday in the 27ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261009
+UID:2026-en-PH-1009-2@gcatholic.org
+SUMMARY:🔴 [m] Saint Denis\, bishop\, and companions\, martyrs
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261009
+UID:2026-en-PH-1009-3@gcatholic.org
+SUMMARY:⚪ [m] Saint John Henry Newman\, priest and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261009
+UID:2026-en-PH-1009-4@gcatholic.org
+SUMMARY:⚪ [m] Saint John Leonardi\, priest
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261010
+UID:2026-en-PH-1010-1@gcatholic.org
+SUMMARY:🟢 Saturday in the 27ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261010
+UID:2026-en-PH-1010-2@gcatholic.org
+SUMMARY:⚪ [m] The Blessed Virgin Mary on Saturday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261011
+UID:2026-en-PH-1011-1@gcatholic.org
+SUMMARY:🟢 28ᵗʰ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261012
+UID:2026-en-PH-1012-1@gcatholic.org
+SUMMARY:🟢 Monday in the 28ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261013
+UID:2026-en-PH-1013-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 28ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261014
+UID:2026-en-PH-1014-1@gcatholic.org
+SUMMARY:🟢 Wednesday in the 28ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261014
+UID:2026-en-PH-1014-2@gcatholic.org
+SUMMARY:🔴 [m] Saint Callistus I\, pope and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261015
+UID:2026-en-PH-1015-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Teresa of Jesus\, virgin and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261016
+UID:2026-en-PH-1016-1@gcatholic.org
+SUMMARY:🟢 Friday in the 28ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261016
+UID:2026-en-PH-1016-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Hedwig\, religious
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261016
+UID:2026-en-PH-1016-3@gcatholic.org
+SUMMARY:⚪ [m] Saint Margaret Mary Alacoque\, virgin
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261017
+UID:2026-en-PH-1017-1@gcatholic.org
+SUMMARY:🔴 [M] Saint Ignatius of Antioch\, bishop and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261018
+UID:2026-en-PH-1018-1@gcatholic.org
+SUMMARY:🟢 29ᵗʰ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261019
+UID:2026-en-PH-1019-1@gcatholic.org
+SUMMARY:🟢 Monday in the 29ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261019
+UID:2026-en-PH-1019-2@gcatholic.org
+SUMMARY:🔴 [m] Saint John de Brébeuf\, Saint Isaac Jogues\, priests\, and companions\, martyrs
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261019
+UID:2026-en-PH-1019-3@gcatholic.org
+SUMMARY:⚪ [m] Saint Paul of the Cross\, priest
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261020
+UID:2026-en-PH-1020-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 29ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261021
+UID:2026-en-PH-1021-1@gcatholic.org
+SUMMARY:🔴 [F] Saint Pedro Calungsod\, martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261022
+UID:2026-en-PH-1022-1@gcatholic.org
+SUMMARY:🟢 Thursday in the 29ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261022
+UID:2026-en-PH-1022-2@gcatholic.org
+SUMMARY:⚪ [m] Saint John Paul II\, pope
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261023
+UID:2026-en-PH-1023-1@gcatholic.org
+SUMMARY:🟢 Friday in the 29ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261023
+UID:2026-en-PH-1023-2@gcatholic.org
+SUMMARY:⚪ [m] Saint John of Capistrano\, priest
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261024
+UID:2026-en-PH-1024-1@gcatholic.org
+SUMMARY:🟢 Saturday in the 29ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261024
+UID:2026-en-PH-1024-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Anthony Mary Claret\, bishop
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261024
+UID:2026-en-PH-1024-3@gcatholic.org
+SUMMARY:⚪ [m] The Blessed Virgin Mary on Saturday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261025
+UID:2026-en-PH-1025-1@gcatholic.org
+SUMMARY:🟢 30ᵗʰ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261026
+UID:2026-en-PH-1026-1@gcatholic.org
+SUMMARY:🟢 Monday in the 30ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261027
+UID:2026-en-PH-1027-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 30ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261028
+UID:2026-en-PH-1028-1@gcatholic.org
+SUMMARY:🔴 [F] Saint Simon and Saint Jude\, apostles
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261029
+UID:2026-en-PH-1029-1@gcatholic.org
+SUMMARY:🟢 Thursday in the 30ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261030
+UID:2026-en-PH-1030-1@gcatholic.org
+SUMMARY:🟢 Friday in the 30ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261031
+UID:2026-en-PH-1031-1@gcatholic.org
+SUMMARY:🟢 Saturday in the 30ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261031
+UID:2026-en-PH-1031-2@gcatholic.org
+SUMMARY:⚪ [m] The Blessed Virgin Mary on Saturday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261101
+UID:2026-en-PH-1101-1@gcatholic.org
+SUMMARY:⚪ [S] All Saints
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261102
+UID:2026-en-PH-1102-1@gcatholic.org
+SUMMARY:🟣 The Commemoration of all the Faithful Departed (All Souls)
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261103
+UID:2026-en-PH-1103-1@gcatholic.org
+SUMMARY:🟢 Tuesday in the 31ˢᵗ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261103
+UID:2026-en-PH-1103-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Martin de Porres\, religious
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261104
+UID:2026-en-PH-1104-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Charles Borromeo\, bishop
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261105
+UID:2026-en-PH-1105-1@gcatholic.org
+SUMMARY:🟢 Thursday in the 31ˢᵗ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261106
+UID:2026-en-PH-1106-1@gcatholic.org
+SUMMARY:🟢 Friday in the 31ˢᵗ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261107
+UID:2026-en-PH-1107-1@gcatholic.org
+SUMMARY:🟢 Saturday in the 31ˢᵗ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261107
+UID:2026-en-PH-1107-2@gcatholic.org
+SUMMARY:⚪ [m] The Blessed Virgin Mary on Saturday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261108
+UID:2026-en-PH-1108-1@gcatholic.org
+SUMMARY:🟢 32ⁿᵈ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261109
+UID:2026-en-PH-1109-1@gcatholic.org
+SUMMARY:⚪ [F] The Dedication of the Lateran Basilica in Rome
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261110
+UID:2026-en-PH-1110-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Leo the Great\, pope and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261111
+UID:2026-en-PH-1111-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Martin of Tours\, bishop
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261112
+UID:2026-en-PH-1112-1@gcatholic.org
+SUMMARY:🔴 [M] Saint Josaphat\, bishop and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261113
+UID:2026-en-PH-1113-1@gcatholic.org
+SUMMARY:🟢 Friday in the 32ⁿᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261114
+UID:2026-en-PH-1114-1@gcatholic.org
+SUMMARY:🟢 Saturday in the 32ⁿᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261114
+UID:2026-en-PH-1114-2@gcatholic.org
+SUMMARY:⚪ [m] The Blessed Virgin Mary on Saturday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261115
+UID:2026-en-PH-1115-1@gcatholic.org
+SUMMARY:🟢 33ʳᵈ Sunday in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261116
+UID:2026-en-PH-1116-1@gcatholic.org
+SUMMARY:🟢 Monday in the 33ʳᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261116
+UID:2026-en-PH-1116-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Gertrude\, virgin
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261116
+UID:2026-en-PH-1116-3@gcatholic.org
+SUMMARY:⚪ [m] Saint Margaret of Scotland
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261117
+UID:2026-en-PH-1117-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Elizabeth of Hungary\, religious
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261118
+UID:2026-en-PH-1118-1@gcatholic.org
+SUMMARY:🟢 Wednesday in the 33ʳᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261118
+UID:2026-en-PH-1118-2@gcatholic.org
+SUMMARY:⚪ [m] The Dedication of the Basilicas of Saint Peter and Saint Paul in Rome\, apostles
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261119
+UID:2026-en-PH-1119-1@gcatholic.org
+SUMMARY:🟢 Thursday in the 33ʳᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261120
+UID:2026-en-PH-1120-1@gcatholic.org
+SUMMARY:🟢 Friday in the 33ʳᵈ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261121
+UID:2026-en-PH-1121-1@gcatholic.org
+SUMMARY:⚪ [M] The Presentation of the Blessed Virgin Mary
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261122
+UID:2026-en-PH-1122-1@gcatholic.org
+SUMMARY:⚪ [S] Our Lord Jesus Christ\, King of the Universe
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261123
+UID:2026-en-PH-1123-1@gcatholic.org
+SUMMARY:🟢 Monday in the 34ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261123
+UID:2026-en-PH-1123-2@gcatholic.org
+SUMMARY:🔴 [m] Saint Clement I\, pope and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261123
+UID:2026-en-PH-1123-3@gcatholic.org
+SUMMARY:⚪ [m] Saint Columban\, abbot
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261124
+UID:2026-en-PH-1124-1@gcatholic.org
+SUMMARY:🔴 [M] Saint Andrew Dung-Lac\, priest\, and companions\, martyrs
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261125
+UID:2026-en-PH-1125-1@gcatholic.org
+SUMMARY:🟢 Wednesday in the 34ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261125
+UID:2026-en-PH-1125-2@gcatholic.org
+SUMMARY:🔴 [m] Saint Catherine of Alexandria\, virgin and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261126
+UID:2026-en-PH-1126-1@gcatholic.org
+SUMMARY:🟢 Thursday in the 34ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261127
+UID:2026-en-PH-1127-1@gcatholic.org
+SUMMARY:🟢 Friday in the 34ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261128
+UID:2026-en-PH-1128-1@gcatholic.org
+SUMMARY:🟢 Saturday in the 34ᵗʰ Week in Ordinary Time
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261128
+UID:2026-en-PH-1128-2@gcatholic.org
+SUMMARY:⚪ [m] The Blessed Virgin Mary on Saturday
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261129
+UID:2026-en-PH-1129-1@gcatholic.org
+SUMMARY:🟣 1ˢᵗ Sunday of Advent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261130
+UID:2026-en-PH-1130-1@gcatholic.org
+SUMMARY:🔴 [F] Saint Andrew\, apostle
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261201
+UID:2026-en-PH-1201-1@gcatholic.org
+SUMMARY:🟣 Tuesday in the 1ˢᵗ Week of Advent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261202
+UID:2026-en-PH-1202-1@gcatholic.org
+SUMMARY:🟣 Wednesday in the 1ˢᵗ Week of Advent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261203
+UID:2026-en-PH-1203-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Francis Xavier\, priest
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261204
+UID:2026-en-PH-1204-1@gcatholic.org
+SUMMARY:🟣 Friday in the 1ˢᵗ Week of Advent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261204
+UID:2026-en-PH-1204-2@gcatholic.org
+SUMMARY:⚪ [m] Saint John Damascene\, priest and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261205
+UID:2026-en-PH-1205-1@gcatholic.org
+SUMMARY:🟣 Saturday in the 1ˢᵗ Week of Advent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261206
+UID:2026-en-PH-1206-1@gcatholic.org
+SUMMARY:🟣 2ⁿᵈ Sunday of Advent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261207
+UID:2026-en-PH-1207-1@gcatholic.org
+SUMMARY:⚪ [M] Saint Ambrose\, bishop and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261208
+UID:2026-en-PH-1208-1@gcatholic.org
+SUMMARY:🔵 [S] The Immaculate Conception of the Blessed Virgin Mary
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261209
+UID:2026-en-PH-1209-1@gcatholic.org
+SUMMARY:🟣 Wednesday in the 2ⁿᵈ Week of Advent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261209
+UID:2026-en-PH-1209-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Juan Diego Cuauhtlatoatzin
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261210
+UID:2026-en-PH-1210-1@gcatholic.org
+SUMMARY:🟣 Thursday in the 2ⁿᵈ Week of Advent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261210
+UID:2026-en-PH-1210-2@gcatholic.org
+SUMMARY:⚪ [m] Our Lady of Loreto
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261211
+UID:2026-en-PH-1211-1@gcatholic.org
+SUMMARY:🟣 Friday in the 2ⁿᵈ Week of Advent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261211
+UID:2026-en-PH-1211-2@gcatholic.org
+SUMMARY:⚪ [m] Saint Damasus I\, pope
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261212
+UID:2026-en-PH-1212-1@gcatholic.org
+SUMMARY:⚪ [M] Our Lady of Guadalupe
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261213
+UID:2026-en-PH-1213-1@gcatholic.org
+SUMMARY:🟣 3ʳᵈ Sunday of Advent (Gaudete)
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261214
+UID:2026-en-PH-1214-1@gcatholic.org
+SUMMARY:⚪ [M] Saint John of the Cross\, priest and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261215
+UID:2026-en-PH-1215-1@gcatholic.org
+SUMMARY:🟣 Tuesday in the 3ʳᵈ Week of Advent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261216
+UID:2026-en-PH-1216-1@gcatholic.org
+SUMMARY:🟣 Wednesday in the 3ʳᵈ Week of Advent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261217
+UID:2026-en-PH-1217-1@gcatholic.org
+SUMMARY:🟣 Advent Weekday (December 17)
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261218
+UID:2026-en-PH-1218-1@gcatholic.org
+SUMMARY:🟣 Advent Weekday (December 18)
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261219
+UID:2026-en-PH-1219-1@gcatholic.org
+SUMMARY:🟣 Advent Weekday (December 19)
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261220
+UID:2026-en-PH-1220-1@gcatholic.org
+SUMMARY:🟣 4ᵗʰ Sunday of Advent
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261221
+UID:2026-en-PH-1221-1@gcatholic.org
+SUMMARY:🟣 Advent Weekday (December 21)
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261221
+UID:2026-en-PH-1221-2@gcatholic.org
+SUMMARY:🟣 [m*] Saint Peter Canisius\, priest and doctor of the Church
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261222
+UID:2026-en-PH-1222-1@gcatholic.org
+SUMMARY:🟣 Advent Weekday (December 22)
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261223
+UID:2026-en-PH-1223-1@gcatholic.org
+SUMMARY:🟣 Advent Weekday (December 23)
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261223
+UID:2026-en-PH-1223-2@gcatholic.org
+SUMMARY:🟣 [m*] Saint John of Kanty\, priest
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261224
+UID:2026-en-PH-1224-1@gcatholic.org
+SUMMARY:🟣 Advent Weekday (December 24)
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261225
+UID:2026-en-PH-1225-1@gcatholic.org
+SUMMARY:⚪ [S] The Nativity of the Lord (Christmas)
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261226
+UID:2026-en-PH-1226-1@gcatholic.org
+SUMMARY:🔴 [F] Saint Stephen\, first martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261227
+UID:2026-en-PH-1227-1@gcatholic.org
+SUMMARY:⚪ [F] The Holy Family of Jesus\, Mary and Joseph
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261228
+UID:2026-en-PH-1228-1@gcatholic.org
+SUMMARY:🔴 [F] The Holy Innocents\, martyrs
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261229
+UID:2026-en-PH-1229-1@gcatholic.org
+SUMMARY:⚪ 5ᵗʰ Day in the Octave of Christmas
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261229
+UID:2026-en-PH-1229-2@gcatholic.org
+SUMMARY:⚪ [m*] Saint Thomas Becket\, bishop and martyr
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261230
+UID:2026-en-PH-1230-1@gcatholic.org
+SUMMARY:⚪ 6ᵗʰ Day in the Octave of Christmas
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261231
+UID:2026-en-PH-1231-1@gcatholic.org
+SUMMARY:⚪ 7ᵗʰ Day in the Octave of Christmas
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;VALUE=DATE:20261231
+UID:2026-en-PH-1231-2@gcatholic.org
+SUMMARY:⚪ [m*] Saint Sylvester I\, pope
+END:VEVENT
+END:VCALENDAR

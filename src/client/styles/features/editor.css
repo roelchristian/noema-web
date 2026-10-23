@@ -1180,11 +1180,11 @@
   font-style: normal;
   font-family: inherit
 }
-.page .block-content .mention[data-entity] {
+.page .block-content .mention:is([data-entity], [data-note-date]) {
   transition: background-color 200ms ease, color 200ms ease, text-decoration-color 200ms ease;
 }
 @media (prefers-reduced-motion: reduce) {
-  .page .block-content .mention[data-entity] {
+  .page .block-content .mention:is([data-entity], [data-note-date]) {
     transition: none;
   }
 }
@@ -2977,3 +2977,18 @@
   .selection-context .selection-annotate .selection-action-label { display: none; }
 }
 #content .mention.page-search-mention { background: var(--citation-jump-highlight); outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Derived date references share entity styling without changing authored text. */
+.mention.date {
+  padding: 0;
+  border-radius: 0;
+  background: var(--event-bg);
+  color: var(--event-text);
+  border-color: var(--event-border);
+}
+.mention.date .icon { user-select: none; }
+.note-date-panel .panel-top > span { display: flex; align-items: center; gap: var(--space-2); }
+.note-date-panel .knowledge-connected-list small { display: block; color: var(--text-muted); }
+.note-date-liturgical > .knowledge-section-heading { display: flex; align-items: center; justify-content: space-between; }
+.mention.date.is-start { padding-left: 5px; border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+.mention.date.is-end { padding-right: 5px; border-top-right-radius: 4px; border-bottom-right-radius: 4px; }

@@ -1,3 +1,4 @@
+import {noteDateItems} from '../../shared/note-dates';
 import {DocumentFind} from './DocumentFind';
 import {memoizeBlock} from '../../shared/immutable-blocks';
 import {getLocale} from '../i18n';
@@ -56,7 +57,7 @@ export function PageEditor({hideTitle=false,focusNewBody=false,onCreationFocusCo
   const entityCounts = useMemo(() => {
     const ids = new Set(page.blocks.flatMap(mentionedIds));
     const mentioned = entities.filter(entity => entity.vault_id === page.vault_id && ids.has(entity.id));
-    return mentioned.length;
+    return mentioned.length+noteDateItems(page.blocks).length;
   }, [page.blocks, page.vault_id, entities]);
   const countBlockWords = useMemo(()=>{
     const names = new Map(entities.filter(entity => entity.vault_id === page.vault_id).map(entity => [entity.id,entityMentionName(entity)]));

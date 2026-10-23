@@ -1,3 +1,5 @@
+import {CalendarSettings} from './CalendarSettings';
+import type {CalendarSettings as CalendarPreferences} from './calendar-settings';
 import {PresentationSelector} from './PresentationSelector';
 import {StorageSettings} from './StorageSettings';
 import {t as uiText} from '../i18n';
@@ -19,13 +21,16 @@ import { defaultAppearance, fontOptions, themes, type Appearance, type DisplayMo
 const settingsTabs = [
   {id: 'appearance', get label(){return uiText("Appearance")}},
   {id: 'images', get label(){return uiText("Images")}},
+  {id: 'calendar', get label(){return uiText('Calendar')}},
   {id: 'knowledge', get label(){return uiText("Entities")}},
   {id: 'intelligence', get label(){return uiText("AI")}},
   {id: 'storage', get label(){return uiText("Storage")}},
   {id: 'security', get label(){return uiText("Security")}},
 ] as const;
 
-export function SettingsDialog({appearance, onChange, onExitFocus, storageError, onClose, onOpenPage, onOpenEntity, onOpenPassage, vault, onChangePassphrase, onBeforeNetworkChange}: {
+export function SettingsDialog({initialTab='appearance',calendarSettings,onCalendarSettingsChange,calendarStorageError=false,appearance, onChange, onExitFocus, storageError, onClose, onOpenPage, onOpenEntity, onOpenPassage, vault, onChangePassphrase, onBeforeNetworkChange}: {
+  initialTab?:typeof settingsTabs[number]['id'];
+  calendarSettings:CalendarPreferences;onCalendarSettingsChange:(settings:CalendarPreferences)=>void;calendarStorageError?:boolean;
   onExitFocus: () => void;
   onChangePassphrase: (current: string, next: string | null) => Promise<void>;
   onBeforeNetworkChange: () => Promise<void>;
@@ -36,7 +41,7 @@ export function SettingsDialog({appearance, onChange, onExitFocus, storageError,
   appearance: Appearance; onChange: (appearance: Appearance) => void; storageError: boolean; onClose: () => void;
 }) {
   const {language,setLanguage,storageError:languageStorageError}=useInterfaceLanguage();
-  const [tab, setTab] = useState<typeof settingsTabs[number]['id']>('appearance');
+  const [tab, setTab] = useState<typeof settingsTabs[number]['id']>(initialTab);
   const [activityOpen, setActivityOpen] = useState(false);
   if (activityOpen) return <AIActivityLog onOpenPage={onOpenPage} onClose={() => setActivityOpen(false)}/>;
   return <Modal className="settings-modal" titleId="settings-title" onClose={onClose} dismissOnBackdrop>
@@ -105,6 +110,9 @@ export function SettingsDialog({appearance, onChange, onExitFocus, storageError,
           </button>)}
         </div>
       </section>
+      </div>
+      <div id="settings-panel-calendar" role="tabpanel" aria-labelledby="settings-tab-calendar" hidden={tab !== 'calendar'}>
+        {tab === 'calendar' && <CalendarSettings value={calendarSettings} onChange={onCalendarSettingsChange} vault={vault} storageError={calendarStorageError}/>}
       </div>
       <div id="settings-panel-images" role="tabpanel" aria-labelledby="settings-tab-images" hidden={tab !== 'images'}>
         {tab === 'images' && <ImageSettings/>}

@@ -61,6 +61,12 @@ export function EntityScanReview({page,scan:savedScan,onScan,onFlush,onReview,on
   useEffect(()=>{setDrafts({});setEditingId(null);},[scan?.id]);
   const [feedback,setFeedback]=useState<ReviewFeedback|null>(null);
   const [error,setError]=useState(''),[announcement,setAnnouncement]=useState('');
+  useEffect(()=>{
+    if(!announcement)return;
+    const cancelTimeout=clearTimeout;
+    const timer=setTimeout(()=>setAnnouncement(''),6000);
+    return()=>cancelTimeout(timer);
+  },[announcement]);
   const running=useRef(false),active=useRef(true),selectAll=useRef<HTMLInputElement>(null);
   useEffect(()=>{active.current=true;return()=>{active.current=false;};},[]);
   const pending=scan?.suggestions.filter(s=>s.status==='pending')||[];
@@ -128,7 +134,7 @@ export function EntityScanReview({page,scan:savedScan,onScan,onFlush,onReview,on
           if(next)setActiveId(next.id);
           setEditingId(null);
         }
-        onScan(result);if(decision)setFeedback(entityReviewFeedback(result,ids,decision));if(!decision||ids.includes(editingId||''))setEditingId(null);setDrafts(current=>decision?Object.fromEntries(Object.entries(current).filter(([id])=>!ids.includes(id))):{});setSelected(current=>decision?current.filter(id=>!ids.includes(id)):[]);setAnnouncement(decision?`${ids.length} ${result.subtypeSuggestions?.some(item=>ids.includes(item.id))?'subtype suggestions':'entity suggestions'} ${decision}.`:`${result.suggestions.length} potential entities found.`);}
+        onScan(result);if(decision)setFeedback(entityReviewFeedback(result,ids,decision));if(!decision||ids.includes(editingId||''))setEditingId(null);setDrafts(current=>decision?Object.fromEntries(Object.entries(current).filter(([id])=>!ids.includes(id))):{});setSelected(current=>decision?current.filter(id=>!ids.includes(id)):[]);setAnnouncement(decision?`${ids.length} ${result.subtypeSuggestions?.some(item=>ids.includes(item.id))?'subtype suggestions':'entity suggestions'} ${decision}.`:JSON.stringify(result)===JSON.stringify(savedScan)?'Suggestions are up to date. Showing saved results.':`${result.suggestions.length} potential entities found.`);}
     }catch(error){if(active.current)setError(error instanceof Error?error.message:'Entity scan failed.');}
     finally{running.current=false;if(active.current){setOperation(null);setPreview(null);}}
   }
@@ -173,8 +179,7 @@ export function EntityScanReview({page,scan:savedScan,onScan,onFlush,onReview,on
         <label>Order<Select aria-label="Suggestion order" value={grouped?'identity':'document'} onChange={e=>setGrouped(e.target.value==='identity')}><option value="document">Document order</option><option value="identity">Group by identity status</option></Select></label></div></details>
         <button className="knowledge-icon-action" disabled={locked} aria-label={scanning?uiText("Scanning entities"):scan?uiText("Scan again"):uiText("Scan note")} title={scan?uiText("Scan again"):uiText("Scan note")} onClick={()=>scanNote()}>{scanning?<span className="scan-spinner"/>:<Icon name={scan?'refresh':'sparkles'}/>}</button>
       </div>
-      {(scanning||scan?.continuation)&&<p className="entity-review-scan-status" role="status">{scanning?'Scanning · provisional results cannot be accepted':'Scan paused at a saved checkpoint'}</p>}
-      <div className="entity-review-messages" aria-live="polite">{announcement&&!feedback&&<span className="sr-only" role="status">{announcement}</span>}{feedback&&<ReviewConfirmation feedback={feedback}/>}{error&&<p className="inline-error" role="alert">{error}</p>}{stale&&!scanning&&<div className="entity-review-stale" role="status"><span>{uiText("Note changed. Scan again to review fresh suggestions.")}</span><button className="button small" disabled={locked} onClick={()=>scanNote()}>Refresh suggestions</button></div>}</div>
+      <div className="entity-review-messages" aria-live="polite">{(scanning||scan?.continuation)?<div className="entity-review-scan-message" role="status"><Icon name="info"/><span>{scanning?'Scanning · provisional results cannot be accepted':'Scan paused at a saved checkpoint'}</span></div>:announcement&&!feedback&&<div className="entity-review-scan-message" role="status"><Icon name="info"/><span>{announcement}</span><button type="button" className="entity-review-message-dismiss" aria-label="Dismiss scan message" title="Dismiss" onClick={()=>setAnnouncement('')}><Icon name="close"/></button></div>}{feedback&&<ReviewConfirmation feedback={feedback}/>}{error&&<p className="inline-error" role="alert">{error}</p>}{stale&&!scanning&&<div className="entity-review-stale" role="status"><span>{uiText("Note changed. Scan again to review fresh suggestions.")}</span><button className="button small" disabled={locked} onClick={()=>scanNote()}>Refresh suggestions</button></div>}</div>
       {!!scan?.continuation&&!scanning&&!stale&&<div className="entity-scan-batch-prompt" role="status">
         <p>{uiText("{value0} suggestions saved in this batch. More text remains to scan.",{value0:scan.batchCount??25})}</p>
         <div><button className="button primary" disabled={locked} onClick={()=>scanNote(true)}>{uiText("Continue scanning")}</button>{!reviewingBatch&&<button className="button" disabled={locked} onClick={()=>{setReviewingBatch(true);setFilter('pending');setQuery('');}}>{uiText("Review these suggestions first")}</button>}</div>

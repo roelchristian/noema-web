@@ -298,7 +298,7 @@ html {
     background: transparent;
   }
 }
-:root[data-focused-reading=true] .page .block-content .mention[data-entity] {
+:root[data-focused-reading=true] .page .block-content .mention:is([data-entity], [data-note-date]) {
   display: inline;
   background: transparent;
   color: inherit;
@@ -315,10 +315,10 @@ html {
   text-underline-offset: 3px;
   text-decoration-skip-ink: auto;
 }
-:root[data-focused-reading=true] .page .block-content .mention[data-entity]:hover {
+:root[data-focused-reading=true] .page .block-content .mention:is([data-entity], [data-note-date]):hover {
   text-decoration-color: var(--text-muted);
 }
-:root[data-focused-reading=true] .page .block-content .mention[data-entity] .icon {
+:root[data-focused-reading=true] .page .block-content .mention:is([data-entity], [data-note-date]) .icon {
   display: none;
 }
 .select-menu {

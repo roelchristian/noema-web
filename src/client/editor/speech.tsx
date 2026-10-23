@@ -37,7 +37,7 @@ export async function combineSpeechAudio(parts:Blob[]):Promise<Blob> {
   return new Blob([header!,...data],{type:'audio/wav'});
 }
 
-type Session={token:number;sections:SpeechSection[];parts:Blob[];urls:Map<number,string>;active:number;next:number;busy:boolean;failed:boolean;retryable:boolean;waiting:boolean;finish:boolean;download:string;revision:string;bytes:number};
+type Session={token:number;sections:SpeechSection[];parts:Blob[];urls:Map<number,string>;active:number;next:number;busy:boolean;failed:boolean;retryable:boolean;error:string;voice:string;finish:boolean;download:string;revision:string;bytes:number};
 // Keep at most two sections ahead of playback. Generation is unary and ordered;
 // an explicit retry resumes at the failed section, retaining completed audio.
 const maxSections=256,maxRecordingBytes=128*1024*1024;
@@ -52,11 +52,12 @@ export function useSpeech(vaultId:string,pageId?:string) {
   function release(){const run=session.current;if(run){for(const value of new Set([...run.urls.values(),run.download].filter(Boolean)))URL.revokeObjectURL(value);}session.current=null;}
   function stop(){generation.current++;controller.current?.abort();controller.current=null;release();setCurrentBlockId(null);setState(null);}
   function current(run:Session){return run.token===generation.current&&session.current===run&&!controller.current?.signal.aborted;}
-  function publish(run:Session,error=''){
+  function publish(run:Session,error?:string){
     if(!current(run))return;
+    if(error!==undefined)run.error=error;
     let activeUrl=run.urls.get(run.active)??'';
     if(!activeUrl&&run.parts[run.active]){activeUrl=URL.createObjectURL(run.parts[run.active]!);run.urls.set(run.active,activeUrl);}
-    setState({loading:run.next<run.sections.length&&!run.failed,url:activeUrl,error,part:Math.min(run.next+1,run.sections.length),total:run.sections.length,downloadUrl:run.download,section:run.active,generated:run.parts.length,retryable:run.failed&&run.retryable});
+    setState({loading:run.next<run.sections.length&&!run.failed,url:activeUrl,error:run.error,part:Math.min(run.next+1,run.sections.length),total:run.sections.length,downloadUrl:run.download,section:run.active,generated:run.parts.length,retryable:run.failed&&run.retryable});
 
   }
   useEffect(()=>{
@@ -101,7 +102,7 @@ export function useSpeech(vaultId:string,pageId?:string) {
   }
   function move(index:number){
     const run=session.current;if(!run||index<0||index>=run.sections.length)return;
-    setCurrentBlockId(null);run.active=index;run.waiting=!run.parts[index];publish(run);void pump(run);
+    setCurrentBlockId(null);run.active=index;publish(run);void pump(run);
   }
   function advance(){setCurrentBlockId(null);const run=session.current;if(!run)return;if(run.active+1<run.sections.length)move(run.active+1);else if(pageId)clearSpeechResume(vaultId,pageId);}
   function paragraph(direction:number){
@@ -113,7 +114,7 @@ export function useSpeech(vaultId:string,pageId?:string) {
     move(index);
   }
   function remember(){const run=session.current;if(run)setCurrentBlockId(run.sections[run.active]?.blockId||null);if(run&&pageId&&run.revision)writeSpeechResume(vaultId,pageId,run.revision,run.sections,run.active);}
-  function retry(){const run=session.current;if(!run||!run.failed||!run.retryable)return;run.failed=false;publish(run);void pump(run);}
+  function retry(){const run=session.current;if(!run||!run.failed||!run.retryable)return;run.failed=false;run.error='';publish(run);void pump(run);}
   async function speak(text:string,sections?:SpeechSection[]){
     if(!enabled)return;stop();
     const limit=provider==='gemini'?1800:4096;
@@ -121,15 +122,15 @@ export function useSpeech(vaultId:string,pageId?:string) {
     // Rebound metadata supplied by the editor to the selected provider limit.
     const chunks=planned.flatMap(section=>speechChunks(section.text,limit).map(text=>({...section,text})));
     if(!chunks.length||chunks.length>maxSections){setState({loading:false,url:'',error:chunks.length?'Select at most 256 speech sections.':'This block has no text to speak.',part:0,total:chunks.length});return;}
-    const run:Session={token:generation.current,sections:chunks,parts:[],urls:new Map(),active:0,next:0,busy:false,failed:false,retryable:true,waiting:false,finish:false,download:'',revision:'',bytes:0};
+    const run:Session={token:generation.current,sections:chunks,parts:[],urls:new Map(),active:0,next:0,busy:false,failed:false,retryable:true,error:'',voice,finish:false,download:'',revision:'',bytes:0};
     session.current=run;controller.current=new AbortController();publish(run);
     run.revision=await resumeRevision(chunks).catch(()=>'');
-      if(!current(run))return;
-      // Resume playback at a validated boundary while still generating a complete download.
-      const resume=pageId&&run.revision?readSpeechResume(vaultId,pageId,run.revision,chunks):null;
-      if(resume!==null)run.active=resume;
+    if(!current(run))return;
+    // Resume playback at a validated boundary while still generating a complete download.
+    const resume=pageId&&run.revision?readSpeechResume(vaultId,pageId,run.revision,chunks):null;
+    if(resume!==null)run.active=resume;
     void pump(run);
   }
-  const player=state&&<SpeechPlayer key={generation.current} state={state} voice={voice} onClose={stop} onNext={()=>paragraph(1)} onPrevious={()=>paragraph(-1)} onSectionEnded={advance} onSectionPlay={remember} onSectionPause={()=>setCurrentBlockId(null)} onRetry={state.retryable?retry:undefined} onCompleteRequest={()=>{const run=session.current;if(run){run.finish=true;void pump(run);}}} onError={()=>{const run=session.current;if(run){controller.current?.abort();release();setCurrentBlockId(null);setState({...state,loading:false,url:'',downloadUrl:'',error:'Could not play this audio. Select Speak to try again.'});}}}/>;
+  const player=state&&<SpeechPlayer key={generation.current} state={state} voice={session.current?.voice??voice} onClose={stop} onNext={()=>paragraph(1)} onPrevious={()=>paragraph(-1)} onSectionEnded={advance} onSectionPlay={remember} onSectionPause={()=>setCurrentBlockId(null)} onRetry={state.retryable?retry:undefined} onCompleteRequest={()=>{const run=session.current;if(run){run.finish=true;void pump(run);}}} onError={()=>{const run=session.current;if(run){controller.current?.abort();release();setCurrentBlockId(null);setState({...state,loading:false,url:'',downloadUrl:'',error:'Could not play this audio. Select Speak to try again.'});}}}/>;
   return {enabled,speak,player,currentBlockId,stop};
 }

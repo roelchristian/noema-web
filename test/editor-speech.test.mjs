@@ -423,7 +423,7 @@ test('provider changes cancel pending speech and pin OpenAI voices and provider 
 test('cross-tab provider changes refresh the next explicit request without retrying',async t=>{
   const f=await speechFixture(t);await f.speak('Selection');f.externalProvider('openai','cedar');
   await f.resolve(0,Response.json({error:'The speech provider changed. Start Speak again.'},{status:409}));
-  assert.equal(f.requests.length,1);assert.match(document.querySelector('[role=status]').textContent,/provider changed/);
+  assert.equal(f.requests.length,1);assert.match(document.querySelector('[role=status]').textContent,/provider changed/);assert.ok(!document.body.textContent.includes('Retry unfinished section'));
   await f.speak('Selection');const body=JSON.parse(f.requests[1].options.body);assert.equal(body.provider,'openai');assert.equal(body.voice,'cedar');
 });
 
@@ -443,6 +443,9 @@ test('incremental speech applies backpressure, navigates ordered blocks and retr
   assert.equal(document.querySelector('audio').getAttribute('src'),'blob:speech-2');
   await f.resolve(3,Response.json({error:'Temporary provider failure.'},{status:502}));
   assert.ok(document.querySelector('audio'));assert.equal(document.querySelector('a[download]'),null);
+  await act(async()=>document.querySelector('[aria-label="Next paragraph"]').click());
+  assert.match(document.querySelector('[role=status]').textContent,/Temporary provider failure/,'Navigation retains partial failure and retry controls');
+  await act(async()=>document.querySelector('[aria-label="Previous paragraph"]').click());
   await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Retry unfinished section').click());
   assert.equal(f.requests.length,5);assert.equal(JSON.parse(f.requests[4].options.body).text,'Paragraph 3');
   await f.resolve(4);

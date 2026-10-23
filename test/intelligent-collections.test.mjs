@@ -33,6 +33,9 @@ test('positive and negative examples use document-level contrast and refresh the
  const f=fixture(t),a=f.page('positive-a',[1]),b=f.page('positive-b',[.95]),negative=f.page('negative',[0]),match=f.page('like-positive',[.9]),ambiguous=f.page('like-negative',[.6]),config=examples([a,b],[negative]);
  const query=prepareExampleQuery(f.store,f.vault,config);assert.equal(query.negativeVectors.length,1);assert.ok(query.evidence.some(item=>item.includes('Negative example')));
  const results=evaluateExampleBatch(f.store,f.vault,config,'',8,[match,ambiguous]).items;assert.equal(results.find(item=>item.item_id===match).matched,true);assert.equal(results.find(item=>item.item_id===ambiguous).matched,false);assert.ok(results.find(item=>item.item_id===ambiguous).evidence.some(item=>item.includes('negative example')));
+ const borderline=f.page('borderline',[.67]);assert.equal(evaluateExampleBatch(f.store,f.vault,config,'',8,[borderline]).items[0].matched,false);
+ f.store.run('INSERT INTO collections VALUES(?,?,?)','prior-examples',f.vault,'Prior examples');f.store.run("INSERT INTO smart_collection_cache(vault_id,collection_id,item_id,matched,evidence_json,revision,state,score,fingerprint) VALUES(?,?,?,1,'[]',0,'evaluated',.8,'previous')",f.vault,'prior-examples',borderline);
+ assert.equal(evaluateExampleBatch(f.store,f.vault,config,'',8,[borderline],'prior-examples').items[0].matched,true,'existing automatic matches use a small negative-contrast exit margin');
  f.store.run('UPDATE page_segment_embeddings SET vector=? WHERE segment_id=?',JSON.stringify(vector(.7)),b+'-segment-0');assert.notEqual(prepareExampleQuery(f.store,f.vault,config).fingerprint,query.fingerprint);
 });
 

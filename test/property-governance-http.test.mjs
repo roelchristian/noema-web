@@ -1,16 +1,9 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {once} from 'node:events';
-import path from 'node:path';
-import {openDatabase} from '../src/server/database.ts';
-import {Store} from '../src/server/store.ts';
 import {Knowledge} from '../src/server/modules/knowledge.ts';
-import {createApp} from '../src/server/http.ts';
-test('governance HTTP previews confirm compatibility, scope definitions and guard legacy hierarchy writes',async()=>{
- const db=openDatabase(':memory:'),store=new Store(db),knowledge=new Knowledge(store);let server;
- try{
-  server=createApp(store,path.resolve('dist/client'));server.listen(0,'127.0.0.1');await once(server,'listening');const base='http://127.0.0.1:'+server.address().port+'/api/';
-  const call=(path,method='GET',body)=>fetch(base+path,{method,headers:{'Content-Type':'application/json','X-Vault-Id':'default'},...(body?{body:JSON.stringify(body)}:{})});
+import {httpFixture} from './helpers/http.mjs';
+test('governance HTTP previews confirm compatibility, scope definitions and guard legacy hierarchy writes',async t=>{
+ const {store,json:call}=await httpFixture(t,{headers:{'X-Vault-Id':'default'}}),knowledge=new Knowledge(store);
   let response=await call('entity-schema/definitions','POST',{name:'Historical note',key:'historical_note',scope:{kind:'main_type',type:'person'},valueKind:'short_text'});assert.equal(response.status,201);const definition=await response.json();
   const person=knowledge.create('default',{name:'HTTP Historic Person',type:'person'});
   knowledge.property('default',person.id,{name:definition.legacyName,value:'one'});knowledge.property('default',person.id,{name:definition.legacyName,value:'two'});
@@ -25,5 +18,4 @@ test('governance HTTP previews confirm compatibility, scope definitions and guar
   const first=knowledge.create('default',{name:'First hierarchy place',type:'place'}),second=knowledge.create('default',{name:'Second hierarchy place',type:'place'});
   assert.equal((await call('entities/'+first.id+'/properties','POST',{name:'parent place',target_id:second.id})).status,201);
   assert.equal((await call('entities/'+second.id+'/properties','POST',{name:'parent place',target_id:first.id})).status,409);
- }finally{if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}db.close();}
 });

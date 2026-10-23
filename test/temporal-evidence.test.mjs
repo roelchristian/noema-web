@@ -91,3 +91,13 @@ test('strict source rendering highlights the exact repeated occurrence and refus
  const html=renderToStaticMarkup(createElement(SemanticPassageText,{text,reference,cited:true,startOffset:100}));assert.equal(html,'23 October 2026 and again <mark>23 October 2026</mark>.');
  assert.doesNotMatch(renderToStaticMarkup(createElement(SemanticPassageText,{text,reference:{...reference,startOffset:101+start},cited:true,startOffset:100})),/<mark>/);
 });
+
+
+test('selected temporal proposal is reachable beyond pagination without advancing its cursor',t=>{
+ const f=fixture(t);
+ for(let index=0;index<23;index++){const person=f.knowledge.create(f.vault,{name:'Person '+index,type:'person'});f.knowledge.property(f.vault,person.id,{name:'birth date',value:'2026-10-23'});}
+ while(f.store.get('SELECT 1 FROM temporal_property_dirty WHERE vault_id=?',f.vault))f.index.refresh(f.vault);
+ const first=f.index.detail(f.vault,dateId),next=f.index.detail(f.vault,dateId,0,0,20,0,0,20),selected=next.proposals[0];assert.ok(selected);assert.equal(first.proposals.some(row=>row.id===selected.id),false);
+ const focused=f.index.detail(f.vault,dateId,0,0,20,0,0,0,selected.id);assert.equal(focused.proposals[0].id,selected.id);assert.equal(focused.proposals[0].evidence.status,'current');assert.equal(focused.nextProposalOffset,20);assert.equal(focused.proposals.length,21);
+ const foreign=f.vaults.create({name:'Other vault'}).id;assert.throws(()=>f.index.detail(foreign,dateId,0,0,20,0,0,0,selected.id),error=>error.status===404);
+});

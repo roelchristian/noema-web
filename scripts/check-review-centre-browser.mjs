@@ -9,6 +9,7 @@ import {openDatabase} from '../src/server/database.ts';
 import {Store} from '../src/server/store.ts';
 import {createRuntime} from '../src/server/runtime.ts';
 import {createTransportHandler} from '../src/server/transport.ts';
+import {proposeValue} from '../src/server/modules/property-provenance.ts';
 import {Intelligence} from '../src/server/modules/intelligence.ts';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE??'playwright-core');
 const originalFetch=globalThis.fetch;
@@ -37,9 +38,9 @@ let browser,lastPage;const checks=[],errors=[],mutations=[];
 try {
  browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH??'/usr/bin/chromium',headless:true,args:['--no-sandbox']});const base=`http://127.0.0.1:${server.address().port}`;
  async function launch(width){const context=await browser.newContext({viewport:{width,height:1000},isMobile:width<750,hasTouch:width<750,reducedMotion:'reduce'});await context.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());const page=await context.newPage();lastPage=page;page.setDefaultTimeout(10000);page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(r.method()!=='GET'&&!/\/liturgical|notifications|\/reading-locations\//.test(r.url()))mutations.push(r.method()+' '+new URL(r.url()).pathname);});await page.goto(`${base}/?vault=default&view=review`);await ready(page);return {page,context};}
- async function ready(page){await page.getByRole('heading',{name:'Review Centre',exact:true}).waitFor();await page.waitForFunction(()=>document.querySelector('.review-centre')?.getAttribute('aria-busy')==='false');}
- async function back(page){await page.getByRole('button',{name:'Return to Review Centre',exact:true}).click();await ready(page);}
- async function screenshot(page,name){await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:join(artifacts,name+'.png'),fullPage:true});}
+ async function ready(page){await page.getByRole('heading',{name:'Inbox',exact:true}).waitFor();await page.waitForFunction(()=>document.querySelector('.review-centre')?.getAttribute('aria-busy')==='false');}
+ async function back(page){await page.getByRole('button',{name:'Return to Inbox',exact:true}).click();await ready(page);}
+ async function screenshot(page,name){if(process.env.NOEMA_SKIP_SCREENSHOTS==='1')return;await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:join(artifacts,name+'.png'),fullPage:true});}
  const {page}=await launch(1440);
  assert.equal(await page.locator('.review-items li').count(),3);await screenshot(page,'review-desktop-decisions');checks.push('Read-only initial queue; scan, discovery and editorial origins');
  await page.getByRole('button',{name:'Review discoveries: Observatory research',exact:true}).click();await page.getByRole('tab',{name:'Discovery',exact:true}).waitFor();assert.equal(await page.getByRole('tab',{name:'Discovery',exact:true}).getAttribute('aria-selected'),'true');await page.locator('.eh-discovery-warning').first().waitFor();
@@ -48,7 +49,7 @@ try {
  for(let i=0;i<2;i++){await page.getByRole('button',{name:'Review entities: Observatory notebook',exact:true}).click();const dialog=page.getByRole('dialog',{name:/Entity review/});await dialog.waitFor();await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});await back(page);}checks.push('Repeated scan open, Escape, return');
  await page.getByRole('button',{name:/Review corrections: Observatory transcript ·/}).click();await page.locator('.reprocessing-patch').waitFor();assert.match(await page.locator('.reprocessing-patch').first().innerText(),/brigbt/);await page.locator('.reprocessing-patch').getByRole('button',{name:'Edit',exact:true}).click();await page.getByLabel('Edit suggested replacement',{exact:true}).fill('brilliant');await back(page);
  await page.getByRole('button',{name:/Review corrections: Observatory transcript ·/}).click();await page.getByLabel('Edit suggested replacement',{exact:true}).waitFor();assert.equal(await page.getByLabel('Edit suggested replacement',{exact:true}).inputValue(),'brilliant');await back(page);checks.push('Exact source attachment/editorial run and replacement draft preservation');
- await page.getByRole('button',{name:/Needs attention/}).click();assert.equal(await page.locator('.review-items li').count(),1);await page.getByRole('button',{name:/Inspect source: Interrupted transcript ·/}).click();await page.locator('.source-reader').waitFor();await page.getByRole('button',{name:'Retry AI enrichment',exact:true}).waitFor();await back(page);assert.equal(await page.getByRole('button',{name:/Needs attention/}).getAttribute('aria-pressed'),'true');checks.push('Failure classification, source destination and filter preservation');
+ await page.getByRole('button',{name:/Issues/}).click();assert.equal(await page.locator('.review-items li').count(),1);await page.getByRole('button',{name:/Inspect source: Interrupted transcript ·/}).click();await page.locator('.source-reader').waitFor();await page.getByRole('button',{name:'Retry AI enrichment',exact:true}).waitFor();await back(page);assert.equal(await page.getByRole('button',{name:/Issues/}).getAttribute('aria-pressed'),'true');checks.push('Failure classification, source destination and filter preservation');
  await page.getByRole('button',{name:/To review/}).click();
  // Resolve before opening: queue must stay put and explain the transition.
  store.run("UPDATE page_ai_enrichments SET data=json_set(data,'$.scan.suggestions[0].status','accepted') WHERE page_id=?",note.id);
@@ -64,7 +65,20 @@ try {
  const sizes=await mobile.page.locator('.review-centre button,.review-centre summary').evaluateAll(nodes=>nodes.filter(n=>n.getBoundingClientRect().height).map(n=>({label:n.textContent,height:n.getBoundingClientRect().height,width:n.getBoundingClientRect().width,right:n.getBoundingClientRect().right})));
  for(const size of sizes){assert.ok(size.height>=44&&size.width>=44,JSON.stringify(size));assert.ok(size.right<=390,JSON.stringify(size));}
  assert.equal(await mobile.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);checks.push('390px mobile responsive layout and 44px targets');
+ // New saved workflows are navigated through the same actual client, without decisions in Inbox.
+ const owner=knowledge.create('default',{name:'Synthetic proposal owner',type:'person'});
+ for(let index=0;index<101;index++){const historical=proposeValue(store,'default',{entity_id:owner.id,origin:'ai',property_name:'website',value:'https://historical.example/'+index});store.run("UPDATE property_proposals SET status='accepted' WHERE id=?",historical.id);}
+ const proposal=proposeValue(store,'default',{entity_id:owner.id,origin:'ai',property_name:'website',value:'https://selected.example'});
+ const sourceProposal=proposeValue(store,'default',{entity_id:source.id,origin:'ai',property_name:'website',value:'https://source-proposal.example'});
+ for(let index=0;index<23;index++){const person=knowledge.create('default',{name:'Synthetic temporal owner '+index,type:'person'});knowledge.property('default',person.id,{name:'birth date',value:'2026-10-23'});}
+ while(store.get('SELECT 1 FROM temporal_property_dirty WHERE vault_id=?','default'))runtime.temporal.refresh('default');
+ const selectedDate='gregorian:day:2026-10-23',selectedTemporal=runtime.temporal.detail('default',selectedDate,0,0,20,0,0,20).proposals[0];assert.ok(selectedTemporal);
+ await page.goto(`${base}/?vault=default&view=inbox&facet=review`);await ready(page);
+ await page.getByRole('button',{name:'Review proposal: Synthetic proposal owner',exact:true}).click();await page.locator('.property-proposal').filter({hasText:'https://selected.example'}).waitFor();assert.equal(await page.locator('.property-proposal').count(),1);assert.equal(await page.locator('.property-proposal').evaluate(element=>document.activeElement===element),true);await back(page);assert.equal(await page.getByRole('button',{name:/To review/}).getAttribute('aria-pressed'),'true');
+ await page.getByRole('button',{name:'Review proposal: Observatory transcript',exact:true}).click();await page.locator('#entity-panel .property-proposal').filter({hasText:'https://source-proposal.example'}).waitFor();await back(page);checks.push('Exact property proposal beyond historical list bound, entity and source reviewers, return facet');
+ await page.getByRole('button',{name:`Review date: ${selectedTemporal.name}`,exact:true}).click();await page.locator('#calendar-date-heading').waitFor();const selectedRelation=page.locator('.calendar-relation[tabindex="-1"]');await selectedRelation.waitFor();assert.match(await selectedRelation.innerText(),new RegExp(selectedTemporal.name));assert.equal(await page.getByRole('button',{name:'Accept relationship',exact:true}).count(),21);await back(page);assert.equal(await page.getByRole('button',{name:/To review/}).getAttribute('aria-pressed'),'true');checks.push('Exact pending temporal relationship beyond first evidence page, selected Calendar date and return facet');
+ assert.equal(store.get('SELECT status FROM property_proposals WHERE id=?',proposal.id).status,'pending');assert.equal(store.get('SELECT status FROM property_proposals WHERE id=?',sourceProposal.id).status,'pending');assert.equal(store.get('SELECT status FROM temporal_relations WHERE id=?',selectedTemporal.id).status,'pending');
  assert.deepEqual(errors,[]);assert.deepEqual(mutations,[]);assert.equal(providerCalls,0);
  await writeFile(join(artifacts,'verification.json'),JSON.stringify({checks,errors,mutations,providerCalls},null,2));console.log(JSON.stringify({checks,artifacts,providerCalls},null,2));
-} catch(error){if(lastPage)await lastPage.screenshot({path:join(artifacts,'failure.png'),fullPage:true}).catch(()=>{});throw error;}
+} catch(error){if(lastPage&&process.env.NOEMA_SKIP_SCREENSHOTS!=='1')await lastPage.screenshot({path:join(artifacts,'failure.png'),fullPage:true}).catch(()=>{});throw error;}
 finally {globalThis.fetch=originalFetch;await browser?.close();await new Promise(r=>server.close(r));runtime.close();db.close();await rm(dir,{recursive:true,force:true});}

@@ -164,7 +164,7 @@ export class TemporalIndex {
    ORDER BY d.value,d.precision,d.id LIMIT ? OFFSET ?`,vault,calendar,...layers,to,from,allReferences?1:0,limit+1,offset);
   return {items:dates.slice(0,limit).map(date=>this.item(vault,date)),indexing,nextOffset:dates.length>limit?offset+limit:null};
  }
- detail(vault:string,dateId:string,offset=0,relationOffset=0,limit=20,sourceOffset=0,propertyOffset=0,proposalOffset=0):TemporalDetail {
+ detail(vault:string,dateId:string,offset=0,relationOffset=0,limit=20,sourceOffset=0,propertyOffset=0,proposalOffset=0,proposalId?:string):TemporalDetail {
   this.open(vault);this.pagination(offset,limit);this.pagination(relationOffset,limit);this.pagination(sourceOffset,limit);this.pagination(propertyOffset,limit);this.pagination(proposalOffset,limit);
   this.refresh(vault);
   const date=this.store.get<TemporalDate>('SELECT id,value,precision,calendar FROM temporal_dates WHERE vault_id=? AND id=?',vault,dateId);
@@ -173,16 +173,17 @@ export class TemporalIndex {
   item.sources=this.store.all<TemporalSourceSummary>(`SELECT m.id,m.source_id AS sourceId,m.file_id AS fileId,m.original_text AS text,e.name AS title,m.start_line AS startLine,substr(sp.text,max(1,m.start_offset-sp.start_offset-60),180) AS context ${currentTemporalSources} ORDER BY m.file_id,m.start_offset LIMIT ? OFFSET ?`,vault,date.id,limit,sourceOffset);
   item.properties=this.store.all<TemporalPropertySummary>(`SELECT p.id,p.entity_id AS entityId,p.name,p.value AS raw,e.name AS title ${currentTemporalProperties} ORDER BY p.id LIMIT ? OFFSET ?`,vault,date.id,limit,propertyOffset);
   item.proposals=this.relations(vault,date.id,'review',proposalOffset,limit);
-  return {...item,nextSourceOffset:sourceOffset+item.sources.length<(item.sourceCount??0)?sourceOffset+limit:null,nextPropertyOffset:propertyOffset+item.properties.length<(item.propertyCount??0)?propertyOffset+limit:null,nextProposalOffset:proposalOffset+item.proposals.length<(item.proposalCount??0)?proposalOffset+limit:null,nextMentionOffset:offset+item.mentions.length<item.mentionCount?offset+limit:null,nextRelationOffset:relationOffset+item.relations.length<item.relationCount?relationOffset+limit:null};
+  if(proposalId){const selected=this.relations(vault,date.id,'review',0,1,proposalId)[0];if(selected&&!item.proposals.some(row=>row.id===selected.id))item.proposals=[selected,...item.proposals];}
+  return {...item,nextSourceOffset:sourceOffset+item.sources.length<(item.sourceCount??0)?sourceOffset+limit:null,nextPropertyOffset:propertyOffset+item.properties.length<(item.propertyCount??0)?propertyOffset+limit:null,nextProposalOffset:proposalOffset+limit<(item.proposalCount??0)?proposalOffset+limit:null,nextMentionOffset:offset+item.mentions.length<item.mentionCount?offset+limit:null,nextRelationOffset:relationOffset+item.relations.length<item.relationCount?relationOffset+limit:null};
  }
  pageEvidence(vault:string,pageId:string) {
   this.open(vault);const page=this.page(vault,pageId);if(!page||page.deleted_at)throw new HttpError(404,'Page not found');
   const snapshot=this.prepare(vault,pageId);if(snapshot)this.commit(snapshot);
   return this.store.all<Mention>('SELECT * FROM temporal_mentions WHERE vault_id=? AND page_id=? AND stale=0 ORDER BY block_id,start_offset',vault,pageId).map(mention=>({id:mention.id,dateId:mention.date_id,text:mention.original_text,evidence:this.resolve(vault,mention.id)}));
  }
- private relations(vault:string,dateId:string,state:'accepted'|'review',offset:number,limit:number):TemporalRelationSummary[] {
+ private relations(vault:string,dateId:string,state:'accepted'|'review',offset:number,limit:number,proposalId?:string):TemporalRelationSummary[] {
   const clause=state==='accepted'?this.acceptedRelations:this.acceptedRelations.replace("r.status='accepted'","r.status IN ('pending','rejected')");
-  return this.store.all<{id:string;entity_id:string;mention_id:string|null;source_mention_id:string|null;property_id:string|null;property_hash:string|null;kind:string;origin:string;status:string;confidence:number|null;name:string}>(`SELECT r.*,e.name ${clause} ORDER BY r.id LIMIT ? OFFSET ?`,vault,dateId,limit,offset).map(row=>{
+  return this.store.all<{id:string;entity_id:string;mention_id:string|null;source_mention_id:string|null;property_id:string|null;property_hash:string|null;kind:string;origin:string;status:string;confidence:number|null;name:string}>(`SELECT r.*,e.name ${clause}${proposalId?' AND r.id=?':''} ORDER BY r.id LIMIT ? OFFSET ?`,vault,dateId,...proposalId?[proposalId,limit,offset]:[limit,offset]).map(row=>{
    const evidence=row.mention_id?this.relationEvidence(vault,row.mention_id,dateId):row.source_mention_id?this.sources.resolve(vault,row.source_mention_id):row.property_id?this.properties.resolve(vault,row.property_id,dateId,row.property_hash):{status:'unresolved' as const,reason:'No supporting evidence'};
    const version=hash(JSON.stringify([row,evidence]));
    return {id:row.id,entityId:row.entity_id,mentionId:row.mention_id,sourceMentionId:row.source_mention_id,propertyId:row.property_id,kind:row.kind,origin:row.origin,status:row.status,confidence:row.confidence,name:row.name,evidence,version};

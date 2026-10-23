@@ -47,3 +47,42 @@ test('category errors are isolated and queries have stable bounded continuation'
  f.store.run("UPDATE page_ai_enrichments SET data='invalid'");const entity=f.knowledge.create('default',{name:'Subject',type:'concept'});discovery(f,entity,'draft');
  const partial=f.centre.list('default');assert.equal(partial.errors.length,1);assert.equal(partial.items[0].category,'discovery');
 });
+test('pending property and name proposals use exact identities and stay independent of page filing',async t=>{
+ const {proposeValue}=await import('../src/server/modules/property-provenance.ts');
+ const f=fixture(t),entity=f.knowledge.create('default',{name:'Subject',type:'concept'}),page=f.pages.create('default',{title:'Unfiled'});scan(f,page);
+ const proposal=proposeValue(f.store,'default',{entity_id:entity.id,property_name:'Meaning',value:'Synthetic value',origin:'ai'});
+ const name=proposeValue(f.store,'default',{entity_id:entity.id,kind:'entity_name',value:'Proposed subject',origin:'ai'});
+ const first=f.centre.resolve('default','property:'+proposal.id);assert.equal(first.originId,entity.id);assert.equal(first.proposalId,proposal.id);assert.equal(first.count,1);assert.equal(first.group,'decisions');assert.ok(first.runId);
+ assert.equal(f.centre.resolve('default','property:'+name.id).decision,'Review proposed name');
+ f.store.run("UPDATE property_proposals SET details='Changed saved evidence' WHERE id=?",proposal.id);
+ assert.notEqual(f.centre.resolve('default',first.id).runId,first.runId);
+ f.store.run("UPDATE property_proposals SET status='accepted' WHERE id=?",proposal.id);assert.equal(f.centre.resolve('default',first.id),null);
+ assert.equal(f.centre.resolve('default','scan:'+page.id).count,2);
+ const other=new Vaults(f.store).create({name:'Other'});assert.equal(f.centre.resolve(other.id,'property:'+name.id),null);
+ f.store.run("UPDATE entities SET archived_at='2026-10-23' WHERE id=?",entity.id);assert.equal(f.centre.resolve('default','property:'+name.id),null);
+});
+test('property proposal continuation is bounded and identity resolution bypasses paging',async t=>{
+ const {proposeValue}=await import('../src/server/modules/property-provenance.ts');
+ const f=fixture(t),entity=f.knowledge.create('default',{name:'Subject',type:'concept'});let last;
+ for(let index=0;index<53;index++)last=proposeValue(f.store,'default',{entity_id:entity.id,property_name:'Field '+index,value:'Synthetic',origin:'ai'});
+ const first=f.centre.list('default'),next=f.centre.list('default',50);
+ assert.equal(first.items.length,50);assert.deepEqual(first.more,['property']);assert.equal(next.items.length,3);
+ assert.equal(new Set([...first.items,...next.items].map(item=>item.id)).size,53);
+ assert.equal(f.centre.resolve('default','property:'+last.id).proposalId,last.id);
+});
+test('field-derived pending date relationships disappear when decided, dirty, superseded or archived',async t=>{
+ const {TemporalProperties}=await import('../src/server/modules/temporal-properties.ts');
+ const f=fixture(t),entity=f.knowledge.create('default',{name:'Person',type:'person'});
+ const {properties}=f.knowledge.property('default',entity.id,{name:'birth date',value:'March 1905 (Julian)'});
+ // Built-in adapters are deliberately exercised rather than fabricating relation evidence.
+ const property=properties.find(item=>item.name==='birth date');new TemporalProperties(f.store).refresh('default',100);
+ const relation=f.store.get('SELECT * FROM temporal_relations WHERE property_id=?',property.id);assert.ok(relation);
+ const item=f.centre.resolve('default','temporal:'+relation.id);assert.equal(item.dateId,'julian:month:1905-03');assert.equal(item.proposalId,relation.id);assert.equal(item.originId,entity.id);
+ const other=new Vaults(f.store).create({name:'Other'});assert.equal(f.centre.resolve(other.id,item.id),null);
+ f.store.run("UPDATE temporal_relations SET status='rejected' WHERE id=?",relation.id);assert.equal(f.centre.resolve('default',item.id),null);
+ f.store.run("UPDATE temporal_relations SET status='pending' WHERE id=?",relation.id);
+ f.store.run("UPDATE properties SET value='April 1906' WHERE id=?",property.id);assert.equal(f.centre.resolve('default',item.id),null);
+ new TemporalProperties(f.store).refresh('default',100);assert.equal(f.centre.resolve('default',item.id),null);
+ const current=f.centre.list('default').items.find(value=>value.category==='temporal');assert.equal(current.dateId,'gregorian:month:1906-04');
+ f.store.run("UPDATE entities SET archived_at='2026-10-23' WHERE id=?",entity.id);assert.equal(f.centre.resolve('default',current.id),null);
+});

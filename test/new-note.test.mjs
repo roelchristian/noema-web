@@ -106,7 +106,7 @@ test('initial editing session survives autosave, metadata and same-note selectio
   await workspace.renamePage('new','My garden');
   assert.equal(workspace.snapshot().page.title,'My garden');
   assert.equal(workspace.snapshot().initialEditingPageId,'new');
-  workspace.showInbox();assert.equal(workspace.snapshot().initialEditingPageId,null);
+  await workspace.showInbox();assert.equal(workspace.snapshot().initialEditingPageId,null);
   await workspace.openPage('new');
   assert.equal(workspace.snapshot().initialEditingPageId,null);
   assert.equal(workspace.snapshot().creationFocusPageId,null);

@@ -1,10 +1,10 @@
 /* Calendar shares the workspace controls and Knowledge panel rhythm. */
 .calendar-workspace { display: grid; grid-template-columns: minmax(0, 1fr); min-height: calc(100dvh - var(--workspace-toolbar-height)); container-type: inline-size; color: var(--text); }
 .calendar-workspace.has-inspector { grid-template-columns: minmax(0, 1fr) minmax(310px, 360px); }
-.calendar-main { min-width: 0; padding: var(--space-6) clamp(20px, 3vw, 40px); }
+.calendar-main { min-width: 0; padding: var(--library-padding); }
 .calendar-heading, .calendar-inspector-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
-.calendar-heading { flex-wrap: wrap; margin-bottom: var(--space-3); }
-.calendar-heading h1 { margin: 0; font-family: var(--font-title); font-size: var(--page-heading-size); font-weight: var(--page-heading-weight); line-height: var(--page-heading-line-height); letter-spacing: var(--page-heading-letter-spacing); }
+.calendar-heading { flex-wrap: wrap; margin-bottom: var(--library-heading-gap); }
+.calendar-heading h1 { margin: 0; }
 .calendar-heading > div:first-child, .calendar-heading-actions, .calendar-month-navigation { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .calendar-heading > div:first-child { gap: var(--space-4); }
 .calendar-heading-actions { margin-left: auto; }
@@ -143,15 +143,12 @@ dialog.calendar-sheet[open] { display: flex; flex-direction: column; }
 .calendar-liturgical-agenda[open] > summary svg { transform: rotate(90deg); }
 @media (max-width: 1100px) and (min-width: 751px) {
   .calendar-workspace.has-inspector { grid-template-columns: minmax(0, 1fr) 310px; }
-  .calendar-main { padding-inline: var(--space-5); }
   .calendar-cell > button { padding: var(--space-1-5); }
 }
 @media (max-width: 750px) {
   .calendar-workspace.has-inspector { grid-template-columns: minmax(0, 1fr); }
-  .calendar-main { padding: var(--space-5) var(--space-4); }
   .calendar-heading { align-items: flex-start; gap: var(--space-3); }
   .calendar-heading > div:first-child { width: 100%; justify-content: space-between; gap: var(--space-2); }
-  .calendar-heading h1 { font-size: 21px; }
   .calendar-heading-actions { margin-left: 0; }
   .calendar-view-switch { padding: 2px; }
   .calendar-workspace button, .calendar-workspace summary, .calendar-filter-toggle { min-height: var(--touch-target-size); }
@@ -172,14 +169,9 @@ dialog.calendar-sheet[open] { display: flex; flex-direction: column; }
   .calendar-curation input:not([type=checkbox]), .calendar-curation select { min-height: var(--touch-target-size); }
 }
 @media (max-width: 360px) {
-  .calendar-main { padding-inline: var(--space-2); }
-  .calendar-heading h1 { font-size: 19px; }
   .calendar-heading > div:first-child { gap: var(--space-1); }
 }
 
-@media (max-width: 340px) {
-  .calendar-main { padding-inline: var(--space-1); }
-}
 
 .calendar-liturgical-color[data-color=white] { background: var(--liturgical-white); }
 .calendar-liturgical-cell[data-color=white] { --celebration-color: var(--liturgical-white); }
@@ -271,3 +263,6 @@ dialog.calendar-sheet-bounded { inset: var(--space-5); margin: auto; max-width: 
 .calendar-cell.is-outside-month > button { color: var(--text-muted); }
 .calendar-cell.is-outside-month > button > span { opacity: .55; }
 .calendar-cell.is-outside-month > button:focus-visible > span, .calendar-cell.is-outside-month > button:hover > span { opacity: .85; }
+
+/* Match library header controls so the month title shares their baseline. */
+.calendar-heading button { min-height: var(--control-target-compact); }

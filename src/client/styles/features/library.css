@@ -2319,9 +2319,9 @@
 
 .inbox-triage {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr);
+  grid-template-columns: minmax(240px, 1fr) minmax(0, 2fr);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   overflow: hidden;
 }
 .inbox-queue {
@@ -2333,45 +2333,47 @@
 }
 .inbox-session {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--ui-text-sm);
   padding: 8px;
 }
 .inbox-queue-row {
   display: flex;
   align-items: center;
-  border-radius: 8px;
+  border-radius: var(--radius-xs);
 }
 .inbox-queue-row.is-selected {
   background: var(--accent-soft);
 }
 .inbox-queue-row label {
-  width: 44px;
-  min-height: 44px;
+  width: var(--control-target-compact);
+  min-height: var(--control-target-compact);
   display: grid;
   place-items: center;
   flex-shrink: 0;
   margin: 0;
 }
 .inbox-queue-row input {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
 }
 .inbox-queue-row > button {
   min-width: 0;
-  min-height: 60px;
+  min-height: 48px;
   flex: 1;
   text-align: left;
-  padding: 8px;
+  padding: 6px 8px;
   overflow-wrap: anywhere;
 }
 .inbox-queue-row strong {
   display: block;
+  font-size: var(--ui-text-md);
+  font-weight: 500;
 }
 .inbox-indicators {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 8px;
-  font-size: 12px;
+  font-size: var(--ui-text-sm);
   color: var(--text-muted);
 }
 .inbox-detail {
@@ -2382,7 +2384,11 @@
   overflow-wrap: anywhere;
 }
 .inbox-detail h2 {
-  margin: 16px 0 8px;
+  margin: 14px 0 6px;
+  font-family: var(--font-title);
+  font-size: 20px;
+  font-weight: 550;
+  letter-spacing: -.02em;
 }
 .inbox-navigation, .inbox-decisions {
   display: flex;
@@ -2392,18 +2398,20 @@
 }
 .inbox-navigation {
   justify-content: space-between;
-  font-size: 12px;
+  font-size: var(--ui-text-sm);
   color: var(--text-muted);
 }
 .inbox-decisions {
-  margin-top: 16px;
+  margin-top: 12px;
 }
 .inbox-triage .button {
-  min-height: 44px;
-  min-width: 44px;
+  min-height: var(--control-target-compact);
+  min-width: var(--control-target-compact);
+  padding: 5px 9px;
+  font-size: var(--ui-text-sm);
 }
 .inbox-preview {
-  margin-top: 24px;
+  margin-top: 16px;
 }
 .inbox-triage .inbox-back {
   display: none;
@@ -2433,6 +2441,12 @@
   color: var(--text);
 }
 
+.inbox-session { margin: 4px 0; }
+.inbox-detail > .organization-hint:empty { margin: 0; }
+@media (max-width: 750px), (pointer: coarse) {
+  .inbox-triage .button, .inbox-queue-row label { min-height: var(--touch-target-size); min-width: var(--touch-target-size); }
+}
+
 .smart-collection-status { padding: 12px 0; border-bottom: 1px solid var(--line); }
 .smart-collection-status p { margin: 6px 0; }
 .smart-collection-status li { overflow-wrap: anywhere; }
@@ -2441,3 +2455,9 @@
 .smart-membership-evidence summary { cursor: pointer; }
 
 .organization-context-title .organization-description { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 70ch; margin-top: 8px; color: var(--text-muted); }
+
+.pages-home-actions .button.library-create-icon {
+  width: max(38px, var(--control-target-compact));
+  min-width: max(38px, var(--control-target-compact));
+  padding: 0;
+}

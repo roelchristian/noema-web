@@ -1,0 +1,603 @@
+{
+  "date_utc": "2026-10-23",
+  "comparison_base": "14f6e073e276aef94194601dedc88d2fd8514dc2",
+  "measured_after_local_commit": "f246194bd7c7df730c369a4ed338837b779b1fa8",
+  "integration_base": "965c3fb98253ba565eaf9109d1aa34d0c9aab1b8",
+  "integration_test_commit": "f98e232e9f4d4d9c639065cd04daf8fb962340f9",
+  "environment": {
+    "node": "24.19.0",
+    "npm": "11.9.0",
+    "typescript": "7.0.2",
+    "tsx": "4.23.15",
+    "vite": "8.3.4",
+    "os": "Linux x64 kernel 6.18.55",
+    "cpu": "AMD EPYC 9V74",
+    "visible_cpus": 5,
+    "cpu_quota": 4,
+    "available_parallelism": 4,
+    "memory_limit_gib": 16,
+    "swap": false,
+    "node_default_test_file_concurrency": 3
+  },
+  "samples": {
+    "reconciled-baseline-affected": {
+      "label": "reconciled-baseline-affected",
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "--test",
+        "--test-reporter=tap",
+        "test/editor-rendering.test.mjs",
+        "test/pdf-worker.test.mjs",
+        "test/document-find-shortcuts.test.mjs",
+        "test/entity-home.test.mjs",
+        "test/entity-home-phase2.test.mjs",
+        "test/entity-home-phase3.test.mjs",
+        "test/entity-panel-editor.test.mjs",
+        "test/property-governance-http.test.mjs",
+        "test/property-provenance-http.test.mjs",
+        "test/property-reference-options.test.mjs",
+        "test/property-backups.test.mjs",
+        "test/property-provenance-backups.test.mjs",
+        "test/vault-backups.test.mjs",
+        "test/page-summary-freshness.test.mjs",
+        "test/page-semantic-drift.test.mjs",
+        "test/legacy-baseline-migration.test.mjs",
+        "test/calendar-liturgical-overlay.test.mjs",
+        "test/liturgical-week.test.mjs",
+        "test/liturgical-calendar.test.mjs"
+      ],
+      "wall_seconds": 13.484328133999952,
+      "exit": 0,
+      "tap_totals": {
+        "tests": 135,
+        "pass": 135,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "tap_duration_ms": 13438.749072
+    },
+    "reconciled-baseline-build": {
+      "label": "reconciled-baseline-build",
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "wall_seconds": 4.3494179179997445,
+      "exit": 0
+    },
+    "reconciled-baseline-editor": {
+      "label": "reconciled-baseline-editor",
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "--test",
+        "--test-reporter=tap",
+        "test/editor-rendering.test.mjs"
+      ],
+      "wall_seconds": 11.150563300000613,
+      "exit": 0,
+      "tap_totals": {
+        "tests": 15,
+        "pass": 15,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "tap_duration_ms": 11115.959678
+    },
+    "reconciled-baseline-find": {
+      "label": "reconciled-baseline-find",
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "--test",
+        "--test-reporter=tap",
+        "test/document-find-shortcuts.test.mjs"
+      ],
+      "wall_seconds": 1.6598223290002352,
+      "exit": 0,
+      "tap_totals": {
+        "tests": 3,
+        "pass": 3,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "tap_duration_ms": 1626.456088
+    },
+    "reconciled-baseline-full1": {
+      "label": "reconciled-baseline-full1",
+      "command": [
+        "npm",
+        "run",
+        "test:all"
+      ],
+      "wall_seconds": 74.31944292900016,
+      "exit": 0,
+      "tap_totals": {
+        "tests": 1046,
+        "pass": 1040,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 6,
+        "todo": 0
+      },
+      "tap_duration_ms": 74044.129402
+    },
+    "reconciled-baseline-full2": {
+      "label": "reconciled-baseline-full2",
+      "command": [
+        "npm",
+        "run",
+        "test:all"
+      ],
+      "wall_seconds": 71.2598942059999,
+      "exit": 0,
+      "tap_totals": {
+        "tests": 1046,
+        "pass": 1040,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 6,
+        "todo": 0
+      },
+      "tap_duration_ms": 70985.921408
+    },
+    "reconciled-baseline-full3": {
+      "label": "reconciled-baseline-full3",
+      "command": [
+        "npm",
+        "run",
+        "test:all"
+      ],
+      "wall_seconds": 69.77440102599985,
+      "exit": 0,
+      "tap_totals": {
+        "tests": 1046,
+        "pass": 1040,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 6,
+        "todo": 0
+      },
+      "tap_duration_ms": 69512.012128
+    },
+    "reconciled-baseline-install": {
+      "label": "reconciled-baseline-install",
+      "command": [
+        "npm",
+        "ci",
+        "--ignore-scripts"
+      ],
+      "wall_seconds": 1.49652097399985,
+      "exit": 0
+    },
+    "reconciled-after-affected": {
+      "label": "reconciled-after-affected",
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "--test",
+        "--test-reporter=tap",
+        "test/editor-rendering.test.mjs",
+        "test/pdf-worker.test.mjs",
+        "test/document-find-shortcuts.test.mjs",
+        "test/entity-home.test.mjs",
+        "test/entity-home-phase2.test.mjs",
+        "test/entity-home-phase3.test.mjs",
+        "test/entity-panel-editor.test.mjs",
+        "test/property-governance-http.test.mjs",
+        "test/property-provenance-http.test.mjs",
+        "test/property-reference-options.test.mjs",
+        "test/property-backups.test.mjs",
+        "test/property-provenance-backups.test.mjs",
+        "test/vault-backups.test.mjs",
+        "test/page-summary-freshness.test.mjs",
+        "test/page-semantic-drift.test.mjs",
+        "test/legacy-baseline-migration.test.mjs",
+        "test/calendar-liturgical-overlay.test.mjs",
+        "test/liturgical-week.test.mjs",
+        "test/liturgical-calendar.test.mjs"
+      ],
+      "wall_seconds": 10.672447766000005,
+      "exit": 0,
+      "tap_totals": {
+        "tests": 135,
+        "pass": 135,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "tap_duration_ms": 10638.119565
+    },
+    "reconciled-after-build": {
+      "label": "reconciled-after-build",
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "wall_seconds": 3.869715467999413,
+      "exit": 0
+    },
+    "reconciled-after-editor-browser": {
+      "label": "reconciled-after-editor-browser",
+      "command": [
+        "node",
+        "scripts/check-editor-browser.mjs"
+      ],
+      "wall_seconds": 2.4000265770000624,
+      "exit": 0
+    },
+    "reconciled-after-editor": {
+      "label": "reconciled-after-editor",
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "--test",
+        "--test-reporter=tap",
+        "test/editor-rendering.test.mjs"
+      ],
+      "wall_seconds": 3.0320856869993804,
+      "exit": 0,
+      "tap_totals": {
+        "tests": 15,
+        "pass": 15,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "tap_duration_ms": 2996.268802
+    },
+    "reconciled-after-find": {
+      "label": "reconciled-after-find",
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "--test",
+        "--test-reporter=tap",
+        "test/document-find-shortcuts.test.mjs"
+      ],
+      "wall_seconds": 1.3414330499999778,
+      "exit": 0,
+      "tap_totals": {
+        "tests": 3,
+        "pass": 3,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "tap_duration_ms": 1303.062342
+    },
+    "reconciled-after-full1": {
+      "label": "reconciled-after-full1",
+      "command": [
+        "npm",
+        "run",
+        "test:all"
+      ],
+      "wall_seconds": 67.37188392299959,
+      "exit": 0,
+      "tap_totals": {
+        "tests": 1046,
+        "pass": 1040,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 6,
+        "todo": 0
+      },
+      "tap_duration_ms": 67113.329619
+    },
+    "reconciled-after-full2": {
+      "label": "reconciled-after-full2",
+      "command": [
+        "npm",
+        "run",
+        "test:all"
+      ],
+      "wall_seconds": 66.88681938799982,
+      "exit": 0,
+      "tap_totals": {
+        "tests": 1046,
+        "pass": 1040,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 6,
+        "todo": 0
+      },
+      "tap_duration_ms": 66615.491713
+    },
+    "reconciled-after-full3": {
+      "label": "reconciled-after-full3",
+      "command": [
+        "npm",
+        "run",
+        "test:all"
+      ],
+      "wall_seconds": 68.68395545100066,
+      "exit": 0,
+      "tap_totals": {
+        "tests": 1046,
+        "pass": 1040,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 6,
+        "todo": 0
+      },
+      "tap_duration_ms": 68386.194649
+    },
+    "reconciled-after-install": {
+      "label": "reconciled-after-install",
+      "command": [
+        "npm",
+        "ci",
+        "--ignore-scripts"
+      ],
+      "wall_seconds": 1.4416600269996707,
+      "exit": 0
+    },
+    "reconciled-after-isolation": {
+      "label": "reconciled-after-isolation",
+      "command": [
+        "node",
+        "/workspace/streamline-evidence/check-isolation.mjs",
+        "/workspace/noema-test-streamline"
+      ],
+      "wall_seconds": 3.8659925259999,
+      "exit": 0
+    },
+    "integration-affected": {
+      "label": "integration-affected",
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "--test",
+        "--test-reporter=tap",
+        "test/editor-rendering.test.mjs",
+        "test/pdf-worker.test.mjs",
+        "test/document-find-shortcuts.test.mjs",
+        "test/entity-home.test.mjs",
+        "test/entity-home-phase2.test.mjs",
+        "test/entity-home-phase3.test.mjs",
+        "test/entity-panel-editor.test.mjs",
+        "test/property-governance-http.test.mjs",
+        "test/property-provenance-http.test.mjs",
+        "test/property-reference-options.test.mjs",
+        "test/property-backups.test.mjs",
+        "test/property-provenance-backups.test.mjs",
+        "test/vault-backups.test.mjs",
+        "test/page-summary-freshness.test.mjs",
+        "test/page-semantic-drift.test.mjs",
+        "test/legacy-baseline-migration.test.mjs",
+        "test/calendar-liturgical-overlay.test.mjs",
+        "test/liturgical-week.test.mjs",
+        "test/liturgical-calendar.test.mjs"
+      ],
+      "wall_seconds": 10.841653325000152,
+      "exit": 0,
+      "tap_totals": {
+        "tests": 135,
+        "pass": 135,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "tap_duration_ms": 10796.678684
+    },
+    "integration-build": {
+      "label": "integration-build",
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "wall_seconds": 4.844051728000522,
+      "exit": 0
+    },
+    "integration-editor-browser": {
+      "label": "integration-editor-browser",
+      "command": [
+        "node",
+        "scripts/check-editor-browser.mjs"
+      ],
+      "wall_seconds": 2.8814322289999836,
+      "exit": 0
+    },
+    "integration-full": {
+      "label": "integration-full",
+      "command": [
+        "npm",
+        "run",
+        "test:all"
+      ],
+      "wall_seconds": 71.08754008699998,
+      "exit": 0,
+      "tap_totals": {
+        "tests": 1062,
+        "pass": 1056,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 6,
+        "todo": 0
+      },
+      "tap_duration_ms": 70789.360212
+    },
+    "integration-isolation": {
+      "label": "integration-isolation",
+      "command": [
+        "node",
+        "/workspace/streamline-evidence/check-isolation.mjs",
+        "/workspace/noema-test-streamline"
+      ],
+      "wall_seconds": 4.330659975999879,
+      "exit": 0
+    },
+    "history-integration-affected": {
+      "label": "history-integration-affected",
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "--test",
+        "--test-reporter=tap",
+        "test/editor-rendering.test.mjs",
+        "test/pdf-worker.test.mjs",
+        "test/document-find-shortcuts.test.mjs",
+        "test/entity-home.test.mjs",
+        "test/entity-home-phase2.test.mjs",
+        "test/entity-home-phase3.test.mjs",
+        "test/entity-panel-editor.test.mjs",
+        "test/property-governance-http.test.mjs",
+        "test/property-provenance-http.test.mjs",
+        "test/property-reference-options.test.mjs",
+        "test/property-backups.test.mjs",
+        "test/property-provenance-backups.test.mjs",
+        "test/vault-backups.test.mjs",
+        "test/page-summary-freshness.test.mjs",
+        "test/page-semantic-drift.test.mjs",
+        "test/legacy-baseline-migration.test.mjs",
+        "test/calendar-liturgical-overlay.test.mjs",
+        "test/liturgical-week.test.mjs",
+        "test/liturgical-calendar.test.mjs"
+      ],
+      "wall_seconds": 10.274200398000175,
+      "exit": 0,
+      "tap_totals": {
+        "tests": 135,
+        "pass": 135,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "tap_duration_ms": 10238.729294
+    },
+    "history-integration-build": {
+      "label": "history-integration-build",
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "wall_seconds": 6.0244971559995975,
+      "exit": 0
+    },
+    "history-integration-editor-browser": {
+      "label": "history-integration-editor-browser",
+      "command": [
+        "node",
+        "scripts/check-editor-browser.mjs"
+      ],
+      "wall_seconds": 2.525411517000066,
+      "exit": 0
+    },
+    "history-integration-full": {
+      "label": "history-integration-full",
+      "command": [
+        "npm",
+        "run",
+        "test:all"
+      ],
+      "wall_seconds": 73.1337445829995,
+      "exit": 0,
+      "tap_totals": {
+        "tests": 1084,
+        "pass": 1078,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 6,
+        "todo": 0
+      },
+      "tap_duration_ms": 72827.248892
+    },
+    "history-integration-install": {
+      "label": "history-integration-install",
+      "command": [
+        "npm",
+        "ci",
+        "--ignore-scripts",
+        "--cache",
+        "/workspace/review-evidence/npm-cache"
+      ],
+      "wall_seconds": 1.7269045379998715,
+      "exit": 0
+    },
+    "history-integration-isolation": {
+      "label": "history-integration-isolation",
+      "command": [
+        "node",
+        "/workspace/streamline-evidence/check-isolation.mjs",
+        "/workspace/noema-test-streamline"
+      ],
+      "wall_seconds": 3.7885283860005075,
+      "exit": 0
+    }
+  },
+  "test_patch_sha256": "0ad0ca4291907892add3e016a7ddfa347aa4d822c6fdb08020c1369657745fe0",
+  "negative_controls": [
+    {
+      "source_commit": "f98e232e9f4d4d9c639065cd04daf8fb962340f9",
+      "control": "large-editor",
+      "file": "test/fixtures/editor-rendering.mjs",
+      "exit": 1,
+      "expected_failure_detected": true
+    },
+    {
+      "source_commit": "f98e232e9f4d4d9c639065cd04daf8fb962340f9",
+      "control": "legacy-cap",
+      "file": "test/helpers/legacy-content.mjs",
+      "exit": 1,
+      "expected_failure_detected": true
+    },
+    {
+      "source_commit": "f98e232e9f4d4d9c639065cd04daf8fb962340f9",
+      "control": "archive-mutation",
+      "file": "test/helpers/backup-archive.mjs",
+      "exit": 1,
+      "expected_failure_detected": true
+    }
+  ],
+  "methodology": "Sequential before then after; three full runs each. Warm npm cache, clean npm ci --ignore-scripts. No cache flush, no runner/config changes; single owner. Standalone files and affected set are single samples. Integration on later main is separate, not a speed comparison. No total-process-tree memory comparison.",
+  "latest_integration_base": "ee4d8f3af9d2f51c52526bb45e299a25b0cc6eef",
+  "latest_integration_test_commit": "1c209e2d751b86ec41bfdeb041b9b31f8e898c89",
+  "latest_integration_negative_controls": [
+    {
+      "source_commit": "1c209e2d751b86ec41bfdeb041b9b31f8e898c89",
+      "control": "large-editor",
+      "file": "test/fixtures/editor-rendering.mjs",
+      "exit": 1,
+      "expected_failure_detected": true
+    },
+    {
+      "source_commit": "1c209e2d751b86ec41bfdeb041b9b31f8e898c89",
+      "control": "legacy-cap",
+      "file": "test/helpers/legacy-content.mjs",
+      "exit": 1,
+      "expected_failure_detected": true
+    },
+    {
+      "source_commit": "1c209e2d751b86ec41bfdeb041b9b31f8e898c89",
+      "control": "archive-mutation",
+      "file": "test/helpers/backup-archive.mjs",
+      "exit": 1,
+      "expected_failure_detected": true
+    }
+  ]
+}

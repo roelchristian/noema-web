@@ -6,9 +6,11 @@ export function entityReviewFeedback(scan: EntityScan, ids: string[], decision: 
   if(!changed.length) return null;
   const remaining=[...scan.suggestions,...(scan.subtypeSuggestions ?? [])].filter(suggestion=>suggestion.status==='pending').length;
   const subtypeReview=changed.every(item=>scan.subtypeSuggestions?.some(subtype=>subtype.id===item.id));
-  const action=decision==='accepted'?(subtypeReview?'approved':'connected'):'rejected';
-  const message=changed.length===1?`${changed[0]!.name} ${action}`:`${changed.length} ${subtypeReview?'subtypes':'entities'} ${action}`;
-  return {ids:changed.map(suggestion=>suggestion.id),complete:remaining===0,
-    message:remaining===0?'Review complete':message,
-    detail:remaining===0?`${message}. All decisions saved.`:`${remaining} ${remaining===1?'suggestion':'suggestions'} left to review.`};
+  const entityReview=changed.every(item=>scan.suggestions.some(entity=>entity.id===item.id));
+  const action=decision==='accepted'?'accepted':'dismissed';
+  const message=changed.length===1?`${changed[0]!.name} ${action}`:`${changed.length} ${subtypeReview?'subtypes':entityReview?'entities':'suggestions'} ${action}`;
+  const complete=remaining===0&&!scan.continuation;
+  return {ids:changed.map(suggestion=>suggestion.id),complete,
+    message:remaining===0?(complete?'All suggestions reviewed':'This batch is reviewed'):message,
+    detail:remaining===0?`${message}. All decisions saved.${scan.continuation?' More text remains to scan.':''}`:`${message}. ${remaining} ${remaining===1?'suggestion':'suggestions'} left to review.`};
 }

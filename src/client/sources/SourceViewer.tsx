@@ -36,8 +36,15 @@ function semanticPassageRows(entries:Passage[]):PassageRow[] {
 function isCitedPassage(entry:PassageRow){return entry.cited||entry.inlineHeading?.cited;}
 
 /** Preserve narrow saved excerpts when a legacy search passage sits inside a large node. */
-export function SemanticPassageText({text,reference,cited}:{text:string;reference:SourceReference;cited:boolean}) {
+export function SemanticPassageText({text,reference,cited,startOffset}:{text:string;reference:SourceReference;cited:boolean;startOffset?:number}) {
   if(!cited)return <>{text}</>;
+  if(reference.strictTemporal) {
+    if(startOffset===undefined||reference.startOffset===undefined||reference.endOffset===undefined)return <>{text}</>;
+    const from=Math.max(0,reference.startOffset-startOffset),to=Math.min(text.length,reference.endOffset-startOffset),expectedStart=Math.max(0,startOffset-reference.startOffset);
+    if(to<=from||text.slice(from,to)!==reference.excerpt.slice(expectedStart,expectedStart+to-from))return <>{text}</>;
+    const displayFrom=text.length>4000?Math.max(0,from-200):0,displayTo=text.length>4000?Math.min(text.length,to+200):text.length;
+    return <>{displayFrom?'…':''}{text.slice(displayFrom,from)}<mark>{text.slice(from,to)}</mark>{text.slice(to,displayTo)}{displayTo<text.length?'…':''}</>;
+  }
   const excerpt=reference.excerpt.replace(/\s+/g,' ').trim();
   const start=reference.nodeId?0:text.indexOf(excerpt);
   if(start<0||!excerpt)return <mark>{text}</mark>;
@@ -54,7 +61,13 @@ export function SourceViewer({vaultId,reference,entities,onClose,onOpenEntity,pr
   const source=entities.find(entity=>entity.id===reference.sourceId);
   useEffect(()=>{
     const controller=new AbortController();setLoaded(null);setError('');
-    void request<SourceFile & {textHash:string;document?:SourceDocument}>(`source-files/${encodeURIComponent(reference.fileId)}?fingerprint=1&context=1&sourceHash=${encodeURIComponent(reference.sourceHash)}`,'GET',undefined,vaultId,controller.signal).then(file=>{
+    void (async()=>{
+      if(reference.strictTemporal) {
+        const evidence=await request<import('../../shared/temporal').TemporalSourceEvidence>(`temporal/source-mentions/${encodeURIComponent(reference.id)}`,'GET',undefined,vaultId,controller.signal);
+        if(!('sourceReference' in evidence)||evidence.sourceReference.generationId!==reference.generationId||evidence.sourceReference.startOffset!==reference.startOffset||evidence.sourceReference.endOffset!==reference.endOffset)throw new Error('Original temporal source evidence is stale or unavailable.');
+      }
+      return request<SourceFile & {textHash:string;document?:SourceDocument}>(`source-files/${encodeURIComponent(reference.fileId)}?fingerprint=1&context=1&sourceHash=${encodeURIComponent(reference.sourceHash)}`,'GET',undefined,vaultId,controller.signal);
+    })().then(file=>{
       if(file.entity_id!==reference.sourceId)throw new Error('This file no longer belongs to the cited source.');
       const matches=!reference.stale&&file.status==='ready'&&file.admitted===1&&file.textHash===reference.sourceHash;
       if(!controller.signal.aborted)setLoaded({file,document:file.document,matches});
@@ -76,7 +89,7 @@ export function SourceViewer({vaultId,reference,entities,onClose,onOpenEntity,pr
       if(position.top<bounds.top+toolbar||position.top>bounds.bottom-80)container.scrollTop+=position.top-bounds.top-toolbar-48;
     }
   },[reference.id,loaded]);
-  return <aside ref={panel} id="source-viewer" className="entity-panel entity-detail-panel source-viewer" aria-labelledby="source-viewer-title" tabIndex={-1}>
+  return <aside ref={panel} id="source-viewer" data-temporal-source={reference.strictTemporal||undefined} className="entity-panel entity-detail-panel source-viewer" aria-labelledby="source-viewer-title" tabIndex={-1}>
     <div className="panel-top entity-detail-toolbar"><div className="entity-toolbar-heading"><span className="entity-detail-icon"><Icon name="source"/></span><h2 id="source-viewer-title" className="entity-toolbar-title">{reference.sourceNumber?`[${reference.sourceNumber}] `:''}{source?.name??uiText("Source")}</h2></div>{presentation&&<PresentationSelector {...presentation}/>}<button ref={close} type="button" aria-label={uiText("Close source viewer")} title={uiText("Close source viewer")} onClick={onClose}><Icon name="close"/></button></div>
     <div ref={body} className="panel-body entity-detail-body">
       <div className="source-viewer-heading">
@@ -89,7 +102,7 @@ export function SourceViewer({vaultId,reference,entities,onClose,onOpenEntity,pr
       {loaded?.matches&&!hasContext&&<p className="source-viewer-status">{reference.userLocator&&reference.startOffset===undefined?uiText("This location was added manually. Showing the saved location label."):uiText("This passage’s semantic context is unavailable. Showing the saved excerpt.")}</p>}
       {hasContext&&first>0&&<button type="button" className="source-viewer-more" onClick={()=>setBefore(value=>value+5)}><Icon name="chevron"/>{uiText("Earlier context")}</button>}
       <div className="source-viewer-passages">{hasContext?passages.slice(first,last).map(({node,path,cited,inlineHeading})=><section key={node.id} className={'source-viewer-passage'+(node.text===undefined?' is-heading':'')+(cited||inlineHeading?.cited?' is-cited':'')} data-source-locator={sourceNodeLocator(path)} title={sourceNodeLocator(path)} data-cited-node={cited?node.id:inlineHeading?.cited?inlineHeading.node.id:undefined}>
-        <div>{node.text===undefined&&node.appNumber&&<span className="source-viewer-node-address">{sourceNodeLocator(path)}</span>}{cited&&node.text!==undefined&&<span className="source-viewer-node-address">{sourceNodeLocator(path)}</span>}{inlineHeading&&<><strong className="source-viewer-inline-heading"><SemanticPassageText text={inlineHeading.node.title!} reference={reference} cited={inlineHeading.cited}/></strong>{' '}</>}<SemanticPassageText text={node.text??node.title??''} reference={reference} cited={cited}/></div>
+        <div>{node.text===undefined&&node.appNumber&&<span className="source-viewer-node-address">{sourceNodeLocator(path)}</span>}{cited&&node.text!==undefined&&<span className="source-viewer-node-address">{sourceNodeLocator(path)}</span>}{inlineHeading&&<><strong className="source-viewer-inline-heading"><SemanticPassageText text={inlineHeading.node.title!} reference={reference} cited={inlineHeading.cited} startOffset={inlineHeading.node.range.startOffset}/></strong>{' '}</>}<SemanticPassageText text={node.text??node.title??''} reference={reference} cited={cited} startOffset={node.range.startOffset}/></div>
       </section>):<div className="source-viewer-passage is-cited"><mark>{reference.excerpt}</mark></div>}</div>
       {hasContext&&last<passages.length&&<button type="button" className="source-viewer-more" onClick={()=>setAfter(value=>value+5)}>{uiText("More context")}<Icon name="chevron"/></button>}
       {loaded?.matches&&<p className="source-viewer-range">{loaded.file.name}</p>}

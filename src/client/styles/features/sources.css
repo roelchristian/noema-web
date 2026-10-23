@@ -2166,3 +2166,5 @@ main.source-workspace > #content > .source-reader {
     transition: none;
   }
 }
+/* Temporal links mark a validated character range within the source passage. */
+.source-viewer[data-temporal-source=true] mark {background:var(--status-info-bg);color:var(--text);text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px;}

@@ -23,7 +23,7 @@ export function sourceDeletionImpact(store:Store,vault:string,id:string):SourceL
     )`,id)||store.get("SELECT 1 FROM ai_activity WHERE vault_id=? AND object_kind='entity' AND object_id=? AND status='running'",vault,id)
       ||store.get("SELECT 1 FROM source_passage_embedding_jobs WHERE vault_id=? AND source_id=? AND status='running'",vault,id);
     const draft=store.get("SELECT 1 FROM source_page_drafts WHERE vault_id=? AND source_id=? AND status='pending'",vault,id);
-    return {id,name:source.name,archivedAt:source.archived_at??null,linkedPageCount,
+    return {id,name:source.name,archivedAt:source.archived_at??null,linkedPageCount,temporalEvidenceCount:store.get<{n:number}>('SELECT count(*) n FROM temporal_source_mentions WHERE vault_id=? AND source_id=?',vault,id)!.n,
       blockedReason:linkedPageCount?'Sources with linked pages cannot be permanently deleted. This includes pages in Trash.':
         busy?'Wait for source processing to finish before permanently deleting.':
         draft?'Accept or discard the pending page draft before permanently deleting.':null};

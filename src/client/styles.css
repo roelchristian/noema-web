@@ -10,5 +10,6 @@
 @import "./styles/features/dialogs.css";
 @import "./styles/features/menus.css";
 @import "./styles/features/tagging.css";
+@import "./styles/features/calendar.css";
 @import "./styles/semantics.css";
 @import "./styles/controls.css";

@@ -4,7 +4,7 @@ export interface NavigationAddress {
   view: WorkspaceState['view']; pageId: string | null; sourceId?: string | null; entityId: string | null; subjectId?: string | null; collection: string; folder: string;
 }
 export interface WorkspaceAddress extends NavigationAddress { vaultId: string }
-const views = ['pages', 'source', 'entity', 'entities', 'organization', 'favourites', 'recent', 'trash', 'inbox'] as const;
+const views = ['calendar', 'pages', 'source', 'entity', 'entities', 'organization', 'favourites', 'recent', 'trash', 'inbox'] as const;
 
 export function readWorkspaceURL(): WorkspaceAddress | null {
   const params = new URLSearchParams(window.location.search);

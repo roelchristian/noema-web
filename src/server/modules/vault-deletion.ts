@@ -29,7 +29,7 @@ export class VaultDeletion {
     if(count('source_files',"AND status='processing'")||count('embedding_jobs',"AND status='running'")||count('source_passage_embedding_jobs',"AND status='running'"))blockers.push('A file extraction or embedding job is running. Wait for it to finish, then refresh this summary.');
     const revisions=this.store.all('SELECT id,title,revision FROM pages WHERE vault_id=? ORDER BY id',id);
     const entities=this.store.all('SELECT id,updated_at FROM entities WHERE vault_id=? ORDER BY id',id);
-    const sources=this.store.all('SELECT id,size,status,entity_id FROM source_files WHERE vault_id=? ORDER BY id',id);
+    const sources=this.store.all('SELECT id,size,status,entity_id,text,admitted,structural_nodes,page_start_lines FROM source_files WHERE vault_id=? ORDER BY id',id);
     const organization={
       folders:this.store.all('SELECT id,name,parent_id FROM folders WHERE vault_id=? ORDER BY id',id),
       collections:this.store.all('SELECT id,name FROM collections WHERE vault_id=? ORDER BY id',id),
@@ -45,7 +45,8 @@ export class VaultDeletion {
       highlights:this.store.all('SELECT id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,color,reference_json,created_at FROM highlights WHERE vault_id=? ORDER BY id',id),
       readingNotes:this.store.all('SELECT page_id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,reference_json,created_at FROM page_reading_notes WHERE vault_id=? ORDER BY page_id',id),
     };
-    const fingerprint=createHash('sha256').update(JSON.stringify({vault,counts,revisions,entities,sources,images,organization})).digest('hex');
+    const temporal=['temporal_dates','temporal_curation','temporal_relations'].map(table=>this.store.all(`SELECT * FROM ${table} WHERE vault_id=? ORDER BY id`,id));
+    const fingerprint=createHash('sha256').update(JSON.stringify({vault,counts,revisions,entities,sources,images,organization,temporal})).digest('hex');
     return {vault,counts,fingerprint,canDelete:!blockers.length,blockers};
   }
   remove(id:string,body:Record<string,unknown>):VaultDeletionResult {

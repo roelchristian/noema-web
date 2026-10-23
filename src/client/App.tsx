@@ -1,3 +1,7 @@
+import {CalendarWorkspace} from './calendar/CalendarWorkspace';
+import {initialCalendarView,type CalendarView} from './calendar/calendar-model';
+import {validateTemporalReference} from './search/temporal-navigation';
+import {usePageSelection} from './state/use-page-selection';
 import {presentationTraits} from './settings/appearance';
 import {PresentationSelector} from './settings/PresentationSelector';
 import {t as uiText} from './i18n';
@@ -87,9 +91,17 @@ export function App() {
   const [entityReviewOpen,setEntityReviewOpen]=useState(false);
   useLibraryScroll(workspace);
   usePageScroll(workspace);
+  usePageSelection(workspace);
   const state = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
   const {vaults, vault, pages, entities, page, view, busy, loadingPageId, reviewing, error, saveStatus, organization, organizationContext, recent, trash, saveFailures, draftStorageFailures, draftRecoveries} = state;
   const headings=useMemo(()=>page? pageHeadings(page.blocks,entities.filter(entity=>entity.vault_id===page.vault_id)):[],[page?.blocks,page?.vault_id,entities]);
+  const [calendarViews,setCalendarViews]=useState<Record<string,CalendarView>>({});
+  const calendarView=calendarViews[vault?.id??'']??initialCalendarView();
+  const [calendarReturn,setCalendarReturn]=useState<{vaultId:string;pageId:string;notice?:string}|null>(null);
+  const temporalRequest=useRef<AbortController|null>(null);
+  useEffect(()=>()=>{temporalRequest.current?.abort();},[vault?.id,view,calendarView.selected]);
+  useEffect(()=>{setCalendarReturn(null);if(vault?.locked)setCalendarViews({});},[vault?.id,vault?.locked]);
+  const changeCalendar=(patch:Partial<CalendarView>)=>{if(vault)setCalendarViews(current=>({...current,[vault.id]:{...(current[vault.id]??initialCalendarView()),...patch}}));};
   const activePageId = view === 'pages' && !vault?.locked ? page?.id : undefined;
   const activeFolderPath = useMemo(() => {
     const location = organization.locations.find(item => item.kind === 'page' && item.item_id === activePageId);
@@ -181,7 +193,7 @@ export function App() {
   const openSourceReference=(reference:SourceReference,trigger?:HTMLElement)=>{
     sourceTrigger.current=trigger??null;workspace.closeEntity();setSearchOpen(false);setNavigationOpen(false);setSourceReference(reference);
   };
-  const closeSourceReference=()=>{setSourceReference(null);if(sourceTrigger.current?.isConnected)sourceTrigger.current.focus({preventScroll:true});sourceTrigger.current=null;};
+  const closeSourceReference=()=>{const trigger=sourceTrigger.current;setSourceReference(null);sourceTrigger.current=null;requestAnimationFrame(()=>{if(trigger?.isConnected)trigger.focus({preventScroll:true});});};
   useEffect(()=>{setSourceReference(null);sourceTrigger.current=null;},[vault?.id,vault?.locked,page?.id,view]);
   useEffect(()=>{if(searchOpen||panelId)setSourceReference(null);},[searchOpen,panelId]);
   const run = (work: () => Promise<unknown>) => { void work().catch(workspace.report); };
@@ -194,6 +206,29 @@ export function App() {
       const projection=projectPageText(current.page.blocks,id=>names.get(id));
       if(projection.text.slice(reference.startOffset,reference.endOffset)===reference.excerpt)setPagePassage(reference);
     }
+  };
+  const openTemporalMention=async(id:string)=>{
+    const origin=workspace.snapshot();if(!origin.vault||origin.vault.locked||origin.view!=='calendar')return;
+    temporalRequest.current?.abort();const controller=new AbortController();temporalRequest.current=controller;
+    const evidence=await api.temporalMention(origin.vault.id,id,controller.signal);
+    if(controller.signal.aborted||workspace.snapshot().vault?.id!==origin.vault.id||workspace.snapshot().view!=='calendar')return;
+    temporalRequest.current=null;
+    if(!('reference' in evidence))throw new Error(`${evidence.status==='stale'?'Stale evidence':'Evidence unavailable'}. ${evidence.reason}. Refresh this date before trying again.`);
+    setPagePassage(null);setSearchOpen(false);workspace.closeEntity();
+    await workspace.openPage(evidence.reference.pageId,{fresh:true});
+    const current=workspace.snapshot();
+    if(current.vault?.id!==origin.vault.id||current.vault.locked||current.view!=='pages'||!current.page||current.page.id!==evidence.reference.pageId)return;
+    if(validateTemporalReference(evidence.reference,current.page,current.entities)) {setPagePassage(evidence.reference);setCalendarReturn({vaultId:origin.vault.id,pageId:current.page.id});}
+    else setCalendarReturn({vaultId:origin.vault.id,pageId:current.page.id,notice:'This evidence changed while opening. Return to Calendar and refresh the date to locate its current passage.'});
+  };
+  const openTemporalSource=async(id:string,trigger:HTMLElement)=>{
+    const origin=workspace.snapshot();if(!origin.vault||origin.vault.locked||origin.view!=='calendar')return;
+    temporalRequest.current?.abort();const controller=new AbortController();temporalRequest.current=controller;
+    const evidence=await api.temporalSourceMention(origin.vault.id,id,controller.signal);
+    if(controller.signal.aborted||workspace.snapshot().vault?.id!==origin.vault.id||workspace.snapshot().view!=='calendar')return;
+    temporalRequest.current=null;
+    if(!('sourceReference' in evidence))throw new Error(`${evidence.status}: ${evidence.reason}. Refresh source evidence before opening it.`);
+    openSourceReference(evidence.sourceReference,trigger);
   };
   const openEntityMention=async(reference:EntityMentionReference)=>{
     const originVault=workspace.snapshot().vault?.id;
@@ -227,7 +262,7 @@ export function App() {
       if (!focusWorkspace || e.key !== 'Escape') return;
       // Snapshot ownership before a nested handler synchronously removes its UI.
       const menuOpen = [...document.querySelectorAll<HTMLElement>('[role=menu], [role=listbox]')].some(menu => menu.getClientRects().length > 0 || menu.contains(e.target as Node));
-      if (menuOpen || document.querySelector('dialog[open], .document-find, .search-panel')) nestedEscapes.add(e);
+      if (menuOpen || document.querySelector('dialog[open], .document-find-shell[data-state="open"] .document-find, .search-panel')) nestedEscapes.add(e);
     };
     const keyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' && !document.querySelector('dialog[open]') && workspace.snapshot().vault && !workspace.snapshot().vault?.locked) { e.preventDefault(); workspace.closeEntity(); setSearchOpen(value=>!value); }
@@ -264,8 +299,8 @@ export function App() {
         breadcrumbs.push({...crumb, onClick: target ? () => workspace.openOrganization(target.collection, target.folder) : undefined});
       }
     } else {
-      const label = view==='entities'&&knowledgeType==='source'?'Sources':view === 'inbox' ? 'Inbox' : view === 'trash' ? 'Trash' : view === 'entities' ? 'Knowledge entities' : view === 'organization' ? 'Pages' : view === 'favourites' ? 'Favourites' : 'Recent items';
-      const icon = view==='entities'&&knowledgeType==='source'?'source':view === 'inbox' ? 'inbox' : view === 'trash' ? 'trash' : view === 'entities' ? 'knowledge' : view === 'organization' ? 'pages' : view === 'favourites' ? 'star' : 'recent';
+      const label = view==='calendar'?'Calendar':view==='entities'&&knowledgeType==='source'?'Sources':view === 'inbox' ? 'Inbox' : view === 'trash' ? 'Trash' : view === 'entities' ? 'Knowledge entities' : view === 'organization' ? 'Pages' : view === 'favourites' ? 'Favourites' : 'Recent items';
+      const icon = view==='calendar'?'event':view==='entities'&&knowledgeType==='source'?'source':view === 'inbox' ? 'inbox' : view === 'trash' ? 'trash' : view === 'entities' ? 'knowledge' : view === 'organization' ? 'pages' : view === 'favourites' ? 'star' : 'recent';
       breadcrumbs.push({key: 'view', label, icon, onClick: view === 'organization' ? () => workspace.openOrganization() : view === 'entities' && knowledgeType && knowledgeType!=='source' ? () => {captureLibraryView(); setKnowledgeBrowser({entityType: ''});} : undefined});
       if (view === 'entities' && knowledgeType && knowledgeType!=='source') {
         breadcrumbs.push({key: 'entity-type:' + knowledgeType, label: uiText(entityLabels[knowledgeType]), icon: knowledgeType});
@@ -296,6 +331,7 @@ export function App() {
       <nav className="sidebar-group" aria-label={uiText("Vault library")}>
         <div className="workspace-label">{uiText("Workspace")}</div>
         <button className={'nav ' + (view === 'pages' || view === 'organization' && !organizationContext.collection && !organizationContext.folder ? 'active' : '')} disabled={disabled} aria-label={uiText("Pages")} title={uiText("Pages")} onClick={() => run(() => workspace.showPages())}><span data-icon="pages"><Icon name="pages"/></span><span>{uiText("Pages")}</span><kbd>P</kbd></button>
+        <button className={'nav ' + (view === 'calendar' ? 'active' : '')} disabled={disabled} aria-label="Calendar" title="Calendar" onClick={() => run(()=>workspace.showCalendar())}><span data-icon="event"><Icon name="event"/></span><span>Calendar</span></button>
         <button className={'nav ' + (view === 'inbox' ? 'active' : '')} disabled={disabled} aria-label={uiText("Inbox")} title={uiText("Inbox")} onClick={() => workspace.showInbox()}><span data-icon="inbox"><Icon name="inbox"/></span><span>{uiText("Inbox")}</span><span className="count">{inboxPages(pages, organization).length}</span></button>
         <button className={'nav ' + (view === 'source' || view === 'entities' && knowledgeType === 'source' ? 'active' : '')} disabled={disabled} aria-label={uiText("Sources")} title={uiText("Sources")} onClick={() => {captureLibraryView();setKnowledgeBrowser({entityType:'source'});workspace.showEntities();}}><span data-icon="source"><Icon name="source"/></span><span>{uiText("Sources")}</span><span className="count">{entities.filter(entity=>entity.type==='source').length}</span></button>
         <button className={'nav ' + (view === 'entity' || view === 'entities' && knowledgeType !== 'source' ? 'active' : '')} disabled={disabled} aria-label={uiText("Knowledge entities")} title={uiText("Knowledge entities")} onClick={() => {if(knowledgeType==='source'){captureLibraryView();setKnowledgeBrowser({entityType:''});}workspace.showEntities();}}><span data-icon="knowledge"><Icon name="knowledge"/></span><span>{uiText("Knowledge entities")}</span><span className="count">{entities.filter(entity=>entity.type!=='source').length}</span></button>
@@ -323,8 +359,9 @@ export function App() {
       {activeRecovery&&page&&<PageDraftRecoveryNotice key={activeRecovery.vaultId+'/'+activeRecovery.pageId} recovery={activeRecovery} page={page} entities={entities} pages={pages} onRestore={entry=>workspace.restorePageDraft(entry)} onDiscard={()=>workspace.discardPageDrafts(activeRecovery.vaultId,activeRecovery.pageId)}/>}
     </div>}</header>
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{loadingPageId !== null ? uiText("Opening {value0}…",{value0: pages.find(item=>item.id===loadingPageId)?.title || 'note'}) : ''}</div>
+      {calendarReturn&&vault?.id===calendarReturn.vaultId&&view==='pages'&&page?.id===calendarReturn.pageId&&<div className="calendar-return"><span role={calendarReturn.notice?'alert':'status'}>{calendarReturn.notice??'Original calendar evidence · edit this page as usual.'}</span><button type="button" className="button" disabled={disabled} onClick={()=>run(()=>workspace.showCalendar())}>Return to Calendar</button></div>}
       <div id="content" data-loading={busy||loadingPageId !== null} inert={busy||entityReviewOpen||reviewing||loadingPageId !== null} aria-busy={busy||loadingPageId !== null}>
-        {busy && view !== 'trash' ? <p className="loading-state" role="status">{uiText("Loading workspace…")}</p> : !vault ? <section className="locked-state"><div className="vault-symbol"><Icon name="vault"/></div><h1 className="page-heading">{vaults.length?uiText("Choose a vault"):uiText("No vaults yet")}</h1><p>{vaults.length?uiText("Choose a vault from the sidebar, or create or import one."):uiText("Create a vault or import a backup whenever you’re ready.")}</p><div className="empty-vault-actions"><button type="button" className="button primary" onClick={()=>setVaultAction('create')}>{uiText("Create a vault")}</button><button type="button" className="button" onClick={()=>setBackupAction('import')}>{uiText("Import backup")}</button></div></section> : vault?.locked ? <section className="locked-state"><div className="vault-symbol"><Icon name="vault"/></div><h1 className="page-heading">{vault.name}</h1><button className="button primary" onClick={() => setVaultAction('unlock')}>{uiText("Unlock vault")}</button></section> : vault && view === 'trash' ? <TrashLibrary key={vault.id} onRestoreSelected={ids => workspace.restorePages(ids)} onDeleteSelected={ids => workspace.permanentlyDeletePages(ids)} vaultId={vault.id} notes={trash} onRestore={id => workspace.restorePage(id)} onDelete={id => workspace.permanentlyDeletePage(id)} onRefresh={workspace.refreshTrash} onError={workspace.report}/> : vault && view === 'recent' ? <RecentLibrary vaultId={vault.id} recent={recent} pages={pages} entities={entities} onOpenPage={id => run(() => workspace.openPage(id))} onOpenEntity={openEntityHome}/> : vault && (view === 'organization' || view === 'favourites' || view === 'inbox') ? <OrganizationLibrary onOpenPassage={openSourceReference} onOpenFolder={id => workspace.openOrganization('', id)} onNewNote={() => { workspace.closeEntity(); setSearchOpen(false); run(() => workspace.newPage()); }} inboxOnly={view === 'inbox'} onRenamePage={setRenameTarget} onDeletePage={setDeleteTarget} data={organization} key={vault.id + view} vaultId={vault.id} pages={pages} entities={entities} favouritesOnly={view === 'favourites'} context={organizationContext} onContextChange={workspace.setOrganizationContext} onChanged={workspace.setOrganization} onOpenPage={(id,reference) => run(() => openIndexedPage(id,reference))} onOpenEntity={openEntityHome} onError={workspace.report}/> : vault && view === 'entities' ? <KnowledgeLibrary onUpdated={()=>workspace.refreshEntities()} onOpenPassage={openSourceReference} onCreatePageFromSource={beginSourcePage} onCreate={() => setCreate(knowledgeType==='source'?{source:true}:{excludeSources:true})} vaultId={vault.id} key={vault.id} entities={entities} onOpen={openEntityHome}/> : vault && view === 'entity' && state.entityId ? <EntityHome onInspect={id=>workspace.openEntity(id)} onOpenMention={reference=>run(()=>openEntityMention(reference))} onOpenSourcePassage={openSourceReference} pages={pages} onCreatePage={async()=>{
+        {busy && view !== 'trash' ? <p className="loading-state" role="status">{uiText("Loading workspace…")}</p> : !vault ? <section className="locked-state"><div className="vault-symbol"><Icon name="vault"/></div><h1 className="page-heading">{vaults.length?uiText("Choose a vault"):uiText("No vaults yet")}</h1><p>{vaults.length?uiText("Choose a vault from the sidebar, or create or import one."):uiText("Create a vault or import a backup whenever you’re ready.")}</p><div className="empty-vault-actions"><button type="button" className="button primary" onClick={()=>setVaultAction('create')}>{uiText("Create a vault")}</button><button type="button" className="button" onClick={()=>setBackupAction('import')}>{uiText("Import backup")}</button></div></section> : vault?.locked ? <section className="locked-state"><div className="vault-symbol"><Icon name="vault"/></div><h1 className="page-heading">{vault.name}</h1><button className="button primary" onClick={() => setVaultAction('unlock')}>{uiText("Unlock vault")}</button></section> : vault && view === 'calendar' ? <CalendarWorkspace key={vault.id} vaultId={vault.id} view={calendarView} onChange={changeCalendar} mobile={mobile} onOpenMention={openTemporalMention} onOpenSource={openTemporalSource} onOpenEntity={openEntityHome} entities={entities} evidenceOpen={!!sourceReference}/> : vault && view === 'trash' ? <TrashLibrary key={vault.id} onRestoreSelected={ids => workspace.restorePages(ids)} onDeleteSelected={ids => workspace.permanentlyDeletePages(ids)} vaultId={vault.id} notes={trash} onRestore={id => workspace.restorePage(id)} onDelete={id => workspace.permanentlyDeletePage(id)} onRefresh={workspace.refreshTrash} onError={workspace.report}/> : vault && view === 'recent' ? <RecentLibrary vaultId={vault.id} recent={recent} pages={pages} entities={entities} onOpenPage={id => run(() => workspace.openPage(id))} onOpenEntity={openEntityHome}/> : vault && (view === 'organization' || view === 'favourites' || view === 'inbox') ? <OrganizationLibrary onOpenPassage={openSourceReference} onOpenFolder={id => workspace.openOrganization('', id)} onNewNote={() => { workspace.closeEntity(); setSearchOpen(false); run(() => workspace.newPage()); }} inboxOnly={view === 'inbox'} onRenamePage={setRenameTarget} onDeletePage={setDeleteTarget} data={organization} key={vault.id + view} vaultId={vault.id} pages={pages} entities={entities} favouritesOnly={view === 'favourites'} context={organizationContext} onContextChange={workspace.setOrganizationContext} onChanged={workspace.setOrganization} onOpenPage={(id,reference) => run(() => openIndexedPage(id,reference))} onOpenEntity={openEntityHome} onError={workspace.report}/> : vault && view === 'entities' ? <KnowledgeLibrary onUpdated={()=>workspace.refreshEntities()} onOpenPassage={openSourceReference} onCreatePageFromSource={beginSourcePage} onCreate={() => setCreate(knowledgeType==='source'?{source:true}:{excludeSources:true})} vaultId={vault.id} key={vault.id} entities={entities} onOpen={openEntityHome}/> : vault && view === 'entity' && state.entityId ? <EntityHome onInspect={id=>workspace.openEntity(id)} onOpenMention={reference=>run(()=>openEntityMention(reference))} onOpenSourcePassage={openSourceReference} pages={pages} onCreatePage={async()=>{
       const originVault=vault.id,originEntity=state.entityId!;
       await workspace.saver.flush();
       const current=workspace.snapshot();

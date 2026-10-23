@@ -1,3 +1,4 @@
+import {TemporalPropertyValue} from './TemporalPropertyValue';
 import {EntityReference, EntityConnections, EntityDetails, PropertyEditor, RelationshipEditor, type EntityConnection} from './EntityDetails';
 import {SourceLifecycleDialog} from './SourceLifecycleDialog';
 import {t as uiText} from '../i18n';
@@ -103,10 +104,10 @@ export function EntityPanel(props: EntityPanelProps) {
           <dl className="entity-overview-properties">
             {!!subtypeNames.length&&<div><dt>{uiText("Type")}</dt><dd>{subtypeNames.join(' · ')}</dd></div>}
             {attachment&&<><div><dt>{uiText("Format")}</dt><dd>{attachment.format.toUpperCase()}{attachment.pages?uiText(" · {value0} pages",{value0: attachment.pages}):''}</dd></div>{attachment.language&&<div><dt>{uiText("Language")}</dt><dd>{attachment.language}</dd></div>}</>}
-            {entity.properties.filter(property=>!property.target_id).slice(0,5).map(property=><div key={property.id}><dt>{property.name}</dt><dd>{property.value}</dd></div>)}
+            {entity.properties.filter(property=>!property.target_id).slice(0,5).map(property=><div key={property.id}><dt>{property.name}</dt><dd><TemporalPropertyValue type={entity.type} name={property.name} value={property.value}/></dd></div>)}
           </dl>
           {!attachment&&!entity.properties.length&&!subtypeNames.length&&<p className="entity-detail-empty">{uiText("Add source details to make this reference easier to find.")}</p>}
-          {entity.properties.filter(property=>!property.target_id).length>5&&<details className="source-inspector-disclosure"><DisclosureSummary>{uiText("More metadata")}</DisclosureSummary><dl className="entity-overview-properties">{entity.properties.filter(property=>!property.target_id).slice(5).map(property=><div key={property.id}><dt>{property.name}</dt><dd>{property.value}</dd></div>)}</dl></details>}
+          {entity.properties.filter(property=>!property.target_id).length>5&&<details className="source-inspector-disclosure"><DisclosureSummary>{uiText("More metadata")}</DisclosureSummary><dl className="entity-overview-properties">{entity.properties.filter(property=>!property.target_id).slice(5).map(property=><div key={property.id}><dt>{property.name}</dt><dd><TemporalPropertyValue type={entity.type} name={property.name} value={property.value}/></dd></div>)}</dl></details>}
         </section>
         <nav className="source-inspector-links" aria-label={uiText("Source connections")}>
           <button type="button" onClick={()=>switchTab('connections')}><Icon name="page"/><span>{uiText("Mentioned in") + " "}{pageMentions.length} {pageMentions.length===1?uiText("page"):uiText("pages")}</span><Icon name="chevron"/></button>
@@ -119,7 +120,7 @@ export function EntityPanel(props: EntityPanelProps) {
       {entity.description && <p className="entity-detail-description">{entity.description}</p>}
         {entity.type==='concept' && <section className="entity-detail-section"><h3>{uiText("Disciplines")}</h3><p className="section-hint">{entity.domainIds?.length ? entity.domainIds.map(domainBreadcrumb).join(' · ') : uiText("No disciplines selected.")}</p></section>}
         <section className="entity-detail-section"><h3>{uiText("Properties")}<span>{entity.properties.length + unsetProperties.length}</span></h3>
-          {entity.properties.length || previewUnsetProperties.length ? <dl className="entity-overview-properties">{previewProperties.map(property => <div key={property.id}><dt>{property.name}</dt><dd>{property.target_id ? <EntityReference id={property.target_id} entities={entities} onOpen={onOpen}/> : property.value}</dd></div>)}{previewUnsetProperties.map(name => <div key={'unset-' + name}><dt>{name}</dt><dd><button type="button" onClick={() => switchTab('edit')}>{uiText("Not set")}</button></dd></div>)}</dl> : <p className="entity-detail-empty">{uiText("No inherited fields yet. Define properties on a subtype in Settings → Knowledge Entities.")}</p>}
+          {entity.properties.length || previewUnsetProperties.length ? <dl className="entity-overview-properties">{previewProperties.map(property => <div key={property.id}><dt>{property.name}</dt><dd>{property.target_id ? <EntityReference id={property.target_id} entities={entities} onOpen={onOpen}/> : <TemporalPropertyValue type={entity.type} name={property.name} value={property.value}/>}</dd></div>)}{previewUnsetProperties.map(name => <div key={'unset-' + name}><dt>{name}</dt><dd><button type="button" onClick={() => switchTab('edit')}>{uiText("Not set")}</button></dd></div>)}</dl> : <p className="entity-detail-empty">{uiText("No inherited fields yet. Define properties on a subtype in Settings → Knowledge Entities.")}</p>}
         </section>
         <section className="entity-detail-section"><h3>{uiText("Related knowledge")}<span>{relationships.length} {relationships.length === 1 ? uiText("connection") : uiText("connections")}</span></h3>
           <EntityConnections items={relationships.slice(0, 4)} entities={entities} onOpen={onOpen} empty="No related knowledge yet."/>

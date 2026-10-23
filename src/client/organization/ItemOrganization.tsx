@@ -11,7 +11,7 @@ export function ItemOrganization({data, kind, itemId, pending, onMove}: {
   const [search, setSearch] = useState('');
   const location = data.locations.find(item => item.kind === kind && item.item_id === itemId);
   const membership = (collection: string) => data.memberships.some(item => item.kind === kind && item.item_id === itemId && item.collection_id === collection);
-  const automatic = (collection: string) => data.memberships.some(item => item.kind === kind && item.item_id === itemId && item.collection_id === collection && item.automatic);
+  const automatic = (collection: string) => data.memberships.some(item => item.kind === kind && item.item_id === itemId && item.collection_id === collection && item.automatic && data.collections.find(c=>c.id===collection)?.kind!=='smart');
   const folderPath = (id: string) => {
     const names: string[] = [];
     let folder = data.folders.find(item => item.id === id);
@@ -29,7 +29,7 @@ export function ItemOrganization({data, kind, itemId, pending, onMove}: {
     <p className="organization-hint">{uiText("Curate related ideas without moving them.")}</p>
     {!!data.collections.length && <label className="membership-search"><Icon name="search"/><input aria-label={uiText("Find a collection")} placeholder={uiText("Find a collection…")} value={search} onChange={event => setSearch(event.target.value)}/></label>}
     <div className="membership-list">{collections.map(collection => <div className={'membership-row ' + (membership(collection.id) ? 'is-member' : '')} key={collection.id}>
-      <label className="membership-choice"><input type="checkbox" checked={membership(collection.id)} disabled={automatic(collection.id)} onChange={event => onMove(collection.id, null, !event.target.checked)}/><span className="membership-check"><Icon name="check"/></span><span className="destination-icon"><Icon name="collection"/></span><span className="membership-name">{collection.name}<small>{automatic(collection.id) ? uiText("Added automatically") : membership(collection.id) ? uiText("Remove membership without moving") : uiText("Add without moving")}</small></span></label>
+      <label className="membership-choice"><input type="checkbox" checked={membership(collection.id)} disabled={automatic(collection.id)} onChange={event => onMove(collection.id, null, !event.target.checked)}/><span className="membership-check"><Icon name="check"/></span><span className="destination-icon"><Icon name="collection"/></span><span className="membership-name">{collection.name}<small>{collection.kind==='smart' ? (membership(collection.id)?'Smart · Uncheck to exclude':'Smart · Check to always include') : automatic(collection.id) ? uiText("Added automatically") : membership(collection.id) ? uiText("Remove membership without moving") : uiText("Add without moving")}</small></span></label>
     </div>)}</div>
     {!collections.length && <div className="membership-empty"><Icon name={search ? 'search' : 'collection'}/><p>{search ? uiText("No collections found.") : uiText("No collections yet.")}</p><small>{search ? uiText("Try a different name.") : uiText("Create a collection from the sidebar to bring related ideas together.")}</small></div>}
   </fieldset>;

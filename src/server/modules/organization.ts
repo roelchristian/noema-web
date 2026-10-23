@@ -1,3 +1,4 @@
+import {SmartCollections} from './smart-collections.js';
 import { randomUUID } from 'node:crypto';
 import type { Collection, CollectionMembership, Folder, ItemKind, Organization } from '../../shared/domain.js';
 import { Store } from '../store.js';
@@ -5,10 +6,11 @@ import { HttpError, required } from '../validation.js';
 import {syncReadingNotesCollection} from './reading-notes-collection.js';
 
 export class Organizer {
-  constructor(private store: Store) {}
+  readonly smart:SmartCollections;
+  constructor(private store: Store) {this.smart=new SmartCollections(store);}
   list(vault: string): Organization {
     this.store.transaction(()=>syncReadingNotesCollection(this.store,vault));
-    return {
+    return this.smart.decorate(vault,{
       folderLinks: this.store.all('SELECT folder_id,collection_id FROM collection_folders WHERE vault_id=? ORDER BY collection_id,folder_id', vault),
       collections: this.store.all('SELECT id,name FROM collections WHERE vault_id=? ORDER BY name,id', vault),
       folders: this.store.all('SELECT id,name,parent_id FROM folders WHERE vault_id=? ORDER BY name,id', vault),
@@ -19,7 +21,7 @@ export class Organizer {
           AND n.page_id=collection_memberships.item_id AND collection_memberships.kind='page') AS automatic
         FROM collection_memberships WHERE vault_id=? AND (kind='entity' OR EXISTS (SELECT 1 FROM pages WHERE pages.id=collection_memberships.item_id AND pages.vault_id=collection_memberships.vault_id AND pages.deleted_at IS NULL))`, vault).map(row=>({...row,automatic:!!row.automatic})),
       favourites: this.store.all(`SELECT kind,item_id FROM favourites WHERE vault_id=? AND (kind IN ('entity','folder') OR EXISTS (SELECT 1 FROM pages WHERE pages.id=favourites.item_id AND pages.vault_id=favourites.vault_id AND pages.deleted_at IS NULL))`, vault),
-    };
+    });
   }
   private collection(vault: string, id: string) {
     const row = this.store.get<Collection>('SELECT * FROM collections WHERE vault_id=? AND id=?', vault, id);
@@ -35,8 +37,17 @@ export class Organizer {
   saveCollection(vault: string, body: Record<string, unknown>, id?: string) {
     if (body.parent_id != null || body.collection_id != null) throw new HttpError(400, 'Collections cannot be nested');
     const name = required(body.name);
-    if (id) { this.collection(vault, id); this.store.run('UPDATE collections SET name=? WHERE id=?', name, id); }
-    else this.store.run('INSERT INTO collections VALUES (?,?,?)', randomUUID(), vault, name);
+    if(body.kind!==undefined&&body.kind!=='manual'&&body.kind!=='smart')throw new HttpError(400,'Invalid collection type');
+    const existing=id?this.collection(vault,id):null;
+    const wasSmart=id?!!this.smart.definition(vault,id):false;
+    if(wasSmart&&body.kind==='manual')throw new HttpError(400,'Keep smart rules or create a new manual collection');
+    const rule=(body.kind==='smart'||wasSmart)?this.smart.parse(vault,body.rule??(id?JSON.parse(this.smart.definition(vault,id)!.rule_json):undefined)):undefined;
+    const collectionId=id??randomUUID();
+    this.store.transaction(()=>{
+      if(existing)this.store.run('UPDATE collections SET name=? WHERE id=? AND vault_id=?',name,collectionId,vault);
+      else this.store.run('INSERT INTO collections VALUES (?,?,?)',collectionId,vault,name);
+      if(rule)this.smart.save(vault,collectionId,rule);
+    });
     return this.list(vault);
   }
   saveFolder(vault: string, body: Record<string, unknown>, id?: string) {
@@ -46,7 +57,9 @@ export class Organizer {
     const parent = body.parent_id === undefined ? existing?.parent_id ?? null : this.nullable(body.parent_id);
     if (parent) {
       let ancestor: Folder | undefined = this.folder(vault, parent);
+      const seen=new Set<string>();
       while (ancestor) {
+        if(seen.has(ancestor.id))throw new HttpError(400,'Cyclic folder ancestry');seen.add(ancestor.id);
         if (ancestor.id === id) throw new HttpError(400, 'Folders cannot contain themselves');
         ancestor = ancestor.parent_id ? this.folder(vault, ancestor.parent_id) : undefined;
       }
@@ -89,6 +102,7 @@ export class Organizer {
     const target=this.collection(vault, collection);
     if (body.folder_id != null) throw new HttpError(400, 'Collection membership cannot change a folder');
     if (body.remove !== undefined && typeof body.remove !== 'boolean') throw new HttpError(400, 'Invalid remove flag');
+    if(this.smart.definition(vault,collection)){this.smart.override(vault,body,collection,kind,id);return this.list(vault);}
     if (body.remove && kind==='page' && target.name==='Reading Notes' && this.store.get('SELECT 1 FROM page_reading_notes WHERE vault_id=? AND page_id=?',vault,id)) throw new HttpError(400,'Reading notes belong to Reading Notes automatically.');
     if (body.remove) this.store.run('DELETE FROM collection_memberships WHERE vault_id=? AND kind=? AND item_id=? AND collection_id=?', vault, kind, id, collection);
     else this.store.run('INSERT OR IGNORE INTO collection_memberships VALUES (?,?,?,?)', vault, kind, id, collection);

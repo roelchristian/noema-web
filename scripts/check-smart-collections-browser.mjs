@@ -1,0 +1,74 @@
+// Disposable synthetic vault, blocked external traffic, and no screenshots.
+import assert from 'node:assert/strict';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join,resolve} from 'node:path';
+import {once} from 'node:events';
+import {createServer} from 'vite';
+import {openDatabase} from '../src/server/database.ts';
+import {Store} from '../src/server/store.ts';
+import {Pages} from '../src/server/modules/pages.ts';
+import {Knowledge} from '../src/server/modules/knowledge.ts';
+import {Organizer} from '../src/server/modules/organization.ts';
+import {createApp} from '../src/server/http.ts';
+
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE??'playwright-core');
+const repo=resolve(import.meta.dirname,'..'),directory=await mkdtemp(join(tmpdir(),'noema-smart-browser-'));
+let db,server,vite,browser;const errors=[];
+try {
+  db=openDatabase(join(directory,'fixture.sqlite'));
+  const store=new Store(db),pages=new Pages(store,new Knowledge(store)),organizer=new Organizer(store);
+  store.run('DELETE FROM pages');
+  const alpha=pages.create('default',{title:'Synthetic algebra',blocks:[{id:'a',type:'paragraph',checked:false,content:[{text:'Synthetic mathematical fixture.'}]}]});
+  const beta=pages.create('default',{title:'Synthetic history',blocks:[{id:'b',type:'paragraph',checked:false,content:[{text:'Synthetic historical fixture.'}]}]});
+  const folder=organizer.saveFolder('default',{name:'Physical folder'}).folders[0].id;
+  organizer.locate('default',{kind:'page',item_id:alpha.id,folder_id:folder});
+  const manual=organizer.saveCollection('default',{name:'Manual fixture'}).collections[0].id;
+  organizer.membership('default',{kind:'page',item_id:beta.id,collection_id:manual});
+  const selection=()=>({model:'synthetic-disabled',reasoningEffort:'none'});
+  const ai={selection,enrichmentSelection:selection,personaSelection:()=>({id:'oxford_don',version:1,origin:'builtin'}),generate:async()=>{throw Error('Provider calls are forbidden in this fixture');},purgeExpired(){}};
+  server=createApp(store,join(repo,'dist/client'),ai);server.listen(0,'127.0.0.1');await once(server,'listening');
+  vite=await createServer({configFile:false,root:repo,server:{host:'127.0.0.1',port:0,proxy:{'/api':{target:`http://127.0.0.1:${server.address().port}`,changeOrigin:false}}}});await vite.listen();
+  browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH??'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+  const context=await browser.newContext({viewport:{width:1440,height:1000},reducedMotion:'reduce'}),page=await context.newPage();
+  page.setDefaultTimeout(15000);page.on('pageerror',error=>errors.push(error.message));
+  await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
+  await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}`);
+  await page.getByRole('button',{name:'New collection',exact:true}).first().click();
+  const dialog=page.getByRole('dialog');
+  await dialog.getByRole('textbox',{name:'Name',exact:true}).fill('Smart algebra');
+  await dialog.getByRole('combobox',{name:'Collection type',exact:true}).click();
+  await page.getByRole('option',{name:'Smart collection · Rules',exact:true}).click();
+  await dialog.getByRole('textbox',{name:'Condition value',exact:true}).fill('algebra');
+  await dialog.getByText(/1 matching pages among 2 evaluated/).waitFor();
+  await dialog.getByRole('button',{name:'Save collection',exact:true}).click();
+  await dialog.waitFor({state:'detached'});
+  await page.getByRole('button').filter({has:page.locator('strong',{hasText:'Smart algebra'})}).first().click();
+  await page.getByText('Synthetic algebra',{exact:true}).first().waitFor();
+  await page.getByText('Why is this here?',{exact:true}).click();
+  await page.getByText('Title contains algebra',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Always include',exact:true}).click();
+  await page.getByText('Always included by you',{exact:true}).first().waitFor();
+  await page.getByRole('button',{name:'Exclude from this collection',exact:true}).click();
+  await page.getByRole('heading',{name:'This collection is empty',exact:true}).waitFor();
+  await page.getByText('Explicit decisions (1)',{exact:true}).click();
+  await page.getByRole('button',{name:'Use rules again',exact:true}).click();
+  await page.getByText('Synthetic algebra',{exact:true}).first().waitFor();
+  await page.getByRole('button',{name:'Re-evaluate',exact:true}).click();
+  await page.getByText(/Up to date/).waitFor();
+  // A ready collection must discover changes without a manual refresh action.
+  store.run('UPDATE pages SET title=? WHERE id=?','No longer in scope',alpha.id);
+  await page.getByRole('heading',{name:'This collection is empty',exact:true}).waitFor();
+  store.run('UPDATE pages SET title=? WHERE id=?','Synthetic algebra',alpha.id);
+  await page.getByText('Synthetic algebra',{exact:true}).first().waitFor();
+  await page.setViewportSize({width:390,height:844});
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Smart collection view fits the mobile viewport');
+  assert.equal(organizer.list('default').locations.find(row=>row.item_id===alpha.id)?.folder_id,folder);
+  assert.ok(organizer.list('default').memberships.some(row=>row.collection_id===manual&&row.item_id===beta.id));
+  assert.equal(await page.locator('nav').getByRole('button',{name:'Smart collections',exact:true}).count(),0);
+  assert.deepEqual(errors,[]);
+  console.log(JSON.stringify({passed:true,synthetic:true,screenshots:false,checks:['existing creation flow','bounded preview','virtual membership','why evidence','include','exclude','reset','refresh','automatic invalidation','mobile overflow','manual and physical location preservation'],errors}));
+  await context.close();
+} finally {
+  if(browser)await browser.close();if(vite)await vite.close();if(server)await new Promise(resolve=>server.close(resolve));if(db)db.close();await rm(directory,{recursive:true,force:true});
+}

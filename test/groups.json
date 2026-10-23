@@ -73,6 +73,7 @@
     "test/calendar-liturgical-overlay.test.mjs",
     "test/review-centre-ui.test.mjs",
     "test/entity-property-list.test.mjs",
+    "test/smart-collection-preview.test.mjs",
     "test/property-definition-manager.test.mjs",
     "test/property-proposal-review.test.mjs"
   ],
@@ -164,6 +165,7 @@
     "test/property-reference-options.test.mjs",
     "test/source-provenance-stability.test.mjs",
     "test/property-backups.test.mjs",
+    "test/smart-collections.test.mjs",
     "test/entity-classification-impact.test.mjs",
     "test/property-definition-governance.test.mjs",
     "test/property-governance-compat.test.mjs",

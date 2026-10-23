@@ -2455,3 +2455,9 @@
 .smart-membership-evidence summary { cursor: pointer; }
 
 .organization-context-title .organization-description { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 70ch; margin-top: 8px; color: var(--text-muted); }
+
+.pages-home-actions .button.library-create-icon {
+  width: max(38px, var(--control-target-compact));
+  min-width: max(38px, var(--control-target-compact));
+  padding: 0;
+}

@@ -33,9 +33,18 @@ test('versioned AST rejects malformed, arbitrary SQL, cycles and bounded-complex
  const cycle=group('all',title('safe'));cycle.children.push(cycle);
  let deep=title('safe');for(let i=0;i<9;i++)deep=group('all',deep);
  const huge=group('all',...Array.from({length:16},()=>group('any',...Array.from({length:5},()=>title('safe')))));
- const invalid=[null,[],{},rule({}),{version:2,root:title('x')},rule({...title('x'),sql:'DROP TABLE pages'}),rule({field:'sql',operator:'equals',value:'1=1'}),rule(group('all')),rule(group('any',...Array.from({length:17},()=>title('x')))),rule(cycle),rule(deep),rule(huge),rule(leaf('favourite','is','true')),rule(leaf('created_at','after','tomorrow')),rule(leaf('language','equals','bad tag')),rule({...leaf('subject','within','math'),role:'tertiary'}),rule(title('x'.repeat(501)))];
+ const invalid=[null,[],{},rule({}),{version:2,root:title('x')},rule({...title('x'),sql:'DROP TABLE pages'}),rule({field:'sql',operator:'equals',value:'1=1'}),rule(group('all')),rule(group('any',...Array.from({length:17},()=>title('x')))),rule(cycle),rule(deep),rule(huge),rule(leaf('favourite','is','true')),rule(leaf('created_at','after','tomorrow')),rule(leaf('created_at','after','2026-02-31')),rule(leaf('created_at','after','2025-02-29')),rule(leaf('updated_at','before','2026-10-23T24:00:00Z')),rule(leaf('language','equals','bad tag')),rule({...leaf('subject','within','math'),role:'tertiary'}),rule(title('x'.repeat(501)))];
  for(const input of invalid)assert.throws(()=>parseSmartRule(input),/Invalid collection rule/);
  const good=rule(group('all',title("Robert'); DROP TABLE pages;--"),group('none',leaf('reading_note','is',true))));assert.deepEqual(parseSmartRule(good),good);
+});
+
+test('unknown legacy dates and language fail positive comparisons and satisfy boolean NONE without inventing metadata',t=>{
+ const f=fixture(t),page=f.page('unknown-metadata');f.store.run('UPDATE pages SET created_at=NULL,language=NULL WHERE id=?',page);
+ const date=leaf('created_at','before','2027-01-01'),language=leaf('language','equals','en');
+ assert.equal(evaluateSmartRule(f.store,f.vault,rule(date),'',250).items[0].matched,false);assert.equal(evaluateSmartRule(f.store,f.vault,rule(language),'',250).items[0].matched,false);
+ const result=evaluateSmartRule(f.store,f.vault,rule(group('none',date,language)),'',250);assert.equal(result.items[0].matched,true);assert.match(result.items[0].evidence[0],/^None matched:/);
+ assert.equal(f.store.get('SELECT created_at,language FROM pages WHERE id=?',page).created_at,null);
+ assert.deepEqual(parseSmartRule(rule(leaf('created_at','after','2024-02-29'))),rule(leaf('created_at','after','2024-02-29')));
 });
 
 test('nested ALL/ANY/NONE uses actual Subjects, folder ancestry, stable entity references and reading-note metadata',t=>{

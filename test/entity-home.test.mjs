@@ -89,13 +89,13 @@ test('type-aware homepages emphasize recorded event and publication details with
   await act(async()=>root.render(React.createElement(EntityHome,{...props,key:'event'})));
   const overview=document.querySelector('#entity-home-panel-overview');
   assert.equal(overview.querySelector('h2').textContent,'Event details');
-  assert.equal(overview.querySelector('dt').textContent,'start date');
-  assert.ok(!overview.textContent.includes('Not set'));
+  assert.equal(overview.querySelector('dt').textContent,'Start Date');
+  assert.ok(overview.querySelectorAll('.entity-inline-suggestions dt').length<=3,'ordinary view bounds empty suggestions');
   assert.ok(overview.textContent.indexOf('Event details')<overview.textContent.indexOf('Overview'));
   entity.type='creativework';entity.properties=[{id:'date',entity_id:'e',name:'release date',value:'1843',target_id:null},{id:'author',entity_id:'e',name:'author',value:'Ada',target_id:null}];
   await act(async()=>root.render(React.createElement(EntityHome,{...props,key:'work'})));
   assert.equal(document.querySelector('#entity-home-panel-overview h2').textContent,'Publication and authorship');
-  assert.equal(document.querySelector('#entity-home-panel-overview dt').textContent,'author');
+  assert.equal(document.querySelector('#entity-home-panel-overview dt').textContent,'Author');
   assert.equal(document.querySelectorAll('.eh-overview').length,1,'one shared authored overview');
  });
 });

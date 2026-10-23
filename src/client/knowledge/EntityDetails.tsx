@@ -1,3 +1,4 @@
+import {propertyLabel} from '../../shared/property-definitions';
 import {useEffect, useRef, useState, useSyncExternalStore, type FormEvent} from 'react';
 import {t as uiText} from '../i18n';
 import {Icon} from '../components/Icon';
@@ -86,6 +87,7 @@ export function PropertyEditor({entity, entities, mention, onSave, onRemove}: {e
     finally {setBusy(false);}
   }
   async function remove(property: Property) {
+    if (!window.confirm(uiText("Remove this value? This cannot be undone."))) return;
     setBusy(true); setError(''); setStatus('');
     try {await onRemove(property.id); if (edit === property.id) reset(); setStatus(property.name+' removed.');}
     catch {setError('Could not remove this property. Try again.');}
@@ -93,16 +95,16 @@ export function PropertyEditor({entity, entities, mention, onSave, onRemove}: {e
   }
   return <div className="entity-property-editor">
     <div className="entity-property-list">{entity.properties.map(property => <div key={property.id} className={'entity-property-card'+(edit === property.id ? ' is-editing' : '')}>
-      <div className="entity-property-card-header"><strong>{property.name}</strong><span>{property.target_id ? uiText("Entity reference") : uiText("Text")}</span><div>
-        <button type="button" disabled={busy} aria-label={uiText("Edit ")+property.name} title={uiText("Edit value")} onClick={() => editing(property)}><Icon name="edit"/></button>
-        <button type="button" disabled={busy} aria-label={uiText("Remove ")+property.name} title={uiText("Remove value")} onClick={() => void remove(property)}><Icon name="close"/></button>
+      <div className="entity-property-card-header"><strong>{propertyLabel(property.name)}</strong><span>{property.target_id ? uiText("Entity reference") : uiText("Text")}</span><div>
+        <button type="button" disabled={busy} aria-label={uiText("Edit ")+propertyLabel(property.name)} title={uiText("Edit value")} onClick={() => editing(property)}><Icon name="edit"/></button>
+        <button type="button" disabled={busy} aria-label={uiText("Remove ")+propertyLabel(property.name)} title={uiText("Remove value")} onClick={() => void remove(property)}><Icon name="close"/></button>
       </div></div><div className="entity-property-value">{property.target_id ? mention(property.target_id) : property.value}</div>
     </div>)}</div>
-    {!!unset.length && <div className="entity-property-unset"><div>{unset.map(field => <button type="button" key={field} disabled={busy} onClick={() => {reset(); setName(field); setStatus(''); setFocusRequest(current => current + 1);}}><Icon name="plus"/>{field}</button>)}</div></div>}
+    {!!unset.length && <div className="entity-property-unset"><div>{unset.map(field => <button type="button" key={field} disabled={busy} onClick={() => {reset(); setName(field); setStatus(''); setFocusRequest(current => current + 1);}}><Icon name="plus"/>{propertyLabel(field)}</button>)}</div></div>}
     {!entity.propertyNames.length && !entity.properties.length && <p className="entity-detail-empty">{uiText("No fields for this classification.")}</p>}
     {(!!name || !!edit) && <form ref={form} className="entity-property-form" aria-label={edit ? uiText("Edit property") : uiText("Add property")} onSubmit={submit}>
       <div className="entity-property-form-heading"><h4>{edit ? uiText("Edit property") : name}</h4><button type="button" className="knowledge-icon-action" aria-label={uiText("Close property editor")} title={uiText("Close property editor")} disabled={busy} onClick={reset}><Icon name="close"/></button></div>
-      <label>{uiText("Property")}<Select required aria-label={uiText("Property name")} disabled={busy} value={name} onChange={event => {setName(event.target.value);setStatus('');}}><option value="">{uiText("Choose a property…")}</option>{names.map(field => <option key={field} value={field}>{field}</option>)}</Select></label>
+      <label>{uiText("Property")}<Select required aria-label={uiText("Property name")} disabled={busy} value={name} onChange={event => {setName(event.target.value);setStatus('');}}><option value="">{uiText("Choose a property…")}</option>{names.map(field => <option key={field} value={field}>{propertyLabel(field)}</option>)}</Select></label>
       <fieldset className="property-value-kind" disabled={busy}><legend>{uiText("Value type")}</legend><div>{(['text', 'entity'] as const).map(option => <button type="button" key={option} aria-pressed={kind === option} onClick={() => {setKind(option);setStatus('');}}><Icon name={option === 'text' ? 'page' : 'knowledge'}/>{option === 'text' ? uiText("Text") : uiText("Entity reference")}</button>)}</div></fieldset>
       {kind === 'text' ? <label>{uiText("Value")}<textarea required rows={3} aria-label={uiText("Property value")} placeholder={uiText("Enter a value…")} disabled={busy} value={value} onChange={event => {setValue(event.target.value);setStatus('');}}/></label> : <div className="property-reference-fields">
         <label>{uiText("Find an entity")}<input type="search" aria-label={uiText("Search referenced entities")} placeholder={uiText("Search by name, alias, or type…")} disabled={busy} value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => {if(event.key === 'Enter') event.preventDefault();}}/></label>

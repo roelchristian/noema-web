@@ -69,7 +69,8 @@
     "test/note-dates.test.mjs",
     "test/calendar-settings.test.mjs",
     "test/calendar-liturgical-overlay.test.mjs",
-    "test/review-centre-ui.test.mjs"
+    "test/review-centre-ui.test.mjs",
+    "test/entity-property-list.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",

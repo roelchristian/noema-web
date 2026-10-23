@@ -29,6 +29,7 @@ export type GenerationRequest = CommonRequest & (
   | {kind:'sourceEnrichment';input:string}
   | {kind:'sourceAuthors';input:string}
   | {kind:'pageEnrichment';input:string;options:Omit<PageEnrichmentOptions,'signal'>}
+  | {kind:'collectionRules';input:string;instructions:string}
   | {kind:'editorial';input:string;instructions:string;signal:AbortSignal}
 );
 
@@ -90,6 +91,8 @@ export function generationPolicy(request:GenerationRequest,selections:Selections
       const tokens=selection.reasoningEffort!=='none'?4096:request.options.requestedFields.includes('summary')?768:384;
       return policy(()=>pageEnrichmentPrompt(request.input,request.options),{activeSlot:'independent',selection,maxOutputTokens:tokens});
     }
+    case 'collectionRules':
+      return policy(()=>({instructions:request.instructions,input:request.input}),{activeSlot:'exclusive',selection:{...selections.standard,reasoningEffort:'none'},maxOutputTokens:4096,maxOutputLength:32768});
     case 'editorial':
       return policy(()=>({instructions:request.instructions,input:request.input}),{activeSlot:'exclusive',selection:{...selections.standard,reasoningEffort:'none'},maxOutputTokens:16000,maxOutputLength:60000,timeoutMs:180000});
     default: {

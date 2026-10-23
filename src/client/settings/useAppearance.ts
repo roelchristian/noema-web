@@ -35,6 +35,7 @@ export function useAppearance() {
     root.dataset.paragraphIndent = appearance.paragraphIndent;
     root.dataset.paragraphSpacing = appearance.paragraphSpacing;
     root.style.setProperty('--paragraph-indent-width', paragraphIndentWidths[appearance.paragraphIndentWidth]);
+    root.style.colorScheme = mode;
     root.dataset.focusedReading = String(presentationTraits(appearance.presentationMode).entityEmphasis === 'subtle');
     root.style.setProperty('--font-ui', fontFamily(appearance.bodyFont));
     root.style.setProperty('--font-title', fontFamily(appearance.headingFont));

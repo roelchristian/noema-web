@@ -81,7 +81,7 @@
   border: 1px solid var(--control-border, #ddd);
   border-radius: 10px;
   background: var(--surface-raised, #fff);
-  box-shadow: 0 8px 24px #0002;
+  box-shadow: var(--shadow-menu);
 }
 .summary-help-content p {
   font-size: 12px;
@@ -189,8 +189,8 @@
   font-size: 14px;
 }
 .equation-editor-shell {
-  --math-editor-bg: #fafafa;
-  --math-editor-border: #e5e5e5;
+  --math-editor-bg: light-dark(#fafafa, var(--surface-inset));
+  --math-editor-border: light-dark(#e5e5e5, var(--line));
   --latex-command: #526b86;
   --latex-bracket: #8b6c49;
   --latex-number: #607b63;
@@ -204,8 +204,22 @@
   background: var(--math-editor-bg);
   color: var(--text);
 }
+:root[data-mode=dark] .equation-editor-shell {
+  --math-editor-bg: var(--surface-inset);
+  --math-editor-border: var(--line);
+  --latex-command: #b2c9e2;
+  --latex-bracket: #d4bc99;
+  --latex-number: #afcdb4;
+  --latex-operator: #ceb5c8;
+  --latex-comment: #a1a1ab;
+}
+:root[data-mode=dark] .latex-editor>textarea.latex-input {
+  background: transparent;
+  color: transparent;
+  border-color: transparent;
+}
 .equation-editor-shell:focus-within {
-  border-color: color-mix(in srgb,var(--math-editor-border) 65%,var(--text-muted));
+  border-color: var(--focus-ring);
 }
 .math-block-source {
   margin: 2px 0 6px;
@@ -1010,17 +1024,17 @@
   text-align: left;
   width: 100%;
   font-size: 13px;
-  color: #666666;
+  color: light-dark(#666666, var(--text-muted));
   border-radius: 5px;
   padding: 10px 12px;
   line-height: 1.5
 }
 .page-link span {
-  color: #828282
+  color: light-dark(#828282, var(--text-muted))
 }
 .page-link:hover,.page-link.selected {
-  background: #efefef;
-  color: #242424
+  background: light-dark(#efefef, var(--surface-inset));
+  color: light-dark(#242424, var(--text))
 }
 .page {
   max-width: calc(var(--document-line-width) + 2 * var(--editor-page-padding-inline));
@@ -1056,7 +1070,7 @@
   display: flex;
   gap: 19px;
   font-size: 10px;
-  color: #848484;
+  color: light-dark(#848484, var(--text-muted));
   border-bottom: 1px solid var(--line);
   padding: 17px 0 26px;
   margin-bottom: 28px;
@@ -1065,10 +1079,10 @@
 .page-meta button {
   margin-left: auto;
   font-size: 10px;
-  color: #919191
+  color: light-dark(#919191, var(--text-muted))
 }
 .page-meta button:hover {
-  color: #444444
+  color: light-dark(#444444, var(--text))
 }
 .block {
   position: relative;
@@ -1090,7 +1104,7 @@
 }
 .block-content:empty:before {
   content: attr(data-placeholder);
-  color: #bdbdbd;
+  color: light-dark(#bdbdbd, var(--text-placeholder));
   pointer-events: none
 }
 .block:not(:last-child) .block-content:empty:not(:focus):before {
@@ -1100,7 +1114,7 @@
   position: absolute;
   left: -28px;
   top: 3px;
-  color: #8e8e8e;
+  color: light-dark(#8e8e8e, var(--text-muted));
   font-size: 21px;
   padding: 0;
   opacity: 0
@@ -1112,7 +1126,7 @@
   font-family: var(--font-title);
   font-size: 19px;
   line-height: 1.4;
-  color: #1c1c1c;
+  color: light-dark(#1c1c1c, var(--text));
   margin-top: 24px;
   margin-bottom: 8px;
   letter-spacing: -.2px
@@ -1121,13 +1135,13 @@
   font-family: var(--font-title);
   font-size: 17px;
   line-height: 1.5;
-  color: #1c1c1c;
+  color: light-dark(#1c1c1c, var(--text));
   margin-top: 20px;
   margin-bottom: 6px;
   letter-spacing: -.1px
 }
 .block.quote {
-  border-left: 2px solid #838383;
+  border-left: 2px solid light-dark(#838383, var(--line));
   padding: 7px 0 7px 18px;
   font-family: var(--font-ui);
   font-size: 19px;
@@ -1138,7 +1152,7 @@
   margin: 7px 0
 }
 .bullet-marker {
-  color: #7d7d7d;
+  color: light-dark(#7d7d7d, var(--text-muted));
   padding-left: 3px
 }
 .block.todo {
@@ -1148,7 +1162,7 @@
 .block input[type=checkbox] {
   appearance: none;
   flex-shrink: 0;
-  border: 1px solid #c6c6c6;
+  border: 1px solid light-dark(#c6c6c6, var(--control-border));
   width: 14px;
   height: 14px;
   border-radius: 3px;
@@ -1157,7 +1171,7 @@
 }
 .block input:checked:after {
   content: '✓';
-  color: white;
+  color: light-dark(white, var(--text));
   display: block;
   font-size: 12px;
   text-align: center;
@@ -1165,16 +1179,16 @@
 }
 .block:has(input:checked) .block-content {
   text-decoration: line-through;
-  color: #828282
+  color: light-dark(#828282, var(--text-muted))
 }
 .mention {
   display: inline-block;
   /* Paragraph indentation must not indent the contents of an inline entity pill. */
   text-indent: 0;
   white-space: normal;
-  background: #efefef;
+  background: light-dark(#efefef, var(--surface-inset));
   border-radius: 4px;
-  color: #3c3c3c;
+  color: light-dark(#3c3c3c, var(--text));
   font-size: .89em;
   line-height: 1.6;
   padding: 0 5px;
@@ -1191,24 +1205,24 @@
   }
 }
 .mention.person {
-  background: #ededed;
-  color: #494949
+  background: light-dark(#ededed, var(--surface-inset));
+  color: light-dark(#494949, var(--text))
 }
 .mention.place {
-  background: #efefef;
-  color: #636363
+  background: light-dark(#efefef, var(--surface-inset));
+  color: light-dark(#636363, var(--text-muted))
 }
 .mention.event {
-  background: #eeeeee;
-  color: #636363
+  background: light-dark(#eeeeee, var(--surface-inset));
+  color: light-dark(#636363, var(--text-muted))
 }
 .mention.organization {
-  background: #f1f1f1;
-  color: #757575
+  background: light-dark(#f1f1f1, var(--surface-inset));
+  color: light-dark(#757575, var(--text-muted))
 }
 .editor-footer {
   font-size: 10px;
-  color: #949494;
+  color: light-dark(#949494, var(--text-muted));
   padding-top: 30px;
   display: flex;
   align-items: center;
@@ -1216,10 +1230,10 @@
 }
 .editor-footer kbd {
   font: 11px system-ui;
-  border: 1px solid #e3e3e3;
+  border: 1px solid light-dark(#e3e3e3, var(--line));
   padding: 1px 4px;
   border-radius: 3px;
-  color: #828282
+  color: light-dark(#828282, var(--text-muted))
 }
 .editor-footer>span {
   margin: 0 5px
@@ -1267,27 +1281,27 @@
 }
 #page-title {
   font-weight: 500;
-  color: #191919;
+  color: light-dark(#191919, var(--text));
   font-size: 21px;
   letter-spacing: -.4px
 }
 .block {
-  color: #353535
+  color: light-dark(#353535, var(--text))
 }
 .block.heading1,.block.heading2 {
-  color: #202020;
+  color: light-dark(#202020, var(--text));
   font-weight: 500
 }
 .block.quote {
-  color: #555;
+  color: light-dark(#555, var(--text));
   font-style: normal
 }
 .page-eyebrow {
-  color: #777
+  color: light-dark(#777, var(--text-muted))
 }
 .page-symbol {
-  background: #f1f1f1;
-  color: #222;
+  background: light-dark(#f1f1f1, var(--surface-inset));
+  color: light-dark(#222, var(--text));
   display: flex;
   padding: 10px
 }
@@ -1307,19 +1321,19 @@
   margin-right: .3em
 }
 .mention,.mention.person,.mention.place,.mention.event,.mention.organization,.mention.source {
-  background: #f0f0f0;
-  color: #333;
-  border-bottom: 1px solid #d9d9d9
+  background: light-dark(#f0f0f0, var(--surface-inset));
+  color: light-dark(#333, var(--text));
+  border-bottom: 1px solid light-dark(#d9d9d9, var(--line))
 }
 .mention:hover {
-  background: #e2e2e2
+  background: light-dark(#e2e2e2, var(--surface-inset))
 }
 .save-conflict {
   margin: 16px 0;
   padding: 12px;
-  border: 1px solid #ccc;
+  border: 1px solid light-dark(#ccc, var(--line));
   border-radius: 6px;
-  color: #444;
+  color: light-dark(#444, var(--text));
   font-size: 13px
 }
 .save-conflict button {
@@ -1355,14 +1369,14 @@
   padding: 7px;
   border-radius: var(--radius-sm);
   font-size: var(--ui-text-sm);
-  color: #666;
+  color: light-dark(#666, var(--text-muted));
 }
 .page-tool:hover, .page-tool[aria-expanded=true] {
-  background: #f1f1f1;
-  color: #222;
+  background: light-dark(#f1f1f1, var(--surface-inset));
+  color: light-dark(#222, var(--text));
 }
 .page-tool-count {
-  color: #888;
+  color: light-dark(#888, var(--text-muted));
   font-size: var(--ui-text-xs);
 }
 .page-tools-popover {
@@ -1375,20 +1389,20 @@
   max-height: 65vh;
   overflow: auto;
   padding: 20px;
-  border: 1px solid #e4e4e4;
+  border: 1px solid light-dark(#e4e4e4, var(--line));
   border-radius: 9px;
-  background: white;
-  box-shadow: 0 12px 40px #0002;
+  background: var(--surface-popover);
+  box-shadow: var(--shadow-menu);
   white-space: normal;
 }
 .page-tools-popover h2 {
   font-size: 15px;
   margin: 0 0 8px;
-  color: #333;
+  color: light-dark(#333, var(--text));
 }
 .page-tools-popover p {
   font-size: 12px;
-  color: #888;
+  color: light-dark(#888, var(--text-muted));
   line-height: 1.6;
   margin: 0 0 14px;
 }
@@ -1452,12 +1466,6 @@
 }
 .mention:hover {
   filter: brightness(.97);
-}
-:root[data-mode=dark] .block-content:empty:before {
-  color: #797981;
-}
-:root[data-mode=dark] .block:has(input:checked) .block-content {
-  color: #95959e;
 }
 :root[data-mode=dark] .block input:checked:after {
   color: var(--accent-foreground);
@@ -1842,7 +1850,7 @@
   left: 0;
   width: 100%;
   height: 3px;
-  background: #8882;
+  background: light-dark(#8882, var(--surface-inset));
 }
 .image-upload-card .image-upload-track > span {
   display: block;
@@ -2491,17 +2499,41 @@
   border: 1px solid var(--line);
 }
 .page-ai-provenance {
+  position: relative;
+  color: var(--text-muted);
+}
+.page-ai-provenance > summary {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   white-space: nowrap;
-  color: var(--text-muted);
+  cursor: pointer;
+  list-style: none;
+}
+.page-ai-provenance > summary::-webkit-details-marker {
+  display: none;
 }
 .page-ai-provenance .icon {
   width: 13px;
   height: 13px;
   flex: none;
   color: var(--text-muted);
+}
+.page-provenance-details {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 10;
+  width: min(340px, 80vw);
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  white-space: normal;
+}
+.page-provenance-details p {
+  margin: 0;
 }
 .page-ai-library-status {
   display: inline;

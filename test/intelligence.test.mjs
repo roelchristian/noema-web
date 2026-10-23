@@ -326,7 +326,7 @@ test('generation modes retain timeout, output bounds, cancellation, expiry and r
   const long=new Set(['source page','source math','editorial']);
   for(const {label,request} of generationContracts) {
     const timeout=long.has(label)?180000:45000;
-    const outputLimit=(label==='entity scan'||label==='entity stream')?100000:long.has(label)?60000:(label==='source enrichment'||label==='entity discovery')?20000:12000;
+    const outputLimit=label==='collection rules'?32768:(label==='entity scan'||label==='entity stream')?100000:long.has(label)?60000:(label==='source enrichment'||label==='entity discovery')?20000:12000;
     let output='x'.repeat(outputLimit),now=Date.now(),during=()=>{},signal;
     const secret=new Secrets();
     const ai=new Intelligence(secret,async(_url,options)=>{signal=options.signal;during();return completed(output);},()=>now);

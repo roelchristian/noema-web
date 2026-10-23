@@ -14,7 +14,7 @@ import {Pages} from '../src/server/modules/pages.ts';
 import {SourceFiles} from '../src/server/modules/source-files.ts';
 import {SourcePages,SourcePageDraft} from '../src/server/modules/source-pages.ts';
 import {VaultBackups} from '../src/server/modules/vault-backups.ts';
-import {defaultSourcePageOptions,sourcePageFormats} from '../src/shared/source-page.ts';
+import {defaultSourcePageOptions,sourcePageFormats,normalizeSourcePageOptions} from '../src/shared/source-page.ts';
 import {parsePageGenerationMetadata} from '../src/shared/page-generation.ts';
 import {PageMetadata} from '../src/client/intelligence/PageMetadata.tsx';
 
@@ -42,6 +42,7 @@ test('generation snapshots survive acceptance, draft cleanup, edits, database re
   const options={...defaultSourcePageOptions,format:'critique',language:'English',detail:'brief',familiarity:'expert',beyondSources:true};
   const first=env.stage(options,'Compare the reasoning.'),second=env.stage(options,'Compare the reasoning.',{draftId:first.review.id,feedback:'Focus on the assumptions.',mode:'changes'});
   const accepted=env.sources.accept('default',env.source.id,second.review.id),metadata=accepted.page.generationMetadata;
+  assert.equal(accepted.page.creationMethod,'ai_generated');
   assert.equal(metadata.type,'source_page');assert.deepEqual(metadata.options,options);
   assert.equal(metadata.formatPrompt,sourcePageFormats.critique.prompt);
   assert.equal(metadata.userPrompt,'Compare the reasoning.');
@@ -79,8 +80,8 @@ test('old AI pages and pending drafts remain unavailable; regular pages cannot s
 
 test('generation metadata is a dedicated subsection only for AI-created pages',()=>{
  const base={id:'page',title:'Note',blocks:[],sourceIds:[],revision:1,vault_id:'default',updated_at:'2026-10-19T00:00:00Z'};
- for(const aiStatus of ['regular','regular_with_ai_explanations'])assert.doesNotMatch(renderToStaticMarkup(React.createElement(PageMetadata,{page:{...base,aiStatus}})),/AI generation|Not available/);
- for(const aiStatus of ['ai_generated','ai_generated_edited'])assert.match(renderToStaticMarkup(React.createElement(PageMetadata,{page:{...base,aiStatus}})),/AI generation.*Not available/);
+ for(const aiStatus of ['regular','regular_with_ai_explanations'])assert.doesNotMatch(renderToStaticMarkup(React.createElement(PageMetadata,{page:{...base,aiStatus}})),/Generation details|Not available/);
+ for(const aiStatus of ['ai_generated','ai_generated_edited'])assert.match(renderToStaticMarkup(React.createElement(PageMetadata,{page:{...base,aiStatus}})),/Generation details.*Not available/);
  const generationMetadata={version:1,type:'source_page',options:{...defaultSourcePageOptions,format:'custom',language:'English'},formatPrompt:'A saved format prompt.',userPrompt:'Focus on <assumptions>.',instructions:'Saved system instructions.',revisionFeedback:['Explain the reasoning.']};
  const html=renderToStaticMarkup(React.createElement(PageMetadata,{page:{...base,aiStatus:'ai_generated',generationMetadata}}));
  assert.match(html,/Create your own/);assert.match(html,/Focus on &lt;assumptions&gt;/);assert.match(html,/A saved format prompt/);assert.doesNotMatch(html,/System instructions|Saved system instructions|View instructions/);assert.match(html,/Explain the reasoning/);
@@ -106,6 +107,22 @@ test('new passage explanation pages record their form options while authored rea
   assert.deepEqual(explanation.generationMetadata.options,{language:'English',familiarity:'beginner'});
   assert.match(explanation.generationMetadata.instructions,/Assume no prior knowledge/);
   const manual=reading.createReadingNote('default',file.id,{...selection,requestId:randomUUID(),text:'My own reading note.'});
-  assert.equal(manual.aiStatus,'regular');assert.equal(manual.generationMetadata,null);
+  assert.equal(manual.creationMethod,'manual_creation');assert.equal(explanation.creationMethod,'ai_generated');assert.equal(manual.aiStatus,'regular');assert.equal(manual.generationMetadata,null);
+ }finally{env.close();}
+});
+
+test('all source generation formats and legacy aliases retain generated creation evidence',async()=>{
+ const env=await fixture();
+ try{
+  // Older option names are normalized by the existing workflow, never by provenance.
+  for(const format of [...Object.keys(sourcePageFormats),'legacy-format']){
+   const staged=env.stage(normalizeSourcePageOptions({...defaultSourcePageOptions,format,language:'English'}),'Synthetic '+format);
+   const result=env.sources.accept('default',env.source.id,staged.review.id);
+   assert.equal(result.page.creationMethod,'ai_generated');
+   assert.equal(result.page.aiStatus,'ai_generated');
+   assert.equal(result.page.generationMetadata.type,'source_page');
+   const again=env.sources.accept('default',env.source.id,staged.review.id);
+   assert.equal(again.page.id,result.page.id);assert.equal(again.page.creationMethod,'ai_generated');
+  }
  }finally{env.close();}
 });

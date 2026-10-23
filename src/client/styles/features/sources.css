@@ -5,13 +5,13 @@
   align-items: center;
   font-size: 13px;
   font-weight: 550;
-  color: #555
+  color: light-dark(#555, var(--text))
 }
 .sources-heading small {
   margin-left: auto;
   font-size: 11px;
   font-weight: 400;
-  color: #999
+  color: light-dark(#999, var(--text-muted))
 }
 .source-list {
   display: flex;
@@ -21,16 +21,16 @@
 }
 .source-actions select {
   border: 0;
-  background: #f7f7f7;
+  background: light-dark(#f7f7f7, var(--surface-hover));
   border-radius: var(--radius-xs);
   padding: var(--space-1-5) var(--space-2);
   font-size: var(--ui-text-sm);
   max-width: 65%;
-  color: #666
+  color: light-dark(#666, var(--text-muted))
 }
 .source-actions button {
   font-size: 12px;
-  color: #666
+  color: light-dark(#666, var(--text-muted))
 }
 @media(max-width:500px) {
   .source-actions {
@@ -140,7 +140,7 @@
   width: 320px;
   padding: 14px;
   border-radius: 7px;
-  box-shadow: 0 4px 20px #00000012;
+  box-shadow: var(--shadow-menu);
 }
 .source-reference-preview h3 {
   font-size: 14px;
@@ -248,7 +248,7 @@ main.source-workspace > #content > .source-reader {
 }
 .source-highlight {
   color: inherit;
-  background: color-mix(in srgb,var(--highlight-color) 50%,transparent);
+  background: light-dark(color-mix(in srgb,var(--highlight-color) 50%,transparent), color-mix(in srgb,var(--highlight-color) 35%,transparent));
   border-radius: 2px;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone
@@ -261,7 +261,7 @@ main.source-workspace > #content > .source-reader {
   z-index: 4;
   pointer-events: none;
   user-select: none;
-  fill: color-mix(in srgb,Highlight 28%,transparent)
+  fill: light-dark(color-mix(in srgb,Highlight 28%,transparent), color-mix(in srgb,Highlight 40%,transparent))
 }
 .source-highlight-colors {
   display: flex;
@@ -371,7 +371,7 @@ main.source-workspace > #content > .source-reader {
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--surface-raised)
+  background: var(--surface-popover)
 }
 .source-bookmarks form {
   display: flex;
@@ -422,7 +422,7 @@ main.source-workspace > #content > .source-reader {
   width: min(600px,calc(100vw - 32px));
   max-height: 60vh;
   overflow: auto;
-  box-shadow: 0 3px 16px #00000012
+  box-shadow: var(--shadow-menu)
 }
 .source-bookmarks>header {
   display: flex;
@@ -443,7 +443,7 @@ main.source-workspace > #content > .source-reader {
   font-size: 14px
 }
 .page-source button {
-  color: #999
+  color: light-dark(#999, var(--text-muted))
 }
 .toolbar-source-list {
   display: flex;
@@ -464,16 +464,16 @@ main.source-workspace > #content > .source-reader {
   align-items: flex-start;
   gap: var(--space-2-5);
   margin-top: 16px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid light-dark(#eee, var(--line));
   padding-top: 14px;
 }
 .toolbar-source-actions select {
   width: 100%;
   min-width: 0;
   padding: 9px;
-  border: 1px solid #ddd;
+  border: 1px solid light-dark(#ddd, var(--control-border));
   border-radius: var(--radius-sm);
-  background: #fafafa;
+  background: light-dark(#fafafa, var(--surface-raised));
   font-size: var(--ui-text-md);
 }
 .toolbar-source-actions .select-control {
@@ -614,9 +614,9 @@ main.source-workspace > #content > .source-reader {
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--surface-raised,var(--surface,#fff));
+  background: var(--surface-popover);
   color: var(--text,#37352f);
-  box-shadow: 0 3px 14px #00000014;
+  box-shadow: var(--shadow-menu);
   font: 13px/1.4 var(--font-ui,sans-serif)
 }
 .citation-picker-heading {
@@ -1396,9 +1396,9 @@ main.source-workspace > #content > .source-reader {
   padding: 6px;
   border: 1px solid var(--control-border);
   border-radius: 12px;
-  background: var(--surface-raised);
+  background: var(--surface-popover);
   color: var(--text);
-  box-shadow: 0 2px 6px #00000008,0 12px 36px #00000014;
+  box-shadow: var(--shadow-menu);
   overflow: auto
 }
 .source-reading-toolbar {
@@ -1456,9 +1456,9 @@ main.source-workspace > #content > .source-reader {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 10px 16px;
-  background: var(--surface-raised);
+  background: var(--surface-popover);
   color: var(--text);
-  box-shadow: 0 4px 20px #0001;
+  box-shadow: var(--shadow-menu);
   font-size: 13px;
   pointer-events: none
 }
@@ -1672,9 +1672,9 @@ main.source-workspace > #content > .source-reader {
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: 24px;
-  background: var(--surface-raised);
+  background: var(--surface-popover);
   color: var(--text);
-  box-shadow: 0 3px 16px #00000012;
+  box-shadow: var(--shadow-menu);
   font-size: 12px;
   font-variant-numeric: tabular-nums
 }
@@ -1801,8 +1801,8 @@ main.source-workspace > #content > .source-reader {
   padding: 8px;
   border: 1px solid var(--control-border);
   border-radius: 10px;
-  background: var(--surface-raised);
-  box-shadow: 0 2px 6px #00000008,0 12px 36px #00000014;
+  background: var(--surface-popover);
+  box-shadow: var(--shadow-menu);
   font: 12px/1.5 var(--font-ui)
 }
 .source-reading-note-marker-list header {
@@ -2111,9 +2111,9 @@ main.source-workspace > #content > .source-reader {
   left: 50%;
   transform: translateX(-50%);
   z-index: 26;
-  background: var(--surface-raised);
+  background: var(--surface-popover);
   border: 1px solid var(--line);
-  box-shadow: 0 3px 16px #00000012
+  box-shadow: var(--shadow-menu)
 }
 
 /* Presentation emphasis changes appearance without modifying saved source marks. */

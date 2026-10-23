@@ -1,4 +1,5 @@
-import {parseSmartRule,type SmartRuleNode} from '../../shared/smart-collections.js';
+import {parseExampleCollection} from '../../shared/example-collections.js';
+import {parseSmartRule,parseSemanticCollection,type SmartRuleNode} from '../../shared/smart-collections.js';
 import {propertyOrigins,type PropertyOrigin} from '../../shared/property-provenance.js';
 import {proposalIdentity,rawSourceHash} from './property-provenance.js';
 import {adaptTemporalProperty} from '../../shared/temporal-properties.js';
@@ -60,7 +61,7 @@ const tables={
   property_definitions:{columns:'id,definition_json',scope:'vault_id=?'},
   property_value_metadata:{columns:'property_id,definition_id,compatibility,reason,integer_value,decimal_value,boolean_value,text_value,latitude,longitude,unit,position,target_id,temporal_date_id',scope:'vault_id=?'},
   temporal_relations:{columns:'id,date_id,entity_id,mention_id,kind,origin,status,confidence,source_mention_id,property_id,property_hash',scope:'vault_id=?'},
-  pages:{columns:'id,title,icon,featured_image_id,blocks,ai_status,ai_review_accepted,generation_metadata,language,created_at,updated_at,revision,deleted_at',scope:'vault_id=?'},
+  pages:{columns:'id,title,icon,featured_image_id,blocks,ai_status,ai_review_accepted,generation_metadata,creation_method,language,created_at,updated_at,revision,deleted_at',scope:'vault_id=?'},
   source_reprocessing:{columns:'id,file_id,status,created_at,updated_at,payload',scope:'vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL)'},
   source_math_documents:{columns:'file_id,raw_hash,algorithm_version,cleaned_text,uncertainty_json,updated_at',scope:'file_id IN (SELECT id FROM source_files WHERE vault_id=? AND entity_id IS NOT NULL)'},
   source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at,import_method,source_url,pdf_flattened,admitted,format,page_start_lines,structural_nodes,original_filename,language,summary,generated_name,enrichment_status,contains_math',scope:'vault_id=? AND entity_id IS NOT NULL'},
@@ -81,7 +82,7 @@ const tables={
   entity_subtypes:{columns:'id,type,name',scope:'vault_id=?'},
   entity_type_properties:{columns:'type,name',scope:'vault_id=?'},
   entity_subtype_properties:{columns:'subtype_id,name',scope:'vault_id=?'},
-  smart_collection_definitions:{columns:'collection_id,rule_json',scope:'vault_id=?'},
+  smart_collection_definitions:{columns:'collection_id,rule_json,matching,semantic_json,examples_json,query_vector,query_model,query_dimensions',scope:'vault_id=?'},
   smart_collection_overrides:{columns:'collection_id,kind,item_id,decision',scope:'vault_id=?'},
   collections:{columns:'id,name',scope:'vault_id=?'},
   folders:{columns:'id,name,parent_id',scope:'vault_id=?'},
@@ -407,10 +408,11 @@ export class VaultBackups {
             return block;
           });
           const validated=pages.validateBlocks(vault,blocks);
+          if(row.creation_method!=null&&row.creation_method!=='manual_creation'&&row.creation_method!=='ai_generated')throw invalid();
           if(row.ai_status!==undefined&&!isPageAIStatus(row.ai_status))throw invalid();
           if(row.ai_review_accepted!==undefined&&row.ai_review_accepted!==0&&row.ai_review_accepted!==1)throw invalid();
           const aiStatus=row.ai_status==='ai_generated'||row.ai_status==='ai_generated_edited'?row.ai_status:validated.some(isAIExplanation)?'regular_with_ai_explanations':'regular';
-          insert('pages',{id:ref(pageIds,row.id),vault_id:vault,title:string(row,'title',500),icon:row.icon as string|null,featured_image_id:row.featured_image_id==null?null:ref(imageIds,row.featured_image_id),blocks:JSON.stringify(validated),ai_status:aiStatus,ai_review_accepted:row.ai_review_accepted===1||row.ai_status==='ai_assisted'?1:0,generation_metadata:row.generation_metadata==null?null:JSON.stringify(parsePageGenerationMetadata(row.generation_metadata)),language:pageLanguage(row.language),created_at:row.created_at==null?null:timestamp(row,'created_at'),updated_at:timestamp(row,'updated_at'),revision:integer(row,'revision',1),deleted_at:row.deleted_at===null?null:timestamp(row,'deleted_at')});
+          insert('pages',{id:ref(pageIds,row.id),vault_id:vault,title:string(row,'title',500),icon:row.icon as string|null,featured_image_id:row.featured_image_id==null?null:ref(imageIds,row.featured_image_id),blocks:JSON.stringify(validated),creation_method:row.creation_method??null,ai_status:aiStatus,ai_review_accepted:row.ai_review_accepted===1||row.ai_status==='ai_assisted'?1:0,generation_metadata:row.generation_metadata==null?null:JSON.stringify(parsePageGenerationMetadata(row.generation_metadata)),language:pageLanguage(row.language),created_at:row.created_at==null?null:timestamp(row,'created_at'),updated_at:timestamp(row,'updated_at'),revision:integer(row,'revision',1),deleted_at:row.deleted_at===null?null:timestamp(row,'deleted_at')});
         }
         const temporalDates=new Set<string>();
         for(const row of rows.temporal_dates) {
@@ -576,8 +578,22 @@ export class VaultBackups {
         const orphanReferences=new Map<string,string>();
         const stableRef=(map:Map<string,string>,id:string)=>{const existing=map.get(id);if(existing)return existing;let orphan=orphanReferences.get(id);if(!orphan){orphan=randomUUID();orphanReferences.set(id,orphan);}return orphan;};
         for(const row of rows.smart_collection_definitions) {
-          let definition;try{definition=parseSmartRule(json(row,'rule_json'));}catch{throw invalid();}
+          if(row.matching!==undefined&&!['rules','semantic','hybrid','examples'].includes(String(row.matching)))throw invalid();
           const remap=(node:SmartRuleNode):SmartRuleNode=> 'op' in node?{...node,children:node.children.map(remap)}:node.field==='folder'?{...node,value:stableRef(folderIds,node.value)}:node.field==='entity'?{...node,value:stableRef(entityIds,node.value)}:node;
+          if(row.matching==='examples') {
+            let examples;try{examples=parseExampleCollection(json(row,'examples_json'));}catch{throw invalid();}
+            examples={...examples,positivePageIds:examples.positivePageIds.map(id=>stableRef(pageIds,id)),negativePageIds:examples.negativePageIds.map(id=>stableRef(pageIds,id))};
+            insert('smart_collection_definitions',{vault_id:vault,collection_id:ref(collectionIds,row.collection_id),rule_json:'{}',matching:'examples',examples_json:JSON.stringify(examples)});continue;
+          }
+          if(row.matching==='semantic'||row.matching==='hybrid') {
+            let definition;try{definition=parseSemanticCollection(json(row,'semantic_json'));}catch{throw invalid();}
+            const model=string(row,'query_model',200),dimensions=integer(row,'query_dimensions',1,4096),vector=json(row,'query_vector');
+            if(!model||!Array.isArray(vector)||vector.length!==dimensions||vector.some(value=>typeof value!=='number'||!Number.isFinite(value))||!Number.isFinite(Math.sqrt(vector.reduce((sum,value)=>sum+value*value,0)))||!Math.sqrt(vector.reduce((sum,value)=>sum+value*value,0)))throw invalid();
+            let ruleJson='{}';if(row.matching==='hybrid'){try{ruleJson=JSON.stringify({...parseSmartRule(json(row,'rule_json')),root:remap(parseSmartRule(json(row,'rule_json')).root)});}catch{throw invalid();}}
+            insert('smart_collection_definitions',{vault_id:vault,collection_id:ref(collectionIds,row.collection_id),rule_json:ruleJson,matching:String(row.matching),semantic_json:JSON.stringify(definition),query_vector:JSON.stringify(vector),query_model:model,query_dimensions:dimensions});
+            continue;
+          }
+          let definition;try{definition=parseSmartRule(json(row,'rule_json'));}catch{throw invalid();}
           insert('smart_collection_definitions',{vault_id:vault,collection_id:ref(collectionIds,row.collection_id),rule_json:JSON.stringify({...definition,root:remap(definition.root)})});
         }
         for(const row of rows.smart_collection_overrides) {

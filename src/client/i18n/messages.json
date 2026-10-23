@@ -8429,6 +8429,71 @@
     "Entität öffnen",
     "Abrir entidad"
   ],
+  "Creation & AI history": [
+    "Création et historique de l’IA",
+    "Erstellung & KI-Verlauf",
+    "Creación e historial de IA"
+  ],
+  "Creation method": [
+    "Mode de création",
+    "Erstellungsart",
+    "Método de creación"
+  ],
+  "Created in Noema": [
+    "Créée dans Noema",
+    "In Noema erstellt",
+    "Creada en Noema"
+  ],
+  "Not recorded": [
+    "Non enregistré",
+    "Nicht erfasst",
+    "No registrado"
+  ],
+  "AI contributions": [
+    "Contributions de l’IA",
+    "KI-Beiträge",
+    "Contribuciones de IA"
+  ],
+  "AI writing edits accepted": [
+    "Révisions rédactionnelles de l’IA acceptées",
+    "KI-Textänderungen angenommen",
+    "Revisiones de escritura de IA aceptadas"
+  ],
+  "Contains AI explanations": [
+    "Contient des explications de l’IA",
+    "Enthält KI-Erklärungen",
+    "Contiene explicaciones de IA"
+  ],
+  "AI-generated content": [
+    "Contenu généré par l’IA",
+    "KI-generierter Inhalt",
+    "Contenido generado por IA"
+  ],
+  "No recorded AI writing contributions": [
+    "Aucune contribution rédactionnelle de l’IA enregistrée",
+    "Keine KI-Schreibbeiträge erfasst",
+    "Sin contribuciones de escritura de IA registradas"
+  ],
+  "Editing history": [
+    "Historique des modifications",
+    "Bearbeitungsverlauf",
+    "Historial de edición"
+  ],
+  "Edited after generation": [
+    "Modifiée après génération",
+    "Nach der Generierung bearbeitet",
+    "Editada después de la generación"
+  ],
+  "Unedited since generation": [
+    "Non modifiée depuis la génération",
+    "Seit der Generierung unbearbeitet",
+    "Sin editar desde la generación"
+  ],
+  "Generation details": [
+    "Détails de la génération",
+    "Generierungsdetails",
+    "Detalles de generación"
+  ],
   "Paragraph indentation": [
     "Retrait des paragraphes",
     "Absatzeinzug",

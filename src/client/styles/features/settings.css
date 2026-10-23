@@ -37,9 +37,9 @@
   padding: 6px;
   border: 1px solid var(--control-border);
   border-radius: 8px;
-  background: var(--surface-raised);
+  background: var(--surface-popover);
   color: var(--text);
-  box-shadow: 0 8px 30px #0003;
+  box-shadow: var(--shadow-menu);
   outline: none;
 }
 .color-picker-list > button {
@@ -75,14 +75,14 @@
   letter-spacing: -.8px;
 }
 .settings-close {
-  color: #777;
+  color: light-dark(#777, var(--text-muted));
   font-size: 28px;
   line-height: 1;
   padding: 3px 5px;
   border-radius: 4px;
 }
 .settings-close:hover {
-  background: #f1f1f1;
+  background: light-dark(#f1f1f1, var(--surface-hover));
 }
 .settings-section {
   margin-top: 28px;
@@ -95,7 +95,7 @@
 .settings-section > p {
   margin: 0 0 16px;
   font-size: 13px;
-  color: #717171;
+  color: light-dark(#717171, var(--text-muted));
   line-height: 1.7;
 }
 .font-settings {
@@ -140,10 +140,10 @@
 .theme-option {
   position: relative;
   text-align: left;
-  border: 1px solid #e3e3e3;
+  border: 1px solid light-dark(#e3e3e3, var(--control-border));
   border-radius: 8px;
   padding: 10px;
-  background: #fff;
+  background: var(--surface-raised);
 }
 .theme-option[aria-pressed=true] {
   border-color: var(--accent);
@@ -175,7 +175,7 @@
 .theme-option small {
   display: block;
   font-size: 11px;
-  color: #737373;
+  color: light-dark(#737373, var(--text-muted));
   line-height: 1.5;
   margin-top: 5px;
 }
@@ -183,7 +183,7 @@
   display: inline-block;
   margin-top: 8px;
   font-size: 10px;
-  color: #777;
+  color: light-dark(#777, var(--text-muted));
 }
 .entity-color-list {
   border: 1px solid var(--line);
@@ -199,12 +199,12 @@
   min-width: 0;
 }
 .entity-color-row + .entity-color-row {
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid light-dark(#f0f0f0, var(--line));
 }
 .entity-color-row label {
   margin: 0;
   font-size: 13px;
-  color: #444;
+  color: light-dark(#444, var(--text));
 }
 .entity-color-row .mention {
   justify-self: start;
@@ -219,7 +219,7 @@
   margin: 0;
   width: 100%;
   padding: 7px var(--space-2);
-  background: #fff;
+  background: var(--surface-raised);
   font-size: var(--ui-text-sm);
 }
 .settings-footer {
@@ -230,7 +230,7 @@
 .settings-footer p {
   margin: 0 0 18px;
   font-size: 12px;
-  color: #777;
+  color: light-dark(#777, var(--text-muted));
   line-height: 1.7;
 }
 .settings-footer > div {
@@ -269,9 +269,6 @@
 .settings-section .display-hint {
   margin: 9px 0 0;
   font-size: 12px;
-}
-:root[data-mode=dark] .theme-option[aria-pressed=true] {
-  border-color: var(--accent);
 }
 .settings-tabs {
   display: flex;
@@ -501,7 +498,7 @@
   background: var(--surface-hover);
 }
 .ai-usage-custom input:focus-visible {
-  outline: var(--focus-width) solid var(--accent);
+  outline: var(--focus-width) solid var(--focus-ring);
   outline-offset: var(--focus-offset-control);
 }
 @media (pointer: coarse) {

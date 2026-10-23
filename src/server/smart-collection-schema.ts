@@ -13,6 +13,22 @@ export function setupSmartCollectionSchema(db:DatabaseSync) {
  // Permanent deletion cascades cached rows before a dirty-item refresh can read
  // their former counts. Recount through the bounded full-refresh path instead.
  db.exec('DROP TRIGGER IF EXISTS smart_dirty_pages_delete');
+ for(const [column,type] of [['matching',"TEXT NOT NULL DEFAULT 'rules'"],['semantic_json','TEXT'],['examples_json','TEXT'],['query_vector','TEXT'],['query_model','TEXT'],['query_dimensions','INTEGER'],['unevaluated','INTEGER NOT NULL DEFAULT 0'],['errors','INTEGER NOT NULL DEFAULT 0']])if(!db.prepare('PRAGMA table_info(smart_collection_definitions)').all().some(c=>c.name===column))db.exec(`ALTER TABLE smart_collection_definitions ADD COLUMN ${column} ${type}`);
+ for(const [column,type] of [['state',"TEXT NOT NULL DEFAULT 'evaluated'"],['score','REAL'],['fingerprint',"TEXT NOT NULL DEFAULT ''"]])if(!db.prepare('PRAGMA table_info(smart_collection_cache)').all().some(c=>c.name===column))db.exec(`ALTER TABLE smart_collection_cache ADD COLUMN ${column} ${type}`);
+ db.exec(`CREATE TABLE IF NOT EXISTS smart_collection_queries(token TEXT PRIMARY KEY,vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,description_hash TEXT NOT NULL,vector TEXT NOT NULL,model TEXT NOT NULL,dimensions INTEGER NOT NULL,expires_at INTEGER NOT NULL);
+ CREATE TABLE IF NOT EXISTS smart_collection_vault_epochs(vault_id TEXT PRIMARY KEY REFERENCES vaults(id) ON DELETE CASCADE,epoch INTEGER NOT NULL);
+ CREATE TRIGGER IF NOT EXISTS smart_collection_lock_epoch AFTER UPDATE OF locked ON vaults WHEN NEW.locked<>OLD.locked BEGIN INSERT INTO smart_collection_vault_epochs VALUES(NEW.id,1) ON CONFLICT(vault_id) DO UPDATE SET epoch=epoch+1; DELETE FROM smart_collection_queries WHERE vault_id=NEW.id; END;
+ CREATE INDEX IF NOT EXISTS smart_collection_queries_vault ON smart_collection_queries(vault_id,description_hash);`);
+ // Index arrival, removal, dirty preparation and policy changes are local saved-data
+ // inputs. They invalidate semantic results without scheduling provider requests.
+ for(const table of ['page_segment_embeddings','page_segments','page_index_state','page_index_dirty','embedding_settings'])for(const event of ['INSERT','UPDATE','DELETE']) {
+  const prefix=event==='DELETE'?'OLD':'NEW',item=table==='embedding_settings'?'NULL':table==='page_segment_embeddings'?`(SELECT page_id FROM page_segments WHERE id=${prefix}.segment_id)`:`${prefix}.page_id`;
+  const vault=table==='page_segment_embeddings'?`(SELECT vault_id FROM page_segments WHERE id=${prefix}.segment_id)`:`${prefix}.vault_id`;
+  db.exec(`CREATE TRIGGER IF NOT EXISTS smart_semantic_dirty_${table}_${event.toLowerCase()} AFTER ${event} ON ${table} BEGIN
+   INSERT INTO smart_collection_revisions(vault_id,revision) SELECT ${vault},1 WHERE ${vault} IS NOT NULL ON CONFLICT(vault_id) DO UPDATE SET revision=revision+1;
+   INSERT INTO smart_collection_changes SELECT ${vault},revision,${item} FROM smart_collection_revisions WHERE vault_id=${vault};
+   DELETE FROM smart_collection_changes WHERE vault_id=${vault} AND revision<(SELECT revision-10000 FROM smart_collection_revisions WHERE vault_id=${vault}); END;`);
+ }
  const scopes:Record<string,(prefix:string)=>string>={pages:p=>`${p}.vault_id`,entities:p=>`${p}.vault_id`,folders:p=>`${p}.vault_id`,item_locations:p=>`${p}.vault_id`,favourites:p=>`${p}.vault_id`,page_reading_notes:p=>`${p}.vault_id`,page_domains:p=>`(SELECT vault_id FROM pages WHERE id=${p}.page_id)`,entity_page_associations:p=>`(SELECT vault_id FROM pages WHERE id=${p}.page_id)`};
  for(const [table,scope] of Object.entries(scopes))for(const event of ['INSERT','UPDATE','DELETE']) {
   const prefix=event==='DELETE'?'OLD':'NEW';

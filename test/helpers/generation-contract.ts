@@ -21,6 +21,7 @@ export const generationContracts = [
   {label:'enrichment summary',request:{kind:'pageEnrichment',input,options:{requestedFields:['summary']}}},
   {label:'enrichment metadata',request:{kind:'pageEnrichment',input,background:true,options:{requestedFields:['title','domains','language'],domains:[],currentTitle:'Garden'}}},
   {label:'editorial',request:{kind:'editorial',input,instructions:'Synthetic editorial instruction.',signal,background:true}},
+  {label:'collection rules',request:{kind:'collectionRules',input,instructions:'Synthetic collection rule instruction.'}},
 ] satisfies {label:string;request:GenerationRequest}[];
 
 // Compile-only regressions: flags cannot create mixed intents or leak feature options.
@@ -44,6 +45,8 @@ function invalidRequests() {
   checkedRequest({kind:'editorial',input,signal});
   // @ts-expect-error Only source pages expose preliminary previews.
   checkedRequest({kind:'sourceMath',input,signal,onPreviewDelta:()=>{}});
+  // @ts-expect-error Generated collection rules cannot select a persona.
+  checkedRequest({kind:'collectionRules',input,instructions:'Synthetic rules',personaId:'conyo'});
 }
 void invalidRequests;
 

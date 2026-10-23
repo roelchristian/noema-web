@@ -1,13 +1,48 @@
+import {parseExampleCollection,type ExampleCollectionDefinition} from '../../shared/example-collections.js';
+import {prepareExampleQuery,evaluateExampleBatch,clearExampleCache} from './example-collections.js';
+import {CollectionRuleGeneration,type CollectionRuleGenerationProvider} from './collection-rule-generation.js';
+import {evaluateHybridBatch} from './hybrid-collections.js';
+import {embeddingModel,embeddingDimensions} from '../../shared/embeddings.js';
+import {SemanticCollections,semanticVector,type QueryEmbeddingProvider} from './semantic-collections.js';
+import {evaluateSemanticBatch} from './smart-semantic-scoring.js';
 import type {Collection,CollectionMembership,Organization} from '../../shared/domain.js';
 import {parseSmartRule,type SmartRuleDefinition} from '../../shared/smart-collections.js';
 import {Store} from '../store.js';
 import {HttpError} from '../validation.js';
 import {Vaults} from './vaults.js';
 import {evaluateSmartRule,validateRuleReferences} from './smart-rules.js';
-type Definition={vault_id:string;collection_id:string;rule_json:string;revision:number;status:string;evaluated:number;matched:number;error:string|null;evaluated_revision:number};
+type Definition={vault_id:string;collection_id:string;rule_json:string;revision:number;status:string;evaluated:number;matched:number;error:string|null;evaluated_revision:number;matching:'rules'|'semantic'|'hybrid'|'examples';examples_json:string|null;semantic_json:string|null;query_vector:string|null;query_model:string|null;query_dimensions:number|null;unevaluated:number;errors:number};
 export class SmartCollections {
  private running=new Set<string>();
- constructor(private store:Store) {}
+ readonly semantic:SemanticCollections;
+ readonly ruleGeneration:CollectionRuleGeneration;
+ private examplePreviews=new Map<string,{vault:string;epoch:number;result:ReturnType<SmartCollections['examplePreviewUncached']>}>();
+ clearCaches(vault:string){this.semantic.clearVaultCache(vault);clearExampleCache(this.store,vault);for(const [key,value] of this.examplePreviews)if(value.vault===vault)this.examplePreviews.delete(key);}
+ parseExamples(input:unknown):ExampleCollectionDefinition {try{return parseExampleCollection(input);}catch(error){throw new HttpError(400,error instanceof Error?error.message:'Invalid examples');}}
+ saveExamples(vault:string,id:string,input:unknown) {
+  this.open(vault);if(!this.store.get('SELECT id FROM collections WHERE vault_id=? AND id=?',vault,id))throw new HttpError(404,'Collection not found');
+  const config=this.parseExamples(input);prepareExampleQuery(this.store,vault,config);
+  this.store.run(`INSERT INTO smart_collection_definitions(vault_id,collection_id,rule_json,matching,examples_json) VALUES(?,?,'{}','examples',?) ON CONFLICT(collection_id) DO UPDATE SET matching='examples',rule_json='{}',examples_json=excluded.examples_json,semantic_json=NULL,query_vector=NULL,query_model=NULL,query_dimensions=NULL,revision=revision+1,status='stale',error=NULL,evaluated_revision=-1`,vault,id,JSON.stringify(config));
+  this.store.run('UPDATE smart_collection_cache SET score=NULL WHERE vault_id=? AND collection_id=?',vault,id);
+ }
+ private examplePreviewUncached(vault:string,examples:ExampleCollectionDefinition) {
+  const result=evaluateExampleBatch(this.store,vault,examples,'',2);
+  return {items:result.items.filter(item=>item.matched&&item.state==='evaluated').slice(0,20),evaluated:result.items.filter(item=>['evaluated','ineligible'].includes(item.state)).length,matched:result.items.filter(item=>item.matched&&item.state==='evaluated').length,hasMore:result.hasMore,unevaluated:result.items.filter(item=>!['evaluated','ineligible'].includes(item.state)).length,errors:result.items.filter(item=>item.state==='error').length};
+ }
+ examplePreview(vault:string,body:Record<string,unknown>) {
+  this.open(vault);const examples=this.parseExamples(body.examples),epoch=this.store.get<{epoch:number}>('SELECT epoch FROM smart_collection_vault_epochs WHERE vault_id=?',vault)?.epoch??0;
+  for(const [key,value] of this.examplePreviews)if(value.vault===vault&&value.epoch!==epoch)this.examplePreviews.delete(key);
+  const key=JSON.stringify([vault,epoch,this.revision(vault),examples]),cached=this.examplePreviews.get(key);if(cached)return structuredClone(cached.result);
+  const result=this.examplePreviewUncached(vault,examples);this.examplePreviews.set(key,{vault,epoch,result});
+  const keys=[...this.examplePreviews].filter(([,value])=>value.vault===vault).map(([key])=>key);for(const oldKey of keys.slice(0,Math.max(0,keys.length-32)))this.examplePreviews.delete(oldKey);
+  while(this.examplePreviews.size>128)this.examplePreviews.delete(this.examplePreviews.keys().next().value!);
+  return structuredClone(result);
+ }
+ setRuleGenerationProvider(provider:CollectionRuleGenerationProvider){this.ruleGeneration.setProvider(provider);}
+ constructor(private store:Store) {this.semantic=new SemanticCollections(store);this.ruleGeneration=new CollectionRuleGeneration(store);}
+ setQueryEmbeddingProvider(provider:QueryEmbeddingProvider){this.semantic.setProvider(provider);}
+ evaluateDescription(vault:string,body:Record<string,unknown>){return this.semantic.evaluateDescription(vault,body);}
+ semanticPreview(vault:string,body:Record<string,unknown>){return this.semantic.preview(vault,body);}
  private revision(vault:string){return this.store.get<{revision:number}>('SELECT revision FROM smart_collection_revisions WHERE vault_id=?',vault)?.revision??0;}
  private open(vault:string){new Vaults(this.store).requireOpen(vault);}
  definition(vault:string,id:string){return this.store.get<Definition>('SELECT * FROM smart_collection_definitions WHERE vault_id=? AND collection_id=?',vault,id);}
@@ -17,7 +52,8 @@ export class SmartCollections {
  }
  save(vault:string,id:string,input:unknown) {
   const rule=this.parse(vault,input);
-  this.store.run(`INSERT INTO smart_collection_definitions(vault_id,collection_id,rule_json) VALUES(?,?,?) ON CONFLICT(collection_id) DO UPDATE SET rule_json=excluded.rule_json,revision=revision+1,status='stale',error=NULL,evaluated_revision=-1`,vault,id,JSON.stringify(rule));
+  if(!this.store.get('SELECT id FROM collections WHERE vault_id=? AND id=?',vault,id))throw new HttpError(404,'Collection not found');
+  this.store.run(`INSERT INTO smart_collection_definitions(vault_id,collection_id,rule_json) VALUES(?,?,?) ON CONFLICT(collection_id) DO UPDATE SET matching='rules',examples_json=NULL,semantic_json=NULL,query_vector=NULL,query_model=NULL,query_dimensions=NULL,rule_json=excluded.rule_json,revision=revision+1,status='stale',error=NULL,evaluated_revision=-1`,vault,id,JSON.stringify(rule));
  }
  preview(vault:string,body:Record<string,unknown>) {
   const rule=this.parse(vault,body.rule),result=evaluateSmartRule(this.store,vault,rule,'',250);
@@ -29,40 +65,55 @@ export class SmartCollections {
  }
  private schedule(vault:string,id:string,force=false) {
   const key=`${vault}:${id}`,definition=this.definition(vault,id);if(!definition||this.running.has(key))return;
-  if(!force&&definition.evaluated_revision===this.revision(vault)&&definition.status==='ready')return;
+  if(!force&&definition.evaluated_revision===this.revision(vault)&&['ready','partial'].includes(definition.status))return;
   // A failed rule (for example a removed stable reference) requires an explicit retry
   // or a changed input revision, avoiding a hot error loop on every poll.
   if(!force&&definition.status==='error'&&definition.evaluated_revision===this.revision(vault))return;
   this.running.add(key);
-  const inputRevision=this.revision(vault),ruleRevision=definition.revision;let after='',evaluated=0,matched=0;
+  const inputRevision=this.revision(vault),ruleRevision=definition.revision;let after='',evaluated=0,matched=0,unevaluated=0,errors=0;
   const changes=this.store.all<{revision:number;item_id:string|null}>('SELECT revision,item_id FROM smart_collection_changes WHERE vault_id=? AND revision>? AND revision<=? ORDER BY revision',vault,definition.evaluated_revision,inputRevision);
-  const incremental=!force&&definition.evaluated_revision>=0&&changes.length>0&&changes[0]!.revision===definition.evaluated_revision+1&&changes.every(c=>c.item_id!==null);
+  let incremental=!force&&definition.evaluated_revision>=0&&changes.length>0&&changes[0]!.revision===definition.evaluated_revision+1&&changes.every(c=>c.item_id!==null);
+  if(incremental&&definition.matching==='examples'){try{const examples=this.parseExamples(JSON.parse(definition.examples_json!)),references=new Set([...examples.positivePageIds,...examples.negativePageIds]);if(changes.some(change=>references.has(change.item_id!)))incremental=false;}catch{incremental=false;}}
   const dirtyIds=incremental?[...new Set(changes.map(c=>c.item_id!))].sort():undefined;
   let dirtyOffset=0;
-  if(incremental){evaluated=definition.evaluated;matched=definition.matched;}
+  if(incremental){evaluated=definition.evaluated;matched=definition.matched;unevaluated=definition.unevaluated;errors=definition.errors;}
   this.store.run("UPDATE smart_collection_definitions SET status='refreshing',error=NULL WHERE vault_id=? AND collection_id=?",vault,id);
   const finish=()=>this.running.delete(key);
   const batch=()=>{
    try {
     this.open(vault);const current=this.definition(vault,id);if(!current){finish();return;}
     if(current.revision!==ruleRevision){this.store.run("UPDATE smart_collection_definitions SET status='stale' WHERE vault_id=? AND collection_id=?",vault,id);finish();return;}
-    const rule=this.parse(vault,JSON.parse(current.rule_json));
-    const ids=dirtyIds?.slice(dirtyOffset,dirtyOffset+100);
-    const result=evaluateSmartRule(this.store,vault,rule,after,100,ids);
-    if(dirtyIds){dirtyOffset+=100;result.hasMore=dirtyOffset<dirtyIds.length;}
+    const semantic=current.matching==='semantic'||current.matching==='hybrid',advanced=semantic||current.matching==='examples',batchSize=current.matching==='examples'?2:advanced?8:100;
+    const ids=dirtyIds?.slice(dirtyOffset,dirtyOffset+batchSize);
+    if(semantic&&(current.query_model!==embeddingModel||current.query_dimensions!==embeddingDimensions))throw new HttpError(409,'Evaluate the semantic description again for the current embedding model');
+    const result=current.matching==='examples'?evaluateExampleBatch(this.store,vault,this.parseExamples(JSON.parse(current.examples_json!)),after,batchSize,ids,id):current.matching==='hybrid'?evaluateHybridBatch(this.store,vault,this.parse(vault,JSON.parse(current.rule_json)),this.semantic.parse(JSON.parse(current.semantic_json!)),semanticVector(JSON.parse(current.query_vector!)),after,batchSize,ids,id):semantic?evaluateSemanticBatch(this.store,vault,this.semantic.parse(JSON.parse(current.semantic_json!)),semanticVector(JSON.parse(current.query_vector!)),after,batchSize,ids,id):evaluateSmartRule(this.store,vault,this.parse(vault,JSON.parse(current.rule_json)),after,100,ids);
+    if(dirtyIds){dirtyOffset+=batchSize;result.hasMore=dirtyOffset<dirtyIds.length;}
     this.store.transaction(()=>{
-     if(ids?.length) {
-      const placeholders=ids.map(()=>'?').join(',');
-      const previous=this.store.get<{evaluated:number;matched:number}>(`SELECT COUNT(*) AS evaluated,COALESCE(SUM(matched),0) AS matched FROM smart_collection_cache WHERE vault_id=? AND collection_id=? AND item_id IN (${placeholders})`,vault,id,...ids)!;
-      evaluated-=previous.evaluated;matched-=previous.matched;
-      this.store.run(`DELETE FROM smart_collection_cache WHERE vault_id=? AND collection_id=? AND item_id IN (${placeholders})`,vault,id,...ids);
+     type Cache={item_id:string;matched:number;evidence_json:string;state:string;score:number|null;fingerprint:string};
+     const itemIds=ids??result.items.map(item=>item.item_id),placeholders=itemIds.map(()=>'?').join(',');
+     const previous=itemIds.length?this.store.all<Cache>(`SELECT item_id,matched,evidence_json,state,score,fingerprint FROM smart_collection_cache WHERE vault_id=? AND collection_id=? AND item_id IN (${placeholders})`,vault,id,...itemIds):[];
+     if(incremental) {
+      evaluated-=previous.filter(item=>['evaluated','ineligible'].includes(item.state)).length;
+      matched-=previous.filter(item=>item.matched).length;
+      unevaluated-=previous.filter(item=>!['evaluated','ineligible'].includes(item.state)).length;
+      errors-=previous.filter(item=>item.state==='error').length;
+      if(itemIds.length)this.store.run(`DELETE FROM smart_collection_cache WHERE vault_id=? AND collection_id=? AND item_id IN (${placeholders})`,vault,id,...itemIds);
      }
-     for(const item of result.items)this.store.run(`INSERT INTO smart_collection_cache VALUES(?,?,?,?,?,?) ON CONFLICT(vault_id,collection_id,item_id) DO UPDATE SET matched=excluded.matched,evidence_json=excluded.evidence_json,revision=excluded.revision`,vault,id,item.item_id,item.matched?1:0,JSON.stringify(item.evidence),inputRevision);
-     evaluated+=result.items.length;matched+=result.items.filter(item=>item.matched).length;
-     this.store.run('UPDATE smart_collection_definitions SET evaluated=?,matched=? WHERE vault_id=? AND collection_id=?',evaluated,matched,vault,id);
+     const oldById=new Map(previous.map(item=>[item.item_id,item]));
+     for(const item of result.items) {
+      const state='state' in item?item.state as string:'evaluated',gap=!['evaluated','ineligible'].includes(state),old=oldById.get(item.item_id);
+      const itemMatched=gap?!!old?.matched:item.matched;
+      const evidence=gap&&old?.matched?[...new Set([...JSON.parse(old.evidence_json) as string[],...item.evidence])]:item.evidence;
+      const score=gap?old?.score??undefined:'score' in item?item.score as number|undefined:undefined;
+      this.store.run(`INSERT INTO smart_collection_cache(vault_id,collection_id,item_id,matched,evidence_json,revision,state,score,fingerprint) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(vault_id,collection_id,item_id) DO UPDATE SET matched=excluded.matched,evidence_json=excluded.evidence_json,revision=excluded.revision,state=excluded.state,score=excluded.score,fingerprint=excluded.fingerprint`,vault,id,item.item_id,itemMatched?1:0,JSON.stringify(evidence.slice(0,8)),inputRevision,state,score??null,'fingerprint' in item?String(item.fingerprint):'');
+      if(gap)unevaluated++;else evaluated++;
+      if(state==='error')errors++;
+      if(itemMatched)matched++;
+     }
+     this.store.run('UPDATE smart_collection_definitions SET evaluated=?,matched=?,unevaluated=?,errors=? WHERE vault_id=? AND collection_id=?',evaluated,matched,unevaluated,errors,vault,id);
      if(!result.hasMore){
       if(!incremental)this.store.run('DELETE FROM smart_collection_cache WHERE vault_id=? AND collection_id=? AND revision<>?',vault,id,inputRevision);
-      this.store.run('UPDATE smart_collection_definitions SET status=?,evaluated_revision=?,evaluated=?,matched=? WHERE vault_id=? AND collection_id=?',this.revision(vault)===inputRevision?'ready':'stale',inputRevision,evaluated,matched,vault,id);
+      this.store.run('UPDATE smart_collection_definitions SET status=?,evaluated_revision=?,evaluated=?,matched=?,unevaluated=?,errors=? WHERE vault_id=? AND collection_id=?',this.revision(vault)===inputRevision?(unevaluated?'partial':'ready'):'stale',inputRevision,evaluated,matched,unevaluated,errors,vault,id);
      }
     });
     if(result.hasMore){after=result.items.at(-1)?.item_id??after;setImmediate(batch);}else finish();
@@ -71,7 +122,7 @@ export class SmartCollections {
     finish();
    }
   };
-  setImmediate(batch);
+  if(definition.matching!=='rules'&&incremental&&!force)setTimeout(batch,300).unref();else setImmediate(batch);
  }
  decorate(vault:string,organization:Organization):Organization {
   this.open(vault);const revision=this.revision(vault);
@@ -80,9 +131,10 @@ export class SmartCollections {
   const byId=new Map(definitions.map(d=>[d.collection_id,d]));
   organization.collections=organization.collections.map(collection=>{
    const d=byId.get(collection.id);if(!d)return collection;
-   let rule:SmartRuleDefinition|undefined;try{rule=parseSmartRule(JSON.parse(d.rule_json));}catch{}
-   const status=d.status==='ready'&&d.evaluated_revision!==revision?'stale':d.status==='refreshing'&&!this.running.has(`${vault}:${d.collection_id}`)?'stale':d.status;
-   return {...collection,kind:'smart',rule,smart:{status,evaluated:d.evaluated,matched:d.matched,...(d.error?{error:d.error}:{})}} as Collection;
+   let rule:SmartRuleDefinition|undefined,semantic:ReturnType<SemanticCollections['parse']>|undefined,examples:ExampleCollectionDefinition|undefined,definitionError:string|undefined;
+   try{if(d.matching==='semantic'||d.matching==='hybrid')semantic=this.semantic.parse(JSON.parse(d.semantic_json!));if(d.matching==='rules'||d.matching==='hybrid')rule=parseSmartRule(JSON.parse(d.rule_json));if(d.matching==='examples')examples=this.parseExamples(JSON.parse(d.examples_json!));}catch(error){definitionError=error instanceof Error?error.message:'Invalid saved collection definition';}
+   const status=definitionError?'error':['ready','partial'].includes(d.status)&&d.evaluated_revision!==revision?'stale':d.status==='refreshing'&&!this.running.has(`${vault}:${d.collection_id}`)?'stale':d.status;
+   return {...collection,kind:'smart',matching:d.matching,...((d.matching==='semantic'||d.matching==='hybrid')?{semantic}:{}),...((d.matching==='rules'||d.matching==='hybrid')?{rule}:{}),...(d.matching==='examples'?{examples}:{}),smart:{status,evaluated:d.evaluated,matched:d.matched,unevaluated:d.unevaluated,errors:d.errors,...((definitionError??d.error)?{error:definitionError??d.error}:{})}} as Collection;
   });
   const overrides=this.store.all<{kind:'page'|'entity';item_id:string;collection_id:string;decision:'include'|'exclude'}>(`SELECT o.kind,o.item_id,o.collection_id,o.decision FROM smart_collection_overrides o WHERE o.vault_id=? AND ((o.kind='page' AND EXISTS(SELECT 1 FROM pages p WHERE p.vault_id=o.vault_id AND p.id=o.item_id AND p.deleted_at IS NULL)) OR (o.kind='entity' AND EXISTS(SELECT 1 FROM entities e WHERE e.vault_id=o.vault_id AND e.id=o.item_id AND e.archived_at IS NULL AND e.inactive=0)))`,vault);
   const decision=new Map(overrides.map(o=>[`${o.collection_id}:${o.kind}:${o.item_id}`,o.decision]));
@@ -90,10 +142,10 @@ export class SmartCollections {
   const memberships=organization.memberships.filter(m=>decision.get(`${m.collection_id}:${m.kind}:${m.item_id}`)!=='exclude').filter(m=>!byId.has(m.collection_id)||m.kind==='page'||!!this.store.get('SELECT id FROM entities WHERE vault_id=? AND id=? AND archived_at IS NULL AND inactive=0',vault,m.item_id)).map(m=>byId.has(m.collection_id)?{...m,provenance:decision.get(`${m.collection_id}:${m.kind}:${m.item_id}`)==='include'?'include' as const:'manual' as const,evidence:[decision.get(`${m.collection_id}:${m.kind}:${m.item_id}`)==='include'?'Always included by you':'Existing manual membership']}:m);
   const present=new Set(memberships.map(m=>`${m.collection_id}:${m.kind}:${m.item_id}`));
   for(const o of overrides)if(o.decision==='include'&&!present.has(`${o.collection_id}:${o.kind}:${o.item_id}`)){memberships.push({...o,provenance:'include',evidence:['Always included by you']} as CollectionMembership);present.add(`${o.collection_id}:${o.kind}:${o.item_id}`);}
-  for(const row of this.store.all<{collection_id:string;item_id:string;evidence_json:string;revision:number}>(`SELECT c.collection_id,c.item_id,c.evidence_json,c.revision FROM smart_collection_cache c JOIN pages p ON p.id=c.item_id AND p.vault_id=c.vault_id WHERE c.vault_id=? AND c.matched=1 AND p.deleted_at IS NULL`,vault)) {
+  for(const row of this.store.all<{collection_id:string;item_id:string;evidence_json:string;revision:number;state:string}>(`SELECT c.collection_id,c.item_id,c.evidence_json,c.revision,c.state FROM smart_collection_cache c JOIN pages p ON p.id=c.item_id AND p.vault_id=c.vault_id WHERE c.vault_id=? AND c.matched=1 AND p.deleted_at IS NULL`,vault)) {
    const key=`${row.collection_id}:page:${row.item_id}`;if(present.has(key)||decision.get(key)==='exclude')continue;
    const d=byId.get(row.collection_id);if(!d)continue;
-   memberships.push({kind:'page',item_id:row.item_id,collection_id:row.collection_id,automatic:true,provenance:'rule',evidence:JSON.parse(row.evidence_json),stale:d.evaluated_revision!==revision||d.status!=='ready'} as CollectionMembership);
+   memberships.push({kind:'page',item_id:row.item_id,collection_id:row.collection_id,automatic:true,provenance:d.matching==='rules'?'rule':d.matching,evaluationState:row.state as CollectionMembership['evaluationState'],evidence:JSON.parse(row.evidence_json),stale:d.evaluated_revision!==revision||!['ready','partial'].includes(d.status)||!['evaluated','ineligible'].includes(row.state)} as CollectionMembership);
   }
   organization.memberships=memberships;organization.smartOverrides=overrides;
   for(const d of definitions)this.schedule(vault,d.collection_id);

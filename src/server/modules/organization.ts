@@ -41,12 +41,19 @@ export class Organizer {
     const existing=id?this.collection(vault,id):null;
     const wasSmart=id?!!this.smart.definition(vault,id):false;
     if(wasSmart&&body.kind==='manual')throw new HttpError(400,'Keep smart rules or create a new manual collection');
-    const rule=(body.kind==='smart'||wasSmart)?this.smart.parse(vault,body.rule??(id?JSON.parse(this.smart.definition(vault,id)!.rule_json):undefined)):undefined;
+    const definition=id?this.smart.definition(vault,id):undefined;
+    const matching=body.matching??definition?.matching??'rules';
+    if(matching!=='rules'&&matching!=='semantic')throw new HttpError(400,'Invalid matching method');
+    const isSmart=body.kind==='smart'||wasSmart;
+    const semantic=isSmart&&matching==='semantic'?this.smart.semantic.parse(body.semantic??(definition?.semantic_json?JSON.parse(definition.semantic_json):undefined)):undefined;
+    const vector=semantic?this.smart.semantic.vector(vault,semantic,body,id):undefined;
+    const rule=isSmart&&matching==='rules'?this.smart.parse(vault,body.rule??(definition?.matching==='rules'?JSON.parse(definition.rule_json):undefined)):undefined;
     const collectionId=id??randomUUID();
     this.store.transaction(()=>{
       if(existing)this.store.run('UPDATE collections SET name=? WHERE id=? AND vault_id=?',name,collectionId,vault);
       else this.store.run('INSERT INTO collections VALUES (?,?,?)',collectionId,vault,name);
-      if(rule)this.smart.save(vault,collectionId,rule);
+      if(semantic&&vector)this.smart.semantic.save(vault,collectionId,semantic,vector);
+      else if(rule)this.smart.save(vault,collectionId,rule);
     });
     return this.list(vault);
   }

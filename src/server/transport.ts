@@ -300,7 +300,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           if(parts.length===2 && method==='POST')return send(201,vaults.create(body));
           if(id && parts.length===4 && method==='GET' && child==='deletion-preview')return send(200,vaultDeletion.preview(id));
           if(id && parts.length===4 && method==='POST' && child==='delete')return send(200,vaultDeletion.remove(id,body));
-          if(id && parts.length===4 && method==='POST' && child==='lock'){const result=vaults.lock(id,body);enrichmentScheduler.pauseVault(id);pageEnrichment.pauseVault(id);embeddings.clearQueryCache(id);return send(200,result);}
+          if(id && parts.length===4 && method==='POST' && child==='lock'){const result=vaults.lock(id,body);organizer.smart.semantic.clearVaultCache(id);enrichmentScheduler.pauseVault(id);pageEnrichment.pauseVault(id);embeddings.clearQueryCache(id);return send(200,result);}
           if(id && parts.length===4 && method==='POST' && child==='unlock')return send(200,vaults.unlock(id,body));
         } else {
           const header=req.headers['x-vault-id'];
@@ -332,6 +332,8 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             if(id && parts.length===3 && method==='DELETE')return send(200,pages.permanentlyDelete(vault,id));
           }
           if(collection==='organization') {
+            if(parts.length===3 && method==='POST' && id==='semantic-evaluate')return send(200,await organizer.smart.evaluateDescription(vault,body));
+            if(parts.length===3 && method==='POST' && id==='semantic-preview')return send(200,organizer.smart.semanticPreview(vault,body));
             if(parts.length===3 && method==='POST' && id==='smart-preview')return send(200,organizer.smart.preview(vault,body));
             if(parts.length===5 && method==='POST' && id==='collections' && child && childId==='refresh'){organizer.smart.refresh(vault,child);return send(200,organizer.list(vault));}
             if(parts.length===2 && method==='GET')return send(200,organizer.list(vault));

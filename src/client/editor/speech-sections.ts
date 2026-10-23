@@ -1,10 +1,12 @@
-import type {Block,Entity} from '../../shared/domain';
+import {blockSegments,type Block,type Entity} from '../../shared/domain';
 import {speechText} from '../../shared/speech-text';
 
 export interface SpeechSection {
   text:string;
   blockId:string;
   kind:'heading'|'paragraph'|'list'|'protected';
+  /** Preserve structural pauses independently from protected narration content. */
+  pauseKind?:'heading'|'paragraph'|'list';
   /** Zero-based section within this stable block. */
   sectionIndex:number;
 }
@@ -35,7 +37,8 @@ export function speechSections(blocks:Block[],ids:string[],entities:Entity[],lim
   for(const block of blocks){
     if(!selected.has(block.id))continue;
     let rest=speechText([block],[block.id],entities),sectionIndex=0;
-    const kind:SpeechSection['kind']=block.type==='code'||block.type==='math'||block.content.some(segment=>segment.code||segment.math)?'protected':block.type.startsWith('heading')?'heading':['bullet','numbered','todo'].includes(block.type)?'list':'paragraph';
+    const pauseKind:SpeechSection['pauseKind']=block.type==='code'||block.type==='math'?undefined:block.type.startsWith('heading')?'heading':['bullet','numbered','todo'].includes(block.type)?'list':'paragraph';
+    const kind:SpeechSection['kind']=pauseKind===undefined||blockSegments(block).some(segment=>segment.code||segment.math)?'protected':pauseKind;
     while(rest){
       let end=Math.min(limit,rest.length);
       if(end<rest.length){
@@ -43,7 +46,7 @@ export function speechSections(blocks:Block[],ids:string[],entities:Entity[],lim
         if(boundary>end/2)end=boundary+1;
         if(/[\uD800-\uDBFF]/.test(rest[end-1]!))end--;
       }
-      sections.push({text:rest.slice(0,end),blockId:block.id,kind,sectionIndex:sectionIndex++});
+      sections.push({text:rest.slice(0,end),blockId:block.id,kind,...(pauseKind?{pauseKind}:{}),sectionIndex:sectionIndex++});
       rest=rest.slice(end);
     }
   }
@@ -52,7 +55,7 @@ export function speechSections(blocks:Block[],ids:string[],entities:Entity[],lim
 
 /** Exact selection revision; resume records contain no authored or transformed text. */
 export async function resumeRevision(sections:SpeechSection[]):Promise<string> {
-  const bytes=new TextEncoder().encode(JSON.stringify(sections.map(({text,blockId,kind,sectionIndex})=>[blockId,kind,sectionIndex,text])));
+  const bytes=new TextEncoder().encode(JSON.stringify(sections.map(({text,blockId,kind,pauseKind,sectionIndex})=>[blockId,kind,pauseKind??null,sectionIndex,text])));
   const hash=await globalThis.crypto.subtle.digest('SHA-256',bytes);
   return Array.from(new Uint8Array(hash),byte=>byte.toString(16).padStart(2,'0')).join('');
 }

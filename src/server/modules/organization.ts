@@ -71,6 +71,11 @@ export class Organizer {
   locate(vault: string, body: Record<string, unknown>) {
     const {kind, id} = this.item(vault, body);
     if (body.collection_id != null) throw new HttpError(400, 'Use memberships to change collections');
+    if ('expected_folder_id' in body) {
+      const expected=this.nullable(body.expected_folder_id);
+      const current=this.store.get<{folder_id:string}>('SELECT folder_id FROM item_locations WHERE vault_id=? AND kind=? AND item_id=?',vault,kind,id)?.folder_id ?? null;
+      if(current!==expected)throw new HttpError(409,'This page location changed. Refresh Inbox before filing.');
+    }
     const folder = this.nullable(body.folder_id);
     if (folder) this.folder(vault, folder);
     if (body.remove !== undefined && typeof body.remove !== 'boolean') throw new HttpError(400, 'Invalid remove flag');

@@ -19,6 +19,6 @@ Search and sort feed the same queue, and batch selection uses the existing selec
 
 - `npm test`: style ownership, application/test typecheck, production build and all grouped unit/DOM/server tests.
 - `PLAYWRIGHT_MODULE=/path/to/playwright-core/index.mjs node --import tsx scripts/check-inbox-browser.mjs`: real application shell and disposable synthetic SQLite vault, read-only preview count, folder/collection semantics, picker cancellation, failed/repeated submissions, batch actions, finite Keep, Trash session continuity, all layout alternatives and desktop/mobile screenshots. External browser requests are blocked; no provider is configured or called.
-- Existing `npm run test:browser` harnesses; entity-scan status assertions use exact text to distinguish the visible status from the screen-reader announcement.
+- Existing `npm run test:browser` harnesses; entity-scan status assertions distinguish the visible status from the screen-reader announcement.
 
-Review images are written outside the repository to `/workspace/noema-inbox-evidence` by default. `NOEMA_SCREENSHOTS` can override that directory. No real vault is used.
+Set `NOEMA_SKIP_SCREENSHOTS=1` to run the Inbox browser checks without capturing images. Review images are otherwise written outside the repository to `/workspace/noema-inbox-evidence` by default. `NOEMA_SCREENSHOTS` can override that directory. No real vault is used.

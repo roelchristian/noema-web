@@ -32,7 +32,7 @@ export interface WorkspaceState {
   creationFocusPageId: string | null;
   initialEditingPageId: string | null;
   organization: Organization; organizationContext: OrganizationContext; recent: RecentItem[];
-  sourceId: string | null; page: Page | null; view: 'calendar' | 'entity' | 'source' | 'pages' | 'entities' | 'organization' | 'favourites' | 'recent' | 'trash' | 'inbox'; busy: boolean; loadingPageId: string | null; reviewing: boolean; error: string | null; saveStatus: SaveStatus;
+  sourceId: string | null; page: Page | null; view: 'review' | 'calendar' | 'entity' | 'source' | 'pages' | 'entities' | 'organization' | 'favourites' | 'recent' | 'trash' | 'inbox'; busy: boolean; loadingPageId: string | null; reviewing: boolean; error: string | null; saveStatus: SaveStatus;
 }
 export class Workspace {
   private state: WorkspaceState = {initialEditingPageId:null,creationFocusPageId:null,entityId:null,sourceId:null,domainSavingPageId:null,saveFailures: [], draftStorageFailures: [], draftRecoveries: [], entityPanelId: null, canGoBack: false, canGoForward: false, vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
@@ -304,7 +304,7 @@ export class Workspace {
       if (!value || typeof value !== 'object' || Array.isArray(value)) return;
       stored = value as Record<string, unknown>;
     } catch { return; }
-    if (typeof stored.view !== 'string' || !['calendar', 'pages', 'source', 'entity', 'organization', 'entities', 'favourites', 'recent', 'trash', 'inbox'].includes(stored.view)) return;
+    if (typeof stored.view !== 'string' || !['review', 'calendar', 'pages', 'source', 'entity', 'organization', 'entities', 'favourites', 'recent', 'trash', 'inbox'].includes(stored.view)) return;
     const collection = organization.collections.some(item => item.id === stored.collection) ? String(stored.collection) : '';
     const folder = !collection && organization.folders.some(item => item.id === stored.folder) ? String(stored.folder) : '';
     this.patch({organizationContext: {collection, folder}, entityPanelId:null});
@@ -686,6 +686,11 @@ export class Workspace {
     const trash = await api.trash(vault.id);
     if (sequence === this.loadSequence && this.state.view === 'trash') this.patch({trash});
   };
+  async showReview() {
+    await this.navigate(async()=>{
+      if(this.state.vault&&!this.state.vault.locked)this.patch({view:'review',entityPanelId:null});
+    });
+  }
   async showCalendar() {
     await this.navigate(async()=>{
       if(this.state.vault&&!this.state.vault.locked)this.patch({view:'calendar',entityPanelId:null});

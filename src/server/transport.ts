@@ -1,3 +1,4 @@
+import {ReviewCentre} from './modules/review-centre.js';
 import { fetchRemoteImage } from './modules/remote-image.js';
 import {vaultStorage} from './modules/vault-storage.js';
 import type {NetworkAccess} from './network-settings.js';
@@ -56,6 +57,19 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
         const aiRoute=/^\/api\/entities\/[^/]+\/discovery(?:\/[^/]+\/review)?$/.test(url.pathname)||/^\/api\/entities\/[^/]+\/create-page(?:\/(?:accept|reject))?$/.test(url.pathname)||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|enrich|enrichment-settings|entity-scan|entity-review|explain|review)$/.test(url.pathname);
         const searchRoute=url.pathname.startsWith('/api/search/');
         if((aiRoute||searchRoute) && (req.headers['x-noema-request']!=='1'||(['POST','PUT'].includes(method)&&!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))))throw new HttpError(403,searchRoute?'Search requests require the Noema client and JSON':'AI requests require the Noema client and JSON');
+        if(url.pathname==='/api/review-centre' && method==='GET') {
+          const header=req.headers['x-vault-id'];if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
+          const vault=vaults.requireOpen(header||'default'),centre=new ReviewCentre(store),id=url.searchParams.get('id');
+          if(id){
+            const item=centre.resolve(vault,id);
+            if(item?.category==='scan'){const row=store.get<{data:string}>("SELECT data FROM page_ai_enrichments WHERE page_id=? AND kind='entity_scan'",item.originId);const scan=row?JSON.parse(row.data).scan:null;if(scan?.contextKey&&scan.contextKey!==scans.contextKey(vault,pages.get(vault,item.originId))){item.state='stale';item.group='operations';}}
+            if(item?.category==='discovery') {const draft=runtime.entityDiscovery.latest(vault,item.originId);if(!draft||draft.id!==item.runId)return send(200,null);if(draft.stale){item.state='stale';item.group='operations';}}
+            if(item?.category==='editorial'){const revision=sourceReprocessing.detail(vault,item.fileId!,item.runId!);if(revision.stale){item.state='stale';item.group='operations';}}
+            return send(200,item);
+          }
+          const offset=Number(url.searchParams.get('offset')??0);if(!Number.isSafeInteger(offset)||offset<0||offset>100000)throw new HttpError(400,'Invalid review position');
+          return send(200,centre.list(vault,offset));
+        }
         if(url.pathname==='/api/source-files' || url.pathname.startsWith('/api/source-files/')) {
           if(req.headers['x-noema-request']!=='1' && method!=='GET')throw new HttpError(403,'Source actions require the Noema client');
           const header=req.headers['x-vault-id'];if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');

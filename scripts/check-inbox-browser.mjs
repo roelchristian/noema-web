@@ -42,7 +42,7 @@ try {
  await page.getByRole('combobox',{name:'Sort Inbox',exact:true}).click();
  await page.getByRole('option',{name:'Title · A–Z',exact:true}).click();
  await page.locator('.inbox-preview').waitFor();
- await page.screenshot({path:join(artifacts,'inbox-desktop.png')});
+ if(!process.env.NOEMA_SKIP_SCREENSHOTS)await page.screenshot({path:join(artifacts,'inbox-desktop.png')});
  // Folder picker cancellation preserves the current item and does not mutate.
  const selected=await page.locator('.inbox-detail h2').innerText();
  await page.getByRole('button',{name:'File…',exact:true}).click();await page.getByRole('button',{name:'Cancel',exact:true}).click();
@@ -82,12 +82,12 @@ try {
  await page.setViewportSize({width:390,height:844});
  await page.getByRole('combobox',{name:'Sort Inbox',exact:true}).waitFor({state:'visible'});
  await page.evaluate(()=>window.scrollTo(0,0));
- await page.screenshot({path:join(artifacts,'inbox-mobile-queue.png')});
+ if(!process.env.NOEMA_SKIP_SCREENSHOTS)await page.screenshot({path:join(artifacts,'inbox-mobile-queue.png')});
  await page.locator('.inbox-queue-row > button').first().click();await page.locator('.inbox-detail').waitFor({state:'visible'});
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  const targets=await page.locator('.inbox-detail .button').evaluateAll(items=>items.filter(item=>item.getBoundingClientRect().height).map(item=>({text:item.textContent,width:item.getBoundingClientRect().width,height:item.getBoundingClientRect().height})));
  for(const target of targets)assert.ok(target.width>=44&&target.height>=44,JSON.stringify(target));
- await page.screenshot({path:join(artifacts,'inbox-mobile-detail.png')});
+ if(!process.env.NOEMA_SKIP_SCREENSHOTS)await page.screenshot({path:join(artifacts,'inbox-mobile-detail.png')});
  await page.getByRole('button',{name:'Back to queue',exact:true}).click();await page.waitForFunction(()=>document.activeElement?.matches('.inbox-queue-row button[aria-current]'));
  assert.deepEqual(errors,[]);await writeFile(join(artifacts,'validation.json'),JSON.stringify({browser:await browser.version(),previews,errors,targets,synthetic:true},null,2));console.log(JSON.stringify({passed:true,artifacts,previews,errors}));await context.close();
 } finally {if(browser)await browser.close();if(vite)await vite.close();if(server)await new Promise(resolve=>server.close(resolve));if(db)db.close();await rm(directory,{recursive:true,force:true});}

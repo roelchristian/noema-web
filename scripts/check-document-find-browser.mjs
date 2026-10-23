@@ -25,7 +25,7 @@ const initial={id:'one',vault_id:'fixture',title:'target title excluded',sourceI
 {id:'b1',type:'paragraph',checked:false,content:[{text:'target ',bold:true},{text:'target',italic:true},{text:' and '},{entityId:'ada',mentionText:'Countess'},{text:' [[Other|linked]] target'}]},
 {id:'t',type:'table',checked:false,content:[],rows:[[[{text:'target café'}],[{text:'target',href:'https://example.com'}]]]},
 ...Array.from({length:198},(_,i)=>({id:'b'+(i+2),type:'paragraph',checked:false,content:[{text:'Synthetic paragraph '+i}]}))])};
-function App(){const [page,setPage]=useState(()=>JSON.parse(localStorage.getItem('synthetic-page')??'null')??initial);const history=useDocumentHistory(page,patch=>setPage(p=>({...p,...patch})));window.fixture={page,setPage,history};return <><button id="outside">Outside editor</button><button id="switch" onClick={()=>setPage({...initial,id:page.id==='one'?'two':'one'})}>Switch page</button><article className="page"><h1>Find and replace · synthetic page</h1><DocumentFind key={page.vault_id+page.id} blocks={page.blocks} entities={entities} disabled={!!page.editLocked} onChange={blocks=>history.change({blocks})}/><BlockEditor vaultId="fixture" blocks={page.blocks} entities={entities} onChange={blocks=>history.change({blocks})} onOpenEntity={()=>{}} onCreateEntity={()=>{}} onAddAlias={async()=>{}} onSave={()=>{}}/></article></>};createRoot(document.querySelector('#mount')).render(<App/>);`);
+function App(){const [page,setPage]=useState(()=>JSON.parse(localStorage.getItem('synthetic-page')??'null')??initial);const history=useDocumentHistory(page,patch=>setPage(p=>({...p,...patch})));window.fixture={page,setPage,history};return <><button id="outside">Outside editor</button><button onClick={()=>document.dispatchEvent(new Event("noema:document-find"))}>Find in page</button><button id="switch" onClick={()=>setPage({...initial,id:page.id==='one'?'two':'one'})}>Switch page</button><article className="page"><DocumentFind key={page.vault_id+page.id} blocks={page.blocks} entities={entities} disabled={!!page.editLocked} onChange={blocks=>history.change({blocks})}/><h1>Find and replace · synthetic page</h1><BlockEditor vaultId="fixture" blocks={page.blocks} entities={entities} onChange={blocks=>history.change({blocks})} onOpenEntity={()=>{}} onCreateEntity={()=>{}} onAddAlias={async()=>{}} onSave={()=>{}}/></article></>};createRoot(document.querySelector('#mount')).render(<App/>);`);
  server=await createServer({configFile:false,root:directory,server:{host:'127.0.0.1',port:0,fs:{allow:[repo,directory]}},plugins:[{name:'find-metrics',enforce:'pre',transform(code,id){
  if(id.endsWith('/segments.tsx'))return code.replace('  const changed = !segmentsEqual','  (globalThis as any).__syncs?.push(location.blockId);\n  const changed = !segmentsEqual');
  }}]});await server.listen();
@@ -37,9 +37,11 @@ function App(){const [page,setPage]=useState(()=>JSON.parse(localStorage.getItem
  await page.keyboard.press('Control+f');await page.getByLabel('Find text',{exact:true}).fill('target');
  await page.waitForFunction(()=>document.querySelector('output')?.textContent.includes('of 5'));
  assert.equal(await page.getByLabel('Replace with',{exact:true}).count(),0);assert.equal(await page.getByLabel('Matching snippets',{exact:true}).count(),0);assert.equal(await page.getByLabel('Search mode',{exact:true}).count(),0);assert.ok(await page.locator('.document-find').evaluate(el=>el.getBoundingClientRect().height<=60));
- await page.getByRole('button',{name:'Search options',exact:true}).click();await page.getByRole('button',{name:'Show matches',exact:true}).click();assert.equal(await page.getByLabel('Matching snippets',{exact:true}).count(),1);await page.getByRole('button',{name:'Hide matches',exact:true}).click();await page.getByRole('button',{name:'Search options',exact:true}).click();
+ await page.getByRole('button',{name:'Search options',exact:true}).click();await page.getByRole('menuitemcheckbox',{name:'Show matches',exact:true}).click();assert.equal(await page.getByLabel('Matching snippets',{exact:true}).count(),1);await page.getByRole('button',{name:'Search options',exact:true}).click();await page.getByRole('menuitemcheckbox',{name:'Show matches',exact:true}).click();
  await page.getByLabel('Find text',{exact:true}).fill('Synthetic paragraph 197');await page.waitForFunction(()=>document.querySelector('output')?.textContent.includes('of 1'));assert.ok(await page.evaluate(()=>{const widget=document.querySelector('.document-find').getBoundingClientRect(),match=document.querySelector('[data-document-find=active]').getBoundingClientRect();return match.top>=widget.bottom&&document.activeElement===document.querySelector('.document-find-query');}));await page.getByLabel('Find text',{exact:true}).fill('target');await page.waitForFunction(()=>document.querySelector('output')?.textContent.includes('of 5'));
- await page.getByRole('button',{name:'Match case',exact:true}).focus();await page.keyboard.press('Space');assert.equal(await page.getByRole('button',{name:'Match case',exact:true}).getAttribute('aria-pressed'),'true');await page.getByRole('button',{name:'Match case',exact:true}).click();await page.getByRole('button',{name:'Whole word',exact:true}).click();assert.equal(await page.getByRole('button',{name:'Whole word',exact:true}).getAttribute('aria-pressed'),'true');await page.getByRole('button',{name:'Whole word',exact:true}).click();
+ async function matchOption(name){await page.getByRole('button',{name:'Search options',exact:true}).click();await page.getByRole('menuitem',{name:'Match options',exact:true}).click();await page.getByRole('menuitemcheckbox',{name,exact:true}).click();}
+ async function searchMode(name){await page.getByRole('button',{name:'Search options',exact:true}).click();await page.getByRole('menuitem',{name:'Search in',exact:true}).click();await page.getByRole('menuitemcheckbox',{name,exact:true}).click();}
+ await matchOption('Match case');await matchOption('Match case');await matchOption('Whole word');await matchOption('Whole word');
  await page.evaluate(()=>window.__syncs=[]);
  await page.getByLabel('Find text',{exact:true}).fill('target ');await page.waitForTimeout(400);
  assert.deepEqual(await page.evaluate(()=>window.__syncs),[],'query updates do not resync editables');
@@ -55,11 +57,11 @@ function App(){const [page,setPage]=useState(()=>JSON.parse(localStorage.getItem
  await page.evaluate(()=>window.fixture.history.redo());await page.waitForFunction(()=>window.fixture.page.blocks[0].content[0].text==='changed');
  // Save and reload a synthetic local fixture; production save/history paths are covered by the full suite.
  await page.evaluate(()=>localStorage.setItem('synthetic-page',JSON.stringify(window.fixture.page)));await page.reload();await host.waitFor();assert.ok(await page.evaluate(()=>window.fixture.page.blocks[0].content[0].text==='changed'));await page.getByRole('button',{name:'Find in page',exact:true}).click();
- await page.getByRole('button',{name:'Search options',exact:true}).click();await page.getByLabel('Search mode').selectOption('entity');await page.getByLabel('Filter entities',{exact:true}).fill('Ada');await page.getByLabel('Linked identity').selectOption('ada');
+ await searchMode('Linked entities');await page.getByLabel('Filter entities',{exact:true}).fill('Ada');await page.getByRole('combobox',{name:'Linked identity',exact:true}).click();await page.getByRole('option',{name:'Ada Lovelace · person',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('output')?.textContent.includes('of 1'));
  assert.ok(await page.evaluate(()=>CSS.highlights.get('document-find')?.size===1));
- await page.getByLabel('Filter entities',{exact:true}).fill('Countess');assert.equal(await page.getByLabel('Linked identity').locator('option').count(),2);
- await page.getByRole('button',{name:'Search options',exact:true}).click();await page.getByLabel('Search mode').selectOption('text');await page.getByRole('button',{name:'Regular expression',exact:true}).click();await page.getByLabel('Find text',{exact:true}).fill('[');await page.waitForFunction(()=>document.querySelector('.document-find-feedback')?.textContent.includes('Invalid'));
+ await page.getByLabel('Filter entities',{exact:true}).fill('Countess');assert.equal(await page.locator('select[aria-label="Linked identity"]').locator('option').count(),2);
+ await searchMode('Page text');await matchOption('Regular expression');await page.getByLabel('Find text',{exact:true}).fill('[');await page.waitForFunction(()=>document.querySelector('.document-find-feedback')?.textContent.includes('Invalid'));
  await page.getByLabel('Find text',{exact:true}).fill('(?:)');await page.waitForFunction(()=>document.body.textContent.includes('Zero-width matches skipped.'));
  await page.evaluate(()=>window.fixture.setPage(p=>({...p,blocks:[{id:'pathological',type:'paragraph',checked:false,content:[{text:'a'.repeat(60000)+'!'}]}]})));
  await page.getByLabel('Find text',{exact:true}).fill('(a+)+$');
@@ -68,11 +70,11 @@ function App(){const [page,setPage]=useState(()=>JSON.parse(localStorage.getItem
  await page.getByRole('button',{name:'Replace…',exact:true}).click();
  await page.evaluate(()=>window.fixture.setPage(p=>({...p,blocks:[{id:'capped',type:'paragraph',checked:false,content:[{text:'a '.repeat(3000)}]}]})));await page.getByLabel('Find text',{exact:true}).fill('a');await page.waitForFunction(()=>document.querySelector('.document-find-feedback')?.textContent.includes('limit reached'));assert.ok(await page.getByRole('button',{name:'Replace all',exact:true}).isDisabled());
  await page.evaluate(()=>window.fixture.setPage(p=>({...p,blocks:[{id:'oversized',type:'paragraph',checked:false,content:[{text:'x'.repeat(2_000_001)}]}]})));await page.waitForFunction(()=>document.querySelector('.document-find-feedback')?.textContent.includes('2 million'));assert.ok(await page.getByRole('button',{name:'Replace all',exact:true}).isDisabled());
- await page.evaluate(()=>window.fixture.setPage(p=>({...p,blocks:[]})));await page.waitForFunction(()=>document.querySelector('output')?.textContent.includes('of 0'));
+ await page.evaluate(()=>window.fixture.setPage(p=>({...p,blocks:[]})));await page.waitForFunction(()=>document.querySelector('output')?.textContent.includes('No matches'));
  await page.getByRole('button',{name:'Switch page',exact:true}).click();assert.equal(await page.getByRole('button',{name:'Find in page',exact:true}).count(),1);
  await host.click();await page.keyboard.press('Control+f');assert.equal(await page.getByLabel('Find text',{exact:true}).inputValue(),'');
  await page.getByLabel('Find text',{exact:true}).fill('target');await page.waitForTimeout(450);await page.keyboard.press('Escape');assert.ok(await page.evaluate(()=>document.activeElement?.classList.contains('block-content')));
- await page.locator('#outside').focus();const prevented=await page.evaluate(()=>{const e=new KeyboardEvent('keydown',{key:'f',ctrlKey:true,bubbles:true,cancelable:true});document.activeElement.dispatchEvent(e);return e.defaultPrevented;});assert.equal(prevented,false);
+ await page.locator('#outside').focus();const prevented=await page.evaluate(()=>{const e=new KeyboardEvent('keydown',{key:'f',ctrlKey:true,bubbles:true,cancelable:true});document.activeElement.dispatchEvent(e);return e.defaultPrevented;});assert.equal(prevented,true);assert.ok(await page.getByLabel('Find text',{exact:true}).evaluate(el=>document.activeElement===el));await page.keyboard.press('Escape');
  await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Find in page',exact:true}).click();await page.getByLabel('Find text',{exact:true}).fill('target');await page.waitForTimeout(450);
  await page.screenshot({path:join(shots,'mobile.png'),fullPage:false});
  assert.ok(await page.evaluate(()=>Array.from(document.querySelectorAll('.document-find button')).every(b=>b.getBoundingClientRect().height>=44)));
@@ -92,8 +94,9 @@ const {createApp}=await import('../dist/server/http.js');
 const {once}=await import('node:events');
 const appDirectory=await mkdtemp(join(tmpdir(),'noema-find-app-'));
 const db=openDatabase(join(appDirectory,'fixture.sqlite')),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge);
+const presentationEntity=knowledge.create('default',{name:'Synthetic Rowan',type:'person',description:'Fictional presentation fixture'});
 let note=pages.create('default',{title:'Synthetic target title'});
-note=pages.update('default',note.id,{...note,blocks:[{id:'body',type:'paragraph',checked:false,content:[{text:'target ',bold:true},{text:'target',italic:true}]},{id:'table',type:'table',checked:false,content:[],rows:[[[{text:'target',href:'https://example.com'}],[{text:'untouched'}]]]}]});
+note=pages.update('default',note.id,{...note,blocks:[{id:'body',type:'paragraph',checked:false,content:[{text:'target ',bold:true},{text:'target',italic:true}]},{id:'table',type:'table',checked:false,content:[],rows:[[[{text:'target',href:'https://example.com'}],[{text:'untouched'}]]]},{id:'references',type:'paragraph',checked:false,content:[{text:'Notes about '},{entityId:presentationEntity.id,mentionText:'Synthetic Rowan'},{text:' and an unchanged association.'}]},{id:'sample-code',type:'code',checked:false,content:[{text:'const example = "'+ 'x'.repeat(180) +'";'}]}]});
 const other=pages.create('default',{title:'Other target page'});
 const otherBefore=JSON.stringify(pages.get('default',other.id));
 const app=createApp(store,join(repo,'dist/client'));app.listen(0,'127.0.0.1');await once(app,'listening');
@@ -114,6 +117,69 @@ try{
  await page.getByRole('button',{name:'Find in page',exact:true}).click();assert.equal(await page.getByLabel('Find text',{exact:true}).inputValue(),'');await page.getByLabel('Find text',{exact:true}).fill('revised');await page.waitForFunction(()=>document.querySelector('.document-find output')?.textContent.includes('of 3'));
  assert.ok(await page.locator('.document-find').evaluate(el=>el.getBoundingClientRect().height<=60));assert.ok(await page.evaluate(()=>{const widget=document.querySelector('.document-find').getBoundingClientRect(),body=document.querySelector('[data-block-id=body]').getBoundingClientRect();return widget.bottom<body.top;}));await page.screenshot({path:join(shots,'app-desktop.png'),fullPage:false});await page.getByRole('button',{name:'Replace…',exact:true}).click();await page.screenshot({path:join(shots,'app-desktop-replace.png'),fullPage:false});await page.getByRole('button',{name:'Replace…',exact:true}).click();await page.setViewportSize({width:390,height:844});await page.screenshot({path:join(shots,'app-mobile.png'),fullPage:false});
  await page.setViewportSize({width:320,height:700});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.setViewportSize({width:390,height:844});
- await page.getByRole('button',{name:'Close find',exact:true}).click();await page.locator('#page-title').focus();await page.locator('#page-title').evaluate(el=>el.setSelectionRange(2,6));await page.getByRole('button',{name:'Find in page',exact:true}).click();await page.keyboard.press('Escape');assert.deepEqual(await page.locator('#page-title').evaluate(el=>[document.activeElement===el,el.selectionStart,el.selectionEnd]),[true,2,6]);
+ await page.getByRole('button',{name:'Close find',exact:true}).click();await page.locator('#page-title').focus();await page.locator('#page-title').evaluate(el=>el.setSelectionRange(2,6));await page.getByRole('button',{name:'More page actions',exact:true}).click();await page.getByRole('menuitem',{name:'Find in page',exact:true}).click();await page.keyboard.press('Escape');assert.deepEqual(await page.locator('#page-title').evaluate(el=>[document.activeElement===el,el.selectionStart,el.selectionEnd]),[true,2,6]);
+ // Presentation modes exercise the production shell, real persistence and editor.
+ await page.setViewportSize({width:1440,height:1000});
+ const choose=async mode=>{await page.getByRole('radio',{name:mode,exact:true}).click();await page.waitForTimeout(80);};
+ const inFocus=()=>page.evaluate(()=>document.documentElement.dataset.focusWorkspace==='true');
+ const dataBeforeModes=JSON.stringify(pages.get('default',note.id));
+ await page.getByRole('button',{name:'Knowledge',exact:true}).click();
+ await page.locator('#intelligence-panel').waitFor();
+ await page.locator('.sidebar-scroll-region').evaluate(el=>el.scrollTop=40);
+ const arrangement=await page.evaluate(()=>({knowledge:localStorage.getItem('noema-knowledge-panel-open'),toc:localStorage.getItem('noema-table-of-contents-visible'),scroll:document.querySelector('.sidebar-scroll-region').scrollTop}));
+ const mention=page.locator('#blocks .mention').first();await mention.waitFor();
+ await choose('Standard');const normalStyle=await mention.evaluate(el=>({bg:getComputedStyle(el).backgroundColor,border:getComputedStyle(el).borderBottomStyle}));
+ await page.screenshot({path:join(shots,'presentation-desktop-standard.png')});
+ await choose('Subtle');const subtleStyle=await mention.evaluate(el=>({bg:getComputedStyle(el).backgroundColor,border:getComputedStyle(el).borderBottomStyle}));assert.notDeepEqual(normalStyle,subtleStyle);
+ await page.screenshot({path:join(shots,'presentation-desktop-subtle.png')});
+ await page.getByRole('radio',{name:'Subtle',exact:true}).focus();await page.keyboard.press('ArrowLeft');assert.equal(await page.getByRole('radio',{name:'Standard',exact:true}).getAttribute('aria-checked'),'true');await page.keyboard.press('ArrowRight');assert.equal(await page.getByRole('radio',{name:'Subtle',exact:true}).getAttribute('aria-checked'),'true');
+ for(let i=0;i<2;i++) {
+  await choose('Focus');assert.ok(await inFocus());assert.ok(!await page.locator('.sidebar').isVisible());assert.ok(!await page.locator('#intelligence-panel').isVisible());
+  assert.deepEqual(await mention.evaluate(el=>({bg:getComputedStyle(el).backgroundColor,border:getComputedStyle(el).borderBottomStyle})),subtleStyle);
+  const layout=await page.locator('article.page').boundingBox();assert.ok(Math.abs(layout.x+layout.width/2-720)<2);
+  await page.locator('[data-block-id=body] .block-handle').click({force:true});await page.locator('.block-action-menu').waitFor();await page.keyboard.press('Escape');assert.ok(await inFocus());
+  await body.focus();await page.keyboard.press('Control+f');await page.getByLabel('Find text',{exact:true}).fill('revised');await page.keyboard.press('Escape');assert.ok(await inFocus());
+  await body.evaluate(el=>el.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',isComposing:true,bubbles:true})));assert.ok(await inFocus());
+  await page.keyboard.press('Escape');assert.ok(!await inFocus());assert.ok(await page.locator('#intelligence-panel').isVisible());
+  assert.deepEqual(await page.evaluate(()=>({knowledge:localStorage.getItem('noema-knowledge-panel-open'),toc:localStorage.getItem('noema-table-of-contents-visible'),scroll:document.querySelector('.sidebar-scroll-region').scrollTop})),arrangement);
+  assert.equal(await page.getByRole('radio',{name:'Subtle',exact:true}).getAttribute('aria-checked'),'true');
+ }
+ await choose('Focus');await body.focus();await page.mouse.move(700,600);await page.waitForFunction(()=>getComputedStyle(document.querySelector('.focus-controls-reveal')).opacity==='0');await page.screenshot({path:join(shots,'presentation-desktop-focus.png')});
+ await page.locator('.focus-exit').focus();await page.waitForFunction(()=>getComputedStyle(document.querySelector('.focus-controls-reveal')).opacity==='1');
+ // Same-tab reload retains Focus and its previous Subtle mode.
+ await page.reload();await body.waitFor();assert.ok(await inFocus());
+ await page.goto(`http://127.0.0.1:${app.address().port}/?vault=default&page=${other.id}`);await page.locator('#blocks').waitFor();assert.ok(await inFocus());await page.goBack();await body.waitFor();assert.ok(await inFocus());await page.keyboard.press('Escape');assert.equal(await page.getByRole('radio',{name:'Subtle',exact:true}).getAttribute('aria-checked'),'true');
+ assert.equal(JSON.stringify(pages.get('default',note.id)),dataBeforeModes);
+ // Full editing, selection and history remain available in Focus.
+ await choose('Focus');await body.click();await page.keyboard.press('End');await page.keyboard.type(' focus edit');await page.keyboard.press('Control+z');assert.equal(await body.innerText(),'revised revised');await page.keyboard.press('Control+Shift+z');assert.match(await body.innerText(),/focus edit/);await page.keyboard.press('Control+z');await page.keyboard.press('Control+s');
+ await page.getByRole('button',{name:'Exit Focus',exact:false}).click();
+ // Mobile uses real touch emulation, all modes, and a narrow phone width.
+ const mobileContext=await appBrowser.newContext({viewport:{width:390,height:844},hasTouch:true,isMobile:true});
+ const mobilePage=await mobileContext.newPage();mobilePage.on('pageerror',e=>errors.push(e.message));
+ await mobilePage.goto(`http://127.0.0.1:${app.address().port}/?vault=default&page=${note.id}`);await mobilePage.locator('#blocks').waitFor();
+ for(const mode of ['Standard','Subtle','Focus']) {
+  await mobilePage.getByRole('radio',{name:mode,exact:true}).tap();await mobilePage.waitForTimeout(150);
+  await mobilePage.screenshot({path:join(shots,'presentation-mobile-'+mode.toLowerCase()+'.png')});
+  assert.ok(await mobilePage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  if(mode!=='Focus')assert.ok(await mobilePage.evaluate(()=>document.querySelector('.topbar').getBoundingClientRect().bottom<=document.querySelector('.page-title-heading').getBoundingClientRect().top));
+  assert.ok(await mobilePage.getByRole('radio',{name:mode,exact:true}).evaluate(el=>el.getBoundingClientRect().height>=44));
+ }
+ await mobilePage.setViewportSize({width:320,height:700});assert.ok(await mobilePage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ await mobilePage.getByRole('button',{name:'Exit Focus',exact:false}).tap();assert.equal(await mobilePage.getByRole('radio',{name:'Subtle',exact:true}).getAttribute('aria-checked'),'true');
+ await mobilePage.setViewportSize({width:390,height:844});
+ await mobilePage.getByRole('button',{name:'Open navigation',exact:true}).tap();
+ await mobilePage.getByRole('button',{name:'Vault options',exact:true}).tap();await mobilePage.getByRole('menuitem',{name:'Settings',exact:true}).tap();
+ const settings=mobilePage.getByRole('dialog',{name:'Settings',exact:true});await settings.getByRole('radio',{name:'Focus',exact:true}).tap();
+ await mobilePage.keyboard.press('Escape');assert.equal(await mobilePage.evaluate(()=>document.documentElement.dataset.focusWorkspace),'true');
+ assert.equal(await mobilePage.locator('#workspace-navigation').getAttribute('open'),null);
+ await mobilePage.getByRole('button',{name:'Exit Focus',exact:false}).tap();
+ assert.ok(await mobilePage.getByRole('dialog',{name:'Workspace navigation',exact:true}).isVisible());await mobilePage.getByRole('button',{name:'Close navigation',exact:true}).tap();
+ await mobileContext.close();
+ await page.setViewportSize({width:1440,height:1000});await choose('Focus');
+ await mention.click();await page.getByRole('button',{name:'Open entity details',exact:true}).click();assert.ok(!await inFocus());await page.locator('#entity-panel').waitFor();
+ const inspectorNode=await page.locator('#entity-panel').evaluateHandle(el=>el);await choose('Focus');assert.ok(!await page.locator('#entity-panel').isVisible());await page.keyboard.press('Escape');assert.ok(await page.locator('#entity-panel').isVisible());assert.ok(await page.locator('#entity-panel').evaluate((el,original)=>el===original,inspectorNode));
+ const finalBlocks=pages.get('default',note.id).blocks;assert.deepEqual(saved.blocks.map(block=>finalBlocks.find(item=>item.id===block.id)),saved.blocks);assert.ok(finalBlocks.filter(block=>!saved.blocks.some(item=>item.id===block.id)).every(block=>block.type==='paragraph'&&block.content.length===0));
+ assert.equal(JSON.stringify(pages.get('default',other.id)),otherBefore);
+ console.log(JSON.stringify({presentationModes:true,checks:'desktop/mobile screenshots, exact subtle styling, repeated restoration, IME, find Escape priority, reload, data fidelity, editing undo/redo, entity interactions, narrow screens',screenshots:['desktop','mobile'].flatMap(device=>['standard','subtle','focus'].map(mode=>join(shots,'presentation-'+device+'-'+mode+'.png')))}));
  assert.deepEqual(errors,[]);console.log(JSON.stringify({productionApp:true,passed:['replace all single undo/redo','SQLite autosave and reload','styles and URL','unchanged title and other page','query reset on reload'],screenshots:[join(shots,'app-desktop.png'),join(shots,'app-mobile.png')]}));
 }finally{await appBrowser?.close();await new Promise(resolve=>app.close(resolve));db.close();await rm(appDirectory,{recursive:true,force:true});}

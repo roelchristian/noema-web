@@ -55,10 +55,10 @@ export class Knowledge {
     for(const row of this.store.all<{entity_id:string;domain_id:string}>('SELECT d.entity_id,d.domain_id FROM entity_domains d JOIN entities e ON e.id=d.entity_id WHERE e.vault_id=? ORDER BY d.domain_id',vault)) {
       const ids=assignments.get(row.entity_id)??[];ids.push(row.domain_id);assignments.set(row.entity_id,ids);
     }
-    return this.store.all<EntityRow>('SELECT e.*, (SELECT f.status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceStatus, (SELECT f.enrichment_status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceEnrichmentStatus FROM entities e WHERE e.vault_id=? ORDER BY e.name COLLATE NOCASE',vault).map(row => this.entity(row,assignments.get(row.id)??[]));
+    return this.store.all<EntityRow>('SELECT e.*, (SELECT f.size FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceSize, (SELECT f.status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceStatus, (SELECT f.enrichment_status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceEnrichmentStatus FROM entities e WHERE e.vault_id=? ORDER BY e.name COLLATE NOCASE',vault).map(row => this.entity(row,assignments.get(row.id)??[]));
   }
   find(vault: string, id: string) {
-    const row = this.store.get<EntityRow>('SELECT e.*, (SELECT f.status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceStatus, (SELECT f.enrichment_status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceEnrichmentStatus FROM entities e WHERE e.id=? AND e.vault_id=?',id,vault);
+    const row = this.store.get<EntityRow>('SELECT e.*, (SELECT f.size FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceSize, (SELECT f.status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceStatus, (SELECT f.enrichment_status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceEnrichmentStatus FROM entities e WHERE e.id=? AND e.vault_id=?',id,vault);
     return row ? this.entity(row) : undefined;
   }
   require(vault: string, id: string) {

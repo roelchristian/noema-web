@@ -1,3 +1,5 @@
+import {PresentationSelector} from '../settings/PresentationSelector';
+import type {PresentationMode} from '../settings/appearance';
 import {t as uiText} from '../i18n';
 import {PageEditLockDialog} from './PageEditLockDialog';
 import { useState } from 'react';
@@ -11,7 +13,7 @@ import {PageEntityAssociationsDialog} from './PageEntityAssociationsDialog';
 import {rememberMarkdownTyping,useMarkdownTyping} from '../state/markdown-preferences';
 import {formatMarkdownBlocks} from './markdown-typing';
 
-export function PageToolbar({ onRename, entities, onEntityAssociationsChanged, onOpenEntity, tocAvailable=false, tocVisible=true, onToggleToc, onRevealInSidebar, inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, focusedReading, onToggleFocusedReading, onForward, forwardDisabled, onChangeBlocks, onFeaturedImageChange,onEditLockChange, onUndo, onRedo, canUndo, canRedo}: {
+export function PageToolbar({ onRename, entities, onEntityAssociationsChanged, onOpenEntity, tocAvailable=false, tocVisible=true, onToggleToc, onRevealInSidebar, inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, presentationMode, onPresentationModeChange, onForward, forwardDisabled, onChangeBlocks, onFeaturedImageChange,onEditLockChange, onUndo, onRedo, canUndo, canRedo}: {
   onRename?:()=>void;
   entities?:Entity[]; onEntityAssociationsChanged?:()=>Promise<void>; onOpenEntity?:(id:string)=>void;
   tocAvailable?:boolean;tocVisible?:boolean;onToggleToc?:()=>void;
@@ -20,7 +22,7 @@ export function PageToolbar({ onRename, entities, onEntityAssociationsChanged, o
   onEditLockChange:(locked:boolean,password?:string)=>Promise<void>;
   onForward?: () => void; forwardDisabled?: boolean;
   inactive?: boolean;
-  onAI: () => void; aiOpen: boolean; focusedReading: boolean; onToggleFocusedReading: () => void;
+  onAI: () => void; aiOpen: boolean; presentationMode: PresentationMode; onPresentationModeChange: (mode: PresentationMode) => void;
   favourite: boolean; onOrganizationChange: (data: Organization) => void; page: Page; onDelete: () => Promise<void>;
   onError: (error: unknown) => void;
   onFeaturedImageChange: (imageId: string | null) => void;
@@ -34,7 +36,6 @@ export function PageToolbar({ onRename, entities, onEntityAssociationsChanged, o
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const markdownTyping=useMarkdownTyping();
   const editingDisabled=!!page.editLocked||changingLock;
-  const readingLabel=focusedReading?uiText("Turn off focused reading"):uiText("Turn on focused reading");
   const contentsLabel=tocVisible?uiText("Hide table of contents"):uiText("Show table of contents");
   function toggleMarkdownTyping() {
     if(!markdownTyping)onChangeBlocks(formatMarkdownBlocks(page.blocks));
@@ -65,13 +66,13 @@ export function PageToolbar({ onRename, entities, onEntityAssociationsChanged, o
         {label:uiText("With a password…"),icon:'lock',description:uiText("Require a password to unlock editing."),onSelect:()=>setLockOpen(true)},
       ]};
   return <><div inert={inactive} className="page-toolbar" role="group" aria-label={uiText("Page tools")}>
+    <PresentationSelector value={presentationMode} onChange={onPresentationModeChange}/>
     <div className="page-toolbar-history page-toolbar-secondary" role="group" aria-label={uiText("Editing")}>
       <button type="button" className="page-tool" aria-label={uiText("Undo")} title={uiText("Undo")+' · ⌘/Ctrl+Z'} disabled={editingDisabled||!canUndo} onMouseDown={event=>{if(event.button===0)event.preventDefault();}} onClick={onUndo}><Icon name="undo"/></button>
       <button type="button" className="page-tool" aria-label={uiText("Redo")} title={uiText("Redo")+' · ⌘/Ctrl+Shift+Z'} disabled={editingDisabled||!canRedo} onMouseDown={event=>{if(event.button===0)event.preventDefault();}} onClick={onRedo}><Icon name="redo"/></button>
     </div>
     <div className="page-toolbar-reading page-toolbar-secondary" role="group" aria-label={uiText("View")}>
       {tocAvailable&&onToggleToc&&<button type="button" className="page-tool" aria-label={contentsLabel} title={contentsLabel} aria-pressed={tocVisible} onClick={onToggleToc}><Icon name="view-list"/></button>}
-      <button type="button" className="page-tool focused-reading-button" aria-label={readingLabel} title={readingLabel} aria-pressed={focusedReading} onClick={onToggleFocusedReading}><Icon name="scan-eye"/></button>
     </div>
     <button type="button" className={'page-tool favourite-button ' + (favourite ? 'is-favourite' : '')} disabled={saving} aria-busy={saving} aria-pressed={favourite} aria-label={favourite ? uiText("Remove page from favourites") : uiText("Add page to favourites")} title={favourite ? uiText("Remove from favourites") : uiText("Add to favourites")} onClick={() => void toggleFavourite()}><Icon name="star"/></button>
     <button type="button" className="page-tool page-tool-labeled knowledge-toggle" aria-expanded={aiOpen} aria-controls="intelligence-panel" aria-label={uiText("Knowledge")} title={uiText("Knowledge")} onClick={onAI}><Icon name="knowledge"/><span>{uiText("Knowledge")}</span></button>
@@ -80,8 +81,8 @@ export function PageToolbar({ onRename, entities, onEntityAssociationsChanged, o
       ...(onForward ? [{get label(){return uiText("Go forward")}, icon: 'chevron', disabled: forwardDisabled, onSelect: onForward}] : []),
       ...(onRename?[{label:uiText("Rename"),icon:'edit' as const,disabled:editingDisabled,onSelect:onRename}]:[]),
       ...(entities?[{label:uiText("Organize with entities…"),icon:"knowledge" as const,onSelect:()=>setEntityAssociationsOpen(true)}]:[]),
+      {label:uiText("Find in page"),icon:"search",description:"⌘F / Ctrl+F",onSelect:()=>document.dispatchEvent(new Event("noema:document-find"))},
       {label: uiText("Reveal in sidebar"), icon: 'folder', onSelect: onRevealInSidebar},
-      {label:uiText("Focused reading"),icon:'scan-eye',checked:focusedReading,onSelect:onToggleFocusedReading},
       ...(tocAvailable&&onToggleToc?[{label:uiText("Table of contents"),icon:'view-list',checked:tocVisible,onSelect:onToggleToc}]:[]),
       {label: uiText("Featured image…"), icon: 'image', disabled:editingDisabled, onSelect: () => setFeaturedImageOpen(true)},
       {get label(){return uiText("Editing")}, icon: 'edit', disabled: editingDisabled, children: [

@@ -268,6 +268,7 @@ test('legacy title endpoint uses selective enrichment with revision, CSRF and st
 
 // Payload digests freeze the complete prompt/input/schema without duplicating product prompts.
 // Captured from main 2bc0b3a using synthetic inputs; policy fields stay readable beside each digest.
+// Persona payload digests and byte counts include the revised Oxford Don instructions.
 test('generation modes preserve complete provider payloads and observer byte accounting',async()=>{
   const {generationContracts}=await import('./helpers/generation-contract.ts');
   const {createHash}=await import('node:crypto');

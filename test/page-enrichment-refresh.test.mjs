@@ -122,7 +122,7 @@ test('empty summary and subject placeholders reflect only their queued fields an
     assert.doesNotMatch(document.querySelector('.page-domain-summary').textContent,/Unclassified/);
     // A classification-only cooldown must not claim summary generation is running.
     await act(async()=>render({...pending,enrichmentPendingFields:['domains']}));
-    assert.equal(document.querySelector('.knowledge-summary .knowledge-empty').textContent,'No AI summary available yet.');
+    assert.equal(document.querySelector('.knowledge-summary .knowledge-empty-action').textContent,'Generate summary');
     assert.equal(document.querySelector('.page-domain-summary [role="status"]').textContent,'Categorizing this page...');
     items=summary('Completed summary');
     await act(async()=>{render({...pending,pageDomains:domains,enrichmentPending:false,enrichmentPendingFields:[]});window.dispatchEvent(new Event('focus'));});
@@ -140,5 +140,29 @@ test('manual summary generation shows the same visible progress placeholder befo
     await act(async()=>finish({summary:'Manual summary',revision:1,model:'test',reasoningEffort:'low'}));
     assert.equal(document.querySelector('#knowledge-summary-text').textContent,'Manual summary');
     assert.equal(document.querySelector('.knowledge-summary .knowledge-empty'),null);
+  });
+});
+
+test('summary preview expands inline and its action menu supports Escape and deletion',async t=>{
+  await panelFixture(t,async({dom,render})=>{
+    t.mock.method(api,'enrichments',async()=>summary('A longer saved summary'));
+    const remove=t.mock.method(api,'deleteSummary',async()=>({ok:true}));
+    const style=document.createElement('style');style.textContent='.ai-summary {line-height:20px}';document.head.append(style);
+    Object.defineProperty(dom.window.HTMLElement.prototype,'scrollHeight',{configurable:true,get(){return 80;}});
+    await act(async()=>render(note()));
+    const toggle=document.querySelector('.knowledge-summary-toggle');assert.ok(toggle);
+    assert.equal(toggle.textContent,'Read more');assert.equal(toggle.getAttribute('aria-expanded'),'false');
+    await act(async()=>toggle.click());
+    assert.equal(toggle.textContent,'Show less');assert.equal(toggle.getAttribute('aria-expanded'),'true');
+    assert.equal(document.querySelector('#knowledge-summary-text').classList.contains('is-collapsed'),false);
+    await act(async()=>toggle.click());
+    assert.equal(document.querySelector('#knowledge-summary-text').classList.contains('is-collapsed'),true);
+    const menu=document.querySelector('.knowledge-summary-menu');menu.open=true;
+    await act(async()=>menu.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})));
+    assert.equal(menu.open,false);assert.equal(document.activeElement,menu.querySelector('summary'));
+    menu.open=true;
+    await act(async()=>menu.querySelector('[aria-label="Delete summary"]').click());
+    assert.equal(remove.mock.callCount(),1);assert.equal(document.querySelector('#knowledge-summary-text'),null);
+    assert.equal(document.querySelector('.knowledge-summary .knowledge-empty-action').textContent,'Generate summary');
   });
 });

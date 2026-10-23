@@ -3238,3 +3238,4 @@
 .editor-speech[data-loading=true] .speech-status strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .editor-speech[data-loading=true] .speech-status > span:last-child { flex-shrink: 0; }
 .editor-speech[data-loading=true] .speech-dismiss { grid-column: 3; }
+.block[data-speech-current] { outline: 1px solid var(--accent); outline-offset: 3px; border-radius: 3px; }

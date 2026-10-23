@@ -226,9 +226,9 @@ test('Gemini editor generations pin their provider and voice, download every sec
  function Harness(){hook=useSpeech('default','synthetic-page');return hook.player;}
  await act(async()=>root.render(createElement(Harness)));
  await act(async()=>hook.speak('a'.repeat(3600)));assert.equal(pending.length,1);assert.equal(created.length,0);
- await act(async()=>pending[0].resolve(new Response(wav,{headers:{'Content-Type':'audio/wav'}})));assert.equal(pending.length,2);assert.equal(created.length,0);
- await act(async()=>pending[1].resolve(new Response(wav,{headers:{'Content-Type':'audio/wav'}})));assert.equal(created.length,1);assert.equal(created[0].size,56);assert.ok(document.querySelector('a[download="noema-speech.wav"]'));
+ await act(async()=>pending[0].resolve(new Response(wav,{headers:{'Content-Type':'audio/wav'}})));assert.equal(pending.length,2);assert.equal(created.length,1);assert.ok(document.querySelector('audio'));assert.equal(document.querySelector('a[download]'),null);
+ await act(async()=>pending[1].resolve(new Response(wav,{headers:{'Content-Type':'audio/wav'}})));assert.equal(created.length,2);assert.equal(created[1].size,56);assert.ok(document.querySelector('a[download="noema-speech.wav"]'));
  await act(async()=>hook.speak('b'.repeat(3600)));assert.equal(pending.length,3);
  provider='kokoro';voice='puck';await act(async()=>window.dispatchEvent(new Event('noema:tts-preferences')));assert.equal(pending[2].signal.aborted,true);
- await act(async()=>pending[2].resolve(new Response(wav,{headers:{'Content-Type':'audio/wav'}})));assert.equal(pending.length,3);assert.equal(created.length,1);assert.equal(document.querySelector('.editor-speech'),null);
+ await act(async()=>pending[2].resolve(new Response(wav,{headers:{'Content-Type':'audio/wav'}})));assert.equal(pending.length,3);assert.equal(created.length,2);assert.equal(document.querySelector('.editor-speech'),null);
 });

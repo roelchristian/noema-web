@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {api,createSpeech,ApiError} from '../api';
 import {cleanSpeechText} from '../../shared/speech-text';
+import {SpeechPlayer} from './SpeechPlayer';
 import {defaultSpeechVoiceFor,defaultSpeechProvider,isSpeechProvider,isSpeechVoice,type SpeechProvider,type SpeechVoice} from '../../shared/intelligence';
 export {speechText} from '../../shared/speech-text';
 
@@ -38,7 +39,7 @@ export function useSpeech(vaultId:string,pageId?:string) {
   const [enabled,setEnabled]=useState(false);
   const [provider,setProvider]=useState<SpeechProvider>(defaultSpeechProvider);
   const [voice,setVoice]=useState<SpeechVoice>(defaultSpeechVoiceFor(defaultSpeechProvider));
-  const [state,setState]=useState<{loading:boolean;url:string;error:string;part:number;total:number}|null>(null);
+  const [state,setState]=useState<{loading:boolean;url:string;error:string;part:number;total:number;assembling?:boolean}|null>(null);
   const controller=useRef<AbortController|null>(null),url=useRef(''),generation=useRef(0);
   function release(){if(url.current){URL.revokeObjectURL(url.current);url.current='';}}
   function stop(){generation.current++;controller.current?.abort();controller.current=null;release();setState(null);}
@@ -62,6 +63,7 @@ export function useSpeech(vaultId:string,pageId?:string) {
         if(token!==generation.current||request.signal.aborted)return;
         part++;
       }
+      setState({loading:true,url:'',error:'',part:chunks.length,total:chunks.length,assembling:true});
       const audio=await combineSpeechAudio(parts);
       if(token!==generation.current)return;
       url.current=URL.createObjectURL(audio);setState({loading:false,url:url.current,error:'',part:chunks.length,total:chunks.length});
@@ -80,10 +82,6 @@ export function useSpeech(vaultId:string,pageId?:string) {
     if(!chunks.length){setState({loading:false,url:'',error:'This block has no text to speak.',part:0,total:0});return;}
     void load(chunks,generation.current);
   }
-  const player=state&&<aside className="editor-speech" aria-label="Speak selected blocks">
-    <div role="status">{state.error|| (state.loading?'Generating speech…':'AI-generated voice')}{state.total>1&&` · ${state.part} / ${state.total}`}</div>
-    {state.url&&<><audio key={state.url} controls autoPlay src={state.url} aria-label="AI-generated speech" onError={()=>{release();setState({...state,url:'',error:'Could not play this audio. Select Speak to try again.'});}}/><a className="button" href={state.url} download="noema-speech.wav">Download audio</a></>}
-    <button type="button" className="button" onClick={stop}>{state.error?'Dismiss':'Stop'}</button>
-  </aside>;
+  const player=state&&<SpeechPlayer key={generation.current} state={state} voice={voice} onClose={stop} onError={()=>{release();setState({...state,loading:false,url:'',error:'Could not play this audio. Select Speak to try again.'});}}/>;
   return {enabled,speak,player};
 }

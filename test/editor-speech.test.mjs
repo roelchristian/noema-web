@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {act,createElement} from 'react';
 import {createRoot} from 'react-dom/client';
 import {speechText,speechChunks,combineSpeechAudio,useSpeech} from '../src/client/editor/speech.tsx';
+import {SpeechPlayer} from '../src/client/editor/SpeechPlayer.tsx';
 import {api} from '../src/client/api.ts';
 import {cleanSpeechText} from '../src/shared/speech-text.ts';
 import {setupDOM} from './helpers/dom.mjs';
@@ -70,8 +71,16 @@ test('speech chunks preserve all trimmed text, readable boundaries and Unicode p
 
 async function speechFixture(t){
   const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));
+  const openMenus=new WeakSet(),originalMatches=env.dom.window.HTMLElement.prototype.matches;
+  t.mock.method(env.dom.window.HTMLElement.prototype,'matches',function(selector){return selector===':popover-open'?openMenus.has(this):originalMatches.call(this,selector);});
+  env.dom.window.HTMLElement.prototype.showPopover=function(){openMenus.add(this);};
+  env.dom.window.HTMLElement.prototype.hidePopover=function(){openMenus.delete(this);};
+  const previousGroup=Object.getOwnPropertyDescriptor(globalThis,'HTMLOptGroupElement');
+  Object.defineProperty(globalThis,'HTMLOptGroupElement',{configurable:true,value:env.dom.window.HTMLOptGroupElement});
+  env.defer(()=>{if(previousGroup)Object.defineProperty(globalThis,'HTMLOptGroupElement',previousGroup);else delete globalThis.HTMLOptGroupElement;});
   let hook,enabled=true,voice='puck',provider='kokoro',sequence=0;
-  const requests=[],created=[],revoked=[];
+  const requests=[],created=[],revoked=[],autoplayed=[];
+  t.mock.method(env.dom.window.HTMLMediaElement.prototype,'play',async function(){autoplayed.push(this);});
   t.mock.method(api,'intelligence',async()=>({ttsEnabled:enabled,ttsVoice:voice,ttsProvider:provider}));
   t.mock.method(globalThis,'fetch',async(route,options)=>{assert.equal(route,'/api/intelligence/speech');let resolve;const promise=new Promise(done=>{resolve=done;});requests.push({options,resolve});return promise;});
   t.mock.method(URL,'createObjectURL',blob=>{created.push(blob);return 'blob:speech-'+(++sequence);});
@@ -81,7 +90,7 @@ async function speechFixture(t){
   let mounted=true;
   const unmount=async()=>{if(mounted){mounted=false;await act(async()=>root.unmount());}};
   env.defer(unmount);
-  return {env,requests,created,revoked,hook:()=>hook,unmount,externalVoice(value){voice=value;},externalProvider(value,nextVoice){provider=value;voice=nextVoice;},async setProvider(value,nextVoice){provider=value;voice=nextVoice;await act(async()=>window.dispatchEvent(new Event('noema:tts-preferences')));},async setVoice(value){voice=value;await act(async()=>window.dispatchEvent(new Event('noema:tts-preferences')));},async navigate(vault,page){await act(async()=>root.render(createElement(Harness,{vault,page})));},async speak(text){await act(async()=>hook.speak(text));},async resolve(index,response=wavResponse()){await act(async()=>requests[index].resolve(response));},async toggle(value){enabled=value;await act(async()=>window.dispatchEvent(new Event('noema:tts-preferences')));}};
+  return {env,requests,created,revoked,autoplayed,hook:()=>hook,unmount,externalVoice(value){voice=value;},externalProvider(value,nextVoice){provider=value;voice=nextVoice;},async setProvider(value,nextVoice){provider=value;voice=nextVoice;await act(async()=>window.dispatchEvent(new Event('noema:tts-preferences')));},async setVoice(value){voice=value;await act(async()=>window.dispatchEvent(new Event('noema:tts-preferences')));},async navigate(vault,page){await act(async()=>root.render(createElement(Harness,{vault,page})));},async speak(text){await act(async()=>hook.speak(text));},async resolve(index,response=wavResponse()){await act(async()=>requests[index].resolve(response));},async toggle(value){enabled=value;await act(async()=>window.dispatchEvent(new Event('noema:tts-preferences')));}};
 }
 
 test('speech assembles every selection chunk before playback and exposes a complete download without another request',async t=>{
@@ -111,6 +120,133 @@ test('stopping later selection chunks aborts requests and prevents partial playb
   await act(async()=>document.querySelector('.editor-speech button').click());
   assert.equal(f.requests[1].options.signal.aborted,true);
   await f.resolve(1);assert.equal(f.created.length,0);assert.equal(document.querySelector('.editor-speech'),null);
+});
+
+test('speech generation shows a compact spinner, elapsed time and section status until ready',async t=>{
+  const f=await speechFixture(t);await f.speak('Short selection');
+  assert.equal(document.querySelector('progress'),null);
+  assert.ok(document.querySelector('.speech-status .scan-spinner[aria-hidden=true]'));
+  assert.equal(document.querySelector('.speech-generation-time').textContent,'0:00');
+  assert.equal(document.querySelector('button').getAttribute('aria-label'),'Cancel speech generation');
+  await f.speak('A'.repeat(5000));
+  assert.match(document.querySelector('[role=status]').textContent,/1 \/ 2/);
+  await f.resolve(1);
+  assert.match(document.querySelector('[role=status]').textContent,/2 \/ 2/);
+  assert.ok(document.querySelector('.scan-spinner'));
+  await f.resolve(2);
+  assert.equal(document.querySelector('.scan-spinner'),null);
+  assert.equal(document.querySelector('.speech-generation-time'),null);
+  assert.match(document.querySelector('[role=status]').textContent,/Ready to listen/);
+});
+
+test('floating speech follows the workspace bounds as sidebars and focus layout change',async t=>{
+  const env=setupDOM(t,{html:'<main><div id="mount"></div></main>'});
+  const main=document.querySelector('main'),root=createRoot(document.querySelector('#mount'));
+  let left=240,width=720,resize=()=>{},disconnected=false;
+  t.mock.method(main,'getBoundingClientRect',()=>new env.dom.window.DOMRect(left,0,width,900));
+  const previous=Object.getOwnPropertyDescriptor(globalThis,'ResizeObserver');
+  Object.defineProperty(globalThis,'ResizeObserver',{configurable:true,value:class {
+    constructor(callback){resize=()=>callback([],this);}
+    observe(target){assert.equal(target,main);}
+    disconnect(){disconnected=true;}
+  }});
+  env.defer(()=>{if(previous)Object.defineProperty(globalThis,'ResizeObserver',previous);else delete globalThis.ResizeObserver;});
+  env.defer(async()=>act(async()=>root.unmount()));
+  await act(async()=>root.render(createElement(SpeechPlayer,{state:{loading:true,url:'',error:'',part:1,total:1},voice:'puck',onClose(){},onError(){}})));
+  const player=document.querySelector('.editor-speech');
+  assert.equal(player.parentElement,document.body,'The floating player stays outside the note layout');
+  assert.equal(player.style.getPropertyValue('--speech-workspace-center'),'600px');
+  assert.equal(player.style.getPropertyValue('--speech-workspace-width'),'720px');
+  width=1040;await act(async()=>resize());
+  assert.equal(player.style.getPropertyValue('--speech-workspace-center'),'760px','Closing the right sidebar shifts the player with the workspace');
+  left=0;width=1280;await act(async()=>resize());
+  assert.equal(player.style.getPropertyValue('--speech-workspace-center'),'640px','Focus mode centers within the full workspace');
+  left=240;width=480;await act(async()=>window.dispatchEvent(new Event('resize')));
+  assert.equal(player.style.getPropertyValue('--speech-workspace-center'),'480px');
+  assert.equal(player.dataset.compact,'true','Compact controls depend on available workspace width');
+  await act(async()=>root.unmount());assert.equal(disconnected,true);
+});
+
+test('speech controls follow media playback, seek, speed, buffering and completion',async t=>{
+  const f=await speechFixture(t);await f.speak('Audio');await f.resolve(0);
+  const audio=document.querySelector('audio');
+  let paused=true,ended=false;
+  Object.defineProperties(audio,{duration:{value:90},paused:{get:()=>paused},ended:{get:()=>ended}});
+  t.mock.method(audio,'play',async()=>{paused=false;audio.dispatchEvent(new Event('play'));audio.dispatchEvent(new Event('playing'));});
+  t.mock.method(audio,'pause',()=>{paused=true;audio.dispatchEvent(new Event('pause'));});
+  await act(async()=>audio.dispatchEvent(new Event('loadedmetadata')));
+  const seek=document.querySelector('[aria-label="Seek speech"]');
+  assert.equal(seek.disabled,false);assert.equal(seek.max,'90');
+  await act(async()=>document.querySelector('[aria-label="Play speech"]').click());
+  assert.match(document.querySelector('[role=status]').textContent,/Playing/);
+  await act(async()=>document.querySelector('[aria-label="Pause speech"]').click());
+  assert.equal(paused,true);assert.match(document.querySelector('[role=status]').textContent,/Paused/);
+  const speed=document.querySelector('select');
+  await act(async()=>{speed.value='1.5';speed.dispatchEvent(new Event('change',{bubbles:true}));});
+  assert.equal(audio.playbackRate,1.5);
+  await act(async()=>{
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set.call(seek,'30');
+    seek.dispatchEvent(new Event('input',{bubbles:true}));seek.dispatchEvent(new Event('change',{bubbles:true}));
+  });
+  assert.equal(audio.currentTime,30);assert.equal(seek.getAttribute('aria-valuetext'),'0:30 of 1:30');
+  await act(async()=>audio.dispatchEvent(new Event('waiting')));
+  assert.match(document.querySelector('[role=status]').textContent,/Loading audio/);
+  await act(async()=>{ended=true;audio.dispatchEvent(new Event('ended'));});
+  assert.match(document.querySelector('[role=status]').textContent,/Finished reading/);
+  await act(async()=>document.querySelector('[aria-label="Replay speech"]').click());
+  assert.equal(audio.currentTime,0);assert.match(document.querySelector('[role=status]').textContent,/Playing/);
+});
+
+test('completed speech starts automatically once and keeps voice details in the info disclosure',async t=>{
+  const f=await speechFixture(t);await f.speak('A'.repeat(5000));await f.resolve(0);
+  assert.equal(f.autoplayed.length,0,'Partial selections do not start playback');
+  await f.resolve(1);assert.deepEqual(f.autoplayed,[document.querySelector('audio')]);
+  const details=document.querySelector('.speech-info');
+  assert.equal(details.open,false);assert.match(details.textContent,/Puck.*AI-generated voice/);
+  assert.doesNotMatch(document.querySelector('.speech-heading').textContent,/Puck|AI-generated voice|Reading aloud/);
+  await act(async()=>{details.open=true;details.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));});
+  assert.equal(details.open,false);assert.equal(document.activeElement,details.querySelector('summary'));
+  await act(async()=>{details.open=true;document.body.dispatchEvent(new Event('pointerdown',{bubbles:true}));});
+  assert.equal(details.open,false);
+  assert.equal(f.autoplayed.length,1,'Info interactions do not restart playback');
+});
+
+test('blocked autoplay retains manual play and download',async t=>{
+  const f=await speechFixture(t);await f.speak('Audio');
+  t.mock.method(f.env.dom.window.HTMLMediaElement.prototype,'play',async()=>{throw new Error('User gesture required');});
+  await f.resolve(0);
+  assert.match(document.querySelector('.speech-notice').textContent,/Press play to listen/);
+  assert.ok(document.querySelector('[aria-label="Play speech"]'));
+  assert.ok(document.querySelector('a[download]'));
+});
+
+test('speech speed uses the shared Noema dropdown and applies keyboard selections',async t=>{
+  const f=await speechFixture(t);await f.speak('Audio');await f.resolve(0);
+  const trigger=document.querySelector('.speech-speed [role=combobox]'),menu=document.querySelector('.speech-speed [role=listbox]');
+  assert.equal(trigger.getAttribute('aria-label'),'Playback speed');
+  assert.equal(trigger.textContent,'1×');
+  t.mock.method(trigger,'getBoundingClientRect',()=>new f.env.dom.window.DOMRect(300,720,50,30));
+  Object.defineProperty(menu,'scrollHeight',{value:180});
+  await act(async()=>trigger.click());
+  assert.equal(trigger.getAttribute('aria-expanded'),'true');
+  assert.equal(menu.querySelectorAll('[role=option]').length,5);
+  assert.ok(parseFloat(menu.style.top)<720,'The speed menu opens above the bottom bar');
+  await act(async()=>{
+    trigger.dispatchEvent(new window.KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));
+    trigger.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+  });
+  assert.equal(document.querySelector('audio').playbackRate,1.25);
+  assert.equal(trigger.textContent,'1.25×');
+  assert.equal(document.activeElement,trigger);
+});
+
+test('a blocked play attempt leaves audio downloadable with a useful message',async t=>{
+  const f=await speechFixture(t);await f.speak('Audio');await f.resolve(0);
+  t.mock.method(document.querySelector('audio'),'play',async()=>{throw new Error('Not allowed');});
+  await act(async()=>document.querySelector('[aria-label="Play speech"]').click());
+  assert.match(document.querySelector('.speech-notice').textContent,/Press play to try again/);
+  assert.ok(document.querySelector('[aria-label="Play speech"]'));
+  assert.ok(document.querySelector('a[download]'));
 });
 
 test('a later failed chunk never exposes a partial selection download',async t=>{

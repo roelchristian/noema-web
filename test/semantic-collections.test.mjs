@@ -37,7 +37,8 @@ function fixture(t){
 
 test('semantic definitions and vectors reject malformed models, nonfinite values, oversized inputs and unsafe thresholds',()=>{
  for(const value of [null,{},config({version:2}),config({description:''}),config({description:'x'.repeat(2001)}),config({threshold:NaN}),config({threshold:.99}),config({minCoverage:0}),{...config(),sql:'SELECT *'}])assert.throws(()=>parseSemanticCollection(value));
- for(const value of [[],[1,0],vector().map(()=>0),vector().map(()=>Infinity),[...vector().slice(0,-1),null]])fails(()=>semanticVector(value),400);
+ const sparse=Array(embeddingDimensions);sparse[0]=1;
+ for(const value of [[],[1,0],sparse,vector().map(()=>0),vector().map(()=>Infinity),[...vector().slice(0,-1),null]])fails(()=>semanticVector(value),400);
  assert.deepEqual(parseSemanticCollection({version:1,description:' scope '}),config({description:'scope'}));assert.equal(semanticVector(vector()).length,embeddingDimensions);
 });
 

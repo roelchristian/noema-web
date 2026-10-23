@@ -516,7 +516,8 @@ export class VaultBackups {
           const startLine=integer(reference,'startLine',1),endLine=integer(reference,'endLine',startLine);
           if(reference.sourceHash!==hash||reference.startOffset!==start||reference.endOffset!==end||reference.excerpt!==excerpt)throw invalid();
           if((source!==null&&reference.sourceId!==row.source_id)||(file!==null&&reference.fileId!==row.file_id))throw invalid();
-          const restoredReference={...reference,id:randomUUID(),sourceId:source??detached(detachedSources,reference.sourceId),fileId:file??detached(detachedFiles,reference.fileId),startLine,endLine,...(source===null||file===null?{stale:true}:{})};
+          const citationId=name(reference,'id');if(!citationIds.has(citationId))citationIds.set(citationId,randomUUID());
+          const restoredReference={...reference,id:citationIds.get(citationId),sourceId:source??detached(detachedSources,reference.sourceId),fileId:file??detached(detachedFiles,reference.fileId),startLine,endLine,...(source===null||file===null?{stale:true}:{})};
           return {vault_id:vault,source_id:source,file_id:file,source_hash:hash,start_offset:start,end_offset:end,excerpt,reference_json:JSON.stringify(restoredReference),created_at:timestamp(row,'created_at')};
         };
         for(const row of rows.source_reading_locations) {
@@ -700,7 +701,7 @@ export class VaultBackups {
           // The archived decision is authoritative over that fresh pending record.
           this.store.run(`INSERT INTO property_proposals (${columns.join(',')}) VALUES (${columns.map(()=>'?').join(',')}) ON CONFLICT(id) DO UPDATE SET ${columns.filter(column=>column!=='id').map(column=>`${column}=excluded.${column}`).join(',')}`,...Object.values(fields));
         }
-        restorePageVersions(this.store,vault,rows.page_versions,{pages:pageIds,entities:entityIds,files:restoredSourceFiles,images:imageIds,citations:citationIds});
+        restorePageVersions(this.store,vault,rows.page_versions,{pages:pageIds,entities:entityIds,files:restoredSourceFiles,images:imageIds,citations:citationIds,detachedEntities:detachedSources,detachedFiles});
         // Recompute after validation/remapping instead of trusting a supplied page fingerprint.
         syncReadingNotesCollection(this.store,vault);
         for(const id of pageIds.values())if(!this.store.get<{deleted_at:string|null}>('SELECT deleted_at FROM pages WHERE id=?',id)!.deleted_at)pages.get(vault,id);

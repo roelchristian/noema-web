@@ -11,7 +11,7 @@ import {Knowledge} from './knowledge.js';
 import {historyHash} from './page-history.js';
 
 type Row=Record<string,unknown>;
-type Maps={pages:Map<string,string>;entities:Map<string,string>;files:Map<string,string>;images:Map<string,string>;citations:Map<string,string>};
+type Maps={pages:Map<string,string>;entities:Map<string,string>;files:Map<string,string>;images:Map<string,string>;citations:Map<string,string>;detachedEntities?:Map<string,string>;detachedFiles?:Map<string,string>};
 const invalid=()=>new HttpError(400,'This backup contains invalid page history or missing historical assets.');
 const kinds:PageVersionKind[]=['baseline','created','edit','ai_acceptance','import','checkpoint','restore'];
 function list(value:unknown):unknown[] {if(!Array.isArray(value)||value.length>2000)throw invalid();return value;}
@@ -20,7 +20,7 @@ function integer(value:unknown,min:number):number {if(typeof value!=='number'||!
 /** History is imported inside the vault's transaction; no invented legacy versions. */
 export function restorePageVersions(store:Store,vault:string,rows:Row[],maps:Maps):void {
   const versionsById=new Map(rows.map(row=>[row.id,row]));
-  const versionIds=new Map<string,string>(),detached=new Map<string,Map<string,string>>();
+  const versionIds=new Map<string,string>(),detached=new Map<string,Map<string,string>>([['entity',maps.detachedEntities??new Map()],['file',maps.detachedFiles??new Map()]]);
   const strict=(map:Map<string,string>,value:unknown)=>{const id=required(value),mapped=map.get(id);if(!mapped)throw invalid();return mapped;};
   // A deleted historical target stays detached, with one consistent new identity.
   // Never bind a restored archive to an entity in another vault or recreate it.

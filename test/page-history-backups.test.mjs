@@ -93,6 +93,10 @@ test('reading-note anchors and stable inline citations survive historical backup
   const named=s.history.list(restored.id,newPage.id).find(v=>v.name==='Reading evidence'),snapshot=s.history.get(restored.id,newPage.id,named.id).snapshot;
   assert.notEqual(snapshot.readingNote.sourceId,source.id);assert.notEqual(snapshot.readingNote.fileId,file.id);
   assert.equal(snapshot.readingNote.reference.sourceId,snapshot.readingNote.sourceId);assert.equal(snapshot.readingNote.reference.fileId,snapshot.readingNote.fileId);
+  const current=s.pages.get(restored.id,newPage.id);
+  assert.equal(current.blocks[0].content[0].sourceReference.id,snapshot.blocks[0].content[0].sourceReference.id);
+  const currentAnchor=JSON.parse(s.store.get('SELECT reference_json FROM page_reading_notes WHERE page_id=?',newPage.id).reference_json);
+  assert.equal(currentAnchor.id,snapshot.readingNote.reference.id);
   assert.equal(snapshot.blocks[0].content[0].sourceReference.fileId,snapshot.readingNote.fileId);
   assert.equal(snapshot.blocks[0].content[0].sourceReference.sourceId,snapshot.readingNote.sourceId);
   const copied=s.history.copy(restored.id,newPage.id,named.id,{revision:s.pages.get(restored.id,newPage.id).revision},s.pages);

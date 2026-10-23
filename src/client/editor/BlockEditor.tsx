@@ -236,15 +236,17 @@ export function BlockEditor(props: Props) {
   const speech=useSpeech(props.vaultId,props.pageId);
   const speechSources=useRef(new Map<string,{source:string;projection:string}>());
   const speechSelection=useRef<string|null>(null);
+  function validSpeechSource(id:string):boolean {
+    const block=latest.current.blocks.find(item=>item.id===id),previous=speechSources.current.get(id);
+    return !!block&&previous?.source===JSON.stringify(block)&&previous.projection===speechText([block],[id],latest.current.entities);
+  }
   useEffect(()=>{
-    const id=speech.currentBlockId;
+    const id=speech.activeBlockId;
     if(!id)return;
-    const block=blocks.find(item=>item.id===id);
-    // Check only the current source block. Advancing checks the next block before
-    // highlighting it; typing never transforms or hashes the whole document.
-    const previous=speechSources.current.get(id);
-    if(!block||previous?.source!==JSON.stringify(block)||previous.projection!==speechText([block],[id],entities))speech.stop();
-  },[blocks,entities,speech.currentBlockId]);
+    // The active source remains guarded while paused. Advancing validates the
+    // next block before playback; typing only projects this one source block.
+    if(!validSpeechSource(id))speech.stop();
+  },[blocks,entities,speech.activeBlockId]);
   const speechActive=!!speech.player;
   useEffect(()=>{
     if(!speechActive)return;
@@ -698,10 +700,12 @@ export function BlockEditor(props: Props) {
   function speakChoice(ids:string[]):Choice[] {
     return speech.enabled?[{title:uiText("Speak"),detail:uiText("Read aloud with an AI-generated voice"),icon:'speaker',pick:()=>{
       const draft=commitSelection(),selected=new Set(ids);
+      // The pre-play validator can run before React echoes this explicit commit.
+      latest.current={...latest.current,blocks:draft};
       const selectedBlocks=draft.filter(block=>selected.has(block.id));
       speechSources.current=new Map(selectedBlocks.map(block=>[block.id,{source:JSON.stringify(block),projection:speechText([block],[block.id],entities)}]));
       speechSelection.current=(root.current?speechSelectionContext(root.current):null)??(selectedBlocks.length?JSON.stringify([selectedBlocks[0]!.id,selectedBlocks.at(-1)!.id]):null);
-      setMenu(null);speech.speak(speechText(draft,ids,entities),speechSections(draft,ids,entities));
+      setMenu(null);speech.speak(speechText(draft,ids,entities),speechSections(draft,ids,entities),validSpeechSource);
     }}]:[];
   }
   function aiActionChoice(anchor: HTMLElement, ids: string[], back: Choice): Choice {

@@ -406,6 +406,32 @@ test('editor speech cancels on a different block selection and on a current enti
   });
 });
 
+test('editor validates paused and future block sources before resuming or advancing narration',async t=>{
+  const plays=[];
+  t.mock.method(api,'intelligence',async()=>({ttsEnabled:true}));
+  t.mock.method(globalThis,'fetch',async()=>wavResponse());
+  t.mock.method(URL,'createObjectURL',()=> 'blob:guarded-speech');t.mock.method(URL,'revokeObjectURL',()=>{});
+  await editorFixture(async({dom,host,blocks,set})=>{
+    t.mock.method(dom.window.HTMLMediaElement.prototype,'play',async function(){plays.push(this);});
+    const speak=async()=>{
+      const range=document.createRange();range.selectNodeContents(host('b2'));range.setEndAfter(host('b3').lastChild);
+      getSelection().removeAllRanges();getSelection().addRange(range);
+      await act(async()=>host('b2').closest('[data-block-id]').querySelector('[aria-label="Block options"]').click());
+      await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent.startsWith('Speak')).click());
+    };
+    const edit=async id=>set(blocks().map(block=>block.id===id?{...block,content:[{text:'Edited source '+id}]}:block));
+    await speak();assert.equal(plays.length,1);
+    await act(async()=>document.querySelector('audio').dispatchEvent(new Event('pause')));
+    await edit('b2');assert.equal(document.querySelector('.editor-speech'),null,'A paused source edit invalidates its recording');
+    await speak();assert.equal(plays.length,2);
+    const first=document.querySelector('audio');
+    await edit('b3');assert.equal(document.querySelector('audio'),first,'Future edits do not interrupt the unchanged current block');
+    await act(async()=>first.dispatchEvent(new Event('ended')));
+    assert.equal(plays.length,2,'A stale future section never reaches automatic playback');
+    assert.equal(document.querySelector('audio'),null);
+  });
+});
+
 
 test('provider changes cancel pending speech and pin OpenAI voices and provider on every chunk',async t=>{
   const f=await speechFixture(t);await f.speak('Pending local');

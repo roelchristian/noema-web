@@ -189,6 +189,8 @@
     "test/page-history-backups.test.mjs",
     "test/page-history-paths.test.mjs",
     "test/organization-descriptions.test.mjs",
-    "test/realtime-speech.test.mjs"
+    "test/realtime-speech.test.mjs",
+    "test/speech-cache.test.mjs",
+    "test/speech-backup.test.mjs"
   ]
 }

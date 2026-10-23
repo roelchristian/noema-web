@@ -37,6 +37,7 @@ import {isPageIconId} from '../../shared/page-icons.js';
 import {Store} from '../store.js';
 import {HttpError,now,object,required,text} from '../validation.js';
 import {Images} from './images.js';
+import {SpeechCache,validSpeechWav} from './speech-cache.js';
 import {restorePageVersions,remapDetachedSourceEvidence} from './page-history-backup.js';
 import {Knowledge} from './knowledge.js';
 import {Pages} from './pages.js';
@@ -103,7 +104,7 @@ const tables={
 } as const;
 type Table=keyof typeof tables;
 type Row=Record<string,unknown>;
-type Backup={format:'noema-vault-backup';version:1;createdAt:string;vault:{name:string};tables:Record<Table,Row[]>;images:{id:string;data:string}[];sourceFiles?:{id:string;data:string;evidence?:Record<string,unknown>}[]};
+type Backup={format:'noema-vault-backup';version:1;createdAt:string;vault:{name:string};tables:Record<Table,Row[]>;images:{id:string;data:string}[];sourceFiles?:{id:string;data:string;evidence?:Record<string,unknown>}[];speechAssets?:{id:string;data:string}[]};
 const invalid=()=>new HttpError(400,'This backup contains invalid data or missing references.');
 function string(row:Row,key:string,max=10000) {return text(row[key],max);}
 function name(row:Row,key:string) {return required(row[key]);}
@@ -146,7 +147,12 @@ export class VaultBackups {
         if(estimated>maxExpandedBytes)throw new HttpError(413,'This vault exceeds the 256 MB expanded backup limit.');
         return {id,data:bytes.toString('base64')};
       });
-      return {format:'noema-vault-backup',version:1,createdAt:now(),vault:{name},tables:data,images,sourceFiles:data.source_files.map(file=>{
+      const speechAssets=new SpeechCache(this.store).entries(vault).map(({id,bytes})=>{
+        estimated+=Math.ceil(bytes.length/3)*4+id.length+32;
+        if(estimated>maxExpandedBytes)throw new HttpError(413,'This vault exceeds the 256 MB expanded backup limit.');
+        return {id,data:bytes.toString('base64')};
+      });
+      return {format:'noema-vault-backup',version:1,createdAt:now(),vault:{name},tables:data,images,speechAssets,sourceFiles:data.source_files.map(file=>{
         const bytes=readFileSync(new SourceFiles(this.store).assetFilename(vault,file.id as string));
         estimated+=Math.ceil(bytes.length/3)*4;
         if(estimated>maxExpandedBytes)throw new HttpError(413,'This vault exceeds the 256 MB expanded backup limit.');
@@ -207,6 +213,7 @@ export class VaultBackups {
     if(total>200000)throw new HttpError(413,'This backup contains too many records.');
     const assets=list(archive.images).map(object);
     const sourceAssets=list(archive.sourceFiles??[]).map(object);
+    const speechAssets=list(archive.speechAssets??[]).map(object);
     const sourceAssetMap=new Map(sourceAssets.map(asset=>[name(asset,'id'),asset]));
     if(sourceAssetMap.size!==sourceAssets.length||sourceAssets.length!==rows.source_files.length)throw invalid();
     const ids=(records:Row[])=>{
@@ -241,8 +248,8 @@ export class VaultBackups {
       const authored=rows.properties.find(item=>item.id===oldId),owner=authored&&rows.entities.find(item=>item.id===authored.entity_id);
       return !!authored&&owner?.type==='source'&&authored.target_id===null&&['Import method','Source URL'].includes(String(authored.name))&&!this.store.get('SELECT 1 FROM properties WHERE id=?',propertyId);
     };
-    const vault=randomUUID(),writtenImages:string[]=[],writtenSources:string[]=[];
-    const sourceFiles=new SourceFiles(this.store);
+    const vault=randomUUID(),writtenImages:string[]=[],writtenSources:string[]=[],writtenSpeech:string[]=[];
+    const sourceFiles=new SourceFiles(this.store),speechCache=new SpeechCache(this.store);
     const insert=(table:Table,values:Record<string,SQLInputValue>)=>{
       const columns=Object.keys(values);
       this.store.run(`INSERT INTO ${table} (${columns.join(',')}) VALUES (${columns.map(()=>'?').join(',')})`,...Object.values(values));
@@ -255,6 +262,14 @@ export class VaultBackups {
           const encoded=string(asset,'data',28*1024*1024);
           const content=Buffer.from(encoded,'base64');if(content.toString('base64')!==encoded)throw invalid();
           const added=this.images.add(vault,content);imageIds.set(id,added.id);writtenImages.push(added.id);
+        }
+        const speechIds=new Set<string>();
+        for(const asset of speechAssets) {
+          const id=name(asset,'id');if(!/^[a-f0-9]{64}\.wav$/.test(id)||speechIds.has(id))throw invalid();speechIds.add(id);
+          const encoded=string(asset,'data',maxExpandedBytes);
+          const content=Buffer.from(encoded,'base64');if(content.toString('base64')!==encoded)throw invalid();
+          if(!validSpeechWav(content))throw invalid();
+          writtenSpeech.push(id);speechCache.restore(vault,id,content);
         }
         for(const row of rows.entity_subtypes)insert('entity_subtypes',{id:ref(subtypeIds,row.id),vault_id:vault,type:entityType(row),name:name(row,'name')});
         for(const row of rows.entity_type_properties)insert('entity_type_properties',{vault_id:vault,type:entityType(row),name:name(row,'name')});
@@ -719,6 +734,7 @@ export class VaultBackups {
         for(const id of pageIds.values())if(!this.store.get<{deleted_at:string|null}>('SELECT deleted_at FROM pages WHERE id=?',id)!.deleted_at)pages.get(vault,id);
       });
     } catch(error) {
+      for(const id of writtenSpeech){try{speechCache.remove(vault,id);}catch{/* Rollback removes only newly written files. */}}
       for(const id of writtenSources){try{sourceFiles.removeAssets(vault,id);}catch{/* Rollback removes only newly written files. */}}
       for(const id of writtenImages)this.images.remove(vault,id);
       if(error instanceof HttpError)throw error;

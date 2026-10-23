@@ -2,12 +2,35 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {act,createElement} from 'react';
 import {createRoot} from 'react-dom/client';
-import {speechText,speechChunks,useSpeech} from '../src/client/editor/speech.tsx';
+import {speechText,speechChunks,combineSpeechAudio,useSpeech} from '../src/client/editor/speech.tsx';
 import {api} from '../src/client/api.ts';
 import {setupDOM} from './helpers/dom.mjs';
 import {fixture as editorFixture} from './fixtures/editor-rendering.mjs';
 
 const paragraph=(id,content,type='paragraph')=>({id,type,content:typeof content==='string'?[{text:content}]:content});
+function wav(samples=[1,0,2,0]){
+  const data=Buffer.from(samples),header=Buffer.alloc(44);header.write('RIFF',0);header.writeUInt32LE(36+data.length,4);header.write('WAVE',8);header.write('fmt ',12);header.writeUInt32LE(16,16);header.writeUInt16LE(1,20);header.writeUInt16LE(1,22);header.writeUInt32LE(24000,24);header.writeUInt32LE(48000,28);header.writeUInt16LE(2,32);header.writeUInt16LE(16,34);header.write('data',36);header.writeUInt32LE(data.length,40);return new Blob([header,data],{type:'audio/wav'});
+}
+const wavResponse=(samples)=>({ok:true,blob:async()=>wav(samples)});
+
+test('audio assembly joins all PCM samples into one WAV and preserves single-part files',async()=>{
+  const first=wav([1,0,2,0]),second=wav([3,0,4,0]);
+  assert.equal(await combineSpeechAudio([first]),first);
+  const combined=await combineSpeechAudio([first,second]),bytes=Buffer.from(await combined.arrayBuffer());
+  assert.equal(combined.type,'audio/wav');assert.equal(bytes.length,52);assert.equal(bytes.readUInt32LE(4),44);assert.equal(bytes.readUInt32LE(40),8);
+  assert.deepEqual([...bytes.subarray(44)],[1,0,2,0,3,0,4,0]);
+});
+
+test('audio assembly rejects non-WAV, truncated, mismatched, and non-PCM24k files',async()=>{
+  await assert.rejects(combineSpeechAudio([]),/No speech audio/);
+  await assert.rejects(combineSpeechAudio([new Blob(['bad'],{type:'audio/mpeg'})]),/invalid speech audio/);
+  await assert.rejects(combineSpeechAudio([new Blob(['bad'],{type:'audio/wav'})]),/invalid speech audio/);
+  for(const [offset,value] of [[4,999],[16,18],[20,3],[22,2],[24,48000],[28,96000],[32,4],[34,32],[40,999]]){
+    const bytes=Buffer.from(await wav().arrayBuffer());bytes.writeUInt32LE(value,offset);
+    await assert.rejects(combineSpeechAudio([wav(),new Blob([bytes],{type:'audio/wav'})]),/invalid speech audio/);
+  }
+  await assert.rejects(combineSpeechAudio([wav([1,0,2])]),/invalid speech audio/);
+});
 
 test('speech text follows document order and includes table cells, columns and readable entity labels',()=>{
   const blocks=[paragraph('first',[{text:'Meet '},{entityId:'ada'},{text:' and '},{entityId:'idea'},{text:' ('},{entityId:'ada',mentionText:'Countess'},{text:')'},{entityId:'missing'}]),paragraph('table',[],'table'),paragraph('image','Hidden image text','image'),paragraph('divider','Hidden divider text','divider'),paragraph('empty',' '),paragraph('columns',[],'columns'),paragraph('last','Finish')];
@@ -39,25 +62,42 @@ async function speechFixture(t){
   let mounted=true;
   const unmount=async()=>{if(mounted){mounted=false;await act(async()=>root.unmount());}};
   env.defer(unmount);
-  return {env,requests,created,revoked,hook:()=>hook,unmount,async navigate(vault,page){await act(async()=>root.render(createElement(Harness,{vault,page})));},async speak(text){await act(async()=>hook.speak(text));},async resolve(index,response=new Response('wav',{headers:{'Content-Type':'audio/wav'}})){await act(async()=>requests[index].resolve(response));},async toggle(value){enabled=value;await act(async()=>window.dispatchEvent(new Event('noema:tts-preferences')));}};
+  return {env,requests,created,revoked,hook:()=>hook,unmount,async navigate(vault,page){await act(async()=>root.render(createElement(Harness,{vault,page})));},async speak(text){await act(async()=>hook.speak(text));},async resolve(index,response=wavResponse()){await act(async()=>requests[index].resolve(response));},async toggle(value){enabled=value;await act(async()=>window.dispatchEvent(new Event('noema:tts-preferences')));}};
 }
 
-test('speech plays successive chunks, revokes prior URLs, and stops pending work without stale playback',async t=>{
+test('speech assembles every selection chunk before playback and exposes a complete download without another request',async t=>{
   const f=await speechFixture(t);
   await f.speak('A'.repeat(5000));
   assert.match(document.querySelector('[role=status]').textContent,/Generating speech.*1 \/ 2/);
   assert.equal(f.requests[0].options.headers['X-Vault-Id'],'vault');
   assert.equal(JSON.parse(f.requests[0].options.body).pageId,'page');
   assert.equal(JSON.parse(f.requests[0].options.body).text.length,4096);
-  await f.resolve(0);
+  await f.resolve(0,wavResponse([1,0,2,0]));
+  assert.equal(document.querySelector('audio'),null);assert.equal(document.querySelector('a[download]'),null);
+  assert.match(document.querySelector('[role=status]').textContent,/2 \/ 2/);
+  assert.equal(f.requests.length,2);assert.equal(JSON.parse(f.requests[1].options.body).text.length,904);
+  await f.resolve(1,wavResponse([3,0,4,0]));
   assert.equal(document.querySelector('audio').getAttribute('src'),'blob:speech-1');
   assert.ok(document.querySelector('audio').hasAttribute('autoplay'));
-  await act(async()=>document.querySelector('audio').dispatchEvent(new Event('ended',{bubbles:true})));
-  assert.deepEqual(f.revoked,['blob:speech-1']);assert.equal(f.requests.length,2);
-  assert.equal(JSON.parse(f.requests[1].options.body).text.length,904);
+  const download=document.querySelector('a[download]');assert.equal(download.getAttribute('download'),'noema-speech.wav');assert.equal(download.getAttribute('href'),'blob:speech-1');assert.equal(download.textContent,'Download audio');
+  const bytes=Buffer.from(await f.created[0].arrayBuffer());assert.deepEqual([...bytes.subarray(44)],[1,0,2,0,3,0,4,0]);assert.equal(bytes.readUInt32LE(40),8);
+  download.addEventListener('click',event=>event.preventDefault());
+  await act(async()=>download.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true})));assert.equal(f.requests.length,2);
   await act(async()=>document.querySelector('.editor-speech button').click());
-  assert.equal(f.requests[1].options.signal.aborted,true);assert.equal(document.querySelector('.editor-speech'),null);
-  await f.resolve(1);assert.equal(f.created.length,1,'Stopped requests cannot create stale players');
+  assert.deepEqual(f.revoked,['blob:speech-1']);assert.equal(document.querySelector('.editor-speech'),null);
+});
+
+test('stopping later selection chunks aborts requests and prevents partial playback or download',async t=>{
+  const f=await speechFixture(t);await f.speak('A'.repeat(5000));await f.resolve(0);
+  await act(async()=>document.querySelector('.editor-speech button').click());
+  assert.equal(f.requests[1].options.signal.aborted,true);
+  await f.resolve(1);assert.equal(f.created.length,0);assert.equal(document.querySelector('.editor-speech'),null);
+});
+
+test('a later failed chunk never exposes a partial selection download',async t=>{
+  const f=await speechFixture(t);await f.speak('A'.repeat(5000));await f.resolve(0);
+  await f.resolve(1,Response.json({error:'Speech unavailable.'},{status:503}));
+  assert.match(document.querySelector('[role=status]').textContent,/Speech unavailable/);assert.equal(f.created.length,0);assert.equal(document.querySelector('audio'),null);assert.equal(document.querySelector('a[download]'),null);
 });
 
 test('unmount aborts requests and releases generated speech URLs',async t=>{

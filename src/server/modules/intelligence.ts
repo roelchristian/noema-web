@@ -157,6 +157,7 @@ export class Intelligence {
     }
     this.attempts.push(now);
   }
+  speechEnabled(){return this.ttsEnabled;}
   async speech(text:unknown,signal?:AbortSignal,onRequest?:AIRequestObserver):Promise<Buffer> {
     if(!this.ttsEnabled)throw new HttpError(409,'Enable OpenAI text to speech in Settings → Intelligence.');
     if(typeof text!=='string'||!text.trim()||text.length>4096)throw new HttpError(400,'Speech requires text of at most 4,096 characters.');

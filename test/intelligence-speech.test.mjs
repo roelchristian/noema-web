@@ -1,8 +1,9 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {once,EventEmitter} from 'node:events';
+import {speechCacheKey} from '../src/server/modules/speech-cache.ts';
 import {speechEndpoint,speechModel,speechMaxAudioBytes} from '../src/server/modules/realtime-speech.ts';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {mkdtempSync,rmSync,existsSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {Intelligence,intelligencePreferencesFor} from '../src/server/modules/intelligence.ts';
@@ -83,10 +84,30 @@ test('speech route protects private audio with CSRF, vault locks and no-store he
     let response=await call('intelligence/speech',{text:'Private',pageId:source.id});assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'audio/wav');assert.equal(response.headers.get('cache-control'),'no-store');assert.equal(response.headers.get('x-content-type-options'),'nosniff');assert.deepEqual(Buffer.from(await response.arrayBuffer()).subarray(44),pcm);
     let item=activity.list(null).items.find(item=>item.action==='text_to_speech');assert.equal(item.status,'completed');assert.equal(item.model,speechModel);assert.equal(item.httpStatus,200);assert.equal(item.promptBytes,7);assert.equal(item.inputTokens,14);assert.equal(item.outputTokens,25);assert.equal(item.estimatedCost,null);assert.ok(item.durationMs>=0);assert.equal(item.vaultId,'default');assert.equal(item.objectId,source.id);assert.equal(item.objectTitle,'Speech source');
     const trace=activity.debug(item.id);assert.equal(trace.endpoint,speechEndpoint);assert.ok(!JSON.stringify(trace).includes('Private'));assert.ok(!JSON.stringify(trace).includes(key));assert.equal(JSON.parse(trace.response).audioBytes,50);
-    providerFailure=true;response=await call('intelligence/speech',{text:'Private'});assert.equal(response.status,502);
-    item=activity.list(null).items.find(item=>item.action==='text_to_speech');assert.equal(item.status,'failed');assert.equal(item.httpStatus,502);assert.equal(item.promptBytes,7);assert.ok(item.durationMs>=0);providerFailure=false;
+    writeFileSync(path.join(dir,'assets/default/speech',speechCacheKey('Private')+'.wav'),Buffer.from('corrupt'));
+    response=await call('intelligence/speech',{text:'Private',pageId:source.id});assert.equal(response.status,200);assert.equal(response.headers.get('x-noema-speech-cache'),'miss');assert.equal(calls,2);
+    providerFailure=true;response=await call('intelligence/speech',{text:'Private failure'});assert.equal(response.status,502);
+    item=activity.list(null).items.find(item=>item.action==='text_to_speech');assert.equal(item.status,'failed');assert.equal(item.httpStatus,502);assert.equal(item.promptBytes,15);assert.ok(item.durationMs>=0);assert.equal(existsSync(path.join(dir,'assets/default/speech',speechCacheKey('Private failure')+'.wav')),false);providerFailure=false;
     await call('vaults/default/lock',{passphrase:'test-lock'});
-    response=await call('intelligence/speech',{text:'Private'});assert.equal(response.status,423);assert.equal(calls,2);
+    response=await call('intelligence/speech',{text:'Private'});assert.equal(response.status,423);assert.equal(calls,3);
     assert.ok(!JSON.stringify(db.prepare('SELECT * FROM metadata').all()).includes('Private'));
   }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+
+test('cached speech bypasses provider credentials and manual quota but respects toggle and vault scope',async()=>{
+ const dir=mkdtempSync(path.join(tmpdir(),'noema-speech-hit-')),db=openDatabase(path.join(dir,'test.sqlite'));let calls=0;
+ const ai=enabled(socket=>{calls++;complete(socket);},intelligencePreferencesFor(new Store(db)));ai.savePreferences({...ai.selection(),ttsEnabled:true,manualRequestsPerMinute:1});
+ const server=createApp(new Store(db),path.resolve('dist/client'),ai);server.listen(0,'127.0.0.1');await once(server,'listening');const base='http://127.0.0.1:'+server.address().port;
+ const call=(route,body,headers={})=>fetch(base+'/api/'+route,{method:'POST',headers:{'X-Noema-Request':'1','Content-Type':'application/json',...headers},body:JSON.stringify(body)});
+ try {
+  let response=await call('intelligence/speech',{text:'Reusable'});assert.equal(response.status,200);assert.equal(response.headers.get('x-noema-speech-cache'),'miss');const original=Buffer.from(await response.arrayBuffer());
+  const count=()=>new Store(db).get("SELECT COUNT(*) AS n FROM ai_activity WHERE action='text_to_speech'").n;
+  assert.equal(count(),1);ai.remove();
+  response=await call('intelligence/speech',{text:'Reusable'});assert.equal(response.status,200);assert.equal(response.headers.get('x-noema-speech-cache'),'hit');assert.match(response.headers.get('content-disposition'),/noema-speech-[a-f0-9]{12}\.wav/);assert.deepEqual(Buffer.from(await response.arrayBuffer()),original);assert.equal(calls,1);assert.equal(count(),1);
+  response=await call('intelligence/speech',{text:'Changed'});assert.equal(response.status,409);assert.equal(calls,1);
+  ai.savePreferences({...ai.selection(),ttsEnabled:false});assert.equal((await call('intelligence/speech',{text:'Reusable'})).status,409);
+  ai.savePreferences({...ai.selection(),ttsEnabled:true});const other=await (await call('vaults',{name:'Other'})).json();assert.equal((await call('intelligence/speech',{text:'Reusable'},{'X-Vault-Id':other.id})).status,409);
+  await call('vaults/default/lock',{passphrase:'test-lock'});assert.equal((await call('intelligence/speech',{text:'Reusable'})).status,423);assert.equal(calls,1);
+ }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();rmSync(dir,{recursive:true,force:true});}
 });

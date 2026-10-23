@@ -57,6 +57,7 @@ Turning debug mode off stops capture for subsequent requests without deleting pr
 | PUT | `/api/intelligence/preferences` | Save `{model, reasoningEffort}` independently of the key |
 | DELETE | `/api/intelligence` | Remove saved credential |
 | POST | `/api/intelligence/validate` | Test the saved key and model access |
+| POST | `/api/intelligence/speech` | Return saved or generated WAV audio for `{text, pageId?}` with `X-Vault-Id`; includes `X-Noema-Speech-Cache: hit` or `miss` |
 | POST | `/api/pages/:id/title` | Generate a title for an untitled saved page with `{revision}` and `X-Vault-Id` |
 | POST | `/api/pages/:id/summary` | Generate and persist a summary with `{revision}` and `X-Vault-Id` |
 | POST | `/api/pages/:id/entity-scan` | Generate and save entity suggestions with `{revision}` and `X-Vault-Id` |
@@ -64,6 +65,14 @@ Turning debug mode off stops capture for subsequent requests without deleting pr
 | GET | `/api/pages/:id/enrichments` | Load saved AI results for an active page using `X-Vault-Id` |
 
 All intelligence routes require `X-Noema-Request: 1`; writes require `Content-Type: application/json`. Tests use an injected credential store and mock provider, never your Keychain or a billable API key. They cover expiry, replacement/removal, request redaction, fixed destinations, storage controls, concurrency, rate limits, host/origin checks, vault isolation, stale revisions, and locking during a request. A native Keychain save/read/remove round-trip was also verified using a unique synthetic credential and then cleaned up. A live OpenAI connection still needs your real key and **Validate connection** on your Mac.
+
+### Speak and saved audio
+
+Enable **OpenAI text to speech** in **Settings → Intelligence** and save AI preferences. In the editor, open a selected block’s menu and choose **Speak**, below **AI actions**. Speech uses `gpt-realtime-2.1-mini` with the Marin voice, independently of the writing model. The player offers **Download audio** to save the complete selected text as a WAV file. Long selections are generated in parts and joined into one recording before playback and download.
+
+Generated speech is saved in `data/assets/<vault-id>/speech/`, beside the vault’s other assets. Replaying unchanged text reuses its saved audio, including after a restart, without an OpenAI request or another API charge. Changes to the text, speech model, voice, narration instructions, or audio format create a new cache entry. Formatting alone does not invalidate it. Saved audio stays local, follows vault access locks, appears under **Storage → Attachments**, and is included in vault backups. Deleting the vault removes its saved speech. Removing the API key does not prevent replaying cached speech while the global speech option remains enabled.
+
+Only requests that generate audio create AI activity records; local cache hits and downloads do not. Selected text and audio are omitted from debug traces, including full traces. Token usage is recorded when supplied by OpenAI; speech cost remains unknown because the generic text-model pricing table does not distinguish audio rates.
 
 ### AI activity notifications
 

@@ -8,7 +8,7 @@ const labels: Record<StorageCategory, string> = {
   attachments: 'Attachments', sources: 'Sources', notes: 'Notes', entities: 'Entities', indexes: 'Search & AI indexes', other: 'Other vault data',
 };
 const descriptions: Record<StorageCategory, string> = {
-  attachments: 'Images, source files, and saved originals', sources: 'Extracted text, source details, and highlights',
+  attachments: 'Images, speech audio, source files, and saved originals', sources: 'Extracted text, source details, and highlights',
   notes: 'Note content and summaries, including Trash', entities: 'Entity details, properties, and relationships',
   indexes: 'Search data, embeddings, and caches', other: 'Organization, settings, and activity',
 };

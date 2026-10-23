@@ -96,7 +96,11 @@ export async function vaultStorage(store: Store, vault: string, categoryId?: str
         if (categoryId === category) {
           const parts = relative.split(path.sep);
           const fileName = names.get('file:' + parts[1])?.name;
-          addItem('asset:' + relative, stat.size, fileName ?? path.basename(filename), relative);
+          const speech=parts[0]==='speech'&&/^[a-f0-9]{64}\.wav(?:\.sha256)?$/.test(parts[1]??'');
+          if(speech) {
+            const audioPath=path.join('speech',parts[1]!.replace(/\.sha256$/,''));
+            addItem('asset:'+audioPath,stat.size,'Saved speech · '+parts[1]!.slice(0,8),audioPath);
+          } else addItem('asset:' + relative, stat.size, fileName ?? path.basename(filename), relative);
         }
         return stat.size;
       }
@@ -116,7 +120,7 @@ export async function vaultStorage(store: Store, vault: string, categoryId?: str
     try {
       if ((await lstat(root)).isDirectory()) {
         for (const entry of await readdir(root)) {
-          const category = ['images', 'sources', 'source-inbox', 'source-evidence'].includes(entry) ? 'attachments' : 'other';
+          const category = ['images', 'sources', 'source-inbox', 'source-evidence', 'speech'].includes(entry) ? 'attachments' : 'other';
           const bytes = await fileSize(path.join(root, entry), entry, category);
           totals[category] += bytes;
           fileBytes += bytes;

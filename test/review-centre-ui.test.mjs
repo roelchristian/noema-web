@@ -17,7 +17,7 @@ async function fixture(t,work){
  const requests=[],opened=[];let respond=async url=>url.includes('?id=')?item('A'):({items:[item('A'),item('B')],errors:[],more:[]});
  t.mock.method(globalThis,'fetch',async(url,options)=>{requests.push({url,options});const result=await respond(String(url),options);return {ok:true,json:async()=>structuredClone(result)};});
  const root=createRoot(document.querySelector('#mount'));
- const render=async(vaultId='v')=>act(async()=>root.render(React.createElement(ReviewCentre,{vaultId,onOpen:async(...args)=>opened.push(args)})));
+ const render=async(vaultId='v',props={})=>act(async()=>root.render(React.createElement(ReviewCentre,{vaultId,onOpen:async(...args)=>opened.push(args),...props})));
  const click=async selector=>{const target=typeof selector==='string'?document.querySelector(selector):selector;assert.ok(target,'Expected control');await act(async()=>target.click());};
  const search=async value=>{const input=document.querySelector('input[type="search"]');await act(async()=>{input.focus();const old=input.value;input.value=value;input._valueTracker?.setValue(old);input.dispatchEvent(new dom.window.Event('input',{bubbles:true}));input.dispatchEvent(new dom.window.KeyboardEvent('keyup',{bubbles:true,key:'a'}));});};
  try{await work({dom,requests,opened,render,click,search,respond:handler=>{respond=handler;}});}
@@ -55,4 +55,34 @@ test('partial coverage and pagination never imply that an unloaded queue is clea
  respond(async url=>url.endsWith('offset=50')?({items:[item('Older')],errors:[],more:[]}):({items:[],errors:['scan: saved status could not be loaded.'],more:['scan']}));
  await render();assert.match(document.querySelector('.review-empty').textContent,/Some work could not be checked/);assert.match(document.querySelector('[role="alert"]').textContent,/Other work is still available/);
  await click('.review-footer button');assert.ok(requests.some(request=>request.url.endsWith('offset=50')));assert.match(document.querySelector('.review-items').textContent,/Older/);assert.equal(document.querySelector('.review-footer button'),null);
+}));
+
+
+test('Inbox overview groups attention independently from mounted organisation and marks partial counts',async t=>fixture(t,async({respond,render,click})=>{
+ let mounts=0,unmounts=0;const changed=[];
+ function Triage(){React.useEffect(()=>{mounts++;return()=>unmounts++;},[]);return React.createElement('input',{'aria-label':'Session triage state',defaultValue:'Still unfiled'});}
+ const organize=React.createElement(Triage);
+ respond(async()=>({items:[item('A'),item('Issue',{group:'operations',state:'stale'}),item('Running',{category:'source',group:'activity'})],errors:[],more:['scan']}));
+ const props={organize,unfiledCount:12,organizeComplete:false,onFacetChange:value=>changed.push(value)};
+ await render('v',{...props,facet:'overview'});
+ assert.equal(document.querySelectorAll('.inbox-overview-group').length,3);
+ assert.equal(document.querySelectorAll('.review-items li').length,3);
+ assert.match(document.querySelector('.inbox-organise-summary').textContent,/12\+ loaded unfiled pages/);
+ assert.equal(document.querySelectorAll('.review-filters button').length,5);
+ assert.match(document.querySelector('.review-filters').textContent,/To review1\+/);
+ assert.equal(document.querySelector('[aria-label="Session triage state"]'),null);assert.equal(mounts,0);
+ await click('.inbox-organise-summary button');assert.deepEqual(changed,['organise']);
+ await render('v',{...props,facet:'organise'});assert.equal(document.querySelector('.inbox-organisation').hidden,false);
+ const input=document.querySelector('[aria-label="Session triage state"]');input.value='Session skip retained';
+ await render('v',{...props,facet:'issues'});assert.equal(document.querySelector('.inbox-organisation').hidden,true);
+ assert.equal(document.querySelector('[aria-label="Session triage state"]').value,'Session skip retained');assert.equal(mounts,1);assert.equal(unmounts,0);
+ assert.match(document.querySelector('.review-items').textContent,/Issue/);
+}));
+
+test('changing Inbox facet cancels pending identity validation before navigation',async t=>fixture(t,async({respond,render,click,opened,requests})=>{
+ let release;respond(async url=>url.includes('?id=')?await new Promise(resolve=>{release=resolve;}):({items:[item('A')],errors:[],more:[]}));
+ await render('v',{facet:'review',organize:React.createElement('p',null,'Triage')});
+ await click('.review-item-action');const pending=requests.find(request=>request.url.includes('?id='));assert.ok(pending);
+ await render('v',{facet:'organise',organize:React.createElement('p',null,'Triage')});assert.equal(pending.options.signal.aborted,true);
+ await act(async()=>release(item('A')));assert.equal(opened.length,0);
 }));

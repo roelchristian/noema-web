@@ -1,3 +1,5 @@
+import {useContext} from 'react';
+import {ReviewDestination} from '../review/review-destination';
 import {CalendarMonthGrid} from './CalendarMonthGrid';
 import {CalendarMonthJump} from './CalendarMonthJump';
 import {liturgicalLabel,liturgicalRankLabel} from './liturgical-label';
@@ -13,6 +15,9 @@ import {temporalDate,type TemporalCuration,type TemporalDetail,type TemporalItem
 import {calendarGroups,civilDate,dateLabel,dateSummary,emptyCuration,layerLabels,monthBounds,monthCells,shiftDay,shiftMonth,todayValue,type CalendarView} from './calendar-model';
 
 export function CalendarWorkspace({settings,onOpenSettings,vaultId,view,onChange,mobile,onOpenMention,onOpenSource,onOpenEntity,entities=[],evidenceOpen=false}:{settings:CalendarSettings;onOpenSettings:()=>void;vaultId:string;view:CalendarView;onChange:(patch:Partial<CalendarView>)=>void;mobile:boolean;onOpenMention:(id:string)=>Promise<void>;onOpenSource?:(id:string,trigger:HTMLElement)=>Promise<void>;onOpenEntity?:(id:string)=>void;entities?:Entity[];evidenceOpen?:boolean}) {
+ const destination=useContext(ReviewDestination);
+ const reviewDateId=destination?.category==='temporal'&&destination.dateId?.split(':')[2]===view.selected?destination.dateId:undefined;
+ const reviewProposalId=reviewDateId?destination?.proposalId:undefined;
  const {enabled:overlayEnabled,optional:overlayOptional,calendarId}=settings;
  const weekStart=settings.weekStart??0,liturgicalLabels=settings.liturgicalLabels??'off',labelsEnabled=liturgicalLabels!=='off',supplementEnabled=overlayEnabled||labelsEnabled;
  const [availableWidth,setAvailableWidth]=useState<number|null>(null),[optionalDate,setOptionalDate]=useState<string|null>(null);
@@ -22,6 +27,8 @@ export function CalendarWorkspace({settings,onOpenSettings,vaultId,view,onChange
  const [detail,setDetail]=useState<TemporalDetail|null>(null),[detailLoading,setDetailLoading]=useState(false),[detailError,setDetailError]=useState(''),[actionError,setActionError]=useState(''),[acting,setActing]=useState(false),[notice,setNotice]=useState('');
  const [focusDay,setFocusDay]=useState(view.selected?.startsWith(view.month)&&view.selected.length===10?view.selected:monthBounds(view.month).from);
  const root=useRef<HTMLElement>(null),sheet=useRef<HTMLDialogElement>(null),trigger=useRef<HTMLElement|null>(null),focusGrid=useRef(false),request=useRef<AbortController|null>(null),detailRequest=useRef<AbortController|null>(null);
+ const proposalElement=useRef<HTMLDivElement>(null);
+ useEffect(()=>{if(reviewProposalId&&detail?.proposals?.some(proposal=>proposal.id===reviewProposalId)){proposalElement.current?.scrollIntoView?.({block:'nearest'});proposalElement.current?.focus({preventScroll:true});}},[reviewProposalId,detail]);
  const actionSequence=useRef(0);
  const current=useRef('');current.current=JSON.stringify([vaultId,view.selected]);
  const visibleYear=Number(view.month.slice(0,4)),selectedYear=Number(view.selected?.slice(0,4)??visibleYear);
@@ -65,15 +72,15 @@ export function CalendarWorkspace({settings,onOpenSettings,vaultId,view,onChange
  useEffect(()=>{
   setDetail(null);setDetailError('');setActionError('');
   if(!selected)return;
-  const date=temporalDate(selected);if(!date)return;
+  const date=temporalDate(selected,reviewDateId?.startsWith('julian:')?'julian':'gregorian');if(!date)return;
   const controller=new AbortController();detailRequest.current?.abort();detailRequest.current=controller;setDetailLoading(true);
-  api.temporalDetail(vaultId,date.id,0,0,controller.signal).then(result=>{if(!controller.signal.aborted)setDetail(result);}).catch(error=>{
+  api.temporalDetail(vaultId,date.id,0,0,controller.signal,{proposalId:reviewProposalId}).then(result=>{if(!controller.signal.aborted)setDetail(result);}).catch(error=>{
    if(controller.signal.aborted)return;
    if(error instanceof ApiError&&error.status===404)setDetail({date,curation:null,layer:'knowledge',mentions:[],mentionCount:0,relations:[],relationCount:0,nextMentionOffset:null,nextRelationOffset:null});
    else setDetailError(error.message||'Could not load this date.');
   }).finally(()=>{if(!controller.signal.aborted)setDetailLoading(false);});
   return()=>controller.abort();
- },[vaultId,selected,version]);
+ },[vaultId,selected,version,reviewDateId,reviewProposalId]);
  useEffect(()=>{
   const saved=previousModal.current!==modal?resizedFocus.current:null;previousModal.current=modal;resizedFocus.current=null;
   const dialog=sheet.current;
@@ -105,7 +112,7 @@ export function CalendarWorkspace({settings,onOpenSettings,vaultId,view,onChange
  async function moreEvidence(kind:'mentions'|'relations'|'sources'|'properties'|'proposals') {
   if(!detail)return;const key=current.current,controller=new AbortController();detailRequest.current?.abort();detailRequest.current=controller;setDetailLoading(true);setActionError('');
   const fields={mentions:'nextMentionOffset',relations:'nextRelationOffset',sources:'nextSourceOffset',properties:'nextPropertyOffset',proposals:'nextProposalOffset'} as const,field=fields[kind];
-  try {const offset=detail[field]??0,result=await api.temporalDetail(vaultId,detail.date.id,kind==='mentions'?offset:0,kind==='relations'?offset:0,controller.signal,{sourceOffset:kind==='sources'?offset:0,propertyOffset:kind==='properties'?offset:0,proposalOffset:kind==='proposals'?offset:0});
+  try {const offset=detail[field]??0,result=await api.temporalDetail(vaultId,detail.date.id,kind==='mentions'?offset:0,kind==='relations'?offset:0,controller.signal,{sourceOffset:kind==='sources'?offset:0,propertyOffset:kind==='properties'?offset:0,proposalOffset:kind==='proposals'?offset:0,proposalId:reviewProposalId});
    if(!controller.signal.aborted&&current.current===key)setDetail({...detail,[kind]:[...(detail[kind]??[]),...(result[kind]??[]).filter(item=>!(detail[kind]??[]).some(old=>old.id===item.id))],[field]:result[field]});
   }catch(error){if(!controller.signal.aborted)setActionError(error instanceof Error?error.message:'Could not load more evidence.');}finally{if(!controller.signal.aborted)setDetailLoading(false);}
  }
@@ -123,12 +130,12 @@ export function CalendarWorkspace({settings,onOpenSettings,vaultId,view,onChange
   }catch(error){if(current.current===key&&sequence===actionSequence.current)setActionError(error instanceof Error?error.message:'Could not save date curation.');}finally{if(current.current===key&&sequence===actionSequence.current)setActing(false);}
  }
  async function openEvidence(id:string) {const key=current.current,sequence=++actionSequence.current;setActing(true);setActionError('');try{await onOpenMention(id);}catch(error){if(current.current===key&&sequence===actionSequence.current)setActionError(error instanceof Error?error.message:'Could not open evidence.');}finally{if(current.current===key&&sequence===actionSequence.current)setActing(false);}}
- const {days,periods}=calendarGroups(results?.items??[]),draft=selected?(view.drafts[selected]??detail?.curation??emptyCuration()):emptyCuration();
+ const {days,periods}=calendarGroups(results?.items??[]),draft=selected?((reviewDateId?.startsWith('julian:')?undefined:view.drafts[selected])??detail?.curation??emptyCuration()):emptyCuration();
  function edit(patch:Partial<TemporalCuration>) {if(selected)onChange({drafts:{...view.drafts,[selected]:{...draft,...patch}}});}
  const caption=(item:TemporalItem)=>dateSummary(item).title;
  const card=(item:TemporalItem)=><button type="button" className="calendar-entry" key={item.date.id} onClick={event=>choose(item.date.value,event.currentTarget)}><span><strong>{dateLabel(item.date.value)}</strong><small>{layerLabels[item.layer]} · {item.date.precision==='day'?'Exact day':item.date.precision==='month'?'Month precision':'Year precision'}{item.curation?.pinned?' · Pinned':''}</small></span><span>{caption(item)}</span><Icon name="chevron"/></button>;
  const inspector=<>
-  <header className="calendar-inspector-heading"><div><h2 id="calendar-date-heading">{selected?dateLabel(selected):''}</h2>{selected?.length!==10&&<p>{selected?.length===7?'Month only · no day assigned':'Year only · no day assigned'}</p>}</div><button className="page-tool" type="button" aria-label="Close date inspector" title="Close date inspector" onClick={close}><Icon name="close"/></button></header>
+  <header className="calendar-inspector-heading"><div><h2 id="calendar-date-heading">{selected?dateLabel(selected):''}{reviewDateId?.startsWith('julian:')?' · Julian calendar':''}</h2>{selected?.length!==10&&<p>{selected?.length===7?'Month only · no day assigned':'Year only · no day assigned'}</p>}</div><button className="page-tool" type="button" aria-label="Close date inspector" title="Close date inspector" onClick={close}><Icon name="close"/></button></header>
   <div className="calendar-inspector-body">
   {(draft.label||draft.annotation)&&<section className="calendar-date-summary" aria-label="Date summary">{draft.label&&<h3>{draft.label}</h3>}{draft.annotation&&<p>{draft.annotation}</p>}</section>}
   {selected&&selected.slice(0,7)!==view.month&&<button className="button" type="button" onClick={()=>onChange({month:selected.length===4?selected+'-01':selected.slice(0,7)})}>Show selected date</button>}
@@ -136,13 +143,14 @@ export function CalendarWorkspace({settings,onOpenSettings,vaultId,view,onChange
   {detailLoading&&!detail&&<p role="status">Loading date evidence…</p>}
   {detailError&&<div role="alert" className="calendar-status" data-status="danger">{detailError}<button className="button" type="button" onClick={()=>setVersion(value=>value+1)}>Retry date</button></div>}
   {detail&&<>
+   {reviewProposalId&&!detail.proposals?.some(proposal=>proposal.id===reviewProposalId)&&<p role="status">This relationship proposal is no longer pending here. Return to Inbox and refresh.</p>}
    <section className="calendar-evidence" aria-label="Date evidence" aria-busy={detailLoading}>{detailLoading&&<p role="status">Loading more evidence…</p>}<div className="knowledge-section-heading"><h3><Icon name="knowledge"/>Linked knowledge <span className="knowledge-count">{detail.mentionCount+detail.relationCount+(detail.sourceCount??0)+(detail.propertyCount??0)}</span></h3></div>
     {!detail.mentions.length&&!detail.relations.length&&!detail.sources?.length&&!detail.properties?.length&&<p className="calendar-muted">No linked knowledge yet. You can still add details below.</p>}
     {detail.mentions.map(mention=><button className="calendar-evidence-link" type="button" key={mention.id} disabled={acting} onClick={()=>void openEvidence(mention.id)}><Icon name="pages"/><span><strong>{mention.title||'Untitled page'}</strong><small>“{mention.text}” · Open original passage</small></span><Icon name="external-link"/></button>)}
     {(detail.sources??[]).map((mention,index)=><button className="calendar-evidence-link calendar-source-evidence" type="button" key={mention.id} disabled={acting||!onOpenSource} onClick={event=>{const target=event.currentTarget;void relationAction(()=>onOpenSource!(mention.id,target));}}><Icon name="source"/><span><strong>{mention.title}</strong><small>Source reference {index+1} · Line {mention.startLine??1} · “{mention.text}”</small>{mention.context&&<small>{mention.context}</small>}</span><Icon name="external-link"/></button>)}
     {(detail.properties??[]).map(property=><div className="calendar-relation" key={property.id}><strong>{property.title}</strong><small>{property.name}: {property.raw} · Original text property</small>{onOpenEntity&&<button type="button" className="button" onClick={()=>onOpenEntity(property.entityId)}>Open entity</button>}</div>)}
     {detail.relations.map(relation=><div className="calendar-relation" key={relation.id}><strong>{relation.name}</strong><small>{relation.kind.replaceAll('_',' ')}</small>{relation.evidence.status==='current'&&relation.sourceMentionId&&onOpenSource?<button className="button" type="button" disabled={acting} onClick={event=>{const target=event.currentTarget;void relationAction(()=>onOpenSource(relation.sourceMentionId!,target));}}>Open supporting source passage</button>:relation.evidence.status==='current'&&relation.propertyId?<p>Verified original date property</p>:relation.evidence.status==='current'&&relation.mentionId?<button className="button" type="button" disabled={acting} onClick={()=>void openEvidence(relation.mentionId!)}>Open supporting passage</button>:<p data-status="warning">{relation.evidence.status==='stale'?'Stale evidence':relation.evidence.status==='unavailable'?'Evidence unavailable':'No resolved evidence'} · {relation.evidence.reason}</p>}<button type="button" className="button" disabled={acting} onClick={()=>void relationAction(()=>api.reviewTemporalRelation(vaultId,relation.id,'rejected',relation.version!))}>Remove relationship</button></div>)}
-    {(detail.proposals??[]).map(proposal=><div className="calendar-relation" key={proposal.id}><strong>{proposal.name}</strong><small>{proposal.kind.replaceAll('_',' ')} · {proposal.status==='rejected'?'Rejected':'Unreviewed'} {proposal.origin==='manual'?'manual relationship':'field-derived proposal'}</small><p>{proposal.evidence.status==='current'?'propertyId' in proposal.evidence?`${proposal.evidence.name}: ${proposal.evidence.raw}`:'Current supporting evidence':`${proposal.evidence.status}: ${proposal.evidence.reason}`}</p><div className="calendar-relation-actions"><button type="button" className="button" disabled={acting||proposal.evidence.status!=='current'} onClick={()=>void relationAction(()=>api.reviewTemporalRelation(vaultId,proposal.id,'accepted',proposal.version!))}>Accept relationship</button>{proposal.status!=='rejected'&&<button type="button" className="button" disabled={acting} onClick={()=>void relationAction(()=>api.reviewTemporalRelation(vaultId,proposal.id,'rejected',proposal.version!))}>Reject relationship</button>}</div></div>)}
+    {(detail.proposals??[]).map(proposal=><div className="calendar-relation" key={proposal.id} tabIndex={proposal.id===reviewProposalId?-1:undefined} ref={proposal.id===reviewProposalId?proposalElement:undefined}><strong>{proposal.name}</strong><small>{proposal.kind.replaceAll('_',' ')} · {proposal.status==='rejected'?'Rejected':'Unreviewed'} {proposal.origin==='manual'?'manual relationship':'field-derived proposal'}</small><p>{proposal.evidence.status==='current'?'propertyId' in proposal.evidence?`${proposal.evidence.name}: ${proposal.evidence.raw}`:'Current supporting evidence':`${proposal.evidence.status}: ${proposal.evidence.reason}`}</p><div className="calendar-relation-actions"><button type="button" className="button" disabled={acting||proposal.evidence.status!=='current'} onClick={()=>void relationAction(()=>api.reviewTemporalRelation(vaultId,proposal.id,'accepted',proposal.version!))}>Accept relationship</button>{proposal.status!=='rejected'&&<button type="button" className="button" disabled={acting} onClick={()=>void relationAction(()=>api.reviewTemporalRelation(vaultId,proposal.id,'rejected',proposal.version!))}>Reject relationship</button>}</div></div>)}
     {(['sources','properties','proposals'] as const).map(kind=>{const field=({sources:'nextSourceOffset',properties:'nextPropertyOffset',proposals:'nextProposalOffset'} as const)[kind];return detail[field]!=null&&<button key={kind} className="button" type="button" disabled={detailLoading} onClick={()=>void moreEvidence(kind)}>Load more {kind}</button>;})}
     {detail.nextMentionOffset!==null&&<button className="button" type="button" disabled={detailLoading} onClick={()=>void moreEvidence('mentions')}>Load more references</button>}
     {detail.nextRelationOffset!==null&&<button className="button" type="button" disabled={detailLoading} onClick={()=>void moreEvidence('relations')}>Load more relationships</button>}
@@ -150,8 +158,8 @@ export function CalendarWorkspace({settings,onOpenSettings,vaultId,view,onChange
    </section>
 
   </>}
-  {overlayEnabled&&selected&&<>{selected.length!==10?<p className="calendar-muted">Select a day to see its observances.</p>:inspectorLiturgical.data?.days[selected]?<LiturgicalDayPanel calendarId={calendarId} day={inspectorLiturgical.data.days[selected]!} key={calendarId+selected} showOptional={overlayOptional||optionalDate===selected}/>:inspectorLiturgical.loading?<p role="status">Preparing liturgical year…</p>:inspectorLiturgical.error?<p className="calendar-muted" role="status">{inspectorLiturgical.error}</p>:null}</>}
-  {detail&&<>
+  {overlayEnabled&&selected&&!reviewDateId?.startsWith('julian:')&&<>{selected.length!==10?<p className="calendar-muted">Select a day to see its observances.</p>:inspectorLiturgical.data?.days[selected]?<LiturgicalDayPanel calendarId={calendarId} day={inspectorLiturgical.data.days[selected]!} key={calendarId+selected} showOptional={overlayOptional||optionalDate===selected}/>:inspectorLiturgical.loading?<p role="status">Preparing liturgical year…</p>:inspectorLiturgical.error?<p className="calendar-muted" role="status">{inspectorLiturgical.error}</p>:null}</>}
+  {detail&&!reviewDateId?.startsWith('julian:')&&<>
    <details className="calendar-link-disclosure"><summary>Link an entity to this date</summary><form className="calendar-relationship-form" onSubmit={event=>{event.preventDefault();const form=new FormData(event.currentTarget),support=String(form.get('support')??''),body={dateId:detail.date.id,entityId:String(form.get('entity')),kind:String(form.get('kind')),...(support.startsWith('page:')?{mentionId:support.slice(5)}:support.startsWith('source:')?{sourceMentionId:support.slice(7)}:{})};void relationAction(()=>api.linkTemporalEntity(vaultId,body));}}>
     <div className="calendar-field"><label htmlFor="calendar-link-entity">Entity</label><select id="calendar-link-entity" name="entity" required defaultValue="" disabled={acting}><option value="" disabled>Choose an entity</option>{entities.filter(entity=>entity.vault_id===vaultId&&!entity.archived_at).map(entity=><option key={entity.id} value={entity.id}>{entity.name}</option>)}</select></div>
     <div className="calendar-field"><label htmlFor="calendar-link-kind">Relationship</label><select id="calendar-link-kind" name="kind" defaultValue="discusses" disabled={acting}><option value="discusses">Discusses this date</option><option value="occurs_on">Occurs on this date</option><option value="born_on">Born on this date</option><option value="published_on">Published on this date</option><option value="deadline">Personal deadline</option></select></div>

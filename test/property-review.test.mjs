@@ -55,3 +55,11 @@ test('retain both preserves custom date temporal binding and refuses custom hier
  const hierarchy=governance.create('default',{name:'Mentor Hierarchy',key:'mentor_hierarchy',scope:{kind:'main_type',type:'person'},valueKind:'entity_reference',cardinality:'one',allowedTargetTypes:['person'],validation:{hierarchical:true}}),other=knowledge.create('default',{name:'Other',type:'person'});
  knowledge.property('default',other.id,{name:hierarchy.legacyName,target_id:entity.id,definition_id:hierarchy.id});const cyclic=propose({property_name:hierarchy.legacyName,target_id:other.id}),fresh=review.list('default',entity.id).find(item=>item.id===cyclic.id);assert.throws(()=>review.review('default',entity.id,cyclic.id,{action:'retain_both',fingerprint:fresh.fingerprint}),error=>error.status===409);
 }));
+
+
+test('selected property proposal is resolved independently of the bounded list and owner',()=>fixture(({entity,knowledge,review,propose})=>{
+ for(let index=0;index<101;index++)propose({property_name:'website',value:'https://example.test/'+index});
+ const list=review.list('default',entity.id),all=review.list('default',entity.id,'all');assert.equal(list.length,100);assert.equal(all.length,100);
+ const selected=propose({property_name:'website',value:'https://selected.example'}),preview=review.list('default',entity.id,'all',selected.id);assert.equal(preview.length,1);assert.equal(preview[0].id,selected.id);assert.ok(preview[0].fingerprint);
+ const other=knowledge.create('default',{name:'Other owner',type:'person'});assert.deepEqual(review.list('default',other.id,'all',selected.id),[]);
+}));

@@ -244,7 +244,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           if(id==='liturgical'&&child==='status'&&parts.length===4&&method==='GET')return send(200,liturgical.status(vault));
           if(id==='liturgical'&&child&&parts.length===4&&method==='GET')return send(200,await liturgical.year(vault,Number(child),url.searchParams.get('rite')??'grc-en'));
           if(id==='dates'&&parts.length===3&&method==='GET')return send(200,temporal.query(vault,url.searchParams.get('from')??'',url.searchParams.get('to')??'',url.searchParams.get('references')==='all',calendar,{offset,limit,layers:url.searchParams.has('layers')?(url.searchParams.get('layers')?.split(',').filter(Boolean)??[]) as import('../shared/temporal.js').TemporalLayer[]:undefined}));
-          if(id==='dates'&&child&&parts.length===4&&method==='GET')return send(200,temporal.detail(vault,decodeURIComponent(child),offset,Number(url.searchParams.get('relationOffset')??0),Number(url.searchParams.get('limit')??20),Number(url.searchParams.get('sourceOffset')??0),Number(url.searchParams.get('propertyOffset')??0),Number(url.searchParams.get('proposalOffset')??0)));
+          if(id==='dates'&&child&&parts.length===4&&method==='GET')return send(200,temporal.detail(vault,decodeURIComponent(child),offset,Number(url.searchParams.get('relationOffset')??0),Number(url.searchParams.get('limit')??20),Number(url.searchParams.get('sourceOffset')??0),Number(url.searchParams.get('propertyOffset')??0),Number(url.searchParams.get('proposalOffset')??0),url.searchParams.get('proposalId')??undefined));
           if(id==='curation'&&parts.length===3&&method==='PUT')return send(200,temporal.curate(vault,typeof body.value==='string'?body.value:'',body,calendar));
           if(id==='curation'&&child&&parts.length===4&&method==='DELETE')return send(200,temporal.uncurate(vault,decodeURIComponent(child)));
           if(id==='source-mentions'&&child&&parts.length===4&&method==='GET')return send(200,temporal.sources.resolve(vault,child));
@@ -478,7 +478,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             }
           }
           if(collection==='entities') {
-            if(id&&child==='property-proposals'&&parts.length===4&&method==='GET')return send(200,new PropertyReview(store).list(vault,id,url.searchParams.get('status')??'pending'));
+            if(id&&child==='property-proposals'&&parts.length===4&&method==='GET')return send(200,new PropertyReview(store).list(vault,id,url.searchParams.get('status')??'pending',url.searchParams.get('proposalId')??undefined));
             if(id&&child==='property-proposals'&&childId&&parts.length===6&&parts[5]==='review'&&method==='POST')return send(200,new PropertyReview(store).review(vault,id,decodeURIComponent(childId),body as unknown as Parameters<PropertyReview['review']>[3]));
             if(id&&child==='classification-impact'&&parts.length===4&&method==='POST')return send(200,new EntityClassificationImpact(store).preview(vault,id,{type:body.type as import('../shared/domain.js').EntityType,subtypes:body.subtypes as string[]}));
             if(id==='reference-options' && parts.length===3 && method==='GET')return send(200,knowledge.referenceOptions(vault,{

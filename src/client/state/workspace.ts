@@ -1,7 +1,7 @@
 import {isAIExplanation} from '../../shared/semantic-blocks';
 import {immutableBlocks,immutablePage} from '../../shared/immutable-blocks';
 import {citationSourceIds} from '../../shared/citations';
-import { readWorkspaceURL, workspaceURL, type NavigationAddress, type WorkspaceAddress } from './navigation-address';
+import { readWorkspaceURL, workspaceURL, type NavigationAddress, type WorkspaceAddress, inboxFacet, type InboxFacet } from './navigation-address';
 import {clearLibraryViewStates} from './library-view-state';
 import {clearEntityDrafts, pruneEntityDrafts} from '../knowledge/entity-drafts';
 import {pageDraftJournal, type PageDraftEntry} from './page-draft-journal';
@@ -29,6 +29,7 @@ const applyDraft = (server: Page, draft: Page): Page => {
   return page;
 };
 export interface WorkspaceState {
+  inboxFacet: InboxFacet;
   saveFailures: PageSaveIssue[]; draftStorageFailures: PageSaveIssue[]; draftRecoveries: PageDraftRecovery[];
   domainSavingPageId: string | null;
   canGoBack: boolean; canGoForward: boolean;
@@ -41,7 +42,7 @@ export interface WorkspaceState {
   sourceId: string | null; page: Page | null; view: 'review' | 'calendar' | 'entity' | 'source' | 'pages' | 'entities' | 'organization' | 'favourites' | 'recent' | 'trash' | 'inbox'; busy: boolean; loadingPageId: string | null; reviewing: boolean; error: string | null; saveStatus: SaveStatus;
 }
 export class Workspace {
-  private state: WorkspaceState = {initialEditingPageId:null,creationFocusPageId:null,entityId:null,sourceId:null,domainSavingPageId:null,saveFailures: [], draftStorageFailures: [], draftRecoveries: [], entityPanelId: null, canGoBack: false, canGoForward: false, vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
+  private state: WorkspaceState = {inboxFacet:'overview',initialEditingPageId:null,creationFocusPageId:null,entityId:null,sourceId:null,domainSavingPageId:null,saveFailures: [], draftStorageFailures: [], draftRecoveries: [], entityPanelId: null, canGoBack: false, canGoForward: false, vaults: [], vault: null, trash: [], pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
   private browserAttached = false;
   private browserInitialized = false;
   private browserSession = '';
@@ -150,10 +151,10 @@ export class Workspace {
     this.updateHistory();
     // Do not replace the saved address with intermediate loading/locked state.
     if (!this.state.busy && this.state.loadingPageId === null && this.state.vault && !this.state.vault.locked &&
-      (patch.view !== undefined || patch.organizationContext !== undefined || patch.busy === false || patch.loadingPageId === null)) {
+      (patch.view !== undefined || patch.inboxFacet !== undefined || patch.organizationContext !== undefined || patch.busy === false || patch.loadingPageId === null)) {
       try {
         localStorage.setItem('noema-address/' + this.state.vault.id, JSON.stringify({
-          view: this.state.view, ...this.state.organizationContext,
+          view: this.state.view, inboxFacet:this.state.inboxFacet, ...this.state.organizationContext,
           pageId: this.state.view === 'pages' ? this.state.page?.id ?? null : null,
           sourceId: this.state.view === 'source' ? this.state.sourceId : null,
           subjectId: this.state.view === 'entity' ? this.state.entityId : null,
@@ -246,7 +247,7 @@ export class Workspace {
       const currentIndex = this.historyIndex;
       this.historyIndex = this.history.filter((address, index) => index <= currentIndex && this.validAddress(address)).length - 1;
       this.history = this.history.filter(address => this.validAddress(address));
-      const address: NavigationAddress = {view: this.state.view, pageId: this.state.view === 'pages' ? this.state.page?.id ?? null : null,
+      const address: NavigationAddress = {view: this.state.view, ...(this.state.view==='inbox'?{inboxFacet:this.state.inboxFacet}:{}), pageId: this.state.view === 'pages' ? this.state.page?.id ?? null : null,
           sourceId: this.state.view === 'source' ? this.state.sourceId : null, entityId: this.state.entityPanelId, subjectId: this.state.view === 'entity' ? this.state.entityId : null,
         collection: this.state.view === 'organization' ? this.state.organizationContext.collection : '',
         folder: this.state.view === 'organization' ? this.state.organizationContext.folder : ''};
@@ -256,7 +257,7 @@ export class Workspace {
       }
     }
     if (vaultId && !this.state.busy && this.state.loadingPageId === null) this.syncBrowserNavigation({
-      view:this.state.view, pageId:this.state.view === 'pages' ? this.state.page?.id ?? null : null, sourceId:this.state.view === 'source' ? this.state.sourceId : null, entityId:this.state.entityPanelId, subjectId:this.state.view === 'entity' ? this.state.entityId : null,
+      view:this.state.view, ...(this.state.view==='inbox'?{inboxFacet:this.state.inboxFacet}:{}), pageId:this.state.view === 'pages' ? this.state.page?.id ?? null : null, sourceId:this.state.view === 'source' ? this.state.sourceId : null, entityId:this.state.entityPanelId, subjectId:this.state.view === 'entity' ? this.state.entityId : null,
       collection:this.state.view === 'organization' ? this.state.organizationContext.collection : '',
       folder:this.state.view === 'organization' ? this.state.organizationContext.folder : '',
     });
@@ -274,14 +275,14 @@ export class Workspace {
     this.traversingHistory = true;
     this.patch({});
     try {
-      const sameView = this.state.view === address.view && (address.view === 'pages' ? this.state.page?.id === address.pageId : address.view === 'source' ? this.state.sourceId === address.sourceId : address.view === 'entity' ? this.state.entityId === address.subjectId :
+      const sameView = this.state.view === address.view && (address.view!=='inbox'||this.state.inboxFacet===(address.inboxFacet??'overview')) && (address.view === 'pages' ? this.state.page?.id === address.pageId : address.view === 'source' ? this.state.sourceId === address.sourceId : address.view === 'entity' ? this.state.entityId === address.subjectId :
         address.view !== 'organization' || this.state.organizationContext.collection === address.collection && this.state.organizationContext.folder === address.folder);
       if (!sameView && address.view === 'pages') await this.openPage(address.pageId!);
       else if (!sameView && address.view === 'entity') await this.openEntityHome(address.subjectId!);
       else if (!sameView && address.view === 'source') await this.openSource(address.sourceId!);
       else if (!sameView) await this.navigate(async () => {
         if (address.view === 'trash') this.patch({trash: await api.trash(this.state.vault!.id)});
-        this.patch({view: address.view, organizationContext: {collection: address.collection, folder: address.folder}});
+        this.patch({view: address.view, inboxFacet:address.inboxFacet??this.state.inboxFacet, organizationContext: {collection: address.collection, folder: address.folder}});
       });
       this.patch({entityPanelId: address.entityId});
       if (address.entityId) this.recordRecent('entity', address.entityId);
@@ -348,7 +349,7 @@ export class Workspace {
       return;
     }
     if (stored.view === 'trash') this.patch({trash: await api.trash(vault.id)});
-    this.patch({view: stored.view as WorkspaceState['view']});
+    this.patch(stored.view==='review'?{view:'inbox',inboxFacet:'review'}:{view: stored.view as WorkspaceState['view'],inboxFacet:stored.view==='inbox'||stored.inboxFacet!==undefined?inboxFacet(stored.inboxFacet):this.state.inboxFacet});
     if (typeof stored.entityId === 'string' && this.state.entities.some(entity => entity.id === stored.entityId)) this.patch({entityPanelId:stored.entityId});
   }
   report = (error: unknown) => this.patch({error: error instanceof Error ? error.message : String(error)});
@@ -590,7 +591,13 @@ export class Workspace {
   }
   async showPages() { this.openOrganization(); }
   showOrganization(favourites = false) { if (!this.state.busy && this.state.loadingPageId === null) this.patch({view: favourites ? 'favourites' : 'organization'}); }
-  showInbox() { if (!this.state.busy && this.state.loadingPageId === null) this.patch({view: 'inbox'}); }
+  async showInbox(facet:InboxFacet=this.state.inboxFacet) {
+    if(this.state.view==='inbox'&&!this.state.busy){this.patch({inboxFacet:facet});return;}
+    const vaultId=this.state.vault?.id;
+    await this.navigate(async()=>{
+      if(this.state.vault?.id===vaultId&&!this.state.vault?.locked)this.patch({view:'inbox',inboxFacet:facet,entityPanelId:null});
+    });
+  }
   showRecent() { if (!this.state.busy && this.state.loadingPageId === null) this.patch({view: 'recent'}); }
   setOrganization = (organization: Organization) => {
     const current = this.state.organizationContext;
@@ -693,11 +700,7 @@ export class Workspace {
     const trash = await api.trash(vault.id);
     if (sequence === this.loadSequence && this.state.view === 'trash') this.patch({trash});
   };
-  async showReview() {
-    await this.navigate(async()=>{
-      if(this.state.vault&&!this.state.vault.locked)this.patch({view:'review',entityPanelId:null});
-    });
-  }
+  async showReview() { await this.showInbox('review'); }
   async showCalendar() {
     await this.navigate(async()=>{
       if(this.state.vault&&!this.state.vault.locked)this.patch({view:'calendar',entityPanelId:null});

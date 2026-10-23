@@ -1,6 +1,7 @@
 {
   "unit": [
     "test/api.test.mjs",
+    "test/liturgical-week.test.mjs",
     "test/appearance.test.mjs",
     "test/auto-entities.test.mjs",
     "test/breadcrumbs.test.mjs",

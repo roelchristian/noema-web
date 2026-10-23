@@ -32,7 +32,7 @@
 .calendar-footer, .calendar-muted { font-size: 12px; color: var(--text-muted); line-height: 1.6; }
 .calendar-status { padding: var(--space-3); display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); border-radius: var(--radius-control); margin: var(--space-3) 0; font-size: 13px; line-height: 1.5; }
 .calendar-grid { border: 1px solid var(--line); border-radius: var(--radius-md); overflow: auto; background: var(--surface); }
-.calendar-weekdays, .calendar-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); min-width: 316px; }
+.calendar-weekdays, .calendar-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); min-width: 0; }
 .calendar-weekdays { padding: var(--space-3) 0; color: var(--text-muted); font-size: 11px; text-align: center; }
 .calendar-week { border-top: 1px solid var(--line); }
 .calendar-cell { display: flex; min-width: 0; border-inline-end: 1px solid var(--line); }
@@ -162,7 +162,7 @@ dialog.calendar-sheet[open] { display: flex; flex-direction: column; }
   .calendar-overlay-info > summary { width: fit-content; }
   .calendar-overlay-info-panel { right: auto; left: 0; }
   .calendar-cell > button { padding: var(--space-1-5) 2px; align-items: center; min-height: 72px; gap: 2px; }
-  .calendar-cell-entry, .calendar-cell-counts, .calendar-cell-supplement { display: none; }
+  .calendar-cell-entry, .calendar-cell-counts, .calendar-cell-supplement > .calendar-liturgical-cell, .calendar-liturgical-meta > .calendar-liturgical-rank { display: none; }
   .calendar-mobile-count { display: block; }
   .calendar-weekdays { font-size: 10px; }
   .calendar-periods h3 span { display: block; margin: var(--space-1) 0; }
@@ -182,13 +182,21 @@ dialog.calendar-sheet[open] { display: flex; flex-direction: column; }
 }
 
 .calendar-liturgical-color[data-color=white] { background: var(--liturgical-white); }
+.calendar-liturgical-cell[data-color=white] { --celebration-color: var(--liturgical-white); }
 .calendar-liturgical-color[data-color=red] { background: var(--liturgical-red); }
+.calendar-liturgical-cell[data-color=red] { --celebration-color: var(--liturgical-red); }
 .calendar-liturgical-color[data-color=green] { background: var(--liturgical-green); }
+.calendar-liturgical-cell[data-color=green] { --celebration-color: var(--liturgical-green); }
 .calendar-liturgical-color[data-color=purple] { background: var(--liturgical-purple); }
+.calendar-liturgical-cell[data-color=purple] { --celebration-color: var(--liturgical-purple); }
 .calendar-liturgical-color[data-color=rose] { background: var(--liturgical-rose); }
+.calendar-liturgical-cell[data-color=rose] { --celebration-color: var(--liturgical-rose); }
 .calendar-liturgical-color[data-color=black] { background: var(--liturgical-black); }
+.calendar-liturgical-cell[data-color=black] { --celebration-color: var(--liturgical-black); }
 .calendar-liturgical-color[data-color=blue] { background: var(--liturgical-blue); }
+.calendar-liturgical-cell[data-color=blue] { --celebration-color: var(--liturgical-blue); }
 .calendar-liturgical-color[data-color=gold] { background: var(--liturgical-gold); }
+.calendar-liturgical-cell[data-color=gold] { --celebration-color: var(--liturgical-gold); }
 
 /* Day summaries are derived from canonical dates, never appointment stacks. */
 .calendar-cell-knowledge { display: grid; gap: var(--space-1); min-width: 0; width: 100%; }
@@ -218,7 +226,7 @@ dialog.calendar-sheet-bounded { inset: var(--space-5); margin: auto; max-width: 
 @container (max-width: 600px) {
  .calendar-main { padding-inline: var(--space-1); }
  .calendar-cell > button { padding: var(--space-1) 1px; align-items: center; min-height: 76px; gap: 2px; }
- .calendar-cell-entry, .calendar-cell-counts, .calendar-cell-supplement, .calendar-optional-text { display: none; }
+ .calendar-cell-entry, .calendar-cell-counts, .calendar-cell-supplement > .calendar-liturgical-cell, .calendar-liturgical-meta > .calendar-liturgical-rank, .calendar-optional-text { display: none; }
  .calendar-mobile-count, .calendar-mobile-legend { display: block; }
  .calendar-day-heading { flex-direction: column; gap: 0; }
  .calendar-cell-supplement { margin-top: 0; }
@@ -231,3 +239,35 @@ dialog.calendar-sheet-bounded { inset: var(--space-5); margin: auto; max-width: 
 @container (max-width: 360px) {
  .calendar-main { padding-inline: 0; }
 }
+
+/* Civil week numbers occupy a narrow gutter; liturgical captions remain supplementary. */
+.calendar-grid.has-week-numbers .calendar-weekdays, .calendar-grid.has-week-numbers .calendar-week { grid-template-columns: 28px repeat(7, minmax(0, 1fr)); }
+.calendar-week-number { display: flex; justify-content: center; align-items: flex-start; padding-top: var(--space-3); border-inline-end: 1px solid var(--line); color: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; background: var(--surface-raised); }
+.calendar-week-label > span { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1) var(--space-2); line-height: 1.6; }
+.calendar-week-label small { margin-inline-start: auto; font-size: 10px; }
+.calendar-grid.has-week-numbers .calendar-week-label { padding-inline-start: 36px; }
+
+/* Soft seasonal fills keep the stronger color on celebration text. */
+.calendar-liturgical-cell[data-color] { color: color-mix(in srgb, var(--celebration-color) 75%, var(--liturgical-black)); background: color-mix(in srgb, var(--celebration-color) 12%, var(--surface)); padding: var(--space-1) var(--space-1-5); box-sizing: border-box; border-radius: var(--radius-xs); border: 1px solid color-mix(in srgb, var(--celebration-color) 22%, var(--surface)); }
+:root[data-mode=dark] .calendar-liturgical-cell[data-color] { color: color-mix(in srgb, var(--celebration-color) 65%, var(--liturgical-white)); }
+.calendar-liturgical-cell[data-color=white], :root[data-mode=dark] .calendar-liturgical-cell[data-color=white], :root[data-mode=dark] .calendar-liturgical-cell[data-color=black] { color: var(--text); border-color: var(--line); }
+
+.calendar-liturgical-meta { display: flex; align-items: baseline; gap: var(--space-1); margin-top: var(--space-1); }
+.calendar-liturgical-meta > .calendar-liturgical-rank { min-width: 0; }
+.calendar-liturgical-meta > .calendar-optional-marker { white-space: nowrap; margin-inline-start: auto; }
+@media (max-width: 750px) {
+ .calendar-cell-supplement { margin-top: 0; padding-top: 0; }
+ .calendar-liturgical-meta { justify-content: center; margin-top: 0; }
+ .calendar-liturgical-meta > .calendar-optional-marker { margin-inline-start: 0; }
+}
+@container (max-width: 600px) {
+ .calendar-cell-supplement { padding-top: 0; }
+ .calendar-liturgical-meta { justify-content: center; margin-top: 0; }
+ .calendar-liturgical-meta > .calendar-optional-marker { margin-inline-start: 0; }
+}
+
+/* Adjacent-month dates fill the visible week while remaining secondary. */
+.calendar-cell.is-outside-month { background: var(--surface-hover); }
+.calendar-cell.is-outside-month > button { color: var(--text-muted); }
+.calendar-cell.is-outside-month > button > span { opacity: .55; }
+.calendar-cell.is-outside-month > button:focus-visible > span, .calendar-cell.is-outside-month > button:hover > span { opacity: .85; }

@@ -9,6 +9,7 @@ import {useDocumentHistory} from '../../src/client/editor/use-document-history.t
 import {immutableBlocks} from '../../src/shared/immutable-blocks.ts';
 import {api} from '../../src/client/api.ts';
 
+// Counts include the final empty typing row.
 export async function fixture(work,{blockCount=6}={}) {
   const env=setupDOM(undefined,{html:'<div class="page"><div id="mount"></div></div>'}),{dom}=env;
   const originalSchema=api.entitySchema;api.entitySchema=async()=>({properties:[],subtypes:[],subtypeProperties:{}});

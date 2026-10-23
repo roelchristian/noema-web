@@ -204,7 +204,7 @@ test('paragraph openings follow headings and dividers as blocks change', async (
     assert.deepEqual(positions(), ['first','continuation','continuation','continuation','continuation','continuation']);
     await set(original.slice(1, 6));
     assert.equal(host('b2').closest('[data-block-id]').dataset.paragraphFlow, 'first');
-  });
+  }, {blockCount:7});
 });
 
 test('empty paragraphs and callouts do not consume section openings, with independent column flow', async () => {
@@ -236,7 +236,7 @@ test('locked page paragraphs retain the same section openings as editable paragr
       assert.equal(readonly.dataset.paragraphFlow, host(block.id).closest('[data-block-id]').dataset.paragraphFlow);
       assert.equal(readonly.querySelector('.block-content').textContent, host(block.id).textContent);
     }
-  });
+  }, {blockCount:7});
 });
 
 

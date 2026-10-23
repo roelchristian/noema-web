@@ -6,6 +6,8 @@ import path from 'node:path';
 import { openDatabase } from '../src/server/database.ts';
 import { Store } from '../src/server/store.ts';
 import { Knowledge } from '../src/server/modules/knowledge.ts';
+import {builtinSubtypes} from '../src/shared/entity-schema.ts';
+import {PropertyDefinitionGovernance} from '../src/server/modules/property-definition-governance.ts';
 import { Vaults } from '../src/server/modules/vaults.ts';
 
 const rejects = (work, status = 400) => assert.throws(work, error => error.status === status);
@@ -142,4 +144,72 @@ test('schema definition metadata is additive and custom identities stay vault sc
     assert.ok(!knowledge.schema('elsewhere').propertyDefinitions.some(item=>item.id===custom.id));
     assert.equal(knowledge.schema('default').propertyDefinitions.find(item=>item.legacyName==='Custom Field').id,custom.id);
   } finally {db.close();}
+});
+
+
+test('additive native subtype seeding preserves legacy and colliding custom identities across restart',()=>{
+ const dir=mkdtempSync(path.join(tmpdir(),'noema-additional-subtypes-')),filename=path.join(dir,'fixture.sqlite');
+ let db=openDatabase(filename);
+ try {
+  let store=new Store(db),knowledge=new Knowledge(store);
+  // Synthetic prior catalogue: remove only the additive definitions, preserving all authored data.
+  const newIds=builtinSubtypes.filter(item=>item.description).map(item=>item.id);
+  for(const id of newIds)store.run("DELETE FROM property_definitions WHERE json_extract(definition_json,'$.scope.subtypeId')=?",id);
+  store.run('INSERT INTO entity_subtypes VALUES (?,?,?,?)','custom-building','default','place','Building');
+  // An older imported/raw custom identity can even occupy a newly reserved native ID.
+  store.run('INSERT INTO entity_subtypes VALUES (?,?,?,?)','creativework:journal','default','creativework','Legacy periodical');
+  store.run('INSERT INTO entity_subtype_properties VALUES (?,?,?)','default','custom-building','Local code');
+  const custom=knowledge.create('default',{name:'Custom building fixture',type:'place',subtypes:['custom-building']});
+  knowledge.property('default',custom.id,{name:'Local code',value:'0007'});
+  const legacy=knowledge.create('default',{name:'Legacy periodical fixture',type:'creativework',subtypes:['creativework:journal']});
+  const before={entities:store.all('SELECT * FROM entities ORDER BY id'),properties:store.all('SELECT * FROM properties ORDER BY id'),domains:store.all('SELECT * FROM entity_domains ORDER BY entity_id,domain_id')};
+  db.close();db=openDatabase(filename);store=new Store(db);knowledge=new Knowledge(store);
+  const first=knowledge.schema('default'),second=knowledge.schema('default');
+  assert.deepEqual(second,first);
+  assert.equal(first.subtypes.filter(item=>item.type==='place'&&item.name==='Building').length,2);
+  assert.equal(first.subtypes.filter(item=>item.id==='creativework:journal').length,1);
+  assert.equal(first.subtypes.find(item=>item.id==='creativework:journal').origin,'user_defined');
+  assert.ok(!first.propertyDefinitions.some(item=>item.id==='builtin:creativework:journal:issn'||item.id==='builtin:creativework:academic-paper:journal'));
+  assert.ok(!knowledge.detail('default',legacy.id).propertyNames.includes('issn'));
+  assert.deepEqual(knowledge.detail('default',custom.id).subtypes,['custom-building']);
+  assert.equal(knowledge.detail('default',custom.id).properties[0].value,'0007');
+  assert.deepEqual(store.all('SELECT * FROM entities ORDER BY id'),before.entities);
+  assert.deepEqual(store.all('SELECT * FROM properties ORDER BY id'),before.properties);
+  assert.deepEqual(store.all('SELECT * FROM entity_domains ORDER BY entity_id,domain_id'),before.domains);
+  const count=store.get('SELECT count(*) AS n FROM property_definitions').n;
+  db.close();db=openDatabase(filename);store=new Store(db);knowledge=new Knowledge(store);
+  assert.deepEqual(knowledge.schema('default'),first);assert.equal(store.get('SELECT count(*) AS n FROM property_definitions').n,count);
+  const native=knowledge.create('default',{name:'Native building fixture',type:'place',subtypes:['place:building','place:historical-place','place:landmark']});
+  assert.deepEqual(native.properties,[]);assert.ok(native.propertyNames.includes('architectural style'));
+  assert.equal(native.propertyNames.filter(name=>name==='established').length,1);
+  assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
+ } finally {db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+
+test('new typed fields enforce native targets and preserve identifiers, units and uncertain dates',()=>{
+ const db=openDatabase(':memory:');
+ try {
+  const store=new Store(db),knowledge=new Knowledge(store),governance=new PropertyDefinitionGovernance(store);
+  const paper=knowledge.create('default',{name:'Synthetic paper',type:'creativework',subtypes:['creativework:academic-paper','creativework:article']});
+  const journal=knowledge.create('default',{name:'Synthetic journal',type:'creativework',subtypes:['creativework:journal']});
+  const wrongWork=knowledge.create('default',{name:'Synthetic book',type:'creativework',subtypes:['creativework:book']});
+  const put=(entity,name,value,id)=>knowledge.property('default',entity.id,{name,value,definition_id:id}).properties.find(item=>item.name===name);
+  const journalId='builtin:creativework:academic-paper:journal';
+  rejects(()=>knowledge.property('default',paper.id,{name:'journal',target_id:wrongWork.id,definition_id:journalId}));
+  knowledge.property('default',paper.id,{name:'journal',target_id:journal.id,definition_id:journalId});
+  assert.deepEqual(knowledge.referenceOptions('default',{types:['creativework'],subtypes:['creativework:journal']}).items.map(item=>item.id),[journal.id]);
+  const issn=put(journal,'issn','0000-001X','builtin:creativework:journal:issn');
+  assert.equal(issn.value,'0000-001X');assert.equal(issn.metadata.text_value,'0000-001X');assert.equal(issn.metadata.integer_value,null);
+  const natural=knowledge.create('default',{name:'Synthetic mountain',type:'place',subtypes:['place:natural-feature']});
+  const elevation=put(natural,'elevation','1200 m','builtin:place:natural-feature:elevation');
+  assert.equal(elevation.metadata.decimal_value,1200);assert.equal(elevation.metadata.unit,'m');
+  const theorem=knowledge.create('default',{name:'Synthetic result',type:'concept',subtypes:['concept:theorem','concept:mathematics']});
+  const proven=put(theorem,'proven','circa 1900','builtin:concept:theorem:proven');
+  assert.equal(proven.value,'circa 1900');assert.equal(proven.metadata.compatibility,'unresolved');assert.equal(proven.metadata.temporal_date_id,null);
+  const updated=knowledge.property('default',theorem.id,{name:'proven',value:'1901',definition_id:'builtin:concept:theorem:proven'},proven.id).properties.find(item=>item.id===proven.id);
+  assert.equal(updated.metadata.temporal_date_id,'gregorian:year:1901');
+  rejects(()=>governance.update('default',journalId,{label:'Changed native field'}),403);
+  assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
+ } finally {db.close();}
 });

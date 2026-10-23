@@ -8,7 +8,7 @@ import { syncSourceProvenance } from './source-provenance.js';
 import { randomUUID } from 'node:crypto';
 import { entityPageMentions } from './entity-page-mentions.js';
 import { entityMentionName, entityTypes, type EntityType, type Entity, type EntityDetail, type Property, type Relationship } from '../../shared/domain.js';
-import { builtinProperties, builtinSubtypes, inheritedPropertyNames, type EntitySchema, type EntitySubtype } from '../../shared/entity-schema.js';
+import { builtinProperties, vaultSubtypes, inheritedPropertyNames, type EntitySchema, type EntitySubtype } from '../../shared/entity-schema.js';
 import { persistedPropertyDefinitions, propertyMetadata, syncPropertyMetadata } from './property-storage.js';
 import { validatePropertyValue } from '../../shared/property-values.js';
 import { TemporalProperties } from './temporal-properties.js';
@@ -28,7 +28,7 @@ export class Knowledge {
     for (const row of this.store.all<{subtype_id: string; name: string}>('SELECT subtype_id,name FROM entity_subtype_properties WHERE vault_id=? ORDER BY name',vault)) {
       (subtypeProperties[row.subtype_id] ??= []).push(row.name);
     }
-    const schema: EntitySchema = withPropertyCatalogue({properties, subtypeProperties, subtypes: [...builtinSubtypes, ...this.store.all<EntitySubtype>('SELECT id,name,type FROM entity_subtypes WHERE vault_id=? ORDER BY name',vault)]});
+    const schema: EntitySchema = withPropertyCatalogue({properties, subtypeProperties, subtypes: vaultSubtypes(this.store.all<EntitySubtype>('SELECT id,name,type FROM entity_subtypes WHERE vault_id=? ORDER BY name',vault))});
     return {...schema, propertyDefinitions: persistedPropertyDefinitions(this.store,vault,schema)};
   }
   addSubtype(vault: string, body: Record<string, unknown>) {

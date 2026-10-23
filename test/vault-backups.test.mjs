@@ -175,3 +175,82 @@ test('automatic summary preference is portable and legacy backups retain disable
     await assert.rejects(()=>state.backups.import(rewrite(exported.bytes,value=>{value.tables.page_enrichment_settings=[{automatic_summaries:1},{automatic_summaries:0}];})),/invalid/i);
   } finally {state.close();}
 });
+
+test('additional native subtypes round trip with typed targets while old archives preserve custom name collisions',async()=>{
+  const state=fixture();const {store,knowledge,vault,backups}=state;
+  try {
+    const custom=randomUUID();
+    // This UUID and name represent a vault-authored subtype from before Building was native.
+    store.run('INSERT INTO entity_subtypes VALUES (?,?,?,?)',custom,vault.id,'place','Building');
+    store.run('INSERT INTO entity_subtype_properties VALUES (?,?,?)',vault.id,custom,'local building code');
+    const original=knowledge.create(vault.id,{name:'Custom building',type:'place',subtypes:[custom]});
+    knowledge.property(vault.id,original.id,{name:'local building code',value:'0007'});
+    const building=knowledge.create(vault.id,{name:'Native building',type:'place',subtypes:['place:building']});
+    const journal=knowledge.create(vault.id,{name:'Synthetic journal',type:'creativework',subtypes:['creativework:journal']});
+    const paper=knowledge.create(vault.id,{name:'Synthetic paper',type:'creativework',subtypes:['creativework:academic-paper']});
+    const definition=knowledge.schema(vault.id).propertyDefinitions.find(item=>item.scope.kind==='subtype'&&item.scope.subtypeId==='creativework:academic-paper'&&item.allowedTargetSubtypes.includes('creativework:journal'));
+    assert.ok(definition,'Academic Paper offers a typed reference to its Journal work');
+    knowledge.property(vault.id,paper.id,{name:definition.legacyName,target_id:journal.id,definition_id:definition.id});
+    const exported=await backups.export(vault.id);
+    const restored=await backups.import(exported.bytes,'Additional subtype copy');
+    const entities=knowledge.list(restored.id),restoredCustom=entities.find(item=>item.name===original.name),restoredNative=entities.find(item=>item.name===building.name),restoredPaper=entities.find(item=>item.name===paper.name),restoredJournal=entities.find(item=>item.name===journal.name);
+    assert.notEqual(restoredCustom.subtypes[0],custom);
+    assert.notEqual(restoredCustom.subtypes[0],'place:building');
+    assert.equal(knowledge.schema(restored.id).subtypes.find(item=>item.id===restoredCustom.subtypes[0]).name,'Building');
+    assert.deepEqual(restoredNative.subtypes,['place:building']);
+    const property=knowledge.detail(restored.id,restoredPaper.id).properties.find(item=>item.name===definition.legacyName);
+    assert.equal(property.target_id,restoredJournal.id);assert.equal(property.metadata.definition_id,definition.id);assert.equal(property.metadata.compatibility,'valid');
+    assert.equal(restoredJournal.type,'creativework');assert.equal(entities.find(item=>item.name===state.source.name).type,'source');
+    assert.equal(knowledge.detail(restored.id,restoredCustom.id).properties[0].value,'0007');
+    const legacy=await backups.import(rewrite(exported.bytes,value=>{
+      delete value.tables.property_definitions;delete value.tables.property_value_metadata;
+    }),'Old archive without property sidecars');
+    const legacyCustom=knowledge.list(legacy.id).find(item=>item.name===original.name);
+    assert.notEqual(legacyCustom.subtypes[0],'place:building');
+    assert.equal(knowledge.detail(legacy.id,legacyCustom.id).properties[0].value,'0007');
+    assert.deepEqual(knowledge.detail(vault.id,original.id).subtypes,[custom],'Export and restore never reclassify original entities');
+  }finally{state.close();}
+});
+
+test('legacy custom subtype IDs colliding with added natives restore scopes, targets and authored bindings',async()=>{
+  const {PropertyDefinitionGovernance}=await import('../src/server/modules/property-definition-governance.ts');
+  const state=fixture();const {store,knowledge,vault,backups}=state;
+  try {
+    const custom=randomUUID();
+    store.run('INSERT INTO entity_subtypes VALUES (?,?,?,?)',custom,vault.id,'place','Local building kind');
+    store.run('INSERT INTO entity_subtype_properties VALUES (?,?,?)',vault.id,custom,'local building code');
+    const entity=knowledge.create(vault.id,{name:'Archived custom building',type:'place',subtypes:[custom]});
+    knowledge.property(vault.id,entity.id,{name:'local building code',value:'0009'});
+    const owner=knowledge.create(vault.id,{name:'Archived reference owner',type:'concept'});
+    const definition=new PropertyDefinitionGovernance(store).create(vault.id,{name:'local building relation',scope:{kind:'main_type',type:'concept'},valueKind:'entity_reference',allowedTargetTypes:['place'],allowedTargetSubtypes:[custom]});
+    knowledge.property(vault.id,owner.id,{name:definition.legacyName,target_id:entity.id,definition_id:definition.id});
+    const {bytes}=await backups.export(vault.id);
+    const legacy=rewrite(bytes,value=>{
+      const row=value.tables.entity_subtypes.find(item=>item.id===custom);row.id='place:building';
+      value.tables.entity_subtype_properties.find(item=>item.subtype_id===custom).subtype_id='place:building';
+      value.tables.entities.find(item=>item.id===entity.id).subtypes=JSON.stringify(['place:building']);
+      // Simulate an archive whose custom identity predates the native Building ID.
+      value.tables.property_definitions=value.tables.property_definitions.filter(row=>{
+        const item=JSON.parse(row.definition_json);
+        if(item.origin==='builtin'&&item.scope.kind==='subtype'&&item.scope.subtypeId==='place:building')return false;
+        if(item.scope.kind==='subtype'&&item.scope.subtypeId===custom)item.scope.subtypeId='place:building';
+        item.allowedTargetSubtypes=item.allowedTargetSubtypes.map(id=>id===custom?'place:building':id);
+        row.definition_json=JSON.stringify(item);return true;
+      });
+    });
+    for(const input of [legacy,rewrite(legacy,value=>{delete value.tables.property_definitions;delete value.tables.property_value_metadata;})]) {
+      const restored=await backups.import(input,'Legacy ID collision');
+      const entities=knowledge.list(restored.id),result=entities.find(item=>item.name===entity.name),restoredOwner=entities.find(item=>item.name===owner.name);
+      assert.notEqual(result.subtypes[0],'place:building');
+      assert.equal(knowledge.schema(restored.id).subtypes.find(item=>item.id===result.subtypes[0]).name,'Local building kind');
+      assert.ok(knowledge.detail(restored.id,result.id).propertyNames.includes('local building code'));
+      assert.equal(knowledge.detail(restored.id,result.id).properties[0].value,'0009');
+      const property=knowledge.detail(restored.id,restoredOwner.id).properties.find(item=>item.name===definition.legacyName);
+      assert.equal(property.target_id,result.id);
+      if(input===legacy){
+        assert.equal(property.metadata.definition_id,definition.id);assert.equal(property.metadata.compatibility,'valid');
+        assert.deepEqual(knowledge.schema(restored.id).propertyDefinitions.find(item=>item.id===definition.id).allowedTargetSubtypes,result.subtypes);
+      }
+    }
+  }finally{state.close();}
+});

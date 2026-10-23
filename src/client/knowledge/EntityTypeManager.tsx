@@ -3,7 +3,7 @@ import {propertyLabel} from '../../shared/property-definitions';
 import {t as uiText} from '../i18n';
 import { useState, type FormEvent } from 'react';
 import { entityLabels, entityTypes, type EntityType } from '../../shared/domain';
-import type { EntitySchema } from '../../shared/entity-schema';
+import {subtypeDisplayName, type EntitySchema } from '../../shared/entity-schema';
 import { api } from '../api';
 import { Icon } from '../components/Icon';
 import { Select } from '../components/Select';
@@ -42,15 +42,16 @@ export function EntityTypeManager({vaultId, schema, onChange, entityColors, onCo
         <ColorPicker key={type} id={'color-' + type} label={entityLabels[type] + ' color'} value={entityColors[type]} onChange={color => onColorChange(type, color)}/>
       </div>
     </div>
-    <div><h3>{uiText("Subtypes of") + " "}{uiText(entityLabels[type])}</h3><p className="section-hint">{uiText("Group entities with shared fields.")}</p><div className="type-field-list">{schema.subtypes.filter(s => s.type === type).map(s => <span key={s.id}><Icon name={type}/>{s.name}</span>)}</div>
+    <div><h3>{uiText("Subtypes of") + " "}{uiText(entityLabels[type])}</h3><p className="section-hint">{uiText("Group entities with shared fields.")}</p><div className="type-field-list">{schema.subtypes.filter(s => s.type === type).map(s => <span key={s.id} title={s.description}><Icon name={type}/>{subtypeDisplayName(s,subtypes)}</span>)}</div>
       <form className="type-add-form" onSubmit={e => { void save(e,'subtype'); }}><input required maxLength={200} aria-label={uiText("New subtype name")} placeholder={uiText("e.g. Researcher")} value={subtype} disabled={busy} onChange={e => setSubtype(e.target.value)}/><button className="button small" disabled={busy}>{uiText("Add subtype")}</button></form>
     </div>
     <div><h3>{uiText("Shared category properties")}</h3><p className="section-hint">{uiText("Fields shared by all entities in this category.")}</p><div className="type-field-list">{schema.properties[type].map(name => <span key={name}>{propertyLabel(name)}</span>)}</div></div>
     <div><h3>{uiText("Subtype properties")}</h3>
       {propertySubtype ? <>
         <Select aria-label={uiText("Subtype for property definitions")} value={propertySubtype.id} disabled={busy} onChange={event => { setSelectedSubtype(event.target.value); setProperty(''); }}>
-          {subtypes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+          {subtypes.map(item => <option key={item.id} value={item.id}>{subtypeDisplayName(item,subtypes)}</option>)}
         </Select>
+        <p className="section-hint">{propertySubtype.description}</p>
         <p className="section-hint">{uiText("Fields shared by all") + " "}{propertySubtype.name}{" " + uiText("entities.")}</p>
         <div className="type-field-list">{(schema.subtypeProperties[propertySubtype.id] ?? []).map(name => <span key={name}>{propertyLabel(name)}</span>)}</div>
         <form className="type-add-form" onSubmit={event => { void save(event,'property'); }}><input required maxLength={200} aria-label={uiText("New subtype property")} placeholder={uiText("e.g. occupation")} value={property} disabled={busy} onChange={event => setProperty(event.target.value)}/><button className="button small" disabled={busy}>{uiText("Add property to") + " "}{propertySubtype.name}</button></form>

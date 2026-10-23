@@ -66,8 +66,8 @@
       "tools": [],
       "tool_choice": "none"
     },
-    "promptDigest": "1a6f196204aefa372cd83c6c1f88613c0afb4719b3bcf472375f6e51d7a6deee",
-    "bytes": 6431
+    "promptDigest": "185473f1cbba4361c5ca338d1d13abe75bcd30bd5b6d9fb4656c88235653be5e",
+    "bytes": 6903
   },
   "entity stream": {
     "policy": {
@@ -81,8 +81,8 @@
       "tool_choice": "none",
       "stream": true
     },
-    "promptDigest": "1a6f196204aefa372cd83c6c1f88613c0afb4719b3bcf472375f6e51d7a6deee",
-    "bytes": 6431
+    "promptDigest": "185473f1cbba4361c5ca338d1d13abe75bcd30bd5b6d9fb4656c88235653be5e",
+    "bytes": 6903
   },
   "explanation": {
     "policy": {

@@ -8,9 +8,13 @@ import {ConnectPicker} from '../knowledge/ConnectPicker';
 
 type Association = PageEntityAssociation;
 
-export function PageEntityAssociationsDialog({page, pages=[], entities, onClose, onChanged, onOpenEntity}: {
-  page:Page; pages?:PageSummary[]; entities:Entity[]; onClose:()=>void; onChanged?:()=>Promise<void>; onOpenEntity?:(id:string)=>void;
-}) {
+type DialogProps = {page:Page;pages?:PageSummary[];entities:Entity[];onClose:()=>void;onChanged?:()=>Promise<void>;onOpenEntity?:(id:string)=>void};
+
+/** Source identity is an async boundary: late results cannot update another page. */
+export function PageEntityAssociationsDialog(props:DialogProps) {
+  return <PageConnectionSession key={props.page.vault_id+':'+props.page.id} {...props}/>;
+}
+function PageConnectionSession({page,pages=[],entities,onClose,onChanged,onOpenEntity}:DialogProps) {
   const [associations,setAssociations]=useState<Association[]>([]);
   const [pageLinks,setPageLinks]=useState<PagePageAssociation[]>([]);
   const [pageUndo,setPageUndo]=useState<{id:string;previous?:PagePageAssociation}|null>(null);
@@ -70,6 +74,8 @@ export function PageEntityAssociationsDialog({page, pages=[], entities, onClose,
 
 function AssociationRow({association,name,pending,onOpen,onSave,onRemove}:{association:Association;name:string;pending:boolean;onOpen?:()=>void;onSave:(values:{pinned?:boolean;annotation?:string})=>void;onRemove:()=>void}) {
   const [annotation,setAnnotation]=useState(association.annotation);
+  const previousAnnotation=useRef(association.annotation);
+  useEffect(()=>{const previous=previousAnnotation.current;previousAnnotation.current=association.annotation;setAnnotation(current=>current===previous?association.annotation:current);},[association.annotation]);
   return <article className="page-entity-association" aria-label={name}>
     <div className="page-entity-association-heading">{onOpen?<button type="button" className="page-entity-name" disabled={pending} onClick={onOpen}>{name}<Icon name="chevron"/></button>:<strong>{name}</strong>}<span>{association.pinned?uiText('Pinned'):uiText('Associated')}</span></div>
     <label>{uiText('Page annotation')}<textarea maxLength={2000} value={annotation} disabled={pending} onChange={event=>setAnnotation(event.target.value)} rows={2}/></label>

@@ -24,6 +24,7 @@ async function mount(t,{initial=null,post}={}){
   const entry={url:String(url),method:options.method??'GET',body:options.body?JSON.parse(options.body):undefined};requests.push(entry);
   let result;
   if(entry.method==='POST'){result=await post(entry,revision);if(result)revision=result;}
+  else if(entry.url.endsWith('/intelligence'))result={model:'gpt-5-mini',reasoningEffort:'low'};
   else if(entry.url.endsWith('/reprocessing'))result=revision?[{...revision,patchCount:revision.patches.length,pendingCount:revision.patches.length}]:[];
   else if(entry.url.endsWith('/status'))result={id:revision.id,status:revision.status,updatedAt:revision.updatedAt,...revision.report};
   else result=revision;
@@ -56,11 +57,12 @@ test('risky changes show evidence warnings and batch review submits only selecte
 test('interrupted revisions resume retained progress and running revisions can stop',async t=>{
  const r=fixture();r.status='interrupted';r.report.chunksCompleted=3;r.report.chunksTotal=5;
  const env=await mount(t,{initial:r,post:async(entry,current)=>({...current,status:entry.url.endsWith('/resume')?'running':'interrupted'})});
- assert.equal(document.querySelector('[aria-label="Reprocessing progress"]'),null);
+ assert.equal(document.querySelector('[aria-label="Reprocessing progress"]').value,3);
  await env.click(env.button('Resume remaining excerpts'));assert.equal(env.requests.filter(r=>r.method==='POST').length,1);
  assert.equal(document.querySelector('[aria-label="Reprocessing progress"]').value,3);
+ assert.match(document.querySelector('.reprocessing-progress small').textContent,/after a successful excerpt in this session/);
  await env.click(env.button('Review changes (2)'));assert.ok([...document.querySelectorAll('.reprocessing-select input')].every(el=>el.disabled));
- await env.click(env.button('Stop and keep progress'));assert.ok(env.requests.find(r=>r.url.endsWith('/cancel')));assert.ok(env.button('Resume remaining excerpts'));assert.equal(document.querySelector('[aria-label="Reprocessing progress"]'),null);
+ await env.click(env.button('Stop and keep progress'));assert.ok(env.requests.find(r=>r.url.endsWith('/cancel')));assert.ok(env.button('Resume remaining excerpts'));assert.equal(document.querySelector('[aria-label="Reprocessing progress"]').value,3);
 });
 test('individual decisions remove hidden patches from batch selection',async t=>{
  const r=fixture(),env=await mount(t,{initial:r,post:async(entry,current)=>({...current,updatedAt:'2026-10-20T00:00:00Z',patches:current.patches.map(p=>{const decision=entry.body.decisions.find(d=>d.patchId===p.id);return decision?{...p,decision:decision.decision}:p;})})});
@@ -85,4 +87,44 @@ test('unchanged running progress polls lightweight status without downloading an
  assert.equal(details(),1);
  await act(async()=>{for(const callback of [...scheduled])await callback();});
  assert.ok(env.requests.some(item=>item.url.endsWith('/status')));assert.equal(details(),1);
+ r.updatedAt='2026-10-24T12:00:00Z';r.report.excerpts=[{index:0,status:'running',attempts:2,startPage:1,endPage:1,durationMs:400}];
+ await act(async()=>{for(const callback of [...scheduled])await callback();});
+ assert.ok(details()>1,'Changed attempt checkpoint refreshes detail even when completion count is unchanged');assert.match(document.querySelector('.reprocessing-ledger').textContent,/Processing.*Attempts: 2/s);
+});
+
+test('partial failures show actionable processing cause and excerpt ledger separately from editorial review',async t=>{
+ const r=fixture();r.status='failed';r.report.chunksCompleted=1;r.report.chunksTotal=3;r.report.error='Provider rejected the request configuration.';r.report.errorCode='provider_http_422';
+ r.report.excerpts=[{index:0,status:'completed',attempts:1,startPage:1,endPage:2,durationMs:1200},{index:1,status:'failed',attempts:1,startPage:3,endPage:3,durationMs:400,error:'Unsupported reasoning',errorCode:'provider_http_400'},{index:2,status:'pending',attempts:0,startPage:4,endPage:4,durationMs:0}];
+ r.report.diagnostics=['Excerpt 1: preserve this quotation.','Excerpt 1, suggestion 1: excluded from review — ambiguous canonical text.'];
+ const env=await mount(t,{initial:r,post:async(_,current)=>({...current,status:'queued'})});
+ assert.match(document.querySelector('.reprocessing-progress').textContent,/Partial revision.*1 \/ 3 excerpts completed/s);
+ assert.match(document.querySelector('.reprocessing-failure').textContent,/Settings → Intelligence/);
+ assert.match(document.querySelector('.reprocessing-ledger').textContent,/Pages 1–2.*Completed.*Attempts: 1.*Page 3.*Failed.*Unsupported reasoning.*Page 4.*Not started/s);
+ assert.equal(env.button('Review changes (2)').getAttribute('aria-pressed'),'true');
+ assert.ok(env.button('Read partial revision'));assert.ok(env.button('Retry after configuration repair'));
+ const summaries=[...document.querySelectorAll('.reprocessing-report summary')].map(node=>node.textContent);
+ assert.ok(summaries.includes('Processing errors'));assert.ok(summaries.includes('Excluded suggestions (1)'));assert.ok(summaries.includes('Editorial observations'));
+ await env.click(env.button('Retry after configuration repair'));assert.ok(env.requests.some(entry=>entry.url.endsWith('/resume')));
+});
+test('start preview uses supported selected reasoning and never claims forced none',async t=>{
+ const env=await mount(t,{post:async()=>fixture()});await env.click(env.button('Reprocess with AI'));
+ const preview=document.querySelector('.reprocessing-configuration');assert.match(preview.textContent,/GPT-5 Mini.*low reasoning/s);assert.match(preview.textContent,/Supported reasoning: minimal, low, medium, high/);assert.doesNotMatch(document.querySelector('.reprocessing-prompt').textContent,/Reasoning: none/);
+ assert.equal(env.button('Start reprocessing').disabled,false);
+});
+test('resumed session estimates exclude previous successes and expose only current successful durations',async t=>{
+ const r=fixture();r.status='running';r.report.chunksTotal=5;r.report.chunksCompleted=3;r.report.concurrency=2;r.report.sessionStartedAt='2026-10-24T10:00:00Z';
+ r.report.excerpts=[{index:0,status:'completed',attempts:1,durationMs:900000,lastAttemptAt:'2026-10-20T00:00:00Z'},{index:1,status:'completed',attempts:1,durationMs:900000,lastAttemptAt:'2026-10-20T00:01:00Z'},{index:2,status:'completed',attempts:1,durationMs:602000,lastAttemptAt:'2026-10-24T10:00:01Z',history:[{startedAt:'2026-10-23T10:00:01Z',durationMs:600000,errorCode:'provider_unavailable'},{startedAt:'2026-10-24T10:00:01Z',durationMs:2000}]}];
+ await mount(t,{initial:r});assert.match(document.querySelector('.reprocessing-progress small').textContent,/~2s$/);
+});
+
+test('uncertain provider outcomes explain manual resume duplication risk beside progress',async t=>{
+ const r=fixture();r.status='failed';r.report.chunksTotal=2;r.report.chunksCompleted=1;r.report.error='The transport timed out.';r.report.errorCode='transport_timeout';r.report.excerpts=[{index:1,status:'failed',attempts:1,durationMs:180000,error:'Transport timeout',errorCode:'transport_timeout',outcomeUncertain:true}];
+ const env=await mount(t,{initial:r});assert.match(document.querySelector('.reprocessing-progress').textContent,/not retried automatically.*incur another charge/s);assert.ok(env.button('Retry failed and remaining excerpts'));assert.equal(env.requests.filter(entry=>entry.method==='POST').length,0);
+});
+
+test('resumed ledger preserves each last attempt configuration and marks incomplete token totals',async t=>{
+ const r=fixture();r.status='failed';r.report.model='gpt-5-mini';r.report.reasoningEffort='low';r.report.chunksCompleted=1;r.report.chunksTotal=2;r.report.error='Provider model unavailable';r.report.errorCode='provider_http_404';r.report.usageIncomplete=true;
+ r.report.excerpts=[{index:0,status:'completed',attempts:1,durationMs:2000,history:[{model:'gpt-5-mini',reasoningEffort:'medium',startedAt:'2026-10-23T10:00:00Z',durationMs:2000}]},{index:1,status:'failed',attempts:2,durationMs:500,history:[{model:'gpt-5-mini',reasoningEffort:'medium',startedAt:'2026-10-23T10:00:00Z',durationMs:200,errorCode:'provider_http_400'},{model:'gpt-5-mini',reasoningEffort:'low',startedAt:'2026-10-24T10:00:00Z',durationMs:300,errorCode:'provider_http_404'}]}];
+ const env=await mount(t,{initial:r});const rows=[...document.querySelectorAll('.reprocessing-ledger li')];assert.match(rows[0].textContent,/Last attempt: GPT-5 Mini.*medium reasoning/);assert.match(rows[1].textContent,/Last attempt: GPT-5 Mini.*low reasoning/);
+ assert.match(document.querySelector('.reprocessing-report').textContent,/Current session model \/ reasoninggpt-5-mini \/ low/);assert.match(document.querySelector('.reprocessing-report').textContent,/Token totals are incomplete.*only reported usage/);assert.ok(env.button('Retry after configuration repair'));
 });

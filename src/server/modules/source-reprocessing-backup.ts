@@ -1,3 +1,4 @@
+import {utf16Boundary,wellFormedUnicode} from './source-reprocessing-patches.js';
 import {sourceStructureKinds} from '../../shared/domain.js';
 import type {SourceReprocessingRevision} from '../../shared/source-reprocessing.js';
 import {HttpError,now} from '../validation.js';
@@ -78,6 +79,9 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  const patches=array(r.patches,6400),patchIds=new Set<string>();
  const ordered=patches.map(value=>{
   const patch=object(value),id=string(patch.id,100),bounds=range(patch.range);
+  if(patch.baseHash!==undefined&&patch.baseHash!==r.baseHash)throw invalid();
+  if(patch.excerptIndex!==undefined)integer(patch.excerptIndex,0,127);
+  if(!utf16Boundary(text,bounds.start)||!utf16Boundary(text,bounds.end)||!wellFormedUnicode(string(patch.userReplacement??patch.replacement,16000)))throw invalid();
   if(!id||patchIds.has(id)||bounds.end<=bounds.start||string(patch.original,16000)!==text.slice(bounds.start,bounds.end))throw invalid();patchIds.add(id);
   if(pageRanges.some(page=>page.start>bounds.start&&page.start<bounds.end))throw invalid();
   if(patch.riskReasons!==undefined)for(const reason of array(patch.riskReasons,20))string(reason,2000);
@@ -92,7 +96,7 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  }).sort((a,b)=>a.start-b.start);
  if(ordered.some((bounds,index)=>index>0&&bounds.start<ordered[index-1]!.end))throw invalid();
  const report=object(r.report);string(report.promptVersion,200);string(report.model,200);
- oneOf(report.reasoningEffort,['none','medium']);
+ oneOf(report.reasoningEffort,['none','minimal','low','medium','high','xhigh','max']);
  if(r.acceptanceMode!==undefined)oneOf(r.acceptanceMode,['review_all','safe_formatting']);
  if(r.acceptanceThreshold!==undefined&&(typeof r.acceptanceThreshold!=='number'||!Number.isFinite(r.acceptanceThreshold)||r.acceptanceThreshold<0||r.acceptanceThreshold>1))throw invalid();
  for(const key of ['startedAt','finishedAt'])if(report[key]!==null)timestamp(report[key]);
@@ -104,6 +108,33 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
   if(new Set(indexes).size!==indexes.length||indexes.length!==report.chunksCompleted||indexes.some((value,index)=>index>0&&value<=indexes[index-1]!))throw invalid();
  }
 
+
+ if(report.usageIncomplete!==undefined&&typeof report.usageIncomplete!=='boolean')throw invalid();
+ if(report.sessionStartedAt!==undefined)timestamp(report.sessionStartedAt);
+ if(report.errorCode!==undefined)string(report.errorCode,100);
+ if(report.sessionCompletedIndexes!==undefined){const indexes=array(report.sessionCompletedIndexes,128).map(v=>integer(v,0,chunks-1));if(new Set(indexes).size!==indexes.length)throw invalid();}
+ if(report.excerpts!==undefined){
+  const excerpts=array(report.excerpts,128);if(excerpts.length!==chunks)throw invalid();
+  let end=0;
+  for(const [index,value] of excerpts.entries()){
+   const excerpt=object(value);if(excerpt.index!==index||integer(excerpt.startOffset,0,text.length)!==end)throw invalid();end=integer(excerpt.endOffset,end+1,text.length);
+   for(const key of ['startPage','endPage'])if(excerpt[key]!==null)integer(excerpt[key],1,pageCount??1000);
+   oneOf(excerpt.status,['pending','running','completed','failed','interrupted']);integer(excerpt.attempts,0,Number.MAX_SAFE_INTEGER);integer(excerpt.durationMs,0,Number.MAX_SAFE_INTEGER);
+   for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])if(excerpt[key]!==null)integer(excerpt[key],0,Number.MAX_SAFE_INTEGER);
+   if(excerpt.lastAttemptAt!==undefined)timestamp(excerpt.lastAttemptAt);
+   if(excerpt.errorCode!==undefined)string(excerpt.errorCode,100);if(excerpt.error!==undefined)string(excerpt.error,10000);if(excerpt.outcomeUncertain!==undefined&&typeof excerpt.outcomeUncertain!=='boolean')throw invalid();
+   if(excerpt.history!==undefined)for(const value of array(excerpt.history,20)){
+    const attempt=object(value);if(attempt.model!==undefined)string(attempt.model,200);if(attempt.reasoningEffort!==undefined)oneOf(attempt.reasoningEffort,['none','minimal','low','medium','high','xhigh','max']);timestamp(attempt.startedAt);integer(attempt.durationMs,0,Number.MAX_SAFE_INTEGER);
+    for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])if(attempt[key]!==null)integer(attempt[key],0,Number.MAX_SAFE_INTEGER);
+    if(attempt.errorCode!==undefined)string(attempt.errorCode,100);if(attempt.error!==undefined)string(attempt.error,10000);if(attempt.outcomeUncertain!==undefined&&typeof attempt.outcomeUncertain!=='boolean')throw invalid();
+   }
+   const completed=report.completedChunkIndexes===undefined?index<(report.chunksCompleted as number):(report.completedChunkIndexes as number[]).includes(index);
+   if((excerpt.status==='completed')!==completed)throw invalid();
+  }
+  if(end!==text.length)throw invalid();
+ }
+
+ for(const value of patches){const patch=object(value);if(patch.excerptIndex!==undefined){const excerpt=report.excerpts===undefined?undefined:object((report.excerpts as unknown[])[patch.excerptIndex as number]);const bounds=object(patch.range);if(!excerpt||(bounds.startOffset as number)<(excerpt.startOffset as number)||(bounds.endOffset as number)>(excerpt.endOffset as number))throw invalid();}}
  if(report.charactersTotal!==text.length)throw invalid();integer(report.charactersReviewed,0,text.length);
  if(report.error!==null)string(report.error,10000);
  for(const diagnostic of array(report.diagnostics,11000))string(diagnostic,10000);
@@ -113,7 +144,9 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  const revision=structuredClone({id:r.id,fileId:r.fileId,createdAt:r.createdAt,updatedAt:r.updatedAt,status:r.status,acceptanceMode:r.acceptanceMode??'review_all',acceptanceThreshold:r.acceptanceThreshold,instructions:r.instructions,baseHash:r.baseHash,stale:r.stale,original,reprocessed:original,patches,report}) as unknown as SourceReprocessingRevision;
  revision.id=newId;revision.fileId=newFileId;revision.original.document.source.fileId=newFileId;
  revision.baseHash=hash(revision.original);revision.stale=false;
+ for(const patch of revision.patches)if(patch.baseHash!==undefined)patch.baseHash=revision.baseHash;
  if(revision.status==='queued'||revision.status==='running'){
+  for(const excerpt of revision.report.excerpts??[])if(excerpt.status==='running'){excerpt.status='interrupted';excerpt.outcomeUncertain=true;excerpt.errorCode='provider_outcome_uncertain';excerpt.error='Restored during a request; provider outcome is unknown.';}
   revision.status='interrupted';revision.report.finishedAt=now();revision.report.error='Restored from backup. Start a new pass to continue editorial processing.';
   revision.report.diagnostics.push('Pending AI work was not restarted during backup restoration.');
  }

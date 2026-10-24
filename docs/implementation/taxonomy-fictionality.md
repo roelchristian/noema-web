@@ -52,3 +52,11 @@ The only content conflict was the Settings browser script's result list. Resolut
 Integrated browser checks pass for Settings (all ten category palettes plus subtype/custom icons, color changes, reopen/reload persistence, focus and compatibility governance across desktop/mobile and light/dark), taxonomy/status/reference controls, scanner review, and Library layout/preview/range-selection behavior on 2,500 synthetic items. Evidence directories: `/tmp/taxonomy-integrated-{settings,taxonomy,scan,library}-evidence`. The integrated build, including style/type checks, passes (`/tmp/taxonomy-integration-build.log`). No real vault or paid provider was used.
 
 Integrated full suite: **1,203 passed, zero failures, seven explicit skips** (1,210 total; `/tmp/taxonomy-integration-tests.log`). Script syntax and staged whitespace checks passed. PR remains draft and unmerged; remote exact-head CI is checked after publishing the integration commit.
+
+## Final integration after source reprocessing
+
+The serial merge slot integrates main `8d274abb27a487a5f8c25beb36ff3e56847d9200`, including reprocessing PR #84 and its Library preview-focus browser fix, with a normal merge. No content conflicts or additional implementation changes were required. The entity referent-status migration, contextual/source-reference backup remapping, reprocessing summary projection, generation contracts, Settings colors/focus waits and Library workflows remain intact. Independent review found no in-scope integration regressions.
+
+Build/style/type checks and all five affected synthetic browser checks pass: Settings, taxonomy/status/reference controls, scanner review, Library views (2,500 items), and source reprocessing recovery/review/configuration preview. Logs: `/tmp/taxonomy-finalintegration-build.log` and `/tmp/taxonomy-final-{settings,taxonomy,scan,library,reprocessing}.log`. No real vault data or paid provider calls were used. PR readiness and merge are authorized for this slot after exact-head CI succeeds; no other PR is in scope.
+
+Final integrated full suite: **1,226 passed, zero failures, seven explicit skips** (1,233 total; `/tmp/taxonomy-finalintegration-tests.log`). Whitespace checks passed. Exact-head PR CI and subsequent main CI are verified separately after publication/merge.

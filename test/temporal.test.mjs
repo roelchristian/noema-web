@@ -207,7 +207,7 @@ test('historical dates preserve BCE civil numbering, uncertainty, intervals and 
  assert.equal(temporalOverlaps(temporalDate('-0044/-0042'),'-0043-01-01','-0043-12-31'),true);
  assert.equal(temporalOverlaps(temporalDate('C-1'),'-0001-12-31','0001-01-01'),true);
  assert.equal(temporalOverlaps(temporalDate('C-1'),'0001-01-01','0001-12-31'),false);
- for(const text of ['March 12, 44 BCE','circa 1815 BCE','1815–1816 BCE','early 19th century','circa 1815 (Hebrew)','1815 to 1816 (Hebrew)','in 1815?','19th century?','1 January 1815 BCE?','between 1815 and circa 1816']) {
+ for(const text of ['circa 12 March 44 BCE','12th March 44 BCE','12th March44BCE','early June 44 BCE','about March 44 BCE','c. 12 March 44 BCE','approximately 12th March 44 BCE','late 44 BCE','ca. 1815','uncertain 19th century','mid-1815','44 BCE/43 BCE','around 12 March44BCE','early March1815','circa June44BCE(Julian)','mid-44 BCE','12st March0044BCE','between 12 March44BCE and 15 March44BCE','12 March44BCE to15March43BCE','1815 to about1816','ca. 12 March44BCE','12 Mar44BCE','44BCE or43BCE','1815 and 1820','in 1815 and 1820','circa 12 March44BCE to15March43BCE','March 12, 44 BCE','circa 1815 BCE','1815–1816 BCE','early 19th century','circa 1815 (Hebrew)','1815 to 1816 (Hebrew)','in 1815?','19th century?','1 January 1815 BCE?','between 1815 and circa 1816']) {
   const found=extractTemporal(text);assert.equal(found.length,1,text);assert.equal(found[0].date,null,text);assert.equal(found[0].text,text);
  }
 });

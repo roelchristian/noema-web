@@ -531,11 +531,12 @@ by canonical identity, including BCE, and period entries remain visible. A histo
 timeline is deferred; no synthetic day is generated to populate one.
 
 Unsupported forms remain unresolved rather than losing a qualifier: approximate
-BCE prose, BCE prose ranges, month-first BCE day prose, early/late centuries, mixed-precision intervals,
+BCE prose, BCE prose ranges, ordinal/abbreviated/month-first BCE day prose, early/late centuries, mixed-precision intervals,
 open-ended intervals, question-mark uncertainty, and calendars other than Gregorian
 or Julian. Explicit canonical BCE intervals are supported even where prose extraction
 is deliberately narrower. Multilingual forms and historical era/year-start policies
-remain unsupported. No automatic calendar conversion policy is introduced.
+remain unsupported. No automatic calendar conversion policy is introduced. Bare year conjunctions such as
+“1815 and 1820” remain unresolved; they do not assert an interval between the years.
 
 Calendar-local deterministic lower/upper query keys have a vault/calendar range
 index. Date-row limits and bounded per-date evidence previews remain in place;

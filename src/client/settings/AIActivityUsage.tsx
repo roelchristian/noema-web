@@ -3,7 +3,7 @@ import {t as uiText} from '../i18n';
 import {DisclosureSummary} from '../components/DisclosureSummary';
 import { useEffect, useMemo, useState } from 'react';
 import { aiActivityLabels, type AIActivity } from '../../shared/intelligence';
-import {formatEstimatedUSD,isUnpaidActivity} from '../../shared/ai-pricing';
+import {formatEstimatedUSD,hasReportedTokens,includeInTokenReport} from '../../shared/ai-pricing';
 import {AIPricingNote} from './AIPricingNote';
 import { api } from '../api';
 import { Select } from '../components/Select';
@@ -13,7 +13,7 @@ const dateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth()+
 const number = (value: number) => value.toLocaleString(getLocale());
 const compact = (value: number) => new Intl.NumberFormat(getLocale(),{notation:'compact',maximumFractionDigits:1}).format(value);
 
-export function AIActivityUsage({excludeUnpaid=false,onExcludeUnpaidChange}:{excludeUnpaid?:boolean;onExcludeUnpaidChange?:(value:boolean)=>void}={}) {
+export function AIActivityUsage() {
   const [items,setItems]=useState<AIActivity[]>([]);
   const [busy,setBusy]=useState(true),[error,setError]=useState(''),[revision,setRevision]=useState(0);
   const [period,setPeriod]=useState<Period>('7');
@@ -54,7 +54,7 @@ export function AIActivityUsage({excludeUnpaid=false,onExcludeUnpaidChange}:{exc
     const until=period==='custom'?new Date(end+'T00:00:00'):new Date(today);until.setDate(until.getDate()+1);
     const filtered=invalid?[]:items.filter(item=>{
       const time=new Date(item.startedAt).getTime();
-      return (!excludeUnpaid||!isUnpaidActivity(item))&&(period==='all'||time>=from.getTime()&&time<until.getTime())&&(action==='all'||item.action===action)&&(status==='all'||item.status===status);
+      return includeInTokenReport(item)&&(period==='all'||time>=from.getTime()&&time<until.getTime())&&(action==='all'||item.action===action)&&(status==='all'||item.status===status);
     });
     const sum=(field:'inputTokens'|'outputTokens'|'cachedInputTokens'|'cacheWriteTokens'|'reasoningTokens')=>filtered.reduce((total,item)=>total+(item[field]??0),0);
     const buckets=new Map<string,{input:number;output:number;cost:number;priced:number;unpriced:number}>();
@@ -79,8 +79,8 @@ export function AIActivityUsage({excludeUnpaid=false,onExcludeUnpaidChange}:{exc
       if(bucket){bucket.input+=item.inputTokens??0;bucket.output+=item.outputTokens??0;if(hasCost){bucket.cost+=item.estimatedCost!;bucket.priced++;}else bucket.unpriced++;}
       actions.set(item.action,(actions.get(item.action)??0)+(item.inputTokens??0)+(item.outputTokens??0));
     }
-    return {filtered,cost,priced,actionCosts,input:sum('inputTokens'),output:sum('outputTokens'),cached:sum('cachedInputTokens'),writes:sum('cacheWriteTokens'),reasoning:sum('reasoningTokens'),reported:filtered.filter(item=>item.inputTokens!=null||item.outputTokens!=null).length,buckets:[...buckets],monthly,actions:[...actions].sort((a,b)=>b[1]-a[1])};
-  },[items,period,start,end,action,status,invalid,excludeUnpaid]);
+    return {filtered,cost,priced,actionCosts,input:sum('inputTokens'),output:sum('outputTokens'),cached:sum('cachedInputTokens'),writes:sum('cacheWriteTokens'),reasoning:sum('reasoningTokens'),reported:filtered.filter(hasReportedTokens).length,buckets:[...buckets],monthly,actions:[...actions].sort((a,b)=>b[1]-a[1])};
+  },[items,period,start,end,action,status,invalid]);
   const maximum=Math.max(1,...summary.buckets.map(([,value])=>value.input+value.output));
   const total=summary.input+summary.output;
   return <section className="ai-usage" aria-label={uiText("AI token consumption")} aria-busy={busy}>
@@ -90,7 +90,6 @@ export function AIActivityUsage({excludeUnpaid=false,onExcludeUnpaidChange}:{exc
       <label>{uiText("Action type")}<Select aria-label={uiText("Action type")} value={action} onChange={event=>setAction(event.target.value)}><option value="all">{uiText("All actions")}</option>{Object.entries(aiActivityLabels).map(([value,label])=><option value={value} key={value}>{uiText(label)}</option>)}</Select></label>
       <label>{uiText("Status")}<Select aria-label={uiText("Status")} value={status} onChange={event=>setStatus(event.target.value)}><option value="all">{uiText("All statuses")}</option>{['running','completed','failed','interrupted','skipped'].map(value=><option value={value} key={value}>{value[0].toUpperCase()+value.slice(1)}</option>)}</Select></label>
     </div>
-    <label className="embedding-toggle"><input type="checkbox" checked={excludeUnpaid} onChange={event=>onExcludeUnpaidChange?.(event.target.checked)}/><span>{uiText("Exclude unpaid activity (Kokoro and DOI metadata lookups)")}</span></label>
     {period==='custom'&&<div className="ai-usage-custom"><label>{uiText("From")}<input type="date" value={start} max={end} onChange={event=>setStart(event.target.value)}/></label><label>{uiText("To")}<input type="date" value={end} min={start} onChange={event=>setEnd(event.target.value)}/></label></div>}
     {invalid&&<p role="alert">{uiText("Choose a start date on or before the end date.")}</p>}
     {error&&<p role="alert">{error}</p>}

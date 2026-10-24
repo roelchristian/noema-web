@@ -47,7 +47,10 @@ counts alongside partial estimates, including daily/monthly and action totals.
 Credits, taxes, account discounts, regional premiums, and other billing adjustments
 are excluded. Estimates are not invoices.
 
-“Exclude unpaid activity” hides local Kokoro speech and DOI metadata lookups
-from the token report only. Its selection survives switching tabs. The activity
-log and CSV export always include all retained activity from unlocked vaults.
-Paid-model records with missing usage or unknown prices remain in the report.
+The token report automatically ignores local Kokoro speech, DOI metadata
+lookups, and attempts with no provider request or token counts. Failed,
+interrupted, or skipped attempts without counts are also excluded. Any reported
+counts (including zero) keep a provider attempt in the report regardless of status.
+Completed provider requests with missing counts remain visible as accounting gaps.
+These rules replace the earlier optional unpaid-activity toggle. The activity log
+and CSV always include all retained activity from unlocked vaults.

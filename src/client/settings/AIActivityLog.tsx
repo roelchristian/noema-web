@@ -13,7 +13,6 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { api } from '../api';
 
 export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpenPage: (vaultId: string, pageId: string) => Promise<void>}) {
-  const [excludeUnpaid,setExcludeUnpaid]=useState(false);
   const [view,setView]=useState<'log'|'usage'>('log');
   const [debugId,setDebugId]=useState<string|null>(null);
   const autoRefresh=useRef(true);
@@ -83,7 +82,7 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
       }}>{tab.label}</button>)}
     </div>
     <div id="ai-activity-panel" role="tabpanel" aria-labelledby={'ai-activity-tab-'+view} tabIndex={0}>
-    {view==='usage'?<AIActivityUsage excludeUnpaid={excludeUnpaid} onExcludeUnpaidChange={setExcludeUnpaid}/>:<>
+    {view==='usage'?<AIActivityUsage/>:<>
     <AIPricingNote/>
     {data.enrichmentMetrics&&<details className="ai-usage-note ai-activity-disclosure">
       <DisclosureSummary>{uiText("Page enrichment")} · {data.enrichmentMetrics.providerRequests.toLocaleString(getLocale())} {uiText("requests")} · {data.enrichmentMetrics.requestsAvoided.toLocaleString(getLocale())} {uiText("avoided")}</DisclosureSummary>

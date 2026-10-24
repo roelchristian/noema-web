@@ -29,3 +29,14 @@ export function formatEstimatedUSD(value:number|null|undefined) {return value==n
 export function isUnpaidActivity(item:Pick<AIActivity,'action'|'model'>) {
   return item.action==='bibliographic_lookup'||item.action==='text_to_speech'&&item.model===speechModel;
 }
+
+export function hasReportedTokens(item:Pick<AIActivity,'inputTokens'|'outputTokens'|'cachedInputTokens'|'cacheWriteTokens'|'reasoningTokens'>) {
+  return [item.inputTokens,item.outputTokens,item.cachedInputTokens,item.cacheWriteTokens,item.reasoningTokens].some(value=>value!=null);
+}
+
+/** The report counts provider usage, not local work or attempts without usage. */
+export function includeInTokenReport(item:Pick<AIActivity,'action'|'model'|'status'|'promptBytes'|'inputTokens'|'outputTokens'|'cachedInputTokens'|'cacheWriteTokens'|'reasoningTokens'>) {
+  if(isUnpaidActivity(item))return false;
+  if(hasReportedTokens(item))return true;
+  return item.promptBytes!=null&&!['failed','interrupted','skipped'].includes(item.status);
+}

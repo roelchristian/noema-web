@@ -1,4 +1,5 @@
 import {bibliographicLegacyConflicts,assertBibliographicReconciliation} from './bibliographic-property-projection.js';
+import {exportBibliographicBundle} from './bibliographic-export.js';
 import {createHash,randomUUID} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {parseBibliography,exportBibliography,normalizeDoi,isCitationKey,type BibliographicEntry} from '../../shared/bibliography.js';
@@ -78,6 +79,6 @@ export class Bibliography {
  }
  reconcilePreview(vault:string,id:string,body:Record<string,unknown>) {this.source(vault,id);const current=this.get(vault,id);if(body.revision!==(current?.revision??0))throw new HttpError(409,'The bibliography changed. Reload before reviewing.');return {conflicts:bibliographicLegacyConflicts(this.store,vault,id,fields(body.fields),current?.fields)};}
  save(vault:string,id:string,body:Record<string,unknown>) {this.source(vault,id);return this.store.transaction(()=>{const current=this.get(vault,id);if(body.revision!==(current?.revision??0))throw new HttpError(409,'The bibliography changed. Reload before saving.');return this.write(vault,id,citationKey(body.citationKey),entryType(body.entryType),fields(body.fields),'manual',current?.rawImports??[],current??undefined,body.reviewedProperties);});}
- export(vault:string) {const records=this.list(vault,false).map(record=>({...record,creators:[],rawBibtex:''}));const batches=this.store.all<{id:string;raw:string}>('SELECT id,raw FROM bibliographic_import_batches WHERE vault_id=? ORDER BY id',vault);const sidecarRecords=records.map(record=>({...record,rawImportIds:JSON.parse(this.row(vault,record.sourceId)!.raw_imports_json)}));return {bibtex:exportBibliography(records,'bibtex'),biblatex:exportBibliography(records,'biblatex'),sidecar:JSON.stringify({version:1,records:sidecarRecords,importBatches:batches},null,2)};}
+ export(vault:string) {this.open(vault);const records=this.list(vault,false).map(record=>({...record,rawImportIds:JSON.parse(this.row(vault,record.sourceId)!.raw_imports_json) as string[]}));const batches=this.store.all<{id:string;raw:string}>('SELECT id,raw FROM bibliographic_import_batches WHERE vault_id=? ORDER BY id',vault);const result=exportBibliographicBundle(this.store,vault,records,batches);return {...result,annotated:result.annotatedBiblatex};}
 
 }

@@ -62,6 +62,10 @@ test('changing the selected import match clears conflict choices and stale revis
  await change(document.querySelector('select'),'skip');await change(document.querySelector('select'),'source-one');assert.equal(document.querySelector('[aria-label="Resolve title for sample"]').value,'');assert.equal(button('Import reviewed entries').disabled,true);
  await change(document.querySelector('[aria-label="Resolve title for sample"]'),'incoming');await click('Import reviewed entries');assert.equal(commits,1);assert.equal(document.querySelector('table'),null);assert.match(document.querySelector('[role=alert]').textContent,/source changed/);assert.equal(button('Review import').disabled,false);
 });
+test('annotated export downloads the annotated BibLaTeX response',async t=>{
+ let content;t.mock.method(bibliographyAPI,'export',async()=>({bibtex:'standard',biblatex:'biblatex',annotated:'reviewed annotation',sidecar:'{}'}));t.mock.method(URL,'createObjectURL',blob=>{content=blob;return 'blob:synthetic';});t.mock.method(URL,'revokeObjectURL',()=>{});
+ const env=await mount(t,BibliographyExport,{vaultId:'synthetic'});env.dom.window.HTMLAnchorElement.prototype.click=function(){};await change(document.querySelector('select'),'annotated');await click('Export bibliography');assert.equal(await content.text(),'reviewed annotation');
+});
 
 test('import reconciliation requires explicit legacy-property approval only for changed incoming values',async t=>{
  const conflict={field:'title',proposedValue:'Synthetic study',property:{id:'legacy-title',name:'title',value:'My authored title',target_id:null},fingerprint:'synthetic-current-snapshot'};const withLegacy={...preview,entries:preview.entries.map(item=>({...item,matches:item.matches.map(match=>({...match,propertyConflicts:[conflict]}))}))};const writes=[];

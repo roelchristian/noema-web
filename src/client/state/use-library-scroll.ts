@@ -108,6 +108,7 @@ export function useLibraryScroll(workspace: Pick<Workspace,'snapshot'|'subscribe
     mutation.observe(document.getElementById('content') ?? document.body, {childList: true, subtree: true, attributes: true, attributeFilter: ['data-library-vault','data-library-destination','src','aria-busy']});
     const unsubscribe = workspace.subscribe(beforeNavigation);
     capturers.add(beforeLocalNavigation); afterRender.current = transition;
+    window.addEventListener('pagehide',scroll);
     window.addEventListener('scroll',scroll,{passive: true});
     window.addEventListener('pointerdown',pointer,{capture: true, passive: true});
     window.addEventListener('wheel',interrupt,{passive: true});
@@ -119,6 +120,7 @@ export function useLibraryScroll(workspace: Pick<Workspace,'snapshot'|'subscribe
     transition();
     return () => {
       capture(); stop(); unsubscribe(); mutation.disconnect(); capturers.delete(beforeLocalNavigation); afterRender.current = () => {};
+      window.removeEventListener('pagehide',scroll);
       window.removeEventListener('scroll',scroll);
       window.removeEventListener('pointerdown',pointer,true);
       window.removeEventListener('wheel',interrupt);

@@ -1,3 +1,4 @@
+import {DetailSidePanel} from '../components/DetailSidePanel';
 import {SourceMetadata} from '../sources/SourceMetadata';
 import {BibliographyEditor} from './BibliographyEditor';
 import {relationshipDisplayLabel} from '../../shared/relationship-predicates';
@@ -118,7 +119,7 @@ export function EntityPanel(props: EntityPanelProps) {
     {entity ? <div className="entity-toolbar-heading"><span className="entity-detail-icon" aria-hidden="true"><Icon name={entity.type} entity={entity}/></span><div className="entity-toolbar-identity">{inspector&&<span className="source-inspector-eyebrow">{uiText("Source")}</span>}<h2 id="entity-detail-title" className="entity-toolbar-title" title={entity.name}>{entity.name}</h2></div></div> : <span>{inspector ? uiText("SOURCE INSPECTOR") : uiText("KNOWLEDGE ENTITY")}</span>}
     <button type="button" title={inspector ? uiText("Close source inspector") : uiText("Close entity")} aria-label={inspector ? uiText("Close source inspector") : uiText("Close entity")} onClick={onClose}><Icon name="close"/></button>
   </div>;
-  return <aside id="entity-panel" className={"entity-panel entity-detail-panel entity-editor-panel" + (inspector ? " source-inspector" : "")} data-entity-tab={tab} aria-label={inspector ? uiText("Source inspector") : uiText("Knowledge entity")}>{inspector?<div className="source-inspector-header">{panelToolbar}{entity&&tabNavigation}</div>:panelToolbar}
+  return <DetailSidePanel id="entity-panel" inspector={inspector} toolbar={panelToolbar} tabs={inspector&&entity?tabNavigation:undefined} data-entity-tab={tab} aria-label={inspector ? uiText("Source inspector") : uiText("Knowledge entity")}>
     {!entity ? <p className="panel-body" role={loadingError ? 'alert' : 'status'}>{loadingError || (inspector?uiText("Loading source…"):uiText("Loading entity…"))}</p> : <div className="panel-body entity-detail-body">
       {loadingError && <p role="alert">{loadingError}</p>}
       {!inspector&&entity.attachments?.map(file=><SourceLoadingProgress key={file.id} file={file}/>)}
@@ -200,7 +201,7 @@ export function EntityPanel(props: EntityPanelProps) {
       </div>
       {inspector&&lifecycleControls}
     </div>}
-  </aside>;
+  </DetailSidePanel>;
 }
 function SourceInspectorSummary({name,summary}:{name:string;summary?:string|null}) {
   const [expanded,setExpanded]=useState(false);

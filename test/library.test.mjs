@@ -277,3 +277,21 @@ test('quick preview shows a page cover and opening text only after explicitly op
   assert.equal(previewReads,1);assert.equal(document.querySelector('dialog img').getAttribute('src'),'/api/images/cover-image?vault=preview');
   assert.match(document.querySelector('dialog').textContent,/Opening text stays available/);
 });
+
+test('Sources library scope and row position survive a reload in the same tab',async t=>{
+  const {setupDOM}=await import('./helpers/dom.mjs');setupDOM(t);
+  const state=await import('../src/client/state/library-view-state.ts');
+  const destination=JSON.stringify(['knowledge','source']);
+  state.setLibraryViewState('reload-vault','knowledge',{entityType:'source'});
+  state.setLibraryViewState('reload-vault',destination,{query:'Dante',focusedRow:'entity:book',scroll:{top:840,left:0},anchor:{row:'entity:book',top:56}});
+  const reloaded=await import('../src/client/state/library-view-state.ts?source-reload-test');
+  assert.equal(reloaded.getLibraryViewState('reload-vault','knowledge').entityType,'source');
+  const restored=reloaded.getLibraryViewState('reload-vault',destination);
+  assert.equal(restored.query,'Dante');
+  assert.equal(restored.scroll.top,840);
+  assert.deepEqual(restored.anchor,{row:'entity:book',top:56});
+  assert.equal(restored.focusedRow,'entity:book');
+  assert.equal(reloaded.getLibraryViewState('other-vault','knowledge').entityType,undefined);
+  state.clearLibraryViewStates('reload-vault');
+  assert.deepEqual(state.readLibrarySession('reload-vault',destination),{});
+});

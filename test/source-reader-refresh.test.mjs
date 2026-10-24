@@ -30,6 +30,7 @@ test('delayed enrichment refreshes headings and navigation without reloading or 
  globalThis.setTimeout=(callback,delay,...args)=>{if(delay===2000){poll=()=>callback(...args);return 2147483647;}return originalTimeout(callback,delay,...args);};
  const text='Teaching Dante\n\nA stable paragraph for citation.';
  const file={id:'file',vault_id:'default',entity_id:'source',name:'article.txt',format:'txt',status:'ready',admitted:1,text,textHash:'unchanged-text-version',pages:0,page_start_lines:'[]',structural_nodes:'[]',enrichment_status:'running',generated_name:null,language:null,source_url:null};
+ const bookmark={id:'bookmark-1',label:'Saved passage',anchor:{fileId:'file',revision:file.textHash,offset:16,quote:'A stable paragraph for citation.',prefix:'Teaching Dante\n\n',suffix:'',atEnd:false},resolution:{status:'resolved',offset:16}};
  const attachment=()=>({...file,enrichment_status:completed?'completed':'running',structural_nodes:completed?JSON.stringify([{text:'Teaching Dante',startLine:1,level:2,kind:'section'}]):'[]'});
  const canonicalDocument=processedSourceDocument(file),revisedText=text.replace('A stable paragraph for citation.','A revised paragraph for reading.');
  const revisedDocument=processedSourceDocument({...file,text:revisedText});
@@ -37,21 +38,78 @@ test('delayed enrichment refreshes headings and navigation without reloading or 
  const revisedEntries=sourceDocumentEntries(revisedDocument).filter(entry=>entry.node.text!==undefined);
  const revision={...JSON.parse(readFileSync(new URL('./fixtures/dante-editorial-revision.json',import.meta.url),'utf8')),id:'revision',fileId:'file',baseHash:'snapshot-fingerprint-distinct-from-text-hash',stale:false,status:'completed',original:{text,document:canonicalDocument},reprocessed:{text:revisedText,document:revisedDocument},nodeLinks:originalEntries.map((entry,index)=>({originalNodeId:entry.node.id,reprocessedNodeIds:[revisedEntries[index].node.id]}))};
  revision.report.chunksCompleted=revision.report.chunksTotal;
- globalThis.fetch=async url=>{
+ globalThis.fetch=async(url,options)=>{
   if(url==='/api/entities/source'){detailReads++;return Response.json({attachments:[attachment()]});}
   if(url==='/api/source-files/file?fingerprint=1&context=1'){documentReads++;const current=attachment();return Response.json({...current,document:processedSourceDocument(current)});}
-  if(url==='/api/source-files/file/reading-locations')return Response.json({resume:null,bookmarks:[]});
+  if(url==='/api/source-files/file/reading-locations')return Response.json({resume:null,bookmarks:[bookmark]});
+  if(url==='/api/source-files/file/reading-locations/bookmark-1'){assert.equal(options.method,'PATCH');bookmark.label=JSON.parse(options.body).label;return Response.json({ok:true});}
   if(url==='/api/source-files/file/reprocessing')return Response.json([{...revision,patchCount:0,pendingCount:0}]);
   if(url==='/api/source-files/file/reprocessing/revision')return Response.json(revision);
-  if(['/api/source-files/file/highlights','/api/source-files/file/reading-notes','/api/source-files/file/reprocessing'].includes(url))return Response.json([]);
+  if(url==='/api/source-files/file/highlights')return Response.json([{id:'highlight-1',fileId:'file',sourceId:'source',sourceHash:file.textHash,startOffset:16,endOffset:text.length,excerpt:'A stable paragraph for citation.',color:'yellow',createdAt:'2026-10-25'}]);
+  if(url==='/api/source-files/file/highlights/highlight-1')return Response.json({ok:true});
+  if(url==='/api/source-files/file/reading-notes')return Response.json([{pageId:'note-1',title:'My annotation',text:'A connection to revisit.',sourceHash:file.textHash,startOffset:16,endOffset:text.length}]);
   throw new Error(`Unexpected request: ${url}`);
  };
- let infoToggles=0;
+ let infoToggles=0,openedNote='';
  const errors=[],root=createRoot(document.querySelector('#mount'));
  const noop=()=>{};
  try{
-  await act(async()=>root.render(React.createElement(SourceReader,{vaultId:'default',source:{id:'source',name:'Article',subtypes:[],updated_at:'fixed'},entities:[],onToggleInspector:()=>infoToggles++,onOpenEntity:noop,onCreatePageFromSource:noop,onError:message=>errors.push(message),onAddPassage:noop,onAnnotate:noop,onReadingNoteCreated:noop,onOpenReadingNote:noop,onRemoveReadingNote:noop})));
+  await act(async()=>root.render(React.createElement(SourceReader,{vaultId:'default',source:{id:'source',name:'Article',subtypes:[],updated_at:'fixed'},entities:[],onToggleInspector:()=>infoToggles++,onOpenEntity:noop,onCreatePageFromSource:noop,onError:message=>errors.push(message),onAddPassage:noop,onAnnotate:noop,onReadingNoteCreated:noop,onOpenReadingNote:id=>{openedNote=id;},onRemoveReadingNote:noop})));
   assert.equal(documentReads,1);
+  const activity=document.querySelector('.source-reader-toolbar button[aria-label="Reading activity"]');
+  assert.ok(activity,'Sources toolbar exposes central reading activity');
+  await act(async()=>{activity.focus();activity.click();});
+  const activityPanel=()=>document.querySelector('aside[aria-label="Reading activity"]');
+  assert.ok(activityPanel());
+  assert.ok(activityPanel().classList.contains('entity-panel'),'reading activity uses the source inspector panel frame');
+  assert.ok(activityPanel().querySelector('.source-inspector-header .entity-detail-toolbar'));
+  assert.equal(activityPanel().closest('.source-reader'),null,'side panel lives alongside the workspace');
+  assert.ok(document.querySelector('[aria-label="Passage bookmarks"]'));
+  assert.equal(activityPanel().querySelector('[aria-label="Bookmark label"]'),null,'bookmark rows keep edit fields hidden');
+  assert.ok(activityPanel().querySelector('[aria-label="Rename bookmark"] svg'));
+  await act(async()=>activityPanel().querySelector('[aria-label="Rename bookmark"]').click());
+  const bookmarkLabel=activityPanel().querySelector('[aria-label="Bookmark label"]');
+  await act(async()=>{
+   Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value').set.call(bookmarkLabel,'Revisit this');
+   bookmarkLabel.dispatchEvent(new dom.window.Event('input',{bubbles:true}));
+   bookmarkLabel.dispatchEvent(new dom.window.KeyboardEvent('keyup',{key:'s',bubbles:true}));
+  });
+  await act(async()=>activityPanel().querySelector('.source-activity-rename').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));
+  assert.equal(bookmark.label,'Revisit this');
+  assert.equal(activityPanel().querySelector('[aria-label="Bookmark label"]'),null,'successful rename returns to the compact row');
+  assert.match(activityPanel().textContent,/Revisit this/);
+
+  assert.equal(activityPanel().querySelector('.source-activity-body').dataset.previewLines,'2');
+  await act(async()=>activityPanel().querySelector('[aria-label="One-line previews"]').click());
+  assert.equal(activityPanel().querySelector('.source-activity-body').dataset.previewLines,'1');
+  assert.equal(localStorage.getItem('noema:source-activity-lines'),'1');
+  assert.ok(activityPanel().querySelector('[aria-label="One-line previews"] svg'));
+
+  const activityTab=name=>[...activityPanel().querySelectorAll('[role="tab"]')].find(button=>button.textContent.startsWith(name));
+  await act(async()=>activityTab('Annotations').click());
+  assert.match(activityPanel().textContent,/My annotation/);
+  assert.match(activityPanel().textContent,/A connection to revisit/);
+  assert.match(activityPanel().querySelector('.source-activity-context').textContent,/Line 3/);
+  assert.match(activityPanel().querySelector('.source-activity-context').textContent,/A stable paragraph/);
+  assert.ok(activityPanel().querySelector('[aria-label="Open note"] svg'));
+
+  await act(async()=>[...activityPanel().querySelectorAll('button')].find(button=>button.getAttribute('aria-label')==='Open note').click());
+  assert.equal(openedNote,'note-1','annotations open their saved reading note');
+  await act(async()=>activityTab('Highlights').click());
+  assert.match(activityPanel().textContent,/A stable paragraph for citation/);
+  await act(async()=>[...activityPanel().querySelectorAll('button')].find(button=>button.getAttribute('aria-label')==='Remove highlight').click());
+  assert.match(activityPanel().textContent,/No highlights yet/);
+  await act(async()=>activityTab('Highlights').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true})));
+  assert.equal(activityTab('Annotations').getAttribute('aria-selected'),'true');
+  assert.equal(document.activeElement,activityTab('Annotations'));
+  assert.equal(document.querySelector('.source-reader-document [data-highlight-id]'),null,'central removal updates the passage');
+  await act(async()=>document.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})));
+  assert.equal(activityPanel(),null);
+  assert.equal(document.activeElement,activity,'Escape restores the activity trigger');
+  await act(async()=>document.querySelector('.source-reading-navigation button[aria-label="Reading activity"]').click());
+  assert.ok(activityPanel(),'floating control opens the same activity view');
+  await act(async()=>activityPanel().querySelector('.panel-top button').click());
+
   assert.equal(document.querySelector('.source-reader-document').dataset.annotations,'contextual');
   assert.equal(document.querySelector('[aria-label="Reader annotations"]').value,'contextual');
   await act(async()=>document.querySelector('button[aria-label="Info"]').click());

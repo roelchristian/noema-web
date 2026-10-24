@@ -118,6 +118,18 @@
   font-size: 11px;
   color: var(--text-muted);
 }
+.sidebar-action-menu :is(.action-menu-description, .action-menu-heading) { font-size: var(--ui-text-md); }
+.action-menu-heading[data-separated] {
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+}
+.action-menu-shortcut {
+  flex: none;
+  margin-inline-start: auto;
+  color: var(--text-muted);
+  font: var(--ui-text-md)/1.4 var(--font-ui);
+  white-space: nowrap;
+}
 .command-menu { z-index: 40; }
 .sidebar-action-menu::backdrop { background: transparent; }
 .menu-primitive button.action-menu-back { color: var(--text-muted); }

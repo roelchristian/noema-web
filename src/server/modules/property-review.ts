@@ -74,6 +74,9 @@ export class PropertyReview {
   const apply=()=>{
    const proposal=this.store.get<PropertyProposal>('SELECT * FROM property_proposals WHERE id=? AND vault_id=? AND entity_id=?',proposalId,vault,entityId);
    if(!proposal)throw new HttpError(404,'Property proposal not found');
+   if(proposal.property_name?.startsWith('bibliography:')||this.store.get("SELECT 1 FROM sqlite_master WHERE type='table' AND name='source_metadata_candidates'")&&this.store.get('SELECT 1 FROM source_metadata_candidates WHERE proposal_id=?',proposal.id))throw new HttpError(409,'Review this metadata proposal in the Source Metadata workspace.');
+   const sourceLiteral=proposal.kind==='property'&&!proposal.target_id&&this.entity(vault,entityId).type==='source'&&['publication title','title','author','authors','editor','editors','translator','translators','publisher','doi','isbn','issn','edition','publication date','publication year','published','year','journal','journal title','volume','issue','pages','page range','book title','container title','series','url','abstract','author abstract'].includes(proposal.property_name?.toLowerCase()??'');
+   if(sourceLiteral)throw new HttpError(409,'This projected bibliographic proposal must be reviewed in the Source Metadata workspace.');
    const current=this.preview(vault,proposal);
    if(proposal.status!=='pending') {
     if(proposal.status===(input.action==='reject'?'rejected':'accepted'))return current;

@@ -86,3 +86,19 @@ test('canonical editor requires fingerprinted authored-property reconciliation a
  await change(document.querySelector('[aria-label="Authored property reconciliation"] input'),true);await change(doi(),'10.1234/old');assert.equal(document.querySelector('[aria-label="Authored property reconciliation"]'),null);
  await change(doi(),'10.1234/new');await click('Save bibliographic facts');assert.equal(button('Save reviewed facts').disabled,true);await change(document.querySelector('[aria-label="Authored property reconciliation"] input'),true);await click('Save reviewed facts');assert.equal(saves.length,1);assert.deepEqual(saves[0].reviewedProperties,[{propertyId:'authored-doi',fingerprint:'exact-snapshot'}]);
 });
+
+test('compact editable bibliography opens in place and retains its draft when collapsed',async t=>{
+ const record={sourceId:'source-one',citationKey:'sample',entryType:'book',fields:{title:'Original title'},revision:1,provenance:{},rawImports:[]};
+ t.mock.method(bibliographyAPI,'record',async()=>record);
+ t.mock.method(bibliographyAPI,'reconcilePreview',async()=>({conflicts:[]}));
+ let saved;
+ t.mock.method(bibliographyAPI,'save',async(_vault,_id,body)=>{saved=body;return {...record,...body,revision:2};});
+ await mount(t,BibliographyEditor,{vaultId:'synthetic',entity:{id:'source-one',name:'Synthetic',attachments:[],relationships:[]},compact:true,editable:true,onUpdated:async()=>{}});
+ assert.equal(document.querySelector('.bibliography-fields'),null);
+ await click('Edit bibliography');
+ await change(document.querySelector('.bibliography-fields input'),'Edited title');
+ await click('Close editor');await click('Edit bibliography');
+ assert.equal(document.querySelector('.bibliography-fields input').value,'Edited title');
+ await click('Save bibliographic facts');assert.equal(saved.fields.title,'Edited title');
+ await click('Close editor');assert.match(document.querySelector('.bibliography-editor strong').textContent,/Edited title/);
+});

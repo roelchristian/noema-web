@@ -70,7 +70,7 @@ export const builtinProperties: Record<EntityType, string[]> = {
   organism: [],
   thing: [],
   culture: [],
-  source: ['Import method', 'Source URL', 'url', 'author', 'publication date', 'accessed date'],
+  source: ['Import method', 'Source URL', 'author', 'editor', 'translator', 'publication date', 'accessed date'],
   concept: [],
 };
 

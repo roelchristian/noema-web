@@ -109,3 +109,8 @@ test('the 19 requested additions have curated schemas and compatible multi-subty
  assert.deepEqual(builtinSubtypes.filter(item=>item.type==='source').map(item=>item.id),['source:website','source:journal-article','source:interview']);
  assert.ok(!recommendedPropertyDefinitions.some(item=>item.key==='discipline'||item.key==='proof'||item.key==='definition'));
 });
+
+test('source recommendations use Source URL without a duplicate URL field',()=>{
+ assert.ok(inheritedPropertyNames(schema,'source',['source:website']).includes('Source URL'));
+ assert.ok(!inheritedPropertyNames(schema,'source',['source:website']).some(name=>name.toLowerCase()==='url'));
+});

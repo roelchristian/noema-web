@@ -84,3 +84,36 @@ test('classification edits preview before explicit legacy retention and keep dra
   await click('.entity-classification-impact button');assert.equal(saved.classification_mode,'retain_legacy');assert.equal(saved.impact_fingerprint,'fresh-impact');assert.equal(saved.type,'place');assert.equal(hasEntityDraft('v','e'),false);
  });
 });
+
+test('source inspector edits in Overview and omits the Details tab, including legacy edit requests',async t=>{
+ const {bibliographyAPI}=await import('../src/client/knowledge/BibliographyAPI.ts');
+ const env=await setupEntityDOM(t),{root,click,dom}=env;
+ const entity={id:'source',vault_id:'v',name:'A source',type:'source',description:'',subtypes:[],domainIds:[],aliases:[],mentionCase:'canonical',properties:[],propertyNames:['Publisher'],relationships:[],incomingProperties:[],pageMentions:[],attachments:[{id:'file',name:'source.txt',format:'txt',language:'en',status:'ready',admitted:1,enrichment_status:'completed',size:100,text:'text',pages:0,import_method:'upload'}],updated_at:'2026-10-19'};
+ t.mock.method(api,'entity',async()=>entity);
+ t.mock.method(api,'entitySchema',async()=>({properties:Object.fromEntries(entityTypes.map(type=>[type,[]])),subtypes:[],subtypeProperties:{}}));
+ t.mock.method(bibliographyAPI,'record',async()=>null);
+ let saved;
+ t.mock.method(api,'updateEntity',async(_vault,_id,input)=>{saved=input;return {...entity,...input};});
+ const props={vaultId:'v',id:entity.id,entities:[entity],refreshKey:'',inspector:true,inspectorTab:'edit',onOpen(){},onClose(){},onUpdated:async()=>{},onError(error){throw error;},onOpenPage(){},onCreatePageFromSource(){}};
+ try {
+  await act(async()=>root.render(React.createElement(EntityPanel,props)));
+  assert.deepEqual([...document.querySelectorAll('[role=tab]')].map(tab=>tab.textContent),['Overview','Connections']);
+  assert.equal(document.querySelector('#entity-tabpanel-overview').hidden,false);
+  assert.equal(document.querySelector('#entity-tabpanel-edit'),null);
+  const languageRow=[...document.querySelectorAll('.source-inspector-metadata dt')].find(label=>label.textContent==='Language').parentElement;
+  assert.equal(languageRow.querySelector('dd').textContent,'English');
+  assert.match(document.querySelector('.source-file').textContent,/Language: English/);
+  assert.ok(document.querySelector('#entity-tabpanel-overview .entity-inline-properties'));
+  assert.equal(document.querySelector('.source-inspector-edit').open,false);
+  await click('.source-inspector-edit > summary');
+  const baseline=entityDraftValues(entity);
+  await act(async()=>setEntityDraft('v',entity.id,baseline,{...baseline,name:'Edited source'}));
+  await act(async()=>document.querySelector('#entity-form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));
+  assert.equal(saved.name,'Edited source');
+  assert.equal(document.querySelector('#entity-detail-title').textContent,'Edited source');
+  assert.equal(hasEntityDraft('v',entity.id),false);
+  // Keyboard navigation wraps over the two remaining tabs.
+  await act(async()=>document.querySelector('#entity-tab-connections').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true})));
+  assert.equal(document.activeElement.id,'entity-tab-overview');
+ } finally {await env.close();}
+});

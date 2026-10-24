@@ -213,3 +213,16 @@ test('property date overview fetches bounded evidence only when disclosed and ca
   assert.equal(calls[0].signal.aborted,true);
  });}finally{api.temporalDetail=original;}
 });
+
+test('source overview retires URL while retaining Source URL and stored legacy values',async()=>{
+ await fixture(async({props,entity,render})=>{
+  const properties=[{id:'legacy-url',entity_id:'e',name:'url',value:'https://legacy.example',target_id:null},{id:'source-url',entity_id:'e',name:'Source URL',value:'https://source.example',target_id:null}];
+  await render({...props,entity:{...entity,type:'source',properties,propertyNames:['url','Source URL']}});
+  assert.deepEqual([...document.querySelectorAll('dt')].map(item=>item.textContent.replace('Source metadata · managed automatically','')),['Source URL']);
+  assert.match(document.querySelector('.entity-inline-value').textContent,/https:\/\/source.example/);
+  assert.equal(properties[0].value,'https://legacy.example');
+  await render({...props,entity:{...entity,type:'source',properties:[],propertyNames:['url','Source URL']}});
+  assert.equal(document.querySelector('[aria-label="Edit URL"]'),null);
+  assert.match(document.querySelector('dt').textContent,/Source URL/);
+ });
+});

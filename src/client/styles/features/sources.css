@@ -178,16 +178,16 @@ main.source-workspace > #content > .source-reader {
   width: 100%;
   max-width: 1240px;
   margin: 0 auto;
-  padding: 48px 48px 64px;
+  padding: 32px 48px 64px;
   color: var(--text);
   container: source-reader / inline-size;
 }
 .source-workspace-header {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 .source-workspace-title {
-  margin: 0 0 14px;
-  font: var(--page-heading-weight) var(--page-heading-size)/var(--page-heading-line-height) var(--font-title);
+  margin: 0;
+  font: var(--page-heading-weight) clamp(24px, 2.5vw, 32px)/1.25 var(--font-title);
   letter-spacing: var(--page-heading-letter-spacing);
   overflow-wrap: anywhere;
 }
@@ -223,8 +223,15 @@ main.source-workspace > #content > .source-reader {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.source-workspace-eyebrow > .icon {
+  width: 14px;
+  height: 14px;
+}
 .source-workspace-eyebrow {
-  margin: 0 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
   color: var(--text-muted);
   font-size: 11px;
   line-height: 1.7;
@@ -1115,6 +1122,7 @@ main.source-workspace > #content > .source-reader {
   min-width: 0;
 }
 .source-reader-toolbar {
+  position: relative;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -1323,13 +1331,35 @@ main.source-workspace > #content > .source-reader {
 .source-reader-content {
   min-width: 0;
 }
+.source-reader-icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-target-compact);
+  min-height: var(--control-target-regular);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+}
+.source-reader-icon-action:hover {
+  color: var(--text);
+}
+@media (max-width: 750px), (pointer: coarse) {
+  .source-reader-icon-action {
+    min-width: var(--touch-target-size);
+    min-height: var(--touch-target-size);
+  }
+}
 .source-reader-mode {
+  margin-right: auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 .source-reader-format {
-  margin-right: auto;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
   font-size: 11px;
   letter-spacing: .6px;
 }
@@ -1956,6 +1986,29 @@ main.source-workspace > #content > .source-reader {
   font-size: 13px;
   line-height: 1.6;
 }
+/* Static document metadata and editable fields share one label/value grid. */
+.source-inspector .source-inspector-metadata .entity-overview-properties > div {
+  grid-template-columns: minmax(90px, .8fr) minmax(0, 1.2fr);
+  align-items: start;
+  gap: 12px;
+}
+.source-inspector-metadata > .entity-inline-properties {
+  margin-top: 10px;
+}
+.source-inspector-metadata .entity-inline-activate {
+  min-height: 0;
+  padding: 0;
+  line-height: inherit;
+}
+.source-inspector-metadata .entity-inline-properties dd {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.source-inspector-metadata .entity-inline-value,
+.source-inspector-metadata .entity-inline-edit {
+  order: -1;
+}
 .source-inspector .entity-detail-description {
   margin: 0;
 }
@@ -2081,6 +2134,15 @@ main.source-workspace > #content > .source-reader {
 .source-inspector details > summary:hover {
   color: var(--text);
 }
+.source-inspector .source-inspector-footer {
+  justify-content: center;
+  margin: var(--space-4) 0 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+.source-inspector-footer .entity-archived-status {
+  margin-right: 0;
+}
 .source-inspector .entity-detail-save {
   position: static;
   background: transparent;
@@ -2171,7 +2233,7 @@ main.source-workspace > #content > .source-reader {
 
 /* Reader display preferences change Noema's apparatus, never printed content. */
 .source-reader-display {
-  position: relative;
+  position: static;
 }
 .source-reader-display summary {
   cursor: pointer;
@@ -2185,7 +2247,7 @@ main.source-workspace > #content > .source-reader {
   z-index: 15;
   inset-block-start: 100%;
   inset-inline-start: 0;
-  width: min(340px, calc(100vw - 40px));
+  width: min(340px, 100%);
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);

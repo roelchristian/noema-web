@@ -269,3 +269,23 @@ test('archived source-linked pages round trip content, lifecycle, location and h
   assert.equal(state.pages.list(legacy.id).length,1);assert.equal(state.pages.archiveList(legacy.id).length,0);
  }finally{state.close();}
 });
+
+test('taxonomy backup preserves Thing, status and contextual references; old backups default to unspecified',async()=>{
+ const state=fixture();const {knowledge,backups,vault,store}=state;
+ try {
+  const thing=knowledge.create(vault.id,{name:'Synthetic cup',type:'thing',subtypes:['thing:artefact'],referentStatus:'hypothetical'});
+  knowledge.property(vault.id,thing.id,{name:'originating work',target_id:state.work.id});
+  knowledge.property(vault.id,thing.id,{name:'attested in',target_id:state.source.id});
+  const exported=await backups.export(vault.id),restored=await backups.import(exported.bytes);
+  const copy=knowledge.list(restored.id).find(e=>e.name===thing.name),detail=knowledge.detail(restored.id,copy.id);
+  assert.equal(copy.type,'thing');assert.deepEqual(copy.subtypes,['thing:artefact']);assert.equal(copy.referentStatus,'hypothetical');
+  for(const property of detail.properties)assert.equal(knowledge.require(restored.id,property.target_id).vault_id,restored.id);
+  assert.equal(detail.properties.find(p=>p.name==='attested in').target_id,knowledge.list(restored.id).find(e=>e.type==='source').id);
+  const legacy=rewrite(exported.bytes,manifest=>{for(const entity of manifest.tables.entities)delete entity.referent_status;});
+  const legacyVault=await backups.import(legacy);
+  assert.ok(knowledge.list(legacyVault.id).every(e=>e.referentStatus==='unspecified'));
+  const invalid=rewrite(exported.bytes,manifest=>{manifest.tables.entities[0].referent_status='false';});
+  await assert.rejects(backups.import(invalid));
+  assert.deepEqual(store.db.prepare('PRAGMA foreign_key_check').all(),[]);
+ } finally {state.close();}
+});

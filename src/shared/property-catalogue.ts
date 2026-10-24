@@ -1,4 +1,4 @@
-import type {EntityType} from './domain.js';
+import {entityTypes, type EntityType} from './domain.js';
 import type {EntitySchema} from './entity-schema.js';
 import type {PropertyDefinition,PropertyValueKind} from './property-definitions.js';
 
@@ -14,6 +14,7 @@ const people:EntityType[]=['person','organization'];
 const language=(name='language',label='Language',many=true)=>({...ref(name,label,culture,many,['culture:language']),description:'Language identity is a Culture entity with the Language subtype; independent of display or extracted-text language metadata.'});
 const taxon=(name='taxon',label='Taxon',hierarchical=false)=>ref(name,label,organism,false,['organism:taxon'],hierarchical);
 const main:Record<EntityType,Field[]>={
+ thing:[ref('derived from','Derived From',['organism','thing'],true),ref('made of','Made Of',['thing'],true),text('physical form','Physical Form')],
  person:[date('death date','Death Date'),ref('citizenship','Citizenship',place,true,['place:country']),ref('employer','Employer',organization,true),ref('occupation','Occupation',concept),ref('affiliation','Affiliation',organization,true),ref('notable works','Notable Works',work,true)],
  place:[ref('parent place','Parent Place',place,false,[],true),number('population','Population'),text('alternative names','Alternative Names',true)],
  event:[ref('participants','Participants',[],true),ref('associated work','Associated Work',work,true),enumeration('event status','Event Status',['planned','ongoing','completed','cancelled','postponed','unknown'])],
@@ -78,6 +79,19 @@ const subtype:Record<string,Field[]>={
  'organization:company':[ref('industry','Industry',concept),ref('founder','Founder',person,true),ref('headquarters','Headquarters',place),ref('parent company','Parent Company',organization,false,[],true)],
  'organization:university':[ref('campus','Campus',place,true),date('established','Established'),ref('affiliation','Affiliation',organization,true)],
  'organization:nonprofit':[text('mission','Mission'),date('established','Established'),ref('service region','Service Region',place,true),ref('founder','Founder',person,true)],
+ 'person:fictional-character':[ref('portrayed by','Portrayed By',person,true),ref('character role','Character Role',concept,true,['concept:role'])],
+ 'organism:fictional-taxon':[text('scientific name','Scientific Name'),ref('parent fictional taxon','Parent Fictional Taxon',organism,false,['organism:fictional-taxon'],true)],
+ 'concept:folkloric-archetype':[ref('associated tradition','Associated Tradition',['culture','concept'],true)],
+ 'concept:mythological-creature':[ref('associated tradition','Associated Tradition',['culture','concept'],true)],
+ 'concept:role':[ref('role bearers','Role Bearers',person,true)],
+ 'thing:food':[ref('culinary tradition','Culinary Tradition',culture,true,['culture:cultural-tradition'])],
+ 'thing:ingredient':[ref('source organism','Source Organism',organism,true)],
+ 'thing:dish':[ref('ingredients','Ingredients',['thing'],true,['thing:food','thing:ingredient']),ref('recipe','Recipe',work,true,['creativework:recipe'])],
+ 'thing:beverage':[ref('ingredients','Ingredients',['thing'],true,['thing:food','thing:ingredient'])],
+ 'thing:material':[text('composition','Composition')],
+ 'thing:substance':[identifier('chemical formula','Chemical Formula')],
+ 'thing:artefact':[ref('maker','Maker',people,true),date('created','Created')],
+ 'creativework:recipe':[ref('ingredients','Ingredients',['thing'],true,['thing:food','thing:ingredient']),ref('resulting dish','Resulting Dish',['thing'],true,['thing:dish','thing:beverage'])],
  'organism:plant':[text('scientific name','Scientific Name'),taxon('family','Family'),ref('native range','Native Range',place,true)],
  'organism:animal':[text('scientific name','Scientific Name'),taxon('family','Family'),ref('habitat','Habitat',place,true)],
  'organism:fungus':[text('scientific name','Scientific Name'),taxon('family','Family'),ref('habitat','Habitat',place,true)],
@@ -112,6 +126,7 @@ function definition(type:EntityType,field:Field,index:number,subtypeId?:string):
 }
 /** Additive recommendations, not mandatory fields or replacement legacy names. */
 export const recommendedPropertyDefinitions:PropertyDefinition[]=[
+ ...entityTypes.flatMap(type=>[ref('setting','Setting',['creativework','place'],true),ref('originating work','Originating Work',work,true),ref('tradition belief context','Tradition / Belief Context',['culture','concept'],true),ref('attested in','Attested In',['source','creativework'],true)].map((field,index)=>definition(type,{...field,description:'Optional authored context. Preserve distinct adaptations and source identities; never infer belief status from a name.'},1000+index))),
  ...Object.entries(main).flatMap(([type,fields])=>fields.map((field,index)=>definition(type as EntityType,field,index))),
  ...Object.entries(subtype).flatMap(([id,fields])=>fields.map((field,index)=>definition(id.split(':')[0] as EntityType,field,index,id))),
 ];

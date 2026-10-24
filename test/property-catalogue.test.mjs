@@ -6,13 +6,13 @@ const legacy={properties:builtinProperties,subtypes:builtinSubtypes,subtypePrope
 const schema=withPropertyCatalogue(legacy);
 const resolve=(type,ids=[])=>inheritedPropertyDefinitions({...schema,propertyDefinitions:propertyDefinitionsForSchema(schema,'fixture')},type,ids);
 
-test('catalogue covers all nine types and 69 subtype IDs without replacing legacy arrays',()=>{
- assert.equal(builtinSubtypes.length,69);
+test('catalogue covers all ten types and 82 subtype IDs without replacing legacy arrays',()=>{
+ assert.equal(builtinSubtypes.length,82);
  assert.deepEqual(builtinProperties.person,['birth date','birthplace','nationality','website']);
  assert.deepEqual(builtinProperties.organism,[]);
  assert.equal(new Set(recommendedPropertyDefinitions.map(item=>item.id)).size,recommendedPropertyDefinitions.length);
  const ids=new Set(recommendedPropertyDefinitions.filter(item=>item.scope.kind==='subtype').map(item=>item.scope.subtypeId));
- assert.equal(ids.size,69);
+ assert.equal(ids.size,82);
  assert.deepEqual([...ids].sort(),builtinSubtypes.map(item=>item.id).sort());
  assert.equal(schema.subtypes,legacy.subtypes);
  assert.ok(schema.properties.organism.includes('scientific name'));
@@ -83,7 +83,7 @@ test('the 19 requested additions have curated schemas and compatible multi-subty
  const choices=vaultSubtypes([{id:'fixture:building',name:'Building',type:'place'}]);
  assert.equal(subtypeDisplayName(choices.find(item=>item.id==='fixture:building'),choices),'Building (custom)');
  assert.equal(subtypeDisplayName(choices.find(item=>item.id==='place:building'),choices),'Building');
- assert.deepEqual(builtinSubtypes.filter(item=>item.description).map(item=>item.id).sort(),expected.sort());
+ assert.deepEqual(builtinSubtypes.filter(item=>expected.includes(item.id)&&item.description).map(item=>item.id).sort(),expected.sort());
  for(const id of expected){
   const subtype=builtinSubtypes.find(item=>item.id===id);
   assert.equal(subtype.type,id.split(':')[0]);assert.ok(subtype.description.length>30);

@@ -72,7 +72,7 @@ const tables={
   source_reading_locations:{columns:'file_id,id,label,anchor_json',scope:'vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL)'},
   highlights:{columns:'id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,color,reference_json,created_at',scope:'vault_id=?'},
   page_reading_notes:{columns:'page_id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,reference_json,created_at',scope:'vault_id=?'},
-  entities:{columns:'id,name,aliases,mention_case,type,subtypes,description,updated_at,inactive,archived_at',scope:'vault_id=?'},
+  entities:{columns:'id,name,aliases,mention_case,referent_status,type,subtypes,description,updated_at,inactive,archived_at',scope:'vault_id=?'},
   entity_overviews:{columns:'entity_id,content,revision',scope:entityScope},
   entity_page_associations:{columns:'entity_id,page_id,pinned,annotation,created_at',scope:entityScope},
   properties:{columns:'id,entity_id,name,value,target_id',scope:entityScope},
@@ -282,10 +282,12 @@ export class VaultBackups {
         for(const row of rows.entities) {
           const type=entityType(row),aliases=list(json(row,'aliases')).map(value=>required(value,200)),subtypes=list(json(row,'subtypes')).map(value=>subtype(value,type));
           if(aliases.length>100||new Set(subtypes).size!==subtypes.length)throw invalid();
+          const referentStatus=row.referent_status===undefined?'unspecified':string(row,'referent_status',30);
+          if(!['actual','fictional','mythological','legendary','hypothetical','unspecified'].includes(String(referentStatus)))throw invalid();
           const mentionCase=row.mention_case??'canonical';
           if(mentionCase!=='canonical'&&mentionCase!=='lowercase')throw invalid();
           if(row.inactive!==undefined&&row.inactive!==0&&row.inactive!==1)throw invalid();
-          insert('entities',{archived_at:row.archived_at==null?null:timestamp(row,'archived_at'),inactive:row.inactive??0,id:ref(entityIds,row.id),vault_id:vault,name:name(row,'name'),type,aliases:JSON.stringify(type==='source'?[]:aliases),mention_case:mentionCase,subtypes:JSON.stringify(subtypes),description:string(row,'description'),updated_at:timestamp(row,'updated_at')});
+          insert('entities',{archived_at:row.archived_at==null?null:timestamp(row,'archived_at'),inactive:row.inactive??0,id:ref(entityIds,row.id),vault_id:vault,name:name(row,'name'),type,aliases:JSON.stringify(type==='source'?[]:aliases),mention_case:mentionCase,referent_status:referentStatus,subtypes:JSON.stringify(subtypes),description:string(row,'description'),updated_at:timestamp(row,'updated_at')});
         }
         const restoredSourceFiles=new Map<string,string>();
         for(const row of rows.source_files) {
@@ -649,6 +651,9 @@ export class VaultBackups {
             if (scan.subtypeSuggestions !== undefined) scan.subtypeSuggestions = proposals;
             scan.suggestions=list(scan.suggestions).map(value=>{
               const suggestion={...object(value)},type=entityType(suggestion);
+              const status=suggestion.referentStatus??'unspecified';
+              if(typeof status!=='string'||!['actual','fictional','mythological','legendary','hypothetical','unspecified'].includes(status))throw invalid();
+              suggestion.referentStatus=status;
               return {...suggestion,...(suggestion.proposedSubtypeIds === undefined ? {} : {proposedSubtypeIds:list(suggestion.proposedSubtypeIds).map(value=>ref(proposalIds,value))}),id:randomUUID(),existingId:suggestion.existingId===null?null:ref(entityIds,suggestion.existingId),subtypes:list(suggestion.subtypes).map(value=>subtype(value,type))};
             });
           }

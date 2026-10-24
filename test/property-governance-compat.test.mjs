@@ -71,7 +71,7 @@ test('catalogue references and identifiers round trip with the explicitly reques
  knowledge.property('default',person.id,{name:'published works',target_id:book.id,definition_id:'builtin:person:writer:published_works'});
  knowledge.property('default',book.id,{name:'isbn',value:'0000123456789',definition_id:'builtin:creativework:isbn'});
  knowledge.property('default',language.id,{name:'iso 639 code',value:'eng',definition_id:'builtin:culture:language:iso_639_code'});
- const schema=knowledge.schema('default');assert.equal(schema.subtypes.length,69);assert.ok(schema.subtypes.some(s=>s.id==='creativework:software'));
+ const schema=knowledge.schema('default');assert.equal(schema.subtypes.length,82);assert.ok(schema.subtypes.some(s=>s.id==='creativework:software'));
  const archive=await backups.export('default'),restored=await backups.import(archive.bytes),entities=knowledge.list(restored.id),restoredBook=entities.find(e=>e.name===book.name),restoredWriter=knowledge.detail(restored.id,entities.find(e=>e.name===person.name).id);
  assert.equal(restoredWriter.properties.find(p=>p.name==='published works').target_id,restoredBook.id);
  assert.equal(knowledge.detail(restored.id,restoredBook.id).properties.find(p=>p.name==='isbn').value,'0000123456789');

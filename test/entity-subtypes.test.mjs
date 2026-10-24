@@ -246,3 +246,33 @@ test('new typed fields enforce native targets and preserve identifiers, units an
   assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
  } finally {db.close();}
 });
+
+test('Thing and narrative taxonomy are additive; legacy identity and domains remain deliberate',()=>{
+ const db=openDatabase(':memory:');
+ try {
+  const store=new Store(db),knowledge=new Knowledge(store),schema=knowledge.schema('default');
+  assert.equal(knowledge.require('default','ursula').referentStatus,'unspecified');
+  assert.deepEqual(schema.subtypes.filter(s=>s.type==='thing').map(s=>s.name),['Food','Ingredient','Dish','Beverage','Material','Substance','Artefact']);
+  for(const id of ['person:fictional-character','organism:fictional-taxon','concept:folkloric-archetype','concept:mythological-creature','concept:role','creativework:recipe','culture:cultural-tradition'])assert.ok(schema.subtypes.some(s=>s.id===id));
+  const species=knowledge.create('default',{name:'Alumahan taxon',type:'organism',subtypes:['organism:animal','organism:taxon']});
+  const ingredient=knowledge.create('default',{name:'Alumahan ingredient',type:'thing',subtypes:['thing:food','thing:ingredient']});
+  const dish=knowledge.create('default',{name:'Grilled alumahan',type:'thing',subtypes:['thing:food','thing:dish']});
+  knowledge.property('default',ingredient.id,{name:'derived from',target_id:species.id});
+  knowledge.property('default',dish.id,{name:'ingredients',target_id:ingredient.id});
+  const origin=knowledge.create('default',{name:'Synthetic novel',type:'creativework'});
+  const character=knowledge.create('default',{name:'A nonhuman narrative agent',type:'person',subtypes:['person:fictional-character'],referentStatus:'fictional'});
+  knowledge.property('default',character.id,{name:'setting',target_id:origin.id});
+  knowledge.property('default',character.id,{name:'originating work',target_id:origin.id});
+  const settingDefinition=schema.propertyDefinitions.find(d=>d.scope.type==='person'&&d.key==='setting');
+  assert.equal(settingDefinition.valueKind,'entity_reference');assert.deepEqual(settingDefinition.allowedTargetTypes,['creativework','place']);
+  const before=knowledge.require('default',character.id);
+  assert.equal(knowledge.update('default',character.id,{name:before.name,type:before.type}).referentStatus,'fictional');
+  rejects(()=>knowledge.create('default',{name:'Invalid',type:'thing',referentStatus:'false'}));
+  const domain=store.get('SELECT id FROM domains ORDER BY id LIMIT 1').id;
+  const legacy=knowledge.create('default',{name:'Legacy food Concept',type:'concept',domainIds:[domain]});
+  rejects(()=>knowledge.update('default',legacy.id,{name:legacy.name,type:'thing',domainIds:[]}),409);
+  assert.deepEqual(knowledge.require('default',legacy.id).domainIds,[domain]);
+  assert.equal(knowledge.require('default',legacy.id).type,'concept');
+  assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
+ } finally {db.close();}
+});

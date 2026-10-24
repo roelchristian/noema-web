@@ -9,7 +9,8 @@ import {combinedMatches} from '../search/matches';
 import {citationLocation} from '../../shared/citations';
 import type {SourceReference} from '../../shared/domain';
 import {PageCover} from '../components/PageCover';
-import {ViewModeSwitch, useViewMode} from '../components/ViewModeSwitch';
+import {LibraryToolbar} from '../components/LibraryToolbar';
+import {useViewMode} from '../components/ViewModeSwitch';
 import { entityLabels, entityTypes, type Entity, type EntityType } from '../../shared/domain';
 import { Icon } from '../components/Icon';
 import { Select } from '../components/Select';
@@ -41,10 +42,10 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onOpenPassage, onCr
   const query = search.trim().toLowerCase();
   const scoped = entities.filter(entity => !!entity.archived_at===archived && (sourcesOnly ? entity.type === 'source' : entity.type !== 'source' && (!type || entity.type === type)));
   const textSearch=useTextSearch(vaultId,search,scoped.map(entity=>entity.id+':'+entity.updated_at+':'+entity.sourceStatus).join(','),{pageIds:[],entityIds:scoped.map(entity=>entity.id)},10000);
-  const semantic=useSemanticSearch(vaultId,search,{enabled:!!query&&!textSearch.loading});
+  const semantic=useSemanticSearch(vaultId,search,{enabled:viewState.searchMode==='related'&&!archived&&!!query&&!textSearch.loading});
   const textHits=new Map(textSearch.results.map(hit=>[hit.id,hit]));
-  const semanticHits=new Map(semantic.results.filter(hit=>hit.kind==='entity').map(hit=>[hit.id,hit]));
-  const matches=combinedMatches(scoped.map(entity=>({...entity,kind:'entity' as const})),search,semantic.results,textSearch.results);
+  const semanticHits=new Map((viewState.searchMode==='related'&&!archived?semantic.results:[]).filter(hit=>hit.kind==='entity').map(hit=>[hit.id,hit]));
+  const matches=combinedMatches(scoped.map(entity=>({...entity,kind:'entity' as const})),search,viewState.searchMode==='related'&&!archived?semantic.results:[],textSearch.results);
   const passageFor=(id:string)=>textHits.get(id)?.reference??semanticHits.get(id)?.reference;
   const openMatch=(id:string,trigger:HTMLElement)=>{const reference=query?passageFor(id):undefined;if(reference)onOpenPassage(reference,trigger);else onOpen(id);};
   const filtered = view === 'all' || !!query || !!type ? matches : [];
@@ -65,7 +66,7 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onOpenPassage, onCr
     setBrowser({entityType: nextType});
   }
   return <section ref={libraryRef} className="organization-library organization-browser knowledge-library" data-layout={viewMode} data-library-vault={vaultId} data-library-destination={destination}>
-    <div className="organization-heading pages-home-heading"><div className="library-heading-row"><h1 className="page-heading">{sourcesOnly?uiText("Sources"):uiText("Knowledge entities")}</h1></div><div className="pages-home-actions library-heading-actions"><div className="library-view-filter"><div className="library-view-filter-input"><Icon name="search"/><input type="search" placeholder={uiText("Filter this view…")} aria-label={uiText("Filter {value0} by name, alias, or source text",{value0: filterScope})} value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => {if (event.key === 'Escape' && search) {event.preventDefault(); setSearch('');}}}/>{search && <button type="button" aria-label={uiText("Clear entity filter")} onClick={() => setSearch('')}><Icon name="close"/></button>}</div></div><ViewModeSwitch value={viewMode} onChange={setViewMode}/>
+    <div className="organization-heading pages-home-heading"><div className="library-heading-row"><h1 className="page-heading">{sourcesOnly?uiText("Sources"):uiText("Knowledge entities")}</h1></div><div className="pages-home-actions library-heading-actions"><LibraryToolbar sort={sort} onSort={setSort} mode={viewMode} onMode={setViewMode} filter={<div className="library-view-filter"><div className="library-view-filter-input"><Icon name="search"/><input type="search" placeholder={uiText("Filter this view…")} aria-label={uiText("Filter {value0} by name, alias, or source text",{value0: filterScope})} value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => {if (event.key === 'Escape' && search) {event.preventDefault(); setSearch('');}}}/>{search && <button type="button" aria-label={uiText("Clear entity filter")} onClick={() => setSearch('')}><Icon name="close"/></button>}</div></div>}/><Select aria-label="Search matching" value={viewState.searchMode??'local'} onChange={event=>setViewState({searchMode:event.target.value})}><option value="local">Text in this scope</option>{!archived&&<option value="related">Text + related in this scope</option>}</Select>
       <Select aria-label={sourcesOnly?uiText("Source status"):uiText("Entity status")} value={archived?'archived':'active'} onChange={event=>setArchived(event.target.value==='archived')}><option value="active">{sourcesOnly?uiText("Active sources"):uiText("Active entities")}</option><option value="archived">{sourcesOnly?uiText("Archived sources"):uiText("Archived entities")}</option></Select>
       <button className="button primary" onClick={onCreate}><Icon name="plus"/>{sourcesOnly?uiText("New source"):uiText("New entity")}</button>
     </div></div>

@@ -112,3 +112,27 @@ test('sidebar caps every page group at five and View all opens its full list', a
   await act(async () => root.render(createElement(SidebarOrganization, {...props, pages: pages.filter(page => Number(page.id.split('-')[1]) < 5)})));
   assert.equal(document.querySelectorAll('.sidebar-view-all').length, 0);
 });
+
+test('Library makes all-pages scope and folder grouping explicit without changing row identities', async () => {
+  const {setLibraryViewState,clearLibraryViewStates}=await import('../src/client/state/library-view-state.ts');
+  const destination=JSON.stringify(['organization','','']);
+  const vaultId='library-presentation-contract';
+  setLibraryViewState(vaultId,destination,{groupFolders:false,sort:'modified-desc'});
+  const current=render({vaultId});
+  assert.ok(current.indexOf('data-library-row="page:draft"')<current.indexOf('data-library-row="folder:desk"'));
+  assert.match(current,/Group folders first/);
+  assert.match(current,/2 items · Pages root · 2 pages in vault/);
+  setLibraryViewState(vaultId,destination,{scope:'all'});
+  const all=render({vaultId});
+  assert.match(all,/data-library-row="page:filed"/);
+  assert.doesNotMatch(all,/data-library-row="folder:desk"/);
+  assert.match(all,/class="library-item-extra">Desk/);
+  assert.match(all,/Text in this scope/);
+  clearLibraryViewStates(vaultId);
+});
+
+test('Grid cover treatment only reserves space for a genuine image', async()=>{
+  const {PageCover}=await import('../src/client/components/PageCover.tsx');
+  assert.equal(renderToStaticMarkup(createElement(PageCover,{vaultId:'test',icon:'page'})),'');
+  assert.match(renderToStaticMarkup(createElement(PageCover,{vaultId:'test',imageId:'cover'})),/loading="lazy"/);
+});

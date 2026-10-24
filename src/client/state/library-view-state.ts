@@ -1,6 +1,11 @@
 import {useCallback, useSyncExternalStore} from 'react';
 
 export interface LibraryViewState {
+  groupFolders?: boolean;
+  columns?: string;
+  density?: string;
+  scope?: string;
+  searchMode?: string;
   query: string;
   sort: string;
   selectedIds: string[];

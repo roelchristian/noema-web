@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
 import {readFileSync} from 'node:fs';
-import {JSDOM} from 'jsdom';
+import {setupDOM} from './helpers/dom.mjs';
 import React,{act} from 'react';
 import {createRoot} from 'react-dom/client';
 import {renderToStaticMarkup} from 'react-dom/server';
@@ -16,12 +16,8 @@ const fixture=()=>{
  r.acceptanceMode='review_all';r.patches=r.patches.slice(0,2).map((p,i)=>({...p,id:'patch-'+i,decision:'pending',riskReasons:['Quotation wording requires comparison with the PDF.']}));
  r.reprocessed=structuredClone(r.original);r.reprocessed.document.semantic.children=[];r.reprocessed.text='Sample reading text';return r;
 };
-async function mount(t,{initial=null,post,onReadingRevision,get,onShow=()=>{},onOriginal=()=>{},capabilities={originalPages:false,ocr:false,externalImages:false,reason:'Native evidence is unavailable on this device.'}}={}){
- const dom=new JSDOM('<div id="mount"></div>',{pretendToBeVisual:true});
- // React loaded before DOM availability uses its legacy input-event fallback in JSDOM.
- dom.window.HTMLElement.prototype.attachEvent=function(){};dom.window.HTMLElement.prototype.detachEvent=function(){};
- const keys=['window','document','Node','Element','HTMLElement','Event','IS_REACT_ACT_ENVIRONMENT'],previous=keys.map(key=>Object.getOwnPropertyDescriptor(globalThis,key));
- for(const key of keys)Object.defineProperty(globalThis,key,{configurable:true,writable:true,value:key==='IS_REACT_ACT_ENVIRONMENT'?true:dom.window[key]});
+async function mount(t,{initial=null,post,onReadingRevision,get,onShow=()=>{},onOriginal=()=>{},component=SourceReprocessing,capabilities={originalPages:false,ocr:false,externalImages:false,reason:'Native evidence is unavailable on this device.'}}={}){
+ const env=setupDOM(t),{dom}=env;
  let revision=initial;const requests=[];
  t.mock.method(globalThis,'fetch',async(url,options={})=>{
   const entry={url:String(url),method:options.method??'GET',body:options.body?JSON.parse(options.body):undefined};requests.push(entry);
@@ -35,14 +31,29 @@ async function mount(t,{initial=null,post,onReadingRevision,get,onShow=()=>{},on
   return {ok:true,json:async()=>structuredClone(result)};
  });
  const root=createRoot(document.querySelector('#mount'));
+ env.defer(()=>act(async()=>root.unmount()));
  const props={vaultId:'v',fileId:'f',visible:true,onReadingRevision,onShow,onOriginal};
- await act(async()=>root.render(React.createElement(SourceReprocessing,{...props,key:'f'})));
+ await act(async()=>root.render(React.createElement(component,{...props,key:'f'})));
  const switchFile=async fileId=>act(async()=>root.render(React.createElement(SourceReprocessing,{...props,fileId,key:fileId})));
- t.after(async()=>{await act(async()=>root.unmount());dom.window.close();keys.forEach((key,index)=>{if(previous[index])Object.defineProperty(globalThis,key,previous[index]);else delete globalThis[key];});});
  const button=text=>[...document.querySelectorAll('button')].find(el=>el.textContent===text);
  const click=async el=>{assert.ok(el,'Expected control exists');await act(async()=>el.click());};
  return {button,click,requests,dom,switchFile};
 }
+test('failed initial reprocessing render still closes its DOM and restores global descriptors',{timeout:5000},async t=>{
+ const keys=['window','document','Node','NodeFilter','Element','HTMLElement','HTMLAnchorElement','HTMLInputElement','HTMLSelectElement','HTMLTextAreaElement','Range','DOMParser','InputEvent','MouseEvent','Event','CustomEvent','MutationObserver','getComputedStyle','getSelection','requestAnimationFrame','cancelAnimationFrame','innerWidth','innerHeight','IS_REACT_ACT_ENVIRONMENT'];
+ const descriptors=()=>keys.map(key=>Object.getOwnPropertyDescriptor(globalThis,key));
+ const previous=descriptors(),cleanups=[],failure=new Error('synthetic initial reprocessing render failure');
+ t.after(async()=>{for(const cleanup of cleanups)await cleanup();});
+ let failedWindow;
+ function Broken(){failedWindow=window;throw failure;}
+ await assert.rejects(mount({after:cleanup=>cleanups.push(cleanup),mock:t.mock},{component:Broken}),error=>error===failure);
+ assert.equal(cleanups.length,1,'DOM ownership is registered before initial render');
+ await cleanups[0]();
+ t.mock.restoreAll();
+ assert.equal(failedWindow.document,undefined,'the failed mount window was closed');
+ assert.deepEqual(descriptors(),previous);
+ await cleanups[0](); // Registered teardown remains safe after an explicit close.
+});
 test('processing depth defaults to balanced separately from verified review and submissions are guarded',async t=>{
  let finish;const env=await mount(t,{post:()=>new Promise(resolve=>{finish=resolve;})});
  await env.click(env.button('Reprocess with AI'));assert.equal(document.querySelector('[aria-label="Processing depth"]').value,'balanced');assert.equal(document.querySelector('[aria-label="Review policy"]').value,'verified');

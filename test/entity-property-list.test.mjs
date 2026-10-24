@@ -198,3 +198,18 @@ test('date editor preserves authored text and exposes precision/calendar choices
   assert.equal(saves.length,0);
  });
 });
+
+test('property date overview fetches bounded evidence only when disclosed and cancels on close',async()=>{
+ const {api}=await import('../src/client/api.ts'),original=api.temporalDetail,calls=[];
+ api.temporalDetail=async(vault,id,mentionOffset,relationOffset,signal)=>{calls.push({vault,id,mentionOffset,relationOffset,signal});return {date:{id,value:'1815-06',precision:'month',calendar:'gregorian'},curation:null,relations:[{id:'relation',name:'Historical event',kind:'occurs_on'}],relationCount:1,mentions:[],mentionCount:4,sourceCount:2,propertyCount:1};};
+ try {await fixture(async({props,render,dom})=>{
+  await render({...props,entity:{...props.entity,properties:[{...props.entity.properties[0],value:'June 1815'}]}});
+  assert.equal(calls.length,0);
+  const details=document.querySelector('.entity-inline-value details');
+  await act(async()=>{details.open=true;details.dispatchEvent(new dom.window.Event('toggle'));});
+  assert.equal(calls.length,1);assert.equal(calls[0].id,'gregorian:month:1815-06');assert.equal(calls[0].mentionOffset,0);
+  assert.match(details.textContent,/Historical event/);assert.match(details.textContent,/4 note occurrences · 2 source occurrences · 1 date properties/);
+  await act(async()=>{details.open=false;details.dispatchEvent(new dom.window.Event('toggle'));});
+  assert.equal(calls[0].signal.aborted,true);
+ });}finally{api.temporalDetail=original;}
+});

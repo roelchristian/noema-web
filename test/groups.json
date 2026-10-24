@@ -89,7 +89,8 @@
     "test/success-notice.test.mjs",
     "test/provider-connection-ui.test.mjs",
     "test/settings-category-ui.test.mjs",
-    "test/bibliography-ui.test.mjs"
+    "test/bibliography-ui.test.mjs",
+    "test/bibliographic-citations.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",

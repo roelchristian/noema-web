@@ -67,3 +67,16 @@ test('invalid bibliographic references, provenance, values and revisions roll ba
 });
 
 
+test('bibliographic citations keep consistent remapped identities in current pages and historical snapshots',async t=>{
+ const f=fixture(t),pages=new Pages(f.store,new Knowledge(f.store)),history=new PageHistory(f.store);
+ let page=pages.create(f.vault,{title:'Synthetic bibliographic citations'});
+ const reference={id:'synthetic-citation',sourceId:f.source.id,locator:'12–14',label:'page'};
+ page=pages.update(f.vault,page.id,{...page,blocks:[{id:'cited',type:'paragraph',checked:false,content:[{text:'Evidence',bibliographicReference:reference}]}]});
+ const checkpoint=history.checkpoint(f.vault,page.id,{revision:page.revision,name:'Cited version'});
+ const archive=await f.backups.export(f.vault),restored=await f.backups.import(archive.bytes),newPage=pages.list(restored.id).find(item=>item.title===page.title),actual=pages.get(restored.id,newPage.id).blocks[0].content[0].bibliographicReference;
+ assert.notEqual(actual.id,reference.id);assert.notEqual(actual.sourceId,f.source.id);assert.equal(actual.locator,'12–14');assert.equal(actual.label,'page');
+ const version=history.list(restored.id,newPage.id).find(item=>item.name===checkpoint.name),snapshot=history.get(restored.id,newPage.id,version.id).snapshot;
+ assert.deepEqual(snapshot.blocks[0].content[0].bibliographicReference,actual);
+ const corrupt=alter(archive.bytes,a=>{const blocks=JSON.parse(a.tables.pages[0].blocks);blocks[0].content[0].bibliographicReference.sourceId='outside-archive';a.tables.pages[0].blocks=JSON.stringify(blocks);});
+ await assert.rejects(f.backups.import(corrupt),error=>error.status===400);
+});

@@ -1,3 +1,4 @@
+import type {BibliographicReference} from '../../shared/bibliographic-citations';
 import {t as uiText} from '../i18n';
 import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {citationKey,citationLocation,noteCitations} from '../../shared/citations';
@@ -12,7 +13,7 @@ import {mentionCaretRect,mentionMatches} from './mention-picker';
 
 type LoadedFile=SourceFile & {textHash:string;document?:SourceDocument};
 type Location={label:string;nodeId?:string;reference?:SourceReference};
-interface Props {vaultId:string;entities:Entity[];blocks:Block[];getAnchor:()=>Range|null;editor:HTMLElement;onInsert:(references:SourceReference[])=>void;onClose:(restoreFocus?:boolean)=>void}
+interface Props {vaultId:string;entities:Entity[];blocks:Block[];getAnchor:()=>Range|null;editor:HTMLElement;onInsert:(references:SourceReference[])=>void;onInsertBibliographic:(references:BibliographicReference[])=>void;onClose:(restoreFocus?:boolean)=>void}
 
 function referenceFor(file:LoadedFile,location:Location):SourceReference {
   const label=location.label.trim(),entries=file.document?sourceDocumentEntries(file.document):[];
@@ -40,10 +41,12 @@ function referenceFor(file:LoadedFile,location:Location):SourceReference {
   return ref;
 }
 
-export function CitationPicker({vaultId,entities,blocks,getAnchor,editor,onInsert,onClose}:Props) {
+export function CitationPicker({vaultId,entities,blocks,getAnchor,editor,onInsert,onInsertBibliographic,onClose}:Props) {
   const popup=useRef<HTMLDivElement>(null),search=useRef<HTMLInputElement>(null),locationInput=useRef<HTMLInputElement>(null);
   const [query,setQuery]=useState(''),[source,setSource]=useState<Entity|null>(null),[files,setFiles]=useState<SourceFile[]|null>(null),[fileId,setFileId]=useState('');
   const [file,setFile]=useState<LoadedFile|null>(null),[error,setError]=useState(''),[retry,setRetry]=useState(0),[index,setIndex]=useState(0);
+  const [citationKind,setCitationKind]=useState<'passage'|'publication'>('passage');
+  const [publicationLocator,setPublicationLocator]=useState('');
   const [locations,setLocations]=useState<Location[]>([{label:''}]),[active,setActive]=useState(0);
   const pageCitations=useMemo(()=>[...noteCitations(blocks).values()],[blocks]);
   const availableSources=entities.filter(entity=>entity.vault_id===vaultId&&entity.type==='source'&&!entity.archived_at&&!entity.inactive);
@@ -127,6 +130,9 @@ export function CitationPicker({vaultId,entities,blocks,getAnchor,editor,onInser
       {!choiceCount&&<p className="citation-picker-help">{query?uiText("No matching sources. Try another name."):uiText("Add a source to your library to cite it here.")}</p>}
     </>:<>
       <button type="button" className="citation-picker-source" onClick={()=>{setSource(null);setFileId('');setFile(null);setError('');requestAnimationFrame(()=>search.current?.focus());}}><span>{uiText("‹ Change")}</span><strong title={source.name}>{source.name}</strong></button>
+      <label className="citation-picker-label">Citation kind<select aria-label="Citation kind" value={citationKind} onChange={event=>setCitationKind(event.target.value as 'passage'|'publication')}><option value="passage">Passage citation</option><option value="publication">Bibliographic citation</option></select></label>
+      {citationKind==='publication'&&<form className="citation-range-form" onSubmit={event=>{event.preventDefault();onInsertBibliographic([{id:randomUUID(),sourceId:source.id,...(publicationLocator.trim()?{locator:publicationLocator.trim()}:{}),label:'page'}]);}}><label className="citation-picker-label">Page or section (optional)<input aria-label="Bibliographic locator" maxLength={1000} value={publicationLocator} onChange={event=>setPublicationLocator(event.target.value)}/></label><p className="citation-picker-help">Cites the publication without requiring a file. Separate locations share one bibliography entry.</p><button type="submit" className="button citation-picker-insert">Insert bibliographic citation</button></form>}
+      {citationKind==='passage'&&<>
       {files&&files.length>1&&<label className="citation-picker-label">{uiText("File")}<select aria-label={uiText("Source file")} value={fileId} onChange={event=>setFileId(event.target.value)}>{files.map(file=><option key={file.id} value={file.id}>{file.name}</option>)}</select></label>}
       {!error&&(!files||fileId&&!file)&&<p className="citation-picker-help" role="status">{uiText("Loading source…")}</p>}
       {files?.length===0&&<p className="citation-picker-help">{uiText("This source has no processed files yet. Add a file in source details, then cite it here.")}</p>}
@@ -148,6 +154,7 @@ export function CitationPicker({vaultId,entities,blocks,getAnchor,editor,onInser
         </div>}
         <div className="citation-picker-actions"><button type="button" onClick={()=>{setLocations(values=>[...values,{label:''}]);setActive(locations.length);requestAnimationFrame(()=>locationInput.current?.focus());}}>{uiText("+ Add range")}</button><button type="submit" className="button citation-picker-insert">{uiText("Insert") + " "}{locations.length>1?uiText("{value0} citations",{value0: locations.length}):uiText("citation")}</button></div>
       </form>}
+      </>}
     </>}
     {error&&<p className="citation-picker-error" role="alert">{error} <button type="button" onClick={()=>setRetry(value=>value+1)}>{uiText("Retry")}</button></p>}
   </div>;

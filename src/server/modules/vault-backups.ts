@@ -458,6 +458,11 @@ export class VaultBackups {
             const segments=(value:unknown)=>list(value).map(value=>{
               const segment={...object(value)};
               if(segment.entityId)segment.entityId=ref(entityIds,segment.entityId);
+              if(segment.bibliographicReference!==undefined) {
+                const citation=object(segment.bibliographicReference),citationId=name(citation,'id');
+                if(!citationIds.has(citationId))citationIds.set(citationId,randomUUID());
+                segment.bibliographicReference={...citation,id:citationIds.get(citationId),sourceId:ref(entityIds,citation.sourceId)};
+              }
               if(segment.sourceReference) {
                 const citation=object(segment.sourceReference),fileId=restoredSourceFiles.get(name(citation,'fileId'));
                 if(!fileId)throw invalid();

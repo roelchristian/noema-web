@@ -184,6 +184,13 @@ export class Pages {
           }
           const result: Segment = {text:text(segment.text)};
           for (const mark of ['bold','italic','underline','strike','code','math','skipAutoTag'] as const) if(segment[mark] === true) result[mark]=true;
+          if(segment.bibliographicReference!==undefined) {
+            const ref=object(segment.bibliographicReference),sourceId=required(ref.sourceId);
+            if(segment.sourceReference||segment.math||segment.code||segment.href)throw new HttpError(400,'Invalid bibliographic citation');
+            if(!historical&&this.knowledge.find(vault,sourceId)?.type!=='source')throw new HttpError(400,'Invalid bibliographic source');
+            if(ref.label!==undefined&&!['page','chapter','section'].includes(ref.label as string))throw new HttpError(400,'Invalid bibliographic locator label');
+            result.bibliographicReference={id:required(ref.id),sourceId,...(ref.locator===undefined?{}:{locator:text(ref.locator,1000)}),...(ref.label===undefined?{}:{label:ref.label as 'page'|'chapter'|'section'})};
+          }
           if(segment.sourceReference!==undefined) {
             const ref=object(segment.sourceReference),sourceId=required(ref.sourceId),fileId=required(ref.fileId);
             if(!historical&&(this.knowledge.find(vault,sourceId)?.type!=='source'||!this.store.get('SELECT 1 FROM source_files WHERE id=? AND entity_id=? AND vault_id=?',fileId,sourceId,vault)))throw new HttpError(400,'Invalid citation source');

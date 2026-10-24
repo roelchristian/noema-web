@@ -98,7 +98,7 @@ export function EntityPanel(props: EntityPanelProps) {
       {!inspector && props.onOpenHome && <div className="entity-preview-navigation"><p>{pageMentions.length} {uiText(pageMentions.length===1?"page":"pages")} · {connectionCount} {uiText(connectionCount===1?"connection":"connections")}</p><button type="button" className="button" onClick={() => props.onOpenHome?.(id)}>{uiText("Open entity homepage")}<Icon name="chevron"/></button></div>}
       {!inspector && tabNavigation}
       <div id="entity-tabpanel-overview" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-overview" hidden={tab !== 'overview'} tabIndex={0}>
-      {entity.type==='source'&&<BibliographyEditor key={vaultId+':'+id+':bibliography-overview'} vaultId={vaultId} entity={entity} compact onUpdated={onUpdated}/>}
+      {entity.type==='source'&&<BibliographyEditor key={vaultId+':'+id+':bibliography-overview'} vaultId={vaultId} entity={entity} compact onOpenSource={onOpen} onUpdated={onUpdated}/>}
       {inspector&&<>
         <SourceInspectorStatus files={entity.attachments??[]} vaultId={vaultId} onError={onError} onChange={file=>{
           setEntity(current=>current?{...current,attachments:current.attachments?.map(item=>item.id===file.id?file:item)}:current);
@@ -153,7 +153,7 @@ export function EntityPanel(props: EntityPanelProps) {
         {inspector&&!!(references.length+incoming.length)&&<button type="button" className="entity-detail-more" onClick={()=>switchTab('edit')}>{uiText("Edit property references")}<Icon name="chevron"/></button>}
       </div>
       <div id="entity-tabpanel-edit" className="entity-detail-tabpanel entity-detail-edit" role="tabpanel" aria-labelledby="entity-tab-edit" hidden={tab !== 'edit'} tabIndex={0}>
-        {entity.type==='source'&&<BibliographyEditor key={vaultId+':'+id+':bibliography'} vaultId={vaultId} entity={entity} onUpdated={async()=>{await onUpdated();setEntity(await api.entity(vaultId,id));}}/>}
+        {entity.type==='source'&&<BibliographyEditor key={vaultId+':'+id+':bibliography'} vaultId={vaultId} entity={entity} onOpenSource={onOpen} onUpdated={async()=>{await onUpdated();setEntity(await api.entity(vaultId,id));}}/>}
         {schemaError && <p role="alert">{schemaError}</p>}
         <section className="entity-detail-section entity-identity-section"><EntityDetails vaultId={vaultId} schema={schema} key={vaultId + ':' + entity.id} entity={entity} onSave={async input => {
           let result: EntityDetail;

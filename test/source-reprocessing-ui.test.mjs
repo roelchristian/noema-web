@@ -2,9 +2,12 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
 import {readFileSync} from 'node:fs';
-import {JSDOM} from 'jsdom';
+import {setupDOM} from './helpers/dom.mjs';
 import React,{act} from 'react';
 import {createRoot} from 'react-dom/client';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {SourceLoadingProgress} from '../src/client/knowledge/SourceLoadingProgress.tsx';
+import {SourceInspectorStatus} from '../src/client/knowledge/SourceInspectorStatus.tsx';
 const css=registerHooks({load(url,context,next){return url.endsWith('.css')?{format:'module',source:'export default {};',shortCircuit:true}:next(url,context);}});
 const {SourceReprocessing}=await import('../src/client/sources/SourceReprocessing.tsx');
 css.deregister();
@@ -13,12 +16,8 @@ const fixture=()=>{
  r.acceptanceMode='review_all';r.patches=r.patches.slice(0,2).map((p,i)=>({...p,id:'patch-'+i,decision:'pending',riskReasons:['Quotation wording requires comparison with the PDF.']}));
  r.reprocessed=structuredClone(r.original);r.reprocessed.document.semantic.children=[];r.reprocessed.text='Sample reading text';return r;
 };
-async function mount(t,{initial=null,post,onReadingRevision,get,onShow=()=>{},onOriginal=()=>{},capabilities={originalPages:false,ocr:false,externalImages:false,reason:'Native evidence is unavailable on this device.'}}={}){
- const dom=new JSDOM('<div id="mount"></div>',{pretendToBeVisual:true});
- // React loaded before DOM availability uses its legacy input-event fallback in JSDOM.
- dom.window.HTMLElement.prototype.attachEvent=function(){};dom.window.HTMLElement.prototype.detachEvent=function(){};
- const keys=['window','document','Node','Element','HTMLElement','Event','IS_REACT_ACT_ENVIRONMENT'],previous=keys.map(key=>Object.getOwnPropertyDescriptor(globalThis,key));
- for(const key of keys)Object.defineProperty(globalThis,key,{configurable:true,writable:true,value:key==='IS_REACT_ACT_ENVIRONMENT'?true:dom.window[key]});
+async function mount(t,{initial=null,post,onReadingRevision,get,onShow=()=>{},onOriginal=()=>{},component=SourceReprocessing,capabilities={originalPages:false,ocr:false,externalImages:false,reason:'Native evidence is unavailable on this device.'}}={}){
+ const env=setupDOM(t),{dom}=env;
  let revision=initial;const requests=[];
  t.mock.method(globalThis,'fetch',async(url,options={})=>{
   const entry={url:String(url),method:options.method??'GET',body:options.body?JSON.parse(options.body):undefined};requests.push(entry);
@@ -32,14 +31,29 @@ async function mount(t,{initial=null,post,onReadingRevision,get,onShow=()=>{},on
   return {ok:true,json:async()=>structuredClone(result)};
  });
  const root=createRoot(document.querySelector('#mount'));
+ env.defer(()=>act(async()=>root.unmount()));
  const props={vaultId:'v',fileId:'f',visible:true,onReadingRevision,onShow,onOriginal};
- await act(async()=>root.render(React.createElement(SourceReprocessing,{...props,key:'f'})));
+ await act(async()=>root.render(React.createElement(component,{...props,key:'f'})));
  const switchFile=async fileId=>act(async()=>root.render(React.createElement(SourceReprocessing,{...props,fileId,key:fileId})));
- t.after(async()=>{await act(async()=>root.unmount());dom.window.close();keys.forEach((key,index)=>{if(previous[index])Object.defineProperty(globalThis,key,previous[index]);else delete globalThis[key];});});
  const button=text=>[...document.querySelectorAll('button')].find(el=>el.textContent===text);
  const click=async el=>{assert.ok(el,'Expected control exists');await act(async()=>el.click());};
  return {button,click,requests,dom,switchFile};
 }
+test('failed initial reprocessing render still closes its DOM and restores global descriptors',{timeout:5000},async t=>{
+ const keys=['window','document','Node','NodeFilter','Element','HTMLElement','HTMLAnchorElement','HTMLInputElement','HTMLSelectElement','HTMLTextAreaElement','Range','DOMParser','InputEvent','MouseEvent','Event','CustomEvent','MutationObserver','getComputedStyle','getSelection','requestAnimationFrame','cancelAnimationFrame','innerWidth','innerHeight','IS_REACT_ACT_ENVIRONMENT'];
+ const descriptors=()=>keys.map(key=>Object.getOwnPropertyDescriptor(globalThis,key));
+ const previous=descriptors(),cleanups=[],failure=new Error('synthetic initial reprocessing render failure');
+ t.after(async()=>{for(const cleanup of cleanups)await cleanup();});
+ let failedWindow;
+ function Broken(){failedWindow=window;throw failure;}
+ await assert.rejects(mount({after:cleanup=>cleanups.push(cleanup),mock:t.mock},{component:Broken}),error=>error===failure);
+ assert.equal(cleanups.length,1,'DOM ownership is registered before initial render');
+ await cleanups[0]();
+ t.mock.restoreAll();
+ assert.equal(failedWindow.document,undefined,'the failed mount window was closed');
+ assert.deepEqual(descriptors(),previous);
+ await cleanups[0](); // Registered teardown remains safe after an explicit close.
+});
 test('processing depth defaults to balanced separately from verified review and submissions are guarded',async t=>{
  let finish;const env=await mount(t,{post:()=>new Promise(resolve=>{finish=resolve;})});
  await env.click(env.button('Reprocess with AI'));assert.equal(document.querySelector('[aria-label="Processing depth"]').value,'balanced');assert.equal(document.querySelector('[aria-label="Review policy"]').value,'verified');
@@ -101,7 +115,7 @@ test('partial failures show actionable processing cause and excerpt ledger separ
  r.report.diagnostics=['Excerpt 1: preserve this quotation.','Excerpt 1, suggestion 1: excluded from review — ambiguous canonical text.'];
  const env=await mount(t,{initial:r,post:async(_,current)=>({...current,status:'queued'})});
  assert.match(document.querySelector('.reprocessing-progress').textContent,/Partial revision.*1 \/ 3 excerpts completed/s);
- assert.match(document.querySelector('.reprocessing-failure').textContent,/Settings → Intelligence/);
+ assert.match(document.querySelector('[id^="reprocessing-error-"]').textContent,/Settings → Intelligence/);
  assert.match(document.querySelector('.reprocessing-ledger').textContent,/Pages 1–2.*Completed.*Attempts: 1.*Page 3.*Failed.*Unsupported reasoning.*Page 4.*Not started/s);
  assert.equal(document.querySelector('.reprocessing-reviews'),null);
  assert.equal(document.querySelector('[aria-label="Reading version"] option[value="'+r.id+'"]'),null);assert.ok(env.button('Retry after configuration repair'));
@@ -197,6 +211,41 @@ test('review location selects the specific passage instead of its containing cha
  assert.deepEqual(locations,[{nodeId:'leaf',focus:false}]);
 });
 
+test('shared source progress preserves partial coverage and separates stage announcements from numeric updates',async t=>{
+ const r=fixture();r.status='interrupted';r.report.chunksCompleted=1;r.report.chunksTotal=3;
+ r.report.error='Synthetic interrupted extraction';
+ await mount(t,{initial:r});
+ const progress=document.querySelector('.reprocessing-progress .progress-notice');
+ assert.equal(progress.dataset.state,'interrupted');
+ assert.equal(progress.querySelector('.notice-icon').dataset.tone,'warning');
+ assert.equal(progress.querySelector('progress').value,1);
+ assert.equal(progress.querySelector('progress').max,3);
+ assert.match(progress.querySelector('[aria-live="polite"]').textContent,/Partial revision/);
+ assert.doesNotMatch(progress.querySelector('[aria-live="polite"]').textContent,/1 \/ 3/);
+ assert.match(document.querySelector('.reprocessing-progress').textContent,/Synthetic interrupted extraction.*Completed excerpts and review decisions are retained/s);
+ assert.ok(document.querySelector('.reprocessing-progress .inline-notice[data-tone="warning"]'));
+});
+
+
+test('source loading uses only supported determinate progress and retains storage diagnostics',()=>{
+ const file={id:'source',name:'Article.pdf',generated_name:null,status:'queued',enrichment_status:'pending',progress:0,pages:0,error:null,enrichment_error:null};
+ const markup=value=>new JSDOM(renderToStaticMarkup(React.createElement(SourceLoadingProgress,{file:{...file,...value}}))).window.document;
+ const queued=markup({});
+ assert.equal(queued.querySelector('.progress-notice').dataset.state,'queued');
+ assert.equal(queued.querySelector('progress').hasAttribute('value'),false);
+ const extracting=markup({status:'processing',progress:35});
+ assert.equal(extracting.querySelector('progress').value,35);
+ assert.equal(extracting.querySelector('progress').max,100);
+ assert.doesNotMatch(extracting.querySelector('[aria-live="polite"]').textContent,/35/);
+ const math=markup({status:'processing',processing_detail:{completed:2,total:7,startedAt:Date.now(),updatedAt:Date.now()}});
+ assert.equal(math.querySelector('[aria-label="Math preparation batches completed"]').value,2);
+ assert.equal(math.querySelector('progress').max,7);
+ const failed=new JSDOM(renderToStaticMarkup(React.createElement(SourceInspectorStatus,{files:[{...file,status:'failed',error:'Detailed extraction error'}],vaultId:'v',onChange:()=>{},onError:()=>{}}))).window.document;
+ assert.equal(failed.querySelector('.inline-notice[data-tone="error"]').textContent,'Article.pdfProcessing failedRetry processing');
+ assert.match(failed.body.textContent,/Detailed extraction error/);
+ assert.equal(failed.querySelector('.inline-notice[data-tone="error"] button').textContent,'Retry processing');
+ for(const document of [queued,extracting,math,failed])document.defaultView.close();
+});
 
 test('V2 pass progress distinguishes checkpointed passes and blocks uncertain paid replay',async t=>{
  const r=fixture();r.pipelineVersion=2;r.configuration={depth:'deep',reviewPolicy:'verified',evidence:{originalPages:false,ocr:false,allowExternalTransmission:false}};r.status='interrupted';r.report.chunksCompleted=0;r.report.chunksTotal=1;r.report.usageIncomplete=true;
@@ -204,7 +253,11 @@ test('V2 pass progress distinguishes checkpointed passes and blocks uncertain pa
  const env=await mount(t,{initial:r});
  assert.match(document.querySelector('.reprocessing-stage-summary').textContent,/Deep Restoration.*Verified changes only.*2–3/);
  assert.match(document.querySelector('.reprocessing-ledger').textContent,/Model passes: 1 \/ 3.*Stopped at pass 2.*Unresolved equation/);
- assert.match(document.querySelector('.reprocessing-outcome').textContent,/cannot resume an uncertain request.*Start a new revision explicitly/);
+ const uncertainty=document.querySelector('[id^="reprocessing-uncertain-"]');
+ assert.match(uncertainty.textContent,/cannot resume an uncertain request.*Start a new revision explicitly/);
+ assert.ok(uncertainty.matches('.inline-notice[data-tone="warning"]'));
+ assert.equal(uncertainty.querySelector('.notice-icon').dataset.tone,'warning');
+ assert.equal(uncertainty.querySelector('.notice-close'),null,'Uncertain paid work is not dismissible contextual feedback');
  assert.equal([...document.querySelectorAll('button')].some(button=>/Resume remaining|Retry failed/.test(button.textContent)),false);
  assert.match(document.querySelector('.reprocessing-report').textContent,/currency cost is unavailable.*Real-provider academic PDF quality evaluation has not been run/);
  assert.equal(env.requests.some(entry=>entry.method==='POST'),false);
@@ -283,6 +336,25 @@ test('start waits for source capabilities so available local OCR is not skipped 
 
 
 test('local evidence preparation has visible progress before model excerpts complete',async t=>{
+ const scheduled=[],realTimeout=globalThis.setTimeout;
+ t.mock.method(globalThis,'setTimeout',(callback,delay,...args)=>{if(delay===2500){scheduled.push(callback);return 987654;}return realTimeout(callback,delay,...args);});
  const r=fixture();r.status='running';r.report.chunksCompleted=0;r.report.evidencePreparation={state:'collecting',preparedChunks:2,totalChunks:r.report.chunksTotal};
  await mount(t,{initial:r});assert.match(document.body.textContent,/Preparing original-source evidence locally: 2 \/ /);
+ const evidence=()=>document.querySelector('[id^="reprocessing-evidence-"]');
+ const stage=()=>evidence().querySelector('[aria-live="polite"]').textContent;
+ const initialStage=stage();
+ assert.equal(evidence().dataset.state,'running');
+ assert.match(initialStage,/Preparing original-source evidence locally/);
+ assert.doesNotMatch(initialStage,/\d|\//,'Numeric preparation updates are outside the live stage label');
+ assert.equal(evidence().querySelector('progress').value,2);
+ assert.equal(evidence().querySelector('progress').max,r.report.chunksTotal);
+ r.updatedAt='2026-10-24T12:00:00Z';r.report.evidencePreparation.preparedChunks=3;
+ await act(async()=>{for(const callback of [...scheduled])await callback();});
+ assert.equal(stage(),initialStage,'Numeric checkpoint updates retain the meaningful announcement text');
+ assert.equal(evidence().querySelector('progress').value,3);
+ r.updatedAt='2026-10-24T12:00:01Z';r.report.evidencePreparation.state='completed';
+ await act(async()=>{for(const callback of [...scheduled])await callback();});
+ assert.equal(evidence().dataset.state,'completed');
+ assert.match(stage(),/Original-source evidence prepared/);
+ assert.doesNotMatch(stage(),/\d|\//);
 });

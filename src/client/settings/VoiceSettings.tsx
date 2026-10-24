@@ -1,7 +1,8 @@
+import {InlineNotice} from '../notifications/InlineNotice';
 import {useEffect,useRef,useState,type FormEvent} from 'react';
 import {api,type SpeechModelStatus} from '../api';
 import {Select} from '../components/Select';
-import {SuccessNotice,useSuccessNotice} from '../components/SuccessNotice';
+import {FormNotice,useFormNotice} from '../notifications/FormNotice';
 import {defaultSpeechProvider,defaultSpeechVoiceFor,isSpeechProvider,isSpeechVoice,speechModelFor,speechVoicesFor,type IntelligenceConfiguration,type SpeechProvider,type SpeechVoice} from '../../shared/intelligence';
 import {defaultNarrationPreferences,type NarrationPreferences} from '../../shared/narration';
 import {NarrationSettings} from './NarrationSettings';
@@ -16,7 +17,7 @@ function voiceDraft(value:Partial<Pick<IntelligenceConfiguration,'ttsEnabled'|'t
 /** Separate voice drafts persist across category navigation; only voice fields are submitted. */
 export function VoiceSettings({active=true,vaultId}:{active?:boolean;vaultId?:string}={}) {
   const [draft,setDraft]=useState<VoiceDraft>(()=>voiceDraft({})),[saved,setSaved]=useState<VoiceDraft|null>(null);
-  const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[success,setSuccess,successOccurrence]=useSuccessNotice();
+  const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[success,setSuccess,successOccurrence]=useFormNotice();
   const [view,setView]=useState<'overview'|'narration'|'cache'|'model'>('overview');
   const [browse,setBrowse]=useState(false),[query,setQuery]=useState('');
   const [localSpeech,setLocalSpeech]=useState<SpeechModelStatus|null>(null),[modelBusy,setModelBusy]=useState(false),[modelError,setModelError]=useState('');
@@ -64,10 +65,10 @@ export function VoiceSettings({active=true,vaultId}:{active?:boolean;vaultId?:st
       {(view==='overview'||view==='narration')&&<NarrationSettings value={draft.narration} onChange={narration=>change({narration})} provider={provider} voice={draft.ttsVoice} vaultId={vaultId} disabled={busy||!saved} previewEnabled={active} view={view==='overview'?'overview':'detail'}/>}
       {view==='overview'&&<div className="intelligence-actions"><button type="button" className="button" onClick={()=>setView('narration')}>Narration & pronunciation</button><button type="button" className="button" onClick={()=>setView('cache')}>Audio cache</button></div>}
       {view==='cache'&&<><h4>Audio cache</h4><p>Generated recordings are cached for 7 days, then automatically deleted to free disk space. Each provider, voice and narration selection uses separate saved audio. Switching back can reuse its saved audio.</p><p>Preview samples are temporary and do not change saved recordings or defaults.</p></>}
-      {view==='model'&&<div className="local-speech-model" aria-busy={modelBusy}><h4>Local model setup</h4><p role="status">{modelBusy?'Preparing local speech model…':localSpeech?.ready?'Kokoro model ready for local speech.':'Download the Kokoro model to use Speak. Model files are stored locally and excluded from Git.'}</p>{localSpeech&&!localSpeech.ready&&<><p>Missing model files: {localSpeech.missingFiles.join(', ')}</p><button type="button" className="button" disabled={modelBusy} onClick={()=>void prepareModel(true)}>Download Kokoro model</button>{localSpeech.downloadCommand&&<details><summary>Manual model setup</summary><code>{localSpeech.downloadCommand}</code></details>}</>}{modelError&&<p role="alert">{modelError}</p>}<button type="button" className="button" disabled={modelBusy} onClick={()=>void prepareModel()}>Retry model check</button><p>Speech model: <code>{speechModelFor(provider)}</code></p></div>}
+      {view==='model'&&<div className="local-speech-model" aria-busy={modelBusy}><h4>Local model setup</h4><p role="status">{modelBusy?'Preparing local speech model…':localSpeech?.ready?'Kokoro model ready for local speech.':'Download the Kokoro model to use Speak. Model files are stored locally and excluded from Git.'}</p>{localSpeech&&!localSpeech.ready&&<><p>Missing model files: {localSpeech.missingFiles.join(', ')}</p><button type="button" className="button" disabled={modelBusy} onClick={()=>void prepareModel(true)}>Download Kokoro model</button>{localSpeech.downloadCommand&&<details><summary>Manual model setup</summary><code>{localSpeech.downloadCommand}</code></details>}</>}{modelError&&<InlineNotice tone="error" title={modelError} announcement="assertive"/>}<button type="button" className="button" disabled={modelBusy} onClick={()=>void prepareModel()}>Retry model check</button><p>Speech model: <code>{speechModelFor(provider)}</code></p></div>}
       <div className="intelligence-actions"><button className="button" disabled={busy||!changed}>Save voice preferences</button></div>
     </form>
-    {message&&<p role="alert">{message}</p>}
-    <SuccessNotice inline message={success} occurrence={successOccurrence} onDismiss={()=>setSuccess('')}/>
+    {message&&<InlineNotice tone="error" title={message} announcement="assertive"/>}
+    <FormNotice message={success} occurrence={successOccurrence} onDismiss={()=>setSuccess('')}/>
   </section>;
 }

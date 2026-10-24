@@ -39,8 +39,8 @@ import { ActionMenu } from './components/ActionMenu';
 import { NameDialog } from './components/NameDialog';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import {ArchiveLibrary} from './archive/ArchiveLibrary';
-import {ArchiveNotice} from './archive/ArchiveNotice';
-import {SuccessNotice,useSuccessNotice} from './components/SuccessNotice';
+import {NotificationProvider, useNotifications, InlineNotice} from './notifications';
+import {WorkspaceNotificationBridge} from './notifications/WorkspaceNotificationBridge';
 import { TrashLibrary } from './trash/TrashLibrary';
 import {entityLabels, entityTypes, entityMentionName, type Entity, type EntityType, type PageSummary} from '../shared/domain';
 import { Select } from './components/Select';
@@ -73,8 +73,15 @@ import { CreateEntityDialog, type CreateEntityRequest } from './knowledge/Create
 import {DeleteVaultDialog} from './vaults/DeleteVaultDialog';
 import { VaultBackupDialog } from './vaults/VaultBackupDialog';
 import { VaultDialog, type VaultAction } from './vaults/VaultDialog';
-export function App() {return <AIActivityProvider><WorkspaceApp/></AIActivityProvider>;}
-function WorkspaceApp() {
+export function App() {
+  const [workspace]=useState(()=>new Workspace());
+  return <ScopedNotifications workspace={workspace}><AIActivityProvider><WorkspaceApp workspace={workspace}/></AIActivityProvider></ScopedNotifications>;
+}
+function ScopedNotifications({workspace,children}:{workspace:Workspace;children:React.ReactNode}) {
+  const scope=useSyncExternalStore(workspace.subscribe,()=>{const vault=workspace.snapshot().vault;return vault&&!vault.locked?vault.id:null;});
+  return <NotificationProvider activeVaultId={scope}>{children}</NotificationProvider>;
+}
+function WorkspaceApp({workspace}:{workspace:Workspace}) {
   useInterfaceLanguage();
   const mobile = useMobileViewport();
   const [revealPageId, setRevealPageId] = useState<string | null>(null);
@@ -105,7 +112,7 @@ function WorkspaceApp() {
   const [deleteTarget, setDeleteTarget] = useState<Pick<PageSummary,'id'|'title'> | null>(null);
   const [renameTarget, setRenameTarget] = useState<PageSummary | null>(null);
   const {appearance, setAppearance, exitFocus, storageError} = useAppearance();
-  const [workspace] = useState(() => new Workspace());
+  const notifications=useNotifications();
   const [reviewDestination,setReviewDestination]=useState<ReviewItem|null>(null);
   const reviewVault=useRef<string|null>(null);
   const [entityReviewOpen,setEntityReviewOpen]=useState(false);
@@ -113,7 +120,7 @@ function WorkspaceApp() {
   usePageScroll(workspace);
   usePageSelection(workspace);
   const state = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
-  const {vaults, vault, pages, entities:storedEntities, page, view, busy, loadingPageId, reviewing, error, saveStatus, organization, organizationContext, recent, trash, saveFailures, draftStorageFailures, draftRecoveries} = state;
+  const {vaults, vault, pages, entities:storedEntities, page, view, busy, loadingPageId, reviewing, saveStatus, organization, organizationContext, recent, trash, saveFailures, draftStorageFailures, draftRecoveries} = state;
   const entities=useMemo(()=>storedEntities.map(entity=>({...entity,icon:resolveEntityIcon(entity,appearance.subtypeIcons)})),[storedEntities,appearance.subtypeIcons]);
   useEffect(()=>{
     reviewVault.current=null;setReviewDestination(null);
@@ -223,17 +230,15 @@ function WorkspaceApp() {
   useEffect(() => { setNavigationOpen(false); }, [view, page?.id, organizationContext.collection, organizationContext.folder, panelId, state.entityId, vault?.id]);
   const [sourcePage,setSourcePage]=useState<Entity|null>(null);
   const [create, setCreate] = useState<CreateEntityRequest | null>(null), [vaultAction, setVaultAction] = useState<VaultAction | null>(null);
-  const [vaultDeletionOpen,setVaultDeletionOpen]=useState(false),[vaultNotice,setVaultNotice,vaultNoticeOccurrence]=useSuccessNotice();
+  const [vaultDeletionOpen,setVaultDeletionOpen]=useState(false);
   const [pendingInsert,setPendingInsert]=useState<{vaultId:string;pageId:string;entityId:string;name:string;insert:(id:string)=>void}|null>(null);
-  const [insertNotice,setInsertNotice]=useState<{entityId:string;name:string}|null>(null);
-  useEffect(()=>{setInsertNotice(null);},[vault?.id,vault?.locked,page?.id]);
   useEffect(()=>{
     if(create||!pendingInsert)return;
     // The creation dialog must release modal focus before the editor restores its saved range.
     const frame=requestAnimationFrame(()=>{
       const current=workspace.snapshot();
       if(current.vault?.id===pendingInsert.vaultId&&!current.vault.locked&&current.page?.id===pendingInsert.pageId) {
-        try{pendingInsert.insert(pendingInsert.entityId);setInsertNotice({entityId:pendingInsert.entityId,name:pendingInsert.name});}catch(error){workspace.report(error);}
+        try{pendingInsert.insert(pendingInsert.entityId);notifications.notify({tone:'success',message:uiText("Created “")+pendingInsert.name+'”.',scope:{kind:'vault',vaultId:pendingInsert.vaultId},durationMs:4000,actions:[{label:uiText('View'),run:()=>{const active=workspace.snapshot();if(active.vault?.id===pendingInsert.vaultId&&!active.vault.locked&&active.entities.some(entity=>entity.id===pendingInsert.entityId))openEntity(pendingInsert.entityId);}}]});}catch(error){workspace.report(error);}
       }
       setPendingInsert(null);
     });
@@ -442,8 +447,8 @@ function WorkspaceApp() {
     </aside>
     </WorkspaceNavigation>
     <main data-entity-review-open={entityReviewOpen} className={activeSource?'source-workspace':undefined}><header className="topbar"><button type="button" className="mobile-navigation-toggle" aria-label={uiText("Open navigation")} aria-haspopup="dialog" aria-controls="workspace-navigation" aria-expanded={mobile && navigationOpen} onClick={() => setNavigationOpen(true)}><Icon name="menu"/></button><nav id="breadcrumb" className="breadcrumbs" aria-label={uiText("Breadcrumb")}>{breadcrumbs.map((crumb, index) => <span key={crumb.key}>{index > 0 && (view === 'pages' ? <span className="breadcrumb-separator" aria-hidden="true">/</span> : <Icon name="chevron"/>)}{crumb.onClick ? <button onClick={crumb.onClick} disabled={busy || reviewing || entityReviewOpen} aria-current={index === breadcrumbs.length - 1 ? 'page' : undefined}>{crumb.icon && <Icon name={crumb.icon}/>}<span>{crumb.key.startsWith('page:')?<TitleText text={crumb.label}/>:crumb.label}</span></button> : <span className="breadcrumb-label" aria-current={index === breadcrumbs.length - 1 ? 'page' : undefined}>{crumb.icon && <Icon name={crumb.icon}/>}<span>{crumb.key.startsWith('page:')?<TitleText text={crumb.label}/>:crumb.label}</span></span>}</span>)}</nav><div id="page-identity-tools"/><div className="top-actions">{activeSource&&<PresentationSelector value={appearance.presentationMode} onChange={presentationMode=>setAppearance(current=>({...current,presentationMode}))} onExitFocus={exitFocus}/>} {activeSource&&<button type="button" ref={inspectorToggle} className="source-inspector-toggle" aria-controls="entity-panel" aria-label={uiText("Source inspector")} title={uiText("Source inspector")} aria-expanded={!!panelId} onClick={()=>{if(panelId)closeInspector();else setSourceInspectorOpen(true);}}><Icon name="knowledge"/></button>}{view === 'pages' && page && vault && !busy && !vault.locked && <PageToolbar onArchive={()=>workspace.archivePages([page.id])} onRestore={()=>workspace.restoreArchivedPages([{id:page.id,revision:page.revision}])} onHistory={()=>setHistoryPage(page.vault_id+":"+page.id)} onExitFocus={exitFocus} pages={pages} entities={entities} onOpenEntity={openEntityHome} onEntityAssociationsChanged={()=>workspace.refreshEntities()} onRename={()=>setRenameTarget(page)} tocAvailable={headings.length>0} tocVisible={tocVisible} onToggleToc={()=>setTocVisible(value=>!value)} onRevealInSidebar={() => { setNavigationOpen(true); setRevealPageId(page.id); }} onEditLockChange={(locked,password)=>workspace.setPageEditLock(locked,password)} onUndo={editingHistory.undo} onRedo={editingHistory.redo} canUndo={editingHistory.canUndo} canRedo={editingHistory.canRedo} onFeaturedImageChange={featuredImageId => editingHistory.change({featuredImageId})} onChangeBlocks={blocks => editingHistory.change({blocks})} onForward={mobile ? () => { setSearchOpen(false); run(() => workspace.goHistory(1)); } : undefined} forwardDisabled={disabled || !state.canGoForward} inactive={loadingPageId !== null} presentationMode={appearance.presentationMode} onPresentationModeChange={presentationMode => setAppearance(current => ({...current, presentationMode}))} aiOpen={knowledgeVisible} onAI={()=>{setNoteDateSelection(null);setSourceReference(null);setSearchOpen(false);workspace.closeEntity();setAiOpen(!knowledgeVisible);}} favourite={organization.favourites.some(item => item.kind === 'page' && item.item_id === page.id)} onOrganizationChange={data => { if (workspace.snapshot().vault?.id === vault.id) workspace.setOrganization(data); }} onDelete={() => workspace.deletePage(page.id)} key={vault.id + '/' + page.id} page={page} onError={workspace.report}/>}{view!=='pages'&&saveStatus!=='saved'&&!vault?.locked&&<button className={'save-state-indicator '+(saveStatus==='error'?'is-error':'')} aria-label={status} disabled={disabled} onClick={()=>run(()=>workspace.saver.flush())}><Icon name={saveStatus==='error'?'alert':'save'}/><span role="status">{status}</span></button>}<AIActivityNotifications scopeKey={vaults.map(item=>item.id+':'+item.locked).join(',')} disabled={busy||reviewing||entityReviewOpen||!vaults.some(item=>!item.locked)} onOpenActivity={()=>run(async()=>{const current=workspace.snapshot();if(current.vault&&!current.vault.locked)await workspace.showInbox('activity');else{const target=current.vaults.find(item=>!item.locked);if(target)await workspace.selectVault(target.id,{vaultId:target.id,view:'inbox',inboxFacet:'activity',pageId:null,entityId:null,collection:'',folder:''});}})} onSourceUpdates={async()=>{if(workspace.snapshot().vault&&!workspace.snapshot().vault?.locked)await workspace.refreshEntities();}} refreshKey={vaults.map(item=>item.id+':'+item.locked).join(',')+':'+saveStatus+':'+(page?.revision??'') }/></div>{vault&&!vault.locked&&!busy&&(vaultSaveFailures.length>0||vaultStorageFailures.length>0||activeRecovery)&&<div className="page-persistence-notices" aria-label={uiText("Unfinished work")}>
-      {vaultSaveFailures.map(issue=><div className="page-persistence-notice is-error" key={issue.pageId} role="alert"><span>{uiText("Couldn’t save “")}{issue.title||uiText("Untitled")}”. <small>{issue.message}</small></span>{page?.id!==issue.pageId&&<button type="button" disabled={disabled} onClick={()=>run(()=>workspace.openPage(issue.pageId))}>{uiText("Open page")}</button>}<button type="button" disabled={disabled} onClick={()=>run(()=>workspace.retryPageSave(issue.vaultId,issue.pageId))}>{uiText("Retry")}</button></div>)}
-      {vaultStorageFailures.map(issue=><div className="page-persistence-notice is-error" key={'storage-'+issue.pageId} role="alert"><span>“{issue.title||uiText("Untitled")}{uiText("” has no recoverable browser copy. Keep this tab open until it saves.") + " "}<small>{issue.message}</small></span><button type="button" disabled={disabled} onClick={()=>run(()=>workspace.retryPageSave(issue.vaultId,issue.pageId))}>{uiText("Retry")}</button></div>)}
+      {vaultSaveFailures.map(issue=><InlineNotice id={'save-failure-'+issue.pageId} tone="error" key={issue.pageId} announcement="assertive" title={<>{uiText("Couldn’t save “")}{issue.title||uiText("Untitled")}”.</>} description={issue.message} actions={<>{page?.id!==issue.pageId&&<button type="button" disabled={disabled} onClick={()=>run(()=>workspace.openPage(issue.pageId))}>{uiText("Open page")}</button>}<button type="button" disabled={disabled} onClick={()=>run(()=>workspace.retryPageSave(issue.vaultId,issue.pageId))}>{uiText("Retry")}</button></>}/>)}
+      {vaultStorageFailures.map(issue=><InlineNotice id={'draft-storage-failure-'+issue.pageId} tone="error" key={'storage-'+issue.pageId} announcement="assertive" title={<>“{issue.title||uiText("Untitled")}{uiText("” has no recoverable browser copy. Keep this tab open until it saves.")}</>} description={issue.message} actions={<button type="button" disabled={disabled} onClick={()=>run(()=>workspace.retryPageSave(issue.vaultId,issue.pageId))}>{uiText("Retry")}</button>}/>)}
       {activeRecovery&&page&&<PageDraftRecoveryNotice key={activeRecovery.vaultId+'/'+activeRecovery.pageId} recovery={activeRecovery} page={page} entities={entities} pages={pages} onRestore={entry=>workspace.restorePageDraft(entry)} onDiscard={()=>workspace.discardPageDrafts(activeRecovery.vaultId,activeRecovery.pageId)}/>}
     </div>}</header>
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{loadingPageId !== null ? uiText("Opening {value0}…",{value0: pages.find(item=>item.id===loadingPageId)?.title || 'note'}) : ''}</div>
@@ -509,13 +514,10 @@ function WorkspaceApp() {
     {settingsOpen && <SettingsDialog initialTab={settingsInitialTab} calendarSettings={calendarSettings} onCalendarSettingsChange={setCalendarSettings} calendarStorageError={calendarStorageError} onExitFocus={exitFocus} onOpenPassage={async(vaultId,reference)=>{if(workspace.snapshot().vault?.id!==vaultId)await workspace.selectVault(vaultId);setSettingsOpen(false);openSourceReference(reference);}} onOpenEntity={async(vaultId,entityId)=>{if(vault?.id!==vaultId)await workspace.selectVault(vaultId);await workspace.refreshEntities();openEntityHome(entityId);setSettingsOpen(false);}} onBeforeNetworkChange={() => workspace.saver.flush()} onChangePassphrase={(current, next) => workspace.setPassphrase(current, next)} vault={vault} onOpenPage={async(vaultId,pageId,reference)=>{if(vault?.id!==vaultId)await workspace.selectVault(vaultId);await openIndexedPage(pageId,reference);}} appearance={appearance} onChange={setAppearance} storageError={storageError} onClose={() => {setSettingsOpen(false);setSettingsInitialTab('appearance');}}/>}
     {backupAction && <VaultBackupDialog action={backupAction} vaultName={vault?.name} onClose={() => setBackupAction(null)} onExport={() => workspace.exportVault()} onImport={(file,name) => workspace.importVault(file,name)}/>}
     {vaultDeletionOpen&&vault&&<DeleteVaultDialog key={vault.id} vault={vault} onPreview={()=>workspace.previewVaultDeletion(vault.id)} onExport={()=>workspace.exportVault()} onClose={()=>setVaultDeletionOpen(false)} onDelete={async confirmation=>{
-      const name=vault.name,result=await workspace.deleteVault(vault.id,confirmation);
-      setVaultNotice('Vault “'+name+'” deleted.'+(result.cleanupPending?' Local attachment cleanup is queued and will retry.':''));
+      const result=await workspace.deleteVault(vault.id,confirmation);
+      notifications.notify({tone:'success',message:uiText('Vault deleted.')+(result.cleanupPending?' '+uiText('Local attachment cleanup is queued and will retry.'):''),scope:{kind:'global'},durationMs:4000});
     }}/>}
-    {!error&&!vaultNotice&&!insertNotice&&!busy&&vault&&!vault.locked&&!!state.archiveUndo.length&&<ArchiveNotice key={JSON.stringify(state.archiveUndo)} count={state.archiveUndo.length} onUndo={()=>run(()=>workspace.restoreArchivedPages(state.archiveUndo))} onDismiss={workspace.dismissArchiveUndo}/>}
-    {!error&&vaultNotice&&<SuccessNotice message={vaultNotice} occurrence={vaultNoticeOccurrence} onDismiss={()=>setVaultNotice('')}/>}
     {vaultAction && <VaultDialog onImport={() => { setVaultAction(null); setBackupAction('import'); }} action={vaultAction} onClose={() => setVaultAction(null)} onSubmit={value => vaultAction === 'create' ? workspace.createVault(value) : vaultAction === 'lock' ? workspace.lock(value) : workspace.unlock(value)}/>}
-    {!error&&!vaultNotice&&insertNotice&&vault&&!vault.locked&&<SuccessNotice key={insertNotice.entityId} occurrence={insertNotice} message={uiText("Created “")+insertNotice.name+'”.'} onDismiss={()=>setInsertNotice(null)} action={<button type="button" className="success-notice-action" onClick={()=>{openEntity(insertNotice.entityId);setInsertNotice(null);}}>{uiText("View")}</button>}/>}
-    {error && <div id="toast" role="alert">{error}<button className="toast-close" aria-label={uiText("Dismiss error")} onClick={workspace.dismissError}>×</button></div>}
+    <WorkspaceNotificationBridge workspace={workspace}/>
   </ReviewDestination.Provider></SubtypeIconContext.Provider></DateNavigation.Provider>;
 }

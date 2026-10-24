@@ -62,50 +62,7 @@ a {
 select,input:not([type=checkbox]),textarea {
   max-width: 100%
 }
-#toast {
-  position: fixed;
-  bottom: 25px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 13px 22px;
-  border-radius: 7px;
-  background: #343434;
-  color: white;
-  z-index: 100;
-  font-size: 13px;
-  box-shadow: 0 5px 30px #0002
-}
-#toast.success-notice,
-.success-notice.is-inline {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  max-width: calc(100vw - 32px);
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  background: var(--surface-raised);
-  color: var(--text-muted);
-  box-shadow: 0 2px 8px #0001;
-}
-.success-notice.is-inline {
-  width: fit-content;
-  max-width: 100%;
-  margin-block: 8px;
-  border: 0;
-  padding: 0;
-  background: transparent;
-  box-shadow: none;
-  font-size: 13px;
-}
-.success-notice-action {
-  color: var(--text);
-  font-weight: 500;
-}
-.success-notice-action:hover { text-decoration: underline; }
-.success-notice .toast-close {
-  margin-left: 0;
-  line-height: 1;
-}
+
 :root {
   color: var(--text);
   font-synthesis: none
@@ -244,11 +201,7 @@ select.select-native {
     margin-right: 1px
   }
 }
-.toast-close {
-  margin-left: 14px;
-  color: inherit;
-  font-size: 18px
-}
+
 .loading-state {
   padding: 60px;
   color: var(--text-muted)

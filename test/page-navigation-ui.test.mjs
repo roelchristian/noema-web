@@ -192,7 +192,7 @@ test('entity routes open full homes while desktop page mentions retain contextua
   await click(document.querySelector('.eh-occurrences button'));
   await act(async()=>new Promise(resolve=>requestAnimationFrame(resolve)));
   assert.equal(document.querySelector('.page-search-mention'),null);
-  assert.match(document.querySelector('#toast[role="alert"]').textContent,/changed since the mention/);
+  assert.match(document.querySelector('.toast-item[data-tone="error"]').textContent,/changed since the mention/);
 
  } finally {await env.close();}
 });

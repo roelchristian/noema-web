@@ -1,4 +1,5 @@
-import {SuccessNotice,useSuccessNotice} from '../components/SuccessNotice';
+import {InlineNotice} from '../notifications/InlineNotice';
+import {FormNotice,useFormNotice} from '../notifications/FormNotice';
 import {memo, useEffect, useRef, useState} from 'react';
 import type {Entity, Organization, PagePreview, PageSummary} from '../../shared/domain';
 import {api} from '../api';
@@ -34,7 +35,7 @@ export function InboxTriage({vaultId, pages, allPages, entities, data, checked, 
   const [retry,setRetry]=useState(0);
   const [picker,setPicker]=useState<'folder'|'collection'|null>(null);
   const [target,setTarget]=useState('');
-  const [pending,setPending]=useState(false), [error,setError]=useState(''), [notice,setNotice,noticeOccurrence]=useSuccessNotice();
+  const [pending,setPending]=useState(false), [error,setError]=useState(''), [notice,setNotice,noticeOccurrence]=useFormNotice();
   const lock=useRef(false), detail=useRef<HTMLElement>(null);
   const busy=pending||disabled;
   async function refresh() {
@@ -109,18 +110,18 @@ export function InboxTriage({vaultId, pages, allPages, entities, data, checked, 
         <p className="organization-hint">File moves to a folder. Collections keep this page in Inbox.</p>
         <button className="button" disabled={busy||!!picker||!currentPreview?.page} onClick={()=>onOpenPage(active.id)}>Open full editor</button>
         {(!currentPreview||!currentPreview.page&&!currentPreview.error)&&<p role="status">Loading preview…</p>}
-        {currentPreview?.error&&<div role="alert"><p>{currentPreview.error}</p><button className="button" onClick={()=>setRetry(value=>value+1)}>Retry preview</button></div>}
+        {currentPreview?.error&&<InlineNotice tone="error" title={currentPreview.error} announcement="assertive" actions={<button className="button" onClick={()=>setRetry(value=>value+1)}>Retry preview</button>}/>}
         {currentPreview?.page&&<div className="inbox-preview"><PreviewBlocks blocks={currentPreview.page.blocks} pages={allPages} entities={entities} vaultId={vaultId} onOpenPage={onOpenPage} onOpenEntity={onOpenEntity}/>{!currentPreview.page.blocks.length&&<p>This page has no content yet.</p>}{currentPreview.page.truncated&&<p>Preview shows the first 80 blocks. Open the full editor to read the rest.</p>}</div>}
       </>}
-      <SuccessNotice inline message={notice} occurrence={noticeOccurrence} onDismiss={()=>setNotice('')}/>{onRefresh&&currentPreview?.error&&<button className="button" disabled={busy} onClick={()=>void refresh()}>Refresh queue</button>}
-      {error&&!picker&&<p role="alert">{error}</p>}
+      <FormNotice message={notice} occurrence={noticeOccurrence} onDismiss={()=>setNotice('')}/>{onRefresh&&currentPreview?.error&&<button className="button" disabled={busy} onClick={()=>void refresh()}>Refresh queue</button>}
+      {error&&!picker&&<InlineNotice tone="error" title={error} announcement="assertive"/>}
     </section>
     {picker&&active&&<Modal titleId="triage-picker-title" onClose={()=>{if(!pending)setPicker(null);}}><form onSubmit={event=>{event.preventDefault();void save();}}><ModalHeader titleId="triage-picker-title" closeDisabled={pending}>{picker==='folder'?'File in folder':'Add to collection'}</ModalHeader>
       <p>{picker==='folder'?'Moves this page out of Inbox. Collection memberships are kept.':'Adds membership without changing folder location. This page stays in Inbox.'}</p>
       <label>{picker==='folder'?'Folder':'Collection'}<Select autoFocus aria-label="Triage destination" disabled={pending} value={target} onChange={event=>setTarget(event.target.value)}><option value="">Choose a destination</option>{(picker==='folder'?data.folders:data.collections.filter(collection=>!data.memberships.some(member=>member.kind==='page'&&member.item_id===active.id&&member.collection_id===collection.id))).map(item=><option key={item.id} value={item.id}>{item.name}{'parent_id' in item&&item.parent_id?' (in '+data.folders.find(folder=>folder.id===item.parent_id)?.name+')':''}</option>)}</Select></label>
       {picker==='folder'&&!data.folders.length&&<p>Create a folder from the sidebar to file pages.</p>}
       {picker==='collection'&&!data.collections.length&&<p>Create a collection from the sidebar to add pages.</p>}
-      {error&&<p role="alert" className="dialog-error">{error}</p>}
+      {error&&<InlineNotice tone="error" title={error} announcement="assertive"/>}
       <div className="dialog-actions"><button type="button" className="button" disabled={pending} onClick={()=>setPicker(null)}>Cancel</button><button className="button primary" disabled={pending||!target}>{pending?'Saving…':picker==='folder'?'File':'Add to collection'}</button></div>
     </form></Modal>}
   </div>;

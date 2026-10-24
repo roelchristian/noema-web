@@ -1,0 +1,25 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {act,createElement} from 'react';
+import {createRoot} from 'react-dom/client';
+import {InlineNotice} from '../src/client/notifications/InlineNotice.tsx';
+import {ProgressNotice} from '../src/client/notifications/ProgressNotice.tsx';
+import {NotificationProvider,useNotifications} from '../src/client/notifications/NotificationProvider.tsx';
+import {setupDOM} from './helpers/dom.mjs';
+function fixture(t){const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));return {...env,render:node=>act(async()=>root.render(node))};}
+test('inline authority has no independent expiry and progress native semantics',async t=>{const env=fixture(t);t.mock.timers.enable({apis:['setTimeout']});await env.render(createElement(InlineNotice,{tone:'error',title:'Save failed',description:'Keep this tab open',announcement:'assertive',actions:createElement('button',null,'Retry')}));assert.ok(document.querySelector('[role=alert]'));assert.equal(document.querySelector('.notice-icon').dataset.tone,'error');await act(async()=>t.mock.timers.tick(60000));assert.match(document.body.textContent,/Keep this tab open/);await env.render(createElement(ProgressNotice,{title:'Processing',stage:'Reading',state:'running',value:2,max:4}));const progress=document.querySelector('progress');assert.equal(progress.value,2);assert.equal(progress.max,4);assert.equal(progress.getAttribute('aria-label'),'Processing');});
+test('provider isolates content renders and exposes pending failure retry semantics',async t=>{const env=fixture(t);let commands,renders=0,reject;function Child(){commands=useNotifications();renders++;return createElement('input',{id:'editor'});}await env.render(createElement(NotificationProvider,null,createElement(Child)));document.querySelector('#editor').focus();await act(async()=>{commands.notify({tone:'success',message:'Archived',scope:{kind:'global'},actions:[{label:'Undo',run:()=>new Promise((_,no)=>reject=no)}]});});assert.equal(renders,1);assert.equal(document.activeElement.id,'editor');assert.equal(document.querySelectorAll('.toast-item').length,1);await act(async()=>document.querySelector('.notice-actions button').click());assert.equal(document.querySelector('.notice-actions button').disabled,true);await act(async()=>reject(new Error('Please retry')));assert.equal(document.querySelector('.notice-actions button').disabled,false);assert.match(document.querySelector('[role=alert]').textContent,/Please retry/);assert.equal(renders,1);});
+
+test('vault transitions remove sensitive text from both toast and announcement DOM',async t=>{
+ const env=fixture(t);let commands;
+ function Child(){commands=useNotifications();return createElement('input',{id:'editor'});}
+ const child=createElement(Child);
+ await env.render(createElement(NotificationProvider,{activeVaultId:'a'},child));
+ await act(async()=>{commands.notify({tone:'success',message:'Protected synthetic title',scope:{kind:'vault',vaultId:'a'}});});
+ assert.match(document.body.textContent,/Protected synthetic title/);
+ await env.render(createElement(NotificationProvider,{activeVaultId:'b'},child));
+ assert.doesNotMatch(document.body.textContent,/Protected synthetic title/);
+ assert.equal(document.querySelectorAll('.toast-item').length,0);
+});
+test('vault transition removes protected visible and announced text',async t=>{const env=fixture(t);let commands;function Child(){commands=useNotifications();return null;}const child=createElement(Child);await env.render(createElement(NotificationProvider,{activeVaultId:'a'},child));await act(async()=>commands.notify({tone:'success',message:'Sensitive vault title',scope:{kind:'vault',vaultId:'a'},dedupeKey:'operation'}));assert.match(document.body.textContent,/Sensitive vault title/);await env.render(createElement(NotificationProvider,{activeVaultId:'b'},child));assert.doesNotMatch(document.body.textContent,/Sensitive vault title/);await act(async()=>commands.notify({tone:'success',message:'New vault title',scope:{kind:'vault',vaultId:'b'},dedupeKey:'operation'}));assert.match(document.querySelector('.notice-announcer').textContent,/New vault title/);});
+test('dedupe renewal and expiry avoid reannouncing unrelated visible notices',async t=>{const env=fixture(t);let commands;function Child(){commands=useNotifications();return null;}await env.render(createElement(NotificationProvider,null,createElement(Child)));let first;await act(async()=>{first=commands.notify({tone:'error',message:'Existing error',scope:{kind:'global'}});});await act(async()=>commands.notify({tone:'success',message:'Copied',scope:{kind:'global'},dedupeKey:'copy'}));assert.equal(document.querySelector('.notice-announcer').textContent,'Copied');await act(async()=>commands.notify({tone:'success',message:'Copied',scope:{kind:'global'},dedupeKey:'copy'}));assert.doesNotMatch(document.querySelector('.notice-announcer').textContent,/Existing error/);await act(async()=>commands.dismiss(first));assert.doesNotMatch(document.querySelector('.notice-announcer').textContent,/Existing error/);});

@@ -1,0 +1,23 @@
+/* Quiet Structured geometry. Semantic paint is confined to indicators. */
+.notice { display: flex; align-items: flex-start; gap: var(--notice-gap); padding: var(--notice-padding-block) var(--notice-padding-inline); border: 1px solid var(--notice-border); border-radius: var(--notice-radius); background: var(--notice-inline-surface); color: var(--notice-text); font-size: 13px; line-height: 1.45; min-width: 0; }
+.notice-content { flex: 1 1 120px; min-width: 0; overflow-wrap: anywhere; }
+.notice-title { font-size: var(--notice-title-size); }
+.notice-description { color: var(--notice-muted); font-size: var(--notice-description-size); margin-top: 3px; }
+.notice-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 20px; width: 20px; min-height: 20px; }
+.notice-icon .icon { width: var(--notice-icon-size); height: var(--notice-icon-size); }
+.notice-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.notice-actions button, .notice-close { min-width: var(--notice-action-target); min-height: var(--notice-action-target); white-space: normal; overflow-wrap: anywhere; }
+.notice-close { flex: 0 0 auto; padding: 0 5px; color: var(--notice-muted); background: transparent; border: 0; border-radius: 4px; font-size: 18px; }
+.notice-close:hover:not(:disabled) { background: var(--surface-hover); color: var(--notice-text); }
+.notice button:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-offset-control); }
+.inline-notice { flex-wrap: wrap; }
+.inline-notice.is-compact { padding: 4px 0; border: 0; background: transparent; box-shadow: none; }
+.inline-notice > .notice-actions { margin-left: auto; }
+.progress-notice progress { display: block; width: min(100%, 260px); margin-top: 8px; }
+.toast-viewport { position: fixed; z-index: 1000; bottom: 24px; left: 16px; right: 16px; display: flex; flex-direction: column; align-items: center; gap: var(--notice-stack-gap); pointer-events: none; }
+.toast-item { pointer-events: auto; width: fit-content; max-width: min(var(--notice-max-width),100%); box-sizing: border-box; background: var(--notice-surface); box-shadow: var(--notice-shadow); flex-wrap: wrap; animation: notice-enter 150ms ease-out; }
+.toast-item .notice-actions { margin-left: auto; }
+.notice-announcer { position: fixed; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@keyframes notice-enter { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 750px) { .toast-viewport { bottom: calc(16px + env(safe-area-inset-bottom)); } .toast-item { width: 100%; } .notice-actions { max-width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .toast-item { animation: none; } }

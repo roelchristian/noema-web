@@ -1,12 +1,12 @@
 import {useEffect,useState,type FormEvent} from 'react';
 import {api} from '../api';
-import {SuccessNotice,useSuccessNotice} from '../components/SuccessNotice';
+import {FormNotice,useFormNotice} from '../notifications/FormNotice';
 import {getLocale} from '../i18n';
 import {geminiApiKeyMaxLength,type SpeechCredentialStatus} from '../../shared/intelligence';
 
 /** Write-only credential form: the key lives only in transient component memory. */
 export function GeminiSpeechKey() {
-  const [success,setSuccess,successOccurrence]=useSuccessNotice();
+  const [success,setSuccess,successOccurrence]=useFormNotice();
   const [status,setStatus]=useState<SpeechCredentialStatus|null>(null),[key,setKey]=useState(''),[days,setDays]=useState(30),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
   useEffect(()=>{let active=true;void api.geminiCredential().then(value=>{if(active)setStatus(value);}).catch(()=>{if(active)setMessage('Secure Gemini key storage is unavailable. Unlock your macOS login keychain and try again.');});return()=>{active=false;};},[]);
   async function change(remove=false) {
@@ -29,6 +29,6 @@ export function GeminiSpeechKey() {
       <div className="intelligence-actions"><button className="button primary" disabled={busy||!key.trim()}>{status?.configured?'Replace Gemini key':'Save Gemini key'}</button><button type="button" className="button danger" disabled={busy||!status?.configured} onClick={()=>void change(true)}>Remove Gemini key</button></div>
     </form>
     {message&&<p role="status" aria-live="polite">{message}</p>}
-    <SuccessNotice inline message={success} occurrence={successOccurrence} onDismiss={()=>setSuccess('')}/>
+    <FormNotice message={success} occurrence={successOccurrence} onDismiss={()=>setSuccess('')}/>
   </details>;
 }

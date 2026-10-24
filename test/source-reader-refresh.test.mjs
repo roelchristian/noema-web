@@ -57,10 +57,13 @@ test('delayed enrichment refreshes headings and navigation without reloading or 
   const activity=document.querySelector('.source-reader-toolbar button[aria-label="Reading activity"]');
   assert.ok(activity,'Sources toolbar exposes central reading activity');
   await act(async()=>{activity.focus();activity.click();});
-  const activityPanel=()=>document.querySelector('[role="region"][aria-label="Reading activity"]');
+  const activityPanel=()=>document.querySelector('aside[aria-label="Reading activity"]');
   assert.ok(activityPanel());
+  assert.ok(activityPanel().classList.contains('entity-panel'),'reading activity uses the source inspector panel frame');
+  assert.ok(activityPanel().querySelector('.source-inspector-header .entity-detail-toolbar'));
+  assert.equal(activityPanel().closest('.source-reader'),null,'side panel lives alongside the workspace');
   assert.ok(document.querySelector('[aria-label="Passage bookmarks"]'));
-  const activityTab=name=>[...activityPanel().querySelectorAll('.source-activity-tabs button')].find(button=>button.textContent.startsWith(name));
+  const activityTab=name=>[...activityPanel().querySelectorAll('[role="tab"]')].find(button=>button.textContent.startsWith(name));
   await act(async()=>activityTab('Annotations').click());
   assert.match(activityPanel().textContent,/My annotation/);
   assert.match(activityPanel().textContent,/A connection to revisit/);
@@ -70,13 +73,16 @@ test('delayed enrichment refreshes headings and navigation without reloading or 
   assert.match(activityPanel().textContent,/A stable paragraph for citation/);
   await act(async()=>[...activityPanel().querySelectorAll('button')].find(button=>button.textContent==='Remove highlight').click());
   assert.match(activityPanel().textContent,/No highlights yet/);
+  await act(async()=>activityTab('Highlights').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true})));
+  assert.equal(activityTab('Annotations').getAttribute('aria-selected'),'true');
+  assert.equal(document.activeElement,activityTab('Annotations'));
   assert.equal(document.querySelector('.source-reader-document [data-highlight-id]'),null,'central removal updates the passage');
   await act(async()=>document.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})));
   assert.equal(activityPanel(),null);
   assert.equal(document.activeElement,activity,'Escape restores the activity trigger');
   await act(async()=>document.querySelector('.source-reading-navigation button[aria-label="Reading activity"]').click());
   assert.ok(activityPanel(),'floating control opens the same activity view');
-  await act(async()=>activityPanel().querySelector('header button').click());
+  await act(async()=>activityPanel().querySelector('.panel-top button').click());
 
   assert.equal(document.querySelector('.source-reader-document').dataset.annotations,'contextual');
   assert.equal(document.querySelector('[aria-label="Reader annotations"]').value,'contextual');

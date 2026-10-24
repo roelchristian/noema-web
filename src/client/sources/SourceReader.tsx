@@ -23,7 +23,7 @@ import type {SourceReprocessingRevision} from '../../shared/source-reprocessing'
 type LoadedFile=SourceFile&{textHash:string;document?:SourceDocument};
 type Entry=SourceViewEntry;
 interface Props {
-  vaultId:string;source:Entity;entities:Entity[];onOpenEntity:(id:string)=>void;inspectorOpen?:boolean;onToggleInspector?:()=>void;refreshKey?:number;onActiveAttachmentChange?:(fileId:string)=>void;
+  vaultId:string;source:Entity;entities:Entity[];onOpenEntity:(id:string)=>void;inspectorOpen?:boolean;onToggleInspector?:()=>void;onReadingActivityOpen?:()=>void;refreshKey?:number;onActiveAttachmentChange?:(fileId:string)=>void;
   onCreatePageFromSource:(source:Entity)=>void;onError:(message:string)=>void;
   onAddPassage:(reference:SourceReference)=>void;onAnnotate:(reference:SourceReference)=>void;onReadingNoteCreated:(page:Page)=>void;onOpenReadingNote:(id:string)=>void;onRemoveReadingNote:(note:ReadingNoteAnchor)=>void;
 }
@@ -42,10 +42,11 @@ function savedDisplay():ReaderDisplay {
  try {const value=JSON.parse(localStorage.getItem('noema:source-reader-display')??'{}');return {annotations:['clean','contextual','always'].includes(value.annotations)?value.annotations:'contextual',structureLabels:value.structureLabels===true,editorialIndicators:value.editorialIndicators===true,typography:value.typography==='serif'?'serif':'sans',width:value.width==='wide'?'wide':'comfortable'};}catch{return defaultDisplay;}
 }
 /** Reading and citation state is deliberately separate from the editable page lifecycle. */
-export function SourceReader({vaultId,source,entities,inspectorOpen=false,onToggleInspector,refreshKey,onActiveAttachmentChange,onCreatePageFromSource,onError,onAddPassage,onAnnotate,onReadingNoteCreated,onOpenReadingNote,onRemoveReadingNote}:Props) {
+export function SourceReader({vaultId,source,entities,inspectorOpen=false,onToggleInspector,onReadingActivityOpen,refreshKey,onActiveAttachmentChange,onCreatePageFromSource,onError,onAddPassage,onAnnotate,onReadingNoteCreated,onOpenReadingNote,onRemoveReadingNote}:Props) {
   const destination=useContext(ReviewDestination);
   const [display,setDisplay]=useState<ReaderDisplay>(savedDisplay);
-  const [reviewOpen,setReviewOpen]=useState(false);
+  const [reviewOpen,setReviewOpen]=useState(false),[activityOpen,setActivityOpen]=useState(false);
+  const activityChanged=useCallback((open:boolean)=>{setActivityOpen(open);if(open)onReadingActivityOpen?.();},[onReadingActivityOpen]);
   function updateDisplay(value:Partial<ReaderDisplay>){setDisplay(current=>{const next={...current,...value};try{localStorage.setItem('noema:source-reader-display',JSON.stringify(next));}catch{/* Keep preferences for this session. */}return next;});}
   const reviewFile=destination?.originId===source.id?destination.fileId:undefined;
   const [files,setFiles]=useState<SourceFile[]|null>(null),[fileId,setFileId]=useState('');
@@ -168,7 +169,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
       setCopied(true);clearTimeout(copyTimer.current);copyTimer.current=setTimeout(()=>setCopied(false),2500);
     }catch{onError('Unable to copy the citation. Clipboard access may be unavailable.');}
   }
-  return <section className={'source-reader'+(inspectorOpen?' has-inspector':'')+(reviewOpen?' has-review-drawer':'')} data-reader-width={display.width} data-reader-typography={display.typography} aria-label={uiText("Source reading view")}>
+  return <section className={'source-reader'+(inspectorOpen||activityOpen?' has-inspector':'')+(reviewOpen?' has-review-drawer':'')} data-reader-width={display.width} data-reader-typography={display.typography} aria-label={uiText("Source reading view")}>
     <header className="source-workspace-header"><span className="source-workspace-eyebrow"><Icon name="source"/>{uiText("Source")}{attachment&&<span className="source-reader-format">{attachment.format.toUpperCase()}</span>}</span><h1 className="page-heading source-workspace-title"><SourceReaderInline text={source.name}/></h1></header>
     <div className="source-reader-toolbar">
       <span className="source-reader-mode" title={uiText("Reading · Read-only")}><Icon name="lock"/>{uiText("Read-only")}</span>
@@ -182,7 +183,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
         <label>{uiText('Reading width')}<select aria-label={uiText('Reading width')} value={display.width} onChange={event=>updateDisplay({width:event.target.value as ReaderDisplay['width']})}><option value="comfortable">{uiText('Comfortable')}</option><option value="wide">{uiText('Wide')}</option></select></label>
         <div className="source-reader-display-presets"><button type="button" onClick={()=>updateDisplay(defaultDisplay)}>{uiText('Reading preset')}</button><button type="button" onClick={()=>updateDisplay({annotations:'always',structureLabels:true,editorialIndicators:true})}>{uiText('Inspection preset')}</button></div>
       </div></details>
-      {loaded&&!editorial&&<button type="button" className="button small" aria-label={uiText('Reading activity')} title={uiText('Bookmarks, annotations and highlights')} onClick={()=>window.dispatchEvent(new Event('noema:reading-bookmarks'))}><Icon name="annotation"/>{uiText('Reading activity')}</button>}
+      {loaded&&!editorial&&<button type="button" className="button small" aria-label={uiText('Reading activity')} aria-expanded={activityOpen} title={uiText('Bookmarks, annotations and highlights')} onClick={()=>window.dispatchEvent(new Event('noema:reading-bookmarks'))}><Icon name="annotation"/>{uiText('Reading activity')}</button>}
       {onToggleInspector&&<button type="button" className="source-reader-icon-action" aria-label={uiText('Info')} title={uiText('Source information')} aria-expanded={inspectorOpen} onClick={onToggleInspector}><Icon name="info"/></button>}
       {attachment?.admitted===1&&<a className="source-reader-icon-action" aria-label={uiText("Download")} title={uiText("Download")} href={'/api/source-files/'+encodeURIComponent(attachment.id)+'/download?vault='+encodeURIComponent(vaultId)} download><Icon name="download"/></a>}
       {loaded?.text.trim()&&<button className="button small" type="button" aria-label={uiText("Create note from source")} title={uiText("Create note from source")} onClick={()=>onCreatePageFromSource(source)}><Icon name="compose"/>{uiText("Create note")}</button>}
@@ -200,7 +201,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
         {reference&&<aside className="source-reader-selection" aria-label={uiText("Selected passage")}><div className="source-reader-selection-heading"><strong>{uiText(editorial?"Selected original passage":"Selected passage")}</strong><button type="button" aria-label={uiText("Clear selected passage")} onClick={()=>setSelected(null)}><Icon name="close"/></button></div><small>{citationLocation(reference)}</small><blockquote>{reference.excerpt}</blockquote><div className="source-reader-selection-actions"><button className="button small" type="button" onClick={()=>void copyCitation()}>{copied?uiText("Copied"):uiText("Copy citation")}</button><button className="button small" type="button" onClick={()=>onAddPassage(reference)}>{uiText("Add to page")}</button><button className="button small" type="button" onClick={()=>onAnnotate(reference)}>{uiText("Annotate")}</button></div><span role="status" className="sr-only">{copied?uiText("Citation copied"):''}</span></aside>}
         {ambiguousEditorialRanges&&<p className="source-reader-editorial-notice" role="status">{uiText('This older editorial revision has unverified text coordinates. Original processed text is shown to preserve the complete document.')}</p>}
         {editorial&&<p className="source-reader-editorial-notice">{uiText('Editorial presentation. Citation actions quote the linked original passage. Highlights, bookmarks and reading notes are available in Original processed until offset mappings are verified.')}</p>}
-        {!editorial&&<SourceReadingContinuity key={`continuity:${loaded.id}:${loaded.textHash}`} file={loaded} article={article} selectedOffset={selectedEntry?.node.range.startOffset} highlights={highlights} notes={readingNotes} onOpenNote={onOpenReadingNote} onRemoveNote={onRemoveReadingNote} onRemoveHighlight={id=>setHighlights(items=>items.filter(item=>item.id!==id))}/>}
+        {!editorial&&<SourceReadingContinuity key={`continuity:${loaded.id}:${loaded.textHash}`} file={loaded} article={article} selectedOffset={selectedEntry?.node.range.startOffset} inspectorOpen={inspectorOpen} onOpenChange={activityChanged} highlights={highlights} notes={readingNotes} onOpenNote={onOpenReadingNote} onRemoveNote={onRemoveReadingNote} onRemoveHighlight={id=>setHighlights(items=>items.filter(item=>item.id!==id))}/>}
         {!editorial&&<SourceReadingTools key={`tools:${loaded.id}:${loaded.textHash}`} file={loaded} article={article} highlights={highlights} onHighlight={highlight=>setHighlights(items=>[...items.filter(item=>item.id!==highlight.id),highlight])} onHighlightRemoved={id=>setHighlights(items=>items.filter(item=>item.id!==id))} onNoteCreated={readingNoteCreated}/>}
         <SourceDocumentView hiddenNodeIds={hideFurniture?furnitureNodes:undefined} article={article} fileId={loaded.id} name={source.name} text={viewText} entries={viewEntries} selected={selected} annotations={display.annotations} structureLabels={display.structureLabels} highlights={editorial?[]:highlights} canonicalNode={canonicalNode} onSelect={selectPassage} changeForNode={display.editorialIndicators&&editorial?nodeId=>{
           const originalId=canonicalNode(nodeId),patch=originalId?editorial.patches.find(patch=>patch.nodeIds.includes(originalId)):undefined;

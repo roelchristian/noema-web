@@ -1,3 +1,5 @@
+import {createPortal} from 'react-dom';
+import {DetailSidePanel} from '../components/DetailSidePanel';
 import {useEffect,useRef,useState,type RefObject} from 'react';
 import type {ReadingNoteAnchor,SourceHighlight} from '../../shared/source-reading';
 import {Icon} from '../components/Icon';
@@ -27,11 +29,13 @@ export function jumpToReadingOffset(root:HTMLElement,rawOffset:number) {
  }
  window.scrollBy({top:top-readingEdge(),behavior:'instant'});
 }
-export function SourceReadingContinuity({file,article,selectedOffset,highlights=[],notes=[],onOpenNote,onRemoveNote,onRemoveHighlight}:{file:File;article:RefObject<HTMLElement|null>;selectedOffset?:number;highlights?:SourceHighlight[];notes?:ReadingNoteAnchor[];onOpenNote?:(id:string)=>void;onRemoveNote?:(note:ReadingNoteAnchor)=>void;onRemoveHighlight?:(id:string)=>void}) {
+export function SourceReadingContinuity({file,article,selectedOffset,highlights=[],notes=[],onOpenNote,onRemoveNote,onRemoveHighlight,onOpenChange,inspectorOpen=false}:{file:File;article:RefObject<HTMLElement|null>;selectedOffset?:number;highlights?:SourceHighlight[];notes?:ReadingNoteAnchor[];onOpenNote?:(id:string)=>void;onRemoveNote?:(note:ReadingNoteAnchor)=>void;onRemoveHighlight?:(id:string)=>void;onOpenChange?:(open:boolean)=>void;inspectorOpen?:boolean}) {
  const [data,setData]=useState<ReadingContinuity|null>(null),[resume,setResume]=useState<ReadingLocation|null>(null);
  const [error,setError]=useState(''),[notice,setNotice]=useState(''),[open,setOpen]=useState(false),[label,setLabel]=useState(''),[busy,setBusy]=useState(false);
+ useEffect(()=>{onOpenChange?.(open);return()=>onOpenChange?.(false);},[open,onOpenChange]);
+ useEffect(()=>{if(inspectorOpen)setOpen(false);},[inspectorOpen]);
  const [tab,setTab]=useState<'bookmarks'|'annotations'|'highlights'>('bookmarks');
- const panel=useRef<HTMLDivElement>(null),opener=useRef<HTMLElement|null>(null);
+ const panel=useRef<HTMLElement>(null),opener=useRef<HTMLElement|null>(null);
  function close(){setOpen(false);opener.current?.focus();}
  const [back,setBack]=useState<ReadingAnchor|null>(null),[saveError,setSaveError]=useState('');
  const saveSequence=useRef(0),interacted=useRef(false),restored=useRef(false);
@@ -75,7 +79,7 @@ export function SourceReadingContinuity({file,article,selectedOffset,highlights=
  },[]);
  useEffect(()=>{
   if(!open)return;
-  panel.current?.querySelector<HTMLButtonElement>('header button')?.focus();
+  panel.current?.querySelector<HTMLButtonElement>('.panel-top button')?.focus();
   function dismiss(event:KeyboardEvent){if(event.key==='Escape'&&!document.querySelector('dialog[open]')){event.preventDefault();close();}}
   document.addEventListener('keydown',dismiss);
   return()=>document.removeEventListener('keydown',dismiss);
@@ -157,8 +161,13 @@ export function SourceReadingContinuity({file,article,selectedOffset,highlights=
   <div className="source-continuity-actions">
    {resume&&(resume.resolution.status==='resolved'?<button className="button small" onClick={()=>go(resume)}>{resume.anchor.atEnd&&resume.anchor.revision===file.textHash?'Continue reading · End of source':'Continue reading'}</button>:<span role="status">Saved position {resume.resolution.status} after source changes.</span>)}
   </div>
-  {open&&<div ref={panel} className="source-bookmarks source-reading-activity" role="region" aria-label="Reading activity"><header><strong>Reading activity</strong><button type="button" className="button small" aria-label="Close reading activity" onClick={close}><Icon name="close"/></button></header>
-   <div className="source-activity-tabs" role="group" aria-label="Activity type">{(['bookmarks','annotations','highlights'] as const).map(value=><button type="button" key={value} aria-pressed={tab===value} onClick={()=>setTab(value)}>{value==='bookmarks'?'Bookmarks':value==='annotations'?'Annotations':'Highlights'} <span>{value==='bookmarks'?data?.bookmarks.length??0:value==='annotations'?notes.length:highlights.length}</span></button>)}</div>
+  {open&&createPortal(<DetailSidePanel ref={panel} inspector className="source-reading-activity" aria-label="Reading activity" toolbar={<div className="panel-top entity-detail-toolbar"><div className="entity-toolbar-heading"><span className="entity-detail-icon" aria-hidden="true"><Icon name="annotation"/></span><div className="entity-toolbar-identity"><span className="source-inspector-eyebrow">Source</span><h2 className="entity-toolbar-title">Reading activity</h2></div></div><button type="button" title="Close reading activity" aria-label="Close reading activity" onClick={close}><Icon name="close"/></button></div>} tabs={
+   <div className="entity-detail-tabs" role="tablist" aria-label="Activity type">{(['bookmarks','annotations','highlights'] as const).map(value=><button type="button" key={value} id={`source-activity-tab-${file.id}-${value}`} role="tab" aria-selected={tab===value} aria-controls={`source-activity-content-${file.id}`} tabIndex={tab===value?0:-1} onClick={()=>setTab(value)} onKeyDown={event=>{
+    if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+    event.preventDefault();const tabs=['bookmarks','annotations','highlights'] as const,index=tabs.indexOf(value),next=event.key==='Home'?0:event.key==='End'?2:(index+(event.key==='ArrowRight'?1:-1)+3)%3;
+    setTab(tabs[next]);document.getElementById(`source-activity-tab-${file.id}-${tabs[next]}`)?.focus();
+   }}>{value==='bookmarks'?'Bookmarks':value==='annotations'?'Annotations':'Highlights'} <span>{value==='bookmarks'?data?.bookmarks.length??0:value==='annotations'?notes.length:highlights.length}</span></button>)}</div>}>
+   <div className="panel-body entity-detail-body source-activity-body" id={`source-activity-content-${file.id}`} role="tabpanel" aria-labelledby={`source-activity-tab-${file.id}-${tab}`} tabIndex={0}>
    {tab==='bookmarks'&&<section aria-label="Passage bookmarks">
    <form onSubmit={event=>{event.preventDefault();void add();}}><label>Bookmark label <input aria-label="New bookmark label" maxLength={80} placeholder="Optional short label" value={label} onChange={event=>setLabel(event.target.value)}/></label><button className="button small" disabled={busy||!data||!file.text.trim()}>Bookmark passage</button><small>Uses the selected passage or current reading position.</small></form>
    {!data&&!error&&<p role="status">Loading bookmarks…</p>}
@@ -168,7 +177,8 @@ export function SourceReadingContinuity({file,article,selectedOffset,highlights=
    {tab==='annotations'&&<section aria-label="Source annotations"><p className="source-activity-hint">Reading notes saved from passages in this attachment.</p>{!notes.length&&<p>No annotations yet. Select a passage and choose Add reading note.</p>}{[...notes].sort((a,b)=>a.startOffset-b.startOffset).map(note=><div className="source-bookmark" key={note.pageId}><strong>{note.title||'Reading note'}</strong><blockquote>{file.text.slice(note.startOffset,note.endOffset)}</blockquote>{note.text&&<p className="source-activity-note">{note.text}</p>}<div className="source-activity-actions"><button type="button" className="button small" onClick={()=>reveal(note.startOffset)}>Go to passage</button><button type="button" className="button small" onClick={()=>onOpenNote?.(note.pageId)}>Open note</button><button type="button" className="button small" onClick={()=>onRemoveNote?.(note)}>Remove note</button></div></div>)}</section>}
    {tab==='highlights'&&<section aria-label="Source highlights">{!highlights.length&&<p>No highlights yet. Select a passage to highlight it.</p>}{[...highlights].sort((a,b)=>a.startOffset-b.startOffset).map(highlight=><div className="source-bookmark" key={highlight.id}><span className="source-activity-color"><span className="source-highlight" data-color={highlight.color}>{highlight.color}</span></span><blockquote>{highlight.excerpt}</blockquote><div className="source-activity-actions"><button type="button" className="button small" onClick={()=>reveal(highlight.startOffset)}>Go to passage</button><button type="button" className="button small" disabled={busy} onClick={()=>void removeHighlight(highlight.id)}>Remove highlight</button></div></div>)}</section>}
    {error&&<p role="alert">{error}</p>}
-  </div>}
+   </div>
+  </DetailSidePanel>,document.getElementById('root')??document.body)}
   {back&&<button className="button small source-reading-return" onClick={returnToReading}>↩ Return to reading</button>}
   {((error&&!open)||saveError)&&<p role="alert">{saveError||error}</p>}
   <span className="sr-only" role="status">{notice}</span>

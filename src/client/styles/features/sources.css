@@ -373,29 +373,23 @@ main.source-workspace > #content > .source-reader {
   align-items: center;
   flex-wrap: wrap
 }
-.source-bookmarks {
-  margin-top: 12px;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface-popover)
-}
-.source-bookmarks form {
+.source-activity-body form {
   display: flex;
   gap: 8px;
   align-items: center;
   flex-wrap: wrap
 }
-.source-bookmarks input {
+.source-activity-body input {
   border: 1px solid var(--line);
   border-radius: 4px;
   padding: 6px 8px;
   background: var(--surface);
   color: var(--text);
   max-width: 100%;
-  width: 220px
+  width: min(220px,100%);
+  min-width: 0
 }
-.source-bookmarks small {
+.source-activity-body small {
   display: block;
   color: var(--text-muted);
   font-size: 12px
@@ -419,23 +413,6 @@ main.source-workspace > #content > .source-reader {
   font-size: 12px;
   max-width: 65ch;
   white-space: pre-wrap
-}
-.source-bookmarks {
-  position: fixed;
-  bottom: 108px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 27;
-  width: min(600px,calc(100vw - 32px));
-  max-height: 60vh;
-  overflow: auto;
-  box-shadow: var(--shadow-menu)
-}
-.source-bookmarks>header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px
 }
 /* sources: owned rules; conditional/state variants stay with their owner. */
 .page-sources {
@@ -2339,29 +2316,6 @@ main.source-workspace > #content > .source-reader {
   .source-metadata-full .source-metadata-field dd { margin-top: 0; }
 }
 
-.source-activity-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding-bottom: 12px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--line)
-}
-.source-activity-tabs button {
-  flex: 1;
-  padding: 8px;
-  border-radius: 6px;
-  color: var(--text-muted)
-}
-.source-activity-tabs button[aria-pressed=true] {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: inset 0 0 0 1px var(--line)
-}
-.source-activity-tabs button span {
-  margin-left: 4px;
-  font-size: 12px
-}
 .source-activity-actions {
   display: flex;
   flex-wrap: wrap;
@@ -2384,4 +2338,23 @@ main.source-workspace > #content > .source-reader {
   overflow-wrap: anywhere;
   max-height: 160px;
   overflow: auto
+}
+
+.source-activity-body {
+  font-size: 13px;
+  line-height: 1.6
+}
+.source-activity-body .source-bookmark:first-child {
+  margin-top: 0
+}
+.source-activity-body .source-bookmark form {
+  align-items: stretch
+}
+.source-activity-body .source-bookmark input {
+  flex: 1 1 100%;
+  width: 100%
+}
+.source-reading-activity .entity-detail-tabs > button {
+  gap: 4px;
+  padding-inline: 4px
 }

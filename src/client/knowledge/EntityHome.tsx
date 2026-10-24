@@ -1,5 +1,5 @@
 import {ConnectPicker, type ConnectTarget, type ConnectOptions} from './ConnectPicker';
-import {relationshipDisplayLabel} from '../../shared/relationship-predicates';
+import {canonicalRelationshipLabel,relationshipDisplayLabel} from '../../shared/relationship-predicates';
 import {aggregateEntityConnections} from './connection-read-model';
 import {PropertyProposalReview} from './PropertyProposalReview';
 import {EntityPropertyList} from './EntityPropertyList';
@@ -85,6 +85,7 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
   const [discoveryLoaded,setDiscoveryLoaded]=useState(!!reviewTab && reviewDestination?.category==='discovery');
   const [detailsOpen, setDetailsOpen] = useState(hasEntityDraft(vaultId,id));
   const [connecting,setConnecting]=useState(false);
+  const [connectingBusy,setConnectingBusy]=useState(false);
   const [connectionUndo,setConnectionUndo]=useState<{kind:'page'|'relationship';id:string}|null>(null);
   const [connectionError,setConnectionError]=useState('');
   const [undoing,setUndoing]=useState(false);
@@ -96,7 +97,7 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
   const {schema, error: schemaError} = useEntitySchema(vaultId);
   // A Review Centre destination selects Discovery without clearing this entity or its drafts.
   useEffect(() => {if(reviewTab){restoring.current=true;setTab(reviewTab);if(reviewDestination?.category==='discovery'){setDiscoveryOpen(true);setDiscoveryLoaded(true);}}}, [reviewTab]);
-  useEffect(() => {setEntity(null); setManage(false); setConnecting(false);setConnectionUndo(null);setConnectionError('');setUndoing(false); setExploring(false); setDiscoveryOpen(reviewDestination?.category==='discovery'&&reviewDestination.originId===id);setDiscoveryLoaded(reviewDestination?.category==='discovery'&&reviewDestination.originId===id); setDetailsOpen(hasEntityDraft(vaultId,id)); setTab(initialTab());}, [vaultId, id]);
+  useEffect(() => {setEntity(null); setManage(false); setConnecting(false);setConnectingBusy(false);setConnectionUndo(null);setConnectionError('');setUndoing(false); setExploring(false); setDiscoveryOpen(reviewDestination?.category==='discovery'&&reviewDestination.originId===id);setDiscoveryLoaded(reviewDestination?.category==='discovery'&&reviewDestination.originId===id); setDetailsOpen(hasEntityDraft(vaultId,id)); setTab(initialTab());}, [vaultId, id]);
   useEffect(() => {
     let active = true; const version=mutationVersion.current; setError('');
     // Refresh an open editor with full details so transient previews cannot unmount its forms.
@@ -146,20 +147,20 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
   const pageCount = new Set([...pageMentions.map(page => page.id), ...linkedPages.map(page => page.id)]).size;
   async function connect(target:ConnectTarget,options:ConnectOptions) {
     if(!entity||connectionLock.current===owner)return;
-    connectionLock.current=owner;setConnectionError('');
+    connectionLock.current=owner;setConnectingBusy(true);setConnectionError('');
     try {
       if(target.kind==='page') {
         await mutate(()=>api.associateEntityPage(vaultId,id,target.id,{pinned:options.pinned,annotation:options.annotation}));
         if(sameEntity())setConnectionUndo({kind:'page',id:target.id});
       } else {
-        if(entity.relationships.some(relation=>relation.source_id===id&&relation.target_id===target.id&&relation.label===options.predicate))throw new Error(uiText('This relationship already exists.'));
+        if(entity.relationships.some(relation=>relation.source_id===id&&relation.target_id===target.id&&canonicalRelationshipLabel(relation.label)===options.predicate))throw new Error(uiText('This relationship already exists.'));
         const before=new Set(entity.relationships.map(relation=>relation.id));
         const result=await mutate(()=>api.saveRelationship(vaultId,id,{target_id:target.id,label:options.predicate}));
         const added=result.relationships.find(relation=>!before.has(relation.id)&&relation.source_id===id&&relation.target_id===target.id&&relation.label===options.predicate);
         if(sameEntity()&&added)setConnectionUndo({kind:'relationship',id:added.id});
       }
       if(sameEntity())setConnecting(false);
-    } finally {if(connectionLock.current===owner)connectionLock.current=null;}
+    } finally {if(connectionLock.current===owner)connectionLock.current=null;if(sameEntity())setConnectingBusy(false);}
   }
   async function undoConnection() {
     if(!connectionUndo||connectionLock.current===owner)return;
@@ -203,7 +204,7 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
       </div>
       <div className="eh-tabpanel" id="entity-home-panel-connections" role="tabpanel" aria-labelledby="entity-home-tab-connections" hidden={tab !== 'connections'} tabIndex={0}>
         {!entity.previewLimited && <>
-        <div className="eh-overview-links"><button type="button" aria-expanded={connecting} onClick={()=>setConnecting(value=>!value)}>{uiText('Connect')}</button><button type="button" aria-expanded={exploring} onClick={()=>setExploring(value=>!value)}>{uiText(exploring?'Show grouped connections':'Explore neighborhood')}</button></div>
+        <div className="eh-overview-links"><button type="button" aria-expanded={connecting} disabled={connectingBusy} onClick={()=>setConnecting(value=>!value)}>{uiText('Connect')}</button><button type="button" aria-expanded={exploring} onClick={()=>setExploring(value=>!value)}>{uiText(exploring?'Show grouped connections':'Explore neighborhood')}</button></div>
         {connecting&&<ConnectPicker sourceLabel={entity.name} entities={entities} pages={pages} relationships excludeEntityIds={[id]} excludePageIds={linkedPages.map(page=>page.id)} onConnect={connect} onCancel={()=>setConnecting(false)}/>}
         {connectionUndo&&<p role="status">{uiText('Connection added.')} <button type="button" disabled={undoing} onClick={()=>void undoConnection()}>{uiText('Undo')}</button></p>}
         {connectionError&&<p role="alert">{connectionError}</p>}

@@ -80,6 +80,7 @@ export function enhanceDropdowns(host: HTMLElement) {
       menu.replaceChildren(...options().map((option, index) => {
         const row = document.createElement('div');
         row.className = 'select-option';
+        if (index > 0 && option.parentElement !== options()[index - 1].parentElement) row.classList.add('select-option-group-start');
         row.id = `${menu.id}-${index}`;
         row.setAttribute('role', 'option');
         row.setAttribute('aria-selected', String(option.selected));

@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { intelligenceModels } from '../src/shared/intelligence.ts';
 import {defaultNarrationPreferences} from '../src/shared/narration.ts';
-import { Intelligence, intelligencePreferencesFor, GenerationAdmissionError, GenerationProviderError, GenerationTransportError } from '../src/server/modules/intelligence.ts';
+import { Intelligence, intelligencePreferencesFor, GenerationAdmissionError, GenerationProviderError, GenerationTransportError, GenerationCancellationError } from '../src/server/modules/intelligence.ts';
 import { openDatabase } from '../src/server/database.ts';
 import { Store } from '../src/server/store.ts';
 import { createApp } from '../src/server/http.ts';
@@ -32,7 +32,7 @@ test('editorial admission bounds siblings at two while preserving exclusive and 
   releases.splice(0).forEach(release=>release());await Promise.all([first,second,independent]);
   const exclusive=ai.generate({kind:'summary',input:'now owns slot'});await assert.rejects(edit,GenerationAdmissionError);
   releases.shift()();await exclusive;
-  const controller=new AbortController();controller.abort();await rejected(()=>edit(controller.signal),409);assert.equal(calls,4);
+  const controller=new AbortController();controller.abort();await assert.rejects(()=>edit(controller.signal),error=>error instanceof GenerationCancellationError&&error.status===409&&error.outcomeUncertain===false);assert.equal(calls,4);
   const next=edit();releases.shift()();await next;assert.equal(calls,5);
 });
 test('editorial requests preserve supported reasoning for every curated model and reject invalid configuration before transport',async()=>{
@@ -43,10 +43,23 @@ test('editorial requests preserve supported reasoning for every curated model an
     assert.deepEqual(ai.editorialSelection(),{model:model.id,reasoningEffort:effort});
     await ai.reeditSource('Scholarly quotation','Preserve canonical text',new AbortController().signal);
     assert.equal(body.model,model.id);assert.deepEqual(body.reasoning,{effort});assert.equal(body.max_output_tokens,16000);assert.ok(!body.instructions.includes('Oxford'));
+    assert.equal(body.text.format.type,'json_schema');assert.equal(body.text.format.strict,true);
+    assert.deepEqual(body.text.format.schema.properties.patches.items.properties.startOffset.type,['integer','null']);
   }
   const prior=calls;ai.preferences={model:'gpt-5-mini',reasoningEffort:'none'};
   assert.throws(()=>ai.editorialSelection(),error=>error.status===400);
   await rejected(()=>ai.reeditSource('text','Edit',new AbortController().signal),400);assert.equal(calls,prior);
+});
+test('editorial schema is only sent for an explicitly compatible model and local parsing remains required',async()=>{
+  const model=intelligenceModels.find(model=>model.id==='gpt-5-mini'),supported=model.structuredOutputs;
+  let body;
+  const ai=new Intelligence(new Secrets(),async(_url,options)=>{body=JSON.parse(options.body);return completed('{malformed');});ai.save({apiKey:key});
+  try {
+    model.structuredOutputs=false;
+    assert.equal(await ai.reeditSource('text','Editorial instructions',new AbortController().signal),'{malformed');assert.equal(body.text,undefined);
+    model.structuredOutputs=true;
+    assert.equal(await ai.reeditSource('text','Editorial instructions',new AbortController().signal),'{malformed');assert.equal(body.text.format.strict,true);
+  }finally{model.structuredOutputs=supported;}
 });
 test('editorial errors distinguish local admission, provider HTTP 400, transport deadline and cancellation',async t=>{
   const secrets=new Secrets();
@@ -57,15 +70,26 @@ test('editorial errors distinguish local admission, provider HTTP 400, transport
   const slow=new Intelligence(secrets,async(_url,options)=>{transportSignal=options.signal;return new Promise((_resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new DOMException('Aborted','AbortError')),{once:true}));});
   const deadline=slow.reeditSource('text','Edit',new AbortController().signal);t.mock.timers.tick(180000);
   await assert.rejects(()=>deadline,error=>error instanceof GenerationTransportError&&error.code==='timeout'&&error.outcomeUncertain===true);assert.ok(transportSignal.aborted);
-  const controller=new AbortController(),cancelled=slow.reeditSource('text','Edit',controller.signal);controller.abort();await rejected(()=>cancelled,409);
+  const controller=new AbortController(),cancelled=slow.reeditSource('text','Edit',controller.signal);controller.abort();await assert.rejects(()=>cancelled,error=>error instanceof GenerationCancellationError&&error.status===409&&error.outcomeUncertain===true);
   const broken=new Intelligence(secrets,async()=>{throw new TypeError('synthetic connection closed');});
   await assert.rejects(()=>broken.reeditSource('text','Edit',new AbortController().signal),error=>error instanceof GenerationTransportError&&error.code==='provider_transport'&&error.outcomeUncertain===true);
+  const ignoresAbort=new Intelligence(secrets,async()=>{t.mock.timers.tick(180000);return completed('{"patches":[],"diagnostics":[]}');});
+  await assert.rejects(()=>ignoresAbort.reeditSource('text','Edit',new AbortController().signal),error=>error instanceof GenerationTransportError&&error.code==='timeout');
+});
+test('editorial settings changes invalidate both siblings and release admission only after they settle',async()=>{
+  const releases=[],signals=[];
+  const ai=new Intelligence(new Secrets(),async(_url,options)=>{signals.push(options.signal);return new Promise(resolve=>releases.push(()=>resolve(completed('{"patches":[],"diagnostics":[]}'))));});ai.save({apiKey:key});
+  const edit=()=>ai.reeditSource('text','Edit',new AbortController().signal),first=edit(),second=edit();
+  ai.savePreferences({model:'gpt-6-luna',reasoningEffort:'low'});assert.ok(signals.every(signal=>signal.aborted));
+  await assert.rejects(edit,GenerationAdmissionError);releases.splice(0).forEach(release=>release());
+  await Promise.all([rejected(()=>first,409),rejected(()=>second,409)]);
+  const next=edit();releases.shift()();await next;
 });
 test('source worker single and multiple synthetic excerpts exercise real editorial generation admission',async()=>{
   const {SourceReprocessing,sourceRevisionBaseHash}=await import('../src/server/modules/source-reprocessing.ts');
   const {processedSourceDocument}=await import('../src/server/modules/source-document.ts');
   for(const pages of [1,3]) {
-    const text=Array.from({length:pages},(_,i)=>`<!-- Page ${i+1} -->\nAcademic excerpt ${i+1}: citations [1], equation $x^2$, quotation “λόγος”.\n`).join('\n');
+    const text=Array.from({length:pages},(_,i)=>`<!-- Page ${i+1} -->\nAcademic excerpt ${i+1}: citations [1], repeated [1], equation $x^2$, quotation “λόγος”.\n`).join('\n');
     const file={id:'synthetic-source',name:'Synthetic academic PDF',format:'pdf',text,pages,page_start_lines:JSON.stringify(Array.from({length:pages},(_,i)=>i*3+1)),status:'ready',admitted:1,enrichment_status:'done',entity_id:null};
     const original={text,document:processedSourceDocument(file)};
     let stored,active=0,peak=0,calls=0;
@@ -73,13 +97,14 @@ test('source worker single and multiple synthetic excerpts exercise real editori
     const ai=new Intelligence(new Secrets(),async(_url,options)=>{
       const body=JSON.parse(options.body);assert.deepEqual(body.reasoning,{effort:'low'});assert.equal(body.model,'gpt-5-mini');calls++;active++;peak=Math.max(peak,active);
       await new Promise(resolve=>setTimeout(resolve,1));active--;
-      return completed('{"patches":[],"diagnostics":[]}');
+      const input=JSON.parse(body.input),startOffset=input.editableText.lastIndexOf('[1]');
+      return completed(JSON.stringify({patches:[{startOffset,endOffset:startOffset+3,original:'[1]',replacement:'[1, p. 7]',category:'citation',reason:'Synthetic exact offset regression',confidence:0.9}],diagnostics:[]}));
     });ai.save({apiKey:key});
     const statuses=[];
     const service=new SourceReprocessing(store,{require:()=>file},ai,()=>{},{start:()=>statuses.length,request:()=>({}),finish:(_id,status)=>statuses.push(status)});
     service.snapshot=()=>structuredClone(original);service.baseHash=()=>sourceRevisionBaseHash(original);
     service.start('synthetic',file.id,{});await service.tick();
-    assert.equal(stored.status,'completed');assert.equal(stored.report.chunksCompleted,pages);assert.equal(calls,pages);assert.equal(peak,Math.min(2,pages));assert.ok(statuses.every(status=>status==='completed'));assert.equal(stored.original.text,text);assert.equal(stored.reprocessed.text,text);
+    assert.equal(stored.status,'completed');assert.equal(stored.report.chunksCompleted,pages);assert.equal(stored.patches.length,pages);assert.ok(stored.patches.every(patch=>patch.baseHash===stored.baseHash&&patch.excerptIndex!==undefined));assert.equal(calls,pages);assert.equal(peak,Math.min(2,pages));assert.ok(statuses.every(status=>status==='completed'));assert.equal(stored.original.text,text);assert.equal(stored.reprocessed.text,text);
     service.close();
   }
 });
@@ -397,7 +422,7 @@ test('generation modes retain timeout, output bounds, cancellation, expiry and r
     assert.equal((await ai.generate(request)).length,outputLimit,label+' exact output bound');
     output+='x';await rejected(()=>ai.generate(request),502);output='OK';
     during=()=>{t.mock.timers.tick(timeout-1);assert.equal(signal.aborted,false,label);t.mock.timers.tick(1);assert.equal(signal.aborted,true,label);};
-    await rejected(()=>ai.generate(request),409);
+    await rejected(()=>ai.generate(request),label==='editorial'?502:409);
     for(const action of ['abort','pre-abort','preferences','key','expiry']) {
       ai.save({apiKey:key});
       const controller=new AbortController(),cancellable={...request,signal:controller.signal};

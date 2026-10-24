@@ -28,18 +28,19 @@ export const maxManualRequestsPerMinute = 120;
 export function validManualRequestLimit(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= maxManualRequestsPerMinute;
 }
-interface ModelOption { id: string; label: string; efforts: readonly ReasoningEffort[] }
+interface ModelOption { id: string; label: string; efforts: readonly ReasoningEffort[]; structuredOutputs:boolean }
 const standard = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 const withNone = ['none', ...standard] as const;
 export const intelligenceModels: readonly ModelOption[] = [
-  {id:'gpt-6-luna',label:'GPT-6 Luna',efforts:withNone},
-  {id:'gpt-6.1-sol',label:'GPT-6.1 Sol',efforts:standard},
-  {id:'gpt-6-astra',label:'GPT-6 Astra',efforts:standard},
-  {id:'gpt-6-sol',label:'GPT-6 Sol',efforts:withNone},
-  {id:'gpt-5.6-luna',label:'GPT-5.6 Luna',efforts:withNone},
-  {id:'gpt-5.6-terra',label:'GPT-5.6 Terra',efforts:withNone},
-  {id:'gpt-5.6-sol',label:'GPT-5.6 Sol',efforts:withNone},
-  {id:'gpt-5-mini',label:'GPT-5 Mini (existing default)',efforts:['minimal','low','medium','high']},
+  // Structured-output support checked on each official /api/docs/models/<id> page, 2026-10-24.
+  {id:'gpt-6-luna',label:'GPT-6 Luna',efforts:withNone,structuredOutputs:true},
+  {id:'gpt-6.1-sol',label:'GPT-6.1 Sol',efforts:standard,structuredOutputs:true},
+  {id:'gpt-6-astra',label:'GPT-6 Astra',efforts:standard,structuredOutputs:true},
+  {id:'gpt-6-sol',label:'GPT-6 Sol',efforts:withNone,structuredOutputs:true},
+  {id:'gpt-5.6-luna',label:'GPT-5.6 Luna',efforts:withNone,structuredOutputs:true},
+  {id:'gpt-5.6-terra',label:'GPT-5.6 Terra',efforts:withNone,structuredOutputs:true},
+  {id:'gpt-5.6-sol',label:'GPT-5.6 Sol',efforts:withNone,structuredOutputs:true},
+  {id:'gpt-5-mini',label:'GPT-5 Mini (existing default)',efforts:['minimal','low','medium','high'],structuredOutputs:true},
 ];
 export const defaultIntelligencePreferences: IntelligencePreferences = {model:'gpt-5-mini',reasoningEffort:'low'};
 export function supportedIntelligencePreferences(value: unknown): value is IntelligencePreferences {

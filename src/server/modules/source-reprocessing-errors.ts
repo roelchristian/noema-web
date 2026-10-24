@@ -6,8 +6,9 @@ export interface EditorialFailure {code:string;message:string;retryable:boolean;
 export function editorialFailure(error:unknown,aborted=false):EditorialFailure {
  const message=error instanceof Error?error.message:'Editorial pass failed.';
  const result=(code:string,retryable=false,configuration=false,outcomeUncertain=false)=>({code,message,retryable,configuration,outcomeUncertain});
- if(aborted)return result('cancelled');
  const value=error as {name?:string;providerStatus?:number;code?:string;outcomeUncertain?:boolean};
+ if(value?.name==='GenerationCancellationError')return result('cancelled',false,false,value.outcomeUncertain??false);
+ if(aborted)return result('cancelled',false,false,value?.outcomeUncertain??false);
  if(value?.name==='GenerationAdmissionError')return result('local_admission');
  if(value?.name==='GenerationTransportError')return result(value.code==='timeout'?'transport_timeout':value.code??'provider_transport',false,false,true);
  if(typeof value?.providerStatus==='number'){

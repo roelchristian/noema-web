@@ -8,6 +8,7 @@ const repo=resolve(import.meta.dirname,'..'),moduleId=resolve(repo,'__reprocessi
 const fixture=JSON.parse(readFileSync(resolve(repo,'test/fixtures/dante-editorial-revision.json'),'utf8'));
 fixture.status='failed';fixture.report.chunksTotal=3;fixture.report.chunksCompleted=1;fixture.report.error='Unsupported reasoning for the selected model.';fixture.report.errorCode='provider_http_400';
 fixture.report.excerpts=[{index:0,startPage:1,endPage:2,status:'completed',attempts:1,durationMs:1800},{index:1,startPage:3,endPage:3,status:'failed',attempts:1,durationMs:500,error:'Unsupported reasoning',errorCode:'provider_http_400'},{index:2,startPage:4,endPage:4,status:'pending',attempts:0,durationMs:0}];
+fixture.report.model='gpt-5-mini';fixture.report.reasoningEffort='low';fixture.report.usageIncomplete=true;fixture.report.excerpts[0].history=[{model:'gpt-5-mini',reasoningEffort:'medium',startedAt:'2026-10-23T10:00:00Z',durationMs:1800}];
 fixture.patches=fixture.patches.slice(0,2).map((patch,index)=>({...patch,id:'patch-'+index,decision:'pending'}));
 fixture.reprocessed=structuredClone(fixture.original);
 const html='<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"/></head><body><div id="root"></div><script type="module" src="/__reprocessing-fixture.tsx"></script></body></html>';
@@ -41,6 +42,8 @@ try {
   assert.ok(await page.getByRole('button',{name:'Read partial revision',exact:true}).isVisible());
   assert.equal(await page.locator('.reprocessing-ledger').getAttribute('open'),'');
   assert.match(await page.getByRole('list',{name:'Excerpt processing ledger'}).innerText(),/Excerpt 1[\s\S]*Completed[\s\S]*Excerpt 2[\s\S]*Failed[\s\S]*Unsupported reasoning[\s\S]*Excerpt 3[\s\S]*Not started/);
+  assert.match(await page.getByRole('list',{name:'Excerpt processing ledger'}).innerText(),/Last attempt: GPT-5 Mini.*medium reasoning/);
+  await page.locator('.reprocessing-report > summary').click();await page.getByText('Token totals are incomplete: some attempts did not report usage. Displayed counts include only reported usage.',{exact:true}).waitFor();
   await page.locator('.reprocessing-select input').first().check();await page.getByRole('button',{name:'Accept selected (1)',exact:true}).click();
   await page.getByRole('button',{name:'Accept selected (0)',exact:true}).waitFor();assert.deepEqual(mutations[0].body.decisions,[{patchId:'patch-0',decision:'accepted'}]);
   await page.getByRole('button',{name:'Reprocess with AI',exact:true}).click();

@@ -93,7 +93,7 @@ test('unchanged running progress polls lightweight status without downloading an
 });
 
 test('partial failures show actionable processing cause and excerpt ledger separately from editorial review',async t=>{
- const r=fixture();r.status='failed';r.report.chunksCompleted=1;r.report.chunksTotal=3;r.report.error='Provider rejected the request configuration.';r.report.errorCode='provider_http_400';
+ const r=fixture();r.status='failed';r.report.chunksCompleted=1;r.report.chunksTotal=3;r.report.error='Provider rejected the request configuration.';r.report.errorCode='provider_http_422';
  r.report.excerpts=[{index:0,status:'completed',attempts:1,startPage:1,endPage:2,durationMs:1200},{index:1,status:'failed',attempts:1,startPage:3,endPage:3,durationMs:400,error:'Unsupported reasoning',errorCode:'provider_http_400'},{index:2,status:'pending',attempts:0,startPage:4,endPage:4,durationMs:0}];
  r.report.diagnostics=['Excerpt 1: preserve this quotation.','Excerpt 1, suggestion 1: excluded from review — ambiguous canonical text.'];
  const env=await mount(t,{initial:r,post:async(_,current)=>({...current,status:'queued'})});
@@ -120,4 +120,11 @@ test('resumed session estimates exclude previous successes and expose only curre
 test('uncertain provider outcomes explain manual resume duplication risk beside progress',async t=>{
  const r=fixture();r.status='failed';r.report.chunksTotal=2;r.report.chunksCompleted=1;r.report.error='The transport timed out.';r.report.errorCode='transport_timeout';r.report.excerpts=[{index:1,status:'failed',attempts:1,durationMs:180000,error:'Transport timeout',errorCode:'transport_timeout',outcomeUncertain:true}];
  const env=await mount(t,{initial:r});assert.match(document.querySelector('.reprocessing-progress').textContent,/not retried automatically.*incur another charge/s);assert.ok(env.button('Retry failed and remaining excerpts'));assert.equal(env.requests.filter(entry=>entry.method==='POST').length,0);
+});
+
+test('resumed ledger preserves each last attempt configuration and marks incomplete token totals',async t=>{
+ const r=fixture();r.status='failed';r.report.model='gpt-5-mini';r.report.reasoningEffort='low';r.report.chunksCompleted=1;r.report.chunksTotal=2;r.report.error='Provider model unavailable';r.report.errorCode='provider_http_404';r.report.usageIncomplete=true;
+ r.report.excerpts=[{index:0,status:'completed',attempts:1,durationMs:2000,history:[{model:'gpt-5-mini',reasoningEffort:'medium',startedAt:'2026-10-23T10:00:00Z',durationMs:2000}]},{index:1,status:'failed',attempts:2,durationMs:500,history:[{model:'gpt-5-mini',reasoningEffort:'medium',startedAt:'2026-10-23T10:00:00Z',durationMs:200,errorCode:'provider_http_400'},{model:'gpt-5-mini',reasoningEffort:'low',startedAt:'2026-10-24T10:00:00Z',durationMs:300,errorCode:'provider_http_404'}]}];
+ const env=await mount(t,{initial:r});const rows=[...document.querySelectorAll('.reprocessing-ledger li')];assert.match(rows[0].textContent,/Last attempt: GPT-5 Mini.*medium reasoning/);assert.match(rows[1].textContent,/Last attempt: GPT-5 Mini.*low reasoning/);
+ assert.match(document.querySelector('.reprocessing-report').textContent,/Current session model \/ reasoninggpt-5-mini \/ low/);assert.match(document.querySelector('.reprocessing-report').textContent,/Token totals are incomplete.*only reported usage/);assert.ok(env.button('Retry after configuration repair'));
 });

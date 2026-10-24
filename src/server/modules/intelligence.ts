@@ -48,6 +48,11 @@ export class GenerationTransportError extends HttpError {
   readonly outcomeUncertain=true;
   constructor(public code:'timeout'|'provider_transport') {super(502,code==='timeout'?'The AI transport deadline elapsed. The provider outcome is unknown.':'The AI connection failed. The provider outcome is unknown.');this.name='GenerationTransportError';}
 }
+/** Cancelling locally does not establish whether dispatched provider work completed or billed. */
+export class GenerationCancellationError extends HttpError {
+  readonly code='cancelled';
+  constructor(public outcomeUncertain:boolean) {super(409,outcomeUncertain?'AI generation was stopped after dispatch. The provider outcome is unknown.':'AI generation was stopped before sending the request.');this.name='GenerationCancellationError';}
+}
 
 interface Credential { key: string; expiresAt: string; generation: string }
 function parseSourceAuthors(value:unknown):SourceAuthor[] {
@@ -426,7 +431,8 @@ export class Intelligence {
     requestSignal?.addEventListener('abort',abort,{once:true});
     if(requestSignal?.aborted)controller.abort();
     let timedOut=false,transportStarted=false;
-    const timer=setTimeout(()=>{timedOut=true;controller.abort();},Math.min(policy.timeoutMs,Date.parse(credential.expiresAt)-this.clock()));
+    const credentialRemainingMs=Date.parse(credential.expiresAt)-this.clock();
+    const timer=setTimeout(()=>{timedOut=policy.timeoutMs<=credentialRemainingMs;controller.abort();},Math.min(policy.timeoutMs,credentialRemainingMs));
     let trace: AIDebugTrace | undefined;
     try {
       const prompt=policy.prompt(),selection=policy.selection;
@@ -436,18 +442,20 @@ export class Intelligence {
       const payload={model:selection.model,store:false,max_output_tokens:policy.maxOutputTokens,reasoning:{effort:selection.reasoningEffort},tools:[],tool_choice:'none',...prompt,...(trace||policy.stream?{stream:true}:{})};
       trace?.request('https://api.openai.com/v1/responses',payload);
       trace?.event('prompt',{template:request.kind,version:1,...(policy.persona?{persona:{id:policy.persona.id,version:policy.persona.version,origin:policy.persona.origin}}:{})});
-      if(controller.signal.aborted)throw new HttpError(409,'AI generation was stopped before sending the request.');
-      transportStarted=true;
-      const response=await this.transport('https://api.openai.com/v1/responses',{
+      if(controller.signal.aborted)throw request.kind==='editorial'?new GenerationCancellationError(false):new HttpError(409,'AI generation was stopped before sending the request.');
+      const pendingResponse=this.transport('https://api.openai.com/v1/responses',{
         method:'POST',redirect:'error',signal:controller.signal,
         headers:{'Content-Type':'application/json',Authorization:`Bearer ${credential.key}`},
         body:JSON.stringify(payload),
       });
+      transportStarted=true;
+      const response=await pendingResponse;
       if(!response.ok) {
         if(trace)await readOpenAIResponse(response,trace).catch(()=>{});else await response.body?.cancel();
         throw new GenerationProviderError(response.status,response.status===401?'OpenAI rejected the API key. Replace it in Settings.':response.status===429?'OpenAI quota or rate limit reached. Check your OpenAI account.':'OpenAI could not complete the request. Check API permissions, model access, and billing.');
       }
       const safeDelta=(delta:string,receive:(delta:string)=>void)=>{
+        if(request.kind==='editorial'&&timedOut&&!requestSignal?.aborted&&this.credential()?.generation===credential.generation&&this.preferenceRevision===preferenceRevision)throw new GenerationTransportError('timeout');
         if(controller.signal.aborted||this.clock()>=Date.parse(credential.expiresAt)||this.preferenceRevision!==preferenceRevision)throw new HttpError(409,'AI generation was stopped or its settings changed.');
         receive(delta.split(credential.key).join('[redacted]').replace(/sk-[A-Za-z0-9_-]{16,}/g,'[redacted]'));
       };
@@ -455,6 +463,7 @@ export class Intelligence {
         policy.preview?{onDelta:delta=>safeDelta(delta,policy.preview!.onDelta),onReset:policy.preview.onReset}:undefined,observer?.usage);
       const summary=responseOutputText(result).trim();
       if(result.status!=='completed'||!summary||summary.length>policy.maxOutputLength)throw new HttpError(502,'OpenAI returned an incomplete response. Try a lower reasoning effort or a shorter page.');
+      if(request.kind==='editorial'&&timedOut&&!requestSignal?.aborted&&this.credential()?.generation===credential.generation&&this.preferenceRevision===preferenceRevision)throw new GenerationTransportError('timeout');
       if(controller.signal.aborted||this.credential()?.generation!==credential.generation||this.preferenceRevision!==preferenceRevision)throw new HttpError(409,'The credential or AI settings changed, or the key expired. Please try again.');
       // Defense in depth against accidental credential echo by an upstream service.
       return summary.split(credential.key).join('[redacted]').replace(/sk-[A-Za-z0-9_-]{16,}/g,'[redacted]');
@@ -466,9 +475,10 @@ export class Intelligence {
         return error.output;
       }
       trace?.error(error instanceof Error?error.message:'AI request failed.');
+      if(request.kind==='editorial'&&!(error instanceof GenerationTransportError)&&!(error instanceof GenerationCancellationError)&&
+        (requestSignal?.aborted||controller.signal.aborted&&!timedOut||this.credential()?.generation!==credential.generation||this.preferenceRevision!==preferenceRevision))throw new GenerationCancellationError(transportStarted);
       if(error instanceof HttpError)throw error;
       if(request.kind==='editorial') {
-        if(requestSignal?.aborted||this.credential()?.generation!==credential.generation||this.preferenceRevision!==preferenceRevision)throw new HttpError(409,'AI generation was stopped or its settings changed.');
         if(transportStarted)throw new GenerationTransportError(timedOut?'timeout':'provider_transport');
       }
       throw new HttpError(502,'The AI request failed or timed out. Please try again.');

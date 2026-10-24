@@ -33,7 +33,7 @@ test('model confidence cannot auto-approve quotations, gaps, deletions, or headi
 test('resume skips completed excerpts and preserves their checkpoint coverage',async()=>{
  const r=fixture();r.patches=[];r.status='interrupted';r.report.promptVersion='source-editorial-beta-3';r.report.chunksCompleted=4;r.report.charactersReviewed=r.original.document.physical.pages[4].range.startOffset;
  let stored=structuredClone(r),calls=0;
- const store={all:()=>[],run:(_sql,status,_at,payload)=>{stored=JSON.parse(payload);},get:()=>undefined};
+ const store={all:()=>[],run:(_sql,status,_at,payload)=>{stored=_sql.includes('json_set(payload')?{...stored,status,updatedAt:_at,report:JSON.parse(payload)}:JSON.parse(payload);},get:()=>undefined};
  const service=new SourceReprocessing(store,{require:()=>({entity_id:'test'})},{selection:()=>({model:r.report.model,reasoningEffort:r.report.reasoningEffort}),editorialSelection:()=>({model:r.report.model,reasoningEffort:r.report.reasoningEffort}),reeditSource:async()=>{calls++;return '{"patches":[]}';}},()=>{}, {start:()=>1,finish:()=>{}});
  service.detail=()=>structuredClone(stored);service.baseHash=()=>r.baseHash;
  service.resume('v',r.fileId,r.id);
@@ -43,7 +43,7 @@ test('resume skips completed excerpts and preserves their checkpoint coverage',a
 test('Review all keeps confidence-1 formatting pending during actual execution',async()=>{
  const r=fixture();r.patches=[];r.status='queued';r.acceptanceMode='review_all';r.acceptanceThreshold=1;r.report.chunksCompleted=0;r.report.charactersReviewed=0;
  let stored=structuredClone(r),calls=0;
- const store={all:()=>[],run:(_sql,status,_at,payload)=>{stored=JSON.parse(payload);},get:()=>undefined};
+ const store={all:()=>[],run:(_sql,status,_at,payload)=>{stored=_sql.includes('json_set(payload')?{...stored,status,updatedAt:_at,report:JSON.parse(payload)}:JSON.parse(payload);},get:()=>undefined};
  const service=new SourceReprocessing(store,{require:()=>({entity_id:'test'})},{selection:()=>({model:r.report.model,reasoningEffort:r.report.reasoningEffort}),editorialSelection:()=>({model:r.report.model,reasoningEffort:r.report.reasoningEffort}),reeditSource:async()=>{calls++;return JSON.stringify({patches:calls===1?[{original:'Religions 2019, 10, 372',replacement:'Religions  2019, 10, 372',category:'formatting',reason:'Spacing',confidence:1}]:[]});}},()=>{}, {start:()=>1,finish:()=>{}});
  service.baseHash=()=>r.baseHash;store.all=()=>stored.status==='queued'?[{vault_id:'v',payload:JSON.stringify(stored)}]:[];
  await service.tick();assert.equal(stored.status,'completed');assert.equal(stored.patches.length,1);assert.equal(stored.patches[0].decision,'pending');assert.equal(stored.reprocessed.text,r.original.text);
@@ -52,7 +52,7 @@ test('cancellation aborts in-flight output and resumes only after worker settles
  const r=fixture();r.patches=[];r.status='queued';r.report.promptVersion='source-editorial-beta-3';r.report.chunksCompleted=4;r.report.charactersReviewed=r.original.document.physical.pages[4].range.startOffset;
  let stored=structuredClone(r),entered,release;
  const inFlight=new Promise(resolve=>{entered=resolve;});
- const store={all:()=>[],run:(_sql,status,_at,payload)=>{stored=JSON.parse(payload);},get:()=>undefined};
+ const store={all:()=>[],run:(_sql,status,_at,payload)=>{stored=_sql.includes('json_set(payload')?{...stored,status,updatedAt:_at,report:JSON.parse(payload)}:JSON.parse(payload);},get:()=>undefined};
  const service=new SourceReprocessing(store,{require:()=>({entity_id:'test'})},{selection:()=>({model:r.report.model,reasoningEffort:r.report.reasoningEffort}),editorialSelection:()=>({model:r.report.model,reasoningEffort:r.report.reasoningEffort}),reeditSource:async()=>{entered();return new Promise(resolve=>{release=()=>resolve('{"patches":[]}');});}},()=>{}, {start:()=>1,finish:()=>{}});
  service.detail=()=>structuredClone(stored);service.baseHash=()=>r.baseHash;store.all=()=>stored.status==='queued'?[{vault_id:'v',payload:JSON.stringify(stored)}]:[];
  const work=service.tick();await inFlight;service.cancel('v',r.fileId,r.id);
@@ -69,14 +69,14 @@ test('backup roundtrip retains review mode, threshold, and patch risk evidence',
 function concurrentHarness(provider){
  const r=fixture();r.patches=[];r.status='queued';r.acceptanceMode='review_all';r.report.promptVersion='source-editorial-beta-3';r.report.chunksCompleted=0;r.report.charactersReviewed=0;r.report.durationMs=null;
  for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])r.report[key]=null;
- let stored=structuredClone(r),writes=0;
- const store={all:()=>[],run:(_sql,status,_at,payload)=>{writes++;stored=JSON.parse(payload);},get:()=>undefined};
+ let stored=structuredClone(r),writes=0,snapshotWrites=0;
+ const store={all:()=>[],run:(_sql,status,_at,payload)=>{writes++;if(!_sql.includes('json_set(payload'))snapshotWrites++;stored=_sql.includes('json_set(payload')?{...stored,status,updatedAt:_at,report:JSON.parse(payload)}:JSON.parse(payload);},get:()=>undefined};
  const service=new SourceReprocessing(store,{require:()=>({entity_id:'test'})},{selection:()=>({model:r.report.model,reasoningEffort:r.report.reasoningEffort}),editorialSelection:()=>({model:r.report.model,reasoningEffort:r.report.reasoningEffort}),reeditSource:async(prompt,_instructions,signal,observe)=>{
   observe(10).usage({input_tokens:10,output_tokens:2,output_tokens_details:{reasoning_tokens:0},input_tokens_details:{cached_tokens:3}});
   return provider(JSON.parse(prompt),signal);
  }},()=>{}, {start:()=>1,finish:()=>{},request:()=>({})});
  service.detail=()=>structuredClone(stored);service.baseHash=()=>r.baseHash;store.all=()=>stored.status==='queued'?[{vault_id:'v',payload:JSON.stringify(stored)}]:[];
- return {service,r,get stored(){return stored;},get writes(){return writes;}};
+ return {service,r,get stored(){return stored;},get writes(){return writes;},get snapshotWrites(){return snapshotWrites;}};
 }
 function excerptResponse(prompt){
  const original=prompt.editableText.split('\n').find(line=>line.length>30&&!line.includes('<!--'));
@@ -89,13 +89,14 @@ test('bounded concurrency assembles out-of-order responses in canonical order wi
  assert.deepEqual(env.stored.report.completedChunkIndexes,[0,1,2,3,4]);assert.equal(env.stored.report.charactersReviewed,env.r.original.text.length);
  assert.equal(env.stored.patches.length,5);assert.deepEqual(env.stored.patches.map(p=>p.range.startPage),[1,2,3,4,5]);
  assert.deepEqual(env.stored.report.diagnostics.filter(d=>d.includes(': page ')),['Excerpt 1: page 1','Excerpt 2: page 2','Excerpt 3: page 3','Excerpt 4: page 4','Excerpt 5: page 5']);
- assert.equal(env.stored.report.inputTokens,50);assert.equal(env.stored.report.outputTokens,10);assert.equal(env.writes,16);assert.equal(env.stored.reprocessed.text,env.r.original.text);
+ assert.equal(env.stored.report.inputTokens,50);assert.equal(env.stored.report.outputTokens,10);assert.equal(env.writes,16);assert.equal(env.snapshotWrites,6);assert.equal(env.stored.reprocessed.text,env.r.original.text);
 });
 test('failed early excerpt keeps successful sibling and resume retries only missing indexes',async()=>{
  const calls=[];let fail=true;
  const env=concurrentHarness(async prompt=>{calls.push(prompt.physicalPage);if(fail&&prompt.physicalPage===1)throw Error('Provider failure');return excerptResponse(prompt);});
  await env.service.tick();assert.equal(env.stored.status,'failed');assert.deepEqual(calls,[1,2]);assert.deepEqual(env.stored.report.completedChunkIndexes,[1]);assert.equal(env.stored.report.chunksCompleted,1);assert.equal(env.stored.report.inputTokens,20);
- fail=false;env.service.resume('v',env.r.fileId,env.r.id);await env.service.tick();
+ fail=false;env.service.intelligence.editorialSelection=()=>({model:env.r.report.model,reasoningEffort:'high'});env.service.resume('v',env.r.fileId,env.r.id);await env.service.tick();
+ assert.equal(env.stored.report.reasoningEffort,'high');assert.equal(env.stored.report.excerpts[1].history[0].reasoningEffort,env.r.report.reasoningEffort);assert.equal(env.stored.report.excerpts[0].history.at(-1).reasoningEffort,'high');
  assert.deepEqual(calls,[1,2,1,3,4,5]);assert.equal(env.stored.status,'completed');assert.equal(env.stored.patches.length,5);assert.deepEqual(env.stored.patches.map(p=>p.range.startPage),[1,2,3,4,5]);assert.equal(env.stored.report.inputTokens,60);assert.equal(env.stored.report.charactersReviewed,env.r.original.text.length);
 });
 test('cancelling a concurrent wave retains prior checkpoints and counts both interrupted attempts',async()=>{
@@ -174,11 +175,11 @@ test('explicit transient provider failures back off within three attempts and pr
 });
 
 test('configuration errors trip the circuit breaker and uncertain transports never automatically repeat paid work',async()=>{
- const {GenerationProviderError,GenerationTransportError,GenerationAdmissionError}=await import('../src/server/modules/intelligence.ts');
- for(const [error,code] of [[new GenerationProviderError(400,'Unsupported configuration'),'provider_http_400'],[new GenerationTransportError('timeout','Timed out'),'transport_timeout'],[new GenerationAdmissionError('Busy'),'local_admission']]){
+ const {GenerationProviderError,GenerationTransportError,GenerationAdmissionError,GenerationCancellationError}=await import('../src/server/modules/intelligence.ts');
+ for(const [error,code] of [[new GenerationProviderError(400,'Unsupported configuration'),'provider_http_400'],[new GenerationTransportError('timeout'),'transport_timeout'],[new GenerationAdmissionError('Busy'),'local_admission'],[new GenerationCancellationError(true),'cancelled']]){
   const calls=[];const env=concurrentHarness(async prompt=>{calls.push(prompt.physicalPage);if(prompt.physicalPage===1)throw error;return excerptResponse(prompt);});
   await env.service.tick();assert.equal(env.stored.status,'failed');assert.equal(env.stored.report.errorCode,code);assert.ok(calls.length<=2);assert.equal(calls.filter(page=>page===1).length,1);assert.equal(env.stored.report.excerpts[0].attempts,1);
-  if(code==='transport_timeout')assert.equal(env.stored.report.excerpts[0].outcomeUncertain,true);
+  if(code==='transport_timeout'||code==='cancelled')assert.equal(env.stored.report.excerpts[0].outcomeUncertain,true);
  }
 });
 
@@ -187,4 +188,83 @@ test('source changes while concurrent calls are in flight discard stale outputs 
  const env=concurrentHarness(async prompt=>new Promise(resolve=>{if(++count===1)resolveFirst=()=>resolve(excerptResponse(prompt));else{resolveSecond=()=>resolve(excerptResponse(prompt));entered();}}));
  const original=JSON.stringify(env.r.original),work=env.service.tick();await ready;env.service.baseHash=()=> 'changed';resolveFirst();resolveSecond();await work;
  assert.equal(env.stored.status,'failed');assert.equal(env.stored.report.errorCode,'source_changed');assert.equal(env.stored.patches.length,0);assert.equal(env.stored.report.chunksCompleted,0);assert.equal(JSON.stringify(env.stored.original),original);
+});
+
+test('validated successes are durable before held siblings settle and restart never reissues successful work',async()=>{
+ let siblingEntered,successSaved;const entered=new Promise(resolve=>{siblingEntered=resolve;}),saved=new Promise(resolve=>{successSaved=resolve;});
+ const env=concurrentHarness(async(prompt,signal)=>{
+  if(prompt.physicalPage===1)return excerptResponse(prompt);
+  if(prompt.physicalPage===2){siblingEntered();return new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(Error('interrupted')),{once:true}));}
+  return excerptResponse(prompt);
+ });
+ const run=env.service.store.run;env.service.store.run=(...args)=>{run(...args);if(env.stored.report.completedChunkIndexes?.includes(0))successSaved();};
+ const work=env.service.tick();await entered;await saved;
+ assert.equal(env.stored.report.excerpts[0].status,'completed');assert.equal(env.stored.patches.length,1);
+ let restarted=structuredClone(env.stored),calls=[];
+ const recoveryStore={all:sql=>sql.includes("IN ('queued','running')")?[{vault_id:'v',payload:JSON.stringify(restarted)}]:restarted.status==='queued'?[{vault_id:'v',payload:JSON.stringify(restarted)}]:[],get:()=>undefined,run:(sql,status,updatedAt,payload)=>{restarted=sql.includes('json_set(payload')?{...restarted,status,updatedAt,report:JSON.parse(payload)}:JSON.parse(payload);}};
+ const intelligence={selection:()=>({model:env.r.report.model,reasoningEffort:env.r.report.reasoningEffort}),editorialSelection:()=>({model:env.r.report.model,reasoningEffort:env.r.report.reasoningEffort}),reeditSource:async prompt=>{calls.push(JSON.parse(prompt).physicalPage);return '{"patches":[]}';}};
+ const recovered=new SourceReprocessing(recoveryStore,{require:()=>({})},intelligence,()=>{},{start:()=> 'a',finish:()=>{}});
+ recovered.detail=()=>structuredClone(restarted);recovered.baseHash=()=>env.r.baseHash;
+ assert.equal(restarted.report.excerpts[0].status,'completed');assert.equal(restarted.report.excerpts[1].outcomeUncertain,true);
+ // Finish the old simulated process before operating the new instance.
+ env.service.close();await work;
+ recovered.resume('v',env.r.fileId,env.r.id);await recovered.tick();
+ assert.equal(restarted.status,'completed');assert.deepEqual(calls,[2,3,4,5]);assert.equal(restarted.patches.length,1);
+});
+
+test('attempt accounting retains missing-usage and effective reasoning provenance across configuration repair',async()=>{
+ const {GenerationProviderError}=await import('../src/server/modules/intelligence.ts');let first=true;
+ const env=concurrentHarness(async prompt=>{if(first&&prompt.physicalPage===1){first=false;throw new GenerationProviderError(503,'Transient');}return '{"patches":[]}';});
+ const original=env.service.intelligence.reeditSource;let calls=0;
+ env.service.intelligence.reeditSource=async(...args)=>{calls++;if(calls===3)args[3]=()=>({usage:()=>{}});return original(...args);};
+ await env.service.tick();assert.equal(env.stored.status,'completed');assert.equal(env.stored.report.usageIncomplete,true);
+ const history=env.stored.report.excerpts[0].history;assert.equal(history.length,2);assert.equal(history[1].inputTokens,null);assert.equal(history[0].model,env.r.report.model);assert.equal(history[0].reasoningEffort,env.r.report.reasoningEffort);
+ assert.match(env.stored.report.diagnostics.join('\n'),/usage was unavailable/);
+});
+
+test('scholarly UTF-16 offsets disambiguate repeated citations without normalizing quotations, equations, footnotes or bibliography',async()=>{
+ const {locateEditorialPatch}=await import('../src/server/modules/source-reprocessing-patches.ts');
+ const corpus=JSON.parse(readFileSync(new URL('./fixtures/editorial-academic.json',import.meta.url),'utf8')),text=corpus.text;
+ const citation='[1] Smith, 2020, p. 7',start=text.lastIndexOf(citation);
+ assert.deepEqual(locateEditorialPatch(text,{original:citation,startOffset:start,endOffset:start+citation.length}),{start,end:start+citation.length});
+ assert.throws(()=>locateEditorialPatch(text,{original:citation}),/unique canonical/);
+ for(const item of [
+  {original:citation,startOffset:start+1,endOffset:start+citation.length+1},
+  {original:citation,startOffset:-1,endOffset:4},
+  {original:citation,startOffset:0,endOffset:text.length+1},
+  {original:citation,startOffset:start+0.5,endOffset:start+citation.length},
+  {original:citation,startOffset:start},
+  {original:'é is decomposed',startOffset:text.indexOf('é is decomposed'),endOffset:text.indexOf('é is decomposed')+'é is decomposed'.length},
+  {original:'\ud83d',startOffset:text.indexOf('😀'),endOffset:text.indexOf('😀')+1}
+ ])assert.throws(()=>locateEditorialPatch(text,item),/offset|canonical/);
+ for(const original of ['$E=mc^2$','“λόγος καὶ ἀλήθεια”','« 日本語の引用 »','[^p1-1]: Printed note 1','[2] Δοκιμή, Β.'])assert.deepEqual(locateEditorialPatch(text,{original}),{start:text.indexOf(original),end:text.indexOf(original)+original.length});
+});
+
+test('accepted saved patches verify exact canonical evidence, excerpt binding and surrogate boundaries with legacy compatibility',()=>{
+ const base=fixture();base.patches=base.patches.filter(p=>p.original.includes('1. Introduction'));base.patches[0].decision='accepted';
+ materializeSourceRevision(structuredClone(base));
+ for(const mutate of [
+  p=>{p.baseHash='another-revision';},
+  p=>{p.original='different original';},
+  p=>{p.range.endOffset=Number.MAX_SAFE_INTEGER;},
+  p=>{p.excerptIndex=127;},
+  p=>{p.userReplacement='broken \ud83d';}
+ ]){const r=structuredClone(base);mutate(r.patches[0]);assert.throws(()=>materializeSourceRevision(r),/canonical revision or excerpt/);}
+ const overlapping=structuredClone(base);overlapping.patches.push({...overlapping.patches[0],id:'overlap'});assert.throws(()=>materializeSourceRevision(overlapping),/canonical revision or excerpt/);
+});
+
+test('lightweight durable progress keeps row, detail, status and selector summary consistent without serializing snapshots',async()=>{
+ const {DatabaseSync}=await import('node:sqlite'),{Store}=await import('../src/server/store.ts');
+ const {setupSourceReprocessingSummarySchema}=await import('../src/server/source-reprocessing-summary-schema.ts');
+ const db=new DatabaseSync(':memory:');
+ try{
+  db.exec('CREATE TABLE source_reprocessing(id TEXT PRIMARY KEY,file_id TEXT,vault_id TEXT,status TEXT,created_at TEXT,updated_at TEXT,payload TEXT)');setupSourceReprocessingSummarySchema(db);
+  const r=fixture();db.prepare('INSERT INTO source_reprocessing(id,file_id,vault_id,status,created_at,updated_at,payload) VALUES(?,?,?,?,?,?,?)').run(r.id,r.fileId,'v',r.status,r.createdAt,r.updatedAt,JSON.stringify(r));
+  const service=new SourceReprocessing(new Store(db),{require:()=>({})},{},()=>{},{});service.currentHash=()=>r.baseHash;
+  r.status='running';r.report.sessionStartedAt=new Date().toISOString();
+  const original=r.original;Object.defineProperty(r,'original',{get(){throw Error('Progress update serialized a snapshot');}});
+  service.saveProgress('v',r);Object.defineProperty(r,'original',{value:original});
+  const detail=service.detail('v',r.fileId,r.id),status=service.status('v',r.fileId,r.id),summary=service.list('v',r.fileId)[0];
+  assert.equal(detail.status,'running');assert.equal(summary.status,'running');assert.equal(status.status,'running');assert.equal(detail.updatedAt,status.updatedAt);assert.equal(summary.updatedAt,status.updatedAt);assert.deepEqual(detail.original,original);
+ }finally{db.close();}
 });

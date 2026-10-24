@@ -1,7 +1,7 @@
 import {resolvePersona,personaInstructions} from './ai-personas.js';
 import type {AIRequestObserver} from './ai-debug.js';
 import type {ReadingExplanationOptions} from '../../shared/source-reading.js';
-import {supportedIntelligencePreferences,type IntelligencePreferences} from '../../shared/intelligence.js';
+import {intelligenceModels,supportedIntelligencePreferences,type IntelligencePreferences} from '../../shared/intelligence.js';
 import {HttpError} from '../validation.js';
 import {editorReviewInstructions} from './editor-review.js';
 import {sourceMathInstructions} from './source-math.js';
@@ -49,6 +49,19 @@ interface GenerationPolicy {
 }
 interface Selections {personaId?:string;standard:IntelligencePreferences;title:IntelligencePreferences;enrichment:IntelligencePreferences}
 const ignoreDelta=(_delta:string)=>{};
+/** Nullable offsets retain the legacy unique-substring protocol. Local validation is authoritative. */
+const editorialFormat={type:'json_schema',name:'source_editorial_patches',strict:true,schema:{
+  type:'object',additionalProperties:false,required:['patches','diagnostics'],properties:{
+    patches:{type:'array',maxItems:50,items:{type:'object',additionalProperties:false,
+      required:['original','replacement','category','reason','confidence','startOffset','endOffset'],properties:{
+        original:{type:'string'},replacement:{type:'string'},
+        category:{type:'string',enum:['ocr','line_breaks','footnote','apparatus','metadata','citation','math','formatting']},
+        reason:{type:'string'},confidence:{type:'number'},
+        startOffset:{type:['integer','null']},endOffset:{type:['integer','null']},
+      }}},
+    diagnostics:{type:'array',items:{type:'string'}},
+  },
+}};
 
 /** Pure policy dispatch; credentials, admission state and transport belong to Intelligence.
  * Prompts run after admission, inside the provider error boundary, as before. */
@@ -96,7 +109,7 @@ export function generationPolicy(request:GenerationRequest,selections:Selections
       return policy(()=>({instructions:request.instructions,input:request.input}),{activeSlot:'exclusive',selection:{...selections.standard,reasoningEffort:'none'},maxOutputTokens:4096,maxOutputLength:32768});
     case 'editorial':
       if(!supportedIntelligencePreferences(selections.standard))throw new HttpError(400,'Choose a supported editorial model and reasoning effort in Settings → Intelligence.');
-      return policy(()=>({instructions:request.instructions,input:request.input}),{activeSlot:'editorial',selection:{...selections.standard},maxOutputTokens:16000,maxOutputLength:60000,timeoutMs:180000});
+      return policy(()=>({instructions:request.instructions,input:request.input,...(intelligenceModels.find(model=>model.id===selections.standard.model)?.structuredOutputs?{text:{format:editorialFormat}}:{})}),{activeSlot:'editorial',selection:{...selections.standard},maxOutputTokens:16000,maxOutputLength:60000,timeoutMs:180000});
     default: {
       const exhaustive:never=request;
       throw new Error(`Unsupported generation request: ${String(exhaustive)}`);

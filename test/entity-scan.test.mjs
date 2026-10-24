@@ -9,22 +9,23 @@ import { Intelligence } from '../src/server/modules/intelligence.ts';
 import { mentionEvidence } from '../src/shared/entity-scan.ts';
 
 import {completedResponse as completed} from './helpers/providers.ts';
+import {providerBarrier} from './helpers/provider-barrier.mjs';
 const candidate = (name,type='person',extra={}) => ({name,type,subtypes:[],description:'Mentioned in this note',evidence:name,reason:'Named in the note',existingId:null,...extra});
 test('entity scan reviews are explicit, persistent, scoped and revision safe', async()=>{
   const db=openDatabase(':memory:');
-  let output, providerBody, finish, calls=0;
+  let output, providerBody, heldProvider, calls=0;
   const secrets={value:null,read(){return this.value;},write(v){this.value=v;},remove(){this.value=null;}};
   const ai=new Intelligence(secrets,async(_url,options)=>{
     calls++;providerBody=JSON.parse(options.body);
-    if(finish===true)return new Promise(resolve=>{finish=resolve;});
+    if(heldProvider){const barrier=heldProvider;heldProvider=undefined;return barrier.enter();}
     return completed(output);
   });
   ai.save({apiKey:'sk-test-entity-scanning-secret'});
   const server=createApp(new Store(db),path.resolve('dist/client'),ai);
   server.listen(0,'127.0.0.1');await once(server,'listening');
   const base=`http://127.0.0.1:${server.address().port}/api/`;
-  async function call(route,method='GET',body,expected=200,vault='default',headers={}){
-    const response=await fetch(base+route,{method,headers:{'X-Noema-Request':'1','Content-Type':'application/json','X-Vault-Id':vault,...headers},body:body===undefined?undefined:JSON.stringify(body)});
+  async function call(route,method='GET',body,expected=200,vault='default',headers={},signal){
+    const response=await fetch(base+route,{method,signal,headers:{'X-Noema-Request':'1','Content-Type':'application/json','X-Vault-Id':vault,...headers},body:body===undefined?undefined:JSON.stringify(body)});
     const data=await response.json();assert.equal(response.status,expected,JSON.stringify(data));return data;
   }
   try{
@@ -82,11 +83,16 @@ test('entity scan reviews are explicit, persistent, scoped and revision safe', a
     await review(0,'accepted',409,{scanId:persisted.id});
     page=await call(route,'PUT',{...page,title:'Changed'});
     await review(0,'accepted',409);
-    finish=true;
-    const pending=call(route+'/entity-scan','POST',{revision:page.revision},409);
-    while(typeof finish!=='function')await new Promise(resolve=>setTimeout(resolve,5));
-    page=await call(route,'PUT',{...page,title:'Changed while scanning'});
-    finish(completed(JSON.stringify({suggestions:[]})));await pending;
+    const barrier=heldProvider=providerBarrier('entity-scan stale-result race'),controller=new AbortController();
+    const pending=call(route+'/entity-scan','POST',{revision:page.revision},409,'default',{},controller.signal);
+    try {
+      await barrier.waitForEntry(pending);
+      page=await call(route,'PUT',{...page,title:'Changed while scanning'});
+      barrier.release(completed(JSON.stringify({suggestions:[]})));await pending;
+    }finally{
+      await barrier.close(pending,{value:new Response('Synthetic provider fixture teardown',{status:503}),controller});
+      heldProvider=undefined;
+    }
     assert.equal((await call('entities')).length,baseline+2);
   }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();}
 });

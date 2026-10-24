@@ -18,7 +18,7 @@
   .page-toolbar, .page-toolbar-history, .page-toolbar-reading { flex-wrap: wrap; }
   .workspace-navigation .sidebar-menu-trigger,
   .page-row-actions > .sidebar-menu-trigger, .panel-top button,
-  .settings-close, .toast-close, .ai-notifications-close,
+  .settings-close,
   .ai-notification-read, .mobile-navigation-close,
   .knowledge-source-page, .entity-editor-panel .source-actions a {
     min-width: var(--touch-target-size);

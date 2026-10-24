@@ -6,7 +6,7 @@ const read=path=>readFile(new URL(path,root),'utf8');
 const strip=text=>text.replace(/\/\*[\s\S]*?\*\//g,'');
 const entry=strip(await read('styles.css'));
 const imports=[...entry.matchAll(/@import "\.\/styles\/(.+?)";/g)].map(match=>match[1]);
-assert.deepEqual(imports,['primitives.css','layout.css','features/editor.css','features/library.css','features/knowledge.css','features/sources.css','features/settings.css','features/dialogs.css','features/menus.css','features/tagging.css','features/calendar.css','semantics.css','controls.css'],'Keep the documented cascade order; update the ownership contract when adding a module');
+assert.deepEqual(imports,['primitives.css','layout.css','features/editor.css','features/library.css','features/knowledge.css','features/sources.css','features/settings.css','features/dialogs.css','features/menus.css','features/tagging.css','features/calendar.css','features/notifications.css','semantics.css','controls.css'],'Keep the documented cascade order; update the ownership contract when adding a module');
 assert.equal(entry.replace(/@import[^;]+;/g,'').trim(),'','styles.css is only the entrypoint; put rules in their owner');
 const files=['styles/tokens.css','styles/fonts.css','search/archive-search.css',...imports.map(path=>'styles/'+path)];
 // Explicit budgets preserve existing art/editor colours while stopping growth.
@@ -21,3 +21,9 @@ for(const path of files){const css=strip(await read(path));const count=(css.matc
 const features=(await readdir(new URL('styles/features/',root))).filter(path=>path.endsWith('.css')).map(path=>'features/'+path);
 for(const path of features)assert.ok(imports.includes(path),`Unimported feature module: ${path}`);
 console.log(`CSS ownership and semantic contracts passed (${files.length} modules; ${total} colour literals within recorded budgets).`);
+// Notice surfaces remain neutral; semantic paint belongs to the shared contract.
+const notificationCSS=await read('styles/features/notifications.css');
+assert.doesNotMatch(notificationCSS,/--status-(?:danger|warning|success|info)/,'Notice semantic paint belongs to semantics.css');
+for(const path of ['styles/primitives.css','styles/features/knowledge.css','styles/features/sources.css','styles/semantics.css']) {
+ assert.doesNotMatch(await read(path),/#toast\b|\.success-notice\b|\.entity-insert-notice\b|\.ai-notification-icon\b|\.source-inspector-status-failure\b/,'Retired notification selectors must not regain ownership');
+}

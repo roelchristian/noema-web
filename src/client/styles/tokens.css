@@ -235,3 +235,23 @@
     --library-heading-height: var(--touch-target-size);
   }
 }
+
+/* Notification aliases inherit each appearance's existing surface and palette. */
+:root {
+ --notice-surface: var(--surface-raised);
+ --notice-inline-surface: var(--surface);
+ --notice-border: var(--line);
+ --notice-text: var(--text);
+ --notice-muted: var(--text-muted);
+ --notice-radius: var(--radius-toolbar);
+ --notice-padding-block: 10px;
+ --notice-padding-inline: 12px;
+ --notice-gap: var(--space-2);
+ --notice-stack-gap: 8px;
+ --notice-max-width: 400px;
+ --notice-icon-size: 17px;
+ --notice-title-size: var(--ui-text-md);
+ --notice-description-size: var(--ui-text-sm);
+ --notice-action-target: var(--control-target-compact);
+ --notice-shadow: 0 2px 8px color-mix(in srgb, var(--text) 7%, transparent);
+}

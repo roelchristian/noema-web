@@ -1,4 +1,5 @@
-import {SuccessNotice,useSuccessNotice} from '../components/SuccessNotice';
+import {InlineNotice} from '../notifications/InlineNotice';
+import {FormNotice,useFormNotice} from '../notifications/FormNotice';
 import {getLocale} from '../i18n';
 import {t as uiText} from '../i18n';
 import {DisclosureSummary} from '../components/DisclosureSummary';
@@ -17,7 +18,7 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
   const [debugId,setDebugId]=useState<string|null>(null);
   const autoRefresh=useRef(true);
   const [confirmClear,setConfirmClear]=useState(false);
-  const [message,setMessage,messageOccurrence]=useSuccessNotice();
+  const [message,setMessage,messageOccurrence]=useFormNotice();
   const [data,setData]=useState<AIActivityPage>({items:[],nextCursor:null});
   const [busy,setBusy]=useState(true),[error,setError]=useState('');
   useEffect(()=>{
@@ -90,8 +91,8 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
       {!!data.enrichmentMetrics.reasons.length&&<ul>{data.enrichmentMetrics.reasons.map(item=><li key={item.reason}>{item.reason.replaceAll('_',' ')}: {item.count.toLocaleString(getLocale())}</li>)}</ul>}
     </details>}
     <div className="ai-activity-toolbar"><button className="button" disabled={busy} onClick={()=>void load()}>{uiText("Refresh")}</button><button className="button" disabled={busy||!data.items.length} onClick={()=>void exportCSV()}>{uiText("Export CSV")}</button><button className="button danger" disabled={busy||!data.items.length} onClick={()=>setConfirmClear(true)}>{uiText("Clear activity")}</button></div>
-    {error&&<p role="alert">{error}</p>}
-    {message?<SuccessNotice inline message={message} occurrence={messageOccurrence} onDismiss={()=>setMessage('')}/>:<p role="status">{busy?uiText("Loading activity…"):uiText("{value0} records loaded",{value0: data.items.length})}</p>}
+    {error&&<InlineNotice tone="error" title={error} announcement="assertive"/>}
+    {message?<FormNotice message={message} occurrence={messageOccurrence} onDismiss={()=>setMessage('')}/>:<p role="status">{busy?uiText("Loading activity…"):uiText("{value0} records loaded",{value0: data.items.length})}</p>}
     <div className="ai-activity-table-wrap" tabIndex={0} role="region" aria-label={uiText("AI activity records")} aria-busy={busy}>
       <table className="ai-activity-table">
         <caption className="sr-only">{uiText("AI activity, newest first")}</caption>

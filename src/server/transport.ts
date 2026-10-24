@@ -1,3 +1,4 @@
+import {SourceMetadata} from './modules/source-metadata.js';
 import {bibliographyRoutes} from './routes/bibliography.js';
 import {kokoroStatus,downloadKokoro} from './modules/kokoro-speech.js';
 import {cleanSpeechText} from '../shared/speech-text.js';
@@ -573,6 +574,16 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             }
           }
           if(collection==='entities') {
+            if(id&&child==='source-metadata') {
+              const metadata=new SourceMetadata(store);
+              if(parts.length===4&&method==='GET')return send(200,metadata.snapshot(vault,id,url.searchParams.get('runId')??undefined,url.searchParams.get('proposalId')??undefined));
+              if(parts.length===5&&childId==='review'&&method==='POST')return send(200,metadata.review(vault,id,body as unknown as import('../shared/source-metadata.js').MetadataReviewInput));
+              if(parts.length===5&&childId==='batch'&&method==='POST')return send(200,metadata.batch(vault,id,body as unknown as import('../shared/source-metadata.js').MetadataBatchInput));
+              if(parts.length===5&&childId==='field'&&method==='PUT')return send(200,metadata.save(vault,id,body));
+              if(parts.length===5&&childId==='policy'&&method==='PUT')return send(200,metadata.setPolicy(vault,id,body.policy));
+              throw new HttpError(404,'Not found');
+            }
+
             if(id&&child==='scholarly'&&parts.length===4&&method==='POST') {
               const controller=new AbortController(),abort=()=>{if(!res.writableEnded)controller.abort();};res.once('close',abort);
               try{return send(200,await sourceEnrichments.scholarly(vault,id,body,controller.signal));}

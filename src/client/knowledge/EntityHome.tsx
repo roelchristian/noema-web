@@ -1,3 +1,4 @@
+import {SourceMetadata} from '../sources/SourceMetadata';
 import {PropertyProposalReview} from './PropertyProposalReview';
 import {EntityPropertyList} from './EntityPropertyList';
 import {propertyLabel,resolvePropertyDefinition} from '../../shared/property-definitions';
@@ -42,7 +43,7 @@ export interface EntityHomeProps {
   onCreatePage?: () => Promise<PageSummary>;
   onCreatePageFromSource?: (source: Entity) => void;
 }
-const tabs = ['overview', 'connections', 'mentions', 'sources', 'discovery', 'edit'] as const;
+const tabs = ['overview', 'metadata', 'connections', 'mentions', 'sources', 'discovery', 'edit'] as const;
 type HomeTab = typeof tabs[number];
 function revealTab(value: HomeTab) {
   const button=document.getElementById('entity-home-tab-'+value), strip=button?.parentElement;
@@ -51,12 +52,12 @@ function revealTab(value: HomeTab) {
   if(bounds.left<viewport.left)strip.scrollLeft+=bounds.left-viewport.left;
   else if(bounds.right>viewport.right)strip.scrollLeft+=bounds.right-viewport.right;
 }
-const tabLabels = {overview:'Overview', connections:'Connections', mentions:'Mentions', sources:'Sources', discovery:'Discovery', edit:'Edit'};
+const tabLabels = {overview:'Overview', metadata:'Metadata', connections:'Connections', mentions:'Mentions', sources:'Sources', discovery:'Discovery', edit:'Edit'};
 
 /** A destination for a knowledge subject, backed by the same record and drafts as its inspector. */
 export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect, onOpenPage, onOpenMention, onOpenSourcePassage, onUpdated, onError, onClose, pages = [], onCreatePage}: EntityHomeProps) {
   const reviewDestination=useContext(ReviewDestination);
-  const reviewTab=reviewDestination?.category==='discovery'&&reviewDestination.originId===id?'discovery':reviewDestination?.category==='property'&&reviewDestination.originId===id?'overview':null;
+  const reviewTab=reviewDestination?.category==='discovery'&&reviewDestination.originId===id?'discovery':reviewDestination?.category==='property'&&reviewDestination.originId===id?(entities.find(item=>item.id===id)?.type==='source'?'metadata':'overview'):null;
   const [entity, setEntity] = useState<EntityDetail | null>(null);
   const [error, setError] = useState('');
   const [detailAttempt, setDetailAttempt] = useState(0);
@@ -65,6 +66,9 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
   const savedNavigation = () => window.history.state?.entityHome?.key === navigationKey ? window.history.state.entityHome : null;
   const initialTab = (): HomeTab => reviewTab ?? (hasEntityDraft(vaultId,id) ? 'edit' : tabs.includes(savedNavigation()?.tab) ? savedNavigation().tab : 'overview');
   const [tab, setTab] = useState<HomeTab>(initialTab);
+  const [metadataRun,setMetadataRun]=useState<string|undefined>(reviewDestination?.metadataRunId);
+  useEffect(()=>{if(reviewDestination?.category==='property'&&reviewDestination.originId===id)setMetadataRun(reviewDestination.metadataRunId);},[reviewDestination?.proposalId,reviewDestination?.metadataRunId,id]);
+  useEffect(()=>{const open=(event:Event)=>{const detail=(event as CustomEvent<{vaultId?:string;sourceId?:string;runId?:string}>).detail;if(detail?.vaultId===vaultId&&detail.sourceId===id){setMetadataRun(detail.runId);setTab('metadata');}};window.addEventListener('noema:open-source-metadata',open);return()=>window.removeEventListener('noema:open-source-metadata',open);},[vaultId,id]);
   const activeTab = useRef(tab); activeTab.current=tab;
   const article = useRef<HTMLElement>(null);
   const scrolls = useRef<Partial<Record<HomeTab,number>>>(savedNavigation()?.scrolls ?? {});
@@ -145,22 +149,25 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
       </header>
       {error && <p role="alert">{error} <button type="button" onClick={()=>{setError('');setDetailAttempt(value=>value+1);}}>{uiText('Retry details')}</button></p>}
       {entity.previewLimited && ['connections','mentions','edit'].includes(tab) && !error && <p role="status">{uiText('Loading complete details…')}</p>}
-      <div className="eh-tabs" role="tablist" aria-label={uiText('Entity homepage sections')}>{tabs.map((value,index) => <button key={value} type="button" id={'entity-home-tab-' + value} role="tab" aria-selected={tab === value} aria-controls={'entity-home-panel-' + value} tabIndex={tab === value ? 0 : -1} onClick={() => switchTab(value)} onKeyDown={event => {
+      <div className="eh-tabs" role="tablist" aria-label={uiText('Entity homepage sections')}>{tabs.filter(value=>value!=='metadata'||entity.type==='source').map((value,index) => <button key={value} type="button" id={'entity-home-tab-' + value} role="tab" aria-selected={tab === value} aria-controls={'entity-home-panel-' + value} tabIndex={tab === value ? 0 : -1} onClick={() => switchTab(value)} onKeyDown={event => {
         if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
         event.preventDefault();
-        const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
-        switchTab(tabs[next]!);
+        const visibleTabs=tabs.filter(value=>value!=='metadata'||entity.type==='source');
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? visibleTabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + visibleTabs.length) % visibleTabs.length;
+        switchTab(visibleTabs[next]!);
       }}>{uiText(tabLabels[value])}</button>)}</div>
       <div className="eh-tabpanel" id="entity-home-panel-overview" role="tabpanel" aria-labelledby="entity-home-tab-overview" hidden={tab !== 'overview'} tabIndex={0}>
         {entity.description ? <p className="eh-description eh-short-description">{previewText(entity.description,360)}</p> : <p className="entity-detail-empty">{uiText('No description recorded yet.')} <button type="button" className="eh-text-action" onClick={()=>switchTab('edit')}>{uiText('Add a description')}</button></p>}
         <section className="eh-section eh-glance-properties"><h2>{uiText(template.detailsTitle)}</h2>{entity.previewLimited?<p role="status">{uiText('Loading complete properties…')}</p>:<EntityPropertyList active={tab==='overview'} definitions={schema.propertyDefinitions} limit={4} key={vaultId + ':' + id} vaultId={vaultId} entity={{...entity,propertyNames}} entities={entities} mention={mention} priority={template.prominentProperties} onSave={(input,propertyId)=>mutate(()=>api.saveProperty(vaultId,id,input,propertyId))} onRemove={propertyId=>mutate(()=>api.removeConnection(vaultId,id,'properties',propertyId))} onRefresh={()=>mutate(()=>api.entity(vaultId,id))}/>}</section>
-        {(!!entity.propertyProposalCount||reviewDestination?.category==='property')&&<PropertyProposalReview proposalId={reviewDestination?.category==='property'?reviewDestination.proposalId:undefined} key={vaultId+':'+id+':review'} vaultId={vaultId} entityId={id} entities={entities} onUpdated={async()=>{await mutate(()=>api.entity(vaultId,id));}}/>}
+        {entity.type!=='source'&&(!!entity.propertyProposalCount||reviewDestination?.category==='property')&&<PropertyProposalReview proposalId={reviewDestination?.category==='property'?reviewDestination.proposalId:undefined} key={vaultId+':'+id+':review'} vaultId={vaultId} entityId={id} entities={entities} onUpdated={async()=>{await mutate(()=>api.entity(vaultId,id));}}/>}
+        {entity.type==='source'&&<button type="button" className="button" onClick={()=>switchTab('metadata')}>Review metadata</button>}
         <EntityGlance entity={entity} entities={entities} connections={[...relationships,...references,...incoming]} onOpen={onOpen} onOpenPage={onOpenPage} onOpenMention={onOpenMention} onTab={switchTab}/>
         <EntityGlanceSources vaultId={vaultId} entityId={id} refreshKey={refreshKey} active={tab==='overview'} onReady={restoreScroll} onTab={()=>switchTab('sources')} onOpenSourcePassage={onOpenSourcePassage}/>
         <EntityOverview guidance={template.overviewGuidance} key={vaultId + ':' + id} vaultId={vaultId} entity={entity} onSave={input => mutate(() => api.saveEntityOverview(vaultId, id, input))} onRefresh={() => mutate(() => api.entity(vaultId, id))}/>
         {!!entity.aliases?.length && <section className="eh-section"><h2>{uiText('Also known as')}</h2><ul className="entity-overview-aliases">{entity.aliases.slice(0,5).map(alias=><li key={alias}>{previewText(alias,100)}</li>)}</ul><button type="button" className="eh-text-action" onClick={()=>switchTab('edit')}>{uiText('View all aliases in Edit')}</button></section>}
         <p className="eh-writing-hint">{uiText('Discovery suggestions are separate from recorded connections and evidence.')} <button type="button" className="eh-text-action" onClick={()=>switchTab('discovery')}>{uiText('Open Discovery')}</button></p>
       </div>
+      {entity.type==='source'&&<div className="eh-tabpanel" id="entity-home-panel-metadata" role="tabpanel" aria-labelledby="entity-home-tab-metadata" hidden={tab!=='metadata'} tabIndex={0}>{tab==='metadata'&&<SourceMetadata vaultId={vaultId} sourceId={id} runId={metadataRun} proposalId={reviewDestination?.category==='property'?reviewDestination.proposalId:undefined} onUpdated={async()=>{await mutate(()=>api.entity(vaultId,id));}}/>}</div>}
       <div className="eh-tabpanel" id="entity-home-panel-connections" role="tabpanel" aria-labelledby="entity-home-tab-connections" hidden={tab !== 'connections'} tabIndex={0}>
         {!entity.previewLimited && <>
         <div className="eh-overview-links"><button type="button" aria-expanded={exploring} onClick={()=>setExploring(value=>!value)}>{uiText(exploring?'Show grouped connections':'Explore neighborhood')}</button></div>

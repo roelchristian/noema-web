@@ -1,0 +1,47 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {openDatabase} from '../src/server/database.ts';
+import {Store} from '../src/server/store.ts';
+import {SourceMetadata} from '../src/server/modules/source-metadata.ts';
+import {Bibliography} from '../src/server/modules/bibliography.ts';
+import {PropertyReview} from '../src/server/modules/property-review.ts';
+const hash=text=>createHash('sha256').update(text).digest('hex');
+function fixture(work){const db=openDatabase(':memory:'),store=new Store(db),service=new SourceMetadata(store);store.run("INSERT INTO entities(id,vault_id,name,type,updated_at) VALUES('s','default','My display name','source','2026-01-01')");const content='Publication title: Synthetic publication\nPublisher: Synthetic Press\nPublication year: 2026\nDOI: 10.1234/synthetic\nPublisher: Other Press\n';store.run("INSERT INTO source_files(id,vault_id,entity_id,name,size,status,text,created_at,format,admitted) VALUES('f','default','s','Synthetic.pdf',1,'ready',?,'2026-01-01','pdf',1)",content);const candidate=(field,value,excerpt,extra={})=>({fieldKey:'bibliography:'+field,value,fileId:'f',runId:'run',version:'canonical',revision:hash(content),excerpt,start:content.indexOf(excerpt),end:content.indexOf(excerpt)+excerpt.length,evidenceHash:hash(excerpt),validated:true,validationReason:'Explicit publication label matched title',...extra});try{return work({db,store,service,content,candidate});}finally{db.close();}}
+const pending=service=>service.snapshot('default','s').fields.flatMap(field=>field.proposals);
+const history=service=>service.snapshot('default','s').fields.flatMap(field=>field.history);
+test('metadata owners stay distinct; explicit edit and accepted candidate preserve canonical citations',()=>fixture(({store,service,candidate})=>{
+ const proposal=service.registerCandidate('default','s',candidate('title','Synthetic publication','Publication title: Synthetic publication'));
+ assert.throws(()=>new PropertyReview(store).review('default','s',proposal.id,{action:'accept',fingerprint:proposal.fingerprint}),/Source Metadata/);
+ service.review('default','s',{proposalId:proposal.id,fingerprint:proposal.fingerprint,action:'accept',value:'Synthetic publication (corrected)'});
+ const bibliography=new Bibliography(store).get('default','s');assert.equal(bibliography.fields.title,'Synthetic publication (corrected)');assert.equal(store.get("SELECT name FROM entities WHERE id='s'").name,'My display name');assert.equal(store.get("SELECT count(*) n FROM properties WHERE entity_id='s'").n,0);assert.match(history(service)[0].details,/corrected/);assert.equal(history(service)[0].acceptedValue,'Synthetic publication (corrected)');
+ const titleField=service.snapshot('default','s').fields.find(field=>field.key==='source:display_name');service.save('default','s',{fieldKey:titleField.key,fingerprint:titleField.fingerprint,value:'Renamed Source'});assert.equal(new Bibliography(store).get('default','s').fields.title,'Synthetic publication (corrected)');assert.equal(new Bibliography(store).get('default','s').citationKey,bibliography.citationKey);
+}));
+test('compatible batch applies all owners atomically, validates initial fingerprints, and is idempotent',()=>fixture(({db,store,service,candidate})=>{
+ service.registerCandidate('default','s',candidate('publisher','Synthetic Press','Publisher: Synthetic Press'));service.registerCandidate('default','s',candidate('year','2026','Publication year: 2026'));
+ const batch={proposals:pending(service).map(item=>({proposalId:item.id,fingerprint:item.fingerprint}))};
+ db.exec("CREATE TRIGGER fail_year BEFORE UPDATE ON bibliographic_records WHEN json_extract(NEW.fields_json,'$.year')='2026' BEGIN SELECT RAISE(ABORT,'synthetic write failure'); END;");
+ assert.throws(()=>service.batch('default','s',batch),/synthetic write failure/);assert.equal(store.get('SELECT count(*) n FROM bibliographic_records').n,0);assert.equal(pending(service).length,2);db.exec('DROP TRIGGER fail_year');
+ assert.equal(service.batch('default','s',batch).changed.length,2);assert.equal(service.batch('default','s',batch).satisfied.length,2);assert.equal(store.get("SELECT count(*) n FROM properties WHERE entity_id='s'").n,0);
+}));
+test('manual facts, stale targets, invalid evidence and competing candidates require attention',()=>fixture(({store,service,candidate})=>{
+ store.run("INSERT INTO properties(id,entity_id,name,value) VALUES('manual','s','Publisher','Authored Press')");service.setPolicy('default','s','fill_validated_empty');
+ const proposal=service.registerCandidate('default','s',candidate('publisher','Synthetic Press','Publisher: Synthetic Press'));assert.equal(proposal.status,'pending');assert.equal(proposal.compatible,false);assert.equal(new Bibliography(store).get('default','s'),null);
+ assert.equal(service.batch('default','s',{proposals:[{proposalId:proposal.id,fingerprint:proposal.fingerprint}]}).attention.length,1);
+ assert.throws(()=>service.registerCandidate('default','s',candidate('year','2026','missing')),/excerpt|evidence/i);
+ service.setPolicy('default','s','review');const year=service.registerCandidate('default','s',candidate('year','2026','Publication year: 2026'));const field=service.snapshot('default','s').fields.find(field=>field.key==='bibliography:year');service.save('default','s',{fieldKey:field.key,fingerprint:field.fingerprint,value:'2000'});
+ assert.throws(()=>service.review('default','s',{proposalId:year.id,fingerprint:year.fingerprint,action:'accept'}),/changed/);assert.equal(pending(service).find(item=>item.id===year.id).stale,true);
+ const publication=service.snapshot('default','s').fields.find(field=>field.key==='bibliography:publisher');assert.equal(publication.preservedValues.length,1);assert.equal(service.snapshot('default','s').fields.some(field=>field.key==='property:Publisher'),false);
+ const current=pending(service).find(item=>item.id===proposal.id);assert.throws(()=>service.review('default','s',{proposalId:current.id,fingerprint:current.fingerprint,action:'accept'}),/authored Source/);service.review('default','s',{proposalId:current.id,fingerprint:current.fingerprint,action:'accept',preserveAuthoredValues:true});assert.equal(store.get("SELECT value FROM properties WHERE id='manual'").value,'Authored Press');assert.equal(new Bibliography(store).get('default','s').fields.publisher,'Synthetic Press');
+}));
+test('evidence survives unrelated edits, fails closed for changed/duplicate excerpts, and corroborates across runs',()=>fixture(({store,service,content,candidate})=>{
+ const input=candidate('publisher','Synthetic Press','Publisher: Synthetic Press'),proposal=service.registerCandidate('default','s',input);
+ store.run('UPDATE source_files SET text=? WHERE id=?',content+'Unrelated ending\n','f');let current=pending(service)[0];assert.equal(current.stale,false);service.review('default','s',{proposalId:current.id,fingerprint:current.fingerprint,action:'accept'});
+ const second=service.registerCandidate('default','s',{...input,runId:'second'});assert.equal(second.id,proposal.id);assert.equal(second.evidence.length,2);assert.equal(pending(service).length,0);
+ store.run('UPDATE source_files SET text=? WHERE id=?',content+'Publisher: Synthetic Press\n','f');assert.equal(history(service)[0].stale,true);
+}));
+test('automatic filling is separate policy, requires deterministic validation and corroborates existing facts',()=>fixture(({store,service,candidate})=>{
+ service.setPolicy('default','s','fill_validated_empty');const weak=service.registerCandidate('default','s',candidate('publisher','Synthetic Press','Publisher: Synthetic Press',{validated:false}));assert.equal(weak.status,'pending');const competing=service.registerCandidate('default','s',candidate('publisher','Other Press','Publisher: Other Press'));assert.equal(competing.status,'pending');assert.equal(competing.compatible,false);assert.equal(new Bibliography(store).get('default','s'),null);
+ const year=service.registerCandidate('default','s',candidate('year','2026','Publication year: 2026'));assert.equal(year.status,'accepted');assert.equal(new Bibliography(store).get('default','s').fields.year,'2026');
+ const doi=service.registerCandidate('default','s',candidate('doi','10.1234/synthetic','DOI: 10.1234/synthetic'));assert.equal(doi.status,'accepted');assert.equal(store.get("SELECT count(*) n FROM properties WHERE entity_id='s'").n,0);
+}));

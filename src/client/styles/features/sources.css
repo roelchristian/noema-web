@@ -2260,3 +2260,26 @@ main.source-workspace > #content > .source-reader {
     width: 100%;
   }
 }
+
+.source-metadata { min-width: 0; }
+.source-metadata-heading h3 { margin-bottom: 6px; }
+.source-metadata-heading p, .source-metadata-field small { color: var(--muted); }
+.source-metadata-policy, .source-metadata-edit, .source-metadata-edit label { display: grid; gap: 8px; }
+.source-metadata-policy { margin-block: 16px; }
+.source-metadata-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 12px; }
+.source-metadata-fields { margin: 16px 0; }
+.source-metadata-field { border-top: 1px solid var(--line); padding-block: 14px; }
+.source-metadata-field dt { font-weight: 600; }
+.source-metadata-field dd { margin: 8px 0 0; min-width: 0; overflow-wrap: anywhere; }
+.source-metadata-field dd > p { margin-block: 6px; white-space: pre-wrap; }
+.source-metadata-field small { display: block; margin-bottom: 8px; }
+.source-metadata-suggestion { border-left: 2px solid var(--status-info-border); padding-left: 12px; margin-top: 12px; }
+.source-metadata-evidence { margin-block: 10px; font-size: 12px; }
+.source-metadata-evidence blockquote { margin-inline: 0; white-space: pre-wrap; }
+.source-metadata-edit { margin-block: 12px; }
+.source-metadata-edit input { width: 100%; min-width: 0; }
+.source-metadata-history { margin-top: 12px; }
+@media (min-width: 720px) {
+  .source-metadata-full .source-metadata-field { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(0, 3fr); gap: 18px; }
+  .source-metadata-full .source-metadata-field dd { margin-top: 0; }
+}

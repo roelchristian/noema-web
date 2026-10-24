@@ -1,3 +1,4 @@
+import {SourceMetadata} from '../sources/SourceMetadata';
 import {BibliographyEditor} from './BibliographyEditor';
 import {useContext} from 'react';
 import {ReviewDestination} from '../review/review-destination';
@@ -24,12 +25,15 @@ import { api } from '../api';
 import { entityLabels, type Entity, type EntityDetail } from '../../shared/domain';
 import { Icon } from '../components/Icon';
 import { Mention } from '../components/Mention';
-export interface EntityPanelProps {onOpenHome?: (id: string) => void;activeAttachmentId?:string;inspectorTab?:EntityTab;onInspectorTabChange?:(tab:EntityTab)=>void;inspector?: boolean;onCreatePageFromSource:(source:Entity)=>void;onOpenPage: (id: string) => void; refreshKey: string; vaultId: string; id: string; entities: Entity[]; onOpen: (id: string) => void; onClose: () => void; onUpdated: () => Promise<void>; onError: (error: unknown) => void}
-const entityTabs = [{id: 'overview', label: uiText("Overview"), icon:'page'}, {id: 'connections', label: uiText("Connections"), icon:'knowledge'}, {id: 'edit', get label(){return uiText("Edit")}, icon:'edit'}] as const;
+export interface EntityPanelProps {metadataRunId?:string;onOpenHome?: (id: string) => void;activeAttachmentId?:string;inspectorTab?:EntityTab;onInspectorTabChange?:(tab:EntityTab)=>void;inspector?: boolean;onCreatePageFromSource:(source:Entity)=>void;onOpenPage: (id: string) => void; refreshKey: string; vaultId: string; id: string; entities: Entity[]; onOpen: (id: string) => void; onClose: () => void; onUpdated: () => Promise<void>; onError: (error: unknown) => void}
+const entityTabs = [{id: 'overview', label: uiText("Overview"), icon:'page'}, {id: 'metadata', label: uiText("Metadata"), icon:'source'}, {id: 'connections', label: uiText("Connections"), icon:'knowledge'}, {id: 'edit', get label(){return uiText("Edit")}, icon:'edit'}] as const;
 type EntityTab = typeof entityTabs[number]['id'];
 export function EntityPanel(props: EntityPanelProps) {
   const {vaultId, id, entities, onOpen, onClose, onUpdated, onError, onOpenPage, refreshKey, inspector = false} = props;
   const destination=useContext(ReviewDestination),proposalId=destination?.category==='property'&&destination.originId===id?destination.proposalId:undefined;
+  const [metadataRun,setMetadataRun]=useState<string|undefined>(destination?.metadataRunId);
+  useEffect(()=>{if(destination?.category==='property'&&destination.originId===id)setMetadataRun(destination.metadataRunId);},[destination?.proposalId,destination?.metadataRunId,id]);
+  useEffect(()=>{if(props.metadataRunId){setMetadataRun(props.metadataRunId);setTab('metadata');if(inspector)props.onInspectorTabChange?.('metadata');}},[props.metadataRunId]);
   const [manage,setManage]=useState(false);
   const [entity, setEntity] = useState<EntityDetail | null>(null), [loadingError, setLoadingError] = useState('');
   const [localTab, setTab] = useState<EntityTab>(() => hasEntityDraft(vaultId, id) ? 'edit' : 'overview');
@@ -66,6 +70,7 @@ export function EntityPanel(props: EntityPanelProps) {
     document.getElementById('entity-panel')?.scrollTo({top: 0});
     document.getElementById('entity-tab-' + next)?.focus({preventScroll: true});
   }
+  useEffect(()=>{const open=(event:Event)=>{const detail=(event as CustomEvent<{vaultId?:string;sourceId?:string;fileId?:string;runId?:string}>).detail;if(detail?.vaultId===vaultId&&(detail.sourceId===id||detail.fileId&&entity?.attachments?.some(file=>file.id===detail.fileId))){setMetadataRun(detail.runId);switchTab('metadata');}};window.addEventListener('noema:open-source-metadata',open);return()=>window.removeEventListener('noema:open-source-metadata',open);},[vaultId,id,entity?.attachments,inspector,props.onInspectorTabChange]);
   const attachment = entity?.attachments?.find(file=>file.id===props.activeAttachmentId)
     ?? entity?.attachments?.find(file=>file.status==='ready'&&file.admitted===1) ?? entity?.attachments?.[0];
   const connectionCount = relationships.length + references.length + incoming.length;
@@ -76,12 +81,13 @@ export function EntityPanel(props: EntityPanelProps) {
     </li>)}</ul>{(inspector||props.onOpenHome)&&pageMentions.length>4&&<button type="button" className="entity-detail-more" aria-expanded={showAllMentions} onClick={()=>setShowAllMentions(value=>!value)}>{showAllMentions?uiText("Show fewer pages"):uiText("View all {value0} pages",{value0: pageMentions.length})}</button>}</> : <p className="entity-detail-empty">{inspector?uiText("No pages reference this source yet. Add a passage to a page while reading to connect your notes."):uiText("No pages mention this entity yet. Tag it in a page to see it here.")}</p>}
   </section>;
   const tabNavigation = <div className="entity-detail-tabs" role="tablist" aria-label={inspector ? uiText("Source details") : uiText("Entity details")}>
-        {entityTabs.map(({id: value, label,icon}) => <button type="button" key={value} id={'entity-tab-' + value} role="tab" aria-selected={tab === value} aria-controls={'entity-tabpanel-' + value} tabIndex={tab === value ? 0 : -1} onClick={() => switchTab(value)} onKeyDown={event => {
+        {entityTabs.filter(item=>item.id!=='metadata'||entity?.type==='source').map(({id: value, label,icon}) => <button type="button" key={value} id={'entity-tab-' + value} role="tab" aria-selected={tab === value} aria-controls={'entity-tabpanel-' + value} tabIndex={tab === value ? 0 : -1} onClick={() => switchTab(value)} onKeyDown={event => {
           if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
           event.preventDefault();
-          const index = entityTabs.findIndex(item => item.id === value);
-          const next = event.key === 'Home' ? 0 : event.key === 'End' ? entityTabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + entityTabs.length) % entityTabs.length;
-          switchTab(entityTabs[next]!.id);
+          const visibleTabs=entityTabs.filter(item=>item.id!=='metadata'||entity?.type==='source');
+          const index = visibleTabs.findIndex(item => item.id === value);
+          const next = event.key === 'Home' ? 0 : event.key === 'End' ? visibleTabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + visibleTabs.length) % visibleTabs.length;
+          switchTab(visibleTabs[next]!.id);
         }}><Icon name={icon}/>{inspector && value === 'edit' ? uiText("Details") : label}</button>)}
       </div>;
   const panelToolbar = <div className="panel-top entity-detail-toolbar">
@@ -98,7 +104,7 @@ export function EntityPanel(props: EntityPanelProps) {
       {!inspector && props.onOpenHome && <div className="entity-preview-navigation"><p>{pageMentions.length} {uiText(pageMentions.length===1?"page":"pages")} · {connectionCount} {uiText(connectionCount===1?"connection":"connections")}</p><button type="button" className="button" onClick={() => props.onOpenHome?.(id)}>{uiText("Open entity homepage")}<Icon name="chevron"/></button></div>}
       {!inspector && tabNavigation}
       <div id="entity-tabpanel-overview" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-overview" hidden={tab !== 'overview'} tabIndex={0}>
-      {entity.type==='source'&&<BibliographyEditor key={vaultId+':'+id+':bibliography-overview'} vaultId={vaultId} entity={entity} compact onOpenSource={onOpen} onUpdated={onUpdated}/>}
+      {entity.type==='source'&&<section className="entity-detail-section"><h3>Source metadata</h3><p>Confirmed facts and suggestions in one workspace.</p><button type="button" className="button" onClick={()=>switchTab('metadata')}>Review metadata</button></section>}
       {inspector&&<>
         <SourceInspectorStatus files={entity.attachments??[]} vaultId={vaultId} onError={onError} onChange={file=>{
           setEntity(current=>current?{...current,attachments:current.attachments?.map(item=>item.id===file.id?file:item)}:current);
@@ -113,7 +119,7 @@ export function EntityPanel(props: EntityPanelProps) {
           </dl>
           <EntityPropertyList active={tab==='overview'} definitions={schema.propertyDefinitions} key={vaultId + ':' + id + ':source'} density="source" vaultId={vaultId} entity={{...entity,propertyNames}} entities={entities} mention={mention} onSave={(input,propertyId)=>mutate(()=>api.saveProperty(vaultId,id,input,propertyId))} onRemove={propertyId=>mutate(()=>api.removeConnection(vaultId,id,'properties',propertyId))} onRefresh={()=>mutate(()=>api.entity(vaultId,id))}/>
         </section>
-        {(!!entity.propertyProposalCount||proposalId)&&<PropertyProposalReview proposalId={proposalId} key={vaultId+':'+id+':review'} vaultId={vaultId} entityId={id} entities={entities} onUpdated={async()=>{await mutate(()=>api.entity(vaultId,id));}}/>}
+        {entity.type!=='source'&&(!!entity.propertyProposalCount||proposalId)&&<PropertyProposalReview proposalId={proposalId} key={vaultId+':'+id+':review'} vaultId={vaultId} entityId={id} entities={entities} onUpdated={async()=>{await mutate(()=>api.entity(vaultId,id));}}/>}
         <nav className="source-inspector-links" aria-label={uiText("Source connections")}>
           <button type="button" onClick={()=>switchTab('connections')}><Icon name="page"/><span>{uiText("Mentioned in") + " "}{pageMentions.length} {pageMentions.length===1?uiText("page"):uiText("pages")}</span><Icon name="chevron"/></button>
           <button type="button" onClick={()=>switchTab('connections')}><Icon name="knowledge"/><span>{connectionCount} {connectionCount===1?uiText("connection"):uiText("connections")}</span><Icon name="chevron"/></button>
@@ -127,7 +133,7 @@ export function EntityPanel(props: EntityPanelProps) {
         <section className="entity-detail-section"><h3>{uiText("Properties")}<span>{entity.properties.length}</span></h3>
           <EntityPropertyList active={tab==='overview'} definitions={schema.propertyDefinitions} key={vaultId + ':' + id} density="compact" vaultId={vaultId} entity={{...entity,propertyNames}} entities={entities} mention={mention} onSave={(input,propertyId)=>mutate(()=>api.saveProperty(vaultId,id,input,propertyId))} onRemove={propertyId=>mutate(()=>api.removeConnection(vaultId,id,'properties',propertyId))} onRefresh={()=>mutate(()=>api.entity(vaultId,id))}/>
         </section>
-        {(!!entity.propertyProposalCount||proposalId)&&<PropertyProposalReview proposalId={proposalId} key={vaultId+':'+id+':review'} vaultId={vaultId} entityId={id} entities={entities} onUpdated={async()=>{await mutate(()=>api.entity(vaultId,id));}}/>}
+        {entity.type!=='source'&&(!!entity.propertyProposalCount||proposalId)&&<PropertyProposalReview proposalId={proposalId} key={vaultId+':'+id+':review'} vaultId={vaultId} entityId={id} entities={entities} onUpdated={async()=>{await mutate(()=>api.entity(vaultId,id));}}/>}
         <section className="entity-detail-section"><h3>{uiText("Related knowledge")}<span>{relationships.length} {relationships.length === 1 ? uiText("connection") : uiText("connections")}</span></h3>
           <EntityConnections items={relationships.slice(0, 4)} entities={entities} onOpen={onOpen} empty="No related knowledge yet."/>
           {!!relationships.length && <button type="button" className="entity-detail-more" onClick={() => switchTab('connections')}>{relationships.length > 4 ? uiText("View all ") + relationships.length + uiText(" connections") : uiText("View connections")}<Icon name="chevron"/></button>}
@@ -144,6 +150,7 @@ export function EntityPanel(props: EntityPanelProps) {
         </section>}
       </>}
       </div>
+      {entity.type==='source'&&<div id="entity-tabpanel-metadata" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-metadata" hidden={tab!=='metadata'} tabIndex={0}>{tab==='metadata'&&<SourceMetadata vaultId={vaultId} sourceId={id} density={inspector?'compact':'full'} proposalId={proposalId} runId={metadataRun} onUpdated={async()=>{await mutate(()=>api.entity(vaultId,id));}}/>}</div>}
       <div id="entity-tabpanel-connections" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-connections" hidden={tab !== 'connections'} tabIndex={0}>
         {inspector&&mentionsSection}
         <section className="entity-detail-section"><h3>{uiText("Relationships")}<span>{relationships.length}</span></h3>{inspector?<RelationshipEditor entity={entity} entities={entities} mention={mention} onSave={(input,relationId)=>mutate(()=>api.saveRelationship(vaultId,id,input,relationId))} onRemove={relationId=>mutate(()=>api.removeConnection(vaultId,id,'relationships',relationId))}/>:<EntityConnections items={relationships} entities={entities} onOpen={onOpen} empty="No relationships yet."/>}</section>

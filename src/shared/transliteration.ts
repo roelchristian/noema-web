@@ -3,7 +3,7 @@ import {entityMentionName,type Block,type Entity,type Segment,type TextStyle} fr
 // Script-based Latin transliteration, not pronunciation or translation. Keep these
 // explicit mappings stable across locales; no network, model or language detection.
 const letters:Record<string,string>={
-  α:'a',β:'b',γ:'g',δ:'d',ε:'e',ζ:'z',η:'ē',θ:'th',ι:'i',κ:'k',λ:'l',μ:'m',ν:'n',ξ:'x',ο:'o',π:'p',ρ:'r',σ:'s',ς:'s',τ:'t',υ:'y',φ:'ph',χ:'ch',ψ:'ps',ω:'ō',
+  α:'a',β:'b',γ:'g',δ:'d',ε:'e',ζ:'z',η:'ē',θ:'th',ι:'i',κ:'k',λ:'l',μ:'m',ν:'n',ξ:'x',ο:'o',π:'p',ρ:'r',σ:'s',ς:'s',τ:'t',υ:'u',φ:'ph',χ:'ch',ψ:'ps',ω:'ō',
   ϐ:'b',ϑ:'th',ϕ:'ph',ϖ:'p',ϰ:'k',ϱ:'r',ϲ:'s',ϳ:'j',ϝ:'w',ϛ:'st',ϟ:'q',ϙ:'q',ϡ:'s',
   а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'yo',ж:'ž',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'kh',ц:'c',ч:'č',ш:'š',щ:'šč',ъ:'ʺ',ы:'y',ь:'ʹ',э:'e',ю:'yu',я:'ya',
   є:'ye',і:'i',ї:'yi',ґ:'g',ђ:'đ',ѓ:'ǵ',ѕ:'dz',ј:'j',љ:'lj',њ:'nj',ћ:'ć',ќ:'ḱ',ў:'ŭ',џ:'dž',

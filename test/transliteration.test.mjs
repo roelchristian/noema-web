@@ -4,7 +4,7 @@ import {transliterate,blockTransliteration} from '../src/shared/transliteration.
 
 test('Greek includes polytonic vowels, breathings, subscript iota and final sigma',()=>{
   const source='Ἐν ἀρχῇ ἦν ὁ λόγος. αἱ ᾧ ῥυθμός · θεός';
-  assert.equal(transliterate(source),'En archē̂i ē̂n ho lógos. hai hō̂i rhythmós · theós');
+  assert.equal(transliterate(source),'En archē̂i ē̂n ho lógos. hai hō̂i rhuthmós · theós');
   assert.equal(transliterate(source.normalize('NFD')),transliterate(source));
   assert.equal(transliterate('Αἱ Θάλασσαι'),'Hai Thálassai');
 });
@@ -44,7 +44,7 @@ test('block projection resolves entity labels, leaves code/math intact and skips
 
 test('Greek accents remain on vowels before subscript iota, in composed and decomposed text',()=>{
   const source='ά ὰ ᾶ έ ὲ ή ὴ ῆ ί ὶ ῖ ό ὸ ύ ὺ ῦ ώ ὼ ῶ ΐ ΰ ᾄ ᾂ ᾇ';
-  const expected='á à â é è ḗ ḕ ē̂ í ì î ó ò ý ỳ ŷ ṓ ṑ ō̂ ḯ ÿ́ ái ài hâi';
+  const expected='á à â é è ḗ ḕ ē̂ í ì î ó ò ú ù û ṓ ṑ ō̂ ḯ ǘ ái ài hâi';
   assert.equal(transliterate(source),expected.normalize('NFC'));
   assert.equal(transliterate(source.normalize('NFD')),expected.normalize('NFC'));
 });
@@ -102,4 +102,12 @@ test('block transliteration omits source and bibliographic references and legacy
   assert.deepEqual(block,original);
   assert.equal(blockTransliteration({...block,content:[{text:'[ref]',code:true},{text:' мир'}]},[]),'[ref] mir');
   assert.equal(blockTransliteration({...block,content:[{text:'Жизнь',sourceReference:{id:'only-ref'}}]},[]),null);
+});
+
+
+test('Greek upsilon uses u with case, accents, diaeresis and breathing preserved',()=>{
+  const source='υ Υ ΥΨΙΛΟΝ ύ ὺ ῦ ϋ ΰ ὑ αὐ εὑ';
+  const expected='u U UPSILON ú ù û ü ǘ hu au heu';
+  assert.equal(transliterate(source),expected);
+  assert.equal(transliterate(source.normalize('NFD')),expected);
 });

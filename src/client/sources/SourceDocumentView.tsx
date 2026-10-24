@@ -8,10 +8,10 @@ export type SourceViewEntry=ReturnType<typeof sourceDocumentEntries>[number];
 export type ReaderAnnotations='clean'|'contextual'|'always';
 export function passageAnchor(fileId:string,nodeId:string){return `source-passage-${encodeURIComponent(fileId)}-${encodeURIComponent(nodeId)}`;}
 /** Presentation offsets always refer to this exact text, including CRLF originals. */
-export function sourceViewEntries(text:string,document?:SourceDocument):SourceViewEntry[]{
+export function sourceViewEntries(text:string,document?:SourceDocument,rawRanges=false):SourceViewEntry[]{
  if(!document)return [];
  const offsets:number[]=[];
- if(text.includes('\r'))for(let index=0;index<text.length;index++){offsets.push(index);if(text[index]==='\r'&&text[index+1]==='\n')index++;}
+ if(!rawRanges&&text.includes('\r'))for(let index=0;index<text.length;index++){offsets.push(index);if(text[index]==='\r'&&text[index+1]==='\n')index++;}
  const offset=(value:number)=>offsets.length?(offsets[value]??text.length):value;
  return sourceDocumentEntries(document).filter(({node})=>node.text!==undefined||node.title).map(entry=>{
   const start=offset(entry.node.range.startOffset),end=offset(entry.node.range.endOffset);
@@ -36,7 +36,7 @@ export function SourceDocumentView({article,fileId,name,text,entries,selected,an
    const locator=sourceNodeLocator(path)??`L${node.range.startLine}–${node.range.endLine}`;
    const canonicalId=canonicalNode(node.id),change=changeForNode?.(node.id);
    return <section key={node.id} id={passageAnchor(fileId,node.id)} className={'source-reader-passage'+(node.text===undefined?' is-heading':'')+(canonicalId===selected?' is-selected':'')} data-source-node={node.id} data-canonical-node={canonicalId} data-source-page={node.range.startPage}>
-    <button type="button" className="source-reader-node-address" title={canonicalId?uiText('Select original passage ')+locator:uiText('Citation mapping unavailable; switch to Original processed')} aria-label={canonicalId?uiText('Select passage ')+locator:uiText('Citation mapping unavailable; switch to Original processed')} aria-pressed={!!canonicalId&&canonicalId===selected} onClick={()=>{if(canonicalId)onSelect(canonicalId);}} aria-disabled={!canonicalId}>{annotations==='always'?locator:'·'}</button>
+    <button type="button" className="source-reader-node-address" title={canonicalId?uiText('Select original passage ')+locator:uiText('Citation mapping unavailable; switch to Original processed')} aria-label={canonicalId?uiText('Select passage ')+locator:uiText('Citation mapping unavailable; switch to Original processed')} aria-pressed={!!canonicalId&&canonicalId===selected} onClick={()=>{if(canonicalId)onSelect(canonicalId);}} aria-disabled={!canonicalId}>{locator}</button>
     {structureLabels&&<small className="source-reader-structure-label">{node.kind} · {locator}</small>}
     {change&&<button type="button" className="source-reader-change-indicator" aria-label={change.label} onClick={()=>onReview?.(change.id)}>✦</button>}
     {node.text===undefined?<Heading><SourceReaderInline text={node.title??''} footnotePrefix={fileId} startOffset={node.range.startOffset} highlights={highlights}/></Heading>:<SourceReaderText text={node.text} kind={node.kind} footnotePrefix={fileId} startOffset={node.range.startOffset} highlights={highlights}/>}

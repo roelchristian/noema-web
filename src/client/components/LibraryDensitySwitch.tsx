@@ -1,21 +1,22 @@
 import {t as uiText} from '../i18n';
 import {useEffect, useLayoutEffect, useRef, useState} from 'react';
-import {readLibraryPresentation,saveLibraryPresentation} from '../state/library-view-state';
+import {readLibraryPresentation,saveLibraryPresentation,setLibraryViewState} from '../state/library-view-state';
 import {Icon} from './Icon';
 
-export type ViewMode = 'list' | 'compact' | 'grid';
-const modes = [{id: 'list', label: uiText("List")}, {id: 'compact', label: uiText("Compact")}, {id: 'grid', label: uiText("Grid")}] as const;
-function readMode(scope: string, fallbackScope: string | undefined, defaultMode: ViewMode): ViewMode {
+export type LibraryDensity = 'standard' | 'compact' | 'comfortable';
+const densities = [{id: 'compact', label: uiText("Compact spacing"), icon: 'view-compact'}, {id: 'standard', label: uiText("Regular spacing"), icon: 'view-list'}, {id: 'comfortable', label: uiText("Comfortable spacing"), icon: 'view-comfortable'}] as const;
+function readMode(scope: string, fallbackScope: string | undefined, defaultMode: LibraryDensity): LibraryDensity {
   try {
     const [vaultId,destination]=JSON.parse(scope) as [string,string];
-    const own=readLibraryPresentation(vaultId,destination,false).layout;
-    const exact=localStorage.getItem('noema-view-mode/' + scope);
-    const inherited=readLibraryPresentation(vaultId,destination).layout;
-    const stored = own ?? exact ?? inherited ?? (fallbackScope ? localStorage.getItem('noema-view-mode/' + fallbackScope) : null);
-    return stored === 'list' || stored === 'compact' || stored === 'grid' ? stored : defaultMode;
+    const own=readLibraryPresentation(vaultId,destination,false).density;
+    const exact=window.localStorage.getItem('noema-view-mode/' + scope);
+    const inherited=readLibraryPresentation(vaultId,destination).density;
+    const fallback=fallbackScope ? window.localStorage.getItem('noema-view-mode/' + fallbackScope) : null;
+    const stored=own ?? exact ?? inherited ?? fallback;
+    return stored === 'compact' || stored === 'comfortable' ? stored : stored ? 'standard' : defaultMode;
   } catch { return defaultMode; }
 }
-export function useViewMode(scope: string, fallbackScope?: string, defaultMode: ViewMode = 'list') {
+export function useLibraryDensity(scope: string, fallbackScope?: string, defaultMode: LibraryDensity = 'standard') {
   const [preference, setPreference] = useState(() => ({scope, mode: readMode(scope, fallbackScope, defaultMode)}));
   const mode = preference.scope === scope ? preference.mode : readMode(scope, fallbackScope, defaultMode);
   const root = useRef<HTMLElement>(null);
@@ -66,7 +67,7 @@ export function useViewMode(scope: string, fallbackScope?: string, defaultMode: 
     const mode = readMode(scope, fallbackScope, defaultMode);
     setPreference(previous => previous.scope === scope && previous.mode === mode ? previous : {scope, mode});
   }, [scope, fallbackScope, defaultMode]);
-  function change(next: ViewMode) {
+  function change(next: LibraryDensity) {
     if(next===mode)return;
     let positions:Map<HTMLElement,DOMRect>|null=null;
     if(root.current && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -80,11 +81,11 @@ export function useViewMode(scope: string, fallbackScope?: string, defaultMode: 
     // Capture the current visual position before cancelling an interrupted transition.
     stop(); before.current=positions;
     setPreference({scope, mode: next});
-    try { const [vaultId,destination]=JSON.parse(scope) as [string,string]; saveLibraryPresentation(vaultId,destination,{layout:next});localStorage.setItem('noema-view-mode/' + scope, next); } catch { /* Layout remains usable without storage. */ }
+    try { const [vaultId,destination]=JSON.parse(scope) as [string,string]; setLibraryViewState(vaultId,destination,{density:next});saveLibraryPresentation(vaultId,destination,{layout:'list',density:next});window.localStorage.setItem('noema-view-mode/' + scope, next==='standard'?'list':next); } catch { /* Layout remains usable without storage. */ }
   }
   return [mode, change, root] as const;
 }
-export function ViewModeSwitch({value, onChange, disabled = false}: {value: ViewMode; onChange: (mode: ViewMode) => void; disabled?: boolean}) {
+export function LibraryDensitySwitch({value, onChange, disabled = false}: {value: LibraryDensity; onChange: (mode: LibraryDensity) => void; disabled?: boolean}) {
   const root=useRef<HTMLDivElement>(null), indicator=useRef<HTMLSpanElement>(null);
   useLayoutEffect(() => {
     const control=root.current, pill=indicator.current;
@@ -105,5 +106,5 @@ export function ViewModeSwitch({value, onChange, disabled = false}: {value: View
     control.querySelectorAll('button').forEach(button=>observer.observe(button));
     return()=>{cancelAnimationFrame(frame);observer.disconnect();};
   },[value]);
-  return <div ref={root} className="view-mode-switch" role="group" aria-label={uiText("View layout")}><span ref={indicator} className="view-mode-indicator" aria-hidden="true"/>{modes.map(mode => <button key={mode.id} disabled={disabled} type="button" title={mode.label + uiText(" view")} aria-label={mode.label + uiText(" view")} aria-pressed={value === mode.id} onClick={() => onChange(mode.id)}><Icon name={'view-' + mode.id}/><span>{mode.label}</span></button>)}</div>;
+  return <div ref={root} className="view-mode-switch" role="group" aria-label={uiText("List density")}><span ref={indicator} className="view-mode-indicator" aria-hidden="true"/>{densities.map(mode => <button key={mode.id} disabled={disabled} type="button" title={mode.label} aria-label={mode.label} aria-pressed={value === mode.id} onClick={() => onChange(mode.id)}><Icon name={mode.icon}/></button>)}</div>;
 }

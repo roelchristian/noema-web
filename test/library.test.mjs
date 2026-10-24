@@ -64,14 +64,22 @@ test('Library and sidebar folder rows are draggable while collections remain cur
   assert.match(sidebar, /draggable="false"[^>]*>[\s\S]*?Open collection: Theme/);
 });
 
-test('Library omits routine status and combines factual AI history in its one label',()=>{
+test('Library shows independent AI history icons and omits unrecorded contributions',()=>{
   assert.doesNotMatch(render(),/page-ai-library-status|>Regular</);
   const html=render({pages:[{id:'draft',title:'Combined',updated_at:'2026-10-17',creationMethod:'manual_creation',aiStatus:'ai_assisted',aiReviewAccepted:true,containsAIExplanations:true}]});
   assert.match(html,/title="Created in Noema · AI writing edits accepted · Contains AI explanations"/);
-  assert.match(html,/>AI writing edits accepted<\/span>/);
+  assert.match(html,/role="img" aria-label="AI writing edits accepted"/);
+  assert.match(html,/role="img" aria-label="Contains AI explanations"/);
+  assert.equal((html.match(/class="page-ai-history-icon"/g)||[]).length,2);
   const generated=render({pages:[{id:'draft',title:'Generated',updated_at:'2026-10-17',aiStatus:'ai_generated_edited',aiReviewAccepted:true,containsAIExplanations:true}]});
   assert.match(generated,/AI-generated content · AI writing edits accepted · Contains AI explanations · Edited after generation/);
-  assert.match(generated,/>AI-generated<\/span>/);
+  for(const label of ['AI-generated content','AI writing edits accepted','Contains AI explanations','Edited after generation'])assert.ok(generated.includes('role="img" aria-label="'+label+'"'));
+  assert.equal((generated.match(/class="page-ai-history-icon"/g)||[]).length,4);
+  const unedited=render({pages:[{id:'draft',title:'Unedited',updated_at:'2026-10-17',aiStatus:'ai_generated'}]});
+  assert.equal((unedited.match(/class="page-ai-history-icon"/g)||[]).length,1);
+  assert.doesNotMatch(unedited,/aria-label="Edited after generation"/);
+  const manual=render({pages:[{id:'draft',title:'Manual',updated_at:'2026-10-17',creationMethod:'manual_creation',aiStatus:'regular',editedAfterGeneration:true}]});
+  assert.doesNotMatch(manual,/page-ai-library-status/);
   assert.doesNotMatch(generated,/AI-generated, edited/);
 });
 
@@ -121,17 +129,19 @@ test('Library makes all-pages scope and folder grouping explicit without changin
   const current=render({vaultId});
   assert.ok(current.indexOf('data-library-row="page:draft"')<current.indexOf('data-library-row="folder:desk"'));
   assert.match(current,/Group folders first/);
-  assert.match(current,/2 items · Pages root · 2 pages in vault/);
+  assert.match(current,/2 items · Pages root/);
   setLibraryViewState(vaultId,destination,{scope:'all'});
   const all=render({vaultId});
   assert.match(all,/data-library-row="page:filed"/);
   assert.doesNotMatch(all,/data-library-row="folder:desk"/);
-  assert.match(all,/class="library-item-extra">Desk/);
+  assert.doesNotMatch(all,/class="library-item-extra"/);
+  setLibraryViewState(vaultId,destination,{columns:'location'});
+  assert.match(render({vaultId}),/class="library-item-extra">Desk/);
   assert.match(all,/Text in this scope/);
   clearLibraryViewStates(vaultId);
 });
 
-test('Grid cover treatment only reserves space for a genuine image', async()=>{
+test('Preview cover treatment only reserves space for a genuine image', async()=>{
   const {PageCover}=await import('../src/client/components/PageCover.tsx');
   assert.equal(renderToStaticMarkup(createElement(PageCover,{vaultId:'test',icon:'page'})),'');
   assert.match(renderToStaticMarkup(createElement(PageCover,{vaultId:'test',imageId:'cover'})),/loading="lazy"/);
@@ -141,8 +151,8 @@ test('Presentation persistence inherits per vault while selections and search re
   const {setupDOM}=await import('./helpers/dom.mjs');setupDOM(t);
   const {saveLibraryPresentation,readLibraryPresentation,getLibraryViewState,setLibraryViewState,clearLibraryViewStates}=await import('../src/client/state/library-view-state.ts');
   const root=JSON.stringify(['organization','','']),folder=JSON.stringify(['organization','','new']);
-  saveLibraryPresentation('preferences',root,{layout:'compact',sort:'title-desc',groupFolders:false,columns:'location',density:'comfortable'});
-  assert.deepEqual(readLibraryPresentation('preferences',folder),{layout:'compact',sort:'title-desc',groupFolders:false,columns:'location',density:'comfortable'});
+  saveLibraryPresentation('preferences',root,{layout:'list',sort:'title-desc',groupFolders:false,columns:'location',density:'compact'});
+  assert.deepEqual(readLibraryPresentation('preferences',folder),{layout:'list',sort:'title-desc',groupFolders:false,columns:'location',density:'compact'});
   assert.deepEqual(readLibraryPresentation('another-vault',folder),{});
   setLibraryViewState('preferences','knowledge',{grouping:'all'});
   assert.equal(readLibraryPresentation('preferences','knowledge').grouping,'all');
@@ -151,4 +161,119 @@ test('Presentation persistence inherits per vault while selections and search re
   clearLibraryViewStates('preferences');
   const restored=getLibraryViewState('preferences',folder);
   assert.equal(restored.sort,'title-asc');assert.equal(restored.query,'');assert.deepEqual(restored.selectedIds,[]);assert.equal(restored.scroll.top,0);
+});
+
+test('legacy library layouts migrate to list density without changing other preferences',async t=>{
+  const {setupDOM}=await import('./helpers/dom.mjs');setupDOM(t);
+  const {readLibraryPresentation}=await import('../src/client/state/library-view-state.ts');
+  const root=JSON.stringify(['organization','','']),folder=JSON.stringify(['organization','','child']);
+  const key=destination=>'noema-library-presentation/'+JSON.stringify(['migration',destination]);
+  window.localStorage.setItem(key('organization'),JSON.stringify({layout:'compact',sort:'title-asc',columns:'location',density:'comfortable'}));
+  assert.deepEqual(readLibraryPresentation('migration',folder),{layout:'list',density:'compact',sort:'title-asc',columns:'location'});
+  window.localStorage.setItem(key(folder),JSON.stringify({layout:'grid',density:'comfortable'}));
+  assert.deepEqual(readLibraryPresentation('migration',folder),{layout:'list',density:'standard',sort:'title-asc',columns:'location'});
+  window.localStorage.setItem(key(root),JSON.stringify({layout:'list',density:'compact'}));
+  assert.equal(readLibraryPresentation('migration',root).density,'compact');
+});
+
+test('list density controls are icon-only, persist compact spacing, and survive sorting and navigation',async t=>{
+  const {setupDOM}=await import('./helpers/dom.mjs'),env=setupDOM(t);
+  const {act}=await import('react'),{createRoot}=await import('react-dom/client');
+  const {LibraryDensitySwitch,useLibraryDensity}=await import('../src/client/components/LibraryDensitySwitch.tsx');
+  const {useLibraryViewState,readLibraryPresentation}=await import('../src/client/state/library-view-state.ts');
+  const previousObserver=Object.getOwnPropertyDescriptor(globalThis,'ResizeObserver');
+  Object.defineProperty(globalThis,'ResizeObserver',{configurable:true,value:class {observe(){}disconnect(){}}});
+  env.defer(()=>{if(previousObserver)Object.defineProperty(globalThis,'ResizeObserver',previousObserver);else delete globalThis.ResizeObserver;});
+  const vaultId='density-controls',destination=JSON.stringify(['organization','','']);
+  function Library({destination}) {
+    const [density,setDensity,ref]=useLibraryDensity(JSON.stringify([vaultId,destination]),'library');
+    const [state,setState]=useLibraryViewState(vaultId,destination);
+    return createElement('section',{ref,'data-layout':'list','data-density':density},
+      createElement(LibraryDensitySwitch,{value:density,onChange:setDensity}),
+      createElement('button',{'aria-label':'Sort',onClick:()=>setState(previous=>({...previous,sort:'title-asc'}))},state.sort));
+  }
+  window.localStorage.setItem('noema-view-mode/'+JSON.stringify([vaultId,destination]),'grid');
+  const root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+  const mount=async destination=>act(async()=>root.render(createElement(Library,{destination})));
+  await mount(destination);
+  assert.equal(document.querySelector('section').dataset.layout,'list');
+  assert.equal(document.querySelector('section').dataset.density,'standard');
+  const buttons=[...document.querySelectorAll('[aria-label="List density"] button')];
+  assert.equal(buttons.length,3);assert.ok(buttons.every(button=>button.textContent===''&&button.querySelector('svg')));
+  assert.notEqual(buttons[0].querySelector('path').getAttribute('d'),buttons[1].querySelector('path').getAttribute('d'));
+  await act(async()=>document.querySelector('[aria-label="Compact spacing"]').click());
+  assert.equal(document.querySelector('section').dataset.density,'compact');
+  await act(async()=>document.querySelector('[aria-label="Sort"]').click());
+  assert.equal(readLibraryPresentation(vaultId,destination).density,'compact');
+  await mount(JSON.stringify(['organization','','new-folder']));
+  assert.equal(document.querySelector('section').dataset.density,'compact');
+  await act(async()=>document.querySelector('[aria-label="Regular spacing"]').click());
+  assert.equal(document.querySelector('section').dataset.layout,'list');
+  assert.equal(document.querySelector('section').dataset.density,'standard');
+});
+
+test('Reading Notes uses the canonical list and collections lead the unified table',()=>{
+  const collections=[{id:'reading',name:'Reading Notes',description:'Books and essays'}];
+  const root=render({data:{...data,collections}});
+  assert.match(root,/data-library-row="collection:reading"/);assert.match(root,/Reading Notes/);
+  assert.doesNotMatch(root,/organization-container-grid|organization-container-card|organization-section-toggle/);
+  assert.ok(root.indexOf('data-library-row="collection:reading"')<root.indexOf('data-library-row="folder:desk"'));
+  assert.match(root,/Open collection: Reading Notes/);
+  const collectionsOnly=render({data:{...data,collections,folders:[],favourites:[]},pages:[]});
+  assert.match(collectionsOnly,/data-library-row="collection:reading"/);
+  assert.doesNotMatch(collectionsOnly,/Nothing here yet/);
+  assert.match(root,/data-layout="list"/);
+  assert.doesNotMatch(root,/Grid view|View layout|Row spacing/);
+  const reading=render({data:{...data,collections},context:{collection:'reading',folder:''}});
+  assert.match(reading,/data-layout="list"/);assert.match(reading,/data-density="comfortable"/);
+});
+
+test('View options contains secondary settings, preserves density changes, and restores focus on Escape',async t=>{
+  const {setupDOM}=await import('./helpers/dom.mjs'),env=setupDOM(t);
+  const {act,useState}=await import('react'),{createRoot}=await import('react-dom/client');
+  const {LibraryToolbar}=await import('../src/client/components/LibraryToolbar.tsx');
+  const panels=new WeakSet(),prototype=env.dom.window.HTMLElement.prototype,originalMatches=prototype.matches;
+  t.mock.method(prototype,'matches',function(selector){return selector===':popover-open'?panels.has(this):originalMatches.call(this,selector);});
+  prototype.showPopover=function(){panels.add(this);};prototype.hidePopover=function(){panels.delete(this);};
+  t.mock.method(prototype,'getBoundingClientRect',()=>({left:200,right:238,top:100,bottom:138,width:38,height:38}));
+  const previousObserver=Object.getOwnPropertyDescriptor(globalThis,'ResizeObserver');
+  Object.defineProperty(globalThis,'ResizeObserver',{configurable:true,value:class {observe(){}disconnect(){}}});
+  env.defer(()=>{if(previousObserver)Object.defineProperty(globalThis,'ResizeObserver',previousObserver);else delete globalThis.ResizeObserver;});
+  function Library(){
+    const [density,setDensity]=useState('standard'),[group,setGroup]=useState(true);
+    return createElement(LibraryToolbar,{density,onDensity:setDensity,group,onGroup:setGroup,sort:'modified-desc',onSort:noop,filter:createElement('input',{'aria-label':'Filter'})},createElement('label',null,'Scope',createElement('select',{'aria-label':'Scope'},createElement('option',null,'Current level'))));
+  }
+  const root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+  await act(async()=>root.render(createElement(Library)));
+  const trigger=document.querySelector('[aria-label="View options"]'),panel=document.querySelector('.library-view-options');
+  assert.equal(trigger.getAttribute('aria-expanded'),'false');assert.ok(panel.contains(document.querySelector('[aria-label="Scope"]')));
+  assert.ok(panel.contains(document.querySelector('[aria-label="List density"]')));
+  assert.equal(document.querySelector('[aria-label="Sort library"]').closest('.library-view-options'),null);
+  await act(async()=>trigger.click());assert.equal(trigger.getAttribute('aria-expanded'),'true');
+  await act(async()=>document.querySelector('[aria-label="Comfortable spacing"]').click());
+  assert.equal(document.querySelector('[aria-label="Comfortable spacing"]').getAttribute('aria-pressed'),'true');
+  await act(async()=>panel.dispatchEvent(new env.dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})));
+  assert.equal(trigger.getAttribute('aria-expanded'),'false');assert.equal(document.activeElement,trigger);
+});
+
+test('quick preview shows a page cover and opening text only after explicitly opening it',async t=>{
+  const {setupDOM}=await import('./helpers/dom.mjs'),env=setupDOM(t);
+  const {act,useRef}=await import('react'),{createRoot}=await import('react-dom/client');
+  const {api}=await import('../src/client/api.ts'),{useLibraryQuickPreview}=await import('../src/client/components/LibraryQuickPreview.tsx');
+  env.dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
+  env.dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
+  let previewReads=0;
+  t.mock.method(api,'pagePreview',async()=>{previewReads++;return {id:'covered',title:'Covered note',revision:1,updated_at:'',blocks:[{id:'opening',type:'paragraph',content:[{text:'Opening text stays available.'}]}]};});
+  t.mock.method(api,'pageEntityAssociations',async()=>[]);
+  function Library(){
+    const ref=useRef(null),item={kind:'page',id:'covered',name:'Covered note'};
+    const {showPreview,quickPreview}=useLibraryQuickPreview(ref,{vaultId:'preview',items:[item],pages:[{id:'covered',title:'Covered note',updated_at:'',featuredImageId:'cover-image'}],entities:[],onOpen:noop});
+    return createElement('section',{ref},createElement('button',{onClick:()=>showPreview(item)},'Preview'),quickPreview);
+  }
+  const root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+  await act(async()=>root.render(createElement(Library)));
+  assert.equal(previewReads,0);assert.equal(document.querySelector('img'),null);
+  await act(async()=>document.querySelector('button').click());
+  assert.equal(previewReads,1);assert.equal(document.querySelector('dialog img').getAttribute('src'),'/api/images/cover-image?vault=preview');
+  assert.match(document.querySelector('dialog').textContent,/Opening text stays available/);
 });

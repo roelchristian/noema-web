@@ -17,7 +17,7 @@ export interface LibraryViewState {
   entityType?: string;
 }
 export type LibraryViewUpdate = Partial<LibraryViewState> | ((previous: LibraryViewState) => LibraryViewState | Partial<LibraryViewState>);
-type Presentation = Pick<LibraryViewState,'sort'|'groupFolders'|'grouping'|'columns'|'density'> & {layout?:'list'|'compact'|'grid'};
+type Presentation = Pick<LibraryViewState,'sort'|'groupFolders'|'grouping'|'columns'|'density'> & {layout?:'list'};
 function presentationFamily(destination:string):string {
   try {const parsed=JSON.parse(destination);if(Array.isArray(parsed)&&parsed[0]==='organization')return 'organization';}catch{/* Named destination. */}
   return destination;
@@ -30,8 +30,13 @@ function validPresentation(value:unknown):Partial<Presentation> {
   if(input.grouping==='all'||input.grouping==='folders')result.grouping=input.grouping;
   if(typeof input.groupFolders==='boolean')result.groupFolders=input.groupFolders;
   if(['basic','location','collections'].includes(String(input.columns)))result.columns=String(input.columns);
-  if(['standard','comfortable'].includes(String(input.density)))result.density=String(input.density);
-  if(input.layout==='list'||input.layout==='compact'||input.layout==='grid')result.layout=input.layout;
+  if(input.density==='compact'||input.density==='standard'||input.density==='comfortable')result.density=input.density;
+  if(input.layout==='list'||input.layout==='compact'||input.layout==='grid') {
+    result.layout='list';
+    if(input.layout==='compact')result.density='compact';
+    else if(input.layout==='grid')result.density='standard';
+    else result.density??='standard';
+  }
   return result;
 }
 export function readLibraryPresentation(vaultId:string,destination:string,inherit=true):Partial<Presentation> {

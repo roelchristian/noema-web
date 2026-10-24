@@ -3,6 +3,7 @@ import type {Entity, Organization, PagePreview, PageSummary} from '../../shared/
 import {projectPageText} from '../../shared/page-text';
 import {api} from '../api';
 import {Modal, ModalHeader} from './Modal';
+import {PageCover} from './PageCover';
 
 export interface LibraryPreviewItem {kind:string;id:string;name:string;updatedAt?:string}
 export function useLibraryQuickPreview(root:RefObject<HTMLElement|null>, {vaultId,items,pages,entities,organization,onOpen}: {
@@ -55,6 +56,7 @@ export function useLibraryQuickPreview(root:RefObject<HTMLElement|null>, {vaultI
   const content=item?<Modal titleId={titleId} className="library-quick-preview" onClose={close}>
     <ModalHeader titleId={titleId}>{item.name}</ModalHeader>
     <div className="library-preview-navigation"><button className="button" disabled={index<=0} onClick={()=>setSelected(eligible[index-1].kind+':'+eligible[index-1].id)}>Previous</button><span>{index+1} of {eligible.length}</span><button className="button" disabled={index>=eligible.length-1} onClick={()=>setSelected(eligible[index+1].kind+':'+eligible[index+1].id)}>Next</button></div>
+    {item.kind==='page'&&<PageCover vaultId={vaultId} imageId={pages.find(page=>page.id===item.id)?.featuredImageId}/>}
     <dl className="library-preview-metadata"><dt>Type</dt><dd>{entity?.type??'Page'}</dd><dt>Modified</dt><dd>{item.updatedAt?new Date(item.updatedAt).toLocaleString():'Unavailable'}</dd>{organization&&<><dt>Location</dt><dd>{organization.folders.find(folder=>folder.id===location?.folder_id)?.name??'Unfiled'}</dd><dt>Collections</dt><dd>{collections.join(', ')||'None'}</dd></>}</dl>
     {item.kind==='page'&&!current?.page&&!current?.error&&<p role="status">Loading preview…</p>}
     {current?.error&&<p role="status">{current.error}</p>}

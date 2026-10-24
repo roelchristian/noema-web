@@ -1,4 +1,3 @@
-import {entityIconName} from '../../shared/entity-icons';
 import {getLocale} from '../i18n';
 import {t as uiText} from '../i18n';
 import {useState} from 'react';
@@ -8,10 +7,9 @@ import {useSemanticSearch} from '../search/useSemanticSearch';
 import {combinedMatches} from '../search/matches';
 import {citationLocation} from '../../shared/citations';
 import type {SourceReference} from '../../shared/domain';
-import {PageCover} from '../components/PageCover';
 import {useLibraryQuickPreview} from '../components/LibraryQuickPreview';
 import {LibraryToolbar} from '../components/LibraryToolbar';
-import {useViewMode} from '../components/ViewModeSwitch';
+import {useLibraryDensity} from '../components/LibraryDensitySwitch';
 import { entityLabels, entityTypes, type Entity, type EntityType } from '../../shared/domain';
 import { Icon } from '../components/Icon';
 import { Select } from '../components/Select';
@@ -19,13 +17,11 @@ import { HighlightedText } from '../search/HighlightedText';
 import { useEntitySchema } from './useEntitySchema';
 import { useLibraryViewState } from '../state/library-view-state';
 import { captureLibraryView } from '../state/use-library-scroll';
-
 function sourceFileSize(bytes: number) {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   const index = bytes > 0 ? Math.min(Math.floor(Math.log10(bytes) / 3), units.length - 1) : 0;
   return new Intl.NumberFormat(getLocale(), {maximumFractionDigits: index ? 1 : 0}).format(bytes / 1000 ** index) + ' ' + units[index];
 }
-
 export function KnowledgeLibrary({vaultId, entities, onOpen, onOpenPassage, onCreate, onCreatePageFromSource, onUpdated}: {onUpdated:()=>Promise<void>; vaultId: string; entities: Entity[]; onOpen: (id: string) => void; onOpenPassage:(reference:SourceReference,trigger?:HTMLElement)=>void; onCreate: () => void; onCreatePageFromSource:(source:Entity)=>void}) {
   const [browser, setBrowser] = useLibraryViewState(vaultId, 'knowledge');
   const view = browser.grouping === 'all' ? 'all' : 'folders';
@@ -34,7 +30,7 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onOpenPassage, onCr
   const [archived,setArchived]=useState(false),[manageSource,setManageSource]=useState<Entity|null>(null);
   const destination = JSON.stringify(['knowledge', type]);
   const [viewState, setViewState] = useLibraryViewState(vaultId, destination);
-  const [viewMode, setViewMode, libraryRef] = useViewMode(JSON.stringify([vaultId, destination]), 'knowledge');
+  const [density, setDensity, libraryRef] = useLibraryDensity(JSON.stringify([vaultId, destination]), 'knowledge');
   const {schema, error} = useEntitySchema(vaultId);
   const search = viewState.query, sort = viewState.sort;
   const setSearch = (query: string) => setViewState({query});
@@ -67,35 +63,32 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onOpenPassage, onCr
     captureLibraryView();
     setBrowser({entityType: nextType});
   }
-  return <section ref={libraryRef} className="organization-library organization-browser knowledge-library" data-layout={viewMode} data-library-vault={vaultId} data-library-destination={destination}>
-    <div className="organization-heading pages-home-heading"><div className="library-heading-row"><h1 className="page-heading">{sourcesOnly?uiText("Sources"):uiText("Knowledge entities")}</h1></div><div className="pages-home-actions library-heading-actions"><LibraryToolbar sort={sort} onSort={setSort} mode={viewMode} onMode={setViewMode} filter={<div className="library-view-filter"><div className="library-view-filter-input"><Icon name="search"/><input type="search" placeholder={uiText("Filter this view…")} aria-label={uiText("Filter {value0} by name, alias, or source text",{value0: filterScope})} value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => {if (event.key === 'Escape' && search) {event.preventDefault(); setSearch('');}}}/>{search && <button type="button" aria-label={uiText("Clear entity filter")} onClick={() => setSearch('')}><Icon name="close"/></button>}</div></div>}/><Select aria-label="Search matching" value={viewState.searchMode??'local'} onChange={event=>setViewState({searchMode:event.target.value})}><option value="local">Text in this scope</option>{!archived&&<option value="related">Text + related in this scope</option>}</Select>
-      <Select aria-label={sourcesOnly?uiText("Source status"):uiText("Entity status")} value={archived?'archived':'active'} onChange={event=>setArchived(event.target.value==='archived')}><option value="active">{sourcesOnly?uiText("Active sources"):uiText("Active entities")}</option><option value="archived">{sourcesOnly?uiText("Archived sources"):uiText("Archived entities")}</option></Select>
-      <button className="button primary" onClick={onCreate}><Icon name="plus"/>{sourcesOnly?uiText("New source"):uiText("New entity")}</button>
-    </div></div>
+  return <section ref={libraryRef} className="organization-library organization-browser knowledge-library" data-layout="list" data-density={density} data-library-vault={vaultId} data-library-destination={destination}>
+    <div className="organization-heading pages-home-heading"><div className="library-heading-row"><h1 className="page-heading">{sourcesOnly?uiText("Sources"):uiText("Knowledge entities")}</h1></div><div className="pages-home-actions library-heading-actions"><button className="button primary" onClick={onCreate}><Icon name="plus"/>{sourcesOnly?uiText("New source"):uiText("New entity")}</button></div></div>
     {error && <p role="alert">{error}</p>}{textSearch.error&&<p role="status">{uiText("Source text search unavailable. Name matches remain available.")}</p>}{(textSearch.loading||semantic.loading)&&<p role="status">{uiText("Searching source passages…")}</p>}
     <div className="organization-content">
-      <div className="organization-section-title knowledge-browser-controls" hidden={sourcesOnly}>
-        <Select aria-label={uiText("Entity grouping")} value={view} onChange={event => {captureLibraryView(); setBrowser({grouping: event.target.value, entityType: ''});}}><option value="folders">{uiText("Browse by type")}</option><option value="all">{uiText("Show all")}</option></Select>
-      </div>
-      <p className="organization-hint" role="status">{query ? uiText("{value0} found",{value0: countLabel(matches.length)}) : countLabel(scoped.length)}</p>
+      <LibraryToolbar sort={sort} onSort={setSort} density={density} onDensity={setDensity} filter={<div className="library-view-filter"><div className="library-view-filter-input"><Icon name="search"/><input type="search" placeholder={uiText("Filter this view…")} aria-label={uiText("Filter {value0} by name, alias, or source text",{value0: filterScope})} value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => {if (event.key === 'Escape' && search) {event.preventDefault(); setSearch('');}}}/>{search && <button type="button" aria-label={uiText("Clear entity filter")} onClick={() => setSearch('')}><Icon name="close"/></button>}</div></div>}>
+        {!sourcesOnly && <label>{uiText("Grouping")}<Select aria-label={uiText("Entity grouping")} value={view} onChange={event => {captureLibraryView(); setBrowser({grouping: event.target.value, entityType: ''});}}><option value="folders">{uiText("Browse by type")}</option><option value="all">{uiText("Show all")}</option></Select></label>}
+        <label>{uiText("Status")}<Select aria-label={sourcesOnly?uiText("Source status"):uiText("Entity status")} value={archived?'archived':'active'} onChange={event=>setArchived(event.target.value==='archived')}><option value="active">{sourcesOnly?uiText("Active sources"):uiText("Active entities")}</option><option value="archived">{sourcesOnly?uiText("Archived sources"):uiText("Archived entities")}</option></Select></label>
+        <label>{uiText("Search matching")}<Select aria-label="Search matching" value={viewState.searchMode??'local'} onChange={event=>setViewState({searchMode:event.target.value})}><option value="local">Text in this scope</option>{!archived&&<option value="related">Text + related in this scope</option>}</Select></label>
+      </LibraryToolbar>
+      <p className="library-scope" role="status">{query ? uiText("{value0} found",{value0: countLabel(matches.length)}) : countLabel(scoped.length)}</p>
       {!!folders.length || !!filtered.length ? <div className="organization-items">
-        <div className="organization-list-head knowledge-list-head" role="group" aria-label={uiText("Sort entities")}>
+        {density !== 'compact' && <div className="organization-list-head knowledge-list-head" aria-label={uiText("Entity columns")}>
           <span aria-hidden="true"/>
-          <button className={sort.startsWith('title-') ? 'is-sorted' : ''} onClick={() => setSort(sort === 'title-asc' ? 'title-desc' : 'title-asc')} aria-label={uiText("Sort by name, {value0}",{value0: sort === 'title-asc' ? 'Z to A' : 'A to Z'})}>{uiText("Name")}{sort.startsWith('title-') && <span className={'sort-direction ' + (sort === 'title-asc' ? 'ascending' : '')}><Icon name="chevron"/></span>}</button>
-          <button className={sort.startsWith('modified-') ? 'is-sorted' : ''} onClick={() => setSort(sort === 'modified-desc' ? 'modified-asc' : 'modified-desc')} aria-label={uiText("Sort by last modified, {value0}",{value0: sort === 'modified-desc' ? 'oldest first' : 'newest first'})}>{uiText("Last modified")}{sort.startsWith('modified-') && <span className={'sort-direction ' + (sort === 'modified-asc' ? 'ascending' : '')}><Icon name="chevron"/></span>}</button>
+          <span>{uiText("Name")}</span>
+          <span>{uiText("Modified")}</span>
           <span aria-hidden="true"/>
-        </div>
+        </div>}
         {folders.map(folder => <article className="organization-item" key={folder.id} data-library-row={'entity-type:' + folder.type}><div className="organization-item-row organization-page-row knowledge-entity-row">
-          {viewMode==='grid' && <PageCover vaultId={vaultId} icon="folder"/>}
           <span className="organization-item-icon"><Icon name="folder"/></span>
           <button className="organization-item-name" data-library-focus onClick={() => navigate(folder.type)} aria-label={uiText("Open {value0}: {value1}",{value0: folder.name,value1: countLabel(folder.count)})}><span className="organization-page-title">{folder.name}<span className="knowledge-row-detail">{countLabel(folder.count)}</span></span><small aria-hidden="true">—</small></button>
           <Icon name="chevron"/>
         </div></article>)}
         {filtered.map(entity => <article className="organization-item" key={entity.id} data-library-row={'entity:' + entity.id}><div className="organization-item-row organization-page-row knowledge-entity-row">
-          {viewMode==='grid' && <PageCover vaultId={vaultId} icon={entityIconName(entity)}/>}
           <span className="organization-item-icon"><Icon name={entity.type} entity={entity}/></span>
           <button className="organization-item-name" data-library-focus title={entity.name} onClick={event => openMatch(entity.id,event.currentTarget)}>
-            <span className="organization-page-title"><HighlightedText text={entity.name} query={search}/><span className="knowledge-row-detail">{[entityLabels[entity.type], ...(entity.type==='source'?(entity.archived_at?['Archived']:entity.sourceStatus==='queued'||entity.sourceStatus==='processing'?['Processing']:entity.inactive?['Inactive']:entity.sourceEnrichmentStatus==='pending'||entity.sourceEnrichmentStatus==='running'?['Processed · Enriching with AI']:entity.sourceEnrichmentStatus==='failed'?['Processed · AI enrichment failed']:['Processed']):[]), ...entity.subtypes.map(id => schema.subtypes.find(item => item.id === id)?.name).filter(Boolean)].join(' / ')}{viewMode!=='grid'&&entity.type==='source'&&typeof entity.sourceSize==='number'&&Number.isFinite(entity.sourceSize)&&entity.sourceSize>=0&&<> · {sourceFileSize(entity.sourceSize)}</>}</span></span>
+            <span className="organization-page-title"><HighlightedText text={entity.name} query={search}/><span className="knowledge-row-detail">{[entityLabels[entity.type], ...(entity.type==='source'?(entity.archived_at?['Archived']:entity.sourceStatus==='queued'||entity.sourceStatus==='processing'?['Processing']:entity.inactive?['Inactive']:entity.sourceEnrichmentStatus==='pending'||entity.sourceEnrichmentStatus==='running'?['Processed · Enriching with AI']:entity.sourceEnrichmentStatus==='failed'?['Processed · AI enrichment failed']:['Processed']):[]), ...entity.subtypes.map(id => schema.subtypes.find(item => item.id === id)?.name).filter(Boolean)].join(' / ')}{entity.type==='source'&&typeof entity.sourceSize==='number'&&Number.isFinite(entity.sourceSize)&&entity.sourceSize>=0&&<> · {sourceFileSize(entity.sourceSize)}</>}</span></span>
             <small>{Number.isFinite(Date.parse(entity.updated_at)) ? <time dateTime={entity.updated_at} title={new Date(entity.updated_at).toLocaleString(getLocale())}>{new Date(entity.updated_at).toLocaleDateString(getLocale(), {month: 'short', day: 'numeric', year: 'numeric'})}</time> : uiText("Date unavailable")}{!!query && <span className="search-match-badge">{entity.name.toLowerCase().includes(query) ? uiText("Name") : passageFor(entity.id)?uiText("Source passage"):(entity.aliases??[]).some(alias=>alias.toLowerCase().includes(query))?uiText("Alias"):uiText("Related by meaning")}</span>}</small>
             {!!query&&passageFor(entity.id)&&<span className="search-result-snippet">{citationLocation(passageFor(entity.id)!)} · <HighlightedText text={textHits.get(entity.id)?.snippet??semanticHits.get(entity.id)?.snippet??''} query={search}/></span>}
             {!!query && !passageFor(entity.id)&&!entity.name.toLowerCase().includes(query)&&(entity.aliases??[]).some(alias=>alias.toLowerCase().includes(query)) && <span className="search-result-snippet knowledge-alias-match">{uiText("Alias:") + " "}<HighlightedText text={(entity.aliases ?? []).find(alias => alias.toLowerCase().includes(query)) ?? ''} query={search}/></span>}

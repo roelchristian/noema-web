@@ -46,6 +46,7 @@ test('property and relationship forms open deliberately and cancel without savin
   assert.equal(document.querySelector('form[aria-label="Add property"]'),null);
   assert.equal(document.querySelector('[aria-label="Relationship name"]'),null);
   await click('#entity-tab-connections');
+  await click('#entity-tabpanel-connections .entity-context-details summary');
   await click('.entity-add-connection');
   assert.ok(document.querySelector('[aria-label="Relationship name"]'));
   assert.equal(document.querySelector('.entity-relationship-form [type="submit"]').disabled,true);

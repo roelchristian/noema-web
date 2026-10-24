@@ -168,7 +168,7 @@ export function EntityPanel(props: EntityPanelProps) {
       <div id="entity-tabpanel-connections" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-connections" hidden={tab !== 'connections'} tabIndex={0}>
         {inspector&&mentionsSection}
         <section className="entity-detail-section"><h3>{uiText("Connected entities")}<span>{connectionCount}</span></h3><EntityConnections items={connections} entities={entities} onOpen={onOpen} empty="No connected entities yet."/></section>
-        <section className="entity-detail-section"><h3>{uiText("Relationships")}</h3><RelationshipEditor entity={entity} entities={entities} mention={mention} onSave={(input,relationId)=>mutate(()=>api.saveRelationship(vaultId,id,input,relationId))} onRemove={relationId=>mutate(()=>api.removeConnection(vaultId,id,'relationships',relationId))}/></section>
+        <details className="entity-detail-section entity-context-details"><summary>{uiText("Edit relationships")}</summary><RelationshipEditor entity={entity} entities={entities} mention={mention} onSave={(input,relationId)=>mutate(()=>api.saveRelationship(vaultId,id,input,relationId))} onRemove={relationId=>mutate(()=>api.removeConnection(vaultId,id,'relationships',relationId))}/></details>
         {!!(references.length+incoming.length)&&<button type="button" className="entity-detail-more" onClick={()=>{switchTab('overview');const details=document.querySelector<HTMLDetailsElement>('#entity-panel .entity-context-details');if(details)details.open=true;}}>{uiText("Edit property references")}<Icon name="chevron"/></button>}
       </div>
     </div>}

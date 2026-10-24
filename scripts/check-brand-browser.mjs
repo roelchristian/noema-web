@@ -1,0 +1,114 @@
+// Real built shell; disposable in-memory vault; no credentials or provider calls.
+import assert from 'node:assert/strict';
+import {mkdir,readFile,writeFile} from 'node:fs/promises';
+import {once} from 'node:events';
+import {resolve,join} from 'node:path';
+import {openDatabase} from '../src/server/database.ts';
+import {Store} from '../src/server/store.ts';
+import {createApp} from '../src/server/http.ts';
+import {Intelligence} from '../src/server/modules/intelligence.ts';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE??'playwright-core');
+const artifacts=resolve(process.env.NOEMA_SCREENSHOTS??'/tmp/noema-brand-evidence');
+await mkdir(artifacts,{recursive:true});
+const db=openDatabase(':memory:');
+const provider=new Intelligence({read:()=>null,write(){},remove(){}},async()=>{throw new Error('Provider calls forbidden in brand fixture');});
+const server=createApp(new Store(db),resolve('dist/client'),provider);
+const results=[],errors=[];let browser;
+// Check rendered pixels, including separated components and the open central hole.
+async function pixels(page,url,size,{transparent=false,dark=false}={}) {
+  return page.evaluate(async({url,size,transparent,dark})=>{
+    const image=new Image();image.src=url;await image.decode();
+    const canvas=document.createElement('canvas');canvas.width=canvas.height=size;
+    const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0,size,size);
+    const data=ctx.getImageData(0,0,size,size).data;
+    const pixel=(x,y)=>Array.from(data.slice((y*size+x)*4,(y*size+x)*4+4));
+    const ink=Array.from({length:size*size},(_,i)=>data[i*4+3]>80&&(transparent||Math.min(...data.slice(i*4,i*4+3))<200));
+    const visited=new Set(),components=[];
+    for(let i=0;i<ink.length;i++)if(ink[i]&&!visited.has(i)){
+      const pending=[i];visited.add(i);let count=0;
+      while(pending.length){const p=pending.pop(),x=p%size,y=Math.floor(p/size);count++;
+        for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+          const nx=x+dx,ny=y+dy,n=ny*size+nx;
+          if(nx>=0&&nx<size&&ny>=0&&ny<size&&ink[n]&&!visited.has(n)){visited.add(n);pending.push(n);}
+        }
+      }components.push(count);
+    }
+    const center=pixel(size/2,size/2),satellite=pixel(Math.floor(size*.92),size/2);
+    return {size,components:components.sort((a,b)=>a-b),center,satellite,dark};
+  },{url,size,transparent,dark});
+}
+try {
+  server.listen(0,'127.0.0.1');await once(server,'listening');
+  const base=`http://127.0.0.1:${server.address().port}`;
+  browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH??'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+  for(const width of [1440,390])for(const mode of ['light','dark'])for(const theme of ['ink','juniper','atlantic']){
+    const key=`${width}-${mode}-${theme}`,context=await browser.newContext({viewport:{width,height:900},deviceScaleFactor:1,colorScheme:mode,reducedMotion:'reduce'});
+    console.log('Checking sidebar',key);
+    await context.addInitScript(({mode,theme})=>localStorage.setItem('noema.appearance.v1',JSON.stringify({mode,theme})),{mode,theme});
+    const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));
+    await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
+    await page.goto(base);
+    await page.getByRole('button',{name:'A place for connected ideas',exact:false}).first().waitFor();
+    await page.evaluate(()=>document.fonts.ready);
+    if(width===390)await page.getByRole('button',{name:'Open navigation',exact:true}).click();
+    const brand=page.getByRole('link',{name:'Noema home',exact:true}),mark=brand.locator('.brand-mark');
+    await brand.waitFor();await page.evaluate(()=>document.fonts.ready);
+    assert.equal(await mark.getAttribute('aria-hidden'),'true');
+    assert.equal(await brand.locator('span').innerText(),'noema');
+    const styles=await mark.evaluate(e=>{const s=getComputedStyle(e),r=e.getBoundingClientRect();return {width:r.width,height:r.height,color:s.color,paint:s.backgroundColor,filter:s.filter,mask:s.maskImage,wordmark:getComputedStyle(e.nextElementSibling).color};});
+    assert.equal(styles.width,18);assert.equal(styles.height,18);
+    assert.equal(styles.paint,styles.wordmark);assert.equal(styles.filter,'none');assert.ok(styles.mask.includes('/noema-mark.svg'));
+    assert.equal(await page.locator('link[rel=icon][type="image/svg+xml"]').getAttribute('href'),'/noema-mark.svg');
+    await mark.screenshot({path:join(artifacts,key+'-18px.png'),animations:'disabled'});
+    if(theme==='ink'){
+      await brand.screenshot({path:join(artifacts,key+'-wordmark.png'),animations:'disabled'});
+      await page.screenshot({path:join(artifacts,key+'-shell.png'),animations:'disabled'});
+    }
+    results.push({key,...styles});await context.close();
+  }
+  // Exercise the real system-appearance subscription and its runtime color tokens.
+  const live=await browser.newPage({colorScheme:'light'});
+  await live.addInitScript(()=>localStorage.setItem('noema.appearance.v1',JSON.stringify({mode:'system',theme:'ink'})));
+  await live.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
+  await live.goto(base);const liveMark=live.locator('.brand-mark');await liveMark.waitFor();
+  const lightPaint=await liveMark.evaluate(e=>getComputedStyle(e).backgroundColor);
+  await live.emulateMedia({colorScheme:'dark'});
+  await live.waitForFunction(()=>document.documentElement.dataset.mode==='dark');
+  assert.notEqual(await liveMark.evaluate(e=>getComputedStyle(e).backgroundColor),lightPaint);
+  await live.emulateMedia({colorScheme:'light'});
+  await live.waitForFunction(()=>document.documentElement.dataset.mode==='light');
+  assert.equal(await liveMark.evaluate(e=>getComputedStyle(e).backgroundColor),lightPaint);
+  await live.close();
+  const raster=[];
+  for(const mode of ['light','dark']){
+    const page=await browser.newPage({colorScheme:mode});
+    await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
+    // Standalone SVG, as a favicon resource: independent of saved app appearance.
+    await page.goto(base+'/noema-mark.svg');
+    assert.equal(await page.locator('svg').evaluate(e=>getComputedStyle(e).color),mode==='dark'?'rgb(230, 230, 230)':'rgb(23, 23, 23)');
+    await page.goto(base);await page.evaluate(mode=>document.documentElement.style.colorScheme=mode,mode);
+    for(const size of [16,18]){
+      const sample=await pixels(page,base+'/noema-mark.svg',size,{transparent:true,dark:mode==='dark'});
+      assert.equal(sample.components.length,3,JSON.stringify(sample));
+      assert.equal(sample.center[3],0,'The central ring must stay hollow');
+      assert.ok(sample.satellite[3]>180,'The satellite must stay visible');
+      assert.equal(sample.satellite[0],mode==='dark'?230:23);raster.push({mode,...sample});
+    }
+    await page.close();
+  }
+  const ico=await readFile('public/favicon.ico');assert.equal(ico.readUInt16LE(2),1);assert.equal(ico.readUInt16LE(4),3);
+  const page=await browser.newPage();
+  for(let i=0;i<3;i++){
+    const entry=6+16*i,size=ico[entry],length=ico.readUInt32LE(entry+8),offset=ico.readUInt32LE(entry+12);
+    assert.equal(size,[16,32,48][i]);const png=ico.subarray(offset,offset+length);
+    const sample=await pixels(page,'data:image/png;base64,'+png.toString('base64'),size);
+    assert.equal(sample.components.length,3,JSON.stringify(sample));
+    assert.deepEqual(sample.center,[255,255,255,255]);assert.ok(sample.satellite[0]<80);
+    await writeFile(join(artifacts,`favicon-${size}.png`),png);raster.push({format:'ico',...sample});
+  }
+  assert.deepEqual(errors,[]);
+  await writeFile(join(artifacts,'results.json'),JSON.stringify({browser:browser.version(),results,raster,errors},null,2));
+  console.log(`Quiet Orbit browser checks passed: ${results.length} shell variants; 16/18px SVG in light/dark; all ICO sizes. Evidence: ${artifacts}`);
+} finally {
+  await browser?.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();
+}

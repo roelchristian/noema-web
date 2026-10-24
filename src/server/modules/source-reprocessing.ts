@@ -163,7 +163,6 @@ export class SourceReprocessing {
   if(body.pipelineVersion!==undefined&&body.pipelineVersion!==1&&body.pipelineVersion!==2)throw new HttpError(400,'Invalid reprocessing pipeline version.');
   const pipelineVersion=body.pipelineVersion??(body.acceptanceMode!==undefined?1:2);
   const configuration=pipelineVersion===2?{...reprocessingConfiguration(body.configuration),architectureVersion:1 as const}:undefined;
-  if(configuration&&body.configuration===undefined&&this.evidence&&this.capabilities(vault,id).ocr)configuration.evidence.ocr=true;
   if(configuration?.evidence.originalPages&&!configuration.evidence.allowExternalTransmission)throw new HttpError(400,'Explicit original-page transmission consent is required.');
   if(configuration&&(configuration.evidence.originalPages||configuration.evidence.ocr)){const capability=this.capabilities(vault,id);if(configuration.evidence.originalPages&&!capability.externalImages||configuration.evidence.ocr&&!capability.ocr)throw new HttpError(409,capability.reason||'Requested source evidence capability is unavailable.');}
   if(body.instructions!==undefined&&(typeof body.instructions!=='string'||body.instructions.length>4000))throw new HttpError(400,'Editorial instructions must be at most 4,000 characters.');
@@ -216,7 +215,7 @@ export class SourceReprocessing {
   if(r.pipelineVersion===2){
    const checkpoints=new SourceReprocessingCheckpoints(this.store),synthesis=checkpoints.synthesis(r.id);
    if(synthesis?.register&&synthesis.register.revisionId!==r.id)throw new HttpError(409,'Imported document context retains its archived identity. Start a new revision explicitly.');
-   if([...checkpoints.passes(r.id),...checkpoints.repairs(r.id),...(synthesis?[synthesis]:[])].some(pass=>pass.outcomeUncertain||pass.status==='running'||pass.status==='interrupted'))throw new HttpError(409,'Provider outcome is uncertain. Start a new revision explicitly; this request will not be replayed.');
+   if([...checkpoints.passes(r.id),...checkpoints.repairs(r.id),...(synthesis?[synthesis,...(synthesis.review?[synthesis.review]:[])]:[])].some(pass=>pass.outcomeUncertain||pass.status==='running'||pass.status==='interrupted'))throw new HttpError(409,'Provider outcome is uncertain. Start a new revision explicitly; this request will not be replayed.');
   }
   r.report.reasoningEffort=selection.reasoningEffort;r.status='queued';r.report.error=null;delete r.report.errorCode;this.save(vault,r);return r;
  }

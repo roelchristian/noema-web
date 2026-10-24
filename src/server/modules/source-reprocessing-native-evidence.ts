@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
-import {readFileSync,mkdtempSync,realpathSync,rmSync,existsSync} from 'node:fs';
+import {readFileSync,mkdtempSync,realpathSync,rmSync,existsSync,mkdirSync} from 'node:fs';
 import {tmpdir,release} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -13,6 +13,7 @@ export interface ReprocessingOCRBackend {available:boolean;fingerprint?:string;r
 /** A separate local raster pass, not a reuse of the import extractor's OCR cache. Whether
  * this is independent of the initial extraction is decided from that page's provenance. */
 export class NativeReprocessingOCR implements ReprocessingOCRBackend {
+ private warmed=false;
  readonly available=process.platform==='darwin'&&existsSync('/usr/bin/swiftc')&&existsSync('/usr/bin/sandbox-exec');readonly fingerprint=createHash('sha256').update(readFileSync(fileURLToPath(new URL('../../../scripts/reprocessing-ocr.swift',import.meta.url)))).update(release()).digest('hex');private closed=false;private children=new Set<ReturnType<typeof spawn>>();private directory:string|null=null;private compiler:Promise<string>|null=null;
  async recognize(image:Buffer,signal:AbortSignal):Promise<EvidenceOCRResult>{
   if(this.closed)throw new HttpError(503,'Local OCR worker is closed.');
@@ -20,24 +21,28 @@ export class NativeReprocessingOCR implements ReprocessingOCRBackend {
   if(image.length>12*1024*1024)throw new HttpError(413,'Page image exceeds the local OCR limit.');
   const executable=await (this.compiler??=this.compile(signal).catch(error=>{this.compiler=null;throw error;}));
   if(this.closed)throw new HttpError(503,'Local OCR worker is closed.');
-  const profile=`(version 1)(allow default)(deny network*)(deny file-write*)(deny process-fork)(deny process-exec)(allow process-exec (literal ${JSON.stringify(realpathSync(executable))}))(deny file-read* (subpath "/Users"))`;
-  const output=await this.command('/usr/bin/sandbox-exec',['-p',profile,executable],signal,40000,image);
+  // Vision compiles recognition models into Library/Caches, even with CPU-only
+  // recognition. Give it a private disposable home, never the user's home.
+  const workerHome=path.join(realpathSync(this.directory!),'home');
+  mkdirSync(path.join(workerHome,'Library','Caches'),{recursive:true});
+  const profile=`(version 1)(allow default)(deny network*)(deny file-write*)(allow file-write* (subpath ${JSON.stringify(workerHome)}))(deny process-fork)(deny process-exec)(allow process-exec (literal ${JSON.stringify(realpathSync(executable))}))(deny file-read* (subpath "/Users"))`;
+  const output=await this.command('/usr/bin/sandbox-exec',['-p',profile,executable],signal,this.warmed?120000:300000,image,{...process.env,HOME:workerHome,CFFIXED_USER_HOME:workerHome});
   let result:unknown;try{result=JSON.parse(output.toString('utf8'));}catch{throw new HttpError(502,'Local OCR returned malformed data.');}
-  return validateOCRResult(result);
+  const validated=validateOCRResult(result);this.warmed=true;return validated;
  }
  private async compile(signal:AbortSignal){
   const script=fileURLToPath(new URL('../../../scripts/reprocessing-ocr.swift',import.meta.url));
   this.directory??=mkdtempSync(path.join(tmpdir(),'noema-reprocessing-ocr-'));const executable=path.join(this.directory,'ocr-'+createHash('sha256').update(readFileSync(script)).digest('hex').slice(0,16));
   await this.command('/usr/bin/swiftc',[script,'-module-cache-path',path.join(this.directory,'modules'),'-o',executable],signal,120000);return executable;
  }
- private async command(program:string,args:string[],signal:AbortSignal,timeout:number,input?:Buffer){
+ private async command(program:string,args:string[],signal:AbortSignal,timeout:number,input?:Buffer,env?:NodeJS.ProcessEnv){
   if(signal.aborted)throw new HttpError(409,'Local evidence collection cancelled.');const prepared=preparePDFWorker(program,args);
   try{return await new Promise<Buffer>((resolve,reject)=>{
-   const child=spawn(program,prepared.args,{stdio:['pipe','pipe','pipe']});this.children.add(child);const chunks:Buffer[]=[];let size=0,overflow=false;
-   const abort=()=>child.kill('SIGKILL'),timer=setTimeout(abort,timeout);signal.addEventListener('abort',abort,{once:true});
-   child.stdout.on('data',(bytes:Buffer)=>{size+=bytes.length;if(size>2*1024*1024){overflow=true;abort();}else chunks.push(bytes);});child.stderr.resume();child.stdin.on('error',()=>{});child.stdin.end(input);
+   const child=spawn(program,prepared.args,{stdio:['pipe','pipe','pipe'],env});this.children.add(child);const chunks:Buffer[]=[];let size=0,overflow=false,timedOut=false,diagnostic='';
+   const abort=()=>child.kill('SIGKILL'),timer=setTimeout(()=>{timedOut=true;abort();},timeout);signal.addEventListener('abort',abort,{once:true});
+   child.stdout.on('data',(bytes:Buffer)=>{size+=bytes.length;if(size>2*1024*1024){overflow=true;abort();}else chunks.push(bytes);});child.stderr.on('data',(bytes:Buffer)=>{if(diagnostic.length<2048)diagnostic+=bytes.toString('utf8').slice(0,2048-diagnostic.length);});child.stdin.on('error',()=>{});child.stdin.end(input);
    const done=()=>{clearTimeout(timer);signal.removeEventListener('abort',abort);this.children.delete(child);};
-   child.on('error',()=>{done();reject(new HttpError(503,'Local OCR worker could not start.'));});child.on('close',code=>{done();if(code===0&&!signal.aborted&&!overflow)resolve(Buffer.concat(chunks));else reject(new HttpError(signal.aborted?409:502,signal.aborted?'Local evidence collection cancelled.':'Local OCR failed or exceeded its bounds.'));});
+   child.on('error',()=>{done();reject(new HttpError(503,'Local OCR worker could not start.'));});child.on('close',code=>{done();if(code===0&&!signal.aborted&&!overflow)resolve(Buffer.concat(chunks));else {const detail=diagnostic.match(/Local raster OCR failed \([A-Za-z0-9_.-]+ -?\d+\)/)?.[0];reject(new HttpError(signal.aborted?409:502,signal.aborted?'Local evidence collection cancelled.':timedOut?'Local OCR timed out while preparing source evidence. No AI request was sent.':overflow?'Local OCR output exceeds the evidence limit.':detail??'Local OCR worker failed while preparing source evidence.'));}});
   });}finally{prepared.dispose();}
  }
  close(){this.closed=true;for(const child of this.children)child.kill('SIGKILL');if(this.directory)rmSync(this.directory,{force:true,recursive:true});}

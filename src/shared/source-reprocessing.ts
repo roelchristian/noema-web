@@ -69,6 +69,7 @@ export interface SourceReprocessingReport {
  stage?:'reconstructing'|'understanding'|'verifying'|'auditing';
  stageProgress?:{completed:number;total:number};
  coverage?:{firstPassCompleted:number;totalChunks:number;incompleteChunkIndexes:number[]};
+ summaryValidation?:{contextPreserved?:boolean;state:'reviewing'|'completed'|'unavailable';issues:number;accepted:number;unresolved:number;diagnostics:string[]};
  contextHash?:string;
  documentAudit?:{version:1;candidateHash:string;contextHash?:string;findings:string[]};
  evidencePreparation?:{state:'collecting'|'completed';preparedChunks:number;totalChunks:number};

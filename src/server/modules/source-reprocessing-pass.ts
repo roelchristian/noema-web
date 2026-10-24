@@ -1,3 +1,4 @@
+import {reviewSynthesisEvidence} from './source-reprocessing-synthesis-review.js';
 import {validateReprocessingEvidenceSnapshot} from './source-reprocessing-evidence-validation.js';
 import {groupApparatusPatches,apparatusProblems} from './source-reprocessing-apparatus.js';
 import {gatherReprocessingEvidence,type SourceReprocessingEvidence} from './source-reprocessing-evidence.js';
@@ -10,7 +11,7 @@ import type {Intelligence} from './intelligence.js';
 import type {AIActivityLog} from './ai-activity.js';
 import {SourceReprocessingCheckpoints,type SourceReprocessingSynthesisCheckpoint,type SourceReprocessingRepairCheckpoint} from './source-reprocessing-checkpoints.js';
 import {planReprocessingChunks} from './source-reprocessing-planner.js';
-import {createSynthesisInput,parseDocumentSynthesis,selectVerificationContext,documentSynthesisPrompt,synthesisPromptVersion,parseReconstructionUncertainty,auditDocumentConsistency} from './source-reprocessing-context.js';
+import {createSynthesisInput,parseDocumentSynthesis,assertFrozenSynthesis,selectVerificationContext,documentSynthesisPrompt,synthesisPromptVersion,parseReconstructionUncertainty,auditDocumentConsistency} from './source-reprocessing-context.js';
 import {reconstructBlocks} from './source-reprocessing-diff.js';
 import {sourceDocumentEntries,type SourceDocumentRange} from '../../shared/source-document.js';
 import type {SourceEditorialPatch,SourceEditorialUsage,SourceReprocessingRevision,SourceReprocessingPass,SourceReprocessingEvidenceSnapshot,SourceReprocessingConfiguration} from '../../shared/source-reprocessing.js';
@@ -116,8 +117,21 @@ export async function executeReconstruction(input:{store:Store;revision:SourceRe
    try{guard();synthesis.result=await intelligence.reeditSource(synthesisInput.request,documentSynthesisPrompt,signal,bytes=>{const observer=activity.request(activityId,bytes,null);return {...observer,usage:(value:unknown)=>{observer.usage?.(value);readUsage(synthesis,value);}};},'synthesis');synthesis.status='completed';synthesis.finishedAt=now();store.transaction(()=>{checkpoints.saveSynthesis(synthesis);account(synthesis);if(synthesis.inputTokens===null||synthesis.outputTokens===null)r.report.usageIncomplete=true;save();});activity.finish(activityId,'completed',200);}
    catch(error){if(synthesis.status!=='completed'){synthesis.status=signal.aborted?'interrupted':'failed';synthesis.outcomeUncertain=requestOutcomeUncertain(error,signal.aborted);synthesis.failureKind=editorialFailure(error,signal.aborted).code==='local_admission'?'admission':'transport';synthesis.error=error instanceof Error?error.message:'Synthesis request failed.';synthesis.finishedAt=now();checkpoints.saveSynthesis(synthesis);account(synthesis);r.report.usageIncomplete=true;save();}activity.finish(activityId,'failed',502);throw error;}
   }
-  guard();let register:ReturnType<typeof parseDocumentSynthesis>;try{register=parseDocumentSynthesis(synthesisInput,synthesis.result!);synthesis.validation=['evidence-linked-observations','frozen-constituent-hashes'];checkpoints.saveSynthesis(synthesis);}catch(error){let malformed=false;try{JSON.parse(synthesis.result!.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''));}catch{malformed=true;}synthesis.failureKind=malformed?'invalid_output':'validation';synthesis.error=error instanceof Error?error.message:'Invalid document synthesis.';synthesis.validation=[synthesis.error];checkpoints.saveSynthesis(synthesis);throw error;}
+  guard();let register:ReturnType<typeof parseDocumentSynthesis>;try{
+   if(synthesis.register){
+    assertFrozenSynthesis(synthesis.register,synthesisInput);
+    // Existing verification requests are hash-bound to this register. Review its
+    // excluded observations visibly, but do not invalidate completed requests.
+    if(synthesis.register.rejectedObservations?.length){
+     await reviewSynthesisEvidence({context:synthesisInput,synthesis,revision:r,intelligence,activity,vault,objectId:input.activityObjectId??r.fileId,signal,guard,saveCheckpoint:()=>checkpoints.saveSynthesis(synthesis),save:()=>save(),commit:usage=>store.transaction(()=>{checkpoints.saveSynthesis(synthesis);account(usage);save();})});
+     if(r.report.summaryValidation){r.report.summaryValidation.contextPreserved=true;save();}
+    }
+    register=synthesis.register;
+   }else register=await reviewSynthesisEvidence({context:synthesisInput,synthesis,revision:r,intelligence,activity,vault,objectId:input.activityObjectId??r.fileId,signal,guard,saveCheckpoint:()=>checkpoints.saveSynthesis(synthesis),save:()=>save(),commit:usage=>store.transaction(()=>{checkpoints.saveSynthesis(synthesis);account(usage);save();})});
+   guard();synthesis.error=null;delete synthesis.failureKind;synthesis.validation=['evidence-linked-observations','frozen-constituent-hashes',...(register.rejectedObservations?.length?[`excluded-summary-observations:${register.rejectedObservations.length}`]:[])];checkpoints.saveSynthesis(synthesis);
+  }catch(error){let malformed=false;try{JSON.parse(synthesis.result!.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''));}catch{malformed=true;}synthesis.failureKind=malformed?'invalid_output':'validation';synthesis.error=error instanceof Error?error.message:'Invalid document synthesis.';synthesis.validation=[synthesis.error];checkpoints.saveSynthesis(synthesis);throw error;}
   if(synthesis.register&&synthesis.register.hash!==register.hash)throw new HttpError(409,'Frozen synthesis result differs. Start a new revision.');
+  for(const rejected of register.rejectedObservations??[]){const diagnostic=`Document summary observation ${rejected.index+1} was excluded from verification context: ${rejected.reason}`;if(!r.report.diagnostics.includes(diagnostic))r.report.diagnostics.push(diagnostic);}
   synthesis.register=register;checkpoints.saveSynthesis(synthesis);r.report.contextHash=register.hash;r.report.stageProgress.completed=1;save();
   r.report.stage='verifying';r.report.stageProgress={completed:0,total:prepared.filter(item=>candidates.has(item.chunk.index)&&!completed.has(item.chunk.index)).length};save();
   await runBoundedStage(prepared.filter(item=>candidates.has(item.chunk.index)&&!completed.has(item.chunk.index)),signal,async item=>{

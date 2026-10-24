@@ -70,3 +70,15 @@ test('Escape backs out of the innermost confirmation and restores its stable tri
   assert.equal(document.querySelector('[aria-label="More page actions"]').getAttribute('aria-expanded'),'true');
   assert.equal(ui.changes.length,0);
 });
+
+
+test('a live lock backs out of an open conversion confirmation and leaves menu focus usable',async t=>{
+  const ui=await toolbar(t);
+  await ui.showEditing();await ui.choose('markdown-convert');
+  ui.props.page={...ui.page,editLocked:true};await ui.render();
+  assert.equal(document.querySelector('[data-menu-id="markdown-apply"]'),null);
+  assert.equal(document.querySelector('[data-menu-id="markdown-convert"]').disabled,true);
+  assert.equal(document.activeElement.closest('[role="menu"]').getAttribute('aria-label'),'Editing');
+  assert.equal(document.activeElement.disabled,false);
+  assert.equal(ui.changes.length,0);
+});

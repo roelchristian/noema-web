@@ -9,15 +9,20 @@ export function ActionMenu({label, actions, disabled = false, icon = 'more', laz
   const [open, setOpen] = useState(false);
   const [path, setPath] = useState<MenuAction[]>([]);
   // Resolve the path against current props: locking or page updates must not leave stale callbacks active.
-  let currentActions = actions, currentLabel = label;
+  let currentActions = actions, currentLabel = label, validDepth = 0;
   for (const step of path) {
     const current = currentActions.find(action=>(action.id??action.label)===(step.id??step.label));
     if (!current?.children?.length || current.disabled) break;
-    currentActions = current.children; currentLabel = current.label;
+    currentActions = current.children; currentLabel = current.label; validDepth++;
   }
   const menuMinWidth = 240;
   const restoreAction = useRef<string | null>(null);
   const focusLast = useRef(false);
+  useLayoutEffect(() => {
+    if (validDepth === path.length) return;
+    restoreAction.current = path[validDepth]?.id ?? path[validDepth]?.label ?? null;
+    setPath(previous=>previous.slice(0,validDepth));
+  }, [validDepth,path]);
   useLayoutEffect(() => {
     if (!open) return;
     const popup = menu.current!, button = trigger.current!;
@@ -31,7 +36,7 @@ export function ActionMenu({label, actions, disabled = false, icon = 'more', laz
     }
     const items = popup.querySelectorAll<HTMLButtonElement>('[role^=menuitem]:not(:disabled)');
     const restored=restoreAction.current; restoreAction.current=null;
-    const item=restored ? [...items].find(item=>item.dataset.menuId===restored) : focusLast.current ? items[items.length - 1] : items[path.length ? 1 : 0];
+    const item=restored ? ([...items].find(item=>item.dataset.menuId===restored) ?? items[0]) : focusLast.current ? items[items.length - 1] : items[path.length ? 1 : 0];
     if(item){item.focus({preventScroll:true});revealMenuItem(popup,item);}
   }, [open,path,menuMinWidth]);
   useEffect(() => {
@@ -69,7 +74,7 @@ export function ActionMenu({label, actions, disabled = false, icon = 'more', laz
       else if (event.key === 'Escape' || event.key === 'Tab') { if (event.key === 'Escape') event.preventDefault(); event.stopPropagation(); close(); trigger.current?.focus({preventScroll:true}); }
     }}>{(!lazy||open)&&<>{path.length > 0 && <><button type="button" role="menuitem" className="action-menu-back" onClick={back}><Icon name="chevron"/><span>{uiText("Back")}</span></button></>}{currentActions.map((action,index) => <Fragment key={action.id??action.label}>
       {action.group && action.group!==currentActions[index-1]?.group && <div className="action-menu-heading" role="presentation" data-separated={index>0||undefined}>{action.group}</div>}
-      <button type="button" data-menu-id={action.id??action.label} data-menu-action={action.label} data-has-description={!!action.description||undefined} aria-description={action.description} role={action.checked===undefined?"menuitem":"menuitemcheckbox"} aria-checked={action.checked} aria-haspopup={action.children?.length?'menu':undefined} aria-expanded={action.children?.length?false:undefined} className={action.danger ? 'danger' : ''} disabled={action.disabled} onClick={() => select(action)}>
+      <button type="button" data-menu-id={action.id??action.label} data-menu-action={action.label} data-has-description={!!action.description||undefined} aria-label={action.label} aria-description={action.description} role={action.checked===undefined?"menuitem":"menuitemcheckbox"} aria-checked={action.checked} aria-haspopup={action.children?.length?'menu':undefined} aria-expanded={action.children?.length?false:undefined} className={action.danger ? 'danger' : ''} disabled={action.disabled} onClick={() => select(action)}>
         {action.checked!==undefined ? <span aria-hidden="true">{action.checked?"✓":"○"}</span> : action.icon && <Icon name={action.icon}/>}
         <span className="action-menu-text">{action.label}{action.description&&<small className="action-menu-description">{action.description}</small>}</span>
         {action.shortcut&&<kbd className="action-menu-shortcut">{action.shortcut}</kbd>}

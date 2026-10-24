@@ -97,9 +97,9 @@ test('source viewer preserves stale evidence without trusting a matching file ha
   assert.equal(document.querySelector('.source-viewer-passage mark').textContent,'Saved historical passage.');
   assert.equal(document.querySelector('[data-cited-node]'),null);
   const savedPassage=document.querySelector('.source-viewer-passage');
-  await act(async()=>document.querySelector('#source-viewer [aria-label="Subtle references"]').click());assert.equal(mode,'subtle');
-  await act(async()=>document.querySelector('#source-viewer [aria-label="Focus mode"]').click());assert.equal(mode,'focus');
-  await act(async()=>document.querySelector('#source-viewer [aria-label="Focus mode"]').click());assert.equal(mode,'subtle');assert.equal(exits,1);
+  await act(async()=>document.querySelector('#source-viewer [aria-label="Subtle"]').click());assert.equal(mode,'subtle');
+  await act(async()=>document.querySelector('#source-viewer [aria-label="Focus"]').click());assert.equal(mode,'focus');
+  await act(async()=>document.querySelector('#source-viewer [aria-label="Exit Focus"]').click());assert.equal(mode,'subtle');assert.equal(exits,1);
   assert.equal(document.querySelector('.source-viewer-passage'),savedPassage);
  });
 });

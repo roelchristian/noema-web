@@ -1,5 +1,5 @@
 import {detectPageFurniture} from './source-reprocessing-furniture.js';
-import {gatherReprocessingEvidence} from './source-reprocessing-evidence.js';
+import {gatherReprocessingEvidence,type SourceReprocessingEvidence} from './source-reprocessing-evidence.js';
 import {assertAtomicPatchGroups} from './source-reprocessing-apparatus.js';
 import {executeReconstruction,reconstructionPromptVersion} from './source-reprocessing-pass.js';
 import {SourceReprocessingCheckpoints} from './source-reprocessing-checkpoints.js';
@@ -104,7 +104,7 @@ export function materializeSourceRevision(r:SourceReprocessingRevision){
 export class SourceReprocessing {
  private hashCache:{vault:string;id:string;inputs:unknown[];hash:string}|null=null;
  private running=false;private closed=false;private controller:AbortController|null=null;private activeRevisionId:string|null=null;
- constructor(private store:Store,private files:SourceFiles,private intelligence:Intelligence,private requireOpen:(vault:string)=>unknown,private activity:AIActivityLog) {
+ constructor(private store:Store,private files:SourceFiles,private intelligence:Intelligence,private requireOpen:(vault:string)=>unknown,private activity:AIActivityLog,private evidence?:SourceReprocessingEvidence) {
   for(const row of store.all<Row>("SELECT * FROM source_reprocessing WHERE status IN ('queued','running')")){
    const revision=JSON.parse(row.payload) as SourceReprocessingRevision;
    if(revision.pipelineVersion===2)new SourceReprocessingCheckpoints(store).interruptRunning(revision.id);
@@ -128,6 +128,7 @@ export class SourceReprocessing {
   const value=sourceRevisionBaseHash(this.snapshot(vault,id));this.hashCache={vault,id,inputs,hash:value};return value;
  }
  private currentHash(vault:string,id:string){try{return this.baseHash(vault,id);}catch{return null;}}
+ capabilities(vault:string,id:string){this.requireOpen(vault);const file=this.files.require(vault,id);if(mathSource(this.store,file).text!==file.text)return {originalPages:false,ocr:false,externalImages:false,reason:'Original-source evidence for a cleaned math derivative requires an exact canonical mapping that is unavailable.'};const local=this.evidence?.capabilities(vault,id)??{originalPages:false,ocr:false,externalImages:false,reason:'Local source evidence adapters are unavailable.'};const imageInput=this.intelligence.editorialImageCapability?.()===true;return {...local,externalImages:local.originalPages&&imageInput,reason:local.reason+(!imageInput?' The selected model has no enabled original-page image input capability.':'')};}
  list(vault:string,id:string):SourceReprocessingSummary[]{this.files.require(vault,id);const current=this.currentHash(vault,id);return this.store.all<{summary_json:string}>('SELECT summary_json FROM source_reprocessing WHERE file_id=? AND vault_id=? AND summary_json IS NOT NULL ORDER BY created_at DESC,id DESC LIMIT 100',id,vault).map(row=>{const r=JSON.parse(row.summary_json) as SourceReprocessingSummary;return {...r,stale:r.baseHash!==current};});}
  detail(vault:string,id:string,revisionId:string){this.files.require(vault,id);const row=this.store.get<Row>('SELECT * FROM source_reprocessing WHERE id=? AND file_id=? AND vault_id=?',revisionId,id,vault);if(!row)throw new HttpError(404,'Editorial pass not found.');const r=JSON.parse(row.payload) as SourceReprocessingRevision;r.stale=r.baseHash!==this.currentHash(vault,id);return r;}
  status(vault:string,id:string,revisionId:string){
@@ -144,6 +145,9 @@ export class SourceReprocessing {
   if(body.pipelineVersion!==undefined&&body.pipelineVersion!==1&&body.pipelineVersion!==2)throw new HttpError(400,'Invalid reprocessing pipeline version.');
   const pipelineVersion=body.pipelineVersion??(body.acceptanceMode!==undefined?1:2);
   const configuration=pipelineVersion===2?reprocessingConfiguration(body.configuration):undefined;
+  if(configuration&&body.configuration===undefined&&this.evidence&&this.capabilities(vault,id).ocr)configuration.evidence.ocr=true;
+  if(configuration?.evidence.originalPages&&!configuration.evidence.allowExternalTransmission)throw new HttpError(400,'Explicit original-page transmission consent is required.');
+  if(configuration&&(configuration.evidence.originalPages||configuration.evidence.ocr)){const capability=this.capabilities(vault,id);if(configuration.evidence.originalPages&&!capability.externalImages||configuration.evidence.ocr&&!capability.ocr)throw new HttpError(409,capability.reason||'Requested source evidence capability is unavailable.');}
   if(body.instructions!==undefined&&(typeof body.instructions!=='string'||body.instructions.length>4000))throw new HttpError(400,'Editorial instructions must be at most 4,000 characters.');
   const acceptanceMode=body.acceptanceMode??'balanced';
   if(acceptanceMode!=='review_all'&&acceptanceMode!=='safe_formatting'&&acceptanceMode!=='balanced'&&acceptanceMode!=='minimal_review')throw new HttpError(400,'Invalid acceptance mode.');
@@ -201,7 +205,7 @@ export class SourceReprocessing {
   const guard=()=>{this.requireOpen(row.vault_id);if(this.closed||controller.signal.aborted)throw new HttpError(409,'Editorial pass interrupted.');if(this.baseHash(row.vault_id,r.fileId)!==r.baseHash)throw new HttpError(409,'Canonical source changed during this pass.');const selection=this.intelligence.editorialSelection();if(selection.model!==r.report.model||selection.reasoningEffort!==r.report.reasoningEffort)throw new HttpError(409,'AI model changed. Start a new pass.');};
   const timer=setInterval(()=>{try{this.requireOpen(row.vault_id);if(this.closed)controller.abort();}catch{controller.abort();}},250);timer.unref();
   if(r.pipelineVersion===2){
-   try{await executeReconstruction({store:this.store,revision:r,intelligence:this.intelligence,activity:this.activity,vault:row.vault_id,signal:controller.signal,guard,save:()=>this.save(row.vault_id,r),range:(start,end)=>this.range(r,start,end),materialize:()=>materializeSourceRevision(r)});guard();r.status='completed';}
+   try{await executeReconstruction({store:this.store,revision:r,intelligence:this.intelligence,activity:this.activity,evidenceService:this.evidence,vault:row.vault_id,signal:controller.signal,guard,save:()=>this.save(row.vault_id,r),range:(start,end)=>this.range(r,start,end),materialize:()=>materializeSourceRevision(r)});guard();r.status='completed';}
    catch(error){r.status=controller.signal.aborted?'interrupted':'failed';r.report.error=error instanceof Error?error.message:'Reconstruction failed.';r.report.errorCode=editorialFailure(error,controller.signal.aborted).code;}
    finally{clearInterval(timer);r.report.finishedAt=now();r.report.durationMs=(r.report.durationMs??0)+Date.now()-started;this.save(row.vault_id,r);this.controller=null;this.activeRevisionId=null;this.running=false;}
    return;

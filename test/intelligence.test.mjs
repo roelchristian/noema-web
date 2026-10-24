@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import {createHash} from 'node:crypto';
 import { once } from 'node:events';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -517,4 +518,18 @@ test('embedding diagnostics record invalid dimensions without copying vector ele
   await assert.rejects(ai.embed('input',()=>trace),error=>error.status===502);
   assert.ok(events.some(event=>event.type==='validation'&&event.data.valid===false&&event.data.actualDimensions===1&&event.data.index===0));
   assert.ok(!JSON.stringify(events).includes('0.123456789'));
+});
+
+test('original-page provider input requires consent, explicit model support, and redacts image bytes from debug',async()=>{
+ const bytes=Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),Buffer.from('synthetic page only')]);
+ const image={page:1,mimeType:'image/png',base64:bytes.toString('base64'),sha256:createHash('sha256').update(bytes).digest('hex')};
+ let body,calls=0;const traces=[];
+ const ai=new Intelligence(new Secrets(),async(_url,options)=>{calls++;body=JSON.parse(options.body);return completed('{"blocks":[],"diagnostics":[],"unresolved":false}');});ai.save({apiKey:key});
+ const signal=new AbortController().signal,observer=()=>({mode:'full',request:(_endpoint,payload)=>traces.push(payload),headers(){},body(){},event(){},response(){},error(){}});
+ await assert.rejects(()=>ai.reeditSource('canonical','source only',signal,observer,'blocks',[image],false),/consent/);assert.equal(calls,0);
+ await ai.reeditSource('canonical','source only',signal,observer,'blocks',[image],true);
+ assert.equal(body.input[0].content[1].type,'input_image');assert.equal(body.input[0].content[1].image_url,'data:image/png;base64,'+image.base64);
+ assert.ok(!JSON.stringify(traces).includes(image.base64));assert.ok(JSON.stringify(traces).includes(image.sha256));
+ ai.savePreferences({model:'gpt-6-luna',reasoningEffort:'none'});assert.equal(ai.editorialImageCapability(),false);
+ await assert.rejects(()=>ai.reeditSource('canonical','source only',signal,undefined,'blocks',[image],true),/image capability/);assert.equal(calls,1);
 });

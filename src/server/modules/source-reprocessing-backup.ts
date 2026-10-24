@@ -1,3 +1,5 @@
+import {sourceReprocessingEvidenceRevisionBytes} from '../../shared/source-reprocessing.js';
+import {validateReprocessingEvidenceSnapshot} from './source-reprocessing-evidence-validation.js';
 import {utf16Boundary,wellFormedUnicode} from './source-reprocessing-patches.js';
 import {sourceStructureKinds} from '../../shared/domain.js';
 import type {SourceReprocessingConfiguration,SourceReprocessingChunk,SourceReprocessingPass,SourceReprocessingRevision} from '../../shared/source-reprocessing.js';
@@ -26,15 +28,17 @@ export function restoreReprocessingCheckpoints(revision:SourceReprocessingRevisi
  if(revision.pipelineVersion!==2){if(chunkValues.length||passValues.length)throw invalid();return {chunks:[],passes:[]};}
  const configuration=validateReprocessingConfiguration(revision.configuration);
  const chunks:SourceReprocessingChunk[]=[],passes:SourceReprocessingPass[]=[];
- let end=0;
+ let end=0,evidenceBytes=0;
  for(const [index,value] of array(chunkValues,128).entries()){
   const c=object(value);if(c.revisionId!==oldRevisionId||c.baseHash!==oldBaseHash||c.index!==index||integer(c.startOffset,0,revision.original.text.length)!==end)throw invalid();
   end=integer(c.endOffset,end+1,revision.original.text.length);if(!utf16Boundary(revision.original.text,c.startOffset as number)||!utf16Boundary(revision.original.text,end))throw invalid();
   if(!/^[a-f0-9]{64}$/.test(string(c.evidenceHash,64)))throw invalid();
+  if(c.evidenceTrusted!==undefined&&typeof c.evidenceTrusted!=='boolean')throw invalid();
+  if(c.evidence!==undefined){evidenceBytes+=Buffer.byteLength(JSON.stringify(c.evidence));if(evidenceBytes>sourceReprocessingEvidenceRevisionBytes)throw invalid();c.evidence=validateReprocessingEvidenceSnapshot(c.evidence,{text:revision.original.text,document:revision.original.document,start:c.startOffset as number,end:c.endOffset as number,configuration,evidenceHash:c.evidenceHash as string});}
   oneOf(c.difficulty,['ordinary','difficult']);if(c.difficultyReason!==null)string(c.difficultyReason,2000);
   const count=integer(c.requiredPassCount,1,3);if(configuration.depth==='light'&&count!==1||configuration.depth==='balanced'&&count!==2||configuration.depth==='deep'&&count<2||count===3&&!c.difficultyReason)throw invalid();
   oneOf(c.status,['pending','running','completed','failed','interrupted']);
-  chunks.push({...structuredClone(c),revisionId:revision.id,baseHash:revision.baseHash,status:c.status==='running'?'interrupted':c.status} as unknown as SourceReprocessingChunk);
+  chunks.push({...structuredClone(c),revisionId:revision.id,baseHash:revision.baseHash,evidenceTrusted:false,status:c.status==='running'?'interrupted':c.status} as unknown as SourceReprocessingChunk);
  }
  if(chunks.length!==revision.report.chunksTotal||end!==revision.original.text.length)throw invalid();
  const seen=new Set<string>();

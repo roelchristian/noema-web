@@ -9,8 +9,25 @@ export interface SourceReprocessingConfiguration {
  evidence:{originalPages:boolean;ocr:boolean;allowExternalTransmission:boolean};
 }
 export const defaultSourceReprocessingConfiguration:SourceReprocessingConfiguration={depth:'balanced',reviewPolicy:'verified',evidence:{originalPages:false,ocr:false,allowExternalTransmission:false}};
+export const sourceReprocessingEvidencePageBytes=2*1024*1024;
+export const sourceReprocessingEvidenceRevisionBytes=24*1024*1024;
+/** Original-source evidence is stored once per chunk, separately from model passes. */
+export interface SourceReprocessingEvidenceSnapshot {
+ version:1;hash:string;canonicalText:string;pageNumbers:number[];
+ originalPages:{available:boolean;reason:string};ocr:{available:boolean;reason:string};
+ independentlyVerified:false;externalTransmissionAllowed:boolean;diagnostics:string[];
+ images?:{page:number;mimeType:'image/png';base64:string;sha256:string}[];
+ pages?:{page:number;originalHash:string;admittedHash:string;imageHash:string;canonicalRanges?:{startOffset:number;endOffset:number}[];canonicalRegions?:{startOffset:number;endOffset:number;bounds:number[]}[];ocr?:{
+  engine:string;version:string;configuration:string;independent:boolean;
+  lines:{text:string;confidence:number;bounds:number[];alternatives:string[]}[];
+  mapping:{startOffset:number;endOffset:number;lineIndex:number}[];
+ }}[];
+}
 export interface SourceReprocessingChunk {
  revisionId:string;index:number;startOffset:number;endOffset:number;baseHash:string;evidenceHash:string;
+ evidence?:SourceReprocessingEvidenceSnapshot;
+ /** Local collection trust is deliberately excluded from hashed/provider evidence and revoked on import. */
+ evidenceTrusted?:boolean;
  difficulty:'ordinary'|'difficult';difficultyReason:string|null;requiredPassCount:1|2|3;
  status:'pending'|'running'|'completed'|'failed'|'interrupted';
 }

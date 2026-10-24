@@ -42,7 +42,7 @@ export function reconstructBlocks(chunk:PlannedReprocessingChunk,response:unknow
   if(/\[\^[^\]\n]+\]/.test(original.text+replacement)){prefix=0;oldEnd=original.text.length;newEnd=replacement.length;}
   const before=original.text.slice(prefix,oldEnd),after=replacement.slice(prefix,newEnd);
   if(before.length>16000||after.length>16000)return invalid('difference exceeds the patch limit.');
-  patches.push({startOffset:original.start+prefix,endOffset:original.start+oldEnd,original:before,replacement:after,category:mechanical?'formatting':'ocr',reason:'Deterministic difference from reconstructed canonical block; source comparison is required for substantive changes.',confidence:0});
+  patches.push({startOffset:original.start+prefix,endOffset:original.start+oldEnd,original:before,replacement:after,category:mechanical?'formatting':before.includes('\n')&&!/\n[ \t]*\n/.test(before)&&before.replace(/\r?\n/g,' ')===after?'line_breaks':'ocr',reason:'Deterministic difference from reconstructed canonical block; source comparison is required for substantive changes.',confidence:0});
  }
  return {patches,diagnostics:(data.diagnostics as string[]|undefined)??[],unresolved:data.unresolved===true};
 }

@@ -6,6 +6,7 @@ import {TemporalIndex} from './modules/temporal.js';
 import {EntityDiscoveryService} from './modules/entity-discovery.js';
 import {createSourcePageGeneration} from './modules/source-page-generation.js';
 import {SourcePageImages} from './modules/source-page-images.js';
+import {SourceReprocessingEvidence} from './modules/source-reprocessing-evidence.js';
 import {SourceReprocessing} from './modules/source-reprocessing.js';
 import {SourceReading} from './modules/source-reading.js';
 import { SourcePages} from './modules/source-pages.js';
@@ -50,7 +51,8 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
   const vaults=new Vaults(store),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),organizer=new Organizer(store);
   const activity=new AIActivityLog(store),enrichments=new AIEnrichments(store,pages);
   const entityDiscovery=new EntityDiscoveryService(store,knowledge,intelligence,activity);
-  const sourceReprocessing=new SourceReprocessing(store,sourceFiles,intelligence,vault=>vaults.requireOpen(vault),activity);
+  const sourceReprocessingEvidence=new SourceReprocessingEvidence(sourceFiles,sourcePageImages);
+  const sourceReprocessing=new SourceReprocessing(store,sourceFiles,intelligence,vault=>vaults.requireOpen(vault),activity,sourceReprocessingEvidence);
   const scans=new EntityScans(store,pages,knowledge,enrichments);
   const pageEnrichment=new PageEnrichment(store,pages,knowledge,enrichments,intelligence);
   const enrichmentScheduler=new PageEnrichmentScheduler(store,{
@@ -114,7 +116,7 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
     },
     close() {
       clearInterval(liturgicalWorker);liturgical.close();
-      clearInterval(sourceReprocessingWorker);sourceReprocessing.close();enrichmentScheduler.dispose();clearInterval(sourceWorker);sourceFiles.close();sourcePageImages.close();clearInterval(sourcePassageWorker);clearInterval(sourceEnrichmentWorker);sourceEnrichments.close();clearInterval(cleanup);clearInterval(keyCleanup);clearInterval(embeddingWorker);embeddings.close();
+      clearInterval(sourceReprocessingWorker);sourceReprocessing.close();sourceReprocessingEvidence.close();enrichmentScheduler.dispose();clearInterval(sourceWorker);sourceFiles.close();sourcePageImages.close();clearInterval(sourcePassageWorker);clearInterval(sourceEnrichmentWorker);sourceEnrichments.close();clearInterval(cleanup);clearInterval(keyCleanup);clearInterval(embeddingWorker);embeddings.close();
     },
   };
 }

@@ -30,7 +30,8 @@ try {
     const body=req.postDataJSON();mutations.push({url:url.pathname,body});
     if(url.pathname.endsWith('/review'))revision={...revision,updatedAt:new Date().toISOString(),patches:revision.patches.map(patch=>{const change=body.decisions.find(item=>item.patchId===patch.id);return change?{...patch,decision:change.decision}:patch;})};
     result=revision;
-   }else if(url.pathname==='/api/intelligence')result={model:'gpt-5-mini',reasoningEffort:'low'};
+   }else if(url.pathname.endsWith('/reprocessing/capabilities'))result={originalPages:true,ocr:true,externalImages:true,reason:'Synthetic macOS native evidence capabilities.'};
+   else if(url.pathname==='/api/intelligence')result={model:'gpt-5-mini',reasoningEffort:'low'};
    else if(url.pathname.endsWith('/reprocessing'))result=[{...revision,patchCount:revision.patches.length,pendingCount:revision.patches.filter(patch=>patch.decision==='pending').length}];
    else if(url.pathname.endsWith('/status'))result={id:revision.id,status:revision.status,updatedAt:revision.updatedAt,...revision.report};
    else result=revision;
@@ -60,8 +61,17 @@ try {
   await page.getByRole('combobox',{name:'Processing depth',exact:true}).selectOption('light');
   assert.equal(await page.getByRole('combobox',{name:'Review policy',exact:true}).inputValue(),'verified');
   assert.equal(await page.getByRole('button',{name:'Start reprocessing',exact:true}).isEnabled(),true);
+  assert.equal(await page.getByRole('checkbox',{name:'Use local OCR evidence',exact:true}).isEnabled(),true);
+  assert.equal(await page.getByRole('checkbox',{name:'Use local OCR evidence',exact:true}).isChecked(),true);
+  assert.equal(await page.getByRole('checkbox',{name:'Allow selected source evidence to be sent to the AI provider',exact:true}).isChecked(),false);
+  assert.equal(await page.getByRole('button',{name:'Start reprocessing',exact:true}).isEnabled(),true);
+  await page.getByRole('checkbox',{name:'Compare original-page images with the model',exact:true}).check();
+  assert.equal(await page.getByRole('button',{name:'Start reprocessing',exact:true}).isEnabled(),false);
+  await page.getByRole('checkbox',{name:'Allow selected source evidence to be sent to the AI provider',exact:true}).check();
+  assert.equal(await page.getByRole('button',{name:'Start reprocessing',exact:true}).isEnabled(),true);
+
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false,`No horizontal overflow at ${width}px`);
   await context.close();
  }
- assert.deepEqual(errors,[]);console.log('Source reprocessing browser checks passed: desktop/mobile V2 settings, pass ledger, failure recovery, review, configuration preview and overflow.');
+ assert.deepEqual(errors,[]);console.log('Source reprocessing browser checks passed: desktop/mobile V2 evidence capability/consent controls, settings, pass ledger, failure recovery, review, configuration preview and overflow.');
 }finally{await browser?.close();await vite?.close();}

@@ -13,7 +13,7 @@ const fixture=()=>{
  r.acceptanceMode='review_all';r.patches=r.patches.slice(0,2).map((p,i)=>({...p,id:'patch-'+i,decision:'pending',riskReasons:['Quotation wording requires comparison with the PDF.']}));
  r.reprocessed=structuredClone(r.original);r.reprocessed.document.semantic.children=[];r.reprocessed.text='Sample reading text';return r;
 };
-async function mount(t,{initial=null,post,onReadingRevision,get,onShow=()=>{},onOriginal=()=>{}}={}){
+async function mount(t,{initial=null,post,onReadingRevision,get,onShow=()=>{},onOriginal=()=>{},capabilities={originalPages:false,ocr:false,externalImages:false,reason:'Native evidence is unavailable on this device.'}}={}){
  const dom=new JSDOM('<div id="mount"></div>',{pretendToBeVisual:true});
  // React loaded before DOM availability uses its legacy input-event fallback in JSDOM.
  dom.window.HTMLElement.prototype.attachEvent=function(){};dom.window.HTMLElement.prototype.detachEvent=function(){};
@@ -24,6 +24,7 @@ async function mount(t,{initial=null,post,onReadingRevision,get,onShow=()=>{},on
   const entry={url:String(url),method:options.method??'GET',body:options.body?JSON.parse(options.body):undefined};requests.push(entry);
   let result;
   if(entry.method==='POST'){result=await post(entry,revision);if(result)revision=result;}
+  else if(entry.url.endsWith('/reprocessing/capabilities'))result=typeof capabilities==='function'?await capabilities():capabilities;
   else if(entry.url.endsWith('/intelligence'))result={model:'gpt-5-mini',reasoningEffort:'low'};
   else if(entry.url.endsWith('/reprocessing'))result=revision?[{...revision,patchCount:revision.patches.length,pendingCount:revision.patches.length}]:[];
   else if(entry.url.endsWith('/status'))result={id:revision.id,status:revision.status,updatedAt:revision.updatedAt,...revision.report};
@@ -225,4 +226,57 @@ test('linked scholarly decisions submit the complete atomic group',async t=>{
  const env=await mount(t,{initial:r,post:async(_,current)=>current});await env.click(env.button('Review changes (2)'));
  assert.match(document.querySelector('.reprocessing-patch').textContent,/Linked scholarly changes/);await env.click(env.button('Keep original'));
  assert.deepEqual(env.requests.find(entry=>entry.method==='POST').body.decisions,[{patchId:'patch-0',decision:'rejected'},{patchId:'patch-1',decision:'rejected'}]);
+});
+
+
+test('unavailable native source evidence leaves extracted-text reprocessing available',async t=>{
+ const env=await mount(t,{post:async()=>fixture()});await env.click(env.button('Reprocess with AI'));
+ assert.equal(document.querySelector('[aria-label="Use local OCR evidence"]').disabled,true);
+ assert.equal(document.querySelector('[aria-label="Compare original-page images with the model"]').disabled,true);
+ assert.equal(document.querySelector('[aria-label="Allow selected source evidence to be sent to the AI provider"]'),null);
+ assert.match(document.querySelector('.reprocessing-evidence-options').textContent,/Native evidence is unavailable/);assert.equal(env.button('Start reprocessing').disabled,false);
+ await env.click(env.button('Start reprocessing'));assert.deepEqual(env.requests.find(entry=>entry.method==='POST').body.configuration.evidence,{originalPages:false,ocr:false,allowExternalTransmission:false});
+});
+
+test('available macOS local OCR is separate from explicit external evidence consent',async t=>{
+ const env=await mount(t,{post:async()=>fixture(),capabilities:{originalPages:true,ocr:true,externalImages:true,reason:'macOS native PDF and Vision OCR are available.'}});await env.click(env.button('Reprocess with AI'));
+ const ocr=document.querySelector('[aria-label="Use local OCR evidence"]');assert.equal(ocr.disabled,false);assert.equal(ocr.checked,true);
+ const consent=document.querySelector('[aria-label="Allow selected source evidence to be sent to the AI provider"]');assert.ok(consent);assert.equal(consent.checked,false);assert.equal(env.button('Start reprocessing').disabled,false);
+ assert.match(document.querySelector('.reprocessing-evidence-options').textContent,/Without transmission consent, its text stays local/);
+ await env.click(env.button('Start reprocessing'));assert.deepEqual(env.requests.find(entry=>entry.method==='POST').body.configuration.evidence,{originalPages:false,ocr:true,allowExternalTransmission:false});
+});
+
+test('original-page model comparison requires explicit consent and changing evidence clears that consent',async t=>{
+ const env=await mount(t,{post:async()=>fixture(),capabilities:{originalPages:true,ocr:true,externalImages:true,reason:'macOS native PDF and Vision OCR are available.'}});await env.click(env.button('Reprocess with AI'));
+ await env.click(document.querySelector('[aria-label="Compare original-page images with the model"]'));assert.equal(env.button('Start reprocessing').disabled,true);
+ assert.match(document.querySelector('.reprocessing-evidence-options').textContent,/requires transmission consent/);assert.equal(env.requests.some(entry=>entry.method==='POST'),false);
+ await env.click(document.querySelector('[aria-label="Allow selected source evidence to be sent to the AI provider"]'));assert.equal(env.button('Start reprocessing').disabled,false);
+ await env.click(document.querySelector('[aria-label="Use local OCR evidence"]'));assert.equal(document.querySelector('[aria-label="Allow selected source evidence to be sent to the AI provider"]').checked,false);assert.equal(env.button('Start reprocessing').disabled,true);
+ await env.click(document.querySelector('[aria-label="Allow selected source evidence to be sent to the AI provider"]'));await env.click(env.button('Start reprocessing'));
+ assert.deepEqual(env.requests.find(entry=>entry.method==='POST').body.configuration.evidence,{originalPages:true,ocr:false,allowExternalTransmission:true});
+});
+
+test('native OCR remains available when the selected model cannot receive images',async t=>{
+ const env=await mount(t,{post:async()=>fixture(),capabilities:{originalPages:true,ocr:true,externalImages:false,reason:'Native page rendering and OCR are available.'}});await env.click(env.button('Reprocess with AI'));
+ assert.equal(document.querySelector('[aria-label="Use local OCR evidence"]').disabled,false);assert.equal(document.querySelector('[aria-label="Compare original-page images with the model"]').disabled,true);
+ assert.match(document.querySelector('.reprocessing-evidence-options').textContent,/selected model does not support original-page images/);
+});
+
+
+test('explicit local OCR optout survives other form changes and a new run restores available defaults',async t=>{
+ const env=await mount(t,{post:async()=>fixture(),capabilities:{originalPages:true,ocr:true,externalImages:true,reason:'Synthetic macOS native evidence capabilities.'}});await env.click(env.button('Reprocess with AI'));
+ const ocr=document.querySelector('[aria-label="Use local OCR evidence"]');assert.equal(ocr.checked,true);await env.click(ocr);assert.equal(ocr.checked,false);
+ const depth=document.querySelector('[aria-label="Processing depth"]');await act(async()=>{depth.value='deep';depth.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
+ assert.equal(document.querySelector('[aria-label="Use local OCR evidence"]').checked,false);
+ await env.click(env.button('Cancel'));await env.click(env.button('Reprocess with AI'));assert.equal(document.querySelector('[aria-label="Use local OCR evidence"]').checked,true);
+ await env.click(document.querySelector('[aria-label="Use local OCR evidence"]'));await env.click(env.button('Start reprocessing'));assert.equal(env.requests.find(entry=>entry.method==='POST').body.configuration.evidence.ocr,false);
+});
+
+
+test('start waits for source capabilities so available local OCR is not skipped by a fast submission',async t=>{
+ let resolveCapabilities;const env=await mount(t,{post:async()=>fixture(),capabilities:()=>new Promise(resolve=>{resolveCapabilities=resolve;})});await env.click(env.button('Reprocess with AI'));
+ assert.equal(env.button('Start reprocessing').disabled,true);await env.click(env.button('Start reprocessing'));assert.equal(env.requests.some(entry=>entry.method==='POST'),false);
+ await act(async()=>resolveCapabilities({originalPages:true,ocr:true,externalImages:true,reason:'Synthetic native evidence support.'}));
+ assert.equal(document.querySelector('[aria-label="Use local OCR evidence"]').checked,true);assert.equal(env.button('Start reprocessing').disabled,false);
+ await env.click(env.button('Start reprocessing'));assert.equal(env.requests.find(entry=>entry.method==='POST').body.configuration.evidence.ocr,true);
 });

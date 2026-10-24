@@ -37,7 +37,11 @@ export function EntityPanel(props: EntityPanelProps) {
   const tab = requestedTab === 'edit' ? 'overview' : requestedTab;
   const [showAllMentions, setShowAllMentions] = useState(false);
   const currentEntityKey = useRef({vaultId, id}); currentEntityKey.current = {vaultId, id};
-  useEffect(() => {setEntity(null); setTab('overview');}, [vaultId, id]);
+  const mounted=useRef(true);
+  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
+  const isCurrent = () => mounted.current && currentEntityKey.current.vaultId === vaultId && currentEntityKey.current.id === id;
+  async function refreshCurrent() {const value=await api.entity(vaultId,id);if(isCurrent())setEntity(value);}
+  useEffect(() => {setEntity(null); setManage(false); setShowAllMentions(false); setTab('overview');}, [vaultId, id]);
   useEffect(() => {
     let active = true; setLoadingError('');
     void api.entity(vaultId, id).then(e => { if (active) setEntity(e); }).catch(error => { if (active) setLoadingError(String(error)); });
@@ -101,14 +105,15 @@ export function EntityPanel(props: EntityPanelProps) {
       {!inspector&&entity.attachments?.map(file=><SourceLoadingProgress key={file.id} file={file}/>)}
       {!inspector&&<div className="entity-detail-classification"><span className="entity-detail-type">{uiText(entityLabels[entity.type])}</span>{entity.type==='source'&&<span>{entity.attachments?.some(file=>file.status==='queued'||file.status==='processing')?uiText("Processing"):entity.inactive?uiText("Inactive"):entity.sourceEnrichmentStatus==='pending'||entity.sourceEnrichmentStatus==='running'?uiText("Processed · Enriching with AI"):entity.sourceEnrichmentStatus==='failed'?uiText("Processed · AI enrichment failed"):uiText("Processed")}</span>}{!!subtypeNames.length && <span>{subtypeNames.join(' · ')}</span>}</div>}
       <div className="entity-lifecycle-controls">{entity.archived_at&&<span className="entity-archived-status" role="status"><Icon name="archive"/>{uiText("Archived")}</span>}<button type="button" className="entity-lifecycle-action" aria-haspopup="dialog" onClick={()=>setManage(true)}><Icon name={entity.archived_at?'undo':'archive'}/>{entity.archived_at?uiText("Restore…"):uiText("Archive…")}</button></div>
-      {manage&&<SourceLifecycleDialog vaultId={vaultId} source={entity} onClose={()=>setManage(false)} onUpdated={async()=>{await onUpdated();setEntity(await api.entity(vaultId,id));}}/>}
+      {manage&&<SourceLifecycleDialog vaultId={vaultId} source={entity} onClose={()=>{if(isCurrent())setManage(false);}} onUpdated={async()=>{await onUpdated();if(isCurrent())await refreshCurrent();}}/>}
       {!inspector && props.onOpenHome && <div className="entity-preview-navigation"><p>{pageMentions.length} {uiText(pageMentions.length===1?"page":"pages")} · {connectionCount} {uiText(connectionCount===1?"connection":"connections")}</p><button type="button" className="button" onClick={() => props.onOpenHome?.(id)}>{uiText("Open entity homepage")}<Icon name="chevron"/></button></div>}
       {!inspector && tabNavigation}
       <div id="entity-tabpanel-overview" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-overview" hidden={tab !== 'overview'} tabIndex={0}>
       {entity.type==='source'&&<BibliographyEditor key={vaultId+':'+id+':bibliography-overview'} vaultId={vaultId} entity={entity} onOpenSource={onOpen} onUpdated={onUpdated}/>}
       {inspector&&<>
         <SourceInspectorStatus files={entity.attachments??[]} vaultId={vaultId} onError={onError} onChange={file=>{
-          setEntity(current=>current?{...current,attachments:current.attachments?.map(item=>item.id===file.id?file:item)}:current);
+          if(!isCurrent())return;
+          setEntity(current=>current?.id===id?{...current,attachments:current.attachments?.map(item=>item.id===file.id?file:item)}:current);
           void onUpdated().catch(onError);
         }}/>
         {attachment&&<SourceInspectorSummary key={attachment.id} name={attachment.generated_name||attachment.name} summary={attachment.summary}/>}
@@ -150,7 +155,7 @@ export function EntityPanel(props: EntityPanelProps) {
           </li>)}</ul> : <p className="entity-detail-empty">{uiText("No attached files. Add sources below.")}</p>}
         </section>}
       </>}
-      <details className="entity-context-details" open={hasEntityDraft(vaultId,id) || undefined}><summary>{uiText("Identity and property details")}</summary>
+      <details className="entity-context-details entity-detail-edit" open={hasEntityDraft(vaultId,id) || undefined}><summary>{uiText("Identity and property details")}</summary>
         {schemaError && <p role="alert">{schemaError}</p>}
         <section className="entity-detail-section entity-identity-section"><EntityDetails vaultId={vaultId} schema={schema} key={vaultId + ':' + entity.id} entity={entity} onSave={async input => {
           let result: EntityDetail;
@@ -160,7 +165,7 @@ export function EntityPanel(props: EntityPanelProps) {
           void onUpdated().catch(onError);
           return result;
         }}/></section>
-        {entity.type==='source'&&<SourceAttachments compact={inspector} key={entity.id} vaultId={vaultId} entityId={entity.id} initial={entity.attachments} onChange={attachments => {setEntity(current => current ? {...current, attachments,inactive:attachments.some(file=>file.status==='failed'),sourceStatus:attachments[0]?.status,sourceEnrichmentStatus:attachments[0]?.enrichment_status} : current);if(attachments.every(file=>file.status==='failed'||file.status==='ready'&&file.enrichment_status!=='pending'&&file.enrichment_status!=='running'))void api.entity(vaultId,id).then(result=>{setEntity(result);return onUpdated();}).catch(onError);else if(entity.inactive)void onUpdated().catch(onError);}}/>}
+        {entity.type==='source'&&<SourceAttachments compact={inspector} key={entity.id} vaultId={vaultId} entityId={entity.id} initial={entity.attachments} onChange={attachments => {if(!isCurrent())return;setEntity(current => current?.id===id ? {...current, attachments,inactive:attachments.some(file=>file.status==='failed'),sourceStatus:attachments[0]?.status,sourceEnrichmentStatus:attachments[0]?.enrichment_status} : current);if(attachments.every(file=>file.status==='failed'||file.status==='ready'&&file.enrichment_status!=='pending'&&file.enrichment_status!=='running'))void api.entity(vaultId,id).then(result=>{if(!isCurrent())return;setEntity(result);return onUpdated();}).catch(onError);else if(entity.inactive)void onUpdated().catch(onError);}}/>}
         <section className="panel-section"><h3>{uiText("Properties") + " "}<span>{entity.properties.length}</span></h3>
           <PropertyEditor definitions={schema.propertyDefinitions} key={entity.type + JSON.stringify(entity.subtypes)} entity={{...entity, propertyNames}} entities={entities} mention={mention} onSave={(input, propertyId) => mutate(() => api.saveProperty(vaultId, id, input, propertyId))} onRemove={propertyId => mutate(() => api.removeConnection(vaultId, id, 'properties', propertyId))}/>
         </section>

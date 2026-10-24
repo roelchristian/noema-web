@@ -60,6 +60,7 @@ export interface SourceFile {
 export interface EntityPageMention extends PageSummary { mentionCount: number; excerpt: string; contexts?: import('./entity-mentions.js').EntityMentionContext[] }
 export interface EntityOverview { content: string; revision: number }
 export interface EntityPageAssociation extends PageSummary { pinned: boolean; annotation: string; created_at: string }
+export interface PagePageAssociation extends PageSummary {pinned:boolean;annotation:string;created_at:string}
 export interface PageEntityAssociation { entityId: string; pinned: boolean; annotation: string }
 export interface EntityDetail extends Entity { propertyProposalCount?:number; previewLimited?: boolean; overview?: EntityOverview; linkedPages?: EntityPageAssociation[]; pageMentions?: EntityPageMention[]; attachments?: SourceFile[]; propertyNames: string[]; properties: Property[]; relationships: Relationship[]; incomingProperties: Property[] }
 

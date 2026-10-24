@@ -93,7 +93,8 @@
     "test/bibliography-ui.test.mjs",
     "test/bibliographic-citations.test.mjs",
     "test/reference-list.test.mjs",
-    "test/transliteration-ui.test.mjs"
+    "test/transliteration-ui.test.mjs",
+    "test/page-connections-ui.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",
@@ -213,6 +214,7 @@
     "test/source-scholarly.test.mjs",
     "test/bibliography-http.test.mjs",
     "test/bibliographic-property-projection.test.mjs",
-    "test/bibliographic-export.test.mjs"
+    "test/bibliographic-export.test.mjs",
+    "test/page-connections.test.mjs"
   ]
 }

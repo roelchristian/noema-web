@@ -2168,3 +2168,95 @@ main.source-workspace > #content > .source-reader {
 }
 /* Temporal links mark a validated character range within the source passage. */
 .source-viewer[data-temporal-source=true] mark {background:var(--status-info-bg);color:var(--text);text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px;}
+
+/* Reader display preferences change Noema's apparatus, never printed content. */
+.source-reader-display {
+  position: relative;
+}
+.source-reader-display summary {
+  cursor: pointer;
+  min-height: var(--control-target-compact);
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+}
+.source-reader-display-panel {
+  position: absolute;
+  z-index: 15;
+  inset-block-start: 100%;
+  inset-inline-start: 0;
+  width: min(340px, calc(100vw - 40px));
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-popover);
+  display: grid;
+  gap: 12px;
+}
+.source-reader-display-panel label {
+  justify-content: space-between;
+}
+.source-reader-display-panel select {
+  max-width: 100%;
+}
+.source-reader-display-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.source-reader-document[data-annotations='contextual'] .source-reader-node-address,
+.source-reader-document[data-annotations='clean'] .source-reader-node-address {
+  opacity: 0;
+}
+.source-reader-document[data-annotations='contextual'] .source-reader-passage:hover .source-reader-node-address,
+.source-reader-document .source-reader-passage:focus-within .source-reader-node-address,
+.source-reader-document .source-reader-passage.is-selected .source-reader-node-address {
+  opacity: 1;
+}
+.source-reader-node-address[aria-disabled='true'] {
+  cursor: help;
+}
+.source-reader-structure-label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-muted);
+  font: 11px/1.5 var(--font-ui);
+}
+.source-reader-editorial-notice {
+  margin: 0 0 20px;
+  color: var(--text-muted);
+  font: 12px/1.6 var(--font-ui);
+}
+.source-reader-change-indicator {
+  position: absolute;
+  inset-inline-end: 0;
+  inset-block-start: 0;
+  color: var(--text-muted);
+  min-width: var(--control-target-compact);
+  min-height: var(--control-target-compact);
+}
+.source-reader[data-reader-typography='serif'] .source-reader-document {
+  font-family: var(--font-title);
+}
+.source-reader[data-reader-width='wide'] .source-reader-document {
+  max-width: 100%;
+}
+@media (hover: none) {
+  .source-reader-document[data-annotations='contextual'] .source-reader-node-address {
+    opacity: .7;
+  }
+}
+@media (max-width: 750px) {
+  .source-reader-display summary, .source-reader-display-panel button {
+    min-height: var(--touch-target-size);
+  }
+}
+@media (min-width: 1200px) {
+  main.source-workspace > #content > .source-reader.has-review-drawer {
+    padding-inline-end: 480px;
+  }
+  .source-reader.has-review-drawer .source-reader-document {
+    width: 100%;
+  }
+}

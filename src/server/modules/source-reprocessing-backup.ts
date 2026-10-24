@@ -85,6 +85,8 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
   if(!id||patchIds.has(id)||bounds.end<=bounds.start||string(patch.original,16000)!==text.slice(bounds.start,bounds.end))throw invalid();patchIds.add(id);
   if(pageRanges.some(page=>page.start>bounds.start&&page.start<bounds.end))throw invalid();
   if(patch.riskReasons!==undefined)for(const reason of array(patch.riskReasons,20))string(reason,2000);
+  if(patch.autoAcceptance!==undefined){const evidence=object(patch.autoAcceptance);oneOf(evidence.policy,['safe_formatting','balanced','minimal_review']);string(evidence.validator,100);timestamp(evidence.appliedAt);for(const check of array(evidence.checks,30))string(check,200);}
+  if(patch.decisionHistory!==undefined)for(const value of array(patch.decisionHistory,100000)){const event=object(value);timestamp(event.at);oneOf(event.actor,['automatic','user']);oneOf(event.from,['pending','accepted','rejected']);oneOf(event.to,['pending','accepted','rejected']);if(event.previousReplacement!==undefined)string(event.previousReplacement,16000);if(event.replacement!==undefined)string(event.replacement,16000);}
   string(patch.replacement,16000);string(patch.reason,2000);if(patch.userReplacement!==undefined)string(patch.userReplacement,16000);
   oneOf(patch.category,['ocr','line_breaks','footnote','apparatus','metadata','citation','math','formatting']);oneOf(patch.decision,['pending','accepted','rejected']);
   if(typeof patch.confidence!=='number'||!Number.isFinite(patch.confidence)||patch.confidence<0||patch.confidence>1)throw invalid();
@@ -97,7 +99,7 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  if(ordered.some((bounds,index)=>index>0&&bounds.start<ordered[index-1]!.end))throw invalid();
  const report=object(r.report);string(report.promptVersion,200);string(report.model,200);
  oneOf(report.reasoningEffort,['none','minimal','low','medium','high','xhigh','max']);
- if(r.acceptanceMode!==undefined)oneOf(r.acceptanceMode,['review_all','safe_formatting']);
+ if(r.acceptanceMode!==undefined)oneOf(r.acceptanceMode,['review_all','safe_formatting','balanced','minimal_review']);
  if(r.acceptanceThreshold!==undefined&&(typeof r.acceptanceThreshold!=='number'||!Number.isFinite(r.acceptanceThreshold)||r.acceptanceThreshold<0||r.acceptanceThreshold>1))throw invalid();
  for(const key of ['startedAt','finishedAt'])if(report[key]!==null)timestamp(report[key]);
  for(const key of ['durationMs','inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])if(report[key]!==null)integer(report[key],0,Number.MAX_SAFE_INTEGER);

@@ -141,7 +141,7 @@ test('date entity view shows the selected liturgy, metadata and optional detail 
 test('coarse, Julian and disabled date entity views do not fetch or invent an observance',async t=>{
  const env=domFixture(t),{DateLiturgicalDetails}=await import('../src/client/knowledge/DateLiturgicalDetails.tsx'),{temporalDate}=await import('../src/shared/temporal.ts');let calls=0;
  t.mock.method(api,'liturgicalYear',async()=>{calls++;throw new Error('Unexpected calendar lookup');});
- for(const date of [temporalDate('2031'),temporalDate('2031-10'),temporalDate('2031-10-22','julian')]){
+ for(const date of [temporalDate('2031'),temporalDate('2031-10'),temporalDate('~2031-10-22'),temporalDate('2031-10-22','julian')]){
   await act(async()=>env.root.render(createElement(DateLiturgicalDetails,{vaultId:'vault',date,settings:{enabled:true,calendarId:'grc-en',optional:false}})));
   assert.match(document.body.textContent,date.calendar==='julian'?/has not been converted/:/require an exact day/);
  }

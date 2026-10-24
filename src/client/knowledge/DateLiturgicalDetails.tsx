@@ -8,7 +8,7 @@ import {t as uiText} from '../i18n';
 /** Use the same selected calendar, cache and download eligibility as Calendar.
  * A coarse or Julian date never acquires an invented Gregorian observance. */
 export function DateLiturgicalDetails({vaultId,date,settings,onOpenSettings}:{vaultId:string;date:TemporalDate;settings:CalendarSettings;onOpenSettings?:()=>void}) {
- const exact=date.precision==='day'&&date.calendar==='gregorian';
+ const exact=date.precision==='day'&&date.calendar==='gregorian'&&!date.value.startsWith('~');
  const year=Number(date.value.slice(0,4));
  const result=useLiturgicalYear(vaultId,year,settings.enabled&&exact,settings.calendarId);
  const day=result.data?.days[date.value];

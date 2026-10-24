@@ -89,7 +89,7 @@ try{
   const blockContract=await menuContract(page,blockSelector,width===390?44:36);assert.deepEqual(blockContract,actionContract);
   await page.keyboard.press('Escape');
   await content.evaluate(e=>{e.focus();const walker=document.createTreeWalker(e,NodeFilter.SHOW_TEXT);let n;while(n=walker.nextNode()){if(n.textContent.trim().length<8)continue;const r=document.createRange();r.setStart(n,0);r.setEnd(n,8);getSelection().removeAllRanges();getSelection().addRange(r);document.dispatchEvent(new Event('selectionchange'));return;}throw new Error('Expected sample text');});
-  await page.getByRole('button',{name:'Text actions',exact:true}).click();
+  await page.getByRole('button',{name:'More selection actions',exact:true}).click();
   const selectionContract=await menuContract(page,'.selection-more-actions',width===390?44:36);assert.deepEqual(selectionContract,actionContract);
 
   await page.getByRole('menuitem',{name:'Semantic function',exact:true}).click();

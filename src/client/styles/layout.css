@@ -399,19 +399,6 @@ main {
   color: light-dark(#aaa, var(--text-muted));
   padding: 6px;
 }
-.page-toolbar > .favourite-button {
-  position: relative;
-  margin-inline-start: 6px;
-}
-.page-toolbar > .favourite-button::before {
-  content: '';
-  position: absolute;
-  inset-inline-start: -5px;
-  top: 50%;
-  height: 16px;
-  transform: translateY(-50%);
-  border-inline-start: 1px solid var(--line);
-}
 .favourite-button.is-favourite {
   color: #9b7018;
 }
@@ -1733,11 +1720,12 @@ main[data-entity-review-open=true] *::after { animation: none !important; transi
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: var(--control-target-compact);
+  width: auto;
+  min-width: var(--control-target-compact);
   min-height: var(--control-target-compact);
-  padding: 6px;
+  padding: 6px 8px;
   border-radius: var(--radius-toolbar);
-  font-size: var(--ui-text-xs);
+  font-size: var(--ui-text-md);
   color: var(--text-muted);
 }
 .presentation-selector button {
@@ -1750,51 +1738,9 @@ main[data-entity-review-open=true] *::after { animation: none !important; transi
   background: var(--surface-hover);
   color: var(--text);
 }
-.presentation-icon-pair {
-  display: grid;
-  width: 16px;
-  height: 16px;
-}
-.presentation-icon-pair > .icon {
-  grid-area: 1 / 1;
-  width: 16px;
-  height: 16px;
-  transition: opacity 200ms ease, transform 240ms cubic-bezier(.22, 1, .36, 1);
-}
-.presentation-icon-pair > .icon:first-child {
-  opacity: 1;
-  transform: scale(1) rotate(0);
-}
-.presentation-icon-pair > .icon:last-child {
-  opacity: 0;
-  transform: scale(.8) rotate(-8deg);
-}
-.presentation-icon-pair.is-active > .icon:first-child {
-  opacity: 0;
-  transform: scale(.8) rotate(8deg);
-}
-.presentation-icon-pair.is-active > .icon:last-child {
-  opacity: 1;
-  transform: scale(1) rotate(0);
-}
 @media (prefers-reduced-motion: reduce) {
-  .presentation-selector button, .presentation-icon-pair > .icon {
-    transition: none;
-  }
-  .presentation-selector button:active:not(:disabled) {
-    transform: none;
-  }
-}
-.presentation-selector .presentation-focus {
-  margin-inline-start: 3px;
-  position: relative;
-}
-.presentation-focus::before {
-  content: '';
-  position: absolute;
-  inset-inline-start: -3px;
-  height: 16px;
-  border-inline-start: 1px solid var(--line);
+  .presentation-selector button { transition: none; }
+  .presentation-selector button:active:not(:disabled) { transform: none; }
 }
 .presentation-selector button:disabled {
   opacity: .5;

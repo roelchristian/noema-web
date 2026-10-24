@@ -33,7 +33,7 @@ import { aiExplanationSources, aiExplanationsForSources, explanationsLinkedToDel
 import {pageTitleKey,resolvePageLink,stablePageLink} from '../../shared/page-links';
 import { completePageLink } from './page-links';
 import { ReadOnlyExplanationBlock } from './ReadOnlyExplanationBlock';
-import { clearEditorSelection,editorSelectionRange,selectedEditorBlocks,editorSelectionBlocks } from './block-selection';
+import { clearEditorSelection,editorSelectionRange,editorSelectionRanges,selectedEditorBlocks,editorSelectionBlocks } from './block-selection';
 import { installBlockDrag, reorderBlock } from './block-drag';
 import { installBlockSelection, setEditorCaret } from './block-selection';
 import { displayMathSource } from './math-delimiters';
@@ -284,7 +284,7 @@ export function BlockEditor(props: Props) {
   },[reviewMatches]);
   const dragStatus = useRef<HTMLDivElement>(null);
   function announceDrag(message: string) {if (dragStatus.current) dragStatus.current.textContent = message;}
-  const [citationTarget,setCitationTarget]=useState<{bookmark:CitationBookmark;editor:HTMLElement;blockId:string}|null>(null);
+  const [citationTarget,setCitationTarget]=useState<{bookmark:CitationBookmark;editor:HTMLElement;blockId:string;selection?:{range:Range;text:string}}|null>(null);
   const [mathTarget, setMathTarget] = useState<{range: Range; initial: string; node?: HTMLElement} | null>(null);
   const [uploads, setUploads] = useState<ImageUpload[]>([]), [imageError, setImageError] = useState('');
   const uploadQueue = useRef(Promise.resolve());
@@ -696,8 +696,8 @@ export function BlockEditor(props: Props) {
     const ids=selection?.includes(block.id)?selection:[block.id];
     const back: Choice = {title:uiText("Back to block actions"),icon:'arrow-left',submenu:true,back:true,pick:()=>blockOptions(anchor,block)};
     show(anchor, [
-      {get title(){return uiText("Format")},detail:uiText("Text, headings, lists, and other block formats"),icon:'text',submenu:true,pick:()=>show(anchor,[back,...blockOptionsFor(block).map(option=>({...option,pick:()=>convert(block,option.type)})),imageChoice(block.id,block),...(mobile?movementChoices(block.id):[])],'FORMAT',true)},
-      ...(!isAIExplanation(block) ? [{get title(){return uiText("Turn into")},detail:block.semantic?semanticFunctions[block.semantic].label:uiText("Choose a semantic block"),icon:'semantic',submenu:true,
+      {get title(){return uiText("Block type")},detail:uiText("Text, headings, lists, and other block formats"),icon:'text',submenu:true,pick:()=>show(anchor,[back,...blockOptionsFor(block).map(option=>({...option,pick:()=>convert(block,option.type)})),imageChoice(block.id,block),...(mobile?movementChoices(block.id):[])],'FORMAT',true)},
+      ...(!isAIExplanation(block) ? [{get title(){return uiText("Semantic function")},detail:block.semantic?semanticFunctions[block.semantic].label:uiText("Choose a semantic block"),icon:'semantic',submenu:true,
         pick:()=>show(anchor,[back,...semanticChoices(kind=>onChange(applySemantic(latest.current.blocks,ids,kind))),...(block.semantic?[{title:uiText("Remove semantic function"),icon:'close',pick:()=>{setMenu(null);update(block.id,{semantic:undefined});}}]:[]),...(mobile&&block.semanticGroup?[{get title(){return uiText("Group actions")},icon:'semantic',submenu:true,pick:()=>{setActiveBlock({id:block.semanticGroup!.id,group:true});groupOptions(anchor,block.semanticGroup!.id);}}]:[])],'TURN INTO SEMANTIC BLOCK', true)}] : []),
       ...(props.onExplain&&aiExplanationSources(latest.current.blocks,ids).length?[aiActionChoice(anchor,ids,back)]:[]),
       ...speakChoice(ids),
@@ -705,7 +705,7 @@ export function BlockEditor(props: Props) {
     ], 'BLOCK OPTIONS', true);
   }
   function speakChoice(ids:string[]):Choice[] {
-    return speech.enabled?[{title:uiText("Speak"),detail:uiText("Read aloud with an AI-generated voice"),icon:'speaker',pick:()=>readBlocks(ids)}]:[];
+    return speech.enabled?[{title:uiText("Read aloud"),detail:uiText("Read aloud with an AI-generated voice"),icon:'speaker',pick:()=>readBlocks(ids)}]:[];
   }
   function readSelection() {
     if (!root.current) return;
@@ -829,11 +829,29 @@ export function BlockEditor(props: Props) {
     const el=elements.current.get(blockId);el?.focus();getSelection()?.removeAllRanges();getSelection()?.addRange(range);
     if(el)update(blockId,{content:readSegments(el)});setMenu(null);
   }
+  function citeSelection(selection:Range) {
+    const editor=root.current;
+    if(!editor||!editor.contains(selection.startContainer)||!editor.contains(selection.endContainer))return;
+    const range=editorSelectionRanges(editor,selection).at(-1)?.cloneRange();
+    if(!range)return;
+    const host=(range.endContainer instanceof Element?range.endContainer:range.endContainer.parentElement)?.closest<HTMLElement>('.block-content[contenteditable="true"]');
+    const blockId=host?.closest<HTMLElement>('[data-block-id]')?.dataset.blockId;
+    if(!host||!blockId||host.closest('.table-cell,.block.code'))return;
+    const endpoint=range.endContainer instanceof Element?range.endContainer:range.endContainer.parentElement;
+    if(endpoint?.closest('code,a,[contenteditable="false"]'))return;
+    // Reuse the citation insertion transaction at the selection's end. The
+    // highlighted wording stays intact; cancellation can restore all blocks.
+    range.collapse(false);
+    setMenu(null);
+    setCitationTarget({bookmark:bookmarkCitationRange(host,range),editor:host,blockId,selection:{range:selection.cloneRange(),text:selection.toString()}});
+  }
   function closeCitation(restoreFocus=false) {
     const range=citationTarget?resolveCitationRange(citationTarget.editor,citationTarget.bookmark):null;
     if(restoreFocus&&range&&citationTarget){
-      range.collapse(false);
-      citationTarget.editor.focus({preventScroll:true});getSelection()?.removeAllRanges();getSelection()?.addRange(range);
+      const original=citationTarget.selection;
+      const selected=original&&original.range.startContainer.isConnected&&original.range.endContainer.isConnected&&root.current?.contains(original.range.commonAncestorContainer)&&original.range.toString()===original.text?original.range:null;
+      if(!selected)range.collapse(false);
+      citationTarget.editor.focus({preventScroll:true});getSelection()?.removeAllRanges();getSelection()?.addRange(selected??range);
     }
     setCitationTarget(null);
   }
@@ -1127,7 +1145,7 @@ export function BlockEditor(props: Props) {
     <span id="block-drag-help" className="block-drag-sr">{uiText("Drag to reorder. Click for options. With the handle focused, press Space to pick up, Up or Down to move, Space or Enter to drop, Escape to cancel.")}</span>
     <div ref={dragStatus} className="block-drag-sr" role="status" aria-live="polite" aria-atomic="true"/>
     <EntityLinkActions editor={root} entities={entities} onCommit={commitSelection} onOpen={onOpenEntity}/>
-    <SelectionToolbar onRead={speech.enabled?readSelection:undefined} onOpenEntity={onOpenEntity} onReview={props.onReview?()=>void reviewWriting():undefined} reviewing={writingReview?.loading} explainLabel={explainLabel} mobile={mobile} keyboardInset={keyboardInset} viewportHeight={viewportHeight} onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} suggestionContext={{priorityIds:suggestionPriorityIds}} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
+    <SelectionToolbar onCitation={citeSelection} onRead={speech.enabled?readSelection:undefined} onOpenEntity={onOpenEntity} onReview={props.onReview?()=>void reviewWriting():undefined} reviewing={writingReview?.loading} explainLabel={explainLabel} mobile={mobile} keyboardInset={keyboardInset} viewportHeight={viewportHeight} onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} suggestionContext={{priorityIds:suggestionPriorityIds}} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
     {linkedExplanations.length > 0 && <Modal className="confirmation-dialog linked-explanation-dialog" titleId="linked-explanation-delete-title" onClose={() => setLinkedDeletion([])}>
       <ModalHeader titleId="linked-explanation-delete-title" leading={<Icon name="sparkles"/>} closeLabel={uiText("Close and keep explanations")}>{linkedExplanations.length === 1 ? uiText("Keep the explanation?") : uiText("Keep the explanations?")}</ModalHeader>
       <p>{linkedExplanations.length === 1
@@ -1170,7 +1188,7 @@ export function BlockEditor(props: Props) {
     </div>}
     {menu && (mobile && menu.sheet ? <Modal className="mobile-block-sheet" titleId="mobile-block-sheet-title" onClose={() => setMenu(null)} dismissOnBackdrop>
       <div ref={menuRef}>
-        <ModalHeader titleId="mobile-block-sheet-title">{menu.label === 'ADD BLOCK BELOW' ? uiText("Add a block") : menu.label === 'FORMAT' || menu.label === 'TURN INTO' ? uiText("Format block") : menu.label === 'TURN INTO SEMANTIC BLOCK' ? uiText("Turn into") : menu.label === 'AI PERSONA' ? 'Explanation persona' : menu.label === 'AI ACTIONS' ? uiText("AI actions") : menu.label === 'SEMANTIC GROUP' ? uiText("Group actions") : menu.label === 'SEMANTIC FUNCTION' ? uiText("Semantic function") : uiText("Block actions")}</ModalHeader>
+        <ModalHeader titleId="mobile-block-sheet-title">{menu.label === 'ADD BLOCK BELOW' ? uiText("Add a block") : menu.label === 'FORMAT' || menu.label === 'TURN INTO' ? uiText("Format block") : menu.label === 'TURN INTO SEMANTIC BLOCK' ? uiText("Semantic function") : menu.label === 'AI PERSONA' ? 'Explanation persona' : menu.label === 'AI ACTIONS' ? uiText("AI actions") : menu.label === 'SEMANTIC GROUP' ? uiText("Group actions") : menu.label === 'SEMANTIC FUNCTION' ? uiText("Semantic function") : uiText("Block actions")}</ModalHeader>
         <div key={menu.label} className="mobile-block-sheet-options menu-primitive" data-menu-size="touch" data-menu-presentation="sheet">{menuChoices(true)}</div>
       </div>
     </Modal> : <div key={menu.label} ref={menuRef} className="command-menu block-action-menu menu-primitive" data-menu-size="regular" data-menu-presentation="popup" style={{left: menu.left, top: menu.top}} onMouseDown={e => e.preventDefault()} role="menu" aria-label={menu.label}>{menuChoices()}</div>)}

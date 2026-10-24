@@ -24,7 +24,7 @@ async function fixture(t,blocks,onExplain){
 test('block options apply a colored semantic function without changing editable text',async t=>{
  const f=await fixture(t,[block('a','A definition')]);try{
   await f.click(document.querySelector('.block-handle'));
-  await f.click(Array.from(document.querySelectorAll('.command-menu button')).find(b=>b.textContent.startsWith('Turn into')));
+  await f.click(Array.from(document.querySelectorAll('.command-menu button')).find(b=>b.textContent.startsWith('Semantic function')));
   await f.click(Array.from(document.querySelectorAll('.command-menu button')).find(b=>b.textContent.startsWith('Definition')));
   assert.equal(f.current()[0].semantic,'definition');assert.equal(document.querySelector('.block-content').textContent,'A definition');
   const tagged=document.querySelector('.semantic-block');assert.equal(tagged.dataset.semanticKind,'definition');assert.match(tagged.style.getPropertyValue('--semantic-color'),/^#/);assert.equal(tagged.querySelector('.block-handle').getAttribute('aria-label'),'Definition block options');assert.ok(tagged.querySelector('.semantic-function-icon'));assert.ok(tagged.querySelector('.semantic-grip-icon'));
@@ -34,7 +34,7 @@ test('selecting multiple blocks creates a semantic parent, which can be retagged
  const f=await fixture(t,[block('a','First subblock'),block('b','Second subblock')]);try{
   await act(async()=>{f.select();document.dispatchEvent(new Event('selectionchange'));});
   await f.click(document.querySelector('.block-handle'));
-  await f.click(Array.from(document.querySelectorAll('.command-menu button')).find(b=>b.textContent.startsWith('Turn into')));
+  await f.click(Array.from(document.querySelectorAll('.command-menu button')).find(b=>b.textContent.startsWith('Semantic function')));
   await f.click(Array.from(document.querySelectorAll('.command-menu button')).find(b=>b.textContent.startsWith('Question')));
   const group=document.querySelector('[data-block-group-id]');assert.ok(group);assert.equal(group.querySelectorAll('[data-block-id]').length,2);assert.deepEqual(f.current().map(b=>b.content[0].text),['First subblock','Second subblock','']);
   assert.ok(f.current().filter(b=>b.id!=='fixture-tail').every(b=>b.semanticGroup.kind==='question'));await f.click(group.querySelector('[data-semantic-parent-handle]'));
@@ -67,7 +67,7 @@ test('document selection can group equation and image blocks without text editin
  const f=await fixture(t,blocks);try{
   await act(async()=>{const range=document.createRange();const first=document.querySelector('[data-block-id="math"]'),last=document.querySelector('[data-block-id="image"]');range.setStartBefore(first);range.setEndAfter(last);document.getSelection().removeAllRanges();document.getSelection().addRange(range);document.dispatchEvent(new Event('selectionchange'));});
   await f.click(document.querySelector('.block-handle'));
-  await f.click(Array.from(document.querySelectorAll('.command-menu button')).find(b=>b.textContent.startsWith('Turn into')));
+  await f.click(Array.from(document.querySelectorAll('.command-menu button')).find(b=>b.textContent.startsWith('Semantic function')));
   await f.click(Array.from(document.querySelectorAll('.command-menu button')).find(b=>b.textContent.startsWith('Example')));
   assert.equal(f.current()[0].type,'math');assert.equal(f.current()[1].imageId,'example.png');assert.ok(f.current().filter(b=>b.id!=='fixture-tail').every(b=>b.semanticGroup.kind==='example'));assert.equal(document.querySelector('[data-block-group-id]').querySelectorAll('[data-block-id]').length,2);
  }finally{await f.close();}

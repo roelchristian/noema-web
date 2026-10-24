@@ -47,7 +47,7 @@ try {
       assert.match(await page.evaluate(() => document.documentElement.style.getPropertyValue('--font-ui')), /IBM Plex Mono/);
       assert.match(await page.evaluate(() => document.documentElement.style.getPropertyValue('--font-title')), /Inter/);
     }
-    await page.getByRole('button', {name: 'Knowledge', exact: true}).click();
+    await page.getByRole('button', {name: 'Show page knowledge', exact: true}).click();
     await page.getByRole('button', {name: 'Knowledge settings', exact: true}).click();
     await page.locator('.settings-modal[open]').waitFor();
     const status = page.locator('.settings-footer [role=status]');

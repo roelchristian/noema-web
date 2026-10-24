@@ -128,3 +128,13 @@
  .inbox-organise-summary { flex-wrap: wrap; gap: 10px; }
  .inbox-organise-summary > div { flex-basis: 100%; }
 }
+
+.inbox-activity .ai-notifications-controls { padding: 8px 0 12px; flex-wrap: wrap; }
+.inbox-activity .ai-notifications-controls > div { flex-wrap: wrap; }
+.inbox-activity .ai-notification-list li { padding: 12px 0; }
+.inbox-activity .ai-notifications-running { padding: 12px 0; }
+.inbox-activity .ai-notifications-running button { font-size: var(--ui-text-md); overflow-wrap: anywhere; }
+.inbox-activity .review-section-heading { align-items: center; flex-wrap: wrap; }
+@media (max-width: 750px), (pointer: coarse) {
+ .inbox-activity button { min-height: var(--touch-target-size); min-width: var(--touch-target-size); }
+}

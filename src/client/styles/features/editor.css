@@ -3365,6 +3365,24 @@
   width: auto;
   min-width: 0;
 }
+.transliteration-bar .select-trigger {
+  width: auto;
+  min-height: 32px;
+  gap: 6px;
+  padding: 6px 8px;
+  border-color: transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  box-shadow: none;
+}
+.transliteration-bar .select-trigger:hover:not(:disabled),
+.transliteration-bar .select-trigger[aria-expanded=true] {
+  border-color: transparent;
+  background: var(--surface-hover);
+  color: var(--text);
+}
 .transliteration-bar > button {
   display: inline-flex;
   align-items: center;

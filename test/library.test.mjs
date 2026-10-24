@@ -136,3 +136,17 @@ test('Grid cover treatment only reserves space for a genuine image', async()=>{
   assert.equal(renderToStaticMarkup(createElement(PageCover,{vaultId:'test',icon:'page'})),'');
   assert.match(renderToStaticMarkup(createElement(PageCover,{vaultId:'test',imageId:'cover'})),/loading="lazy"/);
 });
+
+test('Presentation persistence inherits per vault while selections and search remain ephemeral', async t=>{
+  const {setupDOM}=await import('./helpers/dom.mjs');setupDOM(t);
+  const {saveLibraryPresentation,readLibraryPresentation,getLibraryViewState,setLibraryViewState,clearLibraryViewStates}=await import('../src/client/state/library-view-state.ts');
+  const root=JSON.stringify(['organization','','']),folder=JSON.stringify(['organization','','new']);
+  saveLibraryPresentation('preferences',root,{layout:'compact',sort:'title-desc',groupFolders:false,columns:'location',density:'comfortable'});
+  assert.deepEqual(readLibraryPresentation('preferences',folder),{layout:'compact',sort:'title-desc',groupFolders:false,columns:'location',density:'comfortable'});
+  assert.deepEqual(readLibraryPresentation('another-vault',folder),{});
+  setLibraryViewState('preferences',folder,{query:'private query',selectedIds:['private-id'],scroll:{top:123,left:0},sort:'title-asc'});
+  assert.doesNotMatch(JSON.stringify([...Array(window.localStorage.length)].map((_,i)=>window.localStorage.getItem(window.localStorage.key(i)))),/private query|private-id|123/);
+  clearLibraryViewStates('preferences');
+  const restored=getLibraryViewState('preferences',folder);
+  assert.equal(restored.sort,'title-asc');assert.equal(restored.query,'');assert.deepEqual(restored.selectedIds,[]);assert.equal(restored.scroll.top,0);
+});

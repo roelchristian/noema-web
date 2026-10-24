@@ -2,6 +2,7 @@ import './archive.css';
 import {useState} from 'react';
 import type {ArchivedPage,Organization} from '../../shared/domain';
 import {DOMAINS} from '../../shared/domains';
+import {useLibraryRangeSelection} from '../state/use-library-range-selection';
 import {LibraryToolbar} from '../components/LibraryToolbar';
 import {useLibraryViewState} from '../state/library-view-state';
 import {useViewMode} from '../components/ViewModeSwitch';
@@ -16,6 +17,7 @@ export function ArchiveLibrary({vaultId,notes,organization,onRestore,onOpen,onRe
   const [selected,setSelected]=useState(new Set<string>()),[pending,setPending]=useState(false);
   const [query,setQuery]=useState(''),[folder,setFolder]=useState(''),[collection,setCollection]=useState(''),[subject,setSubject]=useState(''),[after,setAfter]=useState(''),[before,setBefore]=useState('');
   const visible=notes.filter(note=>(!query||note.title.toLowerCase().includes(query.toLowerCase()))&&(!folder||(folder==='unfiled'?!note.folderId:note.folderId===folder))&&(!collection||note.collectionIds.includes(collection))&&(!subject||note.subjectIds.includes(subject))&&(!after||note.archived_at.slice(0,10)>=after)&&(!before||note.archived_at.slice(0,10)<=before)).sort((a,b)=>viewState.sort.startsWith('title-')?a.title.localeCompare(b.title)*(viewState.sort==='title-desc'?-1:1):(Date.parse(a.updated_at)-Date.parse(b.updated_at))*(viewState.sort==='modified-asc'?1:-1));
+  const toggle=useLibraryRangeSelection(visible.map(note=>note.id),selected,setSelected,vaultId);
   const checked=visible.filter(note=>selected.has(note.id));
   async function run(work:()=>Promise<void>) {if(pending)return;setPending(true);try{await work();setSelected(new Set());}catch(error){onError(error);}finally{setPending(false);}}
   return <section ref={ref} className="organization-library trash-library" data-layout={mode} data-library-vault={vaultId} data-library-destination="archive" aria-busy={pending}>
@@ -30,7 +32,7 @@ export function ArchiveLibrary({vaultId,notes,organization,onRestore,onOpen,onRe
     {!!visible.length&&<div className="trash-selection-bar"><label><input type="checkbox" aria-label="Select all archived pages" checked={checked.length===visible.length} disabled={pending} onChange={()=>setSelected(checked.length===visible.length?new Set():new Set(visible.map(note=>note.id)))}/> Select all visible</label>{!!checked.length&&<button className="button" disabled={pending} onClick={()=>void run(()=>onRestore(checked))}>Restore selected ({checked.length})</button>}</div>}
     <div className="organization-items">{visible.map(note=><article key={note.id} className="organization-item" data-library-row={'page:'+note.id}><div className="organization-item-row trash-row">
       {mode==='grid'&&<PageCover vaultId={vaultId} imageId={note.featuredImageId}/>}
-      <label className="organization-item-icon page-selection"><span className="page-selection-icon"><PageIcon icon={note.icon}/></span><input type="checkbox" aria-label={'Select '+note.title} checked={selected.has(note.id)} disabled={pending} onChange={()=>setSelected(prior=>{const next=new Set(prior);if(next.has(note.id))next.delete(note.id);else next.add(note.id);return next;})}/></label>
+      <label className="organization-item-icon page-selection"><span className="page-selection-icon"><PageIcon icon={note.icon}/></span><input type="checkbox" aria-label={'Select '+note.title} checked={selected.has(note.id)} disabled={pending} onChange={event=>toggle(note.id,(event.nativeEvent as MouseEvent).shiftKey)}/></label>
       <div className="trash-note"><h2><button data-library-focus onClick={()=>onOpen(note.id)}><TitleText text={note.title||'Untitled'}/></button></h2><small>Archived <time dateTime={note.archived_at}>{new Date(note.archived_at).toLocaleDateString()}</time> · {note.folderName||'Unfiled'}</small></div><div className="trash-actions"><button className="button small" disabled={pending} onClick={()=>void run(()=>onRestore([note]))}>Restore</button></div>
     </div></article>)}{!visible.length&&<p className="organization-empty">{notes.length?'No archived pages match these filters.':'No archived pages.'}</p>}</div>
   </section>;

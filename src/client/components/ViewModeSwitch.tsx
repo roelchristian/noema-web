@@ -1,12 +1,17 @@
 import {t as uiText} from '../i18n';
 import {useEffect, useLayoutEffect, useRef, useState} from 'react';
+import {readLibraryPresentation,saveLibraryPresentation} from '../state/library-view-state';
 import {Icon} from './Icon';
 
 export type ViewMode = 'list' | 'compact' | 'grid';
 const modes = [{id: 'list', label: uiText("List")}, {id: 'compact', label: uiText("Compact")}, {id: 'grid', label: uiText("Grid")}] as const;
 function readMode(scope: string, fallbackScope: string | undefined, defaultMode: ViewMode): ViewMode {
   try {
-    const stored = localStorage.getItem('noema-view-mode/' + scope) ?? (fallbackScope ? localStorage.getItem('noema-view-mode/' + fallbackScope) : null);
+    const [vaultId,destination]=JSON.parse(scope) as [string,string];
+    const own=readLibraryPresentation(vaultId,destination,false).layout;
+    const exact=localStorage.getItem('noema-view-mode/' + scope);
+    const inherited=readLibraryPresentation(vaultId,destination).layout;
+    const stored = own ?? exact ?? inherited ?? (fallbackScope ? localStorage.getItem('noema-view-mode/' + fallbackScope) : null);
     return stored === 'list' || stored === 'compact' || stored === 'grid' ? stored : defaultMode;
   } catch { return defaultMode; }
 }
@@ -14,6 +19,24 @@ export function useViewMode(scope: string, fallbackScope?: string, defaultMode: 
   const [preference, setPreference] = useState(() => ({scope, mode: readMode(scope, fallbackScope, defaultMode)}));
   const mode = preference.scope === scope ? preference.mode : readMode(scope, fallbackScope, defaultMode);
   const root = useRef<HTMLElement>(null);
+  useEffect(()=>{
+    const element=root.current;if(!element)return;
+    const keydown=(event:KeyboardEvent)=>{
+      if(event.altKey||event.ctrlKey||event.metaKey||event.shiftKey||event.defaultPrevented)return;
+      const target=event.target;
+      if(!(target instanceof HTMLElement)||!target.matches('[data-library-focus]')||target.closest('dialog,[contenteditable=true]'))return;
+      if(event.key==='ArrowDown'||event.key==='ArrowUp'){
+        const controls=Array.from(element.querySelectorAll<HTMLElement>('[data-library-focus]')).filter(control=>!control.closest('[hidden]')&&!control.matches(':disabled'));
+        const index=controls.indexOf(target),next=controls[index+(event.key==='ArrowDown'?1:-1)];
+        if(index>=0){event.preventDefault();next?.focus();}
+      } else if(event.key===' '){
+        const row=target.closest<HTMLElement>('[data-library-row]');
+        if(row&&!element.dispatchEvent(new CustomEvent('noema:library-preview',{detail:row.dataset.libraryRow,cancelable:true})))event.preventDefault();
+      }
+    };
+    element.addEventListener('keydown',keydown);
+    return()=>element.removeEventListener('keydown',keydown);
+  },[scope]);
   const before = useRef<Map<HTMLElement, DOMRect> | null>(null);
   const animations = useRef(new Set<Animation>());
   function stop() {animations.current.forEach(animation => animation.cancel()); animations.current.clear();}
@@ -57,7 +80,7 @@ export function useViewMode(scope: string, fallbackScope?: string, defaultMode: 
     // Capture the current visual position before cancelling an interrupted transition.
     stop(); before.current=positions;
     setPreference({scope, mode: next});
-    try { localStorage.setItem('noema-view-mode/' + scope, next); } catch { /* Layout remains usable without storage. */ }
+    try { const [vaultId,destination]=JSON.parse(scope) as [string,string]; saveLibraryPresentation(vaultId,destination,{layout:next});localStorage.setItem('noema-view-mode/' + scope, next); } catch { /* Layout remains usable without storage. */ }
   }
   return [mode, change, root] as const;
 }

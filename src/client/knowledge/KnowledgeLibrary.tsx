@@ -9,6 +9,7 @@ import {combinedMatches} from '../search/matches';
 import {citationLocation} from '../../shared/citations';
 import type {SourceReference} from '../../shared/domain';
 import {PageCover} from '../components/PageCover';
+import {useLibraryQuickPreview} from '../components/LibraryQuickPreview';
 import {LibraryToolbar} from '../components/LibraryToolbar';
 import {useViewMode} from '../components/ViewModeSwitch';
 import { entityLabels, entityTypes, type Entity, type EntityType } from '../../shared/domain';
@@ -57,6 +58,7 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onOpenPassage, onCr
     if (!aValid || !bValid) return Number(bValid) - Number(aValid) || titleOrder(a.name, b.name);
     return (sort === 'modified-asc' ? aDate - bDate : bDate - aDate) || titleOrder(a.name, b.name);
   });
+  const {quickPreview}=useLibraryQuickPreview(libraryRef,{vaultId,pages:[],entities,items:filtered.map(entity=>({kind:'entity',id:entity.id,name:entity.name,updatedAt:entity.updated_at})),onOpen:item=>onOpen(item.id)});
   const countLabel = (count: number) => `${count} ${sourcesOnly ? count === 1 ? 'source' : 'sources' : count === 1 ? 'entity' : 'entities'}`;
   const folders = view === 'folders' && !query && !type
     ? entityTypes.filter(item => item !== 'source').map(item => ({id: item, name: entityLabels[item], count: scoped.filter(entity => entity.type === item).length, type: item})) : [];
@@ -107,6 +109,7 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onOpenPassage, onCr
         </div></article>)}
       </div> : <div className="organization-empty" role="status"><span className="destination-icon"><Icon name={query ? 'search' : 'folder'}/></span><h2>{query ? uiText("No matching entities") : sourcesOnly?(archived?uiText("No archived sources"):uiText("No sources here yet")):uiText("No entities here yet")}</h2><p>{query ? uiText("Try another name, phrase, or idea.") : sourcesOnly?(archived?uiText("Archived sources will appear here. Restore them whenever you need them."):uiText("Import a source to get started.")):uiText("Create an entity to get started.")}</p>{query ? <button className="button" onClick={() => setSearch('')}>{uiText("Clear filter")}</button> : <button className="button" onClick={onCreate}>{sourcesOnly?uiText("New source"):uiText("New entity")}</button>}</div>}
     </div>
+    {quickPreview}
     {manageSource&&<SourceLifecycleDialog key={manageSource.id} vaultId={vaultId} source={manageSource} onUpdated={onUpdated} onClose={()=>setManageSource(null)}/>}
   </section>;
 }

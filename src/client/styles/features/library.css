@@ -2492,3 +2492,12 @@
   .organization-library[data-layout=compact] .library-item-type { display: none; }
   .library-toolbar > .select-host { max-width: 100%; }
 }
+
+.organization-library[data-layout=list][data-density=comfortable] .organization-item-row { padding-block: 16px; }
+.library-quick-preview { width: min(640px,calc(100vw - 32px)); max-height: 85dvh; overflow: auto; }
+.library-preview-navigation { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-muted); font-size: 12px; }
+.library-preview-metadata { display: grid; grid-template-columns: 90px minmax(0,1fr); gap: 6px 12px; font-size: 12px; }
+.library-preview-metadata dt { color: var(--text-muted); }
+.library-preview-metadata dd { margin: 0; overflow-wrap: anywhere; }
+.library-preview-text { font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
+.library-quick-preview > p { font-size: 12px; color: var(--text-muted); }

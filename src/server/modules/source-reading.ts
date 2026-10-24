@@ -136,7 +136,8 @@ export class SourceReading {
    const note=saved.readingNote;
    if(!note?.explanation||note.fileId!==fileId||note.sourceHash!==ref.sourceHash||note.startOffset!==ref.startOffset||note.endOffset!==ref.endOffset||note.explanation.language!==language||note.explanation.familiarity!==familiarity)throw new HttpError(409,'This reading note request is already in use.');
   }
-  const resolved=resolvePersona(body.personaId??saved?.generationMetadata?.persona?.id??defaultId);
+  const historical=saved?.generationMetadata?.persona;
+  const resolved=resolvePersona(body.personaId??historical?.id??defaultId,body.personaId===undefined||body.personaId===historical?.id?historical?.version:undefined);
   options.persona={id:resolved.id,version:resolved.version,origin:resolved.origin};
   if(saved&&body.personaId!==undefined&&saved.generationMetadata?.persona?.id!==options.persona.id)throw new HttpError(409,'This reading note request has different persona settings.');
   return {ref,options,requestId,saved};

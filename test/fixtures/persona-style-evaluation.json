@@ -1,15 +1,17 @@
 {
   "liveEvaluation": "UNRUN",
-  "personaIds": ["oxford_don", "conyo", "editor", "tutor", "antiquarian", "socratic", "salon_wit"],
+  "personaIds": ["oxford_don", "divinity_student", "editor", "tutor", "antiquarian", "socratic", "salon_wit"],
   "prompts": [
+    {"input":"The supplied theological note distinguishes definitive doctrine from a theological opinion and a disciplinary practice. Explain these distinctions without assigning authority beyond what the note establishes, and fairly describe the position it critiques.","language":"English"},
     {"input":"A group has an identity element e such that ae = ea = a. Explain why this does not imply every element is its own inverse.","language":"English"},
     {"input":"A trial found an association between study time and scores but did not randomly assign study time. Explain the limits of its conclusion.","language":"French"},
     {"input":"The account describes grief after a death, with uncertainty about what support the family received. Explain what can and cannot be concluded.","language":"English"}
   ],
   "rubric": [
+    "Score 0–2: Divinity Student distinguishes levels of Catholic teaching without invented authority or citations, fairly represents other positions, and avoids excessive devotional language.",
     "Score 0–2: voice is recognizably consistent with the named character without parody or repeated catchphrases.",
     "Score 0–2: terminology, equations, evidence boundaries and uncertainty remain accurate across all voices.",
-    "Score 0–2: explicit output language wins; French Conyo is lively informal French without unsolicited Tagalog.",
+    "Score 0–2: explicit output language wins; Divinity Student preserves requested French and does not insert unsolicited religious commentary.",
     "Score 0–2: questions, wit and historical parallels aid understanding; no invented anecdotes or extra-source facts.",
     "Score 0–2: humour and whimsy are muted for grief; Socratic persona still supplies substantive conclusions."
   ],

@@ -5,7 +5,7 @@ import {createRoot} from 'react-dom/client';
 import {setupDOM} from './helpers/dom.mjs';
 import {TrashLibrary} from '../src/client/trash/TrashLibrary.tsx';
 
-test('Trash selects across layouts, confirms bulk deletion, and keeps failed selections for retry', async t => {
+test('Trash selects across list densities, confirms bulk deletion, and keeps failed selections for retry', async t => {
   const env=setupDOM(t), {dom}=env;
   const previous=Object.getOwnPropertyDescriptor(globalThis,'ResizeObserver');
   Object.defineProperty(globalThis,'ResizeObserver',{configurable:true,value:class {observe(){}disconnect(){}}});
@@ -25,7 +25,7 @@ test('Trash selects across layouts, confirms bulk deletion, and keeps failed sel
   await act(async()=>render());
   await click('[aria-label="Select one"]');
   assert.equal(document.querySelector('.trash-select-all input').indeterminate,true);
-  await click('[aria-label="Grid view"]');
+  await click('[aria-label="Compact spacing"]');
   assert.equal(document.querySelector('[aria-label="Select one"]').checked,true);
   await click('[aria-label="Select two"]');
   await click('.organization-bulk-actions button:nth-child(2)');

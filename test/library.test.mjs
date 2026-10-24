@@ -141,8 +141,8 @@ test('Presentation persistence inherits per vault while selections and search re
   const {setupDOM}=await import('./helpers/dom.mjs');setupDOM(t);
   const {saveLibraryPresentation,readLibraryPresentation,getLibraryViewState,setLibraryViewState,clearLibraryViewStates}=await import('../src/client/state/library-view-state.ts');
   const root=JSON.stringify(['organization','','']),folder=JSON.stringify(['organization','','new']);
-  saveLibraryPresentation('preferences',root,{layout:'compact',sort:'title-desc',groupFolders:false,columns:'location',density:'comfortable'});
-  assert.deepEqual(readLibraryPresentation('preferences',folder),{layout:'compact',sort:'title-desc',groupFolders:false,columns:'location',density:'comfortable'});
+  saveLibraryPresentation('preferences',root,{layout:'list',sort:'title-desc',groupFolders:false,columns:'location',density:'compact'});
+  assert.deepEqual(readLibraryPresentation('preferences',folder),{layout:'list',sort:'title-desc',groupFolders:false,columns:'location',density:'compact'});
   assert.deepEqual(readLibraryPresentation('another-vault',folder),{});
   setLibraryViewState('preferences','knowledge',{grouping:'all'});
   assert.equal(readLibraryPresentation('preferences','knowledge').grouping,'all');
@@ -151,4 +151,63 @@ test('Presentation persistence inherits per vault while selections and search re
   clearLibraryViewStates('preferences');
   const restored=getLibraryViewState('preferences',folder);
   assert.equal(restored.sort,'title-asc');assert.equal(restored.query,'');assert.deepEqual(restored.selectedIds,[]);assert.equal(restored.scroll.top,0);
+});
+
+test('legacy library layouts migrate to list density without changing other preferences',async t=>{
+  const {setupDOM}=await import('./helpers/dom.mjs');setupDOM(t);
+  const {readLibraryPresentation}=await import('../src/client/state/library-view-state.ts');
+  const root=JSON.stringify(['organization','','']),folder=JSON.stringify(['organization','','child']);
+  const key=destination=>'noema-library-presentation/'+JSON.stringify(['migration',destination]);
+  window.localStorage.setItem(key('organization'),JSON.stringify({layout:'compact',sort:'title-asc',columns:'location',density:'comfortable'}));
+  assert.deepEqual(readLibraryPresentation('migration',folder),{layout:'list',density:'compact',sort:'title-asc',columns:'location'});
+  window.localStorage.setItem(key(folder),JSON.stringify({layout:'grid',density:'comfortable'}));
+  assert.deepEqual(readLibraryPresentation('migration',folder),{layout:'list',density:'standard',sort:'title-asc',columns:'location'});
+  window.localStorage.setItem(key(root),JSON.stringify({layout:'list',density:'compact'}));
+  assert.equal(readLibraryPresentation('migration',root).density,'compact');
+});
+
+test('list density controls are icon-only, persist compact spacing, and survive sorting and navigation',async t=>{
+  const {setupDOM}=await import('./helpers/dom.mjs'),env=setupDOM(t);
+  const {act}=await import('react'),{createRoot}=await import('react-dom/client');
+  const {LibraryDensitySwitch,useLibraryDensity}=await import('../src/client/components/LibraryDensitySwitch.tsx');
+  const {useLibraryViewState,readLibraryPresentation}=await import('../src/client/state/library-view-state.ts');
+  const previousObserver=Object.getOwnPropertyDescriptor(globalThis,'ResizeObserver');
+  Object.defineProperty(globalThis,'ResizeObserver',{configurable:true,value:class {observe(){}disconnect(){}}});
+  env.defer(()=>{if(previousObserver)Object.defineProperty(globalThis,'ResizeObserver',previousObserver);else delete globalThis.ResizeObserver;});
+  const vaultId='density-controls',destination=JSON.stringify(['organization','','']);
+  function Library({destination}) {
+    const [density,setDensity,ref]=useLibraryDensity(JSON.stringify([vaultId,destination]),'library');
+    const [state,setState]=useLibraryViewState(vaultId,destination);
+    return createElement('section',{ref,'data-layout':'list','data-density':density},
+      createElement(LibraryDensitySwitch,{value:density,onChange:setDensity}),
+      createElement('button',{'aria-label':'Sort',onClick:()=>setState(previous=>({...previous,sort:'title-asc'}))},state.sort));
+  }
+  window.localStorage.setItem('noema-view-mode/'+JSON.stringify([vaultId,destination]),'grid');
+  const root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+  const mount=async destination=>act(async()=>root.render(createElement(Library,{destination})));
+  await mount(destination);
+  assert.equal(document.querySelector('section').dataset.layout,'list');
+  assert.equal(document.querySelector('section').dataset.density,'standard');
+  const buttons=[...document.querySelectorAll('[aria-label="List density"] button')];
+  assert.equal(buttons.length,2);assert.ok(buttons.every(button=>button.textContent===''&&button.querySelector('svg')));
+  assert.notEqual(buttons[0].querySelector('path').getAttribute('d'),buttons[1].querySelector('path').getAttribute('d'));
+  await act(async()=>buttons[1].click());
+  assert.equal(document.querySelector('section').dataset.density,'compact');
+  await act(async()=>document.querySelector('[aria-label="Sort"]').click());
+  assert.equal(readLibraryPresentation(vaultId,destination).density,'compact');
+  await mount(JSON.stringify(['organization','','new-folder']));
+  assert.equal(document.querySelector('section').dataset.density,'compact');
+  await act(async()=>document.querySelector('[aria-label="Regular spacing"]').click());
+  assert.equal(document.querySelector('section').dataset.layout,'list');
+  assert.equal(document.querySelector('section').dataset.density,'standard');
+});
+
+test('Reading Notes uses the canonical list and collection cards remain available',()=>{
+  const collections=[{id:'reading',name:'Reading Notes',description:'Books and essays'}];
+  const root=render({data:{...data,collections}});
+  assert.match(root,/organization-container-card/);assert.match(root,/Reading Notes/);
+  assert.match(root,/data-layout="list"/);
+  assert.doesNotMatch(root,/Grid view|View layout|Row spacing/);
+  const reading=render({data:{...data,collections},context:{collection:'reading',folder:''}});
+  assert.match(reading,/data-layout="list"/);assert.match(reading,/data-density="standard"/);
 });

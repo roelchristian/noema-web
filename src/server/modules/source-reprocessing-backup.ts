@@ -202,7 +202,7 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  string(processing.aiEnrichmentStatus,30);
  if(processing.math!==undefined){const math=object(processing.math);if(math.format!=='LaTeX'||!/^[a-f0-9]{64}$/.test(string(math.originalTextHash,64)))throw invalid();for(const value of array(math.uncertain,100000)){const issue=object(value);integer(issue.line,1,starts.length);string(issue.text,1000);}}
  if(r.furniture!==undefined){
-  const seenFurniture=new Set<string>();for(const value of array(r.furniture,2000)){const f=object(value),id=string(f.id,100),start=integer(f.startOffset,0,text.length),end=integer(f.endOffset,start+1,text.length),page=integer(f.page,1,pageCount??1000);if(!id||seenFurniture.has(id)||!utf16Boundary(text,start)||!utf16Boundary(text,end)||string(f.text,16000)!==text.slice(start,end)||pageAt(start)!==page||pageAt(end-1)!==page||typeof f.hidden!=='boolean')throw invalid();seenFurniture.add(id);string(f.reason,2000);}
+  const seenFurniture=new Set<string>();for(const value of array(r.furniture,2000)){const f=object(value),id=string(f.id,100),start=integer(f.startOffset,0,text.length),end=integer(f.endOffset,start+1,text.length),page=integer(f.page,1,pageCount??1000);if(!id||seenFurniture.has(id)||!utf16Boundary(text,start)||!utf16Boundary(text,end)||string(f.text,16000)!==text.slice(start,end)||pageAt(start)!==page||pageAt(end-1)!==page||typeof f.hidden!=='boolean')throw invalid();seenFurniture.add(id);string(f.reason,2000);if(f.kind!==undefined)oneOf(f.kind,['header','footer']);}
  }
  const patches=array(r.patches,6400),patchIds=new Set<string>();
  const ordered=patches.map(value=>{

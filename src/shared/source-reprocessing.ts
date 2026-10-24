@@ -88,7 +88,7 @@ export interface SourceReprocessingReport {
 export interface SourceReprocessingRevision {
  id:string;fileId:string;createdAt:string;updatedAt:string;status:ReprocessingStatus;instructions:string;
  pipelineVersion?:1|2;configuration?:SourceReprocessingConfiguration;
- furniture?:{id:string;startOffset:number;endOffset:number;page:number;text:string;hidden:boolean;reason:string}[];
+ furniture?:{id:string;startOffset:number;endOffset:number;page:number;text:string;kind?:'header'|'footer';hidden:boolean;reason:string}[];
  nodeLinks?:{originalNodeId:string;reprocessedNodeIds:string[]}[];
  acceptanceThreshold?:number;
  acceptanceMode?:SourceAcceptanceMode;

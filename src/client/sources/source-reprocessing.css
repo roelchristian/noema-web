@@ -138,3 +138,6 @@
 .reprocessing-reviews .reprocessing-patch-footer{position:sticky;bottom:-18px;padding:14px 0;background:var(--surface);z-index:1}
 .reprocessing-master-detail .reprocessing-diff-context{color:var(--text)}
 @media(max-width:900px){.reprocessing-master-detail{grid-template-columns:1fr}.reprocessing-patch-list{position:static;max-height:22vh}.reprocessing-reading-preview,.reprocessing-markdown-source{grid-template-columns:minmax(0,1fr)}}
+
+.source-reader-passage[data-page-furniture]{border-inline-start:2px solid var(--line);padding-inline-start:14px;color:var(--text-muted)}
+.source-reader-furniture-label{display:block;margin-bottom:6px;color:var(--text-muted);font:11px/1.4 var(--font-ui)}

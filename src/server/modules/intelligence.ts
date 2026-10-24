@@ -138,6 +138,11 @@ export class Intelligence {
       if('ttsVoice' in saved&&isSpeechVoice(saved.ttsVoice,this.ttsProvider))this.ttsVoice=saved.ttsVoice;
       if('ttsEnabled' in saved && typeof saved.ttsEnabled==='boolean')this.ttsEnabled=saved.ttsEnabled;
       if('personaId' in saved&&isPersonaId(saved.personaId))this.personaId=saved.personaId;
+      if('personaId' in saved&&saved.personaId==='conyo') {
+        this.personaId='divinity_student';
+        // Migrate only current preferences; never rewrite generated metadata.
+        preferenceStore?.write({...saved,personaId:this.personaId} as IntelligenceConfiguration);
+      }
       this.preferences={model:saved.model,reasoningEffort:saved.reasoningEffort};
       if ('pageEnrichment' in saved && supportedIntelligencePreferences(saved.pageEnrichment)) this.enrichmentPreferences={model:saved.pageEnrichment.model,reasoningEffort:saved.pageEnrichment.reasoningEffort};
       if ('manualRequestsPerMinute' in saved && validManualRequestLimit(saved.manualRequestsPerMinute)) this.manualRequestsPerMinute=saved.manualRequestsPerMinute;
@@ -155,8 +160,9 @@ export class Intelligence {
     if (!validManualRequestLimit(manualRequestsPerMinute)) throw new HttpError(400,`Choose between 1 and ${maxManualRequestsPerMinute} manual AI requests per minute.`);
     if(body.pageEnrichment!==undefined&&!supportedIntelligencePreferences(body.pageEnrichment))throw new HttpError(400,'Choose a supported page enrichment model and reasoning effort.');
     const pageEnrichment=body.pageEnrichment===undefined?this.enrichmentSelection():body.pageEnrichment as IntelligencePreferences;
-    if(body.personaId!==undefined&&!isPersonaId(body.personaId))throw new HttpError(400,'Choose a supported AI persona.');
-    const personaId=body.personaId===undefined?this.personaId:body.personaId as BuiltinPersonaId;
+    const requestedPersona=body.personaId==='conyo'?'divinity_student':body.personaId;
+    if(requestedPersona!==undefined&&!isPersonaId(requestedPersona))throw new HttpError(400,'Choose a supported AI persona.');
+    const personaId=requestedPersona===undefined?this.personaId:requestedPersona as BuiltinPersonaId;
     if(body.ttsEnabled!==undefined&&typeof body.ttsEnabled!=='boolean')throw new HttpError(400,'Choose whether text to speech is enabled.');
     const ttsEnabled=body.ttsEnabled===undefined?this.ttsEnabled:body.ttsEnabled as boolean;
     if(body.ttsProvider!==undefined&&!isSpeechProvider(body.ttsProvider))throw new HttpError(400,'Choose a supported speech provider.');

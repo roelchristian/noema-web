@@ -1,7 +1,7 @@
 import {detectPageFurniture} from './source-reprocessing-furniture.js';
 import {gatherReprocessingEvidence,type SourceReprocessingEvidence} from './source-reprocessing-evidence.js';
 import {assertAtomicPatchGroups} from './source-reprocessing-apparatus.js';
-import {executeReconstruction,reconstructionPromptVersion} from './source-reprocessing-pass.js';
+import {executeReconstruction,reconstructionPromptVersion,supportedReconstructionPromptVersion} from './source-reprocessing-pass.js';
 import {SourceReprocessingCheckpoints} from './source-reprocessing-checkpoints.js';
 import {planReprocessingChunks} from './source-reprocessing-planner.js';
 import {createHash,randomUUID} from 'node:crypto';
@@ -210,7 +210,7 @@ export class SourceReprocessing {
   if(!['failed','interrupted'].includes(r.status)||this.activeRevisionId===revisionId)throw new HttpError(409,'Wait for interruption to finish before resuming.');
   if(r.stale)throw new HttpError(409,'Canonical source changed. Start a new editorial pass.');
   const selection=this.intelligence.editorialSelection();
-  if(r.report.promptVersion!==(r.pipelineVersion===2?reconstructionPromptVersion:promptVersion)||r.report.model!==selection.model||(r.pipelineVersion===2&&r.report.reasoningEffort!==selection.reasoningEffort))throw new HttpError(409,'Editorial configuration changed. Start a new pass.');
+  if(!(r.pipelineVersion===2?supportedReconstructionPromptVersion(r.report.promptVersion):r.report.promptVersion===promptVersion)||r.report.model!==selection.model||(r.pipelineVersion===2&&r.report.reasoningEffort!==selection.reasoningEffort))throw new HttpError(409,'Editorial configuration changed. Start a new pass.');
   if(this.store.get("SELECT 1 FROM source_reprocessing WHERE file_id=? AND status IN ('queued','running')",id))throw new HttpError(409,'Another pass is already active.');
   if(r.pipelineVersion===2){
    const checkpoints=new SourceReprocessingCheckpoints(this.store),synthesis=checkpoints.synthesis(r.id);

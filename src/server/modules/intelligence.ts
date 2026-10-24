@@ -43,6 +43,20 @@ export class GenerationProviderError extends HttpError {
   readonly code='provider_http';
   constructor(public providerStatus:number,message:string) {super(providerStatus===429?429:502,message);this.name='GenerationProviderError';}
 }
+/** A received provider response failed to produce usable output; distinct from settings errors. */
+export class GenerationResponseError extends HttpError {
+  readonly outcomeUncertain=false;
+  constructor(public code:'provider_incomplete_output'|'provider_output_limit'|'provider_empty_output'|'provider_content_filter'|'provider_response_failed'|'provider_output_too_large') {
+    super(502,{
+      provider_incomplete_output:'The AI provider returned an incomplete response. Retry unfinished work.',
+      provider_output_limit:'The AI response reached its output token limit before finishing. Retry unfinished work to use a larger response budget.',
+      provider_empty_output:'The AI returned no usable text. Retry unfinished work.',
+      provider_content_filter:'The AI provider stopped this response because of its content filter.',
+      provider_response_failed:'The AI provider did not complete this response.',
+      provider_output_too_large:'The AI response exceeded the local output size limit.',
+    }[code]);this.name='GenerationResponseError';
+  }
+}
 /** A transport interruption cannot prove whether the provider completed/billed work. */
 export class GenerationTransportError extends HttpError {
   readonly outcomeUncertain=true;
@@ -441,8 +455,8 @@ export class Intelligence {
     catch{throw new HttpError(502,'AI returned invalid source authors. Retry enrichment.');}
     });
   }
-  async reeditSource(input:string,instructions:string,signal:AbortSignal,onRequest?:AIRequestObserver,responseShape?:'blocks'|'synthesis'|'synthesisReview',evidenceImages?:import('./generation-request.js').EditorialEvidenceImage[],externalEvidenceConsent=false) {
-    return this.generate({kind:'editorial',input,instructions,signal,onRequest,responseShape,evidenceImages,externalEvidenceConsent,background:true});
+  async reeditSource(input:string,instructions:string,signal:AbortSignal,onRequest?:AIRequestObserver,responseShape?:'blocks'|'synthesis'|'synthesisReview',evidenceImages?:import('./generation-request.js').EditorialEvidenceImage[],externalEvidenceConsent=false,outputTokenBudget?:16000|32000|64000) {
+    return this.generate({kind:'editorial',input,instructions,signal,onRequest,responseShape,evidenceImages,externalEvidenceConsent,outputTokenBudget,background:true});
   }
   private async validatedGeneration<T>(request:GenerationRequest,parse:(output:string)=>T):Promise<T> {
     let trace:AIDebugTrace|undefined;
@@ -508,7 +522,14 @@ export class Intelligence {
       const result=await readOpenAIResponse(response,trace,policy.onDelta?delta=>safeDelta(delta,policy.onDelta!):undefined,
         policy.preview?{onDelta:delta=>safeDelta(delta,policy.preview!.onDelta),onReset:policy.preview.onReset}:undefined,observer?.usage);
       const summary=responseOutputText(result).trim();
-      if(result.status!=='completed'||!summary||summary.length>policy.maxOutputLength)throw new HttpError(502,'OpenAI returned an incomplete response. Try a lower reasoning effort or a shorter page.');
+      if(result.status!=='completed'){
+        const reason=result.incomplete_details?.reason;
+        if(result.status==='incomplete')throw new GenerationResponseError(reason==='max_output_tokens'?'provider_output_limit':reason==='content_filter'?'provider_content_filter':'provider_incomplete_output');
+        if(result.status==='failed'||result.status==='cancelled')throw new GenerationResponseError('provider_response_failed');
+        throw new GenerationTransportError('provider_transport');
+      }
+      if(!summary)throw new GenerationResponseError('provider_empty_output');
+      if(summary.length>policy.maxOutputLength)throw new GenerationResponseError('provider_output_too_large');
       if(request.kind==='editorial'&&timedOut&&!requestSignal?.aborted&&this.credential()?.generation===credential.generation&&this.preferenceRevision===preferenceRevision)throw new GenerationTransportError('timeout');
       if(controller.signal.aborted||this.credential()?.generation!==credential.generation||this.preferenceRevision!==preferenceRevision)throw new HttpError(409,'The credential or AI settings changed, or the key expired. Please try again.');
       // Defense in depth against accidental credential echo by an upstream service.

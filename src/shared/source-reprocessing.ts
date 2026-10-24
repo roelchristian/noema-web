@@ -32,14 +32,16 @@ export interface SourceReprocessingChunk {
  difficulty:'ordinary'|'difficult';difficultyReason:string|null;requiredPassCount:1|2|3;
  status:'pending'|'running'|'completed'|'failed'|'interrupted';
 }
+export interface SourceResponseAttempt extends SourceEditorialUsage {startedAt:string;finishedAt:string|null;error:string;outputTokenBudget:16000|32000|64000}
 export interface SourceReprocessingPass extends SourceEditorialUsage {
+ responseCode?:string;responseAttempts?:SourceResponseAttempt[];outputTokenBudget?:16000|32000|64000;
  revisionId:string;chunkIndex:number;index:1|2|3;
  status:'running'|'completed'|'failed'|'interrupted';
  kind:'clean'|'reconstruct'|'verify'|'resolve';
  model:string;reasoningEffort:ReasoningEffort;promptVersion:string;configuration:SourceReprocessingConfiguration;
  requestHash:string;result:string|null;validation:string[];startedAt:string;finishedAt:string|null;
  error:string|null;outcomeUncertain:boolean;
- failureKind?:'transport'|'invalid_output'|'validation'|'evidence'|'admission';
+ failureKind?:'transport'|'invalid_output'|'validation'|'evidence'|'admission'|'response';
 }
 export type ReprocessingStatus='queued'|'running'|'completed'|'failed'|'interrupted';
 export interface SourceEditorialUsage {inputTokens:number|null;outputTokens:number|null;reasoningTokens:number|null;cachedInputTokens:number|null}

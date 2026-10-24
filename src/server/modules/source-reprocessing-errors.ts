@@ -9,6 +9,8 @@ export function editorialFailure(error:unknown,aborted=false):EditorialFailure {
  const value=error as {name?:string;providerStatus?:number;code?:string;outcomeUncertain?:boolean};
  if(value?.name==='GenerationCancellationError')return result('cancelled',false,false,value.outcomeUncertain??false);
  if(aborted)return result('cancelled',false,false,value?.outcomeUncertain??false);
+ if(value?.name==='GenerationResponseError')return result(value.code??'provider_response_failed');
+ if(message.startsWith('OpenAI returned an incomplete response.'))return result('provider_incomplete_output');
  if(value?.name==='GenerationAdmissionError')return result('local_admission');
  if(value?.name==='GenerationTransportError')return result(value.code==='timeout'?'transport_timeout':value.code??'provider_transport',false,false,true);
  if(typeof value?.providerStatus==='number'){
@@ -19,7 +21,7 @@ export function editorialFailure(error:unknown,aborted=false):EditorialFailure {
  if(/invalid editorial JSON/i.test(message))return result('invalid_json');
  if(/invalid editorial (patch )?response/i.test(message))return result('invalid_response');
  if(/canonical source changed/i.test(message))return result('source_changed');
- if(/model changed|configuration changed|supported model|reasoning|credential|API key|AI is not configured/i.test(message))return result('configuration',false,true);
+ if(/model changed|configuration changed|supported (?:editorial )?model|(?:unsupported|invalid|supported|choose a supported).*reasoning|credential|API key|AI is not configured/i.test(message))return result('configuration',false,true);
  if(/overlapping patches|checkpoint|canonical excerpt/i.test(message))return result('patch_rejected');
  if(error instanceof HttpError&&error.status===429)return result('local_admission');
  return result('unknown');
@@ -33,3 +35,10 @@ export function editorialBackoff(attempt:number,signal:AbortSignal):Promise<void
   signal.addEventListener('abort',stop,{once:true});
  });
 }
+
+/** Only explicit resume may repeat a known incomplete/empty response, never an uncertain transport. */
+export function recoverableEditorialResponse(value:{status:string;outcomeUncertain:boolean;error:string|null;responseCode?:string}){
+ return value.status==='failed'&&!value.outcomeUncertain&&(value.responseCode?['provider_output_limit','provider_empty_output','provider_incomplete_output'].includes(value.responseCode):!!value.error&&/^(The AI response reached its output token limit|The AI returned no usable text|OpenAI returned an incomplete response\.)/.test(value.error));
+}
+
+export const editorialResponseFailure=(code:string)=>/^provider_(?:output_|empty_output|incomplete_output|content_filter|response_failed)/.test(code);

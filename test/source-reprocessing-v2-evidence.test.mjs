@@ -35,3 +35,15 @@ test('page/OCR evidence and transmission fail closed independently of options',(
  assert.equal(evidence.originalPages.available,false);assert.equal(evidence.ocr.available,false);assert.equal(evidence.externalTransmissionAllowed,false);assert.equal(evidence.independentlyVerified,false);
  assert.equal(evidence.hash,gatherReprocessingEvidence({text,document,start:0,end:text.length,options}).hash);
 });
+
+
+test('Verified paragraph reconstruction preserves exact words and punctuation without requiring OCR',()=>{
+ const text='“Quoted prose” has a hard\nline wrap. Another paragraph begins with 42 words.';
+ const document={source:{language:'en'},physical:{pages:[{number:1,range:{startOffset:0,endOffset:text.length}}]},semantic:{kind:'document',children:[{id:'p',kind:'paragraph',text,range:{startOffset:0,endOffset:text.length},children:[]}]}};
+ const replacement=text.replace('hard\nline','hard line').replace('. Another','.\n\nAnother');
+ const chunk=planReprocessingChunks(text,document)[0];const differences=reconstructBlocks(chunk,{blocks:[{id:chunk.blocks[0].id,text:replacement}]}).patches;
+ assert.ok(differences.length>0);
+ for(const patch of differences){const result=evaluateV2Acceptance({text,document,start:patch.startOffset,end:patch.endOffset,original:patch.original,replacement:patch.replacement,category:patch.category,policy:'verified'});assert.equal(result.automatic,true,JSON.stringify({patch,result}));}
+ assert.equal(evaluateV2Acceptance({text,document,start:0,end:text.length,original:text,replacement:replacement.replace('42','43'),category:'formatting',policy:'verified'}).automatic,false);
+ for(const replacement of [text.replace('hard\nline','hardline'),text.replace('. Another','.\n\n# Another')])assert.equal(evaluateV2Acceptance({text,document,start:0,end:text.length,original:text,replacement,category:'formatting',policy:'verified'}).automatic,false);
+});

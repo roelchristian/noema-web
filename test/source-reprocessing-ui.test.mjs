@@ -365,7 +365,7 @@ test('local evidence preparation has visible progress before model excerpts comp
 test('summary quotation review visibly explains corrected and unresolved observations',async t=>{
  const r=fixture();r.report.summaryValidation={state:'completed',issues:2,accepted:1,unresolved:1,diagnostics:['Observation 3: extraction fix — proposed dehyphenation was quoted as original. Source quotation validated.','Observation 5: unsupported — the source block does not contain this claim. Not used as verification context.']};
  await mount(t,{initial:r});const review=document.querySelector('.reprocessing-summary-validation');
- assert.ok(review);assert.match(review.textContent,/2 flagged.*1 corrected and source-validated.*1 unresolved/);assert.match(review.textContent,/proposed dehyphenation/);assert.match(review.textContent,/unsupported/);assert.match(review.textContent,/Source edits still require their own validation/);
+ assert.ok(review);assert.match(review.textContent,/2 quotation differences.*1 resolved.*1 excluded from summary context/);assert.match(review.textContent,/proposed dehyphenation/);assert.match(review.textContent,/unsupported/);assert.match(review.textContent,/Resolved quotation corrections do not block processing/);
 });
 
 for(const [stage,title] of Object.entries({reconstructing:'First pass · reconstructing excerpts',understanding:'Understanding document',verifying:'Verifying excerpts',auditing:'Checking document consistency'})){
@@ -407,4 +407,35 @@ test('first pass shows activity before its first result and advances from polled
  assert.equal(progress().hasAttribute('value'),false);
  assert.match(document.querySelector('[id^="reprocessing-progress-"] [aria-live]').textContent,/Understanding document/);
  assert.equal(document.querySelector('.reprocessing-active-excerpts'),null);
+});
+
+
+test('incomplete provider output offers recovery without configuration advice',async t=>{
+ const r=fixture();r.pipelineVersion=2;r.status='failed';r.report.chunksCompleted=0;r.report.error='The AI response reached its output token limit before finishing. Retry unfinished work to use a larger response budget.';r.report.errorCode='provider_output_limit';
+ const env=await mount(t,{initial:r});const notice=document.querySelector('[id^="reprocessing-error-"]');
+ assert.match(notice.textContent,/larger response budget.*Completed excerpts and review decisions are retained/);
+ assert.doesNotMatch(notice.textContent,/Settings|provider access|configuration/);
+ assert.ok(env.button('Retry unfinished work'));assert.equal(env.button('Retry after configuration repair'),undefined);
+});
+
+
+test('legacy incomplete errors suppress stale configuration advice and offer recovery',async t=>{
+ const r=fixture();r.pipelineVersion=2;r.status='failed';r.report.error='OpenAI returned an incomplete response. Try a lower reasoning effort or a shorter page.';r.report.errorCode='configuration';
+ const env=await mount(t,{initial:r});const notice=document.querySelector('[id^="reprocessing-error-"]');
+ assert.doesNotMatch(notice.textContent,/Settings|shorter page|reasoning effort/);assert.match(notice.textContent,/larger response budget/);assert.ok(env.button('Retry unfinished work'));
+});
+
+
+test('completed corrections offer an explicit action to show the processed reading version',async t=>{
+ const r=fixture();r.fileId='f';r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;r.patches.forEach(patch=>patch.decision='accepted');const readings=[];
+ const env=await mount(t,{initial:r,onReadingRevision:value=>readings.push(value)});
+ assert.match(document.querySelector('.reprocessing-result-summary').textContent,/includes 2 applied corrections/);
+ assert.equal(readings.some(Boolean),false);await env.click(env.button('Show processed version'));assert.equal(readings.at(-1).id,r.id);
+ assert.equal(env.button('Show processed version'),undefined);
+});
+
+test('completion distinguishes proposed corrections from unchanged output',async t=>{
+ const r=fixture();r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;
+ const env=await mount(t,{initial:r});assert.match(document.querySelector('.reprocessing-result-summary').textContent,/2 proposed corrections.*reading text is unchanged/);
+ await env.click(env.button('Review proposed corrections'));assert.ok(document.querySelector('.reprocessing-reviews'));
 });

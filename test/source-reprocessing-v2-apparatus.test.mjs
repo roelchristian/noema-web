@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {planReprocessingChunks} from '../src/server/modules/source-reprocessing-planner.ts';
 import {reconstructBlocks,boundedReconstructionDiff} from '../src/server/modules/source-reprocessing-diff.ts';
-import {groupApparatusPatches,assertAtomicPatchGroups,apparatusProblems} from '../src/server/modules/source-reprocessing-apparatus.ts';
+import {groupApparatusPatches,assertAtomicPatchGroups,apparatusProblems,acceptVerifiedFootnoteFormatting} from '../src/server/modules/source-reprocessing-apparatus.ts';
 import {detectPageFurniture,presentWithoutFurniture} from '../src/server/modules/source-reprocessing-furniture.ts';
 test('reference and definition repairs are atomic and cannot autoaccept',()=>{
  const chunk=planReprocessingChunks('word[^1]\n\n[^1]: note',{physical:{pages:[]}})[0];
@@ -79,4 +79,21 @@ test('highly fragmented reconstruction compacts to at most fifty exact canonical
  assert.ok(result.patches.length<=50);assert.ok(result.patches.length>1);
  const actual=[...result.patches].reverse().reduce((text,patch)=>text.slice(0,patch.startOffset)+patch.replacement+text.slice(patch.endOffset),original);
  assert.equal(actual,replacement);
+});
+
+
+test('paired footnote formatting preserves words and labels, and refuses ambiguous or substantive changes',()=>{
+ const text='Body with note1.\n\n1. The original note text.';
+ const proposed='Body with note[^p1-1].\n\n[^p1-1]: The original note text.';
+ const document={physical:{pages:[{number:1,range:{startOffset:0,endOffset:text.length}}]}};
+ const check=(replacement,policy='verified',source=text)=>{
+  const patch={id:'p',original:source,replacement,decision:'pending',category:'ocr',range:{startOffset:0,endOffset:source.length}};
+  return acceptVerifiedFootnoteFormatting(groupApparatusPatches([patch]),source,document,policy)[0];
+ };
+ assert.equal(check(proposed).decision,'accepted');assert.equal(check(proposed).category,'footnote');assert.ok(check(proposed).autoAcceptance.checks.includes('identical-note-and-body-text'));
+ assert.equal(check(proposed,'review_all').decision,'pending');assert.equal(check(proposed.replace('original','invented')).decision,'pending');
+ assert.equal(check(proposed.replaceAll('p1-1','p1-2')).decision,'pending');assert.equal(check(proposed.replaceAll('p1-1','p2-1')).decision,'pending');
+ assert.equal(check('Body with note[^p1-1].\n\n1. The original note text.').decision,'pending');
+ const numbered='Body has 2021.\n\n1. The original note text.';document.physical.pages[0].range.endOffset=numbered.length;
+ assert.equal(check('Body has 202[^p1-1].\n\n[^p1-1]: The original note text.','verified',numbered).decision,'pending');
 });

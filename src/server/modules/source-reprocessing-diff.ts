@@ -32,7 +32,7 @@ export function reconstructBlocks(chunk:PlannedReprocessingChunk,response:unknow
   for(const span of boundedReconstructionDiff(original.text,replacement)){
    const before=original.text.slice(span.start,span.end),after=replacement.slice(span.newStart,span.newEnd);
    if(before.length>16000||after.length>16000)return invalid('difference exceeds the patch limit.');
-   const mechanical=before.replace(/[ \t]+/g,' ')===after.replace(/[ \t]+/g,' ');
+   const mechanical=before.replace(/[ \t\r\n]+/g,' ')===after.replace(/[ \t\r\n]+/g,' ');
    patches.push({startOffset:original.start+span.start,endOffset:original.start+span.end,original:before,replacement:after,category:mechanical?'formatting':before.includes('\n')&&!/\n[ \t]*\n/.test(before)&&before.replace(/\r?\n/g,' ')===after?'line_breaks':'ocr',reason:'Deterministic difference from reconstructed canonical block; source comparison is required for substantive changes.',confidence:0});
   }
  }
@@ -109,7 +109,7 @@ export function boundedReconstructionDiff(original:string,replacement:string):Ed
   const extendLeft=Math.min(before,span.start,span.newStart),extendRight=Math.min(after,original.length-span.end,replacement.length-span.newEnd);
   span.start-=extendLeft;span.newStart-=extendLeft;span.end+=extendRight;span.newEnd+=extendRight;
   // Retain neighboring prose around horizontal-spacing edits for independent safety checks.
-  if(/^[ \t]*$/.test(original.slice(span.start,span.end))&&/^[ \t]*$/.test(replacement.slice(span.newStart,span.newEnd))){
+  if(/^[ \t\r\n]*$/.test(original.slice(span.start,span.end))&&/^[ \t\r\n]*$/.test(replacement.slice(span.newStart,span.newEnd))){
    while(span.start>0&&span.newStart>0&&original[span.start-1]===replacement[span.newStart-1]&&/[ \t]/.test(original[span.start-1]!)){span.start--;span.newStart--;}
    while(span.end<original.length&&span.newEnd<replacement.length&&original[span.end]===replacement[span.newEnd]&&/[ \t]/.test(original[span.end]!)){span.end++;span.newEnd++;}
    if(span.start>0&&span.newStart>0){const index=ao.indexOf(span.start),length=span.start-ao[index-1]!;if(original.slice(span.start-length,span.start)===replacement.slice(span.newStart-length,span.newStart)){span.start-=length;span.newStart-=length;}}

@@ -57,9 +57,10 @@ export function restoreReprocessingCheckpoints(revision:SourceReprocessingRevisi
   if(JSON.stringify(validateReprocessingConfiguration(p.configuration))!==JSON.stringify(configuration)||!/^[a-f0-9]{64}$/.test(string(p.requestHash,64)))throw invalid();
   if(p.result!==null)string(p.result,256000);if(p.status==='completed'&&(p.result===null||p.finishedAt===null||p.outcomeUncertain!==false))throw invalid();
   for(const check of array(p.validation,100))string(check,2000);
-  if(p.failureKind!==undefined)oneOf(p.failureKind,['transport','invalid_output','validation','evidence','admission']);
+  if(p.failureKind!==undefined)oneOf(p.failureKind,['transport','invalid_output','validation','evidence','admission','response']);
   timestamp(p.startedAt);if(p.finishedAt!==null)timestamp(p.finishedAt);if(p.error!==null)string(p.error,10000);if(typeof p.outcomeUncertain!=='boolean')throw invalid();
   for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])if(p[key]!==null)integer(p[key],0,Number.MAX_SAFE_INTEGER);
+  validateResponseAttempts(p);
   const pass={...structuredClone(p),revisionId:revision.id} as unknown as SourceReprocessingPass;
   if(pass.status==='running'){pass.status='interrupted';pass.outcomeUncertain=true;pass.finishedAt=now();pass.error='Restored during a request; provider outcome is unknown.';}
   passes.push(pass);
@@ -87,7 +88,7 @@ export function restoreReprocessingRepairs(values:unknown[],revision:SourceRepro
   if(data.result!==null)string(data.result,256000);
   if(data.status==='completed'&&(data.result===null||data.finishedAt===null||data.outcomeUncertain!==false))throw invalid();
   for(const check of array(data.validation,100))string(check,2000);
-  if(data.failureKind!==undefined)oneOf(data.failureKind,['transport','invalid_output','validation','evidence','admission']);
+  if(data.failureKind!==undefined)oneOf(data.failureKind,['transport','invalid_output','validation','evidence','admission','response']);
   for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])if(data[key]!==null)integer(data[key],0,Number.MAX_SAFE_INTEGER);
   const repair={...structuredClone(data),revisionId:revision.id} as unknown as SourceReprocessingRepairCheckpoint;
   if(repair.status==='running'){repair.status='interrupted';repair.outcomeUncertain=true;repair.finishedAt=now();repair.error='Restored during an explicit repair; provider outcome is unknown.';}
@@ -106,7 +107,7 @@ export function restoreReprocessingSynthesis(value:unknown,revision:SourceReproc
  if(typeof data.outcomeUncertain!=='boolean')throw invalid();
  for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])if(data[key]!==null)integer(data[key],0,Number.MAX_SAFE_INTEGER);
  if(data.result!==null)string(data.result,128000);
- if(data.failureKind!==undefined)oneOf(data.failureKind,['transport','invalid_output','validation','evidence','admission']);
+ if(data.failureKind!==undefined)oneOf(data.failureKind,['transport','invalid_output','validation','evidence','admission','response']);
  if(data.validation!==undefined)for(const check of array(data.validation,100))string(check,2000);
  if(data.status==='completed'&&(data.result===null||data.finishedAt===null||data.outcomeUncertain!==false))throw invalid();
  if(data.review!==undefined){
@@ -130,6 +131,7 @@ export function restoreReprocessingSynthesis(value:unknown,revision:SourceReproc
   const input=createSynthesisInput({revisionId:oldRevisionId,baseHash:oldBaseHash,text:revision.original.text,title:revision.original.document.source.title,chunks,firstPasses:firstPasses.map(pass=>({chunkIndex:pass.chunkIndex,result:pass.result!,requestHash:pass.requestHash}))});
   if(createHash('sha256').update(input.request).digest('hex')!==data.requestHash||JSON.stringify(register.evidenceReview?resolveReviewedSynthesis(input,data.result as string,string(object(data.review).result,128000)):parseDocumentSynthesis(input,data.result as string,{isolateInvalidObservations:register.validationPolicy==='isolate-invalid-observations-v1'}))!==JSON.stringify(register))throw invalid();
  }
+ validateResponseAttempts(data);
  const restored={...structuredClone(data),revisionId:revision.id} as unknown as SourceReprocessingSynthesisCheckpoint;
  if(restored.review?.status==='running'){restored.review.status='interrupted';restored.review.outcomeUncertain=true;restored.review.finishedAt=now();restored.review.error='Restored during summary evidence review; provider outcome is unknown.';}
  if(restored.status==='running'){restored.status='interrupted';restored.outcomeUncertain=true;restored.finishedAt=now();restored.error='Restored during synthesis; provider outcome is unknown.';}
@@ -294,4 +296,13 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  }
  materializeSourceRevision(revision);
  return revision;
+}
+
+function validateResponseAttempts(value:RecordValue){
+ if(value.responseCode!==undefined)oneOf(value.responseCode,['provider_output_limit','provider_empty_output','provider_incomplete_output','provider_content_filter','provider_response_failed','provider_output_too_large']);
+ if(value.outputTokenBudget!==undefined)integer(value.outputTokenBudget,16000,64000);if(value.outputTokenBudget!==undefined&&![16000,32000,64000].includes(value.outputTokenBudget as number))throw invalid();
+ if(value.responseAttempts!==undefined)for(const item of array(value.responseAttempts,2)){
+  const attempt=object(item);timestamp(attempt.startedAt);if(attempt.finishedAt!==null)timestamp(attempt.finishedAt);string(attempt.error,10000);integer(attempt.outputTokenBudget,16000,64000);if(![16000,32000,64000].includes(attempt.outputTokenBudget as number))throw invalid();
+  for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])if(attempt[key]!==null)integer(attempt[key],0,Number.MAX_SAFE_INTEGER);
+ }
 }

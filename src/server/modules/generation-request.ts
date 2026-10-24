@@ -34,7 +34,7 @@ export type GenerationRequest = CommonRequest & (
   | {kind:'sourceAuthors';input:string}
   | {kind:'pageEnrichment';input:string;options:Omit<PageEnrichmentOptions,'signal'>}
   | {kind:'collectionRules';input:string;instructions:string}
-  | {kind:'editorial';input:string;instructions:string;signal:AbortSignal;responseShape?:'blocks'|'synthesis'|'synthesisReview';evidenceImages?:EditorialEvidenceImage[];externalEvidenceConsent?:boolean}
+  | {kind:'editorial';input:string;instructions:string;signal:AbortSignal;responseShape?:'blocks'|'synthesis'|'synthesisReview';evidenceImages?:EditorialEvidenceImage[];externalEvidenceConsent?:boolean;outputTokenBudget?:16000|32000|64000}
 );
 
 type MultimodalInput={role:'user';content:({type:'input_text';text:string}|{type:'input_image';image_url:string;detail:'high'})[]}[];
@@ -125,7 +125,7 @@ export function generationPolicy(request:GenerationRequest,selections:Selections
        if(request.evidenceImages.length>2||request.evidenceImages.some(image=>image.mimeType!=='image/png'||!Number.isSafeInteger(image.page)||image.page<1||!/^[a-f0-9]{64}$/.test(image.sha256)||image.base64.length>16*1024*1024||createHash('sha256').update(Buffer.from(image.base64,'base64')).digest('hex')!==image.sha256||!Buffer.from(image.base64,'base64').subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))||!/^[A-Za-z0-9+/]*={0,2}$/.test(image.base64)))throw new HttpError(400,'Invalid or excessive original-page image evidence.');
       }
       if(!supportedIntelligencePreferences(selections.standard))throw new HttpError(400,'Choose a supported editorial model and reasoning effort in Settings → Intelligence.');
-      return policy(()=>({instructions:request.instructions,input:request.evidenceImages?.length?[{role:'user' as const,content:[{type:'input_text' as const,text:request.input},...request.evidenceImages.map(image=>({type:'input_image' as const,image_url:`data:image/png;base64,${image.base64}`,detail:'high' as const}))]}]:request.input,...(intelligenceModels.find(model=>model.id===selections.standard.model)?.structuredOutputs?{text:{format:request.responseShape==='blocks'?reconstructionFormat:request.responseShape==='synthesis'?synthesisFormat:request.responseShape==='synthesisReview'?synthesisReviewFormat:editorialFormat}}:{})}),{activeSlot:'editorial',selection:{...selections.standard},maxOutputTokens:16000,maxOutputLength:60000,timeoutMs:180000});
+      return policy(()=>({instructions:request.instructions,input:request.evidenceImages?.length?[{role:'user' as const,content:[{type:'input_text' as const,text:request.input},...request.evidenceImages.map(image=>({type:'input_image' as const,image_url:`data:image/png;base64,${image.base64}`,detail:'high' as const}))]}]:request.input,...(intelligenceModels.find(model=>model.id===selections.standard.model)?.structuredOutputs?{text:{format:request.responseShape==='blocks'?reconstructionFormat:request.responseShape==='synthesis'?synthesisFormat:request.responseShape==='synthesisReview'?synthesisReviewFormat:editorialFormat}}:{})}),{activeSlot:'editorial',selection:{...selections.standard},maxOutputTokens:request.outputTokenBudget??16000,maxOutputLength:60000,timeoutMs:180000});
     default: {
       const exhaustive:never=request;
       throw new Error(`Unsupported generation request: ${String(exhaustive)}`);

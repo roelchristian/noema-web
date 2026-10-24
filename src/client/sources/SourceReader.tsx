@@ -8,20 +8,22 @@ import {SourceReadingNoteMarkers} from './SourceReadingNoteMarkers';
 import {SourceReadingNavigation} from './SourceReadingNavigation';
 import {SourceReadingTools} from './SourceReadingTools';
 import type {ReadingNoteAnchor,SourceHighlight} from '../../shared/source-reading';
-import {useEffect,useMemo,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useMemo,useRef,useState,useCallback} from 'react';
 import {entityMentionName,type Entity,type EntityDetail,type Page,type SourceFile,type SourceReference} from '../../shared/domain';
 import {projectPageText} from '../../shared/page-text';
 import {citationLocation} from '../../shared/citations';
-import {sourceDocumentEntries,sourceNodeLabel,sourceNodeLocator,type SourceDocument} from '../../shared/source-document';
+import {sourceNodeLabel,sourceNodeLocator,type SourceDocument} from '../../shared/source-document';
 import {randomUUID} from '../../shared/uuid';
 import {request} from '../api';
 import {Icon} from '../components/Icon';
-import {SourceReaderInline,SourceReaderText} from './SourceReaderText';
+import {SourceReaderInline} from './SourceReaderText';
+import {SourceDocumentView,sourceViewEntries,passageAnchor,type SourceViewEntry} from './SourceDocumentView';
+import type {SourceReprocessingRevision} from '../../shared/source-reprocessing';
 
 type LoadedFile=SourceFile&{textHash:string;document?:SourceDocument};
-type Entry=ReturnType<typeof sourceDocumentEntries>[number];
+type Entry=SourceViewEntry;
 interface Props {
-  vaultId:string;source:Entity;entities:Entity[];onOpenEntity:(id:string)=>void;inspectorOpen?:boolean;refreshKey?:number;onActiveAttachmentChange?:(fileId:string)=>void;
+  vaultId:string;source:Entity;entities:Entity[];onOpenEntity:(id:string)=>void;inspectorOpen?:boolean;onToggleInspector?:()=>void;refreshKey?:number;onActiveAttachmentChange?:(fileId:string)=>void;
   onCreatePageFromSource:(source:Entity)=>void;onError:(message:string)=>void;
   onAddPassage:(reference:SourceReference)=>void;onAnnotate:(reference:SourceReference)=>void;onReadingNoteCreated:(page:Page)=>void;onOpenReadingNote:(id:string)=>void;onRemoveReadingNote:(note:ReadingNoteAnchor)=>void;
 }
@@ -33,10 +35,9 @@ function passageReference(file:LoadedFile,entry:Entry):SourceReference {
     ...(node.range.startPage?{startPage:node.range.startPage,endPage:node.text!==undefined?node.range.endPage??node.range.startPage:node.range.startPage}:{}),
     excerpt:node.text??node.title??file.text.slice(node.range.startOffset,endOffset),contextLabel:sourceNodeLabel(path),appLocator:sourceNodeLocator(path)};
 }
-function passageAnchor(fileId:string,nodeId:string){return `source-passage-${encodeURIComponent(fileId)}-${encodeURIComponent(nodeId)}`;}
 
 /** Reading and citation state is deliberately separate from the editable page lifecycle. */
-export function SourceReader({vaultId,source,entities,inspectorOpen=false,refreshKey,onActiveAttachmentChange,onCreatePageFromSource,onError,onAddPassage,onAnnotate,onReadingNoteCreated,onOpenReadingNote,onRemoveReadingNote}:Props) {
+export function SourceReader({vaultId,source,entities,inspectorOpen=false,onToggleInspector,refreshKey,onActiveAttachmentChange,onCreatePageFromSource,onError,onAddPassage,onAnnotate,onReadingNoteCreated,onOpenReadingNote,onRemoveReadingNote}:Props) {
   const destination=useContext(ReviewDestination);
   const reviewFile=destination?.originId===source.id?destination.fileId:undefined;
   const [files,setFiles]=useState<SourceFile[]|null>(null),[fileId,setFileId]=useState('');
@@ -44,9 +45,17 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,refres
   const [selected,setSelected]=useState<string|null>(null),[copied,setCopied]=useState(false);
   const article=useRef<HTMLElement>(null);
   const [reprocessed,setReprocessed]=useState(false),[comparisonPage,setComparisonPage]=useState<number|null>(null);
+  const [readingRevision,setReadingRevision]=useState<SourceReprocessingRevision|null>(null);
+  const position=useRef<{node?:string;page?:string;top:number}|null>(null);
+  const onReadingRevision=useCallback((revision:SourceReprocessingRevision|null)=>{
+    const root=article.current,edge=(document.querySelector('.topbar')?.getBoundingClientRect().bottom??0)+24;
+    const passage=root&&Array.from(root.querySelectorAll<HTMLElement>('[data-source-node]')).find(item=>item.getBoundingClientRect().bottom>edge);
+    if(passage)position.current={node:passage.dataset.canonicalNode,page:passage.dataset.sourcePage,top:passage.getBoundingClientRect().top};
+    setReadingRevision(revision);
+  },[]);
   useEffect(()=>setComparisonPage(null),[vaultId,fileId]);
-  useEffect(()=>setReprocessed(false),[fileId,vaultId,source.id]);
-  function showOriginal(nodeId?:string){setReprocessed(false);if(nodeId){setSelected(nodeId);requestAnimationFrame(()=>{const element=document.getElementById(passageAnchor(fileId,nodeId));window.dispatchEvent(new Event('noema:before-reading-jump'));element?.scrollIntoView({block:'center'});element?.querySelector<HTMLButtonElement>('button')?.focus({preventScroll:true});});}}
+  useEffect(()=>{setReprocessed(false);setReadingRevision(null);position.current=null;},[fileId,vaultId,source.id]);
+  function showOriginal(nodeId?:string){setReadingRevision(null);setReprocessed(false);if(nodeId){setSelected(nodeId);requestAnimationFrame(()=>{const element=document.getElementById(passageAnchor(fileId,nodeId));window.dispatchEvent(new Event('noema:before-reading-jump'));element?.scrollIntoView({block:'center'});element?.querySelector<HTMLButtonElement>('button')?.focus({preventScroll:true});});}}
   const [highlights,setHighlights]=useState<SourceHighlight[]>([]);
   const [readingNotes,setReadingNotes]=useState<ReadingNoteAnchor[]>([]);
   const copyTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
@@ -100,23 +109,25 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,refres
     if(note&&note.fileId===loaded?.id&&note.sourceHash===loaded.textHash)setReadingNotes(items=>[...items.filter(item=>item.pageId!==page.id),{pageId:page.id,title:page.title,text:projectPageText(page.blocks,id=>entityMentionName(entities.find(entity=>entity.id===id))).text,sourceHash:note.sourceHash,startOffset:note.startOffset,endOffset:note.endOffset}]);
     onReadingNoteCreated(page);
   }
-  const entries=useMemo(()=>{
-    if(!loaded?.document)return [];
-    // The structural view normalizes line endings and joins prose lines. Anchor
-    // selections to the original versioned text, rather than that presentation.
-    const raw=loaded.text,offsets:number[]=[];
-    if(raw.includes('\r'))for(let index=0;index<raw.length;index++){offsets.push(index);if(raw[index]==='\r'&&raw[index+1]==='\n')index++;}
-    const offset=(value:number)=>offsets.length?(offsets[value]??raw.length):value;
-    return sourceDocumentEntries(loaded.document).filter(({node})=>node.text!==undefined||node.title).map(entry=>{
-      const start=offset(entry.node.range.startOffset),end=offset(entry.node.range.endOffset);
-      const titleAt=entry.node.title?raw.indexOf(entry.node.title,start):-1;
-      const firstLineEnd=Math.min(end,raw.indexOf('\n',start)<0?raw.length:raw.indexOf('\n',start));
-      const exactTitle=titleAt>=start&&titleAt<firstLineEnd;
-      const rawHeading=raw.slice(start,firstLineEnd).trimEnd(),prefix=rawHeading.match(/^\s*#{1,6}\s+/)?.[0].length??0;
-      const headingStart=exactTitle?titleAt:start+prefix;
-      return {...entry,node:{...entry.node,range:{...entry.node.range,startOffset:entry.node.text!==undefined?start:headingStart,endOffset:end},...(entry.node.text!==undefined?{text:raw.slice(start,end)}:{title:exactTitle?entry.node.title:rawHeading.slice(prefix)})}};
-    });
-  },[loaded]);
+  const entries=useMemo(()=>loaded?sourceViewEntries(loaded.text,loaded.document):[],[loaded]);
+  // Fail closed: an incomplete/stale response may never replace the reading text.
+  const editorial=readingRevision&&loaded&&readingRevision.fileId===loaded.id&&readingRevision.baseHash===loaded.textHash&&!readingRevision.stale&&readingRevision.status==='completed'&&readingRevision.report.chunksCompleted>=readingRevision.report.chunksTotal?readingRevision:null;
+  const viewText=editorial?.reprocessed.text??loaded?.text??'',viewDocument=editorial?.reprocessed.document??loaded?.document;
+  const viewEntries=useMemo(()=>editorial?sourceViewEntries(editorial.reprocessed.text,editorial.reprocessed.document):entries,[editorial,entries]);
+  function canonicalNode(nodeId:string){
+    if(!editorial)return nodeId;
+    const links=editorial.nodeLinks?.filter(link=>link.reprocessedNodeIds.includes(nodeId))??[];
+    // A unique recorded semantic link identifies an original passage, never an
+    // equivalent rewritten offset. The citation quotes that original passage.
+    return links.length===1&&entries.some(entry=>entry.node.id===links[0].originalNodeId)?links[0].originalNodeId:undefined;
+  }
+  useLayoutEffect(()=>{
+    const saved=position.current,root=article.current;if(!saved||!root)return;position.current=null;
+    const passages=Array.from(root.querySelectorAll<HTMLElement>('[data-source-node]'));
+    const linked=saved.node?passages.filter(item=>item.dataset.canonicalNode===saved.node):[];
+    const target=linked.length===1?linked[0]:saved.page?passages.find(item=>item.dataset.sourcePage===saved.page):undefined;
+    if(target)window.scrollBy({top:target.getBoundingClientRect().top-saved.top,behavior:'instant'});
+  },[editorial?.id,editorial?.updatedAt]);
   const selectedEntry=entries.find(({node})=>node.id===selected);
   const reference=useMemo(()=>loaded&&selectedEntry?passageReference(loaded,selectedEntry):null,[loaded,selectedEntry]);
   function selectPassage(nodeId:string){setSelected(nodeId);setCopied(false);}
@@ -143,24 +154,17 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,refres
     {attachment?.status==='ready'&&attachment.admitted!==1&&<p className="source-reader-status">{uiText("This attachment is unavailable for reading.")}</p>}
     {attachment?.status==='ready'&&attachment.admitted===1&&!loaded&&!error&&<p className="source-reader-status" role="status">{uiText("Loading document text…")}</p>}
     {loaded?.format==='pdf'&&<SourceEvidence vaultId={vaultId} fileId={loaded.id} pageCount={loaded.pages??0} page={comparisonPage} onPage={setComparisonPage}/>}
-    {loaded&&<SourceReprocessing key={`${vaultId}:${loaded.id}`} vaultId={vaultId} fileId={loaded.id} onCompare={loaded.format==='pdf'?setComparisonPage:undefined} visible={reprocessed||destination?.category==='editorial'&&reviewFile===loaded.id} onShow={()=>setReprocessed(true)} onOriginal={showOriginal}/>}
-    {loaded&&!reprocessed&&<div className="source-reader-layout">
+    {loaded&&<SourceReprocessing key={`${vaultId}:${loaded.id}`} vaultId={vaultId} fileId={loaded.id} onCompare={loaded.format==='pdf'?setComparisonPage:undefined} visible={reprocessed||destination?.category==='editorial'&&reviewFile===loaded.id} onShow={()=>setReprocessed(true)} onOriginal={showOriginal} onReadingRevision={onReadingRevision}/>}
+    {loaded&&<div className="source-reader-layout">
       <div className="source-reader-content">
-        {reference&&<aside className="source-reader-selection" aria-label={uiText("Selected passage")}><div className="source-reader-selection-heading"><strong>{uiText("Selected passage")}</strong><button type="button" aria-label={uiText("Clear selected passage")} onClick={()=>setSelected(null)}><Icon name="close"/></button></div><small>{citationLocation(reference)}</small><blockquote>{reference.excerpt}</blockquote><div className="source-reader-selection-actions"><button className="button small" type="button" onClick={()=>void copyCitation()}>{copied?uiText("Copied"):uiText("Copy citation")}</button><button className="button small" type="button" onClick={()=>onAddPassage(reference)}>{uiText("Add to page")}</button><button className="button small" type="button" onClick={()=>onAnnotate(reference)}>{uiText("Annotate")}</button></div><span role="status" className="sr-only">{copied?uiText("Citation copied"):''}</span></aside>}
-        <SourceReadingContinuity key={`continuity:${loaded.id}:${loaded.textHash}`} file={loaded} article={article} selectedOffset={selectedEntry?.node.range.startOffset}/>
-        <SourceReadingTools key={`tools:${loaded.id}:${loaded.textHash}`} file={loaded} article={article} highlights={highlights} onHighlight={highlight=>setHighlights(items=>[...items.filter(item=>item.id!==highlight.id),highlight])} onHighlightRemoved={id=>setHighlights(items=>items.filter(item=>item.id!==id))} onNoteCreated={readingNoteCreated}/>
-        <article ref={article} className="source-reader-document" aria-label={source.name}>
-          {entries.length?entries.map(({node,path})=>{
-            const Heading=(node.kind==='chapter'||node.level===1?'h2':node.kind==='subsection'||(node.level??0)>2?'h4':'h3');
-            const locator=sourceNodeLocator(path)??`L${node.range.startLine}–${node.range.endLine}`;
-            return <section key={node.id} id={passageAnchor(loaded.id,node.id)} className={'source-reader-passage'+(node.text===undefined?' is-heading':'')+(node.id===selected?' is-selected':'')} data-source-node={node.id}>
-              <button type="button" className="source-reader-node-address" title={uiText("Select passage ")+locator} aria-label={uiText("Select passage ")+locator} aria-pressed={node.id===selected} onClick={()=>selectPassage(node.id)}>{locator}</button>
-              {node.text===undefined?<Heading><SourceReaderInline text={node.title??''} footnotePrefix={loaded.id} startOffset={node.range.startOffset} highlights={highlights}/></Heading>:<SourceReaderText text={node.text} kind={node.kind} footnotePrefix={loaded.id} startOffset={node.range.startOffset} highlights={highlights}/>}
-            </section>;
-          }):loaded.text.trim()?<SourceReaderText text={loaded.text} footnotePrefix={loaded.id} startOffset={0} highlights={highlights}/>:<p className="source-reader-status">{uiText("No readable text was extracted from this attachment.")}</p>}
-          <SourceReadingNoteMarkers article={article} notes={readingNotes} onOpen={onOpenReadingNote} onRemove={onRemoveReadingNote}/>
-        </article>
-        <SourceReadingNavigation key={`navigation:${loaded.id}:${loaded.textHash}`} article={article} text={loaded.text} document={loaded.document}/>
+        {reference&&<aside className="source-reader-selection" aria-label={uiText("Selected passage")}><div className="source-reader-selection-heading"><strong>{uiText(editorial?"Selected original passage":"Selected passage")}</strong><button type="button" aria-label={uiText("Clear selected passage")} onClick={()=>setSelected(null)}><Icon name="close"/></button></div><small>{citationLocation(reference)}</small><blockquote>{reference.excerpt}</blockquote><div className="source-reader-selection-actions"><button className="button small" type="button" onClick={()=>void copyCitation()}>{copied?uiText("Copied"):uiText("Copy citation")}</button><button className="button small" type="button" onClick={()=>onAddPassage(reference)}>{uiText("Add to page")}</button><button className="button small" type="button" onClick={()=>onAnnotate(reference)}>{uiText("Annotate")}</button></div><span role="status" className="sr-only">{copied?uiText("Citation copied"):''}</span></aside>}
+        {editorial&&<p className="source-reader-editorial-notice">{uiText('Editorial presentation. Citation actions quote the linked original passage. Highlights, bookmarks and reading notes are available in Original processed until offset mappings are verified.')}</p>}
+        {!editorial&&<SourceReadingContinuity key={`continuity:${loaded.id}:${loaded.textHash}`} file={loaded} article={article} selectedOffset={selectedEntry?.node.range.startOffset}/>}
+        {!editorial&&<SourceReadingTools key={`tools:${loaded.id}:${loaded.textHash}`} file={loaded} article={article} highlights={highlights} onHighlight={highlight=>setHighlights(items=>[...items.filter(item=>item.id!==highlight.id),highlight])} onHighlightRemoved={id=>setHighlights(items=>items.filter(item=>item.id!==id))} onNoteCreated={readingNoteCreated}/>}
+        <SourceDocumentView article={article} fileId={loaded.id} name={source.name} text={viewText} entries={viewEntries} selected={selected} annotations="always" structureLabels={false} highlights={editorial?[]:highlights} canonicalNode={canonicalNode} onSelect={selectPassage}>
+          {!editorial&&<SourceReadingNoteMarkers article={article} notes={readingNotes} onOpen={onOpenReadingNote} onRemove={onRemoveReadingNote}/>}
+        </SourceDocumentView>
+        <SourceReadingNavigation article={article} text={viewText} document={viewDocument}/>
       </div>
     </div>}
   </section>;

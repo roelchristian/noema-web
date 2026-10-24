@@ -1,4 +1,6 @@
 import test from 'node:test';
+import {readFileSync} from 'node:fs';
+import {sourceDocumentEntries} from '../src/shared/source-document.ts';
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
 import {JSDOM} from 'jsdom';
@@ -29,10 +31,18 @@ test('delayed enrichment refreshes headings and navigation without reloading or 
  const text='Teaching Dante\n\nA stable paragraph for citation.';
  const file={id:'file',vault_id:'default',entity_id:'source',name:'article.txt',format:'txt',status:'ready',admitted:1,text,textHash:'unchanged-text-version',pages:0,page_start_lines:'[]',structural_nodes:'[]',enrichment_status:'running',generated_name:null,language:null,source_url:null};
  const attachment=()=>({...file,enrichment_status:completed?'completed':'running',structural_nodes:completed?JSON.stringify([{text:'Teaching Dante',startLine:1,level:2,kind:'section'}]):'[]'});
+ const canonicalDocument=processedSourceDocument(file),revisedText=text.replace('A stable paragraph for citation.','A revised paragraph for reading.');
+ const revisedDocument=processedSourceDocument({...file,text:revisedText});
+ const originalEntries=sourceDocumentEntries(canonicalDocument).filter(entry=>entry.node.text!==undefined);
+ const revisedEntries=sourceDocumentEntries(revisedDocument).filter(entry=>entry.node.text!==undefined);
+ const revision={...JSON.parse(readFileSync(new URL('./fixtures/dante-editorial-revision.json',import.meta.url),'utf8')),id:'revision',fileId:'file',baseHash:file.textHash,stale:false,status:'completed',original:{text,document:canonicalDocument},reprocessed:{text:revisedText,document:revisedDocument},nodeLinks:originalEntries.map((entry,index)=>({originalNodeId:entry.node.id,reprocessedNodeIds:[revisedEntries[index].node.id]}))};
+ revision.report.chunksCompleted=revision.report.chunksTotal;
  globalThis.fetch=async url=>{
   if(url==='/api/entities/source'){detailReads++;return Response.json({attachments:[attachment()]});}
   if(url==='/api/source-files/file?fingerprint=1&context=1'){documentReads++;const current=attachment();return Response.json({...current,document:processedSourceDocument(current)});}
   if(url==='/api/source-files/file/reading-locations')return Response.json({resume:null,bookmarks:[]});
+  if(url==='/api/source-files/file/reprocessing')return Response.json([{...revision,patchCount:0,pendingCount:0}]);
+  if(url==='/api/source-files/file/reprocessing/revision')return Response.json(revision);
   if(['/api/source-files/file/highlights','/api/source-files/file/reading-notes','/api/source-files/file/reprocessing'].includes(url))return Response.json([]);
   throw new Error(`Unexpected request: ${url}`);
  };
@@ -57,6 +67,19 @@ test('delayed enrichment refreshes headings and navigation without reloading or 
   assert.match(document.querySelector('[aria-label="Source reading navigation"]').textContent,/Section/);
   assert.equal(document.querySelector('[aria-label="Selected passage"] blockquote')?.textContent,'A stable paragraph for citation.');
   assert.equal(document.querySelector('.source-reader-passage.is-selected')?.dataset.sourceNode,selectedId);
+  const originalArticle=document.querySelector('.source-reader-document');
+  const versions=document.querySelector('[aria-label="Reading version"]');
+  await act(async()=>{versions.value='revision';versions.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  assert.equal(document.querySelector('.source-reader-document'),originalArticle,'version changes preserve the article element');
+  assert.match(originalArticle.textContent,/A revised paragraph for reading/);
+  assert.equal(document.querySelector('.source-reading-continuity'),null,'editorial offsets cannot be persisted as canonical bookmarks');
+  assert.equal(document.querySelector('.source-reading-tools'),null,'canonical highlight tools are unavailable on unverified editorial offsets');
+  const revisedBody=[...originalArticle.querySelectorAll('.source-reader-passage')].find(node=>node.textContent.includes('A revised paragraph'));
+  await act(async()=>revisedBody.querySelector('button').click());
+  assert.equal(document.querySelector('[aria-label="Selected passage"] blockquote')?.textContent,'A stable paragraph for citation.','editorial citation resolves the recorded original node and quotes canonical text');
+  await act(async()=>{versions.value='original';versions.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  assert.equal(document.querySelector('.source-reader-document'),originalArticle);
+  assert.match(originalArticle.textContent,/A stable paragraph for citation/);
   assert.deepEqual(errors,[]);
  }finally{
   await act(async()=>root.unmount());globalThis.fetch=originalFetch;globalThis.setTimeout=originalTimeout;dom.window.close();

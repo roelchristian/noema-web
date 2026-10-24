@@ -4,59 +4,18 @@ import {ReviewDestination} from '../review/review-destination';
 import {getLocale} from '../i18n';
 import {t as uiText} from '../i18n';
 import {useEffect,useId,useRef,useState} from 'react';
-import {sourceDocumentEntries,sourceNodeLocator} from '../../shared/source-document';
 import type {SourceEditorialPatch,SourceEditorialAttempt,SourceReprocessingRevision,SourceReprocessingSummary} from '../../shared/source-reprocessing';
 import {request} from '../api';
 import {intelligenceModels,supportedIntelligencePreferences,type IntelligencePreferences} from '../../shared/intelligence';
 import {DisclosureSummary} from '../components/DisclosureSummary';
-import {SourceReaderText,SourceReaderInline} from './SourceReaderText';
 import {SourcePatchComparison,type ComparisonLayout} from './SourcePatchComparison';
 import './source-reprocessing.css';
 
-type Props={vaultId:string;fileId:string;visible:boolean;onShow:()=>void;onOriginal:(nodeId?:string)=>void;onCompare?:(page:number)=>void};
+type Props={vaultId:string;fileId:string;visible:boolean;onShow:()=>void;onOriginal:(nodeId?:string)=>void;onCompare?:(page:number)=>void;onReadingRevision?:(revision:SourceReprocessingRevision|null)=>void};
 const active=(status:string)=>status==='queued'||status==='running';
 const label=(value:string)=>value.replaceAll('_',' ');
 const excerptLabel=(status:string)=>({pending:'Not started',running:'Processing',completed:'Completed',failed:'Failed',interrupted:'Interrupted'}[status]??label(status));
 function exportJSON(value:unknown,name:string){const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}));const link=document.createElement('a');link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-function originalNode(revision:SourceReprocessingRevision,offset:number,nodeId:string){
-  const originalEntries=sourceDocumentEntries(revision.original.document);
-  const linkedIds=new Set(revision.nodeLinks?.filter(item=>item.reprocessedNodeIds.includes(nodeId)).map(item=>item.originalNodeId));
-  const linked=originalEntries.filter(({node})=>linkedIds.has(node.id)).sort((a,b)=>(a.node.id===nodeId?-1:b.node.id===nodeId?1:0)||(a.node.range.endOffset-a.node.range.startOffset)-(b.node.range.endOffset-b.node.range.startOffset));
-  if(linked[0])return linked[0].node.id;
-  let shift=0;
-  for(const patch of revision.patches.filter(p=>p.decision==='accepted').sort((a,b)=>a.range.startOffset-b.range.startOffset)){
-    const replacement=patch.userReplacement??patch.replacement,start=patch.range.startOffset+shift;
-    if(offset<start)break;
-    if(offset<start+replacement.length)return patch.nodeIds[0];
-    shift+=replacement.length-patch.original.length;
-  }
-  const original=offset-shift,entries=sourceDocumentEntries(revision.original.document);
-  return entries.find(({node})=>node.range.startOffset<=original&&node.range.endOffset>original&&node.text!==undefined)?.node.id??entries.find(({node})=>node.range.startOffset<=original&&node.range.endOffset>original)?.node.id;
-}
-function RevisionPassage({revision,entry}:{revision:SourceReprocessingRevision;entry:ReturnType<typeof sourceDocumentEntries>[number]}){
-  const [expanded,setExpanded]=useState(false),panelId=useId(),trigger=useRef<HTMLButtonElement>(null);
-  const {node,path}=entry,locator=sourceNodeLocator(path)??'Passage';
-  const originalId=expanded?originalNode(revision,node.range.startOffset,node.id):undefined;
-  const original=originalId?sourceDocumentEntries(revision.original.document).find(({node})=>node.id===originalId)?.node:undefined;
-  function dismiss(){setExpanded(false);trigger.current?.focus({preventScroll:true});}
-  return <section className="reprocessing-passage">
-    <button ref={trigger} type="button" className="reprocessing-origin" aria-expanded={expanded} aria-controls={panelId} onClick={()=>setExpanded(value=>!value)} title={uiText("Compare the original passage below")}>{locator} · {expanded?uiText("Hide original"):uiText("Show original")}</button>
-    {node.text===undefined?<h3><SourceReaderInline text={node.title??''} footnotePrefix={revision.id}/></h3>:<SourceReaderText text={node.text} kind={node.kind} footnotePrefix={revision.id}/>}
-    <aside id={panelId} className="reprocessing-original-preview" aria-label={uiText("Original passage {value0}",{value0: locator})} hidden={!expanded} onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();dismiss();}}}>
-      {expanded&&<>
-        <div className="reprocessing-original-heading"><span>{uiText("Original")}</span><button type="button" aria-label={uiText("Dismiss original passage {value0}",{value0: locator})} onClick={dismiss}>{uiText("Dismiss")}</button></div>
-        {original?(original.text===undefined?<SourceReaderInline text={original.title??''} footnotePrefix={`${revision.id}-original`}/>:<SourceReaderText text={original.text} kind={original.kind} footnotePrefix={`${revision.id}-original`}/>):<p>{uiText("The original passage could not be matched.")}</p>}
-      </>}
-    </aside>
-  </section>;
-}
-function RevisionDocument({revision}:{revision:SourceReprocessingRevision}){
-  const entries=sourceDocumentEntries(revision.reprocessed.document).filter(({node})=>node.text!==undefined||node.title);
-  return <article className="source-reader-document reprocessing-document" aria-label={uiText("Reprocessed source")}>
-    {entries.map(entry=><RevisionPassage key={`${revision.id}:${entry.node.id}`} revision={revision} entry={entry}/>)}
-    {!entries.length&&<SourceReaderText text={revision.reprocessed.text} footnotePrefix={revision.id}/>}
-  </article>;
-}
 function PatchReview({draftKey,patch,disabled,selected,layout,onSelect,onCompare,onDecision}:{draftKey:string;patch:SourceEditorialPatch;layout:ComparisonLayout;disabled:boolean;selected:boolean;onCompare?:(page:number)=>void;onSelect:(selected:boolean)=>void;onDecision:(patch:SourceEditorialPatch,decision:'accepted'|'rejected'|'pending',replacement?:string)=>Promise<void>}){
   const baseline=JSON.stringify([patch.original,patch.userReplacement??patch.replacement,patch.decision]);
   const restored=editorialDraft(draftKey,baseline);
@@ -133,13 +92,38 @@ function Report({revision}:{revision:SourceReprocessingRevision}){
     <div className="reprocessing-actions"><button className="button small" onClick={()=>exportJSON(revision,`source-revision-${revision.id}.json`)}>{uiText("Export provenance + report")}</button><button className="button small" onClick={()=>exportVariant(revision,'original')}>{uiText("Original JSON")}</button><button className="button small" onClick={()=>exportVariant(revision,'reprocessed')}>{uiText("Reprocessed JSON")}</button></div>
   </details>;
 }
-export function SourceReprocessing({vaultId,fileId,visible,onShow,onOriginal,onCompare}:Props){
+export function SourceReprocessing({vaultId,fileId,visible,onShow,onOriginal,onCompare,onReadingRevision}:Props){
   const destination=useContext(ReviewDestination);
   const reviewRun=destination?.category==='editorial'&&destination.fileId===fileId?destination.runId:undefined;
   useEffect(()=>{if(reviewRun){setRevisionId(reviewRun);setTab('review');}},[reviewRun]);
   const [summaries,setSummaries]=useState<SourceReprocessingSummary[]>([]),[revisionId,setRevisionId]=useState(''),[revision,setRevision]=useState<SourceReprocessingRevision|null>(null),[prompt,setPrompt]=useState(false),[instructions,setInstructions]=useState(''),[acceptanceThreshold,setAcceptanceThreshold]=useState('90'),[acceptanceMode,setAcceptanceMode]=useState<'review_all'|'safe_formatting'>('review_all'),[filter,setFilter]=useState<'all'|'pending'|'accepted'|'rejected'>('pending'),[comparisonLayout,setComparisonLayout]=useState<ComparisonLayout>('unified'),[selected,setSelected]=useState<string[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState(''),[reload,setReload]=useState(0),[tab,setTab]=useState<'read'|'review'>('read');
+  const readingKey=`noema:source-reading:${vaultId}:${fileId}`;
+  const [currentReadingId,setCurrentReadingId]=useState(()=>{try{return localStorage.getItem(readingKey)??'';}catch{return '';}}),[readingChoice,setReadingChoice]=useState('current');
+  const requestedReadingId=readingChoice==='original'?'':readingChoice==='current'?currentReadingId:readingChoice;
+  const readingCallback=useRef(onReadingRevision);readingCallback.current=onReadingRevision;
+  const readingRequest=useRef(0);
+  const eligible=(item:SourceReprocessingRevision|SourceReprocessingSummary)=>item.status==='completed'&&item.report.chunksCompleted>=item.report.chunksTotal&&!item.stale;
+  useEffect(()=>{
+    const requestId=++readingRequest.current;
+    if(!requestedReadingId){readingCallback.current?.(null);return;}
+    const controller=new AbortController();
+    void request<SourceReprocessingRevision>(`source-files/${encodeURIComponent(fileId)}/reprocessing/${encodeURIComponent(requestedReadingId)}`,'GET',undefined,vaultId,controller.signal).then(value=>{
+      if(controller.signal.aborted||readingRequest.current!==requestId)return;
+      if(value.fileId===fileId&&eligible(value))readingCallback.current?.(value);
+      else {readingCallback.current?.(null);setError('This revision is incomplete or no longer matches the canonical source. Original processed text is shown.');}
+    }).catch(cause=>{if(!controller.signal.aborted&&readingRequest.current===requestId){readingCallback.current?.(null);setError(String(cause));}});
+    return()=>controller.abort();
+  },[fileId,vaultId,requestedReadingId,reload]);
+  function chooseReading(value:string){
+    setReadingChoice(value);
+    if(value!=='current'&&value!=='original'){
+      const item=revisionOptions.find(item=>item.id===value);if(!item||!eligible(item))return;
+      setCurrentReadingId(value);try{localStorage.setItem(readingKey,value);}catch{/* Reading remains selected for this session. */}
+    }
+    if(value==='original')onOriginal();
+  }
   const defaultTabRevision=useRef('');
-  useEffect(()=>{if(!revision||defaultTabRevision.current===revision.id)return;defaultTabRevision.current=revision.id;setTab(reviewRun===revision.id?'review':'read');},[revision,reviewRun]);
+  useEffect(()=>{if(!revision||defaultTabRevision.current===revision.id)return;defaultTabRevision.current=revision.id;if(reviewRun===revision.id)setTab('review');},[revision,reviewRun]);
   const [configuration,setConfiguration]=useState<IntelligencePreferences|null>(null),[configurationError,setConfigurationError]=useState('');
   useEffect(()=>{if(!prompt)return;const controller=new AbortController();setConfiguration(null);setConfigurationError('');void request<IntelligencePreferences>('intelligence','GET',undefined,undefined,controller.signal).then(value=>{if(!controller.signal.aborted){if(supportedIntelligencePreferences(value))setConfiguration(value);else setConfigurationError('Choose a supported model and reasoning in Settings → Intelligence.');}}).catch(()=>{if(!controller.signal.aborted)setConfigurationError('Could not load the AI configuration. Reopen this form to retry.');});return()=>controller.abort();},[prompt]);
   const actionRunning=useRef(false);
@@ -184,7 +168,14 @@ export function SourceReprocessing({vaultId,fileId,visible,onShow,onOriginal,onC
   const reviewLabels={pending:'Pending',accepted:'Accepted',rejected:'Rejected',all:'All changes'};
   const emptyReviewMessages={pending:'No pending changes to review.',accepted:'No accepted changes yet.',rejected:'No rejected changes. Rejected suggestions keep the original text.',all:'No editorial changes recorded.'};
   return <section className="source-reprocessing" aria-label={uiText("Beta source reprocessing")}>
-    <div className="reprocessing-bar"><div className="reprocessing-switch" aria-label={uiText("Processed version")}><button type="button" aria-pressed={!visible} onClick={()=>onOriginal()}>{uiText("Original processed")}</button><button type="button" aria-pressed={visible} onClick={onShow}>{uiText(revision&&partial(revision)?"Partial revision":"Editorial revision") + " "}<span>{uiText("Beta")}</span></button></div><button type="button" className="button small reprocessing-loading-button" aria-busy={running} disabled={busy||running} onClick={()=>{setPrompt(true);onShow();}}>{running&&<span className="scan-spinner" aria-hidden="true"/>}{running?uiText("Reprocessing…"):uiText("Reprocess with AI")}</button></div>
+    <div className="reprocessing-bar">
+      <label className="reprocessing-reading-picker">{uiText("Reading version")} <select aria-label={uiText("Reading version")} value={readingChoice} onChange={event=>chooseReading(event.target.value)}>
+        <option value="current">{uiText("Current reading")}</option><option value="original">{uiText("Original processed")}</option>
+        {revisionOptions.filter(eligible).map(item=><option key={item.id} value={item.id}>{uiText("Editorial revision")} · {new Date(item.createdAt).toLocaleString(getLocale())}</option>)}
+      </select></label>
+      <button type="button" className="reprocessing-quiet-action" onClick={()=>{setTab('review');onShow();}}>{uiText("Review changes (")}{pending})</button>
+      <button type="button" className="button small reprocessing-loading-button" aria-busy={running} disabled={busy||running} onClick={()=>{setPrompt(true);onShow();}}>{running&&<span className="scan-spinner" aria-hidden="true"/>}{running?uiText("Reprocessing…"):uiText("Reprocess with AI")}</button>
+    </div>
     {error&&<p className="dialog-error" role="alert">{error} <button onClick={()=>{setError('');setReload(n=>n+1);}}>{uiText("Refresh")}</button></p>}
     {visible&&<><p className="reprocessing-hint">{uiText("An editorial reading version. Original processed Markdown remains canonical for citations. Review all changes by default. Optional automatic acceptance is limited to verified formatting changes; wording, citations, deletions, and structural changes require review.")}</p>
       {prompt&&<form className="reprocessing-prompt" onSubmit={e=>{e.preventDefault();void start();}}><h3>{uiText("Re-edit this source") + " "}<span>{uiText("Beta")}</span></h3><p>{uiText("Review OCR, line breaks, footnotes, page apparatus, foreign-language citations, metadata and math while preserving source meaning and page provenance.")}</p><div className="reprocessing-configuration" role="status">{configuration?<><strong>{intelligenceModels.find(model=>model.id===configuration.model)?.label??configuration.model} · {configuration.reasoningEffort} {uiText("reasoning")}</strong><p>{uiText("Supported reasoning:")} {intelligenceModels.find(model=>model.id===configuration.model)?.efforts.join(', ')}</p></>:configurationError?<p role="alert">{configurationError}</p>:uiText("Loading AI configuration…")}</div><label>{uiText("Review policy")}<select aria-label={uiText("Review policy")} value={acceptanceMode} onChange={event=>setAcceptanceMode(event.target.value as typeof acceptanceMode)}><option value="review_all">{uiText("Review every change")}</option><option value="safe_formatting">{uiText("Automatically accept safe formatting")}</option></select></label>{acceptanceMode==='safe_formatting'&&<><label>{uiText("Auto-accept confidence threshold (%)")}<input type="number" min="0" max="100" step="1" required value={acceptanceThreshold} onChange={e=>setAcceptanceThreshold(e.target.value)}/></label><p>{uiText("Only formatting changes that pass preservation checks and meet this confidence can be accepted automatically. All other edits remain pending.")}</p></>}<label>{uiText("Editorial guidance (optional)")}<textarea autoFocus value={instructions} maxLength={4000} onChange={e=>setInstructions(e.target.value)} placeholder={uiText("For example: preserve Greek quotations; check ambiguous footnote numbering carefully.")}/></label><div className="reprocessing-actions"><button className="button primary reprocessing-loading-button" aria-busy={busy} disabled={busy||running||!configuration} type="submit">{busy&&<span className="scan-spinner" aria-hidden="true"/>}{busy?uiText("Starting…"):uiText("Start reprocessing")}</button><button className="button" disabled={busy} type="button" onClick={()=>setPrompt(false)}>{uiText("Cancel")}</button></div></form>}
@@ -196,8 +187,8 @@ export function SourceReprocessing({vaultId,fileId,visible,onShow,onOriginal,onC
         <p className="reprocessing-status" role="status">{uiText("Editorial decisions")} · {pending}{" " + uiText("pending ·") + " "}{revision.patches.filter(patch=>patch.decision==='accepted').length}{" " + uiText("accepted ·") + " "}{revision.patches.filter(patch=>patch.decision==='rejected').length}{" " + uiText("kept original")}</p>
         {active(revision.status)&&<><button type="button" className="button small" disabled={busy} onClick={()=>void control('cancel')}>{uiText("Stop and keep progress")}</button></>}
         {['failed','interrupted'].includes(revision.status)&&!stale&&<button type="button" className="button small" disabled={busy||running} onClick={()=>void control('resume')}>{uiText(configurationFailure(revision)?"Retry after configuration repair":revision.report.excerpts?.some(excerpt=>excerpt.status==='failed')?"Retry failed and remaining excerpts":"Resume remaining excerpts")}</button>}
-        <div className="reprocessing-tabs"><button aria-pressed={tab==='read'} onClick={()=>setTab('read')}>{uiText(partial(revision)?"Read partial revision":"Read revision")}</button><button aria-pressed={tab==='review'} onClick={()=>setTab('review')}>{uiText("Review changes (")}{pending})</button></div>
-        {tab==='read'?<RevisionDocument revision={revision}/>:<div className="reprocessing-reviews">
+        {tab==='read'?<button type="button" className="reprocessing-quiet-action" onClick={()=>setTab('review')}>{uiText("Open corrections")}</button>:<div className="reprocessing-reviews">
+          <button type="button" className="reprocessing-quiet-action" onClick={()=>setTab('read')}>{uiText("Close corrections")}</button>
           <div className="reprocessing-tabs reprocessing-review-filters" role="group" aria-label={uiText("Review status")}>
             {reviewFilters.map(value=><button key={value} type="button" aria-pressed={filter===value} onClick={()=>{setFilter(value);setSelected([]);}}>{reviewLabels[value]} <span className="reprocessing-filter-count">{value==='all'?revision.patches.length:revision.patches.filter(patch=>patch.decision===value).length}</span></button>)}
           </div>

@@ -13,7 +13,7 @@ const fixture=()=>{
  r.acceptanceMode='review_all';r.patches=r.patches.slice(0,2).map((p,i)=>({...p,id:'patch-'+i,decision:'pending',riskReasons:['Quotation wording requires comparison with the PDF.']}));
  r.reprocessed=structuredClone(r.original);r.reprocessed.document.semantic.children=[];r.reprocessed.text='Sample reading text';return r;
 };
-async function mount(t,{initial=null,post}={}){
+async function mount(t,{initial=null,post,onReadingRevision}={}){
  const dom=new JSDOM('<div id="mount"></div>',{pretendToBeVisual:true});
  // React loaded before DOM availability uses its legacy input-event fallback in JSDOM.
  dom.window.HTMLElement.prototype.attachEvent=function(){};dom.window.HTMLElement.prototype.detachEvent=function(){};
@@ -31,7 +31,7 @@ async function mount(t,{initial=null,post}={}){
   return {ok:true,json:async()=>structuredClone(result)};
  });
  const root=createRoot(document.querySelector('#mount'));
- await act(async()=>root.render(React.createElement(SourceReprocessing,{vaultId:'v',fileId:'f',visible:true,onShow(){},onOriginal(){}})));
+ await act(async()=>root.render(React.createElement(SourceReprocessing,{vaultId:'v',fileId:'f',visible:true,onReadingRevision,onShow(){},onOriginal(){}})));
  t.after(async()=>{await act(async()=>root.unmount());dom.window.close();keys.forEach((key,index)=>{if(previous[index])Object.defineProperty(globalThis,key,previous[index]);else delete globalThis[key];});});
  const button=text=>[...document.querySelectorAll('button')].find(el=>el.textContent===text);
  const click=async el=>{assert.ok(el,'Expected control exists');await act(async()=>el.click());};
@@ -100,8 +100,8 @@ test('partial failures show actionable processing cause and excerpt ledger separ
  assert.match(document.querySelector('.reprocessing-progress').textContent,/Partial revision.*1 \/ 3 excerpts completed/s);
  assert.match(document.querySelector('.reprocessing-failure').textContent,/Settings → Intelligence/);
  assert.match(document.querySelector('.reprocessing-ledger').textContent,/Pages 1–2.*Completed.*Attempts: 1.*Page 3.*Failed.*Unsupported reasoning.*Page 4.*Not started/s);
- assert.equal(env.button('Review changes (2)').getAttribute('aria-pressed'),'false');
- assert.ok(env.button('Read partial revision'));assert.ok(env.button('Retry after configuration repair'));
+ assert.equal(document.querySelector('.reprocessing-reviews'),null);
+ assert.equal(document.querySelector('[aria-label="Reading version"] option[value="'+r.id+'"]'),null);assert.ok(env.button('Retry after configuration repair'));
  const summaries=[...document.querySelectorAll('.reprocessing-report summary')].map(node=>node.textContent);
  assert.ok(summaries.includes('Processing errors'));assert.ok(summaries.includes('Excluded suggestions (1)'));assert.ok(summaries.includes('Editorial observations'));
  await env.click(env.button('Retry after configuration repair'));assert.ok(env.requests.some(entry=>entry.url.endsWith('/resume')));
@@ -131,9 +131,19 @@ test('resumed ledger preserves each last attempt configuration and marks incompl
 
  test('pending count excludes applied and rejected changes and never opens review automatically',async t=>{
  const r=fixture();r.patches[1].decision='accepted';const env=await mount(t,{initial:r});
- assert.ok(env.button('Review changes (1)'));assert.equal(env.button('Review changes (1)').getAttribute('aria-pressed'),'false');
+ assert.ok(env.button('Review changes (1)'));assert.equal(document.querySelector('.reprocessing-reviews'),null);
  assert.equal(document.querySelector('.reprocessing-processing-details').open,false);
  await env.click(env.button('Review changes (1)'));assert.equal(document.querySelectorAll('.reprocessing-patch').length,1);
  assert.equal(document.querySelector('.reprocessing-patch-explanation').open,false);
  assert.equal(document.querySelector('[aria-label="Comparison layout"]').value,'unified');
  });
+
+test('only explicit completed revision selection changes the reading version',async t=>{
+ const r=fixture();r.fileId='f';r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;const readings=[];
+ const env=await mount(t,{initial:r,onReadingRevision:value=>readings.push(value)});
+ assert.deepEqual(readings,[null]);assert.equal(document.querySelector('.reprocessing-document'),null);
+ const picker=document.querySelector('[aria-label="Reading version"]');assert.ok([...picker.options].some(option=>option.value===r.id));
+ await act(async()=>{picker.value=r.id;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
+ assert.equal(readings.at(-1).id,r.id);assert.equal(document.querySelector('.reprocessing-reviews'),null);
+ await act(async()=>{picker.value='original';picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});assert.equal(readings.at(-1),null);
+});

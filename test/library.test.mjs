@@ -144,6 +144,8 @@ test('Presentation persistence inherits per vault while selections and search re
   saveLibraryPresentation('preferences',root,{layout:'compact',sort:'title-desc',groupFolders:false,columns:'location',density:'comfortable'});
   assert.deepEqual(readLibraryPresentation('preferences',folder),{layout:'compact',sort:'title-desc',groupFolders:false,columns:'location',density:'comfortable'});
   assert.deepEqual(readLibraryPresentation('another-vault',folder),{});
+  setLibraryViewState('preferences','knowledge',{grouping:'all'});
+  assert.equal(readLibraryPresentation('preferences','knowledge').grouping,'all');
   setLibraryViewState('preferences',folder,{query:'private query',selectedIds:['private-id'],scroll:{top:123,left:0},sort:'title-asc'});
   assert.doesNotMatch(JSON.stringify([...Array(window.localStorage.length)].map((_,i)=>window.localStorage.getItem(window.localStorage.key(i)))),/private query|private-id|123/);
   clearLibraryViewStates('preferences');

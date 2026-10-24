@@ -1,5 +1,6 @@
 import {useEffect, useId, useRef, useState, type RefObject} from 'react';
 import type {Entity, Organization, PagePreview, PageSummary} from '../../shared/domain';
+import {projectPageText} from '../../shared/page-text';
 import {api} from '../api';
 import {Modal, ModalHeader} from './Modal';
 
@@ -12,7 +13,7 @@ export function useLibraryQuickPreview(root:RefObject<HTMLElement|null>, {vaultI
   const eligible=items.filter(item=>item.kind==='page'||item.kind==='entity');
   const item=eligible.find(value=>value.kind+':'+value.id===selected);
   const identity=JSON.stringify([vaultId,item?.kind,item?.id,item?.updatedAt]);
-  const [loaded,setLoaded]=useState<{identity:string;page?:PagePreview;linked?:string[];error?:string}|null>(null);
+  const [loaded,setLoaded]=useState<{identity:string;page?:PagePreview;linked?:string[];linksUnavailable?:boolean;error?:string}|null>(null);
   const titleId=useId();
   function show(value:LibraryPreviewItem,element?:HTMLElement) {
     trigger.current=element??(document.activeElement instanceof HTMLElement?document.activeElement:null);
@@ -40,14 +41,14 @@ export function useLibraryQuickPreview(root:RefObject<HTMLElement|null>, {vaultI
     void api.pagePreview(vaultId,item.id,controller.signal).then(page=>{
       if(!controller.signal.aborted)setLoaded(current=>({...current,identity,page}));
     }).catch(()=>{if(!controller.signal.aborted)setLoaded({identity,error:'Preview unavailable. You can still open this page.'});});
-    void api.pageEntityAssociations(vaultId,item.id).then(links=>{
+    void api.pageEntityAssociations(vaultId,item.id,controller.signal).then(links=>{
       if(!controller.signal.aborted)setLoaded(current=>({...current,identity,linked:links.map(link=>link.entityId)}));
-    }).catch(()=>{/* Inline links remain available when explicit associations cannot be read. */});
+    }).catch(()=>{if(!controller.signal.aborted)setLoaded(current=>({...current,identity,linksUnavailable:true}));});
     return()=>controller.abort();
   },[identity]);
   const current=loaded?.identity===identity?loaded:undefined;
   const entity=item?.kind==='entity'?entities.find(value=>value.id===item.id):undefined;
-  const linked=new Set([...(current?.linked??[]),...(current?.page?.blocks.flatMap(block=>block.content.flatMap(segment=>segment.entityId?[segment.entityId]:[]))??[])]);
+  const linked=new Set([...(current?.linked??[]),...(current?.page?.blocks.flatMap(block=>[...block.content,...(block.rows??[]).flat(2)].flatMap(segment=>segment.entityId?[segment.entityId]:[]))??[])]);
   const location=organization?.locations.find(value=>value.kind===item?.kind&&value.item_id===item?.id);
   const collections=organization?.memberships.filter(value=>value.kind===item?.kind&&value.item_id===item?.id).map(value=>organization.collections.find(collection=>collection.id===value.collection_id)?.name).filter(Boolean)??[];
   const index=eligible.findIndex(value=>value===item);
@@ -57,9 +58,9 @@ export function useLibraryQuickPreview(root:RefObject<HTMLElement|null>, {vaultI
     <dl className="library-preview-metadata"><dt>Type</dt><dd>{entity?.type??'Page'}</dd><dt>Modified</dt><dd>{item.updatedAt?new Date(item.updatedAt).toLocaleString():'Unavailable'}</dd>{organization&&<><dt>Location</dt><dd>{organization.folders.find(folder=>folder.id===location?.folder_id)?.name??'Unfiled'}</dd><dt>Collections</dt><dd>{collections.join(', ')||'None'}</dd></>}</dl>
     {item.kind==='page'&&!current?.page&&!current?.error&&<p role="status">Loading preview…</p>}
     {current?.error&&<p role="status">{current.error}</p>}
-    {current?.page&&<div className="library-preview-text">{current.page.blocks.map(block=><p key={block.id}>{block.content.map(segment=>segment.entityId?entities.find(entity=>entity.id===segment.entityId)?.name??segment.mentionText??'Linked entity':segment.text??'').join('')}</p>)}{current.page.truncated&&<p>Opening text shown. Open the page to continue reading.</p>}</div>}
+    {current?.page&&<div className="library-preview-text">{projectPageText(current.page.blocks,id=>entities.find(entity=>entity.id===id)?.name).blocks.map(block=><p key={block.id}>{block.text}</p>)}{current.page.truncated&&<p>Opening text shown. Open the page to continue reading.</p>}</div>}
     {entity?.description&&<p className="library-preview-text">{entity.description}</p>}
-    {item.kind==='page'&&<p>Linked entities: {entities.filter(entity=>linked.has(entity.id)&&!entity.archived_at).map(entity=>entity.name).join(', ')||'None in opening text or associations'}</p>}
+    {item.kind==='page'&&<p>Linked entities: {entities.filter(entity=>linked.has(entity.id)&&!entity.archived_at).map(entity=>entity.name).join(', ')||'None in opening text or associations'}{current?.linksUnavailable?' · Some associations unavailable':''}</p>}
     <button className="button" onClick={()=>{close();onOpen(item);}}>Open {item.kind==='page'?'page':'entity'}</button>
   </Modal>:null;
   return {showPreview:show,quickPreview:content};

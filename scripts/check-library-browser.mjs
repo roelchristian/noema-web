@@ -17,8 +17,9 @@ const db=openDatabase(':memory:'),store=new Store(db),knowledge=new Knowledge(st
 store.run('DELETE FROM pages');
 for(let i=0;i<6;i++){
   const page=pages.create('default',{title:`Library note ${i}`});
-  pages.update('default',page.id,{...page,blocks:[{id:'body-'+i,type:'paragraph',checked:false,content:[{text:i===0?'Needle evidence in opening text.':'Synthetic opening text for library inspection.'}]}]});
+  pages.update('default',page.id,{...page,blocks:[{id:'body-'+i,type:i===1?'table':'paragraph',checked:false,content:i===1?[]:[{text:i===0?'Needle evidence in opening text.':'Synthetic opening text for library inspection.'}],...(i===1?{rows:[[[{text:'Synthetic opening text for library inspection.'}]]]}:{})}]});
 }
+store.run("UPDATE pages SET ai_status='ai_generated',ai_review_accepted=1 WHERE title='Library note 5'");
 const ai=new Intelligence({read:()=>null,write(){},remove(){}},async()=>{throw new Error('Provider calls forbidden in library browser fixture');});
 const server=createApp(store,resolve('dist/client'),ai);
 let browser;
@@ -44,6 +45,9 @@ try{
     assert.equal(await checks.evaluateAll(inputs=>inputs.filter(input=>input.checked).length),3);
   }
   await root.getByRole('button',{name:'Clear',exact:true}).click();
+  await root.getByRole('button',{name:'Actions for Library note 0',exact:true}).click();
+  await page.getByRole('menuitem',{name:'Quick preview',exact:true}).click();await page.getByRole('dialog').waitFor();
+  await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'detached'});
   const primary=root.locator('[data-library-focus]').first();await primary.focus();await page.keyboard.press('ArrowDown');
   assert.equal(await root.locator('[data-library-focus]').nth(1).evaluate(element=>element===document.activeElement),true);
   const focused=await page.evaluate(()=>document.activeElement.closest('[data-library-row]').dataset.libraryRow);
@@ -54,17 +58,44 @@ try{
   await page.waitForFunction(row=>document.activeElement.closest('[data-library-row]')?.dataset.libraryRow===row,focused);
   assert.equal(await page.evaluate(()=>document.activeElement.closest('[data-library-row]')?.dataset.libraryRow),focused);
   assert.equal(await page.evaluate(()=>scrollY),scroll);
+  // Closing/navigating while local preview reads are pending must discard late content.
+  for(let repeat=0;repeat<2;repeat++){
+    let release;const pending=new Promise(resolve=>release=resolve);
+    await page.route('**/api/pages/*/preview',async route=>{await pending;await route.continue().catch(()=>{});});
+    await primary.focus();await page.keyboard.press('Space');await page.getByRole('dialog').waitFor();
+    await page.getByRole('dialog').getByRole('button',{name:'Next',exact:true}).click();
+    await page.keyboard.press('Escape');release();await page.unroute('**/api/pages/*/preview');
+    await page.waitForTimeout(100);assert.equal(await page.getByRole('dialog').count(),0);
+  }
   const search=root.getByRole('searchbox');await search.fill('Needle');await root.locator('.search-match-badge').waitFor();
   await root.getByRole('button',{name:'Compact view',exact:true}).click();
   assert.equal(await root.locator('.search-match-badge').first().isVisible(),true);
+  // Explicitly enabling related matching after a row interaction restarts retrieval.
+  const related=pages.list('default').find(note=>note.title==='Library note 5');let semanticRequests=0;
+  await page.route('**/api/embeddings/search',route=>{semanticRequests++;return route.fulfill({json:{model:'synthetic',results:[{kind:'page',id:related.id,title:related.title,snippet:'Related synthetic evidence',score:0.9,updated_at:related.updated_at}]}});});
+  await root.locator('[data-library-focus]').first().hover();
+  await choose('Search matching','Text + related in this scope');
+  await root.getByText('Related by meaning',{exact:true}).waitFor();assert.ok(semanticRequests>0);
+  const reason=root.getByText('Related by meaning',{exact:true});
+  assert.equal(await reason.evaluate(element=>{const box=element.getBoundingClientRect(),parent=element.parentElement.getBoundingClientRect();return box.left>=parent.left&&box.right<=parent.right+1;}),true);
   await page.setViewportSize({width:390,height:844});
   assert.equal(await root.locator('.search-match-badge').first().isVisible(),true);
   await page.screenshot({path:join(artifacts,'compact-mobile.png')});
   await search.focus();await page.keyboard.press('Space');assert.equal(await page.getByRole('dialog').count(),0);
-  await search.fill('');await page.setViewportSize({width:1440,height:1000});
+  await choose('Search matching','Text in this scope');
+  assert.equal(await root.getByText('Related by meaning',{exact:true}).count(),0);
+  await search.fill('');await checks.nth(0).check();await search.fill('no-visible-items');
+  assert.equal(await root.locator('.organization-bulk-actions').count(),0);
+  await search.fill('');assert.equal(await checks.evaluateAll(inputs=>inputs.filter(input=>input.checked).length),0);
+  await page.setViewportSize({width:1440,height:1000});
   await root.getByRole('button',{name:'Grid view',exact:true}).click();
   assert.equal(await root.locator('.organization-card-cover').count(),0);
+  await root.getByText('Needle evidence in opening text.',{exact:true}).waitFor();
   await page.screenshot({path:join(artifacts,'grid-desktop.png')});
+  store.run("UPDATE pages SET featured_image_id='synthetic-cover' WHERE title='Library note 0'");
+  await page.route('**/api/images/synthetic-cover?*',route=>route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="600" height="300"><rect width="600" height="300" fill="#b4c2a0"/><circle cx="350" cy="160" r="120" fill="#607159"/></svg>'}));
+  await page.reload();await root.locator('.organization-card-cover img').waitFor();
+  await page.screenshot({path:join(artifacts,'grid-with-cover.png')});
   await page.evaluate(()=>document.documentElement.dataset.mode='dark');await page.screenshot({path:join(artifacts,'grid-dark.png')});
   await root.getByRole('button',{name:'List view',exact:true}).click();
   await page.screenshot({path:join(artifacts,'list-desktop.png')});
@@ -76,6 +107,20 @@ try{
   const metrics={items:2500,settleMs:Date.now()-started,initialSnippetRequests:snippetRequests.length,initialSnippetIds:snippetRequests.reduce((a,b)=>a+b,0),largestBatch:Math.max(0,...snippetRequests)};
   if(process.env.LIBRARY_EXPECT_BOUNDED){assert.ok(metrics.initialSnippetIds<=60,JSON.stringify(metrics));assert.ok(metrics.largestBatch<=60);}
   await page.screenshot({path:join(artifacts,'large-grid.png')});
+  await page.evaluate(()=>window.dispatchEvent(new WheelEvent('wheel')));
+  await root.locator('article[data-library-row]').nth(2300).scrollIntoViewIfNeeded();
+  await root.locator('article[data-library-row]').nth(2300).getByText('Synthetic large-library excerpt.',{exact:true}).waitFor();
+  assert.ok(await page.evaluate(()=>scrollY)>10000);
+  assert.ok(snippetRequests.every(count=>count<=60));
+  metrics.afterScrollSnippetIds=snippetRequests.reduce((a,b)=>a+b,0);
+  if(process.env.LIBRARY_EXPECT_BOUNDED)assert.ok(metrics.afterScrollSnippetIds<=120,JSON.stringify(metrics));
+  const returnControl=root.locator('article[data-library-row]').nth(2300).locator('[data-library-focus]');
+  await returnControl.focus();const returnRow=await returnControl.evaluate(element=>element.closest('[data-library-row]').dataset.libraryRow),returnScroll=await page.evaluate(()=>scrollY);
+  await page.keyboard.press('Enter');await page.locator('#page-title').waitFor();
+  await page.getByRole('button',{name:'Pages',exact:true}).first().click();
+  await page.waitForFunction(row=>document.activeElement.closest('[data-library-row]')?.dataset.libraryRow===row,returnRow);
+  assert.ok(Math.abs(await page.evaluate(()=>scrollY)-returnScroll)<8);
+
   await writeFile(join(artifacts,'metrics.json'),JSON.stringify(metrics,null,2));
   assert.deepEqual(errors,[]);console.log(JSON.stringify({checks:'layout identity, range selection, keyboard isolation, preview/focus/scroll, match reason, mobile, themes, cover treatment',metrics,artifacts}));
 }finally{await browser?.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();}

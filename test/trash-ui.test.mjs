@@ -14,7 +14,8 @@ test('Trash selects across layouts, confirms bulk deletion, and keeps failed sel
   dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
   const root=createRoot(document.querySelector('#mount'));
   env.defer(()=>act(async()=>root.unmount()));
-  const note=id=>({id,title:id,deleted_at:new Date().toISOString(),expires_at:new Date(Date.now()+86400000).toISOString()});
+  const deletedAt=new Date().toISOString();
+  const note=id=>({id,title:id,deleted_at:deletedAt,expires_at:new Date(Date.now()+86400000).toISOString()});
   let notes=['one','two','three'].map(note), restored=[], deleted=[], release;
   const props={vaultId:'test',onRestore:async()=>{},onDelete:async()=>{},onRefresh:async()=>{},onError:error=>{throw error;},
     onRestoreSelected:async ids=>{restored=ids;await new Promise(resolve=>release=resolve);notes=notes.filter(note=>!ids.includes(note.id));render();},

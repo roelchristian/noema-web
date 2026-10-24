@@ -2501,3 +2501,7 @@
 .library-preview-metadata dd { margin: 0; overflow-wrap: anywhere; }
 .library-preview-text { font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
 .library-quick-preview > p { font-size: 12px; color: var(--text-muted); }
+
+.organization-library[data-layout=compact] .organization-item-name > small .search-match-badge { flex: none; order: -1; max-width: 100%; }
+.organization-library[data-layout=compact] .organization-item-name > small .page-ai-library-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.library-preview-text p { white-space: pre-wrap; }

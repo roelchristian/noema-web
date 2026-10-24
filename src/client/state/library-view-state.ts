@@ -17,7 +17,7 @@ export interface LibraryViewState {
   entityType?: string;
 }
 export type LibraryViewUpdate = Partial<LibraryViewState> | ((previous: LibraryViewState) => LibraryViewState | Partial<LibraryViewState>);
-type Presentation = Pick<LibraryViewState,'sort'|'groupFolders'|'columns'|'density'> & {layout?:'list'|'compact'|'grid'};
+type Presentation = Pick<LibraryViewState,'sort'|'groupFolders'|'grouping'|'columns'|'density'> & {layout?:'list'|'compact'|'grid'};
 function presentationFamily(destination:string):string {
   try {const parsed=JSON.parse(destination);if(Array.isArray(parsed)&&parsed[0]==='organization')return 'organization';}catch{/* Named destination. */}
   return destination;
@@ -26,7 +26,8 @@ const presentationKey=(vaultId:string,destination:string)=>'noema-library-presen
 function validPresentation(value:unknown):Partial<Presentation> {
   if(!value||typeof value!=='object')return {};
   const input=value as Record<string,unknown>,result:Partial<Presentation>={};
-  if(['modified-desc','modified-asc','title-asc','title-desc'].includes(String(input.sort)))result.sort=String(input.sort);
+  if(['modified-desc','modified-asc','title-asc','title-desc','type-asc','type-desc'].includes(String(input.sort)))result.sort=String(input.sort);
+  if(input.grouping==='all'||input.grouping==='folders')result.grouping=input.grouping;
   if(typeof input.groupFolders==='boolean')result.groupFolders=input.groupFolders;
   if(['basic','location','collections'].includes(String(input.columns)))result.columns=String(input.columns);
   if(['standard','comfortable'].includes(String(input.density)))result.density=String(input.density);
@@ -66,7 +67,7 @@ export function setLibraryViewState(vaultId: string, destination: string, update
   });
   if (same) return;
   const next = {...previous,...patch};
-  const presentation=Object.fromEntries(Object.entries(patch).filter(([key])=>['sort','groupFolders','columns','density'].includes(key)));
+  const presentation=Object.fromEntries(Object.entries(patch).filter(([key])=>['sort','groupFolders','grouping','columns','density'].includes(key)));
   if(Object.keys(presentation).length)saveLibraryPresentation(vaultId,destination,presentation);
   states.delete(key); states.set(key,next);
   if (notify) for (const listener of listeners.get(key) ?? []) listener();

@@ -1,19 +1,19 @@
 import {HttpError} from '../validation.js';
 import {wellFormedUnicode} from './source-reprocessing-patches.js';
-import {pageBoundaryDiagnostics} from './source-reprocessing-diagnostics.js';
+import {pageBoundaryDiagnostics,preserveReconstructionSeparators} from './source-reprocessing-diagnostics.js';
 import type {PlannedReprocessingChunk} from './source-reprocessing-planner.js';
 import type {SourceEditorialPatch} from '../../shared/source-reprocessing.js';
 
 export interface ReconstructionDifference {startOffset:number;endOffset:number;original:string;replacement:string;category:SourceEditorialPatch['category'];reason:string;confidence:number}
 const invalid=(reason:string):never=>{throw new HttpError(502,`Invalid semantic reconstruction: ${reason}`);};
 /** A model returns complete block text. No model-provided coordinate is trusted. */
-export function reconstructBlocks(chunk:PlannedReprocessingChunk,response:unknown):{patches:ReconstructionDifference[];diagnostics:string[];unresolved:boolean}{
+export function reconstructBlocks(chunk:PlannedReprocessingChunk,response:unknown):{patches:ReconstructionDifference[];diagnostics:string[];unresolved:boolean;text:string}{
  if(!response||typeof response!=='object'||Array.isArray(response))return invalid('expected an object.');
  const data=response as Record<string,unknown>;
  if(!Array.isArray(data.blocks)||data.blocks.length!==chunk.blocks.length)return invalid('every canonical block must be returned.');
  if(data.diagnostics!==undefined&&(!Array.isArray(data.diagnostics)||data.diagnostics.length>30||data.diagnostics.some(item=>typeof item!=='string'||item.length>2000)))return invalid('invalid diagnostics.');
  if(data.unresolved!==undefined&&typeof data.unresolved!=='boolean')return invalid('invalid unresolved indicator.');
- const patches:ReconstructionDifference[]=[],diagnostics=[...(data.diagnostics as string[]|undefined)??[]];
+ const patches:ReconstructionDifference[]=[],diagnostics=[...(data.diagnostics as string[]|undefined)??[]],reconstructed:string[]=[];
  for(const [index,value] of data.blocks.entries()){
   const original=chunk.blocks[index]!;
   if(!value||typeof value!=='object'||Array.isArray(value))return invalid('invalid block.');
@@ -26,7 +26,8 @@ export function reconstructBlocks(chunk:PlannedReprocessingChunk,response:unknow
    diagnostics.push(`Recovered mistyped block ID ${candidate.id} as ${original.id} from unique unchanged source text at its original position.`);
   }
   if(typeof candidate.text!=='string'||candidate.text.length>16000||!wellFormedUnicode(candidate.text))return invalid('unknown, reordered, duplicate, or malformed block.');
-  const replacement=candidate.text;
+  const replacement=preserveReconstructionSeparators(original.text,candidate.text);
+  reconstructed.push(replacement);
   if(replacement===original.text)continue;
   if(pageBoundaryDiagnostics(original.text,replacement).length)return invalid('physical page provenance changed.');
   for(const span of boundedReconstructionDiff(original.text,replacement)){
@@ -51,7 +52,7 @@ export function reconstructBlocks(chunk:PlannedReprocessingChunk,response:unknow
   }
   patches.splice(0,patches.length,...compacted);
  }
- return {patches,diagnostics,unresolved:data.unresolved===true};
+ return {patches,diagnostics,unresolved:data.unresolved===true,text:reconstructed.join('')};
 }
 
 interface EditSpan {start:number;end:number;newStart:number;newEnd:number}

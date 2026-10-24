@@ -17,7 +17,7 @@ import {evaluateEditorialAcceptance,editorialRiskValidator} from './source-repro
 import {mathSource} from './source-math-text.js';
 import {SourceDocuments,sourceDocumentBuilderVersion} from './source-documents.js';
 import {sourceStructureKinds} from '../../shared/domain.js';
-import {editorialDiagnostics,pageBoundaryDiagnostics,preservePageMarkerSeparators} from './source-reprocessing-diagnostics.js';
+import {editorialDiagnostics,pageBoundaryDiagnostics,preservePageMarkerSeparators,preserveReconstructionSeparators} from './source-reprocessing-diagnostics.js';
 import type {SourceFile} from '../../shared/domain.js';
 import {processedSourceDocument} from './source-document.js';
 import {sourceDocumentEntries,type SourceDocument,type SourceDocumentRange} from '../../shared/source-document.js';
@@ -69,7 +69,8 @@ export function materializeSourceRevision(r:SourceReprocessingRevision){
   }
   for(const patch of patches){
    const replacement=patch.userReplacement??patch.replacement;
-   const preserved=preservePageMarkerSeparators(r.original.text,patch.range.startOffset,patch.range.endOffset,replacement);
+   const separated=r.pipelineVersion===2?preserveReconstructionSeparators(patch.original,replacement):replacement;
+   const preserved=preservePageMarkerSeparators(r.original.text,patch.range.startOffset,patch.range.endOffset,separated);
    if(preserved!==replacement)patch.userReplacement=preserved;
   }
   if(!patches.length){r.reprocessed=structuredClone(r.original);r.nodeLinks=sourceDocumentEntries(r.original.document).map(({node})=>({originalNodeId:node.id,reprocessedNodeIds:[node.id]}));r.report.validationDiagnostics=editorialDiagnostics(r.original.text,r.original.text);return;}
@@ -153,7 +154,14 @@ export class SourceReprocessing {
  private currentHash(vault:string,id:string){try{return this.baseHash(vault,id);}catch{return null;}}
  capabilities(vault:string,id:string){this.requireOpen(vault);const file=this.files.require(vault,id);if(mathSource(this.store,file).text!==file.text)return {originalPages:false,ocr:false,externalImages:false,reason:'Original-source evidence for a cleaned math derivative requires an exact canonical mapping that is unavailable.'};const local=this.evidence?.capabilities(vault,id)??{originalPages:false,ocr:false,externalImages:false,reason:'Local source evidence adapters are unavailable.'};const imageInput=this.intelligence.editorialImageCapability?.()===true;return {...local,externalImages:local.originalPages&&imageInput,reason:local.reason+(!imageInput?' The selected model has no enabled original-page image input capability.':'')};}
  list(vault:string,id:string):SourceReprocessingSummary[]{this.files.require(vault,id);const current=this.currentHash(vault,id);return this.store.all<{summary_json:string}>('SELECT summary_json FROM source_reprocessing WHERE file_id=? AND vault_id=? AND summary_json IS NOT NULL ORDER BY created_at DESC,id DESC LIMIT 100',id,vault).map(row=>{const r=JSON.parse(row.summary_json) as SourceReprocessingSummary;return {...r,stale:r.baseHash!==current};});}
- detail(vault:string,id:string,revisionId:string){this.files.require(vault,id);const row=this.store.get<Row>('SELECT * FROM source_reprocessing WHERE id=? AND file_id=? AND vault_id=?',revisionId,id,vault);if(!row)throw new HttpError(404,'Editorial pass not found.');const r=JSON.parse(row.payload) as SourceReprocessingRevision;r.stale=r.baseHash!==this.currentHash(vault,id);return r;}
+ detail(vault:string,id:string,revisionId:string){
+  this.files.require(vault,id);const row=this.store.get<Row>('SELECT * FROM source_reprocessing WHERE id=? AND file_id=? AND vault_id=?',revisionId,id,vault);if(!row)throw new HttpError(404,'Editorial pass not found.');
+  const r=JSON.parse(row.payload) as SourceReprocessingRevision;r.stale=r.baseHash!==this.currentHash(vault,id);
+  // Repair the derived presentation of saved V2 runs without another provider call
+  // or writing to the archive. Exact patch evidence and source text stay authoritative.
+  if(r.pipelineVersion===2&&!r.stale&&!['queued','running'].includes(r.status)&&r.patches.some(patch=>patch.decision==='accepted'&&preserveReconstructionSeparators(patch.original,patch.userReplacement??patch.replacement)!==(patch.userReplacement??patch.replacement)))materializeSourceRevision(r);
+  return r;
+ }
  status(vault:string,id:string,revisionId:string){
   this.files.require(vault,id);
   // Read only status fields rather than transferring/parsing both full document snapshots.

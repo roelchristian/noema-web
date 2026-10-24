@@ -1,7 +1,7 @@
-import type {RefObject,ReactNode} from 'react';
+import {useMemo,type RefObject,type ReactNode} from 'react';
 import type {SourceHighlight} from '../../shared/source-reading';
 import {sourceDocumentEntries,sourceNodeLocator,type SourceDocument} from '../../shared/source-document';
-import {SourceReaderInline,SourceReaderText} from './SourceReaderText';
+import {SourceFootnoteDefinitions,SourceReaderInline,SourceReaderText} from './SourceReaderText';
 import {t as uiText} from '../i18n';
 
 export type SourceViewEntry=ReturnType<typeof sourceDocumentEntries>[number];
@@ -43,7 +43,8 @@ interface Props {
 }
 /** One typography and heading hierarchy for canonical and editorial presentations. */
 export function SourceDocumentView({article,fileId,name,text,entries,selected,annotations,structureLabels,hiddenNodeIds,highlights=[],canonicalNode,onSelect,changeForNode,onReview,children}:Props){
- return <article ref={article} className="source-reader-document" data-annotations={annotations} aria-label={name}>
+ const definitions=useMemo(()=>new Set([...text.matchAll(/^[ \t]*\[\^([^\]\n]+)\]:/gm)].map(match=>match[1]!)),[text]);
+ return <SourceFootnoteDefinitions value={definitions}><article ref={article} className="source-reader-document" data-annotations={annotations} aria-label={name}>
   {entries.length?entries.map(({node,path})=>{
    const Heading=(node.kind==='chapter'||node.level===1?'h2':node.kind==='subsection'||(node.level??0)>2?'h4':'h3');
    const locator=sourceNodeLocator(path)??`L${node.range.startLine}–${node.range.endLine}`;
@@ -56,5 +57,5 @@ export function SourceDocumentView({article,fileId,name,text,entries,selected,an
    </section>;
   }):text.trim()?<SourceReaderText text={text} footnotePrefix={fileId} startOffset={0} highlights={highlights}/>:<p className="source-reader-status">{uiText('No readable text was extracted from this attachment.')}</p>}
   {children}
- </article>;
+ </article></SourceFootnoteDefinitions>;
 }

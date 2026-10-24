@@ -41,30 +41,49 @@ function EvidenceOptions({capabilities,error,options,onChange,disabled}:{capabil
  </fieldset>;
 }
 function exportJSON(value:unknown,name:string){const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}));const link=document.createElement('a');link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-function PatchReview({draftKey,patch,disabled,layout,onCompare,onDecision}:{draftKey:string;patch:SourceEditorialPatch;layout:ComparisonLayout;disabled:boolean;onCompare?:(page:number)=>void;onDecision:(patch:SourceEditorialPatch,decision:'accepted'|'rejected'|'pending',replacement?:string)=>Promise<void>}){
-  const baseline=JSON.stringify([patch.original,patch.userReplacement??patch.replacement,patch.decision]);
+const patchBaseline=(patch:SourceEditorialPatch)=>JSON.stringify([patch.original,patch.userReplacement??patch.replacement,patch.decision]);
+function patchSnippet(patch:SourceEditorialPatch,side:'original'|'replacement'){
+ const after=patch.userReplacement??patch.replacement;let at=0;
+ while(at<patch.original.length&&at<after.length&&patch.original[at]===after[at])at++;
+ const from=Math.max(0,at-28),text=side==='original'?patch.original:after;
+ return (from?'…':'')+text.slice(from,from+110).replace(/\s+/g,' ')+(text.length>from+110?'…':'');
+}
+function PatchReview({draftKey,draftKeyFor,patch,group,sourceText,disabled,layout,onCompare,onLocate,onChoose,onDecision}:{draftKey:string;draftKeyFor:(patch:SourceEditorialPatch)=>string;patch:SourceEditorialPatch;group:SourceEditorialPatch[];sourceText:string;layout:ComparisonLayout;disabled:boolean;onCompare?:(page:number)=>void;onLocate:()=>void;onChoose:(patch:SourceEditorialPatch)=>void;onDecision:(patch:SourceEditorialPatch,decision:'accepted'|'rejected'|'pending',replacement?:string)=>Promise<void>}){
+  const baseline=patchBaseline(patch);
   const restored=editorialDraft(draftKey,baseline);
   const [editing,setEditing]=useState(restored!==undefined),[replacement,setReplacement]=useState(restored??patch.userReplacement??patch.replacement);
-  useEffect(()=>{if(editing)saveEditorialDraft(draftKey,baseline,replacement);},[draftKey,baseline,editing,replacement]);
+  useEffect(()=>{const draft=editorialDraft(draftKey,baseline);setEditing(draft!==undefined);setReplacement(draft??patch.userReplacement??patch.replacement);},[draftKey,baseline]);
   const changeTypes={ocr:'OCR correction',line_breaks:'Line breaks',footnote:'Footnote',apparatus:'Page apparatus',metadata:'Metadata',citation:'Citation',math:'Math',formatting:'Formatting'};
   const hasRisks=!!patch.riskReasons?.length;
   useEffect(()=>{if(!editing)setReplacement(patch.userReplacement??patch.replacement);},[patch.userReplacement,patch.replacement,editing]);
+  const sorted=[...group].sort((a,b)=>a.range.startOffset-b.range.startOffset);
+  const start=sorted[0]!.range.startOffset,end=sorted.at(-1)!.range.endOffset;
+  let from=start,to=end;
+  while(from>0&&start-from<180&&sourceText.slice(from-2,from)!=='\n\n')from--;
+  while(to<sourceText.length&&to-end<180&&sourceText.slice(to,to+2)!=='\n\n')to++;
+  const original=sourceText.slice(from,to);
+  let proposed=original;
+  for(const item of [...sorted].reverse())proposed=proposed.slice(0,item.range.startOffset-from)+(item.id===patch.id&&editing?replacement:editorialDraft(draftKeyFor(item),patchBaseline(item))??item.userReplacement??item.replacement)+proposed.slice(item.range.endOffset-from);
   return <article className="reprocessing-patch">
     <h3 className="reprocessing-patch-heading"><span className="reprocessing-change-type">{changeTypes[patch.category]}</span><span className="reprocessing-decision">{patch.decision==='pending'?uiText("Pending review"):patch.decision==='accepted'?uiText("Accepted"):uiText("Rejected · original kept")}</span>{patch.patchGroupId&&<span className="reprocessing-risk-badge">{uiText("Linked scholarly changes")}</span>}{hasRisks&&<span className="reprocessing-risk-badge">{uiText("Review carefully")}</span>}</h3>
     <div className="reprocessing-patch-location"><span>{uiText("Original") + " "}{patch.range.startPage?uiText("page {value0}{value1} · ",{value0: patch.range.startPage,value1: patch.range.endPage&&patch.range.endPage!==patch.range.startPage?`–${patch.range.endPage}`:''}):''}{uiText("lines") + " "}{patch.range.startLine}–{patch.range.endLine}</span>
     </div>
-    <SourcePatchComparison original={patch.original} replacement={editing?replacement:patch.userReplacement??patch.replacement} layout={layout}/>
-    {editing&&<label className="reprocessing-edit">{uiText("Edit suggested replacement")}<textarea aria-label={uiText("Edit suggested replacement")} disabled={disabled} value={replacement} onChange={e=>setReplacement(e.target.value)}/></label>}
+    <div className="reprocessing-actions">
+      <button type="button" className="button small" onClick={onLocate}>{uiText("Show original passage")}</button>
+      {onCompare&&patch.range.startPage&&<button type="button" className="button small" onClick={()=>onCompare(patch.range.startPage!)}>{uiText("Compare PDF page") + " "}{patch.range.startPage}</button>}
+    </div>
+    {group.length>1&&<div className="reprocessing-linked-group"><p>{uiText("These {value0} linked changes are reviewed together. The comparison includes every part and the original text between them.",{value0:group.length})}</p><label>{uiText("Part to edit")} <select aria-label={uiText("Linked change to edit")} value={patch.id} onChange={event=>{const item=group.find(item=>item.id===event.target.value);if(item)onChoose(item);}}>{sorted.map((item,index)=><option key={item.id} value={item.id}>{index+1} · {uiText(label(item.category))} · {uiText("Line {value0}",{value0:item.range.startLine})}</option>)}</select></label></div>}
+    <SourcePatchComparison original={original} replacement={proposed} layout={layout}/>
+    {editing&&<label className="reprocessing-edit">{uiText("Edit suggested replacement")}<textarea aria-label={uiText("Edit suggested replacement")} disabled={disabled} value={replacement} onChange={e=>{setReplacement(e.target.value);saveEditorialDraft(draftKey,baseline,e.target.value);}}/></label>}
     <details className="reprocessing-patch-explanation"><DisclosureSummary>{uiText("Details")}</DisclosureSummary>
       {hasRisks&&<div className="reprocessing-patch-risks"><strong>{uiText("Review carefully")}</strong><ul>{patch.riskReasons!.map(reason=><li key={reason}>{reason}</li>)}</ul></div>}
-      {onCompare&&patch.range.startPage&&<button type="button" className="reprocessing-quiet-action" onClick={()=>onCompare(patch.range.startPage!)}>{uiText("Compare PDF page") + " "}{patch.range.startPage}</button>}
       <p>{patch.reason}</p>
       {patch.autoAcceptance&&<><strong>{uiText("Acceptance evidence")}</strong><p>{patch.autoAcceptance.validator} · {patch.autoAcceptance.policy} · {new Date(patch.autoAcceptance.appliedAt).toLocaleString(getLocale())}</p><ul>{patch.autoAcceptance.checks.map(check=><li key={check}>{check}</li>)}</ul></>}
       {!!patch.decisionHistory?.length&&<details><DisclosureSummary>{uiText("Decision history")}</DisclosureSummary><ol>{patch.decisionHistory.map((entry,index)=><li key={index}>{new Date(entry.at).toLocaleString(getLocale())} · {entry.actor} · {entry.from} → {entry.to}{entry.previousReplacement!==undefined&&<pre>{entry.previousReplacement}</pre>}</li>)}</ol></details>}
-      <small className="reprocessing-confidence">{uiText("AI confidence:") + " "}{Math.round(patch.confidence*100)}%</small>
+      {patch.confidence>0&&<small className="reprocessing-confidence">{uiText("AI confidence:") + " "}{Math.round(patch.confidence*100)}%</small>}
     </details>
     <div className="reprocessing-patch-footer">
-      <div className="reprocessing-actions"><button type="button" className="button primary small" disabled={disabled} onClick={()=>void onDecision(patch,'accepted',editing?replacement:undefined)}>{editing?uiText("Accept edited change"):uiText("Accept change")}</button><button type="button" className="button small" disabled={disabled} onClick={()=>void onDecision(patch,'rejected')}>{uiText(patch.decision==='accepted'?"Reverse applied change":"Keep original")}</button><button type="button" className="reprocessing-quiet-action" disabled={disabled} onClick={()=>{if(editing)clearEditorialDraft(draftKey);setEditing(value=>!value);}}>{editing?uiText("Cancel edit"):uiText("Edit")}</button>{patch.decision!=='pending'&&<button type="button" className="reprocessing-quiet-action" disabled={disabled} onClick={()=>void onDecision(patch,'pending')}>{uiText("Return to review")}</button>}</div>
+      <div className="reprocessing-actions"><button type="button" className="button primary small" disabled={disabled} onClick={()=>void onDecision(patch,'accepted',editing?replacement:undefined)}>{group.length>1?uiText(editing?"Accept edited group ({value0})":"Accept linked group ({value0})",{value0:group.length}):editing?uiText("Accept edited change"):uiText("Accept change")}</button><button type="button" className="button small" disabled={disabled} onClick={()=>void onDecision(patch,'rejected')}>{group.length>1?uiText("Keep originals for group ({value0})",{value0:group.length}):uiText(patch.decision==='accepted'?"Reverse applied change":"Keep original")}</button><button type="button" className="reprocessing-quiet-action" disabled={disabled} onClick={()=>{if(editing)clearEditorialDraft(draftKey);setEditing(value=>!value);}}>{editing?uiText("Cancel edit"):uiText("Edit")}</button>{patch.decision!=='pending'&&<button type="button" className="reprocessing-quiet-action" disabled={disabled} onClick={()=>void onDecision(patch,'pending')}>{uiText("Return to review")}</button>}</div>
     </div>
   </article>;
 }
@@ -146,7 +165,7 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
   const destination=useContext(ReviewDestination);
   const reviewRun=destination?.category==='editorial'&&destination.fileId===fileId?destination.runId:undefined;
   useEffect(()=>{if(reviewRun){setRevisionId(reviewRun);setTab('review');}},[reviewRun]);
-  const [summaries,setSummaries]=useState<SourceReprocessingSummary[]>([]),[revisionId,setRevisionId]=useState(''),[revision,setRevision]=useState<SourceReprocessingRevision|null>(null),[prompt,setPrompt]=useState(false),[instructions,setInstructions]=useState(''),[depth,setDepth]=useState<SourceProcessingDepth>('balanced'),[reviewPolicy,setReviewPolicy]=useState<SourceReviewPolicy>('verified'),[filter,setFilter]=useState<'all'|'pending'|'accepted'|'rejected'|'automatic'>('pending'),[comparisonLayout,setComparisonLayout]=useState<ComparisonLayout>('unified'),[selected,setSelected]=useState<string[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState(''),[reload,setReload]=useState(0),[tab,setTab]=useState<'read'|'review'>('read');
+  const [summaries,setSummaries]=useState<SourceReprocessingSummary[]>([]),[revisionId,setRevisionId]=useState(''),[revision,setRevision]=useState<SourceReprocessingRevision|null>(null),[prompt,setPrompt]=useState(false),[instructions,setInstructions]=useState(''),[depth,setDepth]=useState<SourceProcessingDepth>('balanced'),[reviewPolicy,setReviewPolicy]=useState<SourceReviewPolicy>('verified'),[filter,setFilter]=useState<'all'|'pending'|'accepted'|'rejected'|'automatic'>('pending'),[comparisonLayout,setComparisonLayout]=useState<ComparisonLayout>('auto'),[selected,setSelected]=useState<string[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState(''),[reload,setReload]=useState(0),[tab,setTab]=useState<'read'|'review'>('read');
   useEffect(()=>{onReviewOpenChange?.(visible&&tab==='review');return()=>onReviewOpenChange?.(false);},[visible,tab,onReviewOpenChange]);
   const reviewTrigger=useRef<HTMLButtonElement>(null);
   function closeReview(){setTab('read');reviewTrigger.current?.focus({preventScroll:true});}
@@ -185,7 +204,7 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
     if(value==='original')onOriginal();
   }
   const defaultTabRevision=useRef('');
-  useEffect(()=>{if(!revision||defaultTabRevision.current===revision.id)return;defaultTabRevision.current=revision.id;if(reviewRun===revision.id)setTab('review');},[revision,reviewRun]);
+  useEffect(()=>{if(!revision||defaultTabRevision.current===revision.id)return;defaultTabRevision.current=revision.id;if(!revision.patches.some(patch=>patch.decision==='pending'))setFilter('all');if(reviewRun===revision.id)setTab('review');},[revision,reviewRun]);
   const [configuration,setConfiguration]=useState<IntelligencePreferences|null>(null),[configurationError,setConfigurationError]=useState('');
   useEffect(()=>{if(!prompt)return;const controller=new AbortController();setConfiguration(null);setConfigurationError('');void request<IntelligencePreferences>('intelligence','GET',undefined,undefined,controller.signal).then(value=>{if(!controller.signal.aborted){if(supportedIntelligencePreferences(value))setConfiguration(value);else setConfigurationError('Choose a supported model and reasoning in Settings → Intelligence.');}}).catch(()=>{if(!controller.signal.aborted)setConfigurationError('Could not load the AI configuration. Reopen this form to retry.');});return()=>controller.abort();},[prompt]);
   const actionRunning=useRef(false);
@@ -220,7 +239,22 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
   const running=summaries.some(item=>active(item.status))||(revision!==null&&active(revision.status)),stale=revision?.stale,pending=revision?.patches.filter(p=>p.decision==='pending').length??0;
   const revisionOptions=revision?summaries.some(item=>item.id===revision.id)?summaries.map(item=>item.id===revision.id?revision:item):[revision,...summaries]:summaries;
   async function start(){if(!configuration||!evidenceCapabilities&&!evidenceError||evidenceOptions.originalPages&&!evidenceOptions.allowExternalTransmission||!beginAction())return;try{const value=await request<SourceReprocessingRevision>(route,'POST',{instructions,pipelineVersion:2,configuration:{depth,reviewPolicy,evidence:evidenceOptions}},vaultId);if(!mounted.current)return;setRevisionId(value.id);setRevision(value);setPrompt(false);setReload(n=>n+1);onShow();}catch(cause){if(mounted.current)setError(cause instanceof Error?cause.message:String(cause));}finally{finishAction();}}
-  async function decide(patch:SourceEditorialPatch,decision:'accepted'|'rejected'|'pending',replacement?:string){if(!revision||!beginAction())return;try{const value=await request<SourceReprocessingRevision>(`${route}/${encodeURIComponent(revision.id)}/review`,'POST',{updatedAt:revision.updatedAt,decisions:revision.patches.filter(item=>item.id===patch.id||!!patch.patchGroupId&&item.patchGroupId===patch.patchGroupId).map(item=>({patchId:item.id,decision,...(item.id===patch.id&&replacement!==undefined?{replacement}:{})}))},vaultId);if(!mounted.current)return;if(latestRevisionId.current===value.id)setRevision(value);setSelected(ids=>ids.filter(id=>!revision.patches.some(item=>item.id===id&&(item.id===patch.id||!!patch.patchGroupId&&item.patchGroupId===patch.patchGroupId))));setReload(n=>n+1);}catch(cause){if(mounted.current)setError(cause instanceof Error?cause.message:String(cause));}finally{finishAction();}}
+  const patchDraftKey=(patch:SourceEditorialPatch)=>JSON.stringify([vaultId,fileId,revision?.id,patch.id]);
+  async function decide(patch:SourceEditorialPatch,decision:'accepted'|'rejected'|'pending',replacement?:string){
+    if(!revision||!beginAction())return;
+    const group=revision.patches.filter(item=>item.id===patch.id||!!patch.patchGroupId&&item.patchGroupId===patch.patchGroupId);
+    const decisions=group.map(item=>{
+      const edited=item.id===patch.id&&replacement!==undefined?replacement:editorialDraft(patchDraftKey(item),patchBaseline(item));
+      return {patchId:item.id,decision,...(decision==='accepted'&&edited!==undefined?{replacement:edited}:{})};
+    });
+    try{
+      const value=await request<SourceReprocessingRevision>(`${route}/${encodeURIComponent(revision.id)}/review`,'POST',{updatedAt:revision.updatedAt,decisions},vaultId);
+      if(!mounted.current)return;
+      group.forEach(item=>clearEditorialDraft(patchDraftKey(item)));
+      if(latestRevisionId.current===value.id)setRevision(value);
+      setSelected(ids=>ids.filter(id=>!group.some(item=>item.id===id)));setReload(n=>n+1);
+    }catch(cause){if(mounted.current)setError(cause instanceof Error?cause.message:String(cause));}finally{finishAction();}
+  }
   async function control(action:'cancel'|'resume'){
     if(!revision||!beginAction())return;
     try{const value=await request<SourceReprocessingRevision>(`${route}/${encodeURIComponent(revision.id)}/${action}`,'POST',{},vaultId);if(!mounted.current)return;if(latestRevisionId.current===value.id)setRevision(value);setReload(n=>n+1);}
@@ -234,12 +268,18 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
   const automaticallyApplied=(patch:SourceEditorialPatch)=>patch.decision==='accepted'&&(patch.decisionHistory?.at(-1)?.actor??(patch.autoAcceptance?'automatic':'user'))==='automatic';
   const matches=(patch:SourceEditorialPatch,value:typeof filter)=>value==='all'||(value==='automatic'?automaticallyApplied(patch):value==='accepted'?patch.decision==='accepted'&&!automaticallyApplied(patch):patch.decision===value);
   const shownPatches=revision?.patches.filter(patch=>matches(patch,filter))??[];
+  const brokenFootnotes=revision?.report.validationDiagnostics?.filter(message=>/footnote.*(?:no definition|missing|ambiguous|\d+ definitions)/i.test(message))??[];
   const visiblePatches=shownPatches.slice(0,reviewLimit),activePatch=shownPatches.find(patch=>patch.id===activePatchId)??shownPatches[0];
+  const activeIndex=shownPatches.findIndex(patch=>patch.id===activePatch?.id);
+  const activeGroup=activePatch?(revision?.patches.filter(patch=>patch.id===activePatch.id||!!activePatch.patchGroupId&&patch.patchGroupId===activePatch.patchGroupId)??[]):[];
   const reviewFilters=['pending','automatic','accepted','rejected','all'] as const;
   const reviewLabels={pending:'Pending',automatic:'Automatically applied',accepted:'Applied manually',rejected:'Rejected',all:'All history'};
   const emptyReviewMessages={pending:'No pending changes to review.',automatic:'No automatically applied changes.',accepted:'No manually applied changes yet.',rejected:'No rejected changes. Rejected suggestions keep the original text.',all:'No editorial changes recorded.'};
   function locatePatch(patch:SourceEditorialPatch){
     setActivePatchId(patch.id);
+  }
+  function showPatchSource(patch:SourceEditorialPatch){
+    closeReview();
     const candidates=revision?sourceDocumentEntries(revision.original.document).filter(({node})=>patch.nodeIds.includes(node.id)&&node.range.startOffset<patch.range.endOffset&&node.range.endOffset>patch.range.startOffset).sort((a,b)=>(a.node.range.endOffset-a.node.range.startOffset)-(b.node.range.endOffset-b.node.range.startOffset)):[];
     const nodeId=candidates[0]?.node.id;
     if(nodeId){setReadingChoice('original');onOriginal(nodeId,false);onShow();}
@@ -250,7 +290,7 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
         <option value="current">{uiText("Current reading")}</option><option value="original">{uiText("Original processed")}</option>
         {revisionOptions.filter(eligible).map(item=><option key={item.id} value={item.id}>{uiText("Editorial revision")} · {new Date(item.createdAt).toLocaleString(getLocale())}</option>)}
       </select></label>
-      <button ref={reviewTrigger} type="button" className="reprocessing-quiet-action" aria-expanded={visible&&tab==='review'} aria-controls={`source-review-${fileId}`} onClick={()=>{setTab('review');onShow();}}>{uiText("Review changes (")}{pending})</button>
+      <button ref={reviewTrigger} type="button" className="reprocessing-quiet-action" aria-expanded={visible&&tab==='review'} aria-controls={`source-review-${fileId}`} onClick={()=>{setFilter(pending>0?'pending':'all');setTab('review');onShow();}}>{uiText("Review changes (")}{pending})</button>
       <button type="button" className="button small reprocessing-loading-button" aria-busy={running} disabled={busy||running} onClick={()=>{setPrompt(true);onShow();}}>{running&&<span className="scan-spinner" aria-hidden="true"/>}{running?uiText("Reprocessing…"):uiText("Reprocess with AI")}</button>
     </div>
     {error&&<InlineNotice id={`reprocessing-operation-error-${fileId}`} tone="error" title={error} announcement="assertive" actions={<button type="button" className="button" onClick={()=>{setError('');setReload(n=>n+1);}}>{uiText("Refresh")}</button>}/>}
@@ -260,14 +300,15 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
       {!revision&&!prompt&&<p role="status">{revisionId?uiText("Loading revision…"):uiText("Create a beta revision to improve reading quality and review editorial suggestions.")}</p>}
       {revision&&revision.id===revisionId&&<>{stale&&<InlineNotice id={`reprocessing-stale-${revision.id}`} tone="warning" title={uiText("The canonical source has changed. This revision is preserved for comparison; start a new run before reviewing changes.")}/>}
         <ReprocessingProgress key={revision.id} revision={revision}/>
+        {brokenFootnotes.length>0&&<InlineNotice tone="warning" title={uiText("This revision has broken footnote links")} description={<>{uiText("Some note definitions are missing or ambiguous. Compare the original source and repair the affected changes before relying on this reading version.")}<ul>{brokenFootnotes.slice(0,5).map((message,index)=><li key={index}>{message}</li>)}</ul></>}/>}
         {eligible(revision)&&<div className="reprocessing-result-summary" role="status"><p>{revision.patches.length===0?uiText("No text or layout changes were proposed."):revision.patches.some(patch=>patch.decision==='accepted')?uiText("The processed reading version includes {value0} applied corrections.",{value0:revision.patches.filter(patch=>patch.decision==='accepted').length}):pending>0?uiText("{value0} proposed corrections are waiting for review. The reading text is unchanged until corrections are accepted.",{value0:pending}):uiText("All proposed corrections were rejected; the original text is retained.")}</p>{revision.reprocessed.text!==revision.original.text&&requestedReadingId!==revision.id&&<button type="button" className="button primary small" onClick={()=>chooseReading(revision.id)}>{uiText("Show processed version")}</button>}{pending>0&&<button type="button" className="reprocessing-quiet-action" onClick={()=>{setFilter('pending');setTab('review');}}>{uiText("Review proposed corrections")}</button>}</div>}
         {revision.report.metadata&&<section className="source-metadata-run-summary" aria-label="Metadata processing summary"><strong>Metadata</strong><p>{revision.report.metadata.added} added · {revision.report.metadata.corroborated} corroborated · {revision.report.metadata.requiresReview} require review</p><button type="button" className="button small" onClick={()=>window.dispatchEvent(new CustomEvent('noema:open-source-metadata',{detail:{vaultId,sourceId,fileId,runId:revision.id}}))}>Review metadata</button></section>}
         <details className="reprocessing-processing-details"><DisclosureSummary>{uiText("Processing details")}</DisclosureSummary><ExcerptLedger revision={revision}/><Report revision={revision}/></details>
         <p className="reprocessing-status" role="status">{uiText("Editorial decisions")} · {pending}{" " + uiText("pending ·") + " "}{revision.patches.filter(patch=>patch.decision==='accepted').length}{" " + uiText("accepted ·") + " "}{revision.patches.filter(patch=>patch.decision==='rejected').length}{" " + uiText("kept original")}</p>
         {active(revision.status)&&<><button type="button" className="button small" disabled={busy} onClick={()=>void control('cancel')}>{uiText("Stop and keep progress")}</button></>}
         {['failed','interrupted'].includes(revision.status)&&!stale&&!(revision.pipelineVersion===2&&revision.report.excerpts?.some(excerpt=>excerpt.outcomeUncertain))&&<button type="button" className="button small" disabled={busy||running} onClick={()=>void control('resume')}>{uiText(incompleteResponse(revision)?"Retry unfinished work":configurationFailure(revision)?"Retry after configuration repair":revision.report.excerpts?.some(excerpt=>excerpt.status==='failed')?"Retry failed and remaining excerpts":"Resume remaining excerpts")}</button>}
-        {tab==='read'?<button type="button" className="reprocessing-quiet-action" onClick={()=>setTab('review')}>{uiText("Open corrections")}</button>:<aside id={`source-review-${fileId}`} className="reprocessing-reviews" aria-label={uiText("Review corrections")} onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();closeReview();}}}>
-          <button type="button" className="reprocessing-quiet-action" onClick={closeReview}>{uiText("Close corrections")}</button>
+        {tab==='read'?<button type="button" className="reprocessing-quiet-action" onClick={()=>{setFilter(pending>0?'pending':'all');setTab('review');}}>{uiText("Open corrections")}</button>:<aside id={`source-review-${fileId}`} className="reprocessing-reviews" aria-label={uiText("Review corrections")} onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();closeReview();}}}>
+          <div className="reprocessing-review-heading"><h2>{uiText("Review corrections")}</h2><button type="button" className="button small" onClick={closeReview}>{uiText("Close corrections")}</button></div>
           <div className="reprocessing-tabs reprocessing-review-filters" role="group" aria-label={uiText("Review status")}>
             {reviewFilters.map(value=><button key={value} type="button" aria-pressed={filter===value} onClick={()=>{setFilter(value);setActivePatchId('');setReviewLimit(20);setSelected([]);}}>{reviewLabels[value]} <span className="reprocessing-filter-count">{revision.patches.filter(patch=>matches(patch,value)).length}</span></button>)}
           </div>
@@ -278,16 +319,17 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
           </div>
           {filter==='rejected'&&shownPatches.length>0&&<p className="reprocessing-hint">{uiText("These suggestions were rejected. The original text is kept in the reading version.")}</p>}
           {!shownPatches.length&&<p role="status">{emptyReviewMessages[filter]}</p>}
+          {activePatch&&<nav className="reprocessing-review-navigation" aria-label={uiText("Change navigation")}><button type="button" className="button small" disabled={activeIndex<=0} onClick={()=>locatePatch(shownPatches[activeIndex-1]!)}>{uiText("Previous change")}</button><span role="status">{uiText("Change {value0} of {value1}",{value0:activeIndex+1,value1:shownPatches.length})}</span><button type="button" className="button small" disabled={activeIndex>=shownPatches.length-1} onClick={()=>{setReviewLimit(limit=>Math.max(limit,activeIndex+2));locatePatch(shownPatches[activeIndex+1]!);}}>{uiText("Next change")}</button></nav>}
           <div className="reprocessing-master-detail">
             <ol className="reprocessing-patch-list" aria-label={uiText("Corrections")}>
               {visiblePatches.map((patch,index)=><li key={patch.id}>
                 {bulk&&<label className="reprocessing-select"><input type="checkbox" aria-label={uiText("Select change {value0}",{value0:index+1})} checked={selected.includes(patch.id)} disabled={busy||!!stale||active(revision.status)} onChange={event=>setSelected(ids=>{const related=revision.patches.filter(item=>item.id===patch.id||!!patch.patchGroupId&&item.patchGroupId===patch.patchGroupId).map(item=>item.id);return event.target.checked?[...new Set([...ids,...related])]:ids.filter(id=>!related.includes(id));})}/></label>}
                 <button type="button" aria-pressed={activePatch?.id===patch.id} onClick={()=>locatePatch(patch)} onKeyDown={event=>{if(!['ArrowDown','ArrowUp','Home','End'].includes(event.key))return;event.preventDefault();const target=event.key==='Home'?0:event.key==='End'?visiblePatches.length-1:Math.max(0,Math.min(visiblePatches.length-1,index+(event.key==='ArrowDown'?1:-1)));locatePatch(visiblePatches[target]);event.currentTarget.closest('ol')?.querySelectorAll<HTMLButtonElement>('li>button')[target]?.focus();}}>
-                  <strong>{uiText(label(patch.category))}</strong><span>{patch.range.startPage?uiText("Page {value0}",{value0:patch.range.startPage}):uiText("Line {value0}",{value0:patch.range.startLine})}{patch.riskReasons?.length?' · '+uiText("Manual verification required"):''}</span><span>{patch.original.slice(0,100)}</span>
+                  <strong>{uiText(label(patch.category))}</strong><span>{patch.range.startPage?uiText("Page {value0}",{value0:patch.range.startPage}):uiText("Line {value0}",{value0:patch.range.startLine})}{patch.riskReasons?.length?' · '+uiText("Manual verification required"):''}</span><span className="reprocessing-list-before">− {patchSnippet(patch,'original')}</span><span className="reprocessing-list-after">+ {patchSnippet(patch,'replacement')}</span><span>{uiText(patch.decision==='pending'?"Pending review":patch.decision==='accepted'?"Applied":"Original kept")}</span>
                 </button>
               </li>)}
             </ol>
-            {activePatch&&<PatchReview draftKey={JSON.stringify([vaultId,fileId,revision.id,activePatch.id])} key={`${revision.id}:${activePatch.id}`} patch={activePatch} layout={comparisonLayout} onCompare={onCompare} disabled={busy||!!stale||active(revision.status)} onDecision={decide}/>}
+            {activePatch&&<PatchReview draftKey={patchDraftKey(activePatch)} draftKeyFor={patchDraftKey} key={`${revision.id}:${activePatch.id}`} patch={activePatch} group={activeGroup} sourceText={revision.original.text} layout={comparisonLayout} onLocate={()=>showPatchSource(activePatch)} onChoose={locatePatch} onCompare={onCompare?page=>{closeReview();onCompare(page);}:undefined} disabled={busy||!!stale||active(revision.status)} onDecision={decide}/>}
             {error&&<InlineNotice id={`reprocessing-review-error-${revision.id}`} tone="error" title={uiText("Could not save correction")} description={error} announcement="assertive"/>}
           </div>
           {shownPatches.length>reviewLimit&&<button type="button" className="button small" onClick={()=>setReviewLimit(limit=>limit+20)}>{uiText("Load more changes")}</button>}

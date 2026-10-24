@@ -1,5 +1,6 @@
 import {t as uiText} from '../i18n';
-import {useMemo} from 'react';
+import {useId,useMemo,useState} from 'react';
+import {SourceFootnoteDefinitions,SourceReaderText} from './SourceReaderText';
 
 export type ComparisonLayout='auto'|'split'|'unified';
 type Change={kind:'equal'|'removed'|'added';text:string};
@@ -57,17 +58,29 @@ function ChangeText({change}:{change:Change}){
 }
 
 export function SourcePatchComparison({original,replacement,layout}:{original:string;replacement:string;layout:ComparisonLayout}){
+  const [view,setView]=useState<'preview'|'changes'|'markdown'>('preview'),[fullContext,setFullContext]=useState(false);
+  const prefix=useId();
   const changes=useMemo(()=>wordChanges(original,replacement),[original,replacement]);
+  const definitions=(text:string)=>new Set([...text.matchAll(/^[ \t]*\[\^([^\]\n]+)\]:/gm)].map(match=>match[1]!));
   const render=(side?:'original'|'replacement')=>changes.map((change,index)=>
     (side==='original'&&change.kind==='added')||(side==='replacement'&&change.kind==='removed')
-      ?null:<ChangeText key={index} change={!side&&change.kind==='equal'&&change.text.length>280
+      ?null:<ChangeText key={index} change={!fullContext&&!side&&change.kind==='equal'&&change.text.length>280
         ?{...change,text:index===0?'…'+change.text.slice(-140):index===changes.length-1?change.text.slice(0,140)+'…':change.text.slice(0,140)+'…'+change.text.slice(-140)}:change}/>);
   return <div className="reprocessing-diff" data-layout={layout}>
+    <div className="reprocessing-comparison-views" role="group" aria-label={uiText("Comparison view")}>
+      {(['preview','changes','markdown'] as const).map(value=><button key={value} type="button" aria-pressed={view===value} onClick={()=>setView(value)}>{uiText(value==='preview'?'Reading preview':value==='changes'?'Highlighted changes':'Markdown source')}</button>)}
+    </div>
+    {view==='preview'?<div className="reprocessing-comparison reprocessing-reading-preview">
+      <div><h4>{uiText("Original processed")}</h4><SourceFootnoteDefinitions value={definitions(original)}><SourceReaderText text={original} footnotePrefix={`${prefix}-original`}/></SourceFootnoteDefinitions></div>
+      <div><h4>{uiText("Suggested revision")}</h4><SourceFootnoteDefinitions value={definitions(replacement)}>{replacement?<SourceReaderText text={replacement} footnotePrefix={`${prefix}-revision`}/>:<p>{uiText("Removed from reading text; preserved in provenance")}</p>}</SourceFootnoteDefinitions></div>
+    </div>:view==='markdown'?<div className="reprocessing-comparison reprocessing-markdown-source"><div><h4>{uiText("Original Markdown")}</h4><pre>{original}</pre></div><div><h4>{uiText("Suggested Markdown")}</h4><pre>{replacement}</pre></div></div>:<>
     <div className="reprocessing-diff-legend" aria-label={uiText("Change highlighting")}><span className="reprocessing-diff-removed">{uiText("Deletions")}</span><span className="reprocessing-diff-added">{uiText("Additions")}</span></div>
     <div className="reprocessing-comparison reprocessing-diff-split">
       <div><h4>{uiText("Original processed")}</h4><pre>{original?render('original'):<span className="reprocessing-diff-context">{uiText("(Empty passage)")}</span>}</pre></div>
       <div><h4>{uiText("Suggested revision")}</h4><pre>{replacement?render('replacement'):<span className="reprocessing-diff-context">{uiText("(Removed from reading text; preserved in provenance)")}</span>}</pre></div>
     </div>
     <div className="reprocessing-comparison reprocessing-diff-unified"><div><h4>{uiText("Original → Suggested revision")}</h4><pre>{render()}</pre></div></div>
+    <button type="button" className="reprocessing-quiet-action" aria-pressed={fullContext} onClick={()=>setFullContext(value=>!value)}>{uiText(fullContext?'Collapse unchanged text':'Show all unchanged text')}</button>
+    </>}
   </div>;
 }

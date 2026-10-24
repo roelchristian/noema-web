@@ -1,5 +1,16 @@
 import katex from 'katex';
 
+/** Canonical blocks own their separating newlines. Models often trim their output;
+ * concatenating those trimmed blocks must never join prose, headings or note definitions. */
+export function preserveReconstructionSeparators(original:string,replacement:string):string {
+ if(!replacement.trim())return replacement;
+ const suffix=original.match(/[ \t]*(?:\r\n|\r|\n)[ \t\r\n]*$/)?.[0];
+ if(!suffix)return replacement;
+ const ending=replacement.match(/[ \t\r\n]*$/)![0];
+ const lines=(value:string)=>(value.match(/\r\n|\r|\n/g)??[]).length;
+ return lines(ending)<lines(suffix)?replacement.slice(0,replacement.length-ending.length)+suffix:replacement;
+}
+
 /** Markers must remain standalone so Markdown never exposes them as prose. */
 export function pageBoundaryDiagnostics(original:string,edited:string):string[] {
  const markers=(value:string)=>value.match(/<!--\s*Page\s+\d+\s*-->/gi)??[];

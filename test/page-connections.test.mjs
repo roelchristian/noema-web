@@ -26,6 +26,7 @@ test('page associations retain independent text links, reject cross-vault target
   const store=new Store(db),pages=new Pages(store,new Knowledge(store)),backups=new VaultBackups(store);
   let source=pages.create('default',{title:'Synthetic source'}),target=pages.create('default',{title:'Synthetic target'});
   const literal=stablePageLink(target.id,'Literal code');
+  assert.equal(pageLinks('[[page:'+'x'.repeat(210)+'|Oversized literal]]')[0].pageId,undefined);
   source=pages.update('default',source.id,{...source,blocks:[...blocks(stablePageLink(target.id,'Label')),{id:'literal-code',type:'code',checked:false,content:[{text:literal}]}]});
   pages.associate('default',source.id,target.id,{pinned:true,annotation:'Deliberate'});pages.associate('default',target.id,source.id,{});
   assert.equal(store.get('SELECT COUNT(*) AS n FROM page_page_associations').n,1);

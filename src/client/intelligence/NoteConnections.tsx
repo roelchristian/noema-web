@@ -12,24 +12,24 @@ export function NoteConnections({page,pages,onOpenPage,inactive=false}:{page:Pag
   const [backlinks,setBacklinks]=useState<PageSummary[]>([]);
   const [associations,setAssociations]=useState<PagePageAssociation[]>([]);
   const [pending,setPending]=useState(false),[undo,setUndo]=useState<PagePageAssociation|null>(null);
-  const context=page.vault_id+':'+page.id,current=useRef({context}),busy=useRef<object|null>(null);if(current.current.context!==context)current.current={context};
+  const context=page.vault_id+':'+page.id,current=useRef({context,version:0}),busy=useRef<object|null>(null);if(current.current.context!==context)current.current={context,version:0};
   const owner=current.current;
   const [associationContext,setAssociationContext]=useState(context);
   async function mutate(work:()=>Promise<PagePageAssociation[]>,removed?:PagePageAssociation) {
-    if(busy.current===owner)return;busy.current=owner;setPending(true);setError('');
-    try {const items=await work();if(current.current===owner){setAssociations(items);setUndo(removed??null);}}
+    if(busy.current===owner)return;busy.current=owner;++owner.version;setPending(true);setError('');
+    try {const items=await work();if(current.current===owner){setAssociations(items);setUndo(removed??null);setLoading(false);}}
     catch(value){if(current.current===owner)setError(String(value));}
-    finally{if(busy.current===owner)busy.current=null;if(current.current===owner)setPending(false);}
+    finally{++owner.version;if(busy.current===owner)busy.current=null;if(current.current===owner)setPending(false);}
   }
   const [loading,setLoading]=useState(true),[error,setError]=useState(''),[retry,setRetry]=useState(0);
   useEffect(()=>{const refresh=(event:Event)=>{const detail=(event as CustomEvent).detail;if(detail?.vaultId===page.vault_id&&detail?.pageId===page.id)setRetry(value=>value+1);};window.addEventListener('noema:page-connections-changed',refresh);return()=>window.removeEventListener('noema:page-connections-changed',refresh);},[page.vault_id,page.id]);
   const catalogKey=JSON.stringify(pages.map(note=>[note.id,note.title,note.updated_at]));
   useEffect(()=>{
     if(inactive)return;
-    const controller=new AbortController();setLoading(true);setError('');if(associationContext!==context){setUndo(null);setPending(false);setAssociationContext(context);setAssociations([]);}
+    const readVersion=owner.version;const controller=new AbortController();setLoading(true);setError('');if(associationContext!==context){setUndo(null);setPending(false);setAssociationContext(context);setAssociations([]);}
     void Promise.all([api.pageBacklinks(page.vault_id,page.id,controller.signal),api.pageAssociations(page.vault_id,page.id,controller.signal)]).then(([items,associated])=>{
-      if(!controller.signal.aborted){setBacklinks(items);setAssociations(associated);setLoading(false);}
-    }).catch(error=>{if(!controller.signal.aborted){setError(error instanceof Error?error.message:'Could not load backlinks.');setLoading(false);}});
+      if(!controller.signal.aborted){if(readVersion===owner.version){setBacklinks(items);setAssociations(associated);}setLoading(false);}
+    }).catch(error=>{if(!controller.signal.aborted){if(readVersion===owner.version)setError(error instanceof Error?error.message:'Could not load backlinks.');setLoading(false);}});
     return()=>controller.abort();
   },[page.vault_id,page.id,page.title,page.revision,catalogKey,retry,inactive]);
   const outgoing=useMemo(()=>{
@@ -68,7 +68,7 @@ export function NoteConnections({page,pages,onOpenPage,inactive=false}:{page:Pag
   const pageIndex=pagination.key===paginationKey?Math.min(pagination.index,pageCount-1):0;
   if(pagination.key!==paginationKey||pagination.index!==pageIndex)setPagination({key:paginationKey,index:pageIndex});
   const pageStart=pageIndex*pageSize;
-  if(!loading&&!error&&!links.length)return null;
+  if(!loading&&!error&&!links.length&&!undo)return null;
   return <section className="knowledge-note-links" aria-labelledby={id+'-links'}>
       <div className="knowledge-section-heading"><h2 id={id+'-links'}><Icon name="page-bidirectional"/>{uiText("Connections")}{!loading&&!error&&<span className="knowledge-count">{links.length}</span>}</h2></div>
       {undo&&<p role="status">Association removed. <button type="button" disabled={inactive||pending} onClick={()=>void mutate(()=>api.associatePages(page.vault_id,page.id,undo.id,{pinned:undo.pinned,annotation:undo.annotation}))}>Undo</button></p>}

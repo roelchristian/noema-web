@@ -4,7 +4,7 @@ export interface PageLinkMatch {source:string;title:string;label:string;index:nu
 export function pageLinks(text:string):PageLinkMatch[] {
   return Array.from(text.matchAll(/\[\[([^\[\]\n|]+)(?:\|([^\]\n]*))?\]\]/g)).flatMap(match=>{
     const title=match[1]!.trim();
-    return title && title.length<=500 ? [{source:match[0],title,label:match[2]?.trim()||title,index:match.index!,...(/^page:[a-zA-Z0-9_-]+$/.test(title)?{pageId:title.slice(5)}:{})}] : [];
+    return title && title.length<=500 ? [{source:match[0],title,label:match[2]?.trim()||title,index:match.index!,...(/^page:[a-zA-Z0-9_-]{1,200}$/.test(title)?{pageId:title.slice(5)}:{})}] : [];
   });
 }
 /** Keep title resolution consistent between the editor and backlink lookup. */
@@ -23,5 +23,5 @@ export function resolvePageLink<T extends {id:string;title:string}>(link:Pick<Pa
 export function stablePageLink(id:string,label:string):string {return '[[page:'+id+'|'+label.replace(/[\[\]\n|]/g,' ')+']]';}
 /** Backups remap IDs without rewriting legacy title references or display labels. */
 export function remapPageLinks(text:string,map:(id:string)=>string):string {
-  return text.replace(/\[\[page:([a-zA-Z0-9_-]+)(\|[^\]\n]*)?\]\]/g,(_source,id,label)=>'[[page:'+map(id)+(label??'')+']]');
+  return text.replace(/\[\[page:([a-zA-Z0-9_-]{1,200})(\|[^\]\n]*)?\]\]/g,(_source,id,label)=>'[[page:'+map(id)+(label??'')+']]');
 }

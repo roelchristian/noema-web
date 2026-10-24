@@ -44,6 +44,7 @@ export interface WorkspaceState {
 }
 export class Workspace {
   private state: WorkspaceState = {inboxFacet:'overview',initialEditingPageId:null,creationFocusPageId:null,entityId:null,sourceId:null,domainSavingPageId:null,saveFailures: [], draftStorageFailures: [], draftRecoveries: [], entityPanelId: null, canGoBack: false, canGoForward: false, vaults: [], vault: null, trash: [], archive:[],archiveUndo:[],archiveUndoOccurrence:0,errorOccurrence:0,pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
+  private contextualSaveErrors=new WeakMap<Error,{vaultId:string;pageId:string}>();
   private browserAttached = false;
   private browserInitialized = false;
   private browserSession = '';
@@ -95,7 +96,10 @@ export class Workspace {
       }
       if (this.state.vault?.id === saved.vault_id) this.patch({pages: this.state.pages.map(page => page.id === saved.id ? {...page, title:this.pageCache.get(saved.id)?.title??page.title, aiStatus:this.pageCache.get(saved.id)?.aiStatus ?? saved.aiStatus, updated_at: saved.updated_at} : page), ...(this.state.page?.id === saved.id ? {page: this.pageCache.get(saved.id) || {...this.state.page, aiStatus:saved.aiStatus, pageDomains:saved.pageDomains,conceptClassification:saved.conceptClassification,conceptContentHash:this.state.page.blocks===original.blocks?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at}} : {})});
     },
-    (saveStatus, error, failed) => this.patch({saveStatus, ...(error && !failed ? {error: error.message} : {}), ...(error && failed ? {saveFailures:[...this.state.saveFailures.filter(issue=>issue.vaultId!==failed.vault_id||issue.pageId!==failed.id),{vaultId:failed.vault_id,pageId:failed.id,title:failed.title,message:error.message}]} : {})}),
+    (saveStatus, error, failed) => {
+      if(error&&failed)this.contextualSaveErrors.set(error,{vaultId:failed.vault_id,pageId:failed.id});
+      this.patch({saveStatus, ...(error && !failed ? {error: error.message} : {}), ...(error && failed ? {saveFailures:[...this.state.saveFailures.filter(issue=>issue.vaultId!==failed.vault_id||issue.pageId!==failed.id),{vaultId:failed.vault_id,pageId:failed.id,title:failed.title,message:error.message}]} : {})});
+    },
     async page => {
       await yieldForEntityMatching();
       if (this.state.vault?.id !== page.vault_id || this.state.vault.locked || this.state.reviewing || !canIdentifyEntities()) return page;
@@ -356,7 +360,11 @@ export class Workspace {
     this.patch(stored.view==='review'?{view:'inbox',inboxFacet:'review'}:{view: stored.view as WorkspaceState['view'],inboxFacet:stored.view==='inbox'||stored.inboxFacet!==undefined?inboxFacet(stored.inboxFacet):this.state.inboxFacet});
     if (typeof stored.entityId === 'string' && this.state.entities.some(entity => entity.id === stored.entityId)) this.patch({entityPanelId:stored.entityId});
   }
-  report = (error: unknown) => this.patch({error: error instanceof Error ? error.message : String(error)});
+  report = (error: unknown) => {
+    const contextual=error instanceof Error?this.contextualSaveErrors.get(error):undefined;
+    if(contextual&&this.state.saveFailures.some(issue=>issue.vaultId===contextual.vaultId&&issue.pageId===contextual.pageId))return;
+    this.patch({error:error instanceof Error?error.message:String(error)});
+  };
   dismissError = () => this.patch({error: null});
   async init() {
     try {
@@ -785,6 +793,7 @@ export class Workspace {
     this.patch({archiveUndo:[]});
   };
   async restoreArchivedPages(items:Array<{id:string;revision:number}>,expected?:{vaultId:string;operation:number}) {
+    if(expected&&this.navigation)throw new Error('Wait for the current operation to finish, then retry.');
     const vaultId=expected?.vaultId??this.state.vault?.id,sequence=this.loadSequence;
     const valid=()=>!!vaultId&&this.state.vault?.id===vaultId&&!this.state.vault.locked&&sequence===this.loadSequence&&(!expected||this.state.archiveUndoOccurrence===expected.operation);
     await this.navigate(async()=>{

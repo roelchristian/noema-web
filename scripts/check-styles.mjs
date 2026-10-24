@@ -21,3 +21,9 @@ for(const path of files){const css=strip(await read(path));const count=(css.matc
 const features=(await readdir(new URL('styles/features/',root))).filter(path=>path.endsWith('.css')).map(path=>'features/'+path);
 for(const path of features)assert.ok(imports.includes(path),`Unimported feature module: ${path}`);
 console.log(`CSS ownership and semantic contracts passed (${files.length} modules; ${total} colour literals within recorded budgets).`);
+// Notice surfaces remain neutral; semantic paint belongs to the shared contract.
+const notificationCSS=await read('styles/features/notifications.css');
+assert.doesNotMatch(notificationCSS,/--status-(?:danger|warning|success|info)/,'Notice semantic paint belongs to semantics.css');
+for(const path of ['styles/primitives.css','styles/features/knowledge.css','styles/features/sources.css','styles/semantics.css']) {
+ assert.doesNotMatch(await read(path),/#toast\b|\.success-notice\b|\.entity-insert-notice\b|\.ai-notification-icon\b|\.source-inspector-status-failure\b/,'Retired notification selectors must not regain ownership');
+}

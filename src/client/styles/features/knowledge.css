@@ -1823,36 +1823,7 @@
 .ai-notification-trigger {
   position: relative;
 }
-.ai-notifications {
-  position: fixed;
-  inset: auto;
-  margin: 0;
-  padding: 0;
-  width: min(410px, calc(100vw - 16px));
-  max-height: min(600px, calc(100dvh - 90px));
-  overflow: hidden;
-  border: 1px solid var(--control-border);
-  border-radius: 14px;
-  color: var(--text);
-  background: var(--surface-popover);
-  box-shadow: var(--shadow-menu);
-}
-.ai-notifications:popover-open {
-  display: flex;
-  flex-direction: column;
-}
-.ai-notifications-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 18px 12px;
-}
-.ai-notifications-heading h2 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -.3px;
-}
+
 .ai-notifications-controls {
   display: flex;
   align-items: center;
@@ -1882,11 +1853,7 @@
 .ai-notifications-mark-all:hover:not(:disabled) {
   color: var(--text);
 }
-.ai-notifications-body {
-  min-height: 100px;
-  overflow: auto;
-  overscroll-behavior: contain;
-}
+
 .ai-notification-list {
   list-style: none;
   margin: 0;
@@ -1905,21 +1872,7 @@
 .ai-notification-list li.is-unread {
   background: color-mix(in srgb, var(--accent-soft) 25%, transparent);
 }
-.ai-notification-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 29px;
-  height: 29px;
-  border-radius: 8px;
-  background: var(--surface-hover);
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-.ai-notification-icon .icon {
-  width: 16px;
-  height: 16px;
-}
+
 .ai-notification-open {
   flex: 1;
   min-width: 0;
@@ -1987,11 +1940,7 @@
   white-space: normal;
   overflow-wrap: anywhere;
 }
-.ai-notifications-running .scan-spinner {
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
-}
+
 .ai-notifications-empty {
   padding: 30px 20px;
   text-align: center;
@@ -2013,39 +1962,8 @@
   font-size: 12px;
   line-height: 1.6;
 }
-.ai-notifications-error {
-  padding: 12px 18px;
-  color: var(--text);
-  font-size: 12px;
-  white-space: normal;
-}
-.ai-notifications-error button {
-  margin-left: 8px;
-  text-decoration: underline;
-}
-.ai-notifications-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 18px;
-  border-top: 1px solid var(--line);
-  font-size: 11px;
-  color: var(--text-muted);
-}
-.ai-notifications-footer button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0;
-  color: var(--text);
-  font-size: 12px;
-}
-.ai-notifications-footer .icon {
-  width: 12px;
-  height: 12px;
-}
-.ai-notifications-heading, .ai-notifications-controls, .ai-notifications-footer {
+
+.ai-notifications-controls {
   flex-shrink: 0;
 }
 .ai-notification-dot {
@@ -2793,7 +2711,7 @@
     max-width: 100%;
     flex: 1 1 100%;
   }
-  .ai-notifications-controls, .ai-notifications-footer {
+.ai-notifications-controls {
     flex-wrap: wrap;
     gap: 8px;
   }
@@ -3724,28 +3642,7 @@
     height: 44px;
   }
 }
-.entity-insert-notice {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  max-width: calc(100vw - 32px);
-}
-.entity-insert-notice > span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.entity-insert-notice .toast-action {
-  flex: none;
-  padding: 4px 2px;
-  color: inherit;
-  font: inherit;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.entity-insert-notice .toast-close {
-  flex: none;
-  margin-left: 0;
-}
+
 .knowledge-page-metadata {
   margin: 24px 0 0;
   padding: 20px 0 0;
@@ -4649,8 +4546,6 @@
 .entity-scan-snapshot article > p { margin: 0; }
 .entity-scan-snapshot article > button { color: var(--text-muted); border: 0; background: transparent; font-size: 10px; padding: 0; }
 
-
-
 .mode-context .entity-review-table-wrap > .entity-review-toolbar { padding: var(--space-2) var(--space-3); gap: var(--space-2); font-size: 12px; }
 .mode-context .entity-review-table-wrap > .entity-review-toolbar > small { display: none; }
 .mode-context .entity-review-table .entity-review-check { display: none; }
@@ -4920,7 +4815,6 @@ dialog.noema-modal.entity-review-modal { height: min(780px, calc(100dvh - 64px))
 .entity-decision-outcome small { display: block; margin-top: var(--space-1); }
 .entity-decision-required > .button { margin-top: var(--space-2); }
 .entity-review-workspace.is-empty { min-height: 240px; }
-
 
 /* Entity review uses one control rhythm; preview prose retains its reading size. */
 .entity-review-modal .modal-header {

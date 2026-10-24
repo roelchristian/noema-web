@@ -11,7 +11,10 @@ export function notificationReducer(state:readonly ToastRecord[],action:Notifica
   if(index>=0)return state.map((item,i)=>i===index?record:item);
   if(state.length<MAX_TOASTS){if(record.priority==='important'){const index=state.findIndex((item,index)=>index>=VISIBLE_TOASTS&&item.priority==='routine');if(index>=0)return [...state.slice(0,index),record,...state.slice(index)];}return [...state,record];}
   const discard=(()=>{for(let i=state.length-1;i>=VISIBLE_TOASTS;i--)if(state[i].priority==='routine'&&!state[i].pendingAction)return i;return -1;})();
-  return discard<0?state:notificationReducer([...state.slice(0,discard),...state.slice(discard+1)],action);
+  if(discard>=0)return notificationReducer([...state.slice(0,discard),...state.slice(discard+1)],action);
+  // Saturation must remain explicit without evicting existing recovery actions.
+  if(record.priority==='important')return state.map((item,index)=>index===VISIBLE_TOASTS-1?{...item,overflowCount:(item.overflowCount??0)+1,durationMs:null,remainingMs:null,deadline:null}:item);
+  return state;
  }
  case 'replace':return state.map(item=>item.occurrenceId===action.id?action.record:item);
  case 'dismiss':return state.filter(item=>item.occurrenceId!==action.id);

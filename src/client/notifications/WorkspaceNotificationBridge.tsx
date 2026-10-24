@@ -25,7 +25,7 @@ export function WorkspaceNotificationBridge({workspace}:{workspace:Workspace}) {
    if(archiveToast.current)commands.dismiss(archiveToast.current,'scope');
    archiveToast.current=null;return;
   }
-  if(archiveSeen.current===key)return;
+  if(state.busy||archiveSeen.current===key)return;
   archiveSeen.current=key;
   if(archiveToast.current)commands.dismiss(archiveToast.current,'scope');
   const vaultId=active;
@@ -34,8 +34,9 @@ export function WorkspaceNotificationBridge({workspace}:{workspace:Workspace}) {
    actions:[{label:t('Undo'),run:async()=>{
     const current=workspace.snapshot();
     if(current.vault?.id!==vaultId||current.vault.locked||current.archiveUndoOccurrence!==operation)return;
+    if(current.busy)throw new Error(t('Wait for the current operation to finish, then retry.'));
     await workspace.restoreArchivedPages(current.archiveUndo,{vaultId,operation});
    }}],onDismiss:()=>workspace.dismissArchiveUndo(operation)});
- },[active,state.archiveUndo,state.archiveUndoOccurrence,commands,workspace]);
+ },[active,state.archiveUndo,state.archiveUndoOccurrence,state.busy,commands,workspace]);
  return null;
 }

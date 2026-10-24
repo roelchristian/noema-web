@@ -44,3 +44,21 @@ test('updating a pending action cannot permit a second activation or lose its fa
  assert.equal(store.getSnapshot()[0].pendingAction,false);
  assert.equal(store.getSnapshot()[0].actionError,'Restoration failed');
 });
+
+test('all-important saturation stays bounded and explicitly counts additional feedback without replacing actions',()=>{
+ const {store}=fixture();
+ for(let index=0;index<MAX_TOASTS;index++)store.commands.notify({tone:'error',priority:'important',message:'Error '+index,scope:{kind:'global'},durationMs:null,actions:[{label:'Retry',run:()=>{}}]});
+ store.commands.notify({tone:'error',priority:'important',message:'Additional protected error',scope:{kind:'global'},durationMs:null});
+ assert.equal(store.getSnapshot().length,MAX_TOASTS);
+ assert.equal(store.getSnapshot()[1].overflowCount,1);
+ assert.equal(store.getSnapshot()[1].actions[0].label,'Retry');
+ assert.equal(store.getSnapshot()[1].durationMs,null);
+ store.destroy();
+});
+
+test('updates cannot introduce inaccessible vault content or actions',()=>{
+ const {store}=fixture();store.commands.setActiveVault('a');
+ const id=store.commands.notify(input('Visible',{scope:{kind:'vault',vaultId:'a'}}));
+ store.commands.update(id,{scope:{kind:'vault',vaultId:'b'},message:'Inaccessible content'});
+ assert.equal(store.getSnapshot().length,0);store.destroy();
+});

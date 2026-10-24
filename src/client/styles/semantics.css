@@ -1,6 +1,3 @@
-.ai-notification-icon:is(.failed,.interrupted) { background: var(--status-warning-bg); }
-.ai-notification-icon:is(.failed,.interrupted) { color: var(--status-warning-text); }
-.page-persistence-notice.is-error { border-color: var(--status-danger-text); }
 :root[data-mode=dark] .delete-vault-dialog .button.danger:hover:not(:disabled) { background: color-mix(in srgb,var(--status-danger-bg) 75%,var(--status-danger-border)); }
 :root[data-mode=dark] .delete-vault-dialog .button.danger,
 .confirmation-dialog .confirmation-action.is-danger,
@@ -50,15 +47,12 @@
 [data-status] { color: var(--status-text); background: var(--status-bg); border-color: var(--status-border); }
 
 /* Failures already include explanatory text and retry/dismiss affordances. */
-.source-inspector-status-failure { color: var(--status-danger-text); border-inline-start: 3px solid var(--status-danger-border); padding-inline-start: var(--space-2); }
 :is(.dialog-error, .inline-error, .search-error, .embedding-job-error, .ai-notifications-error) { color: var(--status-danger-text); }
 .spotlight-search-body .search-error { color: var(--status-danger-text); }
 .ai-activity-status.interrupted { color: var(--status-warning-text); background: var(--status-warning-bg); border-color: var(--status-warning-border); }
 .ai-activity-status.completed { color: var(--status-success-text); background: var(--status-success-bg); border-color: var(--status-success-border); }
 .ai-activity-status:is(.queued,.running) { color: var(--status-info-text); background: var(--status-info-bg); border-color: var(--status-info-border); }
 .ai-activity-status.failed { background: var(--status-danger-bg); border-color: var(--status-danger-border); }
-.ai-notification-icon.failed { color: var(--status-danger-text); background: var(--status-danger-bg); }
-.ai-notification-icon.completed { color: var(--status-success-text); background: var(--status-success-bg); }
 .knowledge-icon-action.is-destructive:focus-visible { color: var(--status-danger-text); }
 /* Confirmation text names the destructive operation; cancel stays neutral. */
 .confirmation-dialog .confirmation-action:not(.is-danger):hover:not(:disabled) { color: var(--text); }
@@ -68,3 +62,5 @@
 .notice-icon[data-tone=info] { color: var(--status-info-text); }
 .notice-icon[data-tone=warning] { color: var(--status-warning-text); }
 .notice-icon[data-tone=error], .notice-action-error { color: var(--status-danger-text); }
+
+.progress-notice progress { accent-color: var(--status-info-text); }

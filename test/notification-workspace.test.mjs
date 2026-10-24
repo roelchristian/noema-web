@@ -45,10 +45,15 @@ test('equal general failures remain separate notification occurrences',async t=>
 
 test('save failure remains authoritative without a duplicate application error',async t=>{
   const {workspace}=await fixture(t);
-  t.mock.method(api,'savePage',async()=>{throw new Error('Synthetic save failure');});
+  const error=new Error('Synthetic save failure');
+  t.mock.method(api,'savePage',async()=>{throw error;});
   await workspace.openPage('one');workspace.updatePage({title:'Unfinished synthetic work'});
   await assert.rejects(workspace.saver.flush(),/Synthetic save failure/);
+  // App.run reports navigation/flush rejections through the same public reporter.
+  workspace.report(error);
   assert.equal(workspace.snapshot().error,null);
+  workspace.report(new Error('Synthetic save failure'));
+  assert.equal(workspace.snapshot().error,'Synthetic save failure');
   assert.equal(workspace.snapshot().saveFailures.length,1);
   workspace.dismissError();
   assert.equal(workspace.snapshot().saveFailures[0].pageId,'one');

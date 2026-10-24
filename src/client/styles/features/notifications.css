@@ -9,11 +9,11 @@
 .notice-actions button, .notice-close { min-width: var(--notice-action-target); min-height: var(--notice-action-target); white-space: normal; overflow-wrap: anywhere; }
 .notice-close { flex: 0 0 auto; padding: 0 5px; color: var(--notice-muted); background: transparent; border: 0; border-radius: 4px; font-size: 18px; }
 .notice-close:hover:not(:disabled) { background: var(--surface-hover); color: var(--notice-text); }
-.notice button:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
+.notice button:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-offset-control); }
 .inline-notice { flex-wrap: wrap; }
 .inline-notice.is-compact { padding: 4px 0; border: 0; background: transparent; box-shadow: none; }
 .inline-notice > .notice-actions { margin-left: auto; }
-.progress-notice progress { display: block; width: min(100%, 260px); margin-top: 8px; accent-color: var(--status-info-text); }
+.progress-notice progress { display: block; width: min(100%, 260px); margin-top: 8px; }
 .toast-viewport { position: fixed; z-index: 1000; bottom: 24px; left: 16px; right: 16px; display: flex; flex-direction: column; align-items: center; gap: var(--notice-stack-gap); pointer-events: none; }
 .toast-item { pointer-events: auto; width: fit-content; max-width: min(var(--notice-max-width),100%); box-sizing: border-box; background: var(--notice-surface); box-shadow: var(--notice-shadow); flex-wrap: wrap; animation: notice-enter 150ms ease-out; }
 .toast-item .notice-actions { margin-left: auto; }

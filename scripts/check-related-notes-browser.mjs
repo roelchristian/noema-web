@@ -23,7 +23,7 @@ try{
  for(const width of [1440,390]){
   const context=await browser.newContext({viewport:{width,height:900},isMobile:width===390,hasTouch:width===390,reducedMotion:'reduce'}),page=await context.newPage();page.setDefaultTimeout(8000);page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/*',route=>new URL(route.request().url()).origin===url?route.continue():route.abort());
-  await page.goto(`${url}/?vault=default&page=${active.id}`);await page.locator('#blocks .block-content').first().waitFor();await page.getByRole('button',{name:'Knowledge',exact:true}).click();
+  await page.goto(`${url}/?vault=default&page=${active.id}`);await page.locator('#blocks .block-content').first().waitFor();await page.getByRole('button',{name:'Show page knowledge',exact:true}).click();
   const section=page.locator('.knowledge-related-notes');await section.locator('li').first().waitFor();assert.equal(await section.locator('li').count(),2);
   await section.scrollIntoViewIfNeeded();
   const focused=section.locator('button').first();await focused.focus();const before=await page.evaluate(()=>({scroll:document.querySelector('.intelligence-panel .panel-body').scrollTop,focus:document.activeElement.textContent}));

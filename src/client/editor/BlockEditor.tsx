@@ -30,7 +30,7 @@ import {useEntitySchema} from '../knowledge/useEntitySchema';
 import { blockListNumber, entityMentionName, safeHref } from '../../shared/domain';
 import {randomUUID} from '../../shared/uuid';
 import { aiExplanationSources, aiExplanationsForSources, explanationsLinkedToDeletedBlocks, applySemantic, isAIExplanation, preserveAIExplanationTags, normalizeSemanticGroups, removeSemanticGroup, retagSemanticGroup, semanticDragItems, semanticFunctions, editableSemanticKinds, semanticRuns, type SemanticKind } from '../../shared/semantic-blocks';
-import {pageTitleKey} from '../../shared/page-links';
+import {pageTitleKey,resolvePageLink,stablePageLink} from '../../shared/page-links';
 import { completePageLink } from './page-links';
 import { ReadOnlyExplanationBlock } from './ReadOnlyExplanationBlock';
 import { clearEditorSelection,editorSelectionRange,selectedEditorBlocks,editorSelectionBlocks } from './block-selection';
@@ -813,15 +813,15 @@ export function BlockEditor(props: Props) {
   }
   function openPageLink(anchor:HTMLElement) {
     const title=anchor.dataset.pageTitle!;
-    const matches=(latest.current.pages??[]).filter(page=>pageTitleKey(page.title)===pageTitleKey(title));
+    const matches=resolvePageLink({title,pageId:anchor.dataset.pageId},latest.current.pages??[]);
     if(matches.length===1 && latest.current.onOpenPage) {setPageLinkStatus('');latest.current.onOpenPage(matches[0]!.id);}
-    else if(matches.length>1)show(anchor,matches.map(page=>({title:page.title,detail:(page.archived_at?'Archived · ':'')+'Updated '+new Date(page.updated_at).toLocaleString(getLocale()),icon:'page',pick:()=>{setMenu(null);latest.current.onOpenPage?.(page.id);}})),'CHOOSE NOTE');
+    else if(matches.length>1)show(anchor,matches.map(page=>({title:page.title,detail:(page.archived_at?'Archived · ':'')+'Updated '+new Date(page.updated_at).toLocaleString(getLocale()),icon:'page',pick:()=>{anchor.dataset.pageId=page.id;anchor.dataset.wikilink=stablePageLink(page.id,anchor.textContent??page.title);commitSelection();setMenu(null);latest.current.onOpenPage?.(page.id);}})),'CHOOSE NOTE');
     else setPageLinkStatus('Note “'+title+'” was not found in this vault.');
   }
-  function insertPageLink(range:Range,title:string,alias:string|undefined,blockId:string) {
+  function insertPageLink(range:Range,page:PageSummary,alias:string|undefined,blockId:string) {
     if(!range.startContainer.isConnected)return;
     range.deleteContents();
-    const source='[['+title+(alias?.trim()?'|'+alias.trim():'')+']]';
+    const source=stablePageLink(page.id,alias?.trim()||page.title);
     const wrapper=document.createElement('div');wrapper.innerHTML=segmentHTML([{text:source}],latest.current.entities);
     const fragment=document.createDocumentFragment();while(wrapper.firstChild)fragment.append(wrapper.firstChild);
     const last=fragment.lastChild!;range.insertNode(fragment);
@@ -886,7 +886,7 @@ export function BlockEditor(props: Props) {
       if(start>=0) {
         const [query,...alias]=wiki[1]!.split('|'),saved=range.cloneRange();saved.setStart(range.startContainer,start);
         const pages=(latest.current.pages??[]).filter(page=>!/[\[\]\n|]/.test(page.title)&&page.title.toLocaleLowerCase().includes(query!.trim().toLocaleLowerCase())).slice(0,8);
-        show(el,pages.map(page=>({title:page.title,detail:alias.length?'Display as '+alias.join('|'):uiText("Link to note"),icon:'page',pick:()=>insertPageLink(saved,page.title,alias.length?alias.join('|'):undefined,block.id)})),'LINK A NOTE');return;
+        show(el,pages.map(page=>({title:page.title,detail:alias.length?'Display as '+alias.join('|'):uiText("Link to note"),icon:'page',pick:()=>insertPageLink(saved,page,alias.length?alias.join('|'):undefined,block.id)})),'LINK A NOTE');return;
       }
     }
     const match = before.toString().match(/(?:^|\s)@([^@\n]*)$/);
@@ -1064,12 +1064,12 @@ export function BlockEditor(props: Props) {
       if(root.current?.dataset.formattingTransaction) {event.stopPropagation(); return;}
       if((event.nativeEvent as InputEvent).isComposing)return;
       const surface=(event.target as Element).closest<HTMLElement>('.block-content[contenteditable="true"]');
-      if(surface) {if(markdownTyping)completeTypedMarkdown(surface,event.nativeEvent as InputEvent,entities);completePageLink(surface);}
+      if(surface) {if(markdownTyping)completeTypedMarkdown(surface,event.nativeEvent as InputEvent,entities);completePageLink(surface,latest.current.pages);}
     }} onClickCapture={e => {
       // A tap ending a native selection gesture must not open an inline item.
       const selection = getSelection();
       const anchor=(e.target as Element).closest<HTMLAnchorElement>('a[href]');
-      if(anchor?.closest('.block-content[contenteditable="true"]')) {
+      if(anchor&&!anchor.dataset.wikilink&&anchor.closest('.block-content[contenteditable="true"]')) {
         // Browsers suppress native link activation inside contenteditable.
         // Keep ordinary clicks for the caret and explicitly support modified clicks.
         e.preventDefault();
@@ -1094,7 +1094,7 @@ export function BlockEditor(props: Props) {
       if (math && !(e.target as Element).closest('[data-semantic-kind="ai-explanation"]')) {e.preventDefault(); e.stopPropagation(); editInlineMath(math);}
     }} onKeyDownCapture={e => {
       const anchor=(e.target as Element).closest<HTMLAnchorElement>('a[href]');
-      if(!e.nativeEvent.isComposing && e.key==='Enter' && anchor && document.activeElement===anchor && anchor.closest('.block-content[contenteditable="true"]')) {
+      if(!e.nativeEvent.isComposing && e.key==='Enter' && anchor && !anchor.dataset.wikilink && document.activeElement===anchor && anchor.closest('.block-content[contenteditable="true"]')) {
         const href=safeHref(anchor.getAttribute('href')??'');
         e.preventDefault();e.stopPropagation();
         if(href)window.open(href,anchor.target || '_self','noopener,noreferrer');

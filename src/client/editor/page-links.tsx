@@ -3,10 +3,10 @@ import {TitleText} from '../components/TitleText';
 import {renderToStaticMarkup} from 'react-dom/server';
 import type {ReactNode} from 'react';
 
-import {pageLinks, type PageLinkMatch} from '../../shared/page-links';
+import {pageLinks,resolvePageLink,stablePageLink, type PageLinkMatch} from '../../shared/page-links';
 
 function PageLink({link}:{link:PageLinkMatch}) {
-  return <a className="note-link" href={'#page='+encodeURIComponent(link.title)} data-page-title={link.title} data-wikilink={link.source} contentEditable={false} draggable={false} title={uiText("Open note: ")+link.title}><TitleText text={link.label}/></a>;
+  return <a className="note-link" href={'#page='+encodeURIComponent(link.pageId??link.title)} data-page-title={link.title} data-page-id={link.pageId} data-wikilink={link.source} contentEditable={false} draggable={false} title={uiText("Open note: ")+link.title}><TitleText text={link.label}/></a>;
 }
 export function pageLinkNodes(text:string):ReactNode[] {
   const nodes:ReactNode[]=[];let offset=0;
@@ -18,14 +18,16 @@ export function pageLinkNodes(text:string):ReactNode[] {
   return nodes;
 }
 /** Turn a completed link beside the caret into an atomic link without losing its source. */
-export function completePageLink(element:HTMLElement) {
+export function completePageLink(element:HTMLElement,pages:{id:string;title:string}[]=[]) {
   const selection=document.getSelection();
   if(!selection?.isCollapsed || !selection.rangeCount)return;
   const range=selection.getRangeAt(0),node=range.startContainer;
   if(node.nodeType!==Node.TEXT_NODE || !element.contains(node) || node.parentElement?.closest('code,a,[data-math],[data-entity]'))return;
   const before=(node.textContent??'').slice(0,range.startOffset);
-  const link=pageLinks(before).find(link=>link.index+link.source.length===before.length);
+  let link=pageLinks(before).find(link=>link.index+link.source.length===before.length);
   if(!link)return;
+  const targets=resolvePageLink(link,pages);
+  if(!link.pageId&&targets.length===1)link={...link,pageId:targets[0]!.id,source:stablePageLink(targets[0]!.id,link.label)};
   const replacement=range.cloneRange();replacement.setStart(node,link.index);replacement.deleteContents();
   const wrapper=document.createElement('span');wrapper.innerHTML=renderToStaticMarkup(<PageLink link={link}/>);
   const anchor=wrapper.firstChild!;replacement.insertNode(anchor);

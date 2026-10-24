@@ -70,7 +70,7 @@ async function panelFixture(t,work) {
   const prior=keys.map(key=>Object.getOwnPropertyDescriptor(globalThis,key));
   for(const key of keys)Object.defineProperty(globalThis,key,{configurable:true,writable:true,value:key==='IS_REACT_ACT_ENVIRONMENT'?true:key==='ResizeObserver'?class{observe(){}disconnect(){}}:dom.window[key]});
   t.mock.method(api,'suggestionVersion',async()=>({version:'unchanged'}));
-  t.mock.method(api,'pageBacklinks',async()=>[]);t.mock.method(api,'relatedNotesState',async()=>({notes:[],pending:false,retainedPageIds:[]}));t.mock.method(api,'suggestedSources',async()=>[]);
+  t.mock.method(api,'pageBacklinks',async()=>[]);t.mock.method(api,'pageAssociations',async()=>[]);t.mock.method(api,'relatedNotesState',async()=>({notes:[],pending:false,retainedPageIds:[]}));t.mock.method(api,'suggestedSources',async()=>[]);
   const root=createRoot(document.querySelector('#mount'));
   const render=page=>root.render(React.createElement(IntelligencePanel,{page,pages:[],entities:[],onOpenPage(){},onFlush:async()=>page,onClose(){},onSettings(){},onReview(){},onSourcesChange(){},onCreateEntity(){},onOpenEntity(){}}));
   try {await work({dom,render});}finally{await act(async()=>root.unmount());dom.window.close();keys.forEach((key,i)=>{if(prior[i])Object.defineProperty(globalThis,key,prior[i]);else delete globalThis[key];});}

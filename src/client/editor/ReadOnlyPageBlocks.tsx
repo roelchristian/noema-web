@@ -1,14 +1,15 @@
 import {useTransliteration} from '../state/transliteration-preferences';
 import {paragraphFlow} from './paragraph-indent';
 import {t as uiText} from '../i18n';
-import {Fragment,useMemo,type CSSProperties} from 'react';
+import {Fragment,useMemo,useState,type CSSProperties} from 'react';
 import type {Block,Entity,PageSummary} from '../../shared/domain';
 import {isAIExplanation,semanticFunctions,semanticRuns,type SemanticKind} from '../../shared/semantic-blocks';
-import {pageTitleKey} from '../../shared/page-links';
+import {resolvePageLink} from '../../shared/page-links';
 import {ReadOnlyExplanationBlock} from './ReadOnlyExplanationBlock';
 import {Icon} from '../components/Icon';
 
 export function ReadOnlyPageBlocks({blocks,entities,pages,vaultId,pageId,onOpenEntity,onOpenPage,language}: {language?:string|null;pageId?:string;blocks:Block[];entities:Entity[];pages:PageSummary[];vaultId:string;onOpenEntity:(id:string)=>void;onOpenPage:(id:string)=>void}) {
+  const [choices,setChoices]=useState<PageSummary[]>([]),[linkStatus,setLinkStatus]=useState('');
   const transliterationLayout=useTransliteration(vaultId+'/'+(pageId??''));
   const paragraphPositions=useMemo(()=>paragraphFlow(blocks),[blocks]);
   const style=(kind:SemanticKind)=>({'--semantic-color':semanticFunctions[kind].color} as CSSProperties);
@@ -36,7 +37,9 @@ export function ReadOnlyPageBlocks({blocks,entities,pages,vaultId,pageId,onOpenE
     const link=(event.target as Element).closest<HTMLElement>('[data-page-title]');
     if(!link)return;
     event.preventDefault();
-    const matching=pages.filter(page=>pageTitleKey(page.title)===pageTitleKey(link.dataset.pageTitle!));
-    if(matching.length===1)onOpenPage(matching[0]!.id);
-  }}>{runs.map(run=>run.column?<div className="columns-block" key={run.id} role="group" aria-label={uiText("Two columns")}>{([0,1] as const).map(column=><div className="column-pane" key={column}>{renderRuns(run.blocks.filter(block=>block.column?.index===column))}</div>)}</div>:<Fragment key={run.id}>{renderRuns(run.blocks)}</Fragment>)}</div>;
+    const matching=resolvePageLink({title:link.dataset.pageTitle!,pageId:link.dataset.pageId},pages);
+    if(matching.length===1){setChoices([]);setLinkStatus('');onOpenPage(matching[0]!.id);}
+    else if(matching.length>1){setChoices(matching);setLinkStatus('Choose the intended page for this ambiguous title.');}
+    else {setChoices([]);setLinkStatus('This page is not available in this vault.');}
+  }}>{linkStatus&&<div role="status">{linkStatus}{choices.map(choice=><button type="button" key={choice.id} onClick={()=>{setChoices([]);setLinkStatus('');onOpenPage(choice.id);}}>{choice.title} · {choice.id}</button>)}</div>}{runs.map(run=>run.column?<div className="columns-block" key={run.id} role="group" aria-label={uiText("Two columns")}>{([0,1] as const).map(column=><div className="column-pane" key={column}>{renderRuns(run.blocks.filter(block=>block.column?.index===column))}</div>)}</div>:<Fragment key={run.id}>{renderRuns(run.blocks)}</Fragment>)}</div>;
 }

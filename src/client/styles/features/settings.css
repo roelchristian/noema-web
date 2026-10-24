@@ -524,6 +524,18 @@
   padding: 12px 16px;
   min-width: 0;
 }
+.ai-usage-cost {
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.ai-usage-cost > span {
+  color: var(--text-muted);
+}
 .ai-usage-stat + .ai-usage-stat {
   border-left: 1px solid var(--line);
 }
@@ -706,7 +718,18 @@
   font-variant-numeric: tabular-nums;
 }
 .ai-usage-about {
-  font-size: 11px;
+  font-size: 12px;
+}
+.ai-activity-disclosure {
+  margin: 6px 0;
+  line-height: 1.5;
+}
+.ai-activity-disclosure ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 6px 0;
+  padding-left: 18px;
 }
 .ai-usage-about summary {
   cursor: pointer;

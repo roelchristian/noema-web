@@ -94,7 +94,7 @@
   margin-top: 28px;
 }
 .settings-section h3 {
-  font-size: 14px;
+  font-size: var(--ui-text-md);
   font-weight: 600;
   margin: 0 0 6px;
 }
@@ -764,12 +764,14 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 36px;
-  padding: 8px;
+  min-height: var(--control-target-regular);
+  padding: 6px 8px;
   border: 0;
   border-radius: 5px;
   text-align: left;
-  font-size: 12px;
+  font-size: var(--ui-text-md);
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .settings-dialog .settings-tabs button[aria-selected=true] { background: var(--surface-hover); color: var(--text); }
 .settings-dialog .settings-tabs button .icon { width: 16px; height: 16px; flex-shrink: 0; }
@@ -783,7 +785,7 @@
   scrollbar-gutter: stable;
 }
 .settings-dialog .settings-section {
-  margin-top: 18px;
+  margin-top: var(--space-3);
 }
 .settings-panels > [role=tabpanel] {
   padding-bottom: 18px;
@@ -795,11 +797,11 @@
 .settings-dialog .appearance-setting {
   display: grid;
   grid-template-columns: 140px minmax(0, 1fr);
-  column-gap: 20px;
+  column-gap: var(--space-4);
   row-gap: 8px;
   align-items: center;
   margin: 0;
-  padding: 14px 0;
+  padding: var(--space-3) 0;
 }
 .settings-dialog .appearance-setting + .appearance-setting {
   border-top: 1px solid var(--line);
@@ -888,7 +890,7 @@
   color: var(--text);
 }
 .settings-dialog .theme-option strong {
-  font-size: 12px;
+  font-size: var(--ui-text-md);
 }
 .settings-dialog .theme-default {
   width: 100%;
@@ -1092,7 +1094,7 @@
 
 .settings-dialog .narration-settings { min-width: 0; margin: 14px 0 0; padding: 10px; border: 1px solid var(--line); border-radius: 6px; }
 .settings-dialog .narration-settings fieldset { min-width: 0; margin: 10px 0; padding: 8px; border: 1px solid var(--line); border-radius: 5px; }
-.settings-dialog .narration-settings legend { padding-inline: 4px; font-size: 12px; font-weight: 600; }
+.settings-dialog .narration-settings legend { padding-inline: 4px; font-size: var(--ui-text-md); font-weight: 600; }
 .settings-dialog .narration-settings p { margin: 6px 0; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
 .settings-dialog .narration-settings audio { display: block; width: 100%; margin-top: 8px; }
 .settings-dialog .voice-credential-status { margin-top: 12px; font-size: 12px; color: var(--text-muted); }
@@ -1102,8 +1104,16 @@
   .settings-panels { padding: 0 10px; }
   .settings-dialog .ai-setting-row { grid-template-columns: 1fr; gap: 5px; }
   .settings-dialog .font-settings, .settings-dialog .theme-options { grid-template-columns: 1fr; }
+  .settings-dialog .type-manager-body { padding: var(--space-2); gap: var(--space-3); }
+  .settings-dialog .type-manager-body > * { min-width: 0; overflow-wrap: anywhere; }
+  .settings-dialog .entity-type-options { grid-template-columns: 1fr; }
+  .settings-dialog .subtype-icon-row { grid-template-columns: 20px minmax(0, 1fr); gap: var(--space-1-5); }
+  .settings-dialog .subtype-icon-row .select-host { grid-column: 1 / -1; }
+  .settings-dialog .entity-color-row { grid-template-columns: 1fr; }
+  .settings-dialog .type-add-form input { min-width: 0; width: 100%; }
+  .settings-dialog .type-add-form .button { white-space: normal; overflow-wrap: anywhere; }
   .settings-dialog .intelligence-actions { flex-wrap: wrap; }
 }
 @media (max-width: 420px) {
-  .settings-dialog .settings-tabs button { flex-direction: column; justify-content: center; gap: 3px; text-align: center; font-size: 11px; }
+  .settings-dialog .settings-tabs button { flex-direction: column; justify-content: center; gap: 3px; text-align: center; }
 }

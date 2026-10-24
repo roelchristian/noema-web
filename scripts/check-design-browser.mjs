@@ -72,6 +72,22 @@ try{
   await page.screenshot({path:join(artifacts,key+'-semantic-menu.png')});
   await page.keyboard.press('Escape');await page.keyboard.press('Escape');await page.keyboard.press('Escape');
   await page.getByRole('button',{name:'More page actions',exact:true}).click();await page.getByRole('menuitem',{name:'Rename',exact:true}).click();await page.locator('dialog[open]').waitFor();await page.screenshot({path:join(artifacts,key+'-dialog.png')});await hitRects(page,'dialog[open] .button',width===390?44:30);await page.keyboard.press('Escape');
+  // Settings uses the shared select, including native light dismiss and keyboard focus.
+  if(width===390)await page.getByRole('button',{name:'Open navigation',exact:true}).click();
+  await page.getByRole('button',{name:'Vault options',exact:true}).click();
+  await page.getByRole('menuitem',{name:'Settings',exact:true}).click();
+  const language=page.getByRole('combobox',{name:'Language',exact:true});
+  await language.click();await page.locator('.select-menu:popover-open').waitFor();
+  assert.equal(await page.locator('.select-menu:popover-open').evaluate(e=>getComputedStyle(e).fontSize),'13px');
+  await language.click();await page.waitForFunction(()=>!document.querySelector('.select-menu:popover-open'));
+  await page.keyboard.press('ArrowDown');await page.locator('.select-menu:popover-open').waitFor();
+  await page.keyboard.press('End');await page.keyboard.press('Home');await page.keyboard.press('Enter');
+  assert.ok(await language.evaluate(e=>e===document.activeElement));
+  await language.click();await page.keyboard.press('Escape');
+  assert.ok(await page.locator('dialog.settings-modal').evaluate(e=>e.open));
+  assert.ok(await page.getByRole('combobox',{name:'Indent width',exact:true}).isDisabled());
+  await page.screenshot({path:join(artifacts,key+'-settings.png')});
+  await page.getByRole('button',{name:'Done',exact:true}).click();
   const tokens=await page.evaluate(()=>{const s=getComputedStyle(document.documentElement);return Object.fromEntries(['surface','surface-raised',...['danger','warning','success','info'].flatMap(x=>['text','bg','border'].map(y=>`status-${x}-${y}`))].map(k=>[k,s.getPropertyValue('--'+k).trim()]));});
   const ratios={};for(const state of ['danger','warning','success','info'])for(const bg of [`status-${state}-bg`,'surface','surface-raised']){const ratio=contrast(tokens[`status-${state}-text`],tokens[bg]);assert.ok(ratio>=4.5,`${key} ${state} on ${bg}: ${ratio}`);ratios[state+' / '+bg]=Math.round(ratio*100)/100;}
   // Existing error copy and destructive labels provide non-colour state cues.

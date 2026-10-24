@@ -485,6 +485,10 @@ main {
 .brand, .brand > span {
   color: var(--accent);
 }
+:root[data-mode=dark] :is(.nav:not(.active), .page-link:not(.selected)):hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
 .nav.active, .page-link.selected, .organization-tree .selected {
   color: var(--selection-text);
   background: var(--selection-neutral);

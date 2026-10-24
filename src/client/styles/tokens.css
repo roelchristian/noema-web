@@ -130,8 +130,10 @@
 
 :root[data-mode=dark] {
   color-scheme: dark;
-  --surface-popover: #292929;
-  --button-border: var(--control-border);
+  --surface-popover: #2d302e;
+  /* Labeled buttons need less framing; essential field/checkbox boundaries
+   * keep their independent 3:1 role on raised and popover surfaces. */
+  --button-border: color-mix(in srgb, var(--line) 70%, var(--text-muted));
   --button-surface: var(--surface-raised);
   --button-surface-hover: var(--surface-hover);
   --select-border: var(--control-border);
@@ -144,22 +146,22 @@
   --select-focus: var(--focus-ring);
   --select-menu-border: var(--line);
   --shadow-menu: var(--shadow-menu-dark);
-  --surface-inset: #202020;
-  --selection-neutral: #303030;
+  --surface-inset: #171818;
+  --selection-neutral: #333634;
   --selection-text: var(--text);
   /* Readable placeholders and keyboard rings; decorative grey is not body copy. */
-  --text-placeholder: #ada9a3;
+  --text-placeholder: #a5a7a3;
   --text-decorative: #888;
-  --focus-ring: #ada9a3;
-  --surface: #191919;
-  --surface-raised: #262626;
-  --surface-hover: #303030;
-  --text: #f0efed;
-  --text-muted: #ada9a3;
-  --control-border: #737373;
+  --focus-ring: #a5a7a3;
+  --surface: #1d1e1d;
+  --surface-raised: #262827;
+  --surface-hover: #2c2e2d;
+  --text: #e8e7e2;
+  --text-muted: #a5a7a3;
+  --control-border: #757873;
   --muted: var(--text-muted);
-  --line: #343434;
-  --sidebar: #202020;
+  --line: #343735;
+  --sidebar: #171818;
   --accent-foreground: #191919;
   --action-surface: color-mix(in srgb,var(--accent) 16%,var(--surface-hover));
   --action-surface-hover: color-mix(in srgb,var(--accent) 24%,var(--surface-hover));

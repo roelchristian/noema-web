@@ -815,7 +815,7 @@ export function BlockEditor(props: Props) {
     const title=anchor.dataset.pageTitle!;
     const matches=resolvePageLink({title,pageId:anchor.dataset.pageId},latest.current.pages??[]);
     if(matches.length===1 && latest.current.onOpenPage) {setPageLinkStatus('');latest.current.onOpenPage(matches[0]!.id);}
-    else if(matches.length>1)show(anchor,matches.map(page=>({title:page.title,detail:(page.archived_at?'Archived · ':'')+'Updated '+new Date(page.updated_at).toLocaleString(getLocale()),icon:'page',pick:()=>{const block=anchor.closest<HTMLElement>('[data-block-id]');anchor.dataset.pageId=page.id;anchor.dataset.wikilink=stablePageLink(page.id,anchor.textContent??page.title);if(block?.dataset.blockId){const surface=elements.current.get(block.dataset.blockId);if(surface)update(block.dataset.blockId,{content:readSegments(surface)});}setMenu(null);latest.current.onOpenPage?.(page.id);}})),'CHOOSE NOTE');
+    else if(matches.length>1)show(anchor,matches.map(page=>({title:page.title,detail:(page.archived_at?'Archived · ':'')+'Updated '+new Date(page.updated_at).toLocaleString(getLocale()),icon:'page',pick:()=>{anchor.dataset.pageId=page.id;anchor.dataset.wikilink=stablePageLink(page.id,anchor.textContent??page.title);commitSelection();setMenu(null);latest.current.onOpenPage?.(page.id);}})),'CHOOSE NOTE');
     else setPageLinkStatus('Note “'+title+'” was not found in this vault.');
   }
   function insertPageLink(range:Range,page:PageSummary,alias:string|undefined,blockId:string) {
@@ -1069,7 +1069,7 @@ export function BlockEditor(props: Props) {
       // A tap ending a native selection gesture must not open an inline item.
       const selection = getSelection();
       const anchor=(e.target as Element).closest<HTMLAnchorElement>('a[href]');
-      if(anchor?.closest('.block-content[contenteditable="true"]')) {
+      if(anchor&&!anchor.dataset.wikilink&&anchor.closest('.block-content[contenteditable="true"]')) {
         // Browsers suppress native link activation inside contenteditable.
         // Keep ordinary clicks for the caret and explicitly support modified clicks.
         e.preventDefault();

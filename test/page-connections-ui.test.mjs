@@ -17,6 +17,8 @@ test('page connection aggregates inline/incoming/associated reasons, preserves n
  await act(async()=>root.render(React.createElement(NoteConnections,{page,pages:[target],onOpenPage(){}})));
  assert.equal(document.querySelectorAll('.knowledge-note-link-list>li').length,1);assert.match(document.body.textContent,/Associated · Inline link · Incoming link · Featured/);
  const textarea=document.querySelector('textarea');textarea.value='Draft retained';
+ await act(async()=>root.render(React.createElement(NoteConnections,{page:{...page,revision:2},pages:[target],onOpenPage(){}})));
+ assert.equal(document.querySelector('textarea'),textarea);assert.equal(textarea.value,'Draft retained');
  save.mock.mockImplementation(async()=>{throw new Error('Disk full');});
  await act(async()=>document.querySelector('form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
  assert.match(document.querySelector('[role=alert]').textContent,/Disk full/);assert.equal(document.querySelector('textarea').value,'Draft retained');
@@ -33,5 +35,17 @@ test('typed completion stores a stable ID only for a unique destination and reta
  // Select a text caret, as the editor does after actual typing.
  range.setStart(host.firstChild,host.firstChild.length);range.collapse(true);document.getSelection().removeAllRanges();document.getSelection().addRange(range);
  completePageLink(host,[target,{...target,id:'duplicate'}]);assert.equal(host.querySelector('a').dataset.pageId,undefined);assert.equal(readSegments(host)[0].text,'[[Target]]');
+ await env.close();
+});
+test('explicitly resolving an ambiguous table-cell link updates that cell without changing other cells',async t=>{
+ const env=setupDOM(t),{createRoot}=await import('react-dom/client'),{BlockEditor}=await import('../src/client/editor/BlockEditor.tsx');
+ t.mock.method(api,'entitySchema',async()=>({properties:[],subtypes:[],subtypeProperties:{}}));
+ const root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ let current=[{id:'table',type:'table',checked:false,content:[],rows:[[[{text:'Untouched first cell'}],[{text:'[[Target|Visible label]]'}]]]}],opened='';
+ const render=()=>root.render(React.createElement(BlockEditor,{vaultId:'vault',blocks:current,entities:[],pages:[target,{...target,id:'second'}],onChange:next=>{current=next;render();},onOpenPage:id=>{opened=id;},onOpenEntity(){},onCreateEntity(){},onSave(){},onAddAlias:async()=>{}}));
+ await act(async()=>render());await act(async()=>document.querySelector('[data-wikilink]').dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true})));
+ const choices=document.querySelectorAll('[role=menu][aria-label="CHOOSE NOTE"] button');assert.equal(choices.length,2);
+ await act(async()=>choices[1].dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true})));
+ assert.equal(opened,'second');assert.deepEqual(current[0].content,[]);assert.equal(current[0].rows[0][0][0].text,'Untouched first cell');assert.equal(current[0].rows[0][1][0].text,'[[page:second|Visible label]]');
  await env.close();
 });

@@ -12,19 +12,21 @@ export function NoteConnections({page,pages,onOpenPage,inactive=false}:{page:Pag
   const [backlinks,setBacklinks]=useState<PageSummary[]>([]);
   const [associations,setAssociations]=useState<PagePageAssociation[]>([]);
   const [pending,setPending]=useState(false),[undo,setUndo]=useState<PagePageAssociation|null>(null);
-  const context=page.vault_id+':'+page.id,current=useRef(context),busy=useRef(false);current.current=context;
+  const context=page.vault_id+':'+page.id,current=useRef({context}),busy=useRef<object|null>(null);if(current.current.context!==context)current.current={context};
+  const owner=current.current;
+  const [associationContext,setAssociationContext]=useState(context);
   async function mutate(work:()=>Promise<PagePageAssociation[]>,removed?:PagePageAssociation) {
-    if(busy.current)return;busy.current=true;setPending(true);setError('');
-    try {const items=await work();if(current.current===context){setAssociations(items);setUndo(removed??null);}}
-    catch(value){if(current.current===context)setError(String(value));}
-    finally{busy.current=false;if(current.current===context)setPending(false);}
+    if(busy.current===owner)return;busy.current=owner;setPending(true);setError('');
+    try {const items=await work();if(current.current===owner){setAssociations(items);setUndo(removed??null);}}
+    catch(value){if(current.current===owner)setError(String(value));}
+    finally{if(busy.current===owner)busy.current=null;if(current.current===owner)setPending(false);}
   }
   const [loading,setLoading]=useState(true),[error,setError]=useState(''),[retry,setRetry]=useState(0);
   useEffect(()=>{const refresh=(event:Event)=>{const detail=(event as CustomEvent).detail;if(detail?.vaultId===page.vault_id&&detail?.pageId===page.id)setRetry(value=>value+1);};window.addEventListener('noema:page-connections-changed',refresh);return()=>window.removeEventListener('noema:page-connections-changed',refresh);},[page.vault_id,page.id]);
   const catalogKey=JSON.stringify(pages.map(note=>[note.id,note.title,note.updated_at]));
   useEffect(()=>{
     if(inactive)return;
-    const controller=new AbortController();setLoading(true);setError('');setUndo(null);setPending(false);
+    const controller=new AbortController();setLoading(true);setError('');if(associationContext!==context){setUndo(null);setPending(false);setAssociationContext(context);setAssociations([]);}
     void Promise.all([api.pageBacklinks(page.vault_id,page.id,controller.signal),api.pageAssociations(page.vault_id,page.id,controller.signal)]).then(([items,associated])=>{
       if(!controller.signal.aborted){setBacklinks(items);setAssociations(associated);setLoading(false);}
     }).catch(error=>{if(!controller.signal.aborted){setError(error instanceof Error?error.message:'Could not load backlinks.');setLoading(false);}});
@@ -43,7 +45,7 @@ export function NoteConnections({page,pages,onOpenPage,inactive=false}:{page:Pag
   },[page.blocks,pages]);
   const outgoingIds=new Set(outgoing.flatMap(link=>link.targets.map(target=>target.id)));
   const incomingIds=new Set(!loading&&!error?backlinks.map(source=>source.id):[]);
-  const associatedIds=new Set(associations.map(item=>item.id));
+  const associatedIds=new Set((associationContext===context?associations:[]).map(item=>item.id));
   const incomingOnly=backlinks.filter(source=>!outgoingIds.has(source.id)&&!associatedIds.has(source.id));
   const links=outgoing.flatMap(link=>{
     const aliases=!!link.aliases.size&&<small className="knowledge-link-alias">{uiText("Shown as:") + " "}{[...link.aliases].join(', ')}</small>;
@@ -52,7 +54,7 @@ export function NoteConnections({page,pages,onOpenPage,inactive=false}:{page:Pag
       {aliases}
     </li>):[<li key={'missing-'+pageTitleKey(link.title)}><div className="knowledge-missing-link"><LinkDirectionIcon direction="outgoing"/><span><TitleText text={link.title}/><small>{uiText(resolvePageLink({title:link.title},pages).length>1?"Ambiguous title · choose the destination in the editor":"Note not found in this vault")}</small></span></div>{aliases}</li>];
   });
-  if(!loading)links.unshift(...associations.map(target=><li key={'page-'+target.id}>
+  if(associationContext===context)links.unshift(...associations.map(target=><li key={'page-'+target.id}>
     <button type="button" disabled={inactive} onClick={()=>onOpenPage(target.id)}><LinkDirectionIcon direction={incomingIds.has(target.id)?'bidirectional':'outgoing'}/><span><TitleText text={target.title}/><small>{['Associated',outgoingIds.has(target.id)?'Inline link':'',incomingIds.has(target.id)?'Incoming link':'',target.pinned?'Featured':''].filter(Boolean).join(' · ')}</small>{target.annotation&&<small>{target.annotation}</small>}</span></button>
     <details><summary>Connection options</summary><form onSubmit={event=>{event.preventDefault();const annotation=(event.currentTarget.elements.namedItem('annotation') as HTMLTextAreaElement).value;void mutate(()=>api.associatePages(page.vault_id,page.id,target.id,{annotation}));}}><label>Association note<textarea name="annotation" defaultValue={target.annotation} maxLength={2000} disabled={inactive||pending}/></label><button type="submit" disabled={inactive||pending}>Save note</button></form>
     <button type="button" disabled={inactive||pending} onClick={()=>void mutate(()=>api.associatePages(page.vault_id,page.id,target.id,{pinned:!target.pinned}))}>{target.pinned?'Unfeature':'Feature'}</button>

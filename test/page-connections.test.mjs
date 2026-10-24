@@ -25,7 +25,8 @@ test('page associations retain independent text links, reject cross-vault target
  const db=openDatabase(':memory:');try {
   const store=new Store(db),pages=new Pages(store,new Knowledge(store)),backups=new VaultBackups(store);
   let source=pages.create('default',{title:'Synthetic source'}),target=pages.create('default',{title:'Synthetic target'});
-  source=pages.update('default',source.id,{...source,blocks:blocks(stablePageLink(target.id,'Label'))});
+  const literal=stablePageLink(target.id,'Literal code');
+  source=pages.update('default',source.id,{...source,blocks:[...blocks(stablePageLink(target.id,'Label')),{id:'literal-code',type:'code',checked:false,content:[{text:literal}]}]});
   pages.associate('default',source.id,target.id,{pinned:true,annotation:'Deliberate'});pages.associate('default',target.id,source.id,{});
   assert.equal(store.get('SELECT COUNT(*) AS n FROM page_page_associations').n,1);
   pages.associate('default',source.id,target.id,{pinned:false});assert.equal(pages.associations('default',source.id)[0].annotation,'Deliberate');
@@ -37,6 +38,10 @@ test('page associations retain independent text links, reject cross-vault target
   assert.equal(pages.associations(restored.id,rs.id)[0].id,rt.id);
   assert.equal(pageLinks(pages.get(restored.id,rs.id).blocks[0].content[0].text)[0].pageId,rt.id);
   assert.equal(pages.backlinks(restored.id,rt.id)[0].id,rs.id);
+  assert.equal(pages.get(restored.id,rs.id).blocks[1].content[0].text,literal);
+  const versions=store.all('SELECT snapshot_json FROM page_versions WHERE page_id=?',rs.id).map(row=>JSON.parse(row.snapshot_json));
+  assert.ok(versions.some(version=>version.blocks.some(block=>block.type==='code'&&block.content[0].text===literal)));
+  assert.ok(versions.some(version=>version.blocks.some(block=>block.content.some(segment=>segment.text?.includes('[[page:'+rt.id+'|Label]]')))));
   pages.removeAssociation('default',source.id,target.id);pages.removeAssociation('default',source.id,target.id);
   assert.deepEqual(pages.associations('default',source.id),[]);assert.equal(pages.backlinks('default',target.id)[0].id,source.id);
  }finally{db.close();}

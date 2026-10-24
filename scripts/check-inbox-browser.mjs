@@ -40,8 +40,11 @@ try {
  await page.getByRole('button',{name:'File…',exact:true}).isEnabled();
  await page.locator('.inbox-preview').waitFor();
  assert.equal(previews,1,'Queue fetches just the selected preview');
- await page.getByRole('combobox',{name:'Sort Inbox',exact:true}).click();
- await page.getByRole('option',{name:'Title · A–Z',exact:true}).click();
+ // Sorting lives in the shared browsing toolbar; triage uses that saved order.
+ await page.getByRole('button',{name:'Browse pages',exact:true}).click();
+ await page.getByRole('combobox',{name:'Sort library',exact:true}).click();
+ await page.getByRole('option',{name:'Name · A–Z',exact:true}).click();
+ await page.getByRole('button',{name:'Start triage',exact:true}).click();
  await page.locator('.inbox-preview').waitFor();
  if(!process.env.NOEMA_SKIP_SCREENSHOTS)await page.screenshot({path:join(artifacts,'inbox-desktop.png')});
  // Folder picker cancellation preserves the current item and does not mutate.
@@ -89,7 +92,7 @@ try {
  await page.locator('.inbox-preview').waitFor();
  // Mobile queue then detail, with actual target bounds and no horizontal overflow.
  await page.setViewportSize({width:390,height:844});
- await page.getByRole('combobox',{name:'Sort Inbox',exact:true}).waitFor({state:'visible'});
+ await page.locator('.inbox-queue').waitFor({state:'visible'});
  await page.evaluate(()=>window.scrollTo(0,0));
  if(!process.env.NOEMA_SKIP_SCREENSHOTS)await page.screenshot({path:join(artifacts,'inbox-mobile-queue.png')});
  await page.locator('.inbox-queue-row > button').first().click();await page.locator('.inbox-detail').waitFor({state:'visible'});

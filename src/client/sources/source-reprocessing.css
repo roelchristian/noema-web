@@ -119,3 +119,5 @@
 
 .reprocessing-document-stage { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin: 8px 0; overflow-wrap: anywhere; }
 .reprocessing-document-stage span { color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+.reprocessing-active-excerpts { margin: 8px 0; padding-inline-start: 20px; color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }

@@ -368,17 +368,43 @@ test('summary quotation review visibly explains corrected and unresolved observa
  assert.ok(review);assert.match(review.textContent,/2 flagged.*1 corrected and source-validated.*1 unresolved/);assert.match(review.textContent,/proposed dehyphenation/);assert.match(review.textContent,/unsupported/);assert.match(review.textContent,/Source edits still require their own validation/);
 });
 
-for(const [stage,title] of Object.entries({reconstructing:'Reconstructing',understanding:'Understanding document',verifying:'Verifying',auditing:'Checking document consistency'})){
+for(const [stage,title] of Object.entries({reconstructing:'First pass · reconstructing excerpts',understanding:'Understanding document',verifying:'Verifying excerpts',auditing:'Checking document consistency'})){
  test(`document stage ${stage} exposes owned state without conflating final excerpt coverage`,async t=>{
   const r=fixture();r.pipelineVersion=2;r.status='running';r.configuration={depth:'balanced',reviewPolicy:'verified',evidence:{originalPages:false,ocr:false,allowExternalTransmission:false}};
   r.report.chunksCompleted=0;r.report.chunksTotal=3;r.report.stage=stage;r.report.stageProgress={completed:2,total:3};
   await mount(t,{initial:r});const presentation=document.querySelector('[data-reprocessing-stage]');
   assert.equal(presentation.dataset.reprocessingStage,stage);assert.equal(presentation.getAttribute('role'),'status');assert.match(presentation.textContent,new RegExp(title));assert.match(presentation.textContent,/2 \/ 3/);
-  assert.equal(document.querySelector('[aria-label="Reprocessing progress"]').value,0);assert.match(document.querySelector('.reprocessing-stage-summary').textContent,/plus document synthesis/);
+  const progress=document.querySelector('[aria-label="Reprocessing progress"]');
+  if(stage==='auditing')assert.equal(progress.hasAttribute('value'),false);
+  else {assert.equal(progress.value,2);assert.equal(progress.max,3);}
+  assert.match(document.querySelector('.reprocessing-stage-summary').textContent,/plus document synthesis/);
  });
 }
 
 test('document synthesis incomplete coverage names first-pass progress independently of review',async t=>{
  const r=fixture();r.pipelineVersion=2;r.status='failed';r.report.stage='understanding';r.report.coverage={firstPassCompleted:2,totalChunks:3,incompleteChunkIndexes:[1]};
  await mount(t,{initial:r});assert.match(document.querySelector('[data-reprocessing-coverage="incomplete"]').textContent,/incomplete first-pass coverage: 2 \/ 3.*recovery and review/);
+});
+
+
+test('first pass shows activity before its first result and advances from polled stage checkpoints',async t=>{
+ const scheduled=[],realTimeout=globalThis.setTimeout;
+ t.mock.method(globalThis,'setTimeout',(callback,delay,...args)=>{if(delay===2500){scheduled.push(callback);return 987654;}return realTimeout(callback,delay,...args);});
+ const r=fixture();r.pipelineVersion=2;r.status='running';r.report.chunksCompleted=0;r.report.chunksTotal=3;
+ r.report.stage='reconstructing';r.report.stageProgress={completed:0,total:3};r.report.sessionStartedAt=new Date(Date.now()-65000).toISOString();
+ r.report.excerpts=[{index:0,status:'running',attempts:1,startPage:1,endPage:2,activePass:1,lastAttemptAt:r.report.sessionStartedAt,durationMs:0}];
+ await mount(t,{initial:r});
+ const progress=()=>document.querySelector('[aria-label="Reprocessing progress"]');
+ assert.equal(progress().hasAttribute('value'),false);
+ assert.match(document.querySelector('.reprocessing-active-excerpts').textContent,/Excerpt 1.*Pages 1–2.*Running pass 1.*1m/);
+ assert.match(document.querySelector('.reprocessing-progress small').textContent,/Elapsed: 1m.*Progress updates when each model request finishes/);
+ r.updatedAt='2026-10-25T00:00:01Z';r.report.stageProgress.completed=1;
+ await act(async()=>{for(const callback of [...scheduled])await callback();});
+ assert.equal(progress().value,1);assert.equal(progress().max,3);
+ assert.match(document.querySelector('[id^="reprocessing-progress-"]').textContent,/1 \/ 3 excerpts processed in this stage.*0 \/ 3 excerpts completed/);
+ r.updatedAt='2026-10-25T00:00:02Z';r.report.stage='understanding';r.report.stageProgress={completed:0,total:1};
+ await act(async()=>{for(const callback of [...scheduled])await callback();});
+ assert.equal(progress().hasAttribute('value'),false);
+ assert.match(document.querySelector('[id^="reprocessing-progress-"] [aria-live]').textContent,/Understanding document/);
+ assert.equal(document.querySelector('.reprocessing-active-excerpts'),null);
 });

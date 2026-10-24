@@ -1,3 +1,9 @@
+import {detectPageFurniture} from './source-reprocessing-furniture.js';
+import {gatherReprocessingEvidence,type SourceReprocessingEvidence} from './source-reprocessing-evidence.js';
+import {assertAtomicPatchGroups} from './source-reprocessing-apparatus.js';
+import {executeReconstruction,reconstructionPromptVersion} from './source-reprocessing-pass.js';
+import {SourceReprocessingCheckpoints} from './source-reprocessing-checkpoints.js';
+import {planReprocessingChunks} from './source-reprocessing-planner.js';
 import {createHash,randomUUID} from 'node:crypto';
 import {AIActivityLog} from './ai-activity.js';
 import type {SourceMetadataExtraction} from './source-metadata-extraction.js';
@@ -15,6 +21,7 @@ import {editorialDiagnostics,pageBoundaryDiagnostics} from './source-reprocessin
 import type {SourceFile} from '../../shared/domain.js';
 import {processedSourceDocument} from './source-document.js';
 import {sourceDocumentEntries,type SourceDocument,type SourceDocumentRange} from '../../shared/source-document.js';
+import {defaultSourceReprocessingConfiguration,type SourceReprocessingConfiguration} from '../../shared/source-reprocessing.js';
 import type {SourceEditorialPatch,SourceReprocessingRevision,SourceReprocessingSummary} from '../../shared/source-reprocessing.js';
 
 const hash=(text:string)=>createHash('sha256').update(text).digest('hex');
@@ -34,6 +41,13 @@ export function editorialPatchRisk(original:string,replacement:string,category:S
  if(/<!--/.test(original+replacement))reasons.push('Touches page provenance.');
  return reasons;
 }
+export function reprocessingConfiguration(value:unknown):SourceReprocessingConfiguration {
+ const supplied=value===undefined?defaultSourceReprocessingConfiguration:value;
+ if(!supplied||typeof supplied!=='object'||Array.isArray(supplied))throw new HttpError(400,'Invalid reconstruction configuration.');
+ const config=supplied as Record<string,unknown>,evidence=config.evidence as Record<string,unknown>|undefined;
+ if(!['light','balanced','deep'].includes(String(config.depth))||!['verified','review_all'].includes(String(config.reviewPolicy))||!evidence||typeof evidence!=='object'||['originalPages','ocr','allowExternalTransmission'].some(key=>typeof evidence[key]!=='boolean'))throw new HttpError(400,'Invalid reconstruction configuration.');
+ return structuredClone(supplied) as SourceReprocessingConfiguration;
+}
 interface Row {id:string;vault_id:string;file_id:string;payload:string}
 
 /** Document builders use normalized newlines; snapshots address their exact stored text. */
@@ -46,6 +60,7 @@ function documentWithRawRanges(input:SourceDocument,text:string):SourceDocument 
 }
 export const sourceRevisionBaseHash=(original:SourceReprocessingRevision['original'])=>hash(JSON.stringify(original));
 export function materializeSourceRevision(r:SourceReprocessingRevision){
+  if(r.pipelineVersion===2)assertAtomicPatchGroups(r.patches);
   const patches=r.patches.filter(p=>p.decision==='accepted').sort((a,b)=>a.range.startOffset-b.range.startOffset);
   for(const [index,p] of patches.entries()){
    const {startOffset:start,endOffset:end}=p.range;
@@ -90,10 +105,11 @@ export function materializeSourceRevision(r:SourceReprocessingRevision){
 export class SourceReprocessing {
  private hashCache:{vault:string;id:string;inputs:unknown[];hash:string}|null=null;
  private running=false;private closed=false;private controller:AbortController|null=null;private activeRevisionId:string|null=null;
- constructor(private store:Store,private files:SourceFiles,private intelligence:Intelligence,private requireOpen:(vault:string)=>unknown,private activity:AIActivityLog,private metadata?:SourceMetadataExtraction) {
+ constructor(private store:Store,private files:SourceFiles,private intelligence:Intelligence,private requireOpen:(vault:string)=>unknown,private activity:AIActivityLog,private metadata?:SourceMetadataExtraction,private evidence?:SourceReprocessingEvidence) {
   for(const row of store.all<Row>("SELECT * FROM source_reprocessing WHERE status IN ('queued','running')")){
    const revision=JSON.parse(row.payload) as SourceReprocessingRevision;
-   for(const excerpt of revision.report.excerpts??[])if(excerpt.status==='running'){excerpt.status='interrupted';excerpt.errorCode='provider_outcome_uncertain';excerpt.outcomeUncertain=true;excerpt.error='Application stopped during a request. The provider outcome is unknown; inspect completed suggestions before explicitly resuming.';}
+   if(revision.pipelineVersion===2)new SourceReprocessingCheckpoints(store).interruptRunning(revision.id);
+   for(const excerpt of revision.report.excerpts??[])if(excerpt.status==='running'){excerpt.status='interrupted';const uncertain=revision.pipelineVersion===2?new SourceReprocessingCheckpoints(store).passes(revision.id,excerpt.index).some(pass=>pass.outcomeUncertain):true;if(uncertain){excerpt.errorCode='provider_outcome_uncertain';excerpt.outcomeUncertain=true;excerpt.error='Application stopped during a request. The provider outcome is unknown; inspect completed suggestions before explicitly resuming.';}else{delete excerpt.error;delete excerpt.errorCode;delete excerpt.outcomeUncertain;}}
    revision.status='interrupted';revision.report.error='Application restarted before this pass completed. Resume this pass to retry the unfinished excerpt.';revision.report.finishedAt=now();this.save(row.vault_id,revision);
   }
  }
@@ -124,6 +140,7 @@ export class SourceReprocessing {
   const value=sourceRevisionBaseHash(this.snapshot(vault,id));this.hashCache={vault,id,inputs,hash:value};return value;
  }
  private currentHash(vault:string,id:string){try{return this.baseHash(vault,id);}catch{return null;}}
+ capabilities(vault:string,id:string){this.requireOpen(vault);const file=this.files.require(vault,id);if(mathSource(this.store,file).text!==file.text)return {originalPages:false,ocr:false,externalImages:false,reason:'Original-source evidence for a cleaned math derivative requires an exact canonical mapping that is unavailable.'};const local=this.evidence?.capabilities(vault,id)??{originalPages:false,ocr:false,externalImages:false,reason:'Local source evidence adapters are unavailable.'};const imageInput=this.intelligence.editorialImageCapability?.()===true;return {...local,externalImages:local.originalPages&&imageInput,reason:local.reason+(!imageInput?' The selected model has no enabled original-page image input capability.':'')};}
  list(vault:string,id:string):SourceReprocessingSummary[]{this.files.require(vault,id);const current=this.currentHash(vault,id);return this.store.all<{summary_json:string}>('SELECT summary_json FROM source_reprocessing WHERE file_id=? AND vault_id=? AND summary_json IS NOT NULL ORDER BY created_at DESC,id DESC LIMIT 100',id,vault).map(row=>{const r=JSON.parse(row.summary_json) as SourceReprocessingSummary;return {...r,stale:r.baseHash!==current};});}
  detail(vault:string,id:string,revisionId:string){this.files.require(vault,id);const row=this.store.get<Row>('SELECT * FROM source_reprocessing WHERE id=? AND file_id=? AND vault_id=?',revisionId,id,vault);if(!row)throw new HttpError(404,'Editorial pass not found.');const r=JSON.parse(row.payload) as SourceReprocessingRevision;r.stale=r.baseHash!==this.currentHash(vault,id);return r;}
  status(vault:string,id:string,revisionId:string){
@@ -137,6 +154,12 @@ export class SourceReprocessing {
  }
  start(vault:string,id:string,body:Record<string,unknown>){
   this.requireOpen(vault);if(this.closed)throw new HttpError(503,'Editorial processing is shutting down.');
+  if(body.pipelineVersion!==undefined&&body.pipelineVersion!==1&&body.pipelineVersion!==2)throw new HttpError(400,'Invalid reprocessing pipeline version.');
+  const pipelineVersion=body.pipelineVersion??(body.acceptanceMode!==undefined?1:2);
+  const configuration=pipelineVersion===2?reprocessingConfiguration(body.configuration):undefined;
+  if(configuration&&body.configuration===undefined&&this.evidence&&this.capabilities(vault,id).ocr)configuration.evidence.ocr=true;
+  if(configuration?.evidence.originalPages&&!configuration.evidence.allowExternalTransmission)throw new HttpError(400,'Explicit original-page transmission consent is required.');
+  if(configuration&&(configuration.evidence.originalPages||configuration.evidence.ocr)){const capability=this.capabilities(vault,id);if(configuration.evidence.originalPages&&!capability.externalImages||configuration.evidence.ocr&&!capability.ocr)throw new HttpError(409,capability.reason||'Requested source evidence capability is unavailable.');}
   if(body.instructions!==undefined&&(typeof body.instructions!=='string'||body.instructions.length>4000))throw new HttpError(400,'Editorial instructions must be at most 4,000 characters.');
   const acceptanceMode=body.acceptanceMode??'balanced';
   if(acceptanceMode!=='review_all'&&acceptanceMode!=='safe_formatting'&&acceptanceMode!=='balanced'&&acceptanceMode!=='minimal_review')throw new HttpError(400,'Invalid acceptance mode.');
@@ -150,8 +173,12 @@ export class SourceReprocessing {
   const original=this.snapshot(vault,id),timestamp=now();
   if(sourceDocumentEntries(original.document).length>5000)throw new HttpError(413,'This beta supports at most 5,000 semantic nodes per source.');
   if(original.text.length>512000||this.chunks(original.text,original.document.physical.pages.map(p=>p.range.startOffset)).length>128)throw new HttpError(413,'This beta supports at most 512,000 extracted characters and 128 editorial excerpts. No partial pass was started.');
-  const revision:SourceReprocessingRevision={id:randomUUID(),fileId:id,createdAt:timestamp,updatedAt:timestamp,status:'queued',acceptanceMode,acceptanceThreshold,instructions:typeof body.instructions==='string'?body.instructions:'',baseHash:sourceRevisionBaseHash(original),stale:false,patches:[],original,reprocessed:structuredClone(original),report:{completedChunkIndexes:[],concurrency:2,promptVersion,...selection,startedAt:null,finishedAt:null,durationMs:null,chunksTotal:this.chunks(original.text,original.document.physical.pages.map(p=>p.range.startOffset)).length,chunksCompleted:0,charactersTotal:original.text.length,charactersReviewed:0,inputTokens:null,outputTokens:null,reasoningTokens:null,cachedInputTokens:null,diagnostics:['Beta derivative: original extraction remains canonical. Only accepted changes appear in the reading version.'],error:null}};
-  this.store.run('INSERT INTO source_reprocessing (id,file_id,vault_id,status,created_at,updated_at,payload) VALUES (?,?,?,?,?,?,?)',revision.id,id,vault,revision.status,timestamp,timestamp,JSON.stringify(revision));return revision;
+  const revision:SourceReprocessingRevision={pipelineVersion,...(configuration?{configuration}:{}),id:randomUUID(),fileId:id,createdAt:timestamp,updatedAt:timestamp,status:'queued',acceptanceMode,acceptanceThreshold,instructions:typeof body.instructions==='string'?body.instructions:'',baseHash:sourceRevisionBaseHash(original),stale:false,patches:[],original,reprocessed:structuredClone(original),report:{completedChunkIndexes:[],concurrency:2,promptVersion,...selection,startedAt:null,finishedAt:null,durationMs:null,chunksTotal:this.chunks(original.text,original.document.physical.pages.map(p=>p.range.startOffset)).length,chunksCompleted:0,charactersTotal:original.text.length,charactersReviewed:0,inputTokens:null,outputTokens:null,reasoningTokens:null,cachedInputTokens:null,diagnostics:['Beta derivative: original extraction remains canonical. Only accepted changes appear in the reading version.'],error:null}};
+  if(pipelineVersion===2){revision.furniture=detectPageFurniture(original.text,original.document);if(planReprocessingChunks(original.text,original.document).length>128)throw new HttpError(413,'V2 supports at most 128 reconstruction chunks.');revision.report.promptVersion=reconstructionPromptVersion;revision.report.concurrency=1;revision.report.chunksTotal=planReprocessingChunks(original.text,original.document).length;}
+  this.store.transaction(()=>{
+   this.store.run('INSERT INTO source_reprocessing (id,file_id,vault_id,status,created_at,updated_at,payload) VALUES (?,?,?,?,?,?,?)',revision.id,id,vault,revision.status,timestamp,timestamp,JSON.stringify(revision));
+   if(configuration){const checkpoints=new SourceReprocessingCheckpoints(this.store);for(const chunk of planReprocessingChunks(original.text,original.document))checkpoints.saveChunk({revisionId:revision.id,index:chunk.index,startOffset:chunk.start,endOffset:chunk.end,baseHash:revision.baseHash,evidenceHash:gatherReprocessingEvidence({text:original.text,document:original.document,start:chunk.start,end:chunk.end,options:configuration.evidence}).hash,difficulty:chunk.difficulty,difficultyReason:chunk.difficultyReason,requiredPassCount:configuration.depth==='light'?1:2,status:'pending'});}
+  });return revision;
  }
  private chunks(text:string,boundaries:number[]=[]){const chunks:{start:number;end:number}[]=[];for(let start=0;start<text.length;){let end=Math.min(start+8000,text.length,boundaries.find(boundary=>boundary>start)??text.length);if(end<text.length){const newline=text.lastIndexOf('\n',end-1);if(newline>start+4000)end=newline+1;else if(/[\uD800-\uDBFF]/.test(text[end-1]!))end--; }chunks.push({start,end});start=end;}return chunks;}
  private range(r:SourceReprocessingRevision,start:number,end:number):SourceDocumentRange {
@@ -178,8 +205,9 @@ export class SourceReprocessing {
   if(!['failed','interrupted'].includes(r.status)||this.activeRevisionId===revisionId)throw new HttpError(409,'Wait for interruption to finish before resuming.');
   if(r.stale)throw new HttpError(409,'Canonical source changed. Start a new editorial pass.');
   const selection=this.intelligence.editorialSelection();
-  if(r.report.promptVersion!==promptVersion||r.report.model!==selection.model)throw new HttpError(409,'Editorial configuration changed. Start a new pass.');
+  if(r.report.promptVersion!==(r.pipelineVersion===2?reconstructionPromptVersion:promptVersion)||r.report.model!==selection.model||(r.pipelineVersion===2&&r.report.reasoningEffort!==selection.reasoningEffort))throw new HttpError(409,'Editorial configuration changed. Start a new pass.');
   if(this.store.get("SELECT 1 FROM source_reprocessing WHERE file_id=? AND status IN ('queued','running')",id))throw new HttpError(409,'Another pass is already active.');
+  if(r.pipelineVersion===2&&new SourceReprocessingCheckpoints(this.store).passes(r.id).some(pass=>pass.outcomeUncertain||pass.status==='running'||pass.status==='interrupted'))throw new HttpError(409,'Provider outcome is uncertain. Start a new revision explicitly; this request will not be replayed.');
   r.report.reasoningEffort=selection.reasoningEffort;r.status='queued';r.report.error=null;delete r.report.errorCode;this.save(vault,r);return r;
  }
  async tick(){
@@ -188,6 +216,17 @@ export class SourceReprocessing {
   const started=Date.now();r.status='running';r.report.sessionStartedAt=now();r.report.sessionCompletedIndexes=[];r.report.startedAt??=r.report.sessionStartedAt;r.report.error=null;r.report.finishedAt=null;this.saveProgress(row.vault_id,r);
   const guard=()=>{this.requireOpen(row.vault_id);if(this.closed||controller.signal.aborted)throw new HttpError(409,'Editorial pass interrupted.');if(this.baseHash(row.vault_id,r.fileId)!==r.baseHash)throw new HttpError(409,'Canonical source changed during this pass.');const selection=this.intelligence.editorialSelection();if(selection.model!==r.report.model||selection.reasoningEffort!==r.report.reasoningEffort)throw new HttpError(409,'AI model changed. Start a new pass.');};
   const timer=setInterval(()=>{try{this.requireOpen(row.vault_id);if(this.closed)controller.abort();}catch{controller.abort();}},250);timer.unref();
+  if(r.pipelineVersion===2){
+   try{
+    guard();if(!r.report.metadata)this.reconcileMetadata(row.vault_id,r,'canonical');
+    await executeReconstruction({store:this.store,revision:r,intelligence:this.intelligence,activity:this.activity,evidenceService:this.evidence,activityObjectId:this.files.require(row.vault_id,r.fileId).entity_id??r.fileId,vault:row.vault_id,signal:controller.signal,guard,save:()=>this.save(row.vault_id,r),range:(start,end)=>this.range(r,start,end),materialize:()=>materializeSourceRevision(r)});
+    guard();if(r.reprocessed.text!==r.original.text){this.save(row.vault_id,r);this.reconcileMetadata(row.vault_id,r,'editorial');}
+    r.status='completed';
+   }
+   catch(error){r.status=controller.signal.aborted?'interrupted':'failed';r.report.error=error instanceof Error?error.message:'Reconstruction failed.';r.report.errorCode=editorialFailure(error,controller.signal.aborted).code;}
+   finally{clearInterval(timer);r.report.finishedAt=now();r.report.durationMs=(r.report.durationMs??0)+Date.now()-started;this.save(row.vault_id,r);this.controller=null;this.activeRevisionId=null;this.running=false;}
+   return;
+  }
   const chunks=this.chunks(r.original.text,r.original.document.physical.pages.map(p=>p.range.startOffset));
   const completed=new Set(r.report.completedChunkIndexes??Array.from({length:r.report.chunksCompleted},(_,index)=>index));
   r.report.completedChunkIndexes=[...completed].sort((a,b)=>a-b);r.report.concurrency=2;

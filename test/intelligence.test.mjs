@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import {createHash} from 'node:crypto';
 import { once } from 'node:events';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -50,6 +51,17 @@ test('editorial requests preserve supported reasoning for every curated model an
   assert.throws(()=>ai.editorialSelection(),error=>error.status===400);
   await rejected(()=>ai.reeditSource('text','Edit',new AbortController().signal),400);assert.equal(calls,prior);
 });
+test('V2 semantic reconstruction uses a blocks provider schema without changing V1 editorial format',async()=>{
+  const bodies=[];
+  const ai=new Intelligence(new Secrets(),async(_url,options)=>{bodies.push(JSON.parse(options.body));return completed('{"blocks":[{"id":"canonical","text":"Synthetic prose"}],"diagnostics":[],"unresolved":false}');});ai.save({apiKey:key});
+  const signal=new AbortController().signal;
+  await ai.reeditSource('Synthetic prose','Reconstruct scholarly blocks',signal,undefined,'blocks');
+  const format=bodies[0].text.format;assert.equal(format.name,'source_reconstruction_blocks');assert.equal(format.strict,true);
+  assert.deepEqual(format.schema.required,['blocks','diagnostics','unresolved']);assert.deepEqual(format.schema.properties.blocks.items.required,['id','text']);assert.equal(format.schema.properties.patches,undefined);
+  assert.deepEqual(bodies[0].tools,[]);assert.equal(bodies[0].store,false);assert.equal(bodies[0].max_output_tokens,16000);assert.ok(!bodies[0].instructions.includes('Oxford'));
+  await ai.reeditSource('Synthetic prose','Legacy editorial patches',signal);
+  assert.equal(bodies[1].text.format.name,'source_editorial_patches');
+});
 test('editorial schema is only sent for an explicitly compatible model and local parsing remains required',async()=>{
   const model=intelligenceModels.find(model=>model.id==='gpt-5-mini'),supported=model.structuredOutputs;
   let body;
@@ -93,7 +105,7 @@ test('source worker single and multiple synthetic excerpts exercise real editori
     const file={id:'synthetic-source',name:'Synthetic academic PDF',format:'pdf',text,pages,page_start_lines:JSON.stringify(Array.from({length:pages},(_,i)=>i*3+1)),status:'ready',admitted:1,enrichment_status:'done',entity_id:null};
     const original={text,document:processedSourceDocument(file)};
     let stored,active=0,peak=0,calls=0;
-    const store={all:()=>stored?.status==='queued'?[{vault_id:'synthetic',payload:JSON.stringify(stored)}]:[],get:()=>undefined,run:(_sql,...values)=>{const payload=values.find(value=>typeof value==='string'&&value.startsWith('{"id"')&&value.includes('"original"'));if(payload)stored=JSON.parse(payload);}};
+    const store={transaction:work=>work(),all:()=>stored?.status==='queued'?[{vault_id:'synthetic',payload:JSON.stringify(stored)}]:[],get:()=>undefined,run:(_sql,...values)=>{const payload=values.find(value=>typeof value==='string'&&value.startsWith('{')&&value.includes('"original"'));if(payload)stored=JSON.parse(payload);}};
     const ai=new Intelligence(new Secrets(),async(_url,options)=>{
       const body=JSON.parse(options.body);assert.deepEqual(body.reasoning,{effort:'low'});assert.equal(body.model,'gpt-5-mini');calls++;active++;peak=Math.max(peak,active);
       await new Promise(resolve=>setTimeout(resolve,1));active--;
@@ -103,7 +115,7 @@ test('source worker single and multiple synthetic excerpts exercise real editori
     const statuses=[];
     const service=new SourceReprocessing(store,{require:()=>file},ai,()=>{},{start:()=>statuses.length,request:()=>({}),finish:(_id,status)=>statuses.push(status)});
     service.snapshot=()=>structuredClone(original);service.baseHash=()=>sourceRevisionBaseHash(original);
-    service.start('synthetic',file.id,{});await service.tick();
+    service.start('synthetic',file.id,{pipelineVersion:1});await service.tick();
     assert.equal(stored.status,'completed');assert.equal(stored.report.chunksCompleted,pages);assert.equal(stored.patches.length,pages);assert.ok(stored.patches.every(patch=>patch.baseHash===stored.baseHash&&patch.excerptIndex!==undefined));assert.equal(calls,pages);assert.equal(peak,Math.min(2,pages));assert.ok(statuses.every(status=>status==='completed'));assert.equal(stored.original.text,text);assert.equal(stored.reprocessed.text,text);
     service.close();
   }
@@ -506,4 +518,18 @@ test('embedding diagnostics record invalid dimensions without copying vector ele
   await assert.rejects(ai.embed('input',()=>trace),error=>error.status===502);
   assert.ok(events.some(event=>event.type==='validation'&&event.data.valid===false&&event.data.actualDimensions===1&&event.data.index===0));
   assert.ok(!JSON.stringify(events).includes('0.123456789'));
+});
+
+test('original-page provider input requires consent, explicit model support, and redacts image bytes from debug',async()=>{
+ const bytes=Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),Buffer.from('synthetic page only')]);
+ const image={page:1,mimeType:'image/png',base64:bytes.toString('base64'),sha256:createHash('sha256').update(bytes).digest('hex')};
+ let body,calls=0;const traces=[];
+ const ai=new Intelligence(new Secrets(),async(_url,options)=>{calls++;body=JSON.parse(options.body);return completed('{"blocks":[],"diagnostics":[],"unresolved":false}');});ai.save({apiKey:key});
+ const signal=new AbortController().signal,observer=()=>({mode:'full',request:(_endpoint,payload)=>traces.push(payload),headers(){},body(){},event(){},response(){},error(){}});
+ await assert.rejects(()=>ai.reeditSource('canonical','source only',signal,observer,'blocks',[image],false),/consent/);assert.equal(calls,0);
+ await ai.reeditSource('canonical','source only',signal,observer,'blocks',[image],true);
+ assert.equal(body.input[0].content[1].type,'input_image');assert.equal(body.input[0].content[1].image_url,'data:image/png;base64,'+image.base64);
+ assert.ok(!JSON.stringify(traces).includes(image.base64));assert.ok(JSON.stringify(traces).includes(image.sha256));
+ ai.savePreferences({model:'gpt-6-luna',reasoningEffort:'none'});assert.equal(ai.editorialImageCapability(),false);
+ await assert.rejects(()=>ai.reeditSource('canonical','source only',signal,undefined,'blocks',[image],true),/image capability/);assert.equal(calls,1);
 });

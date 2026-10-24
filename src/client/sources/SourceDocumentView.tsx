@@ -37,18 +37,18 @@ export function sourceViewEntries(text:string,document?:SourceDocument,rawRanges
 }
 interface Props {
  article:RefObject<HTMLElement|null>;fileId:string;name:string;text:string;entries:SourceViewEntry[];
- selected:string|null;annotations:ReaderAnnotations;structureLabels:boolean;highlights?:SourceHighlight[];
+ hiddenNodeIds?:ReadonlySet<string>;selected:string|null;annotations:ReaderAnnotations;structureLabels:boolean;highlights?:SourceHighlight[];
  canonicalNode:(nodeId:string)=>string|undefined;onSelect:(canonicalNodeId:string)=>void;
  changeForNode?:(nodeId:string)=>{id:string;label:string}|undefined;onReview?:(patchId:string)=>void;children?:ReactNode;
 }
 /** One typography and heading hierarchy for canonical and editorial presentations. */
-export function SourceDocumentView({article,fileId,name,text,entries,selected,annotations,structureLabels,highlights=[],canonicalNode,onSelect,changeForNode,onReview,children}:Props){
+export function SourceDocumentView({article,fileId,name,text,entries,selected,annotations,structureLabels,hiddenNodeIds,highlights=[],canonicalNode,onSelect,changeForNode,onReview,children}:Props){
  return <article ref={article} className="source-reader-document" data-annotations={annotations} aria-label={name}>
   {entries.length?entries.map(({node,path})=>{
    const Heading=(node.kind==='chapter'||node.level===1?'h2':node.kind==='subsection'||(node.level??0)>2?'h4':'h3');
    const locator=sourceNodeLocator(path)??`L${node.range.startLine}–${node.range.endLine}`;
    const canonicalId=canonicalNode(node.id),change=changeForNode?.(node.id);
-   return <section key={node.id} id={passageAnchor(fileId,node.id)} className={'source-reader-passage'+(node.text===undefined?' is-heading':'')+(canonicalId===selected?' is-selected':'')} data-source-node={node.id} data-canonical-node={canonicalId} data-source-page={node.range.startPage}>
+   return <section hidden={hiddenNodeIds?.has(node.id)} key={node.id} id={passageAnchor(fileId,node.id)} className={'source-reader-passage'+(node.text===undefined?' is-heading':'')+(canonicalId===selected?' is-selected':'')} data-source-node={node.id} data-canonical-node={canonicalId} data-source-page={node.range.startPage}>
     <button type="button" className="source-reader-node-address" title={canonicalId?uiText('Select original passage ')+locator:uiText('Citation mapping unavailable; switch to Original processed')} aria-label={canonicalId?uiText('Select passage ')+locator:uiText('Citation mapping unavailable; switch to Original processed')} aria-pressed={!!canonicalId&&canonicalId===selected} onClick={()=>{if(canonicalId)onSelect(canonicalId);}} aria-disabled={!canonicalId}>{locator}</button>
     {structureLabels&&<small className="source-reader-structure-label">{node.kind} · {locator}</small>}
     {change&&<button type="button" className="source-reader-change-indicator" aria-label={change.label} onClick={()=>onReview?.(change.id)}>✦</button>}

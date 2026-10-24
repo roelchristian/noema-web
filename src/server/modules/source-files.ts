@@ -66,6 +66,16 @@ export class SourceFiles {
     const filename=path.join(this.evidenceDirectory(vault,id),'manifest.json');
     return existsSync(filename)?JSON.parse(readFileSync(filename,'utf8')):{version:1,originalAvailable:false,findings:['Original bytes and extraction evidence are unavailable for this legacy import. Re-upload to recover them.']};
   }
+  /** Bind a reconstruction evidence adapter to both immutable original bytes and the
+   * admitted viewing asset. Manifest claims alone are never sufficient. */
+  reprocessingEvidenceBinding(vault:string,id:string) {
+    const file=this.require(vault,id),manifest=this.evidence(vault,id);
+    if(file.admitted!==1||file.status!=='ready'||file.format!=='pdf')throw new HttpError(409,'Original-page evidence requires an admitted processed PDF.');
+    const original=path.join(this.evidenceDirectory(vault,id),'original'),admitted=this.filename(vault,id);
+    if(!existsSync(original)||!existsSync(admitted)||manifest.originalAvailable!==true||typeof manifest.originalHash!=='string'||typeof manifest.admittedHash!=='string'||typeof manifest.canonicalHash!=='string')throw new HttpError(409,'Source evidence provenance is unavailable.');
+    if(statSync(original).size>maxSourceBytes||statSync(admitted).size>maxSourceBytes||this.hash(readFileSync(original))!==manifest.originalHash||this.hash(readFileSync(admitted))!==manifest.admittedHash||this.hash(file.text)!==manifest.canonicalHash)throw new HttpError(409,'Source evidence checksums no longer match the admitted source.');
+    return {originalHash:manifest.originalHash,admittedHash:manifest.admittedHash,canonicalHash:manifest.canonicalHash,extractorVerified:manifest.extractorHash===this.hash(readFileSync(fileURLToPath(new URL('../../../scripts/extract-source.swift',import.meta.url)))),manifest};
+  }
   exportEvidence(vault:string,id:string) {
     const evidence=this.evidence(vault,id),original=path.join(this.evidenceDirectory(vault,id),'original');
     return {...evidence,...(existsSync(original)?{originalData:readFileSync(original).toString('base64')}:{})};

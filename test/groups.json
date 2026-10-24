@@ -95,6 +95,7 @@
     "test/reference-list.test.mjs",
     "test/transliteration-ui.test.mjs",
     "test/transliteration-hover.test.mjs",
+    "test/source-reprocessing-furniture-ui.test.mjs",
     "test/source-metadata-ui.test.mjs",
     "test/page-toolbar-menu.test.mjs",
     "test/page-connections-ui.test.mjs",
@@ -219,8 +220,15 @@
     "test/bibliography-http.test.mjs",
     "test/bibliographic-property-projection.test.mjs",
     "test/bibliographic-export.test.mjs",
+    "test/source-reprocessing-persistence-v2.test.mjs",
+    "test/source-reprocessing-scheduler-v2.test.mjs",
+    "test/source-reprocessing-v2-evidence.test.mjs",
+    "test/source-reprocessing-v2-apparatus.test.mjs",
+    "test/source-reprocessing-native-evidence.test.mjs",
+    "test/source-reprocessing-evidence-backup.test.mjs",
     "test/source-metadata.test.mjs",
     "test/source-metadata-provenance.test.mjs",
-    "test/page-connections.test.mjs"
+    "test/page-connections.test.mjs",
+    "test/source-reprocessing-metadata-v2.test.mjs"
   ]
 }

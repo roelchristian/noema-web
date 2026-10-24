@@ -1,0 +1,18 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import React,{act} from 'react';
+import {createRoot} from 'react-dom/client';
+import {JSDOM} from 'jsdom';
+import {SourceDocumentView,passageAnchor} from '../src/client/sources/SourceDocumentView.tsx';
+test('furniture presentation hides and restores nodes while retaining canonical anchors and text',async t=>{
+ const dom=new JSDOM('<div id="mount"></div>');const keys=['window','document','HTMLElement','Node','IS_REACT_ACT_ENVIRONMENT'],prior=keys.map(key=>Object.getOwnPropertyDescriptor(globalThis,key));
+ keys.forEach(key=>Object.defineProperty(globalThis,key,{configurable:true,writable:true,value:key==='IS_REACT_ACT_ENVIRONMENT'?true:dom.window[key]}));
+ const root=createRoot(document.querySelector('#mount'));t.after(async()=>{await act(async()=>root.unmount());dom.window.close();keys.forEach((key,index)=>{if(prior[index])Object.defineProperty(globalThis,key,prior[index]);else delete globalThis[key];});});
+ const text='HEADER\nBody text.',entries=[{node:{id:'header',kind:'paragraph',text:'HEADER',range:{startOffset:0,endOffset:6,startLine:1,endLine:1,startPage:1,endPage:1}},path:[]}];
+ const props={article:{current:null},fileId:'f',name:'Synthetic source',text,entries,selected:null,annotations:'clean',structureLabels:false,canonicalNode:()=> 'original-header',onSelect:()=>{}};
+ await act(async()=>root.render(React.createElement(SourceDocumentView,props)));
+ const node=document.getElementById(passageAnchor('f','header'));assert.equal(node.hidden,false);assert.equal(node.dataset.canonicalNode,'original-header');
+ await act(async()=>root.render(React.createElement(SourceDocumentView,{...props,hiddenNodeIds:new Set(['header'])})));
+ assert.equal(node.hidden,true);assert.equal(node.textContent.includes('HEADER'),true);assert.equal(entries[0].node.range.startOffset,0);assert.equal(document.getElementById(passageAnchor('f','header')),node);
+ await act(async()=>root.render(React.createElement(SourceDocumentView,props)));assert.equal(node.hidden,false);assert.equal(node.dataset.canonicalNode,'original-header');
+});

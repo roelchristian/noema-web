@@ -271,7 +271,7 @@ export class Knowledge {
       recordPropertyProvenance(this.store,vault,savedId,{origin:'manual',details:'Property value explicitly saved.'});
       syncPropertyMetadata(this.store,vault,id);
       if(definition)this.store.run('UPDATE property_value_metadata SET definition_id=? WHERE property_id=? AND vault_id=?',definition.id,savedId,vault);
-      if(definition?.valueKind==='date')new TemporalProperties(this.store).refresh(vault,1,savedId);
+      if(definition?.valueKind==='date')new TemporalProperties(this.store).refresh(vault,1,savedId,!legacy);
       return this.detail(vault,id);
     };
     return this.store.db.isTransaction?save():this.store.transaction(save);

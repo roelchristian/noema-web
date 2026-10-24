@@ -1,7 +1,22 @@
 import type {DatabaseSync} from 'node:sqlite';
 import {temporalExtractorVersion} from '../shared/temporal.js';
 
+/** SQLite's documented table rebuild keeps references and original row IDs intact. */
+function expandCheck(db:DatabaseSync,table:string,old:string,replacement:string) {
+ const row=db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?").get(table);
+ if(!row||typeof row.sql!=='string'||!row.sql.includes(old))return;
+ const indexes=db.prepare("SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name=? AND sql IS NOT NULL").all(table);
+ const columns=db.prepare(`PRAGMA table_info(${table})`).all().map(column=>String(column.name)).join(',');
+ db.exec('PRAGMA foreign_keys=OFF; PRAGMA legacy_alter_table=ON; BEGIN IMMEDIATE');
+ try {
+  db.exec(row.sql.replace(/^CREATE TABLE (?:IF NOT EXISTS )?(?:"[^"]+"|\w+)/i,`CREATE TABLE ${table}_expanded`).replace(old,replacement));
+  db.exec(`INSERT INTO ${table}_expanded (${columns}) SELECT ${columns} FROM ${table}; DROP TABLE ${table}; ALTER TABLE ${table}_expanded RENAME TO ${table}`);
+  for(const index of indexes)db.exec(String(index.sql));
+  db.exec('COMMIT');
+ }catch(error){db.exec('ROLLBACK');throw error;}finally{db.exec('PRAGMA legacy_alter_table=OFF; PRAGMA foreign_keys=ON');}
+}
 export function setupTemporalSchema(db:DatabaseSync) {
+ expandCheck(db,'temporal_relations',"kind IN ('occurs_on','born_on','published_on','deadline','discusses')","kind IN ('occurs_on','born_on','published_on','deadline','discusses','ends_on','died_on','founded_on','accessed_on')");
  db.exec(`CREATE TABLE IF NOT EXISTS temporal_dates (
   vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,id TEXT NOT NULL,value TEXT NOT NULL,
   precision TEXT NOT NULL CHECK(precision IN ('day','month','year')),calendar TEXT NOT NULL CHECK(calendar IN ('gregorian','julian')),
@@ -24,7 +39,7 @@ export function setupTemporalSchema(db:DatabaseSync) {
   id TEXT PRIMARY KEY,vault_id TEXT NOT NULL, date_id TEXT NOT NULL,
   entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
   mention_id TEXT REFERENCES temporal_mentions(id) ON DELETE SET NULL,
-  kind TEXT NOT NULL CHECK(kind IN ('occurs_on','born_on','published_on','deadline','discusses')),
+  kind TEXT NOT NULL CHECK(kind IN ('occurs_on','born_on','published_on','deadline','discusses','ends_on','died_on','founded_on','accessed_on')),
   origin TEXT NOT NULL CHECK(origin IN ('manual','inferred')),status TEXT NOT NULL CHECK(status IN ('accepted','pending','rejected')),
   confidence REAL CHECK(confidence>=0 AND confidence<=1),
   FOREIGN KEY(vault_id,date_id) REFERENCES temporal_dates(vault_id,id) ON DELETE CASCADE);

@@ -113,7 +113,7 @@ export class TemporalIndex {
   const entityId=text(body.entityId,200),kind=text(body.kind,40),mentionId=body.mentionId==null?null:text(body.mentionId,200),sourceMentionId=body.sourceMentionId==null?null:text(body.sourceMentionId,200);
   if(mentionId&&sourceMentionId)throw new HttpError(400,'Choose one evidence anchor');
   if(!this.store.get('SELECT 1 FROM entities WHERE vault_id=? AND id=? AND archived_at IS NULL',vault,entityId))throw new HttpError(404,'Entity not found');
-  if(!['occurs_on','born_on','published_on','deadline','discusses'].includes(kind))throw new HttpError(400,'Invalid temporal relationship');
+  if(!['occurs_on','born_on','published_on','deadline','discusses','ends_on','died_on','founded_on','accessed_on'].includes(kind))throw new HttpError(400,'Invalid temporal relationship');
   if(mentionId&&!this.store.get('SELECT 1 FROM temporal_mentions WHERE vault_id=? AND id=? AND date_id=?',vault,mentionId,dateId))throw new HttpError(400,'Evidence does not support this date');
   if(sourceMentionId&&!this.store.get('SELECT 1 FROM temporal_source_mentions WHERE vault_id=? AND id=? AND date_id=?',vault,sourceMentionId,dateId))throw new HttpError(400,'Source evidence does not support this date');
   if(mentionId&&this.resolve(vault,mentionId).status!=='current'||sourceMentionId&&this.sources.resolve(vault,sourceMentionId).status!=='current')throw new HttpError(409,'Evidence changed. Refresh before linking it.');

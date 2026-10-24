@@ -180,3 +180,21 @@ test('persisted display labels change presentation while keeping immutable store
   assert.equal(document.querySelector('textarea[aria-label="Recorded Date"]').value,'circa 1815');assert.equal(saves.length,0);
  });
 });
+
+test('date editor preserves authored text and exposes precision/calendar choices without submitting a fabricated date',async()=>{
+ const {builtinPropertyDefinitions}=await import('../src/shared/property-definitions.ts');
+ await fixture(async({props,render,click,saves,dom})=>{
+  await render({...props,definitions:builtinPropertyDefinitions,entity:{...props.entity,properties:[{...props.entity.properties[0],value:'June 1815'}]}});
+  await click('[aria-label="Edit Birth Date"]');
+  assert.equal(document.querySelector('input[aria-label="Birth Date"]').value,'June 1815');
+  assert.match(document.querySelector('.date-value-editor [role="status"]').textContent,/month precision/);
+  assert.equal(document.querySelector('[aria-label="Birth Date precision"]').value,'month');
+  const precision=document.querySelector('[aria-label="Birth Date precision"]');
+  await act(async()=>{precision.value='day';precision.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  assert.ok(document.querySelector('input[type="date"]'));
+  assert.equal(document.querySelector('input[type="date"]').value,'');
+  assert.equal(document.querySelector('input[aria-label="Birth Date"]').value,'June 1815');
+  assert.equal([...document.querySelectorAll('.date-value-editor button')].find(button=>button.textContent==='Use this date').disabled,true);
+  assert.equal(saves.length,0);
+ });
+});

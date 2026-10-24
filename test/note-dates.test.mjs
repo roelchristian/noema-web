@@ -119,7 +119,7 @@ test('date preview opens the date and unlinking suppresses only that occurrence 
 
 test('date inspector shows local mentions and only note references from saved evidence',async t=>{
  const env=setupDOM(t);t.mock.timers.enable({apis:['setTimeout']});
- t.mock.method(api,'temporalDetail',async()=>({mentions:[{id:'here',pageId:'note',title:'Birth date',text:'December 5, 2000'},{id:'other',pageId:'other',title:'Another note',text:'5 December 2000'}],nextMentionOffset:null,sources:[{title:'Source to exclude'}]}));
+ t.mock.method(api,'temporalDetail',async()=>({date:{id:dateId,value:'2000-12-05',calendar:'gregorian',precision:'day'},curation:null,relations:[],relationCount:0,mentionCount:2,nextRelationOffset:null,mentions:[{id:'here',pageId:'note',title:'Birth date',text:'December 5, 2000'},{id:'other',pageId:'other',title:'Another note',text:'5 December 2000'}],nextMentionOffset:null,sources:[{title:'Source to exclude'}]}));
  const page=pageOf([block([{text:'December 5, 2000'}])]),opened=[],root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
  await act(async()=>root.render(createElement(NoteDatePanel,{page,item:noteDateItems(page.blocks)[0],onClose(){},onOpenPage:id=>opened.push(id)})));
  await act(async()=>t.mock.timers.tick(300));

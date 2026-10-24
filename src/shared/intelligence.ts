@@ -22,6 +22,9 @@ export function isSpeechVoice(value:unknown,provider:SpeechProvider='kokoro'):va
 export function speechModelFor(provider:SpeechProvider):string {return provider==='gemini'?geminiSpeechModel:provider==='openai'?openAISpeechModel:speechModel;}
 export interface IntelligencePreferences { model: string; reasoningEffort: ReasoningEffort }
 export interface IntelligenceConfiguration extends IntelligencePreferences {personaId?:BuiltinPersonaId;ttsEnabled:boolean;narration?:import('./narration.js').NarrationPreferences;ttsProvider?:SpeechProvider;ttsVoice:SpeechVoice;manualRequestsPerMinute: number; pageEnrichment?: IntelligencePreferences}
+/** Category updates deliberately exclude the other category's fields. */
+export type AIPreferences = Pick<IntelligenceConfiguration,'model'|'reasoningEffort'|'personaId'|'manualRequestsPerMinute'|'pageEnrichment'>;
+export type VoicePreferences = Pick<IntelligenceConfiguration,'ttsEnabled'|'ttsProvider'|'ttsVoice'|'narration'>;
 export const defaultPageEnrichmentPreferences: IntelligencePreferences = {model:'gpt-6-luna',reasoningEffort:'none'};
 export const defaultManualRequestsPerMinute = 5;
 export const maxManualRequestsPerMinute = 120;

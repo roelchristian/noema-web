@@ -17,7 +17,7 @@ import {VaultBackups} from '../src/server/modules/vault-backups.ts';
 import {readBackupArchive} from './helpers/backup-archive.mjs';
 import {createApp} from '../src/server/http.ts';
 import {api} from '../src/client/api.ts';
-import {IntelligenceSettings} from '../src/client/settings/IntelligenceSettings.tsx';
+import {VoiceSettings} from '../src/client/settings/VoiceSettings.tsx';
 import {combineSpeechAudio,speechChunks,useSpeech} from '../src/client/editor/speech.tsx';
 import {setupDOM} from './helpers/dom.mjs';
 // Synthetic credentials only. All provider traffic is an injected function.
@@ -199,21 +199,22 @@ test('Gemini settings require a saved explicit provider, expose only its voices,
  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
  let saved={...defaultIntelligencePreferences,ttsEnabled:false,ttsProvider:'kokoro',ttsVoice:'puck',manualRequestsPerMinute:5},credential={configured:false,expiresAt:null},writes=[],events=0;
  t.mock.method(api,'intelligence',async()=>({...saved,configured:false,expiresAt:null}));t.mock.method(api,'speechModel',async()=>({ready:true,model:'kokoro-82m-v1.0',missingFiles:[]}));
- t.mock.method(api,'geminiCredential',async()=>credential);t.mock.method(api,'saveIntelligencePreferences',async value=>{saved=structuredClone(value);return saved;});
+ t.mock.method(api,'geminiCredential',async()=>credential);t.mock.method(api,'saveVoicePreferences',async value=>{saved={...saved,...structuredClone(value)};return saved;});
  t.mock.method(api,'saveGeminiCredential',async(value,days)=>{writes.push({value,days});credential={configured:true,expiresAt:'2026-11-23T00:00:00Z'};return credential;});
  t.mock.method(api,'removeGeminiCredential',async()=>{credential={configured:false,expiresAt:null};return credential;});
  window.addEventListener('noema:tts-preferences',()=>events++);
- await act(async()=>root.render(createElement(IntelligenceSettings)));
+ await act(async()=>root.render(createElement(VoiceSettings)));
  assert.equal(document.querySelector('#ai-tts-provider').value,'kokoro');assert.equal(document.querySelector('#ai-tts-enabled').getAttribute('aria-checked'),'false');
  await act(async()=>{const select=document.querySelector('#ai-tts-provider');select.value='gemini';select.dispatchEvent(new Event('change',{bubbles:true}));});
  assert.equal(saved.ttsProvider,'kokoro');assert.equal(document.querySelector('.local-speech-model'),null);assert.equal(document.querySelector('#ai-tts-voice').value,'Puck');
- assert.deepEqual([...document.querySelector('#ai-tts-voice').options].map(x=>x.value),[...geminiSpeechVoices]);assert.ok(document.querySelector('#ai-tts-description').textContent.includes('Google'));assert.ok(document.body.textContent.includes(geminiSpeechModel));
- await act(async()=>document.querySelector('.ai-preferences-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));assert.equal(saved.ttsProvider,'gemini');assert.equal(saved.ttsVoice,'Puck');assert.equal(writes.length,0);
- const input=document.querySelector('#gemini-key');assert.equal(input.type,'password');assert.equal(input.autocomplete,'new-password');assert.equal(input.maxLength,geminiApiKeyMaxLength);assert.ok(input.maxLength>authKey.length);
+ assert.equal(document.querySelector('#ai-tts-voice').options.length,4);assert.ok(document.querySelector('#ai-tts-description').textContent.includes('Google'));
+ await act(async()=>[...document.querySelectorAll('button')].find(x=>x.textContent==='Browse all voices').click());assert.deepEqual([...document.querySelector('#ai-tts-voice').options].map(x=>x.value),[...geminiSpeechVoices]);
+ await act(async()=>document.querySelector('.voice-preferences-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));assert.equal(saved.ttsProvider,'gemini');assert.equal(saved.ttsVoice,'Puck');assert.equal(writes.length,0);
+ const input=document.querySelector('.provider-connection input[type=password]');assert.equal(input.type,'password');assert.equal(input.autocomplete,'new-password');assert.equal(input.maxLength,geminiApiKeyMaxLength);assert.ok(input.maxLength>authKey.length);
  // React's input plugin initializes before JSDOM in this suite; invoke its registered change handler.
  await act(async()=>{input.value=`  ${authKey}  `;input[Object.keys(input).find(name=>name.startsWith('__reactProps'))].onChange({target:input});});
- await act(async()=>input.closest('form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));assert.deepEqual(writes,[{value:authKey,days:30}]);assert.equal(input.value,'');assert.ok(document.body.textContent.includes('Gemini key saved'));assert.ok(!document.body.innerHTML.includes(authKey));assert.equal(localStorageSafe(env.dom.window),false);
- assert.equal(events,2);await act(async()=>[...document.querySelectorAll('button')].find(x=>x.textContent==='Remove Gemini key').click());assert.equal(events,3);assert.equal(credential.configured,false);
+ await act(async()=>input.closest('form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));assert.deepEqual(writes,[{value:authKey,days:30}]);assert.equal(input.value,'');assert.ok(document.body.textContent.includes('Credential saved'));assert.ok(!document.body.innerHTML.includes(authKey));assert.equal(localStorageSafe(env.dom.window),false);
+ assert.equal(events,2);await act(async()=>[...document.querySelectorAll('button')].find(x=>x.textContent==='Remove key').click());assert.equal(events,3);assert.equal(credential.configured,false);
 });
 function localStorageSafe(window){try{return JSON.stringify(window.localStorage).includes(key);}catch{return false;}}
 

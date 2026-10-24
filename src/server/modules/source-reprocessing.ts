@@ -17,7 +17,7 @@ import {evaluateEditorialAcceptance,editorialRiskValidator} from './source-repro
 import {mathSource} from './source-math-text.js';
 import {SourceDocuments,sourceDocumentBuilderVersion} from './source-documents.js';
 import {sourceStructureKinds} from '../../shared/domain.js';
-import {editorialDiagnostics,pageBoundaryDiagnostics} from './source-reprocessing-diagnostics.js';
+import {editorialDiagnostics,pageBoundaryDiagnostics,preservePageMarkerSeparators} from './source-reprocessing-diagnostics.js';
 import type {SourceFile} from '../../shared/domain.js';
 import {processedSourceDocument} from './source-document.js';
 import {sourceDocumentEntries,type SourceDocument,type SourceDocumentRange} from '../../shared/source-document.js';
@@ -66,6 +66,11 @@ export function materializeSourceRevision(r:SourceReprocessingRevision){
    const {startOffset:start,endOffset:end}=p.range;
    const excerpt=p.excerptIndex===undefined?undefined:r.report.excerpts?.[p.excerptIndex];
    if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<0||end<=start||end>r.original.text.length||!utf16Boundary(r.original.text,start)||!utf16Boundary(r.original.text,end)||r.original.text.slice(start,end)!==p.original||!wellFormedUnicode(p.userReplacement??p.replacement)||p.baseHash!==undefined&&p.baseHash!==r.baseHash||p.excerptIndex!==undefined&&(!Number.isSafeInteger(p.excerptIndex)||!excerpt||start<excerpt.startOffset||end>excerpt.endOffset)||index>0&&start<patches[index-1]!.range.endOffset)throw new HttpError(400,'Editorial patch evidence does not match this canonical revision or excerpt.');
+  }
+  for(const patch of patches){
+   const replacement=patch.userReplacement??patch.replacement;
+   const preserved=preservePageMarkerSeparators(r.original.text,patch.range.startOffset,patch.range.endOffset,replacement);
+   if(preserved!==replacement)patch.userReplacement=preserved;
   }
   if(!patches.length){r.reprocessed=structuredClone(r.original);r.nodeLinks=sourceDocumentEntries(r.original.document).map(({node})=>({originalNodeId:node.id,reprocessedNodeIds:[node.id]}));r.report.validationDiagnostics=editorialDiagnostics(r.original.text,r.original.text);return;}
   let text='',offset=0;for(const p of patches){text+=r.original.text.slice(offset,p.range.startOffset)+(p.userReplacement??p.replacement);offset=p.range.endOffset;}text+=r.original.text.slice(offset);

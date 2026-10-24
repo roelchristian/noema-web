@@ -439,3 +439,11 @@ test('completion distinguishes proposed corrections from unchanged output',async
  const env=await mount(t,{initial:r});assert.match(document.querySelector('.reprocessing-result-summary').textContent,/2 proposed corrections.*reading text is unchanged/);
  await env.click(env.button('Review proposed corrections'));assert.ok(document.querySelector('.reprocessing-reviews'));
 });
+
+
+test('failed acceptance displays the cause beside the correction controls',async t=>{
+ const r=fixture();const env=await mount(t,{initial:r,post:async()=>{throw Error('Synthetic correction could not be saved.');}});
+ await env.click(env.button('Review changes (2)'));await env.click(env.button('Accept change'));
+ assert.match(document.querySelector('[id^="reprocessing-review-error-"]').textContent,/Could not save correction.*Synthetic correction could not be saved/);
+ assert.equal(env.button('Accept change').disabled,false);
+});

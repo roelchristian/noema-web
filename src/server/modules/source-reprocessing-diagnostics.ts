@@ -47,3 +47,19 @@ export function editorialDiagnostics(originalText:string,editedText:string):stri
   if(!messages.length)messages.push('Local checks found no unresolved footnote links, checked math syntax errors, or changed page markers. Meaning and transcription accuracy still require editorial review.');
   return messages.length>60?[...messages.slice(0,60),`${messages.length-60} additional local diagnostics omitted.`]:messages;
 }
+
+/** Preserve invisible page separators when an otherwise valid edit removes their
+ * surrounding whitespace. Marker text, numbering and order remain immutable. */
+export function preservePageMarkerSeparators(text:string,start:number,end:number,replacement:string):string {
+ const proposed=text.slice(0,start)+replacement+text.slice(end);
+ const pattern=/<!--\s*Page\s+\d+\s*-->/gi;
+ if(JSON.stringify(text.match(pattern)??[])!==JSON.stringify(proposed.match(pattern)??[]))return replacement;
+ const positions=new Set<number>(),limit=start+replacement.length;
+ for(const match of proposed.matchAll(pattern)){
+  const from=match.index!,to=from+match[0].length;
+  if(proposed.slice(0,from).split(/\r\n?|\n/).at(-1)?.trim()&&from>=start&&from<=limit)positions.add(from-start);
+  if(proposed.slice(to).split(/\r\n?|\n/)[0]?.trim()&&to>=start&&to<=limit)positions.add(to-start);
+ }
+ for(const at of [...positions].sort((a,b)=>b-a))replacement=replacement.slice(0,at)+'\n'+replacement.slice(at);
+ return replacement;
+}

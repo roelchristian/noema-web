@@ -288,6 +288,7 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
               </li>)}
             </ol>
             {activePatch&&<PatchReview draftKey={JSON.stringify([vaultId,fileId,revision.id,activePatch.id])} key={`${revision.id}:${activePatch.id}`} patch={activePatch} layout={comparisonLayout} onCompare={onCompare} disabled={busy||!!stale||active(revision.status)} onDecision={decide}/>}
+            {error&&<InlineNotice id={`reprocessing-review-error-${revision.id}`} tone="error" title={uiText("Could not save correction")} description={error} announcement="assertive"/>}
           </div>
           {shownPatches.length>reviewLimit&&<button type="button" className="button small" onClick={()=>setReviewLimit(limit=>limit+20)}>{uiText("Load more changes")}</button>}
 

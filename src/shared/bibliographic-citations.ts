@@ -29,17 +29,35 @@ export function publicationCitations(references:BibliographicReference[]) {
 export function noteBibliographicCitations(blocks:Block[]):BibliographicReference[] {
  return blocks.flatMap(block=>blockSegments(block).flatMap(segment=>segment.bibliographicReference?[segment.bibliographicReference]:[]));
 }
-/** citeproc returns plain text; callers must render it as text, never trusted HTML. */
-export function formatScholarlyCitations(records:CitationRecord[],references:BibliographicReference[],style:ScholarlyCitationStyle='apa') {
+/** A label is keyed by the saved occurrence and locator, independent of displayed text. */
+export function bibliographicCitationKey(reference:BibliographicReference) {return JSON.stringify([reference.id,reference.sourceId,reference.locator??'',reference.label??'page']);}
+function formatClusters(records:CitationRecord[],clusters:BibliographicReference[][],style:ScholarlyCitationStyle) {
  const byId=new Map(records.map(record=>[record.sourceId,bibliographicCsl(record)]));
- const unique=[...publicationCitations(references).keys()];
+ const unique=[...publicationCitations(clusters.flat()).keys()];
  if(unique.some(id=>!byId.has(id)))throw new Error('Bibliographic metadata is missing for a cited Source.');
- if(!unique.length)return {citation:'',bibliography:[] as string[]};
+ if(!unique.length)return {labels:[] as string[],bibliography:[] as string[]};
  const engine=new CSL.Engine({retrieveLocale:()=>englishLocale,retrieveItem:id=>byId.get(id)},style==='ieee'?ieeeStyle:apaStyle,'en-US');
- engine.setOutputFormat('text');engine.updateItems(unique);
- const citation=engine.makeCitationCluster(references.map(reference=>({id:reference.sourceId,...(reference.locator?{locator:reference.locator,label:reference.label??'page'}:{})})));
+ engine.setOutputFormat('text');
+ const preceding:Array<[string,number]>=[],labels:string[]=[];
+ clusters.forEach((references,index)=>{
+  const citationID=`noema-citation-${index}`;
+  const result=engine.processCitationCluster({citationID,properties:{noteIndex:0},citationItems:references.map(reference=>({id:reference.sourceId,...(reference.locator?{locator:reference.locator,label:reference.label??'page'}:{})}))},preceding,[]);
+  // Later citations can disambiguate earlier ones. Apply every processor update.
+  for(const [position,label] of result[1])labels[position]=label;
+  preceding.push([citationID,0]);
+ });
  const bibliography=engine.makeBibliography();
- return {citation,bibliography:bibliography?bibliography[1].map(line=>line.trim()):[]};
+ return {labels,bibliography:bibliography?bibliography[1].map(line=>line.trim()):[]};
+}
+/** Full document processing preserves citation order, repeated locators and live disambiguation. Output is plain text. */
+export function formatScholarlyDocument(records:CitationRecord[],references:BibliographicReference[],style:ScholarlyCitationStyle='apa') {
+ const result=formatClusters(records,references.map(reference=>[reference]),style);
+ return {labels:new Map(references.map((reference,index)=>[bibliographicCitationKey(reference),result.labels[index]??''])),bibliography:result.bibliography};
+}
+/** Copy a cluster with the same production processor used by the editor. */
+export function formatScholarlyCitations(records:CitationRecord[],references:BibliographicReference[],style:ScholarlyCitationStyle='apa') {
+ const result=formatClusters(records,references.length?[references]:[],style);
+ return {citation:result.labels[0]??'',bibliography:result.bibliography};
 }
 export function citationKeyMarkup(key:string,mode:'latex'|'pandoc',locator='') {
  // Imported keys are retained losslessly, but control syntax is never interpolated.

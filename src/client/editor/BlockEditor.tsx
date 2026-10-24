@@ -92,7 +92,7 @@ interface Menu {items: Choice[]; index: number; left: number; top: number; label
 function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOpen, register, onPaste}: {block: Block; entities: Entity[]; reviewMatches: EntityReviewItem[]; onInput: (el: HTMLElement, event:InputEvent) => void; onKeyDown: (e: KeyboardEvent<HTMLElement>) => void; onOpen: (id: string) => void; register: (el: HTMLElement | null) => void; onPaste: (e: ClipboardEvent<HTMLElement>) => void}) {
   // React's use(Context) supports conditional subscriptions. Plain text must not
   // subscribe to the citation map that PageEditor rebuilds on every edit.
-  const citations=block.content.some(segment=>segment.sourceReference)?use(CitationPresentationContext):undefined;
+  const citations=block.content.some(segment=>segment.sourceReference||segment.bibliographicReference)?use(CitationPresentationContext):undefined;
   const locale=getLocale();
   const ref = useRef<HTMLElement>(null);
   const Content = block.type === 'heading1' ? 'h2' : block.type === 'heading2' ? 'h3' : 'div';

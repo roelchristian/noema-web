@@ -1,3 +1,4 @@
+import {useBibliographicPresentation} from '../sources/bibliographic-presentation';
 import {NoteBibliographicReferences} from '../sources/NoteBibliographicReferences';
 import {noteDateItems} from '../../shared/note-dates';
 import {DocumentFind} from './DocumentFind';
@@ -48,7 +49,8 @@ export function PageEditor({hideTitle=false,focusNewBody=false,onCreationFocusCo
     }))return old;
     priorCitations.current=entries;return entries;
   },[page.blocks]);
-  const citationPresentation=useMemo(()=>({style:citationStyle,entries:citationEntries}),[citationStyle,citationEntries]);
+  const scholarly=useBibliographicPresentation(page.blocks,page.vault_id,page.id);
+  const citationPresentation=useMemo(()=>({style:citationStyle,entries:citationEntries,scholarly}),[citationStyle,citationEntries,scholarly]);
   const article = useRef<HTMLElement>(null);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
@@ -119,7 +121,7 @@ export function PageEditor({hideTitle=false,focusNewBody=false,onCreationFocusCo
     }}/>}
     {readOnly ? <ReadOnlyPageBlocks blocks={normalizeColumnBlocks(page.blocks)} entities={entities} pages={pages} vaultId={page.vault_id} onOpenEntity={onOpenEntity} onOpenPage={onOpenPage}/> : <BlockEditor pageId={page.id} focusNewBody={focusNewBody} onCreationFocusConsumed={onCreationFocusConsumed} onReview={async texts=>(await api.reviewText(page.vault_id,page.id,texts)).suggestions} featuredImageId={page.featuredImageId} pages={pages} onOpenPage={onOpenPage} onExplain={async (blocks,persona)=>api.explainBlocks(page.vault_id,page.id,blocks,persona)} reviewMatches={reviewMatches} onAddAlias={onAddAlias} key={page.vault_id + page.id} vaultId={page.vault_id} blocks={page.blocks} entities={entities} onChange={(blocks, featuredImageId, aiReviewAccepted) => onChange({blocks,...(aiReviewAccepted?{aiReviewAccepted:true}:{}),...(featuredImageId===undefined?{}:{featuredImageId})})} onOpenEntity={onOpenEntity} onCreateEntity={(name, onCreated, onCancel) => onCreateEntity({name, onCreated, onCancel, intent:'insert'})} onSave={onSave}/>}
     {citationStyle==='references'&&<NoteReferences blocks={page.blocks} entities={entities}/>}
-    <NoteBibliographicReferences blocks={page.blocks} vaultId={page.vault_id}/>
+    <NoteBibliographicReferences/>
     <footer className={'editor-save-status' + (saveStatus === 'error' ? ' is-error' : '')}>
       {saveStatus === 'saving' || saveStatus === 'identifying' ? <span className="scan-spinner" aria-hidden="true"/> : <Icon name={saveStatus === 'saved' ? 'recent' : saveStatus === 'error' ? 'alert' : 'recent'}/>}
       <span role="status" aria-live="polite" aria-atomic="true">{saveStatus === 'saved' ? <time dateTime={page.updated_at} title={new Date(page.updated_at).toLocaleString(getLocale())}>{status}</time> : status}</span>

@@ -4,7 +4,6 @@ import {registerHooks} from 'node:module';
 import {readFileSync} from 'node:fs';
 import {JSDOM} from 'jsdom';
 import {setupDOM} from './helpers/dom.mjs';
-import {JSDOM} from 'jsdom';
 import React,{act} from 'react';
 import {createRoot} from 'react-dom/client';
 import {renderToStaticMarkup} from 'react-dom/server';

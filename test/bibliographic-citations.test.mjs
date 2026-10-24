@@ -1,3 +1,4 @@
+import {citationSourceIds} from '../src/shared/citations.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parseBibliography} from '../src/shared/bibliography.ts';
@@ -8,6 +9,7 @@ const record={...entry,sourceId:'source-1',revision:1,provenance:{}};
 test('publication identity deduplicates locators and renders actual APA/IEEE CSL locally',()=>{
  const refs=[{id:'one',sourceId:'source-1',locator:'12'},{id:'two',sourceId:'source-1',locator:'26'}];
  assert.equal(publicationCitations(refs).size,1);
+ assert.deepEqual(citationSourceIds([{id:'association',type:'paragraph',checked:false,content:refs.map(bibliographicReference=>({text:'[ref]',bibliographicReference}))}]),['source-1']);
  const apa=formatScholarlyCitations([record],refs,'apa');assert.equal(apa.bibliography.length,1);assert.match(apa.bibliography[0],/Doe, J\./);assert.match(apa.bibliography[0],/Research Council/);assert.match(apa.citation,/12/);
  const ieee=formatScholarlyCitations([record],refs,'ieee');assert.equal(ieee.bibliography.length,1);assert.match(ieee.bibliography[0],/\[1\]/);assert.notEqual(ieee.bibliography[0],apa.bibliography[0]);
  assert.throws(()=>formatScholarlyCitations([],refs),/missing/);

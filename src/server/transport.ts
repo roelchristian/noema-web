@@ -385,7 +385,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           if(collection==='bibliography') {
             if(parts.length>4)throw new HttpError(404,'Not found');
             if(method!=='GET'&&(req.headers['x-noema-request']!=='1'||!/^application\/json(?:;|$)/i.test(req.headers['content-type']||'')))throw new HttpError(403,'Bibliography changes require the Noema client and JSON');
-            return await bibliographyRoutes(runtime.bibliography,{vault,id,action:child,method,body,res,send});
+            return await bibliographyRoutes(runtime.bibliography,{activity,vault,id,action:child,method,body,res,send});
           }
           if(collection==='pages' && id && child==='preview' && parts.length===4 && method==='GET')return send(200,pages.preview(vault,id));
           pages.purgeExpired(vault);

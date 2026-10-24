@@ -62,6 +62,7 @@ export class Bibliography {
  }else throw new HttpError(400,'Choose create, merge or skip');result.sourceIds.push(id);}return result;});
  }
  protected write(vault:string,id:string,key:string,type:string,value:Record<string,string>,origin:Origin,rawImports:string[],previous?:BibliographyRecord) {
+ try{exportBibliography([{citationKey:key,entryType:type,fields:value,creators:[],rawBibtex:''}]);}catch(error){throw new HttpError(400,error instanceof Error?error.message:'Invalid bibliographic fields');}
  if(this.store.get('SELECT 1 FROM bibliographic_records WHERE vault_id=? AND citation_key=? AND source_id<>?',vault,key,id))throw new HttpError(409,'Citation key already belongs to another Source');
  for(const property of this.store.all<{name:string;value:string}>("SELECT name,value FROM properties WHERE entity_id=? AND lower(name) IN ('doi','isbn') AND value IS NOT NULL",id)){const key=property.name.toLowerCase(),canonical=value[key];if(canonical&&((key==='doi'&&normalizeDoi(canonical)!==normalizeDoi(property.value))||(key==='isbn'&&isbn(canonical)!==isbn(property.value))))throw new HttpError(409,'The bibliographic identifier conflicts with an existing Source property. Review the authored property first.');}
  const provenance=Object.fromEntries(Object.entries(previous?.provenance??{}).filter(([key])=>key in value));for(const field of Object.keys(value))if(value[field]!==previous?.fields[field])provenance[field]={origin,at:now()};

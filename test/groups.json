@@ -90,7 +90,8 @@
     "test/provider-connection-ui.test.mjs",
     "test/settings-category-ui.test.mjs",
     "test/bibliography-ui.test.mjs",
-    "test/bibliographic-citations.test.mjs"
+    "test/bibliographic-citations.test.mjs",
+    "test/reference-list.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",
@@ -207,6 +208,7 @@
     "test/page-archive.test.mjs",
     "test/bibliography-backups.test.mjs",
     "test/bibliography-server.test.mjs",
-    "test/source-scholarly.test.mjs"
+    "test/source-scholarly.test.mjs",
+    "test/bibliography-http.test.mjs"
   ]
 }

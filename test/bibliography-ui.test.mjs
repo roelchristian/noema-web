@@ -36,7 +36,7 @@ test('DOI verification requires disclosure and preserves current facts until ind
  const accepted=[];let verifies=0;
  t.mock.method(bibliographyAPI,'record',async()=>record);t.mock.method(bibliographyAPI,'verify',async()=>{verifies++;return {proposalId:'proposal',provider:'Crossref',revision:2,fields:{title:'External title',publisher:'Synthetic Press'}};});
  t.mock.method(bibliographyAPI,'accept',async(_vault,_id,body)=>{accepted.push(body);return {...record,fields:{...record.fields,...body.fields},revision:3};});
- await mount(t,BibliographyEditor,{vaultId:'synthetic',entity:{id:'source-one',name:'Synthetic',attachments:[]},onUpdated:async()=>{}});
+ await mount(t,BibliographyEditor,{vaultId:'synthetic',entity:{id:'source-one',name:'Synthetic',attachments:[],relationships:[]},onUpdated:async()=>{}});
  assert.equal(verifies,0);assert.equal(button('Look up DOI').disabled,true);assert.match(document.querySelector('.bibliography-consent').textContent,/DOI to Crossref/);
  await change(document.querySelector('.bibliography-consent input'),true);await click('Look up DOI');assert.equal(verifies,1);assert.equal(accepted.length,0);assert.match(document.querySelector('.bibliography-proposals').textContent,/Current: Authored title/);
  const checks=document.querySelectorAll('.bibliography-proposal input');await change(checks[1],true);await click('Accept selected facts');assert.deepEqual(accepted[0].fields,{publisher:'Synthetic Press'});assert.equal(accepted[0].proposalId,'proposal');
@@ -46,9 +46,9 @@ test('DOI verification requires disclosure and preserves current facts until ind
 test('a late DOI lookup cannot replace the next Source after an identity switch',async t=>{
  let finish;const record=id=>({sourceId:id,citationKey:id,entryType:'book',fields:{title:id,doi:'10.1234/synthetic'},revision:1,provenance:{},rawImports:[]});
  t.mock.method(bibliographyAPI,'record',async(_vault,id)=>record(id));t.mock.method(bibliographyAPI,'verify',()=>new Promise(resolve=>{finish=resolve;}));
- const options={vaultId:'synthetic',entity:{id:'first-source',name:'First',attachments:[]},onUpdated:async()=>{}};const f=await mount(t,BibliographyEditor,options);
+ const options={vaultId:'synthetic',entity:{id:'first-source',name:'First',attachments:[],relationships:[]},onUpdated:async()=>{}};const f=await mount(t,BibliographyEditor,options);
  await change(document.querySelector('.bibliography-consent input'),true);await click('Look up DOI');
- await act(async()=>f.root.render(createElement(BibliographyEditor,{...options,entity:{id:'second-source',name:'Second',attachments:[]}})));
+ await act(async()=>f.root.render(createElement(BibliographyEditor,{...options,entity:{id:'second-source',name:'Second',attachments:[],relationships:[]}})));
  await act(async()=>finish({proposalId:'stale',provider:'Crossref',revision:1,fields:{title:'First source external title'}}));
  assert.equal(document.querySelector('.bibliography-proposals'),null);assert.equal(document.querySelector('.bibliography-fields input').value,'second-source');assert.equal(button('Look up DOI').disabled,true);assert.equal(document.querySelector('.bibliography-consent input').checked,false);
 });

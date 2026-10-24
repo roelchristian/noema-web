@@ -5,6 +5,8 @@ import {mkdir,writeFile} from 'node:fs/promises';
 import {resolve,join} from 'node:path';
 import {openDatabase} from '../src/server/database.ts';
 import {Store} from '../src/server/store.ts';
+import {Pages} from '../src/server/modules/pages.ts';
+import {Knowledge} from '../src/server/modules/knowledge.ts';
 import {createApp} from '../src/server/http.ts';
 import {Intelligence} from '../src/server/modules/intelligence.ts';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE??'playwright-core');
@@ -41,5 +43,17 @@ try {
  assert.equal(await editor.getByRole('button',{name:'Accept selected facts',exact:true}).isEnabled(),false);await editor.getByRole('button',{name:'Dismiss proposal',exact:true}).click();
  await page.screenshot({path:join(directory,'source-details-desktop.png')});
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:join(directory,'source-details-mobile.png')});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
- assert.deepEqual(errors,[]);await writeFile(join(directory,'validation.json'),JSON.stringify({passed:true,synthetic:true,browser:await browser.version(),checks:['cancel','idempotent retry','metadata-only','DOI consent','explicit field review','mobile'],errors},null,2));console.log(JSON.stringify({passed:true,directory}));
+ // Insert a real file-free citation and reload its persisted locator and bibliography.
+ await page.setViewportSize({width:1440,height:1000});
+ const pages=new Pages(store,new Knowledge(store)),note=pages.create('default',{title:'Synthetic citation note'});
+ await page.goto(base+'/?vault=default&page='+note.id);
+ const content=page.locator('.block-content[contenteditable=true]').first();await content.click();await page.keyboard.type('/cite',{delay:100});await page.locator('.command-menu').waitFor();await page.keyboard.press('Enter');
+ await page.getByRole('option',{name:'Synthetic Bibliography Study'}).click();await page.getByRole('combobox',{name:'Citation kind',exact:true}).selectOption('publication');
+ await page.getByRole('textbox',{name:'Bibliographic locator',exact:true}).fill('12');await page.getByRole('button',{name:'Insert bibliographic citation',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('[data-bibliographic-reference]'));
+ await page.waitForFunction(()=>document.querySelector('.note-references li'));
+ await page.waitForFunction(async id=>{const response=await fetch('/api/pages/'+id,{headers:{'x-vault-id':'default'}});const data=await response.json();return data.blocks.some(block=>block.content.some(segment=>segment.bibliographicReference?.locator==='12'));},note.id);
+ await page.reload();await page.locator('.note-references li').waitFor();assert.ok(pages.get('default',note.id).sourceIds.includes(record.source_id));assert.equal(pages.get('default',note.id).blocks[0].content.find(segment=>segment.bibliographicReference).bibliographicReference.sourceId,record.source_id);
+ await page.getByRole('combobox',{name:'Bibliography style',exact:true}).selectOption('ieee');await page.screenshot({path:join(directory,'publication-citation.png')});
+ assert.deepEqual(errors,[]);await writeFile(join(directory,'validation.json'),JSON.stringify({passed:true,synthetic:true,browser:await browser.version(),checks:['cancel','idempotent retry','metadata-only','DOI consent','explicit field review','mobile','publication citation save/reload','CSL style selection'],errors},null,2));console.log(JSON.stringify({passed:true,directory}));
 }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve));db.close();}

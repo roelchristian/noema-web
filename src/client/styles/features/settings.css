@@ -1119,3 +1119,38 @@
 @media (max-width: 420px) {
   .settings-dialog .settings-tabs button { flex-direction: column; justify-content: center; gap: 3px; text-align: center; }
 }
+
+/* Entity schema navigation and contextual inspector. */
+.entity-schema-manager { min-width: 0; font-size: var(--ui-text-md); }
+.schema-views, .schema-section-heading { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin-block: 12px; }
+.schema-views { justify-content: flex-start; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.schema-views button, .schema-type-nav button, .schema-subtype-row button, .schema-section-heading button, .schema-back, .schema-icon-options button, .schema-overflow button { min-height: var(--control-target-compact); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text); padding: 6px 8px; font: inherit; cursor: pointer; }
+.schema-views button[aria-pressed=true], .schema-type-nav button[aria-pressed=true], .schema-subtype-row button[aria-pressed=true] { background: var(--surface-hover); }
+.schema-types { display: grid; grid-template-columns: 155px minmax(0, 1fr); gap: 20px; align-items: start; }
+.schema-type-nav { display: grid; gap: 3px; }
+.schema-type-nav button { display: flex; align-items: center; gap: 8px; text-align: left; }
+.schema-type-nav small, .schema-property-summary small { display: block; color: var(--text-muted); font-size: var(--ui-text-xs); font-weight: normal; }
+.schema-type-nav .icon, .schema-subtype-row .icon, .schema-icon-options .icon { width: 16px; height: 16px; }
+.schema-type-inspector { min-width: 0; }
+.schema-type-inspector h3, .schema-type-inspector h4 { margin: 0; font-size: var(--ui-text-md); }
+.schema-subtype-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) 32px; gap: 4px; align-items: center; border-bottom: 1px solid var(--line); }
+.schema-subtype-row > button:nth-child(2) { text-align: left; overflow-wrap: anywhere; }
+.schema-overflow { position: relative; }
+.schema-overflow summary { cursor: pointer; min-height: var(--control-target-compact); display: grid; place-items: center; }
+.schema-overflow[open] { grid-column: 1 / -1; padding: 8px; background: var(--surface-hover); }
+.schema-property-summary > details { border-bottom: 1px solid var(--line); padding: 8px 0; }
+.schema-property-summary summary { cursor: pointer; }
+.schema-property-summary small { float: right; margin-left: 8px; }
+.schema-icon-palette { padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-md); margin-block: 8px; }
+.schema-icon-palette input { width: 100%; }
+.schema-icon-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 240px; overflow-y: auto; margin-top: 8px; }
+.schema-icon-options button { display: flex; align-items: center; gap: 6px; text-align: left; }
+.schema-back { display: none; }
+.entity-schema-manager [hidden] { display: none; }
+@media (max-width: 600px) {
+  .schema-types { display: block; }
+  .schema-types[data-detail=false] .schema-type-inspector, .schema-types[data-detail=true] .schema-type-nav { display: none; }
+  .schema-back { display: block; margin-bottom: 10px; }
+  .schema-views button, .schema-type-nav button, .schema-subtype-row button, .schema-section-heading button, .schema-back, .schema-icon-options button, .schema-overflow summary, .schema-overflow button { min-height: var(--touch-target-size); }
+  .schema-subtype-row { grid-template-columns: 44px minmax(0, 1fr) 44px; }
+}

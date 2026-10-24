@@ -1,3 +1,7 @@
+import {createHash} from 'node:crypto';
+import {createSynthesisInput,parseDocumentSynthesis,synthesisPromptVersion} from './source-reprocessing-context.js';
+import {planReprocessingChunks} from './source-reprocessing-planner.js';
+import type {SourceReprocessingSynthesisCheckpoint,SourceReprocessingRepairCheckpoint} from './source-reprocessing-checkpoints.js';
 import {sourceReprocessingEvidenceRevisionBytes} from '../../shared/source-reprocessing.js';
 import {validateReprocessingEvidenceSnapshot} from './source-reprocessing-evidence-validation.js';
 import {utf16Boundary,wellFormedUnicode} from './source-reprocessing-patches.js';
@@ -20,7 +24,8 @@ export function validateReprocessingConfiguration(value:unknown):SourceReprocess
  const c=object(value),e=object(c.evidence);
  oneOf(c.depth,['light','balanced','deep']);oneOf(c.reviewPolicy,['verified','review_all']);
  for(const key of ['originalPages','ocr','allowExternalTransmission'])if(typeof e[key]!=='boolean')throw invalid();
- return {depth:c.depth as SourceReprocessingConfiguration['depth'],reviewPolicy:c.reviewPolicy as SourceReprocessingConfiguration['reviewPolicy'],evidence:{originalPages:e.originalPages as boolean,ocr:e.ocr as boolean,allowExternalTransmission:e.allowExternalTransmission as boolean}};
+ if(c.architectureVersion!==undefined&&c.architectureVersion!==1)throw invalid();
+ return {...(c.architectureVersion===1?{architectureVersion:1 as const}:{}),depth:c.depth as SourceReprocessingConfiguration['depth'],reviewPolicy:c.reviewPolicy as SourceReprocessingConfiguration['reviewPolicy'],evidence:{originalPages:e.originalPages as boolean,ocr:e.ocr as boolean,allowExternalTransmission:e.allowExternalTransmission as boolean}};
 }
 
 /** Archive checkpoints are validated against canonical revision coordinates, then ID-remapped. */
@@ -51,6 +56,7 @@ export function restoreReprocessingCheckpoints(revision:SourceReprocessingRevisi
   if(JSON.stringify(validateReprocessingConfiguration(p.configuration))!==JSON.stringify(configuration)||!/^[a-f0-9]{64}$/.test(string(p.requestHash,64)))throw invalid();
   if(p.result!==null)string(p.result,256000);if(p.status==='completed'&&(p.result===null||p.finishedAt===null||p.outcomeUncertain!==false))throw invalid();
   for(const check of array(p.validation,100))string(check,2000);
+  if(p.failureKind!==undefined)oneOf(p.failureKind,['transport','invalid_output','validation','evidence','admission']);
   timestamp(p.startedAt);if(p.finishedAt!==null)timestamp(p.finishedAt);if(p.error!==null)string(p.error,10000);if(typeof p.outcomeUncertain!=='boolean')throw invalid();
   for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])if(p[key]!==null)integer(p[key],0,Number.MAX_SAFE_INTEGER);
   const pass={...structuredClone(p),revisionId:revision.id} as unknown as SourceReprocessingPass;
@@ -63,6 +69,56 @@ export function restoreReprocessingCheckpoints(revision:SourceReprocessingRevisi
  for(const patch of revision.patches)if(patch.excerptIndex===undefined||!completedIndexes.has(patch.excerptIndex))throw invalid();
  for(const chunk of chunks){const successful=passes.filter(pass=>pass.chunkIndex===chunk.index&&pass.status==='completed').sort((a,b)=>a.index-b.index);if(chunk.status==='completed'&&(successful.length!==chunk.requiredPassCount||successful.some((pass,index)=>pass.index!==index+1)))throw invalid();}
  return {chunks,passes};
+}
+
+/** Repairs are separately billed, immutable lineage records; imports never transmit them. */
+export function restoreReprocessingRepairs(values:unknown[],revision:SourceReprocessingRevision,oldRevisionId:string,passes:SourceReprocessingPass[]):SourceReprocessingRepairCheckpoint[] {
+ const seen=new Set<string>();
+ return array(values,384).map(value=>{
+  const data=object(value),chunkIndex=integer(data.chunkIndex,0,127),passIndex=integer(data.passIndex,1,3);
+  const parent=passes.find(pass=>pass.chunkIndex===chunkIndex&&pass.index===passIndex);
+  const repairId=string(data.repairId,100);if(!repairId||seen.has(repairId)||!parent||data.revisionId!==oldRevisionId||data.kind!=='repair')throw invalid();seen.add(repairId);
+  if(data.originalRequestHash!==parent.requestHash||typeof parent.result!=='string'||data.originalResultHash!==createHash('sha256').update(parent.result).digest('hex'))throw invalid();
+  if(data.model!==parent.model||data.reasoningEffort!==parent.reasoningEffort||data.promptVersion!==parent.promptVersion||JSON.stringify(validateReprocessingConfiguration(data.configuration))!==JSON.stringify(revision.configuration))throw invalid();
+  if(!/^[a-f0-9]{64}$/.test(string(data.requestHash,64)))throw invalid();
+  oneOf(data.status,['running','completed','failed','interrupted']);timestamp(data.startedAt);if(data.finishedAt!==null)timestamp(data.finishedAt);if(data.error!==null)string(data.error,10000);
+  if(typeof data.outcomeUncertain!=='boolean')throw invalid();
+  if(data.result!==null)string(data.result,256000);
+  if(data.status==='completed'&&(data.result===null||data.finishedAt===null||data.outcomeUncertain!==false))throw invalid();
+  for(const check of array(data.validation,100))string(check,2000);
+  if(data.failureKind!==undefined)oneOf(data.failureKind,['transport','invalid_output','validation','evidence','admission']);
+  for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])if(data[key]!==null)integer(data[key],0,Number.MAX_SAFE_INTEGER);
+  const repair={...structuredClone(data),revisionId:revision.id} as unknown as SourceReprocessingRepairCheckpoint;
+  if(repair.status==='running'){repair.status='interrupted';repair.outcomeUncertain=true;repair.finishedAt=now();repair.error='Restored during an explicit repair; provider outcome is unknown.';}
+  return repair;
+ });
+}
+
+/** Preserve actual synthesis requests/results in archives without granting resumed paid work. */
+export function restoreReprocessingSynthesis(value:unknown,revision:SourceReprocessingRevision,oldRevisionId:string,oldBaseHash:string,passes:SourceReprocessingPass[],repairs:SourceReprocessingRepairCheckpoint[]=[]):SourceReprocessingSynthesisCheckpoint {
+ const data=object(value),configuration=validateReprocessingConfiguration(data.configuration);
+ if(revision.pipelineVersion!==2||data.revisionId!==oldRevisionId||configuration.depth==='light'||JSON.stringify(configuration)!==JSON.stringify(revision.configuration))throw invalid();
+ oneOf(data.status,['running','completed','failed','interrupted']);
+ if(data.model!==revision.report.model||data.reasoningEffort!==revision.report.reasoningEffort)throw invalid();
+ if(data.promptVersion!==synthesisPromptVersion)throw invalid();if(!/^[a-f0-9]{64}$/.test(string(data.requestHash,64)))throw invalid();
+ timestamp(data.startedAt);if(data.finishedAt!==null)timestamp(data.finishedAt);if(data.error!==null)string(data.error,10000);
+ if(typeof data.outcomeUncertain!=='boolean')throw invalid();
+ for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])if(data[key]!==null)integer(data[key],0,Number.MAX_SAFE_INTEGER);
+ if(data.result!==null)string(data.result,128000);
+ if(data.failureKind!==undefined)oneOf(data.failureKind,['transport','invalid_output','validation','evidence','admission']);
+ if(data.validation!==undefined)for(const check of array(data.validation,100))string(check,2000);
+ if(data.status==='completed'&&(data.result===null||data.finishedAt===null||data.outcomeUncertain!==false))throw invalid();
+ if(data.register!==null){
+  const chunks=planReprocessingChunks(revision.original.text,revision.original.document,8000,configuration.architectureVersion===1);
+  const register=object(data.register);if(revision.report.contextHash!==undefined&&revision.report.contextHash!==register.hash)throw invalid();const constituents=array(register.constituentHashes,128).map(object);
+  const firstPasses=constituents.map(item=>{const pass=passes.find(pass=>pass.index===1&&pass.chunkIndex===item.chunkIndex&&pass.requestHash===item.requestHash)??repairs.find(repair=>repair.passIndex===1&&repair.chunkIndex===item.chunkIndex&&repair.requestHash===item.requestHash&&repair.validation.includes('complete-canonical-block-mapping'));if(!pass)throw invalid();return pass;});
+  if(firstPasses.some(pass=>pass.status!=='completed'||!pass.result)||firstPasses.length!==constituents.length)throw invalid();
+  const input=createSynthesisInput({revisionId:oldRevisionId,baseHash:oldBaseHash,text:revision.original.text,title:revision.original.document.source.title,chunks,firstPasses:firstPasses.map(pass=>({chunkIndex:pass.chunkIndex,result:pass.result!,requestHash:pass.requestHash}))});
+  if(createHash('sha256').update(input.request).digest('hex')!==data.requestHash||JSON.stringify(parseDocumentSynthesis(input,data.result as string))!==JSON.stringify(register))throw invalid();
+ }
+ const restored={...structuredClone(data),revisionId:revision.id} as unknown as SourceReprocessingSynthesisCheckpoint;
+ if(restored.status==='running'){restored.status='interrupted';restored.outcomeUncertain=true;restored.finishedAt=now();restored.error='Restored during synthesis; provider outcome is unknown.';}
+ return restored;
 }
 
 /** Imported derivatives are rebuilt from validated evidence; archive data never starts paid jobs. */
@@ -164,6 +220,12 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
   if(typeof metadata.cacheHit!=='boolean'||!/^[a-f0-9]{64}$/.test(string(metadata.evidenceHash,64)))throw invalid();
  }
  const chunks=integer(report.chunksTotal,0,128);integer(report.chunksCompleted,0,chunks);
+ if(report.stage!==undefined)oneOf(report.stage,['reconstructing','understanding','verifying','auditing']);
+ if(report.stageProgress!==undefined){const progress=object(report.stageProgress);const total=integer(progress.total,0,128);integer(progress.completed,0,total);}
+ if(report.contextHash!==undefined&&!/^[a-f0-9]{64}$/.test(string(report.contextHash,64)))throw invalid();
+ if(report.documentAudit!==undefined){const audit=object(report.documentAudit);if(audit.version!==1||!/^[a-f0-9]{64}$/.test(string(audit.candidateHash,64)))throw invalid();if(audit.contextHash!==undefined&&audit.contextHash!==report.contextHash)throw invalid();for(const finding of array(audit.findings,1000))string(finding,10000);}
+ if(report.coverage!==undefined){const coverage=object(report.coverage);if(coverage.totalChunks!==chunks)throw invalid();const completed=integer(coverage.firstPassCompleted,0,chunks),missing=array(coverage.incompleteChunkIndexes,128).map(value=>integer(value,0,chunks-1));if(new Set(missing).size!==missing.length||missing.length!==chunks-completed)throw invalid();}
+
  if(report.concurrency!==undefined)integer(report.concurrency,1,2);
  if(report.evidencePreparation!==undefined){const preparation=object(report.evidencePreparation);oneOf(preparation.state,['collecting','completed']);if(integer(preparation.totalChunks,0,128)!==chunks)throw invalid();integer(preparation.preparedChunks,0,chunks);if(preparation.state==='completed'&&preparation.preparedChunks!==chunks)throw invalid();}
  if(report.completedChunkIndexes!==undefined){

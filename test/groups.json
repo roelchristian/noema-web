@@ -235,6 +235,8 @@
     "test/source-metadata.test.mjs",
     "test/source-metadata-provenance.test.mjs",
     "test/page-connections.test.mjs",
-    "test/source-reprocessing-metadata-v2.test.mjs"
+    "test/source-reprocessing-metadata-v2.test.mjs",
+    "test/source-reprocessing-context.test.mjs",
+    "test/source-reprocessing-optimization.test.mjs"
   ]
 }

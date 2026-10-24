@@ -57,10 +57,13 @@ test('V2 semantic reconstruction uses a blocks provider schema without changing 
   const signal=new AbortController().signal;
   await ai.reeditSource('Synthetic prose','Reconstruct scholarly blocks',signal,undefined,'blocks');
   const format=bodies[0].text.format;assert.equal(format.name,'source_reconstruction_blocks');assert.equal(format.strict,true);
-  assert.deepEqual(format.schema.required,['blocks','diagnostics','unresolved']);assert.deepEqual(format.schema.properties.blocks.items.required,['id','text']);assert.equal(format.schema.properties.patches,undefined);
+  assert.deepEqual(format.schema.required,['blocks','diagnostics','unresolved','uncertainties']);assert.deepEqual(format.schema.properties.blocks.items.required,['id','text']);assert.equal(format.schema.properties.patches,undefined);
   assert.deepEqual(bodies[0].tools,[]);assert.equal(bodies[0].store,false);assert.equal(bodies[0].max_output_tokens,16000);assert.ok(!bodies[0].instructions.includes('Oxford'));
   await ai.reeditSource('Synthetic prose','Legacy editorial patches',signal);
   assert.equal(bodies[1].text.format.name,'source_editorial_patches');
+  await ai.reeditSource('Synthetic observations','Synthesize context',signal,undefined,'synthesis');
+  assert.equal(bodies[2].text.format.name,'source_document_synthesis');assert.deepEqual(bodies[2].text.format.schema.required,['observations']);
+  assert.deepEqual(bodies[2].text.format.schema.properties.observations.items.required,['kind','reading','alternatives','evidence','resolutionNeed']);
 });
 test('editorial schema is only sent for an explicitly compatible model and local parsing remains required',async()=>{
   const model=intelligenceModels.find(model=>model.id==='gpt-5-mini'),supported=model.structuredOutputs;

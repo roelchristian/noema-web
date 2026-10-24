@@ -13,7 +13,7 @@ export function segmentsEqual(left: Segment[], right: Segment[]) {
       }
       const value = segment.text ?? '';
       if (!value && !segment.math && !segment.sourceReference && !segment.bibliographicReference) continue;
-      const marks = JSON.stringify([!!segment.bold, !!segment.italic, !!segment.underline, !!segment.strike, !!segment.code, !!segment.math, segment.href ?? '', !!segment.skipAutoTag, segment.sourceReference ?? null, segment.bibliographicReference ?? null]);
+      const marks = JSON.stringify([!!segment.bold, !!segment.italic, !!segment.underline, !!segment.strike, !!segment.superscript, !!segment.subscript, !!segment.code, !!segment.math, segment.href ?? '', !!segment.skipAutoTag, segment.sourceReference ?? null, segment.bibliographicReference ?? null]);
       const last = result.at(-1);
       if (last && !last.entity && !last.atomic && !segment.math && !segment.sourceReference && !segment.bibliographicReference && last.marks === marks) last.value += value;
       else result.push({value, marks, ...(segment.math || segment.sourceReference || segment.bibliographicReference ? {atomic: true} : {})});

@@ -1,5 +1,5 @@
 import type {BibliographicReference} from '../../shared/bibliographic-citations';
-import {blockTransliteration} from '../../shared/transliteration';
+import {blockTransliterationSegments} from '../../shared/transliteration';
 import {TransliterationBlock} from './TransliterationBlock';
 import {useTransliteration,type TransliterationLayout} from '../state/transliteration-preferences';
 import {speechText,useSpeech} from './speech';
@@ -133,7 +133,7 @@ interface TextRowActions {
 // Default shallow comparison keeps every visible dependency explicit, including list order.
 const TextBlockRow=memo(function TextBlockRow({block,entities,reviewMatches,number,actions,paragraphPosition,transliterationLayout,language}: {language?:string|null;transliterationLayout:TransliterationLayout;block:Block;entities:Entity[];reviewMatches:EntityReviewItem[];number?:number;actions:TextRowActions;paragraphPosition?:'first'|'continuation';locale:ReturnType<typeof getLocale>}) {
   const register=useCallback((element:HTMLElement|null)=>actions.register(block.id,element),[actions,block.id]);
-  const transliteration=transliterationLayout==='off'?null:blockTransliteration(block,entities,language);
+  const transliteration=transliterationLayout==='off'?null:blockTransliterationSegments(block,entities,language);
   return <div data-transliteration-layout={transliteration?transliterationLayout:undefined} data-paragraph-flow={paragraphPosition} data-block-id={block.id} data-semantic-kind={block.semantic} style={semanticStyle(block.semantic)} className={'block '+block.type+(block.semantic?' semantic-block':'')}>
     {block.semantic&&<span className="semantic-callout-icon" aria-hidden="true"><Icon name={semanticFunctions[block.semantic].icon}/></span>}
     <div className="block-controls" role="group" aria-label={uiText("Block controls")}>
@@ -142,7 +142,7 @@ const TextBlockRow=memo(function TextBlockRow({block,entities,reviewMatches,numb
     </div>
     {block.type==='todo'?<input type="checkbox" aria-label={uiText("Complete task")} checked={block.checked} onChange={event=>actions.update(block.id,{checked:event.target.checked})}/>:block.type==='bullet'?<span className="bullet-marker">•</span>:block.type==='numbered'?<span className="bullet-marker numbered-marker">{number}.</span>:null}
     <EditableBlock block={block} entities={entities} reviewMatches={reviewMatches} register={register} onOpen={actions.open} onInput={(element,event)=>actions.input(block,element,event)} onKeyDown={event=>actions.keyDown(event,block)} onPaste={event=>actions.paste(event,block)}/>
-    {transliteration&&<TransliterationBlock text={transliteration}/>}
+    {transliteration&&<TransliterationBlock content={transliteration}/>}
   </div>;
 });
 const blockSuggestionIds=memoizeBlock(block=>{

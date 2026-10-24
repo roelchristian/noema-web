@@ -66,7 +66,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS entity_overviews (
  page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
  pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1)),annotation TEXT NOT NULL DEFAULT '' CHECK(length(annotation)<=2000),created_at TEXT NOT NULL,
  PRIMARY KEY(entity_id,page_id));
- CREATE INDEX IF NOT EXISTS entity_page_associations_page ON entity_page_associations(page_id);`);
+ CREATE INDEX IF NOT EXISTS entity_page_associations_page ON entity_page_associations(page_id);
+ CREATE TABLE IF NOT EXISTS page_page_associations (
+ source_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+ target_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+ pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1)),annotation TEXT NOT NULL DEFAULT '' CHECK(length(annotation)<=2000),created_at TEXT NOT NULL,
+ PRIMARY KEY(source_id,target_id),CHECK(source_id<target_id));
+ CREATE INDEX IF NOT EXISTS page_page_associations_target ON page_page_associations(target_id);`);
 db.exec(`CREATE TABLE IF NOT EXISTS entity_discoveries (
  id TEXT PRIMARY KEY,entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,created_at TEXT NOT NULL,
  fingerprint TEXT NOT NULL,payload TEXT NOT NULL);

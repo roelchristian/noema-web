@@ -23,6 +23,7 @@ try {
  const page=await browser.newPage({viewport:{width:1440,height:1000}});page.setDefaultTimeout(15000);page.on('pageerror',error=>errors.push(error.message));
  await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
  const base=`http://127.0.0.1:${server.address().port}`;
+ const openDetails=async()=>{await page.getByRole('tab',{name:'Overview',exact:true}).click();const disclosure=page.locator('#entity-panel details.entity-context-details').filter({has:page.locator('summary',{hasText:/^Identity and property details$/})});if(!await disclosure.evaluate(element=>element.open))await disclosure.locator(':scope > summary').click();};
  await page.goto(base+'/?vault=default&view=entities&type=source');
  if(!await page.getByRole('button',{name:'Import bibliography',exact:true}).count())await page.getByRole('button',{name:'Sources',exact:true}).first().click();
  const open=async()=>{await page.getByRole('button',{name:'Import bibliography',exact:true}).click();await page.getByRole('textbox',{name:'BibTeX / BibLaTeX',exact:true}).fill('@book{Synthetic2026,title={Synthetic Bibliography Study},author={{Synthetic Group}},year={2026},doi={10.5555/synthetic},custom={retained}}');};
@@ -44,7 +45,7 @@ try {
  await page.screenshot({path:join(directory,'sources-desktop.png')});
  // Open the Source inspector directly through the app's entity route.
  await page.goto(base+'/?vault=default&source='+record.source_id+'&entity='+record.source_id);
- await page.getByRole('tab',{name:'Details',exact:true}).click();
+ await openDetails();
  const editor=page.locator('.bibliography-editor').last();await editor.getByText('Verify DOI metadata',{exact:true}).waitFor();
  assert.equal(await editor.getByRole('button',{name:'Look up DOI',exact:true}).isEnabled(),false);
  // Canonical editor reconciles conflicting legacy properties without overwriting them.
@@ -82,6 +83,6 @@ try {
  await page.getByRole('button',{name:'Show history',exact:true}).click();
  await page.locator('.source-metadata-field').filter({hasText:/ai scholarly synopsis/i}).getByText('Field history (1)',{exact:true}).waitFor();
  const bundle=await page.evaluate(async()=>await (await fetch('/api/bibliography/export',{headers:{'x-vault-id':'default'}})).json());assert.ok(bundle.annotated.includes('A synthetic comparison')); assert.ok(!bundle.bibtex.includes('A synthetic comparison'));assert.equal(JSON.parse(bundle.sidecar).records[0].scholarly.classifications[0].domainId,'general');
- await page.getByRole('tab',{name:'Details',exact:true}).click();await page.getByRole('heading',{name:'Disciplinary classification',exact:true}).waitFor();await page.screenshot({path:join(directory,'reviewed-classification-and-export.png')});
+ await openDetails();await page.getByRole('heading',{name:'Disciplinary classification',exact:true}).waitFor();await page.screenshot({path:join(directory,'reviewed-classification-and-export.png')});
  assert.deepEqual(errors,[]);await writeFile(join(directory,'validation.json'),JSON.stringify({passed:true,synthetic:true,browser:await browser.version(),checks:['cancel','idempotent retry','metadata-only','DOI consent','explicit field review','mobile','publication citation save/reload','live inline CSL styles and reload persistence','per-field import review','authored property reconciliation','canonical taxonomy review','reviewed scholarly annotated/sidecar export'],errors},null,2));console.log(JSON.stringify({passed:true,directory}));
 }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve));db.close();}

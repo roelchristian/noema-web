@@ -1,5 +1,6 @@
 import {sourceMetadataFieldFingerprint,sourceMetadataCanonicalField,sourceMetadataBibliographicOwner} from './source-metadata.js';
 import {restoreMetadataEvidence} from './source-metadata-backup.js';
+import {remapPageLinks} from '../../shared/page-links.js';
 import {isCitationKey} from '../../shared/bibliography.js';
 import {organizationDescription} from './organization-descriptions.js';
 import {parseExampleCollection} from '../../shared/example-collections.js';
@@ -83,6 +84,7 @@ const tables={
   page_reading_notes:{columns:'page_id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,reference_json,created_at',scope:'vault_id=?'},
   entities:{columns:'id,name,aliases,mention_case,referent_status,type,subtypes,description,updated_at,inactive,archived_at',scope:'vault_id=?'},
   entity_overviews:{columns:'entity_id,content,revision',scope:entityScope},
+  page_page_associations:{columns:'source_id,target_id,pinned,annotation,created_at',scope:'source_id IN (SELECT id FROM pages WHERE vault_id=?)'},
   entity_page_associations:{columns:'entity_id,page_id,pinned,annotation,created_at',scope:entityScope},
   properties:{columns:'id,entity_id,name,value,target_id',scope:entityScope},
   relationships:{columns:'id,source_id,label,target_id',scope:'source_id IN (SELECT id FROM entities WHERE vault_id=?)'},
@@ -187,7 +189,7 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table.startsWith('bibliographic_')||table.startsWith('source_metadata_')||table==='page_versions'||table==='collection_descriptions'||table==='folder_descriptions'||table.startsWith('smart_collection_')||table.startsWith('temporal_')||table==='property_provenance'||table==='entity_name_provenance'||table==='property_proposals'||table==='source_author_jobs'||table==='property_definitions'||table==='property_value_metadata'||table==='entity_overviews'||table==='entity_page_associations'||table==='source_reading_locations'||table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table.startsWith('bibliographic_')||table.startsWith('source_metadata_')||table==='page_versions'||table==='collection_descriptions'||table==='folder_descriptions'||table.startsWith('smart_collection_')||table.startsWith('temporal_')||table==='property_provenance'||table==='entity_name_provenance'||table==='property_proposals'||table==='source_author_jobs'||table==='property_definitions'||table==='property_value_metadata'||table==='entity_overviews'||table==='entity_page_associations'||table==='page_page_associations'||table==='source_reading_locations'||table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     const splitSourceOwners=new Set<unknown>(),sourceOwners=new Set<unknown>(),legacyEntities=new Map(rows.entities.map(row=>[row.id,row]));
     const legacyProperties=[...rows.properties],legacyLinks=[...rows.page_sources];
     for(const file of rows.source_files) {
@@ -230,6 +232,7 @@ export class VaultBackups {
       for(const row of records){const id=name(row,'id');if(map.has(id))throw invalid();map.set(id,randomUUID());}return map;
     };
     const citationIds=new Map<string,string>(),sourceEvidenceIds={generations:new Map<string,string>(),passages:new Map<string,string>()};
+    const detachedPageLinks=new Map<string,string>();
     const propertyIds=ids(rows.properties),pageIds=ids(rows.pages),entityIds=ids(rows.entities),folderIds=ids(rows.folders),collectionIds=ids(rows.collections),subtypeIds=ids(rows.entity_subtypes),imageIds=new Map<string,string>();
     const subtypeTypes=new Map(rows.entity_subtypes.map(row=>[row.id,row.type]));
     const ref=(map:Map<string,string>,value:unknown)=>{if(typeof value!=='string'||!map.has(value))throw invalid();return map.get(value)!;};
@@ -464,6 +467,7 @@ export class VaultBackups {
             const segments=(value:unknown)=>list(value).map(value=>{
               const segment={...object(value)};
               if(segment.entityId)segment.entityId=ref(entityIds,segment.entityId);
+              if(typeof segment.text==='string'&&!segment.code&&!segment.math&&!segment.href&&!['code','divider','math','image'].includes(String(block.type)))segment.text=remapPageLinks(segment.text,id=>{if(pageIds.has(id))return pageIds.get(id)!;if(!detachedPageLinks.has(id))detachedPageLinks.set(id,randomUUID());return detachedPageLinks.get(id)!;});
               if(segment.bibliographicReference!==undefined) {
                 const citation=object(segment.bibliographicReference),citationId=name(citation,'id');
                 if(!citationIds.has(citationId))citationIds.set(citationId,randomUUID());
@@ -555,6 +559,11 @@ export class VaultBackups {
           const entityId=ref(entityIds,row.entity_id);
           if(this.store.get<{type:string}>('SELECT type FROM entities WHERE id=?',entityId)?.type==='source')throw invalid();
           insert('entity_overviews',{entity_id:entityId,content:string(row,'content',100000),revision:integer(row,'revision',1)});
+        }
+        for(const row of rows.page_page_associations) {
+          const [source,target]=[ref(pageIds,row.source_id),ref(pageIds,row.target_id)].sort();
+          if(source===target)throw invalid();
+          insert('page_page_associations',{source_id:source!,target_id:target!,pinned:integer(row,'pinned',0,1),annotation:string(row,'annotation',2000),created_at:timestamp(row,'created_at')});
         }
         for(const row of rows.entity_page_associations) {
           const entityId=ref(entityIds,row.entity_id);
@@ -823,7 +832,7 @@ export class VaultBackups {
           ref(restoredSourceFiles,row.file_id);if(!/^[a-f0-9]{64}$/.test(string(row,'evidence_hash',64)))throw invalid();
           json(row,'payload');timestamp(row,'created_at');
         }
-        restorePageVersions(this.store,vault,rows.page_versions,{evidence:sourceEvidenceIds,pages:pageIds,entities:entityIds,files:restoredSourceFiles,images:imageIds,citations:citationIds,detachedEntities:detachedSources,detachedFiles});
+        restorePageVersions(this.store,vault,rows.page_versions,{evidence:sourceEvidenceIds,pages:pageIds,entities:entityIds,files:restoredSourceFiles,images:imageIds,citations:citationIds,detachedEntities:detachedSources,detachedFiles,detachedPages:detachedPageLinks});
         // Recompute after validation/remapping instead of trusting a supplied page fingerprint.
         syncReadingNotesCollection(this.store,vault);
         for(const id of pageIds.values())if(!this.store.get<{deleted_at:string|null}>('SELECT deleted_at FROM pages WHERE id=?',id)!.deleted_at)pages.get(vault,id);

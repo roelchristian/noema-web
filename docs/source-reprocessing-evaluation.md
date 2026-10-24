@@ -31,3 +31,26 @@ Stages use at most two workers, and every provider request still enters the exis
 `repairReconstructionPass` is an exported server interface requiring `allowAdditionalRequest: true`. It records a new repair request with lineage to the original request and output; it preserves both outputs and both usage records. It is not automatically invoked and does not yet have a browser/HTTP repair action. A first-pass repair cannot change an already frozen synthesis. A failed or uncertain request is never replayed through ordinary resume.
 
 Progress updates serialize the report; completed-chunk transactions serialize report and decisions without document snapshots. Derivative materialization occurs at the final stage boundary and at startup recovery for interrupted revisions. Full revision saves remain at lifecycle/publication boundaries. Imported frozen synthesis retains its archived identity and cannot be resumed under a remapped revision ID; start a new revision explicitly. Backups preserve original requests, synthesis, repairs, usage, and uncertainty without starting provider work.
+
+## Opt-in optimization checkpoint and limits
+
+`planReprocessingOptimization` supplies supported, pure planning interfaces for stage-specific model routes and selective original-page demands. Opt-in, an evaluation identifier, capability, separate routing/evidence consent, official model/reasoning compatibility, and an explicit additional-request budget are required. Plans bind canonical text, document and configuration hashes. Local evidence demand does not grant external transmission permission. Synthetic tests cover disabled defaults, consent/capability denial, bounded page selection, invalid reasoning/ranges, and frozen-plan tampering.
+
+These plans make **zero provider requests**. Production execution continues to use the revision's selected model and its existing evidence preparation. Activating routing or selective collection in the executor is deliberately deferred until evaluation; no HTTP/UI optimization switch is exposed. Ordinary bounded structural/exact-term context selection is already part of Balanced verification and needs no embeddings.
+
+The final deterministic audit covers document-wide footnote linkage, duplicate definitions, physical page markers, substantial content loss, newly duplicated paragraphs, quotation/math changes and unresolved context. Its candidate hash, context hash and findings remain durable independently of later review materialization. Findings are diagnostics for targeted investigation or review and never trigger paid requests.
+
+Supported limits are 128 chunks, 50 patches per chunk, 64,000 UTF-16 units per synthesis request, 128 evidence-linked synthesis observations, and bounded local/retrieved context. Oversized synthesis inputs reject explicitly; hierarchical consolidation is not implemented. Existing V1/V2 records remain readable; incompatible historical prompt versions require a new revision for further processing. Repair UI/HTTP integration must serialize owner actions and use compact report updates or optimistic concurrency to preserve concurrent editorial decisions.
+
+Validation uses Node 24, in-memory SQLite, scripted providers and a synthetic desktop/mobile Chromium fixture. Run `npm run build`, `npm run test:all`, the offline evaluator, and the browser command above. Paid model quality, real academic PDFs, production provider latency and comparative paid cost remain **UNRUN**.
+
+## Recorded validation (2026-10-24)
+
+- `npm run build`: passed styles, application/test typechecks, server compilation and Vite build.
+- `npm run test:all`: 1,468 passed, 7 skipped, 0 failed (1,475 total; Node 24.19.0).
+- Scheduler integration: 29 passing synthetic tests including two-worker barriers, uncertain recovery, separately consented repair, frozen context, crash recovery and 1,000-finding audit truncation.
+- Source desktop/mobile Chromium fixture: passed. Existing dark-theme browser fixture: 12 scenarios passed, no recorded harness errors; screenshots intentionally UNRUN.
+- Independent review: 20,000 deterministic Unicode/apparatus edit round trips passed; findings were corrected and rechecked.
+- Offline corpus: 4 scripted corrections, 10 protected-content checks; review spans 85 to 4 UTF-16 units. This is a diff/context delivery comparison, not a provider quality result.
+
+No paid calls, user-document transmissions, model downloads, credential changes, remote writes, deployment or publication were performed. The implementation is on its own local branch for review.

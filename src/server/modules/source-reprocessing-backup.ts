@@ -223,6 +223,7 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  if(report.stage!==undefined)oneOf(report.stage,['reconstructing','understanding','verifying','auditing']);
  if(report.stageProgress!==undefined){const progress=object(report.stageProgress);const total=integer(progress.total,0,128);integer(progress.completed,0,total);}
  if(report.contextHash!==undefined&&!/^[a-f0-9]{64}$/.test(string(report.contextHash,64)))throw invalid();
+ if(report.documentAudit!==undefined){const audit=object(report.documentAudit);if(audit.version!==1||!/^[a-f0-9]{64}$/.test(string(audit.candidateHash,64)))throw invalid();if(audit.contextHash!==undefined&&audit.contextHash!==report.contextHash)throw invalid();for(const finding of array(audit.findings,1000))string(finding,10000);}
  if(report.coverage!==undefined){const coverage=object(report.coverage);if(coverage.totalChunks!==chunks)throw invalid();const completed=integer(coverage.firstPassCompleted,0,chunks),missing=array(coverage.incompleteChunkIndexes,128).map(value=>integer(value,0,chunks-1));if(new Set(missing).size!==missing.length||missing.length!==chunks-completed)throw invalid();}
 
  if(report.concurrency!==undefined)integer(report.concurrency,1,2);

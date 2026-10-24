@@ -70,6 +70,7 @@ export interface SourceReprocessingReport {
  stageProgress?:{completed:number;total:number};
  coverage?:{firstPassCompleted:number;totalChunks:number;incompleteChunkIndexes:number[]};
  contextHash?:string;
+ documentAudit?:{version:1;candidateHash:string;contextHash?:string;findings:string[]};
  evidencePreparation?:{state:'collecting'|'completed';preparedChunks:number;totalChunks:number};
  /** Structured publication candidates are separate from editorial text patches. */
  metadata?:{candidateCount:number;added:number;corroborated:number;requiresReview:number;cacheHit:boolean;evidenceHash:string};

@@ -102,10 +102,13 @@ export function selectVerificationContext(register:SourceDocumentSynthesis,chunk
  return {documentContext:{synthesisHash:register.hash,global:{title:register.title,coverage:register.missingChunkIndexes.length?'incomplete':'complete',missingChunkIndexes:register.missingChunkIndexes,outline:register.sections.slice(0,24).map(({id,title})=>({id,title})),observationsAreIndependentEvidence:false},section:register.sections.filter(section=>section.start<chunk.end&&section.end>chunk.start).slice(0,4),retrieved,relatedPassages},adjacentContext:{before:{start:before,end:chunk.start,text:text.slice(before,chunk.start)},after:{start:chunk.end,end:after,text:text.slice(chunk.end,after)},editable:false}};
 }
 
-export interface DocumentAuditFinding {kind:'missing-reference'|'duplicate-definition'|'page-markers'|'unresolved-context'|'scholarly-preservation';message:string;reference?:string}
+export interface DocumentAuditFinding {kind:'missing-reference'|'duplicate-definition'|'page-markers'|'unresolved-context'|'scholarly-preservation'|'content-loss'|'duplicate-content';message:string;reference?:string}
 /** Diagnostics never authorize edits or launch an extra paid request. */
 export function auditDocumentConsistency(canonical:string,derivative:string,register?:SourceDocumentSynthesis):DocumentAuditFinding[]{
  const findings:DocumentAuditFinding[]=[],definitions=new Map<string,number>();
+ if(canonical.length-derivative.length>100&&derivative.length<canonical.length*0.8)findings.push({kind:'content-loss',message:'Derivative is more than 20% shorter than canonical text; review possible missing content.'});
+ const paragraphCounts=(value:string)=>{const counts=new Map<string,number>();for(const paragraph of value.split(/\n[ \t]*\n/)){if(paragraph.length<80)continue;counts.set(paragraph,(counts.get(paragraph)??0)+1);}return counts;};
+ const canonicalParagraphs=paragraphCounts(canonical);for(const [paragraph,count] of paragraphCounts(derivative))if(count>1&&count>(canonicalParagraphs.get(paragraph)??0))findings.push({kind:'duplicate-content',message:`A ${paragraph.length}-character passage occurs ${count} times in the derivative; compare canonical occurrences.`});
  for(const match of derivative.matchAll(/^[ \t]*\[\^([^\]\n]+)\]:/gm))definitions.set(match[1]!,1+(definitions.get(match[1]!)??0));
  for(const [reference,count] of definitions)if(count>1)findings.push({kind:'duplicate-definition',reference,message:`Footnote ${reference} has ${count} definitions.`});
  const originalMissing=new Set([...canonical.matchAll(/\[\^([^\]\n]+)\](?!:)/g)].map(match=>match[1]).filter(id=>!new RegExp(`^[ \\t]*\\[\\^${id!.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\]:`,'m').test(canonical)));

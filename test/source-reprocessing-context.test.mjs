@@ -63,3 +63,11 @@ test('structured reconstruction uncertainty retains evidence and rejects invente
  const request=createSynthesisInput({revisionId:'revision',baseHash:'base',text:chunk.blocks.map(value=>value.text).join(''),chunks,firstPasses:[{chunkIndex:0,requestHash:'r',result:JSON.stringify({blocks:chunk.blocks.map(value=>({id:value.id,text:value.text.replace('nomen','nomcn')})),uncertainties})}]}).request;
  const parsed=JSON.parse(request);assert.equal(parsed.findings[0].uncertainties[0].readings[1],'nomcn');assert.ok(parsed.findings[0].candidates[0].text.includes('nomcn'));
 });
+
+test('final deterministic audit flags major content loss and newly duplicated passages',()=>{
+ const paragraph='A scholarly passage whose careful preservation matters. '.repeat(3);
+ assert.equal(auditDocumentConsistency(paragraph+' Additional source content.','short')[0].kind,'content-loss');
+ assert.ok(auditDocumentConsistency(paragraph,paragraph+'\n\n'+paragraph).some(item=>item.kind==='duplicate-content'));
+ assert.ok(!auditDocumentConsistency(paragraph+'\n\n'+paragraph,paragraph+'\n\n'+paragraph).some(item=>item.kind==='duplicate-content'));
+ assert.equal(auditDocumentConsistency('<!-- Page 1 -->\nsource','source')[0].kind,'page-markers');
+});

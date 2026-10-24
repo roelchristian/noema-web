@@ -229,3 +229,17 @@ test('invalid synthesis preserves actual durable output with separate schema ver
   env.restart();env.worker.resume('vault',env.revision.fileId,env.revision.id);await env.worker.tick();assert.equal(env.value.status,'failed');assert.equal(env.calls.length,2);assert.equal(env.checkpoints.synthesis(env.revision.id).result,raw);
  }
 });
+
+
+test('final deterministic audit remains durable when review rematerializes a derivative',async t=>{
+ const env=harness(t,{text:'A preserved quote “original” and equation $x=1$.',provider:request=>{if(request.kind==='synthesis')return JSON.stringify({observations:[]});return JSON.stringify({blocks:request.blocks.map(block=>({...block,text:block.text.replace('$x=1$','$x=2$')})),diagnostics:[],unresolved:false});}});
+ await env.worker.tick();const result=env.value;assert.equal(result.status,'completed');
+ const audit=structuredClone(result.report.documentAudit);assert.equal(audit.version,1);assert.equal(audit.contextHash,result.report.contextHash);assert.ok(audit.findings.some(value=>value.includes('scholarly-preservation')));
+ env.worker.review('vault',result.fileId,result.id,{updatedAt:result.updatedAt,decisions:result.patches.map(patch=>({patchId:patch.id,decision:'rejected'}))});assert.deepEqual(env.value.report.documentAudit,audit);assert.equal(env.value.reprocessed.text,result.original.text);
+});
+
+test('large scholarly audit stays within the restorable finding budget and records truncation',async t=>{
+ const text=Array.from({length:1100},(_,index)=>`Reference [^${index}].\n[^${index}]: printed definition.\n\n`).join('');
+ const env=harness(t,{text,provider:request=>request.kind==='synthesis'?JSON.stringify({observations:[]}):JSON.stringify({blocks:request.blocks.map(block=>({...block,text:block.text.replace(/^\[\^\d+\]: printed definition\.\n/gm,'')})),diagnostics:[],unresolved:false})});
+ await env.worker.tick();assert.equal(env.value.status,'completed');const audit=env.value.report.documentAudit;assert.equal(audit.findings.length,1000);assert.match(audit.findings.at(-1),/omitted/);assert.deepEqual(env.value.report.validationDiagnostics,audit.findings);
+});

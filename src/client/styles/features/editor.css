@@ -3254,3 +3254,10 @@
   .editor-speech[data-ready=true] > :is(.speech-playback, .speech-info, .speech-download) { animation: none; }
 }
 .block[data-speech-current] { outline: 1px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+
+.mention.thing, .entity-icon.thing {
+  --mention-ink: var(--thing-text, var(--text));
+  background: var(--thing-bg, #f0f0f0);
+  color: var(--thing-text, #333);
+  border-color: var(--thing-border, #d9d9d9);
+}

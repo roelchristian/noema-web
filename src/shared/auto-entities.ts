@@ -1,6 +1,6 @@
 import {conceptAliasNeedsReview,ordinaryConceptUse} from './concept-classification.js';
 import {noteDateRanges} from './note-dates.js';
-import { blockSegments, isEntityTaggingText, type Block, type Entity, type Segment } from './domain.js';
+import { requiresNarrativeIdentityReview, blockSegments, isEntityTaggingText, type Block, type Entity, type Segment } from './domain.js';
 
 export const normalizeEntityName = (name: string) => name.trim().replace(/\s+/g, ' ').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').toLowerCase();
 const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -61,7 +61,7 @@ export function identifyEntityMentions(blocks: Block[], entities: Entity[], vaul
         let occurrenceOnly = false;
         let entity = matches.length === 1 ? matches[0] : undefined;
         if (matches.some(item=>item.type==='concept') && ordinaryConceptUse(text,match.index!,match[0].length,normalizeEntityName(match[0]))) continue;
-        const needsReview=matches.some(item=>item.type==='concept' && conceptAliasNeedsReview(match[0]));
+        const needsReview=matches.some(item=>requiresNarrativeIdentityReview(item)||item.type==='concept' && conceptAliasNeedsReview(match[0]));
         if (matches.length > 1 || needsReview) {
           entity=undefined;
           const candidate: AmbiguousEntityMatch = {id: `${location}:${runStart}:${match.index}`, text: match[0], context: text.slice(Math.max(0, match.index! - 45), match.index! + match[0].length + 45), entityIds: matches.map(item => item.id)};

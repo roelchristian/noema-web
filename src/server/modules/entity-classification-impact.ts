@@ -62,11 +62,13 @@ export class EntityClassificationImpact {
   }
   const sourceFiles=this.store.all<{id:string}>('SELECT id FROM source_files WHERE entity_id=? ORDER BY id',entityId);
   const pageSources=this.store.all<{page_id:string}>('SELECT page_id FROM page_sources WHERE source_id=? ORDER BY page_id',entityId);
+  const domains=this.store.all<{domain_id:string}>('SELECT domain_id FROM entity_domains WHERE entity_id=? ORDER BY domain_id',entityId);
   const structuralBlockers:string[]=[];
+  if(next.type!==current.type&&domains.length)structuralBlockers.push('Review and remove disciplinary associations explicitly before changing this Concept type. Existing records and domains are preserved.');
   if(next.type!=='source'&&sourceFiles.length)structuralBlockers.push('A Source with attached files must remain a Source entity.');
   if(next.type==='source'&&current.type!=='source')structuralBlockers.push('Create a Source with an attached file rather than reclassifying this entity.');
   if(next.type!=='source'&&pageSources.length)structuralBlockers.push('Consulted Source page references must be resolved before changing the Source type.');
-  const fingerprint=createHash('sha256').update(stable({entity,next,own,incomingRows,targets,definitions:[...definitions].sort((a,b)=>a.id.localeCompare(b.id)),subtypes:actualSchema.subtypes,sourceFiles,pageSources})).digest('hex');
+  const fingerprint=createHash('sha256').update(stable({entity,next,own,incomingRows,targets,definitions:[...definitions].sort((a,b)=>a.id.localeCompare(b.id)),subtypes:actualSchema.subtypes,domains,sourceFiles,pageSources})).digest('hex');
   return {entityId,current,proposed:next,outgoing,incoming,structuralBlockers,requiresConfirmation:!!(outgoing.length||incoming.length),fingerprint};
  }
  assertAllowed(vault:string,entityId:string,proposed:Classification,confirmation:{mode?:unknown;fingerprint?:unknown}={},schema?:EntitySchema):ClassificationImpact {

@@ -1,3 +1,4 @@
+import {requiresNarrativeIdentityReview} from './domain.js';
 import {normalizeEntityName} from './auto-entities.js';
 import type {EntitySuggestion} from './entity-scan.js';
 
@@ -11,6 +12,7 @@ export function mergeSuggestionIdentities(input:EntitySuggestion[]):EntitySugges
   const hasAlias=(suggestion:EntitySuggestion,name:string)=>suggestion.aliases?.some(alias=>normalizeEntityName(alias)===normalizeEntityName(name));
   for(let i=0;i<input.length;i++)for(let j=i+1;j<input.length;j++) {
     const first=input[i]!,next=input[j]!,a=root(i),b=root(j);
+    if(requiresNarrativeIdentityReview(first)||requiresNarrativeIdentityReview(next))continue;
     if(a===b||first.type!==next.type||savedIds[a]&&savedIds[b]&&savedIds[a]!==savedIds[b])continue;
     if(!hasAlias(first,next.name)||!hasAlias(next,first.name))continue;
     const keep=Math.min(a,b),remove=Math.max(a,b);

@@ -8,7 +8,7 @@ test('definition registry preserves every existing builtin API name and has stab
   assert.deepEqual(builtinProperties.person,['birth date','birthplace','nationality','website']);
   assert.deepEqual(builtinProperties.source,['Import method','Source URL','url','author','publication date','accessed date']);
   assert.equal(builtinPropertyDefinitions.length,Object.values(builtinProperties).flat().length);
-  assert.equal(builtinSubtypes.length,69);
+  assert.equal(builtinSubtypes.length,82);
   assert.ok(builtinSubtypes.some(subtype=>subtype.id==='culture:language'));
   assert.ok(builtinSubtypes.some(subtype=>subtype.id==='creativework:software'));
   assert.equal(new Set(builtinPropertyDefinitions.map(item=>item.id)).size,builtinPropertyDefinitions.length);

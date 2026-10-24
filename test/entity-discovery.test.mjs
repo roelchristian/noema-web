@@ -201,3 +201,20 @@ test('saved proposals survive service recreation and source admission changes ma
  assert.equal(another.latest('default',f.entity.id).stale,true);
  assert.throws(()=>another.review('default',f.entity.id,refreshed.id,{suggestionId:refreshed.suggestions[1].id,decision:'accepted'}),error=>error.status===409);
 });
+
+test('authored narrative context references invalidate discovery drafts without touching identity timestamps',async t=>{
+ const f=fixture(t,propose),work=f.knowledge.create('default',{name:'Synthetic narrative work',type:'creativework'});
+ const draft=await f.service.generate('default',f.entity.id,new AbortController().signal);
+ const timestamp=f.knowledge.require('default',f.entity.id).updated_at;
+ const detail=f.knowledge.property('default',f.entity.id,{name:'setting',target_id:work.id});
+ assert.equal(f.knowledge.require('default',f.entity.id).updated_at,timestamp);
+ assert.equal(f.service.latest('default',f.entity.id).stale,true);
+ assert.throws(()=>f.service.review('default',f.entity.id,draft.id,{suggestionId:draft.suggestions[0].id,decision:'accepted',expectedOverviewRevision:0}),error=>error.status===409);
+ const context=f.service.context('default',f.entity.id);
+ assert.equal(context.entity.referentStatus,'unspecified');
+ assert.ok(context.entity.contextReferences.some(p=>p.name==='setting'&&p.target_id===work.id));
+ const next=await f.service.generate('default',f.entity.id,new AbortController().signal);
+ f.knowledge.remove('default',f.entity.id,'properties',detail.properties.find(p=>p.name==='setting').id);
+ assert.equal(f.service.latest('default',f.entity.id).stale,true);
+ assert.ok(next.id);
+});

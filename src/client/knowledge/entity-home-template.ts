@@ -22,6 +22,7 @@ export function entityHomeTemplate(type: EntityType): EntityHomeTemplate {
     creativework: {sections:['properties','overview','pages','connections','aliases'], detailsTitle:'Publication and authorship', prominentProperties:['author','release date','language','type'], overviewGuidance:'Collect your interpretation of this work, its themes, and its significance. Markdown and math are supported.'},
     organization: {sections:['properties','overview','connections','pages','aliases'], detailsTitle:'Organization details', prominentProperties:['founded','headquarters','website']},
     place: {sections:['properties','overview','pages','connections','aliases'], detailsTitle:'Place details', prominentProperties:['country','region','coordinates']},
+    thing: {sections:['properties','overview','connections','pages','aliases'], detailsTitle:'Characteristics'},
     organism: {sections:['properties','overview','connections','pages','aliases'], detailsTitle:'Characteristics'},
     culture: {detailsTitle:'Cultural context'},
   };

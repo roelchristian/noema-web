@@ -7,7 +7,7 @@ import {validatedDomainIds} from './domains.js';
 import { syncSourceProvenance } from './source-provenance.js';
 import { randomUUID } from 'node:crypto';
 import { entityPageMentions } from './entity-page-mentions.js';
-import { entityMentionName, entityTypes, type EntityType, type Entity, type EntityDetail, type Property, type Relationship } from '../../shared/domain.js';
+import { referentStatuses, type ReferentStatus, entityMentionName, entityTypes, type EntityType, type Entity, type EntityDetail, type Property, type Relationship } from '../../shared/domain.js';
 import { builtinProperties, vaultSubtypes, inheritedPropertyNames, type EntitySchema, type EntitySubtype } from '../../shared/entity-schema.js';
 import { persistedPropertyDefinitions, propertyMetadata, syncPropertyMetadata } from './property-storage.js';
 import { validatePropertyValue } from '../../shared/property-values.js';
@@ -15,7 +15,7 @@ import { TemporalProperties } from './temporal-properties.js';
 import { Store } from '../store.js';
 import { HttpError, now, required, text } from '../validation.js';
 import { normalizeEntityName } from '../../shared/auto-entities.js';
-type EntityRow = Omit<Entity, 'subtypes' | 'aliases' | 'mentionCase' | 'inactive'> & {inactive:number;subtypes: string; aliases: string; mention_case: 'canonical' | 'lowercase'; subtype?: string | null};
+type EntityRow = Omit<Entity, 'subtypes' | 'aliases' | 'mentionCase' | 'referentStatus' | 'inactive'> & {referent_status:ReferentStatus;inactive:number;subtypes: string; aliases: string; mention_case: 'canonical' | 'lowercase'; subtype?: string | null};
 export class Knowledge {
   constructor(private store: Store) {}
   schema(vault: string): EntitySchema {
@@ -54,8 +54,8 @@ export class Knowledge {
     return type;
   }
   private entity(row: EntityRow, domainIds?:string[]): Entity {
-    const {subtype: _legacy, subtypes, aliases, mention_case, ...entity} = row;
-    return {...entity, domainIds:domainIds??this.store.all<{domain_id:string}>('SELECT domain_id FROM entity_domains WHERE entity_id=? ORDER BY domain_id',entity.id).map(row=>row.domain_id), inactive:!!entity.inactive, mentionCase: mention_case, aliases: entity.type==='source'?[]:JSON.parse(aliases) as string[], subtypes: JSON.parse(subtypes) as string[]};
+    const {subtype: _legacy, subtypes, aliases, mention_case, referent_status, ...entity} = row;
+    return {...entity, referentStatus:referent_status??'unspecified', domainIds:domainIds??this.store.all<{domain_id:string}>('SELECT domain_id FROM entity_domains WHERE entity_id=? ORDER BY domain_id',entity.id).map(row=>row.domain_id), inactive:!!entity.inactive, mentionCase: mention_case, aliases: entity.type==='source'?[]:JSON.parse(aliases) as string[], subtypes: JSON.parse(subtypes) as string[]};
   }
   list(vault: string) {
     const assignments=new Map<string,string[]>();
@@ -67,7 +67,7 @@ export class Knowledge {
   referenceOptions(vault: string, options: {query?: string; types?: string[]; subtypes?: string[]; offset?: number; limit?: number; selected?: string} = {}) {
     const {query = '', types = [], subtypes = [], offset = 0, limit = 30, selected = ''} = options;
     if (query.length > 200 || !Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 50) throw new HttpError(400,'Invalid reference search bounds.');
-    if (types.some(type => !entityTypes.includes(type as EntityType)) || types.length > 9 || subtypes.length > 50) throw new HttpError(400,'Invalid reference target filters.');
+    if (types.some(type => !entityTypes.includes(type as EntityType)) || types.length > entityTypes.length || subtypes.length > 50) throw new HttpError(400,'Invalid reference target filters.');
     const schema = this.schema(vault);
     if (subtypes.some(id => !schema.subtypes.some(subtype => subtype.id === id))) throw new HttpError(400,'Unknown reference subtype.');
     const filters = ['e.archived_at IS NULL'], params: (string | number)[] = [];
@@ -179,9 +179,13 @@ export class Knowledge {
     const aliases = [...new Map(inputAliases.map((alias: string) => [alias.trim().replace(/\s+/g, ' ').toLowerCase(), alias.trim().replace(/\s+/g, ' ')])).values()];
     const mentionCase=body.mentionCase===undefined?current?.mentionCase??'canonical':body.mentionCase;
     if(mentionCase!=='canonical'&&mentionCase!=='lowercase')throw new HttpError(400,'Choose entity-name or lowercase tag casing.');
-    const domainIds=validatedDomainIds(body.domainIds??(current?.type===type?current.domainIds??[]:[]));
+    const referentStatus=body.referentStatus??current?.referentStatus??'unspecified';
+    if(!referentStatuses.includes(referentStatus as ReferentStatus))throw new HttpError(400,'Choose a known referent status.');
+    // Disciplinary associations stay Concept-only. Cross-type changes require explicit domain review.
+    if(current?.type!==type&&current?.domainIds?.length)throw new HttpError(409,'Review and remove disciplinary associations explicitly before changing this Concept type. Existing records and domains are preserved.');
+    const domainIds=validatedDomainIds(body.domainIds??current?.domainIds??[]);
     if(type!=='concept'&&domainIds.length)throw new HttpError(400,'Only Concepts support disciplinary domains.');
-    return {domainIds,name:required(body.name),aliases,mentionCase,type,subtypes,description:text(body.description ?? '')};
+    return {referentStatus:referentStatus as ReferentStatus,domainIds,name:required(body.name),aliases,mentionCase,type,subtypes,description:text(body.description ?? '')};
   }
   create(vault: string, body: Record<string, unknown>) {
     const attachmentIds=body.type==='source'?this.attachments(vault,body.attachmentIds):[];
@@ -189,7 +193,7 @@ export class Knowledge {
     const e=this.input(vault,{...body,name:typeof body.name==='string'&&body.name.trim()?body.name:filename?.slice(0,200)}),id=randomUUID();
     const create=() => {
       const attachments=attachmentIds;
-      this.store.run('INSERT INTO entities (id,name,aliases,mention_case,type,subtypes,description,updated_at,vault_id) VALUES (?,?,?,?,?,?,?,?,?)',id,e.name,JSON.stringify(e.aliases),e.mentionCase,e.type,JSON.stringify(e.subtypes),e.description,now(),vault);
+      this.store.run('INSERT INTO entities (id,name,aliases,mention_case,referent_status,type,subtypes,description,updated_at,vault_id) VALUES (?,?,?,?,?,?,?,?,?,?)',id,e.name,JSON.stringify(e.aliases),e.mentionCase,e.referentStatus,e.type,JSON.stringify(e.subtypes),e.description,now(),vault);
       recordEntityNameProvenance(this.store,vault,id,{origin:e.type==='source'&&!(typeof body.name==='string'&&body.name.trim())?'derived':'manual',details:'Entity creation name policy: explicit names are manual; attachment defaults are derived.'});
       for(const domainId of e.domainIds)this.store.run("INSERT INTO entity_domains (entity_id,domain_id,origin) VALUES (?,?,'manual')",id,domainId);
       for(const file of attachments)this.store.run('UPDATE source_files SET entity_id=? WHERE id=? AND vault_id=?',id,file,vault);
@@ -215,7 +219,7 @@ export class Knowledge {
     if (e.type!=='source' && this.store.get('SELECT 1 FROM page_sources WHERE source_id=? LIMIT 1',id)) throw new HttpError(400,'Remove page source references before changing this Source to another type');
     const update=() => {
     const impact=governance.assertAllowed(vault,id,{type:e.type,subtypes:e.subtypes},{mode:body.classification_mode as 'retain_legacy'|undefined,fingerprint:body.impact_fingerprint as string|undefined});
-      this.store.run('UPDATE entities SET name=?,aliases=?,mention_case=?,type=?,subtype=NULL,subtypes=?,description=?,updated_at=? WHERE id=? AND vault_id=?',e.name,JSON.stringify(e.aliases),e.mentionCase,e.type,JSON.stringify(e.subtypes),e.description,now(),id,vault);
+      this.store.run('UPDATE entities SET name=?,aliases=?,mention_case=?,referent_status=?,type=?,subtype=NULL,subtypes=?,description=?,updated_at=? WHERE id=? AND vault_id=?',e.name,JSON.stringify(e.aliases),e.mentionCase,e.referentStatus,e.type,JSON.stringify(e.subtypes),e.description,now(),id,vault);
       this.store.run('DELETE FROM entity_domains WHERE entity_id=?',id);
       for(const domainId of e.domainIds)this.store.run("INSERT INTO entity_domains (entity_id,domain_id,origin) VALUES (?,?,'manual')",id,domainId);
       if(e.name!==current.name)recordEntityNameProvenance(this.store,vault,id,{origin:'manual',details:'Entity name explicitly edited.'});

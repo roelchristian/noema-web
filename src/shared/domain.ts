@@ -2,10 +2,17 @@ import type {PropertyProvenance} from './property-provenance.js';
 import type {PropertyValueMetadata} from './property-values.js';
 import type { PageIconId } from './page-icons.js';
 import type { IntelligencePreferences } from './intelligence.js';
-export const entityTypes = ['person', 'place', 'event', 'creativework', 'organization', 'organism', 'culture', 'source', 'concept'] as const;
+export const entityTypes = ['person', 'place', 'event', 'creativework', 'organization', 'organism', 'culture', 'source', 'concept', 'thing'] as const;
+export const referentStatuses = ['actual', 'fictional', 'mythological', 'legendary', 'hypothetical', 'unspecified'] as const;
+export type ReferentStatus = typeof referentStatuses[number];
+export const referentStatusLabels: Record<ReferentStatus,string> = {actual:'Actual',fictional:'Fictional',mythological:'Mythological',legendary:'Legendary',hypothetical:'Hypothetical',unspecified:'Unspecified'};
+/** Shared names and aliases cannot establish the identity of narrative variants. */
+export function requiresNarrativeIdentityReview(entity:{referentStatus?:ReferentStatus;subtypes?:string[]}):boolean {
+ return ['fictional','mythological','legendary','hypothetical'].includes(entity.referentStatus??'unspecified')||!!entity.subtypes?.some(id=>['person:fictional-character','organism:fictional-taxon','concept:folkloric-archetype','concept:mythological-creature'].includes(id));
+}
 export type EntityType = typeof entityTypes[number];
 export const entityLabels: Record<EntityType, string> = {
-  person: 'Person', place: 'Place', event: 'Event', creativework: 'Creative work', organization: 'Organization', organism: 'Organism', culture: 'Culture', source: 'Source', concept: 'Concept',
+  person: 'Person', place: 'Place', event: 'Event', creativework: 'Creative work', organization: 'Organization', organism: 'Organism', culture: 'Culture', source: 'Source', concept: 'Concept', thing: 'Thing',
 };
 export const blockTypes = ['paragraph', 'heading1', 'heading2', 'bullet', 'numbered', 'divider', 'code', 'quote', 'todo', 'columns', 'table', 'image', 'math'] as const;
 export type BlockType = typeof blockTypes[number];
@@ -35,8 +42,8 @@ export interface Page extends PageSummary { titleEdited?:boolean; generationMeta
 export interface PageInput { editedAfterGeneration?: boolean; titleEdited?:boolean; aiReviewAccepted?:boolean; language?: string | null; featuredImageId?: string | null; icon?: PageIconId | null; title: string; blocks: Block[]; sourceIds?: string[]; revision?: number }
 export type PageEnrichmentMetadata = Pick<Page,'id'|'vault_id'|'title'|'revision'|'pageDomains'|'summaryContentHash'|'enrichmentPending'|'enrichmentPendingFields'|'enrichmentFields'|'language'>;
 export type EntityMentionCase = 'canonical' | 'lowercase';
-export interface Entity { icon?: import('./page-icons.js').PageIconId | null; archived_at?: string | null; domainIds?: string[]; sourceSize?: number | null; sourceEnrichmentStatus?: SourceFile['enrichment_status'] | null; sourceStatus?: SourceFile['status'] | null; inactive?: boolean; id: string; vault_id: string; name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes: string[]; description: string; updated_at: string }
-export interface EntityInput { classification_mode?:'retain_legacy'; impact_fingerprint?:string; domainIds?: string[]; name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes?: string[]; subtype?: string | null; description?: string; attachmentIds?: string[] }
+export interface Entity { referentStatus?: ReferentStatus; icon?: import('./page-icons.js').PageIconId | null; archived_at?: string | null; domainIds?: string[]; sourceSize?: number | null; sourceEnrichmentStatus?: SourceFile['enrichment_status'] | null; sourceStatus?: SourceFile['status'] | null; inactive?: boolean; id: string; vault_id: string; name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes: string[]; description: string; updated_at: string }
+export interface EntityInput { referentStatus?: ReferentStatus; classification_mode?:'retain_legacy'; impact_fingerprint?:string; domainIds?: string[]; name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes?: string[]; subtype?: string | null; description?: string; attachmentIds?: string[] }
 export function entityMentionName(entity: Pick<Entity,'name'|'mentionCase'> | undefined): string | undefined {
   return entity?.mentionCase === 'lowercase' ? entity.name.toLowerCase() : entity?.name;
 }

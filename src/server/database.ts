@@ -253,6 +253,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS embedding_settings (
 `);
 if (!db.prepare('PRAGMA table_info(entities)').all().some(c => c.name === 'subtype')) db.exec('ALTER TABLE entities ADD COLUMN subtype TEXT');
 if (!db.prepare('PRAGMA table_info(entities)').all().some(c => c.name === 'aliases')) db.exec("ALTER TABLE entities ADD COLUMN aliases TEXT NOT NULL DEFAULT '[]'");
+if (!db.prepare('PRAGMA table_info(entities)').all().some(c => c.name === 'referent_status')) db.exec("ALTER TABLE entities ADD COLUMN referent_status TEXT NOT NULL DEFAULT 'unspecified' CHECK (referent_status IN ('actual','fictional','mythological','legendary','hypothetical','unspecified'))");
 if (!db.prepare('PRAGMA table_info(entities)').all().some(c => c.name === 'mention_case')) db.exec("ALTER TABLE entities ADD COLUMN mention_case TEXT NOT NULL DEFAULT 'canonical' CHECK (mention_case IN ('canonical','lowercase')); UPDATE pages SET summary_content_hash=NULL;");
 db.exec(`CREATE TRIGGER IF NOT EXISTS entity_mention_case_hash_invalidate AFTER UPDATE OF mention_case ON entities
  WHEN NEW.mention_case<>OLD.mention_case BEGIN UPDATE pages SET summary_content_hash=NULL WHERE vault_id=NEW.vault_id; END;`);

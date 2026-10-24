@@ -11,6 +11,19 @@ export function inheritedPropertyNames(schema: EntitySchema, type: EntityType, s
 
 /** Curated additions; saved classifications are never inferred from these descriptions. */
 const subtypeDescriptions: Record<string, string> = {
+  'person:fictional-character': 'An individual narrative agent, human or nonhuman. Keep distinct versions and adaptations separate; referent status is independent of type.',
+  'organism:fictional-taxon': 'A biological kind or taxonomic group described within a fictional setting, distinct from an individual character.',
+  'concept:folkloric-archetype': 'An abstract recurring folkloric figure or pattern, distinct from a particular narrative agent.',
+  'concept:mythological-creature': 'A creature kind in an authored mythological context, distinct from an individual character or biological taxon. Do not infer the status of living beliefs.',
+  'concept:role': 'An abstract social or narrative role, distinct from its individual bearer.',
+  'thing:food': 'A culinary product or edible material, distinct from a biological species. Combine with Ingredient, Dish or Beverage where supported.',
+  'thing:ingredient': 'A material used in preparing food; optionally derived from an existing organism.',
+  'thing:dish': 'A prepared culinary product, distinct from its recipe or source organism.',
+  'thing:beverage': 'A drink as a culinary product.',
+  'thing:material': 'A physical material, distinct from an abstract concept.',
+  'thing:substance': 'A physical substance, distinct from an abstract concept.',
+  'thing:artefact': 'A made physical object or object kind, distinct from an authored creative work.',
+  'creativework:recipe': 'An authored culinary instruction work, distinct from a prepared dish.',
   'place:building': 'A constructed building, distinct from the organization occupying it. May also be a Landmark or Historical Place.',
   'place:natural-feature': 'A named natural geographic feature, such as a mountain, river or lake.',
   'place:historical-place': 'A place significant for its history, including former settlements and archaeological sites. May also be a City, Building or Landmark.',
@@ -33,15 +46,16 @@ const subtypeDescriptions: Record<string, string> = {
 };
 
 export const builtinSubtypes: EntitySubtype[] = Object.entries({
-  person: ['Actor', 'Writer', 'Artist', 'Scientist', 'Researcher', 'Philosopher', 'Historian', 'Educator', 'Engineer', 'Physician', 'Entrepreneur', 'Politician', 'Activist', 'Journalist', 'Musician', 'Composer', 'Filmmaker', 'Athlete', 'Religious leader'],
+  person: ['Actor', 'Writer', 'Artist', 'Scientist', 'Researcher', 'Philosopher', 'Historian', 'Educator', 'Engineer', 'Physician', 'Entrepreneur', 'Politician', 'Activist', 'Journalist', 'Musician', 'Composer', 'Filmmaker', 'Athlete', 'Religious leader', 'Fictional Character'],
   place: ['City', 'Country', 'Region / province / state', 'Landmark', 'Building', 'Natural Feature', 'Historical Place'],
   event: ['Conference', 'Exhibition', 'Historical event'],
-  creativework: ['Book', 'Film', 'Song', 'Article', 'Album', 'Journal', 'Painting', 'Poem', 'Software', 'Academic Paper'],
+  creativework: ['Book', 'Film', 'Song', 'Article', 'Album', 'Journal', 'Painting', 'Poem', 'Software', 'Academic Paper', 'Recipe'],
   organization: ['Company', 'University', 'Nonprofit', 'Government Body', 'Religious Institution', 'Research Institute', 'Association'],
-  organism: ['Plant', 'Animal', 'Fungus', 'Microorganism', 'Taxon', 'Individual'],
+  organism: ['Plant', 'Animal', 'Fungus', 'Microorganism', 'Taxon', 'Individual', 'Fictional Taxon'],
   culture: ['Language', 'Nationality', 'Cultural Tradition'],
   source: ['Website', 'Journal article', 'Interview'],
-  concept: ['Mathematics', 'Science', 'Social Sciences', 'Technology', 'Philosophy', 'Religion / belief', 'Theory', 'Theorem', 'Method', 'Principle', 'Framework'],
+  concept: ['Mathematics', 'Science', 'Social Sciences', 'Technology', 'Philosophy', 'Religion / belief', 'Theory', 'Theorem', 'Method', 'Principle', 'Framework', 'Folkloric Archetype', 'Mythological Creature', 'Role'],
+  thing: ['Food', 'Ingredient', 'Dish', 'Beverage', 'Material', 'Substance', 'Artefact'],
 }).flatMap(([type, names]) => names.map(name => {
   const id = `${type}:${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
   return {id, name, type: type as EntityType, origin: 'builtin' as const, ...(subtypeDescriptions[id] ? {description: subtypeDescriptions[id]} : {})};
@@ -54,6 +68,7 @@ export const builtinProperties: Record<EntityType, string[]> = {
   creativework: ['author', 'release date', 'language', 'type'],
   organization: ['founded', 'headquarters', 'website'],
   organism: [],
+  thing: [],
   culture: [],
   source: ['Import method', 'Source URL', 'url', 'author', 'publication date', 'accessed date'],
   concept: [],

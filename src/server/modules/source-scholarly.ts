@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
-import {DOMAINS} from '../../shared/domains.js';
-import {scholarlyEnrichmentVersion,scholarlyRelationshipKinds,type SourceScholarlyResult} from '../../shared/source-scholarly.js';
+import {DOMAINS,TAXONOMY_VERSION} from '../../shared/domains.js';
+import {scholarlyDisciplineProperty,scholarlyEnrichmentVersion,scholarlyRelationshipKinds,type SourceScholarlyResult} from '../../shared/source-scholarly.js';
 import type {PropertyProposal} from '../../shared/property-provenance.js';
 import type {SourceFile} from '../../shared/domain.js';
 import {Store} from '../store.js';
@@ -48,7 +48,7 @@ export class SourceScholarly {
   if(signal?.aborted)throw new HttpError(499,'Scholarly enrichment stopped.');
   const initial=this.snapshot(vault,id),selection=this.intelligence.selection();
   const candidates=this.store.all<Candidate>(`SELECT id,name,type FROM entities WHERE vault_id=? AND id<>? AND archived_at IS NULL AND inactive=0 AND type IN ('concept','source','creativework') ORDER BY name,id LIMIT 150`,vault,id);
-  const fingerprint=digest([scholarlyEnrichmentVersion,rawSourceHash(initial.file.text),initial.file.id,initial.source.name,initial.bibliographic,candidates,selection]);
+  const fingerprint=digest([scholarlyEnrichmentVersion,TAXONOMY_VERSION,rawSourceHash(initial.file.text),initial.file.id,initial.source.name,initial.bibliographic,candidates,selection]);
   const marker=`${scholarlyEnrichmentVersion}:${fingerprint}`;
   const cached=this.store.all<PropertyProposal>("SELECT * FROM property_proposals WHERE entity_id=? AND vault_id=? AND instr(details,?)>0 ORDER BY id",id,vault,marker);
   if(cached.length)return {cached:true,proposals:cached,basis:'document-excerpts' as const};
@@ -73,6 +73,7 @@ export class SourceScholarly {
     const details=(quote:string)=>`${marker}\nAI interpretation from supplied document excerpts only; not an author abstract. Evidence: ${quote}`;
     const propose=(property_name:string,value:string|null,target_id:string|null,quote:string)=>proposeValue(this.store,vault,{entity_id:id,property_name,value,target_id,origin:'ai',source_file_id:initial.file.id,source_hash:rawSourceHash(initial.file.text),details:details(quote)});
     const result=[propose('ai scholarly synopsis',JSON.stringify({basis:'document-excerpts',enrichmentFingerprint:fingerprint,...parsed.synopsis,suggestedDisciplines:parsed.disciplines}),null,parsed.synopsis.quote)];
+    for(const item of parsed.disciplines)result.push(propose(scholarlyDisciplineProperty,JSON.stringify({domainId:item.domainId,label:DOMAINS.find(domain=>domain.id===item.domainId)!.label,taxonomyVersion:TAXONOMY_VERSION,bibliographicRevision:(initial.bibliographic as {revision:number}|null)?.revision??null}),null,item.quote));
     for(const item of parsed.concepts)result.push(propose('discusses concept',null,item.entityId,item.quote));
     for(const item of parsed.relationships)result.push(propose(`scholarly ${item.kind.replaceAll('_',' ')}`,null,item.entityId,item.quote));
     return result;

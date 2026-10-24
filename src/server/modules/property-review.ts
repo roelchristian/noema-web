@@ -1,3 +1,6 @@
+import {domainById,TAXONOMY_VERSION} from '../../shared/domains.js';
+import {isScholarlyDisciplineProposal,parseScholarlyDiscipline} from '../../shared/source-scholarly.js';
+import {Domains} from './domains.js';
 import {createHash} from 'node:crypto';
 import type {Entity,Property,PropertyInput} from '../../shared/domain.js';
 import type {PropertyDefinition} from '../../shared/property-definitions.js';
@@ -29,6 +32,10 @@ export class PropertyReview {
  }
  private preview(vault:string,proposal:PropertyProposal):ProposalReview {
   const entity=this.entity(vault,proposal.entity_id);
+  const discipline=isScholarlyDisciplineProposal(proposal);
+  const taxonomyProposal=discipline?parseScholarlyDiscipline(proposal.value):null;
+  const domains=discipline?this.store.all('SELECT domain_id,origin FROM entity_domains WHERE entity_id=? ORDER BY domain_id',entity.id):null;
+  const bibliographic=discipline&&this.store.get("SELECT 1 FROM sqlite_master WHERE type='table' AND name='bibliographic_records'")?this.store.get<{revision:number}>('SELECT revision FROM bibliographic_records WHERE source_id=? AND vault_id=?',entity.id,vault):undefined;
   const properties=this.store.all<Property&{definition_id:string|null}>('SELECT p.*,m.definition_id FROM properties p LEFT JOIN property_value_metadata m ON m.property_id=p.id WHERE p.entity_id=? ORDER BY p.id',entity.id);
   const definitions=this.store.all<{definition_json:string}>('SELECT definition_json FROM property_definitions WHERE vault_id=? ORDER BY id',vault).map(row=>JSON.parse(row.definition_json) as PropertyDefinition);
   const definition=proposal.kind==='property'&&proposal.property_name?resolvePropertyDefinition(definitions,entity.type,entity.subtypes,proposal.property_name,proposal.property_id?properties.find(item=>item.id===proposal.property_id)?.definition_id??undefined:undefined):undefined;
@@ -45,10 +52,15 @@ export class PropertyReview {
    else if(source.status!=='ready'||!source.admitted)staleReason='The source is not currently available for evidence review.';
    else if(!proposal.source_hash||rawSourceHash(source.text)!==proposal.source_hash)staleReason='The source content changed after this value was extracted.';
   }
+  if(discipline) {
+   if(entity.type!=='source'||entity.archived_at||entity.inactive||proposal.origin!=='ai'||!proposal.source_file_id||!proposal.source_hash)staleReason='Disciplinary proposals require an active Source and document evidence.';
+   else if(!taxonomyProposal||!domainById(taxonomyProposal.domainId)||taxonomyProposal.taxonomyVersion!==TAXONOMY_VERSION)staleReason='The disciplinary taxonomy changed or the proposal is invalid.';
+   else if(taxonomyProposal.bibliographicRevision!==(bibliographic?.revision??null))staleReason='Bibliographic metadata changed after classification. Generate a fresh proposal.';
+  }
   if(proposal.property_id&&!properties.some(property=>property.id===proposal.property_id))staleReason='The original authored value was removed.';
   const target=proposal.target_id?this.store.get('SELECT id,type,subtypes,archived_at,updated_at FROM entities WHERE id=? AND vault_id=?',proposal.target_id,vault):undefined;
   if(proposal.target_id&&!target||proposal.kind==='property'&&proposal.target_id===null&&proposal.value===null)staleReason='The proposed value or reference target is unavailable.';
-  const fingerprint=createHash('sha256').update(stable([proposal,entity,properties,definitions,source?{...source,text:rawSourceHash(source.text)}:null,target??null])).digest('hex');
+  const fingerprint=createHash('sha256').update(stable([proposal,entity,properties,definitions,source?{...source,text:rawSourceHash(source.text)}:null,target??null,domains,bibliographic??null,discipline?TAXONOMY_VERSION:null])).digest('hex');
   return {...proposal,stale:staleReason!==null,staleReason,fingerprint,conflicts,currentName:entity.name,definition,...source?{sourceName:source.name}:{}};
  }
  list(vault:string,entityId:string,status='pending',proposalId?:string):ProposalReview[] {
@@ -72,7 +84,13 @@ export class PropertyReview {
    let decisionDetails='';
    if(input.action!=='reject') {
     const knowledge=new Knowledge(this.store),entity=this.entity(vault,entityId);
-    if(proposal.kind==='entity_name') {
+    if(isScholarlyDisciplineProposal(proposal)) {
+     if(input.target_id!==undefined)throw new HttpError(400,'A disciplinary proposal applies its reviewed Domain ID only.');
+     const discipline=parseScholarlyDiscipline(proposal.value);
+     if(!discipline)throw new HttpError(409,'Invalid disciplinary proposal. Generate a fresh proposal.');
+     new Domains(this.store).acceptSourceDiscipline(vault,entityId,discipline.domainId,discipline.taxonomyVersion);
+     decisionDetails='Accepted canonical disciplinary Domain ID: '+discipline.domainId+'. ';
+    } else if(proposal.kind==='entity_name') {
      if(input.action==='retain_both')throw new HttpError(400,'An entity has one canonical name. Accept the proposed name or keep the existing name by rejecting it.');
      const name=required(proposal.value);knowledge.update(vault,entityId,{...knowledge.require(vault,entityId),name});
      recordEntityNameProvenance(this.store,vault,entityId,{origin:'manual',source_file_id:proposal.source_file_id??undefined,source_hash:proposal.source_hash??undefined,details:'User approved a proposed name. '+proposal.details});

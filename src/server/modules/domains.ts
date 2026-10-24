@@ -20,6 +20,16 @@ export function domainSelection(input:Record<string,unknown>) {
 }
 export class Domains {
   constructor(private store:Store) {}
+  /** Called only after an explicit, fingerprint-checked scholarly review. Existing assignments retain their origins. */
+  acceptSourceDiscipline(vault:string,entityId:string,domainId:string,taxonomyVersion:string) {
+    if(taxonomyVersion!==TAXONOMY_VERSION||!domainById(domainId))throw new HttpError(409,'The disciplinary taxonomy changed. Generate and review a current proposal.');
+    const entity=this.store.get<{locked:number}>(`SELECT v.locked FROM entities e JOIN vaults v ON v.id=e.vault_id WHERE e.id=? AND e.vault_id=? AND e.type='source' AND e.archived_at IS NULL AND e.inactive=0`,entityId,vault);
+    if(!entity)throw new HttpError(404,'Active Source not found in this vault.');
+    if(entity.locked)throw new HttpError(423,'Unlock this vault first.');
+    const changed=this.store.run("INSERT OR IGNORE INTO entity_domains (entity_id,domain_id,origin) VALUES (?,?,'inferred')",entityId,domainId).changes;
+    if(changed)this.store.run('UPDATE entities SET updated_at=? WHERE id=? AND vault_id=?',now(),entityId,vault);
+    return changed>0;
+  }
   get(pageId:string,contentHash?:string):PageDomains {
     const state=this.store.get<{origin:'manual'|'inferred';content_hash:string|null;taxonomy_version:string;revision:number}>('SELECT * FROM page_domain_state WHERE page_id=?',pageId);
     const rows=this.store.all<{domain_id:string;role:string}>('SELECT domain_id,role FROM page_domains WHERE page_id=? ORDER BY domain_id',pageId);

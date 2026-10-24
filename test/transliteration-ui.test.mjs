@@ -8,7 +8,7 @@ import {TransliterationBar} from '../src/client/editor/TransliterationBar.tsx';
 import {ReadOnlyPageBlocks} from '../src/client/editor/ReadOnlyPageBlocks.tsx';
 import {readTransliteration} from '../src/client/state/transliteration-preferences.ts';
 
-test('three-dot menu controls transliteration on a locked page and remembers its page preference',async t=>{
+for(const [name,text,expected] of [['Greek','θεός','theós'],['Old Church Slavonic','Ⱄⰾⱁⰲⱁ ѹ ꙗ','Slovo u ya']])test(`three-dot menu controls ${name} transliteration on a locked page and remembers its page preference`,async t=>{
   const env=setupDOM(t);
   const storageDescriptor=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
   Object.defineProperty(globalThis,'localStorage',{configurable:true,value:env.dom.window.localStorage});
@@ -20,7 +20,7 @@ test('three-dot menu controls transliteration on a locked page and remembers its
   prototype.hidePopover=function(){open.delete(this);};
   prototype.getAnimations=()=>[];prototype.animate=()=>({});
   prototype.getBoundingClientRect=()=>({left:10,right:110,top:10,bottom:30,width:100,height:20});
-  const page={id:'locked-translit',vault_id:'test',title:'Example',editLocked:true,blocks:[{id:'p',type:'paragraph',content:[{text:'θεός'}]}]};
+  const page={id:'locked-translit-'+name,vault_id:'test',title:'Example',editLocked:true,blocks:[{id:'p',type:'paragraph',content:[{text}]}]};
   const root=createRoot(document.querySelector('#mount'));
   env.defer(()=>act(async()=>root.unmount()));
   const noop=()=>{};
@@ -41,7 +41,7 @@ test('three-dot menu controls transliteration on a locked page and remembers its
   assert.ok(document.querySelector('[aria-label="Transliteration controls"]'));
   assert.equal(document.querySelector('[aria-label="Hide transliteration"]').textContent,'Hide');
   assert.equal(document.querySelector('[aria-label="Hide transliteration"] svg'),null);
-  assert.equal(document.querySelector('.block-transliteration').lastElementChild.textContent,'theós');
+  assert.equal(document.querySelector('.block-transliteration').lastElementChild.textContent,expected);
   assert.equal(readTransliteration('test/'+page.id),'below');
   assert.equal(localStorage.getItem('noema-transliteration:test/'+page.id),'below');
   assert.equal(readTransliteration('different/page'),'off');

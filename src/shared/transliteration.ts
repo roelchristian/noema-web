@@ -8,11 +8,16 @@ const letters:Record<string,string>={
   а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'yo',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'kh',ц:'ts',ч:'ch',ш:'sh',щ:'shch',ъ:'ʺ',ы:'y',ь:'ʹ',э:'e',ю:'yu',я:'ya',
   є:'ye',і:'i',ї:'yi',ґ:'g',ђ:'đ',ѓ:'ǵ',ѕ:'dz',ј:'j',љ:'lj',њ:'nj',ћ:'ć',ќ:'ḱ',ў:'ŭ',џ:'dzh',
   ѣ:'ě',ѡ:'ō',ѥ:'ye',ѧ:'ę',ѩ:'yę',ѫ:'ǫ',ѭ:'yǫ',ѯ:'ks',ѱ:'ps',ѳ:'th',ѵ:'y',ѿ:'ot',ꙋ:'u',
+  // Historical Cyrillic variants used in Old Church Slavonic.
+  ѹ:'u',ѻ:'o',ѽ:'ō',ꙁ:'z',ꙃ:'dz',ꙅ:'dz',ꙇ:'i',ꙉ:'đ',ꙍ:'ō',ꙏ:'ʺ',ꙑ:'y',ꙓ:'yě',ꙗ:'ya',ꙙ:'ę',ꙛ:'ę',ꙝ:'yę',
+  // Glagolitic shares the same Latin conventions as the Cyrillic mapping.
+  // Character inventory: https://www.unicode.org/charts/PDF/U2C00.pdf
+  ⰰ:'a',ⰱ:'b',ⰲ:'v',ⰳ:'g',ⰴ:'d',ⰵ:'e',ⰶ:'zh',ⰷ:'dz',ⰸ:'z',ⰹ:'i',ⰺ:'i',ⰻ:'i',ⰼ:'đ',ⰽ:'k',ⰾ:'l',ⰿ:'m',ⱀ:'n',ⱁ:'o',ⱂ:'p',ⱃ:'r',ⱄ:'s',ⱅ:'t',ⱆ:'u',ⱇ:'f',ⱈ:'kh',ⱉ:'ō',ⱊ:'p',ⱋ:'shch',ⱌ:'ts',ⱍ:'ch',ⱎ:'sh',ⱏ:'ʺ',ⱐ:'ʹ',ⱑ:'ě',ⱒ:'kh',ⱓ:'yu',ⱔ:'ę',ⱕ:'ę',ⱖ:'yo',ⱗ:'yę',ⱘ:'ǫ',ⱙ:'yǫ',ⱚ:'th',ⱛ:'y',ⱜ:'ʹ',ⱝ:'a',ⱞ:'m',ⱟ:'ch',
   ҕ:'gh',ғ:'gh',ҁ:'q',ҋ:'y',қ:'q',ҝ:'g',ҟ:'q',ҡ:'q',ң:'ng',ҥ:'ng',ҩ:'o',ҫ:'ś',ҭ:'t',ү:'ü',ұ:'ū',ҳ:'h',ҵ:'ts',ҷ:'ch',ҹ:'ch',һ:'h',ҽ:'ch',ҿ:'ch',ӏ:'l',ӄ:'q',ӈ:'ng',ӌ:'ch',ӆ:'l',ӎ:'m',ӊ:'n',ӽ:'kh',ӿ:'kh',ә:'ä',ө:'ö',ӕ:'æ',
   ⲁ:'a',ⲃ:'b',ⲅ:'g',ⲇ:'d',ⲉ:'e',ⲋ:'so',ⲍ:'z',ⲏ:'ē',ⲑ:'th',ⲓ:'i',ⲕ:'k',ⲗ:'l',ⲙ:'m',ⲛ:'n',ⲝ:'x',ⲟ:'o',ⲡ:'p',ⲣ:'r',ⲥ:'s',ⲧ:'t',ⲩ:'u',ⲫ:'ph',ⲭ:'kh',ⲯ:'ps',ⲱ:'ō',
   ϣ:'š',ϥ:'f',ϧ:'kh',ϩ:'h',ϫ:'j',ϭ:'č',ϯ:'ti',ⳉ:'kh',ⳡ:'ng',
 };
-const supportedScript=/[\p{Script=Greek}\p{Script=Cyrillic}\p{Script=Coptic}]/u;
+const supportedScript=/[\p{Script=Greek}\p{Script=Cyrillic}\p{Script=Coptic}\p{Script=Glagolitic}]/u;
 const greekScript=/\p{Script=Greek}/u;
 
 export function transliterate(text:string):string {

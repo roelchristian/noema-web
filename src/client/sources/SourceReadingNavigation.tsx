@@ -5,9 +5,9 @@ import {sourceDocumentEntries} from '../../shared/source-document';
 import {Icon} from '../components/Icon';
 
 interface Stop {offset:number;number:number}
-interface Props {article:RefObject<HTMLElement|null>;text:string;document?:SourceDocument}
+interface Props {article:RefObject<HTMLElement|null>;text:string;document?:SourceDocument;activityAvailable?:boolean}
 /** Use recorded physical pages when available; other documents navigate sections. */
-export function SourceReadingNavigation({article,text,document:sourceDocument}:Props) {
+export function SourceReadingNavigation({article,text,document:sourceDocument,activityAvailable=true}:Props) {
   const navigation=useMemo(()=>{
     const lines=[0];for(let index=0;index<text.length;index++)if(text[index]==='\n')lines.push(index+1);
     const offset=(line:number)=>lines[Math.max(0,line-1)]??text.length;
@@ -64,6 +64,6 @@ export function SourceReadingNavigation({article,text,document:sourceDocument}:P
     <button type="button" className="source-reading-prev" aria-label={uiText("Previous {value0}",{value0: navigation.unit.toLowerCase()})} title={uiText("Previous {value0}",{value0: navigation.unit.toLowerCase()})} disabled={current===0} onClick={()=>jump.current(current-1)}><Icon name="chevron"/></button>
     <span aria-live="polite" aria-atomic="true">{navigation.unit} {navigation.stops[current]?.number??1} <span className="source-reading-total">/ {navigation.stops.length}</span></span>
     <button type="button" aria-label={uiText("Next {value0}",{value0: navigation.unit.toLowerCase()})} title={uiText("Next {value0}",{value0: navigation.unit.toLowerCase()})} disabled={current>=navigation.stops.length-1} onClick={()=>jump.current(current+1)}><Icon name="chevron"/></button>
-    <button type="button" className="source-bookmarks-toggle" title="Passage bookmarks" aria-label="Passage bookmarks" onClick={()=>window.dispatchEvent(new Event('noema:reading-bookmarks'))}>☆</button>
+    {activityAvailable&&<button type="button" className="source-bookmarks-toggle" title="Reading activity" aria-label="Reading activity" onClick={()=>window.dispatchEvent(new Event('noema:reading-bookmarks'))}><Icon name="annotation"/></button>}
   </nav>;
 }

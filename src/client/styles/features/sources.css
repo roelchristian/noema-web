@@ -2348,3 +2348,50 @@ main.source-workspace > #content > .source-reader {
   .source-metadata-full .source-metadata-field { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(0, 3fr); gap: 18px; }
   .source-metadata-full .source-metadata-field dd { margin-top: 0; }
 }
+
+.source-activity-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--line)
+}
+.source-activity-tabs button {
+  flex: 1;
+  padding: 8px;
+  border-radius: 6px;
+  color: var(--text-muted)
+}
+.source-activity-tabs button[aria-pressed=true] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--line)
+}
+.source-activity-tabs button span {
+  margin-left: 4px;
+  font-size: 12px
+}
+.source-activity-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px
+}
+.source-activity-hint,.source-activity-note {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5
+}
+.source-activity-note {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere
+}
+.source-activity-color {
+  font-size: 12px;
+  text-transform: capitalize
+}
+.source-reading-activity .source-bookmark blockquote {
+  overflow-wrap: anywhere;
+  max-height: 160px;
+  overflow: auto
+}

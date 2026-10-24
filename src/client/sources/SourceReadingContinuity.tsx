@@ -1,4 +1,6 @@
 import {useEffect,useRef,useState,type RefObject} from 'react';
+import type {ReadingNoteAnchor,SourceHighlight} from '../../shared/source-reading';
+import {Icon} from '../components/Icon';
 import type {SourceDocument} from '../../shared/source-document';
 import {createReadingAnchor,rawReadingOffset,resolveReadingAnchor,type ReadingAnchor,type ReadingContinuity,type ReadingLocation} from '../../shared/reading-continuity';
 import {request} from '../api';
@@ -25,9 +27,12 @@ export function jumpToReadingOffset(root:HTMLElement,rawOffset:number) {
  }
  window.scrollBy({top:top-readingEdge(),behavior:'instant'});
 }
-export function SourceReadingContinuity({file,article,selectedOffset}:{file:File;article:RefObject<HTMLElement|null>;selectedOffset?:number}) {
+export function SourceReadingContinuity({file,article,selectedOffset,highlights=[],notes=[],onOpenNote,onRemoveNote,onRemoveHighlight}:{file:File;article:RefObject<HTMLElement|null>;selectedOffset?:number;highlights?:SourceHighlight[];notes?:ReadingNoteAnchor[];onOpenNote?:(id:string)=>void;onRemoveNote?:(note:ReadingNoteAnchor)=>void;onRemoveHighlight?:(id:string)=>void}) {
  const [data,setData]=useState<ReadingContinuity|null>(null),[resume,setResume]=useState<ReadingLocation|null>(null);
  const [error,setError]=useState(''),[notice,setNotice]=useState(''),[open,setOpen]=useState(false),[label,setLabel]=useState(''),[busy,setBusy]=useState(false);
+ const [tab,setTab]=useState<'bookmarks'|'annotations'|'highlights'>('bookmarks');
+ const panel=useRef<HTMLDivElement>(null),opener=useRef<HTMLElement|null>(null);
+ function close(){setOpen(false);opener.current?.focus();}
  const [back,setBack]=useState<ReadingAnchor|null>(null),[saveError,setSaveError]=useState('');
  const saveSequence=useRef(0);
  const dirty=useRef<{offset:number;atEnd:boolean}|null>(null),loaded=useRef(false),alive=useRef(true);
@@ -38,9 +43,16 @@ export function SourceReadingContinuity({file,article,selectedOffset}:{file:File
   return()=>{alive.current=false;controller.abort();};
  },[route,file.vault_id]);
  useEffect(()=>{
-  const toggle=()=>setOpen(value=>!value);window.addEventListener('noema:reading-bookmarks',toggle);
+  const toggle=()=>{opener.current=document.activeElement as HTMLElement;setOpen(value=>!value);};window.addEventListener('noema:reading-bookmarks',toggle);
   return()=>window.removeEventListener('noema:reading-bookmarks',toggle);
  },[]);
+ useEffect(()=>{
+  if(!open)return;
+  panel.current?.querySelector<HTMLButtonElement>('header button')?.focus();
+  function dismiss(event:KeyboardEvent){if(event.key==='Escape'&&!document.querySelector('dialog[open]')){event.preventDefault();close();}}
+  document.addEventListener('keydown',dismiss);
+  return()=>document.removeEventListener('keydown',dismiss);
+ },[open]);
  useEffect(()=>{
   const root=article.current;if(!root)return;
   let timer:ReturnType<typeof setTimeout>|undefined,frame=0,interacted=false;
@@ -78,7 +90,7 @@ export function SourceReadingContinuity({file,article,selectedOffset}:{file:File
   if(location.resolution.status!=='resolved'||!article.current)return;
   window.dispatchEvent(new Event('noema:before-reading-jump'));
   jumpToReadingOffset(article.current,rawReadingOffset(file.text,location.resolution.offset));
-  setOpen(false);setResume(null);setNotice(location.anchor.atEnd&&location.anchor.revision===file.textHash?'Returned to the end of the source.':'Reading location opened.');
+  close();setResume(null);setNotice(location.anchor.atEnd&&location.anchor.revision===file.textHash?'Returned to the end of the source.':'Reading location opened.');
  }
  async function add(){
   const root=article.current;if(!root||busy||!data)return;
@@ -88,7 +100,7 @@ export function SourceReadingContinuity({file,article,selectedOffset}:{file:File
   setBusy(true);setError('');
   try{
    const saved=await request<ReadingLocation>(route+'/'+randomUUID(),'PUT',{offset,revision:file.textHash,label},file.vault_id);
-   setData(current=>current?{...current,bookmarks:[...current.bookmarks,saved]}:current);setLabel('');setNotice('Bookmark saved.');setOpen(true);
+   setData(current=>current?{...current,bookmarks:[...current.bookmarks,saved]}:current);setLabel('');setNotice('Bookmark saved.');setTab('bookmarks');setOpen(true);
   }catch{setError('Bookmark could not be saved. Try again.');}finally{setBusy(false);}
  }
  async function rename(bookmark:ReadingLocation,value:string){
@@ -97,6 +109,16 @@ export function SourceReadingContinuity({file,article,selectedOffset}:{file:File
  async function remove(id:string){
   setBusy(true);setError('');try{await request(route+'/'+id,'DELETE',undefined,file.vault_id);setData(current=>current?{...current,bookmarks:current.bookmarks.filter(item=>item.id!==id)}:current);setNotice('Bookmark removed.');}catch{setError('Bookmark could not be removed. Try again.');}finally{setBusy(false);}
  }
+ function reveal(offset:number){
+  if(!article.current)return;
+  window.dispatchEvent(new Event('noema:before-reading-jump'));
+  jumpToReadingOffset(article.current,offset);close();
+ }
+ async function removeHighlight(id:string){
+  if(busy)return;setBusy(true);setError('');
+  try{await request(`source-files/${encodeURIComponent(file.id)}/highlights/${encodeURIComponent(id)}`,'DELETE',undefined,file.vault_id);onRemoveHighlight?.(id);setNotice('Highlight removed.');}
+  catch{setError('Highlight could not be removed. Try again.');}finally{setBusy(false);}
+ }
  function returnToReading(){
   if(!back||!article.current)return;const resolved=resolveReadingAnchor(back,file.text,file.textHash);
   if(resolved.status==='resolved'){jumpToReadingOffset(article.current,rawReadingOffset(file.text,resolved.offset));setBack(null);}
@@ -104,15 +126,21 @@ export function SourceReadingContinuity({file,article,selectedOffset}:{file:File
  return <aside className="source-reading-continuity" aria-label="Reading continuity">
   <div className="source-continuity-actions">
    {resume&&(resume.resolution.status==='resolved'?<button className="button small" onClick={()=>go(resume)}>{resume.anchor.atEnd&&resume.anchor.revision===file.textHash?'Continue reading · End of source':'Continue reading'}</button>:<span role="status">Saved position {resume.resolution.status} after source changes.</span>)}
-   <button className="button small" aria-expanded={open} onClick={()=>setOpen(value=>!value)}>Bookmarks{data?.bookmarks.length?` (${data.bookmarks.length})`:''}</button>
   </div>
-  {open&&<div className="source-bookmarks" role="region" aria-label="Passage bookmarks"><header><strong>Passage bookmarks</strong><button className="button small" onClick={()=>setOpen(false)}>Close bookmarks</button></header>
+  {open&&<div ref={panel} className="source-bookmarks source-reading-activity" role="region" aria-label="Reading activity"><header><strong>Reading activity</strong><button type="button" className="button small" aria-label="Close reading activity" onClick={close}><Icon name="close"/></button></header>
+   <div className="source-activity-tabs" role="group" aria-label="Activity type">{(['bookmarks','annotations','highlights'] as const).map(value=><button type="button" key={value} aria-pressed={tab===value} onClick={()=>setTab(value)}>{value==='bookmarks'?'Bookmarks':value==='annotations'?'Annotations':'Highlights'} <span>{value==='bookmarks'?data?.bookmarks.length??0:value==='annotations'?notes.length:highlights.length}</span></button>)}</div>
+   {tab==='bookmarks'&&<section aria-label="Passage bookmarks">
    <form onSubmit={event=>{event.preventDefault();void add();}}><label>Bookmark label <input aria-label="New bookmark label" maxLength={80} placeholder="Optional short label" value={label} onChange={event=>setLabel(event.target.value)}/></label><button className="button small" disabled={busy||!data||!file.text.trim()}>Bookmark passage</button><small>Uses the selected passage or current reading position.</small></form>
+   {!data&&!error&&<p role="status">Loading bookmarks…</p>}
    {data?.bookmarks.length===0&&<p>No bookmarks yet.</p>}
    {data?.bookmarks.map(bookmark=><Bookmark key={bookmark.id} bookmark={bookmark} busy={busy} onOpen={()=>go(bookmark)} onRename={value=>void rename(bookmark,value)} onRemove={()=>void remove(bookmark.id)}/>)}
+   </section>}
+   {tab==='annotations'&&<section aria-label="Source annotations"><p className="source-activity-hint">Reading notes saved from passages in this attachment.</p>{!notes.length&&<p>No annotations yet. Select a passage and choose Add reading note.</p>}{[...notes].sort((a,b)=>a.startOffset-b.startOffset).map(note=><div className="source-bookmark" key={note.pageId}><strong>{note.title||'Reading note'}</strong><blockquote>{file.text.slice(note.startOffset,note.endOffset)}</blockquote>{note.text&&<p className="source-activity-note">{note.text}</p>}<div className="source-activity-actions"><button type="button" className="button small" onClick={()=>reveal(note.startOffset)}>Go to passage</button><button type="button" className="button small" onClick={()=>onOpenNote?.(note.pageId)}>Open note</button><button type="button" className="button small" onClick={()=>onRemoveNote?.(note)}>Remove note</button></div></div>)}</section>}
+   {tab==='highlights'&&<section aria-label="Source highlights">{!highlights.length&&<p>No highlights yet. Select a passage to highlight it.</p>}{[...highlights].sort((a,b)=>a.startOffset-b.startOffset).map(highlight=><div className="source-bookmark" key={highlight.id}><span className="source-activity-color"><span className="source-highlight" data-color={highlight.color}>{highlight.color}</span></span><blockquote>{highlight.excerpt}</blockquote><div className="source-activity-actions"><button type="button" className="button small" onClick={()=>reveal(highlight.startOffset)}>Go to passage</button><button type="button" className="button small" disabled={busy} onClick={()=>void removeHighlight(highlight.id)}>Remove highlight</button></div></div>)}</section>}
+   {error&&<p role="alert">{error}</p>}
   </div>}
   {back&&<button className="button small source-reading-return" onClick={returnToReading}>↩ Return to reading</button>}
-  {(error||saveError)&&<p role="alert">{error||saveError}</p>}
+  {((error&&!open)||saveError)&&<p role="alert">{saveError||error}</p>}
   <span className="sr-only" role="status">{notice}</span>
  </aside>;
 }

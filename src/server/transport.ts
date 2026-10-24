@@ -1,3 +1,4 @@
+import {bibliographyRoutes} from './routes/bibliography.js';
 import {kokoroStatus,downloadKokoro} from './modules/kokoro-speech.js';
 import {cleanSpeechText} from '../shared/speech-text.js';
 import {speechCacheKey} from './modules/speech-cache.js';
@@ -63,7 +64,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
         if((req.headers.origin && req.headers.origin!==`http://${req.headers.host}`)||req.headers['sec-fetch-site']==='cross-site')throw new HttpError(403,'Cross-origin requests are not allowed');
         const securityRoute = url.pathname === '/api/security/network' || /^\/api\/pages\/[^/]+\/edit-lock$/.test(url.pathname) || /^\/api\/vaults\/[^/]+\/passphrase$/.test(url.pathname);
         if (securityRoute && (req.headers['x-noema-request'] !== '1' || method === 'PUT' && !/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))) throw new HttpError(403, 'Security settings require the Noema client and JSON.');
-        const aiRoute=/^\/api\/entities\/[^/]+\/discovery(?:\/[^/]+\/review)?$/.test(url.pathname)||/^\/api\/entities\/[^/]+\/create-page(?:\/(?:accept|reject))?$/.test(url.pathname)||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|enrich|enrichment-settings|entity-scan|entity-review|explain|review)$/.test(url.pathname);
+        const aiRoute=/^\/api\/entities\/[^/]+\/scholarly$/.test(url.pathname)||/^\/api\/entities\/[^/]+\/discovery(?:\/[^/]+\/review)?$/.test(url.pathname)||/^\/api\/entities\/[^/]+\/create-page(?:\/(?:accept|reject))?$/.test(url.pathname)||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|enrich|enrichment-settings|entity-scan|entity-review|explain|review)$/.test(url.pathname);
         const searchRoute=url.pathname.startsWith('/api/search/');
         if((aiRoute||searchRoute) && (req.headers['x-noema-request']!=='1'||(['POST','PUT'].includes(method)&&!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))))throw new HttpError(403,searchRoute?'Search requests require the Noema client and JSON':'AI requests require the Noema client and JSON');
         if(url.pathname==='/api/review-centre' && method==='GET') {
@@ -381,6 +382,11 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           const header=req.headers['x-vault-id'];
           if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
           const vault=vaults.requireOpen(header || 'default');
+          if(collection==='bibliography') {
+            if(parts.length>4)throw new HttpError(404,'Not found');
+            if(method!=='GET'&&(req.headers['x-noema-request']!=='1'||!/^application\/json(?:;|$)/i.test(req.headers['content-type']||'')))throw new HttpError(403,'Bibliography changes require the Noema client and JSON');
+            return await bibliographyRoutes(runtime.bibliography,{activity,vault,id,action:child,method,body,res,send});
+          }
           if(collection==='pages' && id && child==='preview' && parts.length===4 && method==='GET')return send(200,pages.preview(vault,id));
           pages.purgeExpired(vault);
           if(collection==='search' && parts.length===3 && id==='text' && method==='POST')return send(200,textSearch.search(vault,body.query,body.limit,body.scope));
@@ -567,6 +573,13 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             }
           }
           if(collection==='entities') {
+            if(id&&child==='scholarly'&&parts.length===4&&method==='POST') {
+              const controller=new AbortController(),abort=()=>{if(!res.writableEnded)controller.abort();};res.once('close',abort);
+              try{return send(200,await sourceEnrichments.scholarly(vault,id,body,controller.signal));}
+              catch(error){if(controller.signal.aborted)return;throw error;}
+              finally{res.removeListener('close',abort);}
+            }
+
             if(id&&child==='property-proposals'&&parts.length===4&&method==='GET')return send(200,new PropertyReview(store).list(vault,id,url.searchParams.get('status')??'pending',url.searchParams.get('proposalId')??undefined));
             if(id&&child==='property-proposals'&&childId&&parts.length===6&&parts[5]==='review'&&method==='POST')return send(200,new PropertyReview(store).review(vault,id,decodeURIComponent(childId),body as unknown as Parameters<PropertyReview['review']>[3]));
             if(id&&child==='classification-impact'&&parts.length===4&&method==='POST')return send(200,new EntityClassificationImpact(store).preview(vault,id,{type:body.type as import('../shared/domain.js').EntityType,subtypes:body.subtypes as string[]}));

@@ -12,7 +12,7 @@ import {entityScanPrompt} from './entity-scan.js';
 import {titlePrompt} from './title-prompt.js';
 import {summaryPrompt} from './summary-prompt.js';
 import {pageEnrichmentPrompt,type PageEnrichmentOptions} from './page-enrichment-prompt.js';
-import {sourceEnrichmentPrompt,sourceAuthorsPrompt} from './source-enrichment-prompt.js';
+import {sourceEnrichmentPrompt,sourceAuthorsPrompt,sourceScholarlyPrompt} from './source-enrichment-prompt.js';
 
 type CommonRequest = {onRequest?:AIRequestObserver;background?:boolean;signal?:AbortSignal};
 /** One intent per request. Feature parsers remain with their existing owners. */
@@ -28,6 +28,7 @@ export type GenerationRequest = CommonRequest & (
   | {kind:'sourcePage';personaId?:string;personaVersion?:number;input:string;signal:AbortSignal;onDelta:(delta:string)=>void;onPreviewDelta?:(delta:string)=>void;onPreviewReset?:()=>void}
   | {kind:'sourceMath';input:string;signal:AbortSignal;onDelta?:(delta:string)=>void}
   | {kind:'sourceEnrichment';input:string}
+  | {kind:'sourceScholarly';input:string}
   | {kind:'sourceAuthors';input:string}
   | {kind:'pageEnrichment';input:string;options:Omit<PageEnrichmentOptions,'signal'>}
   | {kind:'collectionRules';input:string;instructions:string}
@@ -98,6 +99,8 @@ export function generationPolicy(request:GenerationRequest,selections:Selections
       return {...policy(()=>({instructions:sourceMathInstructions,input:[{role:'user',content:[{type:'input_text',text:request.input}]}]}),{activeSlot:'exclusive',maxOutputLength:60000,timeoutMs:180000}),stream:true,onDelta:request.onDelta??ignoreDelta};
     case 'sourceEnrichment':
       return policy(()=>sourceEnrichmentPrompt(request.input),{activeSlot:'exclusive',maxOutputLength:20000});
+    case 'sourceScholarly':
+      return policy(()=>sourceScholarlyPrompt(request.input),{activeSlot:'exclusive',maxOutputTokens:4096});
     case 'sourceAuthors':
       return policy(()=>sourceAuthorsPrompt(request.input),{activeSlot:'exclusive'});
     case 'pageEnrichment': {

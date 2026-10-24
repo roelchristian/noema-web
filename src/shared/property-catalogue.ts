@@ -1,3 +1,4 @@
+import {scholarlyRelationshipKinds} from './source-scholarly.js';
 import {entityTypes, type EntityType} from './domain.js';
 import type {EntitySchema} from './entity-schema.js';
 import type {PropertyDefinition,PropertyValueKind} from './property-definitions.js';
@@ -22,7 +23,7 @@ const main:Record<EntityType,Field[]>={
  organization:[ref('founded by','Founded By',people,true),ref('parent organization','Parent Organization',organization,false,[],true),date('dissolved','Dissolved'),ref('industry','Industry',concept)],
  organism:[text('scientific name','Scientific Name'),taxon(),ref('geographic range','Geographic Range',place,true),text('common names','Common Names',true),enumeration('conservation status','Conservation Status',['not evaluated','data deficient','least concern','near threatened','vulnerable','endangered','critically endangered','extinct in the wild','extinct','unknown']),ref('habitat','Habitat',place,true)],
  culture:[ref('region','Region',place,true),language('related languages','Related Languages'),ref('historical period','Historical Period',['event']),ref('parent tradition','Parent Tradition',culture,false,[],true),text('writing system','Writing System'),text('endonyms','Endonyms',true)],
- source:[language(),ref('publisher','Publisher',organization),ref('associated work','Associated Work',work,true),identifier('doi','DOI'),identifier('isbn','ISBN')],
+ source:[{name:'ai scholarly synopsis',label:'AI Scholarly Synopsis',kind:'long_text',many:true,description:'Reviewed Noema interpretation based on identified document excerpts, with evidence and suggested Domain IDs. Never an author abstract or canonical publication metadata.'},ref('discusses concept','Discusses Concept',concept,true),...scholarlyRelationshipKinds.map(kind=>ref(`scholarly ${kind.replaceAll('_',' ')}`,`Scholarly: ${kind.replaceAll('_',' ')}`,['source','creativework'],true)),language(),ref('publisher','Publisher',organization),ref('associated work','Associated Work',work,true),identifier('doi','DOI'),identifier('isbn','ISBN')],
  concept:[ref('related concepts','Related Concepts',concept,true),text('notation','Notation'),ref('introduced by','Introduced By',person,true),ref('originating work','Originating Work',work)],
 };
 /** Built-in subtype recommendations. Disciplinary fields continue to use Domain IDs. */

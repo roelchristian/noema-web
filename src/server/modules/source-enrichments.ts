@@ -1,3 +1,4 @@
+import {SourceScholarly} from './source-scholarly.js';
 import {getNameProvenance,proposeValue,rawSourceHash,recordEntityNameProvenance} from './property-provenance.js';
 import {SourceMath} from './source-math.js';
 import {SourceAuthorBackfill,recordSourceAuthorsProcessed} from './source-author-backfill.js';
@@ -18,10 +19,13 @@ export class SourceEnrichments {
  private mathController=new AbortController();
  private activityId?:string;
  private authorBackfill:SourceAuthorBackfill;
+ private scholarlyService:SourceScholarly;
  constructor(private store:Store,private intelligence:Intelligence,private activity:AIActivityLog) {
   this.authorBackfill=new SourceAuthorBackfill(store,intelligence,activity);
+  this.scholarlyService=new SourceScholarly(store,intelligence,activity);
   store.run("UPDATE source_files SET enrichment_status='pending' WHERE enrichment_status='running'");
  }
+ scholarly(vault:string,id:string,body:Record<string,unknown>,signal?:AbortSignal) {return this.scholarlyService.run(vault,id,body,signal);}
  retry(vault:string,id:string) {
   const file=this.store.get<SourceFile>('SELECT * FROM source_files WHERE vault_id=? AND id=?',vault,id);
   if(!file)throw new HttpError(404,'Source file not found');
@@ -100,7 +104,7 @@ export class SourceEnrichments {
  }
  close() {
   this.closed=true;this.mathController.abort();
-  this.authorBackfill.close();
+  this.authorBackfill.close();this.scholarlyService.close();
   if(this.activityId)this.activity.finish(this.activityId,'interrupted',null);
  }
 }

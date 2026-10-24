@@ -32,6 +32,7 @@
     "test/property-definitions.test.mjs",
     "test/property-catalogue.test.mjs",
     "test/page-history-ui.test.mjs",
+    "test/bibliography.test.mjs",
     "test/transliteration.test.mjs"
   ],
   "dom": [
@@ -89,6 +90,9 @@
     "test/success-notice.test.mjs",
     "test/provider-connection-ui.test.mjs",
     "test/settings-category-ui.test.mjs",
+    "test/bibliography-ui.test.mjs",
+    "test/bibliographic-citations.test.mjs",
+    "test/reference-list.test.mjs",
     "test/transliteration-ui.test.mjs"
   ],
   "server": [
@@ -203,6 +207,12 @@
     "test/speech-cache.test.mjs",
     "test/speech-backup.test.mjs",
     "test/gemini-speech.test.mjs",
-    "test/page-archive.test.mjs"
+    "test/page-archive.test.mjs",
+    "test/bibliography-backups.test.mjs",
+    "test/bibliography-server.test.mjs",
+    "test/source-scholarly.test.mjs",
+    "test/bibliography-http.test.mjs",
+    "test/bibliographic-property-projection.test.mjs",
+    "test/bibliographic-export.test.mjs"
   ]
 }

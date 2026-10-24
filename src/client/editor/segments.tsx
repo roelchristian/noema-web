@@ -1,3 +1,4 @@
+import {bibliographicCitationKey} from '../../shared/bibliographic-citations';
 import {t as uiText} from '../i18n';
 import {citationKey,citationLocation,sortCitationRuns} from '../../shared/citations';
 import type {CitationPresentation} from '../sources/CitationPresentation';
@@ -23,7 +24,7 @@ export function syncEditableSegments(element: HTMLElement, content: Segment[], e
   const source = segmentHTML(content, entities,undefined,false,citations);
   const previous = reviewTimers.get(element);
   const last=content.at(-1);
-  const missingTrailingCaret=!!(last&&(last.entityId||last.math||last.sourceReference)&&element.lastChild instanceof HTMLElement&&element.lastChild.contentEditable==='false');
+  const missingTrailingCaret=!!(last&&(last.entityId||last.math||last.sourceReference||last.bibliographicReference)&&element.lastChild instanceof HTMLElement&&element.lastChild.contentEditable==='false');
   if (!changed && !missingTrailingCaret && previous?.source === source && previous.key === key) return;
   if(!changed&&previous?.source!==source){
     const byId=new Map(entities.map(entity=>[entity.id,entity]));
@@ -37,9 +38,24 @@ export function syncEditableSegments(element: HTMLElement, content: Segment[], e
   const selection = document.getSelection();
   const selecting = element.closest('[data-text-selected]') || selection && !selection.isCollapsed && selection.rangeCount && selection.getRangeAt(0).intersectsNode(element);
   const composing = element.closest('.page[data-entity-composing]');
-  const citationDisplayChanged=previous?.source!==source&&content.some(segment=>segment.sourceReference)&&!composing;
+  // Citation labels are presentation, while saved atoms retain their authored text.
+  // Update only noneditable atom labels: rebuilding the editable host would move
+  // a caret when author-date labels gain disambiguation or switch to numbers.
+  if(!changed&&!composing&&previous?.source!==source){
+    const expected=document.createElement('div');expected.innerHTML=source;
+    const selector='[data-source-reference],[data-bibliographic-reference]';
+    const rendered=expected.querySelectorAll<HTMLElement>(selector);
+    element.querySelectorAll<HTMLElement>(selector).forEach((atom,index)=>{
+      const next=rendered[index];if(!next)return;
+      if(atom.textContent!==next.textContent)atom.textContent=next.textContent;
+      for(const attribute of ['class','title','aria-label','aria-controls','role','data-citation-number','data-reference-target']){
+        const value=next.getAttribute(attribute);
+        if(value===null)atom.removeAttribute(attribute);else if(atom.getAttribute(attribute)!==value)atom.setAttribute(attribute,value);
+      }
+    });
+  }
   const dateDisplayChanged=previous?.source!==source&&element.querySelector('[data-note-date]')&&!selecting&&!composing;
-  if (changed || missingTrailingCaret || citationDisplayChanged || dateDisplayChanged || (!selecting && !composing && element.querySelector('[data-entity-review]'))) {
+  if (changed || missingTrailingCaret || dateDisplayChanged || (!selecting && !composing && element.querySelector('[data-entity-review]'))) {
     // Strip inherited highlight wrappers immediately when typing resumes.
     replaceEditableHTML(element, source);
     element.querySelectorAll<HTMLElement>('[data-entity-space="true"]').forEach(authoredBoundarySpace);
@@ -69,7 +85,7 @@ export function segmentHTML(content: Segment[], entities: Entity[], review?: Rev
   let textOffset=0;
   ordered.forEach((segment,index)=>{
     const text=segment.text??'';
-    if (!segment.code && !segment.math && !segment.sourceReference && !segment.entityId) {
+    if (!segment.code && !segment.math && !segment.sourceReference && !segment.bibliographicReference && !segment.entityId) {
       if (ordered[index-1]?.entityId && text.startsWith('\u00a0')) entitySpaces.add(textOffset);
       if (ordered[index+1]?.entityId && text.endsWith('\u00a0')) entitySpaces.add(textOffset+text.length-1);
     }
@@ -105,9 +121,14 @@ export function segmentHTML(content: Segment[], entities: Entity[], review?: Rev
   const last=ordered.at(-1);
   // WebKit needs an editable text position after a trailing noneditable atom.
   // Otherwise an entity-only line can paint its caret at the block's far edge.
-  const trailingCaret=!readOnly&&last&&(last.entityId||last.math||last.sourceReference);
+  const trailingCaret=!readOnly&&last&&(last.entityId||last.math||last.sourceReference||last.bibliographicReference);
   return renderToStaticMarkup(<>{ordered.map((s, index) => {
     const start = offset; offset += s.text?.length ?? 0;
+    if(s.bibliographicReference){
+      const ref=s.bibliographicReference,source=entities.find(entity=>entity.id===ref.sourceId);
+      const label=citations?.scholarly?.labels.get(bibliographicCitationKey(ref))??`[${source?.name??'Source'}${ref.locator?`, ${ref.locator}`:''}]`;
+      return <span key={index} id={`note-bibliographic-citation-${ref.id}`} className="source-reference-tag" contentEditable={false} role="link" tabIndex={0} data-entity={ref.sourceId} data-bibliographic-reference={JSON.stringify(ref)} data-bibliographic-segment={JSON.stringify(s)} title="Bibliographic citation">{label}</span>;
+    }
     if (s.sourceReference) {
       const ref=s.sourceReference, source=entities.find(entity=>entity.id===ref.sourceId);
       const entry=citations?.entries.get(citationKey(ref)), footnote=citations?.style==='references'&&entry;
@@ -189,6 +210,10 @@ export function readSegments(el: Node, allowMentions = true): Segment[] {
         return;
       }
       if (node.dataset.wikilink !== undefined) { walk(document.createTextNode(node.dataset.wikilink), {...style,skipAutoTag:true}); return; }
+      if(node.dataset.bibliographicReference!==undefined){
+        try{output.push(node.dataset.bibliographicSegment?JSON.parse(node.dataset.bibliographicSegment):{text:' [ref]',bibliographicReference:JSON.parse(node.dataset.bibliographicReference)});}catch{if(node.textContent)output.push({text:node.textContent});}
+        return;
+      }
       if (node.dataset.sourceReference !== undefined) {
         try {output.push(node.dataset.sourceSegment ? JSON.parse(node.dataset.sourceSegment) : {text:node.dataset.sourceText??'',sourceReference:JSON.parse(node.dataset.sourceReference)});} catch {if(node.textContent)output.push({text:node.textContent});}
         return;

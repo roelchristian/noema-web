@@ -1,3 +1,4 @@
+import {setupBibliographySchema} from './modules/bibliography.js';
 import {setupPageHistorySchema} from './page-history-schema.js';
 import {setupOrganizationDescriptionSchema} from './organization-description-schema.js';
 import {setupSmartCollectionSchema} from './smart-collection-schema.js';
@@ -501,6 +502,7 @@ if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
  setupPageHistorySchema(db);
  setupOrganizationDescriptionSchema(db);
  if (db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Database contains invalid references');
+ setupBibliographySchema(db);
  return db;
  } catch(error) { db.close(); throw error; }
 }

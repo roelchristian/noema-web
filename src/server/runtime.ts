@@ -1,3 +1,4 @@
+import {BibliographicMetadata} from './modules/bibliographic-metadata.js';
 import {SpeechCache} from './modules/speech-cache.js';
 import {buildCollectionRulePrompt} from './modules/collection-rule-generation.js';
 import {LiturgicalCalendar} from './modules/liturgical-calendar.js';
@@ -76,6 +77,7 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
     try {const output=await intelligence.generate({kind:'collectionRules',...buildCollectionRulePrompt(input),onRequest:bytes=>activity.request(id,bytes,null)});activity.finish(id,'completed',200);return output;}
     catch(error){activity.finish(id,'failed',error instanceof HttpError?error.status:502);throw error;}
   });
+  const bibliography=new BibliographicMetadata(store);
   const sourcePassages=new SourcePassages(store);
   const sourceEnrichments=new SourceEnrichments(store,intelligence,activity);
   const sourcePages=new SourcePages(store,knowledge,pages);
@@ -96,7 +98,7 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
   let sourcePassageWorker: ReturnType<typeof setInterval> | undefined;
   let liturgicalWorker: ReturnType<typeof setInterval> | undefined;
   let sourceEnrichmentWorker: ReturnType<typeof setInterval> | undefined;
-  return { store, speechCache, temporal, liturgical, entityDiscovery, intelligence, networkAccess, vaultDeletion, sourceFiles, sourcePageImages, sourceReading, backups, images, notifications, vaults, knowledge, pages, organizer, activity, enrichments, sourceReprocessing, scans, pageEnrichment, enrichmentScheduler, scheduleEnrichment, entityMatches, embeddings, sourcePassages, sourceEnrichments, sourcePages, sourcePageGeneration, searchSnippets, textSearch,
+  return { bibliography, store, speechCache, temporal, liturgical, entityDiscovery, intelligence, networkAccess, vaultDeletion, sourceFiles, sourcePageImages, sourceReading, backups, images, notifications, vaults, knowledge, pages, organizer, activity, enrichments, sourceReprocessing, scans, pageEnrichment, enrichmentScheduler, scheduleEnrichment, entityMatches, embeddings, sourcePassages, sourceEnrichments, sourcePages, sourcePageGeneration, searchSnippets, textSearch,
     start() {
       enrichmentScheduler.start();
       liturgicalWorker=setInterval(()=>{void liturgical.tick().catch(()=>{});},1000);liturgicalWorker.unref();

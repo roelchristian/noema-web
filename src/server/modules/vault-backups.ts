@@ -1,3 +1,4 @@
+import {isCitationKey} from '../../shared/bibliography.js';
 import {organizationDescription} from './organization-descriptions.js';
 import {parseExampleCollection} from '../../shared/example-collections.js';
 import {parseSmartRule,parseSemanticCollection,type SmartRuleNode} from '../../shared/smart-collections.js';
@@ -27,7 +28,7 @@ import {projectPageText} from '../../shared/page-text.js';
 import { syncSourceProvenance } from './source-provenance.js';
 import { readFileSync, unlinkSync } from 'node:fs';
 import { SourceFiles } from './source-files.js';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {promisify} from 'node:util';
 import {gzip,gunzip} from 'node:zlib';
 import type {SQLInputValue} from 'node:sqlite';
@@ -51,6 +52,9 @@ const entityScope='entity_id IN (SELECT id FROM entities WHERE vault_id=?)';
 // Explicit, versioned allowlist: credentials, global settings and activity are never archived.
 // Editorial evidence is retained, but restored revisions never resume paid background jobs.
 const tables={
+  bibliographic_import_batches:{columns:'id,raw',scope:'vault_id=?'},
+  bibliographic_records:{columns:'source_id,citation_key,entry_type,fields_json,provenance_json,raw_imports_json,revision',scope:'vault_id=?'},
+  bibliographic_proposals:{columns:'id,source_id,revision,provider,fields_json,created_at',scope:'vault_id=?'},
   temporal_dates:{columns:'id,value,precision,calendar',scope:'vault_id=?'},
   temporal_curation:{columns:'id,label,annotation,pinned,importance,personal_priority,layer',scope:'vault_id=?'},
   temporal_mentions:{columns:'id,page_id,block_id,block_hash,start_offset,end_offset,original_text,date_id,reason,revision,stale',scope:'vault_id=?'},
@@ -178,7 +182,7 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table==='page_versions'||table==='collection_descriptions'||table==='folder_descriptions'||table.startsWith('smart_collection_')||table.startsWith('temporal_')||table==='property_provenance'||table==='entity_name_provenance'||table==='property_proposals'||table==='source_author_jobs'||table==='property_definitions'||table==='property_value_metadata'||table==='entity_overviews'||table==='entity_page_associations'||table==='source_reading_locations'||table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table.startsWith('bibliographic_')||table==='page_versions'||table==='collection_descriptions'||table==='folder_descriptions'||table.startsWith('smart_collection_')||table.startsWith('temporal_')||table==='property_provenance'||table==='entity_name_provenance'||table==='property_proposals'||table==='source_author_jobs'||table==='property_definitions'||table==='property_value_metadata'||table==='entity_overviews'||table==='entity_page_associations'||table==='source_reading_locations'||table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     const splitSourceOwners=new Set<unknown>(),sourceOwners=new Set<unknown>(),legacyEntities=new Map(rows.entities.map(row=>[row.id,row]));
     const legacyProperties=[...rows.properties],legacyLinks=[...rows.page_sources];
     for(const file of rows.source_files) {
@@ -288,6 +292,42 @@ export class VaultBackups {
           if(mentionCase!=='canonical'&&mentionCase!=='lowercase')throw invalid();
           if(row.inactive!==undefined&&row.inactive!==0&&row.inactive!==1)throw invalid();
           insert('entities',{archived_at:row.archived_at==null?null:timestamp(row,'archived_at'),inactive:row.inactive??0,id:ref(entityIds,row.id),vault_id:vault,name:name(row,'name'),type,aliases:JSON.stringify(type==='source'?[]:aliases),mention_case:mentionCase,referent_status:referentStatus,subtypes:JSON.stringify(subtypes),description:string(row,'description'),updated_at:timestamp(row,'updated_at')});
+        }
+        // Bibliographic facts remain attached to the same remapped Source, including metadata-only records.
+        // Raw imports are evidence, never reparsed or normalized during restore.
+        const bibliographicBatchIds=new Set<string>();
+        for(const row of rows.bibliographic_import_batches) {
+          const id=string(row,'id',64),raw=string(row,'raw',16*1024*1024);
+          if(!/^[a-f0-9]{64}$/.test(id)||bibliographicBatchIds.has(id)||createHash('sha256').update(raw).digest('hex')!==id)throw invalid();
+          bibliographicBatchIds.add(id);insert('bibliographic_import_batches',{id,vault_id:vault,raw});
+        }
+        const bibliographicSources=new Set<string>(),bibliographicKeys=new Set<string>();
+        const bibliographicFields=(row:Row)=>{
+          const value=object(json(row,'fields_json'));
+          if(Object.keys(value).length>1000)throw invalid();
+          for(const [key,field] of Object.entries(value))if(!/^[-a-zA-Z0-9_:.]+$/.test(key)||key.length>200||typeof field!=='string'||field.length>1000000)throw invalid();
+          return value;
+        };
+        for(const row of rows.bibliographic_records) {
+          const sourceId=ref(entityIds,row.source_id),citationKey=name(row,'citation_key'),entryType=name(row,'entry_type');
+          if(bibliographicSources.has(sourceId)||bibliographicKeys.has(citationKey)||!isCitationKey(citationKey)||entryType.length>100||!/^[-a-zA-Z0-9_]+$/.test(entryType)||this.store.get<{type:string}>('SELECT type FROM entities WHERE id=? AND vault_id=?',sourceId,vault)?.type!=='source')throw invalid();
+          bibliographicSources.add(sourceId);bibliographicKeys.add(citationKey);
+          const fields=bibliographicFields(row),provenance=object(json(row,'provenance_json')),rawImports=list(json(row,'raw_imports_json'));
+          if(Object.keys(provenance).length>1000)throw invalid();
+          for(const [field,value] of Object.entries(provenance)) {
+            const evidence=object(value);
+            if(!Object.hasOwn(fields,field)||!['manual','bibtex','crossref','datacite'].includes(String(evidence.origin)))throw invalid();
+            timestamp(evidence,'at');
+            if(evidence.history!==undefined)for(const old of list(evidence.history).map(object)){if(typeof old.value!=='string'||old.value.length>100000||!['manual','bibtex','crossref','datacite'].includes(String(old.origin)))throw invalid();timestamp(old,'at');}
+          }
+          if(rawImports.some(value=>typeof value!=='string'||value.length>16*1024*1024||/^[a-f0-9]{64}$/.test(value)&&!bibliographicBatchIds.has(value)))throw invalid();
+          insert('bibliographic_records',{source_id:sourceId,vault_id:vault,citation_key:citationKey,entry_type:entryType,fields_json:JSON.stringify(fields),provenance_json:JSON.stringify(provenance),raw_imports_json:JSON.stringify(rawImports),revision:integer(row,'revision',1)});
+        }
+        const bibliographicProposalIds=ids(rows.bibliographic_proposals);
+        for(const row of rows.bibliographic_proposals) {
+          const sourceId=ref(entityIds,row.source_id),record=this.store.get<{revision:number}>('SELECT revision FROM bibliographic_records WHERE source_id=? AND vault_id=?',sourceId,vault),revision=integer(row,'revision',1);
+          if(!record||revision>record.revision||!['crossref','datacite'].includes(String(row.provider)))throw invalid();
+          insert('bibliographic_proposals',{id:ref(bibliographicProposalIds,row.id),source_id:sourceId,vault_id:vault,revision,provider:String(row.provider),fields_json:JSON.stringify(bibliographicFields(row)),created_at:timestamp(row,'created_at')});
         }
         const restoredSourceFiles=new Map<string,string>();
         for(const row of rows.source_files) {
@@ -419,6 +459,11 @@ export class VaultBackups {
             const segments=(value:unknown)=>list(value).map(value=>{
               const segment={...object(value)};
               if(segment.entityId)segment.entityId=ref(entityIds,segment.entityId);
+              if(segment.bibliographicReference!==undefined) {
+                const citation=object(segment.bibliographicReference),citationId=name(citation,'id');
+                if(!citationIds.has(citationId))citationIds.set(citationId,randomUUID());
+                segment.bibliographicReference={...citation,id:citationIds.get(citationId),sourceId:ref(entityIds,citation.sourceId)};
+              }
               if(segment.sourceReference) {
                 const citation=object(segment.sourceReference),fileId=restoredSourceFiles.get(name(citation,'fileId'));
                 if(!fileId)throw invalid();
@@ -578,7 +623,7 @@ export class VaultBackups {
         }
         for(const row of rows.entity_domains) {
           const domainId=name(row,'domain_id'),entityId=ref(entityIds,row.entity_id);
-          if(!domainById(domainId)||!['manual','scan','inferred'].includes(String(row.origin))||this.store.get<{type:string}>('SELECT type FROM entities WHERE id=?',entityId)?.type!=='concept')throw invalid();
+          if(!domainById(domainId)||!['manual','scan','inferred'].includes(String(row.origin))||!['concept','source'].includes(this.store.get<{type:string}>('SELECT type FROM entities WHERE id=?',entityId)?.type??''))throw invalid();
           insert('entity_domains',{entity_id:entityId,domain_id:domainId,origin:String(row.origin)});
         }
         for(const row of rows.page_edit_locks) {

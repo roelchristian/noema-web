@@ -23,9 +23,9 @@ export function inlineCodeSegments(content:Segment[]):Segment[] {
   const output:Segment[]=[];
   for(let i=0;i<content.length;) {
     const segment=content[i]!;
-    if(segment.entityId||segment.code||segment.math||segment.sourceReference||segment.href) {output.push(segment);i++;continue;}
+    if(segment.entityId||segment.code||segment.math||segment.sourceReference||segment.bibliographicReference||segment.href) {output.push(segment);i++;continue;}
     const run:Segment[]=[];
-    while(i<content.length&&!content[i]!.entityId&&!content[i]!.code&&!content[i]!.math&&!content[i]!.sourceReference&&!content[i]!.href)run.push(content[i++]!);
+    while(i<content.length&&!content[i]!.entityId&&!content[i]!.code&&!content[i]!.math&&!content[i]!.sourceReference&&!content[i]!.bibliographicReference&&!content[i]!.href)run.push(content[i++]!);
     const text=run.map(segment=>segment.text??'').join('');
     const slice=(start:number,end:number)=>{
       let offset=0;

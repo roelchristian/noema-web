@@ -1228,7 +1228,7 @@
 .organization-page-link {
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--ui-text-md);
   min-width: 0;
 }
 .organization-page-link[aria-disabled="true"] {

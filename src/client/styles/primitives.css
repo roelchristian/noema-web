@@ -14,7 +14,7 @@ body {
   margin: 0;
   display: flex;
   min-height: 100vh;
-  font-size: var(--ui-text-body)
+  font-size: var(--ui-text-md)
 }
 button,input,select,textarea {
   font: inherit;
@@ -57,7 +57,7 @@ a {
 }
 .button.small {
   padding: var(--button-padding-small);
-  font-size: var(--ui-text-sm)
+  font-size: var(--ui-text-md)
 }
 select,input:not([type=checkbox]),textarea {
   max-width: 100%
@@ -116,10 +116,10 @@ select.select-native {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-4);
+  gap: var(--space-2);
   width: 100%;
   min-width: 0;
-  padding: var(--space-2) var(--space-2-5);
+  padding: var(--space-1-5) var(--space-2-5);
   border: 1px solid var(--select-border);
   border-radius: var(--radius-control);
   background: var(--surface-raised);
@@ -157,8 +157,8 @@ select.select-native {
   height: 6px;
   flex: none;
   margin: 0 3px 3px 0;
-  border-right: 1.5px solid light-dark(#989892, var(--text-muted));
-  border-bottom: 1.5px solid light-dark(#989892, var(--text-muted));
+  border-right: 1.5px solid var(--text-muted);
+  border-bottom: 1.5px solid var(--text-muted);
   transform: rotate(45deg)
 }
 .select-menu {
@@ -173,13 +173,13 @@ select.select-native {
   box-shadow: var(--shadow-menu);
   overflow-y: auto;
   overscroll-behavior: contain;
-  font: var(--ui-text-lg)/1.4 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif
+  font: var(--ui-text-md)/1.4 var(--font-ui)
 }
 .select-option {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-4);
+  gap: var(--space-2);
   min-height: var(--control-target-regular);
   padding: 7px 9px;
   border-radius: var(--radius-xs);
@@ -200,7 +200,7 @@ select.select-native {
   flex: none;
   width: 14px;
   font-size: var(--ui-text-lg);
-  color: light-dark(#787871, var(--text-muted))
+  color: var(--text-muted)
 }
 @media(max-width:500px) {
   .select-chevron {

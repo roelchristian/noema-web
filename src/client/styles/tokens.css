@@ -65,7 +65,7 @@
   --library-heading-gap: 30px;
   --library-heading-height: 38px;
 
-  /* Interface sizing */
+  /* Interface labels use md; metadata and document typography keep their hierarchy. */
   --workspace-toolbar-height: 44px;
   --ui-text-xs: 11px;
   --ui-text-sm: 12px;
@@ -103,20 +103,20 @@
   --toolbar-control-padding-touch: 12px;
 
   /* Button and select appearance */
-  --button-padding: 9px 14px;
-  --button-padding-small: 7px 11px;
+  --button-padding: 7px 12px;
+  --button-padding-small: 6px 10px;
   --button-border: #e1e1e1;
   --button-surface: white;
   --button-surface-hover: #f6f6f6;
-  --select-border: #e5e5e3;
-  --select-border-hover: #d8d8d5;
-  --select-border-expanded: #d2d2ce;
-  --select-text: #37352f;
-  --select-surface-hover: #f6f6f5;
-  --select-surface-expanded: #f1f1ef;
-  --select-surface-disabled: #f7f7f6;
-  --select-focus: #9c9c96;
-  --select-menu-border: #e7e7e4;
+  --select-border: var(--control-border);
+  --select-border-hover: var(--text-muted);
+  --select-border-expanded: var(--text-muted);
+  --select-text: var(--text);
+  --select-surface-hover: var(--surface-hover);
+  --select-surface-expanded: var(--selection-neutral);
+  --select-surface-disabled: var(--surface-inset);
+  --select-focus: var(--focus-ring);
+  --select-menu-border: var(--line);
 
   /* Elevation, focus and motion */
   --shadow-control: 0 1px 2px #00000004;

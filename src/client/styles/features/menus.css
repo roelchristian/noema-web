@@ -5,7 +5,7 @@
   --menu-target: var(--control-target-regular);
   --menu-row-padding: 7px 8px;
   --menu-gap: 8px;
-  --menu-font-size: 13px;
+  --menu-font-size: var(--ui-text-md);
   --menu-icon-slot: 20px;
   --menu-glyph: 16px;
   color: var(--text);
@@ -18,7 +18,7 @@
 .menu-primitive[data-menu-size=touch] {
   --menu-target: var(--touch-target-size);
   --menu-row-padding: 8px 12px;
-  --menu-font-size: 15px;
+  --menu-font-size: var(--ui-text-md);
 }
 .menu-primitive[data-menu-presentation=popup] {
   position: fixed;
@@ -142,7 +142,7 @@
   .menu-primitive[data-menu-size] {
     --menu-target: var(--touch-target-size);
     --menu-row-padding: 8px 12px;
-    --menu-font-size: 15px;
+    --menu-font-size: var(--ui-text-md);
   }
   .menu-primitive small { font-size: 13px; }
 }

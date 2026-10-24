@@ -35,6 +35,8 @@ export function enhanceDropdowns(host: HTMLElement) {
     menu.popover = 'auto';
     menu.setAttribute('role', 'listbox');
     trigger.setAttribute('aria-controls', menu.id);
+    // Keep trigger clicks inside the popover relationship for native light dismiss.
+    trigger.popoverTargetElement = menu;
     wrapper.append(trigger, menu);
     let active = -1;
     let search = '';

@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState} from 'react';
-import type {Entity, Page, PageEntityAssociation} from '../../shared/domain';
+import type {Entity, Page, PageEntityAssociation, PageSummary, PagePageAssociation} from '../../shared/domain';
 import {api} from '../api';
 import {t as uiText} from '../i18n';
 import {Modal, ModalHeader} from '../components/Modal';
@@ -8,10 +8,12 @@ import {ConnectPicker} from '../knowledge/ConnectPicker';
 
 type Association = PageEntityAssociation;
 
-export function PageEntityAssociationsDialog({page, entities, onClose, onChanged, onOpenEntity}: {
-  page:Page; entities:Entity[]; onClose:()=>void; onChanged?:()=>Promise<void>; onOpenEntity?:(id:string)=>void;
+export function PageEntityAssociationsDialog({page, pages=[], entities, onClose, onChanged, onOpenEntity}: {
+  page:Page; pages?:PageSummary[]; entities:Entity[]; onClose:()=>void; onChanged?:()=>Promise<void>; onOpenEntity?:(id:string)=>void;
 }) {
   const [associations,setAssociations]=useState<Association[]>([]);
+  const [pageLinks,setPageLinks]=useState<PagePageAssociation[]>([]);
+  const [pageUndo,setPageUndo]=useState<{id:string;previous?:PagePageAssociation}|null>(null);
   const [loading,setLoading]=useState(true),[pending,setPending]=useState(false),[error,setError]=useState('');
   const lock=useRef(false),alive=useRef(true);
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
@@ -20,7 +22,7 @@ export function PageEntityAssociationsDialog({page, entities, onClose, onChanged
   useEffect(()=>{
     let active=true;
     setLoading(true);setLoadFailed(false);setError('');
-    void api.pageEntityAssociations(page.vault_id,page.id).then(items=>{if(active){setAssociations(items);setLoading(false);}},error=>{if(active){setLoadFailed(true);setError(error instanceof Error?error.message:uiText('Could not load entity associations.'));setLoading(false);}});
+    void Promise.all([api.pageEntityAssociations(page.vault_id,page.id),pages.length?api.pageAssociations(page.vault_id,page.id):Promise.resolve([])]).then(([items,links])=>{if(active){setAssociations(items);setPageLinks(links);setLoading(false);}},error=>{if(active){setLoadFailed(true);setError(error instanceof Error?error.message:uiText('Could not load entity associations.'));setLoading(false);}});
     return ()=>{active=false;};
   },[page.vault_id,page.id,loadAttempt]);
   const eligible=entities.filter(entity=>entity.vault_id===page.vault_id&&entity.type!=='source'&&!entity.archived_at&&!entity.inactive);
@@ -33,13 +35,20 @@ export function PageEntityAssociationsDialog({page, entities, onClose, onChanged
       else await api.associateEntityPage(page.vault_id,entityId,page.id,values);
       if(!alive.current)return;
       setAssociations(current=>remove?current.filter(item=>item.entityId!==entityId):current.some(item=>item.entityId===entityId)?current.map(item=>item.entityId===entityId?{...item,...values}:item):[...current,{entityId,pinned:false,annotation:'',...values}]);
-      if(remember){setUndo({entityId,previous});}else setUndo(null);
+      if(remember){setUndo({entityId,previous});setPageUndo(null);}else setUndo(null);
       try {await onChanged?.();}
       catch {if(alive.current)setError(uiText('Association saved, but the entity list could not refresh. Reopen the entity homepage to see the latest changes.'));}
     }catch(error){if(alive.current)setError(error instanceof Error?error.message:uiText('Could not update entity associations.'));throw error;}
     finally{lock.current=false;if(alive.current)setPending(false);}
   }
   const run=(work:()=>Promise<void>)=>{void work().catch(()=>{});};
+  async function updatePage(targetId:string,values:{pinned?:boolean;annotation?:string},remove=false,remember=true) {
+    if(lock.current)return;lock.current=true;setPending(true);setError('');
+    const previous=pageLinks.find(item=>item.id===targetId);
+    try {const links=await (remove?api.removePageAssociation(page.vault_id,page.id,targetId):api.associatePages(page.vault_id,page.id,targetId,values));if(alive.current){setPageLinks(links);window.dispatchEvent(new CustomEvent('noema:page-connections-changed',{detail:{vaultId:page.vault_id,pageId:page.id}}));if(remember){setPageUndo({id:targetId,previous});setUndo(null);}else setPageUndo(null);await onChanged?.();}}
+    catch(value){if(alive.current)setError(value instanceof Error?value.message:String(value));throw value;}
+    finally{lock.current=false;if(alive.current)setPending(false);}
+  }
   const close=()=>{if(!pending)onClose();};
   return <Modal className="page-entity-dialog" titleId="page-entity-dialog-title" onClose={close}>
     <ModalHeader titleId="page-entity-dialog-title" leading={<Icon name="knowledge"/>} closeDisabled={pending}>{uiText('Connect')}</ModalHeader>
@@ -50,7 +59,9 @@ export function PageEntityAssociationsDialog({page, entities, onClose, onChanged
         return <AssociationRow key={item.entityId} association={item} name={entity?.name??uiText('Unavailable entity')} pending={pending} onOpen={onOpenEntity?()=>{onClose();onOpenEntity(item.entityId);}:undefined} onSave={values=>run(()=>update(item.entityId,values))} onRemove={()=>run(()=>update(item.entityId,{},true))}/>;
       })}
     </section>
-    <ConnectPicker sourceLabel={page.title||uiText('Untitled')} entities={eligible} excludeEntityIds={associations.map(item=>item.entityId)} disabled={pending||loading||loadFailed} onConnect={async(target,options)=>{await update(target.id,{pinned:options.pinned,annotation:options.annotation});}}/>
+    {!!pageLinks.length&&<section className="page-entity-existing" aria-label={uiText('Associated pages')}>{pageLinks.map(item=><AssociationRow key={item.id} association={{entityId:item.id,pinned:item.pinned,annotation:item.annotation}} name={item.title||uiText('Untitled')} pending={pending} onSave={values=>run(()=>updatePage(item.id,values))} onRemove={()=>run(()=>updatePage(item.id,{},true))}/>)}</section>}
+    <ConnectPicker pages={pages} excludePageIds={[page.id,...pageLinks.map(item=>item.id)]} sourceLabel={page.title||uiText('Untitled')} entities={eligible} excludeEntityIds={associations.map(item=>item.entityId)} disabled={pending||loading||loadFailed} onConnect={async(target,options)=>{if(target.kind==='page')await updatePage(target.id,{pinned:options.pinned,annotation:options.annotation});else await update(target.id,{pinned:options.pinned,annotation:options.annotation});}}/>
+    {pageUndo&&<p role="status">{uiText('Connection updated.')} <button type="button" disabled={pending} onClick={()=>run(()=>updatePage(pageUndo.id,pageUndo.previous?{pinned:pageUndo.previous.pinned,annotation:pageUndo.previous.annotation}:{},!pageUndo.previous,false))}>{uiText('Undo')}</button></p>}
     {undo&&<p role="status">{uiText('Connection updated.')} <button type="button" disabled={pending} onClick={()=>run(()=>update(undo.entityId,undo.previous?{pinned:undo.previous.pinned,annotation:undo.previous.annotation}:{},!undo.previous,false))}>{uiText('Undo')}</button></p>}
     {error&&<p role="alert" className="dialog-error">{error}{loadFailed&&!loading&&<button type="button" className="button" disabled={pending} onClick={()=>setLoadAttempt(value=>value+1)}>{uiText('Retry loading')}</button>}</p>}
     <div className="dialog-actions"><span role="status">{pending?uiText('Saving changes…'):uiText('Associations save automatically')}</span><button type="button" className="button" disabled={pending} onClick={close}>{uiText('Done')}</button></div>

@@ -14,6 +14,9 @@ async function fixture(t,{associations=[],pages=[]}={},work) {
  const entity=(id,name,extra={})=>({id,vault_id:'vault',name,type:'person',description:'',subtypes:[],updated_at:'',...extra});
  const entities=[entity('ada','Ada Lovelace',{aliases:['Countess']}),entity('grace','Grace Hopper'),entity('archived','Archived',{archived_at:'2026-01-01'}),entity('source','Source',{type:'source'}),entity('foreign','Foreign',{vault_id:'other'})];
  const read=t.mock.method(api,'pageEntityAssociations',async()=>associations);
+ const pageRead=t.mock.method(api,'pageAssociations',async()=>[]);
+ const pageSave=t.mock.method(api,'associatePages',async(_vault,_id,targetId,input)=>[{id:targetId,title:'Related notes',updated_at:'',created_at:'',pinned:false,annotation:'',...input}]);
+ const pageRemove=t.mock.method(api,'removePageAssociation',async()=>[]);
  const save=t.mock.method(api,'associateEntityPage',async()=>({}));
  const remove=t.mock.method(api,'removeEntityPage',async()=>({}));
  let changed=0,opened='';
@@ -21,7 +24,7 @@ async function fixture(t,{associations=[],pages=[]}={},work) {
  const props={page,pages,entities,onClose(){},onChanged:async()=>{changed++;},onOpenEntity:id=>{opened=id;}};
  const click=async label=>{const button=[...document.querySelectorAll('button')].find(button=>button.textContent===label);assert.ok(button,label);await act(async()=>button.dispatchEvent(new MouseEvent('click',{bubbles:true})));};
  const input=async(selector,value)=>{const node=document.querySelector(selector);const prototype=node.tagName==='TEXTAREA'?dom.window.HTMLTextAreaElement.prototype:dom.window.HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(prototype,'value').set.call(node,value);await act(async()=>node.dispatchEvent(new Event('input',{bubbles:true})));};
- try {await act(async()=>root.render(React.createElement(PageEntityAssociationsDialog,props)));await work({click,input,save,remove,read,dom,changed:()=>changed,opened:()=>opened});} finally {await env.close();}
+ try {await act(async()=>root.render(React.createElement(PageEntityAssociationsDialog,props)));await work({click,input,save,remove,read,pageRead,pageSave,pageRemove,dom,changed:()=>changed,opened:()=>opened});} finally {await env.close();}
 }
 
 test('page associations filter names and aliases, exclude archived/source/foreign entities and save optional pin and annotation in the page vault',async t=>{
@@ -101,3 +104,15 @@ test('repeated target actions while save is pending produce one write',async t=>
  });
 });
 
+
+test('shared picker connects a whole page independently and Undo reverses only that association',async t=>{
+ await fixture(t,{pages:[{id:'page',title:'Notes',updated_at:''},{id:'related',title:'Related notes',updated_at:''}]},async({click,pageRead,pageSave,pageRemove})=>{
+  assert.deepEqual(pageRead.mock.calls[0].arguments,['vault','page']);
+  assert.equal(document.querySelector('[aria-label="Connect Notes"]'),null);
+  await click('Related notesPage');
+  assert.deepEqual(pageSave.mock.calls[0].arguments,['vault','page','related',{pinned:false,annotation:''}]);
+  assert.equal(document.querySelectorAll('[aria-label="Associated pages"] article').length,1);
+  await click('Undo');assert.deepEqual(pageRemove.mock.calls[0].arguments,['vault','page','related']);
+  assert.equal(document.querySelectorAll('[aria-label="Associated pages"] article').length,0);
+ });
+});

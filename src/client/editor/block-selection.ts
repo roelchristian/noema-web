@@ -99,12 +99,17 @@ function sliceBlock(block: Block, el: HTMLElement, range: Range, part: 'before' 
   return content.length ? {...block, content} : undefined;
 }
 const textOf = (content: Segment[], entities: Entity[]) => content.map(s => s.entityId ? s.mentionText ?? entityMentionName(entities.find(e => e.id === s.entityId)) ?? '' : s.text ?? '').join('');
-export function editorSelectionClipboard(root: HTMLElement, blocks: Block[], entities: Entity[]) {
-  const selected = selectedEditorBlocks(root); if (!selected) return null;
-  const slices = selected.elements.flatMap(el => {
+/** Preserve block structure and inline metadata while clipping to highlighted content. */
+export function editorSelectionBlocks(root: HTMLElement, blocks: Block[]): Block[] {
+  const selected = selectedEditorBlocks(root); if (!selected) return [];
+  return selected.elements.flatMap(el => {
     const block = blocks.find(b => b.id === el.dataset.blockId);
     const result = block && sliceBlock(block, el, selected.range, 'selected'); return result ? [result] : [];
   });
+}
+export function editorSelectionClipboard(root: HTMLElement, blocks: Block[], entities: Entity[]) {
+  const selected = selectedEditorBlocks(root); if (!selected) return null;
+  const slices = editorSelectionBlocks(root, blocks);
   const text = slices.map(block => (block.type === 'table' || block.type === 'columns') ? block.rows?.map(row => row.map(cell => textOf(cell, entities)).join('\t')).join('\n') : block.type === 'math' ? `\\[${textOf(block.content, entities)}\\]` : block.type === 'image' ? block.alt ?? '' : block.type === 'divider' ? '---' : block.type === 'code' ? '```\n'+textOf(block.content, entities)+'\n```' : textOf(block.content, entities)).join('\n\n');
   const escapeAttribute=(value:string)=>value.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
   const html = slices.map(block => {

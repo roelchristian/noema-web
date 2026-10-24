@@ -22,7 +22,7 @@ export function SpeechPlayer({state,voice,onClose,onError,onNext,onPrevious,onSe
     observer?.observe(main);window.addEventListener('resize',measure);
     return()=>{observer?.disconnect();window.removeEventListener('resize',measure);};
   },[]);
-  const [elapsed,setElapsed]=useState(0),[playing,setPlaying]=useState(false),[waiting,setWaiting]=useState(false);
+  const [playing,setPlaying]=useState(false),[waiting,setWaiting]=useState(false);
   const [position,setPosition]=useState(0),[duration,setDuration]=useState(0),[rate,setRate]=useState(1),[ended,setEnded]=useState(false),[started,setStarted]=useState(false),[notice,setNotice]=useState('');
   useEffect(()=>{
     if(!state.url||!audio.current||beforePlay&&!beforePlay())return;
@@ -38,12 +38,6 @@ export function SpeechPlayer({state,voice,onClose,onError,onNext,onPrevious,onSe
     document.addEventListener('pointerdown',dismiss);
     return()=>document.removeEventListener('pointerdown',dismiss);
   },[]);
-  useEffect(()=>{
-    if(!state.loading)return;
-    const start=Date.now();
-    const interval=window.setInterval(()=>setElapsed(Math.floor((Date.now()-start)/1000)),1000);
-    return()=>window.clearInterval(interval);
-  },[state.loading]);
   async function toggle(){
     const media=audio.current;if(!media)return;
     if(!media.paused){media.pause();return;}
@@ -55,14 +49,13 @@ export function SpeechPlayer({state,voice,onClose,onError,onNext,onPrevious,onSe
   const placement=workspace?{'--speech-workspace-center':`${workspace.left+workspace.width/2}px`,'--speech-workspace-width':`${workspace.width}px`} as CSSProperties:undefined;
   return <><span ref={anchor} hidden/>{createPortal(<aside className="editor-speech" aria-label="Speak selected blocks" data-loading={state.loading} data-error={!!state.error} data-ready={!!state.url} data-compact={workspace?workspace.width<=600:undefined} style={placement}>
     <div className="speech-heading">
-      <div className={'speech-status'+(state.url&&!state.loading&&!state.error?' sr-only':'')} role="status" aria-atomic="true">
+      <div className={'speech-status'+(state.url&&!state.error?' sr-only':'')} role="status" aria-atomic="true">
         {state.loading&&<span className="scan-spinner" aria-hidden="true"/>}
         <strong>{title}</strong>
         {(state.error||state.loading&&state.total>1)&&<span>{state.error||`${state.part} / ${state.total}`}</span>}
       </div>
       <button type="button" className="speech-dismiss" onClick={onClose} aria-label={state.loading?'Cancel speech generation':state.error?'Dismiss':'Close speech player'} title={state.loading?'Cancel generation':'Close'}>{state.loading?'Cancel':state.error?'Dismiss':<Icon name="close"/>}</button>
     </div>
-    {state.loading&&!state.url&&<span className="speech-generation-time" aria-label={`${elapsed} seconds elapsed`}>{time(elapsed)}</span>}
     {state.error&&onRetry&&<button type="button" className="button" onClick={onRetry}>Retry unfinished section</button>}
     {state.error&&state.url&&<p className="speech-notice">Earlier sections remain playable. Download is available only when every section is complete. Retrying may incur provider usage.</p>}
     {state.url&&<>

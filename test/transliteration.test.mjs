@@ -10,11 +10,14 @@ test('Greek includes polytonic vowels, breathings, subscript iota and final sigm
 });
 
 test('Cyrillic handles Russian, Ukrainian, Serbian and other common letters',()=>{
-  assert.equal(transliterate('Привет, мир! Ёж, щука.'),'Privet, mir! Yozh, shchuka.');
+  assert.equal(transliterate('Привет, мир! Ёж, щука.'),'Privet, mir! Yož, ščuka.');
   assert.equal(transliterate('Українська мова, Љубав, қазақ.'),'Ukrayinsʹka mova, Ljubav, qazaq.');
+  assert.equal(transliterate('ж ч ш щ џ ц Ж Ч Ш Щ Џ Ц ЖЧШЩЏЦ'),'ž č š šč dž c Ž Č Š Šč Dž C ŽČŠŠČDŽC');
+  assert.equal(transliterate('Жа́р, ча́й, ша́р'.normalize('NFD')),'Žár, čáy, šár');
+  assert.equal(transliterate('ҷ ҹ ҽ ҿ ӌ ҵ'),'č č č č č c');
   assert.equal(transliterate('й ё і ї є ґ ў ә ө ү'),'y yo i yi ye g ŭ ä ö ü');
   assert.equal(transliterate('й ё'.normalize('NFD')),'y yo');
-  assert.equal(transliterate('ЩУКА ΘΕΟΣ ⲐⲈⲞⲤ'),'SHCHUKA THEOS THEOS');
+  assert.equal(transliterate('ЩУКА ΘΕΟΣ ⲐⲈⲞⲤ'),'ŠČUKA THEOS THEOS');
 });
 
 test('Coptic handles its alphabet and letters in the Greek/Coptic Unicode block',()=>{

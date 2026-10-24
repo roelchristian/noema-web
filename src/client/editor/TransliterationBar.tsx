@@ -35,7 +35,10 @@ export function TransliterationBar({pageKey}:{pageKey:string}) {
   if(layout==='off')return null;
   return <div ref={bar} className="transliteration-bar" role="group" aria-label={uiText('Transliteration controls')} contentEditable={false}>
     <Icon name="culture"/>
-    <span>{uiText('Transliteration on')}</span>
+    <select aria-label={uiText('Transliteration layout')} value={layout} onChange={event=>rememberTransliteration(pageKey,event.target.value==='side-by-side'?'side-by-side':'below')}>
+      <option value="below">{uiText('Below paragraphs')}</option>
+      <option value="side-by-side">{uiText('Side by side')}</option>
+    </select>
     <button type="button" aria-label={uiText('Hide transliteration')} onClick={()=>rememberTransliteration(pageKey,'off')}>
       {uiText('Hide')}
     </button>

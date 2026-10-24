@@ -46,7 +46,11 @@ for(const [name,text,expected] of [['Greek','θεός','theós'],['Old Church Sl
   assert.equal(localStorage.getItem('noema-transliteration:test/'+page.id),'below');
   assert.equal(readTransliteration('different/page'),'off');
   assert.equal(document.querySelector('.transliteration-label'),null);
-  await choose('Side by side');
+  const layoutControl=document.querySelector('[aria-label="Transliteration layout"]');
+  assert.equal(layoutControl.value,'below');
+  await act(async()=>{layoutControl.value='side-by-side';layoutControl.dispatchEvent(new window.Event('change',{bubbles:true}));});
+  assert.equal(readTransliteration('test/'+page.id),'side-by-side');
+  assert.equal(localStorage.getItem('noema-transliteration:test/'+page.id),'side-by-side');
   assert.equal(document.querySelector('.transliteration-label'),null);
   assert.equal(document.querySelector('[data-block-id="p"]').dataset.transliterationLayout,'side-by-side');
   assert.equal(document.querySelectorAll('[contenteditable="true"]').length,0);
@@ -57,6 +61,11 @@ for(const [name,text,expected] of [['Greek','θεός','theós'],['Old Church Sl
     React.createElement(ReadOnlyPageBlocks,{language:page.language,blocks:page.blocks,entities:[],pages:[],vaultId:'test',pageId:page.id,onOpenEntity:noop,onOpenPage:noop}),
     React.createElement(TransliterationBar,{pageKey:'test/'+page.id}))));
   assert.ok(document.querySelector('.block-transliteration'));
+  const restoredControl=document.querySelector('[aria-label="Transliteration layout"]');
+  assert.equal(restoredControl.value,'side-by-side');
+  await act(async()=>{restoredControl.value='below';restoredControl.dispatchEvent(new window.Event('change',{bubbles:true}));});
+  assert.equal(document.querySelector('[data-block-id="p"]').dataset.transliterationLayout,'below');
+  assert.equal(localStorage.getItem('noema-transliteration:test/'+page.id),'below');
   await act(async()=>document.querySelector('[aria-label="Hide transliteration"]').click());
   assert.equal(readTransliteration('test/'+page.id),'off');
   assert.equal(localStorage.getItem('noema-transliteration:test/'+page.id),'off');

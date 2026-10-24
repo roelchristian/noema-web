@@ -205,7 +205,7 @@ export class Pages {
             return {entityId, ...(segment.skipAutoTag === true ? {skipAutoTag:true} : {}), ...(segment.mentionText !== undefined ? {mentionText: text(segment.mentionText,10000)} : {})};
           }
           const result: Segment = {text:text(segment.text)};
-          for (const mark of ['bold','italic','underline','strike','code','math','skipAutoTag'] as const) if(segment[mark] === true) result[mark]=true;
+          for (const mark of ['bold','italic','underline','strike','superscript','subscript','code','math','skipAutoTag'] as const) if(segment[mark] === true) result[mark]=true;
           if(segment.bibliographicReference!==undefined) {
             const ref=object(segment.bibliographicReference),sourceId=required(ref.sourceId);
             if(segment.sourceReference||segment.math||segment.code||segment.href)throw new HttpError(400,'Invalid bibliographic citation');

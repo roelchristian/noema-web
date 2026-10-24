@@ -152,6 +152,8 @@ export function segmentHTML(content: Segment[], entities: Entity[], review?: Rev
     if (s.italic) node = <em>{node}</em>;
     if (s.underline) node = <u>{node}</u>;
     if (s.strike) node = <s>{node}</s>;
+    if (s.superscript) node = <sup>{node}</sup>;
+    if (s.subscript) node = <sub>{node}</sub>;
     if (s.href && safeHref(s.href)) {
       const external=isExternalWebHref(s.href,typeof window==='undefined'?undefined:window.location.origin);
       const next=ordered[index+1];
@@ -227,6 +229,8 @@ export function readSegments(el: Node, allowMentions = true): Segment[] {
       if (['EM','I'].includes(tag) || node.style.fontStyle === 'italic') next.italic = true;
       if (tag === 'U' || node.style.textDecoration.includes('underline')) next.underline = true;
       if (['S','DEL','STRIKE'].includes(tag) || node.style.textDecoration.includes('line-through')) next.strike = true;
+      if (tag === 'SUP' || node.style.verticalAlign === 'super') {next.superscript=true;delete next.subscript;}
+      if (tag === 'SUB' || node.style.verticalAlign === 'sub') {next.subscript=true;delete next.superscript;}
       if (tag === 'CODE') next.code = true;
       if (tag === 'A') { const href = safeHref(node.getAttribute('href') || ''); if (href) next.href = href; }
       if (['P','DIV'].includes(tag) && output.length && output.at(-1)?.text?.endsWith('\n') !== true) output.push({text: '\n'});

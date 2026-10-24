@@ -3242,6 +3242,10 @@
   border-color: var(--thing-border, #d9d9d9);
 }
 
+::highlight(transliteration-word) {
+  background-color: color-mix(in srgb, var(--text-muted) 25%, transparent);
+}
+
 /* Derived reading aids stay outside the editable content and document model. */
 .block[data-transliteration-layout] {
   display: grid;
@@ -3290,10 +3294,10 @@
   padding-inline-start: 18px;
   border-inline-start: 2px solid var(--line);
 }
-@media (min-width: 681px) {
+@media (min-width: 751px) {
   .block[data-transliteration-layout=side-by-side] {
     align-items: start;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   }
   .block[data-transliteration-layout=side-by-side] > .block-transliteration {
     padding-block: 0;
@@ -3324,7 +3328,33 @@
   height: 16px;
   flex-shrink: 0;
 }
-.transliteration-bar button {
+.transliteration-bar-label {
+  color: var(--text);
+  font-weight: 500;
+}
+.transliteration-bar :is(.select-host, .select-control) {
+  width: auto;
+  min-width: 0;
+}
+.transliteration-bar .select-trigger {
+  width: auto;
+  min-height: 32px;
+  gap: 6px;
+  padding: 6px 8px;
+  border-color: transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  box-shadow: none;
+}
+.transliteration-bar .select-trigger:hover:not(:disabled),
+.transliteration-bar .select-trigger[aria-expanded=true] {
+  border-color: transparent;
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.transliteration-bar > button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -3334,10 +3364,10 @@
   color: var(--text);
   font: inherit;
 }
-.transliteration-bar button:hover {
+.transliteration-bar > button:hover {
   background: var(--surface-hover);
 }
-.transliteration-bar button:focus-visible {
+.transliteration-bar > button:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
@@ -3346,9 +3376,11 @@ body:has(.editor-speech) .transliteration-bar {
 }
 @media (max-width: 760px) {
   .transliteration-bar {
+    flex-wrap: wrap;
     bottom: calc(76px + env(safe-area-inset-bottom, 0px) + var(--transliteration-keyboard-inset, 0px));
   }
-  .transliteration-bar button {
+  .transliteration-bar .select-trigger,
+  .transliteration-bar > button {
     min-height: 36px;
   }
 }

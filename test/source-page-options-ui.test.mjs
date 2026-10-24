@@ -23,6 +23,7 @@ test('six formats include a source-grounded critique and preserve scope across f
 
 for(const selectedLanguage of ['English','current-ui'])test(`dialog submits familiarity and source scope with ${selectedLanguage}, remembers them, and shows six formats`,async()=>{
   const dom=new JSDOM('<div id="mount"></div>',{url:'http://localhost',pretendToBeVisual:true});
+  dom.window.matchMedia=query=>({media:query,matches:false,addEventListener(){},removeEventListener(){}});
   const keys=['window','document','Node','Element','HTMLElement','HTMLSelectElement','HTMLInputElement','MutationObserver','Event','CustomEvent','localStorage','IS_REACT_ACT_ENVIRONMENT'];
   const previous=keys.map(key=>Object.getOwnPropertyDescriptor(globalThis,key)),originalFetch=globalThis.fetch;
   for(const key of keys)Object.defineProperty(globalThis,key,{configurable:true,writable:true,value:key==='IS_REACT_ACT_ENVIRONMENT'?true:dom.window[key]});

@@ -28,7 +28,7 @@ function authoredContent(page: Pick<Page, 'title' | 'blocks'>, name: (id: string
     for (const segment of segments) {
       const text = segment.entityId ? segment.mentionText ?? name(segment.entityId) ?? segment.entityId : segment.text ?? '';
       if (!text) continue;
-      const style = JSON.stringify([!!segment.bold, !!segment.italic, !!segment.underline, !!segment.strike, !!segment.code, !!segment.math, segment.href ?? null]);
+      const style = JSON.stringify([!!segment.bold, !!segment.italic, !!segment.underline, !!segment.strike, !!segment.superscript, !!segment.subscript, !!segment.code, !!segment.math, segment.href ?? null]);
       const last = runs.at(-1);
       if (last?.style === style) last.text += text;
       else runs.push({style, text});

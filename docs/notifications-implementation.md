@@ -145,3 +145,18 @@ removed the prior dark-harness timing failure. Logs use
 `/tmp/noema-graphite-alerts-{build,focused,all,notifications,design,dark,reprocessing,review}.log`.
 Notification/design evidence contains 28/110 screenshots respectively; minimum
 sampled notification contrast is 6.15:1.
+
+
+Main advanced again to `fb85103031385a4f0734012abad962951ef65809`, merging #105
+transliteration reading controls during publication validation. That main is
+integrated without rewriting any alert phase. Independent review verified all
+#105 editor controls/helpers, server/shared modules and tests match main exactly;
+the only editor stylesheet delta is removal of obsolete persistence-notice
+geometry. Build/styles/types and 54 affected checks passed; the current selection
+toolbar browser workflow also passed. The Graphite notice/design/dark/source/
+Activity browser evidence above remains applicable because #105 changes no
+shared notice surface or source/Activity implementation.
+
+Latest-main publication full suite passed **1,465 tests, seven explicit platform
+skips, zero failures** (`/tmp/noema-alerts-latest-all.log`). Latest build, focused
+and toolbar logs use `/tmp/noema-alerts-latest-{build,focused,toolbar}.log`.

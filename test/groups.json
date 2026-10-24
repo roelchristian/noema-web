@@ -156,6 +156,7 @@
     "test/source-pages.test.mjs",
     "test/source-reader-refresh.test.mjs",
     "test/source-reprocessing.test.mjs",
+    "test/source-reprocessing-summary.test.mjs",
     "test/source-sanitizer.test.mjs",
     "test/source-suggestions.test.mjs",
     "test/source-text-normalization.test.mjs",

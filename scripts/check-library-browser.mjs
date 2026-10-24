@@ -28,6 +28,7 @@ try{
   server.listen(0,'127.0.0.1');await once(server,'listening');const base=`http://127.0.0.1:${server.address().port}`;
   browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH??'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
   const context=await browser.newContext({viewport:{width:1440,height:1000},reducedMotion:'reduce'}),page=await context.newPage();
+  const timeout=Number(process.env.NOEMA_BROWSER_TIMEOUT_MS??30000);if(!Number.isSafeInteger(timeout)||timeout<1000||timeout>120000)throw new Error('NOEMA_BROWSER_TIMEOUT_MS must be between 1000 and 120000');page.setDefaultTimeout(timeout);
   const errors=[],snippetRequests=[];page.on('pageerror',error=>errors.push(error.message));
   page.on('request',request=>{if(request.url().endsWith('/search/snippets'))snippetRequests.push(JSON.parse(request.postData()).pageIds.length);});
   await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
@@ -48,6 +49,9 @@ try{
   await root.getByRole('button',{name:'Actions for Library note 0',exact:true}).click();
   await page.getByRole('menuitem',{name:'Quick preview',exact:true}).click();await page.getByRole('dialog').waitFor();
   await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'detached'});
+  // Closing the preview restores the Actions trigger on the next animation frame.
+  // Wait for that contract before starting a separate row-navigation interaction.
+  await page.waitForFunction(()=>document.activeElement?.getAttribute('aria-label')==='Actions for Library note 0');
   const primary=root.locator('[data-library-focus]').first();await primary.focus();await page.keyboard.press('ArrowDown');
   assert.equal(await root.locator('[data-library-focus]').nth(1).evaluate(element=>element===document.activeElement),true);
   const focused=await page.evaluate(()=>document.activeElement.closest('[data-library-row]').dataset.libraryRow);

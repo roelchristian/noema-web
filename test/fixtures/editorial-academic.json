@@ -1,0 +1,4 @@
+{
+ "title":"Synthetic scholarly extraction",
+ "text":"<!-- Page 1 -->\nJournal of Synthetic Studies · 12\n\n1. Équations and quotations\nThe equation $E=mc^2$ is preserved, as is $\\int_0^1 x^2\\,dx=1/3$.\nThe quotation “λόγος καὶ ἀλήθεια” and « 日本語の引用 » remain in their original languages.\nCompare [1] Smith, 2020, p. 7; the repeated citation is [1] Smith, 2020, p. 7.\nAn OCR footnote[^p1-1] points to the definition.\n\n[^p1-1]: Printed note 1: é is decomposed; é is composed. Emoji 😀 is one scalar, two UTF-16 units.\n\n<!-- Page 2 -->\nJournal of Synthetic Studies · 12\n\nBibliography\n[1] Smith, A. (2020). Synthetic studies. Journal 2, 1–9.\n[2] Δοκιμή, Β. (2021). « Citation dans la langue originale ». pp. 10–12.\n"
+}

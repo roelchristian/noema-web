@@ -32,7 +32,7 @@ test('source current failures and latest editorial status suppress old failed re
  const f=fixture(t),file=new SourceFiles(f.store).add('default','Fixture.txt',Buffer.from('Synthetic text'));
  const entity=f.knowledge.create('default',{name:'Source',type:'source',attachmentIds:[file.id]});
  f.store.run("UPDATE entities SET inactive=0 WHERE id=?",entity.id);f.store.run("UPDATE source_files SET status='ready',admitted=1,enrichment_status='completed' WHERE id=?",file.id);
- const add=(id,status,at,patches=[])=>f.store.run('INSERT INTO source_reprocessing VALUES (?,?,?,?,?,?,?)',id,file.id,'default',status,at,at,JSON.stringify({patches}));
+ const add=(id,status,at,patches=[])=>f.store.run('INSERT INTO source_reprocessing (id,file_id,vault_id,status,created_at,updated_at,payload) VALUES (?,?,?,?,?,?,?)',id,file.id,'default',status,at,at,JSON.stringify({patches}));
  add('old','failed','2026-10-21');assert.equal(f.centre.list('default').items[0].group,'operations');
  add('new','completed','2026-10-22');assert.deepEqual(f.centre.list('default').items,[]);
  add('pending','completed','2026-10-23',[{decision:'pending'},{decision:'accepted'}]);let item=f.centre.list('default').items[0];assert.equal(item.runId,'pending');assert.equal(item.count,1);assert.equal(item.group,'decisions');

@@ -29,7 +29,7 @@ const applyDraft = (server: Page, draft: Page): Page => {
   return page;
 };
 export interface WorkspaceState {
-  archive: import('../../shared/domain').ArchivedPage[]; archiveUndo: Array<{id:string;revision:number}>;
+  archive: import('../../shared/domain').ArchivedPage[]; archiveUndo: Array<{id:string;revision:number}>; archiveUndoOccurrence:number; errorOccurrence:number;
   inboxFacet: InboxFacet;
   saveFailures: PageSaveIssue[]; draftStorageFailures: PageSaveIssue[]; draftRecoveries: PageDraftRecovery[];
   domainSavingPageId: string | null;
@@ -43,7 +43,7 @@ export interface WorkspaceState {
   sourceId: string | null; page: Page | null; view: 'review' | 'calendar' | 'entity' | 'source' | 'pages' | 'entities' | 'organization' | 'favourites' | 'recent' | 'trash' | 'archive' | 'inbox'; busy: boolean; loadingPageId: string | null; reviewing: boolean; error: string | null; saveStatus: SaveStatus;
 }
 export class Workspace {
-  private state: WorkspaceState = {inboxFacet:'overview',initialEditingPageId:null,creationFocusPageId:null,entityId:null,sourceId:null,domainSavingPageId:null,saveFailures: [], draftStorageFailures: [], draftRecoveries: [], entityPanelId: null, canGoBack: false, canGoForward: false, vaults: [], vault: null, trash: [], archive:[],archiveUndo:[],pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
+  private state: WorkspaceState = {inboxFacet:'overview',initialEditingPageId:null,creationFocusPageId:null,entityId:null,sourceId:null,domainSavingPageId:null,saveFailures: [], draftStorageFailures: [], draftRecoveries: [], entityPanelId: null, canGoBack: false, canGoForward: false, vaults: [], vault: null, trash: [], archive:[],archiveUndo:[],archiveUndoOccurrence:0,errorOccurrence:0,pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
   private browserAttached = false;
   private browserInitialized = false;
   private browserSession = '';
@@ -95,7 +95,7 @@ export class Workspace {
       }
       if (this.state.vault?.id === saved.vault_id) this.patch({pages: this.state.pages.map(page => page.id === saved.id ? {...page, title:this.pageCache.get(saved.id)?.title??page.title, aiStatus:this.pageCache.get(saved.id)?.aiStatus ?? saved.aiStatus, updated_at: saved.updated_at} : page), ...(this.state.page?.id === saved.id ? {page: this.pageCache.get(saved.id) || {...this.state.page, aiStatus:saved.aiStatus, pageDomains:saved.pageDomains,conceptClassification:saved.conceptClassification,conceptContentHash:this.state.page.blocks===original.blocks?saved.conceptContentHash:undefined,revision: saved.revision, summaryContentHash: saved.summaryContentHash, updated_at: saved.updated_at}} : {})});
     },
-    (saveStatus, error, failed) => this.patch({saveStatus, ...(error ? {error: error.message} : {}), ...(error && failed ? {saveFailures:[...this.state.saveFailures.filter(issue=>issue.vaultId!==failed.vault_id||issue.pageId!==failed.id),{vaultId:failed.vault_id,pageId:failed.id,title:failed.title,message:error.message}]} : {})}),
+    (saveStatus, error, failed) => this.patch({saveStatus, ...(error && !failed ? {error: error.message} : {}), ...(error && failed ? {saveFailures:[...this.state.saveFailures.filter(issue=>issue.vaultId!==failed.vault_id||issue.pageId!==failed.id),{vaultId:failed.vault_id,pageId:failed.id,title:failed.title,message:error.message}]} : {})}),
     async page => {
       await yieldForEntityMatching();
       if (this.state.vault?.id !== page.vault_id || this.state.vault.locked || this.state.reviewing || !canIdentifyEntities()) return page;
@@ -120,6 +120,7 @@ export class Workspace {
   snapshot = () => this.state;
   private patch(patch: Partial<WorkspaceState>) {
     const previous = this.state;
+    if(patch.error)patch.errorOccurrence=previous.errorOccurrence+1;
     if(patch.page) {
       patch.page=immutablePage(patch.page,patch.page.id===previous.page?.id?previous.page.blocks:undefined);
       this.pageCache.set(patch.page.id,patch.page);
@@ -754,36 +755,57 @@ export class Workspace {
     await this.navigate(async()=>{await this.refreshArchive();this.patch({view:'archive',page:null});});
   }
   async archivePages(ids:string[]) {
+    const expectedVault=this.state.vault?.id,sequence=this.loadSequence;
+    const valid=()=>this.state.vault?.id===expectedVault&&!this.state.vault?.locked&&this.loadSequence===sequence;
     await this.navigate(async()=>{
-      const vault=this.state.vault;if(!vault||vault.locked)return;
+      const vault=this.state.vault;if(!vault||vault.locked||!valid())return;
       const completed:Array<{id:string;revision:number}>=[];
       try {
         // Keep successful transitions visible and undoable even if another selection fails.
         for(const id of [...new Set(ids)]) {
           const original=this.pageCache.get(id)??await api.page(vault.id,id);
+          if(!valid())return;
           const page=await api.archivePage(vault.id,id,original.revision);
+          if(!valid())return;
           this.titler.remove(original);this.pageCache.delete(id);
           completed.push({id,revision:page.revision});
           this.patch({pages:this.state.pages.filter(item=>item.id!==id),...(this.state.page?.id===id?{page:null,view:'organization' as const}:{})});
         }
       } finally {
-        if(completed.length)this.patch({archiveUndo:completed});
-        const [organization,archive]=await Promise.all([api.organization(vault.id),api.archivedPages(vault.id)]);
-        this.patch({organization,archive});
+        if(valid()) {
+          if(completed.length)this.patch({archiveUndo:completed,archiveUndoOccurrence:this.state.archiveUndoOccurrence+1});
+          const [organization,archive]=await Promise.all([api.organization(vault.id),api.archivedPages(vault.id)]);
+          if(valid())this.patch({organization,archive});
+        }
       }
     });
   }
-  dismissArchiveUndo=()=>this.patch({archiveUndo:[]});
-  async restoreArchivedPages(items:Array<{id:string;revision:number}>) {
+  dismissArchiveUndo=(operation?:number)=>{
+    if(operation!==undefined&&operation!==this.state.archiveUndoOccurrence)return;
+    this.patch({archiveUndo:[]});
+  };
+  async restoreArchivedPages(items:Array<{id:string;revision:number}>,expected?:{vaultId:string;operation:number}) {
+    const vaultId=expected?.vaultId??this.state.vault?.id,sequence=this.loadSequence;
+    const valid=()=>!!vaultId&&this.state.vault?.id===vaultId&&!this.state.vault.locked&&sequence===this.loadSequence&&(!expected||this.state.archiveUndoOccurrence===expected.operation);
     await this.navigate(async()=>{
-      const vault=this.state.vault;if(!vault||vault.locked)return;
+      if(!valid())return;
       try {
-        for(const item of items) {
-          const restored=await api.archivePage(vault.id,item.id,item.revision,false);
+        // Resolve the remaining authoritative revisions on each retry after partial success.
+        const targets=expected?this.state.archiveUndo:items;
+        for(const item of targets) {
+          if(!valid())return;
+          if(expected&&!this.state.archive.some(page=>page.id===item.id&&page.revision===item.revision))throw new Error('The archived page is no longer available to undo.');
+          const restored=await api.archivePage(vaultId!,item.id,item.revision,false);
+          if(!valid())return;
           this.pageCache.set(item.id,restored);
           this.patch({archive:this.state.archive.filter(page=>page.id!==item.id),archiveUndo:this.state.archiveUndo.filter(page=>page.id!==item.id),pages:[restored,...this.state.pages.filter(page=>page.id!==item.id)],...(this.state.page?.id===item.id?{page:restored}:{})});
         }
-      } finally {this.setOrganization(await api.organization(vault.id));}
+      } finally {
+        if(valid()) {
+          const organization=await api.organization(vaultId!);
+          if(valid())this.setOrganization(organization);
+        }
+      }
     });
   }
   async showTrash() {

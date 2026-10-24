@@ -34,7 +34,8 @@
     "test/page-history-ui.test.mjs",
     "test/bibliography.test.mjs",
     "test/transliteration.test.mjs",
-    "test/notification-reducer.test.mjs"
+    "test/notification-reducer.test.mjs",
+    "test/notification-workspace.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",

@@ -39,8 +39,8 @@ import { ActionMenu } from './components/ActionMenu';
 import { NameDialog } from './components/NameDialog';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import {ArchiveLibrary} from './archive/ArchiveLibrary';
-import {ArchiveNotice} from './archive/ArchiveNotice';
-import {SuccessNotice,useSuccessNotice} from './components/SuccessNotice';
+import {NotificationProvider, useNotifications} from './notifications';
+import {WorkspaceNotificationBridge} from './notifications/WorkspaceNotificationBridge';
 import { TrashLibrary } from './trash/TrashLibrary';
 import {entityLabels, entityTypes, entityMentionName, type Entity, type EntityType, type PageSummary} from '../shared/domain';
 import { Select } from './components/Select';
@@ -73,8 +73,15 @@ import { CreateEntityDialog, type CreateEntityRequest } from './knowledge/Create
 import {DeleteVaultDialog} from './vaults/DeleteVaultDialog';
 import { VaultBackupDialog } from './vaults/VaultBackupDialog';
 import { VaultDialog, type VaultAction } from './vaults/VaultDialog';
-export function App() {return <AIActivityProvider><WorkspaceApp/></AIActivityProvider>;}
-function WorkspaceApp() {
+export function App() {
+  const [workspace]=useState(()=>new Workspace());
+  return <ScopedNotifications workspace={workspace}><AIActivityProvider><WorkspaceApp workspace={workspace}/></AIActivityProvider></ScopedNotifications>;
+}
+function ScopedNotifications({workspace,children}:{workspace:Workspace;children:React.ReactNode}) {
+  const scope=useSyncExternalStore(workspace.subscribe,()=>{const vault=workspace.snapshot().vault;return vault&&!vault.locked?vault.id:null;});
+  return <NotificationProvider activeVaultId={scope}>{children}</NotificationProvider>;
+}
+function WorkspaceApp({workspace}:{workspace:Workspace}) {
   useInterfaceLanguage();
   const mobile = useMobileViewport();
   const [revealPageId, setRevealPageId] = useState<string | null>(null);
@@ -105,7 +112,7 @@ function WorkspaceApp() {
   const [deleteTarget, setDeleteTarget] = useState<Pick<PageSummary,'id'|'title'> | null>(null);
   const [renameTarget, setRenameTarget] = useState<PageSummary | null>(null);
   const {appearance, setAppearance, exitFocus, storageError} = useAppearance();
-  const [workspace] = useState(() => new Workspace());
+  const notifications=useNotifications();
   const [reviewDestination,setReviewDestination]=useState<ReviewItem|null>(null);
   const reviewVault=useRef<string|null>(null);
   const [entityReviewOpen,setEntityReviewOpen]=useState(false);
@@ -113,7 +120,7 @@ function WorkspaceApp() {
   usePageScroll(workspace);
   usePageSelection(workspace);
   const state = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
-  const {vaults, vault, pages, entities:storedEntities, page, view, busy, loadingPageId, reviewing, error, saveStatus, organization, organizationContext, recent, trash, saveFailures, draftStorageFailures, draftRecoveries} = state;
+  const {vaults, vault, pages, entities:storedEntities, page, view, busy, loadingPageId, reviewing, saveStatus, organization, organizationContext, recent, trash, saveFailures, draftStorageFailures, draftRecoveries} = state;
   const entities=useMemo(()=>storedEntities.map(entity=>({...entity,icon:resolveEntityIcon(entity,appearance.subtypeIcons)})),[storedEntities,appearance.subtypeIcons]);
   useEffect(()=>{
     reviewVault.current=null;setReviewDestination(null);
@@ -222,17 +229,15 @@ function WorkspaceApp() {
   useEffect(() => { setNavigationOpen(false); }, [view, page?.id, organizationContext.collection, organizationContext.folder, panelId, state.entityId, vault?.id]);
   const [sourcePage,setSourcePage]=useState<Entity|null>(null);
   const [create, setCreate] = useState<CreateEntityRequest | null>(null), [vaultAction, setVaultAction] = useState<VaultAction | null>(null);
-  const [vaultDeletionOpen,setVaultDeletionOpen]=useState(false),[vaultNotice,setVaultNotice,vaultNoticeOccurrence]=useSuccessNotice();
+  const [vaultDeletionOpen,setVaultDeletionOpen]=useState(false);
   const [pendingInsert,setPendingInsert]=useState<{vaultId:string;pageId:string;entityId:string;name:string;insert:(id:string)=>void}|null>(null);
-  const [insertNotice,setInsertNotice]=useState<{entityId:string;name:string}|null>(null);
-  useEffect(()=>{setInsertNotice(null);},[vault?.id,vault?.locked,page?.id]);
   useEffect(()=>{
     if(create||!pendingInsert)return;
     // The creation dialog must release modal focus before the editor restores its saved range.
     const frame=requestAnimationFrame(()=>{
       const current=workspace.snapshot();
       if(current.vault?.id===pendingInsert.vaultId&&!current.vault.locked&&current.page?.id===pendingInsert.pageId) {
-        try{pendingInsert.insert(pendingInsert.entityId);setInsertNotice({entityId:pendingInsert.entityId,name:pendingInsert.name});}catch(error){workspace.report(error);}
+        try{pendingInsert.insert(pendingInsert.entityId);notifications.notify({tone:'success',message:uiText("Created “")+pendingInsert.name+'”.',scope:{kind:'vault',vaultId:pendingInsert.vaultId},durationMs:4000,actions:[{label:uiText('View'),run:()=>{const active=workspace.snapshot();if(active.vault?.id===pendingInsert.vaultId&&!active.vault.locked&&active.entities.some(entity=>entity.id===pendingInsert.entityId))openEntity(pendingInsert.entityId);}}]});}catch(error){workspace.report(error);}
       }
       setPendingInsert(null);
     });
@@ -508,13 +513,10 @@ function WorkspaceApp() {
     {settingsOpen && <SettingsDialog initialTab={settingsInitialTab} calendarSettings={calendarSettings} onCalendarSettingsChange={setCalendarSettings} calendarStorageError={calendarStorageError} onExitFocus={exitFocus} onOpenPassage={async(vaultId,reference)=>{if(workspace.snapshot().vault?.id!==vaultId)await workspace.selectVault(vaultId);setSettingsOpen(false);openSourceReference(reference);}} onOpenEntity={async(vaultId,entityId)=>{if(vault?.id!==vaultId)await workspace.selectVault(vaultId);await workspace.refreshEntities();openEntityHome(entityId);setSettingsOpen(false);}} onBeforeNetworkChange={() => workspace.saver.flush()} onChangePassphrase={(current, next) => workspace.setPassphrase(current, next)} vault={vault} onOpenPage={async(vaultId,pageId,reference)=>{if(vault?.id!==vaultId)await workspace.selectVault(vaultId);await openIndexedPage(pageId,reference);}} appearance={appearance} onChange={setAppearance} storageError={storageError} onClose={() => {setSettingsOpen(false);setSettingsInitialTab('appearance');}}/>}
     {backupAction && <VaultBackupDialog action={backupAction} vaultName={vault?.name} onClose={() => setBackupAction(null)} onExport={() => workspace.exportVault()} onImport={(file,name) => workspace.importVault(file,name)}/>}
     {vaultDeletionOpen&&vault&&<DeleteVaultDialog key={vault.id} vault={vault} onPreview={()=>workspace.previewVaultDeletion(vault.id)} onExport={()=>workspace.exportVault()} onClose={()=>setVaultDeletionOpen(false)} onDelete={async confirmation=>{
-      const name=vault.name,result=await workspace.deleteVault(vault.id,confirmation);
-      setVaultNotice('Vault “'+name+'” deleted.'+(result.cleanupPending?' Local attachment cleanup is queued and will retry.':''));
+      const result=await workspace.deleteVault(vault.id,confirmation);
+      notifications.notify({tone:'success',message:uiText('Vault deleted.')+(result.cleanupPending?' '+uiText('Local attachment cleanup is queued and will retry.'):''),scope:{kind:'global'},durationMs:4000});
     }}/>}
-    {!error&&!vaultNotice&&!insertNotice&&!busy&&vault&&!vault.locked&&!!state.archiveUndo.length&&<ArchiveNotice key={JSON.stringify(state.archiveUndo)} count={state.archiveUndo.length} onUndo={()=>run(()=>workspace.restoreArchivedPages(state.archiveUndo))} onDismiss={workspace.dismissArchiveUndo}/>}
-    {!error&&vaultNotice&&<SuccessNotice message={vaultNotice} occurrence={vaultNoticeOccurrence} onDismiss={()=>setVaultNotice('')}/>}
     {vaultAction && <VaultDialog onImport={() => { setVaultAction(null); setBackupAction('import'); }} action={vaultAction} onClose={() => setVaultAction(null)} onSubmit={value => vaultAction === 'create' ? workspace.createVault(value) : vaultAction === 'lock' ? workspace.lock(value) : workspace.unlock(value)}/>}
-    {!error&&!vaultNotice&&insertNotice&&vault&&!vault.locked&&<SuccessNotice key={insertNotice.entityId} occurrence={insertNotice} message={uiText("Created “")+insertNotice.name+'”.'} onDismiss={()=>setInsertNotice(null)} action={<button type="button" className="success-notice-action" onClick={()=>{openEntity(insertNotice.entityId);setInsertNotice(null);}}>{uiText("View")}</button>}/>}
-    {error && <div id="toast" role="alert">{error}<button className="toast-close" aria-label={uiText("Dismiss error")} onClick={workspace.dismissError}>×</button></div>}
+    <WorkspaceNotificationBridge workspace={workspace}/>
   </ReviewDestination.Provider></SubtypeIconContext.Provider></DateNavigation.Provider>;
 }

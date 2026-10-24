@@ -25,6 +25,7 @@ const paths: Record<string, ReactNode> = {
   'arrow-left': <path d="M20 12H4m6-6-6 6 6 6"/>,
   'view-list': <path d="M4 5h16M4 12h16M4 19h16"/>,
   'view-compact': <path d="M4 6h16M4 10h16M4 14h16M4 18h16"/>,
+  'view-comfortable': <path d="M4 7h16M4 17h16"/>,
   menu: <path d="M4 6h16M4 12h16M4 18h16"/>,
   'arrow-up': <path d="M12 20V4m-6 6 6-6 6 6"/>,
   'arrow-down': <path d="M12 4v16m-6-6 6 6 6-6"/>,

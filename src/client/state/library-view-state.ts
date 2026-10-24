@@ -30,8 +30,7 @@ function validPresentation(value:unknown):Partial<Presentation> {
   if(input.grouping==='all'||input.grouping==='folders')result.grouping=input.grouping;
   if(typeof input.groupFolders==='boolean')result.groupFolders=input.groupFolders;
   if(['basic','location','collections'].includes(String(input.columns)))result.columns=String(input.columns);
-  if(input.density==='compact'||input.density==='standard')result.density=input.density;
-  else if(input.density==='comfortable')result.density='standard';
+  if(input.density==='compact'||input.density==='standard'||input.density==='comfortable')result.density=input.density;
   if(input.layout==='list'||input.layout==='compact'||input.layout==='grid') {
     result.layout='list';
     if(input.layout==='compact')result.density='compact';

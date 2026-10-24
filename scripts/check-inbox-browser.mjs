@@ -83,7 +83,7 @@ try {
  await page.getByRole('button',{name:'Trash…',exact:true}).click();await page.getByRole('button',{name:'Move to Trash',exact:true}).click();await page.locator('dialog').waitFor({state:'detached'}).catch(async error=>{console.error('DIALOG',await page.locator('dialog').innerText());throw error;});assert.equal(pages.trash('default').length,1);await page.getByText('Session complete. Skipped pages remain unfiled.',{exact:true}).waitFor();
  // Both list densities remain reachable.
  await page.getByRole('button',{name:'Browse pages',exact:true}).click();
- for(const name of ['Regular spacing','Compact spacing']){await page.getByRole('button',{name,exact:true}).click();}
+ for(const name of ['Regular spacing','Compact spacing']){await page.getByRole('button',{name:'View options',exact:true}).click();await page.getByRole('button',{name,exact:true}).click();await page.getByRole('button',{name:'View options',exact:true}).click();}
  assert.equal(await page.getByRole('button',{name:'Triage view',exact:true}).count(),0);
  await page.getByRole('button',{name:'Start triage',exact:true}).click();
  await page.locator('.inbox-preview').waitFor();

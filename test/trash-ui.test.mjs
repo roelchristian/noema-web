@@ -10,6 +10,7 @@ test('Trash selects across list densities, confirms bulk deletion, and keeps fai
   const previous=Object.getOwnPropertyDescriptor(globalThis,'ResizeObserver');
   Object.defineProperty(globalThis,'ResizeObserver',{configurable:true,value:class {observe(){}disconnect(){}}});
   env.defer(()=>{if(previous)Object.defineProperty(globalThis,'ResizeObserver',previous);else delete globalThis.ResizeObserver;});
+  dom.window.HTMLElement.prototype.hidePopover=function(){};
   dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
   dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
   const root=createRoot(document.querySelector('#mount'));

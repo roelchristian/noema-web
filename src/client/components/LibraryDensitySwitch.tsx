@@ -3,8 +3,8 @@ import {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {readLibraryPresentation,saveLibraryPresentation,setLibraryViewState} from '../state/library-view-state';
 import {Icon} from './Icon';
 
-export type LibraryDensity = 'standard' | 'compact';
-const densities = [{id: 'standard', label: uiText("Regular spacing"), icon: 'view-list'}, {id: 'compact', label: uiText("Compact spacing"), icon: 'view-compact'}] as const;
+export type LibraryDensity = 'standard' | 'compact' | 'comfortable';
+const densities = [{id: 'compact', label: uiText("Compact spacing"), icon: 'view-compact'}, {id: 'standard', label: uiText("Regular spacing"), icon: 'view-list'}, {id: 'comfortable', label: uiText("Comfortable spacing"), icon: 'view-comfortable'}] as const;
 function readMode(scope: string, fallbackScope: string | undefined, defaultMode: LibraryDensity): LibraryDensity {
   try {
     const [vaultId,destination]=JSON.parse(scope) as [string,string];
@@ -13,7 +13,7 @@ function readMode(scope: string, fallbackScope: string | undefined, defaultMode:
     const inherited=readLibraryPresentation(vaultId,destination).density;
     const fallback=fallbackScope ? window.localStorage.getItem('noema-view-mode/' + fallbackScope) : null;
     const stored=own ?? exact ?? inherited ?? fallback;
-    return stored === 'compact' ? 'compact' : stored ? 'standard' : defaultMode;
+    return stored === 'compact' || stored === 'comfortable' ? stored : stored ? 'standard' : defaultMode;
   } catch { return defaultMode; }
 }
 export function useLibraryDensity(scope: string, fallbackScope?: string, defaultMode: LibraryDensity = 'standard') {
@@ -81,7 +81,7 @@ export function useLibraryDensity(scope: string, fallbackScope?: string, default
     // Capture the current visual position before cancelling an interrupted transition.
     stop(); before.current=positions;
     setPreference({scope, mode: next});
-    try { const [vaultId,destination]=JSON.parse(scope) as [string,string]; setLibraryViewState(vaultId,destination,{density:next});saveLibraryPresentation(vaultId,destination,{layout:'list',density:next});window.localStorage.setItem('noema-view-mode/' + scope, next==='compact'?'compact':'list'); } catch { /* Layout remains usable without storage. */ }
+    try { const [vaultId,destination]=JSON.parse(scope) as [string,string]; setLibraryViewState(vaultId,destination,{density:next});saveLibraryPresentation(vaultId,destination,{layout:'list',density:next});window.localStorage.setItem('noema-view-mode/' + scope, next==='standard'?'list':next); } catch { /* Layout remains usable without storage. */ }
   }
   return [mode, change, root] as const;
 }

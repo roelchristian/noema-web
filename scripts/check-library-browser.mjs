@@ -33,7 +33,13 @@ try{
   page.on('request',request=>{if(request.url().endsWith('/search/snippets'))snippetRequests.push(JSON.parse(request.postData()).pageIds.length);});
   await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
   const root=page.locator('.organization-browser:not(.knowledge-library)');
-  const choose=async(name,option)=>{await page.getByRole('combobox',{name,exact:true}).click();await page.getByRole('option',{name:option,exact:true}).click();};
+  const choose=async(name,option)=>{
+    const secondary=name!=='Sort library',options=root.getByRole('button',{name:'View options',exact:true});
+    if(secondary)await options.click();
+    await page.getByRole('combobox',{name,exact:true}).click();await page.getByRole('option',{name:option,exact:true}).click();
+    if(secondary)await options.click();
+  };
+  const setDensity=async name=>{const options=root.getByRole('button',{name:'View options',exact:true});await options.click();await root.getByRole('button',{name,exact:true}).click();await options.click();};
   await page.goto(base+'/?vault=default&view=organization');await root.locator('[data-library-row="page:'+pages.list('default')[0].id+'"]').waitFor();
   await choose('Sort library','Name · A–Z');
   const identities=await root.locator('article[data-library-row]').evaluateAll(rows=>rows.map(row=>row.dataset.libraryRow));
@@ -72,7 +78,7 @@ try{
     await page.waitForTimeout(100);assert.equal(await page.getByRole('dialog').count(),0);
   }
   const search=root.getByRole('searchbox');await search.fill('Needle');await root.locator('.search-match-badge').waitFor();
-  await root.getByRole('button',{name:'Compact spacing',exact:true}).click();
+  await setDensity('Compact spacing');
   assert.equal(await root.locator('.search-match-badge').first().isVisible(),true);
   // Explicitly enabling related matching after a row interaction restarts retrieval.
   const related=pages.list('default').find(note=>note.title==='Library note 5');let semanticRequests=0;
@@ -92,7 +98,7 @@ try{
   assert.equal(await root.locator('.organization-bulk-actions').count(),0);
   await search.fill('');assert.equal(await checks.evaluateAll(inputs=>inputs.filter(input=>input.checked).length),0);
   await page.setViewportSize({width:1440,height:1000});
-  await root.getByRole('button',{name:'Regular spacing',exact:true}).click();
+  await setDensity('Regular spacing');
   assert.equal(await root.getAttribute('data-layout'),'list');
   assert.equal(await root.getAttribute('data-density'),'standard');
   assert.equal(await root.getByRole('button',{name:'Grid view',exact:true}).count(),0);
@@ -102,7 +108,7 @@ try{
   // Changing list density must not fetch excerpts for an unfiltered large library.
   store.transaction(()=>{for(let i=6;i<2500;i++)store.run("INSERT INTO pages (id,title,blocks,updated_at,created_at,vault_id) VALUES (?,?,?,?,?,'default')",'synthetic-'+i,`Library note ${String(i).padStart(4,'0')}`,JSON.stringify([{id:'b-'+i,type:'paragraph',checked:false,content:[{text:'Synthetic large-library excerpt.'}]}]),'2026-10-24T12:00:00Z','2026-10-24T12:00:00Z');});
   await page.reload();await root.locator('article[data-library-row]').nth(2499).waitFor({state:'attached'});
-  snippetRequests.length=0;const started=Date.now();await root.getByRole('button',{name:'Compact spacing',exact:true}).click();
+  snippetRequests.length=0;const started=Date.now();await setDensity('Compact spacing');
   await page.waitForTimeout(1800);
   const metrics={items:2500,settleMs:Date.now()-started,initialSnippetRequests:snippetRequests.length,initialSnippetIds:snippetRequests.reduce((a,b)=>a+b,0),largestBatch:Math.max(0,...snippetRequests)};
   if(process.env.LIBRARY_EXPECT_BOUNDED){assert.ok(metrics.initialSnippetIds<=60,JSON.stringify(metrics));assert.ok(metrics.largestBatch<=60);}

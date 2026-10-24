@@ -1,3 +1,4 @@
+import {BibliographicPropertyEvidence} from './BibliographicPropertyEvidence';
 import {ReferentStatusPicker} from './ReferentStatusPicker';
 import {SuccessNotice,useSuccessNotice} from '../components/SuccessNotice';
 import {EntityReferencePicker} from './EntityReferencePicker';
@@ -105,7 +106,7 @@ export function PropertyEditor({entity, entities, mention, onSave, onRemove,defi
   const form = useRef<HTMLFormElement>(null);
   const [focusRequest, setFocusRequest] = useState(0);
   const unset = entity.propertyNames.filter(name => !entity.properties.some(property => property.name.toLowerCase() === name.toLowerCase()));
-  const managed=(property:Property)=>(definitions?.some(item=>item.legacyName.toLowerCase()===property.name.toLowerCase()&&!item.editable)??false)&&property.provenance?.origin!=='manual'&&property.provenance?.origin!=='legacy_unknown';
+  const managed=(property:Property)=>!!property.bibliographicProjection||(definitions?.some(item=>item.legacyName.toLowerCase()===property.name.toLowerCase()&&!item.editable)??false)&&property.provenance?.origin!=='manual'&&property.provenance?.origin!=='legacy_unknown';
   const names = name && !entity.propertyNames.includes(name) ? [name, ...entity.propertyNames] : entity.propertyNames;
   function reset() {clearPropertyDraft(vault,entity.id,draftId);select({name:''});setError('');}
   function focusValue() {form.current?.scrollIntoView({behavior: 'smooth', block: 'nearest'}); form.current?.querySelector<HTMLElement>('textarea, input')?.focus({preventScroll: true});}
@@ -133,10 +134,10 @@ export function PropertyEditor({entity, entities, mention, onSave, onRemove,defi
   }
   return <div className="entity-property-editor">
     <div className="entity-property-list">{entity.properties.map(property => <div key={property.id} className={'entity-property-card'+(edit === property.id ? ' is-editing' : '')}>
-      <div className="entity-property-card-header"><strong>{label(property.name,property.metadata?.definition_id)}</strong><span>{managed(property)?uiText("Managed source metadata"):property.target_id ? uiText("Entity reference") : uiText("Text")}</span><div>
+      <div className="entity-property-card-header"><strong>{label(property.name,property.metadata?.definition_id)}</strong><span>{property.bibliographicProjection?uiText("Bibliographic record"):managed(property)?uiText("Managed source metadata"):property.target_id ? uiText("Entity reference") : uiText("Text")}</span><div>
         <button type="button" disabled={busy||managed(property)} aria-label={uiText("Edit ")+label(property.name,property.metadata?.definition_id)} title={uiText("Edit value")} onClick={() => editing(property)}><Icon name="edit"/></button>
         <button type="button" disabled={busy||managed(property)} aria-label={uiText("Remove ")+label(property.name,property.metadata?.definition_id)} title={uiText("Remove value")} onClick={() => void remove(property)}><Icon name="close"/></button>
-      </div></div><div className="entity-property-value">{property.target_id ? mention(property.target_id) : property.value}</div>
+      </div></div><div className="entity-property-value">{property.target_id ? mention(property.target_id) : property.value}</div><BibliographicPropertyEvidence property={property}/>
     </div>)}</div>
     {!!unset.length && <div className="entity-property-unset"><div>{unset.map(field => <button type="button" key={field} disabled={busy} onClick={() => {select({name:field}); setStatus(''); setFocusRequest(current => current + 1);}}><Icon name="plus"/>{label(field)}</button>)}</div></div>}
     {!entity.propertyNames.length && !entity.properties.length && <p className="entity-detail-empty">{uiText("No fields for this classification.")}</p>}

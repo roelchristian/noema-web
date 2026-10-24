@@ -318,6 +318,7 @@ export class VaultBackups {
             const evidence=object(value);
             if(!Object.hasOwn(fields,field)||!['manual','bibtex','crossref','datacite'].includes(String(evidence.origin)))throw invalid();
             timestamp(evidence,'at');
+            if(evidence.history!==undefined)for(const old of list(evidence.history).map(object)){if(typeof old.value!=='string'||old.value.length>100000||!['manual','bibtex','crossref','datacite'].includes(String(old.origin)))throw invalid();timestamp(old,'at');}
           }
           if(rawImports.some(value=>typeof value!=='string'||value.length>16*1024*1024||/^[a-f0-9]{64}$/.test(value)&&!bibliographicBatchIds.has(value)))throw invalid();
           insert('bibliographic_records',{source_id:sourceId,vault_id:vault,citation_key:citationKey,entry_type:entryType,fields_json:JSON.stringify(fields),provenance_json:JSON.stringify(provenance),raw_imports_json:JSON.stringify(rawImports),revision:integer(row,'revision',1)});
@@ -622,7 +623,7 @@ export class VaultBackups {
         }
         for(const row of rows.entity_domains) {
           const domainId=name(row,'domain_id'),entityId=ref(entityIds,row.entity_id);
-          if(!domainById(domainId)||!['manual','scan','inferred'].includes(String(row.origin))||this.store.get<{type:string}>('SELECT type FROM entities WHERE id=?',entityId)?.type!=='concept')throw invalid();
+          if(!domainById(domainId)||!['manual','scan','inferred'].includes(String(row.origin))||!['concept','source'].includes(this.store.get<{type:string}>('SELECT type FROM entities WHERE id=?',entityId)?.type??''))throw invalid();
           insert('entity_domains',{entity_id:entityId,domain_id:domainId,origin:String(row.origin)});
         }
         for(const row of rows.page_edit_locks) {

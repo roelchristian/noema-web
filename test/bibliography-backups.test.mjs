@@ -1,3 +1,4 @@
+import {DOMAINS} from '../src/shared/domains.ts';
 import {test} from 'node:test';
 import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
@@ -19,6 +20,8 @@ function fixture(t) {
  store.run('DELETE FROM bibliographic_records WHERE source_id=?',source.id);
  const fields={title:'Authored synthetic title',author:'{Synthetic Research Group} and Example, Alice',year:'0012',custom:'Unrecognized {raw} value'};
  const provenance=Object.fromEntries(Object.keys(fields).map(key=>[key,{origin:'bibtex',at:stamp}]));
+ provenance.title.history=[{value:'Earlier authored title',origin:'manual',at:stamp}];
+ store.run("INSERT INTO entity_domains(entity_id,domain_id,origin) VALUES(?,?,'inferred')",source.id,DOMAINS[0].id);
  const raw='% Preserve comments and macros\n@string{x="synthetic"}\n@unknown{FixtureKey,title=x,custom={Unrecognized {raw} value}}\n';
  const batchId=createHash('sha256').update(raw).digest('hex');
  store.run('INSERT INTO bibliographic_import_batches(id,vault_id,raw) VALUES(?,?,?)',batchId,vault,raw);
@@ -30,6 +33,7 @@ function fixture(t) {
 test('bibliographic backup preserves metadata-only records, raw evidence and stale review proposals with remapped Source IDs',async t=>{
  const f=fixture(t),archive=await f.backups.export(f.vault),restored=await f.backups.import(archive.bytes),entity=f.store.get('SELECT * FROM entities WHERE vault_id=? AND name=?',restored.id,f.source.name),record=f.store.get('SELECT * FROM bibliographic_records WHERE source_id=?',entity.id);
  assert.notEqual(entity.id,f.source.id);assert.equal(record.vault_id,restored.id);assert.equal(record.citation_key,'FixtureKey');assert.equal(record.entry_type,'unknown');assert.equal(record.revision,3);
+ assert.equal(f.store.get('SELECT origin FROM entity_domains WHERE entity_id=? AND domain_id=?',entity.id,DOMAINS[0].id).origin,'inferred');
  assert.deepEqual(JSON.parse(record.fields_json),f.fields);assert.deepEqual(JSON.parse(record.provenance_json),f.provenance);assert.deepEqual(JSON.parse(record.raw_imports_json),[f.batchId]);assert.equal(f.store.get('SELECT raw FROM bibliographic_import_batches WHERE vault_id=? AND id=?',restored.id,f.batchId).raw,f.raw);
  const proposal=f.store.get('SELECT * FROM bibliographic_proposals WHERE source_id=?',entity.id);
  assert.notEqual(proposal.id,'synthetic-proposal');assert.equal(proposal.vault_id,restored.id);assert.equal(proposal.revision,2);assert.equal(proposal.created_at,stamp);assert.equal(JSON.parse(proposal.fields_json).title,'Unconfirmed alternative');
@@ -54,6 +58,7 @@ test('invalid bibliographic references, provenance, values and revisions roll ba
   a=>{a.tables.bibliographic_records[0].fields_json='{"title":{"bad":true}}';},
   a=>{a.tables.bibliographic_records[0].provenance_json='{"title":{"origin":"ai","at":"2026-10-24T12:00:00Z"}}';},
   a=>{a.tables.bibliographic_records[0].raw_imports_json='[42]';},
+  a=>{a.tables.bibliographic_records[0].provenance_json=JSON.stringify({title:{origin:'manual',at:stamp,history:[{value:'bad origin',origin:'ai',at:stamp}]}});},
   a=>{a.tables.bibliographic_import_batches[0].raw='Tampered raw data';},
   a=>{a.tables.bibliographic_records[0].raw_imports_json=JSON.stringify(['a'.repeat(64)]);},
   a=>{a.tables.bibliographic_records.push({...a.tables.bibliographic_records[0]});},

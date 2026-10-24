@@ -1,3 +1,4 @@
+import {projectBibliographicProperties,assertBibliographicPropertyWritable} from './bibliographic-property-projection.js';
 import {recordPropertyProvenance,recordEntityNameProvenance,getPropertyProvenance} from './property-provenance.js';
 import {EntityClassificationImpact,assertNoHierarchyCycle} from './entity-classification-impact.js';
 import {withPropertyCatalogue,propertyDefinitionConflicts,propertyDefinitionSignature,resolvePropertyDefinition} from '../../shared/property-definitions.js';
@@ -97,7 +98,7 @@ export class Knowledge {
     const linkedPages=this.store.all<Omit<import('../../shared/domain.js').EntityPageAssociation,'pinned'> & {pinned:number}>(`SELECT p.id,p.title,p.icon,p.updated_at,p.archived_at,a.pinned,a.annotation,a.created_at FROM entity_page_associations a JOIN pages p ON p.id=a.page_id WHERE a.entity_id=? AND p.vault_id=? AND p.deleted_at IS NULL ORDER BY a.pinned DESC,a.created_at DESC,p.id LIMIT ?`,id,vault,limit).map(row=>({...row,pinned:!!row.pinned}));
     const propertyProposalCount=this.store.get<{count:number}>('SELECT count(*) AS count FROM property_proposals WHERE vault_id=? AND entity_id=?',vault,id)?.count??0;
     return {...entity, propertyProposalCount, ...(preview ? {previewLimited:true} : {}), overview, linkedPages, pageMentions: entityPageMentions(this.store, vault, id, preview ? 6 : undefined), ...(entity.type==='source'?{attachments:this.store.all<import('../../shared/domain.js').SourceFile>('SELECT * FROM source_files WHERE vault_id=? AND entity_id=? ORDER BY created_at,id',vault,id).map(file=>({...file,processing_detail:sourceProgress.get(file.id)}))}:{}), propertyNames: inheritedPropertyNames(this.schema(vault),entity.type,entity.subtypes),
-      properties:this.store.all<Property>(`SELECT * FROM properties WHERE entity_id=? ORDER BY COALESCE((SELECT CAST(key AS INTEGER) FROM json_each(?) WHERE value=lower(name)),999),name COLLATE NOCASE,COALESCE((SELECT position FROM property_value_metadata WHERE property_id=properties.id),0),id LIMIT ?`,id,JSON.stringify(propertyOrder),limit).map(property=>({...property,metadata:metadata.get(property.id),provenance:getPropertyProvenance(this.store,vault,property.id)})),
+      properties:projectBibliographicProperties(this.store,vault,id,this.store.all<Property>(`SELECT * FROM properties WHERE entity_id=? ORDER BY COALESCE((SELECT CAST(key AS INTEGER) FROM json_each(?) WHERE value=lower(name)),999),name COLLATE NOCASE,COALESCE((SELECT position FROM property_value_metadata WHERE property_id=properties.id),0),id LIMIT ?`,id,JSON.stringify(propertyOrder),limit).map(property=>({...property,metadata:metadata.get(property.id),provenance:getPropertyProvenance(this.store,vault,property.id)}))),
       relationships:this.store.all<Relationship>('SELECT * FROM relationships WHERE source_id=? OR target_id=? ORDER BY label COLLATE NOCASE,id LIMIT ?',id,id,limit),
       incomingProperties:this.store.all<Property>('SELECT * FROM properties WHERE target_id=? ORDER BY name COLLATE NOCASE,id LIMIT ?',id,limit).map(property=>({...property,metadata:this.store.get<import('../../shared/property-values.js').PropertyValueMetadata>('SELECT definition_id,compatibility,reason,integer_value,decimal_value,boolean_value,text_value,latitude,longitude,unit,position,target_id,temporal_date_id FROM property_value_metadata WHERE property_id=? AND vault_id=?',property.id,vault)}))};
   }
@@ -181,10 +182,11 @@ export class Knowledge {
     if(mentionCase!=='canonical'&&mentionCase!=='lowercase')throw new HttpError(400,'Choose entity-name or lowercase tag casing.');
     const referentStatus=body.referentStatus??current?.referentStatus??'unspecified';
     if(!referentStatuses.includes(referentStatus as ReferentStatus))throw new HttpError(400,'Choose a known referent status.');
-    // Disciplinary associations stay Concept-only. Cross-type changes require explicit domain review.
-    if(current?.type!==type&&current?.domainIds?.length)throw new HttpError(409,'Review and remove disciplinary associations explicitly before changing this Concept type. Existing records and domains are preserved.');
+    // Concepts and Sources retain reviewed disciplinary associations. Cross-type changes require explicit review.
+    if(current?.type!==type&&current?.domainIds?.length)throw new HttpError(409,'Review and remove disciplinary associations explicitly before changing this entity type. Existing records and domains are preserved.');
     const domainIds=validatedDomainIds(body.domainIds??current?.domainIds??[]);
-    if(type!=='concept'&&domainIds.length)throw new HttpError(400,'Only Concepts support disciplinary domains.');
+    if(type==='source'&&(domainIds.length!==(current?.domainIds?.length??0)||domainIds.some(id=>!current?.domainIds?.includes(id))))throw new HttpError(409,'Source disciplines are applied through reviewed scholarly proposals. Existing associations are preserved.');
+    if(type!=='concept'&&type!=='source'&&domainIds.length)throw new HttpError(400,'Only Concepts and Sources support disciplinary domains.');
     return {referentStatus:referentStatus as ReferentStatus,domainIds,name:required(body.name),aliases,mentionCase,type,subtypes,description:text(body.description ?? '')};
   }
   create(vault: string, body: Record<string, unknown>) {
@@ -214,14 +216,17 @@ export class Knowledge {
   update(vault: string, id: string, body: Record<string, unknown>) {
     const current=this.require(vault,id),e=this.input(vault,body,current);
     const governance=new EntityClassificationImpact(this.store);
+    if(current.type==='source'&&e.type!=='source'&&this.store.get("SELECT 1 FROM sqlite_master WHERE type='table' AND name='bibliographic_records'")&&this.store.get('SELECT 1 FROM bibliographic_records WHERE source_id=? AND vault_id=?',id,vault))throw new HttpError(409,'A Source with a bibliographic record must remain a Source entity.');
     if (e.type!=='source' && this.store.get('SELECT 1 FROM source_files WHERE entity_id=?',id)) throw new HttpError(400,'A source with attached files must remain a Source entity');
     if (e.type==='source' && current.type!=='source') throw new HttpError(400,'Create a source with an attached file instead of changing this entity type');
     if (e.type!=='source' && this.store.get('SELECT 1 FROM page_sources WHERE source_id=? LIMIT 1',id)) throw new HttpError(400,'Remove page source references before changing this Source to another type');
     const update=() => {
     const impact=governance.assertAllowed(vault,id,{type:e.type,subtypes:e.subtypes},{mode:body.classification_mode as 'retain_legacy'|undefined,fingerprint:body.impact_fingerprint as string|undefined});
       this.store.run('UPDATE entities SET name=?,aliases=?,mention_case=?,referent_status=?,type=?,subtype=NULL,subtypes=?,description=?,updated_at=? WHERE id=? AND vault_id=?',e.name,JSON.stringify(e.aliases),e.mentionCase,e.referentStatus,e.type,JSON.stringify(e.subtypes),e.description,now(),id,vault);
-      this.store.run('DELETE FROM entity_domains WHERE entity_id=?',id);
-      for(const domainId of e.domainIds)this.store.run("INSERT INTO entity_domains (entity_id,domain_id,origin) VALUES (?,?,'manual')",id,domainId);
+      if(e.domainIds.length!==current.domainIds?.length||e.domainIds.some(domainId=>!current.domainIds?.includes(domainId))){
+       this.store.run('DELETE FROM entity_domains WHERE entity_id=?',id);
+       for(const domainId of e.domainIds)this.store.run("INSERT INTO entity_domains (entity_id,domain_id,origin) VALUES (?,?,'manual')",id,domainId);
+      }
       if(e.name!==current.name)recordEntityNameProvenance(this.store,vault,id,{origin:'manual',details:'Entity name explicitly edited.'});
       governance.afterChange(vault,id,impact);
     };
@@ -242,6 +247,7 @@ export class Knowledge {
   }
   property(vault: string, id: string, body: Record<string, unknown>, propertyId?: string, options:{nativeTemporalAssertion?:boolean}={}) {
     const entity=this.require(vault,id);
+    assertBibliographicPropertyWritable(this.store,vault,id,typeof body.name==='string'?body.name:undefined,propertyId);
     const existing=propertyId?this.store.get<Property>('SELECT * FROM properties WHERE id=? AND entity_id=?',propertyId,id):undefined;
     if(propertyId&&!existing)throw new HttpError(404,'Property not found');
     if(body.compatibility_mode!==undefined&&body.compatibility_mode!=='legacy')throw new HttpError(400,'Unknown property compatibility mode.');
@@ -290,6 +296,7 @@ export class Knowledge {
   }
   remove(vault: string, id: string, kind: 'properties' | 'relationships', childId: string) {
     this.require(vault,id);
+    if(kind==='properties')assertBibliographicPropertyWritable(this.store,vault,id,undefined,childId);
     this.store.run(`DELETE FROM ${kind} WHERE id=? AND ${kind==='properties'?'entity_id':'source_id'}=?`,childId,id);
     return this.detail(vault,id);
   }

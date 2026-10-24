@@ -48,7 +48,7 @@ export interface EntityInput { referentStatus?: ReferentStatus; classification_m
 export function entityMentionName(entity: Pick<Entity,'name'|'mentionCase'> | undefined): string | undefined {
   return entity?.mentionCase === 'lowercase' ? entity.name.toLowerCase() : entity?.name;
 }
-export interface Property { id: string; entity_id: string; name: string; value: string | null; target_id: string | null; metadata?: PropertyValueMetadata; provenance?:PropertyProvenance }
+export interface Property { id: string; entity_id: string; name: string; value: string | null; target_id: string | null; metadata?: PropertyValueMetadata; provenance?:PropertyProvenance; bibliographicProjection?:{field:string;revision:number;legacyValues:{id:string;name:string;value:string|null;target_id:string|null;targetName?:string;conflicts:boolean}[]} }
 export interface Relationship { id: string; source_id: string; label: string; target_id: string }
 export const sourceStructureKinds=['heading','chapter','section','subsection','theorem','lemma','proposition','corollary','definition','proof','example','remark'] as const;
 export type SourceStructureKind=typeof sourceStructureKinds[number];

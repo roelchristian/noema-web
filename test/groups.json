@@ -209,6 +209,7 @@
     "test/bibliography-backups.test.mjs",
     "test/bibliography-server.test.mjs",
     "test/source-scholarly.test.mjs",
-    "test/bibliography-http.test.mjs"
+    "test/bibliography-http.test.mjs",
+    "test/bibliographic-property-projection.test.mjs"
   ]
 }

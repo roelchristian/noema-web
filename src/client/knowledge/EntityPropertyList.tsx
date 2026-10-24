@@ -1,3 +1,4 @@
+import {BibliographicPropertyEvidence} from './BibliographicPropertyEvidence';
 import {api,ApiError} from '../api';
 import {useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import type {Entity, EntityDetail, Property, PropertyInput} from '../../shared/domain';
@@ -46,7 +47,7 @@ function PropertyRow({name, property, ...props}: Props & {name: string; property
   const conflicts=propertyDefinitionConflicts(props.definitions?.filter(item=>item.scope.type===entity.type&&(item.scope.kind==='main_type'||entity.subtypes.includes(item.scope.subtypeId)))??[]).find(item=>item.key===persistedDefinition?.key);
   const definition = persistedDefinition??propertyDefinitionFor(entity.type,name), label = definition?.label??propertyLabel(name);
   const authoredManaged=!!property&&!!property.provenance&&['manual','legacy_unknown'].includes(property.provenance.origin)&&persistedDefinition?.editable===false;
-  const managed = entity.type === 'source' && ['Import method','Source URL'].includes(name)&&(!property?.provenance||!['manual','legacy_unknown'].includes(property.provenance.origin));
+  const managed = !!property?.bibliographicProjection || entity.type === 'source' && ['Import method','Source URL'].includes(name)&&(!property?.provenance||!['manual','legacy_unknown'].includes(property.provenance.origin));
   function begin() {
     const initial = {kind: property?.target_id || !property && definition?.valueKind === 'entity_reference' ? 'entity' as const : 'text' as const, value:property?.value ?? '',target:property?.target_id ?? '',legacy:!!property&&(property.metadata?.compatibility==='legacy_incompatible'||authoredManaged)};
     setPropertyDraft(vaultId,entity.id,id,{...initial,baseline:propertyDraftSignature(initial)});setStatus('');
@@ -83,7 +84,8 @@ function PropertyRow({name, property, ...props}: Props & {name: string; property
     catch {setStatus(uiText('Could not remove this value. Try again.'));}
     finally {lock.current=false;endPropertySave(vaultId,entity.id,id);}
   }
-  return <div className="entity-inline-row"><dt>{label}{property?.metadata?.compatibility==='unresolved'&&<small className="section-hint">{uiText('Unresolved')} · {property.metadata.reason}</small>}{managed&&<small className="section-hint">{uiText('Source metadata · managed automatically')}</small>}</dt><dd>
+  return <div className="entity-inline-row"><dt>{label}{property?.metadata?.compatibility==='unresolved'&&<small className="section-hint">{uiText('Unresolved')} · {property.metadata.reason}</small>}{managed&&!property?.bibliographicProjection&&<small className="section-hint">{uiText('Source metadata · managed automatically')}</small>}</dt><dd>
+    {property&&<BibliographicPropertyEvidence property={property}/>}
     {property?.provenance&&<div className="property-provenance"><small>{({manual:'Manual',imported:'Imported',ai:'AI extracted',derived:'Derived',legacy_unknown:'Legacy origin unknown'} as const)[property.provenance.origin]}{property.provenance.stale?' · Stale evidence':''}</small>{(property.provenance.source_file_id||property.provenance.source_hash||property.provenance.details)&&<details><summary>Value source</summary>{property.provenance.source_file_id&&<p>Source file: {property.provenance.source_file_id}</p>}{property.provenance.source_hash&&<p className="property-evidence-hash">Content SHA-256: {property.provenance.source_hash}</p>}{property.provenance.details&&<p>{property.provenance.details}</p>}</details>}</div>}
     {!draft||props.active===false ? <><div className="entity-inline-value">{property?.target_id&&<span>{mention(property.target_id)}</span>}{managed?<TemporalPropertyValue type={entity.type} name={name} value={property?.value??null}/>:<button type="button" className="entity-inline-activate" aria-label={uiText('Edit ') + label} disabled={!!conflicts&&!property} onClick={begin}>{property?.target_id?uiText('Edit reference'):property?<TemporalPropertyValue type={entity.type} name={name} value={property.value===null?null:property.value.length>220?property.value.slice(0,220)+'…':property.value}/>:uiText('Not set')}</button>}<DatePropertyOverview vaultId={vaultId} type={entity.type} name={name} value={property?.value??null} declaredDate={persistedDefinition?.valueKind==='date'}/></div></> : <div className="entity-inline-edit" onKeyDown={event=>{
       if(event.nativeEvent.isComposing||event.defaultPrevented)return;

@@ -1,3 +1,4 @@
+import {bibliographicLegacyConflicts,assertBibliographicReconciliation} from './bibliographic-property-projection.js';
 import {createHash,randomUUID} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {parseBibliography,exportBibliography,normalizeDoi,isCitationKey,type BibliographicEntry} from '../../shared/bibliography.js';
@@ -16,10 +17,11 @@ export function setupBibliographySchema(db:DatabaseSync) {
  revision INTEGER NOT NULL,provider TEXT NOT NULL,fields_json TEXT NOT NULL,created_at TEXT NOT NULL);`);
 }
 type Origin='manual'|'bibtex'|'crossref'|'datacite';
-interface Provenance {origin:Origin;at:string}
+interface Provenance {origin:Origin;at:string;history?:{value:string;origin:Origin;at:string}[]}
 interface Row {source_id:string;vault_id:string;citation_key:string;entry_type:string;fields_json:string;provenance_json:string;raw_imports_json:string;revision:number}
 export interface BibliographyRecord {sourceId:string;citationKey:string;entryType:string;fields:Record<string,string>;provenance:Record<string,Provenance>;rawImports:string[];revision:number}
-type Match={sourceId:string;title:string;reason:'doi'|'isbn'|'key'|'title';revision:number};
+type ImportConflict={field:string;current:string;incoming:string;currentOrigin?:string};
+type Match={sourceId:string;title:string;reason:'doi'|'isbn'|'key'|'title';revision:number;conflicts?:ImportConflict[]};
 const digest=(raw:string)=>createHash('sha256').update(raw).digest('hex');
 const fold=(v:string)=>v.toLowerCase().normalize('NFKC').replace(/[^\p{L}\p{N}]/gu,'');
 const isbn=(v:string)=>v.replace(/[^\dXx]/g,'').toUpperCase();
@@ -44,7 +46,10 @@ export class Bibliography {
  if(title)for(const source of this.store.all<{id:string;name:string}>("SELECT id,name FROM entities WHERE vault_id=? AND type='source' AND archived_at IS NULL AND id NOT IN (SELECT source_id FROM bibliographic_records)",vault))if(fold(source.name)===title)matches.push({sourceId:source.id,title:source.name,reason:'title',revision:0});
  return matches;
  }
- preview(vault:string,raw:unknown) {this.open(vault);const parsed=this.parse(raw);return {batchId:digest(parsed.rawBibtex),entries:parsed.entries.map((entry,index)=>{const matches=this.matches(vault,entry);return {index,entry:{citationKey:entry.citationKey,entryType:entry.entryType,fields:entry.fields,creators:entry.creators},matches,conflicts:matches.flatMap(match=>{const record=this.get(vault,match.sourceId);return record?Object.keys(entry.fields).filter(key=>record.fields[key]!==undefined&&record.fields[key]!==entry.fields[key]):[];})};}),warnings:parsed.warnings};}
+ private conflicts(entry:BibliographicEntry,current:BibliographyRecord|null):ImportConflict[] {
+ return current?Object.keys(entry.fields).filter(field=>current.fields[field]!==undefined&&current.fields[field]!==entry.fields[field]).map(field=>({field,current:current.fields[field]!,incoming:entry.fields[field]!,currentOrigin:current.provenance[field]?.origin})):[];
+ }
+ preview(vault:string,raw:unknown) {this.open(vault);const parsed=this.parse(raw);return {batchId:digest(parsed.rawBibtex),entries:parsed.entries.map((entry,index)=>{const matches=this.matches(vault,entry).map(match=>({...match,conflicts:this.conflicts(entry,this.get(vault,match.sourceId)),propertyConflicts:bibliographicLegacyConflicts(this.store,vault,match.sourceId,{...this.get(vault,match.sourceId)?.fields,...entry.fields},this.get(vault,match.sourceId)?.fields)}));return {index,entry:{citationKey:entry.citationKey,entryType:entry.entryType,fields:entry.fields,creators:entry.creators},matches,conflicts:[...new Set(matches.flatMap(match=>match.conflicts.map(conflict=>conflict.field)))]};}),warnings:parsed.warnings};}
  import(vault:string,body:Record<string,unknown>) {
  this.open(vault);const parsed=this.parse(body.raw);if(!Array.isArray(body.decisions)||body.decisions.length!==parsed.entries.length)throw new HttpError(400,'Review every imported record');
  const decisions=body.decisions.map(object);if(new Set(decisions.map(d=>d.index)).size!==parsed.entries.length||decisions.some(d=>!Number.isInteger(d.index)||Number(d.index)<0||Number(d.index)>=parsed.entries.length))throw new HttpError(400,'Invalid import decisions');
@@ -53,23 +58,26 @@ export class Bibliography {
  if(decision.action==='merge'){id=required(decision.sourceId);this.source(vault,id);const current=this.get(vault,id);if((current?.revision??0)!==decision.revision)throw new HttpError(409,'The source changed. Review the import again.');
  // Explicit record selection is still required for ambiguous title matches.
  if(!matches.some(match=>match.sourceId===id))throw new HttpError(409,'The selected match changed. Review again.');
- if(current){const merged={...entry.fields,...current.fields};const originals=[...current.rawImports];if(!originals.includes(parsed.rawBibtex))originals.push(parsed.rawBibtex);if(JSON.stringify(merged)!==JSON.stringify(current.fields)||originals.length!==current.rawImports.length){this.write(vault,id,current.citationKey,current.entryType,merged,'bibtex',originals,current);result.updated++;}else result.skipped++;}
- else {this.write(vault,id,entry.citationKey,entry.entryType,entry.fields,'bibtex',[parsed.rawBibtex]);result.updated++;}
+ if(current){const conflicts=this.conflicts(entry,current),choices=decision.fields===undefined?{}:object(decision.fields);
+ if(conflicts.some(conflict=>!['current','incoming'].includes(String(choices[conflict.field])))||Object.entries(choices).some(([field,choice])=>!conflicts.some(conflict=>conflict.field===field)||!['current','incoming'].includes(String(choice))))throw new HttpError(400,'Review each conflicting field and choose its current or imported value.');
+ const merged={...entry.fields,...current.fields};for(const conflict of conflicts)if(choices[conflict.field]==='incoming')merged[conflict.field]=conflict.incoming;const originals=[...current.rawImports];if(!originals.includes(parsed.rawBibtex))originals.push(parsed.rawBibtex);if(JSON.stringify(merged)!==JSON.stringify(current.fields)||originals.length!==current.rawImports.length){this.write(vault,id,current.citationKey,current.entryType,merged,'bibtex',originals,current,decision.reviewedProperties);result.updated++;}else result.skipped++;}
+ else {this.write(vault,id,entry.citationKey,entry.entryType,entry.fields,'bibtex',[parsed.rawBibtex],undefined,decision.reviewedProperties);result.updated++;}
  }else if(decision.action==='create'){
  // Exact identifiers and keys must be reviewed against their existing records.
  if(matches.some(match=>match.reason!=='title'))throw new HttpError(409,'An identifier or citation key already exists. Review and merge explicitly.');
  id=randomUUID();this.store.run("INSERT INTO entities (id,vault_id,name,type,aliases,mention_case,referent_status,subtypes,description,updated_at) VALUES (?,?,?,'source','[]','canonical','actual','[]','',?)",id,vault,(entry.fields.title||entry.citationKey).slice(0,200),now());this.write(vault,id,entry.citationKey,entry.entryType,entry.fields,'bibtex',[parsed.rawBibtex]);result.created++;
  }else throw new HttpError(400,'Choose create, merge or skip');result.sourceIds.push(id);}return result;});
  }
- protected write(vault:string,id:string,key:string,type:string,value:Record<string,string>,origin:Origin,rawImports:string[],previous?:BibliographyRecord) {
+ protected write(vault:string,id:string,key:string,type:string,value:Record<string,string>,origin:Origin,rawImports:string[],previous?:BibliographyRecord,reviewedProperties?:unknown) {
  try{exportBibliography([{citationKey:key,entryType:type,fields:value,creators:[],rawBibtex:''}]);}catch(error){throw new HttpError(400,error instanceof Error?error.message:'Invalid bibliographic fields');}
  if(this.store.get('SELECT 1 FROM bibliographic_records WHERE vault_id=? AND citation_key=? AND source_id<>?',vault,key,id))throw new HttpError(409,'Citation key already belongs to another Source');
- for(const property of this.store.all<{name:string;value:string}>("SELECT name,value FROM properties WHERE entity_id=? AND lower(name) IN ('doi','isbn') AND value IS NOT NULL",id)){const key=property.name.toLowerCase(),canonical=value[key];if(canonical&&((key==='doi'&&normalizeDoi(canonical)!==normalizeDoi(property.value))||(key==='isbn'&&isbn(canonical)!==isbn(property.value))))throw new HttpError(409,'The bibliographic identifier conflicts with an existing Source property. Review the authored property first.');}
- const provenance=Object.fromEntries(Object.entries(previous?.provenance??{}).filter(([key])=>key in value));for(const field of Object.keys(value))if(value[field]!==previous?.fields[field])provenance[field]={origin,at:now()};
+ assertBibliographicReconciliation(this.store,vault,id,value,reviewedProperties,previous?.fields);
+ const provenance=Object.fromEntries(Object.entries(previous?.provenance??{}).filter(([key])=>key in value));for(const field of Object.keys(value))if(value[field]!==previous?.fields[field])provenance[field]={origin,at:now(),...(previous?.fields[field]===undefined?{}:{history:[...(previous.provenance[field]?.history??[]),{value:previous.fields[field]!,origin:previous.provenance[field]?.origin??'manual',at:previous.provenance[field]?.at??now()}]})};
  this.store.run(`INSERT INTO bibliographic_records(source_id,vault_id,citation_key,entry_type,fields_json,provenance_json,raw_imports_json,revision) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(source_id) DO UPDATE SET citation_key=excluded.citation_key,entry_type=excluded.entry_type,fields_json=excluded.fields_json,provenance_json=excluded.provenance_json,raw_imports_json=excluded.raw_imports_json,revision=excluded.revision`,id,vault,citationKey(key),entryType(type),JSON.stringify(value),JSON.stringify(provenance),JSON.stringify(rawImports.map(raw=>{const id=digest(raw);this.store.run('INSERT OR IGNORE INTO bibliographic_import_batches(id,vault_id,raw) VALUES(?,?,?)',id,vault,raw);return id;})),(previous?.revision??0)+1);
  return this.get(vault,id)!;
  }
- save(vault:string,id:string,body:Record<string,unknown>) {this.source(vault,id);return this.store.transaction(()=>{const current=this.get(vault,id);if(body.revision!==(current?.revision??0))throw new HttpError(409,'The bibliography changed. Reload before saving.');return this.write(vault,id,citationKey(body.citationKey),entryType(body.entryType),fields(body.fields),'manual',current?.rawImports??[],current??undefined);});}
+ reconcilePreview(vault:string,id:string,body:Record<string,unknown>) {this.source(vault,id);const current=this.get(vault,id);if(body.revision!==(current?.revision??0))throw new HttpError(409,'The bibliography changed. Reload before reviewing.');return {conflicts:bibliographicLegacyConflicts(this.store,vault,id,fields(body.fields),current?.fields)};}
+ save(vault:string,id:string,body:Record<string,unknown>) {this.source(vault,id);return this.store.transaction(()=>{const current=this.get(vault,id);if(body.revision!==(current?.revision??0))throw new HttpError(409,'The bibliography changed. Reload before saving.');return this.write(vault,id,citationKey(body.citationKey),entryType(body.entryType),fields(body.fields),'manual',current?.rawImports??[],current??undefined,body.reviewedProperties);});}
  export(vault:string) {const records=this.list(vault,false).map(record=>({...record,creators:[],rawBibtex:''}));const batches=this.store.all<{id:string;raw:string}>('SELECT id,raw FROM bibliographic_import_batches WHERE vault_id=? ORDER BY id',vault);const sidecarRecords=records.map(record=>({...record,rawImportIds:JSON.parse(this.row(vault,record.sourceId)!.raw_imports_json)}));return {bibtex:exportBibliography(records,'bibtex'),biblatex:exportBibliography(records,'biblatex'),sidecar:JSON.stringify({version:1,records:sidecarRecords,importBatches:batches},null,2)};}
 
 }

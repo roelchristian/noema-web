@@ -1,6 +1,6 @@
 # Bibliographic intelligence: implementation and review
 
-Local implementation branch: `codex/bibliographic-intelligence`. No push, PR, deployment, or live user-data migration was performed. Inbox Activity #90 (`ce6101786de7a31c61cff0ad846681d369e255a7`) is included. The final integration also incorporates #91 source-page language and draft-navigation changes (`f0fd2466aee50d7e2088d870403579e399599686`). Existing #89 and Settings #88 changes are preserved. The supplied Library text was used directly; it was not downloaded.
+Local implementation branch: `codex/bibliographic-intelligence`. This branch is prepared for draft review; no deployment or live user-data migration was performed. Inbox Activity #90 (`ce6101786de7a31c61cff0ad846681d369e255a7`) is included. The final integration also incorporates #91 source-page language and draft-navigation changes (`f0fd2466aee50d7e2088d870403579e399599686`). Existing #89 and Settings #88 changes are preserved. The supplied Library text was used directly; it was not downloaded.
 
 ## Delivered phases
 

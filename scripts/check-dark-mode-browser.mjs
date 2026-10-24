@@ -40,17 +40,22 @@ async function menuContract(page,selector,minimum){
 function contrast(a,b){const luminance=hex=>{const raw=hex.trim().replace('#','');const v=(raw.length===3?raw.split('').map(c=>c+c).join(''):raw).match(/../g).map(x=>parseInt(x,16)/255).map(x=>x<=.04045?x/12.92:((x+.055)/1.055)**2.4);return .2126*v[0]+.7152*v[1]+.0722*v[2];};const x=luminance(a),y=luminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);}
 // Resolve actual composited backgrounds, including translucent interaction states.
 async function readable(page,selector,{minimum=4.5,pseudo=null,property='color'}={}) {
- const rows=await page.locator(selector).evaluateAll((elements,{pseudo,property})=>{
+ // Sample visibility and composited colors atomically: virtualized passages can
+ // be replaced between a separate visibility wait and a later evaluation.
+ const snapshot=await page.waitForFunction(({selector,pseudo,property})=>{
+  const elements=[...document.querySelectorAll(selector)];
   const rgba=value=>{const values=value.match(/[\d.]+/g)?.map(Number);return values?.length>=3?[...values.slice(0,3),values[3]??1]:[0,0,0,0];};
   const over=(a,b)=>[...a.slice(0,3).map((c,i)=>c*a[3]+b[i]*(1-a[3])),1];
   const luminance=c=>c.slice(0,3).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
-  return elements.filter(e=>{const r=e.getBoundingClientRect();return r.width&&r.height&&getComputedStyle(e).visibility!=='hidden';}).map(e=>{
+  const samples=elements.filter(e=>{const r=e.getBoundingClientRect();return r.width&&r.height&&getComputedStyle(e).visibility!=='hidden';}).map(e=>{
    const ancestors=[];for(let n=e;n;n=n.parentElement)ancestors.unshift(n);
    let bg=[255,255,255,1];for(const n of ancestors)bg=over(rgba(getComputedStyle(n).backgroundColor),bg);
    const s=getComputedStyle(e,pseudo),fg=over(rgba(s[property]),bg),a=luminance(fg),b=luminance(bg);
    return {text:e.getAttribute('aria-label')??e.textContent?.trim().slice(0,60),color:s.color,background:bg.slice(0,3),ratio:(Math.max(a,b)+.05)/(Math.min(a,b)+.05)};
   });
- },{pseudo,property});
+  return samples.length?samples:false;
+ },{selector,pseudo,property});
+ const rows=await snapshot.jsonValue();await snapshot.dispose();
  assert.ok(rows.length,`No visible samples for ${selector}`);
  for(const row of rows)assert.ok(row.ratio>=minimum,`${selector}: ${JSON.stringify(row)} < ${minimum}`);
  return rows;

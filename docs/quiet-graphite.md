@@ -55,4 +55,26 @@ Light comparison: 230 of 234 original baseline/final light pairs are pixel-ident
 
 Independent review found no blocking code or visual findings, including all 12 matched integrated entity/Connections/picker images. Reading hierarchy, density and legibility were compared against actual rendered light/dark surfaces; the historical critique and illustrative remote images were not treated as proof. Existing mobile Settings “Appearance” label wrapping is unchanged. Safari and native browser UI zoom remain unreviewed; Chromium and CSS zoom do not establish Safari parity.
 
-Deliverables: `review.html`, `coverage.json`, `light-comparison.json`, `contrast.json`, four integrated capture directories, the settled-panel pair and `validation/` logs under ignored `output/quiet-graphite/`. All implementation changes are committed locally on `codex/quiet-graphite-dark`; no push, PR, merge to main or deployment was performed. The new Unified Alerts & Notifications effort is independent: no notification behavior, notice aliases or `notifications.css` were changed. Its token additions should preserve this branch’s dark surface values, accent/entity palettes and semantic status roles. Shared Settings changes from main merged cleanly; future token edits are the main integration touchpoint.
+Deliverables: `review.html`, `coverage.json`, `light-comparison.json`, `contrast.json`, four integrated capture directories, the settled-panel pair and `validation/` logs under ignored `output/quiet-graphite/`. At the initial local handoff, all implementation changes were committed on `codex/quiet-graphite-dark`; no push, PR, merge to main or deployment had been performed. The new Unified Alerts & Notifications effort is independent: no notification behavior, notice aliases or `notifications.css` were changed. Its token additions should preserve this branch’s dark surface values, accent/entity palettes and semantic status roles. Shared Settings changes from main merged cleanly; future token edits are the main integration touchpoint.
+
+
+## Draft publication follow-up — latest main
+
+Integrated actual latest main `a0667a7` as merge `1939da4`, including editor toolbar #100, source metadata #101, settings refresh #103 and source simplification #102. Toolbar, metadata and settings-refresh behavior/hooks are unchanged by this branch. Their owning CSS merged cleanly; the new metadata CSS remains byte-identical to main. Independent code and representative visual review found no regression in current desktop/mobile Standard/Subtle/Focus controls, menu, metadata, uncertainty/evidence states or source workspace.
+
+Post-integration `npm run build` passed (styles, application/test types, server and client). Ninety affected tests passed with zero failures: toolbar menu, settings session/refresh, metadata domain/provenance/UI, reader refresh, reprocessing, entity property/panel, navigation and semantics. The earlier 1,353-test full run and 936-image matrix are retained as earlier-base evidence; unchanged work was not regenerated. The PR CI runs the full suite on its exact published head.
+
+A narrow supplement compares built main `a0667a7` against the integrated branch: 28 PNGs per revision for current editor Standard/Subtle/Focus, menu, source workspace Overview, metadata and expanded evidence at desktop/mobile in light/dark, plus four dedicated prose-reader PNGs per revision with the inspector closed. These **64 current-base images** are under `output/quiet-graphite/publication-{baseline,final}` and `publication-prose-{baseline,final}`. The source-workspace image on mobile shows Overview, not prose; dedicated `source-prose` captures establish the mobile reading surface. Twelve of 14 initial light pairs are pixel-identical; the two expanded-evidence differences contain different disposable fixture UUIDs. Metadata/status meaning remains distinct from accent.
+
+The fresh design and dark-mode checks both passed all 12 cases on Chromium 154.0.8037.57, with zero page errors and minimum checked status/entity text contrast 5.59:1. A source virtualizer can replace a passage between a visibility wait and later computed sampling; the helper now atomically collects rendered samples and composited colors before retaining the same strict non-empty/contrast assertions. Independent review confirmed this synchronization does not bypass checks. Safari remains pending; these are Chromium results, with representative human inspection, not a cross-browser parity claim.
+
+### Representative current-base images
+
+All content is synthetic. These small committed examples make the draft reviewable without publishing the full capture matrix.
+
+| Latest main, dark | Quiet Graphite, dark |
+| --- | --- |
+| ![Editor before](quiet-graphite/editor-before-dark.png) | ![Editor after](quiet-graphite/editor-after-dark.png) |
+| ![Metadata evidence before](quiet-graphite/metadata-before-dark.png) | ![Metadata evidence after](quiet-graphite/metadata-after-dark.png) |
+
+[Unchanged light editor reference](quiet-graphite/editor-light-reference.png).

@@ -1,5 +1,6 @@
 // Matched, offline visual evidence. Uses only a disposable synthetic vault.
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {mkdtemp,mkdir,writeFile,rm,stat} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
@@ -21,10 +22,11 @@ try {
  const person=knowledge.create('default',{name:'Mira Vale',type:'person',description:'A fictional scholar studying how attention shapes reading and reflection.'});
  knowledge.property('default',person.id,{name:'website',value:'https://example.invalid/mira'});
  knowledge.relationship('default',person.id,{target_id:concept.id,label:'studies'});
- const text='On attention\n\nA quiet place for connected ideas. Knowledge grows through reading, reflection and the relationships between ideas.\n\nReading slowly gives each observation room to become a question.';
+ const text=(process.env.NOEMA_PUBLICATION_ONLY==='1'?'Title: Synthetic publication\nAuthor: Synthetic Writer\nPublication year: 2026\nPublisher: Synthetic Press\n\n':'')+'On attention\n\nA quiet place for connected ideas. Knowledge grows through reading, reflection and the relationships between ideas.\n\nReading slowly gives each observation room to become a question.';
  const file=new SourceFiles(store).add('default','Synthetic reading.txt',Buffer.from(text));
  const source=knowledge.create('default',{name:'On attention — synthetic reading',type:'source',attachmentIds:[file.id]});
  store.run("UPDATE source_files SET text=?,status='ready',admitted=1 WHERE id=?",text,file.id);store.run('UPDATE entities SET inactive=0 WHERE id=?',source.id);new SourcePassages(store,t=>t.length).synchronize('default');
+ if(process.env.NOEMA_PUBLICATION_ONLY==='1'){const {Bibliography}=await import('../src/server/modules/bibliography.ts');const {SourceMetadata}=await import('../src/server/modules/source-metadata.ts');new Bibliography(store).save('default',source.id,{revision:0,citationKey:'Synthetic2026',entryType:'book',fields:{title:'Synthetic publication',author:'Synthetic Writer'}});const metadata=new SourceMetadata(store),hash=createHash('sha256').update(text).digest('hex');for(const [field,value]of [['year','2026'],['publisher','Synthetic Press']])metadata.registerCandidate('default',source.id,{fieldKey:'bibliography:'+field,value,fileId:file.id,runId:'graphite-publication',version:'canonical',revision:hash,excerpt:text,start:0,end:text.length,evidenceHash:hash,validated:true,validationReason:'Synthetic explicitly labeled publication evidence.'});}
  api=createApp(store,join(repo,'dist/client'));api.listen(0,'127.0.0.1');await once(api,'listening');
  if(process.env.NOEMA_CAPTURE_PRODUCTION!=='1'){vite=await createServer({configFile:false,root:repo,cacheDir:join(temp,'vite-cache'),server:{host:'127.0.0.1',port:0,proxy:{'/api':`http://127.0.0.1:${api.address().port}`}}});await vite.listen();}
  const base=`http://127.0.0.1:${vite?vite.httpServer.address().port:api.address().port}`;
@@ -40,11 +42,20 @@ try {
   await page.route('**/*',r=>new URL(r.request().url()).hostname==='127.0.0.1'?r.continue():r.abort());
   async function shot(screen){await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:join(out,`${key}-${screen}.png`),animations:'disabled'});captures.push({key,screen,effectivePresentation:await page.evaluate(()=>({focusedReading:document.documentElement.dataset.focusedReading,focusWorkspace:document.documentElement.dataset.focusWorkspace}))});}
   async function nav(name){if(width===390)await page.getByRole('button',{name:'Open navigation',exact:true}).click();await page.getByRole('button',{name,exact:true}).first().click();}
+  if(process.env.NOEMA_PUBLICATION_ONLY==='1'){
+   if(process.env.NOEMA_PUBLICATION_READER_ONLY==='1'){await page.goto(`${base}/?vault=default&source=${source.id}`);await page.locator('.source-reader-passage').first().waitFor();await shot('source-prose');await context.close();continue;}
+   await page.goto(base);await page.getByRole('button',{name:'A place for connected ideas',exact:false}).first().click();await page.locator('#page-title').waitFor();await shot('editor');
+   async function presentation(label){if(width===390){await page.getByRole('button',{name:'View',exact:true}).click();await page.getByRole('menuitemcheckbox',{name:label,exact:true}).click();}else await page.getByRole('button',{name:label,exact:true}).click();}
+   await presentation('Subtle');await shot('editor-subtle');await presentation('Focus');await shot('editor-focus');await page.keyboard.press('Escape');await presentation('Standard');
+   await page.getByRole('button',{name:'More page actions',exact:true}).click();await page.getByRole('menuitem',{name:'Move to Trash',exact:true}).hover();await shot('menu');await page.keyboard.press('Escape');
+   await page.goto(`${base}/?vault=default&source=${source.id}&entity=${source.id}`);await page.locator('.source-reader-passage').first().waitFor();await page.getByRole('tab',{name:'Metadata',exact:true}).waitFor();await shot('source-reader');
+   await page.getByRole('tab',{name:'Metadata',exact:true}).click();const metadata=page.getByRole('region',{name:'Source metadata',exact:true});await metadata.getByText('2 suggested',{exact:false}).waitFor();await shot('metadata');await metadata.getByText('Evidence',{exact:true}).first().click();await shot('metadata-evidence');await context.close();console.log(key);continue;
+  }
   if(process.env.NOEMA_ENTITY_ONLY==='1'){await page.goto(`${base}/?vault=default&view=entity&subject=${person.id}`);await page.locator('.entity-home h1').waitFor();await page.getByText('Loading complete properties…',{exact:true}).waitFor({state:'hidden'});await page.getByText('Loading source preview…',{exact:true}).waitFor({state:'hidden'});await page.locator('.eh-glance-properties').getByText('https://example.invalid/mira',{exact:true}).waitFor();await shot('entity-home');await context.close();continue;}
   await page.goto(base);await page.getByRole('button',{name:'A place for connected ideas',exact:false}).first().click();await page.locator('#page-title').waitFor();if(process.env.NOEMA_PANEL_ONLY!=='1')await shot('editor');
   // Escape Focus through its real UI before visiting navigation and overlays.
   if(presentationMode==='focus')await page.keyboard.press('Escape');
-  await page.getByRole('button',{name:'Knowledge',exact:true}).click();await page.locator('.intelligence-panel').waitFor();await page.getByText('No related notes yet. Connections will appear here as your library grows.',{exact:true}).waitFor();await page.getByText(/^Finding suggested sources(?:…|\.\.\.)$/).waitFor({state:'hidden'});await shot('knowledge-panel');if(process.env.NOEMA_PANEL_ONLY==='1'){await context.close();continue;}await page.getByRole('button',{name:'Close Knowledge panel',exact:true}).click();
+  await page.getByRole('button',{name:'Show page knowledge',exact:true}).click();await page.locator('.intelligence-panel').waitFor();await page.getByText('No related notes yet. Connections will appear here as your library grows.',{exact:true}).waitFor();await page.getByText(/^Finding suggested sources(?:…|\.\.\.)$/).waitFor({state:'hidden'});await shot('knowledge-panel');if(process.env.NOEMA_PANEL_ONLY==='1'){await context.close();continue;}await page.getByRole('button',{name:'Close Knowledge panel',exact:true}).click();
   await page.getByRole('button',{name:'More page actions',exact:true}).click();await page.getByRole('menuitem',{name:'Move to Trash',exact:true}).hover();await shot('menu');await page.keyboard.press('Escape');
   await page.getByRole('button',{name:'More page actions',exact:true}).click();await page.getByRole('menuitem',{name:'Rename',exact:true}).click();await page.locator('dialog[open]').waitFor();await shot('dialog');await page.keyboard.press('Escape');
   await nav('Knowledge entities');await page.locator('.library-heading-row').first().waitFor();await shot('knowledge');

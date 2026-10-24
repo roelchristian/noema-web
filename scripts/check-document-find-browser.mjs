@@ -145,7 +145,14 @@ try{
  await page.screenshot({path:join(shots,'presentation-desktop-standard.png')});
  await choose('Subtle');const subtleStyle=await mention.evaluate(el=>({bg:getComputedStyle(el).backgroundColor,border:getComputedStyle(el).borderBottomStyle}));assert.notDeepEqual(normalStyle,subtleStyle);
  await page.screenshot({path:join(shots,'presentation-desktop-subtle.png')});
- await page.getByRole('button',{name:'Standard',exact:true}).focus();await page.keyboard.press('Space');assert.equal(await page.getByRole('button',{name:'Subtle',exact:true}).getAttribute('aria-pressed'),'false');await page.getByRole('button',{name:'Subtle',exact:true}).focus();await page.keyboard.press('Enter');assert.equal(await page.getByRole('button',{name:'Subtle',exact:true}).getAttribute('aria-pressed'),'true');
+ const pressMode=async(mode,key)=>{
+  if(await page.getByRole('button',{name:'View',exact:true}).isVisible()) {
+   await page.getByRole('button',{name:'View',exact:true}).focus();await page.keyboard.press('ArrowDown');
+   await page.getByRole('menuitemcheckbox',{name:mode,exact:true}).focus();await page.keyboard.press(key);
+  } else {await page.getByRole('button',{name:mode,exact:true}).focus();await page.keyboard.press(key);}
+ };
+ await pressMode('Standard','Space');assert.equal(await page.evaluate(()=>document.documentElement.dataset.focusedReading),'false');
+ await pressMode('Subtle','Enter');assert.equal(await page.evaluate(()=>document.documentElement.dataset.focusedReading),'true');
  for(let i=0;i<2;i++) {
   await choose('Focus');assert.ok(await inFocus());assert.ok(!await page.locator('.sidebar').isVisible());assert.ok(!await page.locator('#intelligence-panel').isVisible());
   assert.deepEqual(await mention.evaluate(el=>({bg:getComputedStyle(el).backgroundColor,border:getComputedStyle(el).borderBottomStyle})),subtleStyle);
@@ -155,13 +162,13 @@ try{
   await body.evaluate(el=>el.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',isComposing:true,bubbles:true})));assert.ok(await inFocus());
   await page.keyboard.press('Escape');assert.ok(!await inFocus());assert.ok(await page.locator('#intelligence-panel').isVisible());
   assert.deepEqual(await page.evaluate(()=>({knowledge:localStorage.getItem('noema-knowledge-panel-open'),toc:localStorage.getItem('noema-table-of-contents-visible'),scroll:document.querySelector('.sidebar-scroll-region').scrollTop})),arrangement);
-  assert.equal(await page.getByRole('button',{name:'Subtle',exact:true}).getAttribute('aria-pressed'),'true');
+  assert.equal(await page.evaluate(()=>document.documentElement.dataset.focusedReading),'true');
  }
  await choose('Focus');await body.focus();await page.mouse.move(700,600);assert.ok(await page.locator('.focus-controls').getByRole('button',{name:'Exit Focus',exact:true}).isVisible());await page.screenshot({path:join(shots,'presentation-desktop-focus.png')});
  await page.locator('.focus-controls').getByRole('button',{name:'Exit Focus',exact:true}).focus();assert.equal(await page.locator('.focus-exit').count(),0);
  // Same-tab reload retains Focus and its previous Subtle mode.
  await page.reload();await body.waitFor();assert.ok(await inFocus());
- await page.goto(`http://127.0.0.1:${app.address().port}/?vault=default&page=${other.id}`);await page.locator('#blocks').waitFor();assert.ok(await inFocus());await page.goBack();await body.waitFor();assert.ok(await inFocus());await page.keyboard.press('Escape');assert.equal(await page.getByRole('button',{name:'Subtle',exact:true}).getAttribute('aria-pressed'),'true');
+ await page.goto(`http://127.0.0.1:${app.address().port}/?vault=default&page=${other.id}`);await page.locator('#blocks').waitFor();assert.ok(await inFocus());await page.goBack();await body.waitFor();assert.ok(await inFocus());await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>document.documentElement.dataset.focusedReading),'true');
  assert.equal(JSON.stringify(pages.get('default',note.id)),dataBeforeModes);
  // Full editing, selection and history remain available in Focus.
  await choose('Focus');await body.click();await page.keyboard.press('End');await page.keyboard.type(' focus edit');await page.keyboard.press('Control+z');assert.equal(await body.innerText(),'revised revised');await page.keyboard.press('Control+Shift+z');assert.match(await body.innerText(),/focus edit/);await page.keyboard.press('Control+z');await page.keyboard.press('Control+s');

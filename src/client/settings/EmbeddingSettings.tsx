@@ -1,3 +1,4 @@
+import {SuccessNotice} from '../components/SuccessNotice';
 import {getLocale} from '../i18n';
 import {t as uiText} from '../i18n';
 import {DisclosureSummary} from '../components/DisclosureSummary';
@@ -87,7 +88,7 @@ export function EmbeddingSettings({vault,onOpenPage,onOpenEntity,onOpenPassage}:
         <p className="intelligence-note">{uiText("Indexing sends content to OpenAI; searches send your query. Embeddings are stored in this vault. API charges apply.")}</p>
       </>}
       {error&&<p role="alert" className="embedding-job-error">{error}</p>}
-      <p role="status" aria-live="polite">{busy?uiText("Working…"):message}</p>
+      {busy?<p role="status">{uiText("Working…")}</p>:<SuccessNotice inline message={message} onDismiss={()=>setMessage('')}/>}
     </>}
   </section>;
 }

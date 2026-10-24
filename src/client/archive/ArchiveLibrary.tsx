@@ -16,7 +16,7 @@ export function ArchiveLibrary({vaultId,notes,organization,onRestore,onOpen,onRe
   const checked=visible.filter(note=>selected.has(note.id));
   async function run(work:()=>Promise<void>) {if(pending)return;setPending(true);try{await work();setSelected(new Set());}catch(error){onError(error);}finally{setPending(false);}}
   return <section ref={ref} className="organization-library trash-library" data-layout={mode} data-library-vault={vaultId} data-library-destination="archive" aria-busy={pending}>
-    <div className="organization-heading"><div className="library-heading-row"><h1 className="page-heading">Archive</h1></div><div className="library-heading-actions"><button className="button" disabled={pending} onClick={()=>void run(onRefresh)}>Refresh</button><ViewModeSwitch value={mode} onChange={setMode}/></div><p>Retired from active circulation. Pages and their knowledge are kept until you restore them.</p></div>
+    <div className="organization-heading"><div className="library-heading-row"><h1 className="page-heading">Archive</h1></div><div className="library-heading-actions"><button className="button" disabled={pending} onClick={()=>void run(onRefresh)}>Refresh</button><ViewModeSwitch value={mode} onChange={setMode}/></div></div>
     <div className="archive-filters" role="group" aria-label="Archive filters">
       <input type="search" aria-label="Filter archived pages" placeholder="Filter archived pages…" value={query} onChange={e=>setQuery(e.target.value)}/>
       <Select aria-label="Original folder" value={folder} onChange={e=>setFolder(e.target.value)}><option value="">All folders</option><option value="unfiled">Unfiled</option>{organization.folders.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</Select>

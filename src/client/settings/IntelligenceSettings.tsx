@@ -4,6 +4,7 @@ import {GeminiSpeechKey} from './GeminiSpeechKey';
 import {aiPersonas,defaultPersonaId,type BuiltinPersonaId} from '../../shared/ai-personas';
 import {getLocale} from '../i18n';
 import {t as uiText} from '../i18n';
+import {SuccessNotice} from '../components/SuccessNotice';
 import { Select } from '../components/Select';
 import { speechModelFor, speechVoicesFor, defaultSpeechProvider, defaultSpeechVoiceFor, isSpeechProvider, isSpeechVoice, defaultIntelligencePreferences, defaultPageEnrichmentPreferences, defaultManualRequestsPerMinute, maxManualRequestsPerMinute, intelligenceModels, type IntelligenceConfiguration, type ReasoningEffort } from '../../shared/intelligence';
 import { useEffect, useState, type FormEvent } from 'react';
@@ -32,9 +33,10 @@ export function IntelligenceSettings({vaultId,visibleSection='all',onShowSection
   const savedProvider=isSpeechProvider(status?.ttsProvider)?status.ttsProvider:defaultSpeechProvider;
   const changed=!!status&&(JSON.stringify(preferences.narration??defaultNarrationPreferences)!==JSON.stringify(status.narration??defaultNarrationPreferences)||(preferences.personaId??defaultPersonaId)!==(status.personaId??defaultPersonaId)||Boolean(preferences.ttsEnabled)!==Boolean(status.ttsEnabled)||provider!==savedProvider||preferences.ttsVoice!==(isSpeechVoice(status.ttsVoice,savedProvider)?status.ttsVoice:defaultSpeechVoiceFor(savedProvider))||preferences.model!==status.model||preferences.reasoningEffort!==status.reasoningEffort||preferences.manualRequestsPerMinute!==status.manualRequestsPerMinute||enrichment.model!==savedEnrichment.model||enrichment.reasoningEffort!==savedEnrichment.reasoningEffort);
   useEffect(()=>{let active=true;void api.intelligence().then(value=>{if(active){setStatus(value);setPreferences({narration:value.narration??structuredClone(defaultNarrationPreferences),personaId:(value.personaId??defaultPersonaId) as BuiltinPersonaId,ttsEnabled:value.ttsEnabled??false,ttsProvider:isSpeechProvider(value.ttsProvider)?value.ttsProvider:defaultSpeechProvider,ttsVoice:isSpeechVoice(value.ttsVoice,isSpeechProvider(value.ttsProvider)?value.ttsProvider:defaultSpeechProvider)?value.ttsVoice:defaultSpeechVoiceFor(isSpeechProvider(value.ttsProvider)?value.ttsProvider:defaultSpeechProvider),model:value.model,reasoningEffort:value.reasoningEffort,manualRequestsPerMinute:value.manualRequestsPerMinute,pageEnrichment:value.pageEnrichment??{...defaultPageEnrichmentPreferences}});}}).catch(()=>{if(active)setMessage('Secure storage is unavailable. Unlock your macOS login keychain and reopen Settings.');});return()=>{active=false;};},[]);
+  const [successNotice,setSuccessNotice]=useState('');
   async function perform(work:()=>Promise<unknown>,success:string) {
-    setBusy(true);setMessage('');
-    try {await work();setMessage(success);}catch(error){setMessage(error instanceof Error?error.message:'Request failed.');}finally{setBusy(false);}
+    setBusy(true);setMessage('');setSuccessNotice('');
+    try {await work();setSuccessNotice(success);}catch(error){setMessage(error instanceof Error?error.message:'Request failed.');}finally{setBusy(false);}
   }
   function save(event:FormEvent) {event.preventDefault();const value=key;setKey('');void perform(async()=>setStatus(await api.saveIntelligence(value,days)),'API key saved.');}
   return <section className="settings-section intelligence-settings" aria-labelledby="intelligence-heading">
@@ -132,6 +134,7 @@ export function IntelligenceSettings({vaultId,visibleSection='all',onShowSection
     {changed&&<p>{uiText("Save AI preferences before validating the new selection.")}</p>}
     <p className="intelligence-note">{uiText("Writing and search features send relevant note text, source text, and search queries to OpenAI. Source enrichment runs automatically; automatic indexing is configured below. API charges apply to OpenAI features. Kokoro speech stays local.")}</p>
     </div>
-    <p role="status" aria-live="polite">{uiText(message)}</p>
+    {message&&<p role="status" aria-live="polite">{uiText(message)}</p>}
+    <SuccessNotice inline message={uiText(successNotice)} onDismiss={()=>setSuccessNotice('')}/>
   </section>;
 }

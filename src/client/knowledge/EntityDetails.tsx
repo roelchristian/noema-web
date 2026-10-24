@@ -1,3 +1,4 @@
+import {SuccessNotice} from '../components/SuccessNotice';
 import {EntityReferencePicker} from './EntityReferencePicker';
 import {clearPropertyDraft,getPropertyDraft,setPropertyDraft,subscribePropertyDrafts,propertyDraftSignature,runPropertyMutation,beginPropertySave,endPropertySave,getAdvancedPropertySelection,setAdvancedPropertySelection,type EntityPropertyDraft} from './entity-property-drafts';
 import {resolvePropertyDefinition,propertyLabel} from '../../shared/property-definitions';
@@ -144,7 +145,7 @@ export function PropertyEditor({entity, entities, mention, onSave, onRemove,defi
       {kind === 'text' ? <label>{uiText("Value")}<PropertyScalarInput label={uiText('Property value')} definition={draft?.legacy?undefined:definition} disabled={busy||!!draft?.uncertainCreate} value={value} onChange={setValue}/></label> : <EntityReferencePicker vaultId={vault} entities={entities} value={target} onChange={setTarget} disabled={busy||!!draft?.uncertainCreate} types={definition?.allowedTargetTypes} subtypes={definition?.allowedTargetSubtypes} label={uiText('Referenced entity')} creation={draft?.referenceCreation} onCreationChange={referenceCreation=>patch({referenceCreation})}/>}
       <div className="entity-property-form-actions"><button type="button" className="button small" disabled={busy || !(edit || name || value || target)} onClick={()=>{reset();setStatus('');}}>{edit ? uiText("Cancel edit") : uiText("Clear")}</button><button className="button small primary" disabled={busy || !name || !(kind === 'text' ? value.trim() : target)}>{busy ? uiText("Saving…") : draft?.uncertainCreate?uiText("Retry save"):edit ? uiText("Save changes") : uiText("Add value")}</button></div>
     </form>}
-    {(error||draft?.uncertainCreate) && <p className="entity-property-error" role="alert">{error||uiText("Save outcome is uncertain. Retry checks saved values before submitting again.")}</p>}<p className="entity-property-status" role="status">{status}</p>
+    {(error||draft?.uncertainCreate) && <p className="entity-property-error" role="alert">{error||uiText("Save outcome is uncertain. Retry checks saved values before submitting again.")}</p>}<SuccessNotice inline message={status} onDismiss={()=>setStatus('')}/>
   </div>;
 }
 
@@ -181,6 +182,6 @@ export function RelationshipEditor({entity, entities, mention, onSave, onRemove}
       <label>{uiText("Related entity")}<Select required aria-label={uiText("Related entity")} disabled={busy} value={target} onChange={event=>setTarget(event.target.value)}><option value="">{uiText("Choose an entity…")}</option>{entities.filter(item=>item.id!==entity.id&&(!item.archived_at||item.id===target)).map(item=><option key={item.id} value={item.id}>{item.name} · {uiText(entityLabels[item.type])}</option>)}</Select></label>
       <div className="entity-property-form-actions"><button type="button" className="button small" disabled={busy} onClick={reset}>{uiText("Cancel")}</button><button type="submit" className="button small primary" disabled={busy||!label.trim()||!target}>{busy?uiText("Saving…"):edit?uiText("Save changes"):uiText("Add relationship")}</button></div>
     </form>}
-    {error&&<p className="entity-property-error" role="alert">{error}</p>}{status&&<p className="entity-property-status" role="status">{status}</p>}
+    {error&&<p className="entity-property-error" role="alert">{error}</p>}{status&&<SuccessNotice inline message={status} onDismiss={()=>setStatus('')}/>}
   </div>;
 }

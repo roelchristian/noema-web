@@ -1,3 +1,4 @@
+import {SuccessNotice} from '../components/SuccessNotice';
 import {memo, useEffect, useRef, useState} from 'react';
 import type {Entity, Organization, PagePreview, PageSummary} from '../../shared/domain';
 import {api} from '../api';
@@ -111,7 +112,7 @@ export function InboxTriage({vaultId, pages, allPages, entities, data, checked, 
         {currentPreview?.error&&<div role="alert"><p>{currentPreview.error}</p><button className="button" onClick={()=>setRetry(value=>value+1)}>Retry preview</button></div>}
         {currentPreview?.page&&<div className="inbox-preview"><PreviewBlocks blocks={currentPreview.page.blocks} pages={allPages} entities={entities} vaultId={vaultId} onOpenPage={onOpenPage} onOpenEntity={onOpenEntity}/>{!currentPreview.page.blocks.length&&<p>This page has no content yet.</p>}{currentPreview.page.truncated&&<p>Preview shows the first 80 blocks. Open the full editor to read the rest.</p>}</div>}
       </>}
-      <p role="status" className="organization-hint">{notice}</p>{onRefresh&&currentPreview?.error&&<button className="button" disabled={busy} onClick={()=>void refresh()}>Refresh queue</button>}
+      <SuccessNotice inline message={notice} onDismiss={()=>setNotice('')}/>{onRefresh&&currentPreview?.error&&<button className="button" disabled={busy} onClick={()=>void refresh()}>Refresh queue</button>}
       {error&&!picker&&<p role="alert">{error}</p>}
     </section>
     {picker&&active&&<Modal titleId="triage-picker-title" onClose={()=>{if(!pending)setPicker(null);}}><form onSubmit={event=>{event.preventDefault();void save();}}><ModalHeader titleId="triage-picker-title" closeDisabled={pending}>{picker==='folder'?'File in folder':'Add to collection'}</ModalHeader>

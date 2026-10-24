@@ -1,18 +1,20 @@
 import {useEffect,useState,type FormEvent} from 'react';
 import {api} from '../api';
+import {SuccessNotice} from '../components/SuccessNotice';
 import {getLocale} from '../i18n';
 import {geminiApiKeyMaxLength,type SpeechCredentialStatus} from '../../shared/intelligence';
 
 /** Write-only credential form: the key lives only in transient component memory. */
 export function GeminiSpeechKey() {
+  const [success,setSuccess]=useState('');
   const [status,setStatus]=useState<SpeechCredentialStatus|null>(null),[key,setKey]=useState(''),[days,setDays]=useState(30),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
   useEffect(()=>{let active=true;void api.geminiCredential().then(value=>{if(active)setStatus(value);}).catch(()=>{if(active)setMessage('Secure Gemini key storage is unavailable. Unlock your macOS login keychain and try again.');});return()=>{active=false;};},[]);
   async function change(remove=false) {
-    const value=key.trim();setKey('');setBusy(true);setMessage('');
+    const value=key.trim();setKey('');setBusy(true);setMessage('');setSuccess('');
     try {
       setStatus(await (remove?api.removeGeminiCredential():api.saveGeminiCredential(value,days)));
       window.dispatchEvent(new Event('noema:tts-preferences'));
-      setMessage(remove?'Saved Gemini key removed from Noema.':'Gemini key saved.');
+      setSuccess(remove?'Saved Gemini key removed from Noema.':'Gemini key saved.');
     }catch(error){setMessage(error instanceof Error?error.message:'Could not update the Gemini key.');}finally{setBusy(false);}
   }
   function submit(event:FormEvent){event.preventDefault();void change();}
@@ -26,6 +28,7 @@ export function GeminiSpeechKey() {
       <p>Expiry stops use in Noema. Revoke the key in Google AI Studio to disable it everywhere. Saving a key makes no provider request.</p>
       <div className="intelligence-actions"><button className="button primary" disabled={busy||!key.trim()}>{status?.configured?'Replace Gemini key':'Save Gemini key'}</button><button type="button" className="button danger" disabled={busy||!status?.configured} onClick={()=>void change(true)}>Remove Gemini key</button></div>
     </form>
-    <p role="status" aria-live="polite">{message}</p>
+    {message&&<p role="status" aria-live="polite">{message}</p>}
+    <SuccessNotice inline message={success} onDismiss={()=>setSuccess('')}/>
   </details>;
 }

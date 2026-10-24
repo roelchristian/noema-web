@@ -47,9 +47,10 @@ export class VaultDeletion {
       highlights:this.store.all('SELECT id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,color,reference_json,created_at FROM highlights WHERE vault_id=? ORDER BY id',id),
       readingNotes:this.store.all('SELECT page_id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,reference_json,created_at FROM page_reading_notes WHERE vault_id=? ORDER BY page_id',id),
     };
+    const metadata={candidates:this.store.all('SELECT c.* FROM source_metadata_candidates c JOIN property_proposals p ON p.id=c.proposal_id WHERE p.vault_id=? ORDER BY c.proposal_id',id),policies:this.store.all('SELECT * FROM source_metadata_policies WHERE vault_id=? ORDER BY source_id',id)};
     const bibliography=['bibliographic_records','bibliographic_proposals','bibliographic_import_batches'].map(table=>this.store.all(`SELECT * FROM ${table} WHERE vault_id=?`,id));
     const temporal=['temporal_dates','temporal_curation','temporal_relations'].map(table=>this.store.all(`SELECT * FROM ${table} WHERE vault_id=? ORDER BY id`,id));
-    const fingerprint=createHash('sha256').update(JSON.stringify({vault,counts,revisions,entities,sources,images,organization,temporal,bibliography})).digest('hex');
+    const fingerprint=createHash('sha256').update(JSON.stringify({vault,counts,revisions,entities,sources,images,organization,temporal,bibliography,metadata})).digest('hex');
     return {vault,counts,fingerprint,canDelete:!blockers.length,blockers};
   }
   remove(id:string,body:Record<string,unknown>):VaultDeletionResult {

@@ -86,3 +86,19 @@ test('field-derived pending date relationships disappear when decided, dirty, su
  const current=f.centre.list('default').items.find(value=>value.category==='temporal');assert.equal(current.dateId,'gregorian:month:1906-04');
  f.store.run("UPDATE entities SET archived_at='2026-10-23' WHERE id=?",entity.id);assert.equal(f.centre.resolve('default',current.id),null);
 });
+
+test('metadata decisions resolve the unified workspace run without duplicating corroboration reviews',async t=>{
+ const {SourceMetadata}=await import('../src/server/modules/source-metadata.ts');
+ const {createHash}=await import('node:crypto');const hash=value=>createHash('sha256').update(value).digest('hex');
+ const f=fixture(t),content='Title: Synthetic publication\nPublication year: 2026',file=new SourceFiles(f.store).add('default','Synthetic metadata.txt',Buffer.from(content));
+ const source=f.knowledge.create('default',{name:'Synthetic publication',type:'source',attachmentIds:[file.id]});
+ f.store.run("UPDATE source_files SET status='ready',text=?,admitted=1,enrichment_status='completed' WHERE id=?",content,file.id);
+ const metadata=new SourceMetadata(f.store),candidate={fieldKey:'bibliography:year',value:'2026',fileId:file.id,runId:'run-one',version:'canonical',revision:hash(content),excerpt:content,start:0,end:content.length,evidenceHash:hash(content),validated:true,validationReason:'Explicit title-matched synthetic imprint.'};
+ const first=metadata.registerCandidate('default',source.id,candidate),before=f.centre.resolve('default','property:'+first.id);
+ assert.equal(before.metadataRunId,'run-one');assert.equal(before.originId,source.id);
+ const second=metadata.registerCandidate('default',source.id,{...candidate,runId:'run-two'}),after=f.centre.resolve('default',before.id);
+ assert.equal(second.id,first.id);assert.equal(after.metadataRunId,'run-two');assert.equal(f.centre.list('default').items.filter(item=>item.proposalId===first.id).length,1);
+ const fresh=metadata.snapshot('default',source.id).fields.flatMap(field=>field.proposals).find(item=>item.id===first.id);
+ metadata.review('default',source.id,{proposalId:fresh.id,fingerprint:fresh.fingerprint,action:'accept'});
+ assert.equal(f.centre.resolve('default',before.id),null);
+});

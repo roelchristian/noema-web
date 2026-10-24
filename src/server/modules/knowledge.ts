@@ -247,7 +247,7 @@ export class Knowledge {
   }
   property(vault: string, id: string, body: Record<string, unknown>, propertyId?: string, options:{nativeTemporalAssertion?:boolean}={}) {
     const entity=this.require(vault,id);
-    assertBibliographicPropertyWritable(this.store,vault,id,typeof body.name==='string'?body.name:undefined,propertyId);
+    assertBibliographicPropertyWritable(this.store,vault,id,typeof body.name==='string'?body.name:undefined,propertyId,typeof body.target_id==='string'?body.target_id:undefined);
     const existing=propertyId?this.store.get<Property>('SELECT * FROM properties WHERE id=? AND entity_id=?',propertyId,id):undefined;
     if(propertyId&&!existing)throw new HttpError(404,'Property not found');
     if(body.compatibility_mode!==undefined&&body.compatibility_mode!=='legacy')throw new HttpError(400,'Unknown property compatibility mode.');

@@ -6,7 +6,7 @@ import {builtinPropertyDefinitions,propertyLabel,propertyDefinitionFor,propertyD
 const schema={properties:builtinProperties,subtypes:builtinSubtypes,subtypeProperties:{}};
 test('definition registry preserves every existing builtin API name and has stable unique IDs',()=>{
   assert.deepEqual(builtinProperties.person,['birth date','birthplace','nationality','website']);
-  assert.deepEqual(builtinProperties.source,['Import method','Source URL','author','publication date','accessed date']);
+  assert.deepEqual(builtinProperties.source,['Import method','Source URL','author','editor','translator','publication date','accessed date']);
   assert.equal(builtinPropertyDefinitions.length,Object.values(builtinProperties).flat().length);
   assert.equal(builtinSubtypes.length,82);
   assert.ok(builtinSubtypes.some(subtype=>subtype.id==='culture:language'));
@@ -35,6 +35,7 @@ test('inferred reference metadata distinguishes language identity and ambiguous 
   assert.equal(propertyDefinitionFor('source','Import method').cardinality,'many');
   assert.equal(propertyDefinitionFor('source','Source URL').editable,false);
   assert.equal(propertyDefinitionFor('source','url'),undefined);
+  for(const role of ['author','editor','translator']){assert.equal(propertyDefinitionFor('source',role).valueKind,'entity_reference');assert.equal(propertyDefinitionFor('source',role).cardinality,'many');}
 });
 test('custom schema adapters remain scoped, preserve labels and do not constrain legacy data',()=>{
   const extended={...schema,subtypeProperties:{'person:actor':['My custom ABC','birth date']}};

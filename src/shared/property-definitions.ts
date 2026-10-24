@@ -43,10 +43,10 @@ export function propertyLabel(name: string): string {
 
 const targets: Record<string, EntityType[]> = {
   birthplace: ['place'], country: ['place'], region: ['place'], location: ['place'],
-  organizer: ['person', 'organization'], author: ['person', 'organization'], language: ['culture'],
+  organizer: ['person', 'organization'], author: ['person', 'organization'], editor: ['person', 'organization'], translator: ['person', 'organization'], language: ['culture'],
   headquarters: ['place'],
 };
-const multiple = new Set(['location', 'organizer', 'author', 'language', 'import method', 'source url']);
+const multiple = new Set(['location', 'organizer', 'author', 'editor', 'translator', 'language', 'import method', 'source url']);
 const dates = new Set(['birth date', 'start date', 'end date', 'release date', 'founded', 'publication date', 'accessed date']);
 const urls = new Set(['website', 'source url', 'url']);
 const propertyKey = (name: string): string => name.toLowerCase().replace(/\s+/g, '_');

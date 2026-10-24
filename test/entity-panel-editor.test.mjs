@@ -135,7 +135,7 @@ test('source inspector edits in Overview and omits the Details tab, including le
  const props={vaultId:'v',id:entity.id,entities:[entity],refreshKey:'',inspector:true,inspectorTab:'edit',onOpen(){},onClose(){},onUpdated:async()=>{},onError(error){throw error;},onOpenPage(){},onCreatePageFromSource(){}};
  try {
   await act(async()=>root.render(React.createElement(EntityPanel,props)));
-  assert.deepEqual([...document.querySelectorAll('[role=tab]')].map(tab=>tab.textContent),['Overview','Connections']);
+  assert.deepEqual([...document.querySelectorAll('[role=tab]')].map(tab=>tab.textContent),['Overview','Metadata','Connections']);
   assert.equal(document.querySelector('#entity-tabpanel-overview').hidden,false);
   assert.equal(document.querySelector('#entity-tabpanel-edit'),null);
   const languageRow=[...document.querySelectorAll('.source-inspector-metadata dt')].find(label=>label.textContent==='Language').parentElement;
@@ -150,7 +150,7 @@ test('source inspector edits in Overview and omits the Details tab, including le
   assert.equal(saved.name,'Edited source');
   assert.equal(document.querySelector('#entity-detail-title').textContent,'Edited source');
   assert.equal(hasEntityDraft('v',entity.id),false);
-  // Keyboard navigation wraps over the two remaining tabs.
+  // Keyboard navigation wraps from Connections back to Overview.
   await act(async()=>document.querySelector('#entity-tab-connections').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true})));
   assert.equal(document.activeElement.id,'entity-tab-overview');
  } finally {await env.close();}

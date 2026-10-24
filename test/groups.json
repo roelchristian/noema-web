@@ -213,6 +213,7 @@
     "test/source-scholarly.test.mjs",
     "test/bibliography-http.test.mjs",
     "test/bibliographic-property-projection.test.mjs",
-    "test/bibliographic-export.test.mjs"
+    "test/bibliographic-export.test.mjs",
+    "test/source-reprocessing-persistence-v2.test.mjs"
   ]
 }

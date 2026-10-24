@@ -1,3 +1,4 @@
+import {setupSourceReprocessingCheckpointSchema} from './source-reprocessing-checkpoint-schema.js';
 import {setupBibliographySchema} from './modules/bibliography.js';
 import {setupPageHistorySchema} from './page-history-schema.js';
 import {setupOrganizationDescriptionSchema} from './organization-description-schema.js';
@@ -289,6 +290,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS source_reprocessing (
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, payload TEXT NOT NULL);
  CREATE INDEX IF NOT EXISTS source_reprocessing_file ON source_reprocessing(file_id,created_at);
  CREATE UNIQUE INDEX IF NOT EXISTS source_reprocessing_active ON source_reprocessing(file_id) WHERE status IN ('queued','running');`);
+setupSourceReprocessingCheckpointSchema(db);
 setupSourceReprocessingSummarySchema(db);
 const sourceColumns = db.prepare('PRAGMA table_info(source_files)').all() as {name:string}[];
 for (const [column, definition] of Object.entries({

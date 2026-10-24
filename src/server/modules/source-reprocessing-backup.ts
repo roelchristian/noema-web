@@ -124,6 +124,9 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  if(processing.structure!=='stored markers plus local rules'||processing.aiScope!=='bounded excerpts for long sources'||processing.inferredExtents!==true)throw invalid();
  string(processing.aiEnrichmentStatus,30);
  if(processing.math!==undefined){const math=object(processing.math);if(math.format!=='LaTeX'||!/^[a-f0-9]{64}$/.test(string(math.originalTextHash,64)))throw invalid();for(const value of array(math.uncertain,100000)){const issue=object(value);integer(issue.line,1,starts.length);string(issue.text,1000);}}
+ if(r.furniture!==undefined){
+  const seenFurniture=new Set<string>();for(const value of array(r.furniture,2000)){const f=object(value),id=string(f.id,100),start=integer(f.startOffset,0,text.length),end=integer(f.endOffset,start+1,text.length),page=integer(f.page,1,pageCount??1000);if(!id||seenFurniture.has(id)||!utf16Boundary(text,start)||!utf16Boundary(text,end)||string(f.text,16000)!==text.slice(start,end)||pageAt(start)!==page||pageAt(end-1)!==page||typeof f.hidden!=='boolean')throw invalid();seenFurniture.add(id);string(f.reason,2000);}
+ }
  const patches=array(r.patches,6400),patchIds=new Set<string>();
  const ordered=patches.map(value=>{
   const patch=object(value),id=string(patch.id,100),bounds=range(patch.range);
@@ -134,7 +137,7 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
   if(!id||patchIds.has(id)||bounds.end<=bounds.start||string(patch.original,16000)!==text.slice(bounds.start,bounds.end))throw invalid();patchIds.add(id);
   if(pageRanges.some(page=>page.start>bounds.start&&page.start<bounds.end))throw invalid();
   if(patch.riskReasons!==undefined)for(const reason of array(patch.riskReasons,20))string(reason,2000);
-  if(patch.autoAcceptance!==undefined){const evidence=object(patch.autoAcceptance);oneOf(evidence.policy,['safe_formatting','balanced','minimal_review']);string(evidence.validator,100);timestamp(evidence.appliedAt);for(const check of array(evidence.checks,30))string(check,200);}
+  if(patch.autoAcceptance!==undefined){const evidence=object(patch.autoAcceptance);oneOf(evidence.policy,['safe_formatting','balanced','minimal_review','verified']);string(evidence.validator,100);timestamp(evidence.appliedAt);for(const check of array(evidence.checks,30))string(check,200);}
   if(patch.decisionHistory!==undefined)for(const value of array(patch.decisionHistory,100000)){const event=object(value);timestamp(event.at);oneOf(event.actor,['automatic','user']);oneOf(event.from,['pending','accepted','rejected']);oneOf(event.to,['pending','accepted','rejected']);if(event.previousReplacement!==undefined)string(event.previousReplacement,16000);if(event.replacement!==undefined)string(event.replacement,16000);}
   string(patch.replacement,16000);string(patch.reason,2000);if(patch.userReplacement!==undefined)string(patch.userReplacement,16000);
   oneOf(patch.category,['ocr','line_breaks','footnote','apparatus','metadata','citation','math','formatting']);oneOf(patch.decision,['pending','accepted','rejected']);
@@ -193,7 +196,7 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  if(report.validationDiagnostics!==undefined)for(const diagnostic of array(report.validationDiagnostics,5000))string(diagnostic,10000);
  // Keep the validated original's key order for the evidence hash. The derived variant and
  // supplied node links are intentionally discarded and deterministically reconstructed.
- const revision=structuredClone({id:r.id,fileId:r.fileId,createdAt:r.createdAt,updatedAt:r.updatedAt,status:r.status,pipelineVersion:r.pipelineVersion,configuration:r.pipelineVersion===2?validateReprocessingConfiguration(r.configuration):undefined,acceptanceMode:r.acceptanceMode??'review_all',acceptanceThreshold:r.acceptanceThreshold,instructions:r.instructions,baseHash:r.baseHash,stale:r.stale,original,reprocessed:original,patches,report}) as unknown as SourceReprocessingRevision;
+ const revision=structuredClone({id:r.id,fileId:r.fileId,createdAt:r.createdAt,updatedAt:r.updatedAt,status:r.status,pipelineVersion:r.pipelineVersion,configuration:r.pipelineVersion===2?validateReprocessingConfiguration(r.configuration):undefined,furniture:r.furniture,acceptanceMode:r.acceptanceMode??'review_all',acceptanceThreshold:r.acceptanceThreshold,instructions:r.instructions,baseHash:r.baseHash,stale:r.stale,original,reprocessed:original,patches,report}) as unknown as SourceReprocessingRevision;
  revision.id=newId;revision.fileId=newFileId;revision.original.document.source.fileId=newFileId;
  revision.baseHash=hash(revision.original);revision.stale=false;
  for(const patch of revision.patches)if(patch.baseHash!==undefined)patch.baseHash=revision.baseHash;

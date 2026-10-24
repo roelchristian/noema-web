@@ -39,7 +39,7 @@ export interface SourceEditorialPatch {
  baseHash?:string;excerptIndex?:number;
  patchGroupId?:string;presentation?:{kind:'page_furniture';hidden:boolean};
  /** Deterministic validation record; never populated from the model response. */
- autoAcceptance?:{policy:SourceAcceptanceMode;validator:string;checks:string[];appliedAt:string};
+ autoAcceptance?:{policy:SourceAcceptanceMode|SourceReviewPolicy;validator:string;checks:string[];appliedAt:string};
  /** Append-only decision audit, including reversal and edited replacements. */
  decisionHistory?:{at:string;actor:'automatic'|'user';from:'pending'|'accepted'|'rejected';to:'pending'|'accepted'|'rejected';previousReplacement?:string;replacement?:string}[];
  id:string; nodeIds:string[]; range:SourceDocumentRange; original:string; replacement:string;
@@ -58,6 +58,7 @@ export interface SourceReprocessingReport {
 export interface SourceReprocessingRevision {
  id:string;fileId:string;createdAt:string;updatedAt:string;status:ReprocessingStatus;instructions:string;
  pipelineVersion?:1|2;configuration?:SourceReprocessingConfiguration;
+ furniture?:{id:string;startOffset:number;endOffset:number;page:number;text:string;hidden:boolean;reason:string}[];
  nodeLinks?:{originalNodeId:string;reprocessedNodeIds:string[]}[];
  acceptanceThreshold?:number;
  acceptanceMode?:SourceAcceptanceMode;

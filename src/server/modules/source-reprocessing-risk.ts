@@ -39,3 +39,21 @@ export function evaluateEditorialAcceptance(input:Input):{automatic:boolean;reas
  }
  return {automatic:reasons.length===0,reasons:[...new Set(reasons)],checks};
 }
+
+/** V2 Verified is deliberately independent of the legacy acceptance modes. The model's
+ * confidence, fluency and subsequent approval never constitute original-source evidence. */
+export function evaluateV2Acceptance(input:Omit<Input,'policy'|'threshold'|'confidence'|'legacyRisks'> & {policy:'verified'|'review_all'}):{automatic:boolean;reasons:string[];checks:string[]}{
+ const {text,document,start,end,original,replacement,category,policy}=input;
+ const checks:string[]=[],reasons:string[]=[];
+ if(policy!=='verified')return {automatic:false,reasons:['Review all changes policy.'],checks};
+ if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<0||end<=start||end>text.length||text.slice(start,end)!==original)reasons.push('Exact canonical coordinates are unavailable.');else checks.push('exact-canonical-substring');
+ const nodes=sourceDocumentEntries(document).filter(({node})=>node.range.startOffset<=start&&node.range.endOffset>=end&&node.kind==='paragraph');
+ const node=nodes.length===1?nodes[0]:undefined;
+ if(!node||node.path.some(parent=>['blockquote','code','equation','footnote','table','list'].includes(parent.kind)))reasons.push('Exact ordinary-prose mapping is unavailable.');else checks.push('ordinary-prose-mapping');
+ if(document.physical.pages.filter(page=>page.range.startOffset<=start&&page.range.endOffset>=end).length!==1)reasons.push('Exact physical page mapping is unavailable.');else checks.push('single-physical-page');
+ const passage=node?text.slice(node.node.range.startOffset,node.node.range.endOffset):original;
+ if(category!=='formatting'||!original||!replacement||original.replace(/[ \t]+/g,' ')!==replacement.replace(/[ \t]+/g,' ')||/[\r\n]/.test(original+replacement))reasons.push('Substantive, line-boundary, OCR, or apparatus changes lack independent source evidence.');else checks.push('identical-characters-except-horizontal-spacing');
+ if(/[0-9'"“”‘’«»„‟`*_#|<>\[\]{}\\$=+^~]/.test(passage+replacement)||/https?:|\b(?:pp?\.|doi|ISBN)\b/i.test(passage+replacement))reasons.push('Quotation, mathematics, citation, bibliography, or structured content requires review.');
+ if(/^[ \t]|[ \t]$/.test(original)||/^[ \t]|[ \t]$/.test(replacement))reasons.push('Whitespace at a boundary can change document structure.');
+ return {automatic:reasons.length===0,reasons:[...new Set(reasons)],checks};
+}

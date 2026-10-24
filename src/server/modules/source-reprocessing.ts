@@ -1,3 +1,4 @@
+import {gatherReprocessingEvidence} from './source-reprocessing-evidence.js';
 import {executeReconstruction,reconstructionPromptVersion} from './source-reprocessing-pass.js';
 import {SourceReprocessingCheckpoints} from './source-reprocessing-checkpoints.js';
 import {planReprocessingChunks} from './source-reprocessing-planner.js';
@@ -104,7 +105,7 @@ export class SourceReprocessing {
   for(const row of store.all<Row>("SELECT * FROM source_reprocessing WHERE status IN ('queued','running')")){
    const revision=JSON.parse(row.payload) as SourceReprocessingRevision;
    if(revision.pipelineVersion===2)new SourceReprocessingCheckpoints(store).interruptRunning(revision.id);
-   for(const excerpt of revision.report.excerpts??[])if(excerpt.status==='running'){excerpt.status='interrupted';excerpt.errorCode='provider_outcome_uncertain';excerpt.outcomeUncertain=true;excerpt.error='Application stopped during a request. The provider outcome is unknown; inspect completed suggestions before explicitly resuming.';}
+   for(const excerpt of revision.report.excerpts??[])if(excerpt.status==='running'){excerpt.status='interrupted';const uncertain=revision.pipelineVersion===2?new SourceReprocessingCheckpoints(store).passes(revision.id,excerpt.index).some(pass=>pass.outcomeUncertain):true;if(uncertain){excerpt.errorCode='provider_outcome_uncertain';excerpt.outcomeUncertain=true;excerpt.error='Application stopped during a request. The provider outcome is unknown; inspect completed suggestions before explicitly resuming.';}else{delete excerpt.error;delete excerpt.errorCode;delete excerpt.outcomeUncertain;}}
    revision.status='interrupted';revision.report.error='Application restarted before this pass completed. Resume this pass to retry the unfinished excerpt.';revision.report.finishedAt=now();this.save(row.vault_id,revision);
   }
  }
@@ -157,7 +158,7 @@ export class SourceReprocessing {
   if(pipelineVersion===2){if(planReprocessingChunks(original.text,original.document).length>128)throw new HttpError(413,'V2 supports at most 128 reconstruction chunks.');revision.report.promptVersion=reconstructionPromptVersion;revision.report.concurrency=1;revision.report.chunksTotal=planReprocessingChunks(original.text,original.document).length;}
   this.store.transaction(()=>{
    this.store.run('INSERT INTO source_reprocessing (id,file_id,vault_id,status,created_at,updated_at,payload) VALUES (?,?,?,?,?,?,?)',revision.id,id,vault,revision.status,timestamp,timestamp,JSON.stringify(revision));
-   if(configuration){const checkpoints=new SourceReprocessingCheckpoints(this.store);for(const chunk of planReprocessingChunks(original.text,original.document))checkpoints.saveChunk({revisionId:revision.id,index:chunk.index,startOffset:chunk.start,endOffset:chunk.end,baseHash:revision.baseHash,evidenceHash:hash(JSON.stringify({baseHash:revision.baseHash,start:chunk.start,end:chunk.end,evidence:configuration.evidence})),difficulty:chunk.difficulty,difficultyReason:chunk.difficultyReason,requiredPassCount:configuration.depth==='light'?1:2,status:'pending'});}
+   if(configuration){const checkpoints=new SourceReprocessingCheckpoints(this.store);for(const chunk of planReprocessingChunks(original.text,original.document))checkpoints.saveChunk({revisionId:revision.id,index:chunk.index,startOffset:chunk.start,endOffset:chunk.end,baseHash:revision.baseHash,evidenceHash:gatherReprocessingEvidence({text:original.text,document:original.document,start:chunk.start,end:chunk.end,options:configuration.evidence}).hash,difficulty:chunk.difficulty,difficultyReason:chunk.difficultyReason,requiredPassCount:configuration.depth==='light'?1:2,status:'pending'});}
   });return revision;
  }
  private chunks(text:string,boundaries:number[]=[]){const chunks:{start:number;end:number}[]=[];for(let start=0;start<text.length;){let end=Math.min(start+8000,text.length,boundaries.find(boundary=>boundary>start)??text.length);if(end<text.length){const newline=text.lastIndexOf('\n',end-1);if(newline>start+4000)end=newline+1;else if(/[\uD800-\uDBFF]/.test(text[end-1]!))end--; }chunks.push({start,end});start=end;}return chunks;}

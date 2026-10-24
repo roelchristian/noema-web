@@ -9,9 +9,9 @@ export class SourceReprocessingCheckpoints {
  saveChunk(chunk:SourceReprocessingChunk){this.store.run('INSERT INTO source_reprocessing_chunks(revision_id,chunk_index,payload) VALUES(?,?,?) ON CONFLICT(revision_id,chunk_index) DO UPDATE SET payload=excluded.payload',chunk.revisionId,chunk.index,JSON.stringify(chunk));}
  savePass(pass:SourceReprocessingPass){this.store.run('INSERT INTO source_reprocessing_passes(revision_id,chunk_index,pass_index,payload) VALUES(?,?,?,?) ON CONFLICT(revision_id,chunk_index,pass_index) DO UPDATE SET payload=excluded.payload',pass.revisionId,pass.chunkIndex,pass.index,JSON.stringify(pass));}
  interruptRunning(revisionId?:string){
-  const rows=revisionId===undefined?this.store.all<{payload:string}>('SELECT payload FROM source_reprocessing_passes'):this.store.all<{payload:string}>('SELECT payload FROM source_reprocessing_passes WHERE revision_id=?',revisionId);
+  const rows=revisionId===undefined?this.store.all<{payload:string}>("SELECT payload FROM source_reprocessing_passes WHERE json_extract(payload,'$.status')='running' "):this.store.all<{payload:string}>("SELECT payload FROM source_reprocessing_passes WHERE revision_id=? AND json_extract(payload,'$.status')='running'",revisionId);
   for(const row of rows){const pass=JSON.parse(row.payload) as SourceReprocessingPass;if(pass.status!=='running')continue;pass.status='interrupted';pass.outcomeUncertain=true;pass.finishedAt=new Date().toISOString();pass.error='Application stopped during a request. Provider outcome is unknown; this request must not be repeated automatically.';this.savePass(pass);}
-  const chunks=revisionId===undefined?this.store.all<{payload:string}>('SELECT payload FROM source_reprocessing_chunks'):this.store.all<{payload:string}>('SELECT payload FROM source_reprocessing_chunks WHERE revision_id=?',revisionId);
+  const chunks=revisionId===undefined?this.store.all<{payload:string}>("SELECT payload FROM source_reprocessing_chunks WHERE json_extract(payload,'$.status')='running' "):this.store.all<{payload:string}>("SELECT payload FROM source_reprocessing_chunks WHERE revision_id=? AND json_extract(payload,'$.status')='running'",revisionId);
   for(const row of chunks){const chunk=JSON.parse(row.payload) as SourceReprocessingChunk;if(chunk.status==='running'){chunk.status='interrupted';this.saveChunk(chunk);}}
  }
 }

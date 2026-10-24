@@ -22,11 +22,13 @@ export function EntityPropertyList(props: Props) {
   const [expanded, setExpanded] = useState(false), [query, setQuery] = useState(''), [showAll,setShowAll] = useState(false);
   const definitionFor=(name:string,bound?:string)=>resolvePropertyDefinition(props.definitions,entity.type,entity.subtypes,name,bound);
   const labelFor=(name:string,bound?:string)=>definitionFor(name,bound)?.label??propertyLabel(name);
+  // Retired source URL rows remain available in the advanced editor for historical data.
+  const visibleName = (name:string) => entity.type !== 'source' || name.trim().toLowerCase() !== 'url';
   const populated = new Set(entity.properties.map(property=>definitionFor(property.name,property.metadata?.definition_id)?.key??property.name.toLowerCase()));
   const seen=new Set<string>();
-  const unset=entity.propertyNames.filter(name=>{const key=definitionFor(name)?.key??name.toLowerCase();if(populated.has(key)||seen.has(key))return false;seen.add(key);return true;}).sort((a,b)=>(definitionFor(a)?.sortOrder??999)-(definitionFor(b)?.sortOrder??999)||labelFor(a).localeCompare(labelFor(b)));
+  const unset=entity.propertyNames.filter(name=>{if(!visibleName(name))return false;const key=definitionFor(name)?.key??name.toLowerCase();if(populated.has(key)||seen.has(key))return false;seen.add(key);return true;}).sort((a,b)=>(definitionFor(a)?.sortOrder??999)-(definitionFor(b)?.sortOrder??999)||labelFor(a).localeCompare(labelFor(b)));
   const rank = (name: string) => {const index=priority.indexOf(name.toLowerCase());return index < 0 ? 999 : index;};
-  const properties = [...entity.properties].sort((a,b)=>rank(a.name)-rank(b.name)||(definitionFor(a.name,a.metadata?.definition_id)?.sortOrder??999)-(definitionFor(b.name,b.metadata?.definition_id)?.sortOrder??999)||labelFor(a.name,a.metadata?.definition_id).localeCompare(labelFor(b.name,b.metadata?.definition_id))||(a.metadata?.position??0)-(b.metadata?.position??0)||a.id.localeCompare(b.id));
+  const properties = entity.properties.filter(property=>visibleName(property.name)).sort((a,b)=>rank(a.name)-rank(b.name)||(definitionFor(a.name,a.metadata?.definition_id)?.sortOrder??999)-(definitionFor(b.name,b.metadata?.definition_id)?.sortOrder??999)||labelFor(a.name,a.metadata?.definition_id).localeCompare(labelFor(b.name,b.metadata?.definition_id))||(a.metadata?.position??0)-(b.metadata?.position??0)||a.id.localeCompare(b.id));
   return <div className={'entity-inline-properties density-' + (props.density ?? 'home')}>
     <dl className="entity-overview-properties">{(showAll||!props.limit?properties:properties.slice(0,props.limit)).map(property=><PropertyRow key={property.id} {...props} name={property.name} property={property}/>)}</dl>
     {!!props.limit&&properties.length>props.limit&&<button type="button" className="entity-detail-more" aria-expanded={showAll} onClick={()=>setShowAll(value=>!value)}>{uiText(showAll?'Show fewer properties':'Show all properties')} ({properties.length})</button>}

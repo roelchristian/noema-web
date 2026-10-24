@@ -101,7 +101,7 @@ const subtype:Record<string,Field[]>={
  'organism:individual':[taxon(),date('birth hatching date','Birth / Hatching Date'),ref('location','Location',place)],
  'culture:language':[identifier('iso 639 code','ISO 639 Code'),ref('language family','Language Family',culture,false,['culture:language'],true),text('writing system','Writing System'),ref('geographic regions','Geographic Regions',place,true)],
  'culture:nationality':[ref('associated country','Associated Country',place),text('demonym','Demonym'),text('historical context','Historical Context')],
- 'source:website':[{name:'url',label:'URL',kind:'url'},ref('publisher operator','Publisher / Operator',organization),date('accessed date','Accessed Date')],
+ 'source:website':[ref('publisher operator','Publisher / Operator',organization),date('accessed date','Accessed Date')],
  'source:journal-article':[ref('author','Author',people,true),ref('journal','Journal',['creativework','organization']),identifier('doi','DOI'),date('published','Published'),text('volume','Volume'),text('issue','Issue')],
  'source:interview':[ref('interviewee','Interviewee',person,true),ref('interviewer','Interviewer',person,true),date('conducted','Conducted'),text('medium','Medium')],
  'concept:mathematics':[text('notation','Notation'),ref('introduced by','Introduced By',person,true),ref('related theorems','Related Theorems',concept,true)],

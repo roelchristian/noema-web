@@ -17,7 +17,7 @@ export function setupBibliographySchema(db:DatabaseSync) {
  id TEXT PRIMARY KEY,source_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,vault_id TEXT NOT NULL REFERENCES vaults(id),
  revision INTEGER NOT NULL,provider TEXT NOT NULL,fields_json TEXT NOT NULL,created_at TEXT NOT NULL);`);
 }
-type Origin='manual'|'bibtex'|'crossref'|'datacite';
+type Origin='manual'|'bibtex'|'crossref'|'datacite'|'ai';
 interface Provenance {origin:Origin;at:string;history?:{value:string;origin:Origin;at:string}[]}
 interface Row {source_id:string;vault_id:string;citation_key:string;entry_type:string;fields_json:string;provenance_json:string;raw_imports_json:string;revision:number}
 export interface BibliographyRecord {sourceId:string;citationKey:string;entryType:string;fields:Record<string,string>;provenance:Record<string,Provenance>;rawImports:string[];revision:number}
@@ -78,7 +78,7 @@ export class Bibliography {
  return this.get(vault,id)!;
  }
  reconcilePreview(vault:string,id:string,body:Record<string,unknown>) {this.source(vault,id);const current=this.get(vault,id);if(body.revision!==(current?.revision??0))throw new HttpError(409,'The bibliography changed. Reload before reviewing.');return {conflicts:bibliographicLegacyConflicts(this.store,vault,id,fields(body.fields),current?.fields)};}
- save(vault:string,id:string,body:Record<string,unknown>) {this.source(vault,id);return this.store.transaction(()=>{const current=this.get(vault,id);if(body.revision!==(current?.revision??0))throw new HttpError(409,'The bibliography changed. Reload before saving.');return this.write(vault,id,citationKey(body.citationKey),entryType(body.entryType),fields(body.fields),'manual',current?.rawImports??[],current??undefined,body.reviewedProperties);});}
+ save(vault:string,id:string,body:Record<string,unknown>,origin:'manual'|'ai'='manual') {this.source(vault,id);const apply=()=>{const current=this.get(vault,id);if(body.revision!==(current?.revision??0))throw new HttpError(409,'The bibliography changed. Reload before saving.');return this.write(vault,id,citationKey(body.citationKey),entryType(body.entryType),fields(body.fields),origin,current?.rawImports??[],current??undefined,body.reviewedProperties);};return this.store.db.isTransaction?apply():this.store.transaction(apply);}
  export(vault:string) {this.open(vault);const records=this.list(vault,false).map(record=>({...record,rawImportIds:JSON.parse(this.row(vault,record.sourceId)!.raw_imports_json) as string[]}));const batches=this.store.all<{id:string;raw:string}>('SELECT id,raw FROM bibliographic_import_batches WHERE vault_id=? ORDER BY id',vault);const result=exportBibliographicBundle(this.store,vault,records,batches);return {...result,annotated:result.annotatedBiblatex};}
 
 }

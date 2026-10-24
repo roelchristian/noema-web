@@ -6,6 +6,7 @@ import {SourceReprocessingCheckpoints} from './source-reprocessing-checkpoints.j
 import {planReprocessingChunks} from './source-reprocessing-planner.js';
 import {createHash,randomUUID} from 'node:crypto';
 import {AIActivityLog} from './ai-activity.js';
+import type {SourceMetadataExtraction} from './source-metadata-extraction.js';
 import {Store} from '../store.js';
 import {HttpError,now} from '../validation.js';
 import {SourceFiles} from './source-files.js';
@@ -104,7 +105,7 @@ export function materializeSourceRevision(r:SourceReprocessingRevision){
 export class SourceReprocessing {
  private hashCache:{vault:string;id:string;inputs:unknown[];hash:string}|null=null;
  private running=false;private closed=false;private controller:AbortController|null=null;private activeRevisionId:string|null=null;
- constructor(private store:Store,private files:SourceFiles,private intelligence:Intelligence,private requireOpen:(vault:string)=>unknown,private activity:AIActivityLog,private evidence?:SourceReprocessingEvidence) {
+ constructor(private store:Store,private files:SourceFiles,private intelligence:Intelligence,private requireOpen:(vault:string)=>unknown,private activity:AIActivityLog,private metadata?:SourceMetadataExtraction,private evidence?:SourceReprocessingEvidence) {
   for(const row of store.all<Row>("SELECT * FROM source_reprocessing WHERE status IN ('queued','running')")){
    const revision=JSON.parse(row.payload) as SourceReprocessingRevision;
    if(revision.pipelineVersion===2)new SourceReprocessingCheckpoints(store).interruptRunning(revision.id);
@@ -113,6 +114,17 @@ export class SourceReprocessing {
   }
  }
  private save(vault:string,r:SourceReprocessingRevision){r.updatedAt=new Date(Math.max(Date.now(),Date.parse(r.updatedAt)+1)).toISOString();this.store.run('UPDATE source_reprocessing SET status=?,updated_at=?,payload=? WHERE id=? AND vault_id=?',r.status,r.updatedAt,JSON.stringify(r),r.id,vault);}
+ private reconcileMetadata(vault:string,r:SourceReprocessingRevision,version:'canonical'|'editorial'){
+  if(!this.metadata)return;const sourceId=this.files.require(vault,r.fileId).entity_id;if(!sourceId)return;
+  let result:ReturnType<SourceMetadataExtraction['process']>;
+  try{result=this.metadata.process(vault,sourceId,r,version);}catch(error){
+   if(!(error instanceof HttpError)||error.status!==409)throw error;
+   r.report.diagnostics.push('Metadata evidence requires review: '+error.message);this.saveProgress(vault,r);return;
+  }
+  if(version==='editorial'&&r.report.metadata){const prior=r.report.metadata;r.report.metadata={...result,candidateCount:prior.candidateCount+result.candidateCount,added:prior.added+result.added,corroborated:prior.corroborated+result.corroborated,requiresReview:prior.requiresReview+result.requiresReview};}
+  else r.report.metadata=result;
+  this.saveProgress(vault,r);
+ }
  private saveProgress(vault:string,r:SourceReprocessingRevision){
   r.updatedAt=new Date(Math.max(Date.now(),Date.parse(r.updatedAt)+1)).toISOString();
   this.store.run("UPDATE source_reprocessing SET status=?,updated_at=?,payload=json_set(payload,'$.report',json(?),'$.status',?,'$.updatedAt',?) WHERE id=? AND vault_id=?",r.status,r.updatedAt,JSON.stringify(r.report),r.status,r.updatedAt,r.id,vault);
@@ -179,7 +191,7 @@ export class SourceReprocessing {
   this.requireOpen(vault);const r=this.detail(vault,id,revisionId);if(body.updatedAt!==r.updatedAt)throw new HttpError(409,'Editorial review changed. Refresh before reviewing.');if(r.stale)throw new HttpError(409,'Canonical source changed. Start a new editorial pass.');if(['queued','running'].includes(r.status))throw new HttpError(409,'Wait for the editorial pass to finish.');
   if(!Array.isArray(body.decisions)||!body.decisions.length||body.decisions.length>3200)throw new HttpError(400,'Provide editorial decisions.');
   const seen=new Set<string>();for(const value of body.decisions){if(!value||typeof value!=='object')throw new HttpError(400,'Invalid decision.');const d=value as Record<string,unknown>;const p=r.patches.find(p=>p.id===d.patchId);if(!p||seen.has(p.id)||!['accepted','rejected','pending'].includes(String(d.decision))||d.replacement!==undefined&&(typeof d.replacement!=='string'||d.replacement.length>16000))throw new HttpError(400,'Invalid editorial decision or replacement.');if(d.replacement!==undefined&&pageMarkers(p.original)!==pageMarkers(d.replacement as string))throw new HttpError(400,'Keep physical page markers unchanged.');seen.add(p.id);(p.decisionHistory??=[]).push({at:now(),actor:'user',from:p.decision,to:d.decision as SourceEditorialPatch['decision'],...(p.userReplacement!==undefined?{previousReplacement:p.userReplacement}:{}),...(typeof d.replacement==='string'?{replacement:d.replacement}:{})});p.decision=d.decision as SourceEditorialPatch['decision'];if(typeof d.replacement==='string')p.userReplacement=d.replacement;}
-  materializeSourceRevision(r);this.save(vault,r);return r;
+  materializeSourceRevision(r);this.save(vault,r);if(r.reprocessed.text!==r.original.text)this.reconcileMetadata(vault,r,'editorial');return r;
  }
  cancel(vault:string,id:string,revisionId:string){
   this.requireOpen(vault);const r=this.detail(vault,id,revisionId);
@@ -205,7 +217,12 @@ export class SourceReprocessing {
   const guard=()=>{this.requireOpen(row.vault_id);if(this.closed||controller.signal.aborted)throw new HttpError(409,'Editorial pass interrupted.');if(this.baseHash(row.vault_id,r.fileId)!==r.baseHash)throw new HttpError(409,'Canonical source changed during this pass.');const selection=this.intelligence.editorialSelection();if(selection.model!==r.report.model||selection.reasoningEffort!==r.report.reasoningEffort)throw new HttpError(409,'AI model changed. Start a new pass.');};
   const timer=setInterval(()=>{try{this.requireOpen(row.vault_id);if(this.closed)controller.abort();}catch{controller.abort();}},250);timer.unref();
   if(r.pipelineVersion===2){
-   try{await executeReconstruction({store:this.store,revision:r,intelligence:this.intelligence,activity:this.activity,evidenceService:this.evidence,vault:row.vault_id,signal:controller.signal,guard,save:()=>this.save(row.vault_id,r),range:(start,end)=>this.range(r,start,end),materialize:()=>materializeSourceRevision(r)});guard();r.status='completed';}
+   try{
+    guard();if(!r.report.metadata)this.reconcileMetadata(row.vault_id,r,'canonical');
+    await executeReconstruction({store:this.store,revision:r,intelligence:this.intelligence,activity:this.activity,evidenceService:this.evidence,vault:row.vault_id,signal:controller.signal,guard,save:()=>this.save(row.vault_id,r),range:(start,end)=>this.range(r,start,end),materialize:()=>materializeSourceRevision(r)});
+    guard();if(r.reprocessed.text!==r.original.text){this.save(row.vault_id,r);this.reconcileMetadata(row.vault_id,r,'editorial');}
+    r.status='completed';
+   }
    catch(error){r.status=controller.signal.aborted?'interrupted':'failed';r.report.error=error instanceof Error?error.message:'Reconstruction failed.';r.report.errorCode=editorialFailure(error,controller.signal.aborted).code;}
    finally{clearInterval(timer);r.report.finishedAt=now();r.report.durationMs=(r.report.durationMs??0)+Date.now()-started;this.save(row.vault_id,r);this.controller=null;this.activeRevisionId=null;this.running=false;}
    return;
@@ -302,6 +319,8 @@ export class SourceReprocessing {
    }
   };
   try {
+   guard();
+   if(!r.report.metadata)this.reconcileMetadata(row.vault_id,r,'canonical');
    // Bounded waves permit deterministic checkpoints and stop scheduling promptly after failure.
    // A successful sibling remains durable even if an earlier excerpt failed.
    const remaining=chunks.map((_,index)=>index).filter(index=>!completed.has(index));
@@ -324,7 +343,9 @@ export class SourceReprocessing {
     if(failure)throw failure;
    }
    materializeSourceRevision(r);
-   guard();r.status='completed';
+   guard();
+   if(r.reprocessed.text!==r.original.text){this.save(row.vault_id,r);this.reconcileMetadata(row.vault_id,r,'editorial');}
+   r.status='completed';
   }catch(error){r.status=controller.signal.aborted?'interrupted':'failed';r.report.error=error instanceof Error?error.message:'Editorial pass failed.';r.report.errorCode=editorialFailure(error,controller.signal.aborted).code;r.report.diagnostics.push('Partial pass: completed excerpts and suggestions are retained; coverage is incomplete.');}
   finally{clearInterval(timer);r.report.finishedAt=now();r.report.durationMs=(r.report.durationMs??0)+Date.now()-started;this.save(row.vault_id,r);this.controller=null;this.activeRevisionId=null;this.running=false;}
  }

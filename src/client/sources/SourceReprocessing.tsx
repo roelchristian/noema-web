@@ -12,7 +12,7 @@ import {DisclosureSummary} from '../components/DisclosureSummary';
 import {SourcePatchComparison,type ComparisonLayout} from './SourcePatchComparison';
 import './source-reprocessing.css';
 
-type Props={canonicalVersion?:string;vaultId:string;fileId:string;visible:boolean;onShow:()=>void;onOriginal:(nodeId?:string,focus?:boolean)=>void;onCompare?:(page:number)=>void;onReadingRevision?:(revision:SourceReprocessingRevision|null)=>void;onReviewOpenChange?:(open:boolean)=>void};
+type Props={sourceId?:string;canonicalVersion?:string;vaultId:string;fileId:string;visible:boolean;onShow:()=>void;onOriginal:(nodeId?:string,focus?:boolean)=>void;onCompare?:(page:number)=>void;onReadingRevision?:(revision:SourceReprocessingRevision|null)=>void;onReviewOpenChange?:(open:boolean)=>void};
 const active=(status:string)=>status==='queued'||status==='running';
 const label=(value:string)=>value.replaceAll('_',' ');
 const depthLabels={light:'Light Cleanup',balanced:'Balanced Reconstruction',deep:'Deep Restoration'};
@@ -119,7 +119,7 @@ function Report({revision}:{revision:SourceReprocessingRevision}){
     <div className="reprocessing-actions"><button className="button small" onClick={()=>exportJSON(revision,`source-revision-${revision.id}.json`)}>{uiText("Export provenance + report")}</button><button className="button small" onClick={()=>exportVariant(revision,'original')}>{uiText("Original JSON")}</button><button className="button small" onClick={()=>exportVariant(revision,'reprocessed')}>{uiText("Reprocessed JSON")}</button></div>
   </details>;
 }
-export function SourceReprocessing({vaultId,fileId,visible,onShow,onOriginal,onCompare,onReadingRevision,canonicalVersion,onReviewOpenChange}:Props){
+export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOriginal,onCompare,onReadingRevision,canonicalVersion,onReviewOpenChange}:Props){
   const destination=useContext(ReviewDestination);
   const reviewRun=destination?.category==='editorial'&&destination.fileId===fileId?destination.runId:undefined;
   useEffect(()=>{if(reviewRun){setRevisionId(reviewRun);setTab('review');}},[reviewRun]);
@@ -238,6 +238,7 @@ export function SourceReprocessing({vaultId,fileId,visible,onShow,onOriginal,onC
       {!revision&&!prompt&&<p role="status">{revisionId?uiText("Loading revision…"):uiText("Create a beta revision to improve reading quality and review editorial suggestions.")}</p>}
       {revision&&revision.id===revisionId&&<>{stale&&<p className="reprocessing-warning" role="alert">{uiText("The canonical source has changed. This revision is preserved for comparison; start a new run before reviewing changes.")}</p>}
         <ReprocessingProgress key={revision.id} revision={revision}/>
+        {revision.report.metadata&&<section className="source-metadata-run-summary" aria-label="Metadata processing summary"><strong>Metadata</strong><p>{revision.report.metadata.added} added · {revision.report.metadata.corroborated} corroborated · {revision.report.metadata.requiresReview} require review</p><button type="button" className="button small" onClick={()=>window.dispatchEvent(new CustomEvent('noema:open-source-metadata',{detail:{vaultId,sourceId,fileId,runId:revision.id}}))}>Review metadata</button></section>}
         <details className="reprocessing-processing-details"><DisclosureSummary>{uiText("Processing details")}</DisclosureSummary><ExcerptLedger revision={revision}/><Report revision={revision}/></details>
         <p className="reprocessing-status" role="status">{uiText("Editorial decisions")} · {pending}{" " + uiText("pending ·") + " "}{revision.patches.filter(patch=>patch.decision==='accepted').length}{" " + uiText("accepted ·") + " "}{revision.patches.filter(patch=>patch.decision==='rejected').length}{" " + uiText("kept original")}</p>
         {active(revision.status)&&<><button type="button" className="button small" disabled={busy} onClick={()=>void control('cancel')}>{uiText("Stop and keep progress")}</button></>}

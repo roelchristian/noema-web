@@ -28,7 +28,7 @@ try {
  const context=await browser.newContext({viewport:{width:1440,height:1100}}),page=await context.newPage();page.setDefaultTimeout(10000);page.on('pageerror',error=>errors.push(error.message));
  await page.goto(`http://127.0.0.1:${server.address().port}/?vault=default&page=${note.id}`);
  await page.locator('#blocks .block-content').first().waitFor();
- const knowledgeButton=page.getByRole('button',{name:'Knowledge',exact:true});
+ const knowledgeButton=page.getByRole('button',{name:'Show page knowledge',exact:true});
  await knowledgeButton.click();
  await page.locator('.entity-detect-action').click();
  const dialog=page.getByRole('dialog',{name:/^Entity review/});await dialog.waitFor();

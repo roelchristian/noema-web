@@ -120,3 +120,32 @@ for(const model of ['gpt-realtime-2.1-mini','kokoro-82m-v1.0'])test(`speech acti
  await act(async()=>document.querySelector('.ai-activity-title').dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})));
  assert.deepEqual(opened,['default','note']);
 });
+
+test('token report automatically excludes unused attempts while retaining provider usage and complete activity exports',async t=>{
+ const {root,dom}=mountDebug(t);
+ const row=(id,model,action,extra={})=>({id,model,action,status:'completed',startedAt:new Date().toISOString(),finishedAt:null,durationMs:null,httpStatus:200,reasoningEffort:'none',promptBytes:100,inputTokens:100,outputTokens:20,cachedInputTokens:0,estimatedCost:null,...extra});
+ const rows=[row('local','kokoro-82m-v1.0','text_to_speech'),row('lookup','Crossref / DataCite (metadata)','bibliographic_lookup'),row('paid','gpt-6-luna','page_summary',{estimatedCost:0.001}),row('legacy','unknown-historical-model','text_to_speech'),row('missing','gpt-realtime-2.1-mini','text_to_speech'),row('failed-no-usage','gpt-6-luna','entity_scan',{status:'failed',inputTokens:null,outputTokens:null,cachedInputTokens:null}),row('blocked','gpt-6-luna','entity_scan',{status:'failed',promptBytes:null,inputTokens:null,outputTokens:null,cachedInputTokens:null}),row('cache-hit','gpt-6-luna','entity_scan',{promptBytes:null,inputTokens:null,outputTokens:null,cachedInputTokens:null}),row('failed-with-usage','gpt-6-luna','entity_scan',{status:'failed',estimatedCost:0.002}),row('interrupted','gpt-6-luna','entity_scan',{status:'interrupted',inputTokens:null,outputTokens:null,cachedInputTokens:null}),row('zero-usage','gpt-6-luna','entity_scan',{status:'failed',inputTokens:0,outputTokens:0,cachedInputTokens:null,estimatedCost:0})];
+ t.mock.method(api,'aiActivity',async cursor=>cursor?{items:[row('older-local','kokoro-82m-v1.0','text_to_speech'),row('older-paid','gpt-6-luna','page_summary',{estimatedCost:0.001})],nextCursor:null}:{items:rows,nextCursor:10});
+ let exported;
+ t.mock.method(URL,'createObjectURL',blob=>{exported=blob;return 'blob:test';});t.mock.method(URL,'revokeObjectURL',()=>{});
+ t.mock.method(dom.window.HTMLAnchorElement.prototype,'click',()=>{});
+ await act(async()=>root.render(React.createElement(AIActivityLog,{onClose(){},onOpenPage:async()=>{}})));
+ assert.equal(document.querySelector('input[type=checkbox]'),null);assert.equal(document.querySelectorAll('tbody tr').length,11);
+ assert.equal(document.querySelectorAll('.ai-activity-disclosure').length,1);
+ assert.equal(document.querySelector('.ai-activity-disclosure').open,false);
+ assert.equal(document.querySelector('.ai-activity-disclosure summary').textContent,'Usage & pricing notes');
+ await act(async()=>document.querySelector('#ai-activity-tab-usage').click());
+ assert.equal(document.querySelector('input[type=checkbox]'),null);
+ assert.match(document.querySelector('.ai-usage [role=status]').textContent,/6 matching actions/);
+ assert.match(document.querySelector('.ai-usage-cost').textContent,/\$0.004000.*4 priced actions.*2 unpriced actions/);
+ assert.equal(document.querySelectorAll('.ai-usage-about').length,1);
+ assert.match(document.querySelector('.ai-usage-about').textContent,/attempts with reported usage remain included/);
+ assert.doesNotMatch(document.querySelector('.ai-usage-actions').textContent,/Speak.*Kokoro|DOI metadata/);
+ await act(async()=>document.querySelector('#ai-activity-tab-log').click());
+ assert.equal(document.querySelectorAll('tbody tr').length,11);
+ assert.match(document.querySelector('tbody').textContent,/kokoro/);assert.match(document.querySelector('tbody').textContent,/Crossref/);
+ await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Export CSV').click());
+ const csv=await exported.text();for(const id of ['older-local','older-paid','failed-no-usage','blocked','cache-hit','interrupted','failed-with-usage','zero-usage'])assert.ok(csv.includes(id),id);
+ await act(async()=>document.querySelector('#ai-activity-tab-usage').click());
+ assert.match(document.querySelector('.ai-usage [role=status]').textContent,/6 matching actions/);
+});

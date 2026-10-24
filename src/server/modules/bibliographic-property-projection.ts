@@ -5,6 +5,7 @@ import {Store} from '../store.js';
 import {HttpError} from '../validation.js';
 
 /** A bibliographic fact has one editing surface. Authored properties remain immutable evidence. */
+const creatorReference=(property:{name:string;target_id:string|null})=>!!property.target_id&&['author','authors','editor','editors','translator','translators'].includes(property.name.trim().toLowerCase());
 const projections=[
  {field:'doi',names:['doi'],label:'DOI'},
  {field:'isbn',names:['isbn'],label:'ISBN'},
@@ -42,16 +43,20 @@ export function projectBibliographicProperties(store:Store,vault:string,id:strin
  const originals=store.all<Property&{targetName?:string}>('SELECT p.*,e.name AS targetName FROM properties p LEFT JOIN entities e ON e.id=p.target_id AND e.vault_id=? WHERE p.entity_id=?',vault,id);
  const managed=new Set<string>(),projected:Property[]=[];
  for(const projection of projections){const field=selected(record,projection);if(!field)continue;for(const name of projection.names)managed.add(name);
- const legacy=originals.filter(property=>(projection.names as readonly string[]).includes(property.name.toLowerCase()));
+ const legacy=originals.filter(property=>(projection.names as readonly string[]).includes(property.name.toLowerCase())&&!creatorReference(property));
  projected.push({id:`bibliography:${id}:${projection.field}`,entity_id:id,name:legacy[0]?.name??projection.label,value:record.fields[field]!,target_id:null,bibliographicProjection:{field,revision:record.revision,legacyValues:legacy.map(property=>({id:property.id,name:property.name,value:property.value,target_id:property.target_id,...(property.targetName?{targetName:property.targetName}:{}),conflicts:!same(field,record.fields[field]!,property.value)}))}});
  }
- return [...properties.filter(property=>!managed.has(property.name.toLowerCase())),...projected];
+ return [...properties.filter(property=>!managed.has(property.name.toLowerCase())||creatorReference(property)),...projected];
 }
 /** Reject adding, renaming, changing or removing a second independently editable fact. */
-export function assertBibliographicPropertyWritable(store:Store,vault:string,id:string,name?:string,propertyId?:string) {
+export function assertBibliographicPropertyWritable(store:Store,vault:string,id:string,name?:string,propertyId?:string,targetId?:string) {
  if(propertyId?.startsWith('bibliography:'))throw new HttpError(409,'This property is projected from the bibliographic record. Edit it in Bibliographic details.');
  const record=canonical(store,vault,id);if(!record)return;
- const existing=propertyId?store.get<{name:string}>('SELECT name FROM properties WHERE id=? AND entity_id=?',propertyId,id)?.name:undefined;
+ const existingProperty=propertyId?store.get<{name:string;target_id:string|null}>('SELECT name,target_id FROM properties WHERE id=? AND entity_id=?',propertyId,id):undefined;
+ if(targetId&&name&&creatorReference({name,target_id:targetId})&&existingProperty&&!creatorReference(existingProperty))throw new HttpError(409,'This authored property is preserved evidence. Add a separate resolved creator reference instead of replacing it.');
+ if(targetId&&name&&creatorReference({name,target_id:targetId})&&(!propertyId||existingProperty&&creatorReference(existingProperty)))return;
+ if(!name&&existingProperty&&creatorReference(existingProperty))return;
+ const existing=existingProperty?.name;
  const names=[name,existing].filter((value):value is string=>typeof value==='string').map(value=>value.trim().toLowerCase());
  if(projections.some(projection=>selected(record,projection)&&names.some(value=>(projection.names as readonly string[]).includes(value))))throw new HttpError(409,'This property is projected from the bibliographic record. Edit it in Bibliographic details; original authored values are retained as evidence.');
 }
@@ -61,7 +66,7 @@ export interface BibliographicLegacyConflict {field:string;proposedValue:string;
 export function bibliographicLegacyConflicts(store:Store,vault:string,id:string,fields:Record<string,string>,previousFields?:Record<string,string>):BibliographicLegacyConflict[] {
  const originals=store.all<Property&{targetName?:string}>('SELECT p.*,e.name AS targetName FROM properties p JOIN entities source ON source.id=p.entity_id LEFT JOIN entities e ON e.id=p.target_id AND e.vault_id=? WHERE source.id=? AND source.vault_id=? AND source.type=? ORDER BY p.id',vault,id,vault,'source');
  const conflicts:BibliographicLegacyConflict[]=[];
- for(const projection of projections){const field=selected({fields},projection);if(!field||previousFields?.[field]===fields[field])continue;for(const property of originals){if(!(projection.names as readonly string[]).includes(property.name.toLowerCase())||same(field,fields[field]!,property.value))continue;const preserved={id:property.id,name:property.name,value:property.value,target_id:property.target_id,...(property.targetName?{targetName:property.targetName}:{})};const proposedValue=fields[field]!;conflicts.push({field,proposedValue,property:preserved,fingerprint:createHash('sha256').update(JSON.stringify({field,proposedValue,property:preserved})).digest('hex')});}}
+ for(const projection of projections){const field=selected({fields},projection);if(!field||previousFields?.[field]===fields[field])continue;for(const property of originals){if(creatorReference(property)||!(projection.names as readonly string[]).includes(property.name.toLowerCase())||same(field,fields[field]!,property.value))continue;const preserved={id:property.id,name:property.name,value:property.value,target_id:property.target_id,...(property.targetName?{targetName:property.targetName}:{})};const proposedValue=fields[field]!;conflicts.push({field,proposedValue,property:preserved,fingerprint:createHash('sha256').update(JSON.stringify({field,proposedValue,property:preserved})).digest('hex')});}}
  return conflicts;
 }
 /** The caller invokes this inside its existing canonical-write transaction. Originals are never deleted. */

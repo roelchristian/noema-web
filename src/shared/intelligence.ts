@@ -73,7 +73,7 @@ export interface PageEnrichmentMetrics {
 }
 export interface AIModelPricing {
   version: string; currency: 'USD';
-  models: Record<string,{inputPerMillion:number;outputPerMillion:number;cachedInputPerMillion?:number}>;
+  models: Record<string,{inputPerMillion:number;outputPerMillion:number;cachedInputPerMillion?:number;cacheWritePerMillion?:number;longContextThreshold?:number;audioInputPerMillion?:number;audioOutputPerMillion?:number;cachedAudioInputPerMillion?:number}>;
 }
 export interface AIActivityPage { items: AIActivity[]; nextCursor: number | null; enrichmentMetrics?: PageEnrichmentMetrics }
 export interface AIDebugSettings {enabled: boolean; mode?: 'off'|'compact'|'full'; fullUntil?: string|null}

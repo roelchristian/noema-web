@@ -1,4 +1,5 @@
 import {setupSourceReprocessingCheckpointSchema} from './source-reprocessing-checkpoint-schema.js';
+import {setupSourceMetadataSchema} from './modules/source-metadata-schema.js';
 import {setupBibliographySchema} from './modules/bibliography.js';
 import {setupPageHistorySchema} from './page-history-schema.js';
 import {setupOrganizationDescriptionSchema} from './organization-description-schema.js';
@@ -66,7 +67,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS entity_overviews (
  page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
  pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1)),annotation TEXT NOT NULL DEFAULT '' CHECK(length(annotation)<=2000),created_at TEXT NOT NULL,
  PRIMARY KEY(entity_id,page_id));
- CREATE INDEX IF NOT EXISTS entity_page_associations_page ON entity_page_associations(page_id);`);
+ CREATE INDEX IF NOT EXISTS entity_page_associations_page ON entity_page_associations(page_id);
+ CREATE TABLE IF NOT EXISTS page_page_associations (
+ source_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+ target_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+ pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1)),annotation TEXT NOT NULL DEFAULT '' CHECK(length(annotation)<=2000),created_at TEXT NOT NULL,
+ PRIMARY KEY(source_id,target_id),CHECK(source_id<target_id));
+ CREATE INDEX IF NOT EXISTS page_page_associations_target ON page_page_associations(target_id);`);
 db.exec(`CREATE TABLE IF NOT EXISTS entity_discoveries (
  id TEXT PRIMARY KEY,entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,created_at TEXT NOT NULL,
  fingerprint TEXT NOT NULL,payload TEXT NOT NULL);
@@ -496,6 +503,7 @@ if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
  setupTemporalEvidenceSchema(db);
  setupPropertyStorage(db);
  setupPropertyProvenanceSchema(db);
+ setupSourceMetadataSchema(db);
  db.exec('CREATE TABLE IF NOT EXISTS liturgical_year_cache (year INTEGER PRIMARY KEY,provider_key TEXT NOT NULL,data TEXT NOT NULL,generated_at TEXT NOT NULL,last_access TEXT NOT NULL)');
  db.exec(`CREATE TABLE IF NOT EXISTS liturgical_calendar_cache (calendar_id TEXT NOT NULL,year INTEGER NOT NULL,provider_key TEXT NOT NULL,data TEXT NOT NULL,generated_at TEXT NOT NULL,last_access TEXT NOT NULL,PRIMARY KEY(calendar_id,year));
  CREATE TABLE IF NOT EXISTS liturgical_seed_years (year INTEGER PRIMARY KEY);

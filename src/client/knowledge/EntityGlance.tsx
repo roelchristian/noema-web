@@ -27,20 +27,21 @@ export function EntityGlance({entity, entities, connections, onOpen, onOpenPage,
   onOpenPage:(id:string)=>void; onOpenMention?:(reference:EntityMentionReference)=>void; onTab:(tab:'connections'|'mentions')=>void;
 }) {
   const linked = glancePages(entity);
-  const mentions = [...new Map((entity.pageMentions ?? []).map(page=>[page.id,page])).values()].sort((a,b)=>b.updated_at.localeCompare(a.updated_at)||a.id.localeCompare(b.id)).slice(0,2);
+  const linkedIds = new Set(linked.map(page=>page.id));
+  const mentions = [...new Map((entity.pageMentions ?? []).filter(page=>!linkedIds.has(page.id)).map(page=>[page.id,page])).values()].sort((a,b)=>b.updated_at.localeCompare(a.updated_at)||a.id.localeCompare(b.id)).slice(0,2);
   return <div className="eh-glance-context">
     <section className="eh-section eh-glance-connections"><h2>{uiText('Connected entities')}</h2>
       <EntityConnections items={glanceConnections(connections,entities)} entities={entities} onOpen={onOpen} empty={uiText('No accessible connected entities recorded yet.')}/>
       <button type="button" className="eh-text-action" onClick={()=>onTab('connections')}>{uiText('View all connections')}</button>
     </section>
     <section className="eh-section eh-glance-pages"><h2>{uiText('Pages to return to')}</h2>
-      <p className="eh-writing-hint">{uiText('Pinned first, then most recently attached. Page mentions are shown separately below.')}</p>
-      {linked.length ? <ul className="eh-glance-list">{linked.map(page=><li key={page.id}><button type="button" onClick={()=>onOpenPage(page.id)}><strong>{previewText(page.title || uiText('Untitled'),160)}</strong><small>{uiText(page.pinned ? 'Pinned · associated page' : 'Associated page')}{page.archived_at&&' · Archived'}{page.created_at && ' · ' + page.created_at.slice(0,10)}</small>{page.annotation && <span>{previewText(page.annotation)}</span>}</button></li>)}</ul> : <p className="entity-detail-empty">{uiText('No pages intentionally associated yet. Attach or pin a page in Mentions.')}</p>}
+      <p className="eh-writing-hint">{uiText('Featured first, then most recently connected. Each page appears once.')}</p>
+      {linked.length ? <ul className="eh-glance-list">{linked.map(page=><li key={page.id}><button type="button" onClick={()=>onOpenPage(page.id)}><strong>{previewText(page.title || uiText('Untitled'),160)}</strong><small>{uiText(page.pinned ? 'Pinned · associated page' : 'Associated page')}{page.archived_at&&' · Archived'}{page.created_at && ' · ' + page.created_at.slice(0,10)}</small>{entity.pageMentions?.some(mention=>mention.id===page.id) && <small>{entity.pageMentions.find(mention=>mention.id===page.id)!.mentionCount} {uiText('mentions')}</small>}{page.annotation && <span>{previewText(page.annotation)}</span>}</button></li>)}</ul> : <p className="entity-detail-empty">{uiText('No pages intentionally associated yet. Connect or feature a page in Connections.')}</p>}
       {!!mentions.length && <><h3>{uiText('Recently edited pages mentioning this entity')}</h3><ul className="eh-glance-list">{mentions.map(page=>{
         const context=page.contexts?.[0], reference=context?.occurrences[0]?.reference;
         return <li key={page.id}><button type="button" onClick={()=>reference && onOpenMention ? onOpenMention(reference) : onOpenPage(page.id)}><strong>{previewText(page.title || uiText('Untitled'),160)}</strong><small>{uiText(reference ? 'Page mention · open occurrence' : 'Page mention · open page')}{page.archived_at&&' · Archived'}{!!context?.heading.length && ' · ' + context.heading.join(' › ')}</small>{(context?.excerpt || page.excerpt) && <span className="eh-glance-excerpt">{previewText(context?.excerpt || page.excerpt)}</span>}</button></li>;
       })}</ul></>}
-      <button type="button" className="eh-text-action" onClick={()=>onTab('mentions')}>{uiText('View mentions and manage associated pages')}</button>
+      <button type="button" className="eh-text-action" onClick={()=>onTab('mentions')}>{uiText('View connected pages and mentions')}</button>
     </section>
   </div>;
 }
@@ -51,24 +52,26 @@ export function EntityGlanceSources({vaultId, entityId, refreshKey, active, onRe
 }) {
   const [evidence,setEvidence]=useState<EntityEvidence|null>(null), [error,setError]=useState(''), [attempt,setAttempt]=useState(0);
   const loadedKey=useRef('');
+  const completedKey=useRef('');
   useEffect(()=>{
     if(!active)return;
     const controller=new AbortController(); let current=true;
     const key=vaultId+':'+entityId+':'+refreshKey;
     if(loadedKey.current!==key){setEvidence(null);loadedKey.current=key;}
+    if(completedKey.current===key)return;
     setError('');
-    void api.entityOverviewEvidence(vaultId,entityId,controller.signal).then(value=>{if(current)setEvidence(value);}).catch(value=>{if(current&&!controller.signal.aborted)setError(String(value));});
+    void api.entityOverviewEvidence(vaultId,entityId,controller.signal).then(value=>{if(current){setEvidence(value);completedKey.current=key;}}).catch(value=>{if(current&&!controller.signal.aborted)setError(String(value));});
     return ()=>{current=false;controller.abort();};
   },[vaultId,entityId,refreshKey,active,attempt]);
   useLayoutEffect(()=>{if(active&&(evidence||error))onReady?.();},[evidence,error,active,onReady]);
   const groups=(evidence?.groups ?? []).map(group=>({...group,passage:[...group.passages].sort((a,b)=>sourcePreviewRank(a)-sourcePreviewRank(b)||a.id.localeCompare(b.id))[0]})).filter(group=>group.passage).sort((a,b)=>sourcePreviewRank(a.passage!)-sourcePreviewRank(b.passage!)||a.sourceId.localeCompare(b.sourceId)).slice(0,2);
   return <section className="eh-section eh-glance-sources"><h2>{uiText('Source excerpts')}</h2>
     <p className="eh-writing-hint">{uiText('Connections to source material, not verification of the description. Open the original for context.')}</p>
-    {error ? <div role="alert"><p>{uiText('Source preview unavailable.')}</p><button type="button" className="eh-text-action" onClick={()=>setAttempt(value=>value+1)}>{uiText('Retry source preview')}</button></div> : !evidence ? <p role="status">{uiText('Loading source preview…')}</p> : !groups.length ? <p className="entity-detail-empty">{uiText('No source excerpts in this preview. Explore Sources for more context.')}</p> : <ul className="eh-glance-list">{groups.map(group=>{
+    {error ? <div role="alert"><p>{uiText('Source preview unavailable.')}</p><button type="button" className="eh-text-action" onClick={()=>setAttempt(value=>value+1)}>{uiText('Retry source preview')}</button></div> : !evidence ? <p role="status">{uiText('Loading source preview…')}</p> : !groups.length ? <p className="entity-detail-empty">{uiText('No source excerpts in this preview. Explore Evidence for more context.')}</p> : <ul className="eh-glance-list">{groups.map(group=>{
       const passage=group.passage!, reference=passage.reference;
       return <li key={group.sourceId}><h3>{previewText(group.sourceName,160)}</h3><p className="eh-evidence-reason">{(passage.reasons?.length ? passage.reasons : [passage.reason]).map(reason=>uiText(reasonLabels[reason])).join(' · ')}</p>{passage.heading && <p className="eh-context-heading">{previewText(passage.heading,160)}</p>}<blockquote>{previewText(reference.excerpt)}</blockquote>{passage.stale && <p className="eh-evidence-stale">{uiText('Saved excerpt · source location could not be verified')}</p>}<button type="button" disabled={!onOpenSourcePassage} onClick={event=>onOpenSourcePassage?.(reference,event.currentTarget)}>{uiText('Open source passage')}: {citationLocation(reference)}</button></li>;
     })}</ul>}
     <button type="button" className="eh-text-action" onClick={onTab}>{uiText('View all source passages')}</button>
-    {evidence?.truncated && <p className="eh-writing-hint">{uiText('Preview search limited. More evidence may be available in Sources.')}</p>}
+    {evidence?.truncated && <p className="eh-writing-hint">{uiText('Preview search limited. More evidence may be available in Evidence.')}</p>}
   </section>;
 }

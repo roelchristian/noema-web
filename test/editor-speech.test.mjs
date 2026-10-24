@@ -396,7 +396,7 @@ test('selection Read narrates only highlighted text within and across blocks',as
         document.dispatchEvent(new Event('selectionchange'));
         await new Promise(resolve=>setTimeout(resolve,40));
       });
-      const read=document.querySelector('.selection-toolbar [aria-label="Read"]');
+      const read=document.querySelector('.selection-toolbar [aria-label="Read aloud"]');
       assert.ok(read,'Selection toolbar exposes the Read icon');
       const previous=requests.length;
       await act(async()=>read.click());
@@ -418,13 +418,13 @@ test('editor block options expose Speak only when globally enabled and speak the
   await editorFixture(async({dom,host})=>{
     const open=()=>act(async()=>host('b2').closest('[data-block-id]').querySelector('[aria-label="Block options"]').click());
     await open();
-    const speak=[...document.querySelectorAll('button')].find(button=>button.textContent.startsWith('Speak'));
+    const speak=[...document.querySelectorAll('button')].find(button=>button.textContent.startsWith('Read aloud'));
     assert.ok(speak);await act(async()=>speak.click());
     await waitForSpeech(()=>requests.length>0,'Speak must start a synthesis request');
     assert.equal(requests.length,1);assert.equal(JSON.parse(requests[0].options.body).text,'Fictitious paragraph 2');
     enabled=false;await act(async()=>window.dispatchEvent(new dom.window.Event('noema:tts-preferences')));
     assert.equal(requests[0].options.signal.aborted,true);
-    await open();assert.equal([...document.querySelectorAll('button')].some(button=>button.textContent.startsWith('Speak')),false);
+    await open();assert.equal([...document.querySelectorAll('button')].some(button=>button.textContent.startsWith('Read aloud')),false);
   });
 });
 
@@ -438,7 +438,7 @@ test('editor speech cancels on a different block selection and on a current enti
     const speak=async()=>{
       const previous=requests.length;
       await act(async()=>host('b2').closest('[data-block-id]').querySelector('[aria-label="Block options"]').click());
-      await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent.startsWith('Speak')).click());
+      await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent.startsWith('Read aloud')).click());
       await waitForSpeech(()=>requests.length>previous,'Speak must start its next synthesis request');
       assert.equal(requests.length,previous+1);
     };
@@ -476,7 +476,7 @@ test('editor validates paused and future block sources before resuming or advanc
       const range=document.createRange();range.selectNodeContents(host('b2'));range.setEndAfter(host('b3').lastChild);
       getSelection().removeAllRanges();getSelection().addRange(range);
       await act(async()=>host('b2').closest('[data-block-id]').querySelector('[aria-label="Block options"]').click());
-      await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent.startsWith('Speak')).click());
+      await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent.startsWith('Read aloud')).click());
       await waitForSpeech(()=>plays.length>previous,'Speak must activate validated section playback');
     };
     const edit=async id=>set(blocks().map(block=>block.id===id?{...block,content:[{text:'Edited source '+id}]}:block));

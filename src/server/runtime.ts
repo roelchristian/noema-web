@@ -1,3 +1,5 @@
+import {SourceMetadata} from './modules/source-metadata.js';
+import {SourceMetadataExtraction} from './modules/source-metadata-extraction.js';
 import {BibliographicMetadata} from './modules/bibliographic-metadata.js';
 import {SpeechCache} from './modules/speech-cache.js';
 import {buildCollectionRulePrompt} from './modules/collection-rule-generation.js';
@@ -52,7 +54,8 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
   const activity=new AIActivityLog(store),enrichments=new AIEnrichments(store,pages);
   const entityDiscovery=new EntityDiscoveryService(store,knowledge,intelligence,activity);
   const sourceReprocessingEvidence=new SourceReprocessingEvidence(sourceFiles,sourcePageImages);
-  const sourceReprocessing=new SourceReprocessing(store,sourceFiles,intelligence,vault=>vaults.requireOpen(vault),activity,sourceReprocessingEvidence);
+  const sourceMetadata=new SourceMetadata(store);
+  const sourceReprocessing=new SourceReprocessing(store,sourceFiles,intelligence,vault=>vaults.requireOpen(vault),activity,new SourceMetadataExtraction(store,sourceMetadata),sourceReprocessingEvidence);
   const scans=new EntityScans(store,pages,knowledge,enrichments);
   const pageEnrichment=new PageEnrichment(store,pages,knowledge,enrichments,intelligence);
   const enrichmentScheduler=new PageEnrichmentScheduler(store,{

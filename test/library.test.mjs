@@ -64,14 +64,22 @@ test('Library and sidebar folder rows are draggable while collections remain cur
   assert.match(sidebar, /draggable="false"[^>]*>[\s\S]*?Open collection: Theme/);
 });
 
-test('Library omits routine status and combines factual AI history in its one label',()=>{
+test('Library shows independent AI history icons and omits unrecorded contributions',()=>{
   assert.doesNotMatch(render(),/page-ai-library-status|>Regular</);
   const html=render({pages:[{id:'draft',title:'Combined',updated_at:'2026-10-17',creationMethod:'manual_creation',aiStatus:'ai_assisted',aiReviewAccepted:true,containsAIExplanations:true}]});
   assert.match(html,/title="Created in Noema · AI writing edits accepted · Contains AI explanations"/);
-  assert.match(html,/>AI writing edits accepted<\/span>/);
+  assert.match(html,/role="img" aria-label="AI writing edits accepted"/);
+  assert.match(html,/role="img" aria-label="Contains AI explanations"/);
+  assert.equal((html.match(/class="page-ai-history-icon"/g)||[]).length,2);
   const generated=render({pages:[{id:'draft',title:'Generated',updated_at:'2026-10-17',aiStatus:'ai_generated_edited',aiReviewAccepted:true,containsAIExplanations:true}]});
   assert.match(generated,/AI-generated content · AI writing edits accepted · Contains AI explanations · Edited after generation/);
-  assert.match(generated,/>AI-generated<\/span>/);
+  for(const label of ['AI-generated content','AI writing edits accepted','Contains AI explanations','Edited after generation'])assert.ok(generated.includes('role="img" aria-label="'+label+'"'));
+  assert.equal((generated.match(/class="page-ai-history-icon"/g)||[]).length,4);
+  const unedited=render({pages:[{id:'draft',title:'Unedited',updated_at:'2026-10-17',aiStatus:'ai_generated'}]});
+  assert.equal((unedited.match(/class="page-ai-history-icon"/g)||[]).length,1);
+  assert.doesNotMatch(unedited,/aria-label="Edited after generation"/);
+  const manual=render({pages:[{id:'draft',title:'Manual',updated_at:'2026-10-17',creationMethod:'manual_creation',aiStatus:'regular',editedAfterGeneration:true}]});
+  assert.doesNotMatch(manual,/page-ai-library-status/);
   assert.doesNotMatch(generated,/AI-generated, edited/);
 });
 

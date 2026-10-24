@@ -1106,10 +1106,12 @@
   .settings-dialog .font-settings, .settings-dialog .theme-options { grid-template-columns: 1fr; }
   .settings-dialog .type-manager-body { padding: var(--space-2); gap: var(--space-3); }
   .settings-dialog .type-manager-body > * { min-width: 0; overflow-wrap: anywhere; }
-  .settings-dialog .entity-type-options { grid-template-columns: 1fr; }
+  .settings-dialog .entity-type-options { grid-template-columns: minmax(0, 1fr); }
   .settings-dialog .subtype-icon-row { grid-template-columns: 20px minmax(0, 1fr); gap: var(--space-1-5); }
   .settings-dialog .subtype-icon-row .select-host { grid-column: 1 / -1; }
   .settings-dialog .entity-color-row { grid-template-columns: 1fr; }
+  .settings-dialog .property-definition-form fieldset { min-width: 0; }
+  .settings-dialog .property-definition-form :is(input:not([type=checkbox]), textarea, .select-control),
   .settings-dialog .type-add-form input { min-width: 0; width: 100%; }
   .settings-dialog .type-add-form .button { white-space: normal; overflow-wrap: anywhere; }
   .settings-dialog .intelligence-actions { flex-wrap: wrap; }

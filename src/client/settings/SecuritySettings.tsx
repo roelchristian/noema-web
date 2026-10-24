@@ -1,3 +1,4 @@
+import {SuccessNotice,useSuccessNotice} from '../components/SuccessNotice';
 import {t as uiText} from '../i18n';
 import {useEffect, useState, type FormEvent} from 'react';
 import type {Vault} from '../../shared/domain';
@@ -11,11 +12,11 @@ export function SecuritySettings({vault, onChangePassphrase, onBeforeNetworkChan
 }) {
   const [network, setNetwork] = useState<NetworkSettings | null>(null);
   const [loading, setLoading] = useState(true), [networkBusy, setNetworkBusy] = useState(false);
-  const [networkError, setNetworkError] = useState(''), [networkNotice, setNetworkNotice] = useState('');
+  const [networkError, setNetworkError] = useState(''), [networkNotice,setNetworkNotice,networkOccurrence]=useSuccessNotice();
   const [reload, setReload] = useState(0);
   const [mode, setMode] = useState<'change' | 'remove'>('change');
   const [current, setCurrent] = useState(''), [next, setNext] = useState(''), [confirmation, setConfirmation] = useState('');
-  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
+  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice,setNotice,noticeOccurrence]=useSuccessNotice();
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true); setNetworkError('');
@@ -69,7 +70,7 @@ export function SecuritySettings({vault, onChangePassphrase, onBeforeNetworkChan
         </>}
         {mode === 'remove' && vault.protected && <p>{uiText("Anyone with server access will be able to open this vault.")}</p>}
         {error && <p className="dialog-error" role="alert">{error}</p>}
-        {notice && <p role="status">{uiText(notice)}</p>}
+        <SuccessNotice inline message={uiText(notice)} occurrence={noticeOccurrence} onDismiss={()=>setNotice('')}/>
         <button type="submit" className="button primary" disabled={busy}>{busy ? uiText("Saving…") : !vault.protected ? uiText("Add passphrase") : mode === 'remove' ? uiText("Remove passphrase") : uiText("Save passphrase")}</button>
       </form>}
     </section>
@@ -78,7 +79,7 @@ export function SecuritySettings({vault, onChangePassphrase, onBeforeNetworkChan
         <button type="button" className="security-switch" role="switch" aria-checked={network?.lan ?? false} aria-labelledby="security-network-heading" aria-describedby="security-network-description" disabled={loading || !network || networkBusy} onClick={() => void toggleNetwork()}><span/></button>
       </div>
       <p className="security-network-state" role="status">{loading ? uiText("Loading network settings…") : networkBusy ? uiText("Saving network settings…") : network ? uiText("LAN access is {value0}.",{value0: network.lan ? uiText('On') : uiText('Off')}) : uiText("Network settings are unavailable.")}</p>
-      {networkNotice && <p role="status">{uiText(networkNotice)}</p>}
+      <SuccessNotice inline message={uiText(networkNotice)} occurrence={networkOccurrence} onDismiss={()=>setNetworkNotice('')}/>
       {networkError && <p className="dialog-error" role="alert">{networkError} <button type="button" className="summary-toggle" disabled={networkBusy} onClick={() => setReload(value => value + 1)}>{uiText("Retry")}</button></p>}
     </section>
   </>;

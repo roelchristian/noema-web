@@ -1,3 +1,4 @@
+import {SuccessNotice,useSuccessNotice} from '../components/SuccessNotice';
 import {EntityReferencePicker} from './EntityReferencePicker';
 import {clearPropertyDraft,getPropertyDraft,setPropertyDraft,subscribePropertyDrafts,propertyDraftSignature,runPropertyMutation,beginPropertySave,endPropertySave,getAdvancedPropertySelection,setAdvancedPropertySelection,type EntityPropertyDraft} from './entity-property-drafts';
 import {resolvePropertyDefinition,propertyLabel} from '../../shared/property-definitions';
@@ -97,7 +98,7 @@ export function PropertyEditor({entity, entities, mention, onSave, onRemove,defi
   const setKind=(kind:'text'|'entity')=>patch({kind}),setValue=(value:string)=>patch({value}),setTarget=(target:string)=>patch({target});
   function setName(name:string) {const current=getPropertyDraft(vault,entity.id,draftId);if(current&&!edit){clearPropertyDraft(vault,entity.id,draftId);setPropertyDraft(vault,entity.id,'new:'+name,current);}select({...selection,name});}
 
-  const [status, setStatus] = useState(''), [error, setError] = useState('');
+  const [status,setStatus,statusOccurrence]=useSuccessNotice(), [error,setError]=useState('');
   const form = useRef<HTMLFormElement>(null);
   const [focusRequest, setFocusRequest] = useState(0);
   const unset = entity.propertyNames.filter(name => !entity.properties.some(property => property.name.toLowerCase() === name.toLowerCase()));
@@ -144,13 +145,13 @@ export function PropertyEditor({entity, entities, mention, onSave, onRemove,defi
       {kind === 'text' ? <label>{uiText("Value")}<PropertyScalarInput label={uiText('Property value')} definition={draft?.legacy?undefined:definition} disabled={busy||!!draft?.uncertainCreate} value={value} onChange={setValue}/></label> : <EntityReferencePicker vaultId={vault} entities={entities} value={target} onChange={setTarget} disabled={busy||!!draft?.uncertainCreate} types={definition?.allowedTargetTypes} subtypes={definition?.allowedTargetSubtypes} label={uiText('Referenced entity')} creation={draft?.referenceCreation} onCreationChange={referenceCreation=>patch({referenceCreation})}/>}
       <div className="entity-property-form-actions"><button type="button" className="button small" disabled={busy || !(edit || name || value || target)} onClick={()=>{reset();setStatus('');}}>{edit ? uiText("Cancel edit") : uiText("Clear")}</button><button className="button small primary" disabled={busy || !name || !(kind === 'text' ? value.trim() : target)}>{busy ? uiText("Saving…") : draft?.uncertainCreate?uiText("Retry save"):edit ? uiText("Save changes") : uiText("Add value")}</button></div>
     </form>}
-    {(error||draft?.uncertainCreate) && <p className="entity-property-error" role="alert">{error||uiText("Save outcome is uncertain. Retry checks saved values before submitting again.")}</p>}<p className="entity-property-status" role="status">{status}</p>
+    {(error||draft?.uncertainCreate) && <p className="entity-property-error" role="alert">{error||uiText("Save outcome is uncertain. Retry checks saved values before submitting again.")}</p>}<SuccessNotice inline message={status} occurrence={statusOccurrence} onDismiss={()=>setStatus('')}/>
   </div>;
 }
 
 export function RelationshipEditor({entity, entities, mention, onSave, onRemove}: {entity: EntityDetail; entities: Entity[]; mention: MentionRenderer; onSave: (input: Parameters<typeof api.saveRelationship>[2], id?: string) => Promise<unknown>; onRemove: (id: string) => Promise<unknown>}) {
   const [edit,setEdit]=useState<string>(),[open,setOpen]=useState(false),[label,setLabel]=useState(''),[target,setTarget]=useState(''),[busy,setBusy]=useState(false);
-  const [error,setError]=useState(''),[status,setStatus]=useState('');
+  const [error,setError]=useState(''),[status,setStatus,statusOccurrence]=useSuccessNotice();
   const input=useRef<HTMLInputElement>(null);
   useEffect(()=>{if(open)input.current?.focus();},[open,edit]);
   function reset(){setEdit(undefined);setOpen(false);setLabel('');setTarget('');setError('');}
@@ -181,6 +182,6 @@ export function RelationshipEditor({entity, entities, mention, onSave, onRemove}
       <label>{uiText("Related entity")}<Select required aria-label={uiText("Related entity")} disabled={busy} value={target} onChange={event=>setTarget(event.target.value)}><option value="">{uiText("Choose an entity…")}</option>{entities.filter(item=>item.id!==entity.id&&(!item.archived_at||item.id===target)).map(item=><option key={item.id} value={item.id}>{item.name} · {uiText(entityLabels[item.type])}</option>)}</Select></label>
       <div className="entity-property-form-actions"><button type="button" className="button small" disabled={busy} onClick={reset}>{uiText("Cancel")}</button><button type="submit" className="button small primary" disabled={busy||!label.trim()||!target}>{busy?uiText("Saving…"):edit?uiText("Save changes"):uiText("Add relationship")}</button></div>
     </form>}
-    {error&&<p className="entity-property-error" role="alert">{error}</p>}{status&&<p className="entity-property-status" role="status">{status}</p>}
+    {error&&<p className="entity-property-error" role="alert">{error}</p>}{status&&<SuccessNotice inline message={status} occurrence={statusOccurrence} onDismiss={()=>setStatus('')}/>}
   </div>;
 }

@@ -27,6 +27,8 @@ try{
   await page.getByRole('tab',{name:'Entities',exact:true}).click();
   const nav=page.getByRole('navigation',{name:'Main entity type'});assert.equal(await nav.getByRole('button').count(),entityTypes.length);
   await nav.getByRole('button',{name:/Person/}).focus();await page.keyboard.press('Enter');
+  // Type selection hands focus to the inspector on the next animation frame.
+  await page.waitForFunction(()=>document.querySelector('.schema-type-inspector h3')===document.activeElement);
   assert.equal(await page.locator('.schema-type-inspector h3').evaluate(e=>e===document.activeElement),true);
   await page.screenshot({path:resolve(artifacts,`${width}-${mode}-types.png`),fullPage:true});
   const icon=page.getByRole('button',{name:'Icon for Writer',exact:true});await icon.click();
@@ -72,8 +74,15 @@ try{
   const created=f.knowledge.schema('default').propertyDefinitions.find(item=>item.label==='Synthetic field '+width+' '+mode);assert.equal(created.scope.subtypeId,'person:writer');assert.equal(created.cardinality,'one');
   if(width===390&&mode==='dark'){
    await search.fill('Synthetic count');await page.locator('.schema-registry-list button').click();
+   // Wait for choose()'s scheduled focus handoff before sending keyboard input.
+   // Otherwise the heading can steal Home/Enter and leave cardinality unchanged.
+   await page.waitForFunction(()=>document.querySelector('.schema-definition-inspector h3')===document.activeElement);
    await cardinality.focus();await page.keyboard.press('ArrowDown');await page.keyboard.press('Home');await page.keyboard.press('Enter');
+   assert.equal(await cardinality.innerText(),'Single value');
+   assert.equal(await page.locator('select[aria-label="Property cardinality"]').inputValue(),'one');
    await page.getByRole('button',{name:'Review definition impact',exact:true}).click();await page.locator('.property-definition-impact').waitFor();
+   assert.match(await page.locator('.property-definition-impact').innerText(),/Affected values: 2\. Incompatible values: 2\./);
+   assert.equal(await page.getByRole('button',{name:'Apply definition',exact:true}).isDisabled(),true);
    await page.getByRole('checkbox',{name:'Retain all incompatible authored values for review and apply this definition.'}).check();await page.getByRole('button',{name:'Apply definition',exact:true}).click();await page.getByText('Definition saved. Existing authored values are retained.',{exact:true}).waitFor();
    assert.equal(f.knowledge.detail('default',f.person.id).properties.filter(item=>item.name==='Synthetic count').length,2);
   }

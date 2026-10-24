@@ -4,7 +4,7 @@
 .connect-picker input:not([type=checkbox]),.connect-picker textarea{width:100%;min-width:0;box-sizing:border-box;padding:8px 10px;border:1px solid var(--control-border);border-radius:var(--radius-sm);background:var(--surface-raised);color:var(--text);font:inherit}
 .connect-picker details{padding:6px 0}.connect-picker summary{cursor:pointer}.connect-picker details label{margin-top:8px}
 .connect-picker .connect-picker-pin{display:flex;align-items:center;gap:8px}
-.connect-picker-filters{display:flex;gap:6px}.connect-picker-filters [aria-pressed=true]{background:var(--surface-hover)}
+.connect-picker-filters{display:flex;gap:6px}.connect-picker-filters [aria-pressed=true]{background:light-dark(var(--surface-hover),var(--selection-neutral))}
 .connect-picker-results{display:grid;gap:4px;max-height:240px;overflow:auto}
 .connect-picker-results>button{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 10px;border-radius:var(--radius-sm);text-align:left}
 .connect-picker-results>button:hover:not(:disabled){background:var(--surface-hover)}

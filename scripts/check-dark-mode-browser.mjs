@@ -64,9 +64,9 @@ try{
  for(const width of (process.env.NOEMA_THEME_WIDTHS?.split(',').map(Number)??[1440,390]))for(const mode of ['light','dark'])for(const theme of ['ink','juniper','atlantic']){
   const key=`${width}-${mode}-${theme}`,context=await browser.newContext({viewport:{width,height:960},hasTouch:width===390,isMobile:width===390,reducedMotion:'reduce'});
   await context.addInitScript(({mode,theme})=>localStorage.setItem('noema.appearance.v1',JSON.stringify({mode,theme})),{mode,theme});
-  const page=await context.newPage();page.setDefaultTimeout(10000);console.log('Checking',key);await page.clock.setFixedTime(new Date('2026-10-23T12:00:00Z'));page.on('pageerror',e=>errors.push(e.message));
+  const page=await context.newPage();page.setDefaultTimeout(10000);page.setDefaultNavigationTimeout(60000);console.log('Checking',key);await page.clock.setFixedTime(new Date('2026-10-23T12:00:00Z'));page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
-  await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}`);await page.getByRole('button',{name:'A place for connected ideas',exact:false}).first().click();await page.locator('#page-title').waitFor();await page.evaluate(()=>document.fonts.ready);
+  await page.goto(`http://127.0.0.1:${process.env.NOEMA_BROWSER_PRODUCTION==='1'?api.address().port:vite.httpServer.address().port}`);await page.getByRole('button',{name:'A place for connected ideas',exact:false}).first().click();await page.locator('#page-title').waitFor();await page.evaluate(()=>document.fonts.ready);
   const proseContrast=await readable(page,'#page-title,.block-content');
   if(mode==='dark')await readable(page,'.sidebar .workspace-label,.topbar .page-tool');
   const minimum=width===390?44:30;const editor=await hitRects(page,iconTargets,minimum);

@@ -1,5 +1,7 @@
 # Dark mode redesign: P0 and P1
 
+> Historical October 23 record. See [Quiet Graphite](quiet-graphite.md) for the October 24 rendered visual pass and current validation.
+
 Implemented on a local branch from current main, including the merged entity-property UI and smart collections. No parallel branch or PR was edited.
 
 ## Scope and ownership

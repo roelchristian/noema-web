@@ -44,7 +44,7 @@ try{
   await context.addInitScript(({mode,theme})=>localStorage.setItem('noema.appearance.v1',JSON.stringify({mode,theme})),{mode,theme});
   const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
-  await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}`);await page.getByRole('button',{name:'A place for connected ideas',exact:false}).first().click();await page.locator('#page-title').waitFor();await page.evaluate(()=>document.fonts.ready);
+  await page.goto(`http://127.0.0.1:${process.env.NOEMA_BROWSER_PRODUCTION==='1'?api.address().port:vite.httpServer.address().port}`);await page.getByRole('button',{name:'A place for connected ideas',exact:false}).first().click();await page.locator('#page-title').waitFor();await page.evaluate(()=>document.fonts.ready);
   const minimum=width===390?44:30;const editor=await hitRects(page,iconTargets,minimum);
   const knowledge=page.getByRole('button',{name:'Knowledge',exact:true});await knowledge.focus();await page.keyboard.press('Tab');await page.keyboard.press('Shift+Tab');
   assert.equal(await knowledge.evaluate(e=>getComputedStyle(e).outlineStyle),'solid','Keyboard focus must be visible');

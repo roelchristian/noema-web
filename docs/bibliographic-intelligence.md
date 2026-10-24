@@ -1,6 +1,6 @@
 # Bibliographic intelligence: implementation and review
 
-Local implementation branch: `codex/bibliographic-intelligence`. This branch is prepared for draft review; no deployment or live user-data migration was performed. Inbox Activity #90 (`ce6101786de7a31c61cff0ad846681d369e255a7`) is included. The final integration also incorporates #91 source-page language and draft-navigation changes (`f0fd2466aee50d7e2088d870403579e399599686`). Existing #89 and Settings #88 changes are preserved. The supplied Library text was used directly; it was not downloaded.
+Local implementation branch: `codex/bibliographic-intelligence`. This branch is prepared for draft review; no deployment or live user-data migration was performed. Inbox Activity #90 (`ce6101786de7a31c61cff0ad846681d369e255a7`) is included. The final integration incorporates #91 source-page language and draft-navigation changes and upstream Source Viewer #92 at main `8159f83d76138e6003c61eab25c14a8b6a659c4d`. Existing #89 and Settings #88 changes are preserved. The supplied Library text was used directly; it was not downloaded.
 
 ## Delivered phases
 
@@ -33,6 +33,7 @@ Run `npm run build`, `npm run test:all`, then `PLAYWRIGHT_MODULE=/absolute/path/
 ## Recorded validation
 
 - Original five-phase committed-code full suite: 1,278 passed, 7 platform skips, zero failures. Focused metadata/HTTP run: 8/8, including the current DataCite object-publisher fixture.
+- Publication integration on main including #92: **1,307 passed, 7 platform skips, zero failures**; build/style/type checks and both bibliography/Source Viewer browser workflows passed.
 - Latest-main follow-up full suite: **1,293 passed, 7 platform skips, zero failures** after incorporating #91. Final build/style/type checks passed.
 - Follow-up commits: `8dc4d92` canonical projections/conflict review, `a8629bf` canonical taxonomy, `f792103` scholarly exports, `f1d53d0` live inline CSL. The original five commits remain unchanged.
 - Independent follow-up review: 34 focused adversarial tests passed; final review found no concrete blockers.
@@ -44,7 +45,7 @@ Run `npm run build`, `npm run test:all`, then `PLAYWRIGHT_MODULE=/absolute/path/
 
 ## Source Viewer task compatibility
 
-Draft PR #92 (`a52f9e26fa5a022fdf0621226068dd1e664f9ed2`) was fetched and inspected read-only, without merging, changing or publishing it. Its SourceDocumentView/reprocessing production changes do not overlap this branch beyond #91 content already preserved in both branches. The common reader navigation test needs to retain bibliography's `/api/bibliography/source` null fixture along with the reader's optional inspector expectations. No combined-PR test run is claimed. Bibliographic citations remain independent of the canonical/editorial passage identity contract.
+PR #92 was merged upstream by its owner at `8159f83d76138e6003c61eab25c14a8b6a659c4d`, then incorporated into this feature branch without rewriting its five original phase commits. No action here merged or modified that PR. The common reader navigation test retains bibliography's `/api/bibliography/source` null fixture and the reader's optional inspector expectations. The combined build, full suite, bibliography browser workflow and Source Viewer redesign browser all pass. Independent integration review passed 61 focused tests covering Info access, metadata-only Sources, canonical passage identity and backup compatibility. Bibliographic citations remain independent of the canonical/editorial passage identity contract.
 
 ## Official references inspected
 

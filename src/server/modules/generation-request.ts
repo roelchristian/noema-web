@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import {resolvePersona,personaInstructions} from './ai-personas.js';
 import type {AIRequestObserver} from './ai-debug.js';
 import type {ReadingExplanationOptions} from '../../shared/source-reading.js';
@@ -14,6 +15,7 @@ import {summaryPrompt} from './summary-prompt.js';
 import {pageEnrichmentPrompt,type PageEnrichmentOptions} from './page-enrichment-prompt.js';
 import {sourceEnrichmentPrompt,sourceAuthorsPrompt,sourceScholarlyPrompt} from './source-enrichment-prompt.js';
 
+export interface EditorialEvidenceImage {page:number;mimeType:'image/png';base64:string;sha256:string}
 type CommonRequest = {onRequest?:AIRequestObserver;background?:boolean;signal?:AbortSignal};
 /** One intent per request. Feature parsers remain with their existing owners. */
 export type GenerationRequest = CommonRequest & (
@@ -32,10 +34,11 @@ export type GenerationRequest = CommonRequest & (
   | {kind:'sourceAuthors';input:string}
   | {kind:'pageEnrichment';input:string;options:Omit<PageEnrichmentOptions,'signal'>}
   | {kind:'collectionRules';input:string;instructions:string}
-  | {kind:'editorial';input:string;instructions:string;signal:AbortSignal}
+  | {kind:'editorial';input:string;instructions:string;signal:AbortSignal;responseShape?:'blocks';evidenceImages?:EditorialEvidenceImage[];externalEvidenceConsent?:boolean}
 );
 
-type Prompt = ReturnType<typeof summaryPrompt> | ReturnType<typeof pageEnrichmentPrompt> | {instructions:string;input:string};
+type MultimodalInput={role:'user';content:({type:'input_text';text:string}|{type:'input_image';image_url:string;detail:'high'})[]}[];
+type Prompt = {instructions:string;input:string|MultimodalInput;text?:unknown}|ReturnType<typeof summaryPrompt> | ReturnType<typeof pageEnrichmentPrompt> | {instructions:string;input:string};
 interface GenerationPolicy {
   persona?:ReturnType<typeof resolvePersona>;
   prompt:()=>Prompt;
@@ -51,6 +54,7 @@ interface GenerationPolicy {
 interface Selections {personaId?:string;standard:IntelligencePreferences;title:IntelligencePreferences;enrichment:IntelligencePreferences}
 const ignoreDelta=(_delta:string)=>{};
 /** Nullable offsets retain the legacy unique-substring protocol. Local validation is authoritative. */
+const reconstructionFormat={type:'json_schema',name:'source_reconstruction_blocks',strict:true,schema:{type:'object',additionalProperties:false,required:['blocks','diagnostics','unresolved'],properties:{blocks:{type:'array',items:{type:'object',additionalProperties:false,required:['id','text'],properties:{id:{type:'string'},text:{type:'string'}}}},diagnostics:{type:'array',items:{type:'string'}},unresolved:{type:'boolean'}}}};
 const editorialFormat={type:'json_schema',name:'source_editorial_patches',strict:true,schema:{
   type:'object',additionalProperties:false,required:['patches','diagnostics'],properties:{
     patches:{type:'array',maxItems:50,items:{type:'object',additionalProperties:false,
@@ -111,8 +115,13 @@ export function generationPolicy(request:GenerationRequest,selections:Selections
     case 'collectionRules':
       return policy(()=>({instructions:request.instructions,input:request.input}),{activeSlot:'exclusive',selection:{...selections.standard,reasoningEffort:'none'},maxOutputTokens:4096,maxOutputLength:32768});
     case 'editorial':
+      if(request.evidenceImages?.length){
+       if(request.externalEvidenceConsent!==true||request.responseShape!=='blocks')throw new HttpError(400,'Explicit original-page transmission consent is required.');
+       if(!intelligenceModels.find(model=>model.id===selections.standard.model)?.imageInput)throw new HttpError(400,'The selected model has no enabled original-page image capability.');
+       if(request.evidenceImages.length>2||request.evidenceImages.some(image=>image.mimeType!=='image/png'||!Number.isSafeInteger(image.page)||image.page<1||!/^[a-f0-9]{64}$/.test(image.sha256)||image.base64.length>16*1024*1024||createHash('sha256').update(Buffer.from(image.base64,'base64')).digest('hex')!==image.sha256||!Buffer.from(image.base64,'base64').subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))||!/^[A-Za-z0-9+/]*={0,2}$/.test(image.base64)))throw new HttpError(400,'Invalid or excessive original-page image evidence.');
+      }
       if(!supportedIntelligencePreferences(selections.standard))throw new HttpError(400,'Choose a supported editorial model and reasoning effort in Settings → Intelligence.');
-      return policy(()=>({instructions:request.instructions,input:request.input,...(intelligenceModels.find(model=>model.id===selections.standard.model)?.structuredOutputs?{text:{format:editorialFormat}}:{})}),{activeSlot:'editorial',selection:{...selections.standard},maxOutputTokens:16000,maxOutputLength:60000,timeoutMs:180000});
+      return policy(()=>({instructions:request.instructions,input:request.evidenceImages?.length?[{role:'user' as const,content:[{type:'input_text' as const,text:request.input},...request.evidenceImages.map(image=>({type:'input_image' as const,image_url:`data:image/png;base64,${image.base64}`,detail:'high' as const}))]}]:request.input,...(intelligenceModels.find(model=>model.id===selections.standard.model)?.structuredOutputs?{text:{format:request.responseShape==='blocks'?reconstructionFormat:editorialFormat}}:{})}),{activeSlot:'editorial',selection:{...selections.standard},maxOutputTokens:16000,maxOutputLength:60000,timeoutMs:180000});
     default: {
       const exhaustive:never=request;
       throw new Error(`Unsupported generation request: ${String(exhaustive)}`);

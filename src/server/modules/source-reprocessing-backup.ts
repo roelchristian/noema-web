@@ -1,6 +1,8 @@
+import {sourceReprocessingEvidenceRevisionBytes} from '../../shared/source-reprocessing.js';
+import {validateReprocessingEvidenceSnapshot} from './source-reprocessing-evidence-validation.js';
 import {utf16Boundary,wellFormedUnicode} from './source-reprocessing-patches.js';
 import {sourceStructureKinds} from '../../shared/domain.js';
-import type {SourceReprocessingRevision} from '../../shared/source-reprocessing.js';
+import type {SourceReprocessingConfiguration,SourceReprocessingChunk,SourceReprocessingPass,SourceReprocessingRevision} from '../../shared/source-reprocessing.js';
 import {HttpError,now} from '../validation.js';
 import {materializeSourceRevision,sourceRevisionBaseHash} from './source-reprocessing.js';
 
@@ -14,9 +16,59 @@ const timestamp=(value:unknown)=>{const result=string(value,100);if(!Number.isFi
 const hash=(value:unknown)=>sourceRevisionBaseHash(value as SourceReprocessingRevision['original']);
 const oneOf=(value:unknown,values:readonly string[])=>{if(typeof value!=='string'||!values.includes(value))throw invalid();return value;};
 
+export function validateReprocessingConfiguration(value:unknown):SourceReprocessingConfiguration {
+ const c=object(value),e=object(c.evidence);
+ oneOf(c.depth,['light','balanced','deep']);oneOf(c.reviewPolicy,['verified','review_all']);
+ for(const key of ['originalPages','ocr','allowExternalTransmission'])if(typeof e[key]!=='boolean')throw invalid();
+ return {depth:c.depth as SourceReprocessingConfiguration['depth'],reviewPolicy:c.reviewPolicy as SourceReprocessingConfiguration['reviewPolicy'],evidence:{originalPages:e.originalPages as boolean,ocr:e.ocr as boolean,allowExternalTransmission:e.allowExternalTransmission as boolean}};
+}
+
+/** Archive checkpoints are validated against canonical revision coordinates, then ID-remapped. */
+export function restoreReprocessingCheckpoints(revision:SourceReprocessingRevision,oldRevisionId:string,oldBaseHash:string,chunkValues:unknown[],passValues:unknown[]):{chunks:SourceReprocessingChunk[];passes:SourceReprocessingPass[]} {
+ if(revision.pipelineVersion!==2){if(chunkValues.length||passValues.length)throw invalid();return {chunks:[],passes:[]};}
+ const configuration=validateReprocessingConfiguration(revision.configuration);
+ const chunks:SourceReprocessingChunk[]=[],passes:SourceReprocessingPass[]=[];
+ let end=0,evidenceBytes=0;
+ for(const [index,value] of array(chunkValues,128).entries()){
+  const c=object(value);if(c.revisionId!==oldRevisionId||c.baseHash!==oldBaseHash||c.index!==index||integer(c.startOffset,0,revision.original.text.length)!==end)throw invalid();
+  end=integer(c.endOffset,end+1,revision.original.text.length);if(!utf16Boundary(revision.original.text,c.startOffset as number)||!utf16Boundary(revision.original.text,end))throw invalid();
+  if(!/^[a-f0-9]{64}$/.test(string(c.evidenceHash,64)))throw invalid();
+  if(c.evidenceTrusted!==undefined&&typeof c.evidenceTrusted!=='boolean')throw invalid();
+  if(c.evidence!==undefined){evidenceBytes+=Buffer.byteLength(JSON.stringify(c.evidence));if(evidenceBytes>sourceReprocessingEvidenceRevisionBytes)throw invalid();c.evidence=validateReprocessingEvidenceSnapshot(c.evidence,{text:revision.original.text,document:revision.original.document,start:c.startOffset as number,end:c.endOffset as number,configuration,evidenceHash:c.evidenceHash as string});}
+  oneOf(c.difficulty,['ordinary','difficult']);if(c.difficultyReason!==null)string(c.difficultyReason,2000);
+  const count=integer(c.requiredPassCount,1,3);if(configuration.depth==='light'&&count!==1||configuration.depth==='balanced'&&count!==2||configuration.depth==='deep'&&count<2||count===3&&!c.difficultyReason)throw invalid();
+  oneOf(c.status,['pending','running','completed','failed','interrupted']);
+  chunks.push({...structuredClone(c),revisionId:revision.id,baseHash:revision.baseHash,evidenceTrusted:false,status:c.status==='running'?'interrupted':c.status} as unknown as SourceReprocessingChunk);
+ }
+ if(chunks.length!==revision.report.chunksTotal||end!==revision.original.text.length)throw invalid();
+ const seen=new Set<string>();
+ for(const value of array(passValues,384)){
+  const p=object(value),chunkIndex=integer(p.chunkIndex,0,chunks.length-1),index=integer(p.index,1,3),chunk=chunks[chunkIndex]!;
+  if(p.revisionId!==oldRevisionId||index>chunk.requiredPassCount||seen.has(`${chunkIndex}:${index}`))throw invalid();seen.add(`${chunkIndex}:${index}`);
+  oneOf(p.status,['running','completed','failed','interrupted']);oneOf(p.kind,['clean','reconstruct','verify','resolve']);
+  if(p.kind!==(index===1?(configuration.depth==='light'?'clean':'reconstruct'):index===2?'verify':'resolve'))throw invalid();
+  string(p.model,200);string(p.promptVersion,200);if(p.model!==revision.report.model||p.reasoningEffort!==revision.report.reasoningEffort||p.promptVersion!==revision.report.promptVersion)throw invalid();oneOf(p.reasoningEffort,['none','minimal','low','medium','high','xhigh','max']);
+  if(JSON.stringify(validateReprocessingConfiguration(p.configuration))!==JSON.stringify(configuration)||!/^[a-f0-9]{64}$/.test(string(p.requestHash,64)))throw invalid();
+  if(p.result!==null)string(p.result,256000);if(p.status==='completed'&&(p.result===null||p.finishedAt===null||p.outcomeUncertain!==false))throw invalid();
+  for(const check of array(p.validation,100))string(check,2000);
+  timestamp(p.startedAt);if(p.finishedAt!==null)timestamp(p.finishedAt);if(p.error!==null)string(p.error,10000);if(typeof p.outcomeUncertain!=='boolean')throw invalid();
+  for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])if(p[key]!==null)integer(p[key],0,Number.MAX_SAFE_INTEGER);
+  const pass={...structuredClone(p),revisionId:revision.id} as unknown as SourceReprocessingPass;
+  if(pass.status==='running'){pass.status='interrupted';pass.outcomeUncertain=true;pass.finishedAt=now();pass.error='Restored during a request; provider outcome is unknown.';}
+  passes.push(pass);
+ }
+ const completedIndexes=new Set(revision.report.completedChunkIndexes??Array.from({length:revision.report.chunksCompleted},(_,index)=>index));
+ if(revision.status==='completed'&&chunks.some(chunk=>chunk.status!=='completed'))throw invalid();
+ for(const chunk of chunks)if((chunk.status==='completed')!==completedIndexes.has(chunk.index))throw invalid();
+ for(const patch of revision.patches)if(patch.excerptIndex===undefined||!completedIndexes.has(patch.excerptIndex))throw invalid();
+ for(const chunk of chunks){const successful=passes.filter(pass=>pass.chunkIndex===chunk.index&&pass.status==='completed').sort((a,b)=>a.index-b.index);if(chunk.status==='completed'&&(successful.length!==chunk.requiredPassCount||successful.some((pass,index)=>pass.index!==index+1)))throw invalid();}
+ return {chunks,passes};
+}
+
 /** Imported derivatives are rebuilt from validated evidence; archive data never starts paid jobs. */
 export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:string,newId:string,newFileId:string):SourceReprocessingRevision {
- const r=object(payload),original=object(r.original),text=string(original.text,512000),document=object(original.document);
+ const r=object(payload);if(r.pipelineVersion!==undefined&&r.pipelineVersion!==1&&r.pipelineVersion!==2)throw invalid();if(r.pipelineVersion===2)validateReprocessingConfiguration(r.configuration);else if(r.configuration!==undefined)throw invalid();
+ const original=object(r.original),text=string(original.text,512000),document=object(original.document);
  if(r.id!==oldId||r.fileId!==oldFileId||document.schemaVersion!==1||r.baseHash!==hash(original))throw invalid();
  timestamp(r.createdAt);timestamp(r.updatedAt);string(r.instructions,4000);
  oneOf(r.status,['queued','running','completed','failed','interrupted']);
@@ -76,16 +128,20 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  if(processing.structure!=='stored markers plus local rules'||processing.aiScope!=='bounded excerpts for long sources'||processing.inferredExtents!==true)throw invalid();
  string(processing.aiEnrichmentStatus,30);
  if(processing.math!==undefined){const math=object(processing.math);if(math.format!=='LaTeX'||!/^[a-f0-9]{64}$/.test(string(math.originalTextHash,64)))throw invalid();for(const value of array(math.uncertain,100000)){const issue=object(value);integer(issue.line,1,starts.length);string(issue.text,1000);}}
+ if(r.furniture!==undefined){
+  const seenFurniture=new Set<string>();for(const value of array(r.furniture,2000)){const f=object(value),id=string(f.id,100),start=integer(f.startOffset,0,text.length),end=integer(f.endOffset,start+1,text.length),page=integer(f.page,1,pageCount??1000);if(!id||seenFurniture.has(id)||!utf16Boundary(text,start)||!utf16Boundary(text,end)||string(f.text,16000)!==text.slice(start,end)||pageAt(start)!==page||pageAt(end-1)!==page||typeof f.hidden!=='boolean')throw invalid();seenFurniture.add(id);string(f.reason,2000);}
+ }
  const patches=array(r.patches,6400),patchIds=new Set<string>();
  const ordered=patches.map(value=>{
   const patch=object(value),id=string(patch.id,100),bounds=range(patch.range);
+  if(patch.patchGroupId!==undefined)string(patch.patchGroupId,100);if(patch.presentation!==undefined){const presentation=object(patch.presentation);if(presentation.kind!=='page_furniture'||typeof presentation.hidden!=='boolean')throw invalid();}
   if(patch.baseHash!==undefined&&patch.baseHash!==r.baseHash)throw invalid();
   if(patch.excerptIndex!==undefined)integer(patch.excerptIndex,0,127);
   if(!utf16Boundary(text,bounds.start)||!utf16Boundary(text,bounds.end)||!wellFormedUnicode(string(patch.userReplacement??patch.replacement,16000)))throw invalid();
   if(!id||patchIds.has(id)||bounds.end<=bounds.start||string(patch.original,16000)!==text.slice(bounds.start,bounds.end))throw invalid();patchIds.add(id);
   if(pageRanges.some(page=>page.start>bounds.start&&page.start<bounds.end))throw invalid();
   if(patch.riskReasons!==undefined)for(const reason of array(patch.riskReasons,20))string(reason,2000);
-  if(patch.autoAcceptance!==undefined){const evidence=object(patch.autoAcceptance);oneOf(evidence.policy,['safe_formatting','balanced','minimal_review']);string(evidence.validator,100);timestamp(evidence.appliedAt);for(const check of array(evidence.checks,30))string(check,200);}
+  if(patch.autoAcceptance!==undefined){const evidence=object(patch.autoAcceptance);oneOf(evidence.policy,['safe_formatting','balanced','minimal_review','verified']);string(evidence.validator,100);timestamp(evidence.appliedAt);for(const check of array(evidence.checks,30))string(check,200);}
   if(patch.decisionHistory!==undefined)for(const value of array(patch.decisionHistory,100000)){const event=object(value);timestamp(event.at);oneOf(event.actor,['automatic','user']);oneOf(event.from,['pending','accepted','rejected']);oneOf(event.to,['pending','accepted','rejected']);if(event.previousReplacement!==undefined)string(event.previousReplacement,16000);if(event.replacement!==undefined)string(event.replacement,16000);}
   string(patch.replacement,16000);string(patch.reason,2000);if(patch.userReplacement!==undefined)string(patch.userReplacement,16000);
   oneOf(patch.category,['ocr','line_breaks','footnote','apparatus','metadata','citation','math','formatting']);oneOf(patch.decision,['pending','accepted','rejected']);
@@ -109,6 +165,7 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  }
  const chunks=integer(report.chunksTotal,0,128);integer(report.chunksCompleted,0,chunks);
  if(report.concurrency!==undefined)integer(report.concurrency,1,2);
+ if(report.evidencePreparation!==undefined){const preparation=object(report.evidencePreparation);oneOf(preparation.state,['collecting','completed']);if(integer(preparation.totalChunks,0,128)!==chunks)throw invalid();integer(preparation.preparedChunks,0,chunks);if(preparation.state==='completed'&&preparation.preparedChunks!==chunks)throw invalid();}
  if(report.completedChunkIndexes!==undefined){
   const indexes=array(report.completedChunkIndexes,128).map(value=>integer(value,0,chunks-1));
   if(new Set(indexes).size!==indexes.length||indexes.length!==report.chunksCompleted||indexes.some((value,index)=>index>0&&value<=indexes[index-1]!))throw invalid();
@@ -125,6 +182,7 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
   for(const [index,value] of excerpts.entries()){
    const excerpt=object(value);if(excerpt.index!==index||integer(excerpt.startOffset,0,text.length)!==end)throw invalid();end=integer(excerpt.endOffset,end+1,text.length);
    for(const key of ['startPage','endPage'])if(excerpt[key]!==null)integer(excerpt[key],1,pageCount??1000);
+   if(excerpt.passesCompleted!==undefined)integer(excerpt.passesCompleted,0,3);if(excerpt.requiredPassCount!==undefined)integer(excerpt.requiredPassCount,1,3);if(excerpt.activePass!==undefined)integer(excerpt.activePass,1,3);if(excerpt.difficultyReason!==undefined)string(excerpt.difficultyReason,2000);
    oneOf(excerpt.status,['pending','running','completed','failed','interrupted']);integer(excerpt.attempts,0,Number.MAX_SAFE_INTEGER);integer(excerpt.durationMs,0,Number.MAX_SAFE_INTEGER);
    for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])if(excerpt[key]!==null)integer(excerpt[key],0,Number.MAX_SAFE_INTEGER);
    if(excerpt.lastAttemptAt!==undefined)timestamp(excerpt.lastAttemptAt);
@@ -147,7 +205,7 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  if(report.validationDiagnostics!==undefined)for(const diagnostic of array(report.validationDiagnostics,5000))string(diagnostic,10000);
  // Keep the validated original's key order for the evidence hash. The derived variant and
  // supplied node links are intentionally discarded and deterministically reconstructed.
- const revision=structuredClone({id:r.id,fileId:r.fileId,createdAt:r.createdAt,updatedAt:r.updatedAt,status:r.status,acceptanceMode:r.acceptanceMode??'review_all',acceptanceThreshold:r.acceptanceThreshold,instructions:r.instructions,baseHash:r.baseHash,stale:r.stale,original,reprocessed:original,patches,report}) as unknown as SourceReprocessingRevision;
+ const revision=structuredClone({id:r.id,fileId:r.fileId,createdAt:r.createdAt,updatedAt:r.updatedAt,status:r.status,pipelineVersion:r.pipelineVersion,configuration:r.pipelineVersion===2?validateReprocessingConfiguration(r.configuration):undefined,furniture:r.furniture,acceptanceMode:r.acceptanceMode??'review_all',acceptanceThreshold:r.acceptanceThreshold,instructions:r.instructions,baseHash:r.baseHash,stale:r.stale,original,reprocessed:original,patches,report}) as unknown as SourceReprocessingRevision;
  revision.id=newId;revision.fileId=newFileId;revision.original.document.source.fileId=newFileId;
  revision.baseHash=hash(revision.original);revision.stale=false;
  for(const patch of revision.patches)if(patch.baseHash!==undefined)patch.baseHash=revision.baseHash;

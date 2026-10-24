@@ -149,6 +149,7 @@ export class Intelligence {
     }
   }
   selection(): IntelligencePreferences {return {...this.preferences};}
+  editorialImageCapability(){return intelligenceModels.find(model=>model.id===this.selection().model)?.imageInput===true;}
   editorialSelection():IntelligencePreferences {
     const selection=this.selection();
     if(!supportedIntelligencePreferences(selection))throw new HttpError(400,'Choose a supported editorial model and reasoning effort in Settings → Intelligence.');
@@ -440,8 +441,8 @@ export class Intelligence {
     catch{throw new HttpError(502,'AI returned invalid source authors. Retry enrichment.');}
     });
   }
-  async reeditSource(input:string,instructions:string,signal:AbortSignal,onRequest?:AIRequestObserver) {
-    return this.generate({kind:'editorial',input,instructions,signal,onRequest,background:true});
+  async reeditSource(input:string,instructions:string,signal:AbortSignal,onRequest?:AIRequestObserver,responseShape?:'blocks',evidenceImages?:import('./generation-request.js').EditorialEvidenceImage[],externalEvidenceConsent=false) {
+    return this.generate({kind:'editorial',input,instructions,signal,onRequest,responseShape,evidenceImages,externalEvidenceConsent,background:true});
   }
   private async validatedGeneration<T>(request:GenerationRequest,parse:(output:string)=>T):Promise<T> {
     let trace:AIDebugTrace|undefined;
@@ -481,11 +482,11 @@ export class Intelligence {
     let trace: AIDebugTrace | undefined;
     try {
       const prompt=policy.prompt(),selection=policy.selection;
-      const inputText=typeof prompt.input==='string'?prompt.input:prompt.input.flatMap(item=>item.content.map(part=>part.text)).join('');
+      const inputText=typeof prompt.input==='string'?prompt.input:prompt.input.flatMap(item=>item.content.map(part=>'text' in part?part.text:part.image_url)).join('');
       const observer=request.onRequest?.(Buffer.byteLength(prompt.instructions+inputText,'utf8'));
       trace=redactedTrace(observer,credential.key);
       const payload={model:selection.model,store:false,max_output_tokens:policy.maxOutputTokens,reasoning:{effort:selection.reasoningEffort},tools:[],tool_choice:'none',...prompt,...(trace||policy.stream?{stream:true}:{})};
-      trace?.request('https://api.openai.com/v1/responses',payload);
+      trace?.request('https://api.openai.com/v1/responses',request.kind==='editorial'&&request.evidenceImages?.length?{...payload,input:[{role:'user',content:[{type:'input_text',text:request.input},...request.evidenceImages.map(image=>({type:'input_image',page:image.page,sha256:image.sha256,image_url:'[redacted original-page image]'}))]}]}:payload);
       trace?.event('prompt',{template:request.kind,version:1,...(policy.persona?{persona:{id:policy.persona.id,version:policy.persona.version,origin:policy.persona.origin}}:{})});
       if(controller.signal.aborted)throw request.kind==='editorial'?new GenerationCancellationError(false):new HttpError(409,'AI generation was stopped before sending the request.');
       const pendingResponse=this.transport('https://api.openai.com/v1/responses',{

@@ -1,8 +1,10 @@
 # Unified Alerts & Notifications — implementation evidence
 
 Implemented Option B (Quiet Structured) against main `a0667a7` (includes #100,
-#101, #103 and #102). Work is local on `feat/unified-notifications`; no push,
-PR, merge or deployment was performed. No dependencies or database schema changed.
+#101, #103 and #102). The original seven increments were completed locally on
+`feat/unified-notifications`. Publication integration is recorded below. No
+notification dependency or database schema changes are introduced relative to
+current main.
 
 ## Increment boundaries
 
@@ -80,3 +82,52 @@ Evidence is local and uses synthetic data only:
 Native browser UI zoom, Safari and native extraction remain untested on Linux.
 The existing dark harness documents pre-existing light out-of-month Calendar
 text contrast of 4.4376:1; the notification palette introduces no new colours.
+
+
+## Draft publication integration
+
+The user subsequently authorized a separate draft PR. Main was fetched again at
+`f3f7d2cbe04d8ae6d8bfdd686ebaa647dcefcb71`, including merged ReprocessingV2
+[#104](https://github.com/roelchristian/noema-web/pull/104). No duplicate open
+Unified Alerts/Notifications PR or existing remote alerts branch was found.
+All seven phase commits above are preserved unchanged; integration uses a merge
+commit rather than rebasing them.
+
+Three conflicts were resolved in `SourceReprocessing.tsx`, its UI suite and its
+browser harness. The resulting source adapter preserves V2 processing depth,
+independent review policy, exact pass-count labels and pass ledger, local evidence
+preparation, transmission consent, uncertainty/replay restrictions and existing
+retry/reading-version behavior. Preparation progress uses native shared progress;
+its live region announces meaningful stages while checkpoint counts remain
+outside it. Server and shared processing files are byte-identical to main.
+Independent review and 89 affected checks passed; the evidence preparation test
+also checks numeric updates without repeated stage announcements.
+
+Quiet Graphite [#106](https://github.com/roelchristian/noema-web/pull/106) is a
+separate unmerged draft and is not included or required for these notices. This
+branch adds aliases referencing existing neutral surfaces; #106 owns the dark
+base values and feature visuals. Expected shared-file overlap is `tokens.css`,
+feature editor/Knowledge/source CSS and the design/dark browser fixtures.
+When both land, retain Graphite's base-token changes and these notice aliases;
+retain shared neutral notice geometry and removed legacy selectors rather than
+reintroducing Graphite adjustments for retired panels. Preserve the updated
+neutral-status browser fixtures when resolving any test conflicts. No changes
+from #106 have been copied into this branch.
+
+Publication validation and exact-head CI are reported in the draft PR. No ready,
+merge or deployment action is authorized by this follow-up.
+
+Integrated publication evidence (main `f3f7d2c`): build/styles/types passed;
+89 affected tests passed; independent V2 UI review passed 31 checks; full suite
+passed **1,459 tests, seven platform skips, zero failures**. Notifications browser
+passed four combinations; V2 reprocessing passed desktop/mobile; Review Centre
+and Activity passed 14 groups with zero provider calls; design passed 12 cases;
+the isolated mobile dark follow-up passed six cases. The full dark attempt hit
+the known disappearing mobile source-viewer sample and the initial concurrent
+reprocessing load timed out; both failures remain in the raw logs, with unchanged
+isolated reruns reported separately. Native/macOS extraction, Safari and native
+browser UI zoom remain unrun.
+
+Current integration logs: `/tmp/noema-alerts-integration-{build,focused,all}.log`,
+`/tmp/noema-integrated-{notifications,reprocessing-rerun,review,design,dark,dark-mobile}.log`.
+Current screenshots/JSON use `/tmp/noema-integrated-*-evidence`.

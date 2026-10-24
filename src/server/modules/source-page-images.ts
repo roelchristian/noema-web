@@ -34,6 +34,18 @@ export class SourcePageImages {
   })();
   this.pending.set(key,work);try{return await work;}finally{this.pending.delete(key);}
  }
+ /** Admitted PDFKit line geometry uses the same page asset as the rendered image.
+  * Raster-only and rotated pages return no native alignment proof. */
+ async layout(vault:string,id:string,page:number):Promise<{text:string;bounds:number[]}[]>{
+  await this.get(vault,id,page);
+  const executable=await this.compiler!,filename=this.files.filename(vault,id);
+  const profile='(version 1)(allow default)(deny network*)(deny file-write*)(deny process-fork)(deny process-exec)(allow process-exec (literal '+JSON.stringify(realpathSync(executable))+'))(deny file-read* (subpath "/Users"))(allow file-read* (literal '+JSON.stringify(realpathSync(filename))+') (literal '+JSON.stringify(realpathSync(executable))+'))';
+  const bytes=await this.command('/usr/bin/sandbox-exec',['-p',profile,executable,filename,String(page),'--layout'],30000);
+  if(bytes.length>2*1024*1024)throw new HttpError(502,'Native layout exceeds the evidence budget.');
+  const value:unknown=JSON.parse(bytes.toString('utf8'));
+  if(!Array.isArray(value)||value.length>2000||value.some(line=>!line||typeof line.text!=='string'||line.text.length>4000||!Array.isArray(line.bounds)||line.bounds.length!==4||line.bounds.some((n:unknown)=>typeof n!=='number'||!Number.isFinite(n)||n<0||n>1)||line.bounds[2]<=0||line.bounds[3]<=0||line.bounds[0]+line.bounds[2]>1.000001||line.bounds[1]+line.bounds[3]>1.000001))throw new HttpError(502,'Native layout evidence is malformed.');
+  return value;
+ }
  private async compile(){
   mkdirSync(this.files.root,{recursive:true});
   const script=fileURLToPath(new URL('../../../scripts/render-source-page.swift',import.meta.url)),executable=path.join(this.files.root,'source-page-renderer');

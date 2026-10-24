@@ -61,3 +61,12 @@ test('curly quotes still match canonical entity names containing straight quotes
   assert.equal(result.count,2);
   assert.deepEqual(result.blocks[0].content,[{entityId:'oconnor', mentionText: 'Flannery O’Connor'},{text:' wrote '},{entityId:'work', mentionText: 'The “Book”'},{text:'.'}]);
 });
+
+test('narrative names always require explicit review even with unique or page-context matches',()=>{
+ const merlin={...entity('merlin','Merlin'),type:'person',subtypes:['person:fictional-character'],referentStatus:'fictional'};
+ const blocks=[block([{entityId:'merlin'}, {text:' and Merlin in another adaptation'}])];
+ const result=identifyEntityMentions(blocks,[merlin],'vault');
+ assert.equal(result.count,0);assert.equal(result.ambiguous.length,1);
+ const resolved=identifyEntityMentions(blocks,[merlin],'vault',{match:result.ambiguous[0],entityId:'merlin'});
+ assert.equal(resolved.count,1);assert.equal(resolved.blocks[0].content[2].skipAutoTag,true);
+});

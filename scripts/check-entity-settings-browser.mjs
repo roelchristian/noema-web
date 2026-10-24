@@ -1,4 +1,5 @@
 // Disposable synthetic schema; real UI and backend. No provider calls or real vault data.
+import {entityTypes} from '../src/shared/domain.ts';
 import assert from 'node:assert/strict';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
@@ -24,7 +25,7 @@ try{
   if(width===390)await page.getByRole('button',{name:'Open navigation',exact:true}).click();
   await page.getByRole('button',{name:'Vault options',exact:true}).click();await page.getByRole('menuitem',{name:'Settings',exact:true}).click();
   await page.getByRole('tab',{name:'Entities',exact:true}).click();
-  const nav=page.getByRole('navigation',{name:'Main entity type'});assert.equal(await nav.getByRole('button').count(),9);
+  const nav=page.getByRole('navigation',{name:'Main entity type'});assert.equal(await nav.getByRole('button').count(),entityTypes.length);
   await nav.getByRole('button',{name:/Person/}).focus();await page.keyboard.press('Enter');
   assert.equal(await page.locator('.schema-type-inspector h3').evaluate(e=>e===document.activeElement),true);
   await page.screenshot({path:resolve(artifacts,`${width}-${mode}-types.png`),fullPage:true});
@@ -76,7 +77,7 @@ try{
    await page.getByRole('checkbox',{name:'Retain all incompatible authored values for review and apply this definition.'}).check();await page.getByRole('button',{name:'Apply definition',exact:true}).click();await page.getByText('Definition saved. Existing authored values are retained.',{exact:true}).waitFor();
    assert.equal(f.knowledge.detail('default',f.person.id).properties.filter(item=>item.name==='Synthetic count').length,2);
   }
-  results.push({width,mode,passed:['nine type counts','keyboard selection and focus','palette search/select/Escape/focus return','subtype drafts across type navigation','combined inherited summary','category reset','registry search','builtin read-only inspector','edit/cancel','draft across views','impact preview and explicit compatibility confirmation','single-value creation and collision-safe key','no dialog overflow','control target sizes','typed subtype create persisted','compatible values retained through confirmed update']});
+  results.push({width,mode,passed:['extensible type counts','keyboard selection and focus','palette search/select/Escape/focus return','subtype drafts across type navigation','combined inherited summary','category reset','registry search','builtin read-only inspector','edit/cancel','draft across views','impact preview and explicit compatibility confirmation','single-value creation and collision-safe key','no dialog overflow','control target sizes','typed subtype create persisted','compatible values retained through confirmed update']});
   await context.close();
  }
  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);

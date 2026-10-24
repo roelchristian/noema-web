@@ -1,3 +1,4 @@
+import {ReferentStatusPicker} from './ReferentStatusPicker';
 import {maxSourceBytes,pastedSourceFilename,validatePastedSourceText} from '../../shared/source-input';
 import {t as uiText} from '../i18n';
 import { SourcePolicy } from './SourcePolicy';
@@ -5,7 +6,7 @@ import { request, uploadSourceFile } from '../api';
 import type { SourceFile } from '../../shared/domain';
 import { Select } from '../components/Select';
 import { useRef, useState, type FormEvent } from 'react';
-import { entityLabels, entityTypes, type EntityInput, type EntityType } from '../../shared/domain';
+import { entityLabels, entityTypes, type ReferentStatus, type EntityInput, type EntityType } from '../../shared/domain';
 import {DomainPicker} from './DomainPicker';
 import { SubtypePicker } from './SubtypePicker';
 import { useEntitySchema } from './useEntitySchema';
@@ -17,6 +18,7 @@ export function CreateEntityDialog({vaultId, initial, onSubmit, onClose}: {vault
   const [name, setName] = useState(initial.name || ''), [type, setType] = useState<EntityType>(initial.source ? 'source' : 'person');
   const allowedTypes = entityTypes.filter(type => initial.source ? type === 'source' : !initial.excludeSources || type !== 'source');
   const {schema, error: schemaError} = useEntitySchema(vaultId);
+  const [referentStatus,setReferentStatus]=useState<ReferentStatus>('unspecified');
   const [domainIds, setDomainIds] = useState<string[]>([]);
   const [subtypes, setSubtypes] = useState<string[]>([]);
   const [sourceFile,setSourceFile]=useState<File|null>(null),[sourceUrl,setSourceUrl]=useState(''),[sourceText,setSourceText]=useState('');
@@ -61,13 +63,13 @@ export function CreateEntityDialog({vaultId, initial, onSubmit, onClose}: {vault
           : await request<SourceFile>('source-files/url','POST',{url:sourceUrl.trim(),containsMath},vaultId);
         setStagedSource(source);
       }
-      await onSubmit({name:resolvedName.trim()||source?.name.slice(0,200)||'',aliases:type==='source'?[]:parseAliases(aliases),type,subtypes,...(type==='concept'?{domainIds}:{}),...(type==='source'&&source?{attachmentIds:[source.id]}:{})});
+      await onSubmit({referentStatus,name:resolvedName.trim()||source?.name.slice(0,200)||'',aliases:type==='source'?[]:parseAliases(aliases),type,subtypes,...(type==='concept'?{domainIds}:{}),...(type==='source'&&source?{attachmentIds:[source.id]}:{})});
       onClose();
     }catch(error){setError(error instanceof Error?error.message:String(error));}
     finally { submitting.current=false;setBusy(false); }
   }
   function cancel() { if(submitting.current||busy)return; onClose(); requestAnimationFrame(()=>initial.onCancel?.()); }
-  const namePlaceholder: Partial<Record<EntityType,string>> = {person:'e.g. Ursula K. Le Guin',place:'e.g. Kyoto',organization:'e.g. The Royal Society',event:'e.g. World Expo 2025',creativework:'e.g. The Left Hand of Darkness',organism:'e.g. Ginkgo biloba',culture:'e.g. Japanese',concept:'e.g. Systems thinking',source:'e.g. Interview with Ursula K. Le Guin'};
+  const namePlaceholder: Partial<Record<EntityType,string>> = {person:'e.g. Ursula K. Le Guin',place:'e.g. Kyoto',organization:'e.g. The Royal Society',event:'e.g. World Expo 2025',creativework:'e.g. The Left Hand of Darkness',thing:'e.g. Grilled alumahan',organism:'e.g. Ginkgo biloba',culture:'e.g. Japanese',concept:'e.g. Systems thinking',source:'e.g. Interview with Ursula K. Le Guin'};
   return <Modal className="create-entity-dialog" onClose={cancel} initialFocus={initial.source ? undefined : 'input[name="entity-name"]'} titleId="create-dialog-title"><form onSubmit={submit} aria-busy={busy}>
     <ModalHeader titleId="create-dialog-title" leading={<Icon name={type} entity={{type,subtypes}}/>} closeDisabled={busy}>{initial.intent==='insert'?uiText("Create and insert"):initial.source ? uiText("New source") : uiText("New entity")}</ModalHeader><p className="modal-description">{initial.intent==='insert'?uiText("Add an entity and keep writing."):initial.source?uiText("Add a document to your Sources library."):uiText("Add to your knowledge library.")}</p>
     <div className="create-entity-fields">
@@ -86,6 +88,7 @@ export function CreateEntityDialog({vaultId, initial, onSubmit, onClose}: {vault
 
       <label>{uiText("Name")}<input name="entity-name" autoFocus={type!=='source'} required={type!=='source'} maxLength={200} value={resolvedName} onChange={e => {setName(e.target.value);setNameEdited(true);}} disabled={busy} placeholder={type==='source'?uiText(sourceMethod==='text'?"Pasted text":"Uses the source filename"):namePlaceholder[type] ?? uiText("Entity name")} autoComplete="off"/></label>
       <SubtypePicker type={type} value={subtypes} subtypes={schema.subtypes} onChange={setSubtypes} disabled={busy}/>
+      <ReferentStatusPicker value={referentStatus} onChange={setReferentStatus} disabled={busy}/>
       {type==='concept'&&<DomainPicker value={domainIds} onChange={setDomainIds} disabled={busy}/>}
       {type!=='source'&&<AliasInput value={aliases} onChange={setAliases} disabled={busy}/>}
       {schemaError && <p className="dialog-error" role="alert">{schemaError}</p>}

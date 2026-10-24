@@ -60,3 +60,42 @@ test('scan workflow merges reciprocal spellings before preview, persistence and 
     assert.equal(result.page.blocks[0].content.find(s=>s.entityId)?.entityId,club.id);
   }finally{db.close();}
 });
+
+test('narrative variants retain reciprocal names and scanner status remains explicit and reviewable',()=>{
+ const first=suggestion('Merlin (Novel A)',['Merlin (Film B)'],{type:'person',subtypes:['person:fictional-character'],referentStatus:'fictional'});
+ const second=suggestion('Merlin (Film B)',['Merlin (Novel A)'],{type:'person',subtypes:['person:fictional-character'],referentStatus:'fictional'});
+ assert.equal(mergeSuggestionIdentities([first,second]).length,2);
+ const db=openDatabase(':memory:');
+ try {
+  const store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),scans=new EntityScans(store,pages,knowledge,new AIEnrichments(store,pages));
+  let page=pages.create('default',{title:'Synthetic story'});
+  page=pages.update('default',page.id,{...page,blocks:[{id:'b',type:'paragraph',checked:false,content:[{text:'In the novel, Mira meets Sora. The account also mentions a contested figure.'}]}]});
+  const prefs={model:'gpt-5-mini',reasoningEffort:'low'};
+  const scan=scans.save('default',page,JSON.stringify({suggestions:[suggestion('Mira',[],{type:'person',evidence:'Mira',referentStatus:'fictional'}),suggestion('Sora',[],{type:'person',evidence:'Sora'})]}),prefs);
+  assert.deepEqual(scan.suggestions.map(s=>s.referentStatus),['fictional','unspecified']);
+  const result=scans.review('default',page.id,{scanId:scan.id,suggestionIds:scan.suggestions.map(s=>s.id),revision:page.revision,decision:'accepted'});
+  assert.equal(result.entities.find(e=>e.name==='Mira').referentStatus,'fictional');
+  assert.equal(result.entities.find(e=>e.name==='Sora').referentStatus,'unspecified');
+  assert.throws(()=>scans.save('default',result.page,JSON.stringify({suggestions:[suggestion('contested figure',[],{type:'person',evidence:'contested figure',referentStatus:'false'})]}),prefs));
+ } finally {db.close();}
+});
+
+test('narrative continuation collisions require qualified identity while repeated explicit saved IDs deduplicate',()=>{
+ const db=openDatabase(':memory:');
+ try {
+  const store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),scans=new EntityScans(store,pages,knowledge,new AIEnrichments(store,pages));
+  let page=pages.create('default',{title:'Synthetic adaptations'});
+  const names=[...Array.from({length:24},(_,i)=>'Agent'+i),'Merlin','Next'];
+  page=pages.update('default',page.id,{...page,blocks:[{id:'b',type:'paragraph',checked:false,content:[{text:names.join(' met ')+' then Merlin in another adaptation.'}]}]});
+  const prefs={model:'gpt-5-mini',reasoningEffort:'low'};
+  const proposed=name=>suggestion(name,[],{type:'person',referentStatus:'fictional'});
+  const first=scans.save('default',page,JSON.stringify({suggestions:names.map(proposed)}),prefs);
+  assert.ok(first.continuation);
+  const previous=scans.continuation('default',page,first.id,first.continuation.token);
+  assert.throws(()=>scans.save('default',page,JSON.stringify({suggestions:[proposed('Merlin')]}),prefs,true,previous),/Narrative identity cannot be established/);
+  const saved=knowledge.create('default',{name:'Merlin',type:'person',referentStatus:'fictional',subtypes:['person:fictional-character']});
+  const same={...proposed('Merlin'),existingId:saved.id};
+  const explicit=scans.save('default',page,JSON.stringify({suggestions:[same,same]}),prefs,false);
+  assert.equal(explicit.suggestions.length,1);assert.equal(explicit.suggestions[0].existingId,saved.id);
+ } finally {db.close();}
+});

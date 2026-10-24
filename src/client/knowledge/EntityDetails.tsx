@@ -1,3 +1,4 @@
+import {ReferentStatusPicker} from './ReferentStatusPicker';
 import {SuccessNotice,useSuccessNotice} from '../components/SuccessNotice';
 import {EntityReferencePicker} from './EntityReferencePicker';
 import {clearPropertyDraft,getPropertyDraft,setPropertyDraft,subscribePropertyDrafts,propertyDraftSignature,runPropertyMutation,beginPropertySave,endPropertySave,getAdvancedPropertySelection,setAdvancedPropertySelection,type EntityPropertyDraft} from './entity-property-drafts';
@@ -29,7 +30,7 @@ export function EntityConnections({items, entities, onOpen, empty}: {items: Enti
 export function EntityDetails({vaultId, entity, schema, onSave, idPrefix = "entity"}: {idPrefix?: string; vaultId: string; schema: EntitySchema; entity: EntityDetail; onSave: (input: Parameters<typeof api.updateEntity>[2]) => Promise<EntityDetail>}) {
   const draft = useSyncExternalStore(subscribeEntityDrafts, () => getEntityDraft(vaultId, entity.id));
   const server = entityDraftValues(entity), values = mergeEntityDraft(draft, server);
-  const {name, type, description, subtypes, domainIds, aliases, mentionCase} = values;
+  const {referentStatus, name, type, description, subtypes, domainIds, aliases, mentionCase} = values;
   const [status, setStatus] = useState(''), [busy, setBusy] = useState(false);
   const [classificationImpact,setClassificationImpact]=useState<Awaited<ReturnType<typeof api.entityClassificationImpact>>>();
   const classificationChanged=type!==entity.type||JSON.stringify([...subtypes].sort())!==JSON.stringify([...entity.subtypes].sort());
@@ -49,7 +50,7 @@ export function EntityDetails({vaultId, entity, schema, onSave, idPrefix = "enti
       let impact=classificationImpact;
       if(classificationChanged&&!retainLegacy){impact=await api.entityClassificationImpact(vaultId,entity.id,{type,subtypes});if(mounted.current)setClassificationImpact(impact);if(impact.requiresConfirmation||impact.structuralBlockers.length){setStatus(uiText('Review classification impact before saving.'));return;}}
       if(retainLegacy&&(!impact||impact.structuralBlockers.length))return;
-      await onSave({...(retainLegacy?{classification_mode:'retain_legacy' as const,impact_fingerprint:impact!.fingerprint}:{}),name: name.trim(), aliases: type === 'source' ? [] : parseAliases(aliases), mentionCase, type, subtypes, domainIds: type === 'concept' ? domainIds : [], description});
+      await onSave({...(retainLegacy?{classification_mode:'retain_legacy' as const,impact_fingerprint:impact!.fingerprint}:{}),referentStatus,name: name.trim(), aliases: type === 'source' ? [] : parseAliases(aliases), mentionCase, type, subtypes, domainIds: type === 'concept' ? domainIds : [], description});
       const cleared = submitted && clearEntityDraft(vaultId, entity.id, submitted);
       if (mounted.current && cleared) setStatus('Saved');
     } catch(error) {if(mounted.current){setStatus(error instanceof Error?error.message:uiText('Could not save. Draft retained.'));setClassificationImpact(undefined);}}
@@ -71,6 +72,8 @@ export function EntityDetails({vaultId, entity, schema, onSave, idPrefix = "enti
       <h4 className="entity-form-heading"><Icon name="semantic"/>{uiText("Classification")}</h4>
       <label>{uiText("Type")}<Select aria-label={uiText("Entity type")} value={type} disabled={busy} onChange={e=>change({type:e.target.value as EntityType,subtypes:[],domainIds:[]})}>{entityTypes.map(t=><option key={t} value={t} disabled={t!==entity.type&&(t==='source'||entity.type==='source')}>{uiText(entityLabels[t])}</option>)}</Select></label>
       <SubtypePicker type={type} value={subtypes} subtypes={schema.subtypes} onChange={value=>change({subtypes:value})} disabled={busy} compact/>
+      <ReferentStatusPicker value={referentStatus} onChange={referentStatus=>change({referentStatus})} disabled={busy}/>
+      {entity.type==='concept'&&!!entity.domainIds?.length&&type!=='concept'&&<p role="alert">{uiText('Review and remove disciplines on the Concept before changing its type. Existing records and domains are preserved.')}</p>}
       {type==='concept'&&<DomainPicker value={domainIds} onChange={domainIds=>change({domainIds})} disabled={busy}/>}
     </div>
     <div className="entity-form-group">

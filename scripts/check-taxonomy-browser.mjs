@@ -1,0 +1,41 @@
+// Real UI and backend with disposable synthetic entities; no provider calls.
+import assert from 'node:assert/strict';
+import {once} from 'node:events';
+import {resolve} from 'node:path';
+import {mkdir,writeFile} from 'node:fs/promises';
+import {lifecycleFixture} from '../test/helpers/entity-lifecycle-fixture.mjs';
+import {createApp} from '../src/server/http.ts';
+import {entityTypes} from '../src/shared/domain.ts';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE??'playwright-core');
+const artifacts=process.env.NOEMA_SCREENSHOTS??'/tmp/noema-taxonomy-evidence';await mkdir(artifacts,{recursive:true});
+const f=await lifecycleFixture(),errors=[],external=[];
+const thing=f.knowledge.create('default',{name:'Synthetic grilled alumahan',type:'thing',subtypes:['thing:food','thing:dish']});
+const work=f.knowledge.create('default',{name:'Synthetic recipe book',type:'creativework',subtypes:['creativework:book']});
+f.knowledge.property('default',thing.id,{name:'originating work',target_id:work.id});
+const server=createApp(f.store,resolve('dist/client'));server.listen(0,'127.0.0.1');await once(server,'listening');
+let browser,page;
+try {
+ browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH??'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+ page=await browser.newPage({viewport:{width:1440,height:1000}});page.setDefaultTimeout(10000);
+ page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(!r.url().startsWith('http://127.0.0.1:')&&!r.url().startsWith('data:'))external.push(r.url());});
+ const open=async id=>{await page.goto('http://127.0.0.1:'+server.address().port+'/?vault=default&view=entity&subject='+id);await page.locator('.entity-home h1').waitFor();};
+ await open(thing.id);assert.match(await page.locator('.eh-classification').innerText(),/Thing · Unspecified · Food · Dish/);
+ await page.getByRole('tab',{name:'Edit',exact:true}).click();
+ const type=page.locator('select[aria-label="Entity type"]');assert.equal(await type.locator('option').count(),entityTypes.length);
+ assert.equal(await page.locator('select[aria-label="Referent status"] option').count(),6);
+ await page.getByRole('combobox',{name:'Referent status',exact:true}).click();await page.getByRole('option',{name:'Hypothetical',exact:true}).click();
+ await page.getByRole('button',{name:'Save entity details',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('.eh-classification')?.textContent.includes('Hypothetical'));
+ assert.equal(f.knowledge.require('default',thing.id).referentStatus,'hypothetical');
+ await page.getByRole('button',{name:'Setting',exact:true}).click();
+ await page.getByRole('button',{name:'Entity reference',exact:true}).click();
+ const reference=page.locator('.entity-reference-picker');await reference.waitFor();
+ assert.ok(await reference.getByRole('combobox').count());
+ await page.screenshot({path:resolve(artifacts,'thing-status-reference.png'),fullPage:true});
+ await open(f.person.id);await page.getByRole('tab',{name:'Edit',exact:true}).click();
+ assert.equal(await page.locator('select[aria-label="Referent status"]').inputValue(),'unspecified');
+ assert.equal(f.knowledge.detail('default',thing.id).properties.find(p=>p.name==='originating work').target_id,work.id);
+ assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
+ await writeFile(resolve(artifacts,'result.json'),JSON.stringify({passed:['Thing homepage and multiple subtypes','ten type selector','six referent statuses','status edit persisted','typed setting reference control','legacy Person unspecified','originating work reference intact'],errors,external},null,2));
+ console.log('Taxonomy browser checks passed: '+artifacts);
+} finally {if(browser)await browser.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));f.close();}

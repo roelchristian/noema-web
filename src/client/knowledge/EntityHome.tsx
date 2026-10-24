@@ -12,7 +12,7 @@ import {api} from '../api';
 import {t as uiText} from '../i18n';
 import {Icon} from '../components/Icon';
 import {Mention} from '../components/Mention';
-import {entityLabels, type Entity, type EntityDetail, type PageSummary, type SourceReference} from '../../shared/domain';
+import {referentStatusLabels, entityLabels, type Entity, type EntityDetail, type PageSummary, type SourceReference} from '../../shared/domain';
 import {inheritedPropertyNames} from '../../shared/entity-schema';
 import {domainBreadcrumb} from './DomainPicker';
 import {hasEntityDraft} from './entity-drafts';
@@ -137,7 +137,7 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
     {!entity ? <p role={error ? 'alert' : 'status'}>{error || uiText('Loading entity…')}{error && <button type="button" className="eh-text-action" onClick={()=>setEntityAttempt(value=>value+1)}>{uiText('Retry')}</button>}</p> : <>
       <header className="eh-header">
         {onClose && <button type="button" className="eh-breadcrumb" onClick={onClose}>{uiText('Knowledge entities')}</button>}
-        <div className="eh-classification"><Icon name={entity.type} entity={entity}/><span>{uiText(entityLabels[entity.type])}{subtypes.length ? ' · ' + subtypes.join(' · ') : ''}</span></div>
+        <div className="eh-classification"><Icon name={entity.type} entity={entity}/><span>{uiText(entityLabels[entity.type])} · {uiText(referentStatusLabels[entity.referentStatus??'unspecified'])}{subtypes.length ? ' · ' + subtypes.join(' · ') : ''}</span></div>
         <h1>{entity.name}</h1>
         {!!entity.domainIds?.length && <p className="eh-domains">{entity.domainIds.map(domainBreadcrumb).join(' · ')}</p>}
         <div className="eh-counts"><button type="button" onClick={() => switchTab('mentions')}>{entity.previewLimited ? uiText('Pages & mentions') : <>{pageCount} {uiText(pageCount === 1 ? 'page' : 'pages')}</>}</button><button type="button" onClick={() => switchTab('connections')}>{entity.previewLimited ? uiText('Connections') : <>{connectionCount} {uiText(connectionCount === 1 ? 'connection' : 'connections')}</>}</button></div>

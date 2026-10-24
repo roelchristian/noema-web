@@ -4,7 +4,7 @@ export interface EntitySuggestion extends EntityInput {
   linkedOccurrences?:EvidenceAnchor[]; id: string; evidenceAnchor?: EvidenceAnchor; evidence: string; reason: string; existingId: string | null;
   status: 'pending' | 'accepted' | 'rejected';
 }
-export interface EntitySuggestionEdit { saveAliases?:boolean; additionalOccurrences?:EvidenceAnchor[]; approveSubtypeIds?:string[]; domainIds?:string[]; id: string; name: string; aliases?:string[]; type: EntityType; subtypes: string[]; existingId: string | null }
+export interface EntitySuggestionEdit { referentStatus?: import('./domain.js').ReferentStatus; saveAliases?:boolean; additionalOccurrences?:EvidenceAnchor[]; approveSubtypeIds?:string[]; domainIds?:string[]; id: string; name: string; aliases?:string[]; type: EntityType; subtypes: string[]; existingId: string | null }
 export interface SubtypeSuggestion { id: string; name: string; type: EntityType; status: 'pending' | 'accepted' | 'rejected'; resolvedId?: string }
 export interface EvidenceAnchor {blockId:string; row?:number; col?:number; start:number; end:number}
 export interface EntityTextRun extends EvidenceAnchor {runId:string; text:string}
@@ -12,7 +12,7 @@ export const ENTITY_SCAN_BATCH_SIZE=25;
 export interface EntityScanContinuation {
   token:string;
   cursor:EvidenceAnchor;
-  excluded:Pick<EntitySuggestion,'name'|'type'|'aliases'|'existingId'>[];
+  excluded:Pick<EntitySuggestion,'name'|'type'|'aliases'|'existingId'|'referentStatus'|'subtypes'>[];
 }
 export interface EntityScan { reviewExclusions?:EvidenceAnchor[]; contextKey?:string; continuation?:EntityScanContinuation; batchCount?:number; subtypeSuggestions?: SubtypeSuggestion[]; id: string; revision: number; suggestions: EntitySuggestion[] }
 export interface EntityReview { schema?: import('./entity-schema.js').EntitySchema; page: Page; scan: EntityScan; entities: Entity[] }

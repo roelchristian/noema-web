@@ -66,7 +66,7 @@ test('AI scans use formatting-free runs and acceptance links styled evidence wit
     const modelInput=JSON.parse(scans.input('default',page));
     assert.deepEqual(modelInput.untrusted_note.bodyTextRuns.map(run=>run.text), ['Before Donald Trump after']);
     assert.equal(modelInput.schema.propertyDefinitions,undefined,'identity discovery excludes full typed metadata to preserve its existing input budget');
-    assert.equal(modelInput.schema.subtypes.length,69);
+    assert.equal(modelInput.schema.subtypes.length,knowledge.schema('default').subtypes.length);
     const candidate = (name, existingId = null) => ({name, type: 'person', subtypes: [], description: 'Mentioned', evidence: name, reason: 'Named person', existingId});
     const scan = scans.save('default', page, JSON.stringify({suggestions: [candidate('Donald Trump', existing.id), candidate('Ivanka Trump')]}), {model: 'gpt-5-mini', reasoningEffort: 'low'});
     assert.equal(scan.suggestions.length, 1);

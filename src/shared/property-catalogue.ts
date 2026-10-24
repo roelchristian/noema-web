@@ -81,8 +81,8 @@ const subtype:Record<string,Field[]>={
  'organization:nonprofit':[text('mission','Mission'),date('established','Established'),ref('service region','Service Region',place,true),ref('founder','Founder',person,true)],
  'person:fictional-character':[ref('portrayed by','Portrayed By',person,true),ref('character role','Character Role',concept,true,['concept:role'])],
  'organism:fictional-taxon':[text('scientific name','Scientific Name'),ref('parent fictional taxon','Parent Fictional Taxon',organism,false,['organism:fictional-taxon'],true)],
- 'concept:folkloric-archetype':[ref('associated tradition','Associated Tradition',['culture','concept'],true)],
- 'concept:mythological-creature':[ref('associated tradition','Associated Tradition',['culture','concept'],true)],
+ 'concept:folkloric-archetype':[ref('associated tradition','Associated Tradition',['culture','concept'])],
+ 'concept:mythological-creature':[ref('associated tradition','Associated Tradition',['culture','concept'])],
  'concept:role':[ref('role bearers','Role Bearers',person,true)],
  'thing:food':[ref('culinary tradition','Culinary Tradition',culture,true,['culture:cultural-tradition'])],
  'thing:ingredient':[ref('source organism','Source Organism',organism,true)],
@@ -126,7 +126,7 @@ function definition(type:EntityType,field:Field,index:number,subtypeId?:string):
 }
 /** Additive recommendations, not mandatory fields or replacement legacy names. */
 export const recommendedPropertyDefinitions:PropertyDefinition[]=[
- ...entityTypes.flatMap(type=>[ref('setting','Setting',['creativework','place'],true),ref('originating work','Originating Work',work,true),ref('tradition belief context','Tradition / Belief Context',['culture','concept'],true),ref('attested in','Attested In',['source','creativework'],true)].map((field,index)=>definition(type,{...field,description:'Optional authored context. Preserve distinct adaptations and source identities; never infer belief status from a name.'},1000+index))),
+ ...entityTypes.flatMap(type=>[ref('setting','Setting',['creativework','place'],true),ref('originating work','Originating Work',work,true),ref('tradition belief context','Tradition / Belief Context',['culture','concept'],true),ref('attested in','Attested In',['source','creativework'],true)].filter(field=>!main[type].some(existing=>existing.name===field.name)).map((field,index)=>definition(type,{...field,description:'Optional authored context. Preserve distinct adaptations and source identities; never infer belief status from a name.'},1000+index))),
  ...Object.entries(main).flatMap(([type,fields])=>fields.map((field,index)=>definition(type as EntityType,field,index))),
  ...Object.entries(subtype).flatMap(([id,fields])=>fields.map((field,index)=>definition(id.split(':')[0] as EntityType,field,index,id))),
 ];

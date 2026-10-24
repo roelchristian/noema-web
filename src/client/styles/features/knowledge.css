@@ -5147,3 +5147,8 @@ dialog.noema-modal.entity-review-modal { height: min(780px, calc(100dvh - 64px))
 .property-proposal h4 { margin-block: var(--space-2); }
 .property-provenance { margin-block: var(--space-1); color: var(--text-muted); font-size: 12px; }
 .property-evidence-hash { overflow-wrap: anywhere; }
+
+.scan-entity-icon.thing {
+  background: var(--thing-bg);
+  color: var(--thing-text);
+}

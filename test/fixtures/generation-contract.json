@@ -66,8 +66,8 @@
       "tools": [],
       "tool_choice": "none"
     },
-    "promptDigest": "185473f1cbba4361c5ca338d1d13abe75bcd30bd5b6d9fb4656c88235653be5e",
-    "bytes": 6903
+    "promptDigest": "462f4a27ee6031652b98dede758ee0b31758b90f90a863db44486b6c1c032a52",
+    "bytes": 8994
   },
   "entity stream": {
     "policy": {
@@ -81,8 +81,8 @@
       "tool_choice": "none",
       "stream": true
     },
-    "promptDigest": "185473f1cbba4361c5ca338d1d13abe75bcd30bd5b6d9fb4656c88235653be5e",
-    "bytes": 6903
+    "promptDigest": "462f4a27ee6031652b98dede758ee0b31758b90f90a863db44486b6c1c032a52",
+    "bytes": 8994
   },
   "explanation": {
     "policy": {
@@ -237,8 +237,8 @@
       "tools": [],
       "tool_choice": "none"
     },
-    "promptDigest": "3c89cf4b693ee1025735128ddcf0a1db08d727cbe3499887eece6003713c3ec8",
-    "bytes": 1499
+    "promptDigest": "81d53bee1bd7138bb845887b98dff02c6ab8c3656b0b05748324ad8cb2c7958c",
+    "bytes": 2127
   },
   "collection rules": {
     "policy": {

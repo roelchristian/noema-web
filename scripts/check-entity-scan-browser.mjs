@@ -20,7 +20,7 @@ let note=pages.create('default',{title:'Synthetic entity curation'});
 note=pages.update('default',note.id,{...note,blocks:[{id:'intro',type:'paragraph',content:[{text:'Every finite-dimensional vector space admits a basis over its underlying field. This field supports multiplicative inverses.'}]},{id:'people',type:'paragraph',content:[{text:'Luma explored the observatory. Luma recorded the results. Luma returned home.'}]},{id:'table',type:'table',content:[],rows:[[[{text:'Researcher'}],[{text:'Discovery'}]],[[{text:'Sora'}],[{text:'A new observation'}]]]}]});
 const input=JSON.parse(scans.input('default',note)),runs=input.untrusted_note.bodyTextRuns;
 const candidate=(name,type,evidence,run,offset,extra={})=>({name,type,evidence,runId:run.runId,evidenceStart:offset,reason:'The surrounding passage establishes the proposed identity. Review before linking.',description:'Synthetic example for review.',subtypes:[],aliases:[],existingId:null,...extra});
-const scan=scans.save('default',note,JSON.stringify({suggestions:[candidate('Field (algebra)','concept','field',runs[0],73),candidate('Luma','person','Luma',runs[1],0,{subtypes:['Observatory researcher']}),candidate('Sora','person','Sora',runs.find(run=>run.text==='Sora'),0)]}),{model:'gpt-5-mini',reasoningEffort:'low'});
+const scan=scans.save('default',note,JSON.stringify({suggestions:[candidate('Field (algebra)','concept','field',runs[0],73),candidate('Luma','person','Luma',runs[1],0,{subtypes:['Observatory researcher'],referentStatus:'hypothetical'}),candidate('Sora','person','Sora',runs.find(run=>run.text==='Sora'),0)]}),{model:'gpt-5-mini',reasoningEffort:'low'});
 assert.equal(scan.suggestions.length,3);
 const server=createApp(store,resolve('dist/client'));server.listen(0,'127.0.0.1');await once(server,'listening');let browser;const errors=[];
 try {
@@ -48,6 +48,7 @@ try {
  await dialog.getByRole('button',{name:'Accept: Field (algebra)',exact:true}).click();
  await dialog.getByText('Field (algebra) accepted',{exact:false}).first().waitFor();
  await dialog.getByRole('button',{name:'Luma · Pending',exact:true}).click();
+ assert.match(await dialog.locator('.entity-review-table-wrap').innerText(),/Hypothetical/);
  await dialog.getByRole('button',{name:'Edit Luma',exact:true}).click();
  await dialog.getByRole('checkbox',{name:'Accept “Observatory researcher” with this entity'}).check();
  await dialog.locator('.entity-review-occurrence-options > summary').click();

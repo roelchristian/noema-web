@@ -30,7 +30,7 @@ export class EntityDiscoveryService {
    * change the target catalogue while an old proposal is being accepted. Locked pages are excluded. */
   private fingerprint(vault:string,id:string) {
     this.require(vault,id);
-    return hash({entities:this.store.all('SELECT id,name,type,description,aliases,updated_at,archived_at,inactive FROM entities WHERE vault_id=? ORDER BY id',vault),
+    return hash({identityReferences:this.store.all("SELECT p.entity_id,p.id,p.name,p.target_id FROM properties p JOIN entities e ON e.id=p.entity_id WHERE e.vault_id=? AND p.name IN ('setting','originating work','tradition belief context','attested in') ORDER BY p.entity_id,p.id",vault),entities:this.store.all('SELECT id,name,type,description,aliases,updated_at,archived_at,inactive FROM entities WHERE vault_id=? ORDER BY id',vault),
       pages:this.store.all(`SELECT p.id,p.revision,p.updated_at,p.deleted_at,EXISTS(SELECT 1 FROM page_edit_locks l WHERE l.page_id=p.id) AS locked FROM pages p WHERE p.vault_id=? ORDER BY p.id`,vault),
       overview:this.store.get('SELECT content,revision FROM entity_overviews WHERE entity_id=?',id),
       associations:this.store.all('SELECT page_id,pinned,annotation FROM entity_page_associations WHERE entity_id=? ORDER BY page_id',id),
@@ -43,7 +43,8 @@ export class EntityDiscoveryService {
   context(vault:string,id:string) {
     const entity=this.require(vault,id),detail=this.knowledge.detail(vault,id);
     const names=new Map(this.knowledge.list(vault).map(e=>[e.id,entityMentionName(e)]));
-    const eligible=this.store.all<{id:string;name:string;type:string;description:string}>("SELECT id,name,type,description FROM entities WHERE vault_id=? AND id<>? AND archived_at IS NULL AND inactive=0 ORDER BY name COLLATE NOCASE,id LIMIT 80",vault,id);
+    const eligible=this.knowledge.list(vault).filter(target=>target.id!==id&&!target.archived_at&&!target.inactive).slice(0,80);
+    const identityContext=(target:import('../../shared/domain.js').Entity)=>({subtypes:target.subtypes,referentStatus:target.referentStatus??'unspecified',contextReferences:this.store.all<{name:string;target_id:string}>("SELECT name,target_id FROM properties WHERE entity_id=? AND target_id IS NOT NULL AND name IN ('setting','originating work','tradition belief context','attested in') ORDER BY name,target_id LIMIT 30",target.id)});
     const linked=new Set((detail.linkedPages??[]).map(page=>page.id));
     const pages=this.store.all<PageInput>(`SELECT p.id,p.title,p.revision,p.blocks,p.updated_at FROM pages p WHERE p.vault_id=? AND p.deleted_at IS NULL AND p.archived_at IS NULL AND NOT EXISTS(SELECT 1 FROM page_edit_locks l WHERE l.page_id=p.id)
       ORDER BY EXISTS(SELECT 1 FROM entity_page_associations a WHERE a.entity_id=? AND a.page_id=p.id) DESC,
@@ -55,8 +56,8 @@ export class EntityDiscoveryService {
     const sources=entitySourceEvidence(this.store,vault,id,{limit:12});
     for(const group of sources.groups)for(const passage of group.passages)if(!passage.stale&&!this.knowledge.find(vault,group.sourceId)?.archived_at)evidence.push({id:`source:${hash(passage.id).slice(0,24)}`,kind:'source',title:group.sourceName,excerpt:passage.reference.excerpt.slice(0,2000),reference:passage.reference});
     const pageCandidates=pages.filter(page=>!linked.has(page.id)&&evidence.some(item=>item.pageId===page.id)).map(page=>({id:page.id,title:page.title}));
-    return {entity:{id:entity.id,name:entity.name,type:entity.type,description:entity.description.slice(0,2000),overview:(detail.overview?.content??'').slice(0,12000)},overviewRevision:detail.overview?.revision??0,
-      targets:eligible.map(target=>({...target,description:target.description.slice(0,250)})),existingRelationships:detail.relationships.slice(0,200),
+    return {entity:{...identityContext(entity),id:entity.id,name:entity.name,type:entity.type,description:entity.description.slice(0,2000),overview:(detail.overview?.content??'').slice(0,12000)},overviewRevision:detail.overview?.revision??0,
+      targets:eligible.map(target=>({id:target.id,name:target.name,type:target.type,...identityContext(target),description:target.description.slice(0,250)})),existingRelationships:detail.relationships.slice(0,200),
       pageCandidates,evidence};
   }
   private decode(vault:string,entityId:string,row:Saved):EntityDiscovery {

@@ -16,7 +16,7 @@ type Props={sourceId?:string;canonicalVersion?:string;vaultId:string;fileId:stri
 const active=(status:string)=>status==='queued'||status==='running';
 const label=(value:string)=>value.replaceAll('_',' ');
 const depthLabels={light:'Light Cleanup',balanced:'Balanced Reconstruction',deep:'Deep Restoration'};
-const depthPasses={light:'1 model request per excerpt',balanced:'Exactly 2 model requests per excerpt',deep:'2–3 model requests per excerpt; a third requires a recorded difficulty'};
+const depthPasses={light:'1 model request per excerpt',balanced:'Exactly 2 model requests per excerpt, plus document synthesis',deep:'2–3 model requests per excerpt, plus document synthesis; a third requires a recorded difficulty'};
 const excerptLabel=(status:string)=>({pending:'Not started',running:'Processing',completed:'Completed',failed:'Failed',interrupted:'Interrupted'}[status]??label(status));
 type EvidenceCapabilities={originalPages:boolean;ocr:boolean;externalImages:boolean;reason:string};
 function validEvidenceCapabilities(value:unknown):value is EvidenceCapabilities {
@@ -81,9 +81,13 @@ function ReprocessingProgress({revision}:{revision:SourceReprocessingRevision}){
   const duration=seconds===null?'':seconds<60?`${seconds}s`:`${Math.floor(seconds/60)}m ${seconds%60}s`;
   const estimate=status==='queued'?uiText("Waiting to start"):remaining<=0?uiText("Finishing up…"):seconds===null?uiText("Time estimate available after a successful excerpt in this session."):uiText("Est. time remaining: ~{value0}",{value0:duration});
   const failed=partial(revision);
+  const stageLabels={reconstructing:'Reconstructing',understanding:'Understanding document',verifying:'Verifying',auditing:'Checking document consistency'};
+  const stage=revision.pipelineVersion===2?report.stage:undefined;
   return <div className="reprocessing-progress" data-status={status==='failed'?'warning':undefined}>
     <div className="reprocessing-progress-heading" role="status">{active(status)&&<span className="scan-spinner" aria-hidden="true"/>}<strong>{status==='queued'?uiText("Queued for reprocessing"):status==='running'?uiText("Reprocessing source…"):failed?uiText("Partial revision"):status==='failed'?uiText("Processing failed"):status==='interrupted'?uiText("Processing interrupted"):uiText("Processing complete")}</strong><span>{report.chunksCompleted} / {report.chunksTotal}{" " + uiText("excerpts completed")}</span></div>
     {revision.pipelineVersion===2&&revision.configuration&&<p className="reprocessing-stage-summary">{uiText(depthLabels[revision.configuration.depth])} · {uiText(revision.configuration.reviewPolicy==='verified'?'Verified changes only':'Review everything')} · {uiText(depthPasses[revision.configuration.depth])}</p>}
+    {stage&&<div className="reprocessing-document-stage" data-reprocessing-stage={stage} role="status"><strong>{uiText(stageLabels[stage])}</strong>{report.stageProgress&&<span>{report.stageProgress.completed} / {report.stageProgress.total}</span>}</div>}
+    {report.coverage&&report.coverage.incompleteChunkIndexes.length>0&&<p className="reprocessing-warning" data-reprocessing-coverage="incomplete">{uiText("Document understanding has incomplete first-pass coverage")}: {report.coverage.firstPassCompleted} / {report.coverage.totalChunks}. {uiText("Unfinished excerpts remain visible for recovery and review.")}</p>}
     {report.evidencePreparation&&<p role="status">{uiText(report.evidencePreparation.state==='collecting'?"Preparing original-source evidence locally":"Original-source evidence prepared")}: {report.evidencePreparation.preparedChunks} / {report.evidencePreparation.totalChunks}</p>}
     <progress aria-label={uiText("Reprocessing progress")} max={Math.max(1,report.chunksTotal)} value={report.chunksCompleted}/>
     {active(status)&&<small>{estimate}</small>}

@@ -1,6 +1,7 @@
 import type {DatabaseSync} from 'node:sqlite';
 
 export function setupSourceReprocessingCheckpointSchema(db:DatabaseSync){
+db.exec(`CREATE TABLE IF NOT EXISTS source_reprocessing_synthesis (revision_id TEXT PRIMARY KEY REFERENCES source_reprocessing(id) ON DELETE CASCADE,payload TEXT NOT NULL CHECK(json_valid(payload)));`);
 // Additive V2 checkpoints reference revisions; canonical source coordinates remain untouched.
 db.exec(`CREATE TABLE IF NOT EXISTS source_reprocessing_chunks (
  revision_id TEXT NOT NULL REFERENCES source_reprocessing(id) ON DELETE CASCADE,

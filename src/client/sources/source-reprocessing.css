@@ -119,3 +119,6 @@
 .reprocessing-evidence-options legend{padding:0 5px;font-weight:600}
 .reprocessing-evidence-options label{display:flex;align-items:baseline;gap:8px}
 .reprocessing-evidence-options p{font-size:12px;color:var(--text-muted);margin:6px 0 12px;overflow-wrap:anywhere}
+
+.reprocessing-document-stage { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin: 8px 0; overflow-wrap: anywhere; }
+.reprocessing-document-stage span { color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }

@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "description": "Authored synthetic scholarly passages; no user documents or provider outputs.",
+  "cases": [
+    {
+      "id": "separated-extraction-defects",
+      "canonical": "CHAPTER I\nThe ﬁrst reading preserves this long intervening clause without revision; the second oﬃce remains distinct.\n",
+      "corrections": [
+        {
+          "before": "ﬁrst",
+          "after": "first"
+        },
+        {
+          "before": "oﬃce",
+          "after": "office"
+        }
+      ]
+    },
+    {
+      "id": "unicode-and-quotation-preservation",
+      "canonical": "CHAPTER II\n𝔄 and é remain exact. The quotation ‘μῆνιν ἄειδε’ must stay unchanged; this ﬁgure is reconstructed.\n",
+      "corrections": [
+        {
+          "before": "ﬁgure",
+          "after": "figure"
+        }
+      ],
+      "preserve": [
+        "𝔄",
+        "é",
+        "‘μῆνιν ἄειδε’"
+      ]
+    },
+    {
+      "id": "scholarly-apparatus-and-mathematics",
+      "canonical": "<!-- Page 3 -->\nCHAPTER III\nFor $E=mc^2$ and \\frac{α}{β}, this oﬃce cites the note[^q].\n\n[^q]: The edition reads ‘ἀρχή’; retain it.\n",
+      "corrections": [
+        {
+          "before": "oﬃce",
+          "after": "office"
+        }
+      ],
+      "preserve": [
+        "$E=mc^2$",
+        "\\frac{α}{β}",
+        "[^q]",
+        "‘ἀρχή’",
+        "<!-- Page 3 -->"
+      ]
+    },
+    {
+      "id": "competing-readings-stay-unresolved",
+      "canonical": "CHAPTER IV\nThe damaged Latin reads ar? and admits ars or ara. No printed-page evidence is available.\n",
+      "corrections": [],
+      "preserve": [
+        "ar?",
+        "ars or ara"
+      ]
+    }
+  ]
+}

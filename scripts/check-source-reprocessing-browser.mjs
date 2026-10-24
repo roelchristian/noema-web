@@ -10,6 +10,7 @@ fixture.pipelineVersion=2;fixture.configuration={depth:'balanced',reviewPolicy:'
 fixture.status='failed';fixture.report.chunksTotal=3;fixture.report.chunksCompleted=1;fixture.report.error='Unsupported reasoning for the selected model.';fixture.report.errorCode='provider_http_400';
 fixture.report.excerpts=[{index:0,startPage:1,endPage:2,status:'completed',attempts:1,durationMs:1800},{index:1,startPage:3,endPage:3,status:'failed',attempts:1,durationMs:500,error:'Unsupported reasoning',errorCode:'provider_http_400'},{index:2,startPage:4,endPage:4,status:'pending',attempts:0,durationMs:0}];
 fixture.report.excerpts[0].passesCompleted=2;fixture.report.excerpts[0].requiredPassCount=2;fixture.report.excerpts[1].passesCompleted=1;fixture.report.excerpts[1].requiredPassCount=2;
+fixture.report.stage='verifying';fixture.report.stageProgress={completed:1,total:3};fixture.report.coverage={firstPassCompleted:2,totalChunks:3,incompleteChunkIndexes:[1]};
 fixture.report.model='gpt-5-mini';fixture.report.reasoningEffort='low';fixture.report.usageIncomplete=true;fixture.report.excerpts[0].history=[{model:'gpt-5-mini',reasoningEffort:'medium',startedAt:'2026-10-23T10:00:00Z',durationMs:1800}];
 fixture.patches=fixture.patches.slice(0,2).map((patch,index)=>({...patch,id:'patch-'+index,decision:'pending'}));
 fixture.reprocessed=structuredClone(fixture.original);
@@ -45,6 +46,9 @@ try {
   await page.getByText('Check the model, supported reasoning and provider access in Settings → Intelligence before retrying. Completed suggestions remain available for review.',{exact:true}).waitFor();
   assert.equal(await page.getByRole('combobox',{name:'Reading version'}).locator('option').count(),2);
   assert.match(await page.locator('.reprocessing-stage-summary').innerText(),/Balanced Reconstruction.*Exactly 2 model requests/s);
+  assert.equal(await page.locator('[data-reprocessing-stage]').getAttribute('data-reprocessing-stage'),'verifying');
+  assert.match(await page.locator('[data-reprocessing-stage]').innerText(),/Verifying.*1 \/ 3/s);
+  assert.match(await page.locator('[data-reprocessing-coverage]').innerText(),/incomplete first-pass coverage: 2 \/ 3/);
   assert.equal(await page.locator('.reprocessing-ledger').getAttribute('open'),'');
   assert.match(await page.getByRole('list',{name:'Excerpt processing ledger'}).innerText(),/Excerpt 1[\s\S]*Completed[\s\S]*Excerpt 2[\s\S]*Failed[\s\S]*Unsupported reasoning[\s\S]*Excerpt 3[\s\S]*Not started/);
   assert.match(await page.getByRole('list',{name:'Excerpt processing ledger'}).innerText(),/Last attempt: GPT-5 Mini.*medium reasoning/);

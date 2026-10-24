@@ -59,3 +59,21 @@ with Undo/Redo. Configure `PLAYWRIGHT_MODULE` and `CHROMIUM_PATH` as for the oth
 browser checks. The selection browser script covers repeated/interrupted flows,
 keyboard and touch, cross-block/table selections, and speech-enabled 320px layout.
 All fixtures use synthetic data; no real vault or paid model call is needed.
+
+## Validation recorded 2026-10-24
+
+- Base/final upstream check: `origin/main` is `9b6fecc` (including #95–#97).
+- Build, stylesheet contracts, application and test types: passed.
+- Full suite: 1,335 tests, 1,328 passed, zero failed, seven native/model skips.
+- All seven `test:browser` scripts passed. The run resumed at entity scan after
+  correcting a stale Knowledge button selector; the preceding four suites passed.
+- Page-toolbar synthetic fixture and targeted citation/speech checks passed.
+- Design: 12 cases passed, minimum status text contrast 5.59, zero page errors.
+  Its console reported duplicate `default/welcome` keys; no unrelated key behavior
+  was changed in this work.
+- Independent review completed, including live lock/menu changes and citation
+  endpoint guards. No remaining actionable source finding.
+
+Linux Chromium was used. Native macOS extraction/keychain and live Kokoro model
+execution were skipped; no real vault, paid request, credentials, or external
+sharing was used. Commits remain local, with no PR, push, merge, or deployment.

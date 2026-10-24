@@ -219,7 +219,7 @@ export class SourceReprocessing {
   if(r.pipelineVersion===2){
    try{
     guard();if(!r.report.metadata)this.reconcileMetadata(row.vault_id,r,'canonical');
-    await executeReconstruction({store:this.store,revision:r,intelligence:this.intelligence,activity:this.activity,evidenceService:this.evidence,vault:row.vault_id,signal:controller.signal,guard,save:()=>this.save(row.vault_id,r),range:(start,end)=>this.range(r,start,end),materialize:()=>materializeSourceRevision(r)});
+    await executeReconstruction({store:this.store,revision:r,intelligence:this.intelligence,activity:this.activity,evidenceService:this.evidence,activityObjectId:this.files.require(row.vault_id,r.fileId).entity_id??r.fileId,vault:row.vault_id,signal:controller.signal,guard,save:()=>this.save(row.vault_id,r),range:(start,end)=>this.range(r,start,end),materialize:()=>materializeSourceRevision(r)});
     guard();if(r.reprocessed.text!==r.original.text){this.save(row.vault_id,r);this.reconcileMetadata(row.vault_id,r,'editorial');}
     r.status='completed';
    }

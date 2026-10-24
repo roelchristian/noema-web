@@ -280,3 +280,9 @@ test('start waits for source capabilities so available local OCR is not skipped 
  assert.equal(document.querySelector('[aria-label="Use local OCR evidence"]').checked,true);assert.equal(env.button('Start reprocessing').disabled,false);
  await env.click(env.button('Start reprocessing'));assert.equal(env.requests.find(entry=>entry.method==='POST').body.configuration.evidence.ocr,true);
 });
+
+
+test('local evidence preparation has visible progress before model excerpts complete',async t=>{
+ const r=fixture();r.status='running';r.report.chunksCompleted=0;r.report.evidencePreparation={state:'collecting',preparedChunks:2,totalChunks:r.report.chunksTotal};
+ await mount(t,{initial:r});assert.match(document.body.textContent,/Preparing original-source evidence locally: 2 \/ /);
+});

@@ -19,7 +19,7 @@ function harness(t,{depth='balanced',text='A short synthetic scholarly passage.'
  let locked=false;
  const intelligence={editorialImageCapability:()=>true,editorialSelection:()=>selection,reeditSource:async(prompt,_instructions,signal,observe,_shape,images,consent)=>{const request=JSON.parse(prompt);calls.push(request);observe(20).usage({input_tokens:10,output_tokens:3,output_tokens_details:{reasoning_tokens:1},input_tokens_details:{cached_tokens:2}});return provider(request,{signal,images,consent,lock:()=>{locked=true;}});}};
  const activity={start:()=>1,request:()=>({}),finish:()=>{}};
- function service(){const result=new SourceReprocessing(store,{require:()=>file},intelligence,()=>{if(locked)throw Error('Vault is locked.');},activity,evidenceService);result.snapshot=()=>structuredClone(original);result.baseHash=()=>{if(locked)throw Error('Vault is locked.');return sourceRevisionBaseHash(original);};return result;}
+ function service(){const result=new SourceReprocessing(store,{require:()=>file},intelligence,()=>{if(locked)throw Error('Vault is locked.');},activity,undefined,evidenceService);result.snapshot=()=>structuredClone(original);result.baseHash=()=>{if(locked)throw Error('Vault is locked.');return sourceRevisionBaseHash(original);};return result;}
  let worker=service();const revision=worker.start('vault',file.id,{pipelineVersion:2,...(omitConfiguration?{}:{configuration:{depth,reviewPolicy:'verified',evidence:evidenceOptions}})});
  return {store,calls,revision,checkpoints:new SourceReprocessingCheckpoints(store),get worker(){return worker;},get value(){return JSON.parse(store.get('SELECT payload FROM source_reprocessing WHERE id=?',revision.id).payload);},restart(){locked=false;worker=service();return worker;}};
 }
@@ -135,4 +135,12 @@ test('omitted V2 configuration defaults to available local OCR while explicit op
  const defaults=harness(t,{pages:1,pageStartLines:[1],evidenceService,omitConfiguration:true});assert.equal(defaults.revision.configuration.evidence.ocr,true);assert.equal(defaults.revision.configuration.evidence.allowExternalTransmission,false);
  await defaults.worker.tick();assert.equal(defaults.value.status,'completed');assert.equal(collected,1);
  const optedOut=harness(t,{pages:1,pageStartLines:[1],evidenceService});assert.equal(optedOut.revision.configuration.evidence.ocr,false);await optedOut.worker.tick();assert.equal(optedOut.value.status,'completed');assert.equal(collected,1);
+});
+
+test('local evidence progress is durable while the next chunk is collecting and before model dispatch',{timeout:2000},async t=>{
+ let collected=0,release,entered;const held=new Promise(resolve=>{entered=resolve;});
+ const evidenceService={capabilities:()=>({originalPages:true,ocr:true,externalImages:true,reason:'synthetic'}),collect:async(_vault,_id,input)=>{if(++collected===2)return new Promise(resolve=>{release=()=>resolve(syntheticEvidence(input));entered();});return syntheticEvidence(input);},assertCurrent(){}};
+ const env=harness(t,{text:'Synthetic prose '.repeat(800),pages:1,pageStartLines:[1],evidenceService,evidenceOptions:{originalPages:false,ocr:true,allowExternalTransmission:false}}),work=env.worker.tick();
+ await held;try{assert.deepEqual(env.value.report.evidencePreparation,{state:'collecting',preparedChunks:1,totalChunks:2});assert.equal(env.calls.length,0);}finally{release();}
+ await work;assert.equal(env.value.status,'completed');assert.deepEqual(env.value.report.evidencePreparation,{state:'completed',preparedChunks:2,totalChunks:2});assert.equal(env.calls.length,4);
 });

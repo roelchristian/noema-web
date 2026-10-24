@@ -165,6 +165,7 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  }
  const chunks=integer(report.chunksTotal,0,128);integer(report.chunksCompleted,0,chunks);
  if(report.concurrency!==undefined)integer(report.concurrency,1,2);
+ if(report.evidencePreparation!==undefined){const preparation=object(report.evidencePreparation);oneOf(preparation.state,['collecting','completed']);if(integer(preparation.totalChunks,0,128)!==chunks)throw invalid();integer(preparation.preparedChunks,0,chunks);if(preparation.state==='completed'&&preparation.preparedChunks!==chunks)throw invalid();}
  if(report.completedChunkIndexes!==undefined){
   const indexes=array(report.completedChunkIndexes,128).map(value=>integer(value,0,chunks-1));
   if(new Set(indexes).size!==indexes.length||indexes.length!==report.chunksCompleted||indexes.some((value,index)=>index>0&&value<=indexes[index-1]!))throw invalid();

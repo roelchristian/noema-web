@@ -1,3 +1,5 @@
+import {publishedModelPricing} from '../../shared/ai-pricing.js';
+import {estimateActivityCost,type CostUsage} from './ai-cost.js';
 import { AINotifications } from './ai-notifications.js';
 import {pageTitleResolver} from './page-title.js';
 import { randomUUID } from 'node:crypto';
@@ -11,6 +13,7 @@ import { HttpError } from '../validation.js';
 export class AIActivityLog {
   constructor(private store: Store, options:{recoverRunning?:boolean}={}) {
     this.recoverDebugUsage();
+    this.backfillCosts();
     if(options.recoverRunning!==false) {
     for(const row of store.all<{action:string;vault_id:string|null;object_id:string|null}>("SELECT action,vault_id,object_id FROM ai_activity WHERE status='running' AND prompt_bytes IS NOT NULL")) new AINotifications(store).outcome(row.action,row.vault_id,row.object_id,'interrupted');
     store.run("UPDATE ai_activity SET status='interrupted',finished_at=? WHERE status='running'",new Date().toISOString());
@@ -105,21 +108,26 @@ export class AIActivityLog {
     this.store.run(`UPDATE ai_activity SET input_tokens=COALESCE(?,input_tokens),
       output_tokens=COALESCE(?,CASE WHEN action IN ('note_embedding','search_embedding') AND ? IS NOT NULL THEN 0 ELSE output_tokens END),
       cached_input_tokens=COALESCE(?,cached_input_tokens),cache_write_tokens=COALESCE(?,cache_write_tokens),reasoning_tokens=COALESCE(?,reasoning_tokens) WHERE id=?`,input,output,input,cached,writes,reasoning,id);
-    const pricing=this.pricing();
-    const row=this.store.get<{action:string;model:string;input_tokens:number|null;output_tokens:number|null;cached_input_tokens:number|null}>('SELECT action,model,input_tokens,output_tokens,cached_input_tokens FROM ai_activity WHERE id=?',id);
-    const rates=row&&pricing?.models[row.model];
-    // Realtime speech mixes text/audio tokens with different rates; the generic text price cannot estimate it.
-    if(row&&row.action!=='text_to_speech'&&pricing&&rates&&row.input_tokens!==null&&row.output_tokens!==null){
-      const cachedTokens=Math.min(row.input_tokens,row.cached_input_tokens??0);
-      // Reasoning tokens are included in provider output tokens and must not be counted twice.
-      const cost=((row.input_tokens-cachedTokens)*rates.inputPerMillion+cachedTokens*(rates.cachedInputPerMillion??rates.inputPerMillion)+row.output_tokens*rates.outputPerMillion)/1000000;
-      if(Number.isFinite(cost))this.store.run("UPDATE ai_activity SET estimated_cost=?,pricing_version=? WHERE id=? AND (status='running' OR pricing_version IS NULL)",cost,pricing.version,id);
-    }
+    this.updateCost(id,usage);
   }
-  pricing():AIModelPricing|null {
+  private updateCost(id:string,usage:Record<string,unknown>={},pricing=this.pricing()) {
+    const row=this.store.get<CostUsage & {action:string}>('SELECT action,model,started_at,input_tokens,output_tokens,cached_input_tokens,cache_write_tokens FROM ai_activity WHERE id=?',id);
+    // Custom generic text rates cannot safely price speech; built-in audio-aware rates can.
+    if(!row||row.action==='text_to_speech'&&!['gemini-3.8-flash-lite-tts','gpt-realtime-2.1-mini'].includes(row.model))return;
+    if(row.action==='text_to_speech'&&row.model==='gpt-realtime-2.1-mini'&&pricing.models[row.model]?.audioOutputPerMillion===undefined)return;
+    const cost=estimateActivityCost(row,pricing,usage);
+    if(cost!==null)this.store.run("UPDATE ai_activity SET estimated_cost=?,pricing_version=? WHERE id=? AND (status='running' OR pricing_version IS NULL)",cost,pricing.version,id);
+  }
+  private backfillCosts() {
+    const pricing=this.pricing();
+    this.store.transaction(()=>{
+      for(const row of this.store.all<{id:string}>("SELECT id FROM ai_activity WHERE estimated_cost IS NULL AND input_tokens IS NOT NULL AND output_tokens IS NOT NULL"))this.updateCost(row.id,{},pricing);
+    });
+  }
+  pricing():AIModelPricing {
     const raw=this.store.get<{value:string}>("SELECT value FROM metadata WHERE key='ai_model_pricing'")?.value;
-    if(!raw)return null;
-    try{const value=JSON.parse(raw);return this.validPricing(value)?value:null;}catch{return null;}
+    if(raw)try{const value=JSON.parse(raw);if(this.validPricing(value))return value;}catch{/* Fall back to verified published rates. */}
+    return publishedModelPricing;
   }
   private validPricing(value:unknown):value is AIModelPricing {
     if(!value||typeof value!=='object'||Array.isArray(value))return false;
@@ -129,7 +137,7 @@ export class AIActivityLog {
       if(!model||model.length>100||!raw||typeof raw!=='object'||Array.isArray(raw))return false;
       const rates=raw as Record<string,unknown>;
       return ['inputPerMillion','outputPerMillion'].every(key=>typeof rates[key]==='number'&&Number.isFinite(rates[key])&&(rates[key] as number)>=0)&&
-        (rates.cachedInputPerMillion===undefined||typeof rates.cachedInputPerMillion==='number'&&Number.isFinite(rates.cachedInputPerMillion)&&rates.cachedInputPerMillion>=0);
+        ['cachedInputPerMillion','cacheWritePerMillion','longContextThreshold','audioInputPerMillion','audioOutputPerMillion','cachedAudioInputPerMillion'].every(key=>rates[key]===undefined||typeof rates[key]==='number'&&Number.isFinite(rates[key])&&(rates[key] as number)>=0);
     });
   }
   savePricing(value:unknown) {

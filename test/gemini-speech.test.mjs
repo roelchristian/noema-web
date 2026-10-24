@@ -171,7 +171,7 @@ test('Gemini HTTP credentials enforce CSRF and return only configured/expiry; ca
  enable(f.ai,{ttsVoice:'Kore'});assert.equal((await speak()).headers.get('x-noema-speech-cache'),'hit');assert.equal(calls,2);
  const other=await (await f.call('vaults',{name:'Synthetic other vault'})).json();assert.equal((await speak('Kore',{'X-Vault-Id':other.id})).status,200);assert.equal(calls,3);
  f.ai.savePreferences({...f.ai.selection(),ttsProvider:'kokoro'});response=await f.call('intelligence/speech',{text:'Private spoken prose.',provider:'kokoro',voice:'puck'});assert.equal(response.headers.get('x-noema-speech-cache'),'miss');assert.equal(f.localCalls(),1);assert.equal(calls,3);
- const entry=activity.list(null).items.find(x=>x.model===geminiSpeechModel);assert.equal(entry.inputTokens,13);assert.equal(entry.outputTokens,29);assert.equal(entry.estimatedCost,null);
+ const entry=activity.list(null).items.find(x=>x.model===geminiSpeechModel);assert.equal(entry.inputTokens,13);assert.equal(entry.outputTokens,29);assert.equal(entry.estimatedCost,(13*0.5+29*6)/1e6);assert.match(entry.pricingVersion,/published-2026-10-25/);
  const debug=JSON.stringify(activity.debug(entry.id));for(const forbidden of [key,openaiKey,'Private spoken prose',wav.toString('base64')])assert.ok(!debug.includes(forbidden));assert.ok(debug.includes(geminiSpeechEndpoint));
  const backup=readBackupArchive((await new VaultBackups(f.store).export('default')).bytes);assert.equal(backup.speechAssets.length,3);
  for(const secret of [key,openaiKey]){assert.ok(!JSON.stringify(backup).includes(secret));assert.ok(!JSON.stringify(f.db.prepare('SELECT * FROM metadata').all()).includes(secret));}

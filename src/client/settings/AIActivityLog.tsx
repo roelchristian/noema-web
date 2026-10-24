@@ -2,6 +2,8 @@ import {SuccessNotice,useSuccessNotice} from '../components/SuccessNotice';
 import {getLocale} from '../i18n';
 import {t as uiText} from '../i18n';
 import {DisclosureSummary} from '../components/DisclosureSummary';
+import {formatEstimatedUSD} from '../../shared/ai-pricing';
+import {AIPricingNote} from './AIPricingNote';
 import { AIActivityUsage } from './AIActivityUsage';
 import { AIActivityDebug } from './AIActivityDebug';
 import { useEffect, useRef, useState } from 'react';
@@ -82,6 +84,7 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
     <div id="ai-activity-panel" role="tabpanel" aria-labelledby={'ai-activity-tab-'+view} tabIndex={0}>
     {view==='usage'?<AIActivityUsage/>:<>
     <p className="ai-activity-description">{uiText("Activity and token usage are stored locally for one year. Debug traces expire separately after 30 days. Locked vault activity is hidden and excluded from export and clear. Cache reads and writes appear when reported by the provider.")}</p>
+    <AIPricingNote/>
     {data.enrichmentMetrics&&<section aria-label={uiText("Page enrichment efficiency")} className="ai-activity-description">
       <p><strong>{uiText("Page enrichment:")}</strong> {data.enrichmentMetrics.requestsAvoided.toLocaleString(getLocale())}{" " + uiText("local decisions avoided a request ·") + " "}{data.enrichmentMetrics.providerRequests.toLocaleString(getLocale())}{" " + uiText("provider requests ·") + " "}{data.enrichmentMetrics.completedPages.toLocaleString(getLocale())}{" " + uiText("successfully enriched pages.")}</p>
       {data.enrichmentMetrics.estimatedCost!==null&&<p>{uiText("Estimated cost: $")}{data.enrichmentMetrics.estimatedCost.toFixed(6)}{" " + uiText("USD")}{data.enrichmentMetrics.costPerCompletedPage!==null?uiText(" · ${value0} per successfully enriched page",{value0: data.enrichmentMetrics.costPerCompletedPage.toFixed(6)}):''}.</p>}
@@ -109,7 +112,7 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
           <td>{item.cacheWriteTokens==null?'—':item.cacheWriteTokens.toLocaleString(getLocale())}</td>
           <td>{item.outputTokens==null?'—':item.outputTokens.toLocaleString(getLocale())}</td>
           <td>{item.reasoningTokens==null?'—':item.reasoningTokens.toLocaleString(getLocale())}</td>
-          <td title={item.pricingVersion?uiText("Pricing: {value0}",{value0: item.pricingVersion}):uiText("No configured price estimate")}>{item.estimatedCost==null?'—':`$${item.estimatedCost.toFixed(6)}`}</td>
+          <td title={item.pricingVersion?uiText("Pricing: {value0}",{value0: item.pricingVersion}):uiText("Estimate unavailable: missing usage or verified rates")}>{formatEstimatedUSD(item.estimatedCost)}</td>
           <td>{item.durationMs===null?'—':`${(item.durationMs/1000).toFixed(1)}s`}</td>
           <td>{item.httpStatus??'—'}</td>
           <td>{item.debugRecorded?<button className="ai-activity-link" onClick={()=>setDebugId(item.id)}>{uiText("Open payload")}</button>:uiText("Off")}</td>

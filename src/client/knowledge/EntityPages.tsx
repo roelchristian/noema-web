@@ -4,14 +4,15 @@ import {t as uiText} from '../i18n';
 import {PageIcon} from '../components/PageIcon';
 import {TitleText} from '../components/TitleText';
 import type {EntityMentionReference} from '../../shared/entity-mentions';
+import {ConnectPicker} from './ConnectPicker';
 
-export function EntityPages({entity, pages, onOpenPage, onAssociate, onRemove, onCreatePage, onOpenMention, queryFilter='', mentionsOnly=false}: {entity: EntityDetail; pages: PageSummary[]; onOpenPage: (id: string) => void; onAssociate: (id: string, input: {pinned?: boolean; annotation?: string}) => Promise<EntityDetail>; onRemove: (id: string) => Promise<EntityDetail>; onCreatePage?: () => Promise<PageSummary>; onOpenMention?: (reference:EntityMentionReference)=>void; queryFilter?:string; mentionsOnly?:boolean}) {
+export function EntityPages({entity, pages, onOpenPage, onAssociate, onRemove, onCreatePage, onOpenMention, queryFilter='', mentionsOnly=false, showConnect=true}: {entity: EntityDetail; pages: PageSummary[]; onOpenPage: (id: string) => void; onAssociate: (id: string, input: {pinned?: boolean; annotation?: string}) => Promise<EntityDetail>; onRemove: (id: string) => Promise<EntityDetail>; onCreatePage?: () => Promise<PageSummary>; onOpenMention?: (reference:EntityMentionReference)=>void; queryFilter?:string; mentionsOnly?:boolean; showConnect?:boolean}) {
   const mounted = useRef(true);
   useEffect(() => {mounted.current = true; return () => {mounted.current = false;};}, []);
   const [attaching, setAttaching] = useState(false);
-  const [query,setQuery]=useState('');
   const lock=useRef(false);
   const [undo,setUndo]=useState<EntityPageAssociation|null>(null);
+  const [undoAdded,setUndoAdded]=useState<string|null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const linked = [...new Map((entity.linkedPages ?? []).map(page => [page.id, page])).values()];
@@ -24,7 +25,6 @@ export function EntityPages({entity, pages, onOpenPage, onAssociate, onRemove, o
   }
   const mentions=new Map((entity.pageMentions??[]).map(page=>[page.id,page]));
   const targets=[...new Map([...linked,...entity.pageMentions??[]].map(page=>[page.id,page])).values()].filter(page=>(!mentionsOnly||mentions.has(page.id))&&(page.title||'Untitled').toLocaleLowerCase().includes(queryFilter.toLocaleLowerCase())).sort((a,b)=>Number(linked.find(page=>page.id===b.id)?.pinned??false)-Number(linked.find(page=>page.id===a.id)?.pinned??false)||Number(ids.has(b.id))-Number(ids.has(a.id))||a.title.localeCompare(b.title));
-  const matches=pages.filter(page=>!ids.has(page.id)&&!page.archived_at&&(page.title||'Untitled').toLocaleLowerCase().includes(query.toLocaleLowerCase())).slice(0,20);
   return <section className="eh-section"><h2>{uiText('Connected pages')} <span>{targets.length}</span></h2>
     <p className="eh-writing-hint">{uiText('Associations and text mentions remain independent. Removing an association keeps its mentions.')}</p>
     {targets.length?<ul className="eh-page-list">{targets.map(page=>{
@@ -34,8 +34,9 @@ export function EntityPages({entity, pages, onOpenPage, onAssociate, onRemove, o
         {mention&&<details><summary>{uiText('View mentions')} ({mention.mentionCount})</summary>{mention.contexts?.length?<ul className="eh-mention-contexts">{mention.contexts.map(context=><li key={context.occurrences[0]?.id??context.blockId}>{!!context.heading.length&&<p className="eh-context-heading">{context.heading.join(' › ')}</p>}<p className="eh-context-excerpt">{context.excerpt}</p><div className="eh-occurrences">{context.occurrences.map((occurrence,index)=><button type="button" key={occurrence.id} onClick={()=>onOpenMention?onOpenMention(occurrence.reference):onOpenPage(page.id)} aria-label={`${uiText('Go to mention')} ${index+1}: ${occurrence.label}`}>{index+1}. {occurrence.label} ↗</button>)}</div></li>)}</ul>:<p>{mention.excerpt}</p>}</details>}
       </div><div className="eh-page-actions"><button type="button" disabled={busy} onClick={()=>void run(()=>onAssociate(page.id,{pinned:!association?.pinned}))} aria-label={`${uiText(association?.pinned?'Unpin':'Pin')} ${page.title||'Untitled'}`}>{uiText(association?.pinned?'Unpin':'Pin')}</button>{association&&<><PageAnnotation key={page.id} page={association} busy={busy} onSave={annotation=>run(()=>onAssociate(page.id,{annotation}))}/><button type="button" disabled={busy} onClick={()=>void run(async()=>{await onRemove(page.id);if(mounted.current)setUndo(association);})} aria-label={`Remove association with ${page.title||'Untitled'}`}>{uiText('Remove')}</button></>}</div></li>;
     })}</ul>:<p className="entity-detail-empty">{uiText('No connected pages.')}</p>}
-    <div className="eh-overview-links"><button type="button" onClick={()=>setAttaching(value=>!value)} aria-expanded={attaching}>{uiText('Attach existing page')}</button>{onCreatePage&&<button type="button" disabled={busy} onClick={()=>void run(async()=>{const page=await onCreatePage();if(mounted.current)onOpenPage(page.id);})}>{uiText('Create associated page')}</button>}</div>
-    {attaching&&<div className="eh-page-picker"><label>{uiText('Find a page')}<input type="search" value={query} onChange={event=>setQuery(event.target.value)}/></label><ul>{matches.map(page=><li key={page.id}><span>{page.title||'Untitled'}</span><button type="button" disabled={busy} onClick={()=>void run(()=>onAssociate(page.id,{pinned:false}))}>{uiText('Attach')}</button><button type="button" disabled={busy} onClick={()=>void run(()=>onAssociate(page.id,{pinned:true}))}>{uiText('Attach & pin')}</button></li>)}</ul></div>}
+    <div className="eh-overview-links">{showConnect&&<button type="button" onClick={()=>setAttaching(value=>!value)} aria-expanded={attaching}>{uiText('Connect')}</button>}{onCreatePage&&<button type="button" disabled={busy} onClick={()=>void run(async()=>{const page=await onCreatePage();if(mounted.current)onOpenPage(page.id);})}>{uiText('Create associated page')}</button>}</div>
+    {showConnect&&attaching&&<ConnectPicker sourceLabel={entity.name} pages={pages} excludePageIds={[...ids]} disabled={busy} onCancel={()=>setAttaching(false)} onConnect={async(target,options)=>{await onAssociate(target.id,{pinned:options.pinned,annotation:options.annotation});if(mounted.current)setUndoAdded(target.id);}}/>}
+    {undoAdded&&<p role="status">{uiText('Connection added.')} <button type="button" disabled={busy} onClick={()=>void run(async()=>{await onRemove(undoAdded);if(mounted.current)setUndoAdded(null);})}>{uiText('Undo')}</button></p>}
     {undo&&<p role="status">{uiText('Association removed. Mentions kept.')} <button type="button" disabled={busy} onClick={()=>void run(async()=>{await onAssociate(undo.id,{pinned:undo.pinned,annotation:undo.annotation});if(mounted.current)setUndo(null);})}>{uiText('Undo')}</button></p>}
     {error&&<p role="alert">{uiText('Could not update pages:')} {error}</p>}
   </section>;

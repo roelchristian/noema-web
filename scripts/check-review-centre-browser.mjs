@@ -10,6 +10,8 @@ import {Store} from '../src/server/store.ts';
 import {createRuntime} from '../src/server/runtime.ts';
 import {createTransportHandler} from '../src/server/transport.ts';
 import {proposeValue} from '../src/server/modules/property-provenance.ts';
+import {AINotifications} from '../src/server/modules/ai-notifications.ts';
+import {AIActivityLog} from '../src/server/modules/ai-activity.ts';
 import {Intelligence} from '../src/server/modules/intelligence.ts';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE??'playwright-core');
 const originalFetch=globalThis.fetch;
@@ -33,6 +35,8 @@ const scan=scans.save('default',note,JSON.stringify({suggestions:[{name:'Luma',t
 // Persist a valid stale discovery snapshot without generating anything.
 const draft={id:'saved-discovery',entityId:entity.id,createdAt:new Date().toISOString(),overviewRevision:0,stale:true,model:'fixture',reasoningEffort:'low',evidence:[{id:'page:'+note.id,kind:'page',pageId:note.id,title:note.title,excerpt:'Luma explored the observatory.'}],suggestions:[{id:'synthesis',kind:'synthesis',status:'pending',content:'Research at the observatory.',rationale:'Synthetic saved proposal.',evidenceIds:['page:'+note.id]}]};
 store.run('INSERT INTO entity_discoveries VALUES (?,?,?,?,?)',draft.id,entity.id,draft.createdAt,'old-evidence',JSON.stringify(draft));
+const notifications=new AINotifications(store);
+const activityLog=new AIActivityLog(store,{recoverRunning:false}),runningId=activityLog.start('page_summary',{model:'fixture',reasoningEffort:'low'},'default',note.id);
 const sockets=new Set(),server=http.createServer(createTransportHandler(runtime,resolve('dist/client'),sockets));server.listen(0,'127.0.0.1');await once(server,'listening');
 let browser,lastPage;const checks=[],errors=[],mutations=[];
 try {
@@ -41,7 +45,59 @@ try {
  async function ready(page){await page.getByRole('heading',{name:'Inbox',exact:true}).waitFor();await page.waitForFunction(()=>document.querySelector('.review-centre')?.getAttribute('aria-busy')==='false');}
  async function back(page){await page.getByRole('button',{name:'Return to Inbox',exact:true}).click();await ready(page);}
  async function screenshot(page,name){if(process.env.NOEMA_SKIP_SCREENSHOTS==='1')return;await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:join(artifacts,name+'.png'),fullPage:true});}
+ store.run('DELETE FROM ai_notifications');notifications.record('default',note.id,'page_summary');notifications.recordSource('default',source.id,'failed','source_enrichment');
  const {page}=await launch(1440);
+ // The bell now routes into the persistent Inbox facet, with no duplicate dialog.
+ await page.getByRole('button',{name:/^Inbox Activity/}).focus();await page.keyboard.press('Enter');
+ await page.getByRole('heading',{name:'Activity',exact:true}).waitFor();assert.match(page.url(),/facet=activity/);
+ assert.equal(await page.locator('#ai-notifications').count(),0);
+ await page.locator('.ai-notification-list li').nth(1).waitFor();await page.getByRole('heading',{name:'In progress (1)',exact:true}).waitFor();
+ for(let i=0;i<3;i++) {await page.getByRole('group',{name:'Inbox views'}).getByRole('button',{name:/^To review/}).click();await page.getByRole('group',{name:'Inbox views'}).getByRole('button',{name:/^Activity/}).click();}
+ await page.getByRole('button',{name:'Failed / interrupted',exact:true}).click();await page.waitForTimeout(3200);assert.equal(notifications.list().unreadCount,2,'Failed filter must not read hidden successes');
+ assert.equal(await page.locator('.ai-notification-list li').count(),1);
+ await page.getByRole('button',{name:'Recent',exact:true}).click();await page.getByRole('button',{name:'Settings → AI',exact:true}).click();
+ await page.getByRole('tab',{name:'AI',exact:true}).waitFor();await page.waitForTimeout(3200);assert.equal(notifications.list().unreadCount,2,'Settings suspends reading behind the modal');await page.keyboard.press('Escape');
+ // Interrupt source lookup by changing facet before its entities refresh returns.
+ let releaseEntity,enteredEntity;const entityRequest=new Promise(resolve=>enteredEntity=resolve);await page.route('**/api/entities',async route=>{await new Promise(resolve=>{releaseEntity=resolve;enteredEntity();});await route.continue().catch(()=>{});});
+ await page.getByRole('button',{name:/^Source AI enrichment failed: Observatory transcript/}).click();
+ await entityRequest;
+ await page.getByRole('group',{name:'Inbox views'}).getByRole('button',{name:/^Issues/}).click();releaseEntity();await page.waitForTimeout(150);assert.match(page.url(),/facet=issues/);await page.unroute('**/api/entities');
+ await page.getByRole('group',{name:'Inbox views'}).getByRole('button',{name:/^Activity/}).click();
+ await page.getByRole('button',{name:/^Source AI enrichment failed: Observatory transcript/}).click();await page.locator('.source-reader').waitFor();
+ await page.goBack();await page.getByRole('heading',{name:'Activity',exact:true}).waitFor();
+ await page.getByRole('button',{name:/^Added summary to Observatory notebook/}).click();await page.locator('.page').waitFor();
+ await page.goBack();await page.getByRole('heading',{name:'Activity',exact:true}).waitFor();
+ // Replaced requests must not let an older feed overwrite the latest response.
+ let enteredFeed,releaseFeed;const feedRequest=new Promise(resolve=>enteredFeed=resolve);let feedRequests=0;
+ await page.route('**/api/intelligence/notifications',async route=>{feedRequests++;if(feedRequests===1){await new Promise(resolve=>{releaseFeed=resolve;enteredFeed();});await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[],running:[],unreadCount:0,through:0})}).catch(()=>{});}else await route.continue();});
+ await page.getByRole('button',{name:'Refresh activity',exact:true}).click();await feedRequest;
+ await page.getByRole('button',{name:'Refresh activity',exact:true}).click();await page.locator('.ai-notification-list li').nth(1).waitFor();releaseFeed();await page.waitForTimeout(100);assert.equal(await page.locator('.ai-notification-list li').count(),2);await page.unroute('**/api/intelligence/notifications');
+ // Feed failures preserve outcomes and retry recovers; an empty feed is distinct from an error.
+ await page.route('**/api/intelligence/notifications',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Synthetic activity outage'})}));
+ await page.getByRole('button',{name:'Refresh activity',exact:true}).click();await page.getByRole('alert').filter({hasText:'Synthetic activity outage'}).waitFor();assert.equal(await page.locator('.ai-notification-list li').count(),2);await page.unroute('**/api/intelligence/notifications');
+ await page.getByRole('alert').getByRole('button',{name:'Retry',exact:true}).click();await page.getByRole('alert').waitFor({state:'hidden'});
+ await page.route('**/api/intelligence/notifications',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[],running:[],unreadCount:0,through:0})}));
+ await page.getByRole('button',{name:'Refresh activity',exact:true}).click();await page.getByText('No updates yet',{exact:true}).waitFor();await page.unroute('**/api/intelligence/notifications');await page.getByRole('button',{name:'Refresh activity',exact:true}).click();await page.locator('.ai-notification-list li').nth(1).waitFor();
+ await screenshot(page,'inbox-activity-desktop');
+ await page.setViewportSize({width:390,height:844});await page.emulateMedia({colorScheme:'dark'});await page.waitForFunction(()=>document.documentElement.dataset.mode==='dark');await screenshot(page,'inbox-activity-mobile-dark');
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ const activityTargets=await page.locator('.inbox-activity button').evaluateAll(nodes=>nodes.filter(n=>n.getBoundingClientRect().height).map(n=>({text:n.textContent,width:n.getBoundingClientRect().width,height:n.getBoundingClientRect().height})));
+ for(const target of activityTargets)assert.ok(target.width>=44&&target.height>=44,JSON.stringify(target));
+ activityLog.finish(runningId,'completed',200);checks.push('Inbox Activity: shortcut/deep link, repeated facets, active/completed/failed, read visibility, interrupted source lookup, source/page destinations, error/retry/empty, mobile dark targets');
+ await page.setViewportSize({width:1440,height:1000});await page.emulateMedia({colorScheme:'light'});
+ // Cross-vault outcomes retain their source/page destinations. A locked selection still has a useful shortcut.
+ const other=runtime.vaults.create({name:'Synthetic activity vault'}),otherNote=pages.create(other.id,{title:'Cross-vault notebook'});
+ const otherFile=sourceFiles.add(other.id,'Cross-vault source.txt',Buffer.from('Synthetic source text'));
+ const otherSource=knowledge.create(other.id,{name:'Cross-vault source',type:'source',attachmentIds:[otherFile.id]});store.run("UPDATE source_files SET status='ready',text='Synthetic source text',admitted=1,enrichment_status='completed' WHERE id=?",otherFile.id);store.run('UPDATE entities SET inactive=0 WHERE id=?',otherSource.id);
+ notifications.record(other.id,otherNote.id,'page_summary');notifications.recordSource(other.id,otherSource.id,'completed');
+ await page.goto(`${base}/?vault=default&view=inbox&facet=activity`);await page.getByRole('button',{name:/^Added summary to Cross-vault notebook/}).click();await page.waitForURL(url=>url.searchParams.get('vault')===other.id&&url.searchParams.get('page')===otherNote.id);await page.locator('.page').waitFor();
+ await page.goto(`${base}/?vault=default&view=inbox&facet=activity`);await page.getByRole('button',{name:/^Source ready: Cross-vault source/}).click();await page.waitForURL(url=>url.searchParams.get('vault')===other.id&&url.searchParams.get('source')===otherSource.id);await page.locator('.source-reader').waitFor();
+ store.run('UPDATE vaults SET locked=1 WHERE id=?','default');await page.goto(`${base}/?vault=default&view=inbox&facet=activity`);
+ await page.getByRole('button',{name:/^Inbox Activity/}).click();await page.waitForURL(url=>url.searchParams.get('vault')===other.id&&url.searchParams.get('facet')==='activity');await page.getByRole('heading',{name:'Activity',exact:true}).waitFor();
+ store.run('UPDATE vaults SET locked=0 WHERE id=?','default');checks.push('Keyboard shortcut and locked-vault fallback; cross-vault page and source destinations');
+
+ await page.goto(`${base}/?vault=default&view=review`);await ready(page);
+
  assert.equal(await page.locator('.review-items li').count(),3);await screenshot(page,'review-desktop-decisions');checks.push('Read-only initial queue; scan, discovery and editorial origins');
  await page.getByRole('button',{name:'Review discoveries: Observatory research',exact:true}).click();await page.getByRole('tab',{name:'Discovery',exact:true}).waitFor();assert.equal(await page.getByRole('tab',{name:'Discovery',exact:true}).getAttribute('aria-selected'),'true');await page.locator('.eh-discovery-warning').first().waitFor();
  await page.getByRole('tab',{name:'Overview',exact:true}).click();await page.getByRole('button',{name:'Write overview',exact:true}).click();await page.getByLabel('Entity overview Markdown',{exact:true}).fill('Keep my unsaved synthesis.');await back(page);

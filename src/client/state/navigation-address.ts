@@ -1,7 +1,7 @@
 import type { WorkspaceState } from './workspace';
 
-export type InboxFacet = 'overview'|'review'|'organise'|'issues'|'progress';
-export function inboxFacet(value:unknown):InboxFacet {return ['overview','review','organise','issues','progress'].includes(String(value))?value as InboxFacet:'overview';}
+export type InboxFacet = 'overview'|'review'|'organise'|'issues'|'progress'|'activity';
+export function inboxFacet(value:unknown):InboxFacet {return ['overview','review','organise','issues','progress','activity'].includes(String(value))?value as InboxFacet:'overview';}
 
 export interface NavigationAddress {
   inboxFacet?: InboxFacet; view: WorkspaceState['view']; pageId: string | null; sourceId?: string | null; entityId: string | null; subjectId?: string | null; collection: string; folder: string;

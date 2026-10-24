@@ -253,6 +253,8 @@ test('Inbox facets flush pending saves and retain independent browser and sessio
  assert.equal(workspace.snapshot().inboxFacet,'organise');
  assert.equal(JSON.parse(storage.get('noema-address/a')).inboxFacet,'organise');
  const refreshed=create();await refreshed.init();assert.equal(refreshed.snapshot().inboxFacet,'organise');
+ await workspace.showInbox('activity');assert.equal(JSON.parse(storage.get('noema-address/a')).inboxFacet,'activity');
+ const activityRefresh=create();await activityRefresh.init();assert.equal(activityRefresh.snapshot().inboxFacet,'activity');
 });
 
 test('legacy Review Centre addresses canonicalize to the Inbox review facet',async t=>{
@@ -260,6 +262,7 @@ test('legacy Review Centre addresses canonicalize to the Inbox review facet',asy
  const workspace=create();await workspace.init();assert.equal(workspace.snapshot().view,'inbox');assert.equal(workspace.snapshot().inboxFacet,'review');
  const old=Object.getOwnPropertyDescriptor(globalThis,'window');
  Object.defineProperty(globalThis,'window',{configurable:true,value:{location:{search:'?vault=a&view=review'}}});
- try{const address=readWorkspaceURL();assert.equal(address.view,'inbox');assert.equal(address.inboxFacet,'review');assert.match(workspaceURL(address),/view=inbox&facet=review/);}
+ try{const address=readWorkspaceURL();assert.equal(address.view,'inbox');assert.equal(address.inboxFacet,'review');assert.match(workspaceURL(address),/view=inbox&facet=review/);
+  for(const facet of ['activity','progress']){window.location.search='?vault=a&view=inbox&facet='+facet;const current=readWorkspaceURL();assert.equal(current.inboxFacet,facet);assert.match(workspaceURL(current),new RegExp('view=inbox&facet='+facet));}}
  finally{if(old)Object.defineProperty(globalThis,'window',old);else delete globalThis.window;}
 });

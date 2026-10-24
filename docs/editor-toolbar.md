@@ -76,4 +76,5 @@ All fixtures use synthetic data; no real vault or paid model call is needed.
 
 Linux Chromium was used. Native macOS extraction/keychain and live Kokoro model
 execution were skipped; no real vault, paid request, credentials, or external
-sharing was used. Commits remain local, with no PR, push, merge, or deployment.
+sharing was used. Initial implementation validation preceded PR publication.
+Publishing the branch as a draft PR does not authorize a merge or deployment.

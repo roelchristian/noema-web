@@ -8,7 +8,7 @@ const modes = [
 ] as const;
 export function PresentationSelector({value, onChange, onExitFocus}: {value: PresentationMode; onChange: (mode: PresentationMode) => void; onExitFocus: () => void}) {
   return <div className="presentation-selector" role="group" aria-label={uiText('Presentation mode')}>
-    {modes.map(mode=><button key={mode.value} type="button" aria-label={uiText(mode.value==='focus'&&value==='focus'?'Exit Focus':mode.label)} aria-pressed={value===mode.value}
+    {modes.map(mode=><button key={mode.value} className={mode.value==='focus'?'presentation-focus':undefined} type="button" aria-label={uiText(mode.value==='focus'&&value==='focus'?'Exit Focus':mode.label)} aria-pressed={value===mode.value}
       title={uiText(mode.value==='focus'&&value==='focus'?'Exit Focus (Escape)':mode.description)}
       onClick={()=>mode.value==='focus'&&value==='focus'?onExitFocus():onChange(mode.value)}>{uiText(mode.value==='focus'&&value==='focus'?'Exit Focus':mode.label)}</button>)}
   </div>;

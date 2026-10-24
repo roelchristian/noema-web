@@ -1,6 +1,6 @@
 import {PersonaSelect,useDefaultPersona} from '../components/PersonaSelect';
 import {personaMetadata,personaIdentityName} from '../../shared/ai-personas';
-import {t as uiText} from '../i18n';
+import {getLocale,languageLabel,t as uiText} from '../i18n';
 import {TitleText} from '../components/TitleText';
 import {sourceDuration,type SourceProcessingProgress} from '../../shared/source-progress';
 import {memo,useEffect,useRef,useState,type FormEvent} from 'react';
@@ -79,6 +79,7 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
     setRetryOpen(false);
     const generationOptions=normalizeSourcePageOptions(options);
     rememberSourcePagePreferences(generationOptions);
+    if(generationOptions.language==='current-ui')generationOptions.language=getLocale();
     setSubmitted({options:generationOptions,focus:focus.trim()});
     const controller=new AbortController();request.current=controller;
     const settings=JSON.stringify([focus.trim(),generationOptions,personaId,...(revision?[revision]:[])]);
@@ -121,10 +122,20 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
       await openPage(saved);
     }catch(error){if(active.current){setPhase('review');setError(error instanceof Error?error.message:'Could not accept the draft. Retry to recover the saved result.');}}
   }
-  async function reject(){
-    if(!draft||busy)return;setPhase('rejecting');setError('');
-    try{await apiRequest(route+'/reject','POST',{requestId:draft.id},vaultId,AbortSignal.timeout(30000));window.dispatchEvent(new Event('noema:ai-activity'));if(active.current)onClose();}
-    catch(error){if(active.current){setPhase('review');setError(error instanceof Error?error.message:'Could not reject the draft. Please retry.');}}
+  async function backToSetup(){
+    if(busy||page)return;
+    if((draft||blocks.length||liveBlock)&&!window.confirm(uiText("Discard this draft and return to setup? Your settings and instructions will be kept.")))return;
+    if(draft){
+      setPhase('rejecting');setError('');
+      try{
+        await apiRequest(route+'/reject','POST',{requestId:draft.id},vaultId,AbortSignal.timeout(30000));
+        window.dispatchEvent(new Event('noema:ai-activity'));
+      }catch(error){if(active.current){setPhase('review');setError(error instanceof Error?error.message:'Could not discard the draft. Please retry.');}return;}
+      if(!active.current)return;
+    }
+    request.current?.abort();request.current=null;
+    clearLive();setDraft(null);setSubmitted(null);setTitle('');setBlocks([]);setRetryOpen(false);setFeedback('');setError('');
+    generation.current={id:randomUUID(),settings:''};follow.current=true;setPhase('idle');
   }
   const elapsed=Math.max(0,Math.floor((clock-startedAt.current)/1000));
   const remaining=generationStage==='math'&&mathProgress?.estimatedRemainingSeconds!==undefined
@@ -146,7 +157,7 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
         <div className="source-page-request-format"><dt>{uiText("Format")}</dt><dd><span className="source-page-format-mark" aria-hidden="true"><Icon name={submitted.options.format==='study'?'source':submitted.options.format==='explainer'?'lightbulb':submitted.options.format==='critique'?'annotation':submitted.options.format==='custom'?'compose':'page'}/></span><span className="source-page-format-name">{uiText(sourcePageFormats[submitted.options.format].label)}</span><small>{uiText(sourcePageFormats[submitted.options.format].description)}</small></dd></div>
         <div><dt>AI Persona</dt><dd>{(draft?.persona?personaIdentityName(draft.persona):personaMetadata(personaId||inheritedPersona).name)}</dd></div>
         <div><dt>{uiText("Length")}</dt><dd>{uiText(sourcePageChoices.detail.options[submitted.options.detail])}</dd></div>
-        <div><dt>{uiText("Output language")}</dt><dd>{submitted.options.language||uiText("Match the source")}</dd></div>
+        <div><dt>{uiText("Output language")}</dt><dd>{submitted.options.language?uiText(/^[a-z]{2,3}(?:-|$)/.test(submitted.options.language)?languageLabel(submitted.options.language):submitted.options.language):uiText("Match Source")}</dd></div>
         <div><dt>{uiText("Reader familiarity")}</dt><dd>{uiText(sourcePageChoices.familiarity.options[submitted.options.familiarity])}</dd></div>
         <div><dt>{uiText("Source scope")}</dt><dd>{submitted.options.beyondSources?uiText("Include AI background knowledge"):uiText("Supplied source only")}</dd></div>
         {submitted.focus&&<div><dt>{submitted.options.format==='custom'?uiText("Your instructions"):uiText("Focus")}</dt><dd>{submitted.focus}</dd></div>}
@@ -158,9 +169,12 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
       <div className="source-page-options source-page-essentials">
         <label className="source-page-option">{uiText("Length")}<Select aria-label={uiText("Length")} value={options.detail} disabled={controlsDisabled} onChange={event=>setOptions(current=>({...current,detail:event.target.value as SourcePageOptions['detail']}))}>{Object.entries(sourcePageChoices.detail.options).map(([value,label])=><option key={value} value={value}>{uiText(label)}</option>)}</Select></label>
         <label className="source-page-option">{uiText("Output language")}<Select aria-label={uiText("Output language")} value={options.language} disabled={controlsDisabled} onChange={event=>setOptions(current=>({...current,language:event.target.value}))}>
-          <option value="">{uiText("Match the source")}</option>
-          {options.language&&!sourcePageLanguages.some(language=>language===options.language)&&<option value={options.language}>{options.language}</option>}
+          <optgroup label={uiText("Automatic language")}><option value="current-ui">{uiText("Current UI language")}</option>
+          <option value="">{uiText("Match Source")}</option></optgroup>
+          <optgroup label={uiText("Languages")}>
+          {options.language&&options.language!=='current-ui'&&!sourcePageLanguages.some(language=>language===options.language)&&<option value={options.language}>{options.language}</option>}
           {sourcePageLanguages.map(language=><option key={language} value={language}>{uiText(language)}</option>)}
+          </optgroup>
         </Select></label>
         <label className="source-page-option">{uiText("Reader familiarity")}<Select aria-label={uiText("Reader familiarity")} value={options.familiarity} disabled={controlsDisabled} onChange={event=>setOptions(current=>({...current,familiarity:event.target.value as SourcePageOptions['familiarity']}))}>{Object.entries(sourcePageChoices.familiarity.options).map(([value,label])=><option key={value} value={value}>{uiText(label)}</option>)}</Select></label>
         <PersonaSelect value={personaId} onChange={setPersonaId} disabled={busy||!!page||(!!draft&&!retryOpen)}/>
@@ -191,12 +205,12 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
         </div>}
         {running&&<p className="section-hint">{uiText("Keep this dialog open while generating. Citations are hidden in preview.")}</p>}
         {(phase==='failed'||phase==='stopped')&&!!blocks.length&&<p className="section-hint">{uiText("Incomplete preview. Retry to generate a complete draft.")}</p>}
-        {draft&&!running&&<p className="section-hint">{uiText("Accept saves a page linked to this source. Closing keeps the draft for later.")}</p>}
+        {draft&&!running&&<p className="section-hint">{uiText("Accept saves a page linked to this source. Closing keeps the draft for later. Back to setup lets you discard it and change your settings.")}</p>}
       </div>}
       {error&&<p className="dialog-error" role="alert">{error}</p>}
     </div>
     <footer className="dialog-actions source-page-actions"><button type="button" className="button" disabled={busy||!!draft} onClick={onSettings}>{uiText("AI settings")}</button><div>
-      {running?<button type="button" className="button" onClick={stop}>{uiText("Stop generation")}</button>:draft?<button type="button" className="button" disabled={busy} onClick={()=>void reject()}>{phase==='rejecting'?uiText("Rejecting…"):uiText("Reject")}</button>:<button type="button" className="button" onClick={close} disabled={mutating||opening}>{page?uiText("Close"):uiText("Cancel")}</button>}
+      {running?<button type="button" className="button" onClick={stop}>{uiText("Stop generation")}</button>:hasPreview&&!page?<button type="button" className="button" disabled={busy} onClick={()=>void backToSetup()}>{phase==='rejecting'?uiText("Discarding…"):uiText("Back to setup")}</button>:<button type="button" className="button" onClick={close} disabled={mutating||opening}>{page?uiText("Close"):uiText("Cancel")}</button>}
       {draft&&!running&&<><button type="button" className="button" disabled={busy} onClick={event=>void start(event,true)}>{uiText("Try again")}</button><button type="button" className="button" disabled={busy||retryOpen} onClick={()=>setRetryOpen(true)}>{uiText("Request changes")}</button></>}
       {page?<button type="button" className="button primary" disabled={opening} onClick={()=>void openPage()}>{opening?uiText("Opening…"):uiText("Open page")}</button>:draft?<button type="button" className="button primary" disabled={busy} onClick={()=>void accept()}>{phase==='accepting'?uiText("Accepting…"):uiText("Accept page")}</button>:<button className="button primary" disabled={busy}>{running?uiText("Generating draft…"):phase==='loading'?uiText("Loading…"):phase==='failed'||phase==='stopped'?uiText("Retry"):uiText("Generate draft")}</button>}
     </div></footer>

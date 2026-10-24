@@ -13,7 +13,7 @@ const dateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth()+
 const number = (value: number) => value.toLocaleString(getLocale());
 const compact = (value: number) => new Intl.NumberFormat(getLocale(),{notation:'compact',maximumFractionDigits:1}).format(value);
 
-export function AIActivityUsage({excludeUnpaid=false}:{excludeUnpaid?:boolean}={}) {
+export function AIActivityUsage({excludeUnpaid=false,onExcludeUnpaidChange}:{excludeUnpaid?:boolean;onExcludeUnpaidChange?:(value:boolean)=>void}={}) {
   const [items,setItems]=useState<AIActivity[]>([]);
   const [busy,setBusy]=useState(true),[error,setError]=useState(''),[revision,setRevision]=useState(0);
   const [period,setPeriod]=useState<Period>('7');
@@ -90,13 +90,13 @@ export function AIActivityUsage({excludeUnpaid=false}:{excludeUnpaid?:boolean}={
       <label>{uiText("Action type")}<Select aria-label={uiText("Action type")} value={action} onChange={event=>setAction(event.target.value)}><option value="all">{uiText("All actions")}</option>{Object.entries(aiActivityLabels).map(([value,label])=><option value={value} key={value}>{uiText(label)}</option>)}</Select></label>
       <label>{uiText("Status")}<Select aria-label={uiText("Status")} value={status} onChange={event=>setStatus(event.target.value)}><option value="all">{uiText("All statuses")}</option>{['running','completed','failed','interrupted','skipped'].map(value=><option value={value} key={value}>{value[0].toUpperCase()+value.slice(1)}</option>)}</Select></label>
     </div>
+    <label className="embedding-toggle"><input type="checkbox" checked={excludeUnpaid} onChange={event=>onExcludeUnpaidChange?.(event.target.checked)}/><span>{uiText("Exclude unpaid activity (Kokoro and DOI metadata lookups)")}</span></label>
     {period==='custom'&&<div className="ai-usage-custom"><label>{uiText("From")}<input type="date" value={start} max={end} onChange={event=>setStart(event.target.value)}/></label><label>{uiText("To")}<input type="date" value={end} min={start} onChange={event=>setEnd(event.target.value)}/></label></div>}
     {invalid&&<p role="alert">{uiText("Choose a start date on or before the end date.")}</p>}
     {error&&<p role="alert">{error}</p>}
     <p className="ai-usage-note" role="status">{busy?uiText("Loading all retained activity…"):uiText("{value0} matching actions · {value1} with reported token usage",{value0: number(summary.filtered.length),value1: number(summary.reported)})}</p>
     <div className="ai-usage-stats">{[['Total tokens',total],['Input tokens',summary.input],['Output tokens',summary.output],['Cached input',summary.cached]].map(([label,value])=><div className="ai-usage-stat" key={label}><span>{label}</span><strong title={number(Number(value))}>{number(Number(value))}</strong></div>)}</div>
     <div className="ai-usage-cost" role="status"><strong>{uiText("Estimated USD")}: {formatEstimatedUSD(summary.priced?summary.cost:summary.filtered.length?null:0)}</strong><span> · {summary.priced.toLocaleString(getLocale())} {uiText("priced actions")} · {(summary.filtered.length-summary.priced).toLocaleString(getLocale())} {uiText("unpriced actions")}{summary.priced>0&&summary.priced<summary.filtered.length?` · ${uiText("Partial estimate")}`:''}</span></div>
-    <AIPricingNote/>
     <div className="ai-usage-visuals">
     <div className="ai-usage-chart"><div className="ai-usage-chart-heading"><h4>{uiText("Usage over time") + " "}<small>{summary.monthly?uiText("Monthly"):uiText("Daily")}{" " + uiText("totals")}</small></h4><div className="ai-usage-legend"><span><i className="ai-usage-input"/>{uiText("Input")}</span><span><i className="ai-usage-output"/>{uiText("Output")}</span></div></div>
       {!summary.reported?<p className="ai-activity-empty">{busy?uiText("Loading token usage…"):summary.filtered.length?uiText("Token counts have not been reported for these actions."):uiText("No AI activity in this period. Try another period or filter.")}</p>:<>
@@ -107,6 +107,6 @@ export function AIActivityUsage({excludeUnpaid=false}:{excludeUnpaid?:boolean}={
     <section className="ai-usage-actions"><h4>{uiText("Usage by action")}</h4>{summary.actions.length?summary.actions.map(([key,value])=><div className="ai-usage-action" key={key}><div><span>{uiText(aiActivityLabels[key as AIActivity['action']])}</span><strong>{number(value)} <small>{uiText("tokens")}</small></strong></div><p className="ai-usage-note">{uiText("Estimated USD")}: {formatEstimatedUSD(summary.actionCosts.get(key)?.priced?summary.actionCosts.get(key)!.cost:null)} · {number(summary.actionCosts.get(key)?.unpriced??0)} {uiText("unpriced actions")}</p><div className="ai-usage-track"><span style={{width:`${total?value/total*100:0}%`}}/></div></div>):<p className="ai-usage-note">{uiText("No matching actions.")}</p>}</section>
     </div>
     <section className="ai-usage-token-details" aria-label={uiText("Token details")}><dl><div><dt>{uiText("Cache writes")}</dt><dd>{number(summary.writes)}</dd></div><div><dt>{uiText("Reasoning tokens")}</dt><dd>{number(summary.reasoning)}</dd></div><div><dt>{uiText("Usage not reported")}</dt><dd>{number(summary.filtered.length-summary.reported)}{" " + uiText("actions")}</dd></div></dl></section>
-    <details className="ai-usage-note ai-usage-about"><DisclosureSummary>{uiText("About these totals · One year of retained activity")}</DisclosureSummary><p>{uiText("Across unlocked vaults, using local dates. Activity and token usage are retained for one year without a record-count limit. Debug traces expire separately after 30 days; removing traces preserves these totals. Refreshes every 15 seconds. Cached input and reasoning are included in input and output totals when reported by the provider; they are not added again. Missing counts are excluded.")}</p></details>
+    <AIPricingNote report/>
   </section>;
 }

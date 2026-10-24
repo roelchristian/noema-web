@@ -48,6 +48,6 @@ Credits, taxes, account discounts, regional premiums, and other billing adjustme
 are excluded. Estimates are not invoices.
 
 “Exclude unpaid activity” hides local Kokoro speech and DOI metadata lookups
-from the activity log, token report, and CSV export. The selection carries across
-both tabs. Paid-model records with missing usage or unknown prices remain visible.
-Clearing activity still clears all unlocked-vault records regardless of the filter.
+from the token report only. Its selection survives switching tabs. The activity
+log and CSV export always include all retained activity from unlocked vaults.
+Paid-model records with missing usage or unknown prices remain in the report.

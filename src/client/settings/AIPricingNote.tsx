@@ -2,6 +2,10 @@ import {DisclosureSummary} from '../components/DisclosureSummary';
 import {pricingSources} from '../../shared/ai-pricing';
 import {t as uiText} from '../i18n';
 
-export function AIPricingNote() {
-  return <details className="ai-usage-note"><DisclosureSummary>{uiText("About USD estimates · Prices verified October 25, 2026")}</DisclosureSummary><p>{uiText("Estimates use reported tokens and published standard paid API rates. Cached input, default cache writes, long prompts, and speech audio rates are included. Reasoning tokens are already included in output. Free tiers, credits, taxes, regional premiums, and account discounts are excluded. Unpriced actions are excluded from the estimate, not counted as free. Older unpriced records use this verified price snapshot when sufficient usage is retained; existing versioned estimates are preserved. Gemini speech uses the published price increase from January 1, 2027. Custom configured prices take precedence. These are estimates, not invoices.")}</p><p><a href={pricingSources.openai} target="_blank" rel="noreferrer">OpenAI {uiText("published prices")}</a> · <a href={pricingSources.gemini} target="_blank" rel="noreferrer">Gemini {uiText("published prices")}</a></p></details>;
+export function AIPricingNote({report=false}:{report?:boolean}) {
+  return <details className="ai-usage-note ai-usage-about ai-activity-disclosure">
+    <DisclosureSummary>{uiText("Usage & pricing notes")}</DisclosureSummary>
+    <p>{uiText("Unlocked vaults only. Activity stays local for one year without a record-count limit; debug traces expire after 30 days.")}{' '}{report?uiText("Totals follow the selected filters and local dates; missing counts are excluded. Cached and reasoning tokens are included in input/output, never added twice. Refreshes every 15 seconds."):uiText("CSV exports all retained activity. Clear removes all unlocked-vault records. Loading older activity pauses auto-refresh.")}</p>
+    <p>{uiText("USD estimates use reported tokens and standard paid rates verified October 25, 2026, including cache, long-prompt and speech pricing. Missing estimates are excluded, not treated as free. Older unpriced usage uses this snapshot; existing estimates and custom rates are preserved. Credits, free tiers, taxes and account adjustments are excluded.")}{' '}<a href={pricingSources.openai} target="_blank" rel="noreferrer">OpenAI</a> · <a href={pricingSources.gemini} target="_blank" rel="noreferrer">Gemini</a></p>
+  </details>;
 }

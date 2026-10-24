@@ -718,7 +718,18 @@
   font-variant-numeric: tabular-nums;
 }
 .ai-usage-about {
-  font-size: 11px;
+  font-size: 12px;
+}
+.ai-activity-disclosure {
+  margin: 6px 0;
+  line-height: 1.5;
+}
+.ai-activity-disclosure ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 6px 0;
+  padding-left: 18px;
 }
 .ai-usage-about summary {
   cursor: pointer;

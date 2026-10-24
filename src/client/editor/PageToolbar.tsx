@@ -3,7 +3,8 @@ import {PresentationSelector} from '../settings/PresentationSelector';
 import type {PresentationMode} from '../settings/appearance';
 import {t as uiText} from '../i18n';
 import {PageEditLockDialog} from './PageEditLockDialog';
-import { useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
+import {createPortal} from 'react-dom';
 import type { Block, Page, Organization, Entity } from '../../shared/domain';
 import { api } from '../api';
 import { Icon } from '../components/Icon';
@@ -31,6 +32,8 @@ export function PageToolbar({ onArchive, onRestore, onHistory, onRename, entitie
   onFeaturedImageChange: (imageId: string | null) => void;
   onChangeBlocks: (blocks: Block[]) => void;
 }) {
+  const [identityTarget,setIdentityTarget]=useState<HTMLElement|null>(null);
+  useLayoutEffect(()=>{setIdentityTarget(document.getElementById('page-identity-tools'));},[]);
   const [entityAssociationsOpen,setEntityAssociationsOpen]=useState(false);
   const [lockOpen,setLockOpen]=useState(false);
   const [changingLock,setChangingLock]=useState(false);
@@ -69,18 +72,24 @@ export function PageToolbar({ onArchive, onRestore, onHistory, onRename, entitie
         {label:uiText("Without a password"),icon:'lock',description:uiText("Lock editing. The page stays readable."),onSelect:()=>void changeLock(true)},
         {label:uiText("With a password…"),icon:'lock',description:uiText("Require a password to unlock editing."),onSelect:()=>setLockOpen(true)},
       ]};
-  return <><div inert={inactive} className="page-toolbar" role="group" aria-label={uiText("Page tools")}>
+  const identityControls=<div className="page-toolbar-identity" inert={inactive}>
+    <button type="button" className={'page-tool favourite-button ' + (favourite ? 'is-favourite' : '')} disabled={saving||!!page.archived_at} aria-busy={saving} aria-pressed={favourite} aria-label={favourite ? uiText("Remove page from favourites") : uiText("Add page to favourites")} title={favourite ? uiText("Remove from favourites") : uiText("Add to favourites")} onClick={() => void toggleFavourite()}><Icon name="star"/></button>
+    {page.editLocked && <div className="page-toolbar-lock"><ActionMenu label={uiText("Page locked: unlock editing")} icon="lock" disabled={changingLock} actions={lockAction.children ?? []}/><span aria-hidden="true">{uiText("Locked")}</span></div>}
+  </div>;
+  return <>{identityTarget?createPortal(identityControls,identityTarget):identityControls}<div inert={inactive} className="page-toolbar" role="group" aria-label={uiText("Page tools")}>
     <div className="page-toolbar-history page-toolbar-secondary" role="group" aria-label={uiText("Editing")}>
       <button type="button" className="page-tool" aria-label={uiText("Undo")} title={uiText("Undo")+' · ⌘/Ctrl+Z'} disabled={editingDisabled||!canUndo} onMouseDown={event=>{if(event.button===0)event.preventDefault();}} onClick={onUndo}><Icon name="undo"/></button>
       <button type="button" className="page-tool" aria-label={uiText("Redo")} title={uiText("Redo")+' · ⌘/Ctrl+Shift+Z'} disabled={editingDisabled||!canRedo} onMouseDown={event=>{if(event.button===0)event.preventDefault();}} onClick={onRedo}><Icon name="redo"/></button>
     </div>
+    <div className="page-toolbar-view"><ActionMenu label={uiText("View")} triggerText={uiText("View")} icon="view-list" actions={[
+      ...(['standard','subtle','focus'] as const).map(mode=>({id:mode,label:uiText(mode==='standard'?'Standard':mode==='subtle'?'Subtle':presentationMode==='focus'?'Exit Focus':'Focus'),checked:presentationMode===mode,onSelect:()=>mode==='focus'&&presentationMode==='focus'?onExitFocus():onPresentationModeChange(mode)})),
+      ...(tocAvailable&&onToggleToc?[{id:'contents',group:uiText("Contents"),label:uiText("Table of contents"),checked:tocVisible,onSelect:onToggleToc}]:[]),
+    ]}/></div>
     <PresentationSelector value={presentationMode} onChange={onPresentationModeChange} onExitFocus={onExitFocus}/>
     {tocAvailable&&onToggleToc&&<div className="page-toolbar-reading page-toolbar-secondary" role="group" aria-label={uiText("View")}>
       <button type="button" className="page-tool" aria-label={contentsLabel} title={contentsLabel} aria-pressed={tocVisible} onClick={onToggleToc}><Icon name="view-list"/></button>
     </div>}
-    <button type="button" className={'page-tool favourite-button ' + (favourite ? 'is-favourite' : '')} disabled={saving||!!page.archived_at} aria-busy={saving} aria-pressed={favourite} aria-label={favourite ? uiText("Remove page from favourites") : uiText("Add page to favourites")} title={favourite ? uiText("Remove from favourites") : uiText("Add to favourites")} onClick={() => void toggleFavourite()}><Icon name="star"/></button>
-    <button type="button" className="page-tool page-tool-labeled knowledge-toggle" aria-expanded={aiOpen} aria-controls="intelligence-panel" aria-label={uiText("Knowledge")} title={uiText("Knowledge")} onClick={onAI}><Icon name="knowledge"/><span>{uiText("Knowledge")}</span></button>
-    {page.editLocked && <div className="page-toolbar-lock"><ActionMenu label={uiText("Page locked: unlock editing")} icon="lock" disabled={changingLock} actions={lockAction.children ?? []}/><span aria-hidden="true">{uiText("Locked")}</span></div>}
+    <button type="button" className="page-tool page-tool-labeled knowledge-toggle" aria-expanded={aiOpen} aria-controls="intelligence-panel" aria-label={uiText("Show page knowledge")} title={uiText("Knowledge")} onClick={onAI}><Icon name="knowledge"/><span>{uiText("Knowledge")}</span></button>
     <ActionMenu label={uiText("More page actions")} disabled={changingLock} actions={[
       {id:'favourite',group:uiText("Page"),label:uiText("Favourite"),icon:'star',checked:favourite,disabled:saving||!!page.archived_at,onSelect:()=>void toggleFavourite()},
       ...(onRename?[{id:'rename',group:uiText("Page"),label:uiText("Rename"),icon:'edit',disabled:editingDisabled,onSelect:onRename}]:[]),

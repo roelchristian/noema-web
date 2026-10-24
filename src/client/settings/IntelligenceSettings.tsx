@@ -1,7 +1,8 @@
+import {InlineNotice} from '../notifications/InlineNotice';
 import {useEffect,useState,type FormEvent} from 'react';
 import {api} from '../api';
 import {Select} from '../components/Select';
-import {SuccessNotice,useSuccessNotice} from '../components/SuccessNotice';
+import {FormNotice,useFormNotice} from '../notifications/FormNotice';
 import {ProviderConnection} from './ProviderConnection';
 import {aiPersonas,defaultPersonaId,type BuiltinPersonaId} from '../../shared/ai-personas';
 import {defaultPageEnrichmentPreferences,intelligenceModels,maxManualRequestsPerMinute,type AIPreferences,type ReasoningEffort} from '../../shared/intelligence';
@@ -12,7 +13,7 @@ export function IntelligenceSettings({active=true}:{active?:boolean}={}) {
   const [connectionReady,setConnectionReady]=useState<boolean|null>(null);
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[retry,setRetry]=useState(0);
   const [view,setView]=useState<'overview'|'style'|'enrichment'|'advanced'|'connections'>('overview');
-  const [success,setSuccess,occurrence]=useSuccessNotice();
+  const [success,setSuccess,occurrence]=useFormNotice();
   useEffect(()=>{
     if(!active||draft)return;
     let current=true;
@@ -43,7 +44,7 @@ export function IntelligenceSettings({active=true}:{active?:boolean}={}) {
       <div className="intelligence-actions"><button className="button" disabled={busy||!changed}>Save AI preferences</button></div>
     </form>}
     {!draft&&!error&&<p role="status">Loading AI preferences…</p>}
-    {error&&<p role="alert">{error}{!draft&&<button className="button" onClick={()=>setRetry(value=>value+1)}>Retry</button>}</p>}
-    <SuccessNotice inline message={success} occurrence={occurrence} onDismiss={()=>setSuccess('')}/>
+    {error&&<InlineNotice tone="error" title={error} announcement="assertive" actions={!draft&&<button className="button" onClick={()=>setRetry(value=>value+1)}>Retry</button>}/>}
+    <FormNotice message={success} occurrence={occurrence} onDismiss={()=>setSuccess('')}/>
   </section>;
 }

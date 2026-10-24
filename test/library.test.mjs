@@ -204,10 +204,16 @@ test('list density controls are icon-only, persist compact spacing, and survive 
   assert.equal(document.querySelector('section').dataset.density,'standard');
 });
 
-test('Reading Notes uses the canonical list and collection cards remain available',()=>{
+test('Reading Notes uses the canonical list and collections lead the unified table',()=>{
   const collections=[{id:'reading',name:'Reading Notes',description:'Books and essays'}];
   const root=render({data:{...data,collections}});
-  assert.match(root,/organization-container-card/);assert.match(root,/Reading Notes/);
+  assert.match(root,/data-library-row="collection:reading"/);assert.match(root,/Reading Notes/);
+  assert.doesNotMatch(root,/organization-container-grid|organization-container-card|organization-section-toggle/);
+  assert.ok(root.indexOf('data-library-row="collection:reading"')<root.indexOf('data-library-row="folder:desk"'));
+  assert.match(root,/Open collection: Reading Notes/);
+  const collectionsOnly=render({data:{...data,collections,folders:[],favourites:[]},pages:[]});
+  assert.match(collectionsOnly,/data-library-row="collection:reading"/);
+  assert.doesNotMatch(collectionsOnly,/Nothing here yet/);
   assert.match(root,/data-layout="list"/);
   assert.doesNotMatch(root,/Grid view|View layout|Row spacing/);
   const reading=render({data:{...data,collections},context:{collection:'reading',folder:''}});

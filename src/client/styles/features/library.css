@@ -2099,3 +2099,5 @@
   .organization-library[data-density=compact] .organization-item-name { min-height: 44px; }
   .organization-library[data-density=compact] .library-select-all { min-height: 44px; padding-inline: 8px; }
 }
+
+.library-collection-detail { margin-left: 10px; color: var(--text-muted); font-size: 11px; font-weight: 400; }

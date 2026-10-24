@@ -74,3 +74,41 @@ test('Library omits routine status and combines factual AI history in its one la
   assert.match(generated,/>AI-generated<\/span>/);
   assert.doesNotMatch(generated,/AI-generated, edited/);
 });
+
+test('sidebar caps every page group at five and View all opens its full list', async t => {
+  const {setupDOM} = await import('./helpers/dom.mjs');
+  const {act} = await import('react');
+  const {createRoot} = await import('react-dom/client');
+  const {saveSidebarExpansion} = await import('../src/client/organization/sidebar-expansion.ts');
+  const env = setupDOM(t);
+  const vaultId = 'sidebar-page-limit';
+  saveSidebarExpansion(vaultId, new Set(['folder:desk', 'folder:child', 'collection:theme', 'collection:theme/folder:desk', 'unfiled']));
+  const pages = ['desk', 'child', 'unfiled'].flatMap(group => Array.from({length: 7}, (_, index) => ({id: `${group}-${index}`, title: `${group} ${index}`, updated_at: ''})));
+  const organization = {...data,
+    collections: [{id: 'theme', name: 'Theme'}],
+    locations: pages.filter(page => !page.id.startsWith('unfiled')).map(page => ({kind: 'page', item_id: page.id, folder_id: page.id.startsWith('child') ? 'child' : 'desk'})),
+    memberships: pages.filter(page => page.id.startsWith('unfiled')).map(page => ({kind: 'page', item_id: page.id, collection_id: 'theme'})),
+    folderLinks: [{folder_id: 'desk', collection_id: 'theme'}],
+  };
+  const opened = [], root = createRoot(document.querySelector('#mount'));
+  env.defer(() => act(async () => root.unmount()));
+  const props = {data: organization, pages, vaultId, activePageId: 'desk-6', activeFolderPath: [], revealPageId: null, onRevealed: noop,
+    context: {collection: '', folder: ''}, active: false, disabled: false, available: true,
+    onOpen: (...args) => opened.push(args), onOpenUnfiled: () => opened.push(['unfiled']),
+    onOpenPage: noop, onRenamePage: noop, onDeletePage: noop, onMovePage: noop, onChanged: noop, onError: noop};
+  await act(async () => root.render(createElement(SidebarOrganization, props)));
+  const buttons = [...document.querySelectorAll('.sidebar-view-all')];
+  assert.equal(buttons.length, 5);
+  for (const button of buttons) {
+    const links = [...button.parentElement.children].filter(node => node.classList.contains('sidebar-page-row'));
+    assert.equal(links.length, 5);
+    await act(async () => button.click());
+  }
+  assert.deepEqual(opened, [['', 'child'], ['', 'desk'], ['unfiled'], ['', 'desk'], ['theme', '']]);
+  assert.equal(document.querySelectorAll('.organization-page-link[aria-current="page"]').length, 2);
+  assert.equal(document.querySelector('[data-canonical-page="desk-6"]')?.title, 'desk 6');
+  await act(async () => root.render(createElement(SidebarOrganization, {...props, disabled: true})));
+  assert.ok([...document.querySelectorAll('.sidebar-view-all')].every(button => button.disabled));
+  await act(async () => root.render(createElement(SidebarOrganization, {...props, pages: pages.filter(page => Number(page.id.split('-')[1]) < 5)})));
+  assert.equal(document.querySelectorAll('.sidebar-view-all').length, 0);
+});

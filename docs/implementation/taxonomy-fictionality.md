@@ -59,4 +59,4 @@ The serial merge slot integrates main `8d274abb27a487a5f8c25beb36ff3e56847d9200`
 
 Build/style/type checks and all five affected synthetic browser checks pass: Settings, taxonomy/status/reference controls, scanner review, Library views (2,500 items), and source reprocessing recovery/review/configuration preview. Logs: `/tmp/taxonomy-finalintegration-build.log` and `/tmp/taxonomy-final-{settings,taxonomy,scan,library,reprocessing}.log`. No real vault data or paid provider calls were used. PR readiness and merge are authorized for this slot after exact-head CI succeeds; no other PR is in scope.
 
-Final integrated full suite: **1,226 passed, zero failures, seven explicit skips** (1,233 total; `/tmp/taxonomy-finalintegration-tests.log`). Whitespace checks passed. Exact-head PR CI and subsequent main CI are verified separately after publication/merge.
+Final integrated full suite: **1,225 passed, zero failures, seven explicit skips** (1,232 total; `/tmp/taxonomy-finalintegration-tests.log`). Whitespace checks passed. Exact-head PR CI and subsequent main CI are verified separately after publication/merge.

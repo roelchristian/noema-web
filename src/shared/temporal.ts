@@ -88,17 +88,17 @@ export function extractTemporal(text:string):TemporalExpression[] {
  // ordinal days, instead of accepting an exact date from inside their span.
  const guardedMonths=monthPattern+'|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec';
  const historicalAtom=String.raw`(?:(?:\d{1,3}(?:st|nd|rd|th)?\s*)?(?:${guardedMonths})\.?\s*(?:\d{1,2}(?:st|nd|rd|th)?,?\s*)?\d{1,4}|\d{1,4}(?:st|nd|rd|th)?(?:\s+century)?)(?:\s*(?:BCE|BC))?`;
- const guardQualifier=String.raw`(?:circa|about|approximately|c\.|ca\.?|early|late|mid[ -]?|uncertain(?:ly)?|possibly|probably|perhaps|around)`;
+ const guardQualifier=String.raw`(?:circa|about|approx(?:imate(?:ly)?)?\.?|roughly|c\.|ca\.?|early|late|mid[ -]?|uncertain(?:ly)?|possibly|probably|perhaps|around)`;
  const historicalRange=new RegExp(String.raw`\b(?:(?:in|between|from)\s+)?(?:${guardQualifier}\s*)?${historicalAtom}\s*(?:and|or|to|/|–|—|-)\s*(?:${guardQualifier}\s*)?${historicalAtom}(?:\s*\([^)]+\))?`,'gi');
  for(const match of text.matchAll(historicalRange)) {
   // A conjunction of complete dates remains independent evidence, not a range.
-  if(/and/i.test(match[0])&&!/^between\b/i.test(match[0])&&new RegExp(guardedMonths,'i').test(match[0]))continue;
+  if(/\band\b/i.test(match[0])&&!/^between\b/i.test(match[0])&&new RegExp(guardedMonths,'i').test(match[0]))continue;
   if(/^(?:between\s+\d{4}\s+and\s+\d{4}|(?:from\s+)?\d{4}\s*(?:to|–|—|-)\s*\d{4})(?:\s*\((?:Gregorian|Julian|Old Style|New Style)\))?$/i.test(match[0]))continue;
-  if(/and|or/i.test(match[0])||new RegExp(String.raw`(?:${guardedMonths})|BCE|BC|${guardQualifier}`,'i').test(match[0]))add(match.index,match.index+match[0].length,null,'Unsupported historical bounds or alternatives');
+  if(/\b(?:and|or)\b/i.test(match[0])||new RegExp(String.raw`(?:${guardedMonths})|BCE|BC|${guardQualifier}`,'i').test(match[0]))add(match.index,match.index+match[0].length,null,'Unsupported historical bounds or alternatives');
  }
  const abbreviatedBCE=/\b(?:\d{1,3}(?:st|nd|rd|th)?\s*)?(?:Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?\s*\d{1,4}\s*(?:BCE|BC)\b(?:\s*\([^)]+\))?/gi;
  for(const match of text.matchAll(abbreviatedBCE))add(match.index,match.index+match[0].length,null,'Unsupported abbreviated BCE expression');
- const qualifierPattern=new RegExp(String.raw`\b(?:circa|about|approximately|c\.|ca\.?|early|late|mid[ -]?|uncertain(?:ly)?|possibly|probably|perhaps|around)\s*${historicalAtom}(?:\s*(?:–|—|-|to|and|/)\s*${historicalAtom})?(?:\s*\([^)]+\))?\s*\??`,'gi');
+ const qualifierPattern=new RegExp(String.raw`\b(?:circa|about|approx(?:imate(?:ly)?)?\.?|roughly|c\.|ca\.?|early|late|mid[ -]?|uncertain(?:ly)?|possibly|probably|perhaps|around)\s*${historicalAtom}(?:\s*(?:–|—|-|to|and|/)\s*${historicalAtom})?(?:\s*\([^)]+\))?\s*\??`,'gi');
  for(const match of text.matchAll(qualifierPattern)) {
   // Only the already-supported unqualified four-digit nominal year is resolved.
   if(/^(?:circa|about|approximately|c\.)\s*\d{4}(?:\s*\((?:Gregorian|Julian|Old Style|New Style)\))?$/i.test(match[0].trim()))continue;

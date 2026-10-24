@@ -250,3 +250,11 @@ test('association facets preserve one date identity while filtering accepted con
  const backups=new VaultBackups(store),backup=await backups.export(vault.id),restored=await backups.import(backup.bytes,'Context restored');
  assert.deepEqual(index.query(restored.id,'1815-01-01','1815-12-31',false,'gregorian',{layers:['historical']}).items[0].relations.map(row=>row.layer),['historical']);
 });
+
+
+test('unsupported approximation spellings and separator-like calendar text never expose an exact inner date',()=>{
+ for(const input of ['approx. 12 March 44 BCE','approximate 12 March 44 BCE','roughly 12 March 44 BCE','12 March 44 BCE to 15 March 43 BCE (Finland)']) {
+  const expressions=extractTemporal(input);assert.equal(expressions.length,1,input);assert.equal(expressions[0].date,null,input);assert.equal(expressions[0].text,input);
+ }
+ assert.deepEqual(values('23 October 2026 and 24 October 2026 (Gregorian)'),['2026-10-23','2026-10-24']);
+});

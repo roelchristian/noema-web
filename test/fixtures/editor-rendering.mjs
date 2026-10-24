@@ -14,21 +14,21 @@ export async function fixture(work,{blockCount=6}={}) {
   const env=setupDOM(undefined,{html:'<div class="page"><div id="mount"></div></div>'}),{dom}=env;
   const originalSchema=api.entitySchema;api.entitySchema=async()=>({properties:[],subtypes:[],subtypeProperties:{}});
   let blocks=immutableBlocks(Array.from({length:blockCount},(_,index)=>({id:`b${index+1}`,type:'paragraph',checked:false,content:[{text:index===blockCount-1?'':`Fictitious paragraph ${index+1}`}]})));
-  let entities=[],reviewMatches=[],open=()=>{};
+  let entities=[],reviewMatches=[],open=()=>{},language;
   env.defer(()=>{api.entitySchema=originalSchema;});
   const root=createRoot(document.querySelector('#mount'));
   env.defer(()=>act(async()=>root.unmount()));
   // Fresh callbacks and citation value match PageEditor; block objects remain shared.
   function App() {
     const history=useDocumentHistory({id:'fixture',vault_id:'fixture',title:'Fictitious fixture',blocks,sourceIds:[],revision:1},patch=>{blocks=patch.blocks??blocks;render();});
-    return React.createElement(CitationPresentationContext.Provider,{value:{style:'references',entries:noteCitations(blocks)}},React.createElement(BlockEditor,{vaultId:'fixture',blocks,entities,reviewMatches,onChange:next=>{if(process.env.MEASURE_HISTORY==='1')history.change({blocks:next});else {blocks=next;render();}},onOpenEntity:id=>open(id),onCreateEntity(){},onAddAlias:async()=>{},onSave(){}}));
+    return React.createElement(CitationPresentationContext.Provider,{value:{style:'references',entries:noteCitations(blocks)}},React.createElement(BlockEditor,{vaultId:'fixture',language,blocks,entities,reviewMatches,onChange:next=>{if(process.env.MEASURE_HISTORY==='1')history.change({blocks:next});else {blocks=next;render();}},onOpenEntity:id=>open(id),onCreateEntity(){},onAddAlias:async()=>{},onSave(){}}));
   }
   const render=()=>root.render(React.createElement(App));
   const host=id=>document.querySelector(`[data-block-id="${id}"] .block-content`);
   const caret=(el,offset)=>{const range=document.createRange();range.setStart(el.firstChild.firstChild??el.firstChild,offset);range.collapse(true);getSelection().removeAllRanges();getSelection().addRange(range);};
   try {
     await act(async()=>render());
-    await work({dom,host,caret,blocks:()=>blocks,async set(next){blocks=next;await act(async()=>render());},async entities(next){entities=next;await act(async()=>render());},async reviews(next){reviewMatches=next;await act(async()=>render());},async onOpen(callback){open=callback;await act(async()=>render());},async rerender(){await act(async()=>render());}});
+    await work({dom,host,caret,blocks:()=>blocks,async set(next){blocks=next;await act(async()=>render());},async entities(next){entities=next;await act(async()=>render());},async reviews(next){reviewMatches=next;await act(async()=>render());},async onOpen(callback){open=callback;await act(async()=>render());},async language(next){language=next;await act(async()=>render());},async rerender(){await act(async()=>render());}});
   } finally {
     await env.close();
   }

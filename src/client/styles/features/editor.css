@@ -3272,3 +3272,114 @@
   color: var(--thing-text, #333);
   border-color: var(--thing-border, #d9d9d9);
 }
+
+/* Derived reading aids stay outside the editable content and document model. */
+.block[data-transliteration-layout] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px 20px;
+}
+.block[data-transliteration-layout] > .block-content,
+.block[data-transliteration-layout] > .block-transliteration {
+  grid-column: 1;
+}
+.block-transliteration {
+  min-width: 0;
+  margin: 0;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: normal calc(var(--document-font-size) * .85)/1.55 var(--font-ui);
+  letter-spacing: normal;
+  text-align: left;
+  text-indent: 0;
+  text-transform: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.block[data-transliteration-layout] > .bullet-marker {
+  position: absolute;
+  inset-inline-start: 0;
+  top: 0;
+}
+.block[data-transliteration-layout] > input[type=checkbox] {
+  position: absolute;
+  inset-inline-start: 0;
+  top: 6px;
+  margin: 0;
+}
+.block[data-transliteration-layout]:is(.bullet, .numbered, .todo) > .block-content {
+  padding-inline-start: 24px;
+}
+.block.quote[data-transliteration-layout]:not(.semantic-block) {
+  padding-inline-start: 0;
+  border-inline-start: 0;
+}
+.block.quote[data-transliteration-layout]:not(.semantic-block) > .block-content {
+  padding-inline-start: 18px;
+  border-inline-start: 2px solid var(--line);
+}
+@media (min-width: 681px) {
+  .block[data-transliteration-layout=side-by-side] {
+    align-items: start;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .block[data-transliteration-layout=side-by-side] > .block-transliteration {
+    padding-block: 0;
+    grid-column: 2;
+    grid-row: 1;
+  }
+}
+
+.transliteration-bar {
+  position: fixed;
+  right: 16px;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px) + var(--transliteration-keyboard-inset, 0px));
+  z-index: 39;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+  padding: 6px 6px 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg, 8px);
+  background: var(--surface);
+  box-shadow: var(--shadow-menu);
+  color: var(--text-muted);
+  font: 12px/1.4 var(--font-ui);
+}
+.transliteration-bar > .icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.transliteration-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+}
+.transliteration-bar button:hover {
+  background: var(--surface-hover);
+}
+.transliteration-bar button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+body:has(.editor-speech) .transliteration-bar {
+  bottom: calc(112px + env(safe-area-inset-bottom, 0px) + var(--transliteration-keyboard-inset, 0px));
+}
+@media (max-width: 760px) {
+  .transliteration-bar {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px) + var(--transliteration-keyboard-inset, 0px));
+  }
+  .transliteration-bar button {
+    min-height: 36px;
+  }
+}

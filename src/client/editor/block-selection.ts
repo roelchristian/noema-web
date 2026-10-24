@@ -50,6 +50,8 @@ function contentRange(block: HTMLElement): Range {
 export function selectedEditorBlocks(root: HTMLElement, selection = document.getSelection()) {
   const range = editorSelectionRange(root, selection);
   if (!range || range.collapsed) return null;
+  // Derived reading aids use native selection/copy and cannot edit their source.
+  if (element(range.startContainer)?.closest('.block-transliteration') || element(range.endContainer)?.closest('.block-transliteration')) return null;
   if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
   const elements = Array.from(root.querySelectorAll<HTMLElement>('[data-block-id]')).filter(block => {
     if (block.contains(range.startContainer) || block.contains(range.endContainer)) return true;

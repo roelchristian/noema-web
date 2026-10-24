@@ -1,4 +1,4 @@
-import {Bibliography} from './modules/bibliography.js';
+import {BibliographicMetadata} from './modules/bibliographic-metadata.js';
 import {SpeechCache} from './modules/speech-cache.js';
 import {buildCollectionRulePrompt} from './modules/collection-rule-generation.js';
 import {LiturgicalCalendar} from './modules/liturgical-calendar.js';
@@ -77,7 +77,7 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
     try {const output=await intelligence.generate({kind:'collectionRules',...buildCollectionRulePrompt(input),onRequest:bytes=>activity.request(id,bytes,null)});activity.finish(id,'completed',200);return output;}
     catch(error){activity.finish(id,'failed',error instanceof HttpError?error.status:502);throw error;}
   });
-  const bibliography=new Bibliography(store);
+  const bibliography=new BibliographicMetadata(store);
   const sourcePassages=new SourcePassages(store);
   const sourceEnrichments=new SourceEnrichments(store,intelligence,activity);
   const sourcePages=new SourcePages(store,knowledge,pages);

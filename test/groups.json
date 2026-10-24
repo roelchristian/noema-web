@@ -88,7 +88,8 @@
     "test/create-source-text-ui.test.mjs",
     "test/success-notice.test.mjs",
     "test/provider-connection-ui.test.mjs",
-    "test/settings-category-ui.test.mjs"
+    "test/settings-category-ui.test.mjs",
+    "test/bibliography-ui.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",
@@ -203,6 +204,7 @@
     "test/speech-backup.test.mjs",
     "test/gemini-speech.test.mjs",
     "test/page-archive.test.mjs",
-    "test/bibliography-backups.test.mjs"
+    "test/bibliography-backups.test.mjs",
+    "test/bibliography-server.test.mjs"
   ]
 }

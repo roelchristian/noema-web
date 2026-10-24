@@ -1,0 +1,24 @@
+# Source Reprocessing V2 implementation record
+
+Based on the supplied 161-line design brief dated 25 October 2026. The linked 471-line technical specification was not available and has not been read. Baseline: `origin/main` at `9b6fecc`, including source viewer #92 and #95–97. Work is local; no publication, PR, merge or deployment is authorized.
+
+## Contracts and assumptions
+
+- V2 has independent depth (`light`, `balanced`, `deep`) and review policy (`verified`, `review_all`). New V2 revisions default to Balanced Reconstruction and Verified. Existing revisions and explicitly requested V1 policies retain historical behavior.
+- Each eligible Light chunk needs one successful model request; Balanced needs exactly two, including unchanged first-pass output; Deep needs two or three with the third-pass reason persisted before dispatch. Deterministic validation never counts as a model pass.
+- Noema owns canonical block IDs and computes UTF-16 differences. Models return complete blocks in canonical order. Unknown, reordered, missing or malformed blocks fail closed. This initial contract preserves block boundaries; cross-block restructuring remains a review/integration limitation.
+- Canonical extraction, physical page coordinates and original citation anchors are immutable. Accepted patches create a derivative; uncertain substantive, mathematical, quotation and bibliographic edits remain pending. Another model's approval is not independent source evidence.
+- Reservations precede provider dispatch. Raw successful results, configuration, prompt version and usage are durable before parsing or the next request. Lost/uncertain responses are never automatically repeated. Successful checkpoints are reused; malformed successful results are retained and fail validation without a new paid request.
+- V2 uses the existing Intelligence request/admission boundary. Development uses synthetic/mock providers only; no actual source files or original assets were transmitted, credentials changed, or live paid services installed/invoked.
+
+## Unspecified integration contracts
+
+The supplied brief does not specify the original-page/OCR model-evidence adapter, source-evidence trust/freshness format, or the parallel Source Metadata candidate handoff. Current original-page rendering is a local viewing capability and does not establish OCR corroboration or permission to transmit original assets. V2 reports those capabilities as unavailable and falls back conservatively to exact canonical text evidence. Actual OCR/image provider integration is deferred until the adapter, consent and evidence provenance contracts are agreed.
+
+Structured source metadata remains owned by the existing bibliographic/property owners and the parallel Source Metadata task. Reprocessing prompts prohibit per-chunk structured metadata extraction; V2 does not create a competing metadata store. The metadata owner reports local commit `f9d863f61ca206a8dc121918084a4fcb6c3be0a6`, which is unavailable in this checkout. Reuse `SourceMetadataExtraction.process(...)` and `SourceMetadata.registerCandidate(...)`; keep the adapter isolated until integration is possible. Required signatures: process parameters/result and document-region evidence cache identity/freshness; candidate schema/registration parameters/result and evidence/history ownership; cancellation/idempotence and invocation timing. The adapter must run once per canonical document/evidence revision, never once per editorial chunk. No conflicting store or guessed adapter contract is introduced. Textual bibliography proposals remain reviewable reading-version patches and do not modify canonical bibliographic properties.
+
+## Validation record
+
+`npm run build` passed: styles, application/test typechecks, server compilation and Vite. Focused integration suite: **107 passed, 1 platform skip, 0 failures** (108 total), covering V1, scheduler, uncertainty/restart, actual compressed backup/import/resume, evidence gates, apparatus, canonical coordinates, summary projection, UI, mocked actual Intelligence transport and existing vault backups. Synthetic Chromium desktop/mobile (1200px/390px) passed V2 settings, pass ledger, failure recovery, review, configuration preview and overflow; local API fixtures block external traffic. Independent reviewer reported no remaining blockers after identifying and validating fixes for provider schemas, restore hashes, Deep escalation cache hashes and atomic decision recovery. Full suite: **1,348 passed, 7 skipped, 0 failed** (1,355 total). `git diff --check` passed. Logs: `/tmp/noema-v2-final-{build,suite,focused,browser}.log`.
+
+Real-provider academic-PDF quality evaluation is **UNRUN** and requires separate authorization. Synthetic reliability checks cannot establish transcription accuracy, editorial quality or quality-release completion.

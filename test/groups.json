@@ -217,7 +217,7 @@
     "test/bibliographic-export.test.mjs",
     "test/source-reprocessing-persistence-v2.test.mjs",
     "test/source-reprocessing-scheduler-v2.test.mjs",
-    "test/source-reprocessing-v2-apparatus.test.mjs",
-    "test/source-reprocessing-v2-evidence.test.mjs"
+    "test/source-reprocessing-v2-evidence.test.mjs",
+    "test/source-reprocessing-v2-apparatus.test.mjs"
   ]
 }

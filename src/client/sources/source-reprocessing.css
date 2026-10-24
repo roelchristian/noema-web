@@ -110,3 +110,7 @@
 .reprocessing-master-detail .reprocessing-comparison pre{max-height:210px}
 .reprocessing-patch-explanation{font-size:12px}
 @media(max-width:650px){.reprocessing-reviews{inset:56px 0 0;width:100%;border-radius:10px 10px 0 0;padding:14px}.reprocessing-master-detail{grid-template-columns:1fr}.reprocessing-patch-list{max-height:25vh}.reprocessing-reading-picker{width:100%}.reprocessing-reading-picker select{flex:1;min-width:0}}
+
+.reprocessing-depth-detail,.reprocessing-stage-summary{color:var(--text-muted);font-size:12px;overflow-wrap:anywhere}
+.reprocessing-prompt select{max-width:100%}
+.reprocessing-pass-progress{font-variant-numeric:tabular-nums}

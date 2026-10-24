@@ -136,7 +136,8 @@ test('mobile uses below paragraphs and hides side-by-side controls while retaini
     React.createElement(TransliterationBar,{pageKey}))));
   assert.equal(document.querySelector('[data-block-id="p"]').dataset.transliterationLayout,'below');
   assert.equal(document.querySelector('.transliteration-bar .select-trigger'),null);
-  assert.ok(document.querySelector('.transliteration-bar').textContent.includes('Below paragraphs'));
+  assert.equal(document.querySelector('.transliteration-bar select'),null);
+  assert.equal(document.querySelector('.transliteration-bar').textContent,'TransliterationHide');
   await act(async()=>document.querySelector('[aria-label="More page actions"]').click());
   await act(async()=>document.querySelector('[data-menu-action="Transliteration"]').click());
   assert.equal(document.querySelector('[data-menu-action="Side by side"]'),null);

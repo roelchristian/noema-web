@@ -59,3 +59,42 @@ test('indexing polling stops inactive, discards stale responses and preserves va
   assert.equal(document.querySelector('#embedding-minimum').value,'222');
   await render(true);assert.equal(calls,3);assert.equal(document.querySelector('#embedding-minimum').value,'222','Reactivation preserves unsaved vault-specific settings');
 });
+
+test('settings restore their category, AI subview and scroll after a refresh, and stay closed after dismissal',async t=>{
+  const {useSettingsOpen,readSettingsSession}=await import('../src/client/settings/settings-session.ts');
+  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+  env.dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
+  env.dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
+  t.mock.method(api,'intelligence',async()=>initial());
+  t.mock.method(api,'aiDebugSettings',async()=>({enabled:false,expiresAt:null}));
+  const props={appearance:defaultAppearance(),calendarSettings:defaultCalendarSettings(),vault:null,storageError:false,onChange(){},onCalendarSettingsChange(){},onExitFocus(){},onChangePassphrase:async()=>{},onBeforeNetworkChange:async()=>{},onOpenPassage:async()=>{},onOpenPage:async()=>{},onOpenEntity:async()=>{}};
+  function Harness(){const [open,setOpen]=useSettingsOpen();return createElement('div',null,createElement('button',{id:'open-settings',onClick:()=>setOpen(true)},'Open settings'),open&&createElement(SettingsDialog,{...props,onClose:()=>setOpen(false)}));}
+  const reload=async()=>{await act(async()=>root.render(null));await act(async()=>root.render(createElement(Harness)));};
+  await reload();assert.equal(document.querySelector('.settings-modal'),null);
+  await act(async()=>document.getElementById('open-settings').click());
+  await act(async()=>document.getElementById('settings-tab-intelligence').click());
+  await click('Advanced diagnostics');
+  const panel=document.querySelector('.settings-panels');panel.scrollTop=245;
+  await act(async()=>panel.dispatchEvent(new Event('scroll')));
+  assert.deepEqual(readSettingsSession(),{tab:'intelligence',aiView:'diagnostics',scrollTop:245});
+  await reload();
+  assert.equal(document.getElementById('settings-tab-intelligence').getAttribute('aria-selected'),'true');
+  assert.ok([...document.querySelectorAll('button')].some(button=>button.textContent==='Back to AI'));
+  assert.equal(document.querySelector('.settings-panels').scrollTop,245);
+  await click('Done');assert.equal(readSettingsSession(),null);
+  await reload();assert.equal(document.querySelector('.settings-modal'),null);
+  await act(async()=>document.getElementById('open-settings').click());
+  assert.equal(document.getElementById('settings-tab-appearance').getAttribute('aria-selected'),'true');
+});
+
+test('invalid or unavailable settings session storage does not prevent opening settings',async t=>{
+  const {readSettingsSession}=await import('../src/client/settings/settings-session.ts');
+  const env=setupDOM(t);
+  for(const value of ['not json','null','{}','{"tab":"unknown"}']){
+    env.dom.window.sessionStorage.setItem('noema-settings-session',value);assert.equal(readSettingsSession(),null);
+  }
+  env.dom.window.sessionStorage.setItem('noema-settings-session','{"tab":"calendar","scrollTop":-10,"aiView":"unknown"}');
+  assert.deepEqual(readSettingsSession(),{tab:'calendar',aiView:'overview',scrollTop:0});
+  t.mock.getter(env.dom.window,'sessionStorage',()=>{throw new Error('Storage blocked');});
+  assert.equal(readSettingsSession(),null);
+});

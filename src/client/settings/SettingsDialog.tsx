@@ -10,6 +10,7 @@ import { AIDebugSettings } from './AIDebugSettings';
 import { ImageSettings } from './ImageSettings';
 import { SecuritySettings } from './SecuritySettings';
 import { useState, type CSSProperties } from 'react';
+import {useSettingsSession} from './settings-session';
 import { AIActivityLog } from './AIActivityLog';
 import { IntelligenceSettings } from './IntelligenceSettings';
 import { EmbeddingSettings } from './EmbeddingSettings';
@@ -44,12 +45,11 @@ export function SettingsDialog({initialTab='appearance',calendarSettings,onCalen
   appearance: Appearance; onChange: (appearance: Appearance) => void; storageError: boolean; onClose: () => void;
 }) {
   const {language,setLanguage,storageError:languageStorageError}=useInterfaceLanguage();
-  const [tab, setTab] = useState<typeof settingsTabs[number]['id']>(initialTab);
-  const [visited,setVisited]=useState<Set<string>>(()=>new Set([initialTab]));
+  const {tab,setTab,aiView,setAIView,panels}=useSettingsSession(initialTab);
+  const [visited,setVisited]=useState<Set<string>>(()=>new Set([tab]));
   function selectTab(next:typeof settingsTabs[number]['id']){setTab(next);setVisited(current=>new Set([...current,next]));}
   const [activityOpen, setActivityOpen] = useState(false);
-  const [aiView,setAIView]=useState<'overview'|'indexing'|'diagnostics'>('overview');
-  const [indexingVisited,setIndexingVisited]=useState(false);
+  const [indexingVisited,setIndexingVisited]=useState(aiView==='indexing');
   return <><Modal className="settings-modal" titleId="settings-title" onClose={onClose} dismissOnBackdrop>
     <div className="settings-dialog">
       <ModalHeader titleId="settings-title">{uiText("Settings")}</ModalHeader>
@@ -64,7 +64,7 @@ export function SettingsDialog({initialTab='appearance',calendarSettings,onCalen
           }
         }}><Icon name={icon}/><span>{label}</span></button>)}
       </div>
-      <div className="settings-panels">
+      <div className="settings-panels" ref={panels}>
       <div id="settings-panel-appearance" role="tabpanel" aria-labelledby="settings-tab-appearance" hidden={tab !== 'appearance'}>
       <section className="settings-section appearance-setting" aria-labelledby="interface-language-heading">
         <h3 id="interface-language-heading"><label htmlFor="settings-interface-language">{uiText("Language")}</label></h3>

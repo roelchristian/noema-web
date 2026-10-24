@@ -47,6 +47,7 @@ import { Select } from './components/Select';
 import { WorkspaceNavigation, useMobileViewport } from './components/WorkspaceNavigation';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { SettingsDialog } from './settings/SettingsDialog';
+import {useSettingsOpen} from './settings/settings-session';
 import { useAppearance } from './settings/useAppearance';
 import { RecentLibrary } from './organization/RecentLibrary';
 import { SidebarOrganization } from './organization/SidebarOrganization';
@@ -98,7 +99,7 @@ function WorkspaceApp() {
   const [sourceReference,setSourceReference]=useState<SourceReference|null>(null);
   const sourceTrigger=useRef<HTMLElement|null>(null);
   const [searchOpen,setSearchOpen]=useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useSettingsOpen();
   const [settingsInitialTab,setSettingsInitialTab]=useState<'appearance'|'calendar'|'intelligence'>('appearance');
   const {settings:calendarSettings,setSettings:setCalendarSettings,storageError:calendarStorageError}=useCalendarSettings();
   const [deleteTarget, setDeleteTarget] = useState<Pick<PageSummary,'id'|'title'> | null>(null);

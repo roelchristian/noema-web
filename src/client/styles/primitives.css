@@ -217,6 +217,10 @@ select.select-native {
   cursor: pointer;
   overflow-wrap: anywhere
 }
+.select-option-group-start {
+  border-top: 1px solid var(--select-menu-border);
+  margin-top: 4px;
+}
 .select-option.is-active {
   background: var(--select-surface-expanded)
 }

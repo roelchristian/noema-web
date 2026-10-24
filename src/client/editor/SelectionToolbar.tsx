@@ -15,6 +15,7 @@ interface Props {
   mobile?: boolean;
   keyboardInset?: number;
   viewportHeight?: number;
+  onRead?: () => void;
   onReview?:()=>void;
   reviewing?:boolean;
   onExplain?: () => void;
@@ -39,7 +40,7 @@ const formats = [
 function editable(node: Node) {
   return (node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>('.block-content[contenteditable="true"]');
 }
-export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHeight, editor, entities, suggestionContext, onCommit, onAddAlias, onOpenEntity, onCreateEntity, onMath, onSemantic, onExplain, explaining, explainLabel, onReview, reviewing}: Props) {
+export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHeight, editor, entities, suggestionContext, onCommit, onAddAlias, onOpenEntity, onCreateEntity, onMath, onSemantic, onExplain, explaining, explainLabel, onReview, reviewing, onRead}: Props) {
   const [anchor, setAnchor] = useState<{left: number; right: number; top: number; bottom: number} | null>(null);
   const [annotating, setAnnotating] = useState(false), [query, setQuery] = useState('');
   const [semantic, setSemantic] = useState(false);
@@ -309,6 +310,11 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
       }}>
         {formats.slice(0, 3).map(format => <button key={format.command} type="button" title={`${format.label} (${textFormatShortcuts[format.command]})`} aria-label={format.label} aria-pressed={active.includes(format.command)} disabled={!range || !editor.current || !editorSelectionRanges(editor.current,range).length} onClick={() => applyFormat(format.command)}>{format.glyph}</button>)}
         <span className="selection-divider"/>
+        {onRead && <button type="button" aria-label={uiText("Read")} title={uiText("Read aloud with an AI-generated voice")} onClick={() => {
+          const current = saved.current; releaseSheet();
+          if (current && restore(current)) onRead();
+          dismiss();
+        }}><Icon name="speaker"/></button>}
         <button ref={linkTrigger} type="button" className="selection-annotate" disabled={!single || savingAlias} aria-label={uiText("Link entity")} title={single ? uiText("Connect selection to a knowledge entity") : uiText("Select text within one block or table cell to annotate")} aria-haspopup="dialog" aria-controls={annotating ? panelId : undefined} aria-expanded={annotating} onClick={() => {
           if (annotating) closePicker(); else {pickerOrigin.current = 'link';showPicker('link');}
         }}><Icon name="knowledge"/><span className="selection-action-label">{uiText("Link entity")}</span></button>

@@ -176,17 +176,19 @@ test('stopping later selection chunks aborts requests and releases early playbac
   await f.resolve(1);assert.equal(f.created.length,1);assert.deepEqual(f.revoked,['blob:speech-1']);assert.equal(document.querySelector('.editor-speech'),null);
 });
 
-test('speech generation shows a compact spinner, elapsed time and section status until ready',async t=>{
+test('speech generation shows a compact spinner and section status without an elapsed timer',async t=>{
   const f=await speechFixture(t);await f.speak('Short selection');
   assert.equal(document.querySelector('progress'),null);
   assert.ok(document.querySelector('.speech-status .scan-spinner[aria-hidden=true]'));
-  assert.equal(document.querySelector('.speech-generation-time').textContent,'0:00');
+  assert.equal(document.querySelector('.speech-generation-time'),null);
   assert.equal(document.querySelector('button').getAttribute('aria-label'),'Cancel speech generation');
   await f.speak('A'.repeat(5000));
   assert.match(document.querySelector('[role=status]').textContent,/1 \/ 2/);
   await f.resolve(1);
   assert.match(document.querySelector('[role=status]').textContent,/2 \/ 2/);
   assert.ok(document.querySelector('.scan-spinner'));
+  assert.equal(document.querySelector('.editor-speech').dataset.ready,'true');
+  assert.ok(document.querySelector('.speech-status').classList.contains('sr-only'),'Background generation keeps the playback controls clear');
   await f.resolve(2);
   assert.equal(document.querySelector('.scan-spinner'),null);
   assert.equal(document.querySelector('.speech-generation-time'),null);
@@ -374,6 +376,39 @@ test('generation and playback failures can be dismissed, and global disable stop
   await f.speak('Pending');await f.toggle(false);
   assert.equal(f.hook().enabled,false);assert.equal(f.requests[2].options.signal.aborted,true);assert.equal(document.querySelector('.editor-speech'),null);
   await f.speak('Disabled');assert.equal(f.requests.length,3);
+});
+
+test('selection Read narrates only highlighted text within and across blocks',async t=>{
+  const requests=[];
+  t.mock.method(api,'intelligence',async()=>({ttsEnabled:true}));
+  t.mock.method(globalThis,'fetch',async(route,options)=>{return new Promise(resolve=>requests.push({options,resolve}));});
+  t.mock.method(URL,'createObjectURL',()=> 'blob:selection-speech');
+  t.mock.method(URL,'revokeObjectURL',()=>{});
+  await editorFixture(async({host,dom})=>{
+    t.mock.method(dom.window.HTMLMediaElement.prototype,'play',async()=>{});
+    for (const [endId,endOffset,expected] of [['b2',20,'paragraph'],['b3',10,'paragraph 2']]) {
+      const range=document.createRange();
+      const text=id=>document.createTreeWalker(host(id),NodeFilter.SHOW_TEXT).nextNode();
+      range.setStart(text('b2'),11);
+      range.setEnd(text(endId),endOffset);
+      getSelection().removeAllRanges();getSelection().addRange(range);
+      await act(async()=>{
+        document.dispatchEvent(new Event('selectionchange'));
+        await new Promise(resolve=>setTimeout(resolve,40));
+      });
+      const read=document.querySelector('.selection-toolbar [aria-label="Read"]');
+      assert.ok(read,'Selection toolbar exposes the Read icon');
+      const previous=requests.length;
+      await act(async()=>read.click());
+      await waitForSpeech(()=>requests.length>previous,'Read starts a synthesis request');
+      assert.equal(JSON.parse(requests[previous].options.body).text,expected);
+      if (endId==='b3') {
+        await act(async()=>requests[previous].resolve(wavResponse()));
+        await waitForSpeech(()=>requests.length>previous+1,'Read continues into the highlighted part of the next block');
+        assert.equal(JSON.parse(requests[previous+1].options.body).text,'Fictitious');
+      }
+    }
+  });
 });
 
 test('editor block options expose Speak only when globally enabled and speak the selected block',async t=>{

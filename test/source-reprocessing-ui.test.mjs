@@ -5,6 +5,9 @@ import {readFileSync} from 'node:fs';
 import {JSDOM} from 'jsdom';
 import React,{act} from 'react';
 import {createRoot} from 'react-dom/client';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {SourceLoadingProgress} from '../src/client/knowledge/SourceLoadingProgress.tsx';
+import {SourceInspectorStatus} from '../src/client/knowledge/SourceInspectorStatus.tsx';
 const css=registerHooks({load(url,context,next){return url.endsWith('.css')?{format:'module',source:'export default {};',shortCircuit:true}:next(url,context);}});
 const {SourceReprocessing}=await import('../src/client/sources/SourceReprocessing.tsx');
 css.deregister();
@@ -100,7 +103,7 @@ test('partial failures show actionable processing cause and excerpt ledger separ
  r.report.diagnostics=['Excerpt 1: preserve this quotation.','Excerpt 1, suggestion 1: excluded from review — ambiguous canonical text.'];
  const env=await mount(t,{initial:r,post:async(_,current)=>({...current,status:'queued'})});
  assert.match(document.querySelector('.reprocessing-progress').textContent,/Partial revision.*1 \/ 3 excerpts completed/s);
- assert.match(document.querySelector('.reprocessing-failure').textContent,/Settings → Intelligence/);
+ assert.match(document.querySelector('[id^="reprocessing-error-"]').textContent,/Settings → Intelligence/);
  assert.match(document.querySelector('.reprocessing-ledger').textContent,/Pages 1–2.*Completed.*Attempts: 1.*Page 3.*Failed.*Unsupported reasoning.*Page 4.*Not started/s);
  assert.equal(document.querySelector('.reprocessing-reviews'),null);
  assert.equal(document.querySelector('[aria-label="Reading version"] option[value="'+r.id+'"]'),null);assert.ok(env.button('Retry after configuration repair'));
@@ -194,4 +197,40 @@ test('review location selects the specific passage instead of its containing cha
  const env=await mount(t,{initial:r,onOriginal:(nodeId,focus)=>locations.push({nodeId,focus})});
  await env.click(env.button('Review changes (2)'));await env.click(document.querySelector('.reprocessing-patch-list li>button'));
  assert.deepEqual(locations,[{nodeId:'leaf',focus:false}]);
+});
+
+test('shared source progress preserves partial coverage and separates stage announcements from numeric updates',async t=>{
+ const r=fixture();r.status='interrupted';r.report.chunksCompleted=1;r.report.chunksTotal=3;
+ r.report.error='Synthetic interrupted extraction';
+ await mount(t,{initial:r});
+ const progress=document.querySelector('.reprocessing-progress .progress-notice');
+ assert.equal(progress.dataset.state,'interrupted');
+ assert.equal(progress.querySelector('.notice-icon').dataset.tone,'warning');
+ assert.equal(progress.querySelector('progress').value,1);
+ assert.equal(progress.querySelector('progress').max,3);
+ assert.match(progress.querySelector('[aria-live="polite"]').textContent,/Partial revision/);
+ assert.doesNotMatch(progress.querySelector('[aria-live="polite"]').textContent,/1 \/ 3/);
+ assert.match(document.querySelector('.reprocessing-progress').textContent,/Synthetic interrupted extraction.*Completed excerpts and review decisions are retained/s);
+ assert.ok(document.querySelector('.reprocessing-progress .inline-notice[data-tone="warning"]'));
+});
+
+
+test('source loading uses only supported determinate progress and retains storage diagnostics',()=>{
+ const file={id:'source',name:'Article.pdf',generated_name:null,status:'queued',enrichment_status:'pending',progress:0,pages:0,error:null,enrichment_error:null};
+ const markup=value=>new JSDOM(renderToStaticMarkup(React.createElement(SourceLoadingProgress,{file:{...file,...value}}))).window.document;
+ const queued=markup({});
+ assert.equal(queued.querySelector('.progress-notice').dataset.state,'queued');
+ assert.equal(queued.querySelector('progress').hasAttribute('value'),false);
+ const extracting=markup({status:'processing',progress:35});
+ assert.equal(extracting.querySelector('progress').value,35);
+ assert.equal(extracting.querySelector('progress').max,100);
+ assert.doesNotMatch(extracting.querySelector('[aria-live="polite"]').textContent,/35/);
+ const math=markup({status:'processing',processing_detail:{completed:2,total:7,startedAt:Date.now(),updatedAt:Date.now()}});
+ assert.equal(math.querySelector('[aria-label="Math preparation batches completed"]').value,2);
+ assert.equal(math.querySelector('progress').max,7);
+ const failed=new JSDOM(renderToStaticMarkup(React.createElement(SourceInspectorStatus,{files:[{...file,status:'failed',error:'Detailed extraction error'}],vaultId:'v',onChange:()=>{},onError:()=>{}}))).window.document;
+ assert.equal(failed.querySelector('.inline-notice[data-tone="error"]').textContent,'Article.pdfProcessing failedRetry processing');
+ assert.match(failed.body.textContent,/Detailed extraction error/);
+ assert.equal(failed.querySelector('.inline-notice[data-tone="error"] button').textContent,'Retry processing');
+ for(const document of [queued,extracting,math,failed])document.defaultView.close();
 });

@@ -4,6 +4,7 @@ import {useEffect, useRef, useState} from 'react';
 import type {SourceFile} from '../../shared/domain';
 import {request} from '../api';
 import {SourceLoadingProgress} from './SourceLoadingProgress';
+import {InlineNotice} from '../notifications';
 
 function status(file:SourceFile) {
   if(file.status==='failed')return 'Processing failed';
@@ -33,7 +34,7 @@ export function SourceInspectorStatus({files,vaultId,onChange,onError}:{files:So
   const label=!files.length?'No files attached':failed.length?`${failed.length} ${failed.length===1?'file needs':'files need'} attention`:working.length?`${working.length} ${working.length===1?'file processing':'files processing'}`:'Ready to read';
   return <section className="source-inspector-status" aria-label={uiText("Source processing")}>
     <div className="source-inspector-status-row"><span role="status">{label}</span></div>
-    {failed.map(file=><div className="source-inspector-status-failure" key={file.id}><span><strong>{file.generated_name||file.name}</strong><small>{status(file)}</small></span><button type="button" className="button small" disabled={!!pending} onClick={()=>void retry(file)}>{pending===file.id?uiText("Retrying…"):file.status==='failed'?uiText("Retry processing"):uiText("Retry AI")}</button></div>)}
-    {!!files.length&&<details><DisclosureSummary>{uiText("Processing details")}</DisclosureSummary><div className="source-inspector-status-files">{files.map(file=><div key={file.id}><strong>{file.generated_name||file.name}</strong><p>{status(file)}</p><SourceLoadingProgress file={file}/>{file.error&&<p className="dialog-error">{file.error}</p>}{file.enrichment_error&&<p className="dialog-error">{file.enrichment_error}</p>}</div>)}</div></details>}
+    {failed.map(file=><InlineNotice id={`source-failure-${file.id}`} key={file.id} tone="error" title={file.generated_name||file.name} description={uiText(status(file))} actions={<button type="button" className="button small" disabled={!!pending} onClick={()=>void retry(file)}>{pending===file.id?uiText("Retrying…"):file.status==='failed'?uiText("Retry processing"):uiText("Retry AI")}</button>}/>)}
+    {!!files.length&&<details><DisclosureSummary>{uiText("Processing details")}</DisclosureSummary><div className="source-inspector-status-files">{files.map(file=><div key={file.id}><strong>{file.generated_name||file.name}</strong><p>{status(file)}</p><SourceLoadingProgress file={file}/>{file.error&&<InlineNotice id={`source-processing-error-${file.id}`} tone="error" title={file.error} variant="compact" announcement="off"/>}{file.enrichment_error&&<InlineNotice id={`source-enrichment-error-${file.id}`} tone="error" title={file.enrichment_error} variant="compact" announcement="off"/>}</div>)}</div></details>}
   </section>;
 }

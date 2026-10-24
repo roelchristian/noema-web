@@ -265,7 +265,7 @@ dialog.calendar-sheet-bounded { inset: var(--space-5); margin: auto; max-width: 
 .calendar-cell.is-outside-month > button:focus-visible > span, .calendar-cell.is-outside-month > button:hover > span { opacity: .85; }
 
 /* Match library header controls so the month title shares their baseline. */
-.calendar-heading button { min-height: var(--control-target-compact); }
+.calendar-heading button { min-height: var(--touch-target-size); }
 
 /* Date associations stay distinct while their evidence counts retain occurrence meaning. */
 .calendar-heading .calendar-icon-button { min-height: var(--touch-target-size); min-width: var(--touch-target-size); }
@@ -289,4 +289,21 @@ dialog.calendar-sheet-bounded { inset: var(--space-5); margin: auto; max-width: 
  .calendar-cell-knowledge .calendar-cell-entry:nth-of-type(n+3) { display: none; }
  .calendar-mobile-count { display: block; font-size: 9px; }
  .calendar-cell > button { min-height: 110px; }
+}
+.date-overview { margin-block: var(--space-4); }
+.date-overview h2 { font-size: 16px; line-height: 1.5; margin: 0 0 var(--space-1); overflow-wrap: anywhere; }
+.date-overview p { font-size: 12px; color: var(--text-muted); line-height: 1.6; overflow-wrap: anywhere; white-space: pre-wrap; }
+.date-value-editor { display: grid; gap: var(--space-2); min-width: 0; }
+.date-value-editor fieldset, .calendar-date-lookup { display: grid; gap: var(--space-3); margin-block: var(--space-3); padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-control); }
+.date-value-editor label { display: grid; gap: var(--space-1); }
+.date-value-editor input, .date-value-editor select, .calendar-date-lookup input { box-sizing: border-box; width: 100%; min-width: 0; min-height: var(--touch-target-size); border: 1px solid var(--control-border); border-radius: var(--radius-control); background: var(--surface); color: var(--text); padding: var(--space-2); font: inherit; }
+.date-value-editor small { color: var(--text-muted); line-height: 1.6; }
+.calendar-date-lookup p { margin: 0; }
+/* At phone widths, civil week numbers move above each row so seven 44px dates fit. */
+.calendar-civil-week-label { display: none; }
+@container (max-width: 360px) {
+ .calendar-grid.has-week-numbers .calendar-weekdays, .calendar-grid.has-week-numbers .calendar-week { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+ .calendar-grid.has-week-numbers .calendar-weekdays > [aria-label="Civil week"], .calendar-week-number { display: none; }
+ .calendar-civil-week-label { display: block; border-top: 1px solid var(--line); padding: var(--space-1); color: var(--text-muted); font-size: 10px; }
+ .calendar-grid.has-week-numbers .calendar-week-label { padding-inline-start: var(--space-2); }
 }

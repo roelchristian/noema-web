@@ -16,10 +16,11 @@ export function DatePropertyOverview({vaultId,type,name,value,declaredDate=false
   return()=>controller.abort();
  },[vaultId,date?.id,open,retry]);
  if(!date)return null;
- return <details onToggle={event=>setOpen(event.currentTarget.open)}><summary>Date overview</summary><DateOverview date={date} item={item} compact onOpenCalendar={openCalendar}>
+ const currentItem=item?.date.id===date.id?item:null;
+ return <details onToggle={event=>setOpen(event.currentTarget.open)}><summary>Date overview</summary><DateOverview date={date} item={currentItem} compact onOpenCalendar={openCalendar}>
   {loading&&<p role="status">Loading date overview…</p>}
   {error&&<p role="status">{error}<button type="button" className="button" onClick={()=>setRetry(value=>value+1)}>Refresh date overview</button></p>}
-  {!!item?.relations.length&&<section><h3>Connections</h3><ul>{item.relations.slice(0,3).map(relation=><li key={relation.id}>{relation.name} · {relation.kind.replaceAll('_',' ')}</li>)}</ul>{item.relationCount>3&&<small>Open in Calendar for more connections.</small>}</section>}
-  {item&&<section><h3>Evidence</h3><p>{item.mentionCount} note occurrences · {item.sourceCount??0} source occurrences · {item.propertyCount??0} date properties</p>{item.mentions.slice(0,2).map(mention=><p key={mention.id}>{mention.title} · {mention.text}</p>)}<small>Open in Calendar to inspect validated passages and provenance.</small></section>}
+  {!!currentItem?.relations.length&&<section><h3>Connections</h3><ul>{currentItem.relations.slice(0,3).map(relation=><li key={relation.id}>{relation.name} · {relation.kind.replaceAll('_',' ')}</li>)}</ul>{currentItem.relationCount>3&&<small>Open in Calendar for more connections.</small>}</section>}
+  {currentItem&&<section><h3>Evidence</h3><p>{currentItem.mentionCount} note occurrences · {currentItem.sourceCount??0} source occurrences · {currentItem.propertyCount??0} date properties</p>{currentItem.mentions.slice(0,2).map(mention=><p key={mention.id}>{mention.title} · {mention.text}</p>)}<small>Open in Calendar to inspect validated passages and provenance.</small></section>}
  </DateOverview></details>;
 }

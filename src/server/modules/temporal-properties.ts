@@ -19,7 +19,7 @@ export class TemporalProperties {
    // Only the explicit native typed-write path may accept a new assertion. Indexing
    // and reindexing never upgrade historical/imported/AI proposals.
    const provenance=getPropertyProvenance(this.store,vault,row.id);
-   const accepted=nativeAssertion&&propertyId===row.id&&propertyDeclaresDate(this.store,vault,row.id)&&provenance?.origin==='manual'&&!provenance.stale&&!provenance.source_file_id&&!provenance.source_hash&&/^\d{4}(?:-\d{2}(?:-\d{2})?)?(?: \((?:Gregorian|Julian)\))?$/.test(row.value!.trim())&&!!adapted.date;
+   const accepted=nativeAssertion&&propertyId===row.id&&propertyDeclaresDate(this.store,vault,row.id)&&provenance?.origin==='manual'&&!provenance.stale&&!provenance.source_file_id&&!provenance.source_hash&&/^-?\d{4}(?:-\d{2}(?:-\d{2})?)?(?: \((?:Gregorian|Julian)\))?$/.test(row.value!.trim())&&!!adapted.date;
    this.store.db.exec('SAVEPOINT temporal_property_refresh');
    try {
     if(adapted.date)this.store.run('INSERT OR IGNORE INTO temporal_dates VALUES (?,?,?,?,?)',vault,adapted.date.id,adapted.date.value,adapted.date.precision,adapted.date.calendar);

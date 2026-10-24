@@ -37,11 +37,11 @@ async function mount(t,{initial=null,post,onReadingRevision}={}){
  const click=async el=>{assert.ok(el,'Expected control exists');await act(async()=>el.click());};
  return {button,click,requests,dom};
 }
-test('review policy defaults to review_all and starting disables repeated submissions',async t=>{
+test('review policy defaults to balanced and starting disables repeated submissions',async t=>{
  let finish;const env=await mount(t,{post:()=>new Promise(resolve=>{finish=resolve;})});
- await env.click(env.button('Reprocess with AI'));assert.equal(document.querySelector('[aria-label="Review policy"]').value,'review_all');
+ await env.click(env.button('Reprocess with AI'));assert.equal(document.querySelector('[aria-label="Review policy"]').value,'balanced');
  await env.click(env.button('Start reprocessing'));assert.equal(env.requests.filter(r=>r.method==='POST').length,1);
- assert.equal(env.requests.find(r=>r.method==='POST').body.acceptanceMode,'review_all');
+ assert.equal(env.requests.find(r=>r.method==='POST').body.acceptanceMode,'balanced');
  const starting=env.button('Starting…');assert.equal(starting.disabled,true);await env.click(starting);assert.equal(env.requests.filter(r=>r.method==='POST').length,1);
  const r=fixture();r.status='queued';await act(async()=>finish(r));assert.ok(document.querySelector('[aria-label="Reprocessing progress"]'));
 });

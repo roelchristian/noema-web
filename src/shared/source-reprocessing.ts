@@ -1,5 +1,6 @@
 import type {ReasoningEffort} from './intelligence.js';
 import type {SourceDocument,SourceDocumentRange} from './source-document.js';
+export type SourceAcceptanceMode='review_all'|'safe_formatting'|'balanced'|'minimal_review';
 export type ReprocessingStatus='queued'|'running'|'completed'|'failed'|'interrupted';
 export interface SourceEditorialUsage {inputTokens:number|null;outputTokens:number|null;reasoningTokens:number|null;cachedInputTokens:number|null}
 export interface SourceEditorialAttempt extends SourceEditorialUsage {
@@ -14,6 +15,10 @@ export interface SourceEditorialExcerpt extends SourceEditorialUsage {
 }
 export interface SourceEditorialPatch {
  baseHash?:string;excerptIndex?:number;
+ /** Deterministic validation record; never populated from the model response. */
+ autoAcceptance?:{policy:SourceAcceptanceMode;validator:string;checks:string[];appliedAt:string};
+ /** Append-only decision audit, including reversal and edited replacements. */
+ decisionHistory?:{at:string;actor:'automatic'|'user';from:'pending'|'accepted'|'rejected';to:'pending'|'accepted'|'rejected';previousReplacement?:string;replacement?:string}[];
  id:string; nodeIds:string[]; range:SourceDocumentRange; original:string; replacement:string;
  category:'ocr'|'line_breaks'|'footnote'|'apparatus'|'metadata'|'citation'|'math'|'formatting';
  reason:string;riskReasons?:string[];confidence:number; decision:'pending'|'accepted'|'rejected'; userReplacement?:string;
@@ -31,7 +36,7 @@ export interface SourceReprocessingRevision {
  id:string;fileId:string;createdAt:string;updatedAt:string;status:ReprocessingStatus;instructions:string;
  nodeLinks?:{originalNodeId:string;reprocessedNodeIds:string[]}[];
  acceptanceThreshold?:number;
- acceptanceMode?:'review_all'|'safe_formatting';
+ acceptanceMode?:SourceAcceptanceMode;
  baseHash:string;stale:boolean;patches:SourceEditorialPatch[];report:SourceReprocessingReport;
  original:{text:string;document:SourceDocument};
  reprocessed:{text:string;document:SourceDocument};

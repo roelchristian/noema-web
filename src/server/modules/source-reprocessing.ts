@@ -6,6 +6,7 @@ import {SourceFiles} from './source-files.js';
 import {locateEditorialPatch,utf16Boundary,wellFormedUnicode} from './source-reprocessing-patches.js';
 import {editorialFailure,editorialBackoff} from './source-reprocessing-errors.js';
 import {Intelligence} from './intelligence.js';
+import {evaluateEditorialAcceptance,editorialRiskValidator} from './source-reprocessing-risk.js';
 import {mathSource} from './source-math-text.js';
 import {SourceDocuments,sourceDocumentBuilderVersion} from './source-documents.js';
 import {sourceStructureKinds} from '../../shared/domain.js';
@@ -125,8 +126,8 @@ export class SourceReprocessing {
  start(vault:string,id:string,body:Record<string,unknown>){
   this.requireOpen(vault);if(this.closed)throw new HttpError(503,'Editorial processing is shutting down.');
   if(body.instructions!==undefined&&(typeof body.instructions!=='string'||body.instructions.length>4000))throw new HttpError(400,'Editorial instructions must be at most 4,000 characters.');
-  const acceptanceMode=body.acceptanceMode??'review_all';
-  if(acceptanceMode!=='review_all'&&acceptanceMode!=='safe_formatting')throw new HttpError(400,'Invalid acceptance mode.');
+  const acceptanceMode=body.acceptanceMode??'balanced';
+  if(acceptanceMode!=='review_all'&&acceptanceMode!=='safe_formatting'&&acceptanceMode!=='balanced'&&acceptanceMode!=='minimal_review')throw new HttpError(400,'Invalid acceptance mode.');
   const acceptanceThreshold=body.acceptanceThreshold??0.9;
   if(typeof acceptanceThreshold!=='number'||!Number.isFinite(acceptanceThreshold)||acceptanceThreshold<0||acceptanceThreshold>1)throw new HttpError(400,'Acceptance threshold must be a number between 0 and 1.');
   const file=this.files.require(vault,id);if(file.status!=='ready'||!file.admitted||!file.text.trim())throw new HttpError(409,'Wait for a processed source before starting an editorial pass.');
@@ -150,7 +151,7 @@ export class SourceReprocessing {
  review(vault:string,id:string,revisionId:string,body:Record<string,unknown>){
   this.requireOpen(vault);const r=this.detail(vault,id,revisionId);if(body.updatedAt!==r.updatedAt)throw new HttpError(409,'Editorial review changed. Refresh before reviewing.');if(r.stale)throw new HttpError(409,'Canonical source changed. Start a new editorial pass.');if(['queued','running'].includes(r.status))throw new HttpError(409,'Wait for the editorial pass to finish.');
   if(!Array.isArray(body.decisions)||!body.decisions.length||body.decisions.length>3200)throw new HttpError(400,'Provide editorial decisions.');
-  const seen=new Set<string>();for(const value of body.decisions){if(!value||typeof value!=='object')throw new HttpError(400,'Invalid decision.');const d=value as Record<string,unknown>;const p=r.patches.find(p=>p.id===d.patchId);if(!p||seen.has(p.id)||!['accepted','rejected','pending'].includes(String(d.decision))||d.replacement!==undefined&&(typeof d.replacement!=='string'||d.replacement.length>16000))throw new HttpError(400,'Invalid editorial decision or replacement.');if(d.replacement!==undefined&&pageMarkers(p.original)!==pageMarkers(d.replacement as string))throw new HttpError(400,'Keep physical page markers unchanged.');seen.add(p.id);p.decision=d.decision as SourceEditorialPatch['decision'];if(typeof d.replacement==='string')p.userReplacement=d.replacement;}
+  const seen=new Set<string>();for(const value of body.decisions){if(!value||typeof value!=='object')throw new HttpError(400,'Invalid decision.');const d=value as Record<string,unknown>;const p=r.patches.find(p=>p.id===d.patchId);if(!p||seen.has(p.id)||!['accepted','rejected','pending'].includes(String(d.decision))||d.replacement!==undefined&&(typeof d.replacement!=='string'||d.replacement.length>16000))throw new HttpError(400,'Invalid editorial decision or replacement.');if(d.replacement!==undefined&&pageMarkers(p.original)!==pageMarkers(d.replacement as string))throw new HttpError(400,'Keep physical page markers unchanged.');seen.add(p.id);(p.decisionHistory??=[]).push({at:now(),actor:'user',from:p.decision,to:d.decision as SourceEditorialPatch['decision'],...(p.userReplacement!==undefined?{previousReplacement:p.userReplacement}:{}),...(typeof d.replacement==='string'?{replacement:d.replacement}:{})});p.decision=d.decision as SourceEditorialPatch['decision'];if(typeof d.replacement==='string')p.userReplacement=d.replacement;}
   materializeSourceRevision(r);this.save(vault,r);return r;
  }
  cancel(vault:string,id:string,revisionId:string){
@@ -216,8 +217,10 @@ export class SourceReprocessing {
      const candidate=r.original.text.slice(0,start)+item.replacement+r.original.text.slice(end);
      if(pageBoundaryDiagnostics(r.original.text,candidate).length)throw new HttpError(502,'AI patch joins a physical page marker to prose.');
      const structural=originalNodes.some(({node})=>sourceStructureKinds.includes(node.kind as typeof sourceStructureKinds[number])&&node.range.startOffset<end&&node.range.startOffset>=start);
-     const riskReasons=editorialPatchRisk(item.original,item.replacement,category,structural);
-     chunkPatches.push({baseHash:r.baseHash,excerptIndex:index,id:hash(`${r.baseHash}:${start}:${end}:${item.replacement}`).slice(0,24),range:this.range(r,start,end),nodeIds:originalNodes.filter(({node})=>node.range.startOffset<end&&node.range.endOffset>start).map(({node})=>node.id),original:item.original,replacement:item.replacement,category,reason:item.reason,riskReasons,confidence:item.confidence,decision:r.acceptanceMode==='safe_formatting'&&!riskReasons.length&&r.acceptanceThreshold!==undefined&&item.confidence>=r.acceptanceThreshold?'accepted':'pending'});
+     const legacyRisks=editorialPatchRisk(item.original,item.replacement,category,structural);
+     const validation=evaluateEditorialAcceptance({text:r.original.text,document:r.original.document,start,end,original:item.original,replacement:item.replacement,category,confidence:item.confidence,threshold:r.acceptanceThreshold,policy:r.acceptanceMode,legacyRisks});
+     const riskReasons=validation.reasons,appliedAt=now();
+     chunkPatches.push({baseHash:r.baseHash,excerptIndex:index,id:hash(`${r.baseHash}:${start}:${end}:${item.replacement}`).slice(0,24),range:this.range(r,start,end),nodeIds:originalNodes.filter(({node})=>node.range.startOffset<end&&node.range.endOffset>start).map(({node})=>node.id),original:item.original,replacement:item.replacement,category,reason:item.reason,riskReasons,confidence:item.confidence,decision:validation.automatic?'accepted':'pending',...(validation.automatic?{autoAcceptance:{policy:r.acceptanceMode!,validator:editorialRiskValidator,checks:validation.checks,appliedAt},decisionHistory:[{at:appliedAt,actor:'automatic' as const,from:'pending' as const,to:'accepted' as const}]}:{})});
      }catch(error){
       if(!(error instanceof HttpError)||error.status!==502)throw error;
       const rejected=JSON.stringify(item);

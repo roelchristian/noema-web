@@ -71,10 +71,10 @@ test('pinning mentions deduplicates homepage page count, unpin retains associati
  });
 });
 
-test('attach search excludes linked pages and annotation remains editable on a failed save',async t=>{
+test('Connect search excludes linked pages and annotation remains editable on a failed save',async t=>{
  await fixture(t,async({click,clickText,input,associate})=>{
-  await click('#entity-home-tab-connections');await clickText('Attach existing page');await input('.eh-page-picker input','Hist');assert.equal(document.querySelectorAll('.eh-page-picker li').length,1);await clickText('Attach & pin');
-  assert.deepEqual(associate.mock.calls[0].arguments,['v','ada','page',{pinned:true}]);assert.equal(document.querySelectorAll('.eh-page-picker li').length,0);
+  await click('#entity-home-tab-connections');await clickText('Connect');await input('.connect-picker input[type=search]','Hist');assert.equal(document.querySelectorAll('.connect-picker-results button').length,1);await click('.connect-picker input[type=checkbox]');await click('[aria-label="Connect History"]');
+  assert.deepEqual(associate.mock.calls[0].arguments,['v','ada','page',{pinned:true,annotation:''}]);assert.equal(document.querySelector('[aria-label="Connect History"]'),null);
   await clickText('Add note');await input('.eh-annotation-form input','Read this first.');associate.mock.mockImplementationOnce(async()=>{throw new Error('Storage unavailable');});
   const submit=()=>act(async()=>document.querySelector('.eh-annotation-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
   await submit();assert.match(document.querySelector('[role=alert]').textContent,/Storage unavailable/);assert.equal(document.querySelector('.eh-annotation-form input').value,'Read this first.');assert.ok(document.querySelector('[aria-label="Unpin History"]'));
@@ -174,5 +174,36 @@ test('homepage refresh retains complete state until preview properties finish lo
   await act(async()=>finish(complete));
   assert.equal(document.querySelectorAll('.eh-glance-properties [aria-label="Edit Birth Date"]').length,1);
   assert.equal(document.querySelector('.entity-inline-suggestions [aria-label="Edit Birth Date"]'),null);
+ });
+});
+
+test('late refresh cannot replace a successfully saved association note',async t=>{
+ await fixture(t,async({refresh,render,entity,click,clickText,input})=>{
+  await refresh({linkedPages:[{id:'page',title:'History',icon:'',created_at:'',updated_at:'',pinned:false,annotation:'Original note'}]});
+  await click('#entity-home-tab-connections');
+  const outdated=structuredClone(entity());let finish;
+  t.mock.method(api,'entity',async()=>new Promise(resolve=>finish=resolve));
+  await render({refreshKey:'pending-refresh'});
+  await clickText('Edit note');await input('.eh-annotation-form input','Saved after refresh began');
+  await act(async()=>document.querySelector('.eh-annotation-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+  assert.match(document.querySelector('#entity-home-panel-connections .eh-page-open').textContent,/Saved after refresh began/);
+  await act(async()=>finish(outdated));
+  assert.match(document.querySelector('#entity-home-panel-connections .eh-page-open').textContent,/Saved after refresh began/);
+ });
+});
+
+test('common Connect creates one directed relationship and Undo removes that exact record',async t=>{
+ await fixture(t,async({render,entity,click,clickText,input})=>{
+  const peer={...entity(),id:'peer',name:'Synthetic peer'};
+  await render({entities:[entity(),peer]});
+  const relationship={id:'new-directed',source_id:'ada',target_id:'peer',label:'Author of'};
+  const save=t.mock.method(api,'saveRelationship',async()=>({...entity(),relationships:[relationship]}));
+  const remove=t.mock.method(api,'removeConnection',async()=>({...entity(),relationships:[]}));
+  await click('#entity-home-tab-connections');await clickText('Connect');await input('.connect-picker input[type=search]','Synthetic peer');
+  await input('.connect-picker input[list]','Author of');await click('[aria-label="Connect Synthetic peer"]');
+  assert.deepEqual(save.mock.calls[0].arguments,['v','ada',{target_id:'peer',label:'Author of'}]);assert.equal(save.mock.callCount(),1);
+  assert.match(document.querySelector('#entity-home-panel-connections .entity-connection-list').textContent,/Synthetic peerAuthor of/);
+  await clickText('Undo');assert.deepEqual(remove.mock.calls[0].arguments,['v','ada','relationships','new-directed']);
+  assert.equal(document.querySelector('#entity-home-panel-connections .entity-connection-list'),null);
  });
 });

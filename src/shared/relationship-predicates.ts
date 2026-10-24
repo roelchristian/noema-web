@@ -1,4 +1,4 @@
-import type {Relationship} from './domain';
+import type {Relationship} from './domain.js';
 
 /** Display vocabulary, not a migration: stored records and custom predicates remain intact. */
 export const canonicalRelationshipPredicates = [

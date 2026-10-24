@@ -1,3 +1,5 @@
+import {ConnectPicker, type ConnectTarget, type ConnectOptions} from './ConnectPicker';
+import {relationshipDisplayLabel} from '../../shared/relationship-predicates';
 import {aggregateEntityConnections} from './connection-read-model';
 import {PropertyProposalReview} from './PropertyProposalReview';
 import {EntityPropertyList} from './EntityPropertyList';
@@ -80,32 +82,42 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
   const [manage, setManage] = useState(false);
   const [exploring, setExploring] = useState(false);
   const [discoveryOpen, setDiscoveryOpen] = useState(!!reviewTab && reviewDestination?.category==='discovery');
+  const [discoveryLoaded,setDiscoveryLoaded]=useState(!!reviewTab && reviewDestination?.category==='discovery');
   const [detailsOpen, setDetailsOpen] = useState(hasEntityDraft(vaultId,id));
-  const current = useRef({vaultId, id}); current.current = {vaultId, id};
+  const [connecting,setConnecting]=useState(false);
+  const [connectionUndo,setConnectionUndo]=useState<{kind:'page'|'relationship';id:string}|null>(null);
+  const [connectionError,setConnectionError]=useState('');
+  const [undoing,setUndoing]=useState(false);
+  const connectionLock=useRef<object|null>(null);
+  const mutationVersion=useRef(0);
+  const current = useRef({vaultId,id});
+  if(current.current.vaultId!==vaultId||current.current.id!==id)current.current={vaultId,id};
+  const owner=current.current;
   const {schema, error: schemaError} = useEntitySchema(vaultId);
   // A Review Centre destination selects Discovery without clearing this entity or its drafts.
-  useEffect(() => {if(reviewTab){restoring.current=true;setTab(reviewTab);if(reviewDestination?.category==='discovery')setDiscoveryOpen(true);}}, [reviewTab]);
-  useEffect(() => {setEntity(null); setPageError(''); setManage(false); setExploring(false); setDiscoveryOpen(reviewDestination?.category==='discovery'&&reviewDestination.originId===id); setDetailsOpen(hasEntityDraft(vaultId,id)); setTab(initialTab());}, [vaultId, id]);
+  useEffect(() => {if(reviewTab){restoring.current=true;setTab(reviewTab);if(reviewDestination?.category==='discovery'){setDiscoveryOpen(true);setDiscoveryLoaded(true);}}}, [reviewTab]);
+  useEffect(() => {setEntity(null); setManage(false); setConnecting(false);setConnectionUndo(null);setConnectionError('');setUndoing(false); setExploring(false); setDiscoveryOpen(reviewDestination?.category==='discovery'&&reviewDestination.originId===id);setDiscoveryLoaded(reviewDestination?.category==='discovery'&&reviewDestination.originId===id); setDetailsOpen(hasEntityDraft(vaultId,id)); setTab(initialTab());}, [vaultId, id]);
   useEffect(() => {
-    let active = true; setError('');
+    let active = true; const version=mutationVersion.current; setError('');
     // Refresh an open editor with full details so transient previews cannot unmount its forms.
     void api.entity(vaultId, id, !hasEntityDraft(vaultId,id) && !entity && activeTab.current!=='connections').then(async value => {
-      if (!active)return;
+      if (!active||version!==mutationVersion.current)return;
       if(value.previewLimited && ['connections','overview'].includes(activeTab.current))value=await api.entity(vaultId,id);
-      if(active)setEntity(value);
-    }).catch(value => {if (active) setError(String(value));});
+      if(active&&version===mutationVersion.current)setEntity(value);
+    }).catch(value => {if (active&&version===mutationVersion.current) setError(String(value));});
     return () => {active = false;};
   }, [vaultId, id, refreshKey, entityAttempt]);
   useEffect(() => {
     if (!entity?.previewLimited || !['overview','connections'].includes(tab)) return;
-    let active = true;
-    void api.entity(vaultId,id).then(value=>{if(active)setEntity(value);}).catch(value=>{if(active)setError(String(value));});
+    let active = true;const version=mutationVersion.current;
+    void api.entity(vaultId,id).then(value=>{if(active&&version===mutationVersion.current)setEntity(value);}).catch(value=>{if(active&&version===mutationVersion.current)setError(String(value));});
     return ()=>{active=false;};
   }, [vaultId,id,tab,entity?.previewLimited,detailAttempt]);
-  const sameEntity = () => current.current.vaultId === vaultId && current.current.id === id;
+  const sameEntity = () => current.current===owner;
   async function mutate(work: () => Promise<EntityDetail>) {
-    try {const result = await work(); if (sameEntity()) setEntity(result); void onUpdated().catch(onError); return result;}
-    catch (value) {onError(value); throw value;}
+    const version=++mutationVersion.current;
+    try {const result = await work(); if(sameEntity()){if(version===mutationVersion.current){mutationVersion.current++;setEntity(result);}else {const refreshVersion=mutationVersion.current;void api.entity(vaultId,id).then(value=>{if(sameEntity()&&refreshVersion===mutationVersion.current)setEntity(value);}).catch(onError);}} void onUpdated().catch(onError); return result;}
+    catch (value) {if(sameEntity()&&version===mutationVersion.current)mutationVersion.current++;onError(value); throw value;}
   }
   function switchTab(value: HomeTab) {
     const host=document.scrollingElement;
@@ -116,7 +128,7 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
     document.getElementById('entity-home-tab-' + value)?.focus({preventScroll:true});
     revealTab(value);
   }
-  const relationships: EntityConnection[] = entity?.relationships.map(relation => ({key:relation.id, target:relation.source_id === id ? relation.target_id : relation.source_id, label:(relation.source_id === id ? 'Outgoing · ' : 'Incoming · ') + relation.label})) ?? [];
+  const relationships: EntityConnection[] = entity?.relationships.map(relation => ({key:relation.id, target:relation.source_id === id ? relation.target_id : relation.source_id, label:relationshipDisplayLabel(relation,id)})) ?? [];
   const propertyDisplayLabel=(property:import('../../shared/domain').Property)=>{const owner=property.entity_id===id?entity:entities.find(item=>item.id===property.entity_id);return owner?resolvePropertyDefinition(schema.propertyDefinitions,owner.type,owner.subtypes,property.name,property.metadata?.definition_id)?.label??propertyLabel(property.name):propertyLabel(property.name);};
   const references: EntityConnection[] = entity?.properties.filter(property => property.target_id).map(property => ({key:property.id, target:property.target_id!, label:'Property · ' + propertyDisplayLabel(property)})) ?? [];
   const incoming: EntityConnection[] = entity?.incomingProperties.map(property => ({key:property.id, target:property.entity_id, label:'Referenced via ' + propertyDisplayLabel(property)})) ?? [];
@@ -132,12 +144,29 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
   const pageMentions = [...new Map((entity?.pageMentions ?? []).map(page => [page.id, page])).values()];
   const linkedPages = entity?.linkedPages ?? [];
   const pageCount = new Set([...pageMentions.map(page => page.id), ...linkedPages.map(page => page.id)]).size;
-  const [pageError, setPageError] = useState('');
-  const [pinning, setPinning] = useState(false);
-  async function pinMention(pageId: string) {
-    setPinning(true); setPageError('');
-    try {await mutate(() => api.associateEntityPage(vaultId, id, pageId, {pinned: true}));}
-    catch (value) {setPageError(String(value));} finally {setPinning(false);}
+  async function connect(target:ConnectTarget,options:ConnectOptions) {
+    if(!entity||connectionLock.current===owner)return;
+    connectionLock.current=owner;setConnectionError('');
+    try {
+      if(target.kind==='page') {
+        await mutate(()=>api.associateEntityPage(vaultId,id,target.id,{pinned:options.pinned,annotation:options.annotation}));
+        if(sameEntity())setConnectionUndo({kind:'page',id:target.id});
+      } else {
+        if(entity.relationships.some(relation=>relation.source_id===id&&relation.target_id===target.id&&relation.label===options.predicate))throw new Error(uiText('This relationship already exists.'));
+        const before=new Set(entity.relationships.map(relation=>relation.id));
+        const result=await mutate(()=>api.saveRelationship(vaultId,id,{target_id:target.id,label:options.predicate}));
+        const added=result.relationships.find(relation=>!before.has(relation.id)&&relation.source_id===id&&relation.target_id===target.id&&relation.label===options.predicate);
+        if(sameEntity()&&added)setConnectionUndo({kind:'relationship',id:added.id});
+      }
+      if(sameEntity())setConnecting(false);
+    } finally {if(connectionLock.current===owner)connectionLock.current=null;}
+  }
+  async function undoConnection() {
+    if(!connectionUndo||connectionLock.current===owner)return;
+    connectionLock.current=owner;setUndoing(true);setConnectionError('');
+    try {await mutate(()=>connectionUndo.kind==='page'?api.removeEntityPage(vaultId,id,connectionUndo.id):api.removeConnection(vaultId,id,'relationships',connectionUndo.id));if(sameEntity())setConnectionUndo(null);}
+    catch(value){if(sameEntity())setConnectionError(String(value));}
+    finally{if(connectionLock.current===owner)connectionLock.current=null;if(sameEntity())setUndoing(false);}
   }
   return <article ref={article} className="entity-home" aria-label={uiText('Entity homepage')}><div className="eh-document">
     {!entity ? <p role={error ? 'alert' : 'status'}>{error || uiText('Loading entity…')}{error && <button type="button" className="eh-text-action" onClick={()=>setEntityAttempt(value=>value+1)}>{uiText('Retry')}</button>}</p> : <>
@@ -170,24 +199,27 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
         <section className="eh-section"><h2>{uiText('Entity details')}</h2><EntityDetails idPrefix="entity-home" key={entity.id} vaultId={vaultId} entity={entity} schema={schema} onSave={input => mutate(() => api.updateEntity(vaultId, id, input))}/></section>
         <section className="eh-section"><h2>{uiText('Properties')}</h2><PropertyEditor definitions={schema.propertyDefinitions} key={entity.type + JSON.stringify(entity.subtypes)} entity={{...entity, propertyNames}} entities={entities} mention={mention} onSave={(input, propertyId) => mutate(() => api.saveProperty(vaultId, id, input, propertyId))} onRemove={propertyId => mutate(() => api.removeConnection(vaultId, id, 'properties', propertyId))}/></section>
         </>}</details>
-        <p className="eh-writing-hint">{uiText('Discovery suggestions are separate from recorded connections and evidence.')} <button type="button" className="eh-text-action" onClick={()=>{setDiscoveryOpen(true);switchTab('connections');}}>{uiText('Find connections')}</button></p>
+        <p className="eh-writing-hint">{uiText('Discovery suggestions are separate from recorded connections and evidence.')} <button type="button" className="eh-text-action" onClick={()=>{setDiscoveryOpen(true);setDiscoveryLoaded(true);switchTab('connections');}}>{uiText('Find connections')}</button></p>
       </div>
       <div className="eh-tabpanel" id="entity-home-panel-connections" role="tabpanel" aria-labelledby="entity-home-tab-connections" hidden={tab !== 'connections'} tabIndex={0}>
         {!entity.previewLimited && <>
-        <div className="eh-overview-links"><button type="button" aria-expanded={exploring} onClick={()=>setExploring(value=>!value)}>{uiText(exploring?'Show grouped connections':'Explore neighborhood')}</button></div>
+        <div className="eh-overview-links"><button type="button" aria-expanded={connecting} onClick={()=>setConnecting(value=>!value)}>{uiText('Connect')}</button><button type="button" aria-expanded={exploring} onClick={()=>setExploring(value=>!value)}>{uiText(exploring?'Show grouped connections':'Explore neighborhood')}</button></div>
+        {connecting&&<ConnectPicker sourceLabel={entity.name} entities={entities} pages={pages} relationships excludeEntityIds={[id]} excludePageIds={linkedPages.map(page=>page.id)} onConnect={connect} onCancel={()=>setConnecting(false)}/>}
+        {connectionUndo&&<p role="status">{uiText('Connection added.')} <button type="button" disabled={undoing} onClick={()=>void undoConnection()}>{uiText('Undo')}</button></p>}
+        {connectionError&&<p role="alert">{connectionError}</p>}
         {exploring && <EntityNeighborhood vaultId={vaultId} id={id} refreshKey={refreshKey} onOpen={onOpen} onInspect={onInspect}/>}
         <div hidden={exploring}>
         <div className="eh-overview-links"><label>{uiText('Search connections')}<input type="search" value={connectionQuery} onChange={event=>setConnectionQuery(event.target.value)}/></label><label>{uiText('Show')}<select value={connectionFilter} onChange={event=>setConnectionFilter(event.target.value)}><option value="all">{uiText('All')}</option><option value="entities">{uiText('Entities')}</option><option value="pages">{uiText('Pages')}</option><option value="mentions">{uiText('Mentions')}</option></select></label></div>
         <section className="eh-section" hidden={connectionFilter==='pages'||connectionFilter==='mentions'}><h2>{uiText('Connected entities')} <span>{connectionRows.length}</span></h2><EntityConnections items={filteredEntities} entities={entities} onOpen={onOpen} empty={uiText('No matching connected entities.')}/></section>
-        <details className="eh-section"><summary>{uiText('Edit relationships')}</summary><RelationshipEditor entity={entity} entities={entities} mention={mention} onSave={(input, relationId) => mutate(() => api.saveRelationship(vaultId, id, input, relationId))} onRemove={relationId => mutate(() => api.removeConnection(vaultId, id, 'relationships', relationId))}/></details>
+        <details hidden={connectionFilter==='pages'||connectionFilter==='mentions'} className="eh-section"><summary>{uiText('Edit relationships')}</summary><RelationshipEditor entity={entity} entities={entities} mention={mention} onSave={(input, relationId) => mutate(() => api.saveRelationship(vaultId, id, input, relationId))} onRemove={relationId => mutate(() => api.removeConnection(vaultId, id, 'relationships', relationId))}/></details>
         </div>
         </>}
         {!entity.previewLimited && <>
-        <div hidden={connectionFilter==='entities'}><EntityPages queryFilter={connectionQuery} mentionsOnly={connectionFilter==='mentions'} onOpenMention={onOpenMention} key={'pages:' + vaultId + ':' + id} entity={entity} pages={pages} onOpenPage={onOpenPage} onAssociate={(pageId, input) => mutate(() => api.associateEntityPage(vaultId, id, pageId, input))} onRemove={pageId => mutate(() => api.removeEntityPage(vaultId, id, pageId))} onCreatePage={onCreatePage}/>
+        <div hidden={connectionFilter==='entities'}><EntityPages showConnect={false} queryFilter={connectionQuery} mentionsOnly={connectionFilter==='mentions'} onOpenMention={onOpenMention} key={'pages:' + vaultId + ':' + id} entity={entity} pages={pages} onOpenPage={onOpenPage} onAssociate={(pageId, input) => mutate(() => api.associateEntityPage(vaultId, id, pageId, input))} onRemove={pageId => mutate(() => api.removeEntityPage(vaultId, id, pageId))} onCreatePage={onCreatePage}/>
         </div>
         </>}
-        <button type="button" className="eh-text-action" aria-expanded={discoveryOpen} onClick={()=>setDiscoveryOpen(value=>!value)}>{uiText('Find connections')}</button>
-        {discoveryOpen && <EntityDiscovery key={vaultId+':'+id} vaultId={vaultId} id={id} refreshKey={refreshKey} onUpdated={async()=>{await onUpdated();await mutate(()=>api.entity(vaultId,id));}} onOpenEntity={onOpen} onOpenPage={onOpenPage} onOpenMention={onOpenMention} onOpenSourcePassage={onOpenSourcePassage}/>}
+        <button type="button" className="eh-text-action" aria-expanded={discoveryOpen} onClick={()=>{setDiscoveryLoaded(true);setDiscoveryOpen(value=>!value);}}>{uiText('Find connections')}</button>
+        <div hidden={!discoveryOpen}>{discoveryLoaded && <EntityDiscovery key={vaultId+':'+id} vaultId={vaultId} id={id} refreshKey={refreshKey} onUpdated={async()=>{await onUpdated();await mutate(()=>api.entity(vaultId,id));}} onOpenEntity={onOpen} onOpenPage={onOpenPage} onOpenMention={onOpenMention} onOpenSourcePassage={onOpenSourcePassage}/>}</div>
       </div>
       <div className="eh-tabpanel" id="entity-home-panel-evidence" role="tabpanel" aria-labelledby="entity-home-tab-evidence" hidden={tab !== 'evidence'} tabIndex={0}>
         {tab === 'evidence' && <EntitySourceEvidence key={vaultId + ':' + id} vaultId={vaultId} entityId={id} refreshKey={refreshKey} pages={pages} onReady={restoreScroll} onOpenPage={onOpenPage} onOpenSourcePassage={onOpenSourcePassage}/>}

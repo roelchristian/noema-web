@@ -31,7 +31,7 @@ test('entity homepage shows real knowledge and keeps relationship directions dis
   assert.match(document.querySelector('.eh-counts').textContent,/1 page1 connection/);
   await click('#entity-home-tab-connections');
   const content=document.querySelector('#entity-home-panel-connections');
-  assert.match(content.textContent,/Outgoing · visited/);
+  assert.match(content.textContent,/visited/);
   assert.match(content.textContent,/Incoming · commemorates/);
   assert.match(content.textContent,/Referenced via Honours/);
   await click('#entity-home-panel-connections .entity-connection-list button');
@@ -97,7 +97,7 @@ test('homepage keeps grouped lists default and exposes optional neighborhood and
   let opened,inspected;
   const graph=t.mock.method(api,'entityNeighborhood',async()=>({rootId:'e',nodes:props.entities,edges:[{id:'r',sourceId:'e',targetId:'other',kind:'relationship',label:'visited'}],relationTypes:['visited'],truncated:false}));
   const generate=t.mock.method(api,'generateEntityDiscovery',async()=>assert.fail('Opening Discovery must not generate'));
-  t.mock.method(api,'entityDiscovery',async()=>null);
+  const savedDiscovery=t.mock.method(api,'entityDiscovery',async()=>null);
   await act(async()=>root.render(React.createElement(EntityHome,{...props,onOpen:id=>opened=id,onInspect:id=>inspected=id})));
   await click('#entity-home-tab-connections');
   assert.equal(graph.mock.callCount(),0);
@@ -111,7 +111,12 @@ test('homepage keeps grouped lists default and exposes optional neighborhood and
   const find=[...document.querySelectorAll('#entity-home-panel-connections button')].find(button=>button.textContent==='Find connections');
   await act(async()=>find.click());
   assert.match(document.querySelector('.eh-discovery').textContent,/Explore with AI/);
-  assert.equal(generate.mock.callCount(),0);
+  assert.equal(generate.mock.callCount(),0);assert.equal(savedDiscovery.mock.callCount(),1);
+  const review=document.querySelector('.eh-discovery');
+  await act(async()=>find.click());await act(async()=>find.click());
+  await click('#entity-home-tab-overview');await click('#entity-home-tab-connections');
+  assert.equal(document.querySelector('.eh-discovery'),review,'provisional review stays mounted');
+  assert.equal(savedDiscovery.mock.callCount(),1,'collapse and tab changes reuse saved review');
  });
 });
 

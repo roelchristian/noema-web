@@ -62,3 +62,9 @@
 .knowledge-icon-action.is-destructive:focus-visible { color: var(--status-danger-text); }
 /* Confirmation text names the destructive operation; cancel stays neutral. */
 .confirmation-dialog .confirmation-action:not(.is-danger):hover:not(:disabled) { color: var(--text); }
+
+/* Shared notification meaning, confined to indicators and action errors. */
+.notice-icon[data-tone=success] { color: var(--status-success-text); }
+.notice-icon[data-tone=info] { color: var(--status-info-text); }
+.notice-icon[data-tone=warning] { color: var(--status-warning-text); }
+.notice-icon[data-tone=error], .notice-action-error { color: var(--status-danger-text); }

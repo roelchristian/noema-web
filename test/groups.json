@@ -33,7 +33,8 @@
     "test/property-catalogue.test.mjs",
     "test/page-history-ui.test.mjs",
     "test/bibliography.test.mjs",
-    "test/transliteration.test.mjs"
+    "test/transliteration.test.mjs",
+    "test/notification-reducer.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",
@@ -97,7 +98,8 @@
     "test/source-metadata-ui.test.mjs",
     "test/page-toolbar-menu.test.mjs",
     "test/page-connections-ui.test.mjs",
-    "test/relationship-predicates.test.mjs"
+    "test/relationship-predicates.test.mjs",
+    "test/notification-components.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",

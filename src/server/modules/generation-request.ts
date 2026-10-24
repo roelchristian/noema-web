@@ -32,7 +32,7 @@ export type GenerationRequest = CommonRequest & (
   | {kind:'sourceAuthors';input:string}
   | {kind:'pageEnrichment';input:string;options:Omit<PageEnrichmentOptions,'signal'>}
   | {kind:'collectionRules';input:string;instructions:string}
-  | {kind:'editorial';input:string;instructions:string;signal:AbortSignal}
+  | {kind:'editorial';input:string;instructions:string;signal:AbortSignal;responseShape?:'blocks'}
 );
 
 type Prompt = ReturnType<typeof summaryPrompt> | ReturnType<typeof pageEnrichmentPrompt> | {instructions:string;input:string};
@@ -51,6 +51,7 @@ interface GenerationPolicy {
 interface Selections {personaId?:string;standard:IntelligencePreferences;title:IntelligencePreferences;enrichment:IntelligencePreferences}
 const ignoreDelta=(_delta:string)=>{};
 /** Nullable offsets retain the legacy unique-substring protocol. Local validation is authoritative. */
+const reconstructionFormat={type:'json_schema',name:'source_reconstruction_blocks',strict:true,schema:{type:'object',additionalProperties:false,required:['blocks','diagnostics','unresolved'],properties:{blocks:{type:'array',items:{type:'object',additionalProperties:false,required:['id','text'],properties:{id:{type:'string'},text:{type:'string'}}}},diagnostics:{type:'array',items:{type:'string'}},unresolved:{type:'boolean'}}}};
 const editorialFormat={type:'json_schema',name:'source_editorial_patches',strict:true,schema:{
   type:'object',additionalProperties:false,required:['patches','diagnostics'],properties:{
     patches:{type:'array',maxItems:50,items:{type:'object',additionalProperties:false,
@@ -112,7 +113,7 @@ export function generationPolicy(request:GenerationRequest,selections:Selections
       return policy(()=>({instructions:request.instructions,input:request.input}),{activeSlot:'exclusive',selection:{...selections.standard,reasoningEffort:'none'},maxOutputTokens:4096,maxOutputLength:32768});
     case 'editorial':
       if(!supportedIntelligencePreferences(selections.standard))throw new HttpError(400,'Choose a supported editorial model and reasoning effort in Settings → Intelligence.');
-      return policy(()=>({instructions:request.instructions,input:request.input,...(intelligenceModels.find(model=>model.id===selections.standard.model)?.structuredOutputs?{text:{format:editorialFormat}}:{})}),{activeSlot:'editorial',selection:{...selections.standard},maxOutputTokens:16000,maxOutputLength:60000,timeoutMs:180000});
+      return policy(()=>({instructions:request.instructions,input:request.input,...(intelligenceModels.find(model=>model.id===selections.standard.model)?.structuredOutputs?{text:{format:request.responseShape==='blocks'?reconstructionFormat:editorialFormat}}:{})}),{activeSlot:'editorial',selection:{...selections.standard},maxOutputTokens:16000,maxOutputLength:60000,timeoutMs:180000});
     default: {
       const exhaustive:never=request;
       throw new Error(`Unsupported generation request: ${String(exhaustive)}`);

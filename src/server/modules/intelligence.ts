@@ -440,8 +440,8 @@ export class Intelligence {
     catch{throw new HttpError(502,'AI returned invalid source authors. Retry enrichment.');}
     });
   }
-  async reeditSource(input:string,instructions:string,signal:AbortSignal,onRequest?:AIRequestObserver) {
-    return this.generate({kind:'editorial',input,instructions,signal,onRequest,background:true});
+  async reeditSource(input:string,instructions:string,signal:AbortSignal,onRequest?:AIRequestObserver,responseShape?:'blocks') {
+    return this.generate({kind:'editorial',input,instructions,signal,onRequest,responseShape,background:true});
   }
   private async validatedGeneration<T>(request:GenerationRequest,parse:(output:string)=>T):Promise<T> {
     let trace:AIDebugTrace|undefined;

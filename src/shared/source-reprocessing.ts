@@ -29,6 +29,7 @@ export interface SourceEditorialAttempt extends SourceEditorialUsage {
 }
 export interface SourceEditorialExcerpt extends SourceEditorialUsage {
  index:number;startOffset:number;endOffset:number;startPage:number|null;endPage:number|null;
+ passesCompleted?:number;requiredPassCount?:1|2|3;activePass?:1|2|3;difficultyReason?:string;
  status:'pending'|'running'|'completed'|'failed'|'interrupted';attempts:number;durationMs:number;
  lastAttemptAt?:string;errorCode?:string;error?:string;outcomeUncertain?:boolean;
  /** Recent attempt details are bounded; attempts and usage totals cover the full history. */
@@ -36,6 +37,7 @@ export interface SourceEditorialExcerpt extends SourceEditorialUsage {
 }
 export interface SourceEditorialPatch {
  baseHash?:string;excerptIndex?:number;
+ patchGroupId?:string;presentation?:{kind:'page_furniture';hidden:boolean};
  /** Deterministic validation record; never populated from the model response. */
  autoAcceptance?:{policy:SourceAcceptanceMode;validator:string;checks:string[];appliedAt:string};
  /** Append-only decision audit, including reversal and edited replacements. */

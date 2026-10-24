@@ -1,0 +1,23 @@
+.archive-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-block: 16px;
+}
+.archive-filters > input,
+.archive-filters > .select-control {
+  min-width: 0;
+  max-width: 100%;
+}
+.archive-filters label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--ui-text-sm);
+  color: var(--text-muted);
+}
+.archive-filters input {
+  max-width: 100%;
+  min-width: 0;
+}

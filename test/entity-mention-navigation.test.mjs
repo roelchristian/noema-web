@@ -49,10 +49,10 @@ test('navigation rejects stale revisions, renamed canonical labels, foreign enti
 test('server uses indexed candidates and skips trash, foreign pages, phantom candidates and plain names',()=>{
  const db=new DatabaseSync(':memory:'),store=new Store(db);
  try {
-  db.exec('CREATE TABLE entities(id TEXT,vault_id TEXT,name TEXT,mention_case TEXT); CREATE TABLE pages(id TEXT,title TEXT,icon TEXT,updated_at TEXT,revision INTEGER,blocks TEXT,vault_id TEXT,deleted_at TEXT); CREATE TABLE page_mentioned_entities(page_id TEXT,entity_id TEXT)');
+  db.exec('CREATE TABLE entities(id TEXT,vault_id TEXT,name TEXT,mention_case TEXT); CREATE TABLE pages(id TEXT,title TEXT,icon TEXT,updated_at TEXT,revision INTEGER,blocks TEXT,vault_id TEXT,deleted_at TEXT,archived_at TEXT); CREATE TABLE page_mentioned_entities(page_id TEXT,entity_id TEXT)');
   store.run('INSERT INTO entities VALUES(?,?,?,?)','ada','v','Ada','lowercase');
   for(const [id,vault,deleted,blocks] of [['p','v',null,page.blocks],['trash','v','deleted',page.blocks],['foreign','other',null,page.blocks],['phantom','v',null,[block('a','paragraph',[{text:'Ada ada'}])]]]){
-   store.run('INSERT INTO pages VALUES(?,?,?,?,?,?,?,?)',id,'History',null,'2026',3,JSON.stringify(blocks),vault,deleted);
+   store.run('INSERT INTO pages(id,title,icon,updated_at,revision,blocks,vault_id,deleted_at) VALUES(?,?,?,?,?,?,?,?)',id,'History',null,'2026',3,JSON.stringify(blocks),vault,deleted);
    store.run('INSERT INTO page_mentioned_entities VALUES(?,?)',id,'ada');
   }
   const result=entityPageMentions(store,'v','ada');assert.equal(result.length,1);assert.equal(result[0].id,'p');assert.equal(result[0].mentionCount,7);

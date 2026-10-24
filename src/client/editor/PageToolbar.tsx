@@ -13,7 +13,7 @@ import {PageEntityAssociationsDialog} from './PageEntityAssociationsDialog';
 import {rememberMarkdownTyping,useMarkdownTyping} from '../state/markdown-preferences';
 import {formatMarkdownBlocks} from './markdown-typing';
 
-export function PageToolbar({ onHistory, onRename, entities, onEntityAssociationsChanged, onOpenEntity, tocAvailable=false, tocVisible=true, onToggleToc, onRevealInSidebar, inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, presentationMode, onPresentationModeChange, onExitFocus, onForward, forwardDisabled, onChangeBlocks, onFeaturedImageChange,onEditLockChange, onUndo, onRedo, canUndo, canRedo}: {
+export function PageToolbar({ onArchive, onRestore, onHistory, onRename, entities, onEntityAssociationsChanged, onOpenEntity, tocAvailable=false, tocVisible=true, onToggleToc, onRevealInSidebar, inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, presentationMode, onPresentationModeChange, onExitFocus, onForward, forwardDisabled, onChangeBlocks, onFeaturedImageChange,onEditLockChange, onUndo, onRedo, canUndo, canRedo}: {
   onHistory?:()=>void;
   onRename?:()=>void;
   entities?:Entity[]; onEntityAssociationsChanged?:()=>Promise<void>; onOpenEntity?:(id:string)=>void;
@@ -24,6 +24,7 @@ export function PageToolbar({ onHistory, onRename, entities, onEntityAssociation
   onForward?: () => void; forwardDisabled?: boolean;
   inactive?: boolean;
   onAI: () => void; aiOpen: boolean; presentationMode: PresentationMode; onPresentationModeChange: (mode: PresentationMode) => void; onExitFocus: () => void;
+  onArchive?:()=>Promise<void>; onRestore?:()=>Promise<void>;
   favourite: boolean; onOrganizationChange: (data: Organization) => void; page: Page; onDelete: () => Promise<void>;
   onError: (error: unknown) => void;
   onFeaturedImageChange: (imageId: string | null) => void;
@@ -36,7 +37,7 @@ export function PageToolbar({ onHistory, onRename, entities, onEntityAssociation
   const [featuredImageOpen, setFeaturedImageOpen] = useState(false);
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const markdownTyping=useMarkdownTyping();
-  const editingDisabled=!!page.editLocked||changingLock;
+  const editingDisabled=!!page.editLocked||!!page.archived_at||changingLock;
   const contentsLabel=tocVisible?uiText("Hide table of contents"):uiText("Show table of contents");
   function toggleMarkdownTyping() {
     if(!markdownTyping)onChangeBlocks(formatMarkdownBlocks(page.blocks));
@@ -75,14 +76,14 @@ export function PageToolbar({ onHistory, onRename, entities, onEntityAssociation
     <div className="page-toolbar-reading page-toolbar-secondary" role="group" aria-label={uiText("View")}>
       {tocAvailable&&onToggleToc&&<button type="button" className="page-tool" aria-label={contentsLabel} title={contentsLabel} aria-pressed={tocVisible} onClick={onToggleToc}><Icon name="view-list"/></button>}
     </div>
-    <button type="button" className={'page-tool favourite-button ' + (favourite ? 'is-favourite' : '')} disabled={saving} aria-busy={saving} aria-pressed={favourite} aria-label={favourite ? uiText("Remove page from favourites") : uiText("Add page to favourites")} title={favourite ? uiText("Remove from favourites") : uiText("Add to favourites")} onClick={() => void toggleFavourite()}><Icon name="star"/></button>
+    <button type="button" className={'page-tool favourite-button ' + (favourite ? 'is-favourite' : '')} disabled={saving||!!page.archived_at} aria-busy={saving} aria-pressed={favourite} aria-label={favourite ? uiText("Remove page from favourites") : uiText("Add page to favourites")} title={favourite ? uiText("Remove from favourites") : uiText("Add to favourites")} onClick={() => void toggleFavourite()}><Icon name="star"/></button>
     <button type="button" className="page-tool page-tool-labeled knowledge-toggle" aria-expanded={aiOpen} aria-controls="intelligence-panel" aria-label={uiText("Knowledge")} title={uiText("Knowledge")} onClick={onAI}><Icon name="knowledge"/><span>{uiText("Knowledge")}</span></button>
     {page.editLocked && <div className="page-toolbar-lock"><ActionMenu label={uiText("Page locked: unlock editing")} icon="lock" disabled={changingLock} actions={lockAction.children ?? []}/><span aria-hidden="true">{uiText("Locked")}</span></div>}
     <ActionMenu label={uiText("More page actions")} disabled={changingLock} actions={[
       ...(onForward ? [{get label(){return uiText("Go forward")}, icon: 'chevron', disabled: forwardDisabled, onSelect: onForward}] : []),
       ...(onHistory?[{label:uiText("Version history"),icon:"undo" as const,onSelect:onHistory}]:[]),
       ...(onRename?[{label:uiText("Rename"),icon:'edit' as const,disabled:editingDisabled,onSelect:onRename}]:[]),
-      ...(entities?[{label:uiText("Organize with entities…"),icon:"knowledge" as const,onSelect:()=>setEntityAssociationsOpen(true)}]:[]),
+      ...(entities?[{label:uiText("Organize with entities…"),icon:"knowledge" as const,disabled:editingDisabled,onSelect:()=>setEntityAssociationsOpen(true)}]:[]),
       {label:uiText("Find in page"),icon:"search",description:"⌘F / Ctrl+F",onSelect:()=>document.dispatchEvent(new Event("noema:document-find"))},
       {label: uiText("Reveal in sidebar"), icon: 'folder', onSelect: onRevealInSidebar},
       ...(tocAvailable&&onToggleToc?[{label:uiText("Table of contents"),icon:'view-list',checked:tocVisible,onSelect:onToggleToc}]:[]),
@@ -93,8 +94,9 @@ export function PageToolbar({ onHistory, onRename, entities, onEntityAssociation
         {label: uiText("Format Markdown as you type"), checked:markdownTyping, description:markdownTyping?uiText("On · Turning off keeps existing formatting."):uiText("Off · Turning on also formats Markdown already in this page."), onSelect:toggleMarkdownTyping},
         {label: uiText("Clean up spacing…"), onSelect: () => setCleanupOpen(true)},
       ]},
-      lockAction,
-      {label:uiText("Move to Trash"),icon:'trash',disabled:!!page.editLocked,danger:true,children:[
+      {...lockAction,disabled:!!page.archived_at||changingLock},
+      ...(page.archived_at?[{label:'Restore to Active',icon:'undo',onSelect:()=>void onRestore?.().catch(onError)}]:[{label:'Archive',icon:'archive',onSelect:()=>void onArchive?.().catch(onError)}]),
+      {label:uiText("Move to Trash"),icon:'trash',disabled:!!page.editLocked||!!page.archived_at,danger:true,children:[
         {label:uiText("Move to Trash"),icon:'trash',danger:true,description:uiText("You can restore this note within 30 days."),onSelect:()=>{void onDelete().catch(onError);}},
         {label:uiText("Keep note"),onSelect:()=>{}},
       ]},

@@ -6,7 +6,7 @@ import {api} from '../src/client/api.ts';
 test('export flushes pending edits before downloading and failed saves prevent export',async context=>{
   const vault={id:'source',name:'Source',locked:false},events=[];
   context.mock.method(api,'vaults',async()=>[vault]);
-  context.mock.method(api,'pages',async()=>[]);context.mock.method(api,'entities',async()=>[]);
+  context.mock.method(api,'archivedPages',async()=>[]);context.mock.method(api,'pages',async()=>[]);context.mock.method(api,'entities',async()=>[]);
   context.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],memberships:[],favourites:[]}));
   const workspace=new Workspace();
   try {

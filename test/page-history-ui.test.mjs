@@ -16,7 +16,7 @@ test('history compares stable block IDs without treating reordered blocks as tex
 async function setup(t) {
   const page={id:'p',vault_id:'v',title:'Note',blocks:[block('b','Old')],sourceIds:[],revision:1,updated_at:''};
   t.mock.method(api,'vaults',async()=>[{id:'v',name:'Vault',locked:false}]);
-  t.mock.method(api,'pages',async()=>[page]);t.mock.method(api,'entities',async()=>[]);
+  t.mock.method(api,'archivedPages',async()=>[]);t.mock.method(api,'pages',async()=>[page]);t.mock.method(api,'entities',async()=>[]);
   t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],memberships:[],favourites:[]}));
   t.mock.method(api,'page',async()=>page);
   t.mock.method(api,'pageMetadata',async()=>({}));

@@ -25,7 +25,7 @@ export class PageEnrichmentState {
     return {version:1,fields:{}};
   }
   save(pageId:string,state:PageEnrichmentRecord):void {
-    const page=this.store.get<Pick<Page,'revision'>>('SELECT revision FROM pages WHERE id=? AND deleted_at IS NULL',pageId);
+    const page=this.store.get<Pick<Page,'revision'>>('SELECT revision FROM pages WHERE id=? AND deleted_at IS NULL AND archived_at IS NULL',pageId);
     if(!page)return;
     this.store.run("INSERT INTO page_ai_enrichments (page_id,kind,data,revision,model,reasoning_effort,updated_at) VALUES (?,'enrichment_state',?,?,'local','none',?) ON CONFLICT(page_id,kind) DO UPDATE SET data=excluded.data,revision=excluded.revision,updated_at=excluded.updated_at",pageId,JSON.stringify(state),page.revision,new Date().toISOString());
   }

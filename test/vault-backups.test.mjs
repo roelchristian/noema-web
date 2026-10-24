@@ -252,3 +252,20 @@ test('legacy custom subtype IDs colliding with added natives restore scopes, tar
     }
   }finally{state.close();}
 });
+
+test('archived source-linked pages round trip content, lifecycle, location and history; older backups remain active',async()=>{
+ const state=fixture();
+ try {
+  const archived=state.pages.setArchived(state.vault.id,state.page.id,true,{revision:state.page.revision});
+  const {bytes}=await state.backups.export(state.vault.id);
+  const restored=await state.backups.import(bytes,'Synthetic archive round trip');
+  assert.deepEqual(state.pages.list(restored.id),[]);
+  const note=state.pages.archiveList(restored.id)[0],page=state.pages.get(restored.id,note.id);
+  assert.equal(page.archived_at,archived.archived_at);assert.equal(page.updated_at,archived.updated_at);
+  assert.equal(page.title,archived.title);assert.equal(page.sourceIds.length,archived.sourceIds.length);
+  assert.equal(note.folderName,'Nested desk');assert.equal(note.collectionIds.length,1);
+  assert.ok(state.store.get('SELECT 1 FROM page_versions WHERE page_id=?',page.id));
+  const legacy=await state.backups.import(rewrite(bytes,value=>{for(const page of value.tables.pages)delete page.archived_at;}),'Synthetic legacy archive');
+  assert.equal(state.pages.list(legacy.id).length,1);assert.equal(state.pages.archiveList(legacy.id).length,0);
+ }finally{state.close();}
+});

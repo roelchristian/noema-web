@@ -21,13 +21,13 @@ export class Organizer {
       folderLinks: this.store.all('SELECT folder_id,collection_id FROM collection_folders WHERE vault_id=? ORDER BY collection_id,folder_id', vault),
       collections: this.store.all<Collection & {description:string|null}>('SELECT c.id,c.name,d.description FROM collections c LEFT JOIN collection_descriptions d ON d.collection_id=c.id AND d.vault_id=c.vault_id WHERE c.vault_id=? ORDER BY c.name,c.id', vault).map(({description,...row})=>description===null?row:{...row,description}),
       folders: this.store.all<Folder & {description:string|null}>('SELECT f.id,f.name,f.parent_id,d.description FROM folders f LEFT JOIN folder_descriptions d ON d.folder_id=f.id AND d.vault_id=f.vault_id WHERE f.vault_id=? ORDER BY f.name,f.id', vault).map(({description,...row})=>description===null?row:{...row,description}),
-      locations: this.store.all(`SELECT kind,item_id,folder_id FROM item_locations WHERE vault_id=? AND (kind='entity' OR EXISTS (SELECT 1 FROM pages WHERE pages.id=item_locations.item_id AND pages.vault_id=item_locations.vault_id AND pages.deleted_at IS NULL))`, vault),
+      locations: this.store.all(`SELECT kind,item_id,folder_id FROM item_locations WHERE vault_id=? AND (kind='entity' OR EXISTS (SELECT 1 FROM pages WHERE pages.id=item_locations.item_id AND pages.vault_id=item_locations.vault_id AND pages.deleted_at IS NULL AND pages.archived_at IS NULL))`, vault),
       memberships: this.store.all<Omit<CollectionMembership,'automatic'> & {automatic:number}>(`SELECT kind,item_id,collection_id,
         EXISTS (SELECT 1 FROM collections c JOIN page_reading_notes n ON n.vault_id=c.vault_id
           WHERE c.id=collection_memberships.collection_id AND c.name='Reading Notes'
           AND n.page_id=collection_memberships.item_id AND collection_memberships.kind='page') AS automatic
-        FROM collection_memberships WHERE vault_id=? AND (kind='entity' OR EXISTS (SELECT 1 FROM pages WHERE pages.id=collection_memberships.item_id AND pages.vault_id=collection_memberships.vault_id AND pages.deleted_at IS NULL))`, vault).map(row=>({...row,automatic:!!row.automatic})),
-      favourites: this.store.all(`SELECT kind,item_id FROM favourites WHERE vault_id=? AND (kind IN ('entity','folder') OR EXISTS (SELECT 1 FROM pages WHERE pages.id=favourites.item_id AND pages.vault_id=favourites.vault_id AND pages.deleted_at IS NULL))`, vault),
+        FROM collection_memberships WHERE vault_id=? AND (kind='entity' OR EXISTS (SELECT 1 FROM pages WHERE pages.id=collection_memberships.item_id AND pages.vault_id=collection_memberships.vault_id AND pages.deleted_at IS NULL AND pages.archived_at IS NULL))`, vault).map(row=>({...row,automatic:!!row.automatic})),
+      favourites: this.store.all(`SELECT kind,item_id FROM favourites WHERE vault_id=? AND (kind IN ('entity','folder') OR EXISTS (SELECT 1 FROM pages WHERE pages.id=favourites.item_id AND pages.vault_id=favourites.vault_id AND pages.deleted_at IS NULL AND pages.archived_at IS NULL))`, vault),
     });
   }
   private collection(vault: string, id: string) {
@@ -125,7 +125,7 @@ export class Organizer {
     const kind = body.kind;
     if (kind !== 'page' && kind !== 'entity') throw new HttpError(400, 'Invalid item kind');
     const id = required(body.item_id);
-    if (!this.store.get(`SELECT id FROM ${kind === 'page' ? 'pages' : 'entities'} WHERE id=? AND vault_id=?${kind === 'page' ? ' AND deleted_at IS NULL' : ''}`, id, vault)) throw new HttpError(404, 'Item not found');
+    if (!this.store.get(`SELECT id FROM ${kind === 'page' ? 'pages' : 'entities'} WHERE id=? AND vault_id=?${kind === 'page' ? ' AND deleted_at IS NULL AND archived_at IS NULL' : ''}`, id, vault)) throw new HttpError(404, 'Item not found');
     return {kind, id};
   }
   locate(vault: string, body: Record<string, unknown>) {
@@ -170,7 +170,7 @@ export class Organizer {
         UNION SELECT folders.id FROM folders JOIN subtree ON folders.parent_id=subtree.id WHERE folders.vault_id=?
       ) INSERT OR IGNORE INTO collection_memberships(vault_id,kind,item_id,collection_id)
         SELECT l.vault_id,'page',l.item_id,? FROM item_locations l JOIN pages p ON p.id=l.item_id AND p.vault_id=l.vault_id
-        WHERE l.vault_id=? AND l.kind='page' AND l.folder_id IN (SELECT id FROM subtree) AND p.deleted_at IS NULL`, vault, folder.id, vault, collection.id, vault);
+        WHERE l.vault_id=? AND l.kind='page' AND l.folder_id IN (SELECT id FROM subtree) AND p.deleted_at IS NULL AND p.archived_at IS NULL`, vault, folder.id, vault, collection.id, vault);
     } else throw new HttpError(400, 'Choose a linked folder or current pages');
     return this.list(vault);
   }

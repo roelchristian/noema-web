@@ -12,7 +12,7 @@ import {Vaults} from './vaults.js';
 
 interface PageRow {id: string; vault_id: string; title: string; blocks: string; deleted_at: string | null}
 interface EntityRow {id: string; vault_id: string; name: string; aliases: string; mention_case: string}
-interface MatchRow {id: string; kind: 'page' | 'entity'; name: string; nameHit: number; aliasHit: number; excerpt: string; relevance: number}
+interface MatchRow {archived_at:string|null; id: string; kind: 'page' | 'entity'; name: string; nameHit: number; aliasHit: number; excerpt: string; relevance: number}
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 function arrayJSON(value: string): unknown[] {
   try {const parsed: unknown = JSON.parse(value); return Array.isArray(parsed) ? parsed : [];} catch {return [];}
@@ -26,7 +26,7 @@ function scopeValue(input: unknown): TextSearchScope | undefined {
     if (!Array.isArray(value) || value.length > 10000 || value.some(id => typeof id !== 'string' || !id || id.length > 200)) throw new HttpError(400, 'Choose up to 10,000 note or entity IDs.');
     return [...new Set(value as string[])];
   }
-  return {pageIds: ids(input.pageIds), entityIds: ids(input.entityIds)};
+  return {pageIds: input.all===true?[]:ids(input.pageIds), entityIds: input.all===true?[]:ids(input.entityIds),all:input.all===true,includeArchived:input.includeArchived===true};
 }
 
 /** Saved-content lexical search. Durable passage synchronization runs before
@@ -91,10 +91,10 @@ export class TextSearch {
       snippet:makeSearchSnippet(passage.text,query),updated_at:passage.updated_at,score:-passage.relevance,reference:passageReference(passage)}));
     return [...sources,...this.pagePassages(vault,query,match,limit)].sort((a,b)=>b.score-a.score).slice(0,limit);
   }
-  private pagePassages(vault:string,query:string,match:string,limit:number,pageIds?:string[]):SemanticSearchResult[] {
+  private pagePassages(vault:string,query:string,match:string,limit:number,pageIds?:string[],includeArchived=false):SemanticSearchResult[] {
     return this.store.all<PageSegment & {title:string;updated_at:string;relevance:number}>(`SELECT s.*,p.title,p.updated_at,bm25(page_segments_fts,3.0,1.0) AS relevance
       FROM page_segments_fts JOIN page_segments s ON s.rowid=page_segments_fts.rowid JOIN pages p ON p.id=s.page_id
-      WHERE page_segments_fts MATCH ? AND s.vault_id=? AND p.deleted_at IS NULL AND p.revision=s.revision
+      WHERE page_segments_fts MATCH ? AND s.vault_id=? AND p.deleted_at IS NULL AND (${includeArchived?1:0}=1 OR p.archived_at IS NULL) AND p.revision=s.revision
        AND NOT EXISTS(SELECT 1 FROM page_index_dirty d WHERE d.page_id=p.id)
        ${pageIds?'AND p.id IN (SELECT value FROM json_each(?))':''}
       ORDER BY relevance,s.page_id,s.ordinal LIMIT ?`,match,vault,...(pageIds?[JSON.stringify(pageIds)]:[]),limit).map(segment=>({id:segment.page_id,kind:'page',passageId:segment.id,title:segment.title,snippet:makeSearchSnippet(segment.text,query),updated_at:segment.updated_at,score:-segment.relevance,pageReference:pageSegmentReference(segment)}));
@@ -115,7 +115,7 @@ export class TextSearch {
     return this.store.transaction(() => {
       this.synchronize(vault);
       const rows = this.store.all<MatchRow>(`
-        SELECT d.id,d.kind,text_search_fts.name,
+        SELECT d.id,d.kind,p.archived_at,text_search_fts.name,
           highlight(text_search_fts,0,char(1),char(2))<>text_search_fts.name AS nameHit,
           highlight(text_search_fts,2,char(1),char(2))<>text_search_fts.aliases AS aliasHit,
           snippet(text_search_fts,CASE WHEN d.kind='page' AND length(text_search_fts.body)>0 THEN 1 WHEN d.kind='entity' AND highlight(text_search_fts,0,char(1),char(2))=text_search_fts.name THEN 2 ELSE 0 END,'','','…',32) AS excerpt,
@@ -124,11 +124,11 @@ export class TextSearch {
         LEFT JOIN pages p ON d.kind='page' AND p.id=d.id AND p.vault_id=d.vault_id
         LEFT JOIN entities e ON d.kind='entity' AND e.id=d.id AND e.vault_id=d.vault_id
         WHERE text_search_fts MATCH ? AND d.vault_id=?
-          AND ((d.kind='page' AND p.id IS NOT NULL AND p.deleted_at IS NULL) OR (d.kind='entity' AND e.id IS NOT NULL AND (e.type<>'source' OR (e.inactive=0 AND EXISTS (SELECT 1 FROM source_files sf WHERE sf.entity_id=e.id AND sf.vault_id=e.vault_id AND sf.status='ready' AND sf.admitted=1)))))
+          AND ((d.kind='page' AND p.id IS NOT NULL AND p.deleted_at IS NULL AND (${scope?.includeArchived?1:0}=1 OR p.archived_at IS NULL)) OR (d.kind='entity' AND e.id IS NOT NULL AND (e.type<>'source' OR (e.inactive=0 AND EXISTS (SELECT 1 FROM source_files sf WHERE sf.entity_id=e.id AND sf.vault_id=e.vault_id AND sf.status='ready' AND sf.admitted=1)))))
           AND (?=0 OR (d.kind='page' AND d.id IN (SELECT value FROM json_each(?))) OR (d.kind='entity' AND d.id IN (SELECT value FROM json_each(?))))
         ORDER BY nameHit DESC,relevance ASC,text_search_fts.name COLLATE NOCASE,d.kind,d.id
         LIMIT ?
-      `, match, vault, scope ? 1 : 0, JSON.stringify(scope?.pageIds ?? []), JSON.stringify(scope?.entityIds ?? []), limit+1);
+      `, match, vault, scope && !scope.all ? 1 : 0, JSON.stringify(scope?.pageIds ?? []), JSON.stringify(scope?.entityIds ?? []), limit+1);
       // Materialize BM25 before partitioning: FTS ranking functions must run
       // directly against the matching virtual-table cursor. One best passage
       // per source prevents a book from occupying the entire result list.
@@ -148,10 +148,10 @@ export class TextSearch {
           SELECT *,row_number() OVER (PARTITION BY source_id ORDER BY relevance,ordinal,id) AS position FROM hits
         )
         SELECT * FROM ranked WHERE position=1 ORDER BY relevance,name COLLATE NOCASE,source_id LIMIT ?
-      `, match,vault,scope ? 1 : 0,JSON.stringify(scope?.entityIds ?? []),limit+1);
+      `, match,vault,scope && !scope.all ? 1 : 0,JSON.stringify(scope?.entityIds ?? []),limit+1);
       const results = rows.map<TextSearchResult>(row => {
         const relevance = Math.max(0,-row.relevance);
-        return {id: row.id, kind: row.kind, name: row.name, matchedIn: row.kind === 'page' ? row.nameHit ? 'title' : 'page' : row.nameHit ? 'name' : 'alias', snippet: makeSearchSnippet(row.excerpt,query), score: (row.nameHit ? 1 : 0)+relevance/(1+relevance)};
+        return {archived_at:row.archived_at,id: row.id, kind: row.kind, name: row.name, matchedIn: row.kind === 'page' ? row.nameHit ? 'title' : 'page' : row.nameHit ? 'name' : 'alias', snippet: makeSearchSnippet(row.excerpt,query), score: (row.nameHit ? 1 : 0)+relevance/(1+relevance)};
       });
       const bySource = new Map(results.map(result => [`${result.kind}:${result.id}`,result]));
       for (const passage of passages) {
@@ -168,7 +168,7 @@ export class TextSearch {
           existing.score=Math.max(existing.score,result.score);
         } else bySource.set(key,result);
       }
-      const pageHits=this.pagePassages(vault,query,match,10000,scope?.pageIds),seenPages=new Set<string>();
+      const pageHits=this.pagePassages(vault,query,match,10000,scope?.all?undefined:scope?.pageIds,scope?.includeArchived),seenPages=new Set<string>();
       for(const hit of pageHits) {
         if(seenPages.has(hit.id))continue;seenPages.add(hit.id);
         const key=`page:${hit.id}`,existing=bySource.get(key);

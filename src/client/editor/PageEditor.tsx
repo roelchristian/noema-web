@@ -37,6 +37,7 @@ function editedLabel(updatedAt: string, now: number): string {
   return uiText('Edited {time}',{time:new Intl.RelativeTimeFormat(getLocale(), {numeric:'always'}).format(-Math.floor(seconds/size),unit)});
 }
 export function PageEditor({hideTitle=false,focusNewBody=false,onCreationFocusConsumed,tocVisible=true,headings=[],subjectsSaving=false,citationStyle='references',pages,onOpenPage,page, entities, onChange, onOpenEntity, onCreateEntity, onSave, onIdentify, onAddAlias, saveStatus}: Props) {
+  const readOnly=!!page.editLocked||!!page.archived_at;
   const priorCitations=useRef<ReturnType<typeof noteCitations>>(new Map());
   const citationEntries=useMemo(()=>{
     const entries=noteCitations(page.blocks),old=priorCitations.current;
@@ -77,7 +78,7 @@ export function PageEditor({hideTitle=false,focusNewBody=false,onCreationFocusCo
   const reviewMatches = cache?.matches ?? emptyMatches;
   const currentPage = useRef(page); currentPage.current = page;
   useEffect(() => {
-    if (page.editLocked || cache || saveStatus !== 'saved') return;
+    if (readOnly || cache || saveStatus !== 'saved') return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       void api.entityMatches(page.vault_id,page.id,page.revision,controller.signal).then(cache => {
@@ -85,26 +86,26 @@ export function PageEditor({hideTitle=false,focusNewBody=false,onCreationFocusCo
       }).catch(error => { if (!controller.signal.aborted) setReviewError(error instanceof Error ? error.message : String(error)); });
     }, ambiguityReviewDelay);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [page.id, page.vault_id, page.blocks, page.revision, page.pageDomains, page.editLocked, entities, saveStatus]);
+  }, [page.id, page.vault_id, page.blocks, page.revision, page.pageDomains, readOnly, entities, saveStatus]);
   useEffect(() => {
-    if (page.editLocked) return;
+    if (readOnly) return;
     let timer: ReturnType<typeof setTimeout>;
     const schedule = () => { clearTimeout(timer); timer = setTimeout(() => { void onIdentify(); }, 1200); };
     schedule();
     document.addEventListener('selectionchange', schedule);
     document.addEventListener('compositionend', schedule);
     return () => { clearTimeout(timer); document.removeEventListener('selectionchange', schedule); document.removeEventListener('compositionend', schedule); };
-  }, [page.id, page.blocks, page.pageDomains, page.conceptContentHash, page.editLocked, entities, onIdentify]);
+  }, [page.id, page.blocks, page.pageDomains, page.conceptContentHash, readOnly, entities, onIdentify]);
   const hasTitleMath=useMemo(()=>titleHasMath(page.title),[page.title]);
   const status = {saved: editedLabel(page.updated_at, now), pending: uiText("Waiting to save…"), identifying: uiText("Identifying entities…"), saving: uiText("Saving…"), error: uiText("Could not save changes")}[saveStatus];
   return <CitationPresentationContext.Provider value={citationPresentation}><article ref={article} className="page" lang={page.language??undefined} inert={subjectsSaving} aria-busy={subjectsSaving} onCompositionStart={event => { event.currentTarget.dataset.entityComposing = 'true'; }} onCompositionEnd={event => { delete event.currentTarget.dataset.entityComposing; }}>
-    <DocumentFind key={page.vault_id+":"+page.id} blocks={page.blocks} entities={entities} disabled={!!page.editLocked} onChange={blocks=>onChange({blocks})}/>
-    {!hideTitle && <h1 className={"page-title-heading page-heading"+(hasTitleMath?" has-title-math":"")+(page.editLocked?" is-title-locked":"")} aria-label={page.title || uiText("Untitled")}><textarea id="page-title" rows={1} aria-label={uiText("Page title")} title={uiText("Use $…$ or \\(…\\) for math")} placeholder={uiText("Untitled")} maxLength={500} readOnly={!!page.editLocked} onKeyDown={event=>{if(event.key==='Enter'&&!event.nativeEvent.isComposing){event.preventDefault();event.currentTarget.blur();}}} value={page.title} onChange={e => onChange({title: smartQuoteTitle(e.currentTarget, e.nativeEvent as InputEvent).replace(/[\r\n]+/g,' ')})}/>{!hasTitleMath&&<span className="page-title-sizer" aria-hidden="true">{page.title || uiText("Untitled")}</span>}{hasTitleMath&&<span className="page-title-preview" aria-hidden="true"><TitleText text={page.title}/></span>}</h1>}
+    <DocumentFind key={page.vault_id+":"+page.id} blocks={page.blocks} entities={entities} disabled={!!readOnly} onChange={blocks=>onChange({blocks})}/>
+    {!hideTitle && <h1 className={"page-title-heading page-heading"+(hasTitleMath?" has-title-math":"")+(page.editLocked?" is-title-locked":"")} aria-label={page.title || uiText("Untitled")}><textarea id="page-title" rows={1} aria-label={uiText("Page title")} title={uiText("Use $…$ or \\(…\\) for math")} placeholder={uiText("Untitled")} maxLength={500} readOnly={!!readOnly} onKeyDown={event=>{if(event.key==='Enter'&&!event.nativeEvent.isComposing){event.preventDefault();event.currentTarget.blur();}}} value={page.title} onChange={e => onChange({title: smartQuoteTitle(e.currentTarget, e.nativeEvent as InputEvent).replace(/[\r\n]+/g,' ')})}/>{!hasTitleMath&&<span className="page-title-sizer" aria-hidden="true">{page.title || uiText("Untitled")}</span>}{hasTitleMath&&<span className="page-title-preview" aria-hidden="true"><TitleText text={page.title}/></span>}</h1>}
     {page.readingNote&&<aside className="source-reading-note-context" aria-label={uiText("Reading note context")}><strong>{uiText("Reading note ·") + " "}{readingNoteWordCount(projectPageText(page.blocks,id=>entityMentionName(entities.find(entity=>entity.id===id))).text)} / {readingNoteMaxWords}{" " + uiText("words")}</strong><p>{page.readingNote.sourceId?<button type="button" onClick={()=>onOpenEntity(page.readingNote!.sourceId!)}>{uiText("Open source")}</button>:uiText("Original source unavailable")}</p><blockquote>{page.readingNote.excerpt}</blockquote></aside>}
     {headings.length>0&&<PageTableOfContents key={page.vault_id+'/'+page.id} headings={headings} showDocument={tocVisible} articleRef={article}/>}
     {page.editLocked && <div className="page-edit-lock-status" role="status"><Icon name="lock"/><span>{uiText("Locked for editing")}{page.editProtected ? uiText(" · Password protected") : ''}</span></div>}
     {reviewError && <p className="entity-review-error" role="alert">{reviewError}</p>}
-    {!page.editLocked && <EntityMatchReview matches={reviewMatches} entities={entities} disabled={resolving} onResolve={async resolution => {
+    {!readOnly && <EntityMatchReview matches={reviewMatches} entities={entities} disabled={resolving} onResolve={async resolution => {
       if (!cache || resolving) return;
       const original = page;
       setResolving(true); setReviewError('');
@@ -115,7 +116,7 @@ export function PageEditor({hideTitle=false,focusNewBody=false,onCreationFocusCo
       } catch (error) { setReviewError(error instanceof Error ? error.message : String(error)); }
       finally { setResolving(false); }
     }}/>}
-    {page.editLocked ? <ReadOnlyPageBlocks blocks={normalizeColumnBlocks(page.blocks)} entities={entities} pages={pages} vaultId={page.vault_id} onOpenEntity={onOpenEntity} onOpenPage={onOpenPage}/> : <BlockEditor pageId={page.id} focusNewBody={focusNewBody} onCreationFocusConsumed={onCreationFocusConsumed} onReview={async texts=>(await api.reviewText(page.vault_id,page.id,texts)).suggestions} featuredImageId={page.featuredImageId} pages={pages} onOpenPage={onOpenPage} onExplain={async (blocks,persona)=>api.explainBlocks(page.vault_id,page.id,blocks,persona)} reviewMatches={reviewMatches} onAddAlias={onAddAlias} key={page.vault_id + page.id} vaultId={page.vault_id} blocks={page.blocks} entities={entities} onChange={(blocks, featuredImageId, aiReviewAccepted) => onChange({blocks,...(aiReviewAccepted?{aiReviewAccepted:true}:{}),...(featuredImageId===undefined?{}:{featuredImageId})})} onOpenEntity={onOpenEntity} onCreateEntity={(name, onCreated, onCancel) => onCreateEntity({name, onCreated, onCancel, intent:'insert'})} onSave={onSave}/>}
+    {readOnly ? <ReadOnlyPageBlocks blocks={normalizeColumnBlocks(page.blocks)} entities={entities} pages={pages} vaultId={page.vault_id} onOpenEntity={onOpenEntity} onOpenPage={onOpenPage}/> : <BlockEditor pageId={page.id} focusNewBody={focusNewBody} onCreationFocusConsumed={onCreationFocusConsumed} onReview={async texts=>(await api.reviewText(page.vault_id,page.id,texts)).suggestions} featuredImageId={page.featuredImageId} pages={pages} onOpenPage={onOpenPage} onExplain={async (blocks,persona)=>api.explainBlocks(page.vault_id,page.id,blocks,persona)} reviewMatches={reviewMatches} onAddAlias={onAddAlias} key={page.vault_id + page.id} vaultId={page.vault_id} blocks={page.blocks} entities={entities} onChange={(blocks, featuredImageId, aiReviewAccepted) => onChange({blocks,...(aiReviewAccepted?{aiReviewAccepted:true}:{}),...(featuredImageId===undefined?{}:{featuredImageId})})} onOpenEntity={onOpenEntity} onCreateEntity={(name, onCreated, onCancel) => onCreateEntity({name, onCreated, onCancel, intent:'insert'})} onSave={onSave}/>}
     {citationStyle==='references'&&<NoteReferences blocks={page.blocks} entities={entities}/>}
     <footer className={'editor-save-status' + (saveStatus === 'error' ? ' is-error' : '')}>
       {saveStatus === 'saving' || saveStatus === 'identifying' ? <span className="scan-spinner" aria-hidden="true"/> : <Icon name={saveStatus === 'saved' ? 'recent' : saveStatus === 'error' ? 'alert' : 'recent'}/>}

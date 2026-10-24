@@ -16,7 +16,7 @@ test('sidebar note switching preserves mounted shell and outgoing editor until a
  t.mock.method(api,'entitySchema',async()=>({properties:[],subtypes:[],subtypeProperties:{}}));
  dom.window.scrollTo=()=>{};
  localStorage.setItem('noema-knowledge-panel-open','true');localStorage.setItem('noema-address/a',JSON.stringify({view:'pages',pageId:'one'}));
- t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false}]);t.mock.method(api,'pages',async()=>[page('one'),page('two')]);t.mock.method(api,'entities',async()=>[]);t.mock.method(api,'organization',async()=>({collections:[{id:'collection',name:'Research'}],folders:[{id:'folder',name:'Projects',parent_id:null}],locations:[{kind:'page',item_id:'one',folder_id:'folder'}],memberships:[],favourites:[]}));
+ t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false}]);t.mock.method(api,'archivedPages',async()=>[]);t.mock.method(api,'pages',async()=>[page('one'),page('two')]);t.mock.method(api,'entities',async()=>[]);t.mock.method(api,'organization',async()=>({collections:[{id:'collection',name:'Research'}],folders:[{id:'folder',name:'Projects',parent_id:null}],locations:[{kind:'page',item_id:'one',folder_id:'folder'}],memberships:[],favourites:[]}));
  t.mock.method(api,'aiNotifications',async()=>({items:[],running:[],unreadCount:0,through:0}));let finishKnowledge;const knowledgeRequests=t.mock.method(api,'enrichments',async(_vault,id)=>id==='one'?[{kind:'summary',data:{summary:'Saved summary for one'},revision:1}]:new Promise(resolve=>finishKnowledge=resolve));
  let finish;t.mock.method(api,'page',async(_vault,id)=>id==='one'?page('one'):new Promise(resolve=>finish=resolve));
  const root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
@@ -127,7 +127,7 @@ test('entity routes open full homes while desktop page mentions retain contextua
  dom.window.scrollBy=()=>{};
  localStorage.setItem('noema-address/a',JSON.stringify({view:'pages',pageId:'entity-note'}));
  t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false}]);
- t.mock.method(api,'pages',async()=>[note]);
+ t.mock.method(api,'archivedPages',async()=>[]);t.mock.method(api,'pages',async()=>[note]);
  t.mock.method(api,'page',async()=>note);
  t.mock.method(api,'entities',async()=>[entity,london]);
  t.mock.method(api,'entity',async(_vault,id)=>id==='ada'?entity:london);
@@ -213,7 +213,7 @@ test('source presentation controls retain the reader, highlights and inspector a
  const source={id:'source',vault_id:'a',name:'Source',type:'source',description:'',subtypes:[],domainIds:[],updated_at:'fixed',sourceStatus:'ready',attachments:[file],propertyNames:[],properties:[],relationships:[],incomingProperties:[]};
  const highlight={id:'mark',fileId:'file',sourceHash:'hash',startOffset:0,endOffset:12,color:'yellow',createdAt:'2026-10-23'};
  localStorage.setItem('noema-address/a',JSON.stringify({view:'source',sourceId:'source'}));
- t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false}]);t.mock.method(api,'pages',async()=>[]);t.mock.method(api,'entities',async()=>[source]);t.mock.method(api,'entity',async()=>source);
+ t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false}]);t.mock.method(api,'archivedPages',async()=>[]);t.mock.method(api,'pages',async()=>[]);t.mock.method(api,'entities',async()=>[source]);t.mock.method(api,'entity',async()=>source);
  t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],memberships:[],favourites:[]}));
  t.mock.method(api,'entitySchema',async()=>({properties:{source:[]},subtypes:[],subtypeProperties:{}}));
  t.mock.method(api,'aiNotifications',async()=>({items:[],running:[],unreadCount:0,through:0}));

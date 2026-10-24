@@ -25,8 +25,9 @@ export class PageHistory {
  constructor(private store:Store) {}
  private page(vault:string,id:string,editable=false) {
   new Vaults(this.store).requireOpen(vault);
-  const row=this.store.get<{revision:number;deleted_at:string|null}>('SELECT revision,deleted_at FROM pages WHERE id=? AND vault_id=?',id,vault);
+  const row=this.store.get<{revision:number;archived_at:string|null;deleted_at:string|null}>('SELECT revision,deleted_at,archived_at FROM pages WHERE id=? AND vault_id=?',id,vault);
   if(!row)throw new HttpError(404,'Page not found');
+  if(editable&&row.archived_at)throw new HttpError(409,'Restore this page from Archive before editing its history.');
   if(editable&&row.deleted_at)throw new HttpError(409,'Restore this page from Trash before editing its history.');
   if(editable&&this.store.get('SELECT 1 FROM page_edit_locks WHERE page_id=? AND vault_id=?',id,vault))throw new HttpError(423,'Unlock this page before restoring or naming a version.');
   return row;

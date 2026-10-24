@@ -52,7 +52,7 @@ export class Domains {
   }
   /** Read only fully current indexed passages; never equate indexing hashes with body hashes. */
   private cachedEmbedding(page:Pick<Page,'id'|'title'|'blocks'>,resolveName?:(id:string)=>string|undefined):CachedPageEmbedding|undefined {
-    const saved=this.store.get<{title:string;blocks:string}>('SELECT title,blocks FROM pages WHERE id=? AND deleted_at IS NULL',page.id);
+    const saved=this.store.get<{title:string;blocks:string}>('SELECT title,blocks FROM pages WHERE id=? AND deleted_at IS NULL AND archived_at IS NULL',page.id);
     if(!saved||saved.title!==page.title)return undefined;
     const hash=conceptContentHash(page,resolveName??(()=>undefined));
     if(conceptContentHash({title:saved.title,blocks:JSON.parse(saved.blocks) as Page['blocks']},resolveName??(()=>undefined))!==hash)return undefined;
@@ -70,7 +70,7 @@ export class Domains {
     return {contentHash:hash,model:embeddingModel+':page-weighted-v1',vector:vector.map(value=>value/total)};
   }
   private requirePage(vault:string,pageId:string) {
-    const page=this.store.get<{revision:number}>('SELECT revision FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',pageId,vault);
+    const page=this.store.get<{revision:number}>('SELECT revision FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL AND archived_at IS NULL',pageId,vault);
     if(!page)throw new HttpError(404,'Page not found');return page;
   }
   private write(pageId:string,selection:ReturnType<typeof domainSelection>,origin:'manual'|'inferred',contentHash?:string) {

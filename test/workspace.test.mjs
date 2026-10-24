@@ -13,7 +13,7 @@ test('recent history persists per vault, deduplicates items and clears when lock
   const vaults = [{id: 'a', name: 'A', locked: false}, {id: 'b', name: 'B', locked: false}];
   const page = id => ({id, vault_id: 'a', title: id, blocks: [], sourceIds: [], revision: 1, updated_at: ''});
   t.mock.method(api, 'vaults', async () => vaults);
-  t.mock.method(api, 'pages', async vault => vault === 'a' ? [page('one'), page('two')] : []);
+  t.mock.method(api,'archivedPages',async()=>[]);t.mock.method(api, 'pages', async vault => vault === 'a' ? [page('one'), page('two')] : []);
   t.mock.method(api, 'entities', async () => []);
   t.mock.method(api, 'page', async (_vault, id) => page(id));
   t.mock.method(api, 'organization', async () => ({collections: [], folders: [], locations: [], memberships: [], favourites: []}));
@@ -64,7 +64,7 @@ test('moving to Trash flushes pending edits and restoring opens a fresh page', a
   const calls = [];
   let stored = {...original};
   t.mock.method(api, 'vaults', async () => [{id: 'a', name: 'A', locked: false}]);
-  t.mock.method(api, 'pages', async () => [original]);
+  t.mock.method(api,'archivedPages',async()=>[]);t.mock.method(api, 'pages', async () => [original]);
   t.mock.method(api, 'entities', async () => []);
   t.mock.method(api, 'organization', async () => trashed?{...org,locations:[],favourites:[]}:org);
   t.mock.method(api, 'page', async () => stored);
@@ -109,7 +109,7 @@ test('sidebar rename flushes the current draft and can rename another page witho
   const stored = new Map([['one', page('one')], ['two', page('two')]]), writes = [];
   let organization = {collections: [], folders: [], locations: [], memberships: [], favourites: []};
   t.mock.method(api, 'vaults', async () => [{id: 'a', name: 'A', locked: false}]);
-  t.mock.method(api, 'pages', async () => [...stored.values()]);
+  t.mock.method(api,'archivedPages',async()=>[]);t.mock.method(api, 'pages', async () => [...stored.values()]);
   t.mock.method(api, 'entities', async () => []);
   t.mock.method(api, 'organization', async () => organization);
   t.mock.method(api, 'page', async (_vault, id) => stored.get(id));
@@ -151,7 +151,7 @@ test('new untitled pages observe server titles without another autosave', async 
   let stored={id:'new',vault_id:'a',title:'Untitled',revision:1,blocks:[],sourceIds:[],updated_at:''};
   const writes=[];
   t.mock.method(api,'vaults',async()=>[vault]);
-  t.mock.method(api,'pages',async()=>[]);
+  t.mock.method(api,'archivedPages',async()=>[]);t.mock.method(api,'pages',async()=>[]);
   t.mock.method(api,'entities',async()=>[]);
   t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],memberships:[],favourites:[]}));
   t.mock.method(api,'createPage',async()=>structuredClone(stored));
@@ -183,7 +183,7 @@ test('new untitled pages observe server titles without another autosave', async 
 test('page icon changes update navigation immediately and autosave alongside content', async t => {
   const original = {id: 'icons', vault_id: 'a', title: 'Icon page', blocks: [], sourceIds: [], revision: 1, icon: null, updated_at: ''};
   t.mock.method(api, 'vaults', async () => [{id: 'a', name: 'A', locked: false}]);
-  t.mock.method(api, 'pages', async () => [original]);
+  t.mock.method(api,'archivedPages',async()=>[]);t.mock.method(api, 'pages', async () => [original]);
   t.mock.method(api, 'entities', async () => []);
   t.mock.method(api, 'page', async () => original);
   t.mock.method(api, 'organization', async () => ({collections: [], folders: [], locations: [], memberships: [], favourites: []}));
@@ -215,7 +215,7 @@ test('opening an existing untitled page observes server enrichment after reload'
   t.mock.timers.enable({apis:['setTimeout']});
   let stored={id:'existing',vault_id:'a',title:'Untitled',revision:2,blocks:[{id:'body',type:'paragraph',content:[{text:'A detailed plan for the community garden.'}]}],sourceIds:[],updated_at:''};
   t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false}]);
-  t.mock.method(api,'pages',async()=>[stored]);
+  t.mock.method(api,'archivedPages',async()=>[]);t.mock.method(api,'pages',async()=>[stored]);
   t.mock.method(api,'entities',async()=>[]);
   t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],memberships:[],favourites:[]}));
   t.mock.method(api,'page',async()=>structuredClone(stored));
@@ -245,7 +245,7 @@ test('reviewing a scanned entity updates in place without entering the workspace
   let finishReview;
   let stored=original;
   t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false}]);
-  t.mock.method(api,'pages',async()=>[original]);
+  t.mock.method(api,'archivedPages',async()=>[]);t.mock.method(api,'pages',async()=>[original]);
   t.mock.method(api,'entities',async()=>[]);
   t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],memberships:[],favourites:[]}));
   t.mock.method(api,'page',async()=>stored);
@@ -289,7 +289,7 @@ test('reviewing a scanned entity updates in place without entering the workspace
 test('a failed asynchronous review retains the note and releases the editing lock', async t => {
   const original={id:'note',vault_id:'a',title:'Research',blocks:[],sourceIds:[],revision:1,updated_at:''};
   t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false}]);
-  t.mock.method(api,'pages',async()=>[original]);
+  t.mock.method(api,'archivedPages',async()=>[]);t.mock.method(api,'pages',async()=>[original]);
   t.mock.method(api,'entities',async()=>[]);
   t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],memberships:[],favourites:[]}));
   t.mock.method(api,'page',async()=>original);
@@ -312,7 +312,7 @@ test('folder moves and collection membership changes use independent API operati
   const vault = {id: 'a', name: 'A', locked: false};
   const organization = {collections: [{id: 'reading', name: 'Reading'}], folders: [{id: 'desk', name: 'Desk', parent_id: null}], locations: [], memberships: [], favourites: []};
   t.mock.method(api, 'vaults', async () => [vault]);
-  t.mock.method(api, 'pages', async () => []);
+  t.mock.method(api,'archivedPages',async()=>[]);t.mock.method(api, 'pages', async () => []);
   t.mock.method(api, 'entities', async () => []);
   t.mock.method(api, 'organization', async () => organization);
   const organize = t.mock.method(api, 'organize', async () => organization);
@@ -342,7 +342,7 @@ test('bulk Trash actions stay in Trash and retain failed notes for retry', async
   const page = id => ({id, vault_id: 'a', title: id, blocks: [], sourceIds: [], revision: 1, updated_at: ''});
   const notes = ['one','two','three'].map(id => ({...page(id), deleted_at: new Date().toISOString(), expires_at: new Date(Date.now()+86400000).toISOString()}));
   t.mock.method(api, 'vaults', async () => [{id:'a',name:'A',locked:false}]);
-  t.mock.method(api, 'pages', async () => []);
+  t.mock.method(api,'archivedPages',async()=>[]);t.mock.method(api, 'pages', async () => []);
   t.mock.method(api, 'entities', async () => []);
   t.mock.method(api, 'organization', async () => org);
   t.mock.method(api, 'trash', async () => notes);
@@ -371,7 +371,7 @@ test('generated edit then undo before autosave keeps historical event and accept
   const initial={id:'synthetic-provenance',vault_id:'a',title:'Generated original',blocks:[{id:'body',type:'paragraph',checked:false,content:[{text:'Original draft'}]}],sourceIds:[],revision:1,updated_at:'2026-10-23',aiStatus:'ai_generated'};
   const sent=[];
   t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false}]);
-  t.mock.method(api,'pages',async()=>[initial]);t.mock.method(api,'entities',async()=>[]);
+  t.mock.method(api,'archivedPages',async()=>[]);t.mock.method(api,'pages',async()=>[initial]);t.mock.method(api,'entities',async()=>[]);
   t.mock.method(api,'page',async()=>structuredClone(initial));
   t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],memberships:[],favourites:[]}));
   t.mock.method(api,'savePage',async(_vault,_id,page)=>{sent.push(structuredClone(page));return {...page,revision:page.revision+1};});
@@ -396,4 +396,25 @@ test('generated edit then undo before autosave keeps historical event and accept
     await workspace.saver.flush();
     assert.equal(sent.at(-1).editedAfterGeneration,true);
   }finally{workspace.saver.dispose();}
+});
+
+test('archive flushes autosave, keeps successful batch transitions undoable, and opens archived links read-only',async t=>{
+ let stored={id:'p',vault_id:'v',title:'Synthetic archive draft',blocks:[],sourceIds:[],revision:1,updated_at:'2026-01-01'};
+ const organization={collections:[],folders:[],locations:[],memberships:[],favourites:[]},events=[];
+ t.mock.method(api,'vaults',async()=>[{id:'v',name:'Synthetic',locked:false}]);
+ t.mock.method(api,'pages',async()=>stored.archived_at?[]:[stored]);
+ t.mock.method(api,'archivedPages',async()=>stored.archived_at?[{...stored,folderId:null,folderName:null,collectionIds:[],subjectIds:[]}]:[]);
+ t.mock.method(api,'entities',async()=>[]);t.mock.method(api,'organization',async()=>organization);
+ t.mock.method(api,'page',async(_vault,id)=>{if(id==='other')throw new Error('Synthetic batch failure');return structuredClone(stored);});
+ t.mock.method(api,'savePage',async(_vault,_id,draft)=>{events.push('save');stored={...draft,revision:stored.revision+1};return stored;});
+ t.mock.method(api,'archivePage',async(_vault,_id,revision,archived=true)=>{events.push(archived?'archive':'restore');assert.equal(revision,stored.revision);stored={...stored,archived_at:archived?'2026-10-24T00:00:00Z':null,revision:revision+1};return stored;});
+ const workspace=new Workspace();t.after(()=>{workspace.saver.dispose();workspace.titler.dispose();});
+ await workspace.selectVault('v');await workspace.openPage('p');workspace.updatePage({title:'Saved before archival'});
+ await assert.rejects(workspace.archivePages(['p','other']),/Synthetic batch failure/);
+ assert.deepEqual(events,['save','archive']);assert.equal(stored.title,'Saved before archival');
+ assert.equal(workspace.snapshot().pages.length,0);assert.equal(workspace.snapshot().archiveUndo.length,1);
+ await workspace.openPage('p');assert.ok(workspace.snapshot().page.archived_at);
+ workspace.updatePage({title:'Forbidden edit'});assert.equal(workspace.snapshot().page.title,'Saved before archival');
+ await workspace.restoreArchivedPages(workspace.snapshot().archiveUndo);
+ assert.equal(workspace.snapshot().page.archived_at,null);assert.equal(workspace.snapshot().archiveUndo.length,0);assert.equal(workspace.snapshot().pages.length,1);
 });

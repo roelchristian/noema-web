@@ -24,7 +24,7 @@ export class AIEnrichments {
       });
   }
   removeSummary(vault: string, pageId: string) {
-    this.pages.get(vault, pageId);
+    this.pages.requireActive(vault, pageId);
     this.store.transaction(()=>{
       this.store.run('DELETE FROM page_ai_enrichments WHERE page_id=? AND kind=?', pageId, 'summary');
       new PageEnrichmentState(this.store).suppressSummary(pageId);
@@ -35,7 +35,7 @@ export class AIEnrichments {
   save(vault: string, pageId: string, kind: string, data: Record<string, unknown>, revision: number, preferences: IntelligencePreferences) {
     if (kind === 'summary' && typeof data.summary === 'string') data = {...data, summary: limitSummaryWords(data.summary)};
     const persist = () => {
-      const page = this.pages.get(vault, pageId);
+      const page = this.pages.requireActive(vault, pageId);
       if (page.revision !== revision) throw new HttpError(409, 'The page changed. Generate a fresh result.');
       this.store.run(`INSERT INTO page_ai_enrichments (page_id,kind,data,revision,model,reasoning_effort,updated_at,content_hash) VALUES (?,?,?,?,?,?,?,?)
         ON CONFLICT(page_id,kind) DO UPDATE SET data=excluded.data,revision=excluded.revision,model=excluded.model,reasoning_effort=excluded.reasoning_effort,updated_at=excluded.updated_at,content_hash=excluded.content_hash`,

@@ -6,7 +6,7 @@ import {now} from '../validation.js';
 import {CachedVectorSearch} from '../vector-search.js';
 import {pageSegmentReference,type PageSegment} from './page-segments.js';
 
-const current=`p.deleted_at IS NULL AND s.revision=p.revision AND NOT EXISTS (SELECT 1 FROM page_index_dirty d WHERE d.page_id=p.id) AND (SELECT body_characters FROM page_index_state WHERE page_id=p.id)>=coalesce((SELECT min_characters FROM embedding_settings WHERE vault_id=p.vault_id),20)`;
+const current=`p.deleted_at IS NULL AND p.archived_at IS NULL AND s.revision=p.revision AND NOT EXISTS (SELECT 1 FROM page_index_dirty d WHERE d.page_id=p.id) AND (SELECT body_characters FROM page_index_state WHERE page_id=p.id)>=coalesce((SELECT min_characters FROM embedding_settings WHERE vault_id=p.vault_id),20)`;
 export class PageSegmentIndex {
  private vectors=new CachedVectorSearch();
  constructor(private store:Store) {}
@@ -20,7 +20,7 @@ export class PageSegmentIndex {
    (SELECT error FROM page_index_dirty WHERE page_id=p.id) AS error
    FROM pages p LEFT JOIN page_index_state i ON i.page_id=p.id LEFT JOIN page_segments s ON s.page_id=p.id
    LEFT JOIN page_segment_embeddings b ON b.segment_id=s.id AND b.model=? AND b.dimensions=?
-   LEFT JOIN embedding_settings settings ON settings.vault_id=p.vault_id WHERE p.vault_id=? AND p.deleted_at IS NULL GROUP BY p.id`,embeddingModel,embeddingDimensions,vault).map(row=>{
+   LEFT JOIN embedding_settings settings ON settings.vault_id=p.vault_id WHERE p.vault_id=? AND p.deleted_at IS NULL AND p.archived_at IS NULL GROUP BY p.id`,embeddingModel,embeddingDimensions,vault).map(row=>{
     const indexed=row.indexed??0,failed=row.failed??0,pending=Math.max(0,row.total-indexed-failed),eligible=row.total>0&&row.characters>=row.minimum;
     return {pageId:row.id,kind:'page',title:row.title,strategy:row.strategy,totalPassages:row.total,indexedPassages:indexed,failedPassages:failed,pendingPassages:pending,eligible,
      reason:row.error??(row.dirty?'Preparing Page segments.':!eligible?'Page body is too short.':`${indexed} of ${row.total} segments indexed; ${pending} pending; ${failed} failed`),
@@ -56,7 +56,7 @@ export class PageSegmentIndex {
  hasSearchable(vault:string){return !!this.store.get(`SELECT 1 FROM page_segments s JOIN pages p ON p.id=s.page_id JOIN page_segment_embeddings b ON b.segment_id=s.id AND b.content_hash=s.content_hash WHERE s.vault_id=? AND ${current} AND b.model=? AND b.dimensions=? LIMIT 1`,vault,embeddingModel,embeddingDimensions);}
  /** Distinguish unavailable query vectors from a completed empty ranking. */
  pending(vault:string,pageId:string) {
-  return !!this.store.get(`SELECT 1 FROM pages p WHERE p.id=? AND p.vault_id=? AND p.deleted_at IS NULL AND (
+  return !!this.store.get(`SELECT 1 FROM pages p WHERE p.id=? AND p.vault_id=? AND p.deleted_at IS NULL AND p.archived_at IS NULL AND (
    EXISTS(SELECT 1 FROM page_index_dirty WHERE page_id=p.id) OR (
     (SELECT body_characters FROM page_index_state WHERE page_id=p.id)>=coalesce((SELECT min_characters FROM embedding_settings WHERE vault_id=p.vault_id),20)
     AND EXISTS(SELECT 1 FROM page_segments s WHERE s.page_id=p.id AND NOT EXISTS(

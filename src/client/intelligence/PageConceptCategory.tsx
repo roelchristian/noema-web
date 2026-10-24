@@ -39,7 +39,7 @@ export function PageConceptCategory({page, onDomainsChange,onRefresh}: {page: Pa
         {status==='Needs refresh'&&<span className="knowledge-status-dot" role="status" aria-label={uiText("Subjects need refresh")} title={uiText("Subjects need refresh")}/>}
         {domains?.origin==='manual'&&<span className="knowledge-subject-origin" title={uiText("Manually selected subjects")} aria-label={uiText("Manually selected subjects")}><Icon name="lock"/></span>}
         <Icon name="chevron"/>
-      </button> : categorizing ? <span className="knowledge-empty" role="status">{uiText("Categorizing this page...")}</span> : onDomainsChange ? <button type="button" className="knowledge-empty-action" disabled={!!page.editLocked} onClick={edit}><Icon name="plus"/>{uiText("Add subjects")}</button> : <span className="knowledge-empty">{uiText("Unclassified")}</span>}
+      </button> : categorizing ? <span className="knowledge-empty" role="status">{uiText("Categorizing this page...")}</span> : onDomainsChange ? <button type="button" className="knowledge-empty-action" disabled={!!page.archived_at&&!page.editLocked} onClick={edit}><Icon name="plus"/>{uiText("Add subjects")}</button> : <span className="knowledge-empty">{uiText("Unclassified")}</span>}
     </div>
     <div id="knowledge-subject-details" hidden={!expanded&&!editing}>
       {editing ? <div className="page-domain-editor">
@@ -49,8 +49,8 @@ export function PageConceptCategory({page, onDomainsChange,onRefresh}: {page: Pa
       </div> : <div className="knowledge-subject-details">
         <div className="knowledge-subject-list">{subjectIds.map((id,index)=><span className={'knowledge-subject-chip'+(index===0&&domains?.primaryDomainId?' is-primary':'')} key={id} title={domainBreadcrumb(id)}>{domainBreadcrumb(id).split(' → ').at(-1)}</span>)}</div>
         <div className="knowledge-section-actions">
-          {onRefresh&&domains?.origin!=='manual'&&<button type="button" className={'knowledge-icon-action'+(busy?' is-working':'')} aria-label={uiText("Refresh subjects")} title={uiText("Refresh subjects")} disabled={busy||!!page.editLocked} onClick={()=>void refresh()}><Icon name="refresh"/></button>}
-          {onDomainsChange&&<button type="button" className="knowledge-icon-action" aria-label={uiText("Edit subjects")} title={uiText("Edit subjects")} disabled={!!page.editLocked} onClick={edit}><Icon name="edit"/></button>}
+          {onRefresh&&domains?.origin!=='manual'&&<button type="button" className={'knowledge-icon-action'+(busy?' is-working':'')} aria-label={uiText("Refresh subjects")} title={uiText("Refresh subjects")} disabled={busy||!!page.archived_at&&!page.editLocked} onClick={()=>void refresh()}><Icon name="refresh"/></button>}
+          {onDomainsChange&&<button type="button" className="knowledge-icon-action" aria-label={uiText("Edit subjects")} title={uiText("Edit subjects")} disabled={!!page.archived_at&&!page.editLocked} onClick={edit}><Icon name="edit"/></button>}
         </div>
       </div>}
     </div>

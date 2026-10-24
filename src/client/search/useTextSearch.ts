@@ -5,7 +5,7 @@ interface TextSearchState {vault: string; query: string; refreshKey: unknown; sc
 /** Local text retrieval follows saved metadata changes, independently of semantic search. */
 export function useTextSearch(vault: string, query: string, refreshKey: unknown = '', scope?: TextSearchScope, requestedLimit = 100) {
   const term = query.trim();
-  const scopeKey = scope ? JSON.stringify({pageIds: [...scope.pageIds].sort(), entityIds: [...scope.entityIds].sort()}) : '';
+  const scopeKey = scope ? JSON.stringify({includeArchived:scope.includeArchived,all:scope.all,pageIds: [...scope.pageIds].sort(), entityIds: [...scope.entityIds].sort()}) : '';
   const limit = Math.min(10000, Math.max(1, Math.floor(requestedLimit) || 100));
   const [state, setState] = useState<TextSearchState>({vault: '', query: '', refreshKey: '', scopeKey: '', limit, results: [], hasMore: false, loading: false, error: ''});
   useEffect(() => {

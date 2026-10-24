@@ -15,7 +15,7 @@ async function setup(t) {
   let stored = {id:'note', vault_id:vault.id, title:'Notes', blocks:[{id:'paragraph', type:'paragraph', checked:false, content:[{text:'Read Ada Lovelace today.'}]}], sourceIds:[], revision:1, updated_at:''};
   const writes = [];
   t.mock.method(api,'vaults',async()=>[vault]);
-  t.mock.method(api,'pages',async()=>[stored]);
+  t.mock.method(api,'archivedPages',async()=>[]);t.mock.method(api,'pages',async()=>[stored]);
   t.mock.method(api,'page',async()=>structuredClone(stored));
   t.mock.method(api,'entities',async()=>[entity]);
   t.mock.method(api,'organization',async()=>({collections:[], folders:[], locations:[], memberships:[], favourites:[]}));

@@ -57,7 +57,7 @@ export class PageEnrichmentScheduler<T extends EnrichmentSnapshot=EnrichmentSnap
   enqueue(vault:string,pageId:string,options:{fields?:EnrichmentField[];explicit?:boolean;delayMs?:number}={}) {
     if(this.disposed)return;
     // Never allow an identifier from another vault to enter its queue.
-    if(!this.store.get('SELECT 1 FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',pageId,vault))return;
+    if(!this.store.get('SELECT 1 FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL AND archived_at IS NULL',pageId,vault))return;
     const existing=this.store.get<JobRow>('SELECT * FROM page_enrichment_jobs WHERE page_id=?',pageId);
     const fields=[...new Set([...(existing?this.fields(existing):[]),...(options.fields??supportedFields)])];
     if(!fields.length)return;
@@ -97,7 +97,7 @@ export class PageEnrichmentScheduler<T extends EnrichmentSnapshot=EnrichmentSnap
   }
   private available(vault:string,pageId:string) {
     return !!this.store.get(`SELECT 1 FROM pages p JOIN vaults v ON p.vault_id=v.id
-      WHERE p.id=? AND p.vault_id=? AND p.deleted_at IS NULL AND v.locked=0
+      WHERE p.id=? AND p.vault_id=? AND p.deleted_at IS NULL AND p.archived_at IS NULL AND v.locked=0
       AND NOT EXISTS (SELECT 1 FROM page_edit_locks l WHERE l.page_id=p.id)`,pageId,vault);
   }
   async drain() {
@@ -110,7 +110,7 @@ export class PageEnrichmentScheduler<T extends EnrichmentSnapshot=EnrichmentSnap
     if(!capacity)return;
     const due=this.store.all<JobRow>(`SELECT j.* FROM page_enrichment_jobs j
       JOIN pages p ON p.id=j.page_id JOIN vaults v ON v.id=j.vault_id
-      WHERE j.due_at<=? AND p.deleted_at IS NULL AND v.locked=0
+      WHERE j.due_at<=? AND p.deleted_at IS NULL AND p.archived_at IS NULL AND v.locked=0
       AND NOT EXISTS (SELECT 1 FROM page_edit_locks l WHERE l.page_id=p.id)
       ORDER BY j.explicit DESC,j.due_at`,this.clock()).filter(row=>!this.active.has(row.page_id)).slice(0,capacity);
     await Promise.all(due.map(row=>this.run(row)));

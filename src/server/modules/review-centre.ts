@@ -4,7 +4,7 @@ import {Vaults} from './vaults.js';
 import type {ReviewCategory,ReviewItem,ReviewQueue} from '../../shared/review-centre.js';
 
 const categories:ReviewCategory[]=['scan','discovery','editorial','source','property','temporal'];
-const pageAccess=`p.vault_id=? AND p.deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM page_edit_locks l WHERE l.page_id=p.id)`;
+const pageAccess=`p.vault_id=? AND p.deleted_at IS NULL AND p.archived_at IS NULL AND NOT EXISTS(SELECT 1 FROM page_edit_locks l WHERE l.page_id=p.id)`;
 const entityAccess=`e.vault_id=? AND e.archived_at IS NULL AND e.inactive=0`;
 /** Metadata projections only: never transfers page blocks, discovery evidence or source documents to the client.
  * One row per current run, bounded independently so category failures remain isolated. */

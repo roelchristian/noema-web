@@ -7,7 +7,7 @@ export function setupSuggestionVersionSchema(db:DatabaseSync) {
   version INTEGER NOT NULL DEFAULT 0
  );`);
  const tables:Record<string,{vault:(row:string)=>string;columns?:string[]}>= {
-  pages:{vault:row=>`${row}.vault_id`,columns:['title','blocks','revision','deleted_at','vault_id']},
+  pages:{vault:row=>`${row}.vault_id`,columns:['title','blocks','revision','deleted_at','archived_at','vault_id']},
   entities:{vault:row=>`${row}.vault_id`,columns:['name','mention_case','inactive','archived_at','type','vault_id']},
   source_files:{vault:row=>`${row}.vault_id`,columns:['entity_id','status','admitted','text','vault_id']},
   embedding_settings:{vault:row=>`${row}.vault_id`},

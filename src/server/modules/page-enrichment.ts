@@ -33,7 +33,7 @@ export class PageEnrichment {
     if(!active||active.vault!==vault)return;
     try {
       const page=this.pages.get(vault,pageId);
-      if(page.editLocked||this.dependencyIdentity(page,active.fields)!==active.identity)active.controller.abort();
+      if(page.archived_at||page.editLocked||this.dependencyIdentity(page,active.fields)!==active.identity)active.controller.abort();
     }catch {active.controller.abort();}
   }
   private contentIdentity(page:Page,fields:readonly EnrichmentField[]) {
@@ -66,7 +66,7 @@ export class PageEnrichment {
   }
   prepare(vault:string,pageId:string,options:EnrichmentOptions={}) {
     new Vaults(this.store).requireOpen(vault);
-    const page=this.pages.get(vault,pageId);if(page.editLocked)return null;
+    const page=this.pages.get(vault,pageId);if(page.archived_at||page.editLocked)return null;
     const names=this.names(vault),resolve=(id:string)=>names.get(id);
     const text=summaryInput(page,resolve,false);
     if(!text.trim()) {if(options.explicit)throw new HttpError(400,'Add some page content first.');return null;}
@@ -134,7 +134,7 @@ export class PageEnrichment {
     if(pending) {
       if(pending.identity===this.dependencyIdentity(snapshot.page,pending.fields)&&snapshot.requestedFields.every(field=>pending.fields.includes(field)))return pending.promise;
       await pending.promise.catch(()=>{});
-      const current=this.pages.get(vault,page.id);
+      const current=this.pages.requireActive(vault,page.id);
       if(this.contentIdentity(current,snapshot.requestedFields)!==this.contentIdentity(page,snapshot.requestedFields))throw new HttpError(409,'The page changed while waiting for enrichment.');
       return this.run(vault,current,onRequest,options);
     }
@@ -169,7 +169,7 @@ export class PageEnrichment {
     if(controller.signal.aborted)throw new HttpError(409,'Enrichment was paused.');
     new Vaults(this.store).requireOpen(vault);
     return this.store.transaction(()=>{
-      const current=this.pages.get(vault,page.id);
+      const current=this.pages.requireActive(vault,page.id);
       if(current.editLocked||this.contentIdentity(current,fields)!==contentIdentity||JSON.stringify(this.intelligence.enrichmentSelection())!==JSON.stringify(selection))throw new HttpError(409,'The page changed. Generate fresh enrichment.');
       const state=new PageEnrichmentState(this.store);
       let title=current.title;

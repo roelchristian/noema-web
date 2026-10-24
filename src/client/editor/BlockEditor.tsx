@@ -806,7 +806,7 @@ export function BlockEditor(props: Props) {
     const title=anchor.dataset.pageTitle!;
     const matches=(latest.current.pages??[]).filter(page=>pageTitleKey(page.title)===pageTitleKey(title));
     if(matches.length===1 && latest.current.onOpenPage) {setPageLinkStatus('');latest.current.onOpenPage(matches[0]!.id);}
-    else if(matches.length>1)show(anchor,matches.map(page=>({title:page.title,detail:'Updated '+new Date(page.updated_at).toLocaleString(getLocale()),icon:'page',pick:()=>{setMenu(null);latest.current.onOpenPage?.(page.id);}})),'CHOOSE NOTE');
+    else if(matches.length>1)show(anchor,matches.map(page=>({title:page.title,detail:(page.archived_at?'Archived · ':'')+'Updated '+new Date(page.updated_at).toLocaleString(getLocale()),icon:'page',pick:()=>{setMenu(null);latest.current.onOpenPage?.(page.id);}})),'CHOOSE NOTE');
     else setPageLinkStatus('Note “'+title+'” was not found in this vault.');
   }
   function insertPageLink(range:Range,title:string,alias:string|undefined,blockId:string) {

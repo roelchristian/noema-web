@@ -9,7 +9,7 @@ test('manual subjects flush drafts and cannot reschedule classification during a
   const domains={primaryDomainId:'mathematics',secondaryDomainIds:[],origin:'inferred',status:'inferred',contentHash:'initial',taxonomyVersion:TAXONOMY_VERSION,revision:1};
   const page={id:'p',vault_id:'v',title:'Algebra',blocks:[{id:'b',type:'paragraph',checked:false,content:[{text:'A field has multiplicative inverses.'}]}],sourceIds:[],revision:1,updated_at:'',conceptContentHash:'initial',pageDomains:domains};
   t.mock.method(api,'vaults',async()=>[{id:'v',name:'Vault',locked:false}]);
-  t.mock.method(api,'pages',async()=>[page]);t.mock.method(api,'entities',async()=>[]);t.mock.method(api,'organization',async()=>organization);t.mock.method(api,'page',async()=>page);
+  t.mock.method(api,'archivedPages',async()=>[]);t.mock.method(api,'pages',async()=>[page]);t.mock.method(api,'entities',async()=>[]);t.mock.method(api,'organization',async()=>organization);t.mock.method(api,'page',async()=>page);
   const events=[];let saved,finish;
   t.mock.method(api,'savePage',async(_v,_id,draft)=>{events.push('save');saved={...draft,revision:2,conceptContentHash:'changed'};return saved;});
   t.mock.method(api,'setPageDomains',async(v,id,revision,primaryDomainId,secondaryDomainIds)=>{

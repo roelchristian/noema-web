@@ -59,7 +59,7 @@ export function PageSources({page,entities,onOpenEntity,onSourcesChange,onCreate
   return <section className="knowledge-sources page-sources" aria-labelledby="knowledge-sources-heading">
     <div className="knowledge-section-heading">
       <h2 id="knowledge-sources-heading"><Icon name="source"/>{uiText("Sources")}<span className="knowledge-count">{sourceIds.length}</span></h2>
-      {!page.editLocked&&<span className="page-sources-actions"><ActionMenu label={uiText("Add source")} icon="plus" actions={[
+      {!page.archived_at&&!page.editLocked&&<span className="page-sources-actions"><ActionMenu label={uiText("Add source")} icon="plus" actions={[
         {label:uiText("Attach existing source…"),icon:'source',onSelect:()=>setPicker(true)},
         {label:uiText("New source…"),icon:'compose',onSelect:()=>{setPicker(false);setQuery('');onCreateSource();}},
       ]}/></span>}
@@ -74,11 +74,11 @@ export function PageSources({page,entities,onOpenEntity,onSourcesChange,onCreate
             <span className="page-sources-copy"><span className="page-sources-name">{name}</span><span className="page-sources-meta">{cited?<><span>{cited.count} {cited.count===1?uiText("citation"):uiText("citations")}</span><span className="page-sources-reference-numbers" title={references}>{cited.numbers.slice(0,3).map(number=>`[${number}]`).join(' ')}{cited.numbers.length>3?` +${cited.numbers.length-3}`:''}</span></>:uiText("Attached to this page")}</span></span>
             <Icon name="chevron"/>
           </button>
-          {!cited&&!page.editLocked&&<button type="button" className="page-sources-detach" title={uiText("Detach source")} aria-label={uiText("Detach {value0} from this page",{value0: name})} onClick={()=>onSourcesChange(sourceIds.filter(source=>source!==id))}><Icon name="close"/></button>}
+          {!cited&&!page.archived_at&&!page.editLocked&&<button type="button" className="page-sources-detach" title={uiText("Detach source")} aria-label={uiText("Detach {value0} from this page",{value0: name})} onClick={()=>onSourcesChange(sourceIds.filter(source=>source!==id))}><Icon name="close"/></button>}
         </li>;
       })}
     </ul>:<div className="page-sources-empty"><span className="page-sources-file" aria-hidden="true"><Icon name="source"/></span><p>{uiText("Keep your sources close.")}<span>{uiText("Attach a source or use /cite in your note.")}</span></p></div>}
-    {!page.editLocked&&picker&&<div className="page-source-picker" id="page-source-picker" onKeyDown={event=>{if(event.key==='Escape'){setPicker(false);setQuery('');event.currentTarget.parentElement?.querySelector<HTMLButtonElement>('.page-sources-actions>button')?.focus();}}}>
+    {!page.archived_at&&!page.editLocked&&picker&&<div className="page-source-picker" id="page-source-picker" onKeyDown={event=>{if(event.key==='Escape'){setPicker(false);setQuery('');event.currentTarget.parentElement?.querySelector<HTMLButtonElement>('.page-sources-actions>button')?.focus();}}}>
       <div className="page-source-search"><input autoFocus type="search" aria-label={uiText("Search sources to attach")} placeholder={uiText("Search sources…")} value={query} onChange={event=>setQuery(event.target.value)}/><button type="button" className="page-sources-detach" aria-label={uiText("Close source search")} onClick={()=>{setPicker(false);setQuery('');}}><Icon name="close"/></button></div>
       {searchResults.length>0&&<ul className="page-sources-list" aria-label={uiText("Matching sources")}>{searchResults.map(entity=><li key={entity.id} className="page-sources-row"><button type="button" className="page-sources-open" onClick={()=>attach(entity.id)}><span className="page-sources-copy"><span className="page-sources-name">{entity.name}</span>{ranks.has(entity.id)&&<span className="page-source-status"><Icon name="lightbulb"/>{uiText("Suggested")}</span>}</span></button><button type="button" className="page-sources-detach" aria-label={uiText("Attach {value0}",{value0: entity.name})} onClick={()=>attach(entity.id)}><Icon name="plus"/></button></li>)}</ul>}
       {normalizedQuery&&!searchResults.length&&<p className="page-source-label" role="status">{uiText("No matching sources.")}</p>}
@@ -92,7 +92,7 @@ export function PageSources({page,entities,onOpenEntity,onSourcesChange,onCreate
             <span className="page-sources-file" aria-hidden="true"><Icon name="lightbulb"/></span>
             <span className="page-sources-copy"><span className="page-sources-name">{name}</span><span className="page-source-excerpt">{item.excerpt}</span></span>
           </button>
-          {!page.editLocked&&<><button type="button" className="page-sources-detach page-source-accept" aria-label={uiText("Attach {value0}",{value0: name})} title={uiText("Attach source")} onClick={()=>attach(item.sourceId)}><Icon name="plus"/></button>
+          {!page.archived_at&&!page.editLocked&&<><button type="button" className="page-sources-detach page-source-accept" aria-label={uiText("Attach {value0}",{value0: name})} title={uiText("Attach source")} onClick={()=>attach(item.sourceId)}><Icon name="plus"/></button>
           <button type="button" className="page-sources-detach" disabled={dismissing!==null} aria-label={uiText("Dismiss suggestion: {value0}",{value0: name})} title={uiText("Dismiss suggestion")} onClick={()=>void dismiss(item.sourceId)}><Icon name="close"/></button></>}
         </li>;})}
       </ul>

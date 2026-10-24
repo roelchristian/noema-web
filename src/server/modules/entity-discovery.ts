@@ -45,7 +45,7 @@ export class EntityDiscoveryService {
     const names=new Map(this.knowledge.list(vault).map(e=>[e.id,entityMentionName(e)]));
     const eligible=this.store.all<{id:string;name:string;type:string;description:string}>("SELECT id,name,type,description FROM entities WHERE vault_id=? AND id<>? AND archived_at IS NULL AND inactive=0 ORDER BY name COLLATE NOCASE,id LIMIT 80",vault,id);
     const linked=new Set((detail.linkedPages??[]).map(page=>page.id));
-    const pages=this.store.all<PageInput>(`SELECT p.id,p.title,p.revision,p.blocks,p.updated_at FROM pages p WHERE p.vault_id=? AND p.deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM page_edit_locks l WHERE l.page_id=p.id)
+    const pages=this.store.all<PageInput>(`SELECT p.id,p.title,p.revision,p.blocks,p.updated_at FROM pages p WHERE p.vault_id=? AND p.deleted_at IS NULL AND p.archived_at IS NULL AND NOT EXISTS(SELECT 1 FROM page_edit_locks l WHERE l.page_id=p.id)
       ORDER BY EXISTS(SELECT 1 FROM entity_page_associations a WHERE a.entity_id=? AND a.page_id=p.id) DESC,
       EXISTS(SELECT 1 FROM page_mentioned_entities m WHERE m.entity_id=? AND m.page_id=p.id) DESC,p.updated_at DESC,p.id LIMIT 24`,vault,id,id);
     const evidence:EntityDiscoveryEvidence[]=pages.flatMap(page=>{
@@ -131,7 +131,7 @@ export class EntityDiscoveryService {
           this.store.run('INSERT INTO entity_overviews (entity_id,content,revision) VALUES (?,?,?) ON CONFLICT(entity_id) DO UPDATE SET content=excluded.content,revision=excluded.revision',id,suggestion.content,draft.overviewRevision);
         }else if(suggestion.kind==='page') {
           if(this.store.get('SELECT 1 FROM page_edit_locks WHERE page_id=?',suggestion.pageId))throw new HttpError(423,'This page is locked.');
-          if(!this.store.get('SELECT 1 FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',suggestion.pageId,vault))throw new HttpError(404,'Page not found.');
+          if(!this.store.get('SELECT 1 FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL AND archived_at IS NULL',suggestion.pageId,vault))throw new HttpError(404,'Page not found.');
           this.store.run("INSERT OR IGNORE INTO entity_page_associations (entity_id,page_id,pinned,annotation,created_at) VALUES (?,?,0,'',?)",id,suggestion.pageId,now());
         }else {
           const target=this.knowledge.require(vault,suggestion.targetId);

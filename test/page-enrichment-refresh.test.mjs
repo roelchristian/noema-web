@@ -15,7 +15,7 @@ async function workspaceFixture(t) {
   const prior=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
   Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:()=>null,setItem(){},removeItem(){}}});
   const vault={id:'vault',name:'Vault',locked:false};let stored=note();
-  t.mock.method(api,'vaults',async()=>[vault]);t.mock.method(api,'pages',async()=>[stored]);
+  t.mock.method(api,'vaults',async()=>[vault]);t.mock.method(api,'archivedPages',async()=>[]);t.mock.method(api,'pages',async()=>[stored]);
   t.mock.method(api,'page',async()=>structuredClone(stored));t.mock.method(api,'entities',async()=>[]);
   t.mock.method(api,'pageMetadata',async()=>structuredClone(stored));
   t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],memberships:[],favourites:[]}));

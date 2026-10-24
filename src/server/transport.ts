@@ -236,7 +236,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           return res.end(backup.bytes);
         }
         if(/^\/api\/vaults\/[^/]+\/delete$/.test(url.pathname)&&method==='POST'&&(req.headers['x-noema-request']!=='1'||!/^application\/json(?:;|$)/i.test(req.headers['content-type']||'')))throw new HttpError(403,'Vault deletion requires the Noema client and JSON confirmation.');
-        const body=['POST','PUT'].includes(method)?await readBody(req):{};
+        const body=(['POST','PUT'].includes(method)||(method==='DELETE'&&/^\/api\/pages\/[^/]+\/archive$/.test(url.pathname)))?await readBody(req):{};
         const parts=url.pathname.split('/').filter(Boolean),[,collection,id,child,childId]=parts;
         if(collection==='temporal') {
           const header=req.headers['x-vault-id'];
@@ -405,6 +405,10 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             if(parts.length===3 && method==='PUT' && id==='favourites')return send(200,organizer.favourite(vault,body));
           }
           if(collection==='pages') {
+            if(id==='archive' && parts.length===3 && method==='GET')return send(200,pages.archiveList(vault));
+            if(id && child==='archive' && parts.length===4 && (method==='PUT'||method==='DELETE'))return send(200,pages.setArchived(vault,id,method==='PUT',body));
+            if(id && method!=='GET' && id!=='archive')pages.requireActive(vault,id);
+
             if(id && parts.length===4 && child==='entities' && method==='GET')return send(200,knowledge.pageAssociations(vault,id));
             if(id && parts.length===4 && child==='domains' && method==='PUT'){new Domains(store).setManual(vault,id,body,body.revision);return send(200,pages.get(vault,id));}
             if(id && parts.length===4 && child==='edit-lock' && method==='PUT')return send(200,pages.setEditLock(vault,id,body));

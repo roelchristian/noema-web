@@ -94,20 +94,20 @@ function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnap
           {result&&<details className="knowledge-summary-menu" onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();event.currentTarget.open=false;event.currentTarget.querySelector('summary')?.focus();}}}>
             <summary className="knowledge-icon-action" aria-label={uiText("Summary actions")} title={uiText("Summary actions")}><Icon name="more"/></summary>
             <div className="knowledge-summary-menu-items">
-              <button type="button" aria-label={uiText("Refresh summary")} disabled={busy||deleting||loading} onClick={event=>{event.currentTarget.closest('details')!.open=false;void summarize();}}><Icon name="refresh"/>{uiText("Refresh summary")}</button>
-              <button type="button" aria-label={uiText("Delete summary")} className="is-destructive" disabled={busy||deleting||loading} onClick={event=>{event.currentTarget.closest('details')!.open=false;void deleteSummary();}}><Icon name="trash"/>{uiText("Delete summary")}</button>
+              <button type="button" aria-label={uiText("Refresh summary")} disabled={!!page.archived_at||busy||deleting||loading} onClick={event=>{event.currentTarget.closest('details')!.open=false;void summarize();}}><Icon name="refresh"/>{uiText("Refresh summary")}</button>
+              <button type="button" aria-label={uiText("Delete summary")} className="is-destructive" disabled={!!page.archived_at||busy||deleting||loading} onClick={event=>{event.currentTarget.closest('details')!.open=false;void deleteSummary();}}><Icon name="trash"/>{uiText("Delete summary")}</button>
             </div>
           </details>}
         </div>
         {busy&&result&&<span className="sr-only" role="status">{uiText("Creating your summary…")}</span>}
-        {!result&&(generatingSummary?<p className="knowledge-empty" role="status">{uiText("Generating summary...")}</p>:<button type="button" className="knowledge-empty-action" disabled={deleting||loading} aria-label={uiText("Summarize this page")} onClick={()=>void summarize()}><Icon name="plus"/>{uiText("Generate summary")}</button>)}
+        {!result&&(generatingSummary?<p className="knowledge-empty" role="status">{uiText("Generating summary...")}</p>:<button type="button" className="knowledge-empty-action" disabled={!!page.archived_at||deleting||loading} aria-label={uiText("Summarize this page")} onClick={()=>void summarize()}><Icon name="plus"/>{uiText("Generate summary")}</button>)}
         {error&&<p role="alert" className="inline-error">{error}</p>}
         {result&&<section className="ai-result" aria-label={uiText("Page summary")}><div id="knowledge-summary-text" ref={summaryText} className={'ai-summary' + (summaryExpanded ? '' : ' is-collapsed')}><SummaryText text={result.summary}/></div></section>}
         {result&&summaryOverflow&&<button type="button" className="knowledge-summary-toggle" aria-expanded={summaryExpanded} aria-controls="knowledge-summary-text" onClick={()=>setSummaryExpanded(value=>!value)}>{uiText(summaryExpanded?"Show less":"Read more")}</button>}
 
       </section>
       <ConnectedEntities page={page} entities={entities} onOpenEntity={onOpenEntity}>
-        <EntityScanReview onOpenChange={onReviewOpenChange} entities={entities} page={page} scan={scan} onScan={setScan} onFlush={onFlush} onReview={onReview} disabled={!!page.editLocked||busy||deleting||loading}/>
+        <EntityScanReview onOpenChange={onReviewOpenChange} entities={entities} page={page} scan={scan} onScan={setScan} onFlush={onFlush} onReview={onReview} disabled={!!page.archived_at||!!page.editLocked||busy||deleting||loading}/>
       </ConnectedEntities>
     <NoteConnections key={page.vault_id+'/'+page.id} page={page} pages={pages} onOpenPage={onOpenPage} inactive={inactive}/>
     <RelatedNotes key={page.vault_id+'/'+page.id} page={page} pages={pages} onOpenPage={onOpenPage} inactive={inactive}/>

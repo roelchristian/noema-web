@@ -32,7 +32,7 @@ export function prepareExampleQuery(store:Store,vault:string,input:ExampleCollec
   const page=store.get<ExamplePage>(`SELECT p.id,p.title,p.revision,i.revision AS index_revision,i.projection_hash,i.body_characters,i.error AS index_error,
    EXISTS(SELECT 1 FROM page_index_dirty d WHERE d.page_id=p.id AND d.vault_id=p.vault_id) AS dirty,
    coalesce((SELECT min_characters FROM embedding_settings WHERE vault_id=p.vault_id),20) AS minimum
-   FROM pages p LEFT JOIN page_index_state i ON i.page_id=p.id AND i.vault_id=p.vault_id WHERE p.id=? AND p.vault_id=? AND p.deleted_at IS NULL`,id,vault);
+   FROM pages p LEFT JOIN page_index_state i ON i.page_id=p.id AND i.vault_id=p.vault_id WHERE p.id=? AND p.vault_id=? AND p.deleted_at IS NULL AND p.archived_at IS NULL`,id,vault);
   if(!page)throw new HttpError(409,'An example page is unavailable in this vault. Choose an active page.');
   const unavailable=(reason:string):never=>{throw new HttpError(409,`Example “${page.title.slice(0,120)||'Untitled'}” ${reason}`);};
   if(page.index_error)return unavailable('has an indexing error. Re-index it before using examples.');

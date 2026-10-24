@@ -40,17 +40,22 @@ async function menuContract(page,selector,minimum){
 function contrast(a,b){const luminance=hex=>{const raw=hex.trim().replace('#','');const v=(raw.length===3?raw.split('').map(c=>c+c).join(''):raw).match(/../g).map(x=>parseInt(x,16)/255).map(x=>x<=.04045?x/12.92:((x+.055)/1.055)**2.4);return .2126*v[0]+.7152*v[1]+.0722*v[2];};const x=luminance(a),y=luminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);}
 // Resolve actual composited backgrounds, including translucent interaction states.
 async function readable(page,selector,{minimum=4.5,pseudo=null,property='color'}={}) {
- const rows=await page.locator(selector).evaluateAll((elements,{pseudo,property})=>{
+ // Sample visibility and composited colors atomically: virtualized passages can
+ // be replaced between a separate visibility wait and a later evaluation.
+ const snapshot=await page.waitForFunction(({selector,pseudo,property})=>{
+  const elements=[...document.querySelectorAll(selector)];
   const rgba=value=>{const values=value.match(/[\d.]+/g)?.map(Number);return values?.length>=3?[...values.slice(0,3),values[3]??1]:[0,0,0,0];};
   const over=(a,b)=>[...a.slice(0,3).map((c,i)=>c*a[3]+b[i]*(1-a[3])),1];
   const luminance=c=>c.slice(0,3).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
-  return elements.filter(e=>{const r=e.getBoundingClientRect();return r.width&&r.height&&getComputedStyle(e).visibility!=='hidden';}).map(e=>{
+  const samples=elements.filter(e=>{const r=e.getBoundingClientRect();return r.width&&r.height&&getComputedStyle(e).visibility!=='hidden';}).map(e=>{
    const ancestors=[];for(let n=e;n;n=n.parentElement)ancestors.unshift(n);
    let bg=[255,255,255,1];for(const n of ancestors)bg=over(rgba(getComputedStyle(n).backgroundColor),bg);
    const s=getComputedStyle(e,pseudo),fg=over(rgba(s[property]),bg),a=luminance(fg),b=luminance(bg);
    return {text:e.getAttribute('aria-label')??e.textContent?.trim().slice(0,60),color:s.color,background:bg.slice(0,3),ratio:(Math.max(a,b)+.05)/(Math.min(a,b)+.05)};
   });
- },{pseudo,property});
+  return samples.length?samples:false;
+ },{selector,pseudo,property});
+ const rows=await snapshot.jsonValue();await snapshot.dispose();
  assert.ok(rows.length,`No visible samples for ${selector}`);
  for(const row of rows)assert.ok(row.ratio>=minimum,`${selector}: ${JSON.stringify(row)} < ${minimum}`);
  return rows;
@@ -64,9 +69,9 @@ try{
  for(const width of (process.env.NOEMA_THEME_WIDTHS?.split(',').map(Number)??[1440,390]))for(const mode of ['light','dark'])for(const theme of ['ink','juniper','atlantic']){
   const key=`${width}-${mode}-${theme}`,context=await browser.newContext({viewport:{width,height:960},hasTouch:width===390,isMobile:width===390,reducedMotion:'reduce'});
   await context.addInitScript(({mode,theme})=>localStorage.setItem('noema.appearance.v1',JSON.stringify({mode,theme})),{mode,theme});
-  const page=await context.newPage();page.setDefaultTimeout(10000);console.log('Checking',key);await page.clock.setFixedTime(new Date('2026-10-23T12:00:00Z'));page.on('pageerror',e=>errors.push(e.message));
+  const page=await context.newPage();page.setDefaultTimeout(10000);page.setDefaultNavigationTimeout(60000);console.log('Checking',key);await page.clock.setFixedTime(new Date('2026-10-23T12:00:00Z'));page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
-  await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}`);await page.getByRole('button',{name:'A place for connected ideas',exact:false}).first().click();await page.locator('#page-title').waitFor();await page.evaluate(()=>document.fonts.ready);
+  await page.goto(`http://127.0.0.1:${process.env.NOEMA_BROWSER_PRODUCTION==='1'?api.address().port:vite.httpServer.address().port}`);await page.getByRole('button',{name:'A place for connected ideas',exact:false}).first().click();await page.locator('#page-title').waitFor();await page.evaluate(()=>document.fonts.ready);
   const proseContrast=await readable(page,'#page-title,.block-content');
   if(mode==='dark')await readable(page,'.sidebar .workspace-label,.topbar .page-tool');
   const minimum=width===390?44:30;const editor=await hitRects(page,iconTargets,minimum);
@@ -97,7 +102,15 @@ try{
 
   await page.keyboard.press('Escape');await page.keyboard.press('Escape');await page.keyboard.press('Escape');
   await page.getByRole('button',{name:'More page actions',exact:true}).click();await page.getByRole('menuitem',{name:'Rename',exact:true}).click();await page.locator('dialog[open]').waitFor();await hitRects(page,'dialog[open] .button',width===390?44:30);await readable(page,'dialog[open] h2,dialog[open] input,dialog[open] .button');await page.keyboard.press('Escape');
-  const tokens=await page.evaluate(()=>{const s=getComputedStyle(document.documentElement);return Object.fromEntries(['surface','surface-raised','surface-popover','surface-inset','sidebar','line',...['graphite','sage','ocean','iris','rose','honey'].flatMap(x=>[`palette-${x}-text`,`palette-${x}-bg`]),...['danger','warning','success','info'].flatMap(x=>['text','bg','border'].map(y=>`status-${x}-${y}`))].map(k=>[k,s.getPropertyValue('--'+k).trim()]));});
+  const tokens=await page.evaluate(()=>{const s=getComputedStyle(document.documentElement);return Object.fromEntries(['surface','surface-raised','surface-popover','surface-inset','surface-hover','selection-neutral','control-border','sidebar','line',...['graphite','sage','ocean','iris','rose','honey'].flatMap(x=>[`palette-${x}-text`,`palette-${x}-bg`]),...['danger','warning','success','info'].flatMap(x=>['text','bg','border'].map(y=>`status-${x}-${y}`))].map(k=>[k,s.getPropertyValue('--'+k).trim()]));});
+  if(mode==='dark'){
+   // Role relationships, rather than exact palette values, are the design contract.
+   const energy=hex=>hex.replace('#','').match(/../g).reduce((sum,v)=>sum+parseInt(v,16),0);
+   assert.ok(energy(tokens.sidebar)<energy(tokens.surface),'Navigation must recede behind the reading canvas');
+   assert.ok(contrast(tokens['surface-hover'],tokens['selection-neutral'])>1.08,'Persistent selection must differ from transient hover');
+   assert.ok(energy(tokens['surface-popover'])>energy(tokens['surface-raised']),'Temporary overlays must rise above ordinary controls');
+   for(const role of ['surface','surface-raised','surface-popover'])assert.ok(contrast(tokens['control-border'],tokens[role])>=3,`Essential boundary on ${role} must remain 3:1`);
+  }
   const neutral=Object.fromEntries(['surface','surface-raised','surface-popover','surface-inset','sidebar','line',...['danger','warning','success','info'].flatMap(x=>['text','bg','border'].map(y=>`status-${x}-${y}`))].map(k=>[k,tokens[k]]));if(neutralByMode.has(mode))assert.deepEqual(neutral,neutralByMode.get(mode),'Neutral and status colors must remain identical across accents');else neutralByMode.set(mode,neutral);
   const ratios={};for(const palette of ['graphite','sage','ocean','iris','rose','honey']){const ratio=contrast(tokens[`palette-${palette}-text`],tokens[`palette-${palette}-bg`]);assert.ok(ratio>=4.5,`${key} ${palette}: ${ratio}`);ratios[palette]=ratio;}for(const state of ['danger','warning','success','info'])for(const bg of [`status-${state}-bg`,'surface','surface-raised']){const ratio=contrast(tokens[`status-${state}-text`],tokens[bg]);assert.ok(ratio>=4.5,`${key} ${state} on ${bg}: ${ratio}`);ratios[state+' / '+bg]=Math.round(ratio*100)/100;}
   // Existing error copy and destructive labels provide non-colour state cues.

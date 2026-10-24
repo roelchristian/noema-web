@@ -16,7 +16,7 @@
 .calendar-month-navigation .button:hover:not(:disabled), .calendar-icon-button:hover:not(:disabled) { background: var(--surface-hover); color: var(--text); }
 .calendar-view-switch { display: flex; gap: 2px; padding: 3px; border-radius: var(--radius-md); background: var(--surface-hover); }
 .calendar-view-switch button { border: 0; border-radius: var(--radius-sm); padding: 0 var(--space-3); color: var(--text-muted); background: transparent; font-size: 12px; }
-.calendar-view-switch button[aria-pressed=true] { color: var(--text); background: var(--surface-raised); box-shadow: var(--shadow-control); font-weight: 550; }
+.calendar-view-switch button[aria-pressed=true] { color: var(--text); background: light-dark(var(--surface-raised), var(--selection-neutral)); box-shadow: var(--shadow-control); font-weight: 550; }
 .calendar-filters { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2) var(--space-4); padding-bottom: var(--space-4); }
 .calendar-filters fieldset { display: flex; flex-wrap: wrap; gap: var(--space-1); min-width: 0; padding: 0; margin: 0; border: 0; }
 .calendar-filter-toggle { position: relative; display: inline-flex; align-items: center; cursor: pointer; min-height: var(--touch-target-size); font-size: 12px; }
@@ -70,7 +70,7 @@
 .calendar-pagination { padding: var(--space-4) 0; font-size: 12px; }
 
 /* The date remains visible while evidence and editable details scroll. */
-.calendar-inspector { position: sticky; top: 0; align-self: start; display: flex; flex-direction: column; min-width: 0; max-height: calc(100dvh - var(--workspace-toolbar-height)); border-left: 1px solid var(--line); background: var(--surface-raised); }
+.calendar-inspector { position: sticky; top: 0; align-self: start; display: flex; flex-direction: column; min-width: 0; max-height: calc(100dvh - var(--workspace-toolbar-height)); border-left: 1px solid var(--line); background: light-dark(var(--surface-raised), var(--surface)); }
 .calendar-inspector[hidden] { display: none; }
 .calendar-inspector-heading { flex: none; min-height: 70px; padding: var(--space-3) var(--space-5); box-sizing: border-box; border-bottom: 1px solid var(--line); }
 .calendar-inspector-heading > div { min-width: 0; }
@@ -124,7 +124,7 @@ dialog.calendar-sheet[open] { display: flex; flex-direction: column; }
 .calendar-overlay-info > summary > span { min-width: 0; overflow-wrap: anywhere; }
 .calendar-overlay-info svg { width: 14px; height: 14px; flex: none; }
 .calendar-overlay-info[open] > summary > svg:last-child { transform: rotate(90deg); }
-.calendar-overlay-info-panel { position: absolute; top: calc(100% + 8px); right: 0; z-index: 5; box-sizing: border-box; width: min(300px, calc(100vw - 48px)); padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-popover); background: var(--surface-raised); box-shadow: var(--shadow-menu); }
+.calendar-overlay-info-panel { position: absolute; top: calc(100% + 8px); right: 0; z-index: 5; box-sizing: border-box; width: min(300px, calc(100vw - 48px)); padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-popover); background: light-dark(var(--surface-raised), var(--surface-popover)); box-shadow: var(--shadow-menu); }
 .calendar-overlay-info-panel h2 { font-size: 13px; font-weight: 550; line-height: 1.5; margin: 0 0 var(--space-2); color: var(--text); }
 .calendar-overlay-info-panel p { font-size: 12px; line-height: 1.6; margin: 0 0 var(--space-2); }
 .calendar-overlay-info-panel > .button { width: 100%; margin-top: var(--space-3); font-size: 12px; }
@@ -199,7 +199,7 @@ dialog.calendar-sheet[open] { display: flex; flex-direction: column; }
 .calendar-optional-choices summary { cursor: pointer; font-size: 12px; display: flex; align-items: center; }
 .calendar-grid-help { font-size: 11px; line-height: 1.6; color: var(--text-muted); margin: var(--space-2) 0; }
 .calendar-mobile-legend { display: none; }
-.calendar-week-label { padding: var(--space-1) var(--space-2); border-top: 1px solid var(--line); color: var(--text-muted); font-size: 11px; background: var(--surface-raised); }
+.calendar-week-label { padding: var(--space-1) var(--space-2); border-top: 1px solid var(--line); color: var(--text-muted); font-size: 11px; background: light-dark(var(--surface-raised), var(--surface)); }
 .calendar-periods > summary { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); cursor: pointer; font-size: 12px; color: var(--text); }
 .calendar-periods > summary span { font-size: 11px; color: var(--text-muted); }
 .calendar-date-summary { margin-bottom: var(--space-4); }
@@ -210,7 +210,7 @@ dialog.calendar-sheet[open] { display: flex; flex-direction: column; }
 dialog.calendar-sheet-bounded { inset: var(--space-5); margin: auto; max-width: 560px; width: calc(100% - 40px); max-height: calc(100dvh - 40px); height: calc(100dvh - 40px); border: 1px solid var(--line); border-radius: var(--radius-md); }
 .calendar-sheet-bounded::backdrop { background: var(--surface-hover); }
 .calendar-month-jump { position: relative; }
-.calendar-jump-form { position: fixed; inset: auto; margin: 0; overflow-y: auto; z-index: 6; width: min(280px, calc(100vw - 40px)); padding: var(--space-4); box-sizing: border-box; display: grid; gap: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-popover); background: var(--surface-raised); box-shadow: var(--shadow-menu); }
+.calendar-jump-form { position: fixed; inset: auto; margin: 0; overflow-y: auto; z-index: 6; width: min(280px, calc(100vw - 40px)); padding: var(--space-4); box-sizing: border-box; display: grid; gap: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-popover); background: light-dark(var(--surface-raised), var(--surface-popover)); box-shadow: var(--shadow-menu); }
 .calendar-jump-form label { display: grid; gap: var(--space-1); font-size: 12px; }
 .calendar-jump-form input, .calendar-jump-form select { box-sizing: border-box; min-width: 0; width: 100%; min-height: var(--touch-target-size); border: 1px solid var(--control-border); border-radius: var(--radius-control); padding: var(--space-2); color: var(--text); background: var(--surface); }
 .calendar-jump-form > div { display: flex; gap: var(--space-2); }
@@ -234,7 +234,7 @@ dialog.calendar-sheet-bounded { inset: var(--space-5); margin: auto; max-width: 
 
 /* Civil week numbers occupy a narrow gutter; liturgical captions remain supplementary. */
 .calendar-grid.has-week-numbers .calendar-weekdays, .calendar-grid.has-week-numbers .calendar-week { grid-template-columns: 28px repeat(7, minmax(0, 1fr)); }
-.calendar-week-number { display: flex; justify-content: center; align-items: flex-start; padding-top: var(--space-3); border-inline-end: 1px solid var(--line); color: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; background: var(--surface-raised); }
+.calendar-week-number { display: flex; justify-content: center; align-items: flex-start; padding-top: var(--space-3); border-inline-end: 1px solid var(--line); color: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; background: light-dark(var(--surface-raised), var(--surface)); }
 .calendar-week-label > span { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1) var(--space-2); line-height: 1.6; }
 .calendar-week-label small { margin-inline-start: auto; font-size: 10px; }
 .calendar-grid.has-week-numbers .calendar-week-label { padding-inline-start: 36px; }

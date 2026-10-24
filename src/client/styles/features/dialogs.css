@@ -136,7 +136,7 @@
 }
 /* dialogs: owned rules; conditional/state variants stay with their owner. */
 dialog {
-  border: 1px solid light-dark(#e2e2e2, var(--control-border));
+  border: 1px solid light-dark(#e2e2e2, var(--line));
   background: var(--surface-popover);
   color: var(--text);
   border-radius: 12px;

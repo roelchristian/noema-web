@@ -904,7 +904,7 @@ main.source-workspace > #content > .source-reader {
   height: 34px;
   border: 1px solid var(--line);
   border-radius: 5px;
-  background: var(--surface-raised);
+  background: light-dark(var(--surface-raised), transparent);
   color: var(--text-muted)
 }
 .page-sources-file>.icon {
@@ -1273,7 +1273,7 @@ main.source-workspace > #content > .source-reader {
   padding: 16px 18px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: var(--surface-raised);
+  background: light-dark(var(--surface-raised), transparent);
 }
 .source-reader-selection h3 {
   margin: 0 0 10px;
@@ -1786,7 +1786,7 @@ main.source-workspace > #content > .source-reader {
   width: 28px;
   height: 28px;
   padding: 5px;
-  border: 1px solid var(--control-border);
+  border: 1px solid light-dark(var(--control-border), var(--button-border));
   border-radius: 8px;
   color: var(--text-muted);
   background: var(--surface-raised);

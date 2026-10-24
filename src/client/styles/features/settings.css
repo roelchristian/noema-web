@@ -41,7 +41,7 @@
   max-height: min(288px, calc(100dvh - 24px));
   overflow-y: auto;
   padding: 6px;
-  border: 1px solid var(--control-border);
+  border: 1px solid light-dark(var(--control-border), var(--line));
   border-radius: 8px;
   background: var(--surface-popover);
   color: var(--text);

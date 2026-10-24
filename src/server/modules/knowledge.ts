@@ -240,7 +240,7 @@ export class Knowledge {
     };
     return this.store.db.isTransaction?add():this.store.transaction(add);
   }
-  property(vault: string, id: string, body: Record<string, unknown>, propertyId?: string) {
+  property(vault: string, id: string, body: Record<string, unknown>, propertyId?: string, options:{nativeTemporalAssertion?:boolean}={}) {
     const entity=this.require(vault,id);
     const existing=propertyId?this.store.get<Property>('SELECT * FROM properties WHERE id=? AND entity_id=?',propertyId,id):undefined;
     if(propertyId&&!existing)throw new HttpError(404,'Property not found');
@@ -275,7 +275,7 @@ export class Knowledge {
       recordPropertyProvenance(this.store,vault,savedId,{origin:'manual',details:'Property value explicitly saved.'});
       syncPropertyMetadata(this.store,vault,id);
       if(definition)this.store.run('UPDATE property_value_metadata SET definition_id=? WHERE property_id=? AND vault_id=?',definition.id,savedId,vault);
-      if(definition?.valueKind==='date')new TemporalProperties(this.store).refresh(vault,1,savedId);
+      if(definition?.valueKind==='date')new TemporalProperties(this.store).refresh(vault,1,savedId,!legacy&&options.nativeTemporalAssertion!==false);
       return this.detail(vault,id);
     };
     return this.store.db.isTransaction?save():this.store.transaction(save);

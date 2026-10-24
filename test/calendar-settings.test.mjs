@@ -104,7 +104,7 @@ test('calendar workspace keeps date filters but moves configurable liturgical co
  t.mock.method(api,'liturgicalYear',async()=>{liturgicalRequests++;throw new Error('Should not run when disabled');});
  await act(async()=>env.root.render(createElement(CalendarWorkspace,{vaultId:'vault',view:{...initialCalendarView(),month:'2026-10'},settings:defaultCalendarSettings(),onChange(){},onOpenSettings:()=>opened.push(true),mobile:false,onOpenMention:async()=>{}})));
  assert.equal(document.querySelectorAll('.calendar-overlay-controls input').length,0);assert.equal(liturgicalRequests,0);
- assert.match(document.querySelector('.calendar-filters').textContent,/Detected references/);
+ assert.match(document.querySelector('.calendar-filters').textContent,/CuratedLinked eventsAll references/);
  await act(async()=>document.querySelector('button[aria-label="Calendar settings"]').click());assert.deepEqual(opened,[true]);
 });
 
@@ -141,7 +141,7 @@ test('date entity view shows the selected liturgy, metadata and optional detail 
 test('coarse, Julian and disabled date entity views do not fetch or invent an observance',async t=>{
  const env=domFixture(t),{DateLiturgicalDetails}=await import('../src/client/knowledge/DateLiturgicalDetails.tsx'),{temporalDate}=await import('../src/shared/temporal.ts');let calls=0;
  t.mock.method(api,'liturgicalYear',async()=>{calls++;throw new Error('Unexpected calendar lookup');});
- for(const date of [temporalDate('2031'),temporalDate('2031-10'),temporalDate('2031-10-22','julian')]){
+ for(const date of [temporalDate('2031'),temporalDate('2031-10'),temporalDate('~2031-10-22'),temporalDate('2031-10-22','julian')]){
   await act(async()=>env.root.render(createElement(DateLiturgicalDetails,{vaultId:'vault',date,settings:{enabled:true,calendarId:'grc-en',optional:false}})));
   assert.match(document.body.textContent,date.calendar==='julian'?/has not been converted/:/require an exact day/);
  }
@@ -155,7 +155,7 @@ test('an unqualified date year explains download eligibility in the entity view 
  t.mock.method(api,'temporalDetail',async()=>({mentions:[],nextMentionOffset:null}));
  t.mock.method(api,'liturgicalYear',async()=>{calls++;throw new ApiError(409,'This year has no curated dates or accepted date relationships.');});
  await act(async()=>env.root.render(createElement(NoteDatePanel,{item,page,calendarSettings:{enabled:true,calendarId:'ph',optional:false},onClose(){},onOpenPage(){}})));
- assert.match(document.body.textContent,/2033-10-22/);assert.match(document.body.textContent,/no curated dates or accepted date relationships/);assert.equal(calls,1);assert.equal(document.querySelector('.calendar-liturgical-panel'),null);
+ assert.equal(document.querySelector('.date-overview').dataset.dateId,'gregorian:day:2033-10-22');assert.match(document.body.textContent,/22 October 2033/);assert.match(document.body.textContent,/no curated dates or accepted date relationships/);assert.equal(calls,1);assert.equal(document.querySelector('.calendar-liturgical-panel'),null);
 });
 
 
@@ -176,4 +176,14 @@ test('same-query refresh retains previews but changed months never reuse another
  assert.match(document.querySelector('.calendar-status').textContent,/Loading calendar/);
  await act(async()=>release({...result,items:[]}));
  assert.match(document.querySelector('.calendar-empty').textContent,/No saved dates/);
+});
+
+test('period cards retain interval, century and approximate-day precision',async t=>{
+ const env=domFixture(t),{temporalDate}=await import('../src/shared/temporal.ts');
+ const items=['C19','1814/1816','~1815-06-18'].map(value=>({date:temporalDate(value),curation:{...emptyCuration(),label:'Historical period'},layer:'knowledge',mentions:[],mentionCount:0,relations:[],relationCount:0}));
+ t.mock.method(api,'temporalDates',async()=>({items,nextOffset:null,indexing:{pending:0,refreshed:0}}));
+ await act(async()=>env.root.render(createElement(CalendarWorkspace,{vaultId:'vault',view:{...initialCalendarView(),month:'1815-06'},settings:defaultCalendarSettings(),onChange(){},onOpenSettings(){},mobile:false,onOpenMention:async()=>{}})));
+ const cards=[...document.querySelectorAll('.calendar-periods .calendar-entry')];assert.equal(cards.length,3);
+ assert.match(cards[0].textContent,/century precision/);assert.match(cards[1].textContent,/interval precision/);assert.match(cards[2].textContent,/Approximate day precision/);
+ assert.ok(cards.every(card=>!card.textContent.includes('Exact day')&&!card.textContent.includes('Year precision')));
 });

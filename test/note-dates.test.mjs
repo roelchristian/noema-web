@@ -22,7 +22,7 @@ test('note dates deduplicate equivalent spellings, count occurrences and preserv
  assert.deepEqual(items.map(item=>[item.id,item.count]),[[dateId,2],['gregorian:month:2000-12',1],['gregorian:year:2000',1],['julian:day:2000-12-05',1]]);
  assert.equal(items[0].name,'December 5, 2000');
  assert.equal(items[3].name,'December 5, 2000 (Julian)');
- assert.deepEqual(noteDateRanges([{text:'31 February 2026; about 1848; 03/04/2026'}]),[]);
+ assert.deepEqual(noteDateRanges([{text:'31 February 2026; about 1848; 03/04/2026'}]).map(item=>item.date.id),['gregorian:year:~1848']);
 });
 
 test('note dates cross formatting but respect semantic boundaries, cells and explicit exclusions',()=>{
@@ -119,13 +119,31 @@ test('date preview opens the date and unlinking suppresses only that occurrence 
 
 test('date inspector shows local mentions and only note references from saved evidence',async t=>{
  const env=setupDOM(t);t.mock.timers.enable({apis:['setTimeout']});
- t.mock.method(api,'temporalDetail',async()=>({mentions:[{id:'here',pageId:'note',title:'Birth date',text:'December 5, 2000'},{id:'other',pageId:'other',title:'Another note',text:'5 December 2000'}],nextMentionOffset:null,sources:[{title:'Source to exclude'}]}));
+ t.mock.method(api,'temporalDetail',async()=>({date:{id:dateId,value:'2000-12-05',calendar:'gregorian',precision:'day'},curation:null,relations:[],relationCount:0,mentionCount:2,nextRelationOffset:null,mentions:[{id:'here',pageId:'note',title:'Birth date',text:'December 5, 2000'},{id:'other',pageId:'other',title:'Another note',text:'5 December 2000'}],nextMentionOffset:null,sources:[{title:'Source to exclude'}]}));
  const page=pageOf([block([{text:'December 5, 2000'}])]),opened=[],root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
  await act(async()=>root.render(createElement(NoteDatePanel,{page,item:noteDateItems(page.blocks)[0],onClose(){},onOpenPage:id=>opened.push(id)})));
  await act(async()=>t.mock.timers.tick(300));
- assert.match(document.querySelector('#note-date-panel').textContent,/2000-12-05/);
+ assert.equal(document.querySelector('.date-overview').dataset.dateId,dateId);assert.match(document.querySelector('#note-date-panel').textContent,/5 December 2000/);
  assert.match(document.querySelector('#note-date-panel').textContent,/Another note/);
  assert.doesNotMatch(document.querySelector('#note-date-panel').textContent,/Source to exclude/);
  await act(async()=>[...document.querySelectorAll('#note-date-panel button')].find(button=>button.textContent.includes('Another note')).click());
  assert.deepEqual(opened,['other']);
+});
+
+
+test('date inspector waits for saved curation before edits so secondary metadata survives a compact save',async t=>{
+ const env=setupDOM(t);t.mock.timers.enable({apis:['setTimeout']});let resolveDetail,saved;
+ const date={id:dateId,value:'2000-12-05',precision:'day',calendar:'gregorian'},curation={label:'Existing',annotation:'Historical research',pinned:false,importance:'important',personalPriority:'important',layer:'historical'};
+ t.mock.method(api,'temporalDetail',()=>new Promise(resolve=>resolveDetail=resolve));
+ t.mock.method(api,'curateDate',async(vault,value,body)=>{saved=body;});
+ const page=pageOf([block([{text:'December 5, 2000'}])]),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ await act(async()=>root.render(createElement(NoteDatePanel,{page,item:noteDateItems(page.blocks)[0],onClose(){},onOpenPage(){}})));
+ assert.equal(document.querySelector('input:not([type=checkbox])').disabled,true);
+ await act(async()=>t.mock.timers.tick(300));
+ assert.equal(document.querySelector('input:not([type=checkbox])').disabled,true);
+ await act(async()=>resolveDetail({date,curation,mentions:[],mentionCount:0,relations:[],relationCount:0,nextMentionOffset:null,nextRelationOffset:null}));
+ const pin=document.querySelector('input[type=checkbox]');assert.equal(pin.disabled,false);
+ await act(async()=>pin.click());
+ await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Save date note').click());
+ assert.deepEqual(saved,{...curation,pinned:true});
 });

@@ -239,7 +239,7 @@ test('new typed fields enforce native targets and preserve identifiers, units an
   assert.equal(elevation.metadata.decimal_value,1200);assert.equal(elevation.metadata.unit,'m');
   const theorem=knowledge.create('default',{name:'Synthetic result',type:'concept',subtypes:['concept:theorem','concept:mathematics']});
   const proven=put(theorem,'proven','circa 1900','builtin:concept:theorem:proven');
-  assert.equal(proven.value,'circa 1900');assert.equal(proven.metadata.compatibility,'unresolved');assert.equal(proven.metadata.temporal_date_id,null);
+  assert.equal(proven.value,'circa 1900');assert.equal(proven.metadata.compatibility,'valid');assert.equal(proven.metadata.temporal_date_id,'gregorian:year:~1900');
   const updated=knowledge.property('default',theorem.id,{name:'proven',value:'1901',definition_id:'builtin:concept:theorem:proven'},proven.id).properties.find(item=>item.id===proven.id);
   assert.equal(updated.metadata.temporal_date_id,'gregorian:year:1901');
   rejects(()=>governance.update('default',journalId,{label:'Changed native field'}),403);

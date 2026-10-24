@@ -31,7 +31,7 @@ test('typed dates use canonical temporal evidence and preserve partial precision
  const person=knowledge.create('default',{name:'Temporal Person',type:'person'});
  const uncertain=knowledge.create('default',{name:'Uncertain Temporal Person',type:'person'});
  const unresolved=knowledge.property('default',uncertain.id,{name:'birth date',value:'circa 1815',definition_id:'builtin:person:birth_date'}).properties[0];
- assert.equal(unresolved.metadata.compatibility,'unresolved');assert.equal(unresolved.metadata.temporal_date_id,null);
+ assert.equal(unresolved.metadata.compatibility,'valid');assert.equal(unresolved.metadata.temporal_date_id,'gregorian:year:~1815');
  let value=knowledge.property('default',person.id,{name:'birth date',value:'1815-12',definition_id:'builtin:person:birth_date'}).properties[0];
  assert.equal(value.value,'1815-12');assert.equal(value.metadata.temporal_date_id,'gregorian:month:1815-12');assert.equal(value.metadata.text_value,null);
  const id=value.id;
@@ -39,7 +39,7 @@ test('typed dates use canonical temporal evidence and preserve partial precision
  assert.equal(value.id,id);assert.equal(value.value,'10 December 1815 (Julian)');assert.equal(value.metadata.temporal_date_id,'julian:day:1815-12-10');
  fail(()=>knowledge.property('default',person.id,{name:'birth date',value:'not a supported date',definition_id:'builtin:person:birth_date'},id));
  value=knowledge.property('default',person.id,{name:'birth date',value:'circa 1815',definition_id:'builtin:person:birth_date'},id).properties[0];
- assert.equal(value.value,'circa 1815');assert.equal(value.metadata.compatibility,'unresolved');assert.equal(value.metadata.temporal_date_id,null);
+ assert.equal(value.value,'circa 1815');assert.equal(value.metadata.compatibility,'valid');assert.equal(value.metadata.temporal_date_id,'gregorian:year:~1815');
  assert.ok(store.get('SELECT 1 FROM temporal_relations WHERE property_id=?',id),'earlier temporal evidence retained');
  const org=knowledge.create('default',{name:'Founded Organization',type:'organization'});
  value=knowledge.property('default',org.id,{name:'founded',value:'1901',definition_id:'builtin:organization:founded'}).properties[0];assert.equal(value.metadata.temporal_date_id,'gregorian:year:1901');
@@ -71,3 +71,57 @@ test('typed multiple values retain stable IDs and append order across edits and 
  knowledge.property('default',work.id,{name:'author',target_id:first.id,definition_id:'builtin:creativework:author'},ids[0]);
  values=knowledge.detail('default',work.id).properties;assert.deepEqual(values.map(value=>value.id),ids);assert.equal(values[0].target_id,first.id);
 }));
+
+test('only newly explicit native structured date assertions are accepted; indexing never upgrades proposals',async()=>{
+ const {TemporalProperties}=await import('../src/server/modules/temporal-properties.ts');
+ const {recordPropertyProvenance}=await import('../src/server/modules/property-provenance.ts');
+ const db=openDatabase(':memory:');try {
+  const store=new Store(db),knowledge=new Knowledge(store),temporal=new TemporalProperties(store);
+  const event=knowledge.create('default',{name:'Native historical event',type:'event'});
+  const native=knowledge.property('default',event.id,{name:'start date',value:'1815-06-18 (Julian)',definition_id:'builtin:event:start_date'}).properties[0];
+  let relation=store.get('SELECT origin,status,kind FROM temporal_relations WHERE property_id=?',native.id);
+  assert.deepEqual({...relation},{origin:'manual',status:'accepted',kind:'occurs_on'});
+  assert.equal(store.get('SELECT date_id FROM temporal_relations WHERE property_id=?',native.id).date_id,'julian:day:1815-06-18');
+  const bceEvent=knowledge.create('default',{name:'Native BCE event',type:'event'});
+  const bce=knowledge.property('default',bceEvent.id,{name:'start date',value:'-0044-03-15 (Julian)',definition_id:'builtin:event:start_date'}).properties[0];
+  assert.equal(store.get('SELECT status FROM temporal_relations WHERE property_id=?',bce.id).status,'accepted');
+  assert.equal(store.get('SELECT date_id FROM temporal_relations WHERE property_id=?',bce.id).date_id,'julian:day:-0044-03-15');
+  const imported=knowledge.create('default',{name:'Imported event',type:'event'});
+  const value=knowledge.property('default',imported.id,{name:'start date',value:'1815-06-18'}).properties[0];
+  recordPropertyProvenance(store,'default',value.id,{origin:'imported'});
+  temporal.refresh('default',25);
+  relation=store.get('SELECT status FROM temporal_relations WHERE property_id=?',value.id);assert.equal(relation.status,'pending');
+  store.run('INSERT OR REPLACE INTO temporal_property_dirty VALUES (?,?)',value.id,'default');temporal.refresh('default',25);
+  assert.equal(store.get('SELECT status FROM temporal_relations WHERE property_id=?',value.id).status,'pending');
+  for(const origin of ['ai','derived','legacy_unknown']) {
+   recordPropertyProvenance(store,'default',value.id,{origin});
+   store.run('DELETE FROM temporal_relations WHERE property_id=?',value.id);
+   store.run('INSERT OR REPLACE INTO temporal_property_dirty VALUES (?,?)',value.id,'default');
+   temporal.refresh('default',1,value.id,true);
+   assert.equal(store.get('SELECT status FROM temporal_relations WHERE property_id=?',value.id).status,'pending',origin);
+  }
+  const approximate=knowledge.create('default',{name:'Approximate event',type:'event'});
+  const approximateValue=knowledge.property('default',approximate.id,{name:'start date',value:'circa 1815',definition_id:'builtin:event:start_date'}).properties[0];
+  assert.equal(store.get('SELECT 1 FROM temporal_relations WHERE property_id=? AND status=?',approximateValue.id,'accepted'),undefined);
+  const end=knowledge.property('default',event.id,{name:'end date',value:'1815-06-19',definition_id:'builtin:event:end_date'}).properties.find(property=>property.name==='end date');
+  assert.equal(store.get('SELECT kind FROM temporal_relations WHERE property_id=?',end.id).kind,'ends_on');
+ }finally {db.close();}
+});
+
+
+test('accepting an AI or imported property proposal retains temporal review instead of becoming a native assertion',async()=>{
+ const {PropertyReview}=await import('../src/server/modules/property-review.ts');
+ const {proposeValue}=await import('../src/server/modules/property-provenance.ts');
+ const db=openDatabase(':memory:');try {
+  const store=new Store(db),knowledge=new Knowledge(store),review=new PropertyReview(store);
+  for(const origin of ['ai','imported']) {
+   const event=knowledge.create('default',{name:origin+' event',type:'event'});
+   const proposal=proposeValue(store,'default',{entity_id:event.id,property_name:'start date',value:'1815-06-18',origin});
+   const preview=review.list('default',event.id)[0];
+   review.review('default',event.id,proposal.id,{action:'accept',fingerprint:preview.fingerprint});
+   const property=knowledge.detail('default',event.id).properties.find(property=>property.name==='start date');
+   assert.equal(property.provenance.origin,origin);
+   assert.equal(store.get('SELECT status FROM temporal_relations WHERE property_id=?',property.id).status,'pending');
+  }
+ }finally{db.close();}
+});

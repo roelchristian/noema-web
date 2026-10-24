@@ -180,3 +180,36 @@ test('persisted display labels change presentation while keeping immutable store
   assert.equal(document.querySelector('textarea[aria-label="Recorded Date"]').value,'circa 1815');assert.equal(saves.length,0);
  });
 });
+
+test('date editor preserves authored text and exposes precision/calendar choices without submitting a fabricated date',async()=>{
+ const {builtinPropertyDefinitions}=await import('../src/shared/property-definitions.ts');
+ await fixture(async({props,render,click,saves,dom})=>{
+  await render({...props,definitions:builtinPropertyDefinitions,entity:{...props.entity,properties:[{...props.entity.properties[0],value:'June 1815'}]}});
+  await click('[aria-label="Edit Birth Date"]');
+  assert.equal(document.querySelector('input[aria-label="Birth Date"]').value,'June 1815');
+  assert.match(document.querySelector('.date-value-editor [role="status"]').textContent,/month precision/);
+  assert.equal(document.querySelector('[aria-label="Birth Date precision"]').value,'month');
+  const precision=document.querySelector('[aria-label="Birth Date precision"]');
+  await act(async()=>{precision.value='day';precision.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  assert.ok(document.querySelector('input[type="date"]'));
+  assert.equal(document.querySelector('input[type="date"]').value,'');
+  assert.equal(document.querySelector('input[aria-label="Birth Date"]').value,'June 1815');
+  assert.equal([...document.querySelectorAll('.date-value-editor button')].find(button=>button.textContent==='Use this date').disabled,true);
+  assert.equal(saves.length,0);
+ });
+});
+
+test('property date overview fetches bounded evidence only when disclosed and cancels on close',async()=>{
+ const {api}=await import('../src/client/api.ts'),original=api.temporalDetail,calls=[];
+ api.temporalDetail=async(vault,id,mentionOffset,relationOffset,signal)=>{calls.push({vault,id,mentionOffset,relationOffset,signal});return {date:{id,value:'1815-06',precision:'month',calendar:'gregorian'},curation:null,relations:[{id:'relation',name:'Historical event',kind:'occurs_on'}],relationCount:1,mentions:[],mentionCount:4,sourceCount:2,propertyCount:1};};
+ try {await fixture(async({props,render,dom})=>{
+  await render({...props,entity:{...props.entity,properties:[{...props.entity.properties[0],value:'June 1815'}]}});
+  assert.equal(calls.length,0);
+  const details=document.querySelector('.entity-inline-value details');
+  await act(async()=>{details.open=true;details.dispatchEvent(new dom.window.Event('toggle'));});
+  assert.equal(calls.length,1);assert.equal(calls[0].id,'gregorian:month:1815-06');assert.equal(calls[0].mentionOffset,0);
+  assert.match(details.textContent,/Historical event/);assert.match(details.textContent,/4 note occurrences · 2 source occurrences · 1 date properties/);
+  await act(async()=>{details.open=false;details.dispatchEvent(new dom.window.Event('toggle'));});
+  assert.equal(calls[0].signal.aborted,true);
+ });}finally{api.temporalDetail=original;}
+});

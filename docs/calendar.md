@@ -83,7 +83,10 @@ index state. Blocks are fingerprinted independently; unchanged blocks skip the
 parser. Unrelated edits can change global offsets, which are recomputed from the
 current projection at navigation time. Code, math, and divider blocks are excluded.
 
-## Extraction policy
+## Baseline extraction policy
+
+The historical extension below supersedes this original extractor policy for the
+explicit historical forms it supports.
 
 Version `english-civil-v1` deterministically supports full English month names:
 
@@ -400,8 +403,9 @@ revision-aware incremental indexing, lifecycle/backup boundaries, separate curat
 month/agenda/inspectors, explicit filters, typed compatible property review, manual
 relationships and the independent liturgical supplements. Extraction deliberately
 supports exact English day/month/year expressions conservatively; numeric prose,
-relative/approximate expressions, ranges, BCE, centuries and conversions between
-historical calendars remain unresolved rather than guessed. Explicit original
+relative expressions and conversions between historical calendars remain unresolved.
+Historical forms supported by the later chronology update are documented below;
+unsupported qualifiers remain unresolved rather than guessed. Explicit original
 calendar qualifiers and precision are retained; typed date fields accept ISO dates.
 No incidental mention becomes a personal commitment or semantic event.
 
@@ -450,13 +454,16 @@ source/property review, overlay independence/cache/error states and 44px targets
 
 ## Month workspace preferences and hierarchy
 
-Calendar is a temporal knowledge index. Desktop day cells prioritize a curated title,
-accepted relationship or original evidence title, then show full occurrence and accepted
-relationship counts. These are not appointments or unique-document counts. Pending
-proposals are not counted as accepted relationships. Principal liturgy remains secondary,
-with weekday titles, ranks, vestment colors and the existing Latin display formatting.
-Phone/narrow-workspace cells show knowledge counts (P means pinned), principal color and
-an optional-choice + marker; full accessible names, date details and agenda retain text.
+Calendar is a temporal knowledge workspace. Day cells show up to two distinct
+associations: a curated date note first, accepted Event links next, other accepted
+links and authored properties next, and incidental references only when enabled.
+Ordering is stable, with entity roles preserved and repeated document passages
+deduplicated. A “+N more” indicator counts additional loaded associations; “More in
+date details” honestly indicates bounded previews without inventing a distinct-event
+count. Counts distinguish loaded unique documents (a + suffix means incomplete),
+textual occurrences, and accepted relationships. Pending proposals remain reviewable
+evidence. Narrow cells retain association previews and use a pin icon. Principal
+liturgy stays supplementary, preserving provider weekdays, ranks and vestment colors.
 
 Settings → Calendar saves Sunday/Monday week start in this browser; Sunday remains the
 default. Civil week numbers default on in a narrow gutter (an explicit saved off preference
@@ -482,7 +489,7 @@ principal vestment colors. Unavailable provider alternatives produce no marker.
 
 The date inspector uses a side column only at 1000px available Calendar workspace width;
 otherwise it uses a modal (full viewport on phones), retaining drafts while resizing.
-Month/year-only records sit in a collapsed period disclosure, never a fabricated day.
+Periods appear in an initially expanded disclosure with precision labels, never a fabricated day.
 Go to month accepts years 1–9999; Show selected date returns to an inspector's off-month
 date without discarding its draft. Same-query refresh retains prior knowledge previews
 while marked updating; changed queries clear prior results. Supplement failures remain
@@ -492,3 +499,105 @@ At extreme zoom the seven-column grid keeps a bounded horizontal scroll surface 
 than overlapping day targets or widening the document. Set `NOEMA_SKIP_SCREENSHOTS=1`
 when running `scripts/check-calendar-browser.mjs` to disable every capture, including
 failure captures; functional validation and JSON results remain available.
+
+## Historical chronology: supported forms and boundaries
+
+This update supersedes the historical-form deferrals in the earlier phase reports.
+
+Canonical temporal identities now retain civil BCE years (`-0044` means 44 BCE;
+`-0001` means 1 BCE). There is no canonical year zero. Leap arithmetic uses the
+corresponding astronomical year internally (1 BCE corresponds to astronomical 0).
+Gregorian and Julian validation, month lengths and weekday placement remain separate;
+no identity or authored expression is converted between calendars. Existing CE
+identities are unchanged.
+
+Supported historical canonical values are signed day/month/year dates, approximate
+nominal dates (`~1815`), closed same-precision intervals (`1814/1816`, including
+signed BCE endpoints), and century periods (`C19`, `C-1`). English extraction also
+recognizes `44 BCE`, `12 March 44 BCE`, `March 44 BCE`, `circa/about/approximately
+1815`, `between 1814 and 1816`, `1814–1816`, and numbered centuries such as `19th
+century`. Gregorian/Julian and Old Style/New Style qualifiers retain their calendar.
+Original evidence text, offsets and fingerprints remain authoritative. Detection
+creates references and proposals, never accepted event assertions.
+
+Approximation does not imply a fabricated tolerance: overlap queries use the
+nominal precision span and results visibly retain “circa”. They do not assert that
+an approximate event definitely happened within that span or exclude a wider
+historical uncertainty. An explicit bounded interval retains its endpoint precision;
+a century remains a period (the 19th century is 1801–1900), without a stored day.
+Century, interval, BCE and approximate entries use shared historical labels. The
+month grid browses CE years 1–9999; historical values can be entered/opened directly
+by canonical identity, including BCE, and period entries remain visible. A historical
+timeline is deferred; no synthetic day is generated to populate one.
+
+Unsupported forms remain unresolved rather than losing a qualifier: approximate
+BCE prose, BCE prose ranges, ordinal/abbreviated/month-first BCE day prose, early/late centuries, mixed-precision intervals,
+open-ended intervals, question-mark uncertainty, and calendars other than Gregorian
+or Julian. Explicit canonical BCE intervals are supported even where prose extraction
+is deliberately narrower. Multilingual forms and historical era/year-start policies
+remain unsupported. No automatic calendar conversion policy is introduced. Bare year conjunctions such as
+“1815 and 1820” remain unresolved; they do not assert an interval between the years.
+
+Calendar-local deterministic lower/upper query keys have a vault/calendar range
+index. Date-row limits and bounded per-date evidence previews remain in place;
+month rendering never fetches the complete evidence for every day. The extractor
+version change queues local refreshes, which continue in existing bounded batches.
+SQLite CHECK migrations preserve existing rows and child references. Backup version
+1 remains compatible: historical value strings and expanded precision/role values
+round-trip, and legacy archives without association classification still import.
+
+Accepted relationships may now carry Personal, Knowledge or Historical context
+independently of the date's curation. Facet queries match and count the relevant
+accepted relationships before loading bounded previews. Relationships without an
+explicit context inherit the curated date layer, then Knowledge. The same canonical
+date can therefore connect a personal annotation and a historical event without
+creating duplicate date objects. Browser presentation preferences retain their
+existing browser scope; no preference migration into a vault is performed.
+
+
+## Calendar and shared Date Overview UX
+
+The primary content control offers Curated, Linked events, and All references. Linked
+events retains saved date notes and accepted temporal associations; Curated narrows
+to explicit curation, and All references opts into incidental detection. Personal,
+Knowledge and Historical are secondary facets. Agenda groups distinct associations
+beneath chronological date headings and introduces no time-of-day or commitments.
+
+Selecting a day exposes Add a date note, Create an event, and Link existing knowledge.
+The header Add action opens the keyboard-focused day. Event creation explicitly saves
+an Event and its native start date property, retaining calendar and precision. If the
+second save fails, the error reports that the Event already exists rather than claiming
+atomic success. Manual links may carry independent contextual classification.
+
+The inspector separates Overview, Connections and Evidence. Curation is directly
+editable, pinning independent, and existing significance/priority fields remain under
+More details. Curation drafts are keyed by the full canonical identity, retained across
+Calendar navigation, with visible unsaved feedback and a browser-exit warning. The
+compact editor inspector requires Save or Discard before its navigation actions.
+
+Calendar, note dates, and date-valued entity properties use the shared Date Overview
+identity/summary. Property evidence is fetched only when its disclosure opens. Opening
+Calendar retains full identity; identical Julian/Gregorian labels neither share drafts
+nor selection. Note evidence navigation reuses revision/block-validated temporal
+references. Returning to the originating note checks its saved revision and restores the
+original occurrence; changed evidence is reported rather than redirected to a duplicate.
+
+DateValueEditor preserves original text on mount and offers explicit year/month/day
+precision and Gregorian/Julian choice. Exact Gregorian dates have a native picker. A
+structured selection replaces the original expression only after Use this date;
+unresolved text remains editable with a quiet interpretation message. Explicit native
+typed property saves with current manual provenance and unambiguous canonical signed
+year/month/day syntax may assert accepted associations. AI/import review paths, refreshes,
+legacy writes, approximations, intervals and centuries remain proposals. Existing
+proposals are never bulk upgraded. Relation roles include ends_on, died_on, founded_on
+and accessed_on, retaining source-property fingerprints and evidence.
+
+The civil-calendar selector supports ordinary Julian browsing and curation with Julian
+month lengths and weekdays. Gregorian Today markers and liturgy are not applied to
+Julian civil labels. At narrow phone widths week numbers move above their rows so
+seven 44px date controls fit. Calendar settings retain their existing browser storage
+scope; this change does not migrate preferences into vaults.
+
+Deferred scope: a historical timeline, BCE month-grid navigation, unsupported historical
+prose combinations listed above, recurrence, reminders, external calendars, and a vault
+preference migration. These are explicit boundaries, not silently guessed date values.

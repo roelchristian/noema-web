@@ -1,11 +1,12 @@
 import type {Block, Segment} from './domain.js';
-import {extractTemporal, type TemporalDate} from './temporal.js';
+import {extractTemporal,temporalDisplay, type TemporalDate} from './temporal.js';
 import {pageLinks} from './page-links.js';
 import {memoizeBlock} from './immutable-blocks.js';
 
 export interface NoteDateRange {start:number;end:number;date:TemporalDate}
 export interface NoteDateItem {id:string;name:string;date:TemporalDate;count:number;position:number}
 export function noteDateLabel(date:TemporalDate) {
+ if(date.value.startsWith('-')||date.value.startsWith('~')||date.precision==='interval'||date.precision==='century')return temporalDisplay(date)+(date.calendar==='julian'?' (Julian)':'');
  const [year,month,day]=date.value.split('-');
  const months='January February March April May June July August September October November December'.split(' ');
  return (month?`${months[Number(month)-1]}${day?` ${Number(day)},`:''} ${year}`:year)+(date.calendar==='julian'?' (Julian)':'');

@@ -1,4 +1,7 @@
 import type {BibliographicReference} from '../../shared/bibliographic-citations';
+import {blockTransliteration} from '../../shared/transliteration';
+import {TransliterationBlock} from './TransliterationBlock';
+import {useTransliteration,type TransliterationLayout} from '../state/transliteration-preferences';
 import {speechText,useSpeech} from './speech';
 import {speechSections,speechSelectionContext} from './speech-sections';
 import {entityIconName} from '../../shared/entity-icons';
@@ -128,9 +131,10 @@ interface TextRowActions {
   open:(id:string)=>void;
 }
 // Default shallow comparison keeps every visible dependency explicit, including list order.
-const TextBlockRow=memo(function TextBlockRow({block,entities,reviewMatches,number,actions,paragraphPosition}: {block:Block;entities:Entity[];reviewMatches:EntityReviewItem[];number?:number;actions:TextRowActions;paragraphPosition?:'first'|'continuation';locale:ReturnType<typeof getLocale>}) {
+const TextBlockRow=memo(function TextBlockRow({block,entities,reviewMatches,number,actions,paragraphPosition,transliterationLayout}: {transliterationLayout:TransliterationLayout;block:Block;entities:Entity[];reviewMatches:EntityReviewItem[];number?:number;actions:TextRowActions;paragraphPosition?:'first'|'continuation';locale:ReturnType<typeof getLocale>}) {
   const register=useCallback((element:HTMLElement|null)=>actions.register(block.id,element),[actions,block.id]);
-  return <div data-paragraph-flow={paragraphPosition} data-block-id={block.id} data-semantic-kind={block.semantic} style={semanticStyle(block.semantic)} className={'block '+block.type+(block.semantic?' semantic-block':'')}>
+  const transliteration=transliterationLayout==='off'?null:blockTransliteration(block,entities);
+  return <div data-transliteration-layout={transliteration?transliterationLayout:undefined} data-paragraph-flow={paragraphPosition} data-block-id={block.id} data-semantic-kind={block.semantic} style={semanticStyle(block.semantic)} className={'block '+block.type+(block.semantic?' semantic-block':'')}>
     {block.semantic&&<span className="semantic-callout-icon" aria-hidden="true"><Icon name={semanticFunctions[block.semantic].icon}/></span>}
     <div className="block-controls" role="group" aria-label={uiText("Block controls")}>
       <button className="block-add" title={uiText("Add block below")} aria-label={uiText("Add block below")} onClick={event=>actions.addBelow(event.currentTarget,block.id)}><Icon name="plus"/></button>
@@ -138,6 +142,7 @@ const TextBlockRow=memo(function TextBlockRow({block,entities,reviewMatches,numb
     </div>
     {block.type==='todo'?<input type="checkbox" aria-label={uiText("Complete task")} checked={block.checked} onChange={event=>actions.update(block.id,{checked:event.target.checked})}/>:block.type==='bullet'?<span className="bullet-marker">•</span>:block.type==='numbered'?<span className="bullet-marker numbered-marker">{number}.</span>:null}
     <EditableBlock block={block} entities={entities} reviewMatches={reviewMatches} register={register} onOpen={actions.open} onInput={(element,event)=>actions.input(block,element,event)} onKeyDown={event=>actions.keyDown(event,block)} onPaste={event=>actions.paste(event,block)}/>
+    {transliteration&&<TransliterationBlock text={transliteration}/>}
   </div>;
 });
 const blockSuggestionIds=memoizeBlock(block=>{
@@ -146,6 +151,7 @@ const blockSuggestionIds=memoizeBlock(block=>{
   return ids;
 });
 export function BlockEditor(props: Props) {
+  const transliterationLayout=useTransliteration(props.vaultId+'/'+(props.pageId??''));
   const presentation=useContext(CitationPresentationContext);
   const presentationRef=useRef(presentation);presentationRef.current=presentation;
   const markdownTyping=useMarkdownTyping();
@@ -996,7 +1002,7 @@ export function BlockEditor(props: Props) {
     paste:(...args)=>rowHandlers.current.paste(...args),open:(...args)=>rowHandlers.current.open(...args),
   }),[]);
   const paragraphPositions = useMemo(()=>paragraphFlow(blocks),[blocks]);
-  const renderBlock = (block: Block) => isAIExplanation(block) ? <ReadOnlyExplanationBlock key={block.id} block={block} blocks={blocks} entities={entities} onOpen={onOpenEntity} vaultId={props.vaultId}/> : ['paragraph','heading1','heading2','quote','bullet','numbered','todo'].includes(block.type) ? <Fragment key={block.id}><TextBlockRow paragraphPosition={paragraphPositions.get(block.id)} locale={getLocale()} block={block} entities={entities} reviewMatches={reviewsByBlock.get(block.id)??emptyReviewMatches} number={block.type==='numbered'?blockListNumber(blocks,block.id):undefined} actions={rowActions}/>{renderWritingReview(block.id)}{uploadCards(block.id)}</Fragment> : <Fragment key={block.id}><div data-block-id={block.id} data-semantic-kind={block.semantic} style={semanticStyle(block.semantic)} className={'block ' + block.type + (block.semantic ? ' semantic-block' : '')}>
+  const renderBlock = (block: Block) => isAIExplanation(block) ? <ReadOnlyExplanationBlock key={block.id} block={block} blocks={blocks} entities={entities} onOpen={onOpenEntity} vaultId={props.vaultId}/> : ['paragraph','heading1','heading2','quote','bullet','numbered','todo'].includes(block.type) ? <Fragment key={block.id}><TextBlockRow transliterationLayout={transliterationLayout} paragraphPosition={paragraphPositions.get(block.id)} locale={getLocale()} block={block} entities={entities} reviewMatches={reviewsByBlock.get(block.id)??emptyReviewMatches} number={block.type==='numbered'?blockListNumber(blocks,block.id):undefined} actions={rowActions}/>{renderWritingReview(block.id)}{uploadCards(block.id)}</Fragment> : <Fragment key={block.id}><div data-block-id={block.id} data-semantic-kind={block.semantic} style={semanticStyle(block.semantic)} className={'block ' + block.type + (block.semantic ? ' semantic-block' : '')}>
     {block.semantic && <span className="semantic-callout-icon" aria-hidden="true"><Icon name={semanticFunctions[block.semantic].icon}/></span>}
     <div className="block-controls" role="group" aria-label={uiText("Block controls")}>
       <button className="block-add" title={uiText("Add block below")} aria-label={uiText("Add block below")} onClick={e => addBelow(e.currentTarget, block.id)}><Icon name="plus"/></button>

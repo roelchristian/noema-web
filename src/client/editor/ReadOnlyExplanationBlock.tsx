@@ -1,3 +1,6 @@
+import {blockTransliteration} from '../../shared/transliteration';
+import {TransliterationBlock} from './TransliterationBlock';
+import type {TransliterationLayout} from '../state/transliteration-preferences';
 import {memoizeBlock} from '../../shared/immutable-blocks';
 import {t as uiText,getLocale} from '../i18n';
 import {useContext,useMemo,type CSSProperties} from 'react';
@@ -11,7 +14,7 @@ import {segmentHTML} from './segments';
 import {renderMath} from './math';
 
 /** Generated content uses display surfaces only, including tables and equations. */
-export function ReadOnlyExplanationBlock({block,blocks,entities,onOpen,vaultId,explanation=true,paragraphPosition}: {block:Block;blocks:Block[];entities:Entity[];onOpen:(id:string)=>void;vaultId:string;explanation?:boolean;paragraphPosition?:'first'|'continuation'}) {
+export function ReadOnlyExplanationBlock({block,blocks,entities,onOpen,vaultId,explanation=true,paragraphPosition,transliterationLayout='off'}: {transliterationLayout?:TransliterationLayout;block:Block;blocks:Block[];entities:Entity[];onOpen:(id:string)=>void;vaultId:string;explanation?:boolean;paragraphPosition?:'first'|'continuation'}) {
   const citations=useContext(CitationPresentationContext);
   const Content = block.type === 'heading1' ? 'h2' : block.type === 'heading2' ? 'h3' : 'div';
   const locale=getLocale();
@@ -20,7 +23,8 @@ export function ReadOnlyExplanationBlock({block,blocks,entities,onOpen,vaultId,e
     return {content:html(block.content),rows:block.rows?.map(row=>row.map(html))};
   }),[entities,citations,locale]);
   const payload=renderPayload(block);
-  return <div data-paragraph-flow={paragraphPosition} data-block-id={block.id} data-semantic-kind={explanation ? 'ai-explanation' : block.semantic ?? block.semanticGroup?.kind} style={!explanation && block.semantic ? {'--semantic-color':semanticFunctions[block.semantic].color} as CSSProperties : undefined} className={'block '+block.type+(!explanation&&block.semantic?' semantic-block':'')} contentEditable={false} onDragStart={event=>event.preventDefault()} onClick={event=>{
+  const transliteration=explanation||transliterationLayout==='off'?null:blockTransliteration(block,entities);
+  return <div data-transliteration-layout={transliteration?transliterationLayout:undefined} data-paragraph-flow={paragraphPosition} data-block-id={block.id} data-semantic-kind={explanation ? 'ai-explanation' : block.semantic ?? block.semanticGroup?.kind} style={!explanation && block.semantic ? {'--semantic-color':semanticFunctions[block.semantic].color} as CSSProperties : undefined} className={'block '+block.type+(!explanation&&block.semantic?' semantic-block':'')} contentEditable={false} onDragStart={event=>event.preventDefault()} onClick={event=>{
     const mention=(event.target as Element).closest<HTMLElement>('[data-entity]');if(mention)onOpen(mention.dataset.entity!);
   }}>
     {!explanation&&block.semantic&&<span className="semantic-callout-icon" aria-hidden="true"><Icon name={semanticFunctions[block.semantic].icon}/></span>}
@@ -29,5 +33,6 @@ export function ReadOnlyExplanationBlock({block,blocks,entities,onOpen,vaultId,e
       :block.type==='image'?<div className="image-block"><img src={imageURL(vaultId,block.imageId!)} alt={block.alt||''} draggable={false}/></div>
       :block.type==='math'?<div className="math-block-render" dangerouslySetInnerHTML={{__html:renderMath(block.content.map(s=>s.text??'').join(''),true)}}/>
       :<Content className="block-content" dangerouslySetInnerHTML={payload.content}/>}
+    {transliteration&&<TransliterationBlock text={transliteration}/>}
   </div>;
 }

@@ -32,7 +32,8 @@
     "test/property-definitions.test.mjs",
     "test/property-catalogue.test.mjs",
     "test/page-history-ui.test.mjs",
-    "test/bibliography.test.mjs"
+    "test/bibliography.test.mjs",
+    "test/transliteration.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",
@@ -91,7 +92,8 @@
     "test/settings-category-ui.test.mjs",
     "test/bibliography-ui.test.mjs",
     "test/bibliographic-citations.test.mjs",
-    "test/reference-list.test.mjs"
+    "test/reference-list.test.mjs",
+    "test/transliteration-ui.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",

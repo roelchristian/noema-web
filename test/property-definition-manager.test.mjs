@@ -126,3 +126,31 @@ test('ordinary label edits use governance without an unnecessary compatibility s
  await select('Property definition',custom.id);await input('Property display label','Curated count');await click('form[aria-label="Property definition editor"] button[type="submit"]');
  assert.equal(saved.label,'Curated count');assert.equal(saved.impactFingerprint,'label-only');assert.equal(saved.cardinality,'many');assert.equal(document.querySelector('.property-definition-impact'),null);
 }));
+
+
+test('committed updates remain the cancel and navigation baseline when schema refresh fails',async t=>fixture(t,async({select,click})=>{
+ t.mock.method(api,'propertyDefinitionImpact',async(_vault,_id,body)=>({fingerprint:'new-kind',definition:{...custom,...body},affectedValues:0,compatibleValues:0,incompatible:[]}));
+ t.mock.method(api,'updatePropertyDefinition',async(_vault,_id,body)=>({...custom,...body}));
+ t.mock.method(api,'entitySchema',async()=>{throw new Error('refresh offline');});
+ await select('Property definition',custom.id);await select('Property value kind','integer');
+ await click('form[aria-label="Property definition editor"] button[type="submit"]');
+ assert.match(document.querySelector('.property-definition-manager').textContent,/definition was saved/);
+ await select('Property value kind','boolean');
+ await click([...document.querySelectorAll('button')].find(node=>node.textContent==='Cancel changes'));
+ assert.equal(document.querySelector('[aria-label="Property value kind"]').value,'integer');
+ await select('Property definition','builtin:person:birth_date');await select('Property definition',custom.id);
+ assert.equal(document.querySelector('[aria-label="Property value kind"]').value,'integer');
+}));
+
+
+test('committed creates participate in registry and collision checks while refresh is unavailable',async t=>fixture(t,async({input,click})=>{
+ t.mock.method(api,'createPropertyDefinition',async(_vault,body)=>({...custom,...body,id:'custom:accepted',legacyName:body.name}));
+ t.mock.method(api,'entitySchema',async()=>{throw new Error('refresh offline');});
+ await input('Property display label','Accepted');await click('form[aria-label="Property definition editor"] button[type="submit"]');
+ assert.ok([...document.querySelectorAll('.schema-registry-list button')].some(node=>node.textContent.includes('Accepted')));
+ await click([...document.querySelectorAll('button')].find(node=>node.textContent==='Add property'));
+ await input('Property display label','Accepted');
+ assert.equal(document.querySelector('[aria-label="Stable property key"]').value,'accepted_2');
+ assert.equal(document.querySelector('[aria-label="Stored property name"]').value,'Accepted (2)');
+ assert.ok([...document.querySelectorAll('button')].some(node=>node.textContent==='Retry schema refresh'));
+}));

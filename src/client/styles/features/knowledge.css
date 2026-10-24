@@ -364,7 +364,7 @@
   gap: 17px
 }
 .entity-card {
-  background: light-dark(transparent, var(--surface-raised));
+  background: transparent;
   color: var(--text);
   border: 1px solid light-dark(#e7e7e7, var(--line));
   border-radius: 8px;
@@ -3970,7 +3970,7 @@
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--surface-raised);
+  background: light-dark(var(--surface-raised), var(--surface-popover));
   box-shadow: var(--shadow-menu);
 }
 .knowledge-summary-menu-items > button {

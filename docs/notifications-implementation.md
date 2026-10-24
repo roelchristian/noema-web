@@ -103,16 +103,20 @@ outside it. Server and shared processing files are byte-identical to main.
 Independent review and 89 affected checks passed; the evidence preparation test
 also checks numeric updates without repeated stage announcements.
 
-Quiet Graphite [#106](https://github.com/roelchristian/noema-web/pull/106) is a
-separate unmerged draft and is not included or required for these notices. This
-branch adds aliases referencing existing neutral surfaces; #106 owns the dark
-base values and feature visuals. Expected shared-file overlap is `tokens.css`,
-feature editor/Knowledge/source CSS and the design/dark browser fixtures.
-When both land, retain Graphite's base-token changes and these notice aliases;
-retain shared neutral notice geometry and removed legacy selectors rather than
-reintroducing Graphite adjustments for retired panels. Preserve the updated
-neutral-status browser fixtures when resolving any test conflicts. No changes
-from #106 have been copied into this branch.
+At the first publication attempt, Quiet Graphite [#106](https://github.com/roelchristian/noema-web/pull/106)
+was a separate unmerged draft, and no changes from that branch were included.
+A subsequent remote reconciliation found #106 already merged into main at
+`1753f1cae20d50122019502ee0605b8959299c82`. That current main was integrated by a
+second merge, preserving all seven phase commits and the prior #104 integration.
+No standalone Graphite branch was merged or copied.
+
+Independent review confirmed the complete base token file remains identical to
+current main, followed only by the notice aliases. Graphite owns the dark base
+values; shared notices consume those values through neutral surface/status
+aliases. The automatic merge preserved the removed legacy selectors, neutral
+shared geometry and updated browser fixtures, without feature-specific dark
+notice overrides. Source processing/server/shared algorithms remain identical
+to current main.
 
 Publication validation and exact-head CI are reported in the draft PR. No ready,
 merge or deployment action is authorized by this follow-up.
@@ -131,3 +135,13 @@ browser UI zoom remain unrun.
 Current integration logs: `/tmp/noema-alerts-integration-{build,focused,all}.log`,
 `/tmp/noema-integrated-{notifications,reprocessing-rerun,review,design,dark,dark-mobile}.log`.
 Current screenshots/JSON use `/tmp/noema-integrated-*-evidence`.
+
+After main incorporated #106 (`1753f1c`), build/styles/types, 69 focused checks
+and the full suite passed again (1,459 passed, seven skips, zero failures).
+Current Graphite browser checks all passed: notifications four combinations,
+design 12, dark 12, V2 reprocessing desktop/mobile, and Review Centre/Activity
+14 groups with zero provider calls. Upstream #106's atomic contrast sampling
+removed the prior dark-harness timing failure. Logs use
+`/tmp/noema-graphite-alerts-{build,focused,all,notifications,design,dark,reprocessing,review}.log`.
+Notification/design evidence contains 28/110 screenshots respectively; minimum
+sampled notification contrast is 6.15:1.

@@ -19,7 +19,7 @@
   color: var(--text-muted);
 }
 .display-options button[aria-pressed=true] {
-  background: var(--surface-raised);
+  background: light-dark(var(--surface-raised), var(--selection-neutral));
   color: var(--text);
   box-shadow: 0 1px 4px #0002;
   font-weight: 600;

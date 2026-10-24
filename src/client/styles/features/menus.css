@@ -146,10 +146,6 @@
   border-color: var(--control-border);
   color: var(--text);
 }
-:root[data-mode=dark] :is(.nav:hover, .page-link:hover) {
-  background: var(--surface-hover);
-  color: var(--text);
-}
 @media (max-width: 750px), (pointer: coarse) {
   .menu-primitive[data-menu-size] {
     --menu-target: var(--touch-target-size);

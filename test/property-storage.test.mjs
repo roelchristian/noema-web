@@ -108,11 +108,11 @@ test('typed scalar validation preserves identifiers, tri-state booleans, precisi
  assert.equal(classify('integer','01').integer_value,1);assert.equal(classify('integer','2.3').compatibility,'legacy_incompatible');
  assert.equal(classify('integer','3',{min:4}).compatibility,'legacy_incompatible');
  assert.equal(classify('quantity','2.5 km').unit,'km');assert.equal(classify('coordinates','91, 180').compatibility,'legacy_incompatible');
- assert.equal(classify('date','1929').compatibility,'valid');assert.equal(classify('date','circa 1929').compatibility,'unresolved');
+ assert.equal(classify('date','1929').compatibility,'valid');assert.equal(classify('date','circa 1929').compatibility,'valid');
  assert.equal(classify('date','10/21/1929').compatibility,'unresolved');
  assert.equal(classify('date','30 February 2026').compatibility,'legacy_incompatible');
  const approximate=classifyPropertyValue({...base,valueKind:'date'},{name:'birth date',value:'circa 1815',target_id:null});
- assert.equal(approximate.compatibility,'unresolved');assert.equal(approximate.temporal_date_id,null);
+ assert.equal(approximate.compatibility,'valid');assert.equal(approximate.temporal_date_id,null);
  assert.equal(validatePropertyValue({...base,valueKind:'date'},{name:'birth date',value:'circa 1815',target_id:null}),null);
  for(const raw of ['2026-02-30T12:00:00Z','2026-01-01T24:00:00Z','2026-01-01T12:00:00'])assert.equal(classify('datetime',raw).compatibility,'legacy_incompatible');
  assert.equal(classify('datetime','2024-02-29T12:00:00+05:30').compatibility,'valid');

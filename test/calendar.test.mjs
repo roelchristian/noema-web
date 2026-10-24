@@ -8,7 +8,7 @@ import {Pages} from '../src/server/modules/pages.ts';
 import {Knowledge} from '../src/server/modules/knowledge.ts';
 import {TemporalIndex} from '../src/server/modules/temporal.ts';
 import {VaultBackups} from '../src/server/modules/vault-backups.ts';
-import {monthBounds,monthCells,civilWeek,civilRowWeek,isoRowWeek,dateSummary,dateAssociations,shiftMonth,shiftDay,dateLabel,calendarGroups,emptyCuration} from '../src/client/calendar/calendar-model.ts';
+import {monthBounds,monthCells,civilWeek,civilRowWeek,isoRowWeek,dateSummary,dateAssociations,shiftMonth,shiftDay,dateLabel,calendarGroups,civilDate,civilWeekday,emptyCuration} from '../src/client/calendar/calendar-model.ts';
 import {capturePageSelection,restorePageSelection} from '../src/client/state/use-page-selection.ts';
 import {setupDOM} from './helpers/dom.mjs';
 import {selectionOffsets} from '../scripts/browser-selection.mjs';
@@ -101,7 +101,7 @@ test('civil weeks use Sunday with January 1 by default and ISO rules for Monday 
  assert.equal(civilWeek('2028-12-30').label,'2028-W53');
  assert.equal(civilWeek('2024-02-29').week,9);
  for(const start of [0,1])for(const date of ['0001-01-01','1900-01-01','2000-01-01','2026-12-31','9999-12-31']){
-  const week=civilWeek(date,start);assert.equal(new Date(`${week.from}T00:00:00Z`).getUTCDay(),start);assert.equal(shiftDay(week.from,6),week.to);assert.ok(week.week>=1&&week.week<=53);
+  const week=civilWeek(date,start);assert.equal(civilDate(week.from).getUTCDay(),start);assert.equal(shiftDay(week.from,6),week.to);assert.ok(week.week>=1&&week.week<=53);
  }
 });
 
@@ -118,4 +118,19 @@ test('distinct association ordering retains roles and excludes pending or incide
  assert.deepEqual(dateAssociations(item,false).map(entry=>entry.description),['Curated date','occurs on','ends on']);
  assert.deepEqual(dateAssociations(item).map(entry=>entry.kind),['curation','event','event','property','reference']);
  assert.deepEqual(dateAssociations({...item,relations:[...item.relations].reverse()}),dateAssociations(item));
+});
+
+
+test('Julian month browsing uses its own leap days, weekdays and calendar arithmetic',()=>{
+ assert.equal(monthBounds('1900-02','julian').to,'1900-02-29');
+ assert.equal(monthBounds('1900-02').to,'1900-02-28');
+ assert.equal(shiftDay('1900-02-28',1,'julian'),'1900-02-29');
+ assert.equal(shiftDay('1900-03-01',-1,'julian'),'1900-02-29');
+ assert.equal(civilWeekday('1917-10-25','julian'),3,'25 October Julian was Wednesday, 7 November Gregorian');
+ assert.equal(civilWeekday('1917-10-25'),4);
+ assert.equal(monthCells('1900-02',1,'julian').flat().includes('1900-02-29'),true);
+ for(const calendar of ['gregorian','julian'])for(const start of [0,1])for(const month of ['0001-01','9999-12']){const cells=monthCells(month,start,calendar);assert.ok(cells.flat().every(value=>value===null||/^\d{4}-\d{2}-\d{2}$/.test(value)));const week=civilRowWeek(month,month==='0001-01'?0:cells.length-1,start,calendar);assert.ok(week.week>=1&&week.week<=53);assert.notEqual(week.year,0);}
+ assert.equal(dateLabel('1900-02-29','julian'),'29 February 1900');
+ assert.equal(civilDate('-0001-12-31').getUTCFullYear(),0,'canonical 1 BCE uses internal astronomical zero only for arithmetic');
+ assert.equal(shiftDay('-0001-12-31',1),'0001-01-01');
 });

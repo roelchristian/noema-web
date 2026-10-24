@@ -63,7 +63,7 @@ const tables={
   source_author_jobs:{columns:'file_id,status,content_hash,attempts,next_attempt_at,error,updated_at',scope:'vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL)'},
   property_definitions:{columns:'id,definition_json',scope:'vault_id=?'},
   property_value_metadata:{columns:'property_id,definition_id,compatibility,reason,integer_value,decimal_value,boolean_value,text_value,latitude,longitude,unit,position,target_id,temporal_date_id',scope:'vault_id=?'},
-  temporal_relations:{columns:'id,date_id,entity_id,mention_id,kind,origin,status,confidence,source_mention_id,property_id,property_hash',scope:'vault_id=?'},
+  temporal_relations:{columns:'id,date_id,entity_id,mention_id,kind,origin,status,confidence,source_mention_id,property_id,property_hash,layer',scope:'vault_id=?'},
   page_versions:{columns:'id,page_id,page_revision,created_at,kind,name,pinned,content_hash,snapshot_json,restored_from_version_id',scope:'vault_id=?'},
   pages:{columns:'id,title,icon,featured_image_id,blocks,ai_status,ai_review_accepted,generation_metadata,creation_method,language,created_at,updated_at,revision,deleted_at,archived_at',scope:'vault_id=?'},
   source_reprocessing:{columns:'id,file_id,status,created_at,updated_at,payload',scope:'vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL)'},
@@ -440,7 +440,7 @@ export class VaultBackups {
         const temporalDates=new Set<string>();
         for(const row of rows.temporal_dates) {
           if(row.calendar!=='gregorian'&&row.calendar!=='julian')throw invalid();
-          const date=temporalDate(string(row,'value',10),row.calendar);
+          const date=temporalDate(string(row,'value',64),row.calendar);
           if(!date||date.id!==row.id||date.precision!==row.precision||temporalDates.has(date.id))throw invalid();
           temporalDates.add(date.id);
           insert('temporal_dates',{vault_id:vault,...date});
@@ -493,10 +493,11 @@ export class VaultBackups {
           insert('temporal_source_mentions',{id,vault_id:vault,file_id:fileId,source_id:sourceId,passage_id:evidence.passageId!,generation_id:evidence.generationId!,source_hash:sourceHash,passage_hash:passageHash,start_offset:start,end_offset:end,start_line:integer(row,'start_line',1),end_line:integer(row,'end_line',integer(row,'start_line',1)),original_text:original,date_id:dateId,reason:nullable(row,'reason',200),stale:1});
         }
         for(const row of rows.temporal_relations) {
+          if(row.layer!=null&&!['personal','knowledge','historical'].includes(String(row.layer)))throw invalid();
           const dateId=dateRef(row.date_id),mentionId=row.mention_id===null?null:ref(temporalMentions,row.mention_id),sourceMentionId=row.source_mention_id==null?null:ref(sourceMentionIds,row.source_mention_id),propertyId=row.property_id==null?null:ref(propertyIds,row.property_id),propertyHash=row.property_hash==null?null:string(row,'property_hash',64);
           if([mentionId,sourceMentionId,propertyId].filter(Boolean).length>1||sourceMentionId&&sourceMentionDates.get(sourceMentionId)!==dateId||propertyHash&&!/^[a-f0-9]{64}$/.test(propertyHash))throw invalid();
           if(mentionId&&mentionDates.get(mentionId)!==dateId||!['occurs_on','born_on','published_on','deadline','discusses','ends_on','died_on','founded_on','accessed_on'].includes(String(row.kind))||!['manual','inferred'].includes(String(row.origin))||!['accepted','pending','rejected'].includes(String(row.status))||row.confidence!==null&&(typeof row.confidence!=='number'||!Number.isFinite(row.confidence)||row.confidence<0||row.confidence>1))throw invalid();
-          insert('temporal_relations',{id:randomUUID(),vault_id:vault,date_id:dateId,entity_id:ref(entityIds,row.entity_id),mention_id:mentionId,kind:String(row.kind),origin:String(row.origin),status:String(row.status),confidence:row.confidence as number|null,source_mention_id:sourceMentionId,property_id:propertyId,property_hash:propertyHash});
+          insert('temporal_relations',{id:randomUUID(),vault_id:vault,date_id:dateId,entity_id:ref(entityIds,row.entity_id),mention_id:mentionId,kind:String(row.kind),origin:String(row.origin),status:String(row.status),confidence:row.confidence as number|null,source_mention_id:sourceMentionId,property_id:propertyId,property_hash:propertyHash,layer:row.layer==null?null:String(row.layer)});
         }
         for(const row of rows.entity_overviews) {
           const entityId=ref(entityIds,row.entity_id);

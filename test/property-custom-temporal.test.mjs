@@ -16,14 +16,15 @@ test('custom date definitions use canonical temporal evidence and preserve uncer
   const values=knowledge.property('default',entity.id,{name:'Observed on',value:'circa 1906',definition_id:definition.id}).properties;
   const exact=values.find(item=>item.value==='March 1905 (Julian)'),uncertain=values.find(item=>item.value==='circa 1906');
   assert.equal(exact.metadata.temporal_date_id,'julian:month:1905-03');assert.equal(exact.metadata.text_value,null);
-  assert.equal(uncertain.metadata.compatibility,'unresolved');assert.equal(uncertain.metadata.temporal_date_id,null);
+  assert.equal(uncertain.metadata.compatibility,'valid');assert.equal(uncertain.metadata.temporal_date_id,'gregorian:year:~1906');
   assert.equal(store.get('SELECT kind FROM temporal_relations WHERE property_id=?',exact.id).kind,'discusses');
+  assert.equal(store.get('SELECT status FROM temporal_relations WHERE property_id=?',uncertain.id).status,'pending','approximate values remain proposals');
   const evidence=new TemporalProperties(store).resolve('default',exact.id,exact.metadata.temporal_date_id,propertyFingerprint('place','Observed on',exact.value));assert.equal(evidence.status,'current');
   const archive=await backups.export('default'),restored=await backups.import(archive.bytes),copy=knowledge.list(restored.id).find(item=>item.name===entity.name);
   const rows=knowledge.detail(restored.id,copy.id).properties.filter(item=>item.name==='Observed on');
   assert.deepEqual(rows.map(item=>item.value),values.map(item=>item.value));assert.equal(rows[0].metadata.definition_id,definition.id);
   assert.equal(rows.find(item=>item.value===exact.value).metadata.temporal_date_id,'julian:month:1905-03');
-  assert.equal(rows.find(item=>item.value===uncertain.value).metadata.compatibility,'unresolved');
+  assert.equal(rows.find(item=>item.value===uncertain.value).metadata.compatibility,'valid');
   assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
  }finally{db.close();}
 });

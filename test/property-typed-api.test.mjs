@@ -31,7 +31,7 @@ test('typed dates use canonical temporal evidence and preserve partial precision
  const person=knowledge.create('default',{name:'Temporal Person',type:'person'});
  const uncertain=knowledge.create('default',{name:'Uncertain Temporal Person',type:'person'});
  const unresolved=knowledge.property('default',uncertain.id,{name:'birth date',value:'circa 1815',definition_id:'builtin:person:birth_date'}).properties[0];
- assert.equal(unresolved.metadata.compatibility,'unresolved');assert.equal(unresolved.metadata.temporal_date_id,null);
+ assert.equal(unresolved.metadata.compatibility,'valid');assert.equal(unresolved.metadata.temporal_date_id,'gregorian:year:~1815');
  let value=knowledge.property('default',person.id,{name:'birth date',value:'1815-12',definition_id:'builtin:person:birth_date'}).properties[0];
  assert.equal(value.value,'1815-12');assert.equal(value.metadata.temporal_date_id,'gregorian:month:1815-12');assert.equal(value.metadata.text_value,null);
  const id=value.id;
@@ -39,7 +39,7 @@ test('typed dates use canonical temporal evidence and preserve partial precision
  assert.equal(value.id,id);assert.equal(value.value,'10 December 1815 (Julian)');assert.equal(value.metadata.temporal_date_id,'julian:day:1815-12-10');
  fail(()=>knowledge.property('default',person.id,{name:'birth date',value:'not a supported date',definition_id:'builtin:person:birth_date'},id));
  value=knowledge.property('default',person.id,{name:'birth date',value:'circa 1815',definition_id:'builtin:person:birth_date'},id).properties[0];
- assert.equal(value.value,'circa 1815');assert.equal(value.metadata.compatibility,'unresolved');assert.equal(value.metadata.temporal_date_id,null);
+ assert.equal(value.value,'circa 1815');assert.equal(value.metadata.compatibility,'valid');assert.equal(value.metadata.temporal_date_id,'gregorian:year:~1815');
  assert.ok(store.get('SELECT 1 FROM temporal_relations WHERE property_id=?',id),'earlier temporal evidence retained');
  const org=knowledge.create('default',{name:'Founded Organization',type:'organization'});
  value=knowledge.property('default',org.id,{name:'founded',value:'1901',definition_id:'builtin:organization:founded'}).properties[0];assert.equal(value.metadata.temporal_date_id,'gregorian:year:1901');
@@ -82,6 +82,10 @@ test('only newly explicit native structured date assertions are accepted; indexi
   let relation=store.get('SELECT origin,status,kind FROM temporal_relations WHERE property_id=?',native.id);
   assert.deepEqual({...relation},{origin:'manual',status:'accepted',kind:'occurs_on'});
   assert.equal(store.get('SELECT date_id FROM temporal_relations WHERE property_id=?',native.id).date_id,'julian:day:1815-06-18');
+  const bceEvent=knowledge.create('default',{name:'Native BCE event',type:'event'});
+  const bce=knowledge.property('default',bceEvent.id,{name:'start date',value:'-0044-03-15 (Julian)',definition_id:'builtin:event:start_date'}).properties[0];
+  assert.equal(store.get('SELECT status FROM temporal_relations WHERE property_id=?',bce.id).status,'accepted');
+  assert.equal(store.get('SELECT date_id FROM temporal_relations WHERE property_id=?',bce.id).date_id,'julian:day:-0044-03-15');
   const imported=knowledge.create('default',{name:'Imported event',type:'event'});
   const value=knowledge.property('default',imported.id,{name:'start date',value:'1815-06-18'}).properties[0];
   recordPropertyProvenance(store,'default',value.id,{origin:'imported'});

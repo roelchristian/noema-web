@@ -400,8 +400,9 @@ revision-aware incremental indexing, lifecycle/backup boundaries, separate curat
 month/agenda/inspectors, explicit filters, typed compatible property review, manual
 relationships and the independent liturgical supplements. Extraction deliberately
 supports exact English day/month/year expressions conservatively; numeric prose,
-relative/approximate expressions, ranges, BCE, centuries and conversions between
-historical calendars remain unresolved rather than guessed. Explicit original
+relative expressions and conversions between historical calendars remain unresolved.
+Historical forms supported by the later chronology update are documented below;
+unsupported qualifiers remain unresolved rather than guessed. Explicit original
 calendar qualifiers and precision are retained; typed date fields accept ISO dates.
 No incidental mention becomes a personal commitment or semantic event.
 
@@ -492,3 +493,56 @@ At extreme zoom the seven-column grid keeps a bounded horizontal scroll surface 
 than overlapping day targets or widening the document. Set `NOEMA_SKIP_SCREENSHOTS=1`
 when running `scripts/check-calendar-browser.mjs` to disable every capture, including
 failure captures; functional validation and JSON results remain available.
+
+## Historical chronology: supported forms and boundaries
+
+This update supersedes the historical-form deferrals in the earlier phase reports.
+
+Canonical temporal identities now retain civil BCE years (`-0044` means 44 BCE;
+`-0001` means 1 BCE). There is no canonical year zero. Leap arithmetic uses the
+corresponding astronomical year internally (1 BCE corresponds to astronomical 0).
+Gregorian and Julian validation, month lengths and weekday placement remain separate;
+no identity or authored expression is converted between calendars. Existing CE
+identities are unchanged.
+
+Supported historical canonical values are signed day/month/year dates, approximate
+nominal dates (`~1815`), closed same-precision intervals (`1814/1816`, including
+signed BCE endpoints), and century periods (`C19`, `C-1`). English extraction also
+recognizes `44 BCE`, `12 March 44 BCE`, `March 44 BCE`, `circa/about/approximately
+1815`, `between 1814 and 1816`, `1814–1816`, and numbered centuries such as `19th
+century`. Gregorian/Julian and Old Style/New Style qualifiers retain their calendar.
+Original evidence text, offsets and fingerprints remain authoritative. Detection
+creates references and proposals, never accepted event assertions.
+
+Approximation does not imply a fabricated tolerance: overlap queries use the
+nominal precision span and results visibly retain “circa”. They do not assert that
+an approximate event definitely happened within that span or exclude a wider
+historical uncertainty. An explicit bounded interval retains its endpoint precision;
+a century remains a period (the 19th century is 1801–1900), without a stored day.
+Century, interval, BCE and approximate entries use shared historical labels. The
+month grid browses CE years 1–9999; historical values can be entered/opened directly
+by canonical identity, including BCE, and period entries remain visible. A historical
+timeline is deferred; no synthetic day is generated to populate one.
+
+Unsupported forms remain unresolved rather than losing a qualifier: approximate
+BCE prose, BCE prose ranges, month-first BCE day prose, early/late centuries, mixed-precision intervals,
+open-ended intervals, question-mark uncertainty, and calendars other than Gregorian
+or Julian. Explicit canonical BCE intervals are supported even where prose extraction
+is deliberately narrower. Multilingual forms and historical era/year-start policies
+remain unsupported. No automatic calendar conversion policy is introduced.
+
+Calendar-local deterministic lower/upper query keys have a vault/calendar range
+index. Date-row limits and bounded per-date evidence previews remain in place;
+month rendering never fetches the complete evidence for every day. The extractor
+version change queues local refreshes, which continue in existing bounded batches.
+SQLite CHECK migrations preserve existing rows and child references. Backup version
+1 remains compatible: historical value strings and expanded precision/role values
+round-trip, and legacy archives without association classification still import.
+
+Accepted relationships may now carry Personal, Knowledge or Historical context
+independently of the date's curation. Facet queries match and count the relevant
+accepted relationships before loading bounded previews. Relationships without an
+explicit context inherit the curated date layer, then Knowledge. The same canonical
+date can therefore connect a personal annotation and a historical event without
+creating duplicate date objects. Browser presentation preferences retain their
+existing browser scope; no preference migration into a vault is performed.

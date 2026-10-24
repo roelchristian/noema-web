@@ -22,7 +22,7 @@ test('note dates deduplicate equivalent spellings, count occurrences and preserv
  assert.deepEqual(items.map(item=>[item.id,item.count]),[[dateId,2],['gregorian:month:2000-12',1],['gregorian:year:2000',1],['julian:day:2000-12-05',1]]);
  assert.equal(items[0].name,'December 5, 2000');
  assert.equal(items[3].name,'December 5, 2000 (Julian)');
- assert.deepEqual(noteDateRanges([{text:'31 February 2026; about 1848; 03/04/2026'}]),[]);
+ assert.deepEqual(noteDateRanges([{text:'31 February 2026; about 1848; 03/04/2026'}]).map(item=>item.date.id),['gregorian:year:~1848']);
 });
 
 test('note dates cross formatting but respect semantic boundaries, cells and explicit exclusions',()=>{

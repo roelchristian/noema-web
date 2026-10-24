@@ -148,7 +148,7 @@ export class EntityScans {
       const nextPosition=position(evidenceAnchor);
       if(raw.suggestions.length===ENTITY_SCAN_BATCH_SIZE+1&&nextPosition<lastPosition)throw new HttpError(502,'AI returned suggestions out of note order. Retry this batch.');
       lastPosition=nextPosition;
-      if(!existing&&requiresNarrativeIdentityReview({referentStatus,subtypes})&&excluded.some(item=>item.type===type&&normalizeEntityName(item.name)===normalizeEntityName(name)&&!item.existingId))throw new HttpError(502,'Narrative identity cannot be established by a shared name across batches. Use text-supported qualified names or select an explicit existing identity.');
+      if(!existing&&requiresNarrativeIdentityReview({referentStatus,subtypes})&&excluded.some(item=>item.type===type&&normalizeEntityName(item.name)===normalizeEntityName(name)))throw new HttpError(502,'Narrative identity cannot be established by a shared name across batches. Use text-supported qualified names or select an explicit existing identity.');
       if(excluded.some(item=>sameIdentity(item,{name,type,aliases,referentStatus,subtypes,existingId:existing?.id??null})))continue;
       if(previous?.continuation&&position(evidenceAnchor)<position(previous.continuation.cursor))continue;
       const key = existing?.id || `${type}:${name.trim().toLowerCase()}`;

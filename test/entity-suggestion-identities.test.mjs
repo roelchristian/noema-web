@@ -88,13 +88,18 @@ test('narrative continuation collisions require qualified identity while repeate
   const names=[...Array.from({length:24},(_,i)=>'Agent'+i),'Merlin','Next'];
   page=pages.update('default',page.id,{...page,blocks:[{id:'b',type:'paragraph',checked:false,content:[{text:names.join(' met ')+' then Merlin in another adaptation.'}]}]});
   const prefs={model:'gpt-5-mini',reasoningEffort:'low'};
-  const proposed=name=>suggestion(name,[],{type:'person',referentStatus:'fictional'});
+  const run=JSON.parse(scans.input('default',page)).untrusted_note.bodyTextRuns[0];
+  const proposed=name=>suggestion(name,[],{type:'person',referentStatus:'fictional',runId:run.runId,evidenceStart:run.text.indexOf(name)});
   const first=scans.save('default',page,JSON.stringify({suggestions:names.map(proposed)}),prefs);
   assert.ok(first.continuation);
   const previous=scans.continuation('default',page,first.id,first.continuation.token);
-  assert.throws(()=>scans.save('default',page,JSON.stringify({suggestions:[proposed('Merlin')]}),prefs,true,previous),/Narrative identity cannot be established/);
+  const variant={...proposed('Merlin'),runId:run.runId,evidenceStart:run.text.lastIndexOf('Merlin')};
+  assert.throws(()=>scans.save('default',page,JSON.stringify({suggestions:[variant]}),prefs,true,previous),/Narrative identity cannot be established/);
   const saved=knowledge.create('default',{name:'Merlin',type:'person',referentStatus:'fictional',subtypes:['person:fictional-character']});
-  const same={...proposed('Merlin'),existingId:saved.id};
+  const savedFirst=scans.save('default',page,JSON.stringify({suggestions:names.map(name=>({...proposed(name),...(name==='Merlin'?{existingId:saved.id}:{})}))}),prefs);
+  const savedPrevious=scans.continuation('default',page,savedFirst.id,savedFirst.continuation.token);
+  assert.throws(()=>scans.save('default',page,JSON.stringify({suggestions:[variant]}),prefs,true,savedPrevious),/Narrative identity cannot be established/);
+  const same={...proposed('Merlin'),existingId:saved.id,runId:run.runId,evidenceStart:run.text.indexOf('Merlin')};
   const explicit=scans.save('default',page,JSON.stringify({suggestions:[same,same]}),prefs,false);
   assert.equal(explicit.suggestions.length,1);assert.equal(explicit.suggestions[0].existingId,saved.id);
  } finally {db.close();}

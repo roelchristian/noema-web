@@ -1,3 +1,4 @@
+import {aggregateEntityConnections} from './connection-read-model';
 import {PropertyProposalReview} from './PropertyProposalReview';
 import {EntityPropertyList} from './EntityPropertyList';
 import {propertyLabel,resolvePropertyDefinition} from '../../shared/property-definitions';
@@ -19,7 +20,6 @@ import {hasEntityDraft} from './entity-drafts';
 import {useEntitySchema} from './useEntitySchema';
 import {EntityOverview} from './EntityOverview';
 import {EntityPages} from './EntityPages';
-import {EntityMentions} from './EntityMentions';
 import {EntitySourceEvidence} from './EntitySourceEvidence';
 import type {EntityMentionReference} from '../../shared/entity-mentions';
 import {SourceLifecycleDialog} from './SourceLifecycleDialog';
@@ -63,7 +63,7 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
   const [entityAttempt, setEntityAttempt] = useState(0);
   const navigationKey = vaultId + ':' + id;
   const savedNavigation = () => window.history.state?.entityHome?.key === navigationKey ? window.history.state.entityHome : null;
-  const initialTab = (): HomeTab => reviewTab ?? (tabs.includes(savedNavigation()?.tab) ? savedNavigation().tab : savedNavigation()?.tab === 'sources' ? 'evidence' : savedNavigation()?.tab === 'mentions' || savedNavigation()?.tab === 'discovery' ? 'connections' : 'overview');
+  const initialTab = (): HomeTab => reviewTab ?? (hasEntityDraft(vaultId,id) ? 'overview' : tabs.includes(savedNavigation()?.tab) ? savedNavigation().tab : savedNavigation()?.tab === 'sources' ? 'evidence' : savedNavigation()?.tab === 'mentions' || savedNavigation()?.tab === 'discovery' ? 'connections' : 'overview');
   const [tab, setTab] = useState<HomeTab>(initialTab);
   const activeTab = useRef(tab); activeTab.current=tab;
   const article = useRef<HTMLElement>(null);
@@ -120,7 +120,11 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
   const propertyDisplayLabel=(property:import('../../shared/domain').Property)=>{const owner=property.entity_id===id?entity:entities.find(item=>item.id===property.entity_id);return owner?resolvePropertyDefinition(schema.propertyDefinitions,owner.type,owner.subtypes,property.name,property.metadata?.definition_id)?.label??propertyLabel(property.name):propertyLabel(property.name);};
   const references: EntityConnection[] = entity?.properties.filter(property => property.target_id).map(property => ({key:property.id, target:property.target_id!, label:'Property · ' + propertyDisplayLabel(property)})) ?? [];
   const incoming: EntityConnection[] = entity?.incomingProperties.map(property => ({key:property.id, target:property.entity_id, label:'Referenced via ' + propertyDisplayLabel(property)})) ?? [];
-  const connectionCount = relationships.length + references.length + incoming.length;
+  const connectionRows = aggregateEntityConnections([...relationships,...references,...incoming]);
+  const connectionCount = connectionRows.length;
+  const [connectionQuery,setConnectionQuery] = useState('');
+  const [connectionFilter,setConnectionFilter] = useState('all');
+  const filteredEntities=connectionRows.filter(row=>((entities.find(item=>item.id===row.target)?.name??'')+' '+row.label).toLocaleLowerCase().includes(connectionQuery.toLocaleLowerCase()));
   const propertyNames = entity ? [...new Map([...entity.propertyNames, ...inheritedPropertyNames(schema, entity.type, entity.subtypes)].map(name => [name.toLowerCase(), name])).values()] : [];
   const template = entityHomeTemplate(entity?.type ?? 'concept');
   const subtypes = schema.subtypes.filter(subtype => entity?.subtypes.includes(subtype.id)).map(subtype => subtype.name);
@@ -157,7 +161,7 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
         {entity.description ? <p className="eh-description eh-short-description">{previewText(entity.description,360)}</p> : <p className="entity-detail-empty">{uiText('No description recorded yet.')} <button type="button" className="eh-text-action" onClick={()=>setDetailsOpen(true)}>{uiText('Add a description')}</button></p>}
         <section className="eh-section eh-glance-properties"><h2>{uiText(template.detailsTitle)}</h2>{entity.previewLimited?<p role="status">{uiText('Loading complete properties…')}</p>:<EntityPropertyList active={tab==='overview'} definitions={schema.propertyDefinitions} limit={4} key={vaultId + ':' + id} vaultId={vaultId} entity={{...entity,propertyNames}} entities={entities} mention={mention} priority={template.prominentProperties} onSave={(input,propertyId)=>mutate(()=>api.saveProperty(vaultId,id,input,propertyId))} onRemove={propertyId=>mutate(()=>api.removeConnection(vaultId,id,'properties',propertyId))} onRefresh={()=>mutate(()=>api.entity(vaultId,id))}/>}</section>
         {(!!entity.propertyProposalCount||reviewDestination?.category==='property')&&<PropertyProposalReview proposalId={reviewDestination?.category==='property'?reviewDestination.proposalId:undefined} key={vaultId+':'+id+':review'} vaultId={vaultId} entityId={id} entities={entities} onUpdated={async()=>{await mutate(()=>api.entity(vaultId,id));}}/>}
-        <EntityGlance entity={entity} entities={entities} connections={[...relationships,...references,...incoming]} onOpen={onOpen} onOpenPage={onOpenPage} onOpenMention={onOpenMention} onTab={()=>switchTab('connections')}/>
+        <EntityGlance entity={entity} entities={entities} connections={connectionRows} onOpen={onOpen} onOpenPage={onOpenPage} onOpenMention={onOpenMention} onTab={()=>switchTab('connections')}/>
         <EntityGlanceSources vaultId={vaultId} entityId={id} refreshKey={refreshKey} active={tab==='overview'} onReady={restoreScroll} onTab={()=>switchTab('evidence')} onOpenSourcePassage={onOpenSourcePassage}/>
         <EntityOverview guidance={template.overviewGuidance} key={vaultId + ':' + id} vaultId={vaultId} entity={entity} onSave={input => mutate(() => api.saveEntityOverview(vaultId, id, input))} onRefresh={() => mutate(() => api.entity(vaultId, id))}/>
         {!!entity.aliases?.length && <section className="eh-section"><h2>{uiText('Also known as')}</h2><ul className="entity-overview-aliases">{entity.aliases.slice(0,5).map(alias=><li key={alias}>{previewText(alias,100)}</li>)}</ul><button type="button" className="eh-text-action" onClick={()=>setDetailsOpen(true)}>{uiText('Edit identity and aliases')}</button></section>}
@@ -173,15 +177,14 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
         <div className="eh-overview-links"><button type="button" aria-expanded={exploring} onClick={()=>setExploring(value=>!value)}>{uiText(exploring?'Show grouped connections':'Explore neighborhood')}</button></div>
         {exploring && <EntityNeighborhood vaultId={vaultId} id={id} refreshKey={refreshKey} onOpen={onOpen} onInspect={onInspect}/>}
         <div hidden={exploring}>
-        <section className="eh-section"><h2>{uiText('Relationships')} <span>{relationships.length}</span></h2><EntityConnections items={relationships} entities={entities} onOpen={onOpen} empty={uiText('No relationships yet.')}/></section>
-        <section className="eh-section"><h2>{uiText('Referenced entities')} <span>{references.length}</span></h2><EntityConnections items={references} entities={entities} onOpen={onOpen} empty={uiText('No entity references in properties.')}/></section>
-        <section className="eh-section"><h2>{uiText('Referenced by')} <span>{incoming.length}</span></h2><EntityConnections items={incoming} entities={entities} onOpen={onOpen} empty={uiText('No other entities reference this one yet.')}/></section>
+        <div className="eh-overview-links"><label>{uiText('Search connections')}<input type="search" value={connectionQuery} onChange={event=>setConnectionQuery(event.target.value)}/></label><label>{uiText('Show')}<select value={connectionFilter} onChange={event=>setConnectionFilter(event.target.value)}><option value="all">{uiText('All')}</option><option value="entities">{uiText('Entities')}</option><option value="pages">{uiText('Pages')}</option><option value="mentions">{uiText('Mentions')}</option></select></label></div>
+        <section className="eh-section" hidden={connectionFilter==='pages'||connectionFilter==='mentions'}><h2>{uiText('Connected entities')} <span>{connectionRows.length}</span></h2><EntityConnections items={filteredEntities} entities={entities} onOpen={onOpen} empty={uiText('No matching connected entities.')}/></section>
         <details className="eh-section"><summary>{uiText('Edit relationships')}</summary><RelationshipEditor entity={entity} entities={entities} mention={mention} onSave={(input, relationId) => mutate(() => api.saveRelationship(vaultId, id, input, relationId))} onRemove={relationId => mutate(() => api.removeConnection(vaultId, id, 'relationships', relationId))}/></details>
         </div>
         </>}
         {!entity.previewLimited && <>
-        <EntityPages key={'pages:' + vaultId + ':' + id} entity={entity} pages={pages} onOpenPage={onOpenPage} onAssociate={(pageId, input) => mutate(() => api.associateEntityPage(vaultId, id, pageId, input))} onRemove={pageId => mutate(() => api.removeEntityPage(vaultId, id, pageId))} onCreatePage={onCreatePage}/>
-        <EntityMentions pages={pageMentions} linkedPages={linkedPages} onOpenPage={onOpenPage} onOpenMention={onOpenMention} onPin={pageId => void pinMention(pageId)} pinning={pinning} error={pageError}/>
+        <div hidden={connectionFilter==='entities'}><EntityPages queryFilter={connectionQuery} mentionsOnly={connectionFilter==='mentions'} onOpenMention={onOpenMention} key={'pages:' + vaultId + ':' + id} entity={entity} pages={pages} onOpenPage={onOpenPage} onAssociate={(pageId, input) => mutate(() => api.associateEntityPage(vaultId, id, pageId, input))} onRemove={pageId => mutate(() => api.removeEntityPage(vaultId, id, pageId))} onCreatePage={onCreatePage}/>
+        </div>
         </>}
         <button type="button" className="eh-text-action" aria-expanded={discoveryOpen} onClick={()=>setDiscoveryOpen(value=>!value)}>{uiText('Find connections')}</button>
         {discoveryOpen && <EntityDiscovery key={vaultId+':'+id} vaultId={vaultId} id={id} refreshKey={refreshKey} onUpdated={async()=>{await onUpdated();await mutate(()=>api.entity(vaultId,id));}} onOpenEntity={onOpen} onOpenPage={onOpenPage} onOpenMention={onOpenMention} onOpenSourcePassage={onOpenSourcePassage}/>}

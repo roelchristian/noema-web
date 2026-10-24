@@ -3041,7 +3041,7 @@
   overscroll-behavior: contain;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--surface-raised);
+  background: light-dark(var(--surface-raised), var(--surface-popover));
   color: var(--text);
   box-shadow: var(--shadow-menu);
   scroll-padding: 6px;
@@ -3235,7 +3235,7 @@
 .speech-info summary:hover, .speech-info[open] summary { background: var(--surface-hover); color: var(--text); }
 .speech-info summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
 .speech-info .icon { width: 16px; height: 16px; }
-.speech-info-panel { position: absolute; bottom: calc(100% + var(--space-4)); right: 0; display: grid; gap: var(--space-1); width: 190px; padding: var(--space-3); border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: var(--shadow-menu); color: var(--text-muted); font-size: 11px; }
+.speech-info-panel { position: absolute; bottom: calc(100% + var(--space-4)); right: 0; display: grid; gap: var(--space-1); width: 190px; padding: var(--space-3); border: 1px solid var(--line); border-radius: 8px; background: light-dark(var(--surface), var(--surface-popover)); box-shadow: var(--shadow-menu); color: var(--text-muted); font-size: 11px; }
 .speech-info-panel strong { font-size: 12px; font-weight: 500; color: var(--text); }
 .speech-notice { grid-column: 1 / -1; margin: 0; color: var(--text-muted); }
 .editor-speech[data-compact=true] { --speech-gutter: var(--space-2); grid-template-columns: minmax(0, 1fr) auto auto auto; gap: var(--space-1); }

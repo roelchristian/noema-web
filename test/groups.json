@@ -100,7 +100,8 @@
     "test/page-toolbar-menu.test.mjs",
     "test/page-connections-ui.test.mjs",
     "test/relationship-predicates.test.mjs",
-    "test/notification-components.test.mjs"
+    "test/notification-components.test.mjs",
+    "test/notice-recovery-ui.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",

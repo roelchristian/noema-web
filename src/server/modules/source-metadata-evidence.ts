@@ -1,6 +1,8 @@
 import {createHash} from 'node:crypto';
 import type {MetadataEvidence} from '../../shared/source-metadata.js';
 import type {Store} from '../store.js';
+import type {SourceFile} from '../../shared/domain.js';
+import {mathSource} from './source-math-text.js';
 
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
 /** Offsets are an immutable record of extraction, never rewritten during remapping. */
@@ -14,7 +16,7 @@ export function locateMetadataEvidence(text:string,evidence:MetadataEvidence):{s
 }
 export function metadataEvidenceStaleReason(store:Store,vault:string,sourceId:string,evidence:MetadataEvidence):string|null {
  if(!evidence||typeof evidence!=='object'||!['canonical','editorial'].includes(evidence.version)||typeof evidence.revision!=='string'||!/^[a-f0-9]{64}$/.test(evidence.revision))return 'The evidence version is unavailable or invalid.';
- const file=store.get<{text:string;status:string;admitted:number;entity_id:string|null}>('SELECT text,status,admitted,entity_id FROM source_files WHERE id=? AND vault_id=?',evidence.fileId,vault);
+ const file=store.get<SourceFile>('SELECT * FROM source_files WHERE id=? AND vault_id=?',evidence.fileId,vault);
  if(!file||file.entity_id!==sourceId||file.status!=='ready'||!file.admitted)return 'The evidence attachment is no longer available for this Source.';
  let text=file.text;
  if(evidence.version==='editorial') {
@@ -22,10 +24,10 @@ export function metadataEvidenceStaleReason(store:Store,vault:string,sourceId:st
   if(!row)return 'The editorial evidence revision is unavailable.';
   try {
    const revision=JSON.parse(row.payload) as {reprocessed?:{text?:unknown};original?:{text?:unknown}};
-   if(typeof revision.reprocessed?.text!=='string'||typeof revision.original?.text!=='string'||revision.original.text!==file.text)return 'The editorial evidence no longer belongs to the current canonical extraction.';
+   if(typeof revision.reprocessed?.text!=='string'||typeof revision.original?.text!=='string'||revision.original.text!==mathSource(store,file).text)return 'The editorial evidence no longer belongs to the current canonical extraction.';
    text=revision.reprocessed.text;
-   // The derivative version is immutable evidence. A later editorial decision is a new version.
-   if(hash(text)!==evidence.revision)return 'The editorial evidence revision changed.';
+   // Preserve the extraction revision as audit evidence. Later derivative edits may
+   // retain this support only when its exact excerpt still maps unambiguously.
   } catch {return 'The editorial evidence revision is invalid.';}
  }
  return locateMetadataEvidence(text,evidence)?null:'The supporting excerpt changed, disappeared, or is ambiguous.';

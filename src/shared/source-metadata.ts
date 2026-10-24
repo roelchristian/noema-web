@@ -15,7 +15,7 @@ export interface MetadataProposal {
 }
 export interface MetadataField {
  key:string;label:string;owner:'source'|'bibliography'|'property'|'attachment';
- value:string|null;targetId?:string|null;editable:boolean;fingerprint:string;
+ value:string|null;targetId?:string|null;targetName?:string;editable:boolean;fingerprint:string;
  proposals:MetadataProposal[];history:MetadataProposal[];
  preservedValues?:{id:string;name:string;value:string|null;target_id:string|null}[];
  confirmedHistory?:{value:string;origin:string;at:string;details?:string}[];

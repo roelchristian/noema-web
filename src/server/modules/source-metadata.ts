@@ -2,7 +2,8 @@ import {createHash} from 'node:crypto';
 import type {Property,SourceFile} from '../../shared/domain.js';
 import type {PropertyProposal} from '../../shared/property-provenance.js';
 import type {MetadataRegistration,MetadataCandidate,MetadataEvidence,MetadataField,MetadataProposal,MetadataReviewInput,MetadataBatchInput,MetadataBatchResult,SourceMetadataSnapshot,SourceMetadataPolicy} from '../../shared/source-metadata.js';
-import {normalizeDoi} from '../../shared/bibliography.js';
+import {normalizeDoi,bibliographyCreators} from '../../shared/bibliography.js';
+import {normalizeEntityName} from '../../shared/auto-entities.js';
 import {Store} from '../store.js';
 import {HttpError,now,required,text} from '../validation.js';
 import {Bibliography} from './bibliography.js';
@@ -14,8 +15,10 @@ import {metadataEvidenceStaleReason} from './source-metadata-evidence.js';
 
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export const sourceMetadataFieldFingerprint=(sourceId:string,key:string,value:string|null,targetId:string|null,preservedValues:MetadataField['preservedValues'],provenance:unknown)=>digest([sourceId,key,value,targetId,preservedValues,provenance]);
+export const sourceMetadataCanonicalField=(field:string)=>({year:'date',journaltitle:'journal',number:'issue'}[field]??field);
+export const sourceMetadataBibliographicOwner=(fields:Record<string,string>,field:string)=>{const key=sourceMetadataCanonicalField(field);return ({date:['date','year'],journal:['journal','journaltitle'],issue:['issue','number']}[key]??[key]).find(item=>Object.hasOwn(fields,item))??key;};
 const labels:Record<string,string>={title:'Bibliographic title',author:'Credited authors',editor:'Credited editors',translator:'Credited translators',year:'Publication year',date:'Publication date',publisher:'Publisher',edition:'Edition',doi:'DOI',isbn:'ISBN',issn:'ISSN',journal:'Journal',booktitle:'Container title',volume:'Volume',issue:'Issue',pages:'Pages',series:'Series',url:'Publication URL',abstract:'Author abstract',language:'Publication language'};
-const aliases:Record<string,string>={'publication title':'title',title:'title',author:'author',authors:'author',editor:'editor',editors:'editor',translator:'translator',translators:'translator',publisher:'publisher',doi:'doi',isbn:'isbn',issn:'issn',edition:'edition','publication date':'date','publication year':'year',published:'date',year:'year',journal:'journal','journal title':'journal',volume:'volume',issue:'issue',pages:'pages','page range':'pages','book title':'booktitle','container title':'booktitle',series:'series',url:'url',abstract:'abstract','author abstract':'abstract'};
+const aliases:Record<string,string>={'publication title':'title',title:'title',author:'author',authors:'author',editor:'editor',editors:'editor',translator:'translator',translators:'translator',publisher:'publisher',doi:'doi',isbn:'isbn',issn:'issn',edition:'edition','publication date':'date','publication year':'year',published:'date',year:'year',journal:'journal',journaltitle:'journal','journal title':'journal',volume:'volume',issue:'issue',number:'issue',pages:'pages','page range':'pages','book title':'booktitle','container title':'booktitle',series:'series',url:'url',abstract:'abstract','author abstract':'abstract'};
 type CandidateRow={proposal_id:string;field_key:string;target_fingerprint:string;evidence_json:string;decision_json:string;status:MetadataProposal['status']};
 const equal=(key:string,a:string|null,b:string|null)=>key==='bibliography:doi'&&a&&b?!!normalizeDoi(a)&&normalizeDoi(a)===normalizeDoi(b):a===b;
 
@@ -26,20 +29,21 @@ export class SourceMetadata {
  private source(vault:string,id:string){const entity=new Knowledge(this.store).require(vault,id);if(entity.type!=='source'||entity.archived_at)throw new HttpError(404,'Source not found');return entity;}
  policy(vault:string,id:string):SourceMetadataPolicy{this.source(vault,id);return this.store.get<{policy:SourceMetadataPolicy}>('SELECT policy FROM source_metadata_policies WHERE source_id=? AND vault_id=?',id,vault)?.policy??'review';}
  setPolicy(vault:string,id:string,value:unknown){this.source(vault,id);if(value!=='review'&&value!=='fill_validated_empty')throw new HttpError(400,'Unknown metadata acceptance policy');this.store.run('INSERT INTO source_metadata_policies(source_id,vault_id,policy) VALUES(?,?,?) ON CONFLICT(source_id) DO UPDATE SET policy=excluded.policy',id,vault,value);return this.snapshot(vault,id);}
- private key(proposal:PropertyProposal){if(proposal.kind==='entity_name')return 'source:display_name';if(proposal.property_name?.startsWith('bibliography:'))return proposal.property_name;const field=!proposal.target_id?aliases[proposal.property_name?.toLowerCase()??'']:undefined;return field?'bibliography:'+field:'property:'+proposal.property_name;}
+ private key(proposal:PropertyProposal){if(proposal.kind==='entity_name')return 'source:display_name';if(proposal.property_name?.startsWith('bibliography:'))return 'bibliography:'+sourceMetadataCanonicalField(proposal.property_name.slice(13));const field=!proposal.target_id?aliases[proposal.property_name?.toLowerCase()??'']:undefined;return field?'bibliography:'+sourceMetadataCanonicalField(field):'property:'+proposal.property_name;}
  private fields(vault:string,id:string):MetadataField[]{
   const entity=this.source(vault,id),bibliography=new Bibliography(this.store).get(vault,id),result:MetadataField[]=[];
   const add=(key:string,label:string,owner:MetadataField['owner'],value:string|null,targetId:string|null=null,editable=true)=>result.push({key,label,owner,value,targetId,editable,fingerprint:'',proposals:[],history:[]});
   add('source:display_name','Source display name','source',entity.name);
-  for(const field of new Set([...Object.keys(labels),...Object.keys(bibliography?.fields??{})]))add('bibliography:'+field,labels[field]??field,'bibliography',bibliography?.fields[field]??null);
+  for(const field of new Set([...Object.keys(labels),...Object.keys(bibliography?.fields??{})].map(sourceMetadataCanonicalField))){const owner=sourceMetadataBibliographicOwner(bibliography?.fields??{},field);add('bibliography:'+field,labels[field]??field,'bibliography',bibliography?.fields[owner]??null);}
   for(const property of this.store.all<Property>('SELECT * FROM properties WHERE entity_id=? ORDER BY name,id',id)){
-   const publication=aliases[property.name.toLowerCase()];
+   const creatorReference=!!property.target_id&&['author','authors','editor','editors','translator','translators'].includes(property.name.toLowerCase());
+   const publication=!creatorReference&&aliases[property.name.toLowerCase()]?sourceMetadataCanonicalField(aliases[property.name.toLowerCase()]!):undefined;
    if(publication){const field=result.find(item=>item.key==='bibliography:'+publication)!;if(field)(field.preservedValues??=[]).push({id:property.id,name:property.name,value:property.value,target_id:property.target_id});if(!property.target_id)continue;}
    // Entity references are knowledge assertions, never parsed out of credited creator strings.
    const key='property:'+property.name;
    const present=result.find(item=>item.key===key);
    if(present){present.value=[present.value,property.value??property.target_id].filter(Boolean).join('; ');present.editable=false;}
-   else add(key,property.name+(property.target_id?' (resolved entity)':''),'property',property.value,property.target_id,false);
+   else add(key,property.name+(property.target_id?' (resolved entity)':''),'property',property.value,property.target_id,!property.target_id);
   }
   for(const file of this.store.all<SourceFile>('SELECT * FROM source_files WHERE entity_id=? AND vault_id=? ORDER BY id',id,vault)){
    add('attachment:'+file.id+':source_url',file.name+' · import URL','attachment',file.source_url);
@@ -47,14 +51,15 @@ export class SourceMetadata {
    add('attachment:'+file.id+':format',file.name+' · format','attachment',file.format,null,false);
   }
   for(const field of result){
-   if(field.owner==='bibliography'){const provenance=bibliography?.provenance[field.key.slice(13)];if(provenance&&field.value!==null)field.confirmedHistory=[...(provenance.history??[]),{value:field.value,origin:provenance.origin,at:provenance.at}];}
+   if(field.targetId)field.targetName=this.store.get<{name:string}>('SELECT name FROM entities WHERE id=? AND vault_id=?',field.targetId,vault)?.name;
+   if(field.owner==='bibliography'){const provenance=bibliography?.provenance[sourceMetadataBibliographicOwner(bibliography?.fields??{},field.key.slice(13))];if(provenance&&field.value!==null)field.confirmedHistory=[...(provenance.history??[]),{value:field.value,origin:provenance.origin,at:provenance.at}];}
    if(field.key==='source:display_name'){const provenance=getNameProvenance(this.store,vault,id);if(provenance)field.confirmedHistory=[{value:entity.name,origin:provenance.origin,at:provenance.updated_at,details:provenance.details}];}
-   field.fingerprint=sourceMetadataFieldFingerprint(id,field.key,field.value,field.targetId??null,field.preservedValues,field.owner==='bibliography'?bibliography?.provenance[field.key.slice(13)]??null:null);
+   field.fingerprint=sourceMetadataFieldFingerprint(id,field.key,field.value,field.targetId??null,field.preservedValues,field.owner==='bibliography'?bibliography?.provenance[sourceMetadataBibliographicOwner(bibliography?.fields??{},field.key.slice(13))]??null:field.owner==='property'?this.store.all('SELECT p.*,m.definition_id,d.definition_json FROM properties p LEFT JOIN property_value_metadata m ON m.property_id=p.id LEFT JOIN property_definitions d ON d.id=m.definition_id WHERE p.entity_id=? AND p.name=? ORDER BY p.id',id,field.key.slice(9)):null);
   }
   return result;
  }
  private preview(vault:string,id:string,proposal:PropertyProposal,fields:MetadataField[]):MetadataProposal {
-  const sidecar=this.store.get<CandidateRow>('SELECT * FROM source_metadata_candidates WHERE proposal_id=?',proposal.id),fieldKey=sidecar?.field_key??this.key(proposal),field=fields.find(item=>item.key===fieldKey);
+  const sidecar=this.store.get<CandidateRow>('SELECT * FROM source_metadata_candidates WHERE proposal_id=?',proposal.id),fieldKey=sidecar?'bibliography:'+sourceMetadataCanonicalField(sidecar.field_key.slice(13)):this.key(proposal),field=fields.find(item=>item.key===fieldKey);
   const evidence:MetadataEvidence[]=sidecar?JSON.parse(sidecar.evidence_json):[];
   let staleReason:string|null=null,legacyFingerprint='';
   if(sidecar){
@@ -82,10 +87,11 @@ export class SourceMetadata {
  private write(vault:string,id:string,fieldKey:string,value:string,targetId?:string,preserveAuthoredValues=false){
   if(fieldKey.startsWith('bibliography:')){
    if(targetId)throw new HttpError(400,'Credited bibliographic names remain ordered text; resolve entities separately.');
-   const field=fieldKey.slice(13);if(!/^[a-z][a-z0-9_:.-]{0,63}$/i.test(field))throw new HttpError(400,'Invalid bibliographic field');
-   if(field==='doi'&&value&&!normalizeDoi(value))throw new HttpError(400,'Invalid DOI');
-   const bibliography=new Bibliography(this.store),record=bibliography.get(vault,id);
+   const requested=fieldKey.slice(13);if(!/^[a-z][a-z0-9_:.-]{0,63}$/i.test(requested))throw new HttpError(400,'Invalid bibliographic field');
+   if(requested==='doi'&&value&&!normalizeDoi(value))throw new HttpError(400,'Invalid DOI');
+   const bibliography=new Bibliography(this.store),record=bibliography.get(vault,id),selected=sourceMetadataBibliographicOwner(record?.fields??{},requested),field=selected==='date'&&!Object.hasOwn(record?.fields??{},'date')&&/^\d{4}$/.test(value)?'year':selected;
    bibliography.save(vault,id,{revision:record?.revision??0,citationKey:record?.citationKey??'source-'+id,entryType:record?.entryType??'misc',fields:{...record?.fields,[field]:value},...(preserveAuthoredValues?{reviewedProperties:bibliographicLegacyConflicts(this.store,vault,id,{...record?.fields,[field]:value},record?.fields).map(conflict=>({propertyId:conflict.property.id,fingerprint:conflict.fingerprint}))}:{})});
+   if(['author','editor','translator'].includes(field))this.offerCreatorReferences(vault,id,field,value);
   }else if(fieldKey==='source:display_name'){
    const knowledge=new Knowledge(this.store);knowledge.update(vault,id,{...knowledge.require(vault,id),name:required(value)});
   }else if(fieldKey.startsWith('attachment:')&&fieldKey.endsWith(':source_url')){
@@ -93,8 +99,21 @@ export class SourceMetadata {
    if(value&&!/^https?:\/\//i.test(value))throw new HttpError(400,'Use an HTTP or HTTPS attachment URL');
    this.store.run('UPDATE source_files SET source_url=? WHERE id=? AND entity_id=? AND vault_id=?',value||null,fileId,id,vault);
   }else if(fieldKey.startsWith('property:')){
-   const name=fieldKey.slice(9);new Knowledge(this.store).property(vault,id,targetId?{name,target_id:targetId}:{name,value});
+   const name=fieldKey.slice(9),existing=this.store.all<Property>('SELECT * FROM properties WHERE entity_id=? AND name=? ORDER BY id',id,name),binding=existing.length===1?this.store.get<{definition_id:string|null}>('SELECT definition_id FROM property_value_metadata WHERE property_id=?',existing[0]!.id):undefined;
+   if(existing.length>1)throw new HttpError(409,'Use the property editor to review multiple values.');
+   new Knowledge(this.store).property(vault,id,{name,...targetId?{target_id:targetId}:{value},...binding?.definition_id?{definition_id:binding.definition_id}:{}},existing[0]?.id);
   }else throw new HttpError(400,'This metadata field is read-only');
+ }
+
+ private offerCreatorReferences(vault:string,id:string,role:string,value:string){
+  const candidates=this.store.all<{id:string;name:string;aliases:string}>("SELECT id,name,aliases FROM entities WHERE vault_id=? AND type IN ('person','organization') AND inactive=0 AND archived_at IS NULL",vault);
+  for(const creator of bibliographyCreators({[role]:value})){
+   const name=creator.literal??[creator.given,creator.prefix,creator.family,creator.suffix].filter(Boolean).join(' '),key=normalizeEntityName(name.normalize('NFC'));
+   const matches=candidates.filter(candidate=>{let aliases:string[]=[];try{aliases=JSON.parse(candidate.aliases);}catch{}return [candidate.name,...aliases].some(value=>normalizeEntityName(value.normalize('NFC'))===key);});
+   if(matches.length!==1)continue;const target=matches[0]!;
+   if(this.store.get('SELECT 1 FROM properties WHERE entity_id=? AND name=? COLLATE NOCASE AND target_id=?',id,role,target.id))continue;
+   proposeValue(this.store,vault,{entity_id:id,property_name:role,target_id:target.id,origin:'derived',details:'Canonical credited '+role+': '+name+'. Unique existing identity offered for explicit review; ordered bibliographic credits remain unchanged.'});
+  }
  }
  save(vault:string,id:string,body:Record<string,unknown>){return this.transaction(()=>{const field=this.fields(vault,id).find(item=>item.key===body.fieldKey);if(!field||!field.editable)throw new HttpError(400,'This metadata field is read-only');if(field.fingerprint!==body.fingerprint)throw new HttpError(409,'The target field changed. Reload before saving.');this.write(vault,id,field.key,text(body.value),undefined,body.preserveAuthoredValues===true);return this.snapshot(vault,id);});}
  private apply(vault:string,id:string,input:MetadataReviewInput):'changed'|'satisfied' {
@@ -135,7 +154,7 @@ export class SourceMetadata {
   return {changed,satisfied,attention,snapshot:this.snapshot(vault,id)};
  });}
  registerCandidate(vault:string,id:string,candidate:MetadataCandidate):MetadataRegistration{return this.transaction(()=>{
-  this.source(vault,id);const value=required(candidate.value,10000),field=this.fields(vault,id).find(item=>item.key===candidate.fieldKey);if(!field||!candidate.fieldKey.startsWith('bibliography:'))throw new HttpError(400,'Unsupported structured metadata target');
+  this.source(vault,id);if(!candidate.fieldKey.startsWith('bibliography:'))throw new HttpError(400,'Unsupported structured metadata target');candidate={...candidate,fieldKey:'bibliography:'+sourceMetadataCanonicalField(candidate.fieldKey.slice(13))};const value=required(candidate.value,10000),field=this.fields(vault,id).find(item=>item.key===candidate.fieldKey);if(!field||!candidate.fieldKey.startsWith('bibliography:'))throw new HttpError(400,'Unsupported structured metadata target');
   const stale=metadataEvidenceStaleReason(this.store,vault,id,candidate);if(stale)throw new HttpError(409,stale);
   const existing=this.store.all<PropertyProposal>('SELECT p.* FROM property_proposals p JOIN source_metadata_candidates c ON c.proposal_id=p.id WHERE p.vault_id=? AND p.entity_id=? AND c.field_key=? ORDER BY p.created_at DESC',vault,id,candidate.fieldKey);
   const same=existing.find(proposal=>equal(candidate.fieldKey,proposal.value,value));

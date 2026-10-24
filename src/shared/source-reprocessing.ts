@@ -5,6 +5,7 @@ export type SourceAcceptanceMode='review_all'|'safe_formatting'|'balanced'|'mini
 export type SourceProcessingDepth='light'|'balanced'|'deep';
 export type SourceReviewPolicy='verified'|'review_all';
 export interface SourceReprocessingConfiguration {
+ architectureVersion?:1;
  depth:SourceProcessingDepth;reviewPolicy:SourceReviewPolicy;
  evidence:{originalPages:boolean;ocr:boolean;allowExternalTransmission:boolean};
 }
@@ -38,6 +39,7 @@ export interface SourceReprocessingPass extends SourceEditorialUsage {
  model:string;reasoningEffort:ReasoningEffort;promptVersion:string;configuration:SourceReprocessingConfiguration;
  requestHash:string;result:string|null;validation:string[];startedAt:string;finishedAt:string|null;
  error:string|null;outcomeUncertain:boolean;
+ failureKind?:'transport'|'invalid_output'|'validation'|'evidence'|'admission';
 }
 export type ReprocessingStatus='queued'|'running'|'completed'|'failed'|'interrupted';
 export interface SourceEditorialUsage {inputTokens:number|null;outputTokens:number|null;reasoningTokens:number|null;cachedInputTokens:number|null}
@@ -64,6 +66,11 @@ export interface SourceEditorialPatch {
  reason:string;riskReasons?:string[];confidence:number; decision:'pending'|'accepted'|'rejected'; userReplacement?:string;
 }
 export interface SourceReprocessingReport {
+ stage?:'reconstructing'|'understanding'|'verifying'|'auditing';
+ stageProgress?:{completed:number;total:number};
+ coverage?:{firstPassCompleted:number;totalChunks:number;incompleteChunkIndexes:number[]};
+ contextHash?:string;
+ documentAudit?:{version:1;candidateHash:string;contextHash?:string;findings:string[]};
  evidencePreparation?:{state:'collecting'|'completed';preparedChunks:number;totalChunks:number};
  /** Structured publication candidates are separate from editorial text patches. */
  metadata?:{candidateCount:number;added:number;corroborated:number;requiresReview:number;cacheHit:boolean;evidenceHash:string};

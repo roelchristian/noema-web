@@ -106,11 +106,12 @@ export class SourceReprocessing {
  private hashCache:{vault:string;id:string;inputs:unknown[];hash:string}|null=null;
  private running=false;private closed=false;private controller:AbortController|null=null;private activeRevisionId:string|null=null;
  constructor(private store:Store,private files:SourceFiles,private intelligence:Intelligence,private requireOpen:(vault:string)=>unknown,private activity:AIActivityLog,private metadata?:SourceMetadataExtraction,private evidence?:SourceReprocessingEvidence) {
+  if(store.all<{name:string}>("SELECT name FROM sqlite_master WHERE type='table' AND name='source_reprocessing_repairs'").some(table=>table.name==='source_reprocessing_repairs'))new SourceReprocessingCheckpoints(store).interruptRepairs();
   for(const row of store.all<Row>("SELECT * FROM source_reprocessing WHERE status IN ('queued','running')")){
    const revision=JSON.parse(row.payload) as SourceReprocessingRevision;
    if(revision.pipelineVersion===2)new SourceReprocessingCheckpoints(store).interruptRunning(revision.id);
    for(const excerpt of revision.report.excerpts??[])if(excerpt.status==='running'){excerpt.status='interrupted';const uncertain=revision.pipelineVersion===2?new SourceReprocessingCheckpoints(store).passes(revision.id,excerpt.index).some(pass=>pass.outcomeUncertain):true;if(uncertain){excerpt.errorCode='provider_outcome_uncertain';excerpt.outcomeUncertain=true;excerpt.error='Application stopped during a request. The provider outcome is unknown; inspect completed suggestions before explicitly resuming.';}else{delete excerpt.error;delete excerpt.errorCode;delete excerpt.outcomeUncertain;}}
-   revision.status='interrupted';revision.report.error='Application restarted before this pass completed. Resume this pass to retry the unfinished excerpt.';revision.report.finishedAt=now();this.save(row.vault_id,revision);
+   revision.status='interrupted';revision.report.error='Application restarted before this pass completed. Resume this pass to retry the unfinished excerpt.';revision.report.finishedAt=now();if(revision.pipelineVersion===2)materializeSourceRevision(revision);this.save(row.vault_id,revision);
   }
  }
  private save(vault:string,r:SourceReprocessingRevision){r.updatedAt=new Date(Math.max(Date.now(),Date.parse(r.updatedAt)+1)).toISOString();this.store.run('UPDATE source_reprocessing SET status=?,updated_at=?,payload=? WHERE id=? AND vault_id=?',r.status,r.updatedAt,JSON.stringify(r),r.id,vault);}
@@ -128,6 +129,11 @@ export class SourceReprocessing {
  private saveProgress(vault:string,r:SourceReprocessingRevision){
   r.updatedAt=new Date(Math.max(Date.now(),Date.parse(r.updatedAt)+1)).toISOString();
   this.store.run("UPDATE source_reprocessing SET status=?,updated_at=?,payload=json_set(payload,'$.report',json(?),'$.status',?,'$.updatedAt',?) WHERE id=? AND vault_id=?",r.status,r.updatedAt,JSON.stringify(r.report),r.status,r.updatedAt,r.id,vault);
+ }
+ /** Atomically publish completed chunk decisions without serializing immutable snapshots. */
+ private saveReconstructionCheckpoint(vault:string,r:SourceReprocessingRevision){
+  r.updatedAt=new Date(Math.max(Date.now(),Date.parse(r.updatedAt)+1)).toISOString();
+  this.store.run("UPDATE source_reprocessing SET status=?,updated_at=?,payload=json_set(payload,'$.report',json(?),'$.patches',json(?),'$.status',?,'$.updatedAt',?) WHERE id=? AND vault_id=?",r.status,r.updatedAt,JSON.stringify(r.report),JSON.stringify(r.patches),r.status,r.updatedAt,r.id,vault);
  }
  private snapshot(vault:string,id:string){const file=this.files.require(vault,id),text=mathSource(this.store,file).text;return {text,document:documentWithRawRanges(new SourceDocuments(this.store).get(file),text)};}
  private baseHash(vault:string,id:string){
@@ -156,7 +162,7 @@ export class SourceReprocessing {
   this.requireOpen(vault);if(this.closed)throw new HttpError(503,'Editorial processing is shutting down.');
   if(body.pipelineVersion!==undefined&&body.pipelineVersion!==1&&body.pipelineVersion!==2)throw new HttpError(400,'Invalid reprocessing pipeline version.');
   const pipelineVersion=body.pipelineVersion??(body.acceptanceMode!==undefined?1:2);
-  const configuration=pipelineVersion===2?reprocessingConfiguration(body.configuration):undefined;
+  const configuration=pipelineVersion===2?{...reprocessingConfiguration(body.configuration),architectureVersion:1 as const}:undefined;
   if(configuration&&body.configuration===undefined&&this.evidence&&this.capabilities(vault,id).ocr)configuration.evidence.ocr=true;
   if(configuration?.evidence.originalPages&&!configuration.evidence.allowExternalTransmission)throw new HttpError(400,'Explicit original-page transmission consent is required.');
   if(configuration&&(configuration.evidence.originalPages||configuration.evidence.ocr)){const capability=this.capabilities(vault,id);if(configuration.evidence.originalPages&&!capability.externalImages||configuration.evidence.ocr&&!capability.ocr)throw new HttpError(409,capability.reason||'Requested source evidence capability is unavailable.');}
@@ -174,10 +180,10 @@ export class SourceReprocessing {
   if(sourceDocumentEntries(original.document).length>5000)throw new HttpError(413,'This beta supports at most 5,000 semantic nodes per source.');
   if(original.text.length>512000||this.chunks(original.text,original.document.physical.pages.map(p=>p.range.startOffset)).length>128)throw new HttpError(413,'This beta supports at most 512,000 extracted characters and 128 editorial excerpts. No partial pass was started.');
   const revision:SourceReprocessingRevision={pipelineVersion,...(configuration?{configuration}:{}),id:randomUUID(),fileId:id,createdAt:timestamp,updatedAt:timestamp,status:'queued',acceptanceMode,acceptanceThreshold,instructions:typeof body.instructions==='string'?body.instructions:'',baseHash:sourceRevisionBaseHash(original),stale:false,patches:[],original,reprocessed:structuredClone(original),report:{completedChunkIndexes:[],concurrency:2,promptVersion,...selection,startedAt:null,finishedAt:null,durationMs:null,chunksTotal:this.chunks(original.text,original.document.physical.pages.map(p=>p.range.startOffset)).length,chunksCompleted:0,charactersTotal:original.text.length,charactersReviewed:0,inputTokens:null,outputTokens:null,reasoningTokens:null,cachedInputTokens:null,diagnostics:['Beta derivative: original extraction remains canonical. Only accepted changes appear in the reading version.'],error:null}};
-  if(pipelineVersion===2){revision.furniture=detectPageFurniture(original.text,original.document);if(planReprocessingChunks(original.text,original.document).length>128)throw new HttpError(413,'V2 supports at most 128 reconstruction chunks.');revision.report.promptVersion=reconstructionPromptVersion;revision.report.concurrency=1;revision.report.chunksTotal=planReprocessingChunks(original.text,original.document).length;}
+  if(pipelineVersion===2){revision.furniture=detectPageFurniture(original.text,original.document);if(planReprocessingChunks(original.text,original.document,8000,configuration?.architectureVersion===1).length>128)throw new HttpError(413,'V2 supports at most 128 reconstruction chunks.');revision.report.promptVersion=reconstructionPromptVersion;revision.report.concurrency=1;revision.report.chunksTotal=planReprocessingChunks(original.text,original.document,8000,configuration?.architectureVersion===1).length;}
   this.store.transaction(()=>{
    this.store.run('INSERT INTO source_reprocessing (id,file_id,vault_id,status,created_at,updated_at,payload) VALUES (?,?,?,?,?,?,?)',revision.id,id,vault,revision.status,timestamp,timestamp,JSON.stringify(revision));
-   if(configuration){const checkpoints=new SourceReprocessingCheckpoints(this.store);for(const chunk of planReprocessingChunks(original.text,original.document))checkpoints.saveChunk({revisionId:revision.id,index:chunk.index,startOffset:chunk.start,endOffset:chunk.end,baseHash:revision.baseHash,evidenceHash:gatherReprocessingEvidence({text:original.text,document:original.document,start:chunk.start,end:chunk.end,options:configuration.evidence}).hash,difficulty:chunk.difficulty,difficultyReason:chunk.difficultyReason,requiredPassCount:configuration.depth==='light'?1:2,status:'pending'});}
+   if(configuration){const checkpoints=new SourceReprocessingCheckpoints(this.store);for(const chunk of planReprocessingChunks(original.text,original.document,8000,configuration?.architectureVersion===1))checkpoints.saveChunk({revisionId:revision.id,index:chunk.index,startOffset:chunk.start,endOffset:chunk.end,baseHash:revision.baseHash,evidenceHash:gatherReprocessingEvidence({text:original.text,document:original.document,start:chunk.start,end:chunk.end,options:configuration.evidence}).hash,difficulty:chunk.difficulty,difficultyReason:chunk.difficultyReason,requiredPassCount:configuration.depth==='light'?1:2,status:'pending'});}
   });return revision;
  }
  private chunks(text:string,boundaries:number[]=[]){const chunks:{start:number;end:number}[]=[];for(let start=0;start<text.length;){let end=Math.min(start+8000,text.length,boundaries.find(boundary=>boundary>start)??text.length);if(end<text.length){const newline=text.lastIndexOf('\n',end-1);if(newline>start+4000)end=newline+1;else if(/[\uD800-\uDBFF]/.test(text[end-1]!))end--; }chunks.push({start,end});start=end;}return chunks;}
@@ -207,7 +213,11 @@ export class SourceReprocessing {
   const selection=this.intelligence.editorialSelection();
   if(r.report.promptVersion!==(r.pipelineVersion===2?reconstructionPromptVersion:promptVersion)||r.report.model!==selection.model||(r.pipelineVersion===2&&r.report.reasoningEffort!==selection.reasoningEffort))throw new HttpError(409,'Editorial configuration changed. Start a new pass.');
   if(this.store.get("SELECT 1 FROM source_reprocessing WHERE file_id=? AND status IN ('queued','running')",id))throw new HttpError(409,'Another pass is already active.');
-  if(r.pipelineVersion===2&&new SourceReprocessingCheckpoints(this.store).passes(r.id).some(pass=>pass.outcomeUncertain||pass.status==='running'||pass.status==='interrupted'))throw new HttpError(409,'Provider outcome is uncertain. Start a new revision explicitly; this request will not be replayed.');
+  if(r.pipelineVersion===2){
+   const checkpoints=new SourceReprocessingCheckpoints(this.store),synthesis=checkpoints.synthesis(r.id);
+   if(synthesis?.register&&synthesis.register.revisionId!==r.id)throw new HttpError(409,'Imported document context retains its archived identity. Start a new revision explicitly.');
+   if([...checkpoints.passes(r.id),...checkpoints.repairs(r.id),...(synthesis?[synthesis]:[])].some(pass=>pass.outcomeUncertain||pass.status==='running'||pass.status==='interrupted'))throw new HttpError(409,'Provider outcome is uncertain. Start a new revision explicitly; this request will not be replayed.');
+  }
   r.report.reasoningEffort=selection.reasoningEffort;r.status='queued';r.report.error=null;delete r.report.errorCode;this.save(vault,r);return r;
  }
  async tick(){
@@ -219,7 +229,7 @@ export class SourceReprocessing {
   if(r.pipelineVersion===2){
    try{
     guard();if(!r.report.metadata)this.reconcileMetadata(row.vault_id,r,'canonical');
-    await executeReconstruction({store:this.store,revision:r,intelligence:this.intelligence,activity:this.activity,evidenceService:this.evidence,activityObjectId:this.files.require(row.vault_id,r.fileId).entity_id??r.fileId,vault:row.vault_id,signal:controller.signal,guard,save:()=>this.save(row.vault_id,r),range:(start,end)=>this.range(r,start,end),materialize:()=>materializeSourceRevision(r)});
+    await executeReconstruction({store:this.store,revision:r,intelligence:this.intelligence,activity:this.activity,evidenceService:this.evidence,activityObjectId:this.files.require(row.vault_id,r.fileId).entity_id??r.fileId,vault:row.vault_id,signal:controller.signal,guard,save:boundary=>boundary==='chunk'?this.saveReconstructionCheckpoint(row.vault_id,r):this.saveProgress(row.vault_id,r),range:(start,end)=>this.range(r,start,end),materialize:()=>materializeSourceRevision(r)});
     guard();if(r.reprocessed.text!==r.original.text){this.save(row.vault_id,r);this.reconcileMetadata(row.vault_id,r,'editorial');}
     r.status='completed';
    }

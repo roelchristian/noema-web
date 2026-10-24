@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
 import {readFileSync} from 'node:fs';
+import {JSDOM} from 'jsdom';
 import {setupDOM} from './helpers/dom.mjs';
 import React,{act} from 'react';
 import {createRoot} from 'react-dom/client';
@@ -357,4 +358,19 @@ test('local evidence preparation has visible progress before model excerpts comp
  assert.equal(evidence().dataset.state,'completed');
  assert.match(stage(),/Original-source evidence prepared/);
  assert.doesNotMatch(stage(),/\d|\//);
+});
+
+for(const [stage,title] of Object.entries({reconstructing:'Reconstructing',understanding:'Understanding document',verifying:'Verifying',auditing:'Checking document consistency'})){
+ test(`document stage ${stage} exposes owned state without conflating final excerpt coverage`,async t=>{
+  const r=fixture();r.pipelineVersion=2;r.status='running';r.configuration={depth:'balanced',reviewPolicy:'verified',evidence:{originalPages:false,ocr:false,allowExternalTransmission:false}};
+  r.report.chunksCompleted=0;r.report.chunksTotal=3;r.report.stage=stage;r.report.stageProgress={completed:2,total:3};
+  await mount(t,{initial:r});const presentation=document.querySelector('[data-reprocessing-stage]');
+  assert.equal(presentation.dataset.reprocessingStage,stage);assert.equal(presentation.getAttribute('role'),'status');assert.match(presentation.textContent,new RegExp(title));assert.match(presentation.textContent,/2 \/ 3/);
+  assert.equal(document.querySelector('[aria-label="Reprocessing progress"]').value,0);assert.match(document.querySelector('.reprocessing-stage-summary').textContent,/plus document synthesis/);
+ });
+}
+
+test('document synthesis incomplete coverage names first-pass progress independently of review',async t=>{
+ const r=fixture();r.pipelineVersion=2;r.status='failed';r.report.stage='understanding';r.report.coverage={firstPassCompleted:2,totalChunks:3,incompleteChunkIndexes:[1]};
+ await mount(t,{initial:r});assert.match(document.querySelector('[data-reprocessing-coverage="incomplete"]').textContent,/incomplete first-pass coverage: 2 \/ 3.*recovery and review/);
 });

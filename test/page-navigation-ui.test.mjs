@@ -227,10 +227,13 @@ test('source presentation controls retain the reader, highlights and inspector a
  });
  const root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
  await act(async()=>root.render(React.createElement(App)));
- const reader=document.querySelector('.source-reader'),article=document.querySelector('.source-reader-document'),inspector=document.querySelector('#entity-panel'),mark=document.querySelector('.source-highlight');
- assert.ok(reader);assert.ok(article);assert.ok(inspector);assert.ok(mark);
- const reads=documentReads;
+ const reader=document.querySelector('.source-reader'),article=document.querySelector('.source-reader-document'),mark=document.querySelector('.source-highlight');
+ assert.ok(reader);assert.ok(article);assert.ok(mark);
+ assert.equal(document.querySelector('#entity-panel'),null,'Source metadata is an optional layer on first reading');
  const click=async selector=>act(async()=>document.querySelector(selector).click());
+ await click('.source-inspector-toggle');
+ const inspector=document.querySelector('#entity-panel');assert.ok(inspector);
+ const reads=documentReads;
  await click('.topbar [aria-label="Subtle references"]');assert.equal(document.documentElement.dataset.focusedReading,'true');
  await click('.topbar [aria-label="Focus mode"]');
  assert.equal(document.documentElement.dataset.focusWorkspace,'true');assert.equal(document.documentElement.dataset.focusTarget,'source-reader');

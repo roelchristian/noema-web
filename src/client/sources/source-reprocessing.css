@@ -92,3 +92,21 @@
 .reprocessing-ledger li p{margin:6px 0 0;overflow-wrap:anywhere}
 .reprocessing-configuration{padding:12px;margin:12px 0;background:var(--surface);border:1px solid var(--line);border-radius:6px}
 .reprocessing-configuration p{margin:6px 0 0;color:var(--text-muted);font-size:12px}
+
+.reprocessing-reading-picker{display:flex;align-items:center;gap:8px;color:var(--text-muted);font-size:12px}
+.reprocessing-reading-picker select{max-width:280px;padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text)}
+.reprocessing-reviews{position:fixed;z-index:35;inset:76px 16px 16px auto;box-sizing:border-box;width:min(440px,calc(100vw - 32px));padding:18px;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 40px #00000030;overflow:auto;overscroll-behavior:contain}
+.reprocessing-master-detail{display:grid;grid-template-columns:1fr;gap:16px;align-items:start}
+.reprocessing-patch-list{list-style:none;margin:0;padding:0;max-height:25vh;overflow:auto}
+.reprocessing-patch-list li{display:flex;border-bottom:1px solid var(--line)}
+.reprocessing-patch-list li>button{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;min-height:58px;padding:10px;text-align:left;border:1px solid transparent;border-radius:5px;overflow-wrap:anywhere}
+.reprocessing-patch-list li>button[aria-pressed=true]{border-color:var(--line);background:var(--surface-subtle,var(--sidebar))}
+.reprocessing-patch-list li>button span{font-size:11px;color:var(--text-muted)}
+.reprocessing-patch-heading{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin:0;font-size:13px}
+.reprocessing-master-detail>.reprocessing-patch{min-width:0;padding-top:0;border-bottom:0}
+.reprocessing-master-detail .reprocessing-risk-badge{margin-left:0;font-size:11px}
+.reprocessing-master-detail .reprocessing-patch-footer{padding-top:8px}
+.reprocessing-master-detail .reprocessing-comparison>div{padding:8px}
+.reprocessing-master-detail .reprocessing-comparison pre{max-height:210px}
+.reprocessing-patch-explanation{font-size:12px}
+@media(max-width:650px){.reprocessing-reviews{inset:56px 0 0;width:100%;border-radius:10px 10px 0 0;padding:14px}.reprocessing-master-detail{grid-template-columns:1fr}.reprocessing-patch-list{max-height:25vh}.reprocessing-reading-picker{width:100%}.reprocessing-reading-picker select{flex:1;min-width:0}}

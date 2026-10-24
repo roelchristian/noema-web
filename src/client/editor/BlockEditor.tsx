@@ -29,7 +29,7 @@ import { aiExplanationSources, aiExplanationsForSources, explanationsLinkedToDel
 import {pageTitleKey} from '../../shared/page-links';
 import { completePageLink } from './page-links';
 import { ReadOnlyExplanationBlock } from './ReadOnlyExplanationBlock';
-import { clearEditorSelection,editorSelectionRange,selectedEditorBlocks } from './block-selection';
+import { clearEditorSelection,editorSelectionRange,selectedEditorBlocks,editorSelectionBlocks } from './block-selection';
 import { installBlockDrag, reorderBlock } from './block-drag';
 import { installBlockSelection, setEditorCaret } from './block-selection';
 import { displayMathSource } from './math-delimiters';
@@ -698,15 +698,22 @@ export function BlockEditor(props: Props) {
     ], 'BLOCK OPTIONS', true);
   }
   function speakChoice(ids:string[]):Choice[] {
-    return speech.enabled?[{title:uiText("Speak"),detail:uiText("Read aloud with an AI-generated voice"),icon:'speaker',pick:()=>{
-      const draft=commitSelection(),selected=new Set(ids);
-      // The pre-play validator can run before React echoes this explicit commit.
-      latest.current={...latest.current,blocks:draft};
-      const selectedBlocks=draft.filter(block=>selected.has(block.id));
-      speechSources.current=new Map(selectedBlocks.map(block=>[block.id,{source:JSON.stringify(block),projection:speechText([block],[block.id],entities)}]));
-      speechSelection.current=(root.current?speechSelectionContext(root.current):null)??(selectedBlocks.length?JSON.stringify([selectedBlocks[0]!.id,selectedBlocks.at(-1)!.id]):null);
-      setMenu(null);speech.speak(speechText(draft,ids,entities),speechSections(draft,ids,entities),validSpeechSource);
-    }}]:[];
+    return speech.enabled?[{title:uiText("Speak"),detail:uiText("Read aloud with an AI-generated voice"),icon:'speaker',pick:()=>readBlocks(ids)}]:[];
+  }
+  function readSelection() {
+    if (!root.current) return;
+    const selected = editorSelectionBlocks(root.current, latest.current.blocks);
+    if (selected.length) readBlocks(selected.map(block => block.id), selected);
+  }
+  function readBlocks(ids:string[], projection?:Block[]) {
+    const draft=commitSelection(),selected=new Set(ids);
+    // The pre-play validator can run before React echoes this explicit commit.
+    latest.current={...latest.current,blocks:draft};
+    const selectedBlocks=draft.filter(block=>selected.has(block.id));
+    speechSources.current=new Map(selectedBlocks.map(block=>[block.id,{source:JSON.stringify(block),projection:speechText([block],[block.id],entities)}]));
+    speechSelection.current=(root.current?speechSelectionContext(root.current):null)??(selectedBlocks.length?JSON.stringify([selectedBlocks[0]!.id,selectedBlocks.at(-1)!.id]):null);
+    const narration = projection ?? draft;
+    setMenu(null);speech.speak(speechText(narration,ids,entities),speechSections(narration,ids,entities),validSpeechSource);
   }
   function aiActionChoice(anchor: HTMLElement, ids: string[], back: Choice): Choice {
     return {get title(){return uiText("AI actions")},icon:'sparkles',submenu:true,pick:()=>show(anchor,[back,...(props.onReview?[{title:reviewPending.current?uiText("Reviewing…"):uiText("Review with AI"),detail:uiText("Suggest spelling, punctuation, grammar, and phrasing corrections"),icon:'sparkles',disabled:reviewPending.current,pick:()=>void reviewWriting(ids)}]:[]),{title:'Explanation persona · '+personaMetadata(explanationPersona.current||aiExplanationsForSources(latest.current.blocks,ids)[0]?.semanticGroup?.persona?.id||defaultExplanationPersona).name,icon:'sparkles',submenu:true,pick:()=>show(anchor,[back,...[{id:'',name:'Default / original'},...aiPersonas].map(p=>({title:p.name,icon:'sparkles',submenu:true,pick:()=>{explanationPersona.current=p.id;aiActionChoice(anchor,ids,back).pick();}}))],'AI PERSONA',true)},explainChoice(ids)],'AI ACTIONS',true)};
@@ -1096,7 +1103,7 @@ export function BlockEditor(props: Props) {
     <span id="block-drag-help" className="block-drag-sr">{uiText("Drag to reorder. Click for options. With the handle focused, press Space to pick up, Up or Down to move, Space or Enter to drop, Escape to cancel.")}</span>
     <div ref={dragStatus} className="block-drag-sr" role="status" aria-live="polite" aria-atomic="true"/>
     <EntityLinkActions editor={root} entities={entities} onCommit={commitSelection} onOpen={onOpenEntity}/>
-    <SelectionToolbar onOpenEntity={onOpenEntity} onReview={props.onReview?()=>void reviewWriting():undefined} reviewing={writingReview?.loading} explainLabel={explainLabel} mobile={mobile} keyboardInset={keyboardInset} viewportHeight={viewportHeight} onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} suggestionContext={{priorityIds:suggestionPriorityIds}} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
+    <SelectionToolbar onRead={speech.enabled?readSelection:undefined} onOpenEntity={onOpenEntity} onReview={props.onReview?()=>void reviewWriting():undefined} reviewing={writingReview?.loading} explainLabel={explainLabel} mobile={mobile} keyboardInset={keyboardInset} viewportHeight={viewportHeight} onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} suggestionContext={{priorityIds:suggestionPriorityIds}} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
     {linkedExplanations.length > 0 && <Modal className="confirmation-dialog linked-explanation-dialog" titleId="linked-explanation-delete-title" onClose={() => setLinkedDeletion([])}>
       <ModalHeader titleId="linked-explanation-delete-title" leading={<Icon name="sparkles"/>} closeLabel={uiText("Close and keep explanations")}>{linkedExplanations.length === 1 ? uiText("Keep the explanation?") : uiText("Keep the explanations?")}</ModalHeader>
       <p>{linkedExplanations.length === 1

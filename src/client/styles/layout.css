@@ -551,7 +551,7 @@ main {
 }
 .sidebar {
   width: 224px;
-  padding: 18px 10px 10px;
+  padding: 12px 8px 8px;
   gap: 0;
 }
 main {
@@ -598,7 +598,7 @@ main {
   padding: 3px 0;
 }
 .sidebar .sidebar-group + .sidebar-group {
-  margin-top: 14px;
+  margin-top: var(--space-2);
   padding-top: 0;
   border-top: 0;
 }
@@ -613,10 +613,10 @@ main {
 }
 .sidebar .nav {
   min-height: 32px;
-  padding: 7px 8px;
+  padding: 6px 8px;
   margin-bottom: 1px;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--ui-text-md);
   line-height: 19px;
 }
 .sidebar .nav .icon, .sidebar .page-link .icon {
@@ -646,8 +646,9 @@ main {
 .sidebar .page-link {
   align-items: center;
   gap: 8px;
-  padding: 7px 8px;
+  padding: 6px 8px;
   min-height: 32px;
+  font-size: var(--ui-text-md);
   line-height: 19px;
 }
 .sidebar .page-link > span:first-child {
@@ -673,7 +674,7 @@ main {
 .sidebar .sidebar-settings .nav {
   border: 0;
   border-radius: 6px;
-  padding: 7px 8px;
+  padding: 6px 8px;
 }
 :root[data-mode=dark] .sidebar .brand-mark {
   filter: brightness(0) invert(.9);
@@ -722,10 +723,10 @@ main {
 }
 @media (min-width: 751px) {
   .sidebar {
-    width: 288px;
+    width: 260px;
   }
   main {
-    margin-left: 288px;
+    margin-left: 260px;
   }
 }
 @media (min-width: 501px) and (max-width: 750px) {
@@ -974,7 +975,7 @@ main {
   text-align: left;
   border-radius: 6px;
   padding: 8px;
-  font-size: 12px;
+  font-size: var(--ui-text-md);
   color: var(--text-muted);
 }
 .sidebar-create .icon {
@@ -1236,7 +1237,7 @@ main {
     justify-content: flex-start;
     min-height: 44px;
     padding: 10px 8px;
-    font-size: 15px;
+    font-size: var(--ui-text-md);
   }
   .workspace-navigation .sidebar .nav > span {
     display: inline;
@@ -1283,7 +1284,7 @@ main {
   }
   .workspace-navigation .sidebar .page-link {
     min-height: 44px;
-    font-size: 14px;
+    font-size: var(--ui-text-md);
   }
   .workspace-navigation .sidebar .page-link-title {
     display: block;
@@ -1301,7 +1302,7 @@ main {
   .workspace-navigation .sidebar .vault-picker .select-trigger {
     min-height: var(--touch-target-size);
     padding: var(--space-2);
-    font-size: var(--ui-text-body);
+    font-size: var(--ui-text-md);
   }
   .workspace-navigation .sidebar .vault-controls {
     margin: 0;

@@ -27,6 +27,14 @@ export async function createSpeech(vaultId:string,text:string,signal?:AbortSigna
     return await response.blob();
   } finally {if(typeof window!=='undefined')window.dispatchEvent(new Event('noema:ai-activity'));}
 }
+/** Audition explicit drafts without updating defaults or touching the saved audio cache. */
+export async function createSpeechPreview(vaultId:string,text:string,provider:SpeechProvider,voice:SpeechVoice,narration:NarrationPreferences,signal?:AbortSignal):Promise<Blob> {
+  try {
+    const response=await fetch('/api/intelligence/speech/preview',{method:'POST',signal,headers:{'X-Noema-Request':'1','X-Vault-Id':vaultId,'Content-Type':'application/json'},body:JSON.stringify({text,provider,voice,narration})});
+    if(!response.ok){const result=await response.json();throw new ApiError(response.status,result.error||'Could not preview speech.');}
+    return await response.blob();
+  } finally {if(typeof window!=='undefined')window.dispatchEvent(new Event('noema:ai-activity'));}
+}
 export async function uploadImage(vault: string, file: File): Promise<{id: string}> {
   if(file.size > 20 * 1024 * 1024) throw new Error('Images must be 20 MB or smaller');
   const response = await fetch('/api/images', {method:'POST', headers:{'X-Noema-Request':'1','X-Vault-Id':vault,'Content-Type':'application/octet-stream'}, body:file});
@@ -126,9 +134,12 @@ export const api={
   intelligence:()=>request<import('../shared/domain').IntelligenceStatus>('intelligence'),
   geminiCredential:()=>request<import('../shared/intelligence').SpeechCredentialStatus>('intelligence/gemini'),
   saveGeminiCredential:(apiKey:string,days:number)=>request<import('../shared/intelligence').SpeechCredentialStatus>('intelligence/gemini','PUT',{apiKey,days}),
+  validateGeminiCredential:()=>request<{ok:true}>('intelligence/gemini/validate','POST',{}),
   removeGeminiCredential:()=>request<import('../shared/intelligence').SpeechCredentialStatus>('intelligence/gemini','DELETE'),
   saveIntelligence:(apiKey:string,days:number)=>request<import('../shared/domain').IntelligenceStatus>('intelligence','PUT',{apiKey,days}),
   saveIntelligencePreferences:(preferences:import('../shared/intelligence').IntelligenceConfiguration)=>request<import('../shared/intelligence').IntelligenceConfiguration>('intelligence/preferences','PUT',preferences),
+  saveAIPreferences:(preferences:import('../shared/intelligence').AIPreferences)=>request<import('../shared/intelligence').IntelligenceConfiguration>('intelligence/preferences/ai','PUT',preferences),
+  saveVoicePreferences:(preferences:import('../shared/intelligence').VoicePreferences)=>request<import('../shared/intelligence').IntelligenceConfiguration>('intelligence/preferences/voice','PUT',preferences),
   removeIntelligence:()=>request<import('../shared/domain').IntelligenceStatus>('intelligence','DELETE'),
   validateIntelligence:()=>request<{ok:true}&import('../shared/intelligence').IntelligencePreferences>('intelligence/validate','POST',{}),
   setPageEditLock:(vault:string,id:string,revision:number,locked:boolean,password?:string)=>request<Page>(`pages/${id}/edit-lock`,'PUT',{revision,locked,...(password===undefined?{}:{password})},vault),

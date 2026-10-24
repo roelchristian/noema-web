@@ -110,6 +110,8 @@ export class Intelligence {
   // Editorial shares exclusion with the exclusive slot, but admits two sibling excerpts.
   private editorialRequests=new Set<AbortController>();
   private speechRequests=new Set<AbortController>();
+  private speechPreviews=new Map<AbortController,SpeechProvider>();
+  private previewAttempts:number[]=[];
   private ttsEnabled=false;
   private narration:NarrationPreferences=structuredClone(defaultNarrationPreferences);
   private narrationRevision=0;
@@ -180,6 +182,13 @@ export class Intelligence {
     if (modelChanged) {this.preferenceRevision++;for(const request of this.generationRequests)request.abort();}
     return {...this.selection(),personaId:this.personaId,ttsEnabled:this.ttsEnabled,ttsProvider:this.ttsProvider,ttsVoice:this.ttsVoice,narration:structuredClone(this.narration),manualRequestsPerMinute:this.manualRequestsPerMinute,pageEnrichment:this.enrichmentSelection()};
   }
+  /** Merge against live state synchronously: two category updates cannot erase one another. */
+  saveCategoryPreferences(category:'ai'|'voice',body:Record<string,unknown>) {
+    const fields=category==='ai'?['model','reasoningEffort','personaId','manualRequestsPerMinute','pageEnrichment']:['ttsEnabled','ttsProvider','ttsVoice','narration'];
+    if(Object.keys(body).some(field=>!fields.includes(field)))throw new HttpError(400,'Preferences contain fields from another category.');
+    return this.savePreferences({...this.selection(),...body});
+  }
+  private abortCloudPreviews(provider:SpeechProvider) {for(const [request,selected] of this.speechPreviews)if(selected===provider)request.abort();}
   private credential() {
     const value=this.secrets.read();
     if(value && Date.parse(value.expiresAt)<=this.clock()) {this.remove();return null;}
@@ -193,16 +202,17 @@ export class Intelligence {
     if(typeof body.apiKey!=='string'||!/^sk-[A-Za-z0-9_-]{16,500}$/.test(body.apiKey))throw new HttpError(400,'Enter a valid OpenAI API key.');
     const days=body.days === undefined ? 30 : body.days;
     if(typeof days!=='number'||!Number.isInteger(days)||days<1||days>365)throw new HttpError(400,'Choose a lifetime between 1 and 365 days.');
+    this.abortCloudPreviews('openai');
     for(const request of this.generationRequests)request.abort();
     for(const request of this.embeddingRequests)request.abort();
     if(this.ttsProvider==='openai')for(const request of this.speechRequests)request.abort();
     this.secrets.write({key:body.apiKey,expiresAt:new Date(this.clock()+days*86400000).toISOString(),generation:randomUUID()});
     return this.status();
   }
-  remove() {if(this.ttsProvider==='openai')for(const request of this.speechRequests)request.abort();for(const request of this.generationRequests)request.abort();for(const request of this.embeddingRequests)request.abort();this.secrets.remove();return {configured:false,expiresAt:null,manualRequestsPerMinute:this.manualRequestsPerMinute,personaId:this.personaId,ttsEnabled:this.ttsEnabled,ttsProvider:this.ttsProvider,ttsVoice:this.ttsVoice,narration:structuredClone(this.narration),...this.selection(),pageEnrichment:this.enrichmentSelection()};}
+  remove() {this.abortCloudPreviews('openai');if(this.ttsProvider==='openai')for(const request of this.speechRequests)request.abort();for(const request of this.generationRequests)request.abort();for(const request of this.embeddingRequests)request.abort();this.secrets.remove();return {configured:false,expiresAt:null,manualRequestsPerMinute:this.manualRequestsPerMinute,personaId:this.personaId,ttsEnabled:this.ttsEnabled,ttsProvider:this.ttsProvider,ttsVoice:this.ttsVoice,narration:structuredClone(this.narration),...this.selection(),pageEnrichment:this.enrichmentSelection()};}
   private geminiCredential() {
     const value=this.geminiSecrets?.read();
-    if(value&&Date.parse(value.expiresAt)<=this.clock()){this.geminiSecrets!.remove();if(this.ttsProvider==='gemini')for(const request of this.speechRequests)request.abort();return null;}
+    if(value&&Date.parse(value.expiresAt)<=this.clock()){this.geminiSecrets!.remove();this.abortCloudPreviews('gemini');if(this.ttsProvider==='gemini')for(const request of this.speechRequests)request.abort();return null;}
     return value??null;
   }
   geminiStatus() {const value=this.geminiCredential();return {configured:!!value,expiresAt:value?.expiresAt??null};}
@@ -215,13 +225,30 @@ export class Intelligence {
     if(typeof days!=='number'||!Number.isInteger(days)||days<1||days>365)throw new HttpError(400,'Choose a lifetime between 1 and 365 days.');
     if(!this.geminiSecrets)throw new HttpError(503,'Secure Gemini key storage is unavailable.');
     if(this.ttsProvider==='gemini')for(const request of this.speechRequests)request.abort();
+    this.abortCloudPreviews('gemini');
     this.geminiSecrets.write({key:apiKey,expiresAt:new Date(this.clock()+days*86400000).toISOString(),generation:randomUUID()});
     return this.geminiStatus();
   }
   removeGemini() {
     if(!this.geminiSecrets)throw new HttpError(503,'Secure Gemini key storage is unavailable.');
     if(this.ttsProvider==='gemini')for(const request of this.speechRequests)request.abort();
+    this.abortCloudPreviews('gemini');
     this.geminiSecrets.remove();return {configured:false,expiresAt:null};
+  }
+  async validateGemini() {
+    const credential=this.geminiCredential();
+    if(!credential)throw new HttpError(409,'Add a Gemini API key first.');
+    this.reserveManualRequest();
+    const controller=new AbortController();this.speechPreviews.set(controller,'gemini');
+    const timer=setTimeout(()=>controller.abort(),Math.min(15000,Date.parse(credential.expiresAt)-this.clock()));
+    try {
+      const response=await this.transport('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(speechModelFor('gemini')),{method:'GET',redirect:'error',signal:controller.signal,headers:{'x-goog-api-key':credential.key}});
+      await response.body?.cancel();
+      if(controller.signal.aborted||this.geminiCredential()?.generation!==credential.generation)throw new HttpError(409,'Gemini validation was stopped or its credential changed.');
+      if(!response.ok)throw new HttpError(response.status===429?429:409,'Gemini could not validate the saved key and speech model access.');
+      return {ok:true as const};
+    }catch(error){if(error instanceof HttpError)throw error;throw new HttpError(502,'Gemini connection validation failed or timed out.');}
+    finally{clearTimeout(timer);this.speechPreviews.delete(controller);}
   }
   purgeExpired() {try{this.credential();}finally{this.geminiCredential();}}
   private reserveManualRequest(embedding=false) {
@@ -241,23 +268,35 @@ export class Intelligence {
   narrationSelection(){return structuredClone(this.narration);}
   speechRevision(){return this.narrationRevision;}
   parseNarration(value:unknown){try{return parseNarrationPreferences(value);}catch(error){throw new HttpError(400,error instanceof Error?error.message:'Invalid narration preferences.');}}
-  async speech(text:unknown,signal?:AbortSignal,onRequest?:AIRequestObserver,options:{narration?:NarrationPreferences;pauseAfterMs?:number;protectedText?:boolean}={}):Promise<Buffer> {
-    if(!this.ttsEnabled)throw new HttpError(409,'Enable text to speech in Settings → Intelligence.');
+  async previewSpeech(body:Record<string,unknown>,signal?:AbortSignal,onRequest?:AIRequestObserver):Promise<Buffer> {
+    if(Object.keys(body).some(field=>!['text','provider','voice','narration'].includes(field)))throw new HttpError(400,'Unsupported speech preview input.');
+    if(!isSpeechProvider(body.provider)||!isSpeechVoice(body.voice,body.provider))throw new HttpError(400,'Choose a supported speech provider and voice.');
+    if(typeof body.text!=='string'||body.text.length>500)throw new HttpError(400,'Speech previews require at most 500 characters.');
+    const narration=this.parseNarration(body.narration);
+    const now=this.clock();this.previewAttempts=this.previewAttempts.filter(time=>time>now-60000);
+    if(this.previewAttempts.length>=5)throw new HttpError(429,'Speech previews are limited to five per minute.');
+    // Count attempts, including cancelled work, to bound repeated audition flows.
+    this.previewAttempts.push(now);
+    return this.speech(body.text,signal,onRequest,{narration,preview:{provider:body.provider,voice:body.voice}});
+  }
+  async speech(text:unknown,signal?:AbortSignal,onRequest?:AIRequestObserver,options:{narration?:NarrationPreferences;pauseAfterMs?:number;protectedText?:boolean;preview?:{provider:SpeechProvider;voice:SpeechVoice}}={}):Promise<Buffer> {
+    if(!options.preview&&!this.ttsEnabled)throw new HttpError(409,'Enable text to speech in Settings → Intelligence.');
     if(typeof text!=='string')throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
     const narration=options.narration===undefined?this.narration:this.parseNarration(options.narration),revision=this.narrationRevision;
     const pauseAfterMs=options.pauseAfterMs??0;
     if(!Number.isInteger(pauseAfterMs)||pauseAfterMs<0||pauseAfterMs>3000)throw new HttpError(400,'Pause must be between 0 and 3,000 milliseconds.');
     if(text.length>4096)throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
     let narratedText:string;try{narratedText=options.protectedText?text:transformNarration(text,narration);}catch{throw new HttpError(400,'Reading rules expanded this section too far. Select a shorter section or shorten pronunciations.');}
-    const cleanText=cleanSpeechText(narratedText),voice=this.ttsVoice,provider=this.ttsProvider,model=speechModelFor(provider);
+    const cleanText=cleanSpeechText(narratedText),voice=options.preview?.voice??this.ttsVoice,provider=options.preview?.provider??this.ttsProvider,model=speechModelFor(provider);
     if(!cleanText||cleanText.length>4096)throw new HttpError(400,'Speech requires text of at most 4,096 characters.');
-    if(this.speechRequests.size)throw new HttpError(429,'Another speech request is running. Please wait.');
+    if(options.preview&&cleanText.length>500)throw new HttpError(400,'Speech previews require at most 500 characters after reading rules.');
+    if(this.speechRequests.size||this.speechPreviews.size)throw new HttpError(429,'Another speech request is running. Please wait.');
     if(signal?.aborted)throw new HttpError(409,'Speech request cancelled.');
     const credential=provider==='gemini'?this.geminiCredential():provider==='openai'?this.credential():null;
     if(provider==='openai'&&!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence to use OpenAI speech. It may have expired.');
     if(provider==='gemini'&&!credential)throw new HttpError(409,'Add a Gemini API key in Settings → Intelligence to use Gemini speech. It may have expired.');
     if(provider!=='kokoro')this.reserveManualRequest();
-    const controller=new AbortController();this.speechRequests.add(controller);
+    const controller=new AbortController();if(options.preview)this.speechPreviews.set(controller,provider);else this.speechRequests.add(controller);
     const abort=()=>controller.abort();signal?.addEventListener('abort',abort,{once:true});
     const timer=setTimeout(abort,credential?Math.min(60000,Date.parse(credential.expiresAt)-this.clock()):180000);
     let trace:AIDebugTrace|undefined;
@@ -271,14 +310,14 @@ export class Intelligence {
         :provider==='openai'
         ?await realtimeSpeech(cleanText,credential!.key,controller.signal,this.speechSocketFactory,observer||undefined,voice,narration)
         :await this.speechSynthesizer(cleanText,controller.signal,voice,narration.pace);
-      if(controller.signal.aborted||revision!==this.narrationRevision||!this.ttsEnabled||this.ttsVoice!==voice||this.ttsProvider!==provider||(credential&&(provider==='gemini'?this.geminiCredential():this.credential())?.generation!==credential.generation))throw new HttpError(409,'Speech was stopped or its settings changed.');
+      if(controller.signal.aborted||(!options.preview&&(revision!==this.narrationRevision||!this.ttsEnabled||this.ttsVoice!==voice||this.ttsProvider!==provider))||(credential&&(provider==='gemini'?this.geminiCredential():this.credential())?.generation!==credential.generation))throw new HttpError(409,'Speech was stopped or its settings changed.');
       trace?.response({model,provider,format:'wav',audioBytes:audio.length});
       return appendSpeechSilence(audio,pauseAfterMs);
     } catch(error) {
       trace?.error(error instanceof HttpError?error.message:'Speech request failed or timed out.');
       if(error instanceof HttpError)throw error;
       throw new HttpError(controller.signal.aborted?409:502,controller.signal.aborted?'Speech request stopped or timed out.':'The speech request failed. Please try again.');
-    } finally {clearTimeout(timer);signal?.removeEventListener('abort',abort);this.speechRequests.delete(controller);}
+    } finally {clearTimeout(timer);signal?.removeEventListener('abort',abort);this.speechRequests.delete(controller);this.speechPreviews.delete(controller);}
   }
   async embed(input: string, onRequest?: AIRequestObserver, background=false): Promise<{embedding:number[];tokens:number}> {
     const result=await this.embedBatch([input],onRequest,background);

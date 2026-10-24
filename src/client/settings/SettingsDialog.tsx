@@ -13,6 +13,7 @@ import { useState, type CSSProperties } from 'react';
 import { AIActivityLog } from './AIActivityLog';
 import { IntelligenceSettings } from './IntelligenceSettings';
 import { EmbeddingSettings } from './EmbeddingSettings';
+import {VoiceSettings} from './VoiceSettings';
 import type { SourceReference, Vault } from '../../shared/domain';
 import { KnowledgeEntitySettings } from './KnowledgeEntitySettings';
 import { Modal, ModalHeader } from '../components/Modal';
@@ -47,11 +48,13 @@ export function SettingsDialog({initialTab='appearance',calendarSettings,onCalen
   const [visited,setVisited]=useState<Set<string>>(()=>new Set([initialTab]));
   function selectTab(next:typeof settingsTabs[number]['id']){setTab(next);setVisited(current=>new Set([...current,next]));}
   const [activityOpen, setActivityOpen] = useState(false);
+  const [aiView,setAIView]=useState<'overview'|'indexing'|'diagnostics'>('overview');
+  const [indexingVisited,setIndexingVisited]=useState(false);
   return <><Modal className="settings-modal" titleId="settings-title" onClose={onClose} dismissOnBackdrop>
     <div className="settings-dialog">
       <ModalHeader titleId="settings-title">{uiText("Settings")}</ModalHeader>
       <div className="settings-tabs" role="tablist" aria-orientation="vertical" aria-label={uiText("Settings categories")}>
-        {settingsTabs.map(({id: category, label,icon}) => <button key={category} id={'settings-tab-' + category} role="tab" aria-selected={tab === category} aria-controls={category==='intelligence'||category==='voice'?'settings-panel-ai-voice':'settings-panel-'+category} tabIndex={tab === category ? 0 : -1} onClick={() => selectTab(category)} onKeyDown={event => {
+        {settingsTabs.map(({id: category, label,icon}) => <button key={category} id={'settings-tab-' + category} role="tab" aria-selected={tab === category} aria-controls={'settings-panel-'+category} tabIndex={tab === category ? 0 : -1} onClick={() => selectTab(category)} onKeyDown={event => {
           if (['ArrowUp','ArrowDown','ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
             event.preventDefault();
             const index = settingsTabs.findIndex(item => item.id === category);
@@ -158,13 +161,19 @@ export function SettingsDialog({initialTab='appearance',calendarSettings,onCalen
       <div id="settings-panel-knowledge" role="tabpanel" aria-labelledby="settings-tab-knowledge" hidden={tab !== 'knowledge'}>
         {visited.has('knowledge') && <KnowledgeEntitySettings key={vault?.id} vault={vault} appearance={appearance} onChange={onChange} storageError={storageError}/>}
       </div>
-      <div id="settings-panel-ai-voice" role="tabpanel" aria-labelledby={tab==='voice'?'settings-tab-voice':'settings-tab-intelligence'} hidden={tab !== 'intelligence'&&tab !== 'voice'}>
-        <IntelligenceSettings vaultId={vault&&!vault.locked?vault.id:undefined} visibleSection={tab==='voice'?'voice':'ai'} onShowSection={section=>selectTab(section==='voice'?'voice':'intelligence')}/>
-        <div hidden={tab!=='intelligence'}>
-        {visited.has('intelligence') && <details className="settings-advanced"><summary>{uiText("AI diagnostics")}</summary><AIDebugSettings/></details>}
-        {visited.has('intelligence') && <details className="settings-advanced"><summary>{uiText("Search indexing")}</summary><EmbeddingSettings onOpenPassage={onOpenPassage} key={vault?.id} vault={vault} onOpenPage={onOpenPage} onOpenEntity={onOpenEntity}/></details>}
-        <section className="settings-section settings-activity-entry"><div><h3>{uiText("AI activity log")}</h3></div><button className="button" aria-haspopup="dialog" onClick={() => setActivityOpen(true)}>{uiText("Open activity log")}</button></section>
+      <div id="settings-panel-intelligence" role="tabpanel" aria-labelledby="settings-tab-intelligence" hidden={tab !== 'intelligence'}>
+        <div hidden={aiView!=='overview'}>{visited.has('intelligence')&&<IntelligenceSettings active={tab==='intelligence'&&aiView==='overview'}/>}</div>
+        {aiView!=='overview'&&<button className="button settings-back" onClick={()=>setAIView('overview')}>Back to AI</button>}
+        <div hidden={aiView!=='indexing'}>{indexingVisited&&<EmbeddingSettings active={tab==='intelligence'&&aiView==='indexing'} onOpenPassage={onOpenPassage} key={vault?.id} vault={vault} onOpenPage={onOpenPage} onOpenEntity={onOpenEntity}/>}</div>
+        {aiView==='diagnostics'&&tab==='intelligence'&&<AIDebugSettings/>}
+        {aiView==='overview'&&<section className="settings-section settings-ai-tools">
+          <div className="settings-overview-row"><span><strong>Search indexing</strong><small>Configure and manage semantic indexing for this vault</small></span><button className="button" onClick={()=>{setIndexingVisited(true);setAIView('indexing');}}>Manage indexing</button></div>
+          <div className="settings-overview-row"><span><strong>Activity & usage</strong><small>Requests, tokens and available cost estimates</small></span><button className="button" aria-haspopup="dialog" onClick={()=>setActivityOpen(true)}>Open activity log</button></div>
+          <button className="button" onClick={()=>setAIView('diagnostics')}>Advanced diagnostics</button>
+        </section>}
       </div>
+      <div id="settings-panel-voice" role="tabpanel" aria-labelledby="settings-tab-voice" hidden={tab !== 'voice'}>
+        {visited.has('voice')&&<VoiceSettings vaultId={vault&&!vault.locked?vault.id:undefined} active={tab==='voice'}/>}
       </div>
       <div id="settings-panel-storage" role="tabpanel" aria-labelledby="settings-tab-storage" hidden={tab !== 'storage'}>
         {visited.has('storage') && <StorageSettings key={vault?.id} vault={vault}/>}

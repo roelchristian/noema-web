@@ -1203,3 +1203,15 @@
 .schema-subtypes { max-height: 320px; overflow-y: auto; }
 .schema-property-summary { max-height: 320px; overflow-y: auto; }
 .settings-dialog .property-definition-form input[type=checkbox] { width: 16px; height: 16px; flex: none; margin: 2px 0; padding: 0; }
+
+/* Compact AI and Voice overviews share ordinary Settings row geometry. */
+.settings-overview-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 8px; }
+.settings-overview-row > span { min-width: 0; }
+.settings-overview-row strong { font-weight: 500; }
+.settings-overview-row small { display: block; margin-top: 3px; color: var(--text-muted); font-size: var(--ui-text-sm); }
+.settings-overview-row .button { flex-shrink: 0; }
+.settings-back { margin-block: 4px 12px; }
+.settings-ai-tools { margin-top: 12px; }
+@media (max-width: 600px) {
+  .settings-overview-row { flex-wrap: wrap; }
+}

@@ -4,32 +4,34 @@ import {t as uiText} from '../i18n';
 import {DisclosureSummary} from '../components/DisclosureSummary';
 import {defaultPageIndexPolicy} from '../../shared/embeddings';
 import type {PageReference} from '../../shared/embeddings';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { SourceReference, Vault } from '../../shared/domain';
 import type { EmbeddingSettings as Preferences, EmbeddingStatus, SemanticSearchResults } from '../../shared/embeddings';
 import { api } from '../api';
 
-export function EmbeddingSettings({vault,onOpenPage,onOpenEntity,onOpenPassage}: {vault: Vault | null; onOpenPassage:(vaultId:string,reference:SourceReference)=>Promise<void>; onOpenPage: (vaultId:string,pageId:string,reference?:PageReference)=>Promise<void>; onOpenEntity: (vaultId:string,entityId:string)=>Promise<void>}) {
+export function EmbeddingSettings({active=true,vault,onOpenPage,onOpenEntity,onOpenPassage}: {active?:boolean;vault: Vault | null; onOpenPassage:(vaultId:string,reference:SourceReference)=>Promise<void>; onOpenPage: (vaultId:string,pageId:string,reference?:PageReference)=>Promise<void>; onOpenEntity: (vaultId:string,entityId:string)=>Promise<void>}) {
   const [status,setStatus]=useState<EmbeddingStatus|null>(null);
   const [settings,setSettings]=useState<Preferences>({automatic:false,minCharacters:100});
   const [busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState(''),[message,setMessage,messageOccurrence]=useSuccessNotice();
   const [query,setQuery]=useState(''),[results,setResults]=useState<SemanticSearchResults|null>(null),[searchBusy,setSearchBusy]=useState(false);
   const [jobView,setJobView]=useState<'queue'|'history'>('queue');
   const vaultId=vault?.id;
+  const initializedVault=useRef<string|undefined>(undefined);
   useEffect(()=>{
+    if(!active)return;
     if(!vaultId||vault.locked){setLoading(false);return;}
-    let active=true,inFlight=false;
+    let alive=true,inFlight=false;
     async function refresh(initial=false) {
       if(inFlight)return;
       inFlight=true;
-      try {const next=await api.embeddings(vaultId!);if(active){setStatus(next);if(initial)setSettings(next.settings);setError('');}}
-      catch(reason){if(active)setError(reason instanceof Error?reason.message:'Could not load embedding activity.');}
-      finally{inFlight=false;if(active)setLoading(false);}
+      try {const next=await api.embeddings(vaultId!);if(alive){setStatus(next);if(initial&&initializedVault.current!==vaultId){setSettings(next.settings);initializedVault.current=vaultId;}setError('');}}
+      catch(reason){if(alive)setError(reason instanceof Error?reason.message:'Could not load embedding activity.');}
+      finally{inFlight=false;if(alive)setLoading(false);}
     }
     void refresh(true);
     const timer=window.setInterval(()=>void refresh(),5000);
-    return()=>{active=false;window.clearInterval(timer);};
-  },[vaultId,vault?.locked]);
+    return()=>{alive=false;window.clearInterval(timer);};
+  },[active,vaultId,vault?.locked]);
   async function perform(work:()=>Promise<string>) {
     setBusy(true);setError('');setMessage('');
     try {setMessage(await work());if(vaultId)setStatus(await api.embeddings(vaultId));}
@@ -53,7 +55,7 @@ export function EmbeddingSettings({vault,onOpenPage,onOpenEntity,onOpenPassage}:
       {loading&&<p role="status">{uiText("Loading embeddings…")}</p>}
       {status&&<>
         <div className="intelligence-status">{status.model} · {status.dimensions.toLocaleString(getLocale())}{" " + uiText("dimensions")}<small>{status.counts.indexed}{" " + uiText("current ·") + " "}{status.counts.partial??0}{" " + uiText("partially indexed ·") + " "}{status.counts.missing}{" " + uiText("missing ·") + " "}{status.counts.stale}{" " + uiText("stale ·") + " "}{status.counts.ineligible}{" " + uiText("ineligible")}</small></div>
-        {!status.configured&&<p className="embedding-notice">{uiText("Add an OpenAI API key above to index and search.")}</p>}
+        {!status.configured&&<p className="embedding-notice">{uiText("Add an OpenAI connection in AI settings to index and search.")}</p>}
         <form onSubmit={save}>
           <label className="embedding-toggle"><input type="checkbox" checked={settings.automatic} disabled={busy} onChange={event=>setSettings(current=>({...current,automatic:event.target.checked}))}/><span>{uiText("Automatically index new and updated content")}</span></label>
           <label htmlFor="embedding-minimum">{uiText("Minimum content length (characters)")}</label>

@@ -275,3 +275,97 @@ test('speech route pins the selected provider and isolates echo audio and activi
     response=await call({provider:'kokoro'});assert.equal(response.status,200);assert.equal(response.headers.get('x-noema-speech-cache'),'hit');assert.equal(response.headers.get('content-disposition'),localFilename);assert.equal(localCalls,1);await response.arrayBuffer();
   }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+test('category saves preserve interleaved AI and Voice updates in unified storage',()=>{
+  let saved;const store={read:()=>saved,write:value=>{saved=structuredClone(value);}};
+  const ai=new Intelligence(new Secrets(),fetch,Date.now,store);
+  const aiDraft={model:'gpt-6-luna',reasoningEffort:'none',manualRequestsPerMinute:12};
+  const voiceDraft={ttsEnabled:true,ttsProvider:'kokoro',ttsVoice:'daniel'};
+  ai.saveCategoryPreferences('voice',voiceDraft);ai.saveCategoryPreferences('ai',aiDraft);
+  assert.equal(saved.ttsVoice,'daniel');assert.equal(saved.model,'gpt-6-luna');
+  ai.saveCategoryPreferences('voice',{...voiceDraft,ttsVoice:'echo'});
+  assert.equal(saved.model,'gpt-6-luna');assert.equal(saved.manualRequestsPerMinute,12);
+  const restored=new Intelligence(new Secrets(),fetch,Date.now,store).status();
+  assert.equal(restored.ttsVoice,'echo');assert.equal(restored.model,'gpt-6-luna');
+  for(const [category,body] of [['ai',{...aiDraft,ttsVoice:'puck'}],['voice',{...voiceDraft,model:'gpt-5-mini'}]])assert.throws(()=>ai.saveCategoryPreferences(category,body),error=>error.status===400);
+  assert.equal(ai.status().ttsVoice,'echo');assert.equal(ai.status().model,'gpt-6-luna');
+});
+
+test('draft speech previews stay isolated from disabled saved defaults and enforce limits',async()=>{
+  const calls=[];let writes=0;
+  const ai=new Intelligence(new Secrets(),fetch,()=>1000,{read:()=>null,write:()=>{writes++;}},async(text,signal,voice,pace)=>{calls.push({text,voice,pace});return wav;});
+  const before=ai.status();
+  const draft={text:'An audition.',provider:'kokoro',voice:'daniel',narration:{...ai.narrationSelection(),pace:1.25}};
+  assert.deepEqual(await ai.previewSpeech(draft),wav);
+  assert.deepEqual(calls,[{text:'An audition.',voice:'daniel',pace:1.25}]);assert.deepEqual(ai.status(),before);assert.equal(writes,0);
+  for(const bad of [{...draft,voice:'Puck'},{...draft,provider:'unknown'},{...draft,text:'a'.repeat(501)},{...draft,narration:{pace:99}},{...draft,pageId:'private-page'}])await fails(()=>ai.previewSpeech(bad),400);
+  await fails(()=>ai.previewSpeech({...draft,provider:'openai',voice:'marin'}),409);
+  for(let i=0;i<3;i++)await ai.previewSpeech(draft);
+  await fails(()=>ai.previewSpeech(draft),429);
+  assert.deepEqual(ai.status(),before);assert.equal(writes,0);
+});
+
+test('preview cancellation rejects stale audio while unrelated preference saves leave drafts isolated',async()=>{
+  let signal,finish;
+  const ai=new Intelligence(new Secrets(),fetch,Date.now,undefined,async(_text,current)=>{signal=current;return new Promise(resolve=>{finish=resolve;});});
+  const draft={text:'Preview',provider:'kokoro',voice:'daniel',narration:ai.narrationSelection()};
+  const controller=new AbortController(),pending=ai.previewSpeech(draft,controller.signal);
+  ai.saveCategoryPreferences('ai',{model:'gpt-6-luna',reasoningEffort:'none'});
+  ai.saveCategoryPreferences('voice',{ttsEnabled:true,ttsProvider:'kokoro',ttsVoice:'echo'});
+  assert.equal(signal.aborted,false);controller.abort();assert.equal(signal.aborted,true);finish(wav);await fails(()=>pending,409);
+  assert.equal(ai.speechVoiceSelection(),'echo');
+  const repeated=ai.previewSpeech({...draft,text:'Repeat'});finish(wav);assert.deepEqual(await repeated,wav);
+});
+
+test('preview transport uses explicit drafts, no cache, and vault and CSRF boundaries',async()=>{
+  const dir=mkdtempSync(path.join(tmpdir(),'noema-draft-preview-')),db=openDatabase(path.join(dir,'test.sqlite'));
+  let calls=0,providerFailure=false;const sockets=speechSocketFactory(),ai=new Intelligence(new Secrets(),fetch,Date.now,intelligencePreferencesFor(new Store(db)),async()=>{calls++;if(providerFailure)throw new Error(key);return wav;},sockets.factory);
+  const server=createApp(new Store(db),path.resolve('dist/client'),ai);server.listen(0,'127.0.0.1');await once(server,'listening');
+  const base='http://127.0.0.1:'+server.address().port;
+  const draft={text:'Synthetic audition',provider:'kokoro',voice:'daniel',narration:ai.narrationSelection()};
+  const call=(route,body,method='POST',headers={})=>fetch(base+'/api/'+route,{method,headers:{'X-Noema-Request':'1','Content-Type':'application/json',...headers},body:JSON.stringify(body)});
+  try {
+    for(const headers of [{'X-Noema-Request':''},{Origin:'https://evil.example'},{'Content-Type':'text/plain'}])assert.equal((await call('intelligence/speech/preview',draft,'POST',headers)).status,403);
+    const original=ai.status(),activity=new AIActivityLog(new Store(db));activity.saveDebugSettings({enabled:true,fullTraceMinutes:5});
+    for(let i=0;i<2;i++){const response=await call('intelligence/speech/preview',draft);assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');assert.equal(response.headers.get('x-content-type-options'),'nosniff');assert.equal(response.headers.get('x-noema-speech-cache'),null);assert.deepEqual(Buffer.from(await response.arrayBuffer()),wav);}
+    assert.equal(calls,2);assert.deepEqual(ai.status(),original);
+    assert.equal(new Store(db).get("SELECT COUNT(*) AS n FROM ai_activity WHERE action='text_to_speech'").n,2);
+    ai.save({apiKey:key});
+    const cloudResponse=await call('intelligence/speech/preview',{...draft,provider:'openai',voice:'cedar'});assert.equal(cloudResponse.status,200);await cloudResponse.arrayBuffer();
+    const cloud=activity.list(null).items.find(item=>item.model===speechModelFor('openai'));
+    assert.equal(cloud.status,'completed');assert.equal(cloud.vaultId,'default');assert.equal(cloud.objectId,null);assert.equal(cloud.inputTokens,12);assert.equal(cloud.outputTokens,5);assert.equal(cloud.promptBytes,Buffer.byteLength(draft.text));
+    const trace=JSON.stringify(activity.debug(cloud.id));assert.ok(!trace.includes(draft.text));assert.ok(!trace.includes(key));assert.ok(trace.includes('cedar'));assert.equal(ai.speechProviderSelection(),'kokoro');assert.equal(ai.speechEnabled(),false);
+    providerFailure=true;const failure=await call('intelligence/speech/preview',draft);assert.equal(failure.status,502);assert.ok(!(await failure.text()).includes(key));providerFailure=false;
+    const failed=activity.list(null).items.find(item=>item.status==='failed');assert.equal(failed.httpStatus,502);assert.ok(!JSON.stringify(activity.debug(failed.id)).includes(draft.text));assert.ok(!JSON.stringify(activity.debug(failed.id)).includes(key));
+
+    let response=await call('intelligence/preferences/voice',{ttsEnabled:true,ttsProvider:'kokoro',ttsVoice:'echo'},'PUT');assert.equal(response.status,200);
+    response=await call('intelligence/preferences/ai',{model:'gpt-6-luna',reasoningEffort:'none'},'PUT');assert.equal(response.status,200);assert.equal((await response.json()).ttsVoice,'echo');
+    response=await call('intelligence/preferences/voice',{model:'gpt-5-mini'},'PUT');assert.equal(response.status,400);
+    await call('vaults/default/lock',{passphrase:'synthetic-lock'});
+    assert.equal((await call('intelligence/speech/preview',draft)).status,423);assert.equal(calls,3);
+  }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('Gemini connection validation checks metadata without speech and redacts transport failures',async()=>{
+  const gemini=new Secrets();let request;
+  const ai=new Intelligence(new Secrets(),async(url,options)=>{request={url,options};return new Response('{}');},Date.now,undefined,complete,undefined,gemini);
+  await fails(()=>ai.validateGemini(),409);
+  ai.saveGemini({apiKey:key});const before=ai.status();assert.deepEqual(await ai.validateGemini(),{ok:true});
+  assert.equal(request.options.method,'GET');assert.equal(request.options.headers['x-goog-api-key'],key);assert.ok(!request.url.includes(key));assert.match(request.url,/\/models\//);assert.deepEqual(ai.status(),before);
+  const bad=new Intelligence(new Secrets(),async()=>{throw new Error(key);},Date.now,undefined,complete,undefined,gemini);
+  await fails(()=>bad.validateGemini(),502);
+});
+
+test('cloud draft auditions use selected voices and stop when their credential changes while saved provider stays local',async()=>{
+  const completed=speechSocketFactory(),ai=new Intelligence(new Secrets(),fetch,Date.now,undefined,complete,completed.factory);
+  ai.save({apiKey:key});const before=ai.status();
+  const draft={text:'Cloud draft',provider:'openai',voice:'cedar',narration:ai.narrationSelection()};
+  assert.deepEqual(await ai.previewSpeech(draft),wav);assert.equal(completed.requests[0].event.session.audio.output.voice,'cedar');assert.deepEqual(ai.status(),before);
+  for(const action of ['replace','remove']){
+    const held=speechSocketFactory({hold:true}),current=new Intelligence(new Secrets(),fetch,Date.now,undefined,complete,held.factory);
+    current.save({apiKey:key});const pending=current.previewSpeech({...draft,narration:current.narrationSelection()});
+    await new Promise(resolve=>setImmediate(resolve));
+    if(action==='replace')current.save({apiKey:key+'-replacement'});else current.remove();
+    await fails(()=>pending,409);assert.equal(held.sockets[0].terminated,true);assert.equal(current.speechProviderSelection(),'kokoro');assert.equal(current.speechEnabled(),false);
+  }
+});

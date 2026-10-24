@@ -106,3 +106,19 @@ test('legacy inspector Edit state opens contextual Overview and keeps editors mo
   assert.equal(api.entity.mock.callCount(),requests,'tab changes do not reload entity details');
  });
 });
+
+test('late identity save cannot overwrite an inspector revisited after navigation',async t=>{
+ await fixture(t,async({root,props,entity,dom})=>{
+  let finish;
+  t.mock.method(api,'updateEntity',()=>new Promise(resolve=>finish=resolve));
+  t.mock.method(api,'entity',async(_vault,id)=>({...entity,id,name:id==='e'?'Ada':'Other entity'}));
+  const baseline=entityDraftValues(entity);
+  await act(async()=>setEntityDraft('v','e',baseline,{...baseline,name:'Earlier save'}));
+  await act(async()=>document.querySelector('#entity-form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));
+  assert.equal(typeof finish,'function');
+  await act(async()=>root.render(React.createElement(EntityPanel,{...props,id:'other'})));
+  await act(async()=>root.render(React.createElement(EntityPanel,props)));
+  await act(async()=>finish({...entity,name:'Earlier save'}));
+  assert.equal(document.querySelector('#entity-detail-title').textContent,'Ada');
+ });
+});

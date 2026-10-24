@@ -370,7 +370,7 @@ export function App() {
       <PresentationSelector onExitFocus={exitFocus} value={appearance.presentationMode} onChange={presentationMode => setAppearance(current => ({...current, presentationMode}))}/>
     </div>}
     <WorkspaceNavigation mobile={mobile} open={navigationOpen && !focusWorkspace} onClose={() => setNavigationOpen(false)}>
-    <aside className="sidebar" onClickCapture={animateSidebarClick} data-navigating={loadingPageId !== null}><div className="sidebar-heading"><a className="brand" href="/" aria-label={uiText("Noema home")}><img className="brand-mark" src="/noema-mark.svg" alt="" width="38" height="38"/><span>noema</span></a>
+    <aside className="sidebar" onClickCapture={animateSidebarClick} data-navigating={loadingPageId !== null}><div className="sidebar-heading"><a className="brand" href="/" aria-label={uiText("Noema home")}><i className="brand-mark" aria-hidden="true"/><span>noema</span></a>
       <button className="mobile-navigation-close" type="button" aria-label={uiText("Close navigation")} onClick={() => setNavigationOpen(false)}><Icon name="close"/></button>
       <button className="sidebar-new-note" type="button" aria-label={uiText("New Note")} title={uiText("New Note")} disabled={disabled || reviewing} onClick={() => { workspace.closeEntity(); setSearchOpen(false); run(() => workspace.newPage()); }}><Icon name="compose"/></button></div>
       <div className="sidebar-scroll-region">

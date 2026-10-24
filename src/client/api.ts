@@ -171,7 +171,7 @@ export const api={
   saveEntityOverview:(vault:string,id:string,body:{content:string;revision:number})=>request<EntityDetail>(`entities/${id}/overview`,'PUT',body,vault),
   associateEntityPage:(vault:string,id:string,pageId:string,body:{pinned?:boolean;annotation?:string}={})=>request<EntityDetail>(`entities/${id}/pages/${pageId}`,'PUT',body,vault),
   removeEntityPage:(vault:string,id:string,pageId:string)=>request<EntityDetail>(`entities/${id}/pages/${pageId}`,'DELETE',undefined,vault),
-  pageEntityAssociations:(vault:string,id:string)=>request<import('../shared/domain').PageEntityAssociation[]>(`pages/${id}/entities`,'GET',undefined,vault),
+  pageEntityAssociations:(vault:string,id:string,signal?:AbortSignal)=>request<import('../shared/domain').PageEntityAssociation[]>(`pages/${id}/entities`,'GET',undefined,vault,signal),
   sourceLifecycle:(vault:string,id:string)=>request<import('../shared/entity-lifecycle').EntityImpact>(`entities/${id}/lifecycle`,'GET',undefined,vault),
   changeSourceLifecycle:(vault:string,id:string,action:'archive'|'restore'|'delete',confirmation?:string,version?:string)=>request<import('../shared/entity-lifecycle').EntityImpact|{ok:true}>(`entities/${id}/lifecycle`,'POST',{action,confirmation,version},vault),
   createEntity:(vault:string,input:EntityInput)=>request<EntityDetail>('entities','POST',input,vault),

@@ -1131,6 +1131,17 @@
 .schema-type-nav button { display: flex; align-items: center; gap: 8px; text-align: left; }
 .schema-type-nav small, .schema-property-summary small { display: block; color: var(--text-muted); font-size: var(--ui-text-xs); font-weight: normal; }
 .schema-type-nav .icon, .schema-subtype-row .icon, .schema-icon-options .icon { width: 16px; height: 16px; }
+/* Settings previews retain category colors despite the shared neutral icon treatment. */
+.entity-schema-manager .entity-icon.person { background: var(--person-bg); color: var(--person-text); }
+.entity-schema-manager .entity-icon.place { background: var(--place-bg); color: var(--place-text); }
+.entity-schema-manager .entity-icon.event { background: var(--event-bg); color: var(--event-text); }
+.entity-schema-manager .entity-icon.creativework { background: var(--creativework-bg); color: var(--creativework-text); }
+.entity-schema-manager .entity-icon.organization { background: var(--organization-bg); color: var(--organization-text); }
+.entity-schema-manager .entity-icon.organism { background: var(--organism-bg); color: var(--organism-text); }
+.entity-schema-manager .entity-icon.culture { background: var(--culture-bg); color: var(--culture-text); }
+.entity-schema-manager .entity-icon.source { background: var(--source-bg); color: var(--source-text); }
+.entity-schema-manager .entity-icon.concept { background: var(--concept-bg); color: var(--concept-text); }
+.entity-schema-manager .entity-icon.thing { background: var(--thing-bg); color: var(--thing-text); }
 .schema-type-inspector { min-width: 0; }
 .schema-type-inspector h3, .schema-type-inspector h4 { margin: 0; font-size: var(--ui-text-md); }
 .schema-subtype-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) 32px; gap: 4px; align-items: center; border-bottom: 1px solid var(--line); }

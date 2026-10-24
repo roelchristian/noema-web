@@ -1154,3 +1154,41 @@
   .schema-views button, .schema-type-nav button, .schema-subtype-row button, .schema-section-heading button, .schema-back, .schema-icon-options button, .schema-overflow summary, .schema-overflow button { min-height: var(--touch-target-size); }
   .schema-subtype-row { grid-template-columns: 44px minmax(0, 1fr) 44px; }
 }
+.property-definition-manager { display: grid; grid-template-columns: minmax(145px, 0.8fr) minmax(0, 1.5fr); gap: 18px; align-items: start; }
+.schema-registry, .schema-definition-inspector { min-width: 0; }
+.schema-registry input { width: 100%; }
+.schema-registry-list { display: grid; gap: 2px; max-height: 420px; overflow-y: auto; }
+.schema-registry-list button { min-height: var(--control-target-compact); padding: 8px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
+.schema-registry-list button[aria-pressed=true] { background: var(--surface-hover); }
+.schema-registry-list small { display: block; margin-top: 3px; font-size: var(--ui-text-xs); color: var(--text-muted); }
+.schema-definition-inspector h3 { margin-block: 12px; font-size: var(--ui-text-md); }
+.schema-definition-advanced { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
+.schema-definition-advanced > label, .schema-definition-advanced > fieldset, .schema-definition-advanced > div { margin-top: 10px; }
+.schema-definition-inspector summary { cursor: pointer; min-height: var(--control-target-compact); }
+.schema-builtin { padding: 12px; background: var(--surface-hover); border-radius: var(--radius-md); }
+.schema-builtin dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; }
+.schema-builtin dt { color: var(--text-muted); }
+.schema-builtin dd { margin: 0; overflow-wrap: anywhere; }
+.schema-builtin code, .schema-builtin pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .property-definition-manager { grid-template-columns: minmax(0, 1fr); }
+  .schema-registry-list { max-height: 220px; }
+  .schema-registry-list button, .schema-definition-inspector summary, .schema-section-heading button { min-height: var(--touch-target-size); }
+}
+.settings-dialog .property-definition-form label { margin: 0; }
+.settings-dialog .property-definition-form :is(input:not([type=checkbox]), textarea, .select-control) { margin-top: 0; font: inherit; }
+.settings-dialog .property-definition-form textarea { min-height: 64px; resize: vertical; padding: 8px; border: 1px solid var(--control-border); border-radius: var(--radius-sm); background: var(--surface-inset); color: var(--text); }
+.settings-dialog .property-definition-form > fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.settings-dialog .property-definition-form > fieldset > legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.settings-dialog .property-definition-form :is(input:not([type=checkbox]), .select-trigger) { min-height: var(--control-target-compact); padding: 6px 8px; }
+.settings-dialog .entity-schema-manager :is(button, summary) { min-height: var(--control-target-compact); }
+.schema-registry { position: sticky; top: 0; }
+@media (max-width: 600px) {
+  .schema-registry { position: static; }
+  .settings-dialog .entity-schema-manager :is(button, summary) { min-height: var(--touch-target-size); min-width: var(--touch-target-size); }
+  .settings-dialog .property-definition-form :is(input:not([type=checkbox]), .select-trigger) { min-height: var(--touch-target-size); }
+}
+.schema-type-nav { position: sticky; top: 0; }
+.schema-subtypes { max-height: 320px; overflow-y: auto; }
+.schema-property-summary { max-height: 320px; overflow-y: auto; }
+.settings-dialog .property-definition-form input[type=checkbox] { width: 16px; height: 16px; flex: none; margin: 2px 0; padding: 0; }

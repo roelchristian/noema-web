@@ -346,3 +346,25 @@ test('transliteration is read-only, updates with edits and layout preferences, a
     assert.equal(document.querySelector('.block-transliteration'),null);
   });
 });
+
+
+test('editable transliteration follows page language changes even when block content stays the same',async()=>{
+  const {rememberTransliteration}=await import('../src/client/state/transliteration-preferences.ts');
+  await fixture(async({blocks,set,language})=>{
+    await set(blocks().map(block=>block.id==='b1'?{...block,content:[{text:'ъЬ Ъь сънъ СЪНЪ СъНь'}]}:block));
+    const original=structuredClone(blocks());
+    await act(async()=>rememberTransliteration('fixture/','below'));
+    try {
+      for(const [selected,expected] of [
+        ['cu','ŭĬ Ŭĭ sŭnŭ SŬNŬ SŭNĭ'],
+        ['bg','ăʹ Ăʹ sănă SĂNĂ SăNʹ'],
+        ['ru','ʺʹ ʺʹ sʺnʺ SʺNʺ SʺNʹ'],
+        [null,'ʺʹ ʺʹ sʺnʺ SʺNʺ SʺNʹ'],
+      ]) {
+        await language(selected);
+        assert.equal(document.querySelector('[data-block-id="b1"] .block-transliteration').lastElementChild.textContent,expected,String(selected));
+        assert.deepEqual(blocks(),original);
+      }
+    } finally {await act(async()=>rememberTransliteration('fixture/','off'));}
+  });
+});

@@ -57,3 +57,31 @@ test('Old Church Slavonic includes historical Cyrillic and Glagolitic without ch
   assert.equal(blockTransliteration(block,[]),'Slovo u ya');
   assert.deepEqual(block,original);
 });
+
+
+test('explicit OCS and Bulgarian languages preserve yer case and isolate other Cyrillic conventions',()=>{
+  const source='ъ ь Ъ Ь сънъ СЪНЪ СъНь';
+  for(const language of ['cu','chu','CU','cu-Cyrl','Old Church Slavonic',' old church slavonic ']) {
+    assert.equal(transliterate(source,language),'ŭ ĭ Ŭ Ĭ sŭnŭ SŬNŬ SŭNĭ',language);
+  }
+  for(const language of ['bg','bul','BG','bg-BG','Bulgarian',' bulgarian ']) {
+    assert.equal(transliterate(source,language),'ă ʹ Ă ʹ sănă SĂNĂ SăNʹ',language);
+  }
+  for(const language of [undefined,null,'','ru','Russian','uk','sr','en','invalid language']) {
+    assert.equal(transliterate(source,language),'ʺ ʹ ʺ ʹ sʺnʺ SʺNʺ SʺNʹ',String(language));
+    assert.equal(transliterate('ѣъ ꙗь ⱏ ⱐ',language),'ěʺ yaʹ ʺ ʹ','historical letters do not select OCS');
+  }
+  for(const language of ['cu','bg','ru']) {
+    assert.equal(transliterate('θεός ⲁ й ё ї ѣ ꙗ ⱏ ⱐ',language),'theós a y yo yi ě ya ʺ ʹ',language);
+  }
+});
+
+test('block projection applies the selected language to prose and entity mentions without editing source data',()=>{
+  const block={id:'yers',type:'paragraph',content:[{text:'ъЬ '},{entityId:'e'},{text:' '},{entityId:'e',mentionText:'Ьъ'},{text:' ъ',code:true},{text:' ь',math:true}]};
+  const entities=[{id:'e',name:'Ъь'}];
+  const original=structuredClone({block,entities});
+  assert.equal(blockTransliteration(block,entities,'cu'),'ŭĬ Ŭĭ Ĭŭ ъ ь');
+  assert.equal(blockTransliteration(block,entities,'bg'),'ăʹ Ăʹ ʹă ъ ь');
+  assert.equal(blockTransliteration(block,entities,'ru'),'ʺʹ ʺʹ ʹʺ ъ ь');
+  assert.deepEqual({block,entities},original);
+});

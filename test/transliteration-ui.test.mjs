@@ -8,7 +8,7 @@ import {TransliterationBar} from '../src/client/editor/TransliterationBar.tsx';
 import {ReadOnlyPageBlocks} from '../src/client/editor/ReadOnlyPageBlocks.tsx';
 import {readTransliteration} from '../src/client/state/transliteration-preferences.ts';
 
-for(const [name,text,expected] of [['Greek','θεός','theós'],['Old Church Slavonic','Ⱄⰾⱁⰲⱁ ѹ ꙗ','Slovo u ya']])test(`three-dot menu controls ${name} transliteration on a locked page and remembers its page preference`,async t=>{
+for(const [name,text,expected] of [['Greek','θεός','theós'],['Old Church Slavonic','Ⱄⰾⱁⰲⱁ ѹ ꙗ ъЬ Ъь','Slovo u ya ŭĬ Ŭĭ'],['Bulgarian','ъЬ Ъь','ăʹ Ăʹ'],['Russian','ъЬ Ъь','ʺʹ ʺʹ']])test(`three-dot menu controls ${name} transliteration on a locked page and remembers its page preference`,async t=>{
   const env=setupDOM(t);
   const storageDescriptor=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
   Object.defineProperty(globalThis,'localStorage',{configurable:true,value:env.dom.window.localStorage});
@@ -20,13 +20,13 @@ for(const [name,text,expected] of [['Greek','θεός','theós'],['Old Church Sl
   prototype.hidePopover=function(){open.delete(this);};
   prototype.getAnimations=()=>[];prototype.animate=()=>({});
   prototype.getBoundingClientRect=()=>({left:10,right:110,top:10,bottom:30,width:100,height:20});
-  const page={id:'locked-translit-'+name,vault_id:'test',title:'Example',editLocked:true,blocks:[{id:'p',type:'paragraph',content:[{text}]}]};
+  const page={id:'locked-translit-'+name,vault_id:'test',title:'Example',language:name,editLocked:true,blocks:[{id:'p',type:'paragraph',content:[{text}]}]};
   const root=createRoot(document.querySelector('#mount'));
   env.defer(()=>act(async()=>root.unmount()));
   const noop=()=>{};
   const render=()=>root.render(React.createElement(React.Fragment,null,
     React.createElement(PageToolbar,{page,onRevealInSidebar:noop,onUndo:noop,onRedo:noop,onEditLockChange:async()=>{},onAI:noop,onPresentationModeChange:noop,onExitFocus:noop,onOrganizationChange:noop,onDelete:async()=>{},onError:noop,onFeaturedImageChange:noop,onChangeBlocks:()=>assert.fail('view settings must not edit blocks'),presentationMode:'standard'}),
-    React.createElement(ReadOnlyPageBlocks,{blocks:page.blocks,entities:[],pages:[],vaultId:'test',pageId:page.id,onOpenEntity:noop,onOpenPage:noop}),
+    React.createElement(ReadOnlyPageBlocks,{language:page.language,blocks:page.blocks,entities:[],pages:[],vaultId:'test',pageId:page.id,onOpenEntity:noop,onOpenPage:noop}),
     React.createElement(TransliterationBar,{pageKey:'test/'+page.id})));
   await act(async()=>render());
   assert.equal(document.querySelector('.transliteration-bar'),null);
@@ -54,7 +54,7 @@ for(const [name,text,expected] of [['Greek','θεός','theós'],['Old Church Sl
   const remount=createRoot(document.querySelector('#mount'));
   env.defer(()=>act(async()=>remount.unmount()));
   await act(async()=>remount.render(React.createElement(React.Fragment,null,
-    React.createElement(ReadOnlyPageBlocks,{blocks:page.blocks,entities:[],pages:[],vaultId:'test',pageId:page.id,onOpenEntity:noop,onOpenPage:noop}),
+    React.createElement(ReadOnlyPageBlocks,{language:page.language,blocks:page.blocks,entities:[],pages:[],vaultId:'test',pageId:page.id,onOpenEntity:noop,onOpenPage:noop}),
     React.createElement(TransliterationBar,{pageKey:'test/'+page.id}))));
   assert.ok(document.querySelector('.block-transliteration'));
   await act(async()=>document.querySelector('[aria-label="Hide transliteration"]').click());

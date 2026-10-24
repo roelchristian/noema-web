@@ -20,11 +20,24 @@ const letters:Record<string,string>={
 const supportedScript=/[\p{Script=Greek}\p{Script=Cyrillic}\p{Script=Coptic}\p{Script=Glagolitic}]/u;
 const greekScript=/\p{Script=Greek}/u;
 
-export function transliterate(text:string):string {
-  return text.normalize('NFC').replace(/[\p{L}\p{M}]+/gu,word=>transliterateWord(word));
+// Only explicit language metadata selects yer conventions; shared letters cannot identify a language.
+const languageLetters:Record<string,Record<string,string>>={cu:{ъ:'ŭ',ь:'ĭ'},bg:{ъ:'ă'}};
+function selectedLetters(language?:string|null):Record<string,string> {
+  const name=language?.trim().toLowerCase();
+  const tag=name==='old church slavonic'?'cu':name==='bulgarian'?'bg':name;
+  if(!tag)return letters;
+  try {
+    const primary=Intl.getCanonicalLocales(tag)[0]?.split('-')[0]??'';
+    return languageLetters[primary]??letters;
+  } catch {return letters;}
 }
 
-function transliterateWord(text:string):string {
+export function transliterate(text:string,language?:string|null):string {
+  const overrides=selectedLetters(language);
+  return text.normalize('NFC').replace(/[\p{L}\p{M}]+/gu,word=>transliterateWord(word,overrides));
+}
+
+function transliterateWord(text:string,overrides:Record<string,string>):string {
   const allCaps=text===text.toUpperCase()&&Array.from(text).filter(letter=>/\p{L}/u.test(letter)).length>1;
   const clusters=text.normalize('NFC').match(/\P{M}\p{M}*|\p{M}+/gu)??[];
   const roughDiphthong=(index:number)=>{
@@ -41,7 +54,7 @@ function transliterateWord(text:string):string {
       base=Array.from(decomposed)[0]!.toLowerCase();
       marks=decomposed.slice(Array.from(decomposed)[0]!.length)+marks;
     }
-    let latin=letters[base];
+    let latin=overrides[base]??letters[base];
     let subscriptIota='';
     if(latin===undefined)return cluster; // Preserve uncommon/unsupported letters.
     if(greekScript.test(original)){
@@ -57,14 +70,14 @@ function transliterateWord(text:string):string {
   }).join('');
 }
 
-export function blockTransliteration(block:Block,entities:Entity[]):string|null {
+export function blockTransliteration(block:Block,entities:Entity[],language?:string|null):string|null {
   if(!['paragraph','heading1','heading2','quote','bullet','numbered','todo'].includes(block.type)||block.semantic==='ai-explanation')return null;
   let supported=false;
   const text=block.content.map(segment=>{
     const value=segment.entityId?segment.mentionText??entityMentionName(entities.find(entity=>entity.id===segment.entityId))??'':segment.text??'';
     if(segment.math||segment.code)return value;
     supported ||= supportedScript.test(value);
-    return transliterate(value);
+    return transliterate(value,language);
   }).join('');
   return supported?text:null;
 }

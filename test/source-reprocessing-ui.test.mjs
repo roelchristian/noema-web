@@ -100,7 +100,7 @@ test('partial failures show actionable processing cause and excerpt ledger separ
  assert.match(document.querySelector('.reprocessing-progress').textContent,/Partial revision.*1 \/ 3 excerpts completed/s);
  assert.match(document.querySelector('.reprocessing-failure').textContent,/Settings → Intelligence/);
  assert.match(document.querySelector('.reprocessing-ledger').textContent,/Pages 1–2.*Completed.*Attempts: 1.*Page 3.*Failed.*Unsupported reasoning.*Page 4.*Not started/s);
- assert.equal(env.button('Review changes (2)').getAttribute('aria-pressed'),'true');
+ assert.equal(env.button('Review changes (2)').getAttribute('aria-pressed'),'false');
  assert.ok(env.button('Read partial revision'));assert.ok(env.button('Retry after configuration repair'));
  const summaries=[...document.querySelectorAll('.reprocessing-report summary')].map(node=>node.textContent);
  assert.ok(summaries.includes('Processing errors'));assert.ok(summaries.includes('Excluded suggestions (1)'));assert.ok(summaries.includes('Editorial observations'));
@@ -128,3 +128,12 @@ test('resumed ledger preserves each last attempt configuration and marks incompl
  const env=await mount(t,{initial:r});const rows=[...document.querySelectorAll('.reprocessing-ledger li')];assert.match(rows[0].textContent,/Last attempt: GPT-5 Mini.*medium reasoning/);assert.match(rows[1].textContent,/Last attempt: GPT-5 Mini.*low reasoning/);
  assert.match(document.querySelector('.reprocessing-report').textContent,/Current session model \/ reasoninggpt-5-mini \/ low/);assert.match(document.querySelector('.reprocessing-report').textContent,/Token totals are incomplete.*only reported usage/);assert.ok(env.button('Retry after configuration repair'));
 });
+
+ test('pending count excludes applied and rejected changes and never opens review automatically',async t=>{
+ const r=fixture();r.patches[1].decision='accepted';const env=await mount(t,{initial:r});
+ assert.ok(env.button('Review changes (1)'));assert.equal(env.button('Review changes (1)').getAttribute('aria-pressed'),'false');
+ assert.equal(document.querySelector('.reprocessing-processing-details').open,false);
+ await env.click(env.button('Review changes (1)'));assert.equal(document.querySelectorAll('.reprocessing-patch').length,1);
+ assert.equal(document.querySelector('.reprocessing-patch-explanation').open,false);
+ assert.equal(document.querySelector('[aria-label="Comparison layout"]').value,'unified');
+ });

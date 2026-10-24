@@ -14,6 +14,7 @@ import {editorialDiagnostics,pageBoundaryDiagnostics} from './source-reprocessin
 import type {SourceFile} from '../../shared/domain.js';
 import {processedSourceDocument} from './source-document.js';
 import {sourceDocumentEntries,type SourceDocument,type SourceDocumentRange} from '../../shared/source-document.js';
+import {defaultSourceReprocessingConfiguration,type SourceReprocessingConfiguration} from '../../shared/source-reprocessing.js';
 import type {SourceEditorialPatch,SourceReprocessingRevision,SourceReprocessingSummary} from '../../shared/source-reprocessing.js';
 
 const hash=(text:string)=>createHash('sha256').update(text).digest('hex');
@@ -32,6 +33,13 @@ export function editorialPatchRisk(original:string,replacement:string,category:S
  if(/["“”‘’]|\[[^\]]*\]|https?:|\b(?:pp?\.|doi|ISBN)\b/i.test(original+replacement))reasons.push('Quotation, citation, or annotation requires manual review.');
  if(/<!--/.test(original+replacement))reasons.push('Touches page provenance.');
  return reasons;
+}
+export function reprocessingConfiguration(value:unknown):SourceReprocessingConfiguration {
+ const supplied=value===undefined?defaultSourceReprocessingConfiguration:value;
+ if(!supplied||typeof supplied!=='object'||Array.isArray(supplied))throw new HttpError(400,'Invalid reconstruction configuration.');
+ const config=supplied as Record<string,unknown>,evidence=config.evidence as Record<string,unknown>|undefined;
+ if(!['light','balanced','deep'].includes(String(config.depth))||!['verified','review_all'].includes(String(config.reviewPolicy))||!evidence||typeof evidence!=='object'||['originalPages','ocr','allowExternalTransmission'].some(key=>typeof evidence[key]!=='boolean'))throw new HttpError(400,'Invalid reconstruction configuration.');
+ return structuredClone(supplied) as SourceReprocessingConfiguration;
 }
 interface Row {id:string;vault_id:string;file_id:string;payload:string}
 
@@ -125,6 +133,8 @@ export class SourceReprocessing {
  }
  start(vault:string,id:string,body:Record<string,unknown>){
   this.requireOpen(vault);if(this.closed)throw new HttpError(503,'Editorial processing is shutting down.');
+  if(body.pipelineVersion!==undefined&&body.pipelineVersion!==1&&body.pipelineVersion!==2)throw new HttpError(400,'Invalid reprocessing pipeline version.');
+  if(body.pipelineVersion===2){reprocessingConfiguration(body.configuration);throw new HttpError(409,'Reconstruction V2 is not activated yet.');}
   if(body.instructions!==undefined&&(typeof body.instructions!=='string'||body.instructions.length>4000))throw new HttpError(400,'Editorial instructions must be at most 4,000 characters.');
   const acceptanceMode=body.acceptanceMode??'balanced';
   if(acceptanceMode!=='review_all'&&acceptanceMode!=='safe_formatting'&&acceptanceMode!=='balanced'&&acceptanceMode!=='minimal_review')throw new HttpError(400,'Invalid acceptance mode.');

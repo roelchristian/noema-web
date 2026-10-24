@@ -1,6 +1,27 @@
 import type {ReasoningEffort} from './intelligence.js';
 import type {SourceDocument,SourceDocumentRange} from './source-document.js';
 export type SourceAcceptanceMode='review_all'|'safe_formatting'|'balanced'|'minimal_review';
+/** V2 depth is independent of the historical V1 acceptance modes. */
+export type SourceProcessingDepth='light'|'balanced'|'deep';
+export type SourceReviewPolicy='verified'|'review_all';
+export interface SourceReprocessingConfiguration {
+ depth:SourceProcessingDepth;reviewPolicy:SourceReviewPolicy;
+ evidence:{originalPages:boolean;ocr:boolean;allowExternalTransmission:boolean};
+}
+export const defaultSourceReprocessingConfiguration:SourceReprocessingConfiguration={depth:'balanced',reviewPolicy:'verified',evidence:{originalPages:false,ocr:false,allowExternalTransmission:false}};
+export interface SourceReprocessingChunk {
+ revisionId:string;index:number;startOffset:number;endOffset:number;baseHash:string;evidenceHash:string;
+ difficulty:'ordinary'|'difficult';difficultyReason:string|null;requiredPassCount:1|2|3;
+ status:'pending'|'running'|'completed'|'failed'|'interrupted';
+}
+export interface SourceReprocessingPass extends SourceEditorialUsage {
+ revisionId:string;chunkIndex:number;index:1|2|3;
+ status:'running'|'completed'|'failed'|'interrupted';
+ kind:'clean'|'reconstruct'|'verify'|'resolve';
+ model:string;reasoningEffort:ReasoningEffort;promptVersion:string;configuration:SourceReprocessingConfiguration;
+ requestHash:string;result:string|null;validation:string[];startedAt:string;finishedAt:string|null;
+ error:string|null;outcomeUncertain:boolean;
+}
 export type ReprocessingStatus='queued'|'running'|'completed'|'failed'|'interrupted';
 export interface SourceEditorialUsage {inputTokens:number|null;outputTokens:number|null;reasoningTokens:number|null;cachedInputTokens:number|null}
 export interface SourceEditorialAttempt extends SourceEditorialUsage {
@@ -34,6 +55,7 @@ export interface SourceReprocessingReport {
 }
 export interface SourceReprocessingRevision {
  id:string;fileId:string;createdAt:string;updatedAt:string;status:ReprocessingStatus;instructions:string;
+ pipelineVersion?:1|2;configuration?:SourceReprocessingConfiguration;
  nodeLinks?:{originalNodeId:string;reprocessedNodeIds:string[]}[];
  acceptanceThreshold?:number;
  acceptanceMode?:SourceAcceptanceMode;

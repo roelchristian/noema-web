@@ -45,3 +45,15 @@ test('Greek accents remain on vowels before subscript iota, in composed and deco
   assert.equal(transliterate(source),expected.normalize('NFC'));
   assert.equal(transliterate(source.normalize('NFD')),expected.normalize('NFC'));
 });
+
+
+test('Old Church Slavonic includes historical Cyrillic and Glagolitic without changing the original block',()=>{
+  assert.equal(transliterate('Слово ѣ ѧ ѫ ѩ ѭ ѹ ꙋ ꙗ ѿ'),'Slovo ě ę ǫ yę yǫ u u ya ot');
+  assert.equal(transliterate('Ⱄⰾⱁⰲⱁ ⱑ ⱔ ⱘ ⱗ ⱙ ⱆ'),'Slovo ě ę ǫ yę yǫ u');
+  assert.equal(transliterate('ⰆⰋⰂⰅⰕⰅ'),'ZHIVETE');
+  assert.equal(transliterate('ⰰ́ ѣ́'.normalize('NFD')),transliterate('ⰰ́ ѣ́'));
+  const block={id:'ocs',type:'paragraph',content:[{text:'Ⱄⰾⱁⰲⱁ ѹ ꙗ'}]};
+  const original=structuredClone(block);
+  assert.equal(blockTransliteration(block,[]),'Slovo u ya');
+  assert.deepEqual(block,original);
+});

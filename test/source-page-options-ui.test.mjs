@@ -136,11 +136,13 @@ test('selected language is an explicit trusted instruction even for a Spanish so
 });
 
 test('added output languages resolve to canonical tags and Greek variants keep their instructions',()=>{
-  const added={'Dutch':'nl','Swedish':'sv','Danish':'da','Turkish':'tr','Russian':'ru','Ukrainian':'uk','Greek':'el','Greek (Modern, Polytonic)':'el-polyton','Coptic':'cop','Greek (Koine)':'grc','Swahili':'sw','Syriac':'syr','Old English':'ang','Middle English':'enm','Catalan':'ca','Occitan':'oc'};
+  const added={'Old Church Slavonic':'cu','Bulgarian':'bg','Albanian':'sq','Sardinian':'sc','Dutch':'nl','Swedish':'sv','Danish':'da','Turkish':'tr','Russian':'ru','Ukrainian':'uk','Greek':'el','Greek (Modern, Polytonic)':'el-polyton','Coptic':'cop','Greek (Koine)':'grc','Swahili':'sw','Syriac':'syr','Old English':'ang','Middle English':'enm','Catalan':'ca','Occitan':'oc'};
   for(const [name,tag] of Object.entries(added)){
     assert.ok(sourcePageLanguages.includes(name));assert.equal(pageLanguage(name),tag);
     assert.ok(sourcePagePrompt(JSON.stringify({generation_options:{language:name}})).instructions.startsWith(`OUTPUT LANGUAGE: Write the complete page in ${tag}.`));
   }
   assert.match(sourcePagePrompt(JSON.stringify({generation_options:{language:'Greek (Modern, Polytonic)'}})).instructions,/use Modern Greek with polytonic orthography/);
   assert.match(sourcePagePrompt(JSON.stringify({generation_options:{language:'Greek (Koine)'}})).instructions,/use Koine Greek/);
+  assert.match(sourcePagePrompt(JSON.stringify({generation_options:{language:'Old Church Slavonic'}})).instructions,/use Old Church Slavonic vocabulary and grammar/);
+  assert.equal(sourcePageLanguages.filter(language=>language==='Danish').length,1);
 });

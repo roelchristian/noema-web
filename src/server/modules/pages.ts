@@ -13,7 +13,7 @@ import {pageLanguage} from './page-language.js';
 import {nextPageAIStatus, reviewedPageAIStatus, type PageAIStatus} from '../../shared/page-ai-status.js';
 import {allowedInColumn} from '../../shared/column-blocks.js';
 import { entityMentionName } from '../../shared/domain.js';
-import {blockPageLinks,pageTitleKey} from '../../shared/page-links.js';
+import {blockPageLinks,resolvePageLink} from '../../shared/page-links.js';
 import { isAIExplanation, isSemanticKind } from '../../shared/semantic-blocks.js';
 import { conceptContentHash, summaryContentHash } from './summary-content.js';
 import { AINotifications } from './ai-notifications.js';
@@ -52,9 +52,31 @@ export class Pages {
     return {...row,blocks:blocks.slice(0,80),truncated:blocks.length>80};
   }
   backlinks(vault:string,id:string):PageSummary[] {
-    const target=pageTitleKey(this.get(vault,id).title);
+    this.get(vault,id);
+    const catalog=this.store.all<PageSummary>('SELECT id,title FROM pages WHERE vault_id=? AND deleted_at IS NULL',vault);
     const candidates=this.store.all<PageSummary & {blocks:string}>("SELECT id,title,icon,ai_status AS aiStatus,ai_review_accepted AS aiReviewAccepted,language,updated_at,archived_at,blocks FROM pages WHERE vault_id=? AND deleted_at IS NULL AND id<>? AND instr(blocks,'[[')>0 ORDER BY title COLLATE NOCASE,id",vault,id);
-    return candidates.flatMap(({blocks,...page})=>blockPageLinks(JSON.parse(blocks) as Block[]).some(link=>pageTitleKey(link.title)===target)?[{...page,aiReviewAccepted:!!page.aiReviewAccepted,aiStatus:reviewedPageAIStatus(page.aiStatus??'regular',!!page.aiReviewAccepted)}]:[]);
+    return candidates.flatMap(({blocks,...page})=>blockPageLinks(JSON.parse(blocks) as Block[]).some(link=>resolvePageLink(link,catalog).length===1&&resolvePageLink(link,catalog)[0]!.id===id)?[{...page,aiReviewAccepted:!!page.aiReviewAccepted,aiStatus:reviewedPageAIStatus(page.aiStatus??'regular',!!page.aiReviewAccepted)}]:[]);
+  }
+  associations(vault:string,id:string):import('../../shared/domain.js').PagePageAssociation[] {
+    this.get(vault,id);
+    return this.store.all<Omit<import('../../shared/domain.js').PagePageAssociation,'pinned'> & {pinned:number}>(`SELECT p.id,p.title,p.icon,p.updated_at,p.archived_at,a.pinned,a.annotation,a.created_at FROM page_page_associations a JOIN pages p ON p.id=CASE WHEN a.source_id=? THEN a.target_id ELSE a.source_id END WHERE (a.source_id=? OR a.target_id=?) AND p.vault_id=? AND p.deleted_at IS NULL ORDER BY a.pinned DESC,p.title COLLATE NOCASE,p.id`,id,id,id,vault).map(row=>({...row,pinned:!!row.pinned}));
+  }
+  associate(vault:string,id:string,targetId:string,body:Record<string,unknown>) {
+    this.requireEditable(vault,id);this.requireActive(vault,targetId);
+    if(id===targetId)throw new HttpError(400,'Choose another page.');
+    if(body.pinned!==undefined&&typeof body.pinned!=='boolean')throw new HttpError(400,'Pinned must be a boolean.');
+    const [source,target]=[id,targetId].sort() as [string,string];
+    const existing=this.store.get<{pinned:number;annotation:string}>('SELECT pinned,annotation FROM page_page_associations WHERE source_id=? AND target_id=?',source,target);
+    const annotation=body.annotation===undefined?existing?.annotation??'':text(body.annotation,2000);
+    const pinned=body.pinned===undefined?existing?.pinned??0:body.pinned?1:0;
+    this.store.run('INSERT INTO page_page_associations (source_id,target_id,pinned,annotation,created_at) VALUES (?,?,?,?,?) ON CONFLICT(source_id,target_id) DO UPDATE SET pinned=excluded.pinned,annotation=excluded.annotation',source,target,pinned,annotation,now());
+    return this.associations(vault,id);
+  }
+  removeAssociation(vault:string,id:string,targetId:string) {
+    this.requireEditable(vault,id);this.get(vault,targetId);
+    const [source,target]=[id,targetId].sort() as [string,string];
+    this.store.run('DELETE FROM page_page_associations WHERE source_id=? AND target_id=?',source,target);
+    return this.associations(vault,id);
   }
   get(vault: string, id: string): Page {
     const row=this.store.get<PageRow>('SELECT * FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',id,vault);

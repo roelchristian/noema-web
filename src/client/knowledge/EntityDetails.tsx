@@ -1,3 +1,4 @@
+import {canonicalRelationshipLabel,canonicalRelationshipPredicates,relationshipDisplayLabel} from '../../shared/relationship-predicates';
 import {BibliographicPropertyEvidence} from './BibliographicPropertyEvidence';
 import {ReferentStatusPicker} from './ReferentStatusPicker';
 import {SuccessNotice,useSuccessNotice} from '../components/SuccessNotice';
@@ -155,34 +156,38 @@ export function PropertyEditor({entity, entities, mention, onSave, onRemove,defi
 
 export function RelationshipEditor({entity, entities, mention, onSave, onRemove}: {entity: EntityDetail; entities: Entity[]; mention: MentionRenderer; onSave: (input: Parameters<typeof api.saveRelationship>[2], id?: string) => Promise<unknown>; onRemove: (id: string) => Promise<unknown>}) {
   const [edit,setEdit]=useState<string>(),[open,setOpen]=useState(false),[label,setLabel]=useState(''),[target,setTarget]=useState(''),[busy,setBusy]=useState(false);
+  const pending=useRef(false);
   const [error,setError]=useState(''),[status,setStatus,statusOccurrence]=useSuccessNotice();
   const input=useRef<HTMLInputElement>(null);
   useEffect(()=>{if(open)input.current?.focus();},[open,edit]);
   function reset(){setEdit(undefined);setOpen(false);setLabel('');setTarget('');setError('');}
   function editing(relation:Relationship){setEdit(relation.id);setLabel(relation.label);setTarget(relation.target_id);setError('');setStatus('');setOpen(true);}
   async function submit(event:FormEvent){
-    event.preventDefault();if(busy||!label.trim()||!target)return;
-    setBusy(true);setError('');
-    try{await onSave({label:label.trim(),target_id:target},edit);reset();setStatus('Relationship saved.');}
+    event.preventDefault();if(pending.current||!label.trim()||!target)return;
+    pending.current=true;setBusy(true);setError('');
+    const original=entity.relationships.find(relation=>relation.id===edit);
+    const savedLabel=original?.label===label ? label : canonicalRelationshipLabel(label);
+    try{await onSave({label:savedLabel,target_id:target},edit);reset();setStatus('Relationship saved.');}
     catch{setError('Could not save this relationship. Try again.');}
-    finally{setBusy(false);}
+    finally{pending.current=false;setBusy(false);}
   }
   async function remove(relation:Relationship){
-    setBusy(true);setError('');
+    if(pending.current)return;
+    pending.current=true;setBusy(true);setError('');
     try{await onRemove(relation.id);if(edit===relation.id)reset();setStatus('Relationship removed.');}
     catch{setError('Could not remove this relationship. Try again.');}
-    finally{setBusy(false);}
+    finally{pending.current=false;setBusy(false);}
   }
   return <div className="entity-relationship-editor">
     {!!entity.relationships.length&&<div className="entity-relationship-list">{entity.relationships.map(relation=><div key={relation.id} className={'entity-relationship-card'+(edit===relation.id?' is-editing':'')}>
       <span className="entity-relationship-direction" title={relation.source_id===entity.id?uiText("Outgoing relationship"):uiText("Incoming relationship")}><Icon name={relation.source_id===entity.id?'page-outgoing':'page-incoming'}/></span>
-      <div className="entity-relationship-target"><strong>{relation.label}</strong>{mention(relation.source_id===entity.id?relation.target_id:relation.source_id)}</div>
+      <div className="entity-relationship-target" title={uiText("Stored relationship: ")+(entities.find(item=>item.id===relation.source_id)?.name??relation.source_id)+" · "+relation.label+" · "+(entities.find(item=>item.id===relation.target_id)?.name??relation.target_id)}><strong>{relationshipDisplayLabel(relation,entity.id)}</strong>{mention(relation.source_id===entity.id?relation.target_id:relation.source_id)}</div>
       {relation.source_id===entity.id&&<div className="entity-relationship-actions"><button type="button" className="knowledge-icon-action" aria-label={uiText("Edit relationship: ")+relation.label} title={uiText("Edit relationship")} disabled={busy} onClick={()=>editing(relation)}><Icon name="edit"/></button><button type="button" className="knowledge-icon-action" aria-label={uiText("Remove relationship: ")+relation.label} title={uiText("Remove relationship")} disabled={busy} onClick={()=>void remove(relation)}><Icon name="close"/></button></div>}
     </div>)}</div>}
     {!open&&<button type="button" className="entity-add-connection" disabled={busy} onClick={()=>{reset();setStatus('');setOpen(true);}}><Icon name="plus"/>{uiText("Add relationship")}</button>}
     {open&&<form className="entity-property-form entity-relationship-form" aria-label={edit?uiText("Edit relationship"):uiText("Add relationship")} onSubmit={submit}>
       <div className="entity-property-form-heading"><h4>{edit?uiText("Edit relationship"):uiText("New relationship")}</h4><button type="button" className="knowledge-icon-action" aria-label={uiText("Close relationship editor")} title={uiText("Close relationship editor")} disabled={busy} onClick={reset}><Icon name="close"/></button></div>
-      <label>{uiText("Relationship")}<input ref={input} required placeholder={uiText("e.g. member of")} aria-label={uiText("Relationship name")} disabled={busy} value={label} onChange={event=>setLabel(event.target.value)}/></label>
+      <label>{uiText("Relationship")}<input ref={input} required placeholder={uiText("e.g. Member of")} list={"relationship-predicates-"+entity.id} aria-label={uiText("Relationship name")} disabled={busy} value={label} onChange={event=>setLabel(event.target.value)}/><datalist id={"relationship-predicates-"+entity.id}>{canonicalRelationshipPredicates.map(predicate=><option key={predicate.label} value={predicate.label}/>)}</datalist></label>
       <label>{uiText("Related entity")}<Select required aria-label={uiText("Related entity")} disabled={busy} value={target} onChange={event=>setTarget(event.target.value)}><option value="">{uiText("Choose an entity…")}</option>{entities.filter(item=>item.id!==entity.id&&(!item.archived_at||item.id===target)).map(item=><option key={item.id} value={item.id}>{item.name} · {uiText(entityLabels[item.type])}</option>)}</Select></label>
       <div className="entity-property-form-actions"><button type="button" className="button small" disabled={busy} onClick={reset}>{uiText("Cancel")}</button><button type="submit" className="button small primary" disabled={busy||!label.trim()||!target}>{busy?uiText("Saving…"):edit?uiText("Save changes"):uiText("Add relationship")}</button></div>
     </form>}

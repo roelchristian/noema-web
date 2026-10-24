@@ -5,7 +5,7 @@ import {t as uiText} from '../i18n';
 import {PageEditLockDialog} from './PageEditLockDialog';
 import { useLayoutEffect, useState } from 'react';
 import {createPortal} from 'react-dom';
-import type { Block, Page, Organization, Entity } from '../../shared/domain';
+import type { Block, Page, Organization, Entity, PageSummary } from '../../shared/domain';
 import { api } from '../api';
 import { Icon } from '../components/Icon';
 import { ActionMenu, type MenuAction } from '../components/ActionMenu';
@@ -15,10 +15,10 @@ import {PageEntityAssociationsDialog} from './PageEntityAssociationsDialog';
 import {rememberMarkdownTyping,useMarkdownTyping} from '../state/markdown-preferences';
 import {formatMarkdownBlocks} from './markdown-typing';
 
-export function PageToolbar({ onArchive, onRestore, onHistory, onRename, entities, onEntityAssociationsChanged, onOpenEntity, tocAvailable=false, tocVisible=true, onToggleToc, onRevealInSidebar, inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, presentationMode, onPresentationModeChange, onExitFocus, onForward, forwardDisabled, onChangeBlocks, onFeaturedImageChange,onEditLockChange, onUndo, onRedo, canUndo, canRedo}: {
+export function PageToolbar({ onArchive, onRestore, onHistory, onRename, entities, pages, onEntityAssociationsChanged, onOpenEntity, tocAvailable=false, tocVisible=true, onToggleToc, onRevealInSidebar, inactive=false, page, onError, onDelete, favourite, onOrganizationChange, onAI, aiOpen, presentationMode, onPresentationModeChange, onExitFocus, onForward, forwardDisabled, onChangeBlocks, onFeaturedImageChange,onEditLockChange, onUndo, onRedo, canUndo, canRedo}: {
   onHistory?:()=>void;
   onRename?:()=>void;
-  entities?:Entity[]; onEntityAssociationsChanged?:()=>Promise<void>; onOpenEntity?:(id:string)=>void;
+  pages?:PageSummary[]; entities?:Entity[]; onEntityAssociationsChanged?:()=>Promise<void>; onOpenEntity?:(id:string)=>void;
   tocAvailable?:boolean;tocVisible?:boolean;onToggleToc?:()=>void;
   onRevealInSidebar: () => void;
   onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean;
@@ -93,7 +93,7 @@ export function PageToolbar({ onArchive, onRestore, onHistory, onRename, entitie
     <ActionMenu label={uiText("More page actions")} disabled={changingLock} actions={[
       {id:'favourite',group:uiText("Page"),label:uiText("Favourite"),icon:'star',checked:favourite,disabled:saving||!!page.archived_at,onSelect:()=>void toggleFavourite()},
       ...(onRename?[{id:'rename',group:uiText("Page"),label:uiText("Rename"),icon:'edit',disabled:editingDisabled,onSelect:onRename}]:[]),
-      ...(entities?[{id:'entities',group:uiText("Page"),label:uiText("Organize with entities…"),icon:"knowledge",disabled:editingDisabled,onSelect:()=>setEntityAssociationsOpen(true)}]:[]),
+      ...(entities?[{id:'entities',group:uiText("Page"),label:uiText("Connect…"),icon:"knowledge",disabled:editingDisabled,onSelect:()=>setEntityAssociationsOpen(true)}]:[]),
       {id:'featured-image',group:uiText("Page"),label:uiText("Featured image…"),icon:'image',disabled:editingDisabled,onSelect:()=>setFeaturedImageOpen(true)},
       ...(onHistory?[{id:'history',group:uiText("Page"),label:uiText("Version history"),icon:"undo",onSelect:onHistory}]:[]),
       {id:'find',group:uiText("Navigation"),label:uiText("Find in page"),icon:"search",shortcut:"⌘F / Ctrl+F",onSelect:()=>document.dispatchEvent(new Event("noema:document-find"))},
@@ -123,7 +123,7 @@ export function PageToolbar({ onArchive, onRestore, onHistory, onRename, entitie
       ]},
     ]}/>
   </div>
-    {entityAssociationsOpen && <PageEntityAssociationsDialog key={page.vault_id+":"+page.id} page={page} entities={entities??[]} onClose={()=>setEntityAssociationsOpen(false)} onChanged={onEntityAssociationsChanged} onOpenEntity={onOpenEntity}/>}
+    {entityAssociationsOpen && <PageEntityAssociationsDialog key={page.vault_id+":"+page.id} page={page} pages={pages} entities={entities??[]} onClose={()=>setEntityAssociationsOpen(false)} onChanged={onEntityAssociationsChanged} onOpenEntity={onOpenEntity}/>}
     {lockOpen && <PageEditLockDialog page={page} onChange={onEditLockChange} onClose={()=>setLockOpen(false)}/>}
     {featuredImageOpen && <FeaturedImageDialog page={page} onChange={onFeaturedImageChange} onClose={() => setFeaturedImageOpen(false)}/>}
     {cleanupOpen && <CleanupDialog blocks={page.blocks} onClose={() => setCleanupOpen(false)} onApply={blocks => { onChangeBlocks(blocks); }}/>}

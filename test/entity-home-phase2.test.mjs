@@ -63,17 +63,18 @@ test('overview revision conflict requires explicit comparison and rebase; cancel
 
 test('pinning mentions deduplicates homepage page count, unpin retains association and remove leaves mentions',async t=>{
  await fixture(t,async({refresh,clickText,click,associate,remove,page})=>{
-  await refresh({pageMentions:[{...page,mentionCount:2,excerpt:'An inline mention'}]});await click('#entity-home-tab-mentions');await clickText('Pin page');
+  await refresh({pageMentions:[{...page,mentionCount:2,excerpt:'An inline mention'}]});await click('#entity-home-tab-connections');await click('[aria-label="Pin History"]');
   assert.deepEqual(associate.mock.calls[0].arguments,['v','ada','page',{pinned:true}]);assert.match(document.querySelector('.eh-counts').textContent,/1 page0 connections/);
-  await click('#entity-home-tab-mentions');assert.equal(document.querySelectorAll('.eh-linked-page').length,1);await clickText('Unpin');assert.equal(remove.mock.callCount(),0);assert.equal(document.querySelectorAll('.eh-linked-page').length,1);
-  await clickText('Remove');assert.deepEqual(remove.mock.calls[0].arguments,['v','ada','page']);assert.equal(document.querySelectorAll('.eh-linked-page').length,0);assert.match(document.querySelector('.eh-counts').textContent,/1 page0 connections/);assert.match(document.querySelector('.entity-page-mentions').textContent,/An inline mention/);
+  await click('#entity-home-tab-connections');assert.equal(document.querySelectorAll('.eh-linked-page').length,1);await clickText('Unpin');assert.equal(remove.mock.callCount(),0);assert.equal(document.querySelectorAll('.eh-linked-page').length,1);
+  await clickText('Remove');assert.deepEqual(remove.mock.calls[0].arguments,['v','ada','page']);assert.equal(document.querySelectorAll('#entity-home-panel-connections .eh-linked-page').length,1);assert.match(document.querySelector('.eh-counts').textContent,/1 page0 connections/);assert.match(document.querySelector('#entity-home-panel-connections').textContent,/An inline mention/);
+  await clickText('Undo');assert.equal(document.querySelectorAll('#entity-home-panel-connections .eh-linked-page').length,1);assert.match(document.querySelector('#entity-home-panel-connections .eh-linked-page').textContent,/Associated · 2 mentions/);
  });
 });
 
-test('attach search excludes linked pages and annotation remains editable on a failed save',async t=>{
+test('Connect search excludes linked pages and annotation remains editable on a failed save',async t=>{
  await fixture(t,async({click,clickText,input,associate})=>{
-  await click('#entity-home-tab-mentions');await clickText('Attach existing page');await input('.eh-page-picker input','Hist');assert.equal(document.querySelectorAll('.eh-page-picker li').length,1);await clickText('Attach & pin');
-  assert.deepEqual(associate.mock.calls[0].arguments,['v','ada','page',{pinned:true}]);assert.equal(document.querySelectorAll('.eh-page-picker li').length,0);
+  await click('#entity-home-tab-connections');await clickText('Connect');await input('.connect-picker input[type=search]','Hist');assert.equal(document.querySelectorAll('.connect-picker-results button').length,1);await click('.connect-picker input[type=checkbox]');await click('[aria-label="Connect History"]');
+  assert.deepEqual(associate.mock.calls[0].arguments,['v','ada','page',{pinned:true,annotation:''}]);assert.equal(document.querySelector('[aria-label="Connect History"]'),null);
   await clickText('Add note');await input('.eh-annotation-form input','Read this first.');associate.mock.mockImplementationOnce(async()=>{throw new Error('Storage unavailable');});
   const submit=()=>act(async()=>document.querySelector('.eh-annotation-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
   await submit();assert.match(document.querySelector('[role=alert]').textContent,/Storage unavailable/);assert.equal(document.querySelector('.eh-annotation-form input').value,'Read this first.');assert.ok(document.querySelector('[aria-label="Unpin History"]'));
@@ -127,7 +128,7 @@ test('source previews abort interrupted loading, retry, deduplicate sources and 
   t.mock.method(api,'entityOverviewEvidence',async(_v,_id,value)=>{signal=value;return new Promise(resolve=>complete=resolve);});
   await render({refreshKey:'pending',onOpenSourcePassage:reference=>opened=reference});
   assert.match(document.querySelector('.eh-glance-sources').textContent,/Loading source preview/);
-  await click('#entity-home-tab-mentions');assert.equal(signal.aborted,true);
+  await click('#entity-home-tab-connections');assert.equal(signal.aborted,true);
   await act(async()=>complete({groups:[],hasMore:false,truncated:false}));
   t.mock.method(api,'entityOverviewEvidence',async()=>{throw new Error('Synthetic unavailable');});
   await click('#entity-home-tab-overview');assert.ok(document.querySelector('.eh-glance-sources [role=alert]'));
@@ -143,17 +144,17 @@ test('source previews abort interrupted loading, retry, deduplicate sources and 
 test('interrupted entity detail load cannot replace a newly selected identity',async t=>{
  await fixture(t,async({render,entity,click})=>{
   let finish;
-  t.mock.method(api,'entity',async(_vault,id,preview)=>id==='ada'&&preview ? new Promise(resolve=>finish=resolve) : {...entity(),id,name:'New synthetic identity'});
+  t.mock.method(api,'entity',async(_vault,id,preview)=>id==='ada' ? new Promise(resolve=>finish=resolve) : {...entity(),id,name:'New synthetic identity'});
   await render({refreshKey:'delayed'});await render({id:'next'});
   await act(async()=>finish({...entity(),name:'Late old identity'}));
   assert.equal(document.querySelector('.entity-home h1').textContent,'New synthetic identity');
-  await click('#entity-home-tab-edit');assert.equal(document.querySelector('#entity-home-tab-edit').getAttribute('aria-selected'),'true');
+  assert.equal(document.querySelector('#entity-home-tab-edit'),null);await click('#entity-home-tab-overview');assert.equal(document.querySelector('[aria-label="Entity name"]').value,'New synthetic identity');
  });
 });
 
 test('refreshing an open editor retains mounted forms instead of applying a transient preview',async t=>{
  await fixture(t,async({render,click,entity})=>{
-  await click('#entity-home-tab-edit');const name=document.querySelector('[aria-label="Entity name"]');
+  const name=document.querySelector('[aria-label="Entity name"]');
   const request=t.mock.method(api,'entity',async(_vault,_id,preview)=>({...entity(),...(preview?{previewLimited:true}:{})}));
   await render({refreshKey:'external-refresh'});
   assert.equal(request.mock.calls[0].arguments[2],false);
@@ -161,16 +162,48 @@ test('refreshing an open editor retains mounted forms instead of applying a tran
  });
 });
 
-test('homepage completes preview properties before offering editable unset suggestions',async t=>{
+test('homepage refresh retains complete state until preview properties finish loading',async t=>{
  await fixture(t,async({render,entity})=>{
   let finish;
   const complete={...entity(),propertyNames:['birth date','birthplace'],properties:[{id:'born',entity_id:'ada',name:'birth date',value:'1815',target_id:null}]};
-  t.mock.method(api,'entity',async(_vault,_id,preview)=>preview?{...complete,properties:[],previewLimited:true}:new Promise(resolve=>finish=resolve));
+  let calls=0;t.mock.method(api,'entity',async()=>++calls===1?{...complete,properties:[],previewLimited:true}:new Promise(resolve=>finish=resolve));
   await render({refreshKey:'incomplete-properties'});
-  assert.match(document.querySelector('.eh-glance-properties').textContent,/Loading complete properties/);
+  assert.equal(calls,2,'a transient preview is completed before replacing mounted forms');
+  assert.equal(document.querySelector('.eh-glance-properties [aria-label="Edit Birth Date"]'),null);
   assert.equal(document.querySelector('.eh-glance-properties .entity-inline-suggestions'),null);
   await act(async()=>finish(complete));
   assert.equal(document.querySelectorAll('.eh-glance-properties [aria-label="Edit Birth Date"]').length,1);
   assert.equal(document.querySelector('.entity-inline-suggestions [aria-label="Edit Birth Date"]'),null);
+ });
+});
+
+test('late refresh cannot replace a successfully saved association note',async t=>{
+ await fixture(t,async({refresh,render,entity,click,clickText,input})=>{
+  await refresh({linkedPages:[{id:'page',title:'History',icon:'',created_at:'',updated_at:'',pinned:false,annotation:'Original note'}]});
+  await click('#entity-home-tab-connections');
+  const outdated=structuredClone(entity());let finish;
+  t.mock.method(api,'entity',async()=>new Promise(resolve=>finish=resolve));
+  await render({refreshKey:'pending-refresh'});
+  await clickText('Edit note');await input('.eh-annotation-form input','Saved after refresh began');
+  await act(async()=>document.querySelector('.eh-annotation-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+  assert.match(document.querySelector('#entity-home-panel-connections .eh-page-open').textContent,/Saved after refresh began/);
+  await act(async()=>finish(outdated));
+  assert.match(document.querySelector('#entity-home-panel-connections .eh-page-open').textContent,/Saved after refresh began/);
+ });
+});
+
+test('common Connect creates one directed relationship and Undo removes that exact record',async t=>{
+ await fixture(t,async({render,entity,click,clickText,input})=>{
+  const peer={...entity(),id:'peer',name:'Synthetic peer'};
+  await render({entities:[entity(),peer]});
+  const relationship={id:'new-directed',source_id:'ada',target_id:'peer',label:'Author of'};
+  const save=t.mock.method(api,'saveRelationship',async()=>({...entity(),relationships:[relationship]}));
+  const remove=t.mock.method(api,'removeConnection',async()=>({...entity(),relationships:[]}));
+  await click('#entity-home-tab-connections');await clickText('Connect');await input('.connect-picker input[type=search]','Synthetic peer');
+  await input('.connect-picker input[list]','Author of');await click('[aria-label="Connect Synthetic peer"]');
+  assert.deepEqual(save.mock.calls[0].arguments,['v','ada',{target_id:'peer',label:'Author of'}]);assert.equal(save.mock.callCount(),1);
+  assert.match(document.querySelector('#entity-home-panel-connections .entity-connection-list').textContent,/Synthetic peerAuthor of/);
+  await clickText('Undo');assert.deepEqual(remove.mock.calls[0].arguments,['v','ada','relationships','new-directed']);
+  assert.equal(document.querySelector('#entity-home-panel-connections .entity-connection-list'),null);
  });
 });

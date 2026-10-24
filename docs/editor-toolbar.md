@@ -17,18 +17,18 @@ visible while the accessible command name stays concise. `ActionMenu.triggerText
 provides an optional visible trigger label. Existing callers remain compatible.
 Invalid or disabled submenu ancestors return to the nearest valid level.
 
-The page action with ID `entities` retains `Organize with entities…` and its
-existing association-dialog callback. At the verified unpublished
-Entities/Connections contract `2c698f4`, integration changes that label to Connect…
-and passes `pages` alongside `page` and `entities` into PageToolbar and the existing
-PageEntityAssociationsDialog. Keep the dialog keyed by vault_id + ":" + page.id.
-The Entities/Connections work owns its common Connect picker. This change adds no competing picker,
-changes no entity/page IDs or associations, and changes no page-link or clipboard
-hyperlink formats. Source-inspector metadata and the Inbox Activity bell retain
-their existing owners and behavior. Association writes in that integration emit
-`noema:page-connections-changed` with `{vaultId, pageId}`; preserve that refresh event.
-Merge the shared App.tsx/PageToolbar.tsx edits together; no unpublished files were
-pulled into this branch.
+The page action with ID `entities` is Connect… and retains the existing
+association-dialog callback. The integrated Entities/Connections implementation
+passes `pages` alongside `page` and `entities` into PageToolbar and the existing
+PageEntityAssociationsDialog, keyed by vault_id + ":" + page.id. It uses the common
+ConnectPicker without a competing picker. The merged main branch owns stable
+page IDs, page associations, and page-link persistence; clipboard hyperlink
+behavior remains intact. Source-inspector metadata and the Inbox Activity bell
+retain their existing owners and behavior. Page-association writes emit
+`noema:page-connections-changed` with `{vaultId, pageId}` for inspector refresh.
+
+PR #99 and the USD estimates work were incorporated from published main
+`21aef2a`, preserving the grouped action, identity slot, pages prop and event hooks.
 
 ## Content operations
 
@@ -78,3 +78,17 @@ Linux Chromium was used. Native macOS extraction/keychain and live Kokoro model
 execution were skipped; no real vault, paid request, credentials, or external
 sharing was used. Initial implementation validation preceded PR publication.
 Publishing the branch as a draft PR does not authorize a merge or deployment.
+
+## Published-main integration
+
+Merged `origin/main` at `21aef2a` after #99 (Entities/Connections) and #98
+(USD estimates) landed. Conflict resolution retains the identity slot, explicit
+presentation controls and grouped actions while preserving Connect…, the `pages`
+prop, keyed common dialog and page-association refresh event. No upstream picker,
+association, pricing or metadata implementation was replaced.
+
+Affected validation: build/styles/application and test types, 25 focused tests,
+page-toolbar browser checks, full selection/citation/speech browser checks, and
+the Entities/Connections browser suite passed. The latter now exercises More →
+Connect… → page target on desktop and touch, inspector event refresh and
+association remove/Undo. Independent merge review found no source regression.

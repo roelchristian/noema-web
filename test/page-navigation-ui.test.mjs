@@ -155,8 +155,8 @@ test('entity routes open full homes while desktop page mentions retain contextua
   await click(document.querySelector('#entity-home-panel-overview .entity-connection-list button'));
   assertHome('London');
   assert.equal(new URLSearchParams(window.location.search).get('subject'),'london');
-  await click(document.querySelector('#entity-home-tab-mentions'));
-  await click(document.querySelector('.entity-home .entity-page-mentions button'));
+  await click(document.querySelector('#entity-home-tab-connections'));
+  await click(document.querySelector('.entity-home .eh-page-open'));
   assert.ok(document.querySelector('.page'));
   assert.equal(document.querySelector('.entity-home'),null);
   await click(document.querySelector('.sidebar [aria-label="Knowledge entities"]'));
@@ -178,7 +178,7 @@ test('entity routes open full homes while desktop page mentions retain contextua
   assert.equal(new URLSearchParams(window.location.search).get('page'),'associated-note');
   await click(document.querySelector('.sidebar [aria-label="Knowledge entities"]'));
   await click(document.querySelector('.knowledge-library [title="Ada Lovelace"]'));
-  await click(document.querySelector('#entity-home-tab-mentions'));
+  await click(document.querySelector('#entity-home-tab-connections'));
   await click(document.querySelector('.eh-occurrences button'));
   await act(async()=>new Promise(resolve=>requestAnimationFrame(resolve)));
   assert.equal(document.querySelector('.page-search-mention')?.dataset.entity,'ada');
@@ -187,7 +187,7 @@ test('entity routes open full homes while desktop page mentions retain contextua
   await click(document.querySelector('.page [data-entity="ada"]'));
   await click(button(document.querySelector('.entity-link-dialog'),'Open entity details'));
   await click(button(document.querySelector('#entity-panel'),'Open entity homepage'));
-  await click(document.querySelector('#entity-home-tab-mentions'));
+  await click(document.querySelector('#entity-home-tab-connections'));
   t.mock.method(api,'page',async()=>({...note,revision:2}));
   await click(document.querySelector('.eh-occurrences button'));
   await act(async()=>new Promise(resolve=>requestAnimationFrame(resolve)));

@@ -13,10 +13,11 @@ import { Pages } from '../src/server/modules/pages.ts';
 import { Knowledge } from '../src/server/modules/knowledge.ts';
 
 import {enrichmentResponse} from './helpers/providers.ts';
+import {providerBarrier} from './helpers/provider-barrier.mjs';
 
 test('saved enrichments survive restart, refresh safely, and follow page access and lifecycle', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'noema-enrichments-')), filename = path.join(dir, 'test.sqlite');
-  let db, server, base, output = 'Saved summary', fail = false, finish, calls = 0;
+  let db, server, base, output = 'Saved summary', fail = false, heldProvider, calls = 0;
   const secrets = {value:null, read(){return this.value;}, write(value){this.value=value;}, remove(){this.value=null;}};
   let requestBody;
   const response=summary=>enrichmentResponse(requestBody,{title:'Generated note',summary,primaryDomainId:null,secondaryDomainIds:[],language:'en'});
@@ -24,7 +25,7 @@ test('saved enrichments survive restart, refresh safely, and follow page access 
     requestBody=request.body;
     calls++;
     if (fail) throw new Error('Provider unavailable');
-    if (finish === true) return new Promise(resolve => { finish = resolve; });
+    if (heldProvider) {const barrier=heldProvider;heldProvider=undefined;return barrier.enter();}
     return response(output);
   });
   ai.save({apiKey:'sk-test-persisted-enrichments-secret'});
@@ -35,8 +36,8 @@ test('saved enrichments survive restart, refresh safely, and follow page access 
     base = 'http://127.0.0.1:' + server.address().port + '/api/';
   }
   async function stop() { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); db.close(); }
-  async function call(route, method='GET', body, expected=200, vault='default') {
-    const response = await fetch(base+route, {method, headers:{'X-Noema-Request':'1','Content-Type':'application/json','X-Vault-Id':vault}, body:body===undefined?undefined:JSON.stringify(body)});
+  async function call(route, method='GET', body, expected=200, vault='default', signal) {
+    const response = await fetch(base+route, {method, signal, headers:{'X-Noema-Request':'1','Content-Type':'application/json','X-Vault-Id':vault}, body:body===undefined?undefined:JSON.stringify(body)});
     const value = await response.json(); assert.equal(response.status, expected, JSON.stringify(value)); return value;
   }
   await start();
@@ -68,11 +69,16 @@ test('saved enrichments survive restart, refresh safely, and follow page access 
     items = await generated(); assert.equal(items.length, 1); assert.equal(items[0].data.summary, output);
     fail = true; await call(route+'/summary', 'POST', {revision:page.revision}, 502); fail = false;
     assert.deepEqual(await generated(), items, 'A provider failure retains the last saved result');
-    finish = true;
-    const pending = call(route+'/summary', 'POST', {revision:page.revision}, 409);
-    while(typeof finish !== 'function') await new Promise(resolve => setTimeout(resolve, 5));
-    page = await call(route, 'PUT', {...page, title:'Edited page'});
-    finish(response('Stale result')); await pending;
+    const barrier=heldProvider=providerBarrier('summary stale-result race'),controller=new AbortController();
+    const pending = call(route+'/summary', 'POST', {revision:page.revision}, 409, 'default', controller.signal);
+    try {
+      await barrier.waitForEntry(pending);
+      page = await call(route, 'PUT', {...page, title:'Edited page'});
+      barrier.release(response('Stale result')); await pending;
+    } finally {
+      await barrier.close(pending,{value:new Response('Synthetic provider fixture teardown',{status:503}),controller});
+      heldProvider=undefined;
+    }
     assert.deepEqual(await generated(), items, 'An in-flight page edit cannot overwrite saved knowledge');
     assert.notEqual(items[0].revision, page.revision, 'Saved revision supports stale-result indicators');
     const store = new Store(db), enrichments = new AIEnrichments(store, new Pages(store, new Knowledge(store)));
@@ -96,7 +102,6 @@ test('saved enrichments survive restart, refresh safely, and follow page access 
     assert.equal((await call(route)).revision, page.revision, 'Deleting a summary does not change the note');
     await stop(); await start();
     assert.deepEqual((await generated()).map(item=>item.kind), ['topics'], 'Deletion persists and preserves other enrichments');
-    finish = false;
     await call(route+'/summary', 'POST', {revision:page.revision});
     await call(route, 'DELETE'); await call(route+'/enrichments', 'GET', undefined, 404);
     await call('trash/'+page.id+'/restore', 'POST', {});

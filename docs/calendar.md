@@ -83,7 +83,10 @@ index state. Blocks are fingerprinted independently; unchanged blocks skip the
 parser. Unrelated edits can change global offsets, which are recomputed from the
 current projection at navigation time. Code, math, and divider blocks are excluded.
 
-## Extraction policy
+## Baseline extraction policy
+
+The historical extension below supersedes this original extractor policy for the
+explicit historical forms it supports.
 
 Version `english-civil-v1` deterministically supports full English month names:
 
@@ -451,13 +454,16 @@ source/property review, overlay independence/cache/error states and 44px targets
 
 ## Month workspace preferences and hierarchy
 
-Calendar is a temporal knowledge index. Desktop day cells prioritize a curated title,
-accepted relationship or original evidence title, then show full occurrence and accepted
-relationship counts. These are not appointments or unique-document counts. Pending
-proposals are not counted as accepted relationships. Principal liturgy remains secondary,
-with weekday titles, ranks, vestment colors and the existing Latin display formatting.
-Phone/narrow-workspace cells show knowledge counts (P means pinned), principal color and
-an optional-choice + marker; full accessible names, date details and agenda retain text.
+Calendar is a temporal knowledge workspace. Day cells show up to two distinct
+associations: a curated date note first, accepted Event links next, other accepted
+links and authored properties next, and incidental references only when enabled.
+Ordering is stable, with entity roles preserved and repeated document passages
+deduplicated. A “+N more” indicator counts additional loaded associations; “More in
+date details” honestly indicates bounded previews without inventing a distinct-event
+count. Counts distinguish loaded unique documents (a + suffix means incomplete),
+textual occurrences, and accepted relationships. Pending proposals remain reviewable
+evidence. Narrow cells retain association previews and use a pin icon. Principal
+liturgy stays supplementary, preserving provider weekdays, ranks and vestment colors.
 
 Settings → Calendar saves Sunday/Monday week start in this browser; Sunday remains the
 default. Civil week numbers default on in a narrow gutter (an explicit saved off preference
@@ -483,7 +489,7 @@ principal vestment colors. Unavailable provider alternatives produce no marker.
 
 The date inspector uses a side column only at 1000px available Calendar workspace width;
 otherwise it uses a modal (full viewport on phones), retaining drafts while resizing.
-Month/year-only records sit in a collapsed period disclosure, never a fabricated day.
+Periods appear in an initially expanded disclosure with precision labels, never a fabricated day.
 Go to month accepts years 1–9999; Show selected date returns to an inspector's off-month
 date without discarding its draft. Same-query refresh retains prior knowledge previews
 while marked updating; changed queries clear prior results. Supplement failures remain
@@ -546,3 +552,51 @@ explicit context inherit the curated date layer, then Knowledge. The same canoni
 date can therefore connect a personal annotation and a historical event without
 creating duplicate date objects. Browser presentation preferences retain their
 existing browser scope; no preference migration into a vault is performed.
+
+
+## Calendar and shared Date Overview UX
+
+The primary content control offers Curated, Linked events, and All references. Linked
+events retains saved date notes and accepted temporal associations; Curated narrows
+to explicit curation, and All references opts into incidental detection. Personal,
+Knowledge and Historical are secondary facets. Agenda groups distinct associations
+beneath chronological date headings and introduces no time-of-day or commitments.
+
+Selecting a day exposes Add a date note, Create an event, and Link existing knowledge.
+The header Add action opens the keyboard-focused day. Event creation explicitly saves
+an Event and its native start date property, retaining calendar and precision. If the
+second save fails, the error reports that the Event already exists rather than claiming
+atomic success. Manual links may carry independent contextual classification.
+
+The inspector separates Overview, Connections and Evidence. Curation is directly
+editable, pinning independent, and existing significance/priority fields remain under
+More details. Curation drafts are keyed by the full canonical identity, retained across
+Calendar navigation, with visible unsaved feedback and a browser-exit warning. The
+compact editor inspector requires Save or Discard before its navigation actions.
+
+Calendar, note dates, and date-valued entity properties use the shared Date Overview
+identity/summary. Property evidence is fetched only when its disclosure opens. Opening
+Calendar retains full identity; identical Julian/Gregorian labels neither share drafts
+nor selection. Note evidence navigation reuses revision/block-validated temporal
+references. Returning to the originating note checks its saved revision and restores the
+original occurrence; changed evidence is reported rather than redirected to a duplicate.
+
+DateValueEditor preserves original text on mount and offers explicit year/month/day
+precision and Gregorian/Julian choice. Exact Gregorian dates have a native picker. A
+structured selection replaces the original expression only after Use this date;
+unresolved text remains editable with a quiet interpretation message. Explicit native
+typed property saves with current manual provenance and unambiguous canonical signed
+year/month/day syntax may assert accepted associations. AI/import review paths, refreshes,
+legacy writes, approximations, intervals and centuries remain proposals. Existing
+proposals are never bulk upgraded. Relation roles include ends_on, died_on, founded_on
+and accessed_on, retaining source-property fingerprints and evidence.
+
+The civil-calendar selector supports ordinary Julian browsing and curation with Julian
+month lengths and weekdays. Gregorian Today markers and liturgy are not applied to
+Julian civil labels. At narrow phone widths week numbers move above their rows so
+seven 44px date controls fit. Calendar settings retain their existing browser storage
+scope; this change does not migrate preferences into vaults.
+
+Deferred scope: a historical timeline, BCE month-grid navigation, unsupported historical
+prose combinations listed above, recurrence, reminders, external calendars, and a vault
+preference migration. These are explicit boundaries, not silently guessed date values.

@@ -123,9 +123,27 @@ test('date inspector shows local mentions and only note references from saved ev
  const page=pageOf([block([{text:'December 5, 2000'}])]),opened=[],root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
  await act(async()=>root.render(createElement(NoteDatePanel,{page,item:noteDateItems(page.blocks)[0],onClose(){},onOpenPage:id=>opened.push(id)})));
  await act(async()=>t.mock.timers.tick(300));
- assert.match(document.querySelector('#note-date-panel').textContent,/2000-12-05/);
+ assert.equal(document.querySelector('.date-overview').dataset.dateId,dateId);assert.match(document.querySelector('#note-date-panel').textContent,/5 December 2000/);
  assert.match(document.querySelector('#note-date-panel').textContent,/Another note/);
  assert.doesNotMatch(document.querySelector('#note-date-panel').textContent,/Source to exclude/);
  await act(async()=>[...document.querySelectorAll('#note-date-panel button')].find(button=>button.textContent.includes('Another note')).click());
  assert.deepEqual(opened,['other']);
+});
+
+
+test('date inspector waits for saved curation before edits so secondary metadata survives a compact save',async t=>{
+ const env=setupDOM(t);t.mock.timers.enable({apis:['setTimeout']});let resolveDetail,saved;
+ const date={id:dateId,value:'2000-12-05',precision:'day',calendar:'gregorian'},curation={label:'Existing',annotation:'Historical research',pinned:false,importance:'important',personalPriority:'important',layer:'historical'};
+ t.mock.method(api,'temporalDetail',()=>new Promise(resolve=>resolveDetail=resolve));
+ t.mock.method(api,'curateDate',async(vault,value,body)=>{saved=body;});
+ const page=pageOf([block([{text:'December 5, 2000'}])]),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ await act(async()=>root.render(createElement(NoteDatePanel,{page,item:noteDateItems(page.blocks)[0],onClose(){},onOpenPage(){}})));
+ assert.equal(document.querySelector('input:not([type=checkbox])').disabled,true);
+ await act(async()=>t.mock.timers.tick(300));
+ assert.equal(document.querySelector('input:not([type=checkbox])').disabled,true);
+ await act(async()=>resolveDetail({date,curation,mentions:[],mentionCount:0,relations:[],relationCount:0,nextMentionOffset:null,nextRelationOffset:null}));
+ const pin=document.querySelector('input[type=checkbox]');assert.equal(pin.disabled,false);
+ await act(async()=>pin.click());
+ await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Save date note').click());
+ assert.deepEqual(saved,{...curation,pinned:true});
 });

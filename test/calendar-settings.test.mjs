@@ -155,7 +155,7 @@ test('an unqualified date year explains download eligibility in the entity view 
  t.mock.method(api,'temporalDetail',async()=>({mentions:[],nextMentionOffset:null}));
  t.mock.method(api,'liturgicalYear',async()=>{calls++;throw new ApiError(409,'This year has no curated dates or accepted date relationships.');});
  await act(async()=>env.root.render(createElement(NoteDatePanel,{item,page,calendarSettings:{enabled:true,calendarId:'ph',optional:false},onClose(){},onOpenPage(){}})));
- assert.match(document.body.textContent,/2033-10-22/);assert.match(document.body.textContent,/no curated dates or accepted date relationships/);assert.equal(calls,1);assert.equal(document.querySelector('.calendar-liturgical-panel'),null);
+ assert.equal(document.querySelector('.date-overview').dataset.dateId,'gregorian:day:2033-10-22');assert.match(document.body.textContent,/22 October 2033/);assert.match(document.body.textContent,/no curated dates or accepted date relationships/);assert.equal(calls,1);assert.equal(document.querySelector('.calendar-liturgical-panel'),null);
 });
 
 

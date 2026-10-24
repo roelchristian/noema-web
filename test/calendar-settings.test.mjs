@@ -177,3 +177,13 @@ test('same-query refresh retains previews but changed months never reuse another
  await act(async()=>release({...result,items:[]}));
  assert.match(document.querySelector('.calendar-empty').textContent,/No saved dates/);
 });
+
+test('period cards retain interval, century and approximate-day precision',async t=>{
+ const env=domFixture(t),{temporalDate}=await import('../src/shared/temporal.ts');
+ const items=['C19','1814/1816','~1815-06-18'].map(value=>({date:temporalDate(value),curation:{...emptyCuration(),label:'Historical period'},layer:'knowledge',mentions:[],mentionCount:0,relations:[],relationCount:0}));
+ t.mock.method(api,'temporalDates',async()=>({items,nextOffset:null,indexing:{pending:0,refreshed:0}}));
+ await act(async()=>env.root.render(createElement(CalendarWorkspace,{vaultId:'vault',view:{...initialCalendarView(),month:'1815-06'},settings:defaultCalendarSettings(),onChange(){},onOpenSettings(){},mobile:false,onOpenMention:async()=>{}})));
+ const cards=[...document.querySelectorAll('.calendar-periods .calendar-entry')];assert.equal(cards.length,3);
+ assert.match(cards[0].textContent,/century precision/);assert.match(cards[1].textContent,/interval precision/);assert.match(cards[2].textContent,/Approximate day precision/);
+ assert.ok(cards.every(card=>!card.textContent.includes('Exact day')&&!card.textContent.includes('Year precision')));
+});

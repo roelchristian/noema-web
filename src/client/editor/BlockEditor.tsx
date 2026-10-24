@@ -33,7 +33,7 @@ import { aiExplanationSources, aiExplanationsForSources, explanationsLinkedToDel
 import {pageTitleKey} from '../../shared/page-links';
 import { completePageLink } from './page-links';
 import { ReadOnlyExplanationBlock } from './ReadOnlyExplanationBlock';
-import { clearEditorSelection,editorSelectionRange,selectedEditorBlocks,editorSelectionBlocks } from './block-selection';
+import { clearEditorSelection,editorSelectionRange,editorSelectionRanges,selectedEditorBlocks,editorSelectionBlocks } from './block-selection';
 import { installBlockDrag, reorderBlock } from './block-drag';
 import { installBlockSelection, setEditorCaret } from './block-selection';
 import { displayMathSource } from './math-delimiters';
@@ -284,7 +284,7 @@ export function BlockEditor(props: Props) {
   },[reviewMatches]);
   const dragStatus = useRef<HTMLDivElement>(null);
   function announceDrag(message: string) {if (dragStatus.current) dragStatus.current.textContent = message;}
-  const [citationTarget,setCitationTarget]=useState<{bookmark:CitationBookmark;editor:HTMLElement;blockId:string}|null>(null);
+  const [citationTarget,setCitationTarget]=useState<{bookmark:CitationBookmark;editor:HTMLElement;blockId:string;selection?:{range:Range;text:string}}|null>(null);
   const [mathTarget, setMathTarget] = useState<{range: Range; initial: string; node?: HTMLElement} | null>(null);
   const [uploads, setUploads] = useState<ImageUpload[]>([]), [imageError, setImageError] = useState('');
   const uploadQueue = useRef(Promise.resolve());
@@ -829,11 +829,29 @@ export function BlockEditor(props: Props) {
     const el=elements.current.get(blockId);el?.focus();getSelection()?.removeAllRanges();getSelection()?.addRange(range);
     if(el)update(blockId,{content:readSegments(el)});setMenu(null);
   }
+  function citeSelection(selection:Range) {
+    const editor=root.current;
+    if(!editor||!editor.contains(selection.startContainer)||!editor.contains(selection.endContainer))return;
+    const range=editorSelectionRanges(editor,selection).at(-1)?.cloneRange();
+    if(!range)return;
+    const host=(range.endContainer instanceof Element?range.endContainer:range.endContainer.parentElement)?.closest<HTMLElement>('.block-content[contenteditable="true"]');
+    const blockId=host?.closest<HTMLElement>('[data-block-id]')?.dataset.blockId;
+    if(!host||!blockId||host.closest('.table-cell,.block.code'))return;
+    const endpoint=range.endContainer instanceof Element?range.endContainer:range.endContainer.parentElement;
+    if(endpoint?.closest('code,a,[contenteditable="false"]'))return;
+    // Reuse the citation insertion transaction at the selection's end. The
+    // highlighted wording stays intact; cancellation can restore all blocks.
+    range.collapse(false);
+    setMenu(null);
+    setCitationTarget({bookmark:bookmarkCitationRange(host,range),editor:host,blockId,selection:{range:selection.cloneRange(),text:selection.toString()}});
+  }
   function closeCitation(restoreFocus=false) {
     const range=citationTarget?resolveCitationRange(citationTarget.editor,citationTarget.bookmark):null;
     if(restoreFocus&&range&&citationTarget){
-      range.collapse(false);
-      citationTarget.editor.focus({preventScroll:true});getSelection()?.removeAllRanges();getSelection()?.addRange(range);
+      const original=citationTarget.selection;
+      const selected=original&&original.range.startContainer.isConnected&&original.range.endContainer.isConnected&&root.current?.contains(original.range.commonAncestorContainer)&&original.range.toString()===original.text?original.range:null;
+      if(!selected)range.collapse(false);
+      citationTarget.editor.focus({preventScroll:true});getSelection()?.removeAllRanges();getSelection()?.addRange(selected??range);
     }
     setCitationTarget(null);
   }
@@ -1127,7 +1145,7 @@ export function BlockEditor(props: Props) {
     <span id="block-drag-help" className="block-drag-sr">{uiText("Drag to reorder. Click for options. With the handle focused, press Space to pick up, Up or Down to move, Space or Enter to drop, Escape to cancel.")}</span>
     <div ref={dragStatus} className="block-drag-sr" role="status" aria-live="polite" aria-atomic="true"/>
     <EntityLinkActions editor={root} entities={entities} onCommit={commitSelection} onOpen={onOpenEntity}/>
-    <SelectionToolbar onRead={speech.enabled?readSelection:undefined} onOpenEntity={onOpenEntity} onReview={props.onReview?()=>void reviewWriting():undefined} reviewing={writingReview?.loading} explainLabel={explainLabel} mobile={mobile} keyboardInset={keyboardInset} viewportHeight={viewportHeight} onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} suggestionContext={{priorityIds:suggestionPriorityIds}} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
+    <SelectionToolbar onCitation={citeSelection} onRead={speech.enabled?readSelection:undefined} onOpenEntity={onOpenEntity} onReview={props.onReview?()=>void reviewWriting():undefined} reviewing={writingReview?.loading} explainLabel={explainLabel} mobile={mobile} keyboardInset={keyboardInset} viewportHeight={viewportHeight} onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} suggestionContext={{priorityIds:suggestionPriorityIds}} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
     {linkedExplanations.length > 0 && <Modal className="confirmation-dialog linked-explanation-dialog" titleId="linked-explanation-delete-title" onClose={() => setLinkedDeletion([])}>
       <ModalHeader titleId="linked-explanation-delete-title" leading={<Icon name="sparkles"/>} closeLabel={uiText("Close and keep explanations")}>{linkedExplanations.length === 1 ? uiText("Keep the explanation?") : uiText("Keep the explanations?")}</ModalHeader>
       <p>{linkedExplanations.length === 1

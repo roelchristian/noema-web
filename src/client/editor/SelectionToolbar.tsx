@@ -29,6 +29,7 @@ interface Props {
   onOpenEntity: (id:string) => void;
   onAddAlias: (id: string, alias: string) => Promise<void>;
   onMath: (range: Range) => void;
+  onCitation?: (range: Range) => void;
   onCreateEntity: (name: string, onCreated: (id: string) => void, onCancel?: () => void) => void;
 }
 const formats = [
@@ -40,7 +41,7 @@ const formats = [
 function editable(node: Node) {
   return (node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>('.block-content[contenteditable="true"]');
 }
-export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHeight, editor, entities, suggestionContext, onCommit, onAddAlias, onOpenEntity, onCreateEntity, onMath, onSemantic, onExplain, explaining, explainLabel, onReview, reviewing, onRead}: Props) {
+export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHeight, editor, entities, suggestionContext, onCommit, onAddAlias, onOpenEntity, onCreateEntity, onMath, onCitation, onSemantic, onExplain, explaining, explainLabel, onReview, reviewing, onRead}: Props) {
   const [anchor, setAnchor] = useState<{left: number; right: number; top: number; bottom: number} | null>(null);
   const [annotating, setAnnotating] = useState(false), [query, setQuery] = useState('');
   const [semantic, setSemantic] = useState(false);
@@ -275,6 +276,9 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
     onCreateEntity(text.trim().slice(0, 200), id => {if(!connect(current,text,id))throw new Error('Entity created, but the selection changed. Select text again to link it.');}, () => {if(current.toString()===text&&editor.current?.contains(current.commonAncestorContainer))restore(current);});
   };
   const singleBlockReason=uiText("Select text within one block or table cell.");
+  const citationRange=range&&editor.current?editorSelectionRanges(editor.current,range).at(-1):undefined;
+  const citationEnd=citationRange&&(citationRange.endContainer instanceof Element?citationRange.endContainer:citationRange.endContainer.parentElement);
+  const citationReason=citationEnd?.closest('.table-cell,.block.code,code,a,[contenteditable="false"]')?uiText("End the selection in ordinary paragraph text to add a citation."):'';
   function readSelection() {
     const current=saved.current; releaseSheet();
     if(current&&restore(current))onRead?.();
@@ -288,6 +292,7 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
           releaseSheet(); picking.current = false; setMore(false); applyFormat('strikeThrough');
         }}><s>S</s><span>{uiText("Strikethrough")}</span><kbd>{textFormatShortcuts.strikeThrough}</kbd></button>
         <button type="button" role="menuitem" tabIndex={-1} data-selection-action="math" aria-label={uiText("Inline equation")} aria-disabled={!single} aria-describedby={!single?panelId+'-single-block':undefined} onClick={() => { if(!single){setDisabledReason(singleBlockReason);return;} const current = saved.current?.cloneRange(); if (current) { dismiss(); onMath(current); } }}><Icon name="equation"/><span>{uiText("Inline equation")}{!single&&<small id={panelId+'-single-block'}>{singleBlockReason}</small>}</span></button>
+        {onCitation&&<button type="button" role="menuitem" tabIndex={-1} data-selection-action="citation" aria-disabled={!!citationReason} aria-label={uiText("Add citation…")} onClick={()=>{if(citationReason){setDisabledReason(citationReason);return;}const current=saved.current?.cloneRange();if(current){dismiss();onCitation(current);}}}><Icon name="source"/><span>{uiText("Add citation…")}<small>{citationReason||uiText("Insert after the selected text using a source in this vault.")}</small></span></button>}
         {mobile&&onRead&&<button type="button" role="menuitem" tabIndex={-1} data-selection-action="read" onClick={readSelection}><Icon name="speaker"/><span>{uiText("Read aloud")}</span></button>}
       </div>
       <div role="group" aria-label={uiText("Block")}>

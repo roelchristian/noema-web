@@ -1,4 +1,4 @@
-import {SuccessNotice} from '../components/SuccessNotice';
+import {SuccessNotice,useSuccessNotice} from '../components/SuccessNotice';
 import {getLocale} from '../i18n';
 import {t as uiText} from '../i18n';
 import {DisclosureSummary} from '../components/DisclosureSummary';
@@ -12,7 +12,7 @@ import { api } from '../api';
 export function EmbeddingSettings({vault,onOpenPage,onOpenEntity,onOpenPassage}: {vault: Vault | null; onOpenPassage:(vaultId:string,reference:SourceReference)=>Promise<void>; onOpenPage: (vaultId:string,pageId:string,reference?:PageReference)=>Promise<void>; onOpenEntity: (vaultId:string,entityId:string)=>Promise<void>}) {
   const [status,setStatus]=useState<EmbeddingStatus|null>(null);
   const [settings,setSettings]=useState<Preferences>({automatic:false,minCharacters:100});
-  const [busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState(''),[message,setMessage]=useState('');
+  const [busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState(''),[message,setMessage,messageOccurrence]=useSuccessNotice();
   const [query,setQuery]=useState(''),[results,setResults]=useState<SemanticSearchResults|null>(null),[searchBusy,setSearchBusy]=useState(false);
   const [jobView,setJobView]=useState<'queue'|'history'>('queue');
   const vaultId=vault?.id;
@@ -88,7 +88,7 @@ export function EmbeddingSettings({vault,onOpenPage,onOpenEntity,onOpenPassage}:
         <p className="intelligence-note">{uiText("Indexing sends content to OpenAI; searches send your query. Embeddings are stored in this vault. API charges apply.")}</p>
       </>}
       {error&&<p role="alert" className="embedding-job-error">{error}</p>}
-      {busy?<p role="status">{uiText("Working…")}</p>:<SuccessNotice inline message={message} onDismiss={()=>setMessage('')}/>}
+      {busy?<p role="status">{uiText("Working…")}</p>:<SuccessNotice inline message={message} occurrence={messageOccurrence} onDismiss={()=>setMessage('')}/>}
     </>}
   </section>;
 }

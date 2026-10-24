@@ -38,7 +38,7 @@ import { NameDialog } from './components/NameDialog';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import {ArchiveLibrary} from './archive/ArchiveLibrary';
 import {ArchiveNotice} from './archive/ArchiveNotice';
-import {SuccessNotice} from './components/SuccessNotice';
+import {SuccessNotice,useSuccessNotice} from './components/SuccessNotice';
 import { TrashLibrary } from './trash/TrashLibrary';
 import {entityLabels, entityTypes, entityMentionName, type Entity, type EntityType, type PageSummary} from '../shared/domain';
 import { Select } from './components/Select';
@@ -201,7 +201,7 @@ export function App() {
   useEffect(() => { setNavigationOpen(false); }, [view, page?.id, organizationContext.collection, organizationContext.folder, panelId, state.entityId, vault?.id]);
   const [sourcePage,setSourcePage]=useState<Entity|null>(null);
   const [create, setCreate] = useState<CreateEntityRequest | null>(null), [vaultAction, setVaultAction] = useState<VaultAction | null>(null);
-  const [vaultDeletionOpen,setVaultDeletionOpen]=useState(false),[vaultNotice,setVaultNotice]=useState('');
+  const [vaultDeletionOpen,setVaultDeletionOpen]=useState(false),[vaultNotice,setVaultNotice,vaultNoticeOccurrence]=useSuccessNotice();
   const [pendingInsert,setPendingInsert]=useState<{vaultId:string;pageId:string;entityId:string;name:string;insert:(id:string)=>void}|null>(null);
   const [insertNotice,setInsertNotice]=useState<{entityId:string;name:string}|null>(null);
   useEffect(()=>{setInsertNotice(null);},[vault?.id,vault?.locked,page?.id]);
@@ -372,7 +372,7 @@ export function App() {
       <PresentationSelector onExitFocus={exitFocus} value={appearance.presentationMode} onChange={presentationMode => setAppearance(current => ({...current, presentationMode}))}/>
     </div>}
     <WorkspaceNavigation mobile={mobile} open={navigationOpen && !focusWorkspace} onClose={() => setNavigationOpen(false)}>
-    <aside className="sidebar" onClickCapture={animateSidebarClick} data-navigating={loadingPageId !== null}><div className="sidebar-heading"><a className="brand" href="/" aria-label={uiText("Noema home")}><img className="brand-mark" src="/noema-mark.svg" alt="" width="38" height="38"/><span>noema</span></a>
+    <aside className="sidebar" onClickCapture={animateSidebarClick} data-navigating={loadingPageId !== null}><div className="sidebar-heading"><a className="brand" href="/" aria-label={uiText("Noema home")}><i className="brand-mark" aria-hidden="true"/><span>noema</span></a>
       <button className="mobile-navigation-close" type="button" aria-label={uiText("Close navigation")} onClick={() => setNavigationOpen(false)}><Icon name="close"/></button>
       <button className="sidebar-new-note" type="button" aria-label={uiText("New Note")} title={uiText("New Note")} disabled={disabled || reviewing} onClick={() => { workspace.closeEntity(); setSearchOpen(false); run(() => workspace.newPage()); }}><Icon name="compose"/></button></div>
       <div className="sidebar-scroll-region">
@@ -475,9 +475,9 @@ export function App() {
       setVaultNotice('Vault “'+name+'” deleted.'+(result.cleanupPending?' Local attachment cleanup is queued and will retry.':''));
     }}/>}
     {!error&&!vaultNotice&&!insertNotice&&!busy&&vault&&!vault.locked&&!!state.archiveUndo.length&&<ArchiveNotice key={JSON.stringify(state.archiveUndo)} count={state.archiveUndo.length} onUndo={()=>run(()=>workspace.restoreArchivedPages(state.archiveUndo))} onDismiss={workspace.dismissArchiveUndo}/>}
-    {!error&&vaultNotice&&<SuccessNotice message={vaultNotice} onDismiss={()=>setVaultNotice('')}/>}
+    {!error&&vaultNotice&&<SuccessNotice message={vaultNotice} occurrence={vaultNoticeOccurrence} onDismiss={()=>setVaultNotice('')}/>}
     {vaultAction && <VaultDialog onImport={() => { setVaultAction(null); setBackupAction('import'); }} action={vaultAction} onClose={() => setVaultAction(null)} onSubmit={value => vaultAction === 'create' ? workspace.createVault(value) : vaultAction === 'lock' ? workspace.lock(value) : workspace.unlock(value)}/>}
-    {!error&&!vaultNotice&&insertNotice&&vault&&!vault.locked&&<SuccessNotice key={insertNotice.entityId} message={uiText("Created “")+insertNotice.name+'”.'} onDismiss={()=>setInsertNotice(null)} action={<button type="button" className="success-notice-action" onClick={()=>{openEntity(insertNotice.entityId);setInsertNotice(null);}}>{uiText("View")}</button>}/>}
+    {!error&&!vaultNotice&&insertNotice&&vault&&!vault.locked&&<SuccessNotice key={insertNotice.entityId} occurrence={insertNotice} message={uiText("Created “")+insertNotice.name+'”.'} onDismiss={()=>setInsertNotice(null)} action={<button type="button" className="success-notice-action" onClick={()=>{openEntity(insertNotice.entityId);setInsertNotice(null);}}>{uiText("View")}</button>}/>}
     {error && <div id="toast" role="alert">{error}<button className="toast-close" aria-label={uiText("Dismiss error")} onClick={workspace.dismissError}>×</button></div>}
   </ReviewDestination.Provider></SubtypeIconContext.Provider>;
 }

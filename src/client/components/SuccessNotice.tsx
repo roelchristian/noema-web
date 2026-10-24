@@ -1,8 +1,15 @@
-import {useEffect,useRef,useState,type ReactNode} from 'react';
+import {useCallback,useEffect,useRef,useState,type ReactNode} from 'react';
 import {t as uiText} from '../i18n';
 
+/** Each confirmation gets a new occurrence, even when its text is unchanged. */
+export function useSuccessNotice():[string,(message:string)=>void,number] {
+  const [notice,setNotice]=useState({message:'',occurrence:0});
+  const show=useCallback((message:string)=>setNotice(current=>({message,occurrence:current.occurrence+1})),[]);
+  return [notice.message,show,notice.occurrence];
+}
+
 /** Transient confirmations share one timer and pause while being interacted with. */
-export function SuccessNotice({message,onDismiss,action,inline=false,dismissLabel=uiText('Dismiss notification')}:{message:string;onDismiss:()=>void;action?:ReactNode;inline?:boolean;dismissLabel?:string}) {
+export function SuccessNotice({message,occurrence,onDismiss,action,inline=false,dismissLabel=uiText('Dismiss notification')}:{message:string;occurrence?:unknown;onDismiss:()=>void;action?:ReactNode;inline?:boolean;dismissLabel?:string}) {
   const [hovered,setHovered]=useState(false);
   const [focused,setFocused]=useState(false);
   const dismiss=useRef(onDismiss);
@@ -11,7 +18,7 @@ export function SuccessNotice({message,onDismiss,action,inline=false,dismissLabe
     if(!message||hovered||focused)return;
     const timer=setTimeout(()=>dismiss.current(),5000);
     return()=>clearTimeout(timer);
-  },[message,hovered,focused]);
+  },[message,occurrence,hovered,focused]);
   if(!message)return null;
   return <div id={inline?undefined:'toast'} className={'success-notice'+(inline?' is-inline':'')} role="status" onMouseEnter={()=>setHovered(true)} onMouseLeave={()=>setHovered(false)} onFocus={()=>setFocused(true)} onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))setFocused(false);}}>
     <span>{message}</span>

@@ -13,7 +13,7 @@ const fixture=()=>{
  r.acceptanceMode='review_all';r.patches=r.patches.slice(0,2).map((p,i)=>({...p,id:'patch-'+i,decision:'pending',riskReasons:['Quotation wording requires comparison with the PDF.']}));
  r.reprocessed=structuredClone(r.original);r.reprocessed.document.semantic.children=[];r.reprocessed.text='Sample reading text';return r;
 };
-async function mount(t,{initial=null,post,onReadingRevision}={}){
+async function mount(t,{initial=null,post,onReadingRevision,get,onShow=()=>{},onOriginal=()=>{}}={}){
  const dom=new JSDOM('<div id="mount"></div>',{pretendToBeVisual:true});
  // React loaded before DOM availability uses its legacy input-event fallback in JSDOM.
  dom.window.HTMLElement.prototype.attachEvent=function(){};dom.window.HTMLElement.prototype.detachEvent=function(){};
@@ -27,15 +27,17 @@ async function mount(t,{initial=null,post,onReadingRevision}={}){
   else if(entry.url.endsWith('/intelligence'))result={model:'gpt-5-mini',reasoningEffort:'low'};
   else if(entry.url.endsWith('/reprocessing'))result=revision?[{...revision,patchCount:revision.patches.length,pendingCount:revision.patches.length}]:[];
   else if(entry.url.endsWith('/status'))result={id:revision.id,status:revision.status,updatedAt:revision.updatedAt,...revision.report};
-  else result=revision;
+  else result=get?await get(entry,revision):revision;
   return {ok:true,json:async()=>structuredClone(result)};
  });
  const root=createRoot(document.querySelector('#mount'));
- await act(async()=>root.render(React.createElement(SourceReprocessing,{vaultId:'v',fileId:'f',visible:true,onReadingRevision,onShow(){},onOriginal(){}})));
+ const props={vaultId:'v',fileId:'f',visible:true,onReadingRevision,onShow,onOriginal};
+ await act(async()=>root.render(React.createElement(SourceReprocessing,{...props,key:'f'})));
+ const switchFile=async fileId=>act(async()=>root.render(React.createElement(SourceReprocessing,{...props,fileId,key:fileId})));
  t.after(async()=>{await act(async()=>root.unmount());dom.window.close();keys.forEach((key,index)=>{if(previous[index])Object.defineProperty(globalThis,key,previous[index]);else delete globalThis[key];});});
  const button=text=>[...document.querySelectorAll('button')].find(el=>el.textContent===text);
  const click=async el=>{assert.ok(el,'Expected control exists');await act(async()=>el.click());};
- return {button,click,requests,dom};
+ return {button,click,requests,dom,switchFile};
 }
 test('review policy defaults to balanced and starting disables repeated submissions',async t=>{
  let finish;const env=await mount(t,{post:()=>new Promise(resolve=>{finish=resolve;})});
@@ -48,7 +50,7 @@ test('review policy defaults to balanced and starting disables repeated submissi
 test('risky changes show evidence warnings and batch review submits only selected patches',async t=>{
  let finish;const r=fixture(),env=await mount(t,{initial:r,post:entry=>new Promise(resolve=>{finish=()=>resolve({...r,updatedAt:'2026-10-20T00:00:00Z',patches:r.patches.map(p=>entry.body.decisions.some(d=>d.patchId===p.id)?{...p,decision:'accepted'}:p)});})});
  await env.click(env.button('Review changes (2)'));assert.match(document.body.textContent,/Quotation wording requires comparison/);
- await env.click(document.querySelector('.reprocessing-select input'));
+ await env.click(env.button('Bulk review'));await env.click(document.querySelector('.reprocessing-select input'));
  await env.click(env.button('Accept selected (1)'));
  const request=env.requests.find(item=>item.method==='POST');assert.ok(request.url.endsWith('/review'));assert.deepEqual(request.body.decisions,[{patchId:'patch-0',decision:'accepted'}]);assert.equal(request.body.updatedAt,r.updatedAt);
  assert.equal(env.button('Accept selected (1)').disabled,true);assert.ok([...document.querySelectorAll('.reprocessing-patch button')].filter(b=>b.textContent==='Accept').every(b=>b.disabled));
@@ -66,7 +68,7 @@ test('interrupted revisions resume retained progress and running revisions can s
 });
 test('individual decisions remove hidden patches from batch selection',async t=>{
  const r=fixture(),env=await mount(t,{initial:r,post:async(entry,current)=>({...current,updatedAt:'2026-10-20T00:00:00Z',patches:current.patches.map(p=>{const decision=entry.body.decisions.find(d=>d.patchId===p.id);return decision?{...p,decision:decision.decision}:p;})})});
- await env.click(env.button('Review changes (2)'));await env.click(document.querySelector('.reprocessing-select input'));
+ await env.click(env.button('Review changes (2)'));await env.click(env.button('Bulk review'));await env.click(document.querySelector('.reprocessing-select input'));
  await env.click(env.button('Keep original'));assert.equal(document.querySelectorAll('.reprocessing-patch').length,1);
  assert.ok(env.button('Accept selected (0)'),'Hidden reviewed patch must not remain batch selected');
 });
@@ -146,4 +148,50 @@ test('only explicit completed revision selection changes the reading version',as
  await act(async()=>{picker.value=r.id;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
  assert.equal(readings.at(-1).id,r.id);assert.equal(document.querySelector('.reprocessing-reviews'),null);
  await act(async()=>{picker.value='original';picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});assert.equal(readings.at(-1),null);
+});
+
+test('master-detail review pages history, supports keyboard navigation and opens bulk mode explicitly',async t=>{
+ const r=fixture();r.patches=Array.from({length:45},(_,index)=>({...r.patches[0],id:'p'+index,original:'Passage '+index}));const env=await mount(t,{initial:r});
+ await env.click(env.button('Review changes (45)'));assert.equal(document.querySelectorAll('.reprocessing-patch').length,1);assert.equal(document.querySelectorAll('.reprocessing-patch-list li').length,20);assert.equal(document.querySelector('.reprocessing-select'),null);
+ const first=document.querySelector('.reprocessing-patch-list li>button');await act(async()=>first.dispatchEvent(new env.dom.window.KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true})));
+ assert.equal(document.querySelector('.reprocessing-patch-list li>button[aria-pressed=true]').textContent.includes('Passage 1'),true);
+ await env.click(env.button('Load more changes'));assert.equal(document.querySelectorAll('.reprocessing-patch-list li').length,40);
+ await env.click(env.button('Bulk review'));assert.equal(document.querySelectorAll('.reprocessing-select input').length,40);
+ await act(async()=>document.querySelector('.reprocessing-reviews').dispatchEvent(new env.dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})));assert.equal(document.querySelector('.reprocessing-reviews'),null);assert.equal(document.activeElement,env.button('Review changes (45)'));
+});
+test('automatic history is separate from pending queue and offers audit and reversal',async t=>{
+ const r=fixture();r.patches[1].decision='accepted';r.patches[1].autoAcceptance={policy:'balanced',validator:'deterministic-test',checks:['canonical text preserved'],appliedAt:r.createdAt};
+ const env=await mount(t,{initial:r,post:async(entry,current)=>({...current,patches:current.patches.map(p=>p.id===entry.body.decisions[0].patchId?{...p,decision:entry.body.decisions[0].decision}:p)})});
+ await env.click(env.button('Review changes (1)'));const history=[...document.querySelectorAll('.reprocessing-review-filters button')].find(button=>button.textContent.startsWith('Automatically applied'));await env.click(history);
+ assert.match(document.querySelector('.reprocessing-patch').textContent,/deterministic-test.*canonical text preserved/s);await env.click(env.button('Reverse applied change'));
+ assert.equal(env.requests.find(request=>request.method==='POST').body.decisions[0].decision,'rejected');assert.equal(document.querySelectorAll('.reprocessing-patch').length,0);
+});
+test('a delayed reading version response cannot replace original after switching back',async t=>{
+ const r=fixture();r.fileId='f';r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;let finish,details=0;const readings=[];
+ const env=await mount(t,{initial:r,onReadingRevision:value=>readings.push(value),get:async()=>{details++;return details>1?new Promise(resolve=>{finish=resolve;}):r;}});
+ const picker=document.querySelector('[aria-label="Reading version"]');await act(async()=>{picker.value=r.id;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
+ assert.equal(typeof finish,'function');await act(async()=>{picker.value='original';picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});await act(async()=>finish(r));assert.equal(readings.at(-1),null);assert.equal(readings.some(value=>value!==null),false);
+});
+
+test('switching source while a start request is pending ignores the old completion',async t=>{
+ let finish,shows=0;const env=await mount(t,{post:()=>new Promise(resolve=>{finish=resolve;}),onShow:()=>shows++});
+ await env.click(env.button('Reprocess with AI'));await env.click(env.button('Start reprocessing'));assert.equal(shows,1);await env.switchFile('another-source');
+ await act(async()=>finish(fixture()));assert.equal(shows,1);assert.equal(document.querySelector('.reprocessing-prompt'),null);assert.equal(document.querySelector('.reprocessing-progress'),null);
+});
+
+test('reaccepted edited automatic suggestions are attributed to the latest manual decision',async t=>{
+ const r=fixture();r.patches=[{...r.patches[0],decision:'accepted',userReplacement:'Manually corrected text',autoAcceptance:{policy:'balanced',validator:'deterministic-test',checks:['original validation'],appliedAt:r.createdAt},decisionHistory:[{at:r.createdAt,actor:'automatic',from:'pending',to:'accepted'},{at:r.updatedAt,actor:'user',from:'accepted',to:'rejected'},{at:r.updatedAt,actor:'user',from:'rejected',to:'accepted',replacement:'Manually corrected text'}]}];
+ const env=await mount(t,{initial:r});await env.click(env.button('Review changes (0)'));
+ const filters=[...document.querySelectorAll('.reprocessing-review-filters button')];assert.match(filters.find(button=>button.textContent.startsWith('Automatically applied')).textContent,/0$/);
+ const manual=filters.find(button=>button.textContent.startsWith('Applied manually'));assert.match(manual.textContent,/1$/);await env.click(manual);assert.match(document.querySelector('.reprocessing-patch').textContent,/Manually corrected text/);assert.match(document.querySelector('.reprocessing-patch').textContent,/deterministic-test/);
+});
+
+
+test('review location selects the specific passage instead of its containing chapter',async t=>{
+ const r=fixture(),patch=r.patches[0],locations=[];
+ r.original.document.semantic.children=[{id:'container',kind:'chapter',title:'Parent',range:{...patch.range,startOffset:0,endOffset:r.original.text.length},children:[{id:'leaf',kind:'paragraph',range:{...patch.range},text:patch.original}]}];
+ patch.nodeIds=['container','leaf'];
+ const env=await mount(t,{initial:r,onOriginal:(nodeId,focus)=>locations.push({nodeId,focus})});
+ await env.click(env.button('Review changes (2)'));await env.click(document.querySelector('.reprocessing-patch-list li>button'));
+ assert.deepEqual(locations,[{nodeId:'leaf',focus:false}]);
 });

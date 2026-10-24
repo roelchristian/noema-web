@@ -190,7 +190,7 @@ function WorkspaceApp() {
   },[workspace,vault?.id,vault?.locked,sourcesProcessing]);
   const activeEntity = view === 'entity' ? entities.find(entity=>entity.id===state.entityId) : undefined;
   const activeSource = view === 'source' ? entities.find(entity=>entity.id===state.sourceId&&entity.type==='source') : undefined;
-  const [sourceInspectorOpen,setSourceInspectorOpen]=useState(!mobile);
+  const [sourceInspectorOpen,setSourceInspectorOpen]=useState(false);
   const [passageAction,setPassageAction]=useState<{reference:SourceReference;annotate:boolean;destinationId?:string}|null>(null);
   const inspectorToggle=useRef<HTMLButtonElement>(null);
   const [inspectorTab,setInspectorTab]=useState<'overview'|'connections'|'edit'>('overview');

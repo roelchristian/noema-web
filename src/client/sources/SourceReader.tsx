@@ -17,7 +17,7 @@ import {randomUUID} from '../../shared/uuid';
 import {request} from '../api';
 import {Icon} from '../components/Icon';
 import {SourceReaderInline} from './SourceReaderText';
-import {SourceDocumentView,sourceViewEntries,passageAnchor,type SourceViewEntry,type ReaderAnnotations} from './SourceDocumentView';
+import {SourceDocumentView,sourceViewEntries,editorialSnapshotHasRawRanges,passageAnchor,type SourceViewEntry,type ReaderAnnotations} from './SourceDocumentView';
 import type {SourceReprocessingRevision} from '../../shared/source-reprocessing';
 
 type LoadedFile=SourceFile&{textHash:string;document?:SourceDocument};
@@ -45,6 +45,7 @@ function savedDisplay():ReaderDisplay {
 export function SourceReader({vaultId,source,entities,inspectorOpen=false,onToggleInspector,refreshKey,onActiveAttachmentChange,onCreatePageFromSource,onError,onAddPassage,onAnnotate,onReadingNoteCreated,onOpenReadingNote,onRemoveReadingNote}:Props) {
   const destination=useContext(ReviewDestination);
   const [display,setDisplay]=useState<ReaderDisplay>(savedDisplay);
+  const [reviewOpen,setReviewOpen]=useState(false);
   function updateDisplay(value:Partial<ReaderDisplay>){setDisplay(current=>{const next={...current,...value};try{localStorage.setItem('noema:source-reader-display',JSON.stringify(next));}catch{/* Keep preferences for this session. */}return next;});}
   const reviewFile=destination?.originId===source.id?destination.fileId:undefined;
   const [files,setFiles]=useState<SourceFile[]|null>(null),[fileId,setFileId]=useState('');
@@ -62,7 +63,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
   },[]);
   useEffect(()=>setComparisonPage(null),[vaultId,fileId]);
   useEffect(()=>{setReprocessed(false);setReadingRevision(null);position.current=null;},[fileId,vaultId,source.id]);
-  function showOriginal(nodeId?:string){if(nodeId){position.current=null;setReadingRevision(null);}else onReadingRevision(null);setReprocessed(false);if(nodeId){setSelected(nodeId);requestAnimationFrame(()=>{const element=document.getElementById(passageAnchor(fileId,nodeId));window.dispatchEvent(new Event('noema:before-reading-jump'));element?.scrollIntoView({block:'center'});element?.querySelector<HTMLButtonElement>('button')?.focus({preventScroll:true});});}}
+  function showOriginal(nodeId?:string,focus=true){if(nodeId){position.current=null;setReadingRevision(null);}else onReadingRevision(null);setReprocessed(false);if(nodeId){setSelected(nodeId);requestAnimationFrame(()=>{const element=document.getElementById(passageAnchor(fileId,nodeId));window.dispatchEvent(new Event('noema:before-reading-jump'));element?.scrollIntoView({block:'center'});if(focus)element?.querySelector<HTMLButtonElement>('button')?.focus({preventScroll:true});});}}
   const [highlights,setHighlights]=useState<SourceHighlight[]>([]);
   const [readingNotes,setReadingNotes]=useState<ReadingNoteAnchor[]>([]);
   const copyTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
@@ -118,7 +119,8 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
   }
   const entries=useMemo(()=>loaded?sourceViewEntries(loaded.text,loaded.document):[],[loaded]);
   // Fail closed: an incomplete/stale response may never replace the reading text.
-  const editorial=readingRevision&&loaded&&readingRevision.fileId===loaded.id&&readingRevision.original.text===loaded.text&&!readingRevision.stale&&readingRevision.status==='completed'&&readingRevision.report.chunksCompleted>=readingRevision.report.chunksTotal?readingRevision:null;
+  const ambiguousEditorialRanges=useMemo(()=>!!readingRevision&&!editorialSnapshotHasRawRanges(readingRevision.reprocessed.text,readingRevision.reprocessed.document),[readingRevision]);
+  const editorial=!ambiguousEditorialRanges&&readingRevision&&loaded&&readingRevision.fileId===loaded.id&&readingRevision.original.text===loaded.text&&!readingRevision.stale&&readingRevision.status==='completed'&&readingRevision.report.chunksCompleted>=readingRevision.report.chunksTotal?readingRevision:null;
   const viewText=editorial?.reprocessed.text??loaded?.text??'',viewDocument=editorial?.reprocessed.document??loaded?.document;
   const viewEntries=useMemo(()=>editorial?sourceViewEntries(editorial.reprocessed.text,editorial.reprocessed.document,true):entries,[editorial,entries]);
   function canonicalNode(nodeId:string){
@@ -146,7 +148,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
       setCopied(true);clearTimeout(copyTimer.current);copyTimer.current=setTimeout(()=>setCopied(false),2500);
     }catch{onError('Unable to copy the citation. Clipboard access may be unavailable.');}
   }
-  return <section className={'source-reader'+(inspectorOpen?' has-inspector':'')} data-reader-width={display.width} data-reader-typography={display.typography} aria-label={uiText("Source reading view")}>
+  return <section className={'source-reader'+(inspectorOpen?' has-inspector':'')+(reviewOpen?' has-review-drawer':'')} data-reader-width={display.width} data-reader-typography={display.typography} aria-label={uiText("Source reading view")}>
     <header className="source-workspace-header"><span className="source-workspace-eyebrow">{source.subtypes.length?source.subtypes.join(' · '):uiText("Source")}</span><h1 className="page-heading source-workspace-title"><SourceReaderInline text={source.name}/></h1></header>
     <div className="source-reader-toolbar">
       <span className="source-reader-mode"><Icon name="source"/>{uiText("Reading · Read-only")}</span>
@@ -171,17 +173,18 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
     {attachment?.status==='ready'&&attachment.admitted!==1&&<p className="source-reader-status">{uiText("This attachment is unavailable for reading.")}</p>}
     {attachment?.status==='ready'&&attachment.admitted===1&&!loaded&&!error&&<p className="source-reader-status" role="status">{uiText("Loading document text…")}</p>}
     {loaded?.format==='pdf'&&<SourceEvidence vaultId={vaultId} fileId={loaded.id} pageCount={loaded.pages??0} page={comparisonPage} onPage={setComparisonPage}/>}
-    {loaded&&<SourceReprocessing key={`${vaultId}:${loaded.id}`} vaultId={vaultId} fileId={loaded.id} canonicalVersion={JSON.stringify([loaded.textHash,loaded.structural_nodes,loaded.page_start_lines,loaded.generated_name,loaded.language,loaded.name,loaded.enrichment_status])} onCompare={loaded.format==='pdf'?setComparisonPage:undefined} visible={reprocessed||destination?.category==='editorial'&&reviewFile===loaded.id} onShow={()=>setReprocessed(true)} onOriginal={showOriginal} onReadingRevision={onReadingRevision}/>}
+    {loaded&&<SourceReprocessing key={`${vaultId}:${loaded.id}`} vaultId={vaultId} fileId={loaded.id} canonicalVersion={JSON.stringify([loaded.textHash,loaded.structural_nodes,loaded.page_start_lines,loaded.generated_name,loaded.language,loaded.name,loaded.enrichment_status])} onCompare={loaded.format==='pdf'?setComparisonPage:undefined} visible={reprocessed||destination?.category==='editorial'&&reviewFile===loaded.id} onShow={()=>setReprocessed(true)} onOriginal={showOriginal} onReadingRevision={onReadingRevision} onReviewOpenChange={setReviewOpen}/>}
     {loaded&&<div className="source-reader-layout">
       <div className="source-reader-content">
         {reference&&<aside className="source-reader-selection" aria-label={uiText("Selected passage")}><div className="source-reader-selection-heading"><strong>{uiText(editorial?"Selected original passage":"Selected passage")}</strong><button type="button" aria-label={uiText("Clear selected passage")} onClick={()=>setSelected(null)}><Icon name="close"/></button></div><small>{citationLocation(reference)}</small><blockquote>{reference.excerpt}</blockquote><div className="source-reader-selection-actions"><button className="button small" type="button" onClick={()=>void copyCitation()}>{copied?uiText("Copied"):uiText("Copy citation")}</button><button className="button small" type="button" onClick={()=>onAddPassage(reference)}>{uiText("Add to page")}</button><button className="button small" type="button" onClick={()=>onAnnotate(reference)}>{uiText("Annotate")}</button></div><span role="status" className="sr-only">{copied?uiText("Citation copied"):''}</span></aside>}
+        {ambiguousEditorialRanges&&<p className="source-reader-editorial-notice" role="status">{uiText('This older editorial revision has unverified text coordinates. Original processed text is shown to preserve the complete document.')}</p>}
         {editorial&&<p className="source-reader-editorial-notice">{uiText('Editorial presentation. Citation actions quote the linked original passage. Highlights, bookmarks and reading notes are available in Original processed until offset mappings are verified.')}</p>}
         {!editorial&&<SourceReadingContinuity key={`continuity:${loaded.id}:${loaded.textHash}`} file={loaded} article={article} selectedOffset={selectedEntry?.node.range.startOffset}/>}
         {!editorial&&<SourceReadingTools key={`tools:${loaded.id}:${loaded.textHash}`} file={loaded} article={article} highlights={highlights} onHighlight={highlight=>setHighlights(items=>[...items.filter(item=>item.id!==highlight.id),highlight])} onHighlightRemoved={id=>setHighlights(items=>items.filter(item=>item.id!==id))} onNoteCreated={readingNoteCreated}/>}
         <SourceDocumentView article={article} fileId={loaded.id} name={source.name} text={viewText} entries={viewEntries} selected={selected} annotations={display.annotations} structureLabels={display.structureLabels} highlights={editorial?[]:highlights} canonicalNode={canonicalNode} onSelect={selectPassage} changeForNode={display.editorialIndicators&&editorial?nodeId=>{
           const originalId=canonicalNode(nodeId),patch=originalId?editorial.patches.find(patch=>patch.nodeIds.includes(originalId)):undefined;
           return patch?{id:patch.id,label:uiText('Review correction: ')+patch.category}:undefined;
-        }:undefined} onReview={patchId=>window.dispatchEvent(new CustomEvent('noema:review-source-patch',{detail:{fileId:loaded.id,patchId}}))}>
+        }:undefined} onReview={patchId=>window.dispatchEvent(new CustomEvent('noema:review-source-patch',{detail:{fileId:loaded.id,revisionId:readingRevision?.id,patchId}}))}>
           {!editorial&&<SourceReadingNoteMarkers article={article} notes={readingNotes} onOpen={onOpenReadingNote} onRemove={onRemoveReadingNote}/>}
         </SourceDocumentView>
         <SourceReadingNavigation article={article} text={viewText} document={viewDocument}/>

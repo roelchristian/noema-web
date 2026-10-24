@@ -100,3 +100,23 @@ test('delayed enrichment refreshes headings and navigation without reloading or 
   keys.forEach((key,index)=>{if(previous[index])Object.defineProperty(globalThis,key,previous[index]);else delete globalThis[key];});
  }
 });
+
+
+test('legacy CRLF editorial coordinates fail closed while proven raw snapshots retain complete text',async()=>{
+ const {editorialSnapshotHasRawRanges,sourceViewEntries}=await import('../src/client/sources/SourceDocumentView.tsx');
+ const text='First paragraph.\r\n\r\nSecond complete paragraph.\r\nAnother line remains intact.';
+ const document=processedSourceDocument({id:'legacy',text,name:'legacy.txt',format:'txt',structural_nodes:'[]',page_start_lines:'[]'});
+ assert.equal(editorialSnapshotHasRawRanges(text,document),false,'legacy normalized ranges cannot be interpreted as raw offsets');
+ const canonical=sourceViewEntries(text,document);
+ assert.ok(canonical.some(({node})=>node.text?.includes('Second complete paragraph.\r\nAnother line remains intact.')),'canonical fallback still renders the complete original text');
+ const rawDocument=structuredClone(document),offsets=[];
+ for(let index=0;index<text.length;index++){offsets.push(index);if(text[index]==='\r'&&text[index+1]==='\n')index++;}
+ offsets.push(text.length);
+ for(const {node} of sourceDocumentEntries(rawDocument)){
+  node.range.startOffset=offsets[node.range.startOffset];node.range.endOffset=offsets[node.range.endOffset];
+  if(node.text!==undefined)node.text=text.slice(node.range.startOffset,node.range.endOffset);
+ }
+ assert.equal(editorialSnapshotHasRawRanges(text,rawDocument),true,'exact raw slices independently establish the coordinate system');
+ const editorial=sourceViewEntries(text,rawDocument,true);
+ assert.equal(editorial.at(-1).node.text,canonical.at(-1).node.text);
+});

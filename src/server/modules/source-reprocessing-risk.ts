@@ -1,7 +1,7 @@
 import {sourceDocumentEntries,type SourceDocument} from '../../shared/source-document.js';
 import type {SourceAcceptanceMode,SourceEditorialPatch} from '../../shared/source-reprocessing.js';
 
-export const editorialRiskValidator='canonical-layout-v1';
+export const editorialRiskValidator='canonical-layout-v2';
 type Input={text:string;document:SourceDocument;start:number;end:number;original:string;replacement:string;category:SourceEditorialPatch['category'];confidence:number;threshold:number|undefined;policy:SourceAcceptanceMode|undefined;legacyRisks:string[]};
 /** All evidence comes from the immutable snapshot. Model reasons and confidence cannot prove an invariant. */
 export function evaluateEditorialAcceptance(input:Input):{automatic:boolean;reasons:string[];checks:string[]} {
@@ -10,6 +10,7 @@ export function evaluateEditorialAcceptance(input:Input):{automatic:boolean;reas
  if(policy==='review_all'||policy===undefined)return {automatic:false,reasons:legacyRisks,checks};
  if(!['balanced','minimal_review','safe_formatting'].includes(policy))return {automatic:false,reasons:['Acceptance policy is unknown; manual review is required.'],checks};
  if(policy==='safe_formatting')reasons.push(...legacyRisks);
+ else reasons.push('Independent passage-language evidence is unavailable; source-level language metadata cannot exclude foreign-language passages. Manual review is required.');
  if(!Number.isFinite(threshold)||threshold===undefined||threshold<0||threshold>1||!Number.isFinite(confidence)||confidence<threshold||confidence>1)reasons.push('Confidence does not meet the explicit policy threshold.');
  if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<0||end<=start||end>text.length||text.slice(start,end)!==original)reasons.push('Exact canonical coordinates are unavailable.');
  else checks.push('exact-canonical-substring');

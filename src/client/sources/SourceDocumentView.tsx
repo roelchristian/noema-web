@@ -7,6 +7,19 @@ import {t as uiText} from '../i18n';
 export type SourceViewEntry=ReturnType<typeof sourceDocumentEntries>[number];
 export type ReaderAnnotations='clean'|'contextual'|'always';
 export function passageAnchor(fileId:string,nodeId:string){return `source-passage-${encodeURIComponent(fileId)}-${encodeURIComponent(nodeId)}`;}
+/** Older CRLF revisions used normalized coordinates without a schema marker.
+ * Accept raw coordinates only when every displayed node proves its exact slice. */
+export function editorialSnapshotHasRawRanges(text:string,document:SourceDocument){
+ if(!text.includes('\r'))return true;
+ const nodes=sourceDocumentEntries(document).filter(({node})=>node.text!==undefined||node.title).map(({node})=>node);
+ if(!nodes.some(node=>node.text!==undefined))return false;
+ return nodes.every(node=>{
+  const {startOffset:start,endOffset:end}=node.range;
+  if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<0||end<start||end>text.length)return false;
+  if(node.text!==undefined)return node.text===text.slice(start,end);
+  return !!node.title&&text.slice(start,end).split('\n')[0].includes(node.title);
+ });
+}
 /** Presentation offsets always refer to this exact text, including CRLF originals. */
 export function sourceViewEntries(text:string,document?:SourceDocument,rawRanges=false):SourceViewEntry[]{
  if(!document)return [];

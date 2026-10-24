@@ -274,10 +274,10 @@ async function layoutPolicyInput(original='Ordinary prose\ncontinues here',repla
  const document=processedSourceDocument({id:'synthetic',name:'Synthetic',original_filename:'Synthetic',generated_name:'Synthetic',format:'txt',language:'en',source_url:null,text:original,pages:1,structural_nodes:'[]',page_start_lines:'[1]',enrichment_status:'completed'});
  return {text:original,document,start:0,end:original.length,original,replacement,category:'line_breaks',confidence:0.95,threshold:0.9,policy:'balanced',legacyRisks:editorialPatchRisk(original,replacement,'line_breaks',false)};
 }
-test('balanced validates canonical prose layout independently of model confidence',async()=>{
+test('balanced proves layout invariants but fails closed without independent passage-language evidence',async()=>{
  const {evaluateEditorialAcceptance}=await import('../src/server/modules/source-reprocessing-risk.ts');
  const input=await layoutPolicyInput(),result=evaluateEditorialAcceptance(input);
- assert.equal(result.automatic,true);assert.deepEqual(result.reasons,[]);assert.ok(result.checks.includes('exact-canonical-substring'));assert.ok(result.checks.includes('existing-soft-wrap-only'));
+ assert.equal(result.automatic,false);assert.match(result.reasons.join(' '),/Independent passage-language evidence is unavailable/);assert.ok(result.checks.includes('exact-canonical-substring'));assert.ok(result.checks.includes('existing-soft-wrap-only'));
  assert.equal(evaluateEditorialAcceptance({...input,policy:'review_all'}).automatic,false);
  assert.equal(evaluateEditorialAcceptance({...input,policy:'safe_formatting'}).automatic,false);
  assert.equal(evaluateEditorialAcceptance({...input,policy:undefined}).automatic,false);
@@ -308,14 +308,22 @@ test('automatic history is reversible and manual replacement audit survives rest
  const restored=restoreSourceRevision(stored,r.id,r.fileId,'restored-revision','restored-file');
  assert.equal(restored.acceptanceMode,'balanced');assert.equal(restored.patches[0].decisionHistory.length,3);assert.equal(restored.patches[0].decisionHistory.at(-1).replacement,patch.replacement);assert.deepEqual(restored.patches[0].autoAcceptance,patch.autoAcceptance);
 });
-test('balanced execution automatically materializes only proven layouts with durable audit and canonical coordinates',async()=>{
+test('explicit legacy safe-formatting execution retains narrow automatic layouts with durable audit and canonical coordinates',async()=>{
  const {sourceRevisionBaseHash}=await import('../src/server/modules/source-reprocessing.ts');
- const input=await layoutPolicyInput();const r=fixture();r.patches=[];r.status='queued';r.acceptanceMode='balanced';r.acceptanceThreshold=0.9;r.original={text:input.text,document:input.document};r.reprocessed=structuredClone(r.original);r.baseHash=sourceRevisionBaseHash(r.original);
+ const input=await layoutPolicyInput('Ordinary  prose continues here','Ordinary prose continues here');const r=fixture();r.patches=[];r.status='queued';r.acceptanceMode='safe_formatting';r.acceptanceThreshold=0.9;r.original={text:input.text,document:input.document};r.reprocessed=structuredClone(r.original);r.baseHash=sourceRevisionBaseHash(r.original);
  Object.assign(r.report,{chunksTotal:1,chunksCompleted:0,charactersTotal:input.text.length,charactersReviewed:0});delete r.report.completedChunkIndexes;delete r.report.excerpts;
  let stored=structuredClone(r);
  const store={all:()=>[],run:(_sql,status,_at,payload)=>{stored=_sql.includes('json_set(payload')?{...stored,status,updatedAt:_at,report:JSON.parse(payload)}:JSON.parse(payload);},get:()=>undefined};
- const service=new SourceReprocessing(store,{require:()=>({entity_id:'synthetic'})},{editorialSelection:()=>({model:r.report.model,reasoningEffort:r.report.reasoningEffort}),reeditSource:async()=>JSON.stringify({patches:[{startOffset:0,endOffset:input.original.length,original:input.original,replacement:input.replacement,category:'line_breaks',reason:'Model asserts safe',confidence:0.95}]})},()=>{},{start:()=>1,finish:()=>{}});
+ const service=new SourceReprocessing(store,{require:()=>({entity_id:'synthetic'})},{editorialSelection:()=>({model:r.report.model,reasoningEffort:r.report.reasoningEffort}),reeditSource:async()=>JSON.stringify({patches:[{startOffset:0,endOffset:input.original.length,original:input.original,replacement:input.replacement,category:'formatting',reason:'Model asserts safe',confidence:0.95}]})},()=>{},{start:()=>1,finish:()=>{}});
  service.baseHash=()=>r.baseHash;service.detail=()=>structuredClone(stored);store.all=()=>stored.status==='queued'?[{vault_id:'v',payload:JSON.stringify(stored)}]:[];
- await service.tick();assert.equal(stored.status,'completed',stored.report.error);assert.equal(stored.patches.length,1);const patch=stored.patches[0];assert.equal(patch.decision,'accepted');assert.equal(stored.patches.filter(p=>p.decision==='pending').length,0);assert.equal(stored.reprocessed.text,input.replacement);assert.equal(stored.original.text,input.original);assert.equal(patch.range.startOffset,0);assert.equal(patch.range.endOffset,input.original.length);assert.equal(patch.autoAcceptance.validator,'canonical-layout-v1');assert.equal(patch.decisionHistory[0].actor,'automatic');
+ await service.tick();assert.equal(stored.status,'completed',stored.report.error);assert.equal(stored.patches.length,1);const patch=stored.patches[0];assert.equal(patch.decision,'accepted');assert.equal(stored.patches.filter(p=>p.decision==='pending').length,0);assert.equal(stored.reprocessed.text,input.replacement);assert.equal(stored.original.text,input.original);assert.equal(patch.range.startOffset,0);assert.equal(patch.range.endOffset,input.original.length);assert.equal(patch.autoAcceptance.validator,'canonical-layout-v2');assert.equal(patch.decisionHistory[0].actor,'automatic');
  service.review('v',r.fileId,r.id,{updatedAt:stored.updatedAt,decisions:[{patchId:patch.id,decision:'rejected'}]});assert.equal(stored.reprocessed.text,input.original);assert.equal(stored.patches[0].decisionHistory.at(-1).actor,'user');assert.ok(stored.patches[0].autoAcceptance);
+});
+
+test('English source metadata never proves English passage language for balanced or minimal review',async()=>{
+ const {evaluateEditorialAcceptance}=await import('../src/server/modules/source-reprocessing-risk.ts');
+ for(const [original,replacement] of [['Veni  vidi vici','Veni vidi vici'],['Veni\nvidi vici','Veni vidi vici'],['Ordinary  prose','Ordinary prose']])for(const policy of ['balanced','minimal_review']){
+  const input=await layoutPolicyInput(original,replacement);input.policy=policy;input.category='formatting';input.confidence=1;
+  assert.equal(input.document.source.language,'en');const result=evaluateEditorialAcceptance(input);assert.equal(result.automatic,false);assert.match(result.reasons.join(' '),/Independent passage-language evidence is unavailable/);
+ }
 });

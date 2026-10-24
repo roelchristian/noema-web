@@ -2252,3 +2252,11 @@ main.source-workspace > #content > .source-reader {
     min-height: var(--touch-target-size);
   }
 }
+@media (min-width: 1200px) {
+  main.source-workspace > #content > .source-reader.has-review-drawer {
+    padding-inline-end: 480px;
+  }
+  .source-reader.has-review-drawer .source-reader-document {
+    width: 100%;
+  }
+}

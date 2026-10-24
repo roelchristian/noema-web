@@ -32,12 +32,19 @@ Run `npm run build`, `npm run test:all`, then `PLAYWRIGHT_MODULE=/absolute/path/
 
 ## Recorded validation
 
-- Original five-phase committed-code full suite: 1,278 passed, 7 platform skips, zero failures. Follow-up final validation is recorded below. Focused metadata/HTTP run: 8/8, including the current DataCite object-publisher fixture.
+- Original five-phase committed-code full suite: 1,278 passed, 7 platform skips, zero failures. Focused metadata/HTTP run: 8/8, including the current DataCite object-publisher fixture.
+- Latest-main follow-up full suite: **1,293 passed, 7 platform skips, zero failures** after incorporating #91. Final build/style/type checks passed.
+- Follow-up commits: `8dc4d92` canonical projections/conflict review, `a8629bf` canonical taxonomy, `f792103` scholarly exports, `f1d53d0` live inline CSL. The original five commits remain unchanged.
+- Independent follow-up review: 34 focused adversarial tests passed; final review found no concrete blockers.
 - Phase snapshots: phase 1 typechecks + 6 focused tests; phase 2 typechecks + 10 tests; phase 3 typechecks + 13 tests; phase 4 typechecks + 7 tests all passed independently of later phases.
 - Build/style/source and test types/server compile/Vite passed. Vite reports its existing large-chunk advisory.
 - Independent final security/backend/backup/reference review: 14/14 passed before the additional metadata fixture; no blocking finding.
-- Chromium 154 bibliography workflow passed cancellation, repeat import, per-field conflicts, authored-property reconciliation, consent/selected-field review, mobile layout, publication citation save/reload, live inline CSL/style persistence, source association, canonical taxonomy acceptance with stale-preview refresh, and reviewed scholarly export. Existing editor and Inbox browser harnesses passed with no page errors.
+- Chromium 154 bibliography workflow passed cancellation, repeat import, per-field conflicts, authored-property reconciliation, consent/selected-field review, mobile layout, publication citation save/reload, live inline CSL/style persistence, source association, canonical taxonomy acceptance with stale-preview refresh, and reviewed scholarly export. The Inbox browser harness passed with no page errors. The editor harness timed out during initial fixture loading under concurrent validation, then passed unchanged when rerun alone (typing/caret, undo/redo, split/merge, paste, selection, IME and entity changes).
 - Evidence produced locally in `/tmp/noema-bibliography-evidence/validation.json` and screenshots alongside it; the reproducible browser harness is committed.
+
+## Source Viewer task compatibility
+
+Draft PR #92 (`a52f9e26fa5a022fdf0621226068dd1e664f9ed2`) was fetched and inspected read-only, without merging, changing or publishing it. Its SourceDocumentView/reprocessing production changes do not overlap this branch beyond #91 content already preserved in both branches. The common reader navigation test needs to retain bibliography's `/api/bibliography/source` null fixture along with the reader's optional inspector expectations. No combined-PR test run is claimed. Bibliographic citations remain independent of the canonical/editorial passage identity contract.
 
 ## Official references inspected
 

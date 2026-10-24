@@ -1,6 +1,6 @@
 # Bibliographic intelligence: implementation and review
 
-Local implementation branch: `codex/bibliographic-intelligence`. This branch is prepared for draft review; no deployment or live user-data migration was performed. Inbox Activity #90 (`ce6101786de7a31c61cff0ad846681d369e255a7`) is included. The final integration incorporates #91 source-page language and draft-navigation changes and upstream Source Viewer #92 and editor transliteration #93 through main `c6a681fc155961baedd5a01637e11b011cc920d7`. Existing #89 and Settings #88 changes are preserved. The supplied Library text was used directly; it was not downloaded.
+Local implementation branch: `codex/bibliographic-intelligence`. This branch is prepared for draft review; no deployment or live user-data migration was performed. Inbox Activity #90 (`ce6101786de7a31c61cff0ad846681d369e255a7`) is included. The final integration incorporates #91 source-page language and draft-navigation changes and upstream Source Viewer #92 and editor transliteration #93 and language support #94 through main `9809f4f44e34bb6893d1127a3f2c085ad4a0df8b`. Existing #89 and Settings #88 changes are preserved. The supplied Library text was used directly; it was not downloaded.
 
 ## Delivered phases
 
@@ -33,6 +33,7 @@ Run `npm run build`, `npm run test:all`, then `PLAYWRIGHT_MODULE=/absolute/path/
 ## Recorded validation
 
 - Original five-phase committed-code full suite: 1,278 passed, 7 platform skips, zero failures. Focused metadata/HTTP run: 8/8, including the current DataCite object-publisher fixture.
+- Final publication candidate through #94: **1,317 passed, 7 platform skips, zero failures**; build/style/type checks and bibliography browser passed. Independent language/transliteration/citation/backup review passed 27 focused tests.
 - Final local integration through #93: **1,315 passed, 7 platform skips, zero failures**; build/style/type checks and bibliography browser pass. Independent transliteration/citation interoperability review passed 35 tests plus mixed-script identity/canonical-immutability checks. Import-only editor conflicts and test manifests were combined without removing either feature.
 - Publication integration on main including #92: **1,307 passed, 7 platform skips, zero failures**; build/style/type checks and both bibliography/Source Viewer browser workflows passed.
 - Latest-main follow-up full suite: **1,293 passed, 7 platform skips, zero failures** after incorporating #91. Final build/style/type checks passed.

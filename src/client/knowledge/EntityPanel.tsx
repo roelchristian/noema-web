@@ -1,4 +1,5 @@
 import {BibliographyEditor} from './BibliographyEditor';
+import {relationshipDisplayLabel} from '../../shared/relationship-predicates';
 import {useContext} from 'react';
 import {ReviewDestination} from '../review/review-destination';
 import {PropertyProposalReview} from './PropertyProposalReview';
@@ -54,7 +55,7 @@ export function EntityPanel(props: EntityPanelProps) {
   async function mutate(work: () => Promise<EntityDetail>) {
     try { const result = await work(); if(currentEntityKey.current.vaultId===vaultId&&currentEntityKey.current.id===id)setEntity(result); void onUpdated().catch(onError); return result; } catch (error) { onError(error); throw error; }
   }
-  const relationships: EntityConnection[] = entity?.relationships.map(relation => ({key: relation.id, target: relation.source_id === id ? relation.target_id : relation.source_id, label: relation.source_id === id ? relation.label : 'Incoming · ' + relation.label})) ?? [];
+  const relationships: EntityConnection[] = entity?.relationships.map(relation => ({key: relation.id, target: relation.source_id === id ? relation.target_id : relation.source_id, label: relationshipDisplayLabel(relation,id)})) ?? [];
   const propertyDisplayLabel=(property:import('../../shared/domain').Property)=>{const owner=property.entity_id===id?entity:entities.find(item=>item.id===property.entity_id);return owner?resolvePropertyDefinition(schema.propertyDefinitions,owner.type,owner.subtypes,property.name,property.metadata?.definition_id)?.label??propertyLabel(property.name):propertyLabel(property.name);};
   const references: EntityConnection[] = entity?.properties.filter(property => property.target_id).map(property => ({key: property.id, target: property.target_id!, label: propertyDisplayLabel(property)})) ?? [];
   const incoming: EntityConnection[] = entity?.incomingProperties.map(property => ({key: property.id, target: property.entity_id, label: 'Referenced via ' + propertyDisplayLabel(property)})) ?? [];

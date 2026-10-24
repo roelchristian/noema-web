@@ -2084,32 +2084,7 @@ main.source-workspace > #content > .source-reader {
 .source-inspector-status-row > span {
   flex: 1;
 }
-.source-inspector-status-failure {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 0 4px;
-}
-.source-inspector-status-failure > span {
-  flex: 1;
-  min-width: 0;
-}
-.source-inspector-status-failure strong, .source-inspector-status-failure small {
-  display: block;
-  overflow-wrap: anywhere;
-}
-.source-inspector-status-failure strong {
-  font-size: 13px;
-  font-weight: 500;
-}
-.source-inspector-status-failure small {
-  color: var(--text-muted);
-  font-size: 12px;
-}
-.source-inspector-status-failure .button {
-  flex: none;
-  min-height: var(--control-target-regular);
-}
+
 .source-inspector-status-files {
   display: grid;
   gap: 12px;
@@ -2161,7 +2136,7 @@ main.source-workspace > #content > .source-reader {
   .source-inspector-header {
     padding-top: env(safe-area-inset-top);
   }
-  .source-inspector-header .entity-detail-tabs > button, .source-inspector-links > button, .source-inspector .entity-detail-more, .source-inspector-status-failure .button, .source-inspector details > summary {
+.source-inspector-header .entity-detail-tabs > button, .source-inspector-links > button, .source-inspector .entity-detail-more, .source-inspector details > summary {
     min-height: var(--touch-target-size);
   }
 }

@@ -112,3 +112,16 @@ test('Activity refresh ignores stale responses and retains outcomes during retry
  respond(async()=>{throw new Error('Synthetic outage');});await click('.inbox-activity .review-section-heading button');assert.match(document.querySelector('.inbox-activity [role="alert"]').textContent,/Synthetic outage/);assert.match(document.querySelector('.inbox-activity').textContent,/Fresh/);
  respond(async()=>({items:[],running:[],unreadCount:0,through:0}));await click('.inbox-activity [role="alert"] button');assert.match(document.querySelector('.ai-notifications-empty').textContent,/No updates yet/);
 }));
+
+test('Activity shares semantic icons while preserving flat outcomes and separate running work',async t=>fixture(t,async({render,respond})=>{
+ const outcomes=['completed','failed','interrupted'].map((status,index)=>({id:status,action:'page_summary',status,vaultId:'v',vaultName:'Test',pageId:'p'+index,pageTitle:status,available:true,createdAt:'2026-10-24T10:00:00Z',readAt:'now'}));
+ const running=[{id:'running',action:'page_summary',vaultId:'v',pageId:'p',pageTitle:'In flight',available:true,startedAt:'2026-10-24T10:00:00Z'}];
+ respond(async url=>url.includes('notifications')?{items:outcomes,running,unreadCount:0,through:3}:({items:[],errors:[],more:[]}));
+ const activity=React.createElement(AIActivityProvider,null,React.createElement(InboxActivity,{onOpenSettings:()=>{},onOpenPage:async()=>true,onOpenEntity:async()=>true}));
+ await render('v',{facet:'activity',activity});
+ assert.deepEqual([...document.querySelectorAll('.ai-notification-list > li .notice-icon')].map(icon=>icon.dataset.tone),['success','error','warning']);
+ assert.equal(document.querySelector('.ai-notifications-running .notice-icon').dataset.tone,'info');
+ assert.equal(document.querySelectorAll('.ai-notification-list .inline-notice').length,0);
+ assert.equal(document.querySelectorAll('.ai-notification-list li').length,3);
+ assert.match(document.querySelector('.ai-notifications-running').textContent,/In flight/);
+}));

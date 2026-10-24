@@ -43,7 +43,9 @@ try {
  await page.goto(base+'/?vault=default&view=archive');
  await page.getByRole('heading',{name:'Archive',exact:true}).waitFor();
  await page.getByRole('button',{name:'Synthetic archived title after autosave',exact:true}).waitFor();
- for(const mode of ['Compact','Grid','List']){await page.getByRole('button',{name:mode+' view',exact:true}).click();assert.equal(await page.locator('[data-library-destination="archive"]').getAttribute('data-layout'),mode.toLowerCase());}
+ await page.getByRole('button',{name:'View options',exact:true}).click();
+ for(const [label,density] of [['Compact spacing','compact'],['Comfortable spacing','comfortable'],['Regular spacing','standard']]){await page.getByRole('button',{name:label,exact:true}).click();assert.equal(await page.locator('[data-library-destination="archive"]').getAttribute('data-density'),density);}
+ await page.keyboard.press('Escape');
  await page.getByRole('searchbox',{name:'Filter archived pages'}).fill('no synthetic match');
  await page.getByText('No archived pages match these filters.').waitFor();
  await page.getByRole('searchbox',{name:'Filter archived pages'}).fill('');
@@ -52,5 +54,5 @@ try {
  await page.getByText('No archived pages.',{exact:true}).waitFor();
  assert.equal((await api('pages/'+created.id)).archived_at,null);
  assert.deepEqual(errors,[]);
- console.log('Archive browser checks passed: autosave, archive/undo, direct links, read-only, search scopes, layouts, filtering and batch restore.');
+ console.log('Archive browser checks passed: autosave, archive/undo, direct links, read-only, search scopes, density controls, filtering and batch restore.');
 }finally{await browser?.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();}

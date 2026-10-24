@@ -33,7 +33,9 @@
     "test/property-catalogue.test.mjs",
     "test/page-history-ui.test.mjs",
     "test/bibliography.test.mjs",
-    "test/transliteration.test.mjs"
+    "test/transliteration.test.mjs",
+    "test/notification-reducer.test.mjs",
+    "test/notification-workspace.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",
@@ -87,7 +89,7 @@
     "test/intelligence-settings-ui.test.mjs",
     "test/editor-speech.test.mjs",
     "test/create-source-text-ui.test.mjs",
-    "test/success-notice.test.mjs",
+    "test/form-notice.test.mjs",
     "test/provider-connection-ui.test.mjs",
     "test/settings-category-ui.test.mjs",
     "test/bibliography-ui.test.mjs",
@@ -99,7 +101,10 @@
     "test/source-metadata-ui.test.mjs",
     "test/page-toolbar-menu.test.mjs",
     "test/page-connections-ui.test.mjs",
-    "test/relationship-predicates.test.mjs"
+    "test/relationship-predicates.test.mjs",
+    "test/notification-components.test.mjs",
+    "test/notice-recovery-ui.test.mjs",
+    "test/notification-bridge.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",

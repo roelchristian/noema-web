@@ -63,3 +63,38 @@ appearance, verifies status-text contrast, and exercises desktop coarse-pointer 
 CSS zoom layouts. `NOEMA_SCREENSHOTS` selects an evidence directory. Run `npm run test:browser`
 for editor, source-reading and entity-linking regressions. Native browser UI zoom, native
 extractors and Safari still require their respective platforms/environments.
+
+## Unified feedback (Quiet Structured)
+
+`styles/features/notifications.css`, the last feature import, owns shared notice
+geometry, wrapping, focus, motion and responsive layout. Notice aliases in
+`tokens.css` resolve through each theme's neutral surfaces. `semantics.css` paints
+only the `NoticeIcon` indicator and action failure text; notice roots use
+`data-tone`, never the broad `[data-status]` panel treatment.
+
+`notifications/NotificationProvider` owns ephemeral client presentations in an
+isolated store. Its stable command context does not subscribe the editor to toast
+changes. The viewport is portalled to the document body, below the native dialog
+layer, with two visible slots and a bounded pending queue. Timers count visible
+time and independently pause for hover, focus, hidden documents and pending actions.
+
+Inline notices have no timer. FormNotice owns local four-second confirmation
+occurrences; workspace save failures, browser-copy failures and draft recovery
+remain authoritative and non-dismissible. The Focus exception continues to use
+`.page-persistence-notices`, which owns the containing layout only. Archive Undo
+binds a vault and monotonically increasing operation; both activation and async
+completion validate scope. Activity retains its server feed, polling and read
+semantics and shares only status presentation.
+
+The old SuccessNotice/ArchiveNotice components, `#toast`, tinted source failure
+panels, entity insertion notices and unused Activity popover rules are retired.
+Run `node scripts/check-notifications-browser.mjs` with the documented Playwright
+environment for synthetic light/dark, mobile, touch, zoom, Focus and native modal
+coverage. It writes screenshots and layout evidence to `/tmp/noema-notifications-evidence`.
+
+If the queue is saturated entirely by important feedback, an existing visible
+record displays a persistent generic overflow count. Existing actions remain
+intact, no protected text is copied into the count, and no authoritative failure
+is resolved. Ordinary queued feedback is discarded before this saturation policy
+is used. This deliberately bounded presentation cannot retain unlimited messages;
+recovery remains available at each authoritative feature location.

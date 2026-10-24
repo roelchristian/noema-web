@@ -1,4 +1,6 @@
+import {detectPageFurniture} from './source-reprocessing-furniture.js';
 import {gatherReprocessingEvidence} from './source-reprocessing-evidence.js';
+import {assertAtomicPatchGroups} from './source-reprocessing-apparatus.js';
 import {executeReconstruction,reconstructionPromptVersion} from './source-reprocessing-pass.js';
 import {SourceReprocessingCheckpoints} from './source-reprocessing-checkpoints.js';
 import {planReprocessingChunks} from './source-reprocessing-planner.js';
@@ -57,6 +59,7 @@ function documentWithRawRanges(input:SourceDocument,text:string):SourceDocument 
 }
 export const sourceRevisionBaseHash=(original:SourceReprocessingRevision['original'])=>hash(JSON.stringify(original));
 export function materializeSourceRevision(r:SourceReprocessingRevision){
+  if(r.pipelineVersion===2)assertAtomicPatchGroups(r.patches);
   const patches=r.patches.filter(p=>p.decision==='accepted').sort((a,b)=>a.range.startOffset-b.range.startOffset);
   for(const [index,p] of patches.entries()){
    const {startOffset:start,endOffset:end}=p.range;
@@ -155,7 +158,7 @@ export class SourceReprocessing {
   if(sourceDocumentEntries(original.document).length>5000)throw new HttpError(413,'This beta supports at most 5,000 semantic nodes per source.');
   if(original.text.length>512000||this.chunks(original.text,original.document.physical.pages.map(p=>p.range.startOffset)).length>128)throw new HttpError(413,'This beta supports at most 512,000 extracted characters and 128 editorial excerpts. No partial pass was started.');
   const revision:SourceReprocessingRevision={pipelineVersion,...(configuration?{configuration}:{}),id:randomUUID(),fileId:id,createdAt:timestamp,updatedAt:timestamp,status:'queued',acceptanceMode,acceptanceThreshold,instructions:typeof body.instructions==='string'?body.instructions:'',baseHash:sourceRevisionBaseHash(original),stale:false,patches:[],original,reprocessed:structuredClone(original),report:{completedChunkIndexes:[],concurrency:2,promptVersion,...selection,startedAt:null,finishedAt:null,durationMs:null,chunksTotal:this.chunks(original.text,original.document.physical.pages.map(p=>p.range.startOffset)).length,chunksCompleted:0,charactersTotal:original.text.length,charactersReviewed:0,inputTokens:null,outputTokens:null,reasoningTokens:null,cachedInputTokens:null,diagnostics:['Beta derivative: original extraction remains canonical. Only accepted changes appear in the reading version.'],error:null}};
-  if(pipelineVersion===2){if(planReprocessingChunks(original.text,original.document).length>128)throw new HttpError(413,'V2 supports at most 128 reconstruction chunks.');revision.report.promptVersion=reconstructionPromptVersion;revision.report.concurrency=1;revision.report.chunksTotal=planReprocessingChunks(original.text,original.document).length;}
+  if(pipelineVersion===2){revision.furniture=detectPageFurniture(original.text,original.document);if(planReprocessingChunks(original.text,original.document).length>128)throw new HttpError(413,'V2 supports at most 128 reconstruction chunks.');revision.report.promptVersion=reconstructionPromptVersion;revision.report.concurrency=1;revision.report.chunksTotal=planReprocessingChunks(original.text,original.document).length;}
   this.store.transaction(()=>{
    this.store.run('INSERT INTO source_reprocessing (id,file_id,vault_id,status,created_at,updated_at,payload) VALUES (?,?,?,?,?,?,?)',revision.id,id,vault,revision.status,timestamp,timestamp,JSON.stringify(revision));
    if(configuration){const checkpoints=new SourceReprocessingCheckpoints(this.store);for(const chunk of planReprocessingChunks(original.text,original.document))checkpoints.saveChunk({revisionId:revision.id,index:chunk.index,startOffset:chunk.start,endOffset:chunk.end,baseHash:revision.baseHash,evidenceHash:gatherReprocessingEvidence({text:original.text,document:original.document,start:chunk.start,end:chunk.end,options:configuration.evidence}).hash,difficulty:chunk.difficulty,difficultyReason:chunk.difficultyReason,requiredPassCount:configuration.depth==='light'?1:2,status:'pending'});}

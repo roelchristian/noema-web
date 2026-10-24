@@ -37,6 +37,9 @@ export function reconstructBlocks(chunk:PlannedReprocessingChunk,response:unknow
    while(oldEnd<original.text.length&&/[ \t]/.test(original.text[oldEnd]!)){oldEnd++;newEnd++;}
    if(oldEnd<original.text.length){oldEnd++;newEnd++;while(!utf16Boundary(original.text,oldEnd)){oldEnd++;newEnd++;}}
   }
+  // Apparatus dependencies must retain complete labels in the patch evidence so that
+  // reference/definition edits can be grouped even when a single label character changes.
+  if(/\[\^[^\]\n]+\]/.test(original.text+replacement)){prefix=0;oldEnd=original.text.length;newEnd=replacement.length;}
   const before=original.text.slice(prefix,oldEnd),after=replacement.slice(prefix,newEnd);
   if(before.length>16000||after.length>16000)return invalid('difference exceeds the patch limit.');
   patches.push({startOffset:original.start+prefix,endOffset:original.start+oldEnd,original:before,replacement:after,category:mechanical?'formatting':'ocr',reason:'Deterministic difference from reconstructed canonical block; source comparison is required for substantive changes.',confidence:0});

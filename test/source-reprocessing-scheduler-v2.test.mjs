@@ -7,12 +7,12 @@ import {SourceReprocessing,sourceRevisionBaseHash} from '../src/server/modules/s
 import {processedSourceDocument} from '../src/server/modules/source-document.ts';
 import {SourceReprocessingCheckpoints} from '../src/server/modules/source-reprocessing-checkpoints.ts';
 
-function harness(t,{depth='balanced',text='A short synthetic scholarly passage.',provider=echo}={}) {
+function harness(t,{depth='balanced',text='A short synthetic scholarly passage.',pages=null,pageStartLines=[],provider=echo}={}) {
  const db=new DatabaseSync(':memory:');t.after(()=>db.close());
  db.exec(`CREATE TABLE source_reprocessing(id TEXT PRIMARY KEY,file_id TEXT,vault_id TEXT,status TEXT,created_at TEXT,updated_at TEXT,payload TEXT);
  CREATE TABLE source_reprocessing_chunks(revision_id TEXT,chunk_index INTEGER,payload TEXT,PRIMARY KEY(revision_id,chunk_index));
  CREATE TABLE source_reprocessing_passes(revision_id TEXT,chunk_index INTEGER,pass_index INTEGER,payload TEXT,PRIMARY KEY(revision_id,chunk_index,pass_index));`);
- const store=new Store(db),file={id:'synthetic-file',entity_id:null,name:'Synthetic',original_filename:'Synthetic',format:'txt',language:'en',source_url:null,generated_name:null,text,pages:null,structural_nodes:'[]',page_start_lines:'[]',enrichment_status:'completed',status:'ready',admitted:1};
+ const store=new Store(db),file={id:'synthetic-file',entity_id:null,name:'Synthetic',original_filename:'Synthetic',format:'txt',language:'en',source_url:null,generated_name:null,text,pages,structural_nodes:'[]',page_start_lines:JSON.stringify(pageStartLines),enrichment_status:'completed',status:'ready',admitted:1};
  const original={text,document:processedSourceDocument(file)},selection={model:'gpt-5-mini',reasoningEffort:'low'},calls=[];
  let locked=false;
  const intelligence={editorialSelection:()=>selection,reeditSource:async(prompt,_instructions,signal,observe)=>{const request=JSON.parse(prompt);calls.push(request);observe(20).usage({input_tokens:10,output_tokens:3,output_tokens_details:{reasoning_tokens:1},input_tokens_details:{cached_tokens:2}});return provider(request,{signal,lock:()=>{locked=true;}});}};
@@ -76,4 +76,13 @@ test('cancellation marks the reserved paid request uncertain and never advances 
  const work=env.worker.tick();await started;env.worker.cancel('vault',env.revision.fileId,env.revision.id);await work;
  assert.equal(env.value.status,'interrupted');assert.equal(env.calls.length,1);assert.equal(env.value.patches.length,0);assert.equal(env.checkpoints.passes(env.revision.id)[0].outcomeUncertain,true);
  env.restart();assert.throws(()=>env.worker.resume('vault',env.revision.fileId,env.revision.id),/uncertain/);assert.equal(env.calls.length,1);
+});
+
+test('V2 start and persisted completion retain reversible furniture candidates over three physical pages',async t=>{
+ const text=Array.from({length:3},(_,index)=>`<!-- Page ${index+1} -->\nRecurring journal header\nDistinct passage ${index+1}.\n`).join('');
+ const env=harness(t,{text,pages:3,pageStartLines:[1,4,7]});
+ assert.equal(env.revision.furniture.length,3);assert.ok(env.revision.furniture.every(candidate=>candidate.hidden===false&&candidate.text==='Recurring journal header'));
+ await env.worker.tick();const result=env.value;assert.equal(result.status,'completed');assert.equal(env.calls.length,6);
+ assert.deepEqual(result.furniture,env.revision.furniture);assert.equal(result.original.text,text);assert.equal(result.reprocessed.text,text);
+ for(const candidate of result.furniture)assert.equal(text.slice(candidate.startOffset,candidate.endOffset),candidate.text);
 });

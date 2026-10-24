@@ -54,6 +54,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
   const article=useRef<HTMLElement>(null);
   const [reprocessed,setReprocessed]=useState(false),[comparisonPage,setComparisonPage]=useState<number|null>(null);
   const [readingRevision,setReadingRevision]=useState<SourceReprocessingRevision|null>(null);
+  const [hideFurniture,setHideFurniture]=useState(false);
   const position=useRef<{node?:string;page?:string;top:number}|null>(null);
   const onReadingRevision=useCallback((revision:SourceReprocessingRevision|null)=>{
     const root=article.current,edge=(document.querySelector('.topbar')?.getBoundingClientRect().bottom??0)+24;
@@ -123,6 +124,18 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
   const editorial=!ambiguousEditorialRanges&&readingRevision&&loaded&&readingRevision.fileId===loaded.id&&readingRevision.original.text===loaded.text&&!readingRevision.stale&&readingRevision.status==='completed'&&readingRevision.report.chunksCompleted>=readingRevision.report.chunksTotal?readingRevision:null;
   const viewText=editorial?.reprocessed.text??loaded?.text??'',viewDocument=editorial?.reprocessed.document??loaded?.document;
   const viewEntries=useMemo(()=>editorial?sourceViewEntries(editorial.reprocessed.text,editorial.reprocessed.document,true):entries,[editorial,entries]);
+  const furnitureNodes=useMemo(()=>{
+    const ids=new Set<string>();if(!editorial?.furniture?.length)return ids;
+    for(const entry of viewEntries){
+      if(!entry.node.text||entry.node.kind!=='paragraph')continue;
+      const originalIds=editorial.nodeLinks?.filter(link=>link.reprocessedNodeIds.includes(entry.node.id)).map(link=>link.originalNodeId)??[];
+      if(originalIds.length!==1)continue;
+      const original=entries.find(item=>item.node.id===originalIds[0]);
+      if(!original?.node.text||original.node.kind!=='paragraph')continue;
+      if(editorial.furniture.some(item=>item.startOffset>=original.node.range.startOffset&&item.endOffset<=original.node.range.endOffset&&original.node.text?.trim()===item.text.trim()&&entry.node.text?.trim()===item.text.trim()))ids.add(entry.node.id);
+    }
+    return ids;
+  },[editorial,viewEntries,entries]);
   function canonicalNode(nodeId:string){
     if(!editorial)return nodeId;
     if(editorial.original.text!==loaded?.text)return undefined;
@@ -157,6 +170,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
         <label>{uiText('Reader annotations')}<select aria-label={uiText('Reader annotations')} value={display.annotations} onChange={event=>updateDisplay({annotations:event.target.value as ReaderAnnotations})}><option value="clean">{uiText('Clean reading')}</option><option value="contextual">{uiText('Contextual')}</option><option value="always">{uiText('Always show passage references')}</option></select></label>
         <label><input type="checkbox" checked={display.structureLabels} onChange={event=>updateDisplay({structureLabels:event.target.checked})}/>{uiText('Show Noema section and block labels')}</label>
         <label><input type="checkbox" checked={display.editorialIndicators} onChange={event=>updateDisplay({editorialIndicators:event.target.checked})}/>{uiText('Show editorial change indicators')}</label>
+        {furnitureNodes.size>0&&<label><input type="checkbox" checked={hideFurniture} onChange={event=>setHideFurniture(event.target.checked)}/>{uiText('Hide repeated page furniture')}</label>}
         <label>{uiText('Typography')}<select aria-label={uiText('Reader typography')} value={display.typography} onChange={event=>updateDisplay({typography:event.target.value as ReaderDisplay['typography']})}><option value="sans">{uiText('Sans serif')}</option><option value="serif">{uiText('Serif')}</option></select></label>
         <label>{uiText('Reading width')}<select aria-label={uiText('Reading width')} value={display.width} onChange={event=>updateDisplay({width:event.target.value as ReaderDisplay['width']})}><option value="comfortable">{uiText('Comfortable')}</option><option value="wide">{uiText('Wide')}</option></select></label>
         <div className="source-reader-display-presets"><button type="button" onClick={()=>updateDisplay(defaultDisplay)}>{uiText('Reading preset')}</button><button type="button" onClick={()=>updateDisplay({annotations:'always',structureLabels:true,editorialIndicators:true})}>{uiText('Inspection preset')}</button></div>
@@ -181,7 +195,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
         {editorial&&<p className="source-reader-editorial-notice">{uiText('Editorial presentation. Citation actions quote the linked original passage. Highlights, bookmarks and reading notes are available in Original processed until offset mappings are verified.')}</p>}
         {!editorial&&<SourceReadingContinuity key={`continuity:${loaded.id}:${loaded.textHash}`} file={loaded} article={article} selectedOffset={selectedEntry?.node.range.startOffset}/>}
         {!editorial&&<SourceReadingTools key={`tools:${loaded.id}:${loaded.textHash}`} file={loaded} article={article} highlights={highlights} onHighlight={highlight=>setHighlights(items=>[...items.filter(item=>item.id!==highlight.id),highlight])} onHighlightRemoved={id=>setHighlights(items=>items.filter(item=>item.id!==id))} onNoteCreated={readingNoteCreated}/>}
-        <SourceDocumentView article={article} fileId={loaded.id} name={source.name} text={viewText} entries={viewEntries} selected={selected} annotations={display.annotations} structureLabels={display.structureLabels} highlights={editorial?[]:highlights} canonicalNode={canonicalNode} onSelect={selectPassage} changeForNode={display.editorialIndicators&&editorial?nodeId=>{
+        <SourceDocumentView hiddenNodeIds={hideFurniture?furnitureNodes:undefined} article={article} fileId={loaded.id} name={source.name} text={viewText} entries={viewEntries} selected={selected} annotations={display.annotations} structureLabels={display.structureLabels} highlights={editorial?[]:highlights} canonicalNode={canonicalNode} onSelect={selectPassage} changeForNode={display.editorialIndicators&&editorial?nodeId=>{
           const originalId=canonicalNode(nodeId),patch=originalId?editorial.patches.find(patch=>patch.nodeIds.includes(originalId)):undefined;
           return patch?{id:patch.id,label:uiText('Review correction: ')+patch.category}:undefined;
         }:undefined} onReview={patchId=>window.dispatchEvent(new CustomEvent('noema:review-source-patch',{detail:{fileId:loaded.id,revisionId:readingRevision?.id,patchId}}))}>

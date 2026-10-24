@@ -66,5 +66,5 @@ export interface SourceReprocessingRevision {
  original:{text:string;document:SourceDocument};
  reprocessed:{text:string;document:SourceDocument};
 }
-export type SourceReprocessingSummary=Omit<SourceReprocessingRevision,'original'|'reprocessed'|'patches'|'nodeLinks'> & {patchCount:number;pendingCount:number};
+export type SourceReprocessingSummary=Omit<SourceReprocessingRevision,'original'|'reprocessed'|'patches'|'nodeLinks'|'furniture'> & {patchCount:number;pendingCount:number};
 export interface SourceEditorialDecision {patchId:string;decision:'accepted'|'rejected'|'pending';replacement?:string}

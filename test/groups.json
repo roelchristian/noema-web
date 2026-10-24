@@ -93,7 +93,8 @@
     "test/bibliography-ui.test.mjs",
     "test/bibliographic-citations.test.mjs",
     "test/reference-list.test.mjs",
-    "test/transliteration-ui.test.mjs"
+    "test/transliteration-ui.test.mjs",
+    "test/source-reprocessing-furniture-ui.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",
@@ -216,6 +217,7 @@
     "test/bibliographic-export.test.mjs",
     "test/source-reprocessing-persistence-v2.test.mjs",
     "test/source-reprocessing-scheduler-v2.test.mjs",
+    "test/source-reprocessing-v2-apparatus.test.mjs",
     "test/source-reprocessing-v2-evidence.test.mjs"
   ]
 }

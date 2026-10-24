@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
 import {readFileSync} from 'node:fs';
 import {setupDOM} from './helpers/dom.mjs';
+import {JSDOM} from 'jsdom';
 import React,{act} from 'react';
 import {createRoot} from 'react-dom/client';
 import {renderToStaticMarkup} from 'react-dom/server';
@@ -227,9 +228,10 @@ test('shared source progress preserves partial coverage and separates stage anno
 });
 
 
-test('source loading uses only supported determinate progress and retains storage diagnostics',()=>{
+test('source loading uses only supported determinate progress and retains storage diagnostics',t=>{
  const file={id:'source',name:'Article.pdf',generated_name:null,status:'queued',enrichment_status:'pending',progress:0,pages:0,error:null,enrichment_error:null};
- const markup=value=>new JSDOM(renderToStaticMarkup(React.createElement(SourceLoadingProgress,{file:{...file,...value}}))).window.document;
+ const parse=element=>{const dom=new JSDOM(renderToStaticMarkup(element));t.after(()=>dom.window.close());return dom.window.document;};
+ const markup=value=>parse(React.createElement(SourceLoadingProgress,{file:{...file,...value}}));
  const queued=markup({});
  assert.equal(queued.querySelector('.progress-notice').dataset.state,'queued');
  assert.equal(queued.querySelector('progress').hasAttribute('value'),false);
@@ -240,11 +242,10 @@ test('source loading uses only supported determinate progress and retains storag
  const math=markup({status:'processing',processing_detail:{completed:2,total:7,startedAt:Date.now(),updatedAt:Date.now()}});
  assert.equal(math.querySelector('[aria-label="Math preparation batches completed"]').value,2);
  assert.equal(math.querySelector('progress').max,7);
- const failed=new JSDOM(renderToStaticMarkup(React.createElement(SourceInspectorStatus,{files:[{...file,status:'failed',error:'Detailed extraction error'}],vaultId:'v',onChange:()=>{},onError:()=>{}}))).window.document;
+ const failed=parse(React.createElement(SourceInspectorStatus,{files:[{...file,status:'failed',error:'Detailed extraction error'}],vaultId:'v',onChange:()=>{},onError:()=>{}}));
  assert.equal(failed.querySelector('.inline-notice[data-tone="error"]').textContent,'Article.pdfProcessing failedRetry processing');
  assert.match(failed.body.textContent,/Detailed extraction error/);
  assert.equal(failed.querySelector('.inline-notice[data-tone="error"] button').textContent,'Retry processing');
- for(const document of [queued,extracting,math,failed])document.defaultView.close();
 });
 
 test('V2 pass progress distinguishes checkpointed passes and blocks uncertain paid replay',async t=>{

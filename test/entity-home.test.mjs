@@ -27,21 +27,21 @@ test('entity homepage shows real knowledge and keeps relationship directions dis
   let openedEntity, openedPage;
   await act(async () => root.render(React.createElement(EntityHome, {...props,onOpen:id=>openedEntity=id,onOpenPage:id=>openedPage=id})));
   assert.equal(document.querySelector('h1').textContent,'Ada');
-  assert.match(document.querySelector('.eh-counts').textContent,/1 page4 connections/);
+  assert.deepEqual([...document.querySelectorAll('.eh-tabs [role=tab]')].map(tab=>tab.textContent),['Overview','Connections','Evidence']);
+  assert.match(document.querySelector('.eh-counts').textContent,/1 page1 connection/);
   await click('#entity-home-tab-connections');
   const content=document.querySelector('#entity-home-panel-connections');
-  assert.match(content.textContent,/Outgoing · visited/);
+  assert.match(content.textContent,/visited/);
   assert.match(content.textContent,/Incoming · commemorates/);
   assert.match(content.textContent,/Referenced via Honours/);
   await click('#entity-home-panel-connections .entity-connection-list button');
   assert.equal(openedEntity,'other');
-  await click('#entity-home-tab-mentions');
-  assert.match(document.querySelector('#entity-home-panel-mentions').textContent,/Ada studied mathematics/);
-  await click('#entity-home-panel-mentions .entity-page-mentions button');
+  assert.match(content.textContent,/Ada studied mathematics/);
+  await click('#entity-home-panel-connections .eh-page-open');
   assert.equal(openedPage,'page');
-  await act(async()=>document.querySelector('#entity-home-tab-mentions').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true})));
-  assert.equal(document.activeElement.id,'entity-home-tab-sources');
-  assert.equal(document.querySelector('#entity-home-tab-sources').getAttribute('aria-selected'),'true');
+  await act(async()=>document.querySelector('#entity-home-tab-connections').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true})));
+  assert.equal(document.activeElement.id,'entity-home-tab-evidence');
+  assert.equal(document.querySelector('#entity-home-tab-evidence').getAttribute('aria-selected'),'true');
  });
 });
 
@@ -49,12 +49,14 @@ test('homepage and contextual panel share unsaved details and persist through th
  await fixture(t, async ({entity,props,root,click}) => {
   const baseline=entityDraftValues(entity);
   await act(async()=>setEntityDraft('v','e',baseline,{...baseline,name:'Ada Lovelace'}));
-  await click('#entity-home-tab-edit');
+  assert.equal(document.querySelector('#entity-home-tab-edit'),null);
+  await click('#entity-home-tab-overview');
   assert.equal(document.querySelector('[aria-label="Entity name"]').value,'Ada Lovelace');
   await act(async()=>root.render(React.createElement(EntityPanel,props)));
   assert.equal(document.querySelector('[aria-label="Entity name"]').value,'Ada Lovelace');
   await act(async()=>root.render(React.createElement(EntityHome,props)));
-  assert.equal(document.querySelector('#entity-home-tab-edit').getAttribute('aria-selected'),'true');
+  assert.equal(document.querySelector('#entity-home-tab-overview').getAttribute('aria-selected'),'true');
+  assert.equal(document.querySelector('[aria-label="Entity name"]').closest('details').open,true);
   let saved;
   t.mock.method(api,'updateEntity',async(_vault,_id,input)=>{saved=input;return {...entity,...input};});
   await act(async()=>document.querySelector('#entity-home-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
@@ -95,7 +97,7 @@ test('homepage keeps grouped lists default and exposes optional neighborhood and
   let opened,inspected;
   const graph=t.mock.method(api,'entityNeighborhood',async()=>({rootId:'e',nodes:props.entities,edges:[{id:'r',sourceId:'e',targetId:'other',kind:'relationship',label:'visited'}],relationTypes:['visited'],truncated:false}));
   const generate=t.mock.method(api,'generateEntityDiscovery',async()=>assert.fail('Opening Discovery must not generate'));
-  t.mock.method(api,'entityDiscovery',async()=>null);
+  const savedDiscovery=t.mock.method(api,'entityDiscovery',async()=>null);
   await act(async()=>root.render(React.createElement(EntityHome,{...props,onOpen:id=>opened=id,onInspect:id=>inspected=id})));
   await click('#entity-home-tab-connections');
   assert.equal(graph.mock.callCount(),0);
@@ -106,9 +108,15 @@ test('homepage keeps grouped lists default and exposes optional neighborhood and
   await act(async()=>nodes[1].dispatchEvent(new document.defaultView.MouseEvent('click',{bubbles:true})));
   assert.equal(opened,'other');
   await click('.en-inspect button');assert.equal(inspected,'other');
-  await click('#entity-home-tab-discovery');
+  const find=[...document.querySelectorAll('#entity-home-panel-connections button')].find(button=>button.textContent==='Find connections');
+  await act(async()=>find.click());
   assert.match(document.querySelector('.eh-discovery').textContent,/Explore with AI/);
-  assert.equal(generate.mock.callCount(),0);
+  assert.equal(generate.mock.callCount(),0);assert.equal(savedDiscovery.mock.callCount(),1);
+  const review=document.querySelector('.eh-discovery');
+  await act(async()=>find.click());await act(async()=>find.click());
+  await click('#entity-home-tab-overview');await click('#entity-home-tab-connections');
+  assert.equal(document.querySelector('.eh-discovery'),review,'provisional review stays mounted');
+  assert.equal(savedDiscovery.mock.callCount(),1,'collapse and tab changes reuse saved review');
  });
 });
 
@@ -123,10 +131,11 @@ test('Review Centre Discovery intent overrides saved tabs and retains an already
   const destination={id:'discovery:e:run',category:'discovery',originId:'e',title:'Ada',runId:'run',group:'decisions',state:'pending',decision:'Review saved discovery',count:1,updatedAt:''};
   await render(destination);
   assert.equal(document.querySelector('.entity-home h1'),heading,'same entity stays loaded on context change');
-  assert.equal(document.querySelector('#entity-home-tab-discovery').getAttribute('aria-selected'),'true');
+  assert.equal(document.querySelector('#entity-home-tab-connections').getAttribute('aria-selected'),'true');
   assert.equal(generate.mock.callCount(),0);
+  assert.ok(document.querySelector('.eh-discovery'));
   await click('#entity-home-tab-overview');assert.equal(document.querySelector('#entity-home-tab-overview').getAttribute('aria-selected'),'true');
   await act(async()=>root.render(null));await render(destination);
-  assert.equal(document.querySelector('#entity-home-tab-discovery').getAttribute('aria-selected'),'true','review intent takes priority over saved Overview');
+  assert.equal(document.querySelector('#entity-home-tab-connections').getAttribute('aria-selected'),'true','review intent takes priority over saved Overview');
  });
 });

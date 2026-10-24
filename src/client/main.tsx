@@ -5,6 +5,7 @@ import './styles/fonts.css';
 import './styles/tokens.css';
 import './styles.css';
 import './knowledge/entity-home.css';
+import './knowledge/connect-picker.css';
 import './knowledge/entity-neighborhood.css';
 import './knowledge/entity-discovery.css';
 import './editor/page-entity-associations.css';

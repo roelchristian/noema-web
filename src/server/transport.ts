@@ -438,6 +438,11 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             if(id && parts.length===4 && child==='entities' && method==='GET')return send(200,knowledge.pageAssociations(vault,id));
             if(id && parts.length===4 && child==='domains' && method==='PUT'){new Domains(store).setManual(vault,id,body,body.revision);return send(200,pages.get(vault,id));}
             if(id && parts.length===4 && child==='edit-lock' && method==='PUT')return send(200,pages.setEditLock(vault,id,body));
+            if(id && child==='connections') {
+              if(parts.length===4&&method==='GET')return send(200,pages.associations(vault,id));
+              if(parts.length===5&&childId&&method==='PUT')return send(200,pages.associate(vault,id,childId,body));
+              if(parts.length===5&&childId&&method==='DELETE')return send(200,pages.removeAssociation(vault,id,childId));
+            }
             if(id && parts.length===4 && child==='backlinks' && method==='GET')return send(200,pages.backlinks(vault,id));
             if(id && parts.length===4 && child==='review' && method==='POST') {
               const page=pages.requireEditable(vault,id),texts=reviewTexts(body.texts);

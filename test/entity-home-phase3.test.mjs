@@ -27,13 +27,13 @@ test('entity mentions group context once and preserve distinct exact occurrence 
   entity.pageMentions[0].contexts=[{blockId:'block',heading:['History','Early work'],excerpt:'Ada worked with Ada.',occurrences:[{id:'first',label:'Ada',reference:first},{id:'second',label:'Ada',reference:second}]}];
   let openedPage,openedMention;
   await act(async()=>root.render(React.createElement(EntityHome,{...props,onOpenPage:id=>openedPage=id,onOpenMention:reference=>openedMention=reference})));
-  await click('#entity-home-tab-mentions');
+  await click('#entity-home-tab-connections');
   assert.equal(document.querySelectorAll('.eh-context-excerpt').length,1);
   assert.match(document.querySelector('.eh-context-heading').textContent,/History › Early work/);
   assert.equal(document.querySelectorAll('.eh-occurrences button').length,2);
   await click('.eh-occurrences button:last-child');
   assert.deepEqual(openedMention,second);
-  await click('.eh-mention-page');
+  await click('#entity-home-panel-connections .eh-page-open');
   assert.equal(openedPage,'page');
  });
 });
@@ -51,9 +51,9 @@ test('source evidence loads lazily, retries failures, and appends passages witho
   });
   await act(async()=>root.render(React.createElement(EntityHome,{...props,pages:[{id:'page',title:'History'}],onOpenPage:id=>openedPage=id,onOpenSourcePassage:(reference,trigger)=>opened={reference,trigger}})));
   assert.equal(calls,0);
-  await click('#entity-home-tab-sources');
-  assert.match(document.querySelector('#entity-home-panel-sources [role="alert"]').textContent,/Temporary evidence failure/);
-  await click('#entity-home-panel-sources [role="alert"] button');
+  await click('#entity-home-tab-evidence');
+  assert.match(document.querySelector('#entity-home-panel-evidence [role="alert"]').textContent,/Temporary evidence failure/);
+  await click('#entity-home-panel-evidence [role="alert"] button');
   assert.equal(calls,2);
   assert.match(document.querySelector('.eh-evidence-reason').textContent,/Cited alongside entity · Name appears in source/);
   assert.match(document.querySelector('.eh-evidence-stale').textContent,/source location could not be verified/);
@@ -76,9 +76,9 @@ test('switching away aborts source discovery and ignores late evidence', async t
  await fixture(t, async ({click}) => {
   let resolve,signal;
   t.mock.method(api,'entityEvidence',async(_vault,_id,value)=>{signal=value;return new Promise(done=>resolve=done);});
-  await click('#entity-home-tab-sources');
-  assert.match(document.querySelector('#entity-home-panel-sources').textContent,/Finding source passages/);
-  await click('#entity-home-tab-mentions');
+  await click('#entity-home-tab-evidence');
+  assert.match(document.querySelector('#entity-home-panel-evidence').textContent,/Finding source passages/);
+  await click('#entity-home-tab-connections');
   assert.equal(signal.aborted,true);
   await act(async()=>resolve({groups:[],hasMore:false,truncated:false}));
   assert.equal(document.querySelectorAll('.eh-source-evidence').length,0);
@@ -97,9 +97,9 @@ test('source viewer preserves stale evidence without trusting a matching file ha
   assert.equal(document.querySelector('.source-viewer-passage mark').textContent,'Saved historical passage.');
   assert.equal(document.querySelector('[data-cited-node]'),null);
   const savedPassage=document.querySelector('.source-viewer-passage');
-  await act(async()=>document.querySelector('#source-viewer [aria-label="Subtle references"]').click());assert.equal(mode,'subtle');
-  await act(async()=>document.querySelector('#source-viewer [aria-label="Focus mode"]').click());assert.equal(mode,'focus');
-  await act(async()=>document.querySelector('#source-viewer [aria-label="Focus mode"]').click());assert.equal(mode,'subtle');assert.equal(exits,1);
+  await act(async()=>document.querySelector('#source-viewer [aria-label="Subtle"]').click());assert.equal(mode,'subtle');
+  await act(async()=>document.querySelector('#source-viewer [aria-label="Focus"]').click());assert.equal(mode,'focus');
+  await act(async()=>document.querySelector('#source-viewer [aria-label="Exit Focus"]').click());assert.equal(mode,'subtle');assert.equal(exits,1);
   assert.equal(document.querySelector('.source-viewer-passage'),savedPassage);
  });
 });

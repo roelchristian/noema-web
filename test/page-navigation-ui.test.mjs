@@ -46,11 +46,7 @@ test('sidebar note switching preserves mounted shell and outgoing editor until a
   t.mock.method(dom.window,'matchMedia',query=>query==='(prefers-reduced-motion: reduce)'?{...originalMatchMedia(query),matches:reducedMotion}:originalMatchMedia(query));
   const chooseMode=async name=>act(async()=>{
    const selector=document.querySelector('.topbar .presentation-selector');
-   if(name==='Focus')selector.querySelector('[aria-label="Focus mode"]').click();
-   else {
-    const toggle=selector.querySelector('[aria-label="Subtle references"]');
-    if((toggle.getAttribute('aria-pressed')==='true')!==(name==='Subtle'))toggle.click();
-   }
+   selector.querySelector('[aria-label="'+name+'"]').click();
   });
   const escape=async options=>act(async()=>document.querySelector('#page-title').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true,...options})));
   await chooseMode('Subtle');assert.equal(document.documentElement.dataset.focusedReading,'true');assert.equal(presentationMotion.length,0);
@@ -66,9 +62,10 @@ test('sidebar note switching preserves mounted shell and outgoing editor until a
    assert.equal(localStorage.getItem('noema-knowledge-panel-open'),'true');assertOrganizationStable();
   }
   await chooseMode('Focus');
-  assert.equal(document.querySelector('.focus-controls [aria-label="Subtle references"]').disabled,true);
+  assert.equal(document.querySelector('.focus-controls [aria-label="Subtle"]').disabled,false);
+  assert.equal(document.querySelector('.focus-controls [aria-label="Exit Focus"]').getAttribute('aria-pressed'),'true');
   assert.equal(document.querySelector('.focus-exit'),null);
-  await act(async()=>document.querySelector('.focus-controls [aria-label="Focus mode"]').click());
+  await act(async()=>document.querySelector('.focus-controls [aria-label="Exit Focus"]').click());
   assert.equal(document.documentElement.dataset.focusWorkspace,'false');
   assert.equal(JSON.parse(localStorage.getItem('noema.appearance.v1')).presentationMode,'subtle');
   assert.ok(presentationMotion.length>0);assert.equal(presentationMotion[0].options.duration,280);
@@ -158,8 +155,8 @@ test('entity routes open full homes while desktop page mentions retain contextua
   await click(document.querySelector('#entity-home-panel-overview .entity-connection-list button'));
   assertHome('London');
   assert.equal(new URLSearchParams(window.location.search).get('subject'),'london');
-  await click(document.querySelector('#entity-home-tab-mentions'));
-  await click(document.querySelector('.entity-home .entity-page-mentions button'));
+  await click(document.querySelector('#entity-home-tab-connections'));
+  await click(document.querySelector('.entity-home .eh-page-open'));
   assert.ok(document.querySelector('.page'));
   assert.equal(document.querySelector('.entity-home'),null);
   await click(document.querySelector('.sidebar [aria-label="Knowledge entities"]'));
@@ -181,7 +178,7 @@ test('entity routes open full homes while desktop page mentions retain contextua
   assert.equal(new URLSearchParams(window.location.search).get('page'),'associated-note');
   await click(document.querySelector('.sidebar [aria-label="Knowledge entities"]'));
   await click(document.querySelector('.knowledge-library [title="Ada Lovelace"]'));
-  await click(document.querySelector('#entity-home-tab-mentions'));
+  await click(document.querySelector('#entity-home-tab-connections'));
   await click(document.querySelector('.eh-occurrences button'));
   await act(async()=>new Promise(resolve=>requestAnimationFrame(resolve)));
   assert.equal(document.querySelector('.page-search-mention')?.dataset.entity,'ada');
@@ -190,7 +187,7 @@ test('entity routes open full homes while desktop page mentions retain contextua
   await click(document.querySelector('.page [data-entity="ada"]'));
   await click(button(document.querySelector('.entity-link-dialog'),'Open entity details'));
   await click(button(document.querySelector('#entity-panel'),'Open entity homepage'));
-  await click(document.querySelector('#entity-home-tab-mentions'));
+  await click(document.querySelector('#entity-home-tab-connections'));
   t.mock.method(api,'page',async()=>({...note,revision:2}));
   await click(document.querySelector('.eh-occurrences button'));
   await act(async()=>new Promise(resolve=>requestAnimationFrame(resolve)));
@@ -235,12 +232,12 @@ test('source presentation controls retain the reader, highlights and inspector a
  await click('.source-inspector-toggle');
  const inspector=document.querySelector('#entity-panel');assert.ok(inspector);
  const reads=documentReads;
- await click('.topbar [aria-label="Subtle references"]');assert.equal(document.documentElement.dataset.focusedReading,'true');
- await click('.topbar [aria-label="Focus mode"]');
+ await click('.topbar [aria-label="Subtle"]');assert.equal(document.documentElement.dataset.focusedReading,'true');
+ await click('.topbar [aria-label="Focus"]');
  assert.equal(document.documentElement.dataset.focusWorkspace,'true');assert.equal(document.documentElement.dataset.focusTarget,'source-reader');
  assert.equal(document.querySelector('.source-reader'),reader);assert.equal(document.querySelector('.source-reader-document'),article);assert.equal(document.querySelector('.source-highlight'),mark);
  assert.equal(reader.classList.contains('has-inspector'),false);
- await click('.focus-controls [aria-label="Focus mode"]');
+ await click('.focus-controls [aria-label="Exit Focus"]');
  assert.equal(document.documentElement.dataset.focusWorkspace,'false');assert.equal(reader.classList.contains('has-inspector'),true);assert.equal(document.querySelector('#entity-panel'),inspector);
  assert.equal(document.querySelector('.source-highlight'),mark);assert.equal(documentReads,reads);
 });

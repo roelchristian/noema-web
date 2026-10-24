@@ -14,17 +14,19 @@ async function fixture(t,work){
  t.mock.method(api,'entity',async()=>entity);
  t.mock.method(api,'entitySchema',async()=>({properties:Object.fromEntries(entityTypes.map(type=>[type,[]])),subtypes:[],subtypeProperties:{}}));
  const props={vaultId:'v',id:'e',entities:[entity,other],refreshKey:'',onOpen(){},onClose(){},onUpdated:async()=>{},onError(error){throw error;},onOpenPage(){},onCreatePageFromSource(){}};
- try{await act(async()=>root.render(React.createElement(EntityPanel,props)));await click('#entity-tab-edit');await work({entity,click,dom,props,root});}
+ try{await act(async()=>root.render(React.createElement(EntityPanel,props)));await click('#entity-panel .entity-context-details summary');await work({entity,click,dom,props,root});}
  finally{await env.close();}
 }
 
 test('entity editor preserves drafts across tabs and saves from its primary action',async t=>{
  await fixture(t,async({entity,click})=>{
+  assert.equal(document.querySelector('#entity-tab-edit'),null);
+  assert.deepEqual([...document.querySelectorAll('[role=tab]')].map(tab=>tab.textContent),['Overview','Connections']);
   let saved;
   t.mock.method(api,'updateEntity',async(_vault,_id,input)=>{saved=input;return {...entity,...input};});
   const baseline=entityDraftValues(entity);
   await act(async()=>setEntityDraft('v','e',baseline,{...baseline,name:'Ada Lovelace',description:'Computing pioneer.'}));
-  await click('#entity-tab-overview');await click('#entity-tab-edit');
+  await click('#entity-tab-connections');await click('#entity-tab-overview');
   assert.equal(document.querySelector('[aria-label="Entity name"]').value,'Ada Lovelace');
   assert.match(document.querySelector('#entity-saved').textContent,/Unsaved/);
   await act(async()=>document.querySelector('#entity-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
@@ -43,6 +45,8 @@ test('property and relationship forms open deliberately and cancel without savin
   await click('[aria-label="Close property editor"]');
   assert.equal(document.querySelector('form[aria-label="Add property"]'),null);
   assert.equal(document.querySelector('[aria-label="Relationship name"]'),null);
+  await click('#entity-tab-connections');
+  await click('#entity-tabpanel-connections .entity-context-details summary');
   await click('.entity-add-connection');
   assert.ok(document.querySelector('[aria-label="Relationship name"]'));
   assert.equal(document.querySelector('.entity-relationship-form [type="submit"]').disabled,true);
@@ -62,7 +66,7 @@ test('advanced and inline property forms share drafts without changing identity 
   assert.equal(document.querySelector('[aria-label="Property value"]').value,'  ');
   assert.equal(document.querySelector('[aria-label="Save entity details"]').disabled,true);
   await click('#entity-tab-overview');assert.equal(document.querySelector('.entity-inline-edit textarea').value,'  ');
-  await click('#entity-tab-edit');assert.equal(document.querySelector('[aria-label="Property value"]').value,'  ');
+  await click('#entity-tab-connections');await click('#entity-tab-overview');assert.equal(document.querySelector('[aria-label="Property value"]').value,'  ');
   await act(async()=>setPropertyDraft('v','e','new:Born',{...getPropertyDraft('v','e','new:Born'),value:'1815'}));
   await act(async()=>document.querySelector('form[aria-label="Add property"]').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));
   assert.deepEqual(saved,{name:'Born',value:'1815'});assert.equal(getPropertyDraft('v','e','new:Born'),undefined);
@@ -82,6 +86,40 @@ test('classification edits preview before explicit legacy retention and keep dra
   await act(async()=>document.querySelector('#entity-form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));
   assert.equal(saved,undefined);assert.match(document.querySelector('[aria-label="Classification impact"]').textContent,/original definition/);
   await click('.entity-classification-impact button');assert.equal(saved.classification_mode,'retain_legacy');assert.equal(saved.impact_fingerprint,'fresh-impact');assert.equal(saved.type,'place');assert.equal(hasEntityDraft('v','e'),false);
+ });
+});
+
+
+test('legacy inspector Edit state opens contextual Overview and keeps editors mounted across tabs',async t=>{
+ await fixture(t,async({root,props,entity})=>{
+  const requests=api.entity.mock.callCount();
+  await act(async()=>root.render(React.createElement(EntityPanel,{...props,inspector:true,inspectorTab:'edit'})));
+  assert.equal(document.querySelector('#entity-tab-overview').getAttribute('aria-selected'),'true');
+  assert.equal(document.querySelector('#entity-tab-edit'),null);
+  const form=document.querySelector('#entity-form');
+  const baseline=entityDraftValues(entity);
+  await act(async()=>setEntityDraft('v','e',baseline,{...baseline,name:'Unfinished identity'}));
+  await act(async()=>root.render(React.createElement(EntityPanel,{...props,inspector:true,inspectorTab:'connections'})));
+  await act(async()=>root.render(React.createElement(EntityPanel,{...props,inspector:true,inspectorTab:'overview'})));
+  assert.equal(document.querySelector('#entity-form'),form);
+  assert.equal(document.querySelector('[aria-label="Entity name"]').value,'Unfinished identity');
+  assert.equal(api.entity.mock.callCount(),requests,'tab changes do not reload entity details');
+ });
+});
+
+test('late identity save cannot overwrite an inspector revisited after navigation',async t=>{
+ await fixture(t,async({root,props,entity,dom})=>{
+  let finish;
+  t.mock.method(api,'updateEntity',()=>new Promise(resolve=>finish=resolve));
+  t.mock.method(api,'entity',async(_vault,id)=>({...entity,id,name:id==='e'?'Ada':'Other entity'}));
+  const baseline=entityDraftValues(entity);
+  await act(async()=>setEntityDraft('v','e',baseline,{...baseline,name:'Earlier save'}));
+  await act(async()=>document.querySelector('#entity-form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));
+  assert.equal(typeof finish,'function');
+  await act(async()=>root.render(React.createElement(EntityPanel,{...props,id:'other'})));
+  await act(async()=>root.render(React.createElement(EntityPanel,props)));
+  await act(async()=>finish({...entity,name:'Earlier save'}));
+  assert.equal(document.querySelector('#entity-detail-title').textContent,'Ada');
  });
 });
 

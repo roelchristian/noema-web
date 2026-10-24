@@ -36,10 +36,12 @@ export function EntityPanel(props: EntityPanelProps) {
   const requestedTab = inspector ? props.inspectorTab ?? localTab : localTab;
   const tab = requestedTab === 'edit' ? 'overview' : requestedTab;
   const [showAllMentions, setShowAllMentions] = useState(false);
-  const currentEntityKey = useRef({vaultId, id}); currentEntityKey.current = {vaultId, id};
+  const currentEntityKey = useRef({vaultId, id});
+  if(currentEntityKey.current.vaultId!==vaultId || currentEntityKey.current.id!==id)currentEntityKey.current={vaultId,id};
+  const entityContext=currentEntityKey.current;
   const mounted=useRef(true);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
-  const isCurrent = () => mounted.current && currentEntityKey.current.vaultId === vaultId && currentEntityKey.current.id === id;
+  const isCurrent = () => mounted.current && currentEntityKey.current === entityContext;
   async function refreshCurrent() {const value=await api.entity(vaultId,id);if(isCurrent())setEntity(value);}
   useEffect(() => {setEntity(null); setManage(false); setShowAllMentions(false); setTab('overview');}, [vaultId, id]);
   useEffect(() => {
@@ -57,7 +59,7 @@ export function EntityPanel(props: EntityPanelProps) {
   const {schema, error: schemaError} = useEntitySchema(vaultId);
   const mention = (entityId: string) => <Mention id={entityId} entities={entities} onOpen={onOpen}/>;
   async function mutate(work: () => Promise<EntityDetail>) {
-    try { const result = await work(); if(currentEntityKey.current.vaultId===vaultId&&currentEntityKey.current.id===id)setEntity(result); void onUpdated().catch(onError); return result; } catch (error) { onError(error); throw error; }
+    try { const result = await work(); if(isCurrent())setEntity(result); void onUpdated().catch(onError); return result; } catch (error) { onError(error); throw error; }
   }
   const relationships: EntityConnection[] = entity?.relationships.map(relation => ({key: relation.id, target: relation.source_id === id ? relation.target_id : relation.source_id, label: relationshipDisplayLabel(relation,id)})) ?? [];
   const propertyDisplayLabel=(property:import('../../shared/domain').Property)=>{const owner=property.entity_id===id?entity:entities.find(item=>item.id===property.entity_id);return owner?resolvePropertyDefinition(schema.propertyDefinitions,owner.type,owner.subtypes,property.name,property.metadata?.definition_id)?.label??propertyLabel(property.name):propertyLabel(property.name);};
@@ -160,7 +162,7 @@ export function EntityPanel(props: EntityPanelProps) {
         <section className="entity-detail-section entity-identity-section"><EntityDetails vaultId={vaultId} schema={schema} key={vaultId + ':' + entity.id} entity={entity} onSave={async input => {
           let result: EntityDetail;
           try {result = await api.updateEntity(vaultId, id, input);} catch (error) {onError(error); throw error;}
-          if (currentEntityKey.current.vaultId === vaultId && currentEntityKey.current.id === id) setEntity(result);
+          if (isCurrent()) setEntity(result);
           // The entity is saved even if refreshing the surrounding workspace fails.
           void onUpdated().catch(onError);
           return result;

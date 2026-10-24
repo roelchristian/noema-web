@@ -69,7 +69,10 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
   const [readingNotes,setReadingNotes]=useState<ReadingNoteAnchor[]>([]);
   const copyTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
   useEffect(()=>()=>clearTimeout(copyTimer.current),[]);
-  useEffect(()=>{onActiveAttachmentChange?.(fileId);},[fileId,onActiveAttachmentChange]);
+  useEffect(()=>{
+    onActiveAttachmentChange?.(fileId);
+    if(fileId)try{sessionStorage.setItem('noema-source-attachment/'+JSON.stringify([vaultId,source.id]),fileId);}catch{/* Keep attachment selection usable without storage. */}
+  },[fileId,onActiveAttachmentChange,vaultId,source.id]);
   useEffect(()=>{setFiles(null);setFileId('');setError('');setLoaded(null);setSelected(null);},[vaultId,source.id,retry]);
   useEffect(()=>{
     const controller=new AbortController();let timer:ReturnType<typeof setTimeout>;
@@ -79,7 +82,8 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
         if(controller.signal.aborted)return;
         const attachments=detail.attachments??[];
         setFiles(attachments);
-        setFileId(current=>attachments.some(file=>file.id===current)?current:reviewFile&&attachments.some(file=>file.id===reviewFile)?reviewFile:(attachments.find(file=>file.status==='ready'&&file.admitted===1)??attachments[0])?.id??'');
+        let remembered='';try{remembered=sessionStorage.getItem('noema-source-attachment/'+JSON.stringify([vaultId,source.id]))??'';}catch{/* Use the first available attachment. */}
+        setFileId(current=>attachments.some(file=>file.id===current)?current:reviewFile&&attachments.some(file=>file.id===reviewFile)?reviewFile:attachments.some(file=>file.id===remembered)?remembered:(attachments.find(file=>file.status==='ready'&&file.admitted===1)??attachments[0])?.id??'');
         if(attachments.some(file=>file.status==='queued'||file.status==='processing'||file.status==='ready'&&['pending','running'].includes(file.enrichment_status)))timer=setTimeout(()=>void refresh(),2000);
       }catch(cause){if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:String(cause));}
     }

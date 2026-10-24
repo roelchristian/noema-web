@@ -2185,16 +2185,6 @@ main.source-workspace > #content > .source-reader {
 .source-highlight, .source-viewer-passage {
   transition: background-color 200ms ease, box-shadow 200ms ease, text-decoration-color 200ms ease;
 }
-:root[data-focused-reading=true] .source-highlight {
-  background: transparent;
-  text-decoration: underline;
-  text-decoration-color: var(--highlight-color);
-  text-decoration-thickness: 1px;
-  text-underline-offset: 3px;
-}
-:root[data-focused-reading=true] .source-viewer-passage.is-cited {
-  background: transparent;
-}
 :root[data-focus-workspace=true] .source-reader-toolbar {
   display: none;
 }

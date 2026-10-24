@@ -169,6 +169,7 @@
     "test/source-page-options-ui.test.mjs",
     "test/source-pages.test.mjs",
     "test/source-reader-refresh.test.mjs",
+    "test/source-reading-position-ui.test.mjs",
     "test/source-reprocessing.test.mjs",
     "test/source-reprocessing-summary.test.mjs",
     "test/source-sanitizer.test.mjs",

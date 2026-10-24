@@ -34,7 +34,8 @@ export function SourceReadingContinuity({file,article,selectedOffset,highlights=
  const panel=useRef<HTMLDivElement>(null),opener=useRef<HTMLElement|null>(null);
  function close(){setOpen(false);opener.current?.focus();}
  const [back,setBack]=useState<ReadingAnchor|null>(null),[saveError,setSaveError]=useState('');
- const saveSequence=useRef(0);
+ const saveSequence=useRef(0),interacted=useRef(false),restored=useRef(false);
+ const sessionKey='noema-source-position/'+JSON.stringify([file.vault_id,file.id]);
  const dirty=useRef<{offset:number;atEnd:boolean}|null>(null),loaded=useRef(false),alive=useRef(true);
  const route=`source-files/${encodeURIComponent(file.id)}/reading-locations`;
  useEffect(()=>{
@@ -42,6 +43,32 @@ export function SourceReadingContinuity({file,article,selectedOffset,highlights=
   void request<ReadingContinuity>(route,'GET',undefined,file.vault_id,controller.signal).then(value=>{if(controller.signal.aborted)return;loaded.current=true;setData(value);setResume(value.resume);}).catch(()=>{if(!controller.signal.aborted)setError('Reading locations could not be loaded. Reopen the source to retry.');});
   return()=>{alive.current=false;controller.abort();};
  },[route,file.vault_id]);
+ useEffect(()=>{
+  const root=article.current;if(!root||!data||restored.current)return;
+  restored.current=true;
+  if(interacted.current||selectedOffset!==undefined)return;
+  let location=data.resume,viewportTop:number|undefined;
+  try {
+   const anchor=JSON.parse(sessionStorage.getItem(sessionKey)??'null') as (ReadingAnchor&{viewportTop?:number})|null;
+   if(anchor?.fileId===file.id&&typeof anchor.quote==='string'&&typeof anchor.prefix==='string'&&typeof anchor.suffix==='string'&&Number.isSafeInteger(anchor.offset)){
+    const resolution=resolveReadingAnchor(anchor,file.text,file.textHash);
+    if(resolution.status==='resolved'){location={id:'session',label:'',anchor,resolution};if(anchor.revision===file.textHash&&Number.isFinite(anchor.viewportTop))viewportTop=anchor.viewportTop;}
+   }
+  }catch{/* Fall back to the server's saved reading position. */}
+  if(location?.resolution.status!=='resolved')return;
+  const offset=rawReadingOffset(file.text,location.resolution.offset);
+  const restore=()=>{
+   if(interacted.current)return;
+   if(viewportTop!==undefined){
+    const leaf=Array.from(root.querySelectorAll<HTMLElement>('[data-source-start][data-source-end]')).find(item=>Number(item.dataset.sourceEnd)>offset);
+    if(leaf){window.scrollBy({top:leaf.getBoundingClientRect().top-viewportTop,behavior:'instant'});return;}
+   }
+   jumpToReadingOffset(root,offset);
+  };
+  restore();setResume(null);
+  const resize=new ResizeObserver(restore);resize.observe(root);
+  return()=>resize.disconnect();
+ },[data,article,file,selectedOffset,sessionKey]);
  useEffect(()=>{
   const toggle=()=>{opener.current=document.activeElement as HTMLElement;setOpen(value=>!value);};window.addEventListener('noema:reading-bookmarks',toggle);
   return()=>window.removeEventListener('noema:reading-bookmarks',toggle);
@@ -55,37 +82,40 @@ export function SourceReadingContinuity({file,article,selectedOffset,highlights=
  },[open]);
  useEffect(()=>{
   const root=article.current;if(!root)return;
-  let timer:ReturnType<typeof setTimeout>|undefined,frame=0,interacted=false;
+  let timer:ReturnType<typeof setTimeout>|undefined,frame=0;
   function flush(){
    clearTimeout(timer);const position=dirty.current;if(!position||!loaded.current)return;dirty.current=null;const sequence=++saveSequence.current;
    // keepalive also delivers the final anchor when this reader closes or reloads.
    void fetch('/api/'+route+'/resume',{method:'PUT',keepalive:true,headers:{'X-Noema-Request':'1','Content-Type':'application/json','X-Vault-Id':file.vault_id},body:JSON.stringify({...position,revision:file.textHash})}).then(response=>{if(!response.ok)throw new Error();if(alive.current&&saveSequence.current===sequence)setSaveError('');}).catch(()=>{if(saveSequence.current!==sequence)return;dirty.current??=position;if(alive.current)setSaveError('Reading position could not be saved. Continue reading; scroll to retry.');});
   }
   function capture(){
-   if(!loaded.current||!interacted||!file.text.trim())return;
+   if(!root!.isConnected||!interacted.current||!file.text.trim())return;
    dirty.current={offset:visibleReadingOffset(root!),atEnd:root!.getBoundingClientRect().bottom<=window.innerHeight&&root!.getBoundingClientRect().bottom>readingEdge()};
+   const leaf=Array.from(root!.querySelectorAll<HTMLElement>('[data-source-start][data-source-end]')).find(item=>Number(item.dataset.sourceStart)===dirty.current!.offset);
+   try{sessionStorage.setItem(sessionKey,JSON.stringify({...createReadingAnchor(file.id,file.textHash,file.text,dirty.current.offset,file.document,dirty.current.atEnd),viewportTop:leaf?.getBoundingClientRect().top}));}catch{/* Server persistence remains available. */}
    clearTimeout(timer);timer=setTimeout(flush,300);
   }
   function scroll(){cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{frame=0;capture();});}
   function intent(event:Event){
    if(event instanceof KeyboardEvent&&!['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '].includes(event.key))return;
-   interacted=true;
+   interacted.current=true;
+   if(event.type==='pointerdown')capture();
   }
   function beforeJump(){
    if(!loaded.current)return;
    const origin=createReadingAnchor(file.id,file.textHash,file.text,visibleReadingOffset(root!),file.document);
-   setBack(previous=>previous??origin);interacted=true;
+   setBack(previous=>previous??origin);interacted.current=true;
   }
-  function hide(){if(document.visibilityState==='hidden'){if(frame)capture();flush();}}
-  function close(){if(frame)capture();flush();}
+  function hide(){if(document.visibilityState==='hidden'){capture();flush();}}
+  function close(){capture();flush();}
   // Anchor navigation is observed before the browser's default hash scroll.
   function click(event:MouseEvent){const target=event.target as Element;if(target.closest?.('a[href^="#"]'))beforeJump();}
   window.addEventListener('noema:before-reading-jump',beforeJump);document.addEventListener('click',click,true);
   window.addEventListener('scroll',scroll,{passive:true});
   for(const type of ['wheel','touchstart','pointerdown','keydown'])window.addEventListener(type,intent,{passive:true});
   window.addEventListener('pagehide',close);document.addEventListener('visibilitychange',hide);
-  return()=>{cancelAnimationFrame(frame);flush();clearTimeout(timer);window.removeEventListener('noema:before-reading-jump',beforeJump);document.removeEventListener('click',click,true);window.removeEventListener('scroll',scroll);window.removeEventListener('pagehide',close);document.removeEventListener('visibilitychange',hide);for(const type of ['wheel','touchstart','pointerdown','keydown'])window.removeEventListener(type,intent);};
- },[article,file,route]);
+  return()=>{cancelAnimationFrame(frame);capture();flush();clearTimeout(timer);window.removeEventListener('noema:before-reading-jump',beforeJump);document.removeEventListener('click',click,true);window.removeEventListener('scroll',scroll);window.removeEventListener('pagehide',close);document.removeEventListener('visibilitychange',hide);for(const type of ['wheel','touchstart','pointerdown','keydown'])window.removeEventListener(type,intent);};
+ },[article,file,route,sessionKey]);
  function go(location:ReadingLocation){
   if(location.resolution.status!=='resolved'||!article.current)return;
   window.dispatchEvent(new Event('noema:before-reading-jump'));

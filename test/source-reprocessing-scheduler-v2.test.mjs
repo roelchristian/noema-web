@@ -26,6 +26,19 @@ function harness(t,{depth='balanced',text='A short synthetic scholarly passage.'
 }
 function echo(request){return JSON.stringify({blocks:request.blocks,diagnostics:[],unresolved:false});}
 
+test('resume recovers a unique unchanged block ID without repeating completed excerpts or synthesis',async t=>{
+ const text='<!-- Page 1 -->\nFirst preserved page.\n\n<!-- Page 2 -->\nSecond preserved page.\n';
+ const env=harness(t,{text,pages:2,pageStartLines:[1,4],provider:request=>JSON.stringify({blocks:request.blocks.map((block,index)=>request.kind==='reconstruct'&&request.chunkIndex===1&&index===0?{id:'f'.repeat(24),text:block.text+'changed'}:block),diagnostics:[],unresolved:false})});
+ await env.worker.tick();assert.equal(env.value.status,'failed');assert.equal(env.value.report.chunksCompleted,1);
+ const synthesis=structuredClone(env.checkpoints.synthesis(env.revision.id)),firstCompleted=structuredClone(env.checkpoints.passes(env.revision.id,0));
+ const failed=env.checkpoints.passes(env.revision.id,1)[0],raw=JSON.parse(failed.result);raw.blocks[0].text=raw.blocks[0].text.slice(0,-'changed'.length);failed.result=JSON.stringify(raw);env.checkpoints.savePass(failed);
+ const retainedRaw=failed.result;env.calls.length=0;env.restart();env.worker.resume('vault',env.revision.fileId,env.revision.id);await env.worker.tick();
+ assert.equal(env.value.status,'completed');assert.equal(env.value.report.chunksCompleted,2);assert.deepEqual(env.calls.map(call=>call.kind),['verify']);
+ assert.deepEqual(env.checkpoints.passes(env.revision.id,0),firstCompleted);assert.equal(env.checkpoints.passes(env.revision.id,1)[0].result,retainedRaw);
+ assert.equal(env.checkpoints.synthesis(env.revision.id).register.hash,synthesis.register.hash);assert.equal(env.checkpoints.synthesis(env.revision.id).result,synthesis.result);
+ assert.ok(env.value.report.diagnostics.some(message=>message.includes('Recovered mistyped block ID')));
+});
+
 test('resume reviews a saved bad summary quotation without replaying first passes or synthesis',async t=>{
  const env=harness(t,{text:'An original discussion of Austronesian lan- guages.',synthesisReviewProvider:request=>JSON.stringify({reviews:request.rejected.map(issue=>({index:issue.index,classification:'extraction_fix',explanation:'The original quote was silently dehyphenated; the repaired evidence retains original spelling.',observation:{...issue.observation,evidence:[{blockId:request.canonicalBlocks[0].id,quote:'Austronesian lan- guages'}]}}))})});
  await env.worker.tick();const r=env.value,synthesis=env.checkpoints.synthesis(r.id),pass1=env.checkpoints.passes(r.id)[0];

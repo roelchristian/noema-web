@@ -13,12 +13,19 @@ export function reconstructBlocks(chunk:PlannedReprocessingChunk,response:unknow
  if(!Array.isArray(data.blocks)||data.blocks.length!==chunk.blocks.length)return invalid('every canonical block must be returned.');
  if(data.diagnostics!==undefined&&(!Array.isArray(data.diagnostics)||data.diagnostics.length>30||data.diagnostics.some(item=>typeof item!=='string'||item.length>2000)))return invalid('invalid diagnostics.');
  if(data.unresolved!==undefined&&typeof data.unresolved!=='boolean')return invalid('invalid unresolved indicator.');
- const patches:ReconstructionDifference[]=[];
+ const patches:ReconstructionDifference[]=[],diagnostics=[...(data.diagnostics as string[]|undefined)??[]];
  for(const [index,value] of data.blocks.entries()){
   const original=chunk.blocks[index]!;
   if(!value||typeof value!=='object'||Array.isArray(value))return invalid('invalid block.');
   const candidate=value as Record<string,unknown>;
-  if(candidate.id!==original.id||typeof candidate.text!=='string'||candidate.text.length>16000||!wellFormedUnicode(candidate.text))return invalid('unknown, reordered, duplicate, or malformed block.');
+  if(candidate.id!==original.id){
+   // Recover only an unknown identifier attached to the unique, byte-for-byte
+   // unchanged block in its expected position. Never infer an edited passage.
+   const recoverable=typeof candidate.id==='string'&&/^[a-f0-9]{24}$/.test(candidate.id)&&candidate.text===original.text&&chunk.blocks.filter(block=>block.text===candidate.text).length===1&&!chunk.blocks.some(block=>block.id===candidate.id)&&data.blocks.filter(value=>value&&typeof value==='object'&&(value as Record<string,unknown>).id===candidate.id).length===1&&!data.blocks.some(value=>value&&typeof value==='object'&&(value as Record<string,unknown>).id===original.id);
+   if(!recoverable)return invalid('unknown, reordered, duplicate, or malformed block.');
+   diagnostics.push(`Recovered mistyped block ID ${candidate.id} as ${original.id} from unique unchanged source text at its original position.`);
+  }
+  if(typeof candidate.text!=='string'||candidate.text.length>16000||!wellFormedUnicode(candidate.text))return invalid('unknown, reordered, duplicate, or malformed block.');
   const replacement=candidate.text;
   if(replacement===original.text)continue;
   if(pageBoundaryDiagnostics(original.text,replacement).length)return invalid('physical page provenance changed.');
@@ -44,7 +51,7 @@ export function reconstructBlocks(chunk:PlannedReprocessingChunk,response:unknow
   }
   patches.splice(0,patches.length,...compacted);
  }
- return {patches,diagnostics:(data.diagnostics as string[]|undefined)??[],unresolved:data.unresolved===true};
+ return {patches,diagnostics,unresolved:data.unresolved===true};
 }
 
 interface EditSpan {start:number;end:number;newStart:number;newEnd:number}

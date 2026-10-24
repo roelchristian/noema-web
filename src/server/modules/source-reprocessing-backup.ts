@@ -117,7 +117,8 @@ export function restoreReprocessingSynthesis(value:unknown,revision:SourceReproc
   if(review.status==='completed'&&(review.result===null||review.finishedAt===null||review.outcomeUncertain!==false))throw invalid();
   if(data.status!=='completed'||typeof data.result!=='string')throw invalid();
   const chunks=planReprocessingChunks(revision.original.text,revision.original.document,8000,configuration.architectureVersion===1);
-  const firstPasses=passes.filter(pass=>pass.index===1&&pass.status==='completed'&&pass.validation.includes('complete-canonical-block-mapping')).map(pass=>{const repair=repairs.filter(item=>item.chunkIndex===pass.chunkIndex&&item.passIndex===1&&item.status==='completed'&&!item.outcomeUncertain&&item.validation.includes('complete-canonical-block-mapping')).at(-1);return {chunkIndex:pass.chunkIndex,result:repair?.result??pass.result!,requestHash:repair?.requestHash??pass.requestHash};});
+  const frozenIndexes=data.register?array(object(data.register).constituentHashes,128).map(item=>object(item).chunkIndex):null;
+  const firstPasses=passes.filter(pass=>pass.index===1&&pass.status==='completed'&&pass.validation.includes('complete-canonical-block-mapping')&&(!frozenIndexes||frozenIndexes.includes(pass.chunkIndex))).map(pass=>{const repair=repairs.filter(item=>item.chunkIndex===pass.chunkIndex&&item.passIndex===1&&item.status==='completed'&&!item.outcomeUncertain&&item.validation.includes('complete-canonical-block-mapping')).at(-1);return {chunkIndex:pass.chunkIndex,result:repair?.result??pass.result!,requestHash:repair?.requestHash??pass.requestHash};});
   const input=createSynthesisInput({revisionId:oldRevisionId,baseHash:oldBaseHash,text:revision.original.text,title:revision.original.document.source.title,chunks,firstPasses});
   if(createHash('sha256').update(input.request).digest('hex')!==data.requestHash||createSynthesisReviewInput(input,data.result).requestHash!==review.requestHash)throw invalid();
  }

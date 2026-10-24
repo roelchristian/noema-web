@@ -92,7 +92,7 @@ export async function executeReconstruction(input:{store:Store;revision:SourceRe
   }
   excerpt.passesCompleted=checkpoints.passes(r.id,chunk.index).filter(value=>value.status==='completed').length;save();guardEvidence(item);
   const repair=effectiveRepair(checkpoints,pass);
-  try{const raw=repair?.result??pass.result!;const previous=JSON.parse(raw.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'')),final=reconstructBlocks(chunk,previous);parseReconstructionUncertainty(chunk,previous);candidates.set(chunk.index,{previous,raw,requestHash:repair?.requestHash??pass.requestHash,final});if(!repair){pass.validation=['complete-canonical-block-mapping','physical-page-markers-preserved'];checkpoints.savePass(pass);}}
+  try{const raw=repair?.result??pass.result!;const previous=JSON.parse(raw.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'')),final=reconstructBlocks(chunk,previous);parseReconstructionUncertainty(chunk,previous);candidates.set(chunk.index,{previous,raw,requestHash:repair?.requestHash??pass.requestHash,final});for(const diagnostic of final.diagnostics.filter(value=>value.startsWith('Recovered mistyped block ID '))){const message=`Chunk ${chunk.index+1}, pass ${index}: ${diagnostic}`;if(!r.report.diagnostics.includes(message))r.report.diagnostics.push(message);}if(!repair){delete pass.failureKind;pass.validation=['complete-canonical-block-mapping','physical-page-markers-preserved'];checkpoints.savePass(pass);}}
   catch(error){pass.failureKind=error instanceof SyntaxError?'invalid_output':'validation';pass.validation=[error instanceof Error?error.message:'Invalid model result'];checkpoints.savePass(pass);throw error;}
  }
  function publish(item:typeof prepared[number]){
@@ -106,8 +106,10 @@ export async function executeReconstruction(input:{store:Store;revision:SourceRe
  if(config.depth!=='light'&&!signal.aborted){
   r.report.stage='understanding';r.report.stageProgress={completed:0,total:1};save();
   if(!candidates.size)throw errors[0]??new HttpError(502,'No validated first-pass coverage is available.');
-  const synthesisInput=createSynthesisInput({revisionId:r.id,baseHash:r.baseHash,text:r.original.text,title:r.original.document.source.title,chunks,firstPasses:[...candidates].map(([chunkIndex,candidate])=>({chunkIndex,result:candidate.raw,requestHash:candidate.requestHash}))});
-  const existing=checkpoints.synthesis(r.id),requestHash=digest(synthesisInput.request);
+  const existing=checkpoints.synthesis(r.id);
+  const synthesisCandidates=[...candidates].filter(([chunkIndex])=>!existing?.register||existing.register.constituentHashes.some(constituent=>constituent.chunkIndex===chunkIndex));
+  const synthesisInput=createSynthesisInput({revisionId:r.id,baseHash:r.baseHash,text:r.original.text,title:r.original.document.source.title,chunks,firstPasses:synthesisCandidates.map(([chunkIndex,candidate])=>({chunkIndex,result:candidate.raw,requestHash:candidate.requestHash}))});
+  const requestHash=digest(synthesisInput.request);
   if(existing?.status==='failed')throw new HttpError(409,'A failed synthesis request is recorded. Start a new revision explicitly; it will not be replayed.');
   if(existing&&(existing.outcomeUncertain||existing.status==='running'||existing.status==='interrupted'))throw new HttpError(409,'Synthesis provider outcome is uncertain and will not be replayed. Start a new revision explicitly.');
   if(existing&&(existing.requestHash!==requestHash||existing.promptVersion!==synthesisPromptVersion||existing.model!==r.report.model||existing.reasoningEffort!==r.report.reasoningEffort||!sameConfiguration(existing.configuration,config!)))throw new HttpError(409,'Frozen document synthesis context changed. Start a new revision.');

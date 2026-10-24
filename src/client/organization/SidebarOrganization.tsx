@@ -43,6 +43,8 @@ function SidebarNameInput({name,onSave,onDone,maxLength=500}: {maxLength?:number
   }}/>{error&&<small role="alert">{error}</small>}</div>;
 }
 
+const SIDEBAR_PAGE_LIMIT = 5;
+
 interface Container {scope?: string; linkedCollection?: string; type: 'collections' | 'folders'; id?: string; name: string; collection: string; parent: string}
 export function SidebarOrganization({vaultId, data, pages, activePageId, activeFolderPath, revealPageId, onRevealed, context, active, unfiledActive = false, disabled, available, onOpen, onOpenUnfiled, onOpenPage, onRenamePage, onArchivePages, onDeletePage, onMovePage, onChanged, onError}: {
   activePageId?: string; activeFolderPath: string[]; revealPageId: string | null; onRevealed: () => void;
@@ -137,7 +139,13 @@ export function SidebarOrganization({vaultId, data, pages, activePageId, activeF
     </div>;
   }
   function pageLinks(collection: string, folder: string | null, depth: number, scope = '') {
-    return containedPages(collection, folder).map(page => <div className={"sidebar-item-row sidebar-page-row " + (page.id===activePageId?"is-current-page":"")} key={page.id}>{renameKey===`${scope}${collection}/page:${page.id}` ? <><span className="sidebar-rename-page-icon" style={{paddingLeft:8+Math.min(depth,5)*12}}><PageIcon icon={page.icon}/></span><SidebarNameInput name={page.title} onDone={()=>setRenameKey(current=>current===`${scope}${collection}/page:${page.id}`?null:current)} onSave={title=>onRenamePage(page,title)}/></> : <><a className="page-link organization-page-link" href={pageURL(vaultId!, page.id)} aria-current={page.id === activePageId ? 'page' : undefined} aria-disabled={disabled || undefined} tabIndex={disabled ? -1 : undefined} data-canonical-page={!collection && !scope ? page.id : undefined} style={{paddingLeft: 8 + Math.min(depth, 5) * 12}} draggable={!disabled} onDragStart={event => startPageDrag(event, vaultId!, page.id)} onClick={event => {
+    const groupPages = containedPages(collection, folder);
+    const visiblePages = groupPages.slice(0, SIDEBAR_PAGE_LIMIT);
+    // Keep the current page reachable by Reveal in sidebar without growing the list.
+    const currentPage = groupPages.find(page => page.id === activePageId);
+    if (currentPage && !visiblePages.includes(currentPage)) visiblePages[SIDEBAR_PAGE_LIMIT - 1] = currentPage;
+    const groupName = collection ? data.collections.find(item => item.id === collection)?.name : folder ? data.folders.find(item => item.id === folder)?.name : uiText('Unfiled pages');
+    return <>{visiblePages.map(page => <div className={"sidebar-item-row sidebar-page-row " + (page.id===activePageId?"is-current-page":"")} key={page.id}>{renameKey===`${scope}${collection}/page:${page.id}` ? <><span className="sidebar-rename-page-icon" style={{paddingLeft:8+Math.min(depth,5)*12}}><PageIcon icon={page.icon}/></span><SidebarNameInput name={page.title} onDone={()=>setRenameKey(current=>current===`${scope}${collection}/page:${page.id}`?null:current)} onSave={title=>onRenamePage(page,title)}/></> : <><a className="page-link organization-page-link" href={pageURL(vaultId!, page.id)} aria-current={page.id === activePageId ? 'page' : undefined} aria-disabled={disabled || undefined} tabIndex={disabled ? -1 : undefined} data-canonical-page={!collection && !scope ? page.id : undefined} style={{paddingLeft: 8 + Math.min(depth, 5) * 12}} draggable={!disabled} onDragStart={event => startPageDrag(event, vaultId!, page.id)} onClick={event => {
       if (disabled) { event.preventDefault(); return; }
       if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault(); onOpenPage(page.id);
@@ -148,7 +156,11 @@ export function SidebarOrganization({vaultId, data, pages, activePageId, activeF
       {label:data.favourites.some(item=>item.kind==='page'&&item.item_id===page.id)?uiText('Remove from favourites'):uiText('Add to favourites'),icon:'star',onSelect:()=>{void api.organize(vaultId!,'favourites',{kind:'page',item_id:page.id,favourite:!data.favourites.some(item=>item.kind==='page'&&item.item_id===page.id)}).then(onChanged).catch(onError);}},
       {label:'Archive',icon:'archive',onSelect:()=>void onArchivePages?.([page.id]).catch(onError)},
       {label:uiText('Move to Trash'),icon:'trash',danger:true,onSelect:()=>onDeletePage(page)},
-    ]}/></>}</div>);
+    ]}/></>}</div>)}{groupPages.length > SIDEBAR_PAGE_LIMIT && <button type="button" className="sidebar-create sidebar-view-all" style={{paddingLeft: 8 + Math.min(depth, 5) * 12}} disabled={disabled} aria-label={uiText('View all') + ' · ' + groupName} onClick={() => {
+      if (!collection && !folder) onOpenUnfiled();
+      else onOpen(collection, folder ?? '');
+    }}><Icon name="pages"/><span>{uiText('View all')}</span></button>}</>;
+
   }
   function folders(collection: string, parent: string | null, depth: number, scope = '') {
     return data.folders.filter(folder => folder.parent_id === parent).map(folder => <div key={folder.id}>

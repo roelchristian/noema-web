@@ -95,6 +95,7 @@
     "test/reference-list.test.mjs",
     "test/transliteration-ui.test.mjs",
     "test/source-metadata-ui.test.mjs",
+    "test/page-toolbar-menu.test.mjs",
     "test/page-connections-ui.test.mjs",
     "test/relationship-predicates.test.mjs"
   ],

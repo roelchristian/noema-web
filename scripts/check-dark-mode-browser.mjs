@@ -97,7 +97,15 @@ try{
 
   await page.keyboard.press('Escape');await page.keyboard.press('Escape');await page.keyboard.press('Escape');
   await page.getByRole('button',{name:'More page actions',exact:true}).click();await page.getByRole('menuitem',{name:'Rename',exact:true}).click();await page.locator('dialog[open]').waitFor();await hitRects(page,'dialog[open] .button',width===390?44:30);await readable(page,'dialog[open] h2,dialog[open] input,dialog[open] .button');await page.keyboard.press('Escape');
-  const tokens=await page.evaluate(()=>{const s=getComputedStyle(document.documentElement);return Object.fromEntries(['surface','surface-raised','surface-popover','surface-inset','sidebar','line',...['graphite','sage','ocean','iris','rose','honey'].flatMap(x=>[`palette-${x}-text`,`palette-${x}-bg`]),...['danger','warning','success','info'].flatMap(x=>['text','bg','border'].map(y=>`status-${x}-${y}`))].map(k=>[k,s.getPropertyValue('--'+k).trim()]));});
+  const tokens=await page.evaluate(()=>{const s=getComputedStyle(document.documentElement);return Object.fromEntries(['surface','surface-raised','surface-popover','surface-inset','surface-hover','selection-neutral','control-border','sidebar','line',...['graphite','sage','ocean','iris','rose','honey'].flatMap(x=>[`palette-${x}-text`,`palette-${x}-bg`]),...['danger','warning','success','info'].flatMap(x=>['text','bg','border'].map(y=>`status-${x}-${y}`))].map(k=>[k,s.getPropertyValue('--'+k).trim()]));});
+  if(mode==='dark'){
+   // Role relationships, rather than exact palette values, are the design contract.
+   const energy=hex=>hex.replace('#','').match(/../g).reduce((sum,v)=>sum+parseInt(v,16),0);
+   assert.ok(energy(tokens.sidebar)<energy(tokens.surface),'Navigation must recede behind the reading canvas');
+   assert.ok(contrast(tokens['surface-hover'],tokens['selection-neutral'])>1.08,'Persistent selection must differ from transient hover');
+   assert.ok(energy(tokens['surface-popover'])>energy(tokens['surface-raised']),'Temporary overlays must rise above ordinary controls');
+   for(const role of ['surface','surface-raised','surface-popover'])assert.ok(contrast(tokens['control-border'],tokens[role])>=3,`Essential boundary on ${role} must remain 3:1`);
+  }
   const neutral=Object.fromEntries(['surface','surface-raised','surface-popover','surface-inset','sidebar','line',...['danger','warning','success','info'].flatMap(x=>['text','bg','border'].map(y=>`status-${x}-${y}`))].map(k=>[k,tokens[k]]));if(neutralByMode.has(mode))assert.deepEqual(neutral,neutralByMode.get(mode),'Neutral and status colors must remain identical across accents');else neutralByMode.set(mode,neutral);
   const ratios={};for(const palette of ['graphite','sage','ocean','iris','rose','honey']){const ratio=contrast(tokens[`palette-${palette}-text`],tokens[`palette-${palette}-bg`]);assert.ok(ratio>=4.5,`${key} ${palette}: ${ratio}`);ratios[palette]=ratio;}for(const state of ['danger','warning','success','info'])for(const bg of [`status-${state}-bg`,'surface','surface-raised']){const ratio=contrast(tokens[`status-${state}-text`],tokens[bg]);assert.ok(ratio>=4.5,`${key} ${state} on ${bg}: ${ratio}`);ratios[state+' / '+bg]=Math.round(ratio*100)/100;}
   // Existing error copy and destructive labels provide non-colour state cues.

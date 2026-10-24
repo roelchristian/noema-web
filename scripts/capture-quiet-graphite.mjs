@@ -24,13 +24,13 @@ try {
  const source=knowledge.create('default',{name:'On attention — synthetic reading',type:'source',attachmentIds:[file.id]});
  store.run("UPDATE source_files SET text=?,status='ready',admitted=1 WHERE id=?",text,file.id);store.run('UPDATE entities SET inactive=0 WHERE id=?',source.id);new SourcePassages(store,t=>t.length).synchronize('default');
  api=createApp(store,join(repo,'dist/client'));api.listen(0,'127.0.0.1');await once(api,'listening');
- vite=await createServer({configFile:false,root:repo,server:{host:'127.0.0.1',port:0,proxy:{'/api':`http://127.0.0.1:${api.address().port}`}}});await vite.listen();
+ vite=await createServer({configFile:false,root:repo,cacheDir:join(temp,'vite-cache'),server:{host:'127.0.0.1',port:0,proxy:{'/api':`http://127.0.0.1:${api.address().port}`}}});await vite.listen();
  const base=`http://127.0.0.1:${vite.httpServer.address().port}`;
  browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH??'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
  for(const width of (process.env.NOEMA_THEME_WIDTHS?.split(',').map(Number)??[1440,390]))for(const mode of ['light','dark'])for(const theme of ['ink','juniper','atlantic'])for(const presentationMode of (process.env.NOEMA_PRESENTATIONS?.split(',')??['standard','subtle','focus'])) {
   const key=`${width}-${mode}-${theme}-${presentationMode}`,context=await browser.newContext({viewport:{width,height:960},isMobile:width===390,hasTouch:width===390,reducedMotion:'reduce'});
   await context.addInitScript(p=>localStorage.setItem('noema.appearance.v1',JSON.stringify(p)),{mode,theme,presentationMode});
-  const page=await context.newPage();page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push({key,message:e.message}));
+  const page=await context.newPage();page.setDefaultTimeout(20000);page.setDefaultNavigationTimeout(60000);page.on('pageerror',e=>errors.push({key,message:e.message}));
   await page.clock.setFixedTime(new Date('2026-10-23T12:00:00Z'));
   await page.route('**/*',r=>new URL(r.request().url()).hostname==='127.0.0.1'?r.continue():r.abort());
   async function shot(screen){await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:join(out,`${key}-${screen}.png`)});captures.push({key,screen,effectivePresentation:await page.evaluate(()=>({focusedReading:document.documentElement.dataset.focusedReading,focusWorkspace:document.documentElement.dataset.focusWorkspace}))});}

@@ -5152,3 +5152,22 @@ dialog.noema-modal.entity-review-modal { height: min(780px, calc(100dvh - 64px))
   background: var(--thing-bg);
   color: var(--thing-text);
 }
+
+/* Bibliographic Sources and import review. */
+.bibliography-dialog { width: min(960px, calc(100vw - 48px)); }
+.bibliography-dialog > p { line-height: 1.5; }
+.bibliography-field { display: grid; gap: 5px; margin-block: 12px; font-size: 13px; }
+.bibliography-field input, .bibliography-field textarea { width: 100%; min-width: 0; }
+.bibliography-field textarea { resize: vertical; font-family: var(--font-mono, monospace); }
+.bibliography-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-block: 16px; }
+.bibliography-review-scroll { max-height: 45vh; overflow: auto; }
+.bibliography-review { border-collapse: collapse; width: 100%; text-align: left; font-size: 13px; }
+.bibliography-review th, .bibliography-review td { padding: 12px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.bibliography-review small, .bibliography-candidate small, .bibliography-proposal small { display: block; color: var(--muted); margin-block: 4px; }
+.bibliography-review select { max-width: 220px; }
+.bibliography-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 0 12px; }
+.bibliography-raw { max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }
+.bibliography-consent, .bibliography-proposal { display: flex; align-items: flex-start; gap: 8px; margin-block: 12px; line-height: 1.5; font-size: 13px; }
+.bibliography-consent input, .bibliography-proposal input { flex: 0 0 auto; margin-top: 4px; }
+.bibliography-candidate { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-block: 12px; }
+.bibliography-export { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }

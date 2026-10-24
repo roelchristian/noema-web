@@ -31,7 +31,8 @@
     "test/document-find.test.mjs",
     "test/property-definitions.test.mjs",
     "test/property-catalogue.test.mjs",
-    "test/page-history-ui.test.mjs"
+    "test/page-history-ui.test.mjs",
+    "test/bibliography.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",
@@ -201,6 +202,7 @@
     "test/speech-cache.test.mjs",
     "test/speech-backup.test.mjs",
     "test/gemini-speech.test.mjs",
-    "test/page-archive.test.mjs"
+    "test/page-archive.test.mjs",
+    "test/bibliography-backups.test.mjs"
   ]
 }

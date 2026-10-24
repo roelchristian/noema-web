@@ -6,9 +6,10 @@ import {DatabaseSync} from 'node:sqlite';
 import {Store} from '../src/server/store.ts';
 import {SourceReprocessing,sourceRevisionBaseHash} from '../src/server/modules/source-reprocessing.ts';
 import {processedSourceDocument} from '../src/server/modules/source-document.ts';
+import {repairReconstructionPass} from '../src/server/modules/source-reprocessing-pass.ts';
 import {SourceReprocessingCheckpoints} from '../src/server/modules/source-reprocessing-checkpoints.ts';
 
-function harness(t,{depth='balanced',text='A short synthetic scholarly passage.',pages=null,pageStartLines=[],provider=echo,evidenceService,omitConfiguration=false,evidenceOptions={originalPages:false,ocr:false,allowExternalTransmission:false}}={}) {
+function harness(t,{depth='balanced',text='A short synthetic scholarly passage.',pages=null,pageStartLines=[],provider=echo,synthesisProvider=()=>JSON.stringify({observations:[]}),evidenceService,omitConfiguration=false,evidenceOptions={originalPages:false,ocr:false,allowExternalTransmission:false}}={}) {
  const db=new DatabaseSync(':memory:');t.after(()=>db.close());
  db.exec(`CREATE TABLE source_math_documents(file_id TEXT,raw_hash TEXT,cleaned_text TEXT,uncertainty_json TEXT,algorithm_version INTEGER);
  CREATE TABLE source_reprocessing(id TEXT PRIMARY KEY,file_id TEXT,vault_id TEXT,status TEXT,created_at TEXT,updated_at TEXT,payload TEXT);
@@ -17,11 +18,11 @@ function harness(t,{depth='balanced',text='A short synthetic scholarly passage.'
  const store=new Store(db),file={id:'synthetic-file',entity_id:null,name:'Synthetic',original_filename:'Synthetic',format:'txt',language:'en',source_url:null,generated_name:null,text,pages,structural_nodes:'[]',page_start_lines:JSON.stringify(pageStartLines),enrichment_status:'completed',status:'ready',admitted:1};
  const original={text,document:processedSourceDocument(file)},selection={model:'gpt-5-mini',reasoningEffort:'low'},calls=[];
  let locked=false;
- const intelligence={editorialImageCapability:()=>true,editorialSelection:()=>selection,reeditSource:async(prompt,_instructions,signal,observe,_shape,images,consent)=>{const request=JSON.parse(prompt);calls.push(request);observe(20).usage({input_tokens:10,output_tokens:3,output_tokens_details:{reasoning_tokens:1},input_tokens_details:{cached_tokens:2}});if(_shape==='synthesis')return JSON.stringify({observations:[]});return provider(request,{signal,images,consent,lock:()=>{locked=true;}});}};
+ const intelligence={editorialImageCapability:()=>true,editorialSelection:()=>selection,reeditSource:async(prompt,_instructions,signal,observe,_shape,images,consent)=>{const request=JSON.parse(prompt);calls.push(request);observe(20).usage({input_tokens:10,output_tokens:3,output_tokens_details:{reasoning_tokens:1},input_tokens_details:{cached_tokens:2}});if(_shape==='synthesis')return synthesisProvider(request);return provider(request,{signal,images,consent,lock:()=>{locked=true;}});}};
  const activity={start:()=>1,request:()=>({}),finish:()=>{}};
  function service(){const result=new SourceReprocessing(store,{require:()=>file},intelligence,()=>{if(locked)throw Error('Vault is locked.');},activity,undefined,evidenceService);result.snapshot=()=>structuredClone(original);result.baseHash=()=>{if(locked)throw Error('Vault is locked.');return sourceRevisionBaseHash(original);};return result;}
  let worker=service();const revision=worker.start('vault',file.id,{pipelineVersion:2,...(omitConfiguration?{}:{configuration:{depth,reviewPolicy:'verified',evidence:evidenceOptions}})});
- return {store,calls,revision,checkpoints:new SourceReprocessingCheckpoints(store),get worker(){return worker;},get value(){return JSON.parse(store.get('SELECT payload FROM source_reprocessing WHERE id=?',revision.id).payload);},restart(){locked=false;worker=service();return worker;}};
+ return {store,calls,revision,intelligence,activity,checkpoints:new SourceReprocessingCheckpoints(store),get worker(){return worker;},get value(){return JSON.parse(store.get('SELECT payload FROM source_reprocessing WHERE id=?',revision.id).payload);},restart(){locked=false;worker=service();return worker;}};
 }
 function echo(request){return JSON.stringify({blocks:request.blocks,diagnostics:[],unresolved:false});}
 
@@ -168,4 +169,63 @@ test('interrupted synthesis is reserved durably and cannot be silently replayed'
  const env=harness(t);await env.worker.tick();const synthesis=env.checkpoints.synthesis(env.revision.id);synthesis.status='running';synthesis.result=null;synthesis.register=null;env.checkpoints.saveSynthesis(synthesis);
  env.checkpoints.interruptRunning(env.revision.id);const interrupted=env.checkpoints.synthesis(env.revision.id);assert.equal(interrupted.status,'interrupted');assert.equal(interrupted.outcomeUncertain,true);
  const row=env.value;row.status='failed';env.store.run('UPDATE source_reprocessing SET status=?,payload=? WHERE id=?','failed',JSON.stringify(row),row.id);env.restart();assert.throws(()=>env.worker.resume('vault',row.fileId,row.id),/uncertain/);
+});
+
+test('two stage workers settle all admitted siblings and never overlap reconstruction with verification',async t=>{
+ let active=0,maximum=0,firstCompleted=0;
+ const env=harness(t,{text:'Synthetic prose for a bounded concurrency fixture. '.repeat(700),provider:async request=>{
+  active++;maximum=Math.max(maximum,active);await new Promise(resolve=>setTimeout(resolve,2));
+  if(request.kind==='reconstruct')firstCompleted++;
+  if(request.kind==='verify')assert.equal(firstCompleted,env.value.report.chunksTotal);
+  active--;return echo(request);
+ }});
+ await env.worker.tick();assert.equal(env.value.status,'completed');assert.equal(maximum,2);assert.equal(active,0);assert.equal(env.value.report.concurrency,2);
+});
+
+test('known local admission failure is distinguished from uncertain transport and not silently resubmitted',async t=>{
+ const error=Object.assign(new Error('Editorial AI capacity busy'),{name:'GenerationAdmissionError'});
+ const env=harness(t,{provider:()=>{throw error;}});await env.worker.tick();const pass=env.checkpoints.passes(env.revision.id)[0];assert.equal(pass.failureKind,'admission');assert.equal(pass.outcomeUncertain,false);assert.equal(env.value.report.excerpts[0].errorCode,'admission');
+ env.restart();env.worker.resume('vault',env.revision.fileId,env.revision.id);await env.worker.tick();assert.equal(env.calls.length,1);assert.equal(env.checkpoints.passes(env.revision.id)[0].status,'failed');
+});
+
+function repair(env,overrides={}){
+ const revision=env.value;
+ return repairReconstructionPass({store:env.store,revision,chunkIndex:0,passIndex:2,allowAdditionalRequest:true,intelligence:env.intelligence,activity:env.activity,vault:'vault',signal:new AbortController().signal,guard:()=>{},save:()=>env.store.run('UPDATE source_reprocessing SET payload=? WHERE id=?',JSON.stringify(revision),revision.id),...overrides});
+}
+
+test('explicit schema repair is a separately durable paid request consumed on resume without altering original output',async t=>{
+ const env=harness(t,{provider:request=>request.kind==='verify'?'not JSON':echo(request)});await env.worker.tick();const original=structuredClone(env.checkpoints.passes(env.revision.id)[1]);assert.equal(original.failureKind,'invalid_output');
+ const record=await repair(env);assert.equal(record.kind,'repair');assert.equal(record.status,'completed');assert.equal(record.originalRequestHash,original.requestHash);assert.equal(env.calls.length,4);assert.deepEqual(env.checkpoints.passes(env.revision.id)[1],original);
+ env.restart();env.worker.resume('vault',env.revision.fileId,env.revision.id);await env.worker.tick();assert.equal(env.value.status,'completed');assert.equal(env.calls.length,4);assert.equal(env.checkpoints.repairs(env.revision.id).length,1);assert.deepEqual(env.checkpoints.passes(env.revision.id)[1],original);assert.equal(env.value.report.inputTokens,40);assert.equal(env.value.report.excerpts[0].attempts,3);
+});
+
+test('repair requires explicit additional request consent and cannot change frozen first-pass synthesis',async t=>{
+ const env=harness(t,{text:'Synthetic canonical passage. '.repeat(800),provider:request=>request.kind==='reconstruct'&&request.chunkIndex===0?'invalid JSON':echo(request)});await env.worker.tick();const count=env.calls.length;
+ await assert.rejects(repair(env,{allowAdditionalRequest:false}),/explicit consent/);await assert.rejects(repair(env,{passIndex:1}),/frozen document synthesis/);assert.equal(env.calls.length,count);assert.equal(env.checkpoints.repairs(env.revision.id).length,0);
+});
+
+test('uncertain repair is never replayed and prevents ordinary resume',async t=>{
+ const env=harness(t,{provider:request=>{if(request.kind==='verify')return 'invalid JSON';if(request.kind==='repair')throw Error('Lost paid repair connection');return echo(request);}});await env.worker.tick();
+ await assert.rejects(repair(env),/Lost paid repair/);assert.equal(env.checkpoints.repairs(env.revision.id)[0].outcomeUncertain,true);
+ const before=env.calls.length;await assert.rejects(repair(env),/uncertain/);env.restart();assert.throws(()=>env.worker.resume('vault',env.revision.fileId,env.revision.id),/uncertain/);assert.equal(env.calls.length,before);
+});
+
+test('explicit first-pass repair before synthesis freezes the effective repair result as a constituent',async t=>{
+ const env=harness(t,{provider:request=>request.kind==='reconstruct'?'not JSON':echo(request)});await env.worker.tick();assert.equal(env.value.status,'failed');assert.equal(env.checkpoints.synthesis(env.revision.id),undefined);
+ const record=await repair(env,{passIndex:1});env.restart();env.worker.resume('vault',env.revision.fileId,env.revision.id);await env.worker.tick();assert.equal(env.value.status,'completed');assert.equal(env.calls.length,4);assert.equal(env.checkpoints.synthesis(env.revision.id).register.constituentHashes[0].requestHash,record.requestHash);assert.equal(env.checkpoints.passes(env.revision.id)[0].result,'not JSON');
+});
+
+test('crash recovery materializes compact committed accepted patches before uncertain requests block resume',async t=>{
+ const env=harness(t,{depth:'light',text:'Synthetic  passage.',provider:request=>JSON.stringify({blocks:request.blocks.map(block=>({...block,text:block.text.replace('  ',' ')}))})});await env.worker.tick();const pending=env.value;const completed=env.worker.review('vault',pending.fileId,pending.id,{updatedAt:pending.updatedAt,decisions:pending.patches.map(patch=>({patchId:patch.id,decision:'accepted'}))});
+ assert.equal(completed.status,'completed');assert.ok(completed.patches.some(patch=>patch.decision==='accepted'));assert.equal(completed.reprocessed.text,'Synthetic passage.');
+ const stale=structuredClone(completed);stale.status='running';stale.reprocessed=structuredClone(stale.original);env.store.run('UPDATE source_reprocessing SET status=?,payload=? WHERE id=?','running',JSON.stringify(stale),stale.id);
+ const pass=env.checkpoints.passes(stale.id)[0];pass.status='running';pass.outcomeUncertain=false;env.checkpoints.savePass(pass);env.restart();
+ assert.equal(env.value.status,'interrupted');assert.equal(env.value.reprocessed.text,'Synthetic passage.');assert.equal(env.checkpoints.passes(stale.id)[0].outcomeUncertain,true);assert.throws(()=>env.worker.resume('vault',stale.fileId,stale.id),/uncertain/);
+});
+
+test('invalid synthesis preserves actual durable output with separate schema versus JSON failure categories and no replay',async t=>{
+ for(const [raw,failureKind] of [['not JSON','invalid_output'],['{"observations":[{"kind":"terminology","reading":"invented","evidence":[]}]}','validation']]){
+  const env=harness(t,{synthesisProvider:()=>raw});await env.worker.tick();const synthesis=env.checkpoints.synthesis(env.revision.id);assert.equal(env.value.status,'failed');assert.equal(synthesis.status,'completed');assert.equal(synthesis.result,raw);assert.equal(synthesis.outcomeUncertain,false);assert.equal(synthesis.failureKind,failureKind);assert.equal(synthesis.validation.length,1);assert.equal(env.calls.length,2);assert.equal(env.value.report.inputTokens,20);
+  env.restart();env.worker.resume('vault',env.revision.fileId,env.revision.id);await env.worker.tick();assert.equal(env.value.status,'failed');assert.equal(env.calls.length,2);assert.equal(env.checkpoints.synthesis(env.revision.id).result,raw);
+ }
 });

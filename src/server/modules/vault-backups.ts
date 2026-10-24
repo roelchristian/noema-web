@@ -14,7 +14,7 @@ import type {PropertyDefinition} from '../../shared/property-definitions.js';
 import {recommendedPropertyDefinitions,builtinPropertyDefinitions} from '../../shared/property-definitions.js';
 import {temporalDate} from '../../shared/temporal.js';
 import {temporalMentionId} from './temporal.js';
-import {restoreSourceRevision,restoreReprocessingCheckpoints,restoreReprocessingSynthesis} from './source-reprocessing-backup.js';
+import {restoreSourceRevision,restoreReprocessingCheckpoints,restoreReprocessingSynthesis,restoreReprocessingRepairs} from './source-reprocessing-backup.js';
 import {parsePageGenerationMetadata} from '../../shared/page-generation.js';
 import {sourceTextHash} from './source-math-text.js';
 import {syncReadingNotesCollection} from './reading-notes-collection.js';
@@ -77,6 +77,7 @@ const tables={
   page_versions:{columns:'id,page_id,page_revision,created_at,kind,name,pinned,content_hash,snapshot_json,restored_from_version_id',scope:'vault_id=?'},
   pages:{columns:'id,title,icon,featured_image_id,blocks,ai_status,ai_review_accepted,generation_metadata,creation_method,language,created_at,updated_at,revision,deleted_at,archived_at',scope:'vault_id=?'},
   source_reprocessing_chunks:{columns:'revision_id,chunk_index,payload',scope:'revision_id IN (SELECT id FROM source_reprocessing WHERE vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL))'},
+  source_reprocessing_repairs:{columns:'revision_id,chunk_index,pass_index,repair_id,payload',scope:'revision_id IN (SELECT id FROM source_reprocessing WHERE vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL))'},
   source_reprocessing_synthesis:{columns:'revision_id,payload',scope:'revision_id IN (SELECT id FROM source_reprocessing WHERE vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL))'},
   source_reprocessing_passes:{columns:'revision_id,chunk_index,pass_index,payload',scope:'revision_id IN (SELECT id FROM source_reprocessing WHERE vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL))'},
   source_reprocessing:{columns:'id,file_id,status,created_at,updated_at,payload',scope:'vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL)'},
@@ -408,13 +409,17 @@ export class VaultBackups {
           for(const item of chunkRows){const p=object(json(item,'payload'));if(item.chunk_index!==p.index||item.revision_id!==p.revisionId)throw invalid();}
           for(const item of passRows){const p=object(json(item,'payload'));if(item.chunk_index!==p.chunkIndex||item.pass_index!==p.index||item.revision_id!==p.revisionId)throw invalid();}
           const checkpoints=restoreReprocessingCheckpoints(revision,oldId,String(payload.baseHash),chunkRows.map(item=>json(item,'payload')),passRows.map(item=>json(item,'payload')));
+          const repairRows=rows.source_reprocessing_repairs.filter(item=>item.revision_id===oldId);
+          for(const item of repairRows){const repair=object(json(item,'payload'));if(item.chunk_index!==repair.chunkIndex||item.pass_index!==repair.passIndex||item.repair_id!==repair.repairId)throw invalid();}
+          const repairs=restoreReprocessingRepairs(repairRows.map(item=>json(item,'payload')),revision,oldId,checkpoints.passes);
           const synthesisRows=rows.source_reprocessing_synthesis.filter(item=>item.revision_id===oldId);
           if(synthesisRows.length>1)throw invalid();
-          for(const item of synthesisRows){const synthesis=restoreReprocessingSynthesis(json(item,'payload'),revision,oldId,String(payload.baseHash),checkpoints.passes);insert('source_reprocessing_synthesis',{revision_id:revision.id,payload:JSON.stringify(synthesis)});}
+          for(const item of synthesisRows){const synthesis=restoreReprocessingSynthesis(json(item,'payload'),revision,oldId,String(payload.baseHash),checkpoints.passes,repairs);insert('source_reprocessing_synthesis',{revision_id:revision.id,payload:JSON.stringify(synthesis)});}
           for(const chunk of checkpoints.chunks)insert('source_reprocessing_chunks',{revision_id:revision.id,chunk_index:chunk.index,payload:JSON.stringify(chunk)});
           for(const pass of checkpoints.passes)insert('source_reprocessing_passes',{revision_id:revision.id,chunk_index:pass.chunkIndex,pass_index:pass.index,payload:JSON.stringify(pass)});
+          for(const repair of repairs)insert('source_reprocessing_repairs',{revision_id:revision.id,chunk_index:repair.chunkIndex,pass_index:repair.passIndex,repair_id:repair.repairId,payload:JSON.stringify(repair)});
         }
-        for(const item of [...rows.source_reprocessing_chunks,...rows.source_reprocessing_passes,...rows.source_reprocessing_synthesis])if(!editorialIds.has(String(item.revision_id)))throw invalid();
+        for(const item of [...rows.source_reprocessing_chunks,...rows.source_reprocessing_passes,...rows.source_reprocessing_synthesis,...rows.source_reprocessing_repairs])if(!editorialIds.has(String(item.revision_id)))throw invalid();
         this.store.run("UPDATE entities SET inactive=CASE WHEN EXISTS (SELECT 1 FROM source_files WHERE entity_id=entities.id AND status='failed') THEN 1 ELSE 0 END WHERE vault_id=? AND type='source'",vault);
         for(const row of rows.properties)insert('properties',{id:ref(propertyIds,row.id),entity_id:ref(entityIds,row.entity_id),name:propertyName(row),value:nullable(row,'value'),target_id:row.target_id===null?null:ref(entityIds,row.target_id)});
         const sourceRef=(value:unknown)=>value===null?null:ref(restoredSourceFiles,value);

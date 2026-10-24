@@ -36,7 +36,7 @@ test('V2 cancellation retains document metadata without per-chunk extraction or 
  let entered;const started=new Promise(resolve=>{entered=resolve;});
  const env=fixture(t,(_request,signal)=>new Promise((_resolve,reject)=>{signal.addEventListener('abort',()=>reject(Error('Synthetic cancellation')),{once:true});entered();}));
  const work=env.service.tick();await started;env.service.cancel('default',env.file.id,env.revision.id);await work;
- assert.equal(env.value.status,'interrupted');assert.deepEqual(env.versions,['canonical']);assert.equal(env.calls.length,1);assert.equal(env.value.report.metadata.candidateCount,3);assert.equal(env.store.get('SELECT count(*) n FROM source_metadata_extraction_cache').n,1);assert.equal(env.value.reprocessed.text,env.text);
+ assert.equal(env.value.status,'interrupted');assert.deepEqual(env.versions,['canonical']);assert.equal(env.calls.length,2);assert.equal(env.value.report.metadata.candidateCount,3);assert.equal(env.store.get('SELECT count(*) n FROM source_metadata_extraction_cache').n,1);assert.equal(env.value.reprocessed.text,env.text);
 });
 
 test('V2 manual acceptance persists the derivative before real metadata reconciliation and reuses unchanged evidence',async t=>{

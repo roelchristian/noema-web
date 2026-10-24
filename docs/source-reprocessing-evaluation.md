@@ -23,3 +23,11 @@ The report includes elapsed process time and zero paid usage. Elapsed time is a 
 ## Evaluation still required
 
 Real-provider academic PDF reconstruction quality, correction precision/recall, independently verified correction rate, quotation and mathematics preservation at corpus scale, cost per thousand source characters, wall time, and failure rate remain **UNRUN**. Those comparisons require separately authorized representative documents and paid provider calls. Capability- or consent-gated optimization interfaces must remain opt-in until those evaluations justify changing defaults.
+
+## Reliability checkpoint
+
+Stages use at most two workers, and every provider request still enters the existing Intelligence admission and rate-capacity checks. A busy admission is recorded as an admission failure; the executor does not retry it silently. Transport uncertainty blocks resumption. Returned malformed JSON and canonical mapping failures retain the original raw result and usage separately from validation diagnostics. Evidence failures remain distinct from output failures.
+
+`repairReconstructionPass` is an exported server interface requiring `allowAdditionalRequest: true`. It records a new repair request with lineage to the original request and output; it preserves both outputs and both usage records. It is not automatically invoked and does not yet have a browser/HTTP repair action. A first-pass repair cannot change an already frozen synthesis. A failed or uncertain request is never replayed through ordinary resume.
+
+Progress updates serialize the report; completed-chunk transactions serialize report and decisions without document snapshots. Derivative materialization occurs at the final stage boundary and at startup recovery for interrupted revisions. Full revision saves remain at lifecycle/publication boundaries. Imported frozen synthesis retains its archived identity and cannot be resumed under a remapped revision ID; start a new revision explicitly. Backups preserve original requests, synthesis, repairs, usage, and uncertainty without starting provider work.

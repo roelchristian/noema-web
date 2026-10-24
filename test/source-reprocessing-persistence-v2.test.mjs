@@ -39,8 +39,11 @@ test('compressed vault backup exports and restores interrupted V2 checkpoints wi
  r.fileId=file.id;r.original.document.source.fileId=file.id;r.baseHash=sourceRevisionBaseHash(r.original);r.reprocessed=structuredClone(r.original);
  store.run('INSERT INTO source_reprocessing(id,file_id,vault_id,status,created_at,updated_at,payload) VALUES(?,?,?,?,?,?,?)',r.id,file.id,vault.id,r.status,r.createdAt,r.updatedAt,JSON.stringify(r));
  const checkpoints=new SourceReprocessingCheckpoints(store);checkpoints.saveChunk(chunk(r));checkpoints.savePass(pass(r));checkpoints.savePass({...pass(r),index:2,kind:'verify',status:'running',result:null,finishedAt:null});
+ const {synthesisPromptVersion}=await import('../src/server/modules/source-reprocessing-context.ts');
+ checkpoints.saveSynthesis({...pass(r),promptVersion:synthesisPromptVersion,status:'running',result:null,register:null,finishedAt:null});
+ const repair={...pass(r),repairId:'explicit-repair',passIndex:1,kind:'repair',originalRequestHash:pass(r).requestHash,originalResultHash:createHash('sha256').update(pass(r).result).digest('hex'),status:'running',result:null,finishedAt:null};delete repair.index;checkpoints.saveRepair(repair);
  const backups=new VaultBackups(store),archive=await backups.export(vault.id),restored=await backups.import(archive.bytes);
- const row=store.get('SELECT id,payload FROM source_reprocessing WHERE vault_id=?',restored.id),passes=checkpoints.passes(row.id);assert.equal(passes.length,2);assert.equal(passes[0].result,pass(r).result);assert.equal(passes[1].status,'interrupted');assert.equal(passes[1].outcomeUncertain,true);assert.equal(JSON.parse(row.payload).configuration.depth,'balanced');assert.equal(checkpoints.chunks(row.id)[0].revisionId,row.id);
+ const row=store.get('SELECT id,payload FROM source_reprocessing WHERE vault_id=?',restored.id),passes=checkpoints.passes(row.id);assert.equal(passes.length,2);assert.equal(passes[0].result,pass(r).result);assert.equal(passes[1].status,'interrupted');assert.equal(passes[1].outcomeUncertain,true);assert.equal(JSON.parse(row.payload).configuration.depth,'balanced');assert.equal(checkpoints.chunks(row.id)[0].revisionId,row.id);assert.equal(checkpoints.synthesis(row.id).status,'interrupted');assert.equal(checkpoints.synthesis(row.id).outcomeUncertain,true);assert.equal(checkpoints.repairs(row.id)[0].status,'interrupted');assert.equal(checkpoints.repairs(row.id)[0].originalRequestHash,pass(r).requestHash);
  }finally{db.close();}
 });
 

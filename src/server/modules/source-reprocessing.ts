@@ -106,11 +106,12 @@ export class SourceReprocessing {
  private hashCache:{vault:string;id:string;inputs:unknown[];hash:string}|null=null;
  private running=false;private closed=false;private controller:AbortController|null=null;private activeRevisionId:string|null=null;
  constructor(private store:Store,private files:SourceFiles,private intelligence:Intelligence,private requireOpen:(vault:string)=>unknown,private activity:AIActivityLog,private metadata?:SourceMetadataExtraction,private evidence?:SourceReprocessingEvidence) {
+  if(store.all<{name:string}>("SELECT name FROM sqlite_master WHERE type='table' AND name='source_reprocessing_repairs'").some(table=>table.name==='source_reprocessing_repairs'))new SourceReprocessingCheckpoints(store).interruptRepairs();
   for(const row of store.all<Row>("SELECT * FROM source_reprocessing WHERE status IN ('queued','running')")){
    const revision=JSON.parse(row.payload) as SourceReprocessingRevision;
    if(revision.pipelineVersion===2)new SourceReprocessingCheckpoints(store).interruptRunning(revision.id);
    for(const excerpt of revision.report.excerpts??[])if(excerpt.status==='running'){excerpt.status='interrupted';const uncertain=revision.pipelineVersion===2?new SourceReprocessingCheckpoints(store).passes(revision.id,excerpt.index).some(pass=>pass.outcomeUncertain):true;if(uncertain){excerpt.errorCode='provider_outcome_uncertain';excerpt.outcomeUncertain=true;excerpt.error='Application stopped during a request. The provider outcome is unknown; inspect completed suggestions before explicitly resuming.';}else{delete excerpt.error;delete excerpt.errorCode;delete excerpt.outcomeUncertain;}}
-   revision.status='interrupted';revision.report.error='Application restarted before this pass completed. Resume this pass to retry the unfinished excerpt.';revision.report.finishedAt=now();this.save(row.vault_id,revision);
+   revision.status='interrupted';revision.report.error='Application restarted before this pass completed. Resume this pass to retry the unfinished excerpt.';revision.report.finishedAt=now();if(revision.pipelineVersion===2)materializeSourceRevision(revision);this.save(row.vault_id,revision);
   }
  }
  private save(vault:string,r:SourceReprocessingRevision){r.updatedAt=new Date(Math.max(Date.now(),Date.parse(r.updatedAt)+1)).toISOString();this.store.run('UPDATE source_reprocessing SET status=?,updated_at=?,payload=? WHERE id=? AND vault_id=?',r.status,r.updatedAt,JSON.stringify(r),r.id,vault);}
@@ -128,6 +129,11 @@ export class SourceReprocessing {
  private saveProgress(vault:string,r:SourceReprocessingRevision){
   r.updatedAt=new Date(Math.max(Date.now(),Date.parse(r.updatedAt)+1)).toISOString();
   this.store.run("UPDATE source_reprocessing SET status=?,updated_at=?,payload=json_set(payload,'$.report',json(?),'$.status',?,'$.updatedAt',?) WHERE id=? AND vault_id=?",r.status,r.updatedAt,JSON.stringify(r.report),r.status,r.updatedAt,r.id,vault);
+ }
+ /** Atomically publish completed chunk decisions without serializing immutable snapshots. */
+ private saveReconstructionCheckpoint(vault:string,r:SourceReprocessingRevision){
+  r.updatedAt=new Date(Math.max(Date.now(),Date.parse(r.updatedAt)+1)).toISOString();
+  this.store.run("UPDATE source_reprocessing SET status=?,updated_at=?,payload=json_set(payload,'$.report',json(?),'$.patches',json(?),'$.status',?,'$.updatedAt',?) WHERE id=? AND vault_id=?",r.status,r.updatedAt,JSON.stringify(r.report),JSON.stringify(r.patches),r.status,r.updatedAt,r.id,vault);
  }
  private snapshot(vault:string,id:string){const file=this.files.require(vault,id),text=mathSource(this.store,file).text;return {text,document:documentWithRawRanges(new SourceDocuments(this.store).get(file),text)};}
  private baseHash(vault:string,id:string){
@@ -210,7 +216,7 @@ export class SourceReprocessing {
   if(r.pipelineVersion===2){
    const checkpoints=new SourceReprocessingCheckpoints(this.store),synthesis=checkpoints.synthesis(r.id);
    if(synthesis?.register&&synthesis.register.revisionId!==r.id)throw new HttpError(409,'Imported document context retains its archived identity. Start a new revision explicitly.');
-   if([...checkpoints.passes(r.id),...(synthesis?[synthesis]:[])].some(pass=>pass.outcomeUncertain||pass.status==='running'||pass.status==='interrupted'))throw new HttpError(409,'Provider outcome is uncertain. Start a new revision explicitly; this request will not be replayed.');
+   if([...checkpoints.passes(r.id),...checkpoints.repairs(r.id),...(synthesis?[synthesis]:[])].some(pass=>pass.outcomeUncertain||pass.status==='running'||pass.status==='interrupted'))throw new HttpError(409,'Provider outcome is uncertain. Start a new revision explicitly; this request will not be replayed.');
   }
   r.report.reasoningEffort=selection.reasoningEffort;r.status='queued';r.report.error=null;delete r.report.errorCode;this.save(vault,r);return r;
  }
@@ -223,7 +229,7 @@ export class SourceReprocessing {
   if(r.pipelineVersion===2){
    try{
     guard();if(!r.report.metadata)this.reconcileMetadata(row.vault_id,r,'canonical');
-    await executeReconstruction({store:this.store,revision:r,intelligence:this.intelligence,activity:this.activity,evidenceService:this.evidence,activityObjectId:this.files.require(row.vault_id,r.fileId).entity_id??r.fileId,vault:row.vault_id,signal:controller.signal,guard,save:()=>this.save(row.vault_id,r),range:(start,end)=>this.range(r,start,end),materialize:()=>materializeSourceRevision(r)});
+    await executeReconstruction({store:this.store,revision:r,intelligence:this.intelligence,activity:this.activity,evidenceService:this.evidence,activityObjectId:this.files.require(row.vault_id,r.fileId).entity_id??r.fileId,vault:row.vault_id,signal:controller.signal,guard,save:boundary=>boundary==='chunk'?this.saveReconstructionCheckpoint(row.vault_id,r):this.saveProgress(row.vault_id,r),range:(start,end)=>this.range(r,start,end),materialize:()=>materializeSourceRevision(r)});
     guard();if(r.reprocessed.text!==r.original.text){this.save(row.vault_id,r);this.reconcileMetadata(row.vault_id,r,'editorial');}
     r.status='completed';
    }

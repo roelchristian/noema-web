@@ -266,3 +266,27 @@ dialog.calendar-sheet-bounded { inset: var(--space-5); margin: auto; max-width: 
 
 /* Match library header controls so the month title shares their baseline. */
 .calendar-heading button { min-height: var(--control-target-compact); }
+
+/* Date associations stay distinct while their evidence counts retain occurrence meaning. */
+.calendar-heading .calendar-icon-button { min-height: var(--touch-target-size); min-width: var(--touch-target-size); }
+.calendar-pin { width: 14px; height: 14px; color: var(--text-muted); }
+.calendar-inspector-tabs { margin-bottom: var(--space-4); }
+.calendar-inspector-body [hidden] { display: none; }
+.calendar-inspector-body > .calendar-form-row { margin-bottom: var(--space-4); }
+.calendar-agenda-day { margin-bottom: var(--space-5); }
+.calendar-agenda-day h2 { font-size: 14px; display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); }
+.calendar-agenda-day h2 small { color: var(--text-muted); font-size: 11px; font-weight: 400; }
+.calendar-filters select { min-height: var(--touch-target-size); background: var(--surface); color: var(--text); border: 1px solid var(--control-border); border-radius: var(--radius-control); padding: var(--space-2); }
+.calendar-facets > summary { display: flex; align-items: center; font-size: 12px; cursor: pointer; }
+@media (max-width: 750px) {
+ .calendar-cell-knowledge .calendar-cell-entry { display: -webkit-box; font-size: 10px; -webkit-line-clamp: 1; padding-left: 2px; }
+ .calendar-cell-knowledge .calendar-cell-entry:nth-of-type(n+3) { display: none; }
+ .calendar-mobile-count { display: block; font-size: 9px; }
+ .calendar-cell > button { min-height: 110px; }
+}
+@container (max-width: 600px) {
+ .calendar-cell-knowledge .calendar-cell-entry { display: -webkit-box; font-size: 10px; -webkit-line-clamp: 1; padding-left: 2px; }
+ .calendar-cell-knowledge .calendar-cell-entry:nth-of-type(n+3) { display: none; }
+ .calendar-mobile-count { display: block; font-size: 9px; }
+ .calendar-cell > button { min-height: 110px; }
+}

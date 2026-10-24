@@ -8,7 +8,7 @@ import {Pages} from '../src/server/modules/pages.ts';
 import {Knowledge} from '../src/server/modules/knowledge.ts';
 import {TemporalIndex} from '../src/server/modules/temporal.ts';
 import {VaultBackups} from '../src/server/modules/vault-backups.ts';
-import {monthBounds,monthCells,civilWeek,civilRowWeek,isoRowWeek,dateSummary,shiftMonth,shiftDay,dateLabel,calendarGroups,emptyCuration} from '../src/client/calendar/calendar-model.ts';
+import {monthBounds,monthCells,civilWeek,civilRowWeek,isoRowWeek,dateSummary,dateAssociations,shiftMonth,shiftDay,dateLabel,calendarGroups,emptyCuration} from '../src/client/calendar/calendar-model.ts';
 import {capturePageSelection,restorePageSelection} from '../src/client/state/use-page-selection.ts';
 import {setupDOM} from './helpers/dom.mjs';
 import {selectionOffsets} from '../scripts/browser-selection.mjs';
@@ -105,8 +105,17 @@ test('civil weeks use Sunday with January 1 by default and ISO rules for Monday 
  }
 });
 
-test('day summaries use full evidence totals and accepted relationship counts rather than payload length',()=>{
- const summary=dateSummary({curation:{label:'My date'},mentions:[{title:'Notebook'}],mentionCount:25,sourceCount:7,propertyCount:2,relations:[{name:'Accepted entity'}],relationCount:4,proposals:[{name:'Pending'}],proposalCount:10});
- assert.equal(summary.title,'My date');assert.equal(summary.total,38);assert.equal(summary.counts,'34 references · 4 relationships');
- assert.equal(dateSummary({mentions:[{title:'Original notebook'}],mentionCount:1,relations:[],relationCount:0}).title,'Original notebook');
+test('day summaries distinguish loaded documents, full occurrence totals and accepted links',()=>{
+ const item={curation:{label:'My date'},mentions:[{id:'m1',pageId:'p1',title:'Notebook',text:'23 October 2026'},{id:'m2',pageId:'p1',title:'Notebook',text:'23 October 2026'}],mentionCount:25,sourceCount:7,propertyCount:2,relations:[{id:'r1',entityId:'e1',kind:'occurs_on',name:'Accepted entity'}],relationCount:4,proposals:[{name:'Pending'}],proposalCount:10};
+ const summary=dateSummary(item);
+ assert.equal(summary.title,'My date');assert.equal(summary.total,36);assert.equal(summary.counts,'1+ document · 32 occurrences · 4 linked items');
+ assert.equal(dateAssociations(item).filter(entry=>entry.kind==='reference').length,1);
+ assert.deepEqual(dateAssociations(item,false).map(entry=>entry.title),['My date','Accepted entity']);
+});
+
+test('distinct association ordering retains roles and excludes pending or incidental records by default policy',()=>{
+ const item={curation:{label:'Pinned research',pinned:true},mentions:[{id:'m1',pageId:'p1',title:'Repeated',text:'A'},{id:'m2',pageId:'p1',title:'Repeated',text:'B'}],relations:[{id:'r2',entityId:'e1',name:'Event',kind:'ends_on'},{id:'r1',entityId:'e1',name:'Event',kind:'occurs_on'}],properties:[{id:'p1',entityId:'e2',title:'Unreviewed',name:'date',raw:'1815'}],proposals:[{id:'proposal',name:'Never accepted'}]};
+ assert.deepEqual(dateAssociations(item,false).map(entry=>entry.description),['Curated date','occurs on','ends on']);
+ assert.deepEqual(dateAssociations(item).map(entry=>entry.kind),['curation','event','event','property','reference']);
+ assert.deepEqual(dateAssociations({...item,relations:[...item.relations].reverse()}),dateAssociations(item));
 });

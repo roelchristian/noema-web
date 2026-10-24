@@ -1,5 +1,5 @@
 import type {TemporalCuration,TemporalItem,TemporalLayer} from '../../shared/temporal';
-export interface CalendarView {month:string;mode:'month'|'agenda';selected:string|null;layers:TemporalLayer[];allReferences:boolean;drafts:Record<string,TemporalCuration>}
+export interface CalendarView {month:string;mode:'month'|'agenda';selected:string|null;selectedId?:string|null;calendar?:'gregorian'|'julian';contentFilter?:'curated'|'linked'|'all';layers:TemporalLayer[];allReferences:boolean;drafts:Record<string,TemporalCuration>}
 export const dayValue=(date:Date)=>`${String(date.getUTCFullYear()).padStart(4,'0')}-${String(date.getUTCMonth()+1).padStart(2,'0')}-${String(date.getUTCDate()).padStart(2,'0')}`;
 export function civilDate(value:string):Date {const [year,month=1,day=1]=value.split('-').map(Number);const date=new Date(0);date.setUTCFullYear(year!,month!-1,day);date.setUTCHours(0,0,0,0);return date;}
 export function todayValue() {const date=new Date();return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;}
@@ -46,8 +46,25 @@ export function isoRowWeek(month:string,row:number,weekStart:0|1=0) {
  const week=1+Math.round((monday.getTime()-jan4.getTime())/604800000);
  return {year,week,label:`${String(year).padStart(4,'0')}-W${String(week).padStart(2,'0')}`};
 }
+export interface CalendarAssociation {id:string;title:string;description:string;kind:'curation'|'event'|'property'|'reference';entityId?:string;mentionId?:string;sourceId?:string}
+/** Distinct associations in a stable order; evidence occurrences remain separate counts. */
+export function dateAssociations(item:TemporalItem,includeReferences=true):CalendarAssociation[] {
+ const entries:CalendarAssociation[]=[];
+ if(item.curation)entries.push({id:'curation',title:item.curation.label||'Date note',description:item.curation.annotation||'Curated date',kind:'curation'});
+ const relations=[...item.relations].sort((a,b)=>Number(b.kind==='occurs_on')-Number(a.kind==='occurs_on')||a.name.localeCompare(b.name)||a.id.localeCompare(b.id));
+ const linked=new Set<string>();
+ for(const relation of relations){const key=relation.entityId+':'+relation.kind;if(linked.has(key))continue;linked.add(key);entries.push({id:relation.id,title:relation.name,description:relation.kind.replaceAll('_',' '),kind:relation.propertyId?'property':'event',entityId:relation.entityId});}
+ if(includeReferences)for(const property of [...(item.properties??[])].sort((a,b)=>a.title.localeCompare(b.title)||a.id.localeCompare(b.id))){if(item.relations.some(relation=>relation.propertyId===property.id))continue;entries.push({id:property.id,title:property.title,description:`${property.name}: ${property.raw}`,kind:'property',entityId:property.entityId});}
+ if(includeReferences){const documents=new Set<string>();
+  for(const mention of [...item.mentions].sort((a,b)=>a.title.localeCompare(b.title)||a.id.localeCompare(b.id))){const key='page:'+mention.pageId;if(documents.has(key))continue;documents.add(key);entries.push({id:mention.id,title:mention.title||'Untitled page',description:mention.text,kind:'reference',mentionId:mention.id});}
+  for(const source of [...(item.sources??[])].sort((a,b)=>a.title.localeCompare(b.title)||a.id.localeCompare(b.id))){const key='source:'+source.sourceId;if(documents.has(key))continue;documents.add(key);entries.push({id:source.id,title:source.title,description:source.text,kind:'reference',sourceId:source.id});}
+ }
+ return entries;
+}
 export function dateSummary(item:TemporalItem) {
- const references=item.mentionCount+(item.sourceCount??0)+(item.propertyCount??0),relationships=item.relationCount;
- return {title:item.curation?.label||item.relations[0]?.name||item.mentions[0]?.title||item.sources?.[0]?.title||item.properties?.[0]?.title||`${references} reference${references===1?'':'s'}`,
- references,relationships,total:references+relationships,counts:`${references} reference${references===1?'':'s'} · ${relationships} relationship${relationships===1?'':'s'}`};
+ const references=item.mentionCount+(item.sourceCount??0),relationships=item.relationCount;
+ const documents=new Set([...item.mentions.map(mention=>'page:'+mention.pageId),...(item.sources??[]).map(source=>'source:'+source.sourceId)]).size;
+ const partial=item.mentionCount>item.mentions.length||(item.sourceCount??0)>(item.sources?.length??0);
+ return {title:dateAssociations(item)[0]?.title||'Date',references,relationships,total:references+relationships,
+ counts:`${documents}${partial?'+':''} document${documents===1?'':'s'} · ${references} occurrence${references===1?'':'s'} · ${relationships} linked item${relationships===1?'':'s'}`};
 }

@@ -1,4 +1,5 @@
 import {useSyncExternalStore} from 'react';
+import {useMobileViewport} from '../components/WorkspaceNavigation';
 
 export type TransliterationLayout='off'|'below'|'side-by-side';
 const listeners=new Set<()=>void>();
@@ -28,5 +29,7 @@ function subscribe(listener:()=>void) {
   return ()=>{listeners.delete(listener);window.removeEventListener('storage',changed);};
 }
 export function useTransliteration(pageKey:string) {
-  return useSyncExternalStore(subscribe,()=>readTransliteration(pageKey),()=>'off' as const);
+  const mobile=useMobileViewport();
+  const preference=useSyncExternalStore(subscribe,()=>readTransliteration(pageKey),()=>'off' as const);
+  return mobile&&preference==='side-by-side'?'below':preference;
 }

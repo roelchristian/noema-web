@@ -9,7 +9,7 @@ import {TransliterationBlock} from '../src/client/editor/TransliterationBlock.ts
 import {blockTransliterationSegments} from '../src/shared/transliteration.ts';
 import {readSegments,segmentHTML} from '../src/client/editor/segments.tsx';
 import {ReadOnlyPageBlocks} from '../src/client/editor/ReadOnlyPageBlocks.tsx';
-import {readTransliteration} from '../src/client/state/transliteration-preferences.ts';
+import {readTransliteration,rememberTransliteration} from '../src/client/state/transliteration-preferences.ts';
 
 for(const [name,text,expected] of [['Greek','θεός','theós'],['Old Church Slavonic','Ⱄⰾⱁⰲⱁ ѹ ꙗ ъЬ Ъь','Slovo u ya ŭĬ Ŭĭ'],['Bulgarian','ъЬ Ъь','ăʹ Ăʹ'],['Russian','ъЬ Ъь','ʺʹ ʺʹ']])test(`three-dot menu controls ${name} transliteration on a locked page and remembers its page preference`,async t=>{
   const env=setupDOM(t);
@@ -108,4 +108,41 @@ test('transliteration preserves inline marks, scripts and math while hiding cita
   host.innerHTML=segmentHTML(readSegments(host),[],undefined,true,undefined,false);
   assert.equal(host.querySelector('sup').textContent,'ж');
   assert.equal(host.querySelector('sub').textContent,'ш');
+});
+
+
+test('mobile uses below paragraphs and hides side-by-side controls while retaining the desktop preference',async t=>{
+  const env=setupDOM(t);
+  let mobile=true;
+  const changes=new Set();
+  window.matchMedia=query=>({matches:query==='(max-width: 750px)'&&mobile,addEventListener:(_type,listener)=>changes.add(listener),removeEventListener:(_type,listener)=>changes.delete(listener)});
+  const storageDescriptor=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
+  Object.defineProperty(globalThis,'localStorage',{configurable:true,value:window.localStorage});
+  env.defer(()=>{if(storageDescriptor)Object.defineProperty(globalThis,'localStorage',storageDescriptor);else delete globalThis.localStorage;});
+  const prototype=window.HTMLElement.prototype;
+  const matches=prototype.matches,open=new WeakSet();
+  prototype.matches=function(selector){return selector===':popover-open'?open.has(this):matches.call(this,selector);};
+  prototype.showPopover=function(){open.add(this);};prototype.hidePopover=function(){open.delete(this);};
+  prototype.getAnimations=()=>[];prototype.animate=()=>({});
+  prototype.getBoundingClientRect=()=>({left:10,right:110,top:10,bottom:30,width:100,height:20});
+  const page={id:'mobile-translit',vault_id:'test',title:'Mobile',blocks:[{id:'p',type:'paragraph',content:[{text:'Жизнь'}]}]};
+  const pageKey='test/'+page.id;
+  rememberTransliteration(pageKey,'side-by-side');
+  const root=createRoot(document.querySelector('#mount')),noop=()=>{};
+  env.defer(()=>act(async()=>root.unmount()));
+  await act(async()=>root.render(React.createElement(React.Fragment,null,
+    React.createElement(PageToolbar,{page,onRevealInSidebar:noop,onUndo:noop,onRedo:noop,onEditLockChange:async()=>{},onAI:noop,onPresentationModeChange:noop,onExitFocus:noop,onOrganizationChange:noop,onDelete:async()=>{},onError:noop,onFeaturedImageChange:noop,onChangeBlocks:noop,presentationMode:'standard'}),
+    React.createElement(ReadOnlyPageBlocks,{blocks:page.blocks,entities:[],pages:[],vaultId:'test',pageId:page.id,onOpenEntity:noop,onOpenPage:noop}),
+    React.createElement(TransliterationBar,{pageKey}))));
+  assert.equal(document.querySelector('[data-block-id="p"]').dataset.transliterationLayout,'below');
+  assert.equal(document.querySelector('.transliteration-bar .select-trigger'),null);
+  assert.ok(document.querySelector('.transliteration-bar').textContent.includes('Below paragraphs'));
+  await act(async()=>document.querySelector('[aria-label="More page actions"]').click());
+  await act(async()=>document.querySelector('[data-menu-action="Transliteration"]').click());
+  assert.equal(document.querySelector('[data-menu-action="Side by side"]'),null);
+  assert.equal(document.querySelector('[data-menu-action="Below paragraphs"]').getAttribute('aria-checked'),'true');
+  assert.equal(readTransliteration(pageKey),'side-by-side');
+  await act(async()=>{mobile=false;for(const listener of changes)listener();});
+  assert.equal(document.querySelector('[data-block-id="p"]').dataset.transliterationLayout,'side-by-side');
+  assert.equal(document.querySelector('.transliteration-bar select').value,'side-by-side');
 });

@@ -1,3 +1,4 @@
+import {useMobileViewport} from '../components/WorkspaceNavigation';
 import {rememberTransliteration,useTransliteration} from '../state/transliteration-preferences';
 import {PresentationSelector} from '../settings/PresentationSelector';
 import type {PresentationMode} from '../settings/appearance';
@@ -43,6 +44,7 @@ export function PageToolbar({ onArchive, onRestore, onHistory, onRename, entitie
   const markdownTyping=useMarkdownTyping();
   const transliterationKey=page.vault_id+'/'+page.id;
   const transliteration=useTransliteration(transliterationKey);
+  const mobile=useMobileViewport();
   const editingDisabled=!!page.editLocked||!!page.archived_at||changingLock;
   const contentsLabel=tocVisible?uiText("Hide table of contents"):uiText("Show table of contents");
   function toggleMarkdownTyping() {
@@ -103,7 +105,7 @@ export function PageToolbar({ onArchive, onRestore, onHistory, onRename, entitie
       {id:'transliteration',group:uiText("Navigation"),label:uiText("Transliteration"),icon:'culture',description:uiText("Greek, Cyrillic, Coptic and Glagolitic · Latin letters, no AI"),children:[
         {label:uiText("Off"),checked:transliteration==='off',onSelect:()=>rememberTransliteration(transliterationKey,'off')},
         {label:uiText("Below paragraphs"),checked:transliteration==='below',onSelect:()=>rememberTransliteration(transliterationKey,'below')},
-        {label:uiText("Side by side"),checked:transliteration==='side-by-side',onSelect:()=>rememberTransliteration(transliterationKey,'side-by-side')},
+        ...(!mobile?[{label:uiText("Side by side"),checked:transliteration==='side-by-side',onSelect:()=>rememberTransliteration(transliterationKey,'side-by-side')}]:[]),
       ]},
       {id:'editing',group:uiText("Editing"),label:uiText("Editing"),icon:'edit',children:[
         {id:'undo',label:uiText("Undo"),icon:'undo',shortcut:"⌘Z / Ctrl+Z",disabled:editingDisabled||!canUndo,onSelect:onUndo},

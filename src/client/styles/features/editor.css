@@ -3276,7 +3276,7 @@
 }
 
 ::highlight(transliteration-word) {
-  background-color: color-mix(in srgb, var(--text-muted) 16%, transparent);
+  background-color: color-mix(in srgb, var(--text-muted) 25%, transparent);
 }
 
 /* Derived reading aids stay outside the editable content and document model. */
@@ -3327,7 +3327,7 @@
   padding-inline-start: 18px;
   border-inline-start: 2px solid var(--line);
 }
-@media (min-width: 681px) {
+@media (min-width: 751px) {
   .block[data-transliteration-layout=side-by-side] {
     align-items: start;
     grid-template-columns: repeat(2, minmax(0, 1fr));

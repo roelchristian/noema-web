@@ -52,10 +52,11 @@ try{
  // Repeated navigation and run intent retain one component and avoid metadata polling.
  let reads=0;page.on('request',request=>{if(request.method()==='GET'&&request.url().includes('/source-metadata'))reads++;});
  await page.getByRole('tab',{name:'Overview',exact:true}).click();await page.getByRole('tab',{name:'Metadata',exact:true}).click();await workspace.getByText('0 suggested',{exact:false}).waitFor();
+ const filteredRead=page.waitForResponse(response=>response.request().method()==='GET'&&response.url().includes('/source-metadata?runId=synthetic-metadata-run')&&response.status()===200);
  await page.evaluate(({sourceId})=>window.dispatchEvent(new CustomEvent('noema:open-source-metadata',{detail:{vaultId:'default',sourceId,runId:'synthetic-metadata-run'}})),{sourceId:source.id});
- await workspace.getByText('Suggestions from run synthetic-metadata-run',{exact:false}).waitFor();
+ await (await filteredRead).finished();await workspace.getByText('Suggestions from run synthetic-metadata-run',{exact:false}).waitFor();await workspace.getByRole('combobox').waitFor();await page.waitForLoadState('networkidle');
  const readBaseline=reads;await page.waitForTimeout(2200);assert.equal(reads,readBaseline);
- await page.setViewportSize({width:390,height:844});await page.screenshot({path:join(directory,'metadata-mobile.png')});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ await page.setViewportSize({width:390,height:844});assert.equal(await page.getByRole('navigation',{name:'Source reading navigation',exact:true}).isVisible(),false);await page.screenshot({path:join(directory,'metadata-mobile.png')});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  await page.evaluate(()=>localStorage.setItem('noema.appearance.v1',JSON.stringify({mode:'dark',theme:'ink'})));await page.reload();await page.getByRole('tab',{name:'Metadata',exact:true}).click();await workspace.getByRole('combobox').waitFor();
  assert.equal(await page.evaluate(()=>document.documentElement.dataset.mode),'dark');
  await page.screenshot({path:join(directory,'metadata-mobile-dark.png')});

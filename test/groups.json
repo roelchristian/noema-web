@@ -215,6 +215,7 @@
     "test/bibliography-http.test.mjs",
     "test/bibliographic-property-projection.test.mjs",
     "test/bibliographic-export.test.mjs",
-    "test/source-metadata.test.mjs"
+    "test/source-metadata.test.mjs",
+    "test/source-metadata-provenance.test.mjs"
   ]
 }

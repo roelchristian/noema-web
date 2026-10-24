@@ -103,6 +103,10 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  if(r.acceptanceThreshold!==undefined&&(typeof r.acceptanceThreshold!=='number'||!Number.isFinite(r.acceptanceThreshold)||r.acceptanceThreshold<0||r.acceptanceThreshold>1))throw invalid();
  for(const key of ['startedAt','finishedAt'])if(report[key]!==null)timestamp(report[key]);
  for(const key of ['durationMs','inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])if(report[key]!==null)integer(report[key],0,Number.MAX_SAFE_INTEGER);
+ if(report.metadata!==undefined){
+  const metadata=object(report.metadata);for(const key of ['candidateCount','added','corroborated','requiresReview'])integer(metadata[key],0,1000);
+  if(typeof metadata.cacheHit!=='boolean'||!/^[a-f0-9]{64}$/.test(string(metadata.evidenceHash,64)))throw invalid();
+ }
  const chunks=integer(report.chunksTotal,0,128);integer(report.chunksCompleted,0,chunks);
  if(report.concurrency!==undefined)integer(report.concurrency,1,2);
  if(report.completedChunkIndexes!==undefined){

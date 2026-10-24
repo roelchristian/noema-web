@@ -1717,6 +1717,9 @@ main.source-workspace > #content > .source-reader {
   bottom: max(70px,calc(env(safe-area-inset-bottom) + 52px))
 }
 @media(max-width:750px) {
+  body:has(.source-inspector) .source-reading-navigation {
+    visibility: hidden
+  }
   .source-reading-navigation button {
     width: var(--control-target-compact);
     height: var(--control-target-compact)

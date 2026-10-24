@@ -1,3 +1,5 @@
+import {sourceMetadataFieldFingerprint,sourceMetadataCanonicalField,sourceMetadataBibliographicOwner} from './source-metadata.js';
+import {restoreMetadataEvidence} from './source-metadata-backup.js';
 import {isCitationKey} from '../../shared/bibliography.js';
 import {organizationDescription} from './organization-descriptions.js';
 import {parseExampleCollection} from '../../shared/example-collections.js';
@@ -64,6 +66,9 @@ const tables={
   property_provenance:{columns:'property_id,origin,source_file_id,source_hash,details,stale,created_at,updated_at',scope:'vault_id=?'},
   entity_name_provenance:{columns:'entity_id,origin,source_file_id,source_hash,details,stale,created_at,updated_at',scope:'vault_id=?'},
   property_proposals:{columns:'id,entity_id,kind,property_id,property_name,value,target_id,origin,source_file_id,source_hash,details,status,created_at,updated_at',scope:'vault_id=?'},
+  source_metadata_candidates:{columns:'proposal_id,field_key,target_fingerprint,evidence_json,status,decision_json',scope:'proposal_id IN (SELECT id FROM property_proposals WHERE vault_id=?)'},
+  source_metadata_policies:{columns:'source_id,policy',scope:'vault_id=?'},
+  source_metadata_extraction_cache:{columns:'file_id,evidence_hash,payload,created_at',scope:'vault_id=?'},
   source_author_jobs:{columns:'file_id,status,content_hash,attempts,next_attempt_at,error,updated_at',scope:'vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL)'},
   property_definitions:{columns:'id,definition_json',scope:'vault_id=?'},
   property_value_metadata:{columns:'property_id,definition_id,compatibility,reason,integer_value,decimal_value,boolean_value,text_value,latitude,longitude,unit,position,target_id,temporal_date_id',scope:'vault_id=?'},
@@ -182,7 +187,7 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table.startsWith('bibliographic_')||table==='page_versions'||table==='collection_descriptions'||table==='folder_descriptions'||table.startsWith('smart_collection_')||table.startsWith('temporal_')||table==='property_provenance'||table==='entity_name_provenance'||table==='property_proposals'||table==='source_author_jobs'||table==='property_definitions'||table==='property_value_metadata'||table==='entity_overviews'||table==='entity_page_associations'||table==='source_reading_locations'||table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table.startsWith('bibliographic_')||table.startsWith('source_metadata_')||table==='page_versions'||table==='collection_descriptions'||table==='folder_descriptions'||table.startsWith('smart_collection_')||table.startsWith('temporal_')||table==='property_provenance'||table==='entity_name_provenance'||table==='property_proposals'||table==='source_author_jobs'||table==='property_definitions'||table==='property_value_metadata'||table==='entity_overviews'||table==='entity_page_associations'||table==='source_reading_locations'||table==='source_reprocessing'||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     const splitSourceOwners=new Set<unknown>(),sourceOwners=new Set<unknown>(),legacyEntities=new Map(rows.entities.map(row=>[row.id,row]));
     const legacyProperties=[...rows.properties],legacyLinks=[...rows.page_sources];
     for(const file of rows.source_files) {
@@ -316,9 +321,9 @@ export class VaultBackups {
           if(Object.keys(provenance).length>1000)throw invalid();
           for(const [field,value] of Object.entries(provenance)) {
             const evidence=object(value);
-            if(!Object.hasOwn(fields,field)||!['manual','bibtex','crossref','datacite'].includes(String(evidence.origin)))throw invalid();
+            if(!Object.hasOwn(fields,field)||!['manual','bibtex','crossref','datacite','ai'].includes(String(evidence.origin)))throw invalid();
             timestamp(evidence,'at');
-            if(evidence.history!==undefined)for(const old of list(evidence.history).map(object)){if(typeof old.value!=='string'||old.value.length>100000||!['manual','bibtex','crossref','datacite'].includes(String(old.origin)))throw invalid();timestamp(old,'at');}
+            if(evidence.history!==undefined)for(const old of list(evidence.history).map(object)){if(typeof old.value!=='string'||old.value.length>100000||!['manual','bibtex','crossref','datacite','ai'].includes(String(old.origin)))throw invalid();timestamp(old,'at');}
           }
           if(rawImports.some(value=>typeof value!=='string'||value.length>16*1024*1024||/^[a-f0-9]{64}$/.test(value)&&!bibliographicBatchIds.has(value)))throw invalid();
           insert('bibliographic_records',{source_id:sourceId,vault_id:vault,citation_key:citationKey,entry_type:entryType,fields_json:JSON.stringify(fields),provenance_json:JSON.stringify(provenance),raw_imports_json:JSON.stringify(rawImports),revision:integer(row,'revision',1)});
@@ -764,7 +769,7 @@ export class VaultBackups {
           if(target!==current.target_id||date!==current.temporal_date_id)throw invalid();
           this.store.run('UPDATE property_value_metadata SET position=? WHERE property_id=?',integer(row,'position'),propertyId);
         }
-        const proposalIds=new Set<string>(),originalProposalIds=new Set<string>();
+        const proposalIds=new Set<string>(),originalProposalIds=new Set<string>(),restoredProposalIds=new Map<string,string>();
         for(const row of rows.property_proposals) {
           const oldId=string(row,'id',64);if(!/^[a-f0-9]{64}$/.test(oldId)||originalProposalIds.has(oldId))throw invalid();originalProposalIds.add(oldId);
           const entity_id=ref(entityIds,row.entity_id),kind=string(row,'kind',20),property_id=row.property_id===null?null:ref(propertyIds,row.property_id),property_name=row.property_name===null?null:string(row,'property_name',200),value=row.value===null?null:string(row,'value'),target_id=row.target_id===null?null:ref(entityIds,row.target_id);
@@ -773,11 +778,50 @@ export class VaultBackups {
           const source_file_id=sourceRef(row.source_file_id),source_hash=nullableHash(row,'source_hash'),origin=row.origin as PropertyOrigin,status=string(row,'status',20);
           if(!['pending','accepted','rejected'].includes(status))throw invalid();
           const input={entity_id,kind:kind as 'property'|'entity_name',property_id,property_name,value,target_id,source_file_id,source_hash,origin},id=proposalIdentity(vault,input);
-          if(proposalIds.has(id))throw invalid();proposalIds.add(id);
+          if(proposalIds.has(id))throw invalid();proposalIds.add(id);restoredProposalIds.set(oldId,id);
           const fields={id,vault_id:vault,...input,details:string(row,'details'),status,created_at:timestamp(row,'created_at'),updated_at:timestamp(row,'updated_at')},columns=Object.keys(fields);
           // A legacy split may have reconstructed the same metadata suggestion.
           // The archived decision is authoritative over that fresh pending record.
           this.store.run(`INSERT INTO property_proposals (${columns.join(',')}) VALUES (${columns.map(()=>'?').join(',')}) ON CONFLICT(id) DO UPDATE SET ${columns.filter(column=>column!=='id').map(column=>`${column}=excluded.${column}`).join(',')}`,...Object.values(fields));
+        }
+        const metadataCandidates=new Set<string>();
+        for(const row of rows.source_metadata_candidates) {
+          const proposalId=ref(restoredProposalIds,row.proposal_id);if(metadataCandidates.has(proposalId))throw invalid();metadataCandidates.add(proposalId);
+          const fieldKey=name(row,'field_key'),archivedFingerprint=string(row,'target_fingerprint',64),status=string(row,'status',20);
+          let targetFingerprint=archivedFingerprint;
+          if(!/^bibliography:[a-z][a-z0-9_:.-]{0,63}$/i.test(fieldKey)||!/^[a-f0-9]{64}$/.test(targetFingerprint)||!['pending','accepted','rejected','corroborated','superseded'].includes(status))throw invalid();
+          const evidence=restoreMetadataEvidence(json(row,'evidence_json'),restoredSourceFiles,editorialIds);
+          const decision=row.decision_json===undefined?{}:object(json(row,'decision_json'));
+          if(Object.keys(decision).length){if(!['accept','reject'].includes(string(decision,'action',10)))throw invalid();string(decision,'value',10000);timestamp(decision,'at');}
+          const proposal=this.store.get<{entity_id:string;source_file_id:string|null}>('SELECT entity_id,source_file_id FROM property_proposals WHERE id=?',proposalId)!;
+          if(evidence.some(item=>!this.store.get('SELECT 1 FROM source_files WHERE id=? AND entity_id=? AND vault_id=?',item.fileId,proposal.entity_id,vault)))throw invalid();
+          const archivedProposal=rows.property_proposals.find(item=>item.id===row.proposal_id)!;
+          if(typeof archivedProposal.property_name!=='string'||!archivedProposal.property_name.startsWith('bibliography:')||sourceMetadataCanonicalField(archivedProposal.property_name.slice(13))!==sourceMetadataCanonicalField(fieldKey.slice(13))||archivedProposal.kind!=='property'||archivedProposal.target_id!==null||!this.store.get("SELECT 1 FROM entities WHERE id=? AND vault_id=? AND type='source'",proposal.entity_id,vault))throw invalid();
+          const underlyingStatus=status==='pending'?'pending':status==='accepted'||status==='corroborated'?'accepted':'rejected';
+          if(archivedProposal.status!==underlyingStatus)throw invalid();
+          const archivedRecord=rows.bibliographic_records.find(item=>item.source_id===archivedProposal.entity_id);
+          const archivedFields=archivedRecord?object(json(archivedRecord,'fields_json')):{};
+          const canonicalKey='bibliography:'+sourceMetadataCanonicalField(fieldKey.slice(13));
+          const bibliographicOwner=sourceMetadataBibliographicOwner(archivedFields as Record<string,string>,canonicalKey.slice(13));
+          const fieldValue=archivedFields[bibliographicOwner]??null;
+          const archivedProvenance=archivedRecord?object(json(archivedRecord,'provenance_json')):{};
+          const fingerprint=(owner:string,key=canonicalKey)=>sourceMetadataFieldFingerprint(owner,key,fieldValue as string|null,null,undefined,archivedProvenance[bibliographicOwner]??null);
+          // Rebind only if the archived target still exactly matched extraction. A
+          // pre-existing target conflict stays stale rather than being legitimised.
+          if(archivedFingerprint===fingerprint(archivedProposal.entity_id as string)||archivedFingerprint===fingerprint(archivedProposal.entity_id as string,fieldKey))targetFingerprint=fingerprint(proposal.entity_id);
+
+          this.store.run('INSERT INTO source_metadata_candidates(proposal_id,field_key,target_fingerprint,evidence_json,status,decision_json) VALUES(?,?,?,?,?,?)',proposalId,fieldKey,targetFingerprint,JSON.stringify(evidence),status,JSON.stringify(decision));
+        }
+        const metadataPolicies=new Set<string>();
+        for(const row of rows.source_metadata_policies) {
+          const sourceId=ref(entityIds,row.source_id),policy=string(row,'policy',30);if(metadataPolicies.has(sourceId)||!['review','fill_validated_empty'].includes(policy))throw invalid();metadataPolicies.add(sourceId);
+          this.store.run('INSERT INTO source_metadata_policies(source_id,vault_id,policy) VALUES(?,?,?)',sourceId,vault,policy);
+        }
+        // Extraction caches are disposable optimisations. Validate their bounds and JSON,
+        // then discard on restore: archive data must not bypass current evidence validation.
+        for(const row of rows.source_metadata_extraction_cache) {
+          ref(restoredSourceFiles,row.file_id);if(!/^[a-f0-9]{64}$/.test(string(row,'evidence_hash',64)))throw invalid();
+          json(row,'payload');timestamp(row,'created_at');
         }
         restorePageVersions(this.store,vault,rows.page_versions,{evidence:sourceEvidenceIds,pages:pageIds,entities:entityIds,files:restoredSourceFiles,images:imageIds,citations:citationIds,detachedEntities:detachedSources,detachedFiles});
         // Recompute after validation/remapping instead of trusting a supplied page fingerprint.

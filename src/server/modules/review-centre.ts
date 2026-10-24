@@ -53,12 +53,13 @@ export class ReviewCentre {
  /** Saved identities only. Expensive source fingerprints remain in the authoritative reviewer. */
  private proposals(vault:string,category:'property'|'temporal',offset:number,origin?:string):ReviewItem[] {
   if(category==='property') {
-   const rows=this.store.all<{id:string;entity_id:string;kind:string;property_name:string|null;updated_at:string;title:string;identity:string}>(`SELECT q.id,q.entity_id,q.kind,q.property_name,q.updated_at,e.name AS title,
+   const rows=this.store.all<{id:string;entity_id:string;kind:string;property_name:string|null;updated_at:string;title:string;identity:string;metadataRunId:string|null}>(`SELECT q.id,q.entity_id,q.kind,q.property_name,q.updated_at,e.name AS title,
+    (SELECT json_extract(c.evidence_json,'$[#-1].runId') FROM source_metadata_candidates c WHERE c.proposal_id=q.id) AS metadataRunId,
     json_array(q.id,q.kind,q.property_id,q.property_name,q.value,q.target_id,q.origin,q.source_file_id,q.source_hash,q.details,q.status,q.created_at,q.updated_at,e.updated_at) AS identity
     FROM property_proposals q JOIN entities e ON e.id=q.entity_id AND e.vault_id=q.vault_id
     WHERE q.vault_id=? AND e.archived_at IS NULL AND e.inactive=0 AND q.status='pending' AND (? IS NULL OR 'property:'||q.id=?)
     ORDER BY q.updated_at DESC,q.id LIMIT 51 OFFSET ?`,vault,origin??null,origin??null,offset);
-   return rows.map(row=>({id:'property:'+row.id,category,originId:row.entity_id,proposalId:row.id,title:row.title,
+   return rows.map(row=>({id:'property:'+row.id,category,originId:row.entity_id,proposalId:row.id,title:row.title,...row.metadataRunId?{metadataRunId:row.metadataRunId}:{},
     runId:createHash('sha256').update(row.identity).digest('hex'),group:'decisions',state:'saved · freshness checked on open',
     decision:row.kind==='entity_name'?'Review proposed name':'Review proposed '+row.property_name,count:1,updatedAt:row.updated_at}));
   }

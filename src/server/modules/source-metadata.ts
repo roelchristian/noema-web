@@ -54,7 +54,10 @@ export class SourceMetadata {
    if(field.targetId)field.targetName=this.store.get<{name:string}>('SELECT name FROM entities WHERE id=? AND vault_id=?',field.targetId,vault)?.name;
    if(field.owner==='bibliography'){const provenance=bibliography?.provenance[sourceMetadataBibliographicOwner(bibliography?.fields??{},field.key.slice(13))];if(provenance&&field.value!==null)field.confirmedHistory=[...(provenance.history??[]),{value:field.value,origin:provenance.origin,at:provenance.at}];}
    if(field.key==='source:display_name'){const provenance=getNameProvenance(this.store,vault,id);if(provenance)field.confirmedHistory=[{value:entity.name,origin:provenance.origin,at:provenance.updated_at,details:provenance.details}];}
-   field.fingerprint=sourceMetadataFieldFingerprint(id,field.key,field.value,field.targetId??null,field.preservedValues,field.owner==='bibliography'?bibliography?.provenance[sourceMetadataBibliographicOwner(bibliography?.fields??{},field.key.slice(13))]??null:field.owner==='property'?this.store.all('SELECT p.*,m.definition_id,d.definition_json FROM properties p LEFT JOIN property_value_metadata m ON m.property_id=p.id LEFT JOIN property_definitions d ON d.id=m.definition_id WHERE p.entity_id=? AND p.name=? ORDER BY p.id',id,field.key.slice(9)):null);
+   const propertyState=field.owner==='property'?this.store.all<Property&{definition_id:string|null;definition_json:string|null}>('SELECT p.*,m.definition_id,d.definition_json FROM properties p LEFT JOIN property_value_metadata m ON m.property_id=p.id LEFT JOIN property_definitions d ON d.id=m.definition_id WHERE p.entity_id=? AND p.name=? ORDER BY p.id',id,field.key.slice(9)):null;
+   if(propertyState&&propertyState.length>1)field.displayValues=propertyState.map(property=>property.value??this.store.get<{name:string}>('SELECT name FROM entities WHERE id=? AND vault_id=?',property.target_id,vault)?.name??property.target_id??'');
+   if(propertyState?.[0]?.definition_json){const definition=JSON.parse(propertyState[0].definition_json) as {editable:boolean;valueKind:string};if(!definition.editable||definition.valueKind==='entity_reference')field.editable=false;}
+   field.fingerprint=sourceMetadataFieldFingerprint(id,field.key,field.value,field.targetId??null,field.preservedValues,field.owner==='bibliography'?bibliography?.provenance[sourceMetadataBibliographicOwner(bibliography?.fields??{},field.key.slice(13))]??null:propertyState);
   }
   return result;
  }
@@ -84,13 +87,13 @@ export class SourceMetadata {
   const pending=fields.flatMap(field=>field.proposals);
   return {sourceId:id,policy:this.policy(vault,id),fields,counts:{confirmed:fields.filter(field=>field.value||field.targetId).length,suggested:pending.length,conflicts:pending.filter(proposal=>!proposal.compatible).length}};
  }
- private write(vault:string,id:string,fieldKey:string,value:string,targetId?:string,preserveAuthoredValues=false){
+ private write(vault:string,id:string,fieldKey:string,value:string,targetId?:string,preserveAuthoredValues=false,origin:'manual'|'ai'='manual'){
   if(fieldKey.startsWith('bibliography:')){
    if(targetId)throw new HttpError(400,'Credited bibliographic names remain ordered text; resolve entities separately.');
    const requested=fieldKey.slice(13);if(!/^[a-z][a-z0-9_:.-]{0,63}$/i.test(requested))throw new HttpError(400,'Invalid bibliographic field');
    if(requested==='doi'&&value&&!normalizeDoi(value))throw new HttpError(400,'Invalid DOI');
    const bibliography=new Bibliography(this.store),record=bibliography.get(vault,id),selected=sourceMetadataBibliographicOwner(record?.fields??{},requested),field=selected==='date'&&!Object.hasOwn(record?.fields??{},'date')&&/^\d{4}$/.test(value)?'year':selected;
-   bibliography.save(vault,id,{revision:record?.revision??0,citationKey:record?.citationKey??'source-'+id,entryType:record?.entryType??'misc',fields:{...record?.fields,[field]:value},...(preserveAuthoredValues?{reviewedProperties:bibliographicLegacyConflicts(this.store,vault,id,{...record?.fields,[field]:value},record?.fields).map(conflict=>({propertyId:conflict.property.id,fingerprint:conflict.fingerprint}))}:{})});
+   bibliography.save(vault,id,{revision:record?.revision??0,citationKey:record?.citationKey??'source-'+id,entryType:record?.entryType??'misc',fields:{...record?.fields,[field]:value},...(preserveAuthoredValues?{reviewedProperties:bibliographicLegacyConflicts(this.store,vault,id,{...record?.fields,[field]:value},record?.fields).map(conflict=>({propertyId:conflict.property.id,fingerprint:conflict.fingerprint}))}:{})},origin);
    if(['author','editor','translator'].includes(field))this.offerCreatorReferences(vault,id,field,value);
   }else if(fieldKey==='source:display_name'){
    const knowledge=new Knowledge(this.store);knowledge.update(vault,id,{...knowledge.require(vault,id),name:required(value)});
@@ -129,12 +132,12 @@ export class SourceMetadata {
    const value=input.value===undefined?row.value:text(input.value),targetId=input.targetId??row.target_id??undefined,field=fields.find(item=>item.key===proposal.fieldKey);
    const satisfied=equal(proposal.fieldKey,field?.value??null,value)&&(!targetId||targetId===field?.targetId);
    if(!satisfied){
-    if((field?.value||field?.targetId)&&!input.replace)throw new HttpError(409,'This field already has a value. Confirm replacement explicitly.');
+    if((field?.value||field?.targetId)&&!input.replace&&!(!sidecar&&proposal.fieldKey.startsWith('property:')&&targetId))throw new HttpError(409,'This field already has a value. Confirm replacement explicitly.');
     if(!sidecar&&proposal.fieldKey.startsWith('property:')){
      const legacy=new PropertyReview(this.store).list(vault,id,'all',row.id)[0]!;
      if(input.value!==undefined)throw new HttpError(400,'Edit this property through its canonical property editor.');
      new PropertyReview(this.store).review(vault,id,row.id,{action:'accept',fingerprint:legacy.fingerprint,...targetId?{target_id:targetId}:{}});
-    }else {if(value===null)throw new HttpError(400,'A literal metadata value is required');this.write(vault,id,proposal.fieldKey,value,targetId,input.preserveAuthoredValues===true);}
+    }else {if(value===null)throw new HttpError(400,'A literal metadata value is required');this.write(vault,id,proposal.fieldKey,value,targetId,input.preserveAuthoredValues===true,input.value===undefined&&row.origin==='ai'?'ai':'manual');}
     result='changed';
    }
   }
@@ -151,7 +154,7 @@ export class SourceMetadata {
   const competing=new Set(pending.filter(proposal=>input.proposals.some(item=>item.proposalId===proposal.id)&&proposal.compatible).filter(proposal=>pending.some(other=>other.id!==proposal.id&&other.fieldKey===proposal.fieldKey&&input.proposals.some(item=>item.proposalId===other.id)&&other.value!==proposal.value)).map(proposal=>proposal.fieldKey));
   attention.push(...competing);
   for(const item of input.proposals){const current=pending.find(proposal=>proposal.id===item.proposalId);if(!current||!current.compatible||competing.has(current.fieldKey))continue;const fresh=this.snapshot(vault,id).fields.flatMap(field=>field.proposals).find(proposal=>proposal.id===item.proposalId)!;const outcome=this.apply(vault,id,{...item,fingerprint:fresh.fingerprint,action:'accept'});(outcome==='changed'?changed:satisfied).push(current.fieldKey);}
-  return {changed,satisfied,attention,snapshot:this.snapshot(vault,id)};
+  return {changed:[...new Set(changed)],satisfied:[...new Set(satisfied)],attention:[...new Set(attention)],snapshot:this.snapshot(vault,id)};
  });}
  registerCandidate(vault:string,id:string,candidate:MetadataCandidate):MetadataRegistration{return this.transaction(()=>{
   this.source(vault,id);if(!candidate.fieldKey.startsWith('bibliography:'))throw new HttpError(400,'Unsupported structured metadata target');candidate={...candidate,fieldKey:'bibliography:'+sourceMetadataCanonicalField(candidate.fieldKey.slice(13))};const value=required(candidate.value,10000),field=this.fields(vault,id).find(item=>item.key===candidate.fieldKey);if(!field||!candidate.fieldKey.startsWith('bibliography:'))throw new HttpError(400,'Unsupported structured metadata target');

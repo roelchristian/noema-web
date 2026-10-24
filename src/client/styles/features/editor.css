@@ -3330,7 +3330,7 @@
 @media (min-width: 751px) {
   .block[data-transliteration-layout=side-by-side] {
     align-items: start;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   }
   .block[data-transliteration-layout=side-by-side] > .block-transliteration {
     padding-block: 0;

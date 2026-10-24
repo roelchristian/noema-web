@@ -4,6 +4,8 @@ import {useMobileViewport} from '../components/WorkspaceNavigation';
 export type TransliterationLayout='off'|'below'|'side-by-side';
 const listeners=new Set<()=>void>();
 const session=new Map<string,TransliterationLayout>();
+const lastLayoutKey='noema-transliteration-layout';
+let lastLayout:TransliterationLayout='below';
 const keyFor=(pageKey:string)=>'noema-transliteration:'+pageKey;
 function layout(value:unknown):TransliterationLayout{return value==='below'||value==='side-by-side'?value:'off';}
 export function readTransliteration(pageKey:string):TransliterationLayout {
@@ -14,8 +16,18 @@ export function readTransliteration(pageKey:string):TransliterationLayout {
 }
 export function rememberTransliteration(pageKey:string,value:TransliterationLayout) {
   const key=keyFor(pageKey);session.set(key,value);
-  try {localStorage.setItem(key,value);}catch {/* Keep the preference in this session. */}
+  if(value!=='off')lastLayout=value;
+  try {
+    localStorage.setItem(key,value);
+    if(value!=='off')localStorage.setItem(lastLayoutKey,value);
+  }catch {/* Keep the preference in this session. */}
   listeners.forEach(listener=>listener());
+}
+export function toggleTransliteration(pageKey:string) {
+  if(readTransliteration(pageKey)!=='off')return rememberTransliteration(pageKey,'off');
+  let preferred=lastLayout;
+  try {preferred=layout(localStorage.getItem(lastLayoutKey));}catch {/* Use the session preference. */}
+  rememberTransliteration(pageKey,preferred==='off'?'below':preferred);
 }
 function subscribe(listener:()=>void) {
   listeners.add(listener);

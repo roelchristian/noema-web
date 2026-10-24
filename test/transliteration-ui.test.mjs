@@ -36,14 +36,14 @@ for(const [name,text,expected] of [['Greek','θεός','theós'],['Old Church Sl
     React.createElement(TransliterationBar,{pageKey:'test/'+page.id})));
   await act(async()=>render());
   assert.equal(document.querySelector('.transliteration-bar'),null);
-  const choose=async label=>{
+  const toggle=async()=>{
     await act(async()=>document.querySelector('[aria-label="More page actions"]').click());
-    await act(async()=>document.querySelector('[data-menu-action="Transliteration"]').click());
-    const selected=document.querySelector(`[data-menu-action="${label}"]`);
-    assert.equal(selected.disabled,false);
-    await act(async()=>selected.click());
+    const action=document.querySelector('[data-menu-action="Transliteration"]');
+    assert.equal(action.disabled,false);
+    assert.equal(action.getAttribute('aria-haspopup'),null);
+    await act(async()=>action.click());
   };
-  await choose('Below paragraphs');
+  await toggle();
   assert.ok(document.querySelector('[aria-label="Transliteration controls"]'));
   assert.equal(document.querySelector('.transliteration-bar-label').textContent,'Transliteration');
   assert.ok(document.querySelector('.transliteration-bar .select-trigger[role="combobox"]'));
@@ -63,6 +63,11 @@ for(const [name,text,expected] of [['Greek','θεός','theós'],['Old Church Sl
   assert.equal(document.querySelector('.transliteration-label'),null);
   assert.equal(document.querySelector('[data-block-id="p"]').dataset.transliterationLayout,'side-by-side');
   assert.equal(document.querySelectorAll('[contenteditable="true"]').length,0);
+  await toggle();
+  assert.equal(document.querySelector('.transliteration-bar'),null);
+  await toggle();
+  assert.equal(readTransliteration('test/'+page.id),'side-by-side');
+
   await act(async()=>{root.unmount();});
   const remount=createRoot(document.querySelector('#mount'));
   env.defer(()=>act(async()=>remount.unmount()));
@@ -139,10 +144,13 @@ test('mobile uses below paragraphs and hides side-by-side controls while retaini
   assert.equal(document.querySelector('.transliteration-bar select'),null);
   assert.equal(document.querySelector('.transliteration-bar').textContent,'TransliterationHide');
   await act(async()=>document.querySelector('[aria-label="More page actions"]').click());
+  assert.equal(document.querySelector('[data-menu-action="Transliteration"]').getAttribute('aria-checked'),'true');
   await act(async()=>document.querySelector('[data-menu-action="Transliteration"]').click());
-  assert.equal(document.querySelector('[data-menu-action="Side by side"]'),null);
-  assert.equal(document.querySelector('[data-menu-action="Below paragraphs"]').getAttribute('aria-checked'),'true');
+  assert.equal(readTransliteration(pageKey),'off');
+  await act(async()=>document.querySelector('[aria-label="More page actions"]').click());
+  await act(async()=>document.querySelector('[data-menu-action="Transliteration"]').click());
   assert.equal(readTransliteration(pageKey),'side-by-side');
+  assert.equal(document.querySelector('[data-block-id="p"]').dataset.transliterationLayout,'below');
   await act(async()=>{mobile=false;for(const listener of changes)listener();});
   assert.equal(document.querySelector('[data-block-id="p"]').dataset.transliterationLayout,'side-by-side');
   assert.equal(document.querySelector('.transliteration-bar select').value,'side-by-side');

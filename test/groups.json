@@ -31,7 +31,8 @@
     "test/document-find.test.mjs",
     "test/property-definitions.test.mjs",
     "test/property-catalogue.test.mjs",
-    "test/page-history-ui.test.mjs"
+    "test/page-history-ui.test.mjs",
+    "test/transliteration.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",
@@ -87,7 +88,8 @@
     "test/create-source-text-ui.test.mjs",
     "test/success-notice.test.mjs",
     "test/provider-connection-ui.test.mjs",
-    "test/settings-category-ui.test.mjs"
+    "test/settings-category-ui.test.mjs",
+    "test/transliteration-ui.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",

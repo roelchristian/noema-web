@@ -1,3 +1,4 @@
+import {rememberTransliteration,useTransliteration} from '../state/transliteration-preferences';
 import {PresentationSelector} from '../settings/PresentationSelector';
 import type {PresentationMode} from '../settings/appearance';
 import {t as uiText} from '../i18n';
@@ -37,6 +38,8 @@ export function PageToolbar({ onArchive, onRestore, onHistory, onRename, entitie
   const [featuredImageOpen, setFeaturedImageOpen] = useState(false);
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const markdownTyping=useMarkdownTyping();
+  const transliterationKey=page.vault_id+'/'+page.id;
+  const transliteration=useTransliteration(transliterationKey);
   const editingDisabled=!!page.editLocked||!!page.archived_at||changingLock;
   const contentsLabel=tocVisible?uiText("Hide table of contents"):uiText("Show table of contents");
   function toggleMarkdownTyping() {
@@ -87,6 +90,11 @@ export function PageToolbar({ onArchive, onRestore, onHistory, onRename, entitie
       {label:uiText("Find in page"),icon:"search",description:"⌘F / Ctrl+F",onSelect:()=>document.dispatchEvent(new Event("noema:document-find"))},
       {label: uiText("Reveal in sidebar"), icon: 'folder', onSelect: onRevealInSidebar},
       ...(tocAvailable&&onToggleToc?[{label:uiText("Table of contents"),icon:'view-list',checked:tocVisible,onSelect:onToggleToc}]:[]),
+      {label:uiText("Transliteration"),icon:'culture',description:uiText("Greek, Cyrillic and Coptic · Latin letters, no AI"),children:[
+        {label:uiText("Off"),checked:transliteration==='off',onSelect:()=>rememberTransliteration(transliterationKey,'off')},
+        {label:uiText("Below paragraphs"),checked:transliteration==='below',onSelect:()=>rememberTransliteration(transliterationKey,'below')},
+        {label:uiText("Side by side"),checked:transliteration==='side-by-side',onSelect:()=>rememberTransliteration(transliterationKey,'side-by-side')},
+      ]},
       {label: uiText("Featured image…"), icon: 'image', disabled:editingDisabled, onSelect: () => setFeaturedImageOpen(true)},
       {get label(){return uiText("Editing")}, icon: 'edit', disabled: editingDisabled, children: [
         {label: uiText("Undo"), icon:'undo', description: uiText("⌘/Ctrl+Z"), disabled: !canUndo, onSelect: onUndo},

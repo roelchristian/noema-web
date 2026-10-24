@@ -306,3 +306,43 @@ test('boundary-space readback preserves ordinary edits and cloned formatted sele
   marker.textContent=' new ';assert.equal(readSegments(el).at(-1).text,' new after','whole-node replacement reads the new authored text');
  });
 });
+
+test('transliteration is read-only, updates with edits and layout preferences, and stays out of saved blocks',async()=>{
+  const {rememberTransliteration}=await import('../src/client/state/transliteration-preferences.ts');
+  await fixture(async({dom,host,blocks,set,caret})=>{
+    const before=blocks();
+    await set(before.map(block=>block.id==='b1'?{...block,content:[{text:'ὁ λόγος'}]}:block));
+    assert.equal(document.querySelector('.block-transliteration'),null);
+    const original=structuredClone(blocks());
+    const editor=host('b1'),text=editor.firstChild;
+    caret(editor,2);
+    await act(async()=>rememberTransliteration('fixture/','below'));
+    let derived=document.querySelector('[data-block-id="b1"] .block-transliteration');
+    assert.equal(derived.getAttribute('contenteditable'),'false');
+    assert.equal(derived.lastElementChild.textContent,'ho lógos');
+    assert.equal(derived.parentElement.dataset.transliterationLayout,'below');
+    assert.equal(host('b1'),editor);
+    assert.equal(editor.firstChild,text);
+    assert.deepEqual(blocks(),original);
+    assert.equal(getSelection().anchorNode,text.firstChild??text);
+    await act(async()=>rememberTransliteration('fixture/','side-by-side'));
+    assert.equal(derived.parentElement.dataset.transliterationLayout,'side-by-side');
+    editor.textContent='ⲁ мир';
+    await act(async()=>editor.dispatchEvent(new dom.window.InputEvent('input',{bubbles:true,inputType:'insertText',data:'мир'})));
+    derived=document.querySelector('[data-block-id="b1"] .block-transliteration');
+    assert.equal(derived.lastElementChild.textContent,'a mir');
+    assert.equal(blocks()[0].content.map(s=>s.text??'').join(''),'ⲁ мир');
+    assert.equal(document.querySelectorAll('[data-block-id]').length,blocks().length);
+    const range=document.createRange();range.selectNodeContents(derived.lastElementChild);
+    getSelection().removeAllRanges();getSelection().addRange(range);
+    const {selectedEditorBlocks,replaceEditorSelection}=await import('../src/client/editor/block-selection.ts');
+    assert.equal(selectedEditorBlocks(document.querySelector('#blocks')),null);
+    assert.equal(replaceEditorSelection(document.querySelector('#blocks'),{blocks,entities:()=>[],commit:()=>assert.fail('read-only text must not edit the source')}),false);
+    const copy=new dom.window.Event('copy',{bubbles:true,cancelable:true});
+    Object.defineProperty(copy,'clipboardData',{value:{setData:()=>assert.fail('derived text should use native copy')}});
+    await act(async()=>derived.dispatchEvent(copy));
+    assert.equal(copy.defaultPrevented,false);
+    await act(async()=>rememberTransliteration('fixture/','off'));
+    assert.equal(document.querySelector('.block-transliteration'),null);
+  });
+});

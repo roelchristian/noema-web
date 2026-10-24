@@ -2,7 +2,7 @@ import {SuccessNotice,useSuccessNotice} from '../components/SuccessNotice';
 import {getLocale} from '../i18n';
 import {t as uiText} from '../i18n';
 import {DisclosureSummary} from '../components/DisclosureSummary';
-import {formatEstimatedUSD} from '../../shared/ai-pricing';
+import {formatEstimatedUSD,isUnpaidActivity} from '../../shared/ai-pricing';
 import {AIPricingNote} from './AIPricingNote';
 import { AIActivityUsage } from './AIActivityUsage';
 import { AIActivityDebug } from './AIActivityDebug';
@@ -13,6 +13,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { api } from '../api';
 
 export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpenPage: (vaultId: string, pageId: string) => Promise<void>}) {
+  const [excludeUnpaid,setExcludeUnpaid]=useState(false);
   const [view,setView]=useState<'log'|'usage'>('log');
   const [debugId,setDebugId]=useState<string|null>(null);
   const autoRefresh=useRef(true);
@@ -54,7 +55,7 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
       let cursor:number|undefined;
       do {
         const page=await api.aiActivity(cursor);
-        items.push(...page.items);cursor=page.nextCursor??undefined;
+        items.push(...page.items.filter(item=>!excludeUnpaid||!isUnpaidActivity(item)));cursor=page.nextCursor??undefined;
       } while(cursor!==undefined);
       const fields: (keyof AIActivity)[]=['id','action','status','startedAt','finishedAt','vaultId','vaultName','objectKind','objectId','objectTitle','revision','model','reasoningEffort','promptBytes','inputTokens','cachedInputTokens','cacheWriteTokens','outputTokens','reasoningTokens','estimatedCost','pricingVersion','durationMs','httpStatus'];
       const cell=(value:unknown)=>{
@@ -69,6 +70,7 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
     }catch(error){setError(error instanceof Error?error.message:'Could not export activity.');}
     finally{setBusy(false);}
   }
+  const visibleItems=excludeUnpaid?data.items.filter(item=>!isUnpaidActivity(item)):data.items;
   if(debugId)return <AIActivityDebug id={debugId} onClose={()=>setDebugId(null)}/>;
   if(confirmClear) return <ConfirmDialog danger title={uiText("Clear AI activity?")} description={uiText("Delete all activity and debug traces for unlocked vaults. Running requests continue.")} action={uiText("Clear activity")} onClose={()=>setConfirmClear(false)} onConfirm={async()=>{await api.clearAIActivity();setData({items:[],nextCursor:null});setMessage('Activity cleared.');}}/>;
   return <Modal className="ai-activity-modal" titleId="ai-activity-heading" onClose={onClose}>
@@ -81,8 +83,9 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
         setView(next);document.getElementById('ai-activity-tab-'+next)?.focus();
       }}>{tab.label}</button>)}
     </div>
+    <label className="embedding-toggle"><input type="checkbox" checked={excludeUnpaid} onChange={event=>setExcludeUnpaid(event.target.checked)}/><span>{uiText("Exclude unpaid activity (Kokoro and DOI metadata lookups)")}</span></label>
     <div id="ai-activity-panel" role="tabpanel" aria-labelledby={'ai-activity-tab-'+view} tabIndex={0}>
-    {view==='usage'?<AIActivityUsage/>:<>
+    {view==='usage'?<AIActivityUsage excludeUnpaid={excludeUnpaid}/>:<>
     <p className="ai-activity-description">{uiText("Activity and token usage are stored locally for one year. Debug traces expire separately after 30 days. Locked vault activity is hidden and excluded from export and clear. Cache reads and writes appear when reported by the provider.")}</p>
     <AIPricingNote/>
     {data.enrichmentMetrics&&<section aria-label={uiText("Page enrichment efficiency")} className="ai-activity-description">
@@ -93,12 +96,12 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
     </section>}
     <div className="ai-activity-toolbar"><button className="button" disabled={busy} onClick={()=>void load()}>{uiText("Refresh")}</button><button className="button" disabled={busy||!data.items.length} onClick={()=>void exportCSV()}>{uiText("Export CSV")}</button><button className="button danger" disabled={busy||!data.items.length} onClick={()=>setConfirmClear(true)}>{uiText("Clear activity")}</button></div>
     {error&&<p role="alert">{error}</p>}
-    {message?<SuccessNotice inline message={message} occurrence={messageOccurrence} onDismiss={()=>setMessage('')}/>:<p role="status">{busy?uiText("Loading activity…"):uiText("{value0} records loaded",{value0: data.items.length})}</p>}
+    {message?<SuccessNotice inline message={message} occurrence={messageOccurrence} onDismiss={()=>setMessage('')}/>:<p role="status">{busy?uiText("Loading activity…"):uiText("{value0} records loaded",{value0: visibleItems.length})}</p>}
     <div className="ai-activity-table-wrap" tabIndex={0} role="region" aria-label={uiText("AI activity records")} aria-busy={busy}>
       <table className="ai-activity-table">
         <caption className="sr-only">{uiText("AI activity, newest first")}</caption>
         <thead><tr>{['Started','Action','Status','Source','Model / reasoning','Input bytes','Input tokens','Cached input','Cache writes','Output tokens','Reasoning tokens','Estimated USD','Duration','HTTP','Debug'].map(label=><th scope="col" key={label}>{uiText(label)}</th>)}</tr></thead>
-        <tbody>{data.items.map(item=><tr key={item.id}>
+        <tbody>{visibleItems.map(item=><tr key={item.id}>
           <td><time dateTime={item.startedAt}>{new Date(item.startedAt).toLocaleString(getLocale())}</time></td>
           <td>{uiText(aiActivityLabels[item.action])}</td>
           <td><span className={'ai-activity-status '+item.status}>{uiText(item.status)}</span></td>
@@ -118,9 +121,9 @@ export function AIActivityLog({onOpenPage, onClose}: {onClose: () => void; onOpe
           <td>{item.debugRecorded?<button className="ai-activity-link" onClick={()=>setDebugId(item.id)}>{uiText("Open payload")}</button>:uiText("Off")}</td>
         </tr>)}</tbody>
       </table>
-      {!busy&&!data.items.length&&!error&&<p className="ai-activity-empty">{uiText("No AI activity yet.")}</p>}
+      {!busy&&!visibleItems.length&&!error&&<p className="ai-activity-empty">{uiText("No matching AI activity.")}</p>}
     </div>
-    <footer className="ai-activity-footer">{data.nextCursor!==null&&<button className="button" disabled={busy} onClick={()=>void load(data.nextCursor!)}>{uiText("Load older activity")}</button>}<p>{uiText("Export CSV for all available records, or open a payload for its JSON trace. Loading older activity pauses auto-refresh.")}</p><button className="button primary" onClick={onClose}>{uiText("Done")}</button></footer>
+    <footer className="ai-activity-footer">{data.nextCursor!==null&&<button className="button" disabled={busy} onClick={()=>void load(data.nextCursor!)}>{uiText("Load older activity")}</button>}<p>{uiText("Export CSV includes all retained records matching the unpaid activity filter. Clear activity removes all records for unlocked vaults regardless of this filter. Loading older activity pauses auto-refresh.")}</p><button className="button primary" onClick={onClose}>{uiText("Done")}</button></footer>
     </>}
     </div>
   </Modal>;

@@ -45,3 +45,8 @@ sums costs across its date/action/status filters and displays unpriced action
 counts alongside partial estimates, including daily/monthly and action totals.
 Credits, taxes, account discounts, regional premiums, and other billing adjustments
 are excluded. Estimates are not invoices.
+
+“Exclude unpaid activity” hides local Kokoro speech and DOI metadata lookups
+from the activity log, token report, and CSV export. The selection carries across
+both tabs. Paid-model records with missing usage or unknown prices remain visible.
+Clearing activity still clears all unlocked-vault records regardless of the filter.

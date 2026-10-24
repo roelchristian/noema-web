@@ -120,3 +120,24 @@ for(const model of ['gpt-realtime-2.1-mini','kokoro-82m-v1.0'])test(`speech acti
  await act(async()=>document.querySelector('.ai-activity-title').dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})));
  assert.deepEqual(opened,['default','note']);
 });
+
+test('unpaid filter carries across log and report and applies to every CSV page without hiding unknown paid usage',async t=>{
+ const {root,dom}=mountDebug(t);
+ const row=(id,model,action,extra={})=>({id,model,action,status:'completed',startedAt:new Date().toISOString(),finishedAt:null,durationMs:null,httpStatus:200,reasoningEffort:'none',promptBytes:100,inputTokens:100,outputTokens:20,cachedInputTokens:0,estimatedCost:null,...extra});
+ const rows=[row('local','kokoro-82m-v1.0','text_to_speech'),row('lookup','Crossref / DataCite (metadata)','bibliographic_lookup'),row('paid','gpt-6-luna','page_summary',{estimatedCost:0.001}),row('legacy','gpt-4o-mini-tts','text_to_speech'),row('missing','gpt-realtime-2.1-mini','text_to_speech')];
+ t.mock.method(api,'aiActivity',async cursor=>cursor?{items:[row('older-local','kokoro-82m-v1.0','text_to_speech'),row('older-paid','gpt-6-luna','page_summary',{estimatedCost:0.001})],nextCursor:null}:{items:rows,nextCursor:10});
+ let exported;
+ t.mock.method(URL,'createObjectURL',blob=>{exported=blob;return 'blob:test';});t.mock.method(URL,'revokeObjectURL',()=>{});
+ t.mock.method(dom.window.HTMLAnchorElement.prototype,'click',()=>{});
+ await act(async()=>root.render(React.createElement(AIActivityLog,{onClose(){},onOpenPage:async()=>{}})));
+ const toggle=()=>document.querySelector('input[type=checkbox]');
+ assert.equal(toggle().checked,false);assert.equal(document.querySelectorAll('tbody tr').length,5);
+ await act(async()=>toggle().click());assert.equal(toggle().checked,true);assert.equal(document.querySelectorAll('tbody tr').length,3);
+ assert.match(document.querySelector('tbody').textContent,/gpt-4o-mini-tts/);assert.match(document.querySelector('tbody').textContent,/gpt-realtime-2.1-mini/);assert.doesNotMatch(document.querySelector('tbody').textContent,/kokoro|Crossref/);
+ await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Export CSV').click());
+ const csv=await exported.text();assert.doesNotMatch(csv,/kokoro|Crossref|older-local/);assert.match(csv,/older-paid/);assert.match(csv,/gpt-4o-mini-tts/);
+ await act(async()=>document.querySelector('#ai-activity-tab-usage').click());
+ assert.equal(toggle().checked,true);assert.match(document.querySelector('.ai-usage [role=status]').textContent,/4 matching actions/);assert.match(document.querySelector('.ai-usage-cost').textContent,/\$0.002000.*2 priced actions.*2 unpriced actions/);
+ await act(async()=>toggle().click());assert.match(document.querySelector('.ai-usage [role=status]').textContent,/7 matching actions/);assert.match(document.querySelector('.ai-usage-cost').textContent,/5 unpriced actions/);
+ await act(async()=>document.querySelector('#ai-activity-tab-log').click());assert.equal(toggle().checked,false);assert.equal(document.querySelectorAll('tbody tr').length,5);
+});

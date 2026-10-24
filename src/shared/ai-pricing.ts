@@ -1,4 +1,4 @@
-import type {AIModelPricing} from './intelligence.js';
+import {speechModel,type AIActivity,type AIModelPricing} from './intelligence.js';
 
 export const publishedPricingVersion='published-2026-10-25-standard';
 export const pricingSources={openai:'https://developers.openai.com/api/docs/pricing',gemini:'https://ai.google.dev/gemini-api/docs/pricing'};
@@ -22,3 +22,8 @@ export const publishedModelPricing:AIModelPricing={version:publishedPricingVersi
 }};
 
 export function formatEstimatedUSD(value:number|null|undefined) {return value==null?'—':value>0&&value<0.000001?'<$0.000001':`$${value.toFixed(6)}`;}
+
+/** Classify only known unpaid operations; an unknown price never implies free usage. */
+export function isUnpaidActivity(item:Pick<AIActivity,'action'|'model'>) {
+  return item.action==='bibliographic_lookup'||item.action==='text_to_speech'&&item.model===speechModel;
+}

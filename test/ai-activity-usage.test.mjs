@@ -48,7 +48,7 @@ test('token usage loads all pages, filters dates/actions/status, and counts toke
   await choosePeriod('All');assert.equal(stats()[0],7240);
   assert.match(document.querySelector('.ai-usage-about').textContent,/one year without a record-count limit/);
   await choosePeriod('Custom');
-  const inputs=document.querySelectorAll('.ai-usage input');
+  const inputs=document.querySelectorAll('.ai-usage input[type=date]');
   const key=date=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
   await change(inputs[0],key(old));await change(inputs[1],key(old));assert.equal(stats()[0],1020);
   await change(inputs[0],key(now));assert.match(document.querySelector('[role=alert]').textContent,/start date/);assert.equal(stats()[0],0);

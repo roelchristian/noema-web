@@ -34,7 +34,7 @@ test('resume skips completed excerpts and preserves their checkpoint coverage',a
  const r=fixture();r.patches=[];r.status='interrupted';r.report.promptVersion='source-editorial-beta-3';r.report.chunksCompleted=4;r.report.charactersReviewed=r.original.document.physical.pages[4].range.startOffset;
  let stored=structuredClone(r),calls=0;
  const store={all:()=>[],run:(_sql,status,_at,payload)=>{stored=JSON.parse(payload);},get:()=>undefined};
- const service=new SourceReprocessing(store,{require:()=>({entity_id:'test'})},{selection:()=>({model:r.report.model}),reeditSource:async()=>{calls++;return '{"patches":[]}';}},()=>{}, {start:()=>1,finish:()=>{}});
+ const service=new SourceReprocessing(store,{require:()=>({entity_id:'test'})},{selection:()=>({model:r.report.model,reasoningEffort:r.report.reasoningEffort}),editorialSelection:()=>({model:r.report.model,reasoningEffort:r.report.reasoningEffort}),reeditSource:async()=>{calls++;return '{"patches":[]}';}},()=>{}, {start:()=>1,finish:()=>{}});
  service.detail=()=>structuredClone(stored);service.baseHash=()=>r.baseHash;
  service.resume('v',r.fileId,r.id);
  store.all=()=>stored.status==='queued'?[{vault_id:'v',payload:JSON.stringify(stored)}]:[];
@@ -44,7 +44,7 @@ test('Review all keeps confidence-1 formatting pending during actual execution',
  const r=fixture();r.patches=[];r.status='queued';r.acceptanceMode='review_all';r.acceptanceThreshold=1;r.report.chunksCompleted=0;r.report.charactersReviewed=0;
  let stored=structuredClone(r),calls=0;
  const store={all:()=>[],run:(_sql,status,_at,payload)=>{stored=JSON.parse(payload);},get:()=>undefined};
- const service=new SourceReprocessing(store,{require:()=>({entity_id:'test'})},{selection:()=>({model:r.report.model}),reeditSource:async()=>{calls++;return JSON.stringify({patches:calls===1?[{original:'Religions 2019, 10, 372',replacement:'Religions  2019, 10, 372',category:'formatting',reason:'Spacing',confidence:1}]:[]});}},()=>{}, {start:()=>1,finish:()=>{}});
+ const service=new SourceReprocessing(store,{require:()=>({entity_id:'test'})},{selection:()=>({model:r.report.model,reasoningEffort:r.report.reasoningEffort}),editorialSelection:()=>({model:r.report.model,reasoningEffort:r.report.reasoningEffort}),reeditSource:async()=>{calls++;return JSON.stringify({patches:calls===1?[{original:'Religions 2019, 10, 372',replacement:'Religions  2019, 10, 372',category:'formatting',reason:'Spacing',confidence:1}]:[]});}},()=>{}, {start:()=>1,finish:()=>{}});
  service.baseHash=()=>r.baseHash;store.all=()=>stored.status==='queued'?[{vault_id:'v',payload:JSON.stringify(stored)}]:[];
  await service.tick();assert.equal(stored.status,'completed');assert.equal(stored.patches.length,1);assert.equal(stored.patches[0].decision,'pending');assert.equal(stored.reprocessed.text,r.original.text);
 });
@@ -53,7 +53,7 @@ test('cancellation aborts in-flight output and resumes only after worker settles
  let stored=structuredClone(r),entered,release;
  const inFlight=new Promise(resolve=>{entered=resolve;});
  const store={all:()=>[],run:(_sql,status,_at,payload)=>{stored=JSON.parse(payload);},get:()=>undefined};
- const service=new SourceReprocessing(store,{require:()=>({entity_id:'test'})},{selection:()=>({model:r.report.model}),reeditSource:async()=>{entered();return new Promise(resolve=>{release=()=>resolve('{"patches":[]}');});}},()=>{}, {start:()=>1,finish:()=>{}});
+ const service=new SourceReprocessing(store,{require:()=>({entity_id:'test'})},{selection:()=>({model:r.report.model,reasoningEffort:r.report.reasoningEffort}),editorialSelection:()=>({model:r.report.model,reasoningEffort:r.report.reasoningEffort}),reeditSource:async()=>{entered();return new Promise(resolve=>{release=()=>resolve('{"patches":[]}');});}},()=>{}, {start:()=>1,finish:()=>{}});
  service.detail=()=>structuredClone(stored);service.baseHash=()=>r.baseHash;store.all=()=>stored.status==='queued'?[{vault_id:'v',payload:JSON.stringify(stored)}]:[];
  const work=service.tick();await inFlight;service.cancel('v',r.fileId,r.id);
  assert.throws(()=>service.resume('v',r.fileId,r.id),/interruption/);
@@ -71,7 +71,7 @@ function concurrentHarness(provider){
  for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])r.report[key]=null;
  let stored=structuredClone(r),writes=0;
  const store={all:()=>[],run:(_sql,status,_at,payload)=>{writes++;stored=JSON.parse(payload);},get:()=>undefined};
- const service=new SourceReprocessing(store,{require:()=>({entity_id:'test'})},{selection:()=>({model:r.report.model}),reeditSource:async(prompt,_instructions,signal,observe)=>{
+ const service=new SourceReprocessing(store,{require:()=>({entity_id:'test'})},{selection:()=>({model:r.report.model,reasoningEffort:r.report.reasoningEffort}),editorialSelection:()=>({model:r.report.model,reasoningEffort:r.report.reasoningEffort}),reeditSource:async(prompt,_instructions,signal,observe)=>{
   observe(10).usage({input_tokens:10,output_tokens:2,output_tokens_details:{reasoning_tokens:0},input_tokens_details:{cached_tokens:3}});
   return provider(JSON.parse(prompt),signal);
  }},()=>{}, {start:()=>1,finish:()=>{},request:()=>({})});

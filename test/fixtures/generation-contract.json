@@ -218,7 +218,7 @@
       "store": false,
       "max_output_tokens": 16000,
       "reasoning": {
-        "effort": "none"
+        "effort": "low"
       },
       "tools": [],
       "tool_choice": "none"

@@ -33,6 +33,21 @@ export const embeddingBatchMaxBytes=64000;
 export class EmbeddingAdmissionError extends HttpError {
   constructor(message:string,public retryAfterMs:number) {super(429,message);this.name='EmbeddingAdmissionError';}
 }
+/** Central admission rejected the request before any provider transport. */
+export class GenerationAdmissionError extends HttpError {
+  readonly code='local_admission';
+  constructor(message:string) {super(429,message);this.name='GenerationAdmissionError';}
+}
+/** Preserve the provider HTTP outcome without retaining its body or credentials. */
+export class GenerationProviderError extends HttpError {
+  readonly code='provider_http';
+  constructor(public providerStatus:number,message:string) {super(providerStatus===429?429:502,message);this.name='GenerationProviderError';}
+}
+/** A transport interruption cannot prove whether the provider completed/billed work. */
+export class GenerationTransportError extends HttpError {
+  readonly outcomeUncertain=true;
+  constructor(public code:'timeout'|'provider_transport') {super(502,code==='timeout'?'The AI transport deadline elapsed. The provider outcome is unknown.':'The AI connection failed. The provider outcome is unknown.');this.name='GenerationTransportError';}
+}
 
 interface Credential { key: string; expiresAt: string; generation: string }
 function parseSourceAuthors(value:unknown):SourceAuthor[] {
@@ -87,6 +102,8 @@ export function intelligencePreferencesFor(store: Store): PreferencesStore {
 }
 export class Intelligence {
   private active: AbortController | null=null;
+  // Editorial shares exclusion with the exclusive slot, but admits two sibling excerpts.
+  private editorialRequests=new Set<AbortController>();
   private speechRequests=new Set<AbortController>();
   private ttsEnabled=false;
   private narration:NarrationPreferences=structuredClone(defaultNarrationPreferences);
@@ -120,6 +137,11 @@ export class Intelligence {
     }
   }
   selection(): IntelligencePreferences {return {...this.preferences};}
+  editorialSelection():IntelligencePreferences {
+    const selection=this.selection();
+    if(!supportedIntelligencePreferences(selection))throw new HttpError(400,'Choose a supported editorial model and reasoning effort in Settings → Intelligence.');
+    return selection;
+  }
   savePreferences(body: Record<string,unknown>) {
     if(!supportedIntelligencePreferences(body))throw new HttpError(400,'Choose a supported model and reasoning effort.');
     const manualRequestsPerMinute=body.manualRequestsPerMinute === undefined ? this.manualRequestsPerMinute : body.manualRequestsPerMinute;
@@ -395,14 +417,16 @@ export class Intelligence {
     const credential=this.credential(),preferenceRevision=this.preferenceRevision;
     if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
     const policy=generationPolicy(request,{personaId:this.personaId,standard:this.selection(),title:this.titleSelection(),enrichment:this.enrichmentSelection()});
-    if(policy.admission.activeSlot==='exclusive'&&this.active)throw new HttpError(429,'Another AI request is running. Please wait.');
+    if(policy.admission.activeSlot==='exclusive'&&(this.active||this.editorialRequests.size))throw new GenerationAdmissionError('Another AI request is running. Please wait.');
+    if(policy.admission.activeSlot==='editorial'&&(this.active||this.editorialRequests.size>=2))throw new GenerationAdmissionError('Editorial AI capacity is busy. Wait for the active requests to finish.');
     if (policy.admission.manual) this.reserveManualRequest();
-    const controller=new AbortController();this.generationRequests.add(controller);if(policy.admission.activeSlot==='exclusive')this.active=controller;
+    const controller=new AbortController();this.generationRequests.add(controller);if(policy.admission.activeSlot==='exclusive')this.active=controller;if(policy.admission.activeSlot==='editorial')this.editorialRequests.add(controller);
     const abort=()=>controller.abort();
     const requestSignal=request.signal;
     requestSignal?.addEventListener('abort',abort,{once:true});
     if(requestSignal?.aborted)controller.abort();
-    const timer=setTimeout(()=>controller.abort(),Math.min(policy.timeoutMs,Date.parse(credential.expiresAt)-this.clock()));
+    let timedOut=false,transportStarted=false;
+    const timer=setTimeout(()=>{timedOut=true;controller.abort();},Math.min(policy.timeoutMs,Date.parse(credential.expiresAt)-this.clock()));
     let trace: AIDebugTrace | undefined;
     try {
       const prompt=policy.prompt(),selection=policy.selection;
@@ -412,6 +436,8 @@ export class Intelligence {
       const payload={model:selection.model,store:false,max_output_tokens:policy.maxOutputTokens,reasoning:{effort:selection.reasoningEffort},tools:[],tool_choice:'none',...prompt,...(trace||policy.stream?{stream:true}:{})};
       trace?.request('https://api.openai.com/v1/responses',payload);
       trace?.event('prompt',{template:request.kind,version:1,...(policy.persona?{persona:{id:policy.persona.id,version:policy.persona.version,origin:policy.persona.origin}}:{})});
+      if(controller.signal.aborted)throw new HttpError(409,'AI generation was stopped before sending the request.');
+      transportStarted=true;
       const response=await this.transport('https://api.openai.com/v1/responses',{
         method:'POST',redirect:'error',signal:controller.signal,
         headers:{'Content-Type':'application/json',Authorization:`Bearer ${credential.key}`},
@@ -419,7 +445,7 @@ export class Intelligence {
       });
       if(!response.ok) {
         if(trace)await readOpenAIResponse(response,trace).catch(()=>{});else await response.body?.cancel();
-        throw new HttpError(response.status===429?429:502,response.status===401?'OpenAI rejected the API key. Replace it in Settings.':response.status===429?'OpenAI quota or rate limit reached. Check your OpenAI account.':'OpenAI could not complete the request. Check API permissions, model access, and billing.');
+        throw new GenerationProviderError(response.status,response.status===401?'OpenAI rejected the API key. Replace it in Settings.':response.status===429?'OpenAI quota or rate limit reached. Check your OpenAI account.':'OpenAI could not complete the request. Check API permissions, model access, and billing.');
       }
       const safeDelta=(delta:string,receive:(delta:string)=>void)=>{
         if(controller.signal.aborted||this.clock()>=Date.parse(credential.expiresAt)||this.preferenceRevision!==preferenceRevision)throw new HttpError(409,'AI generation was stopped or its settings changed.');
@@ -441,7 +467,11 @@ export class Intelligence {
       }
       trace?.error(error instanceof Error?error.message:'AI request failed.');
       if(error instanceof HttpError)throw error;
+      if(request.kind==='editorial') {
+        if(requestSignal?.aborted||this.credential()?.generation!==credential.generation||this.preferenceRevision!==preferenceRevision)throw new HttpError(409,'AI generation was stopped or its settings changed.');
+        if(transportStarted)throw new GenerationTransportError(timedOut?'timeout':'provider_transport');
+      }
       throw new HttpError(502,'The AI request failed or timed out. Please try again.');
-    }finally {clearTimeout(timer);requestSignal?.removeEventListener('abort',abort);this.generationRequests.delete(controller);if(this.active===controller)this.active=null;}
+    }finally {clearTimeout(timer);requestSignal?.removeEventListener('abort',abort);this.generationRequests.delete(controller);this.editorialRequests.delete(controller);if(this.active===controller)this.active=null;}
   }
 }

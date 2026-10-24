@@ -1,7 +1,8 @@
 import {resolvePersona,personaInstructions} from './ai-personas.js';
 import type {AIRequestObserver} from './ai-debug.js';
 import type {ReadingExplanationOptions} from '../../shared/source-reading.js';
-import type {IntelligencePreferences} from '../../shared/intelligence.js';
+import {supportedIntelligencePreferences,type IntelligencePreferences} from '../../shared/intelligence.js';
+import {HttpError} from '../validation.js';
 import {editorReviewInstructions} from './editor-review.js';
 import {sourceMathInstructions} from './source-math.js';
 import {sourcePagePrompt} from './source-page-prompt.js';
@@ -38,7 +39,7 @@ interface GenerationPolicy {
   persona?:ReturnType<typeof resolvePersona>;
   prompt:()=>Prompt;
   selection:IntelligencePreferences;
-  admission:{activeSlot:'exclusive'|'independent';manual:boolean};
+  admission:{activeSlot:'exclusive'|'independent'|'editorial';manual:boolean};
   timeoutMs:number;
   maxOutputTokens:number;
   maxOutputLength:number;
@@ -56,7 +57,7 @@ export function generationPolicy(request:GenerationRequest,selections:Selections
   const persona=request.kind==='explanation'||request.kind==='review'||request.kind==='sourcePage'
     ?resolvePersona(request.personaId??selections.personaId,request.personaVersion):undefined;
   // Background only bypasses manual accounting, never the exclusive active slot.
-  const policy=(prompt:()=>Prompt,{activeSlot,...overrides}:Partial<Omit<GenerationPolicy,'prompt'|'admission'>>&{activeSlot:'exclusive'|'independent'}):GenerationPolicy=>({
+  const policy=(prompt:()=>Prompt,{activeSlot,...overrides}:Partial<Omit<GenerationPolicy,'prompt'|'admission'>>&{activeSlot:GenerationPolicy['admission']['activeSlot']}):GenerationPolicy=>({
     persona,prompt:()=>{const value=prompt();return persona?{...value,instructions:personaInstructions(value.instructions,persona,request.kind==='review')}:value;},selection:selections.standard,maxOutputTokens:8192,maxOutputLength:12000,timeoutMs:45000,stream:false,
     admission:{activeSlot,manual:!request.background},...overrides,
   });
@@ -94,7 +95,8 @@ export function generationPolicy(request:GenerationRequest,selections:Selections
     case 'collectionRules':
       return policy(()=>({instructions:request.instructions,input:request.input}),{activeSlot:'exclusive',selection:{...selections.standard,reasoningEffort:'none'},maxOutputTokens:4096,maxOutputLength:32768});
     case 'editorial':
-      return policy(()=>({instructions:request.instructions,input:request.input}),{activeSlot:'exclusive',selection:{...selections.standard,reasoningEffort:'none'},maxOutputTokens:16000,maxOutputLength:60000,timeoutMs:180000});
+      if(!supportedIntelligencePreferences(selections.standard))throw new HttpError(400,'Choose a supported editorial model and reasoning effort in Settings → Intelligence.');
+      return policy(()=>({instructions:request.instructions,input:request.input}),{activeSlot:'editorial',selection:{...selections.standard},maxOutputTokens:16000,maxOutputLength:60000,timeoutMs:180000});
     default: {
       const exhaustive:never=request;
       throw new Error(`Unsupported generation request: ${String(exhaustive)}`);

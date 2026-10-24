@@ -1,3 +1,4 @@
+import type {ReasoningEffort} from './intelligence.js';
 import type {SourceDocument,SourceDocumentRange} from './source-document.js';
 export type ReprocessingStatus='queued'|'running'|'completed'|'failed'|'interrupted';
 export interface SourceEditorialPatch {
@@ -6,7 +7,7 @@ export interface SourceEditorialPatch {
  reason:string;riskReasons?:string[];confidence:number; decision:'pending'|'accepted'|'rejected'; userReplacement?:string;
 }
 export interface SourceReprocessingReport {
- promptVersion:string;model:string;reasoningEffort:'none'|'medium';startedAt:string|null;finishedAt:string|null;durationMs:number|null;
+ promptVersion:string;model:string;reasoningEffort:ReasoningEffort;startedAt:string|null;finishedAt:string|null;durationMs:number|null;
  /** Completed excerpt indexes, including out-of-order successes. Missing means a legacy completed prefix. */
  completedChunkIndexes?:number[];concurrency?:number;
  chunksTotal:number;chunksCompleted:number;charactersTotal:number;charactersReviewed:number;

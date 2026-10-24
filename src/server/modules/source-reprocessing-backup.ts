@@ -92,7 +92,7 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  }).sort((a,b)=>a.start-b.start);
  if(ordered.some((bounds,index)=>index>0&&bounds.start<ordered[index-1]!.end))throw invalid();
  const report=object(r.report);string(report.promptVersion,200);string(report.model,200);
- oneOf(report.reasoningEffort,['none','medium']);
+ oneOf(report.reasoningEffort,['none','minimal','low','medium','high','xhigh','max']);
  if(r.acceptanceMode!==undefined)oneOf(r.acceptanceMode,['review_all','safe_formatting']);
  if(r.acceptanceThreshold!==undefined&&(typeof r.acceptanceThreshold!=='number'||!Number.isFinite(r.acceptanceThreshold)||r.acceptanceThreshold<0||r.acceptanceThreshold>1))throw invalid();
  for(const key of ['startedAt','finishedAt'])if(report[key]!==null)timestamp(report[key]);

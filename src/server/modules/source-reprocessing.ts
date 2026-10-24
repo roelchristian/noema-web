@@ -121,10 +121,11 @@ export class SourceReprocessing {
   if(['pending','running'].includes(file.enrichment_status))throw new HttpError(409,'Wait for original source enrichment to finish before reprocessing; it may still change math, metadata, and structure.');
   if(file.text.length>512000)throw new HttpError(413,'This beta supports up to 512,000 extracted characters per source. No partial pass was started.');
   if(this.store.get("SELECT 1 FROM source_reprocessing WHERE file_id=? AND status IN ('queued','running')",id))throw new HttpError(409,'An editorial pass for this source is already queued or running.');
+  const selection=this.intelligence.editorialSelection();
   const original=this.snapshot(vault,id),timestamp=now();
   if(sourceDocumentEntries(original.document).length>5000)throw new HttpError(413,'This beta supports at most 5,000 semantic nodes per source.');
   if(original.text.length>512000||this.chunks(original.text,original.document.physical.pages.map(p=>p.range.startOffset)).length>128)throw new HttpError(413,'This beta supports at most 512,000 extracted characters and 128 editorial excerpts. No partial pass was started.');
-  const revision:SourceReprocessingRevision={id:randomUUID(),fileId:id,createdAt:timestamp,updatedAt:timestamp,status:'queued',acceptanceMode,acceptanceThreshold,instructions:typeof body.instructions==='string'?body.instructions:'',baseHash:sourceRevisionBaseHash(original),stale:false,patches:[],original,reprocessed:structuredClone(original),report:{completedChunkIndexes:[],concurrency:2,promptVersion,model:this.intelligence.selection().model,reasoningEffort:'none',startedAt:null,finishedAt:null,durationMs:null,chunksTotal:this.chunks(original.text,original.document.physical.pages.map(p=>p.range.startOffset)).length,chunksCompleted:0,charactersTotal:original.text.length,charactersReviewed:0,inputTokens:null,outputTokens:null,reasoningTokens:null,cachedInputTokens:null,diagnostics:['Beta derivative: original extraction remains canonical. Only accepted changes appear in the reading version.'],error:null}};
+  const revision:SourceReprocessingRevision={id:randomUUID(),fileId:id,createdAt:timestamp,updatedAt:timestamp,status:'queued',acceptanceMode,acceptanceThreshold,instructions:typeof body.instructions==='string'?body.instructions:'',baseHash:sourceRevisionBaseHash(original),stale:false,patches:[],original,reprocessed:structuredClone(original),report:{completedChunkIndexes:[],concurrency:2,promptVersion,...selection,startedAt:null,finishedAt:null,durationMs:null,chunksTotal:this.chunks(original.text,original.document.physical.pages.map(p=>p.range.startOffset)).length,chunksCompleted:0,charactersTotal:original.text.length,charactersReviewed:0,inputTokens:null,outputTokens:null,reasoningTokens:null,cachedInputTokens:null,diagnostics:['Beta derivative: original extraction remains canonical. Only accepted changes appear in the reading version.'],error:null}};
   this.store.run('INSERT INTO source_reprocessing (id,file_id,vault_id,status,created_at,updated_at,payload) VALUES (?,?,?,?,?,?,?)',revision.id,id,vault,revision.status,timestamp,timestamp,JSON.stringify(revision));return revision;
  }
  private chunks(text:string,boundaries:number[]=[]){const chunks:{start:number;end:number}[]=[];for(let start=0;start<text.length;){let end=Math.min(start+8000,text.length,boundaries.find(boundary=>boundary>start)??text.length);if(end<text.length){const newline=text.lastIndexOf('\n',end-1);if(newline>start+4000)end=newline+1;else if(/[\uD800-\uDBFF]/.test(text[end-1]!))end--; }chunks.push({start,end});start=end;}return chunks;}
@@ -151,15 +152,16 @@ export class SourceReprocessing {
   const r=this.detail(vault,id,revisionId);
   if(!['failed','interrupted'].includes(r.status)||this.activeRevisionId===revisionId)throw new HttpError(409,'Wait for interruption to finish before resuming.');
   if(r.stale)throw new HttpError(409,'Canonical source changed. Start a new editorial pass.');
-  if(r.report.promptVersion!==promptVersion||r.report.model!==this.intelligence.selection().model)throw new HttpError(409,'Editorial configuration changed. Start a new pass.');
+  const selection=this.intelligence.editorialSelection();
+  if(r.report.promptVersion!==promptVersion||r.report.model!==selection.model)throw new HttpError(409,'Editorial configuration changed. Start a new pass.');
   if(this.store.get("SELECT 1 FROM source_reprocessing WHERE file_id=? AND status IN ('queued','running')",id))throw new HttpError(409,'Another pass is already active.');
-  r.status='queued';r.report.error=null;this.save(vault,r);return r;
+  r.report.reasoningEffort=selection.reasoningEffort;r.status='queued';r.report.error=null;this.save(vault,r);return r;
  }
  async tick(){
   if(this.closed||this.running)return;const row=this.store.all<Row>("SELECT * FROM source_reprocessing WHERE status='queued' ORDER BY created_at").find(row=>{try{this.requireOpen(row.vault_id);return true;}catch{return false;}});if(!row)return;
   this.running=true;const r=JSON.parse(row.payload) as SourceReprocessingRevision,controller=new AbortController();this.controller=controller;this.activeRevisionId=r.id;
-  const started=Date.now();r.status='running';r.report.reasoningEffort='none';r.report.startedAt??=now();r.report.error=null;r.report.finishedAt=null;this.save(row.vault_id,r);
-  const guard=()=>{this.requireOpen(row.vault_id);if(this.closed||controller.signal.aborted)throw new HttpError(409,'Editorial pass interrupted.');if(this.baseHash(row.vault_id,r.fileId)!==r.baseHash)throw new HttpError(409,'Canonical source changed during this pass.');if(this.intelligence.selection().model!==r.report.model)throw new HttpError(409,'AI model changed. Start a new pass.');};
+  const started=Date.now();r.status='running';r.report.startedAt??=now();r.report.error=null;r.report.finishedAt=null;this.save(row.vault_id,r);
+  const guard=()=>{this.requireOpen(row.vault_id);if(this.closed||controller.signal.aborted)throw new HttpError(409,'Editorial pass interrupted.');if(this.baseHash(row.vault_id,r.fileId)!==r.baseHash)throw new HttpError(409,'Canonical source changed during this pass.');const selection=this.intelligence.editorialSelection();if(selection.model!==r.report.model||selection.reasoningEffort!==r.report.reasoningEffort)throw new HttpError(409,'AI model changed. Start a new pass.');};
   const timer=setInterval(()=>{try{this.requireOpen(row.vault_id);if(this.closed)controller.abort();}catch{controller.abort();}},250);timer.unref();
   const chunks=this.chunks(r.original.text,r.original.document.physical.pages.map(p=>p.range.startOffset));
   const completed=new Set(r.report.completedChunkIndexes??Array.from({length:r.report.chunksCompleted},(_,index)=>index));
@@ -173,7 +175,7 @@ export class SourceReprocessing {
    let observedUsage:Usage=usage;
    try {
     guard();const editableText=r.original.text.slice(chunk.start,chunk.end);
-    let output:string;const activityId=this.activity.start('source_reprocessing',{...this.intelligence.selection(),reasoningEffort:'none'},row.vault_id,this.files.require(row.vault_id,r.fileId).entity_id??r.fileId,'entity');
+    let output:string;const activityId=this.activity.start('source_reprocessing',{model:r.report.model,reasoningEffort:r.report.reasoningEffort},row.vault_id,this.files.require(row.vault_id,r.fileId).entity_id??r.fileId,'entity');
     try{output=await this.intelligence.reeditSource(JSON.stringify({preferences:r.instructions,sourceTitle:r.original.document.source.title,physicalPage:this.range(r,chunk.start,chunk.end).startPage,canonicalRange:this.range(r,chunk.start,chunk.end),contextBefore:r.original.text.slice(Math.max(0,chunk.start-1000),chunk.start),editableText,contextAfter:r.original.text.slice(chunk.end,chunk.end+1000)}),instructions,controller.signal,bytes=>{const observer=this.activity.request(activityId,bytes,null);return {...observer,usage:(value:unknown)=>{observer.usage?.(value);if(!value||typeof value!=='object')return;const v=value as Record<string,any>;const count=(n:unknown)=>typeof n==='number'&&Number.isSafeInteger(n)&&n>=0?n:null;observedUsage={inputTokens:count(v.input_tokens),outputTokens:count(v.output_tokens),reasoningTokens:count(v.output_tokens_details?.reasoning_tokens),cachedInputTokens:count(v.input_tokens_details?.cached_tokens)};}};});this.activity.finish(activityId,'completed',200);}
     catch(error){this.activity.finish(activityId,'failed',error instanceof HttpError?error.status:500);throw error;}
 

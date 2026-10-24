@@ -118,7 +118,7 @@
   font-size: 11px;
   color: var(--text-muted);
 }
-.sidebar-action-menu .action-menu-description { font-size: var(--ui-text-md); }
+.sidebar-action-menu :is(.action-menu-description, .action-menu-heading) { font-size: var(--ui-text-md); }
 .action-menu-heading[data-separated] {
   margin-top: 4px;
   border-top: 1px solid var(--line);

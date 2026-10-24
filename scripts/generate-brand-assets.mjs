@@ -8,8 +8,15 @@ const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH??'
 try {
   const page=await browser.newPage({viewport:{width:48,height:48},deviceScaleFactor:1,colorScheme:'light'});
   await page.route('**/*',route=>route.abort());
-  await page.setContent(`<style>body{margin:0;background:transparent}img{display:block;background:#fff;border-radius:16%}</style><img src="data:image/svg+xml,${encodeURIComponent(svg)}">`);
-  const image=page.locator('img');await image.evaluate(e=>e.decode());
+  await page.setContent('<style>body{margin:0;background:transparent}img{display:block}</style><img>');
+  const image=page.locator('img');
+  await image.evaluate(async(e,svg)=>{
+    // Keep the canonical geometry; only the non-adaptive fallback ink differs.
+    const mark=new DOMParser().parseFromString(svg,'image/svg+xml').documentElement;
+    mark.style.color='#767676';
+    e.src='data:image/svg+xml,'+encodeURIComponent(new XMLSerializer().serializeToString(mark));
+    await e.decode();
+  },svg);
   for(const size of sizes){
     await image.evaluate((e,size)=>{e.width=size;e.height=size;},size);
     images.push(await image.screenshot({omitBackground:true}));
@@ -22,5 +29,5 @@ try {
     header.writeUInt32LE(png.length,entry+8);header.writeUInt32LE(offset,entry+12);offset+=png.length;
   });
   await writeFile(new URL('../public/favicon.ico',import.meta.url),Buffer.concat([header,...images]));
-  console.log('Generated favicon.ico: 16, 32 and 48px, dark mark on a neutral white backing.');
+  console.log('Generated favicon.ico: 16, 32 and 48px, neutral #767676 ink on transparency.');
 } finally {await browser.close();}

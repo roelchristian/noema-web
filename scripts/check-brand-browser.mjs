@@ -34,7 +34,9 @@ async function pixels(page,url,size,{transparent=false,dark=false}={}) {
       }components.push(count);
     }
     const center=pixel(size/2,size/2),satellite=pixel(Math.floor(size*.92),size/2);
-    return {size,components:components.sort((a,b)=>a-b),center,satellite,dark};
+    const opaqueColors=[...new Set(Array.from({length:size*size},(_,i)=>data[i*4+3]===255?Array.from(data.slice(i*4,i*4+3)).join(','):null).filter(Boolean))];
+    const transparentPixels=Array.from({length:size*size},(_,i)=>data[i*4+3]===0).filter(Boolean).length;
+    return {size,width:image.naturalWidth,height:image.naturalHeight,components:components.sort((a,b)=>a-b),center,satellite,corner:pixel(0,0),transparentPixels,opaqueColors,dark};
   },{url,size,transparent,dark});
 }
 try {
@@ -91,20 +93,53 @@ try {
       const sample=await pixels(page,base+'/noema-mark.svg',size,{transparent:true,dark:mode==='dark'});
       assert.equal(sample.components.length,3,JSON.stringify(sample));
       assert.equal(sample.center[3],0,'The central ring must stay hollow');
+      assert.equal(sample.corner[3],0,'The adaptive SVG must have no backing');
+      assert.ok(sample.transparentPixels>size*size/2);
       assert.ok(sample.satellite[3]>180,'The satellite must stay visible');
       assert.equal(sample.satellite[0],mode==='dark'?230:23);raster.push({mode,...sample});
     }
     await page.close();
   }
   const ico=await readFile('public/favicon.ico');assert.equal(ico.readUInt16LE(2),1);assert.equal(ico.readUInt16LE(4),3);
-  const page=await browser.newPage();
+  const page=await browser.newPage(),previews=[];
   for(let i=0;i<3;i++){
     const entry=6+16*i,size=ico[entry],length=ico.readUInt32LE(entry+8),offset=ico.readUInt32LE(entry+12);
-    assert.equal(size,[16,32,48][i]);const png=ico.subarray(offset,offset+length);
-    const sample=await pixels(page,'data:image/png;base64,'+png.toString('base64'),size);
+    assert.equal(size,[16,32,48][i]);assert.equal(ico[entry+1],size,'ICO frame must be square');
+    const png=ico.subarray(offset,offset+length),url='data:image/png;base64,'+png.toString('base64');
+    const sample=await pixels(page,url,size,{transparent:true});
+    assert.equal(sample.width,size);assert.equal(sample.height,size,'Decoded PNG dimensions must match the ICO frame');
     assert.equal(sample.components.length,3,JSON.stringify(sample));
-    assert.deepEqual(sample.center,[255,255,255,255]);assert.ok(sample.satellite[0]<80);
+    assert.equal(sample.center[3],0,'The ring center must reveal the browser background');
+    assert.equal(sample.corner[3],0,'No favicon tile or enclosure');
+    assert.ok(sample.transparentPixels>size*size/2,'The canvas must have no backing');
+    assert.deepEqual(sample.opaqueColors,['118,118,118'],'Fallback ink must remain neutral #767676');
+    assert.ok(sample.satellite[3]>180,'The satellite must remain visible');
     await writeFile(join(artifacts,`favicon-${size}.png`),png);raster.push({format:'ico',...sample});
+    previews.push({size,url});
+  }
+  // Inspect the actual favicon assets on browser-like light/dark surfaces.
+  await page.goto(base);
+  for(const mode of ['light','dark']){
+    const background=mode==='dark'?'#202020':'#ffffff';
+    await page.emulateMedia({colorScheme:mode});await page.setViewportSize({width:760,height:410});
+    await page.setContent(`<style>:root{color-scheme:${mode}}body{margin:24px;background:${background};color:${mode==='dark'?'#e6e6e6':'#171717'};font:14px system-ui}section{display:flex;align-items:center;gap:24px;height:70px}section span{width:110px}.zoom{height:180px}.zoom img{width:128px;height:128px;image-rendering:pixelated}</style><h1>Quiet Orbit · ${mode} background</h1><section><span>Adaptive SVG</span>${previews.map(({size})=>`<img src="${base}/noema-mark.svg" width="${size}" height="${size}">`).join('')}</section><section><span>Transparent ICO</span>${previews.map(({size,url})=>`<img src="${url}" width="${size}" height="${size}">`).join('')}</section><section class="zoom"><span>16px · 8× pixels</span><img src="${base}/noema-mark.svg" width="16" height="16"><img src="${previews[0].url}" width="16" height="16"></section>`);
+    const samples=await page.locator('img').evaluateAll(async(images,background)=>{
+      await Promise.all(images.map(image=>image.decode()));
+      for(const image of images.filter(image=>image.closest('.zoom'))){
+        // Enlarge the rasterized 16px pixels, including the adaptive SVG sample.
+        const thumbnail=document.createElement('canvas');thumbnail.width=thumbnail.height=16;
+        thumbnail.getContext('2d').drawImage(image,0,0,16,16);image.src=thumbnail.toDataURL();await image.decode();
+      }
+      return images.map(image=>{
+        const size=Number(image.getAttribute('width')),canvas=document.createElement('canvas');canvas.width=canvas.height=size;
+        const ctx=canvas.getContext('2d');ctx.fillStyle=background;ctx.fillRect(0,0,size,size);ctx.drawImage(image,0,0,size,size);
+        const at=(x,y)=>Array.from(ctx.getImageData(x,y,1,1).data);
+        return {size,corner:at(0,0),center:at(size/2,size/2)};
+      });
+    },background);
+    const expected=mode==='dark'?[32,32,32,255]:[255,255,255,255];
+    for(const sample of samples){assert.deepEqual(sample.corner,expected);assert.deepEqual(sample.center,expected);}
+    await page.screenshot({path:join(artifacts,`favicons-${mode}.png`)});
   }
   assert.deepEqual(errors,[]);
   await writeFile(join(artifacts,'results.json'),JSON.stringify({browser:browser.version(),results,raster,errors},null,2));

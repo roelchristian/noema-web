@@ -112,3 +112,43 @@ test('sidebar caps every page group at five and View all opens its full list', a
   await act(async () => root.render(createElement(SidebarOrganization, {...props, pages: pages.filter(page => Number(page.id.split('-')[1]) < 5)})));
   assert.equal(document.querySelectorAll('.sidebar-view-all').length, 0);
 });
+
+test('Library makes all-pages scope and folder grouping explicit without changing row identities', async () => {
+  const {setLibraryViewState,clearLibraryViewStates}=await import('../src/client/state/library-view-state.ts');
+  const destination=JSON.stringify(['organization','','']);
+  const vaultId='library-presentation-contract';
+  setLibraryViewState(vaultId,destination,{groupFolders:false,sort:'modified-desc'});
+  const current=render({vaultId});
+  assert.ok(current.indexOf('data-library-row="page:draft"')<current.indexOf('data-library-row="folder:desk"'));
+  assert.match(current,/Group folders first/);
+  assert.match(current,/2 items · Pages root · 2 pages in vault/);
+  setLibraryViewState(vaultId,destination,{scope:'all'});
+  const all=render({vaultId});
+  assert.match(all,/data-library-row="page:filed"/);
+  assert.doesNotMatch(all,/data-library-row="folder:desk"/);
+  assert.match(all,/class="library-item-extra">Desk/);
+  assert.match(all,/Text in this scope/);
+  clearLibraryViewStates(vaultId);
+});
+
+test('Grid cover treatment only reserves space for a genuine image', async()=>{
+  const {PageCover}=await import('../src/client/components/PageCover.tsx');
+  assert.equal(renderToStaticMarkup(createElement(PageCover,{vaultId:'test',icon:'page'})),'');
+  assert.match(renderToStaticMarkup(createElement(PageCover,{vaultId:'test',imageId:'cover'})),/loading="lazy"/);
+});
+
+test('Presentation persistence inherits per vault while selections and search remain ephemeral', async t=>{
+  const {setupDOM}=await import('./helpers/dom.mjs');setupDOM(t);
+  const {saveLibraryPresentation,readLibraryPresentation,getLibraryViewState,setLibraryViewState,clearLibraryViewStates}=await import('../src/client/state/library-view-state.ts');
+  const root=JSON.stringify(['organization','','']),folder=JSON.stringify(['organization','','new']);
+  saveLibraryPresentation('preferences',root,{layout:'compact',sort:'title-desc',groupFolders:false,columns:'location',density:'comfortable'});
+  assert.deepEqual(readLibraryPresentation('preferences',folder),{layout:'compact',sort:'title-desc',groupFolders:false,columns:'location',density:'comfortable'});
+  assert.deepEqual(readLibraryPresentation('another-vault',folder),{});
+  setLibraryViewState('preferences','knowledge',{grouping:'all'});
+  assert.equal(readLibraryPresentation('preferences','knowledge').grouping,'all');
+  setLibraryViewState('preferences',folder,{query:'private query',selectedIds:['private-id'],scroll:{top:123,left:0},sort:'title-asc'});
+  assert.doesNotMatch(JSON.stringify([...Array(window.localStorage.length)].map((_,i)=>window.localStorage.getItem(window.localStorage.key(i)))),/private query|private-id|123/);
+  clearLibraryViewStates('preferences');
+  const restored=getLibraryViewState('preferences',folder);
+  assert.equal(restored.sort,'title-asc');assert.equal(restored.query,'');assert.deepEqual(restored.selectedIds,[]);assert.equal(restored.scroll.top,0);
+});

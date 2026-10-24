@@ -1,6 +1,11 @@
 import {useCallback, useSyncExternalStore} from 'react';
 
 export interface LibraryViewState {
+  groupFolders?: boolean;
+  columns?: string;
+  density?: string;
+  scope?: string;
+  searchMode?: string;
   query: string;
   sort: string;
   selectedIds: string[];
@@ -12,6 +17,35 @@ export interface LibraryViewState {
   entityType?: string;
 }
 export type LibraryViewUpdate = Partial<LibraryViewState> | ((previous: LibraryViewState) => LibraryViewState | Partial<LibraryViewState>);
+type Presentation = Pick<LibraryViewState,'sort'|'groupFolders'|'grouping'|'columns'|'density'> & {layout?:'list'|'compact'|'grid'};
+function presentationFamily(destination:string):string {
+  try {const parsed=JSON.parse(destination);if(Array.isArray(parsed)&&parsed[0]==='organization')return 'organization';}catch{/* Named destination. */}
+  return destination;
+}
+const presentationKey=(vaultId:string,destination:string)=>'noema-library-presentation/'+JSON.stringify([vaultId,destination]);
+function validPresentation(value:unknown):Partial<Presentation> {
+  if(!value||typeof value!=='object')return {};
+  const input=value as Record<string,unknown>,result:Partial<Presentation>={};
+  if(['modified-desc','modified-asc','title-asc','title-desc','type-asc','type-desc'].includes(String(input.sort)))result.sort=String(input.sort);
+  if(input.grouping==='all'||input.grouping==='folders')result.grouping=input.grouping;
+  if(typeof input.groupFolders==='boolean')result.groupFolders=input.groupFolders;
+  if(['basic','location','collections'].includes(String(input.columns)))result.columns=String(input.columns);
+  if(['standard','comfortable'].includes(String(input.density)))result.density=String(input.density);
+  if(input.layout==='list'||input.layout==='compact'||input.layout==='grid')result.layout=input.layout;
+  return result;
+}
+export function readLibraryPresentation(vaultId:string,destination:string,inherit=true):Partial<Presentation> {
+  try {
+    const read=(key:string)=>validPresentation(JSON.parse(window.localStorage.getItem(presentationKey(vaultId,key))??'null'));
+    return {...(inherit?read(presentationFamily(destination)):{}),...read(destination)};
+  }catch{return {};}
+}
+export function saveLibraryPresentation(vaultId:string,destination:string,patch:Partial<Presentation>):void {
+  try {
+    const clean=validPresentation(patch);
+    for(const key of new Set([presentationFamily(destination),destination]))window.localStorage.setItem(presentationKey(vaultId,key),JSON.stringify({...readLibraryPresentation(vaultId,key),...clean}));
+  }catch{/* Preferences remain usable when browser storage is unavailable. */}
+}
 const states = new Map<string, LibraryViewState>();
 const listeners = new Map<string, Set<() => void>>();
 const keyOf = (vaultId: string, destination: string) => JSON.stringify([vaultId,destination]);
@@ -20,7 +54,7 @@ const initial = (): LibraryViewState => ({query: '', sort: 'modified-desc', sele
 export function getLibraryViewState(vaultId: string, destination: string): LibraryViewState {
   const key = keyOf(vaultId,destination);
   let state = states.get(key);
-  if (!state) {state = initial(); states.set(key,state);}
+  if (!state) {state = {...initial(),...readLibraryPresentation(vaultId,destination)}; states.set(key,state);}
   return state;
 }
 export function setLibraryViewState(vaultId: string, destination: string, update: LibraryViewUpdate, notify = true): void {
@@ -33,6 +67,8 @@ export function setLibraryViewState(vaultId: string, destination: string, update
   });
   if (same) return;
   const next = {...previous,...patch};
+  const presentation=Object.fromEntries(Object.entries(patch).filter(([key])=>['sort','groupFolders','grouping','columns','density'].includes(key)));
+  if(Object.keys(presentation).length)saveLibraryPresentation(vaultId,destination,presentation);
   states.delete(key); states.set(key,next);
   if (notify) for (const listener of listeners.get(key) ?? []) listener();
 }

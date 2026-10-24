@@ -1,11 +1,12 @@
 import {useState} from 'react';
 import {imageURL} from '../api';
-import {Icon} from './Icon';
 
-/** Reserve the same cover space for images, missing images, and icon placeholders. */
-export function PageCover({vaultId,imageId,icon='page'}: {vaultId:string;imageId?:string|null;icon?:string}) {
+
+/** Only genuine images reserve gallery space. Text and container cards own their content. */
+export function PageCover({vaultId,imageId,icon: _icon}: {vaultId:string;imageId?:string|null;icon?:string}) {
   const [failed,setFailed]=useState<string|null>(null);
+  if (!imageId || failed===imageId) return null;
   return <span className="organization-card-cover" aria-hidden="true">{imageId && failed!==imageId
     ? <img src={imageURL(vaultId,imageId)} alt="" loading="lazy" decoding="async" draggable={false} onError={()=>setFailed(imageId)}/>
-    : <Icon name={icon}/>}</span>;
+    : null}</span>;
 }

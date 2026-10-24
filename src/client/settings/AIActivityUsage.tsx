@@ -3,6 +3,8 @@ import {t as uiText} from '../i18n';
 import {DisclosureSummary} from '../components/DisclosureSummary';
 import { useEffect, useMemo, useState } from 'react';
 import { aiActivityLabels, type AIActivity } from '../../shared/intelligence';
+import {formatEstimatedUSD,hasReportedTokens,includeInTokenReport} from '../../shared/ai-pricing';
+import {AIPricingNote} from './AIPricingNote';
 import { api } from '../api';
 import { Select } from '../components/Select';
 
@@ -52,25 +54,32 @@ export function AIActivityUsage() {
     const until=period==='custom'?new Date(end+'T00:00:00'):new Date(today);until.setDate(until.getDate()+1);
     const filtered=invalid?[]:items.filter(item=>{
       const time=new Date(item.startedAt).getTime();
-      return (period==='all'||time>=from.getTime()&&time<until.getTime())&&(action==='all'||item.action===action)&&(status==='all'||item.status===status);
+      return includeInTokenReport(item)&&(period==='all'||time>=from.getTime()&&time<until.getTime())&&(action==='all'||item.action===action)&&(status==='all'||item.status===status);
     });
     const sum=(field:'inputTokens'|'outputTokens'|'cachedInputTokens'|'cacheWriteTokens'|'reasoningTokens')=>filtered.reduce((total,item)=>total+(item[field]??0),0);
-    const buckets=new Map<string,{input:number;output:number}>();
+    const buckets=new Map<string,{input:number;output:number;cost:number;priced:number;unpriced:number}>();
     // Longer ranges use monthly buckets to keep the timeline readable.
     const first=period==='all'?new Date(Math.min(today.getTime(),...filtered.map(item=>new Date(item.startedAt).getTime()))):from;
     const monthly=(until.getTime()-first.getTime())/86400000>31;
     const key=(date:Date)=>dateKey(date).slice(0,monthly?7:10);
     if(!invalid){
       const date=new Date(first);if(monthly)date.setDate(1);
-      while(date<until){buckets.set(key(date),{input:0,output:0});if(monthly)date.setMonth(date.getMonth()+1);else date.setDate(date.getDate()+1);}
+      while(date<until){buckets.set(key(date),{input:0,output:0,cost:0,priced:0,unpriced:0});if(monthly)date.setMonth(date.getMonth()+1);else date.setDate(date.getDate()+1);}
     }
     const actions=new Map<string,number>();
+    const actionCosts=new Map<string,{cost:number;priced:number;unpriced:number}>();
+    let cost=0,priced=0;
     for(const item of filtered){
+      const hasCost=item.estimatedCost!=null&&Number.isFinite(item.estimatedCost);
+      if(hasCost){cost+=item.estimatedCost!;priced++;}
+      const actionCost=actionCosts.get(item.action)??{cost:0,priced:0,unpriced:0};
+      if(hasCost){actionCost.cost+=item.estimatedCost!;actionCost.priced++;}else actionCost.unpriced++;
+      actionCosts.set(item.action,actionCost);
       const bucket=buckets.get(key(new Date(item.startedAt)));
-      if(bucket){bucket.input+=item.inputTokens??0;bucket.output+=item.outputTokens??0;}
+      if(bucket){bucket.input+=item.inputTokens??0;bucket.output+=item.outputTokens??0;if(hasCost){bucket.cost+=item.estimatedCost!;bucket.priced++;}else bucket.unpriced++;}
       actions.set(item.action,(actions.get(item.action)??0)+(item.inputTokens??0)+(item.outputTokens??0));
     }
-    return {filtered,input:sum('inputTokens'),output:sum('outputTokens'),cached:sum('cachedInputTokens'),writes:sum('cacheWriteTokens'),reasoning:sum('reasoningTokens'),reported:filtered.filter(item=>item.inputTokens!=null||item.outputTokens!=null).length,buckets:[...buckets],monthly,actions:[...actions].sort((a,b)=>b[1]-a[1])};
+    return {filtered,cost,priced,actionCosts,input:sum('inputTokens'),output:sum('outputTokens'),cached:sum('cachedInputTokens'),writes:sum('cacheWriteTokens'),reasoning:sum('reasoningTokens'),reported:filtered.filter(hasReportedTokens).length,buckets:[...buckets],monthly,actions:[...actions].sort((a,b)=>b[1]-a[1])};
   },[items,period,start,end,action,status,invalid]);
   const maximum=Math.max(1,...summary.buckets.map(([,value])=>value.input+value.output));
   const total=summary.input+summary.output;
@@ -86,16 +95,17 @@ export function AIActivityUsage() {
     {error&&<p role="alert">{error}</p>}
     <p className="ai-usage-note" role="status">{busy?uiText("Loading all retained activity…"):uiText("{value0} matching actions · {value1} with reported token usage",{value0: number(summary.filtered.length),value1: number(summary.reported)})}</p>
     <div className="ai-usage-stats">{[['Total tokens',total],['Input tokens',summary.input],['Output tokens',summary.output],['Cached input',summary.cached]].map(([label,value])=><div className="ai-usage-stat" key={label}><span>{label}</span><strong title={number(Number(value))}>{number(Number(value))}</strong></div>)}</div>
+    <div className="ai-usage-cost" role="status"><strong>{uiText("Estimated USD")}: {formatEstimatedUSD(summary.priced?summary.cost:summary.filtered.length?null:0)}</strong><span> · {summary.priced.toLocaleString(getLocale())} {uiText("priced actions")} · {(summary.filtered.length-summary.priced).toLocaleString(getLocale())} {uiText("unpriced actions")}{summary.priced>0&&summary.priced<summary.filtered.length?` · ${uiText("Partial estimate")}`:''}</span></div>
     <div className="ai-usage-visuals">
     <div className="ai-usage-chart"><div className="ai-usage-chart-heading"><h4>{uiText("Usage over time") + " "}<small>{summary.monthly?uiText("Monthly"):uiText("Daily")}{" " + uiText("totals")}</small></h4><div className="ai-usage-legend"><span><i className="ai-usage-input"/>{uiText("Input")}</span><span><i className="ai-usage-output"/>{uiText("Output")}</span></div></div>
       {!summary.reported?<p className="ai-activity-empty">{busy?uiText("Loading token usage…"):summary.filtered.length?uiText("Token counts have not been reported for these actions."):uiText("No AI activity in this period. Try another period or filter.")}</p>:<>
         <div className="ai-usage-plot"><div className="ai-usage-axis"><span>{compact(maximum)}</span><span>{compact(maximum/2)}</span><span>0</span></div><div className="ai-usage-bars" role="img" aria-label={uiText("Stacked input and output token totals over time. Exact values are available in the totals table below.")}>{summary.buckets.map(([date,value],index)=><div className="ai-usage-column" key={date}><div className="ai-usage-bar" tabIndex={0} aria-label={uiText("{value0}: {value1} input, {value2} output tokens",{value0: date,value1: number(value.input),value2: number(value.output)})} title={uiText("{value0}\nInput: {value1}\nOutput: {value2}",{value0: date,value1: number(value.input),value2: number(value.output)})}><span className="ai-usage-output" style={{height:`${value.output/maximum*100}%`}}/><span className="ai-usage-input" style={{height:`${value.input/maximum*100}%`}}/></div><span className="ai-usage-date">{index===0||index===summary.buckets.length-1||index%Math.ceil(summary.buckets.length/6)===0?(summary.monthly?date:date.slice(5)):''}</span></div>)}</div></div>
-        <details className="ai-usage-details"><DisclosureSummary>{uiText("View exact") + " "}{summary.monthly?uiText("monthly"):uiText("daily")}{" " + uiText("totals")}</DisclosureSummary><div className="ai-usage-totals"><table><thead><tr><th scope="col">{uiText("Period")}</th><th scope="col">{uiText("Input tokens")}</th><th scope="col">{uiText("Output tokens")}</th></tr></thead><tbody>{summary.buckets.map(([date,value])=><tr key={date}><th scope="row">{date}</th><td>{number(value.input)}</td><td>{number(value.output)}</td></tr>)}</tbody></table></div></details>
+        <details className="ai-usage-details"><DisclosureSummary>{uiText("View exact") + " "}{summary.monthly?uiText("monthly"):uiText("daily")}{" " + uiText("totals")}</DisclosureSummary><div className="ai-usage-totals"><table><thead><tr><th scope="col">{uiText("Period")}</th><th scope="col">{uiText("Input tokens")}</th><th scope="col">{uiText("Output tokens")}</th><th scope="col">{uiText("Estimated USD")}</th><th scope="col">{uiText("Unpriced actions")}</th></tr></thead><tbody>{summary.buckets.map(([date,value])=><tr key={date}><th scope="row">{date}</th><td>{number(value.input)}</td><td>{number(value.output)}</td><td>{formatEstimatedUSD(value.priced?value.cost:value.unpriced?null:0)}</td><td>{number(value.unpriced)}</td></tr>)}</tbody></table></div></details>
       </>}
     </div>
-    <section className="ai-usage-actions"><h4>{uiText("Usage by action")}</h4>{summary.actions.length?summary.actions.map(([key,value])=><div className="ai-usage-action" key={key}><div><span>{uiText(aiActivityLabels[key as AIActivity['action']])}</span><strong>{number(value)} <small>{uiText("tokens")}</small></strong></div><div className="ai-usage-track"><span style={{width:`${total?value/total*100:0}%`}}/></div></div>):<p className="ai-usage-note">{uiText("No matching actions.")}</p>}</section>
+    <section className="ai-usage-actions"><h4>{uiText("Usage by action")}</h4>{summary.actions.length?summary.actions.map(([key,value])=><div className="ai-usage-action" key={key}><div><span>{uiText(aiActivityLabels[key as AIActivity['action']])}</span><strong>{number(value)} <small>{uiText("tokens")}</small></strong></div><p className="ai-usage-note">{uiText("Estimated USD")}: {formatEstimatedUSD(summary.actionCosts.get(key)?.priced?summary.actionCosts.get(key)!.cost:null)} · {number(summary.actionCosts.get(key)?.unpriced??0)} {uiText("unpriced actions")}</p><div className="ai-usage-track"><span style={{width:`${total?value/total*100:0}%`}}/></div></div>):<p className="ai-usage-note">{uiText("No matching actions.")}</p>}</section>
     </div>
     <section className="ai-usage-token-details" aria-label={uiText("Token details")}><dl><div><dt>{uiText("Cache writes")}</dt><dd>{number(summary.writes)}</dd></div><div><dt>{uiText("Reasoning tokens")}</dt><dd>{number(summary.reasoning)}</dd></div><div><dt>{uiText("Usage not reported")}</dt><dd>{number(summary.filtered.length-summary.reported)}{" " + uiText("actions")}</dd></div></dl></section>
-    <details className="ai-usage-note ai-usage-about"><DisclosureSummary>{uiText("About these totals · One year of retained activity")}</DisclosureSummary><p>{uiText("Across unlocked vaults, using local dates. Activity and token usage are retained for one year without a record-count limit. Debug traces expire separately after 30 days; removing traces preserves these totals. Refreshes every 15 seconds. Cached input and reasoning are included in input and output totals when reported by the provider; they are not added again. Missing counts are excluded.")}</p></details>
+    <AIPricingNote report/>
   </section>;
 }

@@ -17,11 +17,12 @@ export const entityLabels: Record<EntityType, string> = {
 export const blockTypes = ['paragraph', 'heading1', 'heading2', 'bullet', 'numbered', 'divider', 'code', 'quote', 'todo', 'columns', 'table', 'image', 'math'] as const;
 export type BlockType = typeof blockTypes[number];
 export interface SourceReference {strictTemporal?:boolean;userLocator?:string;appLocator?:string;nodeId?:string;contextLabel?:string;generationId?:string;passageId?:string;stale?:boolean;startOffset?:number;endOffset?:number;startPage?:number;endPage?:number;sourceNumber?:number;id:string;sourceId:string;fileId:string;startLine:number;endLine:number;sourceHash:string;excerpt:string}
-export interface TextStyle { sourceReference?: SourceReference; math?: boolean; bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean; code?: boolean; href?: string; /** Text: never auto-tag. Entity: occurrence-only; exclude from page-context inference. */ skipAutoTag?: boolean }
+export interface BibliographicReference {id:string;sourceId:string;locator?:string;label?:'page'|'chapter'|'section'}
+export interface TextStyle { bibliographicReference?:BibliographicReference; sourceReference?: SourceReference; math?: boolean; bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean; code?: boolean; href?: string; /** Text: never auto-tag. Entity: occurrence-only; exclude from page-context inference. */ skipAutoTag?: boolean }
 export type Segment = TextStyle & ( { text: string; entityId?: never; mentionText?: never } | { entityId: string; text?: never; mentionText?: string });
 /** Formatting never limits entity matching; semantic content and explicit exclusions do. */
 export function isEntityTaggingText(segment: Segment): segment is Extract<Segment, {text: string}> {
-  return !segment.entityId && !segment.math && !segment.sourceReference && !segment.skipAutoTag;
+  return !segment.entityId && !segment.math && !segment.sourceReference && !segment.bibliographicReference && !segment.skipAutoTag;
 }
 export interface Block { column?: {id: string; index: 0 | 1}; semantic?: import('./semantic-blocks.js').SemanticKind; semanticGroup?: import('./semantic-blocks.js').SemanticGroup; id: string; type: BlockType; checked: boolean; content: Segment[]; rows?: Segment[][][]; imageId?: string; alt?: string }
 export interface Vault { id: string; name: string; locked: boolean; protected: boolean; updated_at: string }
@@ -47,7 +48,7 @@ export interface EntityInput { referentStatus?: ReferentStatus; classification_m
 export function entityMentionName(entity: Pick<Entity,'name'|'mentionCase'> | undefined): string | undefined {
   return entity?.mentionCase === 'lowercase' ? entity.name.toLowerCase() : entity?.name;
 }
-export interface Property { id: string; entity_id: string; name: string; value: string | null; target_id: string | null; metadata?: PropertyValueMetadata; provenance?:PropertyProvenance }
+export interface Property { id: string; entity_id: string; name: string; value: string | null; target_id: string | null; metadata?: PropertyValueMetadata; provenance?:PropertyProvenance; bibliographicProjection?:{field:string;revision:number;legacyValues:{id:string;name:string;value:string|null;target_id:string|null;targetName?:string;conflicts:boolean}[]} }
 export interface Relationship { id: string; source_id: string; label: string; target_id: string }
 export const sourceStructureKinds=['heading','chapter','section','subsection','theorem','lemma','proposition','corollary','definition','proof','example','remark'] as const;
 export type SourceStructureKind=typeof sourceStructureKinds[number];

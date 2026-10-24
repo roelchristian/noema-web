@@ -60,6 +60,12 @@ export function restorePageVersions(store:Store,vault:string,rows:Row[],maps:Map
       const segments=(items:unknown)=>list(items).map(item=>{
         const segment={...object(item)};
         if(segment.entityId)segment.entityId=reference('entity',maps.entities,segment.entityId);
+        if(segment.bibliographicReference!==undefined) {
+          const citation={...object(segment.bibliographicReference)};
+          citation.id=reference('citation',maps.citations,citation.id);
+          citation.sourceId=reference('entity',maps.entities,citation.sourceId);
+          segment.bibliographicReference=citation;
+        }
         if(segment.sourceReference!==undefined) {
           const citation={...object(segment.sourceReference)};
           citation.id=reference('citation',maps.citations,citation.id);

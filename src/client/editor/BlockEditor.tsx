@@ -1,3 +1,4 @@
+import type {BibliographicReference} from '../../shared/bibliographic-citations';
 import {blockTransliteration} from '../../shared/transliteration';
 import {TransliterationBlock} from './TransliterationBlock';
 import {useTransliteration,type TransliterationLayout} from '../state/transliteration-preferences';
@@ -94,14 +95,14 @@ interface Menu {items: Choice[]; index: number; left: number; top: number; label
 function EditableBlock({block, entities, reviewMatches, onInput, onKeyDown, onOpen, register, onPaste}: {block: Block; entities: Entity[]; reviewMatches: EntityReviewItem[]; onInput: (el: HTMLElement, event:InputEvent) => void; onKeyDown: (e: KeyboardEvent<HTMLElement>) => void; onOpen: (id: string) => void; register: (el: HTMLElement | null) => void; onPaste: (e: ClipboardEvent<HTMLElement>) => void}) {
   // React's use(Context) supports conditional subscriptions. Plain text must not
   // subscribe to the citation map that PageEditor rebuilds on every edit.
-  const citations=block.content.some(segment=>segment.sourceReference)?use(CitationPresentationContext):undefined;
+  const citations=block.content.some(segment=>segment.sourceReference||segment.bibliographicReference)?use(CitationPresentationContext):undefined;
   const locale=getLocale();
   const ref = useRef<HTMLElement>(null);
   const Content = block.type === 'heading1' ? 'h2' : block.type === 'heading2' ? 'h3' : 'div';
   useLayoutEffect(() => {
     const el = ref.current!;
     syncEditableSegments(el, block.content, entities, {blockId: block.id, matches: reviewMatches},citations);
-    el.querySelectorAll<HTMLElement>('[data-entity]:not([data-source-reference])').forEach(node => {
+    el.querySelectorAll<HTMLElement>('[data-entity]:not([data-source-reference]):not([data-bibliographic-reference])').forEach(node => {
       const wrapper = document.createElement('span'); wrapper.innerHTML = segmentHTML([{entityId: node.dataset.entity!, ...(node.dataset.skipAutoTag === 'true' ? {skipAutoTag:true} : {}), ...(node.dataset.mentionText ? {mentionText: node.dataset.mentionText} : {})}], entities);
       const fresh = wrapper.firstElementChild!;
       if (node.innerHTML !== fresh.innerHTML) node.innerHTML = fresh.innerHTML;
@@ -834,6 +835,17 @@ export function BlockEditor(props: Props) {
     }
     setCitationTarget(null);
   }
+  function insertBibliographicCitations(references:BibliographicReference[]) {
+    if(!citationTarget)return;
+    const {bookmark,editor,blockId}=citationTarget,range=resolveCitationRange(editor,bookmark);
+    if(!range||!latest.current.blocks.some(block=>block.id===blockId)){setCitationTarget(null);setPageLinkStatus('The insertion text changed. Type /cite again to choose a new position.');return;}
+    range.deleteContents();const wrapper=document.createElement('div');
+    wrapper.innerHTML=segmentHTML(references.flatMap(bibliographicReference=>[{text:' [ref]',bibliographicReference},{text:citationSpace}]),latest.current.entities);
+    const fragment=document.createDocumentFragment();while(wrapper.firstChild)fragment.append(wrapper.firstChild);
+    const last=fragment.lastChild!;range.insertNode(fragment);range.selectNodeContents(last);range.collapse(false);
+    editor.focus({preventScroll:true});getSelection()?.removeAllRanges();getSelection()?.addRange(range);
+    update(blockId,{content:readSegments(editor)});setCitationTarget(null);
+  }
   function insertCitations(references:SourceReference[]) {
     if(!citationTarget)return;
     const {bookmark,editor,blockId}=citationTarget;
@@ -1064,6 +1076,8 @@ export function BlockEditor(props: Props) {
         return;
       }
       if (mobile && selection && !selection.isCollapsed && root.current?.contains(selection.anchorNode) && (e.target as Element).closest('[data-page-title], [data-entity], [data-entity-review], [data-math]')) { e.stopPropagation(); return; }
+      const bibliographic=(e.target as Element).closest<HTMLElement>('[data-bibliographic-reference][data-entity]');
+      if(bibliographic){e.preventDefault();e.stopPropagation();onOpenEntity(bibliographic.dataset.entity!);return;}
       const mention=(e.target as Element).closest<HTMLElement>('.mention[data-entity]');
       if(mention?.closest('.block-content[contenteditable="true"]')){e.preventDefault();e.stopPropagation();document.dispatchEvent(new CustomEvent('noema:entity-link',{detail:mention}));return;}
       const pageLink=(e.target as Element).closest<HTMLElement>('[data-page-title]');
@@ -1084,6 +1098,8 @@ export function BlockEditor(props: Props) {
         if(href)window.open(href,anchor.target || '_self','noopener,noreferrer');
         return;
       }
+      const bibliographic=(e.target as Element).closest<HTMLElement>('[data-bibliographic-reference][data-entity]');
+      if(!e.nativeEvent.isComposing&&bibliographic&&(e.key==='Enter'||e.key===' ')){e.preventDefault();e.stopPropagation();onOpenEntity(bibliographic.dataset.entity!);return;}
       const mention=(e.target as Element).closest<HTMLElement>('.mention[data-entity]');
       if(!e.nativeEvent.isComposing&&mention?.closest('.block-content[contenteditable="true"]')&&(e.key==='Enter'||e.key===' ')){e.preventDefault();e.stopPropagation();document.dispatchEvent(new CustomEvent('noema:entity-link',{detail:mention}));return;}
       if(!e.nativeEvent.isComposing&&!e.metaKey&&!e.ctrlKey&&!e.altKey&&(e.key==='Backspace'||e.key==='Delete')&&root.current&&deleteEditorReference(root.current,e.target,e.key==='Backspace'?'backward':'forward')){
@@ -1127,7 +1143,7 @@ export function BlockEditor(props: Props) {
         <button type="button" className="button primary" autoFocus onClick={() => setLinkedDeletion([])}>{linkedExplanations.length === 1 ? uiText("Keep explanation") : uiText("Keep explanations")}</button>
       </div>
     </Modal>}
-    {citationTarget && <CitationPicker vaultId={props.vaultId} entities={entities} blocks={blocks} getAnchor={()=>resolveCitationRange(citationTarget.editor,citationTarget.bookmark)} editor={citationTarget.editor} onInsert={insertCitations} onClose={closeCitation}/>}
+    {citationTarget && <CitationPicker vaultId={props.vaultId} entities={entities} blocks={blocks} getAnchor={()=>resolveCitationRange(citationTarget.editor,citationTarget.bookmark)} editor={citationTarget.editor} onInsert={insertCitations} onInsertBibliographic={insertBibliographicCitations} onClose={closeCitation}/>}
     {mathTarget && <InlineMathEditor onMakeDisplay={inlineMathHost()?makeInlineMathDisplay:undefined} range={mathTarget.range} node={mathTarget.node} initial={mathTarget.initial} onSave={saveInlineMath} onClose={() => setMathTarget(null)}/>}
     {pageLinkStatus && <div className="note-link-status" role="status">{pageLinkStatus}</div>}
     {imageError && <div className="image-upload-error" role="alert">{imageError}</div>}

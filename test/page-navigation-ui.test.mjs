@@ -219,6 +219,7 @@ test('source presentation controls retain the reader, highlights and inspector a
  t.mock.method(api,'aiNotifications',async()=>({items:[],running:[],unreadCount:0,through:0}));
  let documentReads=0;
  t.mock.method(globalThis,'fetch',async url=>{
+  if(url==='/api/bibliography/source')return Response.json(null);
   if(url==='/api/entities/source')return Response.json(source);
   if(String(url).startsWith('/api/source-files/file?')){documentReads++;return Response.json(file);}
   if(url==='/api/source-files/file/reading-locations')return Response.json({resume:null,bookmarks:[]});

@@ -88,5 +88,5 @@ export function cleanCitationGroups(content:import('./domain.js').Segment[],comp
 
 /** Source attachments implied by citations, including citations in table cells. */
 export function citationSourceIds(blocks:Block[]):string[] {
-  return [...new Set(blocks.flatMap(block=>blockCitations(block).map(ref=>ref.sourceId)))];
+  return [...new Set(blocks.flatMap(block=>blockSegments(block).flatMap(segment=>segment.sourceReference?[segment.sourceReference.sourceId]:segment.bibliographicReference?[segment.bibliographicReference.sourceId]:[])))];
 }

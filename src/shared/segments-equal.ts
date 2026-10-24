@@ -12,11 +12,11 @@ export function segmentsEqual(left: Segment[], right: Segment[]) {
         continue;
       }
       const value = segment.text ?? '';
-      if (!value && !segment.math && !segment.sourceReference) continue;
-      const marks = JSON.stringify([!!segment.bold, !!segment.italic, !!segment.underline, !!segment.strike, !!segment.code, !!segment.math, segment.href ?? '', !!segment.skipAutoTag, segment.sourceReference ?? null]);
+      if (!value && !segment.math && !segment.sourceReference && !segment.bibliographicReference) continue;
+      const marks = JSON.stringify([!!segment.bold, !!segment.italic, !!segment.underline, !!segment.strike, !!segment.code, !!segment.math, segment.href ?? '', !!segment.skipAutoTag, segment.sourceReference ?? null, segment.bibliographicReference ?? null]);
       const last = result.at(-1);
-      if (last && !last.entity && !last.atomic && !segment.math && !segment.sourceReference && last.marks === marks) last.value += value;
-      else result.push({value, marks, ...(segment.math || segment.sourceReference ? {atomic: true} : {})});
+      if (last && !last.entity && !last.atomic && !segment.math && !segment.sourceReference && !segment.bibliographicReference && last.marks === marks) last.value += value;
+      else result.push({value, marks, ...(segment.math || segment.sourceReference || segment.bibliographicReference ? {atomic: true} : {})});
     }
     return JSON.stringify(result);
   }

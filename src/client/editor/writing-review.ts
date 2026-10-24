@@ -46,7 +46,7 @@ export function captureWritingReview(root:HTMLElement,blocks:Block[],ids?:string
       const suffix=whole.cloneRange();suffix.setStart(portion.endContainer,portion.endOffset);after=rangeSegments(suffix,editor);
       selected=rangeSegments(portion,editor);
     }
-    const texts=selected.flatMap((segment,index)=>segment.text?.trim()&&!segment.math&&!segment.code&&!segment.sourceReference&&!segment.skipAutoTag?[{id:`${block.id}:${index}`,text:segment.text}]:[]);
+    const texts=selected.flatMap((segment,index)=>segment.text?.trim()&&!segment.math&&!segment.code&&!segment.sourceReference&&!segment.bibliographicReference&&!segment.skipAutoTag?[{id:`${block.id}:${index}`,text:segment.text}]:[]);
     if(!texts.length)return [];
     return [{blockId:block.id,scope:portion&&(before.some(hasContent)||after.some(hasContent))?'span' as const:'block' as const,snapshot:JSON.stringify(block.content),before,selected,after,texts}];
   });

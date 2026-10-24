@@ -47,8 +47,9 @@ export class VaultDeletion {
       highlights:this.store.all('SELECT id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,color,reference_json,created_at FROM highlights WHERE vault_id=? ORDER BY id',id),
       readingNotes:this.store.all('SELECT page_id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,reference_json,created_at FROM page_reading_notes WHERE vault_id=? ORDER BY page_id',id),
     };
+    const bibliography=['bibliographic_records','bibliographic_proposals','bibliographic_import_batches'].map(table=>this.store.all(`SELECT * FROM ${table} WHERE vault_id=?`,id));
     const temporal=['temporal_dates','temporal_curation','temporal_relations'].map(table=>this.store.all(`SELECT * FROM ${table} WHERE vault_id=? ORDER BY id`,id));
-    const fingerprint=createHash('sha256').update(JSON.stringify({vault,counts,revisions,entities,sources,images,organization,temporal})).digest('hex');
+    const fingerprint=createHash('sha256').update(JSON.stringify({vault,counts,revisions,entities,sources,images,organization,temporal,bibliography})).digest('hex');
     return {vault,counts,fingerprint,canDelete:!blockers.length,blockers};
   }
   remove(id:string,body:Record<string,unknown>):VaultDeletionResult {
@@ -65,7 +66,7 @@ export class VaultDeletion {
       this.store.run(`DELETE FROM properties WHERE entity_id IN (${entityIds}) OR target_id IN (${entityIds})`,id,id);
       this.store.run(`DELETE FROM relationships WHERE source_id IN (${entityIds}) OR target_id IN (${entityIds})`,id,id);
       // Explicit order covers legacy foreign keys without cascade behavior.
-      for(const table of ['source_reading_locations','highlights','page_reading_notes','source_files','ai_notifications','page_entity_match_cache','embedding_jobs','page_edit_locks','pages','entities','favourites','item_locations','collection_memberships','collection_folders','folders','collections','entity_subtype_properties','entity_subtypes','entity_type_properties','embedding_settings','ai_activity'])this.store.run(`DELETE FROM ${table} WHERE vault_id=?`,id);
+      for(const table of ['bibliographic_import_batches','source_reading_locations','highlights','page_reading_notes','source_files','ai_notifications','page_entity_match_cache','embedding_jobs','page_edit_locks','pages','entities','favourites','item_locations','collection_memberships','collection_folders','folders','collections','entity_subtype_properties','entity_subtypes','entity_type_properties','embedding_settings','ai_activity'])this.store.run(`DELETE FROM ${table} WHERE vault_id=?`,id);
       this.store.run('DELETE FROM vaults WHERE id=?',id);
       this.store.run('INSERT INTO vault_deletion_cleanup (vault_id,created_at) VALUES (?,?)',id,now());
     });

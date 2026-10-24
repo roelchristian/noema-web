@@ -253,5 +253,19 @@
     },
     "promptDigest": "cfce28d6384d89912a45f00ea5e5ed1d8cd2be0d4c8e91a7055af8e9ed2e9f04",
     "bytes": 79
+  },
+  "source scholarly": {
+    "policy": {
+      "model": "gpt-5-mini",
+      "store": false,
+      "max_output_tokens": 4096,
+      "reasoning": {
+        "effort": "low"
+      },
+      "tools": [],
+      "tool_choice": "none"
+    },
+    "promptDigest": "f65d43db48928c0bac485468f8261894cc4da83adf0e9478a05e154ddc300fbf",
+    "bytes": 1434
   }
 }

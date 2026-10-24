@@ -1,10 +1,11 @@
+import type {BibliographicPresentation} from './bibliographic-presentation';
 import {t as uiText} from '../i18n';
 import {revealCitationTarget} from './citation-navigation';
 import {createContext} from 'react';
 import {citationKey, citationLocation, noteCitations, type CitationStyle} from '../../shared/citations';
 import type {Entity,Block} from '../../shared/domain';
 import {Icon} from '../components/Icon';
-export interface CitationPresentation {style:CitationStyle;entries:ReturnType<typeof noteCitations>}
+export interface CitationPresentation {scholarly?:BibliographicPresentation;style:CitationStyle;entries:ReturnType<typeof noteCitations>}
 export const CitationPresentationContext=createContext<CitationPresentation>({style:'references',entries:new Map()});
 export function NoteReferences({blocks,entities}: {blocks:Block[];entities:Entity[]}){
   const entries=[...noteCitations(blocks).values()].sort((left,right)=>left.number-right.number);

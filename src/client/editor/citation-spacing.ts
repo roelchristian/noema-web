@@ -1,7 +1,7 @@
 import type {Segment} from '../../shared/domain';
 
 export const citationSpace='\u2009';
-const plain=(segment:Segment):segment is Extract<Segment,{text:string}>=>!segment.entityId&&!segment.sourceReference&&!segment.math&&!segment.code&&!segment.href;
+const plain=(segment:Segment):segment is Extract<Segment,{text:string}>=>!segment.entityId&&!segment.sourceReference&&!segment.bibliographicReference&&!segment.math&&!segment.code&&!segment.href;
 
 /** Discard only the thin-space padding immediately after a block's final citation. */
 export function trimTrailingCitationSpace(content:Segment[]):Segment[] {

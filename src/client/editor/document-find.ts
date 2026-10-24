@@ -12,7 +12,7 @@ export function findSurfaces(blocks:Block[],entities:Entity[]):FindSurface[] {
   let cached=cache.get(block)?.get(key); if(cached)return cached;
   if(['image','divider','columns'].includes(block.type))return [];
   const cells=block.type==='table'?(block.rows??[]).flat():[block.content];
-  cached=cells.map((segments,surface)=>{let text='';const spans=segments.map(s=>{const start=text.length;text+=s.entityId?(s.mentionText??names.get(s.entityId)??'Unknown entity'):(s.text??'');return {start,end:text.length,protected:!!(s.entityId||s.math||s.sourceReference||block.type==='math'),entityId:s.entityId};});return {blockId:block.id,surface,text,segments,spans};});
+  cached=cells.map((segments,surface)=>{let text='';const spans=segments.map(s=>{const start=text.length;text+=s.entityId?(s.mentionText??names.get(s.entityId)??'Unknown entity'):(s.text??'');return {start,end:text.length,protected:!!(s.entityId||s.math||s.sourceReference||s.bibliographicReference||block.type==='math'),entityId:s.entityId};});return {blockId:block.id,surface,text,segments,spans};});
   // Keep only the current entity-name projection for each immutable block.
   cache.set(block,new Map([[key,cached]])); return cached;
  });
@@ -57,7 +57,7 @@ export function replaceMatches(blocks:Block[],surfaces:FindSurface[],matches:Fin
    segments=[...segments.slice(0,first.i),...replacement,...segments.slice(last.i+1)];replaced++;
    // Subsequent matches use original run indexes; rebuild their addressing below.
    const remaining=list.filter(other=>other.start<m.start);
-   if(remaining.length){let offset=0;spans=segments.map(segment=>{const length=segment.text?.length??lengths.get(segment)??0;const start=offset;offset+=length;return {start,end:offset,protected:!!(segment.entityId||segment.math||segment.sourceReference)};});}
+   if(remaining.length){let offset=0;spans=segments.map(segment=>{const length=segment.text?.length??lengths.get(segment)??0;const start=offset;offset+=length;return {start,end:offset,protected:!!(segment.entityId||segment.math||segment.sourceReference||segment.bibliographicReference)};});}
   }
   if(segments===surface.segments)continue;
   const map=updates.get(surface.blockId)??new Map();map.set(surface.surface,segments);updates.set(surface.blockId,map);

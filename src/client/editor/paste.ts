@@ -29,7 +29,7 @@ export function markdownInline(text: string, style: TextStyle = {}): Segment[] {
 /** Preserve native marks and protected segments while reading literal inline Markdown. */
 export function markdownSegments(content:Segment[]):Segment[] {
   return inlineCodeSegments(content).flatMap(segment=>{
-    if(segment.entityId||segment.code||segment.math||segment.sourceReference||segment.href||segment.skipAutoTag)return [segment];
+    if(segment.entityId||segment.code||segment.math||segment.sourceReference||segment.bibliographicReference||segment.href||segment.skipAutoTag)return [segment];
     const {text,...style}=segment;
     return markdownInline(text??'',style);
   });
@@ -95,9 +95,9 @@ export function clipboardMathBlocks(blocks: Block[]): Block[] {
     const output: Segment[] = [];
     for (let i = 0; i < content.length;) {
       const segment = content[i]!;
-      if (segment.entityId || segment.code || segment.math || segment.sourceReference || segment.href) { output.push(segment); i++; continue; }
+      if (segment.entityId || segment.code || segment.math || segment.sourceReference||segment.bibliographicReference || segment.href) { output.push(segment); i++; continue; }
       const run: Segment[] = [];
-      while (i < content.length && !content[i]!.entityId && !content[i]!.code && !content[i]!.math && !content[i]!.sourceReference && !content[i]!.href) run.push(content[i++]!);
+      while (i < content.length && !content[i]!.entityId && !content[i]!.code && !content[i]!.math && !content[i]!.sourceReference&&!content[i]!.bibliographicReference && !content[i]!.href) run.push(content[i++]!);
       const text = run.map(s => s.text).join(''); let start = 0;
       // Backtick spans protect literal math in Markdown wrapped by a clipboard span.
       const pattern = /(`+)[\s\S]*?\1|(?<!\\)\\\(([^\n]*?)(?<!\\)\\\)|(?<![\\$])\$(?![\s$])((?:\\.|[^$\n\\])+?)(?<![\s\\])\$(?!\$)/g;
@@ -111,7 +111,7 @@ export function clipboardMathBlocks(blocks: Block[]): Block[] {
     }
     return output;
   }
-  const plain = (block: Block) => block.type === 'paragraph' && block.content.every(s => !s.entityId && !s.code && !s.math && !s.sourceReference && !s.href);
+  const plain = (block: Block) => block.type === 'paragraph' && block.content.every(s => !s.entityId && !s.code && !s.math && !s.sourceReference&&!s.bibliographicReference && !s.href);
   const output: Block[] = [];
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i]!;
@@ -166,7 +166,7 @@ export function clipboardBlocks(text: string, html: string, markdown=readMarkdow
     const appendText = () => {
       const wrapper = document.createElement('div'); wrapper.append(range.cloneContents());
       const content = readSegments(wrapper, false);
-      if (content.some(segment => segment.text || segment.entityId || segment.math || segment.sourceReference)) blocks.push(richBlock(type, content, node));
+      if (content.some(segment => segment.text || segment.entityId || segment.math || segment.sourceReference||segment.bibliographicReference)) blocks.push(richBlock(type, content, node));
     };
     for (const image of images) {
       range.setEndBefore(image); appendText();

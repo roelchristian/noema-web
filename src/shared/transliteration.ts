@@ -1,4 +1,4 @@
-import {entityMentionName,type Block,type Entity} from './domain.js';
+import {entityMentionName,type Block,type Entity,type Segment,type TextStyle} from './domain.js';
 
 // Script-based Latin transliteration, not pronunciation or translation. Keep these
 // explicit mappings stable across locales; no network, model or language detection.
@@ -70,14 +70,26 @@ function transliterateWord(text:string,overrides:Record<string,string>):string {
   }).join('');
 }
 
-export function blockTransliteration(block:Block,entities:Entity[],language?:string|null):string|null {
+/** Project display text and marks without changing the authored block or citation data. */
+export function blockTransliterationSegments(block:Block,entities:Entity[],language?:string|null):Segment[]|null {
   if(!['paragraph','heading1','heading2','quote','bullet','numbered','todo'].includes(block.type)||block.semantic==='ai-explanation')return null;
   let supported=false;
-  const text=block.content.map(segment=>{
+  const content:(TextStyle&{text:string})[]=block.content.filter(segment=>!segment.sourceReference&&!segment.bibliographicReference).map(segment=>{
     const value=segment.entityId?segment.mentionText??entityMentionName(entities.find(entity=>entity.id===segment.entityId))??'':segment.text??'';
-    if(segment.math||segment.code)return value;
-    supported ||= supportedScript.test(value);
-    return transliterate(value,language);
-  }).join('');
-  return supported?text:null;
+    const {entityId,mentionText,...style}=segment;
+    if(segment.math||segment.code)return {...style,text:value};
+    const prose=value.replace(/[ \t]*\[ref\]/gi,'');
+    supported ||= supportedScript.test(prose);
+    return {...style,text:transliterate(prose,language)};
+  });
+  // Reference atoms often leave a trailing spacer; keep it out of the display.
+  for(let index=content.length-1;index>=0;index--){
+    content[index]={...content[index],text:(content[index]!.text??'').trimEnd()};
+    if(content[index]!.text)break;
+  }
+  return supported?content:null;
+}
+
+export function blockTransliteration(block:Block,entities:Entity[],language?:string|null):string|null {
+  return blockTransliterationSegments(block,entities,language)?.map(segment=>segment.text??'').join('')??null;
 }

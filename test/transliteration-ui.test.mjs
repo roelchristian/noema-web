@@ -5,6 +5,9 @@ import {createRoot} from 'react-dom/client';
 import {setupDOM} from './helpers/dom.mjs';
 import {PageToolbar} from '../src/client/editor/PageToolbar.tsx';
 import {TransliterationBar} from '../src/client/editor/TransliterationBar.tsx';
+import {TransliterationBlock} from '../src/client/editor/TransliterationBlock.tsx';
+import {blockTransliterationSegments} from '../src/shared/transliteration.ts';
+import {readSegments,segmentHTML} from '../src/client/editor/segments.tsx';
 import {ReadOnlyPageBlocks} from '../src/client/editor/ReadOnlyPageBlocks.tsx';
 import {readTransliteration} from '../src/client/state/transliteration-preferences.ts';
 
@@ -13,6 +16,9 @@ for(const [name,text,expected] of [['Greek','θεός','theós'],['Old Church Sl
   const storageDescriptor=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
   Object.defineProperty(globalThis,'localStorage',{configurable:true,value:env.dom.window.localStorage});
   env.defer(()=>{if(storageDescriptor)Object.defineProperty(globalThis,'localStorage',storageDescriptor);else delete globalThis.localStorage;});
+  const optGroupDescriptor=Object.getOwnPropertyDescriptor(globalThis,'HTMLOptGroupElement');
+  Object.defineProperty(globalThis,'HTMLOptGroupElement',{configurable:true,value:env.dom.window.HTMLOptGroupElement});
+  env.defer(()=>{if(optGroupDescriptor)Object.defineProperty(globalThis,'HTMLOptGroupElement',optGroupDescriptor);else delete globalThis.HTMLOptGroupElement;});
   const prototype=env.dom.window.HTMLElement.prototype;
   const matches=prototype.matches,open=new WeakSet();
   prototype.matches=function(selector){return selector===':popover-open'?open.has(this):matches.call(this,selector);};
@@ -39,6 +45,8 @@ for(const [name,text,expected] of [['Greek','θεός','theós'],['Old Church Sl
   };
   await choose('Below paragraphs');
   assert.ok(document.querySelector('[aria-label="Transliteration controls"]'));
+  assert.equal(document.querySelector('.transliteration-bar-label').textContent,'Transliteration');
+  assert.ok(document.querySelector('.transliteration-bar .select-trigger[role="combobox"]'));
   assert.equal(document.querySelector('[aria-label="Hide transliteration"]').textContent,'Hide');
   assert.equal(document.querySelector('[aria-label="Hide transliteration"] svg'),null);
   assert.equal(document.querySelector('.block-transliteration').lastElementChild.textContent,expected);
@@ -46,9 +54,10 @@ for(const [name,text,expected] of [['Greek','θεός','theós'],['Old Church Sl
   assert.equal(localStorage.getItem('noema-transliteration:test/'+page.id),'below');
   assert.equal(readTransliteration('different/page'),'off');
   assert.equal(document.querySelector('.transliteration-label'),null);
-  const layoutControl=document.querySelector('[aria-label="Transliteration layout"]');
+  const layoutControl=document.querySelector('select[aria-label="Transliteration layout"]');
   assert.equal(layoutControl.value,'below');
-  await act(async()=>{layoutControl.value='side-by-side';layoutControl.dispatchEvent(new window.Event('change',{bubbles:true}));});
+  await act(async()=>{document.querySelector('.transliteration-bar .select-trigger').click();
+    document.querySelector('.transliteration-bar [role="option"]:last-child').click();});
   assert.equal(readTransliteration('test/'+page.id),'side-by-side');
   assert.equal(localStorage.getItem('noema-transliteration:test/'+page.id),'side-by-side');
   assert.equal(document.querySelector('.transliteration-label'),null);
@@ -61,7 +70,7 @@ for(const [name,text,expected] of [['Greek','θεός','theós'],['Old Church Sl
     React.createElement(ReadOnlyPageBlocks,{language:page.language,blocks:page.blocks,entities:[],pages:[],vaultId:'test',pageId:page.id,onOpenEntity:noop,onOpenPage:noop}),
     React.createElement(TransliterationBar,{pageKey:'test/'+page.id}))));
   assert.ok(document.querySelector('.block-transliteration'));
-  const restoredControl=document.querySelector('[aria-label="Transliteration layout"]');
+  const restoredControl=document.querySelector('select[aria-label="Transliteration layout"]');
   assert.equal(restoredControl.value,'side-by-side');
   await act(async()=>{restoredControl.value='below';restoredControl.dispatchEvent(new window.Event('change',{bubbles:true}));});
   assert.equal(document.querySelector('[data-block-id="p"]').dataset.transliterationLayout,'below');
@@ -71,4 +80,32 @@ for(const [name,text,expected] of [['Greek','θεός','theós'],['Old Church Sl
   assert.equal(localStorage.getItem('noema-transliteration:test/'+page.id),'off');
   assert.equal(document.querySelector('.transliteration-bar'),null);
   assert.equal(document.querySelector('.block-transliteration'),null);
+});
+
+
+test('transliteration preserves inline marks, scripts and math while hiding citations',async t=>{
+  const env=setupDOM(t);
+  const block={id:'styled',type:'paragraph',content:[
+    {text:'Жизнь',bold:true,italic:true,underline:true,strike:true},
+    {text:'ж',superscript:true},{text:'ш',subscript:true},
+    {text:'x^{2}+y_{1}',math:true},
+    {text:' [ref]',sourceReference:{id:'r'}},
+  ]};
+  const original=structuredClone(block);
+  const root=createRoot(document.querySelector('#mount'));
+  env.defer(()=>act(async()=>root.unmount()));
+  await act(async()=>root.render(React.createElement(TransliterationBlock,{content:blockTransliterationSegments(block,[])})));
+  const display=document.querySelector('.block-transliteration');
+  assert.equal(display.querySelector('s u em strong').textContent,'Žiznʹ');
+  assert.equal(display.querySelector('sup').textContent,'ž');
+  assert.equal(display.querySelector('sub').textContent,'š');
+  assert.ok(display.querySelector('.katex'));
+  assert.equal(display.textContent.includes('[ref]'),false);
+  assert.deepEqual(block,original);
+  const host=document.createElement('div');
+  host.innerHTML='<sup>ж</sup><sub>ш</sub>';
+  assert.deepEqual(readSegments(host),[{text:'ж',superscript:true},{text:'ш',subscript:true}]);
+  host.innerHTML=segmentHTML(readSegments(host),[],undefined,true,undefined,false);
+  assert.equal(host.querySelector('sup').textContent,'ж');
+  assert.equal(host.querySelector('sub').textContent,'ш');
 });

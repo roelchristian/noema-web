@@ -88,3 +88,18 @@ test('block projection applies the selected language to prose and entity mention
   assert.equal(blockTransliteration(block,entities,'ru'),'ʺʹ ʺʹ ʹʺ ъ ь');
   assert.deepEqual({block,entities},original);
 });
+
+
+test('block transliteration omits source and bibliographic references and legacy placeholders',()=>{
+  const block={id:'refs',type:'paragraph',content:[
+    {text:'Жизнь'},
+    {text:' [ref]',sourceReference:{id:'source-ref'}},
+    {text:' [ref]',bibliographicReference:{id:'bib-ref'}},
+    {text:' прекрасна. [ref]'},
+  ]};
+  const original=structuredClone(block);
+  assert.equal(blockTransliteration(block,[]),'Žiznʹ prekrasna.');
+  assert.deepEqual(block,original);
+  assert.equal(blockTransliteration({...block,content:[{text:'[ref]',code:true},{text:' мир'}]},[]),'[ref] mir');
+  assert.equal(blockTransliteration({...block,content:[{text:'Жизнь',sourceReference:{id:'only-ref'}}]},[]),null);
+});

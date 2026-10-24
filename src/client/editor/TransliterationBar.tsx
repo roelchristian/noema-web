@@ -1,5 +1,6 @@
 import {useLayoutEffect,useRef} from 'react';
 import {Icon} from '../components/Icon';
+import {Select} from '../components/Select';
 import {t as uiText} from '../i18n';
 import {rememberTransliteration,useTransliteration} from '../state/transliteration-preferences';
 
@@ -35,10 +36,11 @@ export function TransliterationBar({pageKey}:{pageKey:string}) {
   if(layout==='off')return null;
   return <div ref={bar} className="transliteration-bar" role="group" aria-label={uiText('Transliteration controls')} contentEditable={false}>
     <Icon name="culture"/>
-    <select aria-label={uiText('Transliteration layout')} value={layout} onChange={event=>rememberTransliteration(pageKey,event.target.value==='side-by-side'?'side-by-side':'below')}>
+    <span className="transliteration-bar-label">{uiText('Transliteration')}</span>
+    <Select aria-label={uiText('Transliteration layout')} value={layout} onChange={event=>rememberTransliteration(pageKey,event.target.value==='side-by-side'?'side-by-side':'below')}>
       <option value="below">{uiText('Below paragraphs')}</option>
       <option value="side-by-side">{uiText('Side by side')}</option>
-    </select>
+    </Select>
     <button type="button" aria-label={uiText('Hide transliteration')} onClick={()=>rememberTransliteration(pageKey,'off')}>
       {uiText('Hide')}
     </button>

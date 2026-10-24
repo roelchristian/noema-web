@@ -20,7 +20,8 @@ function fixture(t) {
  store.run('DELETE FROM bibliographic_records WHERE source_id=?',source.id);
  const fields={title:'Authored synthetic title',author:'{Synthetic Research Group} and Example, Alice',year:'0012',custom:'Unrecognized {raw} value'};
  const provenance=Object.fromEntries(Object.keys(fields).map(key=>[key,{origin:'bibtex',at:stamp}]));
- provenance.title.history=[{value:'Earlier authored title',origin:'manual',at:stamp}];
+ provenance.year.origin='ai';
+ provenance.title.history=[{value:'Earlier extracted title',origin:'ai',at:stamp},{value:'Earlier authored title',origin:'manual',at:stamp}];
  store.run("INSERT INTO entity_domains(entity_id,domain_id,origin) VALUES(?,?,'inferred')",source.id,DOMAINS[0].id);
  const raw='% Preserve comments and macros\n@string{x="synthetic"}\n@unknown{FixtureKey,title=x,custom={Unrecognized {raw} value}}\n';
  const batchId=createHash('sha256').update(raw).digest('hex');
@@ -56,9 +57,9 @@ test('invalid bibliographic references, provenance, values and revisions roll ba
  const corruptions=[
   a=>{a.tables.bibliographic_records[0].source_id='outside-archive';},
   a=>{a.tables.bibliographic_records[0].fields_json='{"title":{"bad":true}}';},
-  a=>{a.tables.bibliographic_records[0].provenance_json='{"title":{"origin":"ai","at":"2026-10-24T12:00:00Z"}}';},
+  a=>{a.tables.bibliographic_records[0].provenance_json='{"title":{"origin":"confidence_only","at":"2026-10-24T12:00:00Z"}}';},
   a=>{a.tables.bibliographic_records[0].raw_imports_json='[42]';},
-  a=>{a.tables.bibliographic_records[0].provenance_json=JSON.stringify({title:{origin:'manual',at:stamp,history:[{value:'bad origin',origin:'ai',at:stamp}]}});},
+  a=>{a.tables.bibliographic_records[0].provenance_json=JSON.stringify({title:{origin:'manual',at:stamp,history:[{value:'bad origin',origin:'confidence_only',at:stamp}]}});},
   a=>{a.tables.bibliographic_import_batches[0].raw='Tampered raw data';},
   a=>{a.tables.bibliographic_records[0].raw_imports_json=JSON.stringify(['a'.repeat(64)]);},
   a=>{a.tables.bibliographic_records.push({...a.tables.bibliographic_records[0]});},

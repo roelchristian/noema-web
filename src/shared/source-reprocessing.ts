@@ -24,6 +24,8 @@ export interface SourceEditorialPatch {
  reason:string;riskReasons?:string[];confidence:number; decision:'pending'|'accepted'|'rejected'; userReplacement?:string;
 }
 export interface SourceReprocessingReport {
+ /** Structured publication candidates are separate from editorial text patches. */
+ metadata?:{candidateCount:number;added:number;corroborated:number;requiresReview:number;cacheHit:boolean;evidenceHash:string};
  usageIncomplete?:boolean;excerpts?:SourceEditorialExcerpt[];sessionStartedAt?:string;sessionCompletedIndexes?:number[];errorCode?:string;
  promptVersion:string;model:string;reasoningEffort:ReasoningEffort;startedAt:string|null;finishedAt:string|null;durationMs:number|null;
  /** Completed excerpt indexes, including out-of-order successes. Missing means a legacy completed prefix. */

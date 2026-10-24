@@ -327,3 +327,81 @@ test('English source metadata never proves English passage language for balanced
   assert.equal(input.document.source.language,'en');const result=evaluateEditorialAcceptance(input);assert.equal(result.automatic,false);assert.match(result.reasons.join(' '),/Independent passage-language evidence is unavailable/);
  }
 });
+
+test('structured metadata validates publication scope, explicit roles and printed dates without trusting confidence',async()=>{
+ const {extractSourceMetadata}=await import('../src/server/modules/source-metadata-extraction.ts');
+ const text='Title: Synthetic Publication\nAuthor: Writer, Ada and Writer, Bea\nTranslator: Translator, Cee\nPublication year: 2024\nPublication date: 2024-02-29\nPublisher: Example Press\nDOI: 10.1234/source\nISBN: 978-0-306-40615-7\n\nIntroduction\nReferences\nTitle: Cited Work\nDOI: 10.1234/cited';
+ const result=extractSourceMetadata(text,'Synthetic Publication');
+ assert.equal(result.facts.length,8);assert.ok(result.facts.every(fact=>fact.validated));
+ assert.equal(result.facts.find(fact=>fact.fieldKey==='bibliography:author').value,'Writer, Ada and Writer, Bea');
+ assert.equal(result.facts.find(fact=>fact.fieldKey==='bibliography:translator').value,'Translator, Cee');
+ assert.ok(result.facts.every(fact=>text.slice(fact.start,fact.end)===fact.excerpt&&!fact.excerpt.includes('Cited Work')));
+ for(const bad of ['Publication year: circa 2024','Publication date: 2023-02-29','ISBN: 9780306406158','DOI: not-a-doi']){
+  const candidate=extractSourceMetadata('Title: Synthetic Publication\n'+bad,'Synthetic Publication').facts.at(-1);
+  assert.equal(candidate.validated,false,bad);
+ }
+ const unmatched=extractSourceMetadata('Title: Cited Work\nPublication year: 1920','Synthetic Publication');
+ assert.ok(unmatched.facts.length);assert.ok(unmatched.facts.every(fact=>!fact.validated));
+ assert.deepEqual(extractSourceMetadata('References\nTitle: Synthetic Publication\nDOI: 10.1234/cited','Synthetic Publication').facts,[]);
+ assert.deepEqual(extractSourceMetadata('Title: Synthetic Publication\nA discussion of another work.\nPublication year: 1920','Synthetic Publication').facts.map(fact=>fact.fieldKey),['bibliography:title']);
+ assert.ok(extractSourceMetadata('Title: Synthetic Publication\nPublication year: 1920\nPublication year: 1921','Synthetic Publication').facts.filter(fact=>fact.fieldKey==='bibliography:year').every(fact=>!fact.validated));
+ assert.equal(extractSourceMetadata(text+'x'.repeat(100000),'Synthetic Publication').charactersExamined,12000);
+});
+
+test('document metadata cache and run provenance register independent structured candidates without provider calls',async()=>{
+ const {SourceMetadataExtraction}=await import('../src/server/modules/source-metadata-extraction.ts');
+ const cache=new Map(),received=[];
+ const store={get(sql,...args){return sql.includes('extraction_cache')?cache.get(args[2]):undefined;},run(_sql,_vault,_file,key,payload){cache.set(key,{payload});}};
+ const metadata={registerCandidate(_vault,_source,candidate){received.push(candidate);return {status:candidate.fieldKey==='bibliography:title'?'corroborated':'pending',registrationOutcome:candidate.fieldKey==='bibliography:title'?'satisfied':'pending'};}};
+ const extraction=new SourceMetadataExtraction(store,metadata),r=fixture();
+ r.original.text='Title: Synthetic Publication\nPublication year: 2024';r.original.document.source.title='Synthetic Publication';
+ const first=extraction.process('v','s',r);assert.equal(first.cacheHit,false);assert.equal(first.candidateCount,2);assert.equal(first.corroborated,1);assert.equal(first.requiresReview,1);
+ const second=extraction.process('v','s',{...r,id:'second-run'});assert.equal(second.cacheHit,true);assert.equal(cache.size,1);
+ assert.equal(received.at(-1).runId,'second-run');assert.equal(received.at(-1).version,'canonical');
+ assert.match(received.at(-1).revision,/^[a-f0-9]{64}$/);assert.match(received.at(-1).evidenceHash,/^[a-f0-9]{64}$/);
+ r.original.text+='\nIntroduction\nUnrelated revised body';assert.equal(extraction.process('v','s',r).cacheHit,true);assert.equal(cache.size,1);
+ r.report.metadata=first;r.reprocessed={...r.original,text:r.original.text.replace('2024','2025')};
+ const derivative=extraction.process('v','s',r,'editorial');assert.equal(derivative.cacheHit,false);assert.equal(cache.size,2);
+ assert.equal(received.at(-1).version,'editorial');assert.equal(received.at(-1).value,'2025');assert.equal(r.original.text.includes('2024'),true);
+ assert.notEqual(received.at(-1).revision,received[0].revision);
+ r.report.metadata=derivative;const before=received.length;assert.equal(extraction.process('v','s',r,'editorial').candidateCount,0);assert.equal(received.length,before);
+ r.original.text=r.original.text.replace('2024','2026');assert.equal(extraction.process('v','s',r).cacheHit,false);assert.equal(cache.size,3);
+ const [{openDatabase},{Store},{SourceMetadata}]=await Promise.all([import('../src/server/database.ts'),import('../src/server/store.ts'),import('../src/server/modules/source-metadata.ts')]);
+ const db=openDatabase(':memory:'),realStore=new Store(db),service=new SourceMetadata(realStore);
+ try{
+  const text='\nTitle: Synthetic Publication\nPublication year: 2024',cleaned=text.slice(1);
+  const {createHash}=await import('node:crypto'),hash=value=>createHash('sha256').update(value).digest('hex');
+  realStore.run("INSERT INTO entities(id,vault_id,name,type,updated_at) VALUES('s','default','Display name','source','2026-01-01')");
+  realStore.run("INSERT INTO source_files(id,vault_id,entity_id,name,size,status,text,created_at,format,admitted) VALUES('f','default','s','Synthetic.txt',1,'ready',?,'2026-01-01','txt',1)",text);
+  realStore.run("INSERT INTO source_math_documents(file_id,raw_hash,algorithm_version,cleaned_text,uncertainty_json,updated_at) VALUES('f',?,2,?,'[]','2026-01-01')",hash(text),cleaned);
+  service.setPolicy('default','s','fill_validated_empty');
+  const run={...r,id:'run-1',fileId:'f',report:{...r.report,metadata:undefined},original:{...r.original,text:cleaned}};
+  const firstReal=new SourceMetadataExtraction(realStore,service).process('default','s',run);assert.equal(firstReal.added,2);
+  const rawEvidence=service.snapshot('default','s').fields.flatMap(field=>field.history)[0].evidence[0];assert.equal(rawEvidence.version,'canonical');assert.equal(rawEvidence.revision,hash(text));assert.equal(rawEvidence.start,1);
+  // Replay after an interruption before the run summary was checkpointed: persisted facts must not be added twice.
+  const restart=new SourceMetadataExtraction(realStore,new SourceMetadata(realStore));
+  const replay=restart.process('default','s',run);assert.equal(replay.added,0);assert.equal(replay.corroborated,2);assert.equal(replay.cacheHit,true);
+  assert.equal(realStore.get('SELECT count(*) n FROM property_proposals').n,2);
+  assert.ok(service.snapshot('default','s').fields.flatMap(field=>field.history).every(proposal=>proposal.evidence.length===1));
+  const next=restart.process('default','s',{...run,id:'run-2'});assert.equal(next.added,0);assert.equal(next.corroborated,2);
+  assert.ok(service.snapshot('default','s').fields.flatMap(field=>field.history).every(proposal=>proposal.evidence.length===2));
+  const derivativeRun={...run,report:{...run.report,metadata:firstReal},reprocessed:{...run.original,text:cleaned.replace('2024','2025')}};
+  realStore.run("INSERT INTO source_reprocessing(id,file_id,vault_id,status,created_at,updated_at,payload) VALUES('run-1','f','default','completed','2026-01-01','2026-01-01',?)",JSON.stringify(derivativeRun));
+  const reviewed=restart.process('default','s',derivativeRun,'editorial');assert.equal(reviewed.added,0);assert.equal(reviewed.requiresReview,1);
+  const year=service.snapshot('default','s').fields.find(field=>field.key==='bibliography:date');assert.equal(year.value,'2024');assert.equal(JSON.parse(realStore.get("SELECT fields_json FROM bibliographic_records WHERE source_id='s'").fields_json).year,'2024');
+  assert.equal(year.proposals[0].evidence[0].version,'editorial');assert.equal(year.proposals[0].evidence[0].excerpt,derivativeRun.reprocessed.text);
+  assert.equal(realStore.get("SELECT text FROM source_files WHERE id='f'").text,text);
+
+ }finally{db.close();}
+
+});
+
+test('editorial execution checkpoints document metadata once and preserves separate decisions on resume',async()=>{
+ const env=concurrentHarness(async()=>JSON.stringify({patches:[]}));let extractions=0;
+ env.service.metadata={process(){extractions++;return {candidateCount:2,added:1,corroborated:0,requiresReview:1,cacheHit:false,evidenceHash:'a'.repeat(64)};}};
+ await env.service.tick();assert.equal(extractions,1);assert.equal(env.stored.report.metadata.added,1);assert.equal(env.stored.patches.length,0);
+ const original=env.stored.original;assert.deepEqual(env.stored.reprocessed,original);
+ const {HttpError}=await import('../src/server/validation.ts'),ambiguous=concurrentHarness(async()=>JSON.stringify({patches:[]}));
+ ambiguous.service.metadata={process(){throw new HttpError(409,'The supporting excerpt changed, disappeared, or is ambiguous.');}};
+ await ambiguous.service.tick();assert.equal(ambiguous.stored.status,'completed');assert.match(ambiguous.stored.report.diagnostics.join(' '),/Metadata evidence requires review/);
+});

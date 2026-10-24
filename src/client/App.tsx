@@ -193,7 +193,20 @@ function WorkspaceApp() {
   const [sourceInspectorOpen,setSourceInspectorOpen]=useState(false);
   const [passageAction,setPassageAction]=useState<{reference:SourceReference;annotate:boolean;destinationId?:string}|null>(null);
   const inspectorToggle=useRef<HTMLButtonElement>(null);
-  const [inspectorTab,setInspectorTab]=useState<'overview'|'connections'|'edit'>('overview');
+  const [inspectorTab,setInspectorTab]=useState<'overview'|'metadata'|'connections'|'edit'>('overview');
+  const [metadataDestination,setMetadataDestination]=useState<{sourceId:string;runId?:string}|null>(null);
+  useEffect(()=>{
+    const open=(event:Event)=>{
+      const detail=(event as CustomEvent<{vaultId?:string;sourceId?:string;runId?:string}>).detail;
+      if(!vault||!detail?.sourceId||detail.vaultId!==vault.id||vault.locked)return;
+      const source=workspace.snapshot().entities.find(item=>item.id===detail.sourceId&&item.type==='source');
+      if(!source)return;
+      setMetadataDestination({sourceId:source.id,runId:detail.runId});setInspectorTab('metadata');setSourceInspectorOpen(true);
+      void workspace.openSource(source.id).catch(workspace.report);
+    };
+    window.addEventListener('noema:open-source-metadata',open);
+    return()=>window.removeEventListener('noema:open-source-metadata',open);
+  },[workspace,vault?.id,vault?.locked]);
   const [activeAttachment,setActiveAttachment]=useState<{key:string;id:string}|null>(null);
   const [sourceRefresh,setSourceRefresh]=useState(0);
   const sourceKey=JSON.stringify([vault?.id,activeSource?.id]);
@@ -441,7 +454,7 @@ function WorkspaceApp() {
           await workspace.saver.flush();if(signal.aborted||workspace.snapshot().vault?.id!==vault.id||workspace.snapshot().vault?.locked||workspace.snapshot().view!=='inbox')return;
           reviewVault.current=vault.id;setReviewDestination(item);setSearchOpen(false);setSourceReference(null);setNoteDateSelection(null);
           if(item.category==='scan'){setAiOpen(true);await workspace.openPage(item.originId);}
-          else if(item.category==='property'){setSourceInspectorOpen(true);setInspectorTab('overview');await workspace.openEntityHome(item.originId);}
+          else if(item.category==='property'){setSourceInspectorOpen(true);setInspectorTab('metadata');await workspace.openEntityHome(item.originId);}
           else if(item.category==='temporal'&&item.dateId){const value=item.dateId.split(':')[2];if(!value)return;const civil=/^(\d{4})(?:-(\d{2}))?/.exec(value.replace(/^~/,''));changeCalendar({selected:value,selectedId:item.dateId,calendar:item.dateId.startsWith('julian:')?'julian':'gregorian',month:civil?civil[1]+'-'+(civil[2]??'01'):calendarView.month});await workspace.showCalendar();}
           else if(item.category==='discovery')await workspace.openEntityHome(item.originId);
           else {setSourceInspectorOpen(item.category==='source');if(item.category==='source')setInspectorTab('edit');await workspace.openSource(item.originId);}
@@ -459,7 +472,7 @@ function WorkspaceApp() {
     {knowledgeVisible && view==='pages' && page && vault && !vault.locked && !busy && <IntelligencePanel onReviewOpenChange={setEntityReviewOpen} onDomainsChange={(primary,secondary)=>workspace.setPageDomains(primary,secondary)} pages={[...pages,...state.archive]} onOpenPage={id=>run(()=>workspace.openPage(id))} inactive={loadingPageId !== null} onReview={(scanId,id,decision,edits)=>workspace.reviewEntity(scanId,id,decision,edits)} onSourcesChange={sourceIds => workspace.updatePage({sourceIds})} onCreateEntity={setCreate} entities={entities} onOpenEntity={openEntity} key={vault.id} page={page} onClose={()=>setAiOpen(false)} onSettings={()=>setSettingsOpen(true)} onFlush={async()=>{await workspace.saver.flush();return workspace.snapshot().page;}}/>}
     {activeNoteDate && !searchOpen && !panelId && !sourceReference && view==='pages' && page && vault && !vault.locked && !busy && <NoteDatePanel onOpenCalendar={openDateInCalendar} onOpenMention={openTemporalMention} calendarSettings={calendarSettings} onOpenCalendarSettings={()=>{setSettingsInitialTab('calendar');setSettingsOpen(true);}} key={noteDateKey+'/'+activeNoteDate.id} item={activeNoteDate} page={page} onClose={closeNoteDate} onOpenPage={id=>{setNoteDateSelection(null);run(()=>workspace.openPage(id));}}/>}
     {searchOpen && vault && !vault.locked && !busy && <SearchPanel onOpenPassage={openSourceReference} key={vault.id} vaultId={vault.id} pages={pages} entities={entities} onOpenPage={(id,reference)=>run(()=>openIndexedPage(id,reference))} onOpenEntity={openEntityHome} onClose={()=>setSearchOpen(false)}/>}
-    {panelId && !activeNoteDate && !searchOpen && !sourcePage && !sourceReference && vault && !vault.locked && !busy && <EntityPanel onOpenHome={openEntityHome} activeAttachmentId={activeAttachment?.key===sourceKey?activeAttachment.id:undefined} inspectorTab={inspectorTab} onInspectorTabChange={setInspectorTab} inspector={view==='source'&&panelId===activeSource?.id} onCreatePageFromSource={beginSourcePage} onOpenPage={id => run(() => workspace.openPage(id))} refreshKey={JSON.stringify([pages.map(page => [page.id, page.title, page.updated_at]),entities.filter(entity=>entity.id===panelId).map(entity=>[entity.updated_at,entity.sourceStatus,entity.sourceEnrichmentStatus])])} key={vault.id + '/' + panelId} vaultId={vault.id} id={panelId} entities={entities} onOpen={openEntityHome} onClose={closeInspector} onUpdated={async() => {setSourceRefresh(value=>value+1);await workspace.refreshEntities();}} onError={workspace.report}/>}
+    {panelId && !activeNoteDate && !searchOpen && !sourcePage && !sourceReference && vault && !vault.locked && !busy && <EntityPanel onOpenHome={openEntityHome} activeAttachmentId={activeAttachment?.key===sourceKey?activeAttachment.id:undefined} metadataRunId={metadataDestination?.sourceId===panelId?metadataDestination.runId:undefined} inspectorTab={inspectorTab} onInspectorTabChange={setInspectorTab} inspector={view==='source'&&panelId===activeSource?.id} onCreatePageFromSource={beginSourcePage} onOpenPage={id => run(() => workspace.openPage(id))} refreshKey={JSON.stringify([pages.map(page => [page.id, page.title, page.updated_at]),entities.filter(entity=>entity.id===panelId).map(entity=>[entity.updated_at,entity.sourceStatus,entity.sourceEnrichmentStatus])])} key={vault.id + '/' + panelId} vaultId={vault.id} id={panelId} entities={entities} onOpen={openEntityHome} onClose={closeInspector} onUpdated={async() => {setSourceRefresh(value=>value+1);await workspace.refreshEntities();}} onError={workspace.report}/>}
     {sourceReference && vault && !vault.locked && !busy && <SourceViewer presentation={{value:appearance.presentationMode,onChange:presentationMode=>setAppearance(current=>({...current,presentationMode})),onExitFocus:exitFocus}} key={vault.id+'/'+sourceReference.id} vaultId={vault.id} reference={sourceReference} entities={entities} onClose={closeSourceReference} onOpenEntity={openEntityHome}/>}
     {vault && !vault.locked && !busy && !reviewing && !entityReviewOpen && !settingsOpen && !create && !sourcePage && !passageAction && <SourceReferencePreview key={[vault.id,view,page?.id].join('/')} entities={entities} onOpen={openSourceReference}/>}
     {vault && !vault.locked && !busy && !reviewing && !entityReviewOpen && !settingsOpen && !create && !sourcePage && !passageAction && <EntityPreview key={[vault.id, view, page?.id, state.entityId, panelId].join('/')} entities={entities} dates={noteDates} onOpenDate={openNoteDate} onOpen={openEntityHome}/>}

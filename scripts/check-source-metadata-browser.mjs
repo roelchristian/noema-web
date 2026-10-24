@@ -1,0 +1,66 @@
+// Disposable synthetic database; no vault files, credentials, or external requests.
+import assert from 'node:assert/strict';
+import {once} from 'node:events';
+import {createHash} from 'node:crypto';
+import {mkdir,writeFile} from 'node:fs/promises';
+import {resolve,join} from 'node:path';
+import {openDatabase} from '../src/server/database.ts';
+import {Store} from '../src/server/store.ts';
+import {Knowledge} from '../src/server/modules/knowledge.ts';
+import {Bibliography} from '../src/server/modules/bibliography.ts';
+import {SourceMetadata} from '../src/server/modules/source-metadata.ts';
+import {createApp} from '../src/server/http.ts';
+import {Intelligence} from '../src/server/modules/intelligence.ts';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE??'playwright-core');
+const db=openDatabase(':memory:'),store=new Store(db),knowledge=new Knowledge(store),metadata=new SourceMetadata(store);
+store.run("INSERT INTO entities(id,vault_id,name,type,aliases,mention_case,referent_status,subtypes,description,updated_at) VALUES('synthetic-metadata-source','default','Personal reading label','source','[]','canonical','actual','[]','',?)",new Date().toISOString());
+const source=knowledge.require('default','synthetic-metadata-source'),stamp=new Date().toISOString(),text='Title: Synthetic publication\nPublication year: 2026\nPublisher: Synthetic Press\n\nBody text.';
+const hash=value=>createHash('sha256').update(value).digest('hex');
+store.run("INSERT INTO source_files(id,vault_id,entity_id,name,size,status,text,created_at,format,admitted,enrichment_status) VALUES('metadata-browser-file','default',?,'Synthetic.txt',?,'ready',?,?,'txt',1,'completed')",source.id,text.length,text,stamp);
+new Bibliography(store).save('default',source.id,{revision:0,citationKey:'Synthetic2026',entryType:'book',fields:{title:'Synthetic publication',author:'Synthetic Writer'}});
+for(const [field,value] of [['year','2026'],['publisher','Synthetic Press']])metadata.registerCandidate('default',source.id,{fieldKey:'bibliography:'+field,value,fileId:'metadata-browser-file',runId:'synthetic-metadata-run',version:'canonical',revision:hash(text),excerpt:text,start:0,end:text.length,evidenceHash:hash(text),validated:true,validationReason:'Synthetic explicitly labeled publication evidence.'});
+const ai=new Intelligence({read:()=>null,write(){},remove(){}},async()=>{throw new Error('Real provider calls forbidden');});
+const server=createApp(store,resolve('dist/client'),ai),directory=process.env.NOEMA_SCREENSHOTS??'/tmp/noema-source-metadata-evidence';
+let browser;const errors=[];
+try{
+ await mkdir(directory,{recursive:true});server.listen(0,'127.0.0.1');await once(server,'listening');
+ browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH??'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+ const page=await browser.newPage({viewport:{width:1440,height:1000}});page.setDefaultTimeout(15000);page.on('pageerror',error=>errors.push(error.message));
+ await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
+ const base=`http://127.0.0.1:${server.address().port}`;
+ await page.goto(base+'/?vault=default&source='+source.id+'&entity='+source.id);
+ await page.getByRole('tab',{name:'Metadata',exact:true}).click();
+ const workspace=page.getByRole('region',{name:'Source metadata',exact:true});
+ await workspace.getByText('2 suggested',{exact:false}).waitFor();
+ await page.screenshot({path:join(directory,'metadata-desktop.png')});
+ // Evidence disclosure and inline correction dispatch through the canonical owner.
+ await workspace.getByText('Evidence',{exact:true}).first().click();
+ await workspace.getByRole('button',{name:'Show all properties',exact:false}).click();
+ const publisher=workspace.locator('.source-metadata-field').filter({has:page.locator('dt',{hasText:/^Publisher$/})});
+ await publisher.getByRole('button',{name:'Edit and accept',exact:true}).click();
+ await publisher.getByLabel('Correct suggested Publisher').fill('Corrected Synthetic Press');
+ await publisher.getByRole('button',{name:'Save correction and accept',exact:true}).click();
+ await publisher.getByText('Corrected Synthetic Press',{exact:true}).waitFor();
+ assert.equal(new Bibliography(store).get('default',source.id).fields.publisher,'Corrected Synthetic Press');
+ assert.equal(knowledge.require('default',source.id).name,'Personal reading label');
+ const batch=workspace.getByRole('button',{name:/Accept compatible suggestions/});await batch.click();
+ await workspace.getByText('1 changed · 0 already satisfied · 0 need attention',{exact:true}).waitFor();
+ assert.equal(new Bibliography(store).get('default',source.id).fields.year,'2026');
+ await workspace.getByRole('button',{name:'Show history',exact:true}).click();
+ await workspace.getByText('Field history (1)',{exact:true}).first().click();
+ await page.screenshot({path:join(directory,'metadata-reviewed-desktop.png')});
+ // Repeated navigation and run intent retain one component and avoid metadata polling.
+ let reads=0;page.on('request',request=>{if(request.method()==='GET'&&request.url().includes('/source-metadata'))reads++;});
+ await page.getByRole('tab',{name:'Overview',exact:true}).click();await page.getByRole('tab',{name:'Metadata',exact:true}).click();await workspace.getByText('0 suggested',{exact:false}).waitFor();
+ const filteredRead=page.waitForResponse(response=>response.request().method()==='GET'&&response.url().includes('/source-metadata?runId=synthetic-metadata-run')&&response.status()===200);
+ await page.evaluate(({sourceId})=>window.dispatchEvent(new CustomEvent('noema:open-source-metadata',{detail:{vaultId:'default',sourceId,runId:'synthetic-metadata-run'}})),{sourceId:source.id});
+ await (await filteredRead).finished();await workspace.getByText('Suggestions from run synthetic-metadata-run',{exact:false}).waitFor();await workspace.getByRole('combobox').waitFor();await page.waitForLoadState('networkidle');
+ const readBaseline=reads;await page.waitForTimeout(2200);assert.equal(reads,readBaseline);
+ await page.setViewportSize({width:390,height:844});assert.equal(await page.getByRole('navigation',{name:'Source reading navigation',exact:true}).isVisible(),false);await page.screenshot({path:join(directory,'metadata-mobile.png')});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ await page.evaluate(()=>localStorage.setItem('noema.appearance.v1',JSON.stringify({mode:'dark',theme:'ink'})));await page.reload();await page.getByRole('tab',{name:'Metadata',exact:true}).click();await workspace.getByRole('combobox').waitFor();
+ assert.equal(await page.evaluate(()=>document.documentElement.dataset.mode),'dark');
+ await page.screenshot({path:join(directory,'metadata-mobile-dark.png')});
+ assert.deepEqual(errors,[]);
+ await writeFile(join(directory,'validation.json'),JSON.stringify({passed:true,synthetic:true,browser:await browser.version(),checks:['canonical owner correction','display name separate','batch exact outcome','evidence/history','repeated navigation','run filter','no metadata polling','desktop/mobile/dark','no page errors'],errors},null,2));
+ console.log(JSON.stringify({passed:true,directory}));
+}finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve));db.close();}

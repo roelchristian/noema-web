@@ -104,6 +104,31 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
   if(new Set(indexes).size!==indexes.length||indexes.length!==report.chunksCompleted||indexes.some((value,index)=>index>0&&value<=indexes[index-1]!))throw invalid();
  }
 
+
+ if(report.sessionStartedAt!==undefined)timestamp(report.sessionStartedAt);
+ if(report.errorCode!==undefined)string(report.errorCode,100);
+ if(report.sessionCompletedIndexes!==undefined){const indexes=array(report.sessionCompletedIndexes,128).map(v=>integer(v,0,chunks-1));if(new Set(indexes).size!==indexes.length)throw invalid();}
+ if(report.excerpts!==undefined){
+  const excerpts=array(report.excerpts,128);if(excerpts.length!==chunks)throw invalid();
+  let end=0;
+  for(const [index,value] of excerpts.entries()){
+   const excerpt=object(value);if(excerpt.index!==index||integer(excerpt.startOffset,0,text.length)!==end)throw invalid();end=integer(excerpt.endOffset,end+1,text.length);
+   for(const key of ['startPage','endPage'])if(excerpt[key]!==null)integer(excerpt[key],1,pageCount??1000);
+   oneOf(excerpt.status,['pending','running','completed','failed','interrupted']);integer(excerpt.attempts,0,Number.MAX_SAFE_INTEGER);integer(excerpt.durationMs,0,Number.MAX_SAFE_INTEGER);
+   for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])if(excerpt[key]!==null)integer(excerpt[key],0,Number.MAX_SAFE_INTEGER);
+   if(excerpt.lastAttemptAt!==undefined)timestamp(excerpt.lastAttemptAt);
+   if(excerpt.errorCode!==undefined)string(excerpt.errorCode,100);if(excerpt.error!==undefined)string(excerpt.error,10000);if(excerpt.outcomeUncertain!==undefined&&typeof excerpt.outcomeUncertain!=='boolean')throw invalid();
+   if(excerpt.history!==undefined)for(const value of array(excerpt.history,20)){
+    const attempt=object(value);timestamp(attempt.startedAt);integer(attempt.durationMs,0,Number.MAX_SAFE_INTEGER);
+    for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])if(attempt[key]!==null)integer(attempt[key],0,Number.MAX_SAFE_INTEGER);
+    if(attempt.errorCode!==undefined)string(attempt.errorCode,100);if(attempt.error!==undefined)string(attempt.error,10000);if(attempt.outcomeUncertain!==undefined&&typeof attempt.outcomeUncertain!=='boolean')throw invalid();
+   }
+   const completed=report.completedChunkIndexes===undefined?index<(report.chunksCompleted as number):(report.completedChunkIndexes as number[]).includes(index);
+   if((excerpt.status==='completed')!==completed)throw invalid();
+  }
+  if(end!==text.length)throw invalid();
+ }
+
  if(report.charactersTotal!==text.length)throw invalid();integer(report.charactersReviewed,0,text.length);
  if(report.error!==null)string(report.error,10000);
  for(const diagnostic of array(report.diagnostics,11000))string(diagnostic,10000);

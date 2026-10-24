@@ -3,6 +3,7 @@ import {AIActivityLog} from './ai-activity.js';
 import {Store} from '../store.js';
 import {HttpError,now} from '../validation.js';
 import {SourceFiles} from './source-files.js';
+import {editorialFailure,editorialBackoff} from './source-reprocessing-errors.js';
 import {Intelligence} from './intelligence.js';
 import {mathSource} from './source-math-text.js';
 import {SourceDocuments,sourceDocumentBuilderVersion} from './source-documents.js';
@@ -84,6 +85,7 @@ export class SourceReprocessing {
  constructor(private store:Store,private files:SourceFiles,private intelligence:Intelligence,private requireOpen:(vault:string)=>unknown,private activity:AIActivityLog) {
   for(const row of store.all<Row>("SELECT * FROM source_reprocessing WHERE status IN ('queued','running')")){
    const revision=JSON.parse(row.payload) as SourceReprocessingRevision;
+   for(const excerpt of revision.report.excerpts??[])if(excerpt.status==='running'){excerpt.status='interrupted';excerpt.errorCode='provider_outcome_uncertain';excerpt.outcomeUncertain=true;excerpt.error='Application stopped during a request. The provider outcome is unknown; inspect completed suggestions before explicitly resuming.';}
    revision.status='interrupted';revision.report.error='Application restarted before this pass completed. Resume this pass to retry the unfinished excerpt.';revision.report.finishedAt=now();this.save(row.vault_id,revision);
   }
  }
@@ -155,12 +157,12 @@ export class SourceReprocessing {
   const selection=this.intelligence.editorialSelection();
   if(r.report.promptVersion!==promptVersion||r.report.model!==selection.model)throw new HttpError(409,'Editorial configuration changed. Start a new pass.');
   if(this.store.get("SELECT 1 FROM source_reprocessing WHERE file_id=? AND status IN ('queued','running')",id))throw new HttpError(409,'Another pass is already active.');
-  r.report.reasoningEffort=selection.reasoningEffort;r.status='queued';r.report.error=null;this.save(vault,r);return r;
+  r.report.reasoningEffort=selection.reasoningEffort;r.status='queued';r.report.error=null;delete r.report.errorCode;this.save(vault,r);return r;
  }
  async tick(){
   if(this.closed||this.running)return;const row=this.store.all<Row>("SELECT * FROM source_reprocessing WHERE status='queued' ORDER BY created_at").find(row=>{try{this.requireOpen(row.vault_id);return true;}catch{return false;}});if(!row)return;
   this.running=true;const r=JSON.parse(row.payload) as SourceReprocessingRevision,controller=new AbortController();this.controller=controller;this.activeRevisionId=r.id;
-  const started=Date.now();r.status='running';r.report.startedAt??=now();r.report.error=null;r.report.finishedAt=null;this.save(row.vault_id,r);
+  const started=Date.now();r.status='running';r.report.sessionStartedAt=now();r.report.sessionCompletedIndexes=[];r.report.startedAt??=r.report.sessionStartedAt;r.report.error=null;r.report.finishedAt=null;this.save(row.vault_id,r);
   const guard=()=>{this.requireOpen(row.vault_id);if(this.closed||controller.signal.aborted)throw new HttpError(409,'Editorial pass interrupted.');if(this.baseHash(row.vault_id,r.fileId)!==r.baseHash)throw new HttpError(409,'Canonical source changed during this pass.');const selection=this.intelligence.editorialSelection();if(selection.model!==r.report.model||selection.reasoningEffort!==r.report.reasoningEffort)throw new HttpError(409,'AI model changed. Start a new pass.');};
   const timer=setInterval(()=>{try{this.requireOpen(row.vault_id);if(this.closed)controller.abort();}catch{controller.abort();}},250);timer.unref();
   const chunks=this.chunks(r.original.text,r.original.document.physical.pages.map(p=>p.range.startOffset));
@@ -169,18 +171,26 @@ export class SourceReprocessing {
   const originalNodes=sourceDocumentEntries(r.original.document);
   type Usage={inputTokens:number|null;outputTokens:number|null;reasoningTokens:number|null;cachedInputTokens:number|null};
   type Result={index:number;patches:SourceEditorialPatch[];diagnostics:string[];usage:Usage;error?:unknown};
+  const blankUsage=():Usage=>({inputTokens:null,outputTokens:null,reasoningTokens:null,cachedInputTokens:null});
+  r.report.excerpts=chunks.map((chunk,index)=>{
+   const prior=r.report.excerpts?.find(excerpt=>excerpt.index===index);
+   return {...this.range(r,chunk.start,chunk.end),index,...blankUsage(),attempts:0,durationMs:0,...prior,status:completed.has(index)?'completed' as const:'pending' as const};
+  });
+  this.save(row.vault_id,r);
+  let configurationFailure:unknown;
+  const account=(usage:Usage)=>{for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'] as const)if(usage[key]!==null)r.report[key]=(r.report[key]??0)+usage[key]!;};
   const process=async(index:number):Promise<Result>=>{
    const chunk=chunks[index]!,diagnostics:string[]=[],usage:Usage={inputTokens:null,outputTokens:null,reasoningTokens:null,cachedInputTokens:null};
    // Each task owns its response and usage; only the ordered coordinator mutates the revision.
-   let observedUsage:Usage=usage;
+   let observedUsage:Usage=usage;let activityId:string|undefined;
    try {
     guard();const editableText=r.original.text.slice(chunk.start,chunk.end);
-    let output:string;const activityId=this.activity.start('source_reprocessing',{model:r.report.model,reasoningEffort:r.report.reasoningEffort},row.vault_id,this.files.require(row.vault_id,r.fileId).entity_id??r.fileId,'entity');
-    try{output=await this.intelligence.reeditSource(JSON.stringify({preferences:r.instructions,sourceTitle:r.original.document.source.title,physicalPage:this.range(r,chunk.start,chunk.end).startPage,canonicalRange:this.range(r,chunk.start,chunk.end),contextBefore:r.original.text.slice(Math.max(0,chunk.start-1000),chunk.start),editableText,contextAfter:r.original.text.slice(chunk.end,chunk.end+1000)}),instructions,controller.signal,bytes=>{const observer=this.activity.request(activityId,bytes,null);return {...observer,usage:(value:unknown)=>{observer.usage?.(value);if(!value||typeof value!=='object')return;const v=value as Record<string,any>;const count=(n:unknown)=>typeof n==='number'&&Number.isSafeInteger(n)&&n>=0?n:null;observedUsage={inputTokens:count(v.input_tokens),outputTokens:count(v.output_tokens),reasoningTokens:count(v.output_tokens_details?.reasoning_tokens),cachedInputTokens:count(v.input_tokens_details?.cached_tokens)};}};});this.activity.finish(activityId,'completed',200);}
-    catch(error){this.activity.finish(activityId,'failed',error instanceof HttpError?error.status:500);throw error;}
+    let output:string;activityId=this.activity.start('source_reprocessing',{model:r.report.model,reasoningEffort:r.report.reasoningEffort},row.vault_id,this.files.require(row.vault_id,r.fileId).entity_id??r.fileId,'entity');
+    try{output=await this.intelligence.reeditSource(JSON.stringify({preferences:r.instructions,sourceTitle:r.original.document.source.title,physicalPage:this.range(r,chunk.start,chunk.end).startPage,canonicalRange:this.range(r,chunk.start,chunk.end),contextBefore:r.original.text.slice(Math.max(0,chunk.start-1000),chunk.start),editableText,contextAfter:r.original.text.slice(chunk.end,chunk.end+1000)}),instructions,controller.signal,bytes=>{const observer=this.activity.request(activityId!,bytes,null);return {...observer,usage:(value:unknown)=>{observer.usage?.(value);if(!value||typeof value!=='object')return;const v=value as Record<string,any>;const count=(n:unknown)=>typeof n==='number'&&Number.isSafeInteger(n)&&n>=0?n:null;observedUsage={inputTokens:count(v.input_tokens),outputTokens:count(v.output_tokens),reasoningTokens:count(v.output_tokens_details?.reasoning_tokens),cachedInputTokens:count(v.input_tokens_details?.cached_tokens)};}};});}
+    catch(error){throw error;}
 
     guard();let parsed:unknown;try{parsed=JSON.parse(output.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''));}catch{throw new HttpError(502,'AI returned invalid editorial JSON.');}
-    if(!parsed||typeof parsed!=='object'||!Array.isArray((parsed as any).patches)||(parsed as any).patches.length>50)throw new HttpError(502,'Invalid editorial patch response.');
+    if(!parsed||typeof parsed!=='object'||!Array.isArray((parsed as any).patches)||(parsed as any).patches.length>50||((parsed as any).diagnostics!==undefined&&(!Array.isArray((parsed as any).diagnostics)||(parsed as any).diagnostics.length>30||(parsed as any).diagnostics.some((v:unknown)=>typeof v!=='string'||v.length>2000))))throw new HttpError(502,'Invalid editorial patch response.');
     const data=parsed as {patches:Record<string,unknown>[];diagnostics?:unknown};
     const chunkPatches:SourceEditorialPatch[]=[];
     for(const [patchIndex,item] of data.patches.entries()){
@@ -206,19 +216,38 @@ export class SourceReprocessing {
     }
 
     if(Array.isArray(data.diagnostics))diagnostics.push(...data.diagnostics.filter((v):v is string=>typeof v==='string').slice(0,30).map(v=>`Excerpt ${index+1}: ${v.slice(0,2000)}`));
+    this.activity.finish(activityId,'completed',200);
     return {index,patches:chunkPatches,diagnostics,usage:observedUsage};
-   }catch(error){return {index,patches:[],diagnostics,usage:observedUsage,error};}
+   }catch(error){if(activityId)this.activity.finish(activityId,controller.signal.aborted?'interrupted':'failed',typeof (error as {providerStatus?:number})?.providerStatus==='number'?(error as {providerStatus:number}).providerStatus:error instanceof HttpError?error.status:500);return {index,patches:[],diagnostics,usage:observedUsage,error};}
+  };
+  const processWithRetries=async(index:number):Promise<Result>=>{
+   const excerpt=r.report.excerpts![index]!;
+   for(let attempt=1;;attempt++){
+    if(configurationFailure)return {index,patches:[],diagnostics:[],usage:blankUsage(),error:configurationFailure};
+    try{guard();}catch(error){excerpt.status=controller.signal.aborted?'interrupted':'failed';excerpt.errorCode=editorialFailure(error,controller.signal.aborted).code;excerpt.error=error instanceof Error?error.message:'Editorial pass stopped.';return {index,patches:[],diagnostics:[],usage:blankUsage(),error};}
+    excerpt.status='running';excerpt.attempts++;excerpt.lastAttemptAt=now();
+    delete excerpt.error;delete excerpt.errorCode;delete excerpt.outcomeUncertain;
+    this.save(row.vault_id,r);const attemptStarted=Date.now();
+    const result=await process(index),duration=Math.max(0,Date.now()-attemptStarted);
+    const failure=result.error?editorialFailure(result.error,controller.signal.aborted):undefined;
+    excerpt.durationMs+=duration;account(result.usage);
+    for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'] as const)if(result.usage[key]!==null)excerpt[key]=(excerpt[key]??0)+result.usage[key]!;
+    excerpt.history=[...(excerpt.history??[]),{startedAt:excerpt.lastAttemptAt,durationMs:duration,...result.usage,...(failure?{errorCode:failure.code,error:failure.message,outcomeUncertain:failure.outcomeUncertain}:{})}].slice(-20);
+    if(failure){excerpt.status=controller.signal.aborted?'interrupted':'failed';excerpt.errorCode=failure.code;excerpt.error=failure.message;excerpt.outcomeUncertain=failure.outcomeUncertain;if(failure.configuration)configurationFailure=result.error;}
+    this.save(row.vault_id,r);
+    if(!failure||!failure.retryable||attempt>=3||configurationFailure||controller.signal.aborted)return {...result,usage:blankUsage()};
+    try{await editorialBackoff(attempt,controller.signal);guard();}catch(error){return {...result,error,usage:blankUsage()};}
+   }
   };
   try {
    // Bounded waves permit deterministic checkpoints and stop scheduling promptly after failure.
    // A successful sibling remains durable even if an earlier excerpt failed.
    const remaining=chunks.map((_,index)=>index).filter(index=>!completed.has(index));
    for(let at=0;at<remaining.length;at+=2){
-    guard();const results=await Promise.all(remaining.slice(at,at+2).map(process));
+    guard();const results=await Promise.all(remaining.slice(at,at+2).map(processWithRetries));
     let failure:unknown;
     for(const result of results){
-     if(result.usage.inputTokens===null||result.usage.outputTokens===null)result.diagnostics.push(`Excerpt ${result.index+1}: provider usage was unavailable; token totals include only reported usage and may be incomplete.`);
-     for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'] as const)if(result.usage[key]!==null)r.report[key]=(r.report[key]??0)+result.usage[key]!;
+     if(r.report.excerpts![result.index]!.inputTokens===null||r.report.excerpts![result.index]!.outputTokens===null)result.diagnostics.push(`Excerpt ${result.index+1}: provider usage was unavailable; token totals include only reported usage and may be incomplete.`);
      r.report.diagnostics.push(...result.diagnostics);
      if(result.error){failure??=result.error;continue;}
      try {
@@ -231,10 +260,10 @@ export class SourceReprocessing {
        materializeSourceRevision(checkpoint);
        r.reprocessed=checkpoint.reprocessed;r.nodeLinks=checkpoint.nodeLinks;r.report.validationDiagnostics=checkpoint.report.validationDiagnostics;
       }
-      r.patches=patches;completed.add(result.index);
+      r.patches=patches;completed.add(result.index);const excerpt=r.report.excerpts![result.index]!;excerpt.status='completed';delete excerpt.error;delete excerpt.errorCode;delete excerpt.outcomeUncertain;r.report.sessionCompletedIndexes!.push(result.index);
       r.report.completedChunkIndexes=[...completed].sort((a,b)=>a-b);r.report.chunksCompleted=completed.size;
       r.report.charactersReviewed=r.report.completedChunkIndexes.reduce((total,index)=>total+chunks[index]!.end-chunks[index]!.start,0);
-     }catch(error){failure??=error;}
+     }catch(error){failure??=error;const excerpt=r.report.excerpts![result.index]!;excerpt.status='failed';excerpt.errorCode=editorialFailure(error).code;excerpt.error=error instanceof Error?error.message:'Checkpoint failed.';}
     }
     // One durable checkpoint per wave, including successful siblings and usage from failed calls.
     this.save(row.vault_id,r);
@@ -242,7 +271,7 @@ export class SourceReprocessing {
    }
    materializeSourceRevision(r);
    guard();r.status='completed';
-  }catch(error){r.status=controller.signal.aborted?'interrupted':'failed';r.report.error=error instanceof Error?error.message:'Editorial pass failed.';r.report.diagnostics.push('Partial pass: completed excerpts and suggestions are retained; coverage is incomplete.');}
+  }catch(error){r.status=controller.signal.aborted?'interrupted':'failed';r.report.error=error instanceof Error?error.message:'Editorial pass failed.';r.report.errorCode=editorialFailure(error,controller.signal.aborted).code;r.report.diagnostics.push('Partial pass: completed excerpts and suggestions are retained; coverage is incomplete.');}
   finally{clearInterval(timer);r.report.finishedAt=now();r.report.durationMs=(r.report.durationMs??0)+Date.now()-started;this.save(row.vault_id,r);this.controller=null;this.activeRevisionId=null;this.running=false;}
  }
  close(){this.hashCache=null;this.closed=true;this.controller?.abort();}

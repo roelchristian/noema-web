@@ -82,14 +82,14 @@ function excerptResponse(prompt){
  const original=prompt.editableText.split('\n').find(line=>line.length>30&&!line.includes('<!--'));
  return JSON.stringify({patches:[{original,replacement:original+' [review]',category:'ocr',reason:'Compare original',confidence:1}],diagnostics:['page '+prompt.physicalPage]});
 }
-test('bounded concurrency assembles out-of-order responses in canonical order and saves once per wave',async()=>{
+test('bounded concurrency assembles out-of-order responses in canonical order with durable attempts and ordered wave checkpoints',async()=>{
  let active=0,peak=0;const completion=[];
  const env=concurrentHarness(async prompt=>{active++;peak=Math.max(peak,active);await new Promise(resolve=>setTimeout(resolve,prompt.physicalPage%2?15:1));active--;completion.push(prompt.physicalPage);return excerptResponse(prompt);});
  await env.service.tick();assert.equal(peak,2);assert.equal(completion[0],2);assert.equal(env.stored.status,'completed');
  assert.deepEqual(env.stored.report.completedChunkIndexes,[0,1,2,3,4]);assert.equal(env.stored.report.charactersReviewed,env.r.original.text.length);
  assert.equal(env.stored.patches.length,5);assert.deepEqual(env.stored.patches.map(p=>p.range.startPage),[1,2,3,4,5]);
  assert.deepEqual(env.stored.report.diagnostics.filter(d=>d.includes(': page ')),['Excerpt 1: page 1','Excerpt 2: page 2','Excerpt 3: page 3','Excerpt 4: page 4','Excerpt 5: page 5']);
- assert.equal(env.stored.report.inputTokens,50);assert.equal(env.stored.report.outputTokens,10);assert.equal(env.writes,5);assert.equal(env.stored.reprocessed.text,env.r.original.text);
+ assert.equal(env.stored.report.inputTokens,50);assert.equal(env.stored.report.outputTokens,10);assert.equal(env.writes,16);assert.equal(env.stored.reprocessed.text,env.r.original.text);
 });
 test('failed early excerpt keeps successful sibling and resume retries only missing indexes',async()=>{
  const calls=[];let fail=true;
@@ -148,4 +148,43 @@ test('lightweight status projects progress from SQLite without returning documen
   const status=service.status('v',r.fileId,r.id);assert.equal(status.status,'completed');assert.equal(status.chunksCompleted,5);assert.equal(status.charactersTotal,r.original.text.length);assert.equal(status.updatedAt,r.updatedAt);assert.equal(status.original,undefined);
   assert.throws(()=>service.status('wrong',r.fileId,r.id),/not found/);
  }finally{db.close();}
+});
+
+test('invalid editorial JSON fails activity while a successful sibling remains resumable without duplicate work',async()=>{
+ let invalid=true;const calls=[],activities=[];
+ const env=concurrentHarness(async prompt=>{calls.push(prompt.physicalPage);return invalid&&prompt.physicalPage===1?'not json':excerptResponse(prompt);});
+ env.service.activity={start:()=>activities.length+1,request:()=>({}),finish:(_id,status)=>activities.push(status)};
+ await env.service.tick();assert.equal(env.stored.status,'failed');assert.equal(env.stored.report.errorCode,'invalid_json');
+ assert.deepEqual(activities.sort(),['completed','failed']);assert.deepEqual(env.stored.report.completedChunkIndexes,[1]);
+ assert.equal(env.stored.report.excerpts[0].attempts,1);assert.equal(env.stored.report.excerpts[0].errorCode,'invalid_json');
+ invalid=false;env.service.resume('v',env.r.fileId,env.r.id);await env.service.tick();
+ assert.equal(calls.filter(page=>page===2).length,1);assert.equal(env.stored.status,'completed');assert.equal(env.stored.report.inputTokens,60);
+ assert.equal(env.stored.report.excerpts[0].attempts,2);assert.equal(env.stored.report.sessionCompletedIndexes.length,4);
+});
+
+test('explicit transient provider failures back off within three attempts and preserve exhausted sibling progress',async()=>{
+ const {GenerationProviderError}=await import('../src/server/modules/intelligence.ts');
+ const calls=[];const env=concurrentHarness(async prompt=>{calls.push(prompt.physicalPage);if(prompt.physicalPage===1)throw new GenerationProviderError(503,'Temporary provider outage');return excerptResponse(prompt);});
+ await env.service.tick();assert.equal(env.stored.status,'failed');assert.deepEqual(calls,[1,2,1,1]);
+ assert.deepEqual(env.stored.report.completedChunkIndexes,[1]);assert.equal(env.stored.report.excerpts[0].attempts,3);
+ assert.equal(env.stored.report.excerpts[0].errorCode,'provider_unavailable');assert.equal(env.stored.report.inputTokens,40);
+ assert.equal(env.stored.report.excerpts[0].history.length,3);
+ let rateLimited=true;const recovered=concurrentHarness(async prompt=>{if(rateLimited&&prompt.physicalPage===1){rateLimited=false;throw new GenerationProviderError(429,'Rate limited');}return excerptResponse(prompt);});
+ await recovered.service.tick();assert.equal(recovered.stored.status,'completed');assert.equal(recovered.stored.report.excerpts[0].attempts,2);assert.equal(recovered.stored.report.inputTokens,60);
+});
+
+test('configuration errors trip the circuit breaker and uncertain transports never automatically repeat paid work',async()=>{
+ const {GenerationProviderError,GenerationTransportError,GenerationAdmissionError}=await import('../src/server/modules/intelligence.ts');
+ for(const [error,code] of [[new GenerationProviderError(400,'Unsupported configuration'),'provider_http_400'],[new GenerationTransportError('timeout','Timed out'),'transport_timeout'],[new GenerationAdmissionError('Busy'),'local_admission']]){
+  const calls=[];const env=concurrentHarness(async prompt=>{calls.push(prompt.physicalPage);if(prompt.physicalPage===1)throw error;return excerptResponse(prompt);});
+  await env.service.tick();assert.equal(env.stored.status,'failed');assert.equal(env.stored.report.errorCode,code);assert.ok(calls.length<=2);assert.equal(calls.filter(page=>page===1).length,1);assert.equal(env.stored.report.excerpts[0].attempts,1);
+  if(code==='transport_timeout')assert.equal(env.stored.report.excerpts[0].outcomeUncertain,true);
+ }
+});
+
+test('source changes while concurrent calls are in flight discard stale outputs and leave canonical snapshots immutable',async()=>{
+ let resolveFirst,resolveSecond,entered;const ready=new Promise(resolve=>{entered=resolve;});let count=0;
+ const env=concurrentHarness(async prompt=>new Promise(resolve=>{if(++count===1)resolveFirst=()=>resolve(excerptResponse(prompt));else{resolveSecond=()=>resolve(excerptResponse(prompt));entered();}}));
+ const original=JSON.stringify(env.r.original),work=env.service.tick();await ready;env.service.baseHash=()=> 'changed';resolveFirst();resolveSecond();await work;
+ assert.equal(env.stored.status,'failed');assert.equal(env.stored.report.errorCode,'source_changed');assert.equal(env.stored.patches.length,0);assert.equal(env.stored.report.chunksCompleted,0);assert.equal(JSON.stringify(env.stored.original),original);
 });

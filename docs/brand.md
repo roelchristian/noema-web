@@ -13,8 +13,10 @@ retains the localized “Noema home” accessible name.
 
 The modern SVG favicon uses the same asset. Its own `prefers-color-scheme` rule
 follows browser/system appearance, independently of Noema's saved appearance.
-The legacy ICO contains 16/32/48px images with a white backing, so its dark mark
-remains visible on either browser theme. Do not hand-edit that generated asset.
+The legacy ICO contains transparent 16/32/48px images in neutral `#767676` ink,
+so it works on light and dark browser backgrounds without an enclosure. Its
+color is fixed because ICO cannot adapt to browser appearance. Do not hand-edit
+that generated asset. Regeneration preserves transparency and the same geometry.
 
 Regenerate it with the optional browser tooling (no new app dependencies):
 
@@ -32,6 +34,8 @@ PLAYWRIGHT_MODULE=/absolute/path/to/playwright-core/index.mjs node --import tsx 
 `CHROMIUM_PATH` overrides `/usr/bin/chromium`; `NOEMA_SCREENSHOTS` selects the
 evidence directory. The check covers the real sidebar at desktop/mobile widths,
 all three accents, both appearance modes, live color changes, accessible naming,
-and SVG/ICO pixel legibility at 16px. It captures actual 18px sidebar rendering.
+and SVG/ICO pixel legibility at 16px. It checks ICO frame and decoded dimensions,
+transparent corners and ring centers, neutral ink, and absence of a backing.
+It captures actual 18px sidebar rendering and favicon samples on light/dark surfaces.
 Headless Chromium can validate the favicon resource, not native browser tab chrome;
 Safari and other platforms require their own visual checks.

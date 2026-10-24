@@ -54,8 +54,12 @@ test('delayed enrichment refreshes headings and navigation without reloading or 
   assert.equal(documentReads,1);
   assert.equal(document.querySelector('.source-reader-document').dataset.annotations,'contextual');
   assert.equal(document.querySelector('[aria-label="Reader annotations"]').value,'contextual');
-  await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Info').click());
+  await act(async()=>document.querySelector('button[aria-label="Info"]').click());
   assert.equal(infoToggles,1,'reader Info reveals the existing Inspector');
+  assert.ok(document.querySelector('a[aria-label="Download"] svg'));
+  assert.ok(document.querySelector('summary[aria-label="Display"] svg'));
+  assert.equal(document.querySelector('.source-workspace-title').textContent,'Article');
+  assert.match(document.querySelector('.source-workspace-eyebrow').textContent,/SourceTXT/);
   assert.equal(document.querySelector('.source-reader-document h3'),null);
   assert.match(document.querySelector('[aria-label="Source reading navigation"]').textContent,/Passage/);
   const body=[...document.querySelectorAll('.source-reader-passage')].find(node=>node.textContent.includes('A stable paragraph'));

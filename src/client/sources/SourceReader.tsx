@@ -165,11 +165,11 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
     }catch{onError('Unable to copy the citation. Clipboard access may be unavailable.');}
   }
   return <section className={'source-reader'+(inspectorOpen?' has-inspector':'')+(reviewOpen?' has-review-drawer':'')} data-reader-width={display.width} data-reader-typography={display.typography} aria-label={uiText("Source reading view")}>
-    <header className="source-workspace-header"><span className="source-workspace-eyebrow">{source.subtypes.length?source.subtypes.join(' · '):uiText("Source")}</span><h1 className="page-heading source-workspace-title"><SourceReaderInline text={source.name}/></h1></header>
+    <header className="source-workspace-header"><span className="source-workspace-eyebrow"><Icon name="source"/>{uiText("Source")}{attachment&&<span className="source-reader-format">{attachment.format.toUpperCase()}</span>}</span><h1 className="page-heading source-workspace-title"><SourceReaderInline text={source.name}/></h1></header>
     <div className="source-reader-toolbar">
-      <span className="source-reader-mode"><Icon name="source"/>{uiText("Reading · Read-only")}</span>
+      <span className="source-reader-mode" title={uiText("Reading · Read-only")}><Icon name="lock"/>{uiText("Read-only")}</span>
       {files&&files.length>1&&<label className="source-reader-file-label">{uiText("Attachment") + " "}<select aria-label={uiText("Read source attachment")} value={fileId} onChange={event=>{setLoaded(null);setSelected(null);setFileId(event.target.value);setError('');}}>{files.map(file=><option key={file.id} value={file.id}>{file.generated_name||file.name}</option>)}</select></label>}
-      <details className="source-reader-display"><summary>{uiText('Display')}</summary><div className="source-reader-display-panel">
+      <details className="source-reader-display"><summary aria-label={uiText('Display')} title={uiText('Display')}><Icon name="sliders"/><span className="sr-only">{uiText('Display')}</span></summary><div className="source-reader-display-panel">
         <label>{uiText('Reader annotations')}<select aria-label={uiText('Reader annotations')} value={display.annotations} onChange={event=>updateDisplay({annotations:event.target.value as ReaderAnnotations})}><option value="clean">{uiText('Clean reading')}</option><option value="contextual">{uiText('Contextual')}</option><option value="always">{uiText('Always show passage references')}</option></select></label>
         <label><input type="checkbox" checked={display.structureLabels} onChange={event=>updateDisplay({structureLabels:event.target.checked})}/>{uiText('Show Noema section and block labels')}</label>
         <label><input type="checkbox" checked={display.editorialIndicators} onChange={event=>updateDisplay({editorialIndicators:event.target.checked})}/>{uiText('Show editorial change indicators')}</label>
@@ -178,10 +178,9 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
         <label>{uiText('Reading width')}<select aria-label={uiText('Reading width')} value={display.width} onChange={event=>updateDisplay({width:event.target.value as ReaderDisplay['width']})}><option value="comfortable">{uiText('Comfortable')}</option><option value="wide">{uiText('Wide')}</option></select></label>
         <div className="source-reader-display-presets"><button type="button" onClick={()=>updateDisplay(defaultDisplay)}>{uiText('Reading preset')}</button><button type="button" onClick={()=>updateDisplay({annotations:'always',structureLabels:true,editorialIndicators:true})}>{uiText('Inspection preset')}</button></div>
       </div></details>
-      {onToggleInspector&&<button type="button" className="button small" aria-expanded={inspectorOpen} onClick={onToggleInspector}>{uiText('Info')}</button>}
-      {attachment&&<span className="source-reader-format">{attachment.format.toUpperCase()}</span>}
-      {attachment?.admitted===1&&<a className="button small" href={'/api/source-files/'+encodeURIComponent(attachment.id)+'/download?vault='+encodeURIComponent(vaultId)} download><Icon name="download"/>{uiText("Download")}</a>}
-      {loaded?.text.trim()&&<button className="button small" type="button" onClick={()=>onCreatePageFromSource(source)}>{uiText("Create note from source")}</button>}
+      {onToggleInspector&&<button type="button" className="source-reader-icon-action" aria-label={uiText('Info')} title={uiText('Source information')} aria-expanded={inspectorOpen} onClick={onToggleInspector}><Icon name="info"/></button>}
+      {attachment?.admitted===1&&<a className="source-reader-icon-action" aria-label={uiText("Download")} title={uiText("Download")} href={'/api/source-files/'+encodeURIComponent(attachment.id)+'/download?vault='+encodeURIComponent(vaultId)} download><Icon name="download"/></a>}
+      {loaded?.text.trim()&&<button className="button small" type="button" aria-label={uiText("Create note from source")} title={uiText("Create note from source")} onClick={()=>onCreatePageFromSource(source)}><Icon name="compose"/>{uiText("Create note")}</button>}
     </div>
     {error&&<p className="source-reader-status dialog-error" role="alert">{error} <button type="button" onClick={()=>setRetry(value=>value+1)}>{uiText("Retry")}</button></p>}
     {!files&&!error&&<p className="source-reader-status" role="status">{uiText("Loading source…")}</p>}

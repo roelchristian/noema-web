@@ -64,6 +64,6 @@ export function SourceReadingNavigation({article,text,document:sourceDocument,ac
     <button type="button" className="source-reading-prev" aria-label={uiText("Previous {value0}",{value0: navigation.unit.toLowerCase()})} title={uiText("Previous {value0}",{value0: navigation.unit.toLowerCase()})} disabled={current===0} onClick={()=>jump.current(current-1)}><Icon name="chevron"/></button>
     <span aria-live="polite" aria-atomic="true">{navigation.unit} {navigation.stops[current]?.number??1} <span className="source-reading-total">/ {navigation.stops.length}</span></span>
     <button type="button" aria-label={uiText("Next {value0}",{value0: navigation.unit.toLowerCase()})} title={uiText("Next {value0}",{value0: navigation.unit.toLowerCase()})} disabled={current>=navigation.stops.length-1} onClick={()=>jump.current(current+1)}><Icon name="chevron"/></button>
-    {activityAvailable&&<button type="button" className="source-bookmarks-toggle" title="Reading activity" aria-label="Reading activity" onClick={()=>window.dispatchEvent(new Event('noema:reading-bookmarks'))}><Icon name="annotation"/></button>}
+    {activityAvailable&&<button type="button" className="source-bookmarks-toggle" title="Reading activity" aria-label="Reading activity" onClick={()=>window.dispatchEvent(new Event('noema:reading-bookmarks'))}><Icon name="reading-activity"/></button>}
   </nav>;
 }

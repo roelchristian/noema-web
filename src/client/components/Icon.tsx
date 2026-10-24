@@ -33,6 +33,7 @@ const paths: Record<string, ReactNode> = {
   'arrow-down': <path d="M12 4v16m-6-6 6 6 6-6"/>,
   semantic: <><path d="M5 4v16M9 5h9l-2 4 2 4H9"/><circle cx="5" cy="4" r="1"/></>,
   quote: <><path d="M5 6h6v7H6c0 3 2 4 4 5M14 6h6v7h-5c0 3 2 4 4 5"/></>,
+  'reading-activity': <><path d="M12 6c-3-2-6-2-9-1v14c3-1 6-1 9 1 3-2 6-2 9-1V5c-3-1-6-1-9 1ZM12 6v14"/><path d="M16 4v8l2-1 2 1V4"/></>,
   annotation: <><path d="M20 15a2 2 0 0 1-2 2H9l-5 4V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2Z"/><path d="M8 8h8M8 12h5"/></>,
   lightbulb: <><path d="M9 18h6m-5 3h4M8 15c0-2-3-3-3-7a7 7 0 0 1 14 0c0 4-3 5-3 7Z"/></>,
   download: <><path d="M12 3v12m-5-5 5 5 5-5M4 15v5h16v-5"/></>,

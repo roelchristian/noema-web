@@ -103,3 +103,21 @@ test('only newly explicit native structured date assertions are accepted; indexi
   assert.equal(store.get('SELECT kind FROM temporal_relations WHERE property_id=?',end.id).kind,'ends_on');
  }finally {db.close();}
 });
+
+
+test('accepting an AI or imported property proposal retains temporal review instead of becoming a native assertion',async()=>{
+ const {PropertyReview}=await import('../src/server/modules/property-review.ts');
+ const {proposeValue}=await import('../src/server/modules/property-provenance.ts');
+ const db=openDatabase(':memory:');try {
+  const store=new Store(db),knowledge=new Knowledge(store),review=new PropertyReview(store);
+  for(const origin of ['ai','imported']) {
+   const event=knowledge.create('default',{name:origin+' event',type:'event'});
+   const proposal=proposeValue(store,'default',{entity_id:event.id,property_name:'start date',value:'1815-06-18',origin});
+   const preview=review.list('default',event.id)[0];
+   review.review('default',event.id,proposal.id,{action:'accept',fingerprint:preview.fingerprint});
+   const property=knowledge.detail('default',event.id).properties.find(property=>property.name==='start date');
+   assert.equal(property.provenance.origin,origin);
+   assert.equal(store.get('SELECT status FROM temporal_relations WHERE property_id=?',property.id).status,'pending');
+  }
+ }finally{db.close();}
+});

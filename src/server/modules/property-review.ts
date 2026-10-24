@@ -94,7 +94,7 @@ export class PropertyReview {
       const before=new Set(this.store.all<{id:string}>('SELECT id FROM properties WHERE entity_id=?',entityId).map(row=>row.id));
       const body:PropertyInput=target?{name,target_id:target}:{name,value:value!};
       if(definition&&definition.editable&&input.action!=='retain_both')body.definition_id=definition.id;
-      knowledge.property(vault,entityId,body);
+      knowledge.property(vault,entityId,body,undefined,{nativeTemporalAssertion:false});
       const added=this.store.all<{id:string}>('SELECT id FROM properties WHERE entity_id=?',entityId).find(row=>!before.has(row.id));
       if(added&&definition){bindPropertyDefinition(this.store,vault,added.id,definition.id);if(definition.valueKind==='date')new TemporalProperties(this.store).refresh(vault,1,added.id);}
       if(added)decisionDetails+='Accepted property: '+added.id+'. ';

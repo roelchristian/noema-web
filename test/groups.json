@@ -196,6 +196,7 @@
     "test/kokoro-speech.test.mjs",
     "test/speech-cache.test.mjs",
     "test/speech-backup.test.mjs",
-    "test/gemini-speech.test.mjs"
+    "test/gemini-speech.test.mjs",
+    "test/page-archive.test.mjs"
   ]
 }

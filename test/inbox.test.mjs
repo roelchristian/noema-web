@@ -21,7 +21,7 @@ test('New Note opens the editor from a collection and leaves the note in Inbox',
   const vault = {id: 'vault', name: 'Vault', locked: false};
   const page = {id: 'new', vault_id: vault.id, title: 'Untitled', blocks: [], sourceIds: [], revision: 1, updated_at: ''};
   t.mock.method(api, 'vaults', async () => [vault]);
-  t.mock.method(api, 'pages', async () => []);
+  t.mock.method(api,'archivedPages',async()=>[]);t.mock.method(api, 'pages', async () => []);
   t.mock.method(api, 'entities', async () => []);
   t.mock.method(api, 'organization', async () => ({collections: [{id: 'research', name: 'Research'}], folders: [], locations: [], memberships: [], favourites: []}));
   const create = t.mock.method(api, 'createPage', async () => page);

@@ -12,7 +12,7 @@ export function libraryDestination(state: WorkspaceState): string | null {
     const type = getLibraryViewState(state.vault.id,'knowledge').entityType;
     return JSON.stringify(['knowledge',type ?? '']);
   }
-  return ['favourites','inbox','recent','trash'].includes(state.view) ? state.view : null;
+  return ['favourites','inbox','recent','trash','archive'].includes(state.view) ? state.view : null;
 }
 interface LibraryRoot {element: HTMLElement; vault: string; destination: string; key: string}
 const identity = (vault: string, destination: string) => JSON.stringify([vault,destination]);

@@ -69,7 +69,7 @@ export function entitySourceEvidence(store:Store,vault:string,entityId:string,op
   evidence.set(key,{sourceName:source.file.evidence_name,passage:{id:key,reference:ref,reason,reasons:[reason],pageIds:pageId?[pageId]:[],...(excerptTruncated?{excerptTruncated:true}:{}),...(heading?{heading}:{}),stale}});
  };
  const pages=store.all<{id:string;blocks:string;associated:number}>(`SELECT p.id,p.blocks,EXISTS(SELECT 1 FROM entity_page_associations a WHERE a.page_id=p.id AND a.entity_id=?) AS associated
-  FROM pages p WHERE p.vault_id=? AND p.deleted_at IS NULL AND (EXISTS(SELECT 1 FROM entity_page_associations a WHERE a.page_id=p.id AND a.entity_id=?)
+  FROM pages p WHERE p.vault_id=? AND p.deleted_at IS NULL AND p.archived_at IS NULL AND (EXISTS(SELECT 1 FROM entity_page_associations a WHERE a.page_id=p.id AND a.entity_id=?)
    OR EXISTS(SELECT 1 FROM json_tree(p.blocks) j WHERE j.key='entityId' AND j.value=?)) ORDER BY p.id LIMIT ?`,entityId,vault,entityId,entityId,pageCap+1);
  if(pages.length>pageCap)truncated=true;
  for(const page of pages.slice(0,pageCap)) {

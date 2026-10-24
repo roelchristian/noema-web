@@ -8,7 +8,7 @@ async function fixture(t){
  const descriptor=Object.getOwnPropertyDescriptor(globalThis,'localStorage'),storage=new Map();
  Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value)}});
  t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false},{id:'b',name:'B',locked:false}]);
- t.mock.method(api,'pages',async vault=>['one','two','three'].map(id=>page(id,vault)));
+ t.mock.method(api,'archivedPages',async()=>[]);t.mock.method(api,'pages',async vault=>['one','two','three'].map(id=>page(id,vault)));
  t.mock.method(api,'entities',async()=>[]);
  t.mock.method(api,'organization',async()=>({collections:[],folders:[],locations:[],memberships:[],favourites:[]}));
  t.mock.method(api,'page',async(vault,id)=>page(id,vault));

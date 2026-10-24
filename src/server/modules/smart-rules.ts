@@ -27,7 +27,7 @@ export function evaluateSmartRule(store:Store,vault:string,definition:SmartRuleD
   if(itemIds!==undefined&&(!Array.isArray(itemIds)||itemIds.length>250||itemIds.some(id=>typeof id!=='string'||!id||id.length>500)))throw new HttpError(400,'Invalid rule candidate IDs.');
   if(itemIds?.length===0)return {items:[],hasMore:false};
   const candidates=store.all<Candidate>(`SELECT id,title,language,created_at,updated_at FROM pages
-    WHERE vault_id=? AND deleted_at IS NULL AND id>? ${itemIds?'AND id IN ('+itemIds.map(()=>'?').join(',')+')':''} ORDER BY id LIMIT ?`,vault,after,...(itemIds??[]),limit+1);
+    WHERE vault_id=? AND deleted_at IS NULL AND archived_at IS NULL AND id>? ${itemIds?'AND id IN ('+itemIds.map(()=>'?').join(',')+')':''} ORDER BY id LIMIT ?`,vault,after,...(itemIds??[]),limit+1);
   const hasMore=candidates.length>limit;
   const has=(sql:string,...values:(string|number)[])=>!!store.get(sql,...values);
   const label=(node:SmartRulePredicate):string=>{

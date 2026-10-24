@@ -212,6 +212,7 @@ db.exec(`CREATE TRIGGER IF NOT EXISTS page_summary_hash_invalidate AFTER UPDATE 
  CREATE TRIGGER IF NOT EXISTS entity_summary_hash_delete AFTER DELETE ON entities BEGIN
  UPDATE pages SET summary_content_hash=NULL WHERE vault_id=OLD.vault_id; END;`);
 
+if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'archived_at')) db.exec('ALTER TABLE pages ADD COLUMN archived_at TEXT DEFAULT NULL');
 if (!db.prepare('PRAGMA table_info(pages)').all().some(c => c.name === 'deleted_at')) db.exec('ALTER TABLE pages ADD COLUMN deleted_at TEXT');
 
 db.exec(`CREATE TABLE IF NOT EXISTS page_edit_locks (

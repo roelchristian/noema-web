@@ -44,9 +44,10 @@ function SidebarNameInput({name,onSave,onDone,maxLength=500}: {maxLength?:number
 }
 
 interface Container {scope?: string; linkedCollection?: string; type: 'collections' | 'folders'; id?: string; name: string; collection: string; parent: string}
-export function SidebarOrganization({vaultId, data, pages, activePageId, activeFolderPath, revealPageId, onRevealed, context, active, unfiledActive = false, disabled, available, onOpen, onOpenUnfiled, onOpenPage, onRenamePage, onDeletePage, onMovePage, onChanged, onError}: {
+export function SidebarOrganization({vaultId, data, pages, activePageId, activeFolderPath, revealPageId, onRevealed, context, active, unfiledActive = false, disabled, available, onOpen, onOpenUnfiled, onOpenPage, onRenamePage, onArchivePages, onDeletePage, onMovePage, onChanged, onError}: {
   activePageId?: string; activeFolderPath: string[]; revealPageId: string | null; onRevealed: () => void;
   vaultId?: string; data: Organization; pages: PageSummary[]; context: OrganizationContext; active: boolean; unfiledActive?:boolean; disabled: boolean; available: boolean;
+  onArchivePages?:(ids:string[])=>Promise<void>;
   onOpenUnfiled: () => void; onRenamePage: (page:PageSummary,title:string) => Promise<void>; onDeletePage: (page:PageSummary) => void;
   onOpen: (collection?: string, folder?: string) => void; onOpenPage: (id: string) => void;
   onMovePage: (id: string, collection: string, folder: string | null, remove?:boolean) => Promise<void>;
@@ -145,6 +146,7 @@ export function SidebarOrganization({vaultId, data, pages, activePageId, activeF
       {label:uiText('Rename'),icon:'edit',onSelect:()=>setRenameKey(`${scope}${collection}/page:${page.id}`)},
       {label:uiText('Organize…'),icon:'folder',onSelect:()=>setOrganizePage(page)},
       {label:data.favourites.some(item=>item.kind==='page'&&item.item_id===page.id)?uiText('Remove from favourites'):uiText('Add to favourites'),icon:'star',onSelect:()=>{void api.organize(vaultId!,'favourites',{kind:'page',item_id:page.id,favourite:!data.favourites.some(item=>item.kind==='page'&&item.item_id===page.id)}).then(onChanged).catch(onError);}},
+      {label:'Archive',icon:'archive',onSelect:()=>void onArchivePages?.([page.id]).catch(onError)},
       {label:uiText('Move to Trash'),icon:'trash',danger:true,onSelect:()=>onDeletePage(page)},
     ]}/></>}</div>);
   }

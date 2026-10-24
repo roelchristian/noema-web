@@ -15,7 +15,7 @@ function setup(t) {
   const organization = {collections: [{id: 'theme', name: 'Theme'}], folders: [
     {id: 'parent', name: 'Parent', parent_id: null}, {id: 'nested', name: 'Nested', parent_id: 'parent'},
   ], locations: [{kind: 'page', item_id: page.id, folder_id: 'nested'}], memberships: [], favourites: []};
-  const loadPages = t.mock.method(api, 'pages', async id => id === 'a' ? [page] : []);
+  t.mock.method(api,'archivedPages',async()=>[]);const loadPages = t.mock.method(api, 'pages', async id => id === 'a' ? [page] : []);
   t.mock.method(api, 'vaults', async () => vaults);
   const entities = [{id:'person',name:'Ada',type:'person'},{id:'concept',name:'Computation',type:'concept'},{id:'source',name:'Book',type:'source'}];
   t.mock.method(api, 'entities', async () => entities);

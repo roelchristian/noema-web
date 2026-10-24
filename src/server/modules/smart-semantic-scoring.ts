@@ -45,7 +45,7 @@ export function evaluateSemanticBatch(store:Store,vault:string,config:SemanticCo
   (SELECT error FROM page_index_dirty d WHERE d.page_id=p.id AND d.vault_id=p.vault_id) AS dirty_error,
   coalesce((SELECT min_characters FROM embedding_settings WHERE vault_id=p.vault_id),20) AS minimum
   FROM pages p LEFT JOIN page_index_state i ON i.page_id=p.id AND i.vault_id=p.vault_id
-  WHERE p.vault_id=? AND p.deleted_at IS NULL AND p.id>? ${itemIds?`AND p.id IN (${itemIds.map(()=>'?').join(',')})`:''}
+  WHERE p.vault_id=? AND p.deleted_at IS NULL AND p.archived_at IS NULL AND p.id>? ${itemIds?`AND p.id IN (${itemIds.map(()=>'?').join(',')})`:''}
   ORDER BY p.id LIMIT ?`,vault,after,...(itemIds??[]),limit+1);
  const baseFingerprint=hash(JSON.stringify([embeddingModel,embeddingDimensions,queryHash,config]));
  const items=rows.slice(0,limit).map((page):SemanticResult=>{

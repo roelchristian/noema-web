@@ -16,9 +16,10 @@ export function InboxIndicators({page}:{page:PageSummary}) {
   </span>;
 }
 
-export function InboxTriage({vaultId, pages, allPages, entities, data, checked, onToggle, onChanged, onOpenPage, onOpenEntity, onTrash, disabled = false, onBusyChange, onSelectAll, onRefresh}: {
+export function InboxTriage({vaultId, pages, allPages, entities, data, checked, onToggle, onChanged, onOpenPage, onOpenEntity, onArchive, onTrash, disabled = false, onBusyChange, onSelectAll, onRefresh}: {
   vaultId:string; pages:PageSummary[]; allPages:PageSummary[]; entities:Entity[]; data:Organization;
   checked:Set<string>; onToggle:(id:string)=>void; onChanged:(data:Organization)=>void;
+  onArchive:(id:string)=>Promise<void>;
   onOpenPage:(id:string)=>void; onOpenEntity:(id:string)=>void; onTrash:(page:PageSummary)=>void; disabled?:boolean; onBusyChange:(busy:boolean)=>void; onSelectAll:(ids:string[])=>void; onRefresh?:()=>Promise<void>;
 }) {
   const [kept,setKept]=useState<Set<string>>(()=>new Set());
@@ -102,7 +103,7 @@ export function InboxTriage({vaultId, pages, allPages, entities, data, checked, 
           <button className="button primary" disabled={busy||!!picker||!currentPreview?.page} onClick={()=>{setTarget('');setPicker('folder');}}>File…</button>
           <button className="button" disabled={busy||!!picker||!currentPreview?.page} onClick={()=>{setTarget('');setPicker('collection');}}>Add to collection…</button>
           <button className="button" disabled={busy||!!picker} onClick={keep}>Skip for now</button>
-          <button className="button is-danger" disabled={busy||!!picker||!currentPreview?.page} onClick={()=>onTrash(active)}>Trash…</button>
+          <button className="button" disabled={busy||!!picker} onClick={()=>void onArchive(active.id).catch(reason=>setError(String(reason)))}>Archive</button><button className="button is-danger" disabled={busy||!!picker||!currentPreview?.page} onClick={()=>onTrash(active)}>Trash…</button>
         </div>
         <p className="organization-hint">File moves to a folder. Collections keep this page in Inbox.</p>
         <button className="button" disabled={busy||!!picker||!currentPreview?.page} onClick={()=>onOpenPage(active.id)}>Open full editor</button>

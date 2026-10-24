@@ -32,14 +32,14 @@ export class Pages {
     try { new Images(this.store).cleanup(vault,candidates); } catch { console.error('Image cleanup deferred'); }
   }
   private imageIds(blocks: Block[]) { return blocks.flatMap(block => block.type === 'image' && block.imageId ? [block.imageId] : []); }
-  list(vault: string) {
+  list(vault: string, includeArchived=false) {
     return this.store.all<PageSummary>(`SELECT id,title,icon,creation_method AS creationMethod,featured_image_id AS featuredImageId,
-      ai_status AS aiStatus,ai_review_accepted AS aiReviewAccepted,language,updated_at,
+      ai_status AS aiStatus,ai_review_accepted AS aiReviewAccepted,language,updated_at,archived_at,
       EXISTS(SELECT 1 FROM json_each(pages.blocks) block WHERE json_extract(block.value,'$.semantic')='ai-explanation'
         OR json_extract(block.value,'$.semanticGroup.kind')='ai-explanation') AS containsAIExplanations,
       EXISTS(SELECT 1 FROM page_reading_notes r WHERE r.page_id=pages.id AND r.vault_id=pages.vault_id) AS isReadingNote,
       EXISTS(SELECT 1 FROM entity_page_associations a JOIN entities e ON e.id=a.entity_id WHERE a.page_id=pages.id AND e.vault_id=pages.vault_id) AS hasEntityAssociations
-      FROM pages WHERE vault_id=? AND deleted_at IS NULL ORDER BY updated_at DESC`,vault).map(page=>({...page,
+      FROM pages WHERE vault_id=? AND deleted_at IS NULL AND (?=1 OR archived_at IS NULL) ORDER BY updated_at DESC`,vault,includeArchived?1:0).map(page=>({...page,
         containsAIExplanations:!!page.containsAIExplanations,isReadingNote:!!page.isReadingNote,
         hasEntityAssociations:!!page.hasEntityAssociations,aiReviewAccepted:!!page.aiReviewAccepted,
         aiStatus:reviewedPageAIStatus(page.aiStatus??'regular',!!page.aiReviewAccepted)}));
@@ -53,7 +53,7 @@ export class Pages {
   }
   backlinks(vault:string,id:string):PageSummary[] {
     const target=pageTitleKey(this.get(vault,id).title);
-    const candidates=this.store.all<PageSummary & {blocks:string}>("SELECT id,title,icon,ai_status AS aiStatus,ai_review_accepted AS aiReviewAccepted,language,updated_at,blocks FROM pages WHERE vault_id=? AND deleted_at IS NULL AND id<>? AND instr(blocks,'[[')>0 ORDER BY title COLLATE NOCASE,id",vault,id);
+    const candidates=this.store.all<PageSummary & {blocks:string}>("SELECT id,title,icon,ai_status AS aiStatus,ai_review_accepted AS aiReviewAccepted,language,updated_at,archived_at,blocks FROM pages WHERE vault_id=? AND deleted_at IS NULL AND id<>? AND instr(blocks,'[[')>0 ORDER BY title COLLATE NOCASE,id",vault,id);
     return candidates.flatMap(({blocks,...page})=>blockPageLinks(JSON.parse(blocks) as Block[]).some(link=>pageTitleKey(link.title)===target)?[{...page,aiReviewAccepted:!!page.aiReviewAccepted,aiStatus:reviewedPageAIStatus(page.aiStatus??'regular',!!page.aiReviewAccepted)}]:[]);
   }
   get(vault: string, id: string): Page {
@@ -79,7 +79,7 @@ export class Pages {
     }
     const editLock=this.store.get<{password_hash:string|null}>('SELECT password_hash FROM page_edit_locks WHERE page_id=? AND vault_id=?',id,vault);
     const domainService=new Domains(this.store);
-    domainService.assess({...stored,blocks,conceptContentHash:conceptContentHash({...stored,blocks},resolveName)} as Page,resolveName);
+    if(!stored.archived_at)domainService.assess({...stored,blocks,conceptContentHash:conceptContentHash({...stored,blocks},resolveName)} as Page,resolveName);
     const readingRow=this.store.get<{source_id:string|null;file_id:string|null;source_hash:string;start_offset:number;end_offset:number;excerpt:string;reference_json:string;created_at:string}>('SELECT * FROM page_reading_notes WHERE page_id=? AND vault_id=?',id,vault);
     const readingNote:ReadingNoteMetadata|undefined=readingRow?{...JSON.parse(readingRow.reference_json),sourceId:readingRow.source_id,fileId:readingRow.file_id,sourceHash:readingRow.source_hash,startOffset:readingRow.start_offset,endOffset:readingRow.end_offset,excerpt:readingRow.excerpt,createdAt:readingRow.created_at,maxWords:200}:undefined;
     const enrichmentState=new PageEnrichmentState(this.store).get(id);
@@ -92,13 +92,38 @@ export class Pages {
     if(this.store.get<{automatic_summaries:number}>('SELECT automatic_summaries FROM page_enrichment_settings WHERE vault_id=?',vault)?.automatic_summaries===0)enrichmentPendingFields=enrichmentPendingFields.filter(field=>field!=='summary');
     return {...stored,creationMethod,editedAfterGeneration:aiStatus==='ai_generated_edited',containsAIExplanations:blocks.some(isAIExplanation),aiReviewAccepted:!!aiReviewAccepted,generationMetadata:parsePageGenerationMetadata(generationMetadata),...(readingNote?{readingNote}:{}),enrichmentFields:enrichmentState.fields,enrichmentPending:!!queued,enrichmentPendingFields,pageDomains:domainService.get(id,conceptContentHash({...stored,blocks},resolveName)),aiStatus:reviewedPageAIStatus(aiStatus,!!aiReviewAccepted),editLocked:!!editLock,editProtected:!!editLock?.password_hash,featuredImageId,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:[...new Set([...this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id),...citationSourceIds(blocks).filter(sourceId=>this.knowledge.find(vault,sourceId)?.type==='source')])]};
   }
+  requireActive(vault:string,id:string) {
+    const page=this.get(vault,id);
+    if(page.archived_at)throw new HttpError(409,'This page is archived. Restore it before making changes.');
+    return page;
+  }
+  archiveList(vault:string):import('../../shared/domain.js').ArchivedPage[] {
+    return this.list(vault,true).filter(page=>page.archived_at).map(page=>{
+      const location=this.store.get<{folderId:string|null;folderName:string|null}>("SELECT f.id AS folderId,f.name AS folderName FROM item_locations l LEFT JOIN folders f ON f.id=l.folder_id AND f.vault_id=l.vault_id WHERE l.vault_id=? AND l.kind='page' AND l.item_id=?",vault,page.id);
+      return {...page,archived_at:page.archived_at!,revision:this.store.get<{revision:number}>('SELECT revision FROM pages WHERE id=?',page.id)!.revision,folderId:location?.folderId??null,folderName:location?.folderName??null,
+        collectionIds:this.store.all<{collection_id:string}>("SELECT collection_id FROM collection_memberships WHERE vault_id=? AND kind='page' AND item_id=?",vault,page.id).map(row=>row.collection_id),
+        subjectIds:this.store.all<{domain_id:string}>('SELECT domain_id FROM page_domains WHERE page_id=?',page.id).map(row=>row.domain_id)};
+    }).sort((a,b)=>b.archived_at.localeCompare(a.archived_at)||a.id.localeCompare(b.id));
+  }
+  setArchived(vault:string,id:string,archived:boolean,body:Record<string,unknown>) {
+    this.store.transaction(()=>{
+      const page=this.get(vault,id);
+      // Repeating an already achieved transition is harmless, including a lost response retry.
+      if(!!page.archived_at===archived)return;
+      if(body.revision!==page.revision)throw new HttpError(409,'This page changed. Reload it before changing its archive state.');
+      this.store.run('UPDATE pages SET archived_at=?,revision=revision+1 WHERE id=? AND vault_id=?',archived?this.clock().toISOString():null,id,vault);
+      if(archived)this.store.run('DELETE FROM page_enrichment_jobs WHERE page_id=?',id);
+    });
+    return this.get(vault,id);
+  }
   requireEditable(vault: string, id: string) {
     const page=this.get(vault,id);
+    if (page.archived_at) throw new HttpError(409,'This page is archived. Restore it before making changes.');
     if (page.editLocked) throw new HttpError(423,'This page is locked for editing. Unlock it to make changes.');
     return page;
   }
   setEditLock(vault: string, id: string, body: Record<string,unknown>) {
-    const page=this.get(vault,id);
+    const page=this.requireActive(vault,id);
     if (typeof body.locked !== 'boolean') throw new HttpError(400,'Choose whether to lock or unlock editing.');
     if (body.revision !== page.revision) throw new HttpError(409,'This page changed. Reload it before changing its lock.');
     if (body.locked && page.editLocked) throw new HttpError(409,'Unlock this page before changing its editing lock.');
@@ -276,7 +301,7 @@ export class Pages {
     // are persisted independently and projected as ai_assisted when reading.
     const storedAIStatus=aiStatus==='ai_assisted'?(blocks.some(isAIExplanation)?'regular_with_ai_explanations':'regular'):aiStatus;
     this.store.transaction(()=>{
-      const current=this.store.get<{revision:number}>('SELECT revision FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',id,vault);
+      const current=this.store.get<{revision:number}>('SELECT revision FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL AND archived_at IS NULL',id,vault);
       if(!current||current.revision!==page.revision)throw new HttpError(409,'This page changed in another window. Reload the latest page before saving.');
       const history=new PageHistory(this.store);history.baseline(vault,id);
       const state=new PageEnrichmentState(this.store);
@@ -315,7 +340,7 @@ export class Pages {
   }
   trash(vault: string): TrashedPage[] {
     this.purgeExpired(vault);
-    return this.store.all<PageSummary & {deleted_at: string}>('SELECT id,title,icon,featured_image_id AS featuredImageId,ai_status AS aiStatus,ai_review_accepted AS aiReviewAccepted,language,updated_at,deleted_at FROM pages WHERE vault_id=? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC,id',vault).map(page => ({...page,aiReviewAccepted:!!page.aiReviewAccepted,aiStatus:reviewedPageAIStatus(page.aiStatus??'regular',!!page.aiReviewAccepted),expires_at:new Date(Date.parse(page.deleted_at) + trashRetentionMs).toISOString()}));
+    return this.store.all<PageSummary & {deleted_at: string}>('SELECT id,title,icon,featured_image_id AS featuredImageId,ai_status AS aiStatus,ai_review_accepted AS aiReviewAccepted,language,updated_at,archived_at,deleted_at FROM pages WHERE vault_id=? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC,id',vault).map(page => ({...page,aiReviewAccepted:!!page.aiReviewAccepted,aiStatus:reviewedPageAIStatus(page.aiStatus??'regular',!!page.aiReviewAccepted),expires_at:new Date(Date.parse(page.deleted_at) + trashRetentionMs).toISOString()}));
   }
   private trashed(vault: string, id: string) {
     this.purgeExpired(vault);

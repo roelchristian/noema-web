@@ -83,6 +83,8 @@ export const api={
   setVaultPassphrase:(id:string,currentPassphrase:string,passphrase:string|null)=>request<Vault>(`vaults/${encodeURIComponent(id)}/passphrase`,'PUT',{currentPassphrase,passphrase}),
   previewVaultDeletion:(id:string)=>request<import('../shared/domain').VaultDeletionPreview>(`vaults/${encodeURIComponent(id)}/deletion-preview`),
   deleteVault:(id:string,confirmation:import('../shared/domain').VaultDeletionConfirmation)=>request<import('../shared/domain').VaultDeletionResult>(`vaults/${encodeURIComponent(id)}/delete`,'POST',confirmation),
+  archivedPages:(vault:string)=>request<import('../shared/domain').ArchivedPage[]>('pages/archive','GET',undefined,vault),
+  archivePage:(vault:string,id:string,revision:number,archived=true)=>request<Page>(`pages/${id}/archive`,archived?'PUT':'DELETE',{revision},vault),
   pageBacklinks:(vault:string,id:string,signal?:AbortSignal)=>request<PageSummary[]>(`pages/${id}/backlinks`,'GET',undefined,vault,signal),
   reviewText:(vault:string,id:string,texts:EditorReviewText[])=>request<{suggestions:EditorReviewSuggestion[]}>(`pages/${id}/review`,'POST',{texts},vault),
   explainBlocks:(vault:string,id:string,blocks:Page['blocks'],persona?:{id:string;version?:number})=>request<{markdown:string;persona:import('../shared/ai-personas').PersonaIdentity}>(`pages/${id}/explain`,'POST',{blocks,personaId:persona?.id,personaVersion:persona?.version},vault),

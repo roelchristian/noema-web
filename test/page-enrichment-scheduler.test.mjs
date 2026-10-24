@@ -9,7 +9,7 @@ function fixture() {
   const db=new DatabaseSync(':memory:');
   db.exec(`PRAGMA foreign_keys=ON;
     CREATE TABLE vaults(id TEXT PRIMARY KEY,locked INTEGER DEFAULT 0);
-    CREATE TABLE pages(id TEXT PRIMARY KEY,vault_id TEXT REFERENCES vaults(id),deleted_at TEXT);
+    CREATE TABLE pages(id TEXT PRIMARY KEY,vault_id TEXT REFERENCES vaults(id),deleted_at TEXT,archived_at TEXT);
     CREATE TABLE page_edit_locks(page_id TEXT PRIMARY KEY);
     INSERT INTO vaults(id) VALUES ('v');INSERT INTO pages(id,vault_id) VALUES ('p','v');`);
   setupPageEnrichmentSchedulerSchema(db);

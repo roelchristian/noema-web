@@ -123,7 +123,7 @@ export class TemporalIndex {
   return {id};
  }
  private currentMentions=`FROM temporal_mentions m JOIN pages p ON p.id=m.page_id AND p.vault_id=m.vault_id JOIN temporal_index_state s ON s.page_id=p.id
-  WHERE m.vault_id=? AND m.date_id=? AND m.stale=0 AND p.deleted_at IS NULL AND m.revision=p.revision AND s.revision=p.revision
+  WHERE m.vault_id=? AND m.date_id=? AND m.stale=0 AND p.deleted_at IS NULL AND p.archived_at IS NULL AND m.revision=p.revision AND s.revision=p.revision
   AND NOT EXISTS(SELECT 1 FROM temporal_dirty d WHERE d.page_id=p.id)`;
  private acceptedRelations=`FROM temporal_relations r JOIN entities e ON e.id=r.entity_id AND e.vault_id=r.vault_id WHERE r.vault_id=? AND r.date_id=? AND e.archived_at IS NULL AND r.status='accepted'`;
  private pagination(offset:number,limit:number) {
@@ -160,7 +160,7 @@ export class TemporalIndex {
    AND (CASE d.precision WHEN 'year' THEN d.value||'-01-01' WHEN 'month' THEN d.value||'-01' ELSE d.value END)<=?
    AND (CASE d.precision WHEN 'year' THEN d.value||'-12-31' WHEN 'month' THEN d.value||'-31' ELSE d.value END)>=?
    AND (c.id IS NOT NULL OR EXISTS(SELECT 1 FROM temporal_relations r JOIN entities e ON e.id=r.entity_id AND e.vault_id=r.vault_id WHERE r.vault_id=d.vault_id AND r.date_id=d.id AND r.status='accepted' AND e.archived_at IS NULL)
-    OR (?=1 AND (EXISTS(SELECT 1 FROM temporal_mentions m JOIN pages p ON p.id=m.page_id AND p.vault_id=m.vault_id JOIN temporal_index_state s ON s.page_id=p.id WHERE m.vault_id=d.vault_id AND m.date_id=d.id AND m.stale=0 AND p.deleted_at IS NULL AND m.revision=p.revision AND s.revision=p.revision AND NOT EXISTS(SELECT 1 FROM temporal_dirty dirty WHERE dirty.page_id=p.id)) OR EXISTS(SELECT 1 ${sourceExists}) OR EXISTS(SELECT 1 ${propertyExists}))))
+    OR (?=1 AND (EXISTS(SELECT 1 FROM temporal_mentions m JOIN pages p ON p.id=m.page_id AND p.vault_id=m.vault_id JOIN temporal_index_state s ON s.page_id=p.id WHERE m.vault_id=d.vault_id AND m.date_id=d.id AND m.stale=0 AND p.deleted_at IS NULL AND p.archived_at IS NULL AND m.revision=p.revision AND s.revision=p.revision AND NOT EXISTS(SELECT 1 FROM temporal_dirty dirty WHERE dirty.page_id=p.id)) OR EXISTS(SELECT 1 ${sourceExists}) OR EXISTS(SELECT 1 ${propertyExists}))))
    ORDER BY d.value,d.precision,d.id LIMIT ? OFFSET ?`,vault,calendar,...layers,to,from,allReferences?1:0,limit+1,offset);
   return {items:dates.slice(0,limit).map(date=>this.item(vault,date)),indexing,nextOffset:dates.length>limit?offset+limit:null};
  }

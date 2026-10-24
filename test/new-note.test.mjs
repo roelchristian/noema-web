@@ -47,7 +47,7 @@ test('creation persists exact placement and rolls back invalid or cross-vault de
 test('workspace captures creation destination before flush and ignores stale context outside organization',async t=>{
  const org={collections:[{id:'c',name:'Research'}],folders:[{id:'f',name:'Field notes',parent_id:null}],locations:[],memberships:[],favourites:[]};
  t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false}]);
- t.mock.method(api,'pages',async()=>[]);
+ t.mock.method(api,'archivedPages',async()=>[]);t.mock.method(api,'pages',async()=>[]);
  t.mock.method(api,'entities',async()=>[]);
  t.mock.method(api,'organization',async()=>org);
  let n=0;const create=t.mock.method(api,'createPage',async(vault)=>({id:'new-'+(++n),vault_id:vault,title:'Untitled',blocks:[{id:'body',type:'paragraph',content:[]}],sourceIds:[],revision:1,updated_at:''}));
@@ -81,7 +81,7 @@ test('initial editing session survives autosave, metadata and same-note selectio
  t.mock.timers.enable({apis:['setTimeout']});
  const org={collections:[],folders:[],locations:[],memberships:[],favourites:[]};
  t.mock.method(api,'vaults',async()=>[{id:'a',name:'A',locked:false}]);
- t.mock.method(api,'pages',async()=>[]);
+ t.mock.method(api,'archivedPages',async()=>[]);t.mock.method(api,'pages',async()=>[]);
  t.mock.method(api,'entities',async()=>[]);
  t.mock.method(api,'organization',async()=>org);
  let stored={id:'new',vault_id:'a',title:'Untitled',blocks:[{id:'body',type:'paragraph',checked:false,content:[]}],sourceIds:[],revision:1,updated_at:''};

@@ -373,47 +373,6 @@ main.source-workspace > #content > .source-reader {
   align-items: center;
   flex-wrap: wrap
 }
-.source-activity-body form {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap
-}
-.source-activity-body input {
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 6px 8px;
-  background: var(--surface);
-  color: var(--text);
-  max-width: 100%;
-  width: min(220px,100%);
-  min-width: 0
-}
-.source-activity-body small {
-  display: block;
-  color: var(--text-muted);
-  font-size: 12px
-}
-.source-bookmark {
-  border-top: 1px solid var(--line);
-  padding-top: 12px;
-  margin-top: 12px
-}
-.source-bookmark-destination {
-  text-align: left;
-  color: var(--text);
-  line-height: 1.5
-}
-.source-bookmark-destination:disabled {
-  cursor: default;
-  color: var(--text-muted)
-}
-.source-bookmark blockquote {
-  margin: 6px 0 10px;
-  font-size: 12px;
-  max-width: 65ch;
-  white-space: pre-wrap
-}
 /* sources: owned rules; conditional/state variants stay with their owner. */
 .page-sources {
   border-bottom: 1px solid var(--line);
@@ -2316,45 +2275,147 @@ main.source-workspace > #content > .source-reader {
   .source-metadata-full .source-metadata-field dd { margin-top: 0; }
 }
 
-.source-activity-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px
-}
-.source-activity-hint,.source-activity-note {
-  color: var(--text-muted);
-  font-size: 13px;
-  line-height: 1.5
-}
-.source-activity-note {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere
-}
-.source-activity-color {
-  font-size: 12px;
-  text-transform: capitalize
-}
-.source-reading-activity .source-bookmark blockquote {
-  overflow-wrap: anywhere;
-  max-height: 160px;
-  overflow: auto
-}
-
 .source-activity-body {
   font-size: 13px;
-  line-height: 1.6
+  line-height: 1.5;
+  --source-activity-preview-lines: 2
 }
-.source-activity-body .source-bookmark:first-child {
-  margin-top: 0
+.source-activity-body[data-preview-lines='1'] {
+  --source-activity-preview-lines: 1
 }
-.source-activity-body .source-bookmark form {
-  align-items: stretch
+.source-activity-list-options,.source-activity-list-options > div {
+  display: flex;
+  align-items: center;
+  gap: 2px
 }
-.source-activity-body .source-bookmark input {
-  flex: 1 1 100%;
-  width: 100%
+.source-activity-list-options {
+  justify-content: space-between;
+  margin: -4px 0 8px;
+  color: var(--text-muted);
+  font-size: 12px
+}
+.source-activity-icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--control-target-compact);
+  height: var(--control-target-compact);
+  padding: 6px;
+  border-radius: 5px;
+  color: var(--text-muted)
+}
+.source-activity-icon-action .icon {
+  width: 15px;
+  height: 15px
+}
+.source-activity-icon-action:hover:not(:disabled),.source-activity-icon-action[aria-pressed=true] {
+  color: var(--text);
+  background: var(--surface-hover)
+}
+.source-activity-icon-action[aria-pressed=true] {
+  box-shadow: inset 0 0 0 1px var(--line)
+}
+.source-activity-icon-action:focus-visible,.source-activity-destination:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px
+}
+.source-activity-icon-action:disabled {
+  opacity: .45
+}
+.source-activity-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line)
+}
+.source-activity-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  border-radius: 4px;
+  color: var(--text-muted)
+}
+.source-activity-mark .icon {
+  width: 14px;
+  height: 14px
+}
+.source-activity-destination {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+  text-align: start;
+  color: var(--text);
+  border-radius: 3px
+}
+.source-activity-destination:disabled {
+  color: var(--text-muted);
+  cursor: default
+}
+.source-activity-title,.source-activity-context {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap
+}
+.source-activity-title {
+  font-size: 12px;
+  font-weight: 550;
+  margin-bottom: 2px
+}
+.source-activity-preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--source-activity-preview-lines);
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.5
+}
+.source-activity-context {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-muted)
+}
+.source-activity-row-actions {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 0
+}
+.source-activity-add,.source-activity-rename {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-block: 4px 8px
+}
+.source-activity-add input,.source-activity-rename input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px
+}
+.source-activity-rename {
+  margin: 6px 0 8px 26px
 }
 .source-reading-activity .entity-detail-tabs > button {
   gap: 4px;
   padding-inline: 4px
+}
+@media (pointer: coarse) {
+  .source-activity-icon-action {
+    width: var(--touch-target-size);
+    height: var(--touch-target-size)
+  }
 }

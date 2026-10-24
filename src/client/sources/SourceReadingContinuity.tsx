@@ -1,10 +1,10 @@
 import {createPortal} from 'react-dom';
 import {DetailSidePanel} from '../components/DetailSidePanel';
-import {useEffect,useRef,useState,type RefObject} from 'react';
+import {useEffect,useMemo,useRef,useState,type RefObject} from 'react';
 import type {ReadingNoteAnchor,SourceHighlight} from '../../shared/source-reading';
 import {Icon} from '../components/Icon';
-import type {SourceDocument} from '../../shared/source-document';
-import {createReadingAnchor,rawReadingOffset,resolveReadingAnchor,type ReadingAnchor,type ReadingContinuity,type ReadingLocation} from '../../shared/reading-continuity';
+import {sourceDocumentEntries,type SourceDocument} from '../../shared/source-document';
+import {canonicalReadingOffset,createReadingAnchor,rawReadingOffset,resolveReadingAnchor,type ReadingAnchor,type ReadingContinuity,type ReadingLocation} from '../../shared/reading-continuity';
 import {request} from '../api';
 import {randomUUID} from '../../shared/uuid';
 
@@ -34,6 +34,17 @@ export function SourceReadingContinuity({file,article,selectedOffset,highlights=
  const [error,setError]=useState(''),[notice,setNotice]=useState(''),[open,setOpen]=useState(false),[label,setLabel]=useState(''),[busy,setBusy]=useState(false);
  useEffect(()=>{onOpenChange?.(open);return()=>onOpenChange?.(false);},[open,onOpenChange]);
  useEffect(()=>{if(inspectorOpen)setOpen(false);},[inspectorOpen]);
+ const [previewLines,setPreviewLines]=useState<1|2>(()=>{try{return localStorage.getItem('noema:source-activity-lines')==='1'?1:2;}catch{return 2;}});
+ function changePreviewLines(lines:1|2){setPreviewLines(lines);try{localStorage.setItem('noema:source-activity-lines',String(lines));}catch{/* Keep the option for this session. */}}
+ const contextEntries=useMemo(()=>file.document?sourceDocumentEntries(file.document):[],[file.document]);
+ function contextFor(offset:number){
+  const canonical=canonicalReadingOffset(file.text,offset);
+  const headings=contextEntries.filter(({node})=>node.title&&node.range.startOffset<=canonical);
+  const containing=headings.filter(({node})=>node.range.endOffset>canonical);
+  const heading=(containing.at(-1)??headings.at(-1))?.node.title;
+  const page=file.document?.physical.pages.find(page=>page.range.startOffset<=canonical&&page.range.endOffset>canonical);
+  return [heading,page?`p. ${page.number}`:`Line ${file.text.slice(0,offset).split('\n').length}`].filter(Boolean).join(' · ');
+ }
  const [tab,setTab]=useState<'bookmarks'|'annotations'|'highlights'>('bookmarks');
  const panel=useRef<HTMLElement>(null),opener=useRef<HTMLElement|null>(null);
  function close(){setOpen(false);opener.current?.focus();}
@@ -138,7 +149,7 @@ export function SourceReadingContinuity({file,article,selectedOffset,highlights=
   }catch{setError('Bookmark could not be saved. Try again.');}finally{setBusy(false);}
  }
  async function rename(bookmark:ReadingLocation,value:string){
-  setBusy(true);setError('');try{await request(route+'/'+bookmark.id,'PATCH',{label:value},file.vault_id);setData(current=>current?{...current,bookmarks:current.bookmarks.map(item=>item.id===bookmark.id?{...item,label:value}:item)}:current);setNotice('Bookmark label saved.');}catch{setError('Bookmark label could not be saved. Try again.');}finally{setBusy(false);}
+  setBusy(true);setError('');try{await request(route+'/'+bookmark.id,'PATCH',{label:value},file.vault_id);setData(current=>current?{...current,bookmarks:current.bookmarks.map(item=>item.id===bookmark.id?{...item,label:value}:item)}:current);setNotice('Bookmark label saved.');return true;}catch{setError('Bookmark label could not be saved. Try again.');return false;}finally{setBusy(false);}
  }
  async function remove(id:string){
   setBusy(true);setError('');try{await request(route+'/'+id,'DELETE',undefined,file.vault_id);setData(current=>current?{...current,bookmarks:current.bookmarks.filter(item=>item.id!==id)}:current);setNotice('Bookmark removed.');}catch{setError('Bookmark could not be removed. Try again.');}finally{setBusy(false);}
@@ -167,15 +178,16 @@ export function SourceReadingContinuity({file,article,selectedOffset,highlights=
     event.preventDefault();const tabs=['bookmarks','annotations','highlights'] as const,index=tabs.indexOf(value),next=event.key==='Home'?0:event.key==='End'?2:(index+(event.key==='ArrowRight'?1:-1)+3)%3;
     setTab(tabs[next]);document.getElementById(`source-activity-tab-${file.id}-${tabs[next]}`)?.focus();
    }}>{value==='bookmarks'?'Bookmarks':value==='annotations'?'Annotations':'Highlights'} <span>{value==='bookmarks'?data?.bookmarks.length??0:value==='annotations'?notes.length:highlights.length}</span></button>)}</div>}>
-   <div className="panel-body entity-detail-body source-activity-body" id={`source-activity-content-${file.id}`} role="tabpanel" aria-labelledby={`source-activity-tab-${file.id}-${tab}`} tabIndex={0}>
+   <div className="panel-body entity-detail-body source-activity-body" data-preview-lines={previewLines} id={`source-activity-content-${file.id}`} role="tabpanel" aria-labelledby={`source-activity-tab-${file.id}-${tab}`} tabIndex={0}>
+   <div className="source-activity-list-options"><span>Passage context</span><div role="group" aria-label="Preview lines">{([1,2] as const).map(lines=><button type="button" className="source-activity-icon-action" key={lines} title={`${lines===1?'One-line':'Two-line'} previews`} aria-label={`${lines===1?'One-line':'Two-line'} previews`} aria-pressed={previewLines===lines} onClick={()=>changePreviewLines(lines)}><Icon name={lines===1?'preview-one-line':'preview-two-lines'}/></button>)}</div></div>
    {tab==='bookmarks'&&<section aria-label="Passage bookmarks">
-   <form onSubmit={event=>{event.preventDefault();void add();}}><label>Bookmark label <input aria-label="New bookmark label" maxLength={80} placeholder="Optional short label" value={label} onChange={event=>setLabel(event.target.value)}/></label><button className="button small" disabled={busy||!data||!file.text.trim()}>Bookmark passage</button><small>Uses the selected passage or current reading position.</small></form>
+   <form className="source-activity-add" onSubmit={event=>{event.preventDefault();void add();}}><input aria-label="New bookmark label" maxLength={80} placeholder="Bookmark label (optional)" value={label} onChange={event=>setLabel(event.target.value)}/><button className="source-activity-icon-action" title="Bookmark selected passage or current reading position" aria-label="Bookmark passage" disabled={busy||!data||!file.text.trim()}><Icon name="plus"/></button></form>
    {!data&&!error&&<p role="status">Loading bookmarks…</p>}
-   {data?.bookmarks.length===0&&<p>No bookmarks yet.</p>}
-   {data?.bookmarks.map(bookmark=><Bookmark key={bookmark.id} bookmark={bookmark} busy={busy} onOpen={()=>go(bookmark)} onRename={value=>void rename(bookmark,value)} onRemove={()=>void remove(bookmark.id)}/>)}
+   {data?.bookmarks.length===0&&<p className="entity-detail-empty">No bookmarks yet.</p>}
+   {data?.bookmarks.map(bookmark=><Bookmark key={bookmark.id} bookmark={bookmark} context={contextFor(rawReadingOffset(file.text,bookmark.resolution.status==='resolved'?bookmark.resolution.offset:bookmark.anchor.offset))} busy={busy} onOpen={()=>go(bookmark)} onRename={value=>rename(bookmark,value)} onRemove={()=>void remove(bookmark.id)}/>)}
    </section>}
-   {tab==='annotations'&&<section aria-label="Source annotations"><p className="source-activity-hint">Reading notes saved from passages in this attachment.</p>{!notes.length&&<p>No annotations yet. Select a passage and choose Add reading note.</p>}{[...notes].sort((a,b)=>a.startOffset-b.startOffset).map(note=><div className="source-bookmark" key={note.pageId}><strong>{note.title||'Reading note'}</strong><blockquote>{file.text.slice(note.startOffset,note.endOffset)}</blockquote>{note.text&&<p className="source-activity-note">{note.text}</p>}<div className="source-activity-actions"><button type="button" className="button small" onClick={()=>reveal(note.startOffset)}>Go to passage</button><button type="button" className="button small" onClick={()=>onOpenNote?.(note.pageId)}>Open note</button><button type="button" className="button small" onClick={()=>onRemoveNote?.(note)}>Remove note</button></div></div>)}</section>}
-   {tab==='highlights'&&<section aria-label="Source highlights">{!highlights.length&&<p>No highlights yet. Select a passage to highlight it.</p>}{[...highlights].sort((a,b)=>a.startOffset-b.startOffset).map(highlight=><div className="source-bookmark" key={highlight.id}><span className="source-activity-color"><span className="source-highlight" data-color={highlight.color}>{highlight.color}</span></span><blockquote>{highlight.excerpt}</blockquote><div className="source-activity-actions"><button type="button" className="button small" onClick={()=>reveal(highlight.startOffset)}>Go to passage</button><button type="button" className="button small" disabled={busy} onClick={()=>void removeHighlight(highlight.id)}>Remove highlight</button></div></div>)}</section>}
+   {tab==='annotations'&&<section aria-label="Source annotations">{!notes.length&&<p className="entity-detail-empty">No annotations yet. Select a passage and choose Add reading note.</p>}{[...notes].sort((a,b)=>a.startOffset-b.startOffset).map(note=><ActivityRow key={note.pageId} icon="annotation" title={note.title||'Reading note'} excerpt={file.text.slice(note.startOffset,note.endOffset)} text={note.text} context={contextFor(note.startOffset)} onOpen={()=>reveal(note.startOffset)} actions={<><button type="button" className="source-activity-icon-action" title="Open note" aria-label="Open note" onClick={()=>onOpenNote?.(note.pageId)}><Icon name="external-link"/></button><button type="button" className="source-activity-icon-action" title="Remove note" aria-label="Remove note" onClick={()=>onRemoveNote?.(note)}><Icon name="trash"/></button></>}/>)}</section>}
+   {tab==='highlights'&&<section aria-label="Source highlights">{!highlights.length&&<p className="entity-detail-empty">No highlights yet. Select a passage to highlight it.</p>}{[...highlights].sort((a,b)=>a.startOffset-b.startOffset).map(highlight=><ActivityRow key={highlight.id} icon="reference-highlight" color={highlight.color} excerpt={highlight.excerpt} context={contextFor(highlight.startOffset)} onOpen={()=>reveal(highlight.startOffset)} actions={<button type="button" className="source-activity-icon-action" title="Remove highlight" aria-label="Remove highlight" disabled={busy} onClick={()=>void removeHighlight(highlight.id)}><Icon name="trash"/></button>}/>)}</section>}
    {error&&<p role="alert">{error}</p>}
    </div>
   </DetailSidePanel>,document.getElementById('root')??document.body)}
@@ -184,11 +196,26 @@ export function SourceReadingContinuity({file,article,selectedOffset,highlights=
   <span className="sr-only" role="status">{notice}</span>
  </aside>;
 }
-function Bookmark({bookmark,busy,onOpen,onRename,onRemove}:{bookmark:ReadingLocation;busy:boolean;onOpen:()=>void;onRename:(value:string)=>void;onRemove:()=>void}){
- const [label,setLabel]=useState(bookmark.label);
- return <div className="source-bookmark">
-  <button className="source-bookmark-destination" disabled={bookmark.resolution.status!=='resolved'} onClick={onOpen}>{bookmark.label||bookmark.anchor.quote.slice(0,60)}<small>{bookmark.resolution.status==='resolved'?bookmark.anchor.physicalPage!==undefined&&bookmark.anchor.revision?`Saved on physical page ${bookmark.anchor.physicalPage} (original revision)`:'Passage':`${bookmark.resolution.status==='ambiguous'?'Ambiguous':'Unresolved'} after source changes · choose a passage and save a new bookmark`}</small></button>
-  <blockquote>{bookmark.anchor.quote}</blockquote>
-  <form onSubmit={event=>{event.preventDefault();onRename(label);}}><input aria-label="Bookmark label" maxLength={80} value={label} onChange={event=>setLabel(event.target.value)}/><button className="button small" disabled={busy||label===bookmark.label}>Save label</button><button className="button small" type="button" disabled={busy} onClick={onRemove}>Remove bookmark</button></form>
+function ActivityRow({icon,title,excerpt,text,context,color,disabled=false,onOpen,actions}:{icon:string;title?:string;excerpt:string;text?:string;context:string;color?:string;disabled?:boolean;onOpen:()=>void;actions:import('react').ReactNode}){
+ const passage=excerpt.replace(/\s+/g,' ').trim(),preview=(text||excerpt).replace(/\s+/g,' ').trim();
+ return <div className="source-activity-row">
+  <span className={'source-activity-mark'+(color?' source-highlight':'')} data-color={color} title={color?`${color} highlight`:undefined} aria-hidden="true"><Icon name={icon}/></span>
+  <button type="button" className="source-activity-destination" disabled={disabled} title={[title,text,context,passage].filter(Boolean).join('\n')} aria-label={`Go to passage: ${title||passage}`} onClick={onOpen}>
+   {title&&<strong className="source-activity-title">{title}</strong>}
+   <span className="source-activity-preview">{preview}</span>
+   <small className="source-activity-context">{context}{text&&<> · “{passage}”</>}</small>
+  </button>
+  <div className="source-activity-row-actions">{actions}</div>
+ </div>;
+}
+function Bookmark({bookmark,context,busy,onOpen,onRename,onRemove}:{bookmark:ReadingLocation;context:string;busy:boolean;onOpen:()=>void;onRename:(value:string)=>Promise<boolean>;onRemove:()=>void}){
+ const [label,setLabel]=useState(bookmark.label),[editing,setEditing]=useState(false);
+ const resolved=bookmark.resolution.status==='resolved';
+ const location=resolved?(bookmark.anchor.physicalPage!==undefined?`Saved p. ${bookmark.anchor.physicalPage} · ${context}`:context):`${bookmark.resolution.status==='ambiguous'?'Ambiguous':'Unresolved'} after source changes · save a new bookmark`;
+ return <div className="source-activity-bookmark">
+  <ActivityRow icon="star" title={bookmark.label||undefined} excerpt={bookmark.anchor.quote} context={location} disabled={!resolved} onOpen={onOpen} actions={<><button type="button" className="source-activity-icon-action" title="Rename bookmark" aria-label="Rename bookmark" disabled={busy} aria-expanded={editing} onClick={()=>{setLabel(bookmark.label);setEditing(value=>!value);}}><Icon name="edit"/></button><button type="button" className="source-activity-icon-action" title="Remove bookmark" aria-label="Remove bookmark" disabled={busy} onClick={onRemove}><Icon name="trash"/></button></>}/>
+  {editing&&<form className="source-activity-rename" onSubmit={event=>{event.preventDefault();void onRename(label).then(saved=>{if(saved)setEditing(false);});}} onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();if(!busy)setEditing(false);}}}>
+   <input autoFocus aria-label="Bookmark label" maxLength={80} disabled={busy} value={label} onChange={event=>setLabel(event.target.value)}/><button className="source-activity-icon-action" title="Save label" aria-label="Save label" disabled={busy||label===bookmark.label}><Icon name="check"/></button><button type="button" className="source-activity-icon-action" title="Cancel rename" aria-label="Cancel rename" disabled={busy} onClick={()=>setEditing(false)}><Icon name="close"/></button>
+  </form>}
  </div>;
 }

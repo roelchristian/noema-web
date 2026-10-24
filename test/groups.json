@@ -205,6 +205,7 @@
     "test/gemini-speech.test.mjs",
     "test/page-archive.test.mjs",
     "test/bibliography-backups.test.mjs",
-    "test/bibliography-server.test.mjs"
+    "test/bibliography-server.test.mjs",
+    "test/source-scholarly.test.mjs"
   ]
 }

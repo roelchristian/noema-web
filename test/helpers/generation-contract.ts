@@ -17,6 +17,7 @@ export const generationContracts = [
   {label:'source page',request:{kind:'sourcePage',input:JSON.stringify({options:{language:'en'},untrusted_source:{text:input}}),...stream}},
   {label:'source math',request:{kind:'sourceMath',input,background:true,...stream}},
   {label:'source enrichment',request:{kind:'sourceEnrichment',input,background:true}},
+  {label:'source scholarly',request:{kind:'sourceScholarly',input,signal}},
   {label:'source authors',request:{kind:'sourceAuthors',input,background:true}},
   {label:'enrichment summary',request:{kind:'pageEnrichment',input,options:{requestedFields:['summary']}}},
   {label:'enrichment metadata',request:{kind:'pageEnrichment',input,background:true,options:{requestedFields:['title','domains','language'],domains:[],currentTitle:'Garden'}}},

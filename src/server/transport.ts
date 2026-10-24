@@ -64,7 +64,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
         if((req.headers.origin && req.headers.origin!==`http://${req.headers.host}`)||req.headers['sec-fetch-site']==='cross-site')throw new HttpError(403,'Cross-origin requests are not allowed');
         const securityRoute = url.pathname === '/api/security/network' || /^\/api\/pages\/[^/]+\/edit-lock$/.test(url.pathname) || /^\/api\/vaults\/[^/]+\/passphrase$/.test(url.pathname);
         if (securityRoute && (req.headers['x-noema-request'] !== '1' || method === 'PUT' && !/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))) throw new HttpError(403, 'Security settings require the Noema client and JSON.');
-        const aiRoute=/^\/api\/entities\/[^/]+\/discovery(?:\/[^/]+\/review)?$/.test(url.pathname)||/^\/api\/entities\/[^/]+\/create-page(?:\/(?:accept|reject))?$/.test(url.pathname)||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|enrich|enrichment-settings|entity-scan|entity-review|explain|review)$/.test(url.pathname);
+        const aiRoute=/^\/api\/entities\/[^/]+\/scholarly$/.test(url.pathname)||/^\/api\/entities\/[^/]+\/discovery(?:\/[^/]+\/review)?$/.test(url.pathname)||/^\/api\/entities\/[^/]+\/create-page(?:\/(?:accept|reject))?$/.test(url.pathname)||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|enrich|enrichment-settings|entity-scan|entity-review|explain|review)$/.test(url.pathname);
         const searchRoute=url.pathname.startsWith('/api/search/');
         if((aiRoute||searchRoute) && (req.headers['x-noema-request']!=='1'||(['POST','PUT'].includes(method)&&!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))))throw new HttpError(403,searchRoute?'Search requests require the Noema client and JSON':'AI requests require the Noema client and JSON');
         if(url.pathname==='/api/review-centre' && method==='GET') {
@@ -573,6 +573,12 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             }
           }
           if(collection==='entities') {
+            if(id&&child==='scholarly'&&parts.length===4&&method==='POST') {
+              const controller=new AbortController(),abort=()=>{if(!res.writableEnded)controller.abort();};res.once('close',abort);
+              try{return send(200,await sourceEnrichments.scholarly(vault,id,body,controller.signal));}
+              catch(error){if(controller.signal.aborted)return;throw error;}
+              finally{res.removeListener('close',abort);}
+            }
 
             if(id&&child==='property-proposals'&&parts.length===4&&method==='GET')return send(200,new PropertyReview(store).list(vault,id,url.searchParams.get('status')??'pending',url.searchParams.get('proposalId')??undefined));
             if(id&&child==='property-proposals'&&childId&&parts.length===6&&parts[5]==='review'&&method==='POST')return send(200,new PropertyReview(store).review(vault,id,decodeURIComponent(childId),body as unknown as Parameters<PropertyReview['review']>[3]));

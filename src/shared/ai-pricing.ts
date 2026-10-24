@@ -16,6 +16,8 @@ export const publishedModelPricing:AIModelPricing={version:publishedPricingVersi
   'gpt-5.6-sol':text(4,20,0.4),
   'gpt-5-mini':{inputPerMillion:0.25,outputPerMillion:2,cachedInputPerMillion:0.025},
   'text-embedding-3-small':{inputPerMillion:0.02,outputPerMillion:0},
+  // Historical /audio/speech model: text input only, audio output only.
+  'gpt-4o-mini-tts':{inputPerMillion:0.6,outputPerMillion:12},
   'gpt-realtime-2.1-mini':{inputPerMillion:0.6,outputPerMillion:2.4,cachedInputPerMillion:0.06,audioInputPerMillion:10,audioOutputPerMillion:20,cachedAudioInputPerMillion:0.3},
   // This wired endpoint accepts text and returns audio only. Published increase starts 2027-01-01.
   'gemini-3.8-flash-lite-tts':{inputPerMillion:0.5,outputPerMillion:6},

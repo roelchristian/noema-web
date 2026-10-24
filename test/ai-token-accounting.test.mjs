@@ -56,6 +56,8 @@ test('published prices cover every wired model and estimate cache writes, long p
   assert.equal(long.estimatedCost,((271001*2+1000*0.1)*2+200*10*1.5)/1e6);
   assert.equal(record('text-embedding-3-small',{prompt_tokens:1000},'search_embedding').estimatedCost,0.00002);
   assert.equal(record(geminiSpeechModel,{input_tokens:100,output_tokens:250},'text_to_speech').estimatedCost,0.00155);
+  assert.equal(record('gpt-4o-mini-tts',{input_tokens:100,output_tokens:250},'text_to_speech').estimatedCost,0.00306);
+  assert.equal(record('gpt-4o-mini-tts',{},'text_to_speech').estimatedCost,null);
   assert.equal(record('unknown-model',{input_tokens:100,output_tokens:250}).estimatedCost,null);
   assert.equal(record('gpt-6-luna',{input_tokens:100}).estimatedCost,null);
   assert.equal(record('gpt-6-luna',{input_tokens:100,output_tokens:20,input_tokens_details:{cached_tokens:101}}).estimatedCost,null);

@@ -113,7 +113,7 @@ export class AIActivityLog {
   private updateCost(id:string,usage:Record<string,unknown>={},pricing=this.pricing()) {
     const row=this.store.get<CostUsage & {action:string}>('SELECT action,model,started_at,input_tokens,output_tokens,cached_input_tokens,cache_write_tokens FROM ai_activity WHERE id=?',id);
     // Custom generic text rates cannot safely price speech; built-in audio-aware rates can.
-    if(!row||row.action==='text_to_speech'&&!['gemini-3.8-flash-lite-tts','gpt-realtime-2.1-mini'].includes(row.model))return;
+    if(!row||row.action==='text_to_speech'&&!['gemini-3.8-flash-lite-tts','gpt-realtime-2.1-mini','gpt-4o-mini-tts'].includes(row.model))return;
     if(row.action==='text_to_speech'&&row.model==='gpt-realtime-2.1-mini'&&pricing.models[row.model]?.audioOutputPerMillion===undefined)return;
     const cost=estimateActivityCost(row,pricing,usage);
     if(cost!==null)this.store.run("UPDATE ai_activity SET estimated_cost=?,pricing_version=? WHERE id=? AND (status='running' OR pricing_version IS NULL)",cost,pricing.version,id);

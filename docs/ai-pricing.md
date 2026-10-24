@@ -15,6 +15,7 @@ paid API rates in USD per million tokens, regardless of free-tier eligibility.
 | GPT-5.6 Sol | 4.00 | 0.40 | 20.00 | [Model](https://developers.openai.com/api/docs/models/gpt-5.6-sol) |
 | GPT-5 Mini | 0.25 | 0.025 | 2.00 | [Model](https://developers.openai.com/api/docs/models/gpt-5-mini) |
 | text-embedding-3-small | 0.02 | — | — | [Model](https://developers.openai.com/api/docs/models/text-embedding-3-small) |
+| gpt-4o-mini-tts (historical) | 0.60 text | — | 12.00 audio | [Model](https://developers.openai.com/api/docs/models/gpt-4o-mini-tts) |
 | gpt-realtime-2.1-mini text | 0.60 | 0.06 | 2.40 | [Pricing](https://developers.openai.com/api/docs/pricing) |
 | gpt-realtime-2.1-mini audio | 10.00 | 0.30 | 20.00 | [Pricing](https://developers.openai.com/api/docs/pricing) |
 | Gemini 3.8 Flash-Lite TTS | 0.50 text | — | 6.00 audio | [Pricing](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.8-flash-lite-tts) |

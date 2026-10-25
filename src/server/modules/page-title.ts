@@ -8,7 +8,7 @@ export function resolvePageTitle(store:Store,page:TitleRow):string {
   const generated=store.get<{data:string;revision:number}>("SELECT data,revision FROM page_ai_enrichments WHERE page_id=? AND kind='title'",page.id);
   if(generated)try {
     const {title}=JSON.parse(generated.data);
-    const inferred=new PageEnrichmentState(store).get(page.id).fields.title?.origin==='inferred';
+    const inferred=new PageEnrichmentState(store).metadata(page.id).fields.title?.origin==='inferred';
     if((generated.revision===page.revision||inferred)&&typeof title==='string'&&title.trim())return title;
   }catch{/* Unknown legacy records do not replace authored text. */}
   return page.title;

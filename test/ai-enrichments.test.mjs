@@ -44,14 +44,14 @@ test('saved enrichments survive restart, refresh safely, and follow page access 
   try {
     let page = await call('pages', 'POST', {title:'Persistent knowledge'}, 201);
     const route = 'pages/'+page.id;
-    assert.deepEqual((await call(route+'/enrichments')).map(item=>item.kind),['enrichment_state']);
+    assert.deepEqual((await call(route+'/enrichments')).map(item=>item.kind),[]);
     page=await call(route,'PUT',{...page,blocks:[{id:'body',type:'paragraph',content:[{text:'A persistent note about knowledge and careful planning.'}]}]});
     const generated=async()=> (await call(route+'/enrichments')).filter(item=>['summary','topics'].includes(item.kind));
     assert.deepEqual(await generated(),[]);
     const original = await call(route+'/summary', 'POST', {revision:page.revision});
     let items = await generated();
     assert.equal(items.length, 1); assert.equal(items[0].kind, 'summary');
-    assert.equal(items[0].data.summary,original.summary);assert.equal(items[0].data.origin,'inferred');assert.equal(items[0].data.generatedContentHash,original.contentHash);assert.ok(items[0].data.baseline);
+    assert.equal(items[0].data.summary,original.summary);assert.equal(items[0].data.origin,'inferred');assert.equal(items[0].data.generatedContentHash,original.contentHash);assert.equal(items[0].data.baseline,undefined);
     assert.equal(items[0].revision, page.revision); assert.equal(items[0].model, original.model);
     assert.equal(items[0].reasoningEffort, original.reasoningEffort); assert.ok(Date.parse(items[0].updated_at));
     assert.equal((await call(route)).revision, page.revision, 'Enrichments do not modify the editor revision');
@@ -83,6 +83,30 @@ test('saved enrichments survive restart, refresh safely, and follow page access 
     assert.notEqual(items[0].revision, page.revision, 'Saved revision supports stale-result indicators');
     const store = new Store(db), enrichments = new AIEnrichments(store, new Pages(store, new Knowledge(store)));
     enrichments.save('default', page.id, 'topics', {topics:['Gardening','Planning']}, page.revision, ai.selection());
+    enrichments.save('default',page.id,'private_future_evidence',{baseline:{body:'private text',tokenCounts:{private:9},embedding:{vector:[1,2,3]}}},page.revision,ai.selection());
+    assert.equal((await call(route+'/enrichments')).some(item=>item.kind==='private_future_evidence'),false,'Unknown evidence kinds require an explicit public projection');
+    const versionBefore=await call(route+'/enrichment-status');
+    assert.equal(typeof versionBefore.version,'string');assert.ok(JSON.stringify(versionBefore).length<250);
+    db.prepare("UPDATE page_ai_enrichments SET data=? WHERE page_id=? AND kind='topics'").run(JSON.stringify({topics:['Gardening','Planting']}),page.id);
+    assert.notEqual((await call(route+'/enrichment-status')).version,versionBefore.version,'Same-length same-timestamp external results change the version');
+    db.prepare('DELETE FROM page_enrichment_jobs WHERE page_id=?').run(page.id);
+    const domainVersion=await call(route+'/enrichment-status');
+    db.prepare('UPDATE page_domain_state SET revision=revision+1 WHERE page_id=?').run(page.id);
+    db.prepare('DELETE FROM page_enrichment_jobs WHERE page_id=?').run(page.id);
+    assert.notEqual((await call(route+'/enrichment-status')).version,domainVersion.version,'Assignment revision changes are observable even with unchanged content and timestamps');
+    const assignmentsVersion=await call(route+'/enrichment-status');
+    db.prepare('DELETE FROM page_domains WHERE page_id=?').run(page.id);
+    db.prepare("INSERT INTO page_domains(page_id,domain_id,role,origin,updated_at) VALUES (?,'mathematics','primary','inferred','fixed timestamp')").run(page.id);
+    db.prepare('DELETE FROM page_enrichment_jobs WHERE page_id=?').run(page.id);
+    assert.notEqual((await call(route+'/enrichment-status')).version,assignmentsVersion.version,'Restored assignments with preserved classification provenance remain observable');
+    const state=db.prepare("SELECT data FROM page_ai_enrichments WHERE page_id=? AND kind='enrichment_state'").get(page.id);
+    db.prepare("UPDATE page_ai_enrichments SET data='broken legacy state' WHERE page_id=? AND kind='enrichment_state'").run(page.id);
+    assert.equal(typeof (await call(route+'/enrichment-status')).version,'string','Corrupt legacy state cannot block valid result observation');
+    db.prepare("UPDATE page_ai_enrichments SET data=? WHERE page_id=? AND kind='enrichment_state'").run(state.data,page.id);
+    const changesBefore=db.prepare('SELECT total_changes() AS n').get().n;
+    for(let i=0;i<3;i++){await call(route+'/enrichments');await call(route+'/enrichment-status');}
+    assert.equal(db.prepare('SELECT total_changes() AS n').get().n,changesBefore,'Public payload and status reads never write');
+
     assert.equal((await generated()).length, 2, 'Future enrichment kinds coexist with summaries');
     assert.throws(() => enrichments.save('default', page.id, 'topics', {}, page.revision-1, ai.selection()), error => error.status === 409);
     assert.throws(() => enrichments.save(other.id, page.id, 'topics', {}, page.revision, ai.selection()), error => error.status === 404);
@@ -97,7 +121,7 @@ test('saved enrichments survive restart, refresh safely, and follow page access 
     await call(route+'/summary', 'DELETE');
     const deletedRecords=await call(route+'/enrichments');
     assert.deepEqual(deletedRecords.filter(item=>!['summary','enrichment_state','summary_preferences'].includes(item.kind)),retained);
-    assert.equal(deletedRecords.find(item=>item.kind==='summary_preferences').data.suppressed,true);
+    assert.equal(deletedRecords.find(item=>item.kind==='summary_preferences'),undefined);
     assert.equal(calls, callsBeforeDelete, 'Deletion does not call the AI provider');
     assert.equal((await call(route)).revision, page.revision, 'Deleting a summary does not change the note');
     await stop(); await start();

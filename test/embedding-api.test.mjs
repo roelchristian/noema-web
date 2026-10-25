@@ -11,17 +11,22 @@ import { Intelligence } from '../src/server/modules/intelligence.ts';
 
 const blocks = text => [{id:'body',type:'paragraph',checked:false,content:[{text}]}];
 const vector = [1,...Array(1535).fill(0)];
-const embedded = () => Response.json({model:'text-embedding-3-small',data:[{index:0,embedding:vector}],usage:{prompt_tokens:12,total_tokens:12}});
+const embedded = inputs => Response.json({model:'text-embedding-3-small',data:inputs.map((_,index)=>({index,embedding:vector})),usage:{prompt_tokens:inputs.length*12,total_tokens:inputs.length*12}});
+const activityTarget = (calls,content,pageId) => {
+  const request=calls.find(call=>call.body.input.some(input=>input.includes(content)));
+  assert.ok(request,'Expected an embedding request containing the fixture Page');
+  return request.body.input.length>1?null:pageId;
+};
 
 async function fixture(run) {
   const dir=mkdtempSync(path.join(tmpdir(),'noema-embedding-api-')), file=path.join(dir,'notes.sqlite');
   const secrets={value:null,read(){return this.value;},write(value){this.value=value;},remove(){this.value=null;}};
-  let db,server,base,calls=[],handler=async()=>embedded(),tick=Date.now();
+  let db,server,base,calls=[],handler=async inputs=>embedded(inputs),tick=Date.now();
   async function start() {
     db=openDatabase(file);
     const ai=new Intelligence(secrets,async(url,options)=>{
-      calls.push({url,body:JSON.parse(options.body),options});
-      return handler();
+      const body=JSON.parse(options.body);calls.push({url,body,options});
+      return handler(body.input);
     },()=>tick+=61000);
     if(!secrets.value)ai.save({apiKey:'sk-test-embedding-api-secret-key'});
     server=createApp(new Store(db),path.resolve('dist/client'),ai);
@@ -61,7 +66,8 @@ test('embedding API persists indexes and history, rejects stale content, and fol
   assert.ok(results.results.some(result=>result.id===page.id));
   assert.equal(results.results.find(result=>result.id===page.id).snippet,'Durable semantic knowledge about gardens and careful planting.');
   const logged=(await call('intelligence/activity')).items;
-  const indexing=logged.find(item=>item.action==='note_embedding'&&item.objectId===page.id);
+  const target=activityTarget(f.calls,'Durable semantic knowledge',page.id);
+  const indexing=logged.find(item=>item.action==='note_embedding'&&item.vaultId==='default'&&item.objectId===target);
   assert.equal(indexing.status,'completed');assert.equal(indexing.model,'text-embedding-3-small');assert.equal(indexing.revision,null);assert.ok(indexing.promptBytes>0);
   const searching=logged.find(item=>item.action==='search_embedding');
   assert.equal(searching.status,'completed');assert.equal(searching.vaultId,'default');assert.equal(searching.objectId,null);assert.equal(searching.promptBytes,Buffer.byteLength('gardening'));
@@ -114,10 +120,11 @@ test('embedding API enforces client/origin protection, validates requests, and s
   const status=await f.until(value=>value.jobs.some(job=>job.pageId===page.id&&job.status==='failed'));
   const job=status.jobs.find(job=>job.pageId===page.id&&job.status==='failed');
   assert.ok(!JSON.stringify(job).includes('sensitive upstream details'));
-  const failed=(await call('intelligence/activity')).items.find(item=>item.action==='note_embedding'&&item.objectId===page.id);
+  const target=activityTarget(f.calls,'This eligible note exercises',page.id);
+  const failed=(await call('intelligence/activity')).items.find(item=>item.action==='note_embedding'&&item.vaultId==='default'&&item.objectId===target);
   assert.equal(failed.status,'failed');assert.equal(failed.httpStatus,502);
   await call('embeddings/jobs/'+job.id+'/retry','POST',{},404,other.id);
-  f.setHandler(async()=>embedded());
+  f.setHandler(async inputs=>embedded(inputs));
   await call('embeddings/jobs/'+job.id+'/retry','POST',{});
   await f.until(value=>value.notes.find(note=>note.pageId===page.id)?.state==='indexed');
 }));

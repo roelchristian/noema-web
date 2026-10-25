@@ -4,7 +4,7 @@ import type {ChatThread} from '../../shared/chat';
 import {ChatTitle} from './ChatTitle';
 import {Icon} from '../components/Icon';
 interface Props {thread:ChatThread;selected:boolean;disabled:boolean;revealed:boolean;animate:boolean;time:string;exactTime?:string;onSelect:()=>void;onReveal:(open:boolean)=>void;onDelete:()=>void}
-const scopeLabels={vault:'',page:'Page',source:'Source',entity:'Entity'};
+const scopeLabels={vault:'',page:'Page',source:'Source',entity:'Entity',folder:'Folder'};
 const revealWidth=76;
 export function ChatThreadRow({thread,selected,disabled,revealed,animate,time,exactTime,onSelect,onReveal,onDelete}:Props) {
  const [offset,setOffset]=useState<number|null>(null);

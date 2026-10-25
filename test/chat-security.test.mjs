@@ -167,3 +167,45 @@ test('Chat requests provider streaming and receives text before the final provid
  event({type:'response.completed',response:{status:'completed',output:[{type:'message',content:[{type:'output_text',text}]}]}});stream.close();
  assert.equal(await pending,text);
 });
+
+
+test('folder context reaches the provider as a closed registry and moved evidence cannot produce a completed answer',async()=>{
+ const f=chatCorpus();let chat,calls=0;
+ try {
+  f.store.run("INSERT INTO folders(id,vault_id,name) VALUES('selected','default','Selected')");
+  f.store.run("INSERT INTO folders(id,vault_id,name) VALUES('outside','default','Outside')");
+  f.store.run("INSERT INTO item_locations(vault_id,kind,item_id,folder_id) VALUES('default','page',?,'selected')",f.myNote.id);
+  const ai={selection:()=>({model:'test-model',reasoningEffort:'none'}),async generate(request){
+   calls++;const input=JSON.parse(request.input);
+   assert.deepEqual(input.scope,{kind:'folder',id:'selected'});assert.ok(input.evidence.length>0);
+   assert.ok(input.evidence.every(item=>item.objectId===f.myNote.id));
+   assert.doesNotMatch(request.input,/VAULT_SECRET_93|ceremonial|cooperating with human freedom/);
+   f.store.run("UPDATE item_locations SET folder_id='outside' WHERE vault_id='default' AND kind='page' AND item_id=?",f.myNote.id);
+   return JSON.stringify({claims:[{text:'This answer used material that left the selected folder.',attribution:'supported',citationIds:[input.evidence[0].id]}]});
+  }};
+  chat=new Chat(f.store,ai,f.retrieval,f.vaults);
+  await assert.rejects(chat.submit('default',{question:'What does Aquinas say about grace?',scope:{kind:'folder',id:'selected'},mentions:[{id:f.aquinas.id,name:'Aquinas'}],requestId:randomUUID()}),e=>e.status===409&&/evidence changed/.test(e.message));
+  assert.equal(calls,1);
+  const failed=chat.storage.get('default',chat.storage.list('default')[0].id);assert.equal(failed.messages.at(-1).status,'failed');
+  assert.doesNotMatch(JSON.stringify(failed),/This answer used material/);
+  const empty=await chat.submit('default',{question:'Augustine grace',scope:{kind:'folder',id:'selected'},requestId:randomUUID(),temporary:true});
+  assert.equal(calls,1,'The now-empty folder cannot trigger a vault-wide provider request');assert.deepEqual(empty.message.evidence,[]);assert.match(empty.message.text,/could not establish/i);
+ }finally{chat?.close();f.close();}
+});
+
+
+test('a completed folder request cannot replay material that moved outside its context',async()=>{
+ const f=chatCorpus();let chat,calls=0;
+ try {
+  f.store.run("INSERT INTO folders(id,vault_id,name) VALUES('selected','default','Selected')");
+  f.store.run("INSERT INTO folders(id,vault_id,name) VALUES('outside','default','Outside')");
+  f.store.run("INSERT INTO item_locations(vault_id,kind,item_id,folder_id) VALUES('default','page',?,'selected')",f.myNote.id);
+  const ai={selection:()=>({model:'test-model',reasoningEffort:'none'}),async generate(request){calls++;const input=JSON.parse(request.input);return JSON.stringify({claims:[{text:'The selected note records a position on grace.',attribution:'supported',citationIds:[input.evidence[0].id]}]});}};
+  chat=new Chat(f.store,ai,f.retrieval,f.vaults);
+  const body={question:'grace',scope:{kind:'folder',id:'selected'},requestId:randomUUID()},first=await chat.submit('default',body);
+  assert.equal(calls,1);assert.ok(first.message.evidence.length>0);
+  f.store.run("UPDATE item_locations SET folder_id='outside' WHERE vault_id='default' AND kind='page' AND item_id=?",f.myNote.id);
+  await assert.rejects(chat.submit('default',body),e=>e.status===409&&/Saved evidence changed/.test(e.message));assert.equal(calls,1);
+  const history=chat.storage.get('default',first.threadId);assert.equal(history.messages.at(-1).evidence[0].status,'current','Historical stored evidence is not rewritten');
+ }finally{chat?.close();f.close();}
+});

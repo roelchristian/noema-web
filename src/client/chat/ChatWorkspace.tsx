@@ -1,6 +1,6 @@
 import {createPortal} from 'react-dom';
 import {useEffect,useLayoutEffect,useRef,useState} from 'react';
-import type {Entity,PageSummary} from '../../shared/domain';
+import type {Entity,Folder,PageSummary} from '../../shared/domain';
 import type {ChatEvidence,ChatMention,ChatMessage,ChatScope,ChatThread,ChatResult} from '../../shared/chat';
 import {randomUUID} from '../../shared/uuid';
 import {chatAPI,streamChat} from './api';
@@ -10,10 +10,11 @@ import {useDefaultPersona} from '../components/PersonaSelect';
 import {MenoPicker} from './MenoPicker';
 import {MenoAvatar} from './MenoAvatar';
 import {ChatInbox} from './ChatInbox';
+import {ChatContextPicker,chatContextChoices,chatFolderPath,type ChatContextChoice} from './ChatContextPicker';
 import {Modal,ModalHeader} from '../components/Modal';
 import {Icon} from '../components/Icon';
 import {useMobileViewport} from '../components/WorkspaceNavigation';
-interface Props {vaultId:string;vaultName:string;initialScope:ChatScope;restoreSession?:boolean;entities:Entity[];pages:PageSummary[];visible:boolean;onClose:()=>void;onOpenAISettings?:()=>void;onOpenEvidence:(evidence:ChatEvidence,trigger:HTMLElement)=>void}
+interface Props {vaultId:string;vaultName:string;initialScope:ChatScope;restoreSession?:boolean;entities:Entity[];pages:PageSummary[];folders?:Folder[];visible:boolean;onClose:()=>void;onOpenAISettings?:()=>void;onOpenEvidence:(evidence:ChatEvidence,trigger:HTMLElement)=>void}
 const kindLabels={source:'Imported source · original extraction',own_note:'Your note',entity_fact:'Recorded entity fact',entity_overview:'Entity overview'};
 const evidenceLabel=(evidence:ChatEvidence)=>evidence.kind==='own_note'&&evidence.origin==='ai_generated'?'AI-generated secondary note':evidence.kind==='own_note'&&evidence.origin==='mixed'?'Note with AI-generated text':kindLabels[evidence.kind];
 const minimumTypingTime=800;
@@ -25,7 +26,7 @@ function waitForChatBeat(milliseconds:number,signal:AbortSignal):Promise<void> {
   signal.addEventListener('abort',abort,{once:true});
  });
 }
-export function ChatWorkspace({vaultId,initialScope,restoreSession=false,entities,pages,visible,onClose,onOpenAISettings,onOpenEvidence}:Props) {
+export function ChatWorkspace({vaultId,initialScope,restoreSession=false,entities,pages,folders=[],visible,onClose,onOpenAISettings,onOpenEvidence}:Props) {
  const mobile=useMobileViewport();
  const personaId=useDefaultPersona();
  const [resume]=useState(()=>restoreSession?readChatSession(vaultId):null);
@@ -76,8 +77,8 @@ export function ChatWorkspace({vaultId,initialScope,restoreSession=false,entitie
  const historyToggle=useRef<HTMLButtonElement>(null);
  const composer=useRef<HTMLTextAreaElement>(null),evidenceClose=useRef<HTMLButtonElement>(null),citationTrigger=useRef<HTMLElement|null>(null),request=useRef<{controller:AbortController;id:string}|null>(null),alive=useRef(true),operation=useRef(0),historyController=useRef<AbortController|null>(null),verificationController=useRef<AbortController|null>(null),log=useRef<HTMLDivElement>(null);
  useEffect(()=>{const dismiss=(event:PointerEvent)=>{if(optionsMenu.current&&!optionsMenu.current.contains(event.target as Node))optionsMenu.current.open=false;};document.addEventListener('pointerdown',dismiss);return()=>document.removeEventListener('pointerdown',dismiss);},[]);
- const scopeTitle=scope.kind==='vault'?'':scope.kind==='page'?`Page · ${pages.find(page=>page.id===scope.id)?.title||scope.id}`:`${scope.kind==='source'?'Source':'Entity'} · ${entities.find(entity=>entity.id===scope.id)?.name||scope.id}`;
- const at=/@([^@\n]*)$/.exec(question),candidates=at?entities.filter(entity=>entity.vault_id===vaultId&&entity.name.toLocaleLowerCase().includes(at[1].toLocaleLowerCase())&&!mentions.some(mention=>mention.id===entity.id)).slice(0,8):[];
+ const scopeTitle=scope.kind==='vault'?'':scope.kind==='folder'?`Folder · ${chatFolderPath(folders,scope.id)||scope.id}`:scope.kind==='page'?`Page · ${pages.find(page=>page.id===scope.id)?.title||scope.id}`:`${scope.kind==='source'?'Source':'Entity'} · ${entities.find(entity=>entity.id===scope.id)?.name||scope.id}`;
+ const at=/@([^@\n]*)$/.exec(question),candidates=at&&!busy&&!loadingThread?chatContextChoices(vaultId,at[1],entities,pages,folders,mentions):[];
  const refresh=async()=>{setHistoryLoading(true);try{const result=await chatAPI.list(vaultId);if(alive.current){setThreads(result);setHistoryError('');}}catch(err){if(alive.current)setHistoryError(err instanceof Error?err.message:'Could not load conversations.');}finally{if(alive.current)setHistoryLoading(false);}};
  useEffect(()=>{alive.current=true;const controller=new AbortController();void chatAPI.list(vaultId,controller.signal).then(value=>{if(!controller.signal.aborted){setThreads(value);setHistoryError('');}}).catch(err=>{if(!controller.signal.aborted)setHistoryError(err instanceof Error?err.message:'Could not load conversations.');}).finally(()=>{if(!controller.signal.aborted)setHistoryLoading(false);});return()=>{alive.current=false;operation.current++;controller.abort();historyController.current?.abort();verificationController.current?.abort();const active=request.current;if(active){active.controller.abort();void chatAPI.cancel(vaultId,active.id).catch(()=>{});}};},[vaultId]);
  useEffect(()=>{if(visible)composer.current?.focus();else {setHistoryOpen(false);verificationController.current?.abort();setVerifying(false);setSelected(null);if(temporary){setMessages([]);setQuestion('');setMentions([]);setThreadId(undefined);setNotice('');setError('');}const active=request.current;if(active){active.controller.abort();void chatAPI.cancel(vaultId,active.id).catch(()=>{});}}},[visible,vaultId,temporary]);
@@ -106,12 +107,18 @@ export function ChatWorkspace({vaultId,initialScope,restoreSession=false,entitie
  const openOriginal=async(evidence:ChatEvidence,trigger:HTMLElement)=>{verificationController.current?.abort();const controller=new AbortController();verificationController.current=controller;setVerifying(true);try{const [validated]=await chatAPI.verify(vaultId,[evidence],controller.signal);if(!alive.current||controller.signal.aborted)return;if(!validated)throw new Error('This evidence could not be verified.');setSelected(validated);if(validated.status==='current'){setSelected(null);onOpenEvidence(validated,citationTrigger.current??trigger);}}catch(err){if(alive.current&&!controller.signal.aborted)setError(err instanceof Error?err.message:'Could not verify this reference.');}finally{if(alive.current&&!controller.signal.aborted)setVerifying(false);}};
  const stop=()=>{const active=request.current;if(!active)return;active.controller.abort();verificationController.current?.abort();setVerifying(false);setSelected(null);void chatAPI.cancel(vaultId,active.id).catch(()=>{});setNotice('Stopped. Provider work already sent may still be billed.');};
  const newChat=(temp=temporary)=>{setAnimatedTitle(null);setReceivedId(null);pendingScroll.current=null;followOutput.current=true;setAtBottom(true);setHistoryOpen(false);setHistoryError('');verificationController.current?.abort();setVerifying(false);operation.current++;historyController.current?.abort();setLoadingThread(false);setThreadId(undefined);setMessages([]);setQuestion('');setMentions([]);setSelected(null);setTemporary(temp);setError('');setNotice('');setUsage(undefined);setTitle('');setEditingTitle(false);requestAnimationFrame(()=>{if(alive.current)composer.current?.focus();});};
+ const changeScope=(next:ChatScope,draft=question)=>{
+  if(busy||loadingThread||JSON.stringify(next)===JSON.stringify(scope))return;
+  const previousDraft=draft,hasConversation=!!threadId||messages.length>0;
+  newChat();setQuestion(previousDraft);setScope(next);
+  if(hasConversation)setNotice(next.kind==='vault'?'Started a new conversation using the whole vault.':'Started a new conversation limited to the selected context.');
+ };
  const openThread=async(id:string,restore?:ChatSession)=>{setAnimatedTitle(null);setReceivedId(null);verificationController.current?.abort();setVerifying(false);const version=++operation.current;historyController.current?.abort();const controller=new AbortController();historyController.current=controller;setLoadingThread(true);setError('');setHistoryError('');try {const thread=await chatAPI.get(vaultId,id,controller.signal);if(!alive.current||version!==operation.current)return;followOutput.current=restore?.followBottom??true;setAtBottom(followOutput.current);pendingScroll.current=restore?{top:restore.scrollTop,bottom:restore.followBottom}:null;setHistoryOpen(false);requestAnimationFrame(()=>{if(alive.current&&version===operation.current)composer.current?.focus();});setThreadId(thread.id);setScope(thread.scope);setMessages(thread.messages);setTemporary(false);setSelected(null);setQuestion(restore?.draft??'');setMentions(restore?.mentions??[]);setTitle(thread.title);setEditingTitle(false);setNotice(restore?.pending&&thread.messages.at(-1)?.role==='user'?'The previous answer was interrupted by refresh. You can send a new question.':'');setUsage(undefined);}catch(err){if(alive.current&&!controller.signal.aborted){setHistoryError(err instanceof Error?err.message:'Could not open this conversation.');if(restore){setThreadId(undefined);pendingScroll.current=null;}}}finally{if(alive.current&&version===operation.current)setLoadingThread(false);}};
  const submit=async(retry?:ChatMessage)=>{
  const retryIndex=retry?messages.findIndex(message=>message.id===retry.id):-1;
  const previousUser=retry?messages.slice(0,retryIndex).filter(message=>message.role==='user').at(-1):undefined;
  const text=retry?previousUser?.text??'':question.trim();if(!text||busy||loadingThread)return;
- if(!retry&&at){setError('Choose an entity from the mention list, or remove the unresolved @ mention.');return;}
+ if(!retry&&at){setError('Choose a context or reference from the @ list, or remove the unresolved @ mention.');return;}
  if(showWelcome)menoOrigin.current=welcome.current?.querySelector('.meno-avatar')?.getBoundingClientRect()??null;
  followOutput.current=true;setAtBottom(true);const controller=new AbortController(),id=randomUUID(),version=++operation.current;request.current={controller,id};setBusy(true);setEvidenceCount(null);setTypingLeaving(false);setReceivedId(null);setUsage(undefined);setError('');setNotice('');setSelected(null);
  const typingStarted=Date.now();let completed:ChatResult|undefined;
@@ -140,7 +147,16 @@ export function ChatWorkspace({vaultId,initialScope,restoreSession=false,entitie
  const inbox=<ChatInbox active={visible} animatedTitle={animatedTitle} threads={threads} selectedId={threadId} disabled={busy||loadingThread||!!deletingThread} loading={historyLoading} error={historyError} onHide={()=>{if(mobile)closeHistory();else{setInboxCollapsed(true);requestAnimationFrame(()=>document.querySelector<HTMLButtonElement>('[aria-label="Show inbox"]')?.focus());}}} onDelete={id=>void removeThread(id)} onNew={()=>newChat()} onSelect={id=>void openThread(id)} onRetry={()=>void refresh()}/>;
  const closeHistory=()=>{setHistoryOpen(false);requestAnimationFrame(()=>historyToggle.current?.focus());};
 
- const chooseMention=(entity:Entity)=>{setMentions(current=>[...current,{id:entity.id,name:entity.name}]);setQuestion(current=>current.replace(/@([^@\n]*)$/,'')+entity.name+' ');composer.current?.focus();};
+ const chooseMention=(choice:ChatContextChoice)=>{
+  if(busy||loadingThread)return;
+  if(choice.kind==='entity'){
+   const entity=choice.entity;setMentions(current=>[...current,{id:entity.id,name:entity.name}]);setQuestion(current=>current.replace(/@([^@\n]*)$/,'')+entity.name+' ');
+  }else{
+   const draft=question.replace(/@([^@\n]*)$/,'');changeScope(choice.scope,draft);setQuestion(draft);
+  }
+  composer.current?.focus();
+ };
+ const promptContext=()=>{setQuestion(current=>/@([^@\n]*)$/.test(current)?current:current+(current&&!/\s$/.test(current)?' ':'')+'@');composer.current?.focus();};
  const rename=async()=>{
   const next=titleDraft.trim(),id=threadId,version=operation.current;if(!id||!next||savingTitle)return;
   setSavingTitle(true);setError('');
@@ -162,7 +178,7 @@ export function ChatWorkspace({vaultId,initialScope,restoreSession=false,entitie
  {mobile&&historyOpen&&<Modal className="chat-history-dialog" titleId="chat-history-title" onClose={closeHistory} dismissOnBackdrop initialFocus="input[type=search]"><ModalHeader titleId="chat-history-title" closeLabel="Close conversations">Conversations</ModalHeader>{inbox}</Modal>}
  <div ref={chatMain} className="chat-main" inert={mobile&&(!!selected||historyOpen)}>
  {!toolbarHost&&toolbar}
- {scope.kind!=='vault'&&<div className="chat-context"><span className="chat-scope-chip"><Icon name={scope.kind==='page'?'page':'knowledge'}/><strong data-chat-scope>{scopeTitle}</strong></span><span className="chat-scope-hint">Retrieval stays within this scope.</span></div>}
+
 
  {temporary&&<p className="chat-muted">Temporary chat disappears when you close it. It is never saved to history.</p>}
  <div ref={log} className="chat-messages" onScroll={event=>{const element=event.currentTarget;followOutput.current=element.scrollHeight-element.scrollTop-element.clientHeight<80;setAtBottom(followOutput.current);remember();}} aria-label="Conversation" aria-busy={busy||loadingThread}>
@@ -171,11 +187,13 @@ export function ChatWorkspace({vaultId,initialScope,restoreSession=false,entitie
  {verifying&&<p role="status">Checking the evidence revision…</p>}{loadingThread&&<p role="status">Opening conversation…</p>}{busy&&!receivedId&&<div className={'chat-progress chat-typing'+(typingLeaving?' is-leaving':'')} role="status" aria-label="Meno is typing"><span className="sr-only">Meno is typing…</span><div className="chat-typing-bubble" aria-hidden="true"><span/><span/><span/></div><span className="chat-typing-status">{typingStatus}</span></div>}
  </div>
  <div className="chat-composer-area">{historyError&&(inboxCollapsed||mobile&&!historyOpen)&&<p className="chat-error" role="alert">{historyError}</p>}{!atBottom&&messages.length>0&&<button type="button" className="chat-jump" onClick={()=>{followOutput.current=true;setAtBottom(true);log.current?.scrollTo?.({top:log.current.scrollHeight,behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});}}><Icon name="arrow-down"/>Latest messages</button>}{error&&<p className="chat-error" role="alert">{error}</p>}{notice&&<p className={notice.startsWith('Answer complete')?'sr-only':'chat-muted'} role="status">{notice}</p>}
+ <div className="chat-composer-context"><button type="button" className="chat-context-trigger" disabled={busy||loadingThread} aria-label={scope.kind==='vault'?'Add context':'Change context'} onClick={promptContext}><Icon name="plus"/>{scope.kind==='vault'?'Add context':'Change context'}</button>{scope.kind!=='vault'&&<span className="chat-selected-context"><Icon name={scope.kind==='folder'?'folder':scope.kind==='page'?'page':'knowledge'}/><strong data-chat-scope title={scopeTitle}>{scopeTitle}</strong><button type="button" className="chat-context-remove" aria-label="Remove context" title="Use the whole vault" disabled={busy||loadingThread} onClick={()=>changeScope({kind:'vault'})}><Icon name="close"/></button></span>}</div>
+ {scope.kind!=='vault'&&<p className="chat-context-limit">Meno uses only this {scope.kind==='folder'?'folder and its subfolders':scope.kind==='page'?'note':scope.kind==='source'?'source':'entity and its directly connected material'}.</p>}
  <form className="chat-composer" onSubmit={event=>{event.preventDefault();void submit();}}>
  {!!mentions.length&&<div className="chat-mentions" aria-label="Resolved mentions">{mentions.map(mention=><button key={mention.id} type="button" disabled={busy} data-entity-id={mention.id} aria-label={`Remove mention ${mention.name}`} onClick={()=>setMentions(current=>current.filter(item=>item.id!==mention.id))}>@{mention.name} ×</button>)}</div>}
- <label className="sr-only" htmlFor="chat-question">Ask something about your knowledge</label><textarea rows={1} id="chat-question" ref={composer} value={question} disabled={busy||loadingThread} maxLength={2000} placeholder="Message Meno…" aria-describedby="chat-provider-note" aria-controls={candidates.length?'chat-mention-list':undefined} aria-expanded={candidates.length>0} aria-activedescendant={candidates.length?`chat-mention-${candidates[mentionIndex]?.id??candidates[0].id}`:undefined} onChange={event=>setQuestion(event.target.value)} onKeyDown={event=>{if(event.nativeEvent.isComposing)return;if(candidates.length){if(event.key==='ArrowDown'){event.preventDefault();setMentionIndex(current=>(current+1)%candidates.length);}else if(event.key==='ArrowUp'){event.preventDefault();setMentionIndex(current=>(current+candidates.length-1)%candidates.length);}else if(event.key==='Enter'){event.preventDefault();chooseMention(candidates[mentionIndex]??candidates[0]);}}else if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();void submit();}}}/>
- {!!candidates.length&&<div id="chat-mention-list" className="chat-mention-list" role="listbox" aria-label="Choose a knowledge entity">{candidates.map((entity,index)=><button type="button" role="option" id={'chat-mention-'+entity.id} aria-selected={index===mentionIndex} key={entity.id} onMouseDown={event=>event.preventDefault()} onClick={()=>chooseMention(entity)}><span>{entity.name}</span><small>{entity.type} · {entity.id.slice(0,8)}</small></button>)}</div>}
- <div className="chat-composer-actions"><span className="chat-composer-hint">Type @ to add a reference</span><button type="button" className="chat-depth" aria-pressed={deep} aria-label="Search more thoroughly" title="Search more thoroughly" disabled={busy} onClick={()=>setDeep(current=>!current)}><Icon name="search"/>Thorough</button>{busy?<button type="button" className="button" onClick={stop}>Stop</button>:<button type="submit" className="chat-send" aria-label="Send message" title="Send message" disabled={!question.trim()||loadingThread}><Icon name="arrow-up"/></button>}</div></form>
+ <label className="sr-only" htmlFor="chat-question">Ask something about your knowledge</label><textarea rows={1} id="chat-question" ref={composer} value={question} disabled={busy||loadingThread} maxLength={2000} placeholder="Message Meno…" aria-describedby="chat-provider-note" aria-controls={candidates.length?'chat-mention-list':undefined} aria-expanded={candidates.length>0} aria-activedescendant={candidates.length?`chat-mention-${Math.min(mentionIndex,candidates.length-1)}`:undefined} onChange={event=>setQuestion(event.target.value)} onKeyDown={event=>{if(event.nativeEvent.isComposing)return;if(candidates.length){if(event.key==='ArrowDown'){event.preventDefault();setMentionIndex(current=>(current+1)%candidates.length);}else if(event.key==='ArrowUp'){event.preventDefault();setMentionIndex(current=>(current+candidates.length-1)%candidates.length);}else if(event.key==='Enter'){event.preventDefault();chooseMention(candidates[mentionIndex]??candidates[0]);}}else if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();void submit();}}}/>
+ {!!candidates.length&&<ChatContextPicker choices={candidates} selectedIndex={Math.min(mentionIndex,candidates.length-1)} onChoose={chooseMention}/>}
+ <div className="chat-composer-actions"><span className="chat-composer-hint">Type @ to choose context or add a reference</span><button type="button" className="chat-depth" aria-pressed={deep} aria-label="Search more thoroughly" title="Search more thoroughly" disabled={busy} onClick={()=>setDeep(current=>!current)}><Icon name="search"/>Thorough</button>{busy?<button type="button" className="button" onClick={stop}>Stop</button>:<button type="submit" className="chat-send" aria-label="Send message" title="Send message" disabled={!question.trim()||loadingThread}><Icon name="arrow-up"/></button>}</div></form>
  {usage&&<details className="chat-usage"><summary>Response details</summary><p className="chat-provider-note" data-chat-usage>Answer usage: {usage.inputTokens??'unknown'} input tokens · {usage.outputTokens??'unknown'} output tokens · {usage.estimatedCost==null?'Cost unavailable':'Estimated $'+usage.estimatedCost.toFixed(5)}. Retrieval usage appears separately in AI activity.</p></details>}
  <p id="chat-provider-note" className="chat-provider-note">Answers use your vault. Relevant excerpts are sent to your AI provider.</p>
  </div></div>

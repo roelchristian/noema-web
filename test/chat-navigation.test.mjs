@@ -184,8 +184,9 @@ test('refresh keeps an unsent draft and temporary chat never persists content in
 test('Chat session parsing rejects bad scope and identity, bounds drafts, and tolerates blocked storage',async t=>{
  const {setupDOM}=await import('./helpers/dom.mjs'),{readChatSession,writeChatSession,clearChatSession}=await import('../src/client/chat/chat-session.ts');
  const env=setupDOM(t),key='noema-chat-session:default';
- for(const value of ['broken','null','{"scope":{"kind":"unknown"}}','{"scope":{"kind":"page"}}','{"scope":{"kind":"vault"},"threadId":4}']){window.sessionStorage.setItem(key,value);assert.equal(readChatSession('default'),null);}
+ for(const value of ['broken','null','{"scope":{"kind":"unknown"}}','{"scope":{"kind":"page"}}','{"scope":{"kind":"folder"}}','{"scope":{"kind":"folder","id":42}}','{"scope":{"kind":"folder","id":""}}','{"scope":{"kind":"vault"},"threadId":4}']){window.sessionStorage.setItem(key,value);assert.equal(readChatSession('default'),null);}
  window.sessionStorage.setItem(key,JSON.stringify({open:true,scope:{kind:'vault'},draft:'a'.repeat(3000),scrollTop:-4}));assert.equal(readChatSession('default').draft.length,2000);assert.equal(readChatSession('default').scrollTop,0);
+ writeChatSession('default',{open:true,scope:{kind:'folder',id:'folder-1'},draft:'Within folder',mentions:[],deep:false,scrollTop:0,followBottom:true,pending:false});assert.deepEqual(readChatSession('default').scope,{kind:'folder',id:'folder-1'});
  t.mock.getter(env.dom.window,'sessionStorage',()=>{throw new Error('Storage blocked');});assert.equal(readChatSession('default'),null);assert.doesNotThrow(()=>writeChatSession('default',{open:true,scope:{kind:'vault'}}));assert.doesNotThrow(()=>clearChatSession('default'));
 });
 
@@ -301,4 +302,49 @@ test('Meno picker applies only the persona, supports keyboard navigation, and ke
  fail=true;await act(async()=>trigger.click());await act(async()=>document.querySelectorAll('[role=menuitemradio]')[2].click());
  assert.equal(document.querySelector('[role=alert]').textContent,'Try again');assert.ok(document.querySelector('[role=menu]'));assert.equal(updates,1);
  await act(async()=>document.querySelector('footer button').click());assert.equal(settings,1);
+});
+
+
+test('@ autocomplete chooses strict note, source and folder context while retaining entity references',async t=>{
+ const {act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
+ const {setupDOM}=await import('./helpers/dom.mjs'),{ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
+ const {readChatSession}=await import('../src/client/chat/chat-session.ts');
+ const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));t.mock.method(chatAPI,'list',async()=>[]);
+ const scrolled=[];env.dom.window.HTMLElement.prototype.scrollIntoView=function(){scrolled.push(this.id);};
+ const props={vaultId:'default',vaultName:'Test',initialScope:{kind:'vault'},entities:[{id:'source-1',vault_id:'default',type:'source',name:'Grace source'},{id:'hidden',vault_id:'other',type:'source',name:'Other vault source'},{id:'inactive',vault_id:'default',type:'source',name:'Inactive source',inactive:true},{id:'person',vault_id:'default',type:'person',name:'An entity'}],pages:[{id:'note-1',title:'Grace note'},{id:'archived',title:'Archived note',archived_at:'2026-01-01'}],folders:[{id:'parent',name:'Research',parent_id:null},{id:'child',name:'Grace',parent_id:'parent'}],visible:true,onClose(){},onOpenEvidence(){}};
+ await act(async()=>root.render(createElement(ChatWorkspace,props)));
+ const input=document.getElementById('chat-question'),edit=value=>act(async()=>input[Object.keys(input).find(key=>key.startsWith('__reactProps'))].onChange({target:{value}})),key=value=>act(async()=>input.dispatchEvent(new env.dom.window.KeyboardEvent('keydown',{key:value,bubbles:true,cancelable:true})));
+ await act(async()=>document.querySelector('[aria-label="Add context"]').click());assert.equal(input.value,'@');assert.equal(document.activeElement,input);assert.equal(document.querySelector('dialog'),null);
+ assert.deepEqual([...document.querySelectorAll('#chat-mention-list [role=group]')].map(node=>node.getAttribute('aria-label')),['Notes','Sources','Folders','Entities']);
+ assert.equal(document.querySelectorAll('#chat-mention-list [role=option]').length,5);assert.doesNotMatch(document.querySelector('#chat-mention-list').textContent,/Other vault|Inactive source|Archived note/);
+ assert.ok(document.querySelector('[data-context-id=child]').textContent.includes('Research / Grace'));
+ await edit('Keep this draft @Research / Grace');assert.equal(document.querySelectorAll('#chat-mention-list [role=option]').length,1);await key('Enter');
+ assert.deepEqual(readChatSession('default').scope,{kind:'folder',id:'child'});assert.equal(input.value,'Keep this draft ');assert.equal(document.querySelector('#chat-mention-list'),null);assert.ok(document.querySelector('[data-chat-scope]').textContent.includes('Folder · Research / Grace'));
+ await edit('About @Grace note');await key('Enter');assert.deepEqual(readChatSession('default').scope,{kind:'page',id:'note-1'});assert.equal(input.value,'About ');
+ await edit('Compare @Grace');await key('ArrowDown');assert.equal(input.getAttribute('aria-activedescendant'),'chat-mention-1');assert.equal(scrolled.at(-1),'chat-mention-1','Keyboard context selection stays visible in the grouped list');await key('Enter');assert.deepEqual(readChatSession('default').scope,{kind:'source',id:'source-1'});assert.equal(input.value,'Compare ');assert.equal(document.querySelector('.chat-mentions'),null,'Selecting a source creates a strict scope rather than a loose reference');
+ await edit('Compare @An ent');await key('Enter');assert.deepEqual(readChatSession('default').scope,{kind:'source',id:'source-1'});assert.equal(document.querySelector('.chat-mentions [data-entity-id]').dataset.entityId,'person');assert.equal(input.value,'Compare An entity ');
+ await act(async()=>document.querySelector('[aria-label="Remove context"]').click());assert.deepEqual(readChatSession('default').scope,{kind:'vault'});assert.equal(input.value,'Compare An entity ');assert.equal(document.querySelector('[data-chat-scope]'),null);
+});
+
+test('@ context in an existing chat preserves the draft, separates history and sends only its selected scope',async t=>{
+ const {act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
+ const {setupDOM}=await import('./helpers/dom.mjs'),{ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
+ const {readChatSession}=await import('../src/client/chat/chat-session.ts');
+ const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ const now=new Date().toISOString(),thread={id:'saved-context',vaultId:'default',title:'Earlier source chat',scope:{kind:'source',id:'source-1'},createdAt:now,updatedAt:now,messages:[{id:'user',role:'user',text:'An earlier question',createdAt:now,mentions:[{id:'subject',name:'Earlier subject'}]},{id:'answer',role:'assistant',text:'An earlier answer',createdAt:now}]};
+ t.mock.method(chatAPI,'list',async()=>[thread]);t.mock.method(chatAPI,'get',async()=>structuredClone(thread));t.mock.method(chatAPI,'cancel',async()=>({cancelled:true}));
+ let sent;t.mock.method(globalThis,'fetch',async(_url,options)=>{sent=JSON.parse(options.body);return new Response(new ReadableStream({start(controller){options.signal.addEventListener('abort',()=>controller.error(new DOMException('Stopped','AbortError')),{once:true});}}));});
+ const props={vaultId:'default',vaultName:'Test',initialScope:{kind:'vault'},entities:[{id:'source-1',vault_id:'default',type:'source',name:'Earlier source'}],pages:[],folders:[{id:'folder-1',name:'Research',parent_id:null}],visible:true,onClose(){},onOpenEvidence(){}};
+ const edit=value=>act(async()=>{const input=document.getElementById('chat-question');input[Object.keys(input).find(key=>key.startsWith('__reactProps'))].onChange({target:{value}});});
+ await act(async()=>root.render(createElement(ChatWorkspace,props)));await act(async()=>document.querySelector('[data-thread-id=saved-context]').click());await edit('Keep this draft @Research');
+ await act(async()=>document.querySelector('[data-context-id=folder-1]').click());
+ assert.equal(document.querySelectorAll('.chat-message').length,0);assert.equal(document.getElementById('chat-question').value,'Keep this draft ');assert.match(document.querySelector('[data-chat-scope]').textContent,/Folder · Research/);assert.match(document.querySelector('.chat-composer-area').textContent,/Started a new conversation limited/);
+ assert.equal(readChatSession('default').threadId,undefined);assert.deepEqual(readChatSession('default').scope,{kind:'folder',id:'folder-1'});assert.ok(document.querySelector('[data-thread-id=saved-context]'),'The previous chat remains in the inbox');
+ await act(async()=>document.querySelector('.chat-composer').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+ assert.deepEqual(sent.scope,{kind:'folder',id:'folder-1'});assert.equal(sent.threadId,undefined);assert.equal(sent.question,'Keep this draft');assert.deepEqual(sent.previousQuestions,[]);assert.deepEqual(sent.mentions,[]);
+ assert.equal(document.querySelector('[aria-label="Change context"]').disabled,true);assert.equal(document.querySelector('[aria-label="Remove context"]').disabled,true);
+ await edit('Cannot switch @Research');assert.equal(document.querySelector('#chat-mention-list'),null,'Context choices stay inactive during an answer');assert.deepEqual(readChatSession('default').scope,{kind:'folder',id:'folder-1'});
+ await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Stop').click());await edit('A whole-vault draft');await act(async()=>document.querySelector('[aria-label="Remove context"]').click());
+ assert.equal(document.querySelector('[data-chat-scope]'),null);assert.equal(document.getElementById('chat-question').value,'A whole-vault draft');assert.deepEqual(readChatSession('default').scope,{kind:'vault'});
+ await act(async()=>document.querySelector('[data-thread-id=saved-context]').click());assert.match(document.querySelector('[data-chat-scope]').textContent,/Source · Earlier source/);assert.match(document.querySelector('.chat-messages').textContent,/An earlier answer/);
 });

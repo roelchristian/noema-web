@@ -27,11 +27,6 @@
 .chat-options-menu > button, .chat-options-menu > label { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 40px; margin: 0; padding: 9px; border: 0; border-radius: 7px; background: transparent; color: var(--text); text-align: left; font-size: 12px; cursor: pointer; }
 .chat-options-menu > button:hover { background: var(--surface-hover); }
 .chat-check input { margin: 0; width: 16px; height: 16px; accent-color: var(--text); }
-.chat-context { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 2px; padding-bottom: 16px; font-size: 11px; color: var(--chat-muted); }
-.chat-scope-chip { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
-.chat-scope-chip .icon { width: 12px; height: 12px; flex: none; }
-.chat-scope-chip strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 400; }
-.chat-scope-hint { font-size: 10px; }
 .chat-messages { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 18px 6px 12px; overflow-wrap: anywhere; }
 .chat-message { max-width: 740px; margin-bottom: 24px; }
 .chat-message h2 { display: flex; align-items: center; gap: 7px; margin: 0 0 8px 2px; color: var(--chat-muted); font-size: 11px; font-weight: 500; }
@@ -149,8 +144,6 @@
  .chat-messages { padding: 12px 0; }
  .chat-message.is-user { max-width: 88%; }
  .chat-message-body { padding: 13px 14px; }
- .chat-context { padding-bottom: 8px; }
- .chat-scope-hint { display: none; }
  .chat-composer { padding: 8px 10px; border-radius: 18px; }
  .chat-composer-hint { font-size: 10px; }
  .chat-send, .chat-depth, .chat-copy, .chat-references, .chat-citation, .chat-options-menu > button, .chat-options-menu > label { min-height: 44px; }
@@ -409,3 +402,23 @@ main > .chat-workspace:not([hidden]) { flex: 1; height: auto; min-height: 0; }
 @keyframes meno-chain-sway { 0%, 35%, 70%, 100% { transform: rotate(0); } 48% { transform: rotate(5deg); } 58% { transform: rotate(-3deg); } }
 @keyframes meno-consider { 0%, 100% { transform: translateY(0); } 35%, 60% { transform: translateY(-2px) rotate(-2deg); } 80% { transform: translateY(1px); } }
 @keyframes meno-reading { 0%, 100% { translate: 0 0; } 25%, 45% { translate: -2px 0; } 65%, 85% { translate: 1px -1px; } }
+
+/* A selected context is a retrieval boundary, shown beside the composer. */
+.chat-composer-context { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; margin-bottom: 8px; }
+.chat-context-trigger { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 5px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--chat-muted); font-size: var(--ui-text-xs); }
+.chat-context-trigger:hover, .chat-context-trigger:focus-visible { background: var(--chat-bubble); color: var(--text); }
+.chat-context-trigger > .icon, .chat-selected-context > .icon { width: 13px; height: 13px; flex: none; }
+.chat-selected-context { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; padding: 1px 3px 1px 8px; border: 1px solid var(--chat-border); border-radius: 9px; background: var(--chat-bubble); }
+.chat-selected-context strong { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--ui-text-xs); font-weight: 400; }
+.chat-context-remove { display: grid; place-items: center; flex: none; width: 28px; min-height: 28px; padding: 5px; border: 0; border-radius: 6px; background: transparent; color: var(--chat-muted); }
+.chat-context-remove:hover { background: var(--chat-selected); color: var(--text); }
+.chat-context-remove .icon { width: 12px; height: 12px; }
+.chat-context-limit { margin: -2px 0 8px; color: var(--chat-muted); font-size: var(--ui-text-xs); line-height: 1.5; }
+.chat-mention-group + .chat-mention-group { margin-top: 8px; }
+.chat-mention-group h3 { margin: 5px 8px 3px; color: var(--chat-muted); font-size: var(--ui-text-xs); font-weight: 400; }
+.chat-mention-group button { justify-content: flex-start; }
+.chat-mention-group button > .icon { width: 14px; height: 14px; flex: none; color: var(--chat-muted); }
+.chat-mention-group button > span { min-width: 0; }
+.chat-mention-group button strong { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--ui-text-sm); font-weight: 400; }
+.chat-mention-group button small { display: block; margin-top: 2px; white-space: normal; overflow-wrap: anywhere; }
+@media (pointer: coarse) { .chat-context-trigger, .chat-context-remove { min-height: 44px; } .chat-context-remove { width: 44px; } }

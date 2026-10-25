@@ -1,6 +1,6 @@
 import type {PageReference} from './embeddings.js';
 import type {SourceReference} from './domain.js';
-export type ChatScope={kind:'vault'}|{kind:'page'|'source'|'entity';id:string};
+export type ChatScope={kind:'vault'}|{kind:'page'|'source'|'entity'|'folder';id:string};
 export interface ChatMention {id:string;name:string}
 export type ChatEvidenceKind='source'|'own_note'|'entity_fact'|'entity_overview';
 export interface ChatEvidence {origin?:'authored'|'ai_generated'|'mixed';id:string;kind:ChatEvidenceKind;objectId:string;title:string;excerpt:string;fingerprint:string;locator:string;reference?:SourceReference;pageReference?:PageReference;factId?:string;revision?:number;status:'current'|'stale'|'deleted';}

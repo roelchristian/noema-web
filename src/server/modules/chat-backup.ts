@@ -3,7 +3,7 @@ import type {ChatEvidence,ChatMessage,ChatScope} from '../../shared/chat.js';
 import type {Store} from '../store.js';
 import {HttpError} from '../validation.js';
 type Row=Record<string,unknown>;
-interface Maps {pages:Map<string,string>;entities:Map<string,string>;files:Map<string,string>;properties:Map<string,string>;relationships:Map<string,string>;generations:Map<string,string>;passages:Map<string,string>}
+interface Maps {folders:Map<string,string>;pages:Map<string,string>;entities:Map<string,string>;files:Map<string,string>;properties:Map<string,string>;relationships:Map<string,string>;generations:Map<string,string>;passages:Map<string,string>}
 const invalid=()=>new HttpError(400,'This backup contains invalid Chat history.');
 const record=(x:unknown):Row=>{if(!x||typeof x!=='object'||Array.isArray(x))throw invalid();return x as Row;};
 const str=(x:unknown,max=20000):string=>{if(typeof x!=='string'||x.length>max)throw invalid();return x;};
@@ -17,7 +17,7 @@ const parse=(x:unknown)=>{try{return record(JSON.parse(str(x,2_000_000)));}catch
 export function restoreChatHistory(store:Store,vault:string,rows:{threads:Row[];messages:Row[];evidence:Row[]},maps:Maps) {
  const detached=new Map<string,string>();
  const remap=(map:Map<string,string>,value:unknown,kind:string)=>{const key=id(value);if(map.has(key))return map.get(key)!;const k=kind+':'+key;if(!detached.has(k))detached.set(k,randomUUID());return detached.get(k)!;};
- const scope=(value:unknown):ChatScope=>{const r=record(value);if(r.kind==='vault')return {kind:'vault'};if(!['page','source','entity'].includes(String(r.kind)))throw invalid();return {kind:r.kind as 'page'|'source'|'entity',id:remap(r.kind==='page'?maps.pages:maps.entities,r.id,r.kind==='page'?'page':'entity')};};
+ const scope=(value:unknown):ChatScope=>{const r=record(value);if(r.kind==='vault')return {kind:'vault'};if(!['page','source','entity','folder'].includes(String(r.kind)))throw invalid();return {kind:r.kind as 'page'|'source'|'entity'|'folder',id:remap(r.kind==='folder'?maps.folders:r.kind==='page'?maps.pages:maps.entities,r.id,r.kind==='folder'?'folder':r.kind==='page'?'page':'entity')};};
  const threadIds=new Map<string,string>(),messageIds=new Map<string,string>(),sequences=new Map<string,Set<number>>();
  if(rows.threads.length>1000||rows.messages.length>200000||rows.evidence.length>200000)throw invalid();
  for(const row of rows.threads){const old=id(row.id);if(threadIds.has(old))throw invalid();const key=randomUUID();threadIds.set(old,key);sequences.set(old,new Set());store.run('INSERT INTO chat_threads(id,vault_id,title,scope_json,created_at,updated_at) VALUES(?,?,?,?,?,?)',key,vault,str(row.title,160),JSON.stringify(scope(parse(row.scope_json))),time(row.created_at),time(row.updated_at));}

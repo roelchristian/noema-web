@@ -1,6 +1,6 @@
 # Noema Chat
 
-Chat is a read-only research view of the current vault. Open it from the sidebar, or use **Ask about this** on a Page, Source, or Entity. A contextual scope stays bounded when evidence is missing. Resolved `@` mentions identify entities; they do not expand a selected scope.
+Chat is a read-only research view of the current vault. Open it from the sidebar, or use **Ask about this** on a Page, Source, or Entity. A contextual scope stays bounded when evidence is missing. Resolved entity `@` mentions identify subjects; they do not expand a selected scope.
 
 ## Implementation sequence
 
@@ -9,6 +9,14 @@ Chat is a read-only research view of the current vault. Open it from the sidebar
 3. **Structured knowledge:** bounded names/aliases, authored overviews, descriptions, properties, incoming properties, relationships, directly associated/mentioning notes, connected Sources. Ambiguous names retain separate identities; explicit mentions disambiguate structured roots.
 4. **Synthesis:** automatic comparison/disagreement detection or **Search more thoroughly**, up to three deterministic retrieval passes, bounded adjacent/chapter context, document diversity and separate structured-evidence budgets. No model-directed planning loop or retrieval tools.
 5. **History and refinement:** vault-isolated SQLite threads, temporary chats, rename/delete, cancellation and replay protection, stale/deleted evidence checks, usage/cost reporting, backup restoration, accessible keyboard and touch interactions.
+
+## Selected context
+
+Type **@** in the composer to search notes, sources, folders, and knowledge entities in the current vault. Selecting a note, source, or folder sets the conversation context; selecting another entity adds the existing resolved subject reference. Choosing a note or source limits retrieval to that object. Choosing a folder includes its notes and sources, including nested folders; linked material elsewhere does not expand that context. The selected context stays visible in a removable chip and survives reopening a saved conversation or refreshing the tab. With no selection, Chat searches the current vault.
+
+Changing or clearing context after a conversation starts opens a fresh conversation and preserves the unsent draft. Existing saved conversations retain their original context and history. Context controls are unavailable while a request or conversation load is in progress.
+
+Folder membership is resolved and enforced on the server. Empty folders return no evidence, and deleted or foreign-vault folders are rejected instead of falling back to a vault-wide search. Content moved outside the selected folder invalidates an in-progress answer. Folder context supports up to 200 notes and 200 sources; larger selections must be narrowed to a smaller folder or a single object rather than silently truncated. Backup imports remap folder context identities alongside other vault objects.
 
 ## Conversation inbox
 

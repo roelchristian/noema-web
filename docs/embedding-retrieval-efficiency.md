@@ -135,3 +135,23 @@ All provider tests and measurements use mocked or synthetic vectors. No real
 provider calls were made. These results cover the initial embedding/retrieval and
 read/snapshot changes; combined validation with safeguards is recorded below.
 Publication was subsequently explicitly authorized for the draft PR only.
+
+## Combined safeguards stack
+
+Draft PR [#119](https://github.com/roelchristian/noema-web/pull/119) is stacked on
+`codex/enrichment-evidence-freshness` at
+`a4138333aa6efa9dc998bf6cc61b27f1f3813576`, including typed retry commit
+`fb8db3ae4451e69168ca393cd6199b9ab1906520` and the original read snapshot commit
+`753021cb71709b508f28686386903624564481fb`.
+
+Integration checks passed: 73 enrichment/assessment/polling tests, 42 initial
+worker/API/provider retry tests, 12 targeted provider/local availability tests,
+and seven source cancellation/provider availability tests. Independent review
+found no remaining issues after cancellation guards and provider/local error
+classification were corrected in both workers.
+
+The full combined suite, build/types/styles, mocked browser checks and read
+benchmark are validated separately from the earlier 1,810-test result. Current
+combined totals and exact-head GitHub CI status are recorded on PR #119; the
+pre-integration totals above must not be used as the combined validation result.
+The PR remains draft. No remote merge or deployment is authorized.

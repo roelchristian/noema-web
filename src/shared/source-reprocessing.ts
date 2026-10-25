@@ -79,7 +79,7 @@ export interface SourceReprocessingReport {
  documentAudit?:{version:1;candidateHash:string;contextHash?:string;findings:string[]};
  evidencePreparation?:{state:'collecting'|'completed';preparedChunks:number;totalChunks:number};
  /** Structured publication candidates are separate from editorial text patches. */
- metadata?:{candidateCount:number;added:number;corroborated:number;requiresReview:number;cacheHit:boolean;evidenceHash:string};
+ metadata?:{modelEvidenceHash?:string;candidateCount:number;added:number;corroborated:number;requiresReview:number;cacheHit:boolean;evidenceHash:string};
  usageIncomplete?:boolean;excerpts?:SourceEditorialExcerpt[];sessionStartedAt?:string;sessionCompletedIndexes?:number[];errorCode?:string;
  promptVersion:string;model:string;reasoningEffort:ReasoningEffort;startedAt:string|null;finishedAt:string|null;durationMs:number|null;
  /** Completed excerpt indexes, including out-of-order successes. Missing means a legacy completed prefix. */

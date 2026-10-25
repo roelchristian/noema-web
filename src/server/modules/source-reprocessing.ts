@@ -264,7 +264,7 @@ export class SourceReprocessing {
     r.status='completed';
    }
    catch(error){r.status=controller.signal.aborted?'interrupted':'failed';r.report.error=error instanceof Error?error.message:'Reconstruction failed.';r.report.errorCode=editorialFailure(error,controller.signal.aborted).code;}
-   finally{clearInterval(timer);r.report.finishedAt=now();r.report.durationMs=(r.report.durationMs??0)+Date.now()-started;this.save(row.vault_id,r);this.controller=null;this.activeRevisionId=null;this.running=false;}
+   finally{clearInterval(timer);if(!controller.signal.aborted&&!this.closed){try{guard();const sourceId=this.files.require(row.vault_id,r.fileId).entity_id;if(sourceId)this.metadata?.processModelCandidates(row.vault_id,sourceId,r);}catch(error){r.report.diagnostics.push('Metadata candidate reconciliation requires review: '+(error instanceof Error?error.message:String(error)));}}r.report.finishedAt=now();r.report.durationMs=(r.report.durationMs??0)+Date.now()-started;this.save(row.vault_id,r);this.controller=null;this.activeRevisionId=null;this.running=false;}
    return;
   }
   const chunks=this.chunks(r.original.text,r.original.document.physical.pages.map(p=>p.range.startOffset));

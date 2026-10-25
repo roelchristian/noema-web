@@ -65,6 +65,13 @@ test('V2 semantic reconstruction uses a blocks provider schema without changing 
   assert.equal(bodies[2].text.format.name,'source_document_synthesis');assert.deepEqual(bodies[2].text.format.schema.required,['observations']);
   assert.deepEqual(bodies[2].text.format.schema.properties.observations.items.required,['kind','reading','alternatives','evidence','resolutionNeed']);
 });
+test('editorial metadata schema binds response count and identifiers to canonical blocks',async()=>{
+ const bodies=[],ai=new Intelligence(new Secrets(),async(_url,options)=>{bodies.push(JSON.parse(options.body));return completed('{"blocks":[],"metadata":[]}');});ai.save({apiKey:key});
+ await ai.reeditSource(JSON.stringify({blocks:[{id:'first',text:'One'},{id:'second',text:'Two'}]}),'Edit',new AbortController().signal,undefined,'blocksWithMetadata');
+ const format=bodies[0].text.format;assert.equal(format.name,'source_reconstruction_metadata');
+ assert.equal(format.schema.properties.blocks.minItems,2);assert.equal(format.schema.properties.blocks.maxItems,2);assert.deepEqual(format.schema.properties.blocks.items.properties.id.enum,['first','second']);
+ assert.ok(format.schema.required.includes('metadata'));assert.equal(format.schema.properties.metadata.maxItems,32);
+});
 test('editorial schema is only sent for an explicitly compatible model and local parsing remains required',async()=>{
   const model=intelligenceModels.find(model=>model.id==='gpt-5-mini'),supported=model.structuredOutputs;
   let body;

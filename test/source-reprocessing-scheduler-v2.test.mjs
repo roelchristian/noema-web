@@ -371,7 +371,7 @@ test('Balanced materializes restored paragraphs and paired printed footnotes wit
  const {sourceDocumentEntries}=await import('../src/shared/source-document.ts');const nodes=sourceDocumentEntries(result.reprocessed.document);
  assert.ok(nodes.some(({node})=>node.kind==='footnote'));assert.ok(nodes.filter(({node})=>node.kind==='paragraph').length>=2);
  await assertRecoveryArchive(env);
- assert.match(env.prompts[0],/actively restore readable paragraph boundaries/);assert.match(env.prompts.at(-1),/verification must not revert useful layout/);
+ assert.match(env.prompts[0],/systematically repair merged paragraphs/);assert.match(env.prompts.at(-1),/retain useful repairs/);
  assert.deepEqual(env.calls[0].physicalPages,{startPage:1,endPage:1});assert.equal(env.calls.length,3);
  const before=structuredClone(result.patches);result.status='interrupted';env.store.run('UPDATE source_reprocessing SET status=?,payload=? WHERE id=?','interrupted',JSON.stringify(result),result.id);
  env.restart();env.worker.resume('vault',result.fileId,result.id);await env.worker.tick();assert.equal(env.calls.length,3);assert.deepEqual(env.value.patches,before);
@@ -439,4 +439,15 @@ test('revision cap is rechecked inside the insertion transaction when history ch
  const add=id=>env.store.run('INSERT INTO source_reprocessing(id,file_id,vault_id,status,created_at,updated_at,payload) VALUES(?,?,?,?,?,?,?)',id,r.fileId,'vault','completed',r.createdAt,r.updatedAt,JSON.stringify({...r,id,status:'completed'}));
  add('saved-a');add('saved-b');const snapshot=env.worker.snapshot;env.worker.snapshot=()=>{add('racing-revision');return snapshot();};
  assert.throws(()=>env.worker.start('vault',r.fileId,{pipelineVersion:2}),/Revision limit reached/);assert.equal(env.store.get('SELECT count(*) n FROM source_reprocessing').n,4);assert.equal(env.calls.length,0);
+});
+
+
+test('active editorial instructions permit useful corrections and supply cross-page furniture evidence with reasoning none',async t=>{
+ const text=[1,2,3].map(n=>`Case 123 ${n}/3 PT\n\nHEREBY CONSITUTES Trial Chamber III.\n\nNo. 123 ${n}/3 24 April 2026\n`).join('');
+ const starts=[1,6,11];const env=harness(t,{text,pages:3,pageStartLines:starts});
+ env.intelligence.editorialSelection().reasoningEffort='none';
+ const r=env.value;r.report.reasoningEffort='none';env.store.run('UPDATE source_reprocessing SET payload=? WHERE id=?',JSON.stringify(r),r.id);
+ await env.worker.tick();assert.equal(env.value.status,'completed');
+ for(const prompt of env.prompts.filter(prompt=>prompt.includes('You reconstruct'))){assert.match(prompt,/CONSITUTES → CONSTITUTES/);assert.match(prompt,/Raster images are optional/);assert.match(prompt,/metadata:/);assert.doesNotMatch(prompt,/Do not extract structured metadata/);assert.doesNotMatch(prompt,/Preserve every word and punctuation mark when repairing layout/);}
+ const requests=env.calls.filter(call=>call.kind==='reconstruct'||call.kind==='verify');assert.equal(requests.length,6);assert.ok(requests.every(call=>call.crossPageFurniture.some(item=>item.page!==call.physicalPages.startPage)));
 });

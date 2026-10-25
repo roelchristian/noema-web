@@ -3,6 +3,10 @@ import {normalizeDoi} from '../../shared/bibliography.js';
 import type {MetadataCandidate,MetadataRegistration} from '../../shared/source-metadata.js';
 import type {SourceReprocessingRevision} from '../../shared/source-reprocessing.js';
 import type {Store} from '../store.js';
+import {editorialMetadataFields} from './generation-request.js';
+import {SourceReprocessingCheckpoints} from './source-reprocessing-checkpoints.js';
+import {planReprocessingChunks} from './source-reprocessing-planner.js';
+import type {PlannedReprocessingChunk} from './source-reprocessing-planner.js';
 import {now} from '../validation.js';
 
 const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
@@ -65,10 +69,62 @@ export function extractSourceMetadata(text:string,publicationTitle:string):Metad
  return {evidenceHash:extractionKey(excerpt,publicationTitle),facts,charactersExamined};
 }
 
+/** Model interpretations remain proposals. Exact source support and scope are checked
+ * locally; model agreement does not promote them to independently validated facts. */
+export function extractEditorialMetadata(result:string,chunk:PlannedReprocessingChunk,canonical:string):{facts:MetadataFact[];diagnostics:string[]} {
+ const facts:MetadataFact[]=[],diagnostics:string[]=[];
+ let data:any;try{data=JSON.parse(result.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''));}catch{return {facts,diagnostics:['Metadata candidates could not be read from the editorial response.']};}
+ if(data.metadata===undefined)return {facts,diagnostics};
+ if(!Array.isArray(data.metadata)||data.metadata.length>32)return {facts,diagnostics:['Metadata candidates exceeded the supported response shape.']};
+ for(const item of data.metadata){
+  const block=chunk.blocks.find(block=>block.id===item?.blockId);
+  if(!item||!editorialMetadataFields.includes(item.field)||typeof item.value!=='string'||!item.value.trim()||item.value.length>2000||typeof item.quote!=='string'||!item.quote.trim()||item.quote.length>4000||typeof item.reason!=='string'||!item.reason.trim()||item.reason.length>1000||!block||!block.text.includes(item.quote)){
+   diagnostics.push('A metadata candidate was excluded because its field, value, role or exact canonical quotation was invalid.');continue;
+  }
+  const start=canonical.indexOf(item.quote);
+  if(start<block.start||start+item.quote.length>block.end||canonical.indexOf(item.quote,start+1)!==-1){diagnostics.push('A metadata candidate was excluded because its supporting quotation was ambiguous.');continue;}
+  // Bibliography/body citations must not become this document's publication facts.
+  const preceding=canonical.slice(0,start);
+  if(/^(?:#{1,6}\s*)?(?:references|bibliography|works cited)\s*$/im.test(preceding)){
+   diagnostics.push('A metadata candidate in the reference section was excluded.');continue;
+  }
+  facts.push({fieldKey:'bibliography:'+item.field,value:item.value.trim(),excerpt:item.quote,start,end:start+item.quote.length,validated:false,validationReason:'Editorial metadata interpretation; review the quoted document evidence and publication role. '+item.reason});
+ }
+ return {facts,diagnostics};
+}
+
 interface Registrar {registerCandidate(vault:string,sourceId:string,candidate:MetadataCandidate):MetadataRegistration}
 /** No provider requests: bounded evidence extraction is cached and reconciliation remains the proposal owner's job. */
 export class SourceMetadataExtraction {
  constructor(private store:Store,private metadata:Registrar){}
+ processModelCandidates(vault:string,sourceId:string,revision:SourceReprocessingRevision){
+  if(revision.report.promptVersion!=='source-reconstruction-v2-7')return;
+  const checkpoints=new SourceReprocessingCheckpoints(this.store),chunks=planReprocessingChunks(revision.original.text,revision.original.document,8000,revision.configuration?.architectureVersion===1);
+  const completed=new Set(revision.report.completedChunkIndexes??[]),outputs=chunks.filter(chunk=>completed.has(chunk.index)).flatMap(chunk=>{
+   const pass=checkpoints.passes(revision.id,chunk.index).filter(pass=>pass.status==='completed'&&!pass.outcomeUncertain).sort((a,b)=>b.index-a.index)[0];
+   if(!pass)return [];
+   const repair=checkpoints.repairs(revision.id,chunk.index,pass.index).filter(value=>value.status==='completed'&&!value.outcomeUncertain&&value.validation.includes('complete-canonical-block-mapping')&&value.originalRequestHash===pass.requestHash&&value.originalResultHash===digest(pass.result??'')).sort((a,b)=>a.startedAt.localeCompare(b.startedAt)||a.repairId.localeCompare(b.repairId)).at(-1);
+   if(!repair&&!pass.validation.includes('complete-canonical-block-mapping'))return [];
+   return [{chunk,result:repair?.result??pass.result!}];
+  });
+  const modelEvidenceHash=digest(JSON.stringify(outputs));
+  if(revision.report.metadata?.modelEvidenceHash===modelEvidenceHash)return;
+  const summary=revision.report.metadata??{candidateCount:0,added:0,corroborated:0,requiresReview:0,cacheHit:false,evidenceHash:''};
+  for(const {chunk,result} of outputs){
+   const extraction=extractEditorialMetadata(result,chunk,revision.original.text);
+   for(const message of extraction.diagnostics)if(!revision.report.diagnostics.includes(message))revision.report.diagnostics.push(message);
+   const seen=new Set<string>();
+   for(const fact of extraction.facts){
+    const key=JSON.stringify([fact.fieldKey,fact.value,fact.excerpt]);if(seen.has(key))continue;seen.add(key);
+    const outcome=this.metadata.registerCandidate(vault,sourceId,{...fact,fileId:revision.fileId,runId:revision.id,version:'canonical',revision:digest(revision.original.text),evidenceHash:digest(fact.excerpt)});
+    summary.candidateCount++;
+    if(outcome.registrationOutcome==='changed')summary.added++;
+    else if(outcome.registrationOutcome==='satisfied')summary.corroborated++;
+    else if(outcome.registrationOutcome==='pending')summary.requiresReview++;
+   }
+  }
+  revision.report.metadata={...summary,modelEvidenceHash};
+ }
  process(vault:string,sourceId:string,revision:SourceReprocessingRevision,version:'canonical'|'editorial'='canonical'){
   // Canonical evidence addresses the immutable raw extraction, including when the reader uses cleaned LaTeX.
   const canonical=this.store.get<{text:string}>('SELECT text FROM source_files WHERE id=? AND vault_id=? AND entity_id=?',revision.fileId,vault,sourceId)?.text??revision.original.text;

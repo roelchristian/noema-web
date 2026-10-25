@@ -47,3 +47,13 @@ test('Verified paragraph reconstruction preserves exact words and punctuation wi
  assert.equal(evaluateV2Acceptance({text,document,start:0,end:text.length,original:text,replacement:replacement.replace('42','43'),category:'formatting',policy:'verified'}).automatic,false);
  for(const replacement of [text.replace('hard\nline','hardline'),text.replace('. Another','.\n\n# Another')])assert.equal(evaluateV2Acceptance({text,document,start:0,end:text.length,original:text,replacement,category:'formatting',policy:'verified'}).automatic,false);
 });
+
+
+test('Verified typography expands extraction ligatures and soft hyphens without approving spelling or punctuation guesses',()=>{
+ for(const [original,replacement] of [['ofﬁce','office'],['co\u00adoperate','cooperate'],['Article\u00a061','Article 61']]){
+  const doc={...document,physical:{pages:[{number:1,range:{startOffset:0,endOffset:original.length}}]}};
+  assert.equal(evaluateV2Acceptance({text:original,document:doc,start:0,end:original.length,original,replacement,category:'ocr',policy:'verified'}).automatic,true);
+  assert.equal(evaluateV2Acceptance({text:original,document:doc,start:0,end:original.length,original,replacement,category:'ocr',policy:'review_all'}).automatic,false);
+ }
+ for(const [original,replacement] of [['CONSITUTES','CONSTITUTES'],['Article 61','Article 62'],['well-being','wellbeing'],['“quoted”','quoted']])assert.equal(evaluateV2Acceptance({text:original,document,start:0,end:original.length,original,replacement,category:'ocr',policy:'verified'}).automatic,false);
+});

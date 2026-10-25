@@ -47,6 +47,10 @@ export function evaluateV2Acceptance(input:Omit<Input,'policy'|'threshold'|'conf
  const checks:string[]=[],reasons:string[]=[];
  if(policy!=='verified')return {automatic:false,reasons:['Review all changes policy.'],checks};
  if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<0||end<=start||end>text.length||text.slice(start,end)!==original)reasons.push('Exact canonical coordinates are unavailable.');else checks.push('exact-canonical-substring');
+ // These glyph substitutions are mechanical equivalents, not spelling guesses.
+ // Keep word boundaries, numbers, punctuation identity and source ordering exact.
+ const typography=(value:string)=>value.replace(/ﬁ/g,'fi').replace(/ﬂ/g,'fl').replace(/ﬀ/g,'ff').replace(/ﬃ/g,'ffi').replace(/ﬄ/g,'ffl').replace(/ﬅ/g,'st').replace(/ﬆ/g,'st').replace(/(?<=\p{L})\u00ad(?=\p{L})/gu,'').replace(/[\u00a0\u202f]/g,' ');
+ if(!reasons.length&&['formatting','ocr'].includes(category)&&original!==replacement&&typography(original)===replacement)return {automatic:true,reasons:[],checks:[...checks,'exact-ligature-soft-hyphen-or-nonbreaking-space-equivalence']};
  const nodes=sourceDocumentEntries(document).filter(({node})=>node.range.startOffset<=start&&node.range.endOffset>=end&&node.kind==='paragraph');
  const node=nodes.length===1?nodes[0]:undefined;
  if(!node||node.path.some(parent=>['blockquote','code','equation','footnote','table','list'].includes(parent.kind)))reasons.push('Exact ordinary-prose mapping is unavailable.');else checks.push('ordinary-prose-mapping');

@@ -101,7 +101,7 @@ const editorialFormat={type:'json_schema',name:'source_editorial_patches',strict
 export function generationPolicy(request:GenerationRequest,selections:Selections):GenerationPolicy {
   // Explicit allowlist: editorial is source preprocessing, not generative writing.
   const persona=request.kind==='explanation'||request.kind==='review'||request.kind==='sourcePage'||request.kind==='personaPreview'
-    ?resolvePersona(request.personaId??selections.personaId,request.personaVersion,request.personaExpression??selections.personaExpression):undefined;
+    ?resolvePersona(request.personaId??selections.personaId,request.personaVersion,request.personaExpression??selections.personaExpression):request.kind==='chat'?resolvePersona(selections.personaId,undefined,selections.personaExpression):undefined;
   // Background only bypasses manual accounting, never the exclusive active slot.
   const policy=(prompt:()=>Prompt,{activeSlot,...overrides}:Partial<Omit<GenerationPolicy,'prompt'|'admission'>>&{activeSlot:GenerationPolicy['admission']['activeSlot']}):GenerationPolicy=>({
     persona,prompt:()=>{const value=prompt();return persona?{...value,instructions:personaInstructions(value.instructions,persona,request.kind==='review'&&(!request.action||request.action==='proofread'||request.action==='refine'))}:value;},selection:selections.standard,maxOutputTokens:8192,maxOutputLength:12000,timeoutMs:45000,stream:false,

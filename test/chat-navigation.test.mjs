@@ -1,4 +1,6 @@
-import {test} from 'node:test';
+import {test,beforeEach} from 'node:test';
+import {api} from '../src/client/api.ts';
+beforeEach(t=>{t.mock.method(api,'intelligence',async()=>({personaId:'oxford_don'}));});
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import {revealEntityFact} from '../src/client/chat/entity-evidence-navigation.ts';
@@ -83,8 +85,8 @@ test('conversation inbox groups and searches history, opens the selected scope, 
  assert.equal(document.querySelectorAll('.meno-avatar').length,1,'A conversation with multiple answers shows one Meno');
  assert.ok(document.querySelector('.chat-contact .meno-avatar'),'Meno stays in the contact header');
  assert.equal(document.querySelector('.chat-messages .meno-avatar'),null,'Messages do not repeat the avatar');
- assert.equal(document.querySelector('.meno-smile,.meno-mouth,.meno-talk'),null,'Meno has no mouth');
- await act(async()=>document.querySelector('.meno-avatar').click());assert.equal(document.querySelector('.meno-avatar').dataset.active,'true','Meno responds to interaction');
+ assert.ok(document.querySelector('.meno-smile'),'Meno has a friendly smile');
+ await act(async()=>document.querySelector('.meno-avatar').click());assert.equal(document.querySelector('.meno-avatar').dataset.playful,'true','Meno responds to interaction');
  await click('[aria-label="Rename conversation"]');await edit('input[aria-label="Conversation title"]','Cancelled name');await click('[aria-label="Cancel rename"]');assert.match(document.querySelector('.chat-heading h1').textContent,/Grace and evidence/);
  await click('[aria-label="Rename conversation"]');await edit('input[aria-label="Conversation title"]','Renamed conversation');
  await act(async()=>document.querySelector('.chat-rename').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
@@ -252,30 +254,25 @@ test('deleting a different inbox row preserves the active conversation and draft
 });
 
 
-test('Meno orbits keep their position through interaction and stop for reduced motion',async t=>{
+test('Meno picker applies only the persona, supports keyboard navigation, and keeps failed changes retryable',async t=>{
  const {act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
- const {setupDOM}=await import('./helpers/dom.mjs'),{MenoAvatar}=await import('../src/client/chat/MenoAvatar.tsx');
+ const {setupDOM}=await import('./helpers/dom.mjs'),{MenoPicker}=await import('../src/client/chat/MenoPicker.tsx');
  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
- const pending=new Map();let next=0,onMotionChange;
- const motion={matches:false,addEventListener(_name,listener){onMotionChange=listener;},removeEventListener(){}};
- t.mock.method(window,'matchMedia',()=>motion);
- t.mock.method(globalThis,'requestAnimationFrame',callback=>{pending.set(++next,callback);return next;});
- t.mock.method(globalThis,'cancelAnimationFrame',id=>pending.delete(id));
- const step=now=>{const callbacks=[...pending.values()];pending.clear();callbacks.forEach(callback=>callback(now));};
- await act(async()=>root.render(createElement(MenoAvatar)));
- const layers=[...document.querySelectorAll('[data-moon]')];
- assert.equal(document.querySelector('.meno-ring'),null,'No shared ring is drawn');
- assert.ok(layers.every(node=>node.querySelector('[data-tail]').getAttribute('d')),'Every planet has a comet plume');
- assert.equal(layers.filter(node=>node.style.visibility==='visible').length,3,'Each satellite is visible in exactly one depth layer');
- step(100);step(116);
- const before=layers.map(node=>node.getAttribute('transform'));
- const tails=layers.map(node=>node.querySelector('[data-tail]').getAttribute('d'));
- await act(async()=>root.render(createElement(MenoAvatar,{active:true})));
- assert.deepEqual(layers.map(node=>node.getAttribute('transform')),before,'Starting activity preserves orbit phase');
- step(132);
- assert.notDeepEqual(layers.map(node=>node.getAttribute('transform')),before,'Satellites continue moving');
- assert.notDeepEqual(layers.map(node=>node.querySelector('[data-tail]').getAttribute('d')),tails,'Comet plumes change shape as the planets move');
- motion.matches=true;onMotionChange();assert.equal(pending.size,0,'Reduced motion cancels the animation loop');
- const still=layers.map(node=>node.getAttribute('transform'));step(148);
- assert.deepEqual(layers.map(node=>node.getAttribute('transform')),still,'Reduced motion leaves a static constellation');
+ let chosen,fail=false,updates=0,settings=0;
+ t.mock.method(api,'saveAIPersona',async id=>{chosen=id;if(fail)throw new Error('Try again');return {personaId:id};});
+ window.addEventListener('noema:persona-preferences',()=>updates++);
+ await act(async()=>root.render(createElement(MenoPicker,{personaId:'oxford_don',onOpenAISettings(){settings++;}})));
+ const trigger=document.querySelector('[aria-haspopup=menu]');
+ await act(async()=>trigger.click());
+ assert.equal(document.querySelectorAll('[role=menuitemradio]').length,7);
+ assert.equal(document.querySelector('.meno-arm'),null,'Character previews have no hands');
+ assert.equal(document.querySelectorAll('.meno-preview button').length,0,'Previews contain no nested interactive controls');
+ assert.equal(document.activeElement.getAttribute('aria-checked'),'true');
+ await act(async()=>document.activeElement.dispatchEvent(new window.KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true})));
+ assert.match(document.activeElement.textContent,/Divinity/);
+ await act(async()=>document.activeElement.click());
+ assert.equal(chosen,'divinity_student');assert.equal(updates,1);assert.equal(document.querySelector('[role=menu]'),null);assert.equal(document.activeElement,trigger);
+ fail=true;await act(async()=>trigger.click());await act(async()=>document.querySelectorAll('[role=menuitemradio]')[2].click());
+ assert.equal(document.querySelector('[role=alert]').textContent,'Try again');assert.ok(document.querySelector('[role=menu]'));assert.equal(updates,1);
+ await act(async()=>document.querySelector('footer button').click());assert.equal(settings,1);
 });

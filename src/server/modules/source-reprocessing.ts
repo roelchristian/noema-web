@@ -92,8 +92,20 @@ export function materializeSourceRevision(r:SourceReprocessingRevision){
     // Locate the surviving heading fragment actually covered by that patch.
     const covered=heading.slice(0,Math.max(0,crossing.range.endOffset-node.range.startOffset));
     const fragment=node.title&&covered.startsWith(node.title)?node.title:covered;
-    const replacement=crossing.userReplacement??crossing.replacement,at=replacement.indexOf(fragment);
-    if(!fragment||at<0||replacement.indexOf(fragment,at+1)!==-1)throw new HttpError(400,`Editorial change cannot preserve the heading “${node.title??heading}” unambiguously. Keep its original text in the replacement.`);
+    const replacement=crossing.userReplacement??crossing.replacement;
+    let at=replacement.indexOf(fragment);
+    if(fragment&&at>=0&&replacement.indexOf(fragment,at+1)!==-1&&fragment===node.title){
+     // A statement label can also occur in a later prose reference. Use the
+     // same label syntax as the document builder to distinguish the heading
+     // from "Look at Example 3.2." without guessing between two headings.
+     const candidates=documentWithRawRanges(processedSourceDocument({id:source.fileId,name:source.name,format:'txt',text:replacement,structural_nodes:'[]',page_start_lines:'[]'} as SourceFile),replacement);
+     const labels=sourceDocumentEntries(candidates).filter(({node:label})=>label.kind===node.kind&&label.title===fragment).map(({node:label})=>{
+      const line=replacement.slice(label.range.startOffset).split(/\r\n?|\n/,1)[0]??'';
+      return label.range.startOffset+line.indexOf(fragment);
+     });
+     at=labels.length===1?labels[0]!: -1;
+    }else if(fragment&&at>=0&&replacement.indexOf(fragment,at+1)!==-1)at=-1;
+    if(!fragment||at<0)throw new HttpError(400,`Editorial change cannot preserve the heading “${node.title??heading}” unambiguously. Keep its original text in the replacement.`);
     start=mapped(crossing.range.startOffset)+at;
    }
    const line=text.slice(start).split(/\r\n?|\n/,1)[0]??'';

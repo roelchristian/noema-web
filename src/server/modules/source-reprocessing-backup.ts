@@ -42,7 +42,7 @@ export function restoreReprocessingCheckpoints(revision:SourceReprocessingRevisi
   if(c.evidenceTrusted!==undefined&&typeof c.evidenceTrusted!=='boolean')throw invalid();
   if(c.evidence!==undefined){evidenceBytes+=Buffer.byteLength(JSON.stringify(c.evidence));if(evidenceBytes>sourceReprocessingEvidenceRevisionBytes)throw invalid();c.evidence=validateReprocessingEvidenceSnapshot(c.evidence,{text:revision.original.text,document:revision.original.document,start:c.startOffset as number,end:c.endOffset as number,configuration,evidenceHash:c.evidenceHash as string});}
   oneOf(c.difficulty,['ordinary','difficult']);if(c.difficultyReason!==null)string(c.difficultyReason,2000);
-  const count=integer(c.requiredPassCount,1,3);if(configuration.depth==='light'&&count!==1||configuration.depth==='balanced'&&count!==2||configuration.depth==='deep'&&count<2||count===3&&!c.difficultyReason)throw invalid();
+  const count=integer(c.requiredPassCount,1,3);if(configuration.depth==='light'&&count!==1||configuration.depth!=='light'&&count<2||count===3&&!c.difficultyReason)throw invalid();
   oneOf(c.status,['pending','running','completed','failed','interrupted']);
   chunks.push({...structuredClone(c),revisionId:revision.id,baseHash:revision.baseHash,evidenceTrusted:false,status:c.status==='running'?'interrupted':c.status} as unknown as SourceReprocessingChunk);
  }

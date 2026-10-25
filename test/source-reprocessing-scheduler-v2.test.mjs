@@ -451,3 +451,34 @@ test('active editorial instructions permit useful corrections and supply cross-p
  for(const prompt of env.prompts.filter(prompt=>prompt.includes('You reconstruct'))){assert.match(prompt,/CONSITUTES → CONSTITUTES/);assert.match(prompt,/Raster images are optional/);assert.match(prompt,/metadata:/);assert.doesNotMatch(prompt,/Do not extract structured metadata/);assert.doesNotMatch(prompt,/Preserve every word and punctuation mark when repairing layout/);}
  const requests=env.calls.filter(call=>call.kind==='reconstruct'||call.kind==='verify');assert.equal(requests.length,6);assert.ok(requests.every(call=>call.crossPageFurniture.some(item=>item.page!==call.physicalPages.startPage)));
 });
+
+test('real court reconstruction preserves all four inline footnotes, paragraph repairs and furniture together',async t=>{
+ const {readFileSync}=await import('node:fs');
+ const fixture=JSON.parse(readFileSync(new URL('./fixtures/court-editorial-reconstruction.json',import.meta.url),'utf8'));
+ const env=harness(t,{text:fixture.text,pages:fixture.pages,pageStartLines:fixture.pageStartLines,provider:request=>{
+  const index=request.kind==='reconstruct'?1:request.kind==='verify'?2:3;
+  const output=fixture.outputs.find(item=>item.chunkIndex===request.chunkIndex&&item.passIndex===index);
+  assert.ok(output,`Recorded ${request.kind} output for chunk ${request.chunkIndex}`);return JSON.stringify(output.response);
+ }});
+ await env.worker.tick();const result=env.value;
+ assert.equal(result.status,'completed');assert.equal(result.report.chunksCompleted,5);assert.equal(result.original.text,fixture.text);
+ for(const label of [1,2,3,4]){
+  assert.equal([...result.reprocessed.text.matchAll(new RegExp(`\\[\\^p3-${label}\\](?!:)`,'g'))].length,1,`one rendered reference for note ${label}`);
+  assert.equal([...result.reprocessed.text.matchAll(new RegExp(`^\\[\\^p3-${label}\\]:`,'gm'))].length,1,`one definition for note ${label}`);
+ }
+ assert.match(result.reprocessed.text,/\[\^p3-1\]: Pre-Trial Chamber I/);
+ assert.match(result.reprocessed.text,/\[\^p3-4\]: Presidency/);
+ assert.ok(result.reprocessed.text.includes('\n\nNOTING'));
+ assert.equal(result.furniture.length,10,'all five page headers and footers survive note recovery');
+ assert.equal(result.patches.filter(patch=>patch.category==='footnote'&&patch.decision==='pending').length,0,'pure note presentation applies automatically');
+ assert.ok(env.calls.filter(call=>call.kind==='reconstruct'||call.kind==='verify').filter(call=>call.chunkIndex===2).every(call=>call.canonicalFootnotes.length===4));
+ assert.ok(result.report.diagnostics.some(message=>message.includes('Recovered omitted canonical footnote p3-1')));
+ assert.ok(!result.report.diagnostics.some(message=>message.includes('Original excerpt retained')));
+ const {apparatusProblems}=await import('../src/server/modules/source-reprocessing-apparatus.ts');assert.deepEqual(apparatusProblems(fixture.text,result.reprocessed.text),[]);
+ const {createElement}=await import('react'),{renderToStaticMarkup}=await import('react-dom/server'),{JSDOM}=await import('jsdom');
+ const {SourceDocumentView}=await import('../src/client/sources/SourceDocumentView.tsx'),{sourceDocumentEntries}=await import('../src/shared/source-document.ts');
+ const html=renderToStaticMarkup(createElement(SourceDocumentView,{article:{current:null},fileId:'court',name:'Court decision',text:result.reprocessed.text,entries:sourceDocumentEntries(result.reprocessed.document),selected:null,annotations:'contextual',structureLabels:false,canonicalNode:id=>id,onSelect:()=>{}}));
+ const dom=new JSDOM(html);t.after(()=>dom.window.close());const references=[...dom.window.document.querySelectorAll('[data-footnote-reference]')];
+ assert.equal(references.length,4);assert.ok(references.every(reference=>dom.window.document.getElementById(reference.dataset.footnoteReference)),'every rendered superscript links to a rendered note body');
+ await assertRecoveryArchive(env);
+});

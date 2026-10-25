@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {planReprocessingChunks} from '../src/server/modules/source-reprocessing-planner.ts';
 import {reconstructBlocks,boundedReconstructionDiff} from '../src/server/modules/source-reprocessing-diff.ts';
-import {groupApparatusPatches,assertAtomicPatchGroups,apparatusProblems,acceptVerifiedFootnoteFormatting} from '../src/server/modules/source-reprocessing-apparatus.ts';
+import {groupApparatusPatches,assertAtomicPatchGroups,apparatusProblems,acceptVerifiedFootnoteFormatting,discoverCanonicalFootnotes,recoverCanonicalFootnoteDefinitions} from '../src/server/modules/source-reprocessing-apparatus.ts';
 import {detectPageFurniture,presentWithoutFurniture} from '../src/server/modules/source-reprocessing-furniture.ts';
 test('reference and definition repairs are atomic and cannot autoaccept',()=>{
  const chunk=planReprocessingChunks('word[^1]\n\n[^1]: note',{physical:{pages:[]}})[0];
@@ -113,4 +113,50 @@ test('paired footnote formatting preserves words and labels, and refuses ambiguo
  assert.equal(check('Body with note[^p1-1].\n\n1. The original note text.').decision,'pending');
  const numbered='Body has 2021.\n\n1. The original note text.';document.physical.pages[0].range.endOffset=numbered.length;
  assert.equal(check('Body has 202[^p1-1].\n\n[^p1-1]: The original note text.','verified',numbered).decision,'pending');
+});
+
+test('inline extracted footnotes and citation dash spaces validate without changing source or furniture',()=>{
+ const text='<!-- Page 3 -->\n\nHEADER 3/5\nBody clause;1. Another clause;2. More prose 1 First exact citation AA- 01/02-3.\n\n2 Second exact citation AA-01/02- 4.\n\nFOOTER 3/5';
+ const proposed=text.replace('clause;1.','clause;[^p3-1].').replace('clause;2.','clause;[^p3-2].').replace('prose 1 First','prose\n\n[^p3-1]: First').replace('\n2 Second','\n[^p3-2]: Second').replace('AA- 01','AA-01').replace('- 4.','-4.');
+ const document={physical:{pages:[{number:3,range:{startOffset:0,endOffset:text.length}}]}};
+ const evaluate=replacement=>acceptVerifiedFootnoteFormatting(groupApparatusPatches([{id:'inline',original:text,replacement,decision:'pending',range:{startOffset:0,endOffset:text.length}}]),text,document,'verified')[0];
+ const patch=evaluate(proposed);assert.equal(patch.decision,'accepted');assert.equal(patch.autoAcceptance.validator,'canonical-footnote-layout-v2');
+ assert.equal(patch.original,text);assert.ok(patch.replacement.includes('HEADER 3/5'));assert.ok(patch.replacement.includes('FOOTER 3/5'));
+ for(const unsafe of [proposed.replace('exact','invented'),proposed.replace('AA-01/02-3','AA-01/02-8'),proposed.replace('More prose','Moreprose'),proposed.replace('HEADER 3/5','HEADER 4/5'),proposed.replaceAll('p3-1','p3-9')])assert.equal(evaluate(unsafe).decision,'pending');
+});
+
+test('canonical note hints discover merged definitions and recover omitted notes without losing unrelated results',()=>{
+ const text='<!-- Page 3 -->\n\nHEADER\nA clause;1. Another clause;2. Remaining prose 1 Original first note citation.\n\n2 Original second note citation.\n\nFOOTER';
+ const document={physical:{pages:[{number:3,range:{startOffset:0,endOffset:text.length}}]}},chunk=planReprocessingChunks(text,document)[0];
+ const candidates=discoverCanonicalFootnotes(chunk,document);assert.deepEqual(candidates.map(note=>note.id),['p3-1','p3-2']);assert.equal(candidates[0].body,'Original first note citation.');
+ const previous={blocks:chunk.blocks.map(block=>({id:block.id,text:block.text.replace(';1.',';[^p3-1].').replace(' 1 Original first note citation.','').replace(';2.',';[^p3-2].').replace('2 Original second note citation.','[^p3-2]: Original second note citation.')})),pageFurniture:[{quote:'HEADER',kind:'header'}],metadata:[{field:'title',value:'Existing title'}],diagnostics:[]};
+ const before=structuredClone(previous),recovered=recoverCanonicalFootnoteDefinitions(chunk,previous,document,candidates);assert.deepEqual(previous,before);
+ assert.deepEqual(recovered.pageFurniture,previous.pageFurniture);assert.deepEqual(recovered.metadata,previous.metadata);
+ assert.ok(recovered.blocks.find(block=>block.id===candidates[0].blockId).text.includes('[^p3-1]: Original first note citation.'));
+ const final=reconstructBlocks(chunk,recovered);assert.deepEqual(apparatusProblems(text,final.text),[]);assert.ok(final.text.indexOf('[^p3-1]:')<final.text.indexOf('[^p3-2]:'));assert.ok(final.text.includes('HEADER'));assert.ok(final.text.includes('FOOTER'));
+ const unpaired={blocks:chunk.blocks.map(({id,text})=>({id,text:text.replace(' 1 Original first note citation.','')}))};assert.deepEqual(recoverCanonicalFootnoteDefinitions(chunk,unpaired,document),unpaired);
+ const numbered='Article 2 applies.\n\n1 Numbered paragraph.\n\n2 Another numbered paragraph.';assert.deepEqual(discoverCanonicalFootnotes(planReprocessingChunks(numbered,document)[0],document),[]);
+});
+
+test('missing middle notes are recovered before later definitions within the same canonical block',()=>{
+ const text='Clause;1. Clause;2. Prose 1 First exact note body. 2 Second exact note body.\n\n';
+ const document={physical:{pages:[{number:1,range:{startOffset:0,endOffset:text.length}}]}},chunk=planReprocessingChunks(text,document)[0];
+ const previous={blocks:chunk.blocks.map(({id})=>({id,text:'Clause;[^p1-1]. Clause;[^p1-2]. Prose\n\n[^p1-2]: Second exact note body.\n\n'}))};
+ const recovered=recoverCanonicalFootnoteDefinitions(chunk,previous,document),proposed=recovered.blocks[0].text;
+ assert.ok(proposed.indexOf('[^p1-1]:')<proposed.indexOf('[^p1-2]:'));
+ const patch={id:'pair',original:text,replacement:proposed,decision:'pending',range:{startOffset:0,endOffset:text.length}};
+ assert.equal(acceptVerifiedFootnoteFormatting(groupApparatusPatches([patch]),text,document,'verified')[0].decision,'accepted');
+});
+
+test('footnote groups retain balanced added emphasis while refusing lost literal markup or changed wording',()=>{
+ const text='Body citation;1. More text 1 Agency, The Original Case, AA- 01/02-3.\n\n';
+ const document={physical:{pages:[{number:1,range:{startOffset:0,endOffset:text.length}}]}};
+ const proposed='Body citation;[^p1-1]. More text\n\n[^p1-1]: Agency, *The Original Case*, AA-01/02-3.\n\n';
+ const evaluate=(replacement,source=text)=>acceptVerifiedFootnoteFormatting(groupApparatusPatches([{id:'emphasis',original:source,replacement,decision:'pending',range:{startOffset:0,endOffset:source.length}}]),source,{physical:{pages:[{number:1,range:{startOffset:0,endOffset:source.length}}]}},'verified')[0];
+ assert.equal(evaluate(proposed).decision,'accepted');assert.ok(evaluate(proposed).autoAcceptance.checks.includes('balanced-added-inline-emphasis'));
+ for(const unsafe of [proposed.replace('*The Original Case*','*The Original Case'),proposed.replace('*The Original Case*','`The Original Case`'),proposed.replace('*The Original Case*','~~The Original Case~~'),proposed.replace('*The Original Case*','[The Original Case](https://example.com)'),proposed.replace('Original','Changed')])assert.equal(evaluate(unsafe).decision,'pending');
+ assert.equal(evaluate(proposed.replace('*The Original Case*','The Original Case'),text.replace('The Original Case','*The Original Case*')).decision,'pending');
+ const chunk=planReprocessingChunks(text,document)[0],raw={blocks:chunk.blocks.map(({id})=>({id,text:'Body citation;[^p1-1]. More text\n\n'})),pageFurniture:[{quote:'A running header',kind:'header'}],metadata:[{field:'title',value:'Case title'}]};
+ const recovered=recoverCanonicalFootnoteDefinitions(chunk,raw,document),final=reconstructBlocks(chunk,recovered);
+ assert.deepEqual(apparatusProblems(text,final.text),[]);assert.ok(final.text.includes('[^p1-1]: Agency, The Original Case, AA- 01/02-3.'));assert.deepEqual(recovered.pageFurniture,raw.pageFurniture);assert.deepEqual(recovered.metadata,raw.metadata);
 });

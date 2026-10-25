@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {repeatedPageFurniturePatterns} from '../src/server/modules/source-reprocessing-furniture-patterns.ts';
+import {planReprocessingChunks} from '../src/server/modules/source-reprocessing-planner.ts';
+import {restoreDeletedPageFurniture,canonicalReconstructionFallback} from '../src/server/modules/source-reprocessing-preservation.ts';
 const fixture=pages=>{
  let offset=0;return {text:pages.join(''),document:{physical:{pageCount:pages.length,pages:pages.map((text,index)=>{const startOffset=offset;offset+=text.length;return {number:index+1,range:{startOffset,endOffset:offset}};})}}};
 };
@@ -45,4 +47,47 @@ test('AI furniture proposals require exact corroborated fragments and cannot abs
   assert.equal(parsed.candidates.length,2);assert.ok(parsed.candidates.every(item=>!item.text.includes('Distinct')&&!item.text.includes('Signature')));
   assert.ok(parsed.diagnostics.length>0);assert.deepEqual(parsePageFurniture({pageFurniture:[]},chunk,text,document,items).candidates,[]);
  }
+});
+
+const preservationFixture=()=>{
+ const pages=Array.from({length:3},(_,i)=>`<!-- Page ${i+1} -->\n\nCase 124 Page ${i+1} of 3${i===0?'\n':' '}Substantive body remains. Another sentence ${i+1}.\n\nRecord 77 ${i+1}/3\n`);
+ const {text,document,items}=classify(pages),chunk=planReprocessingChunks(text,document)[1];
+ return {chunk,items,original:{blocks:chunk.blocks.map(({id,text})=>({id,text})),metadata:[{field:'title',value:'Supported title'}],pageFurniture:items.filter(item=>item.page===2).map(item=>({quote:item.text,kind:item.kind}))}};
+};
+test('deleted exact corroborated headers are restored while adjacent paragraph repairs remain',()=>{
+ const {chunk,items,original}=preservationFixture();
+ const response={...original,blocks:original.blocks.map(block=>({...block,text:block.text.replace('Case 124 Page 2 of 3 ','').replace('remains. Another','remains.\n\nAnother')}))};
+ const snapshot=structuredClone(response),result=restoreDeletedPageFurniture(chunk,response,items);
+ const text=result.response.blocks.map(block=>block.text).join('');
+ assert.match(text,/Case 124 Page 2 of 3 Substantive body remains\.\n\nAnother sentence 2\./);
+ assert.equal(result.diagnostics.length,1);assert.deepEqual(response,snapshot);
+ assert.deepEqual(result.response.metadata,response.metadata);assert.deepEqual(result.response.pageFurniture,response.pageFurniture);
+});
+test('furniture recovery does not duplicate retained fragments or recover moved fragments twice',()=>{
+ const {chunk,items,original}=preservationFixture();
+ assert.equal(restoreDeletedPageFurniture(chunk,original,items).response,original);
+ const response={...original,blocks:original.blocks.map(block=>({...block,text:block.text.replace('Case 124 Page 2 of 3 ','')+(block.text.includes('Case 124')?'\nCase 124 Page 2 of 3':'')}))};
+ const result=restoreDeletedPageFurniture(chunk,response,items);
+ assert.equal(result.response,response);assert.equal(result.diagnostics.length,0);
+ assert.equal(result.response.blocks.map(block=>block.text).join('').match(/Case 124 Page 2 of 3/g).length,1);
+});
+test('furniture recovery does not restore a deletion that also removes substantive adjacent text',()=>{
+ const {chunk,items,original}=preservationFixture();
+ const response={...original,blocks:original.blocks.map(block=>({...block,text:block.text.replace('Case 124 Page 2 of 3 Substantive body remains. ','')}))};
+ const result=restoreDeletedPageFurniture(chunk,response,items);
+ assert.equal(result.response,response);assert.equal(result.diagnostics.length,0);
+});
+test('furniture recovery restores isolated footer deletion but leaves modified headers reviewable',()=>{
+ const {chunk,items,original}=preservationFixture();
+ const response={...original,blocks:original.blocks.map(block=>({...block,text:block.text.replace('Record 77 2/3','').replace('Case 124','Case 999')}))};
+ const result=restoreDeletedPageFurniture(chunk,response,items),text=result.response.blocks.map(block=>block.text).join('');
+ assert.match(text,/Record 77 2\/3/);assert.match(text,/Case 999/);assert.doesNotMatch(text,/Case 124/);
+ assert.equal(result.diagnostics.length,1);
+});
+test('apparatus fallback retains furniture and metadata for independent canonical validation',()=>{
+ const {chunk,original}=preservationFixture(),response={...original,diagnostics:['A note needs review.'],blocks:original.blocks.map(block=>({...block,text:block.text+'[^missing]'}))};
+ const snapshot=structuredClone(response),result=canonicalReconstructionFallback(chunk,response);
+ assert.deepEqual(result.blocks,chunk.blocks.map(({id,text})=>({id,text})));
+ assert.deepEqual(result.metadata,response.metadata);assert.deepEqual(result.pageFurniture,response.pageFurniture);
+ assert.deepEqual(result.diagnostics,response.diagnostics);assert.equal(result.unresolved,true);assert.deepEqual(response,snapshot);
 });

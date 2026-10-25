@@ -31,6 +31,24 @@ test('backup restoration retains completed pass1 and uncertain pass2 with ID rem
  const legacy=structuredClone(r);delete legacy.pipelineVersion;delete legacy.configuration;assert.throws(()=>restoreReprocessingCheckpoints(legacy,r.id,r.baseHash,[chunk(r)],[p1]),/invalid source editorial/);
 });
 
+test('backup restores completed Balanced footnote repair passes while preserving depth limits',()=>{
+ const r=fixture();r.status='completed';r.report.completedChunkIndexes=[0];r.report.chunksCompleted=1;r.report.charactersReviewed=r.original.text.length;
+ const restored=restoreSourceRevision(r,r.id,r.fileId,'balanced-repair-restored','balanced-repair-file');
+ const repairedChunk={...chunk(r),status:'completed',difficulty:'difficult',difficultyReason:'Local validation requires footnote repair: New missing footnote definition p1-1.',requiredPassCount:3};
+ const passes=[pass(r),{...pass(r),index:2,kind:'verify'},{...pass(r),index:3,kind:'resolve'}];
+ const result=restoreReprocessingCheckpoints(restored,r.id,r.baseHash,[repairedChunk],passes);
+ assert.equal(result.chunks[0].requiredPassCount,3);assert.equal(result.chunks[0].difficultyReason,repairedChunk.difficultyReason);
+ assert.deepEqual(result.passes.map(value=>value.kind),['reconstruct','verify','resolve']);assert.ok(result.passes.every(value=>value.revisionId===restored.id));
+ assert.throws(()=>restoreReprocessingCheckpoints(restored,r.id,r.baseHash,[{...repairedChunk,difficultyReason:null}],passes),/invalid source editorial/);
+ assert.throws(()=>restoreReprocessingCheckpoints(restored,r.id,r.baseHash,[{...repairedChunk,requiredPassCount:1}],passes),/invalid source editorial/);
+ for(const depth of ['light','deep']){
+  const revision={...restored,configuration:{...restored.configuration,depth}};
+  const matchingPasses=passes.map(value=>({...value,configuration:revision.configuration}));
+  if(depth==='light')assert.throws(()=>restoreReprocessingCheckpoints(revision,r.id,r.baseHash,[repairedChunk],matchingPasses),/invalid source editorial/);
+  else assert.equal(restoreReprocessingCheckpoints(revision,r.id,r.baseHash,[repairedChunk],matchingPasses).passes.length,3);
+ }
+});
+
 test('compressed vault backup exports and restores interrupted V2 checkpoints without starting paid work',async()=>{
  const {openDatabase}=await import('../src/server/database.ts');const {Vaults}=await import('../src/server/modules/vaults.ts');const {Knowledge}=await import('../src/server/modules/knowledge.ts');const {SourceFiles}=await import('../src/server/modules/source-files.ts');const {VaultBackups}=await import('../src/server/modules/vault-backups.ts');const {sourceRevisionBaseHash}=await import('../src/server/modules/source-reprocessing.ts');
  const db=openDatabase(':memory:');try{

@@ -107,22 +107,59 @@ export class PageSegments {
    const policy=pageIndexPolicy(this.store,page.vault_id),previous=this.store.get<{strategy:PageStrategy;projection_hash:string;policy_hash:string}>('SELECT strategy,projection_hash,policy_hash FROM page_index_state WHERE page_id=?',id);
    const projectionHash=hash(JSON.stringify([page.title,projection]));
    if(previous?.projection_hash===projectionHash&&previous.policy_hash===hash(JSON.stringify(policy))) {
-    this.store.run('UPDATE page_segments SET revision=? WHERE page_id=?',page.revision,id);
+    this.store.run('UPDATE page_segments SET revision=?,vault_id=? WHERE page_id=? AND (revision<>? OR vault_id<>?)',page.revision,page.vault_id,id,page.revision,page.vault_id);
     this.store.run('UPDATE page_index_state SET revision=?,updated_at=? WHERE page_id=?',page.revision,now(),id);
     this.store.run('DELETE FROM page_index_dirty WHERE page_id=?',id);return;
    }
    const result=segmentPage(projection,page.title,policy,previous?.strategy);
-   const occurrences=new Map<string,number>();
-   this.store.run('DELETE FROM page_segments WHERE page_id=?',id);
-   for(const [ordinal,part] of result.segments.entries()) {
-    const contentHash=hash(`page-segment-v1\n${part.input}`),occurrence=occurrences.get(contentHash)??0;occurrences.set(contentHash,occurrence+1);
-    const segmentId=hash(`${id}:${contentHash}:${occurrence}`),blockIds=projection.blocks.filter(block=>block.end>part.start&&block.start<part.end).map(block=>block.id);
-    this.store.run(`INSERT INTO page_segments(id,page_id,vault_id,revision,projection_hash,ordinal,heading,text,input,content_hash,block_ids,start_offset,end_offset,token_count) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,segmentId,id,page.vault_id,page.revision,projectionHash,ordinal,part.heading,part.text,part.input,contentHash,JSON.stringify(blockIds),part.start,part.end,part.tokens);
+   const existing=this.store.all<PageSegment>('SELECT * FROM page_segments WHERE page_id=? ORDER BY ordinal',id);
+   const available=new Map(existing.map(segment=>[segment.id,segment]));
+   const byAnchor=new Map<string,PageSegment[]>(),byContent=new Map<string,PageSegment[]>();
+   for(const segment of [...existing].reverse()) {
+    const anchor=segment.content_hash+segment.block_ids;
+    if(!byAnchor.has(anchor))byAnchor.set(anchor,[]);byAnchor.get(anchor)!.push(segment);
+    if(!byContent.has(segment.content_hash))byContent.set(segment.content_hash,[]);byContent.get(segment.content_hash)!.push(segment);
+   }
+   const take=(candidates:PageSegment[]|undefined)=>{
+    while(candidates?.length){const segment=candidates.pop()!;if(available.delete(segment.id))return segment;}
+   };
+   const desired=result.segments.map((part,ordinal)=>({part,ordinal,contentHash:hash(`page-segment-v1\n${part.input}`),blockIds:JSON.stringify(projection.blocks.filter(block=>block.end>part.start&&block.start<part.end).map(block=>block.id)),previous:undefined as PageSegment|undefined,id:''}));
+   // Match anchors first so removing one of two identical sections preserves the
+   // surviving section's identity. Content-equivalent moves can then reuse rows.
+   for(const row of desired) {
+    row.previous=take(byAnchor.get(row.contentHash+row.blockIds));
+   }
+   for(const row of desired)if(!row.previous) {
+    row.previous=take(byContent.get(row.contentHash));
+   }
+   const used=new Set(desired.flatMap(row=>row.previous?[row.previous.id]:[]));
+   for(const row of desired) {
+    if(row.previous){row.id=row.previous.id;continue;}
+    let occurrence=0;
+    do {row.id=hash(`${id}:${row.contentHash}:${occurrence++}`);}while(used.has(row.id));
+    used.add(row.id);
+   }
+   for(const segment of available.values())this.store.run('DELETE FROM page_segments WHERE id=?',segment.id);
+   // The ordinal uniqueness constraint is immediate. Move only reordered rows
+   // to a temporary negative slot before assigning their final positions.
+   for(const row of desired)if(row.previous&&row.previous.ordinal!==row.ordinal)this.store.run('UPDATE page_segments SET ordinal=? WHERE id=?',-row.previous.ordinal-1,row.id);
+   for(const {part,ordinal,contentHash,blockIds,previous:before,id:segmentId} of desired) {
+    if(before) {
+     // The provider input is bounded/trimmed, so equal hashes can still have
+     // changed display text or heading metadata. Refresh FTS only in that case.
+     if(before.heading!==part.heading||before.text!==part.text||before.input!==part.input||before.token_count!==part.tokens)
+      this.store.run('UPDATE page_segments SET heading=?,text=?,input=?,token_count=? WHERE id=?',part.heading,part.text,part.input,part.tokens,segmentId);
+     if(before.revision!==page.revision||before.vault_id!==page.vault_id||before.projection_hash!==projectionHash||before.ordinal!==ordinal||before.block_ids!==blockIds||before.start_offset!==part.start||before.end_offset!==part.end)
+      this.store.run('UPDATE page_segments SET vault_id=?,revision=?,projection_hash=?,ordinal=?,block_ids=?,start_offset=?,end_offset=? WHERE id=?',page.vault_id,page.revision,projectionHash,ordinal,blockIds,part.start,part.end,segmentId);
+     continue;
+    }
+    this.store.run(`INSERT INTO page_segments(id,page_id,vault_id,revision,projection_hash,ordinal,heading,text,input,content_hash,block_ids,start_offset,end_offset,token_count) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,segmentId,id,page.vault_id,page.revision,projectionHash,ordinal,part.heading,part.text,part.input,contentHash,blockIds,part.start,part.end,part.tokens);
     // Adopt legacy short-Page vectors only when their exact input still matches.
     const legacy=this.store.get<{vector:string;tokens:number;updated_at:string}>('SELECT vector,tokens,updated_at FROM note_embeddings WHERE page_id=? AND model=? AND dimensions=? AND content_hash=?',id,embeddingModel,embeddingDimensions,hash(part.input));
     if(legacy)this.store.run('INSERT OR IGNORE INTO page_segment_cache VALUES (?,?,?,?,?,?,?)',id,contentHash,embeddingModel,embeddingDimensions,legacy.vector,legacy.tokens,legacy.updated_at);
    }
-   this.store.run(`INSERT INTO page_segment_embeddings SELECT s.id,c.model,c.dimensions,c.content_hash,c.vector,c.tokens,c.updated_at FROM page_segments s JOIN page_segment_cache c ON c.page_id=s.page_id AND c.content_hash=s.content_hash WHERE s.page_id=?`,id);
+   // Existing attachments are deliberately untouched, including their rowids.
+   this.store.run(`INSERT INTO page_segment_embeddings SELECT s.id,c.model,c.dimensions,c.content_hash,c.vector,c.tokens,c.updated_at FROM page_segments s JOIN page_segment_cache c ON c.page_id=s.page_id AND c.content_hash=s.content_hash WHERE s.page_id=? AND NOT EXISTS (SELECT 1 FROM page_segment_embeddings b WHERE b.segment_id=s.id AND b.model=c.model AND b.dimensions=c.dimensions)`,id);
    this.store.run(`INSERT INTO page_index_state(page_id,vault_id,revision,projection_hash,strategy,policy_hash,token_count,updated_at,error,body_characters) VALUES (?,?,?,?,?,?,?,?,NULL,?) ON CONFLICT(page_id) DO UPDATE SET vault_id=excluded.vault_id,revision=excluded.revision,projection_hash=excluded.projection_hash,strategy=excluded.strategy,policy_hash=excluded.policy_hash,token_count=excluded.token_count,updated_at=excluded.updated_at,error=NULL,body_characters=excluded.body_characters`,id,page.vault_id,page.revision,projectionHash,result.strategy,hash(JSON.stringify(policy)),result.tokenCount,now(),projection.text.trim().length);
    this.store.run(`UPDATE embedding_jobs SET status='skipped',finished_at=?,error='Page segment changed.'
     WHERE page_id=? AND status IN ('queued','running') AND NOT EXISTS (

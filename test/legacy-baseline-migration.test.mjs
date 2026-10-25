@@ -227,6 +227,8 @@ test('present malformed summary baselines require refresh even when their cached
       assert.equal(JSON.parse(summaryRow(s).data).summary,JSON.parse(original.data).summary,name);
       assert.deepEqual(JSON.parse(summaryRow(s).data).baseline,JSON.parse(original.data).baseline,name);
       assert.equal(summaryRow(s).content_hash,null,name);
+      s.pages.prepareHashes('default',s.page.id);
+      assert.equal(s.enrichments.list('default',s.page.id).find(item=>item.kind==='summary').contentHash,null,name);
     }finally{s.close();}
   }
   const s=fixture('A sufficiently long source paragraph for summary enrichment.');try {

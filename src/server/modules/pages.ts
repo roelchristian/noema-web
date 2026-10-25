@@ -116,18 +116,18 @@ export class Pages {
   /** Mutation/queued preparation owns legacy fingerprint upgrades, never a page read. */
   prepareHashes(vault:string,id:string):void {
     const row=this.store.get<{title:string;blocks:string;revision:number;summary_content_hash:string|null;summary_hash_version:number;legacySummary:number}>(`SELECT title,blocks,revision,summary_content_hash,summary_hash_version,
-      EXISTS(SELECT 1 FROM page_ai_enrichments e WHERE e.page_id=pages.id AND e.kind='summary' AND e.content_hash IS NULL AND e.revision=pages.revision) AS legacySummary
+      EXISTS(SELECT 1 FROM page_ai_enrichments e WHERE e.page_id=pages.id AND e.kind='summary' AND e.content_hash IS NULL AND e.revision=pages.revision AND COALESCE(json_extract(e.data,'$.freshness.status'),'')!='refresh_needed') AS legacySummary
       FROM pages WHERE vault_id=? AND id=? AND deleted_at IS NULL`,vault,id);
     if(!row)return;
     if(row.summary_content_hash&&row.summary_hash_version===2) {
-      if(row.legacySummary)this.store.run("UPDATE page_ai_enrichments SET content_hash=? WHERE page_id=? AND kind='summary' AND content_hash IS NULL AND revision=?",row.summary_content_hash,id,row.revision);
+      if(row.legacySummary)this.store.run("UPDATE page_ai_enrichments SET content_hash=? WHERE page_id=? AND kind='summary' AND content_hash IS NULL AND revision=? AND COALESCE(json_extract(data,'$.freshness.status'),'')!='refresh_needed'",row.summary_content_hash,id,row.revision);
       return;
     }
     const page={title:resolvePageTitle(this.store,{id,...row}),blocks:JSON.parse(row.blocks) as Block[]},resolve=this.resolveNames(vault);
     const hash=summaryContentHash(page,resolve);
     if(row.summary_hash_version!==2||row.legacySummary) {
       const legacy=summaryContentHash(page,resolve,true);
-      this.store.run("UPDATE page_ai_enrichments SET content_hash=? WHERE page_id=? AND kind='summary' AND (content_hash=? OR (content_hash IS NULL AND revision=?))",hash,id,legacy,row.revision);
+      this.store.run("UPDATE page_ai_enrichments SET content_hash=? WHERE page_id=? AND kind='summary' AND (content_hash=? OR (content_hash IS NULL AND revision=?)) AND COALESCE(json_extract(data,'$.freshness.status'),'')!='refresh_needed'",hash,id,legacy,row.revision);
     }
     this.store.run('UPDATE pages SET summary_content_hash=?,summary_hash_version=2 WHERE id=? AND vault_id=?',hash,id,vault);
   }

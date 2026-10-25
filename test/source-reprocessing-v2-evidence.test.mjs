@@ -47,3 +47,53 @@ test('Verified paragraph reconstruction preserves exact words and punctuation wi
  assert.equal(evaluateV2Acceptance({text,document,start:0,end:text.length,original:text,replacement:replacement.replace('42','43'),category:'formatting',policy:'verified'}).automatic,false);
  for(const replacement of [text.replace('hard\nline','hardline'),text.replace('. Another','.\n\n# Another')])assert.equal(evaluateV2Acceptance({text,document,start:0,end:text.length,original:text,replacement,category:'formatting',policy:'verified'}).automatic,false);
 });
+
+
+test('Verified typography expands extraction ligatures and soft hyphens without approving spelling or punctuation guesses',()=>{
+ for(const [original,replacement] of [['ofﬁce','office'],['co\u00adoperate','cooperate'],['Article\u00a061','Article 61']]){
+  const doc={...document,physical:{pages:[{number:1,range:{startOffset:0,endOffset:original.length}}]}};
+  assert.equal(evaluateV2Acceptance({text:original,document:doc,start:0,end:original.length,original,replacement,category:'ocr',policy:'verified'}).automatic,true);
+  assert.equal(evaluateV2Acceptance({text:original,document:doc,start:0,end:original.length,original,replacement,category:'ocr',policy:'review_all'}).automatic,false);
+ }
+ for(const [original,replacement] of [['CONSITUTES','CONSTITUTES'],['Article 61','Article 62'],['well-being','wellbeing'],['“quoted”','quoted']])assert.equal(evaluateV2Acceptance({text:original,document,start:0,end:original.length,original,replacement,category:'ocr',policy:'verified'}).automatic,false);
+});
+
+test('Verified prose punctuation spacing is useful across separate diff fragments without changing words',()=>{
+ const original='A simple phrase ,next clause;then a final clause !';
+ const replacement='A simple phrase, next clause; then a final clause!';
+ const doc={...document,physical:{pages:[{number:1,range:{startOffset:0,endOffset:original.length}}]},semantic:{kind:'document',children:[{id:'p',kind:'paragraph',text:original,range:{startOffset:0,endOffset:original.length}}]}};
+ const chunk=planReprocessingChunks(original,doc)[0];
+ const patches=reconstructBlocks(chunk,{blocks:chunk.blocks.map(block=>({id:block.id,text:replacement}))}).patches;
+ assert.ok(patches.length>1,'exercise independent changes in the same passage');
+ for(const patch of patches){assert.equal(patch.category,'formatting');assert.equal(evaluateV2Acceptance({text:original,document:doc,start:patch.startOffset,end:patch.endOffset,original:patch.original,replacement:patch.replacement,category:patch.category,policy:'verified'}).automatic,true,JSON.stringify(patch));}
+ for(const [source,target] of [['The value is 1,000.','The value is 1, 000.'],['A whole word.','A wholeword.'],['A phrase, next clause.','A phrase ,next clause.'],['The text ,next clause.','The text; next clause.'],['A citation [a,b].','A citation [a, b].'],['A **phrase ,next** clause.','A **phrase, next** clause.']]){
+  const d={...doc,physical:{pages:[{number:1,range:{startOffset:0,endOffset:source.length}}]},semantic:{kind:'document',children:[{id:'p',kind:'paragraph',text:source,range:{startOffset:0,endOffset:source.length}}]}};
+  assert.equal(evaluateV2Acceptance({text:source,document:d,start:0,end:source.length,original:source,replacement:target,category:'formatting',policy:'verified'}).automatic,false,source);
+ }
+});
+
+test('Verified heading markup requires an existing exact canonical heading and keeps source text',()=>{
+ const original='A RECORDED TITLE\n\nA body paragraph.';
+ const doc={...document,physical:{pages:[{number:1,range:{startOffset:0,endOffset:original.length}}]},semantic:{kind:'document',children:[{id:'h',kind:'heading',title:'A RECORDED TITLE',range:{startOffset:0,endOffset:original.length}}]}};
+ const chunk=planReprocessingChunks(original,doc)[0];
+ const patch=reconstructBlocks(chunk,{blocks:chunk.blocks.map(block=>({id:block.id,text:'# '+block.text}))}).patches[0];
+ const input={text:original,document:doc,start:patch.startOffset,end:patch.endOffset,original:patch.original,replacement:patch.replacement,category:patch.category,policy:'verified'};
+ assert.equal(evaluateV2Acceptance(input).automatic,true);
+ assert.equal(evaluateV2Acceptance({...input,policy:'review_all'}).automatic,false);
+ const unknown=structuredClone(doc);unknown.semantic.children[0].title='A different title';assert.equal(evaluateV2Acceptance({...input,document:unknown}).automatic,false);
+ assert.equal(evaluateV2Acceptance({...input,start:0,end:16,original:original.slice(0,16),replacement:'# A CHANGED TITLE'}).automatic,false);
+});
+
+test('multi-fragment word corrections form one review decision while independent layout remains actionable',()=>{
+ const original='A constitution has ordinary  prose and e\u0301lan.';
+ const replacement='A constituting has ordinary prose and e\u0300lan.';
+ const doc={...document,physical:{pages:[{number:1,range:{startOffset:0,endOffset:original.length}}]},semantic:{kind:'document',children:[{id:'p',kind:'paragraph',text:original,range:{startOffset:0,endOffset:original.length}}]}};
+ const chunk=planReprocessingChunks(original,doc)[0];
+ const patches=reconstructBlocks(chunk,{blocks:chunk.blocks.map(block=>({id:block.id,text:replacement}))}).patches;
+ const word=patches.find(patch=>patch.original.trim()==='constitution');assert.ok(word);assert.equal(word.replacement.trim(),'constituting');
+ assert.equal(patches.filter(patch=>patch.original.includes('constitution')).length,1);
+ const layout=patches.find(patch=>patch.category==='formatting');assert.ok(layout);assert.equal(evaluateV2Acceptance({text:original,document:doc,start:layout.startOffset,end:layout.endOffset,original:layout.original,replacement:layout.replacement,category:layout.category,policy:'verified'}).automatic,true);
+ assert.equal(patches.find(patch=>patch.original==='e\u0301').replacement,'e\u0300','single grapheme repairs retain their established scope');
+ let reconstructed=original;for(const patch of [...patches].reverse())reconstructed=reconstructed.slice(0,patch.startOffset)+patch.replacement+reconstructed.slice(patch.endOffset);assert.equal(reconstructed,replacement);
+ for(let i=1;i<patches.length;i++)assert.ok(patches[i-1].endOffset<=patches[i].startOffset);
+});

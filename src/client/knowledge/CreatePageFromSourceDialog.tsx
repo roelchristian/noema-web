@@ -5,7 +5,7 @@ import {TitleText} from '../components/TitleText';
 import {sourceDuration,type SourceProcessingProgress} from '../../shared/source-progress';
 import {memo,useEffect,useRef,useState,type FormEvent} from 'react';
 import type {Block,Entity,Page,Segment} from '../../shared/domain';
-import {defaultSourcePageOptions,normalizeSourcePageOptions,sourcePageChoices,sourcePageFormats,sourcePageFormatPresets,sourcePageScope,selectSourcePageFormat,sourcePageLanguages,type SourcePageOptions,type SourcePageRevision,type SourcePageEvent,type SourcePageReview} from '../../shared/source-page';
+import {defaultSourcePageOptions,normalizeSourcePageOptions,sourcePageChoices,sourcePageFormats,sourcePageFormatPresets,sourcePageScope,selectSourcePageFormat,sourcePageLanguages,type SourcePageVersion,type SourcePageOptions,type SourcePageRevision,type SourcePageEvent,type SourcePageReview} from '../../shared/source-page';
 import {randomUUID} from '../../shared/uuid';
 import {readSourcePagePreferences,rememberSourcePagePreferences} from '../state/source-page-preferences';
 import {createPageFromSource,request as apiRequest} from '../api';
@@ -46,8 +46,10 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
   const inheritedPersona=useDefaultPersona();
   const [personaId,setPersonaId]=useState('');
   const [personaExpression,setPersonaExpression]=useState<PersonaExpression|''>('');
+  const [versions,setVersions]=useState<SourcePageVersion[]>([]);
+  const [sourceRevisionId,setSourceRevisionId]=useState('');
   const [options,setOptions]=useState<SourcePageOptions>(readSourcePagePreferences);
-  const [submitted,setSubmitted]=useState<{options:SourcePageOptions;focus:string}|null>(null);
+  const [submitted,setSubmitted]=useState<{options:SourcePageOptions;focus:string;sourceRevisionId?:string}|null>(null);
   const [retryOpen,setRetryOpen]=useState(false),[feedback,setFeedback]=useState('');
   const [liveBlock,setLiveBlock]=useState<LiveBlock|null>(null),[generationStage,setGenerationStage]=useState<'waiting'|'writing'|'checking'|'math'>('waiting');
   const [waitingLonger,setWaitingLonger]=useState(false);
@@ -63,10 +65,20 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
   useEffect(()=>{if(!running)return;const timer=setInterval(()=>setClock(Date.now()),1000);return()=>clearInterval(timer);},[running]);
   const route=`entities/${encodeURIComponent(source.id)}/create-page`;
   function clearLive(){if(liveTimer.current!==null)clearTimeout(liveTimer.current);liveTimer.current=null;live.current=null;setLiveBlock(null);}
-  function review(value:SourcePageReview){setPersonaId('');setPersonaExpression('');setSubmitted({options:normalizeSourcePageOptions(value.options),focus:value.focus});clearLive();generation.current={id:value.id,settings:JSON.stringify([value.focus,value.options??defaultSourcePageOptions])};setOptions(normalizeSourcePageOptions(value.options));setDraft(value);setFocus(value.focus);setTitle(value.title);setBlocks(value.blocks);setPhase('review');setRetryOpen(false);setFeedback('');}
+  function review(value:SourcePageReview){setPersonaId('');setPersonaExpression('');setSourceRevisionId(value.sourceRevisionId??'');setSubmitted({options:normalizeSourcePageOptions(value.options),focus:value.focus,sourceRevisionId:value.sourceRevisionId});clearLive();generation.current={id:value.id,settings:JSON.stringify([value.focus,value.options??defaultSourcePageOptions])};setOptions(normalizeSourcePageOptions(value.options));setDraft(value);setFocus(value.focus);setTitle(value.title);setBlocks(value.blocks);setPhase('review');setRetryOpen(false);setFeedback('');}
   useEffect(()=>{
     active.current=true;const controller=new AbortController();request.current=controller;
-    void apiRequest<{draft:SourcePageReview|null}>(route,'GET',undefined,vaultId,controller.signal).then(result=>{if(active.current&&!controller.signal.aborted){if(result.draft)review(result.draft);else setPhase('idle');}}).catch(error=>{if(active.current&&!controller.signal.aborted){setPhase('failed');setError(error instanceof Error?error.message:'Could not check for an existing draft.');}});
+    void apiRequest<{draft:SourcePageReview|null;versions?:SourcePageVersion[];fileId?:string}>(route,'GET',undefined,vaultId,controller.signal).then(result=>{
+      if(!active.current||controller.signal.aborted)return;
+      let preferred='';
+      try{preferred=localStorage.getItem(`noema:source-reading:${vaultId}:${result.fileId}`)??'';}catch{/* Use the original when preferences are unavailable. */}
+      const available=result.versions??[];
+      if(!available.some(version=>version.id===preferred))preferred='';
+      const choices=available.map(version=>({...version,preferred:version.id===preferred}));
+      setVersions(choices);
+      if(result.draft)review(result.draft);
+      else{setSourceRevisionId(choices.find(version=>version.preferred)?.id??'');setPhase('idle');}
+    }).catch(error=>{if(active.current&&!controller.signal.aborted){setPhase('failed');setError(error instanceof Error?error.message:'Could not check for an existing draft.');}});
     return()=>{active.current=false;controller.abort();request.current?.abort();if(liveTimer.current!==null)clearTimeout(liveTimer.current);};
   },[vaultId,source.id]);
   useEffect(()=>{if(!preview.current)return;if(phase==='review')preview.current.scrollTop=0;else if(running&&follow.current)preview.current.scrollTop=preview.current.scrollHeight;},[blocks.length,phase,liveBlock?.text]);
@@ -81,9 +93,9 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
     const generationOptions=normalizeSourcePageOptions(options);
     rememberSourcePagePreferences(generationOptions);
     if(generationOptions.language==='current-ui')generationOptions.language=getLocale();
-    setSubmitted({options:generationOptions,focus:focus.trim()});
+    setSubmitted({options:generationOptions,focus:focus.trim(),sourceRevisionId});
     const controller=new AbortController();request.current=controller;
-    const settings=JSON.stringify([focus.trim(),generationOptions,personaId,personaExpression,...(revision?[revision]:[])]);
+    const settings=JSON.stringify([focus.trim(),generationOptions,personaId,sourceRevisionId,personaExpression,...(revision?[revision]:[])]);
     if(generation.current.settings!==settings)generation.current={id:randomUUID(),settings};
     clearLive();setGenerationStage('waiting');setWaitingLonger(false);setMathProgress(undefined);setEstimate(undefined);startedAt.current=Date.now();setClock(Date.now());
     setPhase('generating');setTitle('');setBlocks([]);setError('');follow.current=true;
@@ -109,7 +121,7 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
       else if(event.type==='review')review(event.draft);
       else if(event.type==='completed'){clearLive();setPage(event.page);setTitle(event.page.title);setBlocks(event.page.blocks);setPhase('completed');onCreated(event.page);}
     };
-    try{await createPageFromSource(vaultId,source.id,focus.trim(),generationOptions,generation.current.id,receive,controller.signal,revision,personaId||undefined,personaExpression||undefined);}
+    try{await createPageFromSource(vaultId,source.id,focus.trim(),generationOptions,generation.current.id,receive,controller.signal,revision,personaId||undefined,sourceRevisionId,personaExpression||undefined);}
     catch(error){if(active.current&&!controller.signal.aborted){clearLive();if(previousDraft){setTitle(previousDraft.title);setBlocks(previousDraft.blocks);setPhase('review');}else setPhase('failed');setError(error instanceof Error?error.message:'Could not generate the page. Please retry.');}}
     finally{clearTimeout(slowTimer);if(request.current===controller)request.current=null;}
   }
@@ -155,6 +167,7 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
       {submitted?<section className="source-page-request">
       <p className="source-page-eyebrow">{uiText("Your request")}</p>
       <dl className="source-page-selection" aria-label={uiText("Submitted request")}>
+        {versions.length>0&&<div><dt>{uiText("Source version")}</dt><dd>{uiText(versions.find(version=>version.id===(submitted.sourceRevisionId??''))?.label??'Original processed')}</dd></div>}
         <div className="source-page-request-format"><dt>{uiText("Format")}</dt><dd><span className="source-page-format-mark" aria-hidden="true"><Icon name={submitted.options.format==='study'?'source':submitted.options.format==='explainer'?'lightbulb':submitted.options.format==='critique'?'annotation':submitted.options.format==='custom'?'compose':'page'}/></span><span className="source-page-format-name">{uiText(sourcePageFormats[submitted.options.format].label)}</span><small>{uiText(sourcePageFormats[submitted.options.format].description)}</small></dd></div>
         <div><dt>AI Persona</dt><dd>{(draft?.persona?personaIdentityName(draft.persona):personaMetadata(personaId||inheritedPersona).name)}</dd></div>
         <div><dt>{uiText("Length")}</dt><dd>{uiText(sourcePageChoices.detail.options[submitted.options.detail])}</dd></div>
@@ -164,6 +177,7 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
         {submitted.focus&&<div><dt>{submitted.options.format==='custom'?uiText("Your instructions"):uiText("Focus")}</dt><dd>{submitted.focus}</dd></div>}
       </dl>
       </section>:<>
+
       <fieldset className="source-page-formats"><legend>{uiText("Choose a format")}</legend><div role="group" aria-label={uiText("Page format")}>
         {sourcePageFormatPresets.map(key=>{const format=sourcePageFormats[key];return <button type="button" key={key} className="source-page-format" aria-pressed={options.format===key} disabled={controlsDisabled} onClick={()=>setOptions(current=>selectSourcePageFormat(current,key))}><strong>{uiText(format.label)}</strong><small>{uiText(format.description)}</small></button>;})}
       </div></fieldset>
@@ -178,7 +192,14 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
           </optgroup>
         </Select></label>
         <label className="source-page-option">{uiText("Reader familiarity")}<Select aria-label={uiText("Reader familiarity")} value={options.familiarity} disabled={controlsDisabled} onChange={event=>setOptions(current=>({...current,familiarity:event.target.value as SourcePageOptions['familiarity']}))}>{Object.entries(sourcePageChoices.familiarity.options).map(([value,label])=><option key={value} value={value}>{uiText(label)}</option>)}</Select></label>
-        <PersonaExpressionSelect value={personaExpression} onChange={setPersonaExpression} disabled={busy||!!page||(!!draft&&!retryOpen)}/><PersonaSelect value={personaId} onChange={setPersonaId} disabled={busy||!!page||(!!draft&&!retryOpen)}/>
+        <div className="source-page-secondary-options">
+        <PersonaExpressionSelect value={personaExpression} onChange={setPersonaExpression} disabled={busy||!!page||(!!draft&&!retryOpen)}/>
+        <PersonaSelect value={personaId} onChange={setPersonaId} disabled={busy||!!page||(!!draft&&!retryOpen)}/>
+      <label className="persona-select">{uiText("Source version")}:<Select aria-label={uiText("Source version")} value={sourceRevisionId} disabled={controlsDisabled} onChange={event=>setSourceRevisionId(event.target.value)}>
+        <optgroup label={uiText("Preferred")}>{versions.filter(version=>version.preferred).map(version=><option key={version.id} value={version.id}>{uiText(version.label)} · {uiText("Preferred")}</option>)}</optgroup>
+        <optgroup label={uiText("Other versions")}>{(versions.length?versions.filter(version=>!version.preferred):[{id:'',label:'Original processed',preferred:false}]).map(version=><option key={version.id} value={version.id}>{uiText(version.label)}</option>)}</optgroup>
+      </Select></label>
+        </div>
       </div>
       <div className="source-page-scope"><div><span id="source-page-scope-label">{uiText("Go beyond sources")}</span><p id="source-page-scope-hint">{options.beyondSources?uiText("Allow clearly labeled AI background knowledge and illustrative examples."):uiText("Use only the supplied source. Any analysis stays grounded in its text.")}</p></div><button type="button" className="source-page-switch" role="switch" aria-checked={options.beyondSources} aria-labelledby="source-page-scope-label" aria-describedby="source-page-scope-hint" disabled={controlsDisabled} onClick={()=>setOptions(current=>sourcePageScope(current,!current.beyondSources))}><span/></button></div>
       <label className="source-page-focus">{options.format==='custom'?uiText("Describe your page"):uiText("Anything to focus on?")} <span>{uiText("Optional")}</span><textarea autoFocus value={focus} onChange={event=>setFocus(event.target.value)} maxLength={2000} rows={2} disabled={controlsDisabled} placeholder={options.format==='custom'?uiText("Describe the note you want to create…"):uiText("Add a topic, question, or emphasis…")} aria-describedby="source-page-focus-hint"/></label>

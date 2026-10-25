@@ -24,15 +24,16 @@ test('six formats include a source-grounded critique and preserve scope across f
 for(const selectedLanguage of ['English','current-ui','Armenian','Farsi','Tajik'])test(`dialog submits familiarity and source scope with ${selectedLanguage}, remembers them, and shows six formats`,async()=>{
   const dom=new JSDOM('<div id="mount"></div>',{url:'http://localhost',pretendToBeVisual:true});
   dom.window.matchMedia=query=>({media:query,matches:false,addEventListener(){},removeEventListener(){}});
-  const keys=['window','document','Node','Element','HTMLElement','HTMLSelectElement','HTMLInputElement','MutationObserver','Event','CustomEvent','localStorage','IS_REACT_ACT_ENVIRONMENT'];
+  const keys=['window','document','Node','Element','HTMLElement','HTMLSelectElement','HTMLInputElement','HTMLOptGroupElement','MutationObserver','Event','CustomEvent','localStorage','IS_REACT_ACT_ENVIRONMENT'];
   const previous=keys.map(key=>Object.getOwnPropertyDescriptor(globalThis,key)),originalFetch=globalThis.fetch;
   for(const key of keys)Object.defineProperty(globalThis,key,{configurable:true,writable:true,value:key==='IS_REACT_ACT_ENVIRONMENT'?true:dom.window[key]});
   dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
   dom.window.HTMLElement.prototype.attachEvent=function(){};dom.window.HTMLElement.prototype.detachEvent=function(){};
   rememberSourcePagePreferences({...defaultSourcePageOptions});
+  localStorage.setItem('noema:source-reading:default:file','revision-2');
   let submitted,streamController,rejections=0,rejectFails=false,closed=0;
   globalThis.fetch=async(_url,options)=>{
-    if(options.method==='GET')return Response.json({draft:null});
+    if(options.method==='GET')return Response.json({draft:null,fileId:'file',versions:[{id:'',label:'Original processed',preferred:true},{id:'revision-2',label:'V2',preferred:false},{id:'revision-3',label:'V3',preferred:false}]});
     if(String(_url).endsWith('/reject')){rejections++;assert.deepEqual(JSON.parse(options.body),{requestId:'draft'});return rejectFails?Response.json({error:'Could not discard draft'},{status:500}):Response.json({ok:true});}
     submitted=JSON.parse(options.body);
     return new Response(new ReadableStream({start(controller){streamController=controller;}}));
@@ -42,6 +43,10 @@ for(const selectedLanguage of ['English','current-ui','Armenian','Farsi','Tajik'
   try {
     await act(async()=>root.render(React.createElement(CreatePageFromSourceDialog,{vaultId:'default',source:{id:'source',name:'A source'},onClose(){closed++;},onCreated(){},onOpenPage:async()=>{},onSettings(){}})));
     assert.equal(document.querySelectorAll('.source-page-format').length,6);
+    const version=document.querySelector('select[aria-label="Source version"]');
+    assert.equal(version.value,'revision-2');
+    assert.deepEqual([...version.querySelectorAll('optgroup')].map(group=>[group.label,[...group.children].map(option=>option.value)]),[['Preferred',['revision-2']],['Other versions',['','revision-3']]]);
+    await act(async()=>{version.value='revision-3';version.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
     await click([...document.querySelectorAll('.source-page-format')].find(b=>b.textContent.startsWith('Critique')));
     const familiarity=document.querySelector('select[aria-label="Reader familiarity"]');
     assert.deepEqual([...familiarity.options].map(o=>o.textContent),['Beginner','Familiar','Expert']);
@@ -53,16 +58,17 @@ for(const selectedLanguage of ['English','current-ui','Armenian','Farsi','Tajik'
     const toggle=document.querySelector('[role="switch"]');assert.equal(toggle.getAttribute('aria-checked'),'false');
     await click(toggle);assert.equal(toggle.getAttribute('aria-checked'),'true');
     await act(async()=>document.querySelector('form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));
+    assert.equal(submitted.sourceRevisionId,'revision-3');
     assert.equal(submitted.options.language,selectedLanguage==='current-ui'?'en':selectedLanguage);
     assert.equal(submitted.options.format,'critique');assert.equal(submitted.options.familiarity,'expert');assert.equal(submitted.options.beyondSources,true);assert.deepEqual(Object.keys(submitted.options).sort(),['beyondSources','detail','familiarity','format','language']);
     const summary=document.querySelector('[aria-label="Submitted request"]');
     assert.ok(summary,'Submitted selections appear while generation is running');
-    assert.deepEqual([...summary.querySelectorAll('dd')].map(node=>node.querySelector('.source-page-format-name')?.textContent??node.textContent),['Critique','Oxford Don','Standard',selectedLanguage==='current-ui'?'English':selectedLanguage,'Expert','Include AI background knowledge']);
+    assert.deepEqual([...summary.querySelectorAll('dd')].map(node=>node.querySelector('.source-page-format-name')?.textContent??node.textContent),['V3','Critique','Oxford Don','Standard',selectedLanguage==='current-ui'?'English':selectedLanguage,'Expert','Include AI background knowledge']);
     assert.equal(document.querySelectorAll('.source-page-controls select, .source-page-format, .source-page-controls [role="switch"], .source-page-controls textarea').length,0,'The original form is removed during generation');
     assert.ok(document.querySelector('.source-page-dialog.has-preview'));
     assert.equal(document.querySelector('.source-page-preview').getAttribute('dir'),'auto');
     await act(async()=>{
-      streamController.enqueue(new TextEncoder().encode(JSON.stringify({type:'review',draft:{id:'draft',title:'Critique',blocks:[],focus:'Focus on evidence',options:submitted.options}})+'\n'));
+      streamController.enqueue(new TextEncoder().encode(JSON.stringify({type:'review',draft:{id:'draft',title:'Critique',blocks:[],focus:'Focus on evidence',options:submitted.options,sourceRevisionId:submitted.sourceRevisionId}})+'\n'));
       streamController.close();
     });
     assert.ok(document.querySelector('[aria-label="Submitted request"]'),'Read-only summary remains during review');

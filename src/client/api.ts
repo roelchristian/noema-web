@@ -198,8 +198,8 @@ export const api={
 };
 
 /** Consume provisional text deltas and verified blocks, retaining the saved draft for recovery. */
-export async function createPageFromSource(vault:string,sourceId:string,focus:string,options:import('../shared/source-page').SourcePageOptions,requestId:string,onEvent:(event:import('../shared/source-page').SourcePageEvent)=>void,signal:AbortSignal,revision?:import('../shared/source-page').SourcePageRevision,personaId?:string,personaExpression?:import('../shared/ai-personas').PersonaExpression):Promise<void> {
-  const response=await fetch(`/api/entities/${encodeURIComponent(sourceId)}/create-page`,{method:'POST',signal,headers:{'X-Noema-Request':'1','X-Vault-Id':vault,'Content-Type':'application/json'},body:JSON.stringify({focus,options,requestId,...(personaId?{personaId}:{}),...(personaExpression?{personaExpression}:{}),...(revision?{revision}:{})})});
+export async function createPageFromSource(vault:string,sourceId:string,focus:string,options:import('../shared/source-page').SourcePageOptions,requestId:string,onEvent:(event:import('../shared/source-page').SourcePageEvent)=>void,signal:AbortSignal,revision?:import('../shared/source-page').SourcePageRevision,personaId?:string,sourceRevisionId?:string,personaExpression?:import('../shared/ai-personas').PersonaExpression):Promise<void> {
+  const response=await fetch(`/api/entities/${encodeURIComponent(sourceId)}/create-page`,{method:'POST',signal,headers:{'X-Noema-Request':'1','X-Vault-Id':vault,'Content-Type':'application/json'},body:JSON.stringify({focus,options,requestId,...(sourceRevisionId!==undefined?{sourceRevisionId}:{}),...(personaExpression?{personaExpression}:{}),...(personaId?{personaId}:{}),...(revision?{revision}:{})})});
   if(!response.ok){const result=await response.json();throw new ApiError(response.status,result.error||'Could not create a page from this source.');}
   const reader=response.body?.getReader();
   if(!reader)throw new Error('The page stream is unavailable. Please retry.');

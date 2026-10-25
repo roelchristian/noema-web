@@ -7,7 +7,7 @@ type Services=Pick<Runtime,'sourcePages'|'sourcePageGeneration'|'notifications'|
 interface Context {vault:string; id:string; parts:string[]; childId:string|undefined; method:string; body:Record<string,unknown>; res:ServerResponse; send:(status:number,data:unknown)=>void}
 export async function sourcePageRoutes(services:Services,{vault,id,parts,childId,method,body,res,send}:Context) {
   const {sourcePages,sourcePageGeneration,notifications,embeddings,vaults}=services;
-  if(parts.length===4 && method==='GET')return send(200,{draft:sourcePages.latest(vault,id)});
+  if(parts.length===4 && method==='GET')return send(200,{draft:sourcePages.latest(vault,id),...sourcePages.versions(vault,id)});
   if(parts.length===5 && method==='POST') {
     if(childId==='reject')return send(200,sourcePages.reject(vault,id,body.requestId));
     if(childId==='accept') {

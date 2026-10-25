@@ -44,7 +44,7 @@
   --scrollbar-thumb-hover: color-mix(in srgb, var(--text-muted) 35%, transparent);
 
   /* Shared editor and source-reader prose; width excludes layout gutters. */
-  --document-line-width: 630px;
+  --document-line-width: 680px;
   --document-font-size: 16px;
   --document-line-height: 1.5;
   --document-letter-spacing: -0.01em;

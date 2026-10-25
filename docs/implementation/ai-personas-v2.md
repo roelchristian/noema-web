@@ -82,4 +82,30 @@ as described above. Eight repository tests skip platform/native/model-dependent
 checks in this Linux environment. Dependencies were installed with
 `npm ci --ignore-scripts --cache /tmp/noema-npm-cache` after an ONNX installer
 could not resolve GitHub; no native speech/PDF capability is claimed validated.
-No push, PR, merge or deployment is authorized or performed.
+Initial implementation was local-only. Subsequent publication and integration were
+authorized separately; deployment remains outside scope.
+
+
+## Integration after PR #115
+
+PR #115 was independently verified merged at
+`7bb44b7c0b1fb95af44d34be0d4f72761aabc1b5`; its post-main CI succeeded. That
+main revision was merged into the persona branch before PR #116 could proceed.
+The six conflicted files were resolved by combining both features, not replacing
+one side: source-version selection, canonical citation projection and reading
+revision coordinates coexist with persona version/expression and historical retry
+identity. The client retains sourceRevisionId as argument 10 and appends persona
+expression as argument 11, with a direct transport regression. All test groups
+from both branches remain registered.
+
+Independent review also identified an existing draft-retention gap. Superseding,
+accepting or rejecting a draft now changes status without erasing generated
+content, source options or persona provenance. Exact snapshot regressions cover
+v1-to-v2 supersession, acceptance and rejection; status guards still prevent reuse.
+No new database migration is introduced by the persona integration.
+
+The integrated build/style/types and full-suite results are recorded in the PR
+and final report. Integrated Settings/editor/selection-toolbar runtime checks use
+only synthetic providers. Independent integration review passed 24 focused tests
+with no unresolved findings. Chat remains separate and outside the persona
+allowlist. Phase 6 and real-provider style evaluation remain deferred/unrun.

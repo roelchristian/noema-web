@@ -74,8 +74,11 @@ test('source revisions retain original persona through default changes, acceptan
  assert.throws(()=>sources.prepare('default',other.id,{requestId:first.review.id,personaId:'divinity_student',options:{...defaultSourcePageOptions,language:'English'}}),e=>e.status===409,'Request fingerprints must retain source scope with explicit persona overrides');
  const second=stage({revision:{draftId:first.review.id,feedback:'Clarify.',mode:'changes'}},'editor');assert.deepEqual(second.prepared.persona,identity('conyo'));assert.deepEqual(second.review.persona,identity('conyo'));assert.equal(personaIdentityName(second.review.persona),'Conyo');
  assert.match(generationPolicy({kind:'sourcePage',input:second.prepared.input,personaId:second.prepared.persona.id,personaVersion:second.prepared.persona.version,signal:new AbortController().signal,onDelta(){}},selections).prompt().instructions,/AI PERSONA: Conyo/);
+ const historicalDraft=env.store.get('SELECT * FROM source_page_drafts WHERE request_id=?',second.review.id);
  const third=stage({revision:{draftId:second.review.id,feedback:'Again.',mode:'retry'},personaId:'tutor'},'editor');assert.deepEqual(third.review.persona,identity('tutor'));
- const page=sources.accept('default',source.id,third.review.id).page;assert.deepEqual(page.generationMetadata.persona,identity('tutor'));assert.doesNotMatch(page.generationMetadata.instructions,/AI PERSONA:/);
+ const preservedDraft=env.store.get('SELECT * FROM source_page_drafts WHERE request_id=?',second.review.id);assert.deepEqual({...preservedDraft},{...historicalDraft,status:'rejected'},'Superseded v1 draft retains its original content, source options and generation provenance');
+ const preAcceptance=env.store.get('SELECT * FROM source_page_drafts WHERE request_id=?',third.review.id);
+ const page=sources.accept('default',source.id,third.review.id).page;assert.deepEqual({...env.store.get('SELECT * FROM source_page_drafts WHERE request_id=?',third.review.id)},{...preAcceptance,status:'accepted'},'Accepted drafts retain their historical snapshots');assert.deepEqual(page.generationMetadata.persona,identity('tutor'));assert.doesNotMatch(page.generationMetadata.instructions,/AI PERSONA:/);
  const legacyDraft=stage({},'divinity_student');
  const legacyMetadata=JSON.parse(env.store.get('SELECT generation_metadata FROM source_page_drafts WHERE request_id=?',legacyDraft.review.id).generation_metadata);legacyMetadata.persona=identity('conyo');
  env.store.run('UPDATE source_page_drafts SET generation_metadata=? WHERE request_id=?',JSON.stringify(legacyMetadata),legacyDraft.review.id);
@@ -205,4 +208,38 @@ test('block explanation client forwards historical expression during regeneratio
  t.mock.method(globalThis,'fetch',async(_url,options)=>{sent=JSON.parse(options.body);return Response.json({markdown:'Synthetic explanation.',persona:original});});
  const result=await api.explainBlocks('default','synthetic',[],original);
  assert.equal(sent.personaVersion,2);assert.equal(sent.personaExpression,'immersive');assert.deepEqual(result.persona,original);
+});
+
+
+test('source-version selector preserves original persona fingerprint and expression metadata',async()=>{
+ const env=fixture(),knowledge=new Knowledge(env.store),pages=new Pages(env.store,knowledge),files=new SourceFiles(env.store),sources=new SourcePages(env.store,knowledge,pages);
+ try{
+  const file=files.add('default','persona-source-version.txt',Buffer.from('A group has an identity element.'));
+  const source=knowledge.create('default',{name:'Persona source version compatibility',type:'source',attachmentIds:[file.id]});await files.tick();
+  const requestId=randomUUID(),body={requestId,sourceRevisionId:'',personaId:'socratic',personaExpression:'immersive',options:{...defaultSourcePageOptions,language:'English'}};
+  const prepared=sources.prepare('default',source.id,body,'editor','subtle');
+  assert.equal(prepared.sourceRevisionId,'');assert.equal(prepared.persona.version,2);assert.equal(prepared.persona.expression,'immersive');
+  const settings=[source.id,'socratic','immersive',null,'',body.options,'','changes'];
+  assert.equal(prepared.fingerprint,createHash('sha256').update(JSON.stringify(settings)).digest('hex'));
+  const draft=new SourcePageDraft(()=>{},prepared.sourceVersion.file.text,prepared.sourceVersion.file,'English',prepared.sourceVersion.document);
+  draft.feed(JSON.stringify({type:'title',title:'Identity',language:'en'})+'\n'+JSON.stringify({type:'block',blockType:'paragraph',basis:'source',text:'A group has an identity.',citations:[{startLine:1,endLine:1}]})+'\n');draft.finish();
+  const staged=sources.stage('default',prepared,draft,'synthetic');
+  assert.equal(staged.sourceRevisionId,'');assert.equal(staged.persona.expression,'immersive');
+  const replay=sources.prepare('default',source.id,body,'tutor','subtle');assert.equal(replay.review.id,staged.id);assert.equal(replay.review.persona.expression,'immersive');
+  const revised=sources.prepare('default',source.id,{requestId:randomUUID(),sourceRevisionId:'',revision:{draftId:staged.id,feedback:'Clarify.'}},'editor','subtle');
+  assert.equal(revised.persona.id,'socratic');assert.equal(revised.persona.expression,'immersive');
+  assert.throws(()=>sources.prepare('default',source.id,{...body,personaExpression:'subtle'}),e=>e.status===409);
+  const preRejection=env.store.get('SELECT * FROM source_page_drafts WHERE request_id=?',staged.id);sources.reject('default',source.id,staged.id);
+  assert.deepEqual({...env.store.get('SELECT * FROM source_page_drafts WHERE request_id=?',staged.id)},{...preRejection,status:'rejected'},'Rejected drafts retain their historical snapshots');
+ }finally{files.close();env.close();}
+});
+
+test('source-page client sends source revision and persona expression without positional collision',async t=>{
+ const {createPageFromSource}=await import('../src/client/api.ts');let sent;
+ const previous=Object.getOwnPropertyDescriptor(globalThis,'window');
+ Object.defineProperty(globalThis,'window',{configurable:true,value:{dispatchEvent(){}}});
+ t.after(()=>{if(previous)Object.defineProperty(globalThis,'window',previous);else delete globalThis.window;});
+ t.mock.method(globalThis,'fetch',async(_url,options)=>{sent=JSON.parse(options.body);return new Response(JSON.stringify({type:'review',draft:{id:'synthetic'}})+'\n');});
+ await createPageFromSource('default','synthetic','',defaultSourcePageOptions,'synthetic',()=>{},new AbortController().signal,undefined,'tutor','selected-source-revision','immersive');
+ assert.equal(sent.sourceRevisionId,'selected-source-revision');assert.equal(sent.personaExpression,'immersive');assert.equal(sent.personaId,'tutor');
 });

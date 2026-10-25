@@ -1,6 +1,6 @@
 import {SourcePages,SourcePageDraft} from './source-pages.js';
 import {SourceMath} from './source-math.js';
-import {SourceDocuments} from './source-documents.js';
+import {sourcePageVersion} from './source-page-version.js';
 import {sourceGenerationDocument} from './source-document.js';
 import {SourcePageEvent} from '../../shared/source-page.js';
 import {Store} from '../store.js';
@@ -30,7 +30,7 @@ export function createSourcePageGeneration({store,sourcePages,intelligence,vault
         emit({type:'status',phase:'thinking'});
         onGenerating();
         const input=JSON.parse(prepared.input);
-        const cleanedFile=await new SourceMath(store).prepare(prepared.file,
+        const cleanedFile=prepared.sourceRevisionId?prepared.sourceVersion.file:await new SourceMath(store).prepare(prepared.file,
           async text=>{
             const mathActivity=activity.start('source_math_preprocessing',intelligence.selection(),vault,id,'entity');
             try {
@@ -40,16 +40,17 @@ export function createSourcePageGeneration({store,sourcePages,intelligence,vault
               activity.finish(mathActivity,'completed',200);return result;
             }catch(error){activity.finish(mathActivity,signal.aborted?'interrupted':'failed',error instanceof HttpError?error.status:500);throw error;}
           },signal,progress=>emit({type:'status',phase:'preparing_math',progress}));
-        input.untrusted_source.document=sourceGenerationDocument(new SourceDocuments(store).get(cleanedFile),cleanedFile.text);
+        const document=prepared.sourceRevisionId?prepared.sourceVersion.document:sourcePageVersion(store,vault,cleanedFile,'').document;
+        input.untrusted_source.document=sourceGenerationDocument(document,cleanedFile.text);
         prepared.input=JSON.stringify(input);
         activityId=activity.start('create_page_from_source',intelligence.selection(),vault,id,'entity');
         emit({type:'status',phase:'thinking'});
         const recent=store.all<{duration_ms:number}>(`SELECT duration_ms FROM ai_activity WHERE action='create_page_from_source' AND status='completed' AND model=? AND reasoning_effort=? AND prompt_bytes BETWEEN ? AND ? AND duration_ms>0 ORDER BY started_at DESC LIMIT 8`,intelligence.selection().model,intelligence.selection().reasoningEffort,Buffer.byteLength(prepared.input)*.5,Buffer.byteLength(prepared.input)*2);
         if(recent.length>=3)emit({type:'estimate',seconds:Math.ceil(recent.map(row=>row.duration_ms).sort((a,b)=>a-b)[Math.floor(recent.length/2)]!/1000)});
-        const draft=new SourcePageDraft(emit,cleanedFile.text,cleanedFile,prepared.options.language);
+        const draft=new SourcePageDraft(emit,cleanedFile.text,cleanedFile,prepared.options.language,document);
         // A preliminary JSON draft can be previewed, but only final-answer records are saved.
-        let preview=new SourcePageDraft(emit,cleanedFile.text,cleanedFile,prepared.options.language),previewFailed=false;
-        const resetPreview=()=>{emit({type:'preview_reset'});preview=new SourcePageDraft(emit,cleanedFile.text,cleanedFile,prepared.options.language);previewFailed=false;};
+        let preview=new SourcePageDraft(emit,cleanedFile.text,cleanedFile,prepared.options.language,document),previewFailed=false;
+        const resetPreview=()=>{emit({type:'preview_reset'});preview=new SourcePageDraft(emit,cleanedFile.text,cleanedFile,prepared.options.language,document);previewFailed=false;};
         await intelligence.generate({kind:'sourcePage',personaId:prepared.persona.id,personaVersion:prepared.persona.version,personaExpression:prepared.persona.expression,input:prepared.input,onRequest:bytes=>activity.request(activityId!,bytes,null),
           signal,onDelta:delta=>draft.feed(delta),onPreviewReset:resetPreview,
           onPreviewDelta:delta=>{

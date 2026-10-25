@@ -33,7 +33,9 @@ export function reconstructBlocks(chunk:PlannedReprocessingChunk,response:unknow
   for(const span of boundedReconstructionDiff(original.text,replacement)){
    const before=original.text.slice(span.start,span.end),after=replacement.slice(span.newStart,span.newEnd);
    if(before.length>16000||after.length>16000)return invalid('difference exceeds the patch limit.');
-   const mechanical=before.replace(/[ \t\r\n]+/g,' ')===after.replace(/[ \t\r\n]+/g,' ');
+   // Classification describes the edit, while acceptance independently proves
+   // preserved word boundaries. Punctuation spacing must not appear as OCR.
+   const mechanical=before.replace(/[ \t\r\n]+/g,'')===after.replace(/[ \t\r\n]+/g,'');
    patches.push({startOffset:original.start+span.start,endOffset:original.start+span.end,original:before,replacement:after,category:mechanical?'formatting':before.includes('\n')&&!/\n[ \t]*\n/.test(before)&&before.replace(/\r?\n/g,' ')===after?'line_breaks':'ocr',reason:'Deterministic difference from reconstructed canonical block; source comparison is required for substantive changes.',confidence:0});
   }
  }
@@ -121,6 +123,20 @@ export function boundedReconstructionDiff(original:string,replacement:string):Ed
    if(span.end<original.length){const index=ao.indexOf(span.end),length=ao[index+1]!-span.end;span.end+=length;span.newEnd+=length;}
    else if(span.start>0){const index=ao.indexOf(span.start),length=span.start-ao[index-1]!;span.start-=length;span.newStart-=length;}
    else return invalid('empty canonical block.');
+  }
+  // A spelling proposal is one lexical decision. Grapheme diffs can otherwise
+  // split a corrected ending into a deletion and an insertion, allowing review
+  // to accept half a word. Expand only substantive edits, leaving independent
+  // spacing/layout changes in the same block separately actionable.
+  if(/^[\p{L}\p{M}]*$/u.test(original.slice(span.start,span.end))&&/^[\p{L}\p{M}]*$/u.test(replacement.slice(span.newStart,span.newEnd))){
+   const lexical=/^[\p{L}\p{M}]+$/u;
+   let left=ao.indexOf(span.start),right=ao.indexOf(span.end),newLeft=bo.indexOf(span.newStart),newRight=bo.indexOf(span.newEnd);
+   while(left>0&&lexical.test(a[left-1]!))left--;
+   while(right<a.length&&lexical.test(a[right]!))right++;
+   while(newLeft>0&&lexical.test(b[newLeft-1]!))newLeft--;
+   while(newRight<b.length&&lexical.test(b[newRight]!))newRight++;
+   const sibling=spans.some(other=>other!==span&&other.start>=ao[left]!&&other.end<=ao[right]!&&/^[\p{L}\p{M}]*$/u.test(original.slice(other.start,other.end))&&/^[\p{L}\p{M}]*$/u.test(replacement.slice(other.newStart,other.newEnd)));
+   if(sibling){span.start=ao[left]!;span.end=ao[right]!;span.newStart=bo[newLeft]!;span.newEnd=bo[newRight]!;}
   }
  }
  // Context expansion can overlap adjacent edits. Merge such spans before validation.

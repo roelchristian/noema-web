@@ -42,11 +42,24 @@ export function evaluateEditorialAcceptance(input:Input):{automatic:boolean;reas
 
 /** V2 Verified is deliberately independent of the legacy acceptance modes. The model's
  * confidence, fluency and subsequent approval never constitute original-source evidence. */
-export function evaluateV2Acceptance(input:Omit<Input,'policy'|'threshold'|'confidence'|'legacyRisks'> & {policy:'verified'|'review_all';evidence?:SourceReprocessingEvidenceSnapshot}):{automatic:boolean;reasons:string[];checks:string[]}{
+export function evaluateV2Acceptance(input:Omit<Input,'policy'|'threshold'|'confidence'|'legacyRisks'> & {policy:'verified'|'review_all';evidence?:SourceReprocessingEvidenceSnapshot;unverifiedUncertainty?:boolean}):{automatic:boolean;reasons:string[];checks:string[]}{
  const {text,document,start,end,original,replacement,category,policy}=input;
  const checks:string[]=[],reasons:string[]=[];
+ if(input.unverifiedUncertainty)return {automatic:false,reasons:['Optional uncertainty evidence failed source validation; proposed edits require manual review.'],checks};
  if(policy!=='verified')return {automatic:false,reasons:['Review all changes policy.'],checks};
  if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<0||end<=start||end>text.length||text.slice(start,end)!==original)reasons.push('Exact canonical coordinates are unavailable.');else checks.push('exact-canonical-substring');
+ // These glyph substitutions are mechanical equivalents, not spelling guesses.
+ // Keep word boundaries, numbers, punctuation identity and source ordering exact.
+ const typography=(value:string)=>value.replace(/ﬁ/g,'fi').replace(/ﬂ/g,'fl').replace(/ﬀ/g,'ff').replace(/ﬃ/g,'ffi').replace(/ﬄ/g,'ffl').replace(/ﬅ/g,'st').replace(/ﬆ/g,'st').replace(/(?<=\p{L})\u00ad(?=\p{L})/gu,'').replace(/[\u00a0\u202f]/g,' ');
+ if(!reasons.length&&['formatting','ocr'].includes(category)&&original!==replacement&&typography(original)===replacement)return {automatic:true,reasons:[],checks:[...checks,'exact-ligature-soft-hyphen-or-nonbreaking-space-equivalence']};
+ // A heading already recorded in canonical structure can receive its Markdown
+ // presentation without asking the model to prove the same title again. Check
+ // the complete source line, including edits whose diff contains only '# '.
+ const headingLineStart=text.lastIndexOf('\n',start-1)+1,headingLineEnd=text.indexOf('\n',end);
+ const headingLine=text.slice(headingLineStart,headingLineEnd<0?text.length:headingLineEnd);
+ const proposedHeading=text.slice(headingLineStart,start)+replacement+text.slice(end,headingLineEnd<0?text.length:headingLineEnd);
+ const supportedHeading=sourceDocumentEntries(document).some(({node,path})=>['chapter','section','subsection','heading'].includes(node.kind)&&node.range.startOffset===headingLineStart&&node.title===headingLine.trim()&&!path.some(parent=>['code','equation','footnote','table','list','blockquote'].includes(parent.kind)));
+ if(!reasons.length&&['formatting','ocr'].includes(category)&&supportedHeading&&document.physical.pages.filter(page=>page.range.startOffset<=headingLineStart&&page.range.endOffset>=headingLineStart+headingLine.length).length===1&&/^#{1,6} /.test(proposedHeading)&&proposedHeading.replace(/^#{1,6} /,'')===headingLine&&!/[\r\n]/.test(headingLine+replacement))return {automatic:true,reasons:[],checks:[...checks,'exact-canonical-heading-title','heading-markup-only','single-physical-page']};
  const nodes=sourceDocumentEntries(document).filter(({node})=>node.range.startOffset<=start&&node.range.endOffset>=end&&node.kind==='paragraph');
  const node=nodes.length===1?nodes[0]:undefined;
  if(!node||node.path.some(parent=>['blockquote','code','equation','footnote','table','list'].includes(parent.kind)))reasons.push('Exact ordinary-prose mapping is unavailable.');else checks.push('ordinary-prose-mapping');
@@ -58,6 +71,14 @@ export function evaluateV2Acceptance(input:Omit<Input,'policy'|'threshold'|'conf
  // whitespace may change, with every word, punctuation mark and word boundary kept.
  const proseLayout=['formatting','line_breaks'].includes(category)&&original.replace(/[ \t\r\n]+/g,' ')===replacement.replace(/[ \t\r\n]+/g,' ');
  const structuralSyntax=/^[ \t]*(?:#{1,6}\s|>|[-+*]\s|\d+[.)]\s|```|~~~|\[\^|\$\$|\\\[)/m;
+ // Punctuation spacing is an extraction/layout repair, even when removing a
+ // space changes a token boundary. Check the complete passage so a tiny diff
+ // cannot hide a decimal, citation, code fragment, or a joined pair of words.
+ const proposed=node?text.slice(node.node.range.startOffset,start)+replacement+text.slice(end,node.node.range.endOffset):replacement;
+ const punctuationSpacing=(value:string)=>value.replace(/(?<=\p{L})[ \t]+([,;:!?])/gu,'$1').replace(/([,;:!?])(?=\p{L})/gu,'$1 ');
+ const spacingDefects=(value:string)=>[...value.matchAll(/(?<=\p{L})[ \t]+([,;:!?])|([,;:!?])(?=\p{L})/gu)].length;
+ const uncertainPunctuation=/[\d'"“”‘’«»„‟`*_#|<>\[\]{}\\$=+^~]|https?:|\b(?:doi|ISBN)\b/iu;
+ if(!reasons.length&&['formatting','line_breaks','ocr'].includes(category)&&original!==replacement&&!structuralSyntax.test(passage)&&!uncertainPunctuation.test(passage+proposed)&&punctuationSpacing(passage)===punctuationSpacing(proposed)&&spacingDefects(proposed)<spacingDefects(passage))return {automatic:true,reasons:[],checks:[...checks,'exact-prose-punctuation-spacing-repair','identical-letters-punctuation-order']};
  if(!reasons.length&&proseLayout&&original&&replacement&&!/[\t]|\r(?!\n)| {2,}\r?\n/.test(original+replacement)&&!/ {2,}\r?\n/.test(passage)&&!structuralSyntax.test(passage+'\n'+replacement)&&!/[|`$\\]/.test(passage+replacement))return {automatic:true,reasons:[],checks:[...checks,'identical-words-punctuation-order','prose-whitespace-layout-only']};
  if(!reasons.length&&node&&independentMechanicalEvidence(input,node.node.range.startOffset,node.node.range.endOffset))return {automatic:true,reasons:[],checks:[...checks,'trusted-native-page-to-separate-raster-OCR','unique-whole-prose-line-alignment','high-confidence-without-alternative-readings','narrow-mechanical-repair-only']};
  if(category!=='formatting'||!original||!replacement||original.replace(/[ \t]+/g,' ')!==replacement.replace(/[ \t]+/g,' ')||/[\r\n]/.test(original+replacement))reasons.push('Substantive, line-boundary, OCR, or apparatus changes lack independent source evidence.');else checks.push('identical-characters-except-horizontal-spacing');

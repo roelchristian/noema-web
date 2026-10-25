@@ -26,7 +26,8 @@ export function SourceReadingNavigation({article,text,document:sourceDocument,ac
   useEffect(()=>{
     const element=article.current;if(!element)return;const root=element;
     let frame=0,leaves:HTMLElement[]=[];
-    const refresh=()=>{leaves=Array.from(root.querySelectorAll<HTMLElement>('[data-source-start][data-source-end]'));};
+    // Endnotes keep raw offsets even though their DOM order changes.
+    const refresh=()=>{leaves=Array.from(root.querySelectorAll<HTMLElement>('[data-source-start][data-source-end]')).sort((a,b)=>Number(a.dataset.sourceStart)-Number(b.dataset.sourceStart));};
     function position(stop:Stop) {
       let low=0,high=leaves.length;
       while(low<high){const mid=(low+high)>>>1;if(Number(leaves[mid]!.dataset.sourceEnd)<=stop.offset)low=mid+1;else high=mid;}

@@ -42,3 +42,8 @@ dialog.noema-modal.source-revision-manager{width:min(560px,calc(100vw - 32px))}
 .reprocessing-monitor progress::-moz-progress-bar{background:light-dark(black,white);border-radius:inherit}
 
 .source-revision-state[data-status]{flex-shrink:0;padding:0;border:0;border-radius:0;background:transparent;font-size:12px;line-height:1.5;white-space:nowrap}
+.reprocessing-completed-details{display:flex;justify-content:flex-end;margin-block:4px}
+.reprocessing-completed-details>button{font-size:11px}
+dialog.noema-modal.reprocessing-details-modal{width:min(760px,calc(100vw - 32px))}
+.reprocessing-details-modal .reprocessing-monitor{border:0;margin:0;padding:16px 20px}
+.reprocessing-details-modal .reprocessing-monitor-details{margin:0}

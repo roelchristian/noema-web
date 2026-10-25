@@ -153,7 +153,7 @@ test('resumed ledger preserves each last attempt configuration and marks incompl
  test('pending count excludes applied and rejected changes and never opens review automatically',async t=>{
  const r=fixture();r.patches[1].decision='accepted';const env=await mount(t,{initial:r});
  assert.ok(env.button('Review changes (1)'));assert.equal(document.querySelector('.reprocessing-reviews'),null);
- assert.equal(document.querySelector('.reprocessing-monitor-details').open,false);
+ assert.equal(document.querySelector('.reprocessing-monitor-details'),null);
  await env.click(env.button('Review changes (1)'));assert.equal(document.querySelectorAll('.reprocessing-patch').length,1);
  assert.equal(document.querySelector('.reprocessing-patch-explanation').open,false);assert.equal(document.querySelector('.reprocessing-history-filters').open,false,'Historical decision filters start collapsed');
  assert.equal(document.querySelector('[aria-label="Comparison layout"]').value,'unified');
@@ -372,7 +372,7 @@ test('local evidence preparation has visible progress before model excerpts comp
 
 test('summary quotation review visibly explains corrected and unresolved observations',async t=>{
  const r=fixture();r.report.summaryValidation={state:'completed',issues:2,accepted:1,unresolved:1,diagnostics:['Observation 3: extraction fix — proposed dehyphenation was quoted as original. Source quotation validated.','Observation 5: unsupported — the source block does not contain this claim. Not used as verification context.']};
- await mount(t,{initial:r});const review=document.querySelector('.reprocessing-summary-validation');
+ const env=await mount(t,{initial:r});await env.click(env.button('Processing details'));const review=document.querySelector('.reprocessing-summary-validation');
  assert.ok(review);assert.match(review.textContent,/2 quotation differences.*1 resolved.*1 excluded from summary context/);assert.match(review.textContent,/proposed dehyphenation/);assert.match(review.textContent,/unsupported/);assert.match(review.textContent,/Resolved quotation corrections do not block processing/);
 });
 
@@ -436,14 +436,14 @@ test('legacy incomplete errors suppress stale configuration advice and offer rec
 test('completed corrections offer an explicit action to show the processed reading version',async t=>{
  const r=fixture();r.fileId='f';r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;r.patches.forEach(patch=>patch.decision='accepted');const readings=[];
  const env=await mount(t,{initial:r,onReadingRevision:value=>readings.push(value)});
- assert.match(document.querySelector('.reprocessing-result-summary').textContent,/includes 2 applied corrections/);
+ await env.click(env.button('Processing details'));assert.match(document.querySelector('.reprocessing-result-summary').textContent,/includes 2 applied corrections/);
  assert.equal(readings.some(Boolean),false);await env.click(env.button('Show processed version'));assert.equal(readings.at(-1).id,r.id);
  assert.equal(env.button('Show processed version'),undefined);
 });
 
 test('completion distinguishes proposed corrections from unchanged output',async t=>{
  const r=fixture();r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;
- const env=await mount(t,{initial:r});assert.match(document.querySelector('.reprocessing-result-summary').textContent,/2 proposed corrections.*reading text is unchanged/);
+ const env=await mount(t,{initial:r});await env.click(env.button('Processing details'));assert.match(document.querySelector('.reprocessing-result-summary').textContent,/2 proposed corrections.*reading text is unchanged/);
  await env.click(env.button('Review proposed corrections'));assert.ok(document.querySelector('.reprocessing-reviews'));
 });
 
@@ -549,4 +549,16 @@ test('inline diff decisions submit the whole footnote group and refresh the acce
  await env.click([...document.querySelector('.revision-diff-change').querySelectorAll('button')].find(button=>button.textContent==='Reject'));
  assert.deepEqual(env.requests.filter(item=>item.method==='POST').at(-1).body.decisions,[{patchId:'patch-0',decision:'rejected'},{patchId:'patch-1',decision:'rejected'}]);
  assert.equal(document.querySelector('.revision-diff-change').dataset.decision,'rejected');
+});
+
+test('completed processing hides its monitor until details are opened in a dismissible modal',async t=>{
+ const r=fixture(),env=await mount(t,{initial:r});
+ assert.equal(document.querySelector('.reprocessing-monitor'),null);
+ assert.equal(document.querySelector('progress'),null);
+ assert.equal(document.querySelector('dialog'),null);
+ await env.click(env.button('Processing details'));
+ const modal=document.querySelector('dialog.reprocessing-details-modal');assert.ok(modal.open);
+ assert.ok(modal.querySelector('.reprocessing-report'));assert.equal(modal.querySelector('.reprocessing-monitor-main'),null);
+ await env.click(modal.querySelector('[aria-label="Close dialog"]'));
+ assert.equal(document.querySelector('dialog'),null);assert.ok(env.button('Processing details'));
 });

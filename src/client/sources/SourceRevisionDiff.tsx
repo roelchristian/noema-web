@@ -100,7 +100,7 @@ export function buildRevisionDiffSections(text:string,all:SourceEditorialPatch[]
 function ChangeControls({patch,revision,disabled,onDecision,onEdit,onLocate,onCompare}:Omit<Props,'patches'>&{patch:SourceEditorialPatch}){
  const related=revision.patches.filter(item=>item.id===patch.id||!!patch.patchGroupId&&item.patchGroupId===patch.patchGroupId);
  const decision=related.every(item=>item.decision===patch.decision)?patch.decision:'pending';
- return <div className="revision-diff-change" data-patch-id={patch.id} data-decision={decision} aria-label={uiText('Change at line {value0}',{value0:patch.range.startLine})}>
+ const controls=<>
   <div className="revision-diff-change-label"><span className="revision-diff-category">{uiText(patch.category.replaceAll('_',' '))}</span><span className="revision-diff-state">{uiText(decision==='accepted'?'Accepted':decision==='rejected'?'Rejected':'Pending')}</span></div>
   <div className="revision-diff-actions">
    <button type="button" className="revision-diff-accept" disabled={disabled||decision==='accepted'} onClick={()=>void onDecision(patch,'accepted')}>{uiText('Accept')}</button>
@@ -108,11 +108,14 @@ function ChangeControls({patch,revision,disabled,onDecision,onEdit,onLocate,onCo
    {onEdit&&<button type="button" disabled={disabled} onClick={()=>onEdit(patch)}>{uiText('Edit')}</button>}
    <Notes group={[patch]}/>
   </div>
-  <details className="revision-diff-more"><summary>{uiText('More actions')}</summary><div>
+  <details className="revision-diff-more"><summary aria-label={uiText('More actions')} title={uiText('More actions')}>⋯</summary><div>
    {decision!=='pending'&&<button type="button" disabled={disabled} onClick={()=>void onDecision(patch,'pending')}>{uiText('Return to review')}</button>}
    {onLocate&&<button type="button" onClick={()=>onLocate(patch)}>{uiText('Show original passage')}</button>}
    {onCompare&&patch.range.startPage&&<button type="button" onClick={()=>onCompare(patch.range.startPage!)}>{uiText('Compare PDF page')} {patch.range.startPage}</button>}
   </div></details>
+ </>;
+ return <div className="revision-diff-change" data-patch-id={patch.id} data-decision={decision} aria-label={uiText('Change at line {value0}',{value0:patch.range.startLine})}>
+  {decision==='accepted'?<details className="revision-diff-accepted"><summary aria-label={uiText('Accepted')} title={`${uiText(patch.category.replaceAll('_',' '))} · ${uiText('Accepted')}`}><span aria-hidden="true">✓</span></summary><div className="revision-diff-accepted-controls">{controls}</div></details>:controls}
  </div>;
 }
 

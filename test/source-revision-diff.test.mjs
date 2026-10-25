@@ -88,7 +88,7 @@ test('diff keeps each linked change in the right margin without visual groups an
  assert.doesNotMatch(document.querySelector('.source-revision-diff').textContent,/Linked group/);
  assert.ok(document.querySelector('.is-removed'));assert.ok(document.querySelector('.is-added'));
  assert.ok(document.querySelector('.revision-diff-text'));
- assert.equal(document.querySelector('.revision-diff-lines code'),null,'Source prose uses body text rather than a code font');
+ assert.equal(document.querySelector('.revision-diff-lines code'),null,'Source prose retains its text markup');
  for(const change of changes){
   assert.ok(change.closest('.revision-diff-margin'),'Each change control belongs to its source row margin');
   assert.ok(change.querySelector('.revision-diff-category'));assert.ok(change.querySelector('.revision-diff-state'));
@@ -117,6 +117,9 @@ test('decided changes remain inspectable and reversible',async t=>{
  const revision=fixture();revision.patches[0].decision=revision.patches[1].decision='accepted';revision.patches[2].decision='rejected';
  const decisions=[];const click=await mount(t,{revision,disabled:false,onDecision:async(patch,decision)=>decisions.push({patchId:patch.id,decision})});
  const accepted=document.querySelector('[data-decision="accepted"]'),rejected=document.querySelector('[data-decision="rejected"]');
+ const compact=accepted.querySelector('.revision-diff-accepted');
+ assert.equal(compact.open,false);assert.equal(compact.querySelector('summary').getAttribute('aria-label'),'Accepted');
+ await click(compact.querySelector('summary'));assert.equal(compact.open,true);
  assert.equal([...accepted.querySelectorAll('button')].find(button=>button.textContent==='Accept').disabled,true);
  assert.equal([...rejected.querySelectorAll('button')].find(button=>button.textContent==='Reject').disabled,true);
  await click([...accepted.querySelectorAll('button')].find(button=>button.textContent==='Reject'));

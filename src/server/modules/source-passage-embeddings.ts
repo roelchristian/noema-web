@@ -3,6 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {embeddingModel,embeddingDimensions,embeddingMaxBytes,type EmbeddingSettings,type SuggestedSource,type EmbeddingNote,type EmbeddingJob,type SemanticSearchResult} from '../../shared/embeddings.js';
 import {makeSearchSnippet} from '../../shared/search-snippets.js';
 import {CachedVectorSearch} from '../vector-search.js';
+import {SemanticShortlist,type SemanticCandidate,type SemanticSelection} from '../semantic-candidates.js';
 import {Store} from '../store.js';
 import {HttpError,now} from '../validation.js';
 import {Intelligence,EmbeddingAdmissionError,embeddingBatchMaxInputs,embeddingBatchMaxBytes} from './intelligence.js';
@@ -151,7 +152,7 @@ export class SourcePassageEmbeddings {
   return true;
  }
  private endActivity(id:string|undefined,status:'completed'|'failed'|'skipped',code:number){if(id&&this.activityIds.delete(id))this.activity?.finish(id,status,code);}
- hasSearchable(vault:string){return !!this.store.get(`SELECT 1 ${joins} JOIN source_passage_embeddings b ON b.passage_id=p.id WHERE p.vault_id=? AND ${searchable} AND ${fresh} LIMIT 1`,vault,embeddingModel,embeddingDimensions);}
+ hasSearchable(vault:string,sourceIds?:string[]){return !!this.store.get(`SELECT 1 ${joins} JOIN source_passage_embeddings b ON b.passage_id=p.id WHERE p.vault_id=? AND ${searchable} AND ${fresh} ${sourceIds===undefined?'':'AND p.source_id IN (SELECT value FROM json_each(?))'} LIMIT 1`,vault,embeddingModel,embeddingDimensions,...(sourceIds===undefined?[]:[JSON.stringify(sourceIds)]));}
  /** Score every saved query segment against one candidate scan; build only winning excerpts. */
  suggested(vault:string,queryVectors:number[][],excludedSourceIds:Set<string>,limit=5):SuggestedSource[] {
   if(!queryVectors.length||limit<=0)return [];
@@ -168,10 +169,20 @@ export class SourcePassageEmbeddings {
   }
   return [...matches.values()].sort((a,b)=>b.score-a.score||a.row.source_id.localeCompare(b.row.source_id)).slice(0,limit).map(({row,score})=>({sourceId:row.source_id,score,excerpt:makeSearchSnippet(row.text,'')}));
  }
+ candidates(vault:string,queryVector:number[],sourceIds?:string[],selection:SemanticSelection={}):SemanticCandidate[] {
+  const shortlist=new SemanticShortlist(selection.limit??1000,selection.distinctOwners);
+  const rows=this.store.all<{id:string;source_id:string;content_hash:string;vector:string}>(`SELECT p.id,p.source_id,p.content_hash,b.vector ${joins} JOIN source_passage_embeddings b ON b.passage_id=p.id WHERE p.vault_id=? AND ${searchable} AND ${fresh} ${sourceIds===undefined?'':'AND p.source_id IN (SELECT value FROM json_each(?))'}`,vault,embeddingModel,embeddingDimensions,...(sourceIds===undefined?[]:[JSON.stringify(sourceIds)]));
+  for(const row of rows){const score=this.vectors.score(`${vault}:${row.id}:${row.content_hash}`,row.vector,queryVector,embeddingDimensions);if(score!==undefined)shortlist.add({id:row.id,ownerId:row.source_id,kind:'entity',score});}
+  return shortlist.values();
+ }
+ materialize(vault:string,query:string,winners:SemanticCandidate[]):SemanticSearchResult[] {
+  const selected=winners.filter(row=>row.kind==='entity');
+  if(!selected.length)return [];
+  const rows=this.store.all<SourcePassage & {name:string;updated_at:string}>(`SELECT p.*,e.name,e.updated_at,(f.status<>'ready' OR EXISTS(SELECT 1 FROM source_passage_dirty d WHERE d.file_id=p.file_id)) AS stale ${joins} JOIN source_passage_embeddings b ON b.passage_id=p.id WHERE p.vault_id=? AND ${searchable} AND ${fresh} AND p.id IN (SELECT value FROM json_each(?))`,vault,embeddingModel,embeddingDimensions,JSON.stringify(selected.map(row=>row.id)));
+  const byId=new Map(rows.map(row=>[row.id,row]));
+  return selected.flatMap(winner=>{const row=byId.get(winner.id);return row?[{id:row.source_id,kind:'entity' as const,passageId:row.id,title:row.name,snippet:makeSearchSnippet(row.text,query),score:winner.score,updated_at:row.updated_at,reference:passageReference(row)}]:[];});
+ }
  search(vault:string,query:string,queryVector:number[],_queryMagnitude:number):SemanticSearchResult[]{
-  const rows=this.store.all<SourcePassage & {vector:string;name:string;updated_at:string}>(`SELECT p.*,b.vector,e.name,e.updated_at,(f.status<>'ready' OR EXISTS(SELECT 1 FROM source_passage_dirty d WHERE d.file_id=p.file_id)) AS stale ${joins} JOIN source_passage_embeddings b ON b.passage_id=p.id WHERE p.vault_id=? AND ${searchable} AND ${fresh}`,vault,embeddingModel,embeddingDimensions);
-  const results:SemanticSearchResult[]=[];
-  for(const row of rows){const score=this.vectors.score(`${vault}:${row.id}:${row.content_hash}`,row.vector,queryVector,embeddingDimensions);if(score!==undefined)results.push({id:row.source_id,kind:'entity',passageId:row.id,title:row.name,snippet:makeSearchSnippet(row.text,query),score,updated_at:row.updated_at,reference:passageReference(row)});}
-  return results;
+  return this.materialize(vault,query,this.candidates(vault,queryVector,undefined,{limit:Infinity}));
  }
 }

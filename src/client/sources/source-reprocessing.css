@@ -175,3 +175,16 @@
 .reprocessing-reading-picker .select-host{min-width:0;max-width:280px}
 .reprocessing-revision-picker .select-host,.reprocessing-layout-picker .select-host,.reprocessing-linked-group .select-host{min-width:0;max-width:100%}
 @media(max-width:650px){.reprocessing-reading-picker .select-host{flex:1;max-width:none}}
+
+/* Keep routine version controls on a single reading-column row. */
+.source-reader .source-reprocessing{padding-inline:0}
+.reprocessing-bar{flex-wrap:nowrap;justify-content:flex-start;gap:6px;padding-block:8px;font-size:12px}
+.reprocessing-bar>.reprocessing-reading-picker{flex:1;min-width:0;white-space:nowrap}
+.reprocessing-bar>.reprocessing-reading-picker .select-host{flex:1;max-width:none}
+.reprocessing-bar .select-trigger{padding:4px 8px;font-size:12px}
+.reprocessing-bar>button{flex-shrink:0;white-space:nowrap;font-size:12px}
+.reprocessing-bar>.reprocessing-quiet-action{padding:4px 6px}
+@container source-reader (max-width:600px){
+ .reprocessing-bar{flex-wrap:wrap}
+ .reprocessing-bar>.reprocessing-reading-picker{flex-basis:100%}
+}

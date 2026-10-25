@@ -153,7 +153,9 @@ test('resumed ledger preserves each last attempt configuration and marks incompl
  assert.equal(document.querySelector('.reprocessing-processing-details').open,false);
  await env.click(env.button('Review changes (1)'));assert.equal(document.querySelectorAll('.reprocessing-patch').length,1);
  assert.equal(document.querySelector('.reprocessing-patch-explanation').open,false);
- assert.equal(document.querySelector('[aria-label="Comparison layout"]').value,'unified');
+ assert.equal(document.querySelector('[aria-label="Comparison layout"]').value,'auto');
+ assert.ok(env.button('Reading preview'));
+ assert.equal(env.button('Reading preview').getAttribute('aria-pressed'),'true');
  });
 
 test('only explicit completed revision selection changes the reading version',async t=>{
@@ -209,6 +211,9 @@ test('review location selects the specific passage instead of its containing cha
  patch.nodeIds=['container','leaf'];
  const env=await mount(t,{initial:r,onOriginal:(nodeId,focus)=>locations.push({nodeId,focus})});
  await env.click(env.button('Review changes (2)'));await env.click(document.querySelector('.reprocessing-patch-list li>button'));
+ assert.deepEqual(locations,[],'choosing a correction keeps its review open');
+ await env.click(env.button('Show original passage'));
+ assert.equal(document.querySelector('.reprocessing-reviews'),null);
  assert.deepEqual(locations,[{nodeId:'leaf',focus:false}]);
 });
 
@@ -278,7 +283,7 @@ test('changing depth leaves the independent review policy unchanged',async t=>{
 test('linked scholarly decisions submit the complete atomic group',async t=>{
  const r=fixture();r.patches=r.patches.map(patch=>({...patch,patchGroupId:'footnote-pair'}));
  const env=await mount(t,{initial:r,post:async(_,current)=>current});await env.click(env.button('Review changes (2)'));
- assert.match(document.querySelector('.reprocessing-patch').textContent,/Linked scholarly changes/);await env.click(env.button('Keep original'));
+ assert.match(document.querySelector('.reprocessing-patch').textContent,/Linked scholarly changes/);await env.click(env.button('Keep originals for group (2)'));
  assert.deepEqual(env.requests.find(entry=>entry.method==='POST').body.decisions,[{patchId:'patch-0',decision:'rejected'},{patchId:'patch-1',decision:'rejected'}]);
 });
 

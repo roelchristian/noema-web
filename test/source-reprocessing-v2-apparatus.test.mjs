@@ -26,6 +26,23 @@ test('repeated boundary lines are reversible presentation suggestions over uncha
 });
 
 
+test('numeric furniture patterns retain multiline headers and page labels without hiding numbered prose',()=>{
+ const pages=Array.from({length:3},(_,index)=>`Journal proceedings 202${index}\nVolume of collected research ${index+1}\nDistinct passage ${index+1}.\nPage ${index+1}\n`);
+ let at=0;const document={physical:{pages:pages.map((text,index)=>{const startOffset=at;at+=text.length;return {number:index+1,range:{startOffset,endOffset:at}};})}};
+ const text=pages.join(''),candidates=detectPageFurniture(text,document);
+ assert.equal(candidates.length,9);
+ for(const page of document.physical.pages){
+  const items=candidates.filter(item=>item.page===page.number);
+  assert.equal(items.length,3);assert.ok(items.every(item=>!item.hidden));
+  assert.ok(items.some(item=>item.text===`Journal proceedings 202${page.number-1}`&&item.kind==='header'));
+  assert.ok(items.some(item=>item.text===`Volume of collected research ${page.number}`&&item.kind==='header'));
+  assert.ok(items.some(item=>item.text===`Page ${page.number}`&&item.kind==='footer'));
+ }
+ const reading=presentWithoutFurniture(text,candidates.map(item=>({...item,hidden:true})));
+ for(let page=1;page<=3;page++)assert.ok(reading.includes(`Distinct passage ${page}.`));
+});
+
+
 const applyDifferences=(original,replacement,spans)=>[...spans].reverse().reduce((text,span)=>text.slice(0,span.start)+replacement.slice(span.newStart,span.newEnd)+text.slice(span.end),original);
 test('granular differences isolate independent scholarly repairs and preserve Unicode graphemes',()=>{
  const original='“Quotatlon” 😀 remains; a technical tenn occurs elsewhere; formula $x=1$ and élan.';

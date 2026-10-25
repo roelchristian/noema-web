@@ -79,3 +79,104 @@ test('retry backoff stops after three attempts and never logs provider text',asy
   await f.worker.tick();assert.equal(calls,3);
  }finally{f.close();}
 });
+
+test('typed embedding auth and request failures dispatch once while capacity respects Retry-After',async()=>{
+ const {GenerationProviderError}=await import('../src/server/modules/intelligence.ts');
+ for(const status of [400,401,403,429,503]) {
+  const f=setup();try {
+   f.worker.close();f.pages.delete('default','welcome');let calls=0;
+   const ai={status:()=>({configured:true}),embedBatch:async(_inputs,onRequest)=>{onRequest?.(100);calls++;throw new GenerationProviderError(status,'Safe failure',120_000);}};
+   f.worker=new Embeddings(f.store,f.pages,new Knowledge(f.store),f.vaults,ai);
+   f.worker.onSave('default',f.page.id);new PageSegments(f.store).synchronize('default',f.page.id);new PageSegmentIndex(f.store).enqueue('default',f.page.id,'save',0);
+   f.store.run("UPDATE embedding_jobs SET next_attempt_at='2000-01-01' WHERE status='queued'");
+   const before=Date.now();await f.worker.tick();await f.worker.tick();
+   const job=f.worker.status('default').jobs.find(j=>j.pageId===f.page.id);
+   assert.equal(calls,1);assert.equal(job.attempts,1);
+   assert.equal(job.status,status===429||status===503?'queued':'failed');
+   if(job.status==='queued')assert.ok(Date.parse(job.nextAttemptAt)>=before+120_000);
+  }finally{f.close();}
+ }
+});
+
+test('deterministic embedding blocks survive forced retry and restart, and release after credential change',async()=>{
+ const {GenerationProviderError}=await import('../src/server/modules/intelligence.ts');
+ const f=setup();try {
+  f.worker.close();f.pages.delete('default','welcome');let calls=0,configuration='old key';
+  const ai={status:()=>({configured:true}),retryConfigurationIdentity:()=>configuration,embedBatch:async(_input,onRequest)=>{onRequest?.(100);calls++;throw new GenerationProviderError(401,'Replace key');}};
+  const create=()=>new Embeddings(f.store,f.pages,new Knowledge(f.store),f.vaults,ai);
+  f.worker=create();new PageSegments(f.store).synchronize('default');new PageSegmentIndex(f.store).enqueue('default',f.page.id,'retry',0,true);await f.worker.tick();
+  assert.equal(calls,1);const first=f.worker.status('default').jobs.find(j=>j.pageId===f.page.id);
+  f.worker.close();f.worker=create();f.worker.retry('default',first.id);await f.worker.tick();assert.equal(calls,1);
+  f.update('Changed substantive content with the same rejected credential should wait.');new PageSegments(f.store).synchronize('default');new PageSegmentIndex(f.store).enqueue('default',f.page.id,'retry',0,true);await f.worker.tick();assert.equal(calls,1);
+  configuration='replacement key';await f.worker.tick();assert.equal(calls,2);
+  assert.equal(f.store.get("SELECT category FROM embedding_retry_blocks WHERE kind='page'").category,'configuration');
+ }finally{f.close();}
+});
+
+test('credential replacement during an embedding dispatch requeues for the fresh key without poisoning it',async()=>{
+ const {HttpError}=await import('../src/server/validation.ts');
+ const f=setup();try {
+  f.worker.close();f.pages.delete('default','welcome');let calls=0,configuration='old key',reject;
+  const ai={status:()=>({configured:true}),retryConfigurationIdentity:()=>configuration,embedBatch:async(_input,onRequest)=>{onRequest?.(100);calls++;if(calls===1)return new Promise((_resolve,fail)=>{reject=fail;});return {embeddings:[vector],tokens:10};}};
+  f.worker=new Embeddings(f.store,f.pages,new Knowledge(f.store),f.vaults,ai);
+  new PageSegments(f.store).synchronize('default');new PageSegmentIndex(f.store).enqueue('default',f.page.id,'retry',0,true);
+  const pending=f.worker.tick();await Promise.resolve();configuration='fresh key';reject(new HttpError(409,'The credential changed or expired.'));await pending;
+  assert.equal(f.store.get('SELECT count(*) n FROM embedding_retry_blocks').n,0);
+  await f.worker.tick();assert.equal(calls,2);assert.equal(f.worker.status('default').jobs.find(j=>j.pageId===f.page.id).status,'completed');
+ }finally{f.close();}
+});
+
+test('provider 404 and 423 fail once and retain terminal retry blocks across worker restart',async()=>{
+ const {GenerationProviderError}=await import('../src/server/modules/intelligence.ts');
+ for(const kind of ['page','source'])for(const status of [404,423]) {
+  const f=setup();try {
+   f.worker.close();f.pages.delete('default','welcome');let calls=0;
+   const ai={status:()=>({configured:true}),embedBatch:async(_inputs,onRequest)=>{onRequest?.(100);calls++;throw new GenerationProviderError(status,'Safe provider request rejection');}};
+   const create=()=>new Embeddings(f.store,f.pages,new Knowledge(f.store),f.vaults,ai);f.worker=create();
+   let owner=f.page.id;
+   if(kind==='source')owner=await retrySourceFixture(f);
+   else {new PageSegments(f.store).synchronize('default');new PageSegmentIndex(f.store).enqueue('default',f.page.id,'retry',0,true);}
+   await f.worker.tick();assert.equal(calls,1,`${kind}/${status}`);
+   const table=kind==='page'?'embedding_jobs':'source_passage_embedding_jobs',ownerColumn=kind==='page'?'page_id':'source_id';
+   const job=f.store.get(`SELECT * FROM ${table} WHERE ${ownerColumn}=?`,owner);
+   assert.equal(job.status,'failed');assert.equal(job.attempts,1);
+   const block=f.store.get('SELECT * FROM embedding_retry_blocks WHERE kind=?',kind);
+   assert.equal(block.category,'request');assert.equal(block.provider_status,status);
+   f.worker.close();f.worker=create();f.worker.retry('default',job.id);await f.worker.tick();await f.worker.tick();
+   assert.equal(calls,1);assert.equal(f.store.get('SELECT provider_status FROM embedding_retry_blocks WHERE kind=?',kind).provider_status,status);
+  }finally{f.close();}
+ }
+});
+
+async function retrySourceFixture(f) {
+ const {SourceFiles}=await import('../src/server/modules/source-files.ts');
+ const {SourcePassages}=await import('../src/server/modules/source-passages.ts');
+ f.store.run('DELETE FROM embedding_jobs');
+ const text='A source passage about algebraic structures and multiplicative inverses. '.repeat(5);
+ const file=new SourceFiles(f.store).add('default','retry-source.md',Buffer.from(text));
+ const source=new Knowledge(f.store).create('default',{name:'Retry source',type:'source',attachmentIds:[file.id]});
+ f.store.run("UPDATE source_files SET status='ready',admitted=1,text=? WHERE id=?",text,file.id);f.store.run('UPDATE entities SET inactive=0 WHERE id=?',source.id);
+ new SourcePassages(f.store).synchronize('default');f.worker.onSourceSave('default',source.id);
+ return source.id;
+}
+
+test('cancelled page and source jobs ignore late deterministic provider failures without retry blocks',async()=>{
+ const {GenerationProviderError}=await import('../src/server/modules/intelligence.ts');
+ for(const kind of ['page','source'])for(const status of [400,401]) {
+  const f=setup();try {
+   f.worker.close();f.pages.delete('default','welcome');let calls=0,reject;
+   const ai={status:()=>({configured:true}),embedBatch:async(_inputs,onRequest)=>{onRequest?.(100);calls++;return new Promise((_resolve,fail)=>{reject=fail;});}};
+   f.worker=new Embeddings(f.store,f.pages,new Knowledge(f.store),f.vaults,ai);
+   let owner=f.page.id;
+   if(kind==='source')owner=await retrySourceFixture(f);
+   else {new PageSegments(f.store).synchronize('default');new PageSegmentIndex(f.store).enqueue('default',f.page.id,'retry',0,true);}
+   const pending=f.worker.tick();assert.equal(calls,1);
+   if(kind==='source')f.worker.invalidateSource('default',owner);else f.worker.invalidate('default',owner);
+   reject(new GenerationProviderError(status,'Late deterministic failure'));await pending;
+   const table=kind==='page'?'embedding_jobs':'source_passage_embedding_jobs',ownerColumn=kind==='page'?'page_id':'source_id';
+   assert.ok(f.store.all(`SELECT status FROM ${table} WHERE ${ownerColumn}=?`,owner).every(job=>job.status==='skipped'));
+   assert.equal(f.store.get('SELECT count(*) n FROM embedding_retry_blocks').n,0,`${kind}/${status}`);
+   assert.equal(calls,1);
+  }finally{f.close();}
+ }
+});

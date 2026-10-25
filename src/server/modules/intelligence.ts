@@ -26,39 +26,49 @@ import {sourceStructureKinds,type IntelligenceStatus,type SourceStructureNode} f
 import {isSectionKind,semanticBlockLabel} from './source-structure.js';
 import { Store } from '../store.js';
 import { HttpError } from '../validation.js';
+import {providerRetryCategory,retryAfterMs,type AIRetryCategory} from './ai-retry-policy.js';
 
 export const embeddingBatchMaxInputs=16;
 export const embeddingBatchMaxBytes=64000;
 /** Local scheduling contention: no provider request was sent. */
 export class EmbeddingAdmissionError extends HttpError {
+  readonly code='local_admission';
+  readonly retryCategory='local_admission';
   constructor(message:string,public retryAfterMs:number) {super(429,message);this.name='EmbeddingAdmissionError';}
 }
 /** Central admission rejected the request before any provider transport. */
 export class GenerationAdmissionError extends HttpError {
+  readonly retryCategory='local_admission';
+  readonly retryAfterMs=1000;
   readonly code='local_admission';
   constructor(message:string) {super(429,message);this.name='GenerationAdmissionError';}
 }
 /** Preserve the provider HTTP outcome without retaining its body or credentials. */
 export class GenerationProviderError extends HttpError {
   readonly code='provider_http';
-  constructor(public providerStatus:number,message:string) {super(providerStatus===429?429:502,message);this.name='GenerationProviderError';}
+  readonly retryCategory:AIRetryCategory;
+  readonly retryable:boolean;
+  constructor(public providerStatus:number,message:string,public retryAfterMs=0) {super(providerStatus,message);this.name='GenerationProviderError';this.retryCategory=providerRetryCategory(providerStatus);this.retryable=this.retryCategory==='capacity';}
 }
 /** A received provider response failed to produce usable output; distinct from settings errors. */
 export class GenerationResponseError extends HttpError {
+  get retryable() {return this.code==='provider_response_failed'?this.providerFailureCode==='server_error'||this.providerFailureCode==='rate_limit_exceeded':!['provider_output_limit','provider_content_filter','provider_output_too_large'].includes(this.code);}
+  get retryCategory():AIRetryCategory {return this.code==='provider_output_limit'?'output_limit':this.providerFailureCode==='invalid_api_key'||this.providerFailureCode==='insufficient_quota'?'configuration':this.providerFailureCode==='invalid_request_error'||this.providerFailureCode==='context_length_exceeded'?'request':'response';}
   readonly outcomeUncertain=false;
-  constructor(public code:'provider_incomplete_output'|'provider_output_limit'|'provider_empty_output'|'provider_content_filter'|'provider_response_failed'|'provider_output_too_large') {
+  constructor(public code:'provider_incomplete_output'|'provider_output_limit'|'provider_empty_output'|'provider_content_filter'|'provider_response_failed'|'provider_output_too_large',public outputTokenBudget?:number,private providerFailureCode?:string) {
     super(502,{
       provider_incomplete_output:'The AI provider returned an incomplete response. Retry unfinished work.',
-      provider_output_limit:'The AI response reached its output token limit before finishing. Retry unfinished work to use a larger response budget.',
+      provider_output_limit:'The AI response reached the configured output token limit before finishing. Automatic retry stopped because the same response budget would fail again. Shorten the input or choose a configuration with a larger output budget.',
       provider_empty_output:'The AI returned no usable text. Retry unfinished work.',
       provider_content_filter:'The AI provider stopped this response because of its content filter.',
       provider_response_failed:'The AI provider did not complete this response.',
       provider_output_too_large:'The AI response exceeded the local output size limit.',
-    }[code]);this.name='GenerationResponseError';
+    }[code]+(code==='provider_output_limit'&&outputTokenBudget?` Output budget: ${outputTokenBudget} tokens.`:''));this.name='GenerationResponseError';this.providerFailureCode=['server_error','rate_limit_exceeded','invalid_api_key','insufficient_quota','invalid_request_error','context_length_exceeded','content_policy_violation'].includes(providerFailureCode??'')?providerFailureCode:undefined;
   }
 }
 /** A transport interruption cannot prove whether the provider completed/billed work. */
 export class GenerationTransportError extends HttpError {
+  readonly retryCategory='transport';
   readonly outcomeUncertain=true;
   constructor(public code:'timeout'|'provider_transport') {super(502,code==='timeout'?'The AI transport deadline elapsed. The provider outcome is unknown.':'The AI connection failed. The provider outcome is unknown.');this.name='GenerationTransportError';}
 }
@@ -389,7 +399,7 @@ export class Intelligence {
         headers:{'Content-Type':'application/json',Authorization:`Bearer ${credential.key}`},
         body:JSON.stringify(payload),
       });
-      if(!response.ok){if(trace)await readOpenAIResponse(response,trace).catch(()=>{});else await response.body?.cancel();throw new HttpError(response.status===429?429:502,response.status===401?'OpenAI rejected the API key. Replace it in Settings.':response.status===429?'OpenAI quota or rate limit reached. Check your OpenAI account.':'OpenAI could not create the embedding. Check API permissions and billing.');}
+      if(!response.ok){trace?.headers(response.status,{});await response.body?.cancel();throw new GenerationProviderError(response.status,response.status===401?'OpenAI rejected the API key. Replace it in Settings.':response.status===429?'OpenAI quota or rate limit reached. Check your OpenAI account.':'OpenAI could not create the embedding. Check API permissions and billing.',retryAfterMs(response.headers.get('retry-after'),this.clock()));}
       // Float JSON grows with the number of returned dimensions, not input bytes.
       // Allow 32 bytes per number plus envelope overhead, bounded by the batch cap.
       const maxJsonBytes=Math.max(128000,16000+inputs.length*1536*32);
@@ -407,6 +417,8 @@ export class Intelligence {
     }catch(error){trace?.error(error instanceof Error?error.message:'Embedding request failed.');if(error instanceof HttpError)throw error;throw new HttpError(502,'The embedding request failed or timed out. Please try again.');}
     finally{signal?.removeEventListener('abort',abort);clearTimeout(timer);this.embeddingRequests.delete(controller);this.backgroundEmbeddingRequests.delete(controller);}
   }
+  /** Opaque credential generation; never includes key material. */
+  retryConfigurationIdentity(kind:'enrichment'|'embedding'='enrichment') {return JSON.stringify([this.credential()?.generation,kind==='embedding'?'text-embedding-3-small/1536':this.enrichmentSelection()]);}
   enrichmentSelection(): IntelligencePreferences {return {...this.enrichmentPreferences};}
   async generatePageEnrichment(input:string,options:PageEnrichmentOptions,onRequest?:AIRequestObserver,background=false) {
     // Build/validate field selection before reserving a request or reading credentials.
@@ -522,8 +534,8 @@ export class Intelligence {
       transportStarted=true;
       const response=await pendingResponse;
       if(!response.ok) {
-        if(trace)await readOpenAIResponse(response,trace).catch(()=>{});else await response.body?.cancel();
-        throw new GenerationProviderError(response.status,response.status===401?'OpenAI rejected the API key. Replace it in Settings.':response.status===429?'OpenAI quota or rate limit reached. Check your OpenAI account.':'OpenAI could not complete the request. Check API permissions, model access, and billing.');
+        trace?.headers(response.status,{});await response.body?.cancel();
+        throw new GenerationProviderError(response.status,response.status===401?'OpenAI rejected the API key. Replace it in Settings.':response.status===429?'OpenAI quota or rate limit reached. Check your OpenAI account.':'OpenAI could not complete the request. Check API permissions, model access, and billing.',retryAfterMs(response.headers.get('retry-after'),this.clock()));
       }
       const safeDelta=(delta:string,receive:(delta:string)=>void)=>{
         if(request.kind==='editorial'&&timedOut&&!requestSignal?.aborted&&this.credential()?.generation===credential.generation&&this.preferenceRevision===preferenceRevision)throw new GenerationTransportError('timeout');
@@ -535,8 +547,8 @@ export class Intelligence {
       const summary=responseOutputText(result).trim();
       if(result.status!=='completed'){
         const reason=result.incomplete_details?.reason;
-        if(result.status==='incomplete')throw new GenerationResponseError(reason==='max_output_tokens'?'provider_output_limit':reason==='content_filter'?'provider_content_filter':'provider_incomplete_output');
-        if(result.status==='failed'||result.status==='cancelled')throw new GenerationResponseError('provider_response_failed');
+        if(result.status==='incomplete')throw new GenerationResponseError(reason==='max_output_tokens'?'provider_output_limit':reason==='content_filter'?'provider_content_filter':'provider_incomplete_output',policy.maxOutputTokens);
+        if(result.status==='failed'||result.status==='cancelled')throw new GenerationResponseError('provider_response_failed',undefined,result.error?.code);
         throw new GenerationTransportError('provider_transport');
       }
       if(!summary)throw new GenerationResponseError('provider_empty_output');

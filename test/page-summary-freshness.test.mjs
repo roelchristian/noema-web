@@ -4,9 +4,9 @@ import assert from 'node:assert/strict';
 import {summaryBaseline,materiallyStaleSummary} from '../src/server/modules/page-summary-freshness.ts';
 const page=text=>({title:'A mathematical note',blocks:[{id:'body',type:'paragraph',content:[{text}]}]});
 const original='Algebra studies equations and polynomial expressions. Mathematical proofs establish theorems using precise axioms and logical arguments. Examples demonstrate transformations of equations and illustrate how polynomial identities follow from algebraic rules.';
-test('summary freshness tolerates punctuation, whitespace and a small correction',()=>{
+test('summary freshness tolerates presentation but requests refresh for uncertain small corrections',()=>{
  const baseline=summaryBaseline(page(original),()=>undefined);
- assert.equal(materiallyStaleSummary(baseline,summaryBaseline(page(original.replace('precise','explicit').replace('Algebra ','Algebra  ')),()=>undefined)),false);
+ assert.equal(materiallyStaleSummary(baseline,summaryBaseline(page(original.replace('precise','explicit').replace('Algebra ','Algebra  ')),()=>undefined)),true);
  assert.equal(materiallyStaleSummary(baseline,summaryBaseline(page(original.replaceAll('.', '!')),()=>undefined)),false);
 });
 test('summary freshness measures cumulative changes against its generating baseline',()=>{
@@ -59,6 +59,21 @@ test('serialized generating summary baseline continues to accumulate small edits
  const tokens=Array.from({length:100},(_,index)=>`term${index}`);
  const baseline=roundtrip(summaryBaseline(page(tokens.join(' ')),()=>undefined));
  const edited=count=>roundtrip(summaryBaseline(page(tokens.map((token,index)=>index<count?`novel${index}`:token).join(' ')),()=>undefined));
- assert.equal(materiallyStaleSummary(baseline,edited(4)),false);
+ assert.equal(materiallyStaleSummary(baseline,edited(4)),true);
  assert.equal(materiallyStaleSummary(baseline,edited(20)),true);
+});
+
+for(const [before,after] of [
+ ['The larger dogs chase the smaller cats','The smaller cats chase the larger dogs'],
+ ['The value increases from 10 to 20','The value increases from 20 to 10'],
+ ['The treatment is effective','The treatment is not effective'],
+ ['A ∈ a','a ∈ A'],['x ∈ A','x ∉ A'],['x² = 3','x2 = 3'],['x / (y + z)','x / y + z'],['x < 10','x > 10'],['x = 10','x = -10'],['x = 1.5','x = 1.6'],
+])test(`ordered semantic freshness: ${before} -> ${after}`,()=>{
+ const baseline=roundtrip(summaryBaseline(page(before),()=>undefined));
+ assert.equal(materiallyStaleSummary(baseline,summaryBaseline(page(after),()=>undefined)),true);
+});
+test('old histogram alone cannot certify a same-vocabulary reversal',()=>{
+ const baseline=summaryBaseline(page('The larger dogs chase the smaller cats'),()=>undefined);
+ delete baseline.orderedContentHash;delete baseline.semanticVersion;
+ assert.equal(materiallyStaleSummary(baseline,summaryBaseline(page('The smaller cats chase the larger dogs'),()=>undefined)),true);
 });

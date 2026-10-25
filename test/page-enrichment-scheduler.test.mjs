@@ -155,3 +155,48 @@ test('enrichment settings migrate from global metadata and cascade with vault de
   assert.equal(store.get('SELECT 1 FROM page_enrichment_settings WHERE vault_id=?','empty'),undefined);
   db.close();
 });
+
+test('typed deterministic failures block identical snapshots across enqueue and restart, and accept changed inputs',async()=>{
+  const {GenerationProviderError,GenerationResponseError}=await import('../src/server/modules/intelligence.ts');
+  for(const error of [new GenerationProviderError(401,'Replace key'),new GenerationProviderError(400,'Invalid request'),new GenerationResponseError('provider_output_limit')]) {
+    const {db,store}=fixture();let calls=0,identity='original',modelProfile='old configuration';
+    const callbacks={prepare:(_v,_p,job)=>({...snapshot(job),dependencyIdentity:identity,modelProfile}),execute:async()=>{calls++;throw error;}};
+    let scheduler=new PageEnrichmentScheduler(store,callbacks,{clock:()=>100});
+    scheduler.enqueue('v','p',{delayMs:0});await scheduler.drain();
+    scheduler.dispose();scheduler=new PageEnrichmentScheduler(store,callbacks,{clock:()=>100});
+    scheduler.enqueue('v','p',{delayMs:0});await scheduler.drain();assert.equal(calls,1);
+    assert.equal(store.get('SELECT fingerprint FROM page_enrichment_failures').fingerprint.length,64);
+    identity='changed content';scheduler.enqueue('v','p',{delayMs:0});await scheduler.drain();assert.equal(calls,error.retryCategory==='configuration'?1:2);
+    modelProfile='new configuration';scheduler.enqueue('v','p',{delayMs:0});await scheduler.drain();assert.equal(calls,error.retryCategory==='configuration'?2:3);
+    scheduler.dispose();db.close();
+  }
+});
+
+test('typed capacity retries honor Retry-After and local admission consumes no provider attempts',async()=>{
+  const {GenerationProviderError,GenerationAdmissionError}=await import('../src/server/modules/intelligence.ts');
+  const {db,store}=fixture();let now=100,calls=0;
+  const scheduler=new PageEnrichmentScheduler(store,{prepare:(_v,_p,job)=>snapshot(job),execute:async()=>{calls++;throw calls===1?new GenerationAdmissionError('Busy'):new GenerationProviderError(429,'Capacity',50_000);}},{clock:()=>now,retryDelaysMs:[10]});
+  scheduler.enqueue('v','p',{delayMs:0});await scheduler.drain();assert.equal(store.get('SELECT attempts FROM page_enrichment_jobs').attempts,0);
+  now=1100;await scheduler.drain();assert.equal(store.get('SELECT attempts FROM page_enrichment_jobs').attempts,1);
+  assert.equal(store.get('SELECT due_at FROM page_enrichment_jobs').due_at,51100);
+  now=51099;await scheduler.drain();assert.equal(calls,2);
+  now=51100;await scheduler.drain();assert.equal(calls,3);assert.equal(store.get('SELECT count(*) n FROM page_enrichment_jobs').n,0);
+  scheduler.dispose();db.close();
+});
+
+test('mocked provider auth, bad request, and output limit each dispatch once for unchanged enrichment',async()=>{
+  const {Intelligence}=await import('../src/server/modules/intelligence.ts');
+  for(const outcome of [401,400,'output_limit']) {
+    const {db,store}=fixture();let credential,now=100;const budgets=[];
+    const ai=new Intelligence({read:()=>credential,write:value=>{credential=value;},remove:()=>{credential=undefined;}},async(_url,options)=>{
+      budgets.push(JSON.parse(options.body).max_output_tokens);
+      return typeof outcome==='number'?new Response('secret upstream error',{status:outcome}):Response.json({status:'incomplete',incomplete_details:{reason:'max_output_tokens'},output:[]});
+    });ai.save({apiKey:'sk-retry-fixture-key-never-persist'});
+    const scheduler=new PageEnrichmentScheduler(store,{prepare:(_v,_p,job)=>snapshot(job),execute:async()=>{await ai.generatePageEnrichment('A substantive mathematical note with enough input for a summary.',{requestedFields:['summary']});}},{clock:()=>now,retryDelaysMs:[15,60,240]});
+    scheduler.enqueue('v','p',{fields:['summary'],delayMs:0});await scheduler.drain();
+    for(const elapsed of [15,60,240]){now+=elapsed;scheduler.enqueue('v','p',{fields:['summary'],delayMs:0});await scheduler.drain();}
+    assert.deepEqual(budgets,[768],String(outcome));
+    assert.equal(store.get('SELECT category FROM page_enrichment_failures').category,outcome===401?'configuration':outcome===400?'request':'output_limit');
+    scheduler.dispose();db.close();
+  }
+});

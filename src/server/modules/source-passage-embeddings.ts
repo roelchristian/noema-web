@@ -1,3 +1,5 @@
+import {EmbeddingRetryState} from './embedding-retry-state.js';
+import {aiRetryPolicy} from './ai-retry-policy.js';
 import {OpenAIResponseSizeError} from './openai-response.js';
 import {randomUUID} from 'node:crypto';
 import {embeddingModel,embeddingDimensions,embeddingMaxBytes,type EmbeddingSettings,type SuggestedSource,type EmbeddingNote,type EmbeddingJob,type SemanticSearchResult} from '../../shared/embeddings.js';
@@ -16,11 +18,13 @@ const eligible=`f.vault_id=p.vault_id AND NOT EXISTS (SELECT 1 FROM source_passa
 const joins=`FROM source_passages p JOIN source_files f ON f.id=p.file_id AND f.entity_id=p.source_id JOIN entities e ON e.id=p.source_id AND e.vault_id=p.vault_id LEFT JOIN embedding_settings s ON s.vault_id=p.vault_id`;
 const fresh=`b.content_hash=p.content_hash AND b.model=? AND b.dimensions=?`;
 export class SourcePassageEmbeddings {
+ private retryState:EmbeddingRetryState;
  private closed=false;
  private vectors=new CachedVectorSearch();
  private activityIds=new Set<string>();
  private lastSource:{vault:string;source:string}|undefined;
  constructor(private store:Store,private vaults:Vaults,private intelligence:Intelligence,private settings:(vault:string)=>EmbeddingSettings,private activity?:AIActivityLog,private synchronize?:(vault:string)=>void) {
+  this.retryState=new EmbeddingRetryState(store,intelligence,'source');
   store.run("UPDATE source_passage_embedding_jobs SET status=CASE WHEN attempts<3 THEN 'queued' ELSE 'interrupted' END,finished_at=?,error='Server stopped during this attempt.' WHERE status='running'",now());
  }
  close(){this.closed=true;this.vectors.clear();for(const id of this.activityIds)this.activity?.finish(id,'interrupted',null);this.activityIds.clear();}
@@ -75,6 +79,11 @@ export class SourcePassageEmbeddings {
  private passage(job:Job){return this.store.get<SourcePassage>(`SELECT p.* ${joins} WHERE p.id=? AND p.vault_id=? AND p.generation_id=? AND ${eligible}`,job.passage_id,job.vault_id,job.generation_id);}
  async tick():Promise<boolean> {
   if(this.closed)return false;
+  for(const changed of this.retryState.configurationChanged()) {
+   const source=this.store.get<{source_id:string}>('SELECT source_id FROM source_passages WHERE id=?',changed.id)??this.store.get<{source_id:string}>('SELECT source_id FROM source_passage_embedding_jobs WHERE passage_id=? AND vault_id=? LIMIT 1',changed.id,changed.vault);
+   if(source)this.enqueue(changed.vault,'configuration_change',source.source_id,false,true);
+  }
+  if(this.closed)return false;
   // Rotate whole bounded batches between sources, including sources in different vaults.
   const selected=this.store.get<{vault_id:string;source_id:string}>(`SELECT j.vault_id,j.source_id FROM source_passage_embedding_jobs j JOIN vaults v ON v.id=j.vault_id WHERE j.status='queued' AND j.next_attempt_at<=? AND v.locked=0 GROUP BY j.vault_id,j.source_id ORDER BY CASE WHEN j.vault_id>? OR (j.vault_id=? AND j.source_id>?) THEN 0 ELSE 1 END,j.vault_id,j.source_id LIMIT 1`,now(),this.lastSource?.vault??'',this.lastSource?.vault??'',this.lastSource?.source??'');
   if(!selected)return false;
@@ -92,6 +101,7 @@ export class SourcePassageEmbeddings {
    else if(job.reason==='save'&&!this.settings(job.vault_id).automatic)skipped='Automatic indexing disabled.';
    else if(this.store.get(`SELECT 1 FROM source_passage_embeddings WHERE passage_id=? AND content_hash=? AND model=? AND dimensions=?`,passage.id,passage.content_hash,embeddingModel,embeddingDimensions))skipped='Passage is already indexed.';
    if(skipped){this.store.run("UPDATE source_passage_embedding_jobs SET status='skipped',finished_at=?,error=? WHERE id=? AND status='queued'",now(),skipped,job.id);continue;}
+   if(this.retryState.blocked(job.passage_id,job.content_hash)){this.store.run("UPDATE source_passage_embedding_jobs SET status='failed',finished_at=?,error='Waiting for an input or Intelligence configuration change.' WHERE id=? AND status='queued'",now(),job.id);continue;}
    let heading='',headingBytes=0;
    for(const point of passage!.heading??''){const bytes=Buffer.byteLength(point,'utf8');if(headingBytes+bytes>Math.min(1000,embeddingMaxBytes-Buffer.byteLength(passage!.text,'utf8')-2))break;heading+=point;headingBytes+=bytes;}
    const input=heading?`${heading}\n\n${passage!.text}`:passage!.text,bytes=Buffer.byteLength(input,'utf8');
@@ -101,6 +111,7 @@ export class SourcePassageEmbeddings {
    batch.push({job,input,bytes});batchBytes+=bytes;
   }
   if(!batch.length)return true;
+  const dispatchedConfiguration=this.retryState.configurationIdentity();
   try {
    const result=await this.intelligence.embedBatch(batch.map(item=>item.input),bytes=>{
     // Admission happens before this observer. Local contention never spends attempts.
@@ -135,17 +146,23 @@ export class SourcePassageEmbeddings {
    this.endActivity(activityId,attached?'completed':'skipped',attached?200:409);
   }catch(error){
    if(this.closed)return true;
-   const code=error instanceof HttpError?error.status:502;this.endActivity(activityId,code===404||code===423?'skipped':'failed',code);
+   const policy=aiRetryPolicy(error);
+   const code=error instanceof HttpError?error.status:502;
+   const providerFailure=!!error&&typeof error==='object'&&'providerStatus' in error&&typeof error.providerStatus==='number';this.endActivity(activityId,!providerFailure&&(code===404||code===423)?'skipped':'failed',code);
    for(const {job} of batch){
+    if(this.store.get<{status:string}>('SELECT status FROM source_passage_embedding_jobs WHERE id=?',job.id)?.status!=='running')continue;
+    if(code===409&&this.retryState.configurationIdentity()!==dispatchedConfiguration) {
+     this.store.run("UPDATE source_passage_embedding_jobs SET status='queued',started_at=NULL,next_attempt_at=?,error='Intelligence configuration changed. Waiting to retry.' WHERE id=? AND status='running'",now(),job.id);continue;
+    }
     // Shrinking is bounded by the singleton case and survives worker restarts.
     if(error instanceof OpenAIResponseSizeError&&batch.length>1) {
      this.store.run("UPDATE source_passage_embedding_jobs SET status='queued',started_at=NULL,next_attempt_at=?,batch_max_inputs=?,error='Response size limit reached. Retrying a smaller batch.' WHERE id=? AND status='running'",now(),Math.ceil(batch.length/2),job.id);continue;
     }
     if(error instanceof EmbeddingAdmissionError)this.store.run("UPDATE source_passage_embedding_jobs SET status='queued',started_at=NULL,next_attempt_at=?,error='Waiting for embedding capacity.' WHERE id=? AND status='running'",new Date(Date.now()+Math.max(1,error.retryAfterMs)).toISOString(),job.id);
-    else if(code===423)this.store.run("UPDATE source_passage_embedding_jobs SET status='queued',next_attempt_at=?,error='Waiting for vault to unlock.' WHERE id=? AND status='running'",now(),job.id);
-    else if((code===429||code>=500)&&job.attempts<3)this.store.run("UPDATE source_passage_embedding_jobs SET status='queued',next_attempt_at=?,error='Embedding service unavailable. Automatic retry scheduled.' WHERE id=? AND status='running'",new Date(Date.now()+30000*2**Math.max(0,job.attempts-1)).toISOString(),job.id);
-    else if(code===429||code>=500)this.store.run("UPDATE source_passage_embedding_jobs SET status='failed',finished_at=?,next_attempt_at=?,error='Embedding service unavailable. Automatic discovery will retry.' WHERE id=? AND status='running'",now(),new Date(Date.now()+15*60*1000).toISOString(),job.id);
-    else this.finish(job.id,code===404?'skipped':'failed','Passage embedding request failed. Check Intelligence settings and retry.');
+    else if(!providerFailure&&code===423)this.store.run("UPDATE source_passage_embedding_jobs SET status='queued',next_attempt_at=?,error='Waiting for vault to unlock.' WHERE id=? AND status='running'",now(),job.id);
+    else if(policy.retryable&&job.attempts<3)this.store.run("UPDATE source_passage_embedding_jobs SET status='queued',next_attempt_at=?,error='Embedding service unavailable. Automatic retry scheduled.' WHERE id=? AND status='running'",new Date(Date.now()+Math.max(policy.retryAfterMs,30000*2**Math.max(0,job.attempts-1))).toISOString(),job.id);
+    else if(policy.retryable)this.store.run("UPDATE source_passage_embedding_jobs SET status='failed',finished_at=?,next_attempt_at=?,error='Embedding service unavailable. Automatic discovery will retry.' WHERE id=? AND status='running'",now(),new Date(Date.now()+15*60*1000).toISOString(),job.id);
+    else {this.retryState.record(job.passage_id,job.vault_id,job.content_hash,error,dispatchedConfiguration);this.finish(job.id,!providerFailure&&code===404?'skipped':'failed','Passage embedding request failed. Check Intelligence settings and retry.');}
    }
   }
   return true;

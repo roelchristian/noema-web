@@ -57,7 +57,7 @@ test('embedding retries, discarded results, interruption and clear retain accura
  const f=fixture();let release;
  try{
   f.handler(async()=>Response.json({error:{message:'do not log'}},{status:503}));f.queue();await f.worker.tick();
-  const failed=f.activity.list(null).items[0];assert.equal(failed.status,'failed');assert.equal(failed.httpStatus,502);
+  const failed=f.activity.list(null).items[0];assert.equal(failed.status,'failed');assert.equal(failed.httpStatus,503);
   f.handler(async()=>embedded());f.store.run("UPDATE embedding_jobs SET next_attempt_at='2000-01-01' WHERE status='queued'");await f.worker.tick();
   let items=f.activity.list(null).items;assert.equal(items.length,2);assert.equal(items[0].status,'completed');assert.equal(items[1].id,failed.id);
   f.update('Revised note text that should have a new embedding.');f.queue();

@@ -30,6 +30,17 @@ export class ChatStorage {
   this.store.run('UPDATE chat_threads SET title=?,updated_at=? WHERE vault_id=? AND id=?',title.trim(),new Date().toISOString(),vault,id);return this.get(vault,id);
  }
  remove(vault:string,id:string) {this.get(vault,id);this.store.run('DELETE FROM chat_threads WHERE vault_id=? AND id=?',vault,id);return {deleted:true};}
+ replaceAnswer(vault:string,id:string,previousId:string,message:ChatMessage) {
+  this.store.transaction(()=>{
+   const thread=this.get(vault,id),last=thread.messages.at(-1);
+   if(last?.id!==previousId||last.role!=='assistant')throw new HttpError(409,'The conversation changed. Open its latest answer before regenerating.');
+   this.store.run('DELETE FROM chat_messages WHERE thread_id=? AND id=?',id,previousId);
+   const {evidence,...payload}=message;
+   this.store.run('INSERT INTO chat_messages (id,thread_id,sequence,payload) VALUES (?,?,?,?)',message.id,id,thread.messages.length-1,JSON.stringify(payload));
+   for(const item of evidence??[])this.store.run('INSERT INTO chat_evidence (message_id,evidence_id,snapshot) VALUES (?,?,?)',message.id,item.id,JSON.stringify(item));
+   this.store.run('UPDATE chat_threads SET updated_at=? WHERE vault_id=? AND id=?',message.createdAt,vault,id);
+  });
+ }
  append(vault:string,id:string,messages:ChatMessage[]) {
   const thread=this.get(vault,id);if(thread.messages.length+messages.length>200)throw new HttpError(409,'This conversation is full. Start a new conversation.');
   this.store.transaction(()=>{

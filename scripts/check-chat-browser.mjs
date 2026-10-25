@@ -83,7 +83,7 @@ try {
   await context.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
   const page=await context.newPage();page.setDefaultTimeout(12000);page.on('pageerror',error=>errors.push(error.message));
   await page.goto(`${base}/?vault=default&page=${specimen.id}`);await page.locator('#page-title').waitFor();
-  await openChat(page,width);assert.match(await page.locator('[data-chat-scope]').innerText(),/Entire vault/);
+  await openChat(page,width);assert.equal(await page.locator('[data-chat-scope]').count(),0);
   await page.locator('.chat-options > summary').click();await page.getByRole('checkbox',{name:'Temporary chat',exact:true}).check();
   const composer=page.getByRole('textbox',{name:'Ask something about your knowledge',exact:true});
   await composer.fill('@August');await page.locator('#chat-mention-list').getByRole('option',{name:/Augustine/}).waitFor();await composer.press('Enter');
@@ -109,7 +109,7 @@ try {
   assert.match(await page.locator('[data-chat-scope]').innerText(),/Page · Synthetic grace notebook/);
   await ask(page);if(width===390)await page.getByRole('button',{name:'Show conversations',exact:true}).click();const history=page.getByRole('navigation',{name:'Conversation history',exact:true});const active=history.locator('[aria-current=page]');await active.waitFor();
   const threadId=await active.getAttribute('data-thread-id');assert.ok(threadId);if(width===390)await page.getByRole('button',{name:'Close conversations',exact:true}).click();
-  await page.locator('.chat-options > summary').click();await page.getByRole('button',{name:'Rename conversation',exact:true}).click();await page.getByRole('textbox',{name:'Conversation title',exact:true}).fill(`Browser ${width} ${mode}`);await page.getByRole('button',{name:'Save title',exact:true}).click();
+  await page.getByRole('button',{name:'Rename conversation',exact:true}).click();await page.getByRole('textbox',{name:'Conversation title',exact:true}).fill(`Browser ${width} ${mode}`);await page.getByRole('button',{name:'Save title',exact:true}).click();
   await page.locator('.chat-citation').first().click();await page.getByRole('button',{name:'Open in original',exact:true}).click();await page.locator('#page-title').waitFor();
   assert.equal(new URL(page.url()).searchParams.get('page'),specimen.id,'Evidence opens original note');
   await openChat(page,width);if(width===390)await page.getByRole('button',{name:'Show conversations',exact:true}).click();await history.locator(`[data-thread-id="${threadId}"]`).click();await page.locator('.chat-message.is-assistant').waitFor();
@@ -124,7 +124,7 @@ try {
   await composer.fill('What does grace mean here?');await composer.press('Enter');await page.locator('.chat-message.is-assistant').waitFor();
   assert.ok(requests.at(-1).input.includes('previousQuestions'),'Repeat flow uses fresh provider request');
   // Provider failure stays intelligible and leaves no unfinished answer behind.
-  await page.getByRole('button',{name:'New chat',exact:true}).click();transportMode='error';
+  await page.getByRole('button',{name:'New conversation',exact:true}).click();transportMode='error';
   await composer.fill('What does grace mean here?');await composer.press('Enter');await page.locator('.chat-error').waitFor();assert.equal(await page.locator('.chat-message.is-assistant').count(),0);transportMode='answer';
   await page.goto(`${base}/?vault=default&source=${source.id}`);await page.getByRole('button',{name:'Ask about this',exact:true}).waitFor();await page.getByRole('button',{name:'Ask about this',exact:true}).click();
   assert.match(await page.locator('[data-chat-scope]').innerText(),/Source · Synthetic grace source/);await ask(page);
@@ -143,7 +143,7 @@ try {
   transportMode='pending';const beforeSwitch=requests.length;await composer.fill('What is recorded about Augustine?');await composer.press('Enter');for(let attempt=0;requests.length===beforeSwitch&&attempt<200;attempt++)await new Promise(resolve=>setTimeout(resolve,10));assert.ok(requests.length>beforeSwitch);
   if(width===390)await page.getByRole('button',{name:'Open navigation',exact:true}).click();
   await page.locator('#vault-select').selectOption(secondVault.id);await page.waitForURL(url=>url.searchParams.get('vault')===secondVault.id);transportMode='answer';
-  await page.getByRole('region',{name:'Chat workspace'}).waitFor({state:'hidden'});if(width===390&&await page.getByRole('button',{name:'Close navigation',exact:true}).isVisible())await page.getByRole('button',{name:'Close navigation',exact:true}).click();await openChat(page,width);assert.match(await page.locator('[data-chat-scope]').innerText(),/Other synthetic vault/);assert.equal(await page.locator('.chat-message').count(),0,'Previous vault conversation is absent');
+  await page.getByRole('region',{name:'Chat workspace'}).waitFor({state:'hidden'});if(width===390&&await page.getByRole('button',{name:'Close navigation',exact:true}).isVisible())await page.getByRole('button',{name:'Close navigation',exact:true}).click();await openChat(page,width);assert.equal(await page.locator('[data-chat-scope]').count(),0);assert.equal(await page.locator('.chat-message').count(),0,'Previous vault conversation is absent');
   checks.push({width,mode,scope:'vault and contextual page bounded',resolvedMention:augustine.id,evidence:'keyboard focus, exact note navigation, saved snapshot',temporary:'close clears history',history:'rename and delete',cancellation:'no partial answer',horizontalOverflow:false,contextual:'Page, source and entity; property, relationship and incoming-owner exact focus',providerFailure:'no partial answer; retry recovers',vaultSwitch:'aborts pending answer and clears old conversation',requestsBeforeCancel:before});
   await context.close();
  }

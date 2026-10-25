@@ -46,8 +46,9 @@ test('Chat renders streamed claims before completion, replaces them once, and cl
    const log=document.querySelector('.chat-messages');let scrolls=0;log.scrollTo=()=>scrolls++;Object.defineProperties(log,{scrollHeight:{configurable:true,value:1000},clientHeight:{configurable:true,value:200}});
    await act(async()=>log.dispatchEvent(new Event('scroll')));
    await act(async()=>stream.enqueue(packet({type:'claim',claim:second})));assert.equal(document.querySelectorAll('.is-streaming .chat-claim').length,2);assert.equal(scrolls,0,'Reading older messages is not interrupted by streaming');
-   await act(async()=>{stream.enqueue(packet({type:'answer',result:{message:{id:'final',role:'assistant',text:first.text+'\n\n'+second.text,claims:[first,second],evidence:[evidence],createdAt:'',status:'completed'},diagnostics:{depth:'standard',passes:1,evidenceCount:1}}}));stream.close();});
-   assert.equal(document.querySelector('.is-streaming'),null);assert.equal(document.querySelectorAll('.is-assistant').length,1);assert.equal(document.querySelectorAll('.chat-claim').length,2);assert.equal(document.querySelectorAll('.chat-copy').length,1);
+   t.mock.method(chatAPI,'list',async()=>[{id:'early-thread',title:'Grace and evidence',scope:{kind:'vault'},createdAt:'',updatedAt:new Date().toISOString(),messages:[]}]);
+   await act(async()=>{stream.enqueue(packet({type:'answer',result:{threadId:'early-thread',title:'Grace and evidence',titleUpdated:true,message:{id:'final',role:'assistant',text:first.text+'\n\n'+second.text,claims:[first,second],evidence:[evidence],createdAt:'',status:'completed'},diagnostics:{depth:'standard',passes:1,evidenceCount:1}}}));stream.close();});
+   assert.equal(document.querySelector('.is-streaming'),null);assert.equal(document.querySelectorAll('.is-assistant').length,1);assert.equal(document.querySelectorAll('.chat-claim').length,2);assert.equal(document.querySelectorAll('.chat-copy').length,1);assert.equal(document.querySelector('.chat-title-button .sr-only').textContent,'Grace and evidence');assert.equal(document.querySelector('.chat-thread-title .sr-only').textContent,'Grace and evidence');
   }else if(outcome==='stop')await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Stop').click());
   else if(outcome==='error')await act(async()=>{stream.enqueue(packet({type:'error',message:'The evidence changed while answering.'}));stream.close();});
   else await act(async()=>stream.close());
@@ -74,6 +75,7 @@ test('conversation inbox groups and searches history, opens the selected scope, 
  await edit('input[aria-label="Search conversations"]','no match');assert.match(inbox.textContent,/No matches/);
  await edit('input[aria-label="Search conversations"]','');await click('[data-thread-id=today]');
  assert.equal(document.querySelector('[aria-current=page]').dataset.threadId,'today');assert.match(document.querySelector('[data-chat-scope]').textContent,/Source · Original source/);assert.match(document.querySelector('.chat-heading h1').textContent,/Grace and evidence/);
+ await click('[aria-label="Rename conversation"]');await edit('input[aria-label="Conversation title"]','Cancelled name');await click('[aria-label="Cancel rename"]');assert.match(document.querySelector('.chat-heading h1').textContent,/Grace and evidence/);
  await click('[aria-label="Rename conversation"]');await edit('input[aria-label="Conversation title"]','Renamed conversation');
  await act(async()=>document.querySelector('.chat-rename').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
  assert.match(document.querySelector('[data-thread-id=today]').textContent,/Renamed conversation/);
@@ -153,4 +155,88 @@ test('Chat session parsing rejects bad scope and identity, bounds drafts, and to
  for(const value of ['broken','null','{"scope":{"kind":"unknown"}}','{"scope":{"kind":"page"}}','{"scope":{"kind":"vault"},"threadId":4}']){window.sessionStorage.setItem(key,value);assert.equal(readChatSession('default'),null);}
  window.sessionStorage.setItem(key,JSON.stringify({open:true,scope:{kind:'vault'},draft:'a'.repeat(3000),scrollTop:-4}));assert.equal(readChatSession('default').draft.length,2000);assert.equal(readChatSession('default').scrollTop,0);
  t.mock.getter(env.dom.window,'sessionStorage',()=>{throw new Error('Storage blocked');});assert.equal(readChatSession('default'),null);assert.doesNotThrow(()=>writeChatSession('default',{open:true,scope:{kind:'vault'}}));assert.doesNotThrow(()=>clearChatSession('default'));
+});
+
+test('inbox timestamps use compact relative labels and update while the inbox is open',async t=>{
+ const {act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
+ const {setupDOM}=await import('./helpers/dom.mjs'),{ChatInbox,relativeChatTime}=await import('../src/client/chat/ChatInbox.tsx');
+ const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ let now=Date.parse('2026-10-26T04:00:00Z'),tick;t.mock.method(Date,'now',()=>now);t.mock.method(window,'setInterval',callback=>{tick=callback;return 1;});t.mock.method(window,'clearInterval',()=>{});
+ for(const [seconds,label] of [[0,'just now'],[59,'just now'],[120,'2m'],[3600,'1h'],[172800,'2d'],[604800,'1w']])assert.equal(relativeChatTime(new Date(now-seconds*1000).toISOString(),now),label);
+ assert.equal(relativeChatTime('invalid',now),'');assert.equal(relativeChatTime(new Date(now+60000).toISOString(),now),'just now');
+ const thread={id:'relative',title:'A recent chat',scope:{kind:'vault'},createdAt:new Date(now).toISOString(),updatedAt:new Date(now).toISOString(),messages:[]};
+ await act(async()=>root.render(createElement(ChatInbox,{threads:[thread],disabled:false,loading:false,error:'',onNew(){},onSelect(){},onRetry(){}})));
+ assert.equal(document.querySelector('time').textContent,'just now');assert.ok(document.querySelector('time').title);now+=120000;await act(async()=>tick());assert.equal(document.querySelector('time').textContent,'2m');
+});
+
+test('title reveal animates once, exposes the complete accessible name, and respects reduced motion',async t=>{
+ const {act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
+ const {setupDOM}=await import('./helpers/dom.mjs'),{ChatTitle}=await import('../src/client/chat/ChatTitle.tsx');
+ const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));let tick,cleared=0;
+ t.mock.method(window,'setInterval',callback=>{tick=callback;return 1;});t.mock.method(window,'clearInterval',()=>cleared++);
+ await act(async()=>root.render(createElement(ChatTitle,{title:'A topic',animate:true})));assert.equal(document.querySelector('.sr-only').textContent,'A topic');assert.equal(document.querySelector('[aria-hidden]').textContent.trim(),'');
+ await act(async()=>tick());assert.equal(document.querySelector('[aria-hidden]').textContent,'A');for(let i=0;i<6;i++)await act(async()=>tick());assert.equal(document.querySelector('[aria-hidden]').textContent,'A topic');assert.ok(cleared);
+ t.mock.method(window,'matchMedia',()=>({matches:true}));await act(async()=>root.render(createElement(ChatTitle,{title:'Reduced motion title',animate:true})));assert.equal(document.querySelector('[aria-hidden]').textContent,'Reduced motion title');
+});
+
+test('history row swipe reveals delete without selecting; vertical scrolling stays vertical and keyboard actions work',async t=>{
+ const {act,createElement,useState}=await import('react'),{createRoot}=await import('react-dom/client');
+ const {setupDOM}=await import('./helpers/dom.mjs'),{ChatThreadRow}=await import('../src/client/chat/ChatThreadRow.tsx');
+ const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));let selected=0,deleted=0;
+ const thread={id:'swipe',title:'A long conversation title that should wrap rather than force horizontal scrolling',scope:{kind:'vault'},createdAt:'',updatedAt:'',messages:[]};
+ function Fixture(){const [revealed,onReveal]=useState(false);return createElement('ul',null,createElement(ChatThreadRow,{thread,selected:false,disabled:false,revealed,animate:false,time:'just now',onSelect:()=>selected++,onDelete:()=>deleted++,onReveal}));}
+ await act(async()=>root.render(createElement(Fixture)));
+ const row=document.querySelector('.chat-thread-swipe');
+ const pointer=(type,x,y)=>act(async()=>{const event=new Event(type,{bubbles:true,cancelable:true});Object.defineProperties(event,{pointerId:{value:1},button:{value:0},clientX:{value:x},clientY:{value:y}});row.dispatchEvent(event);});
+ await pointer('pointerdown',0,0);await pointer('pointermove',4,40);await pointer('pointerup',4,40);assert.equal(row.dataset.revealed,'false');
+ await pointer('pointerdown',0,0);await pointer('pointermove',68,3);await pointer('pointerup',68,3);assert.equal(row.dataset.revealed,'true');assert.equal(selected,0);assert.equal(deleted,0);
+ await act(async()=>document.querySelector('.chat-thread').dispatchEvent(new MouseEvent('click',{bubbles:true,detail:1})));assert.equal(selected,0,'Swipe release does not open a conversation');
+ await act(async()=>row.dispatchEvent(new env.dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})));assert.equal(row.dataset.revealed,'false');
+ await act(async()=>document.querySelector('.chat-thread-actions-toggle').click());assert.equal(row.dataset.revealed,'true');await act(async()=>document.querySelector('.chat-thread-delete').click());assert.equal(deleted,1);
+});
+
+test('toolbar occupies the app slot and inbox collapse persists without losing the selected conversation',async t=>{
+ const {act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
+ const {setupDOM}=await import('./helpers/dom.mjs'),{ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
+ const {readChatSession}=await import('../src/client/chat/chat-session.ts');
+ const env=setupDOM(t,{html:'<header class="topbar"><div id="chat-toolbar"></div></header><div id="mount"></div>'}),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ const now=new Date().toISOString(),thread={id:'current',title:'A selected conversation',scope:{kind:'vault'},createdAt:now,updatedAt:now,messages:[{id:'user',role:'user',text:'Question',createdAt:now},{id:'answer',role:'assistant',text:'Answer',createdAt:now}]};
+ t.mock.method(chatAPI,'list',async()=>[thread]);t.mock.method(chatAPI,'get',async()=>thread);
+ const props={vaultId:'default',vaultName:'Test',initialScope:{kind:'vault'},entities:[],pages:[],visible:true,onClose(){},onOpenEvidence(){}};
+ await act(async()=>root.render(createElement(ChatWorkspace,props)));assert.ok(document.querySelector('#chat-toolbar .chat-heading'));assert.equal(document.querySelector('.chat-main .chat-heading'),null);
+ await act(async()=>document.querySelector('[data-thread-id=current]').click());await act(async()=>document.querySelector('[aria-label="Hide inbox"]').click());assert.equal(document.querySelector('.chat-history-pane').hidden,true);assert.match(document.querySelector('.chat-messages').textContent,/Answer/);assert.equal(readChatSession('default').inboxCollapsed,true);
+ await act(async()=>root.render(null));await act(async()=>root.render(createElement(ChatWorkspace,{...props,restoreSession:true})));assert.equal(document.querySelector('.chat-history-pane').hidden,true);assert.match(document.querySelector('.chat-messages').textContent,/Answer/);
+ await act(async()=>document.querySelector('[aria-label="Show inbox"]').click());assert.equal(document.querySelector('.chat-history-pane').hidden,false);assert.equal(document.querySelector('[aria-current=page]').dataset.threadId,'current');assert.ok(document.querySelector('.chat-copy .icon'));assert.equal(document.querySelector('.chat-copy').textContent,'');assert.ok(document.querySelector('[aria-label="Regenerate answer"] .icon'));
+});
+
+test('regeneration streams a replacement, keeps the draft, and restores the old answer when unsuccessful',async t=>{
+ const {act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
+ const {setupDOM}=await import('./helpers/dom.mjs'),{ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
+ for(const outcome of ['complete','error','stop'])await t.test(outcome,async t=>{
+  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+  const now=new Date().toISOString(),original={id:'old-answer',role:'assistant',text:'Keep the old answer.',createdAt:now,status:'completed'},thread={id:'regenerate',title:'A conversation',scope:{kind:'vault'},createdAt:now,updatedAt:now,messages:[{id:'user',role:'user',text:'Original question?',createdAt:now},original]};
+  t.mock.method(chatAPI,'list',async()=>[thread]);t.mock.method(chatAPI,'get',async()=>thread);t.mock.method(chatAPI,'cancel',async()=>({cancelled:true}));
+  let stream,body;const encoder=new TextEncoder();t.mock.method(globalThis,'fetch',async(_url,options)=>{body=JSON.parse(options.body);return new Response(new ReadableStream({start(controller){stream=controller;options.signal.addEventListener('abort',()=>controller.error(new DOMException('Stopped','AbortError')),{once:true});}}));});
+  await act(async()=>root.render(createElement(ChatWorkspace,{vaultId:'default',vaultName:'Test',initialScope:{kind:'vault'},entities:[],pages:[],visible:true,onClose(){},onOpenEvidence(){}})));
+  await act(async()=>document.querySelector('[data-thread-id=regenerate]').click());await act(async()=>{const input=document.getElementById('chat-question');input[Object.keys(input).find(key=>key.startsWith('__reactProps'))].onChange({target:{value:'An unsent draft'}});});
+  await act(async()=>document.querySelector('[aria-label="Regenerate answer"]').click());assert.equal(body.question,'Original question?');assert.equal(body.regenerateMessageId,'old-answer');assert.deepEqual(body.previousQuestions,[]);assert.equal(document.querySelectorAll('.is-user').length,1);assert.match(document.querySelector('.is-assistant').textContent,/Keep the old answer/);
+  const packet=value=>encoder.encode('data: '+JSON.stringify(value)+'\n\n'),claim={text:'Replacement answer.',attribution:'unestablished',citationIds:[]};
+  await act(async()=>stream.enqueue(packet({type:'claim',claim})));assert.equal(document.querySelectorAll('.is-assistant').length,1);assert.match(document.querySelector('.is-streaming').textContent,/Replacement answer/);
+  if(outcome==='complete')await act(async()=>{stream.enqueue(packet({type:'answer',result:{threadId:'regenerate',title:thread.title,message:{id:'new-answer',role:'assistant',text:claim.text,claims:[claim],createdAt:now,status:'completed'},diagnostics:{depth:'standard',passes:1,evidenceCount:0}}}));stream.close();});
+  else if(outcome==='error')await act(async()=>{stream.enqueue(packet({type:'error',message:'Could not regenerate.'}));stream.close();});
+  else await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Stop').click());
+  assert.equal(document.querySelectorAll('.is-assistant').length,1);assert.equal(document.querySelectorAll('.is-user').length,1);assert.equal(document.getElementById('chat-question').value,'An unsent draft');assert.match(document.querySelector('.is-assistant').textContent,outcome==='complete'?/Replacement answer/:/Keep the old answer/);
+ });
+});
+
+test('deleting a different inbox row preserves the active conversation and draft',async t=>{
+ const {act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
+ const {setupDOM}=await import('./helpers/dom.mjs'),{ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
+ const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ const now=new Date().toISOString();let threads=['Current','Other'].map(title=>({id:title,title,scope:{kind:'vault'},createdAt:now,updatedAt:now,messages:[]}));
+ t.mock.method(chatAPI,'list',async()=>threads);t.mock.method(chatAPI,'get',async(_vault,id)=>({...threads.find(item=>item.id===id),messages:[{id:'user',role:'user',text:'My question',createdAt:now}]}));t.mock.method(chatAPI,'remove',async(_vault,id)=>{threads=threads.filter(item=>item.id!==id);return {deleted:true};});
+ await act(async()=>root.render(createElement(ChatWorkspace,{vaultId:'default',vaultName:'Test',initialScope:{kind:'vault'},entities:[],pages:[],visible:true,onClose(){},onOpenEvidence(){}})));
+ await act(async()=>document.querySelector('[data-thread-id=Current]').click());await act(async()=>{const input=document.getElementById('chat-question');input[Object.keys(input).find(key=>key.startsWith('__reactProps'))].onChange({target:{value:'Keep this draft'}});});
+ await act(async()=>document.querySelector('[aria-label="Actions for Other"]').click());await act(async()=>document.querySelector('[aria-label="Delete Other"]').click());
+ assert.equal(document.querySelector('[data-thread-id=Other]'),null);assert.equal(document.querySelector('[aria-current=page]').dataset.threadId,'Current');assert.equal(document.getElementById('chat-question').value,'Keep this draft');assert.match(document.querySelector('.chat-messages').textContent,/My question/);
 });

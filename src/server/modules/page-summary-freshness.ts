@@ -7,7 +7,7 @@ import {compareTokenHistograms,validTokenHistogram,type TokenHistogram} from './
 export type SummaryBaseline=Pick<ClassificationBaseline,'version'|'title'|'tokenCounts'|'tokenCount'|'headings'> & {semanticVersion?:1;orderedContentHash?:string;blockEvidence?:BlockEvidence};
 /** Preserve word order, quantities and mathematical operators; ignore presentation punctuation. */
 function orderedContentHash(text:string):string {
-  const tokens=text.normalize('NFC').toLowerCase().match(/[\p{L}\p{N}]+(?:[.,][\p{N}]+)*|[+*−=<>×÷^%∑∏√≤≥≠±\/\-()\[\]{}|]|\p{S}|!(?==)/gu)??[];
+  const tokens=text.normalize('NFC').match(/[\p{L}\p{N}]+(?:[.,][\p{N}]+)*|[+*−=<>×÷^%∑∏√≤≥≠±\/\-()\[\]{}|]|\p{S}|!(?==)/gu)??[];
   return createHash('sha256').update(JSON.stringify(tokens)).digest('hex');
 }
 export function summaryBaseline(page:Pick<Page,'title'|'blocks'>,resolve:(id:string)=>string|undefined):SummaryBaseline {

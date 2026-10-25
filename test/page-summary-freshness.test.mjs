@@ -67,7 +67,7 @@ for(const [before,after] of [
  ['The larger dogs chase the smaller cats','The smaller cats chase the larger dogs'],
  ['The value increases from 10 to 20','The value increases from 20 to 10'],
  ['The treatment is effective','The treatment is not effective'],
- ['x ∈ A','x ∉ A'],['x² = 3','x2 = 3'],['x / (y + z)','x / y + z'],['x < 10','x > 10'],['x = 10','x = -10'],['x = 1.5','x = 1.6'],
+ ['A ∈ a','a ∈ A'],['x ∈ A','x ∉ A'],['x² = 3','x2 = 3'],['x / (y + z)','x / y + z'],['x < 10','x > 10'],['x = 10','x = -10'],['x = 1.5','x = 1.6'],
 ])test(`ordered semantic freshness: ${before} -> ${after}`,()=>{
  const baseline=roundtrip(summaryBaseline(page(before),()=>undefined));
  assert.equal(materiallyStaleSummary(baseline,summaryBaseline(page(after),()=>undefined)),true);

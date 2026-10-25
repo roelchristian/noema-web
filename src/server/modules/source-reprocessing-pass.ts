@@ -15,7 +15,7 @@ import type {Intelligence} from './intelligence.js';
 import type {AIActivityLog} from './ai-activity.js';
 import {SourceReprocessingCheckpoints,type SourceReprocessingSynthesisCheckpoint,type SourceReprocessingRepairCheckpoint} from './source-reprocessing-checkpoints.js';
 import {planReprocessingChunks} from './source-reprocessing-planner.js';
-import {createSynthesisInput,parseDocumentSynthesis,assertFrozenSynthesis,selectVerificationContext,documentSynthesisPrompt,synthesisPromptVersion,parseReconstructionUncertainty,auditDocumentConsistency} from './source-reprocessing-context.js';
+import {createSynthesisInput,parseDocumentSynthesis,assertFrozenSynthesis,selectVerificationContext,documentSynthesisPrompt,synthesisPromptVersion,retainUnverifiedUncertaintyBlocks,parseReconstructionUncertainty,auditDocumentConsistency} from './source-reprocessing-context.js';
 import {reconstructBlocks} from './source-reprocessing-diff.js';
 import {sourceDocumentEntries,type SourceDocumentRange} from '../../shared/source-document.js';
 import type {SourceEditorialPatch,SourceEditorialUsage,SourceReprocessingRevision,SourceReprocessingPass,SourceReprocessingEvidenceSnapshot,SourceReprocessingConfiguration} from '../../shared/source-reprocessing.js';
@@ -53,7 +53,8 @@ export async function executeReconstruction(input:{store:Store;revision:SourceRe
  const boundaries=verifiedFurniture?repeatedFurniture:pageFurnitureBoundaries(r.original.text,r.original.document);
  const reconstructionResponse=(chunk:ReturnType<typeof planReprocessingChunks>[number],response:unknown):any=>{
   if(!enhancedEditorial)return response;
-  const recovered=recoverCanonicalFootnoteDefinitions(chunk,response,r.original.document);
+  const guarded=retainUnverifiedUncertaintyBlocks(chunk,response);
+  const recovered=recoverCanonicalFootnoteDefinitions(chunk,guarded,r.original.document);
   const preserved=restoreDeletedPageFurniture(chunk,recovered,repeatedFurniture);
   if(!preserved.diagnostics.length||!preserved.response||typeof preserved.response!=='object'||Array.isArray(preserved.response))return preserved.response;
   const value=preserved.response as Record<string,unknown>;
@@ -135,7 +136,7 @@ export async function executeReconstruction(input:{store:Store;revision:SourceRe
   }
   excerpt.passesCompleted=checkpoints.passes(r.id,chunk.index).filter(value=>value.status==='completed').length;save();guardEvidence(item);
   const repair=effectiveRepair(checkpoints,pass);
-  try{const raw=repair?.result??pass.result!;const parsed=JSON.parse(raw.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'')),previous=reconstructionResponse(chunk,parsed),final=reconstructBlocks(chunk,previous);parseReconstructionUncertainty(chunk,previous);candidates.set(chunk.index,{previous,raw,requestHash:repair?.requestHash??pass.requestHash,final});for(const diagnostic of final.diagnostics.filter(value=>value.startsWith('Recovered mistyped block ID '))){const message=`Chunk ${chunk.index+1}, pass ${index}: ${diagnostic}`;if(!r.report.diagnostics.includes(message))r.report.diagnostics.push(message);}if(!repair){delete pass.failureKind;pass.validation=['complete-canonical-block-mapping','physical-page-markers-preserved'];checkpoints.savePass(pass);}}
+  try{const raw=repair?.result??pass.result!;const parsed=JSON.parse(raw.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'')),previous=reconstructionResponse(chunk,parsed),final=reconstructBlocks(chunk,previous);parseReconstructionUncertainty(chunk,previous);candidates.set(chunk.index,{previous,raw,requestHash:repair?.requestHash??pass.requestHash,final});for(const diagnostic of final.diagnostics.filter(value=>value.startsWith('Recovered mistyped block ID ')||value.startsWith('Unverified uncertainty evidence '))){const message=`Chunk ${chunk.index+1}, pass ${index}: ${diagnostic}`;if(!r.report.diagnostics.includes(message))r.report.diagnostics.push(message);}if(!repair){delete pass.failureKind;pass.validation=['complete-canonical-block-mapping','physical-page-markers-preserved'];checkpoints.savePass(pass);}}
   catch(error){pass.failureKind=error instanceof SyntaxError?'invalid_output':'validation';pass.validation=[error instanceof Error?error.message:'Invalid model result'];checkpoints.savePass(pass);throw error;}
  }
  function publish(item:typeof prepared[number]){

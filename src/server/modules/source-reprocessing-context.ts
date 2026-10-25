@@ -48,6 +48,7 @@ export function createSynthesisInput(input:{revisionId:string;baseHash:string;te
  const findings=passes.map(pass=>{
   const chunk=chunks.find(chunk=>chunk.index===pass.chunkIndex)!;
   let parsed:Record<string,unknown>={};try{parsed=JSON.parse(pass.result.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'')) as Record<string,unknown>;}catch{throw new HttpError(409,'Only validated first-pass outputs may contribute to synthesis.');}
+  parsed=retainUnverifiedUncertaintyBlocks(chunk,parsed) as Record<string,unknown>;
   const diagnostics=Array.isArray(parsed.diagnostics)?parsed.diagnostics.filter((value):value is string=>typeof value==='string').map(value=>cut(value,160)).slice(0,4):[];
   const perBlock=Math.max(32,Math.floor(quota/Math.max(1,Math.min(chunk.blocks.length,4))/3));
   const candidates=Array.isArray(parsed.blocks)?parsed.blocks.filter((value):value is {id:string;text:string}=>!!value&&typeof value==='object'&&typeof value.id==='string'&&typeof value.text==='string'&&chunk.blocks.some(block=>block.id===value.id&&block.text!==value.text)).slice(0,4).map(value=>({blockId:value.id,text:cut(value.text,perBlock)})):[];
@@ -130,6 +131,31 @@ export function auditDocumentConsistency(canonical:string,derivative:string,regi
 }
 
 export interface ReconstructionUncertainty {blockId:string;nature:string;readings:string[];evidence:ContextEvidence[];resolutionNeed:string}
+/** Bad optional observations cannot establish edit authority. Keep their source
+ * passages verbatim and expose the rejection without discarding paid outputs. */
+export function retainUnverifiedUncertaintyBlocks(chunk:PlannedReprocessingChunk,response:unknown):unknown {
+ if(!response||typeof response!=='object'||Array.isArray(response))return response;
+ const data=response as Record<string,unknown>;
+ try{parseReconstructionUncertainty(chunk,data);return response;}catch(error){if(!(error instanceof HttpError))throw error;}
+ const retained=new Set<string>(),valid:unknown[]=[],warnings:string[]=[];
+ const reject=(item:unknown)=>{
+  const id=item&&typeof item==='object'&&!Array.isArray(item)?(item as Record<string,unknown>).blockId:undefined;
+  if(typeof id==='string'&&chunk.blocks.some(block=>block.id===id))retained.add(id);
+  else for(const block of chunk.blocks)retained.add(block.id);
+  warnings.push('Unverified uncertainty evidence was excluded. Original passage retained for editorial review; compare the original page before changing its wording.');
+ };
+ if(!Array.isArray(data.uncertainties)||data.uncertainties.length>32)reject(null);
+ else for(const item of data.uncertainties){
+  try{parseReconstructionUncertainty(chunk,{uncertainties:[item]});valid.push(item);}catch(error){if(!(error instanceof HttpError))throw error;reject(item);}
+ }
+ // Preserve malformed/reordered block IDs for the strict reconstruction validator.
+ const blocks=Array.isArray(data.blocks)?data.blocks.map((item,index)=>{
+  if(!item||typeof item!=='object'||Array.isArray(item))return item;
+  const value=item as Record<string,unknown>,canonical=chunk.blocks[index];
+  return canonical&&value.id===canonical.id&&retained.has(canonical.id)?{...value,text:canonical.text}:item;
+ }):data.blocks;
+ return {...data,blocks,uncertainties:valid,unresolved:true,diagnostics:[...new Set(warnings),...(Array.isArray(data.diagnostics)?data.diagnostics:[])].slice(0,30)};
+}
 /** Legacy V2 outputs without this field remain readable; newly supplied observations are strict. */
 export function parseReconstructionUncertainty(chunk:PlannedReprocessingChunk,response:unknown):ReconstructionUncertainty[]{
  if(!response||typeof response!=='object'||Array.isArray(response))return invalid('uncertainty response must be an object.');

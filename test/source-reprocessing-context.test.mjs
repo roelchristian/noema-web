@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {planReprocessingChunks} from '../src/server/modules/source-reprocessing-planner.ts';
-import {createSynthesisInput,parseDocumentSynthesis,assertFrozenSynthesis,selectVerificationContext,planContextSections,auditDocumentConsistency,parseReconstructionUncertainty} from '../src/server/modules/source-reprocessing-context.ts';
+import {createSynthesisInput,parseDocumentSynthesis,assertFrozenSynthesis,selectVerificationContext,planContextSections,auditDocumentConsistency,parseReconstructionUncertainty,retainUnverifiedUncertaintyBlocks} from '../src/server/modules/source-reprocessing-context.ts';
 import {createSynthesisReviewInput,resolveReviewedSynthesis} from '../src/server/modules/source-reprocessing-synthesis-review.ts';
 const document={physical:{pages:[]}};
 const fixture=(text='Chapter I\nAmbiguous nomen.\n\nChapter II\nA nomen is a name.😀')=>{
@@ -88,4 +88,18 @@ test('final deterministic audit flags major content loss and newly duplicated pa
  assert.ok(auditDocumentConsistency(paragraph,paragraph+'\n\n'+paragraph).some(item=>item.kind==='duplicate-content'));
  assert.ok(!auditDocumentConsistency(paragraph+'\n\n'+paragraph,paragraph+'\n\n'+paragraph).some(item=>item.kind==='duplicate-content'));
  assert.equal(auditDocumentConsistency('<!-- Page 1 -->\nsource','source')[0].kind,'page-markers');
+});
+
+
+test('invalid uncertainty quotations retain only affected canonical blocks and never enter synthesis evidence',()=>{
+ const {chunks,text}=fixture('Canonical corrupted S3 proof.\n\nIndependent paragraph with a clear typo.');
+ const chunk=chunks[0],block=chunk.blocks[0];
+ const raw={blocks:chunk.blocks.map(({id,text})=>({id,text:text.replace('corrupted S3','corrected S_3').replace('typo','correction')})),diagnostics:[],unresolved:false,uncertainties:[{blockId:block.id,nature:'OCR corruption',readings:['S_3'],evidence:[{blockId:block.id,quote:'Canonical corrected S_3 proof.'}],resolutionNeed:'Compare source page.'}]};
+ const snapshot=structuredClone(raw),safe=retainUnverifiedUncertaintyBlocks(chunk,raw);
+ assert.equal(safe.blocks[0].text,block.text);assert.match(safe.blocks[1].text,/correction/);assert.equal(safe.unresolved,true);assert.deepEqual(safe.uncertainties,[]);assert.match(safe.diagnostics[0],/Original passage retained/);assert.deepEqual(raw,snapshot);
+ assert.throws(()=>parseReconstructionUncertainty(chunk,raw),/quote a canonical block/);
+ const input=createSynthesisInput({revisionId:'revision',baseHash:'base',text,chunks,firstPasses:[{chunkIndex:0,requestHash:'r',result:JSON.stringify(raw)}]});
+ const finding=JSON.parse(input.request).findings[0];assert.deepEqual(finding.uncertainties,[]);assert.equal(finding.unresolved,true);assert.ok(!finding.candidates.some(value=>value.text.includes('corrected S_3')));
+ const unknown=retainUnverifiedUncertaintyBlocks(chunk,{...raw,uncertainties:[{...raw.uncertainties[0],blockId:'unknown'}]});assert.deepEqual(unknown.blocks,chunk.blocks.map(({id,text})=>({id,text})));
+ const malformed=retainUnverifiedUncertaintyBlocks(chunk,{...raw,blocks:[{id:'wrong',text:'invented'}]});assert.equal(malformed.blocks[0].id,'wrong');
 });

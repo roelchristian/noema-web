@@ -491,3 +491,22 @@ test('queued API revisions get immutable numbers before processing and deletion 
  env.worker.remove('vault',env.revision.fileId,env.revision.id);
  const next=env.worker.start('vault',env.revision.fileId,{pipelineVersion:2});assert.equal(next.status,'queued');assert.equal(next.versionNumber,2);
 });
+
+
+test('cached invalid uncertainty quotes recover locally without replaying reconstruction or accepting unsupported edits',async t=>{
+ const env=harness(t,{text:'Canonical corrupted mathematical proof.\n\nIndependent paragraph.',provider:request=>{
+  const block=request.blocks[0];
+  return JSON.stringify({blocks:request.blocks.map(value=>({...value,text:value.text.replace('corrupted','reconstructed')})),diagnostics:[],unresolved:false,uncertainties:[{blockId:block.id,nature:'OCR error',readings:['reconstructed'],evidence:[{blockId:block.id,quote:'Canonical reconstructed mathematical proof.'}],resolutionNeed:'Compare original page.'}]});
+ }});
+ await env.worker.tick();assert.equal(env.value.status,'completed');assert.equal(env.value.report.chunksCompleted,1);assert.equal(env.value.patches.length,0);assert.equal(env.value.reprocessed.text,env.value.original.text);assert.ok(env.value.report.diagnostics.some(message=>/Unverified uncertainty evidence/.test(message)));
+ const pass=env.checkpoints.passes(env.revision.id)[0],raw=pass.result;
+ assert.ok(JSON.parse(raw).blocks[0].text.includes('reconstructed'));
+ // Reproduce the old stop after a durable response failed local evidence validation.
+ env.store.run('DELETE FROM source_reprocessing_passes WHERE revision_id=? AND pass_index=2',env.revision.id);
+ pass.failureKind='validation';pass.validation=['Invalid document synthesis: uncertainty evidence must quote a canonical block.'];env.checkpoints.savePass(pass);
+ const stopped=env.value;stopped.status='failed';stopped.report.chunksCompleted=0;stopped.report.completedChunkIndexes=[];stopped.patches=[];
+ env.store.run('UPDATE source_reprocessing SET status=?,payload=? WHERE id=?','failed',JSON.stringify(stopped),stopped.id);
+ env.calls.length=0;env.restart();env.worker.resume('vault',stopped.fileId,stopped.id);await env.worker.tick();
+ assert.equal(env.value.status,'completed');assert.deepEqual(env.calls.map(call=>call.kind),['verify']);assert.equal(env.checkpoints.passes(stopped.id)[0].result,raw);assert.equal(env.value.patches.length,0);
+ await assertRecoveryArchive(env);
+});

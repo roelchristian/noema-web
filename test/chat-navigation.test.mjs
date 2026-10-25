@@ -30,6 +30,8 @@ test('Chat renders streamed claims before completion, replaces them once, and cl
   await act(async()=>root.render(createElement(ChatWorkspace,{vaultId:'default',vaultName:'Test',initialScope:{kind:'vault'},entities:[],pages:[],visible:true,onClose(){},onOpenEvidence(){}})));
   await act(async()=>{const input=document.getElementById('chat-question');input[Object.keys(input).find(key=>key.startsWith('__reactProps'))].onChange({target:{value:'What does the source say?'}});});
   await act(async()=>document.querySelector('.chat-composer').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+  assert.equal(document.querySelectorAll('.meno-avatar').length,1,'The header shows one Meno while retrieving');
+  assert.equal(document.querySelector('.chat-contact .meno-avatar').dataset.active,'true');
   const evidence={id:'E1',kind:'source',objectId:'source',title:'Test source',excerpt:'A source excerpt.',fingerprint:'hash',locator:'Line 1',status:'current'};
   const first={text:'A streamed claim with café and 漢字.',attribution:'supported',citationIds:['E1']},second={text:'A second claim.',attribution:'inferred',citationIds:['E1']};
   const packet=value=>encoder.encode('data: '+JSON.stringify(value)+'\r\n\r\n');
@@ -40,6 +42,9 @@ test('Chat renders streamed claims before completion, replaces them once, and cl
   const bytes=packet({type:'claim',claim:first}),split=bytes.indexOf(0xc3)+1;
   await act(async()=>stream.enqueue(bytes.slice(0,split)));assert.equal(document.querySelector('.is-streaming'),null);
   await act(async()=>stream.enqueue(bytes.slice(split)));assert.match(document.querySelector('.is-streaming').textContent,/café and 漢字/);
+  assert.equal(document.querySelectorAll('.meno-avatar').length,1,'Streaming keeps a single Meno in the header');
+  assert.ok(document.querySelector('.chat-contact .meno-avatar'));
+  assert.equal(document.querySelector('.chat-messages .meno-avatar'),null);
   assert.equal(document.querySelectorAll('.chat-copy').length,0);assert.equal(document.getElementById('chat-question').disabled,true);
   assert.match(document.querySelector('.is-streaming .chat-citation').getAttribute('aria-label'),/Test source/);
   if(outcome==='complete'){
@@ -63,7 +68,7 @@ test('conversation inbox groups and searches history, opens the selected scope, 
  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
  const now=new Date().toISOString();let threads=[{id:'today',vaultId:'default',title:'Grace and evidence',scope:{kind:'source',id:'source-1'},createdAt:now,updatedAt:now,messages:[]},{id:'old',vaultId:'default',title:'Earlier questions',scope:{kind:'vault'},createdAt:'2020-01-01T00:00:00Z',updatedAt:'2020-01-01T00:00:00Z',messages:[]}];
  t.mock.method(chatAPI,'list',async()=>structuredClone(threads));
- t.mock.method(chatAPI,'get',async(vault,id)=>{assert.equal(vault,'default');return {...threads.find(thread=>thread.id===id),messages:[{id:'answer',role:'assistant',text:'Saved answer.',createdAt:now}]};});
+ t.mock.method(chatAPI,'get',async(vault,id)=>{assert.equal(vault,'default');return {...threads.find(thread=>thread.id===id),messages:[{id:'earlier-answer',role:'assistant',text:'Earlier answer.',createdAt:now},{id:'followup',role:'user',text:'Tell me more.',createdAt:now},{id:'answer',role:'assistant',text:'Saved answer.',createdAt:now}]};});
  t.mock.method(chatAPI,'rename',async(_vault,id,title)=>{threads=threads.map(thread=>thread.id===id?{...thread,title}:thread);return threads.find(thread=>thread.id===id);});
  t.mock.method(chatAPI,'remove',async(_vault,id)=>{threads=threads.filter(thread=>thread.id!==id);return {deleted:true};});
  const edit=async(selector,value)=>act(async()=>{const input=document.querySelector(selector);input[Object.keys(input).find(key=>key.startsWith('__reactProps'))].onChange({target:{value}});});
@@ -75,6 +80,11 @@ test('conversation inbox groups and searches history, opens the selected scope, 
  await edit('input[aria-label="Search conversations"]','no match');assert.match(inbox.textContent,/No matches/);
  await edit('input[aria-label="Search conversations"]','');await click('[data-thread-id=today]');
  assert.equal(document.querySelector('[aria-current=page]').dataset.threadId,'today');assert.match(document.querySelector('[data-chat-scope]').textContent,/Source · Original source/);assert.match(document.querySelector('.chat-heading h1').textContent,/Grace and evidence/);
+ assert.equal(document.querySelectorAll('.meno-avatar').length,1,'A conversation with multiple answers shows one Meno');
+ assert.ok(document.querySelector('.chat-contact .meno-avatar'),'Meno stays in the contact header');
+ assert.equal(document.querySelector('.chat-messages .meno-avatar'),null,'Messages do not repeat the avatar');
+ assert.equal(document.querySelector('.meno-smile,.meno-mouth,.meno-talk'),null,'Meno has no mouth');
+ await act(async()=>document.querySelector('.meno-avatar').click());assert.equal(document.querySelector('.meno-avatar').dataset.active,'true','Meno responds to interaction');
  await click('[aria-label="Rename conversation"]');await edit('input[aria-label="Conversation title"]','Cancelled name');await click('[aria-label="Cancel rename"]');assert.match(document.querySelector('.chat-heading h1').textContent,/Grace and evidence/);
  await click('[aria-label="Rename conversation"]');await edit('input[aria-label="Conversation title"]','Renamed conversation');
  await act(async()=>document.querySelector('.chat-rename').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
@@ -88,7 +98,7 @@ test('mobile inbox uses a modal drawer, restores focus on dismissal, and closes 
  const {setupDOM}=await import('./helpers/dom.mjs'),{ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
  env.dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};env.dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
- t.mock.method(window,'matchMedia',query=>({matches:query==='(max-width: 750px)',addEventListener(){},removeEventListener(){}}));
+ t.mock.method(window,'matchMedia',query=>({matches:query==='(max-width: 750px)'||query==='(prefers-reduced-motion: reduce)',addEventListener(){},removeEventListener(){}}));
  t.mock.method(window,'requestAnimationFrame',callback=>{callback();return 1;});
  t.mock.method(globalThis,'requestAnimationFrame',callback=>{callback();return 1;});
  const now=new Date().toISOString(),thread={id:'saved',title:'A saved question',scope:{kind:'vault'},createdAt:now,updatedAt:now,messages:[]};
@@ -239,4 +249,33 @@ test('deleting a different inbox row preserves the active conversation and draft
  await act(async()=>document.querySelector('[data-thread-id=Current]').click());await act(async()=>{const input=document.getElementById('chat-question');input[Object.keys(input).find(key=>key.startsWith('__reactProps'))].onChange({target:{value:'Keep this draft'}});});
  await act(async()=>document.querySelector('[aria-label="Actions for Other"]').click());await act(async()=>document.querySelector('[aria-label="Delete Other"]').click());
  assert.equal(document.querySelector('[data-thread-id=Other]'),null);assert.equal(document.querySelector('[aria-current=page]').dataset.threadId,'Current');assert.equal(document.getElementById('chat-question').value,'Keep this draft');assert.match(document.querySelector('.chat-messages').textContent,/My question/);
+});
+
+
+test('Meno orbits keep their position through interaction and stop for reduced motion',async t=>{
+ const {act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
+ const {setupDOM}=await import('./helpers/dom.mjs'),{MenoAvatar}=await import('../src/client/chat/MenoAvatar.tsx');
+ const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ const pending=new Map();let next=0,onMotionChange;
+ const motion={matches:false,addEventListener(_name,listener){onMotionChange=listener;},removeEventListener(){}};
+ t.mock.method(window,'matchMedia',()=>motion);
+ t.mock.method(globalThis,'requestAnimationFrame',callback=>{pending.set(++next,callback);return next;});
+ t.mock.method(globalThis,'cancelAnimationFrame',id=>pending.delete(id));
+ const step=now=>{const callbacks=[...pending.values()];pending.clear();callbacks.forEach(callback=>callback(now));};
+ await act(async()=>root.render(createElement(MenoAvatar)));
+ const layers=[...document.querySelectorAll('[data-moon]')];
+ assert.equal(document.querySelector('.meno-ring'),null,'No shared ring is drawn');
+ assert.ok(layers.every(node=>node.querySelector('[data-tail]').getAttribute('d')),'Every planet has a comet plume');
+ assert.equal(layers.filter(node=>node.style.visibility==='visible').length,3,'Each satellite is visible in exactly one depth layer');
+ step(100);step(116);
+ const before=layers.map(node=>node.getAttribute('transform'));
+ const tails=layers.map(node=>node.querySelector('[data-tail]').getAttribute('d'));
+ await act(async()=>root.render(createElement(MenoAvatar,{active:true})));
+ assert.deepEqual(layers.map(node=>node.getAttribute('transform')),before,'Starting activity preserves orbit phase');
+ step(132);
+ assert.notDeepEqual(layers.map(node=>node.getAttribute('transform')),before,'Satellites continue moving');
+ assert.notDeepEqual(layers.map(node=>node.querySelector('[data-tail]').getAttribute('d')),tails,'Comet plumes change shape as the planets move');
+ motion.matches=true;onMotionChange();assert.equal(pending.size,0,'Reduced motion cancels the animation loop');
+ const still=layers.map(node=>node.getAttribute('transform'));step(148);
+ assert.deepEqual(layers.map(node=>node.getAttribute('transform')),still,'Reduced motion leaves a static constellation');
 });

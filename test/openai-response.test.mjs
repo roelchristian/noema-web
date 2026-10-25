@@ -102,3 +102,24 @@ test('failed compact responses keep output excerpts and bounded error details',a
  assert.equal(captured.events[0][1].outputExcerpt,'partial result');
  assert.equal(captured.events[0][1].error.code,'provider_error');assert.equal(captured.responses[0].status,'failed');
 });
+
+test('provider error messages and unrecognized codes are omitted from full and compact SSE diagnostics',async()=>{
+ for(const mode of ['compact','full']) {
+  const {trace,captured}=observer(mode);
+  const original={status:'failed',error:{code:'secret-code',message:'private input echoed upstream'},output:[]};
+  const result=await readOpenAIResponse(sse([{type:'response.failed',response:original}]),redactedTrace(trace,'secret-key'));
+  assert.equal(result.error.message,'private input echoed upstream');
+  assert.equal(JSON.stringify(captured).includes('private input echoed upstream'),false);
+  assert.equal(JSON.stringify(captured).includes('secret-code'),false);
+ }
+});
+
+test('top level SSE provider errors retain only allowlisted safe codes in full diagnostics',()=>{
+ for(const mode of ['compact','full']) {
+  const {trace,captured}=observer(mode),wrapped=redactedTrace(trace,'secret-key');
+  const error={type:'error',code:'server_error',message:'PRIVATE_PROVIDER_PAYLOAD'};
+  wrapped.event('error',error);wrapped.body('data: '+JSON.stringify(error)+'\n\n');
+  assert.equal(JSON.stringify(captured).includes('PRIVATE_PROVIDER_PAYLOAD'),false);
+  assert.ok(JSON.stringify(captured).includes('server_error'));
+ }
+});

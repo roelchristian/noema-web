@@ -1,4 +1,6 @@
 import {Store} from '../store.js';
+import {aiRetryPolicy} from './ai-retry-policy.js';
+import {createHash} from 'node:crypto';
 
 export type EnrichmentField='title'|'domains'|'language'|'summary';
 const supportedFields:EnrichmentField[]=['title','domains','language','summary'];
@@ -72,7 +74,7 @@ export class PageEnrichmentScheduler<T extends EnrichmentSnapshot=EnrichmentSnap
     this.revalidateActive(pageId);
   }
   private fingerprint(snapshot:T) {
-    return JSON.stringify([snapshot.dependencyIdentity??snapshot.contentHash,snapshot.schemaVersion,snapshot.modelProfile,[...snapshot.requestedFields].sort()]);
+    return createHash('sha256').update(JSON.stringify([snapshot.dependencyIdentity??snapshot.contentHash,snapshot.schemaVersion,snapshot.modelProfile,[...snapshot.requestedFields].sort()])).digest('hex');
   }
   private revalidateActive(pageId:string) {
     const active=this.active.get(pageId);
@@ -117,7 +119,7 @@ export class PageEnrichmentScheduler<T extends EnrichmentSnapshot=EnrichmentSnap
   }
   private async run(row:JobRow) {
     const controller=new AbortController();
-    const active:{controller:AbortController;fingerprint?:string;job:EnrichmentJob}={controller,job:{pageId:row.page_id,vault:row.vault_id,fields:this.fields(row),explicit:!!row.explicit,attempts:row.attempts}};
+    const active:{controller:AbortController;fingerprint?:string;configuration?:string;job:EnrichmentJob}={controller,job:{pageId:row.page_id,vault:row.vault_id,fields:this.fields(row),explicit:!!row.explicit,attempts:row.attempts}};
     this.active.set(row.page_id,active);
     try {
       if(!this.available(row.vault_id,row.page_id))return;
@@ -136,6 +138,10 @@ export class PageEnrichmentScheduler<T extends EnrichmentSnapshot=EnrichmentSnap
       // Keep the dispatch identity explicit. Per-page exclusion also prevents equivalent overlapping calls.
       active.job.fields=snapshot.requestedFields;
       active.fingerprint=this.fingerprint(snapshot);
+      active.configuration=createHash('sha256').update(snapshot.modelProfile).digest('hex');
+      const failure=this.store.get<{fingerprint:string;configuration:string;category:string}>('SELECT fingerprint,configuration,category FROM page_enrichment_failures WHERE page_id=?',row.page_id);
+      if(failure&&(failure.fingerprint===active.fingerprint||failure.category==='configuration'&&failure.configuration===active.configuration)){this.remove(row);return;}
+      if(failure)this.store.run('DELETE FROM page_enrichment_failures WHERE page_id=?',row.page_id);
       if(!this.available(row.vault_id,row.page_id)||controller.signal.aborted)return;
       const result=await this.callbacks.execute(row.vault_id,row.page_id,snapshot,controller.signal);
       if(controller.signal.aborted)return;
@@ -143,13 +149,15 @@ export class PageEnrichmentScheduler<T extends EnrichmentSnapshot=EnrichmentSnap
       if(deferred)this.defer(row,classificationDue);else this.remove(row);
     } catch(error) {
       if(this.disposed||controller.signal.aborted)return;
-      const status=error&&typeof error==='object'&&'status' in error?error.status:undefined;
-      const permanent=!!error&&typeof error==='object'&&'retryable' in error&&error.retryable===false;
-      const retryable=!permanent&&(status===429||status===408||status===502||status===503||status===504||error instanceof TypeError);
+      const policy=aiRetryPolicy(error);
       const delays=this.options.retryDelaysMs??[15_000,60_000,240_000];
-      if(retryable&&row.attempts<delays.length) {
-        this.store.run('UPDATE page_enrichment_jobs SET attempts=attempts+1,due_at=? WHERE page_id=? AND generation=?',this.clock()+delays[row.attempts],row.page_id,row.generation);
-      } else this.remove(row);
+      if(policy.retryable&&(!policy.dispatched||row.attempts<delays.length)) {
+        const delay=Math.max(policy.retryAfterMs,policy.dispatched?delays[row.attempts]??15_000:1000);
+        this.store.run('UPDATE page_enrichment_jobs SET attempts=attempts+?,due_at=? WHERE page_id=? AND generation=?',Number(policy.dispatched),this.clock()+delay,row.page_id,row.generation);
+      } else {
+        if(!policy.retryable&&active.fingerprint)this.store.run('INSERT INTO page_enrichment_failures (page_id,fingerprint,category,configuration) VALUES (?,?,?,?) ON CONFLICT(page_id) DO UPDATE SET fingerprint=excluded.fingerprint,category=excluded.category,configuration=excluded.configuration',row.page_id,active.fingerprint,policy.category,active.configuration??'');
+        this.remove(row);
+      }
     } finally {this.active.delete(row.page_id);}
   }
   private defer(row:JobRow,due:number) {

@@ -1,5 +1,5 @@
 import type { AIDebugTrace,AIUsageObserver,AIStreamSummary } from './ai-debug.js';
-import {compactRequest,compactResponse,withoutVectors,traceExcerpt as excerpt} from './ai-debug-summary.js';
+import {compactRequest,compactResponse,withoutVectors,withoutProviderErrors,safeProviderBody,traceExcerpt as excerpt} from './ai-debug-summary.js';
 import { HttpError } from '../validation.js';
 
 export class OpenAIResponseSizeError extends HttpError {
@@ -16,7 +16,7 @@ export function redactedTrace(trace: AIDebugTrace | AIUsageObserver | void, key:
   const full=trace.mode==='full';
   let embeddings=false;
   const text = (value: string) => (key?value.split(key).join('[redacted]'):value).replace(/sk-[A-Za-z0-9_-]{16,}/g,'[redacted]');
-  const payload = (value: unknown): unknown => JSON.parse(text(JSON.stringify(withoutVectors(value))??'null'));
+  const payload = (value: unknown): unknown => JSON.parse(text(JSON.stringify(withoutProviderErrors(withoutVectors(value)))??'null'));
   const safe=<T extends unknown[]>(callback:(...args:T)=>void)=>(...args:T)=>{try{callback(...args);}catch{/* Diagnostics must never change provider outcomes. */}};
   const wrapped:AIDebugTrace={
     mode:full?'full':'compact',
@@ -24,7 +24,7 @@ export function redactedTrace(trace: AIDebugTrace | AIUsageObserver | void, key:
     stream:trace.stream?summary=>trace.stream!(payload(summary) as AIStreamSummary):undefined,
     request: (endpoint,value) => {embeddings=endpoint.includes('embeddings');trace.request(endpoint,payload(full?value:compactRequest(value)));},
     headers: (status,headers) => trace.headers(status,payload(headers) as Record<string,string>),
-    body: value => {if(!embeddings&&full)trace.body(text(value));},
+    body: value => {if(!embeddings&&full)trace.body(text(safeProviderBody(value)));},
     event: (type,value) => {
       if(full || ['validation','prompt','stream.summary','error','response.failed','response.incomplete'].includes(type)) {
         const p=value&&typeof value==='object'?value as Record<string,any>:{};
@@ -97,6 +97,7 @@ export async function readOpenAIResponse(response: Response, trace?: AIDebugTrac
       const delta=(lastTextPart!==undefined&&lastTextPart!==part?'\n':'')+event.delta;
       lastTextPart=part;outputText+=delta;onTextDelta?.(delta);
     }
+    if(type==='error') {result={status:'failed',error:event.error??event};trace?.response(result);}
     if (['response.completed','response.failed','response.incomplete'].includes(type) && event.response) {
       result=event.response;
       onUsage?.(result.usage);

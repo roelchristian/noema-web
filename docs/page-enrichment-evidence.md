@@ -1,10 +1,12 @@
 # Enrichment evidence, freshness, retries and multilingual candidates
 
-This work is local to `codex/enrichment-evidence-freshness`, based on main
+This work is on `codex/enrichment-evidence-freshness`, based on main
 `abd7d840e83972b8a139f5aa6abcabc0d52865dc`. It incorporates all three commits
 through `753021cb71709b508f28686386903624564481fb` from
-`fix/read-assessment-polling`. Nothing was pushed, published, merged remotely or
-deployed.
+`fix/read-assessment-polling`. Following explicit publication approval, the branch
+is published as draft PR [#120](https://github.com/roelchristian/noema-web/pull/120),
+stacked on that dependency. No PR was merged or deployment performed. CI accepts
+stacked PR bases with unchanged permissions and build/test steps.
 
 ## Changed-passage evidence
 
@@ -91,7 +93,7 @@ enrichment reads use 30 reads with zero writes. The fixture's internal stored
 state is 59,496 bytes and remains private. Full mocked summary generation uses
 one provider call and no full entity catalogue reads.
 
-Final code validation at `b764e85`: build/types/styles passed; the full suite
+Initial integrated code validation at `b764e85`: build/types/styles passed; the full suite
 completed with **1,833 tests: 1,825 passed, eight platform/optional skips,
 zero failures**. Independent review found no remaining P1/P2 issues after the
 artifact-scoped concurrency fix. The local working tree was clean before adding

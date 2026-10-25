@@ -142,6 +142,7 @@ export const api={
   saveIntelligence:(apiKey:string,days:number)=>request<import('../shared/domain').IntelligenceStatus>('intelligence','PUT',{apiKey,days}),
   saveIntelligencePreferences:(preferences:import('../shared/intelligence').IntelligenceConfiguration)=>request<import('../shared/intelligence').IntelligenceConfiguration>('intelligence/preferences','PUT',preferences),
   personaPreview:(body:import('../shared/persona-comparison').PersonaPreviewInput,signal?:AbortSignal)=>request<{text:string;persona:import('../shared/ai-personas').PersonaIdentity;modelSettings:import('../shared/intelligence').IntelligencePreferences}>('intelligence/persona-preview','POST',body,undefined,signal),
+  saveAIPersona:(personaId:import('../shared/ai-personas').BuiltinPersonaId)=>request<import('../shared/intelligence').IntelligenceConfiguration>('intelligence/preferences/ai','PUT',{personaId}),
   saveAIPreferences:(preferences:import('../shared/intelligence').AIPreferences)=>request<import('../shared/intelligence').IntelligenceConfiguration>('intelligence/preferences/ai','PUT',preferences),
   saveVoicePreferences:(preferences:import('../shared/intelligence').VoicePreferences)=>request<import('../shared/intelligence').IntelligenceConfiguration>('intelligence/preferences/voice','PUT',preferences),
   removeIntelligence:()=>request<import('../shared/domain').IntelligenceStatus>('intelligence','DELETE'),

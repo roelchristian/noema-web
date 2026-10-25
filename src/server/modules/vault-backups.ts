@@ -862,7 +862,7 @@ export class VaultBackups {
           json(row,'payload');timestamp(row,'created_at');
         }
         restorePageVersions(this.store,vault,rows.page_versions,{evidence:sourceEvidenceIds,pages:pageIds,entities:entityIds,files:restoredSourceFiles,images:imageIds,citations:citationIds,detachedEntities:detachedSources,detachedFiles,detachedPages:detachedPageLinks});
-        restoreChatHistory(this.store,vault,{threads:rows.chat_threads,messages:rows.chat_messages,evidence:rows.chat_evidence},{pages:pageIds,entities:entityIds,files:restoredSourceFiles,properties:propertyIds,relationships:relationshipIds,generations:sourceEvidenceIds.generations,passages:sourceEvidenceIds.passages});
+        restoreChatHistory(this.store,vault,{threads:rows.chat_threads,messages:rows.chat_messages,evidence:rows.chat_evidence},{folders:folderIds,pages:pageIds,entities:entityIds,files:restoredSourceFiles,properties:propertyIds,relationships:relationshipIds,generations:sourceEvidenceIds.generations,passages:sourceEvidenceIds.passages});
         // Recompute after validation/remapping instead of trusting a supplied page fingerprint.
         syncReadingNotesCollection(this.store,vault);
         for(const id of pageIds.values())if(!this.store.get<{deleted_at:string|null}>('SELECT deleted_at FROM pages WHERE id=?',id)!.deleted_at)pages.get(vault,id);

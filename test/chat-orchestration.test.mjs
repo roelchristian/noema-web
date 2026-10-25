@@ -140,3 +140,93 @@ test('temporary subject context remains ephemeral and explicit mentions override
   assert.equal(f.store.get('SELECT count(*) n FROM chat_threads').n,0);assert.equal(f.store.get('SELECT count(*) n FROM chat_messages').n,0);assert.equal(f.store.get('SELECT count(*) n FROM chat_requests').n,0);
  }finally{f.close();}
 });
+
+test('streaming publishes complete validated claims before provider completion and saves only the final answer',async()=>{
+ let release,ready;const started=new Promise(resolve=>ready=resolve),events=[];
+ const first={text:'The source says "grace" comes first. Braces { } stay text.',attribution:'supported',citationIds:['E1']};
+ const second={text:'The selected material cannot establish more.',attribution:'unestablished',citationIds:[]};
+ const output=JSON.stringify({claims:[first,second]});
+ const f=fixture(async request=>{
+  const prefix=JSON.stringify({claims:[first]}).slice(0,-2);
+  for(const char of prefix)request.onDelta(char);
+  ready();await new Promise(resolve=>release=resolve);
+  for(const char of output.slice(prefix.length))request.onDelta(char);
+  return output;
+ });try {
+  const pending=f.submit({}, {onEvidence(value){events.push({type:'evidence',value});},onClaim(value){events.push({type:'claim',value});}});
+  await started;assert.deepEqual(events.map(event=>event.type),['evidence','claim']);assert.deepEqual(events[1].value,first);
+  const thread=f.chat.storage.list('default')[0];assert.equal(f.chat.thread('default',thread.id).messages.length,1,'No partial answer is stored');
+  release();const result=await pending;assert.deepEqual(events.slice(1).map(event=>event.value),[first,second]);assert.deepEqual(result.message.claims,[first,second]);
+  assert.equal(f.chat.thread('default',thread.id).messages.length,2);
+ }finally{release?.();f.close();}
+});
+
+test('streaming rejects unknown citations, changed evidence, cancellation and malformed final output without saving partial answers',async t=>{
+ for(const mode of ['citation','revision','cancel','malformed','mismatch'])await t.test(mode,async()=>{
+  let f;const emitted=[];
+  f=fixture(async request=>{
+   request.onDelta(claims().slice(0,-2));
+   if(mode==='revision')f.retrieval.validate=(_vault,list)=>list.map(item=>({...item,status:'stale'}));
+   if(mode==='cancel')f.chat.close();
+   if(mode==='citation')request.onDelta(','+JSON.stringify({text:'Invented',attribution:'supported',citationIds:['E999']}));
+   if(mode==='revision'||mode==='cancel')request.onDelta(','+JSON.stringify({text:'Later',attribution:'supported',citationIds:['E1']}));
+   if(mode==='malformed')return '{malformed';
+   if(mode==='mismatch')return claims('A different final claim.');
+   return claims();
+  });try {
+   await assert.rejects(f.submit({}, {onEvidence(){},onClaim:claim=>emitted.push(claim)}));
+   assert.equal(emitted.length,1);const thread=f.chat.storage.list('default')[0];
+   assert.equal(f.chat.thread('default',thread.id).messages.at(-1).status,mode==='cancel'?'interrupted':'failed');
+   assert.ok(f.chat.thread('default',thread.id).messages.every(message=>!message.claims?.length));
+  }finally{f.close();}
+ });
+});
+
+test('saved thread identity is available before retrieval finishes so refresh can reopen the first question',async()=>{
+ const f=fixture();let release,ready;const started=new Promise(resolve=>ready=resolve);let threadId;
+ f.retrieval.retrieve=async()=>{ready();return new Promise(resolve=>release=()=>resolve({evidence:[evidence],passes:1,depth:'standard'}));};
+ try {
+  const pending=f.submit({}, {onThread:id=>threadId=id,onEvidence(){},onClaim(){}});await started;
+  assert.ok(threadId);assert.equal(f.chat.thread('default',threadId).messages[0].text,'What does this source say?');
+  f.chat.close();release();await assert.rejects(pending);assert.equal(f.chat.thread('default',threadId).messages.at(-1).status,'interrupted');
+ }finally{release?.();f.close();}
+});
+
+test('first completed answer names the conversation in the same request and later answers preserve its title',async()=>{
+ let calls=0;const f=fixture(async request=>{calls++;return JSON.stringify({...JSON.parse(claims()),title:calls===1?'Grace and Prior Causes':'A later topic'});});
+ try {
+  const result=await f.submit();assert.equal(calls,1);assert.equal(result.title,'Grace and Prior Causes');assert.equal(result.titleUpdated,true);assert.equal(f.chat.thread('default',result.threadId).title,result.title);assert.match(f.inputs[0].instructions,/append a "title"/);
+  const next=await f.submit({threadId:result.threadId,question:'And what follows?'});assert.equal(next.title,result.title);assert.equal(next.titleUpdated,false);assert.doesNotMatch(f.inputs[1].instructions,/append a "title"/);
+  f.chat.storage.rename('default',result.threadId,'My manual name');const replay=await f.submit({threadId:result.threadId,question:'Another follow-up'});assert.equal(replay.title,'My manual name');
+ }finally{f.close();}
+});
+
+test('automatic naming never overwrites a manual name changed while the first answer is pending',async()=>{
+ let release,ready;const started=new Promise(resolve=>ready=resolve),f=fixture(async()=>{ready();return new Promise(resolve=>release=()=>resolve(JSON.stringify({...JSON.parse(claims()),title:'Automatic topic'})));});let threadId;
+ try{
+  const pending=f.submit({}, {onThread:id=>threadId=id});await started;assert.equal(f.chat.thread('default',threadId).title,'New chat');f.chat.storage.rename('default',threadId,'My chosen name');release();const result=await pending;assert.equal(result.title,'My chosen name');assert.equal(result.titleUpdated,false);
+ }finally{release?.();f.close();}
+});
+
+test('regenerating the latest answer retrieves fresh evidence and replaces it without duplicating the question',async()=>{
+ let count=0;const f=fixture(async()=>claims(++count===1?'First answer.':'Fresh answer.'));
+ try{
+  const first=await f.submit(),requestId=randomUUID(),question='What does this source say?';
+  const next=await f.submit({threadId:first.threadId,question,regenerateMessageId:first.message.id,requestId});
+  const thread=f.chat.thread('default',first.threadId);assert.equal(thread.messages.length,2);assert.equal(thread.messages[0].role,'user');assert.equal(thread.messages[1].text,'Fresh answer.');assert.notEqual(next.message.id,first.message.id);assert.equal(f.queries.length,2);
+  assert.deepEqual(JSON.parse(f.inputs[1].input).previousQuestions,[]);assert.equal(f.store.get('SELECT count(*) n FROM chat_evidence WHERE message_id=?',first.message.id).n,0);
+  const replay=await f.submit({threadId:first.threadId,question,regenerateMessageId:first.message.id,requestId});assert.equal(replay.message.id,next.message.id);assert.equal(count,2);
+  await assert.rejects(f.submit({threadId:first.threadId,question:'A different question',regenerateMessageId:next.message.id}),error=>error.status===409);
+  await assert.rejects(f.submit({threadId:first.threadId,question,regenerateMessageId:first.message.id}),error=>error.status===409);
+ }finally{f.close();}
+});
+
+test('failed or cancelled regeneration keeps the old answer and its evidence intact',async t=>{
+ for(const mode of ['failed','cancelled'])await t.test(mode,async()=>{
+  let count=0;const f=fixture(async request=>{if(++count===1)return claims('Keep this answer.');request.onDelta?.(claims('A partial replacement.').slice(0,-2));if(mode==='cancelled')f.chat.close();else throw new Error('Synthetic provider failure');return claims('Do not publish.');});
+  try{
+   const first=await f.submit();await assert.rejects(f.submit({threadId:first.threadId,question:'What does this source say?',regenerateMessageId:first.message.id},{onClaim(){}}));
+   const thread=f.chat.thread('default',first.threadId);assert.equal(thread.messages.length,2);assert.equal(thread.messages[1].id,first.message.id);assert.equal(thread.messages[1].text,'Keep this answer.');assert.equal(thread.messages[1].evidence.length,1);
+  }finally{f.close();}
+ });
+});

@@ -48,10 +48,10 @@ test('transport emits validated evidence separately before final claims and scop
  assert.equal(f.store.get('SELECT count(*) n FROM chat_threads').n,0);
 });
 
-test('malformed provider citations return generic error with no partial evidence, text or history',async t=>{
+test('malformed provider citations return a stream error without exposing invalid claims or saving an answer',async t=>{
  const f=await httpFixture(t,async()=>JSON.stringify({claims:[{text:'INVENTED_PROVIDER_TEXT',attribution:'supported',citationIds:['E999']}]}));
- const response=await f.request('messages','POST',{question:'grace',scope:{kind:'page',id:f.myNote.id},requestId:randomUUID()});assert.equal(response.status,502);
- const body=await response.text();assert.doesNotMatch(body,/INVENTED_PROVIDER_TEXT|Grace is not|E999/);assert.match(response.headers.get('content-type'),/application\/json/);
+ const response=await f.request('messages','POST',{question:'grace',scope:{kind:'page',id:f.myNote.id},requestId:randomUUID()});assert.equal(response.status,200);
+ const body=await response.text();assert.doesNotMatch(body,/INVENTED_PROVIDER_TEXT|E999/);assert.match(response.headers.get('content-type'),/text\/event-stream/);assert.match(body,/"type":"error"/);assert.doesNotMatch(body,/"type":"claim"|"type":"answer"/);
  const history=f.store.all('SELECT payload FROM chat_messages');assert.ok(history.every(row=>!row.payload.includes('INVENTED_PROVIDER_TEXT')));
  assert.ok(history.every(row=>JSON.parse(row.payload).role==='user'||JSON.parse(row.payload).status==='failed'));
 });
@@ -69,16 +69,16 @@ test('even full debug mode receives usage accounting only, never transcript, exc
  }finally{f.close();}
 });
 
-test('Chat uses central foreground admission, neutral prompts and provider cancellation with mock transport only',async()=>{
+test('Chat uses the configured Meno persona, foreground admission and provider cancellation with mock transport only',async()=>{
  const {Intelligence,GenerationAdmissionError,GenerationCancellationError}=await import('../src/server/modules/intelligence.ts');
  const {completedResponse}=await import('./helpers/providers.ts');
  const fakeSecret={value:null,read(){return this.value;},write(value){this.value=structuredClone(value);},remove(){this.value=null;}};
  let release,calls=0,body;
  const ai=new Intelligence(fakeSecret,async(_url,options)=>{calls++;body=JSON.parse(options.body);return new Promise(resolve=>release=()=>resolve(completedResponse(JSON.stringify({claims:[{text:'Bounded claim',attribution:'supported',citationIds:['E1']}]}))));});
- ai.save({apiKey:'sk-synthetic-chat-test-never-a-real-key'});
+ ai.save({apiKey:'sk-synthetic-chat-test-never-a-real-key'});ai.savePreferences({...ai.selection(),personaId:'editor',personaExpression:'subtle'});
  const controller=new AbortController(),request={kind:'chat',input:'Bounded test evidence',instructions:'Neutral read-only Chat instructions.',signal:controller.signal};
  const running=ai.generate(request);
- assert.equal(calls,1);assert.equal(body.store,false);assert.deepEqual(body.tools,[]);assert.equal(body.instructions,'Neutral read-only Chat instructions.');assert.equal(!!body.stream,false);assert.ok(body.max_output_tokens<=8192);
+ assert.equal(calls,1);assert.equal(body.store,false);assert.deepEqual(body.tools,[]);assert.ok(body.instructions.startsWith(request.instructions));assert.match(body.instructions,/AI PERSONA: The Editor/);assert.equal(!!body.stream,false);assert.ok(body.max_output_tokens<=8192);
  await assert.rejects(()=>ai.generate({...request,signal:new AbortController().signal}),GenerationAdmissionError);assert.equal(calls,1);
  controller.abort();release();await assert.rejects(running,error=>error.status===409);
  const blocked=new AbortController();blocked.abort();await assert.rejects(()=>ai.generate({...request,signal:blocked.signal}),error=>error.status===409);assert.equal(calls,1);
@@ -109,7 +109,7 @@ test('evidence revalidation detects live edits, disallows forged coordinates and
  const stale=await f.request('evidence','POST',{evidence:[original]});assert.equal(stale.status,200);const snapshot=(await stale.json())[0];assert.equal(snapshot.status,'stale');assert.equal(snapshot.excerpt,original.excerpt);
 });
 
-test('published Personas v2 settings and explicit stray overrides never enter neutral Chat policy or provider prompts',async()=>{
+test('Chat uses configured persona settings while ignoring explicit stray persona overrides',async()=>{
  const {generationPolicy}=await import('../src/server/modules/generation-request.ts');
  const {aiPersonas,personaExpressions}=await import('../src/shared/ai-personas.ts');
  const {Intelligence}=await import('../src/server/modules/intelligence.ts');
@@ -117,13 +117,13 @@ test('published Personas v2 settings and explicit stray overrides never enter ne
  const selection={model:'gpt-5-mini',reasoningEffort:'low'},request={kind:'chat',input:'Bounded supplied evidence.',instructions:'Neutral Chat grounding instructions.',personaId:'socratic',personaVersion:2,personaExpression:'immersive'};
  for(const persona of aiPersonas)for(const personaExpression of personaExpressions){
   const policy=generationPolicy(request,{personaId:persona.id,personaExpression,standard:selection,title:selection,enrichment:selection});
-  assert.equal(policy.persona,undefined);assert.deepEqual(policy.prompt(),{instructions:request.instructions,input:request.input});assert.deepEqual(policy.selection,selection);assert.equal(policy.admission.activeSlot,'exclusive');assert.equal(policy.stream,false);
+  assert.equal(policy.persona.id,persona.id);assert.equal(policy.persona.expression,personaExpression);assert.equal(policy.prompt().input,request.input);assert.ok(policy.prompt().instructions.startsWith(request.instructions));assert.ok(policy.prompt().instructions.includes('AI PERSONA: '+persona.name));assert.deepEqual(policy.selection,selection);assert.equal(policy.admission.activeSlot,'exclusive');assert.equal(policy.stream,false);
  }
  const fakeSecret={value:null,read(){return this.value;},write(value){this.value=structuredClone(value);},remove(){this.value=null;}};
  let payload;
  const ai=new Intelligence(fakeSecret,async(_url,options)=>{payload=JSON.parse(options.body);return completedResponse(JSON.stringify({claims:[{text:'The source records a position.',attribution:'supported',citationIds:['E1']}]}));});
- ai.save({apiKey:'sk-synthetic-persona-chat-test-never-real'});ai.savePreferences({...selection,personaId:'socratic',personaExpression:'immersive'});
- await ai.generate(request);assert.equal(payload.instructions,request.instructions);assert.doesNotMatch(payload.instructions,/AI PERSONA:|Socratic|immersive/);assert.deepEqual(payload.tools,[]);assert.equal(payload.store,false);
+ ai.save({apiKey:'sk-synthetic-persona-chat-test-never-real'});ai.savePreferences({...selection,personaId:'editor',personaExpression:'subtle'});
+ await ai.generate(request);assert.ok(payload.instructions.startsWith(request.instructions));assert.match(payload.instructions,/AI PERSONA: The Editor/);assert.match(payload.instructions,/EXPRESSION: subtle/);assert.doesNotMatch(payload.instructions,/Socratic|EXPRESSION: immersive/);assert.deepEqual(payload.tools,[]);assert.equal(payload.store,false);
 });
 
 test('Chat and Persona comparison previews share foreground admission rather than independent queues',async()=>{
@@ -134,4 +134,78 @@ test('Chat and Persona comparison previews share foreground admission rather tha
  const preview={kind:'personaPreview',input:'Synthetic user-authored comparison.',personaId:'socratic',personaExpression:'expressive',modelSettings:{model:'gpt-5-mini',reasoningEffort:'low'},signal:new AbortController().signal},chat={kind:'chat',input:'Bounded evidence.',instructions:'Neutral Chat instructions.',signal:new AbortController().signal};
  const activePreview=ai.generate(preview);await assert.rejects(()=>ai.generate(chat),GenerationAdmissionError);assert.equal(calls,1);release();await activePreview;
  const activeChat=ai.generate(chat);await assert.rejects(()=>ai.generate(preview),GenerationAdmissionError);assert.equal(calls,2);release();await activeChat;
+});
+
+test('HTTP streams a checked claim while generation is still pending, then commits the final answer',async t=>{
+ let finish,ready;const started=new Promise(resolve=>ready=resolve);
+ const f=await httpFixture(t,async request=>{
+  const claim={text:'The selected source records grace.',attribution:'supported',citationIds:['E1']},output=JSON.stringify({claims:[claim]});
+  request.onDelta(output.slice(0,-2));ready();await new Promise(resolve=>finish=resolve);request.onDelta(']}');return output;
+ });
+ const response=await f.request('messages','POST',{question:'grace',scope:{kind:'source',id:f.primary.id},requestId:randomUUID()});
+ await started;const reader=response.body.getReader(),decoder=new TextDecoder();let text='';
+ try {
+  while(!text.includes('"type":"claim"')){const part=await reader.read();assert.equal(part.done,false);text+=decoder.decode(part.value,{stream:true});}
+  assert.match(text,/"type":"thread"/);assert.match(text,/"type":"evidence"/);assert.doesNotMatch(text,/"type":"answer"/);
+  assert.equal(f.store.get("SELECT count(*) n FROM chat_messages WHERE json_extract(payload,'$.role')='assistant'").n,0);
+  finish();for(;;){const part=await reader.read();if(part.done)break;text+=decoder.decode(part.value,{stream:true});}
+  assert.match(text,/"type":"answer"/);assert.equal(f.store.get("SELECT count(*) n FROM chat_messages WHERE json_extract(payload,'$.role')='assistant'").n,1);
+ }finally{finish?.();reader.releaseLock();}
+});
+
+test('Chat requests provider streaming and receives text before the final provider envelope',async()=>{
+ const {Intelligence}=await import('../src/server/modules/intelligence.ts');
+ const secret={value:null,read(){return this.value;},write(value){this.value=value;},remove(){this.value=null;}};
+ let stream,payload;const encoder=new TextEncoder(),deltas=[];
+ const ai=new Intelligence(secret,async(_url,options)=>{payload=JSON.parse(options.body);return new Response(new ReadableStream({start(controller){stream=controller;}}),{headers:{'Content-Type':'text/event-stream'}});});
+ ai.save({apiKey:'sk-synthetic-chat-test-never-a-real-key'});
+ const text=JSON.stringify({claims:[{text:'A bounded claim.',attribution:'unestablished',citationIds:[]}]});
+ const pending=ai.generate({kind:'chat',input:'Synthetic evidence',instructions:'Neutral Chat',onDelta:delta=>deltas.push(delta)});
+ const event=value=>stream.enqueue(encoder.encode('data: '+JSON.stringify(value)+'\n\n'));
+ event({type:'response.output_text.delta',delta:text,item_id:'message-1',output_index:0,content_index:0});
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(payload.stream,true);assert.equal(deltas.join(''),text);
+ event({type:'response.completed',response:{status:'completed',output:[{type:'message',content:[{type:'output_text',text}]}]}});stream.close();
+ assert.equal(await pending,text);
+});
+
+
+test('folder context reaches the provider as a closed registry and moved evidence cannot produce a completed answer',async()=>{
+ const f=chatCorpus();let chat,calls=0;
+ try {
+  f.store.run("INSERT INTO folders(id,vault_id,name) VALUES('selected','default','Selected')");
+  f.store.run("INSERT INTO folders(id,vault_id,name) VALUES('outside','default','Outside')");
+  f.store.run("INSERT INTO item_locations(vault_id,kind,item_id,folder_id) VALUES('default','page',?,'selected')",f.myNote.id);
+  const ai={selection:()=>({model:'test-model',reasoningEffort:'none'}),async generate(request){
+   calls++;const input=JSON.parse(request.input);
+   assert.deepEqual(input.scope,{kind:'folder',id:'selected'});assert.ok(input.evidence.length>0);
+   assert.ok(input.evidence.every(item=>item.objectId===f.myNote.id));
+   assert.doesNotMatch(request.input,/VAULT_SECRET_93|ceremonial|cooperating with human freedom/);
+   f.store.run("UPDATE item_locations SET folder_id='outside' WHERE vault_id='default' AND kind='page' AND item_id=?",f.myNote.id);
+   return JSON.stringify({claims:[{text:'This answer used material that left the selected folder.',attribution:'supported',citationIds:[input.evidence[0].id]}]});
+  }};
+  chat=new Chat(f.store,ai,f.retrieval,f.vaults);
+  await assert.rejects(chat.submit('default',{question:'What does Aquinas say about grace?',scope:{kind:'folder',id:'selected'},mentions:[{id:f.aquinas.id,name:'Aquinas'}],requestId:randomUUID()}),e=>e.status===409&&/evidence changed/.test(e.message));
+  assert.equal(calls,1);
+  const failed=chat.storage.get('default',chat.storage.list('default')[0].id);assert.equal(failed.messages.at(-1).status,'failed');
+  assert.doesNotMatch(JSON.stringify(failed),/This answer used material/);
+  const empty=await chat.submit('default',{question:'Augustine grace',scope:{kind:'folder',id:'selected'},requestId:randomUUID(),temporary:true});
+  assert.equal(calls,1,'The now-empty folder cannot trigger a vault-wide provider request');assert.deepEqual(empty.message.evidence,[]);assert.match(empty.message.text,/could not establish/i);
+ }finally{chat?.close();f.close();}
+});
+
+
+test('a completed folder request cannot replay material that moved outside its context',async()=>{
+ const f=chatCorpus();let chat,calls=0;
+ try {
+  f.store.run("INSERT INTO folders(id,vault_id,name) VALUES('selected','default','Selected')");
+  f.store.run("INSERT INTO folders(id,vault_id,name) VALUES('outside','default','Outside')");
+  f.store.run("INSERT INTO item_locations(vault_id,kind,item_id,folder_id) VALUES('default','page',?,'selected')",f.myNote.id);
+  const ai={selection:()=>({model:'test-model',reasoningEffort:'none'}),async generate(request){calls++;const input=JSON.parse(request.input);return JSON.stringify({claims:[{text:'The selected note records a position on grace.',attribution:'supported',citationIds:[input.evidence[0].id]}]});}};
+  chat=new Chat(f.store,ai,f.retrieval,f.vaults);
+  const body={question:'grace',scope:{kind:'folder',id:'selected'},requestId:randomUUID()},first=await chat.submit('default',body);
+  assert.equal(calls,1);assert.ok(first.message.evidence.length>0);
+  f.store.run("UPDATE item_locations SET folder_id='outside' WHERE vault_id='default' AND kind='page' AND item_id=?",f.myNote.id);
+  await assert.rejects(chat.submit('default',body),e=>e.status===409&&/Saved evidence changed/.test(e.message));assert.equal(calls,1);
+  const history=chat.storage.get('default',first.threadId);assert.equal(history.messages.at(-1).evidence[0].status,'current','Historical stored evidence is not rewritten');
+ }finally{chat?.close();f.close();}
 });

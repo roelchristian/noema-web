@@ -113,3 +113,40 @@ test('OCS typography controls update the font override and scale',async t=>{
  await edit('settings-ocs-font','shafarik');assert.equal(appearance.ocsFontOverride,true);
  assert.equal(document.getElementById('settings-ocs-font-scale').value,'1.25');
 });
+
+for(const dismissal of ['Done','Close dialog','Escape'])test(`${dismissal} saves AI edits across category changes and waits before closing`,async t=>{
+  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+  env.dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};env.dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
+  let saved=initial(),finish,closed=0,writes=[];
+  t.mock.method(api,'intelligence',async()=>structuredClone(saved));
+  t.mock.method(api,'saveAIPreferences',value=>new Promise(resolve=>{writes.push(value);finish=()=>resolve(saved={...saved,...value});}));
+  await act(async()=>root.render(createElement(SettingsDialog,{initialTab:'intelligence',appearance:defaultAppearance(),calendarSettings:defaultCalendarSettings(),vault:null,storageError:false,onChange(){},onCalendarSettingsChange(){},onExitFocus(){},onClose(){closed++;},onChangePassphrase:async()=>{},onBeforeNetworkChange:async()=>{},onOpenPassage:async()=>{},onOpenPage:async()=>{},onOpenEntity:async()=>{}})));
+  assert.equal([...document.querySelectorAll('button')].some(button=>button.textContent==='Save AI preferences'),false);
+  await edit('ai-model','gpt-6-luna');await edit('ai-enrichment-model','gpt-6-luna');
+  await click('Choose writing style');await edit('ai-persona-expression','immersive');
+  await act(async()=>document.querySelector('input[name=ai-persona][value=tutor]').click());
+  await act(async()=>document.getElementById('settings-tab-appearance').click());
+  await act(async()=>{
+    if(dismissal==='Escape')document.querySelector('dialog').dispatchEvent(new Event('cancel',{bubbles:true,cancelable:true}));
+    else if(dismissal==='Close dialog')document.querySelector('.modal-close').click();else [...document.querySelectorAll('button')].find(button=>button.textContent==='Done').click();
+  });
+  assert.equal(closed,0);assert.equal(writes.length,1);assert.equal(document.querySelector('.settings-footer .primary').disabled,true);
+  assert.equal(writes[0].model,'gpt-6-luna');assert.equal(writes[0].pageEnrichment.model,'gpt-6-luna');assert.equal('ttsVoice' in writes[0],false);assert.equal(writes[0].personaId,'tutor');assert.equal(writes[0].personaExpression,'immersive');
+  await act(async()=>document.querySelector('dialog').dispatchEvent(new Event('cancel',{bubbles:true,cancelable:true})));assert.equal(writes.length,1);
+  await act(async()=>finish());assert.equal(closed,1);
+});
+
+test('Done preserves AI drafts on save failure, validates hidden fields, and supports retry',async t=>{
+  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+  env.dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};env.dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
+  let closed=0,fail=true,writes=0;
+  t.mock.method(api,'intelligence',async()=>initial());
+  t.mock.method(api,'saveAIPreferences',async value=>{writes++;if(fail)throw new Error('Save interrupted. Try again.');return {...initial(),...value};});
+  await act(async()=>root.render(createElement(SettingsDialog,{initialTab:'intelligence',appearance:defaultAppearance(),calendarSettings:defaultCalendarSettings(),vault:null,storageError:false,onChange(){},onCalendarSettingsChange(){},onExitFocus(){},onClose(){closed++;},onChangePassphrase:async()=>{},onBeforeNetworkChange:async()=>{},onOpenPassage:async()=>{},onOpenPage:async()=>{},onOpenEntity:async()=>{}})));
+  await edit('ai-model','gpt-6-luna');await edit('ai-manual-request-limit','0');await click('Done');
+  assert.equal(closed,0);assert.equal(writes,0);assert.match(document.querySelector('[role=alert]').textContent,/whole number/);
+  await edit('ai-manual-request-limit','6');await act(async()=>document.getElementById('settings-tab-appearance').click());await click('Done');
+  assert.equal(closed,0);assert.equal(writes,1);assert.match(document.querySelector('[role=alert]').textContent,/Save interrupted/);
+  assert.equal(document.querySelector('#settings-tab-intelligence').getAttribute('aria-selected'),'true');assert.equal(document.querySelector('#ai-model').value,'gpt-6-luna');
+  fail=false;await click('Done');assert.equal(closed,1);assert.equal(writes,2);
+});

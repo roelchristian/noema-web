@@ -37,22 +37,39 @@ export class ChatRetrieval {
   if(!input||typeof input!=='object'||Array.isArray(input))throw new HttpError(400,'Choose a Chat scope.');
   const item=input as Record<string,unknown>;
   if(item.kind==='vault'&&Object.keys(item).every(key=>key==='kind'))return {kind:'vault'};
-  if(!['page','source','entity'].includes(String(item.kind))||typeof item.id!=='string'||!item.id||item.id.length>200||Object.keys(item).some(key=>key!=='kind'&&key!=='id'))throw new HttpError(400,'Choose a valid Chat scope.');
+  if(!['page','source','entity','folder'].includes(String(item.kind))||typeof item.id!=='string'||!item.id||item.id.length>200||Object.keys(item).some(key=>key!=='kind'&&key!=='id'))throw new HttpError(400,'Choose a valid Chat scope.');
   const scope={kind:item.kind,id:item.id} as Exclude<ChatScope,{kind:'vault'}>;
-  const exists=scope.kind==='page'?this.store.get('SELECT 1 FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',scope.id,vault):this.store.get(`SELECT 1 FROM entities WHERE id=? AND vault_id=? AND inactive=0 ${scope.kind==='source'?"AND type='source'":''}`,scope.id,vault);
+  const exists=scope.kind==='folder'?this.store.get('SELECT 1 FROM folders WHERE id=? AND vault_id=?',scope.id,vault):scope.kind==='page'?this.store.get('SELECT 1 FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',scope.id,vault):this.store.get(`SELECT 1 FROM entities WHERE id=? AND vault_id=? AND inactive=0 ${scope.kind==='source'?"AND type='source'":''}`,scope.id,vault);
   if(!exists)throw new HttpError(404,'The selected Chat scope is unavailable in this vault.');
   return scope;
+ }
+ private folderContents(vault:string,id:string):{pageIds:string[];sourceIds:string[]} {
+  const rows=this.store.all<{kind:string;item_id:string}>(`WITH RECURSIVE subtree(id) AS (
+   SELECT id FROM folders WHERE id=? AND vault_id=?
+   UNION SELECT f.id FROM folders f JOIN subtree s ON f.parent_id=s.id WHERE f.vault_id=?
+  ) SELECT l.kind,l.item_id FROM item_locations l WHERE l.vault_id=? AND l.folder_id IN (SELECT id FROM subtree) AND (
+   (l.kind='page' AND EXISTS(SELECT 1 FROM pages p WHERE p.id=l.item_id AND p.vault_id=l.vault_id AND p.deleted_at IS NULL AND p.archived_at IS NULL)) OR
+   (l.kind='entity' AND EXISTS(SELECT 1 FROM entities e WHERE e.id=l.item_id AND e.vault_id=l.vault_id AND e.type='source' AND e.inactive=0 AND e.archived_at IS NULL))
+  ) ORDER BY l.kind,l.item_id LIMIT 401`,id,vault,vault,vault);
+  const pageIds=rows.filter(row=>row.kind==='page').map(row=>row.item_id),sourceIds=rows.filter(row=>row.kind==='entity').map(row=>row.item_id);
+  if(pageIds.length>200||sourceIds.length>200)throw new HttpError(400,'This folder is too large for Chat context. Choose a smaller folder, note, or source.');
+  return {pageIds,sourceIds};
  }
  async retrieve(vault:string,requestedScope:ChatScope,question:string,options:{deep?:boolean;mentions?:ChatMention[];signal?:AbortSignal}={}):Promise<{evidence:ChatEvidence[];passes:number;depth:'standard'|'deep'}>{
   const scope=this.validateScope(vault,requestedScope);
   if(typeof question!=='string'||!question.trim()||question.length>4000||Buffer.byteLength(question)>12000)throw new HttpError(400,'Ask a question up to 4,000 characters.');
   if(options.mentions!==undefined&&(!Array.isArray(options.mentions)||options.mentions.length>8))throw new HttpError(400,'Choose up to eight entity mentions.');
-  const check=()=>{this.vaults.requireOpen(vault);this.validateScope(vault,scope);if(options.signal?.aborted)throw new HttpError(409,'Chat retrieval was cancelled.');};
+  const folderScope=scope.kind==='folder'?this.folderContents(vault,scope.id):undefined;
+  const check=()=>{
+   this.vaults.requireOpen(vault);this.validateScope(vault,scope);
+   if(options.signal?.aborted)throw new HttpError(409,'Chat retrieval was cancelled.');
+   if(folderScope&&scope.kind==='folder'&&JSON.stringify(this.folderContents(vault,scope.id))!==JSON.stringify(folderScope))throw new HttpError(409,'The folder contents changed. Send your question again.');
+  };
   check();
   const resolved=this.knowledge.resolveEntities(vault,question,options.mentions??[]);
   const roots=scope.kind==='entity'?[scope.id]:scope.kind==='source'?[scope.id]:scope.kind==='vault'?resolved.map(entity=>entity.id):[];
   const context=this.knowledge.get(vault,roots);
-  const passageScope=scope.kind==='vault'?undefined:scope.kind==='page'?{pageIds:[scope.id],sourceIds:[]}:scope.kind==='source'?{pageIds:[],sourceIds:[scope.id]}:{pageIds:context.pageIds,sourceIds:context.sourceIds};
+  const passageScope=folderScope??(scope.kind==='vault'?undefined:scope.kind==='page'?{pageIds:[scope.id],sourceIds:[]}:scope.kind==='source'?{pageIds:[],sourceIds:[scope.id]}:{pageIds:context.pageIds,sourceIds:context.sourceIds});
   const deep=options.deep===true||/\b(compar\w*|disagree\w*|conflict\w*|tension\w*|synthesi\w*|across|differ\w*|connections)\b/i.test(question);
   const terms=chatQueryTerms(question),primary=(terms.length?terms:question.match(/[\p{L}\p{N}]+/gu)??[]).slice(0,24).join(' ').slice(0,1800);
   const queries=[primary];
@@ -111,7 +128,7 @@ export class ChatRetrieval {
    if(bytes+size>48000)continue;
    seen.add(key);bytes+=size;selected.push({...item,id:`E${selected.length+1}`});
   }
-  return {evidence:this.validate(vault,selected).filter(item=>item.status==='current'),passes,depth:deep?'deep':'standard'};
+  return {evidence:this.validate(vault,selected,scope).filter(item=>item.status==='current'),passes,depth:deep?'deep':'standard'};
  }
  /** Fetch a small contiguous window in the seed's exact document version.
   * Standard context stays inside its actual section; deep context may include
@@ -202,10 +219,11 @@ export class ChatRetrieval {
   }
   return null;
  }
- validate(vault:string,evidence:ChatEvidence[]):ChatEvidence[]{
+ validate(vault:string,evidence:ChatEvidence[],scope?:ChatScope):ChatEvidence[]{
   this.vaults.requireOpen(vault);
+  const folder=scope?.kind==='folder'?this.folderContents(vault,scope.id):undefined;
   return evidence.map(original=>{
-   const item=structuredClone(original),status=this.status(vault,item);
+   const item=structuredClone(original),outside=folder&&!(item.kind==='own_note'?folder.pageIds.includes(item.objectId):item.kind==='source'&&folder.sourceIds.includes(item.objectId)),status=outside?'stale':this.status(vault,item);
    return {...item,status:item.status==='deleted'?'deleted':item.status==='stale'&&status==='current'?'stale':status};
   });
  }

@@ -59,6 +59,15 @@ a {
   padding: var(--button-padding-small);
   font-size: var(--ui-text-md)
 }
+/* Custom search containers provide their own surface in both display modes. */
+input[type=search] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+input[type=search]::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
 select,input:not([type=checkbox]),textarea {
   max-width: 100%
 }

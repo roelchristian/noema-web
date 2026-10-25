@@ -61,8 +61,8 @@ try {
   await page.getByRole('tab',{name:'AI',exact:true}).click();
   await page.waitForFunction(()=>!!document.querySelector('#ai-model'));
   await choose(page,'Writing model','GPT-6 Luna');
-  await page.getByRole('button',{name:'Save AI preferences',exact:true}).click();
-  await page.waitForFunction(()=>document.querySelector('.ai-preferences-form button[type=submit]')?.disabled??[...document.querySelectorAll('.ai-preferences-form button')].some(button=>button.textContent==='Save AI preferences'&&button.disabled));
+  await page.getByRole('button',{name:'Done',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'AI preferences saved.'}).waitFor();
   assert.equal(writes.length,1);assert.equal(writes[0].category,'ai');assert.equal(writes[0].body.model,'gpt-6-luna');assert.ok(!('ttsVoice' in writes[0].body));assert.equal(saved.ttsVoice,'puck');
   await page.screenshot({path:join(artifacts,mode+'-ai.png')});
   await page.getByRole('tab',{name:'Voice',exact:true}).click();

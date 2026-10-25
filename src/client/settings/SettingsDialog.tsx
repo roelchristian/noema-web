@@ -9,10 +9,10 @@ import type {PageReference} from '../../shared/embeddings';
 import { AIDebugSettings } from './AIDebugSettings';
 import { ImageSettings } from './ImageSettings';
 import { SecuritySettings } from './SecuritySettings';
-import { useState, type CSSProperties } from 'react';
+import { useRef, useState, type CSSProperties } from 'react';
 import {useSettingsSession} from './settings-session';
 import { AIActivityLog } from './AIActivityLog';
-import { IntelligenceSettings } from './IntelligenceSettings';
+import { IntelligenceSettings, type AISettingsHandle } from './IntelligenceSettings';
 import { EmbeddingSettings } from './EmbeddingSettings';
 import {VoiceSettings} from './VoiceSettings';
 import type { SourceReference, Vault } from '../../shared/domain';
@@ -48,11 +48,22 @@ export function SettingsDialog({initialTab='appearance',calendarSettings,onCalen
   const {tab,setTab,aiView,setAIView,panels}=useSettingsSession(initialTab);
   const [visited,setVisited]=useState<Set<string>>(()=>new Set([tab]));
   function selectTab(next:typeof settingsTabs[number]['id']){setTab(next);setVisited(current=>new Set([...current,next]));}
+  const aiSettings=useRef<AISettingsHandle>(null);
+  const [aiDirty,setAIDirty]=useState(false),[saving,setSaving]=useState(false);
+  const closing=useRef(false);
+  async function finish() {
+    if(closing.current)return;
+    closing.current=true;setSaving(true);
+    try {
+      if(await aiSettings.current?.save()===false){selectTab('intelligence');setAIView('overview');if(panels.current)panels.current.scrollTop=0;return;}
+      onClose();
+    } finally {closing.current=false;setSaving(false);}
+  }
   const [activityOpen, setActivityOpen] = useState(false);
   const [indexingVisited,setIndexingVisited]=useState(aiView==='indexing');
-  return <><Modal className="settings-modal" titleId="settings-title" onClose={onClose} dismissOnBackdrop>
+  return <><Modal className="settings-modal" titleId="settings-title" onClose={()=>void finish()} dismissOnBackdrop>
     <div className="settings-dialog">
-      <ModalHeader titleId="settings-title">{uiText("Settings")}</ModalHeader>
+      <ModalHeader titleId="settings-title" closeDisabled={saving}>{uiText("Settings")}</ModalHeader>
       <div className="settings-tabs" role="tablist" aria-orientation="vertical" aria-label={uiText("Settings categories")}>
         {settingsTabs.map(({id: category, label,icon}) => <button key={category} id={'settings-tab-' + category} role="tab" aria-selected={tab === category} aria-controls={'settings-panel-'+category} tabIndex={tab === category ? 0 : -1} onClick={() => selectTab(category)} onKeyDown={event => {
           if (['ArrowUp','ArrowDown','ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
@@ -64,7 +75,7 @@ export function SettingsDialog({initialTab='appearance',calendarSettings,onCalen
           }
         }}><Icon name={icon}/><span>{label}</span></button>)}
       </div>
-      <div className="settings-panels" ref={panels}>
+      <div className="settings-panels" ref={panels} inert={saving}>
       <div id="settings-panel-appearance" role="tabpanel" aria-labelledby="settings-tab-appearance" hidden={tab !== 'appearance'}>
       <section className="settings-section appearance-setting" aria-labelledby="interface-language-heading">
         <h3 id="interface-language-heading"><label htmlFor="settings-interface-language">{uiText("Language")}</label></h3>
@@ -177,11 +188,11 @@ export function SettingsDialog({initialTab='appearance',calendarSettings,onCalen
         {visited.has('knowledge') && <KnowledgeEntitySettings key={vault?.id} vault={vault} appearance={appearance} onChange={onChange} storageError={storageError}/>}
       </div>
       <div id="settings-panel-intelligence" role="tabpanel" aria-labelledby="settings-tab-intelligence" hidden={tab !== 'intelligence'}>
-        <div hidden={aiView!=='overview'}>{visited.has('intelligence')&&<IntelligenceSettings active={tab==='intelligence'&&aiView==='overview'}/>}</div>
+        <div hidden={aiView!=='overview'}>{visited.has('intelligence')&&<IntelligenceSettings ref={aiSettings} onDirtyChange={setAIDirty} active={tab==='intelligence'&&aiView==='overview'}/>}</div>
         {aiView!=='overview'&&<button className="button settings-back" onClick={()=>setAIView('overview')}>Back to AI</button>}
         <div hidden={aiView!=='indexing'}>{indexingVisited&&<EmbeddingSettings active={tab==='intelligence'&&aiView==='indexing'} onOpenPassage={onOpenPassage} key={vault?.id} vault={vault} onOpenPage={onOpenPage} onOpenEntity={onOpenEntity}/>}</div>
         {aiView==='diagnostics'&&tab==='intelligence'&&<AIDebugSettings/>}
-        {aiView==='overview'&&<section className="settings-section settings-ai-tools">
+        {aiView==='overview'&&<section className="settings-section settings-ai-tools" aria-label="AI tools"><h4>Tools & activity</h4>
           <div className="settings-overview-row"><span><strong>Search indexing</strong><small>Configure and manage semantic indexing for this vault</small></span><button className="button" onClick={()=>{setIndexingVisited(true);setAIView('indexing');}}>Manage indexing</button></div>
           <div className="settings-overview-row"><span><strong>Activity & usage</strong><small>Requests, tokens and available cost estimates</small></span><button className="button" aria-haspopup="dialog" onClick={()=>setActivityOpen(true)}>Open activity log</button></div>
           <button className="button" onClick={()=>setAIView('diagnostics')}>Advanced diagnostics</button>
@@ -197,7 +208,7 @@ export function SettingsDialog({initialTab='appearance',calendarSettings,onCalen
         {visited.has('security') && <SecuritySettings key={vault?.id} vault={vault} onChangePassphrase={onChangePassphrase} onBeforeNetworkChange={onBeforeNetworkChange}/>}
       </div>
       </div>
-      <footer className="settings-footer"><p role="status" hidden={tab !== 'appearance'}>{storageError ? uiText("Browser storage unavailable. Changes won’t persist after reload.") : uiText("Changes saved in this browser.")}</p><div><button className="button" hidden={tab !== 'appearance'} onClick={() => onChange({...defaultAppearance(), entityColors: appearance.entityColors, entityOverrides: appearance.entityOverrides,subtypeIcons:appearance.subtypeIcons})}>{uiText("Restore defaults")}</button><button className="button primary" onClick={onClose}>{uiText("Done")}</button></div></footer>
+      <footer className="settings-footer">{aiDirty&&<p role="status">{saving?"Saving AI preferences…":"AI changes will be saved when you click Done."}</p>}<p role="status" hidden={tab !== 'appearance'||aiDirty}>{storageError ? uiText("Browser storage unavailable. Changes won’t persist after reload.") : uiText("Changes saved in this browser.")}</p><div><button className="button" hidden={tab !== 'appearance'} onClick={() => onChange({...defaultAppearance(), entityColors: appearance.entityColors, entityOverrides: appearance.entityOverrides,subtypeIcons:appearance.subtypeIcons})}>{uiText("Restore defaults")}</button><button className="button primary" disabled={saving} onClick={()=>void finish()}>{saving?uiText("Saving…"):uiText("Done")}</button></div></footer>
     </div>
   </Modal>{activityOpen&&<AIActivityLog onOpenPage={onOpenPage} onClose={() => setActivityOpen(false)}/>}</>;
 }

@@ -39,7 +39,7 @@ async function mount(t,{initial=null,history,remove,post,onReadingRevision,get,o
  const props={vaultId:'v',fileId:'f',visible:true,onReadingRevision,onShow,onOriginal,onReviewOpenChange,onReturnContext,onCompare};
  await act(async()=>root.render(React.createElement(component,{...props,key:'f'})));
  const switchFile=async fileId=>act(async()=>root.render(React.createElement(SourceReprocessing,{...props,fileId,key:fileId})));
- const button=text=>[...document.querySelectorAll('button')].find(el=>el.textContent===text);
+ const button=text=>[...document.querySelectorAll('button')].find(el=>el.textContent===text||el.getAttribute('aria-label')===text);
  const click=async el=>{assert.ok(el,'Expected control exists');await act(async()=>el.click());if(legacyDetails&&/^Review changes \(/.test(el.textContent)){const details=button('Detailed review');if(details)await act(async()=>details.click());}};
  return {button,click,requests,dom,switchFile};
 }
@@ -524,9 +524,9 @@ test('completed revision selection defaults to the diff and accepted version is 
  assert.equal(env.button('Diff').getAttribute('aria-pressed'),'true');
  assert.equal(document.querySelector('.revision-diff-notes').open,false);
  assert.deepEqual(presentations.at(-1),{open:true,presentation:'diff'});
- await env.click(env.button('Accepted version'));
+ await env.click(env.button('Changes applied'));
  assert.equal(document.querySelector('.source-revision-diff'),null);assert.equal(readings.at(-1).id,r.id);
- assert.equal(env.button('Accepted version').getAttribute('aria-pressed'),'true');
+ assert.equal(env.button('Changes applied').getAttribute('aria-pressed'),'true');
  assert.equal(presentations.at(-1).open,false);
  await env.click(env.button('Diff'));assert.ok(document.querySelector('.source-revision-diff'));
  await env.click(env.button('Detailed review'));assert.ok(document.querySelector('.reprocessing-reviews'));
@@ -543,7 +543,7 @@ test('inline diff decisions submit the whole footnote group and refresh the acce
  const request=env.requests.find(item=>item.method==='POST');
  assert.deepEqual(request.body.decisions,[{patchId:'patch-0',decision:'accepted'},{patchId:'patch-1',decision:'accepted'}]);
  assert.equal(document.querySelector('.revision-diff-change').dataset.decision,'accepted','Reviewed changes remain visible in the diff');
- await env.click(env.button('Accepted version'));
+ await env.click(env.button('Changes applied'));
  assert.equal(readings.at(-1).reprocessed.text,'Updated accepted footnotes');
  await env.click(env.button('Diff'));
  await env.click([...document.querySelector('.revision-diff-change').querySelectorAll('button')].find(button=>button.textContent==='Reject'));
@@ -561,4 +561,33 @@ test('completed processing hides its monitor until details are opened in a dismi
  assert.ok(modal.querySelector('.reprocessing-report'));assert.equal(modal.querySelector('.reprocessing-monitor-main'),null);
  await env.click(modal.querySelector('[aria-label="Close dialog"]'));
  assert.equal(document.querySelector('dialog'),null);assert.ok(env.button('Processing details'));
+});
+
+test('editorial version labels preserve assigned ordinals with gaps and retain timestamps',async t=>{
+ const r=fixture();r.id='middle';r.versionNumber=4;r.createdAt='2026-10-24T12:00:00Z';
+ const older={...r,id:'older',versionNumber:2,createdAt:'2026-10-23T12:00:00Z'},newer={...r,id:'newer',versionNumber:7,createdAt:'2026-10-25T12:00:00Z'};
+ await mount(t,{initial:newer,history:[newer,r,older]});
+ const options=[...document.querySelector('[aria-label="Reading version"]').options];
+ for(const [id,version] of [['older','V2'],['middle','V4'],['newer','V7']]){
+  const option=options.find(option=>option.value===id);assert.ok(option);assert.ok(option.textContent.startsWith(version+' · Editorial revision · '));
+  assert.match(option.textContent,/2026/);
+ }
+ const details=document.querySelector('button[aria-label="Processing details"]');assert.ok(details.querySelector('svg'));assert.equal(details.textContent,'');assert.equal(details.title,'Processing details');
+});
+
+test('accepted view republishes the selected revision after evidence restores a different preferred snapshot',async t=>{
+ const selected={...fixture(),id:'selected',fileId:'f',versionNumber:2},preferred={...fixture(),id:'preferred',fileId:'f',versionNumber:1};
+ selected.reprocessed.text='Selected revision rendered text';preferred.reprocessed.text='Preferred revision rendered text';
+ const storage=new Map([['noema:source-reading:v:f',preferred.id]]),descriptor=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
+ Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)}});
+ t.after(()=>{if(descriptor)Object.defineProperty(globalThis,'localStorage',descriptor);else delete globalThis.localStorage;});
+ const readings=[],env=await mount(t,{initial:preferred,history:[selected,preferred],legacyDetails:false,get:entry=>entry.url.endsWith('/selected')?selected:preferred,onReadingRevision:value=>readings.push(value),onReturnContext:()=>readings.push(preferred)});
+ const picker=document.querySelector('[aria-label="Reading version"]');
+ await act(async()=>{picker.value=selected.id;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
+ assert.equal(readings.at(-1).id,selected.id);
+ await env.click(env.button('Changes applied'));
+ assert.equal(readings.at(-1).id,selected.id);assert.equal(readings.at(-1).reprocessed.text,'Selected revision rendered text');
+ assert.equal(storage.get('noema:source-reading:v:f'),preferred.id,'Previewing a revision never changes the preference');
+ assert.equal(picker.value,selected.id);assert.equal(env.button('Changes applied').getAttribute('aria-pressed'),'true');
+ await env.click(env.button('Diff'));await env.click(env.button('Changes applied'));assert.equal(readings.at(-1).id,selected.id);
 });

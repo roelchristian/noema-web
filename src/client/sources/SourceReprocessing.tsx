@@ -1,3 +1,4 @@
+import {sourceRevisionLabels} from './source-revision-labels';
 import {SourceRevisionDiff} from './SourceRevisionDiff';
 import {sourceEditorialRevisionLimit} from '../../shared/source-reprocessing';
 import {SourceRevisionManager} from './SourceRevisionManager';
@@ -132,22 +133,30 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
   const [currentReadingId,setCurrentReadingId]=useState(()=>{try{return localStorage.getItem(readingKey)??'';}catch{return '';}}),[readingChoice,setReadingChoice]=useState(()=>{try{return localStorage.getItem(readingKey)||'original';}catch{return 'original';}});
   const requestedReadingId=readingChoice==='original'?'':readingChoice;
   const readingCallback=useRef(onReadingRevision);readingCallback.current=onReadingRevision;
-  const readingRequest=useRef(0);
+  const readingRequest=useRef(0),readingSnapshot=useRef<SourceReprocessingRevision|null>(null);
+  function publishReading(value:SourceReprocessingRevision|null){readingSnapshot.current=value;readingCallback.current?.(value);}
   const eligible=(item:SourceReprocessingRevision|SourceReprocessingSummary)=>item.status==='completed'&&item.report.chunksCompleted>=item.report.chunksTotal&&!item.stale;
   useEffect(()=>{
     const requestId=++readingRequest.current;
-    if(!requestedReadingId){readingCallback.current?.(null);return;}
+    if(!requestedReadingId){publishReading(null);return;}
     const controller=new AbortController();
     void request<SourceReprocessingRevision>(`source-files/${encodeURIComponent(fileId)}/reprocessing/${encodeURIComponent(requestedReadingId)}`,'GET',undefined,vaultId,controller.signal).then(value=>{
       if(controller.signal.aborted||readingRequest.current!==requestId)return;
-      if(value.fileId===fileId&&eligible(value))readingCallback.current?.(value);
-      else {readingCallback.current?.(null);setReadingChoice('original');setError('This revision is incomplete or no longer matches the canonical source. Original processed text is shown.');}
-    }).catch(cause=>{if(!controller.signal.aborted&&readingRequest.current===requestId){readingCallback.current?.(null);setReadingChoice('original');setError(String(cause));}});
+      if(value.id===requestedReadingId&&value.fileId===fileId&&eligible(value))publishReading(value);
+      else {publishReading(null);setReadingChoice('original');setError('This revision is incomplete or no longer matches the canonical source. Original processed text is shown.');}
+    }).catch(cause=>{if(!controller.signal.aborted&&readingRequest.current===requestId){publishReading(null);setReadingChoice('original');setError(String(cause));}});
     return()=>controller.abort();
   },[fileId,vaultId,requestedReadingId,reload,canonicalVersion]);
   function chooseReading(value:string,presentation:'diff'|'read'='diff'){
     if(value!=='original'&&!revisionOptions.some(item=>item.id===value&&eligible(item)))return;
     contextReading.current=null;setEvidenceSurface('reading');onReturnContext?.();
+    // Publish the selected snapshot before exposing the reader. Returning from
+    // evidence can restore a different reading snapshot even when the ID is unchanged.
+    if(presentation==='read'&&revision?.id===value&&eligible(revision)){
+      ++readingRequest.current;
+      const fetched=readingSnapshot.current;
+      publishReading(fetched?.id===value&&eligible(fetched)&&fetched.updatedAt>=revision.updatedAt?fetched:revision);
+    }
     setReadingChoice(value);
     if(value!=='original'){setRevisionId(value);setReviewStyle('diff');setFilter('all');setTab(presentation==='diff'?'review':'read');if(presentation==='diff')onShow();}
     if(value==='original'){setTab('read');onOriginal();}
@@ -196,6 +205,7 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
   const running=summaries.some(item=>active(item.status))||(revision!==null&&active(revision.status)),stale=revision?.stale,pending=revision?.patches.filter(p=>p.decision==='pending').length??0;
   const activeRun=summaries.find(item=>active(item.status));
   const revisionOptions=revision?summaries.some(item=>item.id===revision.id)?summaries.map(item=>item.id===revision.id?revision:item):[revision,...summaries]:summaries;
+  const versionLabels=sourceRevisionLabels(revisionOptions);
   function openSetup(){
     setError('');
     if(summaries.length>=sourceEditorialRevisionLimit){setPrompt(false);setCreatingAfterManage(true);setManaging(true);}else setPrompt(true);
@@ -207,7 +217,7 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
       await request(`${route}/${encodeURIComponent(id)}`,'DELETE',undefined,vaultId);
       if(!mounted.current)return;
       const remaining=summaries.filter(item=>item.id!==id);setSummaries(remaining);
-      if(readingChoice===id){++readingRequest.current;contextReading.current=null;setReadingChoice('original');readingCallback.current?.(null);onOriginal();}
+      if(readingChoice===id){++readingRequest.current;contextReading.current=null;setReadingChoice('original');publishReading(null);onOriginal();}
       if(contextReading.current===id)contextReading.current='original';
       if(currentReadingId===id){setCurrentReadingId('');try{localStorage.removeItem(readingKey);}catch{/* Session preference is cleared. */}}
       if(revisionId===id){setRevision(null);setRevisionId(remaining[0]?.id??'');setTab('read');setPassagePatchIds([]);setSelected([]);setActivePatchId('');}
@@ -269,7 +279,7 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
     <div className="reprocessing-bar">
       <label className="reprocessing-reading-picker">{uiText("Reading version")} <Select aria-label={uiText("Reading version")} value={readingChoice} onChange={event=>chooseReading(event.target.value)}>
         <option value="original">{uiText("Original processed")}{!currentReadingId?" · Preferred":""}</option>
-        {revisionOptions.filter(eligible).map(item=><option key={item.id} value={item.id}>{uiText("Editorial revision")} · {new Date(item.createdAt).toLocaleString(getLocale())}{currentReadingId===item.id?" · Preferred":""}</option>)}
+        {revisionOptions.filter(eligible).map(item=><option key={item.id} value={item.id}>{versionLabels.get(item.id)} · {uiText("Editorial revision")} · {new Date(item.createdAt).toLocaleString(getLocale())}{currentReadingId===item.id?" · Preferred":""}</option>)}
       </Select></label>
       <button type="button" className="reprocessing-quiet-action" aria-label={uiText("Set as preferred reading version")} title={uiText("Set as preferred reading version")} disabled={requestedReadingId===currentReadingId} onClick={preferReading}>{requestedReadingId===currentReadingId?uiText("Preferred"):uiText("Set preferred")}</button>
       <button ref={reviewTrigger} type="button" disabled={!revision||revision.id!==revisionId} className="reprocessing-quiet-action" aria-expanded={visible&&tab==='review'} aria-controls={`source-review-${fileId}`} onClick={()=>{reviewInvoker.current=reviewTrigger.current;setPassagePatchIds([]);setFilter('all');setReviewStyle('diff');setTab('review');onShow();}}>{uiText("Review changes (")}{pending})</button>
@@ -278,7 +288,7 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
     <div className="reprocessing-view-controls">
       {revision&&revision.id===revisionId&&<div className="reprocessing-view-switch" role="group" aria-label={uiText('Revision view')}>
         <button type="button" aria-pressed={reviewReady&&reviewStyle==='diff'} onClick={()=>{returnToCorrection();setReviewStyle('diff');setFilter('all');setPassagePatchIds([]);setTab('review');onShow();}}>{uiText('Diff')}</button>
-        <button type="button" aria-pressed={tab==='read'&&readingChoice===revision.id} disabled={!eligible(revision)} onClick={()=>{returnToCorrection();chooseReading(revision.id,'read');}}>{uiText('Accepted version')}</button>
+        <button type="button" aria-pressed={tab==='read'&&readingChoice===revision.id} disabled={!eligible(revision)} onClick={()=>chooseReading(revision.id,'read')}>{uiText('Changes applied')}</button>
       </div>}
       <button type="button" className="reprocessing-quiet-action" disabled={busy} onClick={()=>{setCreatingAfterManage(false);setManaging(true);onShow();}}>{uiText('Manage revisions')}</button>
     </div>
@@ -286,10 +296,10 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
     {error&&!prompt&&<InlineNotice id={`reprocessing-operation-error-${fileId}`} tone="error" title={error} announcement="assertive" actions={<button type="button" className="button" onClick={()=>{setError('');setReload(n=>n+1);}}>{uiText("Refresh")}</button>}/>}
     {visible&&<>
       {prompt&&<SourceReprocessingSetup fileId={fileId} configuration={configuration} configurationError={configurationError} depth={depth} onDepth={setDepth} reviewPolicy={reviewPolicy} onReviewPolicy={setReviewPolicy} instructions={instructions} onInstructions={setInstructions} evidenceCapabilities={evidenceCapabilities} evidenceError={evidenceError} evidenceOptions={evidenceOptions} onEvidenceOptions={setEvidenceOptions} busy={busy} running={running} error={error} onStart={()=>void start()} onClose={()=>setPrompt(false)}/>}
-      {activeRun&&activeRun.id!==revisionId&&<div className="reprocessing-active-run" role="status"><span>{uiText("A revision is processing")} · {new Date(activeRun.createdAt).toLocaleString(getLocale())}</span><button type="button" className="button small" onClick={()=>setRevisionId(activeRun.id)}>{uiText("Show processing status")}</button></div>}
+      {activeRun&&activeRun.id!==revisionId&&<div className="reprocessing-active-run" role="status"><span>{versionLabels.get(activeRun.id)} · {uiText("A revision is processing")} · {new Date(activeRun.createdAt).toLocaleString(getLocale())}</span><button type="button" className="button small" onClick={()=>setRevisionId(activeRun.id)}>{uiText("Show processing status")}</button></div>}
       {!revision&&!prompt&&<p role="status">{revisionId?uiText("Loading revision…"):uiText("Refine text to create an editorial reading version and review suggested corrections.")}</p>}
       {revision&&revision.id===revisionId&&<>{stale&&<InlineNotice id={`reprocessing-stale-${revision.id}`} tone="warning" title={uiText("The canonical source has changed. This revision is preserved for comparison; start a new run before reviewing changes.")}/>}
-        <SourceReprocessingProgress key={revision.id} revision={revision} busy={busy} running={running} pending={pending} onStop={()=>void control('cancel')} onResume={()=>void control('resume')} onReview={()=>{setPassagePatchIds([]);setFilter(pending>0?'pending':'all');setTab('review');}} onRefine={openSetup}>
+        <SourceReprocessingProgress key={revision.id} versionLabel={versionLabels.get(revision.id)} revision={revision} busy={busy} running={running} pending={pending} onStop={()=>void control('cancel')} onResume={()=>void control('resume')} onReview={()=>{setPassagePatchIds([]);setFilter(pending>0?'pending':'all');setTab('review');}} onRefine={openSetup}>
         {!!revision.furniture?.length&&<details className="reprocessing-page-furniture"><DisclosureSummary>{uiText("Page headers and footers ({value0})",{value0:revision.furniture.length})}</DisclosureSummary><p>{uiText("Marked as page furniture. Source text is retained; use the reading display options to hide headers and footers.")}</p><ul>{revision.furniture.map(item=><li key={item.id}><strong>{uiText(item.kind==='footer'?"Page footer":"Page header")} · {uiText("Page {value0}",{value0:item.page})}</strong><blockquote>{item.text}</blockquote><small>{item.reason}</small></li>)}</ul></details>}
 
         {eligible(revision)&&<div className="reprocessing-result-summary" role="status"><p>{revision.patches.length===0?uiText("No text or layout changes were proposed."):revision.patches.some(patch=>patch.decision==='accepted')?uiText("The processed reading version includes {value0} applied corrections.",{value0:revision.patches.filter(patch=>patch.decision==='accepted').length}):pending>0?uiText("{value0} proposed corrections are waiting for review. The reading text is unchanged until corrections are accepted.",{value0:pending}):uiText("All proposed corrections were rejected; the original text is retained.")}</p>{revision.reprocessed.text!==revision.original.text&&requestedReadingId!==revision.id&&<button type="button" className="button primary small" onClick={()=>chooseReading(revision.id)}>{uiText("Show processed version")}</button>}{pending>0&&<button type="button" className="reprocessing-quiet-action" onClick={()=>{setFilter('pending');setTab('review');}}>{uiText("Review proposed corrections")}</button>}</div>}
@@ -303,7 +313,7 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
           <SourceRevisionDiff revision={revision} disabled={busy||!!stale||active(revision.status)} onDecision={decide} onEdit={patch=>{setReviewStyle('drawer');setPassagePatchIds([]);setFilter('all');setActivePatchId(patch.id);}} onLocate={showPatchSource} onCompare={onCompare?page=>{if(contextReading.current===null)contextReading.current=readingChoice;setEvidenceSurface('pdf');onCompare(page);}:undefined}/>
         </aside>:<aside ref={reviewPane} tabIndex={-1} id={`source-review-${fileId}`} className="reprocessing-reviews" aria-label={uiText("Review corrections")} onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();closeReview();}}}>
           <div className="reprocessing-review-heading"><h2>{uiText("Review corrections")}</h2><button type="button" className="button small" onClick={closeReview}>{uiText("Close corrections")}</button></div>
-      {revisionOptions.length>0&&<label className="reprocessing-revision-picker">{uiText("Examining revision") + " "}<Select aria-label={uiText("Examining revision")} disabled={busy} value={revisionId} onChange={e=>{returnToCorrection();setPassagePatchIds([]);setActivePatchId('');setRevisionId(e.target.value);}}>{revisionOptions.map(item=><option key={item.id} value={item.id}>{new Date(item.createdAt).toLocaleString(getLocale())} · {uiText(partial(item)?"Partial revision":item.status)}</option>)}</Select></label>}
+      {revisionOptions.length>0&&<label className="reprocessing-revision-picker">{uiText("Examining revision") + " "}<Select aria-label={uiText("Examining revision")} disabled={busy} value={revisionId} onChange={e=>{returnToCorrection();setPassagePatchIds([]);setActivePatchId('');setRevisionId(e.target.value);}}>{revisionOptions.map(item=><option key={item.id} value={item.id}>{versionLabels.get(item.id)} · {new Date(item.createdAt).toLocaleString(getLocale())} · {uiText(partial(item)?"Partial revision":item.status)}</option>)}</Select></label>}
           {evidenceSurface!=='reading'&&<div className="reprocessing-context-return" role="status"><span>{uiText(evidenceSurface==='pdf'?"PDF page evidence":"Original passage")}</span><button type="button" className="button small" onClick={returnToCorrection}>{uiText("Return to correction")}</button></div>}
           <div className="reprocessing-tabs reprocessing-review-filters" role="group" aria-label={uiText("Review status")}>
             {primaryFilters.map(renderFilter)}

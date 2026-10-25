@@ -213,6 +213,7 @@ export class SourceReprocessing {
   this.store.transaction(()=>{
    this.requireRevisionCapacity(vault,id);
    this.store.run('INSERT INTO source_reprocessing (id,file_id,vault_id,status,created_at,updated_at,payload) VALUES (?,?,?,?,?,?,?)',revision.id,id,vault,revision.status,timestamp,timestamp,JSON.stringify(revision));
+   revision.versionNumber=this.store.get<{version:number}>("SELECT json_extract(payload,'$.versionNumber') AS version FROM source_reprocessing WHERE id=?",revision.id)!.version;
    if(configuration){const checkpoints=new SourceReprocessingCheckpoints(this.store);for(const chunk of planReprocessingChunks(original.text,original.document,8000,configuration?.architectureVersion===1))checkpoints.saveChunk({revisionId:revision.id,index:chunk.index,startOffset:chunk.start,endOffset:chunk.end,baseHash:revision.baseHash,evidenceHash:gatherReprocessingEvidence({text:original.text,document:original.document,start:chunk.start,end:chunk.end,options:configuration.evidence}).hash,difficulty:chunk.difficulty,difficultyReason:chunk.difficultyReason,requiredPassCount:configuration.depth==='light'?1:2,status:'pending'});}
   });return revision;
  }

@@ -25,6 +25,7 @@ type LoadedFile=SourceFile&{textHash:string;document?:SourceDocument};
 type Entry=SourceViewEntry;
 type ReaderPosition={node?:string;page?:string;top:number};
 function visibleReadingPosition(root:HTMLElement|null):ReaderPosition|null {
+  if(!root||root.closest('[hidden]'))return null;
   const edge=(document.querySelector('.topbar')?.getBoundingClientRect().bottom??0)+24;
   const passage=Array.from(root?.querySelectorAll<HTMLElement>('[data-source-node]')??[]).find(item=>item.getBoundingClientRect().height>0&&item.getBoundingClientRect().bottom>edge);
   return passage?{node:passage.dataset.canonicalNode,page:passage.dataset.sourcePage,top:passage.getBoundingClientRect().top}:null;
@@ -165,7 +166,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
     return links.length===1&&entries.some(entry=>entry.node.id===links[0].originalNodeId)?links[0].originalNodeId:undefined;
   }
   useLayoutEffect(()=>{
-    const saved=position.current,root=article.current;if(!saved||!root||root.getBoundingClientRect().height===0)return;position.current=null;
+    const saved=position.current,root=article.current;if(!saved||!root||root.closest('[hidden]')||root.getBoundingClientRect().height===0)return;position.current=null;
     const passages=Array.from(root.querySelectorAll<HTMLElement>('[data-source-node]'));
     const linked=saved.node?passages.filter(item=>item.dataset.canonicalNode===saved.node):[];
     const target=linked.length===1?linked[0]:saved.page?passages.find(item=>item.dataset.sourcePage===saved.page):undefined;

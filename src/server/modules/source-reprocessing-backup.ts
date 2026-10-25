@@ -144,6 +144,7 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  const original=object(r.original),text=string(original.text,512000),document=object(original.document);
  if(r.id!==oldId||r.fileId!==oldFileId||document.schemaVersion!==1||r.baseHash!==hash(original))throw invalid();
  timestamp(r.createdAt);timestamp(r.updatedAt);string(r.instructions,4000);
+ if(r.versionNumber!==undefined)integer(r.versionNumber,1,Number.MAX_SAFE_INTEGER);
  oneOf(r.status,['queued','running','completed','failed','interrupted']);
  if(typeof r.stale!=='boolean')throw invalid();
  const source=object(document.source);
@@ -285,7 +286,7 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  if(report.validationDiagnostics!==undefined)for(const diagnostic of array(report.validationDiagnostics,5000))string(diagnostic,10000);
  // Keep the validated original's key order for the evidence hash. The derived variant and
  // supplied node links are intentionally discarded and deterministically reconstructed.
- const revision=structuredClone({id:r.id,fileId:r.fileId,createdAt:r.createdAt,updatedAt:r.updatedAt,status:r.status,pipelineVersion:r.pipelineVersion,configuration:r.pipelineVersion===2?validateReprocessingConfiguration(r.configuration):undefined,furniture:r.furniture,acceptanceMode:r.acceptanceMode??'review_all',acceptanceThreshold:r.acceptanceThreshold,instructions:r.instructions,baseHash:r.baseHash,stale:r.stale,original,reprocessed:original,patches,report}) as unknown as SourceReprocessingRevision;
+ const revision=structuredClone({versionNumber:r.versionNumber,id:r.id,fileId:r.fileId,createdAt:r.createdAt,updatedAt:r.updatedAt,status:r.status,pipelineVersion:r.pipelineVersion,configuration:r.pipelineVersion===2?validateReprocessingConfiguration(r.configuration):undefined,furniture:r.furniture,acceptanceMode:r.acceptanceMode??'review_all',acceptanceThreshold:r.acceptanceThreshold,instructions:r.instructions,baseHash:r.baseHash,stale:r.stale,original,reprocessed:original,patches,report}) as unknown as SourceReprocessingRevision;
  revision.id=newId;revision.fileId=newFileId;revision.original.document.source.fileId=newFileId;
  revision.baseHash=hash(revision.original);revision.stale=false;
  for(const patch of revision.patches)if(patch.baseHash!==undefined)patch.baseHash=revision.baseHash;

@@ -174,6 +174,10 @@
   margin: 0;
   border: 0;
 }
+/* Keep all source surfaces and their local controls beneath the sticky toolbar. */
+main.source-workspace > #content {
+  isolation: isolate;
+}
 main.source-workspace > #content > .source-reader {
   color: var(--text);
   container: source-reader / inline-size;
@@ -1114,6 +1118,7 @@ main.source-workspace > #content > .source-reader.has-review-drawer:not(.has-rev
 }
 .source-reader.has-revision-diff .source-reader-review-host .reprocessing-reviews {
   position: relative;
+  z-index: auto;
   inset: auto;
   overflow: visible;
   max-height: none;

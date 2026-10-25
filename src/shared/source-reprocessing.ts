@@ -89,6 +89,8 @@ export interface SourceReprocessingReport {
  diagnostics:string[];validationDiagnostics?:string[];error:string|null;
 }
 export interface SourceReprocessingRevision {
+ /** Immutable source-local ordinal, assigned when queued; absent only in legacy archives. */
+ versionNumber?:number;
  id:string;fileId:string;createdAt:string;updatedAt:string;status:ReprocessingStatus;instructions:string;
  pipelineVersion?:1|2;configuration?:SourceReprocessingConfiguration;
  furniture?:{id:string;startOffset:number;endOffset:number;page:number;text:string;kind?:'header'|'footer';hidden:boolean;reason:string}[];

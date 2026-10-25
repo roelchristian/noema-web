@@ -1,6 +1,7 @@
 import {useEffect,useId,useState,type ReactNode} from 'react';
 import type {SourceReprocessingRevision} from '../../shared/source-reprocessing';
 import {t as uiText,getLocale} from '../i18n';
+import {Icon} from '../components/Icon';
 import {Modal,ModalHeader} from '../components/Modal';
 import {DisclosureSummary} from '../components/DisclosureSummary';
 import {InlineNotice,ProgressNotice} from '../notifications';
@@ -10,8 +11,8 @@ const active=(status:string)=>status==='queued'||status==='running';
 const partial=(revision:SourceReprocessingRevision)=>!active(revision.status)&&revision.report.chunksCompleted<revision.report.chunksTotal;
 const incompleteResponse=(revision:SourceReprocessingRevision)=>/^provider_(?:output_limit|empty_output|incomplete_output)$/.test(revision.report.errorCode??'')||!!revision.report.error?.startsWith('OpenAI returned an incomplete response.');
 const configurationFailure=(revision:SourceReprocessingRevision)=>!incompleteResponse(revision)&&/config|unsupported|provider_http_(?:40[0134]|422)/.test(revision.report.errorCode??'');
-type Props={revision:SourceReprocessingRevision;busy:boolean;running:boolean;pending:number;onStop:()=>void;onResume:()=>void;onReview:()=>void;onRefine:()=>void;children?:ReactNode};
-export function SourceReprocessingProgress({revision,busy,running,pending,onStop,onResume,onReview,onRefine,children}:Props){
+type Props={versionLabel?:string;revision:SourceReprocessingRevision;busy:boolean;running:boolean;pending:number;onStop:()=>void;onResume:()=>void;onReview:()=>void;onRefine:()=>void;children?:ReactNode};
+export function SourceReprocessingProgress({revision,versionLabel,busy,running,pending,onStop,onResume,onReview,onRefine,children}:Props){
  const {report,status}=revision;
  const [now,setNow]=useState(Date.now);
  const [detailsOpen,setDetailsOpen]=useState(false),detailsTitleId=useId();
@@ -63,7 +64,7 @@ export function SourceReprocessingProgress({revision,busy,running,pending,onStop
  </>;
  const monitor=<section className="reprocessing-monitor" aria-label={uiText("Processing status")}>
   {!complete&&<div className="reprocessing-monitor-main">
-   <div className="reprocessing-progress"><p className="reprocessing-monitor-context">{uiText("Revision")} · {new Date(revision.createdAt).toLocaleString(getLocale())}</p>
+   <div className="reprocessing-progress"><p className="reprocessing-monitor-context">{versionLabel??uiText("Revision")} · {new Date(revision.createdAt).toLocaleString(getLocale())}</p>
     <ProgressNotice id={`reprocessing-progress-${revision.id}`} compact title={title} state={failed?'interrupted':status} detail={<>{workflowProgress&&report.stageProgress&&!preparingEvidence&&<>{report.stageProgress.completed} / {report.stageProgress.total} {uiText(stage==='understanding'?"document summaries processed":"items processed in this stage")} · </>}{uiText("{value0} of {value1} excerpts completed",{value0:report.chunksCompleted,value1:report.chunksTotal})}</>} value={progressValue} max={workflowProgress?100:Math.max(1,report.chunksTotal)} progressLabel={uiText(workflowProgress?"Overall revision progress":"Completed excerpt coverage")}/>
     {active(status)&&<p className="reprocessing-monitor-activity">{runningExcerpts.length>0?<>{uiText("Checking excerpt {value0}",{value0:runningExcerpts[0].index+1})}{runningExcerpts[0].activePass?' · '+passLabel(runningExcerpts[0]):''}{runningExcerpts.length>1?' · '+uiText("{value0} active excerpts",{value0:runningExcerpts.length}):''} · </>:null}{updateSeconds!==null?uiText("Last update {value0} ago",{value0:elapsed(updateSeconds)}):uiText("Waiting for an update")}</p>}
    </div>
@@ -75,7 +76,7 @@ export function SourceReprocessingProgress({revision,busy,running,pending,onStop
     {failed&&<p>{uiText("Coverage is incomplete. This reading version contains only accepted changes from completed excerpts.")}</p>}
  </section>;
  return complete?<div className="reprocessing-completed-details">
-  <button type="button" className="reprocessing-quiet-action" onClick={()=>setDetailsOpen(true)}>{uiText('Processing details')}</button>
+  <button type="button" className="source-activity-icon-action" aria-label={uiText('Processing details')} title={uiText('Processing details')} onClick={()=>setDetailsOpen(true)}><Icon name="info"/></button>
   {detailsOpen&&<Modal titleId={detailsTitleId} onClose={()=>setDetailsOpen(false)} className="reprocessing-details-modal" dismissOnBackdrop><ModalHeader titleId={detailsTitleId}>{uiText('Processing details')}</ModalHeader>{monitor}</Modal>}
  </div>:monitor;
 }

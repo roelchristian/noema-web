@@ -35,7 +35,7 @@
 .revision-diff-more{align-self:center;font-size:12px;line-height:16px;color:var(--text-muted);margin-top:1px}
 .revision-diff-more>summary{cursor:pointer;list-style:none;padding-inline:2px}.revision-diff-more[open]{grid-column:1/-1;font-size:10px}.revision-diff-more[open]>summary{width:fit-content;margin-inline-start:auto}.revision-diff-more>div{display:flex;flex-direction:column;align-items:start;gap:4px;margin:4px 0}
 .revision-diff-empty{padding-block:18px;color:var(--text-muted)}
-@media(min-width:1300px){.source-revision-diff{margin-inline-end:-168px}}
+@media(min-width:1300px){.source-revision-diff{margin-inline-end:-168px}.revision-diff-toolbar,.revision-diff-file-heading{margin-inline-end:168px}}
 @media(max-width:750px){.revision-diff-line{grid-template-columns:22px 22px 16px minmax(0,1fr) 92px}.revision-diff-number{font-size:10px}.revision-diff-margin{padding-inline-start:8px}.revision-diff-change{padding-inline-start:5px}.revision-diff-change-label{gap:2px}.revision-diff-actions{gap:4px}}
 
 .revision-diff-change[data-decision=accepted]{display:block;border:0;padding:0;margin-bottom:2px}
@@ -44,3 +44,25 @@
 .revision-diff-accepted>summary:hover{background:var(--status-success-bg)}
 .revision-diff-accepted>summary:focus-visible{outline:2px solid var(--text);outline-offset:2px}
 .revision-diff-accepted-controls{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:3px;padding-inline-start:6px;margin-block:2px 6px;border-inline-start:2px solid var(--status-success-border)}
+.revision-diff-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px;font:11px/1.4 var(--font-ui)}
+.revision-diff-toolbar .reprocessing-view-switch button{font-size:11px;padding:4px 8px}
+.revision-diff-toolbar button:disabled{opacity:.4;cursor:default}
+.source-revision-diff.is-split .revision-diff-line{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 168px;align-items:stretch}
+.revision-diff-side{display:grid;grid-template-columns:30px 18px minmax(0,1fr);min-width:0;align-items:start}
+.revision-diff-side:first-child{border-inline-end:1px solid var(--line)}
+.revision-diff-side.is-removed{background:var(--status-danger-bg)}
+.revision-diff-side.is-added{background:var(--status-success-bg)}
+.revision-diff-side.is-empty{background:var(--surface-subtle,var(--surface))}
+.source-revision-diff.is-split .revision-diff-file-heading{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px 0}.source-revision-diff.is-split .revision-diff-file-heading>span:not(:last-child){grid-row:2}.source-revision-diff.is-split .revision-diff-file-heading>span:last-child{grid-column:1/-1;grid-row:1;justify-self:end}
+.source-revision-diff.is-rendered .revision-diff-lines{font:12px/1.6 var(--font-ui)}
+.source-revision-diff.is-rendered .revision-diff-text{white-space:normal}
+.source-revision-diff.is-rendered .source-reader-text{font:inherit;color:inherit;white-space:normal}
+.source-revision-diff.is-rendered .source-reader-text :is(p,ul,ol,blockquote,pre,table){margin-block:3px 7px}
+.source-revision-diff.is-rendered .source-reader-text :is(ul,ol){padding-inline-start:20px}
+.source-revision-diff.is-rendered .source-reader-text :is(h1,h2,h3,h4,h5,h6){font-family:inherit;line-height:1.4;margin-block:6px}
+.source-revision-diff.is-rendered .source-reader-text h1{font-size:1.35em}
+.source-revision-diff.is-rendered .source-reader-text h2{font-size:1.25em}
+.source-revision-diff.is-rendered .source-reader-text :is(h3,h4,h5,h6){font-size:1.1em}
+.source-revision-diff.is-rendered .source-reader-text :is(code,pre){font-size:11px}
+.source-revision-diff.is-rendered .source-reader-text table{border-collapse:collapse;width:100%}
+.source-revision-diff.is-rendered .source-reader-text :is(td,th){border:1px solid var(--line);padding:3px 6px}

@@ -7,14 +7,16 @@ import {Store} from '../src/server/store.ts';
 import {SourceReprocessing,sourceRevisionBaseHash} from '../src/server/modules/source-reprocessing.ts';
 import {processedSourceDocument} from '../src/server/modules/source-document.ts';
 import {repairReconstructionPass} from '../src/server/modules/source-reprocessing-pass.ts';
+import {setupSourceReprocessingVersionSchema} from '../src/server/source-reprocessing-version-schema.ts';
 import {SourceReprocessingCheckpoints} from '../src/server/modules/source-reprocessing-checkpoints.ts';
 
-function harness(t,{depth='balanced',text='A short synthetic scholarly passage.',pages=null,pageStartLines=[],provider=echo,synthesisProvider=()=>JSON.stringify({observations:[]}),synthesisReviewProvider=request=>JSON.stringify({reviews:request.rejected.map(issue=>({index:issue.index,classification:'unsupported',explanation:'The supplied source does not support this observation.',observation:null}))}),evidenceService,omitConfiguration=false,evidenceOptions={originalPages:false,ocr:false,allowExternalTransmission:false}}={}) {
+function harness(t,{versioning=false,depth='balanced',text='A short synthetic scholarly passage.',pages=null,pageStartLines=[],provider=echo,synthesisProvider=()=>JSON.stringify({observations:[]}),synthesisReviewProvider=request=>JSON.stringify({reviews:request.rejected.map(issue=>({index:issue.index,classification:'unsupported',explanation:'The supplied source does not support this observation.',observation:null}))}),evidenceService,omitConfiguration=false,evidenceOptions={originalPages:false,ocr:false,allowExternalTransmission:false}}={}) {
  const db=new DatabaseSync(':memory:');t.after(()=>db.close());
  db.exec(`CREATE TABLE source_math_documents(file_id TEXT,raw_hash TEXT,cleaned_text TEXT,uncertainty_json TEXT,algorithm_version INTEGER);
  CREATE TABLE source_reprocessing(id TEXT PRIMARY KEY,file_id TEXT,vault_id TEXT,status TEXT,created_at TEXT,updated_at TEXT,payload TEXT);
  CREATE TABLE source_reprocessing_chunks(revision_id TEXT,chunk_index INTEGER,payload TEXT,PRIMARY KEY(revision_id,chunk_index));
  CREATE TABLE source_reprocessing_passes(revision_id TEXT,chunk_index INTEGER,pass_index INTEGER,payload TEXT,PRIMARY KEY(revision_id,chunk_index,pass_index));`);
+ if(versioning){db.exec("CREATE TABLE source_files(id TEXT PRIMARY KEY);INSERT INTO source_files VALUES('synthetic-file')");setupSourceReprocessingVersionSchema(db);}
  const store=new Store(db),file={id:'synthetic-file',entity_id:null,name:'Synthetic',original_filename:'Synthetic',format:'txt',language:'en',source_url:null,generated_name:null,text,pages,structural_nodes:'[]',page_start_lines:JSON.stringify(pageStartLines),enrichment_status:'completed',status:'ready',admitted:1};
  const original={text,document:processedSourceDocument(file)},selection={model:'gpt-5-mini',reasoningEffort:'low'},calls=[],prompts=[];
  let locked=false;
@@ -481,4 +483,11 @@ test('real court reconstruction preserves all four inline footnotes, paragraph r
  const dom=new JSDOM(html);t.after(()=>dom.window.close());const references=[...dom.window.document.querySelectorAll('[data-footnote-reference]')];
  assert.equal(references.length,4);assert.ok(references.every(reference=>dom.window.document.getElementById(reference.dataset.footnoteReference)),'every rendered superscript links to a rendered note body');
  await assertRecoveryArchive(env);
+});
+
+test('queued API revisions get immutable numbers before processing and deletion never recycles them',async t=>{
+ const env=harness(t,{versioning:true});assert.equal(env.revision.status,'queued');assert.equal(env.revision.versionNumber,1);
+ await env.worker.tick();assert.equal(env.value.versionNumber,1);assert.equal(env.value.status,'completed');
+ env.worker.remove('vault',env.revision.fileId,env.revision.id);
+ const next=env.worker.start('vault',env.revision.fileId,{pipelineVersion:2});assert.equal(next.status,'queued');assert.equal(next.versionNumber,2);
 });

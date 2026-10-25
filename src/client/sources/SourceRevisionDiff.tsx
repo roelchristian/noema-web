@@ -1,6 +1,7 @@
-import {useMemo} from 'react';
+import {useEffect,useId,useMemo,useRef,useState} from 'react';
 import type {SourceEditorialPatch,SourceReprocessingRevision} from '../../shared/source-reprocessing';
 import {t as uiText,getLocale} from '../i18n';
+import {SourceReaderText} from './SourceReaderText';
 import './source-revision-diff.css';
 
 type Decision=SourceEditorialPatch['decision'];
@@ -34,6 +35,35 @@ export function revisionDiffLines(before:string,after:string,oldStart=1,newStart
  }
  for(let i=endBefore;i<beforeLines.length;i++)append('context',beforeLines[i]!);
  return rows;
+}
+
+export type RevisionSplitRow={left:RevisionDiffLine|null;right:RevisionDiffLine|null};
+/** Pair changed runs until the next shared context, keeping insertions/deletions aligned. */
+export function revisionSplitRows(rows:RevisionDiffLine[]):RevisionSplitRow[]{
+ const result:RevisionSplitRow[]=[];
+ for(let index=0;index<rows.length;){
+  const row=rows[index]!;
+  if(row.kind==='context'){result.push({left:row,right:row});index++;continue;}
+  const removed:RevisionDiffLine[]=[],added:RevisionDiffLine[]=[];
+  while(index<rows.length&&rows[index]!.kind!=='context'){const changed=rows[index++]!;(changed.kind==='removed'?removed:added).push(changed);}
+  for(let i=0;i<Math.max(removed.length,added.length);i++)result.push({left:removed[i]??null,right:added[i]??null});
+ }
+ return result;
+}
+
+type DisplayRow={left:RevisionDiffLine[];right:RevisionDiffLine[]};
+function displayRows(rows:RevisionDiffLine[],split:boolean,rendered:boolean):DisplayRow[]{
+ if(!rendered)return split?revisionSplitRows(rows).map(({left,right})=>({left:left?[left]:[],right:right?[right]:[]})):rows.map(row=>({left:[row],right:[]}));
+ const result:DisplayRow[]=[];
+ for(const row of rows){
+  const last=result.at(-1),previous=last?.left[0]??last?.right[0];
+  const same=previous&&(split?(previous.kind==='context')===(row.kind==='context'):previous.kind===row.kind);
+  const next=same?last!:{left:[],right:[]};
+  if(!same)result.push(next);
+  if(!split||row.kind!=='added')next.left.push(row);
+  if(split&&row.kind!=='removed')next.right.push(row);
+ }
+ return result;
 }
 
 /** Context always compares canonical text with the complete proposal in that interval.
@@ -120,24 +150,54 @@ function ChangeControls({patch,revision,disabled,onDecision,onEdit,onLocate,onCo
 }
 
 export function SourceRevisionDiff(props:Props){
- const {revision,patches}=props;
+ const {revision,patches}=props,root=useRef<HTMLDivElement>(null),prefix=useId();
+ const [wide,setWide]=useState(false),[layout,setLayout]=useState<'unified'|'split'>('unified'),[rendered,setRendered]=useState(true);
+ useEffect(()=>{
+  const element=root.current;if(!element||typeof ResizeObserver==='undefined')return;
+  const observer=new ResizeObserver(entries=>setWide((entries[0]?.contentRect.width??0)>=820));observer.observe(element);
+  return()=>observer.disconnect();
+ },[]);
+ const split=wide&&layout==='split';
  const sections=useMemo(()=>buildRevisionDiffSections(revision.original.text,revision.patches,patches),[revision.original.text,revision.patches,patches]);
- return <div className="source-revision-diff">
-  <div className="revision-diff-file-heading"><span>{uiText('Original → Suggested revision')}</span><span>{uiText('{value0} changes',{value0:revision.patches.length})}</span></div>
+ const textCell=(lines:RevisionDiffLine[],side:'original'|'revision',paired?:RevisionDiffLine)=>{
+  const row=lines[0],line=side==='original'?row?.oldLine:row?.newLine;
+  return <div className={`revision-diff-side ${row?'is-'+row.kind:'is-empty'}`}>
+   <span className="revision-diff-number" role="cell" aria-label={line==null?undefined:uiText(side==='original'?'Original line {value0}':'Revised line {value0}',{value0:line})}>{line}</span>
+   <span className="revision-diff-sign" role="cell" aria-label={row?uiText(row.kind==='added'?'Addition':row.kind==='removed'?'Deletion':'Unchanged'):undefined}>{row?.kind==='added'?'+':row?.kind==='removed'?'−':' '}</span>
+   <div className="revision-diff-text" role="cell">{rendered?<SourceReaderText text={lines.map(item=>item.text).join('\n')} footnotePrefix={`${prefix}-${side}`}/>:row?<LineText row={row} paired={paired}/>:null}</div>
+  </div>;
+ };
+ return <div ref={root} className={`source-revision-diff${split?' is-split':''}${rendered?' is-rendered':''}`}>
+  <div className="revision-diff-toolbar">
+   <div className="reprocessing-view-switch" role="group" aria-label={uiText('Diff layout')}>
+    <button type="button" aria-pressed={!split} onClick={()=>setLayout('unified')}>{uiText('Unified')}</button>
+    <button type="button" aria-pressed={split} disabled={!wide} title={!wide?uiText('Widen the window to use side-by-side diff'):undefined} onClick={()=>setLayout('split')}>{uiText('Side by side')}</button>
+   </div>
+   <div className="reprocessing-view-switch" role="group" aria-label={uiText('Diff text display')}>
+    <button type="button" aria-pressed={!rendered} onClick={()=>setRendered(false)}>{uiText('Source')}</button>
+    <button type="button" aria-pressed={rendered} onClick={()=>setRendered(true)}>{uiText('Rendered')}</button>
+   </div>
+  </div>
+  <div className="revision-diff-file-heading"><span>{uiText(split?'Original':'Original → Suggested revision')}</span>{split&&<span>{uiText('Suggested revision')}</span>}<span>{uiText('{value0} changes',{value0:revision.patches.length})}</span></div>
   {!sections.length&&<p className="revision-diff-empty" role="status">{uiText('No changes to review.')}</p>}
   {sections.map(section=>{
-   const rows=revisionDiffLines(section.before,section.after,section.line,section.newLine),controls=new Map<number,SourceEditorialPatch[]>();
-   for(const patch of section.patches){const line=revision.original.text.slice(0,patch.range.startOffset).split('\n').length;const index=rows.findIndex(row=>row.oldLine===line);const at=index<0?0:index;controls.set(at,[...(controls.get(at)??[]),patch]);}
+   const rows=displayRows(revisionDiffLines(section.before,section.after,section.line,section.newLine),split,rendered),controls=new Map<number,SourceEditorialPatch[]>();
+   for(const patch of section.patches){const line=revision.original.text.slice(0,patch.range.startOffset).split('\n').length;const index=rows.findIndex(row=>row.left.some(item=>item.oldLine===line));const at=index<0?0:index;controls.set(at,[...(controls.get(at)??[]),patch]);}
    return <div className="revision-diff-section" key={section.from}>
     <div className="revision-diff-location">@@ −{section.line},{section.before?section.before.split('\n').length:0} +{section.newLine},{section.after?section.after.split('\n').length:0} @@</div>
     <div className="revision-diff-lines" role="table" aria-label={uiText('Original → Suggested revision')}>
-     {rows.map((row,index)=><div className={`revision-diff-line is-${row.kind}`} role="row" key={index}>
-      <span className="revision-diff-number" role="cell" aria-label={row.oldLine===null?undefined:uiText('Original line {value0}',{value0:row.oldLine})}>{row.oldLine}</span>
-      <span className="revision-diff-number" role="cell" aria-label={row.newLine===null?undefined:uiText('Revised line {value0}',{value0:row.newLine})}>{row.newLine}</span>
-      <span className="revision-diff-sign" role="cell" aria-label={uiText(row.kind==='added'?'Addition':row.kind==='removed'?'Deletion':'Unchanged')}>{row.kind==='added'?'+':row.kind==='removed'?'−':' '}</span>
-      <span className="revision-diff-text" role="cell"><LineText row={row} paired={row.kind==='removed'&&rows[index+1]?.kind==='added'?rows[index+1]:row.kind==='added'&&rows[index-1]?.kind==='removed'?rows[index-1]:undefined}/></span>
-      <div className="revision-diff-margin" role="cell">{controls.get(index)?.map(patch=><ChangeControls key={patch.id} {...props} patch={patch}/>)}</div>
-     </div>)}
+     {rows.map(({left,right},index)=>{
+      const row=left[0]!;
+      return <div className={`revision-diff-line${split?'':` is-${row.kind}`}`} role="row" key={index}>
+       {split?<>{textCell(left,'original',right[0])}{textCell(right,'revision',left[0])}</>:<>
+        <span className="revision-diff-number" role="cell" aria-label={row.oldLine===null?undefined:uiText('Original line {value0}',{value0:row.oldLine})}>{row.oldLine}</span>
+        <span className="revision-diff-number" role="cell" aria-label={row.newLine===null?undefined:uiText('Revised line {value0}',{value0:row.newLine})}>{row.newLine}</span>
+        <span className="revision-diff-sign" role="cell" aria-label={uiText(row.kind==='added'?'Addition':row.kind==='removed'?'Deletion':'Unchanged')}>{row.kind==='added'?'+':row.kind==='removed'?'−':' '}</span>
+        <div className="revision-diff-text" role="cell">{rendered?<SourceReaderText text={left.map(item=>item.text).join('\n')} footnotePrefix={`${prefix}-${row.kind==='removed'?'original':'revision'}`}/>:<LineText row={row} paired={row.kind==='removed'&&rows[index+1]?.left[0]?.kind==='added'?rows[index+1]!.left[0]:row.kind==='added'&&rows[index-1]?.left[0]?.kind==='removed'?rows[index-1]!.left[0]:undefined}/>}</div>
+       </>}
+       <div className="revision-diff-margin" role="cell">{controls.get(index)?.map(patch=><ChangeControls key={patch.id} {...props} patch={patch}/>)}</div>
+      </div>;
+     })}
     </div>
    </div>;
   })}

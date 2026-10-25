@@ -7,7 +7,7 @@ import {createRoot} from 'react-dom/client';
 import {setupDOM} from './helpers/dom.mjs';
 
 const css=registerHooks({load(url,context,next){return url.endsWith('.css')?{format:'module',source:'export default {};',shortCircuit:true}:next(url,context);}});
-const {SourceRevisionDiff,revisionDiffLines,buildRevisionDiffGroups,buildRevisionDiffContext}=await import('../src/client/sources/SourceRevisionDiff.tsx');
+const {SourceRevisionDiff,revisionDiffLines,buildRevisionDiffGroups,buildRevisionDiffContext,revisionSplitRows}=await import('../src/client/sources/SourceRevisionDiff.tsx');
 css.deregister();
 
 function fixture(){
@@ -20,11 +20,14 @@ function fixture(){
  return revision;
 }
 
-async function mount(t,props){
- const env=setupDOM(t);const root=createRoot(document.querySelector('#mount'));
+async function mount(t,props,{width}={}){
+ const env=setupDOM(t);let resize;
+ if(width!==undefined){const previous=Object.getOwnPropertyDescriptor(globalThis,'ResizeObserver');Object.defineProperty(globalThis,'ResizeObserver',{configurable:true,writable:true,value:class{constructor(callback){resize=callback;}observe(){resize([{contentRect:{width}}]);}disconnect(){}}});env.defer(()=>{if(previous)Object.defineProperty(globalThis,'ResizeObserver',previous);else delete globalThis.ResizeObserver;});}
+ const root=createRoot(document.querySelector('#mount'));
  env.defer(()=>act(async()=>root.unmount()));
  await act(async()=>root.render(React.createElement(SourceRevisionDiff,props)));
- return async element=>{assert.ok(element,'Expected control exists');await act(async()=>element.click());};
+ const click=async element=>{assert.ok(element,'Expected control exists');await act(async()=>element.click());};
+ click.resize=async width=>act(async()=>resize([{contentRect:{width}}]));return click;
 }
 
 test('unified diff preserves exact blank lines and tracks both line numbers',()=>{
@@ -105,7 +108,8 @@ test('diff keeps each linked change in the right margin without visual groups an
 });
 
 test('nearby changes share their prose context once while retaining individual margin decisions',async t=>{
- const revision=fixture();await mount(t,{revision,disabled:false,onDecision:async()=>{}});
+ const revision=fixture(),click=await mount(t,{revision,disabled:false,onDecision:async()=>{}});
+ await click([...document.querySelectorAll('button')].find(button=>button.textContent==='Source'));
  const texts=[...document.querySelectorAll('.revision-diff-text')].map(cell=>cell.textContent.replaceAll('\u200b',''));
  for(const text of ['Heading','A claim1.','A claim[^1].','1 An explanatory note.','[^1]: An explanatory note.','Another passage.','Another corrected passage.']){
   assert.equal(texts.filter(value=>value===text).length,1,`The diff presents ${JSON.stringify(text)} once`);
@@ -131,4 +135,35 @@ test('active processing disables diff mutation controls',async t=>{
  await mount(t,{revision:fixture(),disabled:true,onDecision:async()=>assert.fail('Cannot mutate an active revision'),onEdit:()=>assert.fail('Cannot edit an active revision')});
  const controls=[...document.querySelectorAll('.revision-diff-change button')];assert.ok(controls.length>0);
  assert.ok(controls.every(button=>button.disabled));
+});
+
+test('split rows retain exact source order and align unequal insertions and deletions',()=>{
+ const rows=revisionDiffLines('Same\nOld A\nOld B\nEnd','Same\nNew A\nNew B\nNew C\nEnd');
+ const split=revisionSplitRows(rows);
+ assert.deepEqual(split.map(row=>row.left?.text??null),['Same','Old A','Old B',null,'End']);
+ assert.deepEqual(split.map(row=>row.right?.text??null),['Same','New A','New B','New C','End']);
+ assert.equal(split[1].left.oldLine,2);assert.equal(split[3].right.newLine,4);
+});
+
+test('side-by-side toggle follows available width and preserves individual margin controls',async t=>{
+ const revision=fixture(),click=await mount(t,{revision,disabled:false,onDecision:async()=>{}},{width:1000});
+ const button=text=>[...document.querySelectorAll('button')].find(button=>button.textContent===text);
+ await click(button('Side by side'));assert.ok(document.querySelector('.source-revision-diff.is-split'));
+ assert.ok(document.querySelector('.revision-diff-side.is-removed'));assert.ok(document.querySelector('.revision-diff-side.is-added'));
+ assert.equal(document.querySelectorAll('.revision-diff-change').length,3);
+ for(const change of document.querySelectorAll('.revision-diff-change'))assert.ok(change.closest('.revision-diff-margin'));
+ await click.resize(600);assert.equal(button('Side by side').disabled,true);assert.equal(document.querySelector('.is-split'),null);assert.equal(button('Unified').getAttribute('aria-pressed'),'true');
+ await click.resize(1000);assert.ok(document.querySelector('.source-revision-diff.is-split'));
+ await click(button('Unified'));assert.equal(document.querySelector('.is-split'),null);
+});
+
+test('rendered view formats body text and footnotes in either layout and source view retains raw markup',async t=>{
+ const revision=fixture();revision.patches[0].replacement='**claim**[^1]';
+ const click=await mount(t,{revision,disabled:false,onDecision:async()=>{}},{width:1000});
+ const button=text=>[...document.querySelectorAll('button')].find(button=>button.textContent===text);
+ assert.equal(button('Rendered').getAttribute('aria-pressed'),'true','Rendered is the initial display');assert.ok(document.querySelector('.source-revision-diff.is-rendered'));
+ assert.equal(document.querySelector('.revision-diff-text strong').textContent,'claim');
+ const reference=document.querySelector('.source-reader-footnote-reference a');assert.ok(reference);assert.ok(document.getElementById(reference.getAttribute('href').slice(1)));
+ await click(button('Side by side'));assert.ok(document.querySelector('.is-split.is-rendered'));assert.ok(document.querySelector('.revision-diff-side.is-added strong'));
+ await click(button('Source'));assert.equal(document.querySelector('.is-rendered'),null);assert.match(document.querySelector('.revision-diff-lines').textContent,/\*\*claim\*\*\[\^1\]/);
 });

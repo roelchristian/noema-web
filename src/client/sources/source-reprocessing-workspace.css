@@ -15,9 +15,9 @@
 .reprocessing-transmission-consent p{font-size:12px;margin:6px 0 12px}
 .reprocessing-setup-sheet :is(button,select,input,textarea,summary):focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .reprocessing-monitor{margin:12px 0;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--surface)}
-.reprocessing-monitor-main{display:flex;align-items:center;gap:16px;justify-content:space-between}
-.reprocessing-monitor-main>.reprocessing-progress{min-width:0;flex:1;margin:0}
-.reprocessing-monitor-main>.reprocessing-actions{flex-shrink:0}
+.reprocessing-monitor-main{display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap}
+.reprocessing-monitor-main>.reprocessing-progress{min-width:0;flex:1 1 100%;width:100%;margin:0}
+.reprocessing-monitor-main>.reprocessing-actions{flex-shrink:0;margin-inline-start:auto}
 .reprocessing-monitor-activity{color:var(--text-muted);font-size:12px;font-variant-numeric:tabular-nums;margin:4px 0 0;overflow-wrap:anywhere}
 .reprocessing-monitor-details{font-size:12px;margin-top:6px}
 .reprocessing-monitor-details>summary{color:var(--text-muted)}
@@ -28,10 +28,17 @@
 .reprocessing-active-run{display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap;margin:10px 0;padding:8px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface-subtle,var(--sidebar));font-size:12px}
 
 .reprocessing-setup-sheet .select-host{display:block;width:100%;margin-top:6px}
-.source-revision-manager{width:min(640px,calc(100vw - 32px));max-height:calc(100dvh - 48px);overflow:auto}
-.source-revision-list{list-style:none;margin:18px 0;padding:0;border-top:1px solid var(--line)}
-.source-revision-list>li{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0;border-bottom:1px solid var(--line)}
-.source-revision-list>li>div{min-width:0;display:grid;gap:4px}
-.source-revision-list strong{font-size:13px;font-weight:500;overflow-wrap:anywhere}
+dialog.noema-modal.source-revision-manager{width:min(560px,calc(100vw - 32px))}
+.source-revision-list{list-style:none;margin:12px 0;padding:0;border-top:1px solid var(--line)}
+.source-revision-list>li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)}
+.source-revision-summary{min-width:0;display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px}
+.source-revision-list strong{font-size:12px;font-weight:500;overflow-wrap:anywhere}
 .source-revision-list small,.source-revision-protected{color:var(--text-muted);font-size:12px}
 .source-revision-list button{flex-shrink:0}
+
+.reprocessing-monitor .progress-notice progress{appearance:none;display:block;width:100%;max-width:none;height:6px;border:0;border-radius:999px;background:var(--line);color:light-dark(black,white);accent-color:light-dark(black,white);overflow:hidden}
+.reprocessing-monitor progress::-webkit-progress-bar{background:var(--line);border-radius:inherit}
+.reprocessing-monitor progress::-webkit-progress-value{background:light-dark(black,white);border-radius:inherit}
+.reprocessing-monitor progress::-moz-progress-bar{background:light-dark(black,white);border-radius:inherit}
+
+.source-revision-state[data-status]{flex-shrink:0;padding:0;border:0;border-radius:0;background:transparent;font-size:12px;line-height:1.5;white-space:nowrap}

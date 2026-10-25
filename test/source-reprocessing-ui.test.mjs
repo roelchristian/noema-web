@@ -487,10 +487,10 @@ test('revision controls use Noema dropdowns including modal processing settings'
 test('five-version cap prompts deletion before setup and never starts paid work automatically',async t=>{
  const revisions=Array.from({length:4},(_,i)=>({...fixture(),id:'revision-'+i,createdAt:`2026-10-2${i+1}T00:00:00Z`,status:'completed'}));
  let deleted=0;const env=await mount(t,{initial:revisions[0],history:revisions,remove:async()=>{deleted++;return {deleted:true};},post:async()=>{throw Error('No automatic processing');}});
- await env.click(env.button('Refine text'));assert.match(document.querySelector('.source-revision-manager').textContent,/Revision limit reached.*5 \/ 5/);
+ await env.click(env.button('Refine text'));assert.match(document.querySelector('.source-revision-manager').textContent,/Version limit reached \(5 of 5 max revisions\).*You can keep up to 5 versions, including the original\. Delete 1 editorial revision to continue\./);
  assert.equal(document.querySelector('.reprocessing-setup-sheet'),null);assert.equal(env.button('Continue to new revision').disabled,true);
  const originalRow=document.querySelector('.source-revision-list li');assert.match(originalRow.textContent,/Original processed.*Always retained/);assert.equal(originalRow.querySelector('button'),null);
- await env.click(env.button('Delete'));assert.equal(deleted,0);assert.match(document.querySelector('.confirmation-dialog').textContent,/permanently deletes/);
+ await env.click(document.querySelector('button[aria-label^="Delete revision from"]'));assert.equal(deleted,0);assert.match(document.querySelector('.confirmation-dialog:not(.source-revision-manager)').textContent,/permanently deletes/);
  await env.click(env.button('Delete revision'));assert.equal(deleted,1);assert.equal(document.querySelectorAll('.source-revision-list li').length,4);assert.equal(env.button('Continue to new revision').disabled,false);
  assert.equal(env.requests.some(request=>request.method==='POST'),false);
  await env.click(env.button('Continue to new revision'));assert.ok(document.querySelector('.reprocessing-setup-sheet'));assert.equal(env.requests.some(request=>request.method==='POST'),false);
@@ -500,13 +500,14 @@ test('deleting the displayed preferred revision clears reading state and saved p
  const r={...fixture(),fileId:'f',status:'completed'},storage=new Map([['noema:source-reading:v:f',r.id]]),readings=[];
  const descriptor=Object.getOwnPropertyDescriptor(globalThis,'localStorage');Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)}});t.after(()=>{if(descriptor)Object.defineProperty(globalThis,'localStorage',descriptor);else delete globalThis.localStorage;});
  const env=await mount(t,{initial:r,history:[r],onReadingRevision:value=>readings.push(value?.id??null),remove:async()=>({deleted:true})});
- assert.equal(readings.at(-1),r.id);await env.click(env.button('Manage revisions'));await env.click(env.button('Delete'));await env.click(env.button('Delete revision'));
+ assert.equal(readings.at(-1),r.id);await env.click(env.button('Manage revisions'));await env.click(document.querySelector('button[aria-label^="Delete revision from"]'));await env.click(env.button('Delete revision'));
  assert.equal(readings.at(-1),null);assert.equal(storage.has('noema:source-reading:v:f'),false);assert.equal(document.querySelector('select[aria-label="Reading version"]').value,'original');
  assert.equal(document.querySelector('.source-revision-list').querySelectorAll('li').length,1);
 });
 
 test('active revisions cannot be deleted and legacy over-limit histories require enough space',async t=>{
- const revisions=Array.from({length:6},(_,i)=>({...fixture(),id:'legacy-'+i,status:i===0?'running':'failed'}));
+ const revisions=Array.from({length:10},(_,i)=>({...fixture(),id:'legacy-'+i,status:i===0?'running':'failed'}));
  const env=await mount(t,{initial:revisions[0],history:revisions});await env.click(env.button('Manage revisions'));
- const rows=document.querySelectorAll('.source-revision-list li');assert.equal(rows[1].querySelector('button').disabled,true);assert.equal(rows[2].querySelector('button').disabled,false);assert.match(rows[1].textContent,/Stop processing/);
+ assert.match(document.querySelector('.source-revision-manager').textContent,/Version limit exceeded \(11 of 5 max revisions\).*You can keep up to 5 versions, including the original\. Delete 7 editorial revisions to continue\./);
+ const rows=document.querySelectorAll('.source-revision-list li');assert.equal(rows[1].querySelector('button').disabled,true);assert.equal(rows[2].querySelector('button').disabled,false);assert.match(rows[1].querySelector('button').title,/Stop processing/);
 });

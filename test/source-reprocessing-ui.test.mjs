@@ -128,7 +128,7 @@ test('partial failures show actionable processing cause and excerpt ledger separ
 });
 test('start preview uses supported selected reasoning and never claims forced none',async t=>{
  const env=await mount(t,{post:async()=>fixture()});await env.click(env.button('Refine text'));
- const preview=document.querySelector('.reprocessing-configuration');assert.match(preview.textContent,/GPT-5 Mini.*low reasoning/s);assert.match(preview.textContent,/Exactly 2 model requests per excerpt/);assert.doesNotMatch(document.querySelector('.reprocessing-prompt').textContent,/Reasoning: none/);
+ const preview=document.querySelector('.reprocessing-configuration');assert.match(preview.textContent,/GPT-5 Mini.*low reasoning/s);assert.match(preview.textContent,/2 model requests per excerpt.*additional repair request if footnote validation fails/);assert.doesNotMatch(document.querySelector('.reprocessing-prompt').textContent,/Reasoning: none/);
  assert.equal(env.button('Start reprocessing').disabled,false);
 });
 test('resumed session estimates exclude previous successes and expose only current successful durations',async t=>{

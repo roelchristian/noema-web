@@ -298,11 +298,18 @@ test('large scholarly audit stays within the restorable finding budget and recor
 });
 
 
-test('newly missing footnotes fail publication and preserve the canonical reading',async t=>{
+test('unrepaired footnotes retain the canonical excerpt with a visible warning and complete',async t=>{
  const text='Reference [^note].\n\n[^note]: printed definition.\n';
  const env=harness(t,{text,provider:request=>JSON.stringify({blocks:request.blocks.map(block=>({...block,text:block.text.replace(/^\[\^note\]: printed definition\.\n/gm,'')})),diagnostics:[],unresolved:false})});
- await env.worker.tick();assert.equal(env.value.status,'failed');assert.match(env.value.report.error,/missing or ambiguous footnote definition/);
+ await env.worker.tick();assert.equal(env.value.status,'completed');assert.equal(env.value.report.error,null);
+ assert.ok(env.value.report.diagnostics.some(message=>/Original excerpt retained/.test(message)));
+ assert.deepEqual(env.calls.map(call=>call.kind),['reconstruct','synthesis','verify','resolve']);
  assert.equal(env.value.patches.length,0);assert.equal(env.value.reprocessed.text,text);
+ assert.ok(!env.value.report.validationDiagnostics.some(message=>/missing-reference/.test(message)));
+ const audit=structuredClone(env.value.report.documentAudit),retained=env.value;retained.status='interrupted';
+ env.store.run('UPDATE source_reprocessing SET status=?,payload=? WHERE id=?','interrupted',JSON.stringify(retained),retained.id);
+ env.calls.length=0;env.restart();env.worker.resume('vault',retained.fileId,retained.id);await env.worker.tick();
+ assert.equal(env.value.status,'completed');assert.equal(env.calls.length,0);assert.deepEqual(env.value.report.documentAudit,audit);
 });
 
 
@@ -377,4 +384,30 @@ test('legacy reconstruction checkpoints keep their prompt and request hashes dur
  await env.worker.tick();const hash=env.checkpoints.passes(r.id)[0].requestHash;fail=false;
  env.restart();env.worker.resume('vault',r.fileId,r.id);await env.worker.tick();assert.equal(env.value.status,'completed');assert.equal(env.checkpoints.passes(r.id)[0].requestHash,hash);
  assert.equal(env.checkpoints.passes(r.id)[0].promptVersion,'source-reconstruction-v2-3');assert.equal(env.calls[0].physicalPages,undefined);assert.doesNotMatch(env.prompts[0],/actively restore/);
+});
+
+for(const depth of ['balanced','deep'])test(`${depth} uses a bounded AI pass to repair a verification-dropped footnote`,async t=>{
+ const text='Reference1.\n\n1 printed definition.\n';
+ const paired=blocks=>blocks.map(block=>({...block,text:block.text.replace('Reference1.','Reference[^p1-1].').replace('1 printed definition.','[^p1-1]: printed definition.')}));
+ const env=harness(t,{depth,text,pages:1,pageStartLines:[1],provider:request=>{
+  if(request.kind==='resolve'){
+   assert.match(request.difficultyReason,/footnote repair.*p1-1/);
+   assert.ok(request.previous.blocks.some(block=>block.text.includes('Reference[^p1-1].')));
+   assert.ok(!request.previous.blocks.some(block=>block.text.includes('[^p1-1]:')));
+  }
+  return JSON.stringify({blocks:request.kind==='verify'?paired(request.blocks).map(block=>({...block,text:block.text.replace('[^p1-1]: printed definition.','')})):paired(request.blocks),diagnostics:[],unresolved:false});
+ }});
+ await env.worker.tick();const result=env.value;
+ assert.equal(result.status,'completed');assert.equal(result.report.chunksCompleted,1);
+ assert.deepEqual(env.calls.map(call=>call.kind),['reconstruct','synthesis','verify','resolve']);
+ assert.equal(result.report.excerpts[0].requiredPassCount,3);assert.match(result.reprocessed.text,/\[\^p1-1\]: printed definition/);
+ assert.ok(!result.report.validationDiagnostics.some(message=>/missing-reference/.test(message)));
+ // Reproduce an existing failed revision: all paid responses remain durable,
+ // but the final correction has not been requested yet.
+ env.store.run('DELETE FROM source_reprocessing_passes WHERE revision_id=? AND pass_index=3',result.id);
+ result.status='failed';result.report.chunksCompleted=0;result.report.completedChunkIndexes=[];result.report.charactersReviewed=0;result.patches=[];
+ env.store.run('UPDATE source_reprocessing SET status=?,payload=? WHERE id=?','failed',JSON.stringify(result),result.id);
+ env.calls.length=0;env.restart();env.worker.resume('vault',result.fileId,result.id);await env.worker.tick();
+ assert.equal(env.value.status,'completed');assert.deepEqual(env.calls.map(call=>call.kind),['resolve']);
+ assert.equal(env.value.report.inputTokens,50);assert.match(env.value.reprocessed.text,/\[\^p1-1\]: printed definition/);
 });

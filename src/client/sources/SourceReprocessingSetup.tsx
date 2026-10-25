@@ -7,7 +7,7 @@ import {InlineNotice} from '../notifications';
 import './source-reprocessing-workspace.css';
 export type EvidenceCapabilities={originalPages:boolean;ocr:boolean;externalImages:boolean;reason:string};
 export const depthLabels={light:'Light Cleanup',balanced:'Balanced Reconstruction',deep:'Deep Restoration'};
-export const depthPasses={light:'1 model request per excerpt',balanced:'Exactly 2 model requests per excerpt, plus document synthesis',deep:'2–3 model requests per excerpt, plus document synthesis; a third requires a recorded difficulty'};
+export const depthPasses={light:'1 model request per excerpt',balanced:'2 model requests per excerpt, plus document synthesis; one additional repair request if footnote validation fails',deep:'2–3 model requests per excerpt, plus document synthesis; a third requires a recorded difficulty'};
 function EvidenceOptions({capabilities,error,options,onChange,disabled}:{capabilities:EvidenceCapabilities|null;error:string;options:SourceReprocessingConfiguration['evidence'];onChange:(options:SourceReprocessingConfiguration['evidence'])=>void;disabled:boolean}){
  const imagesAvailable=!!capabilities?.originalPages&&!!capabilities.externalImages;
  const choose=(key:'ocr'|'originalPages',checked:boolean)=>onChange({...options,[key]:checked,allowExternalTransmission:false});

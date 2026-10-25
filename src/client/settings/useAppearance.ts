@@ -32,6 +32,8 @@ export function useAppearance() {
     const theme = themes.find(theme => theme.id === appearance.theme)!;
     const mode = resolveDisplayMode(appearance.mode, systemDark);
     root.dataset.mode = mode;
+    root.dataset.ocsFont = String(appearance.ocsFontOverride);
+    root.style.setProperty('--ocs-font-scale', String(appearance.ocsFontScale));
     root.dataset.paragraphIndent = appearance.paragraphIndent;
     root.dataset.paragraphSpacing = appearance.paragraphSpacing;
     root.style.setProperty('--paragraph-indent-width', paragraphIndentWidths[appearance.paragraphIndentWidth]);

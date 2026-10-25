@@ -17,6 +17,8 @@
   const theme = typeof saved?.theme === 'string' && Object.hasOwn(themes, saved.theme) ? themes[saved.theme] : themes.ink;
   const root = document.documentElement;
   root.dataset.mode = mode;
+  root.dataset.ocsFont = String(saved?.ocsFontOverride !== false);
+  root.style.setProperty('--ocs-font-scale', String([1, 1.12, 1.25].includes(saved?.ocsFontScale) ? saved.ocsFontScale : 1.12));
   root.style.colorScheme = mode;
   root.style.setProperty('--accent', theme[mode === 'dark' ? 2 : 0]);
   root.style.setProperty('--accent-soft', theme[mode === 'dark' ? 3 : 1]);

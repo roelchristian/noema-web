@@ -3256,6 +3256,13 @@
 .block[data-transliteration-layout] > .block-transliteration {
   grid-column: 1;
 }
+/* Match both OCS ISO codes (including script/region subtags) and stored names.
+ * Scope to authored body content so titles, controls and Latin transliterations
+ * retain the reader's chosen fonts. Code and maths keep their own typefaces. */
+:root:not([data-ocs-font=false]) .page:is(:lang(cu), :lang(chu), [lang="Old Church Slavonic" i]) .block:not(.code):not(.math) > .block-content {
+  font-family: Shafarik, var(--font-ui);
+  font-size: calc(1em * var(--ocs-font-scale, 1.12));
+}
 .block-transliteration {
   min-width: 0;
   margin: 0;

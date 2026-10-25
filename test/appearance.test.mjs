@@ -106,7 +106,9 @@ test('saved indentation modes apply to the document and persist through appearan
    controls.setAppearance(current=>({...current,paragraphIndent:mode,paragraphIndentWidth:'small',mode:'light'}));
   });
   assert.equal(html.style.colorScheme,'light');assert.equal(html.dataset.mode,'light');assert.equal(html.dataset.paragraphIndent,'except-first');assert.equal(html.style.getPropertyValue('--paragraph-indent-width'),'1em');
-  const saved=parseAppearance(localStorage.getItem('noema.appearance.v1'));assert.equal(saved.paragraphIndent,'except-first');assert.equal(saved.paragraphSpacing,'book');assert.equal(saved.paragraphIndentWidth,'small');
+  await act(async()=>controls.setAppearance(current=>({...current,ocsFontOverride:false,ocsFontScale:1.25})));
+  assert.equal(html.dataset.ocsFont,'false');assert.equal(html.style.getPropertyValue('--ocs-font-scale'),'1.25');
+  const saved=parseAppearance(localStorage.getItem('noema.appearance.v1'));assert.equal(saved.ocsFontOverride,false);assert.equal(saved.ocsFontScale,1.25);assert.equal(saved.paragraphIndent,'except-first');assert.equal(saved.paragraphSpacing,'book');assert.equal(saved.paragraphIndentWidth,'small');
  }finally{await env.close();}
 });
 
@@ -144,4 +146,18 @@ test('parser-blocking bootstrap preserves saved/system mode and every accent wit
   assert.equal(boot(null, true, {storageThrows: true}).mode, 'dark');
   assert.equal(boot('{"mode":"dark"}', false, {mediaThrows: true}).mode, 'dark');
   assert.equal(boot(null, true, {storageThrows: true, mediaThrows: true}).mode, 'light');
+});
+
+
+test('OCS font preferences retain defaults, persist supported choices and reject invalid values',()=>{
+ assert.equal(defaultAppearance().ocsFontOverride,true);
+ assert.equal(defaultAppearance().ocsFontScale,1.12);
+ for(const ocsFontOverride of [true,false])for(const ocsFontScale of [1,1.12,1.25]){
+  const saved={...defaultAppearance(),citationStyleExplicit:true,ocsFontOverride,ocsFontScale};
+  assert.deepEqual(parseAppearance(JSON.stringify(saved)),saved);
+ }
+ for(const invalid of [null,'false',{},0,-1,100]){
+  const parsed=parseAppearance(JSON.stringify({ocsFontOverride:invalid,ocsFontScale:invalid}));
+  assert.equal(parsed.ocsFontOverride,true);assert.equal(parsed.ocsFontScale,1.12);
+ }
 });

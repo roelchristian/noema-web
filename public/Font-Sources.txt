@@ -150,6 +150,16 @@ IBMPlexMono-ThinItalic.woff2
   Upstream Git blob: 89eac6d51d5fb51874f1404980d64bd3f482f4a5
   Bundled SHA-256: 065fd85ad22d77aa4299de3d58166ba531b1379f7cbdc5660cf13f2677217edf
 
+Shafarik (CDN only)
+===================
+
+OCS body text override for Cyrillic and Glagolitic. Loaded on demand directly
+from Google's font CDN; no font binary is bundled or served by Noema.
+Source: https://github.com/google/fonts/tree/main/ofl/shafarik
+CDN: https://fonts.gstatic.com/s/shafarik/v3/RWmLoKaF7PojpZXlW52s.ttf
+License: SIL Open Font License 1.1.
+License source: https://github.com/slavonic/Shafarik/blob/main/OFL.txt
+
 IBM Plex Sans
 =============
 

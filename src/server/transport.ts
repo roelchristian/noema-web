@@ -665,7 +665,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
       if(!mime[path.extname(filename)])throw new HttpError(404,'Not found');
       let content:Buffer;
       try {content=readFileSync(filename);}catch{throw new HttpError(404,'Not found');}
-      res.writeHead(200,{'Content-Type':mime[path.extname(filename)]!,'X-Content-Type-Options':'nosniff','Cache-Control':relative.startsWith('assets/')?'public, max-age=31536000, immutable':'no-cache','Content-Security-Policy':"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' data: blob:; base-uri 'none'; frame-ancestors 'none'"});
+      res.writeHead(200,{'Content-Type':mime[path.extname(filename)]!,'X-Content-Type-Options':'nosniff','Cache-Control':relative.startsWith('assets/')?'public, max-age=31536000, immutable':'no-cache','Content-Security-Policy':"default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self'; img-src 'self' data: blob:; base-uri 'none'; frame-ancestors 'none'"});
       res.end(method==='HEAD'?undefined:content);
     }catch(error){
       if(error instanceof HttpError)return send(error.status,{error:error.message});

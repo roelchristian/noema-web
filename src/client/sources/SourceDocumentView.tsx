@@ -36,13 +36,13 @@ export function sourceViewEntries(text:string,document?:SourceDocument,rawRanges
  });
 }
 interface Props {
- article:RefObject<HTMLElement|null>;fileId:string;name:string;text:string;entries:SourceViewEntry[];
+ article:RefObject<HTMLElement|null>;coordinateHash?:string;fileId:string;name:string;text:string;entries:SourceViewEntry[];
  furnitureKind?:(nodeId:string)=>'header'|'footer'|undefined;hiddenNodeIds?:ReadonlySet<string>;endnotes?:boolean;selected:string|null;annotations:ReaderAnnotations;structureLabels:boolean;highlights?:SourceHighlight[];
  canonicalNode:(nodeId:string)=>string|undefined;onSelect:(canonicalNodeId:string)=>void;
  changeForNode?:(nodeId:string)=>{id:string;label:string;count?:number;quiet?:boolean;patchIds?:string[]}|undefined;onReview?:(patchId:string,patchIds?:string[])=>void;children?:ReactNode;
 }
 /** One typography and heading hierarchy for canonical and editorial presentations. */
-export function SourceDocumentView({article,fileId,name,text,entries,selected,annotations,structureLabels,hiddenNodeIds,furnitureKind,endnotes=false,highlights=[],canonicalNode,onSelect,changeForNode,onReview,children}:Props){
+export function SourceDocumentView({article,coordinateHash,fileId,name,text,entries,selected,annotations,structureLabels,hiddenNodeIds,furnitureKind,endnotes=false,highlights=[],canonicalNode,onSelect,changeForNode,onReview,children}:Props){
  const definitions=useMemo(()=>new Set([...text.matchAll(/^[ \t]*\[\^([^\]\n]+)\]:/gm)].map(match=>match[1]!)),[text]);
  const content=useMemo(()=>entries.map(entry=>({entry,blocks:entry.node.text===undefined?null:sourceReaderBlocks({text:entry.node.text,kind:entry.node.kind,footnotePrefix:fileId,startOffset:entry.node.range.startOffset,highlights})})),[entries,fileId,highlights]);
  const fallback=useMemo(()=>entries.length?null:sourceReaderBlocks({text,footnotePrefix:fileId,highlights}),[entries.length,text,fileId,highlights]);
@@ -62,7 +62,7 @@ export function SourceDocumentView({article,fileId,name,text,entries,selected,an
    </section>;
  };
  let previousPage:number|null=null;
- return <SourceFootnoteDefinitions value={definitions}><article ref={article} className="source-reader-document" data-annotations={annotations} aria-label={name}>
+ return <SourceFootnoteDefinitions value={definitions}><article ref={article} className="source-reader-document" data-source-coordinate-hash={coordinateHash} data-annotations={annotations} aria-label={name}>
   {entries.length?content.map(item=>{
    const {node}=item.entry,page=node.range.startPage;
    const pageBreak=page!==null&&previousPage!==null&&page>previousPage;

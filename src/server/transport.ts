@@ -141,7 +141,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             });
           }
           if(id && parts[3]==='reading-locations') {
-            if(parts.length===4&&method==='GET')return send(200,sourceReading.continuity(vault,id));
+            if(parts.length===4&&method==='GET')return send(200,sourceReading.continuity(vault,id,url.searchParams.get('revisionId')??undefined));
             if(parts.length===5&&method==='DELETE')return send(200,sourceReading.removeLocation(vault,id,parts[4]!));
             if(parts.length===5&&['PUT','PATCH'].includes(method)) {
               if(!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))throw new HttpError(415,'Reading actions require JSON.');
@@ -149,8 +149,8 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
               return send(200,method==='PATCH'?sourceReading.renameLocation(vault,id,parts[4]!,body):sourceReading.saveLocation(vault,id,parts[4]!,body));
             }
           }
-          if(id && parts.length===4 && parts[3]==='highlights' && method==='GET')return send(200,sourceReading.list(vault,id));
-          if(id && parts.length===4 && parts[3]==='reading-notes' && method==='GET')return send(200,sourceReading.listReadingNotes(vault,id));
+          if(id && parts.length===4 && parts[3]==='highlights' && method==='GET')return send(200,sourceReading.list(vault,id,url.searchParams.get('revisionId')??undefined));
+          if(id && parts.length===4 && parts[3]==='reading-notes' && method==='GET')return send(200,sourceReading.listReadingNotes(vault,id,url.searchParams.get('revisionId')??undefined));
           if(id && parts.length===5 && parts[3]==='reading-notes' && parts[4]==='explain' && method==='POST') {
             if(!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))throw new HttpError(415,'AI requests require JSON.');
             const body=await readBody(req);vaults.requireOpen(vault);

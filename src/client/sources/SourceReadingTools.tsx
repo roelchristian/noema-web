@@ -36,7 +36,7 @@ function selectedPassage(root:HTMLElement,file:ReadingFile):SelectedPassage|null
   const box=range.getBoundingClientRect();if(!box.width&&!box.height)return null;
   return {selection:{sourceId:file.entity_id!,fileId:file.id,sourceHash:file.textHash,startOffset:start,endOffset:end,excerpt},box:{left:box.left,right:box.right,top:box.top,bottom:box.bottom}};
 }
-export function SourceReadingTools({file,article,highlights,onHighlight,onHighlightRemoved,onNoteCreated}:{file:ReadingFile;highlights:SourceHighlight[];article:RefObject<HTMLElement|null>;onHighlight:(highlight:SourceHighlight)=>void;onHighlightRemoved:(id:string)=>void;onNoteCreated:(page:Page)=>void}) {
+export function SourceReadingTools({file,revisionId,article,highlights,onHighlight,onHighlightRemoved,onNoteCreated}:{file:ReadingFile;revisionId?:string;highlights:SourceHighlight[];article:RefObject<HTMLElement|null>;onHighlight:(highlight:SourceHighlight)=>void;onHighlightRemoved:(id:string)=>void;onNoteCreated:(page:Page)=>void}) {
   const [selected,setSelected]=useState<SelectedPassage|null>(null),[note,setNote]=useState<SourceSelection|null>(null);
   const [explain,setExplain]=useState(false);
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
@@ -118,7 +118,7 @@ export function SourceReadingTools({file,article,highlights,onHighlight,onHighli
     setPendingColor(color);
     try {
       const route=`source-files/${encodeURIComponent(file.id)}/highlights`;
-      const saved=await request<SourceHighlight>(passage.highlightId?`${route}/${encodeURIComponent(passage.highlightId)}`:route,passage.highlightId?'PUT':'POST',passage.highlightId?{color}:{...passage.selection,color},file.vault_id);
+      const saved=await request<SourceHighlight>(passage.highlightId?`${route}/${encodeURIComponent(passage.highlightId)}`:route,passage.highlightId?'PUT':'POST',passage.highlightId?{color,...(revisionId?{revisionId}:{})}:{...passage.selection,color,...(revisionId?{revisionId}:{})},file.vault_id);
       dismissSelection();
       setNotice(passage.highlightId?'Highlight color updated.':'Passage highlighted.');
       onHighlight(saved);
@@ -142,7 +142,7 @@ export function SourceReadingTools({file,article,highlights,onHighlight,onHighli
       const buttons=Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));const index=buttons.indexOf(document.activeElement as HTMLButtonElement);if(!buttons.length)return;
       event.preventDefault();buttons[event.key==='Home'?0:event.key==='End'?buttons.length-1:(index+(['ArrowRight','ArrowDown'].includes(event.key)?1:-1)+buttons.length)%buttons.length]?.focus();
     }}>
-      {note?<ReadingNotePopover key={explain?'explain':'note'} explain={explain} selection={note} vaultId={file.vault_id} onClose={()=>{setNote(null);requestAnimationFrame(()=>menu.current?.querySelector<HTMLButtonElement>(explain?'.source-reading-explain-action':'.source-reading-note-action')?.focus());}} onCreated={page=>{dismissSelection();setNotice(explain?'AI explanation saved to Reading Notes.':'Reading note saved.');onNoteCreated(page);}}/>:<>
+      {note?<ReadingNotePopover key={explain?'explain':'note'} explain={explain} selection={note} revisionId={revisionId} vaultId={file.vault_id} onClose={()=>{setNote(null);requestAnimationFrame(()=>menu.current?.querySelector<HTMLButtonElement>(explain?'.source-reading-explain-action':'.source-reading-note-action')?.focus());}} onCreated={page=>{dismissSelection();setNotice(explain?'AI explanation saved to Reading Notes.':'Reading note saved.');onNoteCreated(page);}}/>:<>
       <div className="source-reading-toolbar">
       <div className="source-highlight-colors" role="group" aria-label={uiText("Highlight color")} aria-busy={busy}>{highlightColors.map(color=><button type="button" key={color} className="source-highlight-color" data-color={color} title={uiText("Highlight {value0}",{value0: color})} aria-label={`${selected.highlightId?'Change highlight to':'Highlight passage'} ${color}`} aria-pressed={(pendingColor??selected.color)===color} disabled={busy} onClick={()=>void highlight(color)}>{(pendingColor??selected.color)===color&&<Icon name="check"/>}</button>)}</div>
       <div className="source-reading-menu-actions">
@@ -157,7 +157,7 @@ export function SourceReadingTools({file,article,highlights,onHighlight,onHighli
     {notice&&<p className="source-reading-notice" role="status">{notice}</p>}
   </>;
 }
-function ReadingNotePopover({selection,vaultId,onCreated,onClose,explain=false}:{selection:SourceSelection;vaultId:string;onCreated:(page:Page)=>void;onClose:()=>void;explain?:boolean}) {
+function ReadingNotePopover({selection,revisionId,vaultId,onCreated,onClose,explain=false}:{selection:SourceSelection;revisionId?:string;vaultId:string;onCreated:(page:Page)=>void;onClose:()=>void;explain?:boolean}) {
   const [text,setText]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const [requestId,setRequestId]=useState(randomUUID);
   const [personaId,setPersonaId]=useState('');
@@ -171,7 +171,7 @@ function ReadingNotePopover({selection,vaultId,onCreated,onClose,explain=false}:
     const timeout=setTimeout(()=>controller.abort(),explain?60000:15000);
     let saved:Page|undefined;
     try {
-      saved=await request<Page>(`source-files/${encodeURIComponent(selection.fileId)}/reading-notes${explain?'/explain':''}`,'POST',{...selection,...(explain?{language,familiarity,...(personaId?{personaId}:{})}:{text:text.trim()}),requestId},vaultId,controller.signal);
+      saved=await request<Page>(`source-files/${encodeURIComponent(selection.fileId)}/reading-notes${explain?'/explain':''}`,'POST',{...selection,...(revisionId?{revisionId}:{}),...(explain?{language,familiarity,...(personaId?{personaId}:{})}:{text:text.trim()}),requestId},vaultId,controller.signal);
     }catch(cause){
       if(mounted.current)setError(controller.signal.aborted?'Couldn’t confirm the save. Please try again.':cause instanceof Error?cause.message:String(cause));
     }finally{clearTimeout(timeout);inFlight.current=null;if(mounted.current)setBusy(false);}

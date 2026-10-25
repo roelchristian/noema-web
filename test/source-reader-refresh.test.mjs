@@ -1,5 +1,6 @@
 import test from 'node:test';
 import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {sourceDocumentEntries} from '../src/shared/source-document.ts';
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
@@ -13,7 +14,7 @@ loader.deregister();
 
 test('delayed enrichment refreshes headings and navigation without reloading or losing an unchanged-text selection',async()=>{
  const dom=new JSDOM('<main><div id="mount"></div></main>',{url:'http://localhost',pretendToBeVisual:true});
- const keys=['window','document','Node','Element','HTMLElement','MutationObserver','Event','CustomEvent','KeyboardEvent','localStorage','getSelection','requestAnimationFrame','cancelAnimationFrame','ResizeObserver','IS_REACT_ACT_ENVIRONMENT'];
+ const keys=['window','document','Node','Element','HTMLElement','MutationObserver','Event','CustomEvent','KeyboardEvent','MouseEvent','localStorage','getSelection','requestAnimationFrame','cancelAnimationFrame','ResizeObserver','IS_REACT_ACT_ENVIRONMENT'];
  const previous=keys.map(key=>Object.getOwnPropertyDescriptor(globalThis,key));
  const originalFetch=globalThis.fetch,originalTimeout=globalThis.setTimeout;
  class ResizeObserverStub {observe(){}unobserve(){}disconnect(){}}
@@ -41,12 +42,16 @@ test('delayed enrichment refreshes headings and navigation without reloading or 
  globalThis.fetch=async(url,options)=>{
   if(url==='/api/entities/source'){detailReads++;return Response.json({attachments:[attachment()]});}
   if(url==='/api/source-files/file?fingerprint=1&context=1'){documentReads++;const current=attachment();return Response.json({...current,document:processedSourceDocument(current)});}
+  if(url==='/api/source-files/file/reading-locations?revisionId=revision')return Response.json({resume:null,bookmarks:[]});
+  if(url==='/api/source-files/file/highlights?revisionId=revision')return Response.json([{id:'persisted-highlight',fileId:'file',sourceId:'source',sourceHash:createHash('sha256').update(revisedText).digest('hex'),startOffset:16,endOffset:revisedText.length,excerpt:revisedText.slice(16),color:'yellow',createdAt:'2026-10-25'}]);
+  if(url==='/api/source-files/file/reading-notes?revisionId=revision')return Response.json([{pageId:'note-1',title:'My annotation',text:'A connection to revisit.',sourceHash:createHash('sha256').update(revisedText).digest('hex'),startOffset:16,endOffset:revisedText.length}]);
   if(url==='/api/source-files/file/reading-locations')return Response.json({resume:null,bookmarks:[bookmark]});
   if(url==='/api/source-files/file/reading-locations/bookmark-1'){assert.equal(options.method,'PATCH');bookmark.label=JSON.parse(options.body).label;return Response.json({ok:true});}
   if(url==='/api/source-files/file/reprocessing')return Response.json([{...revision,patchCount:0,pendingCount:0}]);
   if(url==='/api/source-files/file/reprocessing/revision')return Response.json(revision);
   if(url==='/api/source-files/file/highlights')return Response.json([{id:'highlight-1',fileId:'file',sourceId:'source',sourceHash:file.textHash,startOffset:16,endOffset:text.length,excerpt:'A stable paragraph for citation.',color:'yellow',createdAt:'2026-10-25'}]);
   if(url==='/api/source-files/file/highlights/highlight-1')return Response.json({ok:true});
+  if(url==='/api/source-files/file/highlights/persisted-highlight'){const body=JSON.parse(options.body);assert.equal(body.revisionId,'revision');assert.equal(body.color,'blue');return Response.json({id:'persisted-highlight',fileId:'file',sourceId:'source',sourceHash:createHash('sha256').update(revisedText).digest('hex'),startOffset:16,endOffset:revisedText.length,excerpt:revisedText.slice(16),color:body.color,createdAt:'2026-10-25'});}
   if(url==='/api/source-files/file/reading-notes')return Response.json([{pageId:'note-1',title:'My annotation',text:'A connection to revisit.',sourceHash:file.textHash,startOffset:16,endOffset:text.length}]);
   throw new Error(`Unexpected request: ${url}`);
  };
@@ -154,8 +159,19 @@ test('delayed enrichment refreshes headings and navigation without reloading or 
   assert.equal(document.querySelector('.source-reader-document'),originalArticle,'version changes preserve the article element');
   assert.match(originalArticle.textContent,/A revised paragraph for reading/);
   assert.ok(scrolls.some(value=>value.top===100),'semantic node links preserve the viewport position after presentation changes');
-  assert.equal(document.querySelector('.source-reading-continuity'),null,'editorial offsets cannot be persisted as canonical bookmarks');
-  assert.equal(document.querySelector('.source-reading-tools'),null,'canonical highlight tools are unavailable on unverified editorial offsets');
+  await act(async()=>{await new Promise(resolve=>originalTimeout(resolve,30));});
+  assert.ok(document.querySelector('.source-reading-continuity'),'reading activity stays available in reprocessed versions');
+  assert.ok(originalArticle.querySelector('[data-highlight-id="persisted-highlight"]'),'highlights use projected editorial offsets');
+  assert.ok(originalArticle.querySelector('.source-reading-note-inline-text'),'annotations remain attached to the reprocessed passage');
+  await act(async()=>originalArticle.querySelector('[data-highlight-id="persisted-highlight"]').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true})));
+  assert.ok(document.querySelector('.source-reading-menu'),'selection tools are available on reprocessed passages');
+  await act(async()=>document.querySelector('[aria-label="Change highlight to blue"]').click());
+  assert.equal(originalArticle.querySelector('[data-highlight-id="persisted-highlight"]').dataset.color,'blue','highlight edits retain revision coordinates');
+  await act(async()=>document.querySelector('.source-reader-toolbar button[aria-label="Reading activity"]').click());
+  await act(async()=>activityTab('Annotations').click());
+  assert.match(activityPanel().textContent,/My annotation/);
+  assert.match(activityPanel().querySelector('.source-activity-context').textContent,/A revised paragraph/);
+  await act(async()=>activityPanel().querySelector('.panel-top button').click());
   const revisedBody=[...originalArticle.querySelectorAll('.source-reader-passage')].find(node=>node.textContent.includes('A revised paragraph'));
   await act(async()=>revisedBody.querySelector('button').click());
   assert.equal(document.querySelector('[aria-label="Selected passage"] blockquote')?.textContent,'A stable paragraph for citation.','editorial citation resolves the recorded original node and quotes canonical text');
@@ -216,8 +232,8 @@ test('accepted page shows the selected snapshot immediately while its background
    if(++selectedReads===1)return new Promise(resolve=>{releaseReading=()=>resolve(Response.json(selected));});
    return Response.json(selected);
   }
-  if(url==='/api/source-files/file/reading-locations')return Response.json({resume:null,bookmarks:[]});
-  if(url==='/api/source-files/file/highlights'||url==='/api/source-files/file/reading-notes')return Response.json([]);
+  if(url.startsWith('/api/source-files/file/reading-locations'))return Response.json({resume:null,bookmarks:[]});
+  if(url.startsWith('/api/source-files/file/highlights')||url.startsWith('/api/source-files/file/reading-notes'))return Response.json([]);
   throw Error(`Unexpected request: ${url}`);
  });
  const root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));const noop=()=>{};

@@ -29,7 +29,7 @@ export function jumpToReadingOffset(root:HTMLElement,rawOffset:number) {
  }
  window.scrollBy({top:top-readingEdge(),behavior:'instant'});
 }
-export function SourceReadingContinuity({file,article,selectedOffset,highlights=[],notes=[],onOpenNote,onRemoveNote,onRemoveHighlight,onOpenChange,inspectorOpen=false}:{file:File;article:RefObject<HTMLElement|null>;selectedOffset?:number;highlights?:SourceHighlight[];notes?:ReadingNoteAnchor[];onOpenNote?:(id:string)=>void;onRemoveNote?:(note:ReadingNoteAnchor)=>void;onRemoveHighlight?:(id:string)=>void;onOpenChange?:(open:boolean)=>void;inspectorOpen?:boolean}) {
+export function SourceReadingContinuity({file,revisionId,article,selectedOffset,highlights=[],notes=[],onOpenNote,onRemoveNote,onRemoveHighlight,onOpenChange,inspectorOpen=false}:{file:File;revisionId?:string;article:RefObject<HTMLElement|null>;selectedOffset?:number;highlights?:SourceHighlight[];notes?:ReadingNoteAnchor[];onOpenNote?:(id:string)=>void;onRemoveNote?:(note:ReadingNoteAnchor)=>void;onRemoveHighlight?:(id:string)=>void;onOpenChange?:(open:boolean)=>void;inspectorOpen?:boolean}) {
  const [data,setData]=useState<ReadingContinuity|null>(null),[resume,setResume]=useState<ReadingLocation|null>(null);
  const [error,setError]=useState(''),[notice,setNotice]=useState(''),[open,setOpen]=useState(false),[label,setLabel]=useState(''),[busy,setBusy]=useState(false);
  useEffect(()=>{onOpenChange?.(open);return()=>onOpenChange?.(false);},[open,onOpenChange]);
@@ -55,9 +55,9 @@ export function SourceReadingContinuity({file,article,selectedOffset,highlights=
  const route=`source-files/${encodeURIComponent(file.id)}/reading-locations`;
  useEffect(()=>{
   alive.current=true;const controller=new AbortController();
-  void request<ReadingContinuity>(route,'GET',undefined,file.vault_id,controller.signal).then(value=>{if(controller.signal.aborted)return;loaded.current=true;setData(value);setResume(value.resume);}).catch(()=>{if(!controller.signal.aborted)setError('Reading locations could not be loaded. Reopen the source to retry.');});
+  void request<ReadingContinuity>(route+(revisionId?`?revisionId=${encodeURIComponent(revisionId)}`:''),'GET',undefined,file.vault_id,controller.signal).then(value=>{if(controller.signal.aborted)return;loaded.current=true;setData(value);setResume(value.resume);}).catch(()=>{if(!controller.signal.aborted)setError('Reading locations could not be loaded. Reopen the source to retry.');});
   return()=>{alive.current=false;controller.abort();};
- },[route,file.vault_id]);
+ },[route,file.vault_id,revisionId]);
  useEffect(()=>{
   const root=article.current;if(!root||!data||restored.current)return;
   restored.current=true;
@@ -101,10 +101,10 @@ export function SourceReadingContinuity({file,article,selectedOffset,highlights=
   function flush(){
    clearTimeout(timer);const position=dirty.current;if(!position||!loaded.current)return;dirty.current=null;const sequence=++saveSequence.current;
    // keepalive also delivers the final anchor when this reader closes or reloads.
-   void fetch('/api/'+route+'/resume',{method:'PUT',keepalive:true,headers:{'X-Noema-Request':'1','Content-Type':'application/json','X-Vault-Id':file.vault_id},body:JSON.stringify({...position,revision:file.textHash})}).then(response=>{if(!response.ok)throw new Error();if(alive.current&&saveSequence.current===sequence)setSaveError('');}).catch(()=>{if(saveSequence.current!==sequence)return;dirty.current??=position;if(alive.current)setSaveError('Reading position could not be saved. Continue reading; scroll to retry.');});
+   void fetch('/api/'+route+'/resume',{method:'PUT',keepalive:true,headers:{'X-Noema-Request':'1','Content-Type':'application/json','X-Vault-Id':file.vault_id},body:JSON.stringify({...position,revision:file.textHash,...(revisionId?{revisionId}:{})})}).then(response=>{if(!response.ok)throw new Error();if(alive.current&&saveSequence.current===sequence)setSaveError('');}).catch(()=>{if(saveSequence.current!==sequence)return;dirty.current??=position;if(alive.current)setSaveError('Reading position could not be saved. Continue reading; scroll to retry.');});
   }
   function capture(){
-   if(!root!.isConnected||!interacted.current||!file.text.trim())return;
+   if(!root!.isConnected||!interacted.current||!file.text.trim()||(root!.dataset.sourceCoordinateHash!==undefined&&root!.dataset.sourceCoordinateHash!==file.textHash))return;
    dirty.current={offset:visibleReadingOffset(root!),atEnd:root!.getBoundingClientRect().bottom<=window.innerHeight&&root!.getBoundingClientRect().bottom>readingEdge()};
    const leaf=Array.from(root!.querySelectorAll<HTMLElement>('[data-source-start][data-source-end]')).find(item=>Number(item.dataset.sourceStart)===dirty.current!.offset);
    try{sessionStorage.setItem(sessionKey,JSON.stringify({...createReadingAnchor(file.id,file.textHash,file.text,dirty.current.offset,file.document,dirty.current.atEnd),viewportTop:leaf?.getBoundingClientRect().top}));}catch{/* Server persistence remains available. */}
@@ -130,7 +130,7 @@ export function SourceReadingContinuity({file,article,selectedOffset,highlights=
   for(const type of ['wheel','touchstart','pointerdown','keydown'])window.addEventListener(type,intent,{passive:true});
   window.addEventListener('pagehide',close);document.addEventListener('visibilitychange',hide);
   return()=>{cancelAnimationFrame(frame);capture();flush();clearTimeout(timer);window.removeEventListener('noema:before-reading-jump',beforeJump);document.removeEventListener('click',click,true);window.removeEventListener('scroll',scroll);window.removeEventListener('pagehide',close);document.removeEventListener('visibilitychange',hide);for(const type of ['wheel','touchstart','pointerdown','keydown'])window.removeEventListener(type,intent);};
- },[article,file,route,sessionKey]);
+ },[article,file,route,sessionKey,revisionId]);
  function go(location:ReadingLocation){
   if(location.resolution.status!=='resolved'||!article.current)return;
   window.dispatchEvent(new Event('noema:before-reading-jump'));
@@ -144,7 +144,7 @@ export function SourceReadingContinuity({file,article,selectedOffset,highlights=
   const offset=selectedOffset??(selectedLeaf&&root.contains(selectedLeaf)?Number(selectedLeaf.dataset.sourceStart):visibleReadingOffset(root));
   setBusy(true);setError('');
   try{
-   const saved=await request<ReadingLocation>(route+'/'+randomUUID(),'PUT',{offset,revision:file.textHash,label},file.vault_id);
+   const saved=await request<ReadingLocation>(route+'/'+randomUUID(),'PUT',{offset,revision:file.textHash,label,...(revisionId?{revisionId}:{})},file.vault_id);
    setData(current=>current?{...current,bookmarks:[...current.bookmarks,saved]}:current);setLabel('');setNotice('Bookmark saved.');setTab('bookmarks');setOpen(true);
   }catch{setError('Bookmark could not be saved. Try again.');}finally{setBusy(false);}
  }

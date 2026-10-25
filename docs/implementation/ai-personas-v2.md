@@ -104,8 +104,10 @@ content, source options or persona provenance. Exact snapshot regressions cover
 v1-to-v2 supersession, acceptance and rejection; status guards still prevent reuse.
 No new database migration is introduced by the persona integration.
 
-The integrated build/style/types and full-suite results are recorded in the PR
-and final report. Integrated Settings/editor/selection-toolbar runtime checks use
+The integrated build/style/types pass. The final full suite passes 1,710 tests
+with zero failures and eight explicit platform/model skips (1,718 total).
+The existing metadata test now asserts complete draft snapshot preservation
+rather than deletion; all earlier page/provenance/restoration assertions remain. Integrated Settings/editor/selection-toolbar runtime checks use
 only synthetic providers. Independent integration review passed 24 focused tests
 with no unresolved findings. Chat remains separate and outside the persona
 allowlist. Phase 6 and real-provider style evaluation remain deferred/unrun.

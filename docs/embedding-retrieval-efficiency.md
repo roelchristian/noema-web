@@ -9,7 +9,9 @@ The worker reconciles every distinct Page in a completed request before validati
 its individual vectors. Unrelated dirty Pages no longer consume the bounded
 reconciliation sweep and cause a valid in-flight result to be discarded. Exact
 hashes, current availability, vault state and each job's cancellation status still
-control persistence.
+control persistence. The deterministic 20-dirty-Page reproduction persisted
+**0 valid vectors on baseline → 1 after the fix**; unrelated dirty work remains
+queued instead of consuming completion reconciliation.
 
 Cross-Page batches rotate the starting Page and visit one job per Page before
 another job from that Page. Each request stays within one unlocked vault, current
@@ -67,7 +69,9 @@ Navigation limit 3 materializes **115 → 3** candidates; hybrid limit 1 materia
 **115 → 1**, or zero extra rows when lexical evidence already supplies the winner.
 Hybrid retains its existing semantic candidate budget for ranking and lexical
 evidence priority. Exact
-retrieval references and stale-source evidence behavior remain intact. Baseline
+retrieval references and stale-source evidence behavior remain intact. Lexical
+evidence is captured after the query-provider await, so deletion, archive and
+vault moves during that wait cannot return stale pre-request evidence. Baseline
 source archive behavior is preserved consistently with lexical search; archived
 Pages remain excluded.
 
@@ -82,3 +86,49 @@ The scoped search still scans all eligible vectors inside its scope. SQLite
 scoring rows stream through a bounded shortlist rather than retaining the corpus
 as a JavaScript array. These changes do not introduce ANN infrastructure or
 claim sublinear semantic scoring.
+
+## Integration and review
+
+Read/assessment snapshot commit `753021cb71709b508f28686386903624564481fb`
+is integrated locally. Its assessment generation counter still increments when
+vectors are replaced or segments deleted, and index completion still queues
+reassessment. An integration regression verifies reference-only moves and
+unchanged saves do not manufacture vector-generation changes, while a real
+replacement and its eventual vector each invalidate the assessment.
+
+Independent review found and resolved two issues: metadata changes beyond bounded
+heading context, and stale lexical evidence across the asynchronous query wait.
+No unresolved review findings remain for the implementation present here.
+
+The separately supplied typed retry commit `fb8db3ae4451e69168ca393cd6199b9ab1906520`
+is **not integrated**: Library resolved its transfer, but the supported download
+helper returned `download failed` and produced no archive bytes. No archive hash
+verification, extraction or import was possible. Existing worker retry branches
+were preserved, but validation here does not claim the new typed retry policy.
+
+## Final local validation
+
+- `npm run test:all`: **1,810 passed, eight skipped, zero failed** (1,818 tests).
+  The initial broad run exposed two obsolete singleton-provider/API activity
+  fixture assumptions; those fixtures now accept indexed batch responses and
+  assert correct request attribution. The complete corrected suite was rerun.
+- `npm run build`: passed, including style ownership checks, application/test
+  typechecking, server compilation and production frontend build. Existing
+  frontend chunk-size advice remains informational.
+- Integrated focused suites: 39/39 passed; the additional generation regression
+  passed in the eight-test incremental persistence suite; deferred-query lifecycle
+  regressions passed in the 19-test focused retrieval run.
+- Mocked Chat browser validation: desktop/mobile, light/dark, exact note/source/
+  entity evidence, cancellation, provider failure recovery and vault switching;
+  no page errors or horizontal overflow. Screenshots were disabled.
+- `scripts/benchmark-page-reads.mjs --assert`: passed after integration; ordinary
+  Page/metadata/enrichment/status reads retain zero writes, classification
+  assessments and vector loads.
+- Independent source and integration review: no unresolved findings;
+  `git diff --check` passed.
+
+All provider tests and measurements use mocked or synthetic vectors. No real
+provider calls, pushes, pull requests, remote merges or deployments were made.
+The separately supplied retry-policy archive could not be downloaded, so these
+results cover the completed embedding/retrieval and integrated read/snapshot
+changes, not joint validation with that unavailable retry commit.

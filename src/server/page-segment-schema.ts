@@ -32,7 +32,9 @@ export function setupPageSegmentSchema(db:DatabaseSync) {
  CREATE VIRTUAL TABLE IF NOT EXISTS page_segments_fts USING fts5(heading,text,tokenize='unicode61 remove_diacritics 2');
  CREATE TRIGGER IF NOT EXISTS page_segments_fts_insert AFTER INSERT ON page_segments BEGIN
   INSERT INTO page_segments_fts(rowid,heading,text) VALUES(NEW.rowid,NEW.heading,NEW.text); END;
- CREATE TRIGGER IF NOT EXISTS page_segments_fts_update AFTER UPDATE OF heading,text ON page_segments BEGIN
+ DROP TRIGGER IF EXISTS page_segments_fts_update;
+ CREATE TRIGGER page_segments_fts_update AFTER UPDATE OF heading,text ON page_segments
+ WHEN OLD.heading IS NOT NEW.heading OR OLD.text IS NOT NEW.text BEGIN
   DELETE FROM page_segments_fts WHERE rowid=OLD.rowid; INSERT INTO page_segments_fts(rowid,heading,text) VALUES(NEW.rowid,NEW.heading,NEW.text); END;
  CREATE TRIGGER IF NOT EXISTS page_segments_fts_delete AFTER DELETE ON page_segments BEGIN DELETE FROM page_segments_fts WHERE rowid=OLD.rowid; END;
  DROP TRIGGER IF EXISTS page_index_insert;

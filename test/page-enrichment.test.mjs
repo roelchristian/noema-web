@@ -148,7 +148,7 @@ test('scheduler uses real field dependencies to reuse presentation saves and dis
  const gate=deferred(),s=fixture((_input,_options)=>s.calls===1?gate.promise:{summary:output.summary});
  const scheduler=new PageEnrichmentScheduler(s.store,{
    prepare:(vault,id,job)=>s.coordinator.prepare(vault,id,{fields:job.fields}),
-   execute:(vault,id,snapshot,signal)=>s.coordinator.run(vault,snapshot.page,undefined,{fields:snapshot.requestedFields,signal}),
+   execute:(vault,id,snapshot,signal)=>s.coordinator.runPrepared(vault,snapshot,undefined,{fields:snapshot.requestedFields,signal}),
  },{clock:()=>100});
  try {
    scheduler.enqueue('default',s.page.id,{fields:['summary'],delayMs:0});
@@ -159,8 +159,9 @@ test('scheduler uses real field dependencies to reuse presentation saves and dis
    page=s.pages.update('default',page.id,{title:page.title,blocks:page.blocks.map(block=>({...block,content:[{text:'New substantive content about psychology, attention and memory formation.'}]})),revision:page.revision});
    scheduler.enqueue('default',page.id,{fields:['summary'],delayMs:0});
    assert.equal(s.requests[0].options.signal.aborted,true);
+   const latestGeneration=s.store.get('SELECT generation FROM page_enrichment_jobs WHERE page_id=?',page.id).generation;
    gate.resolve({summary:'Obsolete summary'});await work;
-   assert.equal(s.store.get('SELECT generation FROM page_enrichment_jobs WHERE page_id=?',page.id).generation,3);
+   assert.equal(s.store.get('SELECT generation FROM page_enrichment_jobs WHERE page_id=?',page.id).generation,latestGeneration);
    await scheduler.drain();
    assert.equal(s.calls,2);
    assert.match(s.requests[1].input,/New substantive content/);
@@ -198,4 +199,139 @@ test('explicit renames including Untitled survive enrichment and later autosaves
      assert.equal(s.coordinator.prepare('default',saved.id,{fields:['title']}),null);
    }finally{s.close();}
  }
+});
+
+test('same-vocabulary reversal retains generating provenance and requests a refresh',async()=>{
+ const s=fixture();try {
+   const blocks=[{id:'claim',type:'paragraph',content:[{text:'The larger dogs chase the smaller cats. This note records the direction of the chase.'}]}];
+   let current=s.pages.update('default',s.page.id,{...s.page,title:'Chase observations',blocks});
+   await s.coordinator.run('default',current,undefined,{fields:['summary'],explicit:true});
+   const before=storedSummary(s,current.id);
+   current=s.pages.update('default',current.id,{...current,blocks:[{...blocks[0],content:[{text:'The smaller cats chase the larger dogs. This note records the direction of the chase.'}]}]});
+   assert.deepEqual(s.coordinator.prepare('default',current.id,{fields:['summary']}).requestedFields,['summary']);
+   const saved=storedSummary(s,current.id);
+   assert.equal(saved.data.generatedContentHash,before.data.generatedContentHash);
+   assert.notEqual(saved.contentHash,current.summaryContentHash);
+   assert.equal(saved.data.freshness.status,'refresh_needed');
+   assert.equal(saved.data.summary,before.data.summary);
+ }finally{s.close();}
+});
+
+test('summary-only refresh selects edits since summary generation independently of classification',async()=>{
+ const s=fixture();try {
+   await s.coordinator.run('default',s.page,undefined,{fields:['domains','summary'],explicit:true});
+   const old=s.pages.get('default',s.page.id);
+   const current=s.pages.update('default',old.id,{...old,blocks:[{...old.blocks[0],content:[{text:'Distinctive changed summary evidence: the equation is no longer valid after reversing its inequality.'}]}]});
+   await s.coordinator.run('default',current,undefined,{fields:['domains'],explicit:true});
+   await s.coordinator.run('default',current,undefined,{fields:['summary'],explicit:true});
+   const request=s.requests.at(-1);
+   assert.equal(request.options.changedEvidence.counts.modified,1);
+   assert.match(request.options.changedEvidence.passages[0].text,/Distinctive changed summary evidence/);
+   const summary=storedSummary(s,current.id);
+   assert.equal(summary.data.coverage.changedBlocks,1);
+   assert.equal(summary.data.baseline.blockEvidence.blocks.length,1);
+ }finally{s.close();}
+});
+
+test('legacy locally advanced hash is rolled back when generating evidence is stale',async()=>{
+ const s=fixture();try {
+   await s.coordinator.run('default',s.page,undefined,{fields:['summary'],explicit:true});
+   const before=storedSummary(s,s.page.id);
+   const current=s.pages.update('default',s.page.id,{...s.page,blocks:[{...s.page.blocks[0],content:[{text:'The assertion is not true; its direction has reversed from 20 to 10.'}]}]});
+   const legacy={...before.data,baseline:{...before.data.baseline}};delete legacy.baseline.orderedContentHash;delete legacy.baseline.semanticVersion;
+   s.store.run("UPDATE page_ai_enrichments SET content_hash=?,data=? WHERE page_id=? AND kind='summary'",current.summaryContentHash,JSON.stringify(legacy),current.id);
+   s.coordinator.configure('default',{automaticSummaries:false});
+   assert.equal(s.coordinator.prepare('default',current.id,{fields:['summary']}),null);
+   const saved=storedSummary(s,current.id);
+   assert.equal(saved.contentHash,before.data.generatedContentHash);
+   assert.notEqual(saved.contentHash,current.summaryContentHash);
+   assert.equal(saved.data.freshness.status,'refresh_needed');
+ }finally{s.close();}
+});
+
+test('summary snapshot avoids catalogue and entity-name queries without unresolved mentions',async()=>{
+ const s=fixture();try {
+   s.knowledge.list=()=>{throw new Error('Full catalogue must not be loaded');};
+   let nameReads=0;const all=s.store.all.bind(s.store);
+   s.store.all=(sql,...args)=>{if(/SELECT id,name,mention_case FROM entities/u.test(sql))nameReads++;return all(sql,...args);};
+   await s.coordinator.run('default',s.page,undefined,{fields:['summary'],explicit:true});
+   assert.equal(nameReads,0);assert.equal(s.calls,1);
+   assert.match(s.requests[0].input,/Algebra studies polynomial equations/u);
+ }finally{s.close();}
+});
+
+for(const change of ['rename','delete','unrelated'])test(`prepared mention snapshot rejects only relevant ${change} changes`,async()=>{
+ const gate=deferred(),s=fixture(()=>gate.promise);try {
+   const entity=s.knowledge.create('default',{name:'Original algebra',type:'concept'});
+   const unrelated=s.knowledge.create('default',{name:'Unrelated concept',type:'concept'});
+   const blocks=[{id:'mention',type:'paragraph',checked:false,content:[{entityId:entity.id},{text:' explains polynomial equations and their mathematical proofs.'}]}];
+   s.store.run('UPDATE pages SET blocks=?,summary_content_hash=NULL WHERE id=?',JSON.stringify(blocks),s.page.id);
+   const page=s.pages.get('default',s.page.id);
+   s.knowledge.list=()=>{throw new Error('Full catalogue must not be loaded');};
+   const projections=[];const all=s.store.all.bind(s.store);
+   s.store.all=(sql,...args)=>{if(/SELECT id,name,mention_case FROM entities/u.test(sql))projections.push(args);return all(sql,...args);};
+   const work=s.coordinator.run('default',page,undefined,{fields:['summary'],explicit:true});
+   assert.match(s.requests[0].input,/Original algebra/u);
+   if(change==='delete')s.store.run('DELETE FROM entities WHERE id=?',entity.id);
+   else s.store.run('UPDATE entities SET name=? WHERE id=?','Changed name',change==='rename'?entity.id:unrelated.id);
+   gate.resolve({summary:'The immutable original projection.'});
+   if(change==='unrelated')assert.equal((await work).summary,'The immutable original projection.');
+   else await assert.rejects(work,{status:409});
+   assert.ok(projections.length>=2&&projections.length<=4,'Bounded targeted projection at prepare and dependency check');
+   for(const parameters of projections)assert.deepEqual(JSON.parse(parameters[1]),[entity.id]);
+ }finally{s.close();}
+});
+
+test('failed and cancelled snapshots leave no results and release in-flight identity',async()=>{
+ let mode='fail';const gate=deferred(),s=fixture(()=>mode==='fail'?Promise.reject(new Error('Synthetic provider failure')):mode==='cancel'?gate.promise:{summary:output.summary});try {
+   await assert.rejects(s.coordinator.run('default',s.page,undefined,{fields:['summary'],explicit:true}),/Synthetic provider failure/u);
+   mode='cancel';const controller=new AbortController();
+   const work=s.coordinator.run('default',s.page,undefined,{fields:['summary'],explicit:true,signal:controller.signal});
+   controller.abort();gate.resolve({summary:'Cancelled result'});await assert.rejects(work,{status:409});
+   assert.equal(s.store.get("SELECT 1 FROM page_ai_enrichments WHERE page_id=? AND kind='summary'",s.page.id),undefined);
+   mode='success';assert.equal((await s.coordinator.run('default',s.page,undefined,{fields:['summary'],explicit:true})).summary,output.summary);
+ }finally{s.close();}
+});
+
+test('queued execution consumes the immutable prepared projection without preparing twice',async()=>{
+ const s=fixture();try {
+   const snapshot=s.coordinator.prepare('default',s.page.id,{fields:['summary'],explicit:true});
+   assert.ok(Object.isFrozen(snapshot));assert.ok(Object.isFrozen(snapshot.page.blocks));assert.ok(Object.isFrozen(snapshot.requestedFields));
+   assert.throws(()=>{snapshot.page.title='Mutated snapshot';},TypeError);
+   s.coordinator.prepare=()=>{throw new Error('Queue must reuse prepared snapshot');};
+   const result=await s.coordinator.runPrepared('default',snapshot,undefined,{explicit:true});
+   assert.equal(result.summary,output.summary);assert.equal(s.calls,1);
+ }finally{s.close();}
+});
+
+test('fixed occurrence text needs no entity-name projection',async()=>{
+ const s=fixture();try {
+   const entity=s.knowledge.create('default',{name:'Canonical',type:'concept'});
+   const page={...s.page,blocks:[{id:'fixed',type:'paragraph',checked:false,content:[{entityId:entity.id,mentionText:'Fixed occurrence'},{text:' explains polynomial equations and proofs.'}]}]};
+   s.store.run('UPDATE pages SET blocks=?,summary_content_hash=NULL WHERE id=?',JSON.stringify(page.blocks),page.id);
+   let reads=0;const all=s.store.all.bind(s.store);
+   s.store.all=(sql,...args)=>{if(/SELECT id,name,mention_case FROM entities/u.test(sql))reads++;return all(sql,...args);};
+   await s.coordinator.run('default',s.pages.get('default',page.id),undefined,{fields:['summary'],explicit:true});
+   assert.equal(reads,0);assert.match(s.requests[0].input,/Fixed occurrence/u);
+ }finally{s.close();}
+});
+
+test('an independent classification refresh preserves the summary generating snapshot',async()=>{
+ const gate=deferred(),s=fixture(()=>gate.promise);try {
+   const work=s.coordinator.run('default',s.page,undefined,{fields:['summary'],explicit:true});
+   const domains=new Domains(s.store);
+   domains.setInferred('default',s.page.id,{primaryDomainId:'mathematics',secondaryDomainIds:[]},s.page.conceptContentHash,s.page);
+   gate.resolve({summary:'Generated from independent summary evidence.'});
+   assert.equal((await work).summary,'Generated from independent summary evidence.'); }finally{s.close();}
+});
+
+function storedSummary(s,id) {const row=s.store.get("SELECT data,content_hash AS contentHash FROM page_ai_enrichments WHERE page_id=? AND kind='summary'",id);return {...row,data:JSON.parse(row.data)};}
+
+test('replacing the summary generating baseline rejects an obsolete summary snapshot',async()=>{
+ const gate=deferred(),s=fixture(()=>gate.promise);try {
+   const work=s.coordinator.run('default',s.page,undefined,{fields:['summary'],explicit:true});
+   s.enrichments.save('default',s.page.id,'summary',{summary:'A concurrent summary',generatedContentHash:s.page.summaryContentHash},s.page.revision,selection);
+   gate.resolve({summary:'Obsolete generated result'});await assert.rejects(work,{status:409});
+   assert.equal(storedSummary(s,s.page.id).data.summary,'A concurrent summary');
+ }finally{s.close();}
 });

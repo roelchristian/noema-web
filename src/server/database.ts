@@ -1,3 +1,4 @@
+import {setupPageAssessmentSchema} from './page-assessment-schema.js';
 import {setupChatSchema} from './chat-schema.js';
 import {setupSourceReprocessingCheckpointSchema} from './source-reprocessing-checkpoint-schema.js';
 import {setupSourceMetadataSchema} from './modules/source-metadata-schema.js';
@@ -501,6 +502,7 @@ if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
  setupSourcePassageEmbeddingSchema(db);
  setupTextSearchSchema(db);
  setupPageEnrichmentSchedulerSchema(db);
+ setupPageAssessmentSchema(db);
  setupSuggestionVersionSchema(db);
  setupTemporalSchema(db);
  setupTemporalEvidenceSchema(db);

@@ -26,7 +26,8 @@
     "test:dark-mode": "node --import tsx scripts/check-dark-mode-browser.mjs",
     "test:appearance-bootstrap": "node scripts/check-appearance-bootstrap-browser.mjs && node --import tsx scripts/check-appearance-runtime-browser.mjs",
     "tts:download": "node scripts/download-kokoro.mjs",
-    "test:chat-browser": "node --import tsx scripts/check-chat-browser.mjs"
+    "test:chat-browser": "node --import tsx scripts/check-chat-browser.mjs",
+    "test:knowledge-browser": "node --import tsx scripts/check-knowledge-polling-browser.mjs"
   },
   "dependencies": {
     "@retorquere/bibtex-parser": "12.1.13",

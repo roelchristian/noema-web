@@ -195,8 +195,8 @@
       "tools": [],
       "tool_choice": "none"
     },
-    "promptDigest": "29327c0b18deb9a16a01e4b2fcb1b5671bd6cbb8a6ece7accf2b7f21945ba2df",
-    "bytes": 955
+    "promptDigest": "dcfe5de22b0b0d3ccf37bc7009c34e2e09c66e26809c8a3c2f33b83d91c28be7",
+    "bytes": 1156
   },
   "enrichment metadata": {
     "policy": {
@@ -209,8 +209,8 @@
       "tools": [],
       "tool_choice": "none"
     },
-    "promptDigest": "af575bade53feefa1e488132d5cfd2458ce33889e55302f9715db35af93ab756",
-    "bytes": 1559
+    "promptDigest": "8b8927b56b2a7e1f2e65dcc3eea0a17c930118abe4f33d9657e2e232e4607eb7",
+    "bytes": 1760
   },
   "editorial": {
     "policy": {

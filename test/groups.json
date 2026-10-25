@@ -39,9 +39,11 @@
     "test/tagline.test.mjs",
     "test/source-annotation-mapping.test.mjs",
     "test/writing-actions.test.mjs",
+    "test/vector-search-cache.test.mjs",
+    "test/knowledge-polling.test.mjs",
     "test/domain-shortlist-multilingual.test.mjs",
-    "test/page-block-evidence.test.mjs",
-    "test/knowledge-polling.test.mjs"  ],
+    "test/page-block-evidence.test.mjs"
+  ],
   "dom": [
     "test/trash-ui.test.mjs",
     "test/ai-activity-ui.test.mjs",
@@ -261,6 +263,8 @@
     "test/chat-context-expansion.test.mjs",
     "test/chat-context-security.test.mjs",
     "test/persona-preview-http.test.mjs",
+    "test/page-segment-persistence.test.mjs",
+    "test/semantic-scope-efficiency.test.mjs",
     "test/page-read-overhead.test.mjs",
     "test/page-assessment-lifecycle.test.mjs"
   ]

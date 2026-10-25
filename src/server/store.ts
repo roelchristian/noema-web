@@ -4,6 +4,7 @@ export class Store {
   constructor(readonly db: DatabaseSync) {}
   get<T>(sql: string, ...params: SQLInputValue[]): T | undefined { return this.db.prepare(sql).get(...params) as T | undefined; }
   all<T>(sql: string, ...params: SQLInputValue[]): T[] { return this.db.prepare(sql).all(...params) as T[]; }
+  *iterate<T>(sql: string, ...params: SQLInputValue[]): Generator<T> { for(const row of this.db.prepare(sql).iterate(...params))yield row as T; }
   run(sql: string, ...params: SQLInputValue[]) { return this.db.prepare(sql).run(...params); }
   transaction<T>(work: () => T): T {
     this.db.exec('BEGIN IMMEDIATE');

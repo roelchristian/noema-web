@@ -196,7 +196,7 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
         {running&&<p className="source-page-timing">{timing}</p>}
         {running&&generationStage==='math'&&mathProgress&&<progress value={mathProgress.completed} max={mathProgress.total} aria-label={uiText("Math preparation batches completed")}/>}
         </div>
-        {phase!=='loading'&&<div className="source-page-preview" ref={preview} aria-label={uiText("Generated page preview")} aria-busy={running} onScroll={event=>{const node=event.currentTarget;follow.current=node.scrollHeight-node.scrollTop-node.clientHeight<64;}}>
+        {phase!=='loading'&&<div className="source-page-preview" dir="auto" ref={preview} aria-label={uiText("Generated page preview")} aria-busy={running} onScroll={event=>{const node=event.currentTarget;follow.current=node.scrollHeight-node.scrollTop-node.clientHeight<64;}}>
           {title&&<h3 className="source-page-preview-title"><TitleText text={title}/></h3>}
           <DraftBlocks blocks={blocks} vaultId={vaultId}/>
           {running&&liveBlock&&<LiveDraftBlock block={liveBlock} vaultId={vaultId}/>}

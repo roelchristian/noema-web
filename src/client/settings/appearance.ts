@@ -59,16 +59,19 @@ export const paragraphIndentWidths = {small: '1em', medium: '1.5em', large: '2em
 export type ParagraphIndentWidth = keyof typeof paragraphIndentWidths;
 export const paragraphSpacingOptions = ['standard', 'book'] as const;
 export type ParagraphSpacing = typeof paragraphSpacingOptions[number];
-export interface Appearance { subtypeIcons:SubtypeIcons; paragraphSpacing: ParagraphSpacing; paragraphIndent: ParagraphIndentMode; paragraphIndentWidth: ParagraphIndentWidth; citationStyleExplicit:boolean; citationStyle:CitationStyle; bodyFont: FontId; headingFont: FontId; presentationMode: PresentationMode; mode: DisplayMode; theme: ThemeId; entityColors: Record<EntityType, PillColor>; entityOverrides: Record<string, PillColor> }
+export const ocsFontScales = [1, 1.12, 1.25] as const;
+export interface Appearance { ocsFontOverride:boolean; ocsFontScale:number; subtypeIcons:SubtypeIcons; paragraphSpacing: ParagraphSpacing; paragraphIndent: ParagraphIndentMode; paragraphIndentWidth: ParagraphIndentWidth; citationStyleExplicit:boolean; citationStyle:CitationStyle; bodyFont: FontId; headingFont: FontId; presentationMode: PresentationMode; mode: DisplayMode; theme: ThemeId; entityColors: Record<EntityType, PillColor>; entityOverrides: Record<string, PillColor> }
 export const appearanceStorageKey = 'noema.appearance.v1';
 export function defaultAppearance(): Appearance {
-  return {subtypeIcons:{},paragraphSpacing:'standard', paragraphIndent:'none', paragraphIndentWidth:'medium', citationStyleExplicit:false,citationStyle:'references',bodyFont: 'system', headingFont: 'geist', presentationMode: 'standard', mode: 'system', theme: 'ink', entityOverrides: {}, entityColors: Object.fromEntries(entityTypes.map(type => [type, 'graphite'])) as Appearance['entityColors']};
+  return {ocsFontOverride:true,ocsFontScale:1.12,subtypeIcons:{},paragraphSpacing:'standard', paragraphIndent:'none', paragraphIndentWidth:'medium', citationStyleExplicit:false,citationStyle:'references',bodyFont: 'system', headingFont: 'geist', presentationMode: 'standard', mode: 'system', theme: 'ink', entityOverrides: {}, entityColors: Object.fromEntries(entityTypes.map(type => [type, 'graphite'])) as Appearance['entityColors']};
 }
 export function parseAppearance(raw: string | null): Appearance {
   const result = defaultAppearance();
   try {
     const value = JSON.parse(raw || 'null');
     if (!value || typeof value !== 'object') return result;
+    if (typeof value.ocsFontOverride === 'boolean') result.ocsFontOverride = value.ocsFontOverride;
+    if (ocsFontScales.includes(value.ocsFontScale)) result.ocsFontScale = value.ocsFontScale;
     if (paragraphSpacingOptions.includes(value.paragraphSpacing)) result.paragraphSpacing = value.paragraphSpacing;
     if (paragraphIndentModes.includes(value.paragraphIndent)) result.paragraphIndent = value.paragraphIndent;
     if (typeof value.paragraphIndentWidth === 'string' && Object.hasOwn(paragraphIndentWidths, value.paragraphIndentWidth)) result.paragraphIndentWidth = value.paragraphIndentWidth;

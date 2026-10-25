@@ -93,13 +93,12 @@
 .topbar .page-toolbar .page-toolbar-view { display: none; }
 .topbar .page-toolbar .knowledge-toggle { width: auto; padding-inline: 9px; }
 .topbar .page-toolbar .knowledge-toggle > span { display: inline; }
-.topbar .page-toolbar .presentation-selector button { width: auto; padding-inline: 8px; font-size: var(--ui-text-md); }
 @container (max-width: 1000px) {
   .topbar .top-actions { flex: 1 1 100%; justify-content: flex-end; }
   .topbar #breadcrumb > span:not(:last-child) { display: none; }
 }
 @container (max-width: 750px) {
-  .topbar .page-toolbar .page-toolbar-secondary, .topbar .page-toolbar > .presentation-selector { display: none; }
+  .topbar .page-toolbar .page-toolbar-secondary, .topbar .page-toolbar > .presentation-control { display: none; }
   .topbar .page-toolbar .page-toolbar-view { display: inline-flex; margin-inline-end: auto; }
   .topbar .page-toolbar { flex: 1; justify-content: flex-end; }
   .topbar .page-toolbar .page-toolbar-view > button { width: auto; gap: var(--space-1); padding-inline: 9px; font-size: var(--ui-text-md); }

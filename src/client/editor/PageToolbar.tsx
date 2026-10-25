@@ -81,8 +81,8 @@ export function PageToolbar({ onArchive, onRestore, onHistory, onRename, entitie
       <button type="button" className="page-tool" aria-label={uiText("Undo")} title={uiText("Undo")+' · ⌘/Ctrl+Z'} disabled={editingDisabled||!canUndo} onMouseDown={event=>{if(event.button===0)event.preventDefault();}} onClick={onUndo}><Icon name="undo"/></button>
       <button type="button" className="page-tool" aria-label={uiText("Redo")} title={uiText("Redo")+' · ⌘/Ctrl+Shift+Z'} disabled={editingDisabled||!canRedo} onMouseDown={event=>{if(event.button===0)event.preventDefault();}} onClick={onRedo}><Icon name="redo"/></button>
     </div>
-    <div className="page-toolbar-view"><ActionMenu label={uiText("View")} triggerText={uiText("View")} icon="view-list" actions={[
-      ...(['standard','subtle','focus'] as const).map(mode=>({id:mode,label:uiText(mode==='standard'?'Standard':mode==='subtle'?'Subtle':presentationMode==='focus'?'Exit Focus':'Focus'),checked:presentationMode===mode,onSelect:()=>mode==='focus'&&presentationMode==='focus'?onExitFocus():onPresentationModeChange(mode)})),
+    <div className="page-toolbar-view"><ActionMenu showCheckedIcons label={uiText("View")} triggerText={uiText("View")} icon="view-list" actions={[
+      ...(['standard','subtle','focus'] as const).map(mode=>({id:mode,icon:mode==='standard'?'reference-highlight':mode==='subtle'?'reference-subtle':'expand',label:uiText(mode==='standard'?'Standard':mode==='subtle'?'Subtle':presentationMode==='focus'?'Exit Focus':'Focus'),checked:presentationMode===mode,onSelect:()=>mode==='focus'&&presentationMode==='focus'?onExitFocus():onPresentationModeChange(mode)})),
       ...(tocAvailable&&onToggleToc?[{id:'contents',group:uiText("Contents"),label:uiText("Table of contents"),checked:tocVisible,onSelect:onToggleToc}]:[]),
     ]}/></div>
     <PresentationSelector value={presentationMode} onChange={onPresentationModeChange} onExitFocus={onExitFocus}/>
@@ -100,7 +100,7 @@ export function PageToolbar({ onArchive, onRestore, onHistory, onRename, entitie
       {id:'reveal',group:uiText("Navigation"),label:uiText("Reveal in sidebar"),icon:'folder',onSelect:onRevealInSidebar},
       ...(onForward?[{id:'forward',group:uiText("Navigation"),label:uiText("Go forward"),icon:'chevron',disabled:forwardDisabled,onSelect:onForward}]:[]),
       ...(tocAvailable&&onToggleToc?[{id:'contents',group:uiText("Navigation"),label:uiText("Table of contents"),icon:'view-list',checked:tocVisible,onSelect:onToggleToc}]:[]),
-      {id:'transliteration',group:uiText("Navigation"),label:uiText("Transliteration"),icon:'culture',description:uiText("Greek, Cyrillic, Coptic and Glagolitic · Latin letters, no AI"),checked:transliteration!=='off',onSelect:()=>toggleTransliteration(transliterationKey)},
+      {id:'transliteration',group:uiText("Navigation"),label:uiText("Transliteration"),icon:'culture',description:uiText("Greek, Cyrillic, Armenian, Farsi, Coptic and Glagolitic · Latin letters, no AI"),checked:transliteration!=='off',onSelect:()=>toggleTransliteration(transliterationKey)},
       {id:'editing',group:uiText("Editing"),label:uiText("Editing"),icon:'edit',children:[
         {id:'undo',label:uiText("Undo"),icon:'undo',shortcut:"⌘Z / Ctrl+Z",disabled:editingDisabled||!canUndo,onSelect:onUndo},
         {id:'redo',label:uiText("Redo"),icon:'redo',shortcut:"⌘⇧Z / Ctrl+Y",disabled:editingDisabled||!canRedo,onSelect:onRedo},

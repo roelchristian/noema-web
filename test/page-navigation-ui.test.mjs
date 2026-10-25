@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {setupDOM} from './helpers/dom.mjs';
+import {setupPresentationMenu,choosePresentationMode} from './helpers/presentation-menu.mjs';
 import React,{act} from 'react';
 import {createRoot} from 'react-dom/client';
 import './helpers/register.mjs';
@@ -10,6 +11,7 @@ import {projectEntityMentions} from '../src/shared/entity-mentions.ts';
 const page=id=>({id,vault_id:'a',title:id,blocks:[{id:id+'-body',type:'paragraph',checked:false,content:[{text:'Body '+id}]}],sourceIds:[],revision:1,updated_at:''});
 test('sidebar note switching preserves mounted shell and outgoing editor until asynchronous content is ready',async t=>{
  const env=setupDOM(t),{dom}=env;
+ setupPresentationMenu(dom);
  const keys=['localStorage','CSS','ResizeObserver','PointerEvent','matchMedia'],previous=keys.map(k=>Object.getOwnPropertyDescriptor(globalThis,k));
  for(const key of keys)Object.defineProperty(globalThis,key,{configurable:true,writable:true,value:key==='ResizeObserver'?class{observe(){}disconnect(){}}:key==='PointerEvent'?dom.window.MouseEvent:key==='CSS'?{escape:value=>value}:dom.window[key]});
  env.defer(()=>keys.forEach((key,i)=>{if(previous[i])Object.defineProperty(globalThis,key,previous[i]);else delete globalThis[key];}));
@@ -44,10 +46,7 @@ test('sidebar note switching preserves mounted shell and outgoing editor until a
   editor.animate=(frames,options)=>{const animation={cancelled:false,cancel(){this.cancelled=true;}};presentationMotion.push({frames,options,animation});return animation;};
   const originalMatchMedia=dom.window.matchMedia;
   t.mock.method(dom.window,'matchMedia',query=>query==='(prefers-reduced-motion: reduce)'?{...originalMatchMedia(query),matches:reducedMotion}:originalMatchMedia(query));
-  const chooseMode=async name=>act(async()=>{
-   const selector=document.querySelector('.topbar .presentation-selector');
-   selector.querySelector('[aria-label="'+name+'"]').click();
-  });
+  const chooseMode=name=>choosePresentationMode('.topbar',name);
   const escape=async options=>act(async()=>document.querySelector('#page-title').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true,...options})));
   await chooseMode('Subtle');assert.equal(document.documentElement.dataset.focusedReading,'true');assert.equal(presentationMotion.length,0);
   for(let i=0;i<2;i++) {
@@ -62,8 +61,9 @@ test('sidebar note switching preserves mounted shell and outgoing editor until a
    assert.equal(localStorage.getItem('noema-knowledge-panel-open'),'true');assertOrganizationStable();
   }
   await chooseMode('Focus');
-  assert.equal(document.querySelector('.focus-controls [aria-label="Subtle"]').disabled,false);
-  assert.equal(document.querySelector('.focus-controls [aria-label="Exit Focus"]').getAttribute('aria-pressed'),'true');
+  assert.equal(document.querySelectorAll('.focus-controls button').length,1);
+  assert.equal(document.querySelector('.focus-controls [aria-label="Exit Focus"]').disabled,false);
+  assert.equal(document.querySelector('.focus-controls [aria-label="Exit Focus"]').title,'Exit Focus (Escape)');
   assert.equal(document.querySelector('.focus-exit'),null);
   await act(async()=>document.querySelector('.focus-controls [aria-label="Exit Focus"]').click());
   assert.equal(document.documentElement.dataset.focusWorkspace,'false');
@@ -199,6 +199,7 @@ test('entity routes open full homes while desktop page mentions retain contextua
 
 test('source presentation controls retain the reader, highlights and inspector across Focus',async t=>{
  const env=setupDOM(t),{dom}=env;
+ setupPresentationMenu(dom);
  const keys=['localStorage','CSS','ResizeObserver','PointerEvent','matchMedia'],previous=keys.map(key=>Object.getOwnPropertyDescriptor(globalThis,key));
  for(const key of keys)Object.defineProperty(globalThis,key,{configurable:true,writable:true,value:key==='ResizeObserver'?class{observe(){}disconnect(){}}:key==='PointerEvent'?dom.window.MouseEvent:key==='CSS'?{escape:value=>value}:dom.window[key]});
  env.defer(()=>keys.forEach((key,i)=>{if(previous[i])Object.defineProperty(globalThis,key,previous[i]);else delete globalThis[key];}));
@@ -232,8 +233,8 @@ test('source presentation controls retain the reader, highlights and inspector a
  await click('.source-inspector-toggle');
  const inspector=document.querySelector('#entity-panel');assert.ok(inspector);
  const reads=documentReads;
- await click('.topbar [aria-label="Subtle"]');assert.equal(document.documentElement.dataset.focusedReading,'true');
- await click('.topbar [aria-label="Focus"]');
+ await choosePresentationMode('.topbar','Subtle');assert.equal(document.documentElement.dataset.focusedReading,'true');
+ await choosePresentationMode('.topbar','Focus');
  assert.equal(document.documentElement.dataset.focusWorkspace,'true');assert.equal(document.documentElement.dataset.focusTarget,'source-reader');
  assert.equal(document.querySelector('.source-reader'),reader);assert.equal(document.querySelector('.source-reader-document'),article);assert.equal(document.querySelector('.source-highlight'),mark);
  assert.equal(reader.classList.contains('has-inspector'),false);

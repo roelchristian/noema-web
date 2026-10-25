@@ -57,3 +57,17 @@ test('hover does not guess mismatched word pairs and safely skips unavailable hi
   aside.dispatchEvent(new window.MouseEvent('pointermove',{bubbles:true,clientX:10,clientY:10}));
   assert.equal(highlights.size,0);
 });
+
+
+for(const [name,sourceText,latinText] of [['Farsi','می‌روم','myʹrvm'],['Armenian','թափ','tʿapʿ'],['Tajik','Роштқалъа','Roštqalʾa']])test(`${name} word hover pairs joiners and transliteration modifiers`,t=>{
+ const env=setupDOM(t,{html:`<div class="block"><div class="block-content">${sourceText} next</div><aside class="block-transliteration">${latinText} next</aside></div>`});
+ const highlights=new Map();window.CSS={highlights};window.Highlight=class{constructor(...ranges){this.ranges=ranges;}};
+ let paint;window.requestAnimationFrame=callback=>{paint=callback;return 1;};window.cancelAnimationFrame=()=>{};
+ env.dom.window.Range.prototype.getClientRects=()=>[{left:0,right:100,top:0,bottom:20}];
+ const source=document.querySelector('.block-content'),aside=document.querySelector('aside');
+ const detach=attachTransliterationHover(aside);env.defer(detach);
+ document.caretRangeFromPoint=()=>{const range=document.createRange();range.setStart(source.firstChild,1);range.collapse(true);return range;};
+ const event=new window.MouseEvent('pointermove',{bubbles:true,clientX:10,clientY:10});Object.defineProperty(event,'pointerType',{value:'mouse'});
+ source.dispatchEvent(event);paint();
+ assert.deepEqual(highlights.get('transliteration-word').ranges.map(range=>range.toString()),[sourceText,latinText]);
+});

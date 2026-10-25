@@ -10,13 +10,13 @@ test('Greek includes polytonic vowels, breathings, subscript iota and final sigm
 });
 
 test('Cyrillic handles Russian, Ukrainian, Serbian and other common letters',()=>{
-  assert.equal(transliterate('Привет, мир! Ёж, щука.'),'Privet, mir! Yož, ščuka.');
-  assert.equal(transliterate('Українська мова, Љубав, қазақ.'),'Ukrayinsʹka mova, Ljubav, qazaq.');
+  assert.equal(transliterate('Привет, мир! Ёж, щука.'),'Privet, mir! Jož, ščuka.');
+  assert.equal(transliterate('Українська мова, Љубав, қазақ.'),'Ukrajinsʹka mova, Ljubav, qazaq.');
   assert.equal(transliterate('ж ч ш щ џ ц Ж Ч Ш Щ Џ Ц ЖЧШЩЏЦ'),'ž č š šč dž c Ž Č Š Šč Dž C ŽČŠŠČDŽC');
-  assert.equal(transliterate('Жа́р, ча́й, ша́р'.normalize('NFD')),'Žár, čáy, šár');
+  assert.equal(transliterate('Жа́р, ча́й, ша́р'.normalize('NFD')),'Žár, čáj, šár');
   assert.equal(transliterate('ҷ ҹ ҽ ҿ ӌ ҵ'),'č č č č č c');
-  assert.equal(transliterate('й ё і ї є ґ ў ә ө ү'),'y yo i yi ye g ŭ ä ö ü');
-  assert.equal(transliterate('й ё'.normalize('NFD')),'y yo');
+  assert.equal(transliterate('й ё і ї є ґ ў ә ө ү'),'j jo i ji je g ŭ ä ö ü');
+  assert.equal(transliterate('й ё'.normalize('NFD')),'j jo');
   assert.equal(transliterate('ЩУКА ΘΕΟΣ ⲐⲈⲞⲤ'),'ŠČUKA THEOS THEOS');
 });
 
@@ -51,13 +51,13 @@ test('Greek accents remain on vowels before subscript iota, in composed and deco
 
 
 test('Old Church Slavonic includes historical Cyrillic and Glagolitic without changing the original block',()=>{
-  assert.equal(transliterate('Слово ѣ ѧ ѫ ѩ ѭ ѹ ꙋ ꙗ ѿ'),'Slovo ě ę ǫ yę yǫ u u ya ot');
+  assert.equal(transliterate('Слово ѣ ѧ ѫ ѩ ѭ ѹ ꙋ ꙗ ѿ'),'Slovo ě ę ǫ ję jǫ u u ja ot');
   assert.equal(transliterate('Ⱄⰾⱁⰲⱁ ⱑ ⱔ ⱘ ⱗ ⱙ ⱆ'),'Slovo ě ę ǫ yę yǫ u');
   assert.equal(transliterate('ⰆⰋⰂⰅⰕⰅ'),'ZHIVETE');
   assert.equal(transliterate('ⰰ́ ѣ́'.normalize('NFD')),transliterate('ⰰ́ ѣ́'));
   const block={id:'ocs',type:'paragraph',content:[{text:'Ⱄⰾⱁⰲⱁ ѹ ꙗ'}]};
   const original=structuredClone(block);
-  assert.equal(blockTransliteration(block,[]),'Slovo u ya');
+  assert.equal(blockTransliteration(block,[]),'Slovo u ja');
   assert.deepEqual(block,original);
 });
 
@@ -72,10 +72,10 @@ test('explicit OCS and Bulgarian languages preserve yer case and isolate other C
   }
   for(const language of [undefined,null,'','ru','Russian','uk','sr','en','invalid language']) {
     assert.equal(transliterate(source,language),'ʺ ʹ ʺ ʹ sʺnʺ SʺNʺ SʺNʹ',String(language));
-    assert.equal(transliterate('ѣъ ꙗь ⱏ ⱐ',language),'ěʺ yaʹ ʺ ʹ','historical letters do not select OCS');
+    assert.equal(transliterate('ѣъ ꙗь ⱏ ⱐ',language),'ěʺ jaʹ ʺ ʹ','historical letters do not select OCS');
   }
   for(const language of ['cu','bg','ru']) {
-    assert.equal(transliterate('θεός ⲁ й ё ї ѣ ꙗ ⱏ ⱐ',language),'theós a y yo yi ě ya ʺ ʹ',language);
+    assert.equal(transliterate('θεός ⲁ й ё ї ѣ ꙗ ⱏ ⱐ',language),'theós a j jo ji ě ja ʺ ʹ',language);
   }
 });
 
@@ -110,4 +110,54 @@ test('Greek upsilon uses u with case, accents, diaeresis and breathing preserved
   const expected='u U UPSILON ú ù û ü ǘ hu au heu';
   assert.equal(transliterate(source),expected);
   assert.equal(transliterate(source.normalize('NFD')),expected);
+});
+
+
+test('Cyrillic glides use j while y vowels, Latin text and Glagolitic retain y',()=>{
+  const source='й ё ю я є ї ѥ ѩ ѭ ꙓ ꙗ ꙝ ҋ ы ꙑ ѵ';
+  const expected='j jo ju ja je ji je ję jǫ jě ja ję j y y y';
+  assert.equal(transliterate(source),expected);
+  assert.equal(transliterate(source.normalize('NFD')),expected);
+  assert.equal(transliterate(source.toUpperCase()),'J Jo Ju Ja Je Ji Je Ję Jǫ Jě Ja Ję J Y Y Y');
+  assert.equal(transliterate('ЙЁЮЯЄЇ ЫЙ'),'JJOJUJAJEJI YJ');
+  assert.equal(transliterate('Яна Юрий май сыр'),'Jana Jurij maj syr');
+  assert.equal(transliterate('ya ye yo yu yi ⱓ ⱖ ⱗ ⱙ'),'ya ye yo yu yi yu yo yę yǫ');
+});
+
+
+test('Armenian handles its alphabet, vowel digraphs, ligatures and capitalization',()=>{
+ assert.equal(transliterate('Հայաստան Երևան հայերեն ու Ու ՈՒ','hy'),'Hayastan Erevan hayeren u U U');
+ assert.equal(transliterate('ԲԱՐԵՎ և ﬓ ﬔ ﬕ ﬖ ﬗ'),'BAREV ev mn me mi vn mkh');
+ assert.equal(transliterate('ա բ գ դ ե զ է ը թ ժ ի լ խ ծ կ հ ձ ղ ճ մ յ ն շ ո չ պ ջ ռ ս վ տ ր ց ւ փ ք օ ֆ'),'a b g d e z ē ě tʿ ž i l kh c k h dz gh č m y n š o čʿ p j ṛ s v t r cʿ w pʿ kʿ ō f');
+ assert.equal(transliterate('Հայաստան։ «բարև» 123'),'Hayastan։ «barev» 123');
+ assert.equal(transliterate('ու́'.normalize('NFD')),'ú');
+});
+
+test('Farsi transliterates spelling, explicit vowel marks, hamza and presentation forms',()=>{
+ assert.equal(transliterate('سلام فارسی پ چ ژ گ ک ی','fa'),'slām fārsy p č ž g k y');
+ assert.equal(transliterate('سَلَام شَدّ آب کِتاب مُدّ دُور شِیر','Farsi'),'salām šadd āb ketāb modd dūr šīr');
+ assert.equal(transliterate('می‌روم کتاب‌ها ك ي ﺳﻼﻡ'),'myʹrvm ktābʹhā k y slām');
+ assert.equal(transliterate('سـلام ء أ إ ؤ ئ ۀ ع'),'slām ʾ ʾ ʾ ʾ ʾ hʾ ʿ');
+ const source='آب کِتاب شَدّ';assert.equal(transliterate(source.normalize('NFD'),'fa-IR'),transliterate(source,'fa'));
+ assert.equal(transliterate('سلام، فارسی؟ ۱۲۳'),'slām، fārsy؟ ۱۲۳');
+ assert.equal(transliterate('Latin café A‌B 日本語'),'Latin café A‌B 日本語');
+});
+
+test('Tajik includes all six additional letters and retains Cyrillic j glides',()=>{
+ for(const language of ['tg','tg-Cyrl','tg-TJ','Tajik',' tajik ']){
+  assert.equal(transliterate('Тоҷикистон Ҷумҳурӣ ғ ӣ қ ӯ ҳ ҷ',language),'Tojikiston Jumhurī gh ī q ū h j');
+  assert.equal(transliterate('Ғ Ӣ Қ Ӯ Ҳ Ҷ ҒӢҚӮҲҶ',language),'Gh Ī Q Ū H J GHĪQŪHJ');
+  assert.equal(transliterate('Юсуф Қайроққум Роштқалъа ы',language),'Jusuf Qajroqqum Roštqalʾa y');
+  assert.equal(transliterate('ӣ ӯ'.normalize('NFD'),language),'ī ū');
+ }
+ assert.equal(transliterate('ҷ ъ','ru'),'č ʺ');
+});
+
+test('new script projections include entity labels and retain code, maths and source content',()=>{
+ for(const [language,text,expected] of [['hy','Հայաստան','Hayastan'],['fa','سلام','slām'],['tg','Тоҷикистон','Tojikiston']]){
+  const block={id:'projection',type:'paragraph',content:[{text:text+' '},{entityId:'entity'},{text:' '+text,code:true},{text:' '+text,math:true},{text:' [ref]',sourceReference:{id:'r'}}]};
+  const entities=[{id:'entity',name:text}],original=structuredClone({block,entities});
+  assert.equal(blockTransliteration(block,entities,language),expected+' '+expected+' '+text+' '+text);
+  assert.deepEqual({block,entities},original);
+ }
 });

@@ -23,7 +23,7 @@ return <><button id="headings" onClick={()=>setHeadings(!headings)}>Headings</bu
  const page=await browser.newPage({viewport:{width:1600,height:900}}),errors=[];page.setDefaultTimeout(10000);page.on('pageerror',e=>errors.push(e.message));
  await page.goto(server.resolvedUrls.local[0]);await page.getByRole('button',{name:'More page actions',exact:true}).waitFor();
  const more=()=>page.getByRole('button',{name:'More page actions',exact:true}).click();
- await page.getByRole('button',{name:'Subtle',exact:true}).click();await page.getByRole('button',{name:'Focus',exact:true}).click();await page.getByRole('button',{name:'Exit Focus',exact:true}).last().click();assert.equal(await page.locator('#mode').textContent(),'subtle');
+ for(const mode of ['Subtle','Focus']){await page.getByRole('button',{name:'Presentation mode',exact:true}).click();await page.getByRole('menuitemcheckbox',{name:mode,exact:true}).click();}await page.getByRole('button',{name:'Exit Focus',exact:true}).last().click();assert.equal(await page.locator('#mode').textContent(),'subtle');
  await more();assert.ok(await page.getByRole('menuitem',{name:/Find in page/}).locator('kbd').isVisible());await page.keyboard.press('Escape');
  for(const width of [1600,1120,800,390,320]){
   await page.setViewportSize({width,height:900});

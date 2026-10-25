@@ -125,11 +125,14 @@ try{
   const activate=button=>touch?button.tap():button.click();
   const focused=await target.evaluate(()=>document.documentElement.dataset.focusWorkspace==='true');
   if(focused&&mode==='Focus')return;
-  if(focused)await activate(target.locator('.focus-controls').getByRole('button',{name:mode,exact:true}));
-  else if(await target.getByRole('button',{name:'View',exact:true}).isVisible()) {
+  if(focused)await activate(target.locator('.focus-controls').getByRole('button',{name:'Exit Focus',exact:true}));
+  if(await target.getByRole('button',{name:'View',exact:true}).isVisible()) {
    await activate(target.getByRole('button',{name:'View',exact:true}));
    await activate(target.getByRole('menuitemcheckbox',{name:mode,exact:true}));
-  } else await activate(target.locator('.topbar .presentation-selector').getByRole('button',{name:mode,exact:true}));
+  } else {
+   await activate(target.locator('.topbar .presentation-control').getByRole('button',{name:'Presentation mode',exact:true}));
+   await activate(target.getByRole('menuitemcheckbox',{name:mode,exact:true}));
+  }
   // Reference emphasis, Focus layout and touch feedback animate. Assert settled styles and boxes.
   await target.waitForFunction(()=>[...document.querySelectorAll('#content > .page, #blocks .mention, .presentation-selector button, .presentation-icon-pair > .icon')].every(el=>el.getAnimations().every(animation=>!animation.pending&&animation.playState!=='running')));
  };

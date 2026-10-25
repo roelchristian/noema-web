@@ -4,7 +4,7 @@ export function sourcePagePrompt(input:string) {
   let language:string|null=null;
   try{language=pageLanguage(JSON.parse(input)?.generation_options?.language);}catch{/* Missing or legacy free-text settings use the general language rule. */}
   const languageInstruction=language
-    ?`OUTPUT LANGUAGE: Write the complete page in ${language}. This explicit selection takes precedence over the source language, user_focus, format instructions, and previous drafts. Translate source ideas into ${language};${language==='el-polyton'?' use Modern Greek with polytonic orthography;':language==='grc'?' use Koine Greek;':language==='cu'?' use Old Church Slavonic vocabulary and grammar;':''} keep only exact quotations, proper names, and original work titles in their original language. Use "${language}" in the title object’s language field.`
+    ?`OUTPUT LANGUAGE: Write the complete page in ${language}. This explicit selection takes precedence over the source language, user_focus, format instructions, and previous drafts. Translate source ideas into ${language};${language==='hy'?' use Armenian script;':language==='fa'?' use Persian (Farsi) in Perso-Arabic script;':language==='tg'?' use Tajik in Cyrillic script;':language==='el-polyton'?' use Modern Greek with polytonic orthography;':language==='grc'?' use Koine Greek;':language==='cu'?' use Old Church Slavonic vocabulary and grammar;':''} keep only exact quotations, proper names, and original work titles in their original language. Use "${language}" in the title object’s language field.`
     :'OUTPUT LANGUAGE: Match the predominant source language unless user_focus explicitly requests another language.';
   return {
     instructions:`${languageInstruction}

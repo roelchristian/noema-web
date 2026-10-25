@@ -11,7 +11,7 @@ import {readSegments,segmentHTML} from '../src/client/editor/segments.tsx';
 import {ReadOnlyPageBlocks} from '../src/client/editor/ReadOnlyPageBlocks.tsx';
 import {readTransliteration,rememberTransliteration} from '../src/client/state/transliteration-preferences.ts';
 
-for(const [name,text,expected] of [['Greek','θεός','theós'],['Old Church Slavonic','Ⱄⰾⱁⰲⱁ ѹ ꙗ ъЬ Ъь','Slovo u ya ŭĬ Ŭĭ'],['Bulgarian','ъЬ Ъь','ăʹ Ăʹ'],['Russian','ъЬ Ъь','ʺʹ ʺʹ']])test(`three-dot menu controls ${name} transliteration on a locked page and remembers its page preference`,async t=>{
+for(const [name,text,expected] of [['Greek','θεός','theós'],['Old Church Slavonic','Ⱄⰾⱁⰲⱁ ѹ ꙗ ъЬ Ъь','Slovo u ja ŭĬ Ŭĭ'],['Bulgarian','ъЬ Ъь','ăʹ Ăʹ'],['Russian','ъЬ Ъь','ʺʹ ʺʹ'],['Armenian','Հայաստան Երևան ու','Hayastan Erevan u'],['Farsi','سلام فارسی','slām fārsy'],['Tajik','Тоҷикистон Ҷумҳурӣ','Tojikiston Jumhurī']])test(`three-dot menu controls ${name} transliteration on a locked page and remembers its page preference`,async t=>{
   const env=setupDOM(t);
   const storageDescriptor=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
   Object.defineProperty(globalThis,'localStorage',{configurable:true,value:env.dom.window.localStorage});

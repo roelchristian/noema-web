@@ -19,7 +19,7 @@ import type { SourceReference, Vault } from '../../shared/domain';
 import { KnowledgeEntitySettings } from './KnowledgeEntitySettings';
 import { Modal, ModalHeader } from '../components/Modal';
 import { Select } from '../components/Select';
-import { defaultAppearance, paragraphIndentWidths, fontOptions, themes, type Appearance, type DisplayMode, type FontId, type ParagraphIndentMode, type ParagraphIndentWidth, type ParagraphSpacing } from './appearance';
+import { defaultAppearance, ocsFontScales, paragraphIndentWidths, fontOptions, themes, type Appearance, type DisplayMode, type FontId, type ParagraphIndentMode, type ParagraphIndentWidth, type ParagraphSpacing } from './appearance';
 
 const settingsTabs = [
   {id: 'appearance', icon:'sliders', get label(){return uiText("Appearance")}},
@@ -90,6 +90,21 @@ export function SettingsDialog({initialTab='appearance',calendarSettings,onCalen
             </Select>
           </div>)}
         </div>
+        <div className="font-settings">
+          <div className="font-setting">
+            <label htmlFor="settings-ocs-font">{uiText("Old Church Slavonic font")}</label>
+            <Select id="settings-ocs-font" value={appearance.ocsFontOverride?'shafarik':'body'} onChange={event=>onChange({...appearance,ocsFontOverride:event.target.value==='shafarik'})}>
+              <option value="shafarik">{uiText("Shafarik (default)")}</option>
+              <option value="body">{uiText("Use body font")}</option>
+            </Select>
+          </div>
+          <div className="font-setting">
+            <label htmlFor="settings-ocs-font-scale">{uiText("OCS font size")}</label>
+            <Select id="settings-ocs-font-scale" value={appearance.ocsFontScale} disabled={!appearance.ocsFontOverride} onChange={event=>onChange({...appearance,ocsFontScale:Number(event.target.value)})}>
+              {ocsFontScales.map(scale=><option key={scale} value={scale}>{Math.round(scale*100)}%{scale===1.12?uiText(" (default)"):''}</option>)}
+            </Select>
+          </div>
+        </div>
         <div className="font-preview" aria-label={uiText("Typography preview")}>
           <h4>{uiText("A space for clear thinking")}</h4>
           <p>{uiText("Capture a thought, connect an idea, and make room for what comes next.")}</p>
@@ -132,7 +147,7 @@ export function SettingsDialog({initialTab='appearance',calendarSettings,onCalen
       </section>
       <section className="settings-section appearance-setting" aria-labelledby="reading-heading">
         <h3 id="reading-heading">Presentation</h3>
-        <PresentationSelector onExitFocus={onExitFocus} value={appearance.presentationMode} onChange={presentationMode => onChange({...appearance, presentationMode})}/>
+        <PresentationSelector inline onExitFocus={onExitFocus} value={appearance.presentationMode} onChange={presentationMode => onChange({...appearance, presentationMode})}/>
       </section>
       <section className="settings-section appearance-setting" aria-labelledby="citations-heading">
         <h3 id="citations-heading">{uiText("Citations")}</h3>

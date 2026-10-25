@@ -98,3 +98,18 @@ test('invalid or unavailable settings session storage does not prevent opening s
   t.mock.getter(env.dom.window,'sessionStorage',()=>{throw new Error('Storage blocked');});
   assert.equal(readSettingsSession(),null);
 });
+
+
+test('OCS typography controls update the font override and scale',async t=>{
+ const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ env.dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};env.dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
+ let appearance=defaultAppearance();
+ const render=()=>root.render(createElement(SettingsDialog,{appearance,calendarSettings:defaultCalendarSettings(),vault:null,storageError:false,onChange(next){appearance=next;render();},onCalendarSettingsChange(){},onExitFocus(){},onClose(){},onChangePassphrase:async()=>{},onBeforeNetworkChange:async()=>{},onOpenPassage:async()=>{},onOpenPage:async()=>{},onOpenEntity:async()=>{}}));
+ await act(async()=>render());
+ assert.equal(document.getElementById('settings-ocs-font').value,'shafarik');
+ await edit('settings-ocs-font-scale','1.25');assert.equal(appearance.ocsFontScale,1.25);
+ await edit('settings-ocs-font','body');assert.equal(appearance.ocsFontOverride,false);
+ assert.equal(document.getElementById('settings-ocs-font-scale').disabled,true);
+ await edit('settings-ocs-font','shafarik');assert.equal(appearance.ocsFontOverride,true);
+ assert.equal(document.getElementById('settings-ocs-font-scale').value,'1.25');
+});

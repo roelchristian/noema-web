@@ -9,9 +9,9 @@ import {CachedVectorSearch} from '../src/server/vector-search.ts';
 import {SemanticShortlist,compareSemanticCandidates} from '../src/server/semantic-candidates.ts';
 import {embeddingModel,embeddingDimensions} from '../src/shared/embeddings.ts';
 const vector=Array.from({length:embeddingDimensions},(_,i)=>i===0?1:0);
-function setup(t) {
+function setup(t,embed=async()=>({embedding:vector,tokens:4})) {
  const f=chatCorpus();let requests=0;
- const ai={status:()=>({configured:true}),embed:async()=>{requests++;return {embedding:vector,tokens:4};}};
+ const ai={status:()=>({configured:true}),embed:async()=>{requests++;return embed();}};
  const worker=new Embeddings(f.store,f.pages,f.knowledge,f.vaults,ai);
  new PageSegments(f.store).synchronize('default');new PageSegments(f.store).synchronize(f.other);
  const index=new PageSegmentIndex(f.store);
@@ -91,4 +91,18 @@ test('bounded shortlist matches exhaustive sort with ties, duplicates and distin
   const seen=new Set(),expected=sorted.filter(row=>{if(!distinct)return true;const key=`${row.kind}:${row.ownerId}`;if(seen.has(key))return false;seen.add(key);return true;}).slice(0,17);
   assert.deepEqual(shortlist.values(),expected);
  }
+});
+
+test('hybrid lexical evidence reflects deletion, archiving and vault moves during query embedding',async t=>{
+ for(const change of ['delete','archive','move'])await t.test(change,async t=>{
+  let release;
+  const f=setup(t,()=>new Promise(resolve=>{release=()=>resolve({embedding:vector,tokens:4});}));
+  const pending=f.worker.retrievePassages('default',{query:'grace',passageScope:{pageIds:[f.myNote.id],sourceIds:[]}});
+  assert.equal(f.requests(),1);assert.ok(release);
+  if(change==='delete')f.pages.delete('default',f.myNote.id);
+  if(change==='archive')f.store.run('UPDATE pages SET archived_at=?,revision=revision+1 WHERE id=?',new Date().toISOString(),f.myNote.id);
+  if(change==='move')f.store.run('UPDATE pages SET vault_id=? WHERE id=?',f.other,f.myNote.id);
+  release();
+  assert.deepEqual((await pending).results,[]);
+ });
 });

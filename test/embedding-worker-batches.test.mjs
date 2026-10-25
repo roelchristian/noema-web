@@ -210,6 +210,9 @@ test('completed batch reconciles its own unchanged Pages ahead of more than 16 u
   f.store.run("UPDATE page_index_dirty SET next_attempt_at='2000-01-01' WHERE page_id=?",unrelated.id);
  }
  f.pages.update(f.vault,page.id,{...page});f.worker.onSave(f.vault,page.id);
+ // Dirty rows default to an empty due time; force the completed Page behind
+ // the unrelated backlog so the baseline vault-wide LIMIT 16 misses it.
+ f.store.run("UPDATE page_index_dirty SET next_attempt_at='2001-01-01' WHERE page_id=?",page.id);
  release();await pending;
  assert.equal(f.store.get('SELECT status FROM embedding_jobs WHERE page_id=?',page.id).status,'completed');
  assert.equal(f.store.get('SELECT count(*) AS n FROM page_segment_embeddings b JOIN page_segments s ON s.id=b.segment_id WHERE s.page_id=?',page.id).n,1);

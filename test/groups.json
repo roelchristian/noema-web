@@ -66,6 +66,7 @@
     "test/semantic-ui.test.mjs",
     "test/source-evidence-ui.test.mjs",
     "test/source-reprocessing-ui.test.mjs",
+    "test/source-reprocessing-workspace.test.mjs",
     "test/summary-math.test.mjs",
     "test/test-harness.test.mjs",
     "test/page-entity-associations-ui.test.mjs",

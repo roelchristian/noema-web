@@ -58,7 +58,7 @@ function ChangeText({change}:{change:Change}){
 }
 
 export function SourcePatchComparison({original,replacement,layout}:{original:string;replacement:string;layout:ComparisonLayout}){
-  const [view,setView]=useState<'preview'|'changes'|'markdown'>('preview'),[fullContext,setFullContext]=useState(false);
+  const [view,setView]=useState<'preview'|'changes'|'markdown'>('changes'),[fullContext,setFullContext]=useState(false);
   const prefix=useId();
   const changes=useMemo(()=>wordChanges(original,replacement),[original,replacement]);
   const definitions=(text:string)=>new Set([...text.matchAll(/^[ \t]*\[\^([^\]\n]+)\]:/gm)].map(match=>match[1]!));

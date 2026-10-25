@@ -15,4 +15,6 @@ test('furniture presentation hides and restores nodes while retaining canonical 
  await act(async()=>root.render(React.createElement(SourceDocumentView,{...props,hiddenNodeIds:new Set(['header'])})));
  assert.equal(node.hidden,true);assert.equal(node.textContent.includes('HEADER'),true);assert.equal(entries[0].node.range.startOffset,0);assert.equal(document.getElementById(passageAnchor('f','header')),node);
  await act(async()=>root.render(React.createElement(SourceDocumentView,props)));assert.equal(node.hidden,false);assert.equal(node.dataset.canonicalNode,'original-header');
+ let reviewed;await act(async()=>root.render(React.createElement(SourceDocumentView,{...props,changeForNode:()=>({id:'one',patchIds:['one','two'],count:2,quiet:true,label:'2 editorial changes in this passage'}),onReview:(id,ids)=>{reviewed={id,ids};}})));
+ const indicator=document.querySelector('.source-reader-change-indicator');assert.equal(indicator.textContent,'2');assert.equal(indicator.getAttribute('aria-label'),'2 editorial changes in this passage');assert.equal(indicator.classList.contains('is-quiet'),true);await act(async()=>indicator.click());assert.deepEqual(reviewed,{id:'one',ids:['one','two']});
 });

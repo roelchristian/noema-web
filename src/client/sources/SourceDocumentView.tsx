@@ -39,7 +39,7 @@ interface Props {
  article:RefObject<HTMLElement|null>;fileId:string;name:string;text:string;entries:SourceViewEntry[];
  furnitureKind?:(nodeId:string)=>'header'|'footer'|undefined;hiddenNodeIds?:ReadonlySet<string>;selected:string|null;annotations:ReaderAnnotations;structureLabels:boolean;highlights?:SourceHighlight[];
  canonicalNode:(nodeId:string)=>string|undefined;onSelect:(canonicalNodeId:string)=>void;
- changeForNode?:(nodeId:string)=>{id:string;label:string}|undefined;onReview?:(patchId:string)=>void;children?:ReactNode;
+ changeForNode?:(nodeId:string)=>{id:string;label:string;count?:number;quiet?:boolean;patchIds?:string[]}|undefined;onReview?:(patchId:string,patchIds?:string[])=>void;children?:ReactNode;
 }
 /** One typography and heading hierarchy for canonical and editorial presentations. */
 export function SourceDocumentView({article,fileId,name,text,entries,selected,annotations,structureLabels,hiddenNodeIds,furnitureKind,highlights=[],canonicalNode,onSelect,changeForNode,onReview,children}:Props){
@@ -53,7 +53,7 @@ export function SourceDocumentView({article,fileId,name,text,entries,selected,an
     <button type="button" className="source-reader-node-address" title={canonicalId?uiText('Select original passage ')+locator:uiText('Citation mapping unavailable; switch to Original processed')} aria-label={canonicalId?uiText('Select passage ')+locator:uiText('Citation mapping unavailable; switch to Original processed')} aria-pressed={!!canonicalId&&canonicalId===selected} onClick={()=>{if(canonicalId)onSelect(canonicalId);}} aria-disabled={!canonicalId}>{locator}</button>
     {furniture&&<small className="source-reader-furniture-label">{uiText(furniture==='header'?"Page header":"Page footer")}</small>}
     {structureLabels&&<small className="source-reader-structure-label">{node.kind} · {locator}</small>}
-    {change&&<button type="button" className="source-reader-change-indicator" aria-label={change.label} onClick={()=>onReview?.(change.id)}>✦</button>}
+    {change&&<button type="button" className={"source-reader-change-indicator"+(change.quiet?" is-quiet":"")} aria-label={change.label} onClick={()=>onReview?.(change.id,change.patchIds)}><span aria-hidden="true">{change.count&&change.count>1?change.count:"│"}</span></button>}
     {node.text===undefined?<Heading><SourceReaderInline text={node.title??''} footnotePrefix={fileId} startOffset={node.range.startOffset} highlights={highlights}/></Heading>:<SourceReaderText text={node.text} kind={node.kind} footnotePrefix={fileId} startOffset={node.range.startOffset} highlights={highlights}/>}
    </section>;
   }):text.trim()?<SourceReaderText text={text} footnotePrefix={fileId} startOffset={0} highlights={highlights}/>:<p className="source-reader-status">{uiText('No readable text was extracted from this attachment.')}</p>}

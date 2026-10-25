@@ -266,7 +266,7 @@ export class Embeddings {
    if(this.closed)return;
    const policy=aiRetryPolicy(error);
    const code=error instanceof HttpError?error.status:502;
-   const providerFailure=!!error&&typeof error==='object'&&'providerStatus' in error;
+   const providerFailure=!!error&&typeof error==='object'&&'providerStatus' in error&&typeof error.providerStatus==='number';
    this.finishActivity(activityId,!providerFailure&&(code===404||code===423)?'skipped':'failed',code);
    for(const {job} of batch) {
     // Cancellation belongs to this member; it must not gain retry blocks or

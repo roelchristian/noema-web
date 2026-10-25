@@ -148,7 +148,7 @@ export class SourcePassageEmbeddings {
   }catch(error){
    if(this.closed)return true;
    const policy=aiRetryPolicy(error);
-   const providerFailure=!!error&&typeof error==='object'&&'providerStatus' in error;
+   const providerFailure=!!error&&typeof error==='object'&&'providerStatus' in error&&typeof error.providerStatus==='number';
    const code=error instanceof HttpError?error.status:502;this.endActivity(activityId,!providerFailure&&(code===404||code===423)?'skipped':'failed',code);
    for(const {job} of batch){
     // Cancellation or supersession during the request cannot create retry blocks.

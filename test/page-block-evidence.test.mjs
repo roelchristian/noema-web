@@ -12,6 +12,12 @@ test('100-block 88000-character fixture selects all 21 distinctive edits rather 
  const original=page(Array.from({length:100},(_,index)=>block(String(index),(`Original block ${index}. `+'unchanged material '.repeat(70)).slice(0,879))));
  const updated=page(original.blocks.map((item,index)=>index>=30&&index<51?block(item.id,(`DISTINCTIVE_CHANGED_${index} Mathematical topology homomorphism. `+'new content '.repeat(100)).slice(0,879)):item));
  const baseline=roundtrip(createClassificationBaseline(original));
+ // Reproduce the former sampled-body containment failure on this exact fixture.
+ const legacySelected=updated.blocks.map(item=>item.content[0].text).filter(text=>!baseline.body.includes(text.normalize('NFKC').toLowerCase().replace(/\s+/gu,' ').trim())).slice(-12);
+ assert.equal(legacySelected.length,12);
+ assert.equal(legacySelected.filter(text=>text.includes('DISTINCTIVE_CHANGED_')).length,0);
+ const legacyUnchanged=original.blocks.map(item=>item.content[0].text).filter(text=>!baseline.body.includes(text.normalize('NFKC').toLowerCase().replace(/\s+/gu,' ').trim())).slice(-12);
+ assert.equal(legacyUnchanged.length,12);
  const evidence=changedBlockEvidence(updated,baseline.blockEvidence);
  assert.deepEqual(evidence.counts,{added:0,modified:21,moved:0,deleted:0});
  assert.equal(changedBlockEvidence(original,baseline.blockEvidence).passages.length,0);

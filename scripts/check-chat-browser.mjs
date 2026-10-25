@@ -56,7 +56,7 @@ try {
  ai.save({apiKey:'sk-synthetic-browser-no-provider'});ai.savePreferences({...ai.selection(),personaId:'oxford_don',manualRequestsPerMinute:120});
  globalThis.fetch=(input,options)=>String(input).startsWith('https://')?Promise.reject(new Error('External requests disabled in Chat browser fixture')):originalFetch(input,options);
  server=createApp(store,join(repo,'dist/client'),ai);server.listen(0,'127.0.0.1');await once(server,'listening');
- vite=await createServer({configFile:false,root:repo,server:{host:'127.0.0.1',port:0,proxy:{'/api':{target:`http://127.0.0.1:${server.address().port}`,changeOrigin:false}}}});await vite.listen();
+ vite=await createServer({cacheDir:join(directory,'vite-cache'),configFile:false,root:repo,server:{host:'127.0.0.1',port:0,proxy:{'/api':{target:`http://127.0.0.1:${server.address().port}`,changeOrigin:false}}}});await vite.listen();
  browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH??'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
  const base=`http://127.0.0.1:${vite.httpServer.address().port}`;
  async function screenshot(page,name){if(process.env.NOEMA_SKIP_SCREENSHOTS==='1')return;await page.evaluate(()=>document.fonts.ready);await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));await page.screenshot({path:join(artifacts,name+'.png'),animations:'disabled'});}

@@ -2,12 +2,17 @@
 import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';import {join,resolve} from 'node:path';import {once} from 'node:events';
+import {Intelligence,intelligencePreferencesFor} from '../src/server/modules/intelligence.ts';
 import {openDatabase} from '../src/server/database.ts';import {Store} from '../src/server/store.ts';import {Knowledge} from '../src/server/modules/knowledge.ts';import {Pages} from '../src/server/modules/pages.ts';import {createApp} from '../src/server/http.ts';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE??'playwright-core');
 const dir=await mkdtemp(join(tmpdir(),'noema-writing-browser-')),artifacts=resolve(process.env.NOEMA_SCREENSHOTS??'/workspace/noema-writing-evidence');await mkdir(artifacts,{recursive:true});
 const db=openDatabase(join(dir,'test.sqlite')),store=new Store(db),pages=new Pages(store,new Knowledge(store));
 let specimen=pages.create('default',{title:'Synthetic writing proposal'});const original='Before. A group has an identity element. After.';specimen=pages.update('default',specimen.id,{...specimen,blocks:[{id:'prose',type:'paragraph',content:[{text:original}]}]});
-const server=createApp(store,resolve('dist/client'));server.listen(0,'127.0.0.1');await once(server,'listening');
+// Empty in-memory credentials make status/background reads safe as well as the
+// intercepted review route. An unexpected provider dispatch fails this fixture.
+const secrets={read(){return null;},write(){throw new Error('Browser fixture must not write credentials');},remove(){}};
+const ai=new Intelligence(secrets,async()=>{throw new Error('Unexpected provider request in intercepted writing fixture');},Date.now,intelligencePreferencesFor(store));
+const server=createApp(store,resolve('dist/client'),ai);server.listen(0,'127.0.0.1');await once(server,'listening');
 const base='http://127.0.0.1:'+server.address().port;let browser;const errors=[],results=[];
 try{browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH??'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
 for(const mode of ['light','dark'])for(const width of [1280,390]){

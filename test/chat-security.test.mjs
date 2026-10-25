@@ -108,3 +108,30 @@ test('evidence revalidation detects live edits, disallows forged coordinates and
  f.pages.update('default',f.myNote.id,{...f.myNote,blocks:[{id:'edited',type:'paragraph',content:[{text:'Grace has been reconsidered.'}]}]});
  const stale=await f.request('evidence','POST',{evidence:[original]});assert.equal(stale.status,200);const snapshot=(await stale.json())[0];assert.equal(snapshot.status,'stale');assert.equal(snapshot.excerpt,original.excerpt);
 });
+
+test('published Personas v2 settings and explicit stray overrides never enter neutral Chat policy or provider prompts',async()=>{
+ const {generationPolicy}=await import('../src/server/modules/generation-request.ts');
+ const {aiPersonas,personaExpressions}=await import('../src/shared/ai-personas.ts');
+ const {Intelligence}=await import('../src/server/modules/intelligence.ts');
+ const {completedResponse}=await import('./helpers/providers.ts');
+ const selection={model:'gpt-5-mini',reasoningEffort:'low'},request={kind:'chat',input:'Bounded supplied evidence.',instructions:'Neutral Chat grounding instructions.',personaId:'socratic',personaVersion:2,personaExpression:'immersive'};
+ for(const persona of aiPersonas)for(const personaExpression of personaExpressions){
+  const policy=generationPolicy(request,{personaId:persona.id,personaExpression,standard:selection,title:selection,enrichment:selection});
+  assert.equal(policy.persona,undefined);assert.deepEqual(policy.prompt(),{instructions:request.instructions,input:request.input});assert.deepEqual(policy.selection,selection);assert.equal(policy.admission.activeSlot,'exclusive');assert.equal(policy.stream,false);
+ }
+ const fakeSecret={value:null,read(){return this.value;},write(value){this.value=structuredClone(value);},remove(){this.value=null;}};
+ let payload;
+ const ai=new Intelligence(fakeSecret,async(_url,options)=>{payload=JSON.parse(options.body);return completedResponse(JSON.stringify({claims:[{text:'The source records a position.',attribution:'supported',citationIds:['E1']}]}));});
+ ai.save({apiKey:'sk-synthetic-persona-chat-test-never-real'});ai.savePreferences({...selection,personaId:'socratic',personaExpression:'immersive'});
+ await ai.generate(request);assert.equal(payload.instructions,request.instructions);assert.doesNotMatch(payload.instructions,/AI PERSONA:|Socratic|immersive/);assert.deepEqual(payload.tools,[]);assert.equal(payload.store,false);
+});
+
+test('Chat and Persona comparison previews share foreground admission rather than independent queues',async()=>{
+ const {Intelligence,GenerationAdmissionError}=await import('../src/server/modules/intelligence.ts');
+ const {completedResponse}=await import('./helpers/providers.ts');
+ const fakeSecret={value:null,read(){return this.value;},write(value){this.value=structuredClone(value);},remove(){this.value=null;}};
+ let release,calls=0;const ai=new Intelligence(fakeSecret,async()=>{calls++;return new Promise(resolve=>release=()=>resolve(completedResponse('Synthetic output')));});ai.save({apiKey:'sk-synthetic-shared-admission-never-real'});
+ const preview={kind:'personaPreview',input:'Synthetic user-authored comparison.',personaId:'socratic',personaExpression:'expressive',modelSettings:{model:'gpt-5-mini',reasoningEffort:'low'},signal:new AbortController().signal},chat={kind:'chat',input:'Bounded evidence.',instructions:'Neutral Chat instructions.',signal:new AbortController().signal};
+ const activePreview=ai.generate(preview);await assert.rejects(()=>ai.generate(chat),GenerationAdmissionError);assert.equal(calls,1);release();await activePreview;
+ const activeChat=ai.generate(chat);await assert.rejects(()=>ai.generate(preview),GenerationAdmissionError);assert.equal(calls,2);release();await activeChat;
+});

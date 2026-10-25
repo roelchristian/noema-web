@@ -56,8 +56,7 @@ export class PageEnrichment {
   }
   private dependencyIdentity(page:Page,fields:readonly EnrichmentField[],names=this.names(page)) {
     const state=new PageEnrichmentState(this.store).get(page.id);
-    return JSON.stringify([this.contentIdentity(page,fields,names),this.intelligence.enrichmentSelection(),typeof this.intelligence.retryConfigurationIdentity==='function'?this.intelligence.retryConfigurationIdentity():undefined,
-      [...fields].sort().map(field=>[field,state.fields[field]]),
+    return JSON.stringify([this.contentIdentity(page,fields,names),this.intelligence.enrichmentSelection(),typeof this.intelligence.retryConfigurationIdentity==='function'?this.intelligence.retryConfigurationIdentity():undefined,      [...fields].sort().map(field=>[field,state.fields[field]]),
       fields.includes('summary')?this.data(page.id,'summary_preferences'):undefined,
       fields.includes('domains')?[TAXONOMY_VERSION,CLASSIFICATION_VERSION,state.classification?.baseline]:undefined]);
   }
@@ -163,8 +162,7 @@ export class PageEnrichment {
     return freezeSnapshot({page,requestedFields:fields,contentHash:page.conceptContentHash!,schemaVersion:'page-enrichment-v1',modelProfile:JSON.stringify([selection,typeof this.intelligence.retryConfigurationIdentity==='function'?this.intelligence.retryConfigurationIdentity():undefined]),ownership:JSON.stringify([state.get(page.id).fields,this.data(page.id,'summary_preferences')]),dependencyIdentity:this.dependencyIdentity(page,fields,names),contentIdentity:this.contentIdentity(page,fields,names),classificationIdentity:fields.includes('domains')?JSON.stringify(classification?.baseline):undefined,baselineIdentity:this.baselineIdentity(page.id,fields),names,input,changedPassages,changedEvidence,coverage,shortlist,selection,preferences:this.data(page.id,'summary_preferences'),revision:page.revision});
   }
   private baselineIdentity(pageId:string,fields:readonly EnrichmentField[]) {
-    return JSON.stringify(fields.map(field=>[field,this.data(pageId,field==='domains'?'domain_classification':field)]));
-  }
+    return JSON.stringify(fields.map(field=>[field,this.data(pageId,field==='domains'?'domain_classification':field)]));  }
   private recordDecision(vault:string,pageId:string,reason:string,fields:EnrichmentField[]) {
     this.store.run('INSERT INTO page_enrichment_decisions (page_id,vault_id,reason,requested_fields,assessed_at,provider_requested) VALUES (?,?,?,?,?,0)',pageId,vault,reason,JSON.stringify(fields),now());
     this.store.run('DELETE FROM page_enrichment_decisions WHERE id NOT IN (SELECT id FROM page_enrichment_decisions ORDER BY id DESC LIMIT 2000)');
@@ -196,8 +194,7 @@ export class PageEnrichment {
   }
   private async generate(vault:string,snapshot:NonNullable<ReturnType<PageEnrichment['prepare']>>,onRequest:AIRequestObserver|undefined,options:EnrichmentOptions):Promise<PageEnrichmentResult> {
     const {page,requestedFields:fields,input,changedPassages,changedEvidence,coverage,shortlist,preferences,selection,names}=snapshot;
-    const resolve=(id:string)=>names.get(id);
-    this.store.run('INSERT INTO page_enrichment_decisions (page_id,vault_id,reason,requested_fields,assessed_at,provider_requested) VALUES (?,?,?,?,?,1)',page.id,vault,options.explicit?'explicit_refresh':'initial_enrichment',JSON.stringify(fields),now());
+    const resolve=(id:string)=>names.get(id);    this.store.run('INSERT INTO page_enrichment_decisions (page_id,vault_id,reason,requested_fields,assessed_at,provider_requested) VALUES (?,?,?,?,?,1)',page.id,vault,options.explicit?'explicit_refresh':'initial_enrichment',JSON.stringify(fields),now());
     const controller=new AbortController(),abort=()=>controller.abort();
     options.signal?.addEventListener('abort',abort,{once:true});
     if(options.signal?.aborted)controller.abort();

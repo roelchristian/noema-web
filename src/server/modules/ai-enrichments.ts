@@ -31,8 +31,7 @@ export class AIEnrichments {
       .map(({data,reasoning_effort,...row})=>{
         const parsed=JSON.parse(data) as Record<string,unknown>;
         if(row.kind==='summary'&&typeof parsed.summary==='string')parsed.summary=limitSummaryWords(parsed.summary);
-        return {...row,data:parsed,reasoningEffort:reasoning_effort};
-      });
+        return {...row,data:parsed,reasoningEffort:reasoning_effort};      });
   }
   status(vault:string,pageId:string):import('../../shared/domain.js').PageEnrichmentStatus {
     const page=this.requirePage(vault,pageId);

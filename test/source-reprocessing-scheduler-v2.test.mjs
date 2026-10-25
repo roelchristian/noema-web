@@ -132,12 +132,12 @@ test('cancellation marks the reserved paid request uncertain and never advances 
  env.restart();assert.throws(()=>env.worker.resume('vault',env.revision.fileId,env.revision.id),/uncertain/);assert.equal(env.calls.length,1);
 });
 
-test('V2 start and persisted completion retain reversible furniture candidates over three physical pages',async t=>{
+test('V2 publishes only AI-verified reversible furniture nominations over three physical pages',async t=>{
  const text=Array.from({length:3},(_,index)=>`<!-- Page ${index+1} -->\nRecurring journal header\nDistinct passage ${index+1}.\n`).join('');
- const env=harness(t,{text,pages:3,pageStartLines:[1,4,7]});
- assert.equal(env.revision.furniture.length,3);assert.ok(env.revision.furniture.every(candidate=>candidate.hidden===false&&candidate.text==='Recurring journal header'));
+ const env=harness(t,{text,pages:3,pageStartLines:[1,4,7],provider:request=>JSON.stringify({blocks:request.blocks,pageFurniture:request.pageBoundaryCandidates.map(({blockId,quote,kind})=>({blockId,quote,kind})),unresolved:false})});
+ assert.equal(env.revision.furniture.length,0);
  await env.worker.tick();const result=env.value;assert.equal(result.status,'completed');assert.equal(env.calls.length,7);
- assert.deepEqual(result.furniture,env.revision.furniture);assert.equal(result.original.text,text);assert.equal(result.reprocessed.text,text);
+ assert.equal(result.furniture.length,3);assert.ok(result.furniture.every(candidate=>candidate.hidden===false&&candidate.text==='Recurring journal header'));assert.equal(result.original.text,text);assert.equal(result.reprocessed.text,text);
  for(const candidate of result.furniture)assert.equal(text.slice(candidate.startOffset,candidate.endOffset),candidate.text);
 });
 
@@ -410,4 +410,14 @@ for(const depth of ['balanced','deep'])test(`${depth} uses a bounded AI pass to 
  env.calls.length=0;env.restart();env.worker.resume('vault',result.fileId,result.id);await env.worker.tick();
  assert.equal(env.value.status,'completed');assert.deepEqual(env.calls.map(call=>call.kind),['resolve']);
  assert.equal(env.value.report.inputTokens,50);assert.match(env.value.reprocessed.text,/\[\^p1-1\]: printed definition/);
+});
+
+test('final AI verification rejects initial furniture proposals and clears provisional chunk annotations',async t=>{
+ const text=Array.from({length:3},(_,i)=>`<!-- Page ${i+1} -->\nRecurring journal header\nDistinct body ${i+1}.\n`).join('');
+ const env=harness(t,{text,pages:3,pageStartLines:[1,4,7],provider:request=>JSON.stringify({blocks:request.blocks,pageFurniture:request.kind==='verify'?[]:request.pageBoundaryCandidates.map(({blockId,quote,kind})=>({blockId,quote,kind}))})});
+ // Previously seeded suggestions must not survive the verification decision.
+ const r=env.value;r.furniture=[{id:'old-provisional',startOffset:17,endOffset:41,page:1,text:text.slice(17,41),kind:'header',hidden:false,reason:'Provisional'}];
+ env.store.run('UPDATE source_reprocessing SET payload=? WHERE id=?',JSON.stringify(r),r.id);
+ await env.worker.tick();assert.equal(env.value.status,'completed');assert.deepEqual(env.value.furniture,[]);
+ assert.equal(env.calls.length,7);assert.deepEqual(env.value.original.text,text);
 });

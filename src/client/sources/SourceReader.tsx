@@ -1,3 +1,4 @@
+import {classifiedFurnitureNodes} from './source-furniture-presentation';
 import {useContext} from 'react';
 import {ReviewDestination} from '../review/review-destination';
 import {SourceReadingContinuity} from './SourceReadingContinuity';
@@ -151,21 +152,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
   const editorial=!ambiguousEditorialRanges&&readingRevision&&loaded&&readingRevision.fileId===loaded.id&&readingRevision.original.text===loaded.text&&!readingRevision.stale&&readingRevision.status==='completed'&&readingRevision.report.chunksCompleted>=readingRevision.report.chunksTotal?readingRevision:null;
   const viewText=editorial?.reprocessed.text??loaded?.text??'',viewDocument=editorial?.reprocessed.document??loaded?.document;
   const viewEntries=useMemo(()=>editorial?sourceViewEntries(editorial.reprocessed.text,editorial.reprocessed.document,true):entries,[editorial,entries]);
-  const furnitureNodeKinds=useMemo(()=>{
-    const ids=new Map<string,'header'|'footer'>();if(!editorial?.furniture?.length)return ids;
-    for(const entry of viewEntries){
-      if(!entry.node.text||entry.node.kind!=='paragraph')continue;
-      const originalIds=editorial.nodeLinks?.filter(link=>link.reprocessedNodeIds.includes(entry.node.id)).map(link=>link.originalNodeId)??[];
-      if(originalIds.length!==1)continue;
-      const original=entries.find(item=>item.node.id===originalIds[0]);
-      if(!original?.node.text||original.node.kind!=='paragraph')continue;
-      const normalize=(text:string)=>text.replace(/\s+/g,' ').trim(),nodeText=normalize(entry.node.text);
-      const furniture=editorial.furniture.filter(item=>item.page===entry.node.range.startPage&&item.startOffset>=original.node.range.startOffset&&item.endOffset<=original.node.range.endOffset&&nodeText.includes(normalize(item.text))).sort((a,b)=>a.startOffset-b.startOffset);
-      const kind=furniture[0]?.kind??'header';
-      if(furniture.length&&furniture.every(item=>(item.kind??'header')===kind)&&normalize(furniture.map(item=>item.text).join(' '))===nodeText)ids.set(entry.node.id,kind);
-    }
-    return ids;
-  },[editorial,viewEntries,entries]);
+  const furnitureNodeKinds=useMemo(()=>classifiedFurnitureNodes(editorial,entries,viewEntries),[editorial,viewEntries,entries]);
   const furnitureNodes=useMemo(()=>new Set(furnitureNodeKinds.keys()),[furnitureNodeKinds]);
   function canonicalNode(nodeId:string){
     if(!editorial)return nodeId;

@@ -18,3 +18,15 @@ test('furniture presentation hides and restores nodes while retaining canonical 
  let reviewed;await act(async()=>root.render(React.createElement(SourceDocumentView,{...props,changeForNode:()=>({id:'one',patchIds:['one','two'],count:2,quiet:true,label:'2 editorial changes in this passage'}),onReview:(id,ids)=>{reviewed={id,ids};}})));
  const indicator=document.querySelector('.source-reader-change-indicator');assert.equal(indicator.textContent,'2');assert.equal(indicator.getAttribute('aria-label'),'2 editorial changes in this passage');assert.equal(indicator.classList.contains('is-quiet'),true);await act(async()=>indicator.click());assert.deepEqual(reviewed,{id:'one',ids:['one','two']});
 });
+
+test('furniture mapping tolerates PDF object markers but never hides adjacent substantive text',async()=>{
+ const {classifiedFurnitureNodes}=await import('../src/client/sources/source-furniture-presentation.ts');
+ const entry=(id,text,startOffset=0,endOffset=text.length)=>({node:{id,kind:'paragraph',text,range:{startOffset,endOffset,startPage:1,endPage:1}},path:[]});
+ const canonical='DOCKET HEADER\uFFFC Dated this 24 April 2026',entries=[entry('original',canonical)];
+ const header=entry('header','DOCKET HEADER\uFFFC'),body=entry('body','Dated this 24 April 2026',15);
+ const revision={furniture:[{text:'DOCKET HEADER',kind:'header',page:1,startOffset:0,endOffset:13}],nodeLinks:[{originalNodeId:'original',reprocessedNodeIds:['header','body','merged']}]};
+ assert.deepEqual([...classifiedFurnitureNodes(revision,entries,[header,body])],[['header','header']]);
+ assert.equal(classifiedFurnitureNodes(revision,entries,[entry('merged',canonical)]).size,0);
+ assert.equal(classifiedFurnitureNodes(revision,entries,[{...header,node:{...header.node,kind:'heading'}}]).size,0);
+ assert.equal(classifiedFurnitureNodes({...revision,nodeLinks:[]},entries,[header]).size,0);
+});

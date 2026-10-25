@@ -41,10 +41,10 @@ export function detectPageFurniture(text:string,document:SourceDocument):PageFur
 }
 /** AI classifications must quote one unique canonical block occurrence and match a
  * real physical boundary. Unsupported classifications are reported, never applied. */
-export function parsePageFurniture(response:unknown,chunk:PlannedReprocessingChunk,text:string,document:SourceDocument):{candidates:PageFurnitureCandidate[];diagnostics:string[]}{
+export function parsePageFurniture(response:unknown,chunk:PlannedReprocessingChunk,text:string,document:SourceDocument,supported?:PageFurnitureCandidate[]):{candidates:PageFurnitureCandidate[];diagnostics:string[]}{
  const value=(response as {pageFurniture?:unknown})?.pageFurniture;
  if(value===undefined)return {candidates:[],diagnostics:[]};
- const candidates:PageFurnitureCandidate[]=[],diagnostics:string[]=[],boundaries=pageFurnitureBoundaries(text,document);
+ const candidates:PageFurnitureCandidate[]=[],diagnostics:string[]=[],boundaries=supported??pageFurnitureBoundaries(text,document);
  if(!Array.isArray(value)||value.length>100)return {candidates,diagnostics:['Page header/footer classifications were ignored because the response was malformed.']};
  for(const entry of value){
   const item=entry as {blockId?:unknown;quote?:unknown;kind?:unknown};
@@ -52,8 +52,8 @@ export function parsePageFurniture(response:unknown,chunk:PlannedReprocessingChu
   if(!block||typeof item?.quote!=='string'||!item.quote.trim()||!['header','footer'].includes(String(item.kind))){diagnostics.push('An unsupported page header/footer classification was ignored.');continue;}
   const quote=item.quote,at=block.text.indexOf(quote);
   const boundary=at<0||block.text.indexOf(quote,at+1)!==-1?undefined:boundaries.find(boundary=>boundary.startOffset===block.start+at&&boundary.endOffset===block.start+at+quote.length&&boundary.kind===item.kind);
-  if(!boundary){diagnostics.push('A page header/footer classification did not uniquely match an exact physical boundary and was ignored.');continue;}
-  if(!candidates.some(candidate=>candidate.id===boundary.id))candidates.push({...boundary,reason:`AI-classified page ${boundary.kind}; exact canonical boundary text retained for review.`});
+  if(!boundary){diagnostics.push(supported?'A page header/footer classification lacked an exact corroborated source fragment and was ignored.':'A page header/footer classification did not uniquely match an exact physical boundary and was ignored.');continue;}
+  if(!candidates.some(candidate=>candidate.id===boundary.id))candidates.push({...boundary,reason:supported?`AI-verified page ${boundary.kind}; ${boundary.reason}`:`AI-classified page ${boundary.kind}; exact canonical boundary text retained for review.`});
  }
  return {candidates,diagnostics};
 }

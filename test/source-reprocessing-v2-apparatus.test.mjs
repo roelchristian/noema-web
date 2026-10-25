@@ -160,3 +160,21 @@ test('footnote groups retain balanced added emphasis while refusing lost literal
  const recovered=recoverCanonicalFootnoteDefinitions(chunk,raw,document),final=reconstructBlocks(chunk,recovered);
  assert.deepEqual(apparatusProblems(text,final.text),[]);assert.ok(final.text.includes('[^p1-1]: Agency, The Original Case, AA- 01/02-3.'));assert.deepEqual(recovered.pageFurniture,raw.pageFurniture);assert.deepEqual(recovered.metadata,raw.metadata);
 });
+
+
+test('mathematical subscripts and theorem or index numbering do not manufacture footnotes',()=>{
+ const text='<!-- Page 1 -->\n\nThe groups A1 and A4 occur. Theorem 1. Let H have index 3 in G.\n\nCorollary 9. There is no subgroup of index 2 in A4.\n\nA9 is notation.\n\n9. This is a numbered mathematical item, not a note supported by A9.';
+ const document={physical:{pages:[{number:1,range:{startOffset:0,endOffset:text.length}}]}};
+ assert.deepEqual(discoverCanonicalFootnotes(planReprocessingChunks(text,document)[0],document),[]);
+ const withNote='Let A1 be a group. Body clause;1. More prose.\n\n1. A genuine note body.';
+ document.physical.pages[0].range.endOffset=withNote.length;
+ assert.equal(discoverCanonicalFootnotes(planReprocessingChunks(withNote,document)[0],document)[0].body,'A genuine note body.');
+});
+
+test('math coverage hints find unmarked notation while excluding rendered math, code and note labels',async()=>{
+ const {unmarkedMathCandidates}=await import('../src/server/modules/source-reprocessing-diagnostics.ts');
+ const text='Group A4 and subgroup H have g ∈ A4.\nAlready $A_4$ and \\(g^2 = e\\). Code `A9` and note[^p1-2].\n```\nA8\n```\n<!-- Page 3 -->';
+ const found=unmarkedMathCandidates(text);
+ assert.ok(found.some(item=>item.text==='A4'));assert.ok(found.some(item=>item.text==='H'));assert.ok(found.some(item=>item.text.includes('∈')));
+ assert.ok(found.every(item=>item.line===1));
+});

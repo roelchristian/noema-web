@@ -10,9 +10,11 @@ export type SourceReviewPolicy='verified'|'review_all';
 export interface SourceReprocessingConfiguration {
  architectureVersion?:1;
  depth:SourceProcessingDepth;reviewPolicy:SourceReviewPolicy;
+ /** Request systematic notation reconstruction, including inline mathematical identifiers. */
+ substantialMath?:boolean;
  evidence:{originalPages:boolean;ocr:boolean;allowExternalTransmission:boolean};
 }
-export const defaultSourceReprocessingConfiguration:SourceReprocessingConfiguration={depth:'balanced',reviewPolicy:'verified',evidence:{originalPages:false,ocr:false,allowExternalTransmission:false}};
+export const defaultSourceReprocessingConfiguration:SourceReprocessingConfiguration={depth:'balanced',reviewPolicy:'verified',substantialMath:false,evidence:{originalPages:false,ocr:false,allowExternalTransmission:false}};
 export const sourceReprocessingEvidencePageBytes=2*1024*1024;
 export const sourceReprocessingEvidenceRevisionBytes=24*1024*1024;
 /** Original-source evidence is stored once per chunk, separately from model passes. */

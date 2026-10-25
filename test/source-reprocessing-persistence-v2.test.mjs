@@ -115,3 +115,51 @@ test('deleting a revision cascades its durable requests while retaining other re
   assert.equal(store.get('SELECT count(*) n FROM source_reprocessing').n,1);assert.equal(store.get('SELECT id FROM source_reprocessing').id,'keep');
  }finally{db.close();}
 });
+
+
+test('substantial math mode survives API and backup validation and rejects invalid options',async()=>{
+ const {reprocessingConfiguration}=await import('../src/server/modules/source-reprocessing.ts');
+ const {validateReprocessingConfiguration}=await import('../src/server/modules/source-reprocessing-backup.ts');
+ const config={...configuration,substantialMath:true};
+ assert.equal(reprocessingConfiguration(config).substantialMath,true);
+ assert.equal(validateReprocessingConfiguration(config).substantialMath,true);
+ assert.equal(validateReprocessingConfiguration({...configuration,substantialMath:false}).substantialMath,false);
+ const legacy={...configuration};delete legacy.substantialMath;assert.equal(validateReprocessingConfiguration(legacy).substantialMath,undefined);
+ for(const substantialMath of ['true',1,null]){
+  assert.throws(()=>reprocessingConfiguration({...configuration,substantialMath}));
+  assert.throws(()=>validateReprocessingConfiguration({...configuration,substantialMath}));
+ }
+});
+
+const mathVerificationCases=[
+ {name:'group theory',text:'The group A4 has a subgroup H.',first:[['A4','$A_4$']],verify:[['subgroup H','subgroup $H$']],remainingHint:'H',removedHint:'A4',expected:'The group $A_4$ has a subgroup $H$.'},
+ {name:'calculus',text:'The function f has f(x)=x² at variable t; f′ gives its slope.',first:[['f(x)=x²','$f(x)=x^2$']],verify:[['function f','function $f$'],['variable t','variable $t$'],['f′',"$f\\prime$"]],remainingHint:'t',unhinted:'f′',expected:'The function $f$ has $f(x)=x^2$ at variable $t$; $f\\prime$ gives its slope.'},
+ {name:'physics and matrices',text:'Energy E=mc² uses variable m and matrix M_2.',first:[['E=mc²','$E=mc^2$']],verify:[['variable m','variable $m$'],['M_2','$M_2$']],remainingHint:'m',unhinted:'M_2',expected:'Energy $E=mc^2$ uses variable $m$ and matrix $M_2$.'},
+];
+for(const scenario of mathVerificationCases)test(`Balanced math verification covers ${scenario.name} and retains reviewable patches`,async()=>{
+ const {openDatabase}=await import('../src/server/database.ts');const {Vaults}=await import('../src/server/modules/vaults.ts');const {SourceFiles}=await import('../src/server/modules/source-files.ts');
+ const {sourceRevisionBaseHash}=await import('../src/server/modules/source-reprocessing.ts');const {processedSourceDocument}=await import('../src/server/modules/source-document.ts');const {executeReconstruction,reconstructionPromptVersion}=await import('../src/server/modules/source-reprocessing-pass.ts');
+ const db=openDatabase(':memory:');try{
+  const store=new Store(db),vault=new Vaults(store).create({name:'Math verification'}),text=scenario.text,file=new SourceFiles(store).add(vault.id,'math.txt',Buffer.from(text));
+  const r=fixture();r.fileId=file.id;r.original={text,document:processedSourceDocument({...file,text,enrichment_status:'completed'})};r.reprocessed=structuredClone(r.original);r.baseHash=sourceRevisionBaseHash(r.original);r.configuration={...r.configuration,architectureVersion:1,substantialMath:true};r.report.promptVersion=reconstructionPromptVersion;r.report.charactersTotal=text.length;
+  store.run('INSERT INTO source_reprocessing(id,file_id,vault_id,status,created_at,updated_at,payload) VALUES(?,?,?,?,?,?,?)',r.id,file.id,vault.id,r.status,r.createdAt,r.updatedAt,JSON.stringify(r));
+  const requests=[],change=(text,replacements)=>replacements.reduce((result,[from,to])=>result.replace(from,to),text);const intelligence={reeditSource:async(request,prompt)=>{
+   const value=JSON.parse(request);requests.push(value);
+   if(!value.blocks)return JSON.stringify({observations:[]});
+   assert.equal(value.substantialMath,true);assert.match(prompt,/fresh exhaustive notation sweep/);assert.match(prompt,/does not require page images/);
+   if(value.kind==='verify'){
+    assert.ok(value.mathReview[0].remainingCandidates.some(item=>item.text===scenario.remainingHint));
+    if(scenario.removedHint)assert.ok(!value.mathReview[0].remainingCandidates.some(item=>item.text===scenario.removedHint));
+    if(scenario.unhinted)assert.ok(!value.mathReview[0].canonicalCandidates.some(item=>item.text===scenario.unhinted),'candidate hints must not restrict proposal coverage');
+    assert.equal(value.previous.blocks[0].text,change(text,scenario.first),'verification receives the first-pass math for preservation');
+   }
+   const blocks=value.kind==='verify'?value.previous.blocks:value.blocks;
+   return JSON.stringify({blocks:blocks.map(block=>({...block,text:change(block.text,value.kind==='verify'?scenario.verify:scenario.first)})),diagnostics:[],unresolved:false});
+  }};
+  await executeReconstruction({store,revision:r,intelligence,activity:{start:()=>1,finish:()=>{}},vault:vault.id,signal:new AbortController().signal,guard:()=>{},save:()=>{},range:(start,end)=>({startOffset:start,endOffset:end,startLine:1,endLine:1}),materialize:()=>{}});
+  assert.deepEqual(requests.map(value=>value.kind??'synthesis'),['reconstruct','synthesis','verify']);assert.equal(r.report.chunksCompleted,1);
+  const proposed=[...r.patches].reverse().reduce((value,patch)=>value.slice(0,patch.range.startOffset)+patch.replacement+value.slice(patch.range.endOffset),text);assert.equal(proposed,scenario.expected);assert.ok(r.patches.every(patch=>patch.decision==='pending'));
+  assert.equal(r.reprocessed.text,text,'math proposals leave accepted reading text under reviewer control');
+  assert.ok(!r.report.validationDiagnostics.some(value=>value.includes('Possible unmarked math')));
+ }finally{db.close();}
+});

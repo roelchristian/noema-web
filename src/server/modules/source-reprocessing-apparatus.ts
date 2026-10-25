@@ -92,9 +92,15 @@ export function discoverCanonicalFootnotes(chunk:import('./source-reprocessing-p
   const found:[number,number,string][]=[];
   for(const match of visible.matchAll(/(?:^|[ \t\r\n])(\d{1,3}|[*†‡])[.)]?[ \t]+(?=\S)/g)){
    const label=match[1]!,at=match.index!+match[0].search(/\S/),prefix=visible.slice(0,at);
+   // Printed structural labels and mathematical quantities are not note bodies.
+   if(/\b(?:theorem|lemma|corollary|proposition|definition|example|remark|exercise|section|chapter|proof|order|index|degree|dimension|characteristic|modulo)\s*$/i.test(prefix))continue;
    // Attached markers distinguish footnote evidence from ordinary numbered lists,
    // dates, running page labels and statutory article numbers.
-   const refs=[...prefix.matchAll(new RegExp(`[\\p{L}\\p{Pe}.,;:!?](?:${escape(label)})(?![\\p{L}\\d])`,'gu'))];
+   const refs=[...prefix.matchAll(new RegExp(`[\\p{L}\\p{Pe}.,;:!?](?:${escape(label)})(?![\\p{L}\\d])`,'gu'))].filter(ref=>{
+    // A4, g2 and similar attached mathematical indices cannot corroborate a note.
+    const stem=prefix.slice(0,ref.index!+1).match(/[\p{L}]+$/u)?.[0];
+    return !/^\d+$/.test(label)||!stem||stem.length>1;
+   });
    if(!refs.length)continue;
    const duplicates=[...visible.matchAll(new RegExp(`(?:^|[ \\t\\r\\n])${escape(label)}[.)]?[ \\t]+(?=\\S)`,'g'))];
    if(duplicates.length!==1)continue;

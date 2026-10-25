@@ -416,3 +416,28 @@ test('accepting corrections beside page markers preserves separators and canonic
   materializeSourceRevision(r);assert.deepEqual(pageBoundaryDiagnostics(text,r.reprocessed.text),[]);assert.equal(r.original.text,text);assert.equal(r.patches[0].original,original);assert.ok(r.patches[0].userReplacement.endsWith('\n'));
  }
 });
+
+
+test('partial emphasis at a heading boundary preserves structure and rejects ambiguous alignment',()=>{
+ const r=fixture(),node=headings(r.original)[0].node,start=node.range.startOffset;
+ const original=r.original.text.slice(start,start+1);
+ const make=(at,before,after)=>({id:'heading-'+at,nodeIds:[node.id],range:{startOffset:at,endOffset:at+before.length,startLine:1,endLine:1},original:before,replacement:after,category:'formatting',confidence:1,reason:'Supported formatting',riskReasons:[],decision:'accepted'});
+ r.patches=[make(start,original,'**'+original)];
+ materializeSourceRevision(r);
+ assert.equal(headings(r.reprocessed).length,headings(r.original).length);
+ assert.ok(r.nodeLinks.find(link=>link.originalNodeId===node.id).reprocessedNodeIds.length);
+ const ambiguous=fixture();ambiguous.patches=[make(start,original,original+original)];
+ assert.throws(()=>materializeSourceRevision(ambiguous),/cannot preserve the heading/);
+});
+
+
+test('proof labels remain mapped when their paragraph receives emphasis and mathematical markup',async()=>{
+ const {processedSourceDocument}=await import('../src/server/modules/source-document.ts');
+ const text='<!-- Page 1 -->\n\nProof. Let x be a variable and x = 2.\n';
+ const r=fixture();r.pipelineVersion=undefined;r.original={text,document:processedSourceDocument({id:'f',name:'Synthetic',format:'txt',text,structural_nodes:JSON.stringify([{text:'Proof.',kind:'proof',startLine:3}]),page_start_lines:'[]',enrichment_status:'completed'})};
+ const before='Proof. Let x',start=text.indexOf(before);r.patches=[{id:'p',original:before,replacement:'**Proof.** Let $x',decision:'accepted',range:{startOffset:start,endOffset:start+before.length}}];
+ assert.ok(sourceDocumentEntries(r.original.document).some(({node})=>node.kind==='proof'));
+ materializeSourceRevision(r);
+ assert.ok(sourceDocumentEntries(r.reprocessed.document).some(({node})=>node.kind==='proof'));
+ assert.match(r.reprocessed.text,/\*\*Proof\.\*\* Let \$x/);
+});

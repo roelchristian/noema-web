@@ -25,8 +25,9 @@ export function validateReprocessingConfiguration(value:unknown):SourceReprocess
  const c=object(value),e=object(c.evidence);
  oneOf(c.depth,['light','balanced','deep']);oneOf(c.reviewPolicy,['verified','review_all']);
  for(const key of ['originalPages','ocr','allowExternalTransmission'])if(typeof e[key]!=='boolean')throw invalid();
+ if(c.substantialMath!==undefined&&typeof c.substantialMath!=='boolean')throw invalid();
  if(c.architectureVersion!==undefined&&c.architectureVersion!==1)throw invalid();
- return {...(c.architectureVersion===1?{architectureVersion:1 as const}:{}),depth:c.depth as SourceReprocessingConfiguration['depth'],reviewPolicy:c.reviewPolicy as SourceReprocessingConfiguration['reviewPolicy'],evidence:{originalPages:e.originalPages as boolean,ocr:e.ocr as boolean,allowExternalTransmission:e.allowExternalTransmission as boolean}};
+ return {...(c.substantialMath!==undefined?{substantialMath:c.substantialMath as boolean}:{}),...(c.architectureVersion===1?{architectureVersion:1 as const}:{}),depth:c.depth as SourceReprocessingConfiguration['depth'],reviewPolicy:c.reviewPolicy as SourceReprocessingConfiguration['reviewPolicy'],evidence:{originalPages:e.originalPages as boolean,ocr:e.ocr as boolean,allowExternalTransmission:e.allowExternalTransmission as boolean}};
 }
 
 /** Archive checkpoints are validated against canonical revision coordinates, then ID-remapped. */

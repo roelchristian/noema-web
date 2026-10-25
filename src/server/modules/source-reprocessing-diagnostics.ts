@@ -1,5 +1,21 @@
 import katex from 'katex';
 
+/** Review hints only: a model must establish mathematical context before marking up a hit. */
+export function unmarkedMathCandidates(value:string):{text:string;line:number}[] {
+ const blank=(text:string)=>text.replace(/[^\r\n]/g,' ');
+ const text=value.replace(/^([ \t]*)(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1\2[^\n]*(?:\n|$)/gm,blank)
+  .replace(/(`+)([^\n]*?)\1/g,blank)
+  .replace(/(?<!\\)\$\$[\s\S]*?(?<!\\)\$\$|(?<!\\)\\\[[\s\S]*?(?<!\\)\\\]|(?<![\\$])\$(?![\s$])(?:\\.|[^$\n\\])+?(?<![\s\\])\$(?![$\d])|(?<!\\)\\\([^\n]*?(?<!\\)\\\)/g,blank)
+  .replace(/<!--[^]*?-->|\[\^[^\]\n]+\]|https?:\/\/\S+/g,blank);
+ const candidates:{text:string;line:number}[]=[];
+ const pattern=/\b[A-Z][₀-₉0-9]+\b|\b(?:group|subgroup|element|integer|prime|variable|set|order|index|coset|map|function)\s+([A-Za-z](?:[₀-₉0-9]+)?)(?![A-Za-z])|(?:[A-Za-z0-9][A-Za-z0-9_{}^()]*[ \t]*[=<>≤≥≠∈∉⊂⊆∪∩×][ \t]*[A-Za-z0-9{}()[\]−-]+)|[\\](?:frac|sum|prod|infty|alpha|beta|gamma|leq|geq|neq|subset|in|forall|exists)\b/g;
+ for(const match of text.matchAll(pattern)){
+  candidates.push({text:match[1]??match[0],line:text.slice(0,match.index).split('\n').length});
+  if(candidates.length===100)break;
+ }
+ return candidates;
+}
+
 /** Canonical blocks own their separating newlines. Models often trim their output;
  * concatenating those trimmed blocks must never join prose, headings or note definitions. */
 export function preserveReconstructionSeparators(original:string,replacement:string):string {

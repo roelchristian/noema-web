@@ -45,6 +45,7 @@ export function reprocessingConfiguration(value:unknown):SourceReprocessingConfi
  const supplied=value===undefined?defaultSourceReprocessingConfiguration:value;
  if(!supplied||typeof supplied!=='object'||Array.isArray(supplied))throw new HttpError(400,'Invalid reconstruction configuration.');
  const config=supplied as Record<string,unknown>,evidence=config.evidence as Record<string,unknown>|undefined;
+ if(config.substantialMath!==undefined&&typeof config.substantialMath!=='boolean')throw new HttpError(400,'Invalid substantial math content option.');
  if(!['light','balanced','deep'].includes(String(config.depth))||!['verified','review_all'].includes(String(config.reviewPolicy))||!evidence||typeof evidence!=='object'||['originalPages','ocr','allowExternalTransmission'].some(key=>typeof evidence[key]!=='boolean'))throw new HttpError(400,'Invalid reconstruction configuration.');
  return structuredClone(supplied) as SourceReprocessingConfiguration;
 }
@@ -87,8 +88,12 @@ export function materializeSourceRevision(r:SourceReprocessingRevision){
    const crossing=patches.find(p=>p.range.startOffset<=node.range.startOffset&&p.range.endOffset>node.range.startOffset);
    if(crossing){
     const heading=r.original.text.slice(node.range.startOffset).split(/\r\n?|\n/,1)[0]??'';
-    const replacement=crossing.userReplacement??crossing.replacement,at=replacement.indexOf(heading);
-    if(!heading||at<0||replacement.indexOf(heading,at+1)!==-1)throw new HttpError(400,`Editorial change cannot preserve the heading “${node.title??heading}” unambiguously. Keep its original text in the replacement.`);
+    // A diff may cover only the first character (for example T → **T).
+    // Locate the surviving heading fragment actually covered by that patch.
+    const covered=heading.slice(0,Math.max(0,crossing.range.endOffset-node.range.startOffset));
+    const fragment=node.title&&covered.startsWith(node.title)?node.title:covered;
+    const replacement=crossing.userReplacement??crossing.replacement,at=replacement.indexOf(fragment);
+    if(!fragment||at<0||replacement.indexOf(fragment,at+1)!==-1)throw new HttpError(400,`Editorial change cannot preserve the heading “${node.title??heading}” unambiguously. Keep its original text in the replacement.`);
     start=mapped(crossing.range.startOffset)+at;
    }
    const line=text.slice(start).split(/\r\n?|\n/,1)[0]??'';

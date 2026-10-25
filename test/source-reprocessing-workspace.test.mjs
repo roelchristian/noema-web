@@ -19,7 +19,7 @@ async function mount(t,component,props){
  const render=async next=>act(async()=>root.render(React.createElement(component,next)));
  await render(props);return {...env,root,render,click:async element=>act(async()=>element.click())};
 }
-function setupProps(overrides={}){return {fileId:'f',configuration:{model:'gpt-5-mini',reasoningEffort:'low'},configurationError:'',depth:'balanced',onDepth(){},reviewPolicy:'verified',onReviewPolicy(){},instructions:'',onInstructions(){},evidenceCapabilities:{originalPages:true,ocr:true,externalImages:true,reason:''},evidenceError:'',evidenceOptions:{originalPages:false,ocr:false,allowExternalTransmission:false},onEvidenceOptions(){},busy:false,running:false,onStart(){},onClose(){},...overrides};}
+function setupProps(overrides={}){return {fileId:'f',configuration:{model:'gpt-5-mini',reasoningEffort:'low'},configurationError:'',depth:'balanced',onDepth(){},substantialMath:false,onSubstantialMath(){},reviewPolicy:'verified',onReviewPolicy(){},instructions:'',onInstructions(){},evidenceCapabilities:{originalPages:true,ocr:true,externalImages:true,reason:''},evidenceError:'',evidenceOptions:{originalPages:false,ocr:false,allowExternalTransmission:false},onEvidenceOptions(){},busy:false,running:false,onStart(){},onClose(){},...overrides};}
 function revision(){return JSON.parse(readFileSync(new URL('./fixtures/dante-editorial-revision.json',import.meta.url),'utf8'));}
 function progressProps(r,overrides={}){return {revision:r,busy:false,running:r.status==='running',pending:2,onStop(){},onResume(){},onReview(){},onRefine(){},...overrides};}
 test('setup is a labelled modal with advanced evidence and conspicuous per-run consent',async t=>{

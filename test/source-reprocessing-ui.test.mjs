@@ -63,7 +63,7 @@ test('processing depth defaults to balanced separately from verified review and 
  let finish;const env=await mount(t,{post:()=>new Promise(resolve=>{finish=resolve;})});
  await env.click(env.button('Refine text'));assert.equal(document.querySelector('[aria-label="Processing depth"]').value,'balanced');assert.equal(document.querySelector('[aria-label="Review policy"]').value,'verified');
  await env.click(env.button('Start reprocessing'));assert.equal(env.requests.filter(r=>r.method==='POST').length,1);
- assert.deepEqual(env.requests.find(r=>r.method==='POST').body,{instructions:'',pipelineVersion:2,configuration:{depth:'balanced',reviewPolicy:'verified',evidence:{originalPages:false,ocr:false,allowExternalTransmission:false}}});
+ assert.deepEqual(env.requests.find(r=>r.method==='POST').body,{instructions:'',pipelineVersion:2,configuration:{depth:'balanced',substantialMath:false,reviewPolicy:'verified',evidence:{originalPages:false,ocr:false,allowExternalTransmission:false}}});
  const starting=env.button('Starting…');assert.equal(starting.disabled,true);await env.click(starting);assert.equal(env.requests.filter(r=>r.method==='POST').length,1);
  const r=fixture();r.status='queued';await act(async()=>finish(r));assert.ok(document.querySelector('[aria-label="Completed excerpt coverage"]'));
 });
@@ -283,6 +283,16 @@ test('changing depth leaves the independent review policy unchanged',async t=>{
  assert.equal(body.configuration.depth,'light');assert.equal(body.configuration.reviewPolicy,'review_all');assert.equal(body.acceptanceMode,undefined);
 });
 
+
+test('substantial math toggle is off by default and submits independently of depth and policy',async t=>{
+ const env=await mount(t,{post:async()=>fixture()});await env.click(env.button('Refine text'));
+ const toggle=document.querySelector('[aria-label="Substantial math content"]');
+ assert.equal(toggle.checked,false);assert.match(document.getElementById(toggle.getAttribute('aria-describedby')).textContent,/every mathematical expression/);
+ await env.click(toggle);assert.equal(toggle.checked,true);
+ await env.click(env.button('Start reprocessing'));
+ const config=env.requests.find(entry=>entry.method==='POST').body.configuration;
+ assert.equal(config.substantialMath,true);assert.equal(config.depth,'balanced');assert.equal(config.reviewPolicy,'verified');
+});
 
 test('linked scholarly decisions submit the complete atomic group',async t=>{
  const r=fixture();r.patches=r.patches.map(patch=>({...patch,patchGroupId:'footnote-pair'}));

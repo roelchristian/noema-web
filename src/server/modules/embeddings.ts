@@ -289,14 +289,21 @@ export class Embeddings {
   }
   const candidateLimit=Math.min(1000,Math.max(100,limit*5));
   this.pageSegments.synchronize(vault);
-  const lexical=new TextSearch(this.store,this.vaults,this.sourcePassages).searchPassages(vault,body.query,candidateLimit,{...passageScope,matchAny:body.matchAny===true});
-  const semantic:SemanticCandidate[]=[];
+  this.sourcePassages.synchronize(vault);
+  let queryVector:number[]|undefined;
   // Lexical evidence remains available when embeddings are not configured.
   if(this.intelligence.status().configured&&(this.sourceEmbeddings.hasSearchable(vault,passageScope?.sourceIds)||this.pageIndex.hasSearchable(vault,passageScope?.pageIds))) {
    const embedded=await this.queryEmbedding(vault,body.query,body.private===true?{private:true,signal:body.signal instanceof AbortSignal?body.signal:undefined}:undefined);
    this.vaults.requireOpen(vault);
+   queryVector=embedded.embedding;
+  }
+  // Capture lexical evidence after the asynchronous provider boundary so a
+  // deletion, archive, move, or edit during that request cannot survive in RRF.
+  const lexical=new TextSearch(this.store,this.vaults,this.sourcePassages).searchPassages(vault,body.query,candidateLimit,{...passageScope,matchAny:body.matchAny===true});
+  const semantic:SemanticCandidate[]=[];
+  if(queryVector){
    const shortlist=new SemanticShortlist(candidateLimit);
-   for(const candidate of [...this.sourceEmbeddings.candidates(vault,embedded.embedding,passageScope?.sourceIds,{limit:candidateLimit}),...this.pageIndex.candidates(vault,embedded.embedding,passageScope?.pageIds,{limit:candidateLimit})])shortlist.add(candidate);
+   for(const candidate of [...this.sourceEmbeddings.candidates(vault,queryVector,passageScope?.sourceIds,{limit:candidateLimit}),...this.pageIndex.candidates(vault,queryVector,passageScope?.pageIds,{limit:candidateLimit})])shortlist.add(candidate);
    semantic.push(...shortlist.values());
   }
   type Fused={passageId:string;score:number;lexicalRank?:number;semanticRank?:number;lexical?:SemanticSearchResult;semantic?:SemanticCandidate};

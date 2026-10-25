@@ -63,8 +63,10 @@ shortlists preserve score/tie ordering and hybrid reciprocal-rank fusion.
 
 A synthetic 115-candidate fixture scores all 115 in an unrestricted search;
 scoping to one eligible Page/source scores only that owner's eligible segments.
-Navigation limit 3 materializes **115 → 3** candidates. Hybrid retains its existing
-semantic candidate budget for ranking and lexical evidence priority. Exact
+Navigation limit 3 materializes **115 → 3** candidates; hybrid limit 1 materializes
+**115 → 1**, or zero extra rows when lexical evidence already supplies the winner.
+Hybrid retains its existing semantic candidate budget for ranking and lexical
+evidence priority. Exact
 retrieval references and stale-source evidence behavior remain intact. Baseline
 source archive behavior is preserved consistently with lexical search; archived
 Pages remain excluded.
@@ -76,6 +78,7 @@ for the repeatable baseline comparison, payload limits and limitations. Historic
 persistent-cache pruning remains explicitly deferred; no destructive pruning,
 TTL or deletion job is enabled.
 
-The scoped search still scans all eligible vectors inside its scope, and SQL
-currently returns their serialized scoring rows as an array. These changes do
-not introduce ANN infrastructure or claim sublinear semantic scoring.
+The scoped search still scans all eligible vectors inside its scope. SQLite
+scoring rows stream through a bounded shortlist rather than retaining the corpus
+as a JavaScript array. These changes do not introduce ANN infrastructure or
+claim sublinear semantic scoring.

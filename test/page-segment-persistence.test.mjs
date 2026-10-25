@@ -98,3 +98,19 @@ test('same provider hash refreshes nested headings beyond the bounded context',t
  assert.ok(f.store.get('SELECT 1 FROM page_segment_embeddings WHERE segment_id=?',next.id));
  assert.equal(f.store.get('SELECT heading FROM page_segments_fts WHERE rowid=?',next.physical_rowid).heading,next.heading);
 });
+
+test('incremental persistence preserves integrated assessment generations until vectors change',t=>{
+ const f=fixture(t),generation=()=>f.store.get('SELECT generation FROM page_assessment_vectors WHERE page_id=?',f.page.id)?.generation??0;
+ const initial=generation();assert.equal(initial,3);
+ f.store.run('DELETE FROM page_enrichment_jobs WHERE page_id=?',f.page.id);
+ f.update([...section('b','Second'),...section('a','First'),...section('c','Third')]);
+ assert.equal(generation(),initial,'Reference-only moves preserve current vector generation');
+ assert.ok(f.store.get('SELECT 1 FROM page_enrichment_jobs WHERE page_id=?',f.page.id),'Index completion still queues reassessment');
+ f.update([...section('b','Second'),...section('a','First','Changed first section evidence. '.repeat(12)),...section('c','Third')]);
+ assert.equal(generation(),initial+1,'Deleting the replaced segment invalidates vector-dependent assessments');
+ const missing=f.rows().find(row=>!f.index.fresh(row));assert.ok(missing);
+ f.index.save(missing,Array(1536).fill(0.01),12);
+ assert.equal(generation(),initial+2,'New vector persistence invalidates assessments again');
+ f.update(f.page.blocks);
+ assert.equal(generation(),initial+2,'Unchanged save does not manufacture vector changes');
+});

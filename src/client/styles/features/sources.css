@@ -210,10 +210,10 @@ main.source-workspace > #content > .source-reader .source-reader-node-address {
   inset-inline-end: calc(100% + 8px);
   inline-size: var(--source-reader-address-gutter);
 }
-main.source-workspace > #content > .source-reader.has-review-drawer {
+main.source-workspace > #content > .source-reader.has-review-drawer:not(.has-revision-diff) {
   max-width: 1240px;
 }
-main.source-workspace > #content > .source-reader.has-review-drawer > .source-workspace-header {
+main.source-workspace > #content > .source-reader.has-review-drawer:not(.has-revision-diff) > .source-workspace-header {
   max-width: var(--document-line-width);
   margin-inline: auto;
 }
@@ -1103,6 +1103,27 @@ main.source-workspace > #content > .source-reader.has-review-drawer > .source-wo
 }
 .source-reader-layout {
   min-width: 0;
+}
+/* Revision diffs use the document surface; evidence keeps the original reader mounted. */
+.source-reader.has-review-drawer.has-revision-diff .source-reader-layout {
+  display: block;
+}
+.source-reader.has-revision-diff .source-reader-content[hidden],
+.source-reader.has-revision-diff.has-review-evidence .source-reader-review-host {
+  display: none;
+}
+.source-reader.has-revision-diff .source-reader-review-host .reprocessing-reviews {
+  position: relative;
+  inset: auto;
+  overflow: visible;
+  max-height: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.source-reader.has-revision-diff .source-reader-evidence-return {
+  display: inline-flex;
 }
 .source-reader-document {
   min-width: 0;
@@ -2210,15 +2231,15 @@ main.source-workspace > #content > .source-reader.has-review-drawer > .source-wo
   min-height: var(--control-target-compact);
 }
 /* Review shares the document width with corrections; retain compact passage and note rails. */
-.source-reader.has-review-drawer {
+.source-reader.has-review-drawer:not(.has-revision-diff) {
   --source-reader-address-gutter: 64px;
   --source-reader-note-gutter: 64px;
 }
-.source-reader.has-review-drawer .source-reader-node-address {
+.source-reader.has-review-drawer:not(.has-revision-diff) .source-reader-node-address {
   inline-size: 52px;
   inset-inline-end: calc(100% + 12px);
 }
-.source-reader.has-review-drawer .source-reader-change-indicator {
+.source-reader.has-review-drawer:not(.has-revision-diff) .source-reader-change-indicator {
   inset-inline-end: -28px;
   min-width: 24px;
 }

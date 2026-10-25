@@ -140,6 +140,15 @@ test('delayed enrichment refreshes headings and navigation without reloading or 
   const originalArticle=document.querySelector('.source-reader-document');
   const versions=document.querySelector('[aria-label="Reading version"]');
   await act(async()=>{versions.value='revision';versions.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  const mountedContent=document.querySelector('.source-reader-content');
+  assert.ok(document.querySelector('.source-reader').classList.contains('has-revision-diff'));
+  assert.equal(mountedContent.hidden,true,'Diff occupies the reader while keeping its document mounted');
+  assert.ok(document.querySelector('.source-revision-diff'));
+  assert.equal(document.querySelector('.source-reader-document'),originalArticle,'Opening diff preserves the mounted reading document');
+  await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Accepted version').click());
+  assert.equal(document.querySelector('.source-reader-content'),mountedContent);
+  assert.equal(mountedContent.hidden,false,'Accepted version restores the existing reading surface');
+  assert.equal(document.querySelector('.source-reader').classList.contains('has-revision-diff'),false);
   assert.equal(document.querySelector('.source-reader-document'),originalArticle,'version changes preserve the article element');
   assert.match(originalArticle.textContent,/A revised paragraph for reading/);
   assert.ok(scrolls.some(value=>value.top===100),'semantic node links preserve the viewport position after presentation changes');
@@ -154,6 +163,7 @@ test('delayed enrichment refreshes headings and navigation without reloading or 
   assert.ok(scrolls.some(value=>value.top===-100),'returning to Original processed restores the same semantic position');
   revision.nodeLinks=[];
   await act(async()=>{versions.value='revision';versions.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Accepted version').click());
   assert.ok([...originalArticle.querySelectorAll('.source-reader-node-address')].every(button=>button.getAttribute('aria-disabled')==='true'),'missing semantic mappings never invent canonical citation coordinates');
   assert.equal(document.querySelector('.source-reader-document').dataset.annotations,'contextual','version switches retain display preferences');
   assert.deepEqual(errors,[]);

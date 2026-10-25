@@ -54,6 +54,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
   const [display,setDisplay]=useState<ReaderDisplay>(savedDisplay);
   const [reviewEvidence,setReviewEvidence]=useState(false),[reviewHost,setReviewHost]=useState<HTMLDivElement|null>(null),[reviewRevision,setReviewRevision]=useState<SourceReprocessingRevision|null>(null);
   const [reviewOpen,setReviewOpen]=useState(false),[activityOpen,setActivityOpen]=useState(false);
+  const [reviewPresentation,setReviewPresentation]=useState<'diff'|'drawer'>('drawer');
   const activityChanged=useCallback((open:boolean)=>{setActivityOpen(open);if(open)onReadingActivityOpen?.();},[onReadingActivityOpen]);
   function updateDisplay(value:Partial<ReaderDisplay>){setDisplay(current=>{const next={...current,...value};try{localStorage.setItem('noema:source-reader-display',JSON.stringify(next));}catch{/* Keep preferences for this session. */}return next;});}
   const reviewFile=destination?.originId===source.id?destination.fileId:undefined;
@@ -75,8 +76,9 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
     if(saved){position.current=saved.position;setReadingRevision(saved.revision);}
     setComparisonPage(null);setReviewEvidence(false);
   }
-  const reviewChanged=useCallback((open:boolean)=>{
+  const reviewChanged=useCallback((open:boolean,presentation:'diff'|'drawer'='drawer')=>{
     const saved=visibleReadingPosition(article.current);if(saved)position.current=saved;
+    setReviewPresentation(presentation);
     setReviewOpen(open);
   },[]);
   const onReadingRevision=useCallback((revision:SourceReprocessingRevision|null)=>{
@@ -168,7 +170,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
     const linked=saved.node?passages.filter(item=>item.dataset.canonicalNode===saved.node):[];
     const target=linked.length===1?linked[0]:saved.page?passages.find(item=>item.dataset.sourcePage===saved.page):undefined;
     if(target)window.scrollBy({top:target.getBoundingClientRect().top-saved.top,behavior:'instant'});
-  },[editorial?.id,editorial?.updatedAt,reviewOpen,reviewEvidence,comparisonPage]);
+  },[editorial?.id,editorial?.updatedAt,reviewOpen,reviewPresentation,reviewEvidence,comparisonPage]);
   const selectedEntry=entries.find(({node})=>node.id===selected);
   const reference=useMemo(()=>loaded&&selectedEntry?passageReference(loaded,selectedEntry):null,[loaded,selectedEntry]);
   function selectPassage(nodeId:string){setSelected(nodeId);setCopied(false);}
@@ -179,7 +181,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
       setCopied(true);clearTimeout(copyTimer.current);copyTimer.current=setTimeout(()=>setCopied(false),2500);
     }catch{onError('Unable to copy the citation. Clipboard access may be unavailable.');}
   }
-  return <section className={'source-reader document-frame'+(inspectorOpen||activityOpen?' has-inspector':'')+(reviewOpen?' has-review-drawer':'')+(reviewEvidence?' has-review-evidence':'')} data-reader-width={display.width} data-reader-typography={display.typography} aria-label={uiText("Source reading view")}>
+  return <section className={'source-reader document-frame'+(inspectorOpen||activityOpen?' has-inspector':'')+(reviewOpen?' has-review-drawer':'')+(reviewOpen&&reviewPresentation==='diff'?' has-revision-diff':'')+(reviewEvidence?' has-review-evidence':'')} data-reader-width={display.width} data-reader-typography={display.typography} aria-label={uiText("Source reading view")}>
     <header className="source-workspace-header"><span className="source-workspace-eyebrow"><Icon name="source"/>{uiText("Source")}{attachment&&<span className="source-reader-format">{attachment.format.toUpperCase()}</span>}</span><h1 className="page-heading source-workspace-title"><SourceReaderInline text={source.name}/></h1></header>
     <div className="source-reader-toolbar">
       <span className="source-reader-mode" title={uiText("Reading · Read-only")}><Icon name="lock"/>{uiText("Read-only")}</span>
@@ -206,7 +208,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
     {attachment?.status==='ready'&&attachment.admitted===1&&!loaded&&!error&&<p className="source-reader-status" role="status">{uiText("Loading document text…")}</p>}
     {loaded&&<SourceReprocessing key={`${vaultId}:${loaded.id}`} sourceId={source.id} vaultId={vaultId} fileId={loaded.id} canonicalVersion={JSON.stringify([loaded.textHash,loaded.structural_nodes,loaded.page_start_lines,loaded.generated_name,loaded.language,loaded.name,loaded.enrichment_status])} onCompare={loaded.format==='pdf'?page=>{saveEvidencePosition();setComparisonPage(page);}:undefined} visible={reprocessed||destination?.category==='editorial'&&reviewFile===loaded.id} onShow={()=>setReprocessed(true)} onOriginal={showOriginal} onReadingRevision={onReadingRevision} reviewHost={reviewHost} onReviewRevision={setReviewRevision} onEvidenceSurfaceChange={setReviewEvidence} onReturnContext={returnToReadingContext} onReviewOpenChange={reviewChanged}/>}
     {loaded&&<div className="source-reader-layout">
-      <div className="source-reader-content" onKeyDown={event=>{if(event.key==='Escape'&&reviewOpen&&reviewEvidence){event.stopPropagation();window.dispatchEvent(new Event('noema:return-to-source-correction'));}}}>
+      <div className="source-reader-content" hidden={reviewOpen&&reviewPresentation==='diff'&&!reviewEvidence} onKeyDown={event=>{if(event.key==='Escape'&&reviewOpen&&reviewEvidence){event.stopPropagation();window.dispatchEvent(new Event('noema:return-to-source-correction'));}}}>
         {reviewOpen&&reviewEvidence&&<button ref={evidenceReturn} type="button" className="button small source-reader-evidence-return" onClick={()=>window.dispatchEvent(new Event('noema:return-to-source-correction'))}>{uiText("Return to correction")}</button>}
         {loaded?.format==='pdf'&&<SourceEvidence vaultId={vaultId} fileId={loaded.id} pageCount={loaded.pages??0} page={comparisonPage} onPage={setComparisonPage}/> }
         <div hidden={reviewOpen&&comparisonPage!==null}>

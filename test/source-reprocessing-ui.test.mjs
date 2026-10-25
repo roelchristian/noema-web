@@ -17,7 +17,7 @@ const fixture=()=>{
  r.acceptanceMode='review_all';r.patches=r.patches.slice(0,2).map((p,i)=>({...p,id:'patch-'+i,decision:'pending',riskReasons:['Quotation wording requires comparison with the PDF.']}));
  r.reprocessed=structuredClone(r.original);r.reprocessed.document.semantic.children=[];r.reprocessed.text='Sample reading text';return r;
 };
-async function mount(t,{initial=null,history,remove,post,onReadingRevision,get,onShow=()=>{},onOriginal=()=>{},onReviewOpenChange,onReturnContext,onCompare,component=SourceReprocessing,capabilities={originalPages:false,ocr:false,externalImages:false,reason:'Native evidence is unavailable on this device.'}}={}){
+async function mount(t,{initial=null,history,remove,post,onReadingRevision,get,onShow=()=>{},onOriginal=()=>{},onReviewOpenChange,onReturnContext,onCompare,component=SourceReprocessing,legacyDetails=true,capabilities={originalPages:false,ocr:false,externalImages:false,reason:'Native evidence is unavailable on this device.'}}={}){
  const env=setupDOM(t),{dom}=env;
  dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
  dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
@@ -40,7 +40,7 @@ async function mount(t,{initial=null,history,remove,post,onReadingRevision,get,o
  await act(async()=>root.render(React.createElement(component,{...props,key:'f'})));
  const switchFile=async fileId=>act(async()=>root.render(React.createElement(SourceReprocessing,{...props,fileId,key:fileId})));
  const button=text=>[...document.querySelectorAll('button')].find(el=>el.textContent===text);
- const click=async el=>{assert.ok(el,'Expected control exists');await act(async()=>el.click());};
+ const click=async el=>{assert.ok(el,'Expected control exists');await act(async()=>el.click());if(legacyDetails&&/^Review changes \(/.test(el.textContent)){const details=button('Detailed review');if(details)await act(async()=>details.click());}};
  return {button,click,requests,dom,switchFile};
 }
 test('failed initial reprocessing render still closes its DOM and restores global descriptors',{timeout:5000},async t=>{
@@ -167,7 +167,7 @@ test('only explicit completed revision selection changes the reading version',as
  assert.deepEqual(readings,[null]);assert.equal(document.querySelector('.reprocessing-document'),null);
  const picker=document.querySelector('[aria-label="Reading version"]');assert.ok([...picker.options].some(option=>option.value===r.id));
  await act(async()=>{picker.value=r.id;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
- assert.equal(readings.at(-1).id,r.id);assert.equal(document.querySelector('.reprocessing-reviews'),null);
+ assert.equal(readings.at(-1).id,r.id);assert.ok(document.querySelector('.reprocessing-diff-review'));
  await act(async()=>{picker.value='original';picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});assert.equal(readings.at(-1),null);
 });
 
@@ -466,7 +466,8 @@ test('explicit reading version selection clears temporary evidence context',asyn
  const picker=document.querySelector('[aria-label="Reading version"]');const choose=async value=>act(async()=>{picker.value=value;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
  await choose(r.id);assert.equal(readings.at(-1),r.id);await env.click(env.button('Review changes (2)'));await env.click(env.button('Show original passage'));assert.ok(env.button('Return to correction'));
  await choose('original');assert.equal(readings.at(-1),null);assert.equal(env.button('Return to correction'),undefined);assert.ok(returned>=2);
- await env.click(env.button('Close corrections'));assert.equal(readings.at(-1),null,'Closing review must retain the explicit reader choice');
+ assert.equal(document.querySelector('.reprocessing-reviews'),null,'Choosing Original exits the revision comparison');
+ await env.click(env.button('Review changes (2)'));await env.click(env.button('Close corrections'));assert.equal(readings.at(-1),null,'Closing review must retain the explicit reader choice');
 });
 test('an ineligible saved reading choice falls back to the original selector value',async t=>{
  const r=fixture();r.fileId='f';r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;const readings=[];
@@ -510,4 +511,42 @@ test('active revisions cannot be deleted and legacy over-limit histories require
  const env=await mount(t,{initial:revisions[0],history:revisions});await env.click(env.button('Manage revisions'));
  assert.match(document.querySelector('.source-revision-manager').textContent,/Version limit exceeded \(11 of 5 max revisions\).*You can keep up to 5 versions, including the original\. Delete 7 editorial revisions to continue\./);
  const rows=document.querySelectorAll('.source-revision-list li');assert.equal(rows[1].querySelector('button').disabled,true);assert.equal(rows[2].querySelector('button').disabled,false);assert.match(rows[1].querySelector('button').title,/Stop processing/);
+});
+
+test('completed revision selection defaults to the diff and accepted version is an explicit toggle',async t=>{
+ const r=fixture();r.fileId='f';r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;
+ const presentations=[],readings=[];
+ const env=await mount(t,{initial:r,legacyDetails:false,onReadingRevision:value=>readings.push(value),onReviewOpenChange:(open,presentation)=>presentations.push({open,presentation})});
+ const picker=document.querySelector('[aria-label="Reading version"]');
+ await act(async()=>{picker.value=r.id;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
+ assert.ok(document.querySelector('.source-revision-diff'),'Selecting a revision opens its Git-style comparison');
+ assert.equal(document.querySelector('[aria-label="Review corrections"]'),null,'Detailed review is optional');
+ assert.equal(env.button('Diff').getAttribute('aria-pressed'),'true');
+ assert.equal(document.querySelector('.revision-diff-notes').open,false);
+ assert.deepEqual(presentations.at(-1),{open:true,presentation:'diff'});
+ await env.click(env.button('Accepted version'));
+ assert.equal(document.querySelector('.source-revision-diff'),null);assert.equal(readings.at(-1).id,r.id);
+ assert.equal(env.button('Accepted version').getAttribute('aria-pressed'),'true');
+ assert.equal(presentations.at(-1).open,false);
+ await env.click(env.button('Diff'));assert.ok(document.querySelector('.source-revision-diff'));
+ await env.click(env.button('Detailed review'));assert.ok(document.querySelector('.reprocessing-reviews'));
+ assert.deepEqual(presentations.at(-1),{open:true,presentation:'drawer'});
+});
+
+test('inline diff decisions submit the whole footnote group and refresh the accepted reading snapshot',async t=>{
+ const r=fixture();r.fileId='f';r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;r.patches=r.patches.map(patch=>({...patch,patchGroupId:'footnote-pair'}));
+ const readings=[],env=await mount(t,{initial:r,legacyDetails:false,onReadingRevision:value=>readings.push(value),post:async(entry,current)=>({...current,updatedAt:'2026-10-25T16:00:00Z',reprocessed:{...current.reprocessed,text:'Updated accepted footnotes'},patches:current.patches.map(patch=>({...patch,decision:entry.body.decisions.find(item=>item.patchId===patch.id)?.decision??patch.decision}))})});
+ const picker=document.querySelector('[aria-label="Reading version"]');
+ await act(async()=>{picker.value=r.id;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
+ const change=document.querySelector('.revision-diff-change');assert.ok(change);
+ await env.click([...change.querySelectorAll('button')].find(button=>button.textContent==='Accept'));
+ const request=env.requests.find(item=>item.method==='POST');
+ assert.deepEqual(request.body.decisions,[{patchId:'patch-0',decision:'accepted'},{patchId:'patch-1',decision:'accepted'}]);
+ assert.equal(document.querySelector('.revision-diff-change').dataset.decision,'accepted','Reviewed changes remain visible in the diff');
+ await env.click(env.button('Accepted version'));
+ assert.equal(readings.at(-1).reprocessed.text,'Updated accepted footnotes');
+ await env.click(env.button('Diff'));
+ await env.click([...document.querySelector('.revision-diff-change').querySelectorAll('button')].find(button=>button.textContent==='Reject'));
+ assert.deepEqual(env.requests.filter(item=>item.method==='POST').at(-1).body.decisions,[{patchId:'patch-0',decision:'rejected'},{patchId:'patch-1',decision:'rejected'}]);
+ assert.equal(document.querySelector('.revision-diff-change').dataset.decision,'rejected');
 });

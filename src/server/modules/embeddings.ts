@@ -1,6 +1,7 @@
 import {OpenAIResponseSizeError} from './openai-response.js';
 import {PageSegments,pageIndexPolicy} from './page-segments.js';
 import {PageSegmentIndex} from './page-segment-index.js';
+import {SemanticShortlist,type SemanticCandidate} from '../semantic-candidates.js';
 import {defaultPageIndexPolicy,isPageIndexPolicy,type PageIndexPolicy} from '../../shared/embeddings.js';
 import {TextSearch} from './text-search.js';
 import type {PassageRetrievalResult} from '../../shared/passage-retrieval.js';
@@ -196,7 +197,13 @@ export class Embeddings {
    if(!group){await this.sourceEmbeddings.tick();return;}
    this.lastPageKey=key(group);
    this.sourceTurn=true;
-   await this.embedPageBatch(this.store.all<JobRow>(`SELECT * FROM embedding_jobs WHERE vault_id=? AND page_id IS ? AND status='queued' AND next_attempt_at<=? ORDER BY next_attempt_at,created_at,rowid LIMIT ?`,group.vault_id,group.page_id,now(),embeddingBatchMaxInputs));
+   // Visit one job per Page before taking a second, rotating the starting
+   // Page between requests. One request belongs to one vault; inputs retain
+   // their own identities and are never concatenated.
+   await this.embedPageBatch(this.store.all<JobRow>(`SELECT * FROM (
+    SELECT j.*,row_number() OVER (PARTITION BY page_id ORDER BY next_attempt_at,created_at,rowid) AS page_rank
+    FROM embedding_jobs j WHERE vault_id=? AND status='queued' AND next_attempt_at<=?
+   ) ORDER BY page_rank,CASE WHEN page_id>=? THEN 0 ELSE 1 END,page_id LIMIT 256`,group.vault_id,now(),group.page_id));
   }finally{this.busy=false;}
  }
  private async embedPageBatch(jobs:JobRow[]) {
@@ -204,13 +211,15 @@ export class Embeddings {
   let maxInputs=embeddingBatchMaxInputs;
   let bytes=0,activityId:string|undefined,admitted=false;
   for(const job of jobs) {
-   maxInputs=Math.min(maxInputs,job.batch_max_inputs);
    if(batch.length>=maxInputs)break;
+   const candidateMax=Math.min(maxInputs,job.batch_max_inputs);
+   if(batch.length>=candidateMax)continue;
    const segment=job.segment_id?this.pageIndex.get(job.vault_id,job.segment_id):undefined;
-   if(segment&&bytes+Buffer.byteLength(segment.input,'utf8')>embeddingBatchMaxBytes)break;
+   if(segment&&bytes+Buffer.byteLength(segment.input,'utf8')>embeddingBatchMaxBytes)continue;
    this.store.run("UPDATE embedding_jobs SET status='running',started_at=?,finished_at=NULL,error=NULL WHERE id=? AND status='queued'",now(),job.id);
    if(!job.segment_id){this.finish(job.id,'skipped','Replaced by adaptive Page segments.');this.pageSegments.synchronize(job.vault_id);this.pageIndex.enqueue(job.vault_id,job.page_id??undefined,'retry');continue;}
    if(!segment||segment.content_hash!==job.content_hash||job.model!==embeddingModel||job.dimensions!==embeddingDimensions||this.pageIndex.fresh(segment)){this.finish(job.id,'skipped','Page segment changed, is ineligible, or already indexed.');continue;}
+   maxInputs=candidateMax;
    batch.push({job,segment});bytes+=Buffer.byteLength(segment.input,'utf8');
   }
   if(!batch.length)return;
@@ -220,12 +229,16 @@ export class Embeddings {
    const result=await this.intelligence.embedBatch(batch.map(({segment})=>segment.input),requestBytes=>{
     admitted=true;
     this.store.transaction(()=>{for(const {job} of batch)this.store.run("UPDATE embedding_jobs SET attempts=attempts+1 WHERE id=? AND status='running'",job.id);});
-    activityId=this.startActivity('note_embedding',vault,{id:batch[0]!.segment.page_id,kind:'page'});
+    // A cross-Page request is vault activity, not activity for its first Page.
+    const pageIds=new Set(batch.map(({segment})=>segment.page_id));
+    activityId=this.startActivity('note_embedding',vault,pageIds.size===1?{id:batch[0]!.segment.page_id,kind:'page'}:undefined);
     return activityId?this.activity?.request(activityId,requestBytes,null):undefined;
    },true);
    if(this.closed)return;
    this.vaults.requireOpen(vault);
-   this.pageSegments.synchronize(vault);
+   // Reconcile the completed request's Pages directly: a bounded vault-wide
+   // sweep can leave these dirty behind unrelated saves and discard valid work.
+   for(const pageId of new Set(batch.map(({segment})=>segment.page_id)))this.pageSegments.synchronize(vault,pageId);
    if(result.embeddings.length!==batch.length||result.embeddings.some(vector=>vector.length!==embeddingDimensions||vector.some(n=>!Number.isFinite(n))||!vector.some(n=>n!==0)))throw new HttpError(502,'Invalid embedding response.');
    let persisted=0;
    this.store.transaction(()=>{
@@ -274,26 +287,39 @@ export class Embeddings {
    const ids=(value:unknown):string[]=>{if(!Array.isArray(value)||value.length>200||value.some(id=>typeof id!=='string'||!id||id.length>200))throw new HttpError(400,'Invalid passage scope.');return [...new Set(value as string[])];};
    passageScope={pageIds:ids(item.pageIds),sourceIds:ids(item.sourceIds)};
   }
-  const inScope=(row:SemanticSearchResult)=>!passageScope||(row.pageReference?passageScope.pageIds.includes(row.pageReference.pageId):!!row.reference&&passageScope.sourceIds.includes(row.reference.sourceId));
   const candidateLimit=Math.min(1000,Math.max(100,limit*5));
   this.pageSegments.synchronize(vault);
   const lexical=new TextSearch(this.store,this.vaults,this.sourcePassages).searchPassages(vault,body.query,candidateLimit,{...passageScope,matchAny:body.matchAny===true});
-  const semantic:ReturnType<SourcePassageEmbeddings['search']>=[];
+  const semantic:SemanticCandidate[]=[];
   // Lexical evidence remains available when embeddings are not configured.
-  if(this.intelligence.status().configured&&(this.sourceEmbeddings.hasSearchable(vault)||this.pageIndex.hasSearchable(vault))) {
+  if(this.intelligence.status().configured&&(this.sourceEmbeddings.hasSearchable(vault,passageScope?.sourceIds)||this.pageIndex.hasSearchable(vault,passageScope?.pageIds))) {
    const embedded=await this.queryEmbedding(vault,body.query,body.private===true?{private:true,signal:body.signal instanceof AbortSignal?body.signal:undefined}:undefined);
    this.vaults.requireOpen(vault);
-   const magnitude=Math.sqrt(embedded.embedding.reduce((sum,n)=>sum+n*n,0));
-   semantic.push(...[...this.sourceEmbeddings.search(vault,body.query,embedded.embedding,magnitude),...this.pageIndex.search(vault,body.query,embedded.embedding)].filter(inScope).sort((a,b)=>b.score-a.score||(a.passageId??'').localeCompare(b.passageId??'')).slice(0,candidateLimit));
+   const shortlist=new SemanticShortlist(candidateLimit);
+   for(const candidate of [...this.sourceEmbeddings.candidates(vault,embedded.embedding,passageScope?.sourceIds,{limit:candidateLimit}),...this.pageIndex.candidates(vault,embedded.embedding,passageScope?.pageIds,{limit:candidateLimit})])shortlist.add(candidate);
+   semantic.push(...shortlist.values());
   }
-  const fused=new Map<string,PassageRetrievalResult>();
-  for(const [kind,rows] of [['lexicalRank',lexical],['semanticRank',semantic]] as const)rows.forEach((row,index)=>{
-   if(!row.passageId)return;
-   const current=fused.get(row.passageId)??{...row,passageId:row.passageId,score:0};
-   if(current[kind]!==undefined)return;
-   current[kind]=index+1;current.score+=1/(60+index+1);fused.set(row.passageId,current);
+  type Fused={passageId:string;score:number;lexicalRank?:number;semanticRank?:number;lexical?:SemanticSearchResult;semantic?:SemanticCandidate};
+  const fused=new Map<string,Fused>();
+  lexical.forEach((row,index)=>{
+   if(!row.passageId||fused.has(row.passageId))return;
+   fused.set(row.passageId,{passageId:row.passageId,lexical:row,lexicalRank:index+1,score:1/(60+index+1)});
   });
-  return {results:[...fused.values()].sort((a,b)=>b.score-a.score||a.passageId.localeCompare(b.passageId)).slice(0,limit),model:embeddingModel};
+  semantic.forEach((row,index)=>{
+   const current=fused.get(row.id)??{passageId:row.id,score:0};
+   if(current.semanticRank!==undefined)return;
+   current.semantic=row;current.semanticRank=index+1;current.score+=1/(60+index+1);fused.set(row.id,current);
+  });
+  const winners=[...fused.values()].sort((a,b)=>b.score-a.score||a.passageId.localeCompare(b.passageId)).slice(0,limit);
+  // Lexical evidence wins when both paths found a passage, as before. Load
+  // semantic text and immutable anchors only for the final remaining winners.
+  const semanticWinners=winners.flatMap(row=>!row.lexical&&row.semantic?[row.semantic]:[]);
+  const materialized=new Map([...this.sourceEmbeddings.materialize(vault,body.query,semanticWinners),...this.pageIndex.materialize(vault,body.query,semanticWinners)].map(row=>[row.passageId,row]));
+  const results=winners.flatMap(winner=>{
+   const row=winner.lexical??materialized.get(winner.passageId);
+   return row?[{...row,passageId:winner.passageId,score:winner.score,...(winner.lexicalRank===undefined?{}:{lexicalRank:winner.lexicalRank}),...(winner.semanticRank===undefined?{}:{semanticRank:winner.semanticRank})}]:[];
+  });
+  return {results,model:embeddingModel};
  }
  /** This check never projects pages, loads vectors, or scores the corpus. */
  suggestionVersion(vault:string,pageId:string):{version:string} {
@@ -358,13 +384,12 @@ export class Embeddings {
   const searchable=this.sourceEmbeddings.hasSearchable(vault)||this.pageIndex.hasSearchable(vault);
   if(!searchable)return {results:[],model:embeddingModel};
   const result=await this.queryEmbedding(vault,body.query);
-  const magnitude=(v: number[])=>Math.sqrt(v.reduce((sum,n)=>sum+n*n,0));
-  const qMagnitude=magnitude(result.embedding);
-  const results=this.sourceEmbeddings.search(vault,body.query,result.embedding,qMagnitude);
+  this.vaults.requireOpen(vault);
   this.pageSegments.synchronize(vault);
-  results.push(...this.pageIndex.search(vault,body.query,result.embedding));
-  const seen=new Set<string>();
-  const ranked=results.sort((a,b)=>b.score-a.score||a.id.localeCompare(b.id));
-  return {results:ranked.filter(row=>{const key=`${row.kind??'page'}:${row.id}`;if(seen.has(key))return false;seen.add(key);return true;}).slice(0,limit),model:embeddingModel};
+  const shortlist=new SemanticShortlist(limit,true);
+  for(const candidate of [...this.sourceEmbeddings.candidates(vault,result.embedding,undefined,{limit,distinctOwners:true}),...this.pageIndex.candidates(vault,result.embedding,undefined,{limit,distinctOwners:true})])shortlist.add(candidate);
+  const winners=shortlist.values();
+  const results=[...this.sourceEmbeddings.materialize(vault,body.query,winners),...this.pageIndex.materialize(vault,body.query,winners)].sort((a,b)=>b.score-a.score||a.id.localeCompare(b.id));
+  return {results,model:embeddingModel};
  }
 }

@@ -38,9 +38,9 @@ test('editorial evidence records its own derivative version and fails closed aft
  const proof={...evidence,version:'editorial',revision:hash(derivative),excerpt,evidenceHash:hash(excerpt)};
  store.run('INSERT INTO source_reprocessing(id,file_id,vault_id,status,created_at,updated_at,payload) VALUES(?,?,?,?,?,?,?)',proof.runId,file.id,'default','completed',stamp,stamp,JSON.stringify({original:{text},reprocessed:{text:derivative}}));
  assert.equal(metadataEvidenceStaleReason(store,'default',source.id,proof),null);
- store.run('UPDATE source_reprocessing SET payload=? WHERE id=?',JSON.stringify({original:{text},reprocessed:{text:derivative+' changed'}}),proof.runId);
+ store.run("UPDATE source_reprocessing SET payload=json_set(payload,'$.reprocessed.text',?) WHERE id=?",derivative+' changed',proof.runId);
  assert.equal(metadataEvidenceStaleReason(store,'default',source.id,proof),null);assert.equal(proof.revision,hash(derivative));
- for(const changed of [derivative.replace('1777','1778'),derivative+'\n'+excerpt]){store.run('UPDATE source_reprocessing SET payload=? WHERE id=?',JSON.stringify({original:{text},reprocessed:{text:changed}}),proof.runId);assert.match(metadataEvidenceStaleReason(store,'default',source.id,proof),/changed|ambiguous/);}
+ for(const changed of [derivative.replace('1777','1778'),derivative+'\n'+excerpt]){store.run("UPDATE source_reprocessing SET payload=json_set(payload,'$.reprocessed.text',?) WHERE id=?",changed,proof.runId);assert.match(metadataEvidenceStaleReason(store,'default',source.id,proof),/changed|ambiguous/);}
  store.run('DELETE FROM source_reprocessing WHERE id=?',proof.runId);assert.match(metadataEvidenceStaleReason(store,'default',source.id,proof),/unavailable/);
  assert.equal('canonicalReference' in proof,false);assert.deepEqual(evidence.start,text.indexOf(evidence.excerpt));
 });

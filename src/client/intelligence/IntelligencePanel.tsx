@@ -50,6 +50,7 @@ function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnap
       refresh:async signal=>{
         const items=await api.enrichments(page.vault_id,page.id,signal);
         if(cancelled||signal.aborted)return;
+        setError(current=>current===initialError?'':current);
         const saved=items.find(item=>item.kind==='summary');
         const next=saved&&typeof saved.data.summary==='string'?{summary:saved.data.summary,revision:saved.revision,contentHash:saved.contentHash,model:saved.model,reasoningEffort:saved.reasoningEffort}:null;
         setResult(current=>JSON.stringify(current)===JSON.stringify(next)?current:next);

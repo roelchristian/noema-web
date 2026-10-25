@@ -28,12 +28,12 @@ export function pollKnowledge(options:{
     try {
       const status=await options.status(current.signal);
       if(stopped||current.signal.aborted)return;
+      options.onStatus(status);
       if(status.version!==version){
         await options.refresh(current.signal);
         if(stopped||current.signal.aborted)return;
         version=status.version;
       }
-      options.onStatus(status);
       delay=status.pending?2_000:60_000;
     }catch{/* A failed read retains the displayed result and retries. */}
     finally {

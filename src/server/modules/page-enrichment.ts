@@ -16,6 +16,8 @@ import {representativeEnrichmentText} from './page-enrichment-prompt.js';
 import {languageComposition,languageCompositionChanged} from './page-language-composition.js';
 import {PageEnrichmentState} from './page-enrichment-state.js';
 import {domainShortlist} from './domain-shortlist.js';
+import {isAIExplanation} from '../../shared/semantic-blocks.js';
+import {CLASSIFICATION_VERSION} from './page-semantic-drift.js';
 import {summaryInput,summaryContentHash} from './summary-content.js';
 
 export type EnrichmentField='title'|'domains'|'language'|'summary';
@@ -23,6 +25,13 @@ export interface EnrichmentOptions {fields?:readonly EnrichmentField[];explicit?
 export interface PageEnrichmentResult {title:string;revision:number;pageDomains:PageDomains;summary?:string;contentHash?:string;language?:string|null;classified?:boolean}
 const untitled=(page:Page)=>!page.title.trim()||page.title.trim()==='Untitled';
 const cooldown=30*60*1000;
+function freezeSnapshot<T>(value:T):T {
+  if(value&&typeof value==='object'&&!Object.isFrozen(value)) {
+    for(const item of Object.values(value))freezeSnapshot(item);
+    Object.freeze(value);
+  }
+  return value;
+}
 /** Each field is selected and committed independently; content is shared once per request. */
 export class PageEnrichment {
   private controllers=new Map<string,{vault:string;controller:AbortController;fields:EnrichmentField[];identity:string}>();
@@ -36,23 +45,34 @@ export class PageEnrichment {
       if(page.archived_at||page.editLocked||this.dependencyIdentity(page,active.fields)!==active.identity)active.controller.abort();
     }catch {active.controller.abort();}
   }
-  private contentIdentity(page:Page,fields:readonly EnrichmentField[]) {
-    const names=this.names(page.vault_id),resolve=(id:string)=>names.get(id);
+  private contentIdentity(page:Page,fields:readonly EnrichmentField[],names=this.names(page)) {
+    const resolve=(id:string)=>names.get(id);
     return JSON.stringify([summaryContentHash(page,resolve),
       // Heading levels affect the prompt's representative passage selection.
       page.blocks.filter(block=>block.type==='heading1'||block.type==='heading2').map(block=>[block.type,summaryInput({title:'',blocks:[block]},resolve,false).replace(/\s+/gu,' ').trim()]).filter(([,text])=>text),
       fields.includes('language')?page.language:undefined,
       fields.includes('domains')?[page.pageDomains?.primaryDomainId,page.pageDomains?.secondaryDomainIds,page.pageDomains?.origin]:undefined]);
   }
-  private dependencyIdentity(page:Page,fields:readonly EnrichmentField[]) {
+  private dependencyIdentity(page:Page,fields:readonly EnrichmentField[],names=this.names(page)) {
     const state=new PageEnrichmentState(this.store).get(page.id);
-    return JSON.stringify([this.contentIdentity(page,fields),this.intelligence.enrichmentSelection(),
+    return JSON.stringify([this.contentIdentity(page,fields,names),this.intelligence.enrichmentSelection(),
       [...fields].sort().map(field=>[field,state.fields[field]]),
-      fields.includes('summary')?this.data(page.id,'summary_preferences'):undefined]);
+      fields.includes('summary')?this.data(page.id,'summary_preferences'):undefined,
+      [fields.includes('domains')?[TAXONOMY_VERSION,CLASSIFICATION_VERSION]:undefined,state.classification?.baseline]]);
   }
   private running=new Map<string,{promise:Promise<PageEnrichmentResult>;revision:number;fields:EnrichmentField[];identity:string}>();
   constructor(private store:Store,private pages:Pages,private knowledge:Knowledge,private enrichments:AIEnrichments,private intelligence:Intelligence) {}
-  private names(vault:string) {return new Map(this.knowledge.list(vault).map(entity=>[entity.id,entityMentionName(entity)]));}
+  /** Only unresolved mention occurrences affect projected text. No catalogue read or global cache. */
+  private names(page:Pick<Page,'vault_id'|'blocks'>):Pick<ReadonlyMap<string,string|undefined>,'get'> {
+    const ids=[...new Set(page.blocks.filter(block=>!isAIExplanation(block)).flatMap(block=>
+      (block.type==='table'||block.type==='columns'?(block.rows??[]).flat():[block.content]).flatMap(content=>
+        content.flatMap(segment=>segment.entityId&&segment.mentionText===undefined?[segment.entityId]:[]))))].sort();
+    if(!ids.length)return Object.freeze({get:(_id:string)=>undefined});
+    const rows=this.store.all<{id:string;name:string;mention_case:'canonical'|'lowercase'}>(
+      `SELECT id,name,mention_case FROM entities WHERE vault_id=? AND id IN (SELECT value FROM json_each(?))`,page.vault_id,JSON.stringify(ids));
+    const names=new Map(rows.map(row=>[row.id,entityMentionName({name:row.name,mentionCase:row.mention_case})]));
+    return Object.freeze({get:(id:string)=>names.get(id)});
+  }
   private data(pageId:string,kind:string):Record<string,unknown> {
     const row=this.store.get<{data:string}>('SELECT data FROM page_ai_enrichments WHERE page_id=? AND kind=?',pageId,kind);
     if(!row)return {};try{return JSON.parse(row.data);}catch{return {};}
@@ -66,13 +86,15 @@ export class PageEnrichment {
   }
   prepare(vault:string,pageId:string,options:EnrichmentOptions={}) {
     new Vaults(this.store).requireOpen(vault);
+    this.pages.prepareHashes(vault,pageId);
     const page=this.pages.get(vault,pageId);if(page.archived_at||page.editLocked)return null;
-    const names=this.names(vault),resolve=(id:string)=>names.get(id);
+    const names=this.names(page),resolve=(id:string)=>names.get(id);
     const text=summaryInput(page,resolve,false);
     if(!text.trim()) {if(options.explicit)throw new HttpError(400,'Add some page content first.');return null;}
     if(text.trim().length<20&&!options.explicit)return null;
     const explicitDomains=!!options.explicit&&!!(options.refreshFields??options.fields)?.includes('domains');
     const domains=new Domains(this.store),decision=domains.assess(page,resolve,{explicit:explicitDomains});
+    page.pageDomains=domains.get(page.id,page.conceptContentHash);
     const fields:EnrichmentField[]=[];
     const state=new PageEnrichmentState(this.store);
     const eligible=(field:EnrichmentField)=>!options.fields||options.fields.includes(field);
@@ -117,7 +139,21 @@ export class PageEnrichment {
     if(eligible('summary')&&state.eligible(page.id,'summary',options.explicit)&&(!suppressed||options.explicit)&&(options.explicit&&(options.refreshFields??options.fields)?.includes('summary')||this.settings(vault).automaticSummaries&&!suppressed&&summaryStale))fields.push('summary');
     this.recordDecision(vault,page.id,fields.length?(options.explicit?'explicit_refresh':decision.reason):decision.needsClassification&&last&&Date.now()-last<cooldown?'cooldown':decision.reason,fields);
     if(!fields.length)return null;
-    return {page,requestedFields:fields,contentHash:page.conceptContentHash!,schemaVersion:'page-enrichment-v1',modelProfile:JSON.stringify(this.intelligence.enrichmentSelection()),ownership:JSON.stringify([state.get(page.id).fields,this.data(page.id,'summary_preferences')]),dependencyIdentity:this.dependencyIdentity(page,fields),revision:page.revision};
+    // Build one request projection. Request construction never reloads entities or baselines.
+    const input=page.blocks.map(block=>{
+      const body=summaryInput({title:'',blocks:[block]},resolve,false);
+      return (block.type==='heading1'?'# ':block.type==='heading2'?'## ':'')+body;
+    }).join('');
+    const classification=state.get(page.id).classification;
+    const baseline=classification?.baseline;
+    const changedPassages=baseline?page.blocks.map(block=>summaryInput({title:'',blocks:[block]},resolve,false).trim()).filter(text=>text&&!baseline.body.includes(text.normalize('NFKC').toLowerCase().replace(/\s+/gu,' ').trim())).slice(-12):[];
+    const coverage=representativeEnrichmentText(input,changedPassages);
+    const shortlist=fields.includes('domains')?domainShortlist(input,[...(page.pageDomains?.primaryDomainId?[page.pageDomains.primaryDomainId]:[]),...(page.pageDomains?.secondaryDomainIds??[])]):undefined;
+    const selection=this.intelligence.enrichmentSelection();
+    return freezeSnapshot({page,requestedFields:fields,contentHash:page.conceptContentHash!,schemaVersion:'page-enrichment-v1',modelProfile:JSON.stringify(selection),ownership:JSON.stringify([state.get(page.id).fields,this.data(page.id,'summary_preferences')]),dependencyIdentity:this.dependencyIdentity(page,fields,names),contentIdentity:this.contentIdentity(page,fields,names),classificationIdentity:JSON.stringify(classification?.baseline),baselineIdentity:this.baselineIdentity(page.id,fields),names,input,changedPassages,coverage,shortlist,selection,preferences:this.data(page.id,'summary_preferences'),revision:page.revision});
+  }
+  private baselineIdentity(pageId:string,fields:readonly EnrichmentField[]) {
+    return JSON.stringify(fields.map(field=>[field,this.data(pageId,field==='domains'?'domain_classification':field)]));
   }
   private recordDecision(vault:string,pageId:string,reason:string,fields:EnrichmentField[]) {
     this.store.run('INSERT INTO page_enrichment_decisions (page_id,vault_id,reason,requested_fields,assessed_at,provider_requested) VALUES (?,?,?,?,?,0)',pageId,vault,reason,JSON.stringify(fields),now());
@@ -127,38 +163,36 @@ export class PageEnrichment {
   async run(vault:string,page:Page,onRequest?:AIRequestObserver,options:EnrichmentOptions={}):Promise<PageEnrichmentResult> {
     const snapshot=this.prepare(vault,page.id,options);
     if(!snapshot)return {title:this.pages.get(vault,page.id).title,revision:page.revision,pageDomains:new Domains(this.store).get(page.id,page.conceptContentHash)};
-    if(this.contentIdentity(snapshot.page,snapshot.requestedFields)!==this.contentIdentity(page,snapshot.requestedFields))throw new HttpError(409,'The page changed. Enrichment will use the latest saved version.');
+    if(snapshot.contentIdentity!==this.contentIdentity(page,snapshot.requestedFields,snapshot.names))throw new HttpError(409,'The page changed. Enrichment will use the latest saved version.');
+    return this.runPrepared(vault,snapshot,onRequest,options);
+  }
+  /** Queue dispatch consumes the exact snapshot it assessed; no second preparation. */
+  async runPrepared(vault:string,snapshot:NonNullable<ReturnType<PageEnrichment['prepare']>>,onRequest?:AIRequestObserver,options:EnrichmentOptions={}):Promise<PageEnrichmentResult> {
+    const page=snapshot.page;
+    if(page.vault_id!==vault)throw new HttpError(404,'Page not found');
     const key=JSON.stringify([vault,page.id]);
     const identity=snapshot.dependencyIdentity;
     const pending=this.running.get(key);
     if(pending) {
-      if(pending.identity===this.dependencyIdentity(snapshot.page,pending.fields)&&snapshot.requestedFields.every(field=>pending.fields.includes(field)))return pending.promise;
+      if(pending.identity===this.dependencyIdentity(snapshot.page,pending.fields,snapshot.names)&&snapshot.requestedFields.every(field=>pending.fields.includes(field)))return pending.promise;
       await pending.promise.catch(()=>{});
       const current=this.pages.requireActive(vault,page.id);
       if(this.contentIdentity(current,snapshot.requestedFields)!==this.contentIdentity(page,snapshot.requestedFields))throw new HttpError(409,'The page changed while waiting for enrichment.');
       return this.run(vault,current,onRequest,options);
     }
-    const work=this.generate(vault,snapshot.page,snapshot.requestedFields,onRequest,options).finally(()=>{if(this.running.get(key)?.promise===work)this.running.delete(key);});
+    const work=this.generate(vault,snapshot,onRequest,options).finally(()=>{if(this.running.get(key)?.promise===work)this.running.delete(key);});
     this.running.set(key,{promise:work,revision:snapshot.revision,fields:snapshot.requestedFields,identity});
     return work;
   }
-  private async generate(vault:string,page:Page,fields:EnrichmentField[],onRequest:AIRequestObserver|undefined,options:EnrichmentOptions):Promise<PageEnrichmentResult> {
-    const entities=this.knowledge.list(vault),names=new Map(entities.map(entity=>[entity.id,entityMentionName(entity)])),resolve=(id:string)=>names.get(id);
-    const input=page.blocks.map(block=>{
-      const body=summaryInput({title:'',blocks:[block]},resolve,false);
-      return (block.type==='heading1'?'# ':block.type==='heading2'?'## ':'')+body;
-    }).join('');
-    const baseline=new PageEnrichmentState(this.store).get(page.id).classification?.baseline;
-    const changedPassages=baseline?page.blocks.map(block=>summaryInput({title:'',blocks:[block]},resolve,false).trim()).filter(text=>text&&!baseline.body.includes(text.normalize('NFKC').toLowerCase().replace(/\s+/gu,' ').trim())).slice(-12):[];
-    const coverage=representativeEnrichmentText(input,changedPassages);
-    const shortlist=fields.includes('domains')?domainShortlist(input,[...(page.pageDomains?.primaryDomainId?[page.pageDomains.primaryDomainId]:[]),...(page.pageDomains?.secondaryDomainIds??[])]):undefined;
-    const preferences=this.data(page.id,'summary_preferences');
+  private async generate(vault:string,snapshot:NonNullable<ReturnType<PageEnrichment['prepare']>>,onRequest:AIRequestObserver|undefined,options:EnrichmentOptions):Promise<PageEnrichmentResult> {
+    const {page,requestedFields:fields,input,changedPassages,coverage,shortlist,preferences,selection,names}=snapshot;
+    const resolve=(id:string)=>names.get(id);
     this.store.run('INSERT INTO page_enrichment_decisions (page_id,vault_id,reason,requested_fields,assessed_at,provider_requested) VALUES (?,?,?,?,?,1)',page.id,vault,options.explicit?'explicit_refresh':'initial_enrichment',JSON.stringify(fields),now());
     const controller=new AbortController(),abort=()=>controller.abort();
     options.signal?.addEventListener('abort',abort,{once:true});
     if(options.signal?.aborted)controller.abort();
-    const contentIdentity=this.contentIdentity(page,fields),selection=this.intelligence.enrichmentSelection();
-    this.controllers.set(page.id,{vault,controller,fields,identity:this.dependencyIdentity(page,fields)});
+    const contentIdentity=snapshot.contentIdentity;
+    this.controllers.set(page.id,{vault,controller,fields,identity:snapshot.dependencyIdentity});
     let output:Awaited<ReturnType<Intelligence['generatePageEnrichment']>>;
     try {
       output=await this.intelligence.generatePageEnrichment(input,{requestedFields:fields,domains:shortlist,currentTitle:page.title,currentPrimaryDomainId:page.pageDomains?.primaryDomainId,currentSecondaryDomainIds:page.pageDomains?.secondaryDomainIds,changedPassages,signal:controller.signal},onRequest,options.background);
@@ -170,7 +204,7 @@ export class PageEnrichment {
     new Vaults(this.store).requireOpen(vault);
     return this.store.transaction(()=>{
       const current=this.pages.requireActive(vault,page.id);
-      if(current.editLocked||this.contentIdentity(current,fields)!==contentIdentity||JSON.stringify(this.intelligence.enrichmentSelection())!==JSON.stringify(selection))throw new HttpError(409,'The page changed. Generate fresh enrichment.');
+      if(current.editLocked||this.contentIdentity(current,fields)!==contentIdentity||JSON.stringify(this.intelligence.enrichmentSelection())!==JSON.stringify(selection)||this.baselineIdentity(page.id,fields)!==snapshot.baselineIdentity||JSON.stringify(new PageEnrichmentState(this.store).get(page.id).classification?.baseline)!==snapshot.classificationIdentity)throw new HttpError(409,'The page changed. Generate fresh enrichment.');
       const state=new PageEnrichmentState(this.store);
       let title=current.title;
       if(fields.includes('title')&&output.title&&untitled(current)&&state.eligible(page.id,'title')) {
@@ -206,3 +240,6 @@ export class PageEnrichment {
     });
   }
 }
+
+/** Immutable, request-scoped evidence; never a cross-request entity catalogue cache. */
+export type PreparedEnrichmentSnapshot=NonNullable<ReturnType<PageEnrichment['prepare']>>;

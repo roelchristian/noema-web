@@ -1,0 +1,211 @@
+{
+  "baselineRevision": "abd7d840e83972b8a139f5aa6abcabc0d52865dc",
+  "before": {
+    "fixture": {
+      "words": 4235,
+      "segments": 9,
+      "dimensions": 1536,
+      "internalStateBytes": 58429,
+      "mode": "mocked providers, workers disabled; SQLite statement counts include request authorization"
+    },
+    "page": {
+      "status": 200,
+      "bytes": 34614,
+      "reads": 20,
+      "writeStatements": 2,
+      "rowsChanged": 1,
+      "providerCalls": 0,
+      "classificationAssessments": 1,
+      "vectorLoads": 1,
+      "knowledgeLists": 0,
+      "storeGets": 15,
+      "storeAlls": 5,
+      "storeRuns": 2
+    },
+    "metadata": {
+      "status": 200,
+      "bytes": 1106,
+      "reads": 20,
+      "writeStatements": 2,
+      "rowsChanged": 1,
+      "providerCalls": 0,
+      "classificationAssessments": 1,
+      "vectorLoads": 1,
+      "knowledgeLists": 0,
+      "storeGets": 15,
+      "storeAlls": 5,
+      "storeRuns": 2
+    },
+    "enrichments": {
+      "status": 200,
+      "bytes": 59230,
+      "reads": 21,
+      "writeStatements": 3,
+      "rowsChanged": 1,
+      "providerCalls": 0,
+      "classificationAssessments": 1,
+      "vectorLoads": 1,
+      "knowledgeLists": 0,
+      "storeGets": 15,
+      "storeAlls": 6,
+      "storeRuns": 3
+    },
+    "status": {
+      "status": 404,
+      "bytes": 21,
+      "reads": 2,
+      "writeStatements": 1,
+      "rowsChanged": 0,
+      "providerCalls": 0,
+      "classificationAssessments": 0,
+      "vectorLoads": 0,
+      "knowledgeLists": 0,
+      "storeGets": 1,
+      "storeAlls": 1,
+      "storeRuns": 1
+    },
+    "tenEnrichmentReads": {
+      "reads": 210,
+      "writeStatements": 30,
+      "rowsChanged": 10,
+      "providerCalls": 0,
+      "classificationAssessments": 10,
+      "vectorLoads": 10,
+      "knowledgeLists": 0,
+      "storeGets": 150,
+      "storeAlls": 60,
+      "storeRuns": 30
+    },
+    "summaryOnlyPreparation": {
+      "reads": 39,
+      "writeStatements": 4,
+      "rowsChanged": 3,
+      "providerCalls": 0,
+      "classificationAssessments": 2,
+      "vectorLoads": 2,
+      "knowledgeLists": 2,
+      "storeGets": 29,
+      "storeAlls": 10,
+      "storeRuns": 4,
+      "requestedFields": [
+        "summary"
+      ]
+    },
+    "summaryOnlyGeneration": {
+      "reads": 135,
+      "writeStatements": 15,
+      "rowsChanged": 13,
+      "providerCalls": 1,
+      "classificationAssessments": 6,
+      "vectorLoads": 6,
+      "knowledgeLists": 8,
+      "storeGets": 96,
+      "storeAlls": 39,
+      "storeRuns": 15
+    }
+  },
+  "after": {
+    "fixture": {
+      "words": 4235,
+      "segments": 9,
+      "dimensions": 1536,
+      "internalStateBytes": 58438,
+      "mode": "mocked providers, workers disabled; SQLite statement counts include request authorization"
+    },
+    "page": {
+      "status": 200,
+      "bytes": 34623,
+      "reads": 11,
+      "writeStatements": 0,
+      "rowsChanged": 0,
+      "providerCalls": 0,
+      "classificationAssessments": 0,
+      "vectorLoads": 0,
+      "knowledgeLists": 0,
+      "storeGets": 9,
+      "storeAlls": 2,
+      "storeRuns": 0
+    },
+    "metadata": {
+      "status": 200,
+      "bytes": 1032,
+      "reads": 7,
+      "writeStatements": 0,
+      "rowsChanged": 0,
+      "providerCalls": 0,
+      "classificationAssessments": 0,
+      "vectorLoads": 0,
+      "knowledgeLists": 0,
+      "storeGets": 6,
+      "storeAlls": 1,
+      "storeRuns": 0
+    },
+    "enrichments": {
+      "status": 200,
+      "bytes": 397,
+      "reads": 3,
+      "writeStatements": 0,
+      "rowsChanged": 0,
+      "providerCalls": 0,
+      "classificationAssessments": 0,
+      "vectorLoads": 0,
+      "knowledgeLists": 0,
+      "storeGets": 2,
+      "storeAlls": 1,
+      "storeRuns": 0
+    },
+    "status": {
+      "status": 200,
+      "bytes": 73,
+      "reads": 7,
+      "writeStatements": 0,
+      "rowsChanged": 0,
+      "providerCalls": 0,
+      "classificationAssessments": 0,
+      "vectorLoads": 0,
+      "knowledgeLists": 0,
+      "storeGets": 6,
+      "storeAlls": 1,
+      "storeRuns": 0
+    },
+    "tenEnrichmentReads": {
+      "reads": 30,
+      "writeStatements": 0,
+      "rowsChanged": 0,
+      "providerCalls": 0,
+      "classificationAssessments": 0,
+      "vectorLoads": 0,
+      "knowledgeLists": 0,
+      "storeGets": 20,
+      "storeAlls": 10,
+      "storeRuns": 0
+    },
+    "summaryOnlyPreparation": {
+      "reads": 36,
+      "writeStatements": 4,
+      "rowsChanged": 5,
+      "providerCalls": 0,
+      "classificationAssessments": 1,
+      "vectorLoads": 1,
+      "knowledgeLists": 0,
+      "storeGets": 31,
+      "storeAlls": 5,
+      "storeRuns": 4,
+      "requestedFields": [
+        "summary"
+      ]
+    },
+    "summaryOnlyGeneration": {
+      "reads": 83,
+      "writeStatements": 9,
+      "rowsChanged": 7,
+      "providerCalls": 1,
+      "classificationAssessments": 1,
+      "vectorLoads": 0,
+      "knowledgeLists": 0,
+      "storeGets": 70,
+      "storeAlls": 13,
+      "storeRuns": 9
+    }
+  }
+}

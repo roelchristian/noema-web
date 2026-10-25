@@ -72,7 +72,10 @@ async function panelFixture(t,work) {
   t.mock.method(api,'suggestionVersion',async()=>({version:'unchanged'}));
   t.mock.method(api,'pageBacklinks',async()=>[]);t.mock.method(api,'pageAssociations',async()=>[]);t.mock.method(api,'relatedNotesState',async()=>({notes:[],pending:false,retainedPageIds:[]}));t.mock.method(api,'suggestedSources',async()=>[]);
   const root=createRoot(document.querySelector('#mount'));
-  const render=page=>root.render(React.createElement(IntelligencePanel,{page,pages:[],entities:[],onOpenPage(){},onFlush:async()=>page,onClose(){},onSettings(){},onReview(){},onSourcesChange(){},onCreateEntity(){},onOpenEntity(){}}));
+  let currentPage=note(),version=0;
+  t.mock.method(api,'enrichmentStatus',async()=>({version:String(++version),pending:!!currentPage.enrichmentPending,pendingFields:currentPage.enrichmentPendingFields??[]}));
+  t.mock.method(api,'pageMetadata',async()=>currentPage);
+  const render=page=>{currentPage=page;return root.render(React.createElement(IntelligencePanel,{page,pages:[],entities:[],onOpenPage(){},onFlush:async()=>page,onClose(){},onSettings(){},onReview(){},onSourcesChange(){},onCreateEntity(){},onOpenEntity(){}}));};
   try {await work({dom,render});}finally{await act(async()=>root.unmount());dom.window.close();keys.forEach((key,i)=>{if(prior[i])Object.defineProperty(globalThis,key,prior[i]);else delete globalThis[key];});}
 }
 const summary=text=>[{kind:'summary',data:{summary:text},revision:1,contentHash:'fresh',model:'test',reasoningEffort:'low'}];
@@ -102,13 +105,13 @@ test('a summary read finishing after navigation cannot replace the next page sum
     assert.equal(document.querySelector('#knowledge-summary-text').textContent,'Other page summary');
   });
 });
-test('the visible summary refreshes on its timer without any activity notification or page change',async t=>{
-  t.mock.timers.enable({apis:['setInterval']});
+test('the visible summary refreshes on its settled timer without any activity notification or page change',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
   await panelFixture(t,async({render})=>{
     let items=summary('Original summary');t.mock.method(api,'enrichments',async()=>items);
     await act(async()=>render(note()));
     items=summary('Completed summary');
-    await act(async()=>t.mock.timers.tick(1999));assert.equal(document.querySelector('#knowledge-summary-text').textContent,'Original summary');
+    await act(async()=>t.mock.timers.tick(59_999));assert.equal(document.querySelector('#knowledge-summary-text').textContent,'Original summary');
     await act(async()=>t.mock.timers.tick(1));assert.equal(document.querySelector('#knowledge-summary-text').textContent,'Completed summary');
   });
 });
@@ -132,8 +135,8 @@ test('empty summary and subject placeholders reflect only their queued fields an
 });
 test('manual summary generation shows the same visible progress placeholder before its result arrives',async t=>{
   await panelFixture(t,async({dom,render})=>{
-    t.mock.method(api,'enrichments',async()=>[]);
-    let finish;t.mock.method(api,'summarize',async()=>new Promise(resolve=>{finish=resolve;}));
+    let items=[];t.mock.method(api,'enrichments',async()=>items);
+    let finish;t.mock.method(api,'summarize',async()=>new Promise(resolve=>{finish=value=>{items=summary(value.summary);resolve(value);};}));
     await act(async()=>render(note()));
     await act(async()=>document.querySelector('[aria-label="Summarize this page"]').dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})));
     assert.equal(document.querySelector('.knowledge-summary [role="status"]').textContent,'Generating summary...');
@@ -145,8 +148,8 @@ test('manual summary generation shows the same visible progress placeholder befo
 
 test('summary preview expands inline and its action menu supports Escape and deletion',async t=>{
   await panelFixture(t,async({dom,render})=>{
-    t.mock.method(api,'enrichments',async()=>summary('A longer saved summary'));
-    const remove=t.mock.method(api,'deleteSummary',async()=>({ok:true}));
+    let items=summary('A longer saved summary');t.mock.method(api,'enrichments',async()=>items);
+    const remove=t.mock.method(api,'deleteSummary',async()=>{items=[];return {ok:true};});
     const style=document.createElement('style');style.textContent='.ai-summary {line-height:20px}';document.head.append(style);
     Object.defineProperty(dom.window.HTMLElement.prototype,'scrollHeight',{configurable:true,get(){return 80;}});
     await act(async()=>render(note()));
@@ -164,5 +167,25 @@ test('summary preview expands inline and its action menu supports Escape and del
     await act(async()=>menu.querySelector('[aria-label="Delete summary"]').click());
     assert.equal(remove.mock.callCount(),1);assert.equal(document.querySelector('#knowledge-summary-text'),null);
     assert.equal(document.querySelector('.knowledge-summary .knowledge-empty-action').textContent,'Generate summary');
+  });
+});
+
+
+test('settled Knowledge status refreshes external subject and summary freshness without changing the editor snapshot',async t=>{
+  await panelFixture(t,async({render})=>{
+    const page={...note(),title:'Algebra',summaryContentHash:'fresh',pageDomains:domains};
+    let metadata=page;
+    t.mock.method(api,'enrichments',async()=>summary('Saved summary'));
+    const reads=t.mock.method(api,'pageMetadata',async()=>metadata);
+    await act(async()=>render(page));
+    assert.equal(document.querySelector('[aria-label="Summary needs refresh"]'),null);
+    assert.equal(document.querySelector('[aria-label="Subjects need refresh"]'),null);
+    const editor=document.querySelector('#editor');editor.focus();
+    metadata={...page,summaryContentHash:'externally changed',pageDomains:{...domains,revision:2,status:'needs_refresh'}};
+    await act(async()=>window.dispatchEvent(new Event('focus')));
+    assert.ok(document.querySelector('[aria-label="Summary needs refresh"]'));
+    assert.ok(document.querySelector('[aria-label="Subjects need refresh"]'));
+    assert.equal(document.activeElement,editor);assert.equal(page.summaryContentHash,'fresh');assert.equal(page.pageDomains.status,'inferred');
+    assert.ok(reads.mock.callCount()>=2,'Metadata is refreshed after settled status changes');
   });
 });

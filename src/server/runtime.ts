@@ -66,7 +66,7 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
       if(signal.aborted)return;
       const id=activity.start('page_enrichment',intelligence.enrichmentSelection(),vault,pageId);
       try {
-        const result=await pageEnrichment.run(vault,pages.get(vault,pageId),bytes=>activity.request(id,bytes,snapshot.revision??null),{fields:snapshot.requestedFields,background:true,explicit:snapshot.explicit,signal});
+        const result=await pageEnrichment.runPrepared(vault,snapshot,bytes=>activity.request(id,bytes,snapshot.revision??null),{fields:snapshot.requestedFields,background:true,explicit:snapshot.explicit,signal});
         const sent=store.get<{prompt_bytes:number|null}>('SELECT prompt_bytes FROM ai_activity WHERE id=?',id)?.prompt_bytes;activity.finish(id,sent==null?'skipped':'completed',200);return {classified:result.classified};
       }catch(error){activity.finish(id,'failed',error instanceof HttpError?error.status:500);throw error;}
     },

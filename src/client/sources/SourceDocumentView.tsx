@@ -1,7 +1,7 @@
-import {useMemo,type RefObject,type ReactNode} from 'react';
+import {Fragment,useMemo,type RefObject,type ReactNode} from 'react';
 import type {SourceHighlight} from '../../shared/source-reading';
 import {sourceDocumentEntries,sourceNodeLocator,type SourceDocument} from '../../shared/source-document';
-import {SourceFootnoteDefinitions,SourceReaderInline,SourceReaderText} from './SourceReaderText';
+import {SourceFootnoteDefinitions,SourceReaderInline,sourceReaderBlocks} from './SourceReaderText';
 import {t as uiText} from '../i18n';
 
 export type SourceViewEntry=ReturnType<typeof sourceDocumentEntries>[number];
@@ -37,26 +37,42 @@ export function sourceViewEntries(text:string,document?:SourceDocument,rawRanges
 }
 interface Props {
  article:RefObject<HTMLElement|null>;fileId:string;name:string;text:string;entries:SourceViewEntry[];
- furnitureKind?:(nodeId:string)=>'header'|'footer'|undefined;hiddenNodeIds?:ReadonlySet<string>;selected:string|null;annotations:ReaderAnnotations;structureLabels:boolean;highlights?:SourceHighlight[];
+ furnitureKind?:(nodeId:string)=>'header'|'footer'|undefined;hiddenNodeIds?:ReadonlySet<string>;endnotes?:boolean;selected:string|null;annotations:ReaderAnnotations;structureLabels:boolean;highlights?:SourceHighlight[];
  canonicalNode:(nodeId:string)=>string|undefined;onSelect:(canonicalNodeId:string)=>void;
  changeForNode?:(nodeId:string)=>{id:string;label:string;count?:number;quiet?:boolean;patchIds?:string[]}|undefined;onReview?:(patchId:string,patchIds?:string[])=>void;children?:ReactNode;
 }
 /** One typography and heading hierarchy for canonical and editorial presentations. */
-export function SourceDocumentView({article,fileId,name,text,entries,selected,annotations,structureLabels,hiddenNodeIds,furnitureKind,highlights=[],canonicalNode,onSelect,changeForNode,onReview,children}:Props){
+export function SourceDocumentView({article,fileId,name,text,entries,selected,annotations,structureLabels,hiddenNodeIds,furnitureKind,endnotes=false,highlights=[],canonicalNode,onSelect,changeForNode,onReview,children}:Props){
  const definitions=useMemo(()=>new Set([...text.matchAll(/^[ \t]*\[\^([^\]\n]+)\]:/gm)].map(match=>match[1]!)),[text]);
- return <SourceFootnoteDefinitions value={definitions}><article ref={article} className="source-reader-document" data-annotations={annotations} aria-label={name}>
-  {entries.length?entries.map(({node,path})=>{
+ const content=useMemo(()=>entries.map(entry=>({entry,blocks:entry.node.text===undefined?null:sourceReaderBlocks({text:entry.node.text,kind:entry.node.kind,footnotePrefix:fileId,startOffset:entry.node.range.startOffset,highlights})})),[entries,fileId,highlights]);
+ const fallback=useMemo(()=>entries.length?null:sourceReaderBlocks({text,footnotePrefix:fileId,highlights}),[entries.length,text,fileId,highlights]);
+ const noteEntries=endnotes?content.filter(item=>item.blocks?.notes.length):[];
+ const renderPassage=({entry:{node,path},blocks}:typeof content[number],notesOnly=false)=>{
    const Heading=(node.kind==='chapter'||node.level===1?'h2':node.kind==='subsection'||(node.level??0)>2?'h4':'h3');
    const locator=sourceNodeLocator(path)??`L${node.range.startLine}–${node.range.endLine}`;
    const canonicalId=canonicalNode(node.id),change=changeForNode?.(node.id),furniture=furnitureKind?.(node.id);
-   return <section hidden={hiddenNodeIds?.has(node.id)} key={node.id} id={passageAnchor(fileId,node.id)} className={'source-reader-passage'+(node.text===undefined?' is-heading':'')+(canonicalId===selected?' is-selected':'')} data-page-furniture={furniture} data-source-node={node.id} data-canonical-node={canonicalId} data-source-page={node.range.startPage}>
+   const onlyNotes=!!blocks?.notes.length&&!blocks.body.length;
+   const readingBlocks=endnotes?(notesOnly?blocks?.notes:blocks?.body):blocks?.inline;
+   return <section hidden={hiddenNodeIds?.has(node.id)} key={node.id} id={notesOnly&&!onlyNotes?undefined:passageAnchor(fileId,node.id)} className={'source-reader-passage'+(onlyNotes||notesOnly?' is-footnote':'')+(node.text===undefined?' is-heading':'')+(canonicalId===selected?' is-selected':'')} data-page-furniture={furniture} data-source-node={notesOnly&&!onlyNotes?undefined:node.id} data-canonical-node={notesOnly&&!onlyNotes?undefined:canonicalId} data-source-page={node.range.startPage}>
     <button type="button" className="source-reader-node-address" title={canonicalId?uiText('Select original passage ')+locator:uiText('Citation mapping unavailable; switch to Original processed')} aria-label={canonicalId?uiText('Select passage ')+locator:uiText('Citation mapping unavailable; switch to Original processed')} aria-pressed={!!canonicalId&&canonicalId===selected} onClick={()=>{if(canonicalId)onSelect(canonicalId);}} aria-disabled={!canonicalId}>{locator}</button>
     {furniture&&<small className="source-reader-furniture-label">{uiText(furniture==='header'?"Page header":"Page footer")}</small>}
     {structureLabels&&<small className="source-reader-structure-label">{node.kind} · {locator}</small>}
     {change&&<button type="button" className={"source-reader-change-indicator"+(change.quiet?" is-quiet":"")} aria-label={change.label} onClick={()=>onReview?.(change.id,change.patchIds)}><span aria-hidden="true">{change.count&&change.count>1?change.count:"│"}</span></button>}
-    {node.text===undefined?<Heading><SourceReaderInline text={node.title??''} footnotePrefix={fileId} startOffset={node.range.startOffset} highlights={highlights}/></Heading>:<SourceReaderText text={node.text} kind={node.kind} footnotePrefix={fileId} startOffset={node.range.startOffset} highlights={highlights}/>}
+    {node.text===undefined?<Heading><SourceReaderInline text={node.title??''} footnotePrefix={fileId} startOffset={node.range.startOffset} highlights={highlights}/></Heading>:<>{node.kind==='code'?readingBlocks:<div className="source-reader-text">{readingBlocks}</div>}</>}
    </section>;
-  }):text.trim()?<SourceReaderText text={text} footnotePrefix={fileId} startOffset={0} highlights={highlights}/>:<p className="source-reader-status">{uiText('No readable text was extracted from this attachment.')}</p>}
+ };
+ let previousPage:number|null=null;
+ return <SourceFootnoteDefinitions value={definitions}><article ref={article} className="source-reader-document" data-annotations={annotations} aria-label={name}>
+  {entries.length?content.map(item=>{
+   const {node}=item.entry,page=node.range.startPage;
+   const pageBreak=page!==null&&previousPage!==null&&page>previousPage;
+   if(page!==null)previousPage=page;
+   return <Fragment key={node.id}>
+    {pageBreak&&<div className="source-reader-page-break" role="separator" aria-label={uiText('Page {value0}',{value0:page!})}><span aria-hidden="true">{uiText('Page {value0}',{value0:page!})}</span></div>}
+    {!(endnotes&&item.blocks?.notes.length&&!item.blocks.body.length)&&renderPassage(item)}
+   </Fragment>;
+  }):text.trim()?<div className="source-reader-text">{endnotes?fallback?.body:fallback?.inline}</div>:<p className="source-reader-status">{uiText('No readable text was extracted from this attachment.')}</p>}
+  {endnotes&&(noteEntries.length>0||!!fallback?.notes.length)&&<section className="source-reader-endnotes" aria-label={uiText('Endnotes')}><h2>{uiText('Endnotes')}</h2>{noteEntries.map(item=>renderPassage(item,true))}{fallback&&<div className="source-reader-text">{fallback.notes}</div>}</section>}
   {children}
  </article></SourceFootnoteDefinitions>;
 }

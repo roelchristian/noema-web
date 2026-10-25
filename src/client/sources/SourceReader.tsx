@@ -44,10 +44,10 @@ function passageReference(file:LoadedFile,entry:Entry):SourceReference {
     excerpt:node.text??node.title??file.text.slice(node.range.startOffset,endOffset),contextLabel:sourceNodeLabel(path),appLocator:sourceNodeLocator(path)};
 }
 
-interface ReaderDisplay {annotations:ReaderAnnotations;structureLabels:boolean;editorialIndicators:boolean;typography:'sans'|'serif';width:'comfortable'|'wide'}
-const defaultDisplay:ReaderDisplay={annotations:'contextual',structureLabels:false,editorialIndicators:false,typography:'sans',width:'comfortable'};
+interface ReaderDisplay {endnotes:boolean;showFurniture:boolean;annotations:ReaderAnnotations;structureLabels:boolean;editorialIndicators:boolean;typography:'sans'|'serif';width:'comfortable'|'wide'}
+const defaultDisplay:ReaderDisplay={endnotes:false,showFurniture:true,annotations:'contextual',structureLabels:false,editorialIndicators:false,typography:'sans',width:'comfortable'};
 function savedDisplay():ReaderDisplay {
- try {const value=JSON.parse(localStorage.getItem('noema:source-reader-display')??'{}');return {annotations:['clean','contextual','always'].includes(value.annotations)?value.annotations:'contextual',structureLabels:value.structureLabels===true,editorialIndicators:value.editorialIndicators===true,typography:value.typography==='serif'?'serif':'sans',width:value.width==='wide'?'wide':'comfortable'};}catch{return defaultDisplay;}
+ try {const value=JSON.parse(localStorage.getItem('noema:source-reader-display')??'{}');return {endnotes:value.endnotes===true,showFurniture:value.showFurniture!==false,annotations:['clean','contextual','always'].includes(value.annotations)?value.annotations:'contextual',structureLabels:value.structureLabels===true,editorialIndicators:value.editorialIndicators===true,typography:value.typography==='serif'?'serif':'sans',width:value.width==='wide'?'wide':'comfortable'};}catch{return defaultDisplay;}
 }
 /** Reading and citation state is deliberately separate from the editable page lifecycle. */
 export function SourceReader({vaultId,source,entities,inspectorOpen=false,onToggleInspector,onReadingActivityOpen,refreshKey,onActiveAttachmentChange,onCreatePageFromSource,onError,onAddPassage,onAnnotate,onReadingNoteCreated,onOpenReadingNote,onRemoveReadingNote}:Props) {
@@ -66,7 +66,6 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
   const [reprocessed,setReprocessed]=useState(false),[comparisonPage,setComparisonPage]=useState<number|null>(null);
   const [readingRevision,setReadingRevision]=useState<SourceReprocessingRevision|null>(null);
   useLayoutEffect(()=>{if(reviewEvidence&&evidenceReturn.current?.getClientRects().length)evidenceReturn.current.focus({preventScroll:true});},[reviewEvidence,comparisonPage]);
-  const [hideFurniture,setHideFurniture]=useState(false);
   const position=useRef<ReaderPosition|null>(null);
   const evidenceContext=useRef<{position:ReaderPosition|null;revision:SourceReprocessingRevision|null}|null>(null);
   function saveEvidencePosition(){
@@ -171,7 +170,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
     const linked=saved.node?passages.filter(item=>item.dataset.canonicalNode===saved.node):[];
     const target=linked.length===1?linked[0]:saved.page?passages.find(item=>item.dataset.sourcePage===saved.page):undefined;
     if(target)window.scrollBy({top:target.getBoundingClientRect().top-saved.top,behavior:'instant'});
-  },[editorial?.id,editorial?.updatedAt,reviewOpen,reviewPresentation,reviewEvidence,comparisonPage]);
+  },[editorial?.id,editorial?.updatedAt,reviewOpen,reviewPresentation,reviewEvidence,comparisonPage,display.showFurniture,display.endnotes]);
   const selectedEntry=entries.find(({node})=>node.id===selected);
   const reference=useMemo(()=>loaded&&selectedEntry?passageReference(loaded,selectedEntry):null,[loaded,selectedEntry]);
   function selectPassage(nodeId:string){setSelected(nodeId);setCopied(false);}
@@ -191,10 +190,11 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
         <label>{uiText('Reader annotations')}<select aria-label={uiText('Reader annotations')} value={display.annotations} onChange={event=>updateDisplay({annotations:event.target.value as ReaderAnnotations})}><option value="clean">{uiText('Clean reading')}</option><option value="contextual">{uiText('Contextual')}</option><option value="always">{uiText('Always show passage references')}</option></select></label>
         <label><input type="checkbox" checked={display.structureLabels} onChange={event=>updateDisplay({structureLabels:event.target.checked})}/>{uiText('Show Noema section and block labels')}</label>
         <label><input type="checkbox" checked={display.editorialIndicators} onChange={event=>updateDisplay({editorialIndicators:event.target.checked})}/>{uiText('Show editorial change indicators')}</label>
-        {furnitureNodes.size>0&&<label><input type="checkbox" checked={hideFurniture} onChange={event=>setHideFurniture(event.target.checked)}/>{uiText('Hide page headers and footers')}</label>}
+        <label><input type="checkbox" checked={display.showFurniture} onChange={event=>{position.current=visibleReadingPosition(article.current);updateDisplay({showFurniture:event.target.checked});}}/>{uiText('Show page headers and footers')}</label>
+        <label><input type="checkbox" checked={display.endnotes} onChange={event=>{position.current=visibleReadingPosition(article.current);updateDisplay({endnotes:event.target.checked});}}/>{uiText('Show footnotes as endnotes')}</label>
         <label>{uiText('Typography')}<select aria-label={uiText('Reader typography')} value={display.typography} onChange={event=>updateDisplay({typography:event.target.value as ReaderDisplay['typography']})}><option value="sans">{uiText('Sans serif')}</option><option value="serif">{uiText('Serif')}</option></select></label>
         <label>{uiText('Reading width')}<select aria-label={uiText('Reading width')} value={display.width} onChange={event=>updateDisplay({width:event.target.value as ReaderDisplay['width']})}><option value="comfortable">{uiText('Comfortable')}</option><option value="wide">{uiText('Wide')}</option></select></label>
-        <div className="source-reader-display-presets"><button type="button" onClick={()=>{updateDisplay(defaultDisplay);setHideFurniture(false);}}>{uiText('Reading preset')}</button><button type="button" onClick={()=>{updateDisplay({...defaultDisplay,annotations:'always',structureLabels:true,editorialIndicators:true});setHideFurniture(false);}}>{uiText('Inspection preset')}</button></div>
+        <div className="source-reader-display-presets"><button type="button" onClick={()=>{updateDisplay(defaultDisplay);}}>{uiText('Reading preset')}</button><button type="button" onClick={()=>{updateDisplay({...defaultDisplay,annotations:'always',structureLabels:true,editorialIndicators:true});}}>{uiText('Inspection preset')}</button></div>
       </div></details>
       {loaded&&!editorial&&<button type="button" className="button small" aria-label={uiText('Reading activity')} aria-expanded={activityOpen} title={uiText('Bookmarks, annotations and highlights')} onClick={()=>window.dispatchEvent(new Event('noema:reading-bookmarks'))}><Icon name="reading-activity"/>{uiText('Reading activity')}</button>}
       {onToggleInspector&&<button type="button" className="source-reader-icon-action" aria-label={uiText('Info')} title={uiText('Source information')} aria-expanded={inspectorOpen} onClick={onToggleInspector}><Icon name="info"/></button>}
@@ -218,7 +218,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
         {editorial&&<p className="source-reader-editorial-notice">{uiText('Editorial presentation. Citation actions quote the linked original passage. Highlights, bookmarks and reading notes are available in Original processed until offset mappings are verified.')}</p>}
         {!editorial&&<SourceReadingContinuity key={`continuity:${loaded.id}:${loaded.textHash}`} file={loaded} article={article} selectedOffset={selectedEntry?.node.range.startOffset} inspectorOpen={inspectorOpen} onOpenChange={activityChanged} highlights={highlights} notes={readingNotes} onOpenNote={onOpenReadingNote} onRemoveNote={onRemoveReadingNote} onRemoveHighlight={id=>setHighlights(items=>items.filter(item=>item.id!==id))}/>}
         {!editorial&&<SourceReadingTools key={`tools:${loaded.id}:${loaded.textHash}`} file={loaded} article={article} highlights={highlights} onHighlight={highlight=>setHighlights(items=>[...items.filter(item=>item.id!==highlight.id),highlight])} onHighlightRemoved={id=>setHighlights(items=>items.filter(item=>item.id!==id))} onNoteCreated={readingNoteCreated}/>}
-        <SourceDocumentView furnitureKind={nodeId=>furnitureNodeKinds.get(nodeId)} hiddenNodeIds={hideFurniture?furnitureNodes:undefined} article={article} fileId={loaded.id} name={source.name} text={viewText} entries={viewEntries} selected={selected} annotations={display.annotations} structureLabels={display.structureLabels} highlights={editorial?[]:highlights} canonicalNode={canonicalNode} onSelect={selectPassage} changeForNode={editorial||reviewOpen&&reviewRevision?nodeId=>{
+        <SourceDocumentView endnotes={display.endnotes} furnitureKind={nodeId=>furnitureNodeKinds.get(nodeId)} hiddenNodeIds={display.showFurniture?undefined:furnitureNodes} article={article} fileId={loaded.id} name={source.name} text={viewText} entries={viewEntries} selected={selected} annotations={display.annotations} structureLabels={display.structureLabels} highlights={editorial?[]:highlights} canonicalNode={canonicalNode} onSelect={selectPassage} changeForNode={editorial||reviewOpen&&reviewRevision?nodeId=>{
           const revision=reviewOpen&&reviewRevision?reviewRevision:editorial;
           const originalId=canonicalNode(nodeId),patches=originalId?revision?.patches.filter(patch=>patch.nodeIds.includes(originalId)&&(reviewOpen||patch.decision==='accepted'))??[]:[];
           return patches.length?{id:patches[0].id,patchIds:patches.map(patch=>patch.id),count:patches.length,quiet:!reviewOpen&&!display.editorialIndicators,label:patches.length===1?uiText('1 editorial change in this passage'):uiText('{value0} editorial changes in this passage',{value0:patches.length})}:undefined;

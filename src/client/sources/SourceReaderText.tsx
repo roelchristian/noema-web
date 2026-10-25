@@ -19,6 +19,11 @@ function TextLeaf({text,start,highlights}:{text:string;start:number;highlights:S
     return highlight?<mark key={from} role="button" tabIndex={0} aria-label={uiText("Edit highlight")} title={uiText("Change highlight color or add a reading note")} className="source-highlight" data-color={highlight.color} data-highlight-id={highlight.id} data-source-start={from} data-source-end={to}>{value}</mark>:<span key={from} data-source-start={from} data-source-end={to}>{value}</span>;
   })}</>;
 }
+/** Printed checkboxes are presentation only; their one-character source range stays intact. */
+function CheckboxLeaf({symbol,start,highlights}:{symbol:string;start:number;highlights:SourceHighlight[]}) {
+  const highlight=activeHighlight(highlights,start,start+1),checked=symbol!=='☐';
+  return <span className={'source-reader-checkbox-leaf'+(highlight?' source-highlight':'')} data-source-start={start} data-source-end={start+1} data-source-atomic="true" data-color={highlight?.color} data-highlight-id={highlight?.id} role={highlight?'button':undefined} tabIndex={highlight?0:undefined} aria-label={highlight?uiText('Edit highlight'):undefined}><span className="source-reader-checkbox" role="checkbox" aria-label={uiText('Source checkbox')} aria-checked={checked} aria-disabled="true" data-checked={checked}><span className="sr-only" aria-hidden="true">{symbol}</span></span></span>;
+}
 function MathLeaf({source,display,start,end,highlights}:{source:string;display:boolean;start:number;end:number;highlights:SourceHighlight[]}) {
   const highlight=activeHighlight(highlights,start,end);
   return <span role={highlight?'button':undefined} tabIndex={highlight?0:undefined} aria-label={highlight?uiText("Edit highlight"):undefined} title={highlight?uiText("Change highlight color or add a reading note"):undefined} className={`${display?'summary-math-display':'summary-math-inline'}${highlight?' source-highlight':''}`} data-color={highlight?.color} data-highlight-id={highlight?.id} data-source-start={start} data-source-end={end} data-source-atomic="true" dangerouslySetInnerHTML={{__html:renderMath(source,display)}}/>;
@@ -28,12 +33,13 @@ export function SourceReaderInline({text,startOffset=0,highlights=[],footnotePre
   const definitions=useContext(SourceFootnoteDefinitions);
   const parts:ReactNode[]=[];
   const plain=(value:string,offset:number)=>{
-    // An escaped table pipe displays one character but retains its exact raw position.
+    // Decode escaped table pipes and style printed checkboxes without changing raw positions.
     let cursor=0;
-    for(const match of value.matchAll(/\\\|/g)) {
+    for(const match of value.matchAll(/\\\||[☐☑☒]/g)) {
       if(match.index!>cursor)parts.push(<TextLeaf key={`p${offset+cursor}`} text={value.slice(cursor,match.index)} start={offset+cursor} highlights={highlights}/>);
-      parts.push(<TextLeaf key={`p${offset+match.index!+1}`} text="|" start={offset+match.index!+1} highlights={highlights}/>);
-      cursor=match.index!+2;
+      if(match[0].length===1)parts.push(<CheckboxLeaf key={`c${offset+match.index!}`} symbol={match[0]} start={offset+match.index!} highlights={highlights}/>);
+      else parts.push(<TextLeaf key={`p${offset+match.index!+1}`} text="|" start={offset+match.index!+1} highlights={highlights}/>);
+      cursor=match.index!+match[0].length;
     }
     if(cursor<value.length)parts.push(<TextLeaf key={`p${offset+cursor}`} text={value.slice(cursor)} start={offset+cursor} highlights={highlights}/>);
   };
@@ -93,14 +99,15 @@ function tableCells(line:Line,highlights:SourceHighlight[],footnotePrefix:string
   return cells;
 }
 /** Read-only rendering keeps source positions through Markdown, lists, tables, and math. */
-export function SourceReaderText({text,kind,startOffset=0,highlights=[],footnotePrefix='source-footnote'}:ReaderProps&{kind?:string}) {
-  const lines=sourceLines(text,startOffset),blocks:ReactNode[]=[];
+export function sourceReaderBlocks({text,kind,startOffset=0,highlights=[],footnotePrefix='source-footnote'}:ReaderProps&{kind?:string}) {
+  const lines=sourceLines(text,startOffset),blocks:ReactNode[]=[],notes:ReactNode[]=[];
   const inline=(value:string,start:number)=><SourceReaderInline text={value} startOffset={start} highlights={highlights} footnotePrefix={footnotePrefix}/>;
-  const code=(value:string,start:number)=><pre><code><TextLeaf text={value} start={start} highlights={highlights}/></code></pre>;
+  const code=(value:string,start:number)=><pre key={start}><code><TextLeaf text={value} start={start} highlights={highlights}/></code></pre>;
   if(kind==='code') {
     const opening=text.match(/^\s*(?:```|~~~)[^\r\n]*(?:\r\n|\r|\n)/),closing=text.match(/(?:\r\n|\r|\n)[ \t]*(?:```|~~~)\s*$/);
     const from=opening?.[0].length??0,to=closing?.index??text.length;
-    return code(text.slice(from,to),startOffset+from);
+    const block=code(text.slice(from,to),startOffset+from);
+    return {inline:[block],body:[block],notes};
   }
   for(let i=0;i<lines.length;i++) {
     const line=lines[i]!,trimmed=line.text.trim();
@@ -112,7 +119,8 @@ export function SourceReaderText({text,kind,startOffset=0,highlights=[],footnote
       let end=i;
       while(end+1<lines.length&&(/^(?: {4}|\t)/.test(lines[end+1]!.text)||!lines[end+1]!.text.trim()&&/^(?: {4}|\t)/.test(lines[end+2]?.text??'')))end++;
       const from=line.start+footnote[0].length,to=lines[end]!.end;
-      blocks.push(<aside key={key} id={target} tabIndex={-1} className="source-reader-footnote" aria-label={uiText("Footnote {value0}",{value0: label})}><span className="source-reader-footnote-label">{label.replace(/^p\d+-/, '')}</span><SourceReaderText text={text.slice(from-startOffset,to-startOffset)} startOffset={from} highlights={highlights} footnotePrefix={footnotePrefix}/><button type="button" className="source-reader-footnote-back" aria-label={uiText("Back to footnote {value0} reference",{value0: label})} onClick={()=>{const reference=Array.from(document.querySelectorAll<HTMLAnchorElement>('a[data-footnote-reference]')).find(element=>element.dataset.footnoteReference===target);reference?.scrollIntoView({block:'center'});reference?.focus({preventScroll:true});}}>↩</button></aside>);
+      const note=<aside key={key} id={target} tabIndex={-1} className="source-reader-footnote" aria-label={uiText("Footnote {value0}",{value0: label})}><span className="source-reader-footnote-label">{label.replace(/^p\d+-/, '')}</span><SourceReaderText text={text.slice(from-startOffset,to-startOffset)} startOffset={from} highlights={highlights} footnotePrefix={footnotePrefix}/><button type="button" className="source-reader-footnote-back" aria-label={uiText("Back to footnote {value0} reference",{value0: label})} onClick={()=>{const reference=Array.from(document.querySelectorAll<HTMLAnchorElement>('a[data-footnote-reference]')).find(element=>element.dataset.footnoteReference===target);reference?.scrollIntoView({block:'center'});reference?.focus({preventScroll:true});}}>↩</button></aside>;
+      notes.push(note);blocks.push(note);
       i=end;continue;
     }
     if(trimmed.startsWith('$$')||trimmed.startsWith('\\[')) {
@@ -162,5 +170,11 @@ export function SourceReaderText({text,kind,startOffset=0,highlights=[],footnote
     while(end+1<lines.length&&lines[end+1]!.text.trim()&&!/^\s*(?:\$\$|\\\[|#{1,6}\s|[-*+]\s|\d+[.)]\s|>|```|~~~)/.test(lines[end+1]!.text)&&!divider(lines[end+1]!.text)&&!/^\s*\[\^[^\]]+\]:/.test(lines[end+1]!.text)&&!(lines[end+1]!.text.includes('|')&&separator(lines[end+2]?.text??'')))end++;
     blocks.push(<p key={key}>{inline(text.slice(line.start-startOffset,lines[end]!.end-startOffset),line.start)}</p>);i=end;
   }
-  return <div className="source-reader-text">{blocks}</div>;
+  return {inline:blocks,body:blocks.filter(block=>!notes.includes(block)),notes};
+}
+
+
+export function SourceReaderText(props:ReaderProps&{kind?:string}) {
+  const blocks=sourceReaderBlocks(props);
+  return props.kind==='code'?<>{blocks.inline}</>:<div className="source-reader-text">{blocks.inline}</div>;
 }

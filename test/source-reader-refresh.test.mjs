@@ -140,6 +140,8 @@ test('delayed enrichment refreshes headings and navigation without reloading or 
   const originalArticle=document.querySelector('.source-reader-document');
   const versions=document.querySelector('[aria-label="Reading version"]');
   await act(async()=>{versions.value='revision';versions.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  assert.equal(document.querySelector('.source-reader').classList.contains('has-revision-diff'),false,'Version selection starts in Changes applied');
+  await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Diff').click());
   const mountedContent=document.querySelector('.source-reader-content');
   assert.ok(document.querySelector('.source-reader').classList.contains('has-revision-diff'));
   assert.equal(mountedContent.hidden,true,'Diff occupies the reader while keeping its document mounted');

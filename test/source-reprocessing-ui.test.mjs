@@ -41,7 +41,8 @@ async function mount(t,{initial=null,history,remove,post,onReadingRevision,get,o
  const switchFile=async fileId=>act(async()=>root.render(React.createElement(SourceReprocessing,{...props,fileId,key:fileId})));
  const button=text=>[...document.querySelectorAll('button')].find(el=>el.textContent===text||el.getAttribute('aria-label')===text);
  const click=async el=>{assert.ok(el,'Expected control exists');await act(async()=>el.click());if(legacyDetails&&/^Review changes \(/.test(el.textContent)){const details=button('Detailed review');if(details)await act(async()=>details.click());}};
- return {button,click,requests,dom,switchFile};
+ const remount=async()=>act(async()=>root.render(React.createElement(component,{...props,key:Math.random()})));
+ return {button,click,requests,dom,switchFile,remount};
 }
 test('failed initial reprocessing render still closes its DOM and restores global descriptors',{timeout:5000},async t=>{
  const keys=['window','document','Node','NodeFilter','Element','HTMLElement','HTMLAnchorElement','HTMLInputElement','HTMLSelectElement','HTMLTextAreaElement','Range','DOMParser','InputEvent','MouseEvent','Event','CustomEvent','MutationObserver','getComputedStyle','getSelection','requestAnimationFrame','cancelAnimationFrame','innerWidth','innerHeight','IS_REACT_ACT_ENVIRONMENT'];
@@ -167,7 +168,7 @@ test('only explicit completed revision selection changes the reading version',as
  assert.deepEqual(readings,[null]);assert.equal(document.querySelector('.reprocessing-document'),null);
  const picker=document.querySelector('[aria-label="Reading version"]');assert.ok([...picker.options].some(option=>option.value===r.id));
  await act(async()=>{picker.value=r.id;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
- assert.equal(readings.at(-1).id,r.id);assert.ok(document.querySelector('.reprocessing-diff-review'));
+ assert.equal(readings.at(-1).id,r.id);assert.equal(document.querySelector('.reprocessing-diff-review'),null);
  await act(async()=>{picker.value='original';picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});assert.equal(readings.at(-1),null);
 });
 
@@ -191,7 +192,7 @@ test('a delayed reading version response cannot replace original after switching
  const r=fixture();r.fileId='f';r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;let finish,details=0;const readings=[];
  const env=await mount(t,{initial:r,onReadingRevision:value=>readings.push(value),get:async()=>{details++;return details>1?new Promise(resolve=>{finish=resolve;}):r;}});
  const picker=document.querySelector('[aria-label="Reading version"]');await act(async()=>{picker.value=r.id;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
- assert.equal(typeof finish,'function');await act(async()=>{picker.value='original';picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});await act(async()=>finish(r));assert.equal(readings.at(-1),null);assert.equal(readings.some(value=>value!==null),false);
+ assert.equal(typeof finish,'function');await act(async()=>{picker.value='original';picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});await act(async()=>finish(r));assert.equal(readings.at(-1),null);assert.equal(readings.some(value=>value?.id===r.id),true,'The already loaded snapshot is shown immediately before switching back');
 });
 
 test('switching source while a start request is pending ignores the old completion',async t=>{
@@ -513,13 +514,16 @@ test('active revisions cannot be deleted and legacy over-limit histories require
  const rows=document.querySelectorAll('.source-revision-list li');assert.equal(rows[1].querySelector('button').disabled,true);assert.equal(rows[2].querySelector('button').disabled,false);assert.match(rows[1].querySelector('button').title,/Stop processing/);
 });
 
-test('completed revision selection defaults to the diff and accepted version is an explicit toggle',async t=>{
+test('completed revision selection defaults to changes applied and diff is an explicit toggle',async t=>{
  const r=fixture();r.fileId='f';r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;
  const presentations=[],readings=[];
  const env=await mount(t,{initial:r,legacyDetails:false,onReadingRevision:value=>readings.push(value),onReviewOpenChange:(open,presentation)=>presentations.push({open,presentation})});
  const picker=document.querySelector('[aria-label="Reading version"]');
  await act(async()=>{picker.value=r.id;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
- assert.ok(document.querySelector('.source-revision-diff'),'Selecting a revision opens its Git-style comparison');
+ assert.equal(document.querySelector('.source-revision-diff'),null,'Selecting a revision opens its reading view');
+ assert.equal(env.button('Changes applied').getAttribute('aria-pressed'),'true');
+ assert.deepEqual([...document.querySelector('[aria-label="Revision view"]').querySelectorAll('button')].map(button=>button.textContent),['Changes applied','Diff']);
+ await env.click(env.button('Diff'));
  assert.equal(document.querySelector('[aria-label="Review corrections"]'),null,'Detailed review is optional');
  assert.equal(env.button('Diff').getAttribute('aria-pressed'),'true');
  assert.equal(document.querySelector('.revision-diff-notes').open,false);
@@ -538,6 +542,7 @@ test('inline diff decisions submit the whole footnote group and refresh the acce
  const readings=[],env=await mount(t,{initial:r,legacyDetails:false,onReadingRevision:value=>readings.push(value),post:async(entry,current)=>({...current,updatedAt:'2026-10-25T16:00:00Z',reprocessed:{...current.reprocessed,text:'Updated accepted footnotes'},patches:current.patches.map(patch=>({...patch,decision:entry.body.decisions.find(item=>item.patchId===patch.id)?.decision??patch.decision}))})});
  const picker=document.querySelector('[aria-label="Reading version"]');
  await act(async()=>{picker.value=r.id;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
+ await env.click(env.button('Diff'));
  const change=document.querySelector('.revision-diff-change');assert.ok(change);
  await env.click([...change.querySelectorAll('button')].find(button=>button.textContent==='Accept'));
  const request=env.requests.find(item=>item.method==='POST');
@@ -590,4 +595,22 @@ test('accepted view republishes the selected revision after evidence restores a 
  assert.equal(storage.get('noema:source-reading:v:f'),preferred.id,'Previewing a revision never changes the preference');
  assert.equal(picker.value,selected.id);assert.equal(env.button('Changes applied').getAttribute('aria-pressed'),'true');
  await env.click(env.button('Diff'));await env.click(env.button('Changes applied'));assert.equal(readings.at(-1).id,selected.id);
+});
+
+
+test('source view restores changes applied, diff and reading version after remount',async t=>{
+ const storage=new Map(),descriptor=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
+ Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)}});
+ t.after(()=>{if(descriptor)Object.defineProperty(globalThis,'localStorage',descriptor);else delete globalThis.localStorage;});
+ const r={...fixture(),fileId:'f',status:'completed'};r.report.chunksCompleted=r.report.chunksTotal;
+ const env=await mount(t,{initial:r,legacyDetails:false});
+ const picker=document.querySelector('[aria-label="Reading version"]');
+ await act(async()=>{picker.value=r.id;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
+ for(const mode of ['Changes applied','Diff','Changes applied']){
+  await env.click(env.button(mode));await env.remount();
+  assert.equal(env.button(mode).getAttribute('aria-pressed'),'true');
+  assert.equal(document.querySelector('[aria-label="Reading version"]').value,r.id);
+  assert.equal(!!document.querySelector('.source-revision-diff'),mode==='Diff');
+ }
+ assert.equal(storage.has('noema:source-reading:v:f'),false,'Remembering the current view does not change the preferred version');
 });

@@ -19,7 +19,7 @@ export function visibleReadingOffset(root:HTMLElement) {
  return leaf?Number(leaf.dataset.sourceStart):0;
 }
 export function jumpToReadingOffset(root:HTMLElement,rawOffset:number) {
- const leaves=Array.from(root.querySelectorAll<HTMLElement>('[data-source-start][data-source-end]'));
+ const leaves=Array.from(root.querySelectorAll<HTMLElement>('[data-source-start][data-source-end]')).sort((a,b)=>Number(a.dataset.sourceStart)-Number(b.dataset.sourceStart));
  const leaf=leaves.find(leaf=>Number(leaf.dataset.sourceEnd)>rawOffset)??leaves.at(-1);
  if(!leaf)return;
  let top=leaf.getBoundingClientRect().top;
@@ -75,7 +75,7 @@ export function SourceReadingContinuity({file,article,selectedOffset,highlights=
   const restore=()=>{
    if(interacted.current)return;
    if(viewportTop!==undefined){
-    const leaf=Array.from(root.querySelectorAll<HTMLElement>('[data-source-start][data-source-end]')).find(item=>Number(item.dataset.sourceEnd)>offset);
+    const leaf=Array.from(root.querySelectorAll<HTMLElement>('[data-source-start][data-source-end]')).sort((a,b)=>Number(a.dataset.sourceStart)-Number(b.dataset.sourceStart)).find(item=>Number(item.dataset.sourceEnd)>offset);
     if(leaf){window.scrollBy({top:leaf.getBoundingClientRect().top-viewportTop,behavior:'instant'});return;}
    }
    jumpToReadingOffset(root,offset);

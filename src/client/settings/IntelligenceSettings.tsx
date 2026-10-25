@@ -1,10 +1,11 @@
+import {PersonaComparisonStudio} from './PersonaComparisonStudio';
 import {InlineNotice} from '../notifications/InlineNotice';
 import {useEffect,useState,type FormEvent} from 'react';
 import {api} from '../api';
 import {Select} from '../components/Select';
 import {FormNotice,useFormNotice} from '../notifications/FormNotice';
 import {ProviderConnection} from './ProviderConnection';
-import {aiPersonas,defaultPersonaId,type BuiltinPersonaId} from '../../shared/ai-personas';
+import {aiPersonas,defaultPersonaId,defaultPersonaExpression,type PersonaExpression,type BuiltinPersonaId} from '../../shared/ai-personas';
 import {defaultPageEnrichmentPreferences,intelligenceModels,maxManualRequestsPerMinute,type AIPreferences,type ReasoningEffort} from '../../shared/intelligence';
 
 /** AI owns only its category's draft. Credential changes never replace it. */
@@ -17,14 +18,14 @@ export function IntelligenceSettings({active=true}:{active?:boolean}={}) {
   useEffect(()=>{
     if(!active||draft)return;
     let current=true;
-    void api.intelligence().then(value=>{if(current){setConnectionReady(value.configured);const next:AIPreferences={model:value.model,reasoningEffort:value.reasoningEffort,personaId:(value.personaId??defaultPersonaId) as BuiltinPersonaId,manualRequestsPerMinute:value.manualRequestsPerMinute,pageEnrichment:value.pageEnrichment??{...defaultPageEnrichmentPreferences}};setDraft(next);setSaved(next);setError('');}}).catch(()=>{if(current)setError('Could not load AI preferences. Reopen Settings or retry.');});
+    void api.intelligence().then(value=>{if(current){setConnectionReady(value.configured);const next:AIPreferences={model:value.model,reasoningEffort:value.reasoningEffort,personaId:(value.personaId??defaultPersonaId) as BuiltinPersonaId,personaExpression:value.personaExpression??defaultPersonaExpression,manualRequestsPerMinute:value.manualRequestsPerMinute,pageEnrichment:value.pageEnrichment??{...defaultPageEnrichmentPreferences}};setDraft(next);setSaved(next);setError('');}}).catch(()=>{if(current)setError('Could not load AI preferences. Reopen Settings or retry.');});
     return()=>{current=false;};
   },[active,draft,retry]);
   const changed=!!draft&&JSON.stringify(draft)!==JSON.stringify(saved);
   async function save(event:FormEvent){
     event.preventDefault();if(!draft||busy)return;
     const submitted=draft;setBusy(true);setError('');setSuccess('');
-    try{const value=await api.saveAIPreferences(submitted);const next:AIPreferences={model:value.model,reasoningEffort:value.reasoningEffort,personaId:value.personaId,manualRequestsPerMinute:value.manualRequestsPerMinute,pageEnrichment:value.pageEnrichment};setDraft(next);setSaved(next);setSuccess('AI preferences saved.');window.dispatchEvent(new Event('noema:persona-preferences'));}
+    try{const value=await api.saveAIPreferences(submitted);const next:AIPreferences={model:value.model,reasoningEffort:value.reasoningEffort,personaId:value.personaId,personaExpression:value.personaExpression??defaultPersonaExpression,manualRequestsPerMinute:value.manualRequestsPerMinute,pageEnrichment:value.pageEnrichment};setDraft(next);setSaved(next);setSuccess('AI preferences saved.');window.dispatchEvent(new Event('noema:persona-preferences'));}
     catch(reason){setError(reason instanceof Error?reason.message:'Could not save AI preferences.');}finally{setBusy(false);}
   }
   function patch(value:Partial<AIPreferences>){setDraft(current=>current?{...current,...value}:current);}
@@ -38,7 +39,7 @@ export function IntelligenceSettings({active=true}:{active?:boolean}={}) {
     {view==='connections'&&<><ProviderConnection provider="openai" onChange={value=>setConnectionReady(value.configured)}/><ProviderConnection provider="gemini"/></>}
     {draft&&<form className="ai-preferences-form" onSubmit={save}>
       {view==='overview'&&<><h4>Writing assistance</h4><div className="settings-overview-row"><span><strong>Writing style</strong><small>{aiPersonas.find(persona=>persona.id===(draft.personaId??defaultPersonaId))?.name}</small></span><button className="button" type="button" onClick={()=>setView('style')}>Choose writing style</button></div>{modelControl()}<h4>Background processing</h4><div className="settings-overview-row"><span><strong>Page enrichment</strong><small>Automatic titles, summaries and classification</small></span><button className="button" type="button" onClick={()=>setView('enrichment')}>Configure enrichment</button></div><button className="button" type="button" onClick={()=>setView('advanced')}>Advanced AI settings</button></>}
-      {view==='style'&&<fieldset className="ai-personas"><legend>Writing style</legend><p>Style for generated prose, shared across vaults. Factual standards stay independent.</p>{aiPersonas.map(persona=><label className="ai-persona-card" key={persona.id}><input type="radio" name="ai-persona" value={persona.id} checked={(draft.personaId??defaultPersonaId)===persona.id} disabled={busy} onChange={()=>patch({personaId:persona.id as BuiltinPersonaId})}/><span><strong>{persona.name}</strong><span>{persona.description}</span><small>“{persona.sample}”</small></span></label>)}</fieldset>}
+      {view==='style'&&<><div className="ai-setting-row"><label htmlFor="ai-persona-expression">Persona expression</label><Select id="ai-persona-expression" value={draft.personaExpression??defaultPersonaExpression} disabled={busy} onChange={event=>patch({personaExpression:event.target.value as PersonaExpression})}><option value="subtle">Subtle</option><option value="expressive">Expressive</option><option value="immersive">Immersive</option></Select></div><p>Expression shapes rhetorical method and organisation. Evidence, language, mathematical meaning and task purpose remain protected.</p><fieldset className="ai-personas"><legend>Writing style</legend><p>Style for generated prose, shared across vaults. Factual standards stay independent.</p>{aiPersonas.map(persona=><label className="ai-persona-card" key={persona.id}><input type="radio" name="ai-persona" value={persona.id} checked={(draft.personaId??defaultPersonaId)===persona.id} disabled={busy} onChange={()=>patch({personaId:persona.id as BuiltinPersonaId})}/><span><strong>{persona.name}</strong><span>{persona.description}</span><small>Illustrative profile sample: “{persona.sample}”</small></span></label>)}</fieldset><PersonaComparisonStudio active={active} modelSettings={{model:draft.model,reasoningEffort:draft.reasoningEffort}} expression={draft.personaExpression??defaultPersonaExpression} disabled={busy} onChoose={(personaId,personaExpression)=>patch({personaId,personaExpression})}/></>}
       {view==='enrichment'&&<><h4>Page enrichment</h4>{modelControl(true)}<p>Used for page titles, subjects, language and summaries. Higher effort may take longer and cost more.</p></>}
       {view==='advanced'&&<><h4>Advanced AI settings</h4>{modelControl()}<p>Higher effort may take longer and cost more.</p><div className="ai-setting-row"><label htmlFor="ai-manual-request-limit">Manual AI requests per minute</label><input id="ai-manual-request-limit" type="number" min={1} max={maxManualRequestsPerMinute} step={1} required value={draft.manualRequestsPerMinute||''} disabled={busy} onChange={event=>patch({manualRequestsPerMinute:Number(event.target.value)})}/></div><p>Shared across vaults; excludes background tasks.</p></>}
       <div className="intelligence-actions"><button className="button" disabled={busy||!changed}>Save AI preferences</button></div>

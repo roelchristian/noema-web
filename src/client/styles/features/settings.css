@@ -1238,3 +1238,18 @@
 @media (max-width: 600px) {
   .settings-overview-row { flex-wrap: wrap; }
 }
+
+.persona-studio { border-top: 1px solid var(--line); margin-top: 20px; padding-top: 16px; min-width: 0; }
+.persona-studio textarea { display: block; width: 100%; max-width: 100%; box-sizing: border-box; padding: 8px; color: var(--text); background: var(--surface-inset); border: 1px solid var(--control-border); border-radius: var(--radius-sm); resize: vertical; font: inherit; }
+.persona-studio fieldset { min-width: 0; }
+.persona-studio-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.persona-studio-choices label { display: flex; gap: 8px; align-items: center; overflow-wrap: anywhere; }
+.persona-studio-actions, .persona-studio-feedback { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 12px; }
+.persona-studio-results { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.persona-studio-results article { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.persona-studio-results h5 { font: inherit; font-weight: 600; margin-top: 0; }
+.persona-studio-output { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .persona-studio-results, .persona-studio-choices { grid-template-columns: minmax(0, 1fr); }
+  .persona-studio button, .persona-studio-choices label { min-height: var(--touch-target-size); }
+}

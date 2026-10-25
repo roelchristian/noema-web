@@ -4,7 +4,7 @@ import type {SourcePageVersion} from '../../shared/source-page.js';
 import {PageEnrichmentState} from './page-enrichment-state.js';
 import {PageHistory} from './page-history.js';
 import {resolvePersona} from './ai-personas.js';
-import {defaultPersonaId} from '../../shared/ai-personas.js';
+import {defaultPersonaId,defaultPersonaExpression,parsePersonaExpression,type PersonaExpression} from '../../shared/ai-personas.js';
 import {parsePageGenerationMetadata,type PageGenerationMetadata} from '../../shared/page-generation.js';
 import {sourcePagePrompt} from './source-page-prompt.js';
 import {sourceDocumentEntries,sourceNodeLabel,sourceNodeLocator} from '../../shared/source-document.js';
@@ -187,7 +187,7 @@ export class SourcePages {
     }
     return {fileId:file?.id,versions};
   }
-  prepare(vault:string,sourceId:string,body:Record<string,unknown>,defaultId=defaultPersonaId) {
+  prepare(vault:string,sourceId:string,body:Record<string,unknown>,defaultId=defaultPersonaId,defaultExpression:PersonaExpression=defaultPersonaExpression) {
     const source=this.knowledge.require(vault,sourceId);
     if(source.archived_at)throw new HttpError(409,'Restore this archived source before creating a page.');
     if(source.type!=='source')throw new HttpError(400,'Choose a Source entity.');
@@ -223,9 +223,10 @@ export class SourcePages {
     if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId))throw new HttpError(400,'Invalid generation request.');
     const storedPersona=this.store.get<DraftRow>('SELECT * FROM source_page_drafts WHERE request_id=? AND vault_id=?',revisionId??requestId,vault);
     const historical=parsePageGenerationMetadata(storedPersona?.generation_metadata)?.persona;
-    const resolved=resolvePersona(body.personaId??historical?.id??defaultId,body.personaId===undefined?historical?.version:undefined);
-    const persona={id:resolved.id,version:resolved.version,origin:resolved.origin};
-    const settings=body.personaId!==undefined?[sourceId,body.personaId,revisionId,focus,options,feedback,revisionMode]:revisionId?[sourceId,focus,options,revisionId,feedback,revisionMode]:body.options===undefined?[sourceId,focus]:[sourceId,focus,options];
+    let expression:PersonaExpression|undefined;try{expression=body.personaExpression===undefined?(body.personaId===undefined&&storedPersona?historical?.expression:defaultExpression):parsePersonaExpression(body.personaExpression);}catch{throw new HttpError(400,'Choose a supported persona expression.');}
+    const resolved=resolvePersona(body.personaId??historical?.id??defaultId,body.personaId===undefined&&storedPersona?(historical?.version??1):undefined,expression);
+    const persona={id:resolved.id,version:resolved.version,origin:resolved.origin,...(resolved.expression?{expression:resolved.expression}:{})};
+    const settings=body.personaExpression!==undefined?[sourceId,body.personaId,body.personaExpression,revisionId,focus,options,feedback,revisionMode]:body.personaId!==undefined?[sourceId,body.personaId,revisionId,focus,options,feedback,revisionMode]:revisionId?[sourceId,focus,options,revisionId,feedback,revisionMode]:body.options===undefined?[sourceId,focus]:[sourceId,focus,options];
     const fingerprint=createHash('sha256').update(JSON.stringify(sourceRevisionId?[settings,sourceRevisionId]:settings)).digest('hex');
     const previous=this.store.get<{page_id:string;fingerprint:string}>('SELECT page_id,fingerprint FROM source_page_creations WHERE request_id=? AND vault_id=?',requestId,vault);
     if(previous&&previous.fingerprint!==fingerprint)throw new HttpError(409,'This generation request has different generation settings. Start a new request.');
@@ -265,7 +266,7 @@ export class SourcePages {
       this.store.run(`INSERT INTO source_page_drafts (request_id,vault_id,source_id,fingerprint,source_hash,focus,options,title,language,blocks,status,activity_id,created_at,generation_metadata)
         VALUES (?,?,?,?,?,?,?,?,?,?,'pending',?,?,?)`,prepared.requestId,vault,prepared.sourceId,prepared.fingerprint,createHash('sha256').update(prepared.file.text).digest('hex'),prepared.focus,JSON.stringify({...prepared.options,sourceRevisionId:prepared.sourceRevisionId}),draft.title,language,JSON.stringify(blocks),recordedActivity,now(),JSON.stringify(metadata));
       if(prior) {
-        this.store.run("UPDATE source_page_drafts SET status='rejected',blocks='[]',focus='',options='{}',generation_metadata=NULL WHERE request_id=? AND vault_id=?",prior.request_id,vault);
+        this.store.run("UPDATE source_page_drafts SET status='rejected' WHERE request_id=? AND vault_id=?",prior.request_id,vault);
         if(prior.notification_id)this.store.run('DELETE FROM ai_notifications WHERE id=?',prior.notification_id);
       }
       return {sourceRevisionId:prepared.sourceRevisionId,persona:prepared.persona,id:prepared.requestId,title:draft.title,language,blocks,focus:prepared.focus,options:prepared.options};
@@ -287,7 +288,7 @@ export class SourcePages {
       this.store.run("UPDATE pages SET blocks=?,generation_metadata=?,creation_method='ai_generated',ai_status='ai_generated',summary_content_hash=NULL,revision=revision+1 WHERE id=? AND vault_id=?",JSON.stringify(blocks),row.generation_metadata??null,page.id,vault);
       this.store.run('INSERT INTO page_sources (page_id,source_id) VALUES (?,?)',page.id,sourceId);
       this.store.run('INSERT INTO source_page_creations (request_id,vault_id,source_id,fingerprint,page_id,created_at) VALUES (?,?,?,?,?,?)',requestId,vault,sourceId,row.fingerprint,page.id,now());
-      this.store.run("UPDATE source_page_drafts SET status='accepted',blocks='[]',focus='',options='{}',generation_metadata=NULL WHERE request_id=?",requestId);
+      this.store.run("UPDATE source_page_drafts SET status='accepted' WHERE request_id=?",requestId);
       if(row.notification_id)this.store.run('DELETE FROM ai_notifications WHERE id=?',row.notification_id);
       if(row.activity_id)this.store.run("UPDATE ai_activity SET object_kind='page',object_id=? WHERE id=?",page.id,row.activity_id);
       const origins=new PageEnrichmentState(this.store);
@@ -302,7 +303,7 @@ export class SourcePages {
     return this.store.transaction(()=>{
       if(this.store.get('SELECT 1 FROM source_page_creations WHERE request_id=? AND vault_id=? AND source_id=?',requestId,vault,sourceId))throw new HttpError(409,'This draft was already accepted. Accept again to recover and open the saved page.');
       const row=this.store.get<{notification_id:string|null}>('SELECT notification_id FROM source_page_drafts WHERE request_id=? AND vault_id=? AND source_id=?',requestId,vault,sourceId);
-      this.store.run("UPDATE source_page_drafts SET status='rejected',blocks='[]',focus='',options='{}',generation_metadata=NULL WHERE request_id=? AND vault_id=? AND source_id=? AND status='pending'",requestId,vault,sourceId);
+      this.store.run("UPDATE source_page_drafts SET status='rejected' WHERE request_id=? AND vault_id=? AND source_id=? AND status='pending'",requestId,vault,sourceId);
       if(row?.notification_id)this.store.run('DELETE FROM ai_notifications WHERE id=?',row.notification_id);
       return {ok:true};
     });

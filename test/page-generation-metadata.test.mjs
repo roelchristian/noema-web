@@ -36,11 +36,12 @@ async function fixture() {
  return {dir,filename,db,store,knowledge,pages,files,sources,source,stage,close(){files.close();db.close();rmSync(dir,{recursive:true,force:true});}};
 }
 
-test('generation snapshots survive acceptance, draft cleanup, edits, database reopen, and backup restoration',async()=>{
+test('generation snapshots survive acceptance, retained draft history, edits, database reopen, and backup restoration',async()=>{
  const env=await fixture();
  try {
   const options={...defaultSourcePageOptions,format:'critique',language:'English',detail:'brief',familiarity:'expert',beyondSources:true};
   const first=env.stage(options,'Compare the reasoning.'),second=env.stage(options,'Compare the reasoning.',{draftId:first.review.id,feedback:'Focus on the assumptions.',mode:'changes'});
+  const draftSnapshot={...env.store.get('SELECT * FROM source_page_drafts WHERE request_id=?',second.review.id)};
   const accepted=env.sources.accept('default',env.source.id,second.review.id),metadata=accepted.page.generationMetadata;
   assert.equal(accepted.page.creationMethod,'ai_generated');
   assert.equal(metadata.type,'source_page');assert.deepEqual(metadata.options,options);
@@ -49,8 +50,8 @@ test('generation snapshots survive acceptance, draft cleanup, edits, database re
   assert.deepEqual(metadata.revisionFeedback,['Focus on the assumptions.']);
   assert.match(metadata.instructions,/OUTPUT LANGUAGE: Write the complete page in en/);
   assert.deepEqual(env.sources.accept('default',env.source.id,second.review.id).page.generationMetadata,metadata);
-  const cleared=env.store.get('SELECT focus,options,generation_metadata FROM source_page_drafts WHERE request_id=?',second.review.id);
-  assert.deepEqual({...cleared},{focus:'',options:'{}',generation_metadata:null});
+  const retained=env.store.get('SELECT * FROM source_page_drafts WHERE request_id=?',second.review.id);
+  assert.deepEqual({...retained},{...draftSnapshot,status:'accepted'},'Acceptance preserves the complete immutable draft snapshot');
   const page=env.pages.update('default',accepted.page.id,{...accepted.page,title:'Edited group note'});
   assert.equal(page.aiStatus,'ai_generated_edited');assert.deepEqual(page.generationMetadata,metadata);
   const reopened=openDatabase(env.filename);

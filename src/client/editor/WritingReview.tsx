@@ -1,3 +1,5 @@
+import type {WritingAction} from '../../shared/editor-review';
+import {personaIdentityName,type PersonaIdentity} from '../../shared/ai-personas';
 import {t as uiText} from '../i18n';
 import {reviewTextEdits} from '../../shared/review-diff';
 import {useEffect,useRef,useState} from 'react';
@@ -16,7 +18,7 @@ function correctionDiff(original:string,replacement:string){
 }
 
 /** A suggestion lives beside its source block, outside the editable document. */
-export function WritingReview({loading,error,change,entities,remaining=0,stale=false,onAccept,onDismiss,onAcceptAll,onClose}:{loading?:boolean;error?:string;change?:WritingReviewChange;entities:Entity[];remaining?:number;stale?:boolean;onAccept:(change:WritingReviewChange,ids?:string[])=>string|null;onDismiss:()=>void;onAcceptAll?:()=>void;onClose:()=>void}){
+export function WritingReview({action,persona,loading,error,change,entities,remaining=0,stale=false,onAccept,onDismiss,onAcceptAll,onClose}:{action?:WritingAction;persona?:PersonaIdentity;loading?:boolean;error?:string;change?:WritingReviewChange;entities:Entity[];remaining?:number;stale?:boolean;onAccept:(change:WritingReviewChange,ids?:string[])=>string|null;onDismiss:()=>void;onAcceptAll?:()=>void;onClose:()=>void}){
   const close=useRef(onClose);close.current=onClose;
   useEffect(()=>{
     if(loading||error||change)return;
@@ -28,7 +30,9 @@ export function WritingReview({loading,error,change,entities,remaining=0,stale=f
   const selectedIds=change?.edits.filter(edit=>!excluded.has(edit.id)).map(edit=>edit.id)??[];
   const text=(segments:Segment[])=>segments.map(segment=>segment.entityId?segment.mentionText??entityMentionName(entities.find(entity=>entity.id===segment.entityId))??'':segment.text??'').join('');
   return <aside className={'writing-review-inline'+(change?' has-suggestion':!loading&&!error?' is-complete':'')} contentEditable={false} aria-label={uiText("AI writing review")} aria-busy={loading||undefined} onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();onClose();}}}>
+    <p>{action==='rewrite'?'Rewrite with Persona':action==='recast'?'Recast':action==='refine'?'Refine':'Proofread'}{persona&&` · ${personaIdentityName(persona)} · v${persona.version}${persona.expression?` · ${persona.expression}`:''}`}</p>
     {change?<>
+      <details><summary>Before and after</summary><p><strong>Before: </strong>{text(change.selected)}</p><p><strong>After: </strong>{text(reviewEditedSegments(change.selected,change.edits.filter(edit=>!excluded.has(edit.id))))}</p></details>
       <div className="writing-review-diff" aria-label={uiText("Suggested correction for {value0}",{value0: change.scope==='span'?'highlighted text':'this block'})}>{correctionDiff(text(change.selected),text(reviewEditedSegments(change.selected,change.edits.filter(edit=>!excluded.has(edit.id)))))}</div>
       <div className="writing-review-actions">
         <button type="button" className="writing-review-accept" disabled={stale||!selectedIds.length} onClick={()=>setAcceptError(onAccept(change,selectedIds)??'')}><Icon name="check"/>{selectedIds.length===change.edits.length?uiText("Accept"):uiText("Accept selected ({value0})",{value0: selectedIds.length})}</button>

@@ -24,7 +24,7 @@ export type Segment = TextStyle & ( { text: string; entityId?: never; mentionTex
 export function isEntityTaggingText(segment: Segment): segment is Extract<Segment, {text: string}> {
   return !segment.entityId && !segment.math && !segment.sourceReference && !segment.bibliographicReference && !segment.skipAutoTag;
 }
-export interface Block { column?: {id: string; index: 0 | 1}; semantic?: import('./semantic-blocks.js').SemanticKind; semanticGroup?: import('./semantic-blocks.js').SemanticGroup; id: string; type: BlockType; checked: boolean; content: Segment[]; rows?: Segment[][][]; imageId?: string; alt?: string }
+export interface Block { writingProvenance?:import('./editor-review.js').WritingProvenance[]; column?: {id: string; index: 0 | 1}; semantic?: import('./semantic-blocks.js').SemanticKind; semanticGroup?: import('./semantic-blocks.js').SemanticGroup; id: string; type: BlockType; checked: boolean; content: Segment[]; rows?: Segment[][][]; imageId?: string; alt?: string }
 export interface Vault { id: string; name: string; locked: boolean; protected: boolean; updated_at: string }
 export interface VaultDeletionPreview {
   vault:Vault; fingerprint:string; canDelete:boolean; blockers:string[];
@@ -82,6 +82,7 @@ export interface OrganizationContext { collection: string; folder: string }
 
 export interface IntelligenceStatus extends IntelligencePreferences {
   personaId?:string;
+  personaExpression?:import('./ai-personas.js').PersonaExpression;
   ttsEnabled: boolean;
   narration?: import('./narration.js').NarrationPreferences;
   ttsProvider?: import('./intelligence.js').SpeechProvider;

@@ -13,6 +13,7 @@ export const generationContracts = [
   {label:'entity stream',request:{kind:'entityScan',input,...stream}},
   {label:'explanation',request:{kind:'explanation',input}},
   {label:'reading explanation',request:{kind:'explanation',input,options:{language:'fr',familiarity:'beginner'},signal}},
+  {label:'persona preview',request:{kind:'personaPreview',input,personaId:'editor',personaExpression:'expressive',modelSettings:{model:'gpt-6-luna',reasoningEffort:'none'},signal}},
   {label:'review',request:{kind:'review',input}},
   {label:'source page',request:{kind:'sourcePage',input:JSON.stringify({options:{language:'en'},untrusted_source:{text:input}}),...stream}},
   {label:'source math',request:{kind:'sourceMath',input,background:true,...stream}},

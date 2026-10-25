@@ -153,7 +153,7 @@ test('source worker single and multiple synthetic excerpts exercise real editori
 test('credentials: write-only status, expiry, replacement, removal, persistence and bounds',async()=>{
   const secrets=new Secrets();let time=Date.now(),calls=0;
   let ai=new Intelligence(secrets,async()=>{calls++;return completed('OK');},()=>time);
-  assert.deepEqual(ai.status(),{configured:false,expiresAt:null,personaId:'oxford_don',ttsEnabled:false,ttsProvider:'kokoro',ttsVoice:'puck',narration:defaultNarrationPreferences,model:'gpt-5-mini',reasoningEffort:'low',manualRequestsPerMinute:5,pageEnrichment:{model:'gpt-6-luna',reasoningEffort:'none'}});
+  assert.deepEqual(ai.status(),{configured:false,expiresAt:null,personaId:'oxford_don',personaExpression:'expressive',ttsEnabled:false,ttsProvider:'kokoro',ttsVoice:'puck',narration:defaultNarrationPreferences,model:'gpt-5-mini',reasoningEffort:'low',manualRequestsPerMinute:5,pageEnrichment:{model:'gpt-6-luna',reasoningEffort:'none'}});
   for(const days of [0,366,1.5,'30',null])assert.throws(()=>ai.save({apiKey:key,days}),e=>e.status===400);
   assert.throws(()=>ai.save({apiKey:'bad'}),e=>e.status===400);
   const status=ai.save({apiKey:key});assert.equal(status.expiresAt,new Date(time+30*86400000).toISOString());
@@ -207,7 +207,7 @@ test('AI HTTP routes enforce CSRF, vault scope, revisions, lock state and privat
     await call('intelligence/preferences','PUT',{model:'gpt-6-astra',reasoningEffort:'none'},400);
     await call('intelligence/preferences','PUT',{model:'gpt-6-luna',reasoningEffort:'low'},403,{Origin:'https://evil.example'});
     const selection=await call('intelligence/preferences','PUT',{model:'gpt-6-luna',reasoningEffort:'low'});
-    assert.deepEqual(selection,{personaId:'oxford_don',ttsEnabled:false,ttsProvider:'kokoro',ttsVoice:'puck',narration:defaultNarrationPreferences,model:'gpt-6-luna',reasoningEffort:'low',manualRequestsPerMinute:5,pageEnrichment:{model:'gpt-6-luna',reasoningEffort:'none'}});
+    assert.deepEqual(selection,{personaId:'oxford_don',personaExpression:'expressive',ttsEnabled:false,ttsProvider:'kokoro',ttsVoice:'puck',narration:defaultNarrationPreferences,model:'gpt-6-luna',reasoningEffort:'low',manualRequestsPerMinute:5,pageEnrichment:{model:'gpt-6-luna',reasoningEffort:'none'}});
     await call('intelligence','PUT',{apiKey:key});const validated=await call('intelligence/validate','POST',{});
     assert.equal(validated.model,'gpt-6-luna');assert.equal(validated.reasoningEffort,'low');
     assert.equal(lastInput,'Connection test.');
@@ -281,7 +281,7 @@ test('model and effort preferences persist without changing or retrieving the AP
     let ai=new Intelligence(secrets,fetch,Date.now,intelligencePreferencesFor(new Store(db)));
     assert.deepEqual(ai.selection(),{model:'gpt-5-mini',reasoningEffort:'low'});
     ai.save({apiKey:key});const credential=structuredClone(secrets.value);
-    assert.deepEqual(ai.savePreferences({model:'gpt-6.1-sol',reasoningEffort:'high',apiKey:key,ttsVoice:'lewis'}),{personaId:'oxford_don',ttsEnabled:false,ttsProvider:'kokoro',ttsVoice:'lewis',narration:defaultNarrationPreferences,model:'gpt-6.1-sol',reasoningEffort:'high',manualRequestsPerMinute:5,pageEnrichment:{model:'gpt-6-luna',reasoningEffort:'none'}});
+    assert.deepEqual(ai.savePreferences({model:'gpt-6.1-sol',reasoningEffort:'high',apiKey:key,ttsVoice:'lewis'}),{personaId:'oxford_don',personaExpression:'expressive',ttsEnabled:false,ttsProvider:'kokoro',ttsVoice:'lewis',narration:defaultNarrationPreferences,model:'gpt-6.1-sol',reasoningEffort:'high',manualRequestsPerMinute:5,pageEnrichment:{model:'gpt-6-luna',reasoningEffort:'none'}});
     assert.deepEqual(secrets.value,credential);
     assert.ok(!JSON.stringify(db.prepare('SELECT * FROM metadata').all()).includes(key));
     db.close();db=openDatabase(filename);

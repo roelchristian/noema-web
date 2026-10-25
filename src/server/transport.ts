@@ -1,3 +1,4 @@
+import {parsePersonaPreview} from './modules/persona-preview.js';
 import {SourceMetadata} from './modules/source-metadata.js';
 import {bibliographyRoutes} from './routes/bibliography.js';
 import {kokoroStatus,downloadKokoro} from './modules/kokoro-speech.js';
@@ -13,7 +14,7 @@ import { fetchRemoteImage } from './modules/remote-image.js';
 import {vaultStorage} from './modules/vault-storage.js';
 import type {NetworkAccess} from './network-settings.js';
 import {sourcePageRoutes} from './routes/source-pages.js';
-import {reviewTexts,parseEditorReview} from './modules/editor-review.js';
+import {reviewTexts,parseEditorReview,writingAction} from './modules/editor-review.js';
 import {entityNeighborhood} from './modules/entity-neighborhood.js';
 import {entitySourceEvidence} from './modules/entity-source-evidence.js';
 import {EntityLifecycle} from './modules/entity-lifecycle.js';
@@ -154,13 +155,13 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           if(id && parts.length===5 && parts[3]==='reading-notes' && parts[4]==='explain' && method==='POST') {
             if(!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))throw new HttpError(415,'AI requests require JSON.');
             const body=await readBody(req);vaults.requireOpen(vault);
-            const prepared=sourceReading.prepareExplanation(vault,id,body,intelligence.personaSelection().id);
+            const prepared=sourceReading.prepareExplanation(vault,id,body,intelligence.personaSelection().id,intelligence.personaSelection().expression);
             if(prepared.saved)return send(200,prepared.saved);
             activityId=activity.start('block_explanation',intelligence.selection(),vault,prepared.ref.sourceId,'entity');
             const controller=new AbortController(),abort=()=>controller.abort();
             res.once('close',abort);
             try {
-              const explanation=await intelligence.generate({kind:'explanation',personaId:prepared.options.persona?.id,personaVersion:prepared.options.persona?.version,input:prepared.ref.excerpt,options:prepared.options,signal:controller.signal,onRequest:bytes=>activity.request(activityId!,bytes,null)});
+              const explanation=await intelligence.generate({kind:'explanation',personaId:prepared.options.persona?.id,personaVersion:prepared.options.persona?.version,personaExpression:prepared.options.persona?.expression,input:prepared.ref.excerpt,options:prepared.options,signal:controller.signal,onRequest:bytes=>activity.request(activityId!,bytes,null)});
               vaults.requireOpen(vault);
               if(controller.signal.aborted)throw new HttpError(409,'Explanation cancelled.');
               if(!explanation.trim()||readingNoteWordCount(explanation)>readingNoteMaxWords)throw new HttpError(502,'The explanation exceeded the 200-word reading note limit. Please try again.');
@@ -361,6 +362,17 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             } finally {res.off('close',abort);speechControllers.delete(controller);}
 
           }
+          if(parts.length===3&&id==='persona-preview'&&method==='POST') {
+            const preview=parsePersonaPreview(body),controller=new AbortController(),abort=()=>controller.abort();
+            activityId=activity.start('persona_preview',preview.modelSettings);
+            res.once('close',abort);
+            try {
+              const text=await intelligence.generate({kind:'personaPreview',...preview,signal:controller.signal,onRequest:bytes=>activity.request(activityId!,bytes,null)});
+              if(controller.signal.aborted)throw new HttpError(409,'Comparison preview cancelled.');
+              const persona=intelligence.personaSelection(preview.personaId,undefined,preview.personaExpression);
+              return send(200,{text,persona:{id:persona.id,version:persona.version,origin:persona.origin,expression:preview.personaExpression},modelSettings:preview.modelSettings});
+            }finally{res.off('close',abort);}
+          }
           if(parts.length===3&&id==='gemini') {
             if(method==='GET')return send(200,intelligence.geminiStatus());
             if(method==='PUT')return send(200,intelligence.saveGemini(body));
@@ -448,10 +460,16 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             }
             if(id && parts.length===4 && child==='backlinks' && method==='GET')return send(200,pages.backlinks(vault,id));
             if(id && parts.length===4 && child==='review' && method==='POST') {
-              const page=pages.requireEditable(vault,id),texts=reviewTexts(body.texts);
-              const output=await intelligence.generate({kind:'review',personaId:typeof body.personaId==='string'?body.personaId:undefined,input:JSON.stringify({untrusted_texts:texts}),onRequest:bytes=>activity.request(activityId!,bytes,page.revision)});
-              vaults.requireOpen(vault);pages.requireEditable(vault,id);
-              return send(200,{suggestions:parseEditorReview(output,texts)});
+              const page=pages.requireEditable(vault,id),texts=reviewTexts(body.texts),action=writingAction(body.action);
+              const persona=intelligence.personaSelection(body.personaId,undefined,body.personaExpression);
+              const controller=new AbortController(),abort=()=>controller.abort();res.once('close',abort);
+              try {
+                const output=await intelligence.generate({kind:'review',action,personaId:persona.id,personaVersion:persona.version,personaExpression:persona.expression,input:JSON.stringify({untrusted_texts:texts}),signal:controller.signal,onRequest:bytes=>activity.request(activityId!,bytes,page.revision)});
+                vaults.requireOpen(vault);const current=pages.requireEditable(vault,id);
+                if(controller.signal.aborted)throw new HttpError(409,'Writing proposal cancelled.');
+                if(current.revision!==page.revision)throw new HttpError(409,'Page changed during the proposal. Select the text again.');
+                return send(200,{suggestions:parseEditorReview(output,texts),persona:{id:persona.id,version:persona.version,origin:persona.origin,...(persona.expression?{expression:persona.expression}:{})}});
+              }finally{res.off('close',abort);}
             }
             if(id && parts.length===4 && child==='explain' && method==='POST') {
               const page=pages.requireEditable(vault,id);
@@ -460,11 +478,11 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
               const input=summaryInput({title:'',blocks},entityId=>entityMentionName(knowledge.find(vault,entityId)),false,true).trim();
               if(!input)throw new HttpError(400,'Select blocks containing text or equations to explain.');
               if(Buffer.byteLength(input,'utf8')>24000)throw new HttpError(400,'Select fewer blocks (at most 24,000 bytes of text).');
-              const persona=intelligence.personaSelection(body.personaId,typeof body.personaVersion==='number'?body.personaVersion:undefined);
-              const markdown=await intelligence.generate({kind:'explanation',personaId:persona.id,personaVersion:persona.version,input,onRequest:bytes=>activity.request(activityId!,bytes,page.revision)});
+              const persona=intelligence.personaSelection(body.personaId,typeof body.personaVersion==='number'?body.personaVersion:undefined,body.personaExpression);
+              const markdown=await intelligence.generate({kind:'explanation',personaId:persona.id,personaVersion:persona.version,personaExpression:persona.expression,input,onRequest:bytes=>activity.request(activityId!,bytes,page.revision)});
               vaults.requireOpen(vault);pages.get(vault,id);
               notifications.record(vault,id,'block_explanation');
-              return send(200,{markdown,persona:{id:persona.id,version:persona.version,origin:persona.origin}});
+              return send(200,{markdown,persona:{id:persona.id,version:persona.version,origin:persona.origin,...(persona.expression?{expression:persona.expression}:{})}});
             }
             if(id && parts.length===4 && child==='entity-review' && method==='POST') {
               const result=scans.review(vault,id,body);

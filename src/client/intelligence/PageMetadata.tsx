@@ -35,7 +35,7 @@ export function PageMetadata({page}:{page:Page}) {
       <h3 id="page-generation-heading">{uiText("Generation details")}</h3>
       {generation?<dl className="page-metadata-fields">
         <div><dt>{uiText("Type")}</dt><dd>{sourceGeneration?uiText(sourcePageFormats[sourceGeneration.options.format].label):uiText("Passage explanation")}</dd></div>
-        {generation.persona&&<div><dt>AI Persona</dt><dd>{personaIdentityName(generation.persona)} · v{generation.persona.version}</dd></div>}
+        {generation.persona&&<div><dt>AI Persona</dt><dd>{personaIdentityName(generation.persona)} · v{generation.persona.version}{generation.persona.expression&&` · ${generation.persona.expression}`}</dd></div>}
         {sourceGeneration&&<div><dt>{uiText("Length")}</dt><dd>{uiText(sourcePageChoices.detail.options[sourceGeneration.options.detail])}</dd></div>}
         <div><dt>{uiText("Output language")}</dt><dd>{generation.options.language||uiText("Match the source")}</dd></div>
         <div><dt>{uiText("Reader familiarity")}</dt><dd>{uiText(sourcePageChoices.familiarity.options[generation.options.familiarity])}</dd></div>

@@ -36,6 +36,7 @@
     "test/transliteration.test.mjs",
     "test/notification-reducer.test.mjs",
     "test/notification-workspace.test.mjs",
+    "test/writing-actions.test.mjs",
     "test/source-annotation-mapping.test.mjs"
   ],
   "dom": [
@@ -107,7 +108,9 @@
     "test/relationship-predicates.test.mjs",
     "test/notification-components.test.mjs",
     "test/notice-recovery-ui.test.mjs",
-    "test/notification-bridge.test.mjs"
+    "test/notification-bridge.test.mjs",
+    "test/writing-actions-ui.test.mjs",
+    "test/persona-comparison.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",
@@ -243,6 +246,7 @@
     "test/source-reprocessing-metadata-v2.test.mjs",
     "test/source-reprocessing-context.test.mjs",
     "test/source-reprocessing-optimization.test.mjs",
+    "test/persona-preview-http.test.mjs",
     "test/source-reading-revisions.test.mjs",
     "test/source-page-revisions.test.mjs"
   ]

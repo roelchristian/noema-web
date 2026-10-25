@@ -19,6 +19,7 @@ export interface EditorialEvidenceImage {page:number;mimeType:'image/png';base64
 type CommonRequest = {onRequest?:AIRequestObserver;background?:boolean;signal?:AbortSignal};
 /** One intent per request. Feature parsers remain with their existing owners. */
 export type GenerationRequest = CommonRequest & (
+  | {kind:'chat';input:string;instructions:string}
   | {kind:'validation'}
   | {kind:'summary';input:string}
   | {kind:'title';input:string}
@@ -85,6 +86,8 @@ export function generationPolicy(request:GenerationRequest,selections:Selections
     admission:{activeSlot,manual:!request.background},...overrides,
   });
   switch(request.kind) {
+    case 'chat':
+      return policy(()=>({instructions:request.instructions,input:request.input}),{activeSlot:'exclusive',maxOutputTokens:8192,maxOutputLength:24000,timeoutMs:90000});
     case 'validation':
       return policy(()=>({instructions:'Reply with OK.',input:'Connection test.'}),{activeSlot:'exclusive',maxOutputTokens:2048});
     case 'summary':

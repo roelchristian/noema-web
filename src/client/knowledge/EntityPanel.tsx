@@ -14,7 +14,7 @@ import {DisclosureSummary} from '../components/DisclosureSummary';
 import {TitleText} from '../components/TitleText';
 import {SourceInspectorStatus} from './SourceInspectorStatus';
 import {SourceLoadingProgress} from './SourceLoadingProgress';
-import {SummaryText} from '../intelligence/SummaryText';
+import {SummaryText,MarkdownText} from '../intelligence/SummaryText';
 import { PageIcon } from '../components/PageIcon';
 import { SourceAttachments } from './SourceAttachments';
 import {domainBreadcrumb} from './DomainPicker';
@@ -129,6 +129,7 @@ export function EntityPanel(props: EntityPanelProps) {
       {!inspector && props.onOpenHome && <div className="entity-preview-navigation"><p>{pageMentions.length} {uiText(pageMentions.length===1?"page":"pages")} · {connectionCount} {uiText(connectionCount===1?"connection":"connections")}</p><button type="button" className="button" onClick={() => props.onOpenHome?.(id)}>{uiText("Open entity homepage")}<Icon name="chevron"/></button></div>}
       {!inspector && tabNavigation}
       <div id="entity-tabpanel-overview" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-overview" hidden={tab !== 'overview'} tabIndex={0}>
+      {entity.type==='source'&&entity.overview?.content&&<section className="entity-detail-section" data-entity-overview tabIndex={-1}><h3>Entity overview</h3><MarkdownText text={entity.overview.content}/></section>}
       {entity.type==='source'&&<BibliographyEditor key={vaultId+':'+id+':bibliography-overview'} vaultId={vaultId} entity={entity} compact={inspector} editable={inspector} onOpenSource={onOpen} onUpdated={inspector?async()=>{await mutate(()=>api.entity(vaultId,id));}:onUpdated}/>}
       {inspector&&<>
         <SourceInspectorStatus files={entity.attachments??[]} vaultId={vaultId} onError={onError} onChange={file=>{
@@ -137,7 +138,7 @@ export function EntityPanel(props: EntityPanelProps) {
           void onUpdated().catch(onError);
         }}/>
         {attachment&&<SourceInspectorSummary key={attachment.id} name={attachment.generated_name||attachment.name} summary={attachment.summary}/>}
-        {entity.description&&<section className="entity-detail-section"><h3>{uiText("Description")}</h3><p className="entity-detail-description">{entity.description}</p></section>}
+        {entity.description&&<section className="entity-detail-section"><h3>{uiText("Description")}</h3><p className="entity-detail-description" data-entity-description tabIndex={-1}>{entity.description}</p></section>}
         <section className="entity-detail-section source-inspector-metadata"><h3>{uiText("Properties")}</h3>
           <dl className="entity-overview-properties">
             {!!subtypeNames.length&&<div><dt>{uiText("Type")}</dt><dd>{subtypeNames.join(' · ')}</dd></div>}
@@ -162,7 +163,7 @@ export function EntityPanel(props: EntityPanelProps) {
       {!inspector&&<>
       {!inspector&&entity.type==='source'&&<div className="entity-source-workflow"><button type="button" className="button" disabled={!!entity.archived_at||entity.inactive||entity.sourceStatus!=='ready'} onClick={()=>props.onCreatePageFromSource(entity)}><Icon name="sparkles"/>{uiText("Create page from source")}</button>{entity.sourceStatus!=='ready'&&<p className="section-hint">{entity.inactive?uiText("Retry source processing before creating a page."):uiText("Available once source processing finishes.")}</p>}</div>}
       {entity.type==='source'&&entity.attachments?.map(file=><div key={file.id}>{file.language&&<p className="section-hint">{uiText("Language:") + " "}{languageLabel(file.language)}</p>}{file.summary&&<div className="ai-summary-text"><SummaryText text={file.summary}/></div>}</div>)}
-      {entity.description && <p className="entity-detail-description">{entity.description}</p>}
+      {entity.description && <p className="entity-detail-description" data-entity-description tabIndex={-1}>{entity.description}</p>}
         {entity.type==='concept' && <section className="entity-detail-section"><h3>{uiText("Disciplines")}</h3><p className="section-hint">{entity.domainIds?.length ? entity.domainIds.map(domainBreadcrumb).join(' · ') : uiText("No disciplines selected.")}</p></section>}
         <section className="entity-detail-section"><h3>{uiText("Properties")}<span>{entity.properties.length}</span></h3>
           <EntityPropertyList active={tab==='overview'} definitions={schema.propertyDefinitions} key={vaultId + ':' + id} density="compact" vaultId={vaultId} entity={{...entity,propertyNames}} entities={entities} mention={mention} onSave={(input,propertyId)=>mutate(()=>api.saveProperty(vaultId,id,input,propertyId))} onRemove={propertyId=>mutate(()=>api.removeConnection(vaultId,id,'properties',propertyId))} onRefresh={()=>mutate(()=>api.entity(vaultId,id))}/>

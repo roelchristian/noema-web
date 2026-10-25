@@ -340,11 +340,12 @@ export class Intelligence {
       throw new HttpError(controller.signal.aborted?409:502,controller.signal.aborted?'Speech request stopped or timed out.':'The speech request failed. Please try again.');
     } finally {clearTimeout(timer);signal?.removeEventListener('abort',abort);this.speechRequests.delete(controller);this.speechPreviews.delete(controller);}
   }
-  async embed(input: string, onRequest?: AIRequestObserver, background=false): Promise<{embedding:number[];tokens:number}> {
-    const result=await this.embedBatch([input],onRequest,background);
+  async embed(input: string, onRequest?: AIRequestObserver, background=false, signal?:AbortSignal): Promise<{embedding:number[];tokens:number}> {
+    const result=await this.embedBatch([input],onRequest,background,signal);
     return {embedding:result.embeddings[0]!,tokens:result.tokens};
   }
-  async embedBatch(inputs:string[],onRequest?:AIRequestObserver,background=false):Promise<{embeddings:number[][];tokens:number}> {
+  async embedBatch(inputs:string[],onRequest?:AIRequestObserver,background=false,signal?:AbortSignal):Promise<{embeddings:number[][];tokens:number}> {
+    if(signal?.aborted)throw new HttpError(409,'Embedding request was cancelled.');
     if(!Array.isArray(inputs)||inputs.length===0||inputs.length>embeddingBatchMaxInputs)throw new HttpError(400,`Embedding batches must contain between 1 and ${embeddingBatchMaxInputs} inputs.`);
     if(inputs.some(input=>typeof input!=='string'||!input.trim()||Buffer.byteLength(input,'utf8')>8000))throw new HttpError(400,'Embedding input must contain text and be at most 8,000 UTF-8 bytes.');
     const bytes=inputs.reduce((total,input)=>total+Buffer.byteLength(input,'utf8'),0);
@@ -364,7 +365,10 @@ export class Intelligence {
     if(!background)this.reserveManualRequest(true);
     this.embeddingAttempts.push(now);
     if(background)this.backgroundEmbeddingAttempts.push(now);
-    const controller=new AbortController();this.embeddingRequests.add(controller);
+    const controller=new AbortController(),abort=()=>controller.abort();
+    signal?.addEventListener('abort',abort,{once:true});
+    if(signal?.aborted)controller.abort();
+    this.embeddingRequests.add(controller);
     if(background)this.backgroundEmbeddingRequests.add(controller);
     const timer=setTimeout(()=>controller.abort(),Math.min(45000,Date.parse(credential.expiresAt)-this.clock()));
     let trace: AIDebugTrace | undefined;
@@ -394,7 +398,7 @@ export class Intelligence {
       trace?.event('validation',{stage:'embedding',valid:true,vectorCount:embeddings.length,dimensions:1536});
       return {embeddings,tokens:Number.isSafeInteger(result.usage?.total_tokens)&&result.usage.total_tokens>=0?result.usage.total_tokens:0};
     }catch(error){trace?.error(error instanceof Error?error.message:'Embedding request failed.');if(error instanceof HttpError)throw error;throw new HttpError(502,'The embedding request failed or timed out. Please try again.');}
-    finally{clearTimeout(timer);this.embeddingRequests.delete(controller);this.backgroundEmbeddingRequests.delete(controller);}
+    finally{signal?.removeEventListener('abort',abort);clearTimeout(timer);this.embeddingRequests.delete(controller);this.backgroundEmbeddingRequests.delete(controller);}
   }
   enrichmentSelection(): IntelligencePreferences {return {...this.enrichmentPreferences};}
   async generatePageEnrichment(input:string,options:PageEnrichmentOptions,onRequest?:AIRequestObserver,background=false) {

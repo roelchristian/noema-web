@@ -15,5 +15,6 @@
   "styles/controls.css": 0,
   "search/archive-search.css": 0,
   "styles/features/calendar.css": 0,
-  "styles/features/notifications.css": 0
+  "styles/features/notifications.css": 0,
+  "styles/features/chat.css": 0
 }

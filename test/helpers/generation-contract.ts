@@ -4,6 +4,7 @@ const input='Synthetic note: a garden plan with $x^2$.',signal=new AbortControll
 const stream={signal,onDelta:(_delta:string)=>{}};
 /** Synthetic, labeled modes captured against main before replacing the positional API. */
 export const generationContracts = [
+  {label:'chat',request:{kind:'chat',input,instructions:'Synthetic neutral Chat instruction.'}},
   {label:'summary',request:{kind:'summary',input}},
   {label:'validation',request:{kind:'validation'}},
   {label:'title fallback',request:{kind:'title',input}},
@@ -28,6 +29,8 @@ export const generationContracts = [
 // Compile-only regressions: flags cannot create mixed intents or leak feature options.
 function checkedRequest(_request:GenerationRequest) {}
 function invalidRequests() {
+  // @ts-expect-error Chat cannot opt into personas.
+  checkedRequest({kind:'chat',input,instructions:'Grounded',personaId:'editor'});
   // @ts-expect-error Summaries cannot opt into personas.
   checkedRequest({kind:'summary',input,personaId:'conyo'});
   // @ts-expect-error Source preprocessing cannot opt into personas.

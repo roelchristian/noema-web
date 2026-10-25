@@ -41,7 +41,7 @@ export function EntityOverview({vaultId, entity, onSave, onRefresh, guidance}: {
       try {await onRefresh();} catch { /* Keep the original save error and the user's draft. */ }
     } finally {setSaving(false);}
   }
-  return <section className="eh-section eh-overview">
+  return <section className="eh-section eh-overview" data-entity-overview tabIndex={-1}>
     <h2>{uiText('Overview')} <button type="button" className="eh-text-action" onClick={() => setEditing(true)} hidden={editing}>{uiText(server.content ? 'Edit overview' : 'Write overview')}</button></h2>
     {editing ? <div className="eh-overview-editor">
       <p className="eh-writing-hint">{uiText(guidance ?? 'Write a synthesis in your own words. Markdown and math are supported.')}</p>

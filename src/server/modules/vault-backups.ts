@@ -1,3 +1,4 @@
+import {restoreChatHistory} from './chat-backup.js';
 import {remapPageLinks} from '../../shared/page-links.js';
 import {sourceMetadataFieldFingerprint,sourceMetadataCanonicalField,sourceMetadataBibliographicOwner} from './source-metadata.js';
 import {restoreMetadataEvidence} from './source-metadata-backup.js';
@@ -55,6 +56,9 @@ const entityScope='entity_id IN (SELECT id FROM entities WHERE vault_id=?)';
 // Explicit, versioned allowlist: credentials, global settings and activity are never archived.
 // Editorial evidence is retained, but restored revisions never resume paid background jobs.
 const tables={
+  chat_threads:{columns:'id,title,scope_json,created_at,updated_at',scope:'vault_id=?'},
+  chat_messages:{columns:'id,thread_id,sequence,payload',scope:'thread_id IN (SELECT id FROM chat_threads WHERE vault_id=?)'},
+  chat_evidence:{columns:'message_id,evidence_id,snapshot',scope:'message_id IN (SELECT m.id FROM chat_messages m JOIN chat_threads t ON t.id=m.thread_id WHERE t.vault_id=?)'},
   bibliographic_import_batches:{columns:'id,raw',scope:'vault_id=?'},
   bibliographic_records:{columns:'source_id,citation_key,entry_type,fields_json,provenance_json,raw_imports_json,revision',scope:'vault_id=?'},
   bibliographic_proposals:{columns:'id,source_id,revision,provider,fields_json,created_at',scope:'vault_id=?'},
@@ -193,7 +197,7 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table.startsWith('bibliographic_')||table.startsWith('source_metadata_')||table==='page_versions'||table==='collection_descriptions'||table==='folder_descriptions'||table.startsWith('smart_collection_')||table.startsWith('temporal_')||table==='property_provenance'||table==='entity_name_provenance'||table==='property_proposals'||table==='source_author_jobs'||table==='property_definitions'||table==='property_value_metadata'||table==='entity_overviews'||table==='entity_page_associations'||table==='page_page_associations'||table==='source_reading_locations'||table.startsWith('source_reprocessing')||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table.startsWith('chat_')||table.startsWith('bibliographic_')||table.startsWith('source_metadata_')||table==='page_versions'||table==='collection_descriptions'||table==='folder_descriptions'||table.startsWith('smart_collection_')||table.startsWith('temporal_')||table==='property_provenance'||table==='entity_name_provenance'||table==='property_proposals'||table==='source_author_jobs'||table==='property_definitions'||table==='property_value_metadata'||table==='entity_overviews'||table==='entity_page_associations'||table==='page_page_associations'||table==='source_reading_locations'||table.startsWith('source_reprocessing')||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     const splitSourceOwners=new Set<unknown>(),sourceOwners=new Set<unknown>(),legacyEntities=new Map(rows.entities.map(row=>[row.id,row]));
     const legacyProperties=[...rows.properties],legacyLinks=[...rows.page_sources];
     for(const file of rows.source_files) {
@@ -237,6 +241,7 @@ export class VaultBackups {
     };
     const citationIds=new Map<string,string>(),sourceEvidenceIds={generations:new Map<string,string>(),passages:new Map<string,string>()};
     const detachedPageLinks=new Map<string,string>();
+    const relationshipIds=ids(rows.relationships);
     const propertyIds=ids(rows.properties),pageIds=ids(rows.pages),entityIds=ids(rows.entities),folderIds=ids(rows.folders),collectionIds=ids(rows.collections),subtypeIds=ids(rows.entity_subtypes),imageIds=new Map<string,string>();
     const subtypeTypes=new Map(rows.entity_subtypes.map(row=>[row.id,row.type]));
     const ref=(map:Map<string,string>,value:unknown)=>{if(typeof value!=='string'||!map.has(value))throw invalid();return map.get(value)!;};
@@ -476,7 +481,7 @@ export class VaultBackups {
           importedDefinitions.set(oldId,remapped);
           insert('property_definitions',{vault_id:vault,id:oldId,definition_json:JSON.stringify(remapped)});
         }
-        for(const row of rows.relationships)insert('relationships',{id:randomUUID(),source_id:ref(entityIds,row.source_id),label:name(row,'label'),target_id:ref(entityIds,row.target_id)});
+        for(const row of rows.relationships)insert('relationships',{id:ref(relationshipIds,row.id),source_id:ref(entityIds,row.source_id),label:name(row,'label'),target_id:ref(entityIds,row.target_id)});
         const pages=new Pages(this.store,new Knowledge(this.store));
         for(const row of rows.pages) {
           if(row.icon!==null&&!isPageIconId(row.icon))throw invalid();
@@ -852,6 +857,7 @@ export class VaultBackups {
           json(row,'payload');timestamp(row,'created_at');
         }
         restorePageVersions(this.store,vault,rows.page_versions,{evidence:sourceEvidenceIds,pages:pageIds,entities:entityIds,files:restoredSourceFiles,images:imageIds,citations:citationIds,detachedEntities:detachedSources,detachedFiles,detachedPages:detachedPageLinks});
+        restoreChatHistory(this.store,vault,{threads:rows.chat_threads,messages:rows.chat_messages,evidence:rows.chat_evidence},{pages:pageIds,entities:entityIds,files:restoredSourceFiles,properties:propertyIds,relationships:relationshipIds,generations:sourceEvidenceIds.generations,passages:sourceEvidenceIds.passages});
         // Recompute after validation/remapping instead of trusting a supplied page fingerprint.
         syncReadingNotesCollection(this.store,vault);
         for(const id of pageIds.values())if(!this.store.get<{deleted_at:string|null}>('SELECT deleted_at FROM pages WHERE id=?',id)!.deleted_at)pages.get(vault,id);

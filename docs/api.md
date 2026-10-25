@@ -36,5 +36,6 @@ All routes are under `/api` and accept/return JSON. Send `X-Vault-Id` to select 
 - [Organization locations and memberships](organization.md#folders-and-collections)
 - [Source files](sources.md#source-file-api)
 - [Intelligence and page enrichments](intelligence.md#intelligence-and-page-summaries)
+- [Knowledge Chat](noema-chat.md#api)
 - [Search and embeddings](search.md#semantic-search-and-note-embeddings)
 - [Subjects and disciplines](knowledge-entities.md#subjects-and-disciplines)

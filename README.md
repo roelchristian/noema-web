@@ -39,6 +39,7 @@ PDF text extraction and OCR currently require macOS. AI credentials are stored i
 - [Sources and citations](docs/sources.md) — imports, reading, annotations, and processing.
 - [Vaults and backups](docs/vaults.md) — workspaces, access locks, export, restore, and deletion.
 - [Intelligence](docs/intelligence.md) — API key setup, AI features, and activity logs.
+- [Knowledge Chat](docs/noema-chat.md) — bounded research with inspectable evidence and local conversation history.
 - [Search and embeddings](docs/search.md) — text search, semantic search, and indexing.
 - [Development](docs/development.md) — architecture, data model, validation, and extension points.
 - [API reference](docs/api.md) — routes and feature-specific endpoints.

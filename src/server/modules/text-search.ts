@@ -67,14 +67,14 @@ export class TextSearch {
   }
   /** Passage-level lexical candidates for evidence retrieval. UI search below
    * deliberately keeps its existing one-result-per-source grouping. */
-  searchPassages(vault:string,query:unknown,limit=100):SemanticSearchResult[] {
+  searchPassages(vault:string,query:unknown,limit=100,options?:{pageIds?:string[];sourceIds?:string[];matchAny?:boolean}):SemanticSearchResult[] {
     this.vaults.requireOpen(vault);
     if(typeof query!=='string'||query.length>2000)throw new HttpError(400,'Use a search query up to 2,000 characters.');
     if(!Number.isInteger(limit)||limit<1||limit>10000)throw new HttpError(400,'Choose a search limit between 1 and 10,000.');
     const tokens=query.match(/[\p{L}\p{N}][\p{L}\p{N}\p{M}]*/gu)??[];
     if(!tokens.length)return [];
     if(tokens.length>128)throw new HttpError(400,'Use up to 128 search terms.');
-    const match=tokens.map((token,index)=>`"${token.replace(/"/g,'""')}"${index===tokens.length-1?'*':''}`).join(' AND ');
+    const match=tokens.map((token,index)=>`"${token.replace(/"/g,'""')}"${index===tokens.length-1?'*':''}`).join(options?.matchAny?' OR ':' AND ');
     this.passages.synchronize(vault);
     this.pageSegments.synchronize(vault);
     const sources=this.store.all<SourcePassage & {name:string;updated_at:string;relevance:number}>(`
@@ -86,10 +86,11 @@ export class TextSearch {
       JOIN source_files f ON f.id=p.file_id AND f.entity_id=p.source_id AND f.vault_id=p.vault_id
       JOIN entities e ON e.id=p.source_id AND e.vault_id=p.vault_id
       WHERE source_passages_fts MATCH ? AND p.vault_id=? AND f.admitted=1 AND e.type='source' AND e.inactive=0
+       ${options?.sourceIds?'AND p.source_id IN (SELECT value FROM json_each(?))':''}
       ORDER BY relevance,p.source_id,p.ordinal,p.id LIMIT ?
-    `,match,vault,limit).map<SemanticSearchResult>(passage=>({id:passage.source_id,kind:'entity',passageId:passage.id,title:passage.name,
+    `,match,vault,...(options?.sourceIds?[JSON.stringify(options.sourceIds)]:[]),limit).map<SemanticSearchResult>(passage=>({id:passage.source_id,kind:'entity',passageId:passage.id,title:passage.name,
       snippet:makeSearchSnippet(passage.text,query),updated_at:passage.updated_at,score:-passage.relevance,reference:passageReference(passage)}));
-    return [...sources,...this.pagePassages(vault,query,match,limit)].sort((a,b)=>b.score-a.score).slice(0,limit);
+    return [...sources,...this.pagePassages(vault,query,match,limit,options?.pageIds)].sort((a,b)=>b.score-a.score).slice(0,limit);
   }
   private pagePassages(vault:string,query:string,match:string,limit:number,pageIds?:string[],includeArchived=false):SemanticSearchResult[] {
     return this.store.all<PageSegment & {title:string;updated_at:string;relevance:number}>(`SELECT s.*,p.title,p.updated_at,bm25(page_segments_fts,3.0,1.0) AS relevance

@@ -1,3 +1,5 @@
+import {Chat} from './modules/chat.js';
+import {ChatRetrieval} from './modules/chat-retrieval.js';
 import {SourceMetadata} from './modules/source-metadata.js';
 import {SourceMetadataExtraction} from './modules/source-metadata-extraction.js';
 import {BibliographicMetadata} from './modules/bibliographic-metadata.js';
@@ -76,6 +78,7 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
   };
   const entityMatches=new EntityMatches(store,pages,knowledge);
   const embeddings=new Embeddings(store,pages,knowledge,vaults,intelligence,activity);
+  const chat=new Chat(store,intelligence,new ChatRetrieval(store,embeddings,vaults),vaults,activity);
   organizer.smart.setQueryEmbeddingProvider((vault,description)=>embeddings.queryEmbedding(vault,description));
   organizer.smart.setRuleGenerationProvider(async(vault,input)=>{
     const selection={...intelligence.selection(),reasoningEffort:'none' as const},id=activity.start('collection_rules',selection,vault);
@@ -103,7 +106,7 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
   let sourcePassageWorker: ReturnType<typeof setInterval> | undefined;
   let liturgicalWorker: ReturnType<typeof setInterval> | undefined;
   let sourceEnrichmentWorker: ReturnType<typeof setInterval> | undefined;
-  return { bibliography, store, speechCache, temporal, liturgical, entityDiscovery, intelligence, networkAccess, vaultDeletion, sourceFiles, sourcePageImages, sourceReading, backups, images, notifications, vaults, knowledge, pages, organizer, activity, enrichments, sourceReprocessing, scans, pageEnrichment, enrichmentScheduler, scheduleEnrichment, entityMatches, embeddings, sourcePassages, sourceEnrichments, sourcePages, sourcePageGeneration, searchSnippets, textSearch,
+  return { chat, bibliography, store, speechCache, temporal, liturgical, entityDiscovery, intelligence, networkAccess, vaultDeletion, sourceFiles, sourcePageImages, sourceReading, backups, images, notifications, vaults, knowledge, pages, organizer, activity, enrichments, sourceReprocessing, scans, pageEnrichment, enrichmentScheduler, scheduleEnrichment, entityMatches, embeddings, sourcePassages, sourceEnrichments, sourcePages, sourcePageGeneration, searchSnippets, textSearch,
     start() {
       enrichmentScheduler.start();
       liturgicalWorker=setInterval(()=>{void liturgical.tick().catch(()=>{});},1000);liturgicalWorker.unref();
@@ -118,6 +121,7 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
       embeddingWorker=setInterval(()=>{void embeddings.tick().catch(()=>{/* Durable job history records failures; never log note content. */});},1000);embeddingWorker.unref();
     },
     close() {
+      chat.close();
       clearInterval(liturgicalWorker);liturgical.close();
       clearInterval(sourceReprocessingWorker);sourceReprocessing.close();sourceReprocessingEvidence.close();enrichmentScheduler.dispose();clearInterval(sourceWorker);sourceFiles.close();sourcePageImages.close();clearInterval(sourcePassageWorker);clearInterval(sourceEnrichmentWorker);sourceEnrichments.close();clearInterval(cleanup);clearInterval(keyCleanup);clearInterval(embeddingWorker);embeddings.close();
     },

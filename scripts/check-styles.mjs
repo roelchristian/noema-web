@@ -6,7 +6,7 @@ const read=path=>readFile(new URL(path,root),'utf8');
 const strip=text=>text.replace(/\/\*[\s\S]*?\*\//g,'');
 const entry=strip(await read('styles.css'));
 const imports=[...entry.matchAll(/@import "\.\/styles\/(.+?)";/g)].map(match=>match[1]);
-assert.deepEqual(imports,['primitives.css','layout.css','features/editor.css','features/library.css','features/knowledge.css','features/sources.css','features/settings.css','features/dialogs.css','features/menus.css','features/tagging.css','features/calendar.css','features/notifications.css','semantics.css','controls.css'],'Keep the documented cascade order; update the ownership contract when adding a module');
+assert.deepEqual(imports,['primitives.css','layout.css','features/editor.css','features/library.css','features/knowledge.css','features/sources.css','features/settings.css','features/dialogs.css','features/menus.css','features/tagging.css','features/calendar.css','features/chat.css','features/notifications.css','semantics.css','controls.css'],'Keep the documented cascade order; update the ownership contract when adding a module');
 assert.equal(entry.replace(/@import[^;]+;/g,'').trim(),'','styles.css is only the entrypoint; put rules in their owner');
 const files=['styles/tokens.css','styles/fonts.css','search/archive-search.css',...imports.map(path=>'styles/'+path)];
 // Explicit budgets preserve existing art/editor colours while stopping growth.

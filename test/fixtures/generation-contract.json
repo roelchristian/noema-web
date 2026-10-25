@@ -267,5 +267,19 @@
     },
     "promptDigest": "f65d43db48928c0bac485468f8261894cc4da83adf0e9478a05e154ddc300fbf",
     "bytes": 1434
+  },
+  "chat": {
+    "policy": {
+      "model": "gpt-5-mini",
+      "store": false,
+      "max_output_tokens": 8192,
+      "reasoning": {
+        "effort": "low"
+      },
+      "tools": [],
+      "tool_choice": "none"
+    },
+    "promptDigest": "96b68882ac132456617726351238a6e05bf27e3c67f5589579cd5adf4fd89fc9",
+    "bytes": 76
   }
 }

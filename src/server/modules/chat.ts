@@ -28,6 +28,33 @@ export function validateChatClaims(output:string,evidence:ChatEvidence[]):ChatCl
   return {text:claim.text.trim(),attribution:claim.attribution,citationIds:[...claim.citationIds]};
  });
 }
+/** Extract complete claim objects from provider JSON; incomplete strings never leave the server. */
+export function chatClaimStream(onClaim:(value:unknown)=>void) {
+ let buffer='',cursor=0,started=false,depth=0,inString=false,escaped=false,rowStart=-1,count=0,separator=false,ended=false;
+ return (delta:string)=>{
+  buffer+=delta;
+  if(buffer.length>24000)throw invalid();
+  if(!started){const prefix=/^\s*\{\s*"claims"\s*:\s*\[/.exec(buffer);if(!prefix)return;cursor=prefix[0].length;started=true;}
+  for(;cursor<buffer.length;cursor++) {
+   const char=buffer[cursor];
+   if(ended)return; // The complete response still has to pass the authoritative validator.
+   if(rowStart<0) {
+    if(/\s/.test(char))continue;
+    if(char===']'){ended=true;continue;}
+    if(separator){if(char!==',')throw invalid();separator=false;continue;}
+    if(char!=='{'||count>=12)throw invalid();
+    rowStart=cursor;depth=1;continue;
+   }
+   if(inString){if(escaped)escaped=false;else if(char==='\\')escaped=true;else if(char==='"')inString=false;continue;}
+   if(char==='"'){inString=true;continue;}
+   if(char==='{'||char==='[')depth++;
+   else if(char==='}'||char===']') {
+    depth--;
+    if(depth===0){let row:unknown;try{row=JSON.parse(buffer.slice(rowStart,cursor+1));}catch{throw invalid();}onClaim(row);count++;rowStart=-1;separator=true;}
+   }
+  }
+ };
+}
 export class Chat {
  readonly storage:ChatStorage;
  private running=new Map<string,{controller:AbortController;threadId?:string}>();
@@ -65,7 +92,7 @@ export class Chat {
   const item=this.running.get(JSON.stringify([vault,requestId]));item?.controller.abort();return {cancelled:!!item};
  }
  close(){for(const item of this.running.values())item.controller.abort();this.running.clear();}
- async submit(vault:string,body:Record<string,unknown>,options:{signal?:AbortSignal;onEvidence?:(evidence:ChatEvidence[])=>void}={}):Promise<ChatResult> {
+ async submit(vault:string,body:Record<string,unknown>,options:{signal?:AbortSignal;onThread?:(threadId:string)=>void;onEvidence?:(evidence:ChatEvidence[],threadId?:string)=>void;onClaim?:(claim:ChatClaim)=>void}={}):Promise<ChatResult> {
   this.vaults.requireOpen(vault);
   if(typeof body.question!=='string'||!body.question.trim()||body.question.length>2000||Buffer.byteLength(body.question)>8000)throw new HttpError(400,'Enter a question up to 2,000 characters.');
   if(typeof body.requestId!=='string'||!/^[a-zA-Z0-9_-]{1,100}$/.test(body.requestId))throw new HttpError(400,'Invalid Chat request ID.');
@@ -88,7 +115,7 @@ export class Chat {
      const pointer=JSON.parse(saved.result_json) as {messageId:string;diagnostics:ChatResult['diagnostics'];activityId?:string;usage?:ChatResult['usage']};
      const previous=this.thread(vault,saved.thread_id).messages.find(message=>message.id===pointer.messageId);
      if(previous&&previous.evidence?.every(item=>item.status==='current')) {
-      options.onEvidence?.(structuredClone(previous.evidence??[]));return {message:previous,threadId:saved.thread_id,diagnostics:pointer.diagnostics,activityId:pointer.activityId,usage:pointer.usage};
+      options.onEvidence?.(structuredClone(previous.evidence??[]),saved.thread_id);return {message:previous,threadId:saved.thread_id,diagnostics:pointer.diagnostics,activityId:pointer.activityId,usage:pointer.usage};
      }
      throw new HttpError(409,'Saved evidence changed. Send a fresh request to retrieve it again.');
     }
@@ -127,6 +154,7 @@ export class Chat {
     });
     this.storage.append(vault,threadId,[{id:randomUUID(),role:'user',text:question,createdAt:new Date().toISOString(),mentions:current,status:'completed'}]);userSaved=true;
     this.running.set(key,{controller,threadId});
+    options.onThread?.(threadId);
    }
    const history=thread?.messages.filter(message=>message.role==='user').slice(-3).map(message=>message.text)??(Array.isArray(body.previousQuestions)?body.previousQuestions.filter((value):value is string=>typeof value==='string'&&value.length<=2000).slice(-3):[]);
    const query=[...history.slice(-2),question].join('\n').slice(-4000);
@@ -134,11 +162,21 @@ export class Chat {
    // Registry snapshots are bounded and copied before provider access. Never accept coordinates from the model.
    const registry=this.retrieval.validate(vault,structuredClone(retrieved.evidence)).filter(item=>item.status==='current').slice(0,24).map((item,index)=>({...item,id:`E${index+1}`}));
    if(registry.reduce((total,item)=>total+Buffer.byteLength(item.excerpt,'utf8'),0)>64000)throw new HttpError(502,'Selected evidence exceeded the Chat context limit.');
+   // Send the trusted registry before generation so the UI can report progress.
+   if(options.onClaim)options.onEvidence?.(structuredClone(registry),threadId);
+   const streamed:ChatClaim[]=[];
+   const receive=options.onClaim?chatClaimStream(row=>{
+    guard();
+    const current=this.retrieval.validate(vault,registry);
+    if(current.some(item=>item.status!=='current'))throw new HttpError(409,'The evidence changed while answering. Retrieve it again.');
+    const [claim]=validateChatClaims(JSON.stringify({claims:[row]}),current);
+    streamed.push(claim);options.onClaim!(structuredClone(claim));
+   }):undefined;
    let claims:ChatClaim[];
    if(!registry.length)claims=[{text:'I could not establish this from the selected material. A limited search does not establish that the vault contains no evidence.',attribution:'unestablished',citationIds:[]}];
    else {
     if(this.activity)activityId=this.activity.start('chat',this.intelligence.selection(),vault);
-    const output=await this.intelligence.generate({kind:'chat',input:JSON.stringify({question,previousQuestions:history,scope,mentions,evidence:registry}),instructions,signal:controller.signal,onRequest:bytes=>{
+    const output=await this.intelligence.generate({kind:'chat',input:JSON.stringify({question,previousQuestions:history,scope,mentions,evidence:registry}),instructions,signal:controller.signal,onDelta:receive,onRequest:bytes=>{
      guard();if(!activityId||!this.activity)return;
      // Usage-only observer: even opt-in full diagnostics never receive evidence or transcript content.
      const observer=this.activity.request(activityId,bytes,null);return {usage:observer.usage};
@@ -146,6 +184,7 @@ export class Chat {
     guard();const current=this.retrieval.validate(vault,registry);
     if(current.some(item=>item.status!=='current'))throw new HttpError(409,'The evidence changed while answering. Retrieve it again.');
     claims=validateChatClaims(output,current);
+    if(streamed.some((claim,index)=>JSON.stringify(claim)!==JSON.stringify(claims[index])))throw invalid();
    }
    guard();
    const now=new Date().toISOString(),message:ChatMessage={id:randomUUID(),role:'assistant',text:claims.map(claim=>claim.text).join('\n\n'),createdAt:now,claims,evidence:registry,status:'completed'};
@@ -156,8 +195,8 @@ export class Chat {
     this.store.run("UPDATE chat_requests SET status='completed',result_json=? WHERE vault_id=? AND request_id=?",JSON.stringify({messageId:message.id,diagnostics:{passes:retrieved.passes,evidenceCount:registry.length,depth:retrieved.depth},activityId,usage}),vault,body.requestId as string);
    }
    guard();
-   // Evidence and prose are separate events, only after all claims pass validation.
-   options.onEvidence?.(structuredClone(registry));
+   // Only a fully validated, completed answer reaches history.
+   if(!options.onClaim)options.onEvidence?.(structuredClone(registry),threadId);
    return {message,threadId,diagnostics:{passes:retrieved.passes,evidenceCount:registry.length,depth:retrieved.depth},activityId,usage};
   } catch(error) {
    if(body.temporary!==true) {

@@ -10,13 +10,21 @@ Chat is a read-only research view of the current vault. Open it from the sidebar
 4. **Synthesis:** automatic comparison/disagreement detection or **Search more thoroughly**, up to three deterministic retrieval passes, bounded adjacent/chapter context, document diversity and separate structured-evidence budgets. No model-directed planning loop or retrieval tools.
 5. **History and refinement:** vault-isolated SQLite threads, temporary chats, rename/delete, cancellation and replay protection, stale/deleted evidence checks, usage/cost reporting, backup restoration, accessible keyboard and touch interactions.
 
+## Conversation inbox
+
+While Chat is open, a searchable inbox on the left lists saved conversations in date groups, with the active conversation highlighted. Each row shows its retrieval scope and last-updated date. New chat, rename and delete remain available; temporary conversations stay out of history. On narrow screens, **Show conversations** opens the inbox in a modal drawer with keyboard focus management. Conversation messages scroll independently from history, and streaming follows the answer only while the reader stays near the bottom. A **Latest messages** button returns to the end without moving readers who have scrolled up. The messaging layout uses theme-derived conversation bubbles and selection surfaces, including dark mode; attribution labels stay visible for interpretations and unestablished claims. Message, evidence and drawer transitions respect reduced-motion preferences.
+
+## Refresh continuity
+
+For saved chats, this browser tab remembers whether Chat was open, the selected thread and scope, unsent draft, resolved mentions, search depth and message scroll position. Refresh reloads the transcript from the server before restoring the reading position. Session data is isolated by vault and cleared on explicit Chat dismissal or vault lock. Temporary chats never write session content. A refreshed in-flight answer is not automatically sent again; incomplete provider text is discarded and the persisted conversation remains available. Browser storage failures leave Chat usable.
+
 ## Evidence and answer boundaries
 
 Evidence kinds distinguish imported text, notes, structured facts and entity overviews. Note origin additionally distinguishes recorded authored, generated and mixed contributions. Generated material is secondary evidence; a stored relationship reports what the vault records, not historical proof. Claims carry supported, inferred, or unestablished attribution.
 
 Source evidence cites the canonical original extraction (including its stable math normalization), not editorial reprocessing derivatives. The current source reader keeps those derivatives separate; a failed editorial pass cannot promote its partial text into Chat evidence. Source hash, passage generation and readiness changes invalidate recorded original-extraction evidence.
 
-The server creates evidence IDs and exact locators. It validates the complete provider response and rechecks evidence before publishing any answer. The SSE transport sends evidence metadata and the validated answer as separate events. Provider token deltas are deliberately buffered: unvalidated partial claims are never displayed. Citation validation proves registry membership and anchor freshness; it cannot prove semantic entailment or a model's attribution judgment.
+The server creates evidence IDs and exact locators. It streams provider output and publishes each complete claim after validating its citation IDs and rechecking evidence freshness. The SSE transport sends the saved thread identity before retrieval, evidence metadata after retrieval, then claim events during generation, followed by the completely validated answer. Incomplete JSON and unvalidated claims stay on the server. The UI marks the growing answer as in progress and clears it on interruption, invalid output or changed evidence. Only a fully completed, validated answer is saved to history. Citation validation proves registry membership and anchor freshness; it cannot prove semantic entailment or a model's attribution judgment.
 
 Every turn retrieves again. A small number of prior user questions may resolve conversational context; prior assistant answers never enter the evidence registry. Evidence text, titles, mention text and questions are untrusted data in the prompt. Chat has no SQL generation, tools, web access, autonomous agents, imports, tasks, metadata editing, or knowledge write endpoints. Thread CRUD changes conversation storage only. Chat tables have no FTS/vector index or knowledge-corpus triggers.
 
@@ -40,7 +48,7 @@ All Chat routes require `X-Noema-Request: 1`, the selected vault's `X-Vault-Id`,
 | --- | --- | --- |
 | GET / POST | `/api/chat/threads` | List history / create a conversation with a validated scope |
 | GET / PUT / DELETE | `/api/chat/threads/:id` | Read history with current evidence status / rename / delete conversation storage |
-| POST | `/api/chat/messages` | Submit `ChatSubmit`; SSE evidence metadata followed by a completely validated answer |
+| POST | `/api/chat/messages` | Submit `ChatSubmit`; SSE saved thread identity, evidence metadata, validated claim events during generation, then a completed answer |
 | POST | `/api/chat/cancel` | Abort a request using `{requestId}` |
 | POST | `/api/chat/evidence` | Revalidate up to 24 saved evidence snapshots before inspection or navigation |
 

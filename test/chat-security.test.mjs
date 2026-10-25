@@ -48,10 +48,10 @@ test('transport emits validated evidence separately before final claims and scop
  assert.equal(f.store.get('SELECT count(*) n FROM chat_threads').n,0);
 });
 
-test('malformed provider citations return generic error with no partial evidence, text or history',async t=>{
+test('malformed provider citations return a stream error without exposing invalid claims or saving an answer',async t=>{
  const f=await httpFixture(t,async()=>JSON.stringify({claims:[{text:'INVENTED_PROVIDER_TEXT',attribution:'supported',citationIds:['E999']}]}));
- const response=await f.request('messages','POST',{question:'grace',scope:{kind:'page',id:f.myNote.id},requestId:randomUUID()});assert.equal(response.status,502);
- const body=await response.text();assert.doesNotMatch(body,/INVENTED_PROVIDER_TEXT|Grace is not|E999/);assert.match(response.headers.get('content-type'),/application\/json/);
+ const response=await f.request('messages','POST',{question:'grace',scope:{kind:'page',id:f.myNote.id},requestId:randomUUID()});assert.equal(response.status,200);
+ const body=await response.text();assert.doesNotMatch(body,/INVENTED_PROVIDER_TEXT|E999/);assert.match(response.headers.get('content-type'),/text\/event-stream/);assert.match(body,/"type":"error"/);assert.doesNotMatch(body,/"type":"claim"|"type":"answer"/);
  const history=f.store.all('SELECT payload FROM chat_messages');assert.ok(history.every(row=>!row.payload.includes('INVENTED_PROVIDER_TEXT')));
  assert.ok(history.every(row=>JSON.parse(row.payload).role==='user'||JSON.parse(row.payload).status==='failed'));
 });
@@ -134,4 +134,36 @@ test('Chat and Persona comparison previews share foreground admission rather tha
  const preview={kind:'personaPreview',input:'Synthetic user-authored comparison.',personaId:'socratic',personaExpression:'expressive',modelSettings:{model:'gpt-5-mini',reasoningEffort:'low'},signal:new AbortController().signal},chat={kind:'chat',input:'Bounded evidence.',instructions:'Neutral Chat instructions.',signal:new AbortController().signal};
  const activePreview=ai.generate(preview);await assert.rejects(()=>ai.generate(chat),GenerationAdmissionError);assert.equal(calls,1);release();await activePreview;
  const activeChat=ai.generate(chat);await assert.rejects(()=>ai.generate(preview),GenerationAdmissionError);assert.equal(calls,2);release();await activeChat;
+});
+
+test('HTTP streams a checked claim while generation is still pending, then commits the final answer',async t=>{
+ let finish,ready;const started=new Promise(resolve=>ready=resolve);
+ const f=await httpFixture(t,async request=>{
+  const claim={text:'The selected source records grace.',attribution:'supported',citationIds:['E1']},output=JSON.stringify({claims:[claim]});
+  request.onDelta(output.slice(0,-2));ready();await new Promise(resolve=>finish=resolve);request.onDelta(']}');return output;
+ });
+ const response=await f.request('messages','POST',{question:'grace',scope:{kind:'source',id:f.primary.id},requestId:randomUUID()});
+ await started;const reader=response.body.getReader(),decoder=new TextDecoder();let text='';
+ try {
+  while(!text.includes('"type":"claim"')){const part=await reader.read();assert.equal(part.done,false);text+=decoder.decode(part.value,{stream:true});}
+  assert.match(text,/"type":"thread"/);assert.match(text,/"type":"evidence"/);assert.doesNotMatch(text,/"type":"answer"/);
+  assert.equal(f.store.get("SELECT count(*) n FROM chat_messages WHERE json_extract(payload,'$.role')='assistant'").n,0);
+  finish();for(;;){const part=await reader.read();if(part.done)break;text+=decoder.decode(part.value,{stream:true});}
+  assert.match(text,/"type":"answer"/);assert.equal(f.store.get("SELECT count(*) n FROM chat_messages WHERE json_extract(payload,'$.role')='assistant'").n,1);
+ }finally{finish?.();reader.releaseLock();}
+});
+
+test('Chat requests provider streaming and receives text before the final provider envelope',async()=>{
+ const {Intelligence}=await import('../src/server/modules/intelligence.ts');
+ const secret={value:null,read(){return this.value;},write(value){this.value=value;},remove(){this.value=null;}};
+ let stream,payload;const encoder=new TextEncoder(),deltas=[];
+ const ai=new Intelligence(secret,async(_url,options)=>{payload=JSON.parse(options.body);return new Response(new ReadableStream({start(controller){stream=controller;}}),{headers:{'Content-Type':'text/event-stream'}});});
+ ai.save({apiKey:'sk-synthetic-chat-test-never-a-real-key'});
+ const text=JSON.stringify({claims:[{text:'A bounded claim.',attribution:'unestablished',citationIds:[]}]});
+ const pending=ai.generate({kind:'chat',input:'Synthetic evidence',instructions:'Neutral Chat',onDelta:delta=>deltas.push(delta)});
+ const event=value=>stream.enqueue(encoder.encode('data: '+JSON.stringify(value)+'\n\n'));
+ event({type:'response.output_text.delta',delta:text,item_id:'message-1',output_index:0,content_index:0});
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(payload.stream,true);assert.equal(deltas.join(''),text);
+ event({type:'response.completed',response:{status:'completed',output:[{type:'message',content:[{type:'output_text',text}]}]}});stream.close();
+ assert.equal(await pending,text);
 });

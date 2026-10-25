@@ -9,4 +9,4 @@ export interface ChatMessage {id:string;role:'user'|'assistant';text:string;crea
 export interface ChatThread {id:string;vaultId:string;title:string;scope:ChatScope;createdAt:string;updatedAt:string;messages:ChatMessage[]}
 export interface ChatSubmit {question:string;scope:ChatScope;mentions?:ChatMention[];contextMentions?:ChatMention[];threadId?:string;temporary?:boolean;deep?:boolean;previousQuestions?:string[];requestId:string}
 export interface ChatResult {message:ChatMessage;threadId?:string;diagnostics:{passes:number;evidenceCount:number;depth:'standard'|'deep'};activityId?:string;usage?:{inputTokens:number|null;outputTokens:number|null;estimatedCost:number|null;pricingVersion:string|null}}
-export type ChatEvent={type:'evidence';evidence:ChatEvidence[]}|{type:'answer';result:ChatResult}|{type:'error';message:string};
+export type ChatEvent={type:'thread';threadId:string}|{type:'evidence';evidence:ChatEvidence[];threadId?:string}|{type:'claim';claim:ChatClaim}|{type:'answer';result:ChatResult}|{type:'error';message:string};

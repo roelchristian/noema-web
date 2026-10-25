@@ -69,7 +69,7 @@ try {
  }
  async function ask(page,text='What does the selected material say about grace?') {
   await page.getByRole('textbox',{name:'Ask something about your knowledge',exact:true}).fill(text);
-  await page.getByRole('button',{name:'Ask',exact:true}).click();
+  await page.getByRole('button',{name:'Send message',exact:true}).click();
   await page.locator('.chat-message.is-assistant').last().waitFor();
  }
  async function geometry(page,width) {
@@ -84,7 +84,7 @@ try {
   const page=await context.newPage();page.setDefaultTimeout(12000);page.on('pageerror',error=>errors.push(error.message));
   await page.goto(`${base}/?vault=default&page=${specimen.id}`);await page.locator('#page-title').waitFor();
   await openChat(page,width);assert.match(await page.locator('[data-chat-scope]').innerText(),/Entire vault/);
-  await page.getByRole('checkbox',{name:'Temporary',exact:true}).check();
+  await page.locator('.chat-options > summary').click();await page.getByRole('checkbox',{name:'Temporary chat',exact:true}).check();
   const composer=page.getByRole('textbox',{name:'Ask something about your knowledge',exact:true});
   await composer.fill('@August');await page.locator('#chat-mention-list').getByRole('option',{name:/Augustine/}).waitFor();await composer.press('Enter');
   assert.equal(await page.locator('.chat-mentions [data-entity-id]').getAttribute('data-entity-id'),augustine.id);
@@ -107,19 +107,19 @@ try {
   await page.getByRole('button',{name:'Close Chat',exact:true}).click();
   await page.getByRole('button',{name:'Ask about this',exact:true}).click();
   assert.match(await page.locator('[data-chat-scope]').innerText(),/Page · Synthetic grace notebook/);
-  await ask(page);const history=page.getByRole('combobox',{name:'Conversation history',exact:true});await page.waitForFunction(()=>document.querySelector('select[aria-label="Conversation history"]')?.value);
-  const threadId=await history.inputValue();assert.ok(threadId);
-  await page.getByRole('button',{name:'Rename conversation',exact:true}).click();await page.getByRole('textbox',{name:'Conversation title',exact:true}).fill(`Browser ${width} ${mode}`);await page.getByRole('button',{name:'Save title',exact:true}).click();
+  await ask(page);if(width===390)await page.getByRole('button',{name:'Show conversations',exact:true}).click();const history=page.getByRole('navigation',{name:'Conversation history',exact:true});const active=history.locator('[aria-current=page]');await active.waitFor();
+  const threadId=await active.getAttribute('data-thread-id');assert.ok(threadId);if(width===390)await page.getByRole('button',{name:'Close conversations',exact:true}).click();
+  await page.locator('.chat-options > summary').click();await page.getByRole('button',{name:'Rename conversation',exact:true}).click();await page.getByRole('textbox',{name:'Conversation title',exact:true}).fill(`Browser ${width} ${mode}`);await page.getByRole('button',{name:'Save title',exact:true}).click();
   await page.locator('.chat-citation').first().click();await page.getByRole('button',{name:'Open in original',exact:true}).click();await page.locator('#page-title').waitFor();
   assert.equal(new URL(page.url()).searchParams.get('page'),specimen.id,'Evidence opens original note');
-  await openChat(page,width);await history.selectOption(threadId);await page.locator('.chat-message.is-assistant').waitFor();
-  await page.getByRole('button',{name:'Delete conversation',exact:true}).click();await page.locator('.chat-message').first().waitFor({state:'hidden'});
+  await openChat(page,width);if(width===390)await page.getByRole('button',{name:'Show conversations',exact:true}).click();await history.locator(`[data-thread-id="${threadId}"]`).click();await page.locator('.chat-message.is-assistant').waitFor();
+  await page.locator('.chat-options > summary').click();await page.getByRole('button',{name:'Delete conversation',exact:true}).click();await page.locator('.chat-message').first().waitFor({state:'hidden'});
   // Pending requests are stoppable and never expose partial provider prose.
   transportMode='pending';const before=requests.length;
-  await composer.fill('What does grace mean here?');await page.getByRole('button',{name:'Ask',exact:true}).click();
+  await composer.fill('What does grace mean here?');await page.getByRole('button',{name:'Send message',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('.chat-progress'));for(let attempt=0;requests.length===before&&attempt<200;attempt++)await new Promise(resolve=>setTimeout(resolve,10));assert.ok(requests.length>before,'Pending request reached mock provider');
   await assert.doesNotReject(async()=>{await page.getByRole('button',{name:'Stop',exact:true}).click();});
-  await page.getByRole('button',{name:'Ask',exact:true}).waitFor();assert.equal(await page.locator('.chat-message.is-assistant').count(),0);
+  await page.getByRole('button',{name:'Send message',exact:true}).waitFor();assert.equal(await page.locator('.chat-message.is-assistant').count(),0);
   transportMode='answer';await screenshot(page,`${width}-${mode}-stopped`);
   await composer.fill('What does grace mean here?');await composer.press('Enter');await page.locator('.chat-message.is-assistant').waitFor();
   assert.ok(requests.at(-1).input.includes('previousQuestions'),'Repeat flow uses fresh provider request');

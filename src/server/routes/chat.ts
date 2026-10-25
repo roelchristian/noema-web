@@ -18,11 +18,12 @@ export async function chatRoutes(chat:Chat,{vault,path,method,body,res,send}:Con
  if(resource==='messages'&&!id&&method==='POST') {
   const controller=new AbortController(),abort=()=>{if(!res.writableEnded)controller.abort();};res.once('close',abort);
   const event=(data:unknown)=>{if(!controller.signal.aborted&&!res.writableEnded)res.write(`data: ${JSON.stringify(data)}\n\n`);};
+  const startStream=()=>{if(!res.headersSent)res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Accel-Buffering':'no'});};
   try {
-   // Delay streaming headers until there is validated evidence, preserving ordinary error status codes.
-   const result=await chat.submit(vault,body,{signal:controller.signal,onEvidence:evidence=>{
-    res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Accel-Buffering':'no'});event({type:'evidence',evidence});
-   }});
+   // Thread identity precedes retrieval so refresh can reopen even the first pending turn.
+   const result=await chat.submit(vault,body,{signal:controller.signal,onThread:threadId=>{startStream();event({type:'thread',threadId});},onEvidence:(evidence,threadId)=>{
+    startStream();event({type:'evidence',evidence,threadId});
+   },onClaim:claim=>event({type:'claim',claim})});
    event({type:'answer',result});res.end();
   } catch(error) {
    if(controller.signal.aborted)return;

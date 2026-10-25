@@ -92,6 +92,7 @@ export interface IntelligenceStatus extends IntelligencePreferences {
 export interface AIEnrichment extends IntelligencePreferences {
   kind: string; data: Record<string, unknown>; revision: number; updated_at: string; contentHash?: string | null;
 }
+export interface PageEnrichmentStatus {version:string;pending:boolean;pendingFields:Array<'title'|'domains'|'language'|'summary'>}
 export interface AISummary extends IntelligencePreferences { summary: string; revision: number; contentHash?: string | null }
 
 export function blockSegments(block: Block): Segment[] { return (block.type === 'table' || block.type === 'columns') ? (block.rows ?? []).flat(2) : block.content; }

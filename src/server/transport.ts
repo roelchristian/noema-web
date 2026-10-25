@@ -242,7 +242,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             return send(201,await backups.import(Buffer.concat(chunks),url.searchParams.get('name')??undefined));
           }
           const vault=url.pathname.split('/')[3]!;
-          vaults.requireOpen(vault);pages.purgeExpired(vault);
+          vaults.requireOpen(vault);
           const backup=await backups.export(vault);
           const filename=encodeURIComponent(backup.filename).replace(/['()*]/g,char=>'%'+char.charCodeAt(0).toString(16).toUpperCase());
           res.writeHead(200,{'Content-Type':'application/x-noema-backup','Content-Disposition':`attachment; filename="vault.noemabkp"; filename*=UTF-8''${filename}`,'Content-Length':backup.bytes.length,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
@@ -411,7 +411,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             return await bibliographyRoutes(runtime.bibliography,{activity,vault,id,action:child,method,body,res,send});
           }
           if(collection==='pages' && id && child==='preview' && parts.length===4 && method==='GET')return send(200,pages.preview(vault,id));
-          pages.purgeExpired(vault);
+          if(method!=='GET')pages.purgeExpired(vault);
           if(collection==='search' && parts.length===3 && id==='text' && method==='POST')return send(200,textSearch.search(vault,body.query,body.limit,body.scope));
           if(collection==='search' && parts.length===3 && id==='snippets' && method==='POST')return send(200,searchSnippets.get(vault,body));
           if(collection==='embeddings') {
@@ -544,6 +544,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
               return send(200,scans.save(vault,page,output,intelligence.selection(),true,previous));
             }
             if(id && parts.length===4 && child==='summary' && method==='DELETE')return send(200,enrichments.removeSummary(vault,id));
+            if(id && parts.length===4 && child==='enrichment-status' && method==='GET')return send(200,enrichments.status(vault,id));
             if(id && parts.length===4 && child==='enrichments' && method==='GET')return send(200,enrichments.list(vault,id));
             if(id && parts.length===4 && child==='enrichment-settings') {
               if(method==='GET')return send(200,pageEnrichment.settings(vault));
@@ -587,8 +588,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
               return send(200,{...page,entityMatchCache:entityMatches.get(vault,id,page.revision)});
             }
             if(id && child==='metadata' && parts.length===4 && method==='GET') {
-              const {id:pageId,vault_id,title,revision,pageDomains,summaryContentHash,enrichmentPending,enrichmentPendingFields,enrichmentFields,language}=pages.get(vault,id);
-              return send(200,{id:pageId,vault_id,title,revision,pageDomains,summaryContentHash,enrichmentPending,enrichmentPendingFields,enrichmentFields,language});
+              return send(200,pages.metadata(vault,id));
             }
             if(id && child==='entity-matches' && parts.length===4) {
               if(method==='GET') {

@@ -132,7 +132,7 @@ export function SettingsDialog({initialTab='appearance',calendarSettings,onCalen
       </section>
       <section className="settings-section appearance-setting" aria-labelledby="reading-heading">
         <h3 id="reading-heading">Presentation</h3>
-        <PresentationSelector onExitFocus={onExitFocus} value={appearance.presentationMode} onChange={presentationMode => onChange({...appearance, presentationMode})}/>
+        <PresentationSelector inline onExitFocus={onExitFocus} value={appearance.presentationMode} onChange={presentationMode => onChange({...appearance, presentationMode})}/>
       </section>
       <section className="settings-section appearance-setting" aria-labelledby="citations-heading">
         <h3 id="citations-heading">{uiText("Citations")}</h3>

@@ -1711,6 +1711,33 @@ main[data-entity-review-open=true] *::after { animation: none !important; transi
 .topbar:has(.page-toolbar) { height: auto; flex-shrink: 0; }
 .topbar .top-actions { min-width: 0; max-width: 100%; }
 .topbar .page-toolbar { min-width: 0; max-width: 100%; flex-wrap: wrap; }
+.presentation-control {
+  display: inline-flex;
+  flex: none;
+}
+.presentation-control > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--control-target-compact);
+  min-height: var(--control-target-compact);
+  padding: var(--toolbar-control-padding);
+  border-radius: var(--radius-toolbar);
+  color: var(--text-muted);
+  opacity: 1;
+  margin: 0;
+}
+.presentation-control > button:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.presentation-control > button:focus-visible {
+  outline: var(--focus-width) solid var(--accent);
+  outline-offset: var(--focus-offset-control);
+}
+@media (max-width: 750px), (pointer: coarse) {
+  .presentation-control > button { min-height: var(--touch-target-size); min-width: var(--touch-target-size); }
+}
 .presentation-selector {
   display: inline-flex;
   flex: none;
@@ -1721,6 +1748,7 @@ main[data-entity-review-open=true] *::after { animation: none !important; transi
   background: var(--surface);
 }
 .presentation-selector button {
+  gap: var(--space-1);
   display: inline-flex;
   align-items: center;
   justify-content: center;

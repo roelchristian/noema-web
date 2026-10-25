@@ -81,8 +81,8 @@ export function PageToolbar({ onArchive, onRestore, onHistory, onRename, entitie
       <button type="button" className="page-tool" aria-label={uiText("Undo")} title={uiText("Undo")+' · ⌘/Ctrl+Z'} disabled={editingDisabled||!canUndo} onMouseDown={event=>{if(event.button===0)event.preventDefault();}} onClick={onUndo}><Icon name="undo"/></button>
       <button type="button" className="page-tool" aria-label={uiText("Redo")} title={uiText("Redo")+' · ⌘/Ctrl+Shift+Z'} disabled={editingDisabled||!canRedo} onMouseDown={event=>{if(event.button===0)event.preventDefault();}} onClick={onRedo}><Icon name="redo"/></button>
     </div>
-    <div className="page-toolbar-view"><ActionMenu label={uiText("View")} triggerText={uiText("View")} icon="view-list" actions={[
-      ...(['standard','subtle','focus'] as const).map(mode=>({id:mode,label:uiText(mode==='standard'?'Standard':mode==='subtle'?'Subtle':presentationMode==='focus'?'Exit Focus':'Focus'),checked:presentationMode===mode,onSelect:()=>mode==='focus'&&presentationMode==='focus'?onExitFocus():onPresentationModeChange(mode)})),
+    <div className="page-toolbar-view"><ActionMenu showCheckedIcons label={uiText("View")} triggerText={uiText("View")} icon="view-list" actions={[
+      ...(['standard','subtle','focus'] as const).map(mode=>({id:mode,icon:mode==='standard'?'reference-highlight':mode==='subtle'?'reference-subtle':'expand',label:uiText(mode==='standard'?'Standard':mode==='subtle'?'Subtle':presentationMode==='focus'?'Exit Focus':'Focus'),checked:presentationMode===mode,onSelect:()=>mode==='focus'&&presentationMode==='focus'?onExitFocus():onPresentationModeChange(mode)})),
       ...(tocAvailable&&onToggleToc?[{id:'contents',group:uiText("Contents"),label:uiText("Table of contents"),checked:tocVisible,onSelect:onToggleToc}]:[]),
     ]}/></div>
     <PresentationSelector value={presentationMode} onChange={onPresentationModeChange} onExitFocus={onExitFocus}/>

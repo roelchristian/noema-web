@@ -123,6 +123,12 @@
   margin-top: 4px;
   border-top: 1px solid var(--line);
 }
+.action-menu-check {
+  display: inline-flex;
+  flex: none;
+  margin-inline-start: auto;
+  color: var(--text-muted);
+}
 .action-menu-shortcut {
   flex: none;
   margin-inline-start: auto;

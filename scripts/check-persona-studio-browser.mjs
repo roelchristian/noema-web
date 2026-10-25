@@ -12,7 +12,7 @@ try{
  await mkdir(artifacts,{recursive:true});await symlink(join(repo,'node_modules'),join(directory,'node_modules'),'dir');
  await writeFile(join(directory,'index.html'),'<html><body><div id="root"></div><script type="module" src="/fixture.tsx"></script></body></html>');
  await writeFile(join(directory,'fixture.tsx'),`import React from 'react';import {createRoot} from 'react-dom/client';import {IntelligenceSettings} from '/@fs/${repo}/src/client/settings/IntelligenceSettings.tsx';import '/@fs/${repo}/src/client/styles/tokens.css';import '/@fs/${repo}/src/client/styles.css';createRoot(document.querySelector('#root')).render(<main className="settings-dialog" style={{width:'100%',maxWidth:900,padding:16,boxSizing:'border-box'}}><IntelligenceSettings/></main>);`);
- vite=await createServer({configFile:false,root:directory,server:{host:'127.0.0.1',port:0,fs:{allow:[repo,directory]}},esbuild:{jsx:'automatic'}});await vite.listen();
+ vite=await createServer({cacheDir:join(directory,'vite-cache'),configFile:false,root:directory,server:{host:'127.0.0.1',port:0,fs:{allow:[repo,directory]}},esbuild:{jsx:'automatic'}});await vite.listen();
  browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH??'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
  for(const mode of ['light','dark'])for(const width of [1280,390]){
   const context=await browser.newContext({viewport:{width,height:960},reducedMotion:'reduce'}),page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));

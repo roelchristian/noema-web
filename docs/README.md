@@ -14,6 +14,7 @@
 ## Optional AI features
 
 - [Intelligence and AI activity](intelligence.md) — credentials, preferences, summaries, entity review, generated titles, and activity logs.
+- [Knowledge Chat](noema-chat.md) — scoped research, evidence, local history, and validation boundaries.
 - [Search and embeddings](search.md) — search, indexing, passage retrieval, and the background queue.
 
 ## Developer reference

@@ -173,7 +173,7 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
     catch(value){if(sameEntity())setConnectionError(String(value));}
     finally{if(connectionLock.current===owner)connectionLock.current=null;if(sameEntity())setUndoing(false);}
   }
-  return <article ref={article} className="entity-home" aria-label={uiText('Entity homepage')}><div className="eh-document">
+  return <article ref={article} data-entity-id={id} className="entity-home" aria-label={uiText('Entity homepage')}><div className="eh-document">
     {!entity ? <p role={error ? 'alert' : 'status'}>{error || uiText('Loading entity…')}{error && <button type="button" className="eh-text-action" onClick={()=>setEntityAttempt(value=>value+1)}>{uiText('Retry')}</button>}</p> : <>
       <header className="eh-header">
         {onClose && <button type="button" className="eh-breadcrumb" onClick={onClose}>{uiText('Knowledge entities')}</button>}
@@ -193,7 +193,7 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
         switchTab(visibleTabs[next]!);
       }}>{uiText(tabLabels[value])}</button>)}</div>
       <div className="eh-tabpanel" id="entity-home-panel-overview" role="tabpanel" aria-labelledby="entity-home-tab-overview" hidden={tab !== 'overview'} tabIndex={0}>
-        {entity.description ? <p className="eh-description eh-short-description">{previewText(entity.description,360)}</p> : <p className="entity-detail-empty">{uiText('No description recorded yet.')} <button type="button" className="eh-text-action" onClick={()=>setDetailsOpen(true)}>{uiText('Add a description')}</button></p>}
+        {entity.description ? <p className="eh-description eh-short-description" data-entity-description tabIndex={-1}>{entity.description}</p> : <p className="entity-detail-empty">{uiText('No description recorded yet.')} <button type="button" className="eh-text-action" onClick={()=>setDetailsOpen(true)}>{uiText('Add a description')}</button></p>}
         <section className="eh-section eh-glance-properties"><h2>{uiText(template.detailsTitle)}</h2>{entity.previewLimited?<p role="status">{uiText('Loading complete properties…')}</p>:<EntityPropertyList active={tab==='overview'} definitions={schema.propertyDefinitions} limit={4} key={vaultId + ':' + id} vaultId={vaultId} entity={{...entity,propertyNames}} entities={entities} mention={mention} priority={template.prominentProperties} onSave={(input,propertyId)=>mutate(()=>api.saveProperty(vaultId,id,input,propertyId))} onRemove={propertyId=>mutate(()=>api.removeConnection(vaultId,id,'properties',propertyId))} onRefresh={()=>mutate(()=>api.entity(vaultId,id))}/>}</section>
         {entity.type!=='source'&&(!!entity.propertyProposalCount||reviewDestination?.category==='property')&&<PropertyProposalReview proposalId={reviewDestination?.category==='property'?reviewDestination.proposalId:undefined} key={vaultId+':'+id+':review'} vaultId={vaultId} entityId={id} entities={entities} onUpdated={async()=>{await mutate(()=>api.entity(vaultId,id));}}/>}
         {entity.type==='source'&&<button type="button" className="button" onClick={()=>switchTab('metadata')}>Review metadata</button>}

@@ -55,20 +55,6 @@
     "promptDigest": "73815d8cfe167aff4ab1f9ee8d36fe2bec0359d558d9ff285c05b8aac761cc86",
     "bytes": 1827
   },
-  "entity discovery": {
-    "policy": {
-      "model": "gpt-5-mini",
-      "store": false,
-      "max_output_tokens": 4096,
-      "reasoning": {
-        "effort": "low"
-      },
-      "tools": [],
-      "tool_choice": "none"
-    },
-    "promptDigest": "81d53bee1bd7138bb845887b98dff02c6ab8c3656b0b05748324ad8cb2c7958c",
-    "bytes": 2127
-  },
   "entity scan": {
     "policy": {
       "model": "gpt-5-mini",
@@ -125,20 +111,6 @@
     },
     "promptDigest": "e0d93155cfa0552e98598d362761536146637c6e633cfe21934d7b1e3164df65",
     "bytes": 3463
-  },
-  "persona preview": {
-    "policy": {
-      "model": "gpt-6-luna",
-      "store": false,
-      "max_output_tokens": 4096,
-      "reasoning": {
-        "effort": "none"
-      },
-      "tools": [],
-      "tool_choice": "none"
-    },
-    "promptDigest": "d4ed80b4ed20d0ed4fca377cbf967b1a6cb1b3ff071b7f0102053d6a28e9688b",
-    "bytes": 2692
   },
   "review": {
     "policy": {
@@ -198,20 +170,6 @@
     "promptDigest": "799becdef43d25ff27586b8703e18bf372d4bdabd6eb50d3ac739ef171344566",
     "bytes": 3146
   },
-  "source scholarly": {
-    "policy": {
-      "model": "gpt-5-mini",
-      "store": false,
-      "max_output_tokens": 4096,
-      "reasoning": {
-        "effort": "low"
-      },
-      "tools": [],
-      "tool_choice": "none"
-    },
-    "promptDigest": "f65d43db48928c0bac485468f8261894cc4da83adf0e9478a05e154ddc300fbf",
-    "bytes": 1434
-  },
   "source authors": {
     "policy": {
       "model": "gpt-5-mini",
@@ -268,6 +226,20 @@
     "promptDigest": "03228be79da7ef23b4b70ef6a6a8033fac723ce7243314e035be1ebd48a4d37b",
     "bytes": 73
   },
+  "entity discovery": {
+    "policy": {
+      "model": "gpt-5-mini",
+      "store": false,
+      "max_output_tokens": 4096,
+      "reasoning": {
+        "effort": "low"
+      },
+      "tools": [],
+      "tool_choice": "none"
+    },
+    "promptDigest": "81d53bee1bd7138bb845887b98dff02c6ab8c3656b0b05748324ad8cb2c7958c",
+    "bytes": 2127
+  },
   "collection rules": {
     "policy": {
       "model": "gpt-5-mini",
@@ -281,5 +253,47 @@
     },
     "promptDigest": "cfce28d6384d89912a45f00ea5e5ed1d8cd2be0d4c8e91a7055af8e9ed2e9f04",
     "bytes": 79
+  },
+  "source scholarly": {
+    "policy": {
+      "model": "gpt-5-mini",
+      "store": false,
+      "max_output_tokens": 4096,
+      "reasoning": {
+        "effort": "low"
+      },
+      "tools": [],
+      "tool_choice": "none"
+    },
+    "promptDigest": "f65d43db48928c0bac485468f8261894cc4da83adf0e9478a05e154ddc300fbf",
+    "bytes": 1434
+  },
+  "chat": {
+    "policy": {
+      "model": "gpt-5-mini",
+      "store": false,
+      "max_output_tokens": 8192,
+      "reasoning": {
+        "effort": "low"
+      },
+      "tools": [],
+      "tool_choice": "none"
+    },
+    "promptDigest": "96b68882ac132456617726351238a6e05bf27e3c67f5589579cd5adf4fd89fc9",
+    "bytes": 76
+  },
+  "persona preview": {
+    "policy": {
+      "model": "gpt-6-luna",
+      "store": false,
+      "max_output_tokens": 4096,
+      "reasoning": {
+        "effort": "none"
+      },
+      "tools": [],
+      "tool_choice": "none"
+    },
+    "promptDigest": "d4ed80b4ed20d0ed4fca377cbf967b1a6cb1b3ff071b7f0102053d6a28e9688b",
+    "bytes": 2692
   }
 }

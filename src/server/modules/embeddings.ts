@@ -9,7 +9,7 @@ import {SourcePassages} from './source-passages.js';
 import {AIActivityLog} from './ai-activity.js';
 import type {AIActivity} from '../../shared/intelligence.js';
 import {randomUUID} from 'node:crypto';
-import {embeddingModel, embeddingDimensions, embeddingMaxBytes, type EmbeddingSettings, type EmbeddingStatus, type EmbeddingJob, type EmbeddingNote, type SemanticSearchResults} from '../../shared/embeddings.js';
+import {embeddingModel, embeddingDimensions, embeddingMaxBytes, type EmbeddingSettings, type EmbeddingStatus, type EmbeddingJob, type EmbeddingNote, type SemanticSearchResults, type SemanticSearchResult} from '../../shared/embeddings.js';
 import {Store} from '../store.js';
 import {HttpError, now} from '../validation.js';
 import {Pages} from './pages.js';
@@ -69,10 +69,14 @@ export class Embeddings {
   for(const [key,entry] of this.queryVectors)if(vault===undefined||entry.vault===vault)this.queryVectors.delete(key);
  }
  /** Cache vectors, never result lists: current indexes are searched on every call. */
- async queryEmbedding(vault:string,query:string) {
+ async queryEmbedding(vault:string,query:string,options?:{private?:boolean;signal?:AbortSignal}) {
   this.vaults.requireOpen(vault);
   if(this.closed)throw new HttpError(503,'Search stopped.');
   if(!this.intelligence.status().configured)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
+  if(options?.signal?.aborted)throw new HttpError(409,'Chat retrieval was cancelled.');
+  // Private Chat queries never share diagnostic-bearing cached work or survive
+  // temporary conversations in the query cache. Only usage accounting is kept.
+  if(options?.private)return this.generateQueryEmbedding(vault,query.trim(),options);
   const key=JSON.stringify([vault,embeddingModel,embeddingDimensions,query.trim()]),time=Date.now();
   for(const [key,entry] of this.queryVectors)if(entry.expiresAt<=time)this.queryVectors.delete(key);
   let entry=this.queryVectors.get(key);
@@ -89,10 +93,10 @@ export class Embeddings {
   this.vaults.requireOpen(vault);
   return result;
  }
- private async generateQueryEmbedding(vault:string,query:string) {
+ private async generateQueryEmbedding(vault:string,query:string,options?:{private?:boolean;signal?:AbortSignal}) {
   const activityId=this.startActivity('search_embedding',vault);
   try {
-   const result=await this.intelligence.embed(query,bytes=>activityId?this.activity?.request(activityId,bytes,null):undefined,false);
+   const result=await this.intelligence.embed(query,bytes=>{const observer=activityId?this.activity?.request(activityId,bytes,null):undefined;return options?.private?{usage:observer?.usage}:observer;},false,options?.signal);
    if(this.closed)throw new HttpError(503,'Search stopped.');
    this.vaults.requireOpen(vault);
    const magnitude=Math.sqrt(result.embedding.reduce((sum,n)=>sum+n*n,0));
@@ -262,15 +266,25 @@ export class Embeddings {
   if(typeof body.query!=='string'||!body.query.trim()||body.query.length>2000||Buffer.byteLength(body.query,'utf8')>embeddingMaxBytes)throw new HttpError(400,'Enter a search query up to 2,000 characters and 8,000 bytes.');
   const limit=body.limit??20;
   if(typeof limit!=='number'||!Number.isInteger(limit)||limit<1||limit>100)throw new HttpError(400,'Choose a result limit between 1 and 100.');
+  const rawScope=body.passageScope;
+  let passageScope:{pageIds:string[];sourceIds:string[]}|undefined;
+  if(rawScope!==undefined){
+   if(!rawScope||typeof rawScope!=='object'||Array.isArray(rawScope))throw new HttpError(400,'Invalid passage scope.');
+   const item=rawScope as Record<string,unknown>;
+   const ids=(value:unknown):string[]=>{if(!Array.isArray(value)||value.length>200||value.some(id=>typeof id!=='string'||!id||id.length>200))throw new HttpError(400,'Invalid passage scope.');return [...new Set(value as string[])];};
+   passageScope={pageIds:ids(item.pageIds),sourceIds:ids(item.sourceIds)};
+  }
+  const inScope=(row:SemanticSearchResult)=>!passageScope||(row.pageReference?passageScope.pageIds.includes(row.pageReference.pageId):!!row.reference&&passageScope.sourceIds.includes(row.reference.sourceId));
   const candidateLimit=Math.min(1000,Math.max(100,limit*5));
   this.pageSegments.synchronize(vault);
-  const lexical=new TextSearch(this.store,this.vaults,this.sourcePassages).searchPassages(vault,body.query,candidateLimit);
+  const lexical=new TextSearch(this.store,this.vaults,this.sourcePassages).searchPassages(vault,body.query,candidateLimit,{...passageScope,matchAny:body.matchAny===true});
   const semantic:ReturnType<SourcePassageEmbeddings['search']>=[];
   // Lexical evidence remains available when embeddings are not configured.
   if(this.intelligence.status().configured&&(this.sourceEmbeddings.hasSearchable(vault)||this.pageIndex.hasSearchable(vault))) {
-   const embedded=await this.queryEmbedding(vault,body.query);
+   const embedded=await this.queryEmbedding(vault,body.query,body.private===true?{private:true,signal:body.signal instanceof AbortSignal?body.signal:undefined}:undefined);
+   this.vaults.requireOpen(vault);
    const magnitude=Math.sqrt(embedded.embedding.reduce((sum,n)=>sum+n*n,0));
-   semantic.push(...[...this.sourceEmbeddings.search(vault,body.query,embedded.embedding,magnitude),...this.pageIndex.search(vault,body.query,embedded.embedding)].sort((a,b)=>b.score-a.score||(a.passageId??'').localeCompare(b.passageId??'')).slice(0,candidateLimit));
+   semantic.push(...[...this.sourceEmbeddings.search(vault,body.query,embedded.embedding,magnitude),...this.pageIndex.search(vault,body.query,embedded.embedding)].filter(inScope).sort((a,b)=>b.score-a.score||(a.passageId??'').localeCompare(b.passageId??'')).slice(0,candidateLimit));
   }
   const fused=new Map<string,PassageRetrievalResult>();
   for(const [kind,rows] of [['lexicalRank',lexical],['semanticRank',semantic]] as const)rows.forEach((row,index)=>{

@@ -1,3 +1,4 @@
+import {chatRoutes} from './routes/chat.js';
 import {parsePersonaPreview} from './modules/persona-preview.js';
 import {SourceMetadata} from './modules/source-metadata.js';
 import {bibliographyRoutes} from './routes/bibliography.js';
@@ -69,6 +70,13 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
         const aiRoute=/^\/api\/entities\/[^/]+\/scholarly$/.test(url.pathname)||/^\/api\/entities\/[^/]+\/discovery(?:\/[^/]+\/review)?$/.test(url.pathname)||/^\/api\/entities\/[^/]+\/create-page(?:\/(?:accept|reject))?$/.test(url.pathname)||url.pathname==='/api/intelligence'||url.pathname.startsWith('/api/intelligence/')||url.pathname==='/api/embeddings'||url.pathname.startsWith('/api/embeddings/')||/^\/api\/pages\/[^/]+\/(summary|title|enrich|enrichment-settings|entity-scan|entity-review|explain|review)$/.test(url.pathname);
         const searchRoute=url.pathname.startsWith('/api/search/');
         if((aiRoute||searchRoute) && (req.headers['x-noema-request']!=='1'||(['POST','PUT'].includes(method)&&!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))))throw new HttpError(403,searchRoute?'Search requests require the Noema client and JSON':'AI requests require the Noema client and JSON');
+        if(url.pathname==='/api/chat'||url.pathname.startsWith('/api/chat/')) {
+          if(req.headers['x-noema-request']!=='1'||(['POST','PUT'].includes(method)&&!/^application\/json(?:;|$)/i.test(req.headers['content-type']||'')))throw new HttpError(403,'Chat requests require the Noema client and JSON.');
+          const header=req.headers['x-vault-id'];if(typeof header!=='string'||!header.trim())throw new HttpError(400,'Choose a vault for Chat.');
+          const vault=vaults.requireOpen(header);
+          const body=['POST','PUT'].includes(method)?await readBody(req):{};vaults.requireOpen(vault);
+          return await chatRoutes(runtime.chat,{vault,path:url.pathname.split('/').filter(Boolean).slice(2),method,body,res,send});
+        }
         if(url.pathname==='/api/review-centre' && method==='GET') {
           const header=req.headers['x-vault-id'];if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
           const vault=vaults.requireOpen(header||'default'),centre=new ReviewCentre(store),id=url.searchParams.get('id');

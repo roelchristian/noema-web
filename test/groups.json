@@ -36,8 +36,9 @@
     "test/transliteration.test.mjs",
     "test/notification-reducer.test.mjs",
     "test/notification-workspace.test.mjs",
-    "test/writing-actions.test.mjs",
-    "test/source-annotation-mapping.test.mjs"
+    "test/tagline.test.mjs",
+    "test/source-annotation-mapping.test.mjs",
+    "test/writing-actions.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",
@@ -68,7 +69,6 @@
     "test/semantic-ui.test.mjs",
     "test/source-evidence-ui.test.mjs",
     "test/source-reprocessing-ui.test.mjs",
-    "test/source-revision-diff.test.mjs",
     "test/source-reprocessing-workspace.test.mjs",
     "test/summary-math.test.mjs",
     "test/test-harness.test.mjs",
@@ -109,6 +109,8 @@
     "test/notification-components.test.mjs",
     "test/notice-recovery-ui.test.mjs",
     "test/notification-bridge.test.mjs",
+    "test/chat-navigation.test.mjs",
+    "test/source-revision-diff.test.mjs",
     "test/writing-actions-ui.test.mjs",
     "test/persona-comparison.test.mjs"
   ],
@@ -183,7 +185,6 @@
     "test/source-reading-position-ui.test.mjs",
     "test/source-reprocessing.test.mjs",
     "test/source-reprocessing-summary.test.mjs",
-    "test/source-reprocessing-version.test.mjs",
     "test/source-sanitizer.test.mjs",
     "test/source-suggestions.test.mjs",
     "test/source-text-normalization.test.mjs",
@@ -237,7 +238,6 @@
     "test/source-reprocessing-scheduler-v2.test.mjs",
     "test/source-reprocessing-v2-evidence.test.mjs",
     "test/source-reprocessing-v2-apparatus.test.mjs",
-    "test/source-reprocessing-furniture-patterns.test.mjs",
     "test/source-reprocessing-native-evidence.test.mjs",
     "test/source-reprocessing-evidence-backup.test.mjs",
     "test/source-metadata.test.mjs",
@@ -246,8 +246,18 @@
     "test/source-reprocessing-metadata-v2.test.mjs",
     "test/source-reprocessing-context.test.mjs",
     "test/source-reprocessing-optimization.test.mjs",
-    "test/persona-preview-http.test.mjs",
+    "test/chat-retrieval.test.mjs",
+    "test/chat-orchestration.test.mjs",
+    "test/chat-security.test.mjs",
+    "test/chat-backup.test.mjs",
+    "test/chat-retrieval-extra.test.mjs",
+    "test/chat-readonly.test.mjs",
+    "test/source-reprocessing-version.test.mjs",
+    "test/source-reprocessing-furniture-patterns.test.mjs",
     "test/source-reading-revisions.test.mjs",
-    "test/source-page-revisions.test.mjs"
+    "test/source-page-revisions.test.mjs",
+    "test/chat-context-expansion.test.mjs",
+    "test/chat-context-security.test.mjs",
+    "test/persona-preview-http.test.mjs"
   ]
 }

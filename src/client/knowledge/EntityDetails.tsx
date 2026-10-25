@@ -135,7 +135,7 @@ export function PropertyEditor({entity, entities, mention, onSave, onRemove,defi
     finally {setBusy(false);}
   }
   return <div className="entity-property-editor">
-    <div className="entity-property-list">{entity.properties.map(property => <div key={property.id} className={'entity-property-card'+(edit === property.id ? ' is-editing' : '')}>
+    <div className="entity-property-list">{entity.properties.map(property => <div key={property.id} data-property-id={property.id} tabIndex={-1} className={'entity-property-card'+(edit === property.id ? ' is-editing' : '')}>
       <div className="entity-property-card-header"><strong>{label(property.name,property.metadata?.definition_id)}</strong><span>{property.bibliographicProjection?uiText("Bibliographic record"):managed(property)?uiText("Managed source metadata"):property.target_id ? uiText("Entity reference") : uiText("Text")}</span><div>
         <button type="button" disabled={busy||managed(property)} aria-label={uiText("Edit ")+label(property.name,property.metadata?.definition_id)} title={uiText("Edit value")} onClick={() => editing(property)}><Icon name="edit"/></button>
         <button type="button" disabled={busy||managed(property)} aria-label={uiText("Remove ")+label(property.name,property.metadata?.definition_id)} title={uiText("Remove value")} onClick={() => void remove(property)}><Icon name="close"/></button>
@@ -180,7 +180,7 @@ export function RelationshipEditor({entity, entities, mention, onSave, onRemove}
     finally{pending.current=false;setBusy(false);}
   }
   return <div className="entity-relationship-editor">
-    {!!entity.relationships.length&&<div className="entity-relationship-list">{entity.relationships.map(relation=><div key={relation.id} className={'entity-relationship-card'+(edit===relation.id?' is-editing':'')}>
+    {!!entity.relationships.length&&<div className="entity-relationship-list">{entity.relationships.map(relation=><div key={relation.id} data-relationship-id={relation.id} tabIndex={-1} className={'entity-relationship-card'+(edit===relation.id?' is-editing':'')}>
       <span className="entity-relationship-direction" title={relation.source_id===entity.id?uiText("Outgoing relationship"):uiText("Incoming relationship")}><Icon name={relation.source_id===entity.id?'page-outgoing':'page-incoming'}/></span>
       <div className="entity-relationship-target" title={uiText("Stored relationship: ")+(entities.find(item=>item.id===relation.source_id)?.name??relation.source_id)+" · "+relation.label+" · "+(entities.find(item=>item.id===relation.target_id)?.name??relation.target_id)}><strong>{relationshipDisplayLabel(relation,entity.id)}</strong>{mention(relation.source_id===entity.id?relation.target_id:relation.source_id)}</div>
       {relation.source_id===entity.id&&<div className="entity-relationship-actions"><button type="button" className="knowledge-icon-action" aria-label={uiText("Edit relationship: ")+relation.label} title={uiText("Edit relationship")} disabled={busy} onClick={()=>editing(relation)}><Icon name="edit"/></button><button type="button" className="knowledge-icon-action" aria-label={uiText("Remove relationship: ")+relation.label} title={uiText("Remove relationship")} disabled={busy} onClick={()=>void remove(relation)}><Icon name="close"/></button></div>}

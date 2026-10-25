@@ -1,3 +1,4 @@
+import {setupChatSchema} from './chat-schema.js';
 import {setupSourceReprocessingCheckpointSchema} from './source-reprocessing-checkpoint-schema.js';
 import {setupSourceMetadataSchema} from './modules/source-metadata-schema.js';
 import {setupBibliographySchema} from './modules/bibliography.js';
@@ -515,6 +516,7 @@ if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
  setupOrganizationDescriptionSchema(db);
  if (db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Database contains invalid references');
  setupBibliographySchema(db);
+ setupChatSchema(db);
  return db;
  } catch(error) { db.close(); throw error; }
 }

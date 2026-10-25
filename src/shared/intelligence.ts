@@ -55,7 +55,7 @@ export function supportedIntelligencePreferences(value: unknown): value is Intel
 }
 
 export interface AIActivity extends IntelligencePreferences {
-  id: string; action: 'persona_preview' | 'bibliographic_lookup' | 'text_to_speech' | 'collection_rules' | 'entity_discovery' | 'page_enrichment' | 'source_enrichment' | 'source_math_preprocessing' | 'source_reprocessing' | 'text_review' | 'block_explanation' | 'page_title' | 'page_summary' | 'entity_scan' | 'note_embedding' | 'search_embedding' | 'connection_test' | 'create_page_from_source';
+  id: string; action: 'chat' | 'persona_preview' | 'bibliographic_lookup' | 'text_to_speech' | 'collection_rules' | 'entity_discovery' | 'page_enrichment' | 'source_enrichment' | 'source_math_preprocessing' | 'source_reprocessing' | 'text_review' | 'block_explanation' | 'page_title' | 'page_summary' | 'entity_scan' | 'note_embedding' | 'search_embedding' | 'connection_test' | 'create_page_from_source';
   status: 'running' | 'completed' | 'failed' | 'interrupted' | 'skipped';
   startedAt: string; finishedAt: string | null; durationMs: number | null; httpStatus: number | null;
   vaultId: string | null; vaultName: string | null; objectKind: 'page' | 'entity' | null;
@@ -87,6 +87,7 @@ export interface AIActivityDebug {
 }
 
 export const aiActivityLabels: Record<AIActivity['action'], string> = {
+  chat:'Knowledge Chat',
   text_to_speech:'Speak',
   collection_rules:'Generate collection rules',
   entity_discovery:'Entity discovery',

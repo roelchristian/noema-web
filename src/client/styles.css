@@ -11,6 +11,7 @@
 @import "./styles/features/menus.css";
 @import "./styles/features/tagging.css";
 @import "./styles/features/calendar.css";
+@import "./styles/features/chat.css";
 @import "./styles/features/notifications.css";
 @import "./styles/semantics.css";
 @import "./styles/controls.css";

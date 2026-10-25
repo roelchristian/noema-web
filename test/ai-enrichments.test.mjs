@@ -89,6 +89,20 @@ test('saved enrichments survive restart, refresh safely, and follow page access 
     assert.equal(typeof versionBefore.version,'string');assert.ok(JSON.stringify(versionBefore).length<250);
     db.prepare("UPDATE page_ai_enrichments SET data=? WHERE page_id=? AND kind='topics'").run(JSON.stringify({topics:['Gardening','Planting']}),page.id);
     assert.notEqual((await call(route+'/enrichment-status')).version,versionBefore.version,'Same-length same-timestamp external results change the version');
+    db.prepare('DELETE FROM page_enrichment_jobs WHERE page_id=?').run(page.id);
+    const domainVersion=await call(route+'/enrichment-status');
+    db.prepare('UPDATE page_domain_state SET revision=revision+1 WHERE page_id=?').run(page.id);
+    db.prepare('DELETE FROM page_enrichment_jobs WHERE page_id=?').run(page.id);
+    assert.notEqual((await call(route+'/enrichment-status')).version,domainVersion.version,'Assignment revision changes are observable even with unchanged content and timestamps');
+    const assignmentsVersion=await call(route+'/enrichment-status');
+    db.prepare('DELETE FROM page_domains WHERE page_id=?').run(page.id);
+    db.prepare("INSERT INTO page_domains(page_id,domain_id,role,origin,updated_at) VALUES (?,'mathematics','primary','inferred','fixed timestamp')").run(page.id);
+    db.prepare('DELETE FROM page_enrichment_jobs WHERE page_id=?').run(page.id);
+    assert.notEqual((await call(route+'/enrichment-status')).version,assignmentsVersion.version,'Restored assignments with preserved classification provenance remain observable');
+    const state=db.prepare("SELECT data FROM page_ai_enrichments WHERE page_id=? AND kind='enrichment_state'").get(page.id);
+    db.prepare("UPDATE page_ai_enrichments SET data='broken legacy state' WHERE page_id=? AND kind='enrichment_state'").run(page.id);
+    assert.equal(typeof (await call(route+'/enrichment-status')).version,'string','Corrupt legacy state cannot block valid result observation');
+    db.prepare("UPDATE page_ai_enrichments SET data=? WHERE page_id=? AND kind='enrichment_state'").run(state.data,page.id);
     const changesBefore=db.prepare('SELECT total_changes() AS n').get().n;
     for(let i=0;i<3;i++){await call(route+'/enrichments');await call(route+'/enrichment-status');}
     assert.equal(db.prepare('SELECT total_changes() AS n').get().n,changesBefore,'Public payload and status reads never write');

@@ -61,6 +61,8 @@ test('freshness survives restart, and legacy summaries are backfilled only at th
     assert.equal(state.pages.get('default',page.id).summaryContentHash,hash);
     assert.equal(state.enrichments.list('default',page.id).find(item=>item.kind==='summary').contentHash,hash);
     state.store.run(`UPDATE page_ai_enrichments SET content_hash=NULL WHERE page_id=? AND kind='summary'`,page.id);
+    assert.equal(state.enrichments.list('default',page.id).find(item=>item.kind==='summary').contentHash,null,'Ordinary reads do not backfill provenance');
+    state.pages.prepareHashes('default',page.id);
     assert.equal(state.enrichments.list('default',page.id).find(item=>item.kind==='summary').contentHash,hash);
     state.store.run(`UPDATE page_ai_enrichments SET content_hash=NULL WHERE page_id=? AND kind='summary'`,page.id);
     page=state.pages.update('default',page.id,{...page,title:'Edited later'});
@@ -118,10 +120,13 @@ test('legacy cached hashes migrate once, preserve current summaries, and keep tr
   const hash=page.summaryContentHash,legacy=summaryContentHash(page,()=>undefined,true);assert.notEqual(legacy,hash);
   store.run('UPDATE pages SET summary_content_hash=?,summary_hash_version=1 WHERE id=?',legacy,page.id);
   store.run(`UPDATE page_ai_enrichments SET content_hash=? WHERE page_id=? AND kind='summary'`,legacy,page.id);
-  page=pages.get('default',page.id);assert.equal(page.summaryContentHash,hash);assert.equal(enrichments.list('default',page.id).find(item=>item.kind==='summary').contentHash,hash);
+  page=pages.get('default',page.id);assert.equal(page.summaryContentHash,hash);assert.equal(enrichments.list('default',page.id).find(item=>item.kind==='summary').contentHash,legacy,'Reads preserve legacy provenance until queued preparation');
+  pages.prepareHashes('default',page.id);
+  assert.equal(enrichments.list('default',page.id).find(item=>item.kind==='summary').contentHash,hash);
+  const migratedChanges=store.get('SELECT total_changes() AS n').n;pages.prepareHashes('default',page.id);assert.equal(store.get('SELECT total_changes() AS n').n,migratedChanges,'Unchanged preparation does not rewrite migrated hashes');
   assert.equal(store.get('SELECT summary_hash_version AS version FROM pages WHERE id=?',page.id).version,2);
   store.run('UPDATE pages SET summary_content_hash=?,summary_hash_version=1 WHERE id=?',legacy,page.id);
   store.run(`UPDATE page_ai_enrichments SET content_hash=? WHERE page_id=? AND kind='summary'`,'different-source-hash',page.id);
-  page=pages.get('default',page.id);assert.equal(page.summaryContentHash,hash);assert.equal(enrichments.list('default',page.id).find(item=>item.kind==='summary').contentHash,'different-source-hash');
+  page=pages.get('default',page.id);assert.equal(page.summaryContentHash,hash);pages.prepareHashes('default',page.id);assert.equal(enrichments.list('default',page.id).find(item=>item.kind==='summary').contentHash,'different-source-hash');
  }finally{db.close();}
 });

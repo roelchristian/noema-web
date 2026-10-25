@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {blockEvidence,type BlockEvidence} from './page-block-evidence.js';
 import type {Page,Segment} from '../../shared/domain.js';
 import {isAIExplanation} from '../../shared/semantic-blocks.js';
 import {conceptContentHash} from './summary-content.js';
@@ -9,6 +10,7 @@ type DriftPage=Pick<Page,'title'|'blocks'>;
 type ResolveName=(id:string)=>string|undefined;
 export interface CachedPageEmbedding {contentHash:string;vector:number[];model?:string}
 export interface ClassificationBaseline {
+  blockEvidence?:BlockEvidence;
   version:1|2;contentHash:string;title:string;body:string;headings:string[];
   tokenCounts:Record<string,number>;tokenCount:number;sampled:boolean;embedding?:CachedPageEmbedding;
 }
@@ -48,7 +50,7 @@ export function createClassificationBaseline(page:DriftPage,resolveName:ResolveN
   // Include start, middle and end, instead of silently discarding the end of a long note.
   const sampled=body.length>24000;
   const snapshot=sampled?body.slice(0,8000)+' '+body.slice(Math.max(0,Math.floor(body.length/2)-4000),Math.floor(body.length/2)+4000)+' '+body.slice(-8000):body;
-  const baseline:ClassificationBaseline={version:2,contentHash,title:normalize(page.title).slice(0,500),body:snapshot,
+  const baseline:ClassificationBaseline={version:2,blockEvidence:blockEvidence(page,resolveName),contentHash,title:normalize(page.title).slice(0,500),body:snapshot,
     headings:blocks.filter(block=>block.type==='heading1'||block.type==='heading2').map(block=>normalize(plain(block.content)).slice(0,300)).slice(0,128),
     tokenCounts:tokenHistogram(allTokens),tokenCount:allTokens.length,sampled,
     ...(validEmbedding(embedding,contentHash)?{embedding:{...embedding,vector:[...embedding.vector]}}:{})};

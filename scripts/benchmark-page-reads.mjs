@@ -4,11 +4,11 @@
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {pathToFileURL} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 import http from 'node:http';
 import {once} from 'node:events';
 import assert from 'node:assert/strict';
-const root=path.resolve(process.env.NOEMA_BENCH_ROOT??new URL('..',import.meta.url).pathname);
+const root=path.resolve(process.env.NOEMA_BENCH_ROOT??fileURLToPath(new URL('..',import.meta.url)));
 const moduleAt=relative=>import(pathToFileURL(path.join(root,relative)).href);
 const [{openDatabase},{Store},{createRuntime},{createTransportHandler},{Intelligence},{Domains},{createClassificationBaseline},{summaryBaseline},{embeddingModel,embeddingDimensions}]=await Promise.all([
  'src/server/database.ts','src/server/store.ts','src/server/runtime.ts','src/server/transport.ts','src/server/modules/intelligence.ts','src/server/modules/domains.ts','src/server/modules/page-semantic-drift.ts','src/server/modules/page-summary-freshness.ts','src/shared/embeddings.ts'].map(moduleAt));

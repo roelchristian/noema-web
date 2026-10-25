@@ -316,14 +316,22 @@ test('fixed occurrence text needs no entity-name projection',async()=>{
  }finally{s.close();}
 });
 
-test('a changed passage baseline rejects a stale summary-only snapshot',async()=>{
+test('an independent classification refresh preserves the summary generating snapshot',async()=>{
  const gate=deferred(),s=fixture(()=>gate.promise);try {
    const work=s.coordinator.run('default',s.page,undefined,{fields:['summary'],explicit:true});
    const domains=new Domains(s.store);
    domains.setInferred('default',s.page.id,{primaryDomainId:'mathematics',secondaryDomainIds:[]},s.page.conceptContentHash,s.page);
-   gate.resolve({summary:'Generated from obsolete changed-passage evidence.'});
-   await assert.rejects(work,{status:409});
-   assert.equal(s.store.get("SELECT 1 FROM page_ai_enrichments WHERE page_id=? AND kind='summary'",s.page.id),undefined); }finally{s.close();}
+   gate.resolve({summary:'Generated from independent summary evidence.'});
+   assert.equal((await work).summary,'Generated from independent summary evidence.'); }finally{s.close();}
 });
 
 function storedSummary(s,id) {const row=s.store.get("SELECT data,content_hash AS contentHash FROM page_ai_enrichments WHERE page_id=? AND kind='summary'",id);return {...row,data:JSON.parse(row.data)};}
+
+test('replacing the summary generating baseline rejects an obsolete summary snapshot',async()=>{
+ const gate=deferred(),s=fixture(()=>gate.promise);try {
+   const work=s.coordinator.run('default',s.page,undefined,{fields:['summary'],explicit:true});
+   s.enrichments.save('default',s.page.id,'summary',{summary:'A concurrent summary',generatedContentHash:s.page.summaryContentHash},s.page.revision,selection);
+   gate.resolve({summary:'Obsolete generated result'});await assert.rejects(work,{status:409});
+   assert.equal(storedSummary(s,s.page.id).data.summary,'A concurrent summary');
+ }finally{s.close();}
+});

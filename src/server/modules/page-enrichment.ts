@@ -58,7 +58,7 @@ export class PageEnrichment {
     const state=new PageEnrichmentState(this.store).get(page.id);
     return JSON.stringify([this.contentIdentity(page,fields,names),this.intelligence.enrichmentSelection(),typeof this.intelligence.retryConfigurationIdentity==='function'?this.intelligence.retryConfigurationIdentity():undefined,      [...fields].sort().map(field=>[field,state.fields[field]]),
       fields.includes('summary')?this.data(page.id,'summary_preferences'):undefined,
-      [fields.includes('domains')?[TAXONOMY_VERSION,CLASSIFICATION_VERSION]:undefined,state.classification?.baseline]]);
+      fields.includes('domains')?[TAXONOMY_VERSION,CLASSIFICATION_VERSION,state.classification?.baseline]:undefined]);
   }
   private running=new Map<string,{promise:Promise<PageEnrichmentResult>;revision:number;fields:EnrichmentField[];identity:string}>();
   constructor(private store:Store,private pages:Pages,private knowledge:Knowledge,private enrichments:AIEnrichments,private intelligence:Intelligence) {}
@@ -159,7 +159,7 @@ export class PageEnrichment {
     const coverage=representativeEnrichmentText(input,changedPassages,changedEvidence);
     const shortlist=fields.includes('domains')?domainShortlist(input,[...(page.pageDomains?.primaryDomainId?[page.pageDomains.primaryDomainId]:[]),...(page.pageDomains?.secondaryDomainIds??[])]):undefined;
     const selection=this.intelligence.enrichmentSelection();
-    return freezeSnapshot({page,requestedFields:fields,contentHash:page.conceptContentHash!,schemaVersion:'page-enrichment-v1',modelProfile:JSON.stringify([selection,typeof this.intelligence.retryConfigurationIdentity==='function'?this.intelligence.retryConfigurationIdentity():undefined]),ownership:JSON.stringify([state.get(page.id).fields,this.data(page.id,'summary_preferences')]),dependencyIdentity:this.dependencyIdentity(page,fields,names),contentIdentity:this.contentIdentity(page,fields,names),classificationIdentity:JSON.stringify(classification?.baseline),baselineIdentity:this.baselineIdentity(page.id,fields),names,input,changedPassages,changedEvidence,coverage,shortlist,selection,preferences:this.data(page.id,'summary_preferences'),revision:page.revision});
+    return freezeSnapshot({page,requestedFields:fields,contentHash:page.conceptContentHash!,schemaVersion:'page-enrichment-v1',modelProfile:JSON.stringify([selection,typeof this.intelligence.retryConfigurationIdentity==='function'?this.intelligence.retryConfigurationIdentity():undefined]),ownership:JSON.stringify([state.get(page.id).fields,this.data(page.id,'summary_preferences')]),dependencyIdentity:this.dependencyIdentity(page,fields,names),contentIdentity:this.contentIdentity(page,fields,names),classificationIdentity:fields.includes('domains')?JSON.stringify(classification?.baseline):undefined,baselineIdentity:this.baselineIdentity(page.id,fields),names,input,changedPassages,changedEvidence,coverage,shortlist,selection,preferences:this.data(page.id,'summary_preferences'),revision:page.revision});
   }
   private baselineIdentity(pageId:string,fields:readonly EnrichmentField[]) {
     return JSON.stringify(fields.map(field=>[field,this.data(pageId,field==='domains'?'domain_classification':field)]));  }
@@ -211,7 +211,7 @@ export class PageEnrichment {
     new Vaults(this.store).requireOpen(vault);
     return this.store.transaction(()=>{
       const current=this.pages.requireActive(vault,page.id);
-      if(current.editLocked||this.contentIdentity(current,fields)!==contentIdentity||JSON.stringify(this.intelligence.enrichmentSelection())!==JSON.stringify(selection)||this.baselineIdentity(page.id,fields)!==snapshot.baselineIdentity||JSON.stringify(new PageEnrichmentState(this.store).get(page.id).classification?.baseline)!==snapshot.classificationIdentity)throw new HttpError(409,'The page changed. Generate fresh enrichment.');
+      if(current.editLocked||this.contentIdentity(current,fields)!==contentIdentity||JSON.stringify(this.intelligence.enrichmentSelection())!==JSON.stringify(selection)||this.baselineIdentity(page.id,fields)!==snapshot.baselineIdentity||fields.includes('domains')&&JSON.stringify(new PageEnrichmentState(this.store).get(page.id).classification?.baseline)!==snapshot.classificationIdentity)throw new HttpError(409,'The page changed. Generate fresh enrichment.');
       const state=new PageEnrichmentState(this.store);
       let title=current.title;
       if(fields.includes('title')&&output.title&&untitled(current)&&state.eligible(page.id,'title')) {

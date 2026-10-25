@@ -95,3 +95,22 @@ test('mocked provider can return each multilingual detailed ID from its first va
   }
   assert.equal(calls,15,'one dispatched request per note, with no translation or repair calls');
 });
+
+
+test('ambiguous everyday field, group, ring and order wording retains broad unfamiliar candidates',()=>{
+  for(const text of [
+    'We toured the field before harvest.',
+    'Our group placed an order for lunch.',
+    'The field is next to the farmhouse.',
+    'We bought rings for the wedding.',
+    'El grupo visitó el campo antes de la cosecha.',
+    'El anillo llegó con el pedido.',
+    'El cuerpo descansó después de caminar.',
+    '我们在收获前参观了田野。',
+    '我们的团体订购了午餐。',
+  ]) {
+    const shortlist=domainShortlist(text,['mathematics.algebra.abstract']);
+    assert.equal(shortlist.length,DOMAINS.length,text);
+    for(const id of ['agriculture.crops','agriculture.food','society.sociology'])assert.ok(shortlist.some(domain=>domain.id===id),`${text}: ${id}`);
+  }
+});

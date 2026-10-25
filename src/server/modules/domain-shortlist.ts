@@ -1,6 +1,9 @@
 import {DOMAINS,domainPath} from '../../shared/domains.js';
 
-/** Curated subject aliases, not a translation service. Unknown wording uses the broad fallback below. */
+/** Curated subject aliases, not a translation service. Unknown wording uses the broad fallback below.
+ * Avoid ambiguous standalone aliases such as field/group/campo: one everyday
+ * word must not turn weak evidence into a confident disciplinary match.
+ */
 const aliases:Record<string,string>={
   'general.interdisciplinary':'interdisciplinario|interdisciplinar|跨学科',
   'general.research_methods':'metodología de investigación|métodos de investigación|研究方法',
@@ -97,7 +100,7 @@ const aliases:Record<string,string>={
   'mathematics.foundations.category_theory':'teoría de categorías|范畴论|函子|functor',
   'mathematics.algebra':'álgebra|代数',
   'mathematics.algebra.linear':'álgebra lineal|matriz|matrices|vector|线性代数|矩阵|向量',
-  'mathematics.algebra.abstract':'abstract algebra|algebraic|homomorphism|group|ring|field|module|álgebra abstracta|grupo|anillo|cuerpo|campo|módulo|homomorfismo|estructura algebraica|抽象代数|群论|环论|域论|同态|代数结构',
+  'mathematics.algebra.abstract':'abstract algebra|algebraic|homomorphism|álgebra abstracta|homomorfismo|estructura algebraica|抽象代数|群论|环论|域论|同态|代数结构',
   'mathematics.number_theory':'teoría de números|número primo|数论|素数',
   'mathematics.analysis':'análisis matemático|cálculo|derivada|integral|数学分析|微积分|导数|积分',
   'mathematics.geometry_topology':'geometría|topología|几何|拓扑',

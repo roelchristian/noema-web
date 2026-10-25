@@ -138,7 +138,7 @@ try {
   await exactFact('Show the relationship focus',`[data-relationship-id="${relationship.id}"]`);
   await exactFact('Show the incoming focus',`[data-property-id="${birthplace.id}"]`,target);
   await screenshot(page,`${width}-${mode}-exact-entity-fact`);
-  await page.getByRole('button',{name:'Return to Chat',exact:true}).click();
+  await openChat(page,width);
   // Changing the actual vault while a request is pending aborts its result.
   transportMode='pending';const beforeSwitch=requests.length;await composer.fill('What is recorded about Augustine?');await composer.press('Enter');for(let attempt=0;requests.length===beforeSwitch&&attempt<200;attempt++)await new Promise(resolve=>setTimeout(resolve,10));assert.ok(requests.length>beforeSwitch);
   if(width===390)await page.getByRole('button',{name:'Open navigation',exact:true}).click();
